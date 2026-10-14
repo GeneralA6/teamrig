@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   coverageFindings,
+  coverageRun,
   coverageTotals,
   parseLcov,
   parsePolicy,
@@ -204,6 +205,28 @@ describe('parseTapSummary', () => {
   it('defaults absent counts to zero and returns nothing without a test count', () => {
     assert.deepEqual(parseTapSummary('# tests 2\n'), { tests: 2, fail: 0, cancelled: 0, skipped: 0, todo: 0 });
     assert.equal(parseTapSummary('TAP version 13\n'), undefined);
+  });
+});
+
+describe('coverageRun', () => {
+  it('reads the reports the suite wrote, with repo paths', () => {
+    const lcov = ['SF:/srv/repo/src/a.ts', 'LF:4', 'LH:3', 'end_of_record', ''].join('\n');
+    const run = coverageRun({ lcov, tap: '# tests 2\n', status: 0 }, ['src/a.ts'], (absolute) => absolute.replace('/srv/repo/', ''));
+    assert.deepEqual(run, {
+      report: [{ path: 'src/a.ts', lines: { found: 4, hit: 3 }, branches: { found: 0, hit: 0 }, functions: { found: 0, hit: 0 } }],
+      listing: ['src/a.ts'],
+      summary: { tests: 2, fail: 0, cancelled: 0, skipped: 0, todo: 0 },
+      status: 0,
+    });
+  });
+
+  it('counts a report the suite never wrote as no coverage and no summary, which fails the gate', () => {
+    const run = coverageRun({ lcov: undefined, tap: undefined, status: null }, ['src/a.ts'], (absolute) => absolute);
+    assert.deepEqual(run, { report: [], listing: ['src/a.ts'], summary: undefined, status: null });
+    assert.deepEqual(coverageFindings(run, POLICY), [
+      'the test run wrote no TAP summary (exit status null); it crashed or found no test files',
+      `src/a.ts: no test loads it; add a test that imports or runs it (a file with only types goes under typeOnly in ${POLICY_FILE})`,
+    ]);
   });
 });
 

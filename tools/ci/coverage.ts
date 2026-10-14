@@ -321,6 +321,23 @@ export interface CoverageRun {
   readonly status: number | null;
 }
 
+/** What the suite run left behind: each report's text (undefined when the run never wrote it) and the exit status. */
+export interface SuiteOutput {
+  readonly lcov: string | undefined;
+  readonly tap: string | undefined;
+  readonly status: number | null;
+}
+
+/** The run the floors judge. A report the suite never wrote counts as no coverage and no summary, which fails the gate. */
+export function coverageRun(output: SuiteOutput, listing: readonly string[], toRepoPath: (absolute: string) => string): CoverageRun {
+  return {
+    report: output.lcov === undefined ? [] : parseLcov(output.lcov, toRepoPath),
+    listing,
+    summary: output.tap === undefined ? undefined : parseTapSummary(output.tap),
+    status: output.status,
+  };
+}
+
 function fileFindings(path: string, file: FileCoverage | undefined, policy: CoveragePolicy): string[] {
   if (policy.typeOnly.has(path)) {
     return file === undefined ? [] : [`${path}: a test loads it, so it is not type-only; remove it from typeOnly in ${POLICY_FILE}`];
