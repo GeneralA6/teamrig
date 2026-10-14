@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatUtcDay, formatUtcMinute, parseUtcDeadline } from './time.ts';
+import { formatUtcDay, formatUtcMinute, parseUtcDay, parseUtcDeadline, shortUtc } from './time.ts';
 
 describe('parseUtcDeadline', () => {
   it('reads a bare day as the end of that day in UTC', () => {
@@ -24,5 +24,20 @@ describe('formatUtc', () => {
     const date = new Date('2030-05-06T07:08:09Z');
     assert.equal(formatUtcMinute(date), '2030-05-06 07:08');
     assert.equal(formatUtcDay(date), '2030-05-06');
+  });
+});
+
+describe('parseUtcDay', () => {
+  it('reads a bare day as its first instant and refuses anything else', () => {
+    assert.equal(parseUtcDay('2030-01-07')?.toISOString(), '2030-01-07T00:00:00.000Z');
+    assert.equal(parseUtcDay('2030-01-07 10:00'), undefined);
+    assert.equal(parseUtcDay('2030-02-30'), undefined);
+  });
+});
+
+describe('shortUtc', () => {
+  it('drops the year', () => {
+    assert.equal(shortUtc('2030-01-09 12:00'), '01-09 12:00');
+    assert.equal(shortUtc('2030-01-09'), '01-09');
   });
 });

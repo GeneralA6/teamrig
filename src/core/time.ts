@@ -26,6 +26,20 @@ export function parseUtcDeadline(text: string): Date | undefined {
     : undefined;
 }
 
+/** Parses a bare `YYYY-MM-DD` as the START of that UTC day (a week tag, not a deadline). */
+export function parseUtcDay(text: string): Date | undefined {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text.trim())) {
+    return undefined;
+  }
+  const end = parseUtcDeadline(text);
+  return end === undefined ? undefined : new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()));
+}
+
+/** A stored day or minute without its year, for compact lines: `2030-01-09 12:00` → `01-09 12:00`. */
+export function shortUtc(text: string): string {
+  return text.slice(5).replace('T', ' ');
+}
+
 /** `YYYY-MM-DD HH:MM` in UTC. */
 export function formatUtcMinute(date: Date): string {
   return date.toISOString().slice(0, 16).replace('T', ' ');

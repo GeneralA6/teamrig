@@ -1,0 +1,6 @@
+{"v":1,"type":"create","id":"T1","at":"2030-01-07T09:00:00.000Z","by":"lead","task":{"title":"Add a health check to the web service","owner":"alpha","source":"owner","ref":"inbox/alpha.md:1","tier":1,"due":"2030-01-08","goals":["G1"],"week":"2030-01-07"}}
+{"type":"create","id":"T2","at":"2030-01-07T09:05:00.000Z","by":"bravo","task":{"title":"Trim the build cache","owner":"bravo","source":"bravo","ref":null,"tier":3,"due":null,"goals":[],"week":null}}
+{"v":1,"type":"status","id":"T1","at":"2030-01-07T10:00:00.000Z","by":"alpha","status":"in-progress","note":null,"evidence":null,"skill":null}
+{"v":1,"type":"update","id":"T2","at":"2030-01-07T11:00:00.000Z","by":"lead","changes":{"owner":"alpha"},"note":"alpha has the cache tooling"}
+{"v":1,"type":"status","id":"T2","at":"2030-01-07T12:00:00.000Z","by":"alpha","status":"in-progress","note":"picked up","evidence":null,"skill":null,"extra":"ignored"}
+{"v":2,"type":"create","id":"T3","at":"2030-01-07T13:00:00.000Z","by":"lead","task":{"title":"Written by a newer release","owner":"alpha"},"newField":true}
