@@ -31,6 +31,11 @@ export class FaultyFiles implements Files {
     return this.inner.read(path);
   }
 
+  async readTail(path: string, maxBytes: number): Promise<string | undefined> {
+    this.check('readTail', path);
+    return this.inner.readTail(path, maxBytes);
+  }
+
   async append(path: string, text: string): Promise<void> {
     this.check('append', path);
     return this.inner.append(path, text);
