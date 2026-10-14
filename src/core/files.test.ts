@@ -4,9 +4,10 @@ import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { nodeFiles } from './files.ts';
+import { realSleep } from './lock.ts';
 
 describe('nodeFiles', () => {
-  const files = nodeFiles();
+  const files = nodeFiles(realSleep);
   let root = '';
 
   before(async () => {
@@ -35,6 +36,14 @@ describe('nodeFiles', () => {
     await files.write(path, 'second');
     assert.equal(await files.read(path), 'second');
     assert.deepEqual(await readdir(join(root, 'w')), ['config.json']);
+  });
+
+  it('keeps concurrent writes in one process apart, so each lands whole', async () => {
+    const path = join(root, 'c', 'state.json');
+    const texts = Array.from({ length: 8 }, (_, index) => `write ${index}`);
+    await Promise.all(texts.map((text) => files.write(path, text)));
+    assert.ok(texts.includes((await files.read(path)) ?? ''));
+    assert.deepEqual(await readdir(join(root, 'c')), ['state.json']);
   });
 
   it('creates a file exclusively, with its content, exactly once', async () => {
