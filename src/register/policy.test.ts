@@ -6,7 +6,7 @@ import { foldEvents, type RegisterState, type Task } from './fold.ts';
 import { normaliseTitle, RegisterPolicy, type AddInput, type Verdict } from './policy.ts';
 
 const EMPTY: RegisterState = foldEvents([]);
-const INPUT: AddInput = { title: 'Add a health check', owner: 'alpha', source: 'lead', tier: 2 };
+const INPUT: AddInput = { title: 'Add a health check', owner: 'alpha', source: 'lead', priority: 2 };
 
 const TASK: Task = testTask({ status: 'in-progress' });
 
@@ -26,7 +26,7 @@ describe('RegisterPolicy.add', () => {
     const verdict = policy.add({ ...INPUT, title: '  Add a health check ' }, EMPTY);
     assert.deepEqual(verdict, {
       ok: true,
-      value: { title: 'Add a health check', owner: 'alpha', source: 'lead', ref: null, tier: 2, due: null, goals: [], week: null },
+      value: { title: 'Add a health check', owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], week: null },
     });
   });
 
@@ -36,7 +36,7 @@ describe('RegisterPolicy.add', () => {
       [{ title: 'x'.repeat(141) }, /141 characters; the limit is 140/],
       [{ owner: 'charlie' }, /owner charlie is not a session/],
       [{ source: 'The Owner' }, /neither a session id nor owner/],
-      [{ tier: 9 }, /tier 9 is not one of 1, 2, 3, 4, 5/],
+      [{ priority: 9 }, /^priority p9 is not one of p1, p2, p3, p4, p5$/],
       [{ due: 'friday' }, /due friday is not/],
       [{ week: '2030-1-7' }, /week 2030-1-7 is not/],
       [{ ref: 'r'.repeat(301) }, /ref has 301 characters/],
@@ -127,16 +127,16 @@ describe('RegisterPolicy.update', () => {
       ok: true,
       value: { changes: { title: 'Add two health checks' }, note: 'wider' },
     });
-    assert.match(error(policy.update(TASK, 'alpha', { tier: 7 }, undefined)), /tier 7/);
+    assert.match(error(policy.update(TASK, 'alpha', { priority: 7 }, undefined)), /priority p7 is not one of/);
   });
 
-  it('lets the lead change only owner, tier, due and week', () => {
+  it('lets the lead change only owner, priority, due and week', () => {
     assert.equal(policy.update(TASK, 'lead', { owner: 'bravo', due: '2030-01-10' }, undefined).ok, true);
-    assert.match(error(policy.update(TASK, 'lead', { title: 'x', tier: 1 }, undefined)), /asked: title/);
+    assert.match(error(policy.update(TASK, 'lead', { title: 'x', priority: 1 }, undefined)), /asked: title/);
   });
 
   it('refuses everyone else and empty changes', () => {
-    assert.match(error(policy.update(TASK, 'bravo', { tier: 1 }, undefined)), /only the owner \(alpha\) or the lead/);
+    assert.match(error(policy.update(TASK, 'bravo', { priority: 1 }, undefined)), /only the owner \(alpha\) or the lead/);
     assert.match(error(policy.update(TASK, 'alpha', {}, undefined)), /nothing to change/);
   });
 });
@@ -155,7 +155,7 @@ describe('RegisterPolicy.addFromParent', () => {
     const verdict = policy.addFromParent(FROM_PARENT, EMPTY);
     assert.equal(verdict.ok && verdict.value.source, 'app/lead');
     const handed = testTask({ owner: 'lead', source: 'app/lead' });
-    assert.equal(policy.update(handed, 'lead', { tier: 1 }, undefined).ok, true);
+    assert.equal(policy.update(handed, 'lead', { priority: 1 }, undefined).ok, true);
     assert.match(error(policy.update(handed, 'lead', { source: 'web/lead' }, undefined)), /source web.lead is neither a session id nor owner/);
   });
 

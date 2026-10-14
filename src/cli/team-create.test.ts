@@ -11,7 +11,7 @@ const SHOP_CONFIG = join(KIT, 'teams', 'shop', 'config.json');
 const SHOP_POINTER = join(SHOP, '.teamrig.json');
 const FOLDERS = new FakePathProbe({ folders: [SHOP, APP] });
 const CREATE = ['team', 'create', 'shop', '--sessions', 'api,web', '--project', SHOP];
-const NEXT = 'Next: teamrig add --session lead --owner <id> --tier <n> --title "<first task>" for each session, then teamrig open <id> for each.';
+const NEXT = 'Next: teamrig add --session lead --owner <id> --priority p<n> --title "<first task>" for each session, then teamrig open <id> for each.';
 
 /** Files where another process writes the shop pointer just before this run does. */
 class PointerRace extends MemoryFiles {
@@ -37,7 +37,7 @@ describe('teamrig team create', () => {
       stderr: [],
     });
     assert.deepEqual(JSON.parse((await kit.files.read(SHOP_CONFIG)) ?? ''), {
-      configVersion: 1,
+      configVersion: 2,
       team: { id: 'shop' },
       sessions: ['lead', 'api', 'web'],
       roles: { lead: 'lead' },
@@ -68,7 +68,7 @@ describe('teamrig team create', () => {
       'DRY RUN nothing is written',
       `WOULD CREATE ${SHOP_CONFIG}:`,
       '{',
-      '  "configVersion": 1,',
+      '  "configVersion": 2,',
       '  "team": {',
       '    "id": "shop"',
       '  },',
@@ -122,7 +122,7 @@ describe('teamrig team create', () => {
         `CREATED ${web}`,
         `UNCHANGED ${POINTER}: the project stays tied to team app, in the same tree as web; open web's sessions with teamrig open web/<id>`,
         'Team web, under team app: lead lead, sessions front, back.',
-        "Next: app's lead runs teamrig add --team web --tier <n> --title \"<first task>\", then teamrig open web/lead: web's lead hands its sessions their parts and opens them.",
+        "Next: app's lead runs teamrig add --team web --priority p<n> --title \"<first task>\", then teamrig open web/lead: web's lead hands its sessions their parts and opens them.",
       ],
       stderr: [],
     });

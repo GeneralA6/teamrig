@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { TASK_STATUSES } from '../register/model.ts';
 import { UsageError } from './args.ts';
-import { addInputOf, callerOf, changesOf, listFilterOf, sessionRef, statusInputOf, taskIdOf, weekOf } from './inputs.ts';
+import { addInputOf, callerOf, changesOf, listFilterOf, priorityOf, sessionRef, statusInputOf, taskIdOf, weekOf } from './inputs.ts';
 
 const flags = (entries: Readonly<Record<string, string>>): ReadonlyMap<string, string> => new Map(Object.entries(entries));
 
@@ -28,26 +28,44 @@ describe('names and ids', () => {
   });
 });
 
+describe('priorityOf', () => {
+  it('reads p<n> as the level', () => {
+    assert.deepEqual(['p1', 'p2', 'p5', 'p12', 'p99'].map(priorityOf), [1, 2, 5, 12, 99]);
+  });
+
+  it('refuses the old tier spelling and a bare level with the spelling to write', () => {
+    assert.throws(() => priorityOf('t2'), { name: 'UsageError', message: 'priority "t2" is the old tier spelling: write p2' });
+    assert.throws(() => priorityOf('T3'), { name: 'UsageError', message: 'priority "T3" is the old tier spelling: write p3' });
+    assert.throws(() => priorityOf('2'), { name: 'UsageError', message: 'priority "2" is not p<n>: write p2' });
+  });
+
+  it('refuses any other text without a hint', () => {
+    for (const text of ['p0', 'p100', 'P2', 'p1.5', '0', 't0', 'high', '']) {
+      assert.throws(() => priorityOf(text), { name: 'UsageError', message: `priority "${text}" is not p<n>` }, text);
+    }
+  });
+});
+
 describe('addInputOf', () => {
   it('defaults the owner and source to the caller and sets only the fields given', () => {
-    assert.deepEqual(addInputOf(flags({ title: 'Ship it', tier: '2' }), 'alpha'), {
+    assert.deepEqual(addInputOf(flags({ title: 'Ship it', priority: 'p2' }), 'alpha'), {
       title: 'Ship it',
       owner: 'alpha',
       source: 'alpha',
-      tier: 2,
+      priority: 2,
     });
   });
 
   it('reads every optional field', () => {
     const input = addInputOf(
-      flags({ title: 'Ship it', tier: '1', owner: 'bravo', source: 'owner', ref: 'msg 4', due: '2030-01-09', goals: 'g1, g2', week: '2030-01-07' }),
+      flags({ title: 'Ship it', priority: 'p1', owner: 'bravo', source: 'owner', ref: 'msg 4', due: '2030-01-09', goals: 'g1, g2', week: '2030-01-07' }),
       'alpha',
     );
     assert.deepEqual(input, {
       title: 'Ship it',
       owner: 'bravo',
       source: 'owner',
-      tier: 1,
+      priority: 1,
       ref: 'msg 4',
       due: '2030-01-09',
       goals: ['g1', 'g2'],
@@ -55,16 +73,18 @@ describe('addInputOf', () => {
     });
   });
 
-  it('refuses a missing title, a tier that is not a whole number and an empty goal list', () => {
-    assert.throws(() => addInputOf(flags({ tier: '1' }), 'alpha'), /--title is required/);
-    assert.throws(() => addInputOf(flags({ title: 'x', tier: '1.5' }), 'alpha'), /--tier "1.5" is not a whole number/);
-    assert.throws(() => addInputOf(flags({ title: 'x', tier: '1', goals: ' , ' }), 'alpha'), /--goals " , " is an empty list/);
+  it('refuses a missing title or priority, a priority that is not p<n> and an empty goal list', () => {
+    assert.throws(() => addInputOf(flags({ priority: 'p1' }), 'alpha'), /--title is required/);
+    assert.throws(() => addInputOf(flags({ title: 'x' }), 'alpha'), /--priority is required/);
+    assert.throws(() => addInputOf(flags({ title: 'x', priority: '1' }), 'alpha'), /priority "1" is not p<n>: write p1/);
+    assert.throws(() => addInputOf(flags({ title: 'x', priority: 'p1', goals: ' , ' }), 'alpha'), /--goals " , " is an empty list/);
   });
 });
 
 describe('changesOf', () => {
   it('changes only the fields given', () => {
-    assert.deepEqual(changesOf(flags({ title: 'New', tier: '3' })), { title: 'New', tier: 3 });
+    assert.deepEqual(changesOf(flags({ title: 'New', priority: 'p3' })), { title: 'New', priority: 3 });
+    assert.throws(() => changesOf(flags({ priority: 't3' })), /priority "t3" is the old tier spelling: write p3/);
   });
 
   it('clears the ref, due date, goals and week with none', () => {
@@ -100,13 +120,13 @@ describe('listFilterOf', () => {
 
   it('reads every filter', () => {
     const filter = listFilterOf(
-      flags({ session: 'bravo', status: 'open,blocked', source: 'owner', tier: '1,2', 'due-before': '2030-01-09 12:00', week: 'none', goal: 'g1' }),
+      flags({ session: 'bravo', status: 'open,blocked', source: 'owner', priority: 'p1,p2', 'due-before': '2030-01-09 12:00', week: 'none', goal: 'g1' }),
     );
     assert.deepEqual(filter, {
       owner: 'bravo',
       statuses: ['open', 'blocked'],
       source: 'owner',
-      tiers: [1, 2],
+      priorities: [1, 2],
       dueBefore: new Date('2030-01-09T12:00:00Z'),
       week: null,
       goal: 'g1',

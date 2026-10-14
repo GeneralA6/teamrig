@@ -1,16 +1,17 @@
 import type { TaskStatus } from '../register/model.ts';
 
 /** The config format this code reads and writes. Older files are migrated in memory on load. */
-export const CONFIG_VERSION = 1;
+export const CONFIG_VERSION = 2;
 
 export interface RolesConfig {
-  /** Owns priorities, team rules and the owner's decision queue; may re-tier and reassign tasks. */
+  /** Owns priorities, team rules and the owner's decision queue; may re-prioritize and reassign tasks. */
   readonly lead: string;
   /** Owns deploy coordination and fleet health, when the team has that role. */
   readonly coordinatorOwner?: string;
 }
 
-export interface TierConfig {
+/** One priority level; tasks print it as `p<id>`, and p1 is the most urgent. */
+export interface PriorityConfig {
   readonly id: number;
   readonly name: string;
 }
@@ -26,7 +27,8 @@ export interface RegisterCheckConfig {
 export interface RegisterConfig {
   /** The `--source` that marks a task as ordered by the human owner. */
   readonly ownerSource: string;
-  readonly tiers: readonly TierConfig[];
+  /** The priority levels, most urgent first; config version 1 called them `tiers`. */
+  readonly priorities: readonly PriorityConfig[];
   /** When set, every goal tag on a new task must match this regular expression. */
   readonly goalPattern?: string;
   readonly maxTitle: number;
@@ -115,7 +117,7 @@ export interface RefreshConfig {
   readonly enabled: boolean;
   /** The context size, in tokens, that asks for a refresh. Absolute, since a hook cannot see the window size. */
   readonly contextTokens: number;
-  /** Mark the tab `↻ <name>` once the session's handover is written and it waits for /clear. */
+  /** Title the tab `<name>: type /clear` once the session's handover is written and it waits for /clear. */
   readonly tabTitle: boolean;
   /** The handover folder; a relative one is resolved against the team's folder. Unset: `<team folder>/handover`. */
   readonly handoverDir?: string;

@@ -23,7 +23,7 @@ export const DEFAULT_MESSAGES = { maxLines: 10 } as const;
 
 export const DEFAULT_REGISTER: RegisterConfig = {
   ownerSource: 'owner',
-  tiers: [
+  priorities: [
     { id: 1, name: 'keep the lights on' },
     { id: 2, name: 'correctness' },
     { id: 3, name: 'scale' },

@@ -34,23 +34,23 @@ describe('displayPaths', () => {
 describe('runDemo', () => {
   it('runs each step as its session and records what the CLI printed', async () => {
     const runs = await runDemo([
-      { session: 'lead', argv: ['add', '--title', 'Saved-card API', '--tier', '1', '--owner', 'api'] },
+      { session: 'lead', argv: ['add', '--title', 'Saved-card API', '--priority', 'p1', '--owner', 'api'] },
       { session: 'api', argv: ['set', 'T1', '--status', 'in-progress'] },
     ]);
     assert.deepEqual(
       runs.map((run) => [run.session, run.command]),
       [
-        ['lead', 'teamrig add --title "Saved-card API" --tier 1 --owner api'],
+        ['lead', 'teamrig add --title "Saved-card API" --priority p1 --owner api'],
         ['api', 'teamrig set T1 --status in-progress'],
       ],
     );
-    assert.match(runs[0]?.output.join('\n') ?? '', /^ADDED T1 open, tier 1, owner api,/);
-    assert.match(runs[1]?.output.join('\n') ?? '', /^SET T1 in-progress, tier 1, owner api,/);
+    assert.match(runs[0]?.output.join('\n') ?? '', /^ADDED T1 open, p1, owner api,/);
+    assert.match(runs[1]?.output.join('\n') ?? '', /^SET T1 in-progress, p1, owner api,/);
   });
 
   it('moves the clock three minutes per step and shows kit paths under ~/.teamrig', async () => {
     const runs = await runDemo([
-      { session: 'lead', argv: ['add', '--title', 'A', '--tier', '2', '--owner', 'web'] },
+      { session: 'lead', argv: ['add', '--title', 'A', '--priority', 'p2', '--owner', 'web'] },
       { session: 'lead', argv: ['inbox', 'add', '--to', 'web', '--text', 'go'] },
       { session: 'web', argv: ['inbox', 'read'] },
     ]);
@@ -59,7 +59,7 @@ describe('runDemo', () => {
   });
 
   it('draws the same output on every run', async () => {
-    const steps = [{ session: 'lead', argv: ['add', '--title', 'A', '--tier', '2', '--owner', 'web'] }];
+    const steps = [{ session: 'lead', argv: ['add', '--title', 'A', '--priority', 'p2', '--owner', 'web'] }];
     assert.deepEqual(await runDemo(steps), await runDemo(steps));
   });
 
@@ -69,8 +69,8 @@ describe('runDemo', () => {
 
   it('runs against the team config it is given', async () => {
     const config = { ...DEMO_CONFIG, sessions: ['lead', 'ops'] };
-    const runs = await runDemo([{ session: 'lead', argv: ['add', '--title', 'A', '--tier', '2', '--owner', 'ops'] }], config);
-    assert.match(runs[0]?.output[0] ?? '', /^ADDED T1 open, tier 2, owner ops,/);
-    await assert.rejects(runDemo([{ session: 'lead', argv: ['add', '--title', 'A', '--tier', '2', '--owner', 'ops'] }]), /exited/);
+    const runs = await runDemo([{ session: 'lead', argv: ['add', '--title', 'A', '--priority', 'p2', '--owner', 'ops'] }], config);
+    assert.match(runs[0]?.output[0] ?? '', /^ADDED T1 open, p2, owner ops,/);
+    await assert.rejects(runDemo([{ session: 'lead', argv: ['add', '--title', 'A', '--priority', 'p2', '--owner', 'ops'] }]), /exited/);
   });
 });

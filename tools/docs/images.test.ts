@@ -9,12 +9,12 @@ import { lineLength } from './terminal-svg.ts';
 describe('paneLines', () => {
   it('prints each command after a prompt, then its output, with a blank line between commands', () => {
     const lines = paneLines([
-      { session: 'lead', command: 'teamrig list', output: ['T1 open, tier 1'] },
+      { session: 'lead', command: 'teamrig list', output: ['T1 open, p1'] },
       { session: 'lead', command: 'teamrig show T1', output: [] },
     ]);
     assert.deepEqual(
       lines.map((line) => line.map((span) => span.text).join('')),
-      ['$ teamrig list', 'T1 open, tier 1', '', '$ teamrig show T1'],
+      ['$ teamrig list', 'T1 open, p1', '', '$ teamrig show T1'],
     );
   });
 });
@@ -47,7 +47,7 @@ describe('heroScreen', () => {
     const web = (await heroScreen()).panes[1];
     const text = (web?.lines ?? []).map((line) => line.map((span) => span.text).join(''));
     assert.ok(text.includes("- 2026-10-12 09:06 lead: T2 is yours; it uses T1's API"), text.join('\n'));
-    assert.ok(text.some((line) => line.startsWith('SET T2 in-progress, tier 1, owner web,')), text.join('\n'));
+    assert.ok(text.some((line) => line.startsWith('SET T2 in-progress, p1, owner web,')), text.join('\n'));
   });
 });
 

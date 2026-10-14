@@ -64,7 +64,7 @@ describe('runCli: rename', () => {
     const posted = await kit.run(['inbox', 'add', '--to', 'app-alpha', '--text', 'ready', '--session', 'team-lead']);
     assert.match(posted.stdout[0] ?? '', /^POSTED to alpha; /);
     assert.deepEqual((await kit.run(['inbox', 'read', '--session', 'scout'])).stdout[0], '- 2030-01-08 10:00 lead: ready');
-    assert.equal((await kit.run(['add', '--title', 'Ship it', '--tier', '2', '--owner', 'scout', '--session', 'app-alpha'])).code, EXIT.ok);
+    assert.equal((await kit.run(['add', '--title', 'Ship it', '--priority', 'p2', '--owner', 'scout', '--session', 'app-alpha'])).code, EXIT.ok);
     const byOldName = await kit.run(['list', '--session', 'app-alpha']);
     assert.equal(byOldName.stdout.length, 1);
     assert.deepEqual(byOldName.stdout, (await kit.run(['list', '--session', 'ranger'])).stdout);

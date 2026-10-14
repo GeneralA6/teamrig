@@ -61,7 +61,7 @@ describe('teamSpecOf', () => {
 describe('configRecordOf', () => {
   it('writes the smallest config, which reads back with no problems', () => {
     const record = configRecordOf(SPEC);
-    assert.deepEqual(record, { configVersion: 1, team: { id: 'shop' }, sessions: ['lead', 'api', 'web'], roles: { lead: 'lead' } });
+    assert.deepEqual(record, { configVersion: 2, team: { id: 'shop' }, sessions: ['lead', 'api', 'web'], roles: { lead: 'lead' } });
     const parsed = parseConfig(record);
     assert.deepEqual(parsed.issues, []);
     assert.deepEqual(parsed.config.sessions, SPEC.sessions);

@@ -27,8 +27,8 @@ import {
   type RefreshConfig,
   type RegisterConfig,
   type SkillsConfig,
+  type PriorityConfig,
   type TeamLink,
-  type TierConfig,
 } from './types.ts';
 
 export interface ConfigParse {
@@ -188,21 +188,27 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
   return { config, issues: read.issues };
 }
 
+/** Config version 1's name for `register.priorities`; the v1-to-v2 migration renames it, so a current file never holds it. */
+const RENAMED_PRIORITIES_KEY = 'tiers';
+
 function parseRegister(read: ConfigReader, raw: JsonRecord): RegisterConfig {
   const path = 'register';
   const defaults = DEFAULT_REGISTER;
   const check = read.section(raw, 'check', path);
-  const tiers = read.list(raw, 'tiers', path, defaults.tiers, (value, itemPath) => parseTier(read, value, itemPath));
-  if (tiers.length === 0) {
-    read.report(`${path}.tiers`, 'needs at least one tier');
+  if (raw[RENAMED_PRIORITIES_KEY] !== undefined) {
+    read.report(`${path}.${RENAMED_PRIORITIES_KEY}`, `was renamed: use ${path}.priorities`);
   }
-  if (new Set(tiers.map((tier) => tier.id)).size !== tiers.length) {
-    read.report(`${path}.tiers`, 'uses a tier id more than once');
+  const priorities = read.list(raw, 'priorities', path, defaults.priorities, (value, itemPath) => parsePriority(read, value, itemPath));
+  if (priorities.length === 0) {
+    read.report(`${path}.priorities`, 'needs at least one priority');
+  }
+  if (new Set(priorities.map((priority) => priority.id)).size !== priorities.length) {
+    read.report(`${path}.priorities`, 'uses a priority id more than once');
   }
   const goalPattern = read.optionalString(raw, 'goalPattern', path, isValidRegex);
   const register: RegisterConfig = {
     ownerSource: read.string(raw, 'ownerSource', path, defaults.ownerSource, isSessionName),
-    tiers: tiers.length === 0 ? defaults.tiers : tiers,
+    priorities: priorities.length === 0 ? defaults.priorities : priorities,
     maxTitle: read.integer(raw, 'maxTitle', path, defaults.maxTitle, { min: 20, max: 1_000 }),
     maxText: read.integer(raw, 'maxText', path, defaults.maxText, { min: 20, max: 5_000 }),
     secretPatterns: read.stringList(raw, 'secretPatterns', path, defaults.secretPatterns, isValidRegex),
@@ -225,15 +231,15 @@ function parseRegister(read: ConfigReader, raw: JsonRecord): RegisterConfig {
   return goalPattern === undefined ? register : { ...register, goalPattern };
 }
 
-function parseTier(read: ConfigReader, value: unknown, path: string): TierConfig | undefined {
-  const tier = read.objectItem(value, path);
-  if (tier === undefined) {
+function parsePriority(read: ConfigReader, value: unknown, path: string): PriorityConfig | undefined {
+  const priority = read.objectItem(value, path);
+  if (priority === undefined) {
     return undefined;
   }
   const before = read.issues.length;
-  const id = read.integer(tier, 'id', path, 0, { min: 1, max: 99 });
-  const name = read.requiredString(tier, 'name', path);
-  if (tier['id'] === undefined) {
+  const id = read.integer(priority, 'id', path, 0, { min: 1, max: 99 });
+  const name = read.requiredString(priority, 'name', path);
+  if (priority['id'] === undefined) {
     read.report(`${path}.id`, 'is required');
   }
   return read.issues.length === before ? { id, name } : undefined;

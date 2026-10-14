@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { JsonRecord } from '../core/guards.ts';
-import { CONFIG_MIGRATIONS, migrateConfig, type ConfigMigration } from './migrate.ts';
+import { CONFIG_MIGRATIONS, migrateConfig, RENAME_TIERS_TO_PRIORITIES, type ConfigMigration } from './migrate.ts';
 import { CONFIG_VERSION } from './types.ts';
 
 /** v1→v2 renames `messages.maxLines` to `messages.lineLimit`; v2→v3 adds `newKey`. */
@@ -26,7 +26,7 @@ const CHAIN: readonly ConfigMigration[] = [
 describe('migrateConfig', () => {
   it('ships a chain that reaches the current version', () => {
     const result = migrateConfig({ configVersion: 1 });
-    assert.equal(result.kind, CONFIG_VERSION === 1 ? 'current' : 'migrated');
+    assert.deepEqual([result.kind, result.kind === 'migrated' ? result.version : undefined], ['migrated', CONFIG_VERSION]);
     assert.equal(CONFIG_MIGRATIONS.length, CONFIG_VERSION - 1);
   });
 
@@ -68,5 +68,27 @@ describe('migrateConfig', () => {
 
   it('fails loudly when the shipped chain has a gap', () => {
     assert.throws(() => migrateConfig({ configVersion: 1 }, 3, CHAIN.slice(0, 1)), /no config migration from version 1/);
+  });
+});
+
+describe('the shipped migrations', () => {
+  it('v1 to v2 moves register.tiers to register.priorities and keeps every other key', () => {
+    const tiers = [{ id: 1, name: 'now' }, { id: 2, name: 'later' }];
+    const raw: JsonRecord = { configVersion: 1, register: { tiers, maxTitle: 99 }, custom: true };
+    assert.deepEqual(migrateConfig(raw), {
+      kind: 'migrated',
+      fromVersion: 1,
+      version: 2,
+      config: { configVersion: 2, register: { maxTitle: 99, priorities: tiers }, custom: true },
+      changes: ['v1→v2: register.tiers → register.priorities'],
+    });
+    assert.deepEqual(raw['register'], { tiers, maxTitle: 99 }, 'the input is not mutated');
+  });
+
+  it('v1 to v2 changes nothing but the version when there is no register.tiers', () => {
+    for (const config of [{}, { register: { maxTitle: 99 } }, { register: 'not an object' }]) {
+      assert.deepEqual(RENAME_TIERS_TO_PRIORITIES.apply(config), { config, changes: [] }, JSON.stringify(config));
+    }
+    assert.equal(RENAME_TIERS_TO_PRIORITIES.from, 1);
   });
 });

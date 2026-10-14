@@ -4,7 +4,7 @@ import { SecretScanner } from '../core/secrets.ts';
 import { parseUtcDay, parseUtcDeadline } from '../core/time.ts';
 import type { TaskFieldName, TaskFields } from './events.ts';
 import type { RegisterState, Task } from './fold.ts';
-import { ACTIVE_STATUSES, SESSION_NAME, type TaskStatus } from './model.ts';
+import { ACTIVE_STATUSES, priorityText, SESSION_NAME, type TaskStatus } from './model.ts';
 
 /** Team policy, applied on WRITE only: the parser accepts any well-formed history. */
 export type Verdict<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: string };
@@ -13,14 +13,14 @@ export type Verdict<T> = { readonly ok: true; readonly value: T } | { readonly o
 export const NO_SKILL = 'none';
 
 /** Fields the lead may change on a task someone else owns. */
-export const LEAD_FIELDS: readonly TaskFieldName[] = ['owner', 'tier', 'due', 'week'];
+export const LEAD_FIELDS: readonly TaskFieldName[] = ['owner', 'priority', 'due', 'week'];
 
 export interface AddInput {
   readonly title: string;
   readonly owner: string;
   readonly source: string;
   readonly ref?: string;
-  readonly tier: number;
+  readonly priority: number;
   readonly due?: string;
   readonly goals?: readonly string[];
   readonly week?: string;
@@ -96,7 +96,7 @@ export class RegisterPolicy {
       owner: input.owner,
       source: input.source,
       ref: input.ref ?? null,
-      tier: input.tier,
+      priority: input.priority,
       due: input.due ?? null,
       goals: input.goals ?? [],
       week: input.week ?? null,
@@ -184,8 +184,8 @@ export class RegisterPolicy {
     if (sourceProblem !== undefined) {
       return sourceProblem;
     }
-    if (!register.tiers.some((tier) => tier.id === fields.tier)) {
-      return `tier ${fields.tier} is not one of ${register.tiers.map((tier) => tier.id).join(', ')}`;
+    if (!register.priorities.some((priority) => priority.id === fields.priority)) {
+      return `priority ${priorityText(fields.priority)} is not one of ${register.priorities.map((priority) => priorityText(priority.id)).join(', ')}`;
     }
     if (fields.due !== null && parseUtcDeadline(fields.due) === undefined) {
       return `due ${fields.due} is not YYYY-MM-DD or YYYY-MM-DD HH:MM`;
@@ -215,8 +215,8 @@ export class RegisterPolicy {
 }
 
 function pickFields(task: Task): TaskFields {
-  const { title, owner, source, ref, tier, due, goals, week } = task;
-  return { title, owner, source, ref, tier, due, goals, week };
+  const { title, owner, source, ref, priority, due, goals, week } = task;
+  return { title, owner, source, ref, priority, due, goals, week };
 }
 
 function blankToNull(text: string | undefined): string | null {

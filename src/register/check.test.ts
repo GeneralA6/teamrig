@@ -35,7 +35,7 @@ describe('checkTasks', () => {
   it('flags tasks with no event for the stale window', () => {
     const old = testTask({ ownerSeenAt: '2030-01-07T08:00:00.000Z', updatedAt: '2030-01-07T11:00:00.000Z', updatedBy: 'bravo' });
     const flags = checkTasks([old], NOW, null, CONFIG);
-    assert.deepEqual(flags.map((flag) => formatFlag(flag)), ['STALE (last event 01-07 11:00 by bravo) T1 open, tier 2, owner alpha, from lead | Add a health check']);
+    assert.deepEqual(flags.map((flag) => formatFlag(flag)), ['STALE (last event 01-07 11:00 by bravo) T1 open, p2, owner alpha, from lead | Add a health check']);
   });
 
   it('flags owner orders and tasks due this week that are outside the week plan', () => {
@@ -54,7 +54,7 @@ describe('checkTasks', () => {
   it('reports the most urgent kinds first', () => {
     const tasks = [
       testTask({ id: 'T1', ownerSeenAt: FRESH, updatedAt: '2030-01-01T00:00:00.000Z' }),
-      testTask({ id: 'T2', due: '2030-01-08', ownerSeenAt: FRESH, updatedAt: FRESH, tier: 4 }),
+      testTask({ id: 'T2', due: '2030-01-08', ownerSeenAt: FRESH, updatedAt: FRESH, priority: 4 }),
     ];
     assert.deepEqual(kinds(tasks), ['OVERDUE T2', 'STALE T1']);
   });

@@ -1,7 +1,7 @@
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 
 export interface ConfigIssue {
-  /** Where the problem is, e.g. `register.tiers[2].name`. */
+  /** Where the problem is, e.g. `register.priorities[2].name`. */
   readonly path: string;
   readonly message: string;
 }
