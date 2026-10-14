@@ -1,9 +1,9 @@
 import { NAME_PATTERN, NAME_RULE } from "../core/ids.js";
 import { isTaskStatus, SESSION_NAME } from "../register/model.js";
-import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_COMMITS, DEFAULT_LOCK, DEFAULT_MESSAGES, DEFAULT_OWNER_GATES, DEFAULT_PUSH_GUARD, DEFAULT_REGISTER, DEFAULT_SKILLS, } from "./defaults.js";
+import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_COMMITS, DEFAULT_LOCK, DEFAULT_MESSAGES, DEFAULT_OWNER_GATES, DEFAULT_PUSH_GUARD, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SKILLS, } from "./defaults.js";
 import { CONFIG_LIMITS } from "./limits.js";
 import { ConfigReader, describe, isValidRegex, shortLine } from "./reader.js";
-import { isCommitGate } from "./types.js";
+import { isCommitGate, } from "./types.js";
 const isSessionName = (name) => SESSION_NAME.test(name) ? undefined : 'expected a lowercase name: a letter, then letters, digits or -, at most 32';
 const isUtcTime = (time) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(time) ? undefined : 'expected a UTC time as HH:MM');
 const BRANCH_NAME = (name) => (/^[^\s~^:?*[\\]+$/.test(name) ? undefined : 'not a valid branch name');
@@ -99,6 +99,7 @@ export function parseConfig(raw) {
             persistentFailureHours: read.integer(alerts, 'persistentFailureHours', 'alerts', DEFAULT_ALERTS.persistentFailureHours, CONFIG_LIMITS.persistentFailureHours),
         },
         tabStatus: { enabled: read.boolean(tabStatus, 'enabled', 'tabStatus', false) },
+        refresh: parseRefresh(read, read.section(raw, 'refresh', '')),
         paths: parsePaths(read, read.section(raw, 'paths', '')),
     };
     return { config, issues: read.issues };
@@ -173,6 +174,19 @@ function parseCommits(read, raw) {
         largeCommitTrailer: read.string(raw, 'largeCommitTrailer', path, defaults.largeCommitTrailer, isTrailerKey),
         testPatterns: read.stringList(raw, 'testPatterns', path, defaults.testPatterns, shortLine(CONFIG_LIMITS.testPatterns.maxLength, isValidRegex), CONFIG_LIMITS.testPatterns.maxItems),
         gate: isCommitGate(gate) ? gate : defaults.gate,
+    };
+}
+/** From a 200k window's compaction point up to far past any window today. */
+const REFRESH_TOKENS = { min: 10_000, max: 10_000_000 };
+function parseRefresh(read, raw) {
+    const path = 'refresh';
+    const defaults = DEFAULT_REFRESH;
+    const handoverDir = read.optionalString(raw, 'handoverDir', path);
+    return {
+        enabled: read.boolean(raw, 'enabled', path, defaults.enabled),
+        contextTokens: read.integer(raw, 'contextTokens', path, defaults.contextTokens, REFRESH_TOKENS),
+        tabTitle: read.boolean(raw, 'tabTitle', path, defaults.tabTitle),
+        ...(handoverDir === undefined ? {} : { handoverDir }),
     };
 }
 function parsePaths(read, raw) {

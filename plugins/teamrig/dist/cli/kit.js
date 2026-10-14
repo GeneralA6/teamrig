@@ -51,13 +51,17 @@ export function pastOrPresentIdOf(roster, text) {
     }
     return text;
 }
+/** The folders a config moves: its `paths`, and the handover folder from `refresh`. */
+function overridesOf(config) {
+    const { handoverDir } = config.refresh;
+    return { ...config.paths, ...(handoverDir === undefined ? {} : { handover: handoverDir }) };
+}
 /** The team's folder under the kit home, its config and the paths the config moves. */
 export async function openKit(runtime, team) {
     const kitHome = resolveKitHome(runtime.env, runtime.userHome);
     const format = runtime.configFormat ?? SHIPPED_CONFIG_FORMAT;
     const load = await loadConfig(runtime.files, teamPaths(kitHome, team, runtime.userHome).config, format.migrations, format.version);
-    const overrides = load.status === 'loaded' ? load.config.paths : {};
-    return { load, paths: teamPaths(kitHome, team, runtime.userHome, overrides) };
+    return { load, paths: teamPaths(kitHome, team, runtime.userHome, load.status === 'loaded' ? overridesOf(load.config) : {}) };
 }
 /**
  * Where to look for a team pointer: the given folders in order, then the folder Claude Code started

@@ -36,6 +36,10 @@ export function sessionStartContext(input) {
             break;
     }
     const notes = identityLines(new Roster(load.config, input.team, input.renames), input);
+    // In the core part, so the size budget that may cut the team's rules.md never cuts it.
+    if (input.refreshNote !== undefined) {
+        notes.push(input.refreshNote);
+    }
     if (input.titleNote !== undefined) {
         notes.push(input.titleNote);
     }

@@ -21,14 +21,17 @@ function commandOf(argv, commandFlags) {
     throw new UsageError(actions.length > 0 ? `${first} ${actions.join('|')}` : `unknown command "${first}"`);
 }
 /**
- * Splits `<command> [words] [--name value]...`. Only the command's own flags are accepted, so a
- * typo is refused instead of silently meaning nothing; every flag takes exactly one value.
+ * Splits `<command> [words] [--name value] [--switch]...`. Only the command's own flags are
+ * accepted, so a typo is refused instead of silently meaning nothing; every flag takes exactly one
+ * value, except the command's switches, which take none.
  */
-export function parseArgs(argv, commandFlags) {
+export function parseArgs(argv, commandFlags, commandSwitches = {}) {
     const { command, tail } = commandOf(argv, commandFlags);
     const allowed = commandFlags[command] ?? [];
+    const switchable = commandSwitches[command] ?? [];
     const positionals = [];
     const flags = new Map();
+    const switches = new Set();
     for (let index = 0; index < tail.length; index += 1) {
         const token = tail[index] ?? '';
         if (!token.startsWith('--')) {
@@ -36,6 +39,13 @@ export function parseArgs(argv, commandFlags) {
             continue;
         }
         const name = token.slice(2);
+        if (switchable.includes(name)) {
+            if (switches.has(name)) {
+                throw new UsageError(`${token} is given twice`);
+            }
+            switches.add(name);
+            continue;
+        }
         if (!allowed.includes(name)) {
             throw new UsageError(`${command} takes no ${token}`);
         }
@@ -49,7 +59,7 @@ export function parseArgs(argv, commandFlags) {
         flags.set(name, value);
         index += 1;
     }
-    return { command, positionals, flags };
+    return { command, positionals, flags, switches };
 }
 export function noPositionals(args) {
     const [extra] = args.positionals;

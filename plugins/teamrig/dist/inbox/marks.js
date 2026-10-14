@@ -23,7 +23,7 @@ export function parseMark(line) {
         (lastLineHash === null || typeof lastLineHash === 'string');
     return valid ? { kind: 'mark', mark: { v: line.version, area, line: count, at, claudeSession, lastLineHash } } : { kind: 'unreadable' };
 }
-/** A short, stable fingerprint of one inbox line. */
+/** A short, stable fingerprint of a text: an inbox line, or a handover note (`refresh --ready`). */
 export function lineHash(text) {
     return createHash('sha256').update(text).digest('hex').slice(0, 16);
 }
