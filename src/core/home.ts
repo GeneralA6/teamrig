@@ -1,4 +1,4 @@
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 
 export const KIT_NAME = 'teamrig';
 
@@ -27,7 +27,10 @@ export function resolveKitHome(env: Env, userHome: string): string {
   return fromPlugin ? fromPlugin : join(userHome, `.${KIT_NAME}`);
 }
 
-/** Folders a team may move with `paths` in the config; anything unset stays under the kit home. */
+/**
+ * Folders a team may move with `paths` in the config. A relative path is resolved against the kit
+ * home; unset, state and inbox stay under the kit home and skills is the Claude Code skills folder.
+ */
 export interface PathOverrides {
   readonly state?: string;
   readonly inbox?: string;
@@ -49,7 +52,9 @@ export interface KitPaths {
 }
 
 export function kitPaths(home: string, userHome: string, overrides: PathOverrides = {}): KitPaths {
-  const state = overrides.state ?? join(home, 'state');
+  const inHome = (path: string | undefined): string | undefined =>
+    path === undefined || isAbsolute(path) ? path : join(home, path);
+  const state = inHome(overrides.state) ?? join(home, 'state');
   return {
     home,
     config: join(home, 'config.json'),
@@ -58,8 +63,8 @@ export function kitPaths(home: string, userHome: string, overrides: PathOverride
     state,
     events: join(state, 'events.jsonl'),
     eventsLock: join(state, 'events.lock'),
-    inbox: overrides.inbox ?? join(state, 'inbox'),
+    inbox: inHome(overrides.inbox) ?? join(state, 'inbox'),
     inboxMarks: join(state, 'inbox-marks.jsonl'),
-    skills: overrides.skills ?? join(userHome, '.claude', 'skills'),
+    skills: inHome(overrides.skills) ?? join(userHome, '.claude', 'skills'),
   };
 }

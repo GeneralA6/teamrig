@@ -33,3 +33,13 @@ describe('kitPaths', () => {
     assert.equal(paths.skills, '/skills');
   });
 });
+
+describe('kitPaths with relative overrides', () => {
+  it('resolves them against the kit home, not the working folder', () => {
+    const home = join('/', 'kit');
+    const paths = kitPaths(home, USER_HOME, { state: 'data', inbox: join('notes', 'in'), skills: '../skills' });
+    assert.equal(paths.events, join(home, 'data', 'events.jsonl'));
+    assert.equal(paths.inbox, join(home, 'notes', 'in'));
+    assert.equal(paths.skills, join('/', 'skills'));
+  });
+});
