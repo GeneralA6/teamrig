@@ -32,8 +32,10 @@ path that needs a real disk failure) gets an entry under `exceptions` in `tools/
 with a reason the reviewer accepts; the gate reports the entry once the file no longer needs it.
 
 ## Branches and releases
-- Work lands on `dev` through pull requests or direct pushes by the maintainer's agents.
-- `main` and release tags are moved only by the maintainer, after review. Installs track `main`.
+- Every change is its own branch off `main` and lands through a pull request once every CI check
+  passes on its head; it is rebase-merged and the branch is deleted.
+- Nothing is pushed to `main` directly, and release tags are set only by the maintainer. Installs
+  track `main`.
 
 ## Scrub checks
 Two checks keep private data out of the history:
