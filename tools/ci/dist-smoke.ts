@@ -65,7 +65,8 @@ const SESSION_ID = '0123abcd-0000-4000-8000-00000000000a';
 
 /**
  * One payload per hook event the plugin uses, run inside team `smoke`, which has no config:
- * session start says so, the push guard still refuses a force-push of main, the reminder stays quiet.
+ * session start says so, the push guard still refuses a force-push of main, the reminder stays quiet,
+ * and the Stop hook prints nothing (any output there would block the turn).
  */
 const SAMPLES: Readonly<Record<string, Sample>> = {
   SessionStart: {
@@ -79,6 +80,10 @@ const SAMPLES: Readonly<Record<string, Sample>> = {
   UserPromptSubmit: {
     payload: { hook_event_name: 'UserPromptSubmit', session_id: SESSION_ID, prompt: 'hello' },
     check: () => undefined,
+  },
+  Stop: {
+    payload: { hook_event_name: 'Stop', session_id: SESSION_ID, stop_hook_active: false },
+    check: (stdout) => (stdout === '' ? undefined : `expected no output, got ${JSON.stringify(stdout)}`),
   },
 };
 

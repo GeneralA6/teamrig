@@ -9,7 +9,7 @@ import { PLUGIN_ROOT_VAR, POSIX_LAUNCHER } from './dist-smoke.ts';
 const CLI = fileURLToPath(new URL('./dist-smoke-cli.ts', import.meta.url));
 const VERSION = '1.2.3';
 
-/** One hook for every event: prints what dist-smoke expects of SessionStart and PreToolUse, nothing for the rest. */
+/** One hook for every event: prints what dist-smoke expects of SessionStart and PreToolUse, nothing for the rest (Stop included). */
 const HOOK = `let input = '';
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (chunk) => { input += chunk; });
@@ -42,7 +42,7 @@ describe('dist-smoke-cli', () => {
   }
 
   it('passes a plugin whose launcher and hooks all run, with cmd.exe found on the PATH', () => {
-    writePlugin(['SessionStart', 'PreToolUse', 'UserPromptSubmit']);
+    writePlugin(['SessionStart', 'PreToolUse', 'UserPromptSubmit', 'Stop']);
     chmodSync(join(repo.dir, ...POSIX_LAUNCHER.split('/')), 0o755);
     repo.git('add', '-A');
     repo.git('update-index', '--chmod=+x', POSIX_LAUNCHER);
@@ -52,7 +52,7 @@ describe('dist-smoke-cli', () => {
   });
 
   it('lists a launcher that cannot start, a hook with no sample and a launcher committed without its executable bit', () => {
-    writePlugin(['SessionStart', 'Stop']);
+    writePlugin(['SessionStart', 'SubagentStop']);
     repo.git('add', '-A');
     repo.git('update-index', '--chmod=-x', POSIX_LAUNCHER);
     // Neither launcher can start: the POSIX one has no executable bit, and cmd.exe is not where ComSpec says.
@@ -60,7 +60,7 @@ describe('dist-smoke-cli', () => {
     assert.equal(result.status, 1, result.stderr);
     assert.match(result.stdout, new RegExp(`^dist-smoke: 3 problem\\(s\\) on ${process.platform}:$`, 'm'));
     assert.match(result.stdout, /^ {2}bin launcher --version: exit none: /m);
-    assert.match(result.stdout, /^ {2}Stop \(\): no smoke sample for Stop; /m);
+    assert.match(result.stdout, /^ {2}SubagentStop \(\): no smoke sample for SubagentStop; /m);
     assert.match(result.stdout, new RegExp(`^ {2}${POSIX_LAUNCHER} is committed with mode 100644, not 100755; `, 'm'));
   });
 
