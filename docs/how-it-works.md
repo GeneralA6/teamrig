@@ -1,8 +1,8 @@
 # How teamrig works
 
 teamrig is one small Node program, four Claude Code hooks and a folder of plain files. Nothing runs between
-sessions: no server, no daemon, no network. Status, as in [what teamrig does](features.md): works today, being built
-(with its task id) or planned. Parts not built yet are drawn dashed.
+sessions: no server, no daemon, no network. Each part says, as in [what teamrig does](features.md),
+whether it works today, is being built (with its task id) or is planned. Parts not built yet are drawn dashed.
 
 - [The parts](#the-parts)
 - [Who is on the team](#who-is-on-the-team)

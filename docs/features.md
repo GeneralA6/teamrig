@@ -8,7 +8,7 @@ tasks, every task has one owner, and each session sees its own tasks and inbox n
 To install, see [Get started](../README.md#get-started); to set a team up yourself, see
 [Set up a team by hand](setup-by-hand.md).
 
-> Status marks below: ✅ works today · 🚧 being built (task id) · 🗺 planned.
+> The Status column says whether each part works today, is being built (with its task id) or is planned.
 
 ## Why teamrig
 
@@ -18,25 +18,25 @@ your machine.
 
 | You get | How | Status |
 | --- | --- | --- |
-| **Nothing to run or host** | Plain files on disk, a small CLI and Claude Code hooks. Works offline; no account. | ✅ |
-| **A task list nobody loses** | `teamrig add`, `set`, `update`, `list`, `show`: owner, priority tier, due date, goals and week; `show` also lists who changed the task. `check` finds tasks that break a team rule; `plan` prints the week. | ✅ |
-| | Dependencies and parent/child tasks | 🚧 T205 |
-| | Planned start and ETA, history across tasks (`history --by <session>`), token estimates | 🚧 T209, T210, T211 |
-| **Notes between sessions, no server** | `teamrig inbox add --to web`; the receiver is reminded at its next prompt and reads with `inbox read`. `who` gives the name to message a session by. | ✅ |
-| **A lead that runs the team** | One session holds the lead role in the team config; every session learns at start who it is and whom to message. | ✅ |
-| | Names that survive a rename: `teamrig rename` keeps the session's id, and every old name still works; `teamrig doctor` finds name and inbox problems | ✅ |
-| | Sub-team leads (a team tree) | 🗺 |
-| **Shared rules, loaded every time** | At start, each session gets the core rules and your team's own rules (`teams/<team>/rules.md` in the kit home; over 3,500 characters, a pointer to it); `check` also lints your skills. | ✅ |
-| **Safe pushes from parallel sessions** | A push guard asks before any push to a protected branch (such as main) and refuses a `--force` push or a delete of one (a `--force-with-lease` push asks); `commits check` holds commits to a size rule. | ✅ |
-| | A deploy coordinator: one push at a time, a lock for heavy steps, no-deploy windows | 🗺 T228 |
-| **A fresh context, nothing forgotten** | When a session marks a task done with its context over the team's threshold (250k tokens by default), or the lead asked (`teamrig refresh <session>`), it writes a handover; you type `/clear` (a hook cannot) and it starts again from the handover. | ✅ |
-| | Restarting the tab for you instead of `/clear` | 🗺 T201, T212 |
-| **Survives reboots** | Reopens your sessions and tabs after a restart | 🗺 T201 |
-| **Budget control** | Pacing to the weekly limit, pauses by priority, a daily cap | 🗺 |
-| **Hire and retire sessions** | From off to automatic within a budget; rehire from a handover note | 🗺 T212 |
-| **Settings and upgrades** | `teamrig config validate` and `config migrate` | ✅ |
-| | A new-version notice and `teamrig upgrade` with rollback | 🗺 T203 |
-| **Works everywhere** | Windows, macOS and Linux; every change is tested on all three. | ✅ |
+| **Nothing to run or host** | Plain files on disk, a small CLI and Claude Code hooks. Works offline; no account. | works today |
+| **A task list nobody loses** | `teamrig add`, `set`, `update`, `list`, `show`: owner, priority tier, due date, goals and week; `show` also lists who changed the task. `check` finds tasks that break a team rule; `plan` prints the week. | works today |
+| | Dependencies and parent/child tasks | being built (T205) |
+| | Planned start and ETA, history across tasks (`history --by <session>`), token estimates | being built (T209, T210, T211) |
+| **Notes between sessions, no server** | `teamrig inbox add --to web`; the receiver is reminded at its next prompt and reads with `inbox read`. `who` gives the name to message a session by. | works today |
+| **A lead that runs the team** | One session holds the lead role in the team config; every session learns at start who it is and whom to message. | works today |
+| | Names that survive a rename: `teamrig rename` keeps the session's id, and every old name still works; `teamrig doctor` finds name and inbox problems | works today |
+| | Sub-team leads (a team tree) | planned |
+| **Shared rules, loaded every time** | At start, each session gets the core rules and your team's own rules (`teams/<team>/rules.md` in the kit home; over 3,500 characters, a pointer to it); `check` also lints your skills. | works today |
+| **Safe pushes from parallel sessions** | A push guard asks before any push to a protected branch (such as main) and refuses a `--force` push or a delete of one (a `--force-with-lease` push asks); `commits check` holds commits to a size rule. | works today |
+| | A deploy coordinator: one push at a time, a lock for heavy steps, no-deploy windows | planned (T228) |
+| **A fresh context, nothing forgotten** | When a session marks a task done with its context over the team's threshold (250k tokens by default), or the lead asked (`teamrig refresh <session>`), it writes a handover; you type `/clear` (a hook cannot) and it starts again from the handover. | works today |
+| | Restarting the tab for you instead of `/clear` | planned (T201, T212) |
+| **Survives reboots** | Reopens your sessions and tabs after a restart | planned (T201) |
+| **Budget control** | Pacing to the weekly limit, pauses by priority, a daily cap | planned |
+| **Hire and retire sessions** | From off to automatic within a budget; rehire from a handover note | planned (T212) |
+| **Settings and upgrades** | `teamrig config validate` and `config migrate` | works today |
+| | A new-version notice and `teamrig upgrade` with rollback | planned (T203) |
+| **Works everywhere** | Windows, macOS and Linux; every change is tested on all three. | works today |
 
 ## Works with
 
@@ -44,9 +44,9 @@ teamrig runs with Claude Code in a terminal today; other AI tools and task track
 
 | | Today | Planned |
 | --- | --- | --- |
-| AI coding tools | Claude Code ✅ | Codex 🗺 T204 |
-| Editors | Any terminal ✅ | VS Code family, JetBrains 🗺 |
-| Task tools | Its own task list ✅ | Jira, Linear, GitHub Issues, Asana 🗺 T206 |
+| AI coding tools | Claude Code | Codex (T204) |
+| Editors | Any terminal | VS Code family, JetBrains |
+| Task tools | Its own task list | Jira, Linear, GitHub Issues, Asana (T206) |
 
 ## How it works
 
