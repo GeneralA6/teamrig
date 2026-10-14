@@ -36,7 +36,12 @@ describe('teamrig team create', () => {
       stdout: [`CREATED ${SHOP_CONFIG}`, `CREATED ${SHOP_POINTER}`, 'Team shop: lead lead, sessions api, web.', NEXT],
       stderr: [],
     });
-    assert.deepEqual(JSON.parse((await kit.files.read(SHOP_CONFIG)) ?? ''), { configVersion: 1, sessions: ['lead', 'api', 'web'], roles: { lead: 'lead' } });
+    assert.deepEqual(JSON.parse((await kit.files.read(SHOP_CONFIG)) ?? ''), {
+      configVersion: 1,
+      team: { id: 'shop' },
+      sessions: ['lead', 'api', 'web'],
+      roles: { lead: 'lead' },
+    });
     assert.deepEqual(JSON.parse((await kit.files.read(SHOP_POINTER)) ?? ''), { team: 'shop' });
     const who = await kit.run(['who'], { cwd: join(SHOP, 'src') });
     assert.deepEqual(who.stdout, ['lead shop-lead (lead)', 'api shop-api', 'web shop-web']);
@@ -64,6 +69,9 @@ describe('teamrig team create', () => {
       `WOULD CREATE ${SHOP_CONFIG}:`,
       '{',
       '  "configVersion": 1,',
+      '  "team": {',
+      '    "id": "shop"',
+      '  },',
       '  "sessions": [',
       '    "boss",',
       '    "api",',
@@ -95,13 +103,43 @@ describe('teamrig team create', () => {
     const kit = new CliHarness(TEAM);
     const sameId = await create(kit, ['team', 'create', 'app', '--sessions', 'api', '--project', SHOP]);
     assert.deepEqual(sameId.stdout, [
-      `REFUSED team app already exists at ${join(KIT, 'teams', 'app', 'config.json')} with sessions lead, alpha, bravo (lead lead); choose another team name, or change that config by hand`,
+      `REFUSED team app already exists at ${join(KIT, 'teams', 'app', 'config.json')} with sessions lead, alpha, bravo (lead lead, no parent); choose another team name, or change that config by hand`,
     ]);
     const tied = await create(kit, ['team', 'create', 'shop', '--sessions', 'api', '--project', APP]);
     assert.deepEqual(tied.stdout, [`REFUSED ${APP} is already tied to team app by ${POINTER}; give another --project, or remove that pointer first`]);
     assert.deepEqual([sameId.code, tied.code], [EXIT.refused, EXIT.refused]);
     assert.equal(await kit.files.read(SHOP_POINTER), undefined);
     assert.equal(await kit.files.read(SHOP_CONFIG), undefined);
+  });
+
+  it('hangs a sub-team under a parent in the same project, its sessions reached through $TEAMRIG_TEAM', async () => {
+    const kit = new CliHarness(TEAM);
+    const web = join(KIT, 'teams', 'web', 'config.json');
+    const result = await create(kit, ['team', 'create', 'web', '--sessions', 'front,back', '--parent', 'app', '--project', APP]);
+    assert.deepEqual(result, {
+      code: EXIT.ok,
+      stdout: [
+        `CREATED ${web}`,
+        `UNCHANGED ${POINTER}: the project stays tied to team app, in the same tree as web; open web's sessions with teamrig open web/<id>`,
+        'Team web, under team app: lead lead, sessions front, back.',
+        "Next: app's lead runs teamrig add --team web --tier <n> --title \"<first task>\", then teamrig open web/<id> for each session.",
+      ],
+      stderr: [],
+    });
+    assert.deepEqual(JSON.parse((await kit.files.read(web)) ?? '')['team'], { id: 'web', parent: 'app' });
+    assert.equal(await kit.files.read(POINTER), '{"team": "app"}');
+    const who = await kit.run(['who'], { env: { TEAMRIG_TEAM: 'web' } });
+    assert.deepEqual(who.stdout, ['lead web-lead (lead)', 'front web-front', 'back web-back']);
+  });
+
+  it('refuses a parent with no config, and a sub-team in a project tied to another tree', async () => {
+    const kit = new CliHarness(TEAM);
+    const orphan = await create(kit, ['team', 'create', 'web', '--sessions', 'front', '--parent', 'nope', '--project', SHOP]);
+    assert.deepEqual(orphan.stdout, ['REFUSED parent team nope has no config; create it first with teamrig team create nope --sessions <id,id>']);
+    await create(kit);
+    const other = await create(kit, ['team', 'create', 'web', '--sessions', 'front', '--parent', 'app', '--project', SHOP]);
+    assert.deepEqual(other.stdout, [`REFUSED ${SHOP} is already tied to team shop by ${SHOP_POINTER}; give another --project, or remove that pointer first`]);
+    assert.equal(await kit.files.read(join(KIT, 'teams', 'web', 'config.json')), undefined);
   });
 
   it('refuses a project folder that is not there', async () => {
