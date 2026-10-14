@@ -1,8 +1,9 @@
 import { isRecord, stringField } from "../../core/guards.js";
-import { KIT_NAME } from "../../core/home.js";
+import { ENV, KIT_NAME } from "../../core/home.js";
 import { resolveTeam } from "../../core/team.js";
 import { reminderFor, sessionIdOf } from "../../inbox/inbox.js";
 import { protectedBranchesOf, pushGuardOutput } from "../../hooks/push-guard.js";
+import { sessionStartContext, sessionStartOutput } from "../../hooks/session-start.js";
 import { noPositionals } from "../args.js";
 import { openKit, teamFolders } from "../kit.js";
 import { EXIT } from "../runtime.js";
@@ -75,5 +76,31 @@ export async function inboxReminder(args, runtime) {
     if (line !== undefined) {
         runtime.out.stdout(line);
     }
+    return EXIT.ok;
+}
+/** SessionStart: the core rules from the team config, who the session is, and the team's rules.md. */
+export async function sessionStart(args, runtime) {
+    noPositionals(args);
+    const found = await hookTeam(parseJson(await runtime.readStdin()), runtime);
+    switch (found.kind) {
+        case 'none':
+            return EXIT.ok;
+        case 'broken':
+            runtime.out.stdout(sessionStartOutput(`${KIT_NAME}: no team, so no team rules: ${found.from} ${found.problem}`));
+            return EXIT.ok;
+        case 'team':
+            break;
+    }
+    const kit = await openKit(runtime, found.team);
+    const text = kit.load.status === 'loaded' ? await runtime.files.read(kit.paths.teamRules) : undefined;
+    const session = runtime.env[ENV.session]?.trim();
+    const context = sessionStartContext({
+        team: found.team,
+        load: kit.load,
+        teamRules: text === undefined ? undefined : { path: kit.paths.teamRules, text },
+        session: session === '' ? undefined : session,
+        command: KIT_NAME,
+    });
+    runtime.out.stdout(sessionStartOutput(context));
     return EXIT.ok;
 }

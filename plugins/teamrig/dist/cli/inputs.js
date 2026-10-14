@@ -1,16 +1,22 @@
 import { ENV } from "../core/home.js";
+import { NAME_PATTERN, NAME_RULE } from "../core/ids.js";
 import { parseUtcDeadline, parseUtcDay } from "../core/time.js";
-import { isTaskStatus, SESSION_NAME, TASK_ID, TASK_STATUSES } from "../register/model.js";
+import { isTaskStatus, TASK_ID, TASK_STATUSES } from "../register/model.js";
 import { requiredFlag, UsageError } from "./args.js";
 /**
  * Flag text to register inputs. Only the shape is checked here (a number, a list, a date); the
- * register's policy judges the values against the team config, so each rule has one home.
+ * command resolves session names to ids against the roster, and the register's policy judges the
+ * values against the team config, so each rule has one home.
  */
 /** `none` clears an optional field on `update` and selects "no week plan" on `list`. */
 export const NONE = 'none';
-export function sessionName(flag, value) {
-    if (!SESSION_NAME.test(value)) {
-        throw new UsageError(`${flag} "${value}" is not a session name (a lowercase letter, then up to 31 of a-z, 0-9, -)`);
+/**
+ * A session's id or current name, shape only; the command resolves it to the id against the roster.
+ * Every id also has a name's shape, so one pattern covers both.
+ */
+export function sessionRef(flag, value) {
+    if (!NAME_PATTERN.test(value)) {
+        throw new UsageError(`${flag} "${value}" is not a session id or name (${NAME_RULE})`);
     }
     return value;
 }
@@ -20,7 +26,7 @@ export function callerOf(flags, env) {
     if (name === undefined || name === '') {
         throw new UsageError(`--session (or $${ENV.session}) is required`);
     }
-    return sessionName('--session', name);
+    return sessionRef('--session', name);
 }
 export function taskIdOf(text) {
     if (!TASK_ID.test(text)) {
@@ -133,7 +139,7 @@ export function listFilterOf(flags) {
     const filter = {};
     const owner = flags.get('session');
     if (owner !== undefined) {
-        filter.owner = sessionName('--session', owner);
+        filter.owner = sessionRef('--session', owner);
     }
     const status = flags.get('status');
     if (status !== undefined) {

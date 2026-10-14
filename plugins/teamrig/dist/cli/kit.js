@@ -1,7 +1,34 @@
 import { loadConfig } from "../config/load.js";
+import { Roster } from "../config/roster.js";
 import { ENV, resolveKitHome, teamPaths } from "../core/home.js";
+import { ID_PATTERN } from "../core/ids.js";
 import { resolveTeam, TEAM_POINTER } from "../core/team.js";
 import { RefusedError } from "./runtime.js";
+export function rosterOf(kit, config) {
+    return new Roster(config, kit.paths.team);
+}
+/** The id of the session a command line names by id or current name; anything else is refused. */
+export function sessionIdOf(roster, text) {
+    const found = roster.lookup(text);
+    if (!found.ok) {
+        throw new RefusedError(found.error);
+    }
+    return found.id;
+}
+/**
+ * For a filter or a status: the id when the text names a session, and an id no longer on the team as
+ * given, so a past session's records stay reachable. Anything else is refused.
+ */
+export function pastOrPresentIdOf(roster, text) {
+    const found = roster.lookup(text);
+    if (found.ok) {
+        return found.id;
+    }
+    if (!ID_PATTERN.test(text)) {
+        throw new RefusedError(found.error);
+    }
+    return text;
+}
 /** The team's folder under the kit home, its config and the paths the config moves. */
 export async function openKit(runtime, team) {
     const kitHome = resolveKitHome(runtime.env, runtime.userHome);

@@ -112,7 +112,7 @@ export async function reminderFor(deps, claudeSession, command) {
 export async function postLine(inboxes, secrets, input) {
     const text = input.text.trim();
     if (!SESSION_NAME.test(input.to)) {
-        return `${input.to} is not a session name`;
+        return `${input.to} is not a session id`;
     }
     if (text === '' || /[\r\n]/.test(text)) {
         return 'an inbox item is one non-empty line';

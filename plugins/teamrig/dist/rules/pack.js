@@ -30,7 +30,7 @@ export function renderCorePack(config, command) {
     const { budget } = config.coordinator;
     const cutoff = config.coordinator.schedule.heavyCutoffUtc;
     const rules = [
-        `Roles: ${roles.lead} is the lead: priorities, team rules and the owner's decision queue; it may re-tier and reassign tasks [roles.lead].` +
+        `Roles, by session id (\`${command} who\` gives the name to message each by): ${roles.lead} is the lead: priorities, team rules and the owner's decision queue; it may re-tier and reassign tasks [roles.lead].` +
             (roles.coordinatorOwner === undefined ? '' : ` ${roles.coordinatorOwner} owns deploy coordination and fleet health [roles.coordinatorOwner].`) +
             ' Every other session owns its area.',
         "Own your change end to end: only the session that made a change integrates it, deploys it when it must run, verifies that it runs, and fixes or rolls it back. Never integrate, verify or fix another session's change: hand it to its owner.",

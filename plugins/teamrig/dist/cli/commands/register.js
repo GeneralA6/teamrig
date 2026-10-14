@@ -9,7 +9,7 @@ import { formatSkillFlag, lintSkills } from "../../skills/lint.js";
 import { SkillDir } from "../../skills/store.js";
 import { noPositionals, onePositional } from "../args.js";
 import { addInputOf, callerOf, changesOf, listFilterOf, statusInputOf, taskIdOf, weekOf } from "../inputs.js";
-import { openTeamKit, requireConfig } from "../kit.js";
+import { openTeamKit, pastOrPresentIdOf, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 async function openTeam(runtime, access) {
     const kit = await openTeamKit(runtime);
@@ -22,7 +22,22 @@ async function openTeam(runtime, access) {
         policy: new RegisterPolicy(config),
         skills: new SkillDir(files, kit.paths.skills),
     });
-    return { config, paths: kit.paths, register };
+    return { config, paths: kit.paths, register, roster: rosterOf(kit, config) };
+}
+/** The owner as an id; a source naming a session becomes its id, the owner's marker or a past session's id stays. */
+function addInputIds(team, input) {
+    const source = input.source === team.config.register.ownerSource ? input.source : pastOrPresentIdOf(team.roster, input.source);
+    return { ...input, owner: sessionIdOf(team.roster, input.owner), source };
+}
+function changeIds(roster, changes) {
+    return changes.owner === undefined ? changes : { ...changes, owner: sessionIdOf(roster, changes.owner) };
+}
+function filterIds(roster, filter) {
+    return {
+        ...filter,
+        ...(filter.owner === undefined ? {} : { owner: pastOrPresentIdOf(roster, filter.owner) }),
+        ...(filter.source === undefined ? {} : { source: pastOrPresentIdOf(roster, filter.source) }),
+    };
 }
 function report(runtime, verdict, verb) {
     if (!verdict.ok) {
@@ -49,28 +64,30 @@ export async function add(args, runtime) {
     noPositionals(args);
     const caller = callerOf(args.flags, runtime.env);
     const input = addInputOf(args.flags, caller);
-    const { register } = await openTeam(runtime, 'write');
-    return report(runtime, await register.add(caller, input), 'ADDED');
+    const team = await openTeam(runtime, 'write');
+    const by = sessionIdOf(team.roster, caller);
+    return report(runtime, await team.register.add(by, addInputIds(team, input)), 'ADDED');
 }
 export async function set(args, runtime) {
     const id = taskIdOf(onePositional(args, 'id'));
     const caller = callerOf(args.flags, runtime.env);
     const input = statusInputOf(args.flags);
-    const { register } = await openTeam(runtime, 'write');
-    return report(runtime, await register.setStatus(caller, id, input), 'SET');
+    const { register, roster } = await openTeam(runtime, 'write');
+    return report(runtime, await register.setStatus(sessionIdOf(roster, caller), id, input), 'SET');
 }
 export async function update(args, runtime) {
     const id = taskIdOf(onePositional(args, 'id'));
     const caller = callerOf(args.flags, runtime.env);
     const changes = changesOf(args.flags);
-    const { register } = await openTeam(runtime, 'write');
-    return report(runtime, await register.update(caller, id, changes, args.flags.get('note')), 'UPDATED');
+    const { register, roster } = await openTeam(runtime, 'write');
+    const by = sessionIdOf(roster, caller);
+    return report(runtime, await register.update(by, id, changeIds(roster, changes), args.flags.get('note')), 'UPDATED');
 }
 export async function list(args, runtime) {
     noPositionals(args);
     const filter = listFilterOf(args.flags);
-    const { snapshot } = await readTeam(runtime);
-    for (const task of selectTasks(snapshot.state.tasks.values(), filter)) {
+    const { team, snapshot } = await readTeam(runtime);
+    for (const task of selectTasks(snapshot.state.tasks.values(), filterIds(team.roster, filter))) {
         runtime.out.stdout(formatTask(task));
     }
     return EXIT.ok;

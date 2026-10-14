@@ -1,3 +1,4 @@
+import { NAME_PATTERN, NAME_RULE } from "../core/ids.js";
 import { isTaskStatus, SESSION_NAME } from "../register/model.js";
 import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_LOCK, DEFAULT_MESSAGES, DEFAULT_OWNER_GATES, DEFAULT_PUSH_GUARD, DEFAULT_REGISTER, DEFAULT_SKILLS, } from "./defaults.js";
 import { CONFIG_LIMITS } from "./limits.js";
@@ -7,12 +8,39 @@ const isUtcTime = (time) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(time) ? undefined 
 const BRANCH_NAME = (name) => (/^[^\s~^:?*[\\]+$/.test(name) ? undefined : 'not a valid branch name');
 /** The key shape the skills lint recognises in frontmatter. */
 const isFrontmatterKey = (key) => (/^[A-Za-z0-9_-]+$/.test(key) ? undefined : 'expected a frontmatter key: letters, digits, _ or -');
+const isDisplayName = (name) => (NAME_PATTERN.test(name) ? undefined : `expected a name: ${NAME_RULE}`);
+/**
+ * `names`: only sessions on the team, and each name unique and never another session's id, so a
+ * command given a name finds exactly one session.
+ */
+function readNames(read, raw, sessions) {
+    const names = {};
+    const holders = new Map();
+    for (const id of Object.keys(raw)) {
+        const name = read.optionalString(raw, id, 'names', isDisplayName);
+        if (name === undefined) {
+            continue;
+        }
+        if (!sessions.includes(id)) {
+            read.report(`names.${id}`, 'is not one of the sessions');
+            continue;
+        }
+        const holder = holders.get(name);
+        if (holder !== undefined || (name !== id && sessions.includes(name))) {
+            read.report(`names.${id}`, `${describe(name)} is already ${holder === undefined ? 'a session id' : `the name of ${holder}`}`);
+            continue;
+        }
+        holders.set(name, id);
+        names[id] = name;
+    }
+    return names;
+}
 /** Validates a migrated config object against the current format. */
 export function parseConfig(raw) {
     const read = new ConfigReader();
     const sessions = read.list(raw, 'sessions', '', [], (value, path) => read.stringItem(value, path, isSessionName));
     if (raw['sessions'] === undefined) {
-        read.report('sessions', 'is required: list every session name on the team');
+        read.report('sessions', 'is required: list every session id on the team');
     }
     const rolesRaw = read.section(raw, 'roles', '');
     const lead = read.requiredString(rolesRaw, 'lead', 'roles', isSessionName);
@@ -28,6 +56,7 @@ export function parseConfig(raw) {
     if (new Set(sessions).size !== sessions.length) {
         read.report('sessions', 'lists a session more than once');
     }
+    const names = readNames(read, read.section(raw, 'names', ''), sessions);
     const messages = read.section(raw, 'messages', '');
     const pushGuard = read.section(raw, 'pushGuard', '');
     const coordinator = read.section(raw, 'coordinator', '');
@@ -40,6 +69,7 @@ export function parseConfig(raw) {
     const config = {
         configVersion: read.integer(raw, 'configVersion', '', 1, { min: 1 }),
         sessions,
+        names,
         roles: coordinatorOwner === undefined ? { lead } : { lead, coordinatorOwner },
         ownerGates: read.stringList(raw, 'ownerGates', '', DEFAULT_OWNER_GATES, shortLine(CONFIG_LIMITS.ownerGates.maxLength), CONFIG_LIMITS.ownerGates.maxItems),
         messages: { maxLines: read.integer(messages, 'maxLines', 'messages', DEFAULT_MESSAGES.maxLines, CONFIG_LIMITS.maxLines) },

@@ -3,7 +3,7 @@ import { parseJsonl, toJsonlLine } from "../core/jsonl.js";
 import { SESSION_NAME } from "../register/model.js";
 import { parseMark } from "./marks.js";
 const SUFFIX = '.md';
-/** Inboxes as `<dir>/<area>.md`. Area names must be session names, so none can escape the folder. */
+/** Inboxes as `<dir>/<area>.md`. Area names must be session ids, so none can escape the folder. */
 export class InboxDir {
     files;
     dir;
@@ -27,7 +27,7 @@ export class InboxDir {
     }
     async append(area, line) {
         if (!SESSION_NAME.test(area)) {
-            throw new Error(`${area} is not a session name`);
+            throw new Error(`${area} is not a session id`);
         }
         const path = this.pathOf(area);
         const current = await this.files.read(path);
