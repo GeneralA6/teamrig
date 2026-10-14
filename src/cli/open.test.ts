@@ -6,6 +6,7 @@ import { decodePrompt, defaultPrompt, encodePrompt } from '../open/prompt.ts';
 import { shellCommand } from '../open/quote.ts';
 import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
 import { APP, CliHarness, KIT, TEAM, USER_HOME, type RunOptions } from '../testing/cli-harness.ts';
+import { teamConfigOf, treeHarness } from '../testing/team-tree.ts';
 import { EXIT } from './runtime.ts';
 
 const NODE = '/usr/bin/node';
@@ -107,6 +108,29 @@ describe('teamrig open', () => {
       const result = await openAlpha(new FakeProcesses(), {}, extra);
       assert.equal(result.code, EXIT.usage);
       assert.ok(result.stderr[0]?.startsWith(message), result.stderr[0]);
+    }
+  });
+});
+
+describe('teamrig open <team>/<id>', () => {
+  it('opens a session of another team of the tree in the same project, launched on its own team', async () => {
+    const kit = await treeHarness();
+    const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started' });
+    const result = await kit.run(['open', 'web/front'], { probe: FOLDERS, processes, platform: 'win32' });
+    assert.deepEqual(result.stdout, [`OPENED web-front (session front) in a new Windows Terminal tab in ${APP}`]);
+    assert.deepEqual(processes.started[0]?.args.slice(8), [
+      NODE, SCRIPT, 'launch', 'front', '--team', 'web', '--project', APP, '--home', resolve(APP, KIT), '--encoded-prompt', encodePrompt(defaultPrompt('web', 'front')),
+    ]);
+    const own = await kit.run(['open', 'app/alpha'], { probe: FOLDERS, processes, platform: 'win32' });
+    assert.equal(own.code, EXIT.ok);
+  });
+
+  it('refuses a team outside the tree or with no config', async () => {
+    const kit = await treeHarness();
+    await kit.files.write(teamConfigOf('blog'), formatConfig({ configVersion: 1, team: { id: 'blog' }, sessions: ['lead'], roles: { lead: 'lead' } }));
+    for (const team of ['blog', 'gone']) {
+      const result = await kit.run(['open', `${team}/lead`], { probe: FOLDERS });
+      assert.deepEqual(result.stdout, [`REFUSED team ${team} is not in the tree of team app; open its sessions from its own project folder`]);
     }
   });
 });
