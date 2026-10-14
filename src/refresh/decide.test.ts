@@ -96,7 +96,7 @@ describe('decideStop', () => {
       kind: 'notice',
       state: { ...READY, noticed: true },
       message: 'teamrig: api finished T12 and wrote its handover; type /clear for a fresh start',
-      title: '↻ api',
+      title: 'api: type /clear',
     });
     const plain = decideStop(READY, stopContext({ settings: { ...DEFAULT_REFRESH, tabTitle: false } }));
     assert.equal(plain.kind === 'notice' ? plain.title : 'other', undefined);
