@@ -38,6 +38,7 @@ function worstCaseConfig() {
       forbidFrontmatter: filled(CONFIG_LIMITS.forbidFrontmatter, 'k'),
     },
     pushGuard: { protectedBranches: filled(CONFIG_LIMITS.protectedBranches, 'b') },
+    commits: { maxLines: CONFIG_LIMITS.commitMaxLines.max, maxFiles: CONFIG_LIMITS.commitMaxFiles.max, largeCommitTrailer: 'T'.repeat(40), gate: 'refuse' },
     coordinator: {
       schedule: { heavyCutoffUtc: '22:30' },
       // Both round to their longest two-decimal form.
@@ -51,6 +52,15 @@ describe('renderCorePack', () => {
   it('fits its budget with every printed value at its worst case', () => {
     const pack = renderCorePack(worstCaseConfig(), COMMAND);
     assert.ok(pack.length <= CORE_PACK_MAX_CHARS, `${pack.length} > ${CORE_PACK_MAX_CHARS}`);
+  });
+
+  it('states the small-commits rule and its gate', () => {
+    const pack = (gate: string) => renderCorePack(testConfig({ commits: { maxLines: 300, gate } }), COMMAND);
+    assert.match(pack('warn'), /Over 300 changed non-test lines or 15 non-test files \[commits\.maxLines, commits\.maxFiles\], a commit needs a `Large-commit: <reason>` line/);
+    assert.match(pack('warn'), /line \[commits\.largeCommitTrailer\]; a push to a protected branch lists those without one \[commits\.gate\]\./);
+    assert.match(pack('refuse'), /; a push to a protected branch that sends one is refused \[commits\.gate\]\./);
+    assert.match(pack('off'), /line \[commits\.largeCommitTrailer\]\.\n/);
+    assert.doesNotMatch(pack('off'), /commits\.gate/);
   });
 
   it('fills values from the config and names their keys', () => {
