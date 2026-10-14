@@ -19,6 +19,7 @@ const MANIFEST = manifestOf({
   SessionStart: [execHook('session-start')],
   PreToolUse: [execHook('push-guard')],
   UserPromptSubmit: [execHook('inbox-reminder')],
+  Stop: [execHook('stop')],
 });
 
 function input(overrides: Partial<SmokeInput> = {}): SmokeInput {
@@ -65,6 +66,7 @@ describe('hookCommandsOf', () => {
       { event: 'SessionStart', args: [`${ROOT}/dist/cli/main.js`, 'hook', 'session-start'] },
       { event: 'PreToolUse', args: [`${ROOT}/dist/cli/main.js`, 'hook', 'push-guard'] },
       { event: 'UserPromptSubmit', args: [`${ROOT}/dist/cli/main.js`, 'hook', 'inbox-reminder'] },
+      { event: 'Stop', args: [`${ROOT}/dist/cli/main.js`, 'hook', 'stop'] },
     ]);
   });
 
@@ -84,7 +86,7 @@ describe('hookCommandsOf', () => {
     const manifest: unknown = JSON.parse(await readFile(new URL('../../plugins/teamrig/hooks/hooks.json', import.meta.url), 'utf8'));
     const { commands, findings } = hookCommandsOf(manifest, ROOT);
     assert.deepEqual(findings, []);
-    assert.ok(commands.length >= 3);
+    assert.ok(commands.length >= 4);
     const runner = new FakeRunner();
     assert.deepEqual(smokeDist(input({ manifest }), runner.run), []);
   });
@@ -101,6 +103,7 @@ describe('smokeDist', () => {
         ['/usr/bin/node', `${ROOT}/dist/cli/main.js`, 'hook', 'session-start'],
         ['/usr/bin/node', `${ROOT}/dist/cli/main.js`, 'hook', 'push-guard'],
         ['/usr/bin/node', `${ROOT}/dist/cli/main.js`, 'hook', 'inbox-reminder'],
+        ['/usr/bin/node', `${ROOT}/dist/cli/main.js`, 'hook', 'stop'],
       ],
     );
     assert.equal(runner.requests[1]?.input, JSON.stringify({ hook_event_name: 'SessionStart', session_id: '0123abcd-0000-4000-8000-00000000000a', source: 'startup' }));
@@ -129,18 +132,20 @@ describe('smokeDist', () => {
       'session-start': { status: 1, stdout: '', stderr: 'boom' },
       'inbox-reminder': { ...OK, stderr: 'warning' },
       'push-guard': { ...OK, stdout: '' },
+      stop: { ...OK, stdout: '{"decision":"block"}' },
     });
     assert.deepEqual(smokeDist(input(), runner.run), [
       'SessionStart (hook session-start): exit 1: boom',
       'PreToolUse (hook push-guard): expected a deny for a force-push of main',
       'UserPromptSubmit (hook inbox-reminder): wrote to stderr: warning',
+      'Stop (hook stop): expected no output, got "{\\"decision\\":\\"block\\"}"',
     ]);
   });
 
   it('asks for a sample when the manifest adds an event the smoke test does not know', () => {
     const runner = new FakeRunner();
-    const findings = smokeDist(input({ manifest: manifestOf({ Stop: [execHook('stop')] }) }), runner.run);
-    assert.deepEqual(findings, ['Stop (hook stop): no smoke sample for Stop; add one to tools/ci/dist-smoke.ts']);
+    const findings = smokeDist(input({ manifest: manifestOf({ SubagentStop: [execHook('subagent-stop')] }) }), runner.run);
+    assert.deepEqual(findings, ['SubagentStop (hook subagent-stop): no smoke sample for SubagentStop; add one to tools/ci/dist-smoke.ts']);
   });
 });
 

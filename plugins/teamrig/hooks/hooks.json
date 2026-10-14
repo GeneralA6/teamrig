@@ -1,5 +1,5 @@
 {
-  "description": "teamrig: load the team rules at session start, ask before a push to a protected branch, and remind a session of unread inbox lines.",
+  "description": "teamrig: load the team rules at session start, ask before a push to a protected branch, remind a session of unread inbox lines, and ask for a handover at a task boundary when a context refresh is due.",
   "hooks": {
     "SessionStart": [
       {
@@ -20,6 +20,13 @@
       {
         "hooks": [
           { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "inbox-reminder"], "timeout": 15 }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "stop"], "timeout": 15 }
         ]
       }
     ]
