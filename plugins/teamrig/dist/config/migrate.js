@@ -1,6 +1,19 @@
+import { isRecord } from "../core/guards.js";
 import { CONFIG_VERSION } from "./types.js";
-/** The shipped chain: empty until the format first changes (the first step will read version 1). */
-export const CONFIG_MIGRATIONS = [];
+/** v1 to v2: the priority levels moved from `register.tiers` to `register.priorities`, same entries. */
+export const RENAME_TIERS_TO_PRIORITIES = {
+    from: 1,
+    apply: (config) => {
+        const register = config['register'];
+        if (!isRecord(register) || !('tiers' in register)) {
+            return { config, changes: [] };
+        }
+        const { tiers, ...rest } = register;
+        return { config: { ...config, register: { ...rest, priorities: tiers } }, changes: ['register.tiers → register.priorities'] };
+    },
+};
+/** The shipped chain, in order: each step reads `from` and produces `from + 1`. */
+export const CONFIG_MIGRATIONS = [RENAME_TIERS_TO_PRIORITIES];
 /** This release's format. */
 export const SHIPPED_CONFIG_FORMAT = { version: CONFIG_VERSION, migrations: CONFIG_MIGRATIONS };
 /** A file without `configVersion` is the first format, so a minimal hand-written config works. */

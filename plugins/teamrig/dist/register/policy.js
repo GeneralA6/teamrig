@@ -1,11 +1,11 @@
 import { ADDRESS_PATTERN } from "../core/address.js";
 import { SecretScanner } from "../core/secrets.js";
 import { parseUtcDay, parseUtcDeadline } from "../core/time.js";
-import { ACTIVE_STATUSES, SESSION_NAME } from "./model.js";
+import { ACTIVE_STATUSES, priorityText, SESSION_NAME } from "./model.js";
 /** The skill name that closes a task which produced no reusable procedure. */
 export const NO_SKILL = 'none';
 /** Fields the lead may change on a task someone else owns. */
-export const LEAD_FIELDS = ['owner', 'tier', 'due', 'week'];
+export const LEAD_FIELDS = ['owner', 'priority', 'due', 'week'];
 function ok(value) {
     return { ok: true, value };
 }
@@ -45,7 +45,7 @@ export class RegisterPolicy {
             owner: input.owner,
             source: input.source,
             ref: input.ref ?? null,
-            tier: input.tier,
+            priority: input.priority,
             due: input.due ?? null,
             goals: input.goals ?? [],
             week: input.week ?? null,
@@ -128,8 +128,8 @@ export class RegisterPolicy {
         if (sourceProblem !== undefined) {
             return sourceProblem;
         }
-        if (!register.tiers.some((tier) => tier.id === fields.tier)) {
-            return `tier ${fields.tier} is not one of ${register.tiers.map((tier) => tier.id).join(', ')}`;
+        if (!register.priorities.some((priority) => priority.id === fields.priority)) {
+            return `priority ${priorityText(fields.priority)} is not one of ${register.priorities.map((priority) => priorityText(priority.id)).join(', ')}`;
         }
         if (fields.due !== null && parseUtcDeadline(fields.due) === undefined) {
             return `due ${fields.due} is not YYYY-MM-DD or YYYY-MM-DD HH:MM`;
@@ -157,8 +157,8 @@ export class RegisterPolicy {
     }
 }
 function pickFields(task) {
-    const { title, owner, source, ref, tier, due, goals, week } = task;
-    return { title, owner, source, ref, tier, due, goals, week };
+    const { title, owner, source, ref, priority, due, goals, week } = task;
+    return { title, owner, source, ref, priority, due, goals, week };
 }
 function blankToNull(text) {
     return text === undefined || text.trim() === '' ? null : text.trim();

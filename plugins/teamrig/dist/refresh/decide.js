@@ -42,7 +42,7 @@ export function decideStop(state, context, facts) {
                 kind: 'notice',
                 state: { ...state, noticed: true },
                 message: `${context.command}: ${name} finished ${state.task} and wrote its handover; type /clear for a fresh start`,
-                title: context.settings.tabTitle ? `↻ ${name}` : undefined,
+                title: context.settings.tabTitle ? `${name}: type /clear` : undefined,
             };
     }
     if (state.phase !== 'boundary' || context.stopHookActive) {

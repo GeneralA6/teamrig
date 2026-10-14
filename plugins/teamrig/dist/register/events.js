@@ -3,11 +3,15 @@ import { parseUtcDeadline } from "../core/time.js";
 import { isTaskStatus, TASK_ID } from "./model.js";
 /**
  * The register's event format. Version 0 lines have no `v`; version 1 adds `"v": 1` and nothing
- * else, so both parse the same way. Parsing checks the FORMAT only (any positive tier, any goal
- * string): team policy is applied on write, so changing the config never erases history.
+ * else; version 2 names the task field `priority` where older lines wrote `tier`. All three parse
+ * the same way: an old line's `tier` reads as its priority and the line is never rewritten.
+ * Parsing checks the FORMAT only (any positive priority, any goal string): team policy is applied
+ * on write, so changing the config never erases history.
  */
-export const EVENT_VERSION = 1;
-export const TASK_FIELD_NAMES = ['title', 'owner', 'source', 'ref', 'tier', 'due', 'goals', 'week'];
+export const EVENT_VERSION = 2;
+/** The name lines before version 2 gave the `priority` field; still read, never written. */
+export const LEGACY_PRIORITY_FIELD = 'tier';
+export const TASK_FIELD_NAMES = ['title', 'owner', 'source', 'ref', 'priority', 'due', 'goals', 'week'];
 const WEEK = /^\d{4}-\d{2}-\d{2}$/;
 /** Parses one JSONL record. Unknown extra fields are ignored so later minor additions stay readable. */
 export function parseEvent(line) {
@@ -74,7 +78,6 @@ function parseBase(record, v) {
     }
     return { v, id, at, by };
 }
-/** Reads `null`-able text fields; a missing one is null (older lines lack `skill`). */
 /** The first of `keys` that is present but neither text nor null. */
 function textProblem(record, keys) {
     const bad = keys.find((key) => {
@@ -91,7 +94,7 @@ function textOrNull(record, key) {
 function parseTaskFields(record, complete) {
     const fields = {};
     for (const name of TASK_FIELD_NAMES) {
-        const value = record[name];
+        const value = name === 'priority' ? priorityOf(record) : record[name];
         if (value === undefined && !complete) {
             continue;
         }
@@ -101,6 +104,10 @@ function parseTaskFields(record, complete) {
         }
     }
     return fields;
+}
+/** The line's priority: `priority`, else the `tier` of a line written before version 2; `priority` wins when a line has both. */
+function priorityOf(record) {
+    return 'priority' in record ? record['priority'] : record[LEGACY_PRIORITY_FIELD];
 }
 function readField(fields, name, value) {
     switch (name) {
@@ -118,11 +125,11 @@ function readField(fields, name, value) {
             }
             fields.ref = typeof value === 'string' ? value : null;
             return undefined;
-        case 'tier':
+        case 'priority':
             if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {
-                return `bad tier ${JSON.stringify(value)}`;
+                return `bad priority ${JSON.stringify(value)}`;
             }
-            fields.tier = value;
+            fields.priority = value;
             return undefined;
         case 'due':
             if (value !== undefined && value !== null && (typeof value !== 'string' || parseUtcDeadline(value) === undefined)) {
