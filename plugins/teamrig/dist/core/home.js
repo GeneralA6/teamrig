@@ -1,4 +1,4 @@
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 export const KIT_NAME = 'teamrig';
 /** Environment variables the kit reads; everything else comes from the config file. */
 export const ENV = {
@@ -8,6 +8,8 @@ export const ENV = {
     session: 'TEAMRIG_SESSION',
     /** The plugin's `home` user option, as Claude Code passes it to hooks. */
     pluginHomeOption: 'CLAUDE_PLUGIN_OPTION_HOME',
+    /** The Claude Code session running a command, so the inbox reminder hook can follow its reads. */
+    claudeSession: 'CLAUDE_CODE_SESSION_ID',
 };
 /**
  * The kit home holds config, team rules and all state. It lives outside the plugin folders,
@@ -22,7 +24,8 @@ export function resolveKitHome(env, userHome) {
     return fromPlugin ? fromPlugin : join(userHome, `.${KIT_NAME}`);
 }
 export function kitPaths(home, userHome, overrides = {}) {
-    const state = overrides.state ?? join(home, 'state');
+    const inHome = (path) => path === undefined || isAbsolute(path) ? path : join(home, path);
+    const state = inHome(overrides.state) ?? join(home, 'state');
     return {
         home,
         config: join(home, 'config.json'),
@@ -31,8 +34,8 @@ export function kitPaths(home, userHome, overrides = {}) {
         state,
         events: join(state, 'events.jsonl'),
         eventsLock: join(state, 'events.lock'),
-        inbox: overrides.inbox ?? join(state, 'inbox'),
+        inbox: inHome(overrides.inbox) ?? join(state, 'inbox'),
         inboxMarks: join(state, 'inbox-marks.jsonl'),
-        skills: overrides.skills ?? join(userHome, '.claude', 'skills'),
+        skills: inHome(overrides.skills) ?? join(userHome, '.claude', 'skills'),
     };
 }

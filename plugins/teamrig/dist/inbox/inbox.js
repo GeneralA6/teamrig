@@ -55,12 +55,13 @@ export function reminderLine(unread, path, command) {
         ? undefined
         : `INBOX: ${unread.lines.length} unread line(s) in ${path}${since(unread)}. Read them with: ${command} inbox read --session ${unread.area}`;
 }
-/** Hands back the unread lines and marks them read, from one read of the file, so no line slips between. */
+/**
+ * Hands back the unread lines and marks them read, from one read of the file, so no line slips between.
+ * An area nobody has posted to yet reads as empty and is still marked, so the reminder hook follows
+ * the session from its first read. The caller checks the area is a session on the team.
+ */
 export async function readInbox(deps, input) {
-    const lines = await deps.inboxes.lines(input.area);
-    if (lines === undefined) {
-        return `no inbox for ${input.area} (${deps.inboxes.pathOf(input.area)})`;
-    }
+    const lines = (await deps.inboxes.lines(input.area)) ?? [];
     const { byArea } = indexMarks((await deps.marks.read()).marks);
     const unread = unreadOf(input.area, lines, byArea.get(input.area) ?? null);
     const last = lines.at(-1);
