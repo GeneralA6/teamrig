@@ -28,6 +28,21 @@ jobs:
       - run: node tools/scrub/cli.ts --github
       - run: node tools/dco/cli.ts --github
 
+  coverage:
+    name: coverage gate
+    # Fails on a failing, skipped or todo test, a source file no test loads, or a file or total
+    # below the floors in tools/ci/coverage.json (see CONTRIBUTING.md).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts
+      - run: node tools/ci/coverage-cli.ts
+
   test:
     name: test (${{ matrix.os }}, node ${{ matrix.node }})
     # Every push tests all three OSes, since paths, renames and hook launch differ by OS;

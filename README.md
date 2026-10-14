@@ -12,10 +12,10 @@ Coordinate a team of parallel Claude Code sessions: a task register, inboxes, a 
 ```sh
 npm ci
 npm run setup   # points git at .githooks (scrub + DCO sign-off checks)
-npm run check   # every CI gate: typecheck, tests, build, dist checks, scrub
+npm run check   # every CI gate: typecheck, tests with the coverage gate, build, dist checks, scrub
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the sign-off rule.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the test and sign-off rules.
 
 ## Licence
 [Apache License 2.0](LICENSE).
