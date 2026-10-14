@@ -8,8 +8,8 @@ import { MemoryFiles } from '../../src/testing/memory-files.ts';
 import { quietWorld } from '../../src/testing/quiet-world.ts';
 
 /**
- * Runs the real CLI for a fictional team, in memory and on a fixed clock, so the README's pictures show what the
- * CLI really prints, the same on every machine, and nothing from the machine that drew them.
+ * Runs the real CLI for a fictional team, in memory and on a fixed clock, so the commands doc's picture shows what
+ * the CLI really prints, the same on every machine, and nothing from the machine that drew them.
  */
 
 export const DEMO_TEAM = 'bookshop';

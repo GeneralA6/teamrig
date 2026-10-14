@@ -2,7 +2,7 @@ import { EXIT_CLEAN, EXIT_FINDINGS } from '../lib/exit.ts';
 import { runMain } from '../lib/run-main.ts';
 import { drawPictures, stalePictures, writePictures } from './images.ts';
 
-/** Draws the README's pictures into docs/images; `--check` only reports the ones that are missing or stale. */
+/** Draws the docs' pictures into docs/images; `--check` only reports the ones that are missing or stale. */
 async function main(args: readonly string[]): Promise<number> {
   const unknown = args.filter((arg) => arg !== '--check');
   if (unknown.length > 0) throw new Error(`unknown option ${unknown.join(' ')} (usage: images-cli.ts [--check])`);
@@ -14,7 +14,7 @@ async function main(args: readonly string[]): Promise<number> {
   }
   const stale = stalePictures(root, pictures);
   if (stale.length === 0) {
-    console.log(`images: ${pictures.length} picture(s) match the CLI's output`);
+    console.log(`images: ${pictures.length} picture(s) are up to date`);
     return EXIT_CLEAN;
   }
   console.log('images: stale; run `npm run docs:images` and commit the result:');
