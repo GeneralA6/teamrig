@@ -81,13 +81,29 @@ teamrig runs with Claude Code in a terminal today; other AI tools and task track
 | Editors | Any terminal ✅ | VS Code family, JetBrains 🗺 |
 | Task tools | Its own task list ✅ | Jira, Linear, GitHub Issues, Asana 🗺 T206 |
 
+## How it works
+
+Every session runs the same small `teamrig` program, from three Claude Code hooks and from its Bash tool, and that
+program reads and writes plain files in your team's folder. Nothing runs between sessions.
+
+```mermaid
+flowchart LR
+  hooks["Claude Code hooks: session start, each prompt, each Bash command"] --> cli["teamrig"]
+  bash["Claude's Bash tool: teamrig add, set, inbox ..."] --> cli
+  cli <--> files["~/.teamrig/teams/your-team/: plain files"]
+```
+
+[How it works](docs/how-it-works.md) draws each part: the team, a task's life, notes between sessions, safe pushes
+and room for other tools.
+
 ## Development
 
 ```sh
 npm ci
 npm run setup         # points git at .githooks (scrub + DCO sign-off checks)
-npm run check         # CI's gates on your tree: typecheck, tests with the coverage gate, build, dist checks, pictures, scrub
+npm run check         # CI's gates on your tree: typecheck, tests with the coverage gate, build, dist checks, pictures, doc links, scrub
 npm run docs:images   # redraws the README's pictures from the CLI's real output
+npm run docs:check    # checks every link, anchor and Mermaid diagram in the Markdown
 ```
 
 The pictures in this README are drawn by running the real CLI for a made-up team, so they cannot drift from what
