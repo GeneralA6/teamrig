@@ -1,6 +1,6 @@
 # How teamrig works
 
-teamrig is one small Node program, three Claude Code hooks and a folder of plain files. Nothing runs between
+teamrig is one small Node program, four Claude Code hooks and a folder of plain files. Nothing runs between
 sessions: no server, no daemon, no network. Status marks, as in the [README](../README.md): ✅ works today ·
 🚧 being built (task id) · 🗺 planned. Parts not built yet are drawn dashed.
 
@@ -8,6 +8,7 @@ sessions: no server, no daemon, no network. Status marks, as in the [README](../
 - [Who is on the team](#who-is-on-the-team)
 - [A task's life](#a-tasks-life)
 - [Notes between sessions](#notes-between-sessions)
+- [A fresh context](#a-fresh-context)
 - [Safe pushes](#safe-pushes)
 - [Room for other tools](#room-for-other-tools)
 
@@ -23,14 +24,16 @@ flowchart LR
     start["SessionStart hook"]
     prompt["UserPromptSubmit hook"]
     guard["PreToolUse hook on Bash and PowerShell"]
+    stop["Stop hook, at each turn's end"]
     tool["Bash tool: teamrig add, set, inbox add ..."]
   end
   cli["teamrig (one Node program)"]
-  folder[("~/.teamrig/teams/your-team/<br>config.json: sessions, names, lead<br>rules.md: your team's rules<br>state/events.jsonl: the task list<br>state/inbox/: one file per session")]
+  folder[("~/.teamrig/teams/your-team/<br>config.json: sessions, names, lead<br>rules.md: your team's rules<br>state/events.jsonl: the task list<br>state/inbox/: one file per session<br>state/refresh/, handover/: context refresh")]
   git[("git")]
   start --> cli
   prompt --> cli
   guard --> cli
+  stop --> cli
   tool --> cli
   cli <--> folder
   cli -. "push guard only" .-> git
@@ -41,6 +44,7 @@ flowchart LR
 | SessionStart hook | a session starts, resumes, is cleared or is compacted | gives the session the core rules, its name, the lead's name and your team's `rules.md` |
 | UserPromptSubmit hook | you send a prompt | one `INBOX:` line when the session has unread notes, nothing otherwise |
 | PreToolUse hook | Claude runs a Bash or PowerShell command | reads a `git push` in it and asks you or refuses ([Safe pushes](#safe-pushes)) |
+| Stop hook | a turn ends | after a task is marked done, asks for a handover when a refresh is due, then tells you once ([A fresh context](#a-fresh-context)); nothing otherwise |
 | `teamrig` commands | Claude runs them in its Bash tool | the task list, the inbox, names, settings, checks (`teamrig help`) |
 
 A session finds its team through `$TEAMRIG_TEAM`, else the nearest `.teamrig.json` above its folder
@@ -119,6 +123,34 @@ sequenceDiagram
 - The inbox file is never edited: `inbox read` adds a mark to `state/inbox-marks.jsonl`.
 - A note is one line; an empty line, several lines or a line that looks like a secret is refused.
 - Nothing wakes an idle session, which is why `teamrig check` reports a task not picked up.
+
+## A fresh context
+
+A long session gets slow and costly, and what it was told early on fades. teamrig lets it start again at a task
+boundary without losing the thread.
+
+```mermaid
+sequenceDiagram
+  participant W as web session
+  participant H as teamrig hooks
+  participant Y as You
+  W->>H: teamrig set T2 --status done, then the turn ends
+  H-->>W: Stop: your context is 262k (refresh at 250k), write your handover
+  W->>H: writes handover/web.md, runs teamrig refresh --ready
+  H-->>Y: Stop: web finished T2 and wrote its handover, type /clear (the tab shows ↻ web)
+  Y->>W: /clear
+  H-->>W: SessionStart: you were refreshed after T2, read your handover first
+```
+
+- Only a finished task counts: the Stop hook judges the size once, after `set <id> --status done`, from the last
+  reply in the session's transcript, and says nothing on any other turn.
+- The threshold is `refresh.contextTokens` in the team config (250,000 by default). The lead can ask for a refresh
+  at any size: `teamrig refresh web` applies at web's next finished task.
+- `refresh --ready` is refused until the handover is written: missing, blank or unchanged since the hook asked.
+- A hook cannot clear a session, so you type `/clear`. A compact or a resume keeps the handover waiting for the next
+  fresh start. Restarting the tab for you is planned 🗺 T201, T212.
+- `refresh.enabled: false` turns it off, `refresh.tabTitle: false` leaves the tab title alone and
+  `refresh.handoverDir` moves the handovers.
 
 ## Safe pushes
 

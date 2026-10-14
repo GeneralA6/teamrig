@@ -39,6 +39,8 @@ your machine.
 | **Shared rules, loaded every time** | At start, each session gets the core rules and your team's own rules (`teams/<team>/rules.md` in the kit home; over 3,500 characters, a pointer to it); `check` also lints your skills. | ✅ |
 | **Safe pushes from parallel sessions** | A push guard asks before any push to a protected branch (such as main) and refuses a `--force` push or a delete of one (a `--force-with-lease` push asks); `commits check` holds commits to a size rule. | ✅ |
 | | A deploy coordinator: one push at a time, a lock for heavy steps, no-deploy windows | 🗺 T228 |
+| **A fresh context, nothing forgotten** | When a session marks a task done with its context over the team's threshold (250k tokens by default), or the lead asked (`teamrig refresh <session>`), it writes a handover; you type `/clear` (a hook cannot) and it starts again from the handover. | ✅ |
+| | Restarting the tab for you instead of `/clear` | 🗺 T201, T212 |
 | **Survives reboots** | Reopens your sessions and tabs after a restart | 🗺 T201 |
 | **Budget control** | Pacing to the weekly limit, pauses by priority, a daily cap | 🗺 |
 | **Hire and retire sessions** | From off to automatic within a budget; rehire from a handover note | 🗺 T212 |
@@ -67,6 +69,7 @@ An `init` command that does steps 2 and 3 for you is planned (🗺).
 | The team | `$TEAMRIG_TEAM`, else the nearest `.teamrig.json` above the current folder | none |
 | The session | `--session <id or name>` on a command, else `$TEAMRIG_SESSION` | none |
 | Team members and roles | `<kit home>/teams/<team>/config.json` | none |
+| Context refresh | `refresh` in the team config: `enabled`, `contextTokens`, `tabTitle`, `handoverDir` | on, at 250,000 tokens, marks the tab, `<team>/handover/` |
 
 `teamrig config validate` reports a broken config; `teamrig config migrate` moves an older one to the current
 format. The full command list is `teamrig help`.
@@ -83,18 +86,18 @@ teamrig runs with Claude Code in a terminal today; other AI tools and task track
 
 ## How it works
 
-Every session runs the same small `teamrig` program, from three Claude Code hooks and from its Bash tool, and that
+Every session runs the same small `teamrig` program, from four Claude Code hooks and from its Bash tool, and that
 program reads and writes plain files in your team's folder. Nothing runs between sessions.
 
 ```mermaid
 flowchart LR
-  hooks["Claude Code hooks: session start, each prompt, each Bash command"] --> cli["teamrig"]
+  hooks["Claude Code hooks: session start, each prompt, each Bash command, each turn's end"] --> cli["teamrig"]
   bash["Claude's Bash tool: teamrig add, set, inbox ..."] --> cli
   cli <--> files["~/.teamrig/teams/your-team/: plain files"]
 ```
 
-[How it works](docs/how-it-works.md) draws each part: the team, a task's life, notes between sessions, safe pushes
-and room for other tools.
+[How it works](docs/how-it-works.md) draws each part: the team, a task's life, notes between sessions, a fresh
+context, safe pushes and room for other tools.
 
 ## Development
 
