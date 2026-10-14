@@ -27,7 +27,7 @@ describe('golden register logs', () => {
       owner: 'alpha',
       source: 'owner',
       ref: 'inbox/alpha.md:1',
-      tier: 1,
+      priority: 1,
       due: '2030-01-09 12:00',
       goals: ['G1'],
       week: '2030-01-07',
@@ -48,14 +48,16 @@ describe('golden register logs', () => {
     assert.equal(t2?.ownerSeenAt, '2030-01-08T17:00:00.000Z');
   });
 
-  it('reads a version 1 log, skips newer lines and refuses to write beside them', async () => {
+  it('reads a version 1 log; its made-up version 2 line is now current and unreadable', async () => {
     const read = readEvents(await fixture('events-v1.jsonl'));
     assert.equal(read.events.length, 5);
     assert.deepEqual(read.events.map((event) => event.v), [1, 0, 1, 1, 1]);
-    assert.equal(read.unreadable, 0);
-    assert.equal(read.newer, 1);
+    // The fixture stays byte-identical. Its last line stood in for a newer release while version 1
+    // was current; version 2 is current now, and that line lacks the source and priority a create needs.
+    assert.equal(read.unreadable, 1);
+    assert.equal(read.newer, 0);
     assert.equal(read.newestVersion, 2);
-    assert.equal(isWritable(read), false);
+    assert.equal(isWritable(read), true);
 
     const state = foldEvents(read.events, read.seenIds);
     assert.equal(state.nextId, 'T4');
@@ -64,5 +66,25 @@ describe('golden register logs', () => {
     assert.equal(t2?.status, 'in-progress');
     assert.equal(t2?.assignedAt, '2030-01-07T11:00:00.000Z', 'an owner change restarts the pick-up clock');
     assert.equal(t2?.ownerSeenAt, '2030-01-07T12:00:00.000Z');
+    assert.equal(state.tasks.get('T1')?.priority, 1, 'the tier of a version 1 line reads as its priority');
+  });
+
+  it('reads a version 2 log beside older tier lines, skips newer lines and refuses to write beside them', async () => {
+    const read = readEvents(await fixture('events-v2.jsonl'));
+    assert.deepEqual(read.events.map((event) => event.v), [1, 2, 2, 2]);
+    assert.equal(read.unreadable, 0);
+    assert.equal(read.newer, 1);
+    assert.equal(read.newestVersion, 3);
+    assert.equal(isWritable(read), false);
+
+    const state = foldEvents(read.events, read.seenIds);
+    assert.equal(state.nextId, 'T4');
+    assert.deepEqual(
+      [...state.tasks.values()].map((task) => [task.id, task.priority, task.status]),
+      [
+        ['T1', 4, 'in-progress'],
+        ['T2', 2, 'open'],
+      ],
+    );
   });
 });

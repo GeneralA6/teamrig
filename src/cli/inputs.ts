@@ -2,13 +2,13 @@ import { ENV, type Env } from '../core/home.ts';
 import { NAME_PATTERN, NAME_RULE } from '../core/ids.ts';
 import { parseUtcDeadline, parseUtcDay } from '../core/time.ts';
 import type { TaskFields } from '../register/events.ts';
-import { isTaskStatus, TASK_ID, TASK_STATUSES, type TaskStatus } from '../register/model.ts';
+import { isTaskStatus, priorityText, TASK_ID, TASK_STATUSES, type TaskStatus } from '../register/model.ts';
 import type { AddInput, StatusInput } from '../register/policy.ts';
 import type { ListFilter } from '../register/views.ts';
 import { requiredFlag, UsageError, type Flags } from './args.ts';
 
 /**
- * Flag text to register inputs. Only the shape is checked here (a number, a list, a date); the
+ * Flag text to register inputs. Only the shape is checked here (a priority like p2, a list, a date); the
  * command resolves session names to ids against the roster, and the register's policy judges the
  * values against the team config, so each rule has one home.
  */
@@ -45,11 +45,27 @@ export function taskIdOf(text: string): string {
   return text;
 }
 
-function tierOf(text: string): number {
-  if (!/^\d{1,3}$/.test(text)) {
-    throw new UsageError(`--tier "${text}" is not a whole number`);
+/** A priority as typed: `p` and the level, 1 to 99. The team config's levels are judged by the policy. */
+const PRIORITY_TEXT = /^p([1-9]\d?)$/;
+/** The tier spelling, such as `t2`, that the register took before priorities. */
+const OLD_TIER_TEXT = /^t([1-9]\d?)$/i;
+/** A bare level, such as `2`: what `--tier` took. */
+const BARE_LEVEL_TEXT = /^[1-9]\d?$/;
+
+/** `--priority p2`: a level in the shape `p<n>`; the old `t2` and a bare `2` are refused with the spelling to use. */
+export function priorityOf(text: string): number {
+  const level = PRIORITY_TEXT.exec(text)?.[1];
+  if (level !== undefined) {
+    return Number(level);
   }
-  return Number(text);
+  const tier = OLD_TIER_TEXT.exec(text)?.[1];
+  if (tier !== undefined) {
+    throw new UsageError(`priority "${text}" is the old tier spelling: write ${priorityText(Number(tier))}`);
+  }
+  if (BARE_LEVEL_TEXT.test(text)) {
+    throw new UsageError(`priority "${text}" is not p<n>: write ${priorityText(Number(text))}`);
+  }
+  throw new UsageError(`priority "${text}" is not p<n>`);
 }
 
 function listOf(flag: string, text: string): string[] {
@@ -73,7 +89,7 @@ export function addInputOf(flags: Flags, caller: string): AddInput {
     title: requiredFlag(flags, 'title'),
     owner: flags.get('owner') ?? caller,
     source: flags.get('source') ?? caller,
-    tier: tierOf(requiredFlag(flags, 'tier')),
+    priority: priorityOf(requiredFlag(flags, 'priority')),
   };
   const ref = flags.get('ref');
   if (ref !== undefined) {
@@ -105,9 +121,9 @@ export function changesOf(flags: Flags): Partial<TaskFields> {
   if (owner !== undefined) {
     changes.owner = owner;
   }
-  const tier = flags.get('tier');
-  if (tier !== undefined) {
-    changes.tier = tierOf(tier);
+  const priority = flags.get('priority');
+  if (priority !== undefined) {
+    changes.priority = priorityOf(priority);
   }
   const ref = flags.get('ref');
   if (ref !== undefined) {
@@ -167,9 +183,9 @@ export function listFilterOf(flags: Flags): ListFilter {
   if (source !== undefined) {
     filter.source = source;
   }
-  const tiers = flags.get('tier');
-  if (tiers !== undefined) {
-    filter.tiers = listOf('--tier', tiers).map(tierOf);
+  const priorities = flags.get('priority');
+  if (priorities !== undefined) {
+    filter.priorities = listOf('--priority', priorities).map(priorityOf);
   }
   const dueBefore = flags.get('due-before');
   if (dueBefore !== undefined) {

@@ -1,4 +1,4 @@
-import type { JsonRecord } from '../core/guards.ts';
+import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { CONFIG_VERSION } from './types.ts';
 
 export interface MigrationStep {
@@ -14,8 +14,21 @@ export interface ConfigMigration {
   apply(config: JsonRecord): MigrationStep;
 }
 
-/** The shipped chain: empty until the format first changes (the first step will read version 1). */
-export const CONFIG_MIGRATIONS: readonly ConfigMigration[] = [];
+/** v1 to v2: the priority levels moved from `register.tiers` to `register.priorities`, same entries. */
+export const RENAME_TIERS_TO_PRIORITIES: ConfigMigration = {
+  from: 1,
+  apply: (config) => {
+    const register = config['register'];
+    if (!isRecord(register) || !('tiers' in register)) {
+      return { config, changes: [] };
+    }
+    const { tiers, ...rest } = register;
+    return { config: { ...config, register: { ...rest, priorities: tiers } }, changes: ['register.tiers → register.priorities'] };
+  },
+};
+
+/** The shipped chain, in order: each step reads `from` and produces `from + 1`. */
+export const CONFIG_MIGRATIONS: readonly ConfigMigration[] = [RENAME_TIERS_TO_PRIORITIES];
 
 /** The config format a release reads and writes: its version and the migration chain that reaches it. */
 export interface ConfigFormat {

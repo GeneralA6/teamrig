@@ -4,6 +4,7 @@ import { FakeClock } from '../testing/fake-clock.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { formatConfig, loadConfig, writeMigration } from './load.ts';
 import type { ConfigMigration } from './migrate.ts';
+import { CONFIG_VERSION } from './types.ts';
 
 const CONFIG = '/kit/config.json';
 const BACKUPS = '/kit/backups';
@@ -25,7 +26,7 @@ describe('loadConfig', () => {
   });
 
   it('loads a current file with its issues', async () => {
-    const files = new MemoryFiles({ [CONFIG]: JSON.stringify({ configVersion: 1, sessions: ['alpha'], roles: {} }) });
+    const files = new MemoryFiles({ [CONFIG]: JSON.stringify({ configVersion: CONFIG_VERSION, sessions: ['alpha'], roles: {} }) });
     const load = await loadConfig(files, CONFIG);
     assert.equal(load.status, 'loaded');
     if (load.status === 'loaded') {

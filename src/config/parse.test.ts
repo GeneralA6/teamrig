@@ -96,13 +96,13 @@ describe('parseConfig', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,
       roles: { lead: 'alpha', coordinatorOwner: 'bravo' },
-      register: { tiers: [{ id: 1, name: 'now' }], goalPattern: '^G\\d+$', requireNoteOn: ['blocked'] },
+      register: { priorities: [{ id: 1, name: 'now' }], goalPattern: '^G\\d+$', requireNoteOn: ['blocked'] },
       coordinator: { schedule: { heavyCutoffUtc: '22:30' }, budget: { enabled: true, targetPct: 95 } },
       paths: { inbox: '/srv/team/inbox' },
     });
     assert.deepEqual(issues, []);
     assert.deepEqual(config.roles, { lead: 'alpha', coordinatorOwner: 'bravo' });
-    assert.deepEqual(config.register.tiers, [{ id: 1, name: 'now' }]);
+    assert.deepEqual(config.register.priorities, [{ id: 1, name: 'now' }]);
     assert.equal(config.register.goalPattern, '^G\\d+$');
     assert.deepEqual(config.register.requireNoteOn, ['blocked']);
     assert.deepEqual(config.coordinator.schedule, { heavyCutoffUtc: '22:30' });
@@ -110,20 +110,27 @@ describe('parseConfig', () => {
     assert.deepEqual(config.paths, { inbox: '/srv/team/inbox' });
   });
 
-  it('drops bad tiers and keeps the defaults when none is left', () => {
-    const { config, issues } = parseConfig({ ...ROSTER, register: { tiers: [{ id: 0, name: 'zero' }, { name: 'no id' }, 'x'] } });
+  it('drops bad priorities and keeps the defaults when none is left', () => {
+    const { config, issues } = parseConfig({ ...ROSTER, register: { priorities: [{ id: 0, name: 'zero' }, { name: 'no id' }, 'x'] } });
     assert.deepEqual(paths(issues), [
-      'register.tiers[0].id',
-      'register.tiers[1].id',
-      'register.tiers[2]',
-      'register.tiers',
+      'register.priorities[0].id',
+      'register.priorities[1].id',
+      'register.priorities[2]',
+      'register.priorities',
     ]);
-    assert.deepEqual(config.register.tiers, DEFAULT_REGISTER.tiers);
+    assert.equal(issues.at(-1)?.message, 'needs at least one priority');
+    assert.deepEqual(config.register.priorities, DEFAULT_REGISTER.priorities);
   });
 
-  it('refuses duplicate tier ids', () => {
-    const { issues } = parseConfig({ ...ROSTER, register: { tiers: [{ id: 1, name: 'a' }, { id: 1, name: 'b' }] } });
-    assert.deepEqual(paths(issues), ['register.tiers']);
+  it('refuses duplicate priority ids', () => {
+    const { issues } = parseConfig({ ...ROSTER, register: { priorities: [{ id: 1, name: 'a' }, { id: 1, name: 'b' }] } });
+    assert.deepEqual(issues, [{ path: 'register.priorities', message: 'uses a priority id more than once' }]);
+  });
+
+  it('names the version-1 key register.tiers in a current file, and reads the default priorities', () => {
+    const { config, issues } = parseConfig({ ...ROSTER, configVersion: 2, register: { tiers: [{ id: 1, name: 'now' }] } });
+    assert.deepEqual(issues, [{ path: 'register.tiers', message: 'was renamed: use register.priorities' }]);
+    assert.deepEqual(config.register.priorities, DEFAULT_REGISTER.priorities);
   });
 
   it('validates regular expressions and statuses', () => {

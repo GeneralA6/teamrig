@@ -5,10 +5,15 @@ import { isTaskStatus, TASK_ID, type TaskStatus } from './model.ts';
 
 /**
  * The register's event format. Version 0 lines have no `v`; version 1 adds `"v": 1` and nothing
- * else, so both parse the same way. Parsing checks the FORMAT only (any positive tier, any goal
- * string): team policy is applied on write, so changing the config never erases history.
+ * else; version 2 names the task field `priority` where older lines wrote `tier`. All three parse
+ * the same way: an old line's `tier` reads as its priority and the line is never rewritten.
+ * Parsing checks the FORMAT only (any positive priority, any goal string): team policy is applied
+ * on write, so changing the config never erases history.
  */
-export const EVENT_VERSION = 1;
+export const EVENT_VERSION = 2;
+
+/** The name lines before version 2 gave the `priority` field; still read, never written. */
+export const LEGACY_PRIORITY_FIELD = 'tier';
 
 export interface TaskFields {
   readonly title: string;
@@ -17,7 +22,8 @@ export interface TaskFields {
   readonly source: string;
   /** Where the ask came from: a message, a file and line, a ticket. */
   readonly ref: string | null;
-  readonly tier: number;
+  /** 1 is the most urgent; printed `p1`. */
+  readonly priority: number;
   /** `YYYY-MM-DD` or `YYYY-MM-DD HH:MM`, UTC; a bare day means its end. */
   readonly due: string | null;
   readonly goals: readonly string[];
@@ -25,7 +31,7 @@ export interface TaskFields {
   readonly week: string | null;
 }
 
-export const TASK_FIELD_NAMES = ['title', 'owner', 'source', 'ref', 'tier', 'due', 'goals', 'week'] as const;
+export const TASK_FIELD_NAMES = ['title', 'owner', 'source', 'ref', 'priority', 'due', 'goals', 'week'] as const;
 
 export type TaskFieldName = (typeof TASK_FIELD_NAMES)[number];
 
@@ -136,7 +142,6 @@ function parseBase(record: JsonRecord, v: number): EventBase | string {
   return { v, id, at, by };
 }
 
-/** Reads `null`-able text fields; a missing one is null (older lines lack `skill`). */
 /** The first of `keys` that is present but neither text nor null. */
 function textProblem(record: JsonRecord, keys: readonly string[]): string | undefined {
   const bad = keys.find((key) => {
@@ -161,7 +166,7 @@ function parseTaskFields(record: JsonRecord, complete: false): Partial<TaskField
 function parseTaskFields(record: JsonRecord, complete: boolean): Partial<TaskFields> | string {
   const fields: { -readonly [K in TaskFieldName]?: TaskFields[K] } = {};
   for (const name of TASK_FIELD_NAMES) {
-    const value = record[name];
+    const value = name === 'priority' ? priorityOf(record) : record[name];
     if (value === undefined && !complete) {
       continue;
     }
@@ -171,6 +176,11 @@ function parseTaskFields(record: JsonRecord, complete: boolean): Partial<TaskFie
     }
   }
   return fields;
+}
+
+/** The line's priority: `priority`, else the `tier` of a line written before version 2; `priority` wins when a line has both. */
+function priorityOf(record: JsonRecord): unknown {
+  return 'priority' in record ? record['priority'] : record[LEGACY_PRIORITY_FIELD];
 }
 
 function readField(fields: { -readonly [K in TaskFieldName]?: TaskFields[K] }, name: TaskFieldName, value: unknown): string | undefined {
@@ -189,11 +199,11 @@ function readField(fields: { -readonly [K in TaskFieldName]?: TaskFields[K] }, n
       }
       fields.ref = typeof value === 'string' ? value : null;
       return undefined;
-    case 'tier':
+    case 'priority':
       if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {
-        return `bad tier ${JSON.stringify(value)}`;
+        return `bad priority ${JSON.stringify(value)}`;
       }
-      fields.tier = value;
+      fields.priority = value;
       return undefined;
     case 'due':
       if (value !== undefined && value !== null && (typeof value !== 'string' || parseUtcDeadline(value) === undefined)) {

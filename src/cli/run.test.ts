@@ -1,15 +1,21 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
-import type { ConfigFormat } from '../config/migrate.ts';
+import { CONFIG_MIGRATIONS, type ConfigFormat } from '../config/migrate.ts';
+import { CONFIG_VERSION } from '../config/types.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { KIT_VERSION } from '../core/version.ts';
-import { APP, bash, CLAUDE_SESSION, CliHarness, CONFIG_PATH, contextOf, decisionOf, EVENTS_PATH, KIT, POINTER, SKILLS_DIR, TEAM } from '../testing/cli-harness.ts';
+import { APP, bash, CLAUDE_SESSION, CliHarness, CONFIG_PATH, contextOf, decisionOf, EVENTS_PATH, KIT, POINTER, SKILLS_DIR, TEAM, type CliResult } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
 
-/** A release one config version ahead: version 2, reached from 1 by a step that changes only the version. */
-const NEXT_FORMAT: ConfigFormat = { version: 2, migrations: [{ from: 1, apply: (config) => ({ config, changes: ['added a flag'] }) }] };
+/** A release one config version ahead of this one, reached by a last step that changes only the version. */
+const NEXT_FORMAT: ConfigFormat = {
+  version: CONFIG_VERSION + 1,
+  migrations: [...CONFIG_MIGRATIONS, { from: CONFIG_VERSION, apply: (config) => ({ config, changes: ['added a flag'] }) }],
+};
+/** The team roster in this release's config format, so nothing is pending a migration. */
+const CURRENT_TEAM: JsonRecord = { ...TEAM, configVersion: CONFIG_VERSION };
 
 describe('runCli: commits check', () => {
   const stat = (letter: string, lines: number, body = '') => ({
@@ -68,22 +74,42 @@ describe('runCli: help, version and usage errors', () => {
     assert.equal(result.code, EXIT.usage);
     assert.match(result.stderr.join('\n'), /^add takes no --titel\n\nteamrig <command>/);
   });
+
+  it('refuses the renamed --tier on any command and a priority in the old spelling, writing nothing', async () => {
+    const kit = new CliHarness();
+    /** A usage error prints its reason, then the usage. */
+    const reasonOf = (result: CliResult): string | undefined => result.stderr[0]?.split('\n')[0];
+    for (const argv of [
+      ['add', '--title', 'x', '--tier', '2', '--session', 'alpha'],
+      ['list', '--tier', '1,2', '--session', 'alpha'],
+      ['show', 'T1', '--tier', '2', '--session', 'alpha'],
+    ]) {
+      const result = await kit.run(argv);
+      assert.equal(result.code, EXIT.usage, argv.join(' '));
+      assert.equal(reasonOf(result), '--tier was renamed: use --priority', argv.join(' '));
+    }
+    const oldSpelling = await kit.run(['add', '--title', 'x', '--priority', 't2', '--session', 'alpha']);
+    assert.deepEqual([oldSpelling.code, reasonOf(oldSpelling)], [EXIT.usage, 'priority "t2" is the old tier spelling: write p2']);
+    const bare = await kit.run(['update', 'T1', '--priority', '3', '--session', 'alpha']);
+    assert.deepEqual([bare.code, reasonOf(bare)], [EXIT.usage, 'priority "3" is not p<n>: write p3']);
+    assert.equal(kit.files.get(EVENTS_PATH), undefined);
+  });
 });
 
 describe('runCli: the task register', () => {
   it('adds, lists, sets and shows a task', async () => {
     const kit = new CliHarness();
-    const added = await kit.run(['add', '--title', 'Ship the CLI', '--tier', '2', '--session', 'alpha']);
+    const added = await kit.run(['add', '--title', 'Ship the CLI', '--priority', 'p2', '--session', 'alpha']);
     assert.equal(added.code, EXIT.ok, added.stderr.join('\n'));
-    assert.match(added.stdout[0] ?? '', /^ADDED T1 open, tier 2, owner alpha, from \S+ \| /);
+    assert.match(added.stdout[0] ?? '', /^ADDED T1 open, p2, owner alpha, from \S+ \| /);
 
     const listed = await kit.run(['list'], { env: { TEAMRIG_SESSION: 'alpha' } });
     assert.equal(listed.code, EXIT.ok);
-    assert.match(listed.stdout.join('\n'), /^T1 open, tier 2, owner alpha,/m);
+    assert.match(listed.stdout.join('\n'), /^T1 open, p2, owner alpha,/m);
 
     const set = await kit.run(['set', 'T1', '--status', 'in-progress', '--session', 'alpha']);
     assert.equal(set.code, EXIT.ok, set.stdout.join('\n'));
-    assert.match(set.stdout[0] ?? '', /^SET T1 in-progress, tier 2, owner alpha,/);
+    assert.match(set.stdout[0] ?? '', /^SET T1 in-progress, p2, owner alpha,/);
 
     const shown = await kit.run(['show', 'T1', '--session', 'alpha']);
     assert.equal(shown.code, EXIT.ok);
@@ -92,7 +118,7 @@ describe('runCli: the task register', () => {
 
   it('exits 2 with REFUSED when a team rule refuses a write', async () => {
     const kit = new CliHarness();
-    await kit.run(['add', '--title', 'Ship the CLI', '--tier', '2', '--session', 'alpha']);
+    await kit.run(['add', '--title', 'Ship the CLI', '--priority', 'p2', '--session', 'alpha']);
     const notOwner = await kit.run(['set', 'T1', '--status', 'in-progress', '--session', 'bravo']);
     assert.equal(notOwner.code, EXIT.refused);
     assert.deepEqual(notOwner.stdout, ['REFUSED only the owner (alpha) sets the status of T1']);
@@ -117,7 +143,7 @@ describe('runCli: the task register', () => {
     assert.equal(listed.code, EXIT.ok);
     assert.match(listed.stderr[0] ?? '', /^WARN config: 1 problem\(s\), defaults used \(first: pushGuard.protectedBranches/);
 
-    const added = await kit.run(['add', '--title', 'x', '--tier', '1', '--session', 'alpha']);
+    const added = await kit.run(['add', '--title', 'x', '--priority', 'p1', '--session', 'alpha']);
     assert.equal(added.code, EXIT.refused);
     assert.match(added.stdout[0] ?? '', /^REFUSED the team config has 1 problem\(s\)/);
   });
@@ -127,15 +153,15 @@ describe('runCli: the task register', () => {
     const listed = await kit.run(['list', '--session', 'alpha']);
     assert.equal(listed.code, EXIT.ok);
     assert.match(listed.stderr[0] ?? '', /config version 99, from a newer teamrig/);
-    assert.equal((await kit.run(['add', '--title', 'x', '--tier', '1', '--session', 'alpha'])).code, EXIT.refused);
+    assert.equal((await kit.run(['add', '--title', 'x', '--priority', 'p1', '--session', 'alpha'])).code, EXIT.refused);
   });
 
   it('updates a task, reading the new owner as a session', async () => {
     const kit = new CliHarness();
-    await kit.run(['add', '--title', 'Ship the CLI', '--tier', '2', '--session', 'alpha']);
+    await kit.run(['add', '--title', 'Ship the CLI', '--priority', 'p2', '--session', 'alpha']);
     const updated = await kit.run(['update', 'T1', '--owner', 'bravo', '--note', 'bravo takes it', '--session', 'alpha']);
     assert.equal(updated.code, EXIT.ok, updated.stdout.join('\n'));
-    assert.match(updated.stdout[0] ?? '', /^UPDATED T1 open, tier 2, owner bravo,/);
+    assert.match(updated.stdout[0] ?? '', /^UPDATED T1 open, p2, owner bravo,/);
     const retitled = await kit.run(['update', 'T1', '--title', 'Ship the CLI twice', '--session', 'bravo']);
     assert.equal(retitled.code, EXIT.ok, retitled.stdout.join('\n'));
     assert.match(retitled.stdout[0] ?? '', /Ship the CLI twice/);
@@ -148,11 +174,11 @@ describe('runCli: the task register', () => {
 
   it('names damaged lines on stderr and still reads the rest', async () => {
     const kit = new CliHarness();
-    await kit.run(['add', '--title', 'Ship the CLI', '--tier', '2', '--session', 'alpha']);
+    await kit.run(['add', '--title', 'Ship the CLI', '--priority', 'p2', '--session', 'alpha']);
     await kit.files.append(EVENTS_PATH, '{ torn\n');
     const listed = await kit.run(['list', '--session', 'alpha']);
     assert.equal(listed.code, EXIT.ok);
-    assert.match(listed.stdout.join('\n'), /^T1 open, tier 2, owner alpha,/m);
+    assert.match(listed.stdout.join('\n'), /^T1 open, p2, owner alpha,/m);
     assert.deepEqual(listed.stderr, [`WARN ${EVENTS_PATH}: 1 unreadable line(s), 0 line(s) from a newer teamrig, 0 event(s) naming no task`]);
   });
 
@@ -165,7 +191,7 @@ describe('runCli: the task register', () => {
 
   it('checks the week plan and the skills, and skips the week checks before any plan', async () => {
     const kit = new CliHarness();
-    await kit.run(['add', '--title', 'Ship the CLI', '--tier', '2', '--due', '2030-01-10', '--session', 'alpha']);
+    await kit.run(['add', '--title', 'Ship the CLI', '--priority', 'p2', '--due', '2030-01-10', '--session', 'alpha']);
     await kit.files.write(join(SKILLS_DIR, 'alpha-demo', 'SKILL.md'), 'no frontmatter\n');
 
     const bare = await kit.run(['check', '--session', 'alpha']);
@@ -186,7 +212,7 @@ describe('runCli: the task register', () => {
     const none = await kit.run(['plan', '--session', 'alpha']);
     assert.deepEqual([none.code, none.stdout], [EXIT.refused, ['REFUSED no week plan tagged yet; pass --week <YYYY-MM-DD>']]);
 
-    await kit.run(['add', '--title', 'Ship the CLI', '--tier', '1', '--week', '2030-01-07', '--session', 'alpha']);
+    await kit.run(['add', '--title', 'Ship the CLI', '--priority', 'p1', '--week', '2030-01-07', '--session', 'alpha']);
     const current = await kit.run(['plan', '--session', 'alpha']);
     assert.equal(current.code, EXIT.ok);
     assert.match(current.stdout.join('\n'), /2030-01-07[\s\S]*Ship the CLI/);
@@ -197,12 +223,12 @@ describe('runCli: the task register', () => {
 
 describe('runCli: config', () => {
   it('validates a good config', async () => {
-    const result = await new CliHarness().run(['config', 'validate']);
+    const result = await new CliHarness(CURRENT_TEAM).run(['config', 'validate']);
     assert.deepEqual([result.code, result.stdout], [EXIT.ok, [`VALID ${CONFIG_PATH}`]]);
   });
 
   it('lists every problem and exits 1', async () => {
-    const result = await new CliHarness({ ...TEAM, pushGuard: { protectedBranches: 'main' } }).run(['config', 'validate']);
+    const result = await new CliHarness({ ...CURRENT_TEAM, pushGuard: { protectedBranches: 'main' } }).run(['config', 'validate']);
     assert.equal(result.code, EXIT.failed);
     assert.match(result.stdout[0] ?? '', /^INVALID .*: 1 problem\(s\)/);
     assert.match(result.stdout[1] ?? '', /^ {2}pushGuard.protectedBranches: /);
@@ -216,7 +242,7 @@ describe('runCli: config', () => {
   });
 
   it('leaves a current config alone and refuses to migrate a newer one', async () => {
-    const current = await new CliHarness().run(['config', 'migrate']);
+    const current = await new CliHarness(CURRENT_TEAM).run(['config', 'migrate']);
     assert.deepEqual([current.code, current.stdout], [EXIT.ok, [`UNCHANGED ${CONFIG_PATH} needs no migration`]]);
     const newer = await new CliHarness({ ...TEAM, configVersion: 99 }).run(['config', 'migrate']);
     assert.equal(newer.code, EXIT.refused);
@@ -233,19 +259,41 @@ describe('runCli: config', () => {
   });
 
   it('notes an older config, then migrates it and keeps the old file', async () => {
-    const kit = new CliHarness();
+    const kit = new CliHarness({ ...TEAM, configVersion: 2 });
     const validated = await kit.run(['config', 'validate'], { configFormat: NEXT_FORMAT });
     assert.equal(validated.code, EXIT.ok);
-    assert.deepEqual(validated.stdout, ['NOTE config version 1 is older than 2; run: teamrig config migrate', `VALID ${CONFIG_PATH}`]);
+    assert.deepEqual(validated.stdout, ['NOTE config version 2 is older than 3; run: teamrig config migrate', `VALID ${CONFIG_PATH}`]);
 
     const migrated = await kit.run(['config', 'migrate'], { configFormat: NEXT_FORMAT });
     assert.equal(migrated.code, EXIT.ok, migrated.stdout.join('\n'));
-    assert.match(migrated.stdout[0] ?? '', /^MIGRATED .* from version 1 to 2; the old file is at .*config\.v1\.json$/);
-    assert.deepEqual(migrated.stdout.slice(1), ['  v1→v2: added a flag']);
-    assert.match(kit.files.get(CONFIG_PATH) ?? '', /"configVersion": 2/);
+    assert.match(migrated.stdout[0] ?? '', /^MIGRATED .* from version 2 to 3; the old file is at .*config\.v2\.json$/);
+    assert.deepEqual(migrated.stdout.slice(1), ['  v2→v3: added a flag']);
+    assert.match(kit.files.get(CONFIG_PATH) ?? '', /"configVersion": 3/);
 
     const again = await kit.run(['config', 'migrate'], { configFormat: NEXT_FORMAT });
     assert.deepEqual(again.stdout, [`UNCHANGED ${CONFIG_PATH} needs no migration`]);
+  });
+
+  it('migrates a version-1 config: its register.tiers become register.priorities', async () => {
+    const priorities = [{ id: 1, name: 'now' }, { id: 2, name: 'later' }];
+    const kit = new CliHarness({ ...TEAM, configVersion: 1, register: { tiers: priorities } });
+    const validated = await kit.run(['config', 'validate']);
+    assert.deepEqual(
+      [validated.code, validated.stdout],
+      [EXIT.ok, ['NOTE config version 1 is older than 2; run: teamrig config migrate', `VALID ${CONFIG_PATH}`]],
+    );
+
+    const migrated = await kit.run(['config', 'migrate']);
+    assert.equal(migrated.code, EXIT.ok, migrated.stdout.join('\n'));
+    assert.deepEqual(migrated.stdout.slice(1), ['  v1→v2: register.tiers → register.priorities']);
+    const written: unknown = JSON.parse(kit.files.get(CONFIG_PATH) ?? '');
+    assert.deepEqual(written, { ...TEAM, configVersion: 2, register: { priorities } });
+  });
+
+  it('names register.tiers in a current config as renamed', async () => {
+    const result = await new CliHarness({ ...CURRENT_TEAM, register: { tiers: [{ id: 1, name: 'now' }] } }).run(['config', 'validate']);
+    assert.equal(result.code, EXIT.failed);
+    assert.deepEqual(result.stdout.slice(1), ['  register.tiers: was renamed: use register.priorities']);
   });
 });
 
@@ -259,7 +307,7 @@ describe('runCli: session names', () => {
     const read = await kit.run(['inbox', 'read', '--session', 'team-lead']);
     assert.deepEqual(read.stdout[0], '- 2030-01-08 10:00 alpha: ready');
 
-    const added = await kit.run(['add', '--title', 'Ship the names', '--tier', '2', '--owner', 'app-bravo', '--session', 'team-lead']);
+    const added = await kit.run(['add', '--title', 'Ship the names', '--priority', 'p2', '--owner', 'app-bravo', '--session', 'team-lead']);
     assert.equal(added.code, EXIT.ok, added.stdout.join('\n'));
     const byName = await kit.run(['list', '--session', 'app-bravo']);
     assert.deepEqual(byName.stdout, (await kit.run(['list', '--session', 'bravo'])).stdout);
@@ -421,11 +469,11 @@ describe('runCli: which team', () => {
   const ELSEWHERE = resolve('/', 'elsewhere');
 
   it('finds the team from the nearest pointer above the working folder', async () => {
-    assert.deepEqual(await new CliHarness().run(['config', 'validate'], { cwd: join(APP, 'src', 'core') }), VALID);
+    assert.deepEqual(await new CliHarness(CURRENT_TEAM).run(['config', 'validate'], { cwd: join(APP, 'src', 'core') }), VALID);
   });
 
   it("falls back to the session's project folder", async () => {
-    const result = await new CliHarness().run(['config', 'validate'], { cwd: ELSEWHERE, env: { CLAUDE_PROJECT_DIR: APP } });
+    const result = await new CliHarness(CURRENT_TEAM).run(['config', 'validate'], { cwd: ELSEWHERE, env: { CLAUDE_PROJECT_DIR: APP } });
     assert.deepEqual(result, VALID);
   });
 

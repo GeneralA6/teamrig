@@ -5,6 +5,7 @@ import { testConfig } from '../testing/config.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { InlineMutex } from '../testing/inline-mutex.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
+import { EVENT_VERSION } from './events.ts';
 import { RegisterPolicy, type Verdict } from './policy.ts';
 import { Register, type SkillCatalog, type WriteResult } from './register.ts';
 import { JsonlEventLog, readEvents } from './store.ts';
@@ -51,10 +52,10 @@ function errorOf(verdict: Verdict<WriteResult>): string {
 }
 
 describe('Register', () => {
-  it('numbers new tasks and appends one v1 line per write', async () => {
+  it('numbers new tasks and appends one line in the current format per write', async () => {
     const { files, register } = setup();
-    const first = written(await register.add('lead', { title: 'First', owner: 'alpha', source: 'owner', tier: 1 }));
-    const second = written(await register.add('lead', { title: 'Second', owner: 'bravo', source: 'lead', tier: 2 }));
+    const first = written(await register.add('lead', { title: 'First', owner: 'alpha', source: 'owner', priority: 1 }));
+    const second = written(await register.add('lead', { title: 'Second', owner: 'bravo', source: 'lead', priority: 2 }));
 
     assert.equal(first.task.id, 'T1');
     assert.equal(second.task.id, 'T2');
@@ -62,18 +63,18 @@ describe('Register', () => {
     assert.equal(second.task.createdAt, START);
     const read = readEvents(files.get(LOG) ?? '');
     assert.deepEqual(read.events, [first.event, second.event]);
-    assert.deepEqual(read.events.map((event) => event.v), [1, 1]);
+    assert.deepEqual(read.events.map((event) => event.v), [EVENT_VERSION, EVENT_VERSION]);
   });
 
   it('records the status change and returns the task after it', async () => {
     const { clock, register } = setup();
-    written(await register.add('lead', { title: 'Ship it', owner: 'alpha', source: 'owner', tier: 1 }));
+    written(await register.add('lead', { title: 'Ship it', owner: 'alpha', source: 'owner', priority: 1 }));
     clock.advance(60_000);
     const result = written(await register.setStatus('alpha', 'T1', { status: 'in-progress' }));
     assert.equal(result.task.status, 'in-progress');
     assert.equal(result.task.ownerSeenAt, '2030-01-07T09:01:00.000Z');
     assert.deepEqual(result.event, {
-      v: 1,
+      v: EVENT_VERSION,
       type: 'status',
       id: 'T1',
       at: '2030-01-07T09:01:00.000Z',
@@ -87,7 +88,7 @@ describe('Register', () => {
 
   it('checks a cited skill against the catalog, but never `none`', async () => {
     const { register, skills } = setup();
-    written(await register.add('lead', { title: 'Ship it', owner: 'alpha', source: 'owner', tier: 1 }));
+    written(await register.add('lead', { title: 'Ship it', owner: 'alpha', source: 'owner', priority: 1 }));
     const close = { status: 'done' as const, note: 'shipped', evidence: 'abc1234' };
 
     assert.match(errorOf(await register.setStatus('alpha', 'T1', { ...close, skill: ' web-build ' })), /no skill named web-build/);
@@ -99,7 +100,7 @@ describe('Register', () => {
 
   it('lets the lead reassign, which restarts the pick-up clock', async () => {
     const { clock, register } = setup();
-    written(await register.add('lead', { title: 'Ship it', owner: 'alpha', source: 'owner', tier: 1 }));
+    written(await register.add('lead', { title: 'Ship it', owner: 'alpha', source: 'owner', priority: 1 }));
     clock.advance(3_600_000);
     const result = written(await register.update('lead', 'T1', { owner: 'bravo' }, 'alpha is out'));
     assert.equal(result.task.owner, 'bravo');
@@ -109,24 +110,24 @@ describe('Register', () => {
 
   it('refuses unknown callers before taking the lock, and leaves the log alone on any refusal', async () => {
     const { files, mutex, register } = setup();
-    assert.match(errorOf(await register.add('charlie', { title: 'x', owner: 'alpha', source: 'owner', tier: 1 })), /charlie/);
+    assert.match(errorOf(await register.add('charlie', { title: 'x', owner: 'alpha', source: 'owner', priority: 1 })), /charlie/);
     assert.equal(mutex.runs, 0);
     assert.match(errorOf(await register.setStatus('alpha', 'T7', { status: 'blocked', note: 'x' })), /no task T7/);
-    assert.match(errorOf(await register.update('alpha', 'T7', { tier: 2 }, undefined)), /no task T7/);
-    assert.match(errorOf(await register.add('lead', { title: 'x', owner: 'alpha', source: 'owner', tier: 9 })), /tier 9/);
+    assert.match(errorOf(await register.update('alpha', 'T7', { priority: 2 }, undefined)), /no task T7/);
+    assert.match(errorOf(await register.add('lead', { title: 'x', owner: 'alpha', source: 'owner', priority: 9 })), /priority p9/);
     assert.equal(files.get(LOG), undefined);
   });
 
   it('refuses to write beside lines from a newer format', async () => {
-    const newer = `${JSON.stringify({ v: 2, type: 'create', id: 'T1' })}\n`;
+    const newer = `${JSON.stringify({ v: EVENT_VERSION + 1, type: 'create', id: 'T1' })}\n`;
     const { files, register } = setup({ [LOG]: newer });
-    await assert.rejects(register.add('lead', { title: 'x', owner: 'alpha', source: 'owner', tier: 1 }), NewerDataError);
+    await assert.rejects(register.add('lead', { title: 'x', owner: 'alpha', source: 'owner', priority: 1 }), NewerDataError);
     assert.equal(files.get(LOG), newer);
   });
 
   it('reads a snapshot without the lock', async () => {
     const { mutex, register } = setup();
-    written(await register.add('lead', { title: 'Ship it', owner: 'alpha', source: 'owner', tier: 1 }));
+    written(await register.add('lead', { title: 'Ship it', owner: 'alpha', source: 'owner', priority: 1 }));
     const runs = mutex.runs;
     const { state, read } = await register.snapshot();
     assert.equal(mutex.runs, runs);
@@ -138,10 +139,10 @@ describe('Register', () => {
 describe('Register.addFromParent', () => {
   it('writes the task as the parent lead, who is on no roster here, and lands it with the lead', async () => {
     const { files, register } = setup();
-    const { task, event } = written(await register.addFromParent('app/lead', { title: 'Ship login', owner: 'lead', source: 'app/lead', tier: 1 }));
+    const { task, event } = written(await register.addFromParent('app/lead', { title: 'Ship login', owner: 'lead', source: 'app/lead', priority: 1 }));
     assert.deepEqual([task.id, task.owner, task.source, task.createdBy, event.by], ['T1', 'lead', 'app/lead', 'app/lead', 'app/lead']);
     assert.equal(readEvents(files.get(LOG) ?? '').events.length, 1);
-    assert.match(errorOf(await register.add('app/lead', { title: 'Other', owner: 'lead', source: 'lead', tier: 1 })), /app.lead is not a session on this team/);
-    assert.match(errorOf(await register.addFromParent('app/lead', { title: 'Ship login', owner: 'lead', source: 'app/lead', tier: 1 })), /T1 already tracks this/);
+    assert.match(errorOf(await register.add('app/lead', { title: 'Other', owner: 'lead', source: 'lead', priority: 1 })), /app.lead is not a session on this team/);
+    assert.match(errorOf(await register.addFromParent('app/lead', { title: 'Ship login', owner: 'lead', source: 'app/lead', priority: 1 })), /T1 already tracks this/);
   });
 });

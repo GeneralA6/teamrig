@@ -1,6 +1,6 @@
 import type { Task } from '../register/fold.ts';
 
-/** An open tier-2 task owned by `alpha`, created by `lead` at 2030-01-07 09:00 UTC, with any field overridden. */
+/** An open p2 task owned by `alpha`, created by `lead` at 2030-01-07 09:00 UTC, with any field overridden. */
 export function testTask(overrides: Partial<Task> = {}): Task {
   return {
     id: 'T1',
@@ -8,7 +8,7 @@ export function testTask(overrides: Partial<Task> = {}): Task {
     owner: 'alpha',
     source: 'lead',
     ref: null,
-    tier: 2,
+    priority: 2,
     due: null,
     goals: [],
     week: null,
