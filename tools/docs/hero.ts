@@ -1,7 +1,9 @@
 /**
  * The README's hero: a Claude Code window, drawn as an animated SVG, where the user asks the lead for a signup flow,
- * says yes to the team it proposes, and watches three tabs open and three tasks go from open to done. One 17 s CSS
- * loop and no script, so GitHub shows it in an <img>. With motion turned off it is a still of the finished work.
+ * says yes to the team of three it offers to hire, and watches three tabs open and three tasks go to work. web stops
+ * on a question, the lead brings it to the user (the talk scrolls up, as a terminal does), the user answers, and all
+ * three tasks reach done. One 19.5 s CSS loop and no script, so GitHub shows it in an <img>. With motion turned off
+ * it is a still of the finished work.
  */
 import { escapeXml, MONO_FONTS, renderSvg, SANS_FONTS } from './svg.ts';
 import { Timeline, type Clock, type TypingSegment } from './timeline.ts';
@@ -9,11 +11,14 @@ import { Timeline, type Clock, type TypingSegment } from './timeline.ts';
 const WIDTH = 960;
 const HEIGHT = 460;
 
-/** 17 s a loop; the parts hide at 15.8 s; the still shows 14.6 s, when every task is done. */
-export const HERO_CLOCK: Clock = { loop: 17, end: 15.8, rest: 14.6 };
+/** 19.5 s a loop; the parts hide at 18.3 s; the still shows 17.4 s, when every task is done. */
+export const HERO_CLOCK: Clock = { loop: 19.5, end: 18.3, rest: 17.4 };
 
 /** The monospace advance at 15px, which every typed text is forced to with textLength. */
 export const CHAR_WIDTH = 9;
+
+/** When the talk scrolls up as web's question arrives, for how long, and how far in pixels. */
+export const HERO_SCROLL = { at: 10.2, duration: 0.45, distance: 154 } as const;
 
 /** GitHub's dark palette: the window is dark in either theme, as a terminal is. */
 const C = {
@@ -30,24 +35,46 @@ const C = {
   green: '#3fb950',
 } as const;
 
+/** A task's phase: open, in progress, waiting on the user's decision, or done. */
+type Phase = 'open' | 'work' | 'ask' | 'done';
+
 interface Member {
   readonly name: string;
-  readonly color: string;
   readonly job: string;
   readonly task: string;
-  /** When the member starts its task, in seconds. */
-  readonly start: number;
-  /** When it finishes. */
-  readonly done: number;
+  /** When the task enters each phase after `open`, in seconds, in order. */
+  readonly phases: ReadonlyArray<readonly [Phase, number]>;
 }
 
 const TEAM: readonly Member[] = [
-  { name: 'api', color: '#58a6ff', job: 'the signup endpoint', task: 'Signup endpoint', start: 8.2, done: 10.6 },
-  { name: 'web', color: '#f778ba', job: 'the signup form', task: 'Signup form', start: 8.6, done: 11.4 },
-  { name: 'tests', color: '#39c5cf', job: 'end-to-end tests', task: 'End-to-end tests', start: 9.0, done: 12.2 },
+  { name: 'api', job: 'builds the signup endpoint', task: 'Signup endpoint', phases: [['work', 8.2], ['done', 10.4]] },
+  { name: 'web', job: 'builds the signup form', task: 'Signup form', phases: [['work', 8.6], ['ask', 9.9], ['work', 13.6], ['done', 15.0]] },
+  { name: 'tests', job: 'writes the end-to-end tests', task: 'End-to-end tests', phases: [['work', 9.0], ['done', 14.2]] },
 ];
 
+/** How each phase looks: the member's tab dot takes its colour, and its task card shows the pill. */
+const PHASE: Readonly<Record<Phase, { readonly label: string; readonly width: number; readonly color: string; readonly filled: boolean }>> = {
+  open: { label: 'open', width: 54, color: C.faint, filled: false },
+  work: { label: 'in progress', width: 96, color: C.amber, filled: true },
+  ask: { label: 'needs you', width: 88, color: C.lead, filled: true },
+  done: { label: 'done', width: 56, color: C.green, filled: true },
+};
+
+/** One phase of a task, shown from `from` until `to`. */
+type Span = readonly [phase: Phase, from: number, to: number];
+
+/** The task's phases as spans, starting open at `appear`; the last runs to the clock's end. */
+function spans(member: Member, appear: number): Span[] {
+  const starts: ReadonlyArray<readonly [Phase, number]> = [['open', appear], ...member.phases];
+  return starts.map(([phase, from], i): Span => [phase, from, starts[i + 1]?.[1] ?? HERO_CLOCK.end]);
+}
+
+/** When the member's task reaches done, or the clock's end if it never does. */
+const doneAt = (member: Member): number => member.phases.find(([phase]) => phase === 'done')?.[1] ?? HERO_CLOCK.end;
+
 const ASK = 'Build a signup flow: an API, a web form and tests.';
+const QUESTION = 'Should the form also offer Google sign-in?';
+const ANSWER = 'Email only for now.';
 
 /** What the user types into the input box, when, how fast, and when it is sent. */
 interface Typing {
@@ -57,30 +84,24 @@ interface Typing {
   readonly sent: number;
 }
 
-/** The two things the user types: the ask, and the yes. */
+/** The three things the user types: the ask, the yes, and the answer to web's question. */
 export const HERO_TYPING: readonly Typing[] = [
   { text: ASK, from: 0.8, perChar: 0.044, sent: 3.3 },
   { text: 'yes', from: 5.6, perChar: 0.12, sent: 6.2 },
-];
-
-/** The task count over the loop: [from, to, label]. */
-const PROGRESS: ReadonlyArray<readonly [number, number, string]> = [
-  [0.2, 7.2, 'no tasks yet'],
-  [7.2, 10.6, '0 of 3 done'],
-  [10.6, 11.4, '1 of 3 done'],
-  [11.4, 12.2, '2 of 3 done'],
-  [12.2, 15.8, '3 of 3 done'],
+  { text: ANSWER, from: 11.5, perChar: 0.075, sent: 13.2 },
 ];
 
 const STORY =
   'A Claude Code window. In the lead tab, the user types: Build a signup flow: an API, a web form and tests. ' +
-  'The lead proposes a team of three sessions, api, web and tests, and the user says yes. Three new tabs open and three tasks appear, ' +
-  'one per session. Each task moves from open to in progress to done, and the lead reports: All 3 tasks done. Ready for your review.';
+  'The lead offers to hire a team of three, api, web and tests, and the user says yes. Three new tabs open and three tasks ' +
+  'appear, one per member, and go to work. web stops on a question, and the lead brings it to the user: ' +
+  `${QUESTION} The user answers: ${ANSWER} web goes back to work, all three tasks reach done, and the lead reports: ` +
+  'All 3 tasks done. Ready for your review.';
 
 const tspan = (fill: string, text: string): string => `<tspan fill="${fill}">${escapeXml(text)}</tspan>`;
 const prompt = (text: string): string => `<tspan fill="${C.faint}">&gt; </tspan>${tspan(C.fg, text)}`;
 
-/** The window, its tab bar, the lead's tab and one tab per member, whose dot turns faint, amber, then green. */
+/** The window, its tab bar, the lead's tab and one tab per member, whose dot takes its task's phase colour. */
 function tabBar(t: Timeline): string[] {
   const out = [
     `<rect x="0.5" y="0.5" width="${WIDTH - 1}" height="${HEIGHT - 1}" rx="12" fill="${C.bg}" stroke="${C.border}"/>`,
@@ -92,31 +113,47 @@ function tabBar(t: Timeline): string[] {
   TEAM.forEach((member, i) => {
     const x = 124 + i * 100;
     const appear = 7.0 + i * 0.2;
-    const dot = (fill: string, cls: string): string => `<circle cx="${x + 14}" cy="27" r="4.5" fill="${fill}" class="${cls}"/>`;
-    const tab = t.show(appear);
-    const waiting = dot(C.faint, t.show(appear, { to: member.start, motion: 'fade' }));
-    const working = dot(C.amber, t.show(member.start, { to: member.done, motion: 'fade' }));
-    const finished = dot(C.green, t.show(member.done, { motion: 'fade' }));
-    out.push(`<g class="${tab}">`, waiting, working, finished, `<text x="${x + 26}" y="32" class="mono tab" fill="${C.muted}">${member.name}</text>`, `</g>`);
+    out.push(`<g class="${t.show(appear)}">`);
+    for (const [phase, from, to] of spans(member, appear)) {
+      out.push(`<circle cx="${x + 14}" cy="27" r="4.5" fill="${PHASE[phase].color}" class="${t.show(from, { to, motion: 'fade' })}"/>`);
+    }
+    out.push(`<text x="${x + 26}" y="32" class="mono tab" fill="${C.muted}">${escapeXml(member.name)}</text>`, `</g>`);
   });
   return out;
 }
 
-/** The talk in the lead's tab: the ask, the proposed team, the yes, and the lead's two reports. */
+/**
+ * The talk in the lead's tab: the ask, the team it offers to hire, the yes, web's question in a card, the answer,
+ * and the lead's two reports. It scrolls up when the question arrives, inside a clip above the input box.
+ */
 function conversation(t: Timeline): string[] {
-  const out: string[] = [];
+  const scroll = t.steps('translateY(0)', [{ at: HERO_SCROLL.at, duration: HERO_SCROLL.duration, value: `translateY(-${HERO_SCROLL.distance}px)` }]);
+  const out = [
+    `<defs><clipPath id="chat"><rect x="0" y="50" width="600" height="322"/></clipPath><clipPath id="box"><rect x="44" y="392" width="540" height="40"/></clipPath></defs>`,
+    `<g clip-path="url(#chat)"><g class="${scroll}">`,
+  ];
   const say = (y: number, from: number, body: string): void => {
     out.push(`<g class="${t.show(from)}"><text x="28" y="${y}" class="mono line">${body}</text></g>`);
   };
   say(84, 3.3, prompt(ASK));
-  say(122, 3.9, tspan(C.fg, "I'll set up a team of three:"));
+  say(122, 3.9, tspan(C.fg, "I'll hire a team of three:"));
   TEAM.forEach((member, i) => {
-    say(148 + i * 24, 4.2 + i * 0.25, `<tspan x="52" fill="${member.color}">${escapeXml(member.name)}</tspan><tspan x="124" fill="${C.muted}">${escapeXml(member.job)}</tspan>`);
+    say(148 + i * 24, 4.2 + i * 0.25, `<tspan x="52" fill="${C.lead}">${escapeXml(member.name)}</tspan><tspan x="124" fill="${C.muted}">${escapeXml(member.job)}</tspan>`);
   });
-  say(230, 5.0, tspan(C.fg, 'You stay here as the lead. Start them?'));
+  say(230, 5.0, tspan(C.fg, 'Shall I hire them?'));
   say(268, 6.2, prompt('yes'));
-  say(306, 6.8, tspan(C.fg, 'Team signup is up: 3 tasks, 3 tabs open.'));
-  say(344, 12.9, tspan(C.green, 'All 3 tasks done. Ready for your review.'));
+  say(306, 6.8, tspan(C.fg, 'Hired. 3 members, 3 tasks, all at work.'));
+  out.push(
+    `<g class="${t.pop(10.65, { overshoot: 1.04 })}">`,
+    `<rect x="28.5" y="330.5" width="555" height="57" rx="8" fill="${C.lead}" fill-opacity="0.12" stroke="${C.lead}" stroke-opacity="0.6"/>`,
+    `<text x="44" y="353" class="mono line"><tspan fill="${C.lead}">web</tspan><tspan fill="${C.muted}"> needs your decision:</tspan></text>`,
+    `<text x="44" y="377" class="mono line" fill="${C.fg}">${escapeXml(QUESTION)}</text>`,
+    `</g>`,
+  );
+  say(422, 13.2, prompt(ANSWER));
+  say(460, 13.6, tspan(C.fg, 'Got it. web is back at work.'));
+  say(498, 15.6, tspan(C.green, 'All 3 tasks done. Ready for your review.'));
+  out.push('</g></g>');
   return out;
 }
 
@@ -126,7 +163,6 @@ function conversation(t: Timeline): string[] {
  */
 function inputBox(t: Timeline): string[] {
   const out = [
-    `<defs><clipPath id="box"><rect x="44" y="392" width="540" height="40"/></clipPath></defs>`,
     `<rect x="28.5" y="386.5" width="563" height="51" rx="9" fill="${C.bg}" stroke="${C.border}"/>`,
     `<text x="44" y="419" class="mono line" fill="${C.faint}">&gt;</text>`,
     `<g clip-path="url(#box)">`,
@@ -147,37 +183,39 @@ function inputBox(t: Timeline): string[] {
   return out;
 }
 
-/** The task board: the done count, a progress bar, and one card per task whose pill goes open, in progress, done. */
+/** The task board: the done count, a progress bar, and one card per task whose pill shows its phase. */
 function taskBoard(t: Timeline): string[] {
   const out = [
     `<rect x="612.5" y="60.5" width="331" height="377" rx="10" fill="${C.panel}" stroke="${C.border}"/>`,
     `<text x="632" y="92" class="sans head" fill="${C.muted}">TASKS</text>`,
     `<rect x="632" y="106" width="292" height="4" rx="2" fill="${C.border}"/>`,
   ];
-  for (const [from, to, label] of PROGRESS) {
+  const finished = TEAM.map(doneAt).sort((a, b) => a - b);
+  const counts = [7.2, ...finished].map((from, k, all): readonly [number, number, string] => [from, all[k + 1] ?? HERO_CLOCK.end, `${k} of ${TEAM.length} done`]);
+  for (const [from, to, label] of [[0.2, 7.2, 'no tasks yet'] as const, ...counts]) {
     out.push(`<text x="924" y="92" text-anchor="end" class="sans small ${t.show(from, { to, motion: 'fade' })}" fill="${C.muted}">${label}</text>`);
   }
-  TEAM.forEach((member, i) => {
-    out.push(`<rect x="632" y="106" width="${((i + 1) * 292) / 3}" height="4" rx="2" fill="${C.green}" class="${t.show(member.done, { motion: 'fade' })}"/>`);
+  finished.forEach((from, k) => {
+    out.push(`<rect x="632" y="106" width="${((k + 1) * 292) / TEAM.length}" height="4" rx="2" fill="${C.green}" class="${t.show(from, { motion: 'fade' })}"/>`);
   });
   TEAM.forEach((member, i) => {
     const x = 632;
     const y = 126 + i * 90;
     const appear = 7.2 + i * 0.2;
-    const pill = (label: string, width: number, color: string, filled: boolean, cls: string): string =>
-      `<g class="${cls}"><rect x="${x + 276 - width}" y="${y + 44}" width="${width}" height="22" rx="11" fill="${filled ? color : 'none'}" fill-opacity="${filled ? 0.16 : 0}" stroke="${color}" stroke-opacity="${filled ? 0 : 0.8}"/>` +
-      `<text x="${x + 276 - width / 2}" y="${y + 59}" text-anchor="middle" class="sans small" fill="${color}">${label}</text></g>`;
-    const card = t.show(appear);
+    const pill = ([phase, from, to]: Span): string => {
+      const look = PHASE[phase];
+      return (
+        `<g class="${t.show(from, { to, motion: 'fade' })}"><rect x="${x + 276 - look.width}" y="${y + 44}" width="${look.width}" height="22" rx="11" fill="${look.filled ? look.color : 'none'}" fill-opacity="${look.filled ? 0.16 : 0}" stroke="${look.color}" stroke-opacity="${look.filled ? 0 : 0.8}"/>` +
+        `<text x="${x + 276 - look.width / 2}" y="${y + 59}" text-anchor="middle" class="sans small" fill="${look.color}">${look.label}</text></g>`
+      );
+    };
     out.push(
-      `<g class="${card}">`,
+      `<g class="${t.show(appear)}">`,
       `<rect x="${x + 0.5}" y="${y + 0.5}" width="291" height="77" rx="8" fill="${C.card}" stroke="${C.border}"/>`,
       `<text x="${x + 16}" y="${y + 30}" class="mono small" fill="${C.faint}">T${i + 1}</text>`,
       `<text x="${x + 48}" y="${y + 30}" class="sans title" fill="${C.fg}">${escapeXml(member.task)}</text>`,
-      `<circle cx="${x + 20}" cy="${y + 55}" r="4" fill="${member.color}"/>`,
-      `<text x="${x + 30}" y="${y + 60}" class="mono small" fill="${member.color}">${escapeXml(member.name)}</text>`,
-      pill('open', 54, C.faint, false, t.show(appear, { to: member.start, motion: 'fade' })),
-      pill('in progress', 96, C.amber, true, t.show(member.start, { to: member.done, motion: 'fade' })),
-      pill('done', 56, C.green, true, t.show(member.done, { motion: 'fade' })),
+      `<text x="${x + 16}" y="${y + 60}" class="mono small" fill="${C.lead}">${escapeXml(member.name)}</text>`,
+      ...spans(member, appear).map(pill),
       `</g>`,
     );
   });
