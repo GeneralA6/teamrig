@@ -1,0 +1,3 @@
+#!/bin/sh
+# The teamrig CLI. Claude Code adds this folder to the Bash tool PATH while the plugin is enabled.
+exec node "$(dirname "$0")/../dist/cli/main.js" "$@"

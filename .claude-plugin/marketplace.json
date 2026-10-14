@@ -1,0 +1,14 @@
+{
+  "name": "teamrig",
+  "description": "The teamrig plugin for coordinating teams of Claude Code sessions.",
+  "owner": {
+    "name": "GeneralA6"
+  },
+  "plugins": [
+    {
+      "name": "teamrig",
+      "source": "./plugins/teamrig",
+      "description": "Coordinate a team of Claude Code sessions: a task register, inboxes, always-loaded team rules, skill hygiene and safety hooks."
+    }
+  ]
+}
