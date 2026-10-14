@@ -19,7 +19,7 @@ export const NONE = 'none';
 type Mutable<T> = { -readonly [Key in keyof T]: T[Key] };
 
 /**
- * A session's id or current name, shape only; the command resolves it to the id against the roster.
+ * A session's id or any name it has had, shape only; the command resolves it to the id against the roster.
  * Every id also has a name's shape, so one pattern covers both.
  */
 export function sessionRef(flag: string, value: string): string {

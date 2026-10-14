@@ -20,6 +20,7 @@ export const TEAM_HOME = join(KIT, 'teams', 'app');
 export const CONFIG_PATH = join(TEAM_HOME, 'config.json');
 export const EVENTS_PATH = join(TEAM_HOME, 'state', 'events.jsonl');
 export const EVENTS_LOCK_PATH = join(TEAM_HOME, 'state', 'events.lock');
+export const RENAMES_PATH = join(TEAM_HOME, 'state', 'renames.jsonl');
 export const SKILLS_DIR = join(USER_HOME, '.claude', 'skills');
 /** The project folder the CLI runs in, tied to team `app` by its pointer. */
 export const APP = resolve('/', 'work', 'app');
@@ -104,4 +105,27 @@ export function decisionOf(result: CliResult): string | undefined {
   const output = parsed.hookSpecificOutput;
   assert.ok(typeof output === 'object' && output !== null && 'permissionDecision' in output);
   return String(output.permissionDecision);
+}
+
+/** The SessionStart hook's context, from its one output line. */
+export function contextOf(result: CliResult): string {
+  assert.equal(result.stdout.length, 1);
+  const parsed: unknown = JSON.parse(result.stdout[0] ?? '');
+  assert.ok(typeof parsed === 'object' && parsed !== null && 'hookSpecificOutput' in parsed);
+  const output = parsed.hookSpecificOutput;
+  assert.ok(typeof output === 'object' && output !== null && 'additionalContext' in output);
+  return String(output.additionalContext);
+}
+
+/** The team's rename log as `[id, from, to, by]` per record; empty when it does not exist. */
+export async function renameRecordsOf(kit: CliHarness): Promise<string[][]> {
+  const text = (await kit.files.read(RENAMES_PATH)) ?? '';
+  return text
+    .split('\n')
+    .filter((line) => line !== '')
+    .map((line) => {
+      const record: unknown = JSON.parse(line);
+      assert.ok(typeof record === 'object' && record !== null && 'id' in record && 'from' in record && 'to' in record && 'by' in record);
+      return [String(record.id), String(record.from), String(record.to), String(record.by)];
+    });
 }

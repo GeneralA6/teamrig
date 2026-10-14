@@ -23,7 +23,7 @@ export async function read(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   noPositionals(args);
   const caller = callerOf(args.flags, runtime.env);
   const kit = await openTeamKit(runtime);
-  const area = sessionIdOf(rosterOf(kit, requireConfig(kit, runtime, 'read')), caller);
+  const area = sessionIdOf(await rosterOf(runtime, kit, requireConfig(kit, runtime, 'read')), caller);
   const now = new Date(runtime.clock.now());
   const result = await readInbox(inboxDepsOf(runtime, kit.paths), { area, claudeSession: claudeSessionOf(runtime.env), now });
   result.unread.lines.forEach((line) => runtime.out.stdout(line));
@@ -37,7 +37,7 @@ export async function status(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   const only = args.flags.get('session');
   const ref = only === undefined ? undefined : sessionRef('--session', only);
   const kit = await openTeamKit(runtime);
-  const roster = rosterOf(kit, requireConfig(kit, runtime, 'read'));
+  const roster = await rosterOf(runtime, kit, requireConfig(kit, runtime, 'read'));
   const area = ref === undefined ? undefined : pastOrPresentIdOf(roster, ref);
   const unread = await inboxStatus(inboxDepsOf(runtime, kit.paths), area);
   if (unread.length === 0) {
@@ -55,7 +55,7 @@ export async function add(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
   const text = requiredFlag(args.flags, 'text');
   const kit = await openTeamKit(runtime);
   const config = requireConfig(kit, runtime, 'write');
-  const roster = rosterOf(kit, config);
+  const roster = await rosterOf(runtime, kit, config);
   const from = sessionIdOf(roster, caller);
   const to = sessionIdOf(roster, recipient);
   const { inboxes } = inboxDepsOf(runtime, kit.paths);

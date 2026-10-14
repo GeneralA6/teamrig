@@ -5,7 +5,7 @@ import type { ConfigFormat } from '../config/migrate.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { KIT_VERSION } from '../core/version.ts';
-import { APP, bash, CLAUDE_SESSION, CliHarness, CONFIG_PATH, decisionOf, EVENTS_PATH, KIT, POINTER, SKILLS_DIR, TEAM, type CliResult } from '../testing/cli-harness.ts';
+import { APP, bash, CLAUDE_SESSION, CliHarness, CONFIG_PATH, contextOf, decisionOf, EVENTS_PATH, KIT, POINTER, SKILLS_DIR, TEAM } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
 
 /** A release one config version ahead: version 2, reached from 1 by a step that changes only the version. */
@@ -381,15 +381,6 @@ describe('runCli: hook push-guard', () => {
 });
 
 describe('runCli: hook session-start', () => {
-  function contextOf(result: CliResult): string {
-    assert.equal(result.stdout.length, 1);
-    const parsed: unknown = JSON.parse(result.stdout[0] ?? '');
-    assert.ok(typeof parsed === 'object' && parsed !== null && 'hookSpecificOutput' in parsed);
-    const output = parsed.hookSpecificOutput;
-    assert.ok(typeof output === 'object' && output !== null && 'additionalContext' in output);
-    return String(output.additionalContext);
-  }
-
   it("loads the core rules, the session's identity and the team's rules", async () => {
     const kit = new CliHarness({ ...TEAM, names: { lead: 'team-lead' } });
     await kit.files.write(join(KIT, 'teams', 'app', 'rules.md'), 'Ship small.');
