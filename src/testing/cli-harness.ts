@@ -8,9 +8,9 @@ import type { Files } from '../core/files.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import type { Env } from '../core/home.ts';
 import type { CommitLog } from '../push-guard/commit-size.ts';
-import type { RepoState } from '../push-guard/push.ts';
 import { FakeClock } from './fake-clock.ts';
 import { MemoryFiles } from './memory-files.ts';
+import { quietWorld } from './quiet-world.ts';
 
 /** The user's home folder the CLI sees; the default skills folder lives under it. */
 export const USER_HOME = join('/', 'u');
@@ -67,10 +67,6 @@ export class CliHarness {
   async run(argv: readonly string[], options: RunOptions = {}): Promise<CliResult> {
     const stdout: string[] = [];
     const stderr: string[] = [];
-    const git = {
-      branch: () => options.branch ?? 'dev',
-      pushTarget: () => undefined,
-    } satisfies RepoState;
     const code = await runCli(argv, {
       env: { TEAMRIG_HOME: KIT, ...options.env },
       userHome: USER_HOME,
@@ -79,10 +75,9 @@ export class CliHarness {
       files: options.files ?? this.files,
       clock: this.clock,
       sleep: this.clock.sleep,
-      git,
-      commitLog: options.commitLog ?? { between: () => [] },
+      ...quietWorld(options.branch, options.stdin),
+      ...(options.commitLog === undefined ? {} : { commitLog: options.commitLog }),
       out: { stdout: (line) => stdout.push(line), stderr: (line) => stderr.push(line) },
-      readStdin: async () => options.stdin ?? '',
       ...(options.configFormat === undefined ? {} : { configFormat: options.configFormat }),
     });
     return { code, stdout, stderr };
