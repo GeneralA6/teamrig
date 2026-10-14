@@ -9,12 +9,22 @@ import {
   DEFAULT_MESSAGES,
   DEFAULT_OWNER_GATES,
   DEFAULT_PUSH_GUARD,
+  DEFAULT_REFRESH,
   DEFAULT_REGISTER,
   DEFAULT_SKILLS,
 } from './defaults.ts';
 import { CONFIG_LIMITS } from './limits.ts';
 import { ConfigReader, describe, isValidRegex, shortLine, type Check, type ConfigIssue } from './reader.ts';
-import { isCommitGate, type CommitsConfig, type KitConfig, type PathsConfig, type RegisterConfig, type SkillsConfig, type TierConfig } from './types.ts';
+import {
+  isCommitGate,
+  type CommitsConfig,
+  type KitConfig,
+  type PathsConfig,
+  type RefreshConfig,
+  type RegisterConfig,
+  type SkillsConfig,
+  type TierConfig,
+} from './types.ts';
 
 export interface ConfigParse {
   /** Always filled: invalid fields take their defaults so read-only commands keep working. */
@@ -142,6 +152,7 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
       persistentFailureHours: read.integer(alerts, 'persistentFailureHours', 'alerts', DEFAULT_ALERTS.persistentFailureHours, CONFIG_LIMITS.persistentFailureHours),
     },
     tabStatus: { enabled: read.boolean(tabStatus, 'enabled', 'tabStatus', false) },
+    refresh: parseRefresh(read, read.section(raw, 'refresh', '')),
     paths: parsePaths(read, read.section(raw, 'paths', '')),
   };
   return { config, issues: read.issues };
@@ -242,6 +253,21 @@ function parseCommits(read: ConfigReader, raw: JsonRecord): CommitsConfig {
       CONFIG_LIMITS.testPatterns.maxItems,
     ),
     gate: isCommitGate(gate) ? gate : defaults.gate,
+  };
+}
+
+/** From a 200k window's compaction point up to far past any window today. */
+const REFRESH_TOKENS = { min: 10_000, max: 10_000_000 } as const;
+
+function parseRefresh(read: ConfigReader, raw: JsonRecord): RefreshConfig {
+  const path = 'refresh';
+  const defaults = DEFAULT_REFRESH;
+  const handoverDir = read.optionalString(raw, 'handoverDir', path);
+  return {
+    enabled: read.boolean(raw, 'enabled', path, defaults.enabled),
+    contextTokens: read.integer(raw, 'contextTokens', path, defaults.contextTokens, REFRESH_TOKENS),
+    tabTitle: read.boolean(raw, 'tabTitle', path, defaults.tabTitle),
+    ...(handoverDir === undefined ? {} : { handoverDir }),
   };
 }
 

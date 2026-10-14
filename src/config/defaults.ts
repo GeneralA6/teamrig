@@ -4,6 +4,7 @@ import type {
   CommitsConfig,
   LockConfig,
   PushGuardConfig,
+  RefreshConfig,
   RegisterConfig,
   SkillsConfig,
 } from './types.ts';
@@ -61,3 +62,6 @@ export const DEFAULT_COMMITS: CommitsConfig = {
 export const DEFAULT_BUDGET: BudgetConfig = { enabled: false, targetPct: 99.5, reservePct: 0.5 };
 
 export const DEFAULT_ALERTS: AlertsConfig = { persistentFailureHours: 24 };
+
+/** 250k suits a 1M-token window; on a 200k window Claude Code compacts first, so a team there sets about 150k. */
+export const DEFAULT_REFRESH: RefreshConfig = { enabled: true, contextTokens: 250_000, tabTitle: true };

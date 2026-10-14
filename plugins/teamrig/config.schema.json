@@ -248,6 +248,22 @@
         "enabled": { "type": "boolean", "default": false }
       }
     },
+    "refresh": {
+      "description": "Context refresh: when a session finishes a task (teamrig set <id> --status done) with its context at or over contextTokens, or after the lead ran teamrig refresh <session>, it writes a handover and the user types /clear. A relative handoverDir is resolved against the team's folder; unset, it is <team folder>/handover.",
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean", "default": true },
+        "contextTokens": {
+          "description": "The context size, in tokens, that asks for a refresh. 250000 suits a 1M-token window; on a 200k window Claude Code compacts first, so set about 150000.",
+          "type": "integer",
+          "minimum": 10000,
+          "maximum": 10000000,
+          "default": 250000
+        },
+        "tabTitle": { "description": "Mark the tab ↻ <name> once the handover is written and the session waits for /clear.", "type": "boolean", "default": true },
+        "handoverDir": { "type": "string", "minLength": 1 }
+      }
+    },
     "paths": {
       "description": "Folders moved from their defaults; a relative path is resolved against the team's folder (<kit home>/teams/<team>). Unset, state and inbox stay under the team's folder and skills is ~/.claude/skills.",
       "type": "object",

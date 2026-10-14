@@ -46,6 +46,8 @@ describe('teamPaths', () => {
     assert.equal(paths.renames, join(TEAM_HOME, 'state', 'renames.jsonl'));
     assert.equal(paths.renamesLock, join(TEAM_HOME, 'state', 'renames.lock'));
     assert.equal(paths.skills, join(USER_HOME, '.claude', 'skills'));
+    assert.equal(paths.refresh, join(TEAM_HOME, 'state', 'refresh'));
+    assert.equal(paths.handover, join(TEAM_HOME, 'handover'));
   });
 
   it('never shares a file between two teams', () => {
@@ -58,16 +60,19 @@ describe('teamPaths', () => {
   });
 
   it('applies overrides', () => {
-    const paths = teamPaths(KIT, 'app', USER_HOME, { state: '/data', inbox: '/notes', skills: '/skills' });
+    const paths = teamPaths(KIT, 'app', USER_HOME, { state: '/data', inbox: '/notes', skills: '/skills', handover: '/hand' });
     assert.equal(paths.events, join('/data', 'events.jsonl'));
     assert.equal(paths.inbox, '/notes');
     assert.equal(paths.skills, '/skills');
+    assert.equal(paths.refresh, join('/data', 'refresh'));
+    assert.equal(paths.handover, '/hand');
   });
 
   it("resolves relative overrides against the team's folder, not the working folder", () => {
-    const paths = teamPaths(KIT, 'app', USER_HOME, { state: 'data', inbox: join('notes', 'in'), skills: '../skills' });
+    const paths = teamPaths(KIT, 'app', USER_HOME, { state: 'data', inbox: join('notes', 'in'), skills: '../skills', handover: 'hand' });
     assert.equal(paths.events, join(TEAM_HOME, 'data', 'events.jsonl'));
     assert.equal(paths.inbox, join(TEAM_HOME, 'notes', 'in'));
     assert.equal(paths.skills, join(KIT, 'teams', 'skills'));
+    assert.equal(paths.handover, join(TEAM_HOME, 'hand'));
   });
 });

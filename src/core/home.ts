@@ -33,13 +33,15 @@ export function resolveKitHome(env: Env, userHome: string): string {
 }
 
 /**
- * Folders a team may move with `paths` in the config. A relative path is resolved against the team
- * home; unset, state and inbox stay under the team home and skills is the Claude Code skills folder.
+ * Folders a team may move in the config: `paths`, and `refresh.handoverDir` for the handover. A
+ * relative path is resolved against the team home; unset, state, inbox and handover stay under the
+ * team home and skills is the Claude Code skills folder.
  */
 export interface PathOverrides {
   readonly state?: string;
   readonly inbox?: string;
   readonly skills?: string;
+  readonly handover?: string;
 }
 
 export interface TeamPaths {
@@ -60,6 +62,10 @@ export interface TeamPaths {
   readonly renamesLock: string;
   /** The Claude Code skills folder the skills lint and `--skill` checks read. */
   readonly skills: string;
+  /** Each session's context-refresh state, one small file per session. */
+  readonly refresh: string;
+  /** The handover notes a session writes before a refresh, `<id>.md` each. */
+  readonly handover: string;
 }
 
 /** The team's folder. The id is checked here too, since it becomes part of a path. */
@@ -90,5 +96,7 @@ export function teamPaths(kitHome: string, team: string, userHome: string, overr
     renames: join(state, 'renames.jsonl'),
     renamesLock: join(state, 'renames.lock'),
     skills: inHome(overrides.skills) ?? join(userHome, '.claude', 'skills'),
+    refresh: join(state, 'refresh'),
+    handover: inHome(overrides.handover) ?? join(home, 'handover'),
   };
 }

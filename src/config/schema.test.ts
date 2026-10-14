@@ -16,6 +16,7 @@ const EVERY_KEY = {
   roles: { lead: 'alpha', coordinatorOwner: 'bravo' },
   register: { goalPattern: '^G\\d+$' },
   coordinator: { schedule: { heavyCutoffUtc: '22:30' } },
+  refresh: { handoverDir: 'notes' },
   paths: { state: '/s', inbox: '/i', skills: '/k' },
 };
 
