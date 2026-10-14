@@ -3,6 +3,11 @@ import { EVENT_VERSION } from "./events.js";
 import { foldEvents } from "./fold.js";
 import { NO_SKILL } from "./policy.js";
 import { isWritable } from "./store.js";
+/** The register as it stands, read without the lock, as every read is. */
+export async function readSnapshot(log) {
+    const read = await log.read();
+    return { state: foldEvents(read.events, read.seenIds), read };
+}
 /**
  * The register's write path: under the lock, read the log, replay it, apply the team policy,
  * append one event and return the task as it now stands. Reads take no lock.
@@ -12,19 +17,18 @@ export class Register {
     constructor(deps) {
         this.deps = deps;
     }
-    async snapshot() {
-        const read = await this.deps.log.read();
-        return { state: foldEvents(read.events, read.seenIds), read };
+    snapshot() {
+        return readSnapshot(this.deps.log);
     }
     add(caller, input) {
-        return this.commit(caller, (state) => {
-            const fields = this.deps.policy.add(input, state);
-            if (!fields.ok) {
-                return fields;
-            }
-            const event = { ...this.base(state.nextId, caller), type: 'create', task: fields.value };
-            return { ok: true, value: event };
-        });
+        return this.commit(caller, (state) => this.created(caller, state, this.deps.policy.add(input, state)));
+    }
+    /**
+     * A task from the parent team's lead, `parentLead` being its `<team>/<id>`. The tree's rules decide
+     * who that may be, so this team's roster check is skipped; the event names that lead as its writer.
+     */
+    addFromParent(parentLead, input) {
+        return this.write((state) => this.created(parentLead, state, this.deps.policy.addFromParent(input, state)));
     }
     async setStatus(caller, id, input) {
         const skill = input.skill?.trim();
@@ -48,15 +52,26 @@ export class Register {
             return { ok: true, value: event };
         }));
     }
+    created(by, state, fields) {
+        if (!fields.ok) {
+            return fields;
+        }
+        const event = { ...this.base(state.nextId, by), type: 'create', task: fields.value };
+        return { ok: true, value: event };
+    }
     base(id, by) {
         return { v: EVENT_VERSION, id, at: new Date(this.deps.clock.now()).toISOString(), by };
     }
-    /** Under the lock: refuse newer data, replay, decide on one event, append it, return the task after it. */
+    /** A write by a session of this team: refused unless the caller is on the roster. */
     async commit(caller, decide) {
         const callerProblem = this.deps.policy.checkCaller(caller);
         if (callerProblem !== undefined) {
             return { ok: false, error: callerProblem };
         }
+        return this.write(decide);
+    }
+    /** Under the lock: refuse newer data, replay, decide on one event, append it, return the task after it. */
+    write(decide) {
         return this.deps.mutex.run(async () => {
             const read = await this.deps.log.read();
             if (!isWritable(read)) {

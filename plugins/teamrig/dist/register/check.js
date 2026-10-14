@@ -53,8 +53,9 @@ export function checkTasks(tasks, now, week, config) {
     }
     return flags.sort((a, b) => FLAG_KINDS.indexOf(a.kind) - FLAG_KINDS.indexOf(b.kind));
 }
-export function formatFlag(flag) {
-    return `${flag.kind} (${flag.detail}) ${formatTask(flag.task)}`;
+/** One flag; with `team`, the task id reads `<team>/T12`. */
+export function formatFlag(flag, team) {
+    return `${flag.kind} (${flag.detail}) ${formatTask(flag.task, team)}`;
 }
 function minute(iso) {
     return shortUtc(formatUtcMinute(new Date(iso)));

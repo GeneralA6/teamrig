@@ -16,6 +16,7 @@ import { readContextTokens } from "../../refresh/usage.js";
 import { noPositionals } from "../args.js";
 import { openKit, renameDepsOf, rosterOf, teamFolders } from "../kit.js";
 import { EXIT } from "../runtime.js";
+import { loadTree } from "../tree.js";
 import { inboxDepsOf } from "./inbox.js";
 /**
  * Claude Code hooks. Each reads the hook's JSON from stdin and prints only what Claude Code
@@ -155,7 +156,8 @@ export async function inboxReminder(args, runtime) {
 /**
  * A loaded team's rules.md and rename log, after recording a Claude Code rename of the session, the
  * pointer to its handover after a refresh, and who the session is: `$TEAMRIG_SESSION`, else the area
- * it read its inbox as, so a tab that set the team up keeps its identity across a compact or resume.
+ * it read its inbox as, so a tab that set the team up keeps its identity across a compact or resume;
+ * and where the team sits in a tree of teams, read from every team config of the kit home.
  */
 async function teamPartsOf(runtime, kit, config, payload) {
     const titleNote = sessionStartNote(await titleOutcome(runtime, kit, config, payload));
@@ -164,6 +166,7 @@ async function teamPartsOf(runtime, kit, config, payload) {
     const refreshNote = await refreshNoteOf(runtime, kit, config, roster, payload);
     const text = await runtime.files.read(kit.paths.teamRules);
     const fromEnv = envSession(runtime);
+    const { tree } = await loadTree(runtime);
     return {
         teamRules: text === undefined ? undefined : { path: kit.paths.teamRules, text },
         renames,
@@ -171,6 +174,7 @@ async function teamPartsOf(runtime, kit, config, payload) {
         refreshNote,
         session: fromEnv ?? (await startSessionOf(runtime, kit, roster, payload)),
         sessionInEnv: fromEnv !== undefined,
+        tree: tree.placeOf(kit.paths.team),
     };
 }
 /**
@@ -291,7 +295,7 @@ export async function sessionStart(args, runtime) {
     const kit = await openKit(runtime, found.team);
     const parts = kit.load.status === 'loaded'
         ? await teamPartsOf(runtime, kit, kit.load.config, payload)
-        : { teamRules: undefined, renames: [], titleNote: undefined, refreshNote: undefined, session: undefined, sessionInEnv: false };
+        : { teamRules: undefined, renames: [], titleNote: undefined, refreshNote: undefined, session: undefined, sessionInEnv: false, tree: undefined };
     const context = sessionStartContext({ team: found.team, load: kit.load, ...parts, command: KIT_NAME });
     runtime.out.stdout(sessionStartOutput(context));
     return EXIT.ok;

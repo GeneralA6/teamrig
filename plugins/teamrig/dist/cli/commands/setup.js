@@ -4,6 +4,7 @@ import { ENV, KIT_NAME, resolveKitHome, teamPaths } from "../../core/home.js";
 import { applyTeamSetup, planTeamSetup, teamSpecOf } from "../../setup/team-create.js";
 import { onePositional, requiredFlag, UsageError } from "../args.js";
 import { EXIT, RefusedError } from "../runtime.js";
+import { loadTree } from "../tree.js";
 /** The session that leads a team created without `--lead`. */
 export const DEFAULT_LEAD = 'lead';
 /** The project a command sets up: `--project`, else the folder Claude Code started in, else the current folder. */
@@ -22,34 +23,40 @@ function stepLines(step, dryRun) {
     }
     return dryRun ? [`WOULD CREATE ${step.path}:`, ...step.text.trimEnd().split('\n')] : [`CREATED ${step.path}`];
 }
+/** What to do next: a root team's lead adds its first tasks; a sub-team's first tasks come from its parent's lead. */
+function nextLine(team, lead, parent) {
+    if (parent === undefined) {
+        return `Next: ${KIT_NAME} add --session ${lead} --owner <id> --tier <n> --title "<first task>" for each session, then ${KIT_NAME} open <id> for each.`;
+    }
+    return `Next: ${parent}'s lead runs ${KIT_NAME} add --team ${team} --tier <n> --title "<first task>", then ${KIT_NAME} open ${team}/<id> for each session.`;
+}
 function summaryLines(plan, dryRun) {
-    const { team, lead, sessions } = plan.spec;
+    const { team, lead, sessions, parent } = plan.spec;
     const workers = sessions.filter((id) => id !== lead);
     const lines = [...stepLines(plan.config, dryRun), ...stepLines(plan.pointer, dryRun)];
     if (dryRun) {
         return ['DRY RUN nothing is written', ...lines];
     }
-    return [
-        ...lines,
-        `Team ${team}: lead ${lead}, sessions ${workers.join(', ')}.`,
-        `Next: ${KIT_NAME} add --session ${lead} --owner <id> --tier <n> --title "<first task>" for each session, then ${KIT_NAME} open <id> for each.`,
-    ];
+    const under = parent === undefined ? '' : `, under team ${parent}`;
+    return [...lines, `Team ${team}${under}: lead ${lead}, sessions ${workers.join(', ')}.`, nextLine(team, lead, parent)];
 }
 /**
- * `team create <team> --sessions a,b [--lead <id>] [--project <dir>] [--dry-run]`: writes the team's
- * config in the kit home and the project's pointer to it. It refuses a different team of the same id
- * and a project tied to another team, and a repeat with the same team writes nothing.
+ * `team create <team> --sessions a,b [--lead <id>] [--parent <team>] [--project <dir>] [--dry-run]`:
+ * writes the team's config in the kit home and the project's pointer to it. It refuses a different
+ * team of the same id, a place in a tree its limits forbid, a session name another team uses, and a
+ * project tied to a team outside the new team's tree; a repeat with the same team writes nothing.
  */
 export async function teamCreate(args, runtime) {
     const team = onePositional(args, 'team');
-    const spec = teamSpecOf(team, requiredFlag(args.flags, 'sessions'), args.flags.get('lead') ?? DEFAULT_LEAD);
+    const spec = teamSpecOf(team, requiredFlag(args.flags, 'sessions'), args.flags.get('lead') ?? DEFAULT_LEAD, args.flags.get('parent'));
     if (!spec.ok) {
         throw new UsageError(spec.problem);
     }
     const project = await projectOf(runtime, args.flags.get('project'));
     const configPath = teamPaths(resolveKitHome(runtime.env, runtime.userHome), team, runtime.userHome).config;
     const format = runtime.configFormat ?? SHIPPED_CONFIG_FORMAT;
-    const planned = await planTeamSetup(runtime.files, format, spec.value, configPath, project);
+    const { tree } = await loadTree(runtime);
+    const planned = await planTeamSetup(runtime.files, format, spec.value, configPath, project, tree);
     if (!planned.ok) {
         throw new RefusedError(planned.problem);
     }

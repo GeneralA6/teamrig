@@ -6,6 +6,7 @@ import { noPositionals } from "../args.js";
 import { sessionRef } from "../inputs.js";
 import { findTeam, openKit, requireConfig, sessionIdOf } from "../kit.js";
 import { EXIT } from "../runtime.js";
+import { loadTree } from "../tree.js";
 /**
  * `rules [--session <id|name>]`: the team's rules and who the session is, the same text the
  * SessionStart hook gives. A tab that set the team up started with no team, so it loads them with
@@ -24,6 +25,7 @@ export async function rules(args, runtime) {
     const fromEnv = runtime.env[ENV.session]?.trim();
     const inEnv = flag === undefined && fromEnv !== undefined && fromEnv !== '';
     const text = await runtime.files.read(kit.paths.teamRules);
+    const { tree } = await loadTree(runtime);
     const context = sessionStartContext({
         team,
         load: kit.load,
@@ -33,6 +35,7 @@ export async function rules(args, runtime) {
         refreshNote: undefined,
         session: flag ?? (inEnv ? fromEnv : undefined),
         sessionInEnv: inEnv,
+        tree: tree.placeOf(team),
         command: KIT_NAME,
     });
     runtime.out.stdout(context);

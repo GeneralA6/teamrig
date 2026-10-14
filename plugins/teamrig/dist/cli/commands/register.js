@@ -1,3 +1,4 @@
+import { formatAddress } from "../../core/address.js";
 import { FileLock } from "../../core/lock.js";
 import { checkTasks, currentWeek, formatFlag } from "../../register/check.js";
 import { renderPlan } from "../../register/plan.js";
@@ -7,13 +8,14 @@ import { JsonlEventLog } from "../../register/store.js";
 import { formatTask, formatTaskDetail, selectTasks } from "../../register/views.js";
 import { formatSkillFlag, lintSkills } from "../../skills/lint.js";
 import { SkillDir } from "../../skills/store.js";
-import { noPositionals, onePositional } from "../args.js";
+import { noPositionals, onePositional, UsageError } from "../args.js";
 import { addInputOf, callerOf, changesOf, listFilterOf, statusInputOf, taskIdOf, weekOf } from "../inputs.js";
-import { openTeamKit, pastOrPresentIdOf, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
+import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
+import { rollUp } from "../roll-up.js";
 import { EXIT, RefusedError } from "../runtime.js";
+import { loadTree } from "../tree.js";
 import { markBoundary } from "./refresh.js";
-async function openTeam(runtime, access) {
-    const kit = await openTeamKit(runtime);
+async function teamOf(runtime, kit, access) {
     const config = requireConfig(kit, runtime, access);
     const { files, clock, sleep, pid } = runtime;
     const register = new Register({
@@ -24,6 +26,9 @@ async function openTeam(runtime, access) {
         skills: new SkillDir(files, kit.paths.skills),
     });
     return { config, paths: kit.paths, register, roster: await rosterOf(runtime, kit, config) };
+}
+async function openTeam(runtime, access) {
+    return teamOf(runtime, await openTeamKit(runtime), access);
 }
 /** The owner as an id; a source naming a session becomes its id, the owner's marker or a past session's id stays. */
 function addInputIds(team, input) {
@@ -40,11 +45,12 @@ function filterIds(roster, filter) {
         ...(filter.source === undefined ? {} : { source: pastOrPresentIdOf(roster, filter.source) }),
     };
 }
-function report(runtime, verdict, verb) {
+/** The written task's line; `team` names another team's register, so its id reads `<team>/T12`. */
+function report(runtime, verdict, verb, team) {
     if (!verdict.ok) {
         throw new RefusedError(verdict.error);
     }
-    runtime.out.stdout(`${verb} ${formatTask(verdict.value.task)}`);
+    runtime.out.stdout(`${verb} ${formatTask(verdict.value.task, team)}`);
     return EXIT.ok;
 }
 /** Damaged or newer lines never stop a read; they are named on stderr so someone fixes them. */
@@ -61,9 +67,42 @@ async function readTeam(runtime) {
     warnDamage(runtime, snapshot, team.paths.events);
     return { team, snapshot };
 }
+/**
+ * `add --team <child>`: a parent team's lead hands a child team a task. It lands in the child's
+ * register as an event by `<parent team>/<lead id>`, which is also its source, owned by the child's
+ * lead, who plans it in. Only the child's parent lead may; the parent's register is not touched.
+ */
+async function addToChild(args, runtime, caller, child) {
+    if (args.flags.has('owner') || args.flags.has('source')) {
+        throw new UsageError("--team gives the task to that team's lead, from you: it takes no --owner or --source");
+    }
+    const { team } = await findTeam(runtime);
+    const kit = await openKit(runtime, team);
+    const config = requireConfig(kit, runtime, 'read');
+    const from = { team, id: sessionIdOf(await rosterOf(runtime, kit, config), caller) };
+    const { tree } = await loadTree(runtime);
+    const childLead = tree.leadOf(child);
+    if (childLead === undefined) {
+        throw new RefusedError(`no team ${child} with a config in this kit home`);
+    }
+    const parentLead = tree.parentLeadOf(child);
+    if (parentLead === undefined) {
+        throw new RefusedError(`team ${child} has no parent team, so only its own sessions add its tasks`);
+    }
+    if (parentLead.team !== from.team || parentLead.id !== from.id) {
+        throw new RefusedError(`only ${child}'s parent lead (${formatAddress(parentLead)}) adds tasks to it; ${formatAddress(from)} may not`);
+    }
+    const target = await teamOf(runtime, await openKit(runtime, child), 'write');
+    const input = { ...addInputOf(args.flags, caller), owner: childLead, source: formatAddress(from) };
+    return report(runtime, await target.register.addFromParent(formatAddress(from), input), 'ADDED', child);
+}
 export async function add(args, runtime) {
     noPositionals(args);
     const caller = callerOf(args.flags, runtime.env);
+    const child = args.flags.get('team');
+    if (child !== undefined) {
+        return addToChild(args, runtime, caller, child);
+    }
     const input = addInputOf(args.flags, caller);
     const team = await openTeam(runtime, 'write');
     const by = sessionIdOf(team.roster, caller);
@@ -89,9 +128,43 @@ export async function update(args, runtime) {
     const by = sessionIdOf(roster, caller);
     return report(runtime, await register.update(by, id, changeIds(roster, changes), args.flags.get('note')), 'UPDATED');
 }
+/** A filter for one team of a roll-up: a source that names one of its sessions becomes its id. */
+function treeFilterOf(roster, filter) {
+    const found = filter.source === undefined ? undefined : roster.lookup(filter.source);
+    return found?.ok === true ? { ...filter, source: found.id } : filter;
+}
+/** The caller's own register, as a roll-up of one team. */
+async function ownRegister(runtime) {
+    const { team, snapshot } = await readTeam(runtime);
+    const own = { team: team.paths.team, config: team.config, paths: team.paths, roster: team.roster, snapshot };
+    return { own, teams: [own] };
+}
+/** The registers of `--tree`, each naming its damaged lines like a one-team read. */
+async function treeRegisters(args, runtime) {
+    const rolled = await rollUp(runtime, callerOf(args.flags, runtime.env));
+    rolled.teams.forEach(({ snapshot, paths }) => warnDamage(runtime, snapshot, paths.events));
+    return rolled;
+}
+/**
+ * `list --tree`: the lead's team and every team under it, ids read `<team>/T12`. The caller comes
+ * from `$TEAMRIG_SESSION`, as `--session` filters one owner of the caller's own team.
+ */
+async function listTree(args, runtime, filter) {
+    if (filter.owner !== undefined) {
+        throw new UsageError("--session filters one owner of this team's tasks; it does not go with --tree");
+    }
+    const { teams } = await treeRegisters(args, runtime);
+    for (const { team, roster, snapshot } of teams) {
+        selectTasks(snapshot.state.tasks.values(), treeFilterOf(roster, filter)).forEach((task) => runtime.out.stdout(formatTask(task, team)));
+    }
+    return EXIT.ok;
+}
 export async function list(args, runtime) {
     noPositionals(args);
     const filter = listFilterOf(args.flags);
+    if (args.switches.has('tree')) {
+        return listTree(args, runtime, filter);
+    }
     const { team, snapshot } = await readTeam(runtime);
     for (const task of selectTasks(snapshot.state.tasks.values(), filterIds(team.roster, filter))) {
         runtime.out.stdout(formatTask(task));
@@ -113,28 +186,43 @@ function weekFor(args, snapshot, now) {
     const week = args.flags.get('week');
     return week === undefined ? currentWeek(snapshot.state.tasks.values(), now) : weekOf(week);
 }
+/** The task flags of one register; with `team`, for `check --tree`, the heading and task ids name it. */
+function checkRegister(runtime, snapshot, config, now, week, team) {
+    const flags = checkTasks(snapshot.state.tasks.values(), now, week, config.register);
+    const scope = week === null ? 'no week plan tagged yet, so the week checks are skipped' : `week ${week}`;
+    runtime.out.stdout(`CHECK${team === undefined ? '' : ` ${team}:`} ${flags.length} flag(s), ${scope}`);
+    flags.forEach((flag) => runtime.out.stdout(formatFlag(flag, team)));
+}
+/**
+ * `check [--tree]`: the task flags, then the skill flags of the Claude Code skills folder. With
+ * `--tree`, the task flags of the lead's team and each team under it, against the lead's week; the
+ * skills are the lead's team's only, as teams on one machine share that folder.
+ */
 export async function check(args, runtime) {
     noPositionals(args);
-    const { team, snapshot } = await readTeam(runtime);
     const now = new Date(runtime.clock.now());
-    const week = weekFor(args, snapshot, now);
-    const flags = checkTasks(snapshot.state.tasks.values(), now, week, team.config.register);
-    const scope = week === null ? 'no week plan tagged yet, so the week checks are skipped' : `week ${week}`;
-    runtime.out.stdout(`CHECK ${flags.length} flag(s), ${scope}`);
-    flags.forEach((flag) => runtime.out.stdout(formatFlag(flag)));
-    const skills = lintSkills(await new SkillDir(runtime.files, team.paths.skills).readAll(), now, team.config);
-    runtime.out.stdout(`SKILLS ${skills.length} flag(s) in ${team.paths.skills}`);
+    const tree = args.switches.has('tree');
+    const { own, teams } = tree ? await treeRegisters(args, runtime) : await ownRegister(runtime);
+    const week = weekFor(args, own.snapshot, now);
+    for (const rolled of teams) {
+        checkRegister(runtime, rolled.snapshot, rolled.config, now, week, tree ? rolled.team : undefined);
+    }
+    const skills = lintSkills(await new SkillDir(runtime.files, own.paths.skills).readAll(), now, own.config);
+    runtime.out.stdout(`SKILLS ${skills.length} flag(s) in ${own.paths.skills}`);
     skills.forEach((flag) => runtime.out.stdout(formatSkillFlag(flag)));
     return EXIT.ok;
 }
+/** `plan [--tree]`: with `--tree`, one section per team, the lead's team first, for the lead's week. */
 export async function plan(args, runtime) {
     noPositionals(args);
-    const { team, snapshot } = await readTeam(runtime);
     const now = new Date(runtime.clock.now());
-    const week = weekFor(args, snapshot, now);
+    const tree = args.switches.has('tree');
+    const { own, teams } = tree ? await treeRegisters(args, runtime) : await ownRegister(runtime);
+    const week = weekFor(args, own.snapshot, now);
     if (week === null) {
         throw new RefusedError('no week plan tagged yet; pass --week <YYYY-MM-DD>');
     }
-    runtime.out.stdout(renderPlan(snapshot.state.tasks.values(), week, now, team.config.register));
+    const sections = teams.map((rolled) => renderPlan(rolled.snapshot.state.tasks.values(), week, now, rolled.config.register, tree ? rolled.team : undefined));
+    runtime.out.stdout(sections.join('\n\n'));
     return EXIT.ok;
 }

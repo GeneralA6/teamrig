@@ -1,7 +1,10 @@
 import { join } from 'node:path';
 import { formatConfig, loadConfig } from "../config/load.js";
 import { parseConfig } from "../config/parse.js";
+import { Roster } from "../config/roster.js";
+import { describeTreeProblem, teamNodeOf } from "../config/tree.js";
 import { CONFIG_VERSION } from "../config/types.js";
+import { KIT_NAME } from "../core/home.js";
 import { ID_PATTERN, ID_RULE } from "../core/ids.js";
 import { resolveTeam, TEAM_POINTER } from "../core/team.js";
 function ok(value) {
@@ -10,10 +13,16 @@ function ok(value) {
 function fail(problem) {
     return { ok: false, problem };
 }
-/** The team from the command line: ids only, no session twice, and at least one session besides the lead. */
-export function teamSpecOf(team, sessionList, lead) {
+/** The team from the command line: ids only, no session twice, at least one session besides the lead, and not its own parent. */
+export function teamSpecOf(team, sessionList, lead, parent) {
     if (!ID_PATTERN.test(team)) {
         return fail(`team "${team}" is not an id (${ID_RULE})`);
+    }
+    if (parent !== undefined && !ID_PATTERN.test(parent)) {
+        return fail(`--parent "${parent}" is not a team id (${ID_RULE})`);
+    }
+    if (parent === team) {
+        return fail(`--parent ${parent} is the team itself; a root team has no --parent`);
     }
     if (!ID_PATTERN.test(lead)) {
         return fail(`--lead "${lead}" is not a session id (${ID_RULE})`);
@@ -32,19 +41,28 @@ export function teamSpecOf(team, sessionList, lead) {
     if (workers.length === 0) {
         return fail('--sessions needs at least one session besides the lead');
     }
-    return ok({ team, lead, sessions: [lead, ...workers] });
+    return ok({ team, lead, sessions: [lead, ...workers], parent });
 }
-/** The smallest config that runs a team: every other setting takes its default. */
+/** The smallest config that runs a team, with its place in a tree: every other setting takes its default. */
 export function configRecordOf(spec) {
-    const record = { configVersion: CONFIG_VERSION, sessions: [...spec.sessions], roles: { lead: spec.lead } };
+    const team = spec.parent === undefined ? { id: spec.team } : { id: spec.team, parent: spec.parent };
+    const record = { configVersion: CONFIG_VERSION, team, sessions: [...spec.sessions], roles: { lead: spec.lead } };
     const [issue] = parseConfig(record).issues;
     if (issue !== undefined) {
         throw new Error(`the new team config breaks its own schema at ${issue.path}: ${issue.message}`);
     }
     return record;
 }
-function sameTeam(spec, sessions, lead) {
-    return lead === spec.lead && sessions.length === spec.sessions.length && spec.sessions.every((id) => sessions.includes(id));
+/** The new team as the tree will see it, its sessions under their default names. */
+export function teamNodeOfSpec(spec) {
+    const { config } = parseConfig(configRecordOf(spec));
+    return teamNodeOf(spec.team, config, new Roster(config, spec.team));
+}
+function sameTeam(spec, sessions, lead, parent) {
+    return lead === spec.lead && parent === spec.parent && sessions.length === spec.sessions.length && spec.sessions.every((id) => sessions.includes(id));
+}
+function parentText(parent) {
+    return parent === undefined ? 'no parent' : `parent ${parent}`;
 }
 async function configStep(files, format, spec, path) {
     const load = await loadConfig(files, path, format.migrations, format.version);
@@ -56,14 +74,46 @@ async function configStep(files, format, spec, path) {
         case 'loaded':
             break;
     }
-    const { sessions, roles } = load.config;
-    if (sameTeam(spec, sessions, roles.lead)) {
+    const { sessions, roles, team } = load.config;
+    if (sameTeam(spec, sessions, roles.lead, team?.parent)) {
         return ok({ kind: 'keep', path, why: `team ${spec.team} already has these sessions` });
     }
-    return fail(`team ${spec.team} already exists at ${path} with sessions ${sessions.join(', ')} (lead ${roles.lead}); choose another team name, or change that config by hand`);
+    return fail(`team ${spec.team} already exists at ${path} with sessions ${sessions.join(', ')} (lead ${roles.lead}, ${parentText(team?.parent)}); choose another team name, or change that config by hand`);
 }
-/** A project tied to no team gets a pointer; one tied to this team, here or by a parent folder, keeps it. */
-async function pointerStep(files, team, project) {
+function problemKey(problem) {
+    return JSON.stringify(problem);
+}
+/**
+ * Whether the new team can join the tree: its parent has a config, and adding it breaks no tree rule
+ * (depth, child teams, a loop) that was not already broken, nor gives a session a name another team uses.
+ */
+function treeStep(tree, spec) {
+    const node = teamNodeOfSpec(spec);
+    if (spec.parent !== undefined && tree.node(spec.parent) === undefined) {
+        return fail(`parent team ${spec.parent} has no config; create it first with ${KIT_NAME} team create ${spec.parent} --sessions <id,id>`);
+    }
+    const joined = tree.with(node);
+    const before = new Set(tree.problems().map(problemKey));
+    const added = joined.problems().find((problem) => !before.has(problemKey(problem)));
+    if (added !== undefined) {
+        return fail(`team ${spec.team} cannot join that tree: ${describeTreeProblem(added, KIT_NAME)}`);
+    }
+    const clash = joined.nameClashes().find((found) => found.holders.some((holder) => holder.team === spec.team));
+    if (clash !== undefined) {
+        const others = clash.holders
+            .filter((holder) => holder.team !== spec.team)
+            .map((holder) => `${holder.team}/${holder.id}`)
+            .join(', ');
+        return fail(`the session name ${clash.name} is already used by ${others}, and Claude Code session names are machine-wide; choose another team id, or rename ${others} with ${KIT_NAME} rename`);
+    }
+    return ok(node);
+}
+/**
+ * A project tied to no team gets a pointer; one tied to this team, here or by a parent folder, keeps
+ * it, and so does one tied to another team of the same tree: a sub-team's sessions are opened as
+ * `<team>/<id>`, and their team comes from `$TEAMRIG_TEAM`, which `open` sets.
+ */
+async function pointerStep(files, team, project, tree) {
     // `$TEAMRIG_TEAM` says which team a command runs for, never which team a folder belongs to.
     const found = await resolveTeam(files, {}, [project]);
     switch (found.kind) {
@@ -72,18 +122,31 @@ async function pointerStep(files, team, project) {
         case 'broken':
             return fail(`${found.from} ${found.problem}; fix or remove it, then run this again`);
         case 'team':
-            return found.team === team
-                ? ok({ kind: 'keep', path: found.from, why: `the project is already tied to team ${team}` })
-                : fail(`${project} is already tied to team ${found.team} by ${found.from}; give another --project, or remove that pointer first`);
+            if (found.team === team) {
+                return ok({ kind: 'keep', path: found.from, why: `the project is already tied to team ${team}` });
+            }
+            if (tree.sameTree(found.team, team)) {
+                return ok({
+                    kind: 'keep',
+                    path: found.from,
+                    why: `the project stays tied to team ${found.team}, in the same tree as ${team}; open ${team}'s sessions with ${KIT_NAME} open ${team}/<id>`,
+                });
+            }
+            return fail(`${project} is already tied to team ${found.team} by ${found.from}; give another --project, or remove that pointer first`);
     }
 }
-/** Checks the config and the project's pointer; nothing is written. */
-export async function planTeamSetup(files, format, spec, configPath, project) {
+/** Checks the config, the team's place in the tree of every team in the kit home, and the project's pointer; nothing is written. */
+export async function planTeamSetup(files, format, spec, configPath, project, tree) {
     const config = await configStep(files, format, spec, configPath);
     if (!config.ok) {
         return config;
     }
-    const pointer = await pointerStep(files, spec.team, project);
+    // A kept config is in the tree already as it is; only a new one can break the tree.
+    const placed = config.value.kind === 'create' ? treeStep(tree, spec) : ok(teamNodeOfSpec(spec));
+    if (!placed.ok) {
+        return placed;
+    }
+    const pointer = await pointerStep(files, spec.team, project, tree.with(placed.value));
     if (!pointer.ok) {
         return pointer;
     }

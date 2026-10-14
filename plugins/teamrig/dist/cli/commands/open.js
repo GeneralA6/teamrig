@@ -1,5 +1,6 @@
 import { dirname, resolve } from 'node:path';
 import { isTerminalChoice, TERMINALS } from "../../config/types.js";
+import { splitAddress } from "../../core/address.js";
 import { ENV } from "../../core/home.js";
 import { ID_PATTERN, ID_RULE } from "../../core/ids.js";
 import { ENV_SOURCE } from "../../core/team.js";
@@ -11,6 +12,7 @@ import { sessionEnv } from "../../open/session-env.js";
 import { onePositional, requiredFlag, UsageError } from "../args.js";
 import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
+import { loadTree } from "../tree.js";
 import { projectOf } from "./setup.js";
 /** The terminal names a person reads, for the OPENED line. */
 const TERMINAL_LABELS = {
@@ -47,15 +49,31 @@ function projectFlagOf(flag, from) {
  * absolute paths, since the plugin's bin folder is on PATH only inside Claude Code. When no terminal
  * opens it prints the command to run instead and exits 3.
  */
+/**
+ * The team a session to open is on: the project's own team, or, for `<team>/<id>`, another team of
+ * the same tree, whose sessions share the project folder and get their team from `$TEAMRIG_TEAM`.
+ */
+async function openTeamOf(runtime, own, named) {
+    if (named === undefined || named === own) {
+        return own;
+    }
+    const { tree } = await loadTree(runtime);
+    if (tree.node(named) === undefined || !tree.sameTree(own, named)) {
+        throw new RefusedError(`team ${named} is not in the tree of team ${own}; open its sessions from its own project folder`);
+    }
+    return named;
+}
 export async function open(args, runtime) {
     const target = onePositional(args, 'id|name');
+    const address = splitAddress(target);
     const found = await findTeam(runtime);
-    const kit = await openKit(runtime, found.team);
+    const team = await openTeamOf(runtime, found.team, address?.team);
+    const kit = await openKit(runtime, team);
     const config = requireConfig(kit, runtime, 'read');
     const roster = await rosterOf(runtime, kit, config);
-    const id = sessionIdOf(roster, target);
+    const id = sessionIdOf(roster, address?.session ?? target);
     const terminal = terminalOf(args.flags.get('terminal'), config.open.terminal);
-    const prompt = checkedPrompt(args.flags.get('prompt') ?? defaultPrompt(found.team, id));
+    const prompt = checkedPrompt(args.flags.get('prompt') ?? defaultPrompt(team, id));
     const project = await projectOf(runtime, projectFlagOf(args.flags.get('project'), found.from));
     const customHome = runtime.env[ENV.home]?.trim();
     const argv = [
@@ -64,7 +82,7 @@ export async function open(args, runtime) {
         'launch',
         id,
         '--team',
-        found.team,
+        team,
         '--project',
         project,
         ...(customHome === undefined || customHome === '' ? [] : ['--home', resolve(runtime.cwd, customHome)]),
