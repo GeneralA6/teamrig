@@ -2,12 +2,22 @@ import type { ConfigFormat } from '../config/migrate.ts';
 import type { Files } from '../core/files.ts';
 import type { Env } from '../core/home.ts';
 import type { Clock, Sleep } from '../core/lock.ts';
+import type { PathProbe } from '../core/path-probe.ts';
+import type { Processes } from '../open/processes.ts';
 import type { CommitLog } from '../push-guard/commit-size.ts';
 import type { RepoState } from '../push-guard/push.ts';
 
 export interface Output {
   stdout(line: string): void;
   stderr(line: string): void;
+}
+
+/** Where this CLI runs from, so `teamrig open` can start it again in a new tab, where the plugin's bin folder is not on PATH. */
+export interface SelfLocation {
+  /** The Node.js program running this CLI. */
+  readonly node: string;
+  /** This CLI's entry script. */
+  readonly script: string;
 }
 
 /** Everything the CLI takes from the process, as one port so every command runs in tests. */
@@ -23,14 +33,23 @@ export interface CliRuntime {
   /** The commits of a range, for the small-commits rule. */
   readonly commitLog: CommitLog;
   readonly out: Output;
+  readonly platform: NodeJS.Platform;
+  /** Terminal launchers and Claude Code, for `teamrig open` and `teamrig launch`. */
+  readonly processes: Processes;
+  /** Whether a folder or a program is there. */
+  readonly probe: PathProbe;
+  readonly self: SelfLocation;
   /** The config format the run reads and migrates to; default the shipped one (tests give a newer release's). */
   readonly configFormat?: ConfigFormat;
   /** All of stdin, for hooks, which Claude Code feeds one JSON object. */
   readStdin(): Promise<string>;
 }
 
-/** Exit codes: 0 done, 1 failed, 2 refused by a team rule, 64 a command line it cannot read. */
-export const EXIT = { ok: 0, failed: 1, refused: 2, usage: 64 } as const;
+/**
+ * Exit codes: 0 done, 1 failed, 2 refused by a team rule, 3 `teamrig open` found no terminal to open and
+ * printed the command to run instead, 64 a command line it cannot read.
+ */
+export const EXIT = { ok: 0, failed: 1, refused: 2, printed: 3, usage: 64 } as const;
 
 export type ExitCode = (typeof EXIT)[keyof typeof EXIT];
 
