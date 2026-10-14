@@ -54,6 +54,23 @@ describe('nodeFiles', () => {
     assert.deepEqual(await readdir(join(root, 'x')), ['held.lock']);
   });
 
+  it('throws what it cannot read or list, other than a missing path', async () => {
+    const folder = join(root, 'is-a-folder');
+    const file = join(root, 'is-a-file.txt');
+    await files.write(join(folder, 'inside.txt'), 'x');
+    await files.write(file, 'x');
+    await assert.rejects(files.read(folder));
+    await assert.rejects(files.list(file));
+  });
+
+  it('removes its temporary file and throws when the rename fails', async () => {
+    const quick = nodeFiles(() => Promise.resolve());
+    const taken = join(root, 'r', 'taken');
+    await files.write(join(taken, 'inside.txt'), 'x');
+    await assert.rejects(quick.write(taken, 'text'));
+    assert.deepEqual(await readdir(join(root, 'r')), ['taken']);
+  });
+
   it('removes a file and ignores a missing one', async () => {
     const path = join(root, 'gone.txt');
     await files.write(path, 'x');
