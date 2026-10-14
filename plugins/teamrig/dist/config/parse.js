@@ -1,13 +1,16 @@
 import { NAME_PATTERN, NAME_RULE } from "../core/ids.js";
 import { isTaskStatus, SESSION_NAME } from "../register/model.js";
-import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_LOCK, DEFAULT_MESSAGES, DEFAULT_OWNER_GATES, DEFAULT_PUSH_GUARD, DEFAULT_REGISTER, DEFAULT_SKILLS, } from "./defaults.js";
+import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_COMMITS, DEFAULT_LOCK, DEFAULT_MESSAGES, DEFAULT_OWNER_GATES, DEFAULT_PUSH_GUARD, DEFAULT_REGISTER, DEFAULT_SKILLS, } from "./defaults.js";
 import { CONFIG_LIMITS } from "./limits.js";
 import { ConfigReader, describe, isValidRegex, shortLine } from "./reader.js";
+import { isCommitGate } from "./types.js";
 const isSessionName = (name) => SESSION_NAME.test(name) ? undefined : 'expected a lowercase name: a letter, then letters, digits or -, at most 32';
 const isUtcTime = (time) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(time) ? undefined : 'expected a UTC time as HH:MM');
 const BRANCH_NAME = (name) => (/^[^\s~^:?*[\\]+$/.test(name) ? undefined : 'not a valid branch name');
 /** The key shape the skills lint recognises in frontmatter. */
 const isFrontmatterKey = (key) => (/^[A-Za-z0-9_-]+$/.test(key) ? undefined : 'expected a frontmatter key: letters, digits, _ or -');
+/** A git trailer key, such as `Large-commit`. */
+const isTrailerKey = (key) => /^[A-Za-z][A-Za-z0-9-]{0,39}$/.test(key) ? undefined : 'expected a trailer key: a letter, then at most 39 letters, digits or -';
 const isDisplayName = (name) => (NAME_PATTERN.test(name) ? undefined : `expected a name: ${NAME_RULE}`);
 /**
  * `names`: only sessions on the team, and each name unique and never another session's id, so a
@@ -83,6 +86,7 @@ export function parseConfig(raw) {
         pushGuard: {
             protectedBranches: read.stringList(pushGuard, 'protectedBranches', 'pushGuard', DEFAULT_PUSH_GUARD.protectedBranches, shortLine(CONFIG_LIMITS.protectedBranches.maxLength, BRANCH_NAME), CONFIG_LIMITS.protectedBranches.maxItems),
         },
+        commits: parseCommits(read, read.section(raw, 'commits', '')),
         coordinator: {
             schedule: heavyCutoffUtc === undefined ? {} : { heavyCutoffUtc },
             budget: {
@@ -157,6 +161,18 @@ function parseSkills(read, raw) {
         maxPerArea: read.integer(raw, 'maxPerArea', path, defaults.maxPerArea, CONFIG_LIMITS.maxPerArea),
         maxVerifiedAgeDays: read.integer(raw, 'maxVerifiedAgeDays', path, defaults.maxVerifiedAgeDays, CONFIG_LIMITS.maxVerifiedAgeDays),
         forbidFrontmatter: read.stringList(raw, 'forbidFrontmatter', path, defaults.forbidFrontmatter, shortLine(CONFIG_LIMITS.forbidFrontmatter.maxLength, isFrontmatterKey), CONFIG_LIMITS.forbidFrontmatter.maxItems),
+    };
+}
+function parseCommits(read, raw) {
+    const path = 'commits';
+    const defaults = DEFAULT_COMMITS;
+    const gate = read.string(raw, 'gate', path, defaults.gate, (value) => (isCommitGate(value) ? undefined : 'expected off, warn or refuse'));
+    return {
+        maxLines: read.integer(raw, 'maxLines', path, defaults.maxLines, CONFIG_LIMITS.commitMaxLines),
+        maxFiles: read.integer(raw, 'maxFiles', path, defaults.maxFiles, CONFIG_LIMITS.commitMaxFiles),
+        largeCommitTrailer: read.string(raw, 'largeCommitTrailer', path, defaults.largeCommitTrailer, isTrailerKey),
+        testPatterns: read.stringList(raw, 'testPatterns', path, defaults.testPatterns, shortLine(CONFIG_LIMITS.testPatterns.maxLength, isValidRegex), CONFIG_LIMITS.testPatterns.maxItems),
+        gate: isCommitGate(gate) ? gate : defaults.gate,
     };
 }
 function parsePaths(read, raw) {

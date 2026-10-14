@@ -9,6 +9,7 @@ const inboxCommands = () => import("./commands/inbox.js");
 const configCommands = () => import("./commands/config.js");
 const hookCommands = () => import("./commands/hook.js");
 const teamCommands = () => import("./commands/team.js");
+const commitsCommands = () => import("./commands/commits.js");
 const TASK_FIELDS = ['title', 'owner', 'ref', 'tier', 'due', 'goals', 'week'];
 const COMMANDS = {
     add: { flags: ['session', 'source', ...TASK_FIELDS], load: async () => (await registerCommands()).add },
@@ -28,6 +29,7 @@ const COMMANDS = {
     who: { flags: [], load: async () => (await teamCommands()).who },
     'config validate': { flags: [], load: async () => (await configCommands()).validate },
     'config migrate': { flags: [], load: async () => (await configCommands()).migrate },
+    'commits check': { flags: ['base', 'tip'], load: async () => (await commitsCommands()).check },
     'hook push-guard': { flags: [], load: async () => (await hookCommands()).pushGuard },
     'hook inbox-reminder': { flags: [], load: async () => (await hookCommands()).inboxReminder },
     'hook session-start': { flags: [], load: async () => (await hookCommands()).sessionStart },
@@ -50,6 +52,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   inbox add --to <id|name> --text "<one line>"
   who [<id|name|role>]         the name to message a session by (no argument: every session)
   config validate | config migrate
+  commits check --base <ref> [--tip <ref>]   commits in base..tip (default HEAD) over the size rule
+      with no reason line; any is REFUSED, for an integrate script or CI
   hook push-guard | hook inbox-reminder | hook session-start   (run by Claude Code, hook JSON on stdin)
 Team: ${ENV.team}, else the nearest ${TEAM_POINTER} ({"team": "<id>"}) above the current folder.
 Sessions: give an id or a current name; a session not named in the config is <team>-<id>.

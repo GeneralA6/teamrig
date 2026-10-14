@@ -33,5 +33,13 @@ export const DEFAULT_SKILLS = {
 };
 export const DEFAULT_LOCK = { ttlMs: 30_000, pollMs: 50, waitMs: 20_000 };
 export const DEFAULT_PUSH_GUARD = { protectedBranches: ['main', 'master'] };
+/** Tests: a test folder, `*.test.*` and `*.spec.*` files, and pytest's `test_*.py`. `warn` only adds to a push the guard already asks about. */
+export const DEFAULT_COMMITS = {
+    maxLines: 400,
+    maxFiles: 15,
+    largeCommitTrailer: 'Large-commit',
+    testPatterns: ['(^|/)(tests?|__tests__|spec)/', '\\.(test|spec)\\.[^/]+$', '(^|/)test_[^/]+\\.py$'],
+    gate: 'warn',
+};
 export const DEFAULT_BUDGET = { enabled: false, targetPct: 99.5, reservePct: 0.5 };
 export const DEFAULT_ALERTS = { persistentFailureHours: 24 };

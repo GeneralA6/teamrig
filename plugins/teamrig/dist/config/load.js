@@ -34,7 +34,7 @@ export async function loadConfig(files, path, migrations = CONFIG_MIGRATIONS, ta
         }
         case 'migrated': {
             const { config, issues } = parseConfig(migration.config);
-            const pending = { fromVersion: migration.fromVersion, changes: migration.changes, migrated: migration.config };
+            const pending = { fromVersion: migration.fromVersion, toVersion: migration.version, changes: migration.changes, migrated: migration.config };
             return { status: 'loaded', path, config, issues, pending };
         }
     }

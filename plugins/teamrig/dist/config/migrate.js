@@ -1,6 +1,8 @@
 import { CONFIG_VERSION } from "./types.js";
 /** The shipped chain: empty until the format first changes (the first step will read version 1). */
 export const CONFIG_MIGRATIONS = [];
+/** This release's format. */
+export const SHIPPED_CONFIG_FORMAT = { version: CONFIG_VERSION, migrations: CONFIG_MIGRATIONS };
 /** A file without `configVersion` is the first format, so a minimal hand-written config works. */
 export const FIRST_CONFIG_VERSION = 1;
 export function migrateConfig(raw, target = CONFIG_VERSION, migrations = CONFIG_MIGRATIONS) {

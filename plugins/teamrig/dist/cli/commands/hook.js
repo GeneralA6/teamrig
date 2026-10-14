@@ -2,7 +2,7 @@ import { isRecord, stringField } from "../../core/guards.js";
 import { ENV, KIT_NAME } from "../../core/home.js";
 import { resolveTeam } from "../../core/team.js";
 import { reminderFor, sessionIdOf } from "../../inbox/inbox.js";
-import { protectedBranchesOf, pushGuardOutput } from "../../hooks/push-guard.js";
+import { commitsOf, protectedBranchesOf, pushGuardOutput } from "../../hooks/push-guard.js";
 import { sessionStartContext, sessionStartOutput } from "../../hooks/session-start.js";
 import { noPositionals } from "../args.js";
 import { openKit, teamFolders } from "../kit.js";
@@ -44,6 +44,8 @@ export async function pushGuard(args, runtime) {
         home: runtime.userHome,
         repo: runtime.git,
         protectedBranches: protectedBranchesOf(load),
+        commits: commitsOf(load),
+        commitLog: runtime.commitLog,
     });
     if (output !== '') {
         runtime.out.stdout(output);
