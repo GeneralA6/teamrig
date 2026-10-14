@@ -36,6 +36,11 @@ describe('lintSkills', () => {
     ]);
   });
 
+  it('reads an owner line that ends like a sentence, and keeps a dot inside a name', () => {
+    assert.deepEqual(lint(skill('alpha-a', { owner: 'alpha.' }), skill('alpha-b', { owner: 'alpha;' })), []);
+    assert.deepEqual(lint(skill('alpha-c', { owner: 'al.pha' })), ['SKILL OWNER (owner al.pha is not a session on the team) al.pha alpha-c']);
+  });
+
   it('flags a skill never verified or verified too long ago', () => {
     assert.deepEqual(lint(skill('alpha-a', { verified: null }), skill('alpha-b', { verified: '2030-01-29' }), skill('alpha-c', { verified: '2030-01-30' })), [
       'SKILL UNVERIFIED (no "Last verified: YYYY-MM-DD") alpha alpha-a',
