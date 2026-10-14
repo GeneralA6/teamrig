@@ -11,6 +11,45 @@ import { EXIT } from './runtime.ts';
 /** A release one config version ahead: version 2, reached from 1 by a step that changes only the version. */
 const NEXT_FORMAT: ConfigFormat = { version: 2, migrations: [{ from: 1, apply: (config) => ({ config, changes: ['added a flag'] }) }] };
 
+describe('runCli: commits check', () => {
+  const stat = (letter: string, lines: number, body = '') => ({
+    sha: letter.repeat(40),
+    subject: `Change ${letter}`,
+    body,
+    files: [{ path: 'src/a.ts', added: lines, deleted: 0 }],
+  });
+
+  it('passes a range within the rule, reading HEAD by default', async () => {
+    const kit = new CliHarness();
+    const ranges: string[] = [];
+    const commitLog = {
+      between: (dir: string, base: string, tip: string) => {
+        ranges.push(`${dir} ${base}..${tip}`);
+        return [stat('a', 10), stat('b', 900, 'Large-commit: generated')];
+      },
+    };
+    const result = await kit.run(['commits', 'check', '--base', 'origin/main'], { commitLog });
+    assert.equal(result.code, EXIT.ok);
+    assert.deepEqual(result.stdout, ['OK 2 commit(s) in origin/main..HEAD, none over 400 non-test lines or 15 files without a reason']);
+    assert.deepEqual(ranges, [`${APP} origin/main..HEAD`]);
+  });
+
+  it("refuses a range with a large commit, by the team's bounds", async () => {
+    const kit = new CliHarness({ ...TEAM, commits: { maxLines: 100 } });
+    const result = await kit.run(['commits', 'check', '--base', 'main', '--tip', 'feature'], { commitLog: { between: () => [stat('c', 101)] } });
+    assert.equal(result.code, EXIT.refused);
+    assert.match(result.stdout.join('\n'), /^REFUSED 1 commit\(s\) go over 100 changed non-test lines .*ccccccc "Change c" \(101 line\(s\), 1 file\(s\)\)/);
+  });
+
+  it('fails when git cannot list the range, and needs --base', async () => {
+    const kit = new CliHarness();
+    const failed = await kit.run(['commits', 'check', '--base', 'nope'], { commitLog: { between: () => undefined } });
+    assert.equal(failed.code, EXIT.failed);
+    assert.match(failed.stderr.join('\n'), /git cannot list the commits in nope\.\.HEAD/);
+    assert.equal((await kit.run(['commits', 'check'])).code, EXIT.usage);
+  });
+});
+
 describe('runCli: help, version and usage errors', () => {
   it('prints the usage for help, and exits 64 with no command', async () => {
     const kit = new CliHarness();
