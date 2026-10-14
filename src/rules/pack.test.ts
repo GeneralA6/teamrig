@@ -63,6 +63,12 @@ describe('renderCorePack', () => {
     assert.doesNotMatch(pack('off'), /commits\.gate/);
   });
 
+  it('keeps every edit in a worktree, in every repo, and names the Git Bash form of the junction removal', () => {
+    const pack = renderCorePack(testConfig(), COMMAND);
+    assert.match(pack, /Edit in your own worktree and branch in every git repo, never a main checkout\./);
+    assert.match(pack, /\(`cmd \/c rmdir`; Git Bash `cmd \/\/c`\)/);
+  });
+
   it('fills values from the config and names their keys', () => {
     const pack = renderCorePack(testConfig({ messages: { maxLines: 7 }, ownerGates: ['money', 'deletes'] }), COMMAND);
     assert.match(pack, /^1\. Roles, by session id \(`teamrig who` gives the name to message each by\): lead is the lead/m);
