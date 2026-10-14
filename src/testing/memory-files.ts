@@ -7,13 +7,13 @@ export class MemoryFiles implements Files {
 
   constructor(initial: Readonly<Record<string, string>> = {}) {
     for (const [path, text] of Object.entries(initial)) {
-      this.contents.set(normalise(path), text);
+      this.contents.set(normalisePath(path), text);
     }
   }
 
   /** The current text of a file, for assertions. */
   get(path: string): string | undefined {
-    return this.contents.get(normalise(path));
+    return this.contents.get(normalisePath(path));
   }
 
   paths(): string[] {
@@ -25,16 +25,16 @@ export class MemoryFiles implements Files {
   }
 
   async append(path: string, text: string): Promise<void> {
-    const key = normalise(path);
+    const key = normalisePath(path);
     this.contents.set(key, (this.contents.get(key) ?? '') + text);
   }
 
   async write(path: string, text: string): Promise<void> {
-    this.contents.set(normalise(path), text);
+    this.contents.set(normalisePath(path), text);
   }
 
   async createExclusive(path: string, text: string): Promise<boolean> {
-    const key = normalise(path);
+    const key = normalisePath(path);
     if (this.contents.has(key)) {
       return false;
     }
@@ -43,7 +43,7 @@ export class MemoryFiles implements Files {
   }
 
   async list(dir: string): Promise<string[]> {
-    const prefix = `${normalise(dir).replace(/\/$/, '')}/`;
+    const prefix = `${normalisePath(dir).replace(/\/$/, '')}/`;
     const names = new Set<string>();
     for (const key of this.contents.keys()) {
       if (key.startsWith(prefix)) {
@@ -57,10 +57,11 @@ export class MemoryFiles implements Files {
   }
 
   async remove(path: string): Promise<void> {
-    this.contents.delete(normalise(path));
+    this.contents.delete(normalisePath(path));
   }
 }
 
-function normalise(path: string): string {
+/** A path compared the way `MemoryFiles` keys it: forward slashes, normalised. */
+export function normalisePath(path: string): string {
   return posix.normalize(path.replaceAll('\\', '/'));
 }
