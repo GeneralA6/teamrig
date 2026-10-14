@@ -112,11 +112,12 @@ describe('sessionStartContext', () => {
     assert.ok(
       text.endsWith(
         `${NAMES}\nTeam \`web\` is a sub-team of \`app\` in the tree under \`app\`: the user talks only to the root team's lead.` +
-          ' Take owner decisions and cross-team issues to your parent lead `app/lead` (name `app-lead`, inbox: `teamrig inbox add --to app/lead`), who carries them up.',
+          ' Take owner decisions and cross-team issues to your parent lead `app/lead` (name `app-lead`, inbox: `teamrig inbox add --to app/lead`), who carries them up.' +
+          ' Split each task it hands you among your sessions: `teamrig add --owner <id>` gives one its part, and `teamrig open <id>` starts it.',
       ),
     );
     const withChildren = context({ team: 'web', session: 'team-lead', tree: { root: 'app', parentLead, children: ['ui'] } });
-    assert.match(withChildren, /who carries them up\. Your sub-teams \(ui\) answer to you: /);
+    assert.match(withChildren, /`teamrig open <id>` starts it\. Your sub-teams \(ui\) answer to you: /);
   });
 
   it('keeps every other session of a tree inside its team, known or not', () => {

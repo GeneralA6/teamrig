@@ -122,7 +122,7 @@ describe('teamrig team create', () => {
         `CREATED ${web}`,
         `UNCHANGED ${POINTER}: the project stays tied to team app, in the same tree as web; open web's sessions with teamrig open web/<id>`,
         'Team web, under team app: lead lead, sessions front, back.',
-        "Next: app's lead runs teamrig add --team web --tier <n> --title \"<first task>\", then teamrig open web/<id> for each session.",
+        "Next: app's lead runs teamrig add --team web --tier <n> --title \"<first task>\", then teamrig open web/lead: web's lead hands its sessions their parts and opens them.",
       ],
       stderr: [],
     });
