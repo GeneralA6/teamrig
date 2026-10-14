@@ -1,0 +1,8 @@
+{
+  "$comment": "The coverage gate (tools/ci/coverage-cli.ts, run by `npm run coverage` and CI). Floors are percentages. An exception lowers one file's floors and needs a reason a reviewer accepted; never lower the total or per-file floors to pass a change.",
+  "total": { "lines": 97, "branches": 93, "functions": 96 },
+  "perFile": { "lines": 90, "branches": 80, "functions": 85 },
+  "testSupport": ["src/testing/", "tools/lib/fake-git.ts"],
+  "typeOnly": {},
+  "exceptions": {}
+}

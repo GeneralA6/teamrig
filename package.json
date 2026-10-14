@@ -15,6 +15,7 @@
     "verify": "npm run typecheck && npm test",
     "scrub": "node tools/scrub/cli.ts --tree",
     "setup": "node tools/setup/cli.ts",
+    "coverage": "node tools/ci/coverage-cli.ts",
     "check": "npm run verify && npm run build && node tools/ci/dist-fresh-cli.ts && node tools/ci/dist-smoke-cli.ts && npm run scrub"
   },
   "devDependencies": {
