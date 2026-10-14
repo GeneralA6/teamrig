@@ -107,6 +107,20 @@ export interface AlertsConfig {
   readonly persistentFailureHours: number;
 }
 
+/**
+ * Context refresh: when a session finishes a task (`set <id> --status done`) with its context at or over
+ * `contextTokens`, or after the lead asked for it, the session writes a handover and the user types /clear.
+ */
+export interface RefreshConfig {
+  readonly enabled: boolean;
+  /** The context size, in tokens, that asks for a refresh. Absolute, since a hook cannot see the window size. */
+  readonly contextTokens: number;
+  /** Mark the tab `↻ <name>` once the session's handover is written and it waits for /clear. */
+  readonly tabTitle: boolean;
+  /** The handover folder; a relative one is resolved against the team's folder. Unset: `<team folder>/handover`. */
+  readonly handoverDir?: string;
+}
+
 export interface PathsConfig {
   readonly state?: string;
   readonly inbox?: string;
@@ -138,5 +152,6 @@ export interface KitConfig {
   readonly coordinator: CoordinatorConfig;
   readonly alerts: AlertsConfig;
   readonly tabStatus: { readonly enabled: boolean };
+  readonly refresh: RefreshConfig;
   readonly paths: PathsConfig;
 }

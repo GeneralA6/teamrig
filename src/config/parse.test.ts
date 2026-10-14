@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_COMMITS, DEFAULT_REGISTER } from './defaults.ts';
+import { DEFAULT_COMMITS, DEFAULT_REFRESH, DEFAULT_REGISTER } from './defaults.ts';
 import { parseConfig } from './parse.ts';
 import type { ConfigIssue } from './reader.ts';
 
@@ -173,6 +173,17 @@ describe('parseConfig', () => {
     assert.deepEqual(config.register.requireNoteOn, DEFAULT_REGISTER.requireNoteOn);
     assert.deepEqual(config.skills.forbidFrontmatter, ['allowed-tools']);
     assert.deepEqual(config.pushGuard.protectedBranches, ['main', 'master']);
+  });
+
+  it('reads the refresh settings, defaulting each and refusing a bad threshold or folder', () => {
+    assert.deepEqual(parseConfig(ROSTER).config.refresh, DEFAULT_REFRESH);
+    const set = parseConfig({ ...ROSTER, refresh: { enabled: false, contextTokens: 150_000, tabTitle: false, handoverDir: 'notes' } });
+    assert.deepEqual(set.issues, []);
+    assert.deepEqual(set.config.refresh, { enabled: false, contextTokens: 150_000, tabTitle: false, handoverDir: 'notes' });
+    const bad = parseConfig({ ...ROSTER, refresh: { enabled: 'yes', contextTokens: 9_999, tabTitle: 1, handoverDir: ' ' } });
+    assert.deepEqual(paths(bad.issues).sort(), ['refresh.contextTokens', 'refresh.enabled', 'refresh.handoverDir', 'refresh.tabTitle']);
+    assert.deepEqual(bad.config.refresh, DEFAULT_REFRESH);
+    assert.deepEqual(paths(parseConfig({ ...ROSTER, refresh: { contextTokens: 10_000_001 } }).issues), ['refresh.contextTokens']);
   });
 
   it('ignores keys it does not know, including $schema', () => {
