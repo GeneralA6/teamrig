@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_COLUMNS, escapeXml, highlight, lineLength, renderTerminal, truncate, type Line, type TerminalScreen } from './terminal-svg.ts';
+import { DEFAULT_COLUMNS, highlight, lineLength, renderTerminal, truncate, type Line, type TerminalScreen } from './terminal-svg.ts';
 
 const plain = (text: string): Line => [{ text, tone: 'text' }];
 
@@ -71,12 +71,6 @@ describe('truncate', () => {
 
   it('leaves only the ellipsis at one column', () => {
     assert.deepEqual(truncate(line, 1), [{ text: '…', tone: 'dim' }]);
-  });
-});
-
-describe('escapeXml', () => {
-  it('escapes the five XML special characters', () => {
-    assert.equal(escapeXml(`a&b<c>d"e'f`), 'a&amp;b&lt;c&gt;d&quot;e&apos;f');
   });
 });
 

@@ -1,7 +1,8 @@
+import { escapeXml } from './svg.ts';
+
 /**
  * Draws terminal text as an SVG picture of a terminal window: a tab bar over one or more panes side by side.
- * The README's pictures are drawn from the real CLI's output (see images.ts), so they never show something the
- * CLI does not print.
+ * Its lines come from the real CLI's output (demo.ts), so a picture never shows something the CLI does not print.
  */
 
 export type Tone = 'text' | 'command' | 'dim' | 'prompt' | 'id' | 'priority' | 'good' | 'warn' | 'bad';
@@ -111,10 +112,6 @@ export function truncate(line: Line, columns: number): Line {
   }
   const last = kept.at(-1);
   return last === undefined ? [{ text: '…', tone: 'dim' }] : [...kept.slice(0, -1), { text: `${last.text}…`, tone: last.tone }];
-}
-
-export function escapeXml(text: string): string {
-  return text.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[char] ?? char);
 }
 
 /** One decimal at most, so the same picture always prints the same bytes. */
