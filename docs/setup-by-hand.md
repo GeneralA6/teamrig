@@ -11,7 +11,8 @@ Two small files, one minute.
 4. Start one Claude Code tab per session, telling each its name, for example `TEAMRIG_SESSION=web claude`
    (PowerShell: `$env:TEAMRIG_SESSION='web'; claude`).
 
-An `init` command that does steps 2 and 3 for you is planned (🗺).
+`teamrig team create <team> --sessions <id,id>` does steps 2 and 3 for you, and `teamrig open <session>` opens a tab
+for a session (step 4).
 
 ## Configuration
 
@@ -22,6 +23,7 @@ An `init` command that does steps 2 and 3 for you is planned (🗺).
 | The session | `--session <id or name>` on a command, else `$TEAMRIG_SESSION` | none |
 | Team members and roles | `<kit home>/teams/<team>/config.json` | none |
 | Context refresh | `refresh` in the team config: `enabled`, `contextTokens`, `tabTitle`, `handoverDir` | on, at 250,000 tokens, marks the tab, `<team>/handover/` |
+| Where `teamrig open` opens a tab | `open.terminal` in the team config: `auto` (tmux inside tmux, else the platform's terminal), `tmux`, `windows-terminal`, `macos-terminal`, `gnome-terminal`, `konsole`, `x-terminal-emulator`, or `print` (prints the command to run) | `auto` |
 
 `teamrig config validate` reports a broken config; `teamrig config migrate` moves an older one to the current
 format. The full command list is `teamrig help`, also in [Every command](commands.md).
