@@ -1,0 +1,65 @@
+import { join } from 'node:path';
+
+export const KIT_NAME = 'teamrig';
+
+/** Environment variables the kit reads; everything else comes from the config file. */
+export const ENV = {
+  /** Overrides the kit home folder. */
+  home: 'TEAMRIG_HOME',
+  /** The calling session's name when `--session` is not given. */
+  session: 'TEAMRIG_SESSION',
+  /** The plugin's `home` user option, as Claude Code passes it to hooks. */
+  pluginHomeOption: 'CLAUDE_PLUGIN_OPTION_HOME',
+} as const;
+
+export type Env = Readonly<Record<string, string | undefined>>;
+
+/**
+ * The kit home holds config, team rules and all state. It lives outside the plugin folders,
+ * which a plugin update replaces and an uninstall deletes, so a team's register survives both.
+ */
+export function resolveKitHome(env: Env, userHome: string): string {
+  const fromEnv = env[ENV.home]?.trim();
+  if (fromEnv) {
+    return fromEnv;
+  }
+  const fromPlugin = env[ENV.pluginHomeOption]?.trim();
+  return fromPlugin ? fromPlugin : join(userHome, `.${KIT_NAME}`);
+}
+
+/** Folders a team may move with `paths` in the config; anything unset stays under the kit home. */
+export interface PathOverrides {
+  readonly state?: string;
+  readonly inbox?: string;
+  readonly skills?: string;
+}
+
+export interface KitPaths {
+  readonly home: string;
+  readonly config: string;
+  readonly teamRules: string;
+  readonly backups: string;
+  readonly state: string;
+  readonly events: string;
+  readonly eventsLock: string;
+  readonly inbox: string;
+  readonly inboxMarks: string;
+  /** The Claude Code skills folder the skills lint and `--skill` checks read. */
+  readonly skills: string;
+}
+
+export function kitPaths(home: string, userHome: string, overrides: PathOverrides = {}): KitPaths {
+  const state = overrides.state ?? join(home, 'state');
+  return {
+    home,
+    config: join(home, 'config.json'),
+    teamRules: join(home, 'rules.md'),
+    backups: join(home, 'backups'),
+    state,
+    events: join(state, 'events.jsonl'),
+    eventsLock: join(state, 'events.lock'),
+    inbox: overrides.inbox ?? join(state, 'inbox'),
+    inboxMarks: join(state, 'inbox-marks.jsonl'),
+    skills: overrides.skills ?? join(userHome, '.claude', 'skills'),
+  };
+}
