@@ -3,6 +3,7 @@ import type { Files } from './files.ts';
 import { errorMessage, isRecord } from './guards.ts';
 import { ENV, type Env } from './home.ts';
 import { ID_PATTERN, ID_RULE } from './ids.ts';
+import { pathKey } from './paths.ts';
 
 /** The file that ties a project folder, and every folder below it, to a team: `{"team": "<id>"}`. */
 export const TEAM_POINTER = '.teamrig.json';
@@ -21,7 +22,7 @@ const ENV_SOURCE = `$${ENV.team}`;
 /**
  * `$TEAMRIG_TEAM` wins, so a session working in another team's repo keeps its own team. Otherwise
  * the nearest pointer file, walking up from each folder in order; a folder already walked from an
- * earlier start is not read twice.
+ * earlier start, in any spelling the platform treats as the same, is not read twice.
  */
 export async function resolveTeam(files: Files, env: Env, folders: readonly string[]): Promise<TeamResolution> {
   const fromEnv = env[ENV.team]?.trim();
@@ -30,8 +31,8 @@ export async function resolveTeam(files: Files, env: Env, folders: readonly stri
   }
   const walked = new Set<string>();
   for (const folder of folders) {
-    for (let dir = resolve(folder); !walked.has(dir); dir = dirname(dir)) {
-      walked.add(dir);
+    for (let dir = resolve(folder); !walked.has(pathKey(dir)); dir = dirname(dir)) {
+      walked.add(pathKey(dir));
       const found = await readPointer(files, join(dir, TEAM_POINTER));
       if (found !== undefined) {
         return found;

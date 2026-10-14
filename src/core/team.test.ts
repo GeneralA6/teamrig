@@ -1,7 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { join, resolve } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import { MemoryFiles } from '../testing/memory-files.ts';
+import { pathKey } from './paths.ts';
 import { resolveTeam, TEAM_POINTER } from './team.ts';
 
 const WORK = resolve('/work');
@@ -65,6 +66,12 @@ describe('resolveTeam', () => {
     await resolveTeam(files, {}, [DEEP, APP, join(WORK, 'site')]);
     assert.equal(new Set(files.reads).size, files.reads.length);
     assert.ok(files.reads.includes(pointer(resolve('/'))));
+  });
+
+  it('never reads one folder twice in two spellings the platform treats as the same', async () => {
+    const files = new WatchedFiles();
+    await resolveTeam(files, {}, [APP, APP.toUpperCase(), `${APP}${sep}`]);
+    assert.equal(new Set(files.reads.map((read) => pathKey(read))).size, files.reads.length);
   });
 
   it('reports a pointer it cannot use, with the path to fix', async () => {
