@@ -50,6 +50,7 @@ describe('loadConfig', () => {
     if (load.status === 'loaded') {
       assert.deepEqual(load.pending, {
         fromVersion: 1,
+        toVersion: 2,
         changes: ['v1→v2: added flag'],
         migrated: { ...ROSTER, configVersion: 2, flag: true },
       });
@@ -60,7 +61,7 @@ describe('loadConfig', () => {
 });
 
 describe('writeMigration', () => {
-  const pending = { fromVersion: 1, changes: ['added flag'], migrated: { ...ROSTER, configVersion: 2, flag: true } };
+  const pending = { fromVersion: 1, toVersion: 2, changes: ['added flag'], migrated: { ...ROSTER, configVersion: 2, flag: true } };
 
   it('backs up the original before writing the migrated config', async () => {
     const original = '{"configVersion": 1}\n';

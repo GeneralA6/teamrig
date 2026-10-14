@@ -1,4 +1,5 @@
 import { loadConfig, type ConfigLoad } from '../config/load.ts';
+import { SHIPPED_CONFIG_FORMAT } from '../config/migrate.ts';
 import type { ConfigIssue } from '../config/reader.ts';
 import { Roster } from '../config/roster.ts';
 import type { KitConfig } from '../config/types.ts';
@@ -43,7 +44,8 @@ export function pastOrPresentIdOf(roster: Roster, text: string): string {
 /** The team's folder under the kit home, its config and the paths the config moves. */
 export async function openKit(runtime: CliRuntime, team: string): Promise<Kit> {
   const kitHome = resolveKitHome(runtime.env, runtime.userHome);
-  const load = await loadConfig(runtime.files, teamPaths(kitHome, team, runtime.userHome).config);
+  const format = runtime.configFormat ?? SHIPPED_CONFIG_FORMAT;
+  const load = await loadConfig(runtime.files, teamPaths(kitHome, team, runtime.userHome).config, format.migrations, format.version);
   const overrides = load.status === 'loaded' ? load.config.paths : {};
   return { load, paths: teamPaths(kitHome, team, runtime.userHome, overrides) };
 }

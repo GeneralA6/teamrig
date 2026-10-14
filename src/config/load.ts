@@ -10,6 +10,8 @@ import { CONFIG_VERSION, type KitConfig } from './types.ts';
 
 export interface PendingMigration {
   readonly fromVersion: number;
+  /** The version `migrated` is in. */
+  readonly toVersion: number;
   readonly changes: readonly string[];
   /** The migrated object, unknown keys included, ready to be written by `config migrate`. */
   readonly migrated: JsonRecord;
@@ -65,7 +67,7 @@ export async function loadConfig(
     }
     case 'migrated': {
       const { config, issues } = parseConfig(migration.config);
-      const pending = { fromVersion: migration.fromVersion, changes: migration.changes, migrated: migration.config };
+      const pending = { fromVersion: migration.fromVersion, toVersion: migration.version, changes: migration.changes, migrated: migration.config };
       return { status: 'loaded', path, config, issues, pending };
     }
   }

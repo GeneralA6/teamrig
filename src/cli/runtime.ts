@@ -1,3 +1,4 @@
+import type { ConfigFormat } from '../config/migrate.ts';
 import type { Files } from '../core/files.ts';
 import type { Env } from '../core/home.ts';
 import type { Clock, Sleep } from '../core/lock.ts';
@@ -19,6 +20,8 @@ export interface CliRuntime {
   readonly sleep: Sleep;
   readonly git: RepoState;
   readonly out: Output;
+  /** The config format the run reads and migrates to; default the shipped one (tests give a newer release's). */
+  readonly configFormat?: ConfigFormat;
   /** All of stdin, for hooks, which Claude Code feeds one JSON object. */
   readStdin(): Promise<string>;
 }

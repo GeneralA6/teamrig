@@ -1,5 +1,4 @@
 import { writeMigration } from '../../config/load.ts';
-import { CONFIG_VERSION } from '../../config/types.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { issueText, openTeamKit, requireConfig } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
@@ -22,7 +21,7 @@ export async function validate(args: ParsedArgs, runtime: CliRuntime): Promise<E
     runtime.out.stdout(`NOTE config version ${load.newerVersion} is from a newer teamrig: only the fields this one knows are checked`);
   }
   if (load.pending !== undefined) {
-    runtime.out.stdout(`NOTE config version ${load.pending.fromVersion} is older than ${CONFIG_VERSION}; run: teamrig config migrate`);
+    runtime.out.stdout(`NOTE config version ${load.pending.fromVersion} is older than ${load.pending.toVersion}; run: teamrig config migrate`);
   }
   if (load.issues.length > 0) {
     runtime.out.stdout(`INVALID ${load.path}: ${load.issues.length} problem(s), each read as its default until fixed`);
@@ -47,7 +46,7 @@ export async function migrate(args: ParsedArgs, runtime: CliRuntime): Promise<Ex
     return EXIT.ok;
   }
   const backup = await writeMigration(runtime.files, load.path, kit.paths.backups, load.pending, runtime.clock);
-  runtime.out.stdout(`MIGRATED ${load.path} from version ${load.pending.fromVersion} to ${CONFIG_VERSION}; the old file is at ${backup}`);
+  runtime.out.stdout(`MIGRATED ${load.path} from version ${load.pending.fromVersion} to ${load.pending.toVersion}; the old file is at ${backup}`);
   load.pending.changes.forEach((change) => runtime.out.stdout(`  ${change}`));
   return EXIT.ok;
 }

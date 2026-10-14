@@ -17,6 +17,15 @@ export interface ConfigMigration {
 /** The shipped chain: empty until the format first changes (the first step will read version 1). */
 export const CONFIG_MIGRATIONS: readonly ConfigMigration[] = [];
 
+/** The config format a release reads and writes: its version and the migration chain that reaches it. */
+export interface ConfigFormat {
+  readonly version: number;
+  readonly migrations: readonly ConfigMigration[];
+}
+
+/** This release's format. */
+export const SHIPPED_CONFIG_FORMAT: ConfigFormat = { version: CONFIG_VERSION, migrations: CONFIG_MIGRATIONS };
+
 export type MigrationResult =
   | { readonly kind: 'current'; readonly config: JsonRecord; readonly version: number }
   | {
