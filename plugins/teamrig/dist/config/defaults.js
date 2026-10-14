@@ -9,7 +9,7 @@ export const DEFAULT_OWNER_GATES = [
 export const DEFAULT_MESSAGES = { maxLines: 10 };
 export const DEFAULT_REGISTER = {
     ownerSource: 'owner',
-    tiers: [
+    priorities: [
         { id: 1, name: 'keep the lights on' },
         { id: 2, name: 'correctness' },
         { id: 3, name: 'scale' },

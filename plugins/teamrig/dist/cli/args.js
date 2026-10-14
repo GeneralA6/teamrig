@@ -23,9 +23,9 @@ function commandOf(argv, commandFlags) {
 /**
  * Splits `<command> [words] [--name value] [--switch]...`. Only the command's own flags are
  * accepted, so a typo is refused instead of silently meaning nothing; every flag takes exactly one
- * value, except the command's switches, which take none.
+ * value, except the command's switches, which take none. A renamed flag is refused with its new name.
  */
-export function parseArgs(argv, commandFlags, commandSwitches = {}) {
+export function parseArgs(argv, commandFlags, commandSwitches = {}, renamedFlags = {}) {
     const { command, tail } = commandOf(argv, commandFlags);
     const allowed = commandFlags[command] ?? [];
     const switchable = commandSwitches[command] ?? [];
@@ -39,6 +39,10 @@ export function parseArgs(argv, commandFlags, commandSwitches = {}) {
             continue;
         }
         const name = token.slice(2);
+        const renamed = renamedFlags[name];
+        if (renamed !== undefined) {
+            throw new UsageError(`${token} was renamed: use --${renamed}`);
+        }
         if (switchable.includes(name)) {
             if (switches.has(name)) {
                 throw new UsageError(`${token} is given twice`);

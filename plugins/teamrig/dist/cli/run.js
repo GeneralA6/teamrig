@@ -15,13 +15,13 @@ const refreshCommands = () => import("./commands/refresh.js");
 const setupCommands = () => import("./commands/setup.js");
 const rulesCommands = () => import("./commands/rules.js");
 const openCommands = () => import("./commands/open.js");
-const TASK_FIELDS = ['title', 'owner', 'ref', 'tier', 'due', 'goals', 'week'];
+const TASK_FIELDS = ['title', 'owner', 'ref', 'priority', 'due', 'goals', 'week'];
 const COMMANDS = {
     add: { flags: ['session', 'source', 'team', ...TASK_FIELDS], load: async () => (await registerCommands()).add },
     set: { flags: ['session', 'status', 'note', 'evidence', 'skill'], load: async () => (await registerCommands()).set },
     update: { flags: ['session', 'note', ...TASK_FIELDS], load: async () => (await registerCommands()).update },
     list: {
-        flags: ['session', 'status', 'source', 'tier', 'due-before', 'week', 'goal'],
+        flags: ['session', 'status', 'source', 'priority', 'due-before', 'week', 'goal'],
         switches: ['tree'],
         load: async () => (await registerCommands()).list,
     },
@@ -51,6 +51,8 @@ const COMMANDS = {
 };
 const COMMAND_FLAGS = Object.fromEntries(Object.entries(COMMANDS).map(([name, spec]) => [name, spec.flags]));
 const COMMAND_SWITCHES = Object.fromEntries(Object.entries(COMMANDS).map(([name, spec]) => [name, spec.switches ?? []]));
+/** `--tier` became `--priority` (levels p1, p2, ...): refused everywhere with the new name, never an alias. */
+const RENAMED_FLAGS = { tier: 'priority' };
 export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|name>, else ${ENV.session})
   team create <team> --sessions <id,id> [--lead <id>] [--project <dir>] [--parent <team>] [--dry-run]
       writes the team config and ties the project folder to the team (the lead defaults to lead);
@@ -60,14 +62,14 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       a new terminal tab running Claude Code as that session (team/id: another team of the tree);
       with no terminal it prints the command
   rules [--session <id|name>]  the team rules and who the session is, as a session start gives them
-  add --title "<one line>" --tier <n> [--ref <where it was asked>] [--owner <session>]
+  add --title "<one line>" --priority p<n> [--ref <where it was asked>] [--owner <session>]
       [--source <session>|<owner source>] [--due <date>] [--goals a,b] [--week <date>]
-  add --team <child team> --title .. --tier <n> [...]   the parent lead hands that team's lead a task
+  add --team <child team> --title .. --priority p<n> [...]   the parent lead hands that team's lead a task
   set <id> --status open|in-progress|blocked|done|dropped [--note "<what/why>"] [--evidence <proof>]
       [--skill <name>|none]
-  update <id> [--title ..] [--owner ..] [--tier ..] [--ref ..|none] [--due <date>|none]
+  update <id> [--title ..] [--owner ..] [--priority ..] [--ref ..|none] [--due <date>|none]
       [--goals a,b|none] [--week <date>|none] [--note ..]
-  list [--session <owner>] [--status a,b|all] [--source <s>] [--tier 1,2] [--due-before <date>]
+  list [--session <owner>] [--status a,b|all] [--source <s>] [--priority p1,p2] [--due-before <date>]
       [--week <date>|none] [--goal <tag>] [--tree]
   show <id>
   check [--week <date>] [--tree]   tasks and skills that break a team rule
@@ -108,7 +110,7 @@ export async function runCli(argv, runtime) {
         return EXIT.ok;
     }
     try {
-        const args = parseArgs(argv, COMMAND_FLAGS, COMMAND_SWITCHES);
+        const args = parseArgs(argv, COMMAND_FLAGS, COMMAND_SWITCHES, RENAMED_FLAGS);
         const spec = COMMANDS[args.command];
         if (spec === undefined) {
             throw new UsageError(`unknown command "${args.command}"`);

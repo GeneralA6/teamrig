@@ -4,7 +4,7 @@ import { openTeamKit, requireConfig } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 /**
  * `commits check --base <ref> [--tip <ref>]`: the commits in base..tip (tip default HEAD) that go over
- * the team's size rule with no reason line. Any → REFUSED, exit 2, so an integrate script or CI can gate on it.
+ * the team's size rule with no reason line. Any one makes it REFUSED, exit 2, so an integrate script or CI can gate on it.
  */
 export async function check(args, runtime) {
     noPositionals(args);

@@ -7,5 +7,9 @@ export function isTaskStatus(value) {
 }
 /** Session and area names: the shared id rule, as they name inbox files and folders. */
 export const SESSION_NAME = ID_PATTERN;
+/** A priority as the CLI prints and takes it: `p1`, the most urgent, `p2` and so on. */
+export function priorityText(priority) {
+    return `p${priority}`;
+}
 /** Task ids are `T` and a positive integer, allocated in order by the register. */
 export const TASK_ID = /^T[1-9]\d*$/;

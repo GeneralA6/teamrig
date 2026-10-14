@@ -1,7 +1,8 @@
 import { formatUtcMinute, shortUtc } from "../core/time.js";
+import { priorityText } from "./model.js";
 import { byPlanOrder, taskLabel } from "./views.js";
 /**
- * The week plan as markdown: the tasks tagged with `week`, grouped by tier, then by due date. With
+ * The week plan as markdown: the tasks tagged with `week`, grouped by priority, then by due date. With
  * `team`, for a roll-up over a tree of teams, the heading names the team and ids read `<team>/T12`.
  */
 export function renderPlan(tasks, week, now, config, team) {
@@ -13,10 +14,10 @@ export function renderPlan(tasks, week, now, config, team) {
         '',
         `${inWeek.length} tasks: ${done} done, ${dropped} dropped, ${inWeek.length - done - dropped} to do. From the task register at ${formatUtcMinute(now)} UTC.`,
     ];
-    for (const tier of config.tiers) {
-        const rows = inWeek.filter((task) => task.tier === tier.id);
+    for (const priority of config.priorities) {
+        const rows = inWeek.filter((task) => task.priority === priority.id);
         if (rows.length > 0) {
-            lines.push('', `## Tier ${tier.id}: ${tier.name}`, '', ...rows.map((task) => planLine(task, config.ownerSource, team)));
+            lines.push('', `## ${priorityText(priority.id)}: ${priority.name}`, '', ...rows.map((task) => planLine(task, config.ownerSource, team)));
         }
     }
     return lines.join('\n');

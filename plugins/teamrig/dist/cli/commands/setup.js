@@ -26,9 +26,9 @@ function stepLines(step, dryRun) {
 /** What to do next: a root team's lead adds its first tasks; a sub-team's lead gets its first task from its parent's lead, then opens its own sessions. */
 function nextLine(team, lead, parent) {
     if (parent === undefined) {
-        return `Next: ${KIT_NAME} add --session ${lead} --owner <id> --tier <n> --title "<first task>" for each session, then ${KIT_NAME} open <id> for each.`;
+        return `Next: ${KIT_NAME} add --session ${lead} --owner <id> --priority p<n> --title "<first task>" for each session, then ${KIT_NAME} open <id> for each.`;
     }
-    return `Next: ${parent}'s lead runs ${KIT_NAME} add --team ${team} --tier <n> --title "<first task>", then ${KIT_NAME} open ${team}/${lead}: ${team}'s lead hands its sessions their parts and opens them.`;
+    return `Next: ${parent}'s lead runs ${KIT_NAME} add --team ${team} --priority p<n> --title "<first task>", then ${KIT_NAME} open ${team}/${lead}: ${team}'s lead hands its sessions their parts and opens them.`;
 }
 function summaryLines(plan, dryRun) {
     const { team, lead, sessions, parent } = plan.spec;
