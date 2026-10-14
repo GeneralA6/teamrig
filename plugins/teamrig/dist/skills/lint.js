@@ -46,7 +46,8 @@ export function lintSkills(skills, now, team) {
     const perArea = new Map();
     for (const skill of skills) {
         const { front, body } = splitFrontmatter(skill.text);
-        const owner = /^Owner:\s*(\S+)/m.exec(body)?.[1] ?? null;
+        // A trailing . , or ; ends the sentence, not the name ("Owner: alpha.").
+        const owner = /^Owner:\s*(\S+?)[.,;]?(?=\s|$)/m.exec(body)?.[1] ?? null;
         const flag = (kind, detail) => {
             flags.push({ kind, skill: skill.name, owner, detail });
         };
