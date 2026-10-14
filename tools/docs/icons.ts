@@ -1,38 +1,45 @@
 /**
- * Line icons on a 24-unit grid, drawn with no colour of their own: the `icon` class of the picture that places them
- * sets the stroke, so one icon reads in light and dark.
+ * Line icons on a 24-unit grid, drawn with no colour of their own: the class the placing picture gives them sets the
+ * stroke, so one icon reads in light and dark. Also the step or card each icon heads in the README's pictures.
  */
 
-export const ICON_NAMES = ['say', 'lead', 'team', 'done', 'list', 'note', 'rules', 'shield', 'fresh', 'local'] as const;
+export const ICON_NAMES = ['say', 'hire', 'build', 'done', 'plan', 'gauge', 'learn', 'fresh', 'proof', 'shield'] as const;
 export type IconName = (typeof ICON_NAMES)[number];
 
 /** The grid each icon is drawn on. */
 export const ICON_GRID = 24;
 
 const ICONS: Readonly<Record<IconName, string>> = {
-  /** A speech bubble: say what you want. */
+  /** A speech bubble: tell the lead what you want. */
   say: '<path d="M4 4.5h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-9l-5 4v-4H4a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2z"/><path d="M7 9.5h10M7 13h6"/>',
-  /** One node over three: the lead plans for the team. */
-  lead: '<circle cx="12" cy="5" r="2.6"/><circle cx="4.5" cy="19" r="2.2"/><circle cx="12" cy="19" r="2.2"/><circle cx="19.5" cy="19" r="2.2"/><path d="M12 7.6V16.8M10.6 7.2 5.6 17M13.4 7.2l5 9.8"/>',
-  /** Two windows: sessions in their own tabs. */
-  team: '<rect x="2.5" y="8" width="13" height="12" rx="2"/><path d="M6 8V5.5a1.5 1.5 0 0 1 1.5-1.5h11A1.5 1.5 0 0 1 20 5.5v10a1.5 1.5 0 0 1-1.5 1.5H15.5"/><path d="M5.5 12.5h7M5.5 16h4.5"/>',
+  /** One node over three: the lead hires a team. */
+  hire: '<circle cx="12" cy="5" r="2.6"/><circle cx="4.5" cy="19" r="2.2"/><circle cx="12" cy="19" r="2.2"/><circle cx="19.5" cy="19" r="2.2"/><path d="M12 7.6V16.8M10.6 7.2 5.6 17M13.4 7.2l5 9.8"/>',
+  /** Two windows: the members build, each in its own tab. */
+  build: '<rect x="2.5" y="8" width="13" height="12" rx="2"/><path d="M6 8V5.5a1.5 1.5 0 0 1 1.5-1.5h11A1.5 1.5 0 0 1 20 5.5v10a1.5 1.5 0 0 1-1.5 1.5H15.5"/><path d="M5.5 12.5h7M5.5 16h4.5"/>',
   /** A ticked circle: the result. */
   done: '<circle cx="12" cy="12" r="9.5"/><path d="m7.5 12.3 3 3 6-6.6"/>',
-  /** A checklist: the shared task list. */
-  list: '<path d="M10 6h11M10 12h11M10 18h11"/><path d="m3 6 1.5 1.5L7 5M3 12l1.5 1.5L7 11"/><circle cx="5" cy="18" r="1.6"/>',
-  /** An envelope: notes between sessions. */
-  note: '<rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="m3 6.5 9 6.5 9-6.5"/>',
-  /** A page of lines: the team's rules. */
-  rules: '<path d="M6 2.5h9l4 4v15H6z"/><path d="M15 2.5v4h4M9 11h7M9 14.5h7M9 18h4"/>',
-  /** A ticked shield: safe pushes. */
-  shield: '<path d="M12 2.5 20 5.5v6c0 5-3.4 8.8-8 10-4.6-1.2-8-5-8-10v-6z"/><path d="m8.5 12 2.5 2.5 4.5-5"/>',
-  /** A circular arrow: a fresh context. */
-  fresh: '<path d="M20 12a8 8 0 1 1-2.4-5.7"/><path d="M20 3.5v5h-5"/>',
-  /** A laptop: everything on your machine. */
-  local: '<rect x="4" y="4.5" width="16" height="11" rx="1.5"/><path d="M2 19.5h20M9 19.5l.6-2h4.8l.6 2"/>',
+  /** A ticked calendar: a project manager that plans the week. */
+  plan: '<rect x="3" y="4.5" width="18" height="16.5" rx="2"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/><path d="m8.5 15 2.5 2.5 4.5-5"/>',
+  /** A gauge: thrifty with tokens. */
+  gauge: '<path d="M3.2 17.5a9 9 0 1 1 17.6 0"/><path d="m12 14.5 4.2-4.7"/><circle cx="12" cy="14.5" r="1.7"/><path d="M7 20.5h10"/>',
+  /** A light bulb: what one member learns, the team reuses. */
+  learn: '<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.7.6 1.1 1.3 1.1 2.2h5c0-.9.4-1.6 1.1-2.2A6 6 0 0 0 12 3z"/>',
+  /** Two turning arrows: a member hands its work over and starts fresh. */
+  fresh: '<path d="M20 11a8 8 0 0 0-14.3-4.9L3.5 8.5"/><path d="M3.5 3.5v5h5"/><path d="M4 13a8 8 0 0 0 14.3 4.9l2.2-2.4"/><path d="M20.5 20.5v-5h-5"/>',
+  /** A ticked clipboard: done means proven. */
+  proof: '<rect x="4.5" y="4" width="15" height="17.5" rx="2"/><path d="M9 4V2.5h6V4"/><path d="m8.5 13 2.5 2.5 4.5-5"/>',
+  /** A ticked shield: safe by default. */
+  shield: '<path d="M12 2.5 4 5.5v6c0 5 3.4 8.6 8 10 4.6-1.4 8-5 8-10v-6z"/><path d="m8.5 12 2.5 2.5 4.5-5"/>',
 };
 
-/** The icon with its top-left corner at (x, y), scaled to `size` pixels square. */
-export function icon(name: IconName, x: number, y: number, size: number): string {
-  return `<g transform="translate(${x} ${y}) scale(${size / ICON_GRID})" class="icon">${ICONS[name]}</g>`;
+/** A step or a card in a picture: its icon, its title and the short lines under it. */
+export interface Card {
+  readonly icon: IconName;
+  readonly title: string;
+  readonly lines: readonly string[];
+}
+
+/** The icon with its top-left corner at (x, y), scaled to `size` pixels square, in the class `cls` that colours it. */
+export function icon(name: IconName, x: number, y: number, size: number, cls: string): string {
+  return `<g transform="translate(${x} ${y}) scale(${size / ICON_GRID})" class="${cls}">${ICONS[name]}</g>`;
 }
