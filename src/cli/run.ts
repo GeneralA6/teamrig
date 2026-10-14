@@ -23,6 +23,9 @@ const teamCommands = () => import('./commands/team.ts');
 const commitsCommands = () => import('./commands/commits.ts');
 const doctorCommands = () => import('./commands/doctor.ts');
 const refreshCommands = () => import('./commands/refresh.ts');
+const setupCommands = () => import('./commands/setup.ts');
+const rulesCommands = () => import('./commands/rules.ts');
+const openCommands = () => import('./commands/open.ts');
 
 const TASK_FIELDS = ['title', 'owner', 'ref', 'tier', 'due', 'goals', 'week'];
 
@@ -41,6 +44,10 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'inbox read': { flags: ['session'], load: async () => (await inboxCommands()).read },
   'inbox status': { flags: ['session'], load: async () => (await inboxCommands()).status },
   'inbox add': { flags: ['session', 'to', 'text'], load: async () => (await inboxCommands()).add },
+  'team create': { flags: ['sessions', 'lead', 'project'], switches: ['dry-run'], load: async () => (await setupCommands()).teamCreate },
+  rules: { flags: ['session'], load: async () => (await rulesCommands()).rules },
+  open: { flags: ['prompt', 'terminal', 'project'], load: async () => (await openCommands()).open },
+  launch: { flags: ['team', 'project', 'home', 'encoded-prompt'], load: async () => (await openCommands()).launch },
   who: { flags: [], load: async () => (await teamCommands()).who },
   rename: { flags: ['session'], load: async () => (await teamCommands()).rename },
   refresh: { flags: ['session'], switches: ['ready'], load: async () => (await refreshCommands()).refresh },
@@ -58,6 +65,11 @@ const COMMAND_FLAGS: CommandFlags = Object.fromEntries(Object.entries(COMMANDS).
 const COMMAND_SWITCHES: CommandSwitches = Object.fromEntries(Object.entries(COMMANDS).map(([name, spec]) => [name, spec.switches ?? []]));
 
 export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|name>, else ${ENV.session})
+  team create <team> --sessions <id,id> [--lead <id>] [--project <dir>] [--dry-run]
+      writes the team config and ties the project folder to the team (the lead defaults to lead)
+  open <id|name> [--prompt "<first prompt>"] [--terminal <name>] [--project <dir>]
+      a new terminal tab running Claude Code as that session; with no terminal it prints the command
+  rules [--session <id|name>]  the team rules and who the session is, as a session start gives them
   add --title "<one line>" --tier <n> [--ref <where it was asked>] [--owner <session>]
       [--source <session>|<owner source>] [--due <date>] [--goals a,b] [--week <date>]
   set <id> --status open|in-progress|blocked|done|dropped [--note "<what/why>"] [--evidence <proof>]
@@ -83,10 +95,13 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       with no reason line; any is REFUSED, for an integrate script or CI
   hook push-guard | hook inbox-reminder | hook session-start | hook stop
       (run by Claude Code, hook JSON on stdin)
+  launch <id> --team <team> --project <dir> [--home <dir>] [--encoded-prompt <text>]
+      (run by the tab that open starts: sets the session and starts Claude Code)
 Team: ${ENV.team}, else the nearest ${TEAM_POINTER} ({"team": "<id>"}) above the current folder.
 Sessions: give an id, a current name or a former one; a session never named is <team>-<id>.
 Dates: YYYY-MM-DD or "YYYY-MM-DD HH:MM", UTC. Kit home: $${ENV.home}, else ~/.${KIT_NAME}.
-Exit: 0 done, 1 failed, 2 refused by a team rule, 64 a command line it cannot read.`;
+Exit: 0 done, 1 failed, 2 refused by a team rule, 3 open printed the command to run itself,
+64 a command line it cannot read.`;
 
 const HELP = new Set(['help', '--help', '-h']);
 const VERSION = new Set(['version', '--version', '-v']);

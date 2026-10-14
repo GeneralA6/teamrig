@@ -35,7 +35,7 @@ describe('main', () => {
   });
 
   it('exits 64 on a line it cannot read', () => {
-    assert.equal(cli(['launch']).status, 64);
+    assert.equal(cli(['no-such-command']).status, 64);
   });
 
   it('runs the push guard on hook JSON from stdin', () => {
