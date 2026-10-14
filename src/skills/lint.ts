@@ -72,7 +72,8 @@ export function lintSkills(skills: readonly SkillFile[], now: Date, team: SkillT
   const perArea = new Map<string, number>();
   for (const skill of skills) {
     const { front, body } = splitFrontmatter(skill.text);
-    const owner = /^Owner:\s*(\S+)/m.exec(body)?.[1] ?? null;
+    // A trailing . , or ; ends the sentence, not the name ("Owner: alpha.").
+    const owner = /^Owner:\s*(\S+?)[.,;]?(?=\s|$)/m.exec(body)?.[1] ?? null;
     const flag = (kind: SkillFlagKind, detail: string): void => {
       flags.push({ kind, skill: skill.name, owner, detail });
     };
