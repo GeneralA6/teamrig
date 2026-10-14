@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_COMMITS, DEFAULT_REFRESH, DEFAULT_REGISTER } from './defaults.ts';
+import { DEFAULT_COMMITS, DEFAULT_OPEN, DEFAULT_REFRESH, DEFAULT_REGISTER } from './defaults.ts';
 import { parseConfig } from './parse.ts';
 import type { ConfigIssue } from './reader.ts';
 
@@ -184,6 +184,17 @@ describe('parseConfig', () => {
     assert.deepEqual(paths(bad.issues).sort(), ['refresh.contextTokens', 'refresh.enabled', 'refresh.handoverDir', 'refresh.tabTitle']);
     assert.deepEqual(bad.config.refresh, DEFAULT_REFRESH);
     assert.deepEqual(paths(parseConfig({ ...ROSTER, refresh: { contextTokens: 10_000_001 } }).issues), ['refresh.contextTokens']);
+  });
+
+  it('reads the terminal teamrig open uses, refusing one it does not know', () => {
+    assert.deepEqual(parseConfig(ROSTER).config.open, DEFAULT_OPEN);
+    const set = parseConfig({ ...ROSTER, open: { terminal: 'tmux' } });
+    assert.deepEqual(set.issues, []);
+    assert.deepEqual(set.config.open, { terminal: 'tmux' });
+    const bad = parseConfig({ ...ROSTER, open: { terminal: 'iterm' } });
+    assert.deepEqual(paths(bad.issues), ['open.terminal']);
+    assert.match(bad.issues[0]?.message ?? '', /expected one of auto, tmux, windows-terminal/);
+    assert.deepEqual(bad.config.open, DEFAULT_OPEN);
   });
 
   it('ignores keys it does not know, including $schema', () => {

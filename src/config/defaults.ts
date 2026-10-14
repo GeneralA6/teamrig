@@ -3,6 +3,7 @@ import type {
   BudgetConfig,
   CommitsConfig,
   LockConfig,
+  OpenConfig,
   PushGuardConfig,
   RefreshConfig,
   RegisterConfig,
@@ -65,3 +66,5 @@ export const DEFAULT_ALERTS: AlertsConfig = { persistentFailureHours: 24 };
 
 /** 250k suits a 1M-token window; on a 200k window Claude Code compacts first, so a team there sets about 150k. */
 export const DEFAULT_REFRESH: RefreshConfig = { enabled: true, contextTokens: 250_000, tabTitle: true };
+
+export const DEFAULT_OPEN: OpenConfig = { terminal: 'auto' };

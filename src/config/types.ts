@@ -121,6 +121,21 @@ export interface RefreshConfig {
   readonly handoverDir?: string;
 }
 
+/**
+ * Where `teamrig open` opens a session's tab: `auto` picks tmux inside tmux, else the platform's
+ * terminal; `print` opens nothing and prints the command to run.
+ */
+export const TERMINALS = ['auto', 'tmux', 'windows-terminal', 'macos-terminal', 'gnome-terminal', 'konsole', 'x-terminal-emulator', 'print'] as const;
+export type TerminalChoice = (typeof TERMINALS)[number];
+
+export function isTerminalChoice(value: unknown): value is TerminalChoice {
+  return TERMINALS.some((terminal) => terminal === value);
+}
+
+export interface OpenConfig {
+  readonly terminal: TerminalChoice;
+}
+
 export interface PathsConfig {
   readonly state?: string;
   readonly inbox?: string;
@@ -153,5 +168,7 @@ export interface KitConfig {
   readonly alerts: AlertsConfig;
   readonly tabStatus: { readonly enabled: boolean };
   readonly refresh: RefreshConfig;
+  /** How `teamrig open` starts a session in a new terminal tab. */
+  readonly open: OpenConfig;
   readonly paths: PathsConfig;
 }
