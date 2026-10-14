@@ -7,10 +7,10 @@ import { drawPictures, IMAGES_DIR, stalePictures, writePictures } from './images
 import { parseXml } from './xml.ts';
 
 describe('drawPictures', () => {
-  it('draws the wordmark, the hero, the how-it-works picture and the commands screen', async () => {
+  it("draws the README's pictures in its order, then the commands screen", async () => {
     assert.deepEqual(
       (await drawPictures()).map((picture) => picture.file),
-      ['wordmark.svg', 'hero.svg', 'how-it-works.svg', 'commands.svg'],
+      ['wordmark.svg', 'hero.svg', 'growth.svg', 'how-it-works.svg', 'week.svg', 'why.svg', 'commands.svg'],
     );
   });
 
@@ -25,7 +25,7 @@ describe('drawPictures', () => {
 });
 
 describe('writing and checking pictures', () => {
-  const root = mkdtempSync(join(realpathSync(tmpdir()), 'teamrig-images-'));
+  const root = mkdtempSync(join(realpathSync.native(tmpdir()), 'teamrig-images-'));
   after(() => rmSync(root, { recursive: true, force: true }));
   const pictures = [
     { file: 'a.svg', svg: '<svg>a</svg>\n' },
