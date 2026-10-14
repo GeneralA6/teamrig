@@ -2,7 +2,7 @@ import { isRecord, stringField } from '../../core/guards.ts';
 import { ENV, KIT_NAME } from '../../core/home.ts';
 import { resolveTeam, type TeamResolution } from '../../core/team.ts';
 import { reminderFor, sessionIdOf } from '../../inbox/inbox.ts';
-import { protectedBranchesOf, pushGuardOutput } from '../../hooks/push-guard.ts';
+import { commitsOf, protectedBranchesOf, pushGuardOutput } from '../../hooks/push-guard.ts';
 import { sessionStartContext, sessionStartOutput } from '../../hooks/session-start.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { openKit, teamFolders } from '../kit.ts';
@@ -51,6 +51,8 @@ export async function pushGuard(args: ParsedArgs, runtime: CliRuntime): Promise<
     home: runtime.userHome,
     repo: runtime.git,
     protectedBranches: protectedBranchesOf(load),
+    commits: commitsOf(load),
+    commitLog: runtime.commitLog,
   });
   if (output !== '') {
     runtime.out.stdout(output);

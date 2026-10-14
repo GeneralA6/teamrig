@@ -7,6 +7,7 @@ import type { ConfigFormat } from '../config/migrate.ts';
 import type { Files } from '../core/files.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import type { Env } from '../core/home.ts';
+import type { CommitLog } from '../push-guard/commit-size.ts';
 import type { RepoState } from '../push-guard/push.ts';
 import { FakeClock } from './fake-clock.ts';
 import { MemoryFiles } from './memory-files.ts';
@@ -41,6 +42,8 @@ export interface RunOptions {
   readonly files?: Files;
   /** The config format the CLI reads, such as a newer release's; default the shipped one. */
   readonly configFormat?: ConfigFormat;
+  /** The commits git lists for any range; default none. */
+  readonly commitLog?: CommitLog;
 }
 
 /**
@@ -76,6 +79,7 @@ export class CliHarness {
       clock: this.clock,
       sleep: this.clock.sleep,
       git,
+      commitLog: options.commitLog ?? { between: () => [] },
       out: { stdout: (line) => stdout.push(line), stderr: (line) => stderr.push(line) },
       readStdin: async () => options.stdin ?? '',
       ...(options.configFormat === undefined ? {} : { configFormat: options.configFormat }),

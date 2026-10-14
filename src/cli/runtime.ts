@@ -2,6 +2,7 @@ import type { ConfigFormat } from '../config/migrate.ts';
 import type { Files } from '../core/files.ts';
 import type { Env } from '../core/home.ts';
 import type { Clock, Sleep } from '../core/lock.ts';
+import type { CommitLog } from '../push-guard/commit-size.ts';
 import type { RepoState } from '../push-guard/push.ts';
 
 export interface Output {
@@ -19,6 +20,8 @@ export interface CliRuntime {
   readonly clock: Clock;
   readonly sleep: Sleep;
   readonly git: RepoState;
+  /** The commits of a range, for the small-commits rule. */
+  readonly commitLog: CommitLog;
   readonly out: Output;
   /** The config format the run reads and migrates to; default the shipped one (tests give a newer release's). */
   readonly configFormat?: ConfigFormat;
