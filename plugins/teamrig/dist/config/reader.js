@@ -57,14 +57,21 @@ export class ConfigReader {
         }
         return value;
     }
-    /** A list whose items are read by `item`; an item that returns undefined is dropped (it recorded its issue). */
-    list(parent, key, path, fallback, item) {
+    /**
+     * A list whose items are read by `item`; an item that returns undefined is dropped (it recorded
+     * its issue). A list longer than `maxItems` is an issue and takes the default.
+     */
+    list(parent, key, path, fallback, item, maxItems = Number.POSITIVE_INFINITY) {
         const value = parent[key];
         if (value === undefined) {
             return fallback;
         }
         if (!Array.isArray(value)) {
             this.problem(join(path, key), 'a list', value);
+            return fallback;
+        }
+        if (value.length > maxItems) {
+            this.problem(join(path, key), `a list of at most ${maxItems} items`, value);
             return fallback;
         }
         const items = [];
@@ -76,8 +83,8 @@ export class ConfigReader {
         });
         return items;
     }
-    stringList(parent, key, path, fallback, check) {
-        return this.list(parent, key, path, fallback, (value, itemPath) => this.stringItem(value, itemPath, check));
+    stringList(parent, key, path, fallback, check, maxItems) {
+        return this.list(parent, key, path, fallback, (value, itemPath) => this.stringItem(value, itemPath, check), maxItems);
     }
     /** One string list item, for use inside `list` callbacks. */
     stringItem(value, itemPath, check) {
@@ -146,6 +153,15 @@ export function describe(value) {
 }
 export function formatIssue(issue) {
     return `${issue.path}: ${issue.message}`;
+}
+/** One line of at most `maxLength` characters that also passes `check`; for text printed into the rules. */
+export function shortLine(maxLength, check) {
+    return (value) => {
+        if (/[\r\n]/.test(value)) {
+            return 'expected a single line';
+        }
+        return value.length > maxLength ? `expected at most ${maxLength} characters` : check?.(value);
+    };
 }
 /** Validates a regular expression source; used for team-supplied patterns. */
 export const isValidRegex = (source) => {

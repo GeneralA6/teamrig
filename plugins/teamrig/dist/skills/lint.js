@@ -1,0 +1,99 @@
+import { parseUtcDay } from "../core/time.js";
+export const SKILL_FLAG_KINDS = ['OWNER', 'UNVERIFIED', 'FORBIDDEN-KEY', 'DESCRIPTION', 'AREA-OVER-LIMIT'];
+const DAY_MS = 86_400_000;
+const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)([\s\S]*)$/;
+const TOP_LEVEL_KEY = /^([A-Za-z0-9_-]+)\s*:/gm;
+function splitFrontmatter(text) {
+    const match = FRONTMATTER.exec(text);
+    return match === null ? { front: '', body: text } : { front: match[1] ?? '', body: match[2] ?? '' };
+}
+function frontmatterKeys(front) {
+    return new Set(Array.from(front.matchAll(TOP_LEVEL_KEY), (match) => match[1] ?? ''));
+}
+/** The frontmatter `description`, inline (quoted or not) or as a YAML block scalar (`>` / `|`). */
+export function descriptionOf(front) {
+    const lines = front.split(/\r?\n/);
+    const at = lines.findIndex((line) => /^description\s*:/.test(line));
+    if (at === -1) {
+        return null;
+    }
+    const inline = (lines[at] ?? '').replace(/^description\s*:\s*/, '').trim();
+    if (/^[>|][+-]?$/.test(inline)) {
+        const block = [];
+        for (const line of lines.slice(at + 1)) {
+            if (!/^\s/.test(line)) {
+                break;
+            }
+            block.push(line.trim());
+        }
+        const text = block.join(' ').trim();
+        return text === '' ? null : text;
+    }
+    const text = inline.replace(/^(["'])(.*)\1$/, '$2').trim();
+    return text === '' ? null : text;
+}
+/** A skill's area: the longest session name (or shared prefix) it starts with, else its first word. */
+export function areaOf(name, areas) {
+    const match = areas.filter((area) => name.startsWith(`${area}-`)).sort((a, b) => b.length - a.length)[0];
+    return match ?? name.split('-')[0] ?? name;
+}
+/** Lints every skill against the team's rules; the flags come in skill order, area flags last. */
+export function lintSkills(skills, now, team) {
+    const rules = team.skills;
+    const sessions = new Set(team.sessions);
+    const areas = [...team.sessions, rules.sharedPrefix];
+    const flags = [];
+    const perArea = new Map();
+    for (const skill of skills) {
+        const { front, body } = splitFrontmatter(skill.text);
+        const owner = /^Owner:\s*(\S+)/m.exec(body)?.[1] ?? null;
+        const flag = (kind, detail) => {
+            flags.push({ kind, skill: skill.name, owner, detail });
+        };
+        if (owner === null) {
+            flag('OWNER', 'no "Owner: <session>" line');
+        }
+        else if (!sessions.has(owner)) {
+            flag('OWNER', `owner ${owner} is not a session on the team`);
+        }
+        const verified = /Last verified:\s*(\d{4}-\d{2}-\d{2})/.exec(body)?.[1];
+        const verifiedAt = verified === undefined ? undefined : parseUtcDay(verified);
+        if (verified === undefined || verifiedAt === undefined) {
+            flag('UNVERIFIED', 'no "Last verified: YYYY-MM-DD"');
+        }
+        else {
+            const age = Math.floor((now.getTime() - verifiedAt.getTime()) / DAY_MS);
+            if (age > rules.maxVerifiedAgeDays) {
+                flag('UNVERIFIED', `last verified ${verified}, ${age} d ago > ${rules.maxVerifiedAgeDays}`);
+            }
+        }
+        const keys = frontmatterKeys(front);
+        for (const key of rules.forbidFrontmatter.filter((forbidden) => keys.has(forbidden))) {
+            flag('FORBIDDEN-KEY', `${key} is not allowed in a team skill: remove it`);
+        }
+        const description = descriptionOf(front);
+        const words = description === null ? 0 : description.split(/\s+/).filter((word) => word !== '').length;
+        if (description === null) {
+            flag('DESCRIPTION', 'no description');
+        }
+        else if (words > rules.maxDescriptionWords) {
+            flag('DESCRIPTION', `${words} words > ${rules.maxDescriptionWords}`);
+        }
+        const area = areaOf(skill.name, areas);
+        perArea.set(area, (perArea.get(area) ?? 0) + 1);
+    }
+    for (const [area, count] of perArea) {
+        if (count > rules.maxPerArea) {
+            flags.push({
+                kind: 'AREA-OVER-LIMIT',
+                skill: area,
+                owner: sessions.has(area) ? area : null,
+                detail: `${count} skills > ${rules.maxPerArea}: merge before adding`,
+            });
+        }
+    }
+    return flags;
+}
+export function formatSkillFlag(flag) {
+    return `SKILL ${flag.kind} (${flag.detail}) ${flag.owner ?? '-'} ${flag.skill}`;
+}
