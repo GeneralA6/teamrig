@@ -1,0 +1,4 @@
+#!/bin/sh
+# Requires a DCO sign-off by the author, then scrubs the commit message.
+node tools/dco/cli.ts --message "$1" || exit 1
+exec node tools/scrub/cli.ts --message "$1"

@@ -1,0 +1,3 @@
+#!/bin/sh
+# Blocks a commit whose staged files or paths match the generic scrub rules or the private denylist.
+exec node tools/scrub/cli.ts --staged
