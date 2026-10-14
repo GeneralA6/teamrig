@@ -1,3 +1,4 @@
+import { Roster } from "../../config/roster.js";
 import { errorMessage, isRecord, stringField } from "../../core/guards.js";
 import { ENV, KIT_NAME } from "../../core/home.js";
 import { resolveTeam } from "../../core/team.js";
@@ -5,9 +6,13 @@ import { reminderFor, sessionIdOf } from "../../inbox/inbox.js";
 import { indexMarks } from "../../inbox/marks.js";
 import { commitsOf, protectedBranchesOf, pushGuardOutput } from "../../hooks/push-guard.js";
 import { sessionStartContext, sessionStartOutput } from "../../hooks/session-start.js";
+import { stopOutput } from "../../hooks/stop.js";
 import { adoptTitle, promptNote, sessionStartNote } from "../../names/detect.js";
 import { JsonlRenameLog } from "../../names/log.js";
 import { sessionTitleOf } from "../../names/title.js";
+import { decideStart, decideStop, handoverHashOf } from "../../refresh/decide.js";
+import { RefreshStore } from "../../refresh/store.js";
+import { readContextTokens } from "../../refresh/usage.js";
 import { noPositionals } from "../args.js";
 import { openKit, renameDepsOf, rosterOf, teamFolders } from "../kit.js";
 import { EXIT } from "../runtime.js";
@@ -131,14 +136,119 @@ export async function inboxReminder(args, runtime) {
     }
     return EXIT.ok;
 }
-/** A loaded team's rules.md and rename log, after recording a Claude Code rename of the session. */
+/**
+ * A loaded team's rules.md and rename log, after recording a Claude Code rename of the session, and
+ * the pointer to its handover after a refresh.
+ */
 async function teamPartsOf(runtime, kit, config, payload) {
     const titleNote = sessionStartNote(await titleOutcome(runtime, kit, config, payload));
     const { renames } = await new JsonlRenameLog(runtime.files, kit.paths.renames).read();
+    const refreshNote = await refreshNoteOf(runtime, kit, config, new Roster(config, kit.paths.team, renames), payload);
     const text = await runtime.files.read(kit.paths.teamRules);
-    return { teamRules: text === undefined ? undefined : { path: kit.paths.teamRules, text }, renames, titleNote };
+    return { teamRules: text === undefined ? undefined : { path: kit.paths.teamRules, text }, renames, titleNote, refreshNote };
 }
-/** SessionStart: the core rules from the team config, who the session is, and the team's rules.md. */
+/**
+ * A fresh start (`/clear`, a new process) after the session's handover was marked ready: the note
+ * that points it at the handover, given once. A start that keeps the old context (compact, resume)
+ * leaves the handover waiting. It never throws, so the session always gets its rules.
+ */
+async function refreshNoteOf(runtime, kit, config, roster, payload) {
+    try {
+        const id = await teamSessionOf(runtime, kit, roster, sessionIdOf(payload));
+        if (id === undefined) {
+            return undefined;
+        }
+        const store = new RefreshStore(runtime.files, kit.paths);
+        const source = isRecord(payload) ? stringField(payload, 'source') : undefined;
+        const now = new Date(runtime.clock.now()).toISOString();
+        const decision = decideStart(await store.state(id), source, config.refresh, store.handoverPath(id), now);
+        if (decision.kind === 'none') {
+            return undefined;
+        }
+        await store.setState(id, decision.state);
+        await store.clearRequest(id);
+        return decision.note;
+    }
+    catch (error) {
+        return `${KIT_NAME} could not check for a refresh handover (${errorMessage(error)}); if you wrote one before a /clear, read it first.`;
+    }
+}
+/**
+ * The refresh facts of a boundary: the lead's request, the context size from the transcript's
+ * tail, and the handover as it is now (so `refresh --ready` can tell a new one from it).
+ */
+async function boundaryFactsOf(runtime, roster, store, id, payload) {
+    const request = await store.request(id);
+    const transcript = stringField(payload, 'transcript_path');
+    return {
+        requestedBy: request === undefined ? undefined : (roster.nameOf(request.by) ?? request.by),
+        tokens: transcript === undefined ? undefined : await readContextTokens(runtime.files, transcript),
+        handoverHash: handoverHashOf(await store.handover(id)),
+    };
+}
+/**
+ * What the Stop hook prints for this turn's end; '' outside a team, without a session, with refresh
+ * off, or for input that is not a hook payload (which would judge a boundary without its transcript).
+ */
+async function stopOutputOf(runtime, payload) {
+    if (!isRecord(payload)) {
+        return '';
+    }
+    const found = await hookTeam(payload, runtime);
+    if (found.kind !== 'team') {
+        return '';
+    }
+    const kit = await openKit(runtime, found.team);
+    if (kit.load.status !== 'loaded' || !kit.load.config.refresh.enabled) {
+        return '';
+    }
+    const { config } = kit.load;
+    const roster = await rosterOf(runtime, kit, config);
+    const id = await teamSessionOf(runtime, kit, roster, sessionIdOf(payload));
+    if (id === undefined) {
+        return '';
+    }
+    const store = new RefreshStore(runtime.files, kit.paths);
+    const state = await store.state(id);
+    const context = {
+        stopHookActive: payload['stop_hook_active'] === true,
+        settings: config.refresh,
+        now: new Date(runtime.clock.now()).toISOString(),
+        session: { id, name: roster.nameOf(id) ?? id },
+        handoverPath: store.handoverPath(id),
+        command: KIT_NAME,
+    };
+    const first = decideStop(state, context);
+    const decision = first.kind === 'measure' ? decideStop(state, context, await boundaryFactsOf(runtime, roster, store, id, payload)) : first;
+    switch (decision.kind) {
+        case 'write':
+        case 'block':
+        case 'notice':
+            // Written before anything is printed: a block whose state is not recorded would ask again at every stop.
+            await store.setState(id, decision.state);
+            break;
+        case 'none':
+        case 'measure':
+            break;
+    }
+    return stopOutput(decision);
+}
+/**
+ * Stop, at the end of every turn: after the session finished a task (`set done`), asks for its
+ * handover once when its context reached the team's threshold or the lead asked, then tells the user
+ * once that it waits for /clear. A turn with nothing to judge reads only small files and prints
+ * nothing. It never blocks on an error: a refresh is a convenience, and the next stop tries again.
+ */
+export async function stop(args, runtime) {
+    noPositionals(args);
+    const payload = parseJson(await runtime.readStdin());
+    const output = await stopOutputOf(runtime, payload).catch(() => '');
+    if (output !== '') {
+        runtime.out.stdout(output);
+    }
+    return EXIT.ok;
+}
+/** SessionStart: the core rules from the team config, who the session is (and, after a refresh, its handover), and the team's rules.md. */
 export async function sessionStart(args, runtime) {
     noPositionals(args);
     const payload = parseJson(await runtime.readStdin());
@@ -155,7 +265,7 @@ export async function sessionStart(args, runtime) {
     const kit = await openKit(runtime, found.team);
     const parts = kit.load.status === 'loaded'
         ? await teamPartsOf(runtime, kit, kit.load.config, payload)
-        : { teamRules: undefined, renames: [], titleNote: undefined };
+        : { teamRules: undefined, renames: [], titleNote: undefined, refreshNote: undefined };
     const context = sessionStartContext({ team: found.team, load: kit.load, ...parts, session: envSession(runtime), command: KIT_NAME });
     runtime.out.stdout(sessionStartOutput(context));
     return EXIT.ok;

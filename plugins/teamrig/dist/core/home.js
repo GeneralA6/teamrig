@@ -52,5 +52,7 @@ export function teamPaths(kitHome, team, userHome, overrides = {}) {
         renames: join(state, 'renames.jsonl'),
         renamesLock: join(state, 'renames.lock'),
         skills: inHome(overrides.skills) ?? join(userHome, '.claude', 'skills'),
+        refresh: join(state, 'refresh'),
+        handover: inHome(overrides.handover) ?? join(home, 'handover'),
     };
 }

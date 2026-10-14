@@ -1,7 +1,8 @@
 import { isRecord, stringField } from "../core/guards.js";
 /**
- * How much of a transcript's end is searched for the session's title: many turns' worth, while a
- * long session's transcript is never read whole on every prompt.
+ * How much of a transcript's end is searched for the session's title, and for its context size at a
+ * task boundary (`refresh/usage.ts`): many turns' worth, while a long session's transcript is never
+ * read whole on every prompt.
  */
 export const TRANSCRIPT_TAIL_BYTES = 256 * 1024;
 /** The transcript entry Claude Code writes when the user names the session (`--name`, `/rename`). */

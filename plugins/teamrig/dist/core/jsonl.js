@@ -32,7 +32,8 @@ export function recordVersion(record) {
 export function toJsonlLine(record) {
     return `${JSON.stringify(record)}\n`;
 }
-function parseObject(raw) {
+/** One line as a JSON object; undefined for anything else, a damaged or torn line included. */
+export function parseObject(raw) {
     try {
         const value = JSON.parse(raw);
         return isRecord(value) ? value : undefined;

@@ -11,6 +11,7 @@ const hookCommands = () => import("./commands/hook.js");
 const teamCommands = () => import("./commands/team.js");
 const commitsCommands = () => import("./commands/commits.js");
 const doctorCommands = () => import("./commands/doctor.js");
+const refreshCommands = () => import("./commands/refresh.js");
 const TASK_FIELDS = ['title', 'owner', 'ref', 'tier', 'due', 'goals', 'week'];
 const COMMANDS = {
     add: { flags: ['session', 'source', ...TASK_FIELDS], load: async () => (await registerCommands()).add },
@@ -29,6 +30,7 @@ const COMMANDS = {
     'inbox add': { flags: ['session', 'to', 'text'], load: async () => (await inboxCommands()).add },
     who: { flags: [], load: async () => (await teamCommands()).who },
     rename: { flags: ['session'], load: async () => (await teamCommands()).rename },
+    refresh: { flags: ['session'], switches: ['ready'], load: async () => (await refreshCommands()).refresh },
     doctor: { flags: [], load: async () => (await doctorCommands()).doctor },
     'config validate': { flags: [], load: async () => (await configCommands()).validate },
     'config migrate': { flags: [], load: async () => (await configCommands()).migrate },
@@ -36,8 +38,10 @@ const COMMANDS = {
     'hook push-guard': { flags: [], load: async () => (await hookCommands()).pushGuard },
     'hook inbox-reminder': { flags: [], load: async () => (await hookCommands()).inboxReminder },
     'hook session-start': { flags: [], load: async () => (await hookCommands()).sessionStart },
+    'hook stop': { flags: [], load: async () => (await hookCommands()).stop },
 };
 const COMMAND_FLAGS = Object.fromEntries(Object.entries(COMMANDS).map(([name, spec]) => [name, spec.flags]));
+const COMMAND_SWITCHES = Object.fromEntries(Object.entries(COMMANDS).map(([name, spec]) => [name, spec.switches ?? []]));
 export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|name>, else ${ENV.session})
   add --title "<one line>" --tier <n> [--ref <where it was asked>] [--owner <session>]
       [--source <session>|<owner source>] [--due <date>] [--goals a,b] [--week <date>]
@@ -56,11 +60,14 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   who [<id|name|role>]         the name to message a session by (no argument: every session)
   rename <id|name> <new-name>  records a session's new name; its old names keep finding it
       (the session itself or the lead)
+  refresh <id|name>            the lead asks a session to write its handover when it next sets a task done
+  refresh --ready              the handover is written; the user types /clear for a fresh start
   doctor                       names, rename log, inboxes and rules.md that need a fix
   config validate | config migrate
   commits check --base <ref> [--tip <ref>]   commits in base..tip (default HEAD) over the size rule
       with no reason line; any is REFUSED, for an integrate script or CI
-  hook push-guard | hook inbox-reminder | hook session-start   (run by Claude Code, hook JSON on stdin)
+  hook push-guard | hook inbox-reminder | hook session-start | hook stop
+      (run by Claude Code, hook JSON on stdin)
 Team: ${ENV.team}, else the nearest ${TEAM_POINTER} ({"team": "<id>"}) above the current folder.
 Sessions: give an id, a current name or a former one; a session never named is <team>-<id>.
 Dates: YYYY-MM-DD or "YYYY-MM-DD HH:MM", UTC. Kit home: $${ENV.home}, else ~/.${KIT_NAME}.
@@ -78,7 +85,7 @@ export async function runCli(argv, runtime) {
         return EXIT.ok;
     }
     try {
-        const args = parseArgs(argv, COMMAND_FLAGS);
+        const args = parseArgs(argv, COMMAND_FLAGS, COMMAND_SWITCHES);
         const spec = COMMANDS[args.command];
         if (spec === undefined) {
             throw new UsageError(`unknown command "${args.command}"`);

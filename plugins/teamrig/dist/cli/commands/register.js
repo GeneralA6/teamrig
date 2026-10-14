@@ -11,6 +11,7 @@ import { noPositionals, onePositional } from "../args.js";
 import { addInputOf, callerOf, changesOf, listFilterOf, statusInputOf, taskIdOf, weekOf } from "../inputs.js";
 import { openTeamKit, pastOrPresentIdOf, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
+import { markBoundary } from "./refresh.js";
 async function openTeam(runtime, access) {
     const kit = await openTeamKit(runtime);
     const config = requireConfig(kit, runtime, access);
@@ -72,8 +73,13 @@ export async function set(args, runtime) {
     const id = taskIdOf(onePositional(args, 'id'));
     const caller = callerOf(args.flags, runtime.env);
     const input = statusInputOf(args.flags);
-    const { register, roster } = await openTeam(runtime, 'write');
-    return report(runtime, await register.setStatus(sessionIdOf(roster, caller), id, input), 'SET');
+    const { config, paths, register, roster } = await openTeam(runtime, 'write');
+    const by = sessionIdOf(roster, caller);
+    const exit = report(runtime, await register.setStatus(by, id, input), 'SET');
+    if (input.status === 'done') {
+        await markBoundary(runtime, config, paths, by, id);
+    }
+    return exit;
 }
 export async function update(args, runtime) {
     const id = taskIdOf(onePositional(args, 'id'));
