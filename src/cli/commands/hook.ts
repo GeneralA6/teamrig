@@ -86,12 +86,29 @@ async function teamSessionOf(runtime: CliRuntime, kit: Kit, roster: Roster, clau
     const found = roster.lookup(session);
     return found.ok ? found.id : undefined;
   }
+  return markedSessionOf(runtime, kit, roster, claudeSession);
+}
+
+/**
+ * The area this Claude Code session last read its inbox as, when it is on the roster. It is how a
+ * tab started without `$TEAMRIG_SESSION`, such as the one that set the team up, stays its session.
+ */
+async function markedSessionOf(runtime: CliRuntime, kit: Kit, roster: Roster, claudeSession: string | null): Promise<string | undefined> {
   if (claudeSession === null) {
     return undefined;
   }
   const { marks } = await inboxDepsOf(runtime, kit.paths).marks.read();
   const area = indexMarks(marks).areaBySession.get(claudeSession);
   return area !== undefined && roster.ids.includes(area) ? area : undefined;
+}
+
+/** `markedSessionOf` for the SessionStart context, which must always load: a failed read means no session. */
+async function startSessionOf(runtime: CliRuntime, kit: Kit, roster: Roster, payload: unknown): Promise<string | undefined> {
+  try {
+    return await markedSessionOf(runtime, kit, roster, sessionIdOf(payload));
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -148,18 +165,28 @@ export async function inboxReminder(args: ParsedArgs, runtime: CliRuntime): Prom
   return EXIT.ok;
 }
 
-type TeamParts = Pick<SessionStartInput, 'teamRules' | 'renames' | 'titleNote' | 'refreshNote'>;
+type TeamParts = Pick<SessionStartInput, 'teamRules' | 'renames' | 'titleNote' | 'refreshNote' | 'session' | 'sessionInEnv'>;
 
 /**
- * A loaded team's rules.md and rename log, after recording a Claude Code rename of the session, and
- * the pointer to its handover after a refresh.
+ * A loaded team's rules.md and rename log, after recording a Claude Code rename of the session, the
+ * pointer to its handover after a refresh, and who the session is: `$TEAMRIG_SESSION`, else the area
+ * it read its inbox as, so a tab that set the team up keeps its identity across a compact or resume.
  */
 async function teamPartsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, payload: unknown): Promise<TeamParts> {
   const titleNote = sessionStartNote(await titleOutcome(runtime, kit, config, payload));
   const { renames } = await new JsonlRenameLog(runtime.files, kit.paths.renames).read();
-  const refreshNote = await refreshNoteOf(runtime, kit, config, new Roster(config, kit.paths.team, renames), payload);
+  const roster = new Roster(config, kit.paths.team, renames);
+  const refreshNote = await refreshNoteOf(runtime, kit, config, roster, payload);
   const text = await runtime.files.read(kit.paths.teamRules);
-  return { teamRules: text === undefined ? undefined : { path: kit.paths.teamRules, text }, renames, titleNote, refreshNote };
+  const fromEnv = envSession(runtime);
+  return {
+    teamRules: text === undefined ? undefined : { path: kit.paths.teamRules, text },
+    renames,
+    titleNote,
+    refreshNote,
+    session: fromEnv ?? (await startSessionOf(runtime, kit, roster, payload)),
+    sessionInEnv: fromEnv !== undefined,
+  };
 }
 
 /**
@@ -284,8 +311,8 @@ export async function sessionStart(args: ParsedArgs, runtime: CliRuntime): Promi
   const parts: TeamParts =
     kit.load.status === 'loaded'
       ? await teamPartsOf(runtime, kit, kit.load.config, payload)
-      : { teamRules: undefined, renames: [], titleNote: undefined, refreshNote: undefined };
-  const context = sessionStartContext({ team: found.team, load: kit.load, ...parts, session: envSession(runtime), command: KIT_NAME });
+      : { teamRules: undefined, renames: [], titleNote: undefined, refreshNote: undefined, session: undefined, sessionInEnv: false };
+  const context = sessionStartContext({ team: found.team, load: kit.load, ...parts, command: KIT_NAME });
   runtime.out.stdout(sessionStartOutput(context));
   return EXIT.ok;
 }

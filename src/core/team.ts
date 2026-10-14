@@ -17,7 +17,8 @@ export type TeamResolution =
   | { readonly kind: 'broken'; readonly from: string; readonly problem: string }
   | { readonly kind: 'none' };
 
-const ENV_SOURCE = `$${ENV.team}`;
+/** The `from` of a team named by `$TEAMRIG_TEAM` rather than by a pointer file. */
+export const ENV_SOURCE = `$${ENV.team}`;
 
 /**
  * `$TEAMRIG_TEAM` wins, so a session working in another team's repo keeps its own team. Otherwise

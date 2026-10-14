@@ -15,8 +15,13 @@ export interface SessionStartInput {
   readonly titleNote: string | undefined;
   /** After a context refresh: where the session's handover is, so it reads it first. */
   readonly refreshNote: string | undefined;
-  /** `$TEAMRIG_SESSION` as Claude Code passed it to the hook: an id or any name the session has had. */
+  /**
+   * Who the session is: an id or any name it has had, from `$TEAMRIG_SESSION`, a `--session` flag, or
+   * the area this Claude Code session last read its inbox as.
+   */
   readonly session: string | undefined;
+  /** Whether `$TEAMRIG_SESSION` holds `session`, so the session's commands find it without `--session`. */
+  readonly sessionInEnv: boolean;
   /** The CLI name the rules tell the session to run. */
   readonly command: string;
 }
@@ -39,7 +44,8 @@ function identityLines(roster: Roster, input: SessionStartInput): string[] {
   const roles = roster.rolesOf(found.id);
   const held = roles.length === 0 ? '' : `, roles: ${roles.join(', ')}`;
   const you = `You are the \`${found.id}\` session of team \`${input.team}\` (name \`${roster.nameOf(found.id) ?? found.id}\`${held}).`;
-  return [lead === found.id || leadName === undefined ? you : `${you} Message the lead as \`${leadName}\`.`, names];
+  const pass = input.sessionInEnv ? '' : ` $${ENV.session} is not set here, so pass --session ${found.id} to every \`${command}\` task and inbox command.`;
+  return [lead === found.id || leadName === undefined ? `${you}${pass}` : `${you}${pass} Message the lead as \`${leadName}\`.`, names];
 }
 
 /**
@@ -50,7 +56,7 @@ export function sessionStartContext(input: SessionStartInput): string {
   const { load, command } = input;
   switch (load.status) {
     case 'missing':
-      return `${KIT_NAME} is enabled here but team ${input.team} has no config at ${load.path}, so no team rules are loaded. Write one (see the README), then run: ${command} config validate`;
+      return `${KIT_NAME} is enabled here but team ${input.team} has no config at ${load.path}, so no team rules are loaded. Create it with: ${command} team create ${input.team} --sessions <id,id>`;
     case 'unreadable':
       return `${KIT_NAME} cannot read the config of team ${input.team} at ${load.path}, so no team rules are loaded. Run: ${command} config validate`;
     case 'loaded':

@@ -23,6 +23,7 @@ function context(overrides: Partial<SessionStartInput> = {}): string {
     titleNote: undefined,
     refreshNote: undefined,
     session: 'alpha',
+    sessionInEnv: true,
     command: COMMAND,
     ...overrides,
   });
@@ -38,6 +39,19 @@ describe('sessionStartContext', () => {
   it('finds the session by name too, and tells the lead its role', () => {
     const text = context({ session: 'team-lead' });
     assert.ok(text.endsWith(`\n\nYou are the \`lead\` session of team \`app\` (name \`team-lead\`, roles: lead).\n${NAMES}`));
+  });
+
+  it('tells a session known only by --session or by its inbox to pass --session', () => {
+    assert.ok(
+      context({ sessionInEnv: false }).endsWith(
+        `\n\nYou are the \`alpha\` session of team \`app\` (name \`app-alpha\`). $TEAMRIG_SESSION is not set here, so pass --session alpha to every \`teamrig\` task and inbox command. Message the lead as \`team-lead\`.\n${NAMES}`,
+      ),
+    );
+    assert.ok(
+      context({ session: 'lead', sessionInEnv: false }).includes(
+        '(name `team-lead`, roles: lead). $TEAMRIG_SESSION is not set here, so pass --session lead to every `teamrig` task and inbox command.\n',
+      ),
+    );
   });
 
   it('asks which session it is when the variable is unset, invalid or not on the team', () => {
@@ -75,7 +89,7 @@ describe('sessionStartContext', () => {
   it('says in one line why no rules load without a usable config', () => {
     assert.equal(
       context({ load: { status: 'missing', path: PATH } }),
-      `teamrig is enabled here but team app has no config at ${PATH}, so no team rules are loaded. Write one (see the README), then run: teamrig config validate`,
+      `teamrig is enabled here but team app has no config at ${PATH}, so no team rules are loaded. Create it with: teamrig team create app --sessions <id,id>`,
     );
     const unreadable = context({ load: { status: 'unreadable', path: PATH, issue: { path: '', message: 'not JSON' } } });
     assert.match(unreadable, /^teamrig cannot read the config of team app at \/kit\/teams\/app\/config\.json/);
