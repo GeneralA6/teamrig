@@ -1,8 +1,8 @@
 # How teamrig works
 
 teamrig is one small Node program, four Claude Code hooks and a folder of plain files. Nothing runs between
-sessions: no server, no daemon, no network. Status marks, as in the [README](../README.md): ✅ works today ·
-🚧 being built (task id) · 🗺 planned. Parts not built yet are drawn dashed.
+sessions: no server, no daemon, no network. Status, as in the [README](../README.md): works today, being built
+(with its task id) or planned. Parts not built yet are drawn dashed.
 
 - [The parts](#the-parts)
 - [Who is on the team](#who-is-on-the-team)
@@ -148,18 +148,18 @@ stateDiagram-v2
 ```
 
 - The owner may move a task from any status to any other; the register keeps every move.
-- `teamrig update` changes the owner, priority tier, due date or week, never the status; the lead may run it on any
+- `teamrig update` changes the owner, priority, due date or week, never the status; the lead may run it on any
   task.
 - `teamrig check` reports tasks past due, not picked up 24 hours after they were handed out, untouched for 72 hours,
   or due this week but left out of the week's plan. It reports and never blocks.
-- A lead hands a child team work with `teamrig add --team web --title "..." --tier 2`: the task lands in `web`'s own
+- A lead hands a child team work with `teamrig add --team web --title "..." --priority p2`: the task lands in `web`'s own
   list, owned by `web`'s lead and marked as from `your-team/lead`, and `web`'s lead splits it among its sessions
   and opens them. Only the parent team's lead may do this.
 - `teamrig list --tree`, `check --tree` and `plan --tree` give a lead its team's tasks and those of every team
   under it, with ids like `web/T4`. They only read the other teams' lists. With `--tree`, `--session` names the
   lead asking, so a tab without `$TEAMRIG_SESSION` passes `--session lead`.
-- Being built: dependencies and parent/child tasks 🚧 T205; planned start, ETA, history and token estimates
-  🚧 T209–T211.
+- Being built: dependencies and parent/child tasks (T205); planned start, ETA, history and token estimates
+  (T209–T211).
 
 ## Notes between sessions
 
@@ -198,7 +198,7 @@ sequenceDiagram
   W->>H: teamrig set T2 --status done, then the turn ends
   H-->>W: Stop: your context is 262k (refresh at 250k), write your handover
   W->>H: writes handover/web.md, runs teamrig refresh --ready
-  H-->>Y: Stop: web finished T2 and wrote its handover, type /clear (the tab shows ↻ web)
+  H-->>Y: Stop: web finished T2 and wrote its handover, type /clear (the tab title reads "web: type /clear")
   Y->>W: /clear
   H-->>W: SessionStart: you were refreshed after T2, read your handover first
 ```
@@ -209,7 +209,7 @@ sequenceDiagram
   at any size: `teamrig refresh web` applies at web's next finished task.
 - `refresh --ready` is refused until the handover is written: missing, blank or unchanged since the hook asked.
 - A hook cannot clear a session, so you type `/clear`. A compact or a resume keeps the handover waiting for the next
-  fresh start. Restarting the tab for you is planned 🗺 T201, T212.
+  fresh start. Restarting the tab for you is planned (T201, T212).
 - `refresh.enabled: false` turns it off, `refresh.tabTitle: false` leaves the tab title alone and
   `refresh.handoverDir` moves the handovers.
 
@@ -234,7 +234,7 @@ flowchart TD
 - `teamrig commits check --base <ref>` runs the same size rule in a script or CI.
 - Outside a project tied to a team, the guard stays silent.
 
-Planned 🗺 T228: a deploy coordinator.
+Planned (T228): a deploy coordinator.
 
 ```mermaid
 flowchart LR
@@ -255,9 +255,9 @@ interface per kind of tool.
 ```mermaid
 flowchart LR
   core["teamrig"]
-  ai["AI coding tools: Claude Code ✅, Codex 🗺 T204"]
-  editor["Editors: any terminal ✅, VS Code family and JetBrains 🗺"]
-  pm["Task tools: its own task list ✅, Jira, Linear, GitHub Issues, Asana 🗺 T206"]
+  ai["AI coding tools: Claude Code today, Codex planned (T204)"]
+  editor["Editors: any terminal today, VS Code family and JetBrains planned"]
+  pm["Task tools: its own task list today, Jira, Linear, GitHub Issues, Asana planned (T206)"]
   core --- ai
   core --- editor
   core --- pm
