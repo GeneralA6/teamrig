@@ -1,5 +1,6 @@
-import { EXIT_CLEAN, EXIT_FINDINGS, EXIT_USAGE } from '../lib/exit.ts';
+import { EXIT_CLEAN, EXIT_FINDINGS } from '../lib/exit.ts';
 import { createGit } from '../lib/git.ts';
+import { runMain } from '../lib/run-main.ts';
 import { DIST_DIR, staleDistEntries } from './dist-fresh.ts';
 
 async function main(): Promise<number> {
@@ -13,12 +14,4 @@ async function main(): Promise<number> {
   return EXIT_FINDINGS;
 }
 
-main().then(
-  (code) => {
-    process.exitCode = code;
-  },
-  (error: unknown) => {
-    console.error(`dist-fresh: ${error instanceof Error ? error.message : String(error)}`);
-    process.exitCode = EXIT_USAGE;
-  },
-);
+process.exitCode = await runMain('dist-fresh', main, (line) => console.error(line));

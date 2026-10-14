@@ -3,6 +3,7 @@ import { parseArgs } from 'node:util';
 import { rangeFromGithubEnv } from '../ci/github-range.ts';
 import { EXIT_USAGE } from '../lib/exit.ts';
 import { createGit } from '../lib/git.ts';
+import { runMain } from '../lib/run-main.ts';
 import { checkMessageFile, checkRange, type DcoDeps } from './run.ts';
 
 async function main(): Promise<number> {
@@ -28,12 +29,4 @@ async function main(): Promise<number> {
   return checkRange(range, deps);
 }
 
-main().then(
-  (code) => {
-    process.exitCode = code;
-  },
-  (error: unknown) => {
-    console.error(`dco: ${error instanceof Error ? error.message : String(error)}`);
-    process.exitCode = EXIT_USAGE;
-  },
-);
+process.exitCode = await runMain('dco', main, (line) => console.error(line));

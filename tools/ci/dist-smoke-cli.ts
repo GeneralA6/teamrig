@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { EXIT_CLEAN, EXIT_FINDINGS, EXIT_USAGE } from '../lib/exit.ts';
 import { createGit } from '../lib/git.ts';
+import { runMain } from '../lib/run-main.ts';
 import { isRecord, stringField } from '../lib/guards.ts';
 import { launcherModeFinding, smokeDist, type Runner } from './dist-smoke.ts';
 
@@ -63,12 +64,4 @@ async function main(): Promise<number> {
   }
 }
 
-main().then(
-  (code) => {
-    process.exitCode = code;
-  },
-  (error: unknown) => {
-    console.error(`dist-smoke: ${error instanceof Error ? error.message : String(error)}`);
-    process.exitCode = EXIT_USAGE;
-  },
-);
+process.exitCode = await runMain('dist-smoke', main, (line) => console.error(line));

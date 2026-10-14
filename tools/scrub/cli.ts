@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import { parseArgs } from 'node:util';
 import { rangeFromGithubEnv } from '../ci/github-range.ts';
-import { EXIT_USAGE } from '../lib/exit.ts';
 import { createGit } from '../lib/git.ts';
+import { runMain } from '../lib/run-main.ts';
 import { runScrub } from './run.ts';
 
 async function main(): Promise<number> {
@@ -33,12 +33,4 @@ async function main(): Promise<number> {
   );
 }
 
-main().then(
-  (code) => {
-    process.exitCode = code;
-  },
-  (error: unknown) => {
-    console.error(`scrub: ${error instanceof Error ? error.message : String(error)}`);
-    process.exitCode = EXIT_USAGE;
-  },
-);
+process.exitCode = await runMain('scrub', main, (line) => console.error(line));
