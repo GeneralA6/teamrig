@@ -44,10 +44,10 @@ describe('selectTasks', () => {
 describe('formatTask', () => {
   it('prints one compact line', () => {
     const task = testTask({ id: 'T12', due: '2030-01-15', week: '2030-01-13', source: 'owner', goals: ['G1', 'G2'] });
-    assert.equal(formatTask(task), 'T12 t2 open alpha due 01-15 wk 01-13 src owner G1,G2 | Add a health check');
+    assert.equal(formatTask(task), 'T12 open, tier 2, owner alpha, due 01-15, week 01-13, from owner, goals G1,G2 | Add a health check');
     assert.equal(
       formatTask(testTask({ status: 'blocked', note: 'waiting on disk' })),
-      'T1 t2 blocked alpha src lead | Add a health check (blocked: waiting on disk)',
+      'T1 blocked, tier 2, owner alpha, from lead | Add a health check (blocked: waiting on disk)',
     );
   });
 });

@@ -75,15 +75,15 @@ describe('runCli: the task register', () => {
     const kit = new CliHarness();
     const added = await kit.run(['add', '--title', 'Ship the CLI', '--tier', '2', '--session', 'alpha']);
     assert.equal(added.code, EXIT.ok, added.stderr.join('\n'));
-    assert.match(added.stdout[0] ?? '', /^ADDED T1 t2 open alpha/);
+    assert.match(added.stdout[0] ?? '', /^ADDED T1 open, tier 2, owner alpha, from \S+ \| /);
 
     const listed = await kit.run(['list'], { env: { TEAMRIG_SESSION: 'alpha' } });
     assert.equal(listed.code, EXIT.ok);
-    assert.match(listed.stdout.join('\n'), /^T1 t2 open alpha/m);
+    assert.match(listed.stdout.join('\n'), /^T1 open, tier 2, owner alpha,/m);
 
     const set = await kit.run(['set', 'T1', '--status', 'in-progress', '--session', 'alpha']);
     assert.equal(set.code, EXIT.ok, set.stdout.join('\n'));
-    assert.match(set.stdout[0] ?? '', /^SET T1 t2 in-progress alpha/);
+    assert.match(set.stdout[0] ?? '', /^SET T1 in-progress, tier 2, owner alpha,/);
 
     const shown = await kit.run(['show', 'T1', '--session', 'alpha']);
     assert.equal(shown.code, EXIT.ok);
@@ -135,7 +135,7 @@ describe('runCli: the task register', () => {
     await kit.run(['add', '--title', 'Ship the CLI', '--tier', '2', '--session', 'alpha']);
     const updated = await kit.run(['update', 'T1', '--owner', 'bravo', '--note', 'bravo takes it', '--session', 'alpha']);
     assert.equal(updated.code, EXIT.ok, updated.stdout.join('\n'));
-    assert.match(updated.stdout[0] ?? '', /^UPDATED T1 t2 open bravo/);
+    assert.match(updated.stdout[0] ?? '', /^UPDATED T1 open, tier 2, owner bravo,/);
     const retitled = await kit.run(['update', 'T1', '--title', 'Ship the CLI twice', '--session', 'bravo']);
     assert.equal(retitled.code, EXIT.ok, retitled.stdout.join('\n'));
     assert.match(retitled.stdout[0] ?? '', /Ship the CLI twice/);
@@ -152,7 +152,7 @@ describe('runCli: the task register', () => {
     await kit.files.append(EVENTS_PATH, '{ torn\n');
     const listed = await kit.run(['list', '--session', 'alpha']);
     assert.equal(listed.code, EXIT.ok);
-    assert.match(listed.stdout.join('\n'), /^T1 t2 open alpha/m);
+    assert.match(listed.stdout.join('\n'), /^T1 open, tier 2, owner alpha,/m);
     assert.deepEqual(listed.stderr, [`WARN ${EVENTS_PATH}: 1 unreadable line(s), 0 line(s) from a newer teamrig, 0 event(s) naming no task`]);
   });
 
@@ -255,7 +255,7 @@ describe('runCli: session names', () => {
   it('takes a name wherever it takes a session, and keys everything by id', async () => {
     const kit = new CliHarness(NAMED);
     const posted = await kit.run(['inbox', 'add', '--to', 'team-lead', '--text', 'ready', '--session', 'app-alpha']);
-    assert.match(posted.stdout[0] ?? '', /^POSTED to lead: /);
+    assert.match(posted.stdout[0] ?? '', /^POSTED to lead; lead is reminded at its next prompt$/);
     const read = await kit.run(['inbox', 'read', '--session', 'team-lead']);
     assert.deepEqual(read.stdout[0], '- 2030-01-08 10:00 alpha: ready');
 
@@ -308,7 +308,7 @@ describe('runCli: inboxes', () => {
     const kit = new CliHarness();
     const posted = await kit.run(['inbox', 'add', '--to', 'bravo', '--text', 'the build is green', '--session', 'alpha']);
     assert.equal(posted.code, EXIT.ok, posted.stdout.join('\n'));
-    assert.match(posted.stdout[0] ?? '', /^POSTED to bravo: /);
+    assert.match(posted.stdout[0] ?? '', /^POSTED to bravo; bravo is reminded at its next prompt$/);
 
     const status = await kit.run(['inbox', 'status']);
     assert.match(status.stdout.join('\n'), /bravo/);
@@ -316,7 +316,7 @@ describe('runCli: inboxes', () => {
     const first = await kit.run(['inbox', 'read', '--session', 'bravo']);
     assert.equal(first.code, EXIT.ok);
     assert.deepEqual(first.stdout.slice(0, 1), ['- 2030-01-08 10:00 alpha: the build is green']);
-    assert.match(first.stdout[1] ?? '', /^READ bravo: the 1 line\(s\) above/);
+    assert.match(first.stdout[1] ?? '', /^READ bravo: 1 new line, shown above; /);
 
     const again = await kit.run(['inbox', 'read', '--session', 'bravo']);
     assert.match(again.stdout[0] ?? '', /^READ bravo: nothing new/);
@@ -344,6 +344,18 @@ describe('runCli: inboxes', () => {
     const reminded = await kit.run(['hook', 'inbox-reminder'], { stdin });
     assert.equal(reminded.code, EXIT.ok);
     assert.match(reminded.stdout[0] ?? '', /^INBOX: 1 unread line\(s\) .* teamrig inbox read --session bravo$/);
+  });
+
+  it('reminds a session named by $TEAMRIG_SESSION before it has ever read its inbox', async () => {
+    const kit = new CliHarness();
+    const stdin = JSON.stringify({ session_id: CLAUDE_SESSION });
+    await kit.run(['inbox', 'add', '--to', 'bravo', '--text', 'please rebase', '--session', 'alpha']);
+    assert.deepEqual((await kit.run(['hook', 'inbox-reminder'], { stdin })).stdout, [], 'unnamed and never read: no session to remind');
+
+    const reminded = await kit.run(['hook', 'inbox-reminder'], { stdin, env: { TEAMRIG_SESSION: 'app-bravo' } });
+    assert.match(reminded.stdout[0] ?? '', /^INBOX: 1 unread line\(s\) .* teamrig inbox read --session bravo$/, 'found by its name');
+    const unknown = await kit.run(['hook', 'inbox-reminder'], { stdin, env: { TEAMRIG_SESSION: 'zulu' } });
+    assert.deepEqual(unknown.stdout, []);
   });
 
   it('keeps the reminder hook silent on bad input or without a config', async () => {

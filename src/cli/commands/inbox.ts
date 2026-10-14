@@ -64,6 +64,6 @@ export async function add(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
   if (problem !== undefined) {
     throw new RefusedError(problem);
   }
-  runtime.out.stdout(`POSTED to ${to}: ${inboxes.pathOf(to)}`);
+  runtime.out.stdout(`POSTED to ${to}; ${to} is reminded at its next prompt`);
   return EXIT.ok;
 }

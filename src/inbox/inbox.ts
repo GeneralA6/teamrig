@@ -143,13 +143,14 @@ export async function readInbox(
 
 export function formatRead(result: ReadResult): string {
   const { unread, mark } = result;
-  const what = unread.lines.length === 0 ? 'nothing new' : `the ${unread.lines.length} line(s) above`;
+  const count = unread.lines.length;
+  const what = count === 0 ? 'nothing new' : `${count} new line${count === 1 ? '' : 's'}, shown above`;
   const redo = unread.resume === 'rewritten' ? ' (the file was rewritten, so all of it is shown)' : '';
-  const hook =
+  const next =
     mark.claudeSession === null
-      ? 'no Claude Code session id here, so no reminder follows this session'
-      : 'the reminder hook follows this session';
-  return `READ ${mark.area}: ${what}${redo}, read to line ${mark.line}; ${hook}`;
+      ? 'outside Claude Code, so no prompt will remind you of new ones'
+      : 'new ones are shown at your next prompt';
+  return `READ ${mark.area}: ${what}${redo}; ${next}`;
 }
 
 /** Unread lines per area: every area, or one. */
@@ -166,14 +167,13 @@ export async function inboxStatus(deps: InboxDeps, area?: string): Promise<Unrea
   return result;
 }
 
-/** The reminder for a Claude Code session; undefined until it has read an inbox once, or when nothing is unread. */
-export async function reminderFor(deps: InboxDeps, claudeSession: string, command: string): Promise<string | undefined> {
-  const { byArea, areaBySession } = indexMarks((await deps.marks.read()).marks);
-  const area = areaBySession.get(claudeSession);
-  const lines = area === undefined ? undefined : await deps.inboxes.lines(area);
-  if (area === undefined || lines === undefined) {
+/** The reminder for a session's inbox; undefined when it has no inbox file or nothing is unread. */
+export async function reminderFor(deps: InboxDeps, area: string, command: string): Promise<string | undefined> {
+  const lines = await deps.inboxes.lines(area);
+  if (lines === undefined) {
     return undefined;
   }
+  const { byArea } = indexMarks((await deps.marks.read()).marks);
   return reminderLine(unreadOf(area, lines, byArea.get(area) ?? null), deps.inboxes.pathOf(area), command);
 }
 
