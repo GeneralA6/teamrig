@@ -60,7 +60,17 @@ describe('nodeFiles', () => {
     await files.write(join(folder, 'inside.txt'), 'x');
     await files.write(file, 'x');
     await assert.rejects(files.read(folder));
+    await assert.rejects(files.readTail(folder, 10), /is not a file/);
+    await assert.rejects(files.readTail(join(root, 'nul\0byte'), 10), /ERR_INVALID_ARG_VALUE|null bytes/);
     await assert.rejects(files.list(file));
+  });
+
+  it('reads at most the last bytes of a file, and a missing file as undefined', async () => {
+    const path = join(root, 't', 'transcript.jsonl');
+    await files.write(path, 'first line\nsecond line\n');
+    assert.equal(await files.readTail(path, 12), 'second line\n');
+    assert.equal(await files.readTail(path, 1000), 'first line\nsecond line\n');
+    assert.equal(await files.readTail(join(root, 't', 'nope.jsonl'), 12), undefined);
   });
 
   it('removes its temporary file and throws when the rename fails', async () => {

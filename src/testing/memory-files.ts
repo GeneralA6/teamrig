@@ -24,6 +24,15 @@ export class MemoryFiles implements Files {
     return this.get(path);
   }
 
+  async readTail(path: string, maxBytes: number): Promise<string | undefined> {
+    const text = this.get(path);
+    if (text === undefined) {
+      return undefined;
+    }
+    const bytes = Buffer.from(text, 'utf8');
+    return bytes.subarray(Math.max(0, bytes.length - maxBytes)).toString('utf8');
+  }
+
   async append(path: string, text: string): Promise<void> {
     const key = normalisePath(path);
     this.contents.set(key, (this.contents.get(key) ?? '') + text);
