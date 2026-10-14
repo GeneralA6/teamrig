@@ -34,7 +34,7 @@ async function openTeam(runtime: CliRuntime, access: Access): Promise<Team> {
     policy: new RegisterPolicy(config),
     skills: new SkillDir(files, kit.paths.skills),
   });
-  return { config, paths: kit.paths, register, roster: rosterOf(kit, config) };
+  return { config, paths: kit.paths, register, roster: await rosterOf(runtime, kit, config) };
 }
 
 /** The owner as an id; a source naming a session becomes its id, the owner's marker or a past session's id stays. */

@@ -5,7 +5,10 @@ import { Roster } from '../config/roster.ts';
 import type { KitConfig } from '../config/types.ts';
 import { ENV, resolveKitHome, teamPaths, type Env, type TeamPaths } from '../core/home.ts';
 import { ID_PATTERN } from '../core/ids.ts';
+import { FileLock } from '../core/lock.ts';
 import { resolveTeam, TEAM_POINTER } from '../core/team.ts';
+import { JsonlRenameLog } from '../names/log.ts';
+import type { RenameDeps } from '../names/record.ts';
 import { RefusedError, type CliRuntime } from './runtime.ts';
 
 export interface Kit {
@@ -13,11 +16,27 @@ export interface Kit {
   readonly load: ConfigLoad;
 }
 
-export function rosterOf(kit: Kit, config: KitConfig): Roster {
-  return new Roster(config, kit.paths.team);
+/** The rename log, its lock and the roster it gives, for recording a rename. */
+export function renameDepsOf(runtime: CliRuntime, kit: Kit, config: KitConfig): RenameDeps {
+  const { files, clock, sleep, pid } = runtime;
+  return {
+    log: new JsonlRenameLog(files, kit.paths.renames),
+    mutex: new FileLock(kit.paths.renamesLock, config.lock, { files, clock, sleep, pid }),
+    clock,
+    rosterOf: (renames) => new Roster(config, kit.paths.team, renames),
+  };
 }
 
-/** The id of the session a command line names by id or current name; anything else is refused. */
+/**
+ * The team's sessions with every rename applied, so a name any session has had resolves. A damaged
+ * or newer line in the rename log is skipped here; `doctor` reports it.
+ */
+export async function rosterOf(runtime: CliRuntime, kit: Kit, config: KitConfig): Promise<Roster> {
+  const { renames } = await new JsonlRenameLog(runtime.files, kit.paths.renames).read();
+  return new Roster(config, kit.paths.team, renames);
+}
+
+/** The id of the session a command line names by id, current name or former name; anything else is refused. */
 export function sessionIdOf(roster: Roster, text: string): string {
   const found = roster.lookup(text);
   if (!found.ok) {
@@ -27,13 +46,17 @@ export function sessionIdOf(roster: Roster, text: string): string {
 }
 
 /**
- * For a filter or a status: the id when the text names a session, and an id no longer on the team as
- * given, so a past session's records stay reachable. Anything else is refused.
+ * For a filter or a status: the id when the text names a session, and the id of a session no longer
+ * on the team, given as its id or a name it had, so a past session's records stay reachable.
+ * Anything else is refused.
  */
 export function pastOrPresentIdOf(roster: Roster, text: string): string {
   const found = roster.lookup(text);
   if (found.ok) {
     return found.id;
+  }
+  if (found.pastId !== undefined) {
+    return found.pastId;
   }
   if (!ID_PATTERN.test(text)) {
     throw new RefusedError(found.error);
