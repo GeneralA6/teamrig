@@ -29,7 +29,7 @@ flowchart LR
     tool["Bash tool: teamrig add, set, inbox add ..."]
   end
   cli["teamrig (one Node program)"]
-  folder[("~/.teamrig/teams/your-team/<br>config.json: sessions, names, lead<br>rules.md: your team's rules<br>state/events.jsonl: the task list<br>state/inbox/: one file per session<br>state/refresh/, handover/: context refresh")]
+  folder[("~/.teamrig/teams/your-team/<br>config.json: sessions, names, lead, parent team<br>rules.md: your team's rules<br>state/events.jsonl: the task list<br>state/inbox/: one file per session<br>state/refresh/, handover/: context refresh")]
   git[("git")]
   start --> cli
   prompt --> cli
@@ -42,7 +42,7 @@ flowchart LR
 
 | Part | When it runs | What it does |
 | --- | --- | --- |
-| SessionStart hook | a session starts, resumes, is cleared or is compacted | gives the session the core rules, its name, the lead's name and your team's `rules.md` |
+| SessionStart hook | a session starts, resumes, is cleared or is compacted | gives the session the core rules, its name, the lead's name, where its team sits in a tree of teams and your team's `rules.md` |
 | UserPromptSubmit hook | you send a prompt | one `INBOX:` line when the session has unread notes, nothing otherwise |
 | PreToolUse hook | Claude runs a Bash or PowerShell command | reads a `git push` in it and asks you or refuses ([Safe pushes](#safe-pushes)) |
 | Stop hook | a turn ends | after a task is marked done, asks for a handover when a refresh is due, then tells you once ([A fresh context](#a-fresh-context)); nothing otherwise |
@@ -55,29 +55,42 @@ never overwrite each other.
 
 ## Who is on the team
 
-A team is a flat list of sessions with one lead; each session learns at start who it is and whom to message.
+A team is a list of sessions with one lead, and a lead may also lead sub-teams; each session learns at start who it
+is and whom to message.
 
 ```mermaid
 flowchart TB
   you(["You"])
   lead["lead: hands out tasks"]
   api["api"]
-  web["web"]
   data["data"]
-  sub["a sub-team lead with its own sessions 🗺"]
+  sub["web lead: runs the web sub-team"]
+  front["front"]
+  back["back"]
   you --> lead
   lead --> api
-  lead --> web
   lead --> data
-  lead -.-> sub
-  classDef planned stroke-dasharray: 5 5
-  class sub planned
+  lead --> sub
+  sub --> front
+  sub --> back
 ```
 
 You ask one tab for the team in plain words, and it opens a tab for each other session
 ([Setting up a team](#setting-up-a-team)). At start the session reads "You are the `web` session of team
 `your-team` … Message the lead as `lead`." `teamrig who` prints every session's name, and `teamrig rename` gives a
 session a new name while every old name keeps working.
+
+A team grows into a tree of teams when a lead hires sub-team leads, each running its own sessions, and you still
+talk to one lead: the root team's.
+
+- Each team keeps its own folder, config, task list and inboxes. Its config names its parent team
+  (`"team": {"id": "web", "parent": "your-team"}`), so the tree is read from the configs, with no other file to keep
+  in step. A tree has at most 3 levels and a team at most 8 child teams.
+- A member writes notes to its own team only. A lead also writes to its parent team's lead and to its child teams'
+  leads, so a question for you goes up lead by lead to the root. Anything else is refused: escalate through your lead.
+- Claude Code session names are machine-wide, so two teams never share one: `team create` refuses a clash and
+  `teamrig doctor` names one, along with a broken link in the tree.
+- `teamrig team tree` prints the tree with each team's lead and sessions.
 
 ## Setting up a team
 
@@ -105,14 +118,17 @@ sequenceDiagram
 
 - `teamrig team create signup --sessions api,web,tests` writes the team's `config.json` and ties the project folder
   to it with `.teamrig.json`. It refuses another team with the same id and a project tied to another team, a repeat
-  changes nothing, and `--dry-run` prints what it would write.
+  changes nothing, and `--dry-run` prints what it would write. `--parent your-team` hangs the new team under that
+  team's lead; it refuses a parent with no config, a tree deeper than 3 levels, a team's 9th child team and a
+  session name another team uses.
 - The tab that ran the setup becomes the lead without a restart. `teamrig inbox read --session lead` ties its Claude
   Code session to the lead, so the hooks still know it after a compact or a resume, and `teamrig rules --session lead`
   gives it the rules it missed at start. After a `/clear` it runs `inbox read` once more.
 - `teamrig open <session>` opens a tab in tmux (when run inside tmux), Windows Terminal, macOS Terminal, GNOME
   Terminal, Konsole or x-terminal-emulator, in that order; `open.terminal` in the config or `--terminal` picks one.
   The tab runs `teamrig launch`, which sets `$TEAMRIG_SESSION` and starts `claude --name <name> "<first prompt>"`.
-  When no terminal opens, it prints the command to paste and exits 3.
+  When no terminal opens, it prints the command to paste and exits 3. `teamrig open web/lead` opens a session of
+  another team in the same tree.
 
 ## A task's life
 
@@ -136,6 +152,11 @@ stateDiagram-v2
   task.
 - `teamrig check` reports tasks past due, not picked up 24 hours after they were handed out, untouched for 72 hours,
   or due this week but left out of the week's plan. It reports and never blocks.
+- A lead hands a child team work with `teamrig add --team web --title "..." --tier 2`: the task lands in `web`'s own
+  list, owned by `web`'s lead and marked as from `your-team/lead`, and `web`'s lead plans it in. Only the parent
+  team's lead may do this.
+- `teamrig list --tree`, `check --tree` and `plan --tree` give a lead its team's tasks and those of every team
+  under it, with ids like `web/T4`. They only read the other teams' lists.
 - Being built: dependencies and parent/child tasks 🚧 T205; planned start, ETA, history and token estimates
   🚧 T209–T211.
 
@@ -159,6 +180,8 @@ sequenceDiagram
 
 - The inbox file is never edited: `inbox read` adds a mark to `state/inbox-marks.jsonl`.
 - A note is one line; an empty line, several lines or a line that looks like a secret is refused.
+- In a tree of teams, `--to web/lead` writes to a session of another team, within the rights in
+  [Who is on the team](#who-is-on-the-team); the note names its sender as `your-team/lead`.
 - Nothing wakes an idle session, which is why `teamrig check` reports a task not picked up.
 
 ## A fresh context
