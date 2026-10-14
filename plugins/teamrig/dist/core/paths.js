@@ -1,0 +1,17 @@
+import { posix, win32 } from 'node:path';
+/** Platforms whose default filesystems (NTFS, APFS) ignore case. */
+const CASE_INSENSITIVE = new Set(['win32', 'darwin']);
+/**
+ * One key for every spelling of a place: resolved by the platform's rules (separators, `..`, a
+ * trailing slash) and lowercased where the default filesystem ignores case, so `C:\Work\` and
+ * `c:/work` share a key on Windows. Lowercasing is close to, not exactly, the filesystem's own case
+ * folding; ids are lowercase ASCII, so the kit's own paths never differ only beyond it.
+ */
+export function pathKey(path, platform = process.platform) {
+    const resolved = (platform === 'win32' ? win32 : posix).resolve(path);
+    return CASE_INSENSITIVE.has(platform) ? resolved.toLowerCase() : resolved;
+}
+/** Whether two paths name the same place on the platform (see `pathKey`). */
+export function samePath(a, b, platform = process.platform) {
+    return pathKey(a, platform) === pathKey(b, platform);
+}

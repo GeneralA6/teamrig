@@ -10,7 +10,7 @@ process.exitCode = await runCli(process.argv.slice(2), {
     userHome: homedir(),
     cwd: process.cwd(),
     pid: process.pid,
-    files: nodeFiles(),
+    files: nodeFiles(realSleep),
     clock: systemClock,
     sleep: realSleep,
     git: GIT_CLI,
