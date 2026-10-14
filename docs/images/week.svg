@@ -1,0 +1,160 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="300" viewBox="0 0 960 300" role="img" aria-label="A week of token use between two resets. Without a plan, usage climbs too fast, hits the weekly limit on Thursday, and work waits for the reset. With teamrig, the work is spread over the week: usage climbs evenly to 99%, each day's tasks get done, and deploys pause in the last hours before the reset.">
+<title>A week of token use between two resets. Without a plan, usage climbs too fast, hits the weekly limit on Thursday, and work waits for the reset. With teamrig, the work is spread over the week: usage climbs evenly to 99%, each day's tasks get done, and deploys pause in the last hours before the reset.</title>
+<style>
+:root{--fg:#1f2328;--muted:#59636e;--line:#d1d9e0;--tile:#f6f8fa;--bg:#ffffff;--purple:#8250df;--tint:#f0eafb;--amber:#9a6700;--green:#1a7f37}
+@media (prefers-color-scheme:dark){:root{--fg:#e6edf3;--muted:#9198a1;--line:#3d444d;--tile:#151b23;--bg:#0d1117;--purple:#a371f7;--tint:#221e36;--amber:#d29922;--green:#3fb950}}
+text{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif;fill:var(--fg)}
+.note{font-size:13px;fill:var(--muted)}.note.strong{fill:var(--fg)}.day{font-size:14px;fill:var(--muted)}
+.result{font-size:16px;font-weight:600}.brand{fill:var(--purple)}
+.area{fill:var(--purple);fill-opacity:.12}.usage{fill:none;stroke:var(--purple);stroke-width:2.6;stroke-linejoin:round}
+.now{stroke:var(--purple);stroke-width:1.4;stroke-opacity:.7}
+.limit{stroke:var(--fg);stroke-width:1.4;stroke-dasharray:6 5;stroke-opacity:.55}.axis{stroke:var(--line);stroke-width:1.2}
+.hatch{stroke:var(--line);stroke-width:1.4}
+.task{fill:none;stroke:var(--line)}.done{fill:var(--green)}
+.rushed{fill:none;stroke:var(--muted);stroke-width:2;stroke-linejoin:round}.hit{fill:var(--fg)}
+@keyframes a0{0%,32.286%{opacity:0}34.286%,95.333%{opacity:1}97.333%,100%{opacity:0}}
+.a0{opacity:1;animation:a0 15s linear infinite}
+@keyframes a1{0%,39.905%{opacity:0}41.905%,95.333%{opacity:1}97.333%,100%{opacity:0}}
+.a1{opacity:1;animation:a1 15s linear infinite}
+@keyframes a2{0%,47.524%{opacity:0}49.524%,95.333%{opacity:1}97.333%,100%{opacity:0}}
+.a2{opacity:1;animation:a2 15s linear infinite}
+@keyframes a3{0%,55.143%{opacity:0}57.143%,95.333%{opacity:1}97.333%,100%{opacity:0}}
+.a3{opacity:1;animation:a3 15s linear infinite}
+@keyframes a4{0%,62.762%{opacity:0}64.762%,95.333%{opacity:1}97.333%,100%{opacity:0}}
+.a4{opacity:1;animation:a4 15s linear infinite}
+@keyframes a5{0%,70.381%{opacity:0}72.381%,95.333%{opacity:1}97.333%,100%{opacity:0}}
+.a5{opacity:1;animation:a5 15s linear infinite}
+@keyframes a6{0%,78.000%{opacity:0}80.000%,95.333%{opacity:1}97.333%,100%{opacity:0}}
+.a6{opacity:1;animation:a6 15s linear infinite}
+@keyframes a7{0%,25.333%{stroke-dashoffset:873;opacity:1}78.667%,95.333%{stroke-dashoffset:0;opacity:1}97.333%,100%{stroke-dashoffset:0;opacity:0}}
+.a7{opacity:1;animation:a7 15s linear infinite}
+@keyframes a8{0%,25.333%{transform:translateX(0)}78.667%,100%{transform:translateX(840px)}}
+.a8{transform:translateX(840px);animation:a8 15s linear infinite}
+@keyframes a9{0%,27.365%{opacity:0}29.365%,95.333%{opacity:1}97.333%,100%{opacity:0}}
+.a9{opacity:1;animation:a9 15s linear infinite}
+@keyframes a10{0%,29.397%{opacity:0}31.397%,95.333%{opacity:1}97.333%,100%{opacity:0}}
+.a10{opacity:1;animation:a10 15s linear infinite}
+@keyframes a11{0%,31.429%{opacity:0}33.429%,95.333%{opacity:1}97.333%,100%{opacity:0}}
+.a11{opacity:1;animation:a11 15s linear infinite}
+@keyframes a12{0%,34.984%{opacity:0}36.984%,95.333%{opacity:1}97.333%,100%{opacity:0}}
+.a12{opacity:1;animation:a12 15s linear infinite}
+@keyframes a13{0%,37.016%{opacity:0}39.016%,95.333%{opacity:1}97.333%,100%{opacity:0}}
+.a13{opacity:1;animation:a13 15s linear infinite}
+@keyframes a14{0%,39.048%{opacity:0}41.048%,95.333%{opacity:1}97.333%,100%{opacity:0}}
+.a14{opacity:1;animation:a14 15s linear infinite}
+@keyframes a15{0%,42.603%{opacity:0}44.603%,95.333%{opacity:1}97.333%,100%{opacity:0}}
+.a15{opacity:1;animation:a15 15s linear infinite}
+@keyframes a16{0%,44.635%{opacity:0}46.635%,95.333%{opacity:1}97.333%,100%{opacity:0}}
+.a16{opacity:1;animation:a16 15s linear infinite}
+@keyframes a17{0%,46.667%{opacity:0}48.667%,95.333%{opacity:1}97.333%,100%{opacity:0}}
+.a17{opacity:1;animation:a17 15s linear infinite}
+@keyframes a18{0%,50.222%{opacity:0}52.222%,95.333%{opacity:1}97.333%,100%{opacity:0}}
+.a18{opacity:1;animation:a18 15s linear infinite}
+@keyframes a19{0%,52.254%{opacity:0}54.254%,95.333%{opacity:1}97.333%,100%{opacity:0}}
+.a19{opacity:1;animation:a19 15s linear infinite}
+@keyframes a20{0%,54.286%{opacity:0}56.286%,95.333%{opacity:1}97.333%,100%{opacity:0}}
+.a20{opacity:1;animation:a20 15s linear infinite}
+@keyframes a21{0%,57.841%{opacity:0}59.841%,95.333%{opacity:1}97.333%,100%{opacity:0}}
+.a21{opacity:1;animation:a21 15s linear infinite}
+@keyframes a22{0%,59.873%{opacity:0}61.873%,95.333%{opacity:1}97.333%,100%{opacity:0}}
+.a22{opacity:1;animation:a22 15s linear infinite}
+@keyframes a23{0%,61.905%{opacity:0}63.905%,95.333%{opacity:1}97.333%,100%{opacity:0}}
+.a23{opacity:1;animation:a23 15s linear infinite}
+@keyframes a24{0%,65.460%{opacity:0}67.460%,95.333%{opacity:1}97.333%,100%{opacity:0}}
+.a24{opacity:1;animation:a24 15s linear infinite}
+@keyframes a25{0%,67.492%{opacity:0}69.492%,95.333%{opacity:1}97.333%,100%{opacity:0}}
+.a25{opacity:1;animation:a25 15s linear infinite}
+@keyframes a26{0%,69.524%{opacity:0}71.524%,95.333%{opacity:1}97.333%,100%{opacity:0}}
+.a26{opacity:1;animation:a26 15s linear infinite}
+@keyframes a27{0%,73.079%{opacity:0}75.079%,95.333%{opacity:1}97.333%,100%{opacity:0}}
+.a27{opacity:1;animation:a27 15s linear infinite}
+@keyframes a28{0%,75.111%{opacity:0}77.111%,95.333%{opacity:1}97.333%,100%{opacity:0}}
+.a28{opacity:1;animation:a28 15s linear infinite}
+@keyframes a29{0%,77.143%{opacity:0}79.143%,95.333%{opacity:1}97.333%,100%{opacity:0}}
+.a29{opacity:1;animation:a29 15s linear infinite}
+@keyframes a30{0%,4.000%{stroke-dashoffset:906;opacity:1}20.000%,95.333%{stroke-dashoffset:0;opacity:1}97.333%,100%{stroke-dashoffset:0;opacity:0}}
+.a30{opacity:1;animation:a30 15s linear infinite}
+@keyframes a31{0%,11.333%{opacity:0;transform:scale(.2)}12.800%{opacity:1;transform:scale(1.15)}14.000%,95.333%{opacity:1;transform:scale(1)}97.333%,100%{opacity:0;transform:scale(1)}}
+.a31{transform-box:fill-box;transform-origin:center;opacity:1;animation:a31 15s linear infinite}
+@keyframes a32{0%,13.333%{opacity:0;transform:translateY(5px)}15.333%,95.333%{opacity:1;transform:translateY(0)}97.333%,100%{opacity:0;transform:translateY(5px)}}
+.a32{opacity:1;animation:a32 15s linear infinite}
+@keyframes a33{0%,80.000%{opacity:0;transform:translateY(5px)}82.000%,95.333%{opacity:1;transform:translateY(0)}97.333%,100%{opacity:0;transform:translateY(5px)}}
+.a33{opacity:1;animation:a33 15s linear infinite}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+<defs><pattern id="hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><path d="M0 0V7" class="hatch"/></pattern></defs>
+<path d="M60.0 230.0L70.0 230.0L80.0 230.0L90.0 230.0L100.0 226.1L110.0 222.3L120.0 218.4L130.0 214.6L140.0 210.7L150.0 206.9L160.0 204.5L170.0 204.5L180.0 204.5L180 230L60 230Z" class="area a0"/>
+<path d="M180.0 204.5L190.0 204.5L200.0 204.5L210.0 204.5L220.0 200.7L230.0 196.8L240.0 193.0L250.0 189.1L260.0 185.3L270.0 181.4L280.0 179.1L290.0 179.1L300.0 179.1L300 230L180 230Z" class="area a1"/>
+<path d="M300.0 179.1L310.0 179.1L320.0 179.1L330.0 179.1L340.0 175.2L350.0 171.4L360.0 167.5L370.0 163.7L380.0 159.8L390.0 155.9L400.0 153.6L410.0 153.6L420.0 153.6L420 230L300 230Z" class="area a2"/>
+<path d="M420.0 153.6L430.0 153.6L440.0 153.6L450.0 153.6L460.0 149.8L470.0 145.9L480.0 142.1L490.0 138.2L500.0 134.3L510.0 130.5L520.0 128.2L530.0 128.2L540.0 128.2L540 230L420 230Z" class="area a3"/>
+<path d="M540.0 128.2L550.0 128.2L560.0 128.2L570.0 128.2L580.0 124.3L590.0 120.5L600.0 116.6L610.0 112.7L620.0 108.9L630.0 105.0L640.0 102.7L650.0 102.7L660.0 102.7L660 230L540 230Z" class="area a4"/>
+<path d="M660.0 102.7L670.0 102.7L680.0 102.7L690.0 102.7L700.0 98.9L710.0 95.0L720.0 91.1L730.0 87.3L740.0 83.4L750.0 79.6L760.0 77.3L770.0 77.3L780.0 77.3L780 230L660 230Z" class="area a5"/>
+<path d="M780.0 77.3L790.0 77.3L800.0 77.3L810.0 77.3L820.0 73.4L830.0 69.5L840.0 65.7L850.0 61.8L860.0 58.0L870.0 54.1L880.0 51.8L890.0 51.8L900.0 51.8L900 230L780 230Z" class="area a6"/>
+<path d="M60.0 230.0L70.0 230.0L80.0 230.0L90.0 230.0L100.0 226.1L110.0 222.3L120.0 218.4L130.0 214.6L140.0 210.7L150.0 206.9L160.0 204.5L170.0 204.5L180.0 204.5L190.0 204.5L200.0 204.5L210.0 204.5L220.0 200.7L230.0 196.8L240.0 193.0L250.0 189.1L260.0 185.3L270.0 181.4L280.0 179.1L290.0 179.1L300.0 179.1L310.0 179.1L320.0 179.1L330.0 179.1L340.0 175.2L350.0 171.4L360.0 167.5L370.0 163.7L380.0 159.8L390.0 155.9L400.0 153.6L410.0 153.6L420.0 153.6L430.0 153.6L440.0 153.6L450.0 153.6L460.0 149.8L470.0 145.9L480.0 142.1L490.0 138.2L500.0 134.3L510.0 130.5L520.0 128.2L530.0 128.2L540.0 128.2L550.0 128.2L560.0 128.2L570.0 128.2L580.0 124.3L590.0 120.5L600.0 116.6L610.0 112.7L620.0 108.9L630.0 105.0L640.0 102.7L650.0 102.7L660.0 102.7L670.0 102.7L680.0 102.7L690.0 102.7L700.0 98.9L710.0 95.0L720.0 91.1L730.0 87.3L740.0 83.4L750.0 79.6L760.0 77.3L770.0 77.3L780.0 77.3L790.0 77.3L800.0 77.3L810.0 77.3L820.0 73.4L830.0 69.5L840.0 65.7L850.0 61.8L860.0 58.0L870.0 54.1L880.0 51.8L890.0 51.8L900.0 51.8" stroke-dasharray="873" class="usage a7"/>
+<g class="a8"><path d="M60 36V262" class="now"/></g>
+<rect x="880" y="50" width="20" height="180" fill="url(#hatch)"/>
+<text x="872" y="216" text-anchor="end" class="note">deploys pause</text>
+<path d="M60 50H900" class="limit"/>
+<text x="66" y="42" class="note">your weekly token limit</text>
+<path d="M60 230H900" class="axis"/>
+<path d="M60 36V262" class="axis"/>
+<text x="60" y="28" text-anchor="middle" class="note">reset</text>
+<path d="M900 36V262" class="axis"/>
+<text x="900" y="28" text-anchor="middle" class="note">reset</text>
+<text x="120" y="286" text-anchor="middle" class="day">Mon</text>
+<text x="240" y="286" text-anchor="middle" class="day">Tue</text>
+<text x="360" y="286" text-anchor="middle" class="day">Wed</text>
+<text x="480" y="286" text-anchor="middle" class="day">Thu</text>
+<text x="600" y="286" text-anchor="middle" class="day">Fri</text>
+<text x="720" y="286" text-anchor="middle" class="day">Sat</text>
+<text x="840" y="286" text-anchor="middle" class="day">Sun</text>
+<rect x="66.5" y="242.5" width="25" height="11" rx="3" class="task"/>
+<rect x="66" y="242" width="26" height="12" rx="3" class="done a9"/>
+<rect x="98.5" y="242.5" width="25" height="11" rx="3" class="task"/>
+<rect x="98" y="242" width="26" height="12" rx="3" class="done a10"/>
+<rect x="130.5" y="242.5" width="25" height="11" rx="3" class="task"/>
+<rect x="130" y="242" width="26" height="12" rx="3" class="done a11"/>
+<rect x="186.5" y="242.5" width="25" height="11" rx="3" class="task"/>
+<rect x="186" y="242" width="26" height="12" rx="3" class="done a12"/>
+<rect x="218.5" y="242.5" width="25" height="11" rx="3" class="task"/>
+<rect x="218" y="242" width="26" height="12" rx="3" class="done a13"/>
+<rect x="250.5" y="242.5" width="25" height="11" rx="3" class="task"/>
+<rect x="250" y="242" width="26" height="12" rx="3" class="done a14"/>
+<rect x="306.5" y="242.5" width="25" height="11" rx="3" class="task"/>
+<rect x="306" y="242" width="26" height="12" rx="3" class="done a15"/>
+<rect x="338.5" y="242.5" width="25" height="11" rx="3" class="task"/>
+<rect x="338" y="242" width="26" height="12" rx="3" class="done a16"/>
+<rect x="370.5" y="242.5" width="25" height="11" rx="3" class="task"/>
+<rect x="370" y="242" width="26" height="12" rx="3" class="done a17"/>
+<rect x="426.5" y="242.5" width="25" height="11" rx="3" class="task"/>
+<rect x="426" y="242" width="26" height="12" rx="3" class="done a18"/>
+<rect x="458.5" y="242.5" width="25" height="11" rx="3" class="task"/>
+<rect x="458" y="242" width="26" height="12" rx="3" class="done a19"/>
+<rect x="490.5" y="242.5" width="25" height="11" rx="3" class="task"/>
+<rect x="490" y="242" width="26" height="12" rx="3" class="done a20"/>
+<rect x="546.5" y="242.5" width="25" height="11" rx="3" class="task"/>
+<rect x="546" y="242" width="26" height="12" rx="3" class="done a21"/>
+<rect x="578.5" y="242.5" width="25" height="11" rx="3" class="task"/>
+<rect x="578" y="242" width="26" height="12" rx="3" class="done a22"/>
+<rect x="610.5" y="242.5" width="25" height="11" rx="3" class="task"/>
+<rect x="610" y="242" width="26" height="12" rx="3" class="done a23"/>
+<rect x="666.5" y="242.5" width="25" height="11" rx="3" class="task"/>
+<rect x="666" y="242" width="26" height="12" rx="3" class="done a24"/>
+<rect x="698.5" y="242.5" width="25" height="11" rx="3" class="task"/>
+<rect x="698" y="242" width="26" height="12" rx="3" class="done a25"/>
+<rect x="730.5" y="242.5" width="25" height="11" rx="3" class="task"/>
+<rect x="730" y="242" width="26" height="12" rx="3" class="done a26"/>
+<rect x="786.5" y="242.5" width="25" height="11" rx="3" class="task"/>
+<rect x="786" y="242" width="26" height="12" rx="3" class="done a27"/>
+<rect x="818.5" y="242.5" width="25" height="11" rx="3" class="task"/>
+<rect x="818" y="242" width="26" height="12" rx="3" class="done a28"/>
+<rect x="850.5" y="242.5" width="25" height="11" rx="3" class="task"/>
+<rect x="850" y="242" width="26" height="12" rx="3" class="done a29"/>
+<path d="M60.0 230.0L62.5 230.0L65.0 230.0L67.5 230.0L70.0 230.0L72.5 230.0L75.0 230.0L77.5 230.0L80.0 230.0L82.5 230.0L85.0 230.0L87.5 230.0L90.0 230.0L92.5 227.9L95.0 225.7L97.5 223.6L100.0 221.4L102.5 219.3L105.0 217.1L107.5 215.0L110.0 212.9L112.5 210.7L115.0 208.6L117.5 206.4L120.0 204.3L122.5 202.1L125.0 200.0L127.5 197.9L130.0 195.7L132.5 193.6L135.0 191.4L137.5 189.3L140.0 187.1L142.5 185.0L145.0 182.9L147.5 180.7L150.0 178.6L152.5 176.4L155.0 174.3L157.5 173.4L160.0 173.4L162.5 173.4L165.0 173.4L167.5 173.4L170.0 173.4L172.5 173.4L175.0 173.4L177.5 173.4L180.0 173.4L182.5 173.4L185.0 173.4L187.5 173.4L190.0 173.4L192.5 173.4L195.0 173.4L197.5 173.4L200.0 173.4L202.5 173.4L205.0 173.4L207.5 173.4L210.0 173.4L212.5 171.3L215.0 169.1L217.5 167.0L220.0 164.9L222.5 162.7L225.0 160.6L227.5 158.4L230.0 156.3L232.5 154.1L235.0 152.0L237.5 149.9L240.0 147.7L242.5 145.6L245.0 143.4L247.5 141.3L250.0 139.1L252.5 137.0L255.0 134.9L257.5 132.7L260.0 130.6L262.5 128.4L265.0 126.3L267.5 124.1L270.0 122.0L272.5 119.9L275.0 117.7L277.5 116.9L280.0 116.9L282.5 116.9L285.0 116.9L287.5 116.9L290.0 116.9L292.5 116.9L295.0 116.9L297.5 116.9L300.0 116.9L302.5 116.9L305.0 116.9L307.5 116.9L310.0 116.9L312.5 116.9L315.0 116.9L317.5 116.9L320.0 116.9L322.5 116.9L325.0 116.9L327.5 116.9L330.0 116.9L332.5 114.7L335.0 112.6L337.5 110.4L340.0 108.3L342.5 106.1L345.0 104.0L347.5 101.9L350.0 99.7L352.5 97.6L355.0 95.4L357.5 93.3L360.0 91.1L362.5 89.0L365.0 86.9L367.5 84.7L370.0 82.6L372.5 80.4L375.0 78.3L377.5 76.1L380.0 74.0L382.5 71.9L385.0 69.7L387.5 67.6L390.0 65.4L392.5 63.3L395.0 61.1L397.5 60.3L400.0 60.3L402.5 60.3L405.0 60.3L407.5 60.3L410.0 60.3L412.5 60.3L415.0 60.3L417.5 60.3L420.0 60.3L422.5 60.3L425.0 60.3L427.5 60.3L430.0 60.3L432.5 60.3L435.0 60.3L437.5 60.3L440.0 60.3L442.5 60.3L445.0 60.3L447.5 60.3L450.0 60.3L452.5 58.1L455.0 56.0L457.5 53.9L460.0 51.7L462.5 50.0L900.0 50.0" stroke-dasharray="906" class="rushed a30"/>
+<circle cx="462.5" cy="50" r="5" class="hit a31"/>
+<text x="476.5" y="42" class="note strong a32">Without a plan: out of tokens by Thursday</text>
+<g class="a33">
+<text x="868" y="136" text-anchor="end" class="result"><tspan class="brand">With teamrig:</tspan> 99% used,</text>
+<text x="868" y="158" text-anchor="end" class="result">every task done before the reset.</text>
+</g>
+</svg>
