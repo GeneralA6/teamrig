@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { formatConfig } from '../config/load.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import type { Env } from '../core/home.ts';
@@ -13,7 +13,9 @@ import { EXIT, type ExitCode } from './runtime.ts';
 
 const USER_HOME = join('/', 'u');
 const KIT = join('/', 'kit');
-const CONFIG_PATH = join(KIT, 'config.json');
+const CONFIG_PATH = join(KIT, 'teams', 'app', 'config.json');
+const APP = resolve('/', 'work', 'app');
+const POINTER = join(APP, '.teamrig.json');
 const CLAUDE_SESSION = '0123abcd-0000-4000-8000-00000000000a';
 const TEAM: JsonRecord = { sessions: ['lead', 'alpha', 'bravo'], roles: { lead: 'lead' } };
 
@@ -27,17 +29,24 @@ interface RunOptions {
   readonly env?: Env;
   readonly stdin?: string;
   readonly branch?: string;
+  readonly cwd?: string;
 }
 
-/** The CLI over in-memory files, a fixed clock and a fake git, with the kit home at /kit. */
+/**
+ * The CLI over in-memory files, a fixed clock and a fake git, with the kit home at /kit and the
+ * working folder in project /work/app, which a pointer ties to team `app`.
+ */
 class Harness {
   readonly files: MemoryFiles;
   readonly clock = new FakeClock('2030-01-08T10:00:00Z');
 
-  /** `null` leaves the kit without a team config; `undefined` would take the default team. */
-  constructor(config: JsonRecord | string | null = TEAM) {
+  /** `null` leaves out the team config or the project's team pointer; `undefined` takes the default. */
+  constructor(config: JsonRecord | string | null = TEAM, pointer: string | null = '{"team": "app"}') {
     const text = config === null || typeof config === 'string' ? config : formatConfig(config);
-    this.files = new MemoryFiles(text === null ? {} : { [CONFIG_PATH]: text });
+    this.files = new MemoryFiles({
+      ...(text === null ? {} : { [CONFIG_PATH]: text }),
+      ...(pointer === null ? {} : { [POINTER]: pointer }),
+    });
   }
 
   async run(argv: readonly string[], options: RunOptions = {}): Promise<Result> {
@@ -50,7 +59,7 @@ class Harness {
     const code = await runCli(argv, {
       env: { TEAMRIG_HOME: KIT, ...options.env },
       userHome: USER_HOME,
-      cwd: join('/', 'work', 'app'),
+      cwd: options.cwd ?? APP,
       pid: 4242,
       files: this.files,
       clock: this.clock,
@@ -64,7 +73,7 @@ class Harness {
 }
 
 function bash(command: string): string {
-  return JSON.stringify({ tool_name: 'Bash', tool_input: { command }, cwd: join('/', 'work', 'app') });
+  return JSON.stringify({ tool_name: 'Bash', tool_input: { command }, cwd: APP });
 }
 
 function decisionOf(result: Result): string | undefined {
@@ -260,5 +269,66 @@ describe('runCli: hook push-guard', () => {
 
   it('allows silently on input that is not a hook payload', async () => {
     assert.deepEqual(await new Harness().run(['hook', 'push-guard'], { stdin: 'not json' }), { code: EXIT.ok, stdout: [], stderr: [] });
+  });
+});
+
+describe('runCli: which team', () => {
+  const VALID = { code: EXIT.ok, stdout: [`VALID ${CONFIG_PATH}`], stderr: [] };
+  const SILENT = { code: EXIT.ok, stdout: [], stderr: [] };
+  const ELSEWHERE = resolve('/', 'elsewhere');
+
+  it('finds the team from the nearest pointer above the working folder', async () => {
+    assert.deepEqual(await new Harness().run(['config', 'validate'], { cwd: join(APP, 'src', 'core') }), VALID);
+  });
+
+  it("falls back to the session's project folder", async () => {
+    const result = await new Harness().run(['config', 'validate'], { cwd: ELSEWHERE, env: { CLAUDE_PROJECT_DIR: APP } });
+    assert.deepEqual(result, VALID);
+  });
+
+  it('takes $TEAMRIG_TEAM over the pointer', async () => {
+    const result = await new Harness().run(['config', 'validate'], { env: { TEAMRIG_TEAM: 'ops' } });
+    assert.equal(result.code, EXIT.refused);
+    assert.equal(result.stdout[0], `REFUSED no team config at ${join(KIT, 'teams', 'ops', 'config.json')}`);
+  });
+
+  it('refuses a command with no team, naming both ways to set one', async () => {
+    const result = await new Harness(TEAM, null).run(['list', '--session', 'alpha']);
+    assert.deepEqual(
+      [result.code, result.stdout],
+      [EXIT.refused, ['REFUSED no team here: set $TEAMRIG_TEAM, or put .teamrig.json {"team": "<id>"} in the project folder']],
+    );
+  });
+
+  it('refuses a command on a broken pointer, naming the file to fix', async () => {
+    const result = await new Harness(TEAM, 'team: app').run(['list', '--session', 'alpha']);
+    assert.deepEqual([result.code, result.stdout], [EXIT.refused, [`REFUSED ${POINTER} is not JSON; expected {"team": "<id>"}`]]);
+  });
+
+  it('keeps both hooks silent outside every team project', async () => {
+    const kit = new Harness(TEAM, null);
+    assert.deepEqual(await kit.run(['hook', 'push-guard'], { stdin: bash('git push --force origin main') }), SILENT);
+    assert.deepEqual(await kit.run(['hook', 'inbox-reminder'], { stdin: JSON.stringify({ session_id: CLAUDE_SESSION }) }), SILENT);
+  });
+
+  it("finds a hook's team from the payload's folder, not where the hook process started", async () => {
+    const kit = new Harness({ ...TEAM, pushGuard: { protectedBranches: ['release'] } });
+    const result = await kit.run(['hook', 'push-guard'], { cwd: ELSEWHERE, stdin: bash('git push origin release') });
+    assert.equal(decisionOf(result), 'ask');
+  });
+
+  it('still guards the default branches on a broken pointer', async () => {
+    const kit = new Harness(TEAM, '{"team": "../app"}');
+    assert.equal(decisionOf(await kit.run(['hook', 'push-guard'], { stdin: bash('git push origin main') })), 'ask');
+    assert.equal(decisionOf(await kit.run(['hook', 'push-guard'], { stdin: bash('git push --force origin main') })), 'deny');
+  });
+
+  it('turns a broken pointer into one line of context instead of a silent inbox', async () => {
+    const result = await new Harness(TEAM, '{"team": 7}').run(['hook', 'inbox-reminder'], { stdin: JSON.stringify({ session_id: CLAUDE_SESSION }) });
+    assert.deepEqual(result, {
+      code: EXIT.ok,
+      stdout: [`teamrig: no team, so no inbox reminder: ${POINTER} has no "team" text; expected {"team": "<id>"}`],
+      stderr: [],
+    });
   });
 });

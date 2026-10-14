@@ -199,7 +199,7 @@
       }
     },
     "paths": {
-      "description": "Folders moved from their defaults; a relative path is resolved against the kit home. Unset, state and inbox stay under the kit home and skills is ~/.claude/skills.",
+      "description": "Folders moved from their defaults; a relative path is resolved against the team's folder (<kit home>/teams/<team>). Unset, state and inbox stay under the team's folder and skills is ~/.claude/skills.",
       "type": "object",
       "properties": {
         "state": { "type": "string", "minLength": 1 },

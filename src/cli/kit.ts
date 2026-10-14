@@ -1,20 +1,42 @@
 import { loadConfig, type ConfigLoad } from '../config/load.ts';
 import type { ConfigIssue } from '../config/reader.ts';
 import type { KitConfig } from '../config/types.ts';
-import { kitPaths, resolveKitHome, type KitPaths } from '../core/home.ts';
+import { ENV, resolveKitHome, teamPaths, type Env, type TeamPaths } from '../core/home.ts';
+import { resolveTeam, TEAM_POINTER } from '../core/team.ts';
 import { RefusedError, type CliRuntime } from './runtime.ts';
 
 export interface Kit {
-  readonly paths: KitPaths;
+  readonly paths: TeamPaths;
   readonly load: ConfigLoad;
 }
 
-/** The kit home, its config and the paths the config moves. */
-export async function openKit(runtime: CliRuntime): Promise<Kit> {
-  const home = resolveKitHome(runtime.env, runtime.userHome);
-  const load = await loadConfig(runtime.files, kitPaths(home, runtime.userHome).config);
+/** The team's folder under the kit home, its config and the paths the config moves. */
+export async function openKit(runtime: CliRuntime, team: string): Promise<Kit> {
+  const kitHome = resolveKitHome(runtime.env, runtime.userHome);
+  const load = await loadConfig(runtime.files, teamPaths(kitHome, team, runtime.userHome).config);
   const overrides = load.status === 'loaded' ? load.config.paths : {};
-  return { load, paths: kitPaths(home, runtime.userHome, overrides) };
+  return { load, paths: teamPaths(kitHome, team, runtime.userHome, overrides) };
+}
+
+/**
+ * Where to look for a team pointer: the given folders in order, then the folder Claude Code started
+ * the session in, so a command run from a subfolder or a temp folder still finds its team.
+ */
+export function teamFolders(env: Env, first: readonly (string | undefined)[]): string[] {
+  return [...first, env[ENV.claudeProjectDir]].flatMap((folder) => (folder?.trim() ? [folder] : []));
+}
+
+/** A command's team: `$TEAMRIG_TEAM`, else the nearest pointer. Without one the command refuses. */
+export async function openTeamKit(runtime: CliRuntime): Promise<Kit> {
+  const found = await resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [runtime.cwd]));
+  switch (found.kind) {
+    case 'none':
+      throw new RefusedError(`no team here: set $${ENV.team}, or put ${TEAM_POINTER} {"team": "<id>"} in the project folder`);
+    case 'broken':
+      throw new RefusedError(`${found.from} ${found.problem}`);
+    case 'team':
+      return openKit(runtime, found.team);
+  }
 }
 
 /** What a command does with team state: a write refuses on a config a read only warns about. */

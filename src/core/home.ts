@@ -1,4 +1,5 @@
 import { isAbsolute, join } from 'node:path';
+import { ID_PATTERN } from './ids.ts';
 
 export const KIT_NAME = 'teamrig';
 
@@ -21,7 +22,8 @@ export const ENV = {
 export type Env = Readonly<Record<string, string | undefined>>;
 
 /**
- * The kit home holds config, team rules and all state. It lives outside the plugin folders,
+ * The kit home is the machine root: each team keeps its config, rules and state in its own folder
+ * under `teams/`, so teams on one machine never share a file. It lives outside the plugin folders,
  * which a plugin update replaces and an uninstall deletes, so a team's register survives both.
  */
 export function resolveKitHome(env: Env, userHome: string): string {
@@ -34,8 +36,8 @@ export function resolveKitHome(env: Env, userHome: string): string {
 }
 
 /**
- * Folders a team may move with `paths` in the config. A relative path is resolved against the kit
- * home; unset, state and inbox stay under the kit home and skills is the Claude Code skills folder.
+ * Folders a team may move with `paths` in the config. A relative path is resolved against the team
+ * home; unset, state and inbox stay under the team home and skills is the Claude Code skills folder.
  */
 export interface PathOverrides {
   readonly state?: string;
@@ -43,7 +45,10 @@ export interface PathOverrides {
   readonly skills?: string;
 }
 
-export interface KitPaths {
+export interface TeamPaths {
+  readonly kitHome: string;
+  readonly team: string;
+  /** `<kit home>/teams/<team>`: the team's config, rules and state. */
   readonly home: string;
   readonly config: string;
   readonly teamRules: string;
@@ -57,11 +62,22 @@ export interface KitPaths {
   readonly skills: string;
 }
 
-export function kitPaths(home: string, userHome: string, overrides: PathOverrides = {}): KitPaths {
+/** The team's folder. The id is checked here too, since it becomes part of a path. */
+export function teamHome(kitHome: string, team: string): string {
+  if (!ID_PATTERN.test(team)) {
+    throw new Error(`"${team}" is not a team id`);
+  }
+  return join(kitHome, 'teams', team);
+}
+
+export function teamPaths(kitHome: string, team: string, userHome: string, overrides: PathOverrides = {}): TeamPaths {
+  const home = teamHome(kitHome, team);
   const inHome = (path: string | undefined): string | undefined =>
     path === undefined || isAbsolute(path) ? path : join(home, path);
   const state = inHome(overrides.state) ?? join(home, 'state');
   return {
+    kitHome,
+    team,
     home,
     config: join(home, 'config.json'),
     teamRules: join(home, 'rules.md'),

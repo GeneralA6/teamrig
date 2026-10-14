@@ -125,8 +125,10 @@ describe('postLine', () => {
 
 describe('sessionIdOf', () => {
   it('reads a well-formed session id from hook input', () => {
-    assert.equal(sessionIdOf(JSON.stringify({ session_id: SESSION, prompt: 'hi' })), SESSION);
-    assert.equal(sessionIdOf(JSON.stringify({ session_id: 'not-an-id' })), null);
-    assert.equal(sessionIdOf('{oops'), null);
+    assert.equal(sessionIdOf({ session_id: SESSION, prompt: 'hi' }), SESSION);
+    assert.equal(sessionIdOf({ session_id: 'not-an-id' }), null);
+    assert.equal(sessionIdOf({ session_id: 7 }), null);
+    assert.equal(sessionIdOf(undefined), null);
+    assert.equal(sessionIdOf([SESSION]), null);
   });
 });

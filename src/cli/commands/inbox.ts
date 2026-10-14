@@ -1,14 +1,14 @@
-import { ENV, type Env, type KitPaths } from '../../core/home.ts';
+import { ENV, type Env, type TeamPaths } from '../../core/home.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { formatRead, formatUnread, inboxStatus, postLine, readInbox, type InboxDeps } from '../../inbox/inbox.ts';
 import { CLAUDE_SESSION_ID } from '../../inbox/marks.ts';
 import { InboxDir, JsonlMarkLog } from '../../inbox/store.ts';
 import { noPositionals, requiredFlag, type ParsedArgs } from '../args.ts';
 import { callerOf, sessionName } from '../inputs.ts';
-import { openKit, requireConfig } from '../kit.ts';
+import { openTeamKit, requireConfig } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 
-export function inboxDepsOf(runtime: CliRuntime, paths: KitPaths): InboxDeps {
+export function inboxDepsOf(runtime: CliRuntime, paths: TeamPaths): InboxDeps {
   return { inboxes: new InboxDir(runtime.files, paths.inbox), marks: new JsonlMarkLog(runtime.files, paths.inboxMarks) };
 }
 
@@ -30,7 +30,7 @@ function refuseStrangers(team: { readonly sessions: readonly string[] }, names: 
 export async function read(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
   const area = callerOf(args.flags, runtime.env);
-  const kit = await openKit(runtime);
+  const kit = await openTeamKit(runtime);
   refuseStrangers(requireConfig(kit, runtime, 'read'), [area]);
   const now = new Date(runtime.clock.now());
   const result = await readInbox(inboxDepsOf(runtime, kit.paths), { area, claudeSession: claudeSessionOf(runtime.env), now });
@@ -44,7 +44,7 @@ export async function status(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   noPositionals(args);
   const only = args.flags.get('session');
   const area = only === undefined ? undefined : sessionName('--session', only);
-  const kit = await openKit(runtime);
+  const kit = await openTeamKit(runtime);
   requireConfig(kit, runtime, 'read');
   const unread = await inboxStatus(inboxDepsOf(runtime, kit.paths), area);
   if (unread.length === 0) {
@@ -60,7 +60,7 @@ export async function add(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
   const from = callerOf(args.flags, runtime.env);
   const to = sessionName('--to', requiredFlag(args.flags, 'to'));
   const text = requiredFlag(args.flags, 'text');
-  const kit = await openKit(runtime);
+  const kit = await openTeamKit(runtime);
   const config = requireConfig(kit, runtime, 'write');
   refuseStrangers(config, [from, to]);
   const { inboxes } = inboxDepsOf(runtime, kit.paths);

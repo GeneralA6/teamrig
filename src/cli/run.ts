@@ -1,5 +1,6 @@
 import { errorMessage } from '../core/guards.ts';
 import { ENV, KIT_NAME } from '../core/home.ts';
+import { TEAM_POINTER } from '../core/team.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import { parseArgs, UsageError, type CommandFlags, type ParsedArgs } from './args.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from './runtime.ts';
@@ -59,6 +60,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <name>,
   inbox add --to <session> --text "<one line>"
   config validate | config migrate
   hook push-guard | hook inbox-reminder    (run by Claude Code with the hook JSON on stdin)
+Team: $${ENV.team}, else the nearest ${TEAM_POINTER} ({"team": "<id>"}) above the current folder.
 Dates: YYYY-MM-DD or "YYYY-MM-DD HH:MM", UTC. Kit home: $${ENV.home}, else ~/.${KIT_NAME}.
 Exit: 0 done, 1 failed, 2 refused by a team rule, 64 a command line it cannot read.`;
 

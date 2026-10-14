@@ -1,5 +1,5 @@
 import type { KitConfig } from '../../config/types.ts';
-import type { KitPaths } from '../../core/home.ts';
+import type { TeamPaths } from '../../core/home.ts';
 import { FileLock } from '../../core/lock.ts';
 import { checkTasks, currentWeek, formatFlag } from '../../register/check.ts';
 import { renderPlan } from '../../register/plan.ts';
@@ -11,17 +11,17 @@ import { formatSkillFlag, lintSkills } from '../../skills/lint.ts';
 import { SkillDir } from '../../skills/store.ts';
 import { noPositionals, onePositional, type ParsedArgs } from '../args.ts';
 import { addInputOf, callerOf, changesOf, listFilterOf, statusInputOf, taskIdOf, weekOf } from '../inputs.ts';
-import { openKit, requireConfig, type Access } from '../kit.ts';
+import { openTeamKit, requireConfig, type Access } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 
 interface Team {
   readonly config: KitConfig;
-  readonly paths: KitPaths;
+  readonly paths: TeamPaths;
   readonly register: Register;
 }
 
 async function openTeam(runtime: CliRuntime, access: Access): Promise<Team> {
-  const kit = await openKit(runtime);
+  const kit = await openTeamKit(runtime);
   const config = requireConfig(kit, runtime, access);
   const { files, clock, sleep, pid } = runtime;
   const register = new Register({

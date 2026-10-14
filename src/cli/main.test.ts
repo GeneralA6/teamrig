@@ -16,7 +16,8 @@ function cli(args: readonly string[], input = ''): { readonly status: number | n
     const result = spawnSync(process.execPath, [MAIN, ...args], {
       input,
       encoding: 'utf8',
-      env: { ...process.env, TEAMRIG_HOME: home },
+      // A fixed team keeps the run off any team pointer above the temp folder on the test machine.
+      env: { ...process.env, TEAMRIG_HOME: home, TEAMRIG_TEAM: 'app' },
       cwd: home,
     });
     return { status: result.status, stdout: result.stdout };

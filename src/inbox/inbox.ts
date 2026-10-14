@@ -195,14 +195,8 @@ export async function postLine(inboxes: Inboxes, secrets: SecretScanner, input: 
   return undefined;
 }
 
-/** The `session_id` in a hook's stdin JSON; null when absent or malformed. */
-export function sessionIdOf(input: string): string | null {
-  let value: unknown;
-  try {
-    value = JSON.parse(input);
-  } catch {
-    return null;
-  }
-  const id = isRecord(value) ? stringField(value, 'session_id') : undefined;
+/** The `session_id` in a hook's parsed stdin JSON; null when absent or malformed. */
+export function sessionIdOf(payload: unknown): string | null {
+  const id = isRecord(payload) ? stringField(payload, 'session_id') : undefined;
   return id !== undefined && CLAUDE_SESSION_ID.test(id) ? id : null;
 }
