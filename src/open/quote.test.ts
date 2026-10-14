@@ -6,7 +6,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { posixQuote, powershellQuote, shellCommand } from './quote.ts';
 
-const ROOT = mkdtempSync(join(tmpdir(), 'teamrig-quote-'));
+// The long, real form: a Windows runner's temp folder can hold an 8.3 short name (RUNNER~1),
+// which the shell expands for the program it starts, and macOS's /var is a link to /private/var.
+const ROOT = realpathSync.native(mkdtempSync(join(tmpdir(), 'teamrig-quote-')));
 after(() => rmSync(ROOT, { recursive: true, force: true }));
 
 /** What a shell could read as syntax, in one argument, using only what a Windows file name may hold. */
@@ -58,7 +60,7 @@ describe('shellCommand', () => {
         : spawnSync('sh', ['-c', text], { encoding: 'utf8' });
     assert.equal(result.status, 0, result.stderr);
     const printed: unknown = JSON.parse(result.stdout);
-    assert.deepEqual(printed, { cwd: realpathSync(folder), args });
+    assert.deepEqual(printed, { cwd: folder, args });
   });
 });
 
