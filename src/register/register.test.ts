@@ -134,3 +134,14 @@ describe('Register', () => {
     assert.equal(read.unreadable, 0);
   });
 });
+
+describe('Register.addFromParent', () => {
+  it('writes the task as the parent lead, who is on no roster here, and lands it with the lead', async () => {
+    const { files, register } = setup();
+    const { task, event } = written(await register.addFromParent('app/lead', { title: 'Ship login', owner: 'lead', source: 'app/lead', tier: 1 }));
+    assert.deepEqual([task.id, task.owner, task.source, task.createdBy, event.by], ['T1', 'lead', 'app/lead', 'app/lead', 'app/lead']);
+    assert.equal(readEvents(files.get(LOG) ?? '').events.length, 1);
+    assert.match(errorOf(await register.add('app/lead', { title: 'Other', owner: 'lead', source: 'lead', tier: 1 })), /app.lead is not a session on this team/);
+    assert.match(errorOf(await register.addFromParent('app/lead', { title: 'Ship login', owner: 'lead', source: 'app/lead', tier: 1 })), /T1 already tracks this/);
+  });
+});

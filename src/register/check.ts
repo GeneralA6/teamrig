@@ -65,8 +65,9 @@ export function checkTasks(tasks: Iterable<Task>, now: Date, week: string | null
   return flags.sort((a, b) => FLAG_KINDS.indexOf(a.kind) - FLAG_KINDS.indexOf(b.kind));
 }
 
-export function formatFlag(flag: Flag): string {
-  return `${flag.kind} (${flag.detail}) ${formatTask(flag.task)}`;
+/** One flag; with `team`, the task id reads `<team>/T12`. */
+export function formatFlag(flag: Flag, team?: string): string {
+  return `${flag.kind} (${flag.detail}) ${formatTask(flag.task, team)}`;
 }
 
 function minute(iso: string): string {
