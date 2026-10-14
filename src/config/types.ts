@@ -117,10 +117,13 @@ export interface KitConfig {
   readonly configVersion: number;
   /**
    * Every session id on the team, the lead included. Ids key every file and record (inboxes, read
-   * marks, task owners), so they never change; a rename edits `names`.
+   * marks, task owners), so they never change; a rename only appends to the team's rename log.
    */
   readonly sessions: readonly string[];
-  /** Each session's display and Claude Code session name, by id; an id not listed is named `<team>-<id>`. */
+  /**
+   * Each session's first display and Claude Code session name, by id; an id not listed is named
+   * `<team>-<id>`. A rename in the team's rename log wins over it, and it keeps finding the session.
+   */
   readonly names: Readonly<Record<string, string>>;
   /** Each role's session, by id. */
   readonly roles: RolesConfig;

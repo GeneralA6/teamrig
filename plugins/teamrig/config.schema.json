@@ -14,13 +14,13 @@
       "default": 1
     },
     "sessions": {
-      "description": "Every session id on the team, the lead included. Ids key every file and record, so they never change; a rename edits names.",
+      "description": "Every session id on the team, the lead included. Ids key every file and record, so they never change; a rename only appends to the team's rename log.",
       "type": "array",
       "items": { "$ref": "#/$defs/sessionName" },
       "uniqueItems": true
     },
     "names": {
-      "description": "Each session's display and Claude Code session name, by id. A session not listed is named <team>-<id>. A name must be unique and never another session's id.",
+      "description": "Each session's first display and Claude Code session name, by id. A session not listed is named <team>-<id>. A name must be unique and never another session's id. A rename in the team's rename log wins over it, and it keeps finding the session.",
       "type": "object",
       "propertyNames": { "$ref": "#/$defs/sessionName" },
       "additionalProperties": {
