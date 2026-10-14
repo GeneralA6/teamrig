@@ -406,7 +406,7 @@ describe('runCli: hook session-start', () => {
 
   it('says why no rules load without a team config', async () => {
     const text = contextOf(await new CliHarness(null).run(['hook', 'session-start']));
-    assert.equal(text, `teamrig is enabled here but team app has no config at ${CONFIG_PATH}, so no team rules are loaded. Write one (see the README), then run: teamrig config validate`);
+    assert.equal(text, `teamrig is enabled here but team app has no config at ${CONFIG_PATH}, so no team rules are loaded. Create it with: teamrig team create app --sessions <id,id>`);
   });
 
   it('turns a broken pointer into one line of context', async () => {
@@ -439,7 +439,12 @@ describe('runCli: which team', () => {
     const result = await new CliHarness(TEAM, null).run(['list', '--session', 'alpha']);
     assert.deepEqual(
       [result.code, result.stdout],
-      [EXIT.refused, ['REFUSED no team here: set $TEAMRIG_TEAM, or put .teamrig.json {"team": "<id>"} in the project folder']],
+      [
+        EXIT.refused,
+        [
+          'REFUSED no team here: create one with teamrig team create <team> --sessions <id,id>, set $TEAMRIG_TEAM, or put .teamrig.json {"team": "<id>"} in the project folder',
+        ],
+      ],
     );
   });
 
