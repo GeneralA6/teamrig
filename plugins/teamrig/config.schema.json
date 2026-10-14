@@ -36,7 +36,8 @@
     "ownerGates": {
       "description": "Decision areas only the human owner can approve; silence never counts as consent for them.",
       "type": "array",
-      "items": { "type": "string", "minLength": 1 },
+      "maxItems": 8,
+      "items": { "type": "string", "minLength": 1, "maxLength": 60, "pattern": "^[^\\r\\n]+$" },
       "default": [
         "destructive data operations",
         "product and design decisions",
@@ -102,6 +103,7 @@
         "requireNoteOn": {
           "description": "Statuses that cannot be set without a note.",
           "type": "array",
+          "maxItems": 5,
           "items": { "enum": ["open", "in-progress", "blocked", "done", "dropped"] },
           "default": ["blocked", "done", "dropped"]
         },
@@ -129,7 +131,8 @@
         "forbidFrontmatter": {
           "description": "Frontmatter keys a team skill may not set; a skill is never a permission.",
           "type": "array",
-          "items": { "type": "string", "minLength": 1 },
+          "maxItems": 8,
+          "items": { "type": "string", "maxLength": 32, "pattern": "^[A-Za-z0-9_-]+$" },
           "default": ["allowed-tools"]
         }
       }
@@ -148,7 +151,8 @@
         "protectedBranches": {
           "description": "A push to these branches needs the human's confirmation; force-push and deletion are refused.",
           "type": "array",
-          "items": { "type": "string", "pattern": "^[^\\s~^:?*[\\\\]+$" },
+          "maxItems": 8,
+          "items": { "type": "string", "maxLength": 64, "pattern": "^[^\\s~^:?*[\\\\]+$" },
           "default": ["main", "master"]
         }
       }
@@ -183,6 +187,7 @@
           "description": "The same external failure for this long must page a human.",
           "type": "integer",
           "minimum": 1,
+          "maximum": 720,
           "default": 24
         }
       }

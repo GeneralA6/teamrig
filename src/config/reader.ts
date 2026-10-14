@@ -80,13 +80,17 @@ export class ConfigReader {
     return value;
   }
 
-  /** A list whose items are read by `item`; an item that returns undefined is dropped (it recorded its issue). */
+  /**
+   * A list whose items are read by `item`; an item that returns undefined is dropped (it recorded
+   * its issue). A list longer than `maxItems` is an issue and takes the default.
+   */
   list<T>(
     parent: JsonRecord,
     key: string,
     path: string,
     fallback: readonly T[],
     item: (value: unknown, itemPath: string) => T | undefined,
+    maxItems = Number.POSITIVE_INFINITY,
   ): readonly T[] {
     const value = parent[key];
     if (value === undefined) {
@@ -94,6 +98,10 @@ export class ConfigReader {
     }
     if (!Array.isArray(value)) {
       this.problem(join(path, key), 'a list', value);
+      return fallback;
+    }
+    if (value.length > maxItems) {
+      this.problem(join(path, key), `a list of at most ${maxItems} items`, value);
       return fallback;
     }
     const items: T[] = [];
@@ -106,8 +114,15 @@ export class ConfigReader {
     return items;
   }
 
-  stringList(parent: JsonRecord, key: string, path: string, fallback: readonly string[], check?: Check<string>): readonly string[] {
-    return this.list(parent, key, path, fallback, (value, itemPath) => this.stringItem(value, itemPath, check));
+  stringList(
+    parent: JsonRecord,
+    key: string,
+    path: string,
+    fallback: readonly string[],
+    check?: Check<string>,
+    maxItems?: number,
+  ): readonly string[] {
+    return this.list(parent, key, path, fallback, (value, itemPath) => this.stringItem(value, itemPath, check), maxItems);
   }
 
   /** One string list item, for use inside `list` callbacks. */
@@ -193,6 +208,16 @@ export function describe(value: unknown): string {
 
 export function formatIssue(issue: ConfigIssue): string {
   return `${issue.path}: ${issue.message}`;
+}
+
+/** One line of at most `maxLength` characters that also passes `check`; for text printed into the rules. */
+export function shortLine(maxLength: number, check?: Check<string>): Check<string> {
+  return (value) => {
+    if (/[\r\n]/.test(value)) {
+      return 'expected a single line';
+    }
+    return value.length > maxLength ? `expected at most ${maxLength} characters` : check?.(value);
+  };
 }
 
 /** Validates a regular expression source; used for team-supplied patterns. */

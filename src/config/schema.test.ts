@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
+import { CONFIG_LIMITS } from './limits.ts';
 import { parseConfig } from './parse.ts';
 
 /** The roster has no default; everything else in the schema must state the code's default. */
@@ -37,6 +38,33 @@ function asJson(raw: JsonRecord): JsonRecord {
 function properties(schema: JsonRecord): JsonRecord {
   const value = schema['properties'];
   return isRecord(value) ? value : {};
+}
+
+/** Where each bounded value sits in the config; typed so a new limit cannot skip the schema check. */
+const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
+  maxLines: 'messages.maxLines',
+  maxDescriptionWords: 'skills.maxDescriptionWords',
+  maxPerArea: 'skills.maxPerArea',
+  maxVerifiedAgeDays: 'skills.maxVerifiedAgeDays',
+  ownerGates: 'ownerGates',
+  protectedBranches: 'pushGuard.protectedBranches',
+  forbidFrontmatter: 'skills.forbidFrontmatter',
+  requireNoteOn: 'register.requireNoteOn',
+  persistentFailureHours: 'alerts.persistentFailureHours',
+};
+
+function isLimitName(name: string): name is keyof typeof CONFIG_LIMITS {
+  return name in CONFIG_LIMITS;
+}
+
+/** The schema node at a dotted config path such as `skills.maxPerArea`. */
+function nodeAt(schema: JsonRecord, path: string): JsonRecord {
+  const node = path.split('.').reduce<JsonRecord | undefined>((parent, key) => {
+    const child = parent === undefined ? undefined : properties(parent)[key];
+    return isRecord(child) ? child : undefined;
+  }, schema);
+  assert.ok(node !== undefined, `${path} is not in the schema`);
+  return node;
 }
 
 /** Every key of the parsed config, with its value and its schema node. */
@@ -88,6 +116,25 @@ describe('config.schema.json', () => {
     const schema = await loadSchema();
     for (const [path, declared, applied] of walkDefaults(schema, asJson(ROSTER), '')) {
       assert.deepEqual(declared, applied, path);
+    }
+  });
+
+  it('states the bounds the parser enforces', async () => {
+    const schema = await loadSchema();
+    for (const name of Object.keys(CONFIG_LIMITS).filter(isLimitName)) {
+      const limit = CONFIG_LIMITS[name];
+      const path = LIMIT_PATHS[name];
+      const node = nodeAt(schema, path);
+      if ('min' in limit) {
+        assert.deepEqual([node['minimum'], node['maximum']], [limit.min, limit.max], path);
+        continue;
+      }
+      assert.equal(node['maxItems'], limit.maxItems, path);
+      if ('maxLength' in limit) {
+        const items = node['items'];
+        assert.ok(isRecord(items), path);
+        assert.equal(items['maxLength'], limit.maxLength, path);
+      }
     }
   });
 

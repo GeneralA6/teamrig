@@ -10,7 +10,8 @@ import {
   DEFAULT_REGISTER,
   DEFAULT_SKILLS,
 } from './defaults.ts';
-import { ConfigReader, describe, isValidRegex, type Check, type ConfigIssue } from './reader.ts';
+import { CONFIG_LIMITS } from './limits.ts';
+import { ConfigReader, describe, isValidRegex, shortLine, type Check, type ConfigIssue } from './reader.ts';
 import type { KitConfig, PathsConfig, RegisterConfig, SkillsConfig, TierConfig } from './types.ts';
 
 export interface ConfigParse {
@@ -25,6 +26,9 @@ const isSessionName: Check<string> = (name) =>
 const isUtcTime: Check<string> = (time) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(time) ? undefined : 'expected a UTC time as HH:MM');
 
 const BRANCH_NAME: Check<string> = (name) => (/^[^\s~^:?*[\\]+$/.test(name) ? undefined : 'not a valid branch name');
+
+/** The key shape the skills lint recognises in frontmatter. */
+const isFrontmatterKey: Check<string> = (key) => (/^[A-Za-z0-9_-]+$/.test(key) ? undefined : 'expected a frontmatter key: letters, digits, _ or -');
 
 /** Validates a migrated config object against the current format. */
 export function parseConfig(raw: JsonRecord): ConfigParse {
@@ -62,8 +66,15 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
     configVersion: read.integer(raw, 'configVersion', '', 1, { min: 1 }),
     sessions,
     roles: coordinatorOwner === undefined ? { lead } : { lead, coordinatorOwner },
-    ownerGates: read.stringList(raw, 'ownerGates', '', DEFAULT_OWNER_GATES),
-    messages: { maxLines: read.integer(messages, 'maxLines', 'messages', DEFAULT_MESSAGES.maxLines, { min: 3, max: 50 }) },
+    ownerGates: read.stringList(
+      raw,
+      'ownerGates',
+      '',
+      DEFAULT_OWNER_GATES,
+      shortLine(CONFIG_LIMITS.ownerGates.maxLength),
+      CONFIG_LIMITS.ownerGates.maxItems,
+    ),
+    messages: { maxLines: read.integer(messages, 'maxLines', 'messages', DEFAULT_MESSAGES.maxLines, CONFIG_LIMITS.maxLines) },
     register: parseRegister(read, read.section(raw, 'register', '')),
     skills: parseSkills(read, read.section(raw, 'skills', '')),
     lock: {
@@ -72,7 +83,14 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
       waitMs: read.integer(lock, 'waitMs', 'lock', DEFAULT_LOCK.waitMs, { min: 0 }),
     },
     pushGuard: {
-      protectedBranches: read.stringList(pushGuard, 'protectedBranches', 'pushGuard', DEFAULT_PUSH_GUARD.protectedBranches, BRANCH_NAME),
+      protectedBranches: read.stringList(
+        pushGuard,
+        'protectedBranches',
+        'pushGuard',
+        DEFAULT_PUSH_GUARD.protectedBranches,
+        shortLine(CONFIG_LIMITS.protectedBranches.maxLength, BRANCH_NAME),
+        CONFIG_LIMITS.protectedBranches.maxItems,
+      ),
     },
     coordinator: {
       schedule: heavyCutoffUtc === undefined ? {} : { heavyCutoffUtc },
@@ -83,7 +101,7 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
       },
     },
     alerts: {
-      persistentFailureHours: read.integer(alerts, 'persistentFailureHours', 'alerts', DEFAULT_ALERTS.persistentFailureHours, { min: 1 }),
+      persistentFailureHours: read.integer(alerts, 'persistentFailureHours', 'alerts', DEFAULT_ALERTS.persistentFailureHours, CONFIG_LIMITS.persistentFailureHours),
     },
     tabStatus: { enabled: read.boolean(tabStatus, 'enabled', 'tabStatus', false) },
     paths: parsePaths(read, read.section(raw, 'paths', '')),
@@ -111,8 +129,13 @@ function parseRegister(read: ConfigReader, raw: JsonRecord): RegisterConfig {
     secretPatterns: read.stringList(raw, 'secretPatterns', path, defaults.secretPatterns, isValidRegex),
     requireEvidenceOnDone: read.boolean(raw, 'requireEvidenceOnDone', path, defaults.requireEvidenceOnDone),
     requireSkillOnDone: read.boolean(raw, 'requireSkillOnDone', path, defaults.requireSkillOnDone),
-    requireNoteOn: read.list(raw, 'requireNoteOn', path, defaults.requireNoteOn, (value, itemPath) =>
-      parseStatus(read, value, itemPath),
+    requireNoteOn: read.list(
+      raw,
+      'requireNoteOn',
+      path,
+      defaults.requireNoteOn,
+      (value, itemPath) => parseStatus(read, value, itemPath),
+      CONFIG_LIMITS.requireNoteOn.maxItems,
     ),
     check: {
       staleAfterHours: read.integer(check, 'staleAfterHours', `${path}.check`, defaults.check.staleAfterHours, { min: 1 }),
@@ -150,10 +173,17 @@ function parseSkills(read: ConfigReader, raw: JsonRecord): SkillsConfig {
   const defaults = DEFAULT_SKILLS;
   return {
     sharedPrefix: read.string(raw, 'sharedPrefix', path, defaults.sharedPrefix, isSessionName),
-    maxDescriptionWords: read.integer(raw, 'maxDescriptionWords', path, defaults.maxDescriptionWords, { min: 5, max: 200 }),
-    maxPerArea: read.integer(raw, 'maxPerArea', path, defaults.maxPerArea, { min: 1, max: 100 }),
-    maxVerifiedAgeDays: read.integer(raw, 'maxVerifiedAgeDays', path, defaults.maxVerifiedAgeDays, { min: 1, max: 365 }),
-    forbidFrontmatter: read.stringList(raw, 'forbidFrontmatter', path, defaults.forbidFrontmatter),
+    maxDescriptionWords: read.integer(raw, 'maxDescriptionWords', path, defaults.maxDescriptionWords, CONFIG_LIMITS.maxDescriptionWords),
+    maxPerArea: read.integer(raw, 'maxPerArea', path, defaults.maxPerArea, CONFIG_LIMITS.maxPerArea),
+    maxVerifiedAgeDays: read.integer(raw, 'maxVerifiedAgeDays', path, defaults.maxVerifiedAgeDays, CONFIG_LIMITS.maxVerifiedAgeDays),
+    forbidFrontmatter: read.stringList(
+      raw,
+      'forbidFrontmatter',
+      path,
+      defaults.forbidFrontmatter,
+      shortLine(CONFIG_LIMITS.forbidFrontmatter.maxLength, isFrontmatterKey),
+      CONFIG_LIMITS.forbidFrontmatter.maxItems,
+    ),
   };
 }
 

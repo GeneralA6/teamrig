@@ -110,6 +110,33 @@ describe('parseConfig', () => {
     assert.deepEqual(config.register.requireNoteOn, ['dropped']);
   });
 
+  it('bounds the lists and texts the rule pack prints', () => {
+    const { config, issues } = parseConfig({
+      ...ROSTER,
+      ownerGates: ['money', 'two\nlines', 'g'.repeat(61)],
+      register: { requireNoteOn: ['open', 'in-progress', 'blocked', 'done', 'dropped', 'done'] },
+      skills: { forbidFrontmatter: ['allowed-tools', 'not a key', 'k'.repeat(33)] },
+      pushGuard: { protectedBranches: Array.from({ length: 9 }, (_, index) => `release-${index}`) },
+    });
+    assert.deepEqual(paths(issues).sort(), [
+      'ownerGates[1]',
+      'ownerGates[2]',
+      'pushGuard.protectedBranches',
+      'register.requireNoteOn',
+      'skills.forbidFrontmatter[1]',
+      'skills.forbidFrontmatter[2]',
+    ]);
+    const message = (path: string) => issues.find((issue) => issue.path === path)?.message;
+    assert.equal(message('ownerGates[1]'), 'expected a single line (got "two\\nlines")');
+    assert.match(message('ownerGates[2]') ?? '', /^expected at most 60 characters/);
+    assert.match(message('pushGuard.protectedBranches') ?? '', /^expected a list of at most 8 items/);
+    assert.match(message('skills.forbidFrontmatter[1]') ?? '', /^expected a frontmatter key/);
+    assert.deepEqual(config.ownerGates, ['money']);
+    assert.deepEqual(config.register.requireNoteOn, DEFAULT_REGISTER.requireNoteOn);
+    assert.deepEqual(config.skills.forbidFrontmatter, ['allowed-tools']);
+    assert.deepEqual(config.pushGuard.protectedBranches, ['main', 'master']);
+  });
+
   it('ignores keys it does not know, including $schema', () => {
     const { issues } = parseConfig({ ...ROSTER, $schema: './config.schema.json', futureKey: { any: 1 } });
     assert.deepEqual(issues, []);
