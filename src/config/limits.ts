@@ -17,3 +17,15 @@ export const CONFIG_LIMITS = {
   requireNoteOn: { maxItems: 5 },
   persistentFailureHours: { min: 1, max: 720 },
 } as const;
+
+/**
+ * Bounds on a tree of teams, which `team create` and `doctor` enforce. A lead's `--tree` roll-up reads
+ * every register below it, so these keep one at most 1 + 8 + 64 registers, and an owner decision
+ * passes at most two leads before it reaches the root lead, the one session the user talks to.
+ */
+export const TREE_LIMITS = {
+  /** Levels in one tree, the root team counted as level 1. */
+  levels: 3,
+  /** Child teams under one team. */
+  childTeams: 8,
+} as const;

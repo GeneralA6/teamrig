@@ -13,6 +13,21 @@
       "minimum": 1,
       "default": 1
     },
+    "team": {
+      "description": "Where the team sits in a tree of teams. A team with no parent is the root of its own tree. teamrig team create writes it.",
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": {
+          "description": "The team's id: the name of its folder under <kit home>/teams/.",
+          "$ref": "#/$defs/sessionName"
+        },
+        "parent": {
+          "description": "The parent team: this team's lead reports to that team's lead. A tree has at most 3 levels, and a team at most 8 child teams.",
+          "$ref": "#/$defs/sessionName"
+        }
+      }
+    },
     "sessions": {
       "description": "Every session id on the team, the lead included. Ids key every file and record, so they never change; a rename only appends to the team's rename log.",
       "type": "array",

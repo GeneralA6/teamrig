@@ -142,8 +142,18 @@ export interface PathsConfig {
   readonly skills?: string;
 }
 
+/** Where a team sits in a tree of teams, read from its own config; no registry file mirrors it. */
+export interface TeamLink {
+  /** The team's id: the name of its folder under `<kit home>/teams/`. */
+  readonly id: string;
+  /** The team whose lead this team's lead reports to; a team with none is the root of its own tree. */
+  readonly parent?: string;
+}
+
 export interface KitConfig {
   readonly configVersion: number;
+  /** Unset in a config written before team trees: the team is then the root of its own tree. */
+  readonly team?: TeamLink;
   /**
    * Every session id on the team, the lead included. Ids key every file and record (inboxes, read
    * marks, task owners), so they never change; a rename only appends to the team's rename log.
