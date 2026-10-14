@@ -1,10 +1,13 @@
 import { homedir } from 'node:os';
 import { text } from 'node:stream/consumers';
+import { fileURLToPath } from 'node:url';
 import { nodeFiles } from "../core/files.js";
 import { realSleep, systemClock } from "../core/lock.js";
+import { NODE_PATH_PROBE } from "../core/path-probe.js";
+import { nodeProcesses } from "../open/processes.js";
 import { GIT_CLI, GIT_COMMIT_LOG } from "../push-guard/git.js";
 import { runCli } from "./run.js";
-/** The process adapter: real files, clock, git and stdio around the testable runner. */
+/** The process adapter: real files, clock, git, child processes and stdio around the testable runner. */
 process.exitCode = await runCli(process.argv.slice(2), {
     env: process.env,
     userHome: homedir(),
@@ -19,5 +22,9 @@ process.exitCode = await runCli(process.argv.slice(2), {
         stdout: (line) => process.stdout.write(`${line}\n`),
         stderr: (line) => process.stderr.write(`${line}\n`),
     },
+    platform: process.platform,
+    processes: nodeProcesses(),
+    probe: NODE_PATH_PROBE,
+    self: { node: process.execPath, script: fileURLToPath(import.meta.url) },
     readStdin: () => text(process.stdin),
 });

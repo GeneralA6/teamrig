@@ -19,7 +19,8 @@ function identityLines(roster, input) {
     const roles = roster.rolesOf(found.id);
     const held = roles.length === 0 ? '' : `, roles: ${roles.join(', ')}`;
     const you = `You are the \`${found.id}\` session of team \`${input.team}\` (name \`${roster.nameOf(found.id) ?? found.id}\`${held}).`;
-    return [lead === found.id || leadName === undefined ? you : `${you} Message the lead as \`${leadName}\`.`, names];
+    const pass = input.sessionInEnv ? '' : ` $${ENV.session} is not set here, so pass --session ${found.id} to every \`${command}\` task and inbox command.`;
+    return [lead === found.id || leadName === undefined ? `${you}${pass}` : `${you}${pass} Message the lead as \`${leadName}\`.`, names];
 }
 /**
  * The SessionStart context: the core rules from the team config, who the session is, and the
@@ -29,7 +30,7 @@ export function sessionStartContext(input) {
     const { load, command } = input;
     switch (load.status) {
         case 'missing':
-            return `${KIT_NAME} is enabled here but team ${input.team} has no config at ${load.path}, so no team rules are loaded. Write one (see the README), then run: ${command} config validate`;
+            return `${KIT_NAME} is enabled here but team ${input.team} has no config at ${load.path}, so no team rules are loaded. Create it with: ${command} team create ${input.team} --sessions <id,id>`;
         case 'unreadable':
             return `${KIT_NAME} cannot read the config of team ${input.team} at ${load.path}, so no team rules are loaded. Run: ${command} config validate`;
         case 'loaded':

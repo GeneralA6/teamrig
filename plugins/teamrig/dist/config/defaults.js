@@ -45,3 +45,4 @@ export const DEFAULT_BUDGET = { enabled: false, targetPct: 99.5, reservePct: 0.5
 export const DEFAULT_ALERTS = { persistentFailureHours: 24 };
 /** 250k suits a 1M-token window; on a 200k window Claude Code compacts first, so a team there sets about 150k. */
 export const DEFAULT_REFRESH = { enabled: true, contextTokens: 250_000, tabTitle: true };
+export const DEFAULT_OPEN = { terminal: 'auto' };

@@ -1,0 +1,144 @@
+import { dirname, resolve } from 'node:path';
+import { isTerminalChoice, TERMINALS } from "../../config/types.js";
+import { ENV } from "../../core/home.js";
+import { ID_PATTERN, ID_RULE } from "../../core/ids.js";
+import { ENV_SOURCE } from "../../core/team.js";
+import { findClaude } from "../../open/claude.js";
+import { openTab } from "../../open/open-tab.js";
+import { decodePrompt, defaultPrompt, encodePrompt, promptProblem } from "../../open/prompt.js";
+import { shellCommand } from "../../open/quote.js";
+import { sessionEnv } from "../../open/session-env.js";
+import { onePositional, requiredFlag, UsageError } from "../args.js";
+import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
+import { EXIT, RefusedError } from "../runtime.js";
+import { projectOf } from "./setup.js";
+/** The terminal names a person reads, for the OPENED line. */
+const TERMINAL_LABELS = {
+    tmux: 'tmux window',
+    'windows-terminal': 'Windows Terminal tab',
+    'macos-terminal': 'Terminal window',
+    'gnome-terminal': 'GNOME Terminal tab',
+    konsole: 'Konsole tab',
+    'x-terminal-emulator': 'terminal window',
+};
+function terminalOf(flag, configured) {
+    if (flag === undefined) {
+        return configured;
+    }
+    if (!isTerminalChoice(flag)) {
+        throw new UsageError(`--terminal "${flag}" is not one of ${TERMINALS.join(', ')}`);
+    }
+    return flag;
+}
+function checkedPrompt(prompt) {
+    const problem = promptProblem(prompt);
+    if (problem !== undefined) {
+        throw new UsageError(`--prompt: ${problem}`);
+    }
+    return prompt;
+}
+/** The folder a session opens in: `--project`, else the folder holding the team's pointer. */
+function projectFlagOf(flag, from) {
+    return flag ?? (from === ENV_SOURCE ? undefined : dirname(from));
+}
+/**
+ * `open <id|name> [--prompt <text>] [--terminal <name>] [--project <dir>]`: a new terminal tab in the
+ * project folder that runs `launch`, so Claude Code starts there as the session. The command runs by
+ * absolute paths, since the plugin's bin folder is on PATH only inside Claude Code. When no terminal
+ * opens it prints the command to run instead and exits 3.
+ */
+export async function open(args, runtime) {
+    const target = onePositional(args, 'id|name');
+    const found = await findTeam(runtime);
+    const kit = await openKit(runtime, found.team);
+    const config = requireConfig(kit, runtime, 'read');
+    const roster = await rosterOf(runtime, kit, config);
+    const id = sessionIdOf(roster, target);
+    const terminal = terminalOf(args.flags.get('terminal'), config.open.terminal);
+    const prompt = checkedPrompt(args.flags.get('prompt') ?? defaultPrompt(found.team, id));
+    const project = await projectOf(runtime, projectFlagOf(args.flags.get('project'), found.from));
+    const customHome = runtime.env[ENV.home]?.trim();
+    const argv = [
+        runtime.self.node,
+        runtime.self.script,
+        'launch',
+        id,
+        '--team',
+        found.team,
+        '--project',
+        project,
+        ...(customHome === undefined || customHome === '' ? [] : ['--home', resolve(runtime.cwd, customHome)]),
+        '--encoded-prompt',
+        encodePrompt(prompt),
+    ];
+    const name = roster.nameOf(id) ?? id;
+    const outcome = await openTab(runtime, terminal, { title: name, folder: project, argv });
+    if (outcome.kind === 'opened') {
+        runtime.out.stdout(`OPENED ${name} (session ${id}) in a new ${TERMINAL_LABELS[outcome.terminal]} in ${project}`);
+        return EXIT.ok;
+    }
+    const shell = runtime.platform === 'win32' ? ' in PowerShell' : '';
+    runtime.out.stdout(`MANUAL no terminal opened (${outcome.reasons.join('; ')}); open a new terminal and run this${shell}:`);
+    runtime.out.stdout(shellCommand(runtime.platform, project, argv));
+    return EXIT.printed;
+}
+function idFlag(flag, value) {
+    if (!ID_PATTERN.test(value)) {
+        throw new UsageError(`${flag} "${value}" is not an id (${ID_RULE})`);
+    }
+    return value;
+}
+function launchPrompt(encoded, team, id) {
+    if (encoded === undefined) {
+        return defaultPrompt(team, id);
+    }
+    const prompt = decodePrompt(encoded);
+    if (prompt === undefined) {
+        throw new UsageError('--encoded-prompt is not a prompt that teamrig open wrote');
+    }
+    return checkedPrompt(prompt);
+}
+/**
+ * `launch <id> --team <team> --project <dir> [--home <dir>] [--encoded-prompt <text>]`: what a tab
+ * that `open` started runs. It sets the session's variables and starts Claude Code under the
+ * session's name with its first prompt, its input and output on this terminal.
+ */
+export async function launch(args, runtime) {
+    const id = idFlag('session', onePositional(args, 'id'));
+    const team = idFlag('--team', requiredFlag(args.flags, 'team'));
+    const project = requiredFlag(args.flags, 'project');
+    if ((await runtime.probe.kind(project)) !== 'folder') {
+        throw new RefusedError(`the project folder ${project} does not exist`);
+    }
+    const prompt = launchPrompt(args.flags.get('encoded-prompt'), team, id);
+    const env = sessionEnv(runtime.env, { id, team, home: args.flags.get('home') });
+    const sessionRuntime = { ...runtime, env };
+    const kit = await openKit(sessionRuntime, team);
+    const roster = await rosterOf(sessionRuntime, kit, requireConfig(kit, sessionRuntime, 'read'));
+    if (!roster.ids.includes(id)) {
+        throw new RefusedError(`${id} is not a session of team ${team}`);
+    }
+    const claude = await findClaude({ env, platform: runtime.platform, probe: runtime.probe, files: runtime.files, node: runtime.self.node });
+    if (claude.kind === 'missing') {
+        const skipped = claude.skipped.length === 0 ? '' : ` (skipped: ${claude.skipped.join('; ')})`;
+        throw new RefusedError(`Claude Code (claude) is not on PATH${skipped}; install it, then run this again`);
+    }
+    const name = roster.nameOf(id) ?? id;
+    runtime.out.stdout(`Starting Claude Code as ${name} (session ${id} of team ${team}) in ${project}`);
+    const { command, prefix } = claude.program;
+    const result = await runtime.processes.run({ command, args: [...prefix, '--name', name, prompt], cwd: project, env });
+    switch (result.kind) {
+        case 'exited':
+            if (result.code === 0) {
+                return EXIT.ok;
+            }
+            runtime.out.stderr(`FAILED Claude Code exited with code ${result.code}`);
+            return EXIT.failed;
+        case 'missing':
+            runtime.out.stderr(`FAILED ${command} is gone`);
+            return EXIT.failed;
+        case 'failed':
+            runtime.out.stderr(`FAILED ${command}: ${result.error}`);
+            return EXIT.failed;
+    }
+}
