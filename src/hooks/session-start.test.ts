@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import type { ConfigLoad } from '../config/load.ts';
 import { CONTEXT_MAX_CHARS, renderCorePack } from '../rules/pack.ts';
 import { testConfig } from '../testing/config.ts';
+import { renameOf } from '../testing/rename.ts';
 import { sessionStartContext, sessionStartOutput, type SessionStartInput } from './session-start.ts';
 
 const PATH = '/kit/teams/app/config.json';
@@ -14,7 +15,16 @@ function loaded(overrides: Partial<Extract<ConfigLoad, { status: 'loaded' }>> = 
 }
 
 function context(overrides: Partial<SessionStartInput> = {}): string {
-  return sessionStartContext({ team: 'app', load: loaded(), teamRules: undefined, session: 'alpha', command: COMMAND, ...overrides });
+  return sessionStartContext({
+    team: 'app',
+    load: loaded(),
+    teamRules: undefined,
+    renames: [],
+    titleNote: undefined,
+    session: 'alpha',
+    command: COMMAND,
+    ...overrides,
+  });
 }
 
 describe('sessionStartContext', () => {
@@ -35,6 +45,12 @@ describe('sessionStartContext', () => {
       assert.match(text, /: ask the user which session you are \(`teamrig who` lists them\) and pass --session <id> to every `teamrig` task and inbox command\. Message the lead as `team-lead`\.\n/);
       assert.doesNotMatch(text, /Not A Name|zulu/);
     }
+  });
+
+  it('names the session by its newest name, finds it by an old one, and adds the title note', () => {
+    const renames = [renameOf('alpha', 'app-alpha', 'scout'), renameOf('lead', 'team-lead', 'chief')];
+    const text = context({ renames, session: 'app-alpha', titleNote: 'Title note.' });
+    assert.ok(text.endsWith(`\n\nYou are the \`alpha\` session of team \`app\` (name \`scout\`). Message the lead as \`chief\`.\n${NAMES}\nTitle note.`));
   });
 
   it("appends the team's rules", () => {
