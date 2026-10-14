@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/GeneralA6/teamrig/plugins/teamrig/config.schema.json",
+  "title": "teamrig config",
+  "description": "Team settings for the teamrig plugin. Only the roster (sessions, roles.lead) is required; every other key has a default. Unknown keys are kept as they are.",
+  "type": "object",
+  "required": ["sessions", "roles"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "configVersion": {
+      "description": "The config format. The CLI migrates older files and refuses to write newer ones.",
+      "type": "integer",
+      "minimum": 1,
+      "default": 1
+    },
+    "sessions": {
+      "description": "Every session name on the team, the lead included.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/sessionName" },
+      "uniqueItems": true
+    },
+    "roles": {
+      "type": "object",
+      "required": ["lead"],
+      "properties": {
+        "lead": {
+          "description": "Owns priorities, team rules and the owner's decision queue.",
+          "$ref": "#/$defs/sessionName"
+        },
+        "coordinatorOwner": {
+          "description": "Owns deploy coordination and fleet health, when the team has that role.",
+          "$ref": "#/$defs/sessionName"
+        }
+      }
+    },
+    "ownerGates": {
+      "description": "Decision areas only the human owner can approve; silence never counts as consent for them.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "default": [
+        "destructive data operations",
+        "product and design decisions",
+        "permissions",
+        "budget",
+        "resource changes"
+      ]
+    },
+    "messages": {
+      "type": "object",
+      "properties": {
+        "maxLines": {
+          "description": "The longest message one session may send another.",
+          "type": "integer",
+          "minimum": 3,
+          "maximum": 50,
+          "default": 10
+        }
+      }
+    },
+    "register": {
+      "type": "object",
+      "properties": {
+        "ownerSource": {
+          "description": "The --source that marks a task as ordered by the human owner.",
+          "$ref": "#/$defs/sessionName",
+          "default": "owner"
+        },
+        "tiers": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["id", "name"],
+            "properties": {
+              "id": { "type": "integer", "minimum": 1, "maximum": 99 },
+              "name": { "type": "string", "minLength": 1 }
+            }
+          },
+          "default": [
+            { "id": 1, "name": "keep the lights on" },
+            { "id": 2, "name": "correctness" },
+            { "id": 3, "name": "scale" },
+            { "id": 4, "name": "this week's owner decisions" },
+            { "id": 5, "name": "if budget allows" }
+          ]
+        },
+        "goalPattern": {
+          "description": "When set, every goal tag on a new task must match this regular expression.",
+          "type": "string",
+          "minLength": 1
+        },
+        "maxTitle": { "type": "integer", "minimum": 20, "maximum": 1000, "default": 140 },
+        "maxText": { "type": "integer", "minimum": 20, "maximum": 5000, "default": 300 },
+        "secretPatterns": {
+          "description": "Extra regular expressions that refuse secret-looking text, on top of the built-in ones.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "default": []
+        },
+        "requireEvidenceOnDone": { "type": "boolean", "default": true },
+        "requireSkillOnDone": { "type": "boolean", "default": true },
+        "requireNoteOn": {
+          "description": "Statuses that cannot be set without a note.",
+          "type": "array",
+          "items": { "enum": ["open", "in-progress", "blocked", "done", "dropped"] },
+          "default": ["blocked", "done", "dropped"]
+        },
+        "check": {
+          "type": "object",
+          "properties": {
+            "staleAfterHours": { "type": "integer", "minimum": 1, "default": 72 },
+            "notPickedUpAfterHours": { "type": "integer", "minimum": 1, "default": 24 },
+            "weekLengthDays": { "type": "integer", "minimum": 1, "maximum": 31, "default": 7 }
+          }
+        }
+      }
+    },
+    "skills": {
+      "type": "object",
+      "properties": {
+        "sharedPrefix": {
+          "description": "The area prefix of skills shared by the whole team.",
+          "$ref": "#/$defs/sessionName",
+          "default": "team"
+        },
+        "maxDescriptionWords": { "type": "integer", "minimum": 5, "maximum": 200, "default": 30 },
+        "maxPerArea": { "type": "integer", "minimum": 1, "maximum": 100, "default": 8 },
+        "maxVerifiedAgeDays": { "type": "integer", "minimum": 1, "maximum": 365, "default": 30 },
+        "forbidFrontmatter": {
+          "description": "Frontmatter keys a team skill may not set; a skill is never a permission.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "default": ["allowed-tools"]
+        }
+      }
+    },
+    "lock": {
+      "type": "object",
+      "properties": {
+        "ttlMs": { "type": "integer", "minimum": 1000, "default": 30000 },
+        "pollMs": { "type": "integer", "minimum": 10, "default": 50 },
+        "waitMs": { "type": "integer", "minimum": 0, "default": 20000 }
+      }
+    },
+    "pushGuard": {
+      "type": "object",
+      "properties": {
+        "protectedBranches": {
+          "description": "A push to these branches needs the human's confirmation; force-push and deletion are refused.",
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[^\\s~^:?*[\\\\]+$" },
+          "default": ["main", "master"]
+        }
+      }
+    },
+    "coordinator": {
+      "type": "object",
+      "properties": {
+        "schedule": {
+          "type": "object",
+          "properties": {
+            "heavyCutoffUtc": {
+              "description": "No heavy step starts on the host after this UTC time until midnight.",
+              "type": "string",
+              "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+            }
+          }
+        },
+        "budget": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean", "default": false },
+            "targetPct": { "type": "number", "minimum": 1, "maximum": 100, "default": 99.5 },
+            "reservePct": { "type": "number", "minimum": 0, "maximum": 50, "default": 0.5 }
+          }
+        }
+      }
+    },
+    "alerts": {
+      "type": "object",
+      "properties": {
+        "persistentFailureHours": {
+          "description": "The same external failure for this long must page a human.",
+          "type": "integer",
+          "minimum": 1,
+          "default": 24
+        }
+      }
+    },
+    "tabStatus": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean", "default": false }
+      }
+    },
+    "paths": {
+      "description": "Overrides only; anything unset stays under the kit home.",
+      "type": "object",
+      "properties": {
+        "state": { "type": "string", "minLength": 1 },
+        "inbox": { "type": "string", "minLength": 1 },
+        "skills": { "type": "string", "minLength": 1 }
+      }
+    }
+  },
+  "$defs": {
+    "sessionName": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,31}$"
+    }
+  }
+}
