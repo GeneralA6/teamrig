@@ -4,7 +4,7 @@
  * CLI does not print.
  */
 
-export type Tone = 'text' | 'command' | 'dim' | 'prompt' | 'id' | 'tier' | 'good' | 'warn' | 'bad';
+export type Tone = 'text' | 'command' | 'dim' | 'prompt' | 'id' | 'priority' | 'good' | 'warn' | 'bad';
 
 export interface Span {
   readonly text: string;
@@ -39,7 +39,7 @@ const PALETTE: Readonly<Record<Tone, string>> = {
   dim: '#8b8b8b',
   prompt: '#569cd6',
   id: '#4ec9b0',
-  tier: '#c586c0',
+  priority: '#c586c0',
   good: '#89d185',
   warn: '#dcdcaa',
   bad: '#f48771',
@@ -64,7 +64,7 @@ const TOKENS: readonly (readonly [string, Tone])[] = [
   ['^(?:ADDED|SET|UPDATED|POSTED|READ|VALID|OK)\\b', 'good'],
   ['^(?:REFUSED|FAILED)\\b', 'bad'],
   ['\\bT\\d+\\b', 'id'],
-  ['\\btier [1-5]\\b', 'tier'],
+  ['\\bp\\d{1,2}(?=,)', 'priority'],
   ['\\bdone\\b', 'good'],
   ['\\bin-progress\\b', 'warn'],
   ['\\bblocked\\b', 'bad'],
@@ -78,7 +78,7 @@ function toneOf(groups: Readonly<Record<string, string | undefined>>): Tone {
   return TOKENS[index]?.[1] ?? 'text';
 }
 
-/** One line of CLI output, coloured: `$ ` starts a typed command; ids, tiers, statuses and verdicts stand out. */
+/** One line of CLI output, coloured: `$ ` starts a typed command; ids, priorities, statuses and verdicts stand out. */
 export function highlight(text: string): Line {
   if (text.startsWith('$ ')) {
     return [

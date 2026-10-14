@@ -12,13 +12,13 @@ describe('highlight', () => {
     ]);
   });
 
-  it('colours the verdict, ids, tiers and due dates of an output line', () => {
-    assert.deepEqual(highlight('ADDED T12 open, tier 1, owner api, due 10-14 | Saved-card API'), [
+  it('colours the verdict, ids, priorities and due dates of an output line', () => {
+    assert.deepEqual(highlight('ADDED T12 open, p1, owner api, due 10-14 | Saved-card API'), [
       { text: 'ADDED', tone: 'good' },
       { text: ' ', tone: 'text' },
       { text: 'T12', tone: 'id' },
       { text: ' open, ', tone: 'text' },
-      { text: 'tier 1', tone: 'tier' },
+      { text: 'p1', tone: 'priority' },
       { text: ', owner api, ', tone: 'text' },
       { text: 'due 10-14', tone: 'dim' },
       { text: ' | Saved-card API', tone: 'text' },
@@ -38,6 +38,7 @@ describe('highlight', () => {
 
   it('keeps a verdict word inside a sentence and a word that only contains an id uncoloured', () => {
     assert.deepEqual(highlight('was ADDED by XT1'), plain('was ADDED by XT1'));
+    assert.deepEqual(highlight('| Cut the p95 latency'), plain('| Cut the p95 latency'), 'a p-word outside the priority slot');
   });
 
   it('returns no spans for an empty line', () => {
