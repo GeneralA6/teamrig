@@ -1,5 +1,19 @@
 # Contributing
 
+## Development
+
+```sh
+npm ci
+npm run setup         # points git at .githooks (scrub + DCO sign-off checks)
+npm run check         # CI's gates on your tree: typecheck, tests with the coverage gate, build, dist checks, pictures, doc links, scrub
+npm run docs:images   # redraws the pictures in docs/images
+npm run docs:check    # checks every link, anchor and Mermaid diagram in the Markdown
+```
+
+The pictures in the docs are drawn in code (`tools/docs/`), and the commands screen by running the real CLI for a
+made-up team, so none can drift from the code or from what the CLI prints: CI fails until they are redrawn. The
+sections below give the test and sign-off rules.
+
 ## Sign-off (DCO)
 Every commit must carry a `Signed-off-by:` line that matches the commit author, certifying the
 [Developer Certificate of Origin 1.1](https://developercertificate.org/). Add it with:
