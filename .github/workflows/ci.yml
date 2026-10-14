@@ -71,3 +71,5 @@ jobs:
       - run: node tools/ci/dist-smoke-cli.ts
       # The README's pictures are drawn from the CLI's real output; they must match it on every OS.
       - run: node tools/docs/images-cli.ts --check
+      # Every link, anchor and Mermaid block in the Markdown must resolve on every OS.
+      - run: node tools/docs/doc-check-cli.ts
