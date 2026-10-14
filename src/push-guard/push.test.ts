@@ -1,7 +1,7 @@
 import { describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
-import { decisionReason, evaluateCommand, type PushDecision, type RepoState } from './push.ts';
+import { decisionReason, evaluatePushes, type PushDecision, type RepoState } from './push.ts';
 import { splitCommands, stripHeredocs, type ShellDialect } from './shell.ts';
 
 const CWD = '/work/app';
@@ -27,11 +27,11 @@ interface JudgeOptions extends RepoFake {
 
 function judge(command: string, { dialect = 'bash', cwd = CWD, protectedBranches = ['main', 'master'], ...state }: JudgeOptions = {}) {
   const repo = fakeRepo(state);
-  const decision: PushDecision = evaluateCommand(command, { cwd, home: HOME, dialect, protectedBranches, repo });
+  const decision: PushDecision = evaluatePushes(command, { cwd, home: HOME, dialect, protectedBranches, repo }).decision;
   return { decision, repo };
 }
 
-describe('evaluateCommand', () => {
+describe('evaluatePushes: the decision', () => {
   it('never reads a heredoc note that mentions a push and main as a push', () => {
     const command = [
       "cat >> notes.md <<'EOF'",
@@ -160,6 +160,40 @@ describe('splitCommands', () => {
     assert.deepEqual(splitCommands('echo a\\ b "q\\"uote"', 'bash'), [['echo', 'a b', 'q"uote']]);
     assert.deepEqual(splitCommands('Set-Location D:\\work\\app', 'powershell'), [['Set-Location', 'D:\\work\\app']]);
     assert.deepEqual(splitCommands('echo "a`"b"', 'powershell'), [['echo', 'a"b']]);
+  });
+});
+
+describe('evaluatePushes: the protected updates', () => {
+  const context = (repo: RepoFake = {}) => ({ cwd: CWD, home: HOME, dialect: 'bash' as const, protectedBranches: ['main'], repo: fakeRepo(repo) });
+
+  it('names each protected branch an asked push updates, and the ref it sends', () => {
+    assert.deepEqual(evaluatePushes('git push origin feature:main x:dev', context()), {
+      decision: 'ask',
+      updates: [{ dir: CWD, base: 'origin/main', source: 'feature' }],
+    });
+    assert.deepEqual(evaluatePushes('git push upstream HEAD refs/heads/main && git push', context({ branch: 'main' })), {
+      decision: 'ask',
+      updates: [
+        { dir: CWD, base: 'upstream/main', source: 'HEAD' },
+        { dir: CWD, base: 'upstream/main', source: 'refs/heads/main' },
+        { dir: CWD, base: 'origin/main', source: 'HEAD' },
+      ],
+    });
+  });
+
+  it('reads a bare push through its push target, whose remote it keeps', () => {
+    const verdict = evaluatePushes('git push', context({ branch: 'feature', pushTarget: 'fork/main' }));
+    assert.deepEqual(verdict.updates, [{ dir: CWD, base: 'fork/main', source: 'HEAD' }]);
+    assert.deepEqual(evaluatePushes('git push origin', context({ branch: 'feature', pushTarget: 'fork/main' })).updates, [
+      { dir: CWD, base: 'origin/main', source: 'HEAD' },
+    ]);
+  });
+
+  it('lists nothing for --all, a refusal or a push it allows', () => {
+    assert.deepEqual(evaluatePushes('git push --all origin', context()), { decision: 'ask', updates: [] });
+    assert.deepEqual(evaluatePushes('git push origin main && git push -f origin main', context()), { decision: 'deny', updates: [] });
+    assert.deepEqual(evaluatePushes('git push origin feature', context()), { decision: 'allow', updates: [] });
+    assert.deepEqual(evaluatePushes('git status', context()), { decision: 'allow', updates: [] });
   });
 });
 

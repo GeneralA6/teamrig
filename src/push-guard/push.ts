@@ -35,6 +35,22 @@ export interface GuardContext {
   readonly repo: RepoState;
 }
 
+/** A protected branch a push updates: the commits of `source` not yet on `base` are what it sends. */
+export interface ProtectedUpdate {
+  readonly dir: string;
+  /** The branch's remote-tracking ref as last fetched, such as `origin/main`. */
+  readonly base: string;
+  /** The local ref the push sends, such as `HEAD` or `feature`. */
+  readonly source: string;
+}
+
+/** The decision on a whole command line, with the protected updates behind an `ask`. */
+export interface PushVerdict {
+  readonly decision: PushDecision;
+  /** Empty unless the decision is `ask`; `--all` lists none, since what it sends depends on the remote. */
+  readonly updates: readonly ProtectedUpdate[];
+}
+
 const GIT_OPTIONS_WITH_VALUE = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace']);
 const PUSH_OPTIONS_WITH_VALUE = new Set(['-o', '--push-option', '--repo', '--receive-pack', '--exec']);
 const CD_COMMANDS = new Set(['cd', 'pushd', 'set-location', 'sl', 'chdir']);
@@ -119,6 +135,32 @@ function branchName(ref: string | undefined): string {
   return (ref ?? '').replace(/^refs\/heads\//, '').replace(/^refs\/remotes\/[^/]+\//, '');
 }
 
+interface Refspec {
+  /** `+` forces this one update. */
+  readonly plus: boolean;
+  /** Empty for a deletion (`:branch`). */
+  readonly source: string;
+  readonly destination: string;
+}
+
+function readRefspec(refspec: string): Refspec {
+  const plus = refspec.startsWith('+');
+  const spec = plus ? refspec.slice(1) : refspec;
+  const colon = spec.indexOf(':');
+  return { plus, source: colon === -1 ? spec : spec.slice(0, colon), destination: colon === -1 ? spec : spec.slice(colon + 1) };
+}
+
+/** The remote branch a push with no refspec updates: its push target, else the branch of the same name. */
+function bareTarget(push: PushCommand, repo: RepoState): string | undefined {
+  const pushTarget = repo.pushTarget(push.dir);
+  return pushTarget === undefined ? repo.branch(push.dir) : pushTarget.replace(/^[^/]+\//, '');
+}
+
+/** The branch a refspec destination names; `HEAD` is the checked-out branch. */
+function destinationBranch(destination: string, push: PushCommand, repo: RepoState): string {
+  return branchName(destination === 'HEAD' ? repo.branch(push.dir) : destination);
+}
+
 /** Decides one push: deny a force, mirror or delete of a protected branch, ask before any other push to one. */
 export function judgePush(push: PushCommand, repo: RepoState, protectedBranches: ReadonlySet<string>): PushDecision {
   if (push.dryRun) {
@@ -133,21 +175,14 @@ export function judgePush(push: PushCommand, repo: RepoState, protectedBranches:
   const isProtected = (ref: string | undefined): boolean => protectedBranches.has(branchName(ref));
   const refspecs = push.positionals.slice(1);
   if (refspecs.length === 0) {
-    const pushTarget = repo.pushTarget(push.dir);
-    const target = pushTarget === undefined ? repo.branch(push.dir) : pushTarget.replace(/^[^/]+\//, '');
-    if (!isProtected(target)) {
+    if (!isProtected(bareTarget(push, repo))) {
       return 'allow';
     }
     return push.force ? 'deny' : 'ask';
   }
   let decision: PushDecision = 'allow';
-  for (const refspec of refspecs) {
-    const plus = refspec.startsWith('+');
-    const spec = plus ? refspec.slice(1) : refspec;
-    const colon = spec.indexOf(':');
-    const source = colon === -1 ? spec : spec.slice(0, colon);
-    const destination = colon === -1 ? spec : spec.slice(colon + 1);
-    if (!isProtected(destination === 'HEAD' ? repo.branch(push.dir) : destination)) {
+  for (const { plus, source, destination } of refspecs.map(readRefspec)) {
+    if (!protectedBranches.has(destinationBranch(destination, push, repo))) {
       continue;
     }
     if (plus || push.force || push.delete || source === '') {
@@ -159,17 +194,39 @@ export function judgePush(push: PushCommand, repo: RepoState, protectedBranches:
 }
 
 /**
- * Judges a whole Bash or PowerShell command line: the strictest decision among its real
- * `git push` commands. Text in quotes, comments and heredocs is never read as a command, and
- * `cd`, `Set-Location` and `git -C` move the folder a bare push is resolved in.
+ * The protected branches a push updates, each with the ref it sends there, for a push the guard
+ * asks about. `--all`, `--mirror` and a dry run list none.
  */
-export function evaluateCommand(command: string, context: GuardContext): PushDecision {
+export function protectedUpdates(push: PushCommand, repo: RepoState, protectedBranches: ReadonlySet<string>): ProtectedUpdate[] {
+  if (push.dryRun || push.mirror || push.all) {
+    return [];
+  }
+  const [remote, ...refspecs] = push.positionals;
+  if (refspecs.length === 0) {
+    const target = branchName(bareTarget(push, repo));
+    const via = remote ?? repo.pushTarget(push.dir)?.split('/')[0] ?? 'origin';
+    return protectedBranches.has(target) ? [{ dir: push.dir, base: `${via}/${target}`, source: 'HEAD' }] : [];
+  }
+  return refspecs.map(readRefspec).flatMap(({ source, destination }) => {
+    const target = destinationBranch(destination, push, repo);
+    return source !== '' && protectedBranches.has(target) ? [{ dir: push.dir, base: `${remote ?? 'origin'}/${target}`, source }] : [];
+  });
+}
+
+/**
+ * Judges a whole Bash or PowerShell command line: the strictest decision among its real
+ * `git push` commands, and for an `ask` what each asked push updates. Text in quotes, comments
+ * and heredocs is never read as a command, and `cd`, `Set-Location` and `git -C` move the folder
+ * a bare push is resolved in.
+ */
+export function evaluatePushes(command: string, context: GuardContext): PushVerdict {
   if (!/\bpush\b/.test(command)) {
-    return 'allow';
+    return { decision: 'allow', updates: [] };
   }
   const protectedBranches = new Set(context.protectedBranches);
   let dir = context.cwd;
   let decision: PushDecision = 'allow';
+  const updates: ProtectedUpdate[] = [];
   for (const words of splitCommands(stripHeredocs(command), context.dialect)) {
     if (CD_COMMANDS.has((words[0] ?? '').toLowerCase())) {
       dir = resolveDir(dir, words.slice(1).find((word) => !word.startsWith('-')), context.home);
@@ -181,13 +238,14 @@ export function evaluateCommand(command: string, context: GuardContext): PushDec
     }
     const verdict = judgePush(push, context.repo, protectedBranches);
     if (verdict === 'deny') {
-      return 'deny';
+      return { decision: 'deny', updates: [] };
     }
     if (verdict === 'ask') {
       decision = 'ask';
+      updates.push(...protectedUpdates(push, context.repo, protectedBranches));
     }
   }
-  return decision;
+  return { decision, updates };
 }
 
 /** Why the guard stopped a push, naming the team's protected branches. */
