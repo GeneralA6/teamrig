@@ -123,7 +123,9 @@ export async function inboxReminder(args, runtime) {
     if (note !== undefined) {
         runtime.out.stdout(note);
     }
-    const line = await reminderFor(inboxDepsOf(runtime, kit.paths), claudeSession, KIT_NAME);
+    // Found like a rename: `$TEAMRIG_SESSION` first, so a session is reminded before its first `inbox read`.
+    const session = await teamSessionOf(runtime, kit, await rosterOf(runtime, kit, kit.load.config), claudeSession);
+    const line = session === undefined ? undefined : await reminderFor(inboxDepsOf(runtime, kit.paths), session, KIT_NAME);
     if (line !== undefined) {
         runtime.out.stdout(line);
     }

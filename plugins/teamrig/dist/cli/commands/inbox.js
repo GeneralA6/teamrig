@@ -59,6 +59,6 @@ export async function add(args, runtime) {
     if (problem !== undefined) {
         throw new RefusedError(problem);
     }
-    runtime.out.stdout(`POSTED to ${to}: ${inboxes.pathOf(to)}`);
+    runtime.out.stdout(`POSTED to ${to}; ${to} is reminded at its next prompt`);
     return EXIT.ok;
 }

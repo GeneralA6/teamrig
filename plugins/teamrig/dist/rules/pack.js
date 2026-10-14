@@ -57,11 +57,11 @@ export function renderCorePack(config, command) {
             ` Over ${config.commits.maxLines} changed non-test lines or ${config.commits.maxFiles} non-test files [commits.maxLines, commits.maxFiles], a commit needs a \`${config.commits.largeCommitTrailer}: <reason>\` line [commits.largeCommitTrailer]` +
             { off: '.', warn: '; a push to a protected branch lists those without one [commits.gate].', refuse: '; a push to a protected branch that sends one is refused [commits.gate].' }[config.commits.gate],
         `Pushes to ${list(config.pushGuard.protectedBranches)} ask the human; force-pushing or deleting them is refused [pushGuard.protectedBranches]. A refused or blocked route is reported to the lead, never routed around.`,
-        'Parallel sessions edit in their own worktree and branch. On Windows remove a worktree\'s node_modules link first (`cmd /c rmdir <worktree>\\node_modules`), or `git worktree remove` follows it into the main checkout. Whoever finds a stale comment, doc or dead code fixes it in its own small commit.',
+        'Edit in your own worktree and branch in every git repo, never a main checkout. On Windows remove a worktree\'s node_modules link (`cmd /c rmdir`; Git Bash `cmd //c`), or `git worktree remove` follows it into the main one. Whoever finds a stale comment, doc or dead code fixes it in its own small commit.',
     ];
     return [
         '# Team rules (teamrig core)',
-        "Where your team's rules or CLAUDE.md conflict with these, yours win. The `rules` skill explains why each rule exists; [brackets] name the config key behind a value.",
+        "Where your team's rules or CLAUDE.md conflict with these, yours win. [brackets] name the config key behind a value.",
         '',
         ...rules.map((rule, index) => `${index + 1}. ${rule}`),
     ].join('\n');

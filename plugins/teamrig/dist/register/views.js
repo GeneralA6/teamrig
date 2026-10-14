@@ -27,21 +27,24 @@ export function selectTasks(tasks, filter) {
     })
         .sort(byPlanOrder);
 }
-/** One compact line: `T12 t2 in-progress alpha due 01-15 wk 01-13 src owner G1 | title`. */
+/**
+ * One line that names each field, so a newcomer can read it:
+ * `T12 in-progress, tier 2, owner alpha, due 01-15, week 01-13, from lead, goals G1 | title`.
+ */
 export function formatTask(task) {
-    const parts = [task.id, `t${task.tier}`, task.status, task.owner];
+    const parts = [`${task.id} ${task.status}`, `tier ${task.tier}`, `owner ${task.owner}`];
     if (task.due !== null) {
         parts.push(`due ${shortUtc(task.due)}`);
     }
     if (task.week !== null) {
-        parts.push(`wk ${shortUtc(task.week)}`);
+        parts.push(`week ${shortUtc(task.week)}`);
     }
-    parts.push(`src ${task.source}`);
+    parts.push(`from ${task.source}`);
     if (task.goals.length > 0) {
-        parts.push(task.goals.join(','));
+        parts.push(`goals ${task.goals.join(',')}`);
     }
     const blocked = task.status === 'blocked' && task.note !== null ? ` (blocked: ${task.note})` : '';
-    return `${parts.join(' ')} | ${task.title}${blocked}`;
+    return `${parts.join(', ')} | ${task.title}${blocked}`;
 }
 /** One line per event, for `show`. */
 export function formatEvent(event) {
