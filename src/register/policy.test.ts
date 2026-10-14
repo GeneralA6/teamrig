@@ -146,3 +146,22 @@ describe('normaliseTitle', () => {
     assert.equal(normaliseTitle('  Add   a\tHealth check '), 'add a health check');
   });
 });
+
+describe('RegisterPolicy.addFromParent', () => {
+  const policy = new RegisterPolicy(testConfig());
+  const FROM_PARENT: AddInput = { ...INPUT, owner: 'lead', source: 'app/lead' };
+
+  it('takes a task for the lead, sourced <team>/<id>, which an update keeps', () => {
+    const verdict = policy.addFromParent(FROM_PARENT, EMPTY);
+    assert.equal(verdict.ok && verdict.value.source, 'app/lead');
+    const handed = testTask({ owner: 'lead', source: 'app/lead' });
+    assert.equal(policy.update(handed, 'lead', { tier: 1 }, undefined).ok, true);
+    assert.match(error(policy.update(handed, 'lead', { source: 'web/lead' }, undefined)), /source web.lead is neither a session id nor owner/);
+  });
+
+  it('refuses another owner, a bare source, and the parent address on a team add', () => {
+    assert.equal(error(policy.addFromParent({ ...FROM_PARENT, owner: 'alpha' }, EMPTY)), "a task from the parent team goes to this team's lead (lead), not alpha");
+    assert.equal(error(policy.addFromParent({ ...FROM_PARENT, source: 'lead' }, EMPTY)), "source lead is not the parent team lead's <team>/<id>");
+    assert.match(error(policy.add({ ...INPUT, source: 'app/lead' }, EMPTY)), /source app.lead is neither a session id nor owner/);
+  });
+});

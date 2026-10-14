@@ -47,12 +47,18 @@ export function selectTasks(tasks: Iterable<Task>, filter: ListFilter): Task[] {
     .sort(byPlanOrder);
 }
 
+/** The task's id, or `<team>/<id>` when a roll-up over a tree of teams names its team. */
+export function taskLabel(task: Task, team?: string): string {
+  return team === undefined ? task.id : `${team}/${task.id}`;
+}
+
 /**
  * One line that names each field, so a newcomer can read it:
  * `T12 in-progress, tier 2, owner alpha, due 01-15, week 01-13, from lead, goals G1 | title`.
+ * With `team`, the id reads `<team>/T12`.
  */
-export function formatTask(task: Task): string {
-  const parts = [`${task.id} ${task.status}`, `tier ${task.tier}`, `owner ${task.owner}`];
+export function formatTask(task: Task, team?: string): string {
+  const parts = [`${taskLabel(task, team)} ${task.status}`, `tier ${task.tier}`, `owner ${task.owner}`];
   if (task.due !== null) {
     parts.push(`due ${shortUtc(task.due)}`);
   }
