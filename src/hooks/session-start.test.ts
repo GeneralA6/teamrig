@@ -24,6 +24,7 @@ function context(overrides: Partial<SessionStartInput> = {}): string {
     refreshNote: undefined,
     session: 'alpha',
     sessionInEnv: true,
+    tree: undefined,
     command: COMMAND,
     ...overrides,
   });
@@ -93,6 +94,38 @@ describe('sessionStartContext', () => {
     );
     const unreadable = context({ load: { status: 'unreadable', path: PATH, issue: { path: '', message: 'not JSON' } } });
     assert.match(unreadable, /^teamrig cannot read the config of team app at \/kit\/teams\/app\/config\.json/);
+  });
+
+  it('tells the root lead it is the one the user talks to, and how it reaches its sub-teams', () => {
+    const text = context({ session: 'team-lead', tree: { root: 'app', parentLead: undefined, children: ['ops', 'web'] } });
+    assert.ok(
+      text.endsWith(
+        `${NAMES}\nTeam \`app\` is the root of a tree of teams: you are the one lead the user talks to, and the sub-team leads bring you their owner decisions.` +
+          ' Your sub-teams (ops, web) answer to you: `teamrig list|check|plan --tree` reads their registers, and `teamrig add --team <team>` hands its lead a task.',
+      ),
+    );
+  });
+
+  it("sends a sub-team's lead to its parent lead, by address and name", () => {
+    const parentLead = { team: 'app', id: 'lead', name: 'app-lead' };
+    const text = context({ team: 'web', session: 'team-lead', tree: { root: 'app', parentLead, children: [] } });
+    assert.ok(
+      text.endsWith(
+        `${NAMES}\nTeam \`web\` is a sub-team of \`app\` in the tree under \`app\`: the user talks only to the root team's lead.` +
+          ' Take owner decisions and cross-team issues to your parent lead `app/lead` (name `app-lead`, inbox: `teamrig inbox add --to app/lead`), who carries them up.',
+      ),
+    );
+    const withChildren = context({ team: 'web', session: 'team-lead', tree: { root: 'app', parentLead, children: ['ui'] } });
+    assert.match(withChildren, /who carries them up\. Your sub-teams \(ui\) answer to you: /);
+  });
+
+  it('keeps every other session of a tree inside its team, known or not', () => {
+    const tree = { root: 'app', parentLead: { team: 'app', id: 'lead', name: 'app-lead' }, children: ['ui'] };
+    const member =
+      "Team `web` is part of the tree of teams under `app`: take anything outside your team to your lead, never to another team's sessions (`teamrig inbox add` refuses a note to them).";
+    for (const session of ['alpha', 'zulu', undefined]) {
+      assert.ok(context({ team: 'web', session, tree }).endsWith(`${NAMES}\n${member}`), String(session));
+    }
   });
 
   it('stays inside the context cap with long team rules', () => {

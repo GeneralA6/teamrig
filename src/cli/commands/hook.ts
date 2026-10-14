@@ -17,6 +17,7 @@ import { readContextTokens } from '../../refresh/usage.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { openKit, renameDepsOf, rosterOf, teamFolders, type Kit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
+import { loadTree } from '../tree.ts';
 import { inboxDepsOf } from './inbox.ts';
 
 /**
@@ -165,12 +166,13 @@ export async function inboxReminder(args: ParsedArgs, runtime: CliRuntime): Prom
   return EXIT.ok;
 }
 
-type TeamParts = Pick<SessionStartInput, 'teamRules' | 'renames' | 'titleNote' | 'refreshNote' | 'session' | 'sessionInEnv'>;
+type TeamParts = Pick<SessionStartInput, 'teamRules' | 'renames' | 'titleNote' | 'refreshNote' | 'session' | 'sessionInEnv' | 'tree'>;
 
 /**
  * A loaded team's rules.md and rename log, after recording a Claude Code rename of the session, the
  * pointer to its handover after a refresh, and who the session is: `$TEAMRIG_SESSION`, else the area
- * it read its inbox as, so a tab that set the team up keeps its identity across a compact or resume.
+ * it read its inbox as, so a tab that set the team up keeps its identity across a compact or resume;
+ * and where the team sits in a tree of teams, read from every team config of the kit home.
  */
 async function teamPartsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, payload: unknown): Promise<TeamParts> {
   const titleNote = sessionStartNote(await titleOutcome(runtime, kit, config, payload));
@@ -179,6 +181,7 @@ async function teamPartsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, pay
   const refreshNote = await refreshNoteOf(runtime, kit, config, roster, payload);
   const text = await runtime.files.read(kit.paths.teamRules);
   const fromEnv = envSession(runtime);
+  const { tree } = await loadTree(runtime);
   return {
     teamRules: text === undefined ? undefined : { path: kit.paths.teamRules, text },
     renames,
@@ -186,6 +189,7 @@ async function teamPartsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, pay
     refreshNote,
     session: fromEnv ?? (await startSessionOf(runtime, kit, roster, payload)),
     sessionInEnv: fromEnv !== undefined,
+    tree: tree.placeOf(kit.paths.team),
   };
 }
 
@@ -311,7 +315,7 @@ export async function sessionStart(args: ParsedArgs, runtime: CliRuntime): Promi
   const parts: TeamParts =
     kit.load.status === 'loaded'
       ? await teamPartsOf(runtime, kit, kit.load.config, payload)
-      : { teamRules: undefined, renames: [], titleNote: undefined, refreshNote: undefined, session: undefined, sessionInEnv: false };
+      : { teamRules: undefined, renames: [], titleNote: undefined, refreshNote: undefined, session: undefined, sessionInEnv: false, tree: undefined };
   const context = sessionStartContext({ team: found.team, load: kit.load, ...parts, command: KIT_NAME });
   runtime.out.stdout(sessionStartOutput(context));
   return EXIT.ok;
