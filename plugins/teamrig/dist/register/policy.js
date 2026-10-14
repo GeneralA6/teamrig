@@ -1,3 +1,4 @@
+import { ADDRESS_PATTERN } from "../core/address.js";
 import { SecretScanner } from "../core/secrets.js";
 import { parseUtcDay, parseUtcDeadline } from "../core/time.js";
 import { ACTIVE_STATUSES, SESSION_NAME } from "./model.js";
@@ -25,6 +26,20 @@ export class RegisterPolicy {
             : `${session} is not a session on this team (sessions: ${this.config.sessions.join(', ')})`;
     }
     add(input, state) {
+        return this.create(input, state, (source) => this.teamSourceProblem(source));
+    }
+    /**
+     * A task the parent team's lead hands this team: its source is that lead's `<team>/<id>`, and it
+     * goes to this team's lead, who plans it in.
+     */
+    addFromParent(input, state) {
+        const { lead } = this.config.roles;
+        if (input.owner !== lead) {
+            return refuse(`a task from the parent team goes to this team's lead (${lead}), not ${input.owner}`);
+        }
+        return this.create(input, state, (source) => ADDRESS_PATTERN.test(source) ? undefined : `source ${source} is not the parent team lead's <team>/<id>`);
+    }
+    create(input, state, sourceRule) {
         const fields = {
             title: input.title.trim(),
             owner: input.owner,
@@ -35,7 +50,7 @@ export class RegisterPolicy {
             goals: input.goals ?? [],
             week: input.week ?? null,
         };
-        const problem = this.checkFields(fields);
+        const problem = this.checkFields(fields, sourceRule);
         if (problem !== undefined) {
             return refuse(problem);
         }
@@ -88,10 +103,17 @@ export class RegisterPolicy {
             }
         }
         const merged = { ...pickFields(task), ...changes };
-        const problem = this.checkFields(merged) ?? this.checkText('note', blankToNull(note));
+        // A task keeps the source it was added with, even one from the parent team's lead.
+        const sourceRule = (source) => (source === task.source ? undefined : this.teamSourceProblem(source));
+        const problem = this.checkFields(merged, sourceRule) ?? this.checkText('note', blankToNull(note));
         return problem === undefined ? ok({ changes, note: blankToNull(note) }) : refuse(problem);
     }
-    checkFields(fields) {
+    /** A source added on this team: a session id, or the owner's marker. */
+    teamSourceProblem(source) {
+        const { ownerSource } = this.config.register;
+        return source === ownerSource || SESSION_NAME.test(source) ? undefined : `source ${source} is neither a session id nor ${ownerSource}`;
+    }
+    checkFields(fields, sourceRule) {
         const { register, sessions } = this.config;
         if (fields.title === '') {
             return 'the title is empty';
@@ -102,8 +124,9 @@ export class RegisterPolicy {
         if (!sessions.includes(fields.owner)) {
             return `owner ${fields.owner} is not a session on this team`;
         }
-        if (fields.source !== register.ownerSource && !SESSION_NAME.test(fields.source)) {
-            return `source ${fields.source} is neither a session id nor ${register.ownerSource}`;
+        const sourceProblem = sourceRule(fields.source);
+        if (sourceProblem !== undefined) {
+            return sourceProblem;
         }
         if (!register.tiers.some((tier) => tier.id === fields.tier)) {
             return `tier ${fields.tier} is not one of ${register.tiers.map((tier) => tier.id).join(', ')}`;

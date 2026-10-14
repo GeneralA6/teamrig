@@ -3,8 +3,9 @@ import { KIT_NAME } from "../../core/home.js";
 import { recordRename } from "../../names/record.js";
 import { UsageError } from "../args.js";
 import { callerOf } from "../inputs.js";
-import { openTeamKit, renameDepsOf, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
+import { findTeam, openTeamKit, renameDepsOf, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
+import { loadTree } from "../tree.js";
 /** One roster line: `<id> <name>`, then the roles the session holds, then the names it had before. */
 function rosterLine(roster, id) {
     const roles = roster.rolesOf(id);
@@ -39,6 +40,48 @@ export async function who(args, runtime) {
     }
     const id = idOf(roster, text);
     runtime.out.stdout(roster.nameOf(id) ?? id);
+    return EXIT.ok;
+}
+/** `<id> (<name>)`: the id addresses the session as `<team>/<id>`, the name is what Claude Code calls it. */
+function sessionText(node, id) {
+    return `${id} (${node.names.get(id) ?? id})`;
+}
+/** One team of the tree: indented by its level below the root, its lead, then its members. */
+function treeLine(node, depth, own) {
+    const members = node.sessions.filter((id) => id !== node.lead).map((id) => sessionText(node, id));
+    const here = own ? ' (this team)' : '';
+    const membersText = members.length === 0 ? '' : `; members ${members.join(', ')}`;
+    return `${'  '.repeat(depth)}${node.team}${here}: lead ${sessionText(node, node.lead)}${membersText}`;
+}
+/**
+ * `team tree`: the tree the command's team hangs in, from its root down, each team with its lead and
+ * members. A broken tree (a loop of parents, a missing parent, a team too deep) is shown as far as it
+ * reads, with a pointer to `doctor`.
+ */
+export async function teamTree(args, runtime) {
+    const [extra] = args.positionals;
+    if (extra !== undefined) {
+        throw new UsageError(`unexpected "${extra}"`);
+    }
+    const { team } = await findTeam(runtime);
+    const { tree } = await loadTree(runtime);
+    if (tree.node(team) === undefined) {
+        throw new RefusedError(`no team config for team ${team}; create it with: ${KIT_NAME} team create ${team} --sessions <id,id>`);
+    }
+    const root = tree.rootOf(team) ?? team;
+    const steps = tree.walk(root);
+    runtime.out.stdout(`TREE ${root}, ${steps.length} team(s)`);
+    for (const step of steps) {
+        const node = tree.node(step.team);
+        if (node !== undefined) {
+            runtime.out.stdout(treeLine(node, step.depth, step.team === team));
+        }
+    }
+    const inTree = new Set(steps.map((step) => step.team));
+    const broken = tree.problems().filter((problem) => (problem.kind === 'tree-loop' ? problem.teams : [problem.team]).some((id) => inTree.has(id)));
+    if (broken.length > 0) {
+        runtime.out.stderr(`WARN the tree has ${broken.length} problem(s); run: ${KIT_NAME} doctor`);
+    }
     return EXIT.ok;
 }
 /**

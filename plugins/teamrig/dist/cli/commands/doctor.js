@@ -6,9 +6,11 @@ import { JsonlRenameLog } from "../../names/log.js";
 import { noPositionals } from "../args.js";
 import { openTeamKit, requireConfig } from "../kit.js";
 import { EXIT } from "../runtime.js";
+import { loadTree } from "../tree.js";
 import { inboxDepsOf } from "./inbox.js";
 /**
- * `doctor`: the team's health checks (names, the rename log, inboxes, rules.md). It reads only and
+ * `doctor`: the team's health checks (names, the rename log, inboxes, rules.md, its tree of teams and
+ * session names shared with other teams, read from every team config of the kit home). It reads only and
  * exits 0 like `check`: a finding is advice, and each line says the fix.
  */
 export async function doctor(args, runtime) {
@@ -18,12 +20,14 @@ export async function doctor(args, runtime) {
     const { paths } = kit;
     const renameLog = await new JsonlRenameLog(runtime.files, paths.renames).read();
     const rules = await runtime.files.read(paths.teamRules);
+    const { tree } = await loadTree(runtime);
     const findings = doctorFindings({
         roster: new Roster(config, paths.team, renameLog.renames),
         configNames: config.names,
         renameLog: { ...renameLog, path: paths.renames },
         inboxes: await inboxStatus(inboxDepsOf(runtime, paths)),
         teamRules: rules === undefined ? undefined : { path: paths.teamRules, chars: rules.trim().length },
+        tree: { problems: tree.problemsOf(paths.team), clashes: tree.nameClashesOf(paths.team) },
         now: new Date(runtime.clock.now()),
         command: KIT_NAME,
     });

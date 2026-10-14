@@ -1,3 +1,4 @@
+import { isRecord } from "../core/guards.js";
 import { NAME_PATTERN, NAME_RULE } from "../core/ids.js";
 import { isTaskStatus, SESSION_NAME } from "../register/model.js";
 import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_COMMITS, DEFAULT_LOCK, DEFAULT_MESSAGES, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_PUSH_GUARD, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SKILLS, } from "./defaults.js";
@@ -38,6 +39,27 @@ function readNames(read, raw, sessions) {
     }
     return names;
 }
+/**
+ * `team`: the team's id and its parent's, both ids. Only the shape is checked here; whether the id
+ * matches the team's folder and the parent exists is the tree's to judge, as it sees every team.
+ */
+function readTeam(read, raw) {
+    const value = raw['team'];
+    const section = read.section(raw, 'team', '');
+    if (!isRecord(value)) {
+        return undefined;
+    }
+    const id = read.requiredString(section, 'id', 'team', isSessionName);
+    const parent = read.optionalString(section, 'parent', 'team', isSessionName);
+    if (id === '') {
+        return undefined;
+    }
+    if (parent === id) {
+        read.report('team.parent', 'is the team itself; a root team has no parent');
+        return { id };
+    }
+    return parent === undefined ? { id } : { id, parent };
+}
 /** Validates a migrated config object against the current format. */
 export function parseConfig(raw) {
     const read = new ConfigReader();
@@ -60,6 +82,7 @@ export function parseConfig(raw) {
         read.report('sessions', 'lists a session more than once');
     }
     const names = readNames(read, read.section(raw, 'names', ''), sessions);
+    const team = readTeam(read, raw);
     const messages = read.section(raw, 'messages', '');
     const pushGuard = read.section(raw, 'pushGuard', '');
     const coordinator = read.section(raw, 'coordinator', '');
@@ -71,6 +94,7 @@ export function parseConfig(raw) {
     const tabStatus = read.section(raw, 'tabStatus', '');
     const config = {
         configVersion: read.integer(raw, 'configVersion', '', 1, { min: 1 }),
+        ...(team === undefined ? {} : { team }),
         sessions,
         names,
         roles: coordinatorOwner === undefined ? { lead } : { lead, coordinatorOwner },

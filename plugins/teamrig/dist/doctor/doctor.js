@@ -1,3 +1,4 @@
+import { describeNameClash, describeTreeProblem } from "../config/tree.js";
 import { formatUtcMinute, MS_PER_DAY, parseUtcDeadline, shortUtc } from "../core/time.js";
 import { unreadSince } from "../inbox/inbox.js";
 import { TEAM_RULES_MAX_CHARS } from "../rules/pack.js";
@@ -97,12 +98,26 @@ function rulesFindings(input) {
     const detail = `${rules.path} is ${rules.chars} characters, more than the ${TEAM_RULES_MAX_CHARS} a session is shown at start, so sessions get only a pointer to it: shorten it to keep it in every session's context`;
     return [{ kind: 'rules-long', detail }];
 }
+function treeFindings({ tree, command }) {
+    return [
+        ...tree.problems.map((problem) => ({ kind: problem.kind, detail: describeTreeProblem(problem, command) })),
+        ...tree.clashes.map((clash) => ({ kind: 'name-two-teams', detail: describeNameClash(clash, command) })),
+    ];
+}
 /**
  * The team's health checks: names that find the wrong session or none, a damaged rename log,
- * inboxes nobody reads, and rules too long to show. It reads only; every fix is the user's.
+ * inboxes nobody reads, rules too long to show, and a broken tree of teams or a session name two
+ * teams use. It reads only; every fix is the user's.
  */
 export function doctorFindings(input) {
-    return [...nameFindings(input.roster, input.command), ...configFindings(input), ...renameLogFindings(input), ...inboxFindings(input), ...rulesFindings(input)];
+    return [
+        ...nameFindings(input.roster, input.command),
+        ...configFindings(input),
+        ...renameLogFindings(input),
+        ...inboxFindings(input),
+        ...rulesFindings(input),
+        ...treeFindings(input),
+    ];
 }
 export function formatFinding(finding) {
     return `WARN ${finding.kind} ${finding.detail}`;
