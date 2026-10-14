@@ -123,15 +123,8 @@ export async function postLine(inboxes, secrets, input) {
     await inboxes.append(input.to, `- ${formatUtcMinute(input.now)} ${input.from}: ${text}`);
     return undefined;
 }
-/** The `session_id` in a hook's stdin JSON; null when absent or malformed. */
-export function sessionIdOf(input) {
-    let value;
-    try {
-        value = JSON.parse(input);
-    }
-    catch {
-        return null;
-    }
-    const id = isRecord(value) ? stringField(value, 'session_id') : undefined;
+/** The `session_id` in a hook's parsed stdin JSON; null when absent or malformed. */
+export function sessionIdOf(payload) {
+    const id = isRecord(payload) ? stringField(payload, 'session_id') : undefined;
     return id !== undefined && CLAUDE_SESSION_ID.test(id) ? id : null;
 }

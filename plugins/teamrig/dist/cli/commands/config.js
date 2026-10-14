@@ -1,12 +1,12 @@
 import { writeMigration } from "../../config/load.js";
 import { CONFIG_VERSION } from "../../config/types.js";
 import { noPositionals } from "../args.js";
-import { issueText, openKit, requireConfig } from "../kit.js";
+import { issueText, openTeamKit, requireConfig } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 /** `config validate`: every problem in the team config; exit 1 when there is any. */
 export async function validate(args, runtime) {
     noPositionals(args);
-    const { load } = await openKit(runtime);
+    const { load } = await openTeamKit(runtime);
     switch (load.status) {
         case 'missing':
             throw new RefusedError(`no team config at ${load.path}`);
@@ -34,7 +34,7 @@ export async function validate(args, runtime) {
 /** `config migrate`: rewrites an older config in the current format, keeping a backup of the old file. */
 export async function migrate(args, runtime) {
     noPositionals(args);
-    const kit = await openKit(runtime);
+    const kit = await openTeamKit(runtime);
     const { load } = kit;
     if (load.status === 'loaded' && load.newerVersion !== undefined) {
         throw new RefusedError(`${load.path} is config version ${load.newerVersion}, from a newer teamrig; update teamrig instead`);

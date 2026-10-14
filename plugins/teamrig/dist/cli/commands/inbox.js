@@ -5,7 +5,7 @@ import { CLAUDE_SESSION_ID } from "../../inbox/marks.js";
 import { InboxDir, JsonlMarkLog } from "../../inbox/store.js";
 import { noPositionals, requiredFlag } from "../args.js";
 import { callerOf, sessionName } from "../inputs.js";
-import { openKit, requireConfig } from "../kit.js";
+import { openTeamKit, requireConfig } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 export function inboxDepsOf(runtime, paths) {
     return { inboxes: new InboxDir(runtime.files, paths.inbox), marks: new JsonlMarkLog(runtime.files, paths.inboxMarks) };
@@ -26,7 +26,7 @@ function refuseStrangers(team, names) {
 export async function read(args, runtime) {
     noPositionals(args);
     const area = callerOf(args.flags, runtime.env);
-    const kit = await openKit(runtime);
+    const kit = await openTeamKit(runtime);
     refuseStrangers(requireConfig(kit, runtime, 'read'), [area]);
     const now = new Date(runtime.clock.now());
     const result = await readInbox(inboxDepsOf(runtime, kit.paths), { area, claudeSession: claudeSessionOf(runtime.env), now });
@@ -39,7 +39,7 @@ export async function status(args, runtime) {
     noPositionals(args);
     const only = args.flags.get('session');
     const area = only === undefined ? undefined : sessionName('--session', only);
-    const kit = await openKit(runtime);
+    const kit = await openTeamKit(runtime);
     requireConfig(kit, runtime, 'read');
     const unread = await inboxStatus(inboxDepsOf(runtime, kit.paths), area);
     if (unread.length === 0) {
@@ -54,7 +54,7 @@ export async function add(args, runtime) {
     const from = callerOf(args.flags, runtime.env);
     const to = sessionName('--to', requiredFlag(args.flags, 'to'));
     const text = requiredFlag(args.flags, 'text');
-    const kit = await openKit(runtime);
+    const kit = await openTeamKit(runtime);
     const config = requireConfig(kit, runtime, 'write');
     refuseStrangers(config, [from, to]);
     const { inboxes } = inboxDepsOf(runtime, kit.paths);

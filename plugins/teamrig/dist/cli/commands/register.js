@@ -9,10 +9,10 @@ import { formatSkillFlag, lintSkills } from "../../skills/lint.js";
 import { SkillDir } from "../../skills/store.js";
 import { noPositionals, onePositional } from "../args.js";
 import { addInputOf, callerOf, changesOf, listFilterOf, statusInputOf, taskIdOf, weekOf } from "../inputs.js";
-import { openKit, requireConfig } from "../kit.js";
+import { openTeamKit, requireConfig } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 async function openTeam(runtime, access) {
-    const kit = await openKit(runtime);
+    const kit = await openTeamKit(runtime);
     const config = requireConfig(kit, runtime, access);
     const { files, clock, sleep, pid } = runtime;
     const register = new Register({

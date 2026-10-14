@@ -1,5 +1,6 @@
 import { errorMessage } from "../core/guards.js";
 import { ENV, KIT_NAME } from "../core/home.js";
+import { TEAM_POINTER } from "../core/team.js";
 import { KIT_VERSION } from "../core/version.js";
 import { parseArgs, UsageError } from "./args.js";
 import { EXIT, RefusedError } from "./runtime.js";
@@ -46,6 +47,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <name>,
   inbox add --to <session> --text "<one line>"
   config validate | config migrate
   hook push-guard | hook inbox-reminder    (run by Claude Code with the hook JSON on stdin)
+Team: $${ENV.team}, else the nearest ${TEAM_POINTER} ({"team": "<id>"}) above the current folder.
 Dates: YYYY-MM-DD or "YYYY-MM-DD HH:MM", UTC. Kit home: $${ENV.home}, else ~/.${KIT_NAME}.
 Exit: 0 done, 1 failed, 2 refused by a team rule, 64 a command line it cannot read.`;
 const HELP = new Set(['help', '--help', '-h']);

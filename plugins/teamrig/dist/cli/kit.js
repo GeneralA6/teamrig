@@ -1,12 +1,32 @@
 import { loadConfig } from "../config/load.js";
-import { kitPaths, resolveKitHome } from "../core/home.js";
+import { ENV, resolveKitHome, teamPaths } from "../core/home.js";
+import { resolveTeam, TEAM_POINTER } from "../core/team.js";
 import { RefusedError } from "./runtime.js";
-/** The kit home, its config and the paths the config moves. */
-export async function openKit(runtime) {
-    const home = resolveKitHome(runtime.env, runtime.userHome);
-    const load = await loadConfig(runtime.files, kitPaths(home, runtime.userHome).config);
+/** The team's folder under the kit home, its config and the paths the config moves. */
+export async function openKit(runtime, team) {
+    const kitHome = resolveKitHome(runtime.env, runtime.userHome);
+    const load = await loadConfig(runtime.files, teamPaths(kitHome, team, runtime.userHome).config);
     const overrides = load.status === 'loaded' ? load.config.paths : {};
-    return { load, paths: kitPaths(home, runtime.userHome, overrides) };
+    return { load, paths: teamPaths(kitHome, team, runtime.userHome, overrides) };
+}
+/**
+ * Where to look for a team pointer: the given folders in order, then the folder Claude Code started
+ * the session in, so a command run from a subfolder or a temp folder still finds its team.
+ */
+export function teamFolders(env, first) {
+    return [...first, env[ENV.claudeProjectDir]].flatMap((folder) => (folder?.trim() ? [folder] : []));
+}
+/** A command's team: `$TEAMRIG_TEAM`, else the nearest pointer. Without one the command refuses. */
+export async function openTeamKit(runtime) {
+    const found = await resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [runtime.cwd]));
+    switch (found.kind) {
+        case 'none':
+            throw new RefusedError(`no team here: set $${ENV.team}, or put ${TEAM_POINTER} {"team": "<id>"} in the project folder`);
+        case 'broken':
+            throw new RefusedError(`${found.from} ${found.problem}`);
+        case 'team':
+            return openKit(runtime, found.team);
+    }
 }
 export function issueText(issue) {
     return `${issue.path === '' ? '(top level)' : issue.path}: ${issue.message}`;
