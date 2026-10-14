@@ -42,6 +42,32 @@ describe('parseConfig', () => {
     assert.deepEqual(config.sessions, ['alpha', 'alpha']);
   });
 
+  it('keeps a name for each session and defaults to none', () => {
+    assert.deepEqual(parseConfig(ROSTER).config.names, {});
+    const { config, issues } = parseConfig({ ...ROSTER, names: { alpha: 'team-lead', bravo: 'bravo' } });
+    assert.deepEqual(issues, []);
+    assert.deepEqual(config.names, { alpha: 'team-lead', bravo: 'bravo' });
+  });
+
+  it('refuses names of strangers, malformed names and names that are taken', () => {
+    const { config, issues } = parseConfig({
+      sessions: ['alpha', 'bravo', 'charlie', 'delta'],
+      roles: { lead: 'alpha' },
+      names: { alpha: 'boss', bravo: 'boss', charlie: 'alpha', delta: 'Delta', zulu: 'z', constructor: 'c' },
+    });
+    assert.deepEqual(
+      issues.map((issue) => `${issue.path}: ${issue.message}`),
+      [
+        'names.bravo: "boss" is already the name of alpha',
+        'names.charlie: "alpha" is already a session id',
+        'names.delta: expected a name: a lowercase letter, then lowercase letters, digits or -, at most 65 characters (got "Delta")',
+        'names.zulu: is not one of the sessions',
+        'names.constructor: is not one of the sessions',
+      ],
+    );
+    assert.deepEqual(config.names, { alpha: 'boss' });
+  });
+
   it('reports every wrong field with its path and falls back to the default', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,

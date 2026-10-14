@@ -1,4 +1,5 @@
 import type { JsonRecord } from '../core/guards.ts';
+import { NAME_PATTERN, NAME_RULE } from '../core/ids.ts';
 import { isTaskStatus, SESSION_NAME, type TaskStatus } from '../register/model.ts';
 import {
   DEFAULT_ALERTS,
@@ -30,12 +31,41 @@ const BRANCH_NAME: Check<string> = (name) => (/^[^\s~^:?*[\\]+$/.test(name) ? un
 /** The key shape the skills lint recognises in frontmatter. */
 const isFrontmatterKey: Check<string> = (key) => (/^[A-Za-z0-9_-]+$/.test(key) ? undefined : 'expected a frontmatter key: letters, digits, _ or -');
 
+const isDisplayName: Check<string> = (name) => (NAME_PATTERN.test(name) ? undefined : `expected a name: ${NAME_RULE}`);
+
+/**
+ * `names`: only sessions on the team, and each name unique and never another session's id, so a
+ * command given a name finds exactly one session.
+ */
+function readNames(read: ConfigReader, raw: JsonRecord, sessions: readonly string[]): Record<string, string> {
+  const names: Record<string, string> = {};
+  const holders = new Map<string, string>();
+  for (const id of Object.keys(raw)) {
+    const name = read.optionalString(raw, id, 'names', isDisplayName);
+    if (name === undefined) {
+      continue;
+    }
+    if (!sessions.includes(id)) {
+      read.report(`names.${id}`, 'is not one of the sessions');
+      continue;
+    }
+    const holder = holders.get(name);
+    if (holder !== undefined || (name !== id && sessions.includes(name))) {
+      read.report(`names.${id}`, `${describe(name)} is already ${holder === undefined ? 'a session id' : `the name of ${holder}`}`);
+      continue;
+    }
+    holders.set(name, id);
+    names[id] = name;
+  }
+  return names;
+}
+
 /** Validates a migrated config object against the current format. */
 export function parseConfig(raw: JsonRecord): ConfigParse {
   const read = new ConfigReader();
   const sessions = read.list(raw, 'sessions', '', [], (value, path) => read.stringItem(value, path, isSessionName));
   if (raw['sessions'] === undefined) {
-    read.report('sessions', 'is required: list every session name on the team');
+    read.report('sessions', 'is required: list every session id on the team');
   }
   const rolesRaw = read.section(raw, 'roles', '');
   const lead = read.requiredString(rolesRaw, 'lead', 'roles', isSessionName);
@@ -51,6 +81,7 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
   if (new Set(sessions).size !== sessions.length) {
     read.report('sessions', 'lists a session more than once');
   }
+  const names = readNames(read, read.section(raw, 'names', ''), sessions);
 
   const messages = read.section(raw, 'messages', '');
   const pushGuard = read.section(raw, 'pushGuard', '');
@@ -65,6 +96,7 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
   const config: KitConfig = {
     configVersion: read.integer(raw, 'configVersion', '', 1, { min: 1 }),
     sessions,
+    names,
     roles: coordinatorOwner === undefined ? { lead } : { lead, coordinatorOwner },
     ownerGates: read.stringList(
       raw,

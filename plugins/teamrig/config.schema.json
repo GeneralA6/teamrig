@@ -14,12 +14,23 @@
       "default": 1
     },
     "sessions": {
-      "description": "Every session name on the team, the lead included.",
+      "description": "Every session id on the team, the lead included. Ids key every file and record, so they never change; a rename edits names.",
       "type": "array",
       "items": { "$ref": "#/$defs/sessionName" },
       "uniqueItems": true
     },
+    "names": {
+      "description": "Each session's display and Claude Code session name, by id. A session not listed is named <team>-<id>. A name must be unique and never another session's id.",
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/sessionName" },
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]{0,64}$"
+      },
+      "default": {}
+    },
     "roles": {
+      "description": "Each role's session, by id.",
       "type": "object",
       "required": ["lead"],
       "properties": {

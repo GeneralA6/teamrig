@@ -94,8 +94,14 @@ export interface PathsConfig {
 
 export interface KitConfig {
   readonly configVersion: number;
-  /** Every session name on the team, the lead included. */
+  /**
+   * Every session id on the team, the lead included. Ids key every file and record (inboxes, read
+   * marks, task owners), so they never change; a rename edits `names`.
+   */
   readonly sessions: readonly string[];
+  /** Each session's display and Claude Code session name, by id; an id not listed is named `<team>-<id>`. */
+  readonly names: Readonly<Record<string, string>>;
+  /** Each role's session, by id. */
   readonly roles: RolesConfig;
   /** Decision areas only the human owner can approve; silence never counts as consent for them. */
   readonly ownerGates: readonly string[];

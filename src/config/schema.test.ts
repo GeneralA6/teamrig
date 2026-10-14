@@ -12,6 +12,7 @@ const ROSTER_KEYS = new Set(['sessions', 'roles']);
 /** Sets every optional key, so walking it visits every key the parser reads. */
 const EVERY_KEY = {
   ...ROSTER,
+  names: { alpha: 'team-lead' },
   roles: { lead: 'alpha', coordinatorOwner: 'bravo' },
   register: { goalPattern: '^G\\d+$' },
   coordinator: { schedule: { heavyCutoffUtc: '22:30' } },
@@ -38,6 +39,12 @@ function asJson(raw: JsonRecord): JsonRecord {
 function properties(schema: JsonRecord): JsonRecord {
   const value = schema['properties'];
   return isRecord(value) ? value : {};
+}
+
+/** The schema of a key the node does not list, for a map such as `names`. */
+function anyProperty(schema: JsonRecord): JsonRecord | undefined {
+  const value = schema['additionalProperties'];
+  return isRecord(value) ? value : undefined;
 }
 
 /** Where each bounded value sits in the config; typed so a new limit cannot skip the schema check. */
@@ -70,7 +77,7 @@ function nodeAt(schema: JsonRecord, path: string): JsonRecord {
 /** Every key of the parsed config, with its value and its schema node. */
 function* walkConfig(config: JsonRecord, schema: JsonRecord, path: string): Generator<[string, unknown, JsonRecord | undefined]> {
   for (const [key, value] of Object.entries(config)) {
-    const node = properties(schema)[key];
+    const node = properties(schema)[key] ?? anyProperty(schema);
     const keyPath = path === '' ? key : `${path}.${key}`;
     yield [keyPath, value, isRecord(node) ? node : undefined];
     if (isRecord(value) && isRecord(node)) {
