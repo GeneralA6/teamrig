@@ -1,9 +1,9 @@
 import { NAME_PATTERN, NAME_RULE } from "../core/ids.js";
 import { isTaskStatus, SESSION_NAME } from "../register/model.js";
-import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_COMMITS, DEFAULT_LOCK, DEFAULT_MESSAGES, DEFAULT_OWNER_GATES, DEFAULT_PUSH_GUARD, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SKILLS, } from "./defaults.js";
+import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_COMMITS, DEFAULT_LOCK, DEFAULT_MESSAGES, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_PUSH_GUARD, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SKILLS, } from "./defaults.js";
 import { CONFIG_LIMITS } from "./limits.js";
 import { ConfigReader, describe, isValidRegex, shortLine } from "./reader.js";
-import { isCommitGate, } from "./types.js";
+import { isCommitGate, isTerminalChoice, TERMINALS, } from "./types.js";
 const isSessionName = (name) => SESSION_NAME.test(name) ? undefined : 'expected a lowercase name: a letter, then letters, digits or -, at most 32';
 const isUtcTime = (time) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(time) ? undefined : 'expected a UTC time as HH:MM');
 const BRANCH_NAME = (name) => (/^[^\s~^:?*[\\]+$/.test(name) ? undefined : 'not a valid branch name');
@@ -100,6 +100,7 @@ export function parseConfig(raw) {
         },
         tabStatus: { enabled: read.boolean(tabStatus, 'enabled', 'tabStatus', false) },
         refresh: parseRefresh(read, read.section(raw, 'refresh', '')),
+        open: parseOpen(read, read.section(raw, 'open', '')),
         paths: parsePaths(read, read.section(raw, 'paths', '')),
     };
     return { config, issues: read.issues };
@@ -163,6 +164,10 @@ function parseSkills(read, raw) {
         maxVerifiedAgeDays: read.integer(raw, 'maxVerifiedAgeDays', path, defaults.maxVerifiedAgeDays, CONFIG_LIMITS.maxVerifiedAgeDays),
         forbidFrontmatter: read.stringList(raw, 'forbidFrontmatter', path, defaults.forbidFrontmatter, shortLine(CONFIG_LIMITS.forbidFrontmatter.maxLength, isFrontmatterKey), CONFIG_LIMITS.forbidFrontmatter.maxItems),
     };
+}
+function parseOpen(read, raw) {
+    const terminal = read.string(raw, 'terminal', 'open', DEFAULT_OPEN.terminal, (value) => isTerminalChoice(value) ? undefined : `expected one of ${TERMINALS.join(', ')}`);
+    return { terminal: isTerminalChoice(terminal) ? terminal : DEFAULT_OPEN.terminal };
 }
 function parseCommits(read, raw) {
     const path = 'commits';

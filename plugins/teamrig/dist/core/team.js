@@ -5,7 +5,8 @@ import { ID_PATTERN, ID_RULE } from "./ids.js";
 import { pathKey } from "./paths.js";
 /** The file that ties a project folder, and every folder below it, to a team: `{"team": "<id>"}`. */
 export const TEAM_POINTER = '.teamrig.json';
-const ENV_SOURCE = `$${ENV.team}`;
+/** The `from` of a team named by `$TEAMRIG_TEAM` rather than by a pointer file. */
+export const ENV_SOURCE = `$${ENV.team}`;
 /**
  * `$TEAMRIG_TEAM` wins, so a session working in another team's repo keeps its own team. Otherwise
  * the nearest pointer file, walking up from each folder in order; a folder already walked from an
