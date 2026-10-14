@@ -1,7 +1,8 @@
 /**
  * The README's name, drawn as a two-tone monospace wordmark: a bold "team" and a lighter accent "rig".
- * An SVG in an <img> follows the viewer's OS colour scheme, not GitHub's theme, so a dark-mode switch inside it can
- * hide the word on a light page. Its colours are instead mid-tones that read on both of GitHub's backgrounds.
+ * An SVG in an <img> follows the viewer's OS colour scheme, not GitHub's theme, so a dark-mode colour inside it can
+ * land on a light page. Every colour, the dark scheme's included, is a mid-tone that reads on both of GitHub's
+ * backgrounds; the dark scheme only lifts "team" a step, where the light scheme's grey sits dim on a dark page.
  */
 
 const WORD = { strong: 'team', accent: 'rig' } as const;
@@ -11,8 +12,8 @@ const CHAR_WIDTH = FONT_SIZE * 0.6;
 const HEIGHT = 42;
 const BASELINE = 32;
 
-/** GitHub's muted grey and purple, each readable as large text on white and on GitHub's dark background. */
-export const WORDMARK_COLOURS = { strong: '#6e7781', accent: '#8957e5' } as const;
+/** GitHub's muted greys and purple, each readable as large text on white and on GitHub's dark background. */
+export const WORDMARK_COLOURS = { strong: '#6e7781', strongDark: '#8b949e', accent: '#8957e5' } as const;
 
 export function renderWordmark(): string {
   const name = `${WORD.strong}${WORD.accent}`;
@@ -24,6 +25,7 @@ export function renderWordmark(): string {
     `text{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;font-size:${FONT_SIZE}px}`,
     `.strong{fill:${WORDMARK_COLOURS.strong};font-weight:700}`,
     `.accent{fill:${WORDMARK_COLOURS.accent};font-weight:400}`,
+    `@media (prefers-color-scheme:dark){.strong{fill:${WORDMARK_COLOURS.strongDark}}}`,
     '</style>',
     `<text x="0" y="${BASELINE}" textLength="${width}" lengthAdjust="spacingAndGlyphs"><tspan class="strong">${WORD.strong}</tspan><tspan class="accent">${WORD.accent}</tspan></text>`,
     '</svg>',
