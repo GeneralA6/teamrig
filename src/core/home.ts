@@ -10,6 +10,8 @@ export const ENV = {
   session: 'TEAMRIG_SESSION',
   /** The plugin's `home` user option, as Claude Code passes it to hooks. */
   pluginHomeOption: 'CLAUDE_PLUGIN_OPTION_HOME',
+  /** The Claude Code session running a command, so the inbox reminder hook can follow its reads. */
+  claudeSession: 'CLAUDE_CODE_SESSION_ID',
 } as const;
 
 export type Env = Readonly<Record<string, string | undefined>>;
