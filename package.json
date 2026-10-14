@@ -1,0 +1,22 @@
+{
+  "name": "teamrig-workspace",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Development workspace for the teamrig Claude Code plugin",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test \"tools/**/*.test.ts\"",
+    "scrub": "node tools/scrub/cli.ts --tree",
+    "setup": "node tools/setup/cli.ts",
+    "check": "npm run typecheck && npm test && npm run scrub"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.3",
+    "typescript": "5.9.3"
+  }
+}
