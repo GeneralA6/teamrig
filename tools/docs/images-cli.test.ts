@@ -9,6 +9,7 @@ import { IMAGES_DIR } from './images.ts';
 const CLI = fileURLToPath(new URL('./images-cli.ts', import.meta.url));
 const WORDMARK = `${IMAGES_DIR}/wordmark.svg`;
 const HERO = `${IMAGES_DIR}/hero.svg`;
+const ALL = [WORDMARK, HERO, `${IMAGES_DIR}/how-it-works.svg`, `${IMAGES_DIR}/commands.svg`];
 
 describe('images-cli', () => {
   let repo: TempRepo;
@@ -20,7 +21,7 @@ describe('images-cli', () => {
   it('draws every picture into docs/images', () => {
     const result = repo.run(CLI);
     assert.equal(result.status, 0, result.stderr);
-    assert.equal(result.stdout, `images: wrote ${WORDMARK}\nimages: wrote ${HERO}\n`);
+    assert.equal(result.stdout, ALL.map((path) => `images: wrote ${path}\n`).join(''));
     assert.match(readFileSync(join(repo.dir, HERO), 'utf8'), /^<svg xmlns=/);
   });
 
@@ -29,14 +30,14 @@ describe('images-cli', () => {
     const drawn = readFileSync(join(repo.dir, HERO), 'utf8');
     const result = repo.run(CLI, ['--check']);
     assert.equal(result.status, 0, result.stderr);
-    assert.equal(result.stdout, "images: 2 picture(s) match the CLI's output\n");
+    assert.equal(result.stdout, 'images: 4 picture(s) are up to date\n');
     assert.equal(readFileSync(join(repo.dir, HERO), 'utf8'), drawn);
   });
 
   it('--check lists a missing or changed picture and exits 1 without redrawing it', () => {
     const missing = repo.run(CLI, ['--check']);
     assert.equal(missing.status, 1, missing.stderr);
-    assert.equal(missing.stdout, `images: stale; run \`npm run docs:images\` and commit the result:\n  ${WORDMARK}\n  ${HERO}\n`);
+    assert.equal(missing.stdout, `images: stale; run \`npm run docs:images\` and commit the result:\n${ALL.map((path) => `  ${path}\n`).join('')}`);
     repo.write(HERO, '<svg/>\n');
     assert.equal(repo.run(CLI, ['--check']).status, 1);
     assert.equal(readFileSync(join(repo.dir, HERO), 'utf8'), '<svg/>\n');
