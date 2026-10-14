@@ -7,6 +7,7 @@ import {
   DEFAULT_COMMITS,
   DEFAULT_LOCK,
   DEFAULT_MESSAGES,
+  DEFAULT_OPEN,
   DEFAULT_OWNER_GATES,
   DEFAULT_PUSH_GUARD,
   DEFAULT_REFRESH,
@@ -17,8 +18,11 @@ import { CONFIG_LIMITS } from './limits.ts';
 import { ConfigReader, describe, isValidRegex, shortLine, type Check, type ConfigIssue } from './reader.ts';
 import {
   isCommitGate,
+  isTerminalChoice,
+  TERMINALS,
   type CommitsConfig,
   type KitConfig,
+  type OpenConfig,
   type PathsConfig,
   type RefreshConfig,
   type RegisterConfig,
@@ -153,6 +157,7 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
     },
     tabStatus: { enabled: read.boolean(tabStatus, 'enabled', 'tabStatus', false) },
     refresh: parseRefresh(read, read.section(raw, 'refresh', '')),
+    open: parseOpen(read, read.section(raw, 'open', '')),
     paths: parsePaths(read, read.section(raw, 'paths', '')),
   };
   return { config, issues: read.issues };
@@ -234,6 +239,13 @@ function parseSkills(read: ConfigReader, raw: JsonRecord): SkillsConfig {
       CONFIG_LIMITS.forbidFrontmatter.maxItems,
     ),
   };
+}
+
+function parseOpen(read: ConfigReader, raw: JsonRecord): OpenConfig {
+  const terminal = read.string(raw, 'terminal', 'open', DEFAULT_OPEN.terminal, (value) =>
+    isTerminalChoice(value) ? undefined : `expected one of ${TERMINALS.join(', ')}`,
+  );
+  return { terminal: isTerminalChoice(terminal) ? terminal : DEFAULT_OPEN.terminal };
 }
 
 function parseCommits(read: ConfigReader, raw: JsonRecord): CommitsConfig {

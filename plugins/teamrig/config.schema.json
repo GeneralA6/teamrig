@@ -248,6 +248,18 @@
         "enabled": { "type": "boolean", "default": false }
       }
     },
+    "open": {
+      "description": "How teamrig open starts a session in a new terminal tab.",
+      "type": "object",
+      "properties": {
+        "terminal": {
+          "description": "The terminal to open the tab in. auto takes tmux inside tmux, else Windows Terminal on Windows, Terminal on macOS, or the first of gnome-terminal, konsole and x-terminal-emulator on Linux; print opens nothing and prints the command to run. teamrig open --terminal wins over it.",
+          "type": "string",
+          "enum": ["auto", "tmux", "windows-terminal", "macos-terminal", "gnome-terminal", "konsole", "x-terminal-emulator", "print"],
+          "default": "auto"
+        }
+      }
+    },
     "refresh": {
       "description": "Context refresh: when a session finishes a task (teamrig set <id> --status done) with its context at or over contextTokens, or after the lead ran teamrig refresh <session>, it writes a handover and the user types /clear. A relative handoverDir is resolved against the team's folder; unset, it is <team folder>/handover.",
       "type": "object",
