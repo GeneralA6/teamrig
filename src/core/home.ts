@@ -6,12 +6,16 @@ export const KIT_NAME = 'teamrig';
 export const ENV = {
   /** Overrides the kit home folder. */
   home: 'TEAMRIG_HOME',
+  /** The team a command or hook runs for; wins over a `.teamrig.json` pointer. */
+  team: 'TEAMRIG_TEAM',
   /** The calling session's name when `--session` is not given. */
   session: 'TEAMRIG_SESSION',
   /** The plugin's `home` user option, as Claude Code passes it to hooks. */
   pluginHomeOption: 'CLAUDE_PLUGIN_OPTION_HOME',
   /** The Claude Code session running a command, so the inbox reminder hook can follow its reads. */
   claudeSession: 'CLAUDE_CODE_SESSION_ID',
+  /** The folder Claude Code started the session in; hooks and tool commands inherit it. */
+  claudeProjectDir: 'CLAUDE_PROJECT_DIR',
 } as const;
 
 export type Env = Readonly<Record<string, string | undefined>>;
