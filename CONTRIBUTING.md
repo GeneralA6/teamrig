@@ -20,7 +20,8 @@ Every change ships tests, so the next change cannot break it unnoticed:
   where a unit test fits; spawn the real entry point (`process.execPath`) to test a CLI.
 - No skipped or todo tests: a test that does not run catches nothing.
 
-`npm run check` runs every gate CI runs. Its coverage gate (`npm run coverage`) fails when:
+`npm run check` runs every gate CI runs on the tree; CI also checks each pushed commit's sign-off and scrubs it, which the
+git hooks from `npm run setup` do before each commit. Its coverage gate (`npm run coverage`) fails when:
 - any test fails, or is skipped or todo;
 - a source file under `src/` or `tools/` is loaded by no test, new and uncommitted files included;
 - a file, or the total, falls below the floors in `tools/ci/coverage.json`;
