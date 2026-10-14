@@ -61,6 +61,27 @@ export interface PushGuardConfig {
   readonly protectedBranches: readonly string[];
 }
 
+export const COMMIT_GATES = ['off', 'warn', 'refuse'] as const;
+/** What a push to a protected branch does about commits over the size rule: nothing, list them, or refuse the push. */
+export type CommitGate = (typeof COMMIT_GATES)[number];
+
+export function isCommitGate(value: unknown): value is CommitGate {
+  return COMMIT_GATES.some((gate) => gate === value);
+}
+
+/** The small-commits rule: one logical change per commit, and a reason line on any commit over the bounds. */
+export interface CommitsConfig {
+  /** Changed non-test lines (added + deleted) a commit may carry without a reason line. */
+  readonly maxLines: number;
+  /** Changed non-test files a commit may carry without a reason line. */
+  readonly maxFiles: number;
+  /** The key of the reason line, as in `Large-commit: <reason>`. */
+  readonly largeCommitTrailer: string;
+  /** Regular expressions over `/`-separated paths; a file that matches one is a test and never counts. */
+  readonly testPatterns: readonly string[];
+  readonly gate: CommitGate;
+}
+
 export interface BudgetConfig {
   /** Off by default: pacing needs a usage source that not every plan provides. */
   readonly enabled: boolean;
@@ -110,6 +131,7 @@ export interface KitConfig {
   readonly skills: SkillsConfig;
   readonly lock: LockConfig;
   readonly pushGuard: PushGuardConfig;
+  readonly commits: CommitsConfig;
   readonly coordinator: CoordinatorConfig;
   readonly alerts: AlertsConfig;
   readonly tabStatus: { readonly enabled: boolean };

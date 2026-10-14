@@ -1,6 +1,7 @@
 import type {
   AlertsConfig,
   BudgetConfig,
+  CommitsConfig,
   LockConfig,
   PushGuardConfig,
   RegisterConfig,
@@ -47,6 +48,15 @@ export const DEFAULT_SKILLS: SkillsConfig = {
 export const DEFAULT_LOCK: LockConfig = { ttlMs: 30_000, pollMs: 50, waitMs: 20_000 };
 
 export const DEFAULT_PUSH_GUARD: PushGuardConfig = { protectedBranches: ['main', 'master'] };
+
+/** Tests: a test folder, `*.test.*` and `*.spec.*` files, and pytest's `test_*.py`. `warn` only adds to a push the guard already asks about. */
+export const DEFAULT_COMMITS: CommitsConfig = {
+  maxLines: 400,
+  maxFiles: 15,
+  largeCommitTrailer: 'Large-commit',
+  testPatterns: ['(^|/)(tests?|__tests__|spec)/', '\\.(test|spec)\\.[^/]+$', '(^|/)test_[^/]+\\.py$'],
+  gate: 'warn',
+};
 
 export const DEFAULT_BUDGET: BudgetConfig = { enabled: false, targetPct: 99.5, reservePct: 0.5 };
 

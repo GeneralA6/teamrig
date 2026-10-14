@@ -4,6 +4,7 @@ import { isTaskStatus, SESSION_NAME, type TaskStatus } from '../register/model.t
 import {
   DEFAULT_ALERTS,
   DEFAULT_BUDGET,
+  DEFAULT_COMMITS,
   DEFAULT_LOCK,
   DEFAULT_MESSAGES,
   DEFAULT_OWNER_GATES,
@@ -13,7 +14,7 @@ import {
 } from './defaults.ts';
 import { CONFIG_LIMITS } from './limits.ts';
 import { ConfigReader, describe, isValidRegex, shortLine, type Check, type ConfigIssue } from './reader.ts';
-import type { KitConfig, PathsConfig, RegisterConfig, SkillsConfig, TierConfig } from './types.ts';
+import { isCommitGate, type CommitsConfig, type KitConfig, type PathsConfig, type RegisterConfig, type SkillsConfig, type TierConfig } from './types.ts';
 
 export interface ConfigParse {
   /** Always filled: invalid fields take their defaults so read-only commands keep working. */
@@ -30,6 +31,10 @@ const BRANCH_NAME: Check<string> = (name) => (/^[^\s~^:?*[\\]+$/.test(name) ? un
 
 /** The key shape the skills lint recognises in frontmatter. */
 const isFrontmatterKey: Check<string> = (key) => (/^[A-Za-z0-9_-]+$/.test(key) ? undefined : 'expected a frontmatter key: letters, digits, _ or -');
+
+/** A git trailer key, such as `Large-commit`. */
+const isTrailerKey: Check<string> = (key) =>
+  /^[A-Za-z][A-Za-z0-9-]{0,39}$/.test(key) ? undefined : 'expected a trailer key: a letter, then at most 39 letters, digits or -';
 
 const isDisplayName: Check<string> = (name) => (NAME_PATTERN.test(name) ? undefined : `expected a name: ${NAME_RULE}`);
 
@@ -124,6 +129,7 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
         CONFIG_LIMITS.protectedBranches.maxItems,
       ),
     },
+    commits: parseCommits(read, read.section(raw, 'commits', '')),
     coordinator: {
       schedule: heavyCutoffUtc === undefined ? {} : { heavyCutoffUtc },
       budget: {
@@ -216,6 +222,26 @@ function parseSkills(read: ConfigReader, raw: JsonRecord): SkillsConfig {
       shortLine(CONFIG_LIMITS.forbidFrontmatter.maxLength, isFrontmatterKey),
       CONFIG_LIMITS.forbidFrontmatter.maxItems,
     ),
+  };
+}
+
+function parseCommits(read: ConfigReader, raw: JsonRecord): CommitsConfig {
+  const path = 'commits';
+  const defaults = DEFAULT_COMMITS;
+  const gate = read.string(raw, 'gate', path, defaults.gate, (value) => (isCommitGate(value) ? undefined : 'expected off, warn or refuse'));
+  return {
+    maxLines: read.integer(raw, 'maxLines', path, defaults.maxLines, CONFIG_LIMITS.commitMaxLines),
+    maxFiles: read.integer(raw, 'maxFiles', path, defaults.maxFiles, CONFIG_LIMITS.commitMaxFiles),
+    largeCommitTrailer: read.string(raw, 'largeCommitTrailer', path, defaults.largeCommitTrailer, isTrailerKey),
+    testPatterns: read.stringList(
+      raw,
+      'testPatterns',
+      path,
+      defaults.testPatterns,
+      shortLine(CONFIG_LIMITS.testPatterns.maxLength, isValidRegex),
+      CONFIG_LIMITS.testPatterns.maxItems,
+    ),
+    gate: isCommitGate(gate) ? gate : defaults.gate,
   };
 }
 

@@ -168,6 +168,45 @@
         }
       }
     },
+    "commits": {
+      "description": "The small-commits rule: one logical change per commit; a commit over either bound needs a reason line.",
+      "type": "object",
+      "properties": {
+        "maxLines": {
+          "description": "Changed non-test lines (added + deleted) a commit may carry without a reason line.",
+          "type": "integer",
+          "minimum": 50,
+          "maximum": 5000,
+          "default": 400
+        },
+        "maxFiles": {
+          "description": "Changed non-test files a commit may carry without a reason line.",
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 500,
+          "default": 15
+        },
+        "largeCommitTrailer": {
+          "description": "The key of the reason line, as in `Large-commit: <reason>`.",
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9-]{0,39}$",
+          "default": "Large-commit"
+        },
+        "testPatterns": {
+          "description": "Regular expressions over /-separated paths; a file that matches one is a test and never counts.",
+          "type": "array",
+          "maxItems": 8,
+          "items": { "type": "string", "maxLength": 100 },
+          "default": ["(^|/)(tests?|__tests__|spec)/", "\\.(test|spec)\\.[^/]+$", "(^|/)test_[^/]+\\.py$"]
+        },
+        "gate": {
+          "description": "A push to a protected branch: off ignores large commits, warn lists them when it asks the human, refuse refuses the push.",
+          "type": "string",
+          "enum": ["off", "warn", "refuse"],
+          "default": "warn"
+        }
+      }
+    },
     "coordinator": {
       "type": "object",
       "properties": {

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_REGISTER } from './defaults.ts';
+import { DEFAULT_COMMITS, DEFAULT_REGISTER } from './defaults.ts';
 import { parseConfig } from './parse.ts';
 import type { ConfigIssue } from './reader.ts';
 
@@ -23,6 +23,7 @@ describe('parseConfig', () => {
     assert.deepEqual(config.coordinator.schedule, {});
     assert.deepEqual(config.pushGuard.protectedBranches, ['main', 'master']);
     assert.deepEqual(config.paths, {});
+    assert.deepEqual(config.commits, DEFAULT_COMMITS);
   });
 
   it('requires the roster', () => {
@@ -134,6 +135,17 @@ describe('parseConfig', () => {
     assert.equal(config.register.goalPattern, undefined);
     assert.deepEqual(config.register.secretPatterns, ['ok-\\d+']);
     assert.deepEqual(config.register.requireNoteOn, ['dropped']);
+  });
+
+  it('reads the commits rule, refusing a bad gate, trailer key, bound or pattern', () => {
+    const { config, issues } = parseConfig({
+      ...ROSTER,
+      commits: { maxLines: 10, maxFiles: 20, largeCommitTrailer: 'Large commit', testPatterns: ['^fixtures/', '(('], gate: 'block' },
+    });
+    assert.deepEqual(paths(issues).sort(), ['commits.gate', 'commits.largeCommitTrailer', 'commits.maxLines', 'commits.testPatterns[1]']);
+    assert.deepEqual(config.commits, { ...DEFAULT_COMMITS, maxFiles: 20, testPatterns: ['^fixtures/'] });
+    const refuse = parseConfig({ ...ROSTER, commits: { gate: 'refuse', largeCommitTrailer: 'Big-change' } }).config.commits;
+    assert.deepEqual([refuse.gate, refuse.largeCommitTrailer], ['refuse', 'Big-change']);
   });
 
   it('bounds the lists and texts the rule pack prints', () => {
