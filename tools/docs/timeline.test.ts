@@ -103,3 +103,122 @@ describe('Timeline.slide', () => {
     for (const segments of refused) assert.throws(() => new Timeline(CLOCK).slide(segments, 9), /does not fit after/);
   });
 });
+
+describe('Timeline.pop', () => {
+  it('grows in past full size about its own centre, settles, holds, then fades out', () => {
+    const t = new Timeline(CLOCK);
+    t.pop(2, { to: 5 });
+    assert.equal(
+      t.css(),
+      '@keyframes a0{0%,20.000%{opacity:0;transform:scale(.2)}22.200%{opacity:1;transform:scale(1.15)}24.000%,47.000%{opacity:1;transform:scale(1)}50.000%,100%{opacity:0;transform:scale(1)}}\n' +
+        '.a0{transform-box:fill-box;transform-origin:center;opacity:0;animation:a0 10s linear infinite}',
+    );
+    assert.ok(ascending(keyframesIn(t.css()).get('a0')?.stops ?? []));
+  });
+
+  it('stays until the clock ends unless told otherwise, shows still when the rest moment falls inside, and takes an overshoot', () => {
+    const t = new Timeline(CLOCK);
+    t.pop(1, { overshoot: 1.3 });
+    assert.match(t.css(), /scale\(1\.3\)/);
+    assert.match(t.css(), /87\.000%\{opacity:1;transform:scale\(1\)\}90\.000%,100%/);
+    assert.equal(valueOf(rulesIn(t.css()).get('.a0') ?? '', 'opacity'), '1');
+  });
+
+  it('refuses a part that starts at 0, has no time to settle before it fades, or leaves the loop', () => {
+    const t = new Timeline(CLOCK);
+    assert.throws(() => t.pop(0), RangeError);
+    assert.throws(() => t.pop(2, { to: 2.69 }), /needs more than 0.7s inside the 10s loop/);
+    assert.throws(() => t.pop(2, { to: 10 }), RangeError);
+    assert.doesNotThrow(() => t.pop(2, { to: 2.71 }));
+  });
+});
+
+describe('Timeline.draw', () => {
+  it('draws the line from its start, holds it, then fades it out', () => {
+    const t = new Timeline(CLOCK);
+    t.draw(2, 120, { to: 5 });
+    assert.equal(
+      t.css(),
+      '@keyframes a0{0%,20.000%{stroke-dashoffset:120;opacity:1}23.500%,47.000%{stroke-dashoffset:0;opacity:1}50.000%,100%{stroke-dashoffset:0;opacity:0}}\n' +
+        '.a0{opacity:0;animation:a0 10s linear infinite}',
+    );
+  });
+
+  it('takes a drawing time, stays until the clock ends unless told otherwise, and shows still when the rest moment falls inside', () => {
+    const t = new Timeline(CLOCK);
+    t.draw(1, 50, { duration: 2 });
+    assert.match(t.css(), /30\.000%,87\.000%\{stroke-dashoffset:0;opacity:1\}90\.000%,100%/);
+    assert.equal(valueOf(rulesIn(t.css()).get('.a0') ?? '', 'opacity'), '1');
+    assert.ok(ascending(keyframesIn(t.css()).get('a0')?.stops ?? []));
+  });
+
+  it('refuses no length, a start at 0, no drawing time, a line not drawn before it fades, or one that leaves the loop', () => {
+    const t = new Timeline(CLOCK);
+    assert.throws(() => t.draw(2, 0), RangeError);
+    assert.throws(() => t.draw(0, 10), RangeError);
+    assert.throws(() => t.draw(2, 10, { duration: 0 }), RangeError);
+    assert.throws(() => t.draw(2, 10, { to: 2.65 }), /a 10px line drawn from 2s for 0.35s and gone at 2.65s does not fit the 10s loop/);
+    assert.throws(() => t.draw(2, 10, { to: 10 }), RangeError);
+    assert.doesNotThrow(() => t.draw(2, 10, { to: 2.66 }));
+  });
+});
+
+describe('Timeline.steps', () => {
+  const ease = 'animation-timing-function:cubic-bezier(.45,0,.25,1)';
+  const half = { at: 2, duration: 1, value: 'scale(.5)' } as const;
+  const quarter = { at: 5, duration: 1, value: 'scale(.25)' } as const;
+
+  it('holds the start, eases to each stop and holds it, and opens its rule with the extra declarations', () => {
+    const t = new Timeline(CLOCK);
+    t.steps('scale(1)', [half, quarter], 'transform-origin:0 0;');
+    assert.equal(
+      t.css(),
+      `@keyframes a0{0%,20.000%{transform:scale(1);${ease}}30.000%,50.000%{transform:scale(.5);${ease}}60.000%,100%{transform:scale(.25);${ease}}}\n` +
+        '.a0{transform-origin:0 0;transform:scale(.25);animation:a0 10s linear infinite}',
+    );
+    assert.ok(ascending(keyframesIn(t.css()).get('a0')?.stops ?? []));
+  });
+
+  it('shows still the last value reached by the rest moment, or the start when none is', () => {
+    const t = new Timeline(CLOCK);
+    t.steps('scale(1)', [half, { at: 7.5, duration: 1, value: 'scale(.1)' }]);
+    t.steps('scale(1)', [{ at: 8.5, duration: 1, value: 'scale(.1)' }]);
+    const rules = rulesIn(t.css());
+    assert.deepEqual(['.a0', '.a1'].map((name) => valueOf(rules.get(name) ?? '', 'transform')), ['scale(.5)', 'scale(1)']);
+  });
+
+  it('refuses no stops, and stops that start at 0, take no time, overlap or leave the loop', () => {
+    assert.throws(() => new Timeline(CLOCK).steps('none', []), /needs at least one stop/);
+    const refused: ReadonlyArray<readonly { at: number; duration: number; value: string }[]> = [
+      [{ ...half, at: 0 }],
+      [{ ...half, duration: 0 }],
+      [half, { ...quarter, at: 2.5 }],
+      [{ ...half, at: 9 }],
+    ];
+    for (const stops of refused) assert.throws(() => new Timeline(CLOCK).steps('none', stops), /does not fit after/);
+  });
+});
+
+describe('Timeline.sweep', () => {
+  it('moves its part right at a steady speed, then holds it until the loop restarts', () => {
+    const t = new Timeline(CLOCK);
+    t.sweep(2, 4, 300);
+    assert.equal(
+      t.css(),
+      '@keyframes a0{0%,20.000%{transform:translateX(0)}60.000%,100%{transform:translateX(300px)}}\n.a0{transform:translateX(300px);animation:a0 10s linear infinite}',
+    );
+  });
+
+  it('shows its part unmoved when still if the sweep has not ended by the rest moment', () => {
+    const t = new Timeline(CLOCK);
+    t.sweep(7, 2, 300);
+    assert.equal(valueOf(rulesIn(t.css()).get('.a0') ?? '', 'transform'), 'translateX(0)');
+  });
+
+  it('refuses a sweep that starts at 0, takes no time or leaves the loop', () => {
+    const t = new Timeline(CLOCK);
+    assert.throws(() => t.sweep(0, 2, 10), RangeError);
+    assert.throws(() => t.sweep(2, 0, 10), RangeError);
+    assert.throws(() => t.sweep(8, 2, 10), /a sweep from 8s for 2s does not fit the 10s loop/);
+  });
+});
