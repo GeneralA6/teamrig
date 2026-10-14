@@ -6,6 +6,7 @@ sessions: no server, no daemon, no network. Status marks, as in the [README](../
 
 - [The parts](#the-parts)
 - [Who is on the team](#who-is-on-the-team)
+- [Setting up a team](#setting-up-a-team)
 - [A task's life](#a-tasks-life)
 - [Notes between sessions](#notes-between-sessions)
 - [A fresh context](#a-fresh-context)
@@ -73,9 +74,45 @@ flowchart TB
   class sub planned
 ```
 
-You start each tab with its session name, for example `TEAMRIG_SESSION=web claude`. At start the session reads
-"You are the `web` session of team `your-team` … Message the lead as `lead`." `teamrig who` prints every session's
-name, and `teamrig rename` gives a session a new name while every old name keeps working.
+You ask one tab for the team in plain words, and it opens a tab for each other session
+([Setting up a team](#setting-up-a-team)). At start the session reads "You are the `web` session of team
+`your-team` … Message the lead as `lead`." `teamrig who` prints every session's name, and `teamrig rename` gives a
+session a new name while every old name keeps working.
+
+## Setting up a team
+
+You tell Claude in any tab what you want built, for example "Build the signup flow: one session on the API, one on
+the web form, one on tests." The plugin's `team-setup` skill proposes a team in a few lines, and on your yes:
+
+```mermaid
+sequenceDiagram
+  actor you as You
+  participant lead as This tab, the lead
+  participant cli as teamrig
+  participant tab as A new tab
+  you->>lead: what you want built
+  lead->>you: the team it proposes
+  you->>lead: yes
+  lead->>cli: team create, inbox read, rules
+  cli-->>lead: config.json and .teamrig.json written, the team rules
+  loop each session
+    lead->>cli: add its first task, open
+    cli->>tab: a terminal tab running teamrig launch
+    tab->>tab: Claude Code as the session, with its first prompt
+  end
+  lead->>you: the team is up
+```
+
+- `teamrig team create signup --sessions api,web,tests` writes the team's `config.json` and ties the project folder
+  to it with `.teamrig.json`. It refuses another team with the same id and a project tied to another team, a repeat
+  changes nothing, and `--dry-run` prints what it would write.
+- The tab that ran the setup becomes the lead without a restart. `teamrig inbox read --session lead` ties its Claude
+  Code session to the lead, so the hooks still know it after a compact or a resume, and `teamrig rules --session lead`
+  gives it the rules it missed at start. After a `/clear` it runs `inbox read` once more.
+- `teamrig open <session>` opens a tab in tmux (when run inside tmux), Windows Terminal, macOS Terminal, GNOME
+  Terminal, Konsole or x-terminal-emulator, in that order; `open.terminal` in the config or `--terminal` picks one.
+  The tab runs `teamrig launch`, which sets `$TEAMRIG_SESSION` and starts `claude --name <name> "<first prompt>"`.
+  When no terminal opens, it prints the command to paste and exits 3.
 
 ## A task's life
 
