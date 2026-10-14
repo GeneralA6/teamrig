@@ -55,7 +55,7 @@ describe('renderCorePack', () => {
 
   it('fills values from the config and names their keys', () => {
     const pack = renderCorePack(testConfig({ messages: { maxLines: 7 }, ownerGates: ['money', 'deletes'] }), COMMAND);
-    assert.match(pack, /^1\. Roles: lead is the lead/m);
+    assert.match(pack, /^1\. Roles, by session id \(`teamrig who` gives the name to message each by\): lead is the lead/m);
     assert.match(pack, /At most 7 lines \[messages\.maxLines\]/);
     assert.match(pack, /never for owner-gated decisions: money; deletes \[ownerGates\]/);
     assert.match(pack, /with a note on blocked, done, dropped \[register\.requireNoteOn\]/);

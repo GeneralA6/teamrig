@@ -1,6 +1,13 @@
 {
-  "description": "teamrig: ask before a push to a protected branch, and remind a session of unread inbox lines.",
+  "description": "teamrig: load the team rules at session start, ask before a push to a protected branch, and remind a session of unread inbox lines.",
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js\" hook session-start", "timeout": 15 }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Bash|PowerShell",

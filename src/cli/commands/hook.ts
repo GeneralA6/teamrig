@@ -1,8 +1,9 @@
 import { isRecord, stringField } from '../../core/guards.ts';
-import { KIT_NAME } from '../../core/home.ts';
+import { ENV, KIT_NAME } from '../../core/home.ts';
 import { resolveTeam, type TeamResolution } from '../../core/team.ts';
 import { reminderFor, sessionIdOf } from '../../inbox/inbox.ts';
 import { protectedBranchesOf, pushGuardOutput } from '../../hooks/push-guard.ts';
+import { sessionStartContext, sessionStartOutput } from '../../hooks/session-start.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { openKit, teamFolders } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
@@ -83,5 +84,32 @@ export async function inboxReminder(args: ParsedArgs, runtime: CliRuntime): Prom
   if (line !== undefined) {
     runtime.out.stdout(line);
   }
+  return EXIT.ok;
+}
+
+/** SessionStart: the core rules from the team config, who the session is, and the team's rules.md. */
+export async function sessionStart(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+  noPositionals(args);
+  const found = await hookTeam(parseJson(await runtime.readStdin()), runtime);
+  switch (found.kind) {
+    case 'none':
+      return EXIT.ok;
+    case 'broken':
+      runtime.out.stdout(sessionStartOutput(`${KIT_NAME}: no team, so no team rules: ${found.from} ${found.problem}`));
+      return EXIT.ok;
+    case 'team':
+      break;
+  }
+  const kit = await openKit(runtime, found.team);
+  const text = kit.load.status === 'loaded' ? await runtime.files.read(kit.paths.teamRules) : undefined;
+  const session = runtime.env[ENV.session]?.trim();
+  const context = sessionStartContext({
+    team: found.team,
+    load: kit.load,
+    teamRules: text === undefined ? undefined : { path: kit.paths.teamRules, text },
+    session: session === '' ? undefined : session,
+    command: KIT_NAME,
+  });
+  runtime.out.stdout(sessionStartOutput(context));
   return EXIT.ok;
 }
