@@ -1,6 +1,7 @@
 import type { ConfigLoad } from '../config/load.ts';
 import { Roster } from '../config/roster.ts';
 import { ENV, KIT_NAME } from '../core/home.ts';
+import type { Rename } from '../names/rename.ts';
 import { renderCorePack, renderSessionContext, type TeamRules } from '../rules/pack.ts';
 
 export interface SessionStartInput {
@@ -8,7 +9,11 @@ export interface SessionStartInput {
   readonly load: ConfigLoad;
   /** The team's `rules.md`, when it exists. */
   readonly teamRules: TeamRules | undefined;
-  /** `$TEAMRIG_SESSION` as Claude Code passed it to the hook: an id or a current name. */
+  /** The team's rename log, so the session learns its current name and old names still find it. */
+  readonly renames: readonly Rename[];
+  /** What the hook did with the session's Claude Code title, when there is something to say. */
+  readonly titleNote: string | undefined;
+  /** `$TEAMRIG_SESSION` as Claude Code passed it to the hook: an id or any name the session has had. */
   readonly session: string | undefined;
   /** The CLI name the rules tell the session to run. */
   readonly command: string;
@@ -49,7 +54,10 @@ export function sessionStartContext(input: SessionStartInput): string {
     case 'loaded':
       break;
   }
-  const notes = identityLines(new Roster(load.config, input.team), input);
+  const notes = identityLines(new Roster(load.config, input.team, input.renames), input);
+  if (input.titleNote !== undefined) {
+    notes.push(input.titleNote);
+  }
   if (load.newerVersion !== undefined) {
     notes.push(`The team config is version ${load.newerVersion}, from a newer ${KIT_NAME}: these rules are read best-effort.`);
   }

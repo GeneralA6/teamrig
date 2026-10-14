@@ -1,11 +1,17 @@
-import { isRecord, stringField } from '../../core/guards.ts';
+import type { Roster } from '../../config/roster.ts';
+import type { KitConfig } from '../../config/types.ts';
+import { errorMessage, isRecord, stringField } from '../../core/guards.ts';
 import { ENV, KIT_NAME } from '../../core/home.ts';
 import { resolveTeam, type TeamResolution } from '../../core/team.ts';
 import { reminderFor, sessionIdOf } from '../../inbox/inbox.ts';
+import { indexMarks } from '../../inbox/marks.ts';
 import { commitsOf, protectedBranchesOf, pushGuardOutput } from '../../hooks/push-guard.ts';
-import { sessionStartContext, sessionStartOutput } from '../../hooks/session-start.ts';
+import { sessionStartContext, sessionStartOutput, type SessionStartInput } from '../../hooks/session-start.ts';
+import { adoptTitle, promptNote, sessionStartNote, type TitleOutcome } from '../../names/detect.ts';
+import { JsonlRenameLog } from '../../names/log.ts';
+import { sessionTitleOf } from '../../names/title.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
-import { openKit, teamFolders } from '../kit.ts';
+import { openKit, renameDepsOf, rosterOf, teamFolders, type Kit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { inboxDepsOf } from './inbox.ts';
 
@@ -60,7 +66,50 @@ export async function pushGuard(args: ParsedArgs, runtime: CliRuntime): Promise<
   return EXIT.ok;
 }
 
-/** UserPromptSubmit: one line of context when the session's inbox has unread lines, or its team pointer is broken. */
+/** `$TEAMRIG_SESSION` as Claude Code passed it to the hook; undefined when unset or blank. */
+function envSession(runtime: CliRuntime): string | undefined {
+  const session = runtime.env[ENV.session]?.trim();
+  return session === '' ? undefined : session;
+}
+
+/**
+ * The team session a hook runs for: `$TEAMRIG_SESSION` when it is set (an id or any name the
+ * session has had), else the area this Claude Code session last read its inbox as.
+ */
+async function teamSessionOf(runtime: CliRuntime, kit: Kit, roster: Roster, claudeSession: string | null): Promise<string | undefined> {
+  const session = envSession(runtime);
+  if (session !== undefined) {
+    const found = roster.lookup(session);
+    return found.ok ? found.id : undefined;
+  }
+  if (claudeSession === null) {
+    return undefined;
+  }
+  const { marks } = await inboxDepsOf(runtime, kit.paths).marks.read();
+  const area = indexMarks(marks).areaBySession.get(claudeSession);
+  return area !== undefined && roster.ids.includes(area) ? area : undefined;
+}
+
+/**
+ * A Claude Code rename (`--name`, `/rename`) of the session becomes its new team name: recorded in
+ * the rename log, never by moving data. It never throws, so the hook always answers; a failure is
+ * retried on the next prompt.
+ */
+async function titleOutcome(runtime: CliRuntime, kit: Kit, config: KitConfig, payload: unknown): Promise<TitleOutcome> {
+  try {
+    const title = await sessionTitleOf(payload, runtime.files);
+    if (title === undefined) {
+      return { kind: 'none' };
+    }
+    const roster = await rosterOf(runtime, kit, config);
+    const id = await teamSessionOf(runtime, kit, roster, sessionIdOf(payload));
+    return id === undefined ? { kind: 'none' } : await adoptTitle(renameDepsOf(runtime, kit, config), roster, id, title);
+  } catch (error) {
+    return { kind: 'failed', error: errorMessage(error) };
+  }
+}
+
+/** UserPromptSubmit: notes a Claude Code rename of the session, then one line when its inbox has unread lines, or its team pointer is broken. */
 export async function inboxReminder(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
   const payload = parseJson(await runtime.readStdin());
@@ -82,6 +131,10 @@ export async function inboxReminder(args: ParsedArgs, runtime: CliRuntime): Prom
   if (kit.load.status !== 'loaded') {
     return EXIT.ok;
   }
+  const note = promptNote(await titleOutcome(runtime, kit, kit.load.config, payload), KIT_NAME);
+  if (note !== undefined) {
+    runtime.out.stdout(note);
+  }
   const line = await reminderFor(inboxDepsOf(runtime, kit.paths), claudeSession, KIT_NAME);
   if (line !== undefined) {
     runtime.out.stdout(line);
@@ -89,10 +142,21 @@ export async function inboxReminder(args: ParsedArgs, runtime: CliRuntime): Prom
   return EXIT.ok;
 }
 
+type TeamParts = Pick<SessionStartInput, 'teamRules' | 'renames' | 'titleNote'>;
+
+/** A loaded team's rules.md and rename log, after recording a Claude Code rename of the session. */
+async function teamPartsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, payload: unknown): Promise<TeamParts> {
+  const titleNote = sessionStartNote(await titleOutcome(runtime, kit, config, payload));
+  const { renames } = await new JsonlRenameLog(runtime.files, kit.paths.renames).read();
+  const text = await runtime.files.read(kit.paths.teamRules);
+  return { teamRules: text === undefined ? undefined : { path: kit.paths.teamRules, text }, renames, titleNote };
+}
+
 /** SessionStart: the core rules from the team config, who the session is, and the team's rules.md. */
 export async function sessionStart(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const found = await hookTeam(parseJson(await runtime.readStdin()), runtime);
+  const payload = parseJson(await runtime.readStdin());
+  const found = await hookTeam(payload, runtime);
   switch (found.kind) {
     case 'none':
       return EXIT.ok;
@@ -103,15 +167,11 @@ export async function sessionStart(args: ParsedArgs, runtime: CliRuntime): Promi
       break;
   }
   const kit = await openKit(runtime, found.team);
-  const text = kit.load.status === 'loaded' ? await runtime.files.read(kit.paths.teamRules) : undefined;
-  const session = runtime.env[ENV.session]?.trim();
-  const context = sessionStartContext({
-    team: found.team,
-    load: kit.load,
-    teamRules: text === undefined ? undefined : { path: kit.paths.teamRules, text },
-    session: session === '' ? undefined : session,
-    command: KIT_NAME,
-  });
+  const parts: TeamParts =
+    kit.load.status === 'loaded'
+      ? await teamPartsOf(runtime, kit, kit.load.config, payload)
+      : { teamRules: undefined, renames: [], titleNote: undefined };
+  const context = sessionStartContext({ team: found.team, load: kit.load, ...parts, session: envSession(runtime), command: KIT_NAME });
   runtime.out.stdout(sessionStartOutput(context));
   return EXIT.ok;
 }
