@@ -14,9 +14,9 @@ describe('stopOutput', () => {
   });
 
   it('shows the notice, and marks the tab only when there is a title', () => {
-    assert.deepEqual(JSON.parse(stopOutput({ kind: 'notice', state: STATE, message: 'type /clear', title: '↻ api' })), {
+    assert.deepEqual(JSON.parse(stopOutput({ kind: 'notice', state: STATE, message: 'type /clear', title: 'api: type /clear' })), {
       systemMessage: 'type /clear',
-      terminalSequence: '\u001b]0;↻ api\u0007',
+      terminalSequence: '\u001b]0;api: type /clear\u0007',
     });
     assert.deepEqual(JSON.parse(stopOutput({ kind: 'notice', state: STATE, message: 'type /clear', title: undefined })), { systemMessage: 'type /clear' });
   });
