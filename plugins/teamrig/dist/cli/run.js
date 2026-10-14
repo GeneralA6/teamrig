@@ -10,6 +10,7 @@ const configCommands = () => import("./commands/config.js");
 const hookCommands = () => import("./commands/hook.js");
 const teamCommands = () => import("./commands/team.js");
 const commitsCommands = () => import("./commands/commits.js");
+const doctorCommands = () => import("./commands/doctor.js");
 const TASK_FIELDS = ['title', 'owner', 'ref', 'tier', 'due', 'goals', 'week'];
 const COMMANDS = {
     add: { flags: ['session', 'source', ...TASK_FIELDS], load: async () => (await registerCommands()).add },
@@ -27,6 +28,8 @@ const COMMANDS = {
     'inbox status': { flags: ['session'], load: async () => (await inboxCommands()).status },
     'inbox add': { flags: ['session', 'to', 'text'], load: async () => (await inboxCommands()).add },
     who: { flags: [], load: async () => (await teamCommands()).who },
+    rename: { flags: ['session'], load: async () => (await teamCommands()).rename },
+    doctor: { flags: [], load: async () => (await doctorCommands()).doctor },
     'config validate': { flags: [], load: async () => (await configCommands()).validate },
     'config migrate': { flags: [], load: async () => (await configCommands()).migrate },
     'commits check': { flags: ['base', 'tip'], load: async () => (await commitsCommands()).check },
@@ -51,12 +54,15 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   inbox status [--session <area>]   unread lines per area
   inbox add --to <id|name> --text "<one line>"
   who [<id|name|role>]         the name to message a session by (no argument: every session)
+  rename <id|name> <new-name>  records a session's new name; its old names keep finding it
+      (the session itself or the lead)
+  doctor                       names, rename log, inboxes and rules.md that need a fix
   config validate | config migrate
   commits check --base <ref> [--tip <ref>]   commits in base..tip (default HEAD) over the size rule
       with no reason line; any is REFUSED, for an integrate script or CI
   hook push-guard | hook inbox-reminder | hook session-start   (run by Claude Code, hook JSON on stdin)
 Team: ${ENV.team}, else the nearest ${TEAM_POINTER} ({"team": "<id>"}) above the current folder.
-Sessions: give an id or a current name; a session not named in the config is <team>-<id>.
+Sessions: give an id, a current name or a former one; a session never named is <team>-<id>.
 Dates: YYYY-MM-DD or "YYYY-MM-DD HH:MM", UTC. Kit home: $${ENV.home}, else ~/.${KIT_NAME}.
 Exit: 0 done, 1 failed, 2 refused by a team rule, 64 a command line it cannot read.`;
 const HELP = new Set(['help', '--help', '-h']);

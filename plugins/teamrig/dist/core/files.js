@@ -1,4 +1,4 @@
-import { appendFile, link, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { appendFile, link, mkdir, open, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { errorCode } from "./guards.js";
 import { retryTransient } from "./retry.js";
@@ -24,6 +24,33 @@ export function nodeFiles(sleep) {
                     return undefined;
                 }
                 throw error;
+            }
+        },
+        async readTail(path, maxBytes) {
+            let handle;
+            try {
+                handle = await open(path, 'r');
+            }
+            catch (error) {
+                if (errorCode(error) === 'ENOENT') {
+                    return undefined;
+                }
+                throw error;
+            }
+            try {
+                const stats = await handle.stat();
+                // Some systems open a folder for reading; it still has no text to read.
+                if (!stats.isFile()) {
+                    throw new Error(`${path} is not a file`);
+                }
+                const { size } = stats;
+                const length = Math.min(size, maxBytes);
+                const buffer = Buffer.alloc(length);
+                const { bytesRead } = await handle.read(buffer, 0, length, size - length);
+                return buffer.subarray(0, bytesRead).toString('utf8');
+            }
+            finally {
+                await handle.close();
             }
         },
         async append(path, text) {

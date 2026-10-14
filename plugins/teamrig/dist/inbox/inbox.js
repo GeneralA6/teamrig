@@ -27,9 +27,13 @@ function resumeAt(lines, mark) {
     return { index: 0, kind: 'rewritten' };
 }
 const LINE_DATE = /^- (\d{4}-\d{2}-\d{2} \d{2}:\d{2})/;
+/** When the first unread line was posted, as its `YYYY-MM-DD HH:MM` (UTC); undefined when it is not dated. */
+export function unreadSince(unread) {
+    return LINE_DATE.exec(unread.lines[0] ?? '')?.[1];
+}
 /** ` since 01-13 11:35`, from the first unread line when it is dated. */
 function since(unread) {
-    const date = LINE_DATE.exec(unread.lines[0] ?? '')?.[1];
+    const date = unreadSince(unread);
     return date === undefined ? '' : ` since ${shortUtc(date)}`;
 }
 /** For `inbox status`: `alpha 3 unread since 01-13 11:35 (read to line 21 of 24 at 01-13 08:57)`. */

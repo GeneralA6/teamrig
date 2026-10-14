@@ -3,12 +3,29 @@ import { SHIPPED_CONFIG_FORMAT } from "../config/migrate.js";
 import { Roster } from "../config/roster.js";
 import { ENV, resolveKitHome, teamPaths } from "../core/home.js";
 import { ID_PATTERN } from "../core/ids.js";
+import { FileLock } from "../core/lock.js";
 import { resolveTeam, TEAM_POINTER } from "../core/team.js";
+import { JsonlRenameLog } from "../names/log.js";
 import { RefusedError } from "./runtime.js";
-export function rosterOf(kit, config) {
-    return new Roster(config, kit.paths.team);
+/** The rename log, its lock and the roster it gives, for recording a rename. */
+export function renameDepsOf(runtime, kit, config) {
+    const { files, clock, sleep, pid } = runtime;
+    return {
+        log: new JsonlRenameLog(files, kit.paths.renames),
+        mutex: new FileLock(kit.paths.renamesLock, config.lock, { files, clock, sleep, pid }),
+        clock,
+        rosterOf: (renames) => new Roster(config, kit.paths.team, renames),
+    };
 }
-/** The id of the session a command line names by id or current name; anything else is refused. */
+/**
+ * The team's sessions with every rename applied, so a name any session has had resolves. A damaged
+ * or newer line in the rename log is skipped here; `doctor` reports it.
+ */
+export async function rosterOf(runtime, kit, config) {
+    const { renames } = await new JsonlRenameLog(runtime.files, kit.paths.renames).read();
+    return new Roster(config, kit.paths.team, renames);
+}
+/** The id of the session a command line names by id, current name or former name; anything else is refused. */
 export function sessionIdOf(roster, text) {
     const found = roster.lookup(text);
     if (!found.ok) {
@@ -17,13 +34,17 @@ export function sessionIdOf(roster, text) {
     return found.id;
 }
 /**
- * For a filter or a status: the id when the text names a session, and an id no longer on the team as
- * given, so a past session's records stay reachable. Anything else is refused.
+ * For a filter or a status: the id when the text names a session, and the id of a session no longer
+ * on the team, given as its id or a name it had, so a past session's records stay reachable.
+ * Anything else is refused.
  */
 export function pastOrPresentIdOf(roster, text) {
     const found = roster.lookup(text);
     if (found.ok) {
         return found.id;
+    }
+    if (found.pastId !== undefined) {
+        return found.pastId;
     }
     if (!ID_PATTERN.test(text)) {
         throw new RefusedError(found.error);

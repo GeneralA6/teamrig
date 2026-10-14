@@ -11,7 +11,7 @@ import { requiredFlag, UsageError } from "./args.js";
 /** `none` clears an optional field on `update` and selects "no week plan" on `list`. */
 export const NONE = 'none';
 /**
- * A session's id or current name, shape only; the command resolves it to the id against the roster.
+ * A session's id or any name it has had, shape only; the command resolves it to the id against the roster.
  * Every id also has a name's shape, so one pattern covers both.
  */
 export function sessionRef(flag, value) {

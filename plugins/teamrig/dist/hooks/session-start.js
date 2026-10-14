@@ -35,7 +35,10 @@ export function sessionStartContext(input) {
         case 'loaded':
             break;
     }
-    const notes = identityLines(new Roster(load.config, input.team), input);
+    const notes = identityLines(new Roster(load.config, input.team, input.renames), input);
+    if (input.titleNote !== undefined) {
+        notes.push(input.titleNote);
+    }
     if (load.newerVersion !== undefined) {
         notes.push(`The team config is version ${load.newerVersion}, from a newer ${KIT_NAME}: these rules are read best-effort.`);
     }
