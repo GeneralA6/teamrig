@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { noPositionals, onePositional, parseArgs, requiredFlag, UsageError, type CommandFlags } from './args.ts';
+import { noPositionals, onePositional, parseArgs, requiredFlag, UsageError, type CommandFlags, type CommandSwitches } from './args.ts';
 
 const COMMANDS: CommandFlags = {
   add: ['title', 'tier'],
@@ -52,6 +52,18 @@ describe('parseArgs', () => {
     assert.equal(usageMessage(() => parseArgs(['add', '--title'], COMMANDS)), '--title needs a value');
     assert.equal(usageMessage(() => parseArgs(['add', '--title', '--tier', '2'], COMMANDS)), '--title needs a value');
     assert.equal(usageMessage(() => parseArgs(['add', '--tier', '1', '--tier', '2'], COMMANDS)), '--tier is given twice');
+  });
+
+  it('reads a switch without a value, only on the command that takes it', () => {
+    const switches: CommandSwitches = { 'inbox read': ['all'] };
+    const args = parseArgs(['inbox', 'read', '--all', 'extra', '--session', 'alpha'], COMMANDS, switches);
+    assert.deepEqual([...args.switches], ['all']);
+    assert.deepEqual(args.positionals, ['extra']);
+    assert.equal(args.flags.get('session'), 'alpha');
+    assert.deepEqual([...parseArgs(['inbox', 'read'], COMMANDS, switches).switches], []);
+    assert.deepEqual([...parseArgs(['show', 'T1'], COMMANDS).switches], []);
+    assert.equal(usageMessage(() => parseArgs(['inbox', 'add', '--all'], COMMANDS, switches)), 'inbox add takes no --all');
+    assert.equal(usageMessage(() => parseArgs(['inbox', 'read', '--all', '--all'], COMMANDS, switches)), '--all is given twice');
   });
 });
 
