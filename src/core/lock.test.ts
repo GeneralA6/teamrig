@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { FileLock, LockBusyError, type LockTimings } from './lock.ts';
+import { FileLock, LockBusyError, type LockTimings, realSleep, systemClock } from './lock.ts';
 
 const TIMINGS: LockTimings = { ttlMs: 30_000, pollMs: 50, waitMs: 1_000 };
 const PATH = '/state/events.lock';
@@ -73,5 +73,24 @@ describe('FileLock', () => {
     });
     assert.equal(await lock.run(async () => 'ran'), 'ran');
     assert.equal(polls, 3);
+  });
+});
+
+// The real clock and sleep run in other tests only when two processes contend for a lock, which
+// depends on the runner's speed; mocked timers cover them on every OS.
+describe('systemClock and realSleep', () => {
+  it('read the system time and wait on a real timer', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 5_000 });
+    assert.equal(systemClock.now(), 5_000);
+    let woke = false;
+    const slept = realSleep(50).then(() => {
+      woke = true;
+    });
+    t.mock.timers.tick(49);
+    await Promise.resolve();
+    assert.equal(woke, false);
+    t.mock.timers.tick(1);
+    await slept;
+    assert.equal(woke, true);
   });
 });
