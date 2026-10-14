@@ -13,6 +13,8 @@ export interface SessionStartInput {
   readonly renames: readonly Rename[];
   /** What the hook did with the session's Claude Code title, when there is something to say. */
   readonly titleNote: string | undefined;
+  /** After a context refresh: where the session's handover is, so it reads it first. */
+  readonly refreshNote: string | undefined;
   /** `$TEAMRIG_SESSION` as Claude Code passed it to the hook: an id or any name the session has had. */
   readonly session: string | undefined;
   /** The CLI name the rules tell the session to run. */
@@ -55,6 +57,10 @@ export function sessionStartContext(input: SessionStartInput): string {
       break;
   }
   const notes = identityLines(new Roster(load.config, input.team, input.renames), input);
+  // In the core part, so the size budget that may cut the team's rules.md never cuts it.
+  if (input.refreshNote !== undefined) {
+    notes.push(input.refreshNote);
+  }
   if (input.titleNote !== undefined) {
     notes.push(input.titleNote);
   }

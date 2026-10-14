@@ -21,6 +21,7 @@ function context(overrides: Partial<SessionStartInput> = {}): string {
     teamRules: undefined,
     renames: [],
     titleNote: undefined,
+    refreshNote: undefined,
     session: 'alpha',
     command: COMMAND,
     ...overrides,
@@ -51,6 +52,11 @@ describe('sessionStartContext', () => {
     const renames = [renameOf('alpha', 'app-alpha', 'scout'), renameOf('lead', 'team-lead', 'chief')];
     const text = context({ renames, session: 'app-alpha', titleNote: 'Title note.' });
     assert.ok(text.endsWith(`\n\nYou are the \`alpha\` session of team \`app\` (name \`scout\`). Message the lead as \`chief\`.\n${NAMES}\nTitle note.`));
+  });
+
+  it('points a refreshed session at its handover right after who it is, before the title note', () => {
+    const text = context({ refreshNote: 'Read your handover.', titleNote: 'Title note.' });
+    assert.ok(text.endsWith(`Message the lead as \`team-lead\`.\n${NAMES}\nRead your handover.\nTitle note.`));
   });
 
   it("appends the team's rules", () => {

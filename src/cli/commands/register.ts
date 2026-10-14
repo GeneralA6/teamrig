@@ -15,6 +15,7 @@ import { noPositionals, onePositional, type ParsedArgs } from '../args.ts';
 import { addInputOf, callerOf, changesOf, listFilterOf, statusInputOf, taskIdOf, weekOf } from '../inputs.ts';
 import { openTeamKit, pastOrPresentIdOf, requireConfig, rosterOf, sessionIdOf, type Access } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
+import { markBoundary } from './refresh.ts';
 
 interface Team {
   readonly config: KitConfig;
@@ -94,8 +95,13 @@ export async function set(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
   const id = taskIdOf(onePositional(args, 'id'));
   const caller = callerOf(args.flags, runtime.env);
   const input = statusInputOf(args.flags);
-  const { register, roster } = await openTeam(runtime, 'write');
-  return report(runtime, await register.setStatus(sessionIdOf(roster, caller), id, input), 'SET');
+  const { config, paths, register, roster } = await openTeam(runtime, 'write');
+  const by = sessionIdOf(roster, caller);
+  const exit = report(runtime, await register.setStatus(by, id, input), 'SET');
+  if (input.status === 'done') {
+    await markBoundary(runtime, config, paths, by, id);
+  }
+  return exit;
 }
 
 export async function update(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
