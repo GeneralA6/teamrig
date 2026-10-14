@@ -1,0 +1,96 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { testConfig } from '../testing/config.ts';
+import { areaOf, descriptionOf, formatSkillFlag, lintSkills, type SkillFile } from './lint.ts';
+
+const NOW = new Date('2030-03-01T12:00:00Z');
+const team = testConfig({ sessions: ['lead', 'alpha', 'alpha-ops', 'bravo'] });
+
+interface SkillParts {
+  readonly front?: string;
+  readonly owner?: string | null;
+  readonly verified?: string | null;
+}
+
+function skill(name: string, parts: SkillParts = {}): SkillFile {
+  const front = parts.front ?? `name: ${name}\ndescription: Use when the nightly job fails.`;
+  const owner = parts.owner === undefined ? 'alpha' : parts.owner;
+  const verified = parts.verified === undefined ? '2030-02-20' : parts.verified;
+  const body = ['# Steps', owner === null ? '' : `Owner: ${owner}`, verified === null ? '' : `Last verified: ${verified}`];
+  return { name, text: `---\r\n${front.replaceAll('\n', '\r\n')}\r\n---\r\n${body.join('\r\n')}\r\n` };
+}
+
+function lint(...skills: SkillFile[]): string[] {
+  return lintSkills(skills, NOW, team).map(formatSkillFlag);
+}
+
+describe('lintSkills', () => {
+  it('passes a skill that follows the rules', () => {
+    assert.deepEqual(lint(skill('alpha-nightly')), []);
+  });
+
+  it('flags a missing or unknown owner', () => {
+    assert.deepEqual(lint(skill('alpha-a', { owner: null }), skill('alpha-b', { owner: 'zulu' })), [
+      'SKILL OWNER (no "Owner: <session>" line) - alpha-a',
+      'SKILL OWNER (owner zulu is not a session on the team) zulu alpha-b',
+    ]);
+  });
+
+  it('flags a skill never verified or verified too long ago', () => {
+    assert.deepEqual(lint(skill('alpha-a', { verified: null }), skill('alpha-b', { verified: '2030-01-29' }), skill('alpha-c', { verified: '2030-01-30' })), [
+      'SKILL UNVERIFIED (no "Last verified: YYYY-MM-DD") alpha alpha-a',
+      'SKILL UNVERIFIED (last verified 2030-01-29, 31 d ago > 30) alpha alpha-b',
+    ]);
+  });
+
+  it('flags forbidden frontmatter keys but not the same words in the body', () => {
+    const front = 'name: alpha-a\ndescription: Use when needed.\nallowed-tools: Bash';
+    assert.deepEqual(lint(skill('alpha-a', { front }), { name: 'alpha-b', text: '---\ndescription: ok\n---\nallowed-tools: none\nOwner: alpha\nLast verified: 2030-02-20\n' }), [
+      'SKILL FORBIDDEN-KEY (allowed-tools is not allowed in a team skill: remove it) alpha alpha-a',
+    ]);
+  });
+
+  it('flags a missing or wordy description', () => {
+    const wordy = `description: ${Array.from({ length: 31 }, (_, index) => `w${index}`).join(' ')}`;
+    assert.deepEqual(lint(skill('alpha-a', { front: 'name: alpha-a' }), skill('alpha-b', { front: wordy }), { name: 'alpha-c', text: 'no frontmatter\nOwner: alpha\nLast verified: 2030-02-20' }), [
+      'SKILL DESCRIPTION (no description) alpha alpha-a',
+      'SKILL DESCRIPTION (31 words > 30) alpha alpha-b',
+      'SKILL DESCRIPTION (no description) alpha alpha-c',
+    ]);
+  });
+
+  it('counts skills per area, keeping hyphenated session names whole', () => {
+    const alpha = Array.from({ length: 9 }, (_, index) => skill(`alpha-s${index}`));
+    const ops = Array.from({ length: 8 }, (_, index) => skill(`alpha-ops-s${index}`, { owner: 'alpha-ops' }));
+    const shared = Array.from({ length: 9 }, (_, index) => skill(`team-s${index}`));
+    assert.deepEqual(lint(...alpha, ...ops, ...shared), [
+      'SKILL AREA-OVER-LIMIT (9 skills > 8: merge before adding) alpha alpha',
+      'SKILL AREA-OVER-LIMIT (9 skills > 8: merge before adding) - team',
+    ]);
+  });
+
+  it('takes its limits from the config', () => {
+    const strict = testConfig({ skills: { maxDescriptionWords: 5, forbidFrontmatter: ['model'] } });
+    const front = 'description: one two three four five six\nmodel: haiku';
+    const flags = lintSkills([skill('alpha-a', { front })], NOW, strict).map((flag) => flag.kind);
+    assert.deepEqual(flags, ['FORBIDDEN-KEY', 'DESCRIPTION']);
+  });
+});
+
+describe('descriptionOf', () => {
+  it('reads inline, quoted and block descriptions', () => {
+    assert.equal(descriptionOf('description: plain text'), 'plain text');
+    assert.equal(descriptionOf('description: "quoted: text"'), 'quoted: text');
+    assert.equal(descriptionOf('description: >\n  folded\n  lines\nname: x'), 'folded lines');
+    assert.equal(descriptionOf('description: |-\n'), null);
+    assert.equal(descriptionOf('name: x'), null);
+  });
+});
+
+describe('areaOf', () => {
+  it('prefers the longest matching area and falls back to the first word', () => {
+    assert.equal(areaOf('alpha-ops-deploy', ['alpha', 'alpha-ops', 'team']), 'alpha-ops');
+    assert.equal(areaOf('alpha-deploy', ['alpha', 'alpha-ops']), 'alpha');
+    assert.equal(areaOf('misc-notes', ['alpha']), 'misc');
+  });
+});
