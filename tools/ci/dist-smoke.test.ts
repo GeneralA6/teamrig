@@ -1,0 +1,163 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
+import { FakeGit } from '../lib/fake-git.ts';
+import { POSIX_LAUNCHER, hookCommandsOf, launcherModeFinding, smokeDist, type RunRequest, type RunResult, type SmokeInput } from './dist-smoke.ts';
+
+const ROOT = resolve('/plugin');
+
+function execHook(name: string): { readonly type: string; readonly command: string; readonly args: readonly string[] } {
+  return { type: 'command', command: 'node', args: ['${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js', 'hook', name] };
+}
+
+function manifestOf(events: Readonly<Record<string, readonly unknown[]>>): unknown {
+  return { hooks: Object.fromEntries(Object.entries(events).map(([event, hooks]) => [event, [{ hooks }]])) };
+}
+
+const MANIFEST = manifestOf({
+  SessionStart: [execHook('session-start')],
+  PreToolUse: [execHook('push-guard')],
+  UserPromptSubmit: [execHook('inbox-reminder')],
+});
+
+function input(overrides: Partial<SmokeInput> = {}): SmokeInput {
+  return { platform: 'linux', pluginRoot: ROOT, manifest: MANIFEST, version: '1.2.3', nodePath: '/usr/bin/node', comspec: 'C:\\cmd.exe', ...overrides };
+}
+
+const OK: RunResult = { status: 0, stdout: '', stderr: '' };
+
+/** Answers like a healthy dist; `override` replaces the answer to the request whose args end with the given word. */
+class FakeRunner {
+  readonly requests: RunRequest[] = [];
+  private readonly overrides: ReadonlyMap<string, RunResult>;
+
+  constructor(overrides: Readonly<Record<string, RunResult>> = {}) {
+    this.overrides = new Map(Object.entries(overrides));
+  }
+
+  readonly run = (request: RunRequest): RunResult => {
+    this.requests.push(request);
+    const last = request.args.at(-1) ?? '';
+    const word = last.endsWith('--version"') ? '--version' : last;
+    const override = this.overrides.get(word);
+    if (override !== undefined) {
+      return override;
+    }
+    switch (word) {
+      case '--version':
+        return { ...OK, stdout: 'teamrig 1.2.3\n' };
+      case 'session-start':
+        return { ...OK, stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: 'rules' } }) };
+      case 'push-guard':
+        return { ...OK, stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny' } }) };
+      default:
+        return OK;
+    }
+  };
+}
+
+describe('hookCommandsOf', () => {
+  it('fills in the plugin folder for each exec-form hook', () => {
+    const { commands, findings } = hookCommandsOf(MANIFEST, ROOT);
+    assert.deepEqual(findings, []);
+    assert.deepEqual(commands, [
+      { event: 'SessionStart', args: [`${ROOT}/dist/cli/main.js`, 'hook', 'session-start'] },
+      { event: 'PreToolUse', args: [`${ROOT}/dist/cli/main.js`, 'hook', 'push-guard'] },
+      { event: 'UserPromptSubmit', args: [`${ROOT}/dist/cli/main.js`, 'hook', 'inbox-reminder'] },
+    ]);
+  });
+
+  it('reports a hook that goes through a shell', () => {
+    const shell = { type: 'command', command: 'node "${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js" hook push-guard' };
+    const { commands, findings } = hookCommandsOf(manifestOf({ PreToolUse: [shell] }), ROOT);
+    assert.deepEqual(commands, []);
+    assert.equal(findings.length, 1);
+    assert.match(findings[0] ?? '', /^PreToolUse: a hook is not exec form/);
+  });
+
+  it('reports a manifest without hooks', () => {
+    assert.deepEqual(hookCommandsOf({ description: 'x' }, ROOT).findings, ['hooks.json has no "hooks" object']);
+  });
+
+  it("keeps the plugin's own hooks.json in exec form, with a smoke sample for each event", async () => {
+    const manifest: unknown = JSON.parse(await readFile(new URL('../../plugins/teamrig/hooks/hooks.json', import.meta.url), 'utf8'));
+    const { commands, findings } = hookCommandsOf(manifest, ROOT);
+    assert.deepEqual(findings, []);
+    assert.ok(commands.length >= 3);
+    const runner = new FakeRunner();
+    assert.deepEqual(smokeDist(input({ manifest }), runner.run), []);
+  });
+});
+
+describe('smokeDist', () => {
+  it('finds nothing wrong with a healthy dist', () => {
+    const runner = new FakeRunner();
+    assert.deepEqual(smokeDist(input(), runner.run), []);
+    assert.deepEqual(
+      runner.requests.map((request) => [request.file, ...request.args]),
+      [
+        [join(ROOT, 'bin', 'teamrig'), '--version'],
+        ['/usr/bin/node', `${ROOT}/dist/cli/main.js`, 'hook', 'session-start'],
+        ['/usr/bin/node', `${ROOT}/dist/cli/main.js`, 'hook', 'push-guard'],
+        ['/usr/bin/node', `${ROOT}/dist/cli/main.js`, 'hook', 'inbox-reminder'],
+      ],
+    );
+    assert.equal(runner.requests[1]?.input, JSON.stringify({ hook_event_name: 'SessionStart', session_id: '0123abcd-0000-4000-8000-00000000000a', source: 'startup' }));
+  });
+
+  it('runs the .cmd launcher through cmd.exe on Windows, args passed as written', () => {
+    const runner = new FakeRunner();
+    assert.deepEqual(smokeDist(input({ platform: 'win32' }), runner.run), []);
+    assert.deepEqual(runner.requests[0], {
+      file: 'C:\\cmd.exe',
+      args: ['/d', '/s', '/c', `""${join(ROOT, 'bin', 'teamrig.cmd')}" --version"`],
+      input: '',
+      verbatim: true,
+    });
+  });
+
+  it('reports a launcher that cannot start or prints another version', () => {
+    const denied = new FakeRunner({ '--version': { status: null, stdout: '', stderr: 'spawnSync /plugin/bin/teamrig EACCES' } });
+    assert.deepEqual(smokeDist(input(), denied.run), ['bin launcher --version: exit none: spawnSync /plugin/bin/teamrig EACCES']);
+    const stale = new FakeRunner({ '--version': { ...OK, stdout: 'teamrig 1.2.2\n' } });
+    assert.deepEqual(smokeDist(input(), stale.run), ['bin launcher --version: printed "teamrig 1.2.2", expected "teamrig 1.2.3"']);
+  });
+
+  it('reports a hook that fails, writes to stderr or prints the wrong output', () => {
+    const runner = new FakeRunner({
+      'session-start': { status: 1, stdout: '', stderr: 'boom' },
+      'inbox-reminder': { ...OK, stderr: 'warning' },
+      'push-guard': { ...OK, stdout: '' },
+    });
+    assert.deepEqual(smokeDist(input(), runner.run), [
+      'SessionStart (hook session-start): exit 1: boom',
+      'PreToolUse (hook push-guard): expected a deny for a force-push of main',
+      'UserPromptSubmit (hook inbox-reminder): wrote to stderr: warning',
+    ]);
+  });
+
+  it('asks for a sample when the manifest adds an event the smoke test does not know', () => {
+    const runner = new FakeRunner();
+    const findings = smokeDist(input({ manifest: manifestOf({ Stop: [execHook('stop')] }) }), runner.run);
+    assert.deepEqual(findings, ['Stop (hook stop): no smoke sample for Stop; add one to tools/ci/dist-smoke.ts']);
+  });
+});
+
+describe('launcherModeFinding', () => {
+  const LS = `ls-files --stage -- ${POSIX_LAUNCHER}`;
+
+  it('accepts a launcher committed executable', async () => {
+    assert.equal(await launcherModeFinding(new FakeGit({ [LS]: `100755 e90e 0	${POSIX_LAUNCHER}
+` })), undefined);
+  });
+
+  it('reports a launcher committed without the executable bit, or not at all', async () => {
+    assert.equal(
+      await launcherModeFinding(new FakeGit({ [LS]: `100644 e90e 0	${POSIX_LAUNCHER}
+` })),
+      `${POSIX_LAUNCHER} is committed with mode 100644, not 100755; run git update-index --chmod=+x ${POSIX_LAUNCHER}`,
+    );
+    assert.equal(await launcherModeFinding(new FakeGit({ [LS]: '' })), `${POSIX_LAUNCHER} is not committed`);
+  });
+});
