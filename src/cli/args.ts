@@ -9,10 +9,15 @@ export interface ParsedArgs {
   readonly command: string;
   readonly positionals: readonly string[];
   readonly flags: Flags;
+  /** The flags given that take no value, such as `--ready`. */
+  readonly switches: ReadonlySet<string>;
 }
 
 /** Each command's accepted flags, keyed by the command's words: `add`, `inbox read`. */
 export type CommandFlags = Readonly<Partial<Record<string, readonly string[]>>>;
+
+/** Each command's flags that take no value, keyed like `CommandFlags`; most commands have none. */
+export type CommandSwitches = CommandFlags;
 
 /** The command a line names: two words when they form a command (`inbox read`), else one. */
 function commandOf(argv: readonly string[], commandFlags: CommandFlags): { readonly command: string; readonly tail: readonly string[] } {
@@ -34,14 +39,17 @@ function commandOf(argv: readonly string[], commandFlags: CommandFlags): { reado
 }
 
 /**
- * Splits `<command> [words] [--name value]...`. Only the command's own flags are accepted, so a
- * typo is refused instead of silently meaning nothing; every flag takes exactly one value.
+ * Splits `<command> [words] [--name value] [--switch]...`. Only the command's own flags are
+ * accepted, so a typo is refused instead of silently meaning nothing; every flag takes exactly one
+ * value, except the command's switches, which take none.
  */
-export function parseArgs(argv: readonly string[], commandFlags: CommandFlags): ParsedArgs {
+export function parseArgs(argv: readonly string[], commandFlags: CommandFlags, commandSwitches: CommandSwitches = {}): ParsedArgs {
   const { command, tail } = commandOf(argv, commandFlags);
   const allowed = commandFlags[command] ?? [];
+  const switchable = commandSwitches[command] ?? [];
   const positionals: string[] = [];
   const flags = new Map<string, string>();
+  const switches = new Set<string>();
   for (let index = 0; index < tail.length; index += 1) {
     const token = tail[index] ?? '';
     if (!token.startsWith('--')) {
@@ -49,6 +57,13 @@ export function parseArgs(argv: readonly string[], commandFlags: CommandFlags): 
       continue;
     }
     const name = token.slice(2);
+    if (switchable.includes(name)) {
+      if (switches.has(name)) {
+        throw new UsageError(`${token} is given twice`);
+      }
+      switches.add(name);
+      continue;
+    }
     if (!allowed.includes(name)) {
       throw new UsageError(`${command} takes no ${token}`);
     }
@@ -62,7 +77,7 @@ export function parseArgs(argv: readonly string[], commandFlags: CommandFlags): 
     flags.set(name, value);
     index += 1;
   }
-  return { command, positionals, flags };
+  return { command, positionals, flags, switches };
 }
 
 export function noPositionals(args: ParsedArgs): void {
