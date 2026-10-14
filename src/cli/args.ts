@@ -19,6 +19,12 @@ export type CommandFlags = Readonly<Partial<Record<string, readonly string[]>>>;
 /** Each command's flags that take no value, keyed like `CommandFlags`; most commands have none. */
 export type CommandSwitches = CommandFlags;
 
+/**
+ * Flags that were renamed, old name to new name. The old name is refused on every command with the
+ * new one to use; it is never read as an alias, so one spelling stays in scripts and docs.
+ */
+export type RenamedFlags = Readonly<Partial<Record<string, string>>>;
+
 /** The command a line names: two words when they form a command (`inbox read`), else one. */
 function commandOf(argv: readonly string[], commandFlags: CommandFlags): { readonly command: string; readonly tail: readonly string[] } {
   const [first = '', second] = argv;
@@ -41,9 +47,14 @@ function commandOf(argv: readonly string[], commandFlags: CommandFlags): { reado
 /**
  * Splits `<command> [words] [--name value] [--switch]...`. Only the command's own flags are
  * accepted, so a typo is refused instead of silently meaning nothing; every flag takes exactly one
- * value, except the command's switches, which take none.
+ * value, except the command's switches, which take none. A renamed flag is refused with its new name.
  */
-export function parseArgs(argv: readonly string[], commandFlags: CommandFlags, commandSwitches: CommandSwitches = {}): ParsedArgs {
+export function parseArgs(
+  argv: readonly string[],
+  commandFlags: CommandFlags,
+  commandSwitches: CommandSwitches = {},
+  renamedFlags: RenamedFlags = {},
+): ParsedArgs {
   const { command, tail } = commandOf(argv, commandFlags);
   const allowed = commandFlags[command] ?? [];
   const switchable = commandSwitches[command] ?? [];
@@ -57,6 +68,10 @@ export function parseArgs(argv: readonly string[], commandFlags: CommandFlags, c
       continue;
     }
     const name = token.slice(2);
+    const renamed = renamedFlags[name];
+    if (renamed !== undefined) {
+      throw new UsageError(`${token} was renamed: use --${renamed}`);
+    }
     if (switchable.includes(name)) {
       if (switches.has(name)) {
         throw new UsageError(`${token} is given twice`);
