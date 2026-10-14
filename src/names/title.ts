@@ -2,8 +2,9 @@ import type { Files } from '../core/files.ts';
 import { isRecord, stringField } from '../core/guards.ts';
 
 /**
- * How much of a transcript's end is searched for the session's title: many turns' worth, while a
- * long session's transcript is never read whole on every prompt.
+ * How much of a transcript's end is searched for the session's title, and for its context size at a
+ * task boundary (`refresh/usage.ts`): many turns' worth, while a long session's transcript is never
+ * read whole on every prompt.
  */
 export const TRANSCRIPT_TAIL_BYTES = 256 * 1024;
 

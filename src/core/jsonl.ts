@@ -51,7 +51,8 @@ export function toJsonlLine(record: JsonRecord): string {
   return `${JSON.stringify(record)}\n`;
 }
 
-function parseObject(raw: string): JsonRecord | undefined {
+/** One line as a JSON object; undefined for anything else, a damaged or torn line included. */
+export function parseObject(raw: string): JsonRecord | undefined {
   try {
     const value: unknown = JSON.parse(raw);
     return isRecord(value) ? value : undefined;
