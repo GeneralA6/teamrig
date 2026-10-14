@@ -1,77 +1,31 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="500" viewBox="0 0 960 500" role="img" aria-label="How teamrig works: 1, say what you want in one sentence to the lead session. 2, the lead proposes a team and splits the work into tasks. 3, each session takes its own tasks in its own tab. 4, the lead tells you when it is ready. What keeps the team on track: one owner per task, notes between sessions, your team&apos;s rules in every session, safe pushes, a fresh context from a handover, and everything on your machine.">
-<title>How teamrig works: 1, say what you want in one sentence to the lead session. 2, the lead proposes a team and splits the work into tasks. 3, each session takes its own tasks in its own tab. 4, the lead tells you when it is ready. What keeps the team on track: one owner per task, notes between sessions, your team&apos;s rules in every session, safe pushes, a fresh context from a handover, and everything on your machine.</title>
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="210" viewBox="0 0 960 210" role="img" aria-label="How teamrig works: 1. Tell the lead, what you want, in plain words. 2. It hires a team, and gives each member a job. 3. The team builds it, together, each in its own tab. 4. You get the result, the lead calls you back.">
+<title>How teamrig works: 1. Tell the lead, what you want, in plain words. 2. It hires a team, and gives each member a job. 3. The team builds it, together, each in its own tab. 4. You get the result, the lead calls you back.</title>
 <style>
-:root{--fg:#1f2328;--muted:#59636e;--line:#d1d9e0;--tile:#f6f8fa;--accent:#8250df;--soft:#f5f0ff;--bg:#ffffff}
-@media (prefers-color-scheme:dark){:root{--fg:#e6edf3;--muted:#9198a1;--line:#3d444d;--tile:#151b23;--accent:#a371f7;--soft:#211836;--bg:#0d1117}}
+:root{--fg:#1f2328;--muted:#59636e;--line:#d1d9e0;--tile:#f6f8fa;--bg:#ffffff;--purple:#8250df;--tint:#f0eafb;--amber:#9a6700;--green:#1a7f37}
+@media (prefers-color-scheme:dark){:root{--fg:#e6edf3;--muted:#9198a1;--line:#3d444d;--tile:#151b23;--bg:#0d1117;--purple:#a371f7;--tint:#221e36;--amber:#d29922;--green:#3fb950}}
 text{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif;fill:var(--fg)}
-.title{font-size:17px;font-weight:600}.tiletitle{font-size:15px;font-weight:600}.sub{font-size:13.5px;fill:var(--muted)}
-.label{font-size:12px;font-weight:600;letter-spacing:.09em;fill:var(--muted)}
-.badge{fill:var(--soft);stroke:var(--accent);stroke-width:1.5}.num{fill:var(--accent)}.numtext{font-size:13px;font-weight:700;fill:#fff}
-.icon{fill:none;stroke:var(--accent);stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
-.tile{fill:var(--tile);stroke:var(--line)}
-.bg{fill:var(--bg)}
-.flow{stroke:var(--accent);stroke-width:2;stroke-dasharray:3 7;stroke-linecap:round;animation:flow 1.2s linear infinite}
-.arrow{fill:none;stroke:var(--accent);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-@keyframes flow{to{stroke-dashoffset:-20}}
-@media (prefers-reduced-motion:reduce){.flow{animation:none}}
+.steptitle{font-size:19px;font-weight:700}.sub{font-size:14.5px;fill:var(--muted)}
+.halo.lead{fill:var(--purple);fill-opacity:.12}.halo.done{fill:var(--green);fill-opacity:.14}
+.icon{fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}.icon.lead{stroke:var(--purple)}.icon.done{stroke:var(--green)}
+.arrow{fill:none;stroke:var(--line);stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
 </style>
-<rect width="960" height="500" rx="12" class="bg"/>
-<circle cx="120" cy="70" r="40" class="badge"/>
-<g transform="translate(101 51) scale(1.5833333333333333)" class="icon"><path d="M4 4.5h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-9l-5 4v-4H4a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2z"/><path d="M7 9.5h10M7 13h6"/></g>
-<circle cx="90" cy="38" r="12" class="num"/><text x="90" y="42.5" text-anchor="middle" class="numtext">1</text>
-<text x="120" y="144" text-anchor="middle" class="title">Say what you want</text>
-<text x="120" y="168" text-anchor="middle" class="sub">one sentence to the</text>
-<text x="120" y="188" text-anchor="middle" class="sub">lead session</text>
-<path d="M174 70H302" class="flow"/><path d="m298 64 8 6-8 6" class="arrow"/>
-<circle cx="360" cy="70" r="40" class="badge"/>
-<g transform="translate(341 51) scale(1.5833333333333333)" class="icon"><circle cx="12" cy="5" r="2.6"/><circle cx="4.5" cy="19" r="2.2"/><circle cx="12" cy="19" r="2.2"/><circle cx="19.5" cy="19" r="2.2"/><path d="M12 7.6V16.8M10.6 7.2 5.6 17M13.4 7.2l5 9.8"/></g>
-<circle cx="330" cy="38" r="12" class="num"/><text x="330" y="42.5" text-anchor="middle" class="numtext">2</text>
-<text x="360" y="144" text-anchor="middle" class="title">The lead plans it</text>
-<text x="360" y="168" text-anchor="middle" class="sub">proposes a team and splits</text>
-<text x="360" y="188" text-anchor="middle" class="sub">the work into tasks</text>
-<path d="M414 70H542" class="flow"/><path d="m538 64 8 6-8 6" class="arrow"/>
-<circle cx="600" cy="70" r="40" class="badge"/>
-<g transform="translate(581 51) scale(1.5833333333333333)" class="icon"><rect x="2.5" y="8" width="13" height="12" rx="2"/><path d="M6 8V5.5a1.5 1.5 0 0 1 1.5-1.5h11A1.5 1.5 0 0 1 20 5.5v10a1.5 1.5 0 0 1-1.5 1.5H15.5"/><path d="M5.5 12.5h7M5.5 16h4.5"/></g>
-<circle cx="570" cy="38" r="12" class="num"/><text x="570" y="42.5" text-anchor="middle" class="numtext">3</text>
-<text x="600" y="144" text-anchor="middle" class="title">The team builds it</text>
-<text x="600" y="168" text-anchor="middle" class="sub">each session takes its own</text>
-<text x="600" y="188" text-anchor="middle" class="sub">tasks, in its own tab</text>
-<path d="M654 70H782" class="flow"/><path d="m778 64 8 6-8 6" class="arrow"/>
-<circle cx="840" cy="70" r="40" class="badge"/>
-<g transform="translate(821 51) scale(1.5833333333333333)" class="icon"><circle cx="12" cy="12" r="9.5"/><path d="m7.5 12.3 3 3 6-6.6"/></g>
-<circle cx="810" cy="38" r="12" class="num"/><text x="810" y="42.5" text-anchor="middle" class="numtext">4</text>
-<text x="840" y="144" text-anchor="middle" class="title">You get the result</text>
-<text x="840" y="168" text-anchor="middle" class="sub">the lead tells you</text>
-<text x="840" y="188" text-anchor="middle" class="sub">when it is ready</text>
-<text x="20" y="246" class="label">WHAT KEEPS THE TEAM ON TRACK</text>
-<rect x="20.5" y="264.5" width="295" height="99" rx="12" class="tile"/>
-<g transform="translate(40 286) scale(1.1666666666666667)" class="icon"><path d="M10 6h11M10 12h11M10 18h11"/><path d="m3 6 1.5 1.5L7 5M3 12l1.5 1.5L7 11"/><circle cx="5" cy="18" r="1.6"/></g>
-<text x="84" y="302" class="tiletitle">One owner per task</text>
-<text x="84" y="326" class="sub">a shared task list, so no two</text>
-<text x="84" y="345" class="sub">sessions do the same work</text>
-<rect x="332.5" y="264.5" width="295" height="99" rx="12" class="tile"/>
-<g transform="translate(352 286) scale(1.1666666666666667)" class="icon"><rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="m3 6.5 9 6.5 9-6.5"/></g>
-<text x="396" y="302" class="tiletitle">Notes between sessions</text>
-<text x="396" y="326" class="sub">they message each other;</text>
-<text x="396" y="345" class="sub">no server to run</text>
-<rect x="644.5" y="264.5" width="295" height="99" rx="12" class="tile"/>
-<g transform="translate(664 286) scale(1.1666666666666667)" class="icon"><path d="M6 2.5h9l4 4v15H6z"/><path d="M15 2.5v4h4M9 11h7M9 14.5h7M9 18h4"/></g>
-<text x="708" y="302" class="tiletitle">Your rules, every time</text>
-<text x="708" y="326" class="sub">each session starts with</text>
-<text x="708" y="345" class="sub">your team&apos;s rules</text>
-<rect x="20.5" y="376.5" width="295" height="99" rx="12" class="tile"/>
-<g transform="translate(40 398) scale(1.1666666666666667)" class="icon"><path d="M12 2.5 20 5.5v6c0 5-3.4 8.8-8 10-4.6-1.2-8-5-8-10v-6z"/><path d="m8.5 12 2.5 2.5 4.5-5"/></g>
-<text x="84" y="414" class="tiletitle">Safe pushes</text>
-<text x="84" y="438" class="sub">nobody force-pushes</text>
-<text x="84" y="457" class="sub">your main branch</text>
-<rect x="332.5" y="376.5" width="295" height="99" rx="12" class="tile"/>
-<g transform="translate(352 398) scale(1.1666666666666667)" class="icon"><path d="M20 12a8 8 0 1 1-2.4-5.7"/><path d="M20 3.5v5h-5"/></g>
-<text x="396" y="414" class="tiletitle">Fresh context</text>
-<text x="396" y="438" class="sub">a long session writes a handover</text>
-<text x="396" y="457" class="sub">and picks up from it, clean</text>
-<rect x="644.5" y="376.5" width="295" height="99" rx="12" class="tile"/>
-<g transform="translate(664 398) scale(1.1666666666666667)" class="icon"><rect x="4" y="4.5" width="16" height="11" rx="1.5"/><path d="M2 19.5h20M9 19.5l.6-2h4.8l.6 2"/></g>
-<text x="708" y="414" class="tiletitle">All on your machine</text>
-<text x="708" y="438" class="sub">plain files, no account,</text>
-<text x="708" y="457" class="sub">works offline</text>
+<circle cx="120" cy="58" r="46" class="halo lead"/>
+<g transform="translate(100 38) scale(1.6666666666666667)" class="icon lead"><path d="M4 4.5h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-9l-5 4v-4H4a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2z"/><path d="M7 9.5h10M7 13h6"/></g>
+<text x="120" y="152" text-anchor="middle" class="steptitle">Tell the lead</text>
+<text x="120" y="180" text-anchor="middle" class="sub">what you want, in plain words.</text>
+<path d="m236 50 8 8-8 8" class="arrow"/>
+<circle cx="360" cy="58" r="46" class="halo lead"/>
+<g transform="translate(340 38) scale(1.6666666666666667)" class="icon lead"><circle cx="12" cy="5" r="2.6"/><circle cx="4.5" cy="19" r="2.2"/><circle cx="12" cy="19" r="2.2"/><circle cx="19.5" cy="19" r="2.2"/><path d="M12 7.6V16.8M10.6 7.2 5.6 17M13.4 7.2l5 9.8"/></g>
+<text x="360" y="152" text-anchor="middle" class="steptitle">It hires a team</text>
+<text x="360" y="180" text-anchor="middle" class="sub">and gives each member a job.</text>
+<path d="m476 50 8 8-8 8" class="arrow"/>
+<circle cx="600" cy="58" r="46" class="halo lead"/>
+<g transform="translate(580 38) scale(1.6666666666666667)" class="icon lead"><rect x="2.5" y="8" width="13" height="12" rx="2"/><path d="M6 8V5.5a1.5 1.5 0 0 1 1.5-1.5h11A1.5 1.5 0 0 1 20 5.5v10a1.5 1.5 0 0 1-1.5 1.5H15.5"/><path d="M5.5 12.5h7M5.5 16h4.5"/></g>
+<text x="600" y="152" text-anchor="middle" class="steptitle">The team builds it</text>
+<text x="600" y="180" text-anchor="middle" class="sub">together, each in its own tab.</text>
+<path d="m716 50 8 8-8 8" class="arrow"/>
+<circle cx="840" cy="58" r="46" class="halo done"/>
+<g transform="translate(820 38) scale(1.6666666666666667)" class="icon done"><circle cx="12" cy="12" r="9.5"/><path d="m7.5 12.3 3 3 6-6.6"/></g>
+<text x="840" y="152" text-anchor="middle" class="steptitle">You get the result</text>
+<text x="840" y="180" text-anchor="middle" class="sub">the lead calls you back.</text>
 </svg>

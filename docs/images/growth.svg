@@ -1,0 +1,346 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="420" viewBox="0 0 960 420" role="img" aria-label="How a teamrig team grows. Day 1: you tell your lead what you want, and it hires api, web and docs. Week 2: tests and auth join; docs moves on when its job is done, and design takes its place. Month 2: the team becomes teams of teams, with a payments lead, a search lead, a mobile lead and a quality lead, each with its own members. Month 6: 8 teams and 33 members, with members joining and moving on, and you still talk to one lead.">
+<title>How a teamrig team grows. Day 1: you tell your lead what you want, and it hires api, web and docs. Week 2: tests and auth join; docs moves on when its job is done, and design takes its place. Month 2: the team becomes teams of teams, with a payments lead, a search lead, a mobile lead and a quality lead, each with its own members. Month 6: 8 teams and 33 members, with members joining and moving on, and you still talk to one lead.</title>
+<style>
+:root{--fg:#1f2328;--muted:#59636e;--line:#d1d9e0;--tile:#f6f8fa;--bg:#ffffff;--purple:#8250df;--tint:#f0eafb;--amber:#9a6700;--green:#1a7f37}
+@media (prefers-color-scheme:dark){:root{--fg:#e6edf3;--muted:#9198a1;--line:#3d444d;--tile:#151b23;--bg:#0d1117;--purple:#a371f7;--tint:#221e36;--amber:#d29922;--green:#3fb950}}
+text{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif;fill:var(--fg)}
+.chapter{font-size:24px;font-weight:700}.sub{font-size:15px;fill:var(--muted)}
+.node.you{fill:var(--bg);stroke:var(--fg)}.node.lead{fill:var(--tint);stroke:var(--purple)}.node.member{fill:var(--tile);stroke:var(--line)}
+.node.gone{fill:var(--bg);stroke:var(--muted);stroke-dasharray:6 6}
+.label{font-weight:600}.label.lead{fill:var(--purple)}.label.gone{fill:var(--muted)}
+.edge{fill:none;stroke:var(--muted);stroke-opacity:.5}.edge.gone{stroke-dasharray:6 6}
+.tag{font-size:15px;font-weight:600;fill:var(--green)}
+@keyframes a0{0%,1.500%{opacity:0;transform:translateY(5px)}3.000%,20.000%{opacity:1;transform:translateY(0)}21.500%,100%{opacity:0;transform:translateY(5px)}}
+.a0{opacity:0;animation:a0 20s linear infinite}
+@keyframes a1{0%,21.500%{opacity:0;transform:translateY(5px)}23.000%,39.500%{opacity:1;transform:translateY(0)}41.000%,100%{opacity:0;transform:translateY(5px)}}
+.a1{opacity:0;animation:a1 20s linear infinite}
+@keyframes a2{0%,41.000%{opacity:0;transform:translateY(5px)}42.500%,60.500%{opacity:1;transform:translateY(0)}62.000%,100%{opacity:0;transform:translateY(5px)}}
+.a2{opacity:0;animation:a2 20s linear infinite}
+@keyframes a3{0%,62.000%{opacity:0;transform:translateY(5px)}63.500%,92.500%{opacity:1;transform:translateY(0)}94.000%,100%{opacity:0;transform:translateY(5px)}}
+.a3{opacity:1;animation:a3 20s linear infinite}
+@keyframes a4{0%,1.500%{opacity:0;transform:scale(.2)}2.600%{opacity:1;transform:scale(1.15)}3.500%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a4{transform-box:fill-box;transform-origin:center;opacity:1;animation:a4 20s linear infinite}
+@keyframes a5{0%,2.750%{stroke-dashoffset:93;opacity:1}4.500%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a5{opacity:1;animation:a5 20s linear infinite}
+@keyframes a6{0%,4.500%{opacity:0;transform:scale(.2)}5.600%{opacity:1;transform:scale(1.15)}6.500%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a6{transform-box:fill-box;transform-origin:center;opacity:1;animation:a6 20s linear infinite}
+@keyframes a7{0%,6.750%{stroke-dashoffset:214;opacity:1}8.500%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a7{opacity:1;animation:a7 20s linear infinite}
+@keyframes a8{0%,8.500%{opacity:0;transform:scale(.2)}9.600%{opacity:1;transform:scale(1.15)}10.500%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a8{transform-box:fill-box;transform-origin:center;opacity:1;animation:a8 20s linear infinite}
+@keyframes a9{0%,8.250%{stroke-dashoffset:113;opacity:1}10.000%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a9{opacity:1;animation:a9 20s linear infinite}
+@keyframes a10{0%,10.000%{opacity:0;transform:scale(.2)}11.100%{opacity:1;transform:scale(1.15)}12.000%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a10{transform-box:fill-box;transform-origin:center;opacity:1;animation:a10 20s linear infinite}
+@keyframes a11{0%,9.750%{stroke-dashoffset:214;opacity:1}11.500%,32.750%{stroke-dashoffset:0;opacity:1}34.250%,100%{stroke-dashoffset:0;opacity:0}}
+.a11{opacity:0;animation:a11 20s linear infinite}
+@keyframes a12{0%,33.000%{opacity:0}34.500%,38.000%{opacity:1}39.500%,100%{opacity:0}}
+.a12{opacity:0;animation:a12 20s linear infinite}
+@keyframes a13{0%,33.000%{opacity:0}34.500%,38.000%{opacity:1}39.500%,100%{opacity:0}}
+.a13{opacity:0;animation:a13 20s linear infinite}
+@keyframes a14{0%,11.500%{opacity:0;transform:scale(.2)}12.600%{opacity:1;transform:scale(1.15)}13.500%,32.750%{opacity:1;transform:scale(1)}34.250%,100%{opacity:0;transform:scale(1)}}
+.a14{transform-box:fill-box;transform-origin:center;opacity:0;animation:a14 20s linear infinite}
+@keyframes a15{0%,26.250%{stroke-dashoffset:302;opacity:1}28.000%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a15{opacity:1;animation:a15 20s linear infinite}
+@keyframes a16{0%,28.000%{opacity:0;transform:scale(.2)}29.100%{opacity:1;transform:scale(1.15)}30.000%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a16{transform-box:fill-box;transform-origin:center;opacity:1;animation:a16 20s linear infinite}
+@keyframes a17{0%,27.750%{stroke-dashoffset:302;opacity:1}29.500%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a17{opacity:1;animation:a17 20s linear infinite}
+@keyframes a18{0%,29.500%{opacity:0;transform:scale(.2)}30.600%{opacity:1;transform:scale(1.15)}31.500%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a18{transform-box:fill-box;transform-origin:center;opacity:1;animation:a18 20s linear infinite}
+@keyframes a19{0%,34.750%{stroke-dashoffset:214;opacity:1}36.500%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a19{opacity:1;animation:a19 20s linear infinite}
+@keyframes a20{0%,36.500%{opacity:0;transform:scale(.2)}37.600%{opacity:1;transform:scale(1.15)}38.500%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a20{transform-box:fill-box;transform-origin:center;opacity:1;animation:a20 20s linear infinite}
+@keyframes a21{0%,45.500%{stroke-dashoffset:581;opacity:1}47.250%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a21{opacity:1;animation:a21 20s linear infinite}
+@keyframes a22{0%,47.250%{opacity:0;transform:scale(.2)}48.350%{opacity:1;transform:scale(1.15)}49.250%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a22{transform-box:fill-box;transform-origin:center;opacity:1;animation:a22 20s linear infinite}
+@keyframes a23{0%,47.750%{stroke-dashoffset:203;opacity:1}49.500%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a23{opacity:1;animation:a23 20s linear infinite}
+@keyframes a24{0%,49.500%{opacity:0;transform:scale(.2)}50.600%{opacity:1;transform:scale(1.15)}51.500%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a24{transform-box:fill-box;transform-origin:center;opacity:1;animation:a24 20s linear infinite}
+@keyframes a25{0%,48.500%{stroke-dashoffset:211;opacity:1}50.250%,78.750%{stroke-dashoffset:0;opacity:1}80.250%,100%{stroke-dashoffset:0;opacity:0}}
+.a25{opacity:0;animation:a25 20s linear infinite}
+@keyframes a26{0%,79.000%{opacity:0}80.500%,84.000%{opacity:1}85.500%,100%{opacity:0}}
+.a26{opacity:0;animation:a26 20s linear infinite}
+@keyframes a27{0%,79.000%{opacity:0}80.500%,84.000%{opacity:1}85.500%,100%{opacity:0}}
+.a27{opacity:0;animation:a27 20s linear infinite}
+@keyframes a28{0%,50.250%{opacity:0;transform:scale(.2)}51.350%{opacity:1;transform:scale(1.15)}52.250%,78.750%{opacity:1;transform:scale(1)}80.250%,100%{opacity:0;transform:scale(1)}}
+.a28{transform-box:fill-box;transform-origin:center;opacity:0;animation:a28 20s linear infinite}
+@keyframes a29{0%,49.250%{stroke-dashoffset:203;opacity:1}51.000%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a29{opacity:1;animation:a29 20s linear infinite}
+@keyframes a30{0%,51.000%{opacity:0;transform:scale(.2)}52.100%{opacity:1;transform:scale(1.15)}53.000%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a30{transform-box:fill-box;transform-origin:center;opacity:1;animation:a30 20s linear infinite}
+@keyframes a31{0%,73.750%{stroke-dashoffset:182;opacity:1}75.500%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a31{opacity:1;animation:a31 20s linear infinite}
+@keyframes a32{0%,75.500%{opacity:0;transform:scale(.2)}76.600%{opacity:1;transform:scale(1.15)}77.500%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a32{transform-box:fill-box;transform-origin:center;opacity:1;animation:a32 20s linear infinite}
+@keyframes a33{0%,80.750%{stroke-dashoffset:211;opacity:1}82.500%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a33{opacity:1;animation:a33 20s linear infinite}
+@keyframes a34{0%,82.500%{opacity:0;transform:scale(.2)}83.600%{opacity:1;transform:scale(1.15)}84.500%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a34{transform-box:fill-box;transform-origin:center;opacity:1;animation:a34 20s linear infinite}
+@keyframes a35{0%,46.750%{stroke-dashoffset:581;opacity:1}48.500%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a35{opacity:1;animation:a35 20s linear infinite}
+@keyframes a36{0%,48.500%{opacity:0;transform:scale(.2)}49.600%{opacity:1;transform:scale(1.15)}50.500%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a36{transform-box:fill-box;transform-origin:center;opacity:1;animation:a36 20s linear infinite}
+@keyframes a37{0%,49.000%{stroke-dashoffset:203;opacity:1}50.750%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a37{opacity:1;animation:a37 20s linear infinite}
+@keyframes a38{0%,50.750%{opacity:0;transform:scale(.2)}51.850%{opacity:1;transform:scale(1.15)}52.750%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a38{transform-box:fill-box;transform-origin:center;opacity:1;animation:a38 20s linear infinite}
+@keyframes a39{0%,49.750%{stroke-dashoffset:211;opacity:1}51.500%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a39{opacity:1;animation:a39 20s linear infinite}
+@keyframes a40{0%,51.500%{opacity:0;transform:scale(.2)}52.600%{opacity:1;transform:scale(1.15)}53.500%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a40{transform-box:fill-box;transform-origin:center;opacity:1;animation:a40 20s linear infinite}
+@keyframes a41{0%,50.500%{stroke-dashoffset:203;opacity:1}52.250%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a41{opacity:1;animation:a41 20s linear infinite}
+@keyframes a42{0%,52.250%{opacity:0;transform:scale(.2)}53.350%{opacity:1;transform:scale(1.15)}54.250%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a42{transform-box:fill-box;transform-origin:center;opacity:1;animation:a42 20s linear infinite}
+@keyframes a43{0%,74.500%{stroke-dashoffset:182;opacity:1}76.250%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a43{opacity:1;animation:a43 20s linear infinite}
+@keyframes a44{0%,76.250%{opacity:0;transform:scale(.2)}77.350%{opacity:1;transform:scale(1.15)}78.250%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a44{transform-box:fill-box;transform-origin:center;opacity:1;animation:a44 20s linear infinite}
+@keyframes a45{0%,48.000%{stroke-dashoffset:581;opacity:1}49.750%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a45{opacity:1;animation:a45 20s linear infinite}
+@keyframes a46{0%,49.750%{opacity:0;transform:scale(.2)}50.850%{opacity:1;transform:scale(1.15)}51.750%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a46{transform-box:fill-box;transform-origin:center;opacity:1;animation:a46 20s linear infinite}
+@keyframes a47{0%,50.250%{stroke-dashoffset:203;opacity:1}52.000%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a47{opacity:1;animation:a47 20s linear infinite}
+@keyframes a48{0%,52.000%{opacity:0;transform:scale(.2)}53.100%{opacity:1;transform:scale(1.15)}54.000%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a48{transform-box:fill-box;transform-origin:center;opacity:1;animation:a48 20s linear infinite}
+@keyframes a49{0%,51.000%{stroke-dashoffset:211;opacity:1}52.750%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a49{opacity:1;animation:a49 20s linear infinite}
+@keyframes a50{0%,52.750%{opacity:0;transform:scale(.2)}53.850%{opacity:1;transform:scale(1.15)}54.750%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a50{transform-box:fill-box;transform-origin:center;opacity:1;animation:a50 20s linear infinite}
+@keyframes a51{0%,51.750%{stroke-dashoffset:203;opacity:1}53.500%,80.250%{stroke-dashoffset:0;opacity:1}81.750%,100%{stroke-dashoffset:0;opacity:0}}
+.a51{opacity:0;animation:a51 20s linear infinite}
+@keyframes a52{0%,80.500%{opacity:0}82.000%,85.500%{opacity:1}87.000%,100%{opacity:0}}
+.a52{opacity:0;animation:a52 20s linear infinite}
+@keyframes a53{0%,80.500%{opacity:0}82.000%,85.500%{opacity:1}87.000%,100%{opacity:0}}
+.a53{opacity:0;animation:a53 20s linear infinite}
+@keyframes a54{0%,53.500%{opacity:0;transform:scale(.2)}54.600%{opacity:1;transform:scale(1.15)}55.500%,80.250%{opacity:1;transform:scale(1)}81.750%,100%{opacity:0;transform:scale(1)}}
+.a54{transform-box:fill-box;transform-origin:center;opacity:0;animation:a54 20s linear infinite}
+@keyframes a55{0%,75.250%{stroke-dashoffset:182;opacity:1}77.000%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a55{opacity:1;animation:a55 20s linear infinite}
+@keyframes a56{0%,77.000%{opacity:0;transform:scale(.2)}78.100%{opacity:1;transform:scale(1.15)}79.000%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a56{transform-box:fill-box;transform-origin:center;opacity:1;animation:a56 20s linear infinite}
+@keyframes a57{0%,82.250%{stroke-dashoffset:203;opacity:1}84.000%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a57{opacity:1;animation:a57 20s linear infinite}
+@keyframes a58{0%,84.000%{opacity:0;transform:scale(.2)}85.100%{opacity:1;transform:scale(1.15)}86.000%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a58{transform-box:fill-box;transform-origin:center;opacity:1;animation:a58 20s linear infinite}
+@keyframes a59{0%,49.250%{stroke-dashoffset:581;opacity:1}51.000%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a59{opacity:1;animation:a59 20s linear infinite}
+@keyframes a60{0%,51.000%{opacity:0;transform:scale(.2)}52.100%{opacity:1;transform:scale(1.15)}53.000%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a60{transform-box:fill-box;transform-origin:center;opacity:1;animation:a60 20s linear infinite}
+@keyframes a61{0%,51.500%{stroke-dashoffset:203;opacity:1}53.250%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a61{opacity:1;animation:a61 20s linear infinite}
+@keyframes a62{0%,53.250%{opacity:0;transform:scale(.2)}54.350%{opacity:1;transform:scale(1.15)}55.250%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a62{transform-box:fill-box;transform-origin:center;opacity:1;animation:a62 20s linear infinite}
+@keyframes a63{0%,52.250%{stroke-dashoffset:211;opacity:1}54.000%,81.750%{stroke-dashoffset:0;opacity:1}83.250%,100%{stroke-dashoffset:0;opacity:0}}
+.a63{opacity:0;animation:a63 20s linear infinite}
+@keyframes a64{0%,82.000%{opacity:0}83.500%,87.000%{opacity:1}88.500%,100%{opacity:0}}
+.a64{opacity:0;animation:a64 20s linear infinite}
+@keyframes a65{0%,82.000%{opacity:0}83.500%,87.000%{opacity:1}88.500%,100%{opacity:0}}
+.a65{opacity:0;animation:a65 20s linear infinite}
+@keyframes a66{0%,54.000%{opacity:0;transform:scale(.2)}55.100%{opacity:1;transform:scale(1.15)}56.000%,81.750%{opacity:1;transform:scale(1)}83.250%,100%{opacity:0;transform:scale(1)}}
+.a66{transform-box:fill-box;transform-origin:center;opacity:0;animation:a66 20s linear infinite}
+@keyframes a67{0%,53.000%{stroke-dashoffset:203;opacity:1}54.750%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a67{opacity:1;animation:a67 20s linear infinite}
+@keyframes a68{0%,54.750%{opacity:0;transform:scale(.2)}55.850%{opacity:1;transform:scale(1.15)}56.750%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a68{transform-box:fill-box;transform-origin:center;opacity:1;animation:a68 20s linear infinite}
+@keyframes a69{0%,76.000%{stroke-dashoffset:182;opacity:1}77.750%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a69{opacity:1;animation:a69 20s linear infinite}
+@keyframes a70{0%,77.750%{opacity:0;transform:scale(.2)}78.850%{opacity:1;transform:scale(1.15)}79.750%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a70{transform-box:fill-box;transform-origin:center;opacity:1;animation:a70 20s linear infinite}
+@keyframes a71{0%,83.750%{stroke-dashoffset:211;opacity:1}85.500%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a71{opacity:1;animation:a71 20s linear infinite}
+@keyframes a72{0%,85.500%{opacity:0;transform:scale(.2)}86.600%{opacity:1;transform:scale(1.15)}87.500%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a72{transform-box:fill-box;transform-origin:center;opacity:1;animation:a72 20s linear infinite}
+@keyframes a73{0%,66.500%{stroke-dashoffset:440;opacity:1}68.250%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a73{opacity:1;animation:a73 20s linear infinite}
+@keyframes a74{0%,68.250%{opacity:0;transform:scale(.2)}69.350%{opacity:1;transform:scale(1.15)}70.250%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a74{transform-box:fill-box;transform-origin:center;opacity:1;animation:a74 20s linear infinite}
+@keyframes a75{0%,68.750%{stroke-dashoffset:203;opacity:1}70.500%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a75{opacity:1;animation:a75 20s linear infinite}
+@keyframes a76{0%,70.500%{opacity:0;transform:scale(.2)}71.600%{opacity:1;transform:scale(1.15)}72.500%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a76{transform-box:fill-box;transform-origin:center;opacity:1;animation:a76 20s linear infinite}
+@keyframes a77{0%,69.500%{stroke-dashoffset:211;opacity:1}71.250%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a77{opacity:1;animation:a77 20s linear infinite}
+@keyframes a78{0%,71.250%{opacity:0;transform:scale(.2)}72.350%{opacity:1;transform:scale(1.15)}73.250%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a78{transform-box:fill-box;transform-origin:center;opacity:1;animation:a78 20s linear infinite}
+@keyframes a79{0%,70.250%{stroke-dashoffset:203;opacity:1}72.000%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a79{opacity:1;animation:a79 20s linear infinite}
+@keyframes a80{0%,72.000%{opacity:0;transform:scale(.2)}73.100%{opacity:1;transform:scale(1.15)}74.000%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a80{transform-box:fill-box;transform-origin:center;opacity:1;animation:a80 20s linear infinite}
+@keyframes a81{0%,67.750%{stroke-dashoffset:440;opacity:1}69.500%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a81{opacity:1;animation:a81 20s linear infinite}
+@keyframes a82{0%,69.500%{opacity:0;transform:scale(.2)}70.600%{opacity:1;transform:scale(1.15)}71.500%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a82{transform-box:fill-box;transform-origin:center;opacity:1;animation:a82 20s linear infinite}
+@keyframes a83{0%,70.000%{stroke-dashoffset:203;opacity:1}71.750%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a83{opacity:1;animation:a83 20s linear infinite}
+@keyframes a84{0%,71.750%{opacity:0;transform:scale(.2)}72.850%{opacity:1;transform:scale(1.15)}73.750%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a84{transform-box:fill-box;transform-origin:center;opacity:1;animation:a84 20s linear infinite}
+@keyframes a85{0%,70.750%{stroke-dashoffset:211;opacity:1}72.500%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a85{opacity:1;animation:a85 20s linear infinite}
+@keyframes a86{0%,72.500%{opacity:0;transform:scale(.2)}73.600%{opacity:1;transform:scale(1.15)}74.500%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a86{transform-box:fill-box;transform-origin:center;opacity:1;animation:a86 20s linear infinite}
+@keyframes a87{0%,71.500%{stroke-dashoffset:203;opacity:1}73.250%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a87{opacity:1;animation:a87 20s linear infinite}
+@keyframes a88{0%,73.250%{opacity:0;transform:scale(.2)}74.350%{opacity:1;transform:scale(1.15)}75.250%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a88{transform-box:fill-box;transform-origin:center;opacity:1;animation:a88 20s linear infinite}
+@keyframes a89{0%,69.000%{stroke-dashoffset:376;opacity:1}70.750%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a89{opacity:1;animation:a89 20s linear infinite}
+@keyframes a90{0%,70.750%{opacity:0;transform:scale(.2)}71.850%{opacity:1;transform:scale(1.15)}72.750%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a90{transform-box:fill-box;transform-origin:center;opacity:1;animation:a90 20s linear infinite}
+@keyframes a91{0%,71.250%{stroke-dashoffset:152;opacity:1}73.000%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a91{opacity:1;animation:a91 20s linear infinite}
+@keyframes a92{0%,73.000%{opacity:0;transform:scale(.2)}74.100%{opacity:1;transform:scale(1.15)}75.000%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a92{transform-box:fill-box;transform-origin:center;opacity:1;animation:a92 20s linear infinite}
+@keyframes a93{0%,72.000%{stroke-dashoffset:76;opacity:1}73.750%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a93{opacity:1;animation:a93 20s linear infinite}
+@keyframes a94{0%,73.750%{opacity:0;transform:scale(.2)}74.850%{opacity:1;transform:scale(1.15)}75.750%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a94{transform-box:fill-box;transform-origin:center;opacity:1;animation:a94 20s linear infinite}
+@keyframes a95{0%,72.750%{stroke-dashoffset:152;opacity:1}74.500%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a95{opacity:1;animation:a95 20s linear infinite}
+@keyframes a96{0%,74.500%{opacity:0;transform:scale(.2)}75.600%{opacity:1;transform:scale(1.15)}76.500%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a96{transform-box:fill-box;transform-origin:center;opacity:1;animation:a96 20s linear infinite}
+@keyframes a97{0%,70.250%{stroke-dashoffset:376;opacity:1}72.000%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a97{opacity:1;animation:a97 20s linear infinite}
+@keyframes a98{0%,72.000%{opacity:0;transform:scale(.2)}73.100%{opacity:1;transform:scale(1.15)}74.000%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a98{transform-box:fill-box;transform-origin:center;opacity:1;animation:a98 20s linear infinite}
+@keyframes a99{0%,72.500%{stroke-dashoffset:152;opacity:1}74.250%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a99{opacity:1;animation:a99 20s linear infinite}
+@keyframes a100{0%,74.250%{opacity:0;transform:scale(.2)}75.350%{opacity:1;transform:scale(1.15)}76.250%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a100{transform-box:fill-box;transform-origin:center;opacity:1;animation:a100 20s linear infinite}
+@keyframes a101{0%,73.250%{stroke-dashoffset:76;opacity:1}75.000%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a101{opacity:1;animation:a101 20s linear infinite}
+@keyframes a102{0%,75.000%{opacity:0;transform:scale(.2)}76.100%{opacity:1;transform:scale(1.15)}77.000%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a102{transform-box:fill-box;transform-origin:center;opacity:1;animation:a102 20s linear infinite}
+@keyframes a103{0%,74.000%{stroke-dashoffset:152;opacity:1}75.750%,92.500%{stroke-dashoffset:0;opacity:1}94.000%,100%{stroke-dashoffset:0;opacity:0}}
+.a103{opacity:1;animation:a103 20s linear infinite}
+@keyframes a104{0%,75.750%{opacity:0;transform:scale(.2)}76.850%{opacity:1;transform:scale(1.15)}77.750%,92.500%{opacity:1;transform:scale(1)}94.000%,100%{opacity:0;transform:scale(1)}}
+.a104{transform-box:fill-box;transform-origin:center;opacity:1;animation:a104 20s linear infinite}
+@keyframes a105{0%,21.000%{transform:translate(480px,258px) scale(1);animation-timing-function:cubic-bezier(.45,0,.25,1)}26.000%,40.500%{transform:translate(480px,258px) scale(0.78);animation-timing-function:cubic-bezier(.45,0,.25,1)}45.500%,61.500%{transform:translate(480px,258px) scale(0.56);animation-timing-function:cubic-bezier(.45,0,.25,1)}66.500%,100%{transform:translate(480px,258px) scale(0.42);animation-timing-function:cubic-bezier(.45,0,.25,1)}}
+.a105{transform-box:view-box;transform-origin:0 0;transform:translate(480px,258px) scale(0.42);animation:a105 20s linear infinite}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+<g class="a0">
+<text x="480" y="44" text-anchor="middle" class="chapter">Day 1</text>
+<text x="480" y="72" text-anchor="middle" class="sub">You tell your lead what you want. It hires a team of three.</text>
+</g>
+<g class="a1">
+<text x="480" y="44" text-anchor="middle" class="chapter">Week 2</text>
+<text x="480" y="72" text-anchor="middle" class="sub">The work grows. New members join, and finished ones move on.</text>
+</g>
+<g class="a2">
+<text x="480" y="44" text-anchor="middle" class="chapter">Month 2</text>
+<text x="480" y="72" text-anchor="middle" class="sub">One team becomes teams of teams, each with its own lead.</text>
+</g>
+<g class="a3">
+<text x="480" y="44" text-anchor="middle" class="chapter">Month 6</text>
+<text x="480" y="72" text-anchor="middle" class="sub">8 teams and 33 members. You still talk to one lead.</text>
+</g>
+<g class="a105">
+<line x1="0" y1="-92" x2="0" y2="0" class="edge a5" style="stroke-width:2.2;stroke-dasharray:93"/>
+<line x1="0" y1="0" x2="-190" y2="96" class="edge a7" style="stroke-width:2.2;stroke-dasharray:214"/>
+<line x1="0" y1="0" x2="0" y2="112" class="edge a9" style="stroke-width:2.2;stroke-dasharray:113"/>
+<line x1="0" y1="0" x2="190" y2="96" class="edge a11" style="stroke-width:2.2;stroke-dasharray:214"/>
+<line x1="0" y1="0" x2="190" y2="96" class="edge gone a12" style="stroke-width:2.2"/>
+<line x1="0" y1="0" x2="-300" y2="20" class="edge a15" style="stroke-width:2.2;stroke-dasharray:302"/>
+<line x1="0" y1="0" x2="300" y2="20" class="edge a17" style="stroke-width:2.2;stroke-dasharray:302"/>
+<line x1="0" y1="0" x2="190" y2="96" class="edge a19" style="stroke-width:2.2;stroke-dasharray:214"/>
+<line x1="0" y1="0" x2="-560" y2="-150" class="edge a21" style="stroke-width:3.4;stroke-dasharray:581"/>
+<line x1="-560" y1="-150" x2="-755" y2="-200" class="edge a23" style="stroke-width:3;stroke-dasharray:203"/>
+<line x1="-560" y1="-150" x2="-770" y2="-150" class="edge a25" style="stroke-width:3;stroke-dasharray:211"/>
+<line x1="-560" y1="-150" x2="-770" y2="-150" class="edge gone a26" style="stroke-width:3"/>
+<line x1="-560" y1="-150" x2="-755" y2="-100" class="edge a29" style="stroke-width:3;stroke-dasharray:203"/>
+<line x1="-560" y1="-150" x2="-710" y2="-250" class="edge a31" style="stroke-width:3;stroke-dasharray:182"/>
+<line x1="-560" y1="-150" x2="-770" y2="-150" class="edge a33" style="stroke-width:3;stroke-dasharray:211"/>
+<line x1="0" y1="0" x2="-560" y2="150" class="edge a35" style="stroke-width:3.4;stroke-dasharray:581"/>
+<line x1="-560" y1="150" x2="-755" y2="100" class="edge a37" style="stroke-width:3;stroke-dasharray:203"/>
+<line x1="-560" y1="150" x2="-770" y2="150" class="edge a39" style="stroke-width:3;stroke-dasharray:211"/>
+<line x1="-560" y1="150" x2="-755" y2="200" class="edge a41" style="stroke-width:3;stroke-dasharray:203"/>
+<line x1="-560" y1="150" x2="-710" y2="250" class="edge a43" style="stroke-width:3;stroke-dasharray:182"/>
+<line x1="0" y1="0" x2="560" y2="-150" class="edge a45" style="stroke-width:3.4;stroke-dasharray:581"/>
+<line x1="560" y1="-150" x2="755" y2="-200" class="edge a47" style="stroke-width:3;stroke-dasharray:203"/>
+<line x1="560" y1="-150" x2="770" y2="-150" class="edge a49" style="stroke-width:3;stroke-dasharray:211"/>
+<line x1="560" y1="-150" x2="755" y2="-100" class="edge a51" style="stroke-width:3;stroke-dasharray:203"/>
+<line x1="560" y1="-150" x2="755" y2="-100" class="edge gone a52" style="stroke-width:3"/>
+<line x1="560" y1="-150" x2="710" y2="-250" class="edge a55" style="stroke-width:3;stroke-dasharray:182"/>
+<line x1="560" y1="-150" x2="755" y2="-100" class="edge a57" style="stroke-width:3;stroke-dasharray:203"/>
+<line x1="0" y1="0" x2="560" y2="150" class="edge a59" style="stroke-width:3.4;stroke-dasharray:581"/>
+<line x1="560" y1="150" x2="755" y2="100" class="edge a61" style="stroke-width:3;stroke-dasharray:203"/>
+<line x1="560" y1="150" x2="770" y2="150" class="edge a63" style="stroke-width:3;stroke-dasharray:211"/>
+<line x1="560" y1="150" x2="770" y2="150" class="edge gone a64" style="stroke-width:3"/>
+<line x1="560" y1="150" x2="755" y2="200" class="edge a67" style="stroke-width:3;stroke-dasharray:203"/>
+<line x1="560" y1="150" x2="710" y2="250" class="edge a69" style="stroke-width:3;stroke-dasharray:182"/>
+<line x1="560" y1="150" x2="770" y2="150" class="edge a71" style="stroke-width:3;stroke-dasharray:211"/>
+<line x1="0" y1="0" x2="-300" y2="-320" class="edge a73" style="stroke-width:3.4;stroke-dasharray:440"/>
+<line x1="-300" y1="-320" x2="-495" y2="-370" class="edge a75" style="stroke-width:3;stroke-dasharray:203"/>
+<line x1="-300" y1="-320" x2="-510" y2="-320" class="edge a77" style="stroke-width:3;stroke-dasharray:211"/>
+<line x1="-300" y1="-320" x2="-495" y2="-270" class="edge a79" style="stroke-width:3;stroke-dasharray:203"/>
+<line x1="0" y1="0" x2="300" y2="-320" class="edge a81" style="stroke-width:3.4;stroke-dasharray:440"/>
+<line x1="300" y1="-320" x2="495" y2="-370" class="edge a83" style="stroke-width:3;stroke-dasharray:203"/>
+<line x1="300" y1="-320" x2="510" y2="-320" class="edge a85" style="stroke-width:3;stroke-dasharray:211"/>
+<line x1="300" y1="-320" x2="495" y2="-270" class="edge a87" style="stroke-width:3;stroke-dasharray:203"/>
+<line x1="0" y1="0" x2="-260" y2="270" class="edge a89" style="stroke-width:3.4;stroke-dasharray:376"/>
+<line x1="-260" y1="270" x2="-390" y2="345" class="edge a91" style="stroke-width:3;stroke-dasharray:152"/>
+<line x1="-260" y1="270" x2="-260" y2="345" class="edge a93" style="stroke-width:3;stroke-dasharray:76"/>
+<line x1="-260" y1="270" x2="-130" y2="345" class="edge a95" style="stroke-width:3;stroke-dasharray:152"/>
+<line x1="0" y1="0" x2="260" y2="270" class="edge a97" style="stroke-width:3.4;stroke-dasharray:376"/>
+<line x1="260" y1="270" x2="130" y2="345" class="edge a99" style="stroke-width:3;stroke-dasharray:152"/>
+<line x1="260" y1="270" x2="260" y2="345" class="edge a101" style="stroke-width:3;stroke-dasharray:76"/>
+<line x1="260" y1="270" x2="390" y2="345" class="edge a103" style="stroke-width:3;stroke-dasharray:152"/>
+<g class="a13"><rect x="149.5" y="78" width="81" height="36" rx="18" class="node gone" style="stroke-width:1.6"/><text x="190" y="101.4" text-anchor="middle" class="label gone" style="font-size:15px">docs</text><text x="190" y="134" text-anchor="middle" class="tag">job done</text></g>
+<g class="a27"><rect x="-828.5" y="-169" width="117" height="38" rx="19" class="node gone" style="stroke-width:2.2"/><text x="-770" y="-143.5" text-anchor="middle" class="label gone" style="font-size:18px">invoices</text></g>
+<g class="a53"><rect x="706.5" y="-119" width="97" height="38" rx="19" class="node gone" style="stroke-width:2.2"/><text x="755" y="-93.5" text-anchor="middle" class="label gone" style="font-size:18px">sync</text></g>
+<g class="a65"><rect x="721.5" y="131" width="97" height="38" rx="19" class="node gone" style="stroke-width:2.2"/><text x="770" y="156.5" text-anchor="middle" class="label gone" style="font-size:18px">perf</text></g>
+<g class="a4"><rect x="-43" y="-111" width="86" height="38" rx="19" class="node you" style="stroke-width:1.6"/><text x="0" y="-86.2" text-anchor="middle" class="label you" style="font-size:16px">you</text></g>
+<g class="a6"><rect x="-43" y="-19" width="86" height="38" rx="19" class="node lead" style="stroke-width:1.6"/><text x="0" y="5.8" text-anchor="middle" class="label lead" style="font-size:16px">lead</text></g>
+<g class="a8"><rect x="-230.5" y="78" width="81" height="36" rx="18" class="node member" style="stroke-width:1.6"/><text x="-190" y="101.4" text-anchor="middle" class="label member" style="font-size:15px">api</text></g>
+<g class="a10"><rect x="-40.5" y="94" width="81" height="36" rx="18" class="node member" style="stroke-width:1.6"/><text x="0" y="117.4" text-anchor="middle" class="label member" style="font-size:15px">web</text></g>
+<g class="a14"><rect x="149.5" y="78" width="81" height="36" rx="18" class="node member" style="stroke-width:1.6"/><text x="190" y="101.4" text-anchor="middle" class="label member" style="font-size:15px">docs</text></g>
+<g class="a16"><rect x="-340.5" y="2" width="81" height="36" rx="18" class="node member" style="stroke-width:1.6"/><text x="-300" y="25.4" text-anchor="middle" class="label member" style="font-size:15px">tests</text></g>
+<g class="a18"><rect x="259.5" y="2" width="81" height="36" rx="18" class="node member" style="stroke-width:1.6"/><text x="300" y="25.4" text-anchor="middle" class="label member" style="font-size:15px">auth</text></g>
+<g class="a20"><rect x="149.5" y="78" width="81" height="36" rx="18" class="node member" style="stroke-width:1.6"/><text x="190" y="101.4" text-anchor="middle" class="label member" style="font-size:15px">design</text></g>
+<g class="a22"><rect x="-664.5" y="-174" width="209" height="48" rx="24" class="node lead" style="stroke-width:2.6"/><text x="-560" y="-142.1" text-anchor="middle" class="label lead" style="font-size:22px">payments lead</text></g>
+<g class="a24"><rect x="-808" y="-219" width="106" height="38" rx="19" class="node member" style="stroke-width:2.2"/><text x="-755" y="-193.5" text-anchor="middle" class="label member" style="font-size:18px">billing</text></g>
+<g class="a28"><rect x="-828.5" y="-169" width="117" height="38" rx="19" class="node member" style="stroke-width:2.2"/><text x="-770" y="-143.5" text-anchor="middle" class="label member" style="font-size:18px">invoices</text></g>
+<g class="a30"><rect x="-808" y="-119" width="106" height="38" rx="19" class="node member" style="stroke-width:2.2"/><text x="-755" y="-93.5" text-anchor="middle" class="label member" style="font-size:18px">refunds</text></g>
+<g class="a32"><rect x="-758.5" y="-269" width="97" height="38" rx="19" class="node member" style="stroke-width:2.2"/><text x="-710" y="-243.5" text-anchor="middle" class="label member" style="font-size:18px">fraud</text></g>
+<g class="a34"><rect x="-818.5" y="-169" width="97" height="38" rx="19" class="node member" style="stroke-width:2.2"/><text x="-770" y="-143.5" text-anchor="middle" class="label member" style="font-size:18px">tax</text></g>
+<g class="a36"><rect x="-651.5" y="126" width="183" height="48" rx="24" class="node lead" style="stroke-width:2.6"/><text x="-560" y="157.9" text-anchor="middle" class="label lead" style="font-size:22px">search lead</text></g>
+<g class="a38"><rect x="-803.5" y="81" width="97" height="38" rx="19" class="node member" style="stroke-width:2.2"/><text x="-755" y="106.5" text-anchor="middle" class="label member" style="font-size:18px">index</text></g>
+<g class="a40"><rect x="-823" y="131" width="106" height="38" rx="19" class="node member" style="stroke-width:2.2"/><text x="-770" y="156.5" text-anchor="middle" class="label member" style="font-size:18px">ranking</text></g>
+<g class="a42"><rect x="-808" y="181" width="106" height="38" rx="19" class="node member" style="stroke-width:2.2"/><text x="-755" y="206.5" text-anchor="middle" class="label member" style="font-size:18px">filters</text></g>
+<g class="a44"><rect x="-763" y="231" width="106" height="38" rx="19" class="node member" style="stroke-width:2.2"/><text x="-710" y="256.5" text-anchor="middle" class="label member" style="font-size:18px">suggest</text></g>
+<g class="a46"><rect x="468.5" y="-174" width="183" height="48" rx="24" class="node lead" style="stroke-width:2.6"/><text x="560" y="-142.1" text-anchor="middle" class="label lead" style="font-size:22px">mobile lead</text></g>
+<g class="a48"><rect x="706.5" y="-219" width="97" height="38" rx="19" class="node member" style="stroke-width:2.2"/><text x="755" y="-193.5" text-anchor="middle" class="label member" style="font-size:18px">ios</text></g>
+<g class="a50"><rect x="717" y="-169" width="106" height="38" rx="19" class="node member" style="stroke-width:2.2"/><text x="770" y="-143.5" text-anchor="middle" class="label member" style="font-size:18px">android</text></g>
+<g class="a54"><rect x="706.5" y="-119" width="97" height="38" rx="19" class="node member" style="stroke-width:2.2"/><text x="755" y="-93.5" text-anchor="middle" class="label member" style="font-size:18px">sync</text></g>
+<g class="a56"><rect x="661.5" y="-269" width="97" height="38" rx="19" class="node member" style="stroke-width:2.2"/><text x="710" y="-243.5" text-anchor="middle" class="label member" style="font-size:18px">push</text></g>
+<g class="a58"><rect x="702" y="-119" width="106" height="38" rx="19" class="node member" style="stroke-width:2.2"/><text x="755" y="-93.5" text-anchor="middle" class="label member" style="font-size:18px">offline</text></g>
+<g class="a60"><rect x="462" y="126" width="196" height="48" rx="24" class="node lead" style="stroke-width:2.6"/><text x="560" y="157.9" text-anchor="middle" class="label lead" style="font-size:22px">quality lead</text></g>
+<g class="a62"><rect x="706.5" y="81" width="97" height="38" rx="19" class="node member" style="stroke-width:2.2"/><text x="755" y="106.5" text-anchor="middle" class="label member" style="font-size:18px">e2e</text></g>
+<g class="a66"><rect x="721.5" y="131" width="97" height="38" rx="19" class="node member" style="stroke-width:2.2"/><text x="770" y="156.5" text-anchor="middle" class="label member" style="font-size:18px">perf</text></g>
+<g class="a68"><rect x="696.5" y="181" width="117" height="38" rx="19" class="node member" style="stroke-width:2.2"/><text x="755" y="206.5" text-anchor="middle" class="label member" style="font-size:18px">security</text></g>
+<g class="a70"><rect x="661.5" y="231" width="97" height="38" rx="19" class="node member" style="stroke-width:2.2"/><text x="710" y="256.5" text-anchor="middle" class="label member" style="font-size:18px">review</text></g>
+<g class="a72"><rect x="721.5" y="131" width="97" height="38" rx="19" class="node member" style="stroke-width:2.2"/><text x="770" y="156.5" text-anchor="middle" class="label member" style="font-size:18px">load</text></g>
+<g class="a74"><rect x="-378" y="-344" width="156" height="48" rx="24" class="node lead" style="stroke-width:2.6"/><text x="-300" y="-312.1" text-anchor="middle" class="label lead" style="font-size:22px">data lead</text></g>
+<g class="a76"><rect x="-553.5" y="-389" width="117" height="38" rx="19" class="node member" style="stroke-width:2.2"/><text x="-495" y="-363.5" text-anchor="middle" class="label member" style="font-size:18px">pipeline</text></g>
+<g class="a78"><rect x="-563" y="-339" width="106" height="38" rx="19" class="node member" style="stroke-width:2.2"/><text x="-510" y="-313.5" text-anchor="middle" class="label member" style="font-size:18px">reports</text></g>
+<g class="a80"><rect x="-548" y="-289" width="106" height="38" rx="19" class="node member" style="stroke-width:2.2"/><text x="-495" y="-263.5" text-anchor="middle" class="label member" style="font-size:18px">exports</text></g>
+<g class="a82"><rect x="208.5" y="-344" width="183" height="48" rx="24" class="node lead" style="stroke-width:2.6"/><text x="300" y="-312.1" text-anchor="middle" class="label lead" style="font-size:22px">growth lead</text></g>
+<g class="a84"><rect x="425.5" y="-389" width="139" height="38" rx="19" class="node member" style="stroke-width:2.2"/><text x="495" y="-363.5" text-anchor="middle" class="label member" style="font-size:18px">onboarding</text></g>
+<g class="a86"><rect x="461.5" y="-339" width="97" height="38" rx="19" class="node member" style="stroke-width:2.2"/><text x="510" y="-313.5" text-anchor="middle" class="label member" style="font-size:18px">emails</text></g>
+<g class="a88"><rect x="442" y="-289" width="106" height="38" rx="19" class="node member" style="stroke-width:2.2"/><text x="495" y="-263.5" text-anchor="middle" class="label member" style="font-size:18px">pricing</text></g>
+<g class="a90"><rect x="-358" y="246" width="196" height="48" rx="24" class="node lead" style="stroke-width:2.6"/><text x="-260" y="277.9" text-anchor="middle" class="label lead" style="font-size:22px">support lead</text></g>
+<g class="a92"><rect x="-443" y="326" width="106" height="38" rx="19" class="node member" style="stroke-width:2.2"/><text x="-390" y="351.5" text-anchor="middle" class="label member" style="font-size:18px">tickets</text></g>
+<g class="a94"><rect x="-308.5" y="326" width="97" height="38" rx="19" class="node member" style="stroke-width:2.2"/><text x="-260" y="351.5" text-anchor="middle" class="label member" style="font-size:18px">chat</text></g>
+<g class="a96"><rect x="-178.5" y="326" width="97" height="38" rx="19" class="node member" style="stroke-width:2.2"/><text x="-130" y="351.5" text-anchor="middle" class="label member" style="font-size:18px">faq</text></g>
+<g class="a98"><rect x="188.5" y="246" width="143" height="48" rx="24" class="node lead" style="stroke-width:2.6"/><text x="260" y="277.9" text-anchor="middle" class="label lead" style="font-size:22px">ops lead</text></g>
+<g class="a100"><rect x="77" y="326" width="106" height="38" rx="19" class="node member" style="stroke-width:2.2"/><text x="130" y="351.5" text-anchor="middle" class="label member" style="font-size:18px">deploys</text></g>
+<g class="a102"><rect x="211.5" y="326" width="97" height="38" rx="19" class="node member" style="stroke-width:2.2"/><text x="260" y="351.5" text-anchor="middle" class="label member" style="font-size:18px">alerts</text></g>
+<g class="a104"><rect x="337" y="326" width="106" height="38" rx="19" class="node member" style="stroke-width:2.2"/><text x="390" y="351.5" text-anchor="middle" class="label member" style="font-size:18px">backups</text></g>
+</g>
+</svg>
