@@ -1,6 +1,6 @@
 ---
 name: team-setup
-description: Use when the user wants work split across parallel Claude Code sessions. Propose a team, create it, give each session a first task and open its tab.
+description: Use when the user wants work split across parallel Claude Code sessions, or a part of it grown into a sub-team: propose the team, create it and open each session.
 ---
 
 # Team setup
@@ -62,6 +62,23 @@ Team <team> is up: <id>, <id> and <id> are working in their own tabs.
 This tab is the lead: ask me for status, new tasks or changes.
 Close a tab to stop that session; teamrig open <id> starts it again.
 ```
+
+## 6. Grow a part of the work into a sub-team
+
+When one part outgrows a single session, or the user asks for a team under this one, propose it as in step 2 (the
+sub-team's id, its sessions and the part it takes on), then, after a yes, in one Bash call:
+
+```
+teamrig team create <sub-team> --sessions <id>,<id> --parent <team> --project "<project>" && teamrig add --session lead --team <sub-team> --tier 2 --title "<the part, in one line>" && teamrig open <sub-team>/lead
+```
+
+- The sub-team gets its own lead and task list in the same project. Its lead splits the task among its sessions and
+  opens them, and brings you the decisions that need the user: you stay the one lead the user talks to.
+- `add --team` hands the task to the sub-team's lead only (it takes no `--owner`): work goes down the tree through
+  each team's lead, and questions come back up the same way.
+- `teamrig team tree` shows the teams, and `teamrig list --session lead --tree` the tasks of this team and every team
+  under it. A tree is at most 3 levels deep, with at most 8 sub-teams under one team; `team create` says when a new
+  one would break that.
 
 ## Traps
 
