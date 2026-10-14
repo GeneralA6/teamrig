@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { renameOf } from '../testing/rename.ts';
 import { isRole, Roster } from './roster.ts';
 
 const CONFIG = {
@@ -58,6 +59,51 @@ describe('Roster', () => {
   it('ignores inherited keys of the names object', () => {
     const roster = new Roster({ sessions: ['constructor'], names: {}, roles: { lead: 'constructor' } }, 'app');
     assert.equal(roster.nameOf('constructor'), 'app-constructor');
+  });
+});
+
+describe('Roster with renames', () => {
+  const renames = [renameOf('alpha', 'app-alpha', 'scout'), renameOf('alpha', 'scout', 'ranger'), renameOf('zulu', 'app-zulu', 'ghost')];
+  const roster = new Roster(CONFIG, 'app', renames);
+
+  it('names a session by its newest rename, and keeps every former name', () => {
+    assert.equal(roster.nameOf('alpha'), 'ranger');
+    assert.deepEqual(roster.formerNamesOf('alpha'), ['app-alpha', 'scout']);
+    assert.deepEqual(roster.formerNamesOf('bravo'), []);
+    assert.equal(roster.describe(), 'lead (team-lead), alpha (ranger), bravo (app-bravo)');
+  });
+
+  it('finds a session by any name it has had', () => {
+    assert.deepEqual(
+      ['ranger', 'scout', 'app-alpha'].map((text) => roster.lookup(text)),
+      [
+        { ok: true, id: 'alpha' },
+        { ok: true, id: 'alpha' },
+        { ok: true, id: 'alpha' },
+      ],
+    );
+  });
+
+  it('gives a name taken over by another session to the session that took it last', () => {
+    const moved = new Roster(CONFIG, 'app', [...renames, renameOf('bravo', 'app-bravo', 'scout')]);
+    assert.deepEqual([moved.lookup('scout'), moved.lookup('app-bravo')], [{ ok: true, id: 'bravo' }, { ok: true, id: 'bravo' }]);
+    assert.deepEqual(moved.formerNamesOf('alpha'), ['app-alpha']);
+  });
+
+  it("prefers a session's current name over another session's former name", () => {
+    const odd = new Roster(CONFIG, 'app', [renameOf('bravo', 'team-lead', 'app-bravo-2')]);
+    assert.deepEqual(odd.lookup('team-lead'), { ok: true, id: 'lead' });
+    assert.equal(odd.allNames().get('team-lead'), 'bravo');
+    assert.deepEqual(odd.idsCalled('team-lead'), ['lead']);
+  });
+
+  it('refuses a name of a session no longer on the team, naming its id', () => {
+    assert.deepEqual(roster.lookup('ghost'), {
+      ok: false,
+      error: 'ghost was the name of zulu, which is no longer on this team (sessions: lead (team-lead), alpha (ranger), bravo (app-bravo))',
+      pastId: 'zulu',
+    });
+    assert.equal(roster.nameOf('zulu'), undefined);
   });
 });
 
