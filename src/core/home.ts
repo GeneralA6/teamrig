@@ -58,6 +58,9 @@ export interface TeamPaths {
   readonly eventsLock: string;
   readonly inbox: string;
   readonly inboxMarks: string;
+  /** The append-only log of session renames, so every name a session has had still finds it. */
+  readonly renames: string;
+  readonly renamesLock: string;
   /** The Claude Code skills folder the skills lint and `--skill` checks read. */
   readonly skills: string;
 }
@@ -87,6 +90,8 @@ export function teamPaths(kitHome: string, team: string, userHome: string, overr
     eventsLock: join(state, 'events.lock'),
     inbox: inHome(overrides.inbox) ?? join(state, 'inbox'),
     inboxMarks: join(state, 'inbox-marks.jsonl'),
+    renames: join(state, 'renames.jsonl'),
+    renamesLock: join(state, 'renames.lock'),
     skills: inHome(overrides.skills) ?? join(userHome, '.claude', 'skills'),
   };
 }

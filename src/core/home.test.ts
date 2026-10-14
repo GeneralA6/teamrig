@@ -40,6 +40,8 @@ describe('teamPaths', () => {
     assert.equal(paths.config, join(TEAM_HOME, 'config.json'));
     assert.equal(paths.events, join(TEAM_HOME, 'state', 'events.jsonl'));
     assert.equal(paths.inbox, join(TEAM_HOME, 'state', 'inbox'));
+    assert.equal(paths.renames, join(TEAM_HOME, 'state', 'renames.jsonl'));
+    assert.equal(paths.renamesLock, join(TEAM_HOME, 'state', 'renames.lock'));
     assert.equal(paths.skills, join(USER_HOME, '.claude', 'skills'));
   });
 
