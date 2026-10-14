@@ -120,14 +120,24 @@ describe('teamrig list|check|plan --tree', () => {
     assert.match(result.stdout.join('\n'), /- \[ \] \*\*web\/T1\*\* Ship login \(lead · from app\/lead\)/);
   });
 
-  it('is for the lead only, and keeps --session for the owner filter without --tree', async () => {
+  it('is for the lead only, named by --session or $TEAMRIG_SESSION', async () => {
     const kit = await seeded();
     const member = await kit.run(['check', '--tree', '--session', 'alpha']);
     assert.deepEqual(member.stdout, ["REFUSED --tree is for the team's lead (app/lead); app/alpha reads its own team's tasks without it"]);
     const noTree = await kit.run(['list', '--tree'], { env: { TEAMRIG_SESSION: 'alpha' } });
     assert.equal(noTree.code, EXIT.refused);
-    const owner = await kit.run(['list', '--tree', '--session', 'alpha'], AS_LEAD);
-    assert.equal(owner.code, EXIT.usage);
-    assert.match(owner.stderr[0] ?? '', /^--session filters one owner of this team's tasks; it does not go with --tree/);
+    const memberFlag = await kit.run(['list', '--tree', '--session', 'alpha'], AS_LEAD);
+    assert.equal(memberFlag.code, EXIT.refused);
+  });
+
+  it('reads --session as the caller with --tree, so a tab without $TEAMRIG_SESSION lists its tree', async () => {
+    const kit = await seeded();
+    const byFlag = await kit.run(['list', '--tree', '--session', 'lead']);
+    const byEnv = await kit.run(['list', '--tree'], AS_LEAD);
+    assert.equal(byFlag.code, EXIT.ok);
+    assert.deepEqual(byFlag.stdout, byEnv.stdout);
+    assert.ok(byFlag.stdout.some((line) => line.startsWith('web/T1 ')));
+    const own = await kit.run(['list', '--session', 'lead']);
+    assert.ok(own.stdout.every((line) => !line.startsWith('web/')));
   });
 });
