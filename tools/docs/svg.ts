@@ -3,8 +3,9 @@
  * frame with its text alternative (role, aria-label and title) and its stylesheet.
  */
 
+/** Escapes text for an element or a double-quoted attribute. Every attribute the pictures write is double-quoted, so an apostrophe stays as it is. */
 export function escapeXml(text: string): string {
-  return text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&apos;');
+  return text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 }
 
 /** GitHub's monospace stack. */
