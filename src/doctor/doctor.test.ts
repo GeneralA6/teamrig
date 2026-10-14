@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Roster } from '../config/roster.ts';
+import { describeNameClash, type NameClash, type TreeProblem } from '../config/tree.ts';
 import { unreadOf } from '../inbox/inbox.ts';
 import { lineHash, type InboxMark } from '../inbox/marks.ts';
 import type { Rename } from '../names/rename.ts';
@@ -20,6 +21,7 @@ function input(overrides: Partial<DoctorInput> & { readonly names?: Record<strin
     renameLog: { path: LOG, renames, unreadable: 0, newer: 0 },
     inboxes: [],
     teamRules: undefined,
+    tree: { problems: [], clashes: [] },
     now: NOW,
     command: 'teamrig',
     ...rest,
@@ -102,6 +104,15 @@ describe('doctorFindings', () => {
     ]);
     const fresh = [unreadOf('bravo', ['- 2030-01-19 09:00 lead: new'], null), unreadOf('alpha', read, markAt('alpha', read, '2030-01-02T09:00:00Z'))];
     assert.deepEqual(lines(input({ inboxes: fresh })), []);
+  });
+
+  it('flags each tree problem and each session name another team uses, with its fix', () => {
+    const problem: TreeProblem = { kind: 'tree-parent', team: 'app', parent: 'gone' };
+    const clash: NameClash = { name: 'app-alpha', holders: [{ team: 'app', id: 'alpha' }, { team: 'web', id: 'front' }] };
+    assert.deepEqual(lines(input({ tree: { problems: [problem], clashes: [clash] } })), [
+      'WARN tree-parent team app names parent gone, which has no team config: create it with `teamrig team create gone`, or fix team.parent',
+      `WARN name-two-teams ${describeNameClash(clash, 'teamrig')}`,
+    ]);
   });
 
   it('flags rules too long to show at session start', () => {

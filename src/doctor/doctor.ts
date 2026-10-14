@@ -1,4 +1,5 @@
 import type { Roster } from '../config/roster.ts';
+import { describeNameClash, describeTreeProblem, type NameClash, type TreeProblem } from '../config/tree.ts';
 import type { KitConfig } from '../config/types.ts';
 import { formatUtcMinute, MS_PER_DAY, parseUtcDeadline, shortUtc } from '../core/time.ts';
 import { unreadSince, type Unread } from '../inbox/inbox.ts';
@@ -18,9 +19,21 @@ export const UNREAD_INBOX_DAYS = 7;
  * - `rename-log`: damaged or newer lines in the rename log;
  * - `inbox-orphan`: an inbox no session on the team reads;
  * - `inbox-unread`: unread lines and no read for over `UNREAD_INBOX_DAYS` days;
- * - `rules-long`: a rules.md longer than a session is shown at start.
+ * - `rules-long`: a rules.md longer than a session is shown at start;
+ * - `tree-id`, `tree-parent`, `tree-loop`, `tree-depth`, `tree-children`: a broken link in the
+ *   team's tree of teams (see `TreeProblem`);
+ * - `name-two-teams`: a session name this team shares with another team, though names are machine-wide.
  */
-export type FindingKind = 'name-gone' | 'name-shared' | 'name-config' | 'rename-log' | 'inbox-orphan' | 'inbox-unread' | 'rules-long';
+export type FindingKind =
+  | 'name-gone'
+  | 'name-shared'
+  | 'name-config'
+  | 'rename-log'
+  | 'inbox-orphan'
+  | 'inbox-unread'
+  | 'rules-long'
+  | TreeProblem['kind']
+  | 'name-two-teams';
 
 export interface Finding {
   readonly kind: FindingKind;
@@ -36,6 +49,8 @@ export interface DoctorInput {
   readonly inboxes: readonly Unread[];
   /** The team's rules.md and its length, when it exists. */
   readonly teamRules: { readonly path: string; readonly chars: number } | undefined;
+  /** The problems of the team's tree of teams, and the session names it shares with other teams. */
+  readonly tree: { readonly problems: readonly TreeProblem[]; readonly clashes: readonly NameClash[] };
   readonly now: Date;
   /** The CLI name the fixes tell the user to run. */
   readonly command: string;
@@ -138,12 +153,27 @@ function rulesFindings(input: DoctorInput): Finding[] {
   return [{ kind: 'rules-long', detail }];
 }
 
+function treeFindings({ tree, command }: DoctorInput): Finding[] {
+  return [
+    ...tree.problems.map((problem): Finding => ({ kind: problem.kind, detail: describeTreeProblem(problem, command) })),
+    ...tree.clashes.map((clash): Finding => ({ kind: 'name-two-teams', detail: describeNameClash(clash, command) })),
+  ];
+}
+
 /**
  * The team's health checks: names that find the wrong session or none, a damaged rename log,
- * inboxes nobody reads, and rules too long to show. It reads only; every fix is the user's.
+ * inboxes nobody reads, rules too long to show, and a broken tree of teams or a session name two
+ * teams use. It reads only; every fix is the user's.
  */
 export function doctorFindings(input: DoctorInput): Finding[] {
-  return [...nameFindings(input.roster, input.command), ...configFindings(input), ...renameLogFindings(input), ...inboxFindings(input), ...rulesFindings(input)];
+  return [
+    ...nameFindings(input.roster, input.command),
+    ...configFindings(input),
+    ...renameLogFindings(input),
+    ...inboxFindings(input),
+    ...rulesFindings(input),
+    ...treeFindings(input),
+  ];
 }
 
 export function formatFinding(finding: Finding): string {
