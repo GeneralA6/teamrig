@@ -35,7 +35,7 @@ describe('checkTasks', () => {
   it('flags tasks with no event for the stale window', () => {
     const old = testTask({ ownerSeenAt: '2030-01-07T08:00:00.000Z', updatedAt: '2030-01-07T11:00:00.000Z', updatedBy: 'bravo' });
     const flags = checkTasks([old], NOW, null, CONFIG);
-    assert.deepEqual(flags.map(formatFlag), ['STALE (last event 01-07 11:00 by bravo) T1 t2 open alpha src lead | Add a health check']);
+    assert.deepEqual(flags.map(formatFlag), ['STALE (last event 01-07 11:00 by bravo) T1 open, tier 2, owner alpha, from lead | Add a health check']);
   });
 
   it('flags owner orders and tasks due this week that are outside the week plan', () => {

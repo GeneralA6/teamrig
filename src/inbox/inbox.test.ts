@@ -68,11 +68,11 @@ describe('readInbox', () => {
       claudeSession: SESSION,
       lastLineHash: lineHash(LINES[2] ?? ''),
     });
-    assert.equal(formatRead(first), 'READ alpha: the 3 line(s) above, read to line 3; the reminder hook follows this session');
+    assert.equal(formatRead(first), 'READ alpha: 3 new lines, shown above; new ones are shown at your next prompt');
 
     const second = await readInbox(deps, { area: 'alpha', claudeSession: null, now: NOW });
     assert.deepEqual(second.unread.lines, []);
-    assert.match(formatRead(second), /nothing new.*no Claude Code session id here/);
+    assert.match(formatRead(second), /^READ alpha: nothing new; outside Claude Code, so no prompt will remind you of new ones$/);
     assert.equal(files.get(MARKS)?.trim().split('\n').length, 2);
   });
 
@@ -80,17 +80,19 @@ describe('readInbox', () => {
     const { deps } = setup();
     const empty = await readInbox(deps, { area: 'alpha', claudeSession: SESSION, now: NOW });
     assert.deepEqual([empty.unread.lines, empty.mark.line, empty.mark.lastLineHash], [[], 0, null]);
-    assert.equal(formatRead(empty), 'READ alpha: nothing new, read to line 0; the reminder hook follows this session');
+    assert.equal(formatRead(empty), 'READ alpha: nothing new; new ones are shown at your next prompt');
 
     await deps.inboxes.append('alpha', LINES[0] ?? '');
-    assert.equal(await reminderFor(deps, SESSION, 'teamrig'), `INBOX: 1 unread line(s) in ${DIR}/alpha.md since 01-07 09:00. Read them with: teamrig inbox read --session alpha`);
+    assert.equal(await reminderFor(deps, 'alpha', 'teamrig'), `INBOX: 1 unread line(s) in ${DIR}/alpha.md since 01-07 09:00. Read them with: teamrig inbox read --session alpha`);
   });
 });
 
 describe('inboxStatus and reminderFor', () => {
-  it('reports unread lines per area and reminds the session that last read', async () => {
+  it('reports unread lines per area and reminds from the last read on', async () => {
     const { deps } = setup({ [`${DIR}/alpha.md`]: LINES.slice(0, 2).join('\n'), [`${DIR}/bravo.md`]: '', [`${DIR}/notes.txt`]: 'x' });
-    assert.equal(await reminderFor(deps, SESSION, 'teamrig'), undefined, 'no area known for the session yet');
+    assert.equal(await reminderFor(deps, 'charlie', 'teamrig'), undefined, 'no inbox file');
+    assert.equal(await reminderFor(deps, 'bravo', 'teamrig'), undefined, 'nothing unread');
+    assert.match(await reminderFor(deps, 'alpha', 'teamrig') ?? '', /^INBOX: 2 unread line\(s\) .* since 01-07 09:00\./, 'never read: every line is new');
     await readInbox(deps, { area: 'alpha', claudeSession: SESSION, now: NOW });
     await deps.inboxes.append('alpha', LINES[2] ?? '');
 
@@ -99,7 +101,7 @@ describe('inboxStatus and reminderFor', () => {
       'bravo 0 unread (never marked read)',
     ]);
     assert.equal(
-      await reminderFor(deps, SESSION, 'teamrig'),
+      await reminderFor(deps, 'alpha', 'teamrig'),
       'INBOX: 1 unread line(s) in state/inbox/alpha.md since 01-07 11:00. Read them with: teamrig inbox read --session alpha',
     );
   });
