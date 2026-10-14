@@ -197,6 +197,29 @@ describe('parseConfig', () => {
     assert.deepEqual(bad.config.open, DEFAULT_OPEN);
   });
 
+  it('reads where the team sits in a tree, and leaves it unset in an older config', () => {
+    assert.equal(parseConfig(ROSTER).config.team, undefined);
+    assert.deepEqual(parseConfig({ ...ROSTER, team: { id: 'web' } }).config.team, { id: 'web' });
+    const child = parseConfig({ ...ROSTER, team: { id: 'web', parent: 'app' } });
+    assert.deepEqual(child.issues, []);
+    assert.deepEqual(child.config.team, { id: 'web', parent: 'app' });
+  });
+
+  it('refuses a team section that is not an object, has no id, or names itself or a bad id as parent', () => {
+    const notObject = parseConfig({ ...ROSTER, team: 'web' });
+    assert.deepEqual(paths(notObject.issues), ['team']);
+    assert.equal(notObject.config.team, undefined);
+    const noId = parseConfig({ ...ROSTER, team: { parent: 'app' } });
+    assert.deepEqual(paths(noId.issues), ['team.id']);
+    assert.equal(noId.config.team, undefined);
+    const itself = parseConfig({ ...ROSTER, team: { id: 'web', parent: 'web' } });
+    assert.deepEqual(itself.issues, [{ path: 'team.parent', message: 'is the team itself; a root team has no parent' }]);
+    assert.deepEqual(itself.config.team, { id: 'web' });
+    const bad = parseConfig({ ...ROSTER, team: { id: 'web', parent: 'App/Lead' } });
+    assert.deepEqual(paths(bad.issues), ['team.parent']);
+    assert.deepEqual(bad.config.team, { id: 'web' });
+  });
+
   it('ignores keys it does not know, including $schema', () => {
     const { issues } = parseConfig({ ...ROSTER, $schema: './config.schema.json', futureKey: { any: 1 } });
     assert.deepEqual(issues, []);

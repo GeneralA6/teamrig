@@ -12,6 +12,7 @@ const ROSTER_KEYS = new Set(['sessions', 'roles']);
 /** Sets every optional key, so walking it visits every key the parser reads. */
 const EVERY_KEY = {
   ...ROSTER,
+  team: { id: 'web', parent: 'app' },
   names: { alpha: 'team-lead' },
   roles: { lead: 'alpha', coordinatorOwner: 'bravo' },
   register: { goalPattern: '^G\\d+$' },
