@@ -1,0 +1,60 @@
+import { join } from 'node:path';
+import type { Files } from '../core/files.ts';
+import type { TeamPaths } from '../core/home.ts';
+import { formatRefreshRequest, formatRefreshState, parseRefreshRequest, parseRefreshState, type RefreshRequest, type RefreshState } from './state.ts';
+
+/**
+ * Each session's refresh files. The state (`<id>.json`) is written only by the session itself, from
+ * its commands and hooks; the lead's request (`<id>.request.json`) is a file of its own, so neither
+ * write ever overwrites the other's. Ids are session ids, checked by the roster, so they are safe in a path.
+ */
+export class RefreshStore {
+  private readonly files: Files;
+  private readonly paths: Pick<TeamPaths, 'refresh' | 'handover'>;
+
+  constructor(files: Files, paths: Pick<TeamPaths, 'refresh' | 'handover'>) {
+    this.files = files;
+    this.paths = paths;
+  }
+
+  /** Where the session writes its handover before a refresh. */
+  handoverPath(id: string): string {
+    return join(this.paths.handover, `${id}.md`);
+  }
+
+  /** The handover's text; undefined when the session has not written one. */
+  handover(id: string): Promise<string | undefined> {
+    return this.files.read(this.handoverPath(id));
+  }
+
+  /** The session's state; undefined when it has none, or the file is damaged or from another format. */
+  async state(id: string): Promise<RefreshState | undefined> {
+    const text = await this.files.read(this.statePath(id));
+    return text === undefined ? undefined : parseRefreshState(text);
+  }
+
+  setState(id: string, state: RefreshState): Promise<void> {
+    return this.files.write(this.statePath(id), formatRefreshState(state));
+  }
+
+  async request(id: string): Promise<RefreshRequest | undefined> {
+    const text = await this.files.read(this.requestPath(id));
+    return text === undefined ? undefined : parseRefreshRequest(text);
+  }
+
+  setRequest(id: string, request: RefreshRequest): Promise<void> {
+    return this.files.write(this.requestPath(id), formatRefreshRequest(request));
+  }
+
+  clearRequest(id: string): Promise<void> {
+    return this.files.remove(this.requestPath(id));
+  }
+
+  private statePath(id: string): string {
+    return join(this.paths.refresh, `${id}.json`);
+  }
+
+  private requestPath(id: string): string {
+    return join(this.paths.refresh, `${id}.request.json`);
+  }
+}
