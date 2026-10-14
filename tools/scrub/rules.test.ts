@@ -81,4 +81,14 @@ describe('generic scrub rules', () => {
   it('accepts a secret-like name bound to a placeholder', () => {
     assert.deepEqual(ruleIds(join('token', ': "', '${user_config.TOKEN}', '"')), []);
   });
+
+  it('fails closed on a match without its captured part: no allow check accepts it', () => {
+    const bare = /x/.exec('x');
+    assert.ok(bare !== null);
+    for (const id of ['home-path', 'email', 'assigned-secret']) {
+      const isAllowed = GENERIC_RULES.find((rule) => rule.id === id)?.isAllowed;
+      assert.ok(isAllowed !== undefined, id);
+      assert.equal(isAllowed(bare), false, id);
+    }
+  });
 });
