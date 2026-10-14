@@ -198,6 +198,60 @@ describe('runCli: config', () => {
   });
 });
 
+describe('runCli: session names', () => {
+  const NAMED: JsonRecord = { ...TEAM, names: { lead: 'team-lead' }, roles: { lead: 'lead', coordinatorOwner: 'alpha' } };
+
+  it('takes a name wherever it takes a session, and keys everything by id', async () => {
+    const kit = new Harness(NAMED);
+    const posted = await kit.run(['inbox', 'add', '--to', 'team-lead', '--text', 'ready', '--session', 'app-alpha']);
+    assert.match(posted.stdout[0] ?? '', /^POSTED to lead: /);
+    const read = await kit.run(['inbox', 'read', '--session', 'team-lead']);
+    assert.deepEqual(read.stdout[0], '- 2030-01-08 10:00 alpha: ready');
+
+    const added = await kit.run(['add', '--title', 'Ship the names', '--tier', '2', '--owner', 'app-bravo', '--session', 'team-lead']);
+    assert.equal(added.code, EXIT.ok, added.stdout.join('\n'));
+    const byName = await kit.run(['list', '--session', 'app-bravo']);
+    assert.deepEqual(byName.stdout, (await kit.run(['list', '--session', 'bravo'])).stdout);
+    assert.equal(byName.stdout.length, 1);
+    const set = await kit.run(['set', 'T1', '--status', 'in-progress', '--session', 'app-bravo']);
+    assert.equal(set.code, EXIT.ok, set.stdout.join('\n'));
+  });
+
+  it('refuses a name the team does not use', async () => {
+    const result = await new Harness(NAMED).run(['inbox', 'add', '--to', 'app-lead', '--text', 'hi', '--session', 'alpha']);
+    assert.deepEqual(
+      [result.code, result.stdout[0]],
+      [EXIT.refused, 'REFUSED app-lead is not a session on this team (sessions: lead (team-lead), alpha (app-alpha), bravo (app-bravo))'],
+    );
+  });
+
+  it('still filters by the id of a session no longer on the team, but not by an unknown name', async () => {
+    const kit = new Harness(NAMED);
+    assert.deepEqual(await kit.run(['list', '--session', 'zulu']), { code: EXIT.ok, stdout: [], stderr: [] });
+    assert.match((await kit.run(['inbox', 'status', '--session', 'zulu'])).stdout[0] ?? '', /^INBOX no inbox for zulu in /);
+    const long = await kit.run(['list', '--session', 'app-a-name-longer-than-any-session-id']);
+    assert.equal(long.code, EXIT.refused);
+  });
+
+  it('prints who to message, by id, name or role, or the whole roster', async () => {
+    const kit = new Harness(NAMED);
+    const names = await Promise.all(['lead', 'team-lead', 'coordinatorOwner', 'bravo'].map((text) => kit.run(['who', text])));
+    assert.deepEqual(
+      names.map((result) => result.stdout),
+      [['team-lead'], ['team-lead'], ['app-alpha'], ['app-bravo']],
+    );
+    assert.deepEqual((await kit.run(['who'])).stdout, ['lead team-lead (lead)', 'alpha app-alpha (coordinatorOwner)', 'bravo app-bravo']);
+  });
+
+  it('refuses who for a role nobody holds or a stranger', async () => {
+    const kit = new Harness();
+    const role = await kit.run(['who', 'coordinatorOwner']);
+    assert.deepEqual([role.code, role.stdout[0]], [EXIT.refused, 'REFUSED no session holds the coordinatorOwner role']);
+    assert.equal((await kit.run(['who', 'zulu'])).code, EXIT.refused);
+    assert.equal((await kit.run(['who', 'a', 'b'])).code, EXIT.usage);
+  });
+});
+
 describe('runCli: inboxes', () => {
   it('posts a line, reads it once, then has nothing new', async () => {
     const kit = new Harness();
@@ -223,7 +277,10 @@ describe('runCli: inboxes', () => {
     assert.equal(result.code, EXIT.refused);
     assert.match(result.stdout[0] ?? '', /^REFUSED zulu is not a session on this team/);
     const read = await kit.run(['inbox', 'read', '--session', 'zulu']);
-    assert.deepEqual([read.code, read.stdout[0]], [EXIT.refused, 'REFUSED zulu is not a session on this team (sessions: lead, alpha, bravo)']);
+    assert.deepEqual(
+      [read.code, read.stdout[0]],
+      [EXIT.refused, 'REFUSED zulu is not a session on this team (sessions: lead (app-lead), alpha (app-alpha), bravo (app-bravo))'],
+    );
   });
 
   it('reminds the Claude Code session that last read an inbox of new lines', async () => {
@@ -272,6 +329,38 @@ describe('runCli: hook push-guard', () => {
   });
 });
 
+describe('runCli: hook session-start', () => {
+  function contextOf(result: Result): string {
+    assert.equal(result.stdout.length, 1);
+    const parsed: unknown = JSON.parse(result.stdout[0] ?? '');
+    assert.ok(typeof parsed === 'object' && parsed !== null && 'hookSpecificOutput' in parsed);
+    const output = parsed.hookSpecificOutput;
+    assert.ok(typeof output === 'object' && output !== null && 'additionalContext' in output);
+    return String(output.additionalContext);
+  }
+
+  it("loads the core rules, the session's identity and the team's rules", async () => {
+    const kit = new Harness({ ...TEAM, names: { lead: 'team-lead' } });
+    await kit.files.write(join(KIT, 'teams', 'app', 'rules.md'), 'Ship small.');
+    const result = await kit.run(['hook', 'session-start'], { env: { TEAMRIG_SESSION: 'app-alpha' }, stdin: JSON.stringify({ cwd: APP }) });
+    assert.equal(result.code, EXIT.ok);
+    const text = contextOf(result);
+    assert.match(text, /^# Team rules \(teamrig core\)/);
+    assert.ok(text.includes('You are the `alpha` session of team `app` (name `app-alpha`). Message the lead as `team-lead`.'));
+    assert.ok(text.endsWith("# Your team's rules\nShip small."));
+  });
+
+  it('says why no rules load without a team config', async () => {
+    const text = contextOf(await new Harness(null).run(['hook', 'session-start']));
+    assert.equal(text, `teamrig is enabled here but team app has no config at ${CONFIG_PATH}, so no team rules are loaded. Write one (see the README), then run: teamrig config validate`);
+  });
+
+  it('turns a broken pointer into one line of context', async () => {
+    const text = contextOf(await new Harness(TEAM, '{"team": 7}').run(['hook', 'session-start']));
+    assert.equal(text, `teamrig: no team, so no team rules: ${POINTER} has no "team" text; expected {"team": "<id>"}`);
+  });
+});
+
 describe('runCli: which team', () => {
   const VALID = { code: EXIT.ok, stdout: [`VALID ${CONFIG_PATH}`], stderr: [] };
   const SILENT = { code: EXIT.ok, stdout: [], stderr: [] };
@@ -305,10 +394,11 @@ describe('runCli: which team', () => {
     assert.deepEqual([result.code, result.stdout], [EXIT.refused, [`REFUSED ${POINTER} is not JSON; expected {"team": "<id>"}`]]);
   });
 
-  it('keeps both hooks silent outside every team project', async () => {
+  it('keeps every hook silent outside every team project', async () => {
     const kit = new Harness(TEAM, null);
     assert.deepEqual(await kit.run(['hook', 'push-guard'], { stdin: bash('git push --force origin main') }), SILENT);
     assert.deepEqual(await kit.run(['hook', 'inbox-reminder'], { stdin: JSON.stringify({ session_id: CLAUDE_SESSION }) }), SILENT);
+    assert.deepEqual(await kit.run(['hook', 'session-start'], { stdin: JSON.stringify({ cwd: APP }) }), SILENT);
   });
 
   it("finds a hook's team from the payload's folder, not where the hook process started", async () => {

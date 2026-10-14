@@ -1,14 +1,16 @@
 import { ENV, type Env } from '../core/home.ts';
+import { NAME_PATTERN, NAME_RULE } from '../core/ids.ts';
 import { parseUtcDeadline, parseUtcDay } from '../core/time.ts';
 import type { TaskFields } from '../register/events.ts';
-import { isTaskStatus, SESSION_NAME, TASK_ID, TASK_STATUSES, type TaskStatus } from '../register/model.ts';
+import { isTaskStatus, TASK_ID, TASK_STATUSES, type TaskStatus } from '../register/model.ts';
 import type { AddInput, StatusInput } from '../register/policy.ts';
 import type { ListFilter } from '../register/views.ts';
 import { requiredFlag, UsageError, type Flags } from './args.ts';
 
 /**
  * Flag text to register inputs. Only the shape is checked here (a number, a list, a date); the
- * register's policy judges the values against the team config, so each rule has one home.
+ * command resolves session names to ids against the roster, and the register's policy judges the
+ * values against the team config, so each rule has one home.
  */
 
 /** `none` clears an optional field on `update` and selects "no week plan" on `list`. */
@@ -16,9 +18,13 @@ export const NONE = 'none';
 
 type Mutable<T> = { -readonly [Key in keyof T]: T[Key] };
 
-export function sessionName(flag: string, value: string): string {
-  if (!SESSION_NAME.test(value)) {
-    throw new UsageError(`${flag} "${value}" is not a session name (a lowercase letter, then up to 31 of a-z, 0-9, -)`);
+/**
+ * A session's id or current name, shape only; the command resolves it to the id against the roster.
+ * Every id also has a name's shape, so one pattern covers both.
+ */
+export function sessionRef(flag: string, value: string): string {
+  if (!NAME_PATTERN.test(value)) {
+    throw new UsageError(`${flag} "${value}" is not a session id or name (${NAME_RULE})`);
   }
   return value;
 }
@@ -29,7 +35,7 @@ export function callerOf(flags: Flags, env: Env): string {
   if (name === undefined || name === '') {
     throw new UsageError(`--session (or $${ENV.session}) is required`);
   }
-  return sessionName('--session', name);
+  return sessionRef('--session', name);
 }
 
 export function taskIdOf(text: string): string {
@@ -151,7 +157,7 @@ export function listFilterOf(flags: Flags): ListFilter {
   const filter: Mutable<ListFilter> = {};
   const owner = flags.get('session');
   if (owner !== undefined) {
-    filter.owner = sessionName('--session', owner);
+    filter.owner = sessionRef('--session', owner);
   }
   const status = flags.get('status');
   if (status !== undefined) {

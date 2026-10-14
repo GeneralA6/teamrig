@@ -17,6 +17,7 @@ const registerCommands = () => import('./commands/register.ts');
 const inboxCommands = () => import('./commands/inbox.ts');
 const configCommands = () => import('./commands/config.ts');
 const hookCommands = () => import('./commands/hook.ts');
+const teamCommands = () => import('./commands/team.ts');
 
 const TASK_FIELDS = ['title', 'owner', 'ref', 'tier', 'due', 'goals', 'week'];
 
@@ -35,15 +36,17 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'inbox read': { flags: ['session'], load: async () => (await inboxCommands()).read },
   'inbox status': { flags: ['session'], load: async () => (await inboxCommands()).status },
   'inbox add': { flags: ['session', 'to', 'text'], load: async () => (await inboxCommands()).add },
+  who: { flags: [], load: async () => (await teamCommands()).who },
   'config validate': { flags: [], load: async () => (await configCommands()).validate },
   'config migrate': { flags: [], load: async () => (await configCommands()).migrate },
   'hook push-guard': { flags: [], load: async () => (await hookCommands()).pushGuard },
   'hook inbox-reminder': { flags: [], load: async () => (await hookCommands()).inboxReminder },
+  'hook session-start': { flags: [], load: async () => (await hookCommands()).sessionStart },
 };
 
 const COMMAND_FLAGS: CommandFlags = Object.fromEntries(Object.entries(COMMANDS).map(([name, spec]) => [name, spec.flags]));
 
-export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <name>, else $${ENV.session})
+export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|name>, else ${ENV.session})
   add --title "<one line>" --tier <n> [--ref <where it was asked>] [--owner <session>]
       [--source <session>|<owner source>] [--due <date>] [--goals a,b] [--week <date>]
   set <id> --status open|in-progress|blocked|done|dropped [--note "<what/why>"] [--evidence <proof>]
@@ -57,10 +60,12 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <name>,
   plan [--week <date>]         the week plan (default: the newest week that has started)
   inbox read [--session <area>]     prints the unread lines and marks them read
   inbox status [--session <area>]   unread lines per area
-  inbox add --to <session> --text "<one line>"
+  inbox add --to <id|name> --text "<one line>"
+  who [<id|name|role>]         the name to message a session by (no argument: every session)
   config validate | config migrate
-  hook push-guard | hook inbox-reminder    (run by Claude Code with the hook JSON on stdin)
-Team: $${ENV.team}, else the nearest ${TEAM_POINTER} ({"team": "<id>"}) above the current folder.
+  hook push-guard | hook inbox-reminder | hook session-start   (run by Claude Code, hook JSON on stdin)
+Team: ${ENV.team}, else the nearest ${TEAM_POINTER} ({"team": "<id>"}) above the current folder.
+Sessions: give an id or a current name; a session not named in the config is <team>-<id>.
 Dates: YYYY-MM-DD or "YYYY-MM-DD HH:MM", UTC. Kit home: $${ENV.home}, else ~/.${KIT_NAME}.
 Exit: 0 done, 1 failed, 2 refused by a team rule, 64 a command line it cannot read.`;
 

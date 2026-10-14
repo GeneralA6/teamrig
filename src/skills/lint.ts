@@ -57,7 +57,7 @@ export function descriptionOf(front: string): string | null {
   return text === '' ? null : text;
 }
 
-/** A skill's area: the longest session name (or shared prefix) it starts with, else its first word. */
+/** A skill's area: the longest session id (or shared prefix) it starts with, else its first word. */
 export function areaOf(name: string, areas: readonly string[]): string {
   const match = areas.filter((area) => name.startsWith(`${area}-`)).sort((a, b) => b.length - a.length)[0];
   return match ?? name.split('-')[0] ?? name;

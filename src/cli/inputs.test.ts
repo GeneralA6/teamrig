@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { TASK_STATUSES } from '../register/model.ts';
 import { UsageError } from './args.ts';
-import { addInputOf, callerOf, changesOf, listFilterOf, sessionName, statusInputOf, taskIdOf, weekOf } from './inputs.ts';
+import { addInputOf, callerOf, changesOf, listFilterOf, sessionRef, statusInputOf, taskIdOf, weekOf } from './inputs.ts';
 
 const flags = (entries: Readonly<Record<string, string>>): ReadonlyMap<string, string> => new Map(Object.entries(entries));
 
@@ -15,7 +15,8 @@ describe('names and ids', () => {
   });
 
   it('refuses a malformed session name or task id', () => {
-    assert.throws(() => sessionName('--to', 'Alpha'), /--to "Alpha" is not a session name/);
+    assert.throws(() => sessionRef('--to', 'Alpha'), /--to "Alpha" is not a session id or name/);
+    assert.equal(sessionRef('--to', 'app-a-name-longer-than-thirty-two-characters'), 'app-a-name-longer-than-thirty-two-characters');
     assert.throws(() => callerOf(flags({ session: '9lives' }), {}), UsageError);
     assert.equal(taskIdOf('T12'), 'T12');
     assert.throws(() => taskIdOf('12'), /"12" is not a task id like T12/);

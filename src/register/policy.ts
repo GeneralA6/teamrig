@@ -151,7 +151,7 @@ export class RegisterPolicy {
       return `owner ${fields.owner} is not a session on this team`;
     }
     if (fields.source !== register.ownerSource && !SESSION_NAME.test(fields.source)) {
-      return `source ${fields.source} is neither a session name nor ${register.ownerSource}`;
+      return `source ${fields.source} is neither a session id nor ${register.ownerSource}`;
     }
     if (!register.tiers.some((tier) => tier.id === fields.tier)) {
       return `tier ${fields.tier} is not one of ${register.tiers.map((tier) => tier.id).join(', ')}`;

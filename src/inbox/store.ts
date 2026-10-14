@@ -7,7 +7,7 @@ import { parseMark, type InboxMark } from './marks.ts';
 
 const SUFFIX = '.md';
 
-/** Inboxes as `<dir>/<area>.md`. Area names must be session names, so none can escape the folder. */
+/** Inboxes as `<dir>/<area>.md`. Area names must be session ids, so none can escape the folder. */
 export class InboxDir implements Inboxes {
   private readonly files: Files;
   private readonly dir: string;
@@ -35,7 +35,7 @@ export class InboxDir implements Inboxes {
 
   async append(area: string, line: string): Promise<void> {
     if (!SESSION_NAME.test(area)) {
-      throw new Error(`${area} is not a session name`);
+      throw new Error(`${area} is not a session id`);
     }
     const path = this.pathOf(area);
     const current = await this.files.read(path);

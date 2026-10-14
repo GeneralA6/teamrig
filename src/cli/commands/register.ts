@@ -1,23 +1,26 @@
+import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import type { TeamPaths } from '../../core/home.ts';
 import { FileLock } from '../../core/lock.ts';
 import { checkTasks, currentWeek, formatFlag } from '../../register/check.ts';
+import type { TaskFields } from '../../register/events.ts';
 import { renderPlan } from '../../register/plan.ts';
-import { RegisterPolicy, type Verdict } from '../../register/policy.ts';
+import { RegisterPolicy, type AddInput, type Verdict } from '../../register/policy.ts';
 import { Register, type RegisterSnapshot, type WriteResult } from '../../register/register.ts';
 import { JsonlEventLog } from '../../register/store.ts';
-import { formatTask, formatTaskDetail, selectTasks } from '../../register/views.ts';
+import { formatTask, formatTaskDetail, selectTasks, type ListFilter } from '../../register/views.ts';
 import { formatSkillFlag, lintSkills } from '../../skills/lint.ts';
 import { SkillDir } from '../../skills/store.ts';
 import { noPositionals, onePositional, type ParsedArgs } from '../args.ts';
 import { addInputOf, callerOf, changesOf, listFilterOf, statusInputOf, taskIdOf, weekOf } from '../inputs.ts';
-import { openTeamKit, requireConfig, type Access } from '../kit.ts';
+import { openTeamKit, pastOrPresentIdOf, requireConfig, rosterOf, sessionIdOf, type Access } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 
 interface Team {
   readonly config: KitConfig;
   readonly paths: TeamPaths;
   readonly register: Register;
+  readonly roster: Roster;
 }
 
 async function openTeam(runtime: CliRuntime, access: Access): Promise<Team> {
@@ -31,7 +34,25 @@ async function openTeam(runtime: CliRuntime, access: Access): Promise<Team> {
     policy: new RegisterPolicy(config),
     skills: new SkillDir(files, kit.paths.skills),
   });
-  return { config, paths: kit.paths, register };
+  return { config, paths: kit.paths, register, roster: rosterOf(kit, config) };
+}
+
+/** The owner as an id; a source naming a session becomes its id, the owner's marker or a past session's id stays. */
+function addInputIds(team: Team, input: AddInput): AddInput {
+  const source = input.source === team.config.register.ownerSource ? input.source : pastOrPresentIdOf(team.roster, input.source);
+  return { ...input, owner: sessionIdOf(team.roster, input.owner), source };
+}
+
+function changeIds(roster: Roster, changes: Partial<TaskFields>): Partial<TaskFields> {
+  return changes.owner === undefined ? changes : { ...changes, owner: sessionIdOf(roster, changes.owner) };
+}
+
+function filterIds(roster: Roster, filter: ListFilter): ListFilter {
+  return {
+    ...filter,
+    ...(filter.owner === undefined ? {} : { owner: pastOrPresentIdOf(roster, filter.owner) }),
+    ...(filter.source === undefined ? {} : { source: pastOrPresentIdOf(roster, filter.source) }),
+  };
 }
 
 function report(runtime: CliRuntime, verdict: Verdict<WriteResult>, verb: string): ExitCode {
@@ -64,31 +85,33 @@ export async function add(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
   noPositionals(args);
   const caller = callerOf(args.flags, runtime.env);
   const input = addInputOf(args.flags, caller);
-  const { register } = await openTeam(runtime, 'write');
-  return report(runtime, await register.add(caller, input), 'ADDED');
+  const team = await openTeam(runtime, 'write');
+  const by = sessionIdOf(team.roster, caller);
+  return report(runtime, await team.register.add(by, addInputIds(team, input)), 'ADDED');
 }
 
 export async function set(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const id = taskIdOf(onePositional(args, 'id'));
   const caller = callerOf(args.flags, runtime.env);
   const input = statusInputOf(args.flags);
-  const { register } = await openTeam(runtime, 'write');
-  return report(runtime, await register.setStatus(caller, id, input), 'SET');
+  const { register, roster } = await openTeam(runtime, 'write');
+  return report(runtime, await register.setStatus(sessionIdOf(roster, caller), id, input), 'SET');
 }
 
 export async function update(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const id = taskIdOf(onePositional(args, 'id'));
   const caller = callerOf(args.flags, runtime.env);
   const changes = changesOf(args.flags);
-  const { register } = await openTeam(runtime, 'write');
-  return report(runtime, await register.update(caller, id, changes, args.flags.get('note')), 'UPDATED');
+  const { register, roster } = await openTeam(runtime, 'write');
+  const by = sessionIdOf(roster, caller);
+  return report(runtime, await register.update(by, id, changeIds(roster, changes), args.flags.get('note')), 'UPDATED');
 }
 
 export async function list(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
   const filter = listFilterOf(args.flags);
-  const { snapshot } = await readTeam(runtime);
-  for (const task of selectTasks(snapshot.state.tasks.values(), filter)) {
+  const { team, snapshot } = await readTeam(runtime);
+  for (const task of selectTasks(snapshot.state.tasks.values(), filterIds(team.roster, filter))) {
     runtime.out.stdout(formatTask(task));
   }
   return EXIT.ok;

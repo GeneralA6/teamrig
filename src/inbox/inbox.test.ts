@@ -117,7 +117,7 @@ describe('postLine', () => {
   it('refuses bad areas, multi-line text and secrets', async () => {
     const { deps } = setup();
     const post = (to: string, text: string) => postLine(deps.inboxes, secrets, { to, from: 'alpha', text, now: NOW });
-    assert.match((await post('../etc', 'x')) ?? '', /not a session name/);
+    assert.match((await post('../etc', 'x')) ?? '', /not a session id/);
     assert.match((await post('bravo', 'one\ntwo')) ?? '', /one non-empty line/);
     assert.match((await post('bravo', ['pass', 'word=', 'x'].join(''))) ?? '', /secret/);
   });

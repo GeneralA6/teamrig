@@ -183,7 +183,7 @@ export interface PostInput {
 export async function postLine(inboxes: Inboxes, secrets: SecretScanner, input: PostInput): Promise<string | undefined> {
   const text = input.text.trim();
   if (!SESSION_NAME.test(input.to)) {
-    return `${input.to} is not a session name`;
+    return `${input.to} is not a session id`;
   }
   if (text === '' || /[\r\n]/.test(text)) {
     return 'an inbox item is one non-empty line';

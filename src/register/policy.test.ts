@@ -35,7 +35,7 @@ describe('RegisterPolicy.add', () => {
       [{ title: ' ' }, /title is empty/],
       [{ title: 'x'.repeat(141) }, /141 characters; the limit is 140/],
       [{ owner: 'charlie' }, /owner charlie is not a session/],
-      [{ source: 'The Owner' }, /neither a session name nor owner/],
+      [{ source: 'The Owner' }, /neither a session id nor owner/],
       [{ tier: 9 }, /tier 9 is not one of 1, 2, 3, 4, 5/],
       [{ due: 'friday' }, /due friday is not/],
       [{ week: '2030-1-7' }, /week 2030-1-7 is not/],
