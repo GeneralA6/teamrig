@@ -30,13 +30,14 @@ jobs:
 
   test:
     name: test (${{ matrix.os }}, node ${{ matrix.node }})
-    # Pushes to dev test on Linux only; main and pull requests run the full matrix
+    # Every push tests all three OSes, since paths, renames and hook launch differ by OS;
+    # pushes to dev use node 22 only, main and pull requests add node 24
     # (macOS minutes bill at 10x, Windows at 2x).
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ fromJSON(github.ref == 'refs/heads/dev' && '["ubuntu-latest"]' || '["ubuntu-latest","windows-latest","macos-latest"]') }}
-        node: [22, 24]
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: ${{ fromJSON(github.ref == 'refs/heads/dev' && '[22]' || '[22, 24]') }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
@@ -51,3 +52,5 @@ jobs:
       # The plugin ships its compiled dist; it must match the source on every OS.
       - run: npm run build
       - run: node tools/ci/dist-fresh-cli.ts
+      # Runs the launcher and every hook from the dist, as an installed plugin runs them.
+      - run: node tools/ci/dist-smoke-cli.ts
