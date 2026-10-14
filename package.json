@@ -17,7 +17,8 @@
     "setup": "node tools/setup/cli.ts",
     "coverage": "node tools/ci/coverage-cli.ts",
     "docs:images": "node tools/docs/images-cli.ts",
-    "check": "npm run typecheck && npm run coverage && npm run build && node tools/ci/dist-fresh-cli.ts && node tools/ci/dist-smoke-cli.ts && node tools/docs/images-cli.ts --check && npm run scrub"
+    "docs:check": "node tools/docs/doc-check-cli.ts",
+    "check": "npm run typecheck && npm run coverage && npm run build && node tools/ci/dist-fresh-cli.ts && node tools/ci/dist-smoke-cli.ts && node tools/docs/images-cli.ts --check && node tools/docs/doc-check-cli.ts && npm run scrub"
   },
   "devDependencies": {
     "@types/node": "22.20.3",
