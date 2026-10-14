@@ -30,21 +30,23 @@ const openCommands = () => import('./commands/open.ts');
 const TASK_FIELDS = ['title', 'owner', 'ref', 'tier', 'due', 'goals', 'week'];
 
 const COMMANDS: Readonly<Record<string, CommandSpec>> = {
-  add: { flags: ['session', 'source', ...TASK_FIELDS], load: async () => (await registerCommands()).add },
+  add: { flags: ['session', 'source', 'team', ...TASK_FIELDS], load: async () => (await registerCommands()).add },
   set: { flags: ['session', 'status', 'note', 'evidence', 'skill'], load: async () => (await registerCommands()).set },
   update: { flags: ['session', 'note', ...TASK_FIELDS], load: async () => (await registerCommands()).update },
   list: {
     flags: ['session', 'status', 'source', 'tier', 'due-before', 'week', 'goal'],
+    switches: ['tree'],
     load: async () => (await registerCommands()).list,
   },
   // --session names the caller on every task and inbox command, so a session can always pass it.
   show: { flags: ['session'], load: async () => (await registerCommands()).show },
-  check: { flags: ['session', 'week'], load: async () => (await registerCommands()).check },
-  plan: { flags: ['session', 'week'], load: async () => (await registerCommands()).plan },
+  check: { flags: ['session', 'week'], switches: ['tree'], load: async () => (await registerCommands()).check },
+  plan: { flags: ['session', 'week'], switches: ['tree'], load: async () => (await registerCommands()).plan },
   'inbox read': { flags: ['session'], load: async () => (await inboxCommands()).read },
   'inbox status': { flags: ['session'], load: async () => (await inboxCommands()).status },
   'inbox add': { flags: ['session', 'to', 'text'], load: async () => (await inboxCommands()).add },
-  'team create': { flags: ['sessions', 'lead', 'project'], switches: ['dry-run'], load: async () => (await setupCommands()).teamCreate },
+  'team create': { flags: ['sessions', 'lead', 'parent', 'project'], switches: ['dry-run'], load: async () => (await setupCommands()).teamCreate },
+  'team tree': { flags: [], load: async () => (await teamCommands()).teamTree },
   rules: { flags: ['session'], load: async () => (await rulesCommands()).rules },
   open: { flags: ['prompt', 'terminal', 'project'], load: async () => (await openCommands()).open },
   launch: { flags: ['team', 'project', 'home', 'encoded-prompt'], load: async () => (await openCommands()).launch },
@@ -65,31 +67,37 @@ const COMMAND_FLAGS: CommandFlags = Object.fromEntries(Object.entries(COMMANDS).
 const COMMAND_SWITCHES: CommandSwitches = Object.fromEntries(Object.entries(COMMANDS).map(([name, spec]) => [name, spec.switches ?? []]));
 
 export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|name>, else ${ENV.session})
-  team create <team> --sessions <id,id> [--lead <id>] [--project <dir>] [--dry-run]
-      writes the team config and ties the project folder to the team (the lead defaults to lead)
-  open <id|name> [--prompt "<first prompt>"] [--terminal <name>] [--project <dir>]
-      a new terminal tab running Claude Code as that session; with no terminal it prints the command
+  team create <team> --sessions <id,id> [--lead <id>] [--project <dir>] [--parent <team>] [--dry-run]
+      writes the team config and ties the project folder to the team (the lead defaults to lead);
+      --parent hangs it under that team's lead in a tree of teams
+  team tree                    the tree of teams this team is in, with each team's lead and sessions
+  open <id|name|team/id> [--prompt "<first prompt>"] [--terminal <name>] [--project <dir>]
+      a new terminal tab running Claude Code as that session (team/id: another team of the tree);
+      with no terminal it prints the command
   rules [--session <id|name>]  the team rules and who the session is, as a session start gives them
   add --title "<one line>" --tier <n> [--ref <where it was asked>] [--owner <session>]
       [--source <session>|<owner source>] [--due <date>] [--goals a,b] [--week <date>]
+  add --team <child team> --title .. --tier <n> [...]   the parent lead hands that team's lead a task
   set <id> --status open|in-progress|blocked|done|dropped [--note "<what/why>"] [--evidence <proof>]
       [--skill <name>|none]
   update <id> [--title ..] [--owner ..] [--tier ..] [--ref ..|none] [--due <date>|none]
       [--goals a,b|none] [--week <date>|none] [--note ..]
   list [--session <owner>] [--status a,b|all] [--source <s>] [--tier 1,2] [--due-before <date>]
-      [--week <date>|none] [--goal <tag>]
+      [--week <date>|none] [--goal <tag>] [--tree]
   show <id>
-  check [--week <date>]        tasks and skills that break a team rule
-  plan [--week <date>]         the week plan (default: the newest week that has started)
+  check [--week <date>] [--tree]   tasks and skills that break a team rule
+  plan [--week <date>] [--tree]    the week plan (default: the newest week that has started)
+      --tree (the lead only): also every team under it, read-only, ids as <team>/T<n>
   inbox read [--session <area>]     prints the unread lines and marks them read
   inbox status [--session <area>]   unread lines per area
-  inbox add --to <id|name> --text "<one line>"
+  inbox add --to <id|name|team/id> --text "<one line>"
+      team/id: a lead may write to its parent team's lead and its child teams' leads
   who [<id|name|role>]         the name to message a session by (no argument: every session)
   rename <id|name> <new-name>  records a session's new name; its old names keep finding it
       (the session itself or the lead)
   refresh <id|name>            the lead asks a session to write its handover when it next sets a task done
   refresh --ready              the handover is written; the user types /clear for a fresh start
-  doctor                       names, rename log, inboxes and rules.md that need a fix
+  doctor                       names, rename log, inboxes, rules.md and the tree of teams that need a fix
   config validate | config migrate
   commits check --base <ref> [--tip <ref>]   commits in base..tip (default HEAD) over the size rule
       with no reason line; any is REFUSED, for an integrate script or CI
