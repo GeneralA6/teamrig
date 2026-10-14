@@ -146,13 +146,13 @@ async function treeRegisters(args, runtime) {
     return rolled;
 }
 /**
- * `list --tree`: the lead's team and every team under it, ids read `<team>/T12`. The caller comes
- * from `$TEAMRIG_SESSION`, as `--session` filters one owner of the caller's own team.
+ * `list --tree`: the lead's team and every team under it, ids read `<team>/T12`. As in `check` and
+ * `plan`, `--session` (else `$TEAMRIG_SESSION`) names the caller, never an owner to filter: each team
+ * has its own sessions, so a roll-up has no one owner. A setup tab, which has no `$TEAMRIG_SESSION`,
+ * reads its tree this way.
  */
-async function listTree(args, runtime, filter) {
-    if (filter.owner !== undefined) {
-        throw new UsageError("--session filters one owner of this team's tasks; it does not go with --tree");
-    }
+async function listTree(args, runtime) {
+    const filter = listFilterOf(new Map([...args.flags].filter(([name]) => name !== 'session')));
     const { teams } = await treeRegisters(args, runtime);
     for (const { team, roster, snapshot } of teams) {
         selectTasks(snapshot.state.tasks.values(), treeFilterOf(roster, filter)).forEach((task) => runtime.out.stdout(formatTask(task, team)));
@@ -161,10 +161,10 @@ async function listTree(args, runtime, filter) {
 }
 export async function list(args, runtime) {
     noPositionals(args);
-    const filter = listFilterOf(args.flags);
     if (args.switches.has('tree')) {
-        return listTree(args, runtime, filter);
+        return listTree(args, runtime);
     }
+    const filter = listFilterOf(args.flags);
     const { team, snapshot } = await readTeam(runtime);
     for (const task of selectTasks(snapshot.state.tasks.values(), filterIds(team.roster, filter))) {
         runtime.out.stdout(formatTask(task));

@@ -27,8 +27,9 @@ function identityLines(roster, input) {
 }
 /**
  * How a session of a team in a tree escalates: a member through its own lead; a sub-team's lead to
- * its parent lead, up to the root's lead, the only one the user talks to. A lead with sub-teams also
- * learns how to read their registers and hand them tasks.
+ * its parent lead, up to the root's lead, the only one the user talks to, and splits the tasks that
+ * lead hands it among its own sessions. A lead with sub-teams also learns how to read their registers
+ * and hand them tasks.
  */
 function treeLine(place, input, isLead) {
     const { team, command } = input;
@@ -39,7 +40,8 @@ function treeLine(place, input, isLead) {
     const up = parentLead === undefined
         ? `Team \`${team}\` is the root of a tree of teams: you are the one lead the user talks to, and the sub-team leads bring you their owner decisions.`
         : `Team \`${team}\` is a sub-team of \`${parentLead.team}\` in the tree under \`${place.root}\`: the user talks only to the root team's lead.` +
-            ` Take owner decisions and cross-team issues to your parent lead \`${formatAddress(parentLead)}\` (name \`${parentLead.name}\`, inbox: \`${command} inbox add --to ${formatAddress(parentLead)}\`), who carries them up.`;
+            ` Take owner decisions and cross-team issues to your parent lead \`${formatAddress(parentLead)}\` (name \`${parentLead.name}\`, inbox: \`${command} inbox add --to ${formatAddress(parentLead)}\`), who carries them up.` +
+            ` Split each task it hands you among your sessions: \`${command} add --owner <id>\` gives one its part, and \`${command} open <id>\` starts it.`;
     const down = place.children.length === 0
         ? ''
         : ` Your sub-teams (${place.children.join(', ')}) answer to you: \`${command} list|check|plan --tree\` reads their registers, and \`${command} add --team <team>\` hands its lead a task.`;
