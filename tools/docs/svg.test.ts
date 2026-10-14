@@ -4,8 +4,8 @@ import { escapeXml, renderSvg } from './svg.ts';
 import { parseXml, textOf } from './xml.ts';
 
 describe('escapeXml', () => {
-  it('escapes the five XML special characters', () => {
-    assert.equal(escapeXml(`a&b<c>d"e'f &amp;`), 'a&amp;b&lt;c&gt;d&quot;e&apos;f &amp;amp;');
+  it('escapes the characters special in text and in a double-quoted attribute, and leaves an apostrophe', () => {
+    assert.equal(escapeXml(`a&b<c>d"e'f &amp;`), "a&amp;b&lt;c&gt;d&quot;e'f &amp;amp;");
   });
 });
 
