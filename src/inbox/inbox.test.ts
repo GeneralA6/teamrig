@@ -12,7 +12,6 @@ import {
   sessionIdOf,
   unreadOf,
   type InboxDeps,
-  type ReadResult,
 } from './inbox.ts';
 import { lineHash, type InboxMark } from './marks.ts';
 import { InboxDir, JsonlMarkLog } from './store.ts';
@@ -30,11 +29,6 @@ function setup(files: Readonly<Record<string, string>> = {}): { files: MemoryFil
 
 function mark(line: number, lastLineHash: string | null): InboxMark {
   return { v: 1, area: 'alpha', line, at: '2030-01-07T12:00:00.000Z', claudeSession: null, lastLineHash };
-}
-
-function done(result: ReadResult | string): ReadResult {
-  assert.notEqual(typeof result, 'string', String(result));
-  return typeof result === 'string' ? assert.fail(result) : result;
 }
 
 describe('unreadOf', () => {
@@ -64,7 +58,7 @@ describe('unreadOf', () => {
 describe('readInbox', () => {
   it('returns the unread lines and marks them read with a hash of the last line', async () => {
     const { files, deps } = setup({ [`${DIR}/alpha.md`]: `${LINES.join('\r\n')}\r\n\r\n` });
-    const first = done(await readInbox(deps, { area: 'alpha', claudeSession: SESSION, now: NOW }));
+    const first = await readInbox(deps, { area: 'alpha', claudeSession: SESSION, now: NOW });
     assert.deepEqual(first.unread.lines, LINES);
     assert.deepEqual(first.mark, {
       v: 1,
@@ -76,15 +70,20 @@ describe('readInbox', () => {
     });
     assert.equal(formatRead(first), 'READ alpha: the 3 line(s) above, read to line 3; the reminder hook follows this session');
 
-    const second = done(await readInbox(deps, { area: 'alpha', claudeSession: null, now: NOW }));
+    const second = await readInbox(deps, { area: 'alpha', claudeSession: null, now: NOW });
     assert.deepEqual(second.unread.lines, []);
     assert.match(formatRead(second), /nothing new.*no Claude Code session id here/);
     assert.equal(files.get(MARKS)?.trim().split('\n').length, 2);
   });
 
-  it('refuses an area without an inbox', async () => {
+  it('marks an area nobody has posted to yet, so its first line is unread', async () => {
     const { deps } = setup();
-    assert.equal(await readInbox(deps, { area: 'alpha', claudeSession: null, now: NOW }), 'no inbox for alpha (state/inbox/alpha.md)');
+    const empty = await readInbox(deps, { area: 'alpha', claudeSession: SESSION, now: NOW });
+    assert.deepEqual([empty.unread.lines, empty.mark.line, empty.mark.lastLineHash], [[], 0, null]);
+    assert.equal(formatRead(empty), 'READ alpha: nothing new, read to line 0; the reminder hook follows this session');
+
+    await deps.inboxes.append('alpha', LINES[0] ?? '');
+    assert.equal(await reminderFor(deps, SESSION, 'teamrig'), `INBOX: 1 unread line(s) in ${DIR}/alpha.md since 01-07 09:00. Read them with: teamrig inbox read --session alpha`);
   });
 });
 
@@ -92,7 +91,7 @@ describe('inboxStatus and reminderFor', () => {
   it('reports unread lines per area and reminds the session that last read', async () => {
     const { deps } = setup({ [`${DIR}/alpha.md`]: LINES.slice(0, 2).join('\n'), [`${DIR}/bravo.md`]: '', [`${DIR}/notes.txt`]: 'x' });
     assert.equal(await reminderFor(deps, SESSION, 'teamrig'), undefined, 'no area known for the session yet');
-    done(await readInbox(deps, { area: 'alpha', claudeSession: SESSION, now: NOW }));
+    await readInbox(deps, { area: 'alpha', claudeSession: SESSION, now: NOW });
     await deps.inboxes.append('alpha', LINES[2] ?? '');
 
     assert.deepEqual((await inboxStatus(deps)).map(formatUnread), [
