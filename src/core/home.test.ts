@@ -8,14 +8,17 @@ const KIT = join('/', 'kit');
 const TEAM_HOME = join(KIT, 'teams', 'app');
 
 describe('resolveKitHome', () => {
-  it('prefers the env override, then the plugin option, then a dot folder in the user home', () => {
-    assert.equal(resolveKitHome({ TEAMRIG_HOME: '/a', CLAUDE_PLUGIN_OPTION_HOME: '/b' }, USER_HOME), '/a');
-    assert.equal(resolveKitHome({ CLAUDE_PLUGIN_OPTION_HOME: '/b' }, USER_HOME), '/b');
+  it('prefers the env override, then a dot folder in the user home', () => {
+    assert.equal(resolveKitHome({ TEAMRIG_HOME: '/a' }, USER_HOME), '/a');
     assert.equal(resolveKitHome({}, USER_HOME), join(USER_HOME, '.teamrig'));
   });
 
-  it('ignores blank values', () => {
-    assert.equal(resolveKitHome({ TEAMRIG_HOME: '  ', CLAUDE_PLUGIN_OPTION_HOME: '' }, USER_HOME), join(USER_HOME, '.teamrig'));
+  it('ignores a plugin option, which Claude Code passes to hooks but not to Bash tool commands', () => {
+    assert.equal(resolveKitHome({ CLAUDE_PLUGIN_OPTION_HOME: '/b' }, USER_HOME), join(USER_HOME, '.teamrig'));
+  });
+
+  it('ignores a blank value', () => {
+    assert.equal(resolveKitHome({ TEAMRIG_HOME: '  ' }, USER_HOME), join(USER_HOME, '.teamrig'));
   });
 });
 

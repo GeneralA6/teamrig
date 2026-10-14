@@ -5,14 +5,15 @@ export const KIT_NAME = 'teamrig';
 
 /** Environment variables the kit reads; everything else comes from the config file. */
 export const ENV = {
-  /** Overrides the kit home folder. */
+  /**
+   * Overrides the kit home folder. It is the only override: a plugin user option would reach the hooks
+   * but not the `teamrig` commands Claude runs in its Bash tool, so the two would use different homes.
+   */
   home: 'TEAMRIG_HOME',
   /** The team a command or hook runs for; wins over a `.teamrig.json` pointer. */
   team: 'TEAMRIG_TEAM',
   /** The calling session's name when `--session` is not given. */
   session: 'TEAMRIG_SESSION',
-  /** The plugin's `home` user option, as Claude Code passes it to hooks. */
-  pluginHomeOption: 'CLAUDE_PLUGIN_OPTION_HOME',
   /** The Claude Code session running a command, so the inbox reminder hook can follow its reads. */
   claudeSession: 'CLAUDE_CODE_SESSION_ID',
   /** The folder Claude Code started the session in; hooks and tool commands inherit it. */
@@ -28,11 +29,7 @@ export type Env = Readonly<Record<string, string | undefined>>;
  */
 export function resolveKitHome(env: Env, userHome: string): string {
   const fromEnv = env[ENV.home]?.trim();
-  if (fromEnv) {
-    return fromEnv;
-  }
-  const fromPlugin = env[ENV.pluginHomeOption]?.trim();
-  return fromPlugin ? fromPlugin : join(userHome, `.${KIT_NAME}`);
+  return fromEnv ? fromEnv : join(userHome, `.${KIT_NAME}`);
 }
 
 /**

@@ -5,13 +5,5 @@
   "author": { "name": "GeneralA6" },
   "repository": "https://github.com/GeneralA6/teamrig",
   "license": "Apache-2.0",
-  "keywords": ["team", "sessions", "coordination", "register", "inbox", "rules"],
-  "userConfig": {
-    "home": {
-      "type": "directory",
-      "title": "teamrig home",
-      "description": "Folder for the team config, rules and state. Leave empty for ~/.teamrig. Keep it outside the plugin folders so updates and uninstalls never touch it.",
-      "required": false
-    }
-  }
+  "keywords": ["team", "sessions", "coordination", "register", "inbox", "rules"]
 }
