@@ -9,6 +9,11 @@ This is what `teamrig help` prints:
 
 ```text
 teamrig <command> ...   (the caller: --session <id|name>, else TEAMRIG_SESSION)
+  team create <team> --sessions <id,id> [--lead <id>] [--project <dir>] [--dry-run]
+      writes the team config and ties the project folder to the team (the lead defaults to lead)
+  open <id|name> [--prompt "<first prompt>"] [--terminal <name>] [--project <dir>]
+      a new terminal tab running Claude Code as that session; with no terminal it prints the command
+  rules [--session <id|name>]  the team rules and who the session is, as a session start gives them
   add --title "<one line>" --tier <n> [--ref <where it was asked>] [--owner <session>]
       [--source <session>|<owner source>] [--due <date>] [--goals a,b] [--week <date>]
   set <id> --status open|in-progress|blocked|done|dropped [--note "<what/why>"] [--evidence <proof>]
@@ -34,10 +39,13 @@ teamrig <command> ...   (the caller: --session <id|name>, else TEAMRIG_SESSION)
       with no reason line; any is REFUSED, for an integrate script or CI
   hook push-guard | hook inbox-reminder | hook session-start | hook stop
       (run by Claude Code, hook JSON on stdin)
+  launch <id> --team <team> --project <dir> [--home <dir>] [--encoded-prompt <text>]
+      (run by the tab that open starts: sets the session and starts Claude Code)
 Team: TEAMRIG_TEAM, else the nearest .teamrig.json ({"team": "<id>"}) above the current folder.
 Sessions: give an id, a current name or a former one; a session never named is <team>-<id>.
 Dates: YYYY-MM-DD or "YYYY-MM-DD HH:MM", UTC. Kit home: $TEAMRIG_HOME, else ~/.teamrig.
-Exit: 0 done, 1 failed, 2 refused by a team rule, 64 a command line it cannot read.
+Exit: 0 done, 1 failed, 2 refused by a team rule, 3 open printed the command to run itself,
+64 a command line it cannot read.
 ```
 
 ## What a session sees
