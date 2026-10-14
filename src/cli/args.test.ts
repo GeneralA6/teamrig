@@ -1,9 +1,18 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { noPositionals, onePositional, parseArgs, requiredFlag, UsageError, type CommandFlags, type CommandSwitches } from './args.ts';
+import {
+  noPositionals,
+  onePositional,
+  parseArgs,
+  requiredFlag,
+  UsageError,
+  type CommandFlags,
+  type CommandSwitches,
+  type RenamedFlags,
+} from './args.ts';
 
 const COMMANDS: CommandFlags = {
-  add: ['title', 'tier'],
+  add: ['title', 'priority'],
   show: [],
   'inbox read': ['session'],
   'inbox add': ['to', 'text'],
@@ -21,10 +30,10 @@ function usageMessage(run: () => unknown): string {
 
 describe('parseArgs', () => {
   it('splits a command, its words and its flags', () => {
-    const args = parseArgs(['add', 'extra', '--title', 'Ship it', '--tier', '2'], COMMANDS);
+    const args = parseArgs(['add', 'extra', '--title', 'Ship it', '--priority', 'p2'], COMMANDS);
     assert.equal(args.command, 'add');
     assert.deepEqual(args.positionals, ['extra']);
-    assert.deepEqual([...args.flags], [['title', 'Ship it'], ['tier', '2']]);
+    assert.deepEqual([...args.flags], [['title', 'Ship it'], ['priority', 'p2']]);
   });
 
   it('reads a two-word command', () => {
@@ -45,13 +54,20 @@ describe('parseArgs', () => {
 
   it('refuses a flag the command does not take, so a typo never means nothing', () => {
     assert.equal(usageMessage(() => parseArgs(['add', '--titel', 'x'], COMMANDS)), 'add takes no --titel');
-    assert.equal(usageMessage(() => parseArgs(['show', 'T1', '--tier', '2'], COMMANDS)), 'show takes no --tier');
+    assert.equal(usageMessage(() => parseArgs(['show', 'T1', '--priority', 'p2'], COMMANDS)), 'show takes no --priority');
+  });
+
+  it('refuses a renamed flag on every command with its new name, never reading it as an alias', () => {
+    const renamed: RenamedFlags = { tier: 'priority' };
+    assert.equal(usageMessage(() => parseArgs(['add', '--title', 'x', '--tier', '2'], COMMANDS, {}, renamed)), '--tier was renamed: use --priority');
+    assert.equal(usageMessage(() => parseArgs(['show', 'T1', '--tier', '2'], COMMANDS, {}, renamed)), '--tier was renamed: use --priority');
+    assert.equal(usageMessage(() => parseArgs(['add', '--tier', '2'], COMMANDS)), 'add takes no --tier', 'with no rename given it is just unknown');
   });
 
   it('refuses a flag without a value or given twice', () => {
     assert.equal(usageMessage(() => parseArgs(['add', '--title'], COMMANDS)), '--title needs a value');
-    assert.equal(usageMessage(() => parseArgs(['add', '--title', '--tier', '2'], COMMANDS)), '--title needs a value');
-    assert.equal(usageMessage(() => parseArgs(['add', '--tier', '1', '--tier', '2'], COMMANDS)), '--tier is given twice');
+    assert.equal(usageMessage(() => parseArgs(['add', '--title', '--priority', 'p2'], COMMANDS)), '--title needs a value');
+    assert.equal(usageMessage(() => parseArgs(['add', '--priority', 'p1', '--priority', 'p2'], COMMANDS)), '--priority is given twice');
   });
 
   it('reads a switch without a value, only on the command that takes it', () => {
@@ -80,8 +96,8 @@ describe('positionals and required flags', () => {
   });
 
   it('names a missing required flag', () => {
-    const { flags } = parseArgs(['add', '--tier', '2'], COMMANDS);
-    assert.equal(requiredFlag(flags, 'tier'), '2');
+    const { flags } = parseArgs(['add', '--priority', 'p2'], COMMANDS);
+    assert.equal(requiredFlag(flags, 'priority'), 'p2');
     assert.equal(usageMessage(() => requiredFlag(flags, 'title')), '--title is required');
   });
 });
