@@ -201,7 +201,9 @@ stateDiagram-v2
   (`register.check.prioritySkipAfterHours`) while the same session has an open p1 free to start (every task it comes after finished), counted from the latest change of
   owner, status or priority on either task. `OFF-GOAL` is a task in progress with no goal outside the week's plan:
   work nothing in the plan asked for. teamrig has no parent tasks yet, so a goal tag or the week is what ties a task
-  to the plan. Then it flags skills in your Claude Code skills folder that break the skill rules. It reports and never
+  to the plan. `STOPGAP-DONE` is a `stopgap T<id>` tag whose task is done or dropped, in a skill or in the files
+  `register.check.stopgapFiles` names (default `CLAUDE.md` and `.claude/rules` in the project folder): the stopgap
+  it marks is due to go. Then it flags skills in your Claude Code skills folder that break the skill rules. It reports and never
   blocks.
 - `teamrig list` and `teamrig check` print a short form within 3,000 characters by default, since a session reads
   them at every work block: counts, short rows and `+N more`. `--all` prints every field of every task or flag.
