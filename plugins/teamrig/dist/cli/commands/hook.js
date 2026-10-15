@@ -27,6 +27,7 @@ import { loadTree } from "../tree.js";
 import { bindHintOnce, bindTab, inboxLinesFor, readTitle } from "./hook-bind.js";
 import { helperGateOutput, promptBudgetLine, stopBudgetLines } from "./hook-budget.js";
 import { coldSendHold } from "./hook-cold-send.js";
+import { parseJson, sessionTeam } from "./hook-input.js";
 import { inboxDepsOf } from "./inbox.js";
 /**
  * Claude Code hooks. Each reads the hook's JSON from stdin and prints only what Claude Code
@@ -34,28 +35,10 @@ import { inboxDepsOf } from "./inbox.js";
  * enabled for the user fires in every project, so outside a team's projects each hook prints
  * nothing at all.
  */
-function parseJson(text) {
-    try {
-        return JSON.parse(text);
-    }
-    catch {
-        return undefined;
-    }
-}
 /** The payload's folder first: Claude Code may start the hook process somewhere else. */
 function hookTeam(payload, runtime) {
     const cwd = isRecord(payload) ? stringField(payload, 'cwd') : undefined;
     return resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [cwd, runtime.cwd]));
-}
-/**
- * The team a session's hooks run for: `$TEAMRIG_TEAM`, else the nearest pointer above the folder the
- * session started in (`$CLAUDE_PROJECT_DIR`), then the payload's folder. The payload's `cwd` follows
- * a `cd`, so walking it first would let a tab that moved into another team's project read, and bind
- * to, that team's sessions. The push guard keeps `hookTeam`: a push belongs to the folder it runs in.
- */
-function sessionTeam(payload, runtime) {
-    const cwd = isRecord(payload) ? stringField(payload, 'cwd') : undefined;
-    return resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [runtime.env[ENV.claudeProjectDir], cwd, runtime.cwd]));
 }
 /** PreToolUse on Bash and PowerShell: asks before a push to a protected branch, refuses a force-push of one. */
 export async function pushGuard(args, runtime) {
