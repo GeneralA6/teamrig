@@ -15,6 +15,9 @@ export interface RotateOptions {
  * Rotates a register held in `files` the way a rotation lays it out: the tail becomes the next
  * archive segment whole, a marker starts the new tail, and the snapshot is the compaction of the
  * working set as it stood. For tests of the readers, which must read every layout a rotation leaves.
+ * It lays the files out without the writer's checks (register/rotate.ts), so it also builds layouts
+ * the writer refuses to make but a reader still meets, such as a tail with lines from a newer teamrig;
+ * rotate.test.ts holds the writer's files equal to these.
  */
 export async function rotateRegister(files: MemoryFiles, eventsPath: string, options: RotateOptions): Promise<Compaction> {
   const paths = layoutPaths(eventsPath);
