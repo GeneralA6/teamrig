@@ -350,13 +350,21 @@ note names (`Proof: ...`), else the whole note. With none: `VERIFY 0 tasks of ap
 ### teamrig gh sync
 
 Imports GitHub issues into the task list, inbound only. For each repository in `github.repos` it lists the open
-issues and those closed in the last `github.closedDays` days (14 by default) through the GitHub CLI, `gh`, logged in
-with `gh auth login`. It only ever lists issues: it never creates, edits, comments on, labels, assigns or closes
-anything on GitHub, and a task added with `teamrig add` stays in the task list and never goes to GitHub.
+issues and those closed in the last `github.closedDays` days (14 by default) through the GitHub CLI, `gh`. It only
+ever lists issues: it never creates, edits, comments on, labels, assigns or closes anything on GitHub, and a task
+added with `teamrig add` stays in the task list and never goes to GitHub. Setup, tokens and every failure's fix:
+[GitHub sync](https://github.com/GeneralA6/teamrig/blob/main/docs/github-sync.md).
+
+Access, per owner (the `acme` of `acme/web`): the read-only token saved in the system's credential store as
+`teamrig-gh-<owner>` (lowercase), handed to `gh` as `GH_TOKEN` for that run only, else the `gh auth login` account.
+A fine-grained token reaches one owner's repositories, so two owners need two tokens. An `ACCESS` line says, once
+per owner, which one reads it; the token itself is never printed. A missing or refused token gives that repository
+a `FAILED` line naming the fix, and the other repositories are read on.
 
 - An open issue with no task becomes one, with the source `github` and the ref `gh:<owner>/<name>#<number>`. Its
   title is the issue's on one plain line, cut to `register.maxTitle`; its priority is its most urgent `p<n>` label
-  (else `p2`); its owner is the session `github.owners` maps its first listed assignee's login to, else the lead.
+  (else `p2`); its owner is the session `github.owners` maps its first listed assignee's login to, else the
+  repository's session in `github.sessions`, else the lead.
   The issue's body is never read.
 - On a task it added, only the title, the priority and whether it is open follow GitHub, on every run. Closed as
   not planned or as a duplicate sets it `dropped`, closed any other way sets it `done` with the issue's url as its
@@ -387,6 +395,7 @@ teamrig gh sync --yes
 Output:
 
 ```text
+ACCESS acme: read with the token saved as teamrig-gh-acme
 REPO acme/web: 2 added, 1 changed, 5 unchanged
 ADD T41 gh:acme/web#7 p1 web: "Fix the login redirect"
 ADD T42 gh:acme/web#9 p2 lead: "Add search to the docs"
