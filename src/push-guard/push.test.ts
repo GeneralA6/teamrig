@@ -285,6 +285,17 @@ describe('evaluatePushes: where a push hides', () => {
     ]);
   });
 
+  it('reads the substitutions inside ${...}', () => {
+    expectRows([
+      ['echo ${B:-$(git push origin main)}', 'ask'],
+      ['echo "${B:-$(git push -f origin main)}"', 'deny'],
+      ['echo ${A[$(git push origin main)]}', 'ask'],
+      ['cat <<EOF\n${B:-`git push origin main`}\nEOF', 'ask'],
+      [`echo "\${B:-'}"'$(git push origin main)''}"`, 'ask'],
+      ["echo ${B:-'$(git push origin main)'}", 'allow'],
+    ]);
+  });
+
   it('sees through variable prefixes and wrappers', () => {
     expectRows([
       ['GIT_TRACE=1 git push origin main', 'ask'],

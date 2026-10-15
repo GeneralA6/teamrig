@@ -50,6 +50,26 @@ describe('parseShell: bash', () => {
     ]);
   });
 
+  it('reads the substitutions inside ${...}, which ends at the first } nothing holds', () => {
+    assert.deepEqual(words('echo ${B:-$(git push origin main)} "${C:-`git fetch`}" ${D:-$(echo })}x'), [
+      ['git', 'push', 'origin', 'main'],
+      ['git', 'fetch'],
+      ['echo', '}'],
+      ['echo', '~${B:-$(git push origin main)}', '~${C:-`git fetch`}', '~${D:-$(echo })}x'],
+    ]);
+    assert.deepEqual(words("echo ${B:-'}'}x ${C:-\\}} ${D:-{a}b} ${E:-'$(git push)'}"), [
+      ['echo', "~${B:-'}'}x", '~${C:-\\}}', '~${D:-{a}b}', "~${E:-'$(git push)'}"],
+    ]);
+    assert.deepEqual(words('cat <<EOF\n${B:-$(git push)}\nEOF'), [['git', 'push'], ['cat']]);
+  });
+
+  it('reads a single-quoted piece of a double-quoted ${...} with confidence only when it is plain text', () => {
+    assert.equal(complete(`echo "\${B:-'a b'}"; cat <<EOF\n\${B:-'x'}\nEOF`), true);
+    for (const command of [`echo "\${B:-'}"'$(git push)''}"`, `echo "\${B:-'$(git push)'}"`, `echo "\${B:-'open}"`]) {
+      assert.equal(complete(command), false, command);
+    }
+  });
+
   it('records the subshell each command runs in', () => {
     const parse = parseShell('cd a; (cd b && git push) ; x=$(git push) <(git status); `git log`', 'bash');
     assert.deepEqual(

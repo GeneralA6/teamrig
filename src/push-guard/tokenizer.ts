@@ -233,6 +233,8 @@ class Scanner {
   private readonly heredocs: OpenHeredoc[] = [];
   private readonly unreadBodies: ShellWord[] = [];
   private bindingsUnclear = false;
+  /** How many bash `${...}` the reader is inside, bounded like substitutions. */
+  private braced = 0;
   private readonly subshells: number[];
   private readonly ids: { next: number };
   private readonly source: string;
@@ -768,11 +770,13 @@ class Scanner {
     } else if (next === '(') {
       this.index += 2;
       this.readSubstitution();
+    } else if (next === '{' && this.dialect === 'bash') {
+      this.readBraced(quoted);
+      this.bindingsUnclear ||= !PLAIN_VARIABLE.test(this.source.slice(start, this.index));
     } else if (next === '{') {
       const close = this.source.indexOf('}', this.index + 2);
       this.complete &&= close !== -1;
       this.index = close === -1 ? this.source.length : close + 1;
-      this.bindingsUnclear ||= this.dialect === 'bash' && !PLAIN_VARIABLE.test(this.source.slice(start, this.index));
     } else if (this.dialect === 'bash' && /[A-Za-z_]/.test(next)) {
       this.index += 1;
       while (/\w/.test(this.at())) {
@@ -791,6 +795,48 @@ class Scanner {
       return;
     }
     word.addDollar(this.source.slice(start, this.index), quoted);
+  }
+
+  /**
+   * bash, at `${`: reads through the first `}` that no quote, escape or substitution holds, and the commands of
+   * a substitution inside, as in `${B:-$(git branch --show-current)}`. Inside double quotes or an expanding body
+   * (`quoted`) single quotes still hold a `}` but are kept as text, and expansions inside them may run, so a
+   * single-quoted piece there that holds anything but plain text is not read with confidence.
+   */
+  private readBraced(quoted: boolean): void {
+    if (this.braced >= MAX_NESTING) {
+      this.complete = false;
+      this.index = this.source.length;
+      return;
+    }
+    this.braced += 1;
+    const inner = new WordBuilder(false);
+    this.index += 2;
+    while (!this.done && this.at() !== '}') {
+      const char = this.at();
+      if (!quoted) {
+        if (!this.readBashQuote(inner)) {
+          this.index += 1;
+        }
+      } else if (char === "'") {
+        const close = this.source.indexOf("'", this.index + 1);
+        this.complete &&= close !== -1 && !/[}"$`\\]/.test(this.source.slice(this.index + 1, close));
+        this.index = close === -1 ? this.source.length : close + 1;
+      } else if (char === '"') {
+        this.readDoubleQuoted(inner);
+      } else if (char === '\\') {
+        this.index += 2;
+      } else if (char === '$') {
+        this.readDollar(inner, true);
+      } else if (char === '`') {
+        this.readBackticks(inner);
+      } else {
+        this.index += 1;
+      }
+    }
+    this.complete &&= !this.done;
+    this.index = Math.min(this.index + 1, this.source.length);
+    this.braced -= 1;
   }
 
   /** Inside `$(`, `@(` or `<(`: reads the commands through the closing `)`; in bash they run in a subshell. */
