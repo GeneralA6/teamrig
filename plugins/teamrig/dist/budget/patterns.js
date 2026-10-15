@@ -1,0 +1,303 @@
+import { isNonNegativeInteger, isRecord, stringField } from "../core/guards.js";
+import { CHARS_PER_TOKEN, WEIGHTS } from "./weights.js";
+/** What one tool call did, as far as the loop patterns care. */
+export const TOOL_KINDS = ['edit', 'editTest', 'testFull', 'testTargeted', 'build', 'teamrigCli', 'git', 'read', 'other'];
+const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
+const READ_TOOLS = new Set(['Read', 'Grep', 'Glob']);
+const SHELL_TOOLS = new Set(['Bash', 'PowerShell']);
+/** A shell command that changes a file: a redirect into it, an in-place edit, a script that writes, a patch. */
+const SHELL_EDIT = /\bcat\s*>{1,2}\s*\S|\bcat\s+<<[^>\n]*>{1,2}\s*\S|\bsed\s+-i|\bperl\s+-p?i\b|\bwriteFileSync\b|\bSet-Content\b|\bOut-File\b|\bgit\s+apply\b|\bpatch\s+-p/;
+/** A whole test suite or a check that runs one. */
+const TEST_FULL = /\bnpm\s+(?:run\s+)?(?:test|verify|check|coverage)\b|\bnpm\s+run\s+test:\w+|\bnpx\s+(?:jest|vitest)\b|\bjest\b|\bvitest\b/;
+/** node's own test runner; with a glob over a whole source folder it is the full suite, else targeted. */
+const NODE_TEST = /\bnode\s+(?:--[\w-]+(?:=\S+)?\s+)*--test\b/;
+const NODE_TEST_ALL = /--test\s+["']?(?:src|tools)\/\*\*/;
+const BUILD = /\bnpm\s+run\s+(?:build|typecheck|lint)\b|\btsc\b/;
+const TEAMRIG_CLI = /\bteamrig(?:\.cmd)?\s+(?:list|show|check|inbox|add|set|who|plan|doctor|refresh|open|status|config|history)\b|dist\/cli\/main\.js/;
+const GIT = /^\s*(?:cd\s+\S+\s*(?:&&|;)\s*)?git\s/;
+const SHELL_READ = /^\s*(?:cd\s+\S+\s*(?:&&|;)\s*)?(?:cat|sed|head|tail|grep|rg|ls|find|wc|awk|cut)\b/;
+/** Output cut by a pipe: a failure can fall outside what the pipe keeps. */
+const PIPED = /\|\s*(?:tail|head|grep|Select-Object|findstr)\b/;
+/** A failing run in the common reporters: node's spec and TAP counts, a failure mark, Jest and Vitest summaries. */
+const TEST_FAILED = /(?:^|\n)\s*(?:#|ℹ)\s*fail\s+[1-9]|✖|\bnot ok \d|Tests?:?\s+\d+ failed|FAIL\s/;
+/** Re-reading a token from the cache costs this much of a plain input token; the patterns' savings are priced at it. */
+const REREAD = WEIGHTS.cacheRead;
+/** A call whose context is below this share of the previous call's was compacted: what came before is gone. */
+const COMPACTED_BELOW = 0.65;
+function shellKind(command) {
+    const edits = SHELL_EDIT.test(command);
+    const nodeTest = NODE_TEST.test(command);
+    const tests = TEST_FULL.test(command) || nodeTest;
+    if (edits) {
+        return tests ? 'editTest' : 'edit';
+    }
+    if (TEST_FULL.test(command)) {
+        return 'testFull';
+    }
+    if (nodeTest) {
+        return NODE_TEST_ALL.test(command) ? 'testFull' : 'testTargeted';
+    }
+    if (BUILD.test(command)) {
+        return 'build';
+    }
+    if (TEAMRIG_CLI.test(command)) {
+        return 'teamrigCli';
+    }
+    if (GIT.test(command)) {
+        return 'git';
+    }
+    return SHELL_READ.test(command) ? 'read' : 'other';
+}
+/** What a tool call did, from its tool name and, for a shell, its command line. */
+export function kindOf(tool) {
+    if (EDIT_TOOLS.has(tool.name)) {
+        return 'edit';
+    }
+    if (READ_TOOLS.has(tool.name)) {
+        return 'read';
+    }
+    return SHELL_TOOLS.has(tool.name) ? shellKind(tool.command ?? '') : 'other';
+}
+function isEdit(kind) {
+    return kind === 'edit' || kind === 'editTest';
+}
+function isTest(kind) {
+    return kind === 'testFull' || kind === 'testTargeted' || kind === 'editTest';
+}
+/** A step that only looks something up: a read, a git query, a register command. */
+function isLookup(kind) {
+    return kind === 'read' || kind === 'git' || kind === 'teamrigCli';
+}
+/** Whether a run failed: Claude Code marked the result an error, or the output shows a failing test. */
+export function testFailed(result) {
+    return result.isError || TEST_FAILED.test(result.text);
+}
+/**
+ * The loop-pattern counters, per day. Each pattern is a call that one message could have saved:
+ * - `readChain`: a single lookup right after another single lookup in the same turn; `readChainW` is those calls' W.
+ * - `editChain`: a single edit right after another single edit in the same turn; `editChainSavedW` prices
+ *   each at a re-read of its context, what merging it into the previous message saves.
+ * - `editThenTest`: a test run right after a single-edit call in the same turn, the two could have been one
+ *   message; `editTestJoined` counts the calls that already did both.
+ * - `rerunFailedPiped`, `rerunFailedFull`, `rerunAfterPass`: a test run again in the same turn with no edit
+ *   since the last one, after that run failed with its output piped through a filter, failed in full, or
+ *   passed; the `W` fields are the re-runs' own W.
+ * - `passRuns`, `passTokens`, `passRentW`: passing test output and its rent, a cache write when it arrives
+ *   plus a re-read by every later call until the context is compacted.
+ */
+export const PATTERN_FIELDS = [
+    'readChain',
+    'readChainW',
+    'editChain',
+    'editChainSavedW',
+    'editThenTest',
+    'editThenTestSavedW',
+    'editTestJoined',
+    'rerunFailedPiped',
+    'rerunFailedPipedW',
+    'rerunFailedFull',
+    'rerunFailedFullW',
+    'rerunAfterPass',
+    'rerunAfterPassW',
+    'passRuns',
+    'passTokens',
+    'passRentW',
+];
+const ZERO_COUNTS = {
+    readChain: 0,
+    readChainW: 0,
+    editChain: 0,
+    editChainSavedW: 0,
+    editThenTest: 0,
+    editThenTestSavedW: 0,
+    editTestJoined: 0,
+    rerunFailedPiped: 0,
+    rerunFailedPipedW: 0,
+    rerunFailedFull: 0,
+    rerunFailedFullW: 0,
+    rerunAfterPass: 0,
+    rerunAfterPassW: 0,
+    passRuns: 0,
+    passTokens: 0,
+    passRentW: 0,
+};
+/** Every counter at 0, as a copy the caller may add to. */
+export function emptyPatterns() {
+    return { ...ZERO_COUNTS };
+}
+export const INITIAL_PATTERN_STATE = { turn: 0, prev: null, open: null, turnTest: null, rentTokens: 0, lastContext: 0 };
+function summaryOf(tool) {
+    return { id: tool.id, kind: kindOf(tool), piped: PIPED.test(tool.command ?? ''), failed: null };
+}
+/** Counts the loop patterns of one transcript, a line at a time, from the state the last read left. */
+export class PatternTracker {
+    current;
+    constructor(state) {
+        this.current = state;
+    }
+    state() {
+        return this.current;
+    }
+    /** A new turn: chains and re-runs never span two. */
+    prompt() {
+        this.current = { ...this.current, turn: this.current.turn + 1, turnTest: null };
+    }
+    /**
+     * A new call begins: it re-reads the passing test output still in the context, unless its context
+     * dropped, which means a compaction removed that output.
+     */
+    callStarted(context, tools, count) {
+        const { lastContext, rentTokens } = this.current;
+        const compacted = lastContext > 0 && context < lastContext * COMPACTED_BELOW;
+        if (!compacted && rentTokens > 0) {
+            count('passRentW', rentTokens * REREAD);
+        }
+        this.current = { ...this.current, open: tools.map(summaryOf), rentTokens: compacted ? 0 : rentTokens, lastContext: context };
+    }
+    /** More tools of the call being read (a later line of the same reply). */
+    callJoined(tools) {
+        this.current = { ...this.current, open: [...(this.current.open ?? []), ...tools.map(summaryOf)] };
+    }
+    /** The call being read is complete: judge its patterns against the previous call of the same turn. */
+    callClosed(context, w, count) {
+        const tools = this.current.open ?? [];
+        const { prev, turn } = this.current;
+        const sameTurn = prev !== null && prev.turn === turn;
+        const single = tools.length === 1 ? (tools[0]?.kind ?? null) : null;
+        const edits = tools.some((tool) => isEdit(tool.kind));
+        const test = tools.find((tool) => isTest(tool.kind));
+        if (edits && test !== undefined) {
+            count('editTestJoined', 1);
+        }
+        if (sameTurn && test !== undefined && !edits && prev.single === 'edit') {
+            count('editThenTest', 1);
+            count('editThenTestSavedW', context * REREAD);
+        }
+        if (sameTurn && single === 'edit' && prev.single === 'edit') {
+            count('editChain', 1);
+            count('editChainSavedW', context * REREAD);
+        }
+        if (sameTurn && isLookup(single) && isLookup(prev.single)) {
+            count('readChain', 1);
+            count('readChainW', w);
+        }
+        const last = this.current.turnTest;
+        if (test !== undefined && !edits && last !== null && last.failed !== null) {
+            const field = last.failed === true ? (last.piped ? 'rerunFailedPiped' : 'rerunFailedFull') : 'rerunAfterPass';
+            count(field, 1);
+            count(`${field}W`, w);
+        }
+        let turnTest = last;
+        if (test !== undefined) {
+            turnTest = test;
+        }
+        else if (edits) {
+            turnTest = null;
+        }
+        this.current = { ...this.current, prev: { turn, single }, open: null, turnTest };
+    }
+    /** Tool results came back: a test's outcome is kept for the re-run counters, a passing one's output starts its rent. */
+    results(results, count) {
+        for (const result of results) {
+            const open = this.current.open?.find((tool) => tool.id === result.id);
+            const tool = open ?? (this.current.turnTest?.id === result.id ? this.current.turnTest : undefined);
+            if (tool === undefined || !isTest(tool.kind)) {
+                continue;
+            }
+            const failed = testFailed(result);
+            const settled = { ...tool, failed };
+            this.current = {
+                ...this.current,
+                open: this.current.open?.map((entry) => (entry.id === result.id ? settled : entry)) ?? null,
+                turnTest: this.current.turnTest?.id === result.id ? settled : this.current.turnTest,
+            };
+            if (!failed) {
+                const tokens = result.text.length / CHARS_PER_TOKEN;
+                count('passRuns', 1);
+                count('passTokens', tokens);
+                count('passRentW', tokens * WEIGHTS.cacheWrite1h);
+                this.current = { ...this.current, rentTokens: this.current.rentTokens + tokens };
+            }
+        }
+    }
+}
+function kindField(record, key) {
+    const value = record[key];
+    return TOOL_KINDS.find((kind) => kind === value);
+}
+function finiteNonNegative(value) {
+    return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+function summaryFrom(value) {
+    if (!isRecord(value)) {
+        return undefined;
+    }
+    const id = stringField(value, 'id');
+    const kind = kindField(value, 'kind');
+    const piped = value['piped'];
+    const failed = value['failed'];
+    if (id === undefined || kind === undefined || typeof piped !== 'boolean' || !(failed === null || typeof failed === 'boolean')) {
+        return undefined;
+    }
+    return { id, kind, piped, failed };
+}
+function summariesFrom(value) {
+    if (value === null) {
+        return null;
+    }
+    if (!Array.isArray(value)) {
+        return undefined;
+    }
+    const summaries = value.map(summaryFrom);
+    return summaries.every((summary) => summary !== undefined) ? summaries.filter((summary) => summary !== undefined) : undefined;
+}
+function previousFrom(value) {
+    if (value === null) {
+        return null;
+    }
+    if (!isRecord(value) || !isNonNegativeInteger(value['turn'])) {
+        return undefined;
+    }
+    const single = value['single'];
+    if (single === null) {
+        return { turn: value['turn'], single: null };
+    }
+    const kind = kindField(value, 'single');
+    return kind === undefined ? undefined : { turn: value['turn'], single: kind };
+}
+/** A stored pattern state; undefined when any part of it is damaged. */
+export function parsePatternState(value) {
+    if (!isRecord(value)) {
+        return undefined;
+    }
+    const { turn, rentTokens, lastContext } = value;
+    const prev = previousFrom(value['prev']);
+    const open = summariesFrom(value['open']);
+    const rawTest = value['turnTest'];
+    const turnTest = rawTest === null ? null : summaryFrom(rawTest);
+    if (!isNonNegativeInteger(turn) ||
+        !finiteNonNegative(rentTokens) ||
+        !finiteNonNegative(lastContext) ||
+        prev === undefined ||
+        open === undefined ||
+        turnTest === undefined) {
+        return undefined;
+    }
+    return { turn, prev, open, turnTest, rentTokens, lastContext };
+}
+/** Stored pattern counters; undefined when one is missing or not a non-negative number. */
+export function parsePatternCounts(value) {
+    const record = isRecord(value) ? value : undefined;
+    if (record === undefined) {
+        return undefined;
+    }
+    const counts = emptyPatterns();
+    for (const field of PATTERN_FIELDS) {
+        const count = record[field];
+        if (!finiteNonNegative(count)) {
+            return undefined;
+        }
+        counts[field] = count;
+    }
+    return counts;
+}
