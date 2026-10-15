@@ -10,8 +10,8 @@ const targets = (kind: 'image' | 'link'): string[] =>
   [...README.matchAll(kind === 'image' ? /!\[[^\]]*\]\(([^)\s]+)\)/g : /(?<!!)\[[^\]]*\]\(([^)\s]+)\)/g)].map((found) => found[1] ?? '');
 
 describe('README.md', () => {
-  it('shows its pictures in order: hero, growth, how it works, the week, why it is different', () => {
-    assert.deepEqual(targets('image'), ['hero', 'growth', 'how-it-works', 'week', 'why'].map((name) => `docs/images/${name}.svg`));
+  it('shows its pictures in order: hero, growth, how it works, the plan, the week, why it is different', () => {
+    assert.deepEqual(targets('image'), ['hero', 'growth', 'how-it-works', 'plan', 'week', 'why'].map((name) => `docs/images/${name}.svg`));
   });
 
   it('gives every picture a text alternative', () => {
