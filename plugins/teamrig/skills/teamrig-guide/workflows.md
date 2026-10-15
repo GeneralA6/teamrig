@@ -9,8 +9,11 @@ is set.
 At the start of each work block, after a `/clear`, and in any tab teamrig did not open:
 
 ```sh
-teamrig inbox read --session api && teamrig list --session api
+teamrig start --session api
 ```
+
+It prints the time, your unread inbox lines, your task list, the `check` flags of your tasks and skills, and the
+week's use.
 
 1. Read each inbox line. A line that asks for work should name a task id; if it does not, add the task yourself
    (`teamrig add --session api --title "..." --priority p<n> --source <asker>`).
@@ -146,10 +149,10 @@ model, by fit for the task, never by its length.
 At the start of each work block, and whenever the human asks for status:
 
 ```sh
-teamrig inbox read --session lead && teamrig check --session lead
+teamrig start --session lead
 ```
 
-With sub-teams, add `--tree` to `check`. Then act on each flag (full table: [tasks.md](tasks.md#check-flags)):
+With sub-teams, run `teamrig check --tree --session lead` too. Then act on each flag (full table: [tasks.md](tasks.md#check-flags)):
 
 - `PRIORITY-SKIP`: one inbox line to the owner to park the lower task and start the waiting one, or fix the order
   with `teamrig update T<n> --session lead --priority p2`.

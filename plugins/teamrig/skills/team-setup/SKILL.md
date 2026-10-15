@@ -112,10 +112,10 @@ teamrig team create <sub-team> --sessions <id>,<id> --parent <team> --project "<
 At the start of each work block, and when the user asks for status, in one Bash call:
 
 ```
-teamrig inbox read --session lead && teamrig check --session lead
+teamrig start --session lead
 ```
 
-With sub-teams, add `--tree` to `check`. Act on each flag:
+With sub-teams, run `teamrig check --tree --session lead` too. Act on each flag:
 
 - `PRIORITY-SKIP`: a session works below its own waiting top-priority task. Send it one inbox line to park the lower
   task and start the waiting one (`teamrig inbox add --session lead --to <id> --text "..."`), or, when the order is
