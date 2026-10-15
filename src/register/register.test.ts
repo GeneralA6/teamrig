@@ -41,6 +41,7 @@ function setup(initial: Readonly<Record<string, string>> = {}) {
     clock,
     policy: new RegisterPolicy(testConfig()),
     skills,
+    autoArchive: true,
   });
   return { files, clock, mutex, skills, register };
 }

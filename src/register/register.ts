@@ -18,6 +18,11 @@ export interface RegisterDeps {
   readonly clock: Clock;
   readonly policy: RegisterPolicy;
   readonly skills: SkillCatalog;
+  /**
+   * The team's `register.autoArchive`: false, and a write never rotates the log, however long its tail
+   * grows; `teamrig compact` still rotates it by hand.
+   */
+  readonly autoArchive: boolean;
 }
 
 /** What became of the rotation a write runs after its append when the log is due (store.ts). */
@@ -117,7 +122,7 @@ export class Register {
 
   /**
    * Under the lock: refuse newer data, read the working set, decide on one event, append it, rotate the log
-   * when it is due, and return the task after the event.
+   * when it is due and the team has not turned that off, and return the task after the event.
    */
   private write(decide: (snapshot: RegisterSnapshot) => Verdict<RegisterEvent>): Promise<Verdict<WriteResult>> {
     return this.deps.mutex.run(async () => {
@@ -139,8 +144,14 @@ export class Register {
     });
   }
 
-  /** A rotation that fails leaves the write saved and the files readable (rotate.ts): it is reported, never thrown. */
+  /**
+   * None when the team turned automatic archiving off. A rotation that fails leaves the write saved and the
+   * files readable (rotate.ts): it is reported, never thrown.
+   */
   private async rotation(written: RegisterSnapshot): Promise<RotationOutcome> {
+    if (!this.deps.autoArchive) {
+      return { kind: 'none' };
+    }
     try {
       const plan = await this.deps.log.rotateIfDue(written, new Date(this.deps.clock.now()));
       return plan === null ? { kind: 'none' } : { kind: 'rotated', segment: plan.segment, retired: plan.compaction.retiredNow.length };

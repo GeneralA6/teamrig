@@ -250,13 +250,15 @@ function busyTail(count: number): string {
   return Array.from({ length: count }, (_, index) => status('T2', 5, index % 2 === 0 ? 'in-progress' : 'blocked')).join('');
 }
 
-function registerOn(files: MemoryFiles | FaultyFiles): Register {
+/** A register over `files`; `autoArchive` stands for the team's `register.autoArchive`, on by default as in the config. */
+function registerOn(files: MemoryFiles | FaultyFiles, autoArchive = true): Register {
   return new Register({
     log: new JsonlEventLog(files, LOG),
     mutex: new InlineMutex(),
     clock: new FakeClock(at(6)),
     policy: new RegisterPolicy(testConfig()),
     skills: new NoSkills(),
+    autoArchive,
   });
 }
 
@@ -292,5 +294,17 @@ describe('a write rotates a log rotated before once its tail is long', () => {
     assert.ok(result.ok);
     assert.deepEqual(result.value.rotation, { kind: 'failed', error: 'EACCES: simulated' });
     assert.deepEqual(readEvents(files.get(LOG) ?? '').events.at(-1), result.value.event);
+  });
+
+  it('never rotates when the team turned automatic archiving off, however long the tail', async () => {
+    const files = new MemoryFiles({ [LOG]: TEXT });
+    await rotate(files, 4);
+    await files.append(LOG, busyTail(4_000));
+    const result = await registerOn(files, false).setStatus('alpha', 'T2', START_T2);
+    assert.ok(result.ok);
+    assert.deepEqual(result.value.rotation, { kind: 'none' });
+    assert.ok((files.get(LOG)?.length ?? 0) >= AUTO_ROTATE_CHARS);
+    assert.deepEqual(readEvents(files.get(LOG) ?? '').events.at(-1), result.value.event);
+    assert.equal(files.get(PATHS.segment(2)), undefined);
   });
 });
