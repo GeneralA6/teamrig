@@ -34,17 +34,26 @@ function turnCalls(text, cut) {
     }
     return calls;
 }
+/** The turn's calls, with `current` as the last one when the transcript has not got it yet. */
+function callsWith(text, cut, current) {
+    const calls = turnCalls(text, cut);
+    const written = current === undefined || calls.some((call) => call.tools.some((tool) => tool.id === current.id));
+    if (!written) {
+        calls.push({ key: undefined, tools: [current], context: calls.at(-1)?.context ?? 0 });
+    }
+    return calls;
+}
+/** The main thread's tool calls since the last prompt, `current` included. */
+export function turnToolsOf(text, cut, current) {
+    return callsWith(text, cut, current).flatMap((call) => call.tools);
+}
 /**
  * The run of single-step calls ending the current turn, from transcript text (`cut`: a tail that may
  * start mid-line, so its first line is skipped). `current` is the tool the hook fires for: when its
  * reply is not in the transcript yet, it counts as one more single-tool call.
  */
 export function chainOf(text, cut, current) {
-    const calls = turnCalls(text, cut);
-    const written = current === undefined || calls.some((call) => call.tools.some((tool) => tool.id === current.id));
-    if (!written) {
-        calls.push({ key: undefined, tools: [current], context: calls.at(-1)?.context ?? 0 });
-    }
+    const calls = callsWith(text, cut, current);
     const kinds = [];
     for (let index = calls.length - 1; index >= 0; index -= 1) {
         const call = calls[index];

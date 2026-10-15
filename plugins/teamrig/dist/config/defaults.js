@@ -67,6 +67,7 @@ export const DEFAULT_BUDGET = {
 export const DEFAULT_SESSION_SHARE = 1;
 export const DEFAULT_ALERTS = { persistentFailureHours: 24 };
 export const DEFAULT_LOOPS = { chainNudgeAt: 6 };
+export const DEFAULT_LEAD_BOUNDARY = { enabled: true, ownPaths: [], searchNudgeAt: 3 };
 /** About a screenful: two or three failing tests with their errors and first stack frames. */
 export const DEFAULT_TESTS = { maxFailureChars: 4000 };
 /**
