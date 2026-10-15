@@ -163,7 +163,7 @@ export async function setup(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const budget = next.config.budget;
   if (budget.enabled && budget.weeklyLimitW === undefined && (await readSnapshots(runtime.files, snapshotDirOf(budget, kit.paths))).length === 0) {
     runtime.out.stdout(
-      "NOTE no status line reading yet, so the budget stays silent: make `teamrig statusline` Claude Code's status line, or set budget.weeklyLimitW",
+      "NOTE no status line reading yet, so the budget stays silent: run `teamrig statusline install`, or set budget.weeklyLimitW",
     );
   }
   return EXIT.ok;
