@@ -59,6 +59,15 @@ describe('renderCorePack', () => {
     assert.match(pack, /When you notice you are looping \(the same step again, no progress\) or drifting from your task, stop and ask the lead\.$/m);
   });
 
+  it('keeps messages for what the receiver acts on now and sends reports and failed sends to the inbox', () => {
+    const pack = renderCorePack(testConfig(), COMMAND);
+    assert.match(pack, /^3\. A message wakes its receiver, so send one only for a result it acts on now, a decision,/m);
+    assert.match(
+      pack,
+      /Anything else, a "done" report too, is one inbox line per receiver, and so is a failed send: `teamrig inbox add --to <area> --text "\.\.\."`\.$/m,
+    );
+  });
+
   it('gates each hand-run data change on the owner, never prints secrets and binds local services to loopback', () => {
     const pack = renderCorePack(testConfig(), COMMAND);
     assert.match(pack, /^11\. Each hand-run change, delete or drop of stored data needs the owner's OK, after counts or a preview\. Code that writes data/m);

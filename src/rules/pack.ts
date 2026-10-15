@@ -80,9 +80,9 @@ export function renderCorePack(config: KitConfig, command: string): string {
       (roles.coordinatorOwner === undefined ? '' : ` ${roles.coordinatorOwner} owns deploy coordination and fleet health [roles.coordinatorOwner].`) +
       ' Every other session owns its area.',
     "Own your change end to end: only the session that made a change integrates it, deploys it when it must run, verifies that it runs, and fixes or rolls it back. Never integrate, verify or fix another session's change: hand it to its owner.",
-    'A message wakes its receiver, so send one only for a result it consumes, a decision, a blocker, a same-area conflict or an incident.' +
+    'A message wakes its receiver, so send one only for a result it acts on now, a decision, a blocker, a same-area conflict or an incident.' +
       ` At most ${config.messages.maxLines} lines [messages.maxLines]: what happened, evidence (numbers, ids, paths), the exact ask and deadline, your default, then "No reply needed" or "Reply needed: <one question>".` +
-      ` No acks, thanks or progress pings. Anything non-urgent is one inbox line: \`${command} inbox add --to <area> --text "..."\`.`,
+      ` No acks, thanks or progress pings. Anything else, a "done" report too, is one inbox line per receiver, and so is a failed send: \`${command} inbox add --to <area> --text "..."\`.`,
     `Status is pulled, never asked: each session keeps one board and writes only its own. At the start of each work block run \`${command} inbox read --session <you>\`.` +
       ` Every ask that creates work is a register entry the asker adds in the same turn (\`${command} add --owner <session>\`); ${statusDemands(config, command)}` +
       ' Waiting needs `--waits` reasons; a task not started that needs another first stays open, planned `--after` it.' +
