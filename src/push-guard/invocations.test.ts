@@ -204,13 +204,35 @@ describe('findGitInvocations: scripts and shells', () => {
     ]);
   });
 
-  it('marks arguments read from stdin, and reads a heredoc only when a shell runs it', () => {
+  it('marks arguments read from stdin, and reads a heredoc or here-string only when a shell runs it', () => {
     expectInvocations([
       ['xargs git push < x', [`${CWD}|push|~<stdin>`]],
       ['cat <<EOF\ngit push\nEOF', []],
+      ['bash <<EOF\ngit push\nEOF', [`${CWD}|push|`]],
+      ["bash <<'EOF'\ncd sub\nEOF\ngit push", [`${CWD}|push|`]],
+      ['bash <<< "git push"', [`${CWD}|push|`]],
+      ["pwsh -Command - <<'EOF'\ngit push\nEOF", [`${CWD}|push|`]],
+      ['cmd <<EOF\ngit push\nEOF', [`${CWD}|push|`]],
     ]);
-    assert.deepEqual(invocations('bash <<EOF\ngit push\nEOF'), [`${CWD}|push|`]);
-    expectDoubt('bash <<EOF\ngit push\nEOF', 'g:a shell reads its commands from stdin');
+  });
+
+  it('hands a heredoc down a pipe only through a plain cat', () => {
+    expectInvocations([
+      ['cat <<EOF | bash\ngit push\nEOF', [`${CWD}|push|`]],
+      ['cat - <<EOF |& bash -s\ngit push\nEOF', [`${CWD}|push|`]],
+      ['cat <<EOF | bash -s $(echo x)\ngit push\nEOF', [`${CWD}|push|`]],
+    ]);
+    for (const line of [
+      'cat <<EOF | tee x | bash\ngit push\nEOF',
+      'cat <<EOF > /dev/stdout | bash\ngit push\nEOF',
+      'cat x <<EOF | bash\ngit push\nEOF',
+      'cat <<EOF; bash\ngit push\nEOF',
+      'cat <<EOF | bash < x.sh\ngit push\nEOF',
+      'bash < x.sh',
+      'xargs bash <<EOF\ngit push\nEOF',
+    ]) {
+      expectDoubt(line, 'g:a shell reads its commands from stdin');
+    }
   });
 
   it('doubts what it cannot read', () => {

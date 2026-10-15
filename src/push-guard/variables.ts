@@ -237,7 +237,7 @@ function setsVariablesUnseen(command: ShellCommand): boolean {
  */
 function bindingStatement(command: ShellCommand): readonly Binding[] | undefined {
   const [first, ...rest] = command.words;
-  if (first === undefined || command.redirected) {
+  if (first === undefined || command.redirections.length > 0) {
     return undefined;
   }
   const exported = !first.dynamic && first.text === 'export';

@@ -1,6 +1,7 @@
-import { isAssignment, isShellName, launch, programName, staticWord, type Assignment } from './launchers.ts';
+import { isAssignment, launch, programName, staticWord, type Assignment, type Launch } from './launchers.ts';
 import { Location, resolveDir } from './location.ts';
-import { parseShell, stripHeredocs, type ShellDialect, type ShellWord } from './tokenizer.ts';
+import { stdinUse } from './stdin.ts';
+import { parseShell, type ShellCommand, type ShellDialect, type ShellWord } from './tokenizer.ts';
 import { resolveLiteralVariables } from './variables.ts';
 
 /** One git config value: set, unset (git exits 1), or unreadable (git failed or is missing). */
@@ -146,9 +147,10 @@ function shellQuote(word: ShellWord): string {
   return word.dynamic ? word.text : `'${word.text.replace(/'/g, `'\\''`)}'`;
 }
 
-/** True when a line starts a shell, such as `bash <<EOF`, so its heredoc body is commands, not data. */
-function runsShell(line: string): boolean {
-  return line.split(/[\s;&|()<>]+/).some((word) => isShellName(programName(word)));
+
+/** True when a command takes its stdin from a redirection, such as `< file`, rather than from a pipe. */
+function redirectsInput(command: ShellCommand): boolean {
+  return command.redirections.some((redirection) => /^0?</.test(redirection.operator));
 }
 
 /** Splits `--option=value` into its name and attached value. */
@@ -189,40 +191,56 @@ class GitInvocationFinder {
     this.doubts.push({ reason, gated });
   }
 
+
+  /**
+   * Visits each command of a script in order. A heredoc or here-string is its command's stdin, and a plain
+   * `cat` hands its stdin down a pipe to the next command, so `cat <<EOF | bash` runs the body as commands.
+   */
   private visitScript(script: ShellWord, dialect: ShellDialect, location: Location, depth: number): void {
     if (depth > MAX_SCRIPT_DEPTH) {
       this.doubt('scripts nest too deep to read', false);
       return;
     }
     this.texts.push(script.text);
-    const text = dialect === 'cmd' ? script.text : stripHeredocs(script.text, runsShell);
-    const parsed = parseShell(text, dialect);
+    const parsed = parseShell(script.text, dialect);
     if (!parsed.complete) {
       this.doubt('part of it cannot be read, as a quote, bracket or substitution never closes', true);
     }
     // bash reads $NAME set to a literal earlier in the line; other dialects keep every variable unknown.
     const commands = dialect === 'bash' ? resolveLiteralVariables(parsed.commands, script.text) : parsed.commands;
+    let piped: { readonly body: ShellWord; readonly nesting: number } | undefined;
     for (const command of commands) {
+      let stdin = command.stdin;
+      // A substitution's commands, read before the command that holds them, sit between a pipe's two ends.
+      if (piped !== undefined && command.nesting <= piped.nesting) {
+        stdin ??= command.nesting === piped.nesting && !redirectsInput(command) ? piped.body : undefined;
+        piped = undefined;
+      }
       location.enter(command.subshells);
-      this.visitCommand(command.words, dialect, location, depth);
+      const launched = this.visitCommand(command.words, dialect, location, depth, stdin);
+      if (stdin !== undefined) {
+        const use = launched === undefined ? 'read' : stdinUse(command, launched);
+        piped = use === 'passed' ? { body: stdin, nesting: command.nesting } : undefined;
+      }
     }
   }
 
-  private visitCommand(words: readonly ShellWord[], dialect: ShellDialect, location: Location, depth: number): void {
+  /** Visits one simple command, given what it reads on stdin from the line; returns what it starts, or undefined for a `cd`. */
+  private visitCommand(words: readonly ShellWord[], dialect: ShellDialect, location: Location, depth: number, stdin?: ShellWord): Launch | undefined {
     for (const name of shellVariables(words, dialect)) {
       this.shellMovesRepo ||= GIT_DIR_VARIABLES.test(name);
       this.shellOverridesConfig ||= GIT_CONFIG_VARIABLES.test(name);
     }
     if (location.apply(words, dialect)) {
-      return;
+      return undefined;
     }
-    const launched = launch(words, dialect);
+    const launched = launch(words, dialect, stdin);
     switch (launched.kind) {
       case 'nothing':
-        return;
+        break;
       case 'opaque':
         this.doubt(launched.reason, launched.gated);
-        return;
+        break;
       case 'script': {
         const inner = location.child();
         launched.chdirs.forEach((chdir) => inner.moveTo(chdir));
@@ -233,13 +251,13 @@ class GitInvocationFinder {
         if (launched.sameShell) {
           location.adopt(inner);
         }
-        return;
+        break;
       }
       case 'program': {
         const name = programName(launched.program.text);
         const subcommand = name.startsWith('git-') ? name.slice(4) : undefined;
         if (name !== 'git' && (subcommand === undefined || !BUILTINS.has(subcommand))) {
-          return;
+          break;
         }
         const inner = location.child();
         launched.chdirs.forEach((chdir) => inner.moveTo(chdir));
@@ -248,6 +266,7 @@ class GitInvocationFinder {
         this.visitGit(tail, this.gitState(inner.dir, launched.env), depth, 0);
       }
     }
+    return launched;
   }
 
   /**

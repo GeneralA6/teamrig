@@ -31,19 +31,44 @@ export interface ShellCommand {
    * `&&`, `|`, `&`, `\n` or `);`. Empty for the last command of a line or of a substitution.
    */
   readonly terminator: string;
-  /** True when it carries a redirection, such as `> out.log` or `2>&1`, which the words leave out. */
-  readonly redirected: boolean;
+  /** Its redirections in order, such as `> out.log`, `2>&1` or `<<EOF`, which the words leave out. */
+  readonly redirections: readonly Redirection[];
+  /**
+   * bash: the text it reads on stdin from the line itself, when its last input redirection is a heredoc (the
+   * body) or a here-string (`<<< word`). An unquoted heredoc's body expands, so it is dynamic when it expands anything.
+   */
+  readonly stdin?: ShellWord;
   /** How many substitutions (`$( )`, backticks, `<( )`, PowerShell `@( )`) it sits inside: 0 for the line's own commands. */
   readonly nesting: number;
 }
 
-/** A command while the scanner still adds the separators that follow it. */
+/** A redirection: `>`, `>>`, `2>`, `<`, `<<`, `<<-`, `<<<`, `>&2`, `2>&1` or PowerShell's `*>`. */
+export interface Redirection {
+  /** The operator as written, with its file-descriptor number, such as `2>` or `2>&1`. */
+  readonly operator: string;
+  /** The word it names: a file, a heredoc's delimiter or a here-string; absent for a descriptor copy such as `2>&1`. */
+  readonly target?: ShellWord;
+}
+
+/** A command while the scanner still adds the separators that follow it and the heredoc body it reads. */
 interface ScannedCommand {
   readonly words: readonly ShellWord[];
   readonly subshells: readonly number[];
   terminator: string;
-  readonly redirected: boolean;
+  readonly redirections: readonly Redirection[];
+  stdin?: ShellWord;
   readonly nesting: number;
+}
+
+/** A bash heredoc whose body starts after the next newline. */
+interface OpenHeredoc {
+  readonly delimiter: string;
+  /** True for `<<-`, whose delimiter line may start with tabs. */
+  readonly tabbed: boolean;
+  /** False when any part of the delimiter is quoted (`<<'EOF'`), so the body is literal. */
+  readonly expands: boolean;
+  /** The command that reads the body on stdin: one whose last input redirection it is. */
+  readonly reader: ScannedCommand | undefined;
 }
 
 /** The simple commands of a command line, as its shell would split them. */
@@ -52,42 +77,12 @@ export interface ShellParse {
   readonly commands: readonly ShellCommand[];
   /** False when a quote, a bracket or a substitution never closes, or nesting runs too deep: the line is not read with confidence. */
   readonly complete: boolean;
+  /** bash heredoc bodies no command reads on stdin, such as the first of `cat <<A <<B` or one on a line with no command. */
+  readonly unreadBodies: readonly ShellWord[];
 }
 
-/** A PowerShell here-string: `@'` or `@"` ending its line, through the matching `'@` or `"@` line. */
-const HERE_STRING = /@(['"])\r?\n[\s\S]*?\r?\n\1@/g;
-/** A bash heredoc start: `<<EOF`, `<<'EOF'`, `<<-EOF`, but not the `<<<` here-string. */
-const HEREDOC_START = /(?<!<)<<(?!<)-?\s*(['"]?)([A-Za-z_][\w.-]*)\1/g;
 /** How deep substitutions may nest before the parse stops and calls itself incomplete. */
 const MAX_NESTING = 16;
-
-/**
- * Removes the bodies of bash heredocs and PowerShell here-strings, which are data, not commands. A heredoc
- * whose terminator never appears is kept, so a stray `<<` cannot hide a real command, and so is the body of
- * a heredoc on a line `keepBody` accepts, such as `bash <<EOF`, whose body a shell runs.
- */
-export function stripHeredocs(command: string, keepBody: (line: string) => boolean = () => false): string {
-  const lines = command.replace(HERE_STRING, "''").split('\n');
-  const kept: string[] = [];
-  let index = 0;
-  while (index < lines.length) {
-    const line = lines[index] ?? '';
-    kept.push(line);
-    index += 1;
-    if (keepBody(line)) {
-      continue;
-    }
-    for (const match of line.matchAll(HEREDOC_START)) {
-      const terminator = match[2];
-      const end = lines.findIndex((candidate, at) => at >= index && candidate.replace(/\r$/, '').trim() === terminator);
-      if (end === -1) {
-        break;
-      }
-      index = end + 1;
-    }
-  }
-  return kept.join('\n');
-}
 
 /** Splits a command line into simple commands the way `dialect` would; see {@link Scanner}. */
 export function parseShell(command: string, dialect: ShellDialect): ShellParse {
@@ -153,7 +148,8 @@ class WordBuilder {
     return word;
   }
 
-  private word(): ShellWord {
+  /** The word read so far, even an empty one, such as a heredoc's empty body. */
+  word(): ShellWord {
     const word = { text: this.text, dynamic: this.dynamic || this.braceList };
     return this.tracksParts && this.parts !== undefined && !this.braceList ? { ...word, parts: this.parts } : word;
   }
@@ -200,15 +196,20 @@ interface ScanScope {
 /**
  * Reads a command line the way bash, PowerShell or cmd splits it: quotes group words, an unquoted separator
  * ends a command (`; & | ( )` and a newline, `{ }` in PowerShell, only `& | ( )` in cmd), `#` at a word start
- * begins a comment (bash and PowerShell), and a redirection is dropped with its target. A variable, `$(...)`,
- * backticks (bash), `@(...)` (PowerShell) or `%VAR%` (cmd) leave the word dynamic, and the commands inside a
- * substitution are read too. PowerShell's `&` call operator is kept as a word at a command's start.
+ * begins a comment (bash and PowerShell), and a redirection is kept apart from the words with its target. A
+ * variable, `$(...)`, backticks (bash), `@(...)` (PowerShell) or `%VAR%` (cmd) leave the word dynamic, and the
+ * commands inside a substitution are read too. PowerShell's `&` call operator is kept as a word at a command's
+ * start. A bash heredoc's body, after the newline that ends its line, is its command's stdin, not commands
+ * (the substitutions an unquoted one expands are read); a PowerShell here-string is one word.
  */
 class Scanner {
   private index = 0;
   private complete = true;
   private nesting: number;
   private readonly commands: ScannedCommand[] = [];
+  /** bash heredocs opened since the last newline, in order. */
+  private readonly heredocs: OpenHeredoc[] = [];
+  private readonly unreadBodies: ShellWord[] = [];
   private readonly subshells: number[];
   private readonly ids: { next: number };
   private readonly source: string;
@@ -227,9 +228,9 @@ class Scanner {
   }
 
   /** Reads the whole source; its commands stay open to the separators an enclosing scanner adds after them. */
-  private scan(): { readonly commands: ScannedCommand[]; readonly complete: boolean } {
+  private scan(): { readonly commands: ScannedCommand[]; readonly complete: boolean; readonly unreadBodies: ShellWord[] } {
     this.readList(false);
-    return { commands: this.commands, complete: this.complete };
+    return { commands: this.commands, complete: this.complete, unreadBodies: this.unreadBodies };
   }
 
   /** Adds separator characters to the command read last, if any. */
@@ -257,32 +258,42 @@ class Scanner {
   private readList(inSubstitution: boolean): void {
     let words: ShellWord[] = [];
     const word = new WordBuilder(this.dialect === 'bash');
-    let skipTarget = false;
+    /** The operator of a redirection whose target is the next word. */
+    let awaiting: string | undefined;
     let verbatim = false;
-    let redirected = false;
+    let redirections: Redirection[] = [];
     let depth = 0;
+    /** The depth a bash `((` arithmetic command opened at: inside it `<<` shifts and starts no heredoc. */
+    let arithmetic: number | undefined;
 
     const endWord = (): void => {
       const taken = word.take();
       if (taken === undefined) {
         return;
       }
-      if (skipTarget) {
-        skipTarget = false;
+      if (awaiting === undefined) {
+        words.push(taken);
+        verbatim = this.dialect === 'powershell' && taken.text === '--%' && !taken.dynamic;
         return;
       }
-      words.push(taken);
-      verbatim = this.dialect === 'powershell' && taken.text === '--%' && !taken.dynamic;
+      redirections.push({ operator: awaiting, target: taken });
+      awaiting = undefined;
     };
     const endCommand = (): void => {
       endWord();
-      skipTarget = false;
-      verbatim = false;
-      if (words.length > 0) {
-        this.commands.push({ words, subshells: [...this.subshells], terminator: '', redirected, nesting: this.nesting });
+      if (awaiting !== undefined) {
+        redirections.push({ operator: awaiting });
+        awaiting = undefined;
       }
+      verbatim = false;
+      const command: ScannedCommand | undefined =
+        words.length > 0 ? { words, subshells: [...this.subshells], terminator: '', redirections, nesting: this.nesting } : undefined;
+      if (command !== undefined) {
+        this.commands.push(command);
+      }
+      this.openHeredocs(command, redirections, arithmetic === undefined);
       words = [];
-      redirected = false;
+      redirections = [];
     };
 
     while (!this.done) {
@@ -303,9 +314,16 @@ class Scanner {
       if (char === '\n') {
         endCommand();
         this.addTerminator(char);
-      } else if (char === '(') {
+        this.index += 1;
+        this.readHeredocBodies();
+        continue;
+      }
+      if (char === '(') {
         endCommand();
         this.addTerminator(char);
+        if (this.dialect === 'bash' && this.at(1) === '(' && arithmetic === undefined) {
+          arithmetic = depth;
+        }
         depth += 1;
         if (this.dialect === 'bash') {
           this.openSubshell();
@@ -318,6 +336,9 @@ class Scanner {
           if (this.dialect === 'bash') {
             this.subshells.pop();
           }
+        }
+        if (depth === arithmetic) {
+          arithmetic = undefined;
         }
       } else if (this.isCallOperator(char, words.length === 0 && !word.isStarted)) {
         words.push({ text: '&', dynamic: false });
@@ -332,13 +353,23 @@ class Scanner {
           continue;
         }
         // A file-descriptor number (`2>`) or PowerShell's `*>` belongs to the redirection.
+        let descriptor = '';
         if (word.isStarted && /^(?:\d+|\*)$/.test(word.value)) {
+          descriptor = word.value;
           word.take();
         } else {
           endWord();
         }
-        redirected = true;
-        skipTarget = this.readRedirection();
+        if (awaiting !== undefined) {
+          redirections.push({ operator: awaiting });
+        }
+        const start = this.index;
+        const targeted = this.readRedirection();
+        const operator = descriptor + this.source.slice(start, this.index + 1);
+        awaiting = targeted ? operator : undefined;
+        if (!targeted) {
+          redirections.push({ operator });
+        }
       } else if (/\s/.test(char)) {
         endWord();
       } else if (char === ',' && this.dialect === 'powershell') {
@@ -361,6 +392,130 @@ class Scanner {
     if (this.dialect === 'bash') {
       this.subshells.length = Math.max(0, this.subshells.length - depth);
     }
+  }
+
+  /**
+   * Notes the bash heredocs among a command's redirections, whose bodies follow the next newline, and gives
+   * the command a here-string as stdin: its last input redirection decides what it reads. A delimiter only
+   * known when it runs opens no heredoc, so the lines after it stay commands.
+   */
+  private openHeredocs(command: ScannedCommand | undefined, redirections: readonly Redirection[], heredocsOpen: boolean): void {
+    if (this.dialect !== 'bash') {
+      return;
+    }
+    const input = redirections.findLast((redirection) => /^0?</.test(redirection.operator));
+    if (command !== undefined && input?.operator.endsWith('<<<') === true && input.target !== undefined) {
+      command.stdin = input.target;
+    }
+    for (const redirection of redirections) {
+      const target = redirection.target;
+      if (heredocsOpen && /^\d*<<-?$/.test(redirection.operator) && target !== undefined && !target.dynamic && target.text !== '') {
+        const quoted = target.parts?.some((part) => part.kind === 'text' && part.quoted) === true;
+        this.heredocs.push({ delimiter: target.text, tabbed: redirection.operator.endsWith('-'), expands: !quoted, reader: redirection === input ? command : undefined });
+      }
+    }
+  }
+
+  /**
+   * After a newline: reads the body of each bash heredoc opened before it, through the first line that is its
+   * delimiter, as bash finds it. A body is its reader's stdin; an unquoted one expands, so the
+   * substitutions in it are read as commands, placed before the reader. A delimiter that never comes leaves
+   * the lines as commands, so a stray `<<` cannot hide them.
+   */
+  private readHeredocBodies(): void {
+    for (const heredoc of this.heredocs.splice(0)) {
+      const close = this.delimiterLine(heredoc);
+      if (close === undefined) {
+        return;
+      }
+      const end = Math.max(this.index, close.start - 1);
+      const body = new WordBuilder(true);
+      const before = this.commands.length;
+      if (heredoc.expands) {
+        this.readExpandable(body, end);
+      } else {
+        body.add(this.source.slice(this.index, end));
+      }
+      const inner = this.commands.splice(before);
+      const at = heredoc.reader === undefined ? this.commands.length : this.commands.indexOf(heredoc.reader);
+      this.commands.splice(at, 0, ...inner);
+      if (heredoc.reader === undefined) {
+        this.unreadBodies.push(body.word());
+      } else {
+        heredoc.reader.stdin = body.word();
+      }
+      this.index = Math.max(this.index, close.next);
+    }
+  }
+
+  /**
+   * The first line from the cursor that is exactly the heredoc's delimiter, after leading tabs for `<<-`, as
+   * bash requires: where it starts, and where the next line starts. A line with other blanks or a `\r` does
+   * not close it.
+   */
+  private delimiterLine(heredoc: OpenHeredoc): { readonly start: number; readonly next: number } | undefined {
+    let start = this.index;
+    for (const line of this.source.slice(this.index).split('\n')) {
+      if ((heredoc.tabbed ? line.replace(/^\t+/, '') : line) === heredoc.delimiter) {
+        return { start, next: Math.min(start + line.length + 1, this.source.length) };
+      }
+      start += line.length + 1;
+    }
+    return undefined;
+  }
+
+  /**
+   * Expandable text through `end`: an unquoted heredoc's body or a PowerShell `@"` here-string. Quotes are
+   * plain text; variables and substitutions expand, and the commands inside a substitution are read.
+   */
+  private readExpandable(word: WordBuilder, end: number): void {
+    word.add('');
+    while (this.index < end) {
+      const char = this.at();
+      if (this.dialect === 'bash' && char === '\\' && /[\\$`\n]/.test(this.at(1))) {
+        word.add(this.at(1) === '\n' ? '' : this.at(1));
+        this.index += 2;
+      } else if (this.dialect === 'powershell' && char === '`') {
+        this.readEscape(word);
+      } else if (char === '$') {
+        this.readDollar(word);
+      } else if (this.dialect === 'bash' && char === '`') {
+        this.readBackticks(word);
+      } else {
+        word.add(char);
+        this.index += 1;
+      }
+    }
+    this.complete &&= this.index === end;
+  }
+
+  /** At `@`: true when `@'` or `@"` ends its line, which opens a PowerShell here-string. */
+  private opensHereString(): boolean {
+    const quote = this.at(1);
+    const opener = /[ \t]*\r?\n/y;
+    opener.lastIndex = this.index + 2;
+    return (quote === "'" || quote === '"') && opener.test(this.source);
+  }
+
+  /**
+   * PowerShell `@'...'@` (literal) and `@"..."@` (expandable): the lines between the opening line and the first
+   * line that starts with the closing `'@` or `"@`, blanks before it allowed. One that never closes takes the rest.
+   */
+  private readHereString(word: WordBuilder): void {
+    const quote = this.at(1);
+    const start = this.source.indexOf('\n', this.index) + 1;
+    const closing = new RegExp(`\\r?\\n[ \\t]*${quote}@`, 'g');
+    closing.lastIndex = start - 1;
+    const close = closing.exec(this.source);
+    const end = close === null ? this.source.length : Math.max(start, close.index);
+    this.index = start;
+    if (quote === '"') {
+      this.readExpandable(word, end);
+    } else {
+      word.add(this.source.slice(start, end));
+    }
+    this.complete &&= close !== null;
+    this.index = close === null ? this.source.length : Math.max(this.index, close.index + close[0].length);
   }
 
   /** PowerShell's `&` at a command's start calls the program named next; elsewhere `&` separates commands. */
@@ -425,6 +580,8 @@ class Scanner {
       this.readEscape(word);
     } else if (char === '$') {
       this.readDollar(word);
+    } else if (char === '@' && !word.isStarted && this.opensHereString()) {
+      this.readHereString(word);
     } else if (char === '@' && (this.at(1) === '(' || (/[A-Za-z_]/.test(this.at(1)) && !word.isStarted))) {
       this.readSplatOrArray(word);
     } else if (char === '<' && this.at(1) === '#') {
@@ -652,6 +809,7 @@ class Scanner {
       this.ids.next += 1;
       const nested = new Scanner(inner, 'bash', { nesting: this.nesting + 1, subshells, ids: this.ids }).scan();
       this.commands.push(...nested.commands);
+      this.unreadBodies.push(...nested.unreadBodies);
       this.complete &&= nested.complete;
     }
     word.add(this.source.slice(start, this.index), 'dynamic');
