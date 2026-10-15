@@ -176,6 +176,11 @@ describe('formatEvent and formatTaskDetail', () => {
     { v: 2, type: 'update', id: 'T2', at: '2030-01-07T13:00:00.000Z', by: 'lead', changes: { after: ['T1', 'T3'] }, note: null },
   ];
 
+  it('prints a note-only update as its note', () => {
+    const event: RegisterEvent = { v: 1, type: 'update', id: 'T1', at: '2030-01-07T10:00:00.000Z', by: 'bravo', changes: {}, note: 'context' };
+    assert.match(formatEvent(event), / bravo update note="context"$/);
+  });
+
   it('prints each event type on one line', () => {
     assert.deepEqual(events.map(formatEvent), [
       '2030-01-07 09:00 lead create owner=alpha source=owner priority=p1 ref=inbox:3 due=2030-01-08 goals=G1',

@@ -38,6 +38,20 @@ describe('runCli: giving a task to another session posts it an inbox line', () =
     assert.deepEqual(await inboxOf(kit, 'lead'), []);
   });
 
+  it('takes a note alone on a task the caller does not own, and tells nobody', async () => {
+    const kit = new CliHarness();
+    await kit.run(['add', '--title', 'Ship the CLI', '--priority', 'p1', '--session', 'alpha']);
+    const noted = await kit.run(['update', 'T1', '--note', 'the ask came with 72 of 75 cold wakes', '--session', 'bravo']);
+    assert.equal(noted.code, EXIT.ok, noted.stderr.join('\n'));
+    assert.match(noted.stdout[0] ?? '', /^UPDATED T1 /);
+    assert.deepEqual(noted.stderr, []);
+    assert.deepEqual(await inboxOf(kit, 'alpha'), []);
+
+    const empty = await kit.run(['update', 'T1', '--session', 'bravo']);
+    assert.notEqual(empty.code, EXIT.ok);
+    assert.match([...empty.stdout, ...empty.stderr].join('\n'), /REFUSED nothing to change: give a field or a --note/);
+  });
+
   it('names a line it could not post, and keeps the task', async () => {
     const kit = new CliHarness({ ...TEAM, register: { secretPatterns: ['is yours'] } });
     const added = await kit.run(['add', '--title', 'Ship the docs', '--priority', 'p2', '--owner', 'bravo', '--session', 'alpha']);
