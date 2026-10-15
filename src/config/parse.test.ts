@@ -22,7 +22,7 @@ describe('parseConfig', () => {
     assert.equal(config.messages.coldAfterMinutes, 60);
     assert.deepEqual(config.loops, { chainNudgeAt: 6 });
     assert.deepEqual(config.tests, { maxFailureChars: 4000 });
-    assert.deepEqual(config.github, { repos: [], owners: {}, closedDays: 14 });
+    assert.deepEqual(config.github, { repos: [], owners: {}, sessions: {}, closedDays: 14 });
     assert.deepEqual(config.register, DEFAULT_REGISTER);
     assert.deepEqual(config.budget, DEFAULT_BUDGET);
     assert.deepEqual(config.coordinator.schedule, {});
@@ -135,12 +135,21 @@ describe('parseConfig', () => {
       github: { repos: ['Acme/Web', 'acme/docs.site'], owners: { OctoCat: 'bravo' }, closedDays: 365 },
     });
     assert.deepEqual(issues, []);
-    assert.deepEqual(config.github, { repos: ['acme/web', 'acme/docs.site'], owners: { octocat: 'bravo' }, closedDays: 365 });
+    assert.deepEqual(config.github, { repos: ['acme/web', 'acme/docs.site'], owners: { octocat: 'bravo' }, sessions: {}, closedDays: 365 });
     for (const wrong of [0, 366]) {
       const parsed = parseConfig({ ...ROSTER, github: { closedDays: wrong } });
       assert.deepEqual(paths(parsed.issues), ['github.closedDays']);
       assert.equal(parsed.config.github.closedDays, 14);
     }
+  });
+
+  it('reads each listed repository\'s session in lowercase, and reports one not listed, an unknown session or a repeat', () => {
+    const { config, issues } = parseConfig({
+      ...ROSTER,
+      github: { repos: ['acme/web', 'acme/api'], sessions: { 'Acme/Web': 'bravo', 'acme/other': 'alpha', 'acme/api': 'zulu', 'ACME/web': 'alpha' } },
+    });
+    assert.deepEqual(paths(issues), ['github.sessions.acme/other', 'github.sessions.acme/api', 'github.sessions.ACME/web']);
+    assert.deepEqual(config.github.sessions, { 'acme/web': 'bravo' });
   });
 
   it('reports a wrong repository, a repository listed twice, a wrong login and an unknown session', () => {
