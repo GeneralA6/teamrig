@@ -34,6 +34,8 @@ export type RotationOutcome =
 
 export interface WriteResult {
   readonly task: Task;
+  /** The task before the write, null for a new one: what the write changed, such as who owns it. */
+  readonly before: Task | null;
   /** The register after the write, so a reader judges the task against the others (a waiting task's reasons). */
   readonly state: RegisterState;
   /** The last event written: the status event of a `set` that also moved the due date before it. */
@@ -182,7 +184,8 @@ export class Register {
       if (task === undefined) {
         throw new Error(`${event.id} is missing after its own write`);
       }
-      return { ok: true, value: { task, state, event, rotation: await this.rotation(snapshot) } };
+      const before = snapshot.state.tasks.get(event.id) ?? null;
+      return { ok: true, value: { task, before, state, event, rotation: await this.rotation(snapshot) } };
     });
   }
 
