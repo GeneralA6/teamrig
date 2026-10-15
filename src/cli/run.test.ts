@@ -91,8 +91,10 @@ describe('runCli: help, version and usage errors', () => {
     const done = await kit.run(['set', 'T1', 'done', '--session', 'alpha']);
     const head = USAGE.split('\n')[0] ?? '';
     const setLines = [
-      '  set <id> --status open|in-progress|verifying|blocked|done|dropped [--note "<what/why>"] [--evidence <proof>]',
-      '      [--skill <name>|none]',
+      '  set <id> --status open|in-progress|verifying|waiting|done|dropped [--note "<what/why>"] [--evidence <proof>]',
+      '      [--skill <name>|none] [--waits decision:<who>,approval:<who>,task:T<id>,time:<date>]',
+      '      waiting needs --waits: who decides or approves (a session or the owner), a task to finish first',
+      '      (only once started) or a time; check flags it READY once its tasks finished and its time passed',
     ];
     assert.deepEqual([done.code, done.stderr], [EXIT.usage, [['unexpected "done"', '', head, ...setLines, FULL_HELP_POINTER].join('\n')]]);
     assert.equal((done.stderr[0] ?? '').length < USAGE.length / 5, true, 'a fifth of the full help at most');
@@ -110,7 +112,7 @@ describe('runCli: help, version and usage errors', () => {
     const kit = new CliHarness();
     const add = await kit.run(['add', '--help']);
     assert.deepEqual([add.code, add.stdout, add.stderr], [EXIT.ok, [COMMAND_HELP.forCommand('add')], []]);
-    assert.match(add.stdout[0] ?? '', /\n {2}add --title .*\n.*\n {2}add --team /);
+    assert.match(add.stdout[0] ?? '', /\n {2}add --title .*\n.*\n {6}--after: .*\n {2}add --team /);
     assert.deepEqual((await kit.run(['set', 'T1', '-h'])).stdout, [COMMAND_HELP.forCommand('set')]);
     const inbox = await kit.run(['inbox', '--help']);
     assert.deepEqual(
@@ -326,16 +328,17 @@ describe('runCli: config', () => {
   });
 
   it('notes an older config, then migrates it and keeps the old file', async () => {
-    const kit = new CliHarness({ ...TEAM, configVersion: 2 });
+    const [current, next] = [CONFIG_VERSION, CONFIG_VERSION + 1];
+    const kit = new CliHarness(CURRENT_TEAM);
     const validated = await kit.run(['config', 'validate'], { configFormat: NEXT_FORMAT });
     assert.equal(validated.code, EXIT.ok);
-    assert.deepEqual(validated.stdout, ['NOTE config version 2 is older than 3; run: teamrig config migrate', `VALID ${CONFIG_PATH}`]);
+    assert.deepEqual(validated.stdout, [`NOTE config version ${current} is older than ${next}; run: teamrig config migrate`, `VALID ${CONFIG_PATH}`]);
 
     const migrated = await kit.run(['config', 'migrate'], { configFormat: NEXT_FORMAT });
     assert.equal(migrated.code, EXIT.ok, migrated.stdout.join('\n'));
-    assert.match(migrated.stdout[0] ?? '', /^MIGRATED .* from version 2 to 3; the old file is at .*config\.v2\.json$/);
-    assert.deepEqual(migrated.stdout.slice(1), ['  v2→v3: added a flag']);
-    assert.match(kit.files.get(CONFIG_PATH) ?? '', /"configVersion": 3/);
+    assert.match(migrated.stdout[0] ?? '', new RegExp(`^MIGRATED .* from version ${current} to ${next}; the old file is at .*config\\.v${current}\\.json$`));
+    assert.deepEqual(migrated.stdout.slice(1), [`  v${current}→v${next}: added a flag`]);
+    assert.match(kit.files.get(CONFIG_PATH) ?? '', new RegExp(`"configVersion": ${next}`));
 
     const again = await kit.run(['config', 'migrate'], { configFormat: NEXT_FORMAT });
     assert.deepEqual(again.stdout, [`UNCHANGED ${CONFIG_PATH} needs no migration`]);
@@ -347,14 +350,29 @@ describe('runCli: config', () => {
     const validated = await kit.run(['config', 'validate']);
     assert.deepEqual(
       [validated.code, validated.stdout],
-      [EXIT.ok, ['NOTE config version 1 is older than 2; run: teamrig config migrate', `VALID ${CONFIG_PATH}`]],
+      [EXIT.ok, [`NOTE config version 1 is older than ${CONFIG_VERSION}; run: teamrig config migrate`, `VALID ${CONFIG_PATH}`]],
     );
 
     const migrated = await kit.run(['config', 'migrate']);
     assert.equal(migrated.code, EXIT.ok, migrated.stdout.join('\n'));
     assert.deepEqual(migrated.stdout.slice(1), ['  v1→v2: register.tiers → register.priorities']);
     const written: unknown = JSON.parse(kit.files.get(CONFIG_PATH) ?? '');
-    assert.deepEqual(written, { ...TEAM, configVersion: 2, register: { priorities } });
+    assert.deepEqual(written, { ...TEAM, configVersion: CONFIG_VERSION, register: { priorities } });
+  });
+
+  it('migrates a version-2 config: register.requireNoteOn names waiting where it named blocked', async () => {
+    const kit = new CliHarness({ ...TEAM, configVersion: 2, register: { requireNoteOn: ['blocked', 'done'] } });
+    const migrated = await kit.run(['config', 'migrate']);
+    assert.equal(migrated.code, EXIT.ok, migrated.stdout.join('\n'));
+    assert.deepEqual(migrated.stdout.slice(1), ['  v2→v3: register.requireNoteOn: blocked → waiting']);
+    const written: unknown = JSON.parse(kit.files.get(CONFIG_PATH) ?? '');
+    assert.deepEqual(written, { ...TEAM, configVersion: CONFIG_VERSION, register: { requireNoteOn: ['waiting', 'done'] } });
+  });
+
+  it('names blocked in a current config as replaced by waiting', async () => {
+    const result = await new CliHarness({ ...CURRENT_TEAM, register: { requireNoteOn: ['blocked'] } }).run(['config', 'validate']);
+    assert.equal(result.code, EXIT.failed);
+    assert.match(result.stdout.join('\n'), /register\.requireNoteOn\[0\]: expected one of .*, got "blocked" \(blocked was replaced by waiting\)/);
   });
 
   it('names register.tiers in a current config as renamed', async () => {

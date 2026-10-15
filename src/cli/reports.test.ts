@@ -6,13 +6,16 @@ import { formatTask } from '../register/views.ts';
 import type { SkillFlag } from '../skills/lint.ts';
 import { CliHarness } from '../testing/cli-harness.ts';
 import { testTask } from '../testing/task.ts';
+import { waitContext } from '../register/waits.ts';
 import { checkLines, fitBudget, listLines, MAX_FLAGS_PER_KIND, printedChars, SHORT_FORM_CHARS, type CheckReport, type TaskRow } from './reports.ts';
 import { EXIT } from './runtime.ts';
 
 const LONG_TITLE = 'Move the nightly export onto the shared queue and drop the old cron that wrote it twice';
+/** A read with no other task in it, at 2030-01-08 12:00 UTC. */
+const CONTEXT = waitContext(new Map(), new Date('2030-01-08T12:00:00.000Z'));
 
 function row(overrides: Partial<Task>, team?: string): TaskRow {
-  return { task: testTask(overrides), team };
+  return { task: testTask(overrides), team, context: CONTEXT };
 }
 
 function flag(kind: FlagKind, task: Partial<Task>, detail = `${kind.toLowerCase()} detail`): Flag {
@@ -69,7 +72,7 @@ describe('listLines', () => {
   it('counts each owner by status, the busiest first, then by name', () => {
     const rows = [
       row({ id: 'T1', owner: 'bravo', status: 'done' }),
-      row({ id: 'T2', owner: 'alpha', status: 'blocked' }),
+      row({ id: 'T2', owner: 'alpha', status: 'waiting' }),
       row({ id: 'T3', owner: 'alpha', status: 'in-progress' }),
       row({ id: 'T4', owner: 'alpha', status: 'dropped' }),
       row({ id: 'T5', owner: 'lead' }, 'web'),
@@ -77,7 +80,7 @@ describe('listLines', () => {
     ];
     assert.deepEqual(listLines(rows, false).slice(0, 4), [
       'LIST 6 task(s) of 3 owners (short rows; --all for every field)',
-      '  alpha 4: 1 in-progress, 1 verifying, 1 blocked, 1 dropped',
+      '  alpha 4: 1 in-progress, 1 verifying, 1 waiting, 1 dropped',
       '  bravo 1: 1 done',
       '  web/lead 1: 1 open',
     ]);
@@ -103,8 +106,8 @@ describe('listLines', () => {
 
 describe('checkLines', () => {
   const sections = [
-    { team: 'app', flags: [flag('OVERDUE', { id: 'T4', due: '2030-01-07' }, 'due 01-07')] },
-    { team: 'web', flags: [flag('STALE', { id: 'T2' }, 'last event 2030-01-01 by lead')] },
+    { team: 'app', context: CONTEXT, flags: [flag('OVERDUE', { id: 'T4', due: '2030-01-07' }, 'due 01-07')] },
+    { team: 'web', context: CONTEXT, flags: [flag('STALE', { id: 'T2' }, 'last event 2030-01-01 by lead')] },
   ];
 
   it('prints each register, every flag in full and every skill flag with --all', () => {
@@ -117,7 +120,7 @@ describe('checkLines', () => {
       'SKILLS 1 flag(s) in skills-dir',
       'SKILL UNVERIFIED (Last verified 2029-11-01, over 30 days) alpha alpha-demo',
     ]);
-    assert.deepEqual(checkLines(report({ sections: [{ team: undefined, flags: [] }] }), true), [
+    assert.deepEqual(checkLines(report({ sections: [{ team: undefined, context: CONTEXT, flags: [] }] }), true), [
       'CHECK 0 flag(s), week 2030-01-07',
       'SKILLS 0 flag(s) in skills-dir',
     ]);
@@ -132,7 +135,7 @@ describe('checkLines', () => {
       '  web/T2 open, p2, owner alpha | Add a health check',
       'SKILLS 0 flag(s) in skills-dir',
     ]);
-    assert.deepEqual(checkLines(report({ sections: [{ team: undefined, flags: [] }], scope: 'no week plan' }), false), [
+    assert.deepEqual(checkLines(report({ sections: [{ team: undefined, context: CONTEXT, flags: [] }], scope: 'no week plan' }), false), [
       'CHECK 0 flag(s), no week plan',
       'SKILLS 0 flag(s) in skills-dir',
     ]);
@@ -142,7 +145,7 @@ describe('checkLines', () => {
     const overdue = Array.from({ length: 7 }, (_, index) => flag('OVERDUE', { id: `T${7 - index}` }, `due 01-0${index + 1}`));
     const lines = checkLines(
       report({
-        sections: [{ team: undefined, flags: [flag('STALE', { id: 'T9' }), ...overdue] }],
+        sections: [{ team: undefined, context: CONTEXT, flags: [flag('STALE', { id: 'T9' }), ...overdue] }],
         skills: Array.from({ length: 6 }, (_, index) => skillFlag(`alpha-skill${index}`)),
       }),
       false,
@@ -166,7 +169,7 @@ describe('checkLines', () => {
 
   it(`shows fewer flags of every kind when ${MAX_FLAGS_PER_KIND} would pass ${SHORT_FORM_CHARS} characters`, () => {
     const flags = FLAG_KINDS.flatMap((kind) => manyTasks(30).map(({ task }) => ({ kind, task, detail: `${kind} detail for ${task.id}` })));
-    const lines = checkLines(report({ sections: [{ team: undefined, flags }] }), false);
+    const lines = checkLines(report({ sections: [{ team: undefined, context: CONTEXT, flags }] }), false);
     assert.equal(printedChars(lines) <= SHORT_FORM_CHARS, true);
     const more = lines.filter((line) => /^ {2}\+\d+ more$/.test(line));
     assert.equal(more.length, FLAG_KINDS.length);
@@ -178,7 +181,7 @@ describe('checkLines', () => {
   it('cuts whole lines with a more line when even one flag of each kind passes the budget', () => {
     const detail = 'x'.repeat(500);
     const flags = FLAG_KINDS.flatMap((kind) => [flag(kind, { id: 'T1' }, `${detail}1`), flag(kind, { id: 'T2' }, `${detail}2`)]);
-    const lines = checkLines(report({ sections: [{ team: undefined, flags }] }), false);
+    const lines = checkLines(report({ sections: [{ team: undefined, context: CONTEXT, flags }] }), false);
     assert.equal(printedChars(lines) <= SHORT_FORM_CHARS, true);
     assert.match(lines.at(-1) ?? '', /^\+\d+ more line\(s\) \(--all for every flag in full\)$/);
     assert.equal(lines.filter((line) => line.startsWith('  (')).length < FLAG_KINDS.length, true);

@@ -6,12 +6,13 @@ import { FileLock } from '../../core/lock.ts';
 import { checkTasks, currentWeekOf } from '../../register/check.ts';
 import type { TaskFields } from '../../register/events.ts';
 import { renderPlan } from '../../register/plan.ts';
-import { RegisterPolicy, type AddInput, type Verdict } from '../../register/policy.ts';
+import { RegisterPolicy, type AddInput, type StatusInput, type Verdict } from '../../register/policy.ts';
 import { Register, type WriteResult } from '../../register/register.ts';
 import { ACTIVE_STATUSES } from '../../register/model.ts';
 import type { RegisterSnapshot, RetiredTasks } from '../../register/snapshot.ts';
 import { JsonlEventLog } from '../../register/store.ts';
 import { formatTask, formatTaskDetail, selectTasks, type ListFilter } from '../../register/views.ts';
+import { waitContext, type WaitContext } from '../../register/waits.ts';
 import { lintSkills } from '../../skills/lint.ts';
 import { SkillDir } from '../../skills/store.ts';
 import { noPositionals, onePositional, UsageError, type ParsedArgs } from '../args.ts';
@@ -54,6 +55,20 @@ function addInputIds(team: Team, input: AddInput): AddInput {
   return { ...input, owner: sessionIdOf(team.roster, input.owner), source };
 }
 
+/** Who a decision or an approval waits for, as an id: a session's name becomes its id, the owner's marker stays. */
+function statusInputIds(team: Team, input: StatusInput): StatusInput {
+  if (input.waits === undefined) {
+    return input;
+  }
+  const { ownerSource } = team.config.register;
+  const waits = input.waits.map((reason) =>
+    (reason.kind === 'decision' || reason.kind === 'approval') && reason.who !== ownerSource
+      ? { kind: reason.kind, who: sessionIdOf(team.roster, reason.who) }
+      : reason,
+  );
+  return { ...input, waits };
+}
+
 function changeIds(roster: Roster, changes: Partial<TaskFields>): Partial<TaskFields> {
   return changes.owner === undefined ? changes : { ...changes, owner: sessionIdOf(roster, changes.owner) };
 }
@@ -80,7 +95,8 @@ function report(runtime: CliRuntime, verdict: Verdict<WriteResult>, verb: string
   if (!verdict.ok) {
     throw new RefusedError(verdict.error);
   }
-  runtime.out.stdout(`${verb} ${formatTask(verdict.value.task, team)}`);
+  const { task, state } = verdict.value;
+  runtime.out.stdout(`${verb} ${formatTask(task, team, waitContext(state.tasks, new Date(runtime.clock.now())))}`);
   const { rotation } = verdict.value;
   const turnOff = autoArchiveSwitch(configPath);
   if (rotation.kind === 'rotated') {
@@ -148,9 +164,11 @@ export async function add(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
 export async function set(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const id = taskIdOf(onePositional(args, 'id'));
   const caller = callerOf(args.flags, runtime.env);
-  const input = statusInputOf(args.flags);
-  const { config, paths, register, roster } = await openTeam(runtime, 'write');
+  const typed = statusInputOf(args.flags);
+  const team = await openTeam(runtime, 'write');
+  const { config, paths, register, roster } = team;
   const by = sessionIdOf(roster, caller);
+  const input = statusInputIds(team, typed);
   const exit = report(runtime, await register.setStatus(by, id, input), 'SET', paths.config);
   if (input.status === 'done') {
     await markBoundary(runtime, config, paths, by, id);
@@ -203,6 +221,11 @@ async function settle(runtime: CliRuntime, { own, teams }: RollUp, needsHistory:
   return { own: settled.find((rolled) => rolled.team === own.team) ?? own, teams: settled };
 }
 
+/** How a read of one register judges its waiting tasks' reasons now. */
+function contextOf(snapshot: RegisterSnapshot, runtime: CliRuntime): WaitContext {
+  return waitContext(snapshot.state.tasks, new Date(runtime.clock.now()));
+}
+
 /** A filter that selects finished tasks, the only ones a compaction retires. */
 function selectsFinished(filter: ListFilter): HistoryNeed {
   return () => (filter.statuses ?? ACTIVE_STATUSES).some((status) => !ACTIVE_STATUSES.includes(status));
@@ -222,15 +245,17 @@ function weekMayBeRetired(week: string): HistoryNeed {
 async function treeRows(args: ParsedArgs, runtime: CliRuntime): Promise<TaskRow[]> {
   const filter = listFilterOf(new Map([...args.flags].filter(([name]) => name !== 'session')));
   const { teams } = await settle(runtime, await rollUp(runtime, callerOf(args.flags, runtime.env)), selectsFinished(filter));
-  return teams.flatMap(({ team, roster, snapshot }) =>
-    selectTasks(snapshot.state.tasks.values(), treeFilterOf(roster, filter)).map((task) => ({ task, team })),
-  );
+  return teams.flatMap(({ team, roster, snapshot }) => {
+    const context = contextOf(snapshot, runtime);
+    return selectTasks(snapshot.state.tasks.values(), treeFilterOf(roster, filter)).map((task) => ({ task, team, context }));
+  });
 }
 
 async function ownRows(args: ParsedArgs, runtime: CliRuntime): Promise<TaskRow[]> {
   const filter = listFilterOf(args.flags);
   const { own } = await settle(runtime, await ownRegister(runtime), selectsFinished(filter));
-  return selectTasks(own.snapshot.state.tasks.values(), filterIds(own.roster, filter)).map((task) => ({ task, team: undefined }));
+  const context = contextOf(own.snapshot, runtime);
+  return selectTasks(own.snapshot.state.tasks.values(), filterIds(own.roster, filter)).map((task) => ({ task, team: undefined, context }));
 }
 
 /** `list [--tree] [--all]`: the short form (src/cli/reports.ts), or with `--all` every field of every task. */
@@ -249,7 +274,7 @@ export async function show(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   if (task === undefined) {
     throw new RefusedError(`no task ${id}`);
   }
-  runtime.out.stdout(formatTaskDetail(task, snapshot.read.events.filter((event) => event.id === id)));
+  runtime.out.stdout(formatTaskDetail(task, snapshot.read.events.filter((event) => event.id === id), contextOf(snapshot, runtime)));
   return EXIT.ok;
 }
 
@@ -261,7 +286,7 @@ function weekFor(args: ParsedArgs, snapshot: RegisterSnapshot, now: Date): strin
 
 /** The task flags of one register; with `team`, for `check --tree`, its task ids name it. */
 function checkRegister(snapshot: RegisterSnapshot, config: KitConfig, now: Date, week: string | null, team?: string): CheckSection {
-  return { team, flags: checkTasks(snapshot.state.tasks.values(), now, week, config.register) };
+  return { team, flags: checkTasks(snapshot.state.tasks.values(), now, week, config.register), context: waitContext(snapshot.state.tasks, now) };
 }
 
 /**
