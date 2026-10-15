@@ -5,7 +5,7 @@ import { realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
-import { claudeProjectsDir, discoverTranscripts, nodeTranscriptFolders, nodeTranscriptSource } from './discover.ts';
+import { claudeProjectsDir, discoverTranscripts, lastWriteOf, nodeTranscriptFolders, nodeTranscriptSource } from './discover.ts';
 
 const ROOT = join('/', 'u', '.claude', 'projects');
 const A = '0123abcd-0000-4000-8000-00000000000a';
@@ -79,6 +79,13 @@ describe('nodeTranscriptFolders', () => {
     assert.equal(sub?.changedAt, YESTERDAY);
   });
 
+  it('tells when a file last changed, and nothing for a missing file or a folder', async () => {
+    assert.equal(await nodeTranscriptFolders.changedAt(join(dir, 'p1', A, 'subagents', 'agent-1.jsonl')), YESTERDAY);
+    assert.equal(await nodeTranscriptFolders.changedAt(join(dir, 'p1', 'missing.jsonl')), undefined);
+    assert.equal(await nodeTranscriptFolders.changedAt(join(dir, 'p1', A)), undefined);
+    assert.equal(await nodeTranscriptFolders.changedAt(join(dir, 'p1', `${A}.jsonl`, 'below-a-file')), undefined);
+  });
+
   it('lists nothing for a missing folder or a file', async () => {
     assert.deepEqual(await nodeTranscriptFolders.entries(join(dir, 'missing')), []);
     assert.deepEqual(await nodeTranscriptFolders.entries(join(dir, 'p1', `${A}.jsonl`)), []);
@@ -88,5 +95,28 @@ describe('nodeTranscriptFolders', () => {
     const found = await discoverTranscripts(nodeTranscriptSource, dir, SINCE);
     assert.deepEqual(found, [{ claudeSession: A, main: [join(dir, 'p1', `${A}.jsonl`)], subagents: [] }]);
     assert.equal(await nodeTranscriptSource.size(join(dir, 'p1', `${A}.jsonl`)), 3);
+  });
+});
+
+describe('lastWriteOf', () => {
+  const transcripts = new MemoryTranscripts();
+  transcripts.set(join(ROOT, 'p1', `${A}.jsonl`), '{}\n', YESTERDAY);
+  transcripts.set(join(ROOT, 'p2', `${A}.jsonl`), '{}\n', TODAY);
+  transcripts.set(join(ROOT, 'p2', `${B}.jsonl`), '{}\n', SINCE);
+  transcripts.set(join(ROOT, 'p2', B, 'subagents', 'agent-1.jsonl'), '{}\n', TODAY + 1);
+
+  it("takes the newest of the sessions' own transcripts across project folders", async () => {
+    assert.equal(await lastWriteOf(transcripts, ROOT, [A]), TODAY);
+    assert.equal(await lastWriteOf(transcripts, ROOT, [B, A]), TODAY);
+  });
+
+  it("leaves out a session's subagents, whose work does not keep the session's own context warm", async () => {
+    assert.equal(await lastWriteOf(transcripts, ROOT, [B]), SINCE);
+  });
+
+  it('is undefined for sessions with no transcript', async () => {
+    assert.equal(await lastWriteOf(transcripts, ROOT, [C]), undefined);
+    assert.equal(await lastWriteOf(transcripts, ROOT, []), undefined);
+    assert.equal(await lastWriteOf(new MemoryTranscripts(), ROOT, [A]), undefined);
   });
 });
