@@ -26,6 +26,7 @@ import { openKit, renameDepsOf, rosterOf, teamFolders, type Kit } from '../kit.t
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
 import { bindHintOnce, bindTab, inboxLinesFor, readTitle, type TitleRead } from './hook-bind.ts';
+import { helperGateOutput, promptBudgetLine, stopBudgetLines } from './hook-budget.ts';
 import { coldSendHold } from './hook-cold-send.ts';
 import { inboxDepsOf } from './inbox.ts';
 
@@ -158,8 +159,9 @@ async function titleOutcome(runtime: CliRuntime, kit: Kit, config: KitConfig, pa
 
 /**
  * UserPromptSubmit: binds a hand-started tab by its title, notes a Claude Code rename of the session,
- * says once how to bind a tab that is not bound, and shows the session's new inbox lines; or one line
- * when its team pointer is broken.
+ * says once how to bind a tab that is not bound, shows the session's new inbox lines and, once per
+ * level while it is past its daily budget and the team is ahead of its pace line, tells the model to
+ * finish the step in hand; or one line when its team pointer is broken.
  */
 export async function inboxReminder(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
@@ -192,7 +194,8 @@ export async function inboxReminder(args: ParsedArgs, runtime: CliRuntime): Prom
   // Found like a rename: `$TEAMRIG_SESSION` first, so a session is shown its lines before its first `inbox read`.
   const session = await teamSessionOf(runtime, kit, own.roster, claudeSession);
   const lines = session === undefined ? undefined : await inboxLinesFor(runtime, kit, session, claudeSession);
-  for (const text of [bound, renamed, hint, lines]) {
+  const budgetLine = session === undefined ? undefined : await promptBudgetLine(runtime, { kit, config, roster: own.roster, id: session }).catch(() => undefined);
+  for (const text of [bound, renamed, hint, lines, budgetLine]) {
     if (text !== undefined) {
       runtime.out.stdout(text);
     }
@@ -226,6 +229,30 @@ export async function coldSend(args: ParsedArgs, runtime: CliRuntime): Promise<E
     runtime.out.stdout(hold);
   }
   return EXIT.ok;
+}
+
+/**
+ * PreToolUse on Agent (and the older Task): asks the person before a helper launch, or refuses it, when
+ * the session is past its daily budget while the team is ahead of its pace line, or in the team's quiet
+ * hours, as `budget.overAction` and `budget.quietHours` say. The lead and a lifted session always go
+ * ahead. Outside a loaded team, with the budget off or on any error it prints nothing.
+ */
+export async function helperGateHook(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+  noPositionals(args);
+  const payload = parseJson(await runtime.readStdin());
+  if (!isRecord(payload)) {
+    return EXIT.ok;
+  }
+  const output = await helperGateOf(runtime, payload).catch(() => undefined);
+  if (output !== undefined) {
+    runtime.out.stdout(output);
+  }
+  return EXIT.ok;
+}
+
+async function helperGateOf(runtime: CliRuntime, payload: JsonRecord): Promise<string | undefined> {
+  const scope = await stopScopeOf(runtime, payload);
+  return scope === undefined ? undefined : helperGateOutput(runtime, scope, stringField(payload, 'transcript_path'));
 }
 
 type TeamParts = Pick<SessionStartInput, 'teamRules' | 'renames' | 'titleNote' | 'refreshNote' | 'modelNote' | 'session' | 'sessionInEnv' | 'tree'>;
@@ -329,7 +356,7 @@ interface StopScope {
   readonly id: string;
 }
 
-/** The Stop payload's team session; undefined outside a team, without a loaded config or without a session. */
+/** The hook payload's team session (Stop, helper gate); undefined outside a team, without a loaded config or without a session. */
 async function stopScopeOf(runtime: CliRuntime, payload: JsonRecord): Promise<StopScope | undefined> {
   const found = await sessionTeam(payload, runtime);
   if (found.kind !== 'team') {
@@ -395,8 +422,8 @@ async function modelNoticesOf(runtime: CliRuntime, scope: StopScope, payload: Js
 }
 
 /**
- * What the Stop hook prints for this turn's end; '' outside a team or without a session. The refresh
- * and the model notices fail apart: an error in either leaves only the other.
+ * What the Stop hook prints for this turn's end; '' outside a team or without a session. The refresh,
+ * the model notices and the budget lines fail apart: an error in one leaves the others.
  */
 async function stopOutputOf(runtime: CliRuntime, payload: JsonRecord): Promise<string> {
   const scope = await stopScopeOf(runtime, payload);
@@ -405,7 +432,8 @@ async function stopOutputOf(runtime: CliRuntime, payload: JsonRecord): Promise<s
   }
   const decision = await refreshDecisionOf(runtime, scope, payload).catch((): StopDecision => ({ kind: 'none' }));
   const notices = await modelNoticesOf(runtime, scope, payload).catch((): readonly string[] => []);
-  return stopOutput(decision, notices);
+  const budget = await stopBudgetLines(runtime, scope, stringField(payload, 'transcript_path')).catch((): readonly string[] => []);
+  return stopOutput(decision, [...notices, ...budget]);
 }
 
 /**
