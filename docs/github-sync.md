@@ -6,7 +6,7 @@ follow GitHub on every run. Nothing ever goes the other way: teamrig never creat
 anything on GitHub, and a task added with `teamrig add` stays on your machine.
 
 Setting it up takes three steps: list the repositories, give teamrig read access to their issues, then preview and
-write.
+write. After that it runs on its own every 15 minutes while your sessions work.
 
 ## 1. List the repositories
 
@@ -17,7 +17,8 @@ Add a `github` block to the team config (`~/.teamrig/teams/<team>/config.json`):
   "repos": ["acme/web", "acme/api", "globex/site"],
   "sessions": { "acme/web": "web", "acme/api": "api", "globex/site": "web" },
   "owners": { "octocat": "api" },
-  "closedDays": 14
+  "closedDays": 14,
+  "everyMinutes": 15
 }
 ```
 
@@ -27,6 +28,7 @@ Add a `github` block to the team config (`~/.teamrig/teams/<team>/config.json`):
 | `sessions` | Optional. The session that owns each repository's issues, so each session sees the issues of its own repositories. One session can own several. |
 | `owners` | Optional. A GitHub login to a session: an issue assigned to that login goes to that session, whatever its repository. |
 | `closedDays` | How many days back closed issues are read, to finish their tasks. Default 14. |
+| `everyMinutes` | How often it runs on its own, in minutes (0 to 1440). Default 15; 0 leaves it to `teamrig gh sync --yes`. |
 
 Who owns a new issue's task: the session of its first assignee listed in `owners`; else its repository's session in
 `sessions`; else the lead. After the import the owner is the team's: reassigning the task in teamrig sticks.
@@ -98,6 +100,22 @@ PREVIEW nothing was written; teamrig gh sync --yes writes the above as github
 
 A repository that cannot be read gets a `FAILED` line saying what to fix; its tasks stay as they are and the other
 repositories are read on. `teamrig gh sync --repo acme/web` reads one repository only.
+
+## Then it runs on its own
+
+Once the repositories are listed, nobody needs to run it. When a session of the team ends a turn, its Stop hook
+checks whether `everyMinutes` (15) have passed since the last sync; if so, it starts `teamrig gh sync --auto` hidden
+in the background, once for the whole team, and the turn goes on as usual. Nothing keeps running between syncs, so
+while every session is idle nothing is read; the next turn that ends catches up.
+
+- Each session with new tasks gets one inbox line, for example
+  `github: GitHub sync added 1 task(s) for you: T42 gh:acme/web#7 "Fix the login redirect"`.
+- `teamrig list` shows such a task with its issue: `T42 open, p1, owner web, from gh:acme/web#7 | Fix the login redirect`.
+- A repository that cannot be read is told to the lead's inbox once, with the `FAILED` reason, and again when every
+  repository reads again; it is not repeated at every run.
+
+`"everyMinutes": 0` turns the automatic sync off, and `TEAMRIG_GITHUB=off` turns every sync off on one machine.
+`teamrig gh sync --yes` still works at any time.
 
 ## Renewing a token
 
