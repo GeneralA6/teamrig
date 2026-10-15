@@ -27,7 +27,7 @@ describe('highlight', () => {
 
   it('colours each status and a refusal', () => {
     const tones = (text: string): string[] => highlight(text).filter((span) => span.tone !== 'text').map((span) => `${span.text}:${span.tone}`);
-    assert.deepEqual(tones('REFUSED T1 blocked'), ['REFUSED:bad', 'T1:id', 'blocked:bad']);
+    assert.deepEqual(tones('REFUSED T1 waiting'), ['REFUSED:bad', 'T1:id', 'waiting:bad']);
     assert.deepEqual(tones('SET T1 in-progress'), ['SET:good', 'T1:id', 'in-progress:warn']);
     assert.deepEqual(tones('SET T1 done'), ['SET:good', 'T1:id', 'done:good']);
   });

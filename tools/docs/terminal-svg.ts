@@ -68,7 +68,7 @@ const TOKENS: readonly (readonly [string, Tone])[] = [
   ['\\bp\\d{1,2}(?=,)', 'priority'],
   ['\\bdone\\b', 'good'],
   ['\\bin-progress\\b', 'warn'],
-  ['\\bblocked\\b', 'bad'],
+  ['\\bwaiting\\b', 'bad'],
   ['\\bdue \\d\\d-\\d\\d\\b', 'dim'],
   ['^- \\d{4}-\\d\\d-\\d\\d \\d\\d:\\d\\d', 'dim'],
 ];
