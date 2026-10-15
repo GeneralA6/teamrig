@@ -182,11 +182,17 @@
       "type": "object",
       "properties": {
         "protectedBranches": {
-          "description": "A push to these branches needs the human's confirmation; force-push and deletion are refused.",
+          "description": "The branches the push guard watches: a push to one goes as pushToProtected says; force-push, mirror and deletion are refused. An empty list guards nothing.",
           "type": "array",
           "maxItems": 8,
           "items": { "type": "string", "maxLength": 64, "pattern": "^[^\\s~^:?*[\\\\]+$" },
           "default": ["main", "master"]
+        },
+        "pushToProtected": {
+          "description": "A normal push to a protected branch: ask asks the human, allow lets it through with a note. Force-push, mirror and deletion stay refused; a --force-with-lease push and a command the guard cannot read still ask.",
+          "type": "string",
+          "enum": ["ask", "allow"],
+          "default": "ask"
         }
       }
     },

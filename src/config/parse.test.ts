@@ -200,6 +200,19 @@ describe('parseConfig', () => {
     assert.deepEqual([refuse.gate, refuse.largeCommitTrailer], ['refuse', 'Big-change']);
   });
 
+  it('reads what a normal push to a protected branch does, defaulting to ask and refusing another word', () => {
+    assert.equal(parseConfig(ROSTER).config.pushGuard.pushToProtected, 'ask');
+    for (const choice of ['ask', 'allow']) {
+      const set = parseConfig({ ...ROSTER, pushGuard: { pushToProtected: choice } });
+      assert.deepEqual(set.issues, []);
+      assert.equal(set.config.pushGuard.pushToProtected, choice);
+    }
+    const bad = parseConfig({ ...ROSTER, pushGuard: { protectedBranches: ['release'], pushToProtected: 'always' } });
+    assert.deepEqual(paths(bad.issues), ['pushGuard.pushToProtected']);
+    assert.match(bad.issues[0]?.message ?? '', /ask, allow/);
+    assert.deepEqual(bad.config.pushGuard, { protectedBranches: ['release'], pushToProtected: 'ask' });
+  });
+
   it('bounds the lists and texts the rule pack prints', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,
