@@ -1,5 +1,5 @@
 /**
- * The palette of the README's light-and-dark pictures (how it works, why, the week and the growth picture): each
+ * The palette of the README's light-and-dark pictures (how it works, why, the plan and the growth picture): each
  * colour token has a value for GitHub's light theme and one for its dark theme, and the reader's colour scheme picks
  * the side. The hero and the commands screen are dark in either theme, as a terminal is, and keep their own palettes.
  */
