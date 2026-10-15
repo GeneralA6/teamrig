@@ -153,7 +153,7 @@ export function formatEvent(event) {
                 .join(' ');
         case 'update': {
             const fields = Object.entries(event.changes).map(([name, value]) => `${name}=${changeText(name, value)}`);
-            return `${head} ${fields.join(' ')}${note}`;
+            return `${[head, ...fields].join(' ')}${note}`;
         }
     }
 }
