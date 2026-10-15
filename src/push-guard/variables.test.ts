@@ -121,6 +121,17 @@ describe('resolveLiteralVariables: what resolves', () => {
     }
   });
 
+  it('reads past a ${...} that only reads, as a probe loop writes it', () => {
+    const rows: readonly (readonly [line: string, expected: string])[] = [
+      ['B=feat; echo ${x%%|*} "${x#*|}" ${#B} ${B/a/b} ${A[@]:-x} ${B@Q}; git push origin $B', 'git push origin feat'],
+      ['T="node main.js"; for x in "a|b"; do $T push ${x%%|*} "${x#*|}"; done', 'do node main.js push ~${x%%|*} ~${x#*|}'],
+      ['T="node main.js"\nfor x in "a|b"; do\n$T push ${x%%|*}\ndone', 'node main.js push ~${x%%|*}'],
+    ];
+    for (const [line, expected] of rows) {
+      assert.equal(pushCommand(line), expected, line);
+    }
+  });
+
   it('follows a binding into, through and past a for loop', () => {
     const rows: readonly (readonly [line: string, expected: string])[] = [
       ['P="node probe.ts"\nfor l in a \'b c\'; do echo "== $l"; $P "$l"; done; B=feat; git push origin $B', 'git push origin feat'],
@@ -176,6 +187,7 @@ describe('resolveLiteralVariables: what stays unresolved', () => {
       'BASH_X=feat; git push origin $BASH_X',
       'B=feat; git push origin $B$1',
       'B=feat; git push origin {$B,x}',
+      'B=feat; git push origin ${B:-main}',
     ]) {
       assert.match(pushCommand(line), /~/, line);
     }
@@ -197,7 +209,12 @@ describe('resolveLiteralVariables: what stays unresolved', () => {
       'B=feat; (( B = 1 )); git push origin $B',
       'B=feat; : $[B=1]; git push origin $B',
       'B=feat; : ${B:=main}; git push origin $B',
-      'B=feat; git push origin ${B:-main}',
+      'B=feat; : ${C:-x} ${B=main}; git push origin $B',
+      'B=feat; : ${C:B=1}; git push origin $B',
+      'B=feat; : ${A[B=1]}; git push origin $B',
+      'B=feat; : ${!R}; git push origin $B',
+      'B=feat; : ${R@P}; git push origin $B',
+      'B=feat; : ${C:-$((B=1))}; git push origin $B',
       'B=feat; printf -v B main; git push origin $B',
       'B=feat; printf "$F" x; git push origin $B',
       'B=feat; export -n B; git push origin $B',

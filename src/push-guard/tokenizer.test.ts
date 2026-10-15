@@ -315,7 +315,7 @@ describe('parseShell: bash heredocs and here-strings', () => {
 describe('parseShell: bindings the commands may not show', () => {
   const unclear = (command: string, dialect: ShellDialect = 'bash'): boolean => parseShell(command, dialect).bindingsUnclear;
 
-  it('flags arithmetic, a ${...} operator and a heredoc left as commands', () => {
+  it('flags arithmetic, a ${...} that can assign and a heredoc left as commands', () => {
     for (const line of [
       '((B = 1))',
       'for ((i = 0; i < 2; i++)); do :; done',
@@ -323,7 +323,14 @@ describe('parseShell: bindings the commands may not show', () => {
       'echo "$((1 + 2))"',
       ': $[B = 1]',
       ': ${B:=main}',
-      'echo "${#B}"',
+      'echo "${B=main}"',
+      ': ${B:i=1} ${B: -1:2}',
+      ': ${A[i=1]} ${#A[1]}',
+      ': ${!R} ${!R*}',
+      ': ${B@P} ${B@}',
+      ': ${#} ${B x}',
+      ': ${B:-$((C = 1))}',
+      ': "${B:-${C:=x}}"',
       'echo `: ${B=main}`',
       'x=$(cat <<EOF\n$((B = 1))\nEOF\n)',
       'cat <<EOF\nB=feat',
@@ -335,8 +342,16 @@ describe('parseShell: bindings the commands may not show', () => {
     }
   });
 
-  it('passes over quoted text, plain variables and heredocs it reads', () => {
-    for (const line of ["echo '((x<<2))' \"<<EOF\" $'$((1))'", 'echo $B ${B} "${B}"', 'cat <<EOF\n${B}\nEOF', "cat <<'EOF'\n$((B = 1))\nEOF"]) {
+  it('passes over quoted text, plain variables, a ${...} that only reads and heredocs it reads', () => {
+    for (const line of [
+      "echo '((x<<2))' \"<<EOF\" $'$((1))'",
+      'echo $B ${B} "${B}"',
+      'echo ${x%%|*} "${x#*|}" ${B%.*} ${B##*/} ${B/a/b} ${B//a} ${B^^} ${B,} ${B@Q} ${B@a}',
+      'echo ${B:-a} ${B-a} ${B:+a} ${B?a} ${#B} ${#A[@]} ${A[*]} ${A[@]:-x} ${1} ${10} ${@} ${?}',
+      'echo ${B:-$(C=1)} "${B:-`C=1`}" ${B:-${C:-x}}',
+      'cat <<EOF\n${B}\nEOF',
+      "cat <<'EOF'\n$((B = 1))\nEOF",
+    ]) {
       assert.equal(unclear(line), false, line);
     }
     assert.equal(unclear('${x:=1}; $((1))', 'powershell'), false);
