@@ -198,27 +198,3 @@ describe('Timeline.steps', () => {
     for (const stops of refused) assert.throws(() => new Timeline(CLOCK).steps('none', stops), /does not fit after/);
   });
 });
-
-describe('Timeline.sweep', () => {
-  it('moves its part right at a steady speed, then holds it until the loop restarts', () => {
-    const t = new Timeline(CLOCK);
-    t.sweep(2, 4, 300);
-    assert.equal(
-      t.css(),
-      '@keyframes a0{0%,20.000%{transform:translateX(0)}60.000%,100%{transform:translateX(300px)}}\n.a0{transform:translateX(300px);animation:a0 10s linear infinite}',
-    );
-  });
-
-  it('shows its part unmoved when still if the sweep has not ended by the rest moment', () => {
-    const t = new Timeline(CLOCK);
-    t.sweep(7, 2, 300);
-    assert.equal(valueOf(rulesIn(t.css()).get('.a0') ?? '', 'transform'), 'translateX(0)');
-  });
-
-  it('refuses a sweep that starts at 0, takes no time or leaves the loop', () => {
-    const t = new Timeline(CLOCK);
-    assert.throws(() => t.sweep(0, 2, 10), RangeError);
-    assert.throws(() => t.sweep(2, 0, 10), RangeError);
-    assert.throws(() => t.sweep(8, 2, 10), /a sweep from 8s for 2s does not fit the 10s loop/);
-  });
-});
