@@ -1,0 +1,265 @@
+import { isAbsolute, join } from 'node:path';
+import type { Roster } from '../../config/roster.ts';
+import type { BudgetConfig, KitConfig } from '../../config/types.ts';
+import { errorMessage } from '../../core/guards.ts';
+import { resolveKitHome, type TeamPaths } from '../../core/home.ts';
+import type { Clock } from '../../core/lock.ts';
+import { resolveTeam } from '../../core/team.ts';
+import { formatUtcDay, MS_PER_DAY, parseUtcDay, parseUtcDeadline } from '../../core/time.ts';
+import { claudeProjectsDir, type TranscriptSource } from '../../budget/discover.ts';
+import { activeLift, decideLift, LiftLog, liftText, type Lift } from '../../budget/lift.ts';
+import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID, type Measured } from '../../budget/measure.ts';
+import { sessionBudgetPct } from '../../budget/pace.ts';
+import { loopLines, recountLines, sessionLines, sumDays, todayLines, type SessionToday } from '../../budget/report.ts';
+import { formatSnapshot, readSnapshots, snapshotOfStatus, statusLineText, weekUseOf } from '../../budget/snapshot.ts';
+import { CURSOR_DAYS_KEPT, DAYS_KEPT, MemoryUsageStore, UsageStore, type UsageState } from '../../budget/store.ts';
+import { readWeek, type WeekReading } from '../../budget/week.ts';
+import { JsonlMarkLog } from '../../inbox/store.ts';
+import { indexMarks } from '../../inbox/marks.ts';
+import { customTitleOf, TRANSCRIPT_TAIL_BYTES } from '../../names/title.ts';
+import { UsageError, onePositional, requiredFlag, type Flags, type ParsedArgs } from '../args.ts';
+import { callerOf } from '../inputs.ts';
+import { openKit, openTeamKit, requireConfig, rosterOf, sessionIdOf, teamFolders, type Kit } from '../kit.ts';
+import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
+
+/**
+ * The weekly budget from the command line: `budget` measures every session's use from the Claude Code
+ * transcripts and shows it against the week's pace; `budget lift` is the lead's lift of one session's
+ * daily budget; `statusline` is a status line that saves the plan's own reading for `budget`. Measuring
+ * and showing only: nothing here blocks or stops a session.
+ */
+
+/** Days the loop table shows by default; `--all` shows every stored day. */
+export const LOOP_DAYS_SHOWN = 4;
+
+/** Where the status line snapshots are: `budget.statusSnapshotDir` (relative to the team's folder), else `<kit home>/usage/live`. */
+export function snapshotDirOf(budget: Pick<BudgetConfig, 'statusSnapshotDir'>, paths: Pick<TeamPaths, 'home' | 'kitHome'>): string {
+  const dir = budget.statusSnapshotDir;
+  if (dir === undefined) {
+    return defaultSnapshotDir(paths.kitHome);
+  }
+  return isAbsolute(dir) ? dir : join(paths.home, dir);
+}
+
+export function defaultSnapshotDir(kitHome: string): string {
+  return join(kitHome, 'usage', 'live');
+}
+
+/** The title the user gave a Claude Code session, from its transcript's last `TRANSCRIPT_TAIL_BYTES`. */
+async function titleOf(transcripts: TranscriptSource, path: string): Promise<string | undefined> {
+  const size = (await transcripts.size(path)) ?? 0;
+  const length = Math.min(size, TRANSCRIPT_TAIL_BYTES);
+  return length === 0 ? undefined : customTitleOf((await transcripts.read(path, size - length, length)).toString('utf8'));
+}
+
+function dayStartOf(at: number): number {
+  return at - (at % MS_PER_DAY);
+}
+
+interface Reading {
+  readonly now: number;
+  readonly measured: Measured;
+  readonly week: WeekReading;
+  readonly lifts: readonly Lift[];
+}
+
+interface ReadOptions {
+  /** A past day to recount into memory, writing nothing; undefined measures up to now into the usage files. */
+  readonly recountDay: number | undefined;
+}
+
+/** Measures every session up to now (or through the recounted day) and reads the week. */
+async function readBudget(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, options: ReadOptions): Promise<Reading> {
+  const { files } = runtime;
+  const recount = options.recountDay !== undefined;
+  const now = options.recountDay === undefined ? runtime.clock.now() : options.recountDay + MS_PER_DAY - 1;
+  const clock: Clock = { now: () => now };
+  const { marks } = await new JsonlMarkLog(files, kit.paths.inboxMarks).read();
+  const measured = await measure(
+    {
+      transcripts: runtime.transcripts,
+      titleOf: (path) => titleOf(runtime.transcripts, path),
+      team: recount ? new MemoryUsageStore() : new UsageStore(files, kit.paths.usage),
+      outside: recount ? new MemoryUsageStore() : new UsageStore(files, join(kit.paths.usage, 'outside')),
+      clock,
+    },
+    {
+      projectsDir: claudeProjectsDir(runtime.env, runtime.userHome),
+      since: options.recountDay ?? dayStartOf(now) - (CURSOR_DAYS_KEPT - 1) * MS_PER_DAY,
+      roster,
+      areaBySession: indexMarks(marks).areaBySession,
+      chunkBytes: CATCH_UP_CHUNK_BYTES,
+      maxRuns: MAX_RUNS_PER_SESSION,
+    },
+  );
+  const snapshots = recount ? [] : await readSnapshots(files, snapshotDirOf(config.budget, kit.paths));
+  const week = readWeek({ budget: config.budget, now, statusUse: weekUseOf(snapshots, now), states: [...measured.bySession.values(), measured.outside] });
+  const lifts = recount ? [] : (await new LiftLog(files, kit.paths.lifts).read()).lifts;
+  return { now, measured, week, lifts };
+}
+
+function sessionsToday(reading: Reading, roster: Roster, budget: BudgetConfig): SessionToday[] {
+  const today = formatUtcDay(new Date(reading.now));
+  return roster.ids.map((id) => {
+    const usage = reading.measured.bySession.get(id)?.byDay[today];
+    const lift = activeLift(reading.lifts, id, reading.now, reading.week.usedPct);
+    const allowance = reading.week.allowancePct;
+    const shared = allowance === undefined ? budget.sessions[id]?.dailyPct : sessionBudgetPct(allowance, id, roster.ids, budget.sessions);
+    return { id, name: roster.nameOf(id) ?? id, w: usage?.w ?? 0, calls: usage?.calls ?? 0, budgetPct: lift?.toPct ?? shared, lift };
+  });
+}
+
+/** The days a loop table shows, oldest first, ending at `now`'s day. */
+function loopDays(now: number, count: number): string[] {
+  return Array.from({ length: count }, (_, index) => formatUtcDay(new Date(now - (count - 1 - index) * MS_PER_DAY)));
+}
+
+function recountDayOf(text: string | undefined, now: number): number | undefined {
+  if (text === undefined) {
+    return undefined;
+  }
+  const day = parseUtcDay(text);
+  if (day === undefined) {
+    throw new UsageError(`--day "${text}" is not a YYYY-MM-DD day`);
+  }
+  if (day.getTime() > now) {
+    throw new UsageError(`--day ${text} has not begun`);
+  }
+  return day.getTime();
+}
+
+/** `budget [<session>] [--loops] [--day <day>] [--all]`. */
+export async function budget(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+  const [target, extra] = args.positionals;
+  if (extra !== undefined) {
+    throw new UsageError(`unexpected "${extra}"`);
+  }
+  const recountDay = recountDayOf(args.flags.get('day'), runtime.clock.now());
+  const all = args.switches.has('all');
+  const kit = await openTeamKit(runtime);
+  const config = requireConfig(kit, runtime, 'read');
+  const roster = await rosterOf(runtime, kit, config);
+  const id = target === undefined ? undefined : sessionIdOf(roster, target);
+  const reading = await readBudget(runtime, kit, config, roster, { recountDay });
+  const sessions = sessionsToday(reading, roster, config.budget);
+  const { measured, week, now } = reading;
+  let lines: string[];
+  if (args.switches.has('loops')) {
+    const days = recountDay === undefined ? loopDays(now, all ? DAYS_KEPT : LOOP_DAYS_SHOWN) : [formatUtcDay(new Date(recountDay))];
+    const states: UsageState[] = id === undefined ? [...measured.bySession.values(), measured.outside] : [measured.bySession.get(id) ?? { byDay: {}, cursors: {}, recentKeys: [] }];
+    lines = loopLines(id === undefined ? 'every session, outside the team too' : (roster.nameOf(id) ?? id), days, sumDays(states, days));
+  } else if (id !== undefined) {
+    const session = sessions.find((each) => each.id === id);
+    const state = measured.bySession.get(id);
+    lines = session === undefined || state === undefined ? [] : sessionLines(session, state, week);
+  } else {
+    const today = formatUtcDay(new Date(now));
+    const outsideToday = measured.outside.byDay[today];
+    const outside = { w: outsideToday?.w ?? 0, calls: outsideToday?.calls ?? 0, sessions: measured.outsideSessions, titles: measured.outsideTitles };
+    const behind = measured.behind.map((each) => (each === OUTSIDE_ID ? 'outside the team' : (roster.nameOf(each) ?? each)));
+    lines = recountDay === undefined ? todayLines({ week, sessions, outside, behind, all }) : recountLines(today, { week, sessions, outside, all });
+  }
+  for (const line of lines) {
+    runtime.out.stdout(line);
+  }
+  return EXIT.ok;
+}
+
+function pctFlag(flags: Flags, name: string): number | undefined {
+  const text = flags.get(name);
+  if (text === undefined) {
+    return undefined;
+  }
+  const value = Number(text);
+  if (text.trim() === '' || !Number.isFinite(value) || value <= 0 || value > 100) {
+    throw new UsageError(`--${name} "${text}" is not a percent above 0 and up to 100`);
+  }
+  return value;
+}
+
+/** `--until`: `HH:MM` today (UTC) or `YYYY-MM-DD HH:MM`. */
+function untilOf(text: string | undefined, now: number): number | undefined {
+  if (text === undefined) {
+    return undefined;
+  }
+  const time = /^(\d{2}):(\d{2})$/.exec(text.trim());
+  const at = time === null ? parseUtcDeadline(text) : parseUtcDeadline(`${formatUtcDay(new Date(now))} ${text.trim()}`);
+  if (at === undefined) {
+    throw new UsageError(`--until "${text}" is not HH:MM or "YYYY-MM-DD HH:MM" (UTC)`);
+  }
+  return at.getTime();
+}
+
+/** `budget lift <session> --to <pct> --stop-pct <n> [--until <time>] [--reserve] --reason "<text>"`: the lead only. */
+export async function lift(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+  const caller = callerOf(args.flags, runtime.env);
+  const target = onePositional(args, 'session');
+  const toPct = pctFlag(args.flags, 'to');
+  if (toPct === undefined) {
+    throw new UsageError('--to is required');
+  }
+  const stopPct = pctFlag(args.flags, 'stop-pct');
+  const reason = requiredFlag(args.flags, 'reason').trim();
+  if (reason === '') {
+    throw new UsageError('--reason needs a reason');
+  }
+  const now = runtime.clock.now();
+  const until = untilOf(args.flags.get('until'), now);
+  const kit = await openTeamKit(runtime);
+  const config = requireConfig(kit, runtime, 'write');
+  const roster = await rosterOf(runtime, kit, config);
+  const by = sessionIdOf(roster, caller);
+  const lead = roster.holderOf('lead');
+  if (by !== lead) {
+    throw new RefusedError(`only the lead${lead === undefined ? '' : ` (${roster.nameOf(lead) ?? lead})`} lifts a session's budget`);
+  }
+  const id = sessionIdOf(roster, target);
+  const { week } = await readBudget(runtime, kit, config, roster, { recountDay: undefined });
+  const decision = decideLift(
+    { session: id, toPct, stopPct, until, reserve: args.switches.has('reserve'), reason, by, now },
+    { usedPct: week.usedPct, reset: week.reset, limits: config.budget.lift },
+  );
+  if (decision.kind === 'refused') {
+    throw new RefusedError(decision.reason);
+  }
+  await new LiftLog(runtime.files, kit.paths.lifts).append(decision.lift);
+  runtime.out.stdout(`LIFTED ${liftText(decision.lift, roster.nameOf(id) ?? id)}`);
+  return EXIT.ok;
+}
+
+/** The snapshot folder of the team the status line's session works in, else the kit's default one. */
+async function statusSnapshotDir(runtime: CliRuntime, cwd: string): Promise<string> {
+  const kitHome = resolveKitHome(runtime.env, runtime.userHome);
+  const found = await resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [cwd === '' ? undefined : cwd, runtime.cwd]));
+  if (found.kind !== 'team') {
+    return defaultSnapshotDir(kitHome);
+  }
+  const kit = await openKit(runtime, found.team);
+  return kit.load.status === 'loaded' ? snapshotDirOf(kit.load.config.budget, kit.paths) : defaultSnapshotDir(kitHome);
+}
+
+/**
+ * `statusline`: Claude Code's status line. It saves the status input's reading (the plan's use of the
+ * week and its reset) as a snapshot for `budget`, and prints a short status. It always exits 0, so a
+ * bad input or a full disk never breaks the status bar; what went wrong goes to stderr.
+ */
+export async function statusline(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+  const [extra] = args.positionals;
+  if (extra !== undefined) {
+    throw new UsageError(`unexpected "${extra}"`);
+  }
+  const snapshot = snapshotOfStatus(await runtime.readStdin(), runtime.clock.now());
+  if (snapshot === undefined) {
+    runtime.out.stdout('Claude');
+    runtime.out.stderr('teamrig statusline: the status input is not Claude Code status JSON with a session id; nothing saved');
+    return EXIT.ok;
+  }
+  try {
+    const dir = await statusSnapshotDir(runtime, snapshot.cwd);
+    await runtime.files.write(join(dir, `${snapshot.sessionId}.json`), formatSnapshot(snapshot));
+  } catch (error) {
+    runtime.out.stderr(`teamrig statusline: the snapshot was not saved: ${errorMessage(error)}`);
+  }
+  runtime.out.stdout(statusLineText(snapshot));
+  return EXIT.ok;
+}
