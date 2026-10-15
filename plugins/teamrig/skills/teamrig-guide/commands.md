@@ -742,6 +742,59 @@ With no status line snapshot and no `budget.weeklyLimitW`, the week line says it
 give W only. `Not on the team: N Claude Code sessions (titled ...)` counts the tabs not tied to a session.
 `Still reading: <sessions>` means a long transcript is read in steps: run it again for the rest.
 
+### teamrig budget setup
+
+The lead writes the team's budget policy into the team config and turns the budget on. Without `--yes` it shows
+each policy key, what it is now and what it would become, and writes nothing. With `--yes` it first keeps the old
+file in the team's `backups` folder (`config.budget.json`, or with a timestamp when that name is taken). Flags left
+out keep the config's values, and the rest of the file stays as it was, its `configVersion` included. The new file
+must pass the checks every command reads the config with. The team-setup skill runs it when a team starts, asking
+the person each choice; run it again to change one.
+
+Flags:
+
+- `--session <id|name>`: the caller; it must be the lead.
+- `--daily pace|<pct>`: the team's allowance per UTC day, in percent of the week. `pace` works it out each midnight
+  (UTC) from what is left of the week over the days left; a number is the same every day (`budget.dailyPct`).
+- `--max-daily none|<pct>`: the most any day may get, or `none` (`budget.maxDailyPct`).
+- `--over <action>`: past a session's daily budget, `warn` shows the lines only, `ask-lead` also writes the lead an
+  inbox line, `ask` also asks the person before a helper launch, and `block` refuses helper launches
+  (`budget.overAction`).
+- `--escalate <mode>`: when that action applies: `session` as soon as the session is over its budget,
+  `session-and-fleet` only when the team is also ahead of its pace line (`budget.escalate`).
+- `--quiet <HH:MM-HH:MM>|off`: quiet hours, in UTC, in which the action applies on its own while nobody watches;
+  `off` removes them. New quiet hours also need `--quiet-action` (`budget.quietHours`).
+- `--quiet-action <action>`: the action in quiet hours, one of the `--over` actions.
+- `--off`: turns the budget off; its policy stays for later.
+- `--yes`: writes the change.
+
+Example:
+
+```sh
+teamrig budget setup --session lead --daily pace --max-daily 15 --over ask-lead --quiet 23:00-07:00 --quiet-action ask
+```
+
+Output:
+
+```text
+PREVIEW /home/you/.teamrig/teams/shop/config.json: 4 to change, 2 unchanged; nothing written (add --yes to write)
+  CHANGE budget.enabled: off (not set) -> on
+  KEEP budget.dailyPct: pace (not set)
+  CHANGE budget.maxDailyPct: no cap (not set) -> 15%
+  CHANGE budget.overAction: warn (not set) -> ask-lead
+  KEEP budget.escalate: session-and-fleet (not set)
+  CHANGE budget.quietHours: none (not set) -> 23:00-07:00 UTC, ask
+```
+
+With `--yes` the first line reads `WROTE <path>: ...; the old file is at <backup>`, or `UNCHANGED <path>: the
+budget already reads this way` when nothing would change. `NOTE no status line reading yet, so the budget stays
+silent` means no hook can tell the week's use: make `teamrig statusline` Claude Code's status line
+([requirements.md](requirements.md#the-status-line-optional)), or set `budget.weeklyLimitW`.
+
+A caller who is not the lead, or a value the config checks reject (`nothing written: <key>: <why>`), is `REFUSED`
+(exit 2). A flag value it cannot read, `--quiet` without `--quiet-action` (or the reverse) on a team with no quiet
+hours yet, and `--quiet-action` with `--quiet off` are usage errors (exit 64).
+
 ### teamrig budget lift
 
 The lead lifts one session's daily budget for today. Every lift carries a stop %: it ends at the stop %, at

@@ -56,7 +56,32 @@ teamrig add --session lead --owner <id> --priority p2 --title "<first task>" && 
 - Exit code 3, with a `MANUAL` line: no terminal could be opened from here. Show the user the printed command to paste into a new terminal in the project.
 - A `REFUSED` line: tell the user why and stop.
 
-## 5. Tell the user, in three short lines
+## 5. Turn on the daily budget
+
+The budget turns the week's tokens into a daily allowance for the team, so the work lasts until the weekly reset.
+Ask the user in one AskUserQuestion call with these three questions, the recommended answer first:
+
+- Daily allowance: `pace` (recommended): each midnight, what is left of the week spread over the days left. Offer a
+  cap with it (`--max-daily <pct>`), so a slow start cannot pile up into one huge day. Or a fixed percent per day
+  (`--daily <pct>`).
+- Past the line, when a session goes over its share of the day while the team runs ahead of pace: `ask-lead`
+  (recommended): the lead is told and decides; `warn`: a line only; `ask`: the user is asked before its helpers
+  start. `block` refuses helper launches, an urgent fix's included: never recommend it.
+- Quiet hours, when helpers do not start unasked: the user's own night (ask in their local time, then convert to
+  UTC: 23:00-07:00 at UTC-5 is `04:00-12:00`) with `ask`, or none.
+
+Preview in one Bash call and show the user the lines:
+
+```
+teamrig budget setup --session lead --daily pace --over ask-lead --quiet <HH:MM-HH:MM> --quiet-action ask
+```
+
+After a yes, run the same line with `--yes`. A `NOTE no status line reading yet` line means the hooks cannot see the
+week's use: tell the user to make `teamrig statusline` Claude Code's status line (the guide's
+[requirements](../teamrig-guide/requirements.md#the-status-line-optional)). If the user skips this step, say they
+can ask you to turn it on later.
+
+## 6. Tell the user, in three short lines
 
 ```
 Team <team> is up: <id>, <id> and <id> are working in their own tabs.
@@ -64,7 +89,7 @@ This tab is the lead: ask me for status, new tasks or changes.
 Close a tab to stop that session; teamrig open <id> starts it again.
 ```
 
-## 6. Grow a part of the work into a sub-team
+## 7. Grow a part of the work into a sub-team
 
 When one part outgrows a single session, or the user asks for a team under this one, propose it as in step 2 (the
 sub-team's id, its sessions and the part it takes on), then, after a yes, in one Bash call:
@@ -81,7 +106,7 @@ teamrig team create <sub-team> --sessions <id>,<id> --parent <team> --project "<
   under it. A tree is at most 3 levels deep, with at most 8 sub-teams under one team; `team create` says when a new
   one would break that.
 
-## 7. Checkpoint: keep the team on its plan
+## 8. Checkpoint: keep the team on its plan
 
 At the start of each work block, and when the user asks for status, in one Bash call:
 

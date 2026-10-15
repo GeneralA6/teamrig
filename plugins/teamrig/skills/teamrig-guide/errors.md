@@ -83,11 +83,14 @@ or take it to the lead.
 
 ## Budget
 
-From `teamrig budget lift` ([commands.md](commands.md#teamrig-budget-lift)).
+From `teamrig budget lift` ([commands.md](commands.md#teamrig-budget-lift)) and `teamrig budget setup`
+([commands.md](commands.md#teamrig-budget-setup)).
 
 | Output | Fix |
 | --- | --- |
 | `REFUSED only the lead (lead) lifts a session's budget` | Ask the lead for the lift. |
+| `REFUSED only the lead (lead) sets the team's budget` | Ask the lead to run it. |
+| `REFUSED nothing written: budget.quietHours.startUtc: ...` | The line names the value the config checks reject: give the flag another one. |
 | `REFUSED a lift needs --stop-pct <n>: the share of the week, in %, at which it ends` | Add `--stop-pct`. |
 | `REFUSED --stop-pct 99.5 is above budget.lift.maxStopPct (99.3); only the reserve release (--reserve, in the last hour before the reset) goes up to 99.9` | Use a stop % up to 99.3, or `--reserve` in the last hour before the reset. |
 | `REFUSED --stop-pct 100 is above budget.lift.reserveStopPct (99.9), the most any lift may reach` | Use a stop % up to 99.9. |

@@ -232,7 +232,8 @@ turns this off: `register.autoArchive: false` in the team's `config.json`, after
   line: what is left to the target at 00:00 UTC, spread over the days to the reset and split among the sessions.
   The week's use in percent comes from status line snapshots, else from `budget.weeklyLimitW`. The hooks warn
   a session as it passes its daily budget, tell the lead, and can hold its helper launches (`budget.overAction`,
-  `budget.quietHours`).
+  `budget.quietHours`). The lead sets that policy with `teamrig budget setup`, which shows the change before it
+  writes it.
 
 ## Notes between sessions
 
