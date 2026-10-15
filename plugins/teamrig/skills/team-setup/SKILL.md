@@ -123,6 +123,8 @@ With sub-teams, add `--tree` to `check`. Act on each flag:
 - `OFF-GOAL`: work in progress with no goal outside the week's plan. If it belongs in this week, plan it in:
   `teamrig update T<n> --session lead --week <week>`. If not, ask the session in one inbox line to tag its goal
   (`update --goals`, only its owner may) or to park it.
+- `STOPGAP-DONE`: a stopgap's task is finished. Ask the owner of each file it lists, in one inbox line, to remove
+  the stopgap; when the task was dropped, to open a new task for it or keep it by a decision.
 - `NOT-PICKED-UP`: an idle session reads no inbox. Wake it with `teamrig open <id>`, or tell the user.
 - `OVERDUE` or `STALE`: ask the owning session what blocks it, then re-date it (`--due`) or tell the user.
 - `READY`: a waiting task whose reasons have all cleared (its tasks finished, its time passed). Tell the owning

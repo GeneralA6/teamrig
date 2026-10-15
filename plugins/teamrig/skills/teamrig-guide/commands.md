@@ -239,7 +239,9 @@ history:
 ### teamrig check
 
 Lists the tasks and skills that break a team rule. The lead runs it at each checkpoint; any session may. What
-each flag means and what to do about it: [tasks.md](tasks.md#check-flags). By default it prints a short form
+each flag means and what to do about it: [tasks.md](tasks.md#check-flags). It also reads the `stopgap T<id>` tags in
+your skills and in `CLAUDE.md` and `.claude/rules` [register.check.stopgapFiles], and flags STOPGAP-DONE for each
+done or dropped task they still name. By default it prints a short form
 within 3,000 characters: each kind with its count (and its detail when every flag of it shares one), at most 5
 of its tasks as short rows, then `+N more`; the same for skill flags. `--all` prints every flag in full.
 

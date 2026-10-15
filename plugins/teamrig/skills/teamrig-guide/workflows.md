@@ -153,6 +153,8 @@ With sub-teams, add `--tree` to `check`. Then act on each flag (full table: [tas
   with `teamrig update T<n> --session lead --priority p2`.
 - `OFF-GOAL`: if it belongs this week, `teamrig update T<n> --session lead --week <week>`; else ask the owner in
   one inbox line to tag its goal or park it.
+- `STOPGAP-DONE`: one inbox line to the owner of each listed file to remove the stopgap (or, for a dropped task, to
+  open a new task or keep it by a decision).
 - `NOT-PICKED-UP`: the owner is idle and reads no inbox: wake it with `teamrig open <id>`, or tell the human.
 - `OVERDUE` or `STALE`: ask the owner what blocks it, then re-date it (`--due`) or tell the human.
 - `READY`: a waiting task can go on: one inbox line to its owner, if it has not set the next status.
