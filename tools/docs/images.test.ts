@@ -10,7 +10,7 @@ describe('drawPictures', () => {
   it("draws the README's pictures in its order, then the commands screen", async () => {
     assert.deepEqual(
       (await drawPictures()).map((picture) => picture.file),
-      ['wordmark.svg', 'hero.svg', 'growth.svg', 'how-it-works.svg', 'week.svg', 'why.svg', 'commands.svg'],
+      ['wordmark.svg', 'hero.svg', 'growth.svg', 'how-it-works.svg', 'plan.svg', 'week.svg', 'why.svg', 'commands.svg'],
     );
   });
 

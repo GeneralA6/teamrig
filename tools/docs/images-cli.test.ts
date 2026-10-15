@@ -9,7 +9,7 @@ import { IMAGES_DIR } from './images.ts';
 const CLI = fileURLToPath(new URL('./images-cli.ts', import.meta.url));
 const WORDMARK = `${IMAGES_DIR}/wordmark.svg`;
 const HERO = `${IMAGES_DIR}/hero.svg`;
-const ALL = [WORDMARK, HERO, ...['growth', 'how-it-works', 'week', 'why', 'commands'].map((name) => `${IMAGES_DIR}/${name}.svg`)];
+const ALL = [WORDMARK, HERO, ...['growth', 'how-it-works', 'plan', 'week', 'why', 'commands'].map((name) => `${IMAGES_DIR}/${name}.svg`)];
 
 describe('images-cli', () => {
   let repo: TempRepo;
@@ -30,7 +30,7 @@ describe('images-cli', () => {
     const drawn = readFileSync(join(repo.dir, HERO), 'utf8');
     const result = repo.run(CLI, ['--check']);
     assert.equal(result.status, 0, result.stderr);
-    assert.equal(result.stdout, 'images: 7 picture(s) are up to date\n');
+    assert.equal(result.stdout, 'images: 8 picture(s) are up to date\n');
     assert.equal(readFileSync(join(repo.dir, HERO), 'utf8'), drawn);
   });
 
