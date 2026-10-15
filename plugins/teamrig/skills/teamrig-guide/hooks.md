@@ -19,8 +19,9 @@ they all stay silent.
 The injected context holds:
 
 1. **The core rules**: numbered rules starting `# Team rules (teamrig core)`, with the team's own values in
-   them and the config key behind each value in `[brackets]`. `teamrig rules --session <id>` prints the same
-   text.
+   them and the config key behind each value in `[brackets]`. A protected-branch or forbidden-frontmatter list
+   longer than 120 characters prints its first items and "and N more"; the push guard and `check` still use the
+   whole list. `teamrig rules --session <id>` prints the same text.
 2. **Who you are**. A known session, found from its last `inbox read` or its tab title rather than
    `$TEAMRIG_SESSION`:
 
