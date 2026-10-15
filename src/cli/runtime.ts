@@ -1,3 +1,4 @@
+import type { TranscriptSource } from '../budget/discover.ts';
 import type { ConfigFormat } from '../config/migrate.ts';
 import type { Files } from '../core/files.ts';
 import type { Env } from '../core/home.ts';
@@ -40,6 +41,8 @@ export interface CliRuntime {
   /** Whether a folder or a program is there. */
   readonly probe: PathProbe;
   readonly self: SelfLocation;
+  /** The Claude Code transcripts `teamrig budget` measures: their folders and bytes. */
+  readonly transcripts: TranscriptSource;
   /** What teamrig needs beside itself (git, Claude Code, Node.js) and lacks: told at session start, by `team create` and by `doctor`. */
   readonly requirements: RequirementsCheck;
   /** The config format the run reads and migrates to; default the shipped one (tests give a newer release's). */
