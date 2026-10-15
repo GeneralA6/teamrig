@@ -24,6 +24,8 @@ no account.
 Start small: one lead and a few members. When one team isn't enough, it becomes teams of teams, each with its own
 lead. You still talk to just one.
 
+*Coming: hiring and retiring members as the project changes.*
+
 ![A camera pulls back from your lead as time passes. Day 1: the lead hires a team of three. Week 2: new members join and one whose job is done moves on. Month 2: one team becomes teams of teams, each with its own lead. Month 6: eight teams and 33 members, with members coming and going, and you still talk to one lead.](docs/images/growth.svg)
 
 ## How it works
@@ -32,11 +34,16 @@ lead. You still talk to just one.
 
 ## Never runs out mid-task
 
-Your lead plans the week around your token limit. It spreads the work so every task finishes before your weekly
-reset, uses nearly all of your tokens without hitting the wall, and holds deploys in the last hours, so nothing ships
-half-done.
+Your lead plans the week from the tokens you have left. It sizes each task in tokens, fills the week in order of
+priority until the plan reaches 99.5% of your limit, keeps the last 0.5% for incidents and moves what doesn't fit
+to next week. The team works to the plan, so every task finishes before your weekly reset without hitting the
+wall, and deploys hold in the last hours, so nothing ships half-done.
 
-![A week of token use between two resets. Without a plan, usage climbs too fast, hits the weekly limit on Thursday, and work waits for the reset. With teamrig, the work is spread over the week: usage climbs evenly to 99%, each day's tasks get done, and deploys pause in the last hours before the reset.](docs/images/week.svg)
+*Coming: planning the week to your token limit, and holding deploys before the reset.*
+
+![Your lead plans the week from the tokens you have left. It sizes each task in tokens and fills the week in order of priority, p1 first, until the plan reaches 99.5% of your weekly limit, keeping 0.5% for incidents. Each member's tasks fill its lane from one reset to the next, and the tasks that do not fit move to next week.](docs/images/plan.svg)
+
+![A week of token use between two resets. Without a plan, usage climbs too fast, hits the weekly limit on Thursday, and work waits for the reset. With teamrig, the work is spread over the week: usage climbs evenly to 99.5%, each day's tasks get done, and deploys pause in the last hours before the reset.](docs/images/week.svg)
 
 ## Why it's different
 
