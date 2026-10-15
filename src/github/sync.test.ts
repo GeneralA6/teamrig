@@ -13,8 +13,10 @@ import { isReadCommand, type GhRequest, type GhResult, type GhRunner } from './g
 import { ISSUE_LIMIT } from './issues.ts';
 import type { SyncStep } from './plan.ts';
 import { applySteps, closedSince, readRepo } from './sync.ts';
+import type { RepoAccess } from './tokens.ts';
 
-const ENV = { HOME: '/u' };
+/** Reading through the gh login, as when no token is saved for acme. */
+const LOGIN: RepoAccess = { via: 'login', env: { HOME: '/u' }, owner: 'acme', credential: 'teamrig-gh-acme', save: 'save teamrig-gh-acme' };
 const URL = 'https://github.com/acme/web/issues/7';
 
 /** A gh whose closed list fails, as a rate limit hit between the two reads would. */
@@ -55,7 +57,7 @@ describe('closedSince', () => {
 describe('readRepo', () => {
   it('reads the open issues, then those closed since the day, through two reads only', async () => {
     const gh = new FakeGh().holds('acme/web', [ghIssue('acme/web', 7), ghIssue('acme/web', 8, { state: 'CLOSED', stateReason: 'COMPLETED' })]);
-    const read = await readRepo(gh, ENV, 'acme/web', '2029-12-25');
+    const read = await readRepo(gh, LOGIN, 'acme/web', '2029-12-25');
     assert.equal(read.kind, 'read');
     assert.deepEqual(read.kind === 'read' && read.issues.map((issue) => [issue.number, issue.state]), [[7, 'open'], [8, 'closed']]);
     assert.deepEqual(read.kind === 'read' && read.notes, []);
@@ -66,7 +68,7 @@ describe('readRepo', () => {
   it('says when a list may be cut short, or held items it could not read', async () => {
     const many = Array.from({ length: ISSUE_LIMIT }, (_, index) => ghIssue('acme/web', index + 1));
     const gh = new FakeGh().holds('acme/web', [...many, { ...ghIssue('acme/web', 900, { state: 'CLOSED' }), number: 'nine hundred' }]);
-    const read = await readRepo(gh, ENV, 'acme/web', '2029-12-25');
+    const read = await readRepo(gh, LOGIN, 'acme/web', '2029-12-25');
     assert.deepEqual(read.kind === 'read' && read.notes, [
       'the open list reached 500 issues, so it may leave some out',
       '1 closed item(s) gh printed did not read as issues and were left out',
@@ -74,13 +76,13 @@ describe('readRepo', () => {
   });
 
   it('leaves the repository out whole when either read fails', async () => {
-    assert.deepEqual(await readRepo(new FakeGh(), ENV, 'acme/nope', '2029-12-25'), {
+    assert.deepEqual(await readRepo(new FakeGh(), LOGIN, 'acme/nope', '2029-12-25'), {
       kind: 'failed',
       repo: 'acme/nope',
-      reason: 'acme/nope is not visible to the gh login: check github.repos, and that gh auth status shows an account that can read it',
+      reason: 'acme/nope is not visible to the gh login: check github.repos, or save a read-only token for acme with: save teamrig-gh-acme',
     });
     const gh = new ClosedFails([ghIssue('acme/web', 7)]);
-    assert.deepEqual(await readRepo(gh, ENV, 'acme/web', '2029-12-25'), {
+    assert.deepEqual(await readRepo(gh, LOGIN, 'acme/web', '2029-12-25'), {
       kind: 'failed',
       repo: 'acme/web',
       reason: 'gh issue list -R acme/web exited with code 1: HTTP 403: API rate limit exceeded',

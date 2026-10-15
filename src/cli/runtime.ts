@@ -4,6 +4,7 @@ import type { Files } from '../core/files.ts';
 import type { Env } from '../core/home.ts';
 import type { Clock, Sleep } from '../core/lock.ts';
 import type { PathProbe } from '../core/path-probe.ts';
+import type { CredentialStore } from '../github/credentials.ts';
 import type { GhRunner } from '../github/gh.ts';
 import type { RequirementsCheck } from '../requirements/requirements.ts';
 import type { Processes } from '../open/processes.ts';
@@ -44,6 +45,8 @@ export interface CliRuntime {
   readonly shell: ShellRunner;
   /** The GitHub CLI, for `teamrig gh sync`; it runs reads only (github/gh.ts). */
   readonly gh: GhRunner;
+  /** The system's saved secrets, where `teamrig gh sync` finds each owner's read-only GitHub token; only ever read. */
+  readonly credentials: CredentialStore;
   /** Whether a folder or a program is there. */
   readonly probe: PathProbe;
   readonly self: SelfLocation;
