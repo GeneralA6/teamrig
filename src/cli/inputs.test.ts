@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { TASK_STATUSES } from '../register/model.ts';
 import { UsageError } from './args.ts';
-import { addInputOf, callerOf, changesOf, listFilterOf, priorityOf, sessionRef, statusInputOf, taskIdOf, weekOf } from './inputs.ts';
+import { addInputOf, callerOf, changesOf, listFilterOf, priorityOf, sessionRef, statusInputOf, taskIdOf, waitsOf, weekOf } from './inputs.ts';
 
 const flags = (entries: Readonly<Record<string, string>>): ReadonlyMap<string, string> => new Map(Object.entries(entries));
 
@@ -79,6 +79,12 @@ describe('addInputOf', () => {
     assert.throws(() => addInputOf(flags({ title: 'x', priority: '1' }), 'alpha'), /priority "1" is not p<n>: write p1/);
     assert.throws(() => addInputOf(flags({ title: 'x', priority: 'p1', goals: ' , ' }), 'alpha'), /--goals " , " is an empty list/);
   });
+
+  it('reads the tasks it comes after as task ids', () => {
+    assert.deepEqual(addInputOf(flags({ title: 'x', priority: 'p2', after: 'T5, T6' }), 'alpha').after, ['T5', 'T6']);
+    assert.equal(addInputOf(flags({ title: 'x', priority: 'p2' }), 'alpha').after, undefined, 'none given leaves it to the default');
+    assert.throws(() => addInputOf(flags({ title: 'x', priority: 'p2', after: 'T5,soon' }), 'alpha'), /"soon" is not a task id like T12/);
+  });
 });
 
 describe('changesOf', () => {
@@ -95,6 +101,11 @@ describe('changesOf', () => {
       week: null,
     });
   });
+
+  it('plans after tasks, or clears the plan with none', () => {
+    assert.deepEqual(changesOf(flags({ after: 'T5,T6' })), { after: ['T5', 'T6'] });
+    assert.deepEqual(changesOf(flags({ after: 'none' })), { after: [] });
+  });
 });
 
 describe('statusInputOf', () => {
@@ -105,7 +116,33 @@ describe('statusInputOf', () => {
       evidence: 'abc123',
       skill: 'none',
     });
-    assert.deepEqual(statusInputOf(flags({ status: 'blocked' })), { status: 'blocked' });
+    assert.deepEqual(statusInputOf(flags({ status: 'waiting' })), { status: 'waiting' });
+  });
+
+  it('reads each typed reason a waiting task waits for, a time keeping its own colon', () => {
+    assert.deepEqual(statusInputOf(flags({ status: 'waiting', waits: 'decision:owner, approval:lead,task:T5,time:2030-01-09 12:00' })), {
+      status: 'waiting',
+      waits: [
+        { kind: 'decision', who: 'owner' },
+        { kind: 'approval', who: 'lead' },
+        { kind: 'task', id: 'T5' },
+        { kind: 'time', at: '2030-01-09 12:00' },
+      ],
+    });
+    assert.deepEqual(waitsOf('time:2030-01-09'), [{ kind: 'time', at: '2030-01-09' }]);
+  });
+
+  it('refuses a reason of no known kind or with a bad value', () => {
+    assert.throws(() => waitsOf('owner'), /--waits "owner" is not one of decision:<who>, approval:<who>, task:T<id> or time:/);
+    assert.throws(() => waitsOf('review:owner'), /--waits "review:owner" is not one of/);
+    assert.throws(() => waitsOf('decision:'), /--waits "decision:": decision needs who gives it/);
+    assert.throws(() => waitsOf('task:5'), /--waits "task:5": 5 is not a task id like T12/);
+    assert.throws(() => waitsOf('time:tomorrow'), /--waits "time:tomorrow": tomorrow is not YYYY-MM-DD or YYYY-MM-DD HH:MM/);
+  });
+
+  it('refuses blocked, naming waiting that replaced it', () => {
+    assert.throws(() => statusInputOf(flags({ status: 'blocked' })), /^UsageError: --status blocked was replaced by waiting: use --status waiting --waits <reason> \(decision:<who>/);
+    assert.throws(() => listFilterOf(flags({ status: 'open,blocked' })), /--status blocked was replaced by waiting: use --status waiting$/);
   });
 
   it('refuses an unknown status', () => {
@@ -120,11 +157,11 @@ describe('listFilterOf', () => {
 
   it('reads every filter', () => {
     const filter = listFilterOf(
-      flags({ session: 'bravo', status: 'open,blocked', source: 'owner', priority: 'p1,p2', 'due-before': '2030-01-09 12:00', week: 'none', goal: 'g1' }),
+      flags({ session: 'bravo', status: 'open,waiting', source: 'owner', priority: 'p1,p2', 'due-before': '2030-01-09 12:00', week: 'none', goal: 'g1' }),
     );
     assert.deepEqual(filter, {
       owner: 'bravo',
-      statuses: ['open', 'blocked'],
+      statuses: ['open', 'waiting'],
       source: 'owner',
       priorities: [1, 2],
       dueBefore: new Date('2030-01-09T12:00:00Z'),

@@ -2,8 +2,9 @@ import { ENV, type Env } from '../core/home.ts';
 import { NAME_PATTERN, NAME_RULE } from '../core/ids.ts';
 import { parseUtcDeadline, parseUtcDay } from '../core/time.ts';
 import type { TaskFields } from '../register/events.ts';
-import { isTaskStatus, priorityText, TASK_ID, TASK_STATUSES, type TaskStatus } from '../register/model.ts';
-import type { AddInput, StatusInput } from '../register/policy.ts';
+import { isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, priorityText, TASK_ID, TASK_STATUSES, type TaskStatus } from '../register/model.ts';
+import { WAITS_USAGE, type AddInput, type StatusInput } from '../register/policy.ts';
+import { isWaitKind, waitOf, type WaitReason } from '../register/waits.ts';
 import type { ListFilter } from '../register/views.ts';
 import { requiredFlag, UsageError, type Flags } from './args.ts';
 
@@ -107,7 +108,35 @@ export function addInputOf(flags: Flags, caller: string): AddInput {
   if (week !== undefined) {
     input.week = week;
   }
+  const after = flags.get('after');
+  if (after !== undefined) {
+    input.after = afterOf(after);
+  }
   return input;
+}
+
+/** `--after T5,T6`: the tasks to finish before this one starts. */
+function afterOf(text: string): string[] {
+  return listOf('--after', text).map(taskIdOf);
+}
+
+/**
+ * `--waits decision:owner,task:T5,time:2030-01-09 12:00`: what a waiting task waits for, each `kind:value`, the
+ * value after the first colon, so a time keeps its own. Who gives a decision or an approval is resolved by the command.
+ */
+export function waitsOf(text: string): WaitReason[] {
+  return listOf('--waits', text).map((item) => {
+    const colon = item.indexOf(':');
+    const kind = item.slice(0, Math.max(colon, 0)).trim();
+    if (!isWaitKind(kind)) {
+      throw new UsageError(`--waits "${item}" is not one of ${WAITS_USAGE}`);
+    }
+    const reason = waitOf(kind, item.slice(colon + 1).trim());
+    if (typeof reason === 'string') {
+      throw new UsageError(`--waits "${item}": ${reason}`);
+    }
+    return reason;
+  });
 }
 
 /** The fields `update` changes; `none` clears the ref, due date, goals or week. */
@@ -141,10 +170,18 @@ export function changesOf(flags: Flags): Partial<TaskFields> {
   if (week !== undefined) {
     changes.week = week === NONE ? null : week;
   }
+  const after = flags.get('after');
+  if (after !== undefined) {
+    changes.after = after === NONE ? [] : afterOf(after);
+  }
   return changes;
 }
 
-function statusOf(flag: string, text: string): TaskStatus {
+/** A status as typed; `next` says what to type for the old `blocked`, which is refused (no alias kept). */
+function statusOf(flag: string, text: string, next: string): TaskStatus {
+  if (text === LEGACY_WAITING_STATUS) {
+    throw new UsageError(`${flag} ${LEGACY_WAITING_HINT}: ${next}`);
+  }
   if (!isTaskStatus(text)) {
     throw new UsageError(`${flag} "${text}" is not ${TASK_STATUSES.join('|')}`);
   }
@@ -152,7 +189,9 @@ function statusOf(flag: string, text: string): TaskStatus {
 }
 
 export function statusInputOf(flags: Flags): StatusInput {
-  const input: Mutable<StatusInput> = { status: statusOf('--status', requiredFlag(flags, 'status')) };
+  const input: Mutable<StatusInput> = {
+    status: statusOf('--status', requiredFlag(flags, 'status'), `use --status waiting --waits <reason> (${WAITS_USAGE})`),
+  };
   const note = flags.get('note');
   if (note !== undefined) {
     input.note = note;
@@ -164,6 +203,10 @@ export function statusInputOf(flags: Flags): StatusInput {
   const skill = flags.get('skill');
   if (skill !== undefined) {
     input.skill = skill;
+  }
+  const waits = flags.get('waits');
+  if (waits !== undefined) {
+    input.waits = waitsOf(waits);
   }
   return input;
 }
@@ -177,7 +220,7 @@ export function listFilterOf(flags: Flags): ListFilter {
   }
   const status = flags.get('status');
   if (status !== undefined) {
-    filter.statuses = status === 'all' ? TASK_STATUSES : listOf('--status', status).map((item) => statusOf('--status', item));
+    filter.statuses = status === 'all' ? TASK_STATUSES : listOf('--status', status).map((item) => statusOf('--status', item, 'use --status waiting'));
   }
   const source = flags.get('source');
   if (source !== undefined) {

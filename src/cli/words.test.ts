@@ -26,7 +26,7 @@ function hookInput(extra: Readonly<Record<string, string | boolean>> = {}): stri
 
 /**
  * Runs every command and hook over a team whose tasks take each shape a line can print: overdue,
- * blocked, done, dropped and re-prioritized, a note waiting in an inbox, a refresh asked and ready,
+ * waiting, done, dropped and re-prioritized, a note waiting in an inbox, a refresh asked and ready,
  * pushes asked and refused, and refusals of bad input. Returns what each one printed.
  */
 async function everyOutput(): Promise<string[]> {
@@ -36,6 +36,7 @@ async function everyOutput(): Promise<string[]> {
     [['add', '--title', 'Ship login', '--priority', 'p1', '--owner', 'alpha', '--due', '2030-01-07', '--week', '2030-01-07', '--session', 'lead']],
     [['add', '--title', 'Trim the cache', '--priority', 'p2', '--owner', 'bravo', '--week', '2030-01-07', '--session', 'lead']],
     [['set', 'T2', '--status', 'blocked', '--note', 'waiting on disk', '--session', 'bravo']],
+    [['set', 'T2', '--status', 'waiting', '--waits', 'decision:owner', '--note', 'waiting on disk', '--session', 'bravo']],
     [['add', '--title', 'Old idea', '--priority', 'p3', '--session', 'alpha']],
     [['set', 'T3', '--status', 'dropped', '--note', 'merged into T1', '--session', 'alpha']],
     [['update', 'T1', '--priority', 'p2', '--note', 'after the release', '--session', 'lead']],
@@ -89,7 +90,8 @@ describe('runCli: every output speaks in words, with no pictograph markers (T242
     // The run really reaches the shapes markers once stood for.
     for (const words of [
       'OVERDUE',
-      'blocked',
+      'waiting: decision owner',
+      'blocked was replaced by waiting',
       'dropped',
       'done',
       'priority=p2',
