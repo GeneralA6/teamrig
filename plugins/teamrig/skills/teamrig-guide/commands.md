@@ -883,7 +883,8 @@ day.
 Flags:
 
 - `--loops`: each loop pattern's count and W by day (read after read, edit after edit, a test after an edit,
-  reruns, passing test runs), every session's and the outside's together, or one session's.
+  reruns, passing test runs), every session's and the outside's together, or one session's. A day with nothing
+  metered (before the meter started, or not read) is left out and named, with the `--day` that reads it.
 - `--day <YYYY-MM-DD>`: a past UTC day recounted from the transcripts; nothing is written.
 - `--all`: every session, idle ones too, every outside title, and with `--loops` all 8 days.
 
