@@ -22,6 +22,7 @@ function context(overrides: Partial<SessionStartInput> = {}): string {
     renames: [],
     titleNote: undefined,
     refreshNote: undefined,
+    modelNote: undefined,
     session: 'alpha',
     sessionInEnv: true,
     tree: undefined,
@@ -72,6 +73,13 @@ describe('sessionStartContext', () => {
   it('points a refreshed session at its handover right after who it is, before the title note', () => {
     const text = context({ refreshNote: 'Read your handover.', titleNote: 'Title note.' });
     assert.ok(text.endsWith(`Message the lead as \`team-lead\`.\n${NAMES}\nRead your handover.\nTitle note.`));
+  });
+
+  it('says the model line after the title note', () => {
+    const text = context({ titleNote: 'Title note.', modelNote: 'MODEL app-alpha runs model claude-haiku-5-5.' });
+    assert.ok(text.endsWith(`${NAMES}
+Title note.
+MODEL app-alpha runs model claude-haiku-5-5.`));
   });
 
   it("appends the team's rules", () => {
@@ -139,6 +147,13 @@ describe('sessionStartContext', () => {
 describe('sessionStartOutput', () => {
   it('wraps the context as SessionStart additionalContext', () => {
     assert.deepEqual(JSON.parse(sessionStartOutput('hello')), {
+      hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: 'hello' },
+    });
+  });
+
+  it('shows a notice to the user as a systemMessage', () => {
+    assert.deepEqual(JSON.parse(sessionStartOutput('hello', 'MODEL lead runs model claude-opus-5-5')), {
+      systemMessage: 'MODEL lead runs model claude-opus-5-5',
       hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: 'hello' },
     });
   });

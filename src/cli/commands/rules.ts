@@ -34,6 +34,7 @@ export async function rules(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
     renames,
     titleNote: undefined,
     refreshNote: undefined,
+    modelNote: undefined,
     session: flag ?? (inEnv ? fromEnv : undefined),
     sessionInEnv: inEnv,
     tree: tree.placeOf(team),

@@ -41,6 +41,7 @@ teamrig team create <team> --sessions <id>,<id> --project "<project>" && teamrig
 - `team create` writes the team config in the kit home and `.teamrig.json` in the project. A `REFUSED` line says why it stopped (another team has that id, or the project belongs to another team): tell the user and stop.
 - `inbox read --session lead` ties this Claude Code session to the lead, so the team's hooks know this tab as the lead from now on.
 - `rules --session lead` prints the team rules this tab did not get when it started. Follow them from now on.
+- The lead plans and judges the whole team's work, so it runs on the most capable model at xhigh effort (`launch.lead` in the team config can change that). This tab was not started by teamrig: unless the user already chose them, ask them to type `/model best` and `/effort xhigh` here.
 - `$TEAMRIG_SESSION` is not set in this tab, so pass `--session lead` to every `teamrig` task and inbox command here.
 
 ## 4. Give each session its first task, then open it
