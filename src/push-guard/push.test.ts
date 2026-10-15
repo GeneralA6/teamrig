@@ -441,6 +441,16 @@ describe('evaluatePushes: where a push hides', () => {
       [checkedPush('main'), 'ask'],
     ]);
   });
+
+  it('keeps quoted text and heredoc bodies from hiding a binding', () => {
+    expectRows([
+      ["B=feat; echo '((x<<2))' \"<<EOF\"; git push origin $B", 'allow'],
+      ['B=feat; cat <<EOF\nnote\nEOF\ngit push origin $B', 'allow'],
+      ["B=main; echo '((x<<2))' \"<<EOF\"; git push origin $B", 'ask'],
+      ['B=main; cat <<EOF\nnote\nEOF\ngit push origin $B', 'ask'],
+      ['cat <<$D\nB=feat\n$D\ngit push origin $B', 'ask', 'doubt'],
+    ]);
+  });
 });
 
 describe('evaluatePushes: the fail-safe', () => {

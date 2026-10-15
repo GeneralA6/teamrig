@@ -224,7 +224,7 @@ class GitInvocationFinder {
     }
     parsed.unreadBodies.forEach((body) => this.mention(body.text));
     // bash reads $NAME set to a literal earlier in the line; other dialects keep every variable unknown.
-    const commands = dialect === 'bash' ? resolveLiteralVariables(parsed.commands, script.text) : parsed.commands;
+    const commands = dialect === 'bash' ? resolveLiteralVariables(parsed) : parsed.commands;
     let piped: { readonly body: ShellWord; readonly nesting: number } | undefined;
     for (const command of commands) {
       command.words.forEach((word) => this.mention(word.text));

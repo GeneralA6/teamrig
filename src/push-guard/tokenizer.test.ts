@@ -278,3 +278,38 @@ describe('parseShell: bash heredocs and here-strings', () => {
     assert.deepEqual(words('cat <<EOF\ngit push\nEOF', 'powershell'), [['cat'], ['git', 'push'], ['EOF']]);
   });
 });
+
+describe('parseShell: bindings the commands may not show', () => {
+  const unclear = (command: string, dialect: ShellDialect = 'bash'): boolean => parseShell(command, dialect).bindingsUnclear;
+
+  it('flags arithmetic, a ${...} operator and a heredoc left as commands', () => {
+    for (const line of [
+      '((B = 1))',
+      'for ((i = 0; i < 2; i++)); do :; done',
+      ': $((B = 1))',
+      'echo "$((1 + 2))"',
+      ': $[B = 1]',
+      ': ${B:=main}',
+      'echo "${#B}"',
+      'echo `: ${B=main}`',
+      'x=$(cat <<EOF\n$((B = 1))\nEOF\n)',
+      'cat <<EOF\nB=feat',
+      'cat <<$D\nB=feat\n$D',
+      'cat <<',
+      'echo $[',
+    ]) {
+      assert.equal(unclear(line), true, line);
+    }
+  });
+
+  it('passes over quoted text, plain variables and heredocs it reads', () => {
+    for (const line of ["echo '((x<<2))' \"<<EOF\" $'$((1))'", 'echo $B ${B} "${B}"', 'cat <<EOF\n${B}\nEOF', "cat <<'EOF'\n$((B = 1))\nEOF"]) {
+      assert.equal(unclear(line), false, line);
+    }
+    assert.equal(unclear('${x:=1}; $((1))', 'powershell'), false);
+  });
+
+  it('reads $[...] as one dynamic word', () => {
+    assert.deepEqual(words('echo $[a[1] + 2]x y'), [['echo', '~$[a[1] + 2]x', 'y']]);
+  });
+});

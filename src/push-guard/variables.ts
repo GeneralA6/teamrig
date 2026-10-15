@@ -1,4 +1,4 @@
-import type { ShellCommand, ShellWord } from './tokenizer.ts';
+import type { ShellCommand, ShellParse, ShellWord } from './tokenizer.ts';
 
 /**
  * bash keywords and builtins that can set a variable in a way this module does not follow (a condition, a
@@ -25,8 +25,6 @@ const LITERAL_VALUE = /^[A-Za-z0-9._/:+@-]+$/;
 const ASSIGNMENT_LIKE = /^([A-Za-z_]\w*)(\[|\+?=)/;
 /** A `{NAME}` word, as in `exec {NAME}>file`, which stores a file descriptor number in NAME. */
 const NAMED_FD = /^\{([A-Za-z_]\w*)\}$/;
-/** Arithmetic (`((`, `$[`), heredocs and here-strings (`<<`), and `${...}` with anything but a name in it. */
-const UNREADABLE_SOURCE = /\(\(|\$\[|<<|\$\{(?![A-Za-z_]\w*\})/;
 
 /** How a command hands over to the next one, read from its terminator. */
 type Link = 'sequence' | 'and' | 'or' | 'pipe' | 'background' | 'other';
@@ -53,13 +51,13 @@ interface Bound {
 }
 
 /**
- * Replaces each plain `$NAME` or `${NAME}` in a bash line's commands with the literal an earlier binding
- * statement of the same line provably gave it (see {@link LiteralBindings}). A word with any reference
- * left unresolved stays as it was, dynamic; a resolved word is static and has no parts.
+ * Replaces each plain `$NAME` or `${NAME}` in a parsed bash line's commands with the literal an earlier
+ * binding statement of the same line provably gave it (see {@link LiteralBindings}). A word with any
+ * reference left unresolved stays as it was, dynamic; a resolved word is static and has no parts.
  */
-export function resolveLiteralVariables(commands: readonly ShellCommand[], source: string): readonly ShellCommand[] {
-  const bindings = LiteralBindings.read(commands, source);
-  return commands.map((command, index) => ({ ...command, words: command.words.map((word) => bindings.resolve(word, index)) }));
+export function resolveLiteralVariables(parsed: ShellParse): readonly ShellCommand[] {
+  const bindings = LiteralBindings.read(parsed);
+  return parsed.commands.map((command, index) => ({ ...command, words: command.words.map((word) => bindings.resolve(word, index)) }));
 }
 
 /**
@@ -68,8 +66,8 @@ export function resolveLiteralVariables(commands: readonly ShellCommand[], sourc
  * redirection, and only for a name the line sets nowhere else and never to another value. A name also
  * assigned in any other form (`NAME=x cmd`, `NAME+=`, `{NAME}>`, a quoted or dynamic value) is not
  * resolved; anything that can set variables unseen (see {@link UNSAFE_PROGRAMS}, a dynamic program name,
- * array elements, IFS, arithmetic, heredocs, `${...}` operators) leaves the whole line unresolved. A value
- * holds at a later command only when that command surely runs after the statement, in the same shell.
+ * array elements, IFS, and what {@link ShellParse.bindingsUnclear} flags) leaves the whole line unresolved.
+ * A value holds at a later command only when that command surely runs after the statement, in the same shell.
  */
 class LiteralBindings {
   private readonly commands: readonly ShellCommand[];
@@ -82,8 +80,8 @@ class LiteralBindings {
     this.bound = bound;
   }
 
-  static read(commands: readonly ShellCommand[], source: string): LiteralBindings {
-    return new LiteralBindings(commands, UNREADABLE_SOURCE.test(source) ? new Map() : boundNames(commands));
+  static read(parsed: ShellParse): LiteralBindings {
+    return new LiteralBindings(parsed.commands, parsed.bindingsUnclear ? new Map() : boundNames(parsed.commands));
   }
 
   /** `word` with its variables replaced by the values that hold at command `index`, or `word` itself when one does not resolve. */
