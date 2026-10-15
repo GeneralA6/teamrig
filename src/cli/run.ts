@@ -89,6 +89,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   test: { flags: ['session'], rest: true, load: async () => (await testCommand()).test },
   'hook push-guard': { flags: [], load: async () => (await hookCommands()).pushGuard },
   'hook cold-send': { flags: [], load: async () => (await hookCommands()).coldSend },
+  'hook failed-send': { flags: [], load: async () => (await hookCommands()).failedSend },
   'hook loop-nudge': { flags: [], load: async () => (await loopNudgeCommand()).loopNudge },
   'hook helper-gate': { flags: [], load: async () => (await hookCommands()).helperGateHook },
   'hook inbox-reminder': { flags: [], load: async () => (await hookCommands()).inboxReminder },
@@ -179,7 +180,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   test [--session <id|name>] -- <command ...>   runs a test command in the shell, writes all it printed
       to a log (each session keeps its newest 20) and prints one PASS or FAIL line, then each failing
       test within tests.maxFailureChars; exit 0 when the command passed, 1 otherwise
-  hook push-guard | hook cold-send | hook loop-nudge | hook helper-gate | hook inbox-reminder | hook session-start | hook stop
+  hook push-guard | hook cold-send | hook failed-send | hook loop-nudge | hook helper-gate | hook inbox-reminder | hook session-start | hook stop
       (run by Claude Code, hook JSON on stdin)
   launch <id> --team <team> --project <dir> [--home <dir>] [--encoded-prompt <text>]
       (run by the tab that open starts: sets the session and starts Claude Code)
