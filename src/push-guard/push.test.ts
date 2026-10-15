@@ -1,8 +1,18 @@
 import { describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
+import type { PushToProtected } from '../config/types.ts';
 import type { ConfigValue } from './invocations.ts';
-import { decisionReason, doubtReason, evaluatePushes, type PushDecision, type RepoState } from './push.ts';
+import {
+  decisionReason,
+  doubtReason,
+  evaluatePushes,
+  leasedReason,
+  type GuardContext,
+  type ProtectedPush,
+  type PushDecision,
+  type RepoState,
+} from './push.ts';
 import type { ShellDialect } from './tokenizer.ts';
 
 /** A resolved start folder, as the hook gives one. */
@@ -36,13 +46,18 @@ interface JudgeOptions extends RepoFake {
   readonly dialect?: ShellDialect;
   readonly cwd?: string;
   readonly protectedBranches?: readonly string[];
+  readonly pushToProtected?: PushToProtected;
 }
 
-function judge(command: string, { dialect = 'bash', cwd = CWD, protectedBranches = ['main', 'master'], ...state }: JudgeOptions = {}) {
+function judge(
+  command: string,
+  { dialect = 'bash', cwd = CWD, protectedBranches = ['main', 'master'], pushToProtected = 'ask', ...state }: JudgeOptions = {},
+) {
   const repo = fakeRepo(state);
-  const verdict = evaluatePushes(command, { cwd, home: HOME, dialect, protectedBranches, repo });
+  const verdict = evaluatePushes(command, { cwd, home: HOME, dialect, protectedBranches, pushToProtected, repo });
   const decision: PushDecision = verdict.decision;
-  return { decision, doubt: verdict.doubt, repo };
+  const protectedPush: ProtectedPush | undefined = verdict.protectedPush;
+  return { decision, doubt: verdict.doubt, protectedPush, updates: verdict.updates, repo };
 }
 
 /** Each row is a command and the decision it must get; a third `doubt` cell marks an ask the guard makes because it cannot read the line. */
@@ -580,6 +595,7 @@ describe('evaluatePushes: the fail-safe', () => {
       home: HOME,
       dialect: 'bash',
       protectedBranches: ['main'],
+      pushToProtected: 'ask',
       repo: fakeRepo(),
     });
     assert.equal(plain.decision, 'ask');
@@ -589,12 +605,20 @@ describe('evaluatePushes: the fail-safe', () => {
 });
 
 describe('evaluatePushes: the protected updates', () => {
-  const context = (repo: RepoFake = {}) => ({ cwd: CWD, home: HOME, dialect: 'bash' as const, protectedBranches: ['main'], repo: fakeRepo(repo) });
+  const context = (repo: RepoFake = {}): GuardContext => ({
+    cwd: CWD,
+    home: HOME,
+    dialect: 'bash',
+    protectedBranches: ['main'],
+    pushToProtected: 'ask',
+    repo: fakeRepo(repo),
+  });
 
   it('names each protected branch an asked push updates, and the ref it sends', () => {
     assert.deepEqual(evaluatePushes('git push origin feature:main x:dev', context()), {
       decision: 'ask',
       updates: [{ dir: CWD, base: 'origin/main', source: 'feature' }],
+      protectedPush: 'normal',
     });
     assert.deepEqual(evaluatePushes('git push upstream HEAD refs/heads/main && git push', context({ branch: 'main' })), {
       decision: 'ask',
@@ -603,6 +627,15 @@ describe('evaluatePushes: the protected updates', () => {
         { dir: CWD, base: 'upstream/main', source: 'refs/heads/main' },
         { dir: CWD, base: 'origin/main', source: 'HEAD' },
       ],
+      protectedPush: 'normal',
+    });
+  });
+
+  it('lists the same updates when pushToProtected allows the push', () => {
+    assert.deepEqual(evaluatePushes('git push origin feature:main', { ...context(), pushToProtected: 'allow' }), {
+      decision: 'allow',
+      updates: [{ dir: CWD, base: 'origin/main', source: 'feature' }],
+      protectedPush: 'normal',
     });
   });
 
@@ -619,17 +652,105 @@ describe('evaluatePushes: the protected updates', () => {
   });
 
   it('lists nothing for --all, a refusal or a push it allows', () => {
-    assert.deepEqual(evaluatePushes('git push --all origin', context()), { decision: 'ask', updates: [] });
+    assert.deepEqual(evaluatePushes('git push --all origin', context()), { decision: 'ask', updates: [], protectedPush: 'normal' });
     assert.deepEqual(evaluatePushes('git push origin main && git push -f origin main', context()), { decision: 'deny', updates: [] });
     assert.deepEqual(evaluatePushes('git push origin feature', context()), { decision: 'allow', updates: [] });
     assert.deepEqual(evaluatePushes('git status', context()), { decision: 'allow', updates: [] });
   });
 });
 
-describe('decisionReason and doubtReason', () => {
+describe('evaluatePushes: pushToProtected', () => {
+  const CHOICES: readonly PushToProtected[] = ['ask', 'allow'];
+
+  it('asks about a normal push to a protected branch under ask, and allows it under allow, marking it either way', () => {
+    const commands = [
+      'git push origin main',
+      'git push origin HEAD:main',
+      'git push --all origin',
+      'git push origin :',
+      'cd api && git push origin master',
+      'git send-pack origin',
+      'git subtree push --prefix=dist origin main',
+      'git push --force-with-lease --no-force-with-lease origin main',
+      'git push --force-with-lease origin feature && git push origin main',
+    ];
+    for (const command of commands) {
+      for (const choice of CHOICES) {
+        const verdict = judge(command, { pushToProtected: choice });
+        assert.deepEqual([verdict.decision, verdict.protectedPush, verdict.doubt], [choice, 'normal', undefined], `${choice}: ${command}`);
+      }
+    }
+    for (const choice of CHOICES) {
+      assert.equal(judge('git push', { branch: 'main', pushToProtected: choice }).decision, choice);
+      assert.equal(judge('git push', { branch: 'main', config: { 'push.default': 'matching' }, pushToProtected: choice }).decision, choice);
+    }
+  });
+
+  it('keeps refusing a force-push, mirror or delete of a protected branch under either choice', () => {
+    const commands = [
+      'git push -f origin main',
+      'git push origin +main',
+      'git push --mirror origin',
+      'git push --all -f origin',
+      'git push origin --delete main',
+      'git push origin :main',
+      'git push --force-with-lease origin +main',
+      'git push origin main && git push -f origin main',
+    ];
+    for (const command of commands) {
+      for (const choice of CHOICES) {
+        const verdict = judge(command, { pushToProtected: choice });
+        assert.deepEqual([verdict.decision, verdict.protectedPush], ['deny', undefined], `${choice}: ${command}`);
+      }
+    }
+  });
+
+  it('asks about a --force-with-lease push to a protected branch under either choice', () => {
+    const commands = [
+      'git push --force-with-lease origin main',
+      'git push --force-with-lease=main:abc123 origin main',
+      'git push --force-with-lease --all origin',
+      'git push origin main && git push --force-with-lease origin master',
+      'git push --force-with-lease origin master && git push origin main',
+      'git send-pack --force-with-lease origin main',
+      'git send-pack --force-with-lease=main origin main',
+    ];
+    for (const command of commands) {
+      for (const choice of CHOICES) {
+        const verdict = judge(command, { pushToProtected: choice });
+        assert.deepEqual([verdict.decision, verdict.protectedPush, verdict.doubt], ['ask', 'leased', undefined], `${choice}: ${command}`);
+      }
+    }
+    assert.equal(judge('git push --force-with-lease origin feature', { pushToProtected: 'allow' }).decision, 'allow');
+  });
+
+  it('still asks in doubt under allow, keeping the updates it can read', () => {
+    const doubtful = judge('git push $ARGS', { pushToProtected: 'allow' });
+    assert.deepEqual([doubtful.decision, doubtful.protectedPush], ['ask', undefined]);
+    assert.ok(doubtful.doubt !== undefined);
+    const mixed = judge('git push origin feature:main; git push $ARGS', { pushToProtected: 'allow' });
+    assert.deepEqual([mixed.decision, mixed.protectedPush, mixed.updates], ['ask', undefined, [{ dir: CWD, base: 'origin/main', source: 'feature' }]]);
+    assert.ok(mixed.doubt !== undefined);
+    const asked = judge('git push origin feature:main; git push $ARGS', { pushToProtected: 'ask' });
+    assert.deepEqual([asked.decision, asked.protectedPush, asked.doubt], ['ask', 'normal', undefined]);
+  });
+
+  it('allows a push to an unprotected branch without marking it', () => {
+    for (const choice of CHOICES) {
+      const verdict = judge('git push origin feature && git status', { pushToProtected: choice });
+      assert.deepEqual([verdict.decision, verdict.protectedPush, verdict.updates], ['allow', undefined, []]);
+    }
+  });
+});
+
+describe('decisionReason, leasedReason and doubtReason', () => {
   it('names the protected branches', () => {
     assert.match(decisionReason('deny', ['main', 'release']), /^Force-pushing, mirroring or deleting a protected branch \(main, release\) is refused/);
     assert.match(decisionReason('ask', ['main']), /^This push updates a protected branch \(main\)/);
+    assert.equal(
+      leasedReason(['main', 'master']),
+      'This --force-with-lease push may rewrite the history of a protected branch (main, master) while other sessions may be working. Confirm, or push your own branch instead.',
+    );
     assert.equal(
       doubtReason('its folder is only known when it runs', ['main', 'master']),
       'The guard cannot tell whether this command pushes to a protected branch (main, master): its folder is only known when it runs. Confirm, or write the push out plainly.',

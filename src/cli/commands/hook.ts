@@ -9,7 +9,7 @@ import { indexMarks } from '../../inbox/marks.ts';
 import { boundPromptNote, boundStartNote } from '../../hooks/bind.ts';
 import { modelCheckLine, payloadEffortOf } from '../../hooks/model-check.ts';
 import { ModelNoticeStore } from '../../hooks/model-notices.ts';
-import { commitsOf, protectedBranchesOf, pushGuardOutput } from '../../hooks/push-guard.ts';
+import { commitsOf, protectedBranchesOf, pushGuardOutput, pushToProtectedOf } from '../../hooks/push-guard.ts';
 import { JsonlHintLog } from '../../hooks/hint-log.ts';
 import { requirementsNoteOnce } from '../../hooks/requirements-note.ts';
 import { sessionStartContext, sessionStartOutput, type SessionStartInput } from '../../hooks/session-start.ts';
@@ -80,6 +80,7 @@ export async function pushGuard(args: ParsedArgs, runtime: CliRuntime): Promise<
     home: runtime.userHome,
     repo: runtime.git,
     protectedBranches: protectedBranchesOf(load),
+    pushToProtected: pushToProtectedOf(load),
     commits: commitsOf(load),
     commitLog: runtime.commitLog,
   });
