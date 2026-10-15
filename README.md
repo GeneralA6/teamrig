@@ -47,7 +47,8 @@ No more twelve-hour days steering agents by hand. With teamrig, your part takes 
 reboot.*
 
 And the basics, done right: every task has one owner, so nothing is done twice. Work that has shipped but is not
-verified yet is marked verifying, with a date to verify it by, so it stays in view until it is. A push to main asks you first,
+verified yet is marked verifying, with a date to verify it by, so it stays in view until it is. A task that
+cannot go on is marked waiting, with what it waits for, and `check` tells you when it can. A push to main asks you first,
 and a force-push to it is refused. When a member's context runs long, it writes a handover before a fresh start. Big
 commits are flagged before they land, and everything runs on your machine, with no account and no cloud bill.
 

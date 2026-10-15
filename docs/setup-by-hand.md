@@ -5,7 +5,7 @@ Two small files, one minute.
 1. Install the plugin (the two commands in the [README](../README.md#get-started)). Claude Code puts the `teamrig` command on the path of each session's Bash tool.
 2. Describe your team in `~/.teamrig/teams/<team>/config.json`:
    ```json
-   { "configVersion": 2, "sessions": ["lead", "api", "web", "data"], "roles": { "lead": "lead" } }
+   { "configVersion": 3, "sessions": ["lead", "api", "web", "data"], "roles": { "lead": "lead" } }
    ```
 3. Tie your project to the team: put `{"team": "<team>"}` in a `.teamrig.json` at the project's root.
 4. Start one Claude Code tab per session, telling each its name, for example `TEAMRIG_SESSION=web claude`

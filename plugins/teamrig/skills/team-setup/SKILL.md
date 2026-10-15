@@ -99,7 +99,9 @@ With sub-teams, add `--tree` to `check`. Act on each flag:
   (`update --goals`, only its owner may) or to park it.
 - `NOT-PICKED-UP`: an idle session reads no inbox. Wake it with `teamrig open <id>`, or tell the user.
 - `OVERDUE` or `STALE`: ask the owning session what blocks it, then re-date it (`--due`) or tell the user.
-- `VERIFY-OVERDUE`: a shipped change past its date to verify by. Ask the owning session whether it came: `done` with it,
+- `READY`: a waiting task whose reasons have all cleared (its tasks finished, its time passed). Tell the owning
+  session in one inbox line to go on.
+- `VERIFY-OVERDUE`: a shipped change past its date to verify by. Ask the owning session whether the proof came: `done` with it,
   `in-progress` if it failed, or a new date.
 - `OWNER-UNPLANNED` or `DUE-UNPLANNED`: plan it in with `--week`, or tell the user what it would push out.
 - A skill flag: tell the skill's owner in one inbox line.

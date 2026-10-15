@@ -36,6 +36,8 @@ Flags:
 - `--due <date>`: the deadline.
 - `--goals a,b`: goal tags, such as roadmap item ids.
 - `--week <date>`: puts the task in the week plan that starts on that day.
+- `--after T5,T6`: the tasks to finish before this one starts. It stays `open`, its line shows `after T5,T6`, and
+  `check` does not count it as a waiting p1 (`PRIORITY-SKIP`) until they are done or dropped.
 - `--team <child team>`: only for a lead with sub-teams: hands that team's lead the task. It takes no
   `--owner` or `--source`.
 
@@ -51,7 +53,7 @@ Output:
 ADDED T1 open, p2, owner api, due 10-17, from lead, goals G1 | Build the signup endpoint
 ```
 
-A task with the same title (ignoring case and extra spaces) that is still open, in progress, verifying or blocked is refused:
+A task with the same title (ignoring case and extra spaces) that is still open, in progress, verifying or waiting is refused:
 `REFUSED T1 already tracks this (open, owner api)`.
 
 ### teamrig set
@@ -61,13 +63,17 @@ Sets a task's status. Only the task's owner may.
 Flags:
 
 - `--session <id|name>`: the caller, who must own the task.
-- `--status open|in-progress|verifying|blocked|done|dropped`: required.
-- `--note "<what or why>"`: required for `blocked`, `verifying` (what proves it), `done` and `dropped` (`register.requireNoteOn`), and for
+- `--status open|in-progress|verifying|waiting|done|dropped`: required.
+- `--note "<what or why>"`: required for `waiting`, `verifying` (what proves it), `done` and `dropped` (`register.requireNoteOn`), and for
   setting the status the task already has.
 - `--evidence <proof>`: required for `done`: a commit, test count, path or number that proves it. Evidence
   already on the task counts.
 - `--skill <name>|none`: required for `done`, and allowed only with `done`: the skill you wrote or updated, or
   `none`. A named skill must exist in the skills folder.
+- `--waits <reason>,<reason>`: required for `waiting`, and allowed only with it: what the task waits for, one or
+  more of `decision:<who>` and `approval:<who>` (a session, or `owner` for the human), `task:T<id>` (a task to
+  finish first; only for a task already started) and `time:<YYYY-MM-DD HH:MM>` (UTC; a bare day lasts to its
+  end). It stays waiting until every reason has cleared.
 
 Example:
 
@@ -79,6 +85,18 @@ Output:
 
 ```text
 SET T1 done, p2, owner api, due 10-17, from lead, goals G1 | Build the signup endpoint
+```
+
+A task you started that cannot go on:
+
+```sh
+teamrig set T1 --session web --status waiting --waits "task:T2,decision:owner,time:2026-10-16 13:00" --note "needs the api error codes and the owner's call on the copy"
+```
+
+Output:
+
+```text
+SET T1 waiting, p2, owner web, due 10-16, week 10-12, from lead | Fix the broken login form (waiting: on T2 · decision owner · until Fri 10-16 13:00; needs the api error codes and the owner's call on the copy)
 ```
 
 The status is a flag, never a word after the id: `teamrig set T1 done` is a usage error (`unexpected "done"`).
@@ -98,6 +116,8 @@ Flags:
 - `--due <date>|none`: a new deadline, or `none` to clear it.
 - `--goals a,b|none`: new goal tags, or `none` to clear them.
 - `--week <date>|none`: plan it into a week, or `none` to take it out.
+- `--after T5,T6|none`: plan it after these tasks, or `none` to clear it; only while it is open (a started task
+  waits with `set --status waiting --waits task:T5`). Only the owner changes it.
 - `--note "<text>"`: records a note with the change.
 
 Example:
@@ -109,13 +129,13 @@ teamrig update T2 --session lead --priority p2 --due 2026-10-16
 Output:
 
 ```text
-UPDATED T2 blocked, p2, owner web, due 10-16, week 10-12, from lead | Fix the broken login form (blocked: waiting for the api error codes)
+UPDATED T2 waiting, p2, owner web, due 10-16, week 10-12, from lead | Fix the broken login form (waiting: on T7; needs the api error codes)
 ```
 
 ### teamrig list
 
 Lists tasks, most urgent first: by priority, then due date (undated last), then id. By default only active tasks
-(open, in progress, verifying, blocked), in a short form within 3,000 characters: a count per owner when there are several,
+(open, in progress, verifying, waiting), in a short form within 3,000 characters: a count per owner when there are several,
 then one short row per task (its title cut to 60 characters) and `+N more` for the rows left out. `--all` prints
 every field of every task.
 
@@ -141,10 +161,11 @@ Output:
 
 ```text
 LIST 1 task(s) (short rows; --all for every field)
-T2 blocked, p2, owner web, due 10-16 | Fix the broken login form
+T2 waiting, p2, owner web, due 10-16 | Fix the broken login form (waiting: on T7)
 ```
 
-A short row reads: id, status, priority, owner, due (month-day), then the title after `|`. With `--all`:
+A short row reads: id, status, priority, owner, due (month-day), the tasks it comes after (`after T5`), then the
+title after `|` and what a waiting task waits for. With `--all`:
 
 ```sh
 teamrig list --session web --all
@@ -153,11 +174,12 @@ teamrig list --session web --all
 Output (`--all`):
 
 ```text
-T2 blocked, p2, owner web, due 10-16, week 10-12, from lead | Fix the broken login form (blocked: waiting for the api error codes)
+T2 waiting, p2, owner web, due 10-16, week 10-12, from lead | Fix the broken login form (waiting: on T7; needs the api error codes)
 ```
 
 The task line reads: id, status, priority, owner, due (month-day), week, who asked (`from lead`, or
-`owner order` for the human), goals, then the title after `|`, and a blocked task's note.
+`owner order` for the human), goals, then the title after `|`, then a waiting task's reasons and note or a verifying task's proof. A reason
+marked `ready` has cleared: its task is done or dropped, or its time has passed.
 
 ### teamrig show
 
@@ -210,9 +232,11 @@ teamrig check --session lead
 Output:
 
 ```text
-CHECK 2 flag(s), week 2026-10-12 (short form; --all for every flag in full)
+CHECK 3 flag(s), week 2026-10-12 (short form; --all for every flag in full)
 OVERDUE 1 (due 10-14)
   T7 in-progress, p2, owner web, due 10-14 | Wire the signup form to the api
+READY 1 (every reason cleared; set its next status)
+  T4 waiting, p2, owner web | Log failed logins (waiting: on T2 ready)
 NOT-PICKED-UP 1 (assigned 10-13 09:10, no event from api since)
   T9 open, p3, owner api | Add rate limits to signup
 SKILLS 1 flag(s) in /home/you/.claude/skills
@@ -240,7 +264,7 @@ With no week tagged yet, the first line says `no week plan tagged yet, so the we
 ### teamrig plan
 
 Prints a week plan as Markdown: the tasks tagged with that week (`--week` on `add` or `update`), grouped by
-priority, with done, dropped, blocked, verifying and in-progress marks. By default the newest week that has started.
+priority, with done, dropped, waiting, verifying and in-progress marks. By default the newest week that has started.
 
 Flags:
 
@@ -263,7 +287,7 @@ Output:
 
 ## p2: correctness
 
-- [ ] **T2** Fix the broken login form (web · due 10-16 · from lead) **blocked:** waiting for the api error codes
+- [ ] **T2** Fix the broken login form (web · due 10-16 · from lead) **waiting:** on T7; needs the api error codes
 ```
 
 With no week tagged at all: `REFUSED no week plan tagged yet; pass --week <YYYY-MM-DD>`.

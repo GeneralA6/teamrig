@@ -25,7 +25,15 @@ or take it to the lead.
 | `REFUSED done needs --skill <name> (the skill written or updated) or --skill none` | Add `--skill <name>` or `--skill none`. |
 | `REFUSED no skill named x; write it first or use --skill none` | Write the skill to `<skills folder>/x/SKILL.md` first, or use `none`. |
 | `REFUSED --skill goes only with done` | Drop `--skill`. |
-| `REFUSED blocked needs --note` (also `done`, `dropped`) | Add `--note` saying what it waits for, what was done, or why it was dropped. |
+| `REFUSED waiting needs --note` (also `done`, `dropped`) | Add `--note` saying what it waits for, what was done, or why it was dropped. |
+| `REFUSED waiting needs --waits saying what it waits for: decision:<who>, approval:<who>, task:T<id> or time:<YYYY-MM-DD HH:MM>, comma-separated` | Add `--waits` with every reason. |
+| `REFUSED --waits goes only with --status waiting` | Drop `--waits`, or set `waiting`. |
+| `REFUSED T3 has not started, so it does not wait on T2: it stays open, planned after it (teamrig update T3 --after T2)` | Leave it open and plan it: `teamrig update T3 --after T2`. |
+| `REFUSED T2 is already finished; nothing to wait on` | Go on: there is nothing to wait for. |
+| `REFUSED time 2026-10-01 has passed: name a time to come` | Give a time still to come, in UTC. |
+| `REFUSED decision lead2: lead2 is neither a session on this team nor owner` | Name a session `teamrig who` lists, or `owner`. |
+| `REFUSED --after plans a task not started yet, and T4 is in-progress; a started task waits on another with --status waiting --waits task:T2` | Set it waiting with `--waits task:T2` instead. |
+| `REFUSED T2 already comes after T3, directly or not, so T3 cannot come after T2` | Break the loop: one of them goes first. |
 | `REFUSED verifying needs --note saying what proves it` | Add `--note` naming the proof you wait for: a test run, a night's flow, a number. |
 | `REFUSED T1 is already done; add --note to record why you set it again` | Add a `--note`, or leave the status as it is. |
 | `REFUSED the lead may change only owner, priority, due, week on a task it does not own (asked: title)` | Ask the owner to change that field. |
@@ -102,7 +110,9 @@ From `teamrig budget lift` ([commands.md](commands.md#teamrig-budget-lift)).
 | `priority "t2" is the old tier spelling: write p2` | Write `p2`. |
 | `--tier was renamed: use --priority` | Use `--priority`. |
 | `"9" is not a task id like T12` | Write task ids as `T9`. |
-| `--status "finished" is not open\|in-progress\|verifying\|blocked\|done\|dropped` | Use one of those six. |
+| `--status "finished" is not open\|in-progress\|verifying\|waiting\|done\|dropped` | Use one of those six. |
+| `--status blocked was replaced by waiting: use --status waiting --waits <reason> (...)` | Set `waiting` with what it waits for. |
+| `--waits "soon" is not one of decision:<who>, approval:<who>, task:T<id> or time:<YYYY-MM-DD HH:MM>, comma-separated` | Write each reason as `kind:value`. |
 | `--week "x" is not a YYYY-MM-DD date` | Write the week's first day as `2026-10-12`. |
 | `--team gives the task to that team's lead, from you: it takes no --owner or --source` | Drop `--owner` and `--source` from `add --team`. |
 
