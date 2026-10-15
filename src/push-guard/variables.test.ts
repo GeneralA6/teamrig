@@ -132,13 +132,22 @@ describe('resolveLiteralVariables: what resolves', () => {
     }
   });
 
-  it('follows a binding into, through and past a for loop', () => {
+  it('follows a binding into, through and past a loop, an if and a { } group', () => {
     const rows: readonly (readonly [line: string, expected: string])[] = [
       ['P="node probe.ts"\nfor l in a \'b c\'; do echo "== $l"; $P "$l"; done; B=feat; git push origin $B', 'git push origin feat'],
       ['B=feat; for x in a; do git push origin $B; done', 'do git push origin feat'],
       ['B=feat; for x in a; do for y in b\ndo :; done; done; git push origin $B', 'git push origin feat'],
       ['B=feat; for x; do :; done; git push origin $B', 'git push origin feat'],
       ['B=feat; echo $(for x in a; do :; done); git push origin $B', 'git push origin feat'],
+      ['B=feat; while true; do :; done; git push origin $B', 'git push origin feat'],
+      ['B=feat; while git push origin $B; do :; done', 'while git push origin feat'],
+      ['B=feat; until false\ndo git push origin $B\ndone', 'do git push origin feat'],
+      ['B=feat; if true; then git push origin $B; fi', 'then git push origin feat'],
+      ['B=feat; if a; then :; elif b; then :; else git push origin $B; fi', 'else git push origin feat'],
+      ['B=feat; if ! a; then :; fi && git push origin $B', 'git push origin feat'],
+      ['B=feat; { git push origin $B; } 2>&1 | tail -1', '{ git push origin feat'],
+      ['B=feat; for x in a; do if b; then { git push origin $B; }; fi; done', 'then { git push origin feat'],
+      ['B=feat; ! git push origin $B', '! git push origin feat'],
     ];
     for (const [line, expected] of rows) {
       assert.equal(pushCommand(line), expected, line);
@@ -195,9 +204,7 @@ describe('resolveLiteralVariables: what stays unresolved', () => {
 
   it('keeps every variable of a line that can set one unseen', () => {
     for (const line of [
-      'if true; then B=main; fi; B=feat; git push origin $B',
       'for B in main; do :; done; B=feat; git push origin $B',
-      'f() { B=main; }; B=feat; f; git push origin $B',
       'function f { :; }; B=feat; git push origin $B',
       'B=feat; read B; git push origin $B',
       'B=feat; source ./set.sh; git push origin $B',
@@ -243,12 +250,21 @@ describe('resolveLiteralVariables: what stays unresolved', () => {
     }
   });
 
-  it('keeps a loop variable, a binding in a loop body, and every variable of a loop it does not follow', () => {
+  it('keeps a loop variable, a binding in a compound command, and every variable of a compound it does not follow', () => {
     for (const line of [
       'for B in main; do git push origin $B; done',
       'for x in a; do B=feat; done; git push origin $B',
       'for x in a; do B=feat; git push origin $B; done',
       'for x in a; do export B=feat; done; git push origin $B',
+      'while a; do B=feat; done; git push origin $B',
+      'until B=feat; do :; done; git push origin $B',
+      'if a; then B=feat; fi; git push origin $B',
+      'if B=feat; then git push origin $B; fi',
+      'if a; then :; else B=feat; fi; git push origin $B',
+      '{ B=feat; }; git push origin $B',
+      'if true; then B=main; fi; B=feat; git push origin $B',
+      'f() { B=main; }; B=feat; f; git push origin $B',
+      '! B=feat; git push origin $B',
       'B=feat; for x in a; do :; git push origin $B',
       'B=feat; for x in a\ngit push origin $B',
       'B=feat; do :; done; git push origin $B',
@@ -258,7 +274,17 @@ describe('resolveLiteralVariables: what stays unresolved', () => {
       'B=feat; for; do :; done; git push origin $B',
       'B=feat; for x in a; do :; done x; git push origin $B',
       'B=feat; for x in a; do echo $(done); git push origin $B',
-      'B=feat; while true; do :; done; git push origin $B',
+      'B=feat; if a; then :; git push origin $B',
+      'B=feat; then :; fi; git push origin $B',
+      'B=feat; if a; then :; done; git push origin $B',
+      'B=feat; if a; else :; fi; git push origin $B',
+      'B=feat; while a; then :; fi; git push origin $B',
+      'B=feat; if a; then (:; fi); git push origin $B',
+      'B=feat; { :; } x; git push origin $B',
+      'B=feat; "if" a; then :; fi; git push origin $B',
+      'B=feat; if a; then \\fi; fi; git push origin $B',
+      'B=feat; case a in a) :;; esac; git push origin $B',
+      'B=feat; select x in a; do :; done; git push origin $B',
       'for (( i = 0; i < 2; i++ )); do :; done; B=feat; git push origin $B',
     ]) {
       assert.match(pushCommand(line), /~\$/, line);

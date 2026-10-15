@@ -1,10 +1,10 @@
 import type { ShellCommand, ShellParse, ShellWord, WordPart } from './tokenizer.ts';
 
 /**
- * bash keywords and builtins that can set a variable in a way this module does not follow (a condition, a
- * loop, a function, `read`, `declare`, arithmetic) or run code that can (`eval`, `source`, `trap`). One
- * anywhere in a line keeps every variable of that line unresolved, except the keywords of a `for` loop
- * where they start a command (see {@link Loops}).
+ * bash keywords and builtins that can set a variable in a way this module does not follow (`case`, a
+ * function, `read`, `declare`, arithmetic) or run code that can (`eval`, `source`, `trap`). One anywhere in
+ * a line keeps every variable of that line unresolved, except the keywords of a `for`, `while` or `until`
+ * loop, an `if`, a `{ }` group and a `!` where they start a command (see {@link Compounds}).
  */
 const UNSAFE_PROGRAMS: ReadonlySet<string> = new Set([
   ...['if', 'then', 'elif', 'else', 'fi', 'for', 'while', 'until', 'do', 'done', 'case', 'esac', 'select', 'function'],
@@ -63,7 +63,7 @@ interface Bound {
   readonly at: readonly number[];
 }
 
-/** A command whose program a variable names: its index and its words after any loop keyword. */
+/** A command whose program a variable names: its index and its words after any keyword that starts it. */
 interface Deferred {
   readonly index: number;
   readonly words: readonly ShellWord[];
@@ -92,10 +92,9 @@ export function resolveLiteralVariables(parsed: ShellParse): readonly ShellComma
  * redirection, whose value is unquoted text bash keeps as written, quoted text and plain variables (in quotes,
  * for `export`), and only for a name the line sets nowhere else, or always to the same text. A name also
  * assigned in any other form (`NAME=x cmd`, `NAME+=`, `{NAME}>`, a value with a substitution or a tilde, a
- * `for` loop's variable or a binding in its body) is not resolved; anything that can set variables unseen
- * (see {@link UNSAFE_PROGRAMS}, a program a variable names
- * that is not known or is one of those, array elements, IFS, and what {@link ShellParse.bindingsUnclear} flags)
- * leaves the whole line unresolved. A value holds at a later command only when that command surely runs after
+ * `for` loop's variable, a binding inside a compound command or after `!`) is not resolved; anything that can
+ * set variables unseen (see {@link UNSAFE_PROGRAMS}, a program a variable names that is not known or is one of
+ * those, array elements, IFS, and what {@link ShellParse.bindingsUnclear} flags) leaves the whole line unresolved. A value holds at a later command only when that command surely runs after
  * the statement, in the same shell; a variable in a value gives what it held when the statement ran.
  */
 class LiteralBindings {
@@ -284,12 +283,13 @@ function boundNames(commands: readonly ShellCommand[]): LineBindings | undefined
   const statements = new Map<string, { readonly value: readonly ValuePart[]; readonly at: number }[]>();
   const tainted = new Set<string>();
   const deferred: Deferred[] = [];
-  const loops = new Loops();
+  const compounds = new Compounds();
   for (const [index, command] of commands.entries()) {
-    const words = loops.enter(command, (name) => tainted.add(name));
-    if (words === undefined) {
+    const entered = compounds.enter(command, (name) => tainted.add(name));
+    if (entered === undefined) {
       return undefined;
     }
+    const { words, followed } = entered;
     if (programIsVariable(words)) {
       deferred.push({ index, words });
     } else if (setsVariablesUnseen(words)) {
@@ -297,8 +297,8 @@ function boundNames(commands: readonly ShellCommand[]): LineBindings | undefined
     }
     const statement = bindingStatement(words, command.redirections.length > 0);
     for (const binding of statement ?? []) {
-      if (loops.inside) {
-        // A loop body may run any number of times, or never.
+      if (!followed) {
+        // A compound command may run its body any number of times, or never.
         tainted.add(binding.name);
       } else {
         statements.set(binding.name, [...(statements.get(binding.name) ?? []), { value: binding.value, at: index }]);
@@ -315,7 +315,7 @@ function boundNames(commands: readonly ShellCommand[]): LineBindings | undefined
       }
     }
   }
-  if (!loops.closed) {
+  if (!compounds.closed) {
     return undefined;
   }
   const bound = new Map<string, Bound>();
@@ -329,58 +329,137 @@ function boundNames(commands: readonly ShellCommand[]): LineBindings | undefined
 }
 
 /**
- * The `for` loops open at each command of a line, read from the keywords that start its commands: a
- * `for NAME [in WORDS]` header, the `do` after it and the `done` that closes its body. Any other loop, and a
- * keyword out of place, is not followed.
+ * A part of a compound command, named by the keyword that starts it: a `for` header up to its `do`, a `while`
+ * or `until` condition, an `if` or `elif` condition, a `then`, `else` or `do` body, or a `{ }` group.
  */
-class Loops {
-  /** The nesting of each `for` header still waiting for its `do`, innermost last. */
-  private readonly headers: number[] = [];
-  /** The nesting of each open loop body, innermost last. */
-  private readonly bodies: number[] = [];
+type Part = 'for' | 'while' | 'if' | 'then' | 'else' | 'do' | '{';
 
-  /** True inside a loop body. */
-  get inside(): boolean {
-    return this.bodies.length > 0;
-  }
+/** The keywords that open a compound command, and the part each starts. */
+const OPENERS: ReadonlyMap<string, Part> = new Map<string, Part>([
+  ['if', 'if'],
+  ['while', 'while'],
+  ['until', 'while'],
+  ['{', '{'],
+]);
 
-  /** True when every loop the line opened has closed. */
+/** The keywords that end one part of a compound command and start the next: the parts each may end, and the part it starts. */
+const TURNS: ReadonlyMap<string, { readonly ends: readonly Part[]; readonly starts: Part }> = new Map([
+  ['do', { ends: ['for', 'while'], starts: 'do' }],
+  ['then', { ends: ['if'], starts: 'then' }],
+  ['elif', { ends: ['then'], starts: 'if' }],
+  ['else', { ends: ['then'], starts: 'else' }],
+]);
+
+/** The keywords that close a compound command, and the parts each may close; nothing may follow them in their command. */
+const CLOSERS: ReadonlyMap<string, readonly Part[]> = new Map<string, readonly Part[]>([
+  ['done', ['do']],
+  ['fi', ['then', 'else']],
+  ['}', ['{']],
+]);
+
+/** The words {@link Compounds} reads at a command's start: the keywords above, `for`, and `!`, which only negates its status. */
+const RESERVED_WORDS: ReadonlySet<string> = new Set([...OPENERS.keys(), ...TURNS.keys(), ...CLOSERS.keys(), 'for', '!']);
+
+/** One open part of a compound command, and the command whose keyword opened the compound. */
+interface OpenPart {
+  readonly part: Part;
+  readonly opener: ShellCommand;
+}
+
+/** A command's words after the keywords that start it, and whether a binding there is followed. */
+interface Entered {
+  readonly words: readonly ShellWord[];
+  readonly followed: boolean;
+}
+
+/**
+ * The compound commands open at each command of a line (`for`, `while` and `until` loops, `if` and `{ }`),
+ * read from the keywords that start its commands. A binding inside one may run any number of times, or never,
+ * so it is not followed; the line's other bindings hold inside and past it. `case`, `select`, functions
+ * declared with `function`, and a keyword out of place or in another shell than the one that opened its
+ * compound are not followed.
+ */
+class Compounds {
+  /** The open parts, innermost last. */
+  private readonly open: OpenPart[] = [];
+
+  /** True when every compound the line opened has closed. */
   get closed(): boolean {
-    return this.headers.length === 0 && this.bodies.length === 0;
+    return this.open.length === 0;
   }
 
   /**
-   * Reads the loop keywords that start `command` and gives a `for` header's variable to `taint`. Returns the
-   * words after them (none for a header or a `done`), or undefined for a keyword out of place.
+   * Reads the keywords that start `command`, and gives a `for` header's variable to `taint`. Returns the words
+   * after them (none for a `for` header or a closing keyword); a binding there is not followed inside a
+   * compound or after `!`. Undefined for a keyword out of place.
    */
-  enter(command: ShellCommand, taint: (name: string) => void): readonly ShellWord[] | undefined {
+  enter(command: ShellCommand, taint: (name: string) => void): Entered | undefined {
     let words = command.words;
-    while (isKeyword(words[0], 'do')) {
-      if (this.headers.pop() !== command.nesting) {
-        return undefined;
-      }
-      this.bodies.push(command.nesting);
+    let negated = false;
+    for (let keyword = reservedWord(words[0]); keyword !== undefined; keyword = reservedWord(words[0])) {
       words = words.slice(1);
-    }
-    const [first, name, list] = words;
-    if (isKeyword(first, 'for')) {
-      if (name === undefined || name.dynamic || !NAME.test(name.text) || (list !== undefined && !isKeyword(list, 'in'))) {
+      if (keyword === 'for') {
+        return this.openFor(command, words, taint) ? { words: [], followed: false } : undefined;
+      }
+      const closes = CLOSERS.get(keyword);
+      if (closes !== undefined) {
+        if (words.length > 0 || this.innermost(command, closes) === undefined) {
+          return undefined;
+        }
+        this.open.pop();
+        return { words: [], followed: false };
+      }
+      if (keyword === '!') {
+        negated = true;
+      } else if (!this.move(command, keyword)) {
         return undefined;
       }
-      taint(name.text);
-      this.headers.push(command.nesting);
-      return [];
     }
-    if (isKeyword(first, 'done')) {
-      return words.length === 1 && this.bodies.pop() === command.nesting ? [] : undefined;
+    return { words, followed: !negated && this.open.length === 0 };
+  }
+
+  /** Opens a compound for `keyword`, or turns its innermost part; false when `keyword` does not fit that part. */
+  private move(command: ShellCommand, keyword: string): boolean {
+    const opens = OPENERS.get(keyword);
+    if (opens !== undefined) {
+      this.open.push({ part: opens, opener: command });
+      return true;
     }
-    return words;
+    const turn = TURNS.get(keyword);
+    const current = turn === undefined ? undefined : this.innermost(command, turn.ends);
+    if (turn === undefined || current === undefined) {
+      return false;
+    }
+    this.open[this.open.length - 1] = { part: turn.starts, opener: current.opener };
+    return true;
+  }
+
+  /** Opens a `for NAME [in WORDS]` header and taints NAME; false for any other form, such as `for ((`. */
+  private openFor(command: ShellCommand, rest: readonly ShellWord[], taint: (name: string) => void): boolean {
+    const [name, list] = rest;
+    if (name === undefined || name.dynamic || !NAME.test(name.text) || (list !== undefined && !(list.text === 'in' && reservedWordText(list)))) {
+      return false;
+    }
+    taint(name.text);
+    this.open.push({ part: 'for', opener: command });
+    return true;
+  }
+
+  /** The innermost open part when it is one of `parts` and opened in the same shell as `command`. */
+  private innermost(command: ShellCommand, parts: readonly Part[]): OpenPart | undefined {
+    const current = this.open.at(-1);
+    return current !== undefined && parts.includes(current.part) && current.opener.nesting === command.nesting && sameShell(current.opener, command) ? current : undefined;
   }
 }
 
-/** True for a word that is the keyword itself, as written. */
-function isKeyword(word: ShellWord | undefined, keyword: string): boolean {
-  return word !== undefined && !word.dynamic && word.text === keyword;
+/** The reserved word `word` is, when it is one {@link Compounds} reads, written unquoted. */
+function reservedWord(word: ShellWord | undefined): string | undefined {
+  return word !== undefined && RESERVED_WORDS.has(word.text) && reservedWordText(word) ? word.text : undefined;
+}
+
+/** True when `word` is static text with no quote or escape in it, as a bash reserved word must be. */
+function reservedWordText(word: ShellWord): boolean {
+  return !word.dynamic && (word.parts ?? []).every((part) => part.kind === 'text' && !part.quoted);
 }
 
 /** The one value the statements binding a name give it: the only statement's, or the text all of them agree on. */
