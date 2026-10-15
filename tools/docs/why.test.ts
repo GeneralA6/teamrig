@@ -20,15 +20,26 @@ describe('renderWhy', () => {
   it('names the picture for screen readers: role, aria-label and a matching title', () => {
     const label = root.attributes.get('aria-label') ?? '';
     assert.equal(root.attributes.get('role'), 'img');
-    assert.match(label, /^Why teamrig is different: A built-in project manager\. Plans your week and flags what's late, stuck or forgotten\. /);
-    assert.match(label, /Safe by default\. Asks before a push to main, refuses blind force-pushes and keys in notes\.$/);
+    assert.ok(label.startsWith('Why teamrig is different: A built-in project manager. One task list for the whole team: owner, priority, due date and proof. '), label);
+    assert.ok(label.includes(' Your day back (coming). One meeting in the morning. '), label);
+    assert.ok(label.endsWith('Just your terminal. Claude Code in the terminal you have. No IDE, no desktop app, no server.'), label);
     assert.equal(textOf(places.find((place) => place.element.name === 'title')?.element ?? ''), label);
   });
 
   it('writes every card: its title and its lines, each card with its own icon', () => {
     const words = places.filter((place) => place.element.name === 'text').map((place) => textOf(place.element));
-    assert.deepEqual(words, MOAT.flatMap((card) => [card.title, ...card.lines]));
+    assert.deepEqual(words, MOAT.flatMap((card) => [...(card.coming ? ['Coming'] : []), card.title, ...card.lines]));
     assert.equal(new Set(MOAT.map((card) => card.icon)).size, MOAT.length);
+  });
+
+  it('tags only the cards whose whole feature is still to come, inside their card', () => {
+    const tags = places.filter((place) => place.element.attributes.get('class') === 'tag').map(({ element }) => element.attributes);
+    assert.deepEqual(MOAT.filter((card) => card.coming).map((card) => card.title), ['Your day back', 'Survives a crash or reboot']);
+    assert.equal(tags.length, 2);
+    for (const tag of tags) {
+      const left = number(tag.get('x')) % (304 + 24);
+      assert.ok(left > 72 && left + number(tag.get('width')) <= 304, `a tag sits right of the chip, inside its card: ${left}`);
+    }
   });
 
   it('lays the cards out in rows of three that fill the picture and never overlap', () => {
