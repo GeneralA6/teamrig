@@ -3,7 +3,7 @@
  * the same loop, so the parts stay in step without any script. Each class's own style (outside its animation) is the
  * part's state at the clock's `rest` moment, so with motion turned off (`animation:none`) the picture is a still of
  * that moment. The motions: `show` (fade in and out), `slide` (typing steps), `pop` (grow in), `draw` (a line drawn
- * from its start), `steps` (eased moves between held transforms, such as a camera) and `sweep` (a steady move right).
+ * from its start) and `steps` (eased moves between held transforms, such as a camera).
  */
 
 export interface Clock {
@@ -202,24 +202,6 @@ export class Timeline {
       if (stop.at + stop.duration <= this.clock.rest) still = stop.value;
     });
     this.rules.push(`@keyframes ${name}{${frames.join('')}}`, `.${name}{${extra}transform:${still};animation:${name} ${this.clock.loop}s linear infinite}`);
-    return name;
-  }
-
-  /**
-   * A class that moves its part right by `distance` pixels at a steady speed from `from` for `duration` seconds,
-   * holds it there and snaps it back as the loop restarts. Its still state is moved when the sweep ends by `rest`.
-   * Throws when the sweep does not sit inside the loop.
-   */
-  sweep(from: number, duration: number, distance: number): string {
-    if (!(from > 0 && duration > 0 && from + duration < this.clock.loop)) {
-      throw new RangeError(`a sweep from ${from}s for ${duration}s does not fit the ${this.clock.loop}s loop`);
-    }
-    const name = this.nextName();
-    const far = `translateX(${distance}px)`;
-    this.rules.push(
-      `@keyframes ${name}{0%,${this.pct(from)}{transform:translateX(0)}${this.pct(from + duration)},100%{transform:${far}}}`,
-      `.${name}{transform:${from + duration <= this.clock.rest ? far : 'translateX(0)'};animation:${name} ${this.clock.loop}s linear infinite}`,
-    );
     return name;
   }
 
