@@ -17,6 +17,20 @@ function transcript(tokens: number): string {
   return `${JSON.stringify({ type: 'user', isSidechain: false, message: { content: 'go' } })}\n${JSON.stringify(reply)}\n`;
 }
 
+/** The lines of a background command started by call `toolu_bg` at the harness's clock, and of its end. */
+const BACKGROUND_START = [
+  { type: 'assistant', isSidechain: false, message: { role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_bg', name: 'Bash', input: {} }] } },
+  {
+    type: 'user',
+    timestamp: '2030-01-08T09:30:00.000Z',
+    message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_bg', content: 'Command running in background with ID: b1' }] },
+    toolUseResult: { stdout: '', backgroundTaskId: 'b1' },
+  },
+]
+  .map((entry) => `${JSON.stringify(entry)}\n`)
+  .join('');
+const BACKGROUND_END = `${JSON.stringify({ type: 'queue-operation', operation: 'enqueue', content: '<task-notification>\n<tool-use-id>toolu_bg</tool-use-id>\n<status>completed</status>\n</task-notification>' })}\n`;
+
 function stopPayload(stopHookActive = false, extra: JsonRecord = {}): string {
   return JSON.stringify({ session_id: CLAUDE_SESSION, cwd: APP, transcript_path: TRANSCRIPT, stop_hook_active: stopHookActive, ...extra });
 }
@@ -82,6 +96,25 @@ describe('runCli: context refresh', () => {
     assert.ok(contextOf(await kit.run(['hook', 'session-start'], { ...AS_ALPHA, stdin: startPayload('clear') })).includes(note));
     assert.ok(!contextOf(await kit.run(['hook', 'session-start'], { ...AS_ALPHA, stdin: startPayload('startup') })).includes(note), 'once');
     assert.match((await kit.files.read(STATE('alpha'))) ?? '', /"phase":"refreshed"/);
+  });
+
+  it('waits for background work the session started before asking for the handover and before the notice', async () => {
+    const kit = new CliHarness();
+    await kit.files.write(TRANSCRIPT, `${BACKGROUND_START}${transcript(300_000)}`);
+    await finishTask(kit, 'alpha');
+    assert.deepEqual(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload() }), SILENT, 'a refresh would cut the command off');
+    assert.match((await kit.files.read(STATE('alpha'))) ?? '', /"phase":"boundary","task":"T1"/, 'left for a later stop');
+
+    await kit.files.write(TRANSCRIPT, `${BACKGROUND_START}${BACKGROUND_END}${transcript(300_000)}`);
+    const asked = stopJson(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload() }));
+    assert.match(JSON.stringify(asked), /"decision":"block".*you just finished T1/);
+
+    await kit.files.write(HANDOVER('alpha'), '# In progress\n');
+    await kit.files.write(TRANSCRIPT, `${BACKGROUND_START}${BACKGROUND_END}${BACKGROUND_START.replaceAll('toolu_bg', 'toolu_bg2')}${transcript(300_000)}`);
+    assert.equal((await kit.run(['refresh', '--ready', '--session', 'alpha'])).code, EXIT.ok);
+    assert.deepEqual(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload(true) }), SILENT, 'no /clear notice over running work');
+    await kit.files.write(TRANSCRIPT, `${BACKGROUND_START}${BACKGROUND_END}${BACKGROUND_START.replaceAll('toolu_bg', 'toolu_bg2')}${BACKGROUND_END.replace('toolu_bg', 'toolu_bg2')}`);
+    assert.match(JSON.stringify(stopJson(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload() }))), /wrote its handover; type \/clear/);
   });
 
   it('records a boundary under the threshold and says nothing, and refuses --ready when nothing was asked', async () => {

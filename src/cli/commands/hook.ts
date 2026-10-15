@@ -19,6 +19,7 @@ import { stopOutput } from '../../hooks/stop.ts';
 import { adoptTitle, promptNote, sessionStartNote, type TitleOutcome } from '../../names/detect.ts';
 import { JsonlRenameLog } from '../../names/log.ts';
 import { decideStart, decideStop, handoverHashOf, type BoundaryFacts, type StopContext, type StopDecision } from '../../refresh/decide.ts';
+import { readRunningWork } from '../../refresh/running.ts';
 import { RefreshStore } from '../../refresh/store.ts';
 import { readContextTokens } from '../../refresh/usage.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
@@ -326,7 +327,8 @@ async function refreshNoteOf(runtime: CliRuntime, kit: Kit, config: KitConfig, r
 
 /**
  * The refresh facts of a boundary: the lead's request, the context size from the transcript's
- * tail, and the handover as it is now (so `refresh --ready` can tell a new one from it).
+ * tail, the handover as it is now (so `refresh --ready` can tell a new one from it), and the
+ * background work still running, which a refresh must wait for.
  */
 async function boundaryFactsOf(runtime: CliRuntime, roster: Roster, store: RefreshStore, id: string, payload: JsonRecord): Promise<BoundaryFacts> {
   const request = await store.request(id);
@@ -335,6 +337,7 @@ async function boundaryFactsOf(runtime: CliRuntime, roster: Roster, store: Refre
     requestedBy: request === undefined ? undefined : (roster.nameOf(request.by) ?? request.by),
     tokens: transcript === undefined ? undefined : await readContextTokens(runtime.files, transcript),
     handoverHash: handoverHashOf(await store.handover(id)),
+    running: transcript === undefined ? 0 : await readRunningWork(runtime.files, transcript, runtime.clock.now()),
   };
 }
 

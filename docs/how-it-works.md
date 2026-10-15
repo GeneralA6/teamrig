@@ -296,6 +296,9 @@ sequenceDiagram
   reply in the session's transcript, and says nothing on any other turn.
 - The threshold is `refresh.contextTokens` in the team config (250,000 by default). The lead can ask for a refresh
   at any size: `teamrig refresh web` applies at web's next finished task.
+- It waits while work the session started in the background still runs (subagents, background commands,
+  monitors, workflows): a `/clear` would cut it off, so the hook asks for the handover, and later tells you to
+  `/clear`, only at a turn end after the last of it reported back.
 - `refresh --ready` is refused until the handover is written: missing, blank or unchanged since the hook asked.
 - A hook cannot clear a session, so you type `/clear`. A compact or a resume keeps the handover waiting for the next
   fresh start. Restarting the tab for you is planned (T201, T212).

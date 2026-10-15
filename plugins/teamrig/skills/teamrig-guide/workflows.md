@@ -110,7 +110,8 @@ teamrig refreshes a long-running session at a task boundary, so it never loses w
 
 1. After a turn in which you set a task done, the Stop hook measures your context. When it is at or over
    `refresh.contextTokens` (250,000 by default), or the lead asked for a refresh (`teamrig refresh <id>`), it
-   keeps you going with this instruction:
+   keeps you going with this instruction, once the background work you started (subagents, background commands,
+   monitors, workflows) has all reported back:
 
    ```text
    teamrig: your context is 262k (refresh at 250k) and you just finished T2. Write your handover to <home>/teams/shop/handover/web.md (what is in progress, the next step of each, open questions, where things are), then run `teamrig refresh --ready --session web`. Do not start new work.
