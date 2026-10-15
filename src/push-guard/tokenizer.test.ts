@@ -62,6 +62,23 @@ describe('parseShell: bash', () => {
     );
   });
 
+  it('records how many substitutions deep each command sits', () => {
+    const nesting = (line: string, dialect: ShellDialect = 'bash'): (readonly [string | undefined, number])[] =>
+      parseShell(line, dialect).commands.map((command): readonly [string | undefined, number] => [command.words[0]?.text, command.nesting]);
+    assert.deepEqual(nesting('a $(b `c`) <(d); (e)'), [
+      ['c', 2],
+      ['b', 1],
+      ['d', 1],
+      ['a', 0],
+      ['e', 0],
+    ]);
+    assert.deepEqual(nesting('a $(b) @(c)', 'powershell'), [
+      ['b', 1],
+      ['c', 1],
+      ['a', 0],
+    ]);
+  });
+
   it('records the separators after each command, newlines kept and blanks left out', () => {
     const parse = parseShell('a ; b &&\nc || d | e |& f & g\n\nh; (i) ; x=$(j; k) `l`\nm 2>&1', 'bash');
     assert.deepEqual(

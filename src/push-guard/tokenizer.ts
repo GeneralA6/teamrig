@@ -33,6 +33,8 @@ export interface ShellCommand {
   readonly terminator: string;
   /** True when it carries a redirection, such as `> out.log` or `2>&1`, which the words leave out. */
   readonly redirected: boolean;
+  /** How many substitutions (`$( )`, backticks, `<( )`, PowerShell `@( )`) it sits inside: 0 for the line's own commands. */
+  readonly nesting: number;
 }
 
 /** A command while the scanner still adds the separators that follow it. */
@@ -41,6 +43,7 @@ interface ScannedCommand {
   readonly subshells: readonly number[];
   terminator: string;
   readonly redirected: boolean;
+  readonly nesting: number;
 }
 
 /** The simple commands of a command line, as its shell would split them. */
@@ -276,7 +279,7 @@ class Scanner {
       skipTarget = false;
       verbatim = false;
       if (words.length > 0) {
-        this.commands.push({ words, subshells: [...this.subshells], terminator: '', redirected });
+        this.commands.push({ words, subshells: [...this.subshells], terminator: '', redirected, nesting: this.nesting });
       }
       words = [];
       redirected = false;
