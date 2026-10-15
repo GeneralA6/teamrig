@@ -121,8 +121,9 @@ export async function postLine(inboxes, secrets, input) {
     if (text === '' || /[\r\n]/.test(text)) {
         return 'an inbox item is one non-empty line';
     }
-    if (secrets.looksSecret(text)) {
-        return 'the line looks like it holds a secret; refer to where it is kept instead';
+    const secret = secrets.refusal('the line', text);
+    if (secret !== undefined) {
+        return secret;
     }
     await inboxes.append(input.to, `- ${formatUtcMinute(input.now)} ${input.from}: ${text}`);
     return undefined;

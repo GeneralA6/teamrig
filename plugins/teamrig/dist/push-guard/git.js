@@ -14,11 +14,23 @@ function readGit(dir, args) {
     const value = runGit(dir, args)?.trim();
     return value === '' ? undefined : value;
 }
+/** One config value as git in `dir` reads it: git exits 1 for a key that is not set, and fails otherwise for no git or no folder. */
+function readConfig(dir, key) {
+    try {
+        const value = execFileSync('git', ['config', '--get', key], { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5_000 });
+        return { kind: 'set', value: value.replace(/\r?\n$/, '') };
+    }
+    catch (error) {
+        return error instanceof Error && 'status' in error && error.status === 1 ? { kind: 'unset' } : { kind: 'unreadable' };
+    }
+}
 /** Repository state from the git CLI. */
 export const GIT_CLI = {
     // symbolic-ref names a branch before its first commit, and nothing on a detached HEAD.
     branch: (dir) => readGit(dir, ['symbolic-ref', '--short', '-q', 'HEAD']),
-    pushTarget: (dir) => readGit(dir, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{push}']),
+    // A name starting with `-` would read as an option, so it has no push target the guard can ask for.
+    pushTarget: (dir, branch) => (branch?.startsWith('-') === true ? undefined : readGit(dir, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', `${branch ?? ''}@{push}`])),
+    config: readConfig,
 };
 /** The newest commits of a range the size rule reads; older ones in a longer range go unchecked. */
 export const COMMIT_LOG_MAX = 200;
