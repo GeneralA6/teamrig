@@ -58,8 +58,8 @@ A shipped change is proven by the session that shipped it, oldest first, before 
 
 - **Adding**: any session, for any owner on its team. Add the task in the same turn as the ask.
 - **Status**: only the owner.
-- **Fields** (`update`): the owner may change every field. The lead may change only the owner, priority, due date
-  and week of a task it does not own: it re-plans, it does not rewrite. A task always keeps the source it was
+- **Fields** (`update`): the owner may change every field. The lead may change only the owner, priority, due date,
+  week and plan order (`--after`) of a task it does not own: it re-plans, it does not rewrite. A task always keeps the source it was
   added with.
 - **Context** (`update <id> --note "..."` alone): any session, on any task. It changes nothing on the task; it
   adds a line to its history, so an asker can attach the evidence or a wording the owner should take up.

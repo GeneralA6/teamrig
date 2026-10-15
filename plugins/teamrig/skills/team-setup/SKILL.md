@@ -138,7 +138,7 @@ With sub-teams, run `teamrig check --tree --session lead` too. Act on each flag:
 - `OWNER-UNPLANNED` or `DUE-UNPLANNED`: plan it in with `--week`, or tell the user what it would push out.
 - A skill flag: tell the skill's owner in one inbox line.
 
-You may change a task's owner, priority, due date and week; its status and goals are its owner's.
+You may change a task's owner, priority, due date, week and plan order (`--after`); its status and goals are its owner's.
 
 ## Traps
 

@@ -133,7 +133,7 @@ The status is a flag, never a word after the id: `teamrig set T1 done` is a usag
 ### teamrig update
 
 Changes a task's fields. The owner may change any of them; the lead may change only the owner, priority, due
-date and week of a task it does not own. A `--note` alone adds context to any task's history, from any session.
+date, week and plan order (`--after`) of a task it does not own. A `--note` alone adds context to any task's history, from any session.
 The status never changes here: use `set`.
 
 Flags:
