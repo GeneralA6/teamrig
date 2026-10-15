@@ -25,6 +25,7 @@ import { openKit, renameDepsOf, rosterOf, teamFolders } from "../kit.js";
 import { EXIT } from "../runtime.js";
 import { loadTree } from "../tree.js";
 import { bindHintOnce, bindTab, inboxLinesFor, readTitle } from "./hook-bind.js";
+import { helperGateOutput, promptBudgetLine, stopBudgetLines } from "./hook-budget.js";
 import { coldSendHold } from "./hook-cold-send.js";
 import { inboxDepsOf } from "./inbox.js";
 /**
@@ -145,8 +146,9 @@ async function titleOutcome(runtime, kit, config, payload, read) {
 }
 /**
  * UserPromptSubmit: binds a hand-started tab by its title, notes a Claude Code rename of the session,
- * says once how to bind a tab that is not bound, and shows the session's new inbox lines; or one line
- * when its team pointer is broken.
+ * says once how to bind a tab that is not bound, shows the session's new inbox lines and, once per
+ * level while it is past its daily budget and the team is ahead of its pace line, tells the model to
+ * finish the step in hand; or one line when its team pointer is broken.
  */
 export async function inboxReminder(args, runtime) {
     noPositionals(args);
@@ -179,7 +181,8 @@ export async function inboxReminder(args, runtime) {
     // Found like a rename: `$TEAMRIG_SESSION` first, so a session is shown its lines before its first `inbox read`.
     const session = await teamSessionOf(runtime, kit, own.roster, claudeSession);
     const lines = session === undefined ? undefined : await inboxLinesFor(runtime, kit, session, claudeSession);
-    for (const text of [bound, renamed, hint, lines]) {
+    const budgetLine = session === undefined ? undefined : await promptBudgetLine(runtime, { kit, config, roster: own.roster, id: session }).catch(() => undefined);
+    for (const text of [bound, renamed, hint, lines, budgetLine]) {
         if (text !== undefined) {
             runtime.out.stdout(text);
         }
@@ -212,6 +215,28 @@ export async function coldSend(args, runtime) {
         runtime.out.stdout(hold);
     }
     return EXIT.ok;
+}
+/**
+ * PreToolUse on Agent (and the older Task): asks the person before a helper launch, or refuses it, when
+ * the session is past its daily budget while the team is ahead of its pace line, or in the team's quiet
+ * hours, as `budget.overAction` and `budget.quietHours` say. The lead and a lifted session always go
+ * ahead. Outside a loaded team, with the budget off or on any error it prints nothing.
+ */
+export async function helperGateHook(args, runtime) {
+    noPositionals(args);
+    const payload = parseJson(await runtime.readStdin());
+    if (!isRecord(payload)) {
+        return EXIT.ok;
+    }
+    const output = await helperGateOf(runtime, payload).catch(() => undefined);
+    if (output !== undefined) {
+        runtime.out.stdout(output);
+    }
+    return EXIT.ok;
+}
+async function helperGateOf(runtime, payload) {
+    const scope = await stopScopeOf(runtime, payload);
+    return scope === undefined ? undefined : helperGateOutput(runtime, scope, stringField(payload, 'transcript_path'));
 }
 /**
  * A loaded team's rules.md and rename log, after binding a hand-started tab by its Claude Code title
@@ -300,7 +325,7 @@ async function boundaryFactsOf(runtime, roster, store, id, payload) {
         handoverHash: handoverHashOf(await store.handover(id)),
     };
 }
-/** The Stop payload's team session; undefined outside a team, without a loaded config or without a session. */
+/** The hook payload's team session (Stop, helper gate); undefined outside a team, without a loaded config or without a session. */
 async function stopScopeOf(runtime, payload) {
     const found = await sessionTeam(payload, runtime);
     if (found.kind !== 'team') {
@@ -363,8 +388,8 @@ async function modelNoticesOf(runtime, scope, payload) {
     });
 }
 /**
- * What the Stop hook prints for this turn's end; '' outside a team or without a session. The refresh
- * and the model notices fail apart: an error in either leaves only the other.
+ * What the Stop hook prints for this turn's end; '' outside a team or without a session. The refresh,
+ * the model notices and the budget lines fail apart: an error in one leaves the others.
  */
 async function stopOutputOf(runtime, payload) {
     const scope = await stopScopeOf(runtime, payload);
@@ -373,7 +398,8 @@ async function stopOutputOf(runtime, payload) {
     }
     const decision = await refreshDecisionOf(runtime, scope, payload).catch(() => ({ kind: 'none' }));
     const notices = await modelNoticesOf(runtime, scope, payload).catch(() => []);
-    return stopOutput(decision, notices);
+    const budget = await stopBudgetLines(runtime, scope, stringField(payload, 'transcript_path')).catch(() => []);
+    return stopOutput(decision, [...notices, ...budget]);
 }
 /**
  * Stop, at the end of every turn: after the session finished a task (`set done`), asks for its
