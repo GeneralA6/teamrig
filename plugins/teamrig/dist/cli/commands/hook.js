@@ -1,10 +1,9 @@
 import { launchOf } from "../../config/launch.js";
 import { Roster } from "../../config/roster.js";
 import { errorMessage, isRecord, stringField } from "../../core/guards.js";
-import { ENV, KIT_NAME } from "../../core/home.js";
+import { KIT_NAME } from "../../core/home.js";
 import { resolveTeam } from "../../core/team.js";
 import { sessionIdOf } from "../../inbox/inbox.js";
-import { indexMarks } from "../../inbox/marks.js";
 import { boundPromptNote, boundStartNote } from "../../hooks/bind.js";
 import { modelCheckLine, payloadEffortOf } from "../../hooks/model-check.js";
 import { ModelNoticeStore } from "../../hooks/model-notices.js";
@@ -14,9 +13,12 @@ import { JsonlHintLog } from "../../hooks/hint-log.js";
 import { requirementsNoteOnce } from "../../hooks/requirements-note.js";
 import { sessionStartContext, sessionStartOutput } from "../../hooks/session-start.js";
 import { stopModelNotices } from "../../hooks/stop-model.js";
+import { leadStopLine, leadTallyOf } from "../../hooks/lead-boundary.js";
+import { turnToolsOf } from "../../hooks/loop-nudge.js";
 import { stopOutput } from "../../hooks/stop.js";
 import { adoptTitle, promptNote, sessionStartNote } from "../../names/detect.js";
 import { JsonlRenameLog } from "../../names/log.js";
+import { TRANSCRIPT_TAIL_BYTES } from "../../names/title.js";
 import { decideStart, decideStop, handoverHashOf } from "../../refresh/decide.js";
 import { readRunningWork } from "../../refresh/running.js";
 import { RefreshStore } from "../../refresh/store.js";
@@ -29,8 +31,7 @@ import { bindHintOnce, bindTab, inboxLinesFor, readTitle } from "./hook-bind.js"
 import { helperGateOutput, promptBudgetLine, stopBudgetLines } from "./hook-budget.js";
 import { startAutoSync } from "./gh-auto.js";
 import { coldSendHold } from "./hook-cold-send.js";
-import { parseJson, sessionTeam } from "./hook-input.js";
-import { inboxDepsOf } from "./inbox.js";
+import { envSession, leadOwnPaths, markedSessionOf, parseJson, sessionTeam, teamSessionOf } from "./hook-input.js";
 import { verifyByLinesOf, verifyNoteOf } from "./verify-queue.js";
 /**
  * Claude Code hooks. Each reads the hook's JSON from stdin and prints only what Claude Code
@@ -68,36 +69,6 @@ export async function pushGuard(args, runtime) {
         runtime.out.stdout(output);
     }
     return EXIT.ok;
-}
-/** `$TEAMRIG_SESSION` as Claude Code passed it to the hook; undefined when unset or blank. */
-function envSession(runtime) {
-    const session = runtime.env[ENV.session]?.trim();
-    return session === '' ? undefined : session;
-}
-/**
- * The team session a hook runs for: `$TEAMRIG_SESSION` when it is set (an id or any name the
- * session has had), else the area this Claude Code session last read its inbox as.
- */
-async function teamSessionOf(runtime, kit, roster, claudeSession) {
-    const session = envSession(runtime);
-    if (session !== undefined) {
-        const found = roster.lookup(session);
-        return found.ok ? found.id : undefined;
-    }
-    return markedSessionOf(runtime, kit, roster, claudeSession);
-}
-/**
- * The area this Claude Code session last read its inbox as, or was bound to by its title, when it is
- * on the roster. It is how a tab started without `$TEAMRIG_SESSION`, such as the one that set the team
- * up, stays its session.
- */
-async function markedSessionOf(runtime, kit, roster, claudeSession) {
-    if (claudeSession === null) {
-        return undefined;
-    }
-    const { marks } = await inboxDepsOf(runtime, kit.paths).marks.read();
-    const area = indexMarks(marks).areaBySession.get(claudeSession);
-    return area !== undefined && roster.ids.includes(area) ? area : undefined;
 }
 /** `markedSessionOf` for the SessionStart context, which must always load: a failed read means no session. */
 async function startSessionOf(runtime, kit, roster, payload) {
@@ -338,6 +309,20 @@ async function stopScopeOf(runtime, payload) {
     const id = await teamSessionOf(runtime, kit, roster, sessionIdOf(payload));
     return id === undefined ? undefined : { kit, config, roster, id };
 }
+/** The owner's turn-end line when the lead did hand-off work itself (lead-boundary.ts); none for another session, with the boundary off or without a transcript. */
+async function leadStopLines(runtime, scope, transcript) {
+    const { kit, config, id } = scope;
+    if (!config.leadBoundary.enabled || id !== config.roles.lead || transcript === undefined) {
+        return [];
+    }
+    const text = await runtime.files.readTail(transcript, TRANSCRIPT_TAIL_BYTES);
+    if (text === undefined) {
+        return [];
+    }
+    const turn = turnToolsOf(text, Buffer.byteLength(text, 'utf8') >= TRANSCRIPT_TAIL_BYTES, undefined);
+    const line = leadStopLine(leadTallyOf(turn, leadOwnPaths(runtime, kit, config)), config.leadBoundary.searchNudgeAt);
+    return line === undefined ? [] : [line];
+}
 /** The refresh decision for this turn's end; none with refresh off. */
 async function refreshDecisionOf(runtime, scope, payload) {
     const { kit, config, roster, id } = scope;
@@ -399,7 +384,8 @@ async function stopOutputOf(runtime, payload) {
     const budget = await stopBudgetLines(runtime, scope, stringField(payload, 'transcript_path')).catch(() => []);
     const verify = await verifyByLinesOf(runtime, scope.kit.paths, scope.id).catch(() => []);
     await startAutoSync(runtime, scope.kit, scope.config).catch(() => undefined);
-    return stopOutput(decision, [...notices, ...budget, ...verify]);
+    const lead = await leadStopLines(runtime, scope, stringField(payload, 'transcript_path')).catch(() => []);
+    return stopOutput(decision, [...notices, ...budget, ...verify, ...lead]);
 }
 /**
  * Stop, at the end of every turn: after the session finished a task (`set done`), asks for its

@@ -16,8 +16,16 @@ function toolUseOf(block) {
     if (block['type'] !== 'tool_use' || id === undefined || name === undefined) {
         return undefined;
     }
-    const input = recordField(block, 'input');
-    return { id, name, command: input === undefined ? undefined : stringField(input, 'command') };
+    return toolUseFrom(id, name, recordField(block, 'input'));
+}
+/** A tool call from its id, name and input, as a transcript line or a hook payload carries them. */
+export function toolUseFrom(id, name, input) {
+    const path = input === undefined ? undefined : toolPathOf(input);
+    return { id, name, command: input === undefined ? undefined : stringField(input, 'command'), ...(path === undefined ? {} : { path }) };
+}
+/** The file or folder a tool's input names: `file_path`, `notebook_path` or a search's `path`. */
+export function toolPathOf(input) {
+    return stringField(input, 'file_path') ?? stringField(input, 'notebook_path') ?? stringField(input, 'path');
 }
 /** A tool result's text: the string itself, or its text blocks joined by newlines. */
 function resultText(block) {
