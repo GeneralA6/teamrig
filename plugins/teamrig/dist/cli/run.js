@@ -92,7 +92,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       (run by Claude Code, hook JSON on stdin)
   launch <id> --team <team> --project <dir> [--home <dir>] [--encoded-prompt <text>]
       (run by the tab that open starts: sets the session and starts Claude Code)
-Team: ${ENV.team}, else the nearest ${TEAM_POINTER} ({"team": "<id>"}) above the current folder.
+Team: ${ENV.team}, else the nearest ${TEAM_POINTER} ({"team": "<id>"}) above the current folder,
+else above $CLAUDE_PROJECT_DIR.
 Sessions: give an id, a current name or a former one; a session never named is <team>-<id>.
 Dates: YYYY-MM-DD or "YYYY-MM-DD HH:MM", UTC. Kit home: $${ENV.home}, else ~/.${KIT_NAME}.
 Exit: 0 done, 1 failed, 2 refused by a team rule, 3 open printed the command to run itself,
