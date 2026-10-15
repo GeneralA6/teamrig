@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="436" viewBox="0 0 960 436" role="img" aria-label="teamrig in your terminal: one window, one tab per session (lead, api, web, data, docs, tests). In the lead's tab you ask: Morning. What needs me? The lead answers: Two decisions, each with my pick: 1, data: Keep logs 30 days or 90? My pick: 30, it halves the storage. 2, web: Offer Google sign-in on the form? My pick: not yet, email first. Everything else is on plan. You reply: 1 yes, 2 yes. Beside the conversation, teamrig-pane lists the team's tasks: T12 Signup form, web, p1, due today, needs you. T13 Signup endpoint, api, p1, due today, working. T14 Log retention, data, p2, due Thu, needs you. T16 End-to-end tests, tests, p2, due Fri, working. T15 API docs, docs, p2, due Fri, not started. T11 Release notes, docs, p3, done.">
+<title>teamrig in your terminal: one window, one tab per session (lead, api, web, data, docs, tests). In the lead's tab you ask: Morning. What needs me? The lead answers: Two decisions, each with my pick: 1, data: Keep logs 30 days or 90? My pick: 30, it halves the storage. 2, web: Offer Google sign-in on the form? My pick: not yet, email first. Everything else is on plan. You reply: 1 yes, 2 yes. Beside the conversation, teamrig-pane lists the team's tasks: T12 Signup form, web, p1, due today, needs you. T13 Signup endpoint, api, p1, due today, working. T14 Log retention, data, p2, due Thu, needs you. T16 End-to-end tests, tests, p2, due Fri, working. T15 API docs, docs, p2, due Fri, not started. T11 Release notes, docs, p3, done.</title>
+<style>
+:root{--fg:#1f2328;--muted:#59636e;--line:#d1d9e0;--tile:#f6f8fa;--bg:#ffffff;--purple:#8250df;--tint:#f0eafb;--amber:#9a6700;--green:#1a7f37}
+@media (prefers-color-scheme:dark){:root{--fg:#e6edf3;--muted:#9198a1;--line:#3d444d;--tile:#151b23;--bg:#0d1117;--purple:#a371f7;--tint:#221e36;--amber:#d29922;--green:#3fb950}}
+text{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif;fill:var(--fg)}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace;font-size:13.5px}.muted{fill:var(--muted)}.accent{fill:var(--purple)}.strong{font-weight:700}
+.key{font-size:13.5px;fill:var(--muted)}
+.window{fill:var(--bg);stroke:var(--line)}.strip{fill:var(--tile)}.tab{fill:var(--bg);stroke:var(--line)}
+.rule,.box{fill:none;stroke:var(--line)}.bullet{fill:var(--muted)}
+.working{fill:var(--green)}.needs{fill:var(--amber)}.open{fill:none;stroke:var(--muted);stroke-width:1.5}
+.done{fill:none;stroke:var(--muted);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+</style>
+<rect x="0.5" y="0.5" width="959" height="391" rx="12" class="window"/>
+<path d="M1 44V12.5A11.5 11.5 0 0 1 12.5 1H947.5A11.5 11.5 0 0 1 959 12.5V44z" class="strip"/>
+<path d="M1 44.5H959M600.5 45V391" class="rule"/>
+<path d="M12.5 45.5V16a8 8 0 0 1 8-8h75a8 8 0 0 1 8 8V45.5" class="tab"/>
+<circle cx="30" cy="27.5" r="4.5" class="working"/>
+<text x="43" y="32" class="mono strong">lead</text>
+<circle cx="126" cy="27.5" r="4.5" class="working"/>
+<text x="139" y="32" class="mono muted">api</text>
+<rect x="217.5" y="23" width="9" height="9" rx="1.5" class="needs"/>
+<text x="235" y="32" class="mono muted">web</text>
+<rect x="313.5" y="23" width="9" height="9" rx="1.5" class="needs"/>
+<text x="331" y="32" class="mono muted">data</text>
+<circle cx="414" cy="27.5" r="4" class="open"/>
+<text x="427" y="32" class="mono muted">docs</text>
+<circle cx="510" cy="27.5" r="4.5" class="working"/>
+<text x="523" y="32" class="mono muted">tests</text>
+<text x="24" y="86" class="mono accent">&gt;</text>
+<text x="42" y="86" class="mono">Morning. What needs me?</text>
+<circle cx="28.5" cy="117.5" r="3.5" class="bullet"/>
+<text x="42" y="122" class="mono">Two decisions, each with my pick:</text>
+<text x="42" y="154" class="mono muted">1</text>
+<text x="62" y="154" class="mono accent">data</text>
+<text x="114" y="154" class="mono">Keep logs 30 days or 90?</text>
+<text x="114" y="176" class="mono muted">My pick: 30, it halves the storage.</text>
+<text x="42" y="206" class="mono muted">2</text>
+<text x="62" y="206" class="mono accent">web</text>
+<text x="114" y="206" class="mono">Offer Google sign-in on the form?</text>
+<text x="114" y="228" class="mono muted">My pick: not yet, email first.</text>
+<circle cx="28.5" cy="257.5" r="3.5" class="bullet"/>
+<text x="42" y="262" class="mono">Everything else is on plan.</text>
+<rect x="16.5" y="321.5" width="568" height="44" rx="8" class="box"/>
+<text x="32" y="348.5" class="mono accent">&gt;</text>
+<text x="50" y="348.5" class="mono">1 yes, 2 yes</text>
+<text x="616" y="86" class="mono strong">Tasks</text>
+<text x="944" y="86" text-anchor="end" class="mono muted">teamrig-pane</text>
+<path d="M616 98.5H944" class="rule"/>
+<rect x="617.5" y="115" width="9" height="9" rx="1.5" class="needs"/>
+<text x="636" y="124" class="mono muted">T12</text>
+<text x="680" y="124" class="mono">Signup form</text>
+<text x="680" y="143" class="mono muted">web · p1 · due today</text>
+<circle cx="622" cy="165.5" r="4.5" class="working"/>
+<text x="636" y="170" class="mono muted">T13</text>
+<text x="680" y="170" class="mono">Signup endpoint</text>
+<text x="680" y="189" class="mono muted">api · p1 · due today</text>
+<rect x="617.5" y="207" width="9" height="9" rx="1.5" class="needs"/>
+<text x="636" y="216" class="mono muted">T14</text>
+<text x="680" y="216" class="mono">Log retention</text>
+<text x="680" y="235" class="mono muted">data · p2 · due Thu</text>
+<circle cx="622" cy="257.5" r="4.5" class="working"/>
+<text x="636" y="262" class="mono muted">T16</text>
+<text x="680" y="262" class="mono">End-to-end tests</text>
+<text x="680" y="281" class="mono muted">tests · p2 · due Fri</text>
+<circle cx="622" cy="303.5" r="4" class="open"/>
+<text x="636" y="308" class="mono muted">T15</text>
+<text x="680" y="308" class="mono">API docs</text>
+<text x="680" y="327" class="mono muted">docs · p2 · due Fri</text>
+<path d="M617.5 349.5l3 3 6-6.5" class="done"/>
+<text x="636" y="354" class="mono muted">T11</text>
+<text x="680" y="354" class="mono muted">Release notes</text>
+<text x="680" y="373" class="mono muted">docs · p3 · done</text>
+<circle cx="24" cy="415.5" r="4.5" class="working"/>
+<text x="38" y="420" class="key">working</text>
+<rect x="151.5" y="411" width="9" height="9" rx="1.5" class="needs"/>
+<text x="170" y="420" class="key">needs you</text>
+<circle cx="288" cy="415.5" r="4" class="open"/>
+<text x="302" y="420" class="key">not started</text>
+<path d="M415.5 415.5l3 3 6-6.5" class="done"/>
+<text x="434" y="420" class="key">done</text>
+</svg>
