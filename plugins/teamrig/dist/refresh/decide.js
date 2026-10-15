@@ -26,24 +26,34 @@ function handoverAsk(task, cause, context) {
 /**
  * The Stop hook, at the end of every turn. Only a boundary (a task just finished) is judged, once:
  * at or over the threshold, or when the lead asked, the session is kept going to write its handover;
- * otherwise the boundary is recorded as judged and nothing is said. A stop that ends a turn a Stop
- * hook continued never judges a boundary, so the kit never loops; the notice that the handover is
- * written does show there, since that is the turn that runs `refresh --ready`.
+ * otherwise the boundary is recorded as judged and nothing is said. While background work the
+ * session started still runs, a due refresh and the notice wait for a later stop, since a /clear
+ * would cut that work off. A stop that ends a turn a Stop hook continued never judges a boundary, so
+ * the kit never loops; the notice that the handover is written does show there, since that is the
+ * turn that runs `refresh --ready`.
  */
 export function decideStop(state, context, facts) {
     if (state === undefined || !context.settings.enabled) {
         return NONE;
     }
     if (state.phase === 'ready') {
+        if (state.noticed) {
+            return NONE;
+        }
+        if (facts === undefined) {
+            return MEASURE;
+        }
+        // A /clear now would cut the running work off: the notice waits for a stop after it ends.
+        if (facts.running > 0) {
+            return NONE;
+        }
         const { name } = context.session;
-        return state.noticed
-            ? NONE
-            : {
-                kind: 'notice',
-                state: { ...state, noticed: true },
-                message: `${context.command}: ${name} finished ${state.task} and wrote its handover; type /clear for a fresh start`,
-                title: context.settings.tabTitle ? `${name}: type /clear` : undefined,
-            };
+        return {
+            kind: 'notice',
+            state: { ...state, noticed: true },
+            message: `${context.command}: ${name} finished ${state.task} and wrote its handover; type /clear for a fresh start`,
+            title: context.settings.tabTitle ? `${name}: type /clear` : undefined,
+        };
     }
     if (state.phase !== 'boundary' || context.stopHookActive) {
         return NONE;
@@ -55,6 +65,10 @@ export function decideStop(state, context, facts) {
     const cause = causeOf(facts, context.settings.contextTokens);
     if (cause === undefined) {
         return { kind: 'write', state: { phase: 'idle', task: state.task, at: context.now, tokens } };
+    }
+    // A refresh would cut the running work off: the boundary stays unjudged, so a stop after the work ends judges it.
+    if (facts.running > 0) {
+        return NONE;
     }
     return {
         kind: 'block',
