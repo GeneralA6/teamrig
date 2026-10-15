@@ -15,13 +15,34 @@ export interface TeamRules {
   readonly text: string;
 }
 
+/** A list the pack names only to inform (a hook or check enforces it) prints in full up to this many characters. */
+export const LIST_MAX_CHARS = 120;
+
 function list(items: readonly string[]): string {
   return items.join('; ');
 }
 
+/**
+ * `items` joined by commas, in full when that fits LIST_MAX_CHARS, else the first items that fit (at
+ * least one) and "and N more": a long branch or key list cannot crowd the rules out of the pack.
+ */
+function shortList(items: readonly string[]): string {
+  let text = '';
+  let shown = 0;
+  for (const item of items) {
+    const next = shown === 0 ? item : `${text}, ${item}`;
+    if (shown > 0 && next.length > LIST_MAX_CHARS) {
+      return `${text} and ${items.length - shown} more`;
+    }
+    text = next;
+    shown += 1;
+  }
+  return text;
+}
+
 /** What the push guard does, as the team's pushGuard config sets it. */
 function pushRule(pushGuard: PushGuardConfig): string {
-  const branches = pushGuard.protectedBranches.join(', ');
+  const branches = shortList(pushGuard.protectedBranches);
   const keys = '[pushGuard]';
   if (branches === '') {
     return 'No branch is protected, so the push guard stops no push [pushGuard.protectedBranches].';
@@ -80,7 +101,7 @@ export function renderCorePack(config: KitConfig, command: string): string {
     `A procedure you had to investigate and will run again becomes a skill in the same turn: \`<area>-<name>/SKILL.md\`, shared ones \`${skills.sharedPrefix}-<name>\` [skills.sharedPrefix].` +
       ` Its description has at most ${skills.maxDescriptionWords} words [skills.maxDescriptionWords]; its body has \`Owner:\` and \`Last verified:\` lines, re-verified every ${skills.maxVerifiedAgeDays} days [skills.maxVerifiedAgeDays];` +
       ` at most ${skills.maxPerArea} per area [skills.maxPerArea]` +
-      (skills.forbidFrontmatter.length === 0 ? '' : `; never ${skills.forbidFrontmatter.join(', ')} [skills.forbidFrontmatter]`) +
+      (skills.forbidFrontmatter.length === 0 ? '' : `; never ${shortList(skills.forbidFrontmatter)} [skills.forbidFrontmatter]`) +
       '. Memory holds facts, skills hold how-tos, CLAUDE.md holds every-turn rules.',
     'One logical change per commit (a fix with its tests, a refactor apart from what it enables, a mechanical change alone), committed as each step passes.' +
       ` Over ${config.commits.maxLines} changed non-test lines or ${config.commits.maxFiles} non-test files [commits.maxLines, commits.maxFiles], a commit needs a \`${config.commits.largeCommitTrailer}: <reason>\` line [commits.largeCommitTrailer]` +
