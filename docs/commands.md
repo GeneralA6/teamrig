@@ -25,9 +25,11 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
   update <id> [--title ..] [--owner ..] [--priority ..] [--ref ..|none] [--due <date>|none]
       [--goals a,b|none] [--week <date>|none] [--note ..]
   list [--session <owner>] [--status a,b|all] [--source <s>] [--priority p1,p2] [--due-before <date>]
-      [--week <date>|none] [--goal <tag>] [--tree]
+      [--week <date>|none] [--goal <tag>] [--tree] [--all]
+      short rows within 3,000 characters; --all: every field of every task
   show <id>
-  check [--week <date>] [--tree]   tasks and skills that break a team rule
+  check [--week <date>] [--tree] [--all]   tasks and skills that break a team rule,
+      in a short form within 3,000 characters; --all: every flag in full
   plan [--week <date>] [--tree]    the week plan (default: the newest week that has started)
       --tree (the lead only): also every team under it, read-only, ids as <team>/T<n>
   inbox read [--session <area>]     prints the unread lines and marks them read
@@ -53,6 +55,7 @@ Sessions: give an id, a current name or a former one; a session never named is <
 Dates: YYYY-MM-DD or "YYYY-MM-DD HH:MM", UTC. Kit home: $TEAMRIG_HOME, else ~/.teamrig.
 Exit: 0 done, 1 failed, 2 refused by a team rule, 3 open printed the command to run itself,
 64 a command line it cannot read.
+One command's help: teamrig <command> --help.
 ```
 
 ## What a session sees
