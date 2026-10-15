@@ -39,11 +39,9 @@ function worstCaseConfig() {
     },
     pushGuard: { protectedBranches: filled(CONFIG_LIMITS.protectedBranches, 'b') },
     commits: { maxLines: CONFIG_LIMITS.commitMaxLines.max, maxFiles: CONFIG_LIMITS.commitMaxFiles.max, largeCommitTrailer: 'T'.repeat(40), gate: 'refuse' },
-    coordinator: {
-      schedule: { heavyCutoffUtc: '22:30' },
-      // Both round to their longest two-decimal form.
-      budget: { enabled: true, targetPct: 99.98765432109876, reservePct: 49.98765432109876 },
-    },
+    coordinator: { schedule: { heavyCutoffUtc: '22:30' } },
+    // Both round to their longest two-decimal form (two digits before the point), and together stay within 100%.
+    budget: { enabled: true, targetPct: 50.98765432109876, reservePct: 48.98765432109876 },
     alerts: { persistentFailureHours: CONFIG_LIMITS.persistentFailureHours.max },
   });
 }
@@ -83,25 +81,26 @@ describe('renderCorePack', () => {
     assert.match(pack, /with a note on blocked, verifying, done, dropped \[register\.requireNoteOn\]/);
     assert.match(pack, /A shipped change waiting for its proof is verifying until the proof exists\.$/m);
     assert.match(pack, /`teamrig inbox read --session <you>`/);
-    assert.doesNotMatch(pack, /coordinatorOwner|heavyCutoffUtc|coordinator\.budget/);
+    assert.doesNotMatch(pack, /coordinatorOwner|heavyCutoffUtc|Pace the week|\[budget\]/);
   });
 
   it('adds the coordinator owner, heavy cutoff and budget pacing only when configured', () => {
     const pack = renderCorePack(
       testConfig({
         roles: { lead: 'lead', coordinatorOwner: 'bravo' },
-        coordinator: { schedule: { heavyCutoffUtc: '22:30' }, budget: { enabled: true } },
+        coordinator: { schedule: { heavyCutoffUtc: '22:30' } },
+        budget: { enabled: true },
       }),
       COMMAND,
     );
     assert.match(pack, /bravo owns deploy coordination and fleet health \[roles\.coordinatorOwner\]/);
     assert.match(pack, /starts after 22:30 UTC/);
-    assert.match(pack, /Pace the week to 99\.5% of the weekly limit and keep 0\.5% for incidents/);
+    assert.match(pack, /Pace the week to 99\.5% of the weekly limit and keep 0\.5% for incidents \[budget\]\./);
   });
 
   it('prints budget percentages with at most two decimals', () => {
     const pack = renderCorePack(
-      testConfig({ coordinator: { budget: { enabled: true, targetPct: 1.0000000000000002, reservePct: 1e-7 } } }),
+      testConfig({ budget: { enabled: true, targetPct: 1.0000000000000002, reservePct: 1e-7 } }),
       COMMAND,
     );
     assert.match(pack, /Pace the week to 1% of the weekly limit and keep 0% for incidents/);

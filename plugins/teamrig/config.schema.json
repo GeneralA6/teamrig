@@ -241,14 +241,124 @@
               "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
             }
           }
+        }
+      }
+    },
+    "budget": {
+      "description": "The weekly token budget: the pace line the team is measured against and each session's daily part of it. Usage is in weighted tokens (W) read from the session transcripts, and in % of the week from the status line when there is one. The defaults only measure and show; nothing blocks or acts.",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Turns on the live warning and the core rules' pacing sentence; teamrig budget shows usage either way.",
+          "type": "boolean",
+          "default": false
         },
-        "budget": {
+        "weeklyLimitW": {
+          "description": "The weekly limit in weighted tokens. Unset: derived from the status line's weekly %.",
+          "type": "integer",
+          "minimum": 1000000,
+          "maximum": 1000000000000
+        },
+        "reset": {
+          "description": "When the weekly limit resets, for a team without a status line. Unset: the reset time the status line reports.",
           "type": "object",
+          "required": ["weekday", "timeUtc"],
           "properties": {
-            "enabled": { "type": "boolean", "default": false },
-            "targetPct": { "type": "number", "minimum": 1, "maximum": 100, "default": 99.5 },
-            "reservePct": { "type": "number", "minimum": 0, "maximum": 50, "default": 0.5 }
+            "weekday": { "enum": ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] },
+            "timeUtc": { "type": "string", "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$" }
           }
+        },
+        "targetPct": {
+          "description": "Use the week up to this share of the weekly limit.",
+          "type": "number",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 99.5
+        },
+        "reservePct": {
+          "description": "Kept back for incidents until shortly before the reset; targetPct plus reservePct is at most 100.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 50,
+          "default": 0.5
+        },
+        "paceEndHoursBeforeReset": {
+          "description": "The pace line reaches targetPct this many hours before the reset.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 48,
+          "default": 1
+        },
+        "dailyPct": {
+          "description": "The team's allowance per UTC day, in % of the week. Unset: what is left to targetPct at 00:00 UTC, spread over the days left to the pace end.",
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 100
+        },
+        "maxDailyPct": {
+          "description": "A ceiling on the team's daily allowance. Unset: none.",
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 100
+        },
+        "sessions": {
+          "description": "Each session's part of the daily allowance, by id: allowance × share / the sum of the shares, or a fixed dailyPct. A session not listed has a share of 1.",
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/sessionName" },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "share": { "type": "number", "minimum": 0, "maximum": 100, "default": 1 },
+              "dailyPct": { "description": "A fixed daily budget in % of the week, in place of the share.", "type": "number", "minimum": 0.1, "maximum": 100 }
+            }
+          },
+          "default": {}
+        },
+        "warnAtPct": {
+          "description": "The live warning shows a line as a session passes each of these % of its daily budget.",
+          "type": "array",
+          "maxItems": 8,
+          "items": { "type": "number", "minimum": 1, "maximum": 1000 },
+          "default": [80, 100]
+        },
+        "paceTolerancePct": {
+          "description": "The team is ahead of its pace line once its used % is more than this many points above it.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10,
+          "default": 0.5
+        },
+        "overAction": {
+          "description": "Past a session's daily budget: warn shows the lines only; ask-lead also writes the lead an inbox line; ask also asks the person before a helper launch; block refuses helper launches.",
+          "enum": ["warn", "ask-lead", "ask", "block"],
+          "default": "warn"
+        },
+        "escalate": {
+          "description": "When an action beyond the lines applies: session when the session is over its budget; session-and-fleet only when the team is also ahead of its pace line.",
+          "enum": ["session", "session-and-fleet"],
+          "default": "session-and-fleet"
+        },
+        "quietHours": {
+          "description": "UTC hours in which the live warning applies action on its own, while the team sleeps. Unset: none.",
+          "type": "object",
+          "required": ["startUtc", "endUtc", "action"],
+          "properties": {
+            "startUtc": { "type": "string", "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$" },
+            "endUtc": { "type": "string", "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$" },
+            "action": { "enum": ["warn", "ask-lead", "ask", "block"] }
+          }
+        },
+        "statusSnapshotDir": {
+          "description": "The folder of status line snapshots, <Claude session id>.json each. Unset: <kit home>/usage/live.",
+          "type": "string",
+          "minLength": 1
+        },
+        "maxBytesPerHook": {
+          "description": "The most transcript bytes one hook run reads; the rest waits for the next run.",
+          "type": "integer",
+          "minimum": 100000,
+          "maximum": 100000000,
+          "default": 4000000
         }
       }
     },

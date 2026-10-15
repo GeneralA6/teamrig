@@ -62,7 +62,26 @@ export const DEFAULT_COMMITS: CommitsConfig = {
   gate: 'warn',
 };
 
-export const DEFAULT_BUDGET: BudgetConfig = { enabled: false, targetPct: 99.5, reservePct: 0.5 };
+/**
+ * Neutral on purpose: off, no allowance cap, every session an equal share, and past the line only
+ * the warning lines, so a team that turns it on is measured and shown before anything acts.
+ * The optional keys (weekly limit, reset, daily %, cap, quiet hours, snapshot folder) stay unset.
+ */
+export const DEFAULT_BUDGET: BudgetConfig = {
+  enabled: false,
+  targetPct: 99.5,
+  reservePct: 0.5,
+  paceEndHoursBeforeReset: 1,
+  sessions: {},
+  warnAtPct: [80, 100],
+  paceTolerancePct: 0.5,
+  overAction: 'warn',
+  escalate: 'session-and-fleet',
+  maxBytesPerHook: 4_000_000,
+};
+
+/** The share of a session the budget's `sessions` map leaves out, or lists without one. */
+export const DEFAULT_SESSION_SHARE = 1;
 
 export const DEFAULT_ALERTS: AlertsConfig = { persistentFailureHours: 24 };
 

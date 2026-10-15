@@ -12,23 +12,34 @@ import {
   DEFAULT_PUSH_GUARD,
   DEFAULT_REFRESH,
   DEFAULT_REGISTER,
+  DEFAULT_SESSION_SHARE,
   DEFAULT_SKILLS,
 } from './defaults.ts';
 import { isEffort, isModel } from './launch.ts';
 import { CONFIG_LIMITS } from './limits.ts';
 import { ConfigReader, describe, isValidRegex, shortLine, type Check, type ConfigIssue } from './reader.ts';
 import {
+  ESCALATIONS,
   isCommitGate,
   isEffortLevel,
+  isEscalation,
+  isOverAction,
   isTerminalChoice,
+  isWeekday,
+  OVER_ACTIONS,
   TERMINALS,
+  WEEKDAYS,
+  type BudgetConfig,
+  type BudgetReset,
   type CommitsConfig,
   type KitConfig,
   type LaunchConfig,
   type OpenConfig,
   type PathsConfig,
+  type QuietHours,
   type RefreshConfig,
   type RegisterConfig,
+  type SessionBudget,
   type SkillsConfig,
   type PriorityConfig,
   type TeamLink,
@@ -157,7 +168,9 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
   const pushGuard = read.section(raw, 'pushGuard', '');
   const coordinator = read.section(raw, 'coordinator', '');
   const schedule = read.section(coordinator, 'schedule', 'coordinator');
-  const budget = read.section(coordinator, 'budget', 'coordinator');
+  if (coordinator[MOVED_BUDGET_KEY] !== undefined) {
+    read.report(`coordinator.${MOVED_BUDGET_KEY}`, 'was moved: use the top-level budget block');
+  }
   const heavyCutoffUtc = read.optionalString(schedule, 'heavyCutoffUtc', 'coordinator.schedule', isUtcTime);
   const alerts = read.section(raw, 'alerts', '');
   const lock = read.section(raw, 'lock', '');
@@ -198,12 +211,8 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
     commits: parseCommits(read, read.section(raw, 'commits', '')),
     coordinator: {
       schedule: heavyCutoffUtc === undefined ? {} : { heavyCutoffUtc },
-      budget: {
-        enabled: read.boolean(budget, 'enabled', 'coordinator.budget', DEFAULT_BUDGET.enabled),
-        targetPct: read.number(budget, 'targetPct', 'coordinator.budget', DEFAULT_BUDGET.targetPct, { min: 1, max: 100 }),
-        reservePct: read.number(budget, 'reservePct', 'coordinator.budget', DEFAULT_BUDGET.reservePct, { min: 0, max: 50 }),
-      },
     },
+    budget: parseBudget(read, read.section(raw, 'budget', ''), sessions),
     alerts: {
       persistentFailureHours: read.integer(alerts, 'persistentFailureHours', 'alerts', DEFAULT_ALERTS.persistentFailureHours, CONFIG_LIMITS.persistentFailureHours),
     },
@@ -218,6 +227,117 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
 
 /** Config version 1's name for `register.priorities`; the v1-to-v2 migration renames it, so a current file never holds it. */
 const RENAMED_PRIORITIES_KEY = 'tiers';
+
+/** The budget's old place, `coordinator.budget`; it moved to the top-level `budget` block, with no alias. */
+const MOVED_BUDGET_KEY = 'budget';
+
+function parseBudget(read: ConfigReader, raw: JsonRecord, sessions: readonly string[]): BudgetConfig {
+  const path = 'budget';
+  const defaults = DEFAULT_BUDGET;
+  const targetPct = read.number(raw, 'targetPct', path, defaults.targetPct, CONFIG_LIMITS.budgetTargetPct);
+  const reservePct = read.number(raw, 'reservePct', path, defaults.reservePct, CONFIG_LIMITS.budgetReservePct);
+  if (targetPct + reservePct > 100) {
+    read.report(`${path}.reservePct`, `with targetPct it passes 100% of the week (${targetPct} + ${reservePct})`);
+  }
+  const weeklyLimitW = read.optionalInteger(raw, 'weeklyLimitW', path, CONFIG_LIMITS.weeklyLimitW);
+  const reset = parseBudgetReset(read, raw);
+  const dailyPct = read.optionalNumber(raw, 'dailyPct', path, CONFIG_LIMITS.dailyPct);
+  const maxDailyPct = read.optionalNumber(raw, 'maxDailyPct', path, CONFIG_LIMITS.maxDailyPct);
+  const overAction = read.string(raw, 'overAction', path, defaults.overAction, oneOf(OVER_ACTIONS));
+  const escalate = read.string(raw, 'escalate', path, defaults.escalate, oneOf(ESCALATIONS));
+  const quietHours = parseQuietHours(read, raw);
+  const statusSnapshotDir = read.optionalString(raw, 'statusSnapshotDir', path);
+  return {
+    enabled: read.boolean(raw, 'enabled', path, defaults.enabled),
+    ...(weeklyLimitW === undefined ? {} : { weeklyLimitW }),
+    ...(reset === undefined ? {} : { reset }),
+    targetPct,
+    reservePct,
+    paceEndHoursBeforeReset: read.number(raw, 'paceEndHoursBeforeReset', path, defaults.paceEndHoursBeforeReset, CONFIG_LIMITS.paceEndHoursBeforeReset),
+    ...(dailyPct === undefined ? {} : { dailyPct }),
+    ...(maxDailyPct === undefined ? {} : { maxDailyPct }),
+    sessions: parseSessionBudgets(read, read.section(raw, 'sessions', path), sessions),
+    warnAtPct: read.list(
+      raw,
+      'warnAtPct',
+      path,
+      defaults.warnAtPct,
+      (value, itemPath) => read.numberItem(value, itemPath, { min: CONFIG_LIMITS.warnAtPct.itemMin, max: CONFIG_LIMITS.warnAtPct.itemMax }),
+      CONFIG_LIMITS.warnAtPct.maxItems,
+    ),
+    paceTolerancePct: read.number(raw, 'paceTolerancePct', path, defaults.paceTolerancePct, CONFIG_LIMITS.paceTolerancePct),
+    overAction: isOverAction(overAction) ? overAction : defaults.overAction,
+    escalate: isEscalation(escalate) ? escalate : defaults.escalate,
+    ...(quietHours === undefined ? {} : { quietHours }),
+    ...(statusSnapshotDir === undefined ? {} : { statusSnapshotDir }),
+    maxBytesPerHook: read.integer(raw, 'maxBytesPerHook', path, defaults.maxBytesPerHook, CONFIG_LIMITS.maxBytesPerHook),
+  };
+}
+
+/** `budget.reset`: both keys, or nothing (a reset read from the status line). */
+function parseBudgetReset(read: ConfigReader, raw: JsonRecord): BudgetReset | undefined {
+  const path = 'budget.reset';
+  if (raw['reset'] === undefined) {
+    return undefined;
+  }
+  const section = read.objectItem(raw['reset'], path);
+  if (section === undefined) {
+    return undefined;
+  }
+  const weekday = read.requiredString(section, 'weekday', path, oneOf(WEEKDAYS));
+  const timeUtc = read.requiredString(section, 'timeUtc', path, isUtcTime);
+  return isWeekday(weekday) && timeUtc !== '' ? { weekday, timeUtc } : undefined;
+}
+
+/** `budget.quietHours`: a start, an end and the action, or nothing. */
+function parseQuietHours(read: ConfigReader, raw: JsonRecord): QuietHours | undefined {
+  const path = 'budget.quietHours';
+  if (raw['quietHours'] === undefined) {
+    return undefined;
+  }
+  const section = read.objectItem(raw['quietHours'], path);
+  if (section === undefined) {
+    return undefined;
+  }
+  const startUtc = read.requiredString(section, 'startUtc', path, isUtcTime);
+  const endUtc = read.requiredString(section, 'endUtc', path, isUtcTime);
+  const action = read.requiredString(section, 'action', path, oneOf(OVER_ACTIONS));
+  if (startUtc === '' || endUtc === '' || !isOverAction(action)) {
+    return undefined;
+  }
+  if (startUtc === endUtc) {
+    read.report(`${path}.endUtc`, 'is the start time; quiet hours need a start and a different end');
+    return undefined;
+  }
+  return { startUtc, endUtc, action };
+}
+
+/** `budget.sessions`: a share and an optional fixed daily % for sessions on the team. */
+function parseSessionBudgets(read: ConfigReader, raw: JsonRecord, sessions: readonly string[]): Record<string, SessionBudget> {
+  const budgets: Record<string, SessionBudget> = {};
+  for (const [id, value] of Object.entries(raw)) {
+    const path = `budget.sessions.${id}`;
+    const entry = read.objectItem(value, path);
+    if (entry === undefined) {
+      continue;
+    }
+    if (!sessions.includes(id)) {
+      read.report(path, 'is not one of the sessions');
+      continue;
+    }
+    const dailyPct = read.optionalNumber(entry, 'dailyPct', path, CONFIG_LIMITS.sessionDailyPct);
+    budgets[id] = {
+      share: read.number(entry, 'share', path, DEFAULT_SESSION_SHARE, CONFIG_LIMITS.sessionShare),
+      ...(dailyPct === undefined ? {} : { dailyPct }),
+    };
+  }
+  return budgets;
+}
+
+/** A check that takes only the listed words. */
+function oneOf(words: readonly string[]): Check<string> {
+  return (value) => (words.includes(value) ? undefined : `expected one of ${words.join(', ')}`);
+}
 
 function parseRegister(read: ConfigReader, raw: JsonRecord): RegisterConfig {
   const path = 'register';
