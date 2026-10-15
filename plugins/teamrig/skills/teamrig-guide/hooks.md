@@ -1,6 +1,6 @@
 # Hooks and permissions
 
-The plugin's `hooks/hooks.json` registers six Claude Code hooks. Each runs
+The plugin's `hooks/hooks.json` registers seven Claude Code hooks. Each runs
 `node <plugin>/dist/cli/main.js hook <name>` with a 15 second timeout. Outside a project tied to a team (no `$TEAMRIG_TEAM` and no `.teamrig.json`)
 they all stay silent.
 
@@ -10,6 +10,7 @@ they all stay silent.
 | `UserPromptSubmit` (each prompt) | `hook inbox-reminder` | Shows new inbox lines; binds a tab started by hand by its title; records a Claude Code rename; tells the model when it is past its daily budget |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook push-guard` | Asks before a push to a protected branch; refuses a force-push or delete of one |
 | `PreToolUse` on `SendMessage` | `hook cold-send` | Holds once a message that would wake an idle session cold |
+| `PostToolUse` on reads, edits and shell calls | `hook loop-nudge` | Asks the model once to batch when a turn makes [single-step calls in a row](#after-a-tool-call-the-loop-nudge) |
 | `PreToolUse` on `Agent` and `Task` | `hook helper-gate` | Asks before or refuses a helper launch past the daily budget or in quiet hours, [as the team set](#the-daily-budget-warnings-and-the-helper-gate) |
 | `Stop` (end of each turn) | `hook stop` | Asks for a handover when a context refresh is due; tells the user of another effort than `launch` asks, or of a model Claude Code switched to; shows the budget lines |
 
@@ -122,6 +123,23 @@ can read it. Never route around a refusal; report it to the lead. The guard read
 wrappers and git aliases, but it does not see a push inside a script or program the command runs, `gh pr merge`,
 git extensions, or pushes run outside Claude Code. It is a guard against mistakes, not a sandbox: protect the
 branch on your git host too.
+
+## After a tool call: the loop nudge
+
+Every call re-reads the session's whole context, so six reads in six calls cost about five context re-reads more
+than six reads in one message. After each `Read`, `Grep`, `Glob`, `Bash`, `PowerShell`, `Edit`, `Write`,
+`MultiEdit` or `NotebookEdit` call, the hook counts the calls in a row since your last prompt that each ran one read,
+lookup, edit, test, build, git or teamrig step. A call with several tools, or one tool of another kind (a helper, a
+message, a script), ends the run. When the run reaches `loops.chainNudgeAt` (6 by default; 0 turns it off), the
+model gets one line after the tool's result:
+
+```text
+teamrig: 6 single-step calls in a row this turn (about 65k W of re-reads at this context); put independent reads in one message, and an edit with its re-test.
+```
+
+When an edit and then its test ran in separate calls, the line says so. It comes once per run: the next call
+counts 7 and stays quiet. Calls inside a helper are not counted; only the main thread's are. `teamrig budget
+--loops` counts the same patterns over the day.
 
 ## End of a turn: context refresh
 
