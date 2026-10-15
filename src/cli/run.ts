@@ -68,7 +68,7 @@ const COMMAND_SWITCHES: CommandSwitches = Object.fromEntries(Object.entries(COMM
 /** `--tier` became `--priority` (levels p1, p2, ...): refused everywhere with the new name, never an alias. */
 const RENAMED_FLAGS: RenamedFlags = { tier: 'priority' };
 
-export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|name>, else ${ENV.session})
+export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|name>, else $${ENV.session})
   team create <team> --sessions <id,id> [--lead <id>] [--project <dir>] [--parent <team>] [--dry-run]
       writes the team config and ties the project folder to the team (the lead defaults to lead);
       --parent hangs it under that team's lead in a tree of teams
@@ -107,7 +107,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       (run by Claude Code, hook JSON on stdin)
   launch <id> --team <team> --project <dir> [--home <dir>] [--encoded-prompt <text>]
       (run by the tab that open starts: sets the session and starts Claude Code)
-Team: ${ENV.team}, else the nearest ${TEAM_POINTER} ({"team": "<id>"}) above the current folder,
+Team: $${ENV.team}, else the nearest ${TEAM_POINTER} ({"team": "<id>"}) above the current folder,
 else above $CLAUDE_PROJECT_DIR.
 Sessions: give an id, a current name or a former one; a session never named is <team>-<id>.
 Dates: YYYY-MM-DD or "YYYY-MM-DD HH:MM", UTC. Kit home: $${ENV.home}, else ~/.${KIT_NAME}.
