@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { JsonRecord } from '../core/guards.ts';
 import { recordVersion } from '../core/jsonl.ts';
-import { indexMarks, lineHash, parseMark, type InboxMark } from './marks.ts';
+import { indexMarks, parseMark, type InboxMark } from './marks.ts';
 
 const SESSION = '0a1b2c3d-1111-2222-3333-444455556666';
 
@@ -24,14 +24,6 @@ describe('parseMark', () => {
     for (const bad of [{ area: '../x' }, { line: -1 }, { at: 'soon' }, { claudeSession: 'nope' }, { lastLineHash: 7 }]) {
       assert.deepEqual(parse({ ...base, ...bad }), { kind: 'unreadable' }, JSON.stringify(bad));
     }
-  });
-});
-
-describe('lineHash', () => {
-  it('is short, stable and line-specific', () => {
-    assert.equal(lineHash('- a'), lineHash('- a'));
-    assert.notEqual(lineHash('- a'), lineHash('- b'));
-    assert.match(lineHash('- a'), /^[0-9a-f]{16}$/);
   });
 });
 

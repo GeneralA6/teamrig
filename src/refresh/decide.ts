@@ -1,5 +1,5 @@
 import type { RefreshConfig } from '../config/types.ts';
-import { lineHash } from '../inbox/marks.ts';
+import { lineHash } from '../inbox/line-hash.ts';
 import type { RefreshState } from './state.ts';
 
 /**

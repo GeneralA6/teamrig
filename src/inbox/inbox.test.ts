@@ -10,10 +10,9 @@ import {
   readInbox,
   reminderFor,
   sessionIdOf,
-  unreadOf,
   type InboxDeps,
 } from './inbox.ts';
-import { lineHash, type InboxMark } from './marks.ts';
+import { lineHash } from './line-hash.ts';
 import { InboxDir, JsonlMarkLog } from './store.ts';
 
 const DIR = 'state/inbox';
@@ -26,34 +25,6 @@ function setup(files: Readonly<Record<string, string>> = {}): { files: MemoryFil
   const memory = new MemoryFiles(files);
   return { files: memory, deps: { inboxes: new InboxDir(memory, DIR), marks: new JsonlMarkLog(memory, MARKS) } };
 }
-
-function mark(line: number, lastLineHash: string | null): InboxMark {
-  return { v: 1, area: 'alpha', line, at: '2030-01-07T12:00:00.000Z', claudeSession: null, lastLineHash };
-}
-
-describe('unreadOf', () => {
-  it('starts after the mark when the file only grew', () => {
-    const unread = unreadOf('alpha', LINES, mark(2, lineHash(LINES[1] ?? '')));
-    assert.deepEqual([unread.resume, unread.lines], ['grew', [LINES[2]]]);
-  });
-
-  it('finds its place again after old lines were trimmed from the top', () => {
-    const trimmed = [LINES[1] ?? '', LINES[2] ?? '', '- 2030-01-08 08:00 lead: fourth'];
-    const unread = unreadOf('alpha', trimmed, mark(2, lineHash(LINES[1] ?? '')));
-    assert.deepEqual([unread.resume, unread.lines], ['moved', trimmed.slice(1)]);
-  });
-
-  it('shows everything when the last line read is gone', () => {
-    assert.equal(unreadOf('alpha', LINES, mark(2, lineHash('- something else'))).resume, 'rewritten');
-    assert.equal(unreadOf('alpha', LINES, mark(3, lineHash('x'))).lines.length, 3);
-  });
-
-  it('trusts a v0 mark unless the file shrank below it', () => {
-    assert.deepEqual(unreadOf('alpha', LINES, mark(1, null)).lines, LINES.slice(1));
-    assert.equal(unreadOf('alpha', LINES, mark(5, null)).resume, 'rewritten');
-    assert.equal(unreadOf('alpha', LINES, null).resume, 'never');
-  });
-});
 
 describe('readInbox', () => {
   it('returns the unread lines and marks them read with a hash of the last line', async () => {

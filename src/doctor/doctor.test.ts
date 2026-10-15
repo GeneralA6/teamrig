@@ -2,8 +2,9 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Roster } from '../config/roster.ts';
 import { describeNameClash, type NameClash, type TreeProblem } from '../config/tree.ts';
-import { unreadOf } from '../inbox/inbox.ts';
-import { lineHash, type InboxMark } from '../inbox/marks.ts';
+import { lineHash } from '../inbox/line-hash.ts';
+import type { InboxMark } from '../inbox/marks.ts';
+import { unreadOf } from '../inbox/unread.ts';
 import type { Rename } from '../names/rename.ts';
 import { TEAM_RULES_MAX_CHARS } from '../rules/pack.ts';
 import { renameOf } from '../testing/rename.ts';
@@ -41,7 +42,7 @@ describe('doctorFindings', () => {
   it('finds nothing on a healthy team with renames, a fresh inbox and short rules', () => {
     const renames = [renameOf('alpha', 'app-alpha', 'scout'), renameOf('bravo', 'app-bravo', 'app-alpha'), renameOf('alpha', 'scout', 'ranger')];
     const read = ['- 2030-01-02 09:00 lead: old'];
-    const inboxes = [unreadOf('alpha', [...read, '- 2030-01-19 09:00 lead: new'], markAt('alpha', read, '2030-01-18T09:00:00Z'))];
+    const inboxes = [unreadOf('alpha', [...read, '- 2030-01-19 09:00 lead: new'], markAt('alpha', read, '2030-01-18T09:00:00Z'), lineHash)];
     assert.deepEqual(lines(input({ renames, inboxes, teamRules: { path: 'rules.md', chars: TEAM_RULES_MAX_CHARS } })), []);
   });
 
@@ -83,7 +84,7 @@ describe('doctorFindings', () => {
   });
 
   it('flags an inbox keyed by no session id, naming the session a name belongs to', () => {
-    const inboxes = [unreadOf('app-alpha', ['- 2030-01-19 09:00 lead: hi'], null), unreadOf('zulu', [], null)];
+    const inboxes = [unreadOf('app-alpha', ['- 2030-01-19 09:00 lead: hi'], null, lineHash), unreadOf('zulu', [], null, lineHash)];
     assert.deepEqual(lines(input({ inboxes })), [
       "WARN inbox-orphan inbox app-alpha (1 unread) is no session's: inboxes are keyed by session id, so nobody reads it; app-alpha is a name of alpha, whose inbox is keyed by its id; nothing moves its lines",
       "WARN inbox-orphan inbox zulu (0 unread) is no session's: inboxes are keyed by session id, so nobody reads it; nothing moves its lines",
@@ -93,16 +94,16 @@ describe('doctorFindings', () => {
   it(`flags unread lines with no read for over ${UNREAD_INBOX_DAYS} days, and never-read lines that old or undated`, () => {
     const read = ['- 2030-01-02 09:00 lead: old'];
     const inboxes = [
-      unreadOf('alpha', [...read, '- 2030-01-19 09:00 lead: new'], markAt('alpha', read, '2030-01-12T09:00:00Z')),
-      unreadOf('bravo', ['- 2030-01-12 09:00 lead: waiting'], null),
-      unreadOf('lead', ['written by hand'], null),
+      unreadOf('alpha', [...read, '- 2030-01-19 09:00 lead: new'], markAt('alpha', read, '2030-01-12T09:00:00Z'), lineHash),
+      unreadOf('bravo', ['- 2030-01-12 09:00 lead: waiting'], null, lineHash),
+      unreadOf('lead', ['written by hand'], null, lineHash),
     ];
     assert.deepEqual(lines(input({ inboxes })), [
       'WARN inbox-unread alpha has 1 unread line(s) and last read it 01-12 09:00: over 7 days with no read',
       'WARN inbox-unread bravo has 1 unread line(s) and has never read it: over 7 days with no read',
       'WARN inbox-unread lead has 1 unread line(s) and has never read it: over 7 days with no read',
     ]);
-    const fresh = [unreadOf('bravo', ['- 2030-01-19 09:00 lead: new'], null), unreadOf('alpha', read, markAt('alpha', read, '2030-01-02T09:00:00Z'))];
+    const fresh = [unreadOf('bravo', ['- 2030-01-19 09:00 lead: new'], null, lineHash), unreadOf('alpha', read, markAt('alpha', read, '2030-01-02T09:00:00Z'), lineHash)];
     assert.deepEqual(lines(input({ inboxes: fresh })), []);
   });
 

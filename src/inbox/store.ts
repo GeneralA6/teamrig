@@ -1,9 +1,10 @@
 import { join } from 'node:path';
 import type { Files } from '../core/files.ts';
-import { parseJsonl, toJsonlLine } from '../core/jsonl.ts';
+import { toJsonlLine } from '../core/jsonl.ts';
 import { SESSION_NAME } from '../register/model.ts';
-import type { Inboxes, MarkLog, MarkLogRead } from './inbox.ts';
-import { parseMark, type InboxMark } from './marks.ts';
+import type { Inboxes, MarkLog } from './inbox.ts';
+import { readMarks, type InboxMark, type MarkLogRead } from './marks.ts';
+import { inboxLines } from './unread.ts';
 
 const SUFFIX = '.md';
 
@@ -30,7 +31,7 @@ export class InboxDir implements Inboxes {
       return undefined;
     }
     const text = await this.files.read(this.pathOf(area));
-    return text?.split('\n').map((line) => line.replace(/\r$/, '')).filter((line) => line.trim() !== '');
+    return text === undefined ? undefined : inboxLines(text);
   }
 
   async append(area: string, line: string): Promise<void> {
@@ -58,21 +59,7 @@ export class JsonlMarkLog implements MarkLog {
   }
 
   async read(): Promise<MarkLogRead> {
-    const parse = parseJsonl((await this.files.read(this.path)) ?? '');
-    const marks: InboxMark[] = [];
-    let unreadable = parse.unreadable;
-    let newer = 0;
-    for (const line of parse.records) {
-      const result = parseMark(line);
-      if (result.kind === 'mark') {
-        marks.push(result.mark);
-      } else if (result.kind === 'newer') {
-        newer += 1;
-      } else {
-        unreadable += 1;
-      }
-    }
-    return { marks, unreadable, newer };
+    return readMarks((await this.files.read(this.path)) ?? '');
   }
 
   async append(mark: InboxMark): Promise<void> {
