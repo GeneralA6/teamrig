@@ -69,6 +69,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'config migrate': { flags: [], load: async () => (await configCommands()).migrate },
   'commits check': { flags: ['base', 'tip'], load: async () => (await commitsCommands()).check },
   'hook push-guard': { flags: [], load: async () => (await hookCommands()).pushGuard },
+  'hook cold-send': { flags: [], load: async () => (await hookCommands()).coldSend },
   'hook inbox-reminder': { flags: [], load: async () => (await hookCommands()).inboxReminder },
   'hook session-start': { flags: [], load: async () => (await hookCommands()).sessionStart },
   'hook stop': { flags: [], load: async () => (await hookCommands()).stop },
