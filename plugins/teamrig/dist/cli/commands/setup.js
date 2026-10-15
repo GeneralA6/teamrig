@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
 import { SHIPPED_CONFIG_FORMAT } from "../../config/migrate.js";
 import { ENV, KIT_NAME, resolveKitHome, teamPaths } from "../../core/home.js";
+import { describeRequirement } from "../../requirements/requirements.js";
 import { applyTeamSetup, planTeamSetup, teamSpecOf } from "../../setup/team-create.js";
 import { onePositional, requiredFlag, UsageError } from "../args.js";
 import { EXIT, RefusedError } from "../runtime.js";
@@ -44,7 +45,8 @@ function summaryLines(plan, dryRun) {
  * `team create <team> --sessions a,b [--lead <id>] [--parent <team>] [--project <dir>] [--dry-run]`:
  * writes the team's config in the kit home and the project's pointer to it. It refuses a different
  * team of the same id, a place in a tree its limits forbid, a session name another team uses, and a
- * project tied to a team outside the new team's tree; a repeat with the same team writes nothing.
+ * project tied to a team outside the new team's tree; a repeat with the same team writes nothing. It
+ * first says what teamrig lacks on this machine (a `WARN` line each), so a refusal still shows it.
  */
 export async function teamCreate(args, runtime) {
     const team = onePositional(args, 'team');
@@ -52,6 +54,7 @@ export async function teamCreate(args, runtime) {
     if (!spec.ok) {
         throw new UsageError(spec.problem);
     }
+    (await runtime.requirements.problems()).forEach((problem) => runtime.out.stdout(`WARN ${describeRequirement(problem, KIT_NAME)}`));
     const project = await projectOf(runtime, args.flags.get('project'));
     const configPath = teamPaths(resolveKitHome(runtime.env, runtime.userHome), team, runtime.userHome).config;
     const format = runtime.configFormat ?? SHIPPED_CONFIG_FORMAT;

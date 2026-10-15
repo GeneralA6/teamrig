@@ -1,6 +1,7 @@
 import { describeNameClash, describeTreeProblem } from "../config/tree.js";
 import { formatUtcMinute, MS_PER_DAY, parseUtcDeadline, shortUtc } from "../core/time.js";
 import { unreadSince } from "../inbox/inbox.js";
+import { describeRequirement } from "../requirements/requirements.js";
 import { TEAM_RULES_MAX_CHARS } from "../rules/pack.js";
 /**
  * Days an inbox may wait with unread lines and no read before doctor flags it. Hard-coded for now;
@@ -111,6 +112,7 @@ function treeFindings({ tree, command }) {
  */
 export function doctorFindings(input) {
     return [
+        ...input.requirements.map((problem) => ({ kind: 'requirement', detail: describeRequirement(problem, input.command) })),
         ...nameFindings(input.roster, input.command),
         ...configFindings(input),
         ...renameLogFindings(input),

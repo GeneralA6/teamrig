@@ -81,10 +81,12 @@ export function sessionStartContext(input) {
     return renderSessionContext(`${renderCorePack(load.config, command)}\n\n${notes.join('\n')}`, input.teamRules, command);
 }
 /**
- * The hook's stdout: Claude Code adds `additionalContext` to the session's context and shows a
- * `systemMessage`, when there is one, to the user, who alone can change the model or the effort.
+ * The hook's stdout: Claude Code adds `additionalContext` to the session's context and shows the
+ * notices, when there are any, to the user as one `systemMessage`: the user alone can change the model
+ * or the effort, or install what teamrig lacks.
  */
-export function sessionStartOutput(context, notice) {
+export function sessionStartOutput(context, notices = []) {
     const hookSpecificOutput = { hookEventName: 'SessionStart', additionalContext: context };
-    return JSON.stringify(notice === undefined ? { hookSpecificOutput } : { systemMessage: notice, hookSpecificOutput });
+    const shown = notices.filter((notice) => notice !== undefined);
+    return JSON.stringify(shown.length === 0 ? { hookSpecificOutput } : { systemMessage: shown.join('\n'), hookSpecificOutput });
 }
