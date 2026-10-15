@@ -20,3 +20,7 @@ export { DEFAULT_REGISTER } from "../config/defaults.js";
 export { priorityName } from "../config/priorities.js";
 export { parseConfigText } from "../config/text.js";
 export { CONFIG_VERSION } from "../config/types.js";
+// Session names: the config's roster with the rename log (`renames.jsonl`), so a reader finds a session
+// by its id, its name or a name it had before, as every teamrig command does.
+export { Roster } from "../config/roster.js";
+export { readRenames, RENAME_VERSION } from "../names/rename.js";

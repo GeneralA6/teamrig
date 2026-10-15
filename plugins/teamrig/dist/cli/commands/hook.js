@@ -3,8 +3,9 @@ import { Roster } from "../../config/roster.js";
 import { errorMessage, isRecord, stringField } from "../../core/guards.js";
 import { ENV, KIT_NAME } from "../../core/home.js";
 import { resolveTeam } from "../../core/team.js";
-import { reminderFor, sessionIdOf } from "../../inbox/inbox.js";
+import { sessionIdOf } from "../../inbox/inbox.js";
 import { indexMarks } from "../../inbox/marks.js";
+import { boundPromptNote, boundStartNote } from "../../hooks/bind.js";
 import { modelCheckLine, payloadEffortOf } from "../../hooks/model-check.js";
 import { ModelNoticeStore } from "../../hooks/model-notices.js";
 import { commitsOf, protectedBranchesOf, pushGuardOutput } from "../../hooks/push-guard.js";
@@ -13,7 +14,6 @@ import { stopModelNotices } from "../../hooks/stop-model.js";
 import { stopOutput } from "../../hooks/stop.js";
 import { adoptTitle, promptNote, sessionStartNote } from "../../names/detect.js";
 import { JsonlRenameLog } from "../../names/log.js";
-import { sessionTitleOf } from "../../names/title.js";
 import { decideStart, decideStop, handoverHashOf } from "../../refresh/decide.js";
 import { RefreshStore } from "../../refresh/store.js";
 import { readContextTokens } from "../../refresh/usage.js";
@@ -21,6 +21,7 @@ import { noPositionals } from "../args.js";
 import { openKit, renameDepsOf, rosterOf, teamFolders } from "../kit.js";
 import { EXIT } from "../runtime.js";
 import { loadTree } from "../tree.js";
+import { bindHintOnce, bindTab, inboxLinesFor, readTitle } from "./hook-bind.js";
 import { inboxDepsOf } from "./inbox.js";
 /**
  * Claude Code hooks. Each reads the hook's JSON from stdin and prints only what Claude Code
@@ -40,6 +41,16 @@ function parseJson(text) {
 function hookTeam(payload, runtime) {
     const cwd = isRecord(payload) ? stringField(payload, 'cwd') : undefined;
     return resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [cwd, runtime.cwd]));
+}
+/**
+ * The team a session's hooks run for: `$TEAMRIG_TEAM`, else the nearest pointer above the folder the
+ * session started in (`$CLAUDE_PROJECT_DIR`), then the payload's folder. The payload's `cwd` follows
+ * a `cd`, so walking it first would let a tab that moved into another team's project read, and bind
+ * to, that team's sessions. The push guard keeps `hookTeam`: a push belongs to the folder it runs in.
+ */
+function sessionTeam(payload, runtime) {
+    const cwd = isRecord(payload) ? stringField(payload, 'cwd') : undefined;
+    return resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [runtime.env[ENV.claudeProjectDir], cwd, runtime.cwd]));
 }
 /** PreToolUse on Bash and PowerShell: asks before a push to a protected branch, refuses a force-push of one. */
 export async function pushGuard(args, runtime) {
@@ -84,8 +95,9 @@ async function teamSessionOf(runtime, kit, roster, claudeSession) {
     return markedSessionOf(runtime, kit, roster, claudeSession);
 }
 /**
- * The area this Claude Code session last read its inbox as, when it is on the roster. It is how a
- * tab started without `$TEAMRIG_SESSION`, such as the one that set the team up, stays its session.
+ * The area this Claude Code session last read its inbox as, or was bound to by its title, when it is
+ * on the roster. It is how a tab started without `$TEAMRIG_SESSION`, such as the one that set the team
+ * up, stays its session.
  */
 async function markedSessionOf(runtime, kit, roster, claudeSession) {
     if (claudeSession === null) {
@@ -109,9 +121,12 @@ async function startSessionOf(runtime, kit, roster, payload) {
  * the rename log, never by moving data. It never throws, so the hook always answers; a failure is
  * retried on the next prompt.
  */
-async function titleOutcome(runtime, kit, config, payload) {
+async function titleOutcome(runtime, kit, config, payload, read) {
+    if (read.kind === 'failed') {
+        return { kind: 'failed', error: read.error };
+    }
+    const { title } = read;
     try {
-        const title = await sessionTitleOf(payload, runtime.files);
         if (title === undefined) {
             return { kind: 'none' };
         }
@@ -123,7 +138,11 @@ async function titleOutcome(runtime, kit, config, payload) {
         return { kind: 'failed', error: errorMessage(error) };
     }
 }
-/** UserPromptSubmit: notes a Claude Code rename of the session, then one line when its inbox has unread lines, or its team pointer is broken. */
+/**
+ * UserPromptSubmit: binds a hand-started tab by its title, notes a Claude Code rename of the session,
+ * says once how to bind a tab that is not bound, and shows the session's new inbox lines; or one line
+ * when its team pointer is broken.
+ */
 export async function inboxReminder(args, runtime) {
     noPositionals(args);
     const payload = parseJson(await runtime.readStdin());
@@ -131,7 +150,7 @@ export async function inboxReminder(args, runtime) {
     if (claudeSession === null) {
         return EXIT.ok;
     }
-    const found = await hookTeam(payload, runtime);
+    const found = await sessionTeam(payload, runtime);
     switch (found.kind) {
         case 'none':
             return EXIT.ok;
@@ -145,27 +164,39 @@ export async function inboxReminder(args, runtime) {
     if (kit.load.status !== 'loaded') {
         return EXIT.ok;
     }
-    const note = promptNote(await titleOutcome(runtime, kit, kit.load.config, payload), KIT_NAME);
-    if (note !== undefined) {
-        runtime.out.stdout(note);
-    }
-    // Found like a rename: `$TEAMRIG_SESSION` first, so a session is reminded before its first `inbox read`.
-    const session = await teamSessionOf(runtime, kit, await rosterOf(runtime, kit, kit.load.config), claudeSession);
-    const line = session === undefined ? undefined : await reminderFor(inboxDepsOf(runtime, kit.paths), session, KIT_NAME);
-    if (line !== undefined) {
-        runtime.out.stdout(line);
+    const { config } = kit.load;
+    const title = await readTitle(runtime, payload);
+    const own = { team: kit.paths.team, roster: await rosterOf(runtime, kit, config) };
+    const binding = await bindTab(runtime, kit, own, claudeSession, title);
+    const bound = boundPromptNote(binding.outcome, own, KIT_NAME);
+    const renamed = promptNote(await titleOutcome(runtime, kit, config, payload, title), KIT_NAME);
+    const hint = await bindHintOnce(runtime, kit, binding, claudeSession);
+    // Found like a rename: `$TEAMRIG_SESSION` first, so a session is shown its lines before its first `inbox read`.
+    const session = await teamSessionOf(runtime, kit, own.roster, claudeSession);
+    const lines = session === undefined ? undefined : await inboxLinesFor(runtime, kit, session, claudeSession);
+    for (const text of [bound, renamed, hint, lines]) {
+        if (text !== undefined) {
+            runtime.out.stdout(text);
+        }
     }
     return EXIT.ok;
 }
 /**
- * A loaded team's rules.md and rename log, after recording a Claude Code rename of the session, the
- * pointer to its handover after a refresh, and who the session is: `$TEAMRIG_SESSION`, else the area
- * it read its inbox as, so a tab that set the team up keeps its identity across a compact or resume;
- * whether it runs on its configured model and effort; and where the team sits in a tree of teams,
- * read from every team config of the kit home.
+ * A loaded team's rules.md and rename log, after binding a hand-started tab by its Claude Code title
+ * and recording a Claude Code rename of the session; the pointer to its handover after a refresh; who
+ * the session is: `$TEAMRIG_SESSION`, else the area it read its inbox as or was bound to, so a tab that
+ * set the team up keeps its identity across a compact or resume; whether it runs on its configured
+ * model and effort; and where the team sits in a tree of teams, read from every team config of the kit
+ * home.
  */
 async function teamPartsOf(runtime, kit, config, payload) {
-    const titleNote = sessionStartNote(await titleOutcome(runtime, kit, config, payload));
+    const title = await readTitle(runtime, payload);
+    const claudeSession = sessionIdOf(payload);
+    const bound = claudeSession === null
+        ? undefined
+        : boundStartNote((await bindTab(runtime, kit, { team: kit.paths.team, roster: await rosterOf(runtime, kit, config) }, claudeSession, title)).outcome);
+    const renamed = sessionStartNote(await titleOutcome(runtime, kit, config, payload, title));
+    const titleNote = bound === undefined || renamed === undefined ? (bound ?? renamed) : `${bound} ${renamed}`;
     const { renames } = await new JsonlRenameLog(runtime.files, kit.paths.renames).read();
     const roster = new Roster(config, kit.paths.team, renames);
     const refreshNote = await refreshNoteOf(runtime, kit, config, roster, payload);
@@ -239,7 +270,7 @@ async function boundaryFactsOf(runtime, roster, store, id, payload) {
 }
 /** The Stop payload's team session; undefined outside a team, without a loaded config or without a session. */
 async function stopScopeOf(runtime, payload) {
-    const found = await hookTeam(payload, runtime);
+    const found = await sessionTeam(payload, runtime);
     if (found.kind !== 'team') {
         return undefined;
     }
@@ -334,7 +365,7 @@ export async function stop(args, runtime) {
 export async function sessionStart(args, runtime) {
     noPositionals(args);
     const payload = parseJson(await runtime.readStdin());
-    const found = await hookTeam(payload, runtime);
+    const found = await sessionTeam(payload, runtime);
     switch (found.kind) {
         case 'none':
             return EXIT.ok;
