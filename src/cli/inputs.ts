@@ -212,6 +212,10 @@ export function statusInputOf(flags: Flags): StatusInput {
   if (proof !== undefined) {
     input.proof = proof;
   }
+  const due = flags.get('due');
+  if (due !== undefined) {
+    input.due = due;
+  }
   return input;
 }
 

@@ -90,6 +90,22 @@ describe('Register', () => {
     });
   });
 
+  it('writes a verify-by date as an update before the verifying status, in one append', async () => {
+    const { files, register } = setup();
+    written(await register.add('lead', { title: 'Ship it', owner: 'alpha', source: 'owner', priority: 1 }));
+    written(await register.setStatus('alpha', 'T1', { status: 'in-progress' }));
+    const appended = files.get(LOG)?.length ?? 0;
+    const result = written(await register.setStatus('alpha', 'T1', { status: 'verifying', note: 'shipped', proof: 'the nightly run', due: '2030-01-09' }));
+    assert.deepEqual([result.task.status, result.task.due, result.task.proof], ['verifying', '2030-01-09', 'the nightly run']);
+    const lines = readEvents((files.get(LOG) ?? '').slice(appended)).events;
+    assert.deepEqual(
+      lines.map((event) => event.type),
+      ['update', 'status'],
+    );
+    assert.deepEqual(lines[1], result.event);
+    assert.deepEqual(lines[0]?.type === 'update' ? lines[0].changes : undefined, { due: '2030-01-09' });
+  });
+
   it('checks a cited skill against the catalog, but never `none`', async () => {
     const { register, skills } = setup();
     written(await register.add('lead', { title: 'Ship it', owner: 'alpha', source: 'owner', priority: 1 }));

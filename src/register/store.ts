@@ -15,7 +15,8 @@ export interface EventLog {
   /** Every task ever written, from the whole archive: the cost grows with the history. */
   readHistory(): Promise<RegisterSnapshot>;
   /** Appends one whole line; readers never need the lock. */
-  append(event: RegisterEvent): Promise<void>;
+  /** The events of one write, in order, as one append. */
+  append(events: readonly RegisterEvent[]): Promise<void>;
   /**
    * Under the writer's lock, after an append: rotates a log rotated before once its tail reaches
    * AUTO_ROTATE_CHARS (rotate.ts), and says how; null when it is not due. `written` is the read the write
@@ -43,8 +44,8 @@ export class JsonlEventLog implements EventLog {
     return readHistory(this.files, this.layout);
   }
 
-  async append(event: RegisterEvent): Promise<void> {
-    await this.files.append(this.path, toJsonlLine(eventRecord(event)));
+  async append(events: readonly RegisterEvent[]): Promise<void> {
+    await this.files.append(this.path, events.map((event) => toJsonlLine(eventRecord(event))).join(''));
   }
 
   async rotateIfDue(written: RegisterSnapshot, now: Date): Promise<RotationPlan | null> {

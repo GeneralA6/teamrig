@@ -40,7 +40,7 @@ const TASK_FIELDS = ['title', 'owner', 'ref', 'priority', 'due', 'goals', 'week'
 
 const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   add: { flags: ['session', 'source', 'team', ...TASK_FIELDS], load: async () => (await registerCommands()).add },
-  set: { flags: ['session', 'status', 'note', 'evidence', 'skill', 'waits', 'proof'], load: async () => (await registerCommands()).set },
+  set: { flags: ['session', 'status', 'note', 'evidence', 'skill', 'waits', 'proof', 'due'], load: async () => (await registerCommands()).set },
   update: { flags: ['session', 'note', ...TASK_FIELDS], load: async () => (await registerCommands()).update },
   list: {
     flags: ['session', 'status', 'source', 'priority', 'due-before', 'week', 'goal'],
@@ -114,8 +114,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       --after: the tasks to finish before this one starts; its line shows "after T5"
   add --team <child team> --title .. --priority p<n> [...]   the parent lead hands that team's lead a task
   set <id> --status open|in-progress|verifying|waiting|done|dropped [--note "<what/why>"] [--evidence <proof>]
-      [--skill <name>|none] [--waits decision:<who>,approval:<who>,task:T<id>,time:<date>] [--proof "<what proves it>"]
-      verifying needs --proof: what will prove the shipped change works; its due date is the date to verify by
+      [--skill <name>|none] [--waits decision:<who>,approval:<who>,task:T<id>,time:<date>]
+      [--proof "<what proves it>"] [--due <date>]
+      verifying needs --proof: what will prove the shipped change works; --due sets the date to verify by
       waiting needs --waits: who decides or approves (a session or the owner), a task to finish first
       (only once started) or a time; check flags it READY once its tasks finished and its time passed
   update <id> [--title ..] [--owner ..] [--priority ..] [--ref ..|none] [--due <date>|none]

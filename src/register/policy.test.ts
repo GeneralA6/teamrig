@@ -166,6 +166,20 @@ describe('RegisterPolicy.setStatus to verifying', () => {
     assert.match(error(policy.setStatus({ ...VERIFYING, note: null }, 'alpha', { status: 'verifying', proof: 'the nightly run is green' }, CTX)), /already verifying/);
   });
 
+  it('moves the due date to the verify-by date, only with verifying', () => {
+    const dated = policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'shipped', proof: 'p', due: '2030-01-09 18:00' }, CTX);
+    assert.equal(dated.ok ? dated.value.due : undefined, '2030-01-09 18:00');
+    const same = policy.setStatus({ ...TASK, due: '2030-01-09' }, 'alpha', { status: 'verifying', note: 'shipped', proof: 'p', due: '2030-01-09' }, CTX);
+    assert.deepEqual(same.ok ? Object.keys(same.value) : undefined, ['status', 'note', 'evidence', 'skill', 'proof'], 'the same date moves nothing');
+    assert.equal(error(policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'x', proof: 'p', due: 'friday' }, CTX)), 'due friday is not YYYY-MM-DD or YYYY-MM-DD HH:MM');
+    assert.equal(
+      error(policy.setStatus(TASK, 'alpha', { status: 'open', due: '2030-01-09' }, CTX)),
+      '--due goes only with --status verifying; teamrig update T1 --due sets it otherwise',
+    );
+    const moved = policy.setStatus(VERIFYING, 'alpha', { status: 'verifying', note: 'shipped', due: '2030-01-10' }, CTX);
+    assert.equal(moved.ok ? moved.value.due : undefined, '2030-01-10', 'a new date is a change, not a repeat');
+  });
+
   it('checks the proof like any text', () => {
     assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'x', proof: 'p'.repeat(301) }, CTX)), /^proof has 301 characters/);
     assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'x', proof: credentialUrl() }, CTX)), /proof looks like it holds a secret/);
