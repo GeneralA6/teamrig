@@ -250,6 +250,7 @@ function parseRegister(read: ConfigReader, raw: JsonRecord): RegisterConfig {
       (value, itemPath) => parseStatus(read, value, itemPath),
       CONFIG_LIMITS.requireNoteOn.maxItems,
     ),
+    autoArchive: read.boolean(raw, 'autoArchive', path, defaults.autoArchive),
     check: {
       staleAfterHours: read.integer(check, 'staleAfterHours', `${path}.check`, defaults.check.staleAfterHours, { min: 1 }),
       notPickedUpAfterHours: read.integer(check, 'notPickedUpAfterHours', `${path}.check`, defaults.check.notPickedUpAfterHours, { min: 1 }),

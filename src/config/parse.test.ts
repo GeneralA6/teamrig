@@ -176,6 +176,16 @@ describe('parseConfig', () => {
     assert.deepEqual(config.register.requireNoteOn, ['dropped']);
   });
 
+  it('reads register.autoArchive, on by default, and refuses a value that is not true or false', () => {
+    assert.equal(parseConfig(ROSTER).config.register.autoArchive, true);
+    const off = parseConfig({ ...ROSTER, register: { autoArchive: false } });
+    assert.deepEqual([off.issues, off.config.register.autoArchive], [[], false]);
+    const { config, issues } = parseConfig({ ...ROSTER, register: { autoArchive: 'no' } });
+    assert.deepEqual(paths(issues), ['register.autoArchive']);
+    assert.match(issues[0]?.message ?? '', /true or false/);
+    assert.equal(config.register.autoArchive, true);
+  });
+
   it('reads the commits rule, refusing a bad gate, trailer key, bound or pattern', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,

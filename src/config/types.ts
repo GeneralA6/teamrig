@@ -41,6 +41,11 @@ export interface RegisterConfig {
   readonly requireSkillOnDone: boolean;
   /** Statuses that cannot be set without a note. */
   readonly requireNoteOn: readonly TaskStatus[];
+  /**
+   * Whether a write archives the task list's log by itself once it is long (register/rotate.ts), as it does
+   * after the first `teamrig compact`. Off, only `teamrig compact` archives it.
+   */
+  readonly autoArchive: boolean;
   readonly check: RegisterCheckConfig;
 }
 
