@@ -5,7 +5,7 @@ import type { TeamPaths } from '../../core/home.ts';
 import { JsonlDailyLog } from '../../core/daily-log.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { postLine } from '../../inbox/inbox.ts';
-import { checkTasks, currentWeekOf } from '../../register/check.ts';
+import { byFlagKind, checkTasks, currentWeekOf } from '../../register/check.ts';
 import type { TaskFields } from '../../register/events.ts';
 import type { Task } from '../../register/fold.ts';
 import { renderPlan } from '../../register/plan.ts';
@@ -13,14 +13,15 @@ import type { AddInput, StatusInput, Verdict } from '../../register/policy.ts';
 import type { Register, WriteResult } from '../../register/register.ts';
 import { ACTIVE_STATUSES } from '../../register/model.ts';
 import type { RegisterSnapshot, RetiredTasks } from '../../register/snapshot.ts';
+import { readStopgapTags, stopgapFlags, stopgapTags } from '../../register/stopgap.ts';
 import { heldStart, heldStartNotice, startHolds, verifyQueue } from '../../register/verify.ts';
 import { formatTask, formatTaskDetail, formatVerifyRow, selectTasks, type ListFilter } from '../../register/views.ts';
 import { waitContext, type WaitContext } from '../../register/waits.ts';
 import { lintSkills } from '../../skills/lint.ts';
-import { SkillDir } from '../../skills/store.ts';
+import { SKILL_FILE, SkillDir } from '../../skills/store.ts';
 import { noPositionals, onePositional, UsageError, type ParsedArgs } from '../args.ts';
 import { addInputOf, callerOf, changesOf, listFilterOf, statusInputOf, taskIdOf, weekOf } from '../inputs.ts';
-import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, requireConfig, rosterOf, sessionIdOf, type Access, type Kit } from '../kit.ts';
+import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, projectFolder, requireConfig, rosterOf, sessionIdOf, type Access, type Kit } from '../kit.ts';
 import { checkLines, listLines, type CheckSection, type TaskRow } from '../reports.ts';
 import { rollUp, type RolledTeam, type RollUp } from '../roll-up.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
@@ -354,17 +355,30 @@ function checkRegister(snapshot: RegisterSnapshot, config: KitConfig, now: Date,
  * `check [--tree] [--all]`: the task flags, then the skill flags of the Claude Code skills folder, in
  * the short form (src/cli/reports.ts), or with `--all` every flag in full. With `--tree`, the task
  * flags of the lead's team and each team under it, against the lead's week; the skills are the lead's
- * team's only, as teams on one machine share that folder.
+ * team's only, as teams on one machine share that folder. The `stopgap T<id>` tags in those skills
+ * and in the team's `register.check.stopgapFiles` add a STOPGAP-DONE flag per finished task they name.
  */
 export async function check(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
   const now = new Date(runtime.clock.now());
   const tree = args.switches.has('tree');
-  // The flags are on active tasks, which a compaction never retires: the working set holds them all.
-  const { own, teams } = await settle(runtime, await readRegisters(args, runtime), () => false);
+  const read = await readRegisters(args, runtime);
+  const skillFiles = await new SkillDir(runtime.files, read.own.paths.skills).readAll();
+  const tags = [
+    ...(await readStopgapTags(runtime.files, await projectFolder(runtime), read.own.config.register.check.stopgapFiles)),
+    ...skillFiles.flatMap((skill) => stopgapTags(`${skill.name}/${SKILL_FILE}`, skill.text)),
+  ];
+  // The task flags are on active tasks, which a compaction never retires; a stopgap tag may name a finished task
+  // it retired, so only a tag the own team's working set lacks makes it read that team's whole history.
+  const working = read.own.snapshot;
+  const { own, teams } = await settle(runtime, read, (_retired, snapshot) => snapshot === working && tags.some((tag) => !snapshot.state.tasks.has(tag.id)));
   const week = weekFor(args, own.snapshot, now);
-  const sections = teams.map((rolled) => checkRegister(rolled.snapshot, rolled.config, now, week, tree ? rolled.team : undefined));
-  const skills = lintSkills(await new SkillDir(runtime.files, own.paths.skills).readAll(), now, own.config);
+  const sections = teams.map((rolled) => {
+    const section = checkRegister(rolled.snapshot, rolled.config, now, week, tree ? rolled.team : undefined);
+    const stopgaps = rolled.team === own.team ? stopgapFlags(tags, rolled.snapshot.state.tasks) : [];
+    return { ...section, flags: [...section.flags, ...stopgaps].sort(byFlagKind) };
+  });
+  const skills = lintSkills(skillFiles, now, own.config);
   const scope = week === null ? 'no week plan tagged yet, so the week checks are skipped' : `week ${week}`;
   const report = { sections, scope, skills, skillsDir: own.paths.skills };
   checkLines(report, args.switches.has('all')).forEach((line) => runtime.out.stdout(line));
