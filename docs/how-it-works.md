@@ -44,7 +44,7 @@ flowchart LR
 | --- | --- | --- |
 | SessionStart hook | a session starts, resumes, is cleared or is compacted | gives the session the core rules, its name, the lead's name, where its team sits in a tree of teams and your team's `rules.md` |
 | UserPromptSubmit hook | you send a prompt | one `INBOX:` line when the session has unread notes, nothing otherwise |
-| PreToolUse hook | Claude runs a Bash or PowerShell command | reads a `git push` in it and asks you or refuses ([Safe pushes](#safe-pushes)) |
+| PreToolUse hook | Claude runs a Bash or PowerShell command | finds every `git push` in it, through wrappers, nested shells and git aliases, and asks you or refuses; asks when it cannot read the command ([Safe pushes](#safe-pushes)) |
 | Stop hook | a turn ends | after a task is marked done, asks for a handover when a refresh is due, then tells you once ([A fresh context](#a-fresh-context)); nothing otherwise |
 | `teamrig` commands | Claude runs them in its Bash tool | the task list, the inbox, names, settings, checks (`teamrig help`) |
 
@@ -180,7 +180,10 @@ sequenceDiagram
 ```
 
 - The inbox file is never edited: `inbox read` adds a mark to `state/inbox-marks.jsonl`.
-- A note is one line; an empty line, several lines or a line that looks like a secret is refused.
+- A note is one line; an empty line, several lines or a line that looks like a secret is refused. A secret here is
+  a GitHub, AWS, Slack, Anthropic, Google or Stripe live key, an `sk-` API key, a private key block, a JSON web
+  token, credentials in a URL or a `password=`-style assignment, plus your `register.secretPatterns`. The
+  refusal names the kind, never the value. Task titles, refs, notes and evidence get the same check.
 - In a tree of teams, `--to web/lead` writes to a session of another team, within the rights in
   [Who is on the team](#who-is-on-the-team); the note names its sender as `your-team/lead`.
 - Nothing wakes an idle session, which is why `teamrig check` reports a task not picked up.
@@ -216,11 +219,13 @@ sequenceDiagram
 ## Safe pushes
 
 Before Claude runs a `git push`, teamrig reads the command and asks you, or refuses, when it would change a
-protected branch (by default `main` and `master`).
+protected branch (by default `main` and `master`, set in `pushGuard.protectedBranches`).
 
 ```mermaid
 flowchart TD
-  cmd["Claude runs a Bash or PowerShell command"] --> push{"Is there a git push in it?"}
+  cmd["Claude runs a Bash or PowerShell command"] --> read{"Can teamrig read every git command in it?"}
+  read -- "no, and it may push" --> doubt["You are asked, told what it could not read"]
+  read -- yes --> push{"Is there a git push in it?"}
   push -- "no, or --dry-run" --> run["Runs as usual"]
   push -- "--mirror" --> deny["Refused"]
   push -- yes --> branch{"Does it update a protected branch?"}
@@ -233,6 +238,35 @@ flowchart TD
   commit is over the size rule (400 changed lines or 15 files, tests not counted) with no `Large-commit:` reason.
 - `teamrig commits check --base <ref>` runs the same size rule in a script or CI.
 - Outside a project tied to a team, the guard stays silent.
+
+The guard splits the command into words the way its shell does (bash, PowerShell or cmd quoting), so it finds a
+push wherever it sits in the line:
+
+- git's own options: `git -C <dir> push`, `--git-dir`, `-c key=value`, and `GIT_DIR` or `GIT_CONFIG*` variables;
+- chained, piped and multi-line commands (`&&`, `||`, `;`, `|`), subshells, `$( )` and backticks;
+- wrappers and other spellings of git: `env`, `command`, `sudo`, `nohup`, `timeout`, `xargs`, variable prefixes,
+  `git.exe`, a full path to git, `git-push`, and PowerShell's `& git` or `& 'C:\...\git.exe'`;
+- nested shells: `bash -c`, `sh -c`, `eval`, `pwsh -Command` (also `-EncodedCommand`), `Invoke-Expression`,
+  `Start-Process`, `cmd /c` and `start`;
+- git aliases (from `-c alias.x=`, from a `git config alias.x` earlier in the line, or from git config, `!` shell
+  aliases included) and the commands git runs itself (`submodule foreach`, `rebase --exec`, `bisect run`);
+- folder and branch moves earlier in the line: `cd sub && git push`, `git checkout main && git push`.
+
+When it cannot read part of a line with confidence, it asks and says why: a quote that never closes, a git
+command, alias, folder, remote or refspec only known when the line runs, an alias git cannot read, scripts nested
+too deep. Some of these, such as `eval "$X"`, `bash -c "$CMD"` or an unclosed quote, ask only when the line, or a
+script or alias it runs, says `push` somewhere: each command Claude runs starts in a fresh shell, so a push the
+line never spells out would have to be built on purpose.
+
+It is a guard against mistakes, not a sandbox; protect the branch on your git host too. It does not see:
+
+- a push inside a script or program the command runs: `npm run deploy`, `./ship.sh`, `pwsh -File x.ps1`,
+  `source x.sh`, `python` or `node`, `make`, `find -exec`, `ssh host git push`;
+- a command line kept in a variable set by an earlier command, such as `bash -c "$CMD"`;
+- `gh pr merge` and other GitHub CLI commands that change a branch on the server;
+- git extensions (`git town`, a `git-<name>` program that is not part of git), and a `remote.<name>.push`
+  mapping in the repository's own config for a push that names only its source branch;
+- commands from tools other than Bash and PowerShell, and pushes you run in your own terminal.
 
 Planned (T228): a deploy coordinator.
 
