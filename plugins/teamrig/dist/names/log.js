@@ -1,5 +1,5 @@
-import { parseJsonl, toJsonlLine } from "../core/jsonl.js";
-import { parseRename } from "./rename.js";
+import { toJsonlLine } from "../core/jsonl.js";
+import { readRenames } from "./rename.js";
 export class JsonlRenameLog {
     path;
     files;
@@ -8,23 +8,7 @@ export class JsonlRenameLog {
         this.path = path;
     }
     async read() {
-        const parse = parseJsonl((await this.files.read(this.path)) ?? '');
-        const renames = [];
-        let unreadable = parse.unreadable;
-        let newer = 0;
-        for (const line of parse.records) {
-            const result = parseRename(line);
-            if (result.kind === 'rename') {
-                renames.push(result.rename);
-            }
-            else if (result.kind === 'newer') {
-                newer += 1;
-            }
-            else {
-                unreadable += 1;
-            }
-        }
-        return { renames, unreadable, newer };
+        return readRenames((await this.files.read(this.path)) ?? '');
     }
     /**
      * One whole line in one append, so a crash never leaves half a record. A last line written by

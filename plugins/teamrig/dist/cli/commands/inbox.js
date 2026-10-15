@@ -12,14 +12,18 @@ import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, requireConfig, roste
 import { EXIT, RefusedError } from "../runtime.js";
 import { loadTree } from "../tree.js";
 export function inboxDepsOf(runtime, paths) {
-    return { inboxes: new InboxDir(runtime.files, paths.inbox), marks: new JsonlMarkLog(runtime.files, paths.inboxMarks) };
+    return {
+        inboxes: new InboxDir(runtime.files, paths.inbox),
+        marks: new JsonlMarkLog(runtime.files, paths.inboxMarks),
+        shown: new JsonlMarkLog(runtime.files, paths.inboxShown),
+    };
 }
 /** The Claude Code session running the command, so the reminder hook can follow it; null outside one. */
 function claudeSessionOf(env) {
     const id = env[ENV.claudeSession];
     return id !== undefined && CLAUDE_SESSION_ID.test(id) ? id : null;
 }
-/** `inbox read`: prints the caller's unread lines and marks them read. */
+/** `inbox read`: prints the caller's unread lines, but those the prompt hook showed this Claude Code session, and marks them all read. */
 export async function read(args, runtime) {
     noPositionals(args);
     const caller = callerOf(args.flags, runtime.env);
@@ -27,7 +31,7 @@ export async function read(args, runtime) {
     const area = sessionIdOf(await rosterOf(runtime, kit, requireConfig(kit, runtime, 'read')), caller);
     const now = new Date(runtime.clock.now());
     const result = await readInbox(inboxDepsOf(runtime, kit.paths), { area, claudeSession: claudeSessionOf(runtime.env), now });
-    result.unread.lines.forEach((line) => runtime.out.stdout(line));
+    result.lines.forEach((line) => runtime.out.stdout(line));
     runtime.out.stdout(formatRead(result));
     return EXIT.ok;
 }

@@ -3,6 +3,7 @@ import { formatUtcMinute, shortUtc } from "../core/time.js";
 import { SESSION_NAME } from "../register/model.js";
 import { lineHash } from "./line-hash.js";
 import { CLAUDE_SESSION_ID, indexMarks, MARK_VERSION } from "./marks.js";
+import { cutWhenShown, newestShownOf, unshownOf } from "./shown.js";
 import { unreadOf } from "./unread.js";
 const LINE_DATE = /^- (\d{4}-\d{2}-\d{2} \d{2}:\d{2})/;
 /** When the first unread line was posted, as its `YYYY-MM-DD HH:MM` (UTC); undefined when it is not dated. */
@@ -31,21 +32,22 @@ export function formatUnread(unread) {
             return `${head} (read to line ${mark.line} of ${unread.total} at ${at})`;
     }
 }
-/** The hook's one line; undefined when nothing is unread. */
-export function reminderLine(unread, path, command) {
-    return unread.lines.length === 0
-        ? undefined
-        : `INBOX: ${unread.lines.length} unread line(s) in ${path}${since(unread)}. Read them with: ${command} inbox read --session ${unread.area}`;
-}
 /**
  * Hands back the unread lines and marks them read, from one read of the file, so no line slips between.
- * An area nobody has posted to yet reads as empty and is still marked, so the reminder hook follows
- * the session from its first read. The caller checks the area is a session on the team.
+ * Lines the prompt hook already showed this Claude Code session are marked read without being handed
+ * back again, unless the hook had to cut one. An area nobody has posted to yet reads as empty and is
+ * still marked, so the prompt hook follows the session from its first read. The caller checks the
+ * area is a session on the team.
  */
 export async function readInbox(deps, input) {
     const lines = (await deps.inboxes.lines(input.area)) ?? [];
     const { byArea } = indexMarks((await deps.marks.read()).marks);
-    const unread = unreadOf(input.area, lines, byArea.get(input.area) ?? null, lineHash);
+    const read = byArea.get(input.area) ?? null;
+    const unread = unreadOf(input.area, lines, read, lineHash);
+    const shown = newestShownOf((await deps.shown.read()).marks, input.area, input.claudeSession);
+    const unshown = unshownOf(input.area, lines, read, shown, lineHash);
+    const before = unread.lines.slice(0, unread.lines.length - unshown.length);
+    const printed = [...before.filter((line) => cutWhenShown(line)), ...unshown];
     const last = lines.at(-1);
     const mark = {
         v: MARK_VERSION,
@@ -56,17 +58,18 @@ export async function readInbox(deps, input) {
         lastLineHash: last === undefined ? null : lineHash(last),
     };
     await deps.marks.append(mark);
-    return { unread, mark };
+    return { unread, lines: printed, shownBefore: unread.lines.length - printed.length, mark };
 }
 export function formatRead(result) {
-    const { unread, mark } = result;
-    const count = unread.lines.length;
+    const { unread, mark, shownBefore } = result;
+    const count = result.lines.length;
     const what = count === 0 ? 'nothing new' : `${count} new line${count === 1 ? '' : 's'}, shown above`;
+    const before = shownBefore === 0 ? '' : `, and ${shownBefore} the prompt hook showed this session, now marked read too`;
     const redo = unread.resume === 'rewritten' ? ' (the file was rewritten, so all of it is shown)' : '';
     const next = mark.claudeSession === null
         ? 'outside Claude Code, so no prompt will remind you of new ones'
         : 'new ones are shown at your next prompt';
-    return `READ ${mark.area}: ${what}${redo}; ${next}`;
+    return `READ ${mark.area}: ${what}${before}${redo}; ${next}`;
 }
 /** Unread lines per area: every area, or one. */
 export async function inboxStatus(deps, area) {
@@ -80,15 +83,6 @@ export async function inboxStatus(deps, area) {
         }
     }
     return result;
-}
-/** The reminder for a session's inbox; undefined when it has no inbox file or nothing is unread. */
-export async function reminderFor(deps, area, command) {
-    const lines = await deps.inboxes.lines(area);
-    if (lines === undefined) {
-        return undefined;
-    }
-    const { byArea } = indexMarks((await deps.marks.read()).marks);
-    return reminderLine(unreadOf(area, lines, byArea.get(area) ?? null, lineHash), deps.inboxes.pathOf(area), command);
 }
 /** Appends one dated line, `- YYYY-MM-DD HH:MM <from>: <text>`, to an area's inbox. */
 export async function postLine(inboxes, secrets, input) {
