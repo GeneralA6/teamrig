@@ -155,7 +155,7 @@ describe('teamrig budget', () => {
   it('shows plain W with no status line and no weekly limit', async () => {
     const { run } = await world(TEAM, false);
     const lines = ok(await run(['budget']));
-    assert.equal(lines[0], 'Week: its use is unknown: no status line reading (use teamrig statusline as the status line) and no budget.weeklyLimitW.');
+    assert.equal(lines[0], 'Week: its use is unknown: no status line reading (run teamrig statusline install) and no budget.weeklyLimitW.');
     assert.equal(lines[1], 'The team used 25.00M W in 3 calls today.');
   });
 });

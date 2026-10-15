@@ -88,7 +88,7 @@ export function decideLift(request: LiftRequest, context: LiftContext): LiftDeci
     return refused(`--until ${formatUtcMinute(new Date(request.until))} UTC has passed`);
   }
   if (usedPct === undefined) {
-    return refused("the week's use is unknown, so the stop % cannot be judged: use teamrig statusline as the status line, or set budget.weeklyLimitW");
+    return refused("the week's use is unknown, so the stop % cannot be judged: run teamrig statusline install, or set budget.weeklyLimitW");
   }
   if (usedPct >= stopPct) {
     return refused(`the week is at ${formatPct(usedPct)}, already at or past --stop-pct ${stopPct}`);

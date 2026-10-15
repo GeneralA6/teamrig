@@ -115,7 +115,7 @@ describe('todayLines', () => {
 
   it('shows plain W when the week is unknown', () => {
     assert.deepEqual(todayLines({ week: UNKNOWN, sessions: SESSIONS, outside: NOBODY_OUTSIDE, behind: [], all: false }), [
-      'Week: its use is unknown: no status line reading (use teamrig statusline as the status line) and no budget.weeklyLimitW.',
+      'Week: its use is unknown: no status line reading (run teamrig statusline install) and no budget.weeklyLimitW.',
       'The team used 37.50M W in 1,310 calls today.',
       'alpha used 30.00M W in 1,000 calls today.',
       'team-lead used 7.50M W in 310 calls today.',
