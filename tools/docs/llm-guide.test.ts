@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { formatSnapshot, parseSnapshot } from '../../src/budget/snapshot.ts';
 import { HELP_FLAGS } from '../../src/cli/args.ts';
 import { COMMAND_FLAGS, COMMAND_SWITCHES, HELP, VERSION } from '../../src/cli/run.ts';
 import { DEFAULT_LEAD_LAUNCH } from '../../src/config/defaults.ts';
@@ -325,5 +326,18 @@ describe("the lead's default launch in the docs", () => {
     assert.equal(sentenceWith('One. The lead\nstarts on `x`. Two.', 'The lead'), 'The lead starts on `x`.');
     assert.equal(sentenceWith('The lead starts', 'The lead'), 'The lead starts');
     assert.equal(sentenceWith('One.', 'The lead'), '');
+  });
+});
+
+describe('the status line snapshot in the guide', () => {
+  it('is the pinned format teamrig budget reads, so a status line of your own can copy it', () => {
+    const commands = guideText('commands.md');
+    const from = commands.indexOf('Bring your own status line');
+    const example = /^```json\n(.+)\n```$/m.exec(commands.slice(from))?.[1];
+    assert.ok(from >= 0 && example !== undefined, 'commands.md shows the snapshot JSON after "Bring your own status line"');
+    const parsed = parseSnapshot(example);
+    assert.ok(parsed !== undefined, 'the example parses as a snapshot');
+    assert.equal(formatSnapshot(parsed), example);
+    assert.ok(parsed.rateLimits?.sevenDay !== null && parsed.rateLimits?.sevenDay !== undefined, 'the example carries the week');
   });
 });
