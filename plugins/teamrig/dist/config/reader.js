@@ -41,10 +41,22 @@ export class ConfigReader {
         return this.optionalString(parent, key, path, check) ?? '';
     }
     integer(parent, key, path, fallback, bounds = {}) {
-        return this.numeric(parent, key, path, fallback, bounds, true);
+        return this.numeric(parent, key, path, bounds, true) ?? fallback;
     }
     number(parent, key, path, fallback, bounds = {}) {
-        return this.numeric(parent, key, path, fallback, bounds, false);
+        return this.numeric(parent, key, path, bounds, false) ?? fallback;
+    }
+    /** A whole number the config may leave out; an invalid one is an issue and reads as unset. */
+    optionalInteger(parent, key, path, bounds = {}) {
+        return this.numeric(parent, key, path, bounds, true);
+    }
+    /** A number the config may leave out; an invalid one is an issue and reads as unset. */
+    optionalNumber(parent, key, path, bounds = {}) {
+        return this.numeric(parent, key, path, bounds, false);
+    }
+    /** One number list item within `bounds`, for use inside `list` callbacks. */
+    numberItem(value, itemPath, bounds = {}) {
+        return this.checkedNumber(value, itemPath, bounds, false);
     }
     boolean(parent, key, path, fallback) {
         const value = parent[key];
@@ -106,19 +118,20 @@ export class ConfigReader {
     report(path, message) {
         this.issues.push({ path, message });
     }
-    numeric(parent, key, path, fallback, bounds, integer) {
+    /** The value, or undefined when it is missing or invalid (an invalid one is recorded as an issue). */
+    numeric(parent, key, path, bounds, integer) {
         const value = parent[key];
-        if (value === undefined) {
-            return fallback;
-        }
+        return value === undefined ? undefined : this.checkedNumber(value, join(path, key), bounds, integer);
+    }
+    checkedNumber(value, path, bounds, integer) {
         const expected = `${integer ? 'an integer' : 'a number'}${describeBounds(bounds)}`;
         if (typeof value !== 'number' || !Number.isFinite(value) || (integer && !Number.isInteger(value))) {
-            this.problem(join(path, key), expected, value);
-            return fallback;
+            this.problem(path, expected, value);
+            return undefined;
         }
         if ((bounds.min !== undefined && value < bounds.min) || (bounds.max !== undefined && value > bounds.max)) {
-            this.problem(join(path, key), expected, value);
-            return fallback;
+            this.problem(path, expected, value);
+            return undefined;
         }
         return value;
     }

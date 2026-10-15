@@ -4,6 +4,18 @@ export const COMMIT_GATES = ['off', 'warn', 'refuse'];
 export function isCommitGate(value) {
     return COMMIT_GATES.some((gate) => gate === value);
 }
+export const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+export function isWeekday(value) {
+    return WEEKDAYS.some((day) => day === value);
+}
+export const OVER_ACTIONS = ['warn', 'ask-lead', 'ask', 'block'];
+export function isOverAction(value) {
+    return OVER_ACTIONS.some((action) => action === value);
+}
+export const ESCALATIONS = ['session', 'session-and-fleet'];
+export function isEscalation(value) {
+    return ESCALATIONS.some((escalation) => escalation === value);
+}
 /**
  * Where `teamrig open` opens a session's tab: `auto` picks tmux inside tmux, else the platform's
  * terminal; `print` opens nothing and prints the command to run.
