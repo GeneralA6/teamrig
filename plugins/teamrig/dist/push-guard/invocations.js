@@ -1,6 +1,7 @@
 import { isAssignment, isShellName, launch, programName, staticWord } from "./launchers.js";
 import { Location, resolveDir } from "./location.js";
 import { parseShell, stripHeredocs } from "./tokenizer.js";
+import { resolveLiteralVariables } from "./variables.js";
 /** Git's own commands; an alias never overrides one. */
 const BUILTINS = new Set(('add am annotate apply archive backfill bisect blame branch bugreport bundle cat-file check-attr check-ignore check-mailmap ' +
     'check-ref-format checkout checkout-index cherry cherry-pick citool clean clone column commit commit-graph commit-tree config ' +
@@ -125,7 +126,9 @@ class GitInvocationFinder {
         if (!parsed.complete) {
             this.doubt('part of it cannot be read, as a quote, bracket or substitution never closes', true);
         }
-        for (const command of parsed.commands) {
+        // bash reads $NAME set to a literal earlier in the line; other dialects keep every variable unknown.
+        const commands = dialect === 'bash' ? resolveLiteralVariables(parsed.commands, script.text) : parsed.commands;
+        for (const command of commands) {
             location.enter(command.subshells);
             this.visitCommand(command.words, dialect, location, depth);
         }
@@ -173,8 +176,8 @@ class GitInvocationFinder {
     }
     /**
      * What a git run inherits from its shell and from the variables its launcher sets: `GIT_DIR` moves it,
-     * `GIT_CONFIG*` overrides config. A variable set in the shell earlier in the line is treated as unknown,
-     * as the guard does not track shell scopes.
+     * `GIT_CONFIG*` overrides config. One set in the shell earlier in the line is treated as unknown: the guard
+     * resolves an earlier literal only where a word reads it (`$NAME`), never in the environment git inherits.
      */
     gitState(dir, env) {
         let gitDir = this.shellMovesRepo ? UNKNOWN_WORD : undefined;
