@@ -36,6 +36,7 @@ your machine.
 | **A lead that runs the team** | One session holds the lead role in the team config; every session learns at start who it is and whom to message. | works today |
 | | Names that survive a rename: `teamrig rename` keeps the session's id, and every old name still works; `teamrig doctor` finds name and inbox problems | works today |
 | | Sub-team leads (a team tree): `team create --parent`, `add --team`, `list --tree` | works today |
+| | Drift checks the lead acts on: `check` flags work in progress below its session's own waiting p1 (PRIORITY-SKIP) or with no goal outside the week plan (OFF-GOAL) | works today |
 | **Shared rules, loaded every time** | At start, each session gets the core rules and your team's own rules (`teams/<team>/rules.md` in the kit home; over 3,500 characters, a pointer to it); `check` also lints your skills. | works today |
 | **Safe pushes from parallel sessions** | A push guard asks before any push to a protected branch (such as main) and refuses a `--force` push or a delete of one (a `--force-with-lease` push asks); `commits check` holds commits to a size rule. | works today |
 | | A deploy coordinator: one push at a time, a lock for heavy steps, no-deploy windows | planned: T228 |
