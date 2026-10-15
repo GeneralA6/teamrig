@@ -1,8 +1,8 @@
 /**
- * bash keywords and builtins that can set a variable in a way this module does not follow (a condition, a
- * loop, a function, `read`, `declare`, arithmetic) or run code that can (`eval`, `source`, `trap`). One
- * anywhere in a line keeps every variable of that line unresolved, except the keywords of a `for` loop
- * where they start a command (see {@link Loops}).
+ * bash keywords and builtins that can set a variable in a way this module does not follow (`case`, a
+ * function, `read`, `declare`, arithmetic) or run code that can (`eval`, `source`, `trap`). One anywhere in
+ * a line keeps every variable of that line unresolved, except the keywords of a `for`, `while` or `until`
+ * loop, an `if`, a `{ }` group and a `!` where they start a command (see {@link Compounds}).
  */
 const UNSAFE_PROGRAMS = new Set([
     ...['if', 'then', 'elif', 'else', 'fi', 'for', 'while', 'until', 'do', 'done', 'case', 'esac', 'select', 'function'],
@@ -54,19 +54,17 @@ export function resolveLiteralVariables(parsed) {
  * redirection, whose value is unquoted text bash keeps as written, quoted text and plain variables (in quotes,
  * for `export`), and only for a name the line sets nowhere else, or always to the same text. A name also
  * assigned in any other form (`NAME=x cmd`, `NAME+=`, `{NAME}>`, a value with a substitution or a tilde, a
- * `for` loop's variable or a binding in its body) is not resolved; anything that can set variables unseen
- * (see {@link UNSAFE_PROGRAMS}, a program a variable names
- * that is not known or is one of those, array elements, IFS, and what {@link ShellParse.bindingsUnclear} flags)
- * leaves the whole line unresolved. A value holds at a later command only when that command surely runs after
- * the statement, in the same shell; a variable in a value gives what it held when the statement ran.
+ * `for` loop's variable, a binding inside a compound command or after `!`) is not resolved; anything that can
+ * set variables unseen (see {@link UNSAFE_PROGRAMS}, a program a variable names that is not known or is one of
+ * those, array elements, IFS, and what {@link ShellParse.bindingsUnclear} flags) leaves the whole line
+ * unresolved. A value holds at a later command only when that command surely runs after the statement, in the
+ * same shell or in a subshell started after it; a variable in a value gives what it held when the statement ran.
  */
 class LiteralBindings {
     commands;
-    links;
     bound;
     constructor(commands, bound) {
         this.commands = commands;
-        this.links = commands.map((command) => linkOf(command.terminator));
         this.bound = bound;
     }
     static read(parsed) {
@@ -111,65 +109,79 @@ class LiteralBindings {
         return bound.value.flatMap((part) => part.kind === 'text' ? [part] : (this.valueAt(part.name, at) ?? [{ kind: 'unknown', written: `\${${part.name}}` }]));
     }
     /**
-     * True when the binding statement at `from` has surely run, in the same shell, whenever the command at `to`
-     * runs. The commands of a substitution between them are passed over: they run in a subshell of their own,
-     * so they set nothing here, and the command that holds them carries the link to the next one.
+     * True when the binding statement at `from` has surely run whenever the command at `to` runs: in the same
+     * shell, or in a subshell (a `( )` group or a substitution) started after it, which starts with a copy of
+     * its variables. Read on the list the statement's shell runs (see {@link listItems}).
      */
     reaches(from, to) {
         const statement = this.commands[from];
-        if (statement === undefined || this.links[from] === 'pipe') {
+        const target = this.commands[to];
+        if (statement === undefined || target === undefined || !runsInside(target, statement)) {
             return false;
         }
-        const path = [];
-        for (let index = from; index < to; index += 1) {
-            if ((this.commands[index]?.nesting ?? 0) <= statement.nesting) {
-                path.push(index);
-            }
-        }
-        if (path.some((index) => !sameShell(statement, this.commands[index]) || this.links[index] === 'other') || !sameShell(statement, this.commands[to])) {
+        const items = listItems(this.commands, statement);
+        const start = items.findIndex((item) => item.last === from);
+        const end = items.findIndex((item) => item.first <= to && to <= item.last);
+        const between = start < 0 || end <= start ? [] : items.slice(start, end).map((item) => item.link);
+        // A pipeline runs each of its commands in a subshell of its own.
+        if (between.length === 0 || between[0] === 'pipe' || between.includes('other')) {
             return false;
         }
-        const between = path.map((index) => this.links[index]);
-        if (this.startsList(from)) {
+        if (startsList(items, start)) {
             // It runs whenever its list does, and that list must not be a background job.
             return between.find((link) => link === 'sequence' || link === 'background') !== 'background';
         }
-        return this.insideAndList(from) && between.every((link) => link === 'and' || link === 'pipe');
+        return insideAndList(items, start) && between.every((link) => link === 'and' || link === 'pipe');
     }
-    /** True when the command at `index` starts a list: first in the line or in a `( )` group, or after `;`, `&` or a newline. */
-    startsList(index) {
-        const previous = this.previous(index);
-        const before = previous === undefined ? undefined : this.commands[previous];
-        if (previous === undefined || before === undefined || opensGroup(before.terminator)) {
-            return true;
+}
+/**
+ * The list the shell `shell` runs in sits in, in order: each of its own commands, with the substitutions it holds,
+ * and each `( )` group inside it as one item. A group keeps the nesting of the shell around it while a
+ * substitution adds one, which tells them apart.
+ */
+function listItems(commands, shell) {
+    const depth = shell.subshells.length;
+    const inside = [...commands.entries()].filter(([, command]) => runsInside(command, shell));
+    const groups = new Set(inside.flatMap(([, command]) => (command.nesting === shell.nesting ? command.subshells.slice(depth, depth + 1) : [])));
+    const items = [];
+    let held;
+    for (const [index, command] of inside) {
+        const child = command.subshells[depth];
+        const link = linkOf(command.terminator);
+        const previous = items.at(-1);
+        if (child !== undefined && !groups.has(child)) {
+            held ??= index;
         }
-        const link = this.links[previous];
-        return sameShell(before, this.commands[index]) && (link === 'sequence' || link === 'background');
+        else if (child !== undefined && previous?.group === child) {
+            items[items.length - 1] = { ...previous, last: index, link };
+        }
+        else {
+            items.push(child === undefined ? { first: held ?? index, last: index, link } : { first: held ?? index, last: index, link, group: child });
+            held = undefined;
+        }
     }
-    /** True when the command at `from` follows `&&` and every link back to the start of its list is `&&` or a pipe. */
-    insideAndList(from) {
-        let index = this.previous(from);
-        if (index === undefined || this.links[index] !== 'and') {
-            return false;
-        }
-        while (index !== undefined && sameShell(this.commands[index], this.commands[from]) && (this.links[index] === 'and' || this.links[index] === 'pipe')) {
-            if (this.startsList(index)) {
-                return true;
-            }
-            index = this.previous(index);
-        }
+    return items;
+}
+/** True when the item at `at` starts a list: first in its shell, or after `;`, `&` or a newline. */
+function startsList(items, at) {
+    const link = items[at - 1]?.link;
+    return link === undefined || link === 'sequence' || link === 'background';
+}
+/** True when the item at `at` follows `&&` and every link back to the start of its list is `&&` or a pipe. */
+function insideAndList(items, at) {
+    if (items[at - 1]?.link !== 'and') {
         return false;
     }
-    /** The command before the one at `index` in its own list: the nearest earlier one not inside a deeper substitution. */
-    previous(index) {
-        const nesting = this.commands[index]?.nesting ?? 0;
-        for (let at = index - 1; at >= 0; at -= 1) {
-            if ((this.commands[at]?.nesting ?? 0) <= nesting) {
-                return at;
-            }
+    for (let index = at - 1; index >= 0; index -= 1) {
+        const link = items[index]?.link;
+        if (link !== 'and' && link !== 'pipe') {
+            return false;
         }
-        return undefined;
+        if (startsList(items, index)) {
+            return true;
+        }
     }
+    return false;
 }
 /**
  * The words one word expands to: its own text and quoted values join the current word, while an unquoted value
@@ -233,12 +245,13 @@ function boundNames(commands) {
     const statements = new Map();
     const tainted = new Set();
     const deferred = [];
-    const loops = new Loops();
+    const compounds = new Compounds();
     for (const [index, command] of commands.entries()) {
-        const words = loops.enter(command, (name) => tainted.add(name));
-        if (words === undefined) {
+        const entered = compounds.enter(command, (name) => tainted.add(name));
+        if (entered === undefined) {
             return undefined;
         }
+        const { words, followed } = entered;
         if (programIsVariable(words)) {
             deferred.push({ index, words });
         }
@@ -247,8 +260,8 @@ function boundNames(commands) {
         }
         const statement = bindingStatement(words, command.redirections.length > 0);
         for (const binding of statement ?? []) {
-            if (loops.inside) {
-                // A loop body may run any number of times, or never.
+            if (!followed) {
+                // A compound command may run its body any number of times, or never.
                 tainted.add(binding.name);
             }
             else {
@@ -266,7 +279,7 @@ function boundNames(commands) {
             }
         }
     }
-    if (!loops.closed) {
+    if (!compounds.closed) {
         return undefined;
     }
     const bound = new Map();
@@ -278,55 +291,110 @@ function boundNames(commands) {
     }
     return { bound, deferred };
 }
+/** The keywords that open a compound command, and the part each starts. */
+const OPENERS = new Map([
+    ['if', 'if'],
+    ['while', 'while'],
+    ['until', 'while'],
+    ['{', '{'],
+]);
+/** The keywords that end one part of a compound command and start the next: the parts each may end, and the part it starts. */
+const TURNS = new Map([
+    ['do', { ends: ['for', 'while'], starts: 'do' }],
+    ['then', { ends: ['if'], starts: 'then' }],
+    ['elif', { ends: ['then'], starts: 'if' }],
+    ['else', { ends: ['then'], starts: 'else' }],
+]);
+/** The keywords that close a compound command, and the parts each may close; nothing may follow them in their command. */
+const CLOSERS = new Map([
+    ['done', ['do']],
+    ['fi', ['then', 'else']],
+    ['}', ['{']],
+]);
+/** The words {@link Compounds} reads at a command's start: the keywords above, `for`, and `!`, which only negates its status. */
+const RESERVED_WORDS = new Set([...OPENERS.keys(), ...TURNS.keys(), ...CLOSERS.keys(), 'for', '!']);
 /**
- * The `for` loops open at each command of a line, read from the keywords that start its commands: a
- * `for NAME [in WORDS]` header, the `do` after it and the `done` that closes its body. Any other loop, and a
- * keyword out of place, is not followed.
+ * The compound commands open at each command of a line (`for`, `while` and `until` loops, `if` and `{ }`),
+ * read from the keywords that start its commands. A binding inside one may run any number of times, or never,
+ * so it is not followed; the line's other bindings hold inside and past it. `case`, `select`, functions
+ * declared with `function`, and a keyword out of place or in another shell than the one that opened its
+ * compound are not followed.
  */
-class Loops {
-    /** The nesting of each `for` header still waiting for its `do`, innermost last. */
-    headers = [];
-    /** The nesting of each open loop body, innermost last. */
-    bodies = [];
-    /** True inside a loop body. */
-    get inside() {
-        return this.bodies.length > 0;
-    }
-    /** True when every loop the line opened has closed. */
+class Compounds {
+    /** The open parts, innermost last. */
+    open = [];
+    /** True when every compound the line opened has closed. */
     get closed() {
-        return this.headers.length === 0 && this.bodies.length === 0;
+        return this.open.length === 0;
     }
     /**
-     * Reads the loop keywords that start `command` and gives a `for` header's variable to `taint`. Returns the
-     * words after them (none for a header or a `done`), or undefined for a keyword out of place.
+     * Reads the keywords that start `command`, and gives a `for` header's variable to `taint`. Returns the words
+     * after them (none for a `for` header or a closing keyword); a binding there is not followed inside a
+     * compound or after `!`. Undefined for a keyword out of place.
      */
     enter(command, taint) {
         let words = command.words;
-        while (isKeyword(words[0], 'do')) {
-            if (this.headers.pop() !== command.nesting) {
-                return undefined;
-            }
-            this.bodies.push(command.nesting);
+        let negated = false;
+        for (let keyword = reservedWord(words[0]); keyword !== undefined; keyword = reservedWord(words[0])) {
             words = words.slice(1);
-        }
-        const [first, name, list] = words;
-        if (isKeyword(first, 'for')) {
-            if (name === undefined || name.dynamic || !NAME.test(name.text) || (list !== undefined && !isKeyword(list, 'in'))) {
+            if (keyword === 'for') {
+                return this.openFor(command, words, taint) ? { words: [], followed: false } : undefined;
+            }
+            const closes = CLOSERS.get(keyword);
+            if (closes !== undefined) {
+                if (words.length > 0 || this.innermost(command, closes) === undefined) {
+                    return undefined;
+                }
+                this.open.pop();
+                return { words: [], followed: false };
+            }
+            if (keyword === '!') {
+                negated = true;
+            }
+            else if (!this.move(command, keyword)) {
                 return undefined;
             }
-            taint(name.text);
-            this.headers.push(command.nesting);
-            return [];
         }
-        if (isKeyword(first, 'done')) {
-            return words.length === 1 && this.bodies.pop() === command.nesting ? [] : undefined;
+        return { words, followed: !negated && this.open.length === 0 };
+    }
+    /** Opens a compound for `keyword`, or turns its innermost part; false when `keyword` does not fit that part. */
+    move(command, keyword) {
+        const opens = OPENERS.get(keyword);
+        if (opens !== undefined) {
+            this.open.push({ part: opens, opener: command });
+            return true;
         }
-        return words;
+        const turn = TURNS.get(keyword);
+        const current = turn === undefined ? undefined : this.innermost(command, turn.ends);
+        if (turn === undefined || current === undefined) {
+            return false;
+        }
+        this.open[this.open.length - 1] = { part: turn.starts, opener: current.opener };
+        return true;
+    }
+    /** Opens a `for NAME [in WORDS]` header and taints NAME; false for any other form, such as `for ((`. */
+    openFor(command, rest, taint) {
+        const [name, list] = rest;
+        if (name === undefined || name.dynamic || !NAME.test(name.text) || (list !== undefined && !(list.text === 'in' && reservedWordText(list)))) {
+            return false;
+        }
+        taint(name.text);
+        this.open.push({ part: 'for', opener: command });
+        return true;
+    }
+    /** The innermost open part when it is one of `parts` and opened in the same shell as `command`. */
+    innermost(command, parts) {
+        const current = this.open.at(-1);
+        return current !== undefined && parts.includes(current.part) && current.opener.nesting === command.nesting && sameShell(current.opener, command) ? current : undefined;
     }
 }
-/** True for a word that is the keyword itself, as written. */
-function isKeyword(word, keyword) {
-    return word !== undefined && !word.dynamic && word.text === keyword;
+/** The reserved word `word` is, when it is one {@link Compounds} reads, written unquoted. */
+function reservedWord(word) {
+    return word !== undefined && RESERVED_WORDS.has(word.text) && reservedWordText(word) ? word.text : undefined;
+}
+/** True when `word` is static text with no quote or escape in it, as a bash reserved word must be. */
+function reservedWordText(word) {
+    return !word.dynamic && (word.parts ?? []).every((part) => part.kind === 'text' && !part.quoted);
 }
 /** The one value the statements binding a name give it: the only statement's, or the text all of them agree on. */
 function agreedValue(values) {
@@ -474,16 +542,22 @@ function dropText(parts, count) {
     }
     return left === 0 ? kept : undefined;
 }
+/**
+ * How a command hands over to the next one, read from its terminator without the parentheses of the `( )`
+ * groups it closes or opens. A bare `)` gives no link, since what follows the group (a redirection holding a
+ * substitution) is not read; `()` declares a function.
+ */
 function linkOf(terminator) {
-    const operator = terminator.replace(/\n+$/, '');
+    const bare = terminator.includes('()') ? terminator : terminator.replace(/[()]/g, '');
+    const operator = bare.replace(/\n+$/, '');
     if (operator === '') {
-        return terminator === '' ? 'other' : 'sequence';
+        return bare === '' ? 'other' : 'sequence';
     }
     return OPERATOR_LINKS.get(operator) ?? 'other';
 }
-/** True when a terminator ends by opening a `( )` group, so the next command is the first inside it. */
-function opensGroup(terminator) {
-    return terminator.replace(/\n+$/, '').endsWith('(');
+/** True when `command` runs in the shell `shell` runs in, or in a subshell started inside it. */
+function runsInside(command, shell) {
+    return shell.subshells.every((id, at) => command.subshells[at] === id);
 }
 /** True when two commands run in the same bash shell: the same chain of subshells. */
 function sameShell(a, b) {
