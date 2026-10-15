@@ -6,6 +6,31 @@ export function parseShell(command, dialect) {
 }
 /** A bash variable reference with nothing else in it: `$NAME` or `${NAME}`. */
 const PLAIN_VARIABLE = /^\$(?:([A-Za-z_]\w*)|\{([A-Za-z_]\w*)\})$/;
+/**
+ * The head of a bash `${...}`: a `#` (length) or `!` (indirection) prefix, the parameter, a name with an
+ * optional `[@]` or `[*]`, and the operator after it, or `[` when another subscript follows.
+ */
+const BRACED_HEAD = /^\$\{([#!]?)([A-Za-z_]\w*(?:\[[@*]\])?|\d+|[@*#?$!-])?(:[-=+?]?|[-=+?]|##?|%%?|\/[/#%]?|\^\^?|,,?|@[A-Za-z]?|\[|\})?/;
+/** The `${NAME@X}` transforms that never expand the value again: quoting, escapes, attributes and case. */
+const PLAIN_TRANSFORM = /^@[QEAaUuLKk]$/;
+/**
+ * Whether a bash `${...}` can assign a variable as it expands: `=` and `:=` assign, a substring offset and an
+ * array subscript are arithmetic, and indirection and `@P` expand a value the line does not show. The
+ * expansions in its word count on their own, as they are read.
+ */
+function bracedMayAssign(written) {
+    const head = BRACED_HEAD.exec(written);
+    const prefix = head?.[1];
+    const parameter = head?.[2];
+    const operator = head?.[3];
+    if (parameter === undefined || operator === undefined || prefix === '!') {
+        return true;
+    }
+    if (prefix === '#') {
+        return operator !== '}';
+    }
+    return ['=', ':=', ':', '['].includes(operator) || (operator.startsWith('@') && !PLAIN_TRANSFORM.test(operator));
+}
 /** The word being read: its text so far, whether anything dynamic went in, its bash parts and brace-list hints. */
 class WordBuilder {
     text = '';
@@ -114,6 +139,8 @@ class Scanner {
     heredocs = [];
     unreadBodies = [];
     bindingsUnclear = false;
+    /** How many bash `${...}`, `$((...))` and `$[...]` the reader is inside, bounded like substitutions. */
+    expansions = 0;
     subshells;
     ids;
     source;
@@ -651,23 +678,26 @@ class Scanner {
         const next = this.at(1);
         if (next === '(' && this.dialect === 'bash' && this.at(2) === '(') {
             this.index += 3;
-            this.skipNested('(', ')', 2);
+            this.readArithmetic('(', ')', 2, quoted);
             this.bindingsUnclear = true;
         }
         else if (next === '[' && this.dialect === 'bash') {
             this.index += 2;
-            this.skipNested('[', ']', 1);
+            this.readArithmetic('[', ']', 1, quoted);
             this.bindingsUnclear = true;
         }
         else if (next === '(') {
             this.index += 2;
             this.readSubstitution();
         }
+        else if (next === '{' && this.dialect === 'bash') {
+            this.readBraced(quoted);
+            this.bindingsUnclear ||= bracedMayAssign(this.source.slice(start, this.index));
+        }
         else if (next === '{') {
             const close = this.source.indexOf('}', this.index + 2);
             this.complete &&= close !== -1;
             this.index = close === -1 ? this.source.length : close + 1;
-            this.bindingsUnclear ||= this.dialect === 'bash' && !PLAIN_VARIABLE.test(this.source.slice(start, this.index));
         }
         else if (this.dialect === 'bash' && /[A-Za-z_]/.test(next)) {
             this.index += 1;
@@ -691,6 +721,50 @@ class Scanner {
         }
         word.addDollar(this.source.slice(start, this.index), quoted);
     }
+    /**
+     * bash, at `${`: reads through the first `}` that no quote, escape or substitution holds, and the commands of
+     * a substitution inside, as in `${B:-$(git branch --show-current)}`. Inside double quotes or an expanding body
+     * (`quoted`) single quotes still hold a `}` but are kept as text, and expansions inside them may run, so a
+     * single-quoted piece there that holds anything but plain text is not read with confidence.
+     */
+    readBraced(quoted) {
+        if (!this.enterExpansion()) {
+            return;
+        }
+        const inner = new WordBuilder(false);
+        this.index += 2;
+        while (!this.done && this.at() !== '}') {
+            const char = this.at();
+            if (!quoted) {
+                if (!this.readBashQuote(inner)) {
+                    this.index += 1;
+                }
+            }
+            else if (char === "'") {
+                const close = this.source.indexOf("'", this.index + 1);
+                this.complete &&= close !== -1 && !/[}"$`\\]/.test(this.source.slice(this.index + 1, close));
+                this.index = close === -1 ? this.source.length : close + 1;
+            }
+            else if (char === '"') {
+                this.readDoubleQuoted(inner);
+            }
+            else if (char === '\\') {
+                this.index += 2;
+            }
+            else if (char === '$') {
+                this.readDollar(inner, true);
+            }
+            else if (char === '`') {
+                this.readBackticks(inner);
+            }
+            else {
+                this.index += 1;
+            }
+        }
+        this.complete &&= !this.done;
+        this.index = Math.min(this.index + 1, this.source.length);
+        this.expansions -= 1;
+    }
     /** Inside `$(`, `@(` or `<(`: reads the commands through the closing `)`; in bash they run in a subshell. */
     readSubstitution() {
         if (this.nesting >= MAX_NESTING) {
@@ -708,15 +782,49 @@ class Scanner {
         }
         this.nesting -= 1;
     }
-    /** Skips to the `close` that brings `depth` open brackets to zero, as in `$((1 + (2)))` or `$[a[1]]`. */
-    skipNested(open, close, depth) {
+    /**
+     * Reads to the `close` that brings `depth` open brackets to zero, as in `$((1 + (2)))` or `$[a[1]]`, and the
+     * commands of the substitutions inside, which run before the sum. A single quote there is an error bash may
+     * read past, so a line with one is not read with confidence.
+     */
+    readArithmetic(open, close, depth, quoted) {
+        if (!this.enterExpansion()) {
+            return;
+        }
+        const inner = new WordBuilder(false);
         let left = depth;
         while (!this.done && left > 0) {
             const char = this.at();
-            left += char === open ? 1 : char === close ? -1 : 0;
-            this.index += 1;
+            if (char === '$') {
+                this.readDollar(inner, quoted);
+            }
+            else if (char === '`') {
+                this.readBackticks(inner);
+            }
+            else if (char === '"') {
+                this.readDoubleQuoted(inner);
+            }
+            else if (char === '\\') {
+                this.index += 2;
+            }
+            else {
+                this.complete &&= char !== "'";
+                left += char === open ? 1 : char === close ? -1 : 0;
+                this.index += 1;
+            }
         }
         this.complete &&= left === 0;
+        this.expansions -= 1;
+    }
+    /** Counts one more bash expansion the reader is inside; false, with the line unreadable, when they nest too deep. */
+    enterExpansion() {
+        if (this.expansions >= MAX_NESTING) {
+            this.complete = false;
+            this.index = this.source.length;
+            return false;
+        }
+        this.expansions += 1;
+        return true;
     }
     /** bash backticks: the commands inside are read as their own line, in a subshell; the word keeps them as written. */
     readBackticks(word) {
