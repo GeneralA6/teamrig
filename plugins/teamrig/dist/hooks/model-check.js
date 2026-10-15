@@ -1,7 +1,15 @@
 import { describeLaunch } from "../config/launch.js";
 import { isEffortLevel } from "../config/types.js";
-/** Where Claude Code gives a hook the effort level; it gives the model in the hook's input. */
-export const EFFORT_ENV = 'CLAUDE_EFFORT';
+import { recordField, stringField } from "../core/guards.js";
+/**
+ * The effort level a hook payload carries as `effort.level`. Claude Code 2.1.300 gives it to the Stop
+ * and PreToolUse hooks, not to SessionStart; `$CLAUDE_EFFORT` is no substitute there, since a session
+ * started from another session's shell can inherit that session's value.
+ */
+export function payloadEffortOf(payload) {
+    const effort = recordField(payload, 'effort');
+    return effort === undefined ? undefined : stringField(effort, 'level');
+}
 const FAMILIES = ['fable', 'opus', 'sonnet', 'haiku'];
 /** Lowercase, without a `[1m]` window suffix: the window does not change which model runs. */
 function bare(model) {

@@ -5,9 +5,11 @@ import { ENV, KIT_NAME } from "../../core/home.js";
 import { resolveTeam } from "../../core/team.js";
 import { reminderFor, sessionIdOf } from "../../inbox/inbox.js";
 import { indexMarks } from "../../inbox/marks.js";
-import { EFFORT_ENV, modelCheckLine } from "../../hooks/model-check.js";
+import { modelCheckLine, payloadEffortOf } from "../../hooks/model-check.js";
+import { ModelNoticeStore } from "../../hooks/model-notices.js";
 import { commitsOf, protectedBranchesOf, pushGuardOutput } from "../../hooks/push-guard.js";
 import { sessionStartContext, sessionStartOutput } from "../../hooks/session-start.js";
+import { stopModelNotices } from "../../hooks/stop-model.js";
 import { stopOutput } from "../../hooks/stop.js";
 import { adoptTitle, promptNote, sessionStartNote } from "../../names/detect.js";
 import { JsonlRenameLog } from "../../names/log.js";
@@ -176,23 +178,24 @@ async function teamPartsOf(runtime, kit, config, payload) {
         renames,
         titleNote,
         refreshNote,
-        modelNote: modelNoteOf(runtime, config, roster, session, payload),
+        modelNote: modelNoteOf(config, roster, session, payload),
         session,
         sessionInEnv: fromEnv !== undefined,
         tree: tree.placeOf(kit.paths.team),
     };
 }
 /**
- * The line for a session of the team that runs on another model or effort than its `launch` entry
- * (for the lead, unset keys: `best` at `xhigh`): the model from the payload, the effort from
- * `$CLAUDE_EFFORT`. Claude Code leaves either out at some starts, and then that half is not checked.
+ * The line for a session of the team that runs on another model than its `launch` entry (for the
+ * lead, unset: `opus`), from the payload's model; Claude Code leaves it out at some starts, and then
+ * nothing is checked. The effort is checked at the first Stop: SessionStart gets no effort level, and
+ * `$CLAUDE_EFFORT` here can be the value of the session whose shell started this one.
  */
-function modelNoteOf(runtime, config, roster, session, payload) {
+function modelNoteOf(config, roster, session, payload) {
     const found = session === undefined ? undefined : roster.lookup(session);
     if (found === undefined || !found.ok) {
         return undefined;
     }
-    const running = { model: isRecord(payload) ? stringField(payload, 'model') : undefined, effort: runtime.env[EFFORT_ENV] };
+    const running = { model: isRecord(payload) ? stringField(payload, 'model') : undefined, effort: undefined };
     return modelCheckLine(roster.nameOf(found.id) ?? found.id, launchOf(config, found.id), running);
 }
 /**
@@ -234,27 +237,26 @@ async function boundaryFactsOf(runtime, roster, store, id, payload) {
         handoverHash: handoverHashOf(await store.handover(id)),
     };
 }
-/**
- * What the Stop hook prints for this turn's end; '' outside a team, without a session, with refresh
- * off, or for input that is not a hook payload (which would judge a boundary without its transcript).
- */
-async function stopOutputOf(runtime, payload) {
-    if (!isRecord(payload)) {
-        return '';
-    }
+/** The Stop payload's team session; undefined outside a team, without a loaded config or without a session. */
+async function stopScopeOf(runtime, payload) {
     const found = await hookTeam(payload, runtime);
     if (found.kind !== 'team') {
-        return '';
+        return undefined;
     }
     const kit = await openKit(runtime, found.team);
-    if (kit.load.status !== 'loaded' || !kit.load.config.refresh.enabled) {
-        return '';
+    if (kit.load.status !== 'loaded') {
+        return undefined;
     }
     const { config } = kit.load;
     const roster = await rosterOf(runtime, kit, config);
     const id = await teamSessionOf(runtime, kit, roster, sessionIdOf(payload));
-    if (id === undefined) {
-        return '';
+    return id === undefined ? undefined : { kit, config, roster, id };
+}
+/** The refresh decision for this turn's end; none with refresh off. */
+async function refreshDecisionOf(runtime, scope, payload) {
+    const { kit, config, roster, id } = scope;
+    if (!config.refresh.enabled) {
+        return { kind: 'none' };
     }
     const store = new RefreshStore(runtime.files, kit.paths);
     const state = await store.state(id);
@@ -279,18 +281,50 @@ async function stopOutputOf(runtime, payload) {
         case 'measure':
             break;
     }
-    return stopOutput(decision);
+    return decision;
+}
+/** The model notices for the user at this turn's end (`stopModelNotices`); none without a Claude Code session id. */
+async function modelNoticesOf(runtime, scope, payload) {
+    const claude = sessionIdOf(payload);
+    if (claude === null) {
+        return [];
+    }
+    const { kit, config, roster, id } = scope;
+    return stopModelNotices(runtime.files, new ModelNoticeStore(runtime.files, kit.paths.modelNotices), {
+        id,
+        name: roster.nameOf(id) ?? id,
+        launch: launchOf(config, id),
+        claude,
+        effort: payloadEffortOf(payload),
+        transcript: stringField(payload, 'transcript_path'),
+    });
+}
+/**
+ * What the Stop hook prints for this turn's end; '' outside a team or without a session. The refresh
+ * and the model notices fail apart: an error in either leaves only the other.
+ */
+async function stopOutputOf(runtime, payload) {
+    const scope = await stopScopeOf(runtime, payload);
+    if (scope === undefined) {
+        return '';
+    }
+    const decision = await refreshDecisionOf(runtime, scope, payload).catch(() => ({ kind: 'none' }));
+    const notices = await modelNoticesOf(runtime, scope, payload).catch(() => []);
+    return stopOutput(decision, notices);
 }
 /**
  * Stop, at the end of every turn: after the session finished a task (`set done`), asks for its
  * handover once when its context reached the team's threshold or the lead asked, then tells the user
- * once that it waits for /clear. A turn with nothing to judge reads only small files and prints
- * nothing. It never blocks on an error: a refresh is a convenience, and the next stop tries again.
+ * once that it waits for /clear. It also tells the user, once each, when the session runs at another
+ * effort than its `launch` entry or Claude Code switched its model after a safeguard stop. A turn with
+ * nothing to say reads only small files and the transcript's tail, and prints nothing. It never blocks
+ * on an error, and ignores input that is not a hook payload (which would judge a boundary without its
+ * transcript): a refresh is a convenience, and the next stop tries again.
  */
 export async function stop(args, runtime) {
     noPositionals(args);
     const payload = parseJson(await runtime.readStdin());
-    const output = await stopOutputOf(runtime, payload).catch(() => '');
+    const output = isRecord(payload) ? await stopOutputOf(runtime, payload).catch(() => '') : '';
     if (output !== '') {
         runtime.out.stdout(output);
     }
