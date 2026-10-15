@@ -13,10 +13,10 @@
 <circle cx="235.3" cy="19" r="4" fill="#8b8b8b"/>
 <text x="247" y="23"><tspan fill="#8b8b8b">data</tspan></text>
 <text x="14" y="50"><tspan fill="#8b8b8b">lead: a Claude Code session; Claude runs these commands</tspan></text>
-<text x="14" y="72"><tspan fill="#569cd6">$ </tspan><tspan fill="#ffffff">teamrig add --title &quot;Saved-card API&quot; --tier 1 --owner api</tspan></text>
-<text x="14" y="90"><tspan fill="#89d185">ADDED</tspan><tspan fill="#d4d4d4"> </tspan><tspan fill="#4ec9b0">T1</tspan><tspan fill="#d4d4d4"> open, </tspan><tspan fill="#c586c0">tier 1</tspan><tspan fill="#d4d4d4">, owner api, from lead | Saved-card API</tspan></text>
-<text x="14" y="116"><tspan fill="#569cd6">$ </tspan><tspan fill="#ffffff">teamrig add --title &quot;Card checkout page&quot; --tier 1 --owner web</tspan></text>
-<text x="14" y="134"><tspan fill="#89d185">ADDED</tspan><tspan fill="#d4d4d4"> </tspan><tspan fill="#4ec9b0">T2</tspan><tspan fill="#d4d4d4"> open, </tspan><tspan fill="#c586c0">tier 1</tspan><tspan fill="#d4d4d4">, owner web, from lead | Card checkout page</tspan></text>
+<text x="14" y="72"><tspan fill="#569cd6">$ </tspan><tspan fill="#ffffff">teamrig add --title &quot;Saved-card API&quot; --priority p1 --owner api</tspan></text>
+<text x="14" y="90"><tspan fill="#89d185">ADDED</tspan><tspan fill="#d4d4d4"> </tspan><tspan fill="#4ec9b0">T1</tspan><tspan fill="#d4d4d4"> open, </tspan><tspan fill="#c586c0">p1</tspan><tspan fill="#d4d4d4">, owner api, from lead | Saved-card API</tspan></text>
+<text x="14" y="116"><tspan fill="#569cd6">$ </tspan><tspan fill="#ffffff">teamrig add --title &quot;Card checkout page&quot; --priority p1 --owner web</tspan></text>
+<text x="14" y="134"><tspan fill="#89d185">ADDED</tspan><tspan fill="#d4d4d4"> </tspan><tspan fill="#4ec9b0">T2</tspan><tspan fill="#d4d4d4"> open, </tspan><tspan fill="#c586c0">p1</tspan><tspan fill="#d4d4d4">, owner web, from lead | Card checkout page</tspan></text>
 <text x="14" y="160"><tspan fill="#569cd6">$ </tspan><tspan fill="#ffffff">teamrig inbox add --to web --text &quot;T2 is yours; it uses T1's API&quot;</tspan></text>
 <text x="14" y="178"><tspan fill="#89d185">POSTED</tspan><tspan fill="#d4d4d4"> to web; web is reminded at its next prompt</tspan></text>
 <line x1="0" y1="203" x2="600" y2="203" stroke="#3c3c3c"/>
@@ -25,5 +25,5 @@
 <text x="14" y="261"><tspan fill="#8b8b8b">- 2026-10-12 09:06</tspan><tspan fill="#d4d4d4"> lead: </tspan><tspan fill="#4ec9b0">T2</tspan><tspan fill="#d4d4d4"> is yours; it uses </tspan><tspan fill="#4ec9b0">T1</tspan><tspan fill="#d4d4d4">'s API</tspan></text>
 <text x="14" y="279"><tspan fill="#89d185">READ</tspan><tspan fill="#d4d4d4"> web: 1 new line, shown above; new ones are shown at your next prompt</tspan></text>
 <text x="14" y="305"><tspan fill="#569cd6">$ </tspan><tspan fill="#ffffff">teamrig set T2 --status in-progress</tspan></text>
-<text x="14" y="323"><tspan fill="#89d185">SET</tspan><tspan fill="#d4d4d4"> </tspan><tspan fill="#4ec9b0">T2</tspan><tspan fill="#d4d4d4"> </tspan><tspan fill="#dcdcaa">in-progress</tspan><tspan fill="#d4d4d4">, </tspan><tspan fill="#c586c0">tier 1</tspan><tspan fill="#d4d4d4">, owner web, from lead | Card checkout page</tspan></text>
+<text x="14" y="323"><tspan fill="#89d185">SET</tspan><tspan fill="#d4d4d4"> </tspan><tspan fill="#4ec9b0">T2</tspan><tspan fill="#d4d4d4"> </tspan><tspan fill="#dcdcaa">in-progress</tspan><tspan fill="#d4d4d4">, </tspan><tspan fill="#c586c0">p1</tspan><tspan fill="#d4d4d4">, owner web, from lead | Card checkout page</tspan></text>
 </svg>
