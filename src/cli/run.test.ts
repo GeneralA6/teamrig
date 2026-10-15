@@ -5,6 +5,7 @@ import { CONFIG_MIGRATIONS, type ConfigFormat } from '../config/migrate.ts';
 import { CONFIG_VERSION } from '../config/types.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import type { JsonRecord } from '../core/guards.ts';
+import { ENV } from '../core/home.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import { APP, bash, CLAUDE_SESSION, CliHarness, CONFIG_PATH, contextOf, decisionOf, EVENTS_PATH, KIT, POINTER, SKILLS_DIR, TEAM, type CliResult } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
@@ -63,6 +64,14 @@ describe('runCli: help, version and usage errors', () => {
     assert.equal(help.code, EXIT.ok);
     assert.match(help.stdout.join('\n'), /^teamrig <command>/);
     assert.equal((await kit.run([])).code, EXIT.usage);
+  });
+
+  it('writes every environment variable it names as $NAME, as the rest of teamrig does', async () => {
+    const help = (await new CliHarness().run(['--help'])).stdout.join('\n');
+    for (const name of [ENV.home, ENV.team, ENV.session, 'CLAUDE_PROJECT_DIR']) assert.ok(help.includes(`$${name}`), `the help names $${name}`);
+    for (const name of [...Object.values(ENV), 'CLAUDE_PROJECT_DIR']) {
+      assert.doesNotMatch(help, new RegExp(`(^|[^$])\\b${name}\\b`), `every ${name} in the help has its $`);
+    }
   });
 
   it('prints the version', async () => {
