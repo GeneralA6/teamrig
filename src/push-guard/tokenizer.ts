@@ -79,6 +79,13 @@ export interface ShellParse {
   readonly complete: boolean;
   /** bash heredoc bodies no command reads on stdin, such as the first of `cat <<A <<B` or one on a line with no command. */
   readonly unreadBodies: readonly ShellWord[];
+  /**
+   * bash only: true when the commands may not show the variables the line sets as it runs. Arithmetic
+   * (`((...))`, `$((...))`, `$[...]`) and a `${...}` with an operator can assign while they expand, and a
+   * heredoc left as commands (its delimiter never comes, or is only known when it runs) may hold lines that
+   * never run. Quoted text never counts.
+   */
+  readonly bindingsUnclear: boolean;
 }
 
 /** How deep substitutions may nest before the parse stops and calls itself incomplete. */
@@ -210,6 +217,7 @@ class Scanner {
   /** bash heredocs opened since the last newline, in order. */
   private readonly heredocs: OpenHeredoc[] = [];
   private readonly unreadBodies: ShellWord[] = [];
+  private bindingsUnclear = false;
   private readonly subshells: number[];
   private readonly ids: { next: number };
   private readonly source: string;
@@ -228,9 +236,9 @@ class Scanner {
   }
 
   /** Reads the whole source; its commands stay open to the separators an enclosing scanner adds after them. */
-  private scan(): { readonly commands: ScannedCommand[]; readonly complete: boolean; readonly unreadBodies: ShellWord[] } {
+  private scan(): ShellParse & { readonly commands: ScannedCommand[] } {
     this.readList(false);
-    return { commands: this.commands, complete: this.complete, unreadBodies: this.unreadBodies };
+    return { commands: this.commands, complete: this.complete, unreadBodies: this.unreadBodies, bindingsUnclear: this.bindingsUnclear };
   }
 
   /** Adds separator characters to the command read last, if any. */
@@ -321,8 +329,9 @@ class Scanner {
       if (char === '(') {
         endCommand();
         this.addTerminator(char);
-        if (this.dialect === 'bash' && this.at(1) === '(' && arithmetic === undefined) {
-          arithmetic = depth;
+        if (this.dialect === 'bash' && this.at(1) === '(') {
+          this.bindingsUnclear = true;
+          arithmetic ??= depth;
         }
         depth += 1;
         if (this.dialect === 'bash') {
@@ -409,9 +418,14 @@ class Scanner {
     }
     for (const redirection of redirections) {
       const target = redirection.target;
-      if (heredocsOpen && /^\d*<<-?$/.test(redirection.operator) && target !== undefined && !target.dynamic && target.text !== '') {
+      if (!heredocsOpen || !/^\d*<<-?$/.test(redirection.operator)) {
+        continue;
+      }
+      if (target !== undefined && !target.dynamic && target.text !== '') {
         const quoted = target.parts?.some((part) => part.kind === 'text' && part.quoted) === true;
         this.heredocs.push({ delimiter: target.text, tabbed: redirection.operator.endsWith('-'), expands: !quoted, reader: redirection === input ? command : undefined });
+      } else {
+        this.bindingsUnclear = true;
       }
     }
   }
@@ -426,6 +440,7 @@ class Scanner {
     for (const heredoc of this.heredocs.splice(0)) {
       const close = this.delimiterLine(heredoc);
       if (close === undefined) {
+        this.bindingsUnclear = true;
         return;
       }
       const end = Math.max(this.index, close.start - 1);
@@ -720,15 +735,20 @@ class Scanner {
   }
 
   /**
-   * At `$`: a substitution `$(...)` (its commands are read too), arithmetic `$((...))`, `${...}` or a variable,
-   * kept as written and dynamic. A `$` that starts none of them is literal.
+   * At `$`: a substitution `$(...)` (its commands are read too), arithmetic `$((...))` or bash `$[...]`, `${...}`
+   * or a variable, kept as written and dynamic. A `$` that starts none of them is literal.
    */
   private readDollar(word: WordBuilder): void {
     const start = this.index;
     const next = this.at(1);
     if (next === '(' && this.dialect === 'bash' && this.at(2) === '(') {
       this.index += 3;
-      this.skipParens(2);
+      this.skipNested('(', ')', 2);
+      this.bindingsUnclear = true;
+    } else if (next === '[' && this.dialect === 'bash') {
+      this.index += 2;
+      this.skipNested('[', ']', 1);
+      this.bindingsUnclear = true;
     } else if (next === '(') {
       this.index += 2;
       this.readSubstitution();
@@ -736,6 +756,7 @@ class Scanner {
       const close = this.source.indexOf('}', this.index + 2);
       this.complete &&= close !== -1;
       this.index = close === -1 ? this.source.length : close + 1;
+      this.bindingsUnclear ||= this.dialect === 'bash' && !PLAIN_VARIABLE.test(this.source.slice(start, this.index));
     } else if (this.dialect === 'bash' && /[A-Za-z_]/.test(next)) {
       this.index += 1;
       while (/\w/.test(this.at())) {
@@ -774,15 +795,15 @@ class Scanner {
     this.nesting -= 1;
   }
 
-  /** Skips to the `)` that brings `depth` open parentheses to zero, as in `$((1 + (2)))`. */
-  private skipParens(depth: number): void {
-    let open = depth;
-    while (!this.done && open > 0) {
+  /** Skips to the `close` that brings `depth` open brackets to zero, as in `$((1 + (2)))` or `$[a[1]]`. */
+  private skipNested(open: string, close: string, depth: number): void {
+    let left = depth;
+    while (!this.done && left > 0) {
       const char = this.at();
-      open += char === '(' ? 1 : char === ')' ? -1 : 0;
+      left += char === open ? 1 : char === close ? -1 : 0;
       this.index += 1;
     }
-    this.complete &&= open === 0;
+    this.complete &&= left === 0;
   }
 
   /** bash backticks: the commands inside are read as their own line, in a subshell; the word keeps them as written. */
@@ -811,6 +832,7 @@ class Scanner {
       this.commands.push(...nested.commands);
       this.unreadBodies.push(...nested.unreadBodies);
       this.complete &&= nested.complete;
+      this.bindingsUnclear ||= nested.bindingsUnclear;
     }
     word.add(this.source.slice(start, this.index), 'dynamic');
   }

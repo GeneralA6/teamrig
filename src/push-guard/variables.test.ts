@@ -5,7 +5,7 @@ import { resolveLiteralVariables } from './variables.ts';
 
 /** The words of the line's last command that mentions a push, after resolving; a word left dynamic is marked with a leading `~`. */
 function pushCommand(line: string): string {
-  const commands = resolveLiteralVariables(parseShell(line, 'bash').commands, line);
+  const commands = resolveLiteralVariables(parseShell(line, 'bash'));
   const push = commands.findLast((command) => command.words.some((word) => word.text.includes('push')));
   return (push?.words ?? []).map((word) => (word.dynamic ? `~${word.text}` : word.text)).join(' ');
 }
@@ -60,6 +60,18 @@ describe('resolveLiteralVariables: what resolves', () => {
       'B=feat; echo "$(date "$(echo +%s)")" <(true) && git push origin $B',
       'git fetch && [ "$(git rev-parse HEAD)" = x ] && B=feat && git push origin $B',
       'echo $(date); B=feat; git push origin $B',
+    ]) {
+      assert.equal(pushCommand(line), 'git push origin feat', line);
+    }
+  });
+
+  it('reads heredoc bodies as input and quoted text as text', () => {
+    for (const line of [
+      'B=feat; cat <<EOF\nx\nEOF\ngit push origin $B',
+      'bash <<EOF\nB=main\nEOF\nB=feat; git push origin $B',
+      "cat <<'EOF'\n$((B = 1)) ${B:=main}\nEOF\nB=feat; git push origin $B",
+      "B=feat; echo '((x<<2))' \"<<EOF\" $'${B:=main} $[1]'; git push origin $B",
+      'B=feat; grep x <<< "$B"; git push origin $B',
     ]) {
       assert.equal(pushCommand(line), 'git push origin feat', line);
     }
@@ -126,8 +138,10 @@ describe('resolveLiteralVariables: what stays unresolved', () => {
       'B=feat; $SET; git push origin $B',
       'B=feat; a[0]=x; git push origin $B',
       'B=feat; IFS=-; git push origin $B',
-      'B=feat; cat <<EOF\nx\nEOF\ngit push origin $B',
-      'bash <<EOF\nB=main\nEOF\nB=feat; git push origin $B',
+      'B=feat; cat <<EOF\n${B:=main}\nEOF\ngit push origin $B',
+      'B=feat; cat <<< "$((B = 1))"; git push origin $B',
+      'cat <<$D\nB=feat\n$D\ngit push origin $B',
+      'cat <<EOF\nB=feat\ngit push origin $B',
       'B=feat; wait -p B; git push origin $B',
       'B=feat; trap "B=main" DEBUG; git push origin $B',
     ]) {
