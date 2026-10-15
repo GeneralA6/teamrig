@@ -24,10 +24,8 @@ shows your session's tasks beside the conversation, and makes no model calls, so
 
 ### Requirements
 
-Claude Code and Node.js 22.18 or later. teamrig checks for anything else when you start it, and tells you in plain
-words what is missing and how to fix it.
-
-*Coming: the check when you start teamrig.*
+Claude Code 2.1.139 or later and Node.js 22.18 or later. teamrig checks for anything else when you set up a team and
+when a session starts, and tells you in plain words what is missing and how to fix it.
 
 ## Your day: two hours, not twelve
 

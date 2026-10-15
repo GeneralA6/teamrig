@@ -374,7 +374,8 @@ Next: teamrig add --session lead --owner <id> --priority p<n> --title "<first ta
 ```
 
 Run again with the same team and sessions, it changes nothing. It refuses a team id another team already uses,
-and a project folder already tied to another team.
+and a project folder already tied to another team. When git is not on the PATH or Claude Code or Node.js is too
+old, it first prints one `WARN` line each ([the check](requirements.md#the-requirements-check)).
 
 ### teamrig team tree
 
@@ -564,7 +565,8 @@ Output:
 DOCTOR clean, team shop
 ```
 
-Otherwise `DOCTOR N finding(s)` and one `WARN <kind> <detail and fix>` line each. Kinds: `name-gone`,
+Otherwise `DOCTOR N finding(s)` and one `WARN <kind> <detail and fix>` line each. Kinds: `requirement` (git,
+Claude Code or Node.js, [the check](requirements.md#the-requirements-check)), `name-gone`,
 `name-shared`, `name-config`, `rename-log`, `inbox-orphan`, `inbox-unread`, `rules-long`, `tree-id`,
 `tree-parent`, `tree-loop`, `tree-depth`, `tree-children`, `name-two-teams`.
 
