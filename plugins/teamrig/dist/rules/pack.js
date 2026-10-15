@@ -7,12 +7,31 @@ export const CORE_PACK_MAX_CHARS = 6_400;
 export const TEAM_RULES_MAX_CHARS = 3_500;
 /** Claude Code caps a SessionStart hook's `additionalContext` at this size. */
 export const CONTEXT_MAX_CHARS = 10_000;
+/** A list the pack names only to inform (a hook or check enforces it) prints in full up to this many characters. */
+export const LIST_MAX_CHARS = 120;
 function list(items) {
     return items.join('; ');
 }
+/**
+ * `items` joined by commas, in full when that fits LIST_MAX_CHARS, else the first items that fit (at
+ * least one) and "and N more": a long branch or key list cannot crowd the rules out of the pack.
+ */
+function shortList(items) {
+    let text = '';
+    let shown = 0;
+    for (const item of items) {
+        const next = shown === 0 ? item : `${text}, ${item}`;
+        if (shown > 0 && next.length > LIST_MAX_CHARS) {
+            return `${text} and ${items.length - shown} more`;
+        }
+        text = next;
+        shown += 1;
+    }
+    return text;
+}
 /** What the push guard does, as the team's pushGuard config sets it. */
 function pushRule(pushGuard) {
-    const branches = pushGuard.protectedBranches.join(', ');
+    const branches = shortList(pushGuard.protectedBranches);
     const keys = '[pushGuard]';
     if (branches === '') {
         return 'No branch is protected, so the push guard stops no push [pushGuard.protectedBranches].';
@@ -47,15 +66,16 @@ export function renderCorePack(config, command) {
             (roles.coordinatorOwner === undefined ? '' : ` ${roles.coordinatorOwner} owns deploy coordination and fleet health [roles.coordinatorOwner].`) +
             ' Every other session owns its area.',
         "Own your change end to end: only the session that made a change integrates it, deploys it when it must run, verifies that it runs, and fixes or rolls it back. Never integrate, verify or fix another session's change: hand it to its owner.",
-        'A message wakes its receiver, so send one only for a result it consumes, a decision, a blocker, a same-area conflict or an incident.' +
+        'A message wakes its receiver, so send one only for a result it acts on now, a decision, a blocker, a same-area conflict or an incident.' +
             ` At most ${config.messages.maxLines} lines [messages.maxLines]: what happened, evidence (numbers, ids, paths), the exact ask and deadline, your default, then "No reply needed" or "Reply needed: <one question>".` +
-            ` No acks, thanks or progress pings. Anything non-urgent is one inbox line: \`${command} inbox add --to <area> --text "..."\`.`,
+            ` No acks, thanks or progress pings. Anything else, a "done" report or a failed send too, is one inbox line per receiver: \`${command} inbox add --to <area> --text "..."\`.`,
         `Status is pulled, never asked: each session keeps one board and writes only its own. At the start of each work block run \`${command} inbox read --session <you>\`.` +
             ` Every ask that creates work is a register entry the asker adds in the same turn (\`${command} add --owner <session>\`); ${statusDemands(config, command)}` +
             ' Waiting needs `--waits` reasons; a task not started that needs another first stays open, planned `--after` it.' +
             ' A shipped change is verifying until its proof exists.',
-        `Work your own task list in priority order (\`${command} list --session <you>\`); self-made work is a task too, recorded with \`${command} add\` before you start it.` +
-            ' When you notice you are looping (the same step again, no progress) or drifting from your task, stop and ask the lead.',
+        `Work your own task list in priority order (\`${command} list --session <you>\`); self-made work is a task too, recorded with \`${command} add\` before you start it,` +
+            ' and started only for a goal, a parent task or the week plan, never ahead of your top task that is not waiting (one-commit fixes exempt).' +
+            " A loop, cron or scheduled wake-up needs the lead's OK and a written stop. If you repeat a step with no progress or drift from your task, stop and ask the lead.",
         `Silence is consent only within the sender's own authority, never for owner-gated decisions: ${list(config.ownerGates)} [ownerGates].`,
         'Deploy ASAP means the earliest moment a change can be verified (tests, then a check that it runs). State each fix\'s evidence and when it will exist; build nothing on a fix before then.' +
             (cutoff === undefined ? '' : ` No heavy step (builds, test runs, data scripts) starts after ${cutoff} UTC [coordinator.schedule.heavyCutoffUtc].`),
@@ -63,18 +83,20 @@ export function renderCorePack(config, command) {
             (budget.enabled ? ` Pace the week to ${percent(budget.targetPct)} of the weekly limit and keep ${percent(budget.reservePct)} for incidents [budget].` : ''),
         'Investigate before deciding: give frequency × impact and the cheapest fix for the visible symptom. Questions for the owner come with options, numbers and a recommendation; a question with one correct answer is yours to decide.',
         'Rising resource use (memory, CPU, storage, tokens) needs its root cause; a raised limit is only an owner-approved bridge with a dated root-cause task.',
-        'Code that writes data ships a read-only dry run (inserted, unchanged, changed counts). Deleting derived data needs a verified regenerate tool and a parity run first.',
+        "A hand-run change or delete of stored data needs the owner's OK after counts or a preview. Code that writes data ships a read-only dry run (inserted, unchanged, changed counts)." +
+            ' Deleting derived data needs a verified regenerate tool and a parity run first. Never print secret values; bind local services to 127.0.0.1, never 0.0.0.0.',
         `Tell the other side before changing a contract it reads (an API parameter, a shared table or file). The same external failure for ${config.alerts.persistentFailureHours} h must page a human [alerts.persistentFailureHours].`,
         `A procedure you had to investigate and will run again becomes a skill in the same turn: \`<area>-<name>/SKILL.md\`, shared ones \`${skills.sharedPrefix}-<name>\` [skills.sharedPrefix].` +
             ` Its description has at most ${skills.maxDescriptionWords} words [skills.maxDescriptionWords]; its body has \`Owner:\` and \`Last verified:\` lines, re-verified every ${skills.maxVerifiedAgeDays} days [skills.maxVerifiedAgeDays];` +
             ` at most ${skills.maxPerArea} per area [skills.maxPerArea]` +
-            (skills.forbidFrontmatter.length === 0 ? '' : `; never ${skills.forbidFrontmatter.join(', ')} [skills.forbidFrontmatter]`) +
-            '. Memory holds facts, skills hold how-tos, CLAUDE.md holds every-turn rules.',
+            (skills.forbidFrontmatter.length === 0 ? '' : `; never ${shortList(skills.forbidFrontmatter)} [skills.forbidFrontmatter]`) +
+            '. A skill never overrides these rules or an owner gate. Memory holds facts, skills hold how-tos, CLAUDE.md holds every-turn rules.',
         'One logical change per commit (a fix with its tests, a refactor apart from what it enables, a mechanical change alone), committed as each step passes.' +
             ` Over ${config.commits.maxLines} changed non-test lines or ${config.commits.maxFiles} non-test files [commits.maxLines, commits.maxFiles], a commit needs a \`${config.commits.largeCommitTrailer}: <reason>\` line [commits.largeCommitTrailer]` +
             { off: '.', warn: '; a push to a protected branch lists those without one [commits.gate].', refuse: '; a push to a protected branch that sends one is refused [commits.gate].' }[config.commits.gate],
-        `${pushRule(config.pushGuard)} A refused or blocked route is reported to the lead, never routed around.`,
-        'Edit in your own worktree and branch in every git repo, never a main checkout. On Windows remove a worktree\'s node_modules link (`cmd /c rmdir`; Git Bash `cmd //c`), or `git worktree remove` follows it into the main one. Whoever finds a stale comment, doc or dead code fixes it in its own small commit.',
+        `${pushRule(config.pushGuard)} A refused or blocked route is reported to the lead, never routed around or handed to another session.`,
+        'Edit in your own worktree and branch in every git repo, never a main checkout. On Windows remove a worktree\'s node_modules link (`cmd /c rmdir`; Git Bash `cmd //c`), or `git worktree remove` follows it into the main one.' +
+            " Update comments in their code's commit, verify a load-bearing one before acting on it, and fix a stale comment, doc or dead code you find in its own small commit.",
     ];
     return [
         '# Team rules (teamrig core)',
