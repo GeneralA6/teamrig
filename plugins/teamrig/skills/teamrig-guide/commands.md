@@ -28,7 +28,8 @@ Flags:
 - `--title "<one line>"`: required; at most 140 characters (`register.maxTitle`).
 - `--priority p<n>`: required; `p1` keep the lights on, `p2` correctness, `p3` scale, `p4` this week's owner
   decisions, `p5` if budget allows (the defaults).
-- `--owner <session>`: who does it; default you.
+- `--owner <session>`: who does it; default you. Another session gets an inbox line naming the task, and stderr
+  says so (`NOTE api has an inbox line: ...`).
 - `--source <session>|owner`: who asked; default you. `--source owner` marks an order from the human
   (`register.ownerSource`).
 - `--ref <where it was asked>`: a pointer to the ask, such as a file and line or an inbox date; at most 300
@@ -51,6 +52,7 @@ Output:
 
 ```text
 ADDED T1 open, p2, owner api, due 10-17, from lead, goals G1 | Build the signup endpoint
+NOTE api has an inbox line: T1 is yours (p2, due 2026-10-17): Build the signup endpoint
 ```
 
 A task with the same title (ignoring case and extra spaces) that is still open, in progress, verifying or waiting is refused:
@@ -137,7 +139,7 @@ Flags:
 
 - `--session <id|name>`: the caller.
 - `--title "<one line>"`: a new title.
-- `--owner <session>`: hand the task to another session.
+- `--owner <session>`: hand the task to another session, which gets an inbox line naming it.
 - `--priority p<n>`: a new priority.
 - `--ref <where>|none`: a new pointer, or `none` to clear it.
 - `--due <date>|none`: a new deadline, or `none` to clear it.

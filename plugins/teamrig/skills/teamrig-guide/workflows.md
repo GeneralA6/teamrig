@@ -32,14 +32,14 @@ When another session must do something, in one turn:
 
 ```sh
 teamrig add --session api --owner web --priority p2 --title "Show the signup errors from the api" --due 2026-10-17 --ref "docs/errors.md"
-teamrig inbox add --session api --to web --text "T5: signup error codes are ready in docs/errors.md; please show them on the form"
 ```
 
 1. Add the task with `--owner <their id>`. The register refuses a duplicate of an active task: then point at
    the existing id instead.
-2. Tell them. Not urgent: one inbox line naming the task id (shown at their next prompt). Urgent, or your work
-   is stuck on it now: a message to the name `teamrig who` prints, at most 10 lines, ending with "No reply needed"
-   or "Reply needed: <one question>".
+2. `add` tells them: it posts them an inbox line naming the task, shown at their next prompt, so work that is not
+   urgent needs nothing more. Context the title and `--ref` cannot carry goes in one more inbox line. Urgent, or
+   your work is stuck on it now: a message to the name `teamrig who` prints, at most 10 lines, ending with "No reply
+   needed" or "Reply needed: <one question>".
 3. If you started your task and cannot go on until they finish, set it waiting on theirs:
    `teamrig set T4 --session api --status waiting --waits task:T5 --note "the error codes on the form first"`.
    Not started yet? Leave it open and plan it after theirs: `teamrig update T4 --session api --after T5`.
