@@ -5,6 +5,7 @@ import { testConfig } from '../testing/config.ts';
 import {
   CONTEXT_MAX_CHARS,
   CORE_PACK_MAX_CHARS,
+  LIST_MAX_CHARS,
   renderCorePack,
   renderSessionContext,
   TEAM_RULES_MAX_CHARS,
@@ -77,6 +78,18 @@ describe('renderCorePack', () => {
       new RegExp(String.raw`^15\. Pushes to release go through unasked; force-pushing or deleting them is refused ${keys}\.${routed}$`, 'm'),
     );
     assert.match(pack({ protectedBranches: [], pushToProtected: 'allow' }), new RegExp(String.raw`^15\. No branch is protected, so the push guard stops no push \[pushGuard\.protectedBranches\]\.${routed}$`, 'm'));
+  });
+
+  it(`prints a branch or frontmatter list in full up to ${LIST_MAX_CHARS} characters, past it its first items and how many more`, () => {
+    const pushTo = (protectedBranches: readonly string[]) =>
+      renderCorePack(testConfig({ pushGuard: { protectedBranches: [...protectedBranches] } }), COMMAND);
+    const atLimit = ['x'.repeat(59), 'y'.repeat(59)];
+    assert.match(pushTo(atLimit), new RegExp(`Pushes to ${atLimit.join(', ')} ask the human`));
+    assert.match(pushTo(['x'.repeat(59), 'y'.repeat(60)]), new RegExp(`Pushes to ${'x'.repeat(59)} and 1 more ask the human`));
+    assert.match(pushTo(filled(CONFIG_LIMITS.protectedBranches, 'b')), new RegExp(`Pushes to ${'b'.repeat(64)} and 7 more ask`));
+    const keys = Array.from({ length: 8 }, (_, index) => `${'k'.repeat(30)}-${index}`);
+    const pack = renderCorePack(testConfig({ skills: { forbidFrontmatter: keys } }), COMMAND);
+    assert.match(pack, new RegExp(`; never ${keys.slice(0, 3).join(', ')} and 5 more \\[skills\\.forbidFrontmatter\\]`));
   });
 
   it('keeps every edit in a worktree, in every repo, and names the Git Bash form of the junction removal', () => {
