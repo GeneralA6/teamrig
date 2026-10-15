@@ -112,6 +112,12 @@ export interface LoopsConfig {
   readonly chainNudgeAt: number;
 }
 
+/** What `teamrig test` prints of a failed run. */
+export interface TestsConfig {
+  /** The most characters of failing tests it prints, all of them together; the rest stays in the log. */
+  readonly maxFailureChars: number;
+}
+
 export interface CommitsConfig {
   /** Changed non-test lines (added + deleted) a commit may carry without a reason line. */
   readonly maxLines: number;
@@ -324,6 +330,7 @@ export interface KitConfig {
   readonly coordinator: CoordinatorConfig;
   readonly budget: BudgetConfig;
   readonly loops: LoopsConfig;
+  readonly tests: TestsConfig;
   readonly alerts: AlertsConfig;
   readonly tabStatus: { readonly enabled: boolean };
   readonly refresh: RefreshConfig;

@@ -15,6 +15,7 @@ import {
   DEFAULT_REGISTER,
   DEFAULT_SESSION_SHARE,
   DEFAULT_SKILLS,
+  DEFAULT_TESTS,
 } from './defaults.ts';
 import { isEffort, isModel } from './launch.ts';
 import { CONFIG_LIMITS } from './limits.ts';
@@ -224,6 +225,9 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
     budget: parseBudget(read, read.section(raw, 'budget', ''), sessions),
     loops: {
       chainNudgeAt: read.integer(read.section(raw, 'loops', ''), 'chainNudgeAt', 'loops', DEFAULT_LOOPS.chainNudgeAt, CONFIG_LIMITS.chainNudgeAt),
+    },
+    tests: {
+      maxFailureChars: read.integer(read.section(raw, 'tests', ''), 'maxFailureChars', 'tests', DEFAULT_TESTS.maxFailureChars, CONFIG_LIMITS.maxFailureChars),
     },
     alerts: {
       persistentFailureHours: read.integer(alerts, 'persistentFailureHours', 'alerts', DEFAULT_ALERTS.persistentFailureHours, CONFIG_LIMITS.persistentFailureHours),

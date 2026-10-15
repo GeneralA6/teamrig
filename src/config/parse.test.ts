@@ -21,6 +21,7 @@ describe('parseConfig', () => {
     assert.equal(config.messages.maxLines, 10);
     assert.equal(config.messages.coldAfterMinutes, 60);
     assert.deepEqual(config.loops, { chainNudgeAt: 6 });
+    assert.deepEqual(config.tests, { maxFailureChars: 4000 });
     assert.deepEqual(config.register, DEFAULT_REGISTER);
     assert.deepEqual(config.budget, DEFAULT_BUDGET);
     assert.deepEqual(config.coordinator.schedule, {});
@@ -115,6 +116,16 @@ describe('parseConfig', () => {
     const { config, issues } = parseConfig({ ...ROSTER, loops: { chainNudgeAt: 51 } });
     assert.deepEqual(paths(issues), ['loops.chainNudgeAt']);
     assert.equal(config.loops.chainNudgeAt, 6);
+  });
+
+  it('reads tests.maxFailureChars, and refuses a value under 500 or past 50,000', () => {
+    assert.equal(parseConfig({ ...ROSTER, tests: { maxFailureChars: 500 } }).config.tests.maxFailureChars, 500);
+    assert.equal(parseConfig({ ...ROSTER, tests: { maxFailureChars: 50_000 } }).config.tests.maxFailureChars, 50_000);
+    for (const wrong of [499, 50_001]) {
+      const { config, issues } = parseConfig({ ...ROSTER, tests: { maxFailureChars: wrong } });
+      assert.deepEqual(paths(issues), ['tests.maxFailureChars']);
+      assert.equal(config.tests.maxFailureChars, 4000);
+    }
   });
 
   it('reports every wrong field with its path and falls back to the default', () => {

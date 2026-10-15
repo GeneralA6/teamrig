@@ -10,6 +10,7 @@ import type {
   RefreshConfig,
   RegisterConfig,
   SkillsConfig,
+  TestsConfig,
 } from './types.ts';
 
 /** Defaults for every key except the roster (`sessions`, `roles.lead`), which each team supplies. */
@@ -88,6 +89,9 @@ export const DEFAULT_SESSION_SHARE = 1;
 export const DEFAULT_ALERTS: AlertsConfig = { persistentFailureHours: 24 };
 
 export const DEFAULT_LOOPS: LoopsConfig = { chainNudgeAt: 6 };
+
+/** About a screenful: two or three failing tests with their errors and first stack frames. */
+export const DEFAULT_TESTS: TestsConfig = { maxFailureChars: 4000 };
 
 /** 250k suits a 1M-token window; on a 200k window Claude Code compacts first, so a team there sets about 150k. */
 export const DEFAULT_REFRESH: RefreshConfig = { enabled: true, contextTokens: 250_000, tabTitle: true };
