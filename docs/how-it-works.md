@@ -44,7 +44,7 @@ flowchart LR
 | Part | When it runs | What it does |
 | --- | --- | --- |
 | SessionStart hook | a session starts, resumes, is cleared or is compacted | gives the session the core rules, its name, the lead's name, where its team sits in a tree of teams and your team's `rules.md`; tells you and the session, in one MODEL line, when it runs on another model than its `launch` entry asks, with the `/model` to type |
-| UserPromptSubmit hook | you send a prompt | one `INBOX:` line when the session has unread notes; a line when it records a Claude Code rename of the session as its team name, or when `.teamrig.json` is broken; nothing otherwise |
+| UserPromptSubmit hook | you send a prompt | the session's new inbox lines, each shown once; a line when it binds a hand-started tab by its title, once per cause when it cannot, when it records a Claude Code rename of the session as its team name, or when `.teamrig.json` is broken; nothing otherwise |
 | PreToolUse hook | Claude runs a Bash or PowerShell command | finds every `git push` in it, through wrappers, nested shells and git aliases, and asks you or refuses; asks when it cannot read the command ([Safe pushes](#safe-pushes)) |
 | Stop hook | a turn ends | after a task is marked done, asks for a handover when a refresh is due, then tells you once ([A fresh context](#a-fresh-context)); tells you once, in a MODEL line, when the session runs at another effort than its `launch` entry asks, or when Claude Code switched it to another model after its safeguards stopped a reply, with the `/effort` or `/model` to type; nothing otherwise |
 | `teamrig` commands | Claude runs them in its Bash tool | the task list, the inbox, names, settings, checks (`teamrig help`) |
@@ -127,6 +127,10 @@ sequenceDiagram
 - The tab that ran the setup becomes the lead without a restart. `teamrig inbox read --session lead` ties its Claude
   Code session to the lead, so the hooks still know it after a compact or a resume, and `teamrig rules --session lead`
   gives it the rules it missed at start. After a `/clear` it runs `inbox read` once more.
+- A tab you start by hand binds itself when its Claude Code title (`claude --name`, `/rename`) is a session's id or
+  current name on the team of the folder it started in, and on no other team of the tree. The hooks then know it as
+  `inbox read` would, but nothing is marked read. A title that names no session, or sessions of two teams, binds
+  nothing, and the prompt hook says once how to bind the tab. `$TEAMRIG_SESSION` and an earlier binding always win.
 - `teamrig open <session>` opens a tab in tmux (when run inside tmux), Windows Terminal, macOS Terminal, GNOME
   Terminal, Konsole or x-terminal-emulator, in that order; `open.terminal` in the config or `--terminal` picks one.
   The tab runs `teamrig launch`, which sets `$TEAMRIG_SESSION` and starts `claude --name <name> "<first prompt>"`,
@@ -205,12 +209,14 @@ sequenceDiagram
   L->>F: teamrig inbox add --to web --text "T2 is ready"
   Note over W: web is idle, nothing wakes it
   Y->>W: your next prompt to web
-  W->>F: the UserPromptSubmit hook counts unread lines
-  F-->>W: INBOX: 1 unread line(s) ... Read them with: teamrig inbox read
-  W->>F: teamrig inbox read prints the line and marks it read
+  W->>F: the UserPromptSubmit hook reads the lines it has not shown this session
+  F-->>W: INBOX web, new in ... (each line is shown once; reading marks them read)
+  W->>F: teamrig inbox read marks it read, without printing it again
 ```
 
 - The inbox file is never edited: `inbox read` adds a mark to `state/inbox-marks.jsonl`.
+- The prompt hook shows at most 5 new lines and 1,500 characters at a time, cuts a longer line, and says how many
+  wait. It records what it showed each Claude Code session in `state/inbox-shown.jsonl`; that is not a read.
 - You may trim an inbox file by hand; the read mark notices, and if the last line read is gone, the whole file
   counts as unread.
 - A note is one line; an empty line, several lines or a line that looks like a secret is refused. A secret here is
