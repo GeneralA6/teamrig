@@ -78,6 +78,8 @@ export interface TeamPaths {
   readonly usage: string;
   /** The lead's budget lifts, an append-only log. */
   readonly lifts: string;
+  /** What the budget warning already showed each session, `<id>.json` each. */
+  readonly warn: string;
 }
 
 /** The team's folder. The id is checked here too, since it becomes part of a path. */
@@ -116,5 +118,6 @@ export function teamPaths(kitHome: string, team: string, userHome: string, overr
     modelNotices: join(state, 'model-notices'),
     usage: join(state, 'usage'),
     lifts: join(state, 'usage', 'lifts.jsonl'),
+    warn: join(state, 'usage', 'warn'),
   };
 }
