@@ -1,3 +1,4 @@
+import type { PushToProtected } from '../config/types.ts';
 import { BranchMoves, type BranchView } from './branch-moves.ts';
 import { findGitInvocations, type GitConfigReader, type GitInvocation } from './invocations.ts';
 import type { ShellDialect, ShellWord } from './tokenizer.ts';
@@ -7,6 +8,8 @@ export type PushDecision = 'allow' | 'ask' | 'deny';
 
 interface PushFlags {
   force: boolean;
+  /** `--force-with-lease`: a forced push that first checks the remote branch is where the pusher last saw it. */
+  leased: boolean;
   delete: boolean;
   dryRun: boolean;
   all: boolean;
@@ -41,6 +44,8 @@ export interface GuardContext {
   readonly home: string;
   readonly dialect: ShellDialect;
   readonly protectedBranches: readonly string[];
+  /** What a normal push to a protected branch gets: `ask`, or `allow` (the verdict allows it and marks it `protectedPush`). */
+  readonly pushToProtected: PushToProtected;
   readonly repo: RepoState;
 }
 
@@ -53,11 +58,22 @@ export interface ProtectedUpdate {
   readonly source: string;
 }
 
-/** The decision on a whole command line, with the protected updates behind an `ask`. */
+/** A readable push to a protected branch: `normal`, or `leased` when it uses `--force-with-lease`. */
+export type ProtectedPush = 'normal' | 'leased';
+
+/** The decision on a whole command line, with the protected updates its pushes send. */
 export interface PushVerdict {
   readonly decision: PushDecision;
-  /** Empty unless the decision is `ask`; `--all` and a doubt list none, since what they send is not known. */
+  /**
+   * What the line's readable pushes to a protected branch send; empty when it has none or is refused. `--all`, a
+   * matching push and a push the guard cannot read add none, since what they send is not known.
+   */
   readonly updates: readonly ProtectedUpdate[];
+  /**
+   * Set when the line pushes to a protected branch with neither a refusal nor a doubt: the decision is then `ask`,
+   * or `allow` for a `normal` push under `pushToProtected: allow`. A `leased` push always asks.
+   */
+  readonly protectedPush?: ProtectedPush;
   /** Set only when the guard asks because it cannot read part of the line with confidence: why, as {@link doubtReason} words it. */
   readonly doubt?: string;
 }
@@ -70,9 +86,10 @@ const PUSH_LONG_OPTIONS: readonly string[] = [
 ];
 /** Long options whose value may be the next word. */
 const PUSH_VALUED: ReadonlySet<string> = new Set(['repo', 'receive-pack', 'exec', 'push-option']);
-/** `--force-with-lease` is deliberately absent: a leased push to a protected branch only asks. */
+/** `--force-with-lease` reads as `leased`, not `force`: a leased push to a protected branch asks rather than being refused. */
 const LONG_FLAGS: ReadonlyMap<string, keyof PushFlags> = new Map<string, keyof PushFlags>([
   ['force', 'force'],
+  ['force-with-lease', 'leased'],
   ['delete', 'delete'],
   ['dry-run', 'dryRun'],
   ['all', 'all'],
@@ -99,7 +116,7 @@ const SUBTREE_VALUED: ReadonlySet<string> = new Set(['-P', '--prefix', '-m', '--
 const CURRENT_BRANCH_QUERY = String.raw`\s*git\s+(?:branch\s+--show-current|rev-parse\s+--abbrev-ref\s+HEAD|symbolic-ref\s+(?:-q\s+)?--short\s+(?:-q\s+)?HEAD)\s*`;
 const CURRENT_BRANCH = new RegExp(String.raw`\$\(${CURRENT_BRANCH_QUERY}\)|` + '`' + CURRENT_BRANCH_QUERY + '`', 'g');
 
-const NO_FLAGS: PushFlags = { force: false, delete: false, dryRun: false, all: false, mirror: false, prune: false, help: false };
+const NO_FLAGS: PushFlags = { force: false, leased: false, delete: false, dryRun: false, all: false, mirror: false, prune: false, help: false };
 const NO_WORD: ShellWord = { text: '', dynamic: false };
 
 /** The long option a word names, as git's option parser reads an unambiguous abbreviation; `negated` for `--no-x`. */
@@ -159,7 +176,10 @@ function readPushArgs(invocation: GitInvocation): PushCommand {
   return { dir: invocation.dir, ...flags, remote, refspecs, configOverride: invocation.configOverride, matching: false };
 }
 
-/** `git send-pack` and `git http-push`: `--all`, `--force`, `--mirror`, `--stdin`; with no refs they push the matching branches. */
+/**
+ * `git send-pack` and `git http-push`: `--all`, `--force`, `--force-with-lease[=…]`, `--mirror`, `--stdin`; with no refs
+ * they push the matching branches.
+ */
 function readSendPack(invocation: GitInvocation): PushCommand {
   const flags: PushFlags = { ...NO_FLAGS };
   const positionals: ShellWord[] = [];
@@ -168,6 +188,8 @@ function readSendPack(invocation: GitInvocation): PushCommand {
     const flag = arg.dynamic ? undefined : SEND_PACK_FLAGS.get(arg.text);
     if (flag !== undefined) {
       flags[flag] = true;
+    } else if (!arg.dynamic && (arg.text === '--force-with-lease' || arg.text.startsWith('--force-with-lease='))) {
+      flags.leased = true;
     } else if (arg.text === '--stdin') {
       stdin = true;
     } else if (arg.dynamic || !arg.text.startsWith('-')) {
@@ -401,6 +423,8 @@ class PushJudge {
  * main && git push`) is followed (see `BranchMoves`). When part of the line cannot be read with confidence, the
  * guard asks: always for a push it cannot read, and for anything else it cannot read when the line says `push`.
  * With no protected branch there is nothing to guard, so every line is allowed, mirrors and doubts included.
+ * Under `pushToProtected: allow` a normal push to a protected branch is allowed and marked; a refusal, a leased
+ * push and a doubt are not changed by it.
  */
 export function evaluatePushes(command: string, context: GuardContext): PushVerdict {
   const protectedBranches = new Set(context.protectedBranches);
@@ -410,7 +434,7 @@ export function evaluatePushes(command: string, context: GuardContext): PushVerd
   const found = findGitInvocations(command, { cwd: context.cwd, home: context.home, dialect: context.dialect, git: context.repo });
   const moves = new BranchMoves(protectedBranches);
   const judge = new PushJudge(context.repo, protectedBranches);
-  let asked = false;
+  let protectedPush: ProtectedPush | undefined;
   let doubt: string | undefined;
   const updates: ProtectedUpdate[] = [];
   for (const invocation of found.invocations) {
@@ -421,18 +445,21 @@ export function evaluatePushes(command: string, context: GuardContext): PushVerd
         return { decision: 'deny', updates: [] };
       }
       if (judgement.decision === 'ask' && judgement.doubt === undefined) {
-        asked = true;
+        protectedPush = push.leased || protectedPush === 'leased' ? 'leased' : 'normal';
         updates.push(...judgement.updates);
       }
       doubt ??= judgement.doubt;
     }
     moves.observe(invocation);
   }
-  if (asked) {
-    return { decision: 'ask', updates };
+  if (protectedPush === 'leased' || (protectedPush === 'normal' && context.pushToProtected === 'ask')) {
+    return { decision: 'ask', updates, protectedPush };
   }
   doubt ??= found.doubts.find((candidate) => !candidate.gated || found.mentionsPush)?.reason;
-  return doubt === undefined ? { decision: 'allow', updates: [] } : { decision: 'ask', updates: [], doubt };
+  if (doubt !== undefined) {
+    return { decision: 'ask', updates, doubt };
+  }
+  return protectedPush === undefined ? { decision: 'allow', updates: [] } : { decision: 'allow', updates, protectedPush };
 }
 
 /** Why the guard stopped a push, naming the team's protected branches. */
@@ -441,6 +468,11 @@ export function decisionReason(decision: Exclude<PushDecision, 'allow'>, protect
   return decision === 'deny'
     ? `Force-pushing, mirroring or deleting a protected branch (${branches}) is refused: it can overwrite other sessions' commits. Push your own branch, or use --force-with-lease if you truly mean it.`
     : `This push updates a protected branch (${branches}) while other sessions may be working. Confirm, or push your own branch and rebase it onto the current one.`;
+}
+
+/** Why the guard asks about a `--force-with-lease` push to a protected branch, which `pushToProtected: allow` does not cover. */
+export function leasedReason(protectedBranches: readonly string[]): string {
+  return `This --force-with-lease push may rewrite the history of a protected branch (${protectedBranches.join(', ')}) while other sessions may be working. Confirm, or push your own branch instead.`;
 }
 
 /** Why the guard asks about a command line it cannot read with confidence, naming the team's protected branches. */
