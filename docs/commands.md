@@ -8,7 +8,7 @@ for reference, with what two sessions see when they use them.
 This is what `teamrig help` prints:
 
 ```text
-teamrig <command> ...   (the caller: --session <id|name>, else TEAMRIG_SESSION)
+teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
   team create <team> --sessions <id,id> [--lead <id>] [--project <dir>] [--parent <team>] [--dry-run]
       writes the team config and ties the project folder to the team (the lead defaults to lead);
       --parent hangs it under that team's lead in a tree of teams
@@ -47,7 +47,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else TEAMRIG_SESSION)
       (run by Claude Code, hook JSON on stdin)
   launch <id> --team <team> --project <dir> [--home <dir>] [--encoded-prompt <text>]
       (run by the tab that open starts: sets the session and starts Claude Code)
-Team: TEAMRIG_TEAM, else the nearest .teamrig.json ({"team": "<id>"}) above the current folder,
+Team: $TEAMRIG_TEAM, else the nearest .teamrig.json ({"team": "<id>"}) above the current folder,
 else above $CLAUDE_PROJECT_DIR.
 Sessions: give an id, a current name or a former one; a session never named is <team>-<id>.
 Dates: YYYY-MM-DD or "YYYY-MM-DD HH:MM", UTC. Kit home: $TEAMRIG_HOME, else ~/.teamrig.
