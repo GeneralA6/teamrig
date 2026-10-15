@@ -14,6 +14,19 @@ export const SHORT_TITLE_CHARS = 60;
 export const MAX_FLAGS_PER_KIND = 5;
 /** The order of the status counts on a short `list` owner line: what moves first, what waits last. */
 const SUMMARY_STATUSES = ['in-progress', 'verifying', 'waiting', 'open', 'done', 'dropped'];
+/**
+ * A report narrowed to what one session acts on, for `start`: the flags of the tasks it owns and of the skills
+ * it fixes (only a task's owner sets its status). The scope names the session, so the CHECK line says whose
+ * flags these are.
+ */
+export function ownCheck(report, owner) {
+    return {
+        ...report,
+        sections: report.sections.map((section) => ({ ...section, flags: section.flags.filter((flag) => flag.task.owner === owner) })),
+        scope: `${owner}'s tasks and skills, ${report.scope}`,
+        skills: report.skills.filter((flag) => flag.owner === owner),
+    };
+}
 /** The characters `lines` print, each with its newline. */
 export function printedChars(lines) {
     return lines.reduce((sum, line) => sum + line.length + 1, 0);

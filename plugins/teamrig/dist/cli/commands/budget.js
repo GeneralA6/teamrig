@@ -7,7 +7,7 @@ import { claudeProjectsDir } from "../../budget/discover.js";
 import { activeLift, decideLift, LiftLog, liftText } from "../../budget/lift.js";
 import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID } from "../../budget/measure.js";
 import { sessionBudgetPct } from "../../budget/pace.js";
-import { loopLines, recountLines, sessionLines, sumDays, todayLines } from "../../budget/report.js";
+import { loopLines, recountLines, sessionLines, sumDays, todayLines, weekLine } from "../../budget/report.js";
 import { formatSnapshot, readSnapshots, snapshotOfStatus, statusLineText, weekUseOf } from "../../budget/snapshot.js";
 import { CURSOR_DAYS_KEPT, DAYS_KEPT, MemoryUsageStore, UsageStore } from "../../budget/store.js";
 import { readWeek } from "../../budget/week.js";
@@ -71,6 +71,10 @@ async function readBudget(runtime, kit, config, roster, options) {
     const week = readWeek({ budget: config.budget, now, statusUse: weekUseOf(snapshots, now), states: [...measured.bySession.values(), measured.outside] });
     const lifts = recount ? [] : (await new LiftLog(files, kit.paths.lifts).read()).lifts;
     return { now, measured, week, lifts };
+}
+/** The week's use line, measured up to now as `budget` measures it, for `start`. */
+export async function weekLineOf(runtime, kit, config, roster) {
+    return weekLine((await readBudget(runtime, kit, config, roster, { recountDay: undefined })).week);
 }
 function sessionsToday(reading, roster, budget) {
     const today = formatUtcDay(new Date(reading.now));
