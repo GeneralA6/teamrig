@@ -164,6 +164,9 @@ stateDiagram-v2
   open --> working: set in-progress
   working --> blocked: set blocked, with a note
   blocked --> working: set in-progress
+  working --> verifying: set verifying, with a note naming the proof
+  verifying --> done: set done, with a note, evidence and a skill
+  verifying --> working: set in-progress, the proof failed
   working --> done: set done, with a note, evidence and a skill
   open --> dropped: set dropped, with a note
   working --> dropped: set dropped, with a note
@@ -172,11 +175,15 @@ stateDiagram-v2
 
 - The owner may move a task from any status to any other; the register keeps every move.
 - `done` takes `--skill none` or the name of a skill in your Claude Code skills folder; setting a task to its own
-  status again needs `--note`; `add` refuses a title an open, in-progress or blocked task already has.
+  status again needs `--note`; `add` refuses a title an open, in-progress, verifying or blocked task already has.
+- `verifying` is a change that has shipped and waits for what proves it: a test run, a night's flow, a number.
+  Its note names that proof, and its due date says when the proof should exist. It stays active, so `list` and
+  `check` keep it in view until the owner sets it `done` with the proof as evidence.
 - `teamrig update` changes a task's title, owner, priority, ref, due date, goals or week (`none` clears the last
   four), never the status; on a task it does not own, the lead may change the owner, priority, due date or week.
 - `teamrig check` reports tasks past due, not picked up 24 hours after they were handed out, untouched for 72 hours,
-  or due this week but left out of the week's plan, and owner orders left out of it. It also reports a session that
+  or due this week but left out of the week's plan, and owner orders left out of it. A verifying task past its due
+  date is `PROOF-OVERDUE`: its proof is late. One with a due date is not called stale while it waits. It also reports a session that
   skips its own priorities: `PRIORITY-SKIP` is a task in progress for over 24 hours
   (`register.check.prioritySkipAfterHours`) while the same session has an open p1, counted from the latest change of
   owner, status or priority on either task. `OFF-GOAL` is a task in progress with no goal outside the week's plan:
@@ -203,6 +210,13 @@ After that first `compact`, a write that leaves the log over 512 KiB archives it
 or keeps the write and warns when archiving fails (the next write tries again). Both lines name the switch that
 turns this off: `register.autoArchive: false` in the team's `config.json`, after which only `compact` archives. Every session must run teamrig
 0.3.1 or later before the first `compact`: an older one refuses to write to an archived task list.
+- Move every session to teamrig 0.7.0 or later before anyone sets a task `verifying`. An older teamrig skips that
+  line with a warning (`1 unreadable line(s)`) and shows the task at its status before it, though it still writes;
+  and its `compact` would leave the line out of the new snapshot, so never run `compact` from a teamrig older than
+  0.7.0 on a task list that holds one. The default `register.requireNoteOn` already names `verifying`: list it in
+  a `config.json` of your own only once every session runs 0.7.0, as an older one reports it as a config problem.
+  From 0.7.0 on, a status a later teamrig adds reads as a line from a newer teamrig: the task keeps its last
+  status, writes go on, and archiving waits until this teamrig is updated.
 - Being built: dependencies and parent/child tasks (T205); planned start, ETA, history and token estimates
   (T209–T211).
 - Coming: each session's token burn against the week's plan in `check`, once teamrig reads token usage (T247).

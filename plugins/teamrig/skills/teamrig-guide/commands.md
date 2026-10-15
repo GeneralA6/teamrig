@@ -51,7 +51,7 @@ Output:
 ADDED T1 open, p2, owner api, due 10-17, from lead, goals G1 | Build the signup endpoint
 ```
 
-A task with the same title (ignoring case and extra spaces) that is still open, in progress or blocked is refused:
+A task with the same title (ignoring case and extra spaces) that is still open, in progress, verifying or blocked is refused:
 `REFUSED T1 already tracks this (open, owner api)`.
 
 ### teamrig set
@@ -61,8 +61,8 @@ Sets a task's status. Only the task's owner may.
 Flags:
 
 - `--session <id|name>`: the caller, who must own the task.
-- `--status open|in-progress|blocked|done|dropped`: required.
-- `--note "<what or why>"`: required for `blocked`, `done` and `dropped` (`register.requireNoteOn`), and for
+- `--status open|in-progress|verifying|blocked|done|dropped`: required.
+- `--note "<what or why>"`: required for `blocked`, `verifying` (what proves it), `done` and `dropped` (`register.requireNoteOn`), and for
   setting the status the task already has.
 - `--evidence <proof>`: required for `done`: a commit, test count, path or number that proves it. Evidence
   already on the task counts.
@@ -115,7 +115,7 @@ UPDATED T2 blocked, p2, owner web, due 10-16, week 10-12, from lead | Fix the br
 ### teamrig list
 
 Lists tasks, most urgent first: by priority, then due date (undated last), then id. By default only active tasks
-(open, in progress, blocked), in a short form within 3,000 characters: a count per owner when there are several,
+(open, in progress, verifying, blocked), in a short form within 3,000 characters: a count per owner when there are several,
 then one short row per task (its title cut to 60 characters) and `+N more` for the rows left out. `--all` prints
 every field of every task.
 
@@ -240,7 +240,7 @@ With no week tagged yet, the first line says `no week plan tagged yet, so the we
 ### teamrig plan
 
 Prints a week plan as Markdown: the tasks tagged with that week (`--week` on `add` or `update`), grouped by
-priority, with done, dropped, blocked and in-progress marks. By default the newest week that has started.
+priority, with done, dropped, blocked, verifying and in-progress marks. By default the newest week that has started.
 
 Flags:
 

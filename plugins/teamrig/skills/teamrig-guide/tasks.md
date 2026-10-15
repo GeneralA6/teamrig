@@ -11,12 +11,16 @@ A task is `open` when added. Only its owner sets its status, with `teamrig set <
 | --- | --- | --- |
 | `open` | waiting to start | nothing |
 | `in-progress` | the owner is on it now | nothing |
+| `verifying` | shipped, waiting for what proves it (a test run, a night's flow, a number) | `--note` saying what proves it [register.requireNoteOn]; give it a due date (`update --due`) for when the proof should exist |
 | `blocked` | cannot go on until something else happens | `--note` saying what it waits for [register.requireNoteOn] |
 | `done` | finished and verified | `--note`, `--evidence` (unless the task already has some) and `--skill <name>` or `--skill none` [register.requireEvidenceOnDone, register.requireSkillOnDone] |
 | `dropped` | will not be done | `--note` saying why and who decided |
 
-`open`, `in-progress` and `blocked` are the active statuses: `list` shows them by default and `check` reads only
-them. A task can move from any status to any other, so a dropped task can be reopened, and setting the status it
+`open`, `in-progress`, `verifying` and `blocked` are the active statuses: `list` shows them by default and `check`
+reads only them. Set `verifying` when the work is merged or deployed but its proof does not exist yet, then `done`
+with that proof as evidence once it does, or `in-progress` again when the proof fails. Every session needs
+teamrig 0.7.0 or later before anyone sets it: an older teamrig skips the line with a warning and shows the task
+at its earlier status. A task can move from any status to any other, so a dropped task can be reopened, and setting the status it
 already has needs a `--note`.
 
 Evidence is what proves the work: a commit sha, a pull request, a test count, a path, a measured number. "Done" or
@@ -74,8 +78,9 @@ checkpoint; a session may run it for itself.
 | Flag | Raised when | What to do |
 | --- | --- | --- |
 | `OVERDUE` | the due time has passed | The owner finishes it or says what blocks it; the lead re-dates it (`update --due`) or tells the human. |
+| `PROOF-OVERDUE` | a `verifying` task's due time has passed: its proof is late | The owner checks the proof: `done` with it as evidence, `in-progress` when it failed, or a new due date and why. |
 | `NOT-PICKED-UP` | assigned over 24 h ago with no event from its owner since [register.check.notPickedUpAfterHours] | The owner is idle and reads no inbox: wake it with `teamrig open <id>` or a message, or tell the human. |
-| `STALE` | no event for 72 h [register.check.staleAfterHours] (not raised on top of NOT-PICKED-UP) | Ask the owner what blocks it, then re-date, re-assign or drop it. |
+| `STALE` | no event for 72 h [register.check.staleAfterHours] (not raised on top of NOT-PICKED-UP, nor for a `verifying` task with a due date) | Ask the owner what blocks it, then re-date, re-assign or drop it. |
 | `PRIORITY-SKIP` | in progress while a top-priority (`p1`) task of the same owner waits open, for over 24 h [register.check.prioritySkipAfterHours] | The owner parks the lower task and starts the waiting one; or the lead fixes the order (`update --priority`). |
 | `OWNER-UNPLANNED` | an order from the human (`--source owner`) that is not in the current week plan | Plan it in (`update --week <week>`), or tell the human what it would push out. |
 | `DUE-UNPLANNED` | due inside the current week but not in its plan | Plan it in with `--week`, or re-date it. |
