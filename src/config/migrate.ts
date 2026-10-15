@@ -1,4 +1,5 @@
 import { isRecord, type JsonRecord } from '../core/guards.ts';
+import { LEGACY_WAITING_STATUS } from '../register/model.ts';
 import { CONFIG_VERSION } from './types.ts';
 
 export interface MigrationStep {
@@ -27,8 +28,29 @@ export const RENAME_TIERS_TO_PRIORITIES: ConfigMigration = {
   },
 };
 
+/**
+ * v2 to v3: the status `blocked` became `waiting` (teamrig 0.10.0), so `register.requireNoteOn` names `waiting`
+ * where it named `blocked`, once, in the same place.
+ */
+export const RENAME_BLOCKED_TO_WAITING: ConfigMigration = {
+  from: 2,
+  apply: (config) => {
+    const register = config['register'];
+    const statuses = isRecord(register) ? register['requireNoteOn'] : undefined;
+    if (!isRecord(register) || !Array.isArray(statuses) || !statuses.includes(LEGACY_WAITING_STATUS)) {
+      return { config, changes: [] };
+    }
+    const renamed = statuses.map((status: unknown) => (status === LEGACY_WAITING_STATUS ? 'waiting' : status));
+    const requireNoteOn = renamed.filter((status, index) => renamed.indexOf(status) === index);
+    return {
+      config: { ...config, register: { ...register, requireNoteOn } },
+      changes: [`register.requireNoteOn: ${LEGACY_WAITING_STATUS} → waiting`],
+    };
+  },
+};
+
 /** The shipped chain, in order: each step reads `from` and produces `from + 1`. */
-export const CONFIG_MIGRATIONS: readonly ConfigMigration[] = [RENAME_TIERS_TO_PRIORITIES];
+export const CONFIG_MIGRATIONS: readonly ConfigMigration[] = [RENAME_TIERS_TO_PRIORITIES, RENAME_BLOCKED_TO_WAITING];
 
 /** The config format a release reads and writes: its version and the migration chain that reaches it. */
 export interface ConfigFormat {

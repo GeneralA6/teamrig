@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { JsonRecord } from '../core/guards.ts';
-import { CONFIG_MIGRATIONS, migrateConfig, RENAME_TIERS_TO_PRIORITIES, type ConfigMigration } from './migrate.ts';
+import { CONFIG_MIGRATIONS, migrateConfig, RENAME_BLOCKED_TO_WAITING, RENAME_TIERS_TO_PRIORITIES, type ConfigMigration } from './migrate.ts';
 import { CONFIG_VERSION } from './types.ts';
 
 /** v1→v2 renames `messages.maxLines` to `messages.lineLimit`; v2→v3 adds `newKey`. */
@@ -75,7 +75,7 @@ describe('the shipped migrations', () => {
   it('v1 to v2 moves register.tiers to register.priorities and keeps every other key', () => {
     const tiers = [{ id: 1, name: 'now' }, { id: 2, name: 'later' }];
     const raw: JsonRecord = { configVersion: 1, register: { tiers, maxTitle: 99 }, custom: true };
-    assert.deepEqual(migrateConfig(raw), {
+    assert.deepEqual(migrateConfig(raw, 2), {
       kind: 'migrated',
       fromVersion: 1,
       version: 2,
@@ -90,5 +90,40 @@ describe('the shipped migrations', () => {
       assert.deepEqual(RENAME_TIERS_TO_PRIORITIES.apply(config), { config, changes: [] }, JSON.stringify(config));
     }
     assert.equal(RENAME_TIERS_TO_PRIORITIES.from, 1);
+  });
+
+  it('v2 to v3 names waiting where register.requireNoteOn named blocked, once, in its place', () => {
+    const raw: JsonRecord = { configVersion: 2, register: { requireNoteOn: ['done', 'blocked', 'waiting'], maxTitle: 99 }, custom: true };
+    assert.deepEqual(migrateConfig(raw, 3), {
+      kind: 'migrated',
+      fromVersion: 2,
+      version: 3,
+      config: { configVersion: 3, register: { requireNoteOn: ['done', 'waiting'], maxTitle: 99 }, custom: true },
+      changes: ['v2→v3: register.requireNoteOn: blocked → waiting'],
+    });
+    assert.deepEqual(raw['register'], { requireNoteOn: ['done', 'blocked', 'waiting'], maxTitle: 99 }, 'the input is not mutated');
+  });
+
+  it('v2 to v3 changes nothing but the version when register.requireNoteOn does not name blocked', () => {
+    const configs: JsonRecord[] = [
+      {},
+      { register: 'not an object' },
+      { register: { maxTitle: 99 } },
+      { register: { requireNoteOn: 'blocked' } },
+      { register: { requireNoteOn: ['done'] } },
+    ];
+    for (const config of configs) {
+      assert.deepEqual(RENAME_BLOCKED_TO_WAITING.apply(config), { config, changes: [] }, JSON.stringify(config));
+    }
+    assert.equal(RENAME_BLOCKED_TO_WAITING.from, 2);
+  });
+
+  it('a version-1 file reaches the current version through every step', () => {
+    const result = migrateConfig({ configVersion: 1, register: { tiers: [], requireNoteOn: ['blocked'] } });
+    assert.equal(result.kind, 'migrated');
+    if (result.kind === 'migrated') {
+      assert.equal(result.config['configVersion'], CONFIG_VERSION);
+      assert.deepEqual(result.config['register'], { priorities: [], requireNoteOn: ['waiting'] });
+    }
   });
 });
