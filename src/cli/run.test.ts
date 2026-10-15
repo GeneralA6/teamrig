@@ -113,8 +113,9 @@ describe('runCli: the task register', () => {
     assert.match(added.stdout[0] ?? '', /^ADDED T1 open, p2, owner alpha, from \S+ \| /);
 
     const listed = await kit.run(['list'], { env: { TEAMRIG_SESSION: 'alpha' } });
-    assert.equal(listed.code, EXIT.ok);
-    assert.match(listed.stdout.join('\n'), /^T1 open, p2, owner alpha,/m);
+    assert.deepEqual([listed.code, listed.stdout], [EXIT.ok, ['LIST 1 task(s) (short rows; --all for every field)', 'T1 open, p2, owner alpha | Ship the CLI']]);
+    const full = await kit.run(['list', '--all'], { env: { TEAMRIG_SESSION: 'alpha' } });
+    assert.match(full.stdout.join('\n'), /^T1 open, p2, owner alpha, from \S+ \| Ship the CLI$/);
 
     const set = await kit.run(['set', 'T1', '--status', 'in-progress', '--session', 'alpha']);
     assert.equal(set.code, EXIT.ok, set.stdout.join('\n'));
@@ -187,7 +188,7 @@ describe('runCli: the task register', () => {
     await kit.files.append(EVENTS_PATH, '{ torn\n');
     const listed = await kit.run(['list', '--session', 'alpha']);
     assert.equal(listed.code, EXIT.ok);
-    assert.match(listed.stdout.join('\n'), /^T1 open, p2, owner alpha,/m);
+    assert.match(listed.stdout.join('\n'), /^T1 open, p2, owner alpha \| Ship the CLI$/m);
     assert.deepEqual(listed.stderr, [`WARN ${EVENTS_PATH}: 1 unreadable line(s), 0 line(s) from a newer teamrig, 0 event(s) naming no task`]);
   });
 
@@ -203,17 +204,29 @@ describe('runCli: the task register', () => {
     await kit.run(['add', '--title', 'Ship the CLI', '--priority', 'p2', '--due', '2030-01-10', '--session', 'alpha']);
     await kit.files.write(join(SKILLS_DIR, 'alpha-demo', 'SKILL.md'), 'no frontmatter\n');
 
-    const bare = await kit.run(['check', '--session', 'alpha']);
+    const bare = await kit.run(['check', '--session', 'alpha', '--all']);
     assert.equal(bare.code, EXIT.ok);
     assert.equal(bare.stdout[0], 'CHECK 0 flag(s), no week plan tagged yet, so the week checks are skipped');
 
-    const weekly = await kit.run(['check', '--week', '2030-01-07', '--session', 'alpha']);
+    const weekly = await kit.run(['check', '--week', '2030-01-07', '--session', 'alpha', '--all']);
     assert.equal(weekly.code, EXIT.ok);
     assert.equal(weekly.stdout[0], 'CHECK 1 flag(s), week 2030-01-07');
-    assert.match(weekly.stdout[1] ?? '', /DUE-UNPLANNED/);
+    assert.match(weekly.stdout[1] ?? '', /^DUE-UNPLANNED \(due inside week 2030-01-07, not in its plan\) T1 open, p2, owner alpha, due 01-10, from alpha \| Ship the CLI$/);
     const skills = weekly.stdout.findIndex((line) => line.startsWith('SKILLS '));
     assert.match(weekly.stdout[skills] ?? '', /^SKILLS [1-9]\d* flag\(s\) in /);
-    assert.match(weekly.stdout[skills + 1] ?? '', /alpha-demo/);
+    assert.match(weekly.stdout[skills + 1] ?? '', /^SKILL \S+ \(.*\) - alpha-demo$/);
+
+    const short = await kit.run(['check', '--week', '2030-01-07', '--session', 'alpha']);
+    assert.equal(short.code, EXIT.ok);
+    assert.deepEqual(short.stdout.slice(0, 3), [
+      'CHECK 1 flag(s), week 2030-01-07 (short form; --all for every flag in full)',
+      'DUE-UNPLANNED 1 (due inside week 2030-01-07, not in its plan)',
+      '  T1 open, p2, owner alpha, due 01-10 | Ship the CLI',
+    ]);
+    assert.match(short.stdout[3] ?? '', /^SKILLS [1-9]\d* flag\(s\) in /);
+    assert.match(short.stdout[4] ?? '', /^ {2}SKILL \S+ \(.*\) - alpha-demo$/);
+    const nothing = await new CliHarness().run(['check', '--session', 'alpha']);
+    assert.deepEqual(nothing.stdout[0], 'CHECK 0 flag(s), no week plan tagged yet, so the week checks are skipped');
   });
 
   it('plans the newest started week, or the one given, and refuses before any plan', async () => {
@@ -318,8 +331,8 @@ describe('runCli: session names', () => {
 
     const added = await kit.run(['add', '--title', 'Ship the names', '--priority', 'p2', '--owner', 'app-bravo', '--session', 'team-lead']);
     assert.equal(added.code, EXIT.ok, added.stdout.join('\n'));
-    const byName = await kit.run(['list', '--session', 'app-bravo']);
-    assert.deepEqual(byName.stdout, (await kit.run(['list', '--session', 'bravo'])).stdout);
+    const byName = await kit.run(['list', '--session', 'app-bravo', '--all']);
+    assert.deepEqual(byName.stdout, (await kit.run(['list', '--session', 'bravo', '--all'])).stdout);
     assert.equal(byName.stdout.length, 1);
     const set = await kit.run(['set', 'T1', '--status', 'in-progress', '--session', 'app-bravo']);
     assert.equal(set.code, EXIT.ok, set.stdout.join('\n'));
@@ -335,7 +348,8 @@ describe('runCli: session names', () => {
 
   it('still filters by the id of a session no longer on the team, but not by an unknown name', async () => {
     const kit = new CliHarness(NAMED);
-    assert.deepEqual(await kit.run(['list', '--session', 'zulu']), { code: EXIT.ok, stdout: [], stderr: [] });
+    assert.deepEqual(await kit.run(['list', '--session', 'zulu']), { code: EXIT.ok, stdout: ['LIST 0 task(s)'], stderr: [] });
+    assert.deepEqual(await kit.run(['list', '--session', 'zulu', '--all']), { code: EXIT.ok, stdout: [], stderr: [] });
     assert.match((await kit.run(['inbox', 'status', '--session', 'zulu'])).stdout[0] ?? '', /^INBOX no inbox for zulu in /);
     const long = await kit.run(['list', '--session', 'app-a-name-longer-than-any-session-id']);
     assert.equal(long.code, EXIT.refused);

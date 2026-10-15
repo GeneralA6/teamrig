@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { testTask } from '../testing/task.ts';
 import type { RegisterEvent } from './events.ts';
-import { byPlanOrder, formatEvent, formatTask, formatTaskDetail, selectTasks } from './views.ts';
+import { byPlanOrder, cut, formatEvent, formatShortTask, formatTask, formatTaskDetail, selectTasks } from './views.ts';
 
 const AT = '2030-01-07T09:00:00.000Z';
 
@@ -49,6 +49,20 @@ describe('formatTask', () => {
       formatTask(testTask({ status: 'blocked', note: 'waiting on disk' })),
       'T1 blocked, p2, owner alpha, from lead | Add a health check (blocked: waiting on disk)',
     );
+  });
+});
+
+describe('formatShortTask and cut', () => {
+  it('keeps the id, status, priority, owner and due date, and cuts the title', () => {
+    const task = testTask({ id: 'T12', due: '2030-01-15', week: '2030-01-13', source: 'owner', goals: ['G1'], status: 'blocked', note: 'waiting on disk' });
+    assert.equal(formatShortTask(task, 10), 'T12 blocked, p2, owner alpha, due 01-15 | Add a hea…');
+    assert.equal(formatShortTask(testTask(), 60, 'web'), 'web/T1 open, p2, owner alpha | Add a health check');
+  });
+
+  it('cuts in code points, so a character outside the basic plane is never split', () => {
+    assert.equal(cut('abc', 3), 'abc');
+    assert.equal(cut('abcd', 3), 'ab…');
+    assert.equal(cut('\u{1D400}\u{1D401}\u{1D402}\u{1D403}', 3), '\u{1D400}\u{1D401}…');
   });
 });
 

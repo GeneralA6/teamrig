@@ -113,7 +113,9 @@ UPDATED T2 blocked, p2, owner web, due 10-16, week 10-12, from lead | Fix the br
 ### teamrig list
 
 Lists tasks, most urgent first: by priority, then due date (undated last), then id. By default only active tasks
-(open, in progress, blocked).
+(open, in progress, blocked), in a short form within 3,000 characters: a count per owner when there are several,
+then one short row per task (its title cut to 60 characters) and `+N more` for the rows left out. `--all` prints
+every field of every task.
 
 Flags:
 
@@ -125,6 +127,7 @@ Flags:
 - `--week <date>|none`: only tasks planned in that week, or in no week.
 - `--goal <tag>`: only tasks with that goal.
 - `--tree`: the lead only: also every team under it, read-only, ids as `<team>/T<n>`.
+- `--all`: every task in full, one task line each, instead of the short form.
 
 Example:
 
@@ -133,6 +136,19 @@ teamrig list --session web
 ```
 
 Output:
+
+```text
+LIST 1 task(s) (short rows; --all for every field)
+T2 blocked, p2, owner web, due 10-16 | Fix the broken login form
+```
+
+A short row reads: id, status, priority, owner, due (month-day), then the title after `|`. With `--all`:
+
+```sh
+teamrig list --session web --all
+```
+
+Output (`--all`):
 
 ```text
 T2 blocked, p2, owner web, due 10-16, week 10-12, from lead | Fix the broken login form (blocked: waiting for the api error codes)
@@ -172,13 +188,16 @@ history:
 ### teamrig check
 
 Lists the tasks and skills that break a team rule. The lead runs it at each checkpoint; any session may. What
-each flag means and what to do about it: [tasks.md](tasks.md#check-flags).
+each flag means and what to do about it: [tasks.md](tasks.md#check-flags). By default it prints a short form
+within 3,000 characters: each kind with its count (and its detail when every flag of it shares one), at most 5
+of its tasks as short rows, then `+N more`; the same for skill flags. `--all` prints every flag in full.
 
 Flags:
 
 - `--session <id|name>`: the caller.
 - `--week <date>`: check against that week's plan instead of the current one.
 - `--tree`: the lead only: also every team under it.
+- `--all`: every flag in full, one line each, instead of the short form.
 
 Example:
 
@@ -187,6 +206,24 @@ teamrig check --session lead
 ```
 
 Output:
+
+```text
+CHECK 2 flag(s), week 2026-10-12 (short form; --all for every flag in full)
+OVERDUE 1 (due 10-14)
+  T7 in-progress, p2, owner web, due 10-14 | Wire the signup form to the api
+NOT-PICKED-UP 1 (assigned 10-13 09:10, no event from api since)
+  T9 open, p3, owner api | Add rate limits to signup
+SKILLS 1 flag(s) in /home/you/.claude/skills
+  SKILL UNVERIFIED (last verified 2026-09-01, 44 d ago > 30) api api-run-migrations
+```
+
+With `--all`, one full line per flag:
+
+```sh
+teamrig check --session lead --all
+```
+
+Output (`--all`):
 
 ```text
 CHECK 2 flag(s), week 2026-10-12

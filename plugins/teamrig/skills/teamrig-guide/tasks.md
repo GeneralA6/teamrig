@@ -67,8 +67,9 @@ the task id.
 
 ## Check flags
 
-`teamrig check` lists each active task that breaks a rule, one line each: `KIND (detail) <task line>`. The lead
-acts on them at each checkpoint; a session may run it for itself.
+`teamrig check` lists each active task that breaks a rule, grouped by kind, at most 5 short rows per kind within
+3,000 characters; with `--all`, one line each: `KIND (detail) <task line>`. The lead acts on them at each
+checkpoint; a session may run it for itself.
 
 | Flag | Raised when | What to do |
 | --- | --- | --- |

@@ -3,7 +3,7 @@ import type { KitConfig } from '../../config/types.ts';
 import { formatAddress } from '../../core/address.ts';
 import type { TeamPaths } from '../../core/home.ts';
 import { FileLock } from '../../core/lock.ts';
-import { checkTasks, currentWeek, formatFlag } from '../../register/check.ts';
+import { checkTasks, currentWeek } from '../../register/check.ts';
 import type { TaskFields } from '../../register/events.ts';
 import { renderPlan } from '../../register/plan.ts';
 import { RegisterPolicy, type AddInput, type Verdict } from '../../register/policy.ts';
@@ -11,11 +11,12 @@ import { Register, type WriteResult } from '../../register/register.ts';
 import type { RegisterSnapshot } from '../../register/snapshot.ts';
 import { JsonlEventLog } from '../../register/store.ts';
 import { formatTask, formatTaskDetail, selectTasks, type ListFilter } from '../../register/views.ts';
-import { formatSkillFlag, lintSkills } from '../../skills/lint.ts';
+import { lintSkills } from '../../skills/lint.ts';
 import { SkillDir } from '../../skills/store.ts';
 import { noPositionals, onePositional, UsageError, type ParsedArgs } from '../args.ts';
 import { addInputOf, callerOf, changesOf, listFilterOf, statusInputOf, taskIdOf, weekOf } from '../inputs.ts';
 import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, requireConfig, rosterOf, sessionIdOf, type Access, type Kit } from '../kit.ts';
+import { checkLines, listLines, type CheckSection, type TaskRow } from '../reports.ts';
 import { rollUp, type RolledTeam, type RollUp } from '../roll-up.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
@@ -181,25 +182,25 @@ async function treeRegisters(args: ParsedArgs, runtime: CliRuntime): Promise<Rol
  * has its own sessions, so a roll-up has no one owner. A setup tab, which has no `$TEAMRIG_SESSION`,
  * reads its tree this way.
  */
-async function listTree(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+async function treeRows(args: ParsedArgs, runtime: CliRuntime): Promise<TaskRow[]> {
   const filter = listFilterOf(new Map([...args.flags].filter(([name]) => name !== 'session')));
   const { teams } = await treeRegisters(args, runtime);
-  for (const { team, roster, snapshot } of teams) {
-    selectTasks(snapshot.state.tasks.values(), treeFilterOf(roster, filter)).forEach((task) => runtime.out.stdout(formatTask(task, team)));
-  }
-  return EXIT.ok;
+  return teams.flatMap(({ team, roster, snapshot }) =>
+    selectTasks(snapshot.state.tasks.values(), treeFilterOf(roster, filter)).map((task) => ({ task, team })),
+  );
 }
 
-export async function list(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
-  noPositionals(args);
-  if (args.switches.has('tree')) {
-    return listTree(args, runtime);
-  }
+async function ownRows(args: ParsedArgs, runtime: CliRuntime): Promise<TaskRow[]> {
   const filter = listFilterOf(args.flags);
   const { team, snapshot } = await readTeam(runtime);
-  for (const task of selectTasks(snapshot.state.tasks.values(), filterIds(team.roster, filter))) {
-    runtime.out.stdout(formatTask(task));
-  }
+  return selectTasks(snapshot.state.tasks.values(), filterIds(team.roster, filter)).map((task) => ({ task, team: undefined }));
+}
+
+/** `list [--tree] [--all]`: the short form (src/cli/reports.ts), or with `--all` every field of every task. */
+export async function list(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+  noPositionals(args);
+  const rows = args.switches.has('tree') ? await treeRows(args, runtime) : await ownRows(args, runtime);
+  listLines(rows, args.switches.has('all')).forEach((line) => runtime.out.stdout(line));
   return EXIT.ok;
 }
 
@@ -220,18 +221,16 @@ function weekFor(args: ParsedArgs, snapshot: RegisterSnapshot, now: Date): strin
   return week === undefined ? currentWeek(snapshot.state.tasks.values(), now) : weekOf(week);
 }
 
-/** The task flags of one register; with `team`, for `check --tree`, the heading and task ids name it. */
-function checkRegister(runtime: CliRuntime, snapshot: RegisterSnapshot, config: KitConfig, now: Date, week: string | null, team?: string): void {
-  const flags = checkTasks(snapshot.state.tasks.values(), now, week, config.register);
-  const scope = week === null ? 'no week plan tagged yet, so the week checks are skipped' : `week ${week}`;
-  runtime.out.stdout(`CHECK${team === undefined ? '' : ` ${team}:`} ${flags.length} flag(s), ${scope}`);
-  flags.forEach((flag) => runtime.out.stdout(formatFlag(flag, team)));
+/** The task flags of one register; with `team`, for `check --tree`, its task ids name it. */
+function checkRegister(snapshot: RegisterSnapshot, config: KitConfig, now: Date, week: string | null, team?: string): CheckSection {
+  return { team, flags: checkTasks(snapshot.state.tasks.values(), now, week, config.register) };
 }
 
 /**
- * `check [--tree]`: the task flags, then the skill flags of the Claude Code skills folder. With
- * `--tree`, the task flags of the lead's team and each team under it, against the lead's week; the
- * skills are the lead's team's only, as teams on one machine share that folder.
+ * `check [--tree] [--all]`: the task flags, then the skill flags of the Claude Code skills folder, in
+ * the short form (src/cli/reports.ts), or with `--all` every flag in full. With `--tree`, the task
+ * flags of the lead's team and each team under it, against the lead's week; the skills are the lead's
+ * team's only, as teams on one machine share that folder.
  */
 export async function check(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
@@ -239,12 +238,11 @@ export async function check(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const tree = args.switches.has('tree');
   const { own, teams } = tree ? await treeRegisters(args, runtime) : await ownRegister(runtime);
   const week = weekFor(args, own.snapshot, now);
-  for (const rolled of teams) {
-    checkRegister(runtime, rolled.snapshot, rolled.config, now, week, tree ? rolled.team : undefined);
-  }
+  const sections = teams.map((rolled) => checkRegister(rolled.snapshot, rolled.config, now, week, tree ? rolled.team : undefined));
   const skills = lintSkills(await new SkillDir(runtime.files, own.paths.skills).readAll(), now, own.config);
-  runtime.out.stdout(`SKILLS ${skills.length} flag(s) in ${own.paths.skills}`);
-  skills.forEach((flag) => runtime.out.stdout(formatSkillFlag(flag)));
+  const scope = week === null ? 'no week plan tagged yet, so the week checks are skipped' : `week ${week}`;
+  const report = { sections, scope, skills, skillsDir: own.paths.skills };
+  checkLines(report, args.switches.has('all')).forEach((line) => runtime.out.stdout(line));
   return EXIT.ok;
 }
 
