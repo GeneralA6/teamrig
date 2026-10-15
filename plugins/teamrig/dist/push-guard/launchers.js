@@ -89,10 +89,6 @@ export function programName(text) {
     const base = text.slice(Math.max(text.lastIndexOf('/'), text.lastIndexOf('\\')) + 1).toLowerCase();
     return base.replace(/\.(?:exe|cmd|bat|com)$/, '');
 }
-/** True for a program that runs a command line it is given: a POSIX shell, PowerShell or cmd. */
-export function isShellName(name) {
-    return POSIX_SHELLS.has(name) || POWERSHELLS.has(name) || name === 'cmd';
-}
 /** True for a bash `NAME=value` word. */
 export function isAssignment(text) {
     return /^[A-Za-z_][A-Za-z0-9_]*=/.test(text);
@@ -117,11 +113,14 @@ class LaunchReader {
     env = [];
     chdirs = [];
     dialect;
+    /** What the command reads on stdin from the line itself: a heredoc's body or a here-string. */
+    stdin;
     stdinArgs = false;
     /** True once a word is known to name a program, so PowerShell cannot read it as an expression. */
     called = false;
-    constructor(dialect) {
+    constructor(dialect, stdin) {
         this.dialect = dialect;
+        this.stdin = stdin;
     }
     read(words) {
         let rest = words;
@@ -229,6 +228,13 @@ class LaunchReader {
     script(script, dialect, sameShell) {
         return { kind: 'script', script, dialect, sameShell, env: this.env, chdirs: this.chdirs };
     }
+    /**
+     * A shell that reads its commands from stdin runs the heredoc or here-string the line gives it, in a shell
+     * of its own. Without one, or under `xargs`, which feeds stdin to the arguments, the commands are unknown.
+     */
+    fromStdin(dialect) {
+        return this.stdin === undefined || this.stdinArgs ? STDIN_SCRIPT : this.script(this.stdin, dialect, false);
+    }
     /** Reads a wrapper's options, getopt style, and returns the words of the program it runs. */
     wrapper(spec, args) {
         this.stdinArgs ||= spec.stdinArgs === true;
@@ -318,7 +324,7 @@ class LaunchReader {
         if (command) {
             return operand === undefined ? NOTHING : this.script(operand, 'bash', false);
         }
-        return operand === undefined || stdin ? STDIN_SCRIPT : NOTHING;
+        return operand === undefined || stdin ? this.fromStdin('bash') : NOTHING;
     }
     /**
      * `pwsh` and `powershell`: `-Command` runs the rest of the line, `-EncodedCommand` a base64 UTF-16LE script,
@@ -329,7 +335,7 @@ class LaunchReader {
         for (let index = 0; index < args.length; index += 1) {
             const word = args[index] ?? staticWord('');
             if (word.text === '-') {
-                return STDIN_SCRIPT;
+                return this.fromStdin('powershell');
             }
             const option = powerShellOption(word.text);
             if (option === undefined) {
@@ -339,12 +345,12 @@ class LaunchReader {
             switch (option) {
                 case 'command': {
                     const rest = args.slice(index + 1);
-                    return rest[0]?.text === '-' ? STDIN_SCRIPT : rest.length === 0 ? NOTHING : this.script(joinWords(rest, false), 'powershell', false);
+                    return rest[0]?.text === '-' ? this.fromStdin('powershell') : rest.length === 0 ? NOTHING : this.script(joinWords(rest, false), 'powershell', false);
                 }
                 case 'encoded':
                     return value === undefined ? NOTHING : this.encoded(value);
                 case 'file':
-                    return value?.text === '-' ? STDIN_SCRIPT : NOTHING;
+                    return value?.text === '-' ? this.fromStdin('powershell') : NOTHING;
                 case 'chdir':
                     if (value !== undefined) {
                         this.chdirs.push(value);
@@ -358,7 +364,7 @@ class LaunchReader {
                     break;
             }
         }
-        return STDIN_SCRIPT;
+        return this.fromStdin('powershell');
     }
     encoded(value) {
         if (value.dynamic || !/^[A-Za-z0-9+/]+={0,2}$/.test(value.text)) {
@@ -380,7 +386,7 @@ class LaunchReader {
                 break;
             }
         }
-        return STDIN_SCRIPT;
+        return this.fromStdin('cmd');
     }
     /** PowerShell's `Start-Process`: the program is `-FilePath` (or the first operand) with its `-ArgumentList` (or the second). */
     startProcess(args) {
@@ -514,7 +520,7 @@ function startProcessParameter(text) {
     const found = [...START_PROCESS_PARAMETERS].filter(([name, aliases]) => name === option || aliases.includes(option) || (option.length >= 3 && name.startsWith(option)));
     return found.length === 1 ? found[0]?.[0] : undefined;
 }
-/** What one simple command starts; see {@link LaunchReader}. */
-export function launch(words, dialect) {
-    return new LaunchReader(dialect).read(words);
+/** What one simple command starts, given what it reads on stdin from the line, if anything; see {@link LaunchReader}. */
+export function launch(words, dialect, stdin) {
+    return new LaunchReader(dialect, stdin).read(words);
 }
