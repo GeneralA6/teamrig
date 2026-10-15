@@ -4,6 +4,7 @@ import type { Task } from './fold.ts';
 import { priorityText } from './model.ts';
 import { byPlanOrder, taskLabel } from './views.ts';
 import { waitContext, waitsText, type WaitContext } from './waits.ts';
+import { proofOf } from './verify.ts';
 
 /**
  * The week plan as markdown: the tasks tagged with `week`, grouped by priority, then by due date. With
@@ -52,7 +53,7 @@ function statusTail(task: Task, context: WaitContext): string {
     case 'in-progress':
       return ' (in progress)';
     case 'verifying':
-      return ` verifying, proof: ${task.note ?? ''}`;
+      return ` verifying, proof: ${proofOf(task) ?? ''}`;
     case 'open':
       return '';
   }

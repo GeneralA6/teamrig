@@ -37,6 +37,7 @@ describe('golden register logs', () => {
       evidence: 'commit abc1234; 12 tests',
       skill: 'none',
       waits: [],
+      proof: null,
       startedAt: '2030-01-07T10:00:00.000Z',
       createdAt: '2030-01-07T09:00:00.000Z',
       createdBy: 'lead',

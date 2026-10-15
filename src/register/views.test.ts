@@ -57,6 +57,10 @@ describe('formatTask', () => {
       'T1 verifying, p2, owner alpha, due 01-11, from lead | Add a health check (proof: the nightly run is green)',
     );
     assert.equal(formatTask(testTask({ status: 'verifying' })), 'T1 verifying, p2, owner alpha, from lead | Add a health check');
+    assert.equal(
+      formatTask(testTask({ status: 'verifying', note: 'shipped', proof: 'the nightly run is green' })),
+      'T1 verifying, p2, owner alpha, from lead | Add a health check (proof: the nightly run is green)',
+    );
     assert.equal(formatTask(testTask({ status: 'in-progress', note: 'started' })), 'T1 in-progress, p2, owner alpha, from lead | Add a health check');
   });
 });
@@ -147,5 +151,23 @@ describe('formatEvent and formatTaskDetail', () => {
     assert.deepEqual(detail.slice(1, 6), ['ref: inbox:3', 'note: ok', 'evidence: abc1234', 'skill: none', 'history:']);
     assert.equal(detail.length, 9);
     assert.ok(detail.slice(6).every((line) => !line.includes('owner=bravo')));
+  });
+
+  it('shows the proof of a verifying task and of its status line', () => {
+    const proven: RegisterEvent = {
+      v: 2,
+      type: 'status',
+      id: 'T3',
+      at: '2030-01-07T14:00:00.000Z',
+      by: 'alpha',
+      status: 'verifying',
+      note: 'shipped',
+      evidence: null,
+      skill: null,
+      proof: 'the nightly run',
+    };
+    assert.equal(formatEvent(proven), '2030-01-07 14:00 alpha status verifying note="shipped" proof="the nightly run"');
+    const detail = formatTaskDetail(testTask({ id: 'T3', status: 'verifying', note: 'shipped', proof: 'the nightly run' }), [proven]).split('\n');
+    assert.deepEqual(detail.slice(1, 3), ['note: shipped', 'proof: the nightly run']);
   });
 });

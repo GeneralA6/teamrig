@@ -12,6 +12,11 @@ export interface Task extends TaskFields {
   readonly skill: string | null;
   /** What the task waits for while `waiting`, from its latest status change; empty in any other status. */
   readonly waits: readonly WaitReason[];
+  /**
+   * What will prove a `verifying` task works, from its latest status change; null in any other status, and on a
+   * task set verifying before `--proof` existed, whose note says it (`proofOf` in verify.ts reads both).
+   */
+  readonly proof: string | null;
   /** When the task first went in progress (or verifying): only a started task can wait on another task. */
   readonly startedAt: string | null;
   readonly createdAt: string;
@@ -109,6 +114,7 @@ function created(id: string, fields: TaskFields, at: string, by: string): Task {
     evidence: null,
     skill: null,
     waits: [],
+    proof: null,
     startedAt: null,
     createdAt: at,
     createdBy: by,
@@ -130,6 +136,7 @@ function withStatus(task: Task, event: Extract<RegisterEvent, { type: 'status' }
     evidence: event.evidence ?? task.evidence,
     skill: event.skill,
     waits: event.status === 'waiting' ? (event.waits ?? []) : [],
+    proof: event.status === 'verifying' ? (event.proof ?? null) : null,
     startedAt: task.startedAt ?? (event.status === 'in-progress' || event.status === 'verifying' ? event.at : null),
     updatedAt: event.at,
     updatedBy: event.by,
