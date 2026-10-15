@@ -12,16 +12,26 @@ A task is `open` when added. Only its owner sets its status, with `teamrig set <
 | `open` | waiting to start | nothing |
 | `in-progress` | the owner is on it now | nothing |
 | `verifying` | shipped, waiting for what proves it (a test run, a night's flow, a number) | `--note` saying what proves it [register.requireNoteOn]; give it a due date (`update --due`): the date to verify it by |
-| `blocked` | cannot go on until something else happens | `--note` saying what it waits for [register.requireNoteOn] |
+| `waiting` | started, and cannot go on until something else happens | `--waits` naming every reason (a decision, an approval, a task, a time) and `--note` [register.requireNoteOn] |
 | `done` | finished and verified | `--note`, `--evidence` (unless the task already has some) and `--skill <name>` or `--skill none` [register.requireEvidenceOnDone, register.requireSkillOnDone] |
 | `dropped` | will not be done | `--note` saying why and who decided |
 
-`open`, `in-progress`, `verifying` and `blocked` are the active statuses: `list` shows them by default and `check`
+`open`, `in-progress`, `verifying` and `waiting` are the active statuses: `list` shows them by default and `check`
 reads only them. Set `verifying` when the work is merged or deployed but its proof does not exist yet, then `done`
 with that proof as evidence once it does, or `in-progress` again when the proof fails. Every session needs
 teamrig 0.7.0 or later before anyone sets it: an older teamrig skips the line with a warning and shows the task
 at its earlier status. A task can move from any status to any other, so a dropped task can be reopened, and setting the status it
 already has needs a `--note`.
+
+Set `waiting` when a task you started cannot go on, with `--waits` naming each reason: `decision:<who>` or
+`approval:<who>` (a session, or `owner` for the human), `task:T<id>` (a task to finish first) or
+`time:<YYYY-MM-DD HH:MM>` (UTC). It stays waiting until all of them have cleared: a task when it is done or
+dropped, a time when it passes, a decision or an approval only when you, its owner, set the next status. `list`
+marks a cleared reason `ready`, and `check` flags the task `READY` once all have. A task not started that needs
+another first is not waiting: it stays `open`, planned after it (`teamrig update T3 --after T2`), and its line
+shows `after T2`. Every session needs teamrig 0.10.0 or later before anyone sets `waiting`: an older one skips the
+line with a warning and shows the task at its earlier status. A `blocked` written by an older teamrig reads as
+`waiting` with no reasons.
 
 Evidence is what proves the work: a commit sha, a pull request, a test count, a path, a measured number. "Done" or
 "works" is not evidence. The skill is the one you wrote or updated while doing the task (it must exist in the
@@ -79,9 +89,10 @@ checkpoint; a session may run it for itself.
 | --- | --- | --- |
 | `OVERDUE` | the due time has passed | The owner finishes it or says what blocks it; the lead re-dates it (`update --due`) or tells the human. |
 | `VERIFY-OVERDUE` | a `verifying` task's due time, the date to verify it by, has passed | The owner checks the proof: `done` with it as evidence, `in-progress` when it failed, or a new due date and why. |
+| `READY` | a `waiting` task whose every reason has cleared: its tasks are done or dropped, its time has passed (a decision or an approval never clears by itself) | The owner goes on: `set --status in-progress`, or the next status. |
 | `NOT-PICKED-UP` | assigned over 24 h ago with no event from its owner since [register.check.notPickedUpAfterHours] | The owner is idle and reads no inbox: wake it with `teamrig open <id>` or a message, or tell the human. |
 | `STALE` | no event for 72 h [register.check.staleAfterHours] (not raised on top of NOT-PICKED-UP, nor for a `verifying` task with a due date) | Ask the owner what blocks it, then re-date, re-assign or drop it. |
-| `PRIORITY-SKIP` | in progress while a top-priority (`p1`) task of the same owner waits open, for over 24 h [register.check.prioritySkipAfterHours] | The owner parks the lower task and starts the waiting one; or the lead fixes the order (`update --priority`). |
+| `PRIORITY-SKIP` | in progress while a top-priority (`p1`) task of the same owner waits open and free to start (every task it comes after finished), for over 24 h [register.check.prioritySkipAfterHours] | The owner parks the lower task and starts the waiting one; or the lead fixes the order (`update --priority`). |
 | `OWNER-UNPLANNED` | an order from the human (`--source owner`) that is not in the current week plan | Plan it in (`update --week <week>`), or tell the human what it would push out. |
 | `DUE-UNPLANNED` | due inside the current week but not in its plan | Plan it in with `--week`, or re-date it. |
 | `OFF-GOAL` | in progress with no goal and not in the current week plan | If it belongs this week, the lead plans it in (`--week`); else the owner tags its goal (`update --goals`) or parks it. |

@@ -162,8 +162,8 @@ stateDiagram-v2
   state "in-progress" as working
   [*] --> open: teamrig add
   open --> working: set in-progress
-  working --> blocked: set blocked, with a note
-  blocked --> working: set in-progress
+  working --> waiting: set waiting, with its reasons
+  waiting --> working: set in-progress, once they cleared
   working --> verifying: set verifying, with a note naming the proof
   verifying --> done: set done, with a note, evidence and a skill
   verifying --> working: set in-progress, the proof failed
@@ -175,17 +175,23 @@ stateDiagram-v2
 
 - The owner may move a task from any status to any other; the register keeps every move.
 - `done` takes `--skill none` or the name of a skill in your Claude Code skills folder; setting a task to its own
-  status again needs `--note`; `add` refuses a title an open, in-progress, verifying or blocked task already has.
+  status again needs `--note`; `add` refuses a title an open, in-progress, verifying or waiting task already has.
 - `verifying` is a change that has shipped and waits for what proves it: a test run, a night's flow, a number.
   Its note names that proof, and its due date is the date to verify it by. It stays active, so `list` and
   `check` keep it in view until the owner sets it `done` with the proof as evidence.
-- `teamrig update` changes a task's title, owner, priority, ref, due date, goals or week (`none` clears the last
-  four), never the status; on a task it does not own, the lead may change the owner, priority, due date or week.
+- `waiting` is a started task that cannot go on, with every reason it waits for (`--waits`): a decision or an
+  approval (a session's or the owner's), another task to finish first, or a time. It stays waiting until all of
+  them have cleared: a task when it is done or dropped, a time when it passes, a decision or an approval only when
+  the owner sets the next status. A task not started that needs another first is not waiting: it stays `open`,
+  planned after it (`teamrig update T3 --after T2`), and its line shows `after T2`. A `blocked` written by an
+  older teamrig reads as `waiting` with no reasons.
+- `teamrig update` changes a task's title, owner, priority, ref, due date, goals, week or the tasks it comes after
+  (`none` clears the last five), never the status; on a task it does not own, the lead may change the owner, priority, due date or week.
 - `teamrig check` reports tasks past due, not picked up 24 hours after they were handed out, untouched for 72 hours,
   or due this week but left out of the week's plan, and owner orders left out of it. A verifying task past its due
-  date is `VERIFY-OVERDUE`: it was not verified by then. One with a due date is not called stale while it waits. It also reports a session that
+  date is `VERIFY-OVERDUE`: it was not verified by then. One with a due date is not called stale while it waits. A waiting task whose every reason has cleared is `READY`. It also reports a session that
   skips its own priorities: `PRIORITY-SKIP` is a task in progress for over 24 hours
-  (`register.check.prioritySkipAfterHours`) while the same session has an open p1, counted from the latest change of
+  (`register.check.prioritySkipAfterHours`) while the same session has an open p1 free to start (every task it comes after finished), counted from the latest change of
   owner, status or priority on either task. `OFF-GOAL` is a task in progress with no goal outside the week's plan:
   work nothing in the plan asked for. teamrig has no parent tasks yet, so a goal tag or the week is what ties a task
   to the plan. Then it flags skills in your Claude Code skills folder that break the skill rules. It reports and never

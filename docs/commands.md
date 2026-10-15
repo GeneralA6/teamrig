@@ -18,12 +18,15 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       with no terminal it prints the command
   rules [--session <id|name>]  the team rules and who the session is, as a session start gives them
   add --title "<one line>" --priority p<n> [--ref <where it was asked>] [--owner <session>]
-      [--source <session>|<owner source>] [--due <date>] [--goals a,b] [--week <date>]
+      [--source <session>|<owner source>] [--due <date>] [--goals a,b] [--week <date>] [--after T5,T6]
+      --after: the tasks to finish before this one starts; its line shows "after T5"
   add --team <child team> --title .. --priority p<n> [...]   the parent lead hands that team's lead a task
-  set <id> --status open|in-progress|verifying|blocked|done|dropped [--note "<what/why>"] [--evidence <proof>]
-      [--skill <name>|none]
+  set <id> --status open|in-progress|verifying|waiting|done|dropped [--note "<what/why>"] [--evidence <proof>]
+      [--skill <name>|none] [--waits decision:<who>,approval:<who>,task:T<id>,time:<date>]
+      waiting needs --waits: who decides or approves (a session or the owner), a task to finish first
+      (only once started) or a time; check flags it READY once its tasks finished and its time passed
   update <id> [--title ..] [--owner ..] [--priority ..] [--ref ..|none] [--due <date>|none]
-      [--goals a,b|none] [--week <date>|none] [--note ..]
+      [--goals a,b|none] [--week <date>|none] [--after T5,T6|none] [--note ..]
   list [--session <owner>] [--status a,b|all] [--source <s>] [--priority p1,p2] [--due-before <date>]
       [--week <date>|none] [--goal <tag>] [--tree] [--all]
       short rows within 3,000 characters; --all: every field of every task

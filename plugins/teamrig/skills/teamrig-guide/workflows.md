@@ -32,11 +32,12 @@ teamrig inbox add --session api --to web --text "T5: signup error codes are read
 
 1. Add the task with `--owner <their id>`. The register refuses a duplicate of an active task: then point at
    the existing id instead.
-2. Tell them. Not urgent: one inbox line naming the task id (shown at their next prompt). Urgent, or they are
-   blocked on it now: a message to the name `teamrig who` prints, at most 10 lines, ending with "No reply needed"
+2. Tell them. Not urgent: one inbox line naming the task id (shown at their next prompt). Urgent, or your work
+   is stuck on it now: a message to the name `teamrig who` prints, at most 10 lines, ending with "No reply needed"
    or "Reply needed: <one question>".
-3. If you are blocked until they finish, set your own task blocked with what you wait for:
-   `teamrig set T4 --session api --status blocked --note "waiting for T5 (web)"`.
+3. If you started your task and cannot go on until they finish, set it waiting on theirs:
+   `teamrig set T4 --session api --status waiting --waits task:T5 --note "the error codes on the form first"`.
+   Not started yet? Leave it open and plan it after theirs: `teamrig update T4 --session api --after T5`.
 
 Never set another session's task status, and never do, integrate or fix another session's change: hand it to
 its owner. A decision that belongs to the human (destructive data operations, product and design, permissions,
@@ -77,14 +78,20 @@ teamrig update T4 --session api --due 2026-10-17
 It stays in `list` and `check` until you set it `done` with the proof as evidence, or `in-progress` again when
 the proof fails. Past that date, `check` flags it `VERIFY-OVERDUE`.
 
-## Blocked
+## Waiting
 
 ```sh
-teamrig set T4 --session api --status blocked --note "waiting for the database decision from the human"
+teamrig set T4 --session api --status waiting --waits decision:owner --note "which database to use"
 ```
 
-Then move to your next task. When the block clears, `set --status in-progress` again. A block that needs the
-human goes to the lead with the options, numbers and your recommendation.
+Name every reason, comma-separated: `decision:<who>` or `approval:<who>` (a session, or `owner` for the human),
+`task:T<id>` (a task to finish first) or `time:<YYYY-MM-DD HH:MM>` (UTC). Then move to your next task. It stays
+waiting until every reason has cleared; `check` flags it `READY` once its tasks are done and its time has passed,
+and a decision or an approval clears when you set the next status (`set --status in-progress`). A decision for
+the human goes to the lead with the options, numbers and your recommendation.
+
+A task reason is only for a task you already started. One not started that needs another first is not waiting:
+it stays `open`, planned after it (`teamrig update T4 --after T5`), and its line shows `after T5`.
 
 ## Handover at high context
 
@@ -126,6 +133,7 @@ With sub-teams, add `--tree` to `check`. Then act on each flag (full table: [tas
   one inbox line to tag its goal or park it.
 - `NOT-PICKED-UP`: the owner is idle and reads no inbox: wake it with `teamrig open <id>`, or tell the human.
 - `OVERDUE` or `STALE`: ask the owner what blocks it, then re-date it (`--due`) or tell the human.
+- `READY`: a waiting task can go on: one inbox line to its owner, if it has not set the next status.
 - `VERIFY-OVERDUE`: ask the owner whether the proof came: `done` with it, `in-progress` if it failed, or a new date.
 - `OWNER-UNPLANNED` or `DUE-UNPLANNED`: plan it in with `--week`, or tell the human what it would push out.
 - A `SKILL` flag: tell the skill's owner in one inbox line.
