@@ -1,16 +1,17 @@
 import { formatAddress } from "../../core/address.js";
 import { FileLock } from "../../core/lock.js";
-import { checkTasks, currentWeek, formatFlag } from "../../register/check.js";
+import { checkTasks, currentWeek } from "../../register/check.js";
 import { renderPlan } from "../../register/plan.js";
 import { RegisterPolicy } from "../../register/policy.js";
 import { Register } from "../../register/register.js";
 import { JsonlEventLog } from "../../register/store.js";
 import { formatTask, formatTaskDetail, selectTasks } from "../../register/views.js";
-import { formatSkillFlag, lintSkills } from "../../skills/lint.js";
+import { lintSkills } from "../../skills/lint.js";
 import { SkillDir } from "../../skills/store.js";
 import { noPositionals, onePositional, UsageError } from "../args.js";
 import { addInputOf, callerOf, changesOf, listFilterOf, statusInputOf, taskIdOf, weekOf } from "../inputs.js";
 import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
+import { checkLines, listLines } from "../reports.js";
 import { rollUp } from "../roll-up.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { loadTree } from "../tree.js";
@@ -151,24 +152,21 @@ async function treeRegisters(args, runtime) {
  * has its own sessions, so a roll-up has no one owner. A setup tab, which has no `$TEAMRIG_SESSION`,
  * reads its tree this way.
  */
-async function listTree(args, runtime) {
+async function treeRows(args, runtime) {
     const filter = listFilterOf(new Map([...args.flags].filter(([name]) => name !== 'session')));
     const { teams } = await treeRegisters(args, runtime);
-    for (const { team, roster, snapshot } of teams) {
-        selectTasks(snapshot.state.tasks.values(), treeFilterOf(roster, filter)).forEach((task) => runtime.out.stdout(formatTask(task, team)));
-    }
-    return EXIT.ok;
+    return teams.flatMap(({ team, roster, snapshot }) => selectTasks(snapshot.state.tasks.values(), treeFilterOf(roster, filter)).map((task) => ({ task, team })));
 }
-export async function list(args, runtime) {
-    noPositionals(args);
-    if (args.switches.has('tree')) {
-        return listTree(args, runtime);
-    }
+async function ownRows(args, runtime) {
     const filter = listFilterOf(args.flags);
     const { team, snapshot } = await readTeam(runtime);
-    for (const task of selectTasks(snapshot.state.tasks.values(), filterIds(team.roster, filter))) {
-        runtime.out.stdout(formatTask(task));
-    }
+    return selectTasks(snapshot.state.tasks.values(), filterIds(team.roster, filter)).map((task) => ({ task, team: undefined }));
+}
+/** `list [--tree] [--all]`: the short form (src/cli/reports.ts), or with `--all` every field of every task. */
+export async function list(args, runtime) {
+    noPositionals(args);
+    const rows = args.switches.has('tree') ? await treeRows(args, runtime) : await ownRows(args, runtime);
+    listLines(rows, args.switches.has('all')).forEach((line) => runtime.out.stdout(line));
     return EXIT.ok;
 }
 export async function show(args, runtime) {
@@ -186,17 +184,15 @@ function weekFor(args, snapshot, now) {
     const week = args.flags.get('week');
     return week === undefined ? currentWeek(snapshot.state.tasks.values(), now) : weekOf(week);
 }
-/** The task flags of one register; with `team`, for `check --tree`, the heading and task ids name it. */
-function checkRegister(runtime, snapshot, config, now, week, team) {
-    const flags = checkTasks(snapshot.state.tasks.values(), now, week, config.register);
-    const scope = week === null ? 'no week plan tagged yet, so the week checks are skipped' : `week ${week}`;
-    runtime.out.stdout(`CHECK${team === undefined ? '' : ` ${team}:`} ${flags.length} flag(s), ${scope}`);
-    flags.forEach((flag) => runtime.out.stdout(formatFlag(flag, team)));
+/** The task flags of one register; with `team`, for `check --tree`, its task ids name it. */
+function checkRegister(snapshot, config, now, week, team) {
+    return { team, flags: checkTasks(snapshot.state.tasks.values(), now, week, config.register) };
 }
 /**
- * `check [--tree]`: the task flags, then the skill flags of the Claude Code skills folder. With
- * `--tree`, the task flags of the lead's team and each team under it, against the lead's week; the
- * skills are the lead's team's only, as teams on one machine share that folder.
+ * `check [--tree] [--all]`: the task flags, then the skill flags of the Claude Code skills folder, in
+ * the short form (src/cli/reports.ts), or with `--all` every flag in full. With `--tree`, the task
+ * flags of the lead's team and each team under it, against the lead's week; the skills are the lead's
+ * team's only, as teams on one machine share that folder.
  */
 export async function check(args, runtime) {
     noPositionals(args);
@@ -204,12 +200,11 @@ export async function check(args, runtime) {
     const tree = args.switches.has('tree');
     const { own, teams } = tree ? await treeRegisters(args, runtime) : await ownRegister(runtime);
     const week = weekFor(args, own.snapshot, now);
-    for (const rolled of teams) {
-        checkRegister(runtime, rolled.snapshot, rolled.config, now, week, tree ? rolled.team : undefined);
-    }
+    const sections = teams.map((rolled) => checkRegister(rolled.snapshot, rolled.config, now, week, tree ? rolled.team : undefined));
     const skills = lintSkills(await new SkillDir(runtime.files, own.paths.skills).readAll(), now, own.config);
-    runtime.out.stdout(`SKILLS ${skills.length} flag(s) in ${own.paths.skills}`);
-    skills.forEach((flag) => runtime.out.stdout(formatSkillFlag(flag)));
+    const scope = week === null ? 'no week plan tagged yet, so the week checks are skipped' : `week ${week}`;
+    const report = { sections, scope, skills, skillsDir: own.paths.skills };
+    checkLines(report, args.switches.has('all')).forEach((line) => runtime.out.stdout(line));
     return EXIT.ok;
 }
 /** `plan [--tree]`: with `--tree`, one section per team, the lead's team first, for the lead's week. */
