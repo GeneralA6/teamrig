@@ -7,7 +7,7 @@ import type { RegisterSnapshot } from './snapshot.ts';
 import { byPlanOrder, dueTime, formatTask } from './views.ts';
 
 /** In report order: the most urgent first. */
-export const FLAG_KINDS = ['OVERDUE', 'NOT-PICKED-UP', 'PRIORITY-SKIP', 'OWNER-UNPLANNED', 'DUE-UNPLANNED', 'OFF-GOAL', 'STALE'] as const;
+export const FLAG_KINDS = ['OVERDUE', 'PROOF-OVERDUE', 'NOT-PICKED-UP', 'PRIORITY-SKIP', 'OWNER-UNPLANNED', 'DUE-UNPLANNED', 'OFF-GOAL', 'STALE'] as const;
 
 export type FlagKind = (typeof FLAG_KINDS)[number];
 
@@ -42,12 +42,13 @@ export function currentWeekOf(snapshot: RegisterSnapshot, now: Date): string | n
 
 /**
  * The daily flags over active tasks:
- * - OVERDUE: past its deadline;
+ * - OVERDUE: past its deadline; PROOF-OVERDUE when the task is verifying, so its proof is late;
  * - NOT-PICKED-UP: assigned longer ago than `notPickedUpAfterHours` with no event from its owner since
  *   (an idle session never reads its inbox, so it needs a direct wake);
  * - PRIORITY-SKIP: in progress below an open (so unblocked) task of the top priority that has the same
  *   owner, for longer than `prioritySkipAfterHours`: the session is not working its list in order;
- * - STALE: no event for `staleAfterHours` (not raised on top of NOT-PICKED-UP);
+ * - STALE: no event for `staleAfterHours` (not raised on top of NOT-PICKED-UP, nor for a verifying task with a
+ *   due date: it waits quietly for its proof, and the date raises the alarm);
  * - OWNER-UNPLANNED: an owner order outside the current week plan;
  * - DUE-UNPLANNED: due inside the current week but outside its plan;
  * - OFF-GOAL: in progress with no goal and outside the current week plan, so nothing the team planned asked
@@ -84,16 +85,18 @@ function weekPlan(week: string | null, lengthDays: number): WeekPlan | undefined
   return week === null || start === undefined ? undefined : { week, start, end: start + lengthDays * MS_PER_DAY };
 }
 
-/** OVERDUE, then NOT-PICKED-UP or else STALE. */
+/** OVERDUE or PROOF-OVERDUE, then NOT-PICKED-UP or else STALE. */
 function timeFlags(task: Task, at: number, check: RegisterCheckConfig): Flag[] {
   const flags: Flag[] = [];
   const due = dueTime(task);
+  const verifying = task.status === 'verifying';
   if (due !== undefined && due < at) {
-    flags.push({ kind: 'OVERDUE', task, detail: `due ${shortUtc(task.due ?? '')}` });
+    const detail = `${verifying ? 'proof due' : 'due'} ${shortUtc(task.due ?? '')}`;
+    flags.push({ kind: verifying ? 'PROOF-OVERDUE' : 'OVERDUE', task, detail });
   }
   if (task.ownerSeenAt === null && at - Date.parse(task.assignedAt) > check.notPickedUpAfterHours * MS_PER_HOUR) {
     flags.push({ kind: 'NOT-PICKED-UP', task, detail: `assigned ${minute(task.assignedAt)}, no event from ${task.owner} since` });
-  } else if (at - Date.parse(task.updatedAt) > check.staleAfterHours * MS_PER_HOUR) {
+  } else if (!(verifying && due !== undefined) && at - Date.parse(task.updatedAt) > check.staleAfterHours * MS_PER_HOUR) {
     flags.push({ kind: 'STALE', task, detail: `last event ${minute(task.updatedAt)} by ${task.updatedBy}` });
   }
   return flags;

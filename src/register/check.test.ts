@@ -46,6 +46,21 @@ describe('checkTasks', () => {
     assert.deepEqual(kinds([testTask({ due: '2030-01-10', ownerSeenAt: FRESH, updatedAt: FRESH })]), []);
   });
 
+  it('flags a verifying task past its due date as a late proof, not as overdue work', () => {
+    const late = testTask({ status: 'verifying', due: '2030-01-09', ownerSeenAt: FRESH, updatedAt: FRESH });
+    assert.deepEqual(kinds([late]), ['PROOF-OVERDUE T1']);
+    const [flag] = checkTasks([late], NOW, null, CONFIG);
+    assert.ok(flag);
+    assert.equal(formatFlag(flag), 'PROOF-OVERDUE (proof due 01-09) T1 verifying, p2, owner alpha, due 01-09, from lead | Add a health check');
+    assert.deepEqual(kinds([testTask({ status: 'verifying', due: '2030-01-10', ownerSeenAt: FRESH, updatedAt: FRESH })]), []);
+  });
+
+  it('lets a verifying task with a due date wait quietly for its proof, and calls one with none stale', () => {
+    const quiet = (due: string | null) => testTask({ status: 'verifying', due, ownerSeenAt: '2030-01-01T08:00:00.000Z', updatedAt: '2030-01-01T08:00:00.000Z' });
+    assert.deepEqual(kinds([quiet('2030-01-12')]), []);
+    assert.deepEqual(kinds([quiet(null)]), ['STALE T1']);
+  });
+
   it('flags a task its owner has not touched since assignment, instead of calling it stale', () => {
     assert.deepEqual(kinds([testTask({ assignedAt: '2030-01-09T11:00:00.000Z', updatedAt: '2030-01-01T00:00:00.000Z' })]), [
       'NOT-PICKED-UP T1',
