@@ -296,6 +296,7 @@ describe('parseConfig budget', () => {
         overAction: 'ask-lead',
         escalate: 'session',
         quietHours: { startUtc: '22:00', endUtc: '06:00', action: 'ask' },
+        lift: { maxStopPct: 98, reserveStopPct: 99.5 },
         statusSnapshotDir: '/srv/usage/live',
         maxBytesPerHook: 2_000_000,
       },
@@ -316,9 +317,16 @@ describe('parseConfig budget', () => {
       overAction: 'ask-lead',
       escalate: 'session',
       quietHours: { startUtc: '22:00', endUtc: '06:00', action: 'ask' },
+      lift: { maxStopPct: 98, reserveStopPct: 99.5 },
       statusSnapshotDir: '/srv/usage/live',
       maxBytesPerHook: 2_000_000,
     });
+  });
+
+  it('keeps the reserve stop % at or above the lift stop %', () => {
+    const { config, issues } = parseConfig({ ...ROSTER, budget: { lift: { maxStopPct: 99, reserveStopPct: 95 } } });
+    assert.deepEqual(paths(issues), ['budget.lift.reserveStopPct']);
+    assert.deepEqual(config.budget.lift, { maxStopPct: 99, reserveStopPct: 99 });
   });
 
   it('gives a listed session without a share the default share', () => {
@@ -344,6 +352,7 @@ describe('parseConfig budget', () => {
         overAction: 'stop',
         escalate: 'always',
         quietHours: { startUtc: '22:00', endUtc: '25:00', action: 'nap' },
+        lift: { maxStopPct: 0, reserveStopPct: 101 },
         statusSnapshotDir: '',
         maxBytesPerHook: 10,
       },
@@ -351,6 +360,8 @@ describe('parseConfig budget', () => {
     assert.deepEqual(paths(issues).sort(), [
       'budget.dailyPct',
       'budget.escalate',
+      'budget.lift.maxStopPct',
+      'budget.lift.reserveStopPct',
       'budget.maxBytesPerHook',
       'budget.maxDailyPct',
       'budget.overAction',

@@ -77,6 +77,7 @@ export const DEFAULT_BUDGET: BudgetConfig = {
   paceTolerancePct: 0.5,
   overAction: 'warn',
   escalate: 'session-and-fleet',
+  lift: { maxStopPct: 99.3, reserveStopPct: 99.9 },
   maxBytesPerHook: 4_000_000,
 };
 

@@ -85,6 +85,8 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   sessionDailyPct: 'budget.sessions.*.dailyPct',
   warnAtPct: 'budget.warnAtPct',
   paceTolerancePct: 'budget.paceTolerancePct',
+  liftMaxStopPct: 'budget.lift.maxStopPct',
+  liftReserveStopPct: 'budget.lift.reserveStopPct',
   maxBytesPerHook: 'budget.maxBytesPerHook',
 };
 
