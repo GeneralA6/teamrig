@@ -135,6 +135,16 @@ export interface TestsConfig {
   readonly maxFailureChars: number;
 }
 
+/** Which GitHub issues `teamrig gh sync` reads into the register. It only reads GitHub, never writes to it. */
+export interface GithubConfig {
+  /** The repositories it reads, as `owner/name` in lowercase; empty turns the import off. */
+  readonly repos: readonly string[];
+  /** The session each GitHub login (lowercase) owns imported issues as; an issue with no listed assignee goes to the lead. */
+  readonly owners: Readonly<Record<string, string>>;
+  /** How many days back closed issues are read, to finish the tasks they were imported as. */
+  readonly closedDays: number;
+}
+
 export interface CommitsConfig {
   /** Changed non-test lines (added + deleted) a commit may carry without a reason line. */
   readonly maxLines: number;
@@ -348,6 +358,7 @@ export interface KitConfig {
   readonly budget: BudgetConfig;
   readonly loops: LoopsConfig;
   readonly tests: TestsConfig;
+  readonly github: GithubConfig;
   readonly alerts: AlertsConfig;
   readonly tabStatus: { readonly enabled: boolean };
   readonly refresh: RefreshConfig;

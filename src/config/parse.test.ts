@@ -22,6 +22,7 @@ describe('parseConfig', () => {
     assert.equal(config.messages.coldAfterMinutes, 60);
     assert.deepEqual(config.loops, { chainNudgeAt: 6 });
     assert.deepEqual(config.tests, { maxFailureChars: 4000 });
+    assert.deepEqual(config.github, { repos: [], owners: {}, closedDays: 14 });
     assert.deepEqual(config.register, DEFAULT_REGISTER);
     assert.deepEqual(config.budget, DEFAULT_BUDGET);
     assert.deepEqual(config.coordinator.schedule, {});
@@ -126,6 +127,41 @@ describe('parseConfig', () => {
       assert.deepEqual(paths(issues), ['tests.maxFailureChars']);
       assert.equal(config.tests.maxFailureChars, 4000);
     }
+  });
+
+  it('reads github repos and owners in lowercase, and closedDays within 1 to 365', () => {
+    const { config, issues } = parseConfig({
+      ...ROSTER,
+      github: { repos: ['Acme/Web', 'acme/docs.site'], owners: { OctoCat: 'bravo' }, closedDays: 365 },
+    });
+    assert.deepEqual(issues, []);
+    assert.deepEqual(config.github, { repos: ['acme/web', 'acme/docs.site'], owners: { octocat: 'bravo' }, closedDays: 365 });
+    for (const wrong of [0, 366]) {
+      const parsed = parseConfig({ ...ROSTER, github: { closedDays: wrong } });
+      assert.deepEqual(paths(parsed.issues), ['github.closedDays']);
+      assert.equal(parsed.config.github.closedDays, 14);
+    }
+  });
+
+  it('reports a wrong repository, a repository listed twice, a wrong login and an unknown session', () => {
+    const { config, issues } = parseConfig({
+      ...ROSTER,
+      github: {
+        repos: ['acme', 'acme/web/extra', 'acme/web', 'ACME/web'],
+        owners: { 'octo_cat': 'bravo', hubot: 'zulu', monalisa: 'alpha', MonaLisa: 'bravo', octocat: 7 },
+      },
+    });
+    assert.deepEqual(paths(issues), [
+      'github.repos[0]',
+      'github.repos[1]',
+      'github.repos',
+      'github.owners.octo_cat',
+      'github.owners.hubot',
+      'github.owners.MonaLisa',
+      'github.owners.octocat',
+    ]);
+    assert.deepEqual(config.github.repos, ['acme/web']);
+    assert.deepEqual(config.github.owners, { monalisa: 'alpha' });
   });
 
   it('reports every wrong field with its path and falls back to the default', () => {
