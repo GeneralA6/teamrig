@@ -141,6 +141,17 @@ export interface SessionBudget {
 }
 
 /**
+ * The bounds on a lead's lift of a session's daily budget. Every lift carries a stop %, the share of
+ * the week at which it ends; the reserve stop % is only for the one reserve release shortly before the reset.
+ */
+export interface BudgetLiftConfig {
+  /** The highest stop % a lift may carry. */
+  readonly maxStopPct: number;
+  /** The highest stop % of a `--reserve` lift, given only in the last hour before the reset. */
+  readonly reserveStopPct: number;
+}
+
+/**
  * The weekly token budget: the pace line the team is measured against and each session's daily part
  * of it. Off by default, and the defaults only measure and show: nothing blocks or acts.
  */
@@ -170,6 +181,7 @@ export interface BudgetConfig {
   readonly overAction: OverAction;
   readonly escalate: Escalation;
   readonly quietHours?: QuietHours;
+  readonly lift: BudgetLiftConfig;
   /** The folder of status line snapshots, `<Claude session id>.json` each. Unset: `<kit home>/usage/live`. */
   readonly statusSnapshotDir?: string;
   /** The most transcript bytes one hook run reads; the rest waits for the next run. */

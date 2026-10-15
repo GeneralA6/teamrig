@@ -348,6 +348,26 @@
             "action": { "enum": ["warn", "ask-lead", "ask", "block"] }
           }
         },
+        "lift": {
+          "description": "Bounds on the lead's lift of a session's daily budget (teamrig budget lift). Every lift carries a stop %, the share of the week at which it ends.",
+          "type": "object",
+          "properties": {
+            "maxStopPct": {
+              "description": "The highest stop % a lift may carry.",
+              "type": "number",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 99.3
+            },
+            "reserveStopPct": {
+              "description": "The highest stop % of a --reserve lift, given only in the last hour before the reset; it ends 15 minutes before the reset. Never below maxStopPct.",
+              "type": "number",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 99.9
+            }
+          }
+        },
         "statusSnapshotDir": {
           "description": "The folder of status line snapshots, <Claude session id>.json each. Unset: <kit home>/usage/live.",
           "type": "string",
