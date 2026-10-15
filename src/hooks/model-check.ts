@@ -1,15 +1,23 @@
 import { describeLaunch } from '../config/launch.ts';
 import { isEffortLevel, type LaunchConfig } from '../config/types.ts';
+import { recordField, stringField, type JsonRecord } from '../core/guards.ts';
 
-/** Where Claude Code gives a hook the effort level; it gives the model in the hook's input. */
-export const EFFORT_ENV = 'CLAUDE_EFFORT';
-
-/** What Claude Code reports of the session at its start; each is absent when it does not say. */
+/** What Claude Code reports of the running session; each is absent when the hook was not told. */
 export interface RunningSettings {
   /** The model id from the SessionStart payload, such as `claude-opus-5-5`. */
   readonly model: string | undefined;
-  /** `$CLAUDE_EFFORT`, the effort level. */
+  /** The effort level from a Stop payload (`payloadEffortOf`). */
   readonly effort: string | undefined;
+}
+
+/**
+ * The effort level a hook payload carries as `effort.level`. Claude Code 2.1.300 gives it to the Stop
+ * and PreToolUse hooks, not to SessionStart; `$CLAUDE_EFFORT` is no substitute there, since a session
+ * started from another session's shell can inherit that session's value.
+ */
+export function payloadEffortOf(payload: JsonRecord): string | undefined {
+  const effort = recordField(payload, 'effort');
+  return effort === undefined ? undefined : stringField(effort, 'level');
 }
 
 const FAMILIES = ['fable', 'opus', 'sonnet', 'haiku'] as const;
