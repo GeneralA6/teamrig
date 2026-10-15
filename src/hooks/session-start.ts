@@ -17,6 +17,8 @@ export interface SessionStartInput {
   readonly titleNote: string | undefined;
   /** After a context refresh: where the session's handover is, so it reads it first. */
   readonly refreshNote: string | undefined;
+  /** When the session runs on another model or effort than the team config asks: the line that says so. */
+  readonly modelNote: string | undefined;
   /**
    * Who the session is: an id or any name it has had, from `$TEAMRIG_SESSION`, a `--session` flag, or
    * the area this Claude Code session last read its inbox as.
@@ -101,6 +103,9 @@ export function sessionStartContext(input: SessionStartInput): string {
   if (input.titleNote !== undefined) {
     notes.push(input.titleNote);
   }
+  if (input.modelNote !== undefined) {
+    notes.push(input.modelNote);
+  }
   if (load.newerVersion !== undefined) {
     notes.push(`The team config is version ${load.newerVersion}, from a newer ${KIT_NAME}: these rules are read best-effort.`);
   }
@@ -110,7 +115,11 @@ export function sessionStartContext(input: SessionStartInput): string {
   return renderSessionContext(`${renderCorePack(load.config, command)}\n\n${notes.join('\n')}`, input.teamRules, command);
 }
 
-/** The hook's stdout: Claude Code adds `additionalContext` to the session's context. */
-export function sessionStartOutput(context: string): string {
-  return JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: context } });
+/**
+ * The hook's stdout: Claude Code adds `additionalContext` to the session's context and shows a
+ * `systemMessage`, when there is one, to the user, who alone can change the model or the effort.
+ */
+export function sessionStartOutput(context: string, notice?: string): string {
+  const hookSpecificOutput = { hookEventName: 'SessionStart', additionalContext: context };
+  return JSON.stringify(notice === undefined ? { hookSpecificOutput } : { systemMessage: notice, hookSpecificOutput });
 }

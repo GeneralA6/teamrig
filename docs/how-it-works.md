@@ -42,7 +42,7 @@ flowchart LR
 
 | Part | When it runs | What it does |
 | --- | --- | --- |
-| SessionStart hook | a session starts, resumes, is cleared or is compacted | gives the session the core rules, its name, the lead's name, where its team sits in a tree of teams and your team's `rules.md` |
+| SessionStart hook | a session starts, resumes, is cleared or is compacted | gives the session the core rules, its name, the lead's name, where its team sits in a tree of teams and your team's `rules.md`; tells you and the session, in one MODEL line, when it runs on another model or effort than its `launch` entry asks, with the `/model` and `/effort` to type |
 | UserPromptSubmit hook | you send a prompt | one `INBOX:` line when the session has unread notes; a line when it records a Claude Code rename of the session as its team name, or when `.teamrig.json` is broken; nothing otherwise |
 | PreToolUse hook | Claude runs a Bash or PowerShell command | finds every `git push` in it, through wrappers, nested shells and git aliases, and asks you or refuses; asks when it cannot read the command ([Safe pushes](#safe-pushes)) |
 | Stop hook | a turn ends | after a task is marked done, asks for a handover when a refresh is due, then tells you once ([A fresh context](#a-fresh-context)); nothing otherwise |
@@ -128,7 +128,9 @@ sequenceDiagram
   gives it the rules it missed at start. After a `/clear` it runs `inbox read` once more.
 - `teamrig open <session>` opens a tab in tmux (when run inside tmux), Windows Terminal, macOS Terminal, GNOME
   Terminal, Konsole or x-terminal-emulator, in that order; `open.terminal` in the config or `--terminal` picks one.
-  The tab runs `teamrig launch`, which sets `$TEAMRIG_SESSION` and starts `claude --name <name> "<first prompt>"`.
+  The tab runs `teamrig launch`, which sets `$TEAMRIG_SESSION` and starts `claude --name <name> "<first prompt>"`,
+  with `--model` and `--effort` from the session's `launch` entry in the config. The lead, for each it leaves unset,
+  starts on `best` (Fable where the account has it, else Opus) at `xhigh` effort; the others on Claude Code's own.
   When no terminal opens, it prints the command to paste and exits 3. `teamrig open web/lead` opens a session of
   another team in the same tree.
 
