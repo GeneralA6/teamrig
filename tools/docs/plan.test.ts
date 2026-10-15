@@ -3,19 +3,21 @@ import assert from 'node:assert/strict';
 import { contrast, mix } from './colour.ts';
 import {
   BACKLOG,
+  barX,
   layOut,
-  MEMBERS,
-  PLAN_BUILD,
   PLAN_CLOCK,
   PLAN_FILL,
+  PLAN_STEPS,
   planWeek,
   PRIORITIES,
   PRIORITY_SHADE,
   renderPlan,
+  RESETS,
   type PlanTask,
 } from './plan.ts';
 import { animationsIn, ascending, keyframesIn, mediaIn, rulesIn, valueOf } from './stylesheet.ts';
 import { themeStyle, TOKENS } from './theme.ts';
+import { FADE } from './timeline.ts';
 import { parseXml, placesIn, textOf, type XmlElement, type XmlPlace } from './xml.ts';
 
 const svg = renderPlan();
@@ -24,12 +26,13 @@ const places = placesIn(root);
 const css = textOf(places.find((place) => place.element.name === 'style')?.element ?? '');
 const rules = rulesIn(css);
 const frames = keyframesIn(css);
+const EMPTY = parseXml('<g/>');
 
 const classesOf = (element: XmlElement | undefined): string[] => (element?.attributes.get('class') ?? '').split(/\s+/).filter((name) => name !== '');
 const animationOf = (element: XmlElement): string => classesOf(element).find((name) => /^a\d+$/.test(name)) ?? '';
-const step = (name: string): XmlElement | undefined => places.find((place) => place.element.attributes.get('data-step') === name)?.element;
-const wordsIn = (element: XmlElement | undefined): string[] =>
-  placesIn(element ?? parseXml('<g/>'))
+const step = (name: string): XmlElement => places.find((place) => place.element.attributes.get('data-step') === name)?.element ?? EMPTY;
+const wordsIn = (element: XmlElement): string[] =>
+  placesIn(element)
     .filter((place) => place.element.name === 'text')
     .map((place) => textOf(place.element));
 
@@ -37,10 +40,11 @@ const wordsIn = (element: XmlElement | undefined): string[] =>
 const still = (place: XmlPlace): boolean =>
   place.path.every((element) => classesOf(element).every((name) => (valueOf(rules.get(`.${name}`) ?? '', 'opacity') ?? '1') === '1'));
 
-/** When a build-up step starts to show, in seconds. */
-const shownAt = (name: string): number => ((frames.get(animationOf(step(name) ?? parseXml('<g/>')))?.stops[1] ?? 0) * PLAN_CLOCK.loop) / 100;
+/** An animation's keyframe stops in seconds: hidden until [1], shown from [2] to [3], hidden again from [4]. */
+const secondsOf = (name: string): number[] => (frames.get(name)?.stops ?? []).map((stop) => (stop * PLAN_CLOCK.loop) / 100);
+const close = (a: number | undefined, b: number | undefined): boolean => a !== undefined && b !== undefined && Math.abs(a - b) < 0.01;
 
-const task = (title: string, priority: PlanTask['priority'], estimate: number): PlanTask => ({ title, member: 'api', priority, estimate });
+const task = (title: string, priority: PlanTask['priority'], estimate: number): PlanTask => ({ title, priority, estimate });
 
 describe('renderPlan', () => {
   it('draws the same bytes every time, as well-formed XML', () => {
@@ -51,15 +55,15 @@ describe('renderPlan', () => {
   it('names the picture for screen readers: role, aria-label and a matching title', () => {
     const label = root.attributes.get('aria-label') ?? '';
     assert.equal(root.attributes.get('role'), 'img');
-    assert.match(label, /^Your lead plans the week from the tokens you have left\. It sizes each task in tokens/);
-    assert.match(label, /until the plan reaches 99\.5% of your weekly limit, keeping 0\.5% for incidents\./);
-    assert.match(label, /the tasks that do not fit move to next week\.$/);
+    assert.match(label, /^Your lead plans the week from the tokens you have left\. The tasks fill the days, most important first/);
+    assert.match(label, /until the plan reaches 99\.5% of your weekly limit\. The last 0\.5% is kept for incidents/);
+    assert.match(label, /the task that doesn't fit moves to next week\.$/);
     assert.equal(textOf(places.find((place) => place.element.name === 'title')?.element ?? ''), label);
   });
 
   it('runs every animated class on keyframes that exist and ascend from 0% to 100%', () => {
     const animated = animationsIn(css);
-    assert.equal(animated.size, 5);
+    assert.equal(animated.size, 7);
     for (const [selector, name] of animated) {
       const stops = frames.get(name)?.stops ?? [];
       assert.ok(ascending(stops), `${selector}: ${stops.join(' ')}`);
@@ -71,29 +75,59 @@ describe('renderPlan', () => {
     assert.equal(mediaIn(css).get('(prefers-reduced-motion:reduce)'), '*{animation:none!important}');
   });
 
-  it('builds the plan up one priority at a time, p1 first, then the total, then what moves to next week', () => {
-    const order = ['p1', 'p2', 'p3', 'totals', 'next-week'];
-    const times = order.map(shownAt);
-    for (const [i, time] of times.entries()) assert.ok(Math.abs(time - (PLAN_BUILD.from + i * PLAN_BUILD.step)) < 0.01, order[i]);
-    assert.ok(ascending(times) && (times.at(-1) ?? Infinity) < PLAN_CLOCK.rest);
+  it('shows the steps in order: the tokens, the caption and the tasks one by one, the reserve, then next week', () => {
+    const tasks = placesIn(step('tasks')).filter((place) => place.element.attributes.has('data-task'));
+    const caption = placesIn(step('tasks')).find((place) => place.element.name === 'text')?.element ?? EMPTY;
+    const parts = [step('tokens'), caption, ...tasks.map((place) => place.element), step('reserve'), step('next-week')];
+    const shown = parts.map((part) => secondsOf(animationOf(part))[1]);
+    const expected = [PLAN_STEPS.tokens, PLAN_STEPS.tasks, ...tasks.map((_, i) => PLAN_STEPS.tasks + i * PLAN_STEPS.taskStep), PLAN_STEPS.reserve, PLAN_STEPS.nextWeek];
+    assert.equal(tasks.length, 3);
+    for (const [i, time] of shown.entries()) assert.ok(close(time, expected[i]), `part ${i}: ${time}`);
   });
 
-  it("gives each priority its share of the token bar and its tasks on the board, and nothing else's", () => {
-    for (const priority of ['p1', 'p2', 'p3'] as const) {
-      const tinted = placesIn(step(priority) ?? parseXml('<g/>')).filter((place) => place.element.name === 'rect');
-      assert.equal(tinted.length, 4, priority);
-      assert.ok(tinted.every((place) => classesOf(place.element).includes(priority)), priority);
+  it('holds the finished plan for at least 5 s, then fades it all out together so the loop starts empty', () => {
+    for (const [selector, name] of animationsIn(css)) {
+      const seconds = secondsOf(name);
+      assert.ok(close(seconds[3], PLAN_CLOCK.end - FADE) && close(seconds[4], PLAN_CLOCK.end), `${selector}: ${seconds.join(' ')}`);
     }
-    assert.deepEqual(wordsIn(step('p1')), ['p1 tasks 35%', 'Signup endpoint', 'p1 · 14%', 'Signup form', 'p1 · 12%', 'End-to-end tests', 'p1 · 9%']);
+    assert.ok(PLAN_CLOCK.end - FADE - (PLAN_STEPS.nextWeek + FADE) >= 5);
   });
 
-  it('shows the finished plan in its still picture: every step, the total, the reserve and next week', () => {
-    for (const name of ['p1', 'p2', 'p3', 'totals', 'next-week']) {
+  it('shows the finished plan in its still picture, every step with its words', () => {
+    for (const name of ['tokens', 'tasks', 'reserve', 'next-week']) {
       const found = places.find((place) => place.element.attributes.get('data-step') === name);
-      assert.ok(found !== undefined && still(found), name);
+      assert.ok(found !== undefined, name);
+      for (const part of placesIn(found.element)) assert.ok(still({ element: part.element, path: [...found.path, ...part.path] }), name);
     }
-    assert.deepEqual(wordsIn(step('totals')), ['99.5% planned,', '0.5% kept for incidents']);
-    assert.deepEqual(wordsIn(step('next-week')), ['Moves to next week', 'Search', 'p4 · 12%', 'Export', 'p4 · 7%']);
+    assert.deepEqual(wordsIn(step('tasks')), [
+      'Tasks fill the days, most important first, up to 99.5%',
+      'Signup flow',
+      'p1 · 45%',
+      'Profile page',
+      'p2 · 32%',
+      'Dark mode',
+      'p3 · 22.5%',
+    ]);
+    assert.deepEqual(wordsIn(step('reserve')), ['0.5% kept for incidents']);
+    assert.deepEqual(wordsIn(step('next-week')), ['Moves to next week', 'Export', 'p4 · 9%']);
+  });
+
+  it('draws the week from reset to reset, a day to a column', () => {
+    assert.deepEqual(wordsIn(step('tokens')), ['Tokens for this week', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun', 'reset', 'reset']);
+    const resets = placesIn(step('tokens')).filter((place) => place.element.name === 'text' && textOf(place.element) === 'reset');
+    assert.deepEqual(
+      resets.map((place) => Number(place.element.attributes.get('x'))),
+      [...RESETS],
+    );
+  });
+
+  it('keeps the reserve in amber, from the end of the last task to the right reset', () => {
+    const plan = planWeek(BACKLOG, PLAN_FILL);
+    const bar = placesIn(step('reserve')).find((place) => place.element.name === 'rect')?.element ?? EMPTY;
+    const x = Number(bar.attributes.get('x'));
+    assert.ok(Math.abs(x - barX(plan.used)) < 0.05);
+    assert.ok(Math.abs(x + Number(bar.attributes.get('width')) - RESETS[1]) < 0.05);
+    assert.equal(valueOf(rules.get('.reserve') ?? '', 'fill'), 'var(--amber)');
   });
 
   it('opens its stylesheet with the theme, and colours only with its tokens', () => {
@@ -117,13 +151,16 @@ describe('renderPlan', () => {
 });
 
 describe('planWeek', () => {
-  it("fills the README's week to 99.5% with every p1, p2 and p3 task, and moves both p4 tasks to next week", () => {
+  it("fills the README's week to 99.5% with the p1, p2 and p3 tasks, and moves the p4 task to next week", () => {
     const plan = planWeek(BACKLOG, PLAN_FILL);
     assert.equal(plan.used, 99.5);
-    assert.deepEqual([...new Set(plan.planned.map((planned) => planned.priority))], ['p1', 'p2', 'p3']);
+    assert.deepEqual(
+      plan.planned.map((planned) => planned.priority),
+      ['p1', 'p2', 'p3'],
+    );
     assert.deepEqual(
       plan.nextWeek.map((waiting) => waiting.title),
-      ['Search', 'Export'],
+      ['Export'],
     );
   });
 
@@ -154,39 +191,20 @@ describe('planWeek', () => {
 });
 
 describe('layOut', () => {
-  const blocks = layOut(planWeek(BACKLOG, PLAN_FILL).planned);
-  /** The x of the drawn resets, at the week's start and end. */
-  const [start = 0, end = 0] = places
-    .filter((place) => place.element.name === 'text' && textOf(place.element) === 'reset')
-    .map((place) => Number(place.element.attributes.get('x')));
-
-  it("runs each member's tasks across its own lane from one reset to the next, end to end, p1 first", () => {
-    const tops = new Set<number>();
-    for (const member of MEMBERS) {
-      const lane = blocks.filter((block) => block.task.member === member);
-      assert.equal(lane.length, 3, member);
-      assert.deepEqual(
-        lane.map((block) => block.task.priority),
-        ['p1', 'p2', 'p3'],
-        member,
-      );
-      assert.equal(new Set(lane.map((block) => block.y)).size, 1, member);
-      tops.add(lane[0]?.y ?? 0);
-      assert.equal(lane[0]?.x, start, member);
-      for (const [i, block] of lane.entries()) {
-        const next = lane[i + 1];
-        if (next !== undefined) assert.ok(Math.abs(block.x + block.width - next.x) < 1e-9, member);
-      }
-      const last = lane.at(-1);
-      assert.ok(last !== undefined && Math.abs(last.x + last.width - end) < 1e-9, member);
-    }
-    assert.equal(tops.size, MEMBERS.length);
+  it('lays the planned tasks end to end from the left reset, each as wide as its share of the limit', () => {
+    const [left, right] = RESETS;
+    assert.deepEqual(
+      layOut([task('a', 'p1', 50), task('b', 'p2', 25)]).map((block) => [block.x, block.width]),
+      [
+        [left, (right - left) / 2],
+        [(left + right) / 2, (right - left) / 4],
+      ],
+    );
   });
 
-  it("sizes the tasks in a lane by their token estimates", () => {
-    const api = blocks.filter((block) => block.task.member === 'api');
-    const [first, second] = api;
-    assert.ok(first !== undefined && second !== undefined);
-    assert.ok(Math.abs(first.width / second.width - first.task.estimate / second.task.estimate) < 1e-9);
+  it("ends the README's plan 0.5% short of the right reset", () => {
+    const last = layOut(planWeek(BACKLOG, PLAN_FILL).planned).at(-1);
+    assert.ok(last !== undefined && Math.abs(last.x + last.width - barX(99.5)) < 1e-9);
+    assert.ok(barX(99.5) < RESETS[1]);
   });
 });
