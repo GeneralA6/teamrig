@@ -23,3 +23,8 @@ export { DEFAULT_REGISTER } from '../config/defaults.ts';
 export { priorityName } from '../config/priorities.ts';
 export { parseConfigText, type ConfigRead } from '../config/text.ts';
 export { CONFIG_VERSION, type KitConfig, type PriorityConfig } from '../config/types.ts';
+
+// Session names: the config's roster with the rename log (`renames.jsonl`), so a reader finds a session
+// by its id, its name or a name it had before, as every teamrig command does.
+export { Roster, type SessionLookup } from '../config/roster.ts';
+export { readRenames, RENAME_VERSION, type Rename, type RenameLogRead } from '../names/rename.ts';

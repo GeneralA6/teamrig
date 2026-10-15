@@ -71,6 +71,19 @@ describe('the read entry', () => {
     assert.equal(read.priorityText(snapshot.state.tasks.get('T1')?.priority ?? 0), 'p7');
   });
 
+  it('finds a session by its id, its name or a former name, from the config and the rename log', () => {
+    const config = read.parseConfigText('{"configVersion": 1, "sessions": ["lead", "alpha"], "roles": {"lead": "lead"}}');
+    assert.ok(config.status === 'loaded');
+    const rename = { v: read.RENAME_VERSION, id: 'alpha', from: 'app-alpha', to: 'scout', at: '2030-01-08T09:00:00.000Z', by: 'alpha' };
+    const roster = new read.Roster(config.config, 'app', read.readRenames(`${JSON.stringify(rename)}\n`).renames);
+    assert.deepEqual(['alpha', 'scout', 'app-alpha'].map((text) => roster.lookup(text)), [
+      { ok: true, id: 'alpha' },
+      { ok: true, id: 'alpha' },
+      { ok: true, id: 'alpha' },
+    ]);
+    assert.deepEqual(roster.ids, ['lead', 'alpha']);
+  });
+
   it('finds the unread inbox lines with the line hash the reader hands in', () => {
     const hash: read.LineHash = (line) => `fake:${line}`;
     const lines = read.inboxLines('- 2030-01-07 09:00 lead: first\r\n- 2030-01-07 10:00 lead: second\r\n');
