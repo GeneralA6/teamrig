@@ -671,6 +671,116 @@ OK 3 commit(s) in origin/main..HEAD, none over 400 non-test lines or 15 files wi
 
 A commit over the rule without the reason line is `REFUSED` (exit 2).
 
+## Budget
+
+Measuring and showing only: nothing here blocks or stops a session. W = weighted tokens (input 1, cache writes
+1.25 to 2, cache reads 0.1, output 5), counted from the Claude Code transcripts under `~/.claude/projects`
+(`$CLAUDE_CONFIG_DIR/projects` when set). A transcript counts for a session once its tab ran
+`teamrig inbox read --session <id>`, or when the user titled it with the session's id or name; the rest counts
+as outside the team.
+
+### teamrig budget
+
+Measures every session's use since the last run, keeps 8 days of it in the team's `state/usage` folder, and
+shows the week against the pace line: the week's use and reset from the status line snapshots (see
+[teamrig statusline](#teamrig-statusline)), else from `budget.weeklyLimitW` and `budget.reset`. The team's daily
+budget is what is left to `budget.targetPct` at 00:00 UTC, spread over the days to the pace end
+(`budget.paceEndHoursBeforeReset` before the reset), split among the sessions by `budget.sessions`. Short by
+default: the busiest 7 sessions, then who is past the daily budget. A session id or name shows that session by
+day.
+
+Flags:
+
+- `--loops`: each loop pattern's count and W by day (read after read, edit after edit, a test after an edit,
+  reruns, passing test runs), every session's and the outside's together, or one session's.
+- `--day <YYYY-MM-DD>`: a past UTC day recounted from the transcripts; nothing is written.
+- `--all`: every session, idle ones too, every outside title, and with `--loops` all 8 days.
+
+Example:
+
+```sh
+teamrig budget
+```
+
+Output:
+
+```text
+Week: 57.0% used at 11:00 UTC (status line); the pace line is at 20.9%: 36.1 points ahead. Resets Wed 10-21 01:00 UTC.
+The team used 5.0% of the week today; its daily budget is 10.3%. 37.50M W in 1,310 calls.
+api used 4.0% of the week today; its daily budget is 3.4%. 30.00M W in 1,000 calls.
+lead used 1.0% of the week today; its daily budget is 3.4%. 7.50M W in 310 calls.
+Past the daily budget: api. Finish the step in hand and start no new work items or helpers. Never skip a test or check to save budget. The lead can lift it.
+W = weighted tokens: input 1, cache writes 1.25 to 2, cache reads 0.1, output 5. 1% of the week is about 7.50M W, estimated from the status line.
+```
+
+With no status line snapshot and no `budget.weeklyLimitW`, the week line says its use is unknown and the rows
+give W only. `Not on the team: N Claude Code sessions (titled ...)` counts the tabs not tied to a session.
+`Still reading: <sessions>` means a long transcript is read in steps: run it again for the rest.
+
+### teamrig budget lift
+
+The lead lifts one session's daily budget for today. Every lift carries a stop %: it ends at the stop %, at
+`--until` or at the end of the UTC day, whichever comes first, and quiet hours do not apply to the session while
+it runs. The stop % is at most `budget.lift.maxStopPct` (99.3). Above that, up to `budget.lift.reserveStopPct`
+(99.9), only with `--reserve` and only in the last hour before the reset; a reserve lift ends 15 minutes before
+the reset. Lifts are kept in the team's `state/usage/lifts.jsonl`.
+
+Flags:
+
+- `--session <id|name>`: the caller; it must be the lead.
+- `--to <pct>`: the session's daily budget today, in percent of the week.
+- `--stop-pct <pct>`: required: the week's use at which the lift ends.
+- `--until <HH:MM|date>`: an earlier end: `HH:MM` today or `"YYYY-MM-DD HH:MM"`, UTC.
+- `--reason "<why>"`: required: why the session needs more today.
+- `--reserve`: release the reserve, above `budget.lift.maxStopPct`, in the last hour before the reset.
+
+Example:
+
+```sh
+teamrig budget lift api --session lead --to 6 --stop-pct 97 --reason "release day"
+```
+
+Output:
+
+```text
+LIFTED api to 6.0% today until the end of the day (UTC) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.
+```
+
+A caller who is not the lead, a missing stop %, a stop % above the bounds, a week already at the stop % or an
+unknown week (no status line and no `budget.weeklyLimitW`) is `REFUSED` (exit 2).
+
+### teamrig statusline
+
+A status line for Claude Code. It reads the status JSON Claude Code sends on stdin, saves the plan's use of the
+week and its reset as `<Claude session id>.json` in the team's `budget.statusSnapshotDir` (relative to the
+team's folder; unset: `<kit home>/usage/live`), and prints a short status. It always exits 0, so a bad input or
+a full disk never breaks the status bar; what went wrong goes to stderr. A plugin cannot set the status line:
+see [requirements.md](requirements.md#the-status-line-optional).
+
+Flags: none.
+
+Example, as Claude Code runs it:
+
+```sh
+teamrig statusline
+```
+
+Output:
+
+```text
+Opus 5.5, week 57%, 5h 6%
+```
+
+Bring your own status line: any status line that writes the same snapshot JSON, one `.json` file per Claude
+session in that folder, is read by `teamrig budget`. Only `ts` and `session_id` (a Claude session id) are
+required, and `rate_limits.seven_day` carries the week; the other fields may be `null`.
+
+```json
+{"ts":"2026-10-15T12:00:50.598Z","session_id":"0b6f9c2e-5d1a-4c3e-9f7a-2e8d4b1c6a90","cwd":"/work/app","agent_name":null,"model":"Opus 5.5","rate_limits":{"five_hour":{"used_percentage":6,"resets_at":1792081200},"seven_day":{"used_percentage":57,"resets_at":1792544400}},"cost_usd":857.79,"context_used_pct":15,"context_input_tokens":153654}
+```
+
+`resets_at` is in seconds since 1970, as Claude Code sends it.
+
 ## Hooks
 
 Claude Code runs these from the plugin's `hooks/hooks.json`, with the hook's JSON on stdin. You never run them

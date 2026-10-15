@@ -52,6 +52,28 @@ add it. Each change to the plugin raises its version; to take the newest one, fo
 When none works, or with `--terminal print`, `open` prints the command to run in a new terminal and exits 3.
 The new tab runs `claude`, so Claude Code must be on that terminal's PATH.
 
+## The status line (optional)
+
+`teamrig budget` reads each session's use from the transcripts with no setup. The week's use in percent and its
+reset come from Claude Code's status line, which a plugin cannot set, so you set it once in your user
+`settings.json` (`~/.claude/settings.json`):
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "node ~/.claude/plugins/marketplaces/teamrig/plugins/teamrig/dist/cli/main.js statusline"
+  }
+}
+```
+
+The status line does not run in the Bash tool, so `teamrig` is not on its PATH; the marketplace's copy keeps one
+path across plugin updates. It saves a small snapshot per Claude Code session in the team's
+`budget.statusSnapshotDir` and prints the model and the plan's use. If you already have a status line, keep it
+and have it write the same snapshot JSON instead ([commands.md](commands.md#teamrig-statusline)), then point
+`budget.statusSnapshotDir` at its folder. Without either, set `budget.weeklyLimitW` and `budget.reset` for daily
+budgets in percent, or `teamrig budget` shows W only.
+
 ## The task pane (optional)
 
 The teamrig-pane plugin shows a session's tasks beside the conversation. It has its own requirements:

@@ -45,6 +45,14 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
   compact [--dry-run]          archives the task list's log and rewrites its snapshot, so reads stay small;
       finished tasks over 8 days old leave the working set (show, list --status done read them);
       checks every task first and writes nothing on a difference
+  budget [<id|name>] [--loops] [--day <YYYY-MM-DD>] [--all]
+      each session's use today, measured from the Claude Code transcripts, against the week's pace;
+      <id|name>: that session by day; --loops: the loop patterns by day; --day: a past day recounted
+  budget lift <id|name> --to <pct> --stop-pct <pct> --reason "<why>" [--until <HH:MM|date>] [--reserve]
+      (the lead only) that session's daily budget for today, until --until, the day's end or the week
+      reaching --stop-pct; --reserve: above budget.lift.maxStopPct, in the last hour before the reset
+  statusline                   Claude Code's status line (status JSON on stdin): saves the week's use
+      for budget and prints a short status
   config validate | config migrate
   commits check --base <ref> [--tip <ref>]   commits in base..tip (default HEAD) over the size rule
       with no reason line; any is REFUSED, for an integrate script or CI
