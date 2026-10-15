@@ -63,8 +63,10 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'hook stop': { flags: [], load: async () => (await hookCommands()).stop },
 };
 
-const COMMAND_FLAGS: CommandFlags = Object.fromEntries(Object.entries(COMMANDS).map(([name, spec]) => [name, spec.flags]));
-const COMMAND_SWITCHES: CommandSwitches = Object.fromEntries(Object.entries(COMMANDS).map(([name, spec]) => [name, spec.switches ?? []]));
+/** Each command's flags that take a value. The LLM guide test (tools/docs/llm-guide.test.ts) checks the guide documents exactly these. */
+export const COMMAND_FLAGS: CommandFlags = Object.fromEntries(Object.entries(COMMANDS).map(([name, spec]) => [name, spec.flags]));
+/** Each command's flags that take no value, checked by the LLM guide test like `COMMAND_FLAGS`. */
+export const COMMAND_SWITCHES: CommandSwitches = Object.fromEntries(Object.entries(COMMANDS).map(([name, spec]) => [name, spec.switches ?? []]));
 /** `--tier` became `--priority` (levels p1, p2, ...): refused everywhere with the new name, never an alias. */
 const RENAMED_FLAGS: RenamedFlags = { tier: 'priority' };
 
@@ -114,8 +116,10 @@ Dates: YYYY-MM-DD or "YYYY-MM-DD HH:MM", UTC. Kit home: $${ENV.home}, else ~/.${
 Exit: 0 done, 1 failed, 2 refused by a team rule, 3 open printed the command to run itself,
 64 a command line it cannot read.`;
 
-const HELP = new Set(['help', '--help', '-h']);
-const VERSION = new Set(['version', '--version', '-v']);
+/** The words that print the usage; the LLM guide documents them as `teamrig help`. */
+export const HELP: ReadonlySet<string> = new Set(['help', '--help', '-h']);
+/** The words that print the version; the LLM guide documents them as `teamrig version`. */
+export const VERSION: ReadonlySet<string> = new Set(['version', '--version', '-v']);
 
 export async function runCli(argv: readonly string[], runtime: CliRuntime): Promise<ExitCode> {
   const [first] = argv;
