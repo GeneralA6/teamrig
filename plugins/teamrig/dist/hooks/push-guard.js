@@ -1,7 +1,7 @@
 import { DEFAULT_COMMITS, DEFAULT_PUSH_GUARD } from "../config/defaults.js";
 import { isRecord, recordField, stringField } from "../core/guards.js";
 import { describeLargeCommits, largeCommits } from "../push-guard/commit-size.js";
-import { decisionReason, evaluatePushes } from "../push-guard/push.js";
+import { decisionReason, doubtReason, evaluatePushes } from "../push-guard/push.js";
 /**
  * The branches to guard. A missing or unreadable config keeps the defaults, so a broken
  * config never switches the guard off; a loaded one has already replaced each bad field
@@ -31,7 +31,8 @@ function largeCommitsIn(updates, env) {
  * The PreToolUse hook's stdout for one Bash or PowerShell call: a permission decision when the
  * command pushes to a protected branch, else nothing, so the normal permission flow decides.
  * Under the commits gate, an asked push also lists the large commits it sends (`warn`) or is
- * refused for them (`refuse`).
+ * refused for them (`refuse`). A command the guard cannot read with confidence is asked about,
+ * with a reason that says what it could not read.
  */
 export function pushGuardOutput(payload, env) {
     if (!isRecord(payload)) {
@@ -53,11 +54,12 @@ export function pushGuardOutput(payload, env) {
     }
     const large = verdict.decision === 'ask' ? largeCommitsIn(verdict.updates, env) : [];
     const refused = large.length > 0 && env.commits.gate === 'refuse';
+    const plain = verdict.doubt === undefined ? decisionReason(verdict.decision, env.protectedBranches) : doubtReason(verdict.doubt, env.protectedBranches);
     const reason = large.length === 0
-        ? decisionReason(verdict.decision, env.protectedBranches)
+        ? plain
         : refused
             ? `This push to a protected branch (${env.protectedBranches.join(', ')}) is refused: ${describeLargeCommits(large, env.commits)}`
-            : `${decisionReason('ask', env.protectedBranches)} ${describeLargeCommits(large, env.commits)}`;
+            : `${plain} ${describeLargeCommits(large, env.commits)}`;
     return JSON.stringify({
         hookSpecificOutput: {
             hookEventName: 'PreToolUse',
