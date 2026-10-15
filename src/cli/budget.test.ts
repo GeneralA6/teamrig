@@ -125,13 +125,15 @@ describe('teamrig budget', () => {
     const { run } = await world();
     const every = ok(await run(['budget', '--loops']));
     assert.equal(every[0], 'Loop patterns, every session, outside the team too: count, then W (UTC days)');
-    assert.match(every[1] ?? '', /^ +01-05 +01-06 +01-07 +01-08$/);
-    assert.match(every.at(-1) ?? '', /^all calls +0 0 +0 0 +0 0 +4 26\.00M$/);
-    assert.equal(every.length, 12);
+    assert.match(every[1] ?? '', /^ +01-08$/);
+    assert.match(every.at(-2) ?? '', /^all calls +4 26\.00M$/);
+    assert.equal(every.at(-1), 'Left out, nothing metered: 01-05, 01-06, 01-07 (add --day 2030-01-05 to read one).');
+    assert.equal(every.length, 13);
     const alpha = ok(await run(['budget', 'alpha', '--loops', '--all']));
     assert.equal(alpha[0], 'Loop patterns, app-alpha: count, then W (UTC days)');
-    assert.equal((alpha[1] ?? '').trim().split(/ +/).length, 8);
-    assert.match(alpha.at(-1) ?? '', / 2 20\.00M$/);
+    assert.equal((alpha[1] ?? '').trim(), '01-08');
+    assert.match(alpha.at(-2) ?? '', / 2 20\.00M$/);
+    assert.match(alpha.at(-1) ?? '', /^Left out, nothing metered: 01-01, .*, 01-07 \(add --day 2030-01-01 to read one\)\.$/);
   });
 
   it('recounts a past day from the transcripts, writing nothing', async () => {

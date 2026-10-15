@@ -234,21 +234,35 @@ export function sumDays(states: readonly UsageState[], days: readonly string[]):
   });
 }
 
-/** `teamrig budget --loops`: each pattern's count and W per day, the days as columns. */
-export function loopLines(who: string, days: readonly string[], totals: readonly DayUsage[]): string[] {
+/**
+ * `teamrig budget --loops`: each pattern's count and W per day, the days as columns. From the meter's store
+ * a day with no calls was never metered (before the meter started, or outside its window), so its column
+ * is left out and named under the table; a recounted day (`--day`) was read, so its zeros are shown.
+ */
+export function loopLines(who: string, days: readonly string[], totals: readonly DayUsage[], source: 'metered' | 'recounted'): string[] {
+  const metered = days.flatMap((day, index) => {
+    const usage = totals[index];
+    return usage !== undefined && (source === 'recounted' || usage.calls > 0) ? [{ day, usage }] : [];
+  });
+  const unread = days.filter((day) => !metered.some((each) => each.day === day));
+  const leftOut = unread.length === 0 ? [] : [`Left out, nothing metered: ${unread.map((day) => day.slice(5)).join(', ')} (add --day ${unread[0]} to read one).`];
+  const header = `Loop patterns, ${who}: count, then W (UTC days)`;
+  if (metered.length === 0) {
+    return [header, ...leftOut];
+  }
   const cell = (row: LoopRow, usage: DayUsage): string => {
     const count = formatCount(usage.patterns[row.count]);
     return row.w === undefined ? count : `${count} ${formatW(usage.patterns[row.w])}`;
   };
   const table = [
-    ['', ...days.map((day) => day.slice(5))],
-    ...LOOP_ROWS.map((row) => [row.label, ...totals.map((usage) => cell(row, usage))]),
-    ['all calls', ...totals.map((usage) => `${formatCount(usage.calls)} ${formatW(usage.w)}`)],
+    ['', ...metered.map(({ day }) => day.slice(5))],
+    ...LOOP_ROWS.map((row) => [row.label, ...metered.map(({ usage }) => cell(row, usage))]),
+    ['all calls', ...metered.map(({ usage }) => `${formatCount(usage.calls)} ${formatW(usage.w)}`)],
   ];
-  const widths = days.map((_, index) => Math.max(...table.map((row) => (row[index + 1] ?? '').length)));
+  const widths = metered.map((_, index) => Math.max(...table.map((row) => (row[index + 1] ?? '').length)));
   const labelWidth = Math.max(...table.map((row) => (row[0] ?? '').length));
   const lines = table.map((row) =>
     [(row[0] ?? '').padEnd(labelWidth), ...row.slice(1).map((text, index) => text.padStart(widths[index] ?? 0))].join('  ').trimEnd(),
   );
-  return [`Loop patterns, ${who}: count, then W (UTC days)`, ...lines];
+  return [header, ...lines, ...leftOut];
 }
