@@ -2,7 +2,7 @@ import { errorMessage } from "../core/guards.js";
 import { NewerDataError } from "../core/jsonl.js";
 import { EVENT_VERSION } from "./events.js";
 import { foldEvents, taskNumber } from "./fold.js";
-import { NO_SKILL } from "./policy.js";
+import { GITHUB_ACTOR, NO_SKILL } from "./policy.js";
 import { isWritable } from "./snapshot.js";
 /**
  * The register's write path: under the lock, read the log, replay it, apply the team policy,
@@ -30,6 +30,26 @@ export class Register {
      */
     addFromParent(parentLead, input) {
         return this.write(({ state }) => single(this.created(parentLead, state.nextId, this.deps.policy.addFromParent(input, state))));
+    }
+    /**
+     * The GitHub import's writes (github/sync.ts): each is judged again under the lock, on the register as it
+     * then stands, and written by GITHUB_ACTOR, which is on no roster. The policy limits them to the import's
+     * own tasks: a new one per issue, its title and priority, and open, done or dropped as GitHub has it.
+     */
+    importAdd(input) {
+        return this.write(({ state }) => single(this.created(GITHUB_ACTOR, state.nextId, this.deps.policy.importAdd(input, state))));
+    }
+    importUpdate(id, changes, note) {
+        return this.write((snapshot) => onTask(snapshot, id, (task) => {
+            const change = this.deps.policy.importUpdate(task, changes, note);
+            return single(change.ok ? { ok: true, value: { ...this.base(id, GITHUB_ACTOR), type: 'update', ...change.value } } : change);
+        }));
+    }
+    importStatus(id, input) {
+        return this.write((snapshot) => onTask(snapshot, id, (task) => {
+            const change = this.deps.policy.importStatus(task, input);
+            return single(change.ok ? { ok: true, value: { ...this.base(id, GITHUB_ACTOR), type: 'status', ...change.value } } : change);
+        }));
     }
     async setStatus(caller, id, input) {
         const skill = input.skill?.trim();

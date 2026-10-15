@@ -1,0 +1,79 @@
+import { ACTIVE_STATUSES } from "../register/model.js";
+import { GITHUB_SOURCE } from "../register/policy.js";
+import { issueTask } from "./map.js";
+/** How GitHub closed an issue, in the note the sync writes; any other reason is left out. */
+const CLOSE_REASONS = new Map([
+    ['COMPLETED', 'completed'],
+    ['NOT_PLANNED', 'not planned'],
+    ['DUPLICATE', 'a duplicate'],
+]);
+/**
+ * Each issue once, as last read: the closed list is read after the open one, so an issue on both lists
+ * (closed between the two reads) counts as closed.
+ */
+export function latestIssues(open, closed) {
+    return [...new Map([...open, ...closed].map((issue) => [issue.number, issue])).values()];
+}
+/** The register's GitHub tasks by ref. Only the import adds them, one per ref (policy.ts). */
+export function importedTasks(tasks) {
+    const byRef = new Map();
+    for (const task of tasks) {
+        if (task.source === GITHUB_SOURCE && task.ref !== null && !byRef.has(task.ref)) {
+            byRef.set(task.ref, task);
+        }
+    }
+    return byRef;
+}
+/**
+ * The writes that bring the register in step with a repository's issues. An open issue with no task is
+ * added; a closed one with no task is not, as there is nothing left to do. On a task the import added,
+ * only the title, the priority and whether it is open follow GitHub: any active status stands for an open
+ * issue, and its owner, notes and plans stay the team's.
+ */
+export function planSync(issues, imported, rules) {
+    const perIssue = issues.map((issue) => issueSteps(issue, imported, rules));
+    const count = (known, writes) => perIssue.filter((one) => one.known === known && (one.steps.length > 0) === writes).length;
+    return { steps: perIssue.flatMap((one) => one.steps), inserted: count(false, true), changed: count(true, true), unchanged: count(true, false) };
+}
+function issueSteps(issue, imported, rules) {
+    const wanted = issueTask(issue, rules);
+    const task = imported.get(wanted.ref);
+    if (task === undefined) {
+        const input = { title: wanted.title, owner: wanted.owner, ref: wanted.ref, priority: wanted.priority };
+        return { known: false, steps: wanted.outcome === 'open' ? [{ kind: 'add', ref: wanted.ref, input }] : [] };
+    }
+    const steps = [];
+    const changes = fieldChanges(task, wanted);
+    const names = Object.keys(changes);
+    if (names.length > 0) {
+        steps.push({ kind: 'update', ref: wanted.ref, id: task.id, changes, note: `${names.join(' and ')} as on GitHub` });
+    }
+    const status = statusChange(task, wanted, issue.stateReason);
+    if (status !== undefined) {
+        steps.push({ kind: 'status', ref: wanted.ref, id: task.id, input: status });
+    }
+    return { known: true, steps };
+}
+/** The title and priority the issue now gives, where they differ from the task's. */
+function fieldChanges(task, wanted) {
+    return {
+        ...(task.title === wanted.title ? {} : { title: wanted.title }),
+        ...(task.priority === wanted.priority ? {} : { priority: wanted.priority }),
+    };
+}
+/** The status the issue calls for, when the task is not in it: an active status counts as open. */
+function statusChange(task, wanted, stateReason) {
+    switch (wanted.outcome) {
+        case 'open':
+            return ACTIVE_STATUSES.includes(task.status) ? undefined : { status: 'open', note: 'open on GitHub' };
+        case 'done':
+            return task.status === 'done' ? undefined : { status: 'done', note: closedNote(stateReason), evidence: wanted.url };
+        case 'dropped':
+            return task.status === 'dropped' ? undefined : { status: 'dropped', note: closedNote(stateReason) };
+    }
+}
+/** The note on a closed issue's task: how GitHub closed it, when it is a reason GitHub names. */
+export function closedNote(stateReason) {
+    const reason = CLOSE_REASONS.get(stateReason.toUpperCase());
+    return reason === undefined ? 'closed on GitHub' : `closed on GitHub as ${reason}`;
+}

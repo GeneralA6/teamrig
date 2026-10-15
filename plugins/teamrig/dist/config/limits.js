@@ -21,6 +21,8 @@ export const CONFIG_LIMITS = {
     persistentFailureHours: { min: 1, max: 720 },
     chainNudgeAt: { min: 0, max: 50 },
     maxFailureChars: { min: 500, max: 50_000 },
+    githubRepos: { maxItems: 20, maxLength: 140 },
+    closedDays: { min: 1, max: 365 },
     budgetTargetPct: { min: 1, max: 100 },
     budgetReservePct: { min: 0, max: 50 },
     weeklyLimitW: { min: 1_000_000, max: 1_000_000_000_000 },
