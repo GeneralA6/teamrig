@@ -1,7 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { join } from 'node:path';
+import { isRecord } from '../core/guards.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
-import { APP, CLAUDE_SESSION, CliHarness, contextOf, EVENTS_PATH, TEAM } from '../testing/cli-harness.ts';
+import { APP, CLAUDE_SESSION, CliHarness, contextOf, EVENTS_PATH, TEAM, TEAM_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
 
 /** A harness holding T1, owned by alpha and in progress. */
@@ -93,6 +95,45 @@ ${queue}`), context);
     assert.equal(read.stdout.at(-1), queue);
     const other = await kit.run(['inbox', 'read', '--session', 'bravo']);
     assert.ok(other.stdout.every((line) => !line.startsWith('VERIFY')), other.stdout.join('\n'));
+  });
+});
+
+describe('the Stop hook names a verifying task once its verify-by day has come', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const SCANS = join(TEAM_HOME, 'state', 'verify-notices.jsonl');
+  const stop = (kit: CliHarness, files?: FaultyFiles): Promise<CliResult> =>
+    kit.run(['hook', 'stop'], { stdin: JSON.stringify({ session_id: CLAUDE_SESSION, cwd: APP, stop_hook_active: false }), env: { TEAMRIG_SESSION: 'alpha' }, ...(files === undefined ? {} : { files }) });
+  const shown = (result: CliResult): unknown => {
+    const parsed: unknown = JSON.parse(result.stdout[0] ?? '{}');
+    return isRecord(parsed) ? parsed['systemMessage'] : undefined;
+  };
+  const line = 'VERIFY T1 was to be verified by 01-08 (proof: the nightly run): done with the proof, or back to in-progress';
+
+  it('once a day from that day on, reading the register at the first stop of the day only', async () => {
+    const kit = await startedTask();
+    await kit.run(['set', 'T1', '--status', 'verifying', '--note', 'shipped', '--proof', 'the nightly run', '--due', '2030-01-09', '--session', 'alpha']);
+    assert.deepEqual((await stop(kit)).stdout, [], 'not before the day');
+    await kit.run(['update', 'T1', '--due', '2030-01-08', '--session', 'lead']);
+    assert.deepEqual((await stop(kit)).stdout, [], 'a date that comes later in the day waits for the next one');
+
+    kit.clock.advance(DAY);
+    const unread = new FaultyFiles(kit.files).fail('read', EVENTS_PATH, systemError('EACCES'));
+    assert.deepEqual((await stop(kit, unread)).stdout, [], 'an unread register says nothing');
+    assert.equal(shown(await stop(kit)), line, 'and is read again at the next stop');
+    assert.deepEqual((await stop(kit)).stdout, [], 'once a day');
+    kit.clock.advance(DAY);
+    assert.equal(shown(await stop(kit)), line, 'and again the next day');
+    kit.clock.advance(DAY);
+    await kit.run(['set', 'T1', '--status', 'done', '--note', 'green', '--evidence', 'run 7', '--skill', 'none', '--session', 'alpha']);
+    assert.deepEqual((await stop(kit)).stdout, [], 'a proven task is out of the queue');
+  });
+
+  it('says nothing when it cannot keep its daily record, so it never repeats', async () => {
+    const kit = await startedTask();
+    await kit.run(['set', 'T1', '--status', 'verifying', '--note', 'shipped', '--proof', 'the nightly run', '--due', '2030-01-08', '--session', 'alpha']);
+    const files = new FaultyFiles(kit.files).fail('write', SCANS, systemError('EACCES'));
+    assert.deepEqual(await stop(kit, files), { code: EXIT.ok, stdout: [], stderr: [] });
+    assert.equal(shown(await stop(kit)), line);
   });
 });
 
