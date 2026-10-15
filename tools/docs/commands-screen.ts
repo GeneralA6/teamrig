@@ -17,7 +17,7 @@ const runsOf = (runs: readonly DemoRun[], session: string): DemoRun[] => runs.fi
 export const COMMANDS_STEPS: readonly DemoStep[] = [
   { session: 'lead', argv: ['add', '--title', 'Saved-card API', '--priority', 'p1', '--owner', 'api'] },
   { session: 'lead', argv: ['add', '--title', 'Card checkout page', '--priority', 'p1', '--owner', 'web'] },
-  { session: 'lead', argv: ['inbox', 'add', '--to', 'web', '--text', "T2 is yours; it uses T1's API"] },
+  { session: 'lead', argv: ['inbox', 'add', '--to', 'web', '--text', "T2 builds on T1's API"] },
   { session: 'web', argv: ['inbox', 'read'] },
   { session: 'web', argv: ['set', 'T2', '--status', 'in-progress'] },
 ];
