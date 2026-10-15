@@ -697,7 +697,8 @@ A commit over the rule without the reason line is `REFUSED` (exit 2).
 
 ## Budget
 
-Measuring and showing only: nothing here blocks or stops a session. W = weighted tokens (input 1, cache writes
+These commands measure and show only; the hooks warn a session past its daily budget, tell the lead and can hold
+its helper launches ([how](hooks.md#the-daily-budget-warnings-and-the-helper-gate)). W = weighted tokens (input 1, cache writes
 1.25 to 2, cache reads 0.1, output 5), counted from the Claude Code transcripts under `~/.claude/projects`
 (`$CLAUDE_CONFIG_DIR/projects` when set). A transcript counts for a session once its tab ran
 `teamrig inbox read --session <id>`, or when the user titled it with the session's id or name; the rest counts
@@ -827,8 +828,9 @@ Output: a JSON object whose `hookSpecificOutput.additionalContext` holds the rul
 ### teamrig hook inbox-reminder
 
 At each prompt, shows the inbox lines this Claude Code session has not been shown yet (at most 5 lines and 1,500
-characters, each once), binds a tab started by hand to the session its Claude Code title names, and records a
-rename. See [Hooks and permissions](hooks.md#each-prompt).
+characters, each once), binds a tab started by hand to the session its Claude Code title names, records a
+rename, and tells the model once per level when it is past its daily budget while the team is ahead of its pace
+line. See [Hooks and permissions](hooks.md#each-prompt).
 
 Flags: none.
 
@@ -878,10 +880,27 @@ teamrig hook cold-send < pre-tool-use.json
 
 Output: nothing for a send that goes; otherwise a JSON permission decision (`deny`) with the note.
 
-### teamrig hook stop
+### teamrig hook helper-gate
 
+Before an Agent (or Task) call, with the budget on: asks the person, or refuses, when the session is past its
+daily budget while the team is ahead of its pace line, or in quiet hours, as `budget.overAction` and
+`budget.quietHours` say. The lead's helpers and a lifted session's always go. See
+[Hooks and permissions](hooks.md#the-daily-budget-warnings-and-the-helper-gate).
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig hook helper-gate < pre-tool-use.json
+```
+
+Output: nothing for a launch that goes; otherwise a JSON permission decision (`ask` or `deny`) with the reason.
+
+### teamrig hook stop
 At the end of each turn, after you set a task done, asks for a handover when your context is over the refresh
-threshold or the lead asked for a refresh.
+threshold or the lead asked for a refresh. With the budget on, it also shows the budget lines and posts the
+lead's inbox line when one is due.
 
 Flags: none.
 

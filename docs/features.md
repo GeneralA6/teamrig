@@ -37,8 +37,8 @@ your machine.
 | **A fresh context, nothing forgotten** | When a session marks a task done with its context over the team's threshold (250k tokens by default), or the lead asked (`teamrig refresh <session>`), it writes a handover; you type `/clear` (a hook cannot) and it starts again from the handover. | works today |
 | | Restarting the tab for you instead of `/clear` | planned (T201, T212) |
 | **Survives reboots** | Reopens your sessions and tabs after a restart | planned (T201) |
-| **Budget control** | `teamrig budget`: each session's token use today, measured from the Claude Code transcripts, against the week's pace line and its daily budget; `--loops` counts the costly loop patterns (read after read, edit after edit, reruns); the lead lifts a session's budget for a day, always with a stop %. The week's use comes from `teamrig statusline` or your own status line. Measuring and showing only. | works today |
-| | Warnings when a session passes its daily budget, pauses by priority | planned |
+| **Budget control** | `teamrig budget`: each session's token use today, measured from the Claude Code transcripts, against the week's pace line and its daily budget; `--loops` counts the costly loop patterns (read after read, edit after edit, reruns); the lead lifts a session's budget for a day, always with a stop %. The week's use comes from `teamrig statusline` or your own status line. A session past its daily budget is warned, the lead gets an inbox line, and its helper launches can ask first or be refused, past the budget or in quiet hours. | works today |
+| | Pausing sessions by priority when the week runs short | planned |
 | **Hire and retire sessions** | From off to automatic within a budget; rehire from a handover note | planned (T212) |
 | **Settings and upgrades** | `teamrig config validate` and `config migrate` | works today |
 | | A new-version notice and `teamrig upgrade` with rollback | planned (T203) |
