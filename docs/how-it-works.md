@@ -25,7 +25,7 @@ flowchart LR
     direction TB
     start["SessionStart hook"]
     prompt["UserPromptSubmit hook"]
-    guard["PreToolUse hooks on Bash, PowerShell and SendMessage"]
+    guard["PreToolUse hooks on Bash, PowerShell, SendMessage and Agent"]
     stop["Stop hook, at each turn's end"]
     tool["Bash tool: teamrig add, set, inbox add ..."]
   end
@@ -44,10 +44,11 @@ flowchart LR
 | Part | When it runs | What it does |
 | --- | --- | --- |
 | SessionStart hook | a session starts, resumes, is cleared or is compacted | gives the session the core rules, its name, the lead's name, where its team sits in a tree of teams and your team's `rules.md`; tells you and the session, in one MODEL line, when it runs on another model than its `launch` entry asks, with the `/model` to type |
-| UserPromptSubmit hook | you send a prompt | the session's new inbox lines, each shown once; a line when it binds a hand-started tab by its title, once per cause when it cannot, when it records a Claude Code rename of the session as its team name, or when `.teamrig.json` is broken; nothing otherwise |
+| UserPromptSubmit hook | you send a prompt | the session's new inbox lines, each shown once; a line when it binds a hand-started tab by its title, once per cause when it cannot, when it records a Claude Code rename of the session as its team name, or when `.teamrig.json` is broken; once per level, a line telling the session it is past its daily budget while the team is ahead of its pace line; nothing otherwise |
 | PreToolUse hook on Bash and PowerShell | Claude runs a Bash or PowerShell command | finds every `git push` in it, through wrappers, nested shells and git aliases, and asks you or refuses; asks when it cannot read the command ([Safe pushes](#safe-pushes)) |
 | PreToolUse hook on SendMessage | Claude messages another session of the team | when the receiver has been idle `messages.coldAfterMinutes` (60 by default) or longer, the message would wake it cold: its first call re-reads its whole context at full price, about 8 times a warm wake. It holds the message once with a note: an inbox line if the receiver need not act now, else every ask for it in one message, sent again; the same tab's next send to it within 15 minutes goes through. Idle time runs from the receiver's last write to its own transcript; a helper, a receiver off the team or one with no transcript yet is never held |
-| Stop hook | a turn ends | after a task is marked done, asks for a handover when a refresh is due, then tells you once ([A fresh context](#a-fresh-context)); tells you once, in a MODEL line, when the session runs at another effort than its `launch` entry asks, or when Claude Code switched it to another model after its safeguards stopped a reply, with the `/effort` or `/model` to type; nothing otherwise |
+| PreToolUse hook on Agent and Task | Claude launches a helper | with the budget on, asks you or refuses when the session is past its daily budget while the team is ahead of its pace line, or in quiet hours, as `budget.overAction` and `budget.quietHours` say; the lead's helpers and a lifted session's always go |
+| Stop hook | a turn ends | after a task is marked done, asks for a handover when a refresh is due, then tells you once ([A fresh context](#a-fresh-context)); tells you once, in a MODEL line, when the session runs at another effort than its `launch` entry asks, or when Claude Code switched it to another model after its safeguards stopped a reply, with the `/effort` or `/model` to type; a Budget line as the session passes each warning level of its daily budget; nothing otherwise |
 | `teamrig` commands | Claude runs them in its Bash tool | the task list, the inbox, names, settings, checks (`teamrig help`) |
 
 A session finds its team through `$TEAMRIG_TEAM`, else the nearest `.teamrig.json` above its folder
@@ -229,8 +230,9 @@ turns this off: `register.autoArchive: false` in the team's `config.json`, after
 - Token use: `teamrig budget` reads each session's use from the Claude Code transcripts (only the lines added
   since its last run, kept per session and day for 8 days in `state/usage/`) and shows it against the week's pace
   line: what is left to the target at 00:00 UTC, spread over the days to the reset and split among the sessions.
-  The week's use in percent comes from status line snapshots, else from `budget.weeklyLimitW`. It measures and
-  shows only; warnings when a session passes its daily budget are coming.
+  The week's use in percent comes from status line snapshots, else from `budget.weeklyLimitW`. The hooks warn
+  a session as it passes its daily budget, tell the lead, and can hold its helper launches (`budget.overAction`,
+  `budget.quietHours`).
 
 ## Notes between sessions
 

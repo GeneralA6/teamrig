@@ -85,12 +85,12 @@ to next week. The team works to the plan, so every task finishes before your wee
 wall, and deploys hold in the last hours, so nothing ships half-done.
 
 Today, `teamrig budget` shows each member's use against the week's pace line and its share of the day, read from
-Claude Code's own records, so you see who runs ahead of plan. The week's use comes from Claude Code's status line:
+Claude Code's own records, so you see who runs ahead of plan. A member past its share of the day is told, so is your lead, and its new
+helpers can ask you first. The week's use comes from Claude Code's status line:
 use `teamrig statusline`, or keep your own and have it write the
 [same snapshot](plugins/teamrig/skills/teamrig-guide/commands.md#teamrig-statusline).
 
-*Coming: planning the week to your token limit, a warning to a member past its share of the day, and holding
-deploys before the reset.*
+*Coming: planning the week to your token limit, and holding deploys before the reset.*
 
 ![Your lead plans the week from the tokens you have left. The tasks fill the days, most important first, until the plan reaches 99.5% of your weekly limit. The last 0.5% is kept for incidents, and the task that doesn't fit moves to next week.](docs/images/plan.svg)
 

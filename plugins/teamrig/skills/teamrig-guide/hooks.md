@@ -1,15 +1,17 @@
 # Hooks and permissions
 
-The plugin's `hooks/hooks.json` registers four Claude Code hooks. Each runs
+The plugin's `hooks/hooks.json` registers six Claude Code hooks. Each runs
 `node <plugin>/dist/cli/main.js hook <name>` with a 15 second timeout. Outside a project tied to a team (no `$TEAMRIG_TEAM` and no `.teamrig.json`)
 they all stay silent.
 
 | Claude Code event | teamrig hook | What it does |
 | --- | --- | --- |
 | `SessionStart` (startup, resume, `/clear`, compact) | `hook session-start` | Injects the team rules and who you are |
-| `UserPromptSubmit` (each prompt) | `hook inbox-reminder` | Shows new inbox lines; binds a tab started by hand by its title; records a Claude Code rename |
+| `UserPromptSubmit` (each prompt) | `hook inbox-reminder` | Shows new inbox lines; binds a tab started by hand by its title; records a Claude Code rename; tells the model when it is past its daily budget |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook push-guard` | Asks before a push to a protected branch; refuses a force-push or delete of one |
-| `Stop` (end of each turn) | `hook stop` | Asks for a handover when a context refresh is due; tells the user of another effort than `launch` asks, or of a model Claude Code switched to |
+| `PreToolUse` on `SendMessage` | `hook cold-send` | Holds once a message that would wake an idle session cold |
+| `PreToolUse` on `Agent` and `Task` | `hook helper-gate` | Asks before or refuses a helper launch past the daily budget or in quiet hours, [as the team set](#the-daily-budget-warnings-and-the-helper-gate) |
+| `Stop` (end of each turn) | `hook stop` | Asks for a handover when a context refresh is due; tells the user of another effort than `launch` asks, or of a model Claude Code switched to; shows the budget lines |
 
 ## Session start
 
@@ -145,6 +147,38 @@ The Stop hook also tells the user, in a MODEL line shown once per Claude Code se
 
 The lines go to the user only, so they cost the session no context, and they come with `refresh.enabled` on or
 off. Which lines a session was shown is kept in `state/model-notices/<id>.json`.
+
+## The daily budget: warnings and the helper gate
+
+With `budget.enabled` on and the week's use known (from the [status line](commands.md#teamrig-statusline) or
+`budget.weeklyLimitW`), the hooks watch each session's use today against its daily budget. At a turn's end the
+Stop hook counts only this tab's new transcript lines and its subagents' (at most `budget.maxBytesPerHook` bytes)
+and reads every other session's use as last stored. Each line comes once, so most turns show none:
+
+- as the session passes each of `budget.warnAtPct` (80 and 100 by default) of its daily budget, then every 25
+  points more: `Budget: shop-web has used 1.1% of the week today; its daily budget is 1.0%. The team is 10.3
+  points ahead of its pace line. The lead has an inbox line. More: teamrig budget`;
+- when the team moves ahead of its pace line while the session is past its budget;
+- when quiet hours (`budget.quietHours`) begin, and when a lift from the lead starts or ends.
+
+Past its budget, a session is escalated when `budget.escalate` is `session`, or, with `session-and-fleet` (the
+default), only while the whole team is also ahead of its pace line. Then `budget.overAction` applies:
+
+| `overAction` | What happens |
+| --- | --- |
+| `warn` (default) | the lines only |
+| `ask-lead` | the lead also gets one inbox line a day, naming the lift command |
+| `ask` | the lead's line, and the person is asked before each new helper launch |
+| `block` | the lead's line, and new helper launches are refused |
+
+While escalated, the model is told with the next prompt, once per level: `teamrig budget: you are past today's
+budget and the team is ahead of its pace line. Finish the step in hand and start no new work items or helpers.
+Never skip a test or check to save budget. The lead can lift it.`
+
+In quiet hours, `budget.quietHours.action` applies to helper launches as well (`ask` or `block`; `warn` only
+says the team rests), and the stronger of the two wins. Nothing else is ever held, so a fix in hand always
+finishes. The lead's own helpers, and those of a session the lead lifted (`teamrig budget lift`, always with a
+stop %), always go ahead. What each session was shown is kept in `state/usage/warn/<id>.json`.
 
 ## Permissions
 
