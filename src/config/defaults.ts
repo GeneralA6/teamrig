@@ -97,8 +97,11 @@ export const DEFAULT_LOOPS: LoopsConfig = { chainNudgeAt: 6 };
 /** About a screenful: two or three failing tests with their errors and first stack frames. */
 export const DEFAULT_TESTS: TestsConfig = { maxFailureChars: 4000 };
 
-/** Off until a team lists a repository; two weeks of closed issues covers a sync missed over a holiday. */
-export const DEFAULT_GITHUB: GithubConfig = { repos: [], owners: {}, sessions: {}, closedDays: 14 };
+/**
+ * Off until a team lists a repository; two weeks of closed issues covers a sync missed over a holiday. Every 15
+ * minutes a new issue reaches its session within a working block, at two gh calls per repository each time.
+ */
+export const DEFAULT_GITHUB: GithubConfig = { repos: [], owners: {}, sessions: {}, closedDays: 14, everyMinutes: 15 };
 
 /**
  * Claude Code compacts a 200k window at about 167k, so 120k refreshes before that; every 3 tasks catches a

@@ -30,7 +30,7 @@ const EVERY_KEY = {
     statusSnapshotDir: '/u',
   },
   refresh: { handoverDir: 'notes' },
-  github: { repos: ['acme/web'], owners: { octocat: 'bravo' }, closedDays: 30 },
+  github: { repos: ['acme/web'], owners: { octocat: 'bravo' }, closedDays: 30, everyMinutes: 30 },
   paths: { state: '/s', inbox: '/i', skills: '/k' },
 };
 
@@ -83,6 +83,7 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   maxFailureChars: 'tests.maxFailureChars',
   githubRepos: 'github.repos',
   closedDays: 'github.closedDays',
+  githubEveryMinutes: 'github.everyMinutes',
   budgetTargetPct: 'budget.targetPct',
   budgetReservePct: 'budget.reservePct',
   weeklyLimitW: 'budget.weeklyLimitW',
