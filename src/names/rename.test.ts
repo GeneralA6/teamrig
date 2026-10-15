@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseJsonl } from '../core/jsonl.ts';
-import { parseRename } from './rename.ts';
+import { parseRename, readRenames } from './rename.ts';
 
 function kindsOf(lines: readonly object[]): string[] {
   return parseJsonl(lines.map((line) => JSON.stringify(line)).join('\n')).records.map((record) => parseRename(record).kind);
@@ -32,5 +32,14 @@ describe('parseRename', () => {
       { v: 1 },
     ];
     assert.deepEqual(kindsOf(broken), broken.map(() => 'unreadable'));
+  });
+});
+
+describe('readRenames', () => {
+  it('reads the renames in file order, and counts the lines it skips', () => {
+    const later = { ...VALID, from: 'scout', to: 'ranger', at: '2030-01-09T09:00:00.000Z' };
+    const text = [JSON.stringify(VALID), '{torn', JSON.stringify({ ...VALID, v: 2 }), JSON.stringify({ ...VALID, to: 'Not A Name' }), JSON.stringify(later), ''].join('\r\n');
+    assert.deepEqual(readRenames(text), { renames: [VALID, later], unreadable: 2, newer: 1 });
+    assert.deepEqual(readRenames(''), { renames: [], unreadable: 0, newer: 0 });
   });
 });

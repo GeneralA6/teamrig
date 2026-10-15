@@ -1,15 +1,6 @@
 import type { Files } from '../core/files.ts';
-import { parseJsonl, toJsonlLine } from '../core/jsonl.ts';
-import { parseRename, type Rename } from './rename.ts';
-
-export interface RenameLogRead {
-  /** In file order, oldest first. */
-  readonly renames: readonly Rename[];
-  /** Damaged or foreign lines: skipped, never fatal. */
-  readonly unreadable: number;
-  /** Lines in a newer format: skipped on read, and they block every write. */
-  readonly newer: number;
-}
+import { toJsonlLine } from '../core/jsonl.ts';
+import { readRenames, type Rename, type RenameLogRead } from './rename.ts';
 
 /** The team's append-only rename log. */
 export interface RenameLog {
@@ -28,21 +19,7 @@ export class JsonlRenameLog implements RenameLog {
   }
 
   async read(): Promise<RenameLogRead> {
-    const parse = parseJsonl((await this.files.read(this.path)) ?? '');
-    const renames: Rename[] = [];
-    let unreadable = parse.unreadable;
-    let newer = 0;
-    for (const line of parse.records) {
-      const result = parseRename(line);
-      if (result.kind === 'rename') {
-        renames.push(result.rename);
-      } else if (result.kind === 'newer') {
-        newer += 1;
-      } else {
-        unreadable += 1;
-      }
-    }
-    return { renames, unreadable, newer };
+    return readRenames((await this.files.read(this.path)) ?? '');
   }
 
   /**
