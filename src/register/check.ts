@@ -3,6 +3,7 @@ import { topPriority } from '../config/priorities.ts';
 import type { RegisterCheckConfig, RegisterConfig } from '../config/types.ts';
 import type { Task } from './fold.ts';
 import { ACTIVE_STATUSES, priorityText } from './model.ts';
+import type { RegisterSnapshot } from './snapshot.ts';
 import { byPlanOrder, dueTime, formatTask } from './views.ts';
 
 /** In report order: the most urgent first. */
@@ -26,6 +27,17 @@ export function currentWeek(tasks: Iterable<Task>, now: Date): string | null {
     }
   }
   return best;
+}
+
+/**
+ * The week plan in force over a register as read: `currentWeek` of its tasks, or the newest week of
+ * the tasks a compaction retired when that is newer, as a replay of the whole history would find it.
+ */
+export function currentWeekOf(snapshot: RegisterSnapshot, now: Date): string | null {
+  const live = currentWeek(snapshot.state.tasks.values(), now);
+  const retired = snapshot.retired?.lastWeek ?? null;
+  const started = retired === null ? undefined : parseUtcDay(retired);
+  return retired !== null && started !== undefined && started.getTime() <= now.getTime() && (live === null || retired > live) ? retired : live;
 }
 
 /**

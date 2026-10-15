@@ -2,7 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { testConfig } from '../testing/config.ts';
 import { testTask } from '../testing/task.ts';
-import { checkTasks, currentWeek, formatFlag } from './check.ts';
+import { checkTasks, currentWeek, currentWeekOf, formatFlag } from './check.ts';
+import { readRegister, type RegisterSnapshot } from './snapshot.ts';
 
 const NOW = new Date('2030-01-10T12:00:00.000Z');
 const FRESH = '2030-01-10T09:00:00.000Z';
@@ -13,6 +14,26 @@ describe('currentWeek', () => {
     const tasks = [testTask({ week: '2030-01-07' }), testTask({ week: '2029-12-31' }), testTask({ week: '2030-01-14' })];
     assert.equal(currentWeek(tasks, NOW), '2030-01-07');
     assert.equal(currentWeek([testTask()], NOW), null);
+  });
+});
+
+describe('currentWeekOf', () => {
+  const withTasks = (weeks: readonly (string | null)[], retired: RegisterSnapshot['retired']): RegisterSnapshot => {
+    const empty = readRegister('');
+    const tasks = new Map(weeks.map((week, index) => [`T${index + 1}`, testTask({ id: `T${index + 1}`, week })]));
+    return { ...empty, state: { ...empty.state, tasks }, retired };
+  };
+
+  it('is the current week of the tasks read when nothing is retired, or nothing newer is', () => {
+    assert.equal(currentWeekOf(withTasks(['2030-01-07', null], null), NOW), '2030-01-07');
+    assert.equal(currentWeekOf(withTasks(['2030-01-07'], { count: 2, lastWeek: '2029-12-31' }), NOW), '2030-01-07');
+    assert.equal(currentWeekOf(withTasks([null], { count: 2, lastWeek: null }), NOW), null);
+  });
+
+  it('is the newest week of the retired tasks when no task read is in a newer one that has started', () => {
+    assert.equal(currentWeekOf(withTasks([null], { count: 1, lastWeek: '2029-12-31' }), NOW), '2029-12-31');
+    assert.equal(currentWeekOf(withTasks(['2029-12-24', '2099-01-05'], { count: 1, lastWeek: '2029-12-31' }), NOW), '2029-12-31');
+    assert.equal(currentWeekOf(withTasks([], { count: 1, lastWeek: '2099-01-05' }), NOW), null, 'a week that has not started');
   });
 });
 
