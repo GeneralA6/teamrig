@@ -91,13 +91,89 @@ export interface CommitsConfig {
   readonly gate: CommitGate;
 }
 
+export const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
+/** A UTC weekday, Sunday first so its index matches `Date.getUTCDay()`. */
+export type Weekday = (typeof WEEKDAYS)[number];
+
+export function isWeekday(value: unknown): value is Weekday {
+  return WEEKDAYS.some((day) => day === value);
+}
+
+export const OVER_ACTIONS = ['warn', 'ask-lead', 'ask', 'block'] as const;
+/**
+ * What the live warning does past a session's daily budget: lines only; also an inbox line to the
+ * lead; also asking the person before a helper launch; or refusing helper launches.
+ */
+export type OverAction = (typeof OVER_ACTIONS)[number];
+
+export function isOverAction(value: unknown): value is OverAction {
+  return OVER_ACTIONS.some((action) => action === value);
+}
+
+export const ESCALATIONS = ['session', 'session-and-fleet'] as const;
+/** When an action beyond the warning lines applies: the session alone is over, or it is over and the team is ahead of its pace line. */
+export type Escalation = (typeof ESCALATIONS)[number];
+
+export function isEscalation(value: unknown): value is Escalation {
+  return ESCALATIONS.some((escalation) => escalation === value);
+}
+
+/** The weekly limit's reset, for a team without a status line to read it from. */
+export interface BudgetReset {
+  readonly weekday: Weekday;
+  /** HH:MM, UTC. */
+  readonly timeUtc: string;
+}
+
+/** UTC hours in which the live warning applies `action` on its own, while the team sleeps. */
+export interface QuietHours {
+  readonly startUtc: string;
+  readonly endUtc: string;
+  readonly action: OverAction;
+}
+
+/** One session's part of the team's daily allowance. */
+export interface SessionBudget {
+  /** Its weight: the session gets allowance × share / the sum of every session's share. */
+  readonly share: number;
+  /** A fixed daily budget, in % of the week, in place of its share. */
+  readonly dailyPct?: number;
+}
+
+/**
+ * The weekly token budget: the pace line the team is measured against and each session's daily part
+ * of it. Off by default, and the defaults only measure and show: nothing blocks or acts.
+ */
 export interface BudgetConfig {
-  /** Off by default: pacing needs a usage source that not every plan provides. */
+  /** Turns on the live warning and the core rules' pacing sentence; `teamrig budget` shows usage either way. */
   readonly enabled: boolean;
+  /** The weekly limit in weighted tokens (W). Unset: derived from the status line's weekly %. */
+  readonly weeklyLimitW?: number;
+  /** Unset: the reset time the status line reports. */
+  readonly reset?: BudgetReset;
   /** Use the week up to this share of the weekly limit. */
   readonly targetPct: number;
   /** Kept back for incidents until shortly before the reset. */
   readonly reservePct: number;
+  /** The pace line reaches `targetPct` this many hours before the reset. */
+  readonly paceEndHoursBeforeReset: number;
+  /** The team's allowance per UTC day, in % of the week. Unset: what is left to the target, spread over the days left. */
+  readonly dailyPct?: number;
+  /** A ceiling on the team's daily allowance. Unset: none. */
+  readonly maxDailyPct?: number;
+  /** Each session's part, by id; a session not listed has a share of 1. */
+  readonly sessions: Readonly<Record<string, SessionBudget>>;
+  /** The live warning shows a line as a session passes each of these % of its daily budget. */
+  readonly warnAtPct: readonly number[];
+  /** The team is ahead of its pace line once its used % is more than this many points above it. */
+  readonly paceTolerancePct: number;
+  readonly overAction: OverAction;
+  readonly escalate: Escalation;
+  readonly quietHours?: QuietHours;
+  /** The folder of status line snapshots, `<Claude session id>.json` each. Unset: `<kit home>/usage/live`. */
+  readonly statusSnapshotDir?: string;
+  /** The most transcript bytes one hook run reads; the rest waits for the next run. */
+  readonly maxBytesPerHook: number;
 }
 
 export interface ScheduleConfig {
@@ -108,7 +184,6 @@ export interface ScheduleConfig {
 /** The deploy coordinator's settings; M1 reads only what the rule pack states. */
 export interface CoordinatorConfig {
   readonly schedule: ScheduleConfig;
-  readonly budget: BudgetConfig;
 }
 
 export interface AlertsConfig {
@@ -202,6 +277,7 @@ export interface KitConfig {
   readonly pushGuard: PushGuardConfig;
   readonly commits: CommitsConfig;
   readonly coordinator: CoordinatorConfig;
+  readonly budget: BudgetConfig;
   readonly alerts: AlertsConfig;
   readonly tabStatus: { readonly enabled: boolean };
   readonly refresh: RefreshConfig;

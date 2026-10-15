@@ -20,6 +20,15 @@ const EVERY_KEY = {
   roles: { lead: 'alpha', coordinatorOwner: 'bravo' },
   register: { goalPattern: '^G\\d+$' },
   coordinator: { schedule: { heavyCutoffUtc: '22:30' } },
+  budget: {
+    weeklyLimitW: 680_000_000,
+    reset: { weekday: 'wed', timeUtc: '01:00' },
+    dailyPct: 10,
+    maxDailyPct: 12,
+    sessions: { alpha: { share: 2, dailyPct: 1 } },
+    quietHours: { startUtc: '22:00', endUtc: '06:00', action: 'ask' },
+    statusSnapshotDir: '/u',
+  },
   refresh: { handoverDir: 'notes' },
   paths: { state: '/s', inbox: '/i', skills: '/k' },
 };
@@ -66,16 +75,27 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   forbidFrontmatter: 'skills.forbidFrontmatter',
   requireNoteOn: 'register.requireNoteOn',
   persistentFailureHours: 'alerts.persistentFailureHours',
+  budgetTargetPct: 'budget.targetPct',
+  budgetReservePct: 'budget.reservePct',
+  weeklyLimitW: 'budget.weeklyLimitW',
+  paceEndHoursBeforeReset: 'budget.paceEndHoursBeforeReset',
+  dailyPct: 'budget.dailyPct',
+  maxDailyPct: 'budget.maxDailyPct',
+  sessionShare: 'budget.sessions.*.share',
+  sessionDailyPct: 'budget.sessions.*.dailyPct',
+  warnAtPct: 'budget.warnAtPct',
+  paceTolerancePct: 'budget.paceTolerancePct',
+  maxBytesPerHook: 'budget.maxBytesPerHook',
 };
 
 function isLimitName(name: string): name is keyof typeof CONFIG_LIMITS {
   return name in CONFIG_LIMITS;
 }
 
-/** The schema node at a dotted config path such as `skills.maxPerArea`. */
+/** The schema node at a dotted config path such as `skills.maxPerArea`; `*` stands for any key of a map. */
 function nodeAt(schema: JsonRecord, path: string): JsonRecord {
   const node = path.split('.').reduce<JsonRecord | undefined>((parent, key) => {
-    const child = parent === undefined ? undefined : properties(parent)[key];
+    const child = parent === undefined ? undefined : key === '*' ? anyProperty(parent) : properties(parent)[key];
     return isRecord(child) ? child : undefined;
   }, schema);
   assert.ok(node !== undefined, `${path} is not in the schema`);
@@ -145,10 +165,13 @@ describe('config.schema.json', () => {
         continue;
       }
       assert.equal(node['maxItems'], limit.maxItems, path);
+      const items = node['items'];
+      assert.ok(isRecord(items), path);
       if ('maxLength' in limit) {
-        const items = node['items'];
-        assert.ok(isRecord(items), path);
         assert.equal(items['maxLength'], limit.maxLength, path);
+      }
+      if ('itemMin' in limit) {
+        assert.deepEqual([items['minimum'], items['maximum']], [limit.itemMin, limit.itemMax], path);
       }
     }
   });

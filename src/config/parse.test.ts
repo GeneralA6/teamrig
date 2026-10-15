@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_COMMITS, DEFAULT_OPEN, DEFAULT_REFRESH, DEFAULT_REGISTER } from './defaults.ts';
+import { DEFAULT_BUDGET, DEFAULT_COMMITS, DEFAULT_OPEN, DEFAULT_REFRESH, DEFAULT_REGISTER } from './defaults.ts';
 import { parseConfig } from './parse.ts';
 import type { ConfigIssue } from './reader.ts';
 
@@ -19,7 +19,7 @@ describe('parseConfig', () => {
     assert.equal(config.configVersion, 1);
     assert.equal(config.messages.maxLines, 10);
     assert.deepEqual(config.register, DEFAULT_REGISTER);
-    assert.equal(config.coordinator.budget.enabled, false);
+    assert.deepEqual(config.budget, DEFAULT_BUDGET);
     assert.deepEqual(config.coordinator.schedule, {});
     assert.deepEqual(config.pushGuard.protectedBranches, ['main', 'master']);
     assert.deepEqual(config.paths, {});
@@ -106,10 +106,11 @@ describe('parseConfig', () => {
       messages: { maxLines: 'ten' },
       lock: { ttlMs: 10 },
       skills: 'none',
-      coordinator: { budget: { enabled: 'yes' }, schedule: { heavyCutoffUtc: '24:00' } },
+      budget: { enabled: 'yes' },
+      coordinator: { schedule: { heavyCutoffUtc: '24:00' } },
     });
     assert.deepEqual(paths(issues).sort(), [
-      'coordinator.budget.enabled',
+      'budget.enabled',
       'coordinator.schedule.heavyCutoffUtc',
       'lock.ttlMs',
       'messages.maxLines',
@@ -120,7 +121,7 @@ describe('parseConfig', () => {
     assert.equal(config.messages.maxLines, 10);
     assert.equal(config.lock.ttlMs, 30_000);
     assert.equal(config.skills.maxPerArea, 8);
-    assert.equal(config.coordinator.budget.enabled, false);
+    assert.equal(config.budget.enabled, false);
   });
 
   it('keeps valid overrides', () => {
@@ -128,7 +129,8 @@ describe('parseConfig', () => {
       ...ROSTER,
       roles: { lead: 'alpha', coordinatorOwner: 'bravo' },
       register: { priorities: [{ id: 1, name: 'now' }], goalPattern: '^G\\d+$', requireNoteOn: ['blocked'], check: { prioritySkipAfterHours: 12 } },
-      coordinator: { schedule: { heavyCutoffUtc: '22:30' }, budget: { enabled: true, targetPct: 95 } },
+      coordinator: { schedule: { heavyCutoffUtc: '22:30' } },
+      budget: { enabled: true, targetPct: 95 },
       paths: { inbox: '/srv/team/inbox' },
     });
     assert.deepEqual(issues, []);
@@ -138,7 +140,7 @@ describe('parseConfig', () => {
     assert.deepEqual(config.register.requireNoteOn, ['blocked']);
     assert.deepEqual(config.register.check, { staleAfterHours: 72, notPickedUpAfterHours: 24, prioritySkipAfterHours: 12, weekLengthDays: 7 });
     assert.deepEqual(config.coordinator.schedule, { heavyCutoffUtc: '22:30' });
-    assert.deepEqual(config.coordinator.budget, { enabled: true, targetPct: 95, reservePct: 0.5 });
+    assert.deepEqual(config.budget, { ...DEFAULT_BUDGET, enabled: true, targetPct: 95 });
     assert.deepEqual(config.paths, { inbox: '/srv/team/inbox' });
   });
 
@@ -272,5 +274,129 @@ describe('parseConfig', () => {
   it('ignores keys it does not know, including $schema', () => {
     const { issues } = parseConfig({ ...ROSTER, $schema: './config.schema.json', futureKey: { any: 1 } });
     assert.deepEqual(issues, []);
+  });
+});
+
+describe('parseConfig budget', () => {
+  it('reads every budget key a team sets', () => {
+    const { config, issues } = parseConfig({
+      ...ROSTER,
+      budget: {
+        enabled: true,
+        weeklyLimitW: 680_000_000,
+        reset: { weekday: 'wed', timeUtc: '01:00' },
+        targetPct: 99,
+        reservePct: 1,
+        paceEndHoursBeforeReset: 2,
+        dailyPct: 14,
+        maxDailyPct: 12,
+        sessions: { alpha: { share: 2 }, bravo: { share: 0.5, dailyPct: 1.5 } },
+        warnAtPct: [50, 100, 150],
+        paceTolerancePct: 1,
+        overAction: 'ask-lead',
+        escalate: 'session',
+        quietHours: { startUtc: '22:00', endUtc: '06:00', action: 'ask' },
+        statusSnapshotDir: '/srv/usage/live',
+        maxBytesPerHook: 2_000_000,
+      },
+    });
+    assert.deepEqual(issues, []);
+    assert.deepEqual(config.budget, {
+      enabled: true,
+      weeklyLimitW: 680_000_000,
+      reset: { weekday: 'wed', timeUtc: '01:00' },
+      targetPct: 99,
+      reservePct: 1,
+      paceEndHoursBeforeReset: 2,
+      dailyPct: 14,
+      maxDailyPct: 12,
+      sessions: { alpha: { share: 2 }, bravo: { share: 0.5, dailyPct: 1.5 } },
+      warnAtPct: [50, 100, 150],
+      paceTolerancePct: 1,
+      overAction: 'ask-lead',
+      escalate: 'session',
+      quietHours: { startUtc: '22:00', endUtc: '06:00', action: 'ask' },
+      statusSnapshotDir: '/srv/usage/live',
+      maxBytesPerHook: 2_000_000,
+    });
+  });
+
+  it('gives a listed session without a share the default share', () => {
+    const { config, issues } = parseConfig({ ...ROSTER, budget: { sessions: { alpha: { dailyPct: 2 } } } });
+    assert.deepEqual(issues, []);
+    assert.deepEqual(config.budget.sessions, { alpha: { share: 1, dailyPct: 2 } });
+  });
+
+  it('refuses out-of-range numbers, unknown words and malformed parts, keeping the defaults', () => {
+    const { config, issues } = parseConfig({
+      ...ROSTER,
+      budget: {
+        weeklyLimitW: 12.5,
+        reset: { weekday: 'someday', timeUtc: '1am' },
+        targetPct: 0,
+        reservePct: 60,
+        paceEndHoursBeforeReset: 49,
+        dailyPct: 0,
+        maxDailyPct: 'twelve',
+        sessions: { alpha: { share: -1, dailyPct: 101 }, carol: { share: 1 }, bravo: 'half' },
+        warnAtPct: [80, 0, 'x'],
+        paceTolerancePct: 11,
+        overAction: 'stop',
+        escalate: 'always',
+        quietHours: { startUtc: '22:00', endUtc: '25:00', action: 'nap' },
+        statusSnapshotDir: '',
+        maxBytesPerHook: 10,
+      },
+    });
+    assert.deepEqual(paths(issues).sort(), [
+      'budget.dailyPct',
+      'budget.escalate',
+      'budget.maxBytesPerHook',
+      'budget.maxDailyPct',
+      'budget.overAction',
+      'budget.paceEndHoursBeforeReset',
+      'budget.paceTolerancePct',
+      'budget.quietHours.action',
+      'budget.quietHours.endUtc',
+      'budget.reservePct',
+      'budget.reset.timeUtc',
+      'budget.reset.weekday',
+      'budget.sessions.alpha.dailyPct',
+      'budget.sessions.alpha.share',
+      'budget.sessions.bravo',
+      'budget.sessions.carol',
+      'budget.statusSnapshotDir',
+      'budget.targetPct',
+      'budget.warnAtPct[1]',
+      'budget.warnAtPct[2]',
+      'budget.weeklyLimitW',
+    ]);
+    assert.deepEqual(config.budget, { ...DEFAULT_BUDGET, sessions: { alpha: { share: 1 } }, warnAtPct: [80] });
+    const overAction = issues.find((issue) => issue.path === 'budget.overAction');
+    assert.equal(overAction?.message, 'expected one of warn, ask-lead, ask, block (got "stop")');
+  });
+
+  it('refuses a target and reserve that pass 100% of the week', () => {
+    const { issues } = parseConfig({ ...ROSTER, budget: { targetPct: 99.5, reservePct: 1 } });
+    assert.deepEqual(issues, [{ path: 'budget.reservePct', message: 'with targetPct it passes 100% of the week (99.5 + 1)' }]);
+  });
+
+  it('refuses a reset or quiet hours that are not objects, or miss a key', () => {
+    const { config, issues } = parseConfig({ ...ROSTER, budget: { reset: 'wed', quietHours: { startUtc: '22:00', action: 'ask' } } });
+    assert.deepEqual(paths(issues), ['budget.reset', 'budget.quietHours.endUtc']);
+    assert.equal(config.budget.reset, undefined);
+    assert.equal(config.budget.quietHours, undefined);
+  });
+
+  it('refuses quiet hours that end when they start', () => {
+    const { config, issues } = parseConfig({ ...ROSTER, budget: { quietHours: { startUtc: '22:00', endUtc: '22:00', action: 'warn' } } });
+    assert.deepEqual(issues, [{ path: 'budget.quietHours.endUtc', message: 'is the start time; quiet hours need a start and a different end' }]);
+    assert.equal(config.budget.quietHours, undefined);
+  });
+
+  it('refuses the old coordinator.budget block and points at its new place', () => {
+    const { config, issues } = parseConfig({ ...ROSTER, coordinator: { budget: { enabled: true } } });
+    assert.deepEqual(issues, [{ path: 'coordinator.budget', message: 'was moved: use the top-level budget block' }]);
+    assert.equal(config.budget.enabled, false);
   });
 });
