@@ -6,7 +6,7 @@ import { ACTIVE_STATUSES, priorityText } from './model.ts';
 import { byPlanOrder, dueTime, formatTask } from './views.ts';
 
 /** In report order: the most urgent first. */
-export const FLAG_KINDS = ['OVERDUE', 'NOT-PICKED-UP', 'PRIORITY-SKIP', 'OWNER-UNPLANNED', 'DUE-UNPLANNED', 'STALE'] as const;
+export const FLAG_KINDS = ['OVERDUE', 'NOT-PICKED-UP', 'PRIORITY-SKIP', 'OWNER-UNPLANNED', 'DUE-UNPLANNED', 'OFF-GOAL', 'STALE'] as const;
 
 export type FlagKind = (typeof FLAG_KINDS)[number];
 
@@ -37,8 +37,10 @@ export function currentWeek(tasks: Iterable<Task>, now: Date): string | null {
  *   owner, for longer than `prioritySkipAfterHours`: the session is not working its list in order;
  * - STALE: no event for `staleAfterHours` (not raised on top of NOT-PICKED-UP);
  * - OWNER-UNPLANNED: an owner order outside the current week plan;
- * - DUE-UNPLANNED: due inside the current week but outside its plan.
- * The two week flags need a week; null skips them.
+ * - DUE-UNPLANNED: due inside the current week but outside its plan;
+ * - OFF-GOAL: in progress with no goal and outside the current week plan, so nothing the team planned asked
+ *   for it. The register has no parent tasks: a goal tag or the week plan is what ties a task to the plan.
+ * The three week flags need a week; null skips them, and each task gets at most one of them.
  */
 export function checkTasks(tasks: Iterable<Task>, now: Date, week: string | null, config: RegisterConfig): Flag[] {
   const at = now.getTime();
@@ -115,7 +117,7 @@ function prioritySkip(task: Task, top: number, waiting: ReadonlyMap<string, Task
   return [{ kind: 'PRIORITY-SKIP', task, detail: `${priorityText(skipped.priority)} ${skipped.id} waits open, skipped since ${minute(since)}` }];
 }
 
-/** OWNER-UNPLANNED, or else DUE-UNPLANNED. */
+/** OWNER-UNPLANNED, or else DUE-UNPLANNED, or else OFF-GOAL. */
 function planFlags(task: Task, plan: WeekPlan, ownerSource: string): Flag[] {
   if (task.week === plan.week) {
     return [];
@@ -126,6 +128,9 @@ function planFlags(task: Task, plan: WeekPlan, ownerSource: string): Flag[] {
   const due = dueTime(task);
   if (due !== undefined && due >= plan.start && due < plan.end) {
     return [{ kind: 'DUE-UNPLANNED', task, detail: `due inside week ${plan.week}, not in its plan` }];
+  }
+  if (task.status === 'in-progress' && task.goals.length === 0) {
+    return [{ kind: 'OFF-GOAL', task, detail: `in progress with no goal, not in week ${plan.week}` }];
   }
   return [];
 }

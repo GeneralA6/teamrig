@@ -160,8 +160,10 @@ stateDiagram-v2
   or due this week but left out of the week's plan, and owner orders left out of it. It also reports a session that
   skips its own priorities: `PRIORITY-SKIP` is a task in progress for over 24 hours
   (`register.check.prioritySkipAfterHours`) while the same session has an open p1, counted from the latest change of
-  owner, status or priority on either task. Then it flags skills in your Claude Code skills folder that break the
-  skill rules. It reports and never blocks.
+  owner, status or priority on either task. `OFF-GOAL` is a task in progress with no goal outside the week's plan:
+  work nothing in the plan asked for. teamrig has no parent tasks yet, so a goal tag or the week is what ties a task
+  to the plan. Then it flags skills in your Claude Code skills folder that break the skill rules. It reports and never
+  blocks.
 - A lead hands a child team work with `teamrig add --team web --title "..." --priority p2`: the task lands in `web`'s own
   list, owned by `web`'s lead and marked as from `your-team/lead`, and `web`'s lead splits it among its sessions
   and opens them. Only the parent team's lead may do this.
@@ -170,6 +172,7 @@ stateDiagram-v2
   lead asking, so a tab without `$TEAMRIG_SESSION` passes `--session lead`.
 - Being built: dependencies and parent/child tasks (T205); planned start, ETA, history and token estimates
   (T209–T211).
+- Coming: each session's token burn against the week's plan in `check`, once teamrig reads token usage (T247).
 
 ## Notes between sessions
 
