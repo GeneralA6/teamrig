@@ -14,7 +14,9 @@ export { byPlanOrder, dueTime } from "../register/views.js";
 // The inboxes (`inbox/<area>.md`) and their read marks (`inbox-marks.jsonl`).
 export { indexMarks, MARK_VERSION, parseMark, readMarks } from "../inbox/marks.js";
 export { inboxLines, unreadOf } from "../inbox/unread.js";
-// The kit config (`config.json`).
+// The kit config (`config.json`). DEFAULT_REGISTER is what a config that sets no `register` key gets,
+// its priority names among them: a reader with no config to read names priorities from it.
+export { DEFAULT_REGISTER } from "../config/defaults.js";
 export { priorityName } from "../config/priorities.js";
 export { parseConfigText } from "../config/text.js";
 export { CONFIG_VERSION } from "../config/types.js";
