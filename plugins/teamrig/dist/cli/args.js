@@ -10,6 +10,8 @@ export class UsageError extends Error {
 }
 /** Asks for the help of the command they follow, wherever a flag or word could stand: `set --help`, `inbox -h`. */
 export const HELP_FLAGS = new Set(['--help', '-h']);
+/** Ends a command's own flags: every word after it belongs to the command line it runs. */
+export const REST_MARKER = '--';
 /** The command a line names: two words when they form a command (`inbox read`), else one; a group word before `--help`. */
 function commandOf(argv, commandFlags) {
     const [first = '', second] = argv;
@@ -38,9 +40,10 @@ function commandOf(argv, commandFlags) {
  * Splits `<command> [words] [--name value] [--switch]...`. Only the command's own flags are
  * accepted, so a typo is refused instead of silently meaning nothing; every flag takes exactly one
  * value, except the command's switches, which take none. A renamed flag is refused with its new name.
- * `--help` or `-h` after the command stops the reading: the line asks for that command's help.
+ * `--help` or `-h` after the command stops the reading: the line asks for that command's help. On a
+ * command that takes a command line, `--` ends the reading too: the words after it are its `rest`.
  */
-export function parseArgs(argv, commandFlags, commandSwitches = {}, renamedFlags = {}) {
+export function parseArgs(argv, commandFlags, commandSwitches = {}, renamedFlags = {}, restCommands = new Set()) {
     const { command, tail } = commandOf(argv, commandFlags);
     const allowed = commandFlags[command] ?? [];
     const switchable = commandSwitches[command] ?? [];
@@ -50,7 +53,10 @@ export function parseArgs(argv, commandFlags, commandSwitches = {}, renamedFlags
     for (let index = 0; index < tail.length; index += 1) {
         const token = tail[index] ?? '';
         if (HELP_FLAGS.has(token)) {
-            return { command, positionals: [], flags: new Map(), switches: new Set(), help: true };
+            return { command, positionals: [], flags: new Map(), switches: new Set(), rest: [], help: true };
+        }
+        if (token === REST_MARKER && restCommands.has(command)) {
+            return { command, positionals, flags, switches, rest: tail.slice(index + 1), help: false };
         }
         if (!token.startsWith('--')) {
             positionals.push(token);
@@ -81,7 +87,7 @@ export function parseArgs(argv, commandFlags, commandSwitches = {}, renamedFlags
         flags.set(name, value);
         index += 1;
     }
-    return { command, positionals, flags, switches, help: false };
+    return { command, positionals, flags, switches, rest: [], help: false };
 }
 export function noPositionals(args) {
     const [extra] = args.positionals;

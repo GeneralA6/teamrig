@@ -8,6 +8,7 @@ import { NODE_PATH_PROBE } from "../core/path-probe.js";
 import { nodeProcesses } from "../open/processes.js";
 import { GIT_CLI, GIT_COMMIT_LOG } from "../push-guard/git.js";
 import { requirementsCheck } from "../requirements/requirements.js";
+import { nodeShellRunner } from "../test-run/shell.js";
 import { runCli } from "./run.js";
 /** The process adapter: real files, clock, git, child processes and stdio around the testable runner. */
 process.exitCode = await runCli(process.argv.slice(2), {
@@ -26,6 +27,7 @@ process.exitCode = await runCli(process.argv.slice(2), {
     },
     platform: process.platform,
     processes: nodeProcesses(),
+    shell: nodeShellRunner(),
     probe: NODE_PATH_PROBE,
     transcripts: nodeTranscriptSource,
     self: { node: process.execPath, script: fileURLToPath(import.meta.url) },
