@@ -192,6 +192,16 @@ stateDiagram-v2
 - `teamrig list --tree`, `check --tree` and `plan --tree` give a lead its team's tasks and those of every team
   under it, with ids like `web/T4`. They only read the other teams' lists. With `--tree`, `--session` names the
   lead asking, so a tab without `$TEAMRIG_SESSION` passes `--session lead`.
+- The task list is one log that only grows, a line for every move. `teamrig compact` archives it: the log becomes
+the next file in `state/archive/` byte for byte and is never deleted, a fresh log starts with a line naming it,
+and `state/snapshot.jsonl` holds every task as it stood, so commands and the task pane read the snapshot and the
+recent lines instead of the whole history. Tasks done or dropped over 8 days ago, in no week plan from the current
+one on, leave the snapshot: `show`, `list --status done` and the plan of a past week still read them from the
+archive, and a task that left cannot be changed. `compact --dry-run` prints what it would archive and write, and writes nothing; a real run first
+reads the new files back and holds every task against the whole history, and writes nothing on any difference.
+After that first `compact`, a write that leaves the log over 512 KiB archives it again and says so in a NOTE line,
+or keeps the write and warns when archiving fails (the next write tries again). Every session must run teamrig
+0.2.1 or later before the first `compact`: an older one refuses to write to an archived task list.
 - Being built: dependencies and parent/child tasks (T205); planned start, ETA, history and token estimates
   (T209–T211).
 - Coming: each session's token burn against the week's plan in `check`, once teamrig reads token usage (T247).
@@ -350,6 +360,9 @@ list, an inbox, the inbox read marks and the config, and gives back the tasks, t
 lines in archive segments: the reader reads the snapshot first (`readSnapshotText`), then the task list, asks
 `workingSetPlan` which segments it still needs (none, unless the snapshot is damaged or missing) and folds them with
 `assemble`, so its cost follows the recent lines, never the whole history. A task list never rotated reads as
-before. The reader hands `unreadOf` its own line hash: the first 16 hex digits of the SHA-256 of
+before. A rotation (`src/register/rotate.ts`, run by `teamrig compact` and by a write on a long log, under the task
+list's lock) writes in an order every reader survives: the archive segment first, created whole, then the task
+list replaced by the marker, then the snapshot. A rotation stopped at any step reads as before, and the next one
+completes it. The reader hands `unreadOf` its own line hash: the first 16 hex digits of the SHA-256 of
 the line. With no config to read, it names priorities from `DEFAULT_REGISTER`, the register settings a config that
 sets none gets.
