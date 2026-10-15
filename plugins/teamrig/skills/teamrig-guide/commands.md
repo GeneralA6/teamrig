@@ -1205,6 +1205,22 @@ teamrig hook cold-send < pre-tool-use.json
 
 Output: nothing for a send that goes; otherwise a JSON permission decision (`deny`) with the note.
 
+### teamrig hook failed-send
+
+After a SendMessage call that was not delivered (no live session answers to the name, so the result says
+`success: false`), hands the model one line: leave the message as an inbox line for the session the name
+belongs to, or, for a name that is no team session, run `teamrig who` for the names to message by.
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig hook failed-send < post-tool-use.json
+```
+
+Output: nothing after a delivered message or outside a team; otherwise the line as JSON `additionalContext`.
+
 ### teamrig hook loop-nudge
 
 After a read, edit or shell call, once the turn's run of single-step calls reaches `loops.chainNudgeAt` (6 by
