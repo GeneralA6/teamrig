@@ -82,6 +82,10 @@ const SAMPLES: Readonly<Record<string, Sample>> = {
     payload: { hook_event_name: 'PreToolUse', session_id: SESSION_ID, tool_name: 'SendMessage', tool_input: { to: 'lead', message: 'hello' } },
     check: (stdout) => (stdout === '' ? undefined : `expected no output, got ${JSON.stringify(stdout)}`),
   },
+  'hook helper-gate': {
+    payload: { hook_event_name: 'PreToolUse', session_id: SESSION_ID, tool_name: 'Agent', tool_input: { description: 'search', prompt: 'find it' } },
+    check: (stdout) => (stdout === '' ? undefined : `expected no output, got ${JSON.stringify(stdout)}`),
+  },
   'hook inbox-reminder': {
     payload: { hook_event_name: 'UserPromptSubmit', session_id: SESSION_ID, prompt: 'hello' },
     check: () => undefined,
