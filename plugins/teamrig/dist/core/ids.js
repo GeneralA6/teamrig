@@ -13,3 +13,12 @@ export const ID_RULE = 'a lowercase letter, then lowercase letters, digits or -,
 export const NAME_PATTERN = /^[a-z][a-z0-9-]{0,64}$/;
 /** Why a value is not a session name. */
 export const NAME_RULE = 'a lowercase letter, then lowercase letters, digits or -, at most 65 characters';
+/**
+ * A Claude Code tab title as a session id or name. Ids and names are lowercase, so a title that is a
+ * valid name but for its case reads as that name (`Shop-Web` is `shop-web`); any other title stays
+ * as typed, so a refusal quotes it as the person wrote it.
+ */
+export function titleKey(title) {
+    const lower = title.toLowerCase();
+    return NAME_PATTERN.test(lower) ? lower : title;
+}
