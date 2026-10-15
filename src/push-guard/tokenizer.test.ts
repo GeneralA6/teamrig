@@ -201,6 +201,19 @@ describe('parseShell: bash', () => {
     assert.equal(complete('echo "closed" $(ok) `ok` ${ok}'), true);
     assert.equal(complete(`echo ${'$('.repeat(20)}x${')'.repeat(20)}`), false);
     assert.equal(complete(`echo ${'`'.repeat(1)}${'$('.repeat(16)}x${')'.repeat(16)}\``), false);
+    assert.equal(complete(`echo ${'${x:-'.repeat(20)}x${'}'.repeat(20)}`), false);
+    assert.equal(complete(`echo ${'$(('.repeat(20)}1${'))'.repeat(20)}`), false);
+    assert.equal(complete(`echo ${'$(('.repeat(10)}1${'))'.repeat(10)}`), true);
+  });
+
+  it('reads the substitutions inside arithmetic, and a single quote there as unreadable', () => {
+    assert.deepEqual(words('echo $(( $(git push) + `git fetch` + (1) ))x $[ "$(echo 1)" + a[2] ]'), [
+      ['git', 'push'],
+      ['git', 'fetch'],
+      ['echo', '1'],
+      ['echo', '~$(( $(git push) + `git fetch` + (1) ))x', '~$[ "$(echo 1)" + a[2] ]'],
+    ]);
+    assert.equal(complete("echo $(( '1' ))"), false);
   });
 });
 

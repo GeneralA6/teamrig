@@ -285,8 +285,10 @@ describe('evaluatePushes: where a push hides', () => {
     ]);
   });
 
-  it('reads the substitutions inside ${...}', () => {
+  it('reads the substitutions inside ${...} and arithmetic', () => {
     expectRows([
+      ['echo $(( $(git push origin main) ))', 'ask'],
+      ['echo "$[ `git push -f origin main` ]"', 'deny'],
       ['echo ${B:-$(git push origin main)}', 'ask'],
       ['echo "${B:-$(git push -f origin main)}"', 'deny'],
       ['echo ${A[$(git push origin main)]}', 'ask'],
