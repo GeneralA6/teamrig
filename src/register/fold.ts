@@ -16,6 +16,10 @@ export interface Task extends TaskFields {
   readonly updatedBy: string;
   /** When the current owner got the task: its creation, or the latest owner change. */
   readonly assignedAt: string;
+  /** When the task took its current status: its creation, or the latest status event that changed it. */
+  readonly statusAt: string;
+  /** When the task took its current priority: its creation, or the latest update that changed it. */
+  readonly priorityAt: string;
   /** The current owner's newest event on the task since it was assigned, if any. */
   readonly ownerSeenAt: string | null;
 }
@@ -74,6 +78,8 @@ function created(id: string, fields: TaskFields, at: string, by: string): Task {
     updatedAt: at,
     updatedBy: by,
     assignedAt: at,
+    statusAt: at,
+    priorityAt: at,
     ownerSeenAt: by === fields.owner ? at : null,
   };
 }
@@ -82,6 +88,7 @@ function withStatus(task: Task, event: Extract<RegisterEvent, { type: 'status' }
   return {
     ...task,
     status: event.status,
+    statusAt: event.status === task.status ? task.statusAt : event.at,
     note: event.note,
     evidence: event.evidence ?? task.evidence,
     skill: event.skill,
@@ -92,7 +99,8 @@ function withStatus(task: Task, event: Extract<RegisterEvent, { type: 'status' }
 }
 
 function withChanges(task: Task, changes: Partial<TaskFields>, at: string, by: string): Task {
-  const next: Task = { ...task, ...changes, updatedAt: at, updatedBy: by };
+  const priorityAt = changes.priority === undefined || changes.priority === task.priority ? task.priorityAt : at;
+  const next: Task = { ...task, ...changes, updatedAt: at, updatedBy: by, priorityAt };
   if (next.owner !== task.owner) {
     return { ...next, assignedAt: at, ownerSeenAt: by === next.owner ? at : null };
   }

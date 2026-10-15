@@ -21,6 +21,8 @@ export function testTask(overrides: Partial<Task> = {}): Task {
     updatedAt: '2030-01-07T09:00:00.000Z',
     updatedBy: 'lead',
     assignedAt: '2030-01-07T09:00:00.000Z',
+    statusAt: '2030-01-07T09:00:00.000Z',
+    priorityAt: '2030-01-07T09:00:00.000Z',
     ownerSeenAt: null,
     ...overrides,
   };
