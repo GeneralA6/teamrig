@@ -26,6 +26,7 @@ async function teamOf(runtime, kit, access) {
         clock,
         policy: new RegisterPolicy(config),
         skills: new SkillDir(files, kit.paths.skills),
+        autoArchive: config.register.autoArchive,
     });
     return { config, paths: kit.paths, register, roster: await rosterOf(runtime, kit, config) };
 }
@@ -47,21 +48,27 @@ function filterIds(roster, filter) {
         ...(filter.source === undefined ? {} : { source: pastOrPresentIdOf(roster, filter.source) }),
     };
 }
+/** How a line about automatic archiving names its switch: the key, and the config file that holds it. */
+function autoArchiveSwitch(configPath) {
+    return `turn automatic archiving off with register.autoArchive: false in ${configPath}`;
+}
 /**
  * The written task's line; `team` names another team's register, so its id reads `<team>/T12`. A rotation
- * the write ran is named on stderr, so the task line stays the one line a script reads.
+ * the write ran is named on stderr, so the task line stays the one line a script reads, with the switch
+ * that turns it off in `configPath`, the config of the team whose register was written.
  */
-function report(runtime, verdict, verb, team) {
+function report(runtime, verdict, verb, configPath, team) {
     if (!verdict.ok) {
         throw new RefusedError(verdict.error);
     }
     runtime.out.stdout(`${verb} ${formatTask(verdict.value.task, team)}`);
     const { rotation } = verdict.value;
+    const turnOff = autoArchiveSwitch(configPath);
     if (rotation.kind === 'rotated') {
-        runtime.out.stderr(`NOTE the task list's log is archived as segment ${rotation.segment}; ${rotation.retired} finished task(s) left the working set`);
+        runtime.out.stderr(`NOTE the task list's log is archived as segment ${rotation.segment}; ${rotation.retired} finished task(s) left the working set (${turnOff})`);
     }
     else if (rotation.kind === 'failed') {
-        runtime.out.stderr(`WARN the write is saved, but archiving the task list's log failed (the next write tries again): ${rotation.error}`);
+        runtime.out.stderr(`WARN the write is saved, but archiving the task list's log failed (the next write tries again; ${turnOff}): ${rotation.error}`);
     }
     return EXIT.ok;
 }
@@ -100,7 +107,7 @@ async function addToChild(args, runtime, caller, child) {
     }
     const target = await teamOf(runtime, await openKit(runtime, child), 'write');
     const input = { ...addInputOf(args.flags, caller), owner: childLead, source: formatAddress(from) };
-    return report(runtime, await target.register.addFromParent(formatAddress(from), input), 'ADDED', child);
+    return report(runtime, await target.register.addFromParent(formatAddress(from), input), 'ADDED', target.paths.config, child);
 }
 export async function add(args, runtime) {
     noPositionals(args);
@@ -112,7 +119,7 @@ export async function add(args, runtime) {
     const input = addInputOf(args.flags, caller);
     const team = await openTeam(runtime, 'write');
     const by = sessionIdOf(team.roster, caller);
-    return report(runtime, await team.register.add(by, addInputIds(team, input)), 'ADDED');
+    return report(runtime, await team.register.add(by, addInputIds(team, input)), 'ADDED', team.paths.config);
 }
 export async function set(args, runtime) {
     const id = taskIdOf(onePositional(args, 'id'));
@@ -120,7 +127,7 @@ export async function set(args, runtime) {
     const input = statusInputOf(args.flags);
     const { config, paths, register, roster } = await openTeam(runtime, 'write');
     const by = sessionIdOf(roster, caller);
-    const exit = report(runtime, await register.setStatus(by, id, input), 'SET');
+    const exit = report(runtime, await register.setStatus(by, id, input), 'SET', paths.config);
     if (input.status === 'done') {
         await markBoundary(runtime, config, paths, by, id);
     }
@@ -130,9 +137,9 @@ export async function update(args, runtime) {
     const id = taskIdOf(onePositional(args, 'id'));
     const caller = callerOf(args.flags, runtime.env);
     const changes = changesOf(args.flags);
-    const { register, roster } = await openTeam(runtime, 'write');
+    const { paths, register, roster } = await openTeam(runtime, 'write');
     const by = sessionIdOf(roster, caller);
-    return report(runtime, await register.update(by, id, changeIds(roster, changes), args.flags.get('note')), 'UPDATED');
+    return report(runtime, await register.update(by, id, changeIds(roster, changes), args.flags.get('note')), 'UPDATED', paths.config);
 }
 /** A filter for one team of a roll-up: a source that names one of its sessions becomes its id. */
 function treeFilterOf(roster, filter) {
