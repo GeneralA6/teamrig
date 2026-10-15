@@ -530,6 +530,20 @@ describe('evaluatePushes: where a push hides', () => {
       ['T="node main.js"; : ${T:=git}; $T push origin main', 'ask', 'doubt'],
     ]);
   });
+
+  it('follows the line bindings into a loop, an if and a { } group, and never one made inside them', () => {
+    expectRows([
+      ['T="node main.js"; if true; then $T set x1 --evidence push; fi', 'allow'],
+      ['T="node main.js"; if ! a; then :; elif b; then $T set push; else { $T set push; }; fi', 'allow'],
+      ['T="node main.js"; while false; do $T set push; done; until true; do $T set push; done', 'allow'],
+      ['T=git; if c; then $T push origin main; fi', 'ask'],
+      ['T=git; while c; do { $T push origin main; }; done', 'ask'],
+      ['T=echo; if c; then T=git; fi; $T push origin main', 'ask', 'doubt'],
+      ['T=echo; while c; do $T push origin main; T=git; done', 'ask', 'doubt'],
+      ['for p in git; do $p push origin main; done', 'ask', 'doubt'],
+      ['T=echo; "if" c; then T=git; fi; $T push origin main', 'ask', 'doubt'],
+    ]);
+  });
 });
 
 describe('evaluatePushes: the fail-safe', () => {
