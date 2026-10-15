@@ -19,6 +19,9 @@ claude plugin install teamrig@teamrig
 Open Claude Code in your project, ask for a team, and tell your lead what you want built. No config files, no server,
 no account.
 
+To keep your tasks in view, add [teamrig-pane](https://github.com/GeneralA6/teamrig-pane): it shows your session's
+tasks beside the conversation, and makes no model calls, so it costs no tokens.
+
 ## Grows with your project
 
 Start small: one lead and a few members. When one team isn't enough, it becomes teams of teams, each with its own
