@@ -93,7 +93,7 @@ wall, and deploys hold in the last hours, so nothing ships half-done.
 Today, `teamrig budget` shows each member's use against the week's pace line and its share of the day, read from
 Claude Code's own records, so you see who runs ahead of plan. Your lead turns it on when the team starts, asking you how to pace the days
 and what happens past the line (`teamrig budget setup`). A member past its share of the day is told, so is your lead, and its new
-helpers can ask you first. A session that makes six single-step calls in a row is asked once to put them in one message, and
+helpers can ask you first. Your lead is reminded to hand edits, tests and code searches to the owning session, a helper or a temporary session, and you see at a turn's end what it did itself. A session that makes six single-step calls in a row is asked once to put them in one message, and
 `teamrig test -- <command>` sums up a test run in one PASS or FAIL line and its failing tests, keeping the rest in a log. The week's use comes from Claude Code's status line:
 `teamrig statusline install` sets it up and keeps one you already have, or have yours write the
 [same snapshot](plugins/teamrig/skills/teamrig-guide/commands.md#teamrig-statusline).
