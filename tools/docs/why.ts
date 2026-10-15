@@ -15,11 +15,11 @@ const PER_ROW = 3;
 /** Each card must stay true to the code: a claim the code does not back is a bug in this picture. */
 export const MOAT: readonly Card[] = [
   { icon: 'plan', title: 'A built-in project manager', lines: ["Plans your week and flags what's", 'late, stuck or forgotten.'] },
-  { icon: 'gauge', title: 'Thrifty with your tokens', lines: ['Lean rules, batched work, and notes', 'that wait instead of waking anyone.'] },
+  { icon: 'gauge', title: 'Thrifty with your tokens', lines: ['Lean, capped rules, and notes that', 'wait instead of waking anyone.'] },
   { icon: 'learn', title: 'Smarter every day', lines: ['What one member works out becomes', 'a skill the whole team reuses.'] },
-  { icon: 'fresh', title: 'Never loses the thread', lines: ['When its memory fills up, a member', 'hands its work over and starts fresh.'] },
+  { icon: 'fresh', title: 'Never loses the thread', lines: ['When its memory runs high, a member', 'leaves a handover for a fresh start.'] },
   { icon: 'proof', title: 'Done means proven', lines: ['A task closes only with evidence', 'and a lesson the team keeps.'] },
-  { icon: 'shield', title: 'Safe by default', lines: ['Asks before it pushes to main, never', 'force-pushes, keeps secrets out.'] },
+  { icon: 'shield', title: 'Safe by default', lines: ['Asks before a push to main, refuses', 'blind force-pushes and keys in notes.'] },
 ];
 
 /** The picture's height: its rows of cards, with a gap between rows. */
