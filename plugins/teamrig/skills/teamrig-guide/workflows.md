@@ -48,6 +48,34 @@ Never set another session's task status, and never do, integrate or fix another 
 its owner. A decision that belongs to the human (destructive data operations, product and design, permissions,
 budget, resource changes) goes to the lead, never decided by silence.
 
+## Ship a change
+
+From the first edit to a change that runs, in this order (rules 2, 7, 14 and 16):
+
+```sh
+git worktree add ../shop-T4 -b t4-parser origin/main
+teamrig test --session api -- npm test
+```
+
+1. Edit only in your own worktree and branch, made off the current main as above (or with Claude Code's
+   EnterWorktree). On Windows, a `node_modules` linked in from the main checkout (`mklink /J`) needs care in step 7.
+2. Commit one logical change at a time, each with its tests, as soon as they pass. Run tests through
+   `teamrig test`: a long run costs a few lines, and the whole output stays in a log. Over 400 changed lines or
+   15 files, the commit needs a `Large-commit: <reason>` line.
+3. Before you push: `git fetch`, rebase on the current main, and run the tests again.
+4. Integrate by your team's own route: a pull request, a release script, or a push to main, which asks the human
+   first. A route that is refused goes to the lead; never route around it or hand it to another session.
+5. If the change must run, deploy it now, then check that the new code runs: the build has your commit, and the
+   process restarted on it.
+6. Set the task `verifying` with its proof and date (see "Shipped, verifying"), and `done` once the proof exists.
+   If it breaks, fix it or revert it yourself: it is your change.
+7. Remove the worktree and its merged branch. On Windows, remove the `node_modules` link first (`cmd /c rmdir
+   <worktree>\node_modules`; from Git Bash, `cmd //c`) and check it is gone, or `git worktree remove` empties the
+   main checkout's. Never delete the worktree folder recursively.
+
+Your team's own commands for steps 4 and 5 (a deploy script, a lock on shared machines) belong in a team skill such
+as `team-ship-change`; this list is the order they fit in.
+
 ## Close a task with proof
 
 1. Finish and verify: tests pass, the change is merged or deployed as the task needs, and you checked that it
