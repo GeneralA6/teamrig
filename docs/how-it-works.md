@@ -333,9 +333,10 @@ There is no adapter interface in the code yet: what teamrig knows about Claude C
 environment variables, `~/.claude/skills`) is built in. The interface comes with the second AI tool (T204), so it is
 shaped by two real tools instead of one.
 
-A program that only shows the team's files, such as a status pane, reads them through `src/read/index.ts`: the same
-parse and replay every teamrig command uses, with no `node:` import anywhere behind it, so it runs where Node's
-built-in modules do not. It takes the text of the task list, an inbox, the inbox read marks and the config, and gives
-back the tasks, the unread lines and the counts `teamrig list` warns about. The reader hands `unreadOf` its own line
-hash: the first 16 hex digits of the SHA-256 of the line. With no config to read, it names priorities from
-`DEFAULT_REGISTER`, the register settings a config that sets none gets.
+A program that only shows the team's files, such as the [teamrig-pane](https://github.com/GeneralA6/teamrig-pane)
+task pane, reads them through `src/read/index.ts`: the same parse and replay every teamrig command uses, with no
+`node:` import anywhere behind it, so it runs where Node's built-in modules do not. It takes the text of the task
+list, an inbox, the inbox read marks and the config, and gives back the tasks, the unread lines and the counts
+`teamrig list` warns about. The reader hands `unreadOf` its own line hash: the first 16 hex digits of the SHA-256 of
+the line. With no config to read, it names priorities from `DEFAULT_REGISTER`, the register settings a config that
+sets none gets.
