@@ -40,6 +40,8 @@ describe('golden register logs', () => {
       updatedAt: '2030-01-08T16:00:00.000Z',
       updatedBy: 'alpha',
       assignedAt: '2030-01-07T09:00:00.000Z',
+      statusAt: '2030-01-08T16:00:00.000Z',
+      priorityAt: '2030-01-07T09:00:00.000Z',
       ownerSeenAt: '2030-01-08T16:00:00.000Z',
     });
     const t2 = state.tasks.get('T2');
@@ -66,6 +68,8 @@ describe('golden register logs', () => {
     assert.equal(t2?.status, 'in-progress');
     assert.equal(t2?.assignedAt, '2030-01-07T11:00:00.000Z', 'an owner change restarts the pick-up clock');
     assert.equal(t2?.ownerSeenAt, '2030-01-07T12:00:00.000Z');
+    assert.equal(t2?.statusAt, '2030-01-07T12:00:00.000Z');
+    assert.equal(t2?.priorityAt, '2030-01-07T09:05:00.000Z');
     assert.equal(state.tasks.get('T1')?.priority, 1, 'the tier of a version 1 line reads as its priority');
   });
 
@@ -86,5 +90,7 @@ describe('golden register logs', () => {
         ['T2', 2, 'open'],
       ],
     );
+    const t1 = state.tasks.get('T1');
+    assert.deepEqual([t1?.priorityAt, t1?.statusAt], ['2030-01-07T10:00:00.000Z', '2030-01-07T11:00:00.000Z']);
   });
 });
