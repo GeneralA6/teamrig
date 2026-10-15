@@ -89,6 +89,15 @@ describe('the read entry', () => {
     }
   });
 
+  it('names a priority with no config at all, as a config that sets no register does', () => {
+    const config = read.parseConfigText(JSON.stringify({ configVersion: read.CONFIG_VERSION, sessions: ['alpha'], roles: { lead: 'alpha' } }));
+    assert.equal(config.status, 'loaded');
+    if (config.status === 'loaded') {
+      assert.deepEqual(config.config.register, read.DEFAULT_REGISTER);
+    }
+    assert.deepEqual([1, 2, 6].map((id) => read.priorityName(read.DEFAULT_REGISTER.priorities, id)), ['keep the lights on', 'correctness', undefined]);
+  });
+
   it("sorts a reader's own rows in plan order when they carry only an id, a priority and a due", () => {
     const rows: read.PlanOrdered[] = [
       { id: 'T10', priority: 2, due: null },

@@ -17,7 +17,9 @@ export { byPlanOrder, dueTime, type PlanOrdered } from '../register/views.ts';
 export { indexMarks, MARK_VERSION, parseMark, readMarks, type InboxMark, type MarkIndex, type MarkLogRead } from '../inbox/marks.ts';
 export { inboxLines, unreadOf, type LineHash, type ResumeKind, type Unread } from '../inbox/unread.ts';
 
-// The kit config (`config.json`).
+// The kit config (`config.json`). DEFAULT_REGISTER is what a config that sets no `register` key gets,
+// its priority names among them: a reader with no config to read names priorities from it.
+export { DEFAULT_REGISTER } from '../config/defaults.ts';
 export { priorityName } from '../config/priorities.ts';
 export { parseConfigText, type ConfigRead } from '../config/text.ts';
 export { CONFIG_VERSION, type KitConfig, type PriorityConfig } from '../config/types.ts';
