@@ -37,21 +37,21 @@ flowchart LR
   stop --> cli
   tool --> cli
   cli <--> folder
-  cli -. "push guard only" .-> git
+  cli -. "push guard and commits check" .-> git
 ```
 
 | Part | When it runs | What it does |
 | --- | --- | --- |
 | SessionStart hook | a session starts, resumes, is cleared or is compacted | gives the session the core rules, its name, the lead's name, where its team sits in a tree of teams and your team's `rules.md` |
-| UserPromptSubmit hook | you send a prompt | one `INBOX:` line when the session has unread notes, nothing otherwise |
+| UserPromptSubmit hook | you send a prompt | one `INBOX:` line when the session has unread notes; a line when it records a Claude Code rename of the session as its team name, or when `.teamrig.json` is broken; nothing otherwise |
 | PreToolUse hook | Claude runs a Bash or PowerShell command | finds every `git push` in it, through wrappers, nested shells and git aliases, and asks you or refuses; asks when it cannot read the command ([Safe pushes](#safe-pushes)) |
 | Stop hook | a turn ends | after a task is marked done, asks for a handover when a refresh is due, then tells you once ([A fresh context](#a-fresh-context)); nothing otherwise |
 | `teamrig` commands | Claude runs them in its Bash tool | the task list, the inbox, names, settings, checks (`teamrig help`) |
 
 A session finds its team through `$TEAMRIG_TEAM`, else the nearest `.teamrig.json` above its folder
-(`{"team": "your-team"}`). The folder is `~/.teamrig` unless `$TEAMRIG_HOME` says otherwise. The task list and the
-name log change only under a lock, and the inboxes and read marks only ever grow by a line, so parallel sessions
-never overwrite each other.
+(`{"team": "your-team"}`), else the nearest one above `$CLAUDE_PROJECT_DIR`. The folder is `~/.teamrig` unless
+`$TEAMRIG_HOME` says otherwise. The task list and the name log change only under a lock, and the inboxes and read
+marks only ever grow by a line, so parallel sessions never overwrite each other.
 
 ## Who is on the team
 
@@ -77,8 +77,10 @@ flowchart TB
 
 You ask one tab for the team in plain words, and it opens a tab for each other session
 ([Setting up a team](#setting-up-a-team)). At start the session reads "You are the `web` session of team
-`your-team` … Message the lead as `lead`." `teamrig who` prints every session's name, and `teamrig rename` gives a
-session a new name while every old name keeps working.
+`your-team` (name `your-team-web`). Message the lead as `your-team-lead`." A session the config gives no name is
+called `<team>-<id>`. `teamrig who` prints every session's name, and `teamrig rename` gives a session a new name
+while its old names keep finding it until another session takes one. A Claude Code rename of the session
+(`/rename`, `claude --name`) is recorded the same way at its next prompt or start, as if it ran `teamrig rename`.
 
 A team grows into a tree of teams when a lead hires sub-team leads, each running its own sessions, and you still
 talk to one lead: the root team's.
@@ -148,10 +150,13 @@ stateDiagram-v2
 ```
 
 - The owner may move a task from any status to any other; the register keeps every move.
-- `teamrig update` changes the owner, priority, due date or week, never the status; the lead may run it on any
-  task.
+- `done` takes `--skill none` or the name of a skill in your Claude Code skills folder; setting a task to its own
+  status again needs `--note`; `add` refuses a title an open, in-progress or blocked task already has.
+- `teamrig update` changes a task's title, owner, priority, ref, due date, goals or week (`none` clears the last
+  four), never the status; on a task it does not own, the lead may change the owner, priority, due date or week.
 - `teamrig check` reports tasks past due, not picked up 24 hours after they were handed out, untouched for 72 hours,
-  or due this week but left out of the week's plan. It reports and never blocks.
+  or due this week but left out of the week's plan, and owner orders left out of it; then it flags skills in your
+  Claude Code skills folder that break the skill rules. It reports and never blocks.
 - A lead hands a child team work with `teamrig add --team web --title "..." --priority p2`: the task lands in `web`'s own
   list, owned by `web`'s lead and marked as from `your-team/lead`, and `web`'s lead splits it among its sessions
   and opens them. Only the parent team's lead may do this.
@@ -180,6 +185,8 @@ sequenceDiagram
 ```
 
 - The inbox file is never edited: `inbox read` adds a mark to `state/inbox-marks.jsonl`.
+- You may trim an inbox file by hand; the read mark notices, and if the last line read is gone, the whole file
+  counts as unread.
 - A note is one line; an empty line, several lines or a line that looks like a secret is refused. A secret here is
   a GitHub, AWS, Slack, Anthropic, Google or Stripe live key, an `sk-` API key, a private key block, a JSON web
   token, credentials in a URL or a `password=`-style assignment, plus your `register.secretPatterns`. The
@@ -236,6 +243,8 @@ flowchart TD
 
 - `--force-with-lease` is asked, not refused. `commits.gate` set to `refuse` turns the ask into a refusal when a
   commit is over the size rule (400 changed lines or 15 files, tests not counted) with no `Large-commit:` reason.
+- `--all` is asked, and refused with `--force` or `--prune`; large commits are those not yet on the last-fetched
+  `origin/<branch>`.
 - `teamrig commits check --base <ref>` runs the same size rule in a script or CI.
 - Outside a project tied to a team, the guard stays silent.
 
@@ -283,7 +292,7 @@ flowchart LR
 
 ## Room for other tools
 
-Today teamrig works with Claude Code, any terminal and its own task list; other tools come through one small
+Today teamrig works with Claude Code, any terminal and its own task list; other tools will come through one small
 interface per kind of tool.
 
 ```mermaid
