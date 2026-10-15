@@ -137,7 +137,8 @@ export async function budget(args, runtime) {
     }
     return EXIT.ok;
 }
-function pctFlag(flags, name) {
+/** A percent flag: above 0 and up to 100, or undefined when it is not given. */
+export function pctFlag(flags, name) {
     const text = flags.get(name);
     if (text === undefined) {
         return undefined;

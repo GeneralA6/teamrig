@@ -16,21 +16,26 @@ export async function loadConfig(files, path, migrations = CONFIG_MIGRATIONS, ta
  * timestamp when that name is taken), then the migrated config, atomically. Returns the backup path.
  */
 export async function writeMigration(files, configPath, backupsDir, pending, clock) {
-    const original = await files.read(configPath);
+    return writeConfigWithBackup(files, { configPath, backupsDir, backupName: `config.v${pending.fromVersion}` }, pending.migrated, clock);
+}
+/**
+ * Replaces the config file with `config`: first a backup of the original (`<backupName>.json`, or with a
+ * timestamp when that name is taken), then the new file, atomically. Returns the backup path.
+ */
+export async function writeConfigWithBackup(files, target, config, clock) {
+    const original = await files.read(target.configPath);
     if (original === undefined) {
-        throw new Error(`${configPath} disappeared before the migration could be written`);
+        throw new Error(`${target.configPath} disappeared before the change could be written`);
     }
-    const plain = join(backupsDir, `config.v${pending.fromVersion}.json`);
-    const backup = (await files.createExclusive(plain, original))
-        ? plain
-        : await backupWithStamp(files, backupsDir, pending.fromVersion, original, clock);
-    await files.write(configPath, formatConfig(pending.migrated));
+    const plain = join(target.backupsDir, `${target.backupName}.json`);
+    const backup = (await files.createExclusive(plain, original)) ? plain : await backupWithStamp(files, target, original, clock);
+    await files.write(target.configPath, formatConfig(config));
     return backup;
 }
-async function backupWithStamp(files, backupsDir, version, original, clock) {
+async function backupWithStamp(files, target, original, clock) {
     const stamp = formatUtcMinute(new Date(clock.now())).replace(/[-: ]/g, '');
     for (let attempt = 0;; attempt += 1) {
-        const path = join(backupsDir, `config.v${version}.${stamp}${attempt === 0 ? '' : `-${attempt}`}.json`);
+        const path = join(target.backupsDir, `${target.backupName}.${stamp}${attempt === 0 ? '' : `-${attempt}`}.json`);
         if (await files.createExclusive(path, original)) {
             return path;
         }
