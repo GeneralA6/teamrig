@@ -278,7 +278,7 @@
       }
     },
     "launch": {
-      "description": "Each session's Claude Code model and effort, by id: teamrig open starts it with claude --model and --effort, and at its start a session running on another model or effort is told the /model and /effort to type. A key left unset is Claude Code's own choice, except for the lead, which starts on model best at xhigh effort for each key it leaves unset.",
+      "description": "Each session's Claude Code model and effort, by id: teamrig open starts it with claude --model and --effort, and at its start a session running on another model or effort is told the /model and /effort to type. A key left unset is Claude Code's own choice, except for the lead, which starts on model opus at xhigh effort for each key it leaves unset.",
       "type": "object",
       "propertyNames": { "$ref": "#/$defs/sessionName" },
       "additionalProperties": {

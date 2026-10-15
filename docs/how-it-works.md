@@ -131,7 +131,8 @@ sequenceDiagram
   Terminal, Konsole or x-terminal-emulator, in that order; `open.terminal` in the config or `--terminal` picks one.
   The tab runs `teamrig launch`, which sets `$TEAMRIG_SESSION` and starts `claude --name <name> "<first prompt>"`,
   with `--model` and `--effort` from the session's `launch` entry in the config. The lead, for each it leaves unset,
-  starts on `best` (Fable where the account has it, else Opus) at `xhigh` effort; the others on Claude Code's own.
+  starts on `opus` (Claude Code's newest Opus) at `xhigh` effort; the others on Claude Code's own. The `OPENED` and
+  `Starting` lines name the model and effort a tab starts on, and `launch.<id>` in the config changes either one.
   When no terminal opens, it prints the command to paste and exits 3. `teamrig open web/lead` opens a session of
   another team in the same tree.
 
