@@ -3,7 +3,7 @@ import { ENV, KIT_NAME } from '../core/home.ts';
 import { TEAM_POINTER } from '../core/team.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import { CommandHelp } from './help.ts';
-import { parseArgs, UsageError, type CommandFlags, type CommandSwitches, type ParsedArgs, type RenamedFlags } from './args.ts';
+import { parseArgs, UsageError, type CommandFlags, type CommandRest, type CommandSwitches, type ParsedArgs, type RenamedFlags } from './args.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from './runtime.ts';
 
 type Command = (args: ParsedArgs, runtime: CliRuntime) => Promise<ExitCode>;
@@ -12,6 +12,8 @@ interface CommandSpec {
   readonly flags: readonly string[];
   /** Flags that take no value, such as `--ready`. */
   readonly switches?: readonly string[];
+  /** The command runs a command line, given after `--`. */
+  readonly rest?: boolean;
   /** Commands load on first use, so a hook that runs on every tool call loads only its own code. */
   readonly load: () => Promise<Command>;
 }
@@ -32,6 +34,7 @@ const openCommands = () => import('./commands/open.ts');
 const budgetCommands = () => import('./commands/budget.ts');
 const budgetSetupCommands = () => import('./commands/budget-setup.ts');
 const statuslineCommands = () => import('./commands/statusline.ts');
+const testCommand = () => import('./commands/test.ts');
 
 const TASK_FIELDS = ['title', 'owner', 'ref', 'priority', 'due', 'goals', 'week', 'after'];
 
@@ -78,6 +81,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'config validate': { flags: [], load: async () => (await configCommands()).validate },
   'config migrate': { flags: [], load: async () => (await configCommands()).migrate },
   'commits check': { flags: ['base', 'tip'], load: async () => (await commitsCommands()).check },
+  test: { flags: ['session'], rest: true, load: async () => (await testCommand()).test },
   'hook push-guard': { flags: [], load: async () => (await hookCommands()).pushGuard },
   'hook cold-send': { flags: [], load: async () => (await hookCommands()).coldSend },
   'hook loop-nudge': { flags: [], load: async () => (await loopNudgeCommand()).loopNudge },
@@ -91,6 +95,8 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
 export const COMMAND_FLAGS: CommandFlags = Object.fromEntries(Object.entries(COMMANDS).map(([name, spec]) => [name, spec.flags]));
 /** Each command's flags that take no value, checked by the LLM guide test like `COMMAND_FLAGS`. */
 export const COMMAND_SWITCHES: CommandSwitches = Object.fromEntries(Object.entries(COMMANDS).map(([name, spec]) => [name, spec.switches ?? []]));
+/** The commands that take a command line after `--`. */
+export const COMMAND_REST: CommandRest = new Set(Object.entries(COMMANDS).flatMap(([name, spec]) => (spec.rest === true ? [name] : [])));
 /** `--tier` became `--priority` (levels p1, p2, ...): refused everywhere with the new name, never an alias. */
 const RENAMED_FLAGS: RenamedFlags = { tier: 'priority' };
 
@@ -153,6 +159,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   config validate | config migrate
   commits check --base <ref> [--tip <ref>]   commits in base..tip (default HEAD) over the size rule
       with no reason line; any is REFUSED, for an integrate script or CI
+  test [--session <id|name>] -- <command ...>   runs a test command in the shell, writes all it printed
+      to a log (each session keeps its newest 20) and prints one PASS or FAIL line, then each failing
+      test within tests.maxFailureChars; exit 0 when the command passed, 1 otherwise
   hook push-guard | hook cold-send | hook loop-nudge | hook helper-gate | hook inbox-reminder | hook session-start | hook stop
       (run by Claude Code, hook JSON on stdin)
   launch <id> --team <team> --project <dir> [--home <dir>] [--encoded-prompt <text>]
@@ -186,7 +195,7 @@ export async function runCli(argv: readonly string[], runtime: CliRuntime): Prom
 
   let named: string | undefined;
   try {
-    const args = parseArgs(argv, COMMAND_FLAGS, COMMAND_SWITCHES, RENAMED_FLAGS);
+    const args = parseArgs(argv, COMMAND_FLAGS, COMMAND_SWITCHES, RENAMED_FLAGS, COMMAND_REST);
     named = args.command;
     if (args.help) {
       runtime.out.stdout(COMMAND_HELP.forCommand(args.command));
