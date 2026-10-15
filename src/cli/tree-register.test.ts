@@ -17,7 +17,7 @@ describe('teamrig add --team', () => {
     const [event] = readEvents(kit.files.get(teamEventsOf('web')) ?? '').events;
     assert.deepEqual([event?.by, event?.type], ['app/lead', 'create']);
     assert.equal(kit.files.get(EVENTS_PATH), undefined);
-    const queue = await kit.run(['list', '--session', 'lead'], { env: WEB });
+    const queue = await kit.run(['list', '--session', 'lead', '--all'], { env: WEB });
     assert.deepEqual(queue.stdout, ['T1 open, p2, owner lead, from app/lead | Ship login']);
     const started = await kit.run(['set', 'T1', '--status', 'in-progress', '--session', 'lead'], { env: WEB });
     assert.equal(started.code, EXIT.ok);
@@ -76,7 +76,7 @@ describe('teamrig list|check|plan --tree', () => {
   it("lists the lead's team and every team under it, depth first, ids naming the team, writing nothing", async () => {
     const kit = await seeded();
     const before = filesOf(kit);
-    const result = await kit.run(['list', '--tree'], AS_LEAD);
+    const result = await kit.run(['list', '--tree', '--all'], AS_LEAD);
     assert.deepEqual(result, {
       code: EXIT.ok,
       stdout: [
@@ -86,18 +86,28 @@ describe('teamrig list|check|plan --tree', () => {
       ],
       stderr: [],
     });
-    const fromParent = await kit.run(['list', '--tree', '--source', 'app/lead'], AS_LEAD);
+    const fromParent = await kit.run(['list', '--tree', '--all', '--source', 'app/lead'], AS_LEAD);
     assert.deepEqual(fromParent.stdout, ['web/T1 open, p2, owner lead, week 01-07, from app/lead | Ship login']);
-    const byName = await kit.run(['list', '--tree', '--source', 'app-lead'], AS_LEAD);
+    const byName = await kit.run(['list', '--tree', '--all', '--source', 'app-lead'], AS_LEAD);
     assert.deepEqual(byName.stdout, ['app/T1 open, p1, owner alpha, due 01-07, week 01-07, from lead | Root task']);
-    const sub = await kit.run(['list', '--tree'], { env: { ...WEB, TEAMRIG_SESSION: 'lead' } });
+    const sub = await kit.run(['list', '--tree', '--all'], { env: { ...WEB, TEAMRIG_SESSION: 'lead' } });
     assert.deepEqual(sub.stdout.map((line) => line.split(' ')[0]), ['web/T1', 'ui/T1']);
+    const short = await kit.run(['list', '--tree'], AS_LEAD);
+    assert.deepEqual(short.stdout, [
+      'LIST 3 task(s) of 3 owners (short rows; --all for every field)',
+      '  app/alpha 1: 1 open',
+      '  ui/pixel 1: 1 open',
+      '  web/lead 1: 1 open',
+      'app/T1 open, p1, owner alpha, due 01-07 | Root task',
+      'web/T1 open, p2, owner lead | Ship login',
+      'ui/T1 open, p2, owner pixel | Icons',
+    ]);
     assert.deepEqual(filesOf(kit), before);
   });
 
   it('checks every team against the lead week, then the shared skills folder once', async () => {
     const kit = await seeded();
-    const result = await kit.run(['check', '--tree', '--session', 'lead']);
+    const result = await kit.run(['check', '--tree', '--session', 'lead', '--all']);
     assert.equal(result.code, EXIT.ok);
     assert.deepEqual(
       result.stdout.filter((line) => !line.startsWith('SKILLS')),
@@ -110,6 +120,13 @@ describe('teamrig list|check|plan --tree', () => {
       ],
     );
     assert.equal(result.stdout.filter((line) => line.startsWith('SKILLS')).length, 1);
+    const short = await kit.run(['check', '--tree', '--session', 'lead']);
+    assert.deepEqual(short.stdout.slice(0, 3), [
+      'CHECK 1 flag(s) in 4 team(s), week 2030-01-07 (short form; --all for every flag in full)',
+      'OVERDUE 1 (due 01-07)',
+      '  app/T1 open, p1, owner alpha, due 01-07 | Root task',
+    ]);
+    assert.match(short.stdout[3] ?? '', /^SKILLS \d+ flag\(s\) in /);
   });
 
   it('plans one section per team for the lead week', async () => {

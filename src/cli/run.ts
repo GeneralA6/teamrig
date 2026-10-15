@@ -35,12 +35,12 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   update: { flags: ['session', 'note', ...TASK_FIELDS], load: async () => (await registerCommands()).update },
   list: {
     flags: ['session', 'status', 'source', 'priority', 'due-before', 'week', 'goal'],
-    switches: ['tree'],
+    switches: ['tree', 'all'],
     load: async () => (await registerCommands()).list,
   },
   // --session names the caller on every task and inbox command, so a session can always pass it.
   show: { flags: ['session'], load: async () => (await registerCommands()).show },
-  check: { flags: ['session', 'week'], switches: ['tree'], load: async () => (await registerCommands()).check },
+  check: { flags: ['session', 'week'], switches: ['tree', 'all'], load: async () => (await registerCommands()).check },
   plan: { flags: ['session', 'week'], switches: ['tree'], load: async () => (await registerCommands()).plan },
   'inbox read': { flags: ['session'], load: async () => (await inboxCommands()).read },
   'inbox status': { flags: ['session'], load: async () => (await inboxCommands()).status },
@@ -87,9 +87,11 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   update <id> [--title ..] [--owner ..] [--priority ..] [--ref ..|none] [--due <date>|none]
       [--goals a,b|none] [--week <date>|none] [--note ..]
   list [--session <owner>] [--status a,b|all] [--source <s>] [--priority p1,p2] [--due-before <date>]
-      [--week <date>|none] [--goal <tag>] [--tree]
+      [--week <date>|none] [--goal <tag>] [--tree] [--all]
+      short rows within 3,000 characters; --all: every field of every task
   show <id>
-  check [--week <date>] [--tree]   tasks and skills that break a team rule
+  check [--week <date>] [--tree] [--all]   tasks and skills that break a team rule,
+      in a short form within 3,000 characters; --all: every flag in full
   plan [--week <date>] [--tree]    the week plan (default: the newest week that has started)
       --tree (the lead only): also every team under it, read-only, ids as <team>/T<n>
   inbox read [--session <area>]     prints the unread lines and marks them read

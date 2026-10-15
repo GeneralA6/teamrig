@@ -179,6 +179,8 @@ stateDiagram-v2
   work nothing in the plan asked for. teamrig has no parent tasks yet, so a goal tag or the week is what ties a task
   to the plan. Then it flags skills in your Claude Code skills folder that break the skill rules. It reports and never
   blocks.
+- `teamrig list` and `teamrig check` print a short form within 3,000 characters by default, since a session reads
+  them at every work block: counts, short rows and `+N more`. `--all` prints every field of every task or flag.
 - A lead hands a child team work with `teamrig add --team web --title "..." --priority p2`: the task lands in `web`'s own
   list, owned by `web`'s lead and marked as from `your-team/lead`, and `web`'s lead splits it among its sessions
   and opens them. Only the parent team's lead may do this.
