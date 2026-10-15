@@ -198,6 +198,26 @@ describe('evaluatePushes: the decision', () => {
     assert.equal(judge('cat <<EOF\n EOF\ngit push origin main').decision, 'ask');
   });
 
+  it('stays quiet on a worktree clean-up whose only push is inside file names or a stored note', () => {
+    const link = 'cmd //c mklink //J "$(cygpath -w $W/node_modules)" "$(cygpath -w /w/main/node_modules)"';
+    const unlink = 'cmd //c rmdir "$(cygpath -w $W/node_modules)"';
+    const note = "cat >> notes.md <<'EOF'\n\nMerged as version 0.7.1 (main was 0.7.0 at push; the branch moved onto it).\nA spec closed meter.ts's gap.\nEOF\necho ok";
+    expectRows([
+      [`B=topic; W=/w/$B; git -C /w/main worktree add -b $B $W origin/main && ${link} && cd $W && wc -l src/push-guard/*.ts && ls src/push-guard`, 'allow'],
+      [`S=/tmp/s; grep -n "local checks" $S/x-local-push.log; W=/w/topic; ${unlink}; ls -la $W | grep node_modules || echo "link gone"`, 'allow'],
+      [`W=/w/topic; ${unlink}; test -e $W/node_modules && echo "LINK STILL THERE" || (git -C /w/main worktree remove $W && echo removed); ${note}`, 'allow'],
+    ]);
+  });
+
+  it('still asks when such a line pushes main, or says push beside what it cannot read', () => {
+    const unlink = 'cmd //c rmdir "$(cygpath -w $W/node_modules)"';
+    expectRows([
+      [`W=/w/topic; ${unlink}; git push origin main`, 'ask'],
+      [`W=/w/topic; ${unlink}; echo push`, 'ask', 'doubt'],
+      [`W=/w/topic; ${unlink}; cat >> notes.md <<EOF\n$(git push origin main)\nEOF`, 'ask'],
+    ]);
+  });
+
   it('runs a heredoc or here-string a shell reads, and asks about a push in it', () => {
     expectRows([
       ['cat <<EOF | bash\ngit push origin main\nEOF', 'ask'],

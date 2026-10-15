@@ -242,11 +242,21 @@ describe('findGitInvocations: scripts and shells', () => {
     expectDoubt(`${'eval '.repeat(9)}git push`, '!:scripts nest too deep to read');
   });
 
-  it('says whether the line, or what it runs, mentions a push', () => {
-    assert.equal(find('echo push').mentionsPush, true);
-    assert.equal(find('git status').mentionsPush, false);
-    assert.equal(find('git p').mentionsPush, true);
-    assert.equal(find('git -c alias.Q=status q').mentionsPush, false);
+  it('says whether a word the line runs, or a script, alias or heredoc it reads, names a push', () => {
+    const mentions = (command: string): boolean => find(command).mentionsPush;
+    const named = ['echo push', 'git p', 'x --push', 'git-push.exe x', 'X=push; y', 'cat <<EOF | bash\npush\nEOF', 'cat <<EOF\npush\nEOF', 'cat <<A <<B\npush\nA\nB', 'echo "unclosed push'];
+    assert.deepEqual(named.map(mentions), new Array<boolean>(named.length).fill(true));
+    const unnamed = [
+      'git status',
+      'git -c alias.Q=status q',
+      'wc -l src/push-guard/*.ts',
+      'tail x-push.log',
+      'echo ok # push',
+      'echo done > push.log',
+      "cat >> notes.md <<'EOF'\nthe push is done\nEOF",
+      'cat > /tmp/n - <<EOF\npush\nEOF',
+    ];
+    assert.deepEqual(unnamed.map(mentions), new Array<boolean>(unnamed.length).fill(false));
   });
 });
 

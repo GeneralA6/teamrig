@@ -34,7 +34,11 @@ export interface Doubt {
 export interface GitInvocations {
   readonly invocations: readonly GitInvocation[];
   readonly doubts: readonly Doubt[];
-  /** True when the line, or a script or alias it runs, says `push` anywhere. */
+  /**
+   * True when a word the line runs, or a script or alias it runs, names a push (see {@link saysPush}), or a
+   * heredoc it does not store in a file does, or a part it cannot read says one. Comments and redirection
+   * targets do not count.
+   */
   readonly mentionsPush: boolean;
 }
 
@@ -147,6 +151,15 @@ function shellQuote(word: ShellWord): string {
   return word.dynamic ? word.text : `'${word.text.replace(/'/g, `'\\''`)}'`;
 }
 
+/** What ends a piece of text for {@link saysPush}: blanks, quotes, operators and path separators, but not `-` or `.`. */
+const MENTION_BREAKS = /[\s'"`;&|()<>{}[\]$=!:,/\\@%^#?*+~]+/;
+/** A piece of text that names git's push: `push`, `--push`, `git-push` or `git-push.exe`. */
+const PUSH_WORD = /^-*(?:git-)?push(?:\.exe)?$/i;
+
+/** True when `text` names a push as a word of its own: `git push` or `X=push` do, `push-guard/` or `x-push.log` do not. */
+function saysPush(text: string): boolean {
+  return text.split(MENTION_BREAKS).some((piece) => PUSH_WORD.test(piece));
+}
 
 /** True when a command takes its stdin from a redirection, such as `< file`, rather than from a pipe. */
 function redirectsInput(command: ShellCommand): boolean {
@@ -169,7 +182,7 @@ function splitOption(text: string): readonly [string, string | undefined] {
 class GitInvocationFinder {
   private readonly invocations: GitInvocation[] = [];
   private readonly doubts: Doubt[] = [];
-  private readonly texts: string[] = [];
+  private mentionsPush = false;
   /** Aliases a `git config alias.x value` earlier in the line sets; undefined marks one only known when it runs. */
   private readonly lineAliases = new Map<string, string | undefined>();
   /** True once the line sets a `GIT_DIR`-like variable in its shell, so later git commands run in a repository the guard cannot place. */
@@ -184,13 +197,16 @@ class GitInvocationFinder {
 
   find(command: string): GitInvocations {
     this.visitScript(staticWord(command), this.context.dialect, new Location(this.context.cwd, this.context.home), 0);
-    return { invocations: this.invocations, doubts: this.doubts, mentionsPush: this.texts.some((text) => /\bpush\b/i.test(text)) };
+    return { invocations: this.invocations, doubts: this.doubts, mentionsPush: this.mentionsPush };
   }
 
   private doubt(reason: string, gated: boolean): void {
     this.doubts.push({ reason, gated });
   }
 
+  private mention(text: string): void {
+    this.mentionsPush ||= saysPush(text);
+  }
 
   /**
    * Visits each command of a script in order. A heredoc or here-string is its command's stdin, and a plain
@@ -201,15 +217,17 @@ class GitInvocationFinder {
       this.doubt('scripts nest too deep to read', false);
       return;
     }
-    this.texts.push(script.text);
     const parsed = parseShell(script.text, dialect);
     if (!parsed.complete) {
       this.doubt('part of it cannot be read, as a quote, bracket or substitution never closes', true);
+      this.mention(script.text);
     }
+    parsed.unreadBodies.forEach((body) => this.mention(body.text));
     // bash reads $NAME set to a literal earlier in the line; other dialects keep every variable unknown.
     const commands = dialect === 'bash' ? resolveLiteralVariables(parsed.commands, script.text) : parsed.commands;
     let piped: { readonly body: ShellWord; readonly nesting: number } | undefined;
     for (const command of commands) {
+      command.words.forEach((word) => this.mention(word.text));
       let stdin = command.stdin;
       // A substitution's commands, read before the command that holds them, sit between a pipe's two ends.
       if (piped !== undefined && command.nesting <= piped.nesting) {
@@ -220,6 +238,9 @@ class GitInvocationFinder {
       const launched = this.visitCommand(command.words, dialect, location, depth, stdin);
       if (stdin !== undefined) {
         const use = launched === undefined ? 'read' : stdinUse(command, launched);
+        if (use !== 'stored') {
+          this.mention(stdin.text);
+        }
         piped = use === 'passed' ? { body: stdin, nesting: command.nesting } : undefined;
       }
     }
@@ -415,7 +436,7 @@ class GitInvocationFinder {
       this.doubt('git aliases nest too deep to read', false);
       return;
     }
-    this.texts.push(value);
+    this.mention(value);
     if (value.startsWith('!')) {
       const script = [value.slice(1), ...args.map(shellQuote)].join(' ');
       this.visitScript(staticWord(script), 'bash', new Location(repoDir, this.context.home), depth + 1);
