@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import { FakePathProbe } from '../testing/fake-processes.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { APP, CliHarness, KIT, POINTER, TEAM, type CliResult } from '../testing/cli-harness.ts';
+import { CONFIG_VERSION } from '../config/types.ts';
 import { EXIT } from './runtime.ts';
 
 const SHOP = resolve('/', 'w', 'shop');
@@ -37,7 +38,7 @@ describe('teamrig team create', () => {
       stderr: [],
     });
     assert.deepEqual(JSON.parse((await kit.files.read(SHOP_CONFIG)) ?? ''), {
-      configVersion: 2,
+      configVersion: CONFIG_VERSION,
       team: { id: 'shop' },
       sessions: ['lead', 'api', 'web'],
       roles: { lead: 'lead' },
@@ -68,7 +69,7 @@ describe('teamrig team create', () => {
       'DRY RUN nothing is written',
       `WOULD CREATE ${SHOP_CONFIG}:`,
       '{',
-      '  "configVersion": 2,',
+      `  "configVersion": ${CONFIG_VERSION},`,
       '  "team": {',
       '    "id": "shop"',
       '  },',

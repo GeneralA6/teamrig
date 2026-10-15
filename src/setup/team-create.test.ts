@@ -5,6 +5,7 @@ import { formatConfig } from '../config/load.ts';
 import { SHIPPED_CONFIG_FORMAT } from '../config/migrate.ts';
 import { parseConfig } from '../config/parse.ts';
 import { TeamTree } from '../config/tree.ts';
+import { CONFIG_VERSION } from '../config/types.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { applyTeamSetup, configRecordOf, planTeamSetup, teamNodeOfSpec, teamSpecOf, type Checked, type SetupPlan, type TeamSpec } from './team-create.ts';
 
@@ -61,7 +62,7 @@ describe('teamSpecOf', () => {
 describe('configRecordOf', () => {
   it('writes the smallest config, which reads back with no problems', () => {
     const record = configRecordOf(SPEC);
-    assert.deepEqual(record, { configVersion: 2, team: { id: 'shop' }, sessions: ['lead', 'api', 'web'], roles: { lead: 'lead' } });
+    assert.deepEqual(record, { configVersion: CONFIG_VERSION, team: { id: 'shop' }, sessions: ['lead', 'api', 'web'], roles: { lead: 'lead' } });
     const parsed = parseConfig(record);
     assert.deepEqual(parsed.issues, []);
     assert.deepEqual(parsed.config.sessions, SPEC.sessions);

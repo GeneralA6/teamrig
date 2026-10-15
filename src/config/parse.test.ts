@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_BUDGET, DEFAULT_COMMITS, DEFAULT_OPEN, DEFAULT_REFRESH, DEFAULT_REGISTER } from './defaults.ts';
 import { parseConfig } from './parse.ts';
+import { CONFIG_VERSION } from './types.ts';
 import type { ConfigIssue } from './reader.ts';
 
 const ROSTER = { sessions: ['alpha', 'bravo'], roles: { lead: 'alpha' } };
@@ -128,7 +129,7 @@ describe('parseConfig', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,
       roles: { lead: 'alpha', coordinatorOwner: 'bravo' },
-      register: { priorities: [{ id: 1, name: 'now' }], goalPattern: '^G\\d+$', requireNoteOn: ['blocked'], check: { prioritySkipAfterHours: 12 } },
+      register: { priorities: [{ id: 1, name: 'now' }], goalPattern: '^G\\d+$', requireNoteOn: ['waiting'], check: { prioritySkipAfterHours: 12 } },
       coordinator: { schedule: { heavyCutoffUtc: '22:30' } },
       budget: { enabled: true, targetPct: 95 },
       paths: { inbox: '/srv/team/inbox' },
@@ -137,7 +138,7 @@ describe('parseConfig', () => {
     assert.deepEqual(config.roles, { lead: 'alpha', coordinatorOwner: 'bravo' });
     assert.deepEqual(config.register.priorities, [{ id: 1, name: 'now' }]);
     assert.equal(config.register.goalPattern, '^G\\d+$');
-    assert.deepEqual(config.register.requireNoteOn, ['blocked']);
+    assert.deepEqual(config.register.requireNoteOn, ['waiting']);
     assert.deepEqual(config.register.check, { staleAfterHours: 72, notPickedUpAfterHours: 24, prioritySkipAfterHours: 12, weekLengthDays: 7 });
     assert.deepEqual(config.coordinator.schedule, { heavyCutoffUtc: '22:30' });
     assert.deepEqual(config.budget, { ...DEFAULT_BUDGET, enabled: true, targetPct: 95 });
@@ -162,7 +163,7 @@ describe('parseConfig', () => {
   });
 
   it('names the version-1 key register.tiers in a current file, and reads the default priorities', () => {
-    const { config, issues } = parseConfig({ ...ROSTER, configVersion: 2, register: { tiers: [{ id: 1, name: 'now' }] } });
+    const { config, issues } = parseConfig({ ...ROSTER, configVersion: CONFIG_VERSION, register: { tiers: [{ id: 1, name: 'now' }] } });
     assert.deepEqual(issues, [{ path: 'register.tiers', message: 'was renamed: use register.priorities' }]);
     assert.deepEqual(config.register.priorities, DEFAULT_REGISTER.priorities);
   });
@@ -203,7 +204,7 @@ describe('parseConfig', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,
       ownerGates: ['money', 'two\nlines', 'g'.repeat(61)],
-      register: { requireNoteOn: ['open', 'in-progress', 'blocked', 'done', 'dropped', 'done'] },
+      register: { requireNoteOn: ['open', 'in-progress', 'waiting', 'done', 'dropped', 'done'] },
       skills: { forbidFrontmatter: ['allowed-tools', 'not a key', 'k'.repeat(33)] },
       pushGuard: { protectedBranches: Array.from({ length: 9 }, (_, index) => `release-${index}`) },
     });
