@@ -9,6 +9,8 @@ export const ISSUE_LIMIT = 500;
 const GH_EXIT_NO_LOGIN = 4;
 const NO_LOGIN = /gh auth login|not logged in|authentication required|HTTP 401|bad credentials/i;
 const NOT_VISIBLE = /could not resolve to a repository|HTTP 404|not found/i;
+/** A token that reaches the repository but was not given the Issues permission. */
+const NO_PERMISSION = /resource not accessible by/i;
 const URL = /^https:\/\/\S+$/;
 /** The arguments for one read: a list as JSON with only ISSUE_FIELDS, never a command that writes. */
 export function issueListArgs(request) {
@@ -19,17 +21,17 @@ export function issueListArgs(request) {
 export function plainLine(text) {
     return text.replace(/[\p{Cc}\p{Cf}]+/gu, ' ').replace(/\s+/g, ' ').trim();
 }
-/** Lists a repository's issues in one state through gh. Every failure comes back as one line, never thrown. */
-export async function listIssues(gh, env, request) {
+/** Lists a repository's issues in one state through gh, as `access` reads it. Every failure comes back as one line, never thrown. */
+export async function listIssues(gh, access, request) {
     let result;
     try {
-        result = await gh.run({ args: issueListArgs(request), env });
+        result = await gh.run({ args: issueListArgs(request), env: access.env });
     }
     catch (error) {
         return { kind: 'failed', reason: startFailureText(error) };
     }
     if (result.end.kind !== 'exited' || result.end.code !== 0) {
-        return { kind: 'failed', reason: failureText(request.repo, result) };
+        return { kind: 'failed', reason: failureText(request.repo, result, access) };
     }
     return parseIssueList(result.stdout, request);
 }
@@ -39,16 +41,30 @@ export function startFailureText(error) {
         ? 'gh, the GitHub CLI, is not installed or not on PATH: install it from https://cli.github.com, then run gh auth login'
         : plainLine(`gh could not start: ${errorMessage(error)}`);
 }
-/** Why a gh run failed, with the fix when it is a known one: no login, or a repository the login cannot see. */
-export function failureText(repo, result) {
+/**
+ * Why a gh run failed, with the fix when it is a known one, worded for what read the repository: a login
+ * or token GitHub refused, a repository it cannot see, or issues it may not read.
+ */
+export function failureText(repo, result, access) {
     if (result.end.kind === 'signal') {
         return `gh was stopped (${result.end.signal}) before it listed the issues of ${repo}; it gets ${GH_TIMEOUT_MS / 1000} s`;
     }
+    const token = `the token saved as ${access.credential}`;
+    const saveOne = `save a read-only token for ${access.owner} with: ${access.save}`;
     if (result.end.code === GH_EXIT_NO_LOGIN || NO_LOGIN.test(result.stderr)) {
-        return 'gh is not logged in to GitHub: run gh auth login';
+        return access.via === 'token'
+            ? `GitHub refused ${token} (expired or revoked?): create a new one and save it again with: ${access.save}`
+            : `gh is not logged in to GitHub: run gh auth login, or ${saveOne}`;
+    }
+    if (NO_PERMISSION.test(result.stderr)) {
+        return access.via === 'token'
+            ? `${token} may not read the issues of ${repo}: on GitHub, edit that token and set Issues to Read-only; its text stays the same, so nothing needs saving again`
+            : `the gh login may not read the issues of ${repo}: ${saveOne}`;
     }
     if (NOT_VISIBLE.test(result.stderr)) {
-        return `${repo} is not visible to the gh login: check github.repos, and that gh auth status shows an account that can read it`;
+        return access.via === 'token'
+            ? `${repo} is not visible to ${token}: check github.repos, and on GitHub give that token this repository`
+            : `${repo} is not visible to the gh login: check github.repos, or ${saveOne}`;
     }
     return plainLine(`gh issue list -R ${repo} ${exitText(result.end.code, result.stderr)}`);
 }
