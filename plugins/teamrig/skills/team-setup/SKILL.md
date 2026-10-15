@@ -1,6 +1,6 @@
 ---
 name: team-setup
-description: Use when the user wants work split across parallel Claude Code sessions, or a part of it grown into a sub-team: propose the team, create it and open each session.
+description: Use when the user wants work split across parallel Claude Code sessions or a part grown into a sub-team (propose, create, open each session), and at each lead checkpoint.
 ---
 
 # Team setup
@@ -80,6 +80,29 @@ teamrig team create <sub-team> --sessions <id>,<id> --parent <team> --project "<
 - `teamrig team tree` shows the teams, and `teamrig list --session lead --tree` the tasks of this team and every team
   under it. A tree is at most 3 levels deep, with at most 8 sub-teams under one team; `team create` says when a new
   one would break that.
+
+## 7. Checkpoint: keep the team on its plan
+
+At the start of each work block, and when the user asks for status, in one Bash call:
+
+```
+teamrig inbox read --session lead && teamrig check --session lead
+```
+
+With sub-teams, add `--tree` to `check`. Act on each flag:
+
+- `PRIORITY-SKIP`: a session works below its own waiting top-priority task. Send it one inbox line to park the lower
+  task and start the waiting one (`teamrig inbox add --session lead --to <id> --text "..."`), or, when the order is
+  wrong, change it: `teamrig update T<n> --session lead --priority p2`.
+- `OFF-GOAL`: work in progress with no goal outside the week's plan. If it belongs in this week, plan it in:
+  `teamrig update T<n> --session lead --week <week>`. If not, ask the session in one inbox line to tag its goal
+  (`update --goals`, only its owner may) or to park it.
+- `NOT-PICKED-UP`: an idle session reads no inbox. Wake it with `teamrig open <id>`, or tell the user.
+- `OVERDUE` or `STALE`: ask the owning session what blocks it, then re-date it (`--due`) or tell the user.
+- `OWNER-UNPLANNED` or `DUE-UNPLANNED`: plan it in with `--week`, or tell the user what it would push out.
+- A skill flag: tell the skill's owner in one inbox line.
+
+You may change a task's owner, priority, due date and week; its status and goals are its owner's.
 
 ## Traps
 
