@@ -31,10 +31,13 @@ describe('golden register logs', () => {
       due: '2030-01-09 12:00',
       goals: ['G1'],
       week: '2030-01-07',
+      after: [],
       status: 'done',
       note: 'health check live',
       evidence: 'commit abc1234; 12 tests',
       skill: 'none',
+      waits: [],
+      startedAt: '2030-01-07T10:00:00.000Z',
       createdAt: '2030-01-07T09:00:00.000Z',
       createdBy: 'lead',
       updatedAt: '2030-01-08T16:00:00.000Z',
@@ -45,7 +48,8 @@ describe('golden register logs', () => {
       ownerSeenAt: '2030-01-08T16:00:00.000Z',
     });
     const t2 = state.tasks.get('T2');
-    assert.equal(t2?.status, 'blocked');
+    assert.equal(t2?.status, 'waiting', 'a blocked line reads as waiting');
+    assert.deepEqual(t2?.waits, [], 'with no reasons: blocked had none');
     assert.equal(t2?.skill, null, 'a status line without skill reads as null');
     assert.equal(t2?.ownerSeenAt, '2030-01-08T17:00:00.000Z');
   });

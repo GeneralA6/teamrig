@@ -1,7 +1,7 @@
 import { toJsonlLine } from '../core/jsonl.ts';
 import { MS_PER_DAY } from '../core/time.ts';
 import { currentWeekOf } from './check.ts';
-import type { RegisterEvent } from './events.ts';
+import { eventRecord, type RegisterEvent } from './events.ts';
 import { RegisterFold, taskNumber, type Task } from './fold.ts';
 import { snapshotHeaderRecord, type SnapshotHeader } from './layout.ts';
 import type { RegisterSnapshot } from './snapshot.ts';
@@ -83,7 +83,7 @@ export function compactRegister(source: RegisterSnapshot, options: CompactionOpt
     retiredLastWeek: newestWeek([source.retired?.lastWeek ?? null, ...retiring.map((task) => task.week)]),
     at: options.now.toISOString(),
   };
-  const text = [snapshotHeaderRecord(header), ...kept.map((event) => ({ ...event }))].map(toJsonlLine).join('');
+  const text = [snapshotHeaderRecord(header), ...kept.map(eventRecord)].map(toJsonlLine).join('');
   const retiredNow = retiring.map((task) => task.id).sort((a, b) => taskNumber(a) - taskNumber(b));
   return { header, text, kept: source.state.tasks.size - retiring.length, retiredNow };
 }

@@ -1,5 +1,6 @@
 import type { RegisterEvent, TaskFields } from './events.ts';
 import type { TaskStatus } from './model.ts';
+import type { WaitReason } from './waits.ts';
 
 /** A task as the event log describes it after replaying every event in write order. */
 export interface Task extends TaskFields {
@@ -9,6 +10,10 @@ export interface Task extends TaskFields {
   readonly note: string | null;
   readonly evidence: string | null;
   readonly skill: string | null;
+  /** What the task waits for while `waiting`, from its latest status change; empty in any other status. */
+  readonly waits: readonly WaitReason[];
+  /** When the task first went in progress (or verifying): only a started task can wait on another task. */
+  readonly startedAt: string | null;
   readonly createdAt: string;
   readonly createdBy: string;
   /** The newest event on the task, and who wrote it. */
@@ -103,6 +108,8 @@ function created(id: string, fields: TaskFields, at: string, by: string): Task {
     note: null,
     evidence: null,
     skill: null,
+    waits: [],
+    startedAt: null,
     createdAt: at,
     createdBy: by,
     updatedAt: at,
@@ -122,6 +129,8 @@ function withStatus(task: Task, event: Extract<RegisterEvent, { type: 'status' }
     note: event.note,
     evidence: event.evidence ?? task.evidence,
     skill: event.skill,
+    waits: event.status === 'waiting' ? (event.waits ?? []) : [],
+    startedAt: task.startedAt ?? (event.status === 'in-progress' || event.status === 'verifying' ? event.at : null),
     updatedAt: event.at,
     updatedBy: event.by,
     ownerSeenAt: event.by === task.owner ? event.at : task.ownerSeenAt,
