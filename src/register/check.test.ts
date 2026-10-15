@@ -65,3 +65,47 @@ describe('checkTasks', () => {
     assert.deepEqual(flags.map((flag) => flag.kind), ['STALE']);
   });
 });
+
+describe('checkTasks: PRIORITY-SKIP', () => {
+  const seen = { ownerSeenAt: FRESH, updatedAt: FRESH };
+  const since = (iso: string) => ({ assignedAt: iso, statusAt: iso, priorityAt: iso });
+  /** alpha's p1 open since 01-08 09:00, and its p3 in progress since 01-08 10:00. */
+  const waiting = testTask({ id: 'T1', priority: 1, ...seen, ...since('2030-01-08T09:00:00.000Z') });
+  const working = testTask({ id: 'T2', priority: 3, status: 'in-progress', ...seen, ...since('2030-01-08T10:00:00.000Z') });
+  const skips = (tasks: Parameters<typeof checkTasks>[0], config = CONFIG) =>
+    checkTasks(tasks, NOW, null, config).map((flag) => formatFlag(flag));
+
+  it('flags work in progress below its own open p1, counted from the later of the two', () => {
+    assert.deepEqual(skips([waiting, working]), [
+      'PRIORITY-SKIP (p1 T1 waits open, skipped since 01-08 10:00) T2 in-progress, p3, owner alpha, from lead | Add a health check',
+    ]);
+  });
+
+  it('leaves a blocked p1, another owner\'s p1, a p1 in progress and work that is not in progress alone', () => {
+    assert.deepEqual(skips([{ ...waiting, status: 'blocked' }, working]), []);
+    assert.deepEqual(skips([{ ...waiting, owner: 'bravo' }, working]), []);
+    assert.deepEqual(skips([waiting, { ...working, priority: 1 }]), []);
+    assert.deepEqual(skips([waiting, { ...working, status: 'open' }]), []);
+  });
+
+  it('waits the configured hours after the latest owner, status or priority change of either task', () => {
+    const recent = '2030-01-10T00:00:00.000Z';
+    assert.deepEqual(skips([{ ...waiting, priorityAt: recent }, working]), [], 'raised to p1 12 h ago');
+    assert.deepEqual(skips([{ ...waiting, statusAt: recent }, working]), [], 'unblocked 12 h ago');
+    assert.deepEqual(skips([waiting, { ...working, assignedAt: recent }]), [], 'handed to alpha 12 h ago');
+    const quick = testConfig({ register: { check: { prioritySkipAfterHours: 6 } } }).register;
+    assert.equal(skips([{ ...waiting, statusAt: recent }, working], quick).length, 1);
+  });
+
+  it('names the p1 that has waited longest', () => {
+    const older = testTask({ id: 'T3', priority: 1, ...seen, ...since('2030-01-07T09:00:00.000Z') });
+    const newer = { ...waiting, ...since('2030-01-08T11:00:00.000Z') };
+    assert.match(skips([newer, older, working])[0] ?? '', /^PRIORITY-SKIP \(p1 T3 waits open, skipped since 01-08 10:00\) T2 /);
+  });
+
+  it('takes the top priority from the config, and skips the flag when the config names none', () => {
+    const levels = testConfig({ register: { priorities: [{ id: 2, name: 'now' }, { id: 3, name: 'later' }] } }).register;
+    assert.match(skips([{ ...waiting, priority: 2 }, working], levels)[0] ?? '', /^PRIORITY-SKIP \(p2 T1 /);
+    assert.deepEqual(skips([waiting, working], { ...CONFIG, priorities: [] }), []);
+  });
+});

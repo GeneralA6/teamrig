@@ -127,7 +127,7 @@ describe('parseConfig', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,
       roles: { lead: 'alpha', coordinatorOwner: 'bravo' },
-      register: { priorities: [{ id: 1, name: 'now' }], goalPattern: '^G\\d+$', requireNoteOn: ['blocked'] },
+      register: { priorities: [{ id: 1, name: 'now' }], goalPattern: '^G\\d+$', requireNoteOn: ['blocked'], check: { prioritySkipAfterHours: 12 } },
       coordinator: { schedule: { heavyCutoffUtc: '22:30' }, budget: { enabled: true, targetPct: 95 } },
       paths: { inbox: '/srv/team/inbox' },
     });
@@ -136,6 +136,7 @@ describe('parseConfig', () => {
     assert.deepEqual(config.register.priorities, [{ id: 1, name: 'now' }]);
     assert.equal(config.register.goalPattern, '^G\\d+$');
     assert.deepEqual(config.register.requireNoteOn, ['blocked']);
+    assert.deepEqual(config.register.check, { staleAfterHours: 72, notPickedUpAfterHours: 24, prioritySkipAfterHours: 12, weekLengthDays: 7 });
     assert.deepEqual(config.coordinator.schedule, { heavyCutoffUtc: '22:30' });
     assert.deepEqual(config.coordinator.budget, { enabled: true, targetPct: 95, reservePct: 0.5 });
     assert.deepEqual(config.paths, { inbox: '/srv/team/inbox' });
