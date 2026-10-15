@@ -9,6 +9,11 @@ export const CORE_PACK_MAX_CHARS = 6_400;
 export const TEAM_RULES_MAX_CHARS = 3_500;
 /** Claude Code caps a SessionStart hook's `additionalContext` at this size. */
 export const CONTEXT_MAX_CHARS = 10_000;
+/**
+ * The lead's own lines fit in this many characters with worst-case config values (a CI test holds it). They come on
+ * top of the core pack for the lead alone, so a team rules file near its limit may reach the lead as a pointer.
+ */
+export const LEAD_RULES_MAX_CHARS = 600;
 
 export interface TeamRules {
   readonly path: string;
@@ -117,6 +122,19 @@ export function renderCorePack(config: KitConfig, command: string): string {
     "Where your team's rules or CLAUDE.md conflict with these, yours win. [brackets] name the config key behind a value.",
     '',
     ...rules.map((rule, index) => `${index + 1}. ${rule}`),
+  ].join('\n');
+}
+
+/**
+ * What only the lead does every turn, shown to the lead alone so no other session pays for it: what it brings the
+ * owner, the owner's orders it relays as tasks, and plans read from the register, never from memory.
+ */
+export function renderLeadRules(config: KitConfig, command: string): string {
+  return [
+    'As the lead, also:',
+    '- Bring the owner only verified results, decisions you made, investigated questions (options, numbers, a recommendation) and incidents.',
+    `- Each owner order you relay is a task in the same turn: \`${command} add --owner <id> --source ${config.register.ownerSource}\` [register.ownerSource].`,
+    `- Plan the week from \`${command} plan\` and run \`${command} check\` at each checkpoint, never from memory.`,
   ].join('\n');
 }
 

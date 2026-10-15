@@ -44,6 +44,13 @@ describe('sessionStartContext', () => {
     assert.ok(text.endsWith(`\n\nYou are the \`lead\` session of team \`app\` (name \`team-lead\`, roles: lead).\n${NAMES}`));
   });
 
+  it('gives the lead its own lines after the core rules, and no other session', () => {
+    const lead = context({ session: 'team-lead' });
+    assert.ok(lead.includes('\n\nAs the lead, also:\n- Bring the owner only verified results'), lead);
+    assert.ok(lead.indexOf('As the lead, also:') < lead.indexOf('You are the `lead` session'));
+    assert.ok(!context({ session: 'alpha' }).includes('As the lead'));
+  });
+
   it('tells a session known only by --session or by its inbox to pass --session', () => {
     assert.ok(
       context({ sessionInEnv: false }).endsWith(
