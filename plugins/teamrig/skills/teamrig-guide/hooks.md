@@ -10,6 +10,7 @@ they all stay silent.
 | `UserPromptSubmit` (each prompt) | `hook inbox-reminder` | Shows new inbox lines; binds a tab started by hand by its title; records a Claude Code rename; tells the model when it is past its daily budget |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook push-guard` | Asks before a push to a protected branch; refuses a force-push or delete of one |
 | `PreToolUse` on `SendMessage` | `hook cold-send` | Holds once a message that would wake an idle session cold |
+| `PostToolUse` on `SendMessage` | `hook failed-send` | After a send that was not delivered, hands the model [the inbox line to write instead](#after-a-failed-send-the-inbox-line) |
 | `PostToolUse` on reads, edits and shell calls | `hook loop-nudge` | Asks the model once to batch when a turn makes [single-step calls in a row](#after-a-tool-call-the-loop-nudge) |
 | `PreToolUse` on `Agent` and `Task` | `hook helper-gate` | Asks before or refuses a helper launch past the daily budget or in quiet hours, [as the team set](#the-daily-budget-warnings-and-the-helper-gate) |
 | `Stop` (end of each turn) | `hook stop` | Asks for a handover when a context refresh is due; tells the user of another effort than `launch` asks, or of a model Claude Code switched to; shows the budget lines; names a verifying task whose verify-by day has come; once per `github.everyMinutes` for the whole team, starts `gh sync --auto` hidden in the background |
@@ -146,6 +147,19 @@ teamrig: 6 single-step calls in a row this turn (about 65k W of re-reads at this
 When an edit and then its test ran in separate calls, the line says so. It comes once per run: the next call
 counts 7 and stays quiet. Calls inside a helper are not counted; only the main thread's are. `teamrig budget
 --loops` counts the same patterns over the day.
+
+## After a failed send: the inbox line
+
+A send to a name no live session answers to (a remembered pipe, an old name, a session that has exited) does not
+fail the tool: it returns `success: false`, and the message is lost unless the sender writes it down. After such a
+`SendMessage` result, the model gets one line:
+
+```text
+teamrig: the message to team-lead was not sent (No agent named 'team-lead' is reachable.); leave it as an inbox line, shown at lead's next prompt: `teamrig inbox add --to lead --text "..."`.
+```
+
+For a name that is no team session, the line points to `teamrig who`, which prints the names to message by.
+Outside a team with a config it says nothing.
 
 ## After a tool call: the lead boundary
 
