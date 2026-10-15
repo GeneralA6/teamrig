@@ -31,6 +31,18 @@ export {
 export { LAYOUT_VERSION } from '../register/marker.ts';
 export { readEvents, readRegister, snapshotOf, type EventLogRead, type RegisterSnapshot, type RetiredTasks } from '../register/snapshot.ts';
 export { byPlanOrder, dueTime, type PlanOrdered } from '../register/views.ts';
+export {
+  allReady,
+  isReady,
+  unfinishedAfter,
+  WAIT_KINDS,
+  waitContext,
+  waitsText,
+  waitText,
+  type WaitContext,
+  type WaitKind,
+  type WaitReason,
+} from '../register/waits.ts';
 
 // The inboxes (`inbox/<area>.md`) and their read marks (`inbox-marks.jsonl`).
 export { indexMarks, MARK_VERSION, parseMark, readMarks, type InboxMark, type MarkIndex, type MarkLogRead } from '../inbox/marks.ts';

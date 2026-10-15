@@ -5,9 +5,10 @@ import type { Task } from './fold.ts';
 import { ACTIVE_STATUSES, priorityText } from './model.ts';
 import type { RegisterSnapshot } from './snapshot.ts';
 import { byPlanOrder, dueTime, formatTask } from './views.ts';
+import { allReady, unfinishedAfter, waitContext, type WaitContext } from './waits.ts';
 
 /** In report order: the most urgent first. */
-export const FLAG_KINDS = ['OVERDUE', 'VERIFY-OVERDUE', 'NOT-PICKED-UP', 'PRIORITY-SKIP', 'OWNER-UNPLANNED', 'DUE-UNPLANNED', 'OFF-GOAL', 'STALE'] as const;
+export const FLAG_KINDS = ['OVERDUE', 'VERIFY-OVERDUE', 'READY', 'NOT-PICKED-UP', 'PRIORITY-SKIP', 'OWNER-UNPLANNED', 'DUE-UNPLANNED', 'OFF-GOAL', 'STALE'] as const;
 
 export type FlagKind = (typeof FLAG_KINDS)[number];
 
@@ -43,10 +44,13 @@ export function currentWeekOf(snapshot: RegisterSnapshot, now: Date): string | n
 /**
  * The daily flags over active tasks:
  * - OVERDUE: past its deadline; VERIFY-OVERDUE when the task is verifying: its due date is the date to verify it by;
+ * - READY: waiting, and every reason it waits for is ready (its tasks finished, its time passed), so its owner can
+ *   go on: only the owner clears a decision or an approval, by setting the next status;
  * - NOT-PICKED-UP: assigned longer ago than `notPickedUpAfterHours` with no event from its owner since
  *   (an idle session never reads its inbox, so it needs a direct wake);
- * - PRIORITY-SKIP: in progress below an open (so unblocked) task of the top priority that has the same
- *   owner, for longer than `prioritySkipAfterHours`: the session is not working its list in order;
+ * - PRIORITY-SKIP: in progress below an open task of the top priority that has the same owner and is free to start
+ *   (every task it comes after finished), for longer than `prioritySkipAfterHours`: the session is not working its
+ *   list in order;
  * - STALE: no event for `staleAfterHours` (not raised on top of NOT-PICKED-UP, nor for a verifying task with a
  *   due date: it waits quietly for its proof, and the date raises the alarm);
  * - OWNER-UNPLANNED: an owner order outside the current week plan;
@@ -57,11 +61,14 @@ export function currentWeekOf(snapshot: RegisterSnapshot, now: Date): string | n
  */
 export function checkTasks(tasks: Iterable<Task>, now: Date, week: string | null, config: RegisterConfig): Flag[] {
   const at = now.getTime();
-  const active = [...tasks].filter((candidate) => ACTIVE_STATUSES.includes(candidate.status)).sort(byPlanOrder);
+  const all = [...tasks];
+  const context = waitContext(new Map(all.map((task) => [task.id, task])), now);
+  const active = all.filter((candidate) => ACTIVE_STATUSES.includes(candidate.status)).sort(byPlanOrder);
   const plan = weekPlan(week, config.check.weekLengthDays);
   const top = topPriority(config.priorities);
-  const waiting = top === undefined ? new Map<string, Task>() : waitingTopTasks(active, top);
+  const waiting = top === undefined ? new Map<string, Task>() : waitingTopTasks(active, top, context);
   const flags = active.flatMap((task) => [
+    ...(task.status === 'waiting' && allReady(task.waits, context) ? [{ kind: 'READY' as const, task, detail: 'every reason cleared; set its next status' }] : []),
     ...timeFlags(task, at, config.check),
     ...(top === undefined ? [] : prioritySkip(task, top, waiting, at, config.check)),
     ...(plan === undefined ? [] : planFlags(task, plan, config.ownerSource)),
@@ -69,9 +76,9 @@ export function checkTasks(tasks: Iterable<Task>, now: Date, week: string | null
   return flags.sort((a, b) => FLAG_KINDS.indexOf(a.kind) - FLAG_KINDS.indexOf(b.kind));
 }
 
-/** One flag; with `team`, the task id reads `<team>/T12`. */
-export function formatFlag(flag: Flag, team?: string): string {
-  return `${flag.kind} (${flag.detail}) ${formatTask(flag.task, team)}`;
+/** One flag; with `team`, the task id reads `<team>/T12`; `context` marks a waiting task's ready reasons. */
+export function formatFlag(flag: Flag, team?: string, context?: WaitContext): string {
+  return `${flag.kind} (${flag.detail}) ${formatTask(flag.task, team, context)}`;
 }
 
 interface WeekPlan {
@@ -107,12 +114,16 @@ function standingSince(task: Task): number {
   return Math.max(Date.parse(task.assignedAt), Date.parse(task.statusAt), Date.parse(task.priorityAt));
 }
 
-/** Per owner, the open task of the top priority that has stood longest, so a skip over it counts from the start. */
-function waitingTopTasks(active: readonly Task[], top: number): Map<string, Task> {
+/**
+ * Per owner, the open task of the top priority, free to start, that has stood longest, so a skip over it counts from
+ * the start. A task planned after one not finished yet is not free to start, so working below it skips nothing.
+ */
+function waitingTopTasks(active: readonly Task[], top: number, context: WaitContext): Map<string, Task> {
   const waiting = new Map<string, Task>();
   for (const task of active) {
     const held = waiting.get(task.owner);
-    if (task.status === 'open' && task.priority <= top && (held === undefined || standingSince(task) < standingSince(held))) {
+    const free = task.status === 'open' && unfinishedAfter(task.after, context).length === 0;
+    if (free && task.priority <= top && (held === undefined || standingSince(task) < standingSince(held))) {
       waiting.set(task.owner, task);
     }
   }
