@@ -56,6 +56,29 @@ describe('checkTasks', () => {
     assert.deepEqual(kinds([testTask({ status: 'verifying', due: '2030-01-10', ownerSeenAt: FRESH, updatedAt: FRESH })]), []);
   });
 
+  it('flags a verifying task another active task needs first, naming those tasks', () => {
+    const shipped = testTask({ id: 'T1', status: 'verifying', due: '2030-01-11', ownerSeenAt: FRESH, updatedAt: FRESH });
+    const after = testTask({ id: 'T2', owner: 'bravo', after: ['T1'], ownerSeenAt: FRESH, updatedAt: FRESH });
+    const waits = testTask({ id: 'T3', status: 'waiting', waits: [{ kind: 'task', id: 'T1' }], ownerSeenAt: FRESH, updatedAt: FRESH });
+    const finished = testTask({ id: 'T4', status: 'done', after: ['T1'] });
+    assert.deepEqual(kinds([shipped, after, finished]), ['VERIFY-BLOCKS T1']);
+    const flags = checkTasks([shipped, after, waits], NOW, null, CONFIG).filter((flag) => flag.kind === 'VERIFY-BLOCKS');
+    assert.deepEqual(flags.map((flag) => flag.detail), ['T2 (owner bravo), T3 (owner alpha) need it; prove it or reopen it']);
+    assert.equal(checkTasks([shipped, after], NOW, null, CONFIG)[0]?.detail, 'T2 (owner bravo) needs it; prove it or reopen it');
+  });
+
+  it('flags the oldest verifying task of an owner holding more than maxVerifying, never with 0', () => {
+    const verifying = (n: number, owner = 'alpha') =>
+      testTask({ id: `T${n}`, owner, status: 'verifying', due: '2030-01-11', statusAt: `2030-01-0${n}T08:00:00.000Z`, ownerSeenAt: FRESH, updatedAt: FRESH });
+    const pile = [verifying(3), verifying(2), verifying(4), verifying(5, 'bravo')];
+    const two = { ...CONFIG, maxVerifying: 2 };
+    assert.deepEqual(checkTasks(pile, NOW, null, two).map((flag) => `${flag.kind} ${flag.task.id}: ${flag.detail}`), [
+      'PILE-UP T2: alpha holds 3 verifying tasks, more than 2; this is the oldest',
+    ]);
+    assert.deepEqual(kinds(pile), [], 'the default allows 5');
+    assert.deepEqual(checkTasks(pile, NOW, null, { ...CONFIG, maxVerifying: 0 }), []);
+  });
+
   it('lets a verifying task with a due date wait quietly for its proof, and calls one with none stale', () => {
     const quiet = (due: string | null) => testTask({ status: 'verifying', due, ownerSeenAt: '2030-01-01T08:00:00.000Z', updatedAt: '2030-01-01T08:00:00.000Z' });
     assert.deepEqual(kinds([quiet('2030-01-12')]), []);
