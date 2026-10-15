@@ -116,7 +116,7 @@ describe('Register', () => {
     const { files, mutex, register } = setup();
     assert.match(errorOf(await register.add('charlie', { title: 'x', owner: 'alpha', source: 'owner', priority: 1 })), /charlie/);
     assert.equal(mutex.runs, 0);
-    assert.match(errorOf(await register.setStatus('alpha', 'T7', { status: 'blocked', note: 'x' })), /no task T7/);
+    assert.match(errorOf(await register.setStatus('alpha', 'T7', { status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], note: 'x' })), /no task T7/);
     assert.match(errorOf(await register.update('alpha', 'T7', { priority: 2 }, undefined)), /no task T7/);
     assert.match(errorOf(await register.add('lead', { title: 'x', owner: 'alpha', source: 'owner', priority: 9 })), /priority p9/);
     assert.equal(files.get(LOG), undefined);
