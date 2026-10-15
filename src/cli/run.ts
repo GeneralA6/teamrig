@@ -25,6 +25,7 @@ const commitsCommands = () => import('./commands/commits.ts');
 const doctorCommands = () => import('./commands/doctor.ts');
 const refreshCommands = () => import('./commands/refresh.ts');
 const setupCommands = () => import('./commands/setup.ts');
+const compactCommands = () => import('./commands/compact.ts');
 const rulesCommands = () => import('./commands/rules.ts');
 const openCommands = () => import('./commands/open.ts');
 
@@ -55,6 +56,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   rename: { flags: ['session'], load: async () => (await teamCommands()).rename },
   refresh: { flags: ['session'], switches: ['ready'], load: async () => (await refreshCommands()).refresh },
   doctor: { flags: [], load: async () => (await doctorCommands()).doctor },
+  compact: { flags: [], switches: ['dry-run'], load: async () => (await compactCommands()).compact },
   'config validate': { flags: [], load: async () => (await configCommands()).validate },
   'config migrate': { flags: [], load: async () => (await configCommands()).migrate },
   'commits check': { flags: ['base', 'tip'], load: async () => (await commitsCommands()).check },
@@ -105,6 +107,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   refresh <id|name>            the lead asks a session to write its handover when it next sets a task done
   refresh --ready              the handover is written; the user types /clear for a fresh start
   doctor                       names, rename log, inboxes, rules.md and the tree of teams that need a fix
+  compact [--dry-run]          archives the task list's log and rewrites its snapshot, so reads stay small;
+      finished tasks over 8 days old leave the working set (show, list --status done read them);
+      checks every task first and writes nothing on a difference
   config validate | config migrate
   commits check --base <ref> [--tip <ref>]   commits in base..tip (default HEAD) over the size rule
       with no reason line; any is REFUSED, for an integrate script or CI

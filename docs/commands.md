@@ -42,6 +42,9 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
   refresh <id|name>            the lead asks a session to write its handover when it next sets a task done
   refresh --ready              the handover is written; the user types /clear for a fresh start
   doctor                       names, rename log, inboxes, rules.md and the tree of teams that need a fix
+  compact [--dry-run]          archives the task list's log and rewrites its snapshot, so reads stay small;
+      finished tasks over 8 days old leave the working set (show, list --status done read them);
+      checks every task first and writes nothing on a difference
   config validate | config migrate
   commits check --base <ref> [--tip <ref>]   commits in base..tip (default HEAD) over the size rule
       with no reason line; any is REFUSED, for an integrate script or CI
