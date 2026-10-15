@@ -9,18 +9,34 @@ describe('SecretScanner', () => {
   const scanner = new SecretScanner(['tok_[a-z0-9]{8}']);
 
   it('refuses credentials in URLs and key=value secrets', () => {
-    assert.ok(scanner.looksSecret(join('see amqp://', 'app', ':', 's3cret', '@', 'queue.local:5672')));
-    assert.ok(scanner.looksSecret(join('PASS', 'WORD', '=', 'abc')));
-    assert.ok(scanner.looksSecret(join('api', '_key', ': ', 'xyz')));
+    assert.equal(scanner.find(join('see amqp://', 'app', ':', 's3cret', '@', 'queue.local:5672'))?.id, 'url-credentials');
+    assert.equal(scanner.find(join('PASS', 'WORD', '=', 'abc'))?.id, 'secret-assignment');
+    assert.equal(scanner.find(join('api', '_key', ': ', 'xyz'))?.id, 'secret-assignment');
   });
 
-  it('adds the configured patterns', () => {
-    assert.ok(scanner.looksSecret(join('tok', '_abcd1234')));
-    assert.equal(new SecretScanner().looksSecret(join('tok', '_abcd1234')), false);
+  it('refuses vendor tokens, whatever the config adds', () => {
+    const bare = new SecretScanner();
+    assert.equal(bare.find(join('use ', 'ghp', '_', 'a1'.repeat(18), ' for CI'))?.id, 'github-token');
+    assert.equal(bare.find(join('key ', 'AKIA', 'ABCDEFGH12345678'))?.id, 'aws-key');
+    assert.equal(bare.find(join('sk-', 'ant-', 'c'.repeat(30)))?.id, 'anthropic-key');
+  });
+
+  it('adds the configured patterns, case-insensitively', () => {
+    assert.equal(scanner.find(join('TOK', '_ABCD1234'))?.id, 'config-1');
+    assert.equal(new SecretScanner().find(join('tok', '_abcd1234')), undefined);
   });
 
   it('lets ordinary text through', () => {
-    assert.equal(scanner.looksSecret('rotate the password via the vault runbook'), false);
-    assert.equal(scanner.looksSecret('https://example.test/path?a=1'), false);
+    assert.equal(scanner.find('rotate the password via the vault runbook'), undefined);
+    assert.equal(scanner.find('https://example.test/path?a=1'), undefined);
+    assert.equal(scanner.refusal('note', 'merged at 3f9a1c0e7b2d4f6a8c0e2b4d6f8a0c2e4b6d8f0a'), undefined);
+  });
+
+  it('names the shape in a refusal, never the secret', () => {
+    const token = join('ghp', '_', 'Zq9'.repeat(12));
+    const refusal = scanner.refusal('ref', `see ${token}`);
+    assert.equal(refusal, 'ref looks like it holds a secret (GitHub token); refer to where it is kept instead');
+    assert.equal(refusal?.includes(token.slice(4)), false);
+    assert.equal(scanner.refusal('title', join('TOK', '_ABCD1234')), 'title looks like it holds a secret (secret pattern from the team config); refer to where it is kept instead');
   });
 });

@@ -122,6 +122,8 @@ describe('postLine', () => {
     assert.match((await post('../etc', 'x')) ?? '', /not a session id/);
     assert.match((await post('bravo', 'one\ntwo')) ?? '', /one non-empty line/);
     assert.match((await post('bravo', ['pass', 'word=', 'x'].join(''))) ?? '', /secret/);
+    const token = ['xoxb', '-', '1'.repeat(12), '-abc'].join('');
+    assert.equal(await post('bravo', `bot token ${token}`), 'the line looks like it holds a secret (Slack token); refer to where it is kept instead');
   });
 });
 

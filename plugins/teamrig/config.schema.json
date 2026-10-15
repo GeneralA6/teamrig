@@ -120,7 +120,7 @@
         "maxTitle": { "type": "integer", "minimum": 20, "maximum": 1000, "default": 140 },
         "maxText": { "type": "integer", "minimum": 20, "maximum": 5000, "default": 300 },
         "secretPatterns": {
-          "description": "Extra regular expressions that refuse secret-looking text, on top of the built-in ones.",
+          "description": "Extra regular expressions, matched case-insensitively, that refuse secret-looking text on top of the built-in shapes (vendor tokens, private keys, JSON web tokens, credentials in URLs, password= assignments).",
           "type": "array",
           "items": { "type": "string", "minLength": 1 },
           "default": []

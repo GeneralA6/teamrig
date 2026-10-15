@@ -56,13 +56,17 @@ describe('teamrig inbox add across a tree of teams', () => {
     const noSession = await kit.run(['inbox', 'add', '--to', 'web/zulu', '--text', 'hi', '--session', 'lead']);
     assert.equal(noSession.code, EXIT.refused);
     const secret = await kit.run(['inbox', 'add', '--to', 'web/lead', '--text', 'the password=hunter2', '--session', 'lead']);
-    assert.deepEqual(secret.stdout, ['REFUSED the line looks like it holds a secret; refer to where it is kept instead']);
+    assert.deepEqual(secret.stdout, ['REFUSED the line looks like it holds a secret (password or key assignment); refer to where it is kept instead']);
     await kit.files.write(
       teamConfigOf('web'),
       formatConfig({ configVersion: 1, team: { id: 'web', parent: 'app' }, sessions: ['lead', 'front'], roles: { lead: 'lead' }, register: { secretPatterns: ['acme-[0-9]+'] } }),
     );
     const theirs = await kit.run(['inbox', 'add', '--to', 'web/lead', '--text', 'key acme-123', '--session', 'lead']);
-    assert.deepEqual(theirs.stdout, secret.stdout, 'the receiving team secret patterns apply too');
+    assert.deepEqual(
+      theirs.stdout,
+      ['REFUSED the line looks like it holds a secret (secret pattern from the team config); refer to where it is kept instead'],
+      'the receiving team secret patterns apply too',
+    );
     await kit.files.write(teamConfigOf('ops'), formatConfig({ configVersion: 1, team: { id: 'ops', parent: 'app' }, sessions: ['lead', 'run'], roles: { lead: 'lead' }, messages: { maxLines: 1 } }));
     const broken = await kit.run(['inbox', 'add', '--to', 'ops/lead', '--text', 'hi', '--session', 'lead']);
     assert.match(broken.stdout[0] ?? '', /^REFUSED the team config has 1 problem\(s\)/);
