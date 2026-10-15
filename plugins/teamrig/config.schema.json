@@ -483,6 +483,13 @@
           "minimum": 1,
           "maximum": 365,
           "default": 14
+        },
+        "everyMinutes": {
+          "description": "How often the hooks start a sync on their own, in minutes, once for the whole team; 0 leaves it to teamrig gh sync --yes.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1440,
+          "default": 15
         }
       }
     },

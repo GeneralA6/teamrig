@@ -150,6 +150,8 @@ export interface GithubConfig {
   readonly sessions: Readonly<Record<string, string>>;
   /** How many days back closed issues are read, to finish the tasks they were imported as. */
   readonly closedDays: number;
+  /** How often the hooks start a sync on their own, in minutes, once for the whole team; 0 leaves it to `gh sync --yes`. */
+  readonly everyMinutes: number;
 }
 
 export interface CommitsConfig {

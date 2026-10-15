@@ -22,7 +22,7 @@ describe('parseConfig', () => {
     assert.equal(config.messages.coldAfterMinutes, 60);
     assert.deepEqual(config.loops, { chainNudgeAt: 6 });
     assert.deepEqual(config.tests, { maxFailureChars: 4000 });
-    assert.deepEqual(config.github, { repos: [], owners: {}, sessions: {}, closedDays: 14 });
+    assert.deepEqual(config.github, { repos: [], owners: {}, sessions: {}, closedDays: 14, everyMinutes: 15 });
     assert.deepEqual(config.register, DEFAULT_REGISTER);
     assert.deepEqual(config.budget, DEFAULT_BUDGET);
     assert.deepEqual(config.coordinator.schedule, {});
@@ -129,17 +129,22 @@ describe('parseConfig', () => {
     }
   });
 
-  it('reads github repos and owners in lowercase, and closedDays within 1 to 365', () => {
+  it('reads github repos and owners in lowercase, closedDays within 1 to 365 and everyMinutes within 0 to 1440', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,
-      github: { repos: ['Acme/Web', 'acme/docs.site'], owners: { OctoCat: 'bravo' }, closedDays: 365 },
+      github: { repos: ['Acme/Web', 'acme/docs.site'], owners: { OctoCat: 'bravo' }, closedDays: 365, everyMinutes: 0 },
     });
     assert.deepEqual(issues, []);
-    assert.deepEqual(config.github, { repos: ['acme/web', 'acme/docs.site'], owners: { octocat: 'bravo' }, sessions: {}, closedDays: 365 });
+    assert.deepEqual(config.github, { repos: ['acme/web', 'acme/docs.site'], owners: { octocat: 'bravo' }, sessions: {}, closedDays: 365, everyMinutes: 0 });
     for (const wrong of [0, 366]) {
       const parsed = parseConfig({ ...ROSTER, github: { closedDays: wrong } });
       assert.deepEqual(paths(parsed.issues), ['github.closedDays']);
       assert.equal(parsed.config.github.closedDays, 14);
+    }
+    for (const wrong of [-1, 1441, 2.5]) {
+      const parsed = parseConfig({ ...ROSTER, github: { everyMinutes: wrong } });
+      assert.deepEqual(paths(parsed.issues), ['github.everyMinutes']);
+      assert.equal(parsed.config.github.everyMinutes, 15);
     }
   });
 
