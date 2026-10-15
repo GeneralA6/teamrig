@@ -189,6 +189,14 @@ export function statusInputOf(flags) {
     if (waits !== undefined) {
         input.waits = waitsOf(waits);
     }
+    const proof = flags.get('proof');
+    if (proof !== undefined) {
+        input.proof = proof;
+    }
+    const due = flags.get('due');
+    if (due !== undefined) {
+        input.due = due;
+    }
     return input;
 }
 /** `list` filters; `--session` names the owner whose tasks to show. */

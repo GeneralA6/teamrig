@@ -1,5 +1,9 @@
 /** The config format this code reads and writes. Older files are migrated in memory on load. */
 export const CONFIG_VERSION = 3;
+export const VERIFY_GATES = ['refuse', 'warn'];
+export function isVerifyGate(value) {
+    return VERIFY_GATES.some((gate) => gate === value);
+}
 export const PUSH_TO_PROTECTED = ['ask', 'allow'];
 export function isPushToProtected(value) {
     return PUSH_TO_PROTECTED.some((choice) => choice === value);

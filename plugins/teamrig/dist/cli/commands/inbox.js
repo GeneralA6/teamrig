@@ -11,6 +11,7 @@ import { callerOf, sessionRef } from "../inputs.js";
 import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { loadTree } from "../tree.js";
+import { verifyNoteOf } from "./verify-queue.js";
 export function inboxDepsOf(runtime, paths) {
     return {
         inboxes: new InboxDir(runtime.files, paths.inbox),
@@ -23,7 +24,10 @@ function claudeSessionOf(env) {
     const id = env[ENV.claudeSession];
     return id !== undefined && CLAUDE_SESSION_ID.test(id) ? id : null;
 }
-/** `inbox read`: prints the caller's unread lines, but those the prompt hook showed this Claude Code session, and marks them all read. */
+/**
+ * `inbox read`: prints the caller's unread lines, but those the prompt hook showed this Claude Code
+ * session, and marks them all read; then, when the caller holds verifying tasks, its verify queue in one line.
+ */
 export async function read(args, runtime) {
     noPositionals(args);
     const caller = callerOf(args.flags, runtime.env);
@@ -33,6 +37,10 @@ export async function read(args, runtime) {
     const result = await readInbox(inboxDepsOf(runtime, kit.paths), { area, claudeSession: claudeSessionOf(runtime.env), now });
     result.lines.forEach((line) => runtime.out.stdout(line));
     runtime.out.stdout(formatRead(result));
+    const verify = await verifyNoteOf(runtime, kit.paths, area);
+    if (verify !== undefined) {
+        runtime.out.stdout(verify);
+    }
     return EXIT.ok;
 }
 /** `inbox status`: unread counts per area, marking nothing. */

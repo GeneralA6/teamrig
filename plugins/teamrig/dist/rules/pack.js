@@ -72,7 +72,7 @@ export function renderCorePack(config, command) {
         `Status is pulled, never asked: each session keeps one board and writes only its own. At the start of each work block run \`${command} inbox read --session <you>\`.` +
             ` Every ask that creates work is a register entry the asker adds in the same turn (\`${command} add --owner <session>\`); ${statusDemands(config, command)}` +
             ' Waiting needs `--waits` reasons; a task not started that needs another first stays open, planned `--after` it.' +
-            ' A shipped change is verifying until its proof exists.',
+            ` A shipped change is verifying until its proof exists (\`${command} verify\`).`,
         `Work your own task list in priority order (\`${command} list --session <you>\`); self-made work is a task too, recorded with \`${command} add\` before you start it,` +
             ' and started only for a goal, a parent task or the week plan, never ahead of your top task that is not waiting (one-commit fixes exempt).' +
             " A loop, cron or scheduled wake-up needs the lead's OK and a written stop. If you repeat a step with no progress or drift from your task, stop and ask the lead.",

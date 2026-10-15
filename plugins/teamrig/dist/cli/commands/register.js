@@ -1,12 +1,16 @@
 import { formatAddress } from "../../core/address.js";
+import { JsonlDailyLog } from "../../core/daily-log.js";
 import { FileLock } from "../../core/lock.js";
+import { SecretScanner } from "../../core/secrets.js";
+import { postLine } from "../../inbox/inbox.js";
 import { checkTasks, currentWeekOf } from "../../register/check.js";
 import { renderPlan } from "../../register/plan.js";
 import { RegisterPolicy } from "../../register/policy.js";
 import { Register } from "../../register/register.js";
 import { ACTIVE_STATUSES } from "../../register/model.js";
 import { JsonlEventLog } from "../../register/store.js";
-import { formatTask, formatTaskDetail, selectTasks } from "../../register/views.js";
+import { heldStart, heldStartNotice, startHolds, verifyQueue } from "../../register/verify.js";
+import { formatTask, formatTaskDetail, formatVerifyRow, selectTasks } from "../../register/views.js";
 import { waitContext } from "../../register/waits.js";
 import { lintSkills } from "../../skills/lint.js";
 import { SkillDir } from "../../skills/store.js";
@@ -17,6 +21,7 @@ import { checkLines, listLines } from "../reports.js";
 import { rollUp } from "../roll-up.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { loadTree } from "../tree.js";
+import { inboxDepsOf } from "./inbox.js";
 import { markBoundary } from "./refresh.js";
 async function teamOf(runtime, kit, access) {
     const config = requireConfig(kit, runtime, access);
@@ -142,11 +147,58 @@ export async function set(args, runtime) {
     const { config, paths, register, roster } = team;
     const by = sessionIdOf(roster, caller);
     const input = statusInputIds(team, typed);
-    const exit = report(runtime, await register.setStatus(by, id, input), 'SET', paths.config);
+    const held = await heldStartOf(register, by, id, input);
+    const verdict = await register.setStatus(by, id, input);
+    const warned = config.register.verifyGate === 'warn';
+    if (held !== undefined && verdict.ok === warned) {
+        await tellVerifiers(runtime, team, by, held);
+    }
+    const exit = report(runtime, verdict, 'SET', paths.config);
+    if (held !== undefined && warned) {
+        runtime.out.stderr(`WARN ${heldStart(held.task, held.holds)}; started anyway, as register.verifyGate is warn`);
+    }
     if (input.status === 'done') {
         await markBoundary(runtime, config, paths, by, id);
     }
     return exit;
+}
+/**
+ * The verifying tasks that hold the caller's start of its own task, read before the write: the policy
+ * refuses that start (or lets it through in warn mode), and their owners hear of it either way.
+ */
+async function heldStartOf(register, caller, id, input) {
+    if (input.status !== 'in-progress') {
+        return undefined;
+    }
+    const { tasks } = (await register.snapshot()).state;
+    const task = tasks.get(id);
+    const holds = task === undefined || task.owner !== caller ? [] : startHolds(task, input.status, tasks);
+    return task === undefined || holds.length === 0 ? undefined : { task, holds };
+}
+/**
+ * One inbox line to the owner of each verifying task that holds a start, once per task pair and UTC
+ * day, never to the caller, who reads the refusal. A line that cannot be posted is named, never thrown.
+ */
+async function tellVerifiers(runtime, team, caller, { task, holds }) {
+    const now = new Date(runtime.clock.now());
+    const told = new JsonlDailyLog(runtime.files, team.paths.verifyNotices);
+    const { inboxes } = inboxDepsOf(runtime, team.paths);
+    const secrets = new SecretScanner(team.config.register.secretPatterns);
+    for (const held of holds) {
+        const key = `held ${task.id} on ${held.id}`;
+        if (held.owner === caller || (await told.seen(key, now))) {
+            continue;
+        }
+        const text = heldStartNotice(task, held);
+        const problem = await postLine(inboxes, secrets, { to: held.owner, from: caller, text, now });
+        if (problem === undefined) {
+            await told.record(key, now);
+            runtime.out.stderr(`NOTE ${held.owner} has an inbox line: ${text}`);
+        }
+        else {
+            runtime.out.stderr(`WARN ${held.owner} was not told of ${task.id}: ${problem}`);
+        }
+    }
 }
 export async function update(args, runtime) {
     const id = taskIdOf(onePositional(args, 'id'));
@@ -230,6 +282,16 @@ export async function show(args, runtime) {
         throw new RefusedError(`no task ${id}`);
     }
     runtime.out.stdout(formatTaskDetail(task, snapshot.read.events.filter((event) => event.id === id), contextOf(snapshot, runtime)));
+    return EXIT.ok;
+}
+/** `verify`: the caller's verifying tasks, oldest first, each with its proof and the date to verify by. */
+export async function verify(args, runtime) {
+    noPositionals(args);
+    const { own } = await settle(runtime, await ownRegister(runtime), () => false);
+    const owner = sessionIdOf(own.roster, callerOf(args.flags, runtime.env));
+    const queue = verifyQueue(own.snapshot.state.tasks.values(), owner);
+    runtime.out.stdout(`VERIFY ${queue.length} ${queue.length === 1 ? 'task' : 'tasks'} of ${owner}, oldest first`);
+    queue.forEach((task) => runtime.out.stdout(formatVerifyRow(task)));
     return EXIT.ok;
 }
 /** The `--week` given, else the newest week plan that has started. */

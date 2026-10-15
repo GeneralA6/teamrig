@@ -29,6 +29,7 @@ import { helperGateOutput, promptBudgetLine, stopBudgetLines } from "./hook-budg
 import { coldSendHold } from "./hook-cold-send.js";
 import { parseJson, sessionTeam } from "./hook-input.js";
 import { inboxDepsOf } from "./inbox.js";
+import { verifyByLinesOf, verifyNoteOf } from "./verify-queue.js";
 /**
  * Claude Code hooks. Each reads the hook's JSON from stdin and prints only what Claude Code
  * should act on, and never refuses: a refusal exits 2, which would block the tool call. A plugin
@@ -226,8 +227,8 @@ async function helperGateOf(runtime, payload) {
  * and recording a Claude Code rename of the session; the pointer to its handover after a refresh; who
  * the session is: `$TEAMRIG_SESSION`, else the area it read its inbox as or was bound to, so a tab that
  * set the team up keeps its identity across a compact or resume; whether it runs on its configured
- * model and effort; and where the team sits in a tree of teams, read from every team config of the kit
- * home.
+ * model and effort; its verifying tasks; and where the team sits in a tree of teams, read from every
+ * team config of the kit home.
  */
 async function teamPartsOf(runtime, kit, config, payload) {
     const title = await readTitle(runtime, payload);
@@ -244,12 +245,14 @@ async function teamPartsOf(runtime, kit, config, payload) {
     const fromEnv = envSession(runtime);
     const { tree } = await loadTree(runtime);
     const session = fromEnv ?? (await startSessionOf(runtime, kit, roster, payload));
+    const id = rosterIdOf(roster, session);
     return {
         teamRules: text === undefined ? undefined : { path: kit.paths.teamRules, text },
         renames,
         titleNote,
         refreshNote,
-        modelNote: modelNoteOf(config, roster, session, payload),
+        modelNote: modelNoteOf(config, roster, id, payload),
+        verifyNote: await verifyNoteOf(runtime, kit.paths, id),
         session,
         sessionInEnv: fromEnv !== undefined,
         tree: tree.placeOf(kit.paths.team),
@@ -261,13 +264,17 @@ async function teamPartsOf(runtime, kit, config, payload) {
  * nothing is checked. The effort is checked at the first Stop: SessionStart gets no effort level, and
  * `$CLAUDE_EFFORT` here can be the value of the session whose shell started this one.
  */
-function modelNoteOf(config, roster, session, payload) {
-    const found = session === undefined ? undefined : roster.lookup(session);
-    if (found === undefined || !found.ok) {
+function modelNoteOf(config, roster, id, payload) {
+    if (id === undefined) {
         return undefined;
     }
     const running = { model: isRecord(payload) ? stringField(payload, 'model') : undefined, effort: undefined };
-    return modelCheckLine(roster.nameOf(found.id) ?? found.id, launchOf(config, found.id), running);
+    return modelCheckLine(roster.nameOf(id) ?? id, launchOf(config, id), running);
+}
+/** The team session an id or any name it has had finds; undefined for none, or a name the team does not know. */
+function rosterIdOf(roster, session) {
+    const found = session === undefined ? undefined : roster.lookup(session);
+    return found?.ok === true ? found.id : undefined;
 }
 /**
  * A fresh start (`/clear`, a new process) after the session's handover was marked ready: the note
@@ -372,7 +379,7 @@ async function modelNoticesOf(runtime, scope, payload) {
 }
 /**
  * What the Stop hook prints for this turn's end; '' outside a team or without a session. The refresh,
- * the model notices and the budget lines fail apart: an error in one leaves the others.
+ * the model notices, the budget lines and the verify-by lines fail apart: an error in one leaves the others.
  */
 async function stopOutputOf(runtime, payload) {
     const scope = await stopScopeOf(runtime, payload);
@@ -382,16 +389,18 @@ async function stopOutputOf(runtime, payload) {
     const decision = await refreshDecisionOf(runtime, scope, payload).catch(() => ({ kind: 'none' }));
     const notices = await modelNoticesOf(runtime, scope, payload).catch(() => []);
     const budget = await stopBudgetLines(runtime, scope, stringField(payload, 'transcript_path')).catch(() => []);
-    return stopOutput(decision, [...notices, ...budget]);
+    const verify = await verifyByLinesOf(runtime, scope.kit.paths, scope.id).catch(() => []);
+    return stopOutput(decision, [...notices, ...budget, ...verify]);
 }
 /**
  * Stop, at the end of every turn: after the session finished a task (`set done`), asks for its
  * handover once when its context reached the team's threshold or the lead asked, then tells the user
  * once that it waits for /clear. It also tells the user, once each, when the session runs at another
- * effort than its `launch` entry or Claude Code switched its model after a safeguard stop. A turn with
- * nothing to say reads only small files and the transcript's tail, and prints nothing. It never blocks
- * on an error, and ignores input that is not a hook payload (which would judge a boundary without its
- * transcript): a refresh is a convenience, and the next stop tries again.
+ * effort than its `launch` entry or Claude Code switched its model after a safeguard stop, and once a
+ * day when the date to verify one of its verifying tasks by has come. A turn with nothing to say reads
+ * only small files and the transcript's tail (and, at the first stop of a UTC day, the register log),
+ * and prints nothing. It never blocks on an error, and ignores input that is not a hook payload (which
+ * would judge a boundary without its transcript): a refresh is a convenience, and the next stop tries again.
  */
 export async function stop(args, runtime) {
     noPositionals(args);
@@ -419,7 +428,7 @@ export async function sessionStart(args, runtime) {
     const kit = await openKit(runtime, found.team);
     const parts = kit.load.status === 'loaded'
         ? await teamPartsOf(runtime, kit, kit.load.config, payload)
-        : { teamRules: undefined, renames: [], titleNote: undefined, refreshNote: undefined, modelNote: undefined, session: undefined, sessionInEnv: false, tree: undefined };
+        : { teamRules: undefined, renames: [], titleNote: undefined, refreshNote: undefined, modelNote: undefined, verifyNote: undefined, session: undefined, sessionInEnv: false, tree: undefined };
     const context = sessionStartContext({ team: found.team, load: kit.load, ...parts, command: KIT_NAME });
     const requirementsNote = await requirementsNoteOnce({
         problems: await runtime.requirements.problems(),

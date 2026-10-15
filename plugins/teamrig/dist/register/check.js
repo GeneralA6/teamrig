@@ -1,10 +1,23 @@
 import { formatUtcMinute, MS_PER_DAY, MS_PER_HOUR, parseUtcDay, shortUtc } from "../core/time.js";
 import { topPriority } from "../config/priorities.js";
 import { ACTIVE_STATUSES, priorityText } from "./model.js";
+import { verifyingNeeds } from "./verify.js";
 import { byPlanOrder, dueTime, formatTask } from "./views.js";
 import { allReady, unfinishedAfter, waitContext } from "./waits.js";
 /** In report order: the most urgent first. */
-export const FLAG_KINDS = ['OVERDUE', 'VERIFY-OVERDUE', 'READY', 'NOT-PICKED-UP', 'PRIORITY-SKIP', 'OWNER-UNPLANNED', 'DUE-UNPLANNED', 'OFF-GOAL', 'STALE'];
+export const FLAG_KINDS = [
+    'OVERDUE',
+    'VERIFY-OVERDUE',
+    'VERIFY-BLOCKS',
+    'READY',
+    'NOT-PICKED-UP',
+    'PRIORITY-SKIP',
+    'PILE-UP',
+    'OWNER-UNPLANNED',
+    'DUE-UNPLANNED',
+    'OFF-GOAL',
+    'STALE',
+];
 /** The week plan in force: the newest week tag that starts on or before now. */
 export function currentWeek(tasks, now) {
     let best = null;
@@ -29,6 +42,8 @@ export function currentWeekOf(snapshot, now) {
 /**
  * The daily flags over active tasks:
  * - OVERDUE: past its deadline; VERIFY-OVERDUE when the task is verifying: its due date is the date to verify it by;
+ * - VERIFY-BLOCKS: verifying, and another active task is planned after it or waits on it, so that work cannot start
+ *   until the proof comes (`set` refuses its start);
  * - READY: waiting, and every reason it waits for is ready (its tasks finished, its time passed), so its owner can
  *   go on: only the owner clears a decision or an approval, by setting the next status;
  * - NOT-PICKED-UP: assigned longer ago than `notPickedUpAfterHours` with no event from its owner since
@@ -36,6 +51,8 @@ export function currentWeekOf(snapshot, now) {
  * - PRIORITY-SKIP: in progress below an open task of the top priority that has the same owner and is free to start
  *   (every task it comes after finished), for longer than `prioritySkipAfterHours`: the session is not working its
  *   list in order;
+ * - PILE-UP: the oldest verifying task of an owner holding more than `maxVerifying` of them (0 turns it off): shipped
+ *   changes pile up unproven;
  * - STALE: no event for `staleAfterHours` (not raised on top of NOT-PICKED-UP, nor for a verifying task with a
  *   due date: it waits quietly for its proof, and the date raises the alarm);
  * - OWNER-UNPLANNED: an owner order outside the current week plan;
@@ -52,7 +69,10 @@ export function checkTasks(tasks, now, week, config) {
     const plan = weekPlan(week, config.check.weekLengthDays);
     const top = topPriority(config.priorities);
     const waiting = top === undefined ? new Map() : waitingTopTasks(active, top, context);
+    const needers = neededBy(active);
+    const piles = pileUps(active, config.maxVerifying);
     const flags = active.flatMap((task) => [
+        ...verifyFlags(task, needers, piles, config.maxVerifying),
         ...(task.status === 'waiting' && allReady(task.waits, context) ? [{ kind: 'READY', task, detail: 'every reason cleared; set its next status' }] : []),
         ...timeFlags(task, at, config.check),
         ...(top === undefined ? [] : prioritySkip(task, top, waiting, at, config.check)),
@@ -82,6 +102,46 @@ function timeFlags(task, at, check) {
     }
     else if (!(verifying && due !== undefined) && at - Date.parse(task.updatedAt) > check.staleAfterHours * MS_PER_HOUR) {
         flags.push({ kind: 'STALE', task, detail: `last event ${minute(task.updatedAt)} by ${task.updatedBy}` });
+    }
+    return flags;
+}
+/** Per verifying task, the active tasks that need it first: planned after it or waiting on it. */
+function neededBy(active) {
+    const byId = new Map(active.map((task) => [task.id, task]));
+    const needers = new Map();
+    for (const task of active) {
+        for (const needed of verifyingNeeds(task, byId)) {
+            needers.set(needed.id, [...(needers.get(needed.id) ?? []), task]);
+        }
+    }
+    return needers;
+}
+/** Per owner holding more than `max` verifying tasks (0: none), its count, keyed by the id of its oldest one. */
+function pileUps(active, max) {
+    const byOwner = new Map();
+    for (const task of active.filter((candidate) => candidate.status === 'verifying')) {
+        byOwner.set(task.owner, [...(byOwner.get(task.owner) ?? []), task]);
+    }
+    const piles = new Map();
+    for (const held of byOwner.values()) {
+        const oldest = [...held].sort((a, b) => Date.parse(a.statusAt) - Date.parse(b.statusAt))[0];
+        if (max > 0 && held.length > max && oldest !== undefined) {
+            piles.set(oldest.id, held.length);
+        }
+    }
+    return piles;
+}
+/** VERIFY-BLOCKS, then PILE-UP on the oldest task of a pile. */
+function verifyFlags(task, needers, piles, max) {
+    const flags = [];
+    const needs = needers.get(task.id) ?? [];
+    if (needs.length > 0) {
+        const named = needs.map((needer) => `${needer.id} (owner ${needer.owner})`).join(', ');
+        flags.push({ kind: 'VERIFY-BLOCKS', task, detail: `${named} ${needs.length === 1 ? 'needs' : 'need'} it; prove it or reopen it` });
+    }
+    const held = piles.get(task.id);
+    if (held !== undefined) {
+        flags.push({ kind: 'PILE-UP', task, detail: `${task.owner} holds ${held} verifying tasks, more than ${max}; this is the oldest` });
     }
     return flags;
 }

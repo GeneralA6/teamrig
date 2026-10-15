@@ -5,7 +5,7 @@ import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_COMMITS, DEFAULT_LOCK, DEFAULT_
 import { isEffort, isModel } from "./launch.js";
 import { CONFIG_LIMITS } from "./limits.js";
 import { ConfigReader, describe, isValidRegex, shortLine } from "./reader.js";
-import { ESCALATIONS, isCommitGate, isEffortLevel, isEscalation, isOverAction, isPushToProtected, isTerminalChoice, isWeekday, OVER_ACTIONS, PUSH_TO_PROTECTED, TERMINALS, WEEKDAYS, } from "./types.js";
+import { ESCALATIONS, isCommitGate, isEffortLevel, isEscalation, isOverAction, isPushToProtected, isTerminalChoice, isVerifyGate, isWeekday, OVER_ACTIONS, PUSH_TO_PROTECTED, TERMINALS, VERIFY_GATES, WEEKDAYS, } from "./types.js";
 const isSessionName = (name) => SESSION_NAME.test(name) ? undefined : 'expected a lowercase name: a letter, then letters, digits or -, at most 32';
 const isUtcTime = (time) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(time) ? undefined : 'expected a UTC time as HH:MM');
 const BRANCH_NAME = (name) => (/^[^\s~^:?*[\\]+$/.test(name) ? undefined : 'not a valid branch name');
@@ -290,6 +290,7 @@ function parseRegister(read, raw) {
         read.report(`${path}.priorities`, 'uses a priority id more than once');
     }
     const goalPattern = read.optionalString(raw, 'goalPattern', path, isValidRegex);
+    const verifyGate = read.string(raw, 'verifyGate', path, defaults.verifyGate, oneOf(VERIFY_GATES));
     const register = {
         ownerSource: read.string(raw, 'ownerSource', path, defaults.ownerSource, isSessionName),
         priorities: priorities.length === 0 ? defaults.priorities : priorities,
@@ -300,6 +301,9 @@ function parseRegister(read, raw) {
         requireSkillOnDone: read.boolean(raw, 'requireSkillOnDone', path, defaults.requireSkillOnDone),
         requireNoteOn: read.list(raw, 'requireNoteOn', path, defaults.requireNoteOn, (value, itemPath) => parseStatus(read, value, itemPath), CONFIG_LIMITS.requireNoteOn.maxItems),
         autoArchive: read.boolean(raw, 'autoArchive', path, defaults.autoArchive),
+        requireProofOnVerifying: read.boolean(raw, 'requireProofOnVerifying', path, defaults.requireProofOnVerifying),
+        verifyGate: isVerifyGate(verifyGate) ? verifyGate : defaults.verifyGate,
+        maxVerifying: read.integer(raw, 'maxVerifying', path, defaults.maxVerifying, CONFIG_LIMITS.maxVerifying),
         check: {
             staleAfterHours: read.integer(check, 'staleAfterHours', `${path}.check`, defaults.check.staleAfterHours, { min: 1 }),
             notPickedUpAfterHours: read.integer(check, 'notPickedUpAfterHours', `${path}.check`, defaults.check.notPickedUpAfterHours, { min: 1 }),

@@ -23,6 +23,9 @@ export const DEFAULT_REGISTER = {
     requireSkillOnDone: true,
     requireNoteOn: ['waiting', 'verifying', 'done', 'dropped'],
     autoArchive: true,
+    requireProofOnVerifying: true,
+    verifyGate: 'refuse',
+    maxVerifying: 5,
     check: { staleAfterHours: 72, notPickedUpAfterHours: 24, prioritySkipAfterHours: 24, weekLengthDays: 7 },
 };
 export const DEFAULT_SKILLS = {
