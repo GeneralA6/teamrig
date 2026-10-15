@@ -35,23 +35,35 @@ export function stripHeredocs(command, keepBody = () => false) {
 export function parseShell(command, dialect) {
     return new Scanner(command, dialect, { nesting: 0, subshells: [], ids: { next: 0 } }).parse();
 }
-/** The word being read: its text so far, whether anything dynamic went in, and bash brace-list hints. */
+/** A bash variable reference with nothing else in it: `$NAME` or `${NAME}`. */
+const PLAIN_VARIABLE = /^\$(?:([A-Za-z_]\w*)|\{([A-Za-z_]\w*)\})$/;
+/** The word being read: its text so far, whether anything dynamic went in, its bash parts and brace-list hints. */
 class WordBuilder {
     text = '';
     dynamic = false;
     started = false;
     brace = false;
     braceList = false;
+    /** The parts so far; undefined once a piece is dynamic but not a plain variable. */
+    parts = [];
+    tracksParts;
+    constructor(tracksParts) {
+        this.tracksParts = tracksParts;
+    }
     get isStarted() {
         return this.started;
     }
     get value() {
         return this.text;
     }
-    add(chars, dynamic = false) {
+    /** Adds text; a piece read through a quote or an escape is `quoted`, as is any text outside bash. */
+    add(chars, piece = 'quoted') {
         this.text += chars;
         this.started = true;
-        this.dynamic ||= dynamic;
+        this.dynamic ||= piece === 'dynamic';
+        if (this.parts !== undefined) {
+            this.parts = piece === 'dynamic' ? withVariable(this.parts, chars) : withText(this.parts, chars, piece === 'quoted');
+        }
     }
     /** Notes an unquoted bash character: `{a,b}` and `{1..3}` expand to several words, so such a word is dynamic. */
     noteBrace(char) {
@@ -63,14 +75,36 @@ class WordBuilder {
         }
     }
     take() {
-        const word = this.started ? { text: this.text, dynamic: this.dynamic || this.braceList } : undefined;
+        const word = this.started ? this.word() : undefined;
         this.text = '';
         this.dynamic = false;
         this.started = false;
         this.brace = false;
         this.braceList = false;
+        this.parts = [];
         return word;
     }
+    word() {
+        const word = { text: this.text, dynamic: this.dynamic || this.braceList };
+        return this.tracksParts && this.parts !== undefined && !this.braceList ? { ...word, parts: this.parts } : word;
+    }
+}
+/** `parts` with `text` added, joined to the last part when that is text quoted the same way. */
+function withText(parts, text, quoted) {
+    if (text === '') {
+        return parts;
+    }
+    const last = parts.at(-1);
+    if (last?.kind === 'text' && last.quoted === quoted) {
+        return [...parts.slice(0, -1), { kind: 'text', text: last.text + text, quoted }];
+    }
+    return [...parts, { kind: 'text', text, quoted }];
+}
+/** `parts` with a dynamic piece added: a plain variable reference, or undefined for anything else. */
+function withVariable(parts, written) {
+    const match = PLAIN_VARIABLE.exec(written);
+    const name = match?.[1] ?? match?.[2];
+    return name === undefined ? undefined : [...parts, { kind: 'variable', name }];
 }
 /** Escapes that bash's `$'...'` quoting turns into one character. */
 const ANSI_C_ESCAPES = new Map([
@@ -107,8 +141,19 @@ class Scanner {
         this.ids = scope.ids;
     }
     parse() {
+        return this.scan();
+    }
+    /** Reads the whole source; its commands stay open to the separators an enclosing scanner adds after them. */
+    scan() {
         this.readList(false);
         return { commands: this.commands, complete: this.complete };
+    }
+    /** Adds separator characters to the command read last, if any. */
+    addTerminator(chars) {
+        const last = this.commands.at(-1);
+        if (last !== undefined) {
+            last.terminator += chars;
+        }
     }
     at(offset = 0) {
         return this.source.charAt(this.index + offset);
@@ -123,9 +168,10 @@ class Scanner {
     /** Reads commands to the end or, inside a substitution, through the `)` that closes it. */
     readList(inSubstitution) {
         let words = [];
-        const word = new WordBuilder();
+        const word = new WordBuilder(this.dialect === 'bash');
         let skipTarget = false;
         let verbatim = false;
+        let redirected = false;
         let depth = 0;
         const endWord = () => {
             const taken = word.take();
@@ -144,9 +190,10 @@ class Scanner {
             skipTarget = false;
             verbatim = false;
             if (words.length > 0) {
-                this.commands.push({ words, subshells: [...this.subshells] });
+                this.commands.push({ words, subshells: [...this.subshells], terminator: '', redirected });
             }
             words = [];
+            redirected = false;
         };
         while (!this.done) {
             if (verbatim) {
@@ -165,9 +212,11 @@ class Scanner {
             }
             if (char === '\n') {
                 endCommand();
+                this.addTerminator(char);
             }
             else if (char === '(') {
                 endCommand();
+                this.addTerminator(char);
                 depth += 1;
                 if (this.dialect === 'bash') {
                     this.openSubshell();
@@ -175,6 +224,7 @@ class Scanner {
             }
             else if (char === ')') {
                 endCommand();
+                this.addTerminator(char);
                 if (depth > 0) {
                     depth -= 1;
                     if (this.dialect === 'bash') {
@@ -187,6 +237,7 @@ class Scanner {
             }
             else if (this.isSeparator(char)) {
                 endCommand();
+                this.addTerminator(char);
             }
             else if (char === '#' && !word.isStarted && this.dialect !== 'cmd') {
                 this.skipComment();
@@ -203,6 +254,7 @@ class Scanner {
                 else {
                     endWord();
                 }
+                redirected = true;
                 skipTarget = this.readRedirection();
             }
             else if (/\s/.test(char)) {
@@ -219,7 +271,7 @@ class Scanner {
                 if (this.dialect === 'bash') {
                     word.noteBrace(char);
                 }
-                word.add(char);
+                word.add(char, 'unquoted');
             }
             this.index += 1;
         }
@@ -480,7 +532,7 @@ class Scanner {
             this.index += 1;
             return;
         }
-        word.add(this.source.slice(start, this.index), true);
+        word.add(this.source.slice(start, this.index), 'dynamic');
     }
     /** Inside `$(`, `@(` or `<(`: reads the commands through the closing `)`; in bash they run in a subshell. */
     readSubstitution() {
@@ -533,11 +585,11 @@ class Scanner {
         else {
             const subshells = [...this.subshells, this.ids.next];
             this.ids.next += 1;
-            const nested = new Scanner(inner, 'bash', { nesting: this.nesting + 1, subshells, ids: this.ids }).parse();
+            const nested = new Scanner(inner, 'bash', { nesting: this.nesting + 1, subshells, ids: this.ids }).scan();
             this.commands.push(...nested.commands);
             this.complete &&= nested.complete;
         }
-        word.add(this.source.slice(start, this.index), true);
+        word.add(this.source.slice(start, this.index), 'dynamic');
     }
     /** bash `<(...)` and `>(...)`: a process substitution, read like `$(...)`; false at a plain redirection. */
     readProcessSubstitution(word) {
@@ -547,7 +599,7 @@ class Scanner {
         const start = this.index;
         this.index += 2;
         this.readSubstitution();
-        word.add(this.source.slice(start, this.index), true);
+        word.add(this.source.slice(start, this.index), 'dynamic');
         return true;
     }
     /** PowerShell `@(...)` (read like `$(...)`) or a splatted `@args`; both are dynamic. */
@@ -563,7 +615,7 @@ class Scanner {
                 this.index += 1;
             }
         }
-        word.add(this.source.slice(start, this.index), true);
+        word.add(this.source.slice(start, this.index), 'dynamic');
     }
     /**
      * cmd `%VAR%`, `%1`, `%*`, `%~dp0` and delayed `!VAR!` are dynamic; `%%` is one literal `%`, and a `%` or `!`
@@ -581,7 +633,7 @@ class Scanner {
             this.index += 2;
         }
         else {
-            word.add(match[0], true);
+            word.add(match[0], 'dynamic');
             this.index += match[0].length;
         }
     }
@@ -614,7 +666,7 @@ class Scanner {
      */
     readVerbatim() {
         const words = [];
-        const word = new WordBuilder();
+        const word = new WordBuilder(false);
         const flush = () => {
             const taken = word.take();
             if (taken !== undefined) {
