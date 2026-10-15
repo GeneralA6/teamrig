@@ -28,6 +28,7 @@ const setupCommands = () => import('./commands/setup.ts');
 const compactCommands = () => import('./commands/compact.ts');
 const rulesCommands = () => import('./commands/rules.ts');
 const openCommands = () => import('./commands/open.ts');
+const budgetCommands = () => import('./commands/budget.ts');
 
 const TASK_FIELDS = ['title', 'owner', 'ref', 'priority', 'due', 'goals', 'week'];
 
@@ -57,6 +58,13 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   refresh: { flags: ['session'], switches: ['ready'], load: async () => (await refreshCommands()).refresh },
   doctor: { flags: [], load: async () => (await doctorCommands()).doctor },
   compact: { flags: [], switches: ['dry-run'], load: async () => (await compactCommands()).compact },
+  budget: { flags: ['day'], switches: ['loops', 'all'], load: async () => (await budgetCommands()).budget },
+  'budget lift': {
+    flags: ['session', 'to', 'stop-pct', 'until', 'reason'],
+    switches: ['reserve'],
+    load: async () => (await budgetCommands()).lift,
+  },
+  statusline: { flags: [], load: async () => (await budgetCommands()).statusline },
   'config validate': { flags: [], load: async () => (await configCommands()).validate },
   'config migrate': { flags: [], load: async () => (await configCommands()).migrate },
   'commits check': { flags: ['base', 'tip'], load: async () => (await commitsCommands()).check },
@@ -110,6 +118,14 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   compact [--dry-run]          archives the task list's log and rewrites its snapshot, so reads stay small;
       finished tasks over 8 days old leave the working set (show, list --status done read them);
       checks every task first and writes nothing on a difference
+  budget [<id|name>] [--loops] [--day <YYYY-MM-DD>] [--all]
+      each session's use today, measured from the Claude Code transcripts, against the week's pace;
+      <id|name>: that session by day; --loops: the loop patterns by day; --day: a past day recounted
+  budget lift <id|name> --to <pct> --stop-pct <pct> --reason "<why>" [--until <HH:MM|date>] [--reserve]
+      (the lead only) that session's daily budget for today, until --until, the day's end or the week
+      reaching --stop-pct; --reserve: above budget.lift.maxStopPct, in the last hour before the reset
+  statusline                   Claude Code's status line (status JSON on stdin): saves the week's use
+      for budget and prints a short status
   config validate | config migrate
   commits check --base <ref> [--tip <ref>]   commits in base..tip (default HEAD) over the size rule
       with no reason line; any is REFUSED, for an integrate script or CI
