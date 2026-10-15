@@ -272,8 +272,37 @@ function parseGithub(read: ConfigReader, raw: JsonRecord, sessions: readonly str
   return {
     repos,
     owners: readGithubOwners(read, read.section(raw, 'owners', 'github'), sessions),
+    sessions: readGithubSessions(read, read.section(raw, 'sessions', 'github'), repos, sessions),
     closedDays: read.integer(raw, 'closedDays', 'github', DEFAULT_GITHUB.closedDays, CONFIG_LIMITS.closedDays),
   };
+}
+
+/**
+ * `github.sessions`: the session each repository's issues go to; a repository not in `github.repos` or a
+ * session not on the team is reported and left out. Keys are kept in lowercase, as `repos` are.
+ */
+function readGithubSessions(read: ConfigReader, raw: JsonRecord, repos: readonly string[], team: readonly string[]): Record<string, string> {
+  const owned: Record<string, string> = {};
+  for (const repo of Object.keys(raw)) {
+    const path = `github.sessions.${repo}`;
+    const key = repo.toLowerCase();
+    if (!repos.includes(key)) {
+      read.report(path, 'is not one of github.repos');
+      continue;
+    }
+    const session = read.optionalString(raw, repo, 'github.sessions', isSessionName);
+    if (session === undefined) {
+      continue;
+    }
+    if (!team.includes(session)) {
+      read.report(path, `${describe(session)} is not one of the sessions`);
+    } else if (owned[key] !== undefined) {
+      read.report(path, 'is listed twice');
+    } else {
+      owned[key] = session;
+    }
+  }
+  return owned;
 }
 
 /** `github.owners`: a session for each GitHub login; a wrong login or a session not on the team is reported and left out. */

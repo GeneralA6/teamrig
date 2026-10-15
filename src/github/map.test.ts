@@ -22,7 +22,7 @@ function issue(overrides: Partial<GithubIssue> = {}): GithubIssue {
 
 describe('importRules', () => {
   it('takes the title cap, the priority levels, the owners and the lead from the config', () => {
-    assert.deepEqual(RULES, { maxTitle: 140, priorities: [1, 2, 3, 4, 5], owners: new Map([['octocat', 'bravo'], ['hubot', 'alpha']]), lead: 'lead' });
+    assert.deepEqual(RULES, { maxTitle: 140, priorities: [1, 2, 3, 4, 5], owners: new Map([['octocat', 'bravo'], ['hubot', 'alpha']]), repoSessions: new Map(), lead: 'lead' });
   });
 });
 
@@ -70,9 +70,16 @@ describe('issuePriority', () => {
 
 describe('issueOwner', () => {
   it('gives the issue to the first listed assignee, in any case, else to the lead', () => {
-    assert.equal(issueOwner(['monalisa', 'HuBot', 'octocat'], RULES), 'alpha');
-    assert.equal(issueOwner(['monalisa', 'constructor'], RULES), 'lead');
-    assert.equal(issueOwner([], RULES), 'lead');
+    assert.equal(issueOwner({ repo: 'acme/web', assignees: ['monalisa', 'HuBot', 'octocat'] }, RULES), 'alpha');
+    assert.equal(issueOwner({ repo: 'acme/web', assignees: ['monalisa', 'constructor'] }, RULES), 'lead');
+    assert.equal(issueOwner({ repo: 'acme/web', assignees: [] }, RULES), 'lead');
+  });
+
+  it("gives an issue no listed login is assigned to its repository's session, before the lead", () => {
+    const rules = importRules(testConfig({ github: { repos: ['acme/web', 'acme/api'], owners: { octocat: 'bravo' }, sessions: { 'acme/api': 'alpha' } } }));
+    assert.equal(issueOwner({ repo: 'acme/api', assignees: ['monalisa'] }, rules), 'alpha');
+    assert.equal(issueOwner({ repo: 'acme/api', assignees: ['octocat'] }, rules), 'bravo');
+    assert.equal(issueOwner({ repo: 'acme/web', assignees: [] }, rules), 'lead');
   });
 });
 

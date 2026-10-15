@@ -144,8 +144,10 @@ export interface TestsConfig {
 export interface GithubConfig {
   /** The repositories it reads, as `owner/name` in lowercase; empty turns the import off. */
   readonly repos: readonly string[];
-  /** The session each GitHub login (lowercase) owns imported issues as; an issue with no listed assignee goes to the lead. */
+  /** The session each GitHub login (lowercase) owns imported issues as; an issue with no listed assignee goes to its repository's session. */
   readonly owners: Readonly<Record<string, string>>;
+  /** The session each repository's (lowercase) issues go to when none of their assignees is in `owners`; else the lead. */
+  readonly sessions: Readonly<Record<string, string>>;
   /** How many days back closed issues are read, to finish the tasks they were imported as. */
   readonly closedDays: number;
 }

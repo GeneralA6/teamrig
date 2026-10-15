@@ -443,7 +443,7 @@
       }
     },
     "github": {
-      "description": "teamrig gh sync: GitHub issues read into the register as tasks of source github. It only reads GitHub and never writes to it; local tasks stay local.",
+      "description": "teamrig gh sync: GitHub issues read into the register as tasks of source github. It only reads GitHub and never writes to it; local tasks stay local. Each owner's repositories are read with the read-only token saved as teamrig-gh-<owner> in the system's credential store, else the gh login (docs/github-sync.md).",
       "type": "object",
       "properties": {
         "repos": {
@@ -458,11 +458,21 @@
           "default": []
         },
         "owners": {
-          "description": "The session that owns an issue assigned to each GitHub login; matched without case. An issue with no listed assignee goes to the lead.",
+          "description": "The session that owns an issue assigned to each GitHub login; matched without case. An issue with no listed assignee goes to its repository's session in sessions, else the lead.",
           "type": "object",
           "propertyNames": {
             "type": "string",
             "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}$"
+          },
+          "additionalProperties": { "$ref": "#/$defs/sessionName" },
+          "default": {}
+        },
+        "sessions": {
+          "description": "The session that owns the issues of each repository (owner/name, one of repos; matched without case) when none of their assignees is in owners. Without one, they go to the lead.",
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}$"
           },
           "additionalProperties": { "$ref": "#/$defs/sessionName" },
           "default": {}

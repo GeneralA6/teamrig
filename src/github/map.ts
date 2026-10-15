@@ -17,6 +17,8 @@ export interface ImportRules {
   readonly priorities: readonly number[];
   /** Each GitHub login, in lowercase, to its session. */
   readonly owners: ReadonlyMap<string, string>;
+  /** Each repository, `owner/name` in lowercase, to the session its issues go to when no assignee is in `owners`. */
+  readonly repoSessions: ReadonlyMap<string, string>;
   readonly lead: string;
 }
 
@@ -40,6 +42,7 @@ export function importRules(config: KitConfig): ImportRules {
     maxTitle: config.register.maxTitle,
     priorities: config.register.priorities.map((level) => level.id),
     owners: new Map(Object.entries(config.github.owners)),
+    repoSessions: new Map(Object.entries(config.github.sessions)),
     lead: config.roles.lead,
   };
 }
@@ -54,7 +57,7 @@ export function issueTask(issue: GithubIssue, rules: ImportRules): IssueTask {
     ref: issueRef(issue.repo, issue.number),
     title: taskTitle(issue, rules.maxTitle),
     priority: issuePriority(issue.labels, rules.priorities),
-    owner: issueOwner(issue.assignees, rules),
+    owner: issueOwner(issue, rules),
     outcome: issueOutcome(issue),
     url: issue.url,
   };
@@ -84,15 +87,18 @@ export function issuePriority(labels: readonly string[], priorities: readonly nu
   return priorities.includes(ISSUE_PRIORITY) ? ISSUE_PRIORITY : (priorities.at(-1) ?? ISSUE_PRIORITY);
 }
 
-/** The session of the first assignee `github.owners` lists, in GitHub's order; the lead when none is listed. */
-export function issueOwner(assignees: readonly string[], rules: ImportRules): string {
-  for (const login of assignees) {
+/**
+ * Who an issue's task goes to: the session of its first assignee `github.owners` lists, in GitHub's order;
+ * else its repository's session in `github.sessions`; else the lead.
+ */
+export function issueOwner(issue: Pick<GithubIssue, 'repo' | 'assignees'>, rules: ImportRules): string {
+  for (const login of issue.assignees) {
     const session = rules.owners.get(login.toLowerCase());
     if (session !== undefined) {
       return session;
     }
   }
-  return rules.lead;
+  return rules.repoSessions.get(issue.repo) ?? rules.lead;
 }
 
 export function issueOutcome(issue: GithubIssue): IssueOutcome {
