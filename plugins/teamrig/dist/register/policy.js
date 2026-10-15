@@ -167,8 +167,14 @@ export class RegisterPolicy {
     }
     update(task, caller, changes, note, state) {
         const names = Object.keys(changes).filter((name) => name in changes);
+        const text = blankToNull(note);
         if (names.length === 0) {
-            return refuse('nothing to change');
+            // A note alone changes nothing on the task, so any session may add context to any task's history.
+            if (text === null) {
+                return refuse('nothing to change: give a field or a --note');
+            }
+            const problem = this.checkText('note', text);
+            return problem === undefined ? ok({ changes, note: text }) : refuse(problem);
         }
         if (caller !== task.owner) {
             if (caller !== this.config.roles.lead) {
@@ -183,8 +189,8 @@ export class RegisterPolicy {
         // A task keeps the source it was added with, even one from the parent team's lead.
         const sourceRule = (source) => (source === task.source ? undefined : this.teamSourceProblem(source));
         const after = changes.after === undefined ? undefined : afterChangeProblem(task, changes.after, state);
-        const problem = after ?? this.checkFields(merged, sourceRule) ?? this.checkText('note', blankToNull(note));
-        return problem === undefined ? ok({ changes, note: blankToNull(note) }) : refuse(problem);
+        const problem = after ?? this.checkFields(merged, sourceRule) ?? this.checkText('note', text);
+        return problem === undefined ? ok({ changes, note: text }) : refuse(problem);
     }
     /**
      * A task for a GitHub issue. The import keys its tasks on their ref, so a second one for the same issue is
