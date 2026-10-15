@@ -138,6 +138,24 @@ export interface OpenConfig {
   readonly terminal: TerminalChoice;
 }
 
+/** Claude Code's effort levels, lowest first: what `claude --effort` and `/effort` take. */
+export const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
+export type EffortLevel = (typeof EFFORT_LEVELS)[number];
+
+export function isEffortLevel(value: unknown): value is EffortLevel {
+  return EFFORT_LEVELS.some((level) => level === value);
+}
+
+/**
+ * The Claude Code model and effort a session starts on (`claude --model`, `claude --effort`); an unset
+ * key leaves Claude Code's own choice. The lead takes `DEFAULT_LEAD_LAUNCH` for each key it leaves unset.
+ */
+export interface LaunchConfig {
+  /** A Claude Code model alias, such as `best` or `opus`, or a full model id starting `claude-`. */
+  readonly model?: string;
+  readonly effort?: EffortLevel;
+}
+
 export interface PathsConfig {
   readonly state?: string;
   readonly inbox?: string;
@@ -182,5 +200,7 @@ export interface KitConfig {
   readonly refresh: RefreshConfig;
   /** How `teamrig open` starts a session in a new terminal tab. */
   readonly open: OpenConfig;
+  /** Each session's Claude Code model and effort, by id; the lead's unset keys take `DEFAULT_LEAD_LAUNCH`. */
+  readonly launch: Readonly<Record<string, LaunchConfig>>;
   readonly paths: PathsConfig;
 }

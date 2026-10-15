@@ -2,8 +2,10 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
+import { MODEL_ALIASES, MODEL_ID_MAX_LENGTH, MODEL_ID_PATTERN } from './launch.ts';
 import { CONFIG_LIMITS } from './limits.ts';
 import { parseConfig } from './parse.ts';
+import { EFFORT_LEVELS } from './types.ts';
 
 /** The roster has no default; everything else in the schema must state the code's default. */
 const ROSTER = { sessions: ['alpha', 'bravo'], roles: { lead: 'alpha' } };
@@ -14,6 +16,7 @@ const EVERY_KEY = {
   ...ROSTER,
   team: { id: 'web', parent: 'app' },
   names: { alpha: 'team-lead' },
+  launch: { alpha: { model: 'best', effort: 'xhigh' } },
   roles: { lead: 'alpha', coordinatorOwner: 'bravo' },
   register: { goalPattern: '^G\\d+$' },
   coordinator: { schedule: { heavyCutoffUtc: '22:30' } },
@@ -148,6 +151,18 @@ describe('config.schema.json', () => {
         assert.equal(items['maxLength'], limit.maxLength, path);
       }
     }
+  });
+
+  it('takes the models and efforts the parser takes', async () => {
+    const launch = anyProperty(nodeAt(await loadSchema(), 'launch'));
+    assert.ok(launch !== undefined);
+    const { model, effort } = properties(launch);
+    assert.ok(isRecord(model) && isRecord(effort));
+    assert.deepEqual(model['anyOf'], [
+      { enum: [...MODEL_ALIASES] },
+      { type: 'string', pattern: MODEL_ID_PATTERN.source, maxLength: MODEL_ID_MAX_LENGTH },
+    ]);
+    assert.deepEqual(effort['enum'], [...EFFORT_LEVELS]);
   });
 
   it('requires exactly the roster', async () => {
