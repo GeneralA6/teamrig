@@ -29,6 +29,7 @@ export async function rules(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const { tree } = await loadTree(runtime);
   const context = sessionStartContext({
     team,
+    platform: runtime.platform,
     load: kit.load,
     teamRules: text === undefined ? undefined : { path: kit.paths.teamRules, text },
     renames,

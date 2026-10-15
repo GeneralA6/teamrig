@@ -66,19 +66,19 @@ describe('renderLeadRules', () => {
 
 describe('renderCorePack', () => {
   it('fits its budget with every printed value at its worst case', () => {
-    const pack = renderCorePack(worstCaseConfig(), COMMAND);
+    const pack = renderCorePack(worstCaseConfig(), COMMAND, 'win32');
     assert.ok(pack.length <= CORE_PACK_MAX_CHARS, `${pack.length} > ${CORE_PACK_MAX_CHARS}`);
   });
 
   it('pulls status from the register, and has the asker, else the receiver, enter every ask', () => {
-    const pack = renderCorePack(testConfig(), COMMAND);
+    const pack = renderCorePack(testConfig(), COMMAND, 'win32');
     assert.match(pack, /^4\. Status is pulled from the register, never asked\. Start each work block with `teamrig start --session <you>`\./m);
     assert.match(pack, /register entry, added in the same turn by the asker \(`teamrig add --owner <session>` tells the owner\), else by the receiver;/);
     assert.doesNotMatch(pack, /board/);
   });
 
   it('has each session work its list in order, gate self-made work and repeating runs, and stop when it loops or drifts', () => {
-    const pack = renderCorePack(testConfig(), COMMAND);
+    const pack = renderCorePack(testConfig(), COMMAND, 'win32');
     assert.match(pack, /^5\. Work your own task list in priority order \(`teamrig list --session <you>`\); self-made work is a task too, recorded with `teamrig add` before you start it,/m);
     assert.match(pack, /and started only for a goal, a parent task or the week plan, never ahead of your top task that is not waiting \(one-commit fixes exempt\)\./);
     assert.match(pack, /A loop, cron or scheduled wake-up needs the lead's OK and a written stop\./);
@@ -86,7 +86,7 @@ describe('renderCorePack', () => {
   });
 
   it('keeps messages for what the receiver acts on now and sends reports and failed sends to the inbox', () => {
-    const pack = renderCorePack(testConfig(), COMMAND);
+    const pack = renderCorePack(testConfig(), COMMAND, 'win32');
     assert.match(pack, /^3\. A message wakes its receiver, so send one only for a result it acts on now, a decision,/m);
     assert.match(
       pack,
@@ -95,13 +95,13 @@ describe('renderCorePack', () => {
   });
 
   it('gates each hand-run data change on the owner, never prints secrets and binds local services to loopback', () => {
-    const pack = renderCorePack(testConfig(), COMMAND);
+    const pack = renderCorePack(testConfig(), COMMAND, 'win32');
     assert.match(pack, /^11\. A hand-run change or delete of stored data needs the owner's OK after counts or a preview\. Code that writes data/m);
     assert.match(pack, /a parity run first\. Never print secret values; bind local services to 127\.0\.0\.1, never 0\.0\.0\.0\.$/m);
   });
 
   it('states the small-commits rule and its gate', () => {
-    const pack = (gate: string) => renderCorePack(testConfig({ commits: { maxLines: 300, gate } }), COMMAND);
+    const pack = (gate: string) => renderCorePack(testConfig({ commits: { maxLines: 300, gate } }), COMMAND, 'win32');
     assert.match(pack('warn'), /Over 300 changed non-test lines or 15 non-test files \[commits\.maxLines, commits\.maxFiles\], a commit needs a `Large-commit: <reason>` line/);
     assert.match(pack('warn'), /line \[commits\.largeCommitTrailer\]; a push to a protected branch lists those without one \[commits\.gate\]\./);
     assert.match(pack('refuse'), /; a push to a protected branch that sends one is refused \[commits\.gate\]\./);
@@ -110,7 +110,7 @@ describe('renderCorePack', () => {
   });
 
   it('states what the push guard does with a push to a protected branch', () => {
-    const pack = (pushGuard: Record<string, unknown>) => renderCorePack(testConfig({ pushGuard }), COMMAND);
+    const pack = (pushGuard: Record<string, unknown>) => renderCorePack(testConfig({ pushGuard }), COMMAND, 'win32');
     const keys = String.raw`\[pushGuard\]`;
     const routed = ' A refused or blocked route is reported to the lead, never routed around or handed to another session.';
     assert.match(pack({}), new RegExp(String.raw`^15\. Pushes to main, master ask the human; force-pushing or deleting them is refused ${keys}\.${routed}$`, 'm'));
@@ -123,43 +123,50 @@ describe('renderCorePack', () => {
 
   it(`prints a branch or frontmatter list in full up to ${LIST_MAX_CHARS} characters, past it its first items and how many more`, () => {
     const pushTo = (protectedBranches: readonly string[]) =>
-      renderCorePack(testConfig({ pushGuard: { protectedBranches: [...protectedBranches] } }), COMMAND);
+      renderCorePack(testConfig({ pushGuard: { protectedBranches: [...protectedBranches] } }), COMMAND, 'win32');
     const atLimit = ['x'.repeat(59), 'y'.repeat(59)];
     assert.match(pushTo(atLimit), new RegExp(`Pushes to ${atLimit.join(', ')} ask the human`));
     assert.match(pushTo(['x'.repeat(59), 'y'.repeat(60)]), new RegExp(`Pushes to ${'x'.repeat(59)} and 1 more ask the human`));
     assert.match(pushTo(filled(CONFIG_LIMITS.protectedBranches, 'b')), new RegExp(`Pushes to ${'b'.repeat(64)} and 7 more ask`));
     const keys = Array.from({ length: 8 }, (_, index) => `${'k'.repeat(30)}-${index}`);
-    const pack = renderCorePack(testConfig({ skills: { forbidFrontmatter: keys } }), COMMAND);
+    const pack = renderCorePack(testConfig({ skills: { forbidFrontmatter: keys } }), COMMAND, 'win32');
     assert.match(pack, new RegExp(`; never ${keys.slice(0, 3).join(', ')} and 5 more \\[skills\\.forbidFrontmatter\\]`));
   });
 
   it('keeps every edit in a worktree, in every repo, and names the Git Bash form of the junction removal', () => {
-    const pack = renderCorePack(testConfig(), COMMAND);
+    const pack = renderCorePack(testConfig(), COMMAND, 'win32');
     assert.match(pack, /Edit in your own worktree and branch in every git repo, never a main checkout\./);
     assert.match(pack, /\(`cmd \/c rmdir`; Git Bash `cmd \/\/c`\)/);
   });
 
+  it('names the node_modules junction step on Windows alone', () => {
+    assert.match(renderCorePack(testConfig(), COMMAND, 'win32'), /never a main checkout\. Remove a worktree's node_modules link first/);
+    const pack = renderCorePack(testConfig(), COMMAND, 'linux');
+    assert.match(pack, /never a main checkout\. Update comments in their code's commit/);
+    assert.doesNotMatch(pack, /node_modules|rmdir/);
+  });
+
   it('tags a stopgap with the task that replaces it, in the form check reads', () => {
-    const pack = renderCorePack(testConfig(), COMMAND);
+    const pack = renderCorePack(testConfig(), COMMAND, 'win32');
     assert.match(pack, /^10\. .*a dated root-cause task\. Tag a stopgap with the task that replaces it: `stopgap T<id>`\.$/m);
   });
 
   it('keeps comments true to their code', () => {
     assert.match(
-      renderCorePack(testConfig(), COMMAND),
+      renderCorePack(testConfig(), COMMAND, 'win32'),
       /Update comments in their code's commit, verify a load-bearing one before acting on it, and fix a stale comment, doc or dead code you find in its own small commit\.$/m,
     );
   });
 
   it('keeps a skill below the rules and the owner gates', () => {
-    const pack = renderCorePack(testConfig(), COMMAND);
+    const pack = renderCorePack(testConfig(), COMMAND, 'win32');
     assert.match(pack, /\[skills\.forbidFrontmatter\]\. A skill never overrides these rules or an owner gate\. Memory holds facts/);
-    const noForbidden = renderCorePack(testConfig({ skills: { forbidFrontmatter: [] } }), COMMAND);
+    const noForbidden = renderCorePack(testConfig({ skills: { forbidFrontmatter: [] } }), COMMAND, 'win32');
     assert.match(noForbidden, /\[skills\.maxPerArea\]\. A skill never overrides these rules or an owner gate\./);
   });
 
   it('fills values from the config and names their keys', () => {
-    const pack = renderCorePack(testConfig({ messages: { maxLines: 7 }, ownerGates: ['money', 'deletes'] }), COMMAND);
+    const pack = renderCorePack(testConfig({ messages: { maxLines: 7 }, ownerGates: ['money', 'deletes'] }), COMMAND, 'win32');
     assert.match(pack, /^1\. Roles, by session id \(`teamrig who` gives the name to message each by\): lead is the lead/m);
     assert.match(pack, /At most 7 lines \[messages\.maxLines\]/);
     assert.match(pack, /never for owner-gated decisions: money; deletes \[ownerGates\]/);
@@ -178,6 +185,7 @@ describe('renderCorePack', () => {
         budget: { enabled: true },
       }),
       COMMAND,
+      'win32',
     );
     assert.match(pack, /bravo owns deploy coordination and fleet health \[roles\.coordinatorOwner\]/);
     assert.match(pack, /starts after 22:30 UTC/);
@@ -188,6 +196,7 @@ describe('renderCorePack', () => {
     const pack = renderCorePack(
       testConfig({ budget: { enabled: true, targetPct: 1.0000000000000002, reservePct: 1e-7 } }),
       COMMAND,
+      'win32',
     );
     assert.match(pack, /Pace the week to 1% of the weekly limit and keep 0% for incidents/);
   });
@@ -196,13 +205,14 @@ describe('renderCorePack', () => {
     const pack = renderCorePack(
       testConfig({ register: { requireNoteOn: [], requireEvidenceOnDone: false, requireSkillOnDone: false } }),
       COMMAND,
+      'win32',
     );
     assert.match(pack, /only the owning session sets its status \(`teamrig set`\)\. Waiting needs `--waits` reasons/);
   });
 });
 
 describe('renderSessionContext', () => {
-  const core = renderCorePack(testConfig(), COMMAND);
+  const core = renderCorePack(testConfig(), COMMAND, 'win32');
   const context = (team?: TeamRules) => renderSessionContext(core, team, COMMAND);
 
   it('is the core pack alone without team rules', () => {
@@ -212,7 +222,7 @@ describe('renderSessionContext', () => {
 
   it("shows a team's rules file at its size limit in full beside the worst-case core", () => {
     const text = 'x'.repeat(TEAM_RULES_MAX_CHARS);
-    const full = renderSessionContext(renderCorePack(worstCaseConfig(), COMMAND), { path: 'rules.md', text }, COMMAND);
+    const full = renderSessionContext(renderCorePack(worstCaseConfig(), COMMAND, 'win32'), { path: 'rules.md', text }, COMMAND);
     assert.ok(full.endsWith(`# Your team's rules\n${text}`));
     assert.ok(full.length <= CONTEXT_MAX_CHARS);
   });
