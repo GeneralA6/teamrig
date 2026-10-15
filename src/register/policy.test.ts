@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { testConfig } from '../testing/config.ts';
 import { testTask } from '../testing/task.ts';
 import { foldEvents, type RegisterState, type Task } from './fold.ts';
-import { normaliseTitle, RegisterPolicy, type AddInput, type StatusContext, type Verdict } from './policy.ts';
+import { GITHUB_ACTOR, normaliseTitle, RegisterPolicy, type AddInput, type ImportInput, type StatusContext, type Verdict } from './policy.ts';
 import type { WaitReason } from './waits.ts';
 
 const EMPTY: RegisterState = foldEvents([]);
@@ -347,5 +347,57 @@ describe('RegisterPolicy.addFromParent', () => {
     assert.equal(error(policy.addFromParent({ ...FROM_PARENT, owner: 'alpha' }, EMPTY)), "a task from the parent team goes to this team's lead (lead), not alpha");
     assert.equal(error(policy.addFromParent({ ...FROM_PARENT, source: 'lead' }, EMPTY)), "source lead is not the parent team lead's <team>/<id>");
     assert.match(error(policy.add({ ...INPUT, source: 'app/lead' }, EMPTY)), /source app.lead is neither a session id nor owner/);
+  });
+});
+
+describe('RegisterPolicy, the GitHub import', () => {
+  const policy = new RegisterPolicy(testConfig());
+  const ISSUE: ImportInput = { title: 'Fix login', owner: 'bravo', ref: 'gh:acme/web#7', priority: 1 };
+  const IMPORTED: Task = testTask({ id: 'T2', title: 'Fix login', owner: 'bravo', source: 'github', ref: 'gh:acme/web#7', priority: 1 });
+  const URL = 'https://github.com/acme/web/issues/7';
+
+  it('adds a task sourced github, keyed by its ref, even under a title the team already tracks', () => {
+    const team = testTask({ title: 'Fix login', ref: 'gh:acme/web#7' });
+    assert.deepEqual(policy.importAdd(ISSUE, stateOf(team)), {
+      ok: true,
+      value: { title: 'Fix login', owner: 'bravo', source: 'github', ref: 'gh:acme/web#7', priority: 1, due: null, goals: [], week: null, after: [] },
+    });
+    assert.equal(error(policy.importAdd(ISSUE, stateOf(team, IMPORTED))), 'T2 already has ref gh:acme/web#7');
+    assert.equal(error(policy.importAdd({ ...ISSUE, owner: 'octocat' }, EMPTY)), 'owner octocat is not a session on this team');
+  });
+
+  it('keeps the github source for the import: a session can neither add nor move a task to it', () => {
+    assert.equal(error(policy.add({ ...INPUT, source: 'github' }, EMPTY)), 'source github is kept for the tasks teamrig gh sync imports');
+    assert.equal(error(policy.update(TASK, 'alpha', { source: 'github' }, undefined, EMPTY)), 'source github is kept for the tasks teamrig gh sync imports');
+    assert.equal(policy.update(IMPORTED, 'bravo', { due: '2030-02-01' }, 'planned', EMPTY).ok, true);
+  });
+
+  it('updates only the title and priority that differ, on its own tasks only', () => {
+    assert.deepEqual(policy.importUpdate(IMPORTED, { title: 'Fix the login', priority: 1 }, 'title changed on GitHub'), {
+      ok: true,
+      value: { changes: { title: 'Fix the login' }, note: 'title changed on GitHub' },
+    });
+    assert.equal(error(policy.importUpdate(IMPORTED, { title: 'Fix login', priority: 1 }, 'again')), 'nothing to change');
+    assert.equal(error(policy.importUpdate(IMPORTED, { priority: 9 }, 'p9')), 'priority p9 is not one of p1, p2, p3, p4, p5');
+    assert.equal(error(policy.importUpdate(TASK, { title: 'Other' }, 'x')), 'T1 is not a GitHub task (source lead): the import changes only its own');
+  });
+
+  it('opens, finishes or drops its own tasks, a done with the issue url and no skill', () => {
+    const working = testTask({ ...IMPORTED, status: 'in-progress' });
+    assert.deepEqual(policy.importStatus(working, { status: 'done', note: 'closed on GitHub as completed', evidence: URL }), {
+      ok: true,
+      value: { status: 'done', note: 'closed on GitHub as completed', evidence: URL, skill: null },
+    });
+    assert.equal(policy.importStatus({ ...IMPORTED, status: 'done' }, { status: 'open', note: 'reopened on GitHub' }).ok, true);
+    assert.equal(policy.importStatus(IMPORTED, { status: 'dropped', note: 'closed on GitHub as not planned' }).ok, true);
+    assert.equal(error(policy.importStatus(IMPORTED, { status: 'done', note: 'closed' })), 'done needs evidence: the issue url');
+    assert.equal(error(policy.importStatus(IMPORTED, { status: 'open', note: 'again' })), 'T2 is already open');
+    assert.equal(error(policy.importStatus(IMPORTED, { status: 'in-progress' })), 'the GitHub import sets only open, done, dropped, not in-progress');
+  });
+
+  it('refuses the github actor on any task that is not the import own, on both status paths', () => {
+    assert.equal(error(policy.importStatus(TASK, { status: 'done', evidence: URL })), 'T1 is not a GitHub task (source lead): the import changes only its own');
+    assert.equal(error(policy.setStatus(TASK, GITHUB_ACTOR, { status: 'done', evidence: URL, skill: 'none' }, CTX)), 'only the owner (alpha) sets the status of T1');
+    assert.equal(error(policy.setStatus(IMPORTED, GITHUB_ACTOR, { status: 'done', evidence: URL, skill: 'none' }, CTX)), 'only the owner (bravo) sets the status of T2');
   });
 });

@@ -225,3 +225,30 @@ describe('Register.addFromParent', () => {
     assert.match(errorOf(await register.addFromParent('app/lead', { title: 'Ship login', owner: 'lead', source: 'app/lead', priority: 1 })), /T1 already tracks this/);
   });
 });
+
+describe('Register, the GitHub import', () => {
+  const ISSUE = { title: 'Fix login', owner: 'bravo', ref: 'gh:acme/web#7', priority: 1 };
+  const URL = 'https://github.com/acme/web/issues/7';
+
+  it('writes its own tasks as github, under the lock, and keeps each issue to one task', async () => {
+    const { files, register } = setup();
+    const { task, event } = written(await register.importAdd(ISSUE));
+    assert.deepEqual([task.id, task.source, task.ref, task.owner, task.createdBy, event.by], ['T1', 'github', 'gh:acme/web#7', 'bravo', 'github', 'github']);
+    assert.equal(errorOf(await register.importAdd(ISSUE)), 'T1 already has ref gh:acme/web#7');
+    const renamed = written(await register.importUpdate('T1', { title: 'Fix the login', priority: 1 }, 'title changed on GitHub'));
+    assert.deepEqual([renamed.task.title, renamed.task.priority, renamed.event.by], ['Fix the login', 1, 'github']);
+    const closed = written(await register.importStatus('T1', { status: 'done', note: 'closed on GitHub as completed', evidence: URL }));
+    assert.deepEqual([closed.task.status, closed.task.evidence, closed.task.skill, closed.event.by], ['done', URL, null, 'github']);
+    assert.equal(readEvents(files.get(LOG) ?? '').events.length, 3);
+  });
+
+  it('leaves a team task alone, and is no session that may write through the team path', async () => {
+    const { files, register } = setup();
+    written(await register.add('lead', { title: 'Ship login', owner: 'alpha', source: 'lead', priority: 1, ref: 'gh:acme/web#7' }));
+    assert.equal(errorOf(await register.importStatus('T1', { status: 'done', evidence: URL })), 'T1 is not a GitHub task (source lead): the import changes only its own');
+    assert.equal(errorOf(await register.importUpdate('T1', { title: 'Other' }, 'x')), 'T1 is not a GitHub task (source lead): the import changes only its own');
+    assert.match(errorOf(await register.setStatus('github', 'T1', { status: 'done', evidence: URL, skill: 'none' })), /github is not a session on this team/);
+    assert.match(errorOf(await register.importStatus('T9', { status: 'open' })), /T9/);
+    assert.equal(readEvents(files.get(LOG) ?? '').events.length, 1);
+  });
+});
