@@ -1,6 +1,6 @@
 import { isRecord } from "../core/guards.js";
 import { NAME_PATTERN, NAME_RULE } from "../core/ids.js";
-import { isTaskStatus, SESSION_NAME, TASK_STATUSES } from "../register/model.js";
+import { isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, SESSION_NAME, TASK_STATUSES } from "../register/model.js";
 import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_COMMITS, DEFAULT_LOCK, DEFAULT_MESSAGES, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_PUSH_GUARD, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, } from "./defaults.js";
 import { isEffort, isModel } from "./launch.js";
 import { CONFIG_LIMITS } from "./limits.js";
@@ -316,7 +316,8 @@ function parseStatus(read, value, path) {
     if (isTaskStatus(value)) {
         return value;
     }
-    read.report(path, `expected one of ${TASK_STATUSES.join(', ')}, got ${describe(value)}`);
+    const hint = value === LEGACY_WAITING_STATUS ? ` (${LEGACY_WAITING_HINT})` : '';
+    read.report(path, `expected one of ${TASK_STATUSES.join(', ')}, got ${describe(value)}${hint}`);
     return undefined;
 }
 function parseSkills(read, raw) {

@@ -21,7 +21,7 @@ export const DEFAULT_REGISTER = {
     secretPatterns: [],
     requireEvidenceOnDone: true,
     requireSkillOnDone: true,
-    requireNoteOn: ['blocked', 'verifying', 'done', 'dropped'],
+    requireNoteOn: ['waiting', 'verifying', 'done', 'dropped'],
     autoArchive: true,
     check: { staleAfterHours: 72, notPickedUpAfterHours: 24, prioritySkipAfterHours: 24, weekLengthDays: 7 },
 };

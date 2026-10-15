@@ -35,7 +35,8 @@ export class Register {
         const skill = input.skill?.trim();
         const skillExists = skill === undefined || skill === '' || skill === NO_SKILL || (await this.deps.skills.exists(skill));
         return this.commit(caller, (snapshot) => onTask(snapshot, id, (task) => {
-            const change = this.deps.policy.setStatus(task, caller, input, skillExists);
+            const now = new Date(this.deps.clock.now());
+            const change = this.deps.policy.setStatus(task, caller, input, { state: snapshot.state, now, skillExists });
             if (!change.ok) {
                 return change;
             }
@@ -45,7 +46,7 @@ export class Register {
     }
     update(caller, id, changes, note) {
         return this.commit(caller, (snapshot) => onTask(snapshot, id, (task) => {
-            const change = this.deps.policy.update(task, caller, changes, note);
+            const change = this.deps.policy.update(task, caller, changes, note, snapshot.state);
             if (!change.ok) {
                 return change;
             }
@@ -87,11 +88,12 @@ export class Register {
             }
             const event = decision.value;
             await this.deps.log.append(event);
-            const task = foldEvents([event], [], snapshot.state).tasks.get(event.id);
+            const state = foldEvents([event], [], snapshot.state);
+            const task = state.tasks.get(event.id);
             if (task === undefined) {
                 throw new Error(`${event.id} is missing after its own write`);
             }
-            return { ok: true, value: { task, event, rotation: await this.rotation(snapshot) } };
+            return { ok: true, value: { task, state, event, rotation: await this.rotation(snapshot) } };
         });
     }
     /**

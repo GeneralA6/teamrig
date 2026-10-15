@@ -1,4 +1,5 @@
 import { toJsonlLine } from "../core/jsonl.js";
+import { eventRecord } from "./events.js";
 import { RETAIN_DAYS } from "./compaction.js";
 import { layoutPaths, readHistory, readWorkingSet } from "./layout.js";
 import { applyRotation, AUTO_ROTATE_CHARS, planRotation } from "./rotate.js";
@@ -18,7 +19,7 @@ export class JsonlEventLog {
         return readHistory(this.files, this.layout);
     }
     async append(event) {
-        await this.files.append(this.path, toJsonlLine({ ...event }));
+        await this.files.append(this.path, toJsonlLine(eventRecord(event)));
     }
     async rotateIfDue(written, now) {
         if (written.read.rotatedAfter === 0) {

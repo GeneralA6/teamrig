@@ -1,6 +1,7 @@
 import { formatUtcMinute, parseUtcDeadline, shortUtc } from "../core/time.js";
 import { taskNumber } from "./fold.js";
 import { ACTIVE_STATUSES, priorityText } from "./model.js";
+import { waitsText } from "./waits.js";
 /** The task's deadline in ms, or undefined when it has none. */
 export function dueTime(task) {
     return task.due === null ? undefined : parseUtcDeadline(task.due)?.getTime();
@@ -31,11 +32,17 @@ export function selectTasks(tasks, filter) {
 export function taskLabel(task, team) {
     return team === undefined ? task.id : `${team}/${task.id}`;
 }
-/** The fields every task row starts with: `T12 in-progress`, `p2`, `owner alpha` and `due 01-15` when it has one. */
+/**
+ * The fields every task row starts with: `T12 in-progress`, `p2`, `owner alpha`, then `due 01-15` and
+ * `after T5,T6` (its plan dependency) when it has them.
+ */
 function rowHead(task, team) {
     const parts = [`${taskLabel(task, team)} ${task.status}`, priorityText(task.priority), `owner ${task.owner}`];
     if (task.due !== null) {
         parts.push(`due ${shortUtc(task.due)}`);
+    }
+    if (task.after.length > 0) {
+        parts.push(`after ${task.after.join(',')}`);
     }
     return parts;
 }
@@ -45,18 +52,20 @@ export function cut(text, max) {
     return chars.length <= max ? text : `${chars.slice(0, max - 1).join('').trimEnd()}…`;
 }
 /**
- * The short row of `list` and `check`: `T12 in-progress, p2, owner alpha, due 01-15 | <title cut to titleChars>`.
- * It keeps what orders and assigns the work and leaves the week, source, goals and blocked note to `show`.
+ * The short row of `list` and `check`: `T12 in-progress, p2, owner alpha, due 01-15 | <title cut to titleChars>`,
+ * and what a waiting task waits for: `(waiting: decision owner · on T5 ready)`. It keeps what orders and assigns
+ * the work and leaves the week, source, goals and status note to `show`. `context` marks the ready reasons.
  */
-export function formatShortTask(task, titleChars, team) {
-    return `${rowHead(task, team).join(', ')} | ${cut(task.title, titleChars)}`;
+export function formatShortTask(task, titleChars, team, context) {
+    const waits = task.status === 'waiting' && task.waits.length > 0 ? ` (waiting: ${waitsText(task.waits, context)})` : '';
+    return `${rowHead(task, team).join(', ')} | ${cut(task.title, titleChars)}${waits}`;
 }
 /**
  * One line that names each field, so a newcomer can read it:
  * `T12 in-progress, p2, owner alpha, due 01-15, week 01-13, from lead, goals G1 | title`.
- * With `team`, the id reads `<team>/T12`.
+ * With `team`, the id reads `<team>/T12`; `context` marks a waiting task's ready reasons.
  */
-export function formatTask(task, team) {
+export function formatTask(task, team, context) {
     const parts = rowHead(task, team);
     if (task.week !== null) {
         parts.push(`week ${shortUtc(task.week)}`);
@@ -65,17 +74,18 @@ export function formatTask(task, team) {
     if (task.goals.length > 0) {
         parts.push(`goals ${task.goals.join(',')}`);
     }
-    return `${parts.join(', ')} | ${task.title}${statusNote(task)}`;
+    return `${parts.join(', ')} | ${task.title}${statusNote(task, context)}`;
 }
-/** The note a row carries for a status that waits on something: what blocks it, or what will prove it. */
-function statusNote(task) {
-    if (task.note === null) {
-        return '';
+/**
+ * What a row adds for a status that waits on something: a waiting task's reasons, then its note
+ * (`(waiting: decision owner · on T5; the schema first)`), or what will prove a verifying one.
+ */
+function statusNote(task, context) {
+    if (task.status === 'waiting') {
+        const parts = [task.waits.length > 0 ? waitsText(task.waits, context) : null, task.note].filter((part) => part !== null);
+        return parts.length === 0 ? '' : ` (waiting: ${parts.join('; ')})`;
     }
-    if (task.status === 'blocked') {
-        return ` (blocked: ${task.note})`;
-    }
-    return task.status === 'verifying' ? ` (proof: ${task.note})` : '';
+    return task.status === 'verifying' && task.note !== null ? ` (proof: ${task.note})` : '';
 }
 /** One field of an update, as `show` prints it: a priority reads `p2`, a list joins with commas. */
 function changeText(name, value) {
@@ -100,13 +110,14 @@ export function formatEvent(event) {
                 task.due === null ? undefined : `due=${task.due}`,
                 task.week === null ? undefined : `week=${task.week}`,
                 task.goals.length === 0 ? undefined : `goals=${task.goals.join(',')}`,
+                task.after.length === 0 ? undefined : `after=${task.after.join(',')}`,
             ]
                 .filter((part) => part !== undefined)
                 .join(' ');
         }
         case 'status':
             return [
-                `${head} ${event.status}${note}`,
+                `${head} ${event.status}${event.waits === undefined ? '' : ` waits="${waitsText(event.waits)}"`}${note}`,
                 event.evidence === null ? undefined : `evidence=${event.evidence}`,
                 event.skill === null ? undefined : `skill=${event.skill}`,
             ]
@@ -118,9 +129,9 @@ export function formatEvent(event) {
         }
     }
 }
-/** `show`: the task line, its status details, then its history. */
-export function formatTaskDetail(task, events) {
-    const lines = [formatTask(task)];
+/** `show`: the task line, its status details, then its history; `context` marks a waiting task's ready reasons. */
+export function formatTaskDetail(task, events, context) {
+    const lines = [formatTask(task, undefined, context)];
     if (task.ref !== null) {
         lines.push(`ref: ${task.ref}`);
     }

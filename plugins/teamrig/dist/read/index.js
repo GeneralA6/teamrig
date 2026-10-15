@@ -13,6 +13,7 @@ export { assemble, historyPlan, layoutPaths, MissingSegmentError, readHistory, r
 export { LAYOUT_VERSION } from "../register/marker.js";
 export { readEvents, readRegister, snapshotOf } from "../register/snapshot.js";
 export { byPlanOrder, dueTime } from "../register/views.js";
+export { allReady, isReady, unfinishedAfter, WAIT_KINDS, waitContext, waitsText, waitText, } from "../register/waits.js";
 // The inboxes (`inbox/<area>.md`) and their read marks (`inbox-marks.jsonl`).
 export { indexMarks, MARK_VERSION, parseMark, readMarks } from "../inbox/marks.js";
 export { inboxLines, unreadOf } from "../inbox/unread.js";

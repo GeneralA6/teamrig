@@ -7,6 +7,7 @@ import { Register } from "../../register/register.js";
 import { ACTIVE_STATUSES } from "../../register/model.js";
 import { JsonlEventLog } from "../../register/store.js";
 import { formatTask, formatTaskDetail, selectTasks } from "../../register/views.js";
+import { waitContext } from "../../register/waits.js";
 import { lintSkills } from "../../skills/lint.js";
 import { SkillDir } from "../../skills/store.js";
 import { noPositionals, onePositional, UsageError } from "../args.js";
@@ -38,6 +39,17 @@ function addInputIds(team, input) {
     const source = input.source === team.config.register.ownerSource ? input.source : pastOrPresentIdOf(team.roster, input.source);
     return { ...input, owner: sessionIdOf(team.roster, input.owner), source };
 }
+/** Who a decision or an approval waits for, as an id: a session's name becomes its id, the owner's marker stays. */
+function statusInputIds(team, input) {
+    if (input.waits === undefined) {
+        return input;
+    }
+    const { ownerSource } = team.config.register;
+    const waits = input.waits.map((reason) => (reason.kind === 'decision' || reason.kind === 'approval') && reason.who !== ownerSource
+        ? { kind: reason.kind, who: sessionIdOf(team.roster, reason.who) }
+        : reason);
+    return { ...input, waits };
+}
 function changeIds(roster, changes) {
     return changes.owner === undefined ? changes : { ...changes, owner: sessionIdOf(roster, changes.owner) };
 }
@@ -61,7 +73,8 @@ function report(runtime, verdict, verb, configPath, team) {
     if (!verdict.ok) {
         throw new RefusedError(verdict.error);
     }
-    runtime.out.stdout(`${verb} ${formatTask(verdict.value.task, team)}`);
+    const { task, state } = verdict.value;
+    runtime.out.stdout(`${verb} ${formatTask(task, team, waitContext(state.tasks, new Date(runtime.clock.now())))}`);
     const { rotation } = verdict.value;
     const turnOff = autoArchiveSwitch(configPath);
     if (rotation.kind === 'rotated') {
@@ -124,9 +137,11 @@ export async function add(args, runtime) {
 export async function set(args, runtime) {
     const id = taskIdOf(onePositional(args, 'id'));
     const caller = callerOf(args.flags, runtime.env);
-    const input = statusInputOf(args.flags);
-    const { config, paths, register, roster } = await openTeam(runtime, 'write');
+    const typed = statusInputOf(args.flags);
+    const team = await openTeam(runtime, 'write');
+    const { config, paths, register, roster } = team;
     const by = sessionIdOf(roster, caller);
+    const input = statusInputIds(team, typed);
     const exit = report(runtime, await register.setStatus(by, id, input), 'SET', paths.config);
     if (input.status === 'done') {
         await markBoundary(runtime, config, paths, by, id);
@@ -167,6 +182,10 @@ async function settle(runtime, { own, teams }, needsHistory) {
     }
     return { own: settled.find((rolled) => rolled.team === own.team) ?? own, teams: settled };
 }
+/** How a read of one register judges its waiting tasks' reasons now. */
+function contextOf(snapshot, runtime) {
+    return waitContext(snapshot.state.tasks, new Date(runtime.clock.now()));
+}
 /** A filter that selects finished tasks, the only ones a compaction retires. */
 function selectsFinished(filter) {
     return () => (filter.statuses ?? ACTIVE_STATUSES).some((status) => !ACTIVE_STATUSES.includes(status));
@@ -184,12 +203,16 @@ function weekMayBeRetired(week) {
 async function treeRows(args, runtime) {
     const filter = listFilterOf(new Map([...args.flags].filter(([name]) => name !== 'session')));
     const { teams } = await settle(runtime, await rollUp(runtime, callerOf(args.flags, runtime.env)), selectsFinished(filter));
-    return teams.flatMap(({ team, roster, snapshot }) => selectTasks(snapshot.state.tasks.values(), treeFilterOf(roster, filter)).map((task) => ({ task, team })));
+    return teams.flatMap(({ team, roster, snapshot }) => {
+        const context = contextOf(snapshot, runtime);
+        return selectTasks(snapshot.state.tasks.values(), treeFilterOf(roster, filter)).map((task) => ({ task, team, context }));
+    });
 }
 async function ownRows(args, runtime) {
     const filter = listFilterOf(args.flags);
     const { own } = await settle(runtime, await ownRegister(runtime), selectsFinished(filter));
-    return selectTasks(own.snapshot.state.tasks.values(), filterIds(own.roster, filter)).map((task) => ({ task, team: undefined }));
+    const context = contextOf(own.snapshot, runtime);
+    return selectTasks(own.snapshot.state.tasks.values(), filterIds(own.roster, filter)).map((task) => ({ task, team: undefined, context }));
 }
 /** `list [--tree] [--all]`: the short form (src/cli/reports.ts), or with `--all` every field of every task. */
 export async function list(args, runtime) {
@@ -206,7 +229,7 @@ export async function show(args, runtime) {
     if (task === undefined) {
         throw new RefusedError(`no task ${id}`);
     }
-    runtime.out.stdout(formatTaskDetail(task, snapshot.read.events.filter((event) => event.id === id)));
+    runtime.out.stdout(formatTaskDetail(task, snapshot.read.events.filter((event) => event.id === id), contextOf(snapshot, runtime)));
     return EXIT.ok;
 }
 /** The `--week` given, else the newest week plan that has started. */
@@ -216,7 +239,7 @@ function weekFor(args, snapshot, now) {
 }
 /** The task flags of one register; with `team`, for `check --tree`, its task ids name it. */
 function checkRegister(snapshot, config, now, week, team) {
-    return { team, flags: checkTasks(snapshot.state.tasks.values(), now, week, config.register) };
+    return { team, flags: checkTasks(snapshot.state.tasks.values(), now, week, config.register), context: waitContext(snapshot.state.tasks, now) };
 }
 /**
  * `check [--tree] [--all]`: the task flags, then the skill flags of the Claude Code skills folder, in
