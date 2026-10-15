@@ -407,6 +407,18 @@
         }
       }
     },
+    "tests": {
+      "type": "object",
+      "properties": {
+        "maxFailureChars": {
+          "description": "The most characters of failing tests teamrig test prints after a failed run, all of them together; the rest stays in its log.",
+          "type": "integer",
+          "minimum": 500,
+          "maximum": 50000,
+          "default": 4000
+        }
+      }
+    },
     "alerts": {
       "type": "object",
       "properties": {
