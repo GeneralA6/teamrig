@@ -695,6 +695,46 @@ OK 3 commit(s) in origin/main..HEAD, none over 400 non-test lines or 15 files wi
 
 A commit over the rule without the reason line is `REFUSED` (exit 2).
 
+### teamrig test
+
+Runs a test command in the shell and prints a few lines instead of all it printed, so a long test run costs the
+model little. The whole output goes to a numbered log, `test-<session>-<n>.log` in the team's `state/logs` folder
+(the kit home's `logs` folder outside a team); each session keeps its newest 20. Then one `PASS` or `FAIL` line with
+the counts, the time and the log's path, and for a failed run each failing test in full within
+`tests.maxFailureChars` (4,000 characters by default), or the output's last 40 lines when no test runner is
+recognised. It reads the Node.js test runner (spec and TAP), Jest and Vitest. Exit 0 when the command passed,
+1 otherwise.
+
+Everything after `--` is the command. One quoted word runs as written, so `"npm run build && npm test"` works;
+several words are passed on as typed, globs included.
+
+Flags:
+
+- `--session <id|name>`: the session the log is named after; default `$TEAMRIG_SESSION`, else none
+  (`test-<n>.log`).
+
+Example:
+
+```sh
+teamrig test --session api -- npm test
+```
+
+Output:
+
+```text
+FAIL npm test: 1 of 1,532 failed in 41 s. Log: /home/you/.teamrig/teams/app/state/logs/test-api-7.log
+test at src/total.test.ts:12:3
+✖ adds the week's use (1.2ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  3 !== 4
+
+      at TestContext.<anonymous> (file:///work/app/src/total.test.ts:12:39)
+```
+
+A run that passes prints its first line only: `PASS npm test: 1,532 tests in 41 s. Log: <path>`. Past the cap, the
+last line says how many more failures the log holds.
+
 ## Budget
 
 These commands measure and show only; the hooks warn a session past its daily budget, tell the lead and can hold
