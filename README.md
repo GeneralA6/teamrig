@@ -24,14 +24,10 @@ shows your session's tasks beside the conversation, and makes no model calls, so
 
 ### Requirements
 
-- Claude Code, tested on 2.1.299 and later.
-- Node.js 22.18 or later: the `teamrig` command and its hooks run on it.
-- git: the push guard reads your branches with it.
-- Windows, macOS or Linux: each is tested on Node.js 22 and 24.
-- Any terminal Claude Code runs in. `teamrig open` opens a session's tab in tmux, Windows Terminal, macOS Terminal,
-  GNOME Terminal or Konsole, or prints the command to run anywhere else.
+Claude Code and Node.js 22.18 or later. teamrig checks for anything else when you start it, and tells you in plain
+words what is missing and how to fix it.
 
-Nothing to switch on: no mode, no setting.
+*Coming: the check when you start teamrig.*
 
 ## Your day: two hours, not twelve
 
