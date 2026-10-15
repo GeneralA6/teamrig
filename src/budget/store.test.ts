@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { NewerDataError } from '../core/jsonl.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { emptyPatterns, INITIAL_PATTERN_STATE } from './patterns.ts';
-import { EMPTY_USAGE, formatUsage, newCursor, parseUsage, pruneUsage, RECENT_KEYS_KEPT, UsageStore, type UsageState } from './store.ts';
+import { EMPTY_USAGE, formatUsage, MemoryUsageStore, newCursor, parseUsage, pruneUsage, RECENT_KEYS_KEPT, UsageStore, type UsageState } from './store.ts';
 
 const DIR = '/state/usage';
 const FILE = '/state/usage/alpha.json';
@@ -51,6 +51,17 @@ describe('UsageStore', () => {
   it('refuses a session id that is not safe in a file name', async () => {
     const store = new UsageStore(new MemoryFiles(), DIR);
     await assert.rejects(store.load('../alpha'), /is not valid/);
+  });
+});
+
+describe('MemoryUsageStore', () => {
+  it('keeps each session in memory with the same revision check', async () => {
+    const store = new MemoryUsageStore();
+    assert.deepEqual(await store.load('alpha'), { rev: 0, state: EMPTY_USAGE });
+    assert.equal(await store.save('alpha', STATE, 0), true);
+    assert.deepEqual(await store.load('alpha'), { rev: 1, state: STATE });
+    assert.equal(await store.save('alpha', EMPTY_USAGE, 0), false);
+    assert.deepEqual(await store.load('beta'), { rev: 0, state: EMPTY_USAGE });
   });
 });
 

@@ -11,14 +11,14 @@ import {
   type OpenCall,
   type TranscriptCursor,
   type UsageState,
-  type UsageStore,
+  type UsageStorage,
 } from './store.ts';
 import { contextTokens, WEIGHTS, weightOf } from './weights.ts';
 
 /** What the meter reads with and where it keeps its totals. */
 export interface MeterDeps {
   readonly bytes: TranscriptBytes;
-  readonly store: UsageStore;
+  readonly store: UsageStorage;
   readonly clock: Clock;
 }
 
