@@ -15,7 +15,7 @@ import { ACTIVE_STATUSES } from '../../register/model.ts';
 import type { RegisterSnapshot, RetiredTasks } from '../../register/snapshot.ts';
 import { readStopgapTags, stopgapFlags, stopgapTags } from '../../register/stopgap.ts';
 import { heldStart, heldStartNotice, startHolds, verifyQueue } from '../../register/verify.ts';
-import { formatTask, formatTaskDetail, formatVerifyRow, selectTasks, type ListFilter } from '../../register/views.ts';
+import { assignedNotice, formatTask, formatTaskDetail, formatVerifyRow, selectTasks, type ListFilter } from '../../register/views.ts';
 import { waitContext, type WaitContext } from '../../register/waits.ts';
 import { lintSkills } from '../../skills/lint.ts';
 import { SKILL_FILE, SkillDir } from '../../skills/store.ts';
@@ -155,7 +155,30 @@ export async function add(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
   const input = addInputOf(args.flags, caller);
   const team = await openTeam(runtime, 'write');
   const by = sessionIdOf(team.roster, caller);
-  return report(runtime, await team.register.add(by, addInputIds(team, input)), 'ADDED', team.paths.config);
+  const verdict = await team.register.add(by, addInputIds(team, input));
+  const code = report(runtime, verdict, 'ADDED', team.paths.config);
+  await tellNewOwner(runtime, team, by, verdict);
+  return code;
+}
+
+/**
+ * One inbox line to the task's owner when this write gave it the task (`add --owner`, `update --owner`), so asking
+ * for work is one command; never to the caller, who gave it. A line that cannot be posted is named, never thrown:
+ * the task is written either way.
+ */
+async function tellNewOwner(runtime: CliRuntime, team: Team, by: string, verdict: Verdict<WriteResult>): Promise<void> {
+  if (!verdict.ok) {
+    return;
+  }
+  const { task, before } = verdict.value;
+  if (task.owner === by || task.owner === before?.owner) {
+    return;
+  }
+  const text = assignedNotice(task);
+  const { inboxes } = inboxDepsOf(runtime, team.paths);
+  const secrets = new SecretScanner(team.config.register.secretPatterns);
+  const problem = await postLine(inboxes, secrets, { to: task.owner, from: by, text, now: new Date(runtime.clock.now()) });
+  runtime.out.stderr(problem === undefined ? `NOTE ${task.owner} has an inbox line: ${text}` : `WARN ${task.owner} was not told of ${task.id}: ${problem}`);
 }
 
 export async function set(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
@@ -231,9 +254,12 @@ export async function update(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   const id = taskIdOf(onePositional(args, 'id'));
   const caller = callerOf(args.flags, runtime.env);
   const changes = changesOf(args.flags);
-  const { paths, register, roster } = await openTeam(runtime, 'write');
-  const by = sessionIdOf(roster, caller);
-  return report(runtime, await register.update(by, id, changeIds(roster, changes), args.flags.get('note')), 'UPDATED', paths.config);
+  const team = await openTeam(runtime, 'write');
+  const by = sessionIdOf(team.roster, caller);
+  const verdict = await team.register.update(by, id, changeIds(team.roster, changes), args.flags.get('note'));
+  const code = report(runtime, verdict, 'UPDATED', team.paths.config);
+  await tellNewOwner(runtime, team, by, verdict);
+  return code;
 }
 
 /** A filter for one team of a roll-up: a source that names one of its sessions becomes its id. */

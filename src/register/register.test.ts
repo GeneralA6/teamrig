@@ -120,10 +120,12 @@ describe('Register', () => {
 
   it('lets the lead reassign, which restarts the pick-up clock', async () => {
     const { clock, register } = setup();
-    written(await register.add('lead', { title: 'Ship it', owner: 'alpha', source: 'owner', priority: 1 }));
+    const added = written(await register.add('lead', { title: 'Ship it', owner: 'alpha', source: 'owner', priority: 1 }));
+    assert.equal(added.before, null, 'a new task has no before');
     clock.advance(3_600_000);
     const result = written(await register.update('lead', 'T1', { owner: 'bravo' }, 'alpha is out'));
     assert.equal(result.task.owner, 'bravo');
+    assert.equal(result.before?.owner, 'alpha', 'the write names the owner it took the task from');
     assert.equal(result.task.assignedAt, '2030-01-07T10:00:00.000Z');
     assert.equal(result.task.ownerSeenAt, null);
   });

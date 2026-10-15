@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { testTask } from '../testing/task.ts';
 import type { RegisterEvent } from './events.ts';
 import {
+  assignedNotice,
   byPlanOrder,
   cut,
   formatEvent,
@@ -210,5 +211,12 @@ describe('formatEvent and formatTaskDetail', () => {
     assert.equal(formatEvent(proven), '2030-01-07 14:00 alpha status verifying note="shipped" proof="the nightly run"');
     const detail = formatTaskDetail(testTask({ id: 'T3', status: 'verifying', note: 'shipped', proof: 'the nightly run' }), [proven]).split('\n');
     assert.deepEqual(detail.slice(1, 3), ['note: shipped', 'proof: the nightly run']);
+  });
+});
+
+describe('assignedNotice', () => {
+  it('names the task, its priority, its due date when it has one, and its title', () => {
+    assert.equal(assignedNotice(testTask({ id: 'T5', due: '2030-01-10' })), 'T5 is yours (p2, due 2030-01-10): Add a health check');
+    assert.equal(assignedNotice(testTask({ id: 'T5', priority: 1 })), 'T5 is yours (p1): Add a health check');
   });
 });
