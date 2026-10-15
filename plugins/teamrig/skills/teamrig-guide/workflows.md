@@ -16,7 +16,9 @@ teamrig inbox read --session api && teamrig list --session api
    (`teamrig add --session api --title "..." --priority p<n> --source <asker>`).
 2. Take the first task of your list: lists are in plan order (priority, then due date, then id).
 3. Mark it started: `teamrig set T4 --session api --status in-progress`.
-4. Before you start any work that is not on the list, add it: self-made work is a task too.
+4. Before you start any work that is not on the list, add it: self-made work is a task too. Start it only for a
+   goal, a parent task or the week plan, never ahead of your top task that is not waiting; a one-commit fix is
+   exempt. A loop, cron or scheduled wake-up needs the lead's OK and a written stop (a time or a usage %).
 
 If the session-start context said no session is set, ask the user which session you are (`teamrig who` lists
 them) before running anything.
@@ -46,7 +48,8 @@ budget, resource changes) goes to the lead, never decided by silence.
 ## Close a task with proof
 
 1. Finish and verify: tests pass, the change is merged or deployed as the task needs, and you checked that it
-   runs.
+   runs. If the change altered what code reads, writes or depends on, search for comments that still describe
+   the old behaviour, in other files too, and fix them in the same commit.
 2. If you had to work out a procedure you will run again, write or fix its skill now (see
    [tasks.md](tasks.md#skills)).
 3. Set it done with the proof:
@@ -117,6 +120,17 @@ teamrig refreshes a long-running session at a task boundary, so it never loses w
 The hook judges each finished task once and never loops. A team turns this off with `refresh.enabled: false`; on a
 200k context window, set `refresh.contextTokens` to about 150,000.
 
+## Use a helper
+
+A helper (a subagent) keeps file dumps and long output out of your context. Pick who does a job, and on which
+model, by fit for the task, never by its length.
+
+1. Run the helper on your own model and effort: a cheaper one misses things the caller then builds on.
+2. When others will build on its results, have it write its full findings (raw numbers, file and line, what it
+   could not check) to a file, and return the path and a short summary, so nobody runs it again.
+3. Let a helper start helpers of its own only when the task splits cleanly: a fan-out multiplies the cost.
+4. Read only the lines you need from its file, never the whole of it, and never re-read a file you just wrote.
+
 ## Lead checkpoint
 
 At the start of each work block, and whenever the human asks for status:
@@ -139,7 +153,18 @@ With sub-teams, add `--tree` to `check`. Then act on each flag (full table: [tas
 - A `SKILL` flag: tell the skill's owner in one inbox line.
 
 The lead may change a task's owner, priority, due date and week; its status and goals are its owner's. To plan a
-week, tag its tasks with `--week <first day>` and print it with `teamrig plan --session lead`.
+week, tag its tasks with `--week <first day>` and print it with `teamrig plan --session lead`; plan from that
+output, never from memory.
+
+Every order of the human's that creates work becomes a task in the same turn, added by the lead when it relays
+the order, with the owner's source [register.ownerSource]:
+
+```sh
+teamrig add --session lead --owner api --source owner --priority p2 --title "Rate-limit the signup endpoint"
+```
+
+Bring the human only what needs them: verified results, decisions taken, investigated questions (options,
+numbers and a recommendation) and incidents. Progress and plans stay in the register and on the boards.
 
 ## Create a team and start its sessions
 

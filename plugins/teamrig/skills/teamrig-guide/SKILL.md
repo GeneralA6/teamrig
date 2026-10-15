@@ -15,7 +15,7 @@ This page is the model and the daily loop. The detail lives beside it:
 | --- | --- |
 | [commands.md](commands.md) | Every command: its flags, an example and what it prints |
 | [tasks.md](tasks.md) | Task statuses and what each needs, inbox lines and messages, check flags, week plans, skills |
-| [workflows.md](workflows.md) | Step by step: a work block, handing work over, closing a task, a handover, a lead checkpoint |
+| [workflows.md](workflows.md) | Step by step: a work block, handing work over, closing a task, a handover, a helper, a lead checkpoint |
 | [hooks.md](hooks.md) | The four hooks, what each injects or blocks, and permissions |
 | [errors.md](errors.md) | Every common refusal and usage error, with its fix |
 | [requirements.md](requirements.md) | What teamrig needs: Claude Code, Node.js, git, terminals, operating systems |
