@@ -293,7 +293,7 @@ sequenceDiagram
 ## Safe pushes
 
 Before Claude runs a `git push`, teamrig reads the command and asks you, or refuses, when it would change a
-protected branch (by default `main` and `master`, set in `pushGuard.protectedBranches`).
+protected branch (by default `main` and `master`, set in `pushGuard.protectedBranches`; an empty list guards nothing).
 
 ```mermaid
 flowchart TD
@@ -305,11 +305,18 @@ flowchart TD
   push -- yes --> branch{"Does it update a protected branch?"}
   branch -- no --> run
   branch -- "yes, with --force, + or a delete" --> deny
-  branch -- yes --> ask["You are asked, with any large commits listed"]
+  branch -- "yes, with --force-with-lease" --> ask["You are asked, with any large commits listed"]
+  branch -- yes --> mode{"pushGuard.pushToProtected"}
+  mode -- ask --> ask
+  mode -- allow --> note["Runs, with a note and any large commits listed"]
 ```
 
-- `--force-with-lease` is asked, not refused. `commits.gate` set to `refuse` turns the ask into a refusal when a
-  commit is over the size rule (400 changed lines or 15 files, tests not counted) with no `Large-commit:` reason.
+- `pushGuard.pushToProtected` (since 0.11.0) is `ask` by default; set to `allow`, a normal push to a protected branch
+  runs with a one-line note instead of a question, and Claude Code's own permissions still decide. Each question
+  about a normal push ends by naming this switch.
+- `--force-with-lease` is asked, not refused, under either setting. `commits.gate` set to `refuse` turns the ask (or
+  the allowed push) into a refusal when a commit is over the size rule (400 changed lines or 15 files, tests not
+  counted) with no `Large-commit:` reason.
 - `--all` is asked, and refused with `--force` or `--prune`; large commits are those not yet on the last-fetched
   `origin/<branch>`.
 - `teamrig commits check --base <ref>` runs the same size rule in a script or CI.
