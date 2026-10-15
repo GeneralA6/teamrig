@@ -1,9 +1,10 @@
 # What teamrig does
 
 **One lead. Many AI sessions. One task list.** Run several Claude Code sessions on one project as one team, without
-two of them owning the same task or force-pushing your main branch. You name the sessions; one leads and hands out
-tasks, every task has one owner, and each session sees its own tasks and inbox notes. Claude runs the `teamrig`
-[commands](commands.md) for you; you need a terminal, Claude Code and Node.js 22.18 or later.
+two of them owning the same task, and with a guard against their force-pushes to your main branch. You name the
+sessions; one leads and hands out tasks, every task has one owner, and each session can list its own tasks
+(`teamrig list --session web`) and is told of new inbox notes. Claude runs the `teamrig` [commands](commands.md) for
+you; you need a terminal, Claude Code and Node.js 22.18 or later.
 
 To install, see [Get started](../README.md#get-started); to set a team up yourself, see
 [Set up a team by hand](setup-by-hand.md).
@@ -18,16 +19,16 @@ your machine.
 
 | You get | How | Status |
 | --- | --- | --- |
-| **Nothing to run or host** | Plain files on disk, a small CLI and Claude Code hooks. Works offline; no account. | works today |
+| **Nothing to run or host** | Plain files on disk, a small CLI with no runtime dependencies, and Claude Code hooks. Works offline; no account. | works today |
 | **A task list nobody loses** | `teamrig add`, `set`, `update`, `list`, `show`: owner, priority (p1 first), due date, goals and week; `show` also lists who changed the task. `check` finds tasks that break a team rule; `plan` prints the week. | works today |
 | | Dependencies and parent/child tasks | being built (T205) |
 | | Planned start and ETA, history across tasks (`history --by <session>`), token estimates | being built (T209, T210, T211) |
 | **Notes between sessions, no server** | `teamrig inbox add --to web`; the receiver is reminded at its next prompt and reads with `inbox read`. `who` gives the name to message a session by. | works today |
 | **A lead that runs the team** | One session holds the lead role in the team config; every session learns at start who it is and whom to message. | works today |
-| | Names that survive a rename: `teamrig rename` keeps the session's id, and every old name still works; `teamrig doctor` finds name and inbox problems | works today |
+| | Names that survive a rename: `teamrig rename` keeps the session's id, and its old names keep finding it until another session takes one; `teamrig doctor` finds name and inbox problems | works today |
 | | Teams of teams: `team create --parent` hangs a sub-team under a lead (up to 3 levels, 8 sub-teams each); `add --team` hands its lead a task, `list`, `check` and `plan` with `--tree` read every team below, and notes go up and down only through leads | works today |
-| **Shared rules, loaded every time** | At start, each session gets the core rules and your team's own rules (`teams/<team>/rules.md` in the kit home; over 3,500 characters, a pointer to it); `check` also lints your skills. | works today |
-| **Safe pushes from parallel sessions** | A push guard asks before any push to a protected branch (such as main) and refuses a `--force` push or a delete of one (a `--force-with-lease` push asks); `commits check` holds commits to a size rule. | works today |
+| **Shared rules, loaded every time** | At start, each session gets the core rules and your team's own rules (`teams/<team>/rules.md` in the kit home; over 3,500 characters, a pointer to it); where the two conflict, yours win. `teamrig rules` prints them, and `check` also lints your skills. | works today |
+| **Safe pushes from parallel sessions** | A push guard asks before Claude pushes to a protected branch (such as main) and refuses a `--force` push or a delete of one (a `--force-with-lease` push asks; [what it cannot see](how-it-works.md#safe-pushes)); `commits check` holds commits to a size rule. | works today |
 | | A deploy coordinator: one push at a time, a lock for heavy steps, no-deploy windows | planned (T228) |
 | **A fresh context, nothing forgotten** | When a session marks a task done with its context over the team's threshold (250k tokens by default), or the lead asked (`teamrig refresh <session>`), it writes a handover; you type `/clear` (a hook cannot) and it starts again from the handover. | works today |
 | | Restarting the tab for you instead of `/clear` | planned (T201, T212) |
@@ -45,7 +46,7 @@ teamrig runs with Claude Code in a terminal today; other AI tools and task track
 | | Today | Planned |
 | --- | --- | --- |
 | AI coding tools | Claude Code | Codex (T204) |
-| Editors | Any terminal | VS Code family, JetBrains |
+| Editors | Any terminal Claude Code runs in; `teamrig open` opens tabs in six ([which](setup-by-hand.md#configuration)) | VS Code family, JetBrains |
 | Task tools | Its own task list | Jira, Linear, GitHub Issues, Asana (T206) |
 
 ## How it works
@@ -55,7 +56,7 @@ program reads and writes plain files in your team's folder. Nothing runs between
 
 ```mermaid
 flowchart LR
-  hooks["Claude Code hooks: session start, each prompt, each Bash command, each turn's end"] --> cli["teamrig"]
+  hooks["Claude Code hooks: session start, each prompt, each Bash or PowerShell command, each turn's end"] --> cli["teamrig"]
   bash["Claude's Bash tool: teamrig add, set, inbox ..."] --> cli
   cli <--> files["~/.teamrig/teams/your-team/: plain files"]
 ```
