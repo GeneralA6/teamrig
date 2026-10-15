@@ -5,7 +5,7 @@ import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { MODEL_ALIASES, MODEL_ID_MAX_LENGTH, MODEL_ID_PATTERN } from './launch.ts';
 import { CONFIG_LIMITS } from './limits.ts';
 import { parseConfig } from './parse.ts';
-import { COMMIT_GATES, EFFORT_LEVELS, PUSH_TO_PROTECTED } from './types.ts';
+import { COMMIT_GATES, EFFORT_LEVELS, PUSH_TO_PROTECTED, VERIFY_GATES } from './types.ts';
 
 /** The roster has no default; everything else in the schema must state the code's default. */
 const ROSTER = { sessions: ['alpha', 'bravo'], roles: { lead: 'alpha' } };
@@ -75,6 +75,7 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   testPatterns: 'commits.testPatterns',
   forbidFrontmatter: 'skills.forbidFrontmatter',
   requireNoteOn: 'register.requireNoteOn',
+  maxVerifying: 'register.maxVerifying',
   persistentFailureHours: 'alerts.persistentFailureHours',
   chainNudgeAt: 'loops.chainNudgeAt',
   maxFailureChars: 'tests.maxFailureChars',
@@ -197,6 +198,10 @@ describe('config.schema.json', () => {
     const schema = await loadSchema();
     assert.deepEqual(nodeAt(schema, 'pushGuard.pushToProtected')['enum'], [...PUSH_TO_PROTECTED]);
     assert.deepEqual(nodeAt(schema, 'commits.gate')['enum'], [...COMMIT_GATES]);
+  });
+
+  it('takes the verify gate choices the parser takes', async () => {
+    assert.deepEqual(nodeAt(await loadSchema(), 'register.verifyGate')['enum'], [...VERIFY_GATES]);
   });
 
   it('requires exactly the roster', async () => {

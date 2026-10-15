@@ -216,6 +216,19 @@ describe('parseConfig', () => {
     assert.equal(config.register.autoArchive, true);
   });
 
+  it('reads the verify loop keys, and falls back to the default on a wrong one', () => {
+    const set = parseConfig({ ...ROSTER, register: { requireProofOnVerifying: false, verifyGate: 'warn', maxVerifying: 0 } });
+    assert.deepEqual(set.issues, []);
+    assert.deepEqual(
+      [set.config.register.requireProofOnVerifying, set.config.register.verifyGate, set.config.register.maxVerifying],
+      [false, 'warn', 0],
+    );
+    const { config, issues } = parseConfig({ ...ROSTER, register: { requireProofOnVerifying: 'yes', verifyGate: 'block', maxVerifying: 101 } });
+    assert.deepEqual(paths(issues).sort(), ['register.maxVerifying', 'register.requireProofOnVerifying', 'register.verifyGate']);
+    assert.match(issues.find((issue) => issue.path === 'register.verifyGate')?.message ?? '', /refuse, warn/);
+    assert.deepEqual([config.register.requireProofOnVerifying, config.register.verifyGate, config.register.maxVerifying], [true, 'refuse', 5]);
+  });
+
   it('reads the commits rule, refusing a bad gate, trailer key, bound or pattern', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,

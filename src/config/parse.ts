@@ -28,10 +28,12 @@ import {
   isOverAction,
   isPushToProtected,
   isTerminalChoice,
+  isVerifyGate,
   isWeekday,
   OVER_ACTIONS,
   PUSH_TO_PROTECTED,
   TERMINALS,
+  VERIFY_GATES,
   WEEKDAYS,
   type BudgetConfig,
   type BudgetLiftConfig,
@@ -384,6 +386,7 @@ function parseRegister(read: ConfigReader, raw: JsonRecord): RegisterConfig {
     read.report(`${path}.priorities`, 'uses a priority id more than once');
   }
   const goalPattern = read.optionalString(raw, 'goalPattern', path, isValidRegex);
+  const verifyGate = read.string(raw, 'verifyGate', path, defaults.verifyGate, oneOf(VERIFY_GATES));
   const register: RegisterConfig = {
     ownerSource: read.string(raw, 'ownerSource', path, defaults.ownerSource, isSessionName),
     priorities: priorities.length === 0 ? defaults.priorities : priorities,
@@ -401,6 +404,9 @@ function parseRegister(read: ConfigReader, raw: JsonRecord): RegisterConfig {
       CONFIG_LIMITS.requireNoteOn.maxItems,
     ),
     autoArchive: read.boolean(raw, 'autoArchive', path, defaults.autoArchive),
+    requireProofOnVerifying: read.boolean(raw, 'requireProofOnVerifying', path, defaults.requireProofOnVerifying),
+    verifyGate: isVerifyGate(verifyGate) ? verifyGate : defaults.verifyGate,
+    maxVerifying: read.integer(raw, 'maxVerifying', path, defaults.maxVerifying, CONFIG_LIMITS.maxVerifying),
     check: {
       staleAfterHours: read.integer(check, 'staleAfterHours', `${path}.check`, defaults.check.staleAfterHours, { min: 1 }),
       notPickedUpAfterHours: read.integer(check, 'notPickedUpAfterHours', `${path}.check`, defaults.check.notPickedUpAfterHours, { min: 1 }),
