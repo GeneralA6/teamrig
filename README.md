@@ -24,7 +24,7 @@ shows your session's tasks beside the conversation, and makes no model calls, so
 
 ### Requirements
 
-- Claude Code 2.1.299 or later.
+- Claude Code, tested on 2.1.299 and later.
 - Node.js 22.18 or later: the `teamrig` command and its hooks run on it.
 - git: the push guard reads your branches with it.
 - Windows, macOS or Linux: each is tested on Node.js 22 and 24.
