@@ -37,6 +37,7 @@ export const DEFAULT_REGISTER: RegisterConfig = {
   requireEvidenceOnDone: true,
   requireSkillOnDone: true,
   requireNoteOn: ['blocked', 'done', 'dropped'],
+  autoArchive: true,
   check: { staleAfterHours: 72, notPickedUpAfterHours: 24, prioritySkipAfterHours: 24, weekLengthDays: 7 },
 };
 

@@ -134,6 +134,11 @@
           "items": { "enum": ["open", "in-progress", "blocked", "done", "dropped"] },
           "default": ["blocked", "done", "dropped"]
         },
+        "autoArchive": {
+          "description": "After the first teamrig compact, a write that leaves the task list's log over 512 KiB archives it and says so in a NOTE line. false: only teamrig compact archives it.",
+          "type": "boolean",
+          "default": true
+        },
         "check": {
           "type": "object",
           "properties": {
