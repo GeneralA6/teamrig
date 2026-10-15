@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
-import { APP, CliHarness, decisionOf, TEAM, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
+import { APP, CliHarness, decisionOf, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { replyLine, transcript } from '../testing/transcript-lines.ts';
 import { EXIT } from './runtime.ts';
@@ -119,6 +119,18 @@ describe('the budget in the hooks', () => {
     assert.deepEqual((await hook('stop', ALPHA_TAB)).stdout, []);
     assert.deepEqual((await hook('helper-gate', ALPHA_TAB, AGENT)).stdout, []);
     const prompt = await hook('inbox-reminder', ALPHA_TAB, { prompt: 'next' });
+    assert.ok(!prompt.stdout.some((line) => line.startsWith('teamrig budget:')));
+  });
+
+  it('stays silent and never fails a hook when a newer teamrig wrote the usage files', async () => {
+    const { kit, hook } = await world({ overAction: 'block' }, 10_000_000, 30);
+    await kit.files.write(join(TEAM_HOME, 'state', 'usage', 'alpha.json'), '{"v":2,"rev":1}');
+    for (const result of [await hook('stop', ALPHA_TAB), await hook('helper-gate', ALPHA_TAB, AGENT)]) {
+      assert.equal(result.code, EXIT.ok);
+      assert.deepEqual(result.stdout, []);
+    }
+    const prompt = await hook('inbox-reminder', ALPHA_TAB, { prompt: 'next' });
+    assert.equal(prompt.code, EXIT.ok);
     assert.ok(!prompt.stdout.some((line) => line.startsWith('teamrig budget:')));
   });
 
