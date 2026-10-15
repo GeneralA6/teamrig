@@ -1,7 +1,10 @@
+import { join } from 'node:path';
 import type { Roster } from '../../config/roster.ts';
+import type { KitConfig } from '../../config/types.ts';
 import { isRecord, stringField } from '../../core/guards.ts';
-import { ENV } from '../../core/home.ts';
+import { claudeConfigDir, ENV } from '../../core/home.ts';
 import { resolveTeam, type TeamResolution } from '../../core/team.ts';
+import { OwnPaths } from '../../hooks/lead-boundary.ts';
 import { indexMarks } from '../../inbox/marks.ts';
 import { teamFolders, type Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
@@ -58,4 +61,10 @@ export async function markedSessionOf(runtime: CliRuntime, kit: Kit, roster: Ros
   const { marks } = await inboxDepsOf(runtime, kit.paths).marks.read();
   const area = indexMarks(marks).areaBySession.get(claudeSession);
   return area !== undefined && roster.ids.includes(area) ? area : undefined;
+}
+
+/** The lead's own paths in this team: its teamrig folder, Claude Code's memory folders and `leadBoundary.ownPaths`. */
+export function leadOwnPaths(runtime: CliRuntime, kit: Kit, config: KitConfig): OwnPaths {
+  const memory = join(claudeConfigDir(runtime.env, runtime.userHome), 'projects', '*', 'memory');
+  return new OwnPaths([kit.paths.home, memory, ...config.leadBoundary.ownPaths], runtime.userHome);
 }

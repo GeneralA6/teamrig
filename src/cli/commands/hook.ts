@@ -14,9 +14,12 @@ import { JsonlHintLog } from '../../hooks/hint-log.ts';
 import { requirementsNoteOnce } from '../../hooks/requirements-note.ts';
 import { sessionStartContext, sessionStartOutput, type SessionStartInput } from '../../hooks/session-start.ts';
 import { stopModelNotices } from '../../hooks/stop-model.ts';
+import { leadStopLine, leadTallyOf } from '../../hooks/lead-boundary.ts';
+import { turnToolsOf } from '../../hooks/loop-nudge.ts';
 import { stopOutput } from '../../hooks/stop.ts';
 import { adoptTitle, promptNote, sessionStartNote, type TitleOutcome } from '../../names/detect.ts';
 import { JsonlRenameLog } from '../../names/log.ts';
+import { TRANSCRIPT_TAIL_BYTES } from '../../names/title.ts';
 import { decideStart, decideStop, handoverHashOf, type BoundaryFacts, type StopContext, type StopDecision } from '../../refresh/decide.ts';
 import { readRunningWork } from '../../refresh/running.ts';
 import { RefreshStore } from '../../refresh/store.ts';
@@ -29,7 +32,7 @@ import { bindHintOnce, bindTab, inboxLinesFor, readTitle, type TitleRead } from 
 import { helperGateOutput, promptBudgetLine, stopBudgetLines } from './hook-budget.ts';
 import { startAutoSync } from './gh-auto.ts';
 import { coldSendHold } from './hook-cold-send.ts';
-import { envSession, markedSessionOf, parseJson, sessionTeam, teamSessionOf } from './hook-input.ts';
+import { envSession, leadOwnPaths, markedSessionOf, parseJson, sessionTeam, teamSessionOf } from './hook-input.ts';
 import { verifyByLinesOf, verifyNoteOf } from './verify-queue.ts';
 
 /**
@@ -335,6 +338,21 @@ async function stopScopeOf(runtime: CliRuntime, payload: JsonRecord): Promise<St
   return id === undefined ? undefined : { kit, config, roster, id };
 }
 
+/** The owner's turn-end line when the lead did hand-off work itself (lead-boundary.ts); none for another session, with the boundary off or without a transcript. */
+async function leadStopLines(runtime: CliRuntime, scope: StopScope, transcript: string | undefined): Promise<readonly string[]> {
+  const { kit, config, id } = scope;
+  if (!config.leadBoundary.enabled || id !== config.roles.lead || transcript === undefined) {
+    return [];
+  }
+  const text = await runtime.files.readTail(transcript, TRANSCRIPT_TAIL_BYTES);
+  if (text === undefined) {
+    return [];
+  }
+  const turn = turnToolsOf(text, Buffer.byteLength(text, 'utf8') >= TRANSCRIPT_TAIL_BYTES, undefined);
+  const line = leadStopLine(leadTallyOf(turn, leadOwnPaths(runtime, kit, config)), config.leadBoundary.searchNudgeAt);
+  return line === undefined ? [] : [line];
+}
+
 /** The refresh decision for this turn's end; none with refresh off. */
 async function refreshDecisionOf(runtime: CliRuntime, scope: StopScope, payload: JsonRecord): Promise<StopDecision> {
   const { kit, config, roster, id } = scope;
@@ -398,7 +416,8 @@ async function stopOutputOf(runtime: CliRuntime, payload: JsonRecord): Promise<s
   const budget = await stopBudgetLines(runtime, scope, stringField(payload, 'transcript_path')).catch((): readonly string[] => []);
   const verify = await verifyByLinesOf(runtime, scope.kit.paths, scope.id).catch((): readonly string[] => []);
   await startAutoSync(runtime, scope.kit, scope.config).catch(() => undefined);
-  return stopOutput(decision, [...notices, ...budget, ...verify]);
+  const lead = await leadStopLines(runtime, scope, stringField(payload, 'transcript_path')).catch((): readonly string[] => []);
+  return stopOutput(decision, [...notices, ...budget, ...verify, ...lead]);
 }
 
 /**
