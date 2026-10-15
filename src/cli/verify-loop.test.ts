@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { CliHarness, TEAM } from '../testing/cli-harness.ts';
+import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
+import { APP, CLAUDE_SESSION, CliHarness, contextOf, EVENTS_PATH, TEAM } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
 
 /** A harness holding T1, owned by alpha and in progress. */
@@ -55,6 +56,43 @@ describe('runCli: verify lists the verifying tasks of a session', () => {
     );
     const none = await kit.run(['verify', '--session', 'bravo']);
     assert.deepEqual([none.code, none.stdout], [EXIT.ok, ['VERIFY 0 tasks of bravo, oldest first']]);
+  });
+});
+
+describe('the verify queue reaches its session', () => {
+  const queue = 'VERIFY 1: T1 (proof: the nightly run)';
+  const start = JSON.stringify({ session_id: CLAUDE_SESSION, cwd: APP, source: 'startup' });
+
+  async function verifying(): Promise<CliHarness> {
+    const kit = await startedTask();
+    await kit.run(['set', 'T1', '--status', 'verifying', '--note', 'shipped', '--proof', 'the nightly run', '--session', 'alpha']);
+    return kit;
+  }
+
+  it('in the start context of a session that holds verifying tasks, and of no other', async () => {
+    const kit = await verifying();
+    const context = contextOf(await kit.run(['hook', 'session-start'], { stdin: start, env: { TEAMRIG_SESSION: 'alpha' } }));
+    assert.ok(context.includes(`
+${queue}`), context);
+    const other = contextOf(await kit.run(['hook', 'session-start'], { stdin: start, env: { TEAMRIG_SESSION: 'bravo' } }));
+    assert.ok(!other.includes('VERIFY'));
+  });
+
+  it('starts the session without it when the register cannot be read', async () => {
+    const kit = await verifying();
+    const files = new FaultyFiles(kit.files).fail('read', EVENTS_PATH, systemError('EACCES'));
+    const result = await kit.run(['hook', 'session-start'], { stdin: start, env: { TEAMRIG_SESSION: 'alpha' }, files });
+    assert.equal(result.code, EXIT.ok);
+    assert.ok(!contextOf(result).includes('VERIFY'));
+  });
+
+  it('after the lines of inbox read', async () => {
+    const kit = await verifying();
+    const read = await kit.run(['inbox', 'read', '--session', 'alpha']);
+    assert.equal(read.code, EXIT.ok);
+    assert.equal(read.stdout.at(-1), queue);
+    const other = await kit.run(['inbox', 'read', '--session', 'bravo']);
+    assert.ok(other.stdout.every((line) => !line.startsWith('VERIFY')), other.stdout.join('\n'));
   });
 });
 

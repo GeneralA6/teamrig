@@ -23,6 +23,7 @@ function context(overrides: Partial<SessionStartInput> = {}): string {
     titleNote: undefined,
     refreshNote: undefined,
     modelNote: undefined,
+    verifyNote: undefined,
     session: 'alpha',
     sessionInEnv: true,
     tree: undefined,
@@ -80,6 +81,13 @@ describe('sessionStartContext', () => {
     assert.ok(text.endsWith(`${NAMES}
 Title note.
 MODEL app-alpha runs model claude-haiku-5-5.`));
+  });
+
+  it('says the verify queue after the model line', () => {
+    const text = context({ modelNote: 'MODEL line.', verifyNote: 'VERIFY 1: T1 (proof: the nightly run)' });
+    assert.ok(text.endsWith(`${NAMES}
+MODEL line.
+VERIFY 1: T1 (proof: the nightly run)`));
   });
 
   it("appends the team's rules", () => {

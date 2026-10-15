@@ -12,6 +12,7 @@ import { callerOf, sessionRef } from '../inputs.ts';
 import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, requireConfig, rosterOf, sessionIdOf } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
+import { verifyNoteOf } from './verify-queue.ts';
 
 export function inboxDepsOf(runtime: CliRuntime, paths: TeamPaths): InboxDeps {
   return {
@@ -27,7 +28,10 @@ function claudeSessionOf(env: Env): string | null {
   return id !== undefined && CLAUDE_SESSION_ID.test(id) ? id : null;
 }
 
-/** `inbox read`: prints the caller's unread lines, but those the prompt hook showed this Claude Code session, and marks them all read. */
+/**
+ * `inbox read`: prints the caller's unread lines, but those the prompt hook showed this Claude Code
+ * session, and marks them all read; then, when the caller holds verifying tasks, its verify queue in one line.
+ */
 export async function read(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
   const caller = callerOf(args.flags, runtime.env);
@@ -37,6 +41,10 @@ export async function read(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   const result = await readInbox(inboxDepsOf(runtime, kit.paths), { area, claudeSession: claudeSessionOf(runtime.env), now });
   result.lines.forEach((line) => runtime.out.stdout(line));
   runtime.out.stdout(formatRead(result));
+  const verify = await verifyNoteOf(runtime, kit.paths, area);
+  if (verify !== undefined) {
+    runtime.out.stdout(verify);
+  }
   return EXIT.ok;
 }
 

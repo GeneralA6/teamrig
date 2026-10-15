@@ -30,6 +30,7 @@ import { helperGateOutput, promptBudgetLine, stopBudgetLines } from './hook-budg
 import { coldSendHold } from './hook-cold-send.ts';
 import { parseJson, sessionTeam } from './hook-input.ts';
 import { inboxDepsOf } from './inbox.ts';
+import { verifyNoteOf } from './verify-queue.ts';
 
 /**
  * Claude Code hooks. Each reads the hook's JSON from stdin and prints only what Claude Code
@@ -237,15 +238,15 @@ async function helperGateOf(runtime: CliRuntime, payload: JsonRecord): Promise<s
   return scope === undefined ? undefined : helperGateOutput(runtime, scope, stringField(payload, 'transcript_path'));
 }
 
-type TeamParts = Pick<SessionStartInput, 'teamRules' | 'renames' | 'titleNote' | 'refreshNote' | 'modelNote' | 'session' | 'sessionInEnv' | 'tree'>;
+type TeamParts = Pick<SessionStartInput, 'teamRules' | 'renames' | 'titleNote' | 'refreshNote' | 'modelNote' | 'verifyNote' | 'session' | 'sessionInEnv' | 'tree'>;
 
 /**
  * A loaded team's rules.md and rename log, after binding a hand-started tab by its Claude Code title
  * and recording a Claude Code rename of the session; the pointer to its handover after a refresh; who
  * the session is: `$TEAMRIG_SESSION`, else the area it read its inbox as or was bound to, so a tab that
  * set the team up keeps its identity across a compact or resume; whether it runs on its configured
- * model and effort; and where the team sits in a tree of teams, read from every team config of the kit
- * home.
+ * model and effort; its verifying tasks; and where the team sits in a tree of teams, read from every
+ * team config of the kit home.
  */
 async function teamPartsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, payload: unknown): Promise<TeamParts> {
   const title = await readTitle(runtime, payload);
@@ -263,12 +264,14 @@ async function teamPartsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, pay
   const fromEnv = envSession(runtime);
   const { tree } = await loadTree(runtime);
   const session = fromEnv ?? (await startSessionOf(runtime, kit, roster, payload));
+  const id = rosterIdOf(roster, session);
   return {
     teamRules: text === undefined ? undefined : { path: kit.paths.teamRules, text },
     renames,
     titleNote,
     refreshNote,
-    modelNote: modelNoteOf(config, roster, session, payload),
+    modelNote: modelNoteOf(config, roster, id, payload),
+    verifyNote: await verifyNoteOf(runtime, kit.paths, id),
     session,
     sessionInEnv: fromEnv !== undefined,
     tree: tree.placeOf(kit.paths.team),
@@ -281,13 +284,18 @@ async function teamPartsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, pay
  * nothing is checked. The effort is checked at the first Stop: SessionStart gets no effort level, and
  * `$CLAUDE_EFFORT` here can be the value of the session whose shell started this one.
  */
-function modelNoteOf(config: KitConfig, roster: Roster, session: string | undefined, payload: unknown): string | undefined {
-  const found = session === undefined ? undefined : roster.lookup(session);
-  if (found === undefined || !found.ok) {
+function modelNoteOf(config: KitConfig, roster: Roster, id: string | undefined, payload: unknown): string | undefined {
+  if (id === undefined) {
     return undefined;
   }
   const running = { model: isRecord(payload) ? stringField(payload, 'model') : undefined, effort: undefined };
-  return modelCheckLine(roster.nameOf(found.id) ?? found.id, launchOf(config, found.id), running);
+  return modelCheckLine(roster.nameOf(id) ?? id, launchOf(config, id), running);
+}
+
+/** The team session an id or any name it has had finds; undefined for none, or a name the team does not know. */
+function rosterIdOf(roster: Roster, session: string | undefined): string | undefined {
+  const found = session === undefined ? undefined : roster.lookup(session);
+  return found?.ok === true ? found.id : undefined;
 }
 
 /**
@@ -455,7 +463,7 @@ export async function sessionStart(args: ParsedArgs, runtime: CliRuntime): Promi
   const parts: TeamParts =
     kit.load.status === 'loaded'
       ? await teamPartsOf(runtime, kit, kit.load.config, payload)
-      : { teamRules: undefined, renames: [], titleNote: undefined, refreshNote: undefined, modelNote: undefined, session: undefined, sessionInEnv: false, tree: undefined };
+      : { teamRules: undefined, renames: [], titleNote: undefined, refreshNote: undefined, modelNote: undefined, verifyNote: undefined, session: undefined, sessionInEnv: false, tree: undefined };
   const context = sessionStartContext({ team: found.team, load: kit.load, ...parts, command: KIT_NAME });
   const requirementsNote = await requirementsNoteOnce({
     problems: await runtime.requirements.problems(),

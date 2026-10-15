@@ -19,6 +19,8 @@ export interface SessionStartInput {
   readonly refreshNote: string | undefined;
   /** When the session runs on another model or effort than the team config asks: the line that says so. */
   readonly modelNote: string | undefined;
+  /** When the session holds verifying tasks: `VERIFY <n>: T1 (proof: ...), ...`, oldest first, so it proves them. */
+  readonly verifyNote: string | undefined;
   /**
    * Who the session is: an id or any name it has had, from `$TEAMRIG_SESSION`, a `--session` flag, or
    * the area this Claude Code session last read its inbox as.
@@ -105,6 +107,9 @@ export function sessionStartContext(input: SessionStartInput): string {
   }
   if (input.modelNote !== undefined) {
     notes.push(input.modelNote);
+  }
+  if (input.verifyNote !== undefined) {
+    notes.push(input.verifyNote);
   }
   if (load.newerVersion !== undefined) {
     notes.push(`The team config is version ${load.newerVersion}, from a newer ${KIT_NAME}: these rules are read best-effort.`);
