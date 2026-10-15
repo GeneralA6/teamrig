@@ -21,6 +21,8 @@ export interface ParsedArgs {
   readonly flags: Flags;
   /** The flags given that take no value, such as `--ready`. */
   readonly switches: ReadonlySet<string>;
+  /** The words after `--`, passed on untouched: flags, `--help` and quotes included; empty without a `--`. */
+  readonly rest: readonly string[];
   /** `--help` or `-h` followed the command: print its help and nothing else; `command` may then be a group word. */
   readonly help: boolean;
 }
@@ -30,6 +32,12 @@ export type CommandFlags = Readonly<Partial<Record<string, readonly string[]>>>;
 
 /** Each command's flags that take no value, keyed like `CommandFlags`; most commands have none. */
 export type CommandSwitches = CommandFlags;
+
+/** The commands that take `--` and a command line after it, such as `test -- npm test`; on any other `--` is refused. */
+export type CommandRest = ReadonlySet<string>;
+
+/** Ends a command's own flags: every word after it belongs to the command line it runs. */
+export const REST_MARKER = '--';
 
 /**
  * Flags that were renamed, old name to new name. The old name is refused on every command with the
@@ -66,13 +74,15 @@ function commandOf(argv: readonly string[], commandFlags: CommandFlags): { reado
  * Splits `<command> [words] [--name value] [--switch]...`. Only the command's own flags are
  * accepted, so a typo is refused instead of silently meaning nothing; every flag takes exactly one
  * value, except the command's switches, which take none. A renamed flag is refused with its new name.
- * `--help` or `-h` after the command stops the reading: the line asks for that command's help.
+ * `--help` or `-h` after the command stops the reading: the line asks for that command's help. On a
+ * command that takes a command line, `--` ends the reading too: the words after it are its `rest`.
  */
 export function parseArgs(
   argv: readonly string[],
   commandFlags: CommandFlags,
   commandSwitches: CommandSwitches = {},
   renamedFlags: RenamedFlags = {},
+  restCommands: CommandRest = new Set(),
 ): ParsedArgs {
   const { command, tail } = commandOf(argv, commandFlags);
   const allowed = commandFlags[command] ?? [];
@@ -83,7 +93,10 @@ export function parseArgs(
   for (let index = 0; index < tail.length; index += 1) {
     const token = tail[index] ?? '';
     if (HELP_FLAGS.has(token)) {
-      return { command, positionals: [], flags: new Map(), switches: new Set(), help: true };
+      return { command, positionals: [], flags: new Map(), switches: new Set(), rest: [], help: true };
+    }
+    if (token === REST_MARKER && restCommands.has(command)) {
+      return { command, positionals, flags, switches, rest: tail.slice(index + 1), help: false };
     }
     if (!token.startsWith('--')) {
       positionals.push(token);
@@ -114,7 +127,7 @@ export function parseArgs(
     flags.set(name, value);
     index += 1;
   }
-  return { command, positionals, flags, switches, help: false };
+  return { command, positionals, flags, switches, rest: [], help: false };
 }
 
 export function noPositionals(args: ParsedArgs): void {

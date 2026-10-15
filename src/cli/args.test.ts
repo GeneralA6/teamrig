@@ -115,6 +115,29 @@ describe('the command a usage error is for, and help requests', () => {
   });
 });
 
+describe('the -- that ends a command line', () => {
+  const rest: ReadonlySet<string> = new Set(['add']);
+
+  it('passes every word after -- on untouched, flags, help and quotes included, on a command that takes it', () => {
+    const args = parseArgs(['add', 'x', '--title', 'T', '--', 'node', '--test', '--help', '-h', '"src/**"', '--'], COMMANDS, {}, {}, rest);
+    assert.deepEqual([args.positionals, [...args.flags], args.help], [['x'], [['title', 'T']], false]);
+    assert.deepEqual(args.rest, ['node', '--test', '--help', '-h', '"src/**"', '--']);
+    assert.deepEqual(parseArgs(['add', '--'], COMMANDS, {}, {}, rest).rest, [], 'nothing after it is an empty command line');
+  });
+
+  it('leaves rest empty without a --, and still reads --help before it as a help request', () => {
+    assert.deepEqual(parseArgs(['add', '--title', 'T'], COMMANDS, {}, {}, rest).rest, []);
+    const help = parseArgs(['add', '--help', '--', 'npm', 'test'], COMMANDS, {}, {}, rest);
+    assert.deepEqual([help.help, help.rest], [true, []]);
+  });
+
+  it('refuses -- on every other command, as before', () => {
+    assert.equal(usageMessage(() => parseArgs(['show', 'T1', '--', 'x'], COMMANDS, {}, {}, rest)), 'show takes no --');
+    assert.equal(usageMessage(() => parseArgs(['add', '--', 'x'], COMMANDS)), 'add takes no --', 'with no command taking it, nothing changes');
+    assert.equal(usageMessage(() => parseArgs(['add', '--title', '--', 'x'], COMMANDS, {}, {}, rest)), '--title needs a value', 'a flag still needs its value');
+  });
+});
+
 describe('positionals and required flags', () => {
   it('takes exactly one positional when a command needs one', () => {
     assert.equal(onePositional(parseArgs(['show', 'T7'], COMMANDS), 'id'), 'T7');
