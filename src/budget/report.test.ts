@@ -202,9 +202,9 @@ describe('loop patterns', () => {
   });
 
   it('tables each pattern by day, its count then its W', () => {
-    const totals = [usage(261_060_000, 12_372, { readChain: 2_634, readChainW: 42_000_000, editTestJoined: 116 }), usage(0, 0)];
+    const totals = [usage(261_060_000, 12_372, { readChain: 2_634, readChainW: 42_000_000, editTestJoined: 116 }), usage(1_000, 3)];
     const row = (label: string, first: string, second: string): string => `${label.padEnd(27)}  ${first.padStart(14)}  ${second.padStart(5)}`;
-    assert.deepEqual(loopLines('every session', DAYS, totals), [
+    assert.deepEqual(loopLines('every session', DAYS, totals, 'metered'), [
       'Loop patterns, every session: count, then W (UTC days)',
       row('', '10-13', '10-14'),
       row('read after read, W', '2,634 42.00M', '0 0'),
@@ -216,7 +216,19 @@ describe('loop patterns', () => {
       row('rerun after a pass, W', '0 0', '0 0'),
       row('passing test runs, rent W', '0 0', '0 0'),
       row('  their output tokens', '0', '0'),
-      row('all calls', '12,372 261.06M', '0 0'),
+      row('all calls', '12,372 261.06M', '3 1k'),
+    ]);
+  });
+
+  it('leaves out the stored days with nothing metered and says how to read one, but shows a recounted day', () => {
+    const lines = loopLines('every session', DAYS, [usage(0, 0), usage(1_000, 3)], 'metered');
+    assert.match(lines[1] ?? '', /^ +10-14$/);
+    assert.equal(lines.at(-2), `${'all calls'.padEnd(27)}   3 1k`);
+    assert.equal(lines.at(-1), 'Left out, nothing metered: 10-13 (add --day 2026-10-13 to read one).');
+    assert.equal(loopLines('lead', DAYS, [usage(0, 0), usage(0, 0)], 'recounted').at(-1), `${'all calls'.padEnd(27)}    0 0    0 0`);
+    assert.deepEqual(loopLines('lead', DAYS, [usage(0, 0), usage(0, 0)], 'metered'), [
+      'Loop patterns, lead: count, then W (UTC days)',
+      'Left out, nothing metered: 10-13, 10-14 (add --day 2026-10-13 to read one).',
     ]);
   });
 });
