@@ -5,7 +5,7 @@
  * teamrig would show. It only re-exports: the logic lives beside the commands that use it, so the
  * two can never drift. `read/index.test.ts` fails if anything reachable from here imports `node:`.
  */
-// The task register (`register.jsonl`).
+// The task register (`events.jsonl`).
 export { EVENT_VERSION } from "../register/events.js";
 export { foldEvents, taskNumber } from "../register/fold.js";
 export { ACTIVE_STATUSES, isTaskStatus, priorityText, TASK_STATUSES } from "../register/model.js";
