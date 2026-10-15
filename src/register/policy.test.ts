@@ -321,7 +321,12 @@ describe('RegisterPolicy.update', () => {
 
   it('refuses everyone else and empty changes', () => {
     assert.match(error(policy.update(TASK, 'bravo', { priority: 1 }, undefined, EMPTY)), /only the owner \(alpha\) or the lead/);
-    assert.match(error(policy.update(TASK, 'alpha', {}, undefined, EMPTY)), /nothing to change/);
+    assert.equal(error(policy.update(TASK, 'alpha', {}, undefined, EMPTY)), 'nothing to change: give a field or a --note');
+  });
+
+  it('lets any session add a note alone, as context on a task it does not own', () => {
+    assert.deepEqual(policy.update(TASK, 'bravo', {}, ' 72 of 75 wakes were cold ', EMPTY), { ok: true, value: { changes: {}, note: '72 of 75 wakes were cold' } });
+    assert.equal(error(policy.update(TASK, 'bravo', {}, '   ', EMPTY)), 'nothing to change: give a field or a --note');
   });
 });
 

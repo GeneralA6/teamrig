@@ -193,7 +193,8 @@ stateDiagram-v2
   planned after it (`teamrig update T3 --after T2`), and its line shows `after T2`. A `blocked` written by an
   older teamrig reads as `waiting` with no reasons.
 - `teamrig update` changes a task's title, owner, priority, ref, due date, goals, week or the tasks it comes after
-  (`none` clears the last five), never the status; on a task it does not own, the lead may change the owner, priority, due date or week.
+  (`none` clears the last five), never the status; on a task it does not own, the lead may change the owner, priority, due date or week, and
+  any session may add a `--note` alone as context.
 - `teamrig check` reports tasks past due, not picked up 24 hours after they were handed out, untouched for 72 hours,
   or due this week but left out of the week's plan, and owner orders left out of it. A verifying task past its due
   date is `VERIFY-OVERDUE`: it was not verified by then. One with a due date is not called stale while it waits. A verifying task another task needs is `VERIFY-BLOCKS`, and a session holding more than 5 (`register.maxVerifying`) gets a `PILE-UP` on its oldest. A waiting task whose every reason has cleared is `READY`. It also reports a session that

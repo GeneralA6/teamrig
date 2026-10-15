@@ -61,6 +61,8 @@ A shipped change is proven by the session that shipped it, oldest first, before 
 - **Fields** (`update`): the owner may change every field. The lead may change only the owner, priority, due date
   and week of a task it does not own: it re-plans, it does not rewrite. A task always keeps the source it was
   added with.
+- **Context** (`update <id> --note "..."` alone): any session, on any task. It changes nothing on the task; it
+  adds a line to its history, so an asker can attach the evidence or a wording the owner should take up.
 - **Child teams**: only a parent team's lead hands a child team work, with `add --team <child>`. The task lands
   in the child's register, owned by the child's lead (who plans it in) and sourced `<parent team>/<lead id>`; the
   parent's own register is not touched. Each lead sees the teams under it with `list`, `check` and `plan --tree`.
