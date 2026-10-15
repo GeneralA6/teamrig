@@ -196,6 +196,21 @@ describe('planRotation and applyRotation', () => {
       'the working set counts 0 retired task(s) where the history has 1 outside it',
     ]);
   });
+
+  it('refuse with nothing written when a line reopens a task that left the working set', async () => {
+    const files = new MemoryFiles({ [LOG]: TEXT });
+    assert.deepEqual((await rotate(files, 20)).compaction.retiredNow, ['T1']);
+    // The register refuses this write ("archived"); only a hand edit or a writer outside the lock can append it.
+    await files.append(LOG, status('T1', 21, 'in-progress'));
+    const before = contents(files);
+    const plan = await planRotation(files, PATHS, options(22));
+    assert.deepEqual(plan.problems, [
+      'the working set has orphans 1 where 0 is expected',
+      'T1 is in-progress in the history and missing from the working set',
+    ]);
+    await assert.rejects(applyRotation(files, PATHS, plan), RotationRefusedError);
+    assert.deepEqual(contents(files), before);
+  });
 });
 
 describe('readBack', () => {
