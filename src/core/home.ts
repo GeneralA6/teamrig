@@ -80,6 +80,8 @@ export interface TeamPaths {
   readonly refresh: string;
   /** The handover notes a session writes before a refresh, `<id>.md` each. */
   readonly handover: string;
+  /** The verify-loop notices given today (a held start's inbox line, a verify-by reminder), so each is given once a day. */
+  readonly verifyNotices: string;
   /** The model notices each session's Stop hook already showed, `<id>.json` each. */
   readonly modelNotices: string;
   /** Each session's metered use, `<id>.json` each, and `outside/` for use outside the team. */
@@ -125,6 +127,7 @@ export function teamPaths(kitHome: string, team: string, userHome: string, overr
     skills: inHome(overrides.skills) ?? join(userHome, '.claude', 'skills'),
     refresh: join(state, 'refresh'),
     handover: inHome(overrides.handover) ?? join(home, 'handover'),
+    verifyNotices: join(state, 'verify-notices.jsonl'),
     modelNotices: join(state, 'model-notices'),
     usage: join(state, 'usage'),
     lifts: join(state, 'usage', 'lifts.jsonl'),
