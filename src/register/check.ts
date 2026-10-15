@@ -7,7 +7,7 @@ import type { RegisterSnapshot } from './snapshot.ts';
 import { byPlanOrder, dueTime, formatTask } from './views.ts';
 
 /** In report order: the most urgent first. */
-export const FLAG_KINDS = ['OVERDUE', 'PROOF-OVERDUE', 'NOT-PICKED-UP', 'PRIORITY-SKIP', 'OWNER-UNPLANNED', 'DUE-UNPLANNED', 'OFF-GOAL', 'STALE'] as const;
+export const FLAG_KINDS = ['OVERDUE', 'VERIFY-OVERDUE', 'NOT-PICKED-UP', 'PRIORITY-SKIP', 'OWNER-UNPLANNED', 'DUE-UNPLANNED', 'OFF-GOAL', 'STALE'] as const;
 
 export type FlagKind = (typeof FLAG_KINDS)[number];
 
@@ -42,7 +42,7 @@ export function currentWeekOf(snapshot: RegisterSnapshot, now: Date): string | n
 
 /**
  * The daily flags over active tasks:
- * - OVERDUE: past its deadline; PROOF-OVERDUE when the task is verifying, so its proof is late;
+ * - OVERDUE: past its deadline; VERIFY-OVERDUE when the task is verifying: its due date is the date to verify it by;
  * - NOT-PICKED-UP: assigned longer ago than `notPickedUpAfterHours` with no event from its owner since
  *   (an idle session never reads its inbox, so it needs a direct wake);
  * - PRIORITY-SKIP: in progress below an open (so unblocked) task of the top priority that has the same
@@ -85,14 +85,14 @@ function weekPlan(week: string | null, lengthDays: number): WeekPlan | undefined
   return week === null || start === undefined ? undefined : { week, start, end: start + lengthDays * MS_PER_DAY };
 }
 
-/** OVERDUE or PROOF-OVERDUE, then NOT-PICKED-UP or else STALE. */
+/** OVERDUE or VERIFY-OVERDUE, then NOT-PICKED-UP or else STALE. */
 function timeFlags(task: Task, at: number, check: RegisterCheckConfig): Flag[] {
   const flags: Flag[] = [];
   const due = dueTime(task);
   const verifying = task.status === 'verifying';
   if (due !== undefined && due < at) {
-    const detail = `${verifying ? 'proof due' : 'due'} ${shortUtc(task.due ?? '')}`;
-    flags.push({ kind: verifying ? 'PROOF-OVERDUE' : 'OVERDUE', task, detail });
+    const detail = `${verifying ? 'verify by' : 'due'} ${shortUtc(task.due ?? '')}`;
+    flags.push({ kind: verifying ? 'VERIFY-OVERDUE' : 'OVERDUE', task, detail });
   }
   if (task.ownerSeenAt === null && at - Date.parse(task.assignedAt) > check.notPickedUpAfterHours * MS_PER_HOUR) {
     flags.push({ kind: 'NOT-PICKED-UP', task, detail: `assigned ${minute(task.assignedAt)}, no event from ${task.owner} since` });

@@ -46,12 +46,12 @@ describe('checkTasks', () => {
     assert.deepEqual(kinds([testTask({ due: '2030-01-10', ownerSeenAt: FRESH, updatedAt: FRESH })]), []);
   });
 
-  it('flags a verifying task past its due date as a late proof, not as overdue work', () => {
+  it('flags a verifying task past its verify-by date, not as overdue work', () => {
     const late = testTask({ status: 'verifying', due: '2030-01-09', ownerSeenAt: FRESH, updatedAt: FRESH });
-    assert.deepEqual(kinds([late]), ['PROOF-OVERDUE T1']);
+    assert.deepEqual(kinds([late]), ['VERIFY-OVERDUE T1']);
     const [flag] = checkTasks([late], NOW, null, CONFIG);
     assert.ok(flag);
-    assert.equal(formatFlag(flag), 'PROOF-OVERDUE (proof due 01-09) T1 verifying, p2, owner alpha, due 01-09, from lead | Add a health check');
+    assert.equal(formatFlag(flag), 'VERIFY-OVERDUE (verify by 01-09) T1 verifying, p2, owner alpha, due 01-09, from lead | Add a health check');
     assert.deepEqual(kinds([testTask({ status: 'verifying', due: '2030-01-10', ownerSeenAt: FRESH, updatedAt: FRESH })]), []);
   });
 

@@ -177,13 +177,13 @@ stateDiagram-v2
 - `done` takes `--skill none` or the name of a skill in your Claude Code skills folder; setting a task to its own
   status again needs `--note`; `add` refuses a title an open, in-progress, verifying or blocked task already has.
 - `verifying` is a change that has shipped and waits for what proves it: a test run, a night's flow, a number.
-  Its note names that proof, and its due date says when the proof should exist. It stays active, so `list` and
+  Its note names that proof, and its due date is the date to verify it by. It stays active, so `list` and
   `check` keep it in view until the owner sets it `done` with the proof as evidence.
 - `teamrig update` changes a task's title, owner, priority, ref, due date, goals or week (`none` clears the last
   four), never the status; on a task it does not own, the lead may change the owner, priority, due date or week.
 - `teamrig check` reports tasks past due, not picked up 24 hours after they were handed out, untouched for 72 hours,
   or due this week but left out of the week's plan, and owner orders left out of it. A verifying task past its due
-  date is `PROOF-OVERDUE`: its proof is late. One with a due date is not called stale while it waits. It also reports a session that
+  date is `VERIFY-OVERDUE`: it was not verified by then. One with a due date is not called stale while it waits. It also reports a session that
   skips its own priorities: `PRIORITY-SKIP` is a task in progress for over 24 hours
   (`register.check.prioritySkipAfterHours`) while the same session has an open p1, counted from the latest change of
   owner, status or priority on either task. `OFF-GOAL` is a task in progress with no goal outside the week's plan:
