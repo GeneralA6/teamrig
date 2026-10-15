@@ -23,4 +23,11 @@ describe('runCli: set verifying names its proof', () => {
     const shown = await kit.run(['show', 'T1', '--session', 'alpha']);
     assert.match(shown.stdout.join('\n'), /\nproof: the nightly run is green\n[\s\S]*status verifying note="shipped" proof="the nightly run is green"/);
   });
+
+  it('takes the date to verify by as --due', async () => {
+    const kit = await startedTask();
+    const set = await kit.run(['set', 'T1', '--status', 'verifying', '--note', 'shipped', '--proof', 'the nightly run', '--due', '2030-01-09', '--session', 'alpha']);
+    assert.equal(set.code, EXIT.ok, set.stdout.join('\n'));
+    assert.match(set.stdout[0] ?? '', /^SET T1 verifying, p2, owner alpha, due 01-09,/);
+  });
 });

@@ -36,6 +36,7 @@ export interface WriteResult {
   readonly task: Task;
   /** The register after the write, so a reader judges the task against the others (a waiting task's reasons). */
   readonly state: RegisterState;
+  /** The last event written: the status event of a `set` that also moved the due date before it. */
   readonly event: RegisterEvent;
   readonly rotation: RotationOutcome;
 }
@@ -62,7 +63,7 @@ export class Register {
   }
 
   add(caller: string, input: AddInput): Promise<Verdict<WriteResult>> {
-    return this.commit(caller, ({ state }) => this.created(caller, state.nextId, this.deps.policy.add(input, state)));
+    return this.commit(caller, ({ state }) => single(this.created(caller, state.nextId, this.deps.policy.add(input, state))));
   }
 
   /**
@@ -70,7 +71,7 @@ export class Register {
    * who that may be, so this team's roster check is skipped; the event names that lead as its writer.
    */
   addFromParent(parentLead: string, input: AddInput): Promise<Verdict<WriteResult>> {
-    return this.write(({ state }) => this.created(parentLead, state.nextId, this.deps.policy.addFromParent(input, state)));
+    return this.write(({ state }) => single(this.created(parentLead, state.nextId, this.deps.policy.addFromParent(input, state))));
   }
 
   async setStatus(caller: string, id: string, input: StatusInput): Promise<Verdict<WriteResult>> {
@@ -83,8 +84,13 @@ export class Register {
         if (!change.ok) {
           return change;
         }
-        const event: StatusEvent = { ...this.base(id, caller), type: 'status', ...change.value };
-        return { ok: true, value: event };
+        const { due, ...status } = change.value;
+        const event: StatusEvent = { ...this.base(id, caller), type: 'status', ...status };
+        if (due === undefined) {
+          return { ok: true, value: [event] };
+        }
+        const dated: UpdateEvent = { ...this.base(id, caller), type: 'update', changes: { due }, note: null };
+        return { ok: true, value: [dated, event] };
       }),
     );
   }
@@ -97,7 +103,7 @@ export class Register {
           return change;
         }
         const event: UpdateEvent = { ...this.base(id, caller), type: 'update', ...change.value };
-        return { ok: true, value: event };
+        return { ok: true, value: [event] };
       }),
     );
   }
@@ -115,7 +121,7 @@ export class Register {
   }
 
   /** A write by a session of this team: refused unless the caller is on the roster. */
-  private async commit(caller: string, decide: (snapshot: RegisterSnapshot) => Verdict<RegisterEvent>): Promise<Verdict<WriteResult>> {
+  private async commit(caller: string, decide: (snapshot: RegisterSnapshot) => Verdict<readonly RegisterEvent[]>): Promise<Verdict<WriteResult>> {
     const callerProblem = this.deps.policy.checkCaller(caller);
     if (callerProblem !== undefined) {
       return { ok: false, error: callerProblem };
@@ -124,10 +130,11 @@ export class Register {
   }
 
   /**
-   * Under the lock: refuse newer data, read the working set, decide on one event, append it, rotate the log
-   * when it is due and the team has not turned that off, and return the task after the event.
+   * Under the lock: refuse newer data, read the working set, decide on the events of one task (one, or a
+   * due date and a status), append them, rotate the log when it is due and the team has not turned that
+   * off, and return the task after the events.
    */
-  private write(decide: (snapshot: RegisterSnapshot) => Verdict<RegisterEvent>): Promise<Verdict<WriteResult>> {
+  private write(decide: (snapshot: RegisterSnapshot) => Verdict<readonly RegisterEvent[]>): Promise<Verdict<WriteResult>> {
     return this.deps.mutex.run(async () => {
       const snapshot = await this.deps.log.read();
       if (!isWritable(snapshot.read)) {
@@ -137,9 +144,13 @@ export class Register {
       if (!decision.ok) {
         return decision;
       }
-      const event = decision.value;
-      await this.deps.log.append(event);
-      const state = foldEvents([event], [], snapshot.state);
+      const events = decision.value;
+      const event = events.at(-1);
+      if (event === undefined) {
+        throw new Error('a write decided on no event');
+      }
+      await this.deps.log.append(events);
+      const state = foldEvents(events, [], snapshot.state);
       const task = state.tasks.get(event.id);
       if (task === undefined) {
         throw new Error(`${event.id} is missing after its own write`);
@@ -169,7 +180,12 @@ export class Register {
  * The decision on a task of the working set. An id below the next one that is not in it may be a task a
  * compaction retired: it is named as such, as this teamrig changes only tasks in the working set.
  */
-function onTask(snapshot: RegisterSnapshot, id: string, decide: (task: Task) => Verdict<RegisterEvent>): Verdict<RegisterEvent> {
+/** One event, as the list a write takes. */
+function single(verdict: Verdict<RegisterEvent>): Verdict<readonly RegisterEvent[]> {
+  return verdict.ok ? { ok: true, value: [verdict.value] } : verdict;
+}
+
+function onTask<T>(snapshot: RegisterSnapshot, id: string, decide: (task: Task) => Verdict<T>): Verdict<T> {
   const task = snapshot.state.tasks.get(id);
   if (task !== undefined) {
     return decide(task);

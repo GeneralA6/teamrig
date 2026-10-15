@@ -37,6 +37,8 @@ export interface StatusInput {
   readonly waits?: readonly WaitReason[];
   /** What will prove a `verifying` task works; only with that status. */
   readonly proof?: string;
+  /** The date to verify by, as the task's due date; only with `verifying`. */
+  readonly due?: string;
 }
 
 /** What a status change is judged against besides the task: the register as read, the time, and whether a cited skill exists. */
@@ -55,6 +57,8 @@ export interface StatusChange {
   readonly waits?: readonly WaitReason[];
   /** Only with `verifying`: the proof given, or the one the task already had when it was verifying before. */
   readonly proof?: string;
+  /** Only with `verifying`, and only when it moves the task's due date: the date to verify by. */
+  readonly due?: string;
 }
 
 /** How `--waits` is typed, for the refusals that ask for it. */
@@ -148,7 +152,11 @@ export class RegisterPolicy {
     if (!proof.ok) {
       return proof;
     }
-    if (input.status === task.status && note === null && proof.value === task.proof && sameWaits(waits.value, task.waits)) {
+    const due = dueChange(task, input);
+    if (!due.ok) {
+      return due;
+    }
+    if (input.status === task.status && note === null && proof.value === task.proof && due.value === null && sameWaits(waits.value, task.waits)) {
       return refuse(`${task.id} is already ${task.status}; add --note to record why you set it again`);
     }
     if (register.requireNoteOn.includes(input.status) && note === null) {
@@ -178,6 +186,7 @@ export class RegisterPolicy {
       skill,
       ...(waits.value.length > 0 ? { waits: waits.value } : {}),
       ...(proof.value === null ? {} : { proof: proof.value }),
+      ...(due.value === null ? {} : { due: due.value }),
     };
     return problem === undefined ? ok(change) : refuse(problem);
   }
@@ -301,6 +310,18 @@ function proofChange(task: Task, input: StatusInput): Verdict<string | null> {
     return proof === null ? ok(null) : refuse('--proof goes only with --status verifying');
   }
   return ok(proof ?? (task.status === 'verifying' ? task.proof : null));
+}
+
+/** The verify-by date a status change moves the task's due date to: only with `verifying`, and null when it stays. */
+function dueChange(task: Task, input: StatusInput): Verdict<string | null> {
+  const due = blankToNull(input.due);
+  if (due === null || due === task.due) {
+    return ok(null);
+  }
+  if (input.status !== 'verifying') {
+    return refuse(`--due goes only with --status verifying; teamrig update ${task.id} --due sets it otherwise`);
+  }
+  return parseUtcDeadline(due) === undefined ? refuse(`due ${due} is not YYYY-MM-DD or YYYY-MM-DD HH:MM`) : ok(due);
 }
 
 function sameWaits(a: readonly WaitReason[], b: readonly WaitReason[]): boolean {

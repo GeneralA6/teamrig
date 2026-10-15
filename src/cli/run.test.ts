@@ -92,8 +92,9 @@ describe('runCli: help, version and usage errors', () => {
     const head = USAGE.split('\n')[0] ?? '';
     const setLines = [
       '  set <id> --status open|in-progress|verifying|waiting|done|dropped [--note "<what/why>"] [--evidence <proof>]',
-      '      [--skill <name>|none] [--waits decision:<who>,approval:<who>,task:T<id>,time:<date>] [--proof "<what proves it>"]',
-      '      verifying needs --proof: what will prove the shipped change works; its due date is the date to verify by',
+      '      [--skill <name>|none] [--waits decision:<who>,approval:<who>,task:T<id>,time:<date>]',
+      '      [--proof "<what proves it>"] [--due <date>]',
+      '      verifying needs --proof: what will prove the shipped change works; --due sets the date to verify by',
       '      waiting needs --waits: who decides or approves (a session or the owner), a task to finish first',
       '      (only once started) or a time; check flags it READY once its tasks finished and its time passed',
     ];
