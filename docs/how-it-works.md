@@ -346,6 +346,10 @@ A program that only shows the team's files, such as the [teamrig-pane](https://g
 task pane, reads them through `src/read/index.ts`: the same parse and replay every teamrig command uses, with no
 `node:` import anywhere behind it, so it runs where Node's built-in modules do not. It takes the text of the task
 list, an inbox, the inbox read marks and the config, and gives back the tasks, the unread lines and the counts
-`teamrig list` warns about. The reader hands `unreadOf` its own line hash: the first 16 hex digits of the SHA-256 of
+`teamrig list` warns about. A task list that was rotated keeps a snapshot of its working set beside it and its older
+lines in archive segments: the reader reads the snapshot first (`readSnapshotText`), then the task list, asks
+`workingSetPlan` which segments it still needs (none, unless the snapshot is damaged or missing) and folds them with
+`assemble`, so its cost follows the recent lines, never the whole history. A task list never rotated reads as
+before. The reader hands `unreadOf` its own line hash: the first 16 hex digits of the SHA-256 of
 the line. With no config to read, it names priorities from `DEFAULT_REGISTER`, the register settings a config that
 sets none gets.
