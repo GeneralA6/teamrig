@@ -1,0 +1,50 @@
+import { spawn } from 'node:child_process';
+import { posixQuote } from "../open/quote.js";
+/** Characters a POSIX shell reads as plain text; a word with any other is single-quoted. */
+const POSIX_PLAIN = /^[\w@%+=:,./-]+$/;
+/** Characters `cmd.exe` reads as syntax or a word break; a word with any of them is double-quoted. */
+const CMD_SPECIAL = /[\s"&|<>^%!()]/;
+/**
+ * The command line for the words after `--`. One word is the line itself, so `"npm run build && npm test"`
+ * runs as written. Several are joined, each quoted where the shell would read it, so a glob reaches the
+ * program as typed and the shell never expands it.
+ */
+export function commandLine(words, platform) {
+    const [only] = words;
+    if (words.length === 1 && only !== undefined) {
+        return only;
+    }
+    return words.map((word) => (platform === 'win32' ? cmdWord(word) : posixWord(word))).join(' ');
+}
+function posixWord(word) {
+    return POSIX_PLAIN.test(word) ? word : posixQuote(word);
+}
+function cmdWord(word) {
+    return word !== '' && !CMD_SPECIAL.test(word) ? word : `"${word.replaceAll('"', '\\"')}"`;
+}
+/** The end Node reports on `close`: a code, or no code and the signal that stopped the process. */
+export function endOf(code, signal) {
+    return code === null ? { kind: 'signal', signal: signal ?? 'an unknown signal' } : { kind: 'exited', code };
+}
+/** The real shell: Node's `spawn` with `shell: true`, stdin closed, stdout and stderr read as they come. */
+export function nodeShellRunner() {
+    return {
+        run: (request) => new Promise((resolve, reject) => {
+            const child = spawn(request.command, {
+                shell: true,
+                cwd: request.cwd,
+                env: { ...request.env },
+                stdio: ['ignore', 'pipe', 'pipe'],
+                windowsHide: true,
+            });
+            const chunks = [];
+            const keep = (chunk) => {
+                chunks.push(chunk);
+            };
+            child.stdout.setEncoding('utf8').on('data', keep);
+            child.stderr.setEncoding('utf8').on('data', keep);
+            child.once('error', reject);
+            child.once('close', (code, signal) => resolve({ end: endOf(code, signal), output: chunks.join('') }));
+        }),
+    };
+}
