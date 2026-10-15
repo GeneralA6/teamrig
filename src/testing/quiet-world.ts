@@ -19,7 +19,7 @@ export function quietWorld(branch: string = 'dev', stdin: string = ''): OutsideW
     commitLog: { between: () => [] },
     readStdin: async () => stdin,
     platform: 'linux',
-    processes: { start: async () => ({ kind: 'missing' }), run: async () => ({ kind: 'missing' }) },
+    processes: { start: async () => ({ kind: 'missing' }), run: async () => ({ kind: 'missing' }), startHidden: async () => ({ kind: 'missing' }) },
     shell: new FakeShell(),
     gh: new FakeGh(),
     credentials: new FakeCredentials(),

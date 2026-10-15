@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, type SpawnOptions } from 'node:child_process';
 import { errorCode, errorMessage } from '../core/guards.ts';
 import type { Env } from '../core/home.ts';
 
@@ -31,12 +31,14 @@ export interface RunRequest extends ProgramRequest {
 
 export type RunOutcome = { readonly kind: 'exited'; readonly code: number } | { readonly kind: 'missing' } | { readonly kind: 'failed'; readonly error: string };
 
-/** The child processes `teamrig open` and `teamrig launch` start, as one port so both run in tests. */
+/** The child processes `teamrig open`, `teamrig launch` and the hooks start, as one port so all run in tests. */
 export interface Processes {
   /** Starts a terminal launcher in the background; its output is not shown. */
   start(request: StartRequest): Promise<StartOutcome>;
   /** Runs a program in this terminal, its input and output this process's own, until it exits. */
   run(request: RunRequest): Promise<RunOutcome>;
+  /** Starts a program with no window that runs on after this process ends, with the given variables; its output is dropped. */
+  startHidden(request: RunRequest): Promise<StartOutcome>;
 }
 
 /** The interrupt signal this process gets; `process` itself in production. */
@@ -99,12 +101,15 @@ function startUntilExit(request: StartRequest, waitMs: number): Promise<StartOut
   });
 }
 
-/** A `spawn` launcher is the new window: it runs on after this process ends, in its own process group. */
-function startDetached(request: StartRequest): Promise<StartOutcome> {
+/**
+ * A program that runs on after this process ends, in its own process group: a `spawn` launcher, which is the new
+ * window, or a hidden background program (`extra` hides the console window Windows would open for it).
+ */
+function startDetached(request: ProgramRequest, extra: SpawnOptions = {}): Promise<StartOutcome> {
   return new Promise((resolve) => {
     let child;
     try {
-      child = spawn(request.command, request.args, { cwd: request.cwd, detached: true, stdio: 'ignore' });
+      child = spawn(request.command, request.args, { cwd: request.cwd, detached: true, stdio: 'ignore', ...extra });
     } catch (error) {
       resolve(outcomeOfError(error));
       return;
@@ -148,5 +153,6 @@ export function nodeProcesses(options: NodeProcessesOptions = {}): Processes {
   return {
     start: (request) => (request.mode === 'exit' ? startUntilExit(request, waitMs) : startDetached(request)),
     run: (request) => runAttached(request, interrupts),
+    startHidden: (request) => startDetached(request, { env: { ...request.env }, windowsHide: true }),
   };
 }

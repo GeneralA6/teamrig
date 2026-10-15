@@ -1,7 +1,7 @@
 import { after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { exitText, nodeProcesses, outcomeOfError } from './processes.ts';
@@ -33,10 +33,22 @@ describe('nodeProcesses', () => {
     assert.deepEqual(await processes.start({ command: NODE, args: ['-e', ''], cwd: TEMP, mode: 'spawn' }), { kind: 'started' });
   });
 
+  it('starts a hidden program detached, with the given variables', async () => {
+    const marker = join(DIR, 'hidden.txt');
+    const script = `require("node:fs").writeFileSync(${JSON.stringify(marker)}, process.env.TEAMRIG_TEAM ?? "")`;
+    const outcome = await processes.startHidden({ command: NODE, args: ['-e', script], cwd: TEMP, env: { ...process.env, TEAMRIG_TEAM: 'app' } });
+    assert.deepEqual(outcome, { kind: 'started' });
+    for (let tries = 0; tries < 100 && !existsSync(marker); tries += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.equal(readFileSync(marker, 'utf8'), 'app');
+  });
+
   it('reports a program that is not installed as missing', async () => {
     assert.deepEqual(await processes.start({ command: MISSING, args: [], cwd: DIR, mode: 'exit' }), { kind: 'missing' });
     assert.deepEqual(await processes.start({ command: MISSING, args: [], cwd: DIR, mode: 'spawn' }), { kind: 'missing' });
     assert.deepEqual(await processes.run({ command: MISSING, args: [], cwd: DIR, env: process.env }), { kind: 'missing' });
+    assert.deepEqual(await processes.startHidden({ command: MISSING, args: [], cwd: TEMP, env: process.env }), { kind: 'missing' });
   });
 
   it('reports a request it cannot even start as failed, without throwing', async () => {
@@ -45,6 +57,7 @@ describe('nodeProcesses', () => {
       await processes.start({ command: NODE, args, cwd: DIR, mode: 'exit' }),
       await processes.start({ command: NODE, args, cwd: TEMP, mode: 'spawn' }),
       await processes.run({ command: NODE, args, cwd: DIR, env: process.env }),
+      await processes.startHidden({ command: NODE, args, cwd: TEMP, env: process.env }),
     ]) {
       assert.equal(outcome.kind, 'failed');
     }
