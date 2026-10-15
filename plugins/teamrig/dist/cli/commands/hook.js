@@ -18,6 +18,7 @@ import { stopOutput } from "../../hooks/stop.js";
 import { adoptTitle, promptNote, sessionStartNote } from "../../names/detect.js";
 import { JsonlRenameLog } from "../../names/log.js";
 import { decideStart, decideStop, handoverHashOf } from "../../refresh/decide.js";
+import { readRunningWork } from "../../refresh/running.js";
 import { RefreshStore } from "../../refresh/store.js";
 import { readContextTokens } from "../../refresh/usage.js";
 import { noPositionals } from "../args.js";
@@ -304,7 +305,8 @@ async function refreshNoteOf(runtime, kit, config, roster, payload) {
 }
 /**
  * The refresh facts of a boundary: the lead's request, the context size from the transcript's
- * tail, and the handover as it is now (so `refresh --ready` can tell a new one from it).
+ * tail, the handover as it is now (so `refresh --ready` can tell a new one from it), and the
+ * background work still running, which a refresh must wait for.
  */
 async function boundaryFactsOf(runtime, roster, store, id, payload) {
     const request = await store.request(id);
@@ -313,6 +315,7 @@ async function boundaryFactsOf(runtime, roster, store, id, payload) {
         requestedBy: request === undefined ? undefined : (roster.nameOf(request.by) ?? request.by),
         tokens: transcript === undefined ? undefined : await readContextTokens(runtime.files, transcript),
         handoverHash: handoverHashOf(await store.handover(id)),
+        running: transcript === undefined ? 0 : await readRunningWork(runtime.files, transcript, runtime.clock.now()),
     };
 }
 /** The hook payload's team session (Stop, helper gate); undefined outside a team, without a loaded config or without a session. */
