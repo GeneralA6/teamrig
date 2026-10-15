@@ -4,11 +4,12 @@ import type { Processes, RunOutcome, RunRequest, StartOutcome, StartRequest } fr
 
 /**
  * Processes that start nothing: each request is recorded, and the outcome is the one set for its
- * command (default: a launcher is missing, a program runs and exits 0).
+ * command (default: a launcher is missing, a program runs and exits 0, a hidden program starts).
  */
 export class FakeProcesses implements Processes {
   readonly started: StartRequest[] = [];
   readonly ran: RunRequest[] = [];
+  readonly hidden: RunRequest[] = [];
   private readonly startOutcomes = new Map<string, StartOutcome>();
   private readonly runOutcomes = new Map<string, RunOutcome>();
 
@@ -32,6 +33,11 @@ export class FakeProcesses implements Processes {
   async run(request: RunRequest): Promise<RunOutcome> {
     this.ran.push(request);
     return this.runOutcomes.get(request.command) ?? { kind: 'exited', code: 0 };
+  }
+
+  async startHidden(request: RunRequest): Promise<StartOutcome> {
+    this.hidden.push(request);
+    return this.startOutcomes.get(request.command) ?? { kind: 'started' };
   }
 }
 
