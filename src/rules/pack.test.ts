@@ -59,6 +59,12 @@ describe('renderCorePack', () => {
     assert.match(pack, /When you notice you are looping \(the same step again, no progress\) or drifting from your task, stop and ask the lead\.$/m);
   });
 
+  it('gates each hand-run data change on the owner, never prints secrets and binds local services to loopback', () => {
+    const pack = renderCorePack(testConfig(), COMMAND);
+    assert.match(pack, /^11\. Each hand-run change, delete or drop of stored data needs the owner's OK, after counts or a preview\. Code that writes data/m);
+    assert.match(pack, /a parity run first\. Never print secret values; bind local services to 127\.0\.0\.1, never 0\.0\.0\.0\.$/m);
+  });
+
   it('states the small-commits rule and its gate', () => {
     const pack = (gate: string) => renderCorePack(testConfig({ commits: { maxLines: 300, gate } }), COMMAND);
     assert.match(pack('warn'), /Over 300 changed non-test lines or 15 non-test files \[commits\.maxLines, commits\.maxFiles\], a commit needs a `Large-commit: <reason>` line/);
@@ -71,7 +77,7 @@ describe('renderCorePack', () => {
   it('states what the push guard does with a push to a protected branch', () => {
     const pack = (pushGuard: Record<string, unknown>) => renderCorePack(testConfig({ pushGuard }), COMMAND);
     const keys = String.raw`\[pushGuard\]`;
-    const routed = ' A refused or blocked route is reported to the lead, never routed around.';
+    const routed = ' A refused or blocked route is reported to the lead, never routed around or handed to another session.';
     assert.match(pack({}), new RegExp(String.raw`^15\. Pushes to main, master ask the human; force-pushing or deleting them is refused ${keys}\.${routed}$`, 'm'));
     assert.match(
       pack({ protectedBranches: ['release'], pushToProtected: 'allow' }),

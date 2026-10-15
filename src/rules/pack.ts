@@ -96,7 +96,8 @@ export function renderCorePack(config: KitConfig, command: string): string {
       (budget.enabled ? ` Pace the week to ${percent(budget.targetPct)} of the weekly limit and keep ${percent(budget.reservePct)} for incidents [budget].` : ''),
     'Investigate before deciding: give frequency × impact and the cheapest fix for the visible symptom. Questions for the owner come with options, numbers and a recommendation; a question with one correct answer is yours to decide.',
     'Rising resource use (memory, CPU, storage, tokens) needs its root cause; a raised limit is only an owner-approved bridge with a dated root-cause task.',
-    'Code that writes data ships a read-only dry run (inserted, unchanged, changed counts). Deleting derived data needs a verified regenerate tool and a parity run first.',
+    "Each hand-run change, delete or drop of stored data needs the owner's OK, after counts or a preview. Code that writes data ships a read-only dry run (inserted, unchanged, changed counts)." +
+      ' Deleting derived data needs a verified regenerate tool and a parity run first. Never print secret values; bind local services to 127.0.0.1, never 0.0.0.0.',
     `Tell the other side before changing a contract it reads (an API parameter, a shared table or file). The same external failure for ${config.alerts.persistentFailureHours} h must page a human [alerts.persistentFailureHours].`,
     `A procedure you had to investigate and will run again becomes a skill in the same turn: \`<area>-<name>/SKILL.md\`, shared ones \`${skills.sharedPrefix}-<name>\` [skills.sharedPrefix].` +
       ` Its description has at most ${skills.maxDescriptionWords} words [skills.maxDescriptionWords]; its body has \`Owner:\` and \`Last verified:\` lines, re-verified every ${skills.maxVerifiedAgeDays} days [skills.maxVerifiedAgeDays];` +
@@ -106,7 +107,7 @@ export function renderCorePack(config: KitConfig, command: string): string {
     'One logical change per commit (a fix with its tests, a refactor apart from what it enables, a mechanical change alone), committed as each step passes.' +
       ` Over ${config.commits.maxLines} changed non-test lines or ${config.commits.maxFiles} non-test files [commits.maxLines, commits.maxFiles], a commit needs a \`${config.commits.largeCommitTrailer}: <reason>\` line [commits.largeCommitTrailer]` +
       { off: '.', warn: '; a push to a protected branch lists those without one [commits.gate].', refuse: '; a push to a protected branch that sends one is refused [commits.gate].' }[config.commits.gate],
-    `${pushRule(config.pushGuard)} A refused or blocked route is reported to the lead, never routed around.`,
+    `${pushRule(config.pushGuard)} A refused or blocked route is reported to the lead, never routed around or handed to another session.`,
     'Edit in your own worktree and branch in every git repo, never a main checkout. On Windows remove a worktree\'s node_modules link (`cmd /c rmdir`; Git Bash `cmd //c`), or `git worktree remove` follows it into the main one. Whoever finds a stale comment, doc or dead code fixes it in its own small commit.',
   ];
   return [
