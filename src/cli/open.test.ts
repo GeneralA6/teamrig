@@ -117,7 +117,7 @@ describe('teamrig open <team>/<id>', () => {
     const kit = await treeHarness();
     const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started' });
     const result = await kit.run(['open', 'web/lead'], { probe: FOLDERS, processes, platform: 'win32' });
-    assert.deepEqual(result.stdout, [`OPENED web-lead (session lead) in a new Windows Terminal tab in ${APP}, on model best at xhigh effort`]);
+    assert.deepEqual(result.stdout, [`OPENED web-lead (session lead) in a new Windows Terminal tab in ${APP}, on model opus at xhigh effort`]);
   });
 
   it('opens a session of another team of the tree in the same project, launched on its own team', async () => {
@@ -160,11 +160,11 @@ describe('teamrig launch', () => {
     assert.deepEqual(processes.started, []);
   });
 
-  it('starts the lead on the best model at xhigh effort, and any session on its configured model and effort', async () => {
+  it('starts the lead on Opus at xhigh effort, and any session on its configured model and effort', async () => {
     const lead = new FakeProcesses();
     const result = await new CliHarness(TEAM).run(['launch', 'lead', '--team', 'app', '--project', APP], { probe: ON_PATH, processes: lead, env: { PATH: '/usr/local/bin' } });
-    assert.deepEqual(result.stdout, [`Starting Claude Code as app-lead (session lead of team app) in ${APP}, on model best at xhigh effort`]);
-    assert.deepEqual(lead.ran[0]?.args, ['--model', 'best', '--effort', 'xhigh', '--name', 'app-lead', defaultPrompt('app', 'lead')]);
+    assert.deepEqual(result.stdout, [`Starting Claude Code as app-lead (session lead of team app) in ${APP}, on model opus at xhigh effort`]);
+    assert.deepEqual(lead.ran[0]?.args, ['--model', 'opus', '--effort', 'xhigh', '--name', 'app-lead', defaultPrompt('app', 'lead')]);
     const alpha = new FakeProcesses();
     const configured = await new CliHarness({ ...TEAM, launch: { alpha: { model: 'sonnet', effort: 'high' } } }).run(LAUNCH, { probe: ON_PATH, processes: alpha, env: { PATH: '/usr/local/bin' } });
     assert.deepEqual(configured.stdout, [`Starting Claude Code as app-alpha (session alpha of team app) in ${APP}, on model sonnet at high effort`]);

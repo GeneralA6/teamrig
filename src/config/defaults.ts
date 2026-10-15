@@ -71,8 +71,10 @@ export const DEFAULT_REFRESH: RefreshConfig = { enabled: true, contextTokens: 25
 export const DEFAULT_OPEN: OpenConfig = { terminal: 'auto' };
 
 /**
- * The lead's model and effort for each key its `launch` entry leaves unset: the most capable model
- * Claude Code offers (`best`: Fable where the account has it, else Opus) at xhigh effort, since the
- * lead plans, splits and judges the whole team's work. The other sessions default to Claude Code's own.
+ * The lead's model and effort for each key its `launch` entry leaves unset: Opus (Claude Code's `opus`
+ * alias, its newest Opus) at xhigh effort, since the lead plans, splits and judges the whole team's work.
+ * Not `best`: in a lead A/B, Fable at xhigh judged no better than Opus and cost 2.4 times as much. A team
+ * sets `launch.<lead id>.model` to `best` or a full model id to change it. The other sessions default to
+ * Claude Code's own.
  */
-export const DEFAULT_LEAD_LAUNCH: Required<LaunchConfig> = { model: 'best', effort: 'xhigh' };
+export const DEFAULT_LEAD_LAUNCH: Required<LaunchConfig> = { model: 'opus', effort: 'xhigh' };

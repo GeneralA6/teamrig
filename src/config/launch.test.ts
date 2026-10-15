@@ -35,14 +35,14 @@ describe('isEffort', () => {
 });
 
 describe('launchOf', () => {
-  it('starts the lead on the best model at xhigh effort when nothing is set', () => {
-    assert.deepEqual(DEFAULT_LEAD_LAUNCH, { model: 'best', effort: 'xhigh' });
-    assert.deepEqual(launchOf(testConfig(), 'lead'), { model: 'best', effort: 'xhigh' });
+  it('starts the lead on Opus at xhigh effort when nothing is set', () => {
+    assert.deepEqual(DEFAULT_LEAD_LAUNCH, { model: 'opus', effort: 'xhigh' });
+    assert.deepEqual(launchOf(testConfig(), 'lead'), { model: 'opus', effort: 'xhigh' });
   });
 
   it('lets the lead set each key on its own and keeps the default for the other', () => {
-    assert.deepEqual(launchOf(testConfig({ launch: { lead: { model: 'opus' } } }), 'lead'), { model: 'opus', effort: 'xhigh' });
-    assert.deepEqual(launchOf(testConfig({ launch: { lead: { effort: 'max' } } }), 'lead'), { model: 'best', effort: 'max' });
+    assert.deepEqual(launchOf(testConfig({ launch: { lead: { model: 'best' } } }), 'lead'), { model: 'best', effort: 'xhigh' });
+    assert.deepEqual(launchOf(testConfig({ launch: { lead: { effort: 'max' } } }), 'lead'), { model: 'opus', effort: 'max' });
     assert.deepEqual(launchOf(testConfig({ launch: { lead: { model: 'default', effort: 'high' } } }), 'lead'), { model: 'default', effort: 'high' });
   });
 

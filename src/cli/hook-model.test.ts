@@ -4,8 +4,8 @@ import { isRecord } from '../core/guards.ts';
 import { APP, CLAUDE_SESSION, CliHarness, contextOf, TEAM, type CliResult } from '../testing/cli-harness.ts';
 
 const OPUS = 'claude-opus-5-5';
-const LEAD_ON_OPUS =
-  'MODEL app-lead runs model claude-opus-5-5; the team config asks for model best at xhigh effort: type /model best (if this account has no Fable, best is Opus and nothing needs changing)';
+const FABLE = 'claude-fable-5';
+const LEAD_ON_SONNET = 'MODEL app-lead runs model claude-sonnet-5; the team config asks for model opus at xhigh effort: type /model opus';
 
 function start(model?: string): string {
   return JSON.stringify({ session_id: CLAUDE_SESSION, cwd: APP, source: 'startup', ...(model === undefined ? {} : { model }) });
@@ -24,15 +24,15 @@ async function sessionStart(session: string, stdin: string, env: Readonly<Record
 }
 
 describe('the SessionStart hook checks the model and effort', () => {
-  it('tells the lead, and the user, when it runs below best at xhigh', async () => {
-    const result = await sessionStart('lead', start(OPUS));
-    assert.equal(noticeOf(result), LEAD_ON_OPUS);
-    assert.ok(contextOf(result).includes(`\n${LEAD_ON_OPUS}`));
+  it('tells the lead, and the user, when it runs on another model than opus', async () => {
+    const result = await sessionStart('lead', start('claude-sonnet-5'));
+    assert.equal(noticeOf(result), LEAD_ON_SONNET);
+    assert.ok(contextOf(result).includes(`\n${LEAD_ON_SONNET}`));
   });
 
   it('checks the effort when Claude Code gives it', async () => {
-    const result = await sessionStart('lead', start('claude-fable-5'), { CLAUDE_EFFORT: 'high' });
-    assert.equal(noticeOf(result), 'MODEL app-lead runs model claude-fable-5 at high effort; the team config asks for model best at xhigh effort: type /effort xhigh');
+    const result = await sessionStart('lead', start(OPUS), { CLAUDE_EFFORT: 'high' });
+    assert.equal(noticeOf(result), 'MODEL app-lead runs model claude-opus-5-5 at high effort; the team config asks for model opus at xhigh effort: type /effort xhigh');
   });
 
   it('checks another session against its own launch entry, and by name', async () => {
@@ -43,8 +43,8 @@ describe('the SessionStart hook checks the model and effort', () => {
 
   it('stays silent when it matches, nothing is configured, the model is not given or the session is unknown', async () => {
     for (const [session, stdin] of [
-      ['lead', start('claude-fable-5')],
-      ['alpha', start(OPUS)],
+      ['lead', start(OPUS)],
+      ['alpha', start(FABLE)],
       ['lead', start()],
       ['zulu', start(OPUS)],
     ] as const) {
