@@ -46,3 +46,9 @@ export const DEFAULT_ALERTS = { persistentFailureHours: 24 };
 /** 250k suits a 1M-token window; on a 200k window Claude Code compacts first, so a team there sets about 150k. */
 export const DEFAULT_REFRESH = { enabled: true, contextTokens: 250_000, tabTitle: true };
 export const DEFAULT_OPEN = { terminal: 'auto' };
+/**
+ * The lead's model and effort for each key its `launch` entry leaves unset: the most capable model
+ * Claude Code offers (`best`: Fable where the account has it, else Opus) at xhigh effort, since the
+ * lead plans, splits and judges the whole team's work. The other sessions default to Claude Code's own.
+ */
+export const DEFAULT_LEAD_LAUNCH = { model: 'best', effort: 'xhigh' };

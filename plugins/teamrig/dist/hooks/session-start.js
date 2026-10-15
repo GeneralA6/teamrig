@@ -69,6 +69,9 @@ export function sessionStartContext(input) {
     if (input.titleNote !== undefined) {
         notes.push(input.titleNote);
     }
+    if (input.modelNote !== undefined) {
+        notes.push(input.modelNote);
+    }
     if (load.newerVersion !== undefined) {
         notes.push(`The team config is version ${load.newerVersion}, from a newer ${KIT_NAME}: these rules are read best-effort.`);
     }
@@ -77,7 +80,11 @@ export function sessionStartContext(input) {
     }
     return renderSessionContext(`${renderCorePack(load.config, command)}\n\n${notes.join('\n')}`, input.teamRules, command);
 }
-/** The hook's stdout: Claude Code adds `additionalContext` to the session's context. */
-export function sessionStartOutput(context) {
-    return JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: context } });
+/**
+ * The hook's stdout: Claude Code adds `additionalContext` to the session's context and shows a
+ * `systemMessage`, when there is one, to the user, who alone can change the model or the effort.
+ */
+export function sessionStartOutput(context, notice) {
+    const hookSpecificOutput = { hookEventName: 'SessionStart', additionalContext: context };
+    return JSON.stringify(notice === undefined ? { hookSpecificOutput } : { systemMessage: notice, hookSpecificOutput });
 }

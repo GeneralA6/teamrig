@@ -1,10 +1,12 @@
 import { dirname, resolve } from 'node:path';
+import { describeLaunch, launchOf } from "../../config/launch.js";
 import { isTerminalChoice, TERMINALS } from "../../config/types.js";
 import { splitAddress } from "../../core/address.js";
 import { ENV } from "../../core/home.js";
 import { ID_PATTERN, ID_RULE } from "../../core/ids.js";
 import { ENV_SOURCE } from "../../core/team.js";
 import { findClaude } from "../../open/claude.js";
+import { launchFlags } from "../../open/launch-flags.js";
 import { openTab } from "../../open/open-tab.js";
 import { decodePrompt, defaultPrompt, encodePrompt, promptProblem } from "../../open/prompt.js";
 import { shellCommand } from "../../open/quote.js";
@@ -92,7 +94,7 @@ export async function open(args, runtime) {
     const name = roster.nameOf(id) ?? id;
     const outcome = await openTab(runtime, terminal, { title: name, folder: project, argv });
     if (outcome.kind === 'opened') {
-        runtime.out.stdout(`OPENED ${name} (session ${id}) in a new ${TERMINAL_LABELS[outcome.terminal]} in ${project}`);
+        runtime.out.stdout(`OPENED ${name} (session ${id}) in a new ${TERMINAL_LABELS[outcome.terminal]} in ${project}, on ${describeLaunch(launchOf(config, id))}`);
         return EXIT.ok;
     }
     const shell = runtime.platform === 'win32' ? ' in PowerShell' : '';
@@ -119,7 +121,8 @@ function launchPrompt(encoded, team, id) {
 /**
  * `launch <id> --team <team> --project <dir> [--home <dir>] [--encoded-prompt <text>]`: what a tab
  * that `open` started runs. It sets the session's variables and starts Claude Code under the
- * session's name with its first prompt, its input and output on this terminal.
+ * session's name, on its model and effort from the team config's `launch`, with its first prompt,
+ * its input and output on this terminal.
  */
 export async function launch(args, runtime) {
     const id = idFlag('session', onePositional(args, 'id'));
@@ -132,7 +135,8 @@ export async function launch(args, runtime) {
     const env = sessionEnv(runtime.env, { id, team, home: args.flags.get('home') });
     const sessionRuntime = { ...runtime, env };
     const kit = await openKit(sessionRuntime, team);
-    const roster = await rosterOf(sessionRuntime, kit, requireConfig(kit, sessionRuntime, 'read'));
+    const config = requireConfig(kit, sessionRuntime, 'read');
+    const roster = await rosterOf(sessionRuntime, kit, config);
     if (!roster.ids.includes(id)) {
         throw new RefusedError(`${id} is not a session of team ${team}`);
     }
@@ -142,9 +146,10 @@ export async function launch(args, runtime) {
         throw new RefusedError(`Claude Code (claude) is not on PATH${skipped}; install it, then run this again`);
     }
     const name = roster.nameOf(id) ?? id;
-    runtime.out.stdout(`Starting Claude Code as ${name} (session ${id} of team ${team}) in ${project}`);
+    const settings = launchOf(config, id);
+    runtime.out.stdout(`Starting Claude Code as ${name} (session ${id} of team ${team}) in ${project}, on ${describeLaunch(settings)}`);
     const { command, prefix } = claude.program;
-    const result = await runtime.processes.run({ command, args: [...prefix, '--name', name, prompt], cwd: project, env });
+    const result = await runtime.processes.run({ command, args: [...prefix, ...launchFlags(settings), '--name', name, prompt], cwd: project, env });
     switch (result.kind) {
         case 'exited':
             if (result.code === 0) {
