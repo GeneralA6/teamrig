@@ -66,8 +66,22 @@ export interface LockConfig {
 }
 
 export interface PushGuardConfig {
-  /** Branches a push to which needs the human's confirmation; force-push and deletion are refused. */
+  /** Branches the push guard watches: a push to one goes as `pushToProtected` says; force-push, mirror and deletion are refused. */
   readonly protectedBranches: readonly string[];
+  /** What a normal push to a protected branch does. */
+  readonly pushToProtected: PushToProtected;
+}
+
+/**
+ * A normal push to a protected branch: `ask` the human, or `allow` it with a note. Neither changes a refusal, a
+ * `--force-with-lease` push, or a command the guard cannot read, which still asks.
+ */
+export type PushToProtected = 'ask' | 'allow';
+
+export const PUSH_TO_PROTECTED: readonly PushToProtected[] = ['ask', 'allow'];
+
+export function isPushToProtected(value: unknown): value is PushToProtected {
+  return PUSH_TO_PROTECTED.some((choice) => choice === value);
 }
 
 export const COMMIT_GATES = ['off', 'warn', 'refuse'] as const;

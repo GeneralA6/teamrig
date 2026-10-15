@@ -24,9 +24,11 @@ import {
   isEffortLevel,
   isEscalation,
   isOverAction,
+  isPushToProtected,
   isTerminalChoice,
   isWeekday,
   OVER_ACTIONS,
+  PUSH_TO_PROTECTED,
   TERMINALS,
   WEEKDAYS,
   type BudgetConfig,
@@ -37,6 +39,7 @@ import {
   type LaunchConfig,
   type OpenConfig,
   type PathsConfig,
+  type PushToProtected,
   type QuietHours,
   type RefreshConfig,
   type RegisterConfig,
@@ -208,6 +211,7 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
         shortLine(CONFIG_LIMITS.protectedBranches.maxLength, BRANCH_NAME),
         CONFIG_LIMITS.protectedBranches.maxItems,
       ),
+      pushToProtected: parsePushToProtected(read, pushGuard),
     },
     commits: parseCommits(read, read.section(raw, 'commits', '')),
     coordinator: {
@@ -443,6 +447,12 @@ function parseOpen(read: ConfigReader, raw: JsonRecord): OpenConfig {
     isTerminalChoice(value) ? undefined : `expected one of ${TERMINALS.join(', ')}`,
   );
   return { terminal: isTerminalChoice(terminal) ? terminal : DEFAULT_OPEN.terminal };
+}
+
+function parsePushToProtected(read: ConfigReader, raw: JsonRecord): PushToProtected {
+  const fallback = DEFAULT_PUSH_GUARD.pushToProtected;
+  const value = read.string(raw, 'pushToProtected', 'pushGuard', fallback, oneOf(PUSH_TO_PROTECTED));
+  return isPushToProtected(value) ? value : fallback;
 }
 
 function parseCommits(read: ConfigReader, raw: JsonRecord): CommitsConfig {

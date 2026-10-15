@@ -5,7 +5,7 @@ import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { MODEL_ALIASES, MODEL_ID_MAX_LENGTH, MODEL_ID_PATTERN } from './launch.ts';
 import { CONFIG_LIMITS } from './limits.ts';
 import { parseConfig } from './parse.ts';
-import { EFFORT_LEVELS } from './types.ts';
+import { COMMIT_GATES, EFFORT_LEVELS, PUSH_TO_PROTECTED } from './types.ts';
 
 /** The roster has no default; everything else in the schema must state the code's default. */
 const ROSTER = { sessions: ['alpha', 'bravo'], roles: { lead: 'alpha' } };
@@ -188,6 +188,12 @@ describe('config.schema.json', () => {
       { type: 'string', pattern: MODEL_ID_PATTERN.source, maxLength: MODEL_ID_MAX_LENGTH },
     ]);
     assert.deepEqual(effort['enum'], [...EFFORT_LEVELS]);
+  });
+
+  it('takes the push and commit choices the parser takes', async () => {
+    const schema = await loadSchema();
+    assert.deepEqual(nodeAt(schema, 'pushGuard.pushToProtected')['enum'], [...PUSH_TO_PROTECTED]);
+    assert.deepEqual(nodeAt(schema, 'commits.gate')['enum'], [...COMMIT_GATES]);
   });
 
   it('requires exactly the roster', async () => {
