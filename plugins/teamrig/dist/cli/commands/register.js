@@ -293,14 +293,12 @@ function checkRegister(snapshot, config, now, week, team) {
     return { team, flags: checkTasks(snapshot.state.tasks.values(), now, week, config.register), context: waitContext(snapshot.state.tasks, now) };
 }
 /**
- * `check [--tree] [--all]`: the task flags, then the skill flags of the Claude Code skills folder, in
- * the short form (src/cli/reports.ts), or with `--all` every flag in full. With `--tree`, the task
- * flags of the lead's team and each team under it, against the lead's week; the skills are the lead's
+ * What `check` reports: the task flags, then the skill flags of the Claude Code skills folder. With `--tree`,
+ * the task flags of the lead's team and each team under it, against the lead's week; the skills are the lead's
  * team's only, as teams on one machine share that folder. The `stopgap T<id>` tags in those skills
  * and in the team's `register.check.stopgapFiles` add a STOPGAP-DONE flag per finished task they name.
  */
-export async function check(args, runtime) {
-    noPositionals(args);
+export async function checkReport(args, runtime) {
     const now = new Date(runtime.clock.now());
     const tree = args.switches.has('tree');
     const read = await readRegisters(args, runtime);
@@ -321,8 +319,12 @@ export async function check(args, runtime) {
     });
     const skills = lintSkills(skillFiles, now, own.config);
     const scope = week === null ? 'no week plan tagged yet, so the week checks are skipped' : `week ${week}`;
-    const report = { sections, scope, skills, skillsDir: own.paths.skills };
-    checkLines(report, args.switches.has('all')).forEach((line) => runtime.out.stdout(line));
+    return { sections, scope, skills, skillsDir: own.paths.skills };
+}
+/** `check [--tree] [--all]`: the report in the short form (src/cli/reports.ts), or with `--all` every flag in full. */
+export async function check(args, runtime) {
+    noPositionals(args);
+    checkLines(await checkReport(args, runtime), args.switches.has('all')).forEach((line) => runtime.out.stdout(line));
     return EXIT.ok;
 }
 /** `plan [--tree]`: with `--tree`, one section per team, the lead's team first, for the lead's week. */

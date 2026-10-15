@@ -15,7 +15,8 @@ function pctOf(w, week) {
 function useText(w, calls) {
     return `${formatW(w)} W in ${formatCount(calls)} call${calls === 1 ? '' : 's'}`;
 }
-function weekLine(week) {
+/** The week's use and its pace: the first line of `budget`, and the last of `start`. */
+export function weekLine(week) {
     if (week.usedPct === undefined || week.reset === undefined) {
         return "Week: its use is unknown: no status line reading (run teamrig statusline install) and no budget.weeklyLimitW.";
     }
