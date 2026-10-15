@@ -1,3 +1,5 @@
+import { SECRET_TOKEN_PATTERNS, type SecretPattern } from '../../src/core/secret-patterns.ts';
+
 export interface ScrubRule {
   readonly id: string;
   readonly description: string;
@@ -24,7 +26,8 @@ function isAllowedEmail(match: RegExpExecArray): boolean {
   );
 }
 
-function secret(id: string, description: string, pattern: RegExp): ScrubRule {
+/** A credential shape from the shared module, so the scrub and the shared-file writes refuse the same tokens. */
+function secret({ id, description, pattern }: SecretPattern): ScrubRule {
   return { id, description, pattern, revealMatch: false };
 }
 
@@ -57,14 +60,7 @@ export const GENERIC_RULES: readonly ScrubRule[] = [
     pattern: /\b[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.(?:internal|intranet|corp)\b/g,
     revealMatch: false,
   },
-  secret('private-key', 'private key block', /-----BEGIN (?:[A-Z]+ )*PRIVATE KEY-----/g),
-  secret('github-token', 'GitHub token', /\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{40,})\b/g),
-  secret('anthropic-key', 'Anthropic API key', /\bsk-ant-[A-Za-z0-9_-]{20,}/g),
-  secret('sk-key', 'API key with an sk- prefix', /\bsk-(?!ant-)(?:proj-)?[A-Za-z0-9_-]{32,}/g),
-  secret('aws-key', 'AWS access key id', /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g),
-  secret('slack-token', 'Slack token', /\bxox[abposr]-[A-Za-z0-9-]{10,}/g),
-  secret('google-key', 'Google API key', /\bAIza[0-9A-Za-z_-]{35}(?![0-9A-Za-z_-])/g),
-  secret('jwt', 'JSON web token', /\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g),
+  ...SECRET_TOKEN_PATTERNS.map(secret),
   {
     id: 'assigned-secret',
     description: 'literal value assigned to a secret-like name',
