@@ -8,6 +8,7 @@ import type { RequirementsCheck } from '../requirements/requirements.ts';
 import type { Processes } from '../open/processes.ts';
 import type { CommitLog } from '../push-guard/commit-size.ts';
 import type { RepoState } from '../push-guard/push.ts';
+import type { ShellRunner } from '../test-run/shell.ts';
 
 export interface Output {
   stdout(line: string): void;
@@ -38,6 +39,8 @@ export interface CliRuntime {
   readonly platform: NodeJS.Platform;
   /** Terminal launchers and Claude Code, for `teamrig open` and `teamrig launch`. */
   readonly processes: Processes;
+  /** The shell `teamrig test` runs its command line in. */
+  readonly shell: ShellRunner;
   /** Whether a folder or a program is there. */
   readonly probe: PathProbe;
   readonly self: SelfLocation;
