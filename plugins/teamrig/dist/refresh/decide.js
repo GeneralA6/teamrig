@@ -9,23 +9,48 @@ export function thousands(tokens) {
 export function readyCommand(command, session) {
     return `${command} refresh --ready --session ${session}`;
 }
-function causeOf(facts, threshold) {
+/** The tasks finished since the context was last fresh, before this one: only a boundary or a judged one counts them. */
+function finishedSoFar(state) {
+    return state?.phase === 'boundary' || state?.phase === 'idle' ? state.finished : 0;
+}
+/** `set <id> --status done`: the boundary the Stop hook judges, counting this task. */
+export function boundaryOf(previous, task, at) {
+    return { phase: 'boundary', task, at, finished: finishedSoFar(previous) + 1 };
+}
+function causeOf(facts, settings, finished) {
     if (facts.requestedBy !== undefined) {
         return { kind: 'asked', by: facts.requestedBy, tokens: facts.tokens ?? null };
     }
-    return facts.tokens !== undefined && facts.tokens >= threshold ? { kind: 'size', tokens: facts.tokens } : undefined;
+    const { tokens } = facts;
+    if (tokens === undefined) {
+        return undefined;
+    }
+    if (tokens >= settings.contextTokens) {
+        return { kind: 'size', tokens };
+    }
+    const counted = settings.everyTasks > 0 && finished >= settings.everyTasks && tokens >= settings.everyTasksMinTokens;
+    return counted ? { kind: 'tasks', tokens, finished } : undefined;
+}
+function whyOf(cause, settings) {
+    switch (cause.kind) {
+        case 'size':
+            return `your context is ${thousands(cause.tokens)} (refresh at ${thousands(settings.contextTokens)})`;
+        case 'tasks':
+            return `your context is ${thousands(cause.tokens)} after ${cause.finished} tasks (refresh every ${settings.everyTasks} tasks)`;
+        case 'asked':
+            return `${cause.by} asked for a refresh${cause.tokens === null ? '' : ` (your context is ${thousands(cause.tokens)})`}`;
+    }
 }
 function handoverAsk(task, cause, context) {
-    const why = cause.kind === 'size'
-        ? `your context is ${thousands(cause.tokens)} (refresh at ${thousands(context.settings.contextTokens)})`
-        : `${cause.by} asked for a refresh${cause.tokens === null ? '' : ` (your context is ${thousands(cause.tokens)})`}`;
+    const why = whyOf(cause, context.settings);
     return (`${context.command}: ${why} and you just finished ${task}. Write your handover to ${context.handoverPath} ` +
         '(what is in progress, the next step of each, open questions, where things are), then run ' +
         `\`${readyCommand(context.command, context.session.id)}\`. Do not start new work.`);
 }
 /**
  * The Stop hook, at the end of every turn. Only a boundary (a task just finished) is judged, once:
- * at or over the threshold, or when the lead asked, the session is kept going to write its handover;
+ * at or over the threshold, after enough tasks at a context worth refreshing, or when the lead asked,
+ * the session is kept going to write its handover;
  * otherwise the boundary is recorded as judged and nothing is said. While background work the
  * session started still runs, a due refresh and the notice wait for a later stop, since a /clear
  * would cut that work off. A stop that ends a turn a Stop hook continued never judges a boundary, so
@@ -62,9 +87,9 @@ export function decideStop(state, context, facts) {
         return MEASURE;
     }
     const tokens = facts.tokens ?? null;
-    const cause = causeOf(facts, context.settings.contextTokens);
+    const cause = causeOf(facts, context.settings, state.finished);
     if (cause === undefined) {
-        return { kind: 'write', state: { phase: 'idle', task: state.task, at: context.now, tokens } };
+        return { kind: 'write', state: { phase: 'idle', task: state.task, at: context.now, tokens, finished: state.finished } };
     }
     // A refresh would cut the running work off: the boundary stays unjudged, so a stop after the work ends judges it.
     if (facts.running > 0) {
@@ -105,9 +130,20 @@ export function decideReady(state, handover, handoverPath, now) {
 }
 /** Starts that drop the old context; a `compact`, `resume` or `fork` start keeps it, so the handover waits. */
 const FRESH_SOURCES = new Set(['clear', 'startup']);
-/** SessionStart: the first fresh start after the handover was written points the session at it, once. */
+/** Starts after which the context is small again, so the task count starts over: a compaction too. */
+const SMALL_SOURCES = new Set([...FRESH_SOURCES, 'compact']);
+/**
+ * SessionStart: the first fresh start after the handover was written points the session at it, once.
+ * Any start that leaves the context small (a compaction too) starts the task count over.
+ */
 export function decideStart(state, source, settings, handoverPath, now) {
-    if (!settings.enabled || state?.phase !== 'ready' || source === undefined || !FRESH_SOURCES.has(source)) {
+    if (!settings.enabled || state === undefined || source === undefined) {
+        return { kind: 'none' };
+    }
+    if ((state.phase === 'boundary' || state.phase === 'idle') && state.finished > 0 && SMALL_SOURCES.has(source)) {
+        return { kind: 'reset', state: { ...state, finished: 0 } };
+    }
+    if (state.phase !== 'ready' || !FRESH_SOURCES.has(source)) {
         return { kind: 'none' };
     }
     return {

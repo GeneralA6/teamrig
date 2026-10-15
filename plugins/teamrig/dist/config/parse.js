@@ -422,6 +422,8 @@ function parseCommits(read, raw) {
 }
 /** From a 200k window's compaction point up to far past any window today. */
 const REFRESH_TOKENS = { min: 10_000, max: 10_000_000 };
+/** 0 turns the task count off. */
+const REFRESH_TASKS = { min: 0, max: 100 };
 function parseRefresh(read, raw) {
     const path = 'refresh';
     const defaults = DEFAULT_REFRESH;
@@ -429,6 +431,8 @@ function parseRefresh(read, raw) {
     return {
         enabled: read.boolean(raw, 'enabled', path, defaults.enabled),
         contextTokens: read.integer(raw, 'contextTokens', path, defaults.contextTokens, REFRESH_TOKENS),
+        everyTasks: read.integer(raw, 'everyTasks', path, defaults.everyTasks, REFRESH_TASKS),
+        everyTasksMinTokens: read.integer(raw, 'everyTasksMinTokens', path, defaults.everyTasksMinTokens, REFRESH_TOKENS),
         tabTitle: read.boolean(raw, 'tabTitle', path, defaults.tabTitle),
         ...(handoverDir === undefined ? {} : { handoverDir }),
     };
