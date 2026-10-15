@@ -146,6 +146,28 @@ describe('RegisterPolicy.setStatus', () => {
   });
 });
 
+describe('RegisterPolicy.setStatus: a start waits for the verifying tasks it needs', () => {
+  const shipped = testTask({ id: 'T1', owner: 'bravo', status: 'verifying', proof: 'the nightly run' });
+  const planned = testTask({ id: 'T2', after: ['T1'] });
+  const context = { ...CTX, state: stateOf(shipped, planned) };
+
+  it('refuses the start, naming the task, its proof and its owner', () => {
+    assert.equal(
+      error(new RegisterPolicy(testConfig()).setStatus(planned, 'alpha', { status: 'in-progress' }, context)),
+      'T2 needs T1, still verifying (proof: the nightly run, owner bravo); start T2 once T1 is done',
+    );
+    const both = testTask({ id: 'T3', after: ['T1', 'T2'] });
+    const twoHeld = { ...CTX, state: stateOf(shipped, { ...planned, status: 'verifying', note: 'x', proof: 'p' }, both) };
+    assert.match(error(new RegisterPolicy(testConfig()).setStatus(both, 'alpha', { status: 'in-progress' }, twoHeld)), /; start T3 once T1 and T2 are done$/);
+  });
+
+  it('lets the start through in warn mode, and any other status in either mode', () => {
+    const warn = new RegisterPolicy(testConfig({ register: { verifyGate: 'warn' } }));
+    assert.equal(error(warn.setStatus(planned, 'alpha', { status: 'in-progress' }, context)), 'allowed');
+    assert.equal(error(new RegisterPolicy(testConfig()).setStatus(planned, 'alpha', { status: 'dropped', note: 'not needed' }, context)), 'allowed');
+  });
+});
+
 describe('RegisterPolicy.setStatus to verifying', () => {
   const policy = new RegisterPolicy(testConfig());
   const VERIFYING: Task = { ...TASK, status: 'verifying', note: 'shipped', proof: 'the nightly run is green' };

@@ -5,6 +5,7 @@ import { parseUtcDay, parseUtcDeadline } from '../core/time.ts';
 import type { TaskFieldName, TaskFields } from './events.ts';
 import { taskNumber, type RegisterState, type Task } from './fold.ts';
 import { ACTIVE_STATUSES, priorityText, SESSION_NAME, type TaskStatus } from './model.ts';
+import { heldStart, startHolds } from './verify.ts';
 import { sameWait, waitSpelling, type WaitReason } from './waits.ts';
 
 /** Team policy, applied on WRITE only: the parser accepts any well-formed history. */
@@ -141,6 +142,12 @@ export class RegisterPolicy {
       return refuse(`only the owner (${task.owner}) sets the status of ${task.id}`);
     }
     const { register } = this.config;
+    // A start waits for the proof of the shipped changes it builds on; `warn` lets it through and the CLI warns.
+    const holds = startHolds(task, input.status, context.state.tasks);
+    if (holds.length > 0 && register.verifyGate === 'refuse') {
+      const ids = holds.map((held) => held.id);
+      return refuse(`${heldStart(task, holds)}; start ${task.id} once ${ids.join(' and ')} ${ids.length === 1 ? 'is' : 'are'} done`);
+    }
     const note = blankToNull(input.note);
     const evidence = blankToNull(input.evidence);
     const skill = blankToNull(input.skill);
