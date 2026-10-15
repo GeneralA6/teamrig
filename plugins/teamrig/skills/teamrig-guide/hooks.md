@@ -103,9 +103,11 @@ Before Claude runs a Bash or PowerShell command, the guard reads it and decides:
   "Force-pushing, mirroring or deleting a protected branch (main, master) is refused: it can overwrite other
   sessions' commits. Push your own branch, or use --force-with-lease if you truly mean it."
 - **Asks, in doubt**: when it cannot read part of the line (an unclosed quote, a branch or alias only known when
-  the line runs; a bash variable counts as known when the line set it to a plain literal earlier, as in
-  `B=feat; git push -u origin $B`, and never set it otherwise): "The guard cannot tell whether this command pushes to a protected branch (...): <why>. Confirm,
-  or write the push out plainly."
+  the line runs; a bash variable counts as known when the line set it earlier to text and other known variables,
+  as in `B=feat; git push -u origin $B` or `G="git -C /w"; $G push`, and never set it otherwise): "The guard
+  cannot tell whether this command pushes to a protected branch (...): <why>. Confirm, or write the push out
+  plainly." Some doubts, such as an unclosed quote or `bash -c "$CMD"`, ask only when the line names a push in a
+  word of its own (`push`, `--push`, `git-push`), never in a path such as `src/push-guard`.
 
 What to do: push your own branch and merge through a pull request, or write the push out plainly so the guard
 can read it. Never route around a refusal; report it to the lead. The guard reads chains, subshells, nested shells,
