@@ -94,7 +94,7 @@ function fieldChanges(task: Task, wanted: IssueTask): ImportChanges {
 function statusChange(task: Task, wanted: IssueTask, stateReason: string): StatusInput | undefined {
   switch (wanted.outcome) {
     case 'open':
-      return ACTIVE_STATUSES.includes(task.status) ? undefined : { status: 'open', note: 'reopened on GitHub' };
+      return ACTIVE_STATUSES.includes(task.status) ? undefined : { status: 'open', note: 'open on GitHub' };
     case 'done':
       return task.status === 'done' ? undefined : { status: 'done', note: closedNote(stateReason), evidence: wanted.url };
     case 'dropped':

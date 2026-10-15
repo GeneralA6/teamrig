@@ -101,7 +101,7 @@ describe('teamrig gh sync', () => {
     const reopened = new FakeGh().holds('acme/web', [ghIssue('acme/web', 7, { title: 'Fix the login', labels: ['p1'] }), ghIssue('acme/web', 8, { title: 'Add search' })]).holds('acme/api', []);
     assert.deepEqual((await expectRun(kit, ['gh', 'sync', '--yes', '--repo', 'ACME/web'], reopened, EXIT.ok)).slice(0, 2), [
       'REPO acme/web: 0 added, 1 changed, 1 unchanged',
-      'SET T1 gh:acme/web#7 open: reopened on GitHub',
+      'SET T1 gh:acme/web#7 open: open on GitHub',
     ]);
     assert.equal(reopened.ran.length, 2);
   });

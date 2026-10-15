@@ -77,7 +77,7 @@ describe('planSync', () => {
       steps: [
         { kind: 'status', ref: 'gh:acme/web#1', id: 'T1', input: { status: 'done', note: 'closed on GitHub as completed', evidence: 'https://github.com/acme/web/issues/1' } },
         { kind: 'status', ref: 'gh:acme/web#2', id: 'T2', input: { status: 'dropped', note: 'closed on GitHub as not planned' } },
-        { kind: 'status', ref: 'gh:acme/web#3', id: 'T3', input: { status: 'open', note: 'reopened on GitHub' } },
+        { kind: 'status', ref: 'gh:acme/web#3', id: 'T3', input: { status: 'open', note: 'open on GitHub' } },
       ],
       inserted: 0,
       changed: 3,
