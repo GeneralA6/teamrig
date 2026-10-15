@@ -55,24 +55,23 @@ The new tab runs `claude`, so Claude Code must be on that terminal's PATH.
 ## The status line (optional)
 
 `teamrig budget` reads each session's use from the transcripts with no setup. The week's use in percent and its
-reset come from Claude Code's status line, which a plugin cannot set, so you set it once in your user
-`settings.json` (`~/.claude/settings.json`):
+reset come from Claude Code's status line, which a plugin cannot set. Set it once with this command, in a terminal
+or typed as `! teamrig statusline install` in Claude Code. It shows the change; run it again with `--yes` to write
+it:
 
-```json
-{
-  "statusLine": {
-    "type": "command",
-    "command": "node ~/.claude/plugins/marketplaces/teamrig/plugins/teamrig/dist/cli/main.js statusline"
-  }
-}
+```sh
+teamrig statusline install
 ```
 
-The status line does not run in the Bash tool, so `teamrig` is not on its PATH; the marketplace's copy keeps one
-path across plugin updates. It saves a small snapshot per Claude Code session in the team's
-`budget.statusSnapshotDir` and prints the model and the plan's use. If you already have a status line, keep it
-and have it write the same snapshot JSON instead ([commands.md](commands.md#teamrig-statusline)), then point
-`budget.statusSnapshotDir` at its folder. Without either, set `budget.weeklyLimitW` and `budget.reset` for daily
-budgets in percent, or `teamrig budget` shows W only.
+It writes a small launcher to `<kit home>/bin`, which finds the installed plugin each time it runs, so a plugin
+update needs no new setup, and makes it the status line in your user `settings.json` (`~/.claude/settings.json`,
+or in `$CLAUDE_CONFIG_DIR`). A status line you already have keeps running: the launcher goes in front of it in a
+pipe and hands it the same input ([commands.md](commands.md#teamrig-statusline-install)). The launcher saves a
+small snapshot per Claude Code session in the team's `budget.statusSnapshotDir` and prints the model and the
+plan's use. `teamrig statusline uninstall` takes it back out. You can instead have your own status line write the
+same snapshot JSON ([commands.md](commands.md#teamrig-statusline)) and point `budget.statusSnapshotDir` at its
+folder. Without either, set `budget.weeklyLimitW` and `budget.reset` for daily budgets in percent, or
+`teamrig budget` shows W only.
 
 ## The task pane (optional)
 

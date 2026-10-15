@@ -788,7 +788,7 @@ PREVIEW /home/you/.teamrig/teams/shop/config.json: 4 to change, 2 unchanged; not
 
 With `--yes` the first line reads `WROTE <path>: ...; the old file is at <backup>`, or `UNCHANGED <path>: the
 budget already reads this way` when nothing would change. `NOTE no status line reading yet, so the budget stays
-silent` means no hook can tell the week's use: make `teamrig statusline` Claude Code's status line
+silent` means no hook can tell the week's use: run `teamrig statusline install`
 ([requirements.md](requirements.md#the-status-line-optional)), or set `budget.weeklyLimitW`.
 
 A caller who is not the lead, or a value the config checks reject (`nothing written: <key>: <why>`), is `REFUSED`
@@ -832,10 +832,14 @@ unknown week (no status line and no `budget.weeklyLimitW`) is `REFUSED` (exit 2)
 A status line for Claude Code. It reads the status JSON Claude Code sends on stdin, saves the plan's use of the
 week and its reset as `<Claude session id>.json` in the team's `budget.statusSnapshotDir` (relative to the
 team's folder; unset: `<kit home>/usage/live`), and prints a short status. It always exits 0, so a bad input or
-a full disk never breaks the status bar; what went wrong goes to stderr. A plugin cannot set the status line:
-see [requirements.md](requirements.md#the-status-line-optional).
+a full disk never breaks the status bar; what went wrong goes to stderr. With `--pass` it prints the status JSON
+again instead of its status, for the status line after it in a pipe. A plugin cannot set the status line:
+[teamrig statusline install](#teamrig-statusline-install) sets it up.
 
-Flags: none.
+Flags:
+
+- `--pass`: print the status JSON again instead of the status; `statusline install` uses it in front of a status
+  line already there.
 
 Example, as Claude Code runs it:
 
@@ -858,6 +862,69 @@ required, and `rate_limits.seven_day` carries the week; the other fields may be 
 ```
 
 `resets_at` is in seconds since 1970, as Claude Code sends it.
+
+### teamrig statusline install
+
+Makes `teamrig statusline` Claude Code's status line on this machine. A plugin cannot set the status line, so this
+writes it into your own Claude Code settings (`settings.json` in `$CLAUDE_CONFIG_DIR`, else in `~/.claude`). It
+first writes a small launcher to `<kit home>/bin/statusline.mjs`, which finds the installed plugin each time it
+runs, so a plugin update needs no new setup. With no status line, the launcher becomes it. With one already there,
+the launcher goes in front of it in a pipe (`node "<launcher>" --pass | <yours>`): it saves the week's reading and
+hands the same input on, so your status line runs and shows as before. A status line that is a compound shell line
+(`&&`, `||`, `;` or a line break outside quotes) is refused, because the pipe would feed only its first part: put
+it in a script, make the script the status line, and run install again. Without `--yes` it shows the change and
+writes nothing; with `--yes` it first keeps the old settings file in the kit's `backups` folder
+(`claude-settings.json`, or with a timestamp when that name is taken). It changes your settings, not a team's, so
+it takes no `--session`. When Claude may not change its own settings from its Bash tool, type
+`! teamrig statusline install --yes` in Claude Code.
+
+Flags:
+
+- `--yes`: write the change; without it, only show it.
+
+Example:
+
+```sh
+teamrig statusline install --yes
+```
+
+Output:
+
+```text
+WROTE the changes below; the old settings file is at /home/me/.teamrig/backups/claude-settings.json
+  WRITE /home/me/.teamrig/bin/statusline.mjs
+  CHANGE /home/me/.claude/settings.json statusLine.command: node "/home/me/.claude/status.js" -> node "/home/me/.teamrig/bin/statusline.mjs" --pass | node "/home/me/.claude/status.js"
+```
+
+`UNCHANGED <settings>: teamrig is already the status line` when nothing would change; a launcher that differs from
+this version's is written again. Settings that are not a JSON object, a status line without a command and a
+compound shell line are `REFUSED` (exit 2).
+
+### teamrig statusline uninstall
+
+Takes the launcher back out: the status line that was there before it returns, or none when there was none, and
+the launcher file is removed. Like `install`, it shows the change without `--yes` and keeps the old settings file
+first. A launcher line changed by hand is `REFUSED`: edit `statusLine.command` yourself.
+
+Flags:
+
+- `--yes`: write the change; without it, only show it.
+
+Example:
+
+```sh
+teamrig statusline uninstall --yes
+```
+
+Output:
+
+```text
+WROTE the changes below; the old settings file is at /home/me/.teamrig/backups/claude-settings.json
+  CHANGE /home/me/.claude/settings.json statusLine.command: node "/home/me/.teamrig/bin/statusline.mjs" -> (none)
+  REMOVE /home/me/.teamrig/bin/statusline.mjs
+```
+
+`UNCHANGED <settings>: teamrig is not the status line` when it is not.
 
 ## Hooks
 

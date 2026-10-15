@@ -230,7 +230,8 @@ turns this off: `register.autoArchive: false` in the team's `config.json`, after
 - Token use: `teamrig budget` reads each session's use from the Claude Code transcripts (only the lines added
   since its last run, kept per session and day for 8 days in `state/usage/`) and shows it against the week's pace
   line: what is left to the target at 00:00 UTC, spread over the days to the reset and split among the sessions.
-  The week's use in percent comes from status line snapshots, else from `budget.weeklyLimitW`. The hooks warn
+  The week's use in percent comes from status line snapshots (`teamrig statusline install` sets the status line
+  up), else from `budget.weeklyLimitW`. The hooks warn
   a session as it passes its daily budget, tell the lead, and can hold its helper launches (`budget.overAction`,
   `budget.quietHours`). The lead sets that policy with `teamrig budget setup`, which shows the change before it
   writes it.

@@ -58,8 +58,12 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       [--quiet <HH:MM-HH:MM>|off] [--quiet-action <action>] [--off] [--yes]
       (the lead only) writes the team's budget policy into its config and turns the budget on (--off:
       off); without --yes it shows the change and writes nothing; flags left out keep their values
-  statusline                   Claude Code's status line (status JSON on stdin): saves the week's use
-      for budget and prints a short status
+  statusline [--pass]          Claude Code's status line (status JSON on stdin): saves the week's use
+      for budget and prints a short status; --pass: prints the status JSON again instead, for the
+      status line after it in a pipe
+  statusline install [--yes]   makes teamrig statusline Claude Code's status line, in front of the one
+      already there; without --yes it shows the change and writes nothing
+  statusline uninstall [--yes] takes it back out: the status line before it returns
   config validate | config migrate
   commits check --base <ref> [--tip <ref>]   commits in base..tip (default HEAD) over the size rule
       with no reason line; any is REFUSED, for an integrate script or CI
