@@ -41,9 +41,7 @@ wall, and deploys hold in the last hours, so nothing ships half-done.
 
 *Coming: planning the week to your token limit, and holding deploys before the reset.*
 
-![Your lead plans the week from the tokens you have left. It sizes each task in tokens and fills the week in order of priority, p1 first, until the plan reaches 99.5% of your weekly limit, keeping 0.5% for incidents. Each member's tasks fill its lane from one reset to the next, and the tasks that do not fit move to next week.](docs/images/plan.svg)
-
-![A week of token use between two resets. Without a plan, usage climbs too fast, hits the weekly limit on Thursday, and work waits for the reset. With teamrig, the work is spread over the week: usage climbs evenly to 99.5%, each day's tasks get done, and deploys pause in the last hours before the reset.](docs/images/week.svg)
+![Your lead plans the week from the tokens you have left. The tasks fill the days, most important first, until the plan reaches 99.5% of your weekly limit. The last 0.5% is kept for incidents, and the task that doesn't fit moves to next week.](docs/images/plan.svg)
 
 ## Why it's different
 
