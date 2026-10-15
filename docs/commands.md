@@ -17,14 +17,14 @@ teamrig <command> ...   (the caller: --session <id|name>, else TEAMRIG_SESSION)
       a new terminal tab running Claude Code as that session (team/id: another team of the tree);
       with no terminal it prints the command
   rules [--session <id|name>]  the team rules and who the session is, as a session start gives them
-  add --title "<one line>" --tier <n> [--ref <where it was asked>] [--owner <session>]
+  add --title "<one line>" --priority p<n> [--ref <where it was asked>] [--owner <session>]
       [--source <session>|<owner source>] [--due <date>] [--goals a,b] [--week <date>]
-  add --team <child team> --title .. --tier <n> [...]   the parent lead hands that team's lead a task
+  add --team <child team> --title .. --priority p<n> [...]   the parent lead hands that team's lead a task
   set <id> --status open|in-progress|blocked|done|dropped [--note "<what/why>"] [--evidence <proof>]
       [--skill <name>|none]
-  update <id> [--title ..] [--owner ..] [--tier ..] [--ref ..|none] [--due <date>|none]
+  update <id> [--title ..] [--owner ..] [--priority ..] [--ref ..|none] [--due <date>|none]
       [--goals a,b|none] [--week <date>|none] [--note ..]
-  list [--session <owner>] [--status a,b|all] [--source <s>] [--tier 1,2] [--due-before <date>]
+  list [--session <owner>] [--status a,b|all] [--source <s>] [--priority p1,p2] [--due-before <date>]
       [--week <date>|none] [--goal <tag>] [--tree]
   show <id>
   check [--week <date>] [--tree]   tasks and skills that break a team rule
@@ -56,7 +56,7 @@ Exit: 0 done, 1 failed, 2 refused by a team rule, 3 open printed the command to 
 
 ## What a session sees
 
-<sub>Below, lead, api, web and data are your sessions' names; T1 and T2 are task ids; tier 1 is the most urgent of your
-priority tiers; when you next type to a session, the plugin tells it about new inbox notes.</sub>
+<sub>Below, lead, api, web and data are your sessions' names; T1 and T2 are task ids; p1 is the most urgent of your
+priorities; when you next type to a session, the plugin tells it about new inbox notes.</sub>
 
 ![Claude Code tabs named lead, api, web and data. Each session runs teamrig itself: the lead adds a task for api and one for web, and tells web its task is ready. Web reads the note and starts its task.](images/commands.svg)
