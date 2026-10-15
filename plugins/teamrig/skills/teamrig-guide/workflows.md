@@ -64,11 +64,10 @@ The register refuses `done` without `--note`, without `--evidence` (unless the t
 `--skill <name>|none`; a named skill must exist. When a task will not be done, set it `dropped` with a note saying
 why and who decided.
 
-## Shipped, waiting for proof
+## Shipped, verifying
 
 When the change is merged or deployed but what proves it does not exist yet (a night's flow, a run on another
-machine, a number to measure), set it `verifying` with a note naming that proof, and a due date for when it
-should exist:
+machine, a number to measure), set it `verifying` with a note naming that proof, and a due date to verify it by:
 
 ```sh
 teamrig set T4 --session api --status verifying --note "tonight's import runs clean on the new parser"
@@ -76,7 +75,7 @@ teamrig update T4 --session api --due 2026-10-17
 ```
 
 It stays in `list` and `check` until you set it `done` with the proof as evidence, or `in-progress` again when
-the proof fails. Past its due date, `check` flags it `PROOF-OVERDUE`.
+the proof fails. Past that date, `check` flags it `VERIFY-OVERDUE`.
 
 ## Blocked
 
@@ -127,7 +126,7 @@ With sub-teams, add `--tree` to `check`. Then act on each flag (full table: [tas
   one inbox line to tag its goal or park it.
 - `NOT-PICKED-UP`: the owner is idle and reads no inbox: wake it with `teamrig open <id>`, or tell the human.
 - `OVERDUE` or `STALE`: ask the owner what blocks it, then re-date it (`--due`) or tell the human.
-- `PROOF-OVERDUE`: ask the owner whether the proof came: `done` with it, `in-progress` if it failed, or a new date.
+- `VERIFY-OVERDUE`: ask the owner whether the proof came: `done` with it, `in-progress` if it failed, or a new date.
 - `OWNER-UNPLANNED` or `DUE-UNPLANNED`: plan it in with `--week`, or tell the human what it would push out.
 - A `SKILL` flag: tell the skill's owner in one inbox line.
 
