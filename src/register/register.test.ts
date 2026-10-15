@@ -5,7 +5,9 @@ import { testConfig } from '../testing/config.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { InlineMutex } from '../testing/inline-mutex.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
+import { rotateRegister } from '../testing/rotation.ts';
 import { EVENT_VERSION } from './events.ts';
+import { layoutPaths } from './layout.ts';
 import { RegisterPolicy, type Verdict } from './policy.ts';
 import { Register, type SkillCatalog, type WriteResult } from './register.ts';
 import { readEvents } from './snapshot.ts';
@@ -134,6 +136,55 @@ describe('Register', () => {
     assert.equal(mutex.runs, runs);
     assert.equal(state.tasks.size, 1);
     assert.equal(read.unreadable, 0);
+  });
+});
+
+describe('Register on a rotated log', () => {
+  async function rotated() {
+    const world = setup();
+    const { clock, files, register } = world;
+    written(await register.add('lead', { title: 'Old', owner: 'alpha', source: 'owner', priority: 1 }));
+    written(await register.setStatus('alpha', 'T1', { status: 'done', note: 'shipped', evidence: 'abc1234', skill: 'none' }));
+    written(await register.add('lead', { title: 'Open', owner: 'alpha', source: 'owner', priority: 1 }));
+    clock.advance(10 * 86_400_000);
+    await rotateRegister(files, LOG, { now: new Date(clock.now()) });
+    return world;
+  }
+
+  it('writes after the marker, numbering on from the whole history', async () => {
+    const { files, register } = await rotated();
+    const added = written(await register.add('lead', { title: 'New', owner: 'bravo', source: 'lead', priority: 2 }));
+    assert.equal(added.task.id, 'T3');
+    const changed = written(await register.setStatus('alpha', 'T2', { status: 'in-progress' }));
+    assert.equal(changed.task.title, 'Open');
+    const tail = readEvents(files.get(LOG) ?? '');
+    assert.deepEqual([tail.rotatedAfter, tail.events.map((event) => event.id)], [1, ['T3', 'T2']]);
+    assert.equal(readEvents(files.get(layoutPaths(LOG).segment(1)) ?? '').events.length, 3);
+  });
+
+  it('reads the working set, and the whole history on demand', async () => {
+    const { register } = await rotated();
+    const working = await register.snapshot();
+    assert.deepEqual([[...working.state.tasks.keys()], working.retired], [['T2'], { count: 1, lastWeek: null }]);
+    const history = await register.history();
+    assert.deepEqual([[...history.state.tasks.keys()], history.retired], [['T1', 'T2'], null]);
+  });
+
+  it('names a retired task as archived instead of changing it, and an id never handed out as unknown', async () => {
+    const { files, register } = await rotated();
+    const before = files.get(LOG);
+    assert.equal(errorOf(await register.setStatus('alpha', 'T1', { status: 'open' })), 'no task T1 in the working set: if it was finished long ago it is archived (teamrig show T1)');
+    assert.equal(errorOf(await register.update('lead', 'T9', { priority: 2 }, undefined)), 'no task T9');
+    assert.equal(files.get(LOG), before);
+  });
+
+  it('refuses to write when a newer teamrig wrote the snapshot', async () => {
+    const { files, register } = await rotated();
+    await files.write(layoutPaths(LOG).snapshot, `${JSON.stringify({ v: 9, type: 'snapshot' })}
+`);
+    await assert.rejects(register.add('lead', { title: 'x', owner: 'alpha', source: 'owner', priority: 1 }), NewerDataError);
+    const { read } = await register.snapshot();
+    assert.deepEqual([read.newer, read.newestVersion], [1, 9]);
   });
 });
 

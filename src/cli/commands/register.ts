@@ -3,12 +3,13 @@ import type { KitConfig } from '../../config/types.ts';
 import { formatAddress } from '../../core/address.ts';
 import type { TeamPaths } from '../../core/home.ts';
 import { FileLock } from '../../core/lock.ts';
-import { checkTasks, currentWeek } from '../../register/check.ts';
+import { checkTasks, currentWeekOf } from '../../register/check.ts';
 import type { TaskFields } from '../../register/events.ts';
 import { renderPlan } from '../../register/plan.ts';
 import { RegisterPolicy, type AddInput, type Verdict } from '../../register/policy.ts';
 import { Register, type WriteResult } from '../../register/register.ts';
-import type { RegisterSnapshot } from '../../register/snapshot.ts';
+import { ACTIVE_STATUSES } from '../../register/model.ts';
+import type { RegisterSnapshot, RetiredTasks } from '../../register/snapshot.ts';
 import { JsonlEventLog } from '../../register/store.ts';
 import { formatTask, formatTaskDetail, selectTasks, type ListFilter } from '../../register/views.ts';
 import { lintSkills } from '../../skills/lint.ts';
@@ -84,13 +85,6 @@ function warnDamage(runtime: CliRuntime, snapshot: RegisterSnapshot, path: strin
   }
 }
 
-async function readTeam(runtime: CliRuntime): Promise<{ readonly team: Team; readonly snapshot: RegisterSnapshot }> {
-  const team = await openTeam(runtime, 'read');
-  const snapshot = await team.register.snapshot();
-  warnDamage(runtime, snapshot, team.paths.events);
-  return { team, snapshot };
-}
-
 /**
  * `add --team <child>`: a parent team's lead hands a child team a task. It lands in the child's
  * register as an event by `<parent team>/<lead id>`, which is also its source, owned by the child's
@@ -164,16 +158,42 @@ function treeFilterOf(roster: Roster, filter: ListFilter): ListFilter {
 
 /** The caller's own register, as a roll-up of one team. */
 async function ownRegister(runtime: CliRuntime): Promise<RollUp> {
-  const { team, snapshot } = await readTeam(runtime);
-  const own: RolledTeam = { team: team.paths.team, config: team.config, paths: team.paths, roster: team.roster, snapshot };
+  const { config, paths, roster, register } = await openTeam(runtime, 'read');
+  const own: RolledTeam = { team: paths.team, config, paths, roster, snapshot: await register.snapshot(), history: () => register.history() };
   return { own, teams: [own] };
 }
 
-/** The registers of `--tree`, each naming its damaged lines like a one-team read. */
-async function treeRegisters(args: ParsedArgs, runtime: CliRuntime): Promise<RollUp> {
-  const rolled = await rollUp(runtime, callerOf(args.flags, runtime.env));
-  rolled.teams.forEach(({ snapshot, paths }) => warnDamage(runtime, snapshot, paths.events));
-  return rolled;
+/** The registers a command reads: those of `--tree`, else the caller's own. */
+async function readRegisters(args: ParsedArgs, runtime: CliRuntime): Promise<RollUp> {
+  return args.switches.has('tree') ? rollUp(runtime, callerOf(args.flags, runtime.env)) : ownRegister(runtime);
+}
+
+/**
+ * True when the working set may lack a task a command shows: only then does it read the whole history.
+ * `retired` is what a compaction left in the archive (snapshot.ts).
+ */
+type HistoryNeed = (retired: RetiredTasks, working: RegisterSnapshot) => boolean;
+
+/** Each register as the command needs it, each naming its damaged lines once, as read. */
+async function settle(runtime: CliRuntime, { own, teams }: RollUp, needsHistory: HistoryNeed): Promise<RollUp> {
+  const settled: RolledTeam[] = [];
+  for (const rolled of teams) {
+    const { retired } = rolled.snapshot;
+    const snapshot = retired !== null && needsHistory(retired, rolled.snapshot) ? await rolled.history() : rolled.snapshot;
+    warnDamage(runtime, snapshot, rolled.paths.events);
+    settled.push({ ...rolled, snapshot });
+  }
+  return { own: settled.find((rolled) => rolled.team === own.team) ?? own, teams: settled };
+}
+
+/** A filter that selects finished tasks, the only ones a compaction retires. */
+function selectsFinished(filter: ListFilter): HistoryNeed {
+  return () => (filter.statuses ?? ACTIVE_STATUSES).some((status) => !ACTIVE_STATUSES.includes(status));
+}
+
+/** A week plan no newer than the newest one among the retired tasks may name some of them. */
+function weekMayBeRetired(week: string): HistoryNeed {
+  return (retired) => retired.lastWeek !== null && week <= retired.lastWeek;
 }
 
 /**
@@ -184,7 +204,7 @@ async function treeRegisters(args: ParsedArgs, runtime: CliRuntime): Promise<Rol
  */
 async function treeRows(args: ParsedArgs, runtime: CliRuntime): Promise<TaskRow[]> {
   const filter = listFilterOf(new Map([...args.flags].filter(([name]) => name !== 'session')));
-  const { teams } = await treeRegisters(args, runtime);
+  const { teams } = await settle(runtime, await rollUp(runtime, callerOf(args.flags, runtime.env)), selectsFinished(filter));
   return teams.flatMap(({ team, roster, snapshot }) =>
     selectTasks(snapshot.state.tasks.values(), treeFilterOf(roster, filter)).map((task) => ({ task, team })),
   );
@@ -192,8 +212,8 @@ async function treeRows(args: ParsedArgs, runtime: CliRuntime): Promise<TaskRow[
 
 async function ownRows(args: ParsedArgs, runtime: CliRuntime): Promise<TaskRow[]> {
   const filter = listFilterOf(args.flags);
-  const { team, snapshot } = await readTeam(runtime);
-  return selectTasks(snapshot.state.tasks.values(), filterIds(team.roster, filter)).map((task) => ({ task, team: undefined }));
+  const { own } = await settle(runtime, await ownRegister(runtime), selectsFinished(filter));
+  return selectTasks(own.snapshot.state.tasks.values(), filterIds(own.roster, filter)).map((task) => ({ task, team: undefined }));
 }
 
 /** `list [--tree] [--all]`: the short form (src/cli/reports.ts), or with `--all` every field of every task. */
@@ -206,7 +226,8 @@ export async function list(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
 
 export async function show(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const id = taskIdOf(onePositional(args, 'id'));
-  const { snapshot } = await readTeam(runtime);
+  const { own } = await settle(runtime, await ownRegister(runtime), (_retired, working) => !working.state.tasks.has(id));
+  const { snapshot } = own;
   const task = snapshot.state.tasks.get(id);
   if (task === undefined) {
     throw new RefusedError(`no task ${id}`);
@@ -218,7 +239,7 @@ export async function show(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
 /** The `--week` given, else the newest week plan that has started. */
 function weekFor(args: ParsedArgs, snapshot: RegisterSnapshot, now: Date): string | null {
   const week = args.flags.get('week');
-  return week === undefined ? currentWeek(snapshot.state.tasks.values(), now) : weekOf(week);
+  return week === undefined ? currentWeekOf(snapshot, now) : weekOf(week);
 }
 
 /** The task flags of one register; with `team`, for `check --tree`, its task ids name it. */
@@ -236,7 +257,8 @@ export async function check(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   noPositionals(args);
   const now = new Date(runtime.clock.now());
   const tree = args.switches.has('tree');
-  const { own, teams } = tree ? await treeRegisters(args, runtime) : await ownRegister(runtime);
+  // The flags are on active tasks, which a compaction never retires: the working set holds them all.
+  const { own, teams } = await settle(runtime, await readRegisters(args, runtime), () => false);
   const week = weekFor(args, own.snapshot, now);
   const sections = teams.map((rolled) => checkRegister(rolled.snapshot, rolled.config, now, week, tree ? rolled.team : undefined));
   const skills = lintSkills(await new SkillDir(runtime.files, own.paths.skills).readAll(), now, own.config);
@@ -251,8 +273,9 @@ export async function plan(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   noPositionals(args);
   const now = new Date(runtime.clock.now());
   const tree = args.switches.has('tree');
-  const { own, teams } = tree ? await treeRegisters(args, runtime) : await ownRegister(runtime);
-  const week = weekFor(args, own.snapshot, now);
+  const read = await readRegisters(args, runtime);
+  const week = weekFor(args, read.own.snapshot, now);
+  const { teams } = await settle(runtime, read, week === null ? () => false : weekMayBeRetired(week));
   if (week === null) {
     throw new RefusedError('no week plan tagged yet; pass --week <YYYY-MM-DD>');
   }
