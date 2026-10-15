@@ -56,6 +56,11 @@ function expectRows(rows: readonly Row[], options: JudgeOptions = {}): void {
   }
 }
 
+/** A push of `branch` after a check that main has not moved, as a ship step writes it. */
+function checkedPush(branch: string): string {
+  return `W=/w/app; B=${branch}; cd $W && git fetch -q origin && [ "$(git merge-base HEAD origin/main)" = "$(git rev-parse origin/main)" ] && git push -q -u origin $B 2>&1 | grep -E "error|rejected"`;
+}
+
 describe('evaluatePushes: the decision', () => {
   it('never reads a heredoc note that mentions a push and main as a push', () => {
     const command = [
@@ -396,6 +401,8 @@ describe('evaluatePushes: where a push hides', () => {
       ['B=main; git push -f origin $B', 'deny'],
       ['B=+main; git push origin $B', 'deny'],
       ['D=sub; cd $D && git push', 'allow'],
+      [checkedPush('topic'), 'allow'],
+      [checkedPush('main'), 'ask'],
     ]);
   });
 });

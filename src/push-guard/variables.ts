@@ -107,18 +107,26 @@ class LiteralBindings {
     return bound?.at.some((at) => at < index && this.reaches(at, index)) === true ? bound.value : undefined;
   }
 
-  /** True when the binding statement at `from` has surely run, in the same shell, whenever the command at `to` runs. */
+  /**
+   * True when the binding statement at `from` has surely run, in the same shell, whenever the command at `to`
+   * runs. The commands of a substitution between them are passed over: they run in a subshell of their own,
+   * so they set nothing here, and the command that holds them carries the link to the next one.
+   */
   private reaches(from: number, to: number): boolean {
     const statement = this.commands[from];
-    if (this.links[from] === 'pipe') {
+    if (statement === undefined || this.links[from] === 'pipe') {
       return false;
     }
-    for (let index = from; index <= to; index += 1) {
-      if (!sameShell(statement, this.commands[index]) || (index < to && this.links[index] === 'other')) {
-        return false;
+    const path: number[] = [];
+    for (let index = from; index < to; index += 1) {
+      if ((this.commands[index]?.nesting ?? 0) <= statement.nesting) {
+        path.push(index);
       }
     }
-    const between = this.links.slice(from, to);
+    if (path.some((index) => !sameShell(statement, this.commands[index]) || this.links[index] === 'other') || !sameShell(statement, this.commands[to])) {
+      return false;
+    }
+    const between = path.map((index) => this.links[index]);
     if (this.startsList(from)) {
       // It runs whenever its list does, and that list must not be a background job.
       return between.find((link) => link === 'sequence' || link === 'background') !== 'background';
@@ -128,27 +136,39 @@ class LiteralBindings {
 
   /** True when the command at `index` starts a list: first in the line or in a `( )` group, or after `;`, `&` or a newline. */
   private startsList(index: number): boolean {
-    const before = this.commands[index - 1];
-    if (before === undefined || opensGroup(before.terminator)) {
+    const previous = this.previous(index);
+    const before = previous === undefined ? undefined : this.commands[previous];
+    if (previous === undefined || before === undefined || opensGroup(before.terminator)) {
       return true;
     }
-    const link = this.links[index - 1];
+    const link = this.links[previous];
     return sameShell(before, this.commands[index]) && (link === 'sequence' || link === 'background');
   }
 
   /** True when the command at `from` follows `&&` and every link back to the start of its list is `&&` or a pipe. */
   private insideAndList(from: number): boolean {
-    if (this.links[from - 1] !== 'and') {
+    let index = this.previous(from);
+    if (index === undefined || this.links[index] !== 'and') {
       return false;
     }
-    let index = from - 1;
-    while (sameShell(this.commands[index], this.commands[from]) && (this.links[index] === 'and' || this.links[index] === 'pipe')) {
+    while (index !== undefined && sameShell(this.commands[index], this.commands[from]) && (this.links[index] === 'and' || this.links[index] === 'pipe')) {
       if (this.startsList(index)) {
         return true;
       }
-      index -= 1;
+      index = this.previous(index);
     }
     return false;
+  }
+
+  /** The command before the one at `index` in its own list: the nearest earlier one not inside a deeper substitution. */
+  private previous(index: number): number | undefined {
+    const nesting = this.commands[index]?.nesting ?? 0;
+    for (let at = index - 1; at >= 0; at -= 1) {
+      if ((this.commands[at]?.nesting ?? 0) <= nesting) {
+        return at;
+      }
+    }
+    return undefined;
   }
 }
 

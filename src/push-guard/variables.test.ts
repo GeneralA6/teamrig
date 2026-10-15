@@ -51,6 +51,19 @@ describe('resolveLiteralVariables: what resolves', () => {
       assert.equal(pushCommand(line), 'git push origin feat', line);
     }
   });
+
+  it('passes over the substitutions between the binding and its use, which run in subshells of their own', () => {
+    for (const line of [
+      'B=feat; true $(date); git push origin $B',
+      'B=feat; cd sub && [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] && git push origin $B 2>&1 | grep -E "error"',
+      'B=feat; [ "`git rev-parse HEAD`" = x ] && git push origin $B',
+      'B=feat; echo "$(date "$(echo +%s)")" <(true) && git push origin $B',
+      'git fetch && [ "$(git rev-parse HEAD)" = x ] && B=feat && git push origin $B',
+      'echo $(date); B=feat; git push origin $B',
+    ]) {
+      assert.equal(pushCommand(line), 'git push origin feat', line);
+    }
+  });
 });
 
 describe('resolveLiteralVariables: what stays unresolved', () => {
@@ -137,8 +150,9 @@ describe('resolveLiteralVariables: what stays unresolved', () => {
       '(true) && B=feat; git push origin $B',
       'B=feat; (git push origin $B)',
       'B=feat; echo $(git push origin $B)',
-      'B=feat; true $(date); git push origin $B',
       'git push origin $B; B=feat',
+      'B=feat | true $(date); git push origin $B',
+      '[ "$(git rev-parse HEAD)" = x ] || B=feat && git push origin $B',
       'echo "$(B=feat)" && git push origin $B',
     ]) {
       assert.match(pushCommand(line), /~\$/, line);
