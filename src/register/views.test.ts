@@ -76,6 +76,15 @@ describe('formatTask', () => {
   });
 });
 
+describe('a task imported from GitHub', () => {
+  it('names its issue in the short and the full row, and only for the github source', () => {
+    const issue = testTask({ source: 'github', ref: 'gh:acme/web#7' });
+    assert.equal(formatShortTask(issue, 80), 'T1 open, p2, owner alpha, from gh:acme/web#7 | Add a health check');
+    assert.equal(formatTask(issue), 'T1 open, p2, owner alpha, from gh:acme/web#7 | Add a health check');
+    assert.equal(formatShortTask(testTask({ ref: 'gh:acme/web#7' }), 80), 'T1 open, p2, owner alpha | Add a health check');
+  });
+});
+
 describe('formatTask: what a waiting task waits for', () => {
   const waits: readonly WaitReason[] = [
     { kind: 'decision', who: 'owner' },

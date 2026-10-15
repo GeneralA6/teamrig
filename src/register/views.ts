@@ -2,6 +2,7 @@ import { formatUtcMinute, parseUtcDeadline, shortUtc } from '../core/time.ts';
 import type { RegisterEvent } from './events.ts';
 import { taskNumber, type Task } from './fold.ts';
 import { ACTIVE_STATUSES, priorityText, type TaskStatus } from './model.ts';
+import { GITHUB_SOURCE } from './policy.ts';
 import { waitsText, type WaitContext } from './waits.ts';
 import { proofOf, proofText } from './verify.ts';
 
@@ -101,16 +102,25 @@ export function cut(text: string, max: number): string {
 /**
  * The short row of `list` and `check`: `T12 in-progress, p2, owner alpha, due 01-15 | <title cut to titleChars>`,
  * and what a waiting task waits for: `(waiting: decision owner · on T5 ready)`. It keeps what orders and assigns
- * the work and leaves the week, source, goals and status note to `show`. `context` marks the ready reasons.
+ * the work, and the issue of a task imported from GitHub (`from gh:acme/web#7`) so it can be found there; it leaves
+ * the week, other sources, goals and status note to `show`. `context` marks the ready reasons.
  */
 export function formatShortTask(task: Task, titleChars: number, team?: string, context?: WaitContext): string {
   const waits = task.status === 'waiting' && task.waits.length > 0 ? ` (waiting: ${waitsText(task.waits, context)})` : '';
-  return `${rowHead(task, team).join(', ')} | ${cut(task.title, titleChars)}${waits}`;
+  const issue = issueOf(task);
+  const head = issue === undefined ? rowHead(task, team) : [...rowHead(task, team), `from ${issue}`];
+  return `${head.join(', ')} | ${cut(task.title, titleChars)}${waits}`;
+}
+
+/** The GitHub issue a task was imported from, as its ref (`gh:acme/web#7`); undefined for any other task. */
+function issueOf(task: Task): string | undefined {
+  return task.source === GITHUB_SOURCE && task.ref !== null ? task.ref : undefined;
 }
 
 /**
  * One line that names each field, so a newcomer can read it:
- * `T12 in-progress, p2, owner alpha, due 01-15, week 01-13, from lead, goals G1 | title`.
+ * `T12 in-progress, p2, owner alpha, due 01-15, week 01-13, from lead, goals G1 | title`; a task imported from
+ * GitHub is `from` its issue (`from gh:acme/web#7`).
  * With `team`, the id reads `<team>/T12`; `context` marks a waiting task's ready reasons.
  */
 export function formatTask(task: Task, team?: string, context?: WaitContext): string {
@@ -118,7 +128,7 @@ export function formatTask(task: Task, team?: string, context?: WaitContext): st
   if (task.week !== null) {
     parts.push(`week ${shortUtc(task.week)}`);
   }
-  parts.push(`from ${task.source}`);
+  parts.push(`from ${issueOf(task) ?? task.source}`);
   if (task.goals.length > 0) {
     parts.push(`goals ${task.goals.join(',')}`);
   }
