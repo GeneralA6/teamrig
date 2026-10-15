@@ -472,6 +472,19 @@ describe('evaluatePushes: where a push hides', () => {
       ['P="export B=main"; B=topic; $P; git push origin $B', 'ask', 'doubt'],
     ]);
   });
+
+  it('runs a probe loop through a program variable quietly, unless the binding may not have run', () => {
+    const loop = `for l in 'a > out' $'cat <<EOF\\ngit push origin main\\nEOF' $'((x<<2))\\ngit push'; do echo "== $l"; $P "$l"; done; $P $'x' powershell`;
+    expectRows([
+      [`P="node probe.ts"\n${loop}`, 'allow'],
+      [`cd /work || exit; P="node probe.ts"\n${loop}`, 'allow'],
+      [`cd /work\nP="node probe.ts"; ${loop}`, 'allow'],
+      [`cd /work && P="node probe.ts"\n${loop}`, 'ask', 'doubt'],
+      ['P="git push"; for b in x; do $P origin main; done', 'ask'],
+      ['for b in main; do git push origin $b; done', 'ask', 'doubt'],
+      ['B=main; for x in a; do git push origin $B; done', 'ask'],
+    ]);
+  });
 });
 
 describe('evaluatePushes: the fail-safe', () => {

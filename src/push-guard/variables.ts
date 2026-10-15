@@ -3,7 +3,8 @@ import type { ShellCommand, ShellParse, ShellWord, WordPart } from './tokenizer.
 /**
  * bash keywords and builtins that can set a variable in a way this module does not follow (a condition, a
  * loop, a function, `read`, `declare`, arithmetic) or run code that can (`eval`, `source`, `trap`). One
- * anywhere in a line keeps every variable of that line unresolved.
+ * anywhere in a line keeps every variable of that line unresolved, except the keywords of a `for` loop
+ * where they start a command (see {@link Loops}).
  */
 const UNSAFE_PROGRAMS: ReadonlySet<string> = new Set([
   ...['if', 'then', 'elif', 'else', 'fi', 'for', 'while', 'until', 'do', 'done', 'case', 'esac', 'select', 'function'],
@@ -62,10 +63,16 @@ interface Bound {
   readonly at: readonly number[];
 }
 
+/** A command whose program a variable names: its index and its words after any loop keyword. */
+interface Deferred {
+  readonly index: number;
+  readonly words: readonly ShellWord[];
+}
+
 /** What a line binds: each bound name, and the commands whose program a variable names, checked once those resolve. */
 interface LineBindings {
   readonly bound: ReadonlyMap<string, Bound>;
-  readonly deferred: readonly number[];
+  readonly deferred: readonly Deferred[];
 }
 
 /**
@@ -84,8 +91,9 @@ export function resolveLiteralVariables(parsed: ShellParse): readonly ShellComma
  * (a command of nothing but `NAME=value` words, or `export` with such words and bare names), with no
  * redirection, whose value is unquoted text bash keeps as written, quoted text and plain variables (in quotes,
  * for `export`), and only for a name the line sets nowhere else, or always to the same text. A name also
- * assigned in any other form (`NAME=x cmd`, `NAME+=`, `{NAME}>`, a value with a substitution or a tilde) is
- * not resolved; anything that can set variables unseen (see {@link UNSAFE_PROGRAMS}, a program a variable names
+ * assigned in any other form (`NAME=x cmd`, `NAME+=`, `{NAME}>`, a value with a substitution or a tilde, a
+ * `for` loop's variable or a binding in its body) is not resolved; anything that can set variables unseen
+ * (see {@link UNSAFE_PROGRAMS}, a program a variable names
  * that is not known or is one of those, array elements, IFS, and what {@link ShellParse.bindingsUnclear} flags)
  * leaves the whole line unresolved. A value holds at a later command only when that command surely runs after
  * the statement, in the same shell; a variable in a value gives what it held when the statement ran.
@@ -108,7 +116,7 @@ class LiteralBindings {
       return none;
     }
     const bindings = new LiteralBindings(parsed.commands, line.bound);
-    const unseen = line.deferred.some((index) => expandedSetsVariablesUnseen(bindings.resolveWords(parsed.commands[index]?.words ?? [], index)));
+    const unseen = line.deferred.some(({ index, words }) => expandedSetsVariablesUnseen(bindings.resolveWords(words, index)));
     return unseen ? none : bindings;
   }
 
@@ -275,18 +283,28 @@ class Fields {
 function boundNames(commands: readonly ShellCommand[]): LineBindings | undefined {
   const statements = new Map<string, { readonly value: readonly ValuePart[]; readonly at: number }[]>();
   const tainted = new Set<string>();
-  const deferred: number[] = [];
+  const deferred: Deferred[] = [];
+  const loops = new Loops();
   for (const [index, command] of commands.entries()) {
-    if (programIsVariable(command.words)) {
-      deferred.push(index);
-    } else if (setsVariablesUnseen(command.words)) {
+    const words = loops.enter(command, (name) => tainted.add(name));
+    if (words === undefined) {
       return undefined;
     }
-    const statement = bindingStatement(command);
-    for (const binding of statement ?? []) {
-      statements.set(binding.name, [...(statements.get(binding.name) ?? []), { value: binding.value, at: index }]);
+    if (programIsVariable(words)) {
+      deferred.push({ index, words });
+    } else if (setsVariablesUnseen(words)) {
+      return undefined;
     }
-    for (const word of statement === undefined ? command.words : []) {
+    const statement = bindingStatement(words, command.redirections.length > 0);
+    for (const binding of statement ?? []) {
+      if (loops.inside) {
+        // A loop body may run any number of times, or never.
+        tainted.add(binding.name);
+      } else {
+        statements.set(binding.name, [...(statements.get(binding.name) ?? []), { value: binding.value, at: index }]);
+      }
+    }
+    for (const word of statement === undefined ? words : []) {
       const assigned = ASSIGNMENT_LIKE.exec(word.text);
       if (assigned?.[2] === '[' || assigned?.[1] === 'IFS') {
         return undefined;
@@ -297,6 +315,9 @@ function boundNames(commands: readonly ShellCommand[]): LineBindings | undefined
       }
     }
   }
+  if (!loops.closed) {
+    return undefined;
+  }
   const bound = new Map<string, Bound>();
   for (const [name, list] of statements) {
     const value = agreedValue(list.map((statement) => statement.value));
@@ -305,6 +326,61 @@ function boundNames(commands: readonly ShellCommand[]): LineBindings | undefined
     }
   }
   return { bound, deferred };
+}
+
+/**
+ * The `for` loops open at each command of a line, read from the keywords that start its commands: a
+ * `for NAME [in WORDS]` header, the `do` after it and the `done` that closes its body. Any other loop, and a
+ * keyword out of place, is not followed.
+ */
+class Loops {
+  /** The nesting of each `for` header still waiting for its `do`, innermost last. */
+  private readonly headers: number[] = [];
+  /** The nesting of each open loop body, innermost last. */
+  private readonly bodies: number[] = [];
+
+  /** True inside a loop body. */
+  get inside(): boolean {
+    return this.bodies.length > 0;
+  }
+
+  /** True when every loop the line opened has closed. */
+  get closed(): boolean {
+    return this.headers.length === 0 && this.bodies.length === 0;
+  }
+
+  /**
+   * Reads the loop keywords that start `command` and gives a `for` header's variable to `taint`. Returns the
+   * words after them (none for a header or a `done`), or undefined for a keyword out of place.
+   */
+  enter(command: ShellCommand, taint: (name: string) => void): readonly ShellWord[] | undefined {
+    let words = command.words;
+    while (isKeyword(words[0], 'do')) {
+      if (this.headers.pop() !== command.nesting) {
+        return undefined;
+      }
+      this.bodies.push(command.nesting);
+      words = words.slice(1);
+    }
+    const [first, name, list] = words;
+    if (isKeyword(first, 'for')) {
+      if (name === undefined || name.dynamic || !NAME.test(name.text) || (list !== undefined && !isKeyword(list, 'in'))) {
+        return undefined;
+      }
+      taint(name.text);
+      this.headers.push(command.nesting);
+      return [];
+    }
+    if (isKeyword(first, 'done')) {
+      return words.length === 1 && this.bodies.pop() === command.nesting ? [] : undefined;
+    }
+    return words;
+  }
+}
+
+/** True for a word that is the keyword itself, as written. */
+function isKeyword(word: ShellWord | undefined, keyword: string): boolean {
+  return word !== undefined && !word.dynamic && word.text === keyword;
 }
 
 /** The one value the statements binding a name give it: the only statement's, or the text all of them agree on. */
@@ -386,14 +462,14 @@ function exportsOwnName(word: ShellWord): boolean {
  * or `export` followed by `NAME=value` words and bare names. Undefined for any other command, or one with a
  * redirection (a failed one stops `export`).
  */
-function bindingStatement(command: ShellCommand): readonly Binding[] | undefined {
-  const [first, ...rest] = command.words;
-  if (first === undefined || command.redirections.length > 0) {
+function bindingStatement(words: readonly ShellWord[], redirected: boolean): readonly Binding[] | undefined {
+  const [first, ...rest] = words;
+  if (first === undefined || redirected) {
     return undefined;
   }
   const exported = !first.dynamic && first.text === 'export';
   const bindings: Binding[] = [];
-  for (const word of exported ? rest : command.words) {
+  for (const word of exported ? rest : words) {
     const binding = exported ? exportedBinding(word) : plainBinding(word);
     if (binding !== undefined) {
       bindings.push(binding);

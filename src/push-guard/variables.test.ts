@@ -121,6 +121,19 @@ describe('resolveLiteralVariables: what resolves', () => {
     }
   });
 
+  it('follows a binding into, through and past a for loop', () => {
+    const rows: readonly (readonly [line: string, expected: string])[] = [
+      ['P="node probe.ts"\nfor l in a \'b c\'; do echo "== $l"; $P "$l"; done; B=feat; git push origin $B', 'git push origin feat'],
+      ['B=feat; for x in a; do git push origin $B; done', 'do git push origin feat'],
+      ['B=feat; for x in a; do for y in b\ndo :; done; done; git push origin $B', 'git push origin feat'],
+      ['B=feat; for x; do :; done; git push origin $B', 'git push origin feat'],
+      ['B=feat; echo $(for x in a; do :; done); git push origin $B', 'git push origin feat'],
+    ];
+    for (const [line, expected] of rows) {
+      assert.equal(pushCommand(line), expected, line);
+    }
+  });
+
   it('resolves a program a variable names when it sets no variable', () => {
     for (const line of ['P="node probe.ts"; B=feat; $P "$l"; git push origin $B', 'P=true; B=feat; $P; git push origin $B']) {
       assert.equal(pushCommand(line), 'git push origin feat', line);
@@ -208,6 +221,28 @@ describe('resolveLiteralVariables: what stays unresolved', () => {
       'cat <<EOF\nB=feat\ngit push origin $B',
       'B=feat; wait -p B; git push origin $B',
       'B=feat; trap "B=main" DEBUG; git push origin $B',
+    ]) {
+      assert.match(pushCommand(line), /~\$/, line);
+    }
+  });
+
+  it('keeps a loop variable, a binding in a loop body, and every variable of a loop it does not follow', () => {
+    for (const line of [
+      'for B in main; do git push origin $B; done',
+      'for x in a; do B=feat; done; git push origin $B',
+      'for x in a; do B=feat; git push origin $B; done',
+      'for x in a; do export B=feat; done; git push origin $B',
+      'B=feat; for x in a; do :; git push origin $B',
+      'B=feat; for x in a\ngit push origin $B',
+      'B=feat; do :; done; git push origin $B',
+      'B=feat; :; done; git push origin $B',
+      'B=feat; for $X in a; do :; done; git push origin $B',
+      'B=feat; for x y; do :; done; git push origin $B',
+      'B=feat; for; do :; done; git push origin $B',
+      'B=feat; for x in a; do :; done x; git push origin $B',
+      'B=feat; for x in a; do echo $(done); git push origin $B',
+      'B=feat; while true; do :; done; git push origin $B',
+      'for (( i = 0; i < 2; i++ )); do :; done; B=feat; git push origin $B',
     ]) {
       assert.match(pushCommand(line), /~\$/, line);
     }
