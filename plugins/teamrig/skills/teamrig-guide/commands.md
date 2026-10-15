@@ -1000,6 +1000,23 @@ teamrig hook cold-send < pre-tool-use.json
 
 Output: nothing for a send that goes; otherwise a JSON permission decision (`deny`) with the note.
 
+### teamrig hook loop-nudge
+
+After a read, edit or shell call, once the turn's run of single-step calls reaches `loops.chainNudgeAt` (6 by
+default; 0 turns it off), hands the model one line asking it to batch, priced in context re-reads. See
+[Hooks and permissions](hooks.md#after-a-tool-call-the-loop-nudge).
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig hook loop-nudge < post-tool-use.json
+```
+
+Output: nothing below or past the threshold, for a helper's call, or outside a team; otherwise a JSON
+`additionalContext` with the line.
+
 ### teamrig hook helper-gate
 
 Before an Agent (or Task) call, with the budget on: asks the person, or refuses, when the session is past its
