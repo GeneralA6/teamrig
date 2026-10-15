@@ -66,13 +66,13 @@ describe('renderCorePack', () => {
     assert.match(pack, /^3\. A message wakes its receiver, so send one only for a result it acts on now, a decision,/m);
     assert.match(
       pack,
-      /Anything else, a "done" report too, is one inbox line per receiver, and so is a failed send: `teamrig inbox add --to <area> --text "\.\.\."`\.$/m,
+      /Anything else, a "done" report or a failed send too, is one inbox line per receiver: `teamrig inbox add --to <area> --text "\.\.\."`\.$/m,
     );
   });
 
   it('gates each hand-run data change on the owner, never prints secrets and binds local services to loopback', () => {
     const pack = renderCorePack(testConfig(), COMMAND);
-    assert.match(pack, /^11\. Each hand-run change, delete or drop of stored data needs the owner's OK, after counts or a preview\. Code that writes data/m);
+    assert.match(pack, /^11\. A hand-run change or delete of stored data needs the owner's OK after counts or a preview\. Code that writes data/m);
     assert.match(pack, /a parity run first\. Never print secret values; bind local services to 127\.0\.0\.1, never 0\.0\.0\.0\.$/m);
   });
 
@@ -118,7 +118,7 @@ describe('renderCorePack', () => {
   it('keeps comments true to their code', () => {
     assert.match(
       renderCorePack(testConfig(), COMMAND),
-      /Update comments with their code in the same commit, verify a load-bearing comment before acting on it, and fix a stale comment, doc or dead code you find in its own small commit\.$/m,
+      /Update comments in their code's commit, verify a load-bearing one before acting on it, and fix a stale comment, doc or dead code you find in its own small commit\.$/m,
     );
   });
 

@@ -82,7 +82,7 @@ export function renderCorePack(config: KitConfig, command: string): string {
     "Own your change end to end: only the session that made a change integrates it, deploys it when it must run, verifies that it runs, and fixes or rolls it back. Never integrate, verify or fix another session's change: hand it to its owner.",
     'A message wakes its receiver, so send one only for a result it acts on now, a decision, a blocker, a same-area conflict or an incident.' +
       ` At most ${config.messages.maxLines} lines [messages.maxLines]: what happened, evidence (numbers, ids, paths), the exact ask and deadline, your default, then "No reply needed" or "Reply needed: <one question>".` +
-      ` No acks, thanks or progress pings. Anything else, a "done" report too, is one inbox line per receiver, and so is a failed send: \`${command} inbox add --to <area> --text "..."\`.`,
+      ` No acks, thanks or progress pings. Anything else, a "done" report or a failed send too, is one inbox line per receiver: \`${command} inbox add --to <area> --text "..."\`.`,
     `Status is pulled, never asked: each session keeps one board and writes only its own. At the start of each work block run \`${command} inbox read --session <you>\`.` +
       ` Every ask that creates work is a register entry the asker adds in the same turn (\`${command} add --owner <session>\`); ${statusDemands(config, command)}` +
       ' Waiting needs `--waits` reasons; a task not started that needs another first stays open, planned `--after` it.' +
@@ -97,7 +97,7 @@ export function renderCorePack(config: KitConfig, command: string): string {
       (budget.enabled ? ` Pace the week to ${percent(budget.targetPct)} of the weekly limit and keep ${percent(budget.reservePct)} for incidents [budget].` : ''),
     'Investigate before deciding: give frequency × impact and the cheapest fix for the visible symptom. Questions for the owner come with options, numbers and a recommendation; a question with one correct answer is yours to decide.',
     'Rising resource use (memory, CPU, storage, tokens) needs its root cause; a raised limit is only an owner-approved bridge with a dated root-cause task.',
-    "Each hand-run change, delete or drop of stored data needs the owner's OK, after counts or a preview. Code that writes data ships a read-only dry run (inserted, unchanged, changed counts)." +
+    "A hand-run change or delete of stored data needs the owner's OK after counts or a preview. Code that writes data ships a read-only dry run (inserted, unchanged, changed counts)." +
       ' Deleting derived data needs a verified regenerate tool and a parity run first. Never print secret values; bind local services to 127.0.0.1, never 0.0.0.0.',
     `Tell the other side before changing a contract it reads (an API parameter, a shared table or file). The same external failure for ${config.alerts.persistentFailureHours} h must page a human [alerts.persistentFailureHours].`,
     `A procedure you had to investigate and will run again becomes a skill in the same turn: \`<area>-<name>/SKILL.md\`, shared ones \`${skills.sharedPrefix}-<name>\` [skills.sharedPrefix].` +
@@ -110,7 +110,7 @@ export function renderCorePack(config: KitConfig, command: string): string {
       { off: '.', warn: '; a push to a protected branch lists those without one [commits.gate].', refuse: '; a push to a protected branch that sends one is refused [commits.gate].' }[config.commits.gate],
     `${pushRule(config.pushGuard)} A refused or blocked route is reported to the lead, never routed around or handed to another session.`,
     'Edit in your own worktree and branch in every git repo, never a main checkout. On Windows remove a worktree\'s node_modules link (`cmd /c rmdir`; Git Bash `cmd //c`), or `git worktree remove` follows it into the main one.' +
-      ' Update comments with their code in the same commit, verify a load-bearing comment before acting on it, and fix a stale comment, doc or dead code you find in its own small commit.',
+      " Update comments in their code's commit, verify a load-bearing one before acting on it, and fix a stale comment, doc or dead code you find in its own small commit.",
   ];
   return [
     '# Team rules (teamrig core)',
