@@ -109,3 +109,33 @@ describe('checkTasks: PRIORITY-SKIP', () => {
     assert.deepEqual(skips([waiting, working], { ...CONFIG, priorities: [] }), []);
   });
 });
+
+describe('checkTasks: OFF-GOAL', () => {
+  const seen = { ownerSeenAt: FRESH, updatedAt: FRESH };
+  const kinds = (tasks: Parameters<typeof checkTasks>[0], week: string | null = '2030-01-07') =>
+    checkTasks(tasks, NOW, week, CONFIG).map((flag) => `${flag.kind} ${flag.task.id}`);
+
+  it('flags work in progress with no goal outside the week plan', () => {
+    const tasks = [
+      testTask({ id: 'T1', status: 'in-progress', ...seen }),
+      testTask({ id: 'T2', status: 'in-progress', goals: ['G1'], ...seen }),
+      testTask({ id: 'T3', status: 'in-progress', week: '2030-01-07', ...seen }),
+      testTask({ id: 'T4', ...seen }),
+      testTask({ id: 'T5', status: 'blocked', ...seen }),
+    ];
+    assert.deepEqual(kinds(tasks), ['OFF-GOAL T1']);
+    assert.deepEqual(kinds(tasks, null), [], 'no week plan, no week flags');
+    assert.deepEqual(
+      checkTasks(tasks, NOW, '2030-01-07', CONFIG).map((flag) => formatFlag(flag)),
+      ['OFF-GOAL (in progress with no goal, not in week 2030-01-07) T1 in-progress, p2, owner alpha, from lead | Add a health check'],
+    );
+  });
+
+  it('raises the more specific week flag instead on an owner order or a task due this week', () => {
+    const tasks = [
+      testTask({ id: 'T1', status: 'in-progress', source: 'owner', ...seen }),
+      testTask({ id: 'T2', status: 'in-progress', due: '2030-01-12', ...seen }),
+    ];
+    assert.deepEqual(kinds(tasks), ['OWNER-UNPLANNED T1', 'DUE-UNPLANNED T2']);
+  });
+});
