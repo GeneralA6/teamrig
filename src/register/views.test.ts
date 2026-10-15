@@ -2,7 +2,18 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { testTask } from '../testing/task.ts';
 import type { RegisterEvent } from './events.ts';
-import { byPlanOrder, cut, formatEvent, formatShortTask, formatTask, formatTaskDetail, selectTasks } from './views.ts';
+import {
+  byPlanOrder,
+  cut,
+  formatEvent,
+  formatShortTask,
+  formatTask,
+  formatTaskDetail,
+  formatVerifyByLine,
+  formatVerifyRow,
+  formatVerifySummary,
+  selectTasks,
+} from './views.ts';
 import { waitContext, type WaitReason } from './waits.ts';
 
 const AT = '2030-01-07T09:00:00.000Z';
@@ -100,6 +111,27 @@ describe('formatShortTask and cut', () => {
     assert.equal(cut('abc', 3), 'abc');
     assert.equal(cut('abcd', 3), 'ab…');
     assert.equal(cut('\u{1D400}\u{1D401}\u{1D402}\u{1D403}', 3), '\u{1D400}\u{1D401}…');
+  });
+});
+
+describe('the verify queue lines', () => {
+  const shipped = testTask({ status: 'verifying', proof: 'the nightly run', due: '2030-01-09', statusAt: '2030-01-07T10:30:00.000Z' });
+  const long = testTask({ id: 'T2', status: 'verifying', proof: `the nightly run ${'and more '.repeat(10)}` });
+
+  it('sums up a queue in one line, each proof cut short, and nothing for an empty one', () => {
+    assert.equal(formatVerifySummary([]), undefined);
+    const summary = formatVerifySummary([shipped, long]) ?? '';
+    assert.match(summary, /^VERIFY 2: T1 \(proof: the nightly run\), T2 \(proof: the nightly run and more .*…\)$/);
+    assert.ok(summary.length < 120);
+  });
+
+  it('prints a row with when it started verifying and the date to verify by', () => {
+    assert.equal(formatVerifyRow(shipped), 'T1 since 01-07 10:30, verify by 01-09 | Add a health check (proof: the nightly run)');
+    assert.equal(formatVerifyRow(testTask({ status: 'verifying' })), 'T1 since 01-07 09:00, no verify-by date | Add a health check (proof: no proof named)');
+  });
+
+  it("names the proof once the verify-by day has come", () => {
+    assert.equal(formatVerifyByLine(shipped), 'VERIFY T1 was to be verified by 01-09 (proof: the nightly run): done with the proof, or back to in-progress');
   });
 });
 

@@ -15,8 +15,8 @@ import { Register, type WriteResult } from '../../register/register.ts';
 import { ACTIVE_STATUSES } from '../../register/model.ts';
 import type { RegisterSnapshot, RetiredTasks } from '../../register/snapshot.ts';
 import { JsonlEventLog } from '../../register/store.ts';
-import { heldStart, heldStartNotice, startHolds } from '../../register/verify.ts';
-import { formatTask, formatTaskDetail, selectTasks, type ListFilter } from '../../register/views.ts';
+import { heldStart, heldStartNotice, startHolds, verifyQueue } from '../../register/verify.ts';
+import { formatTask, formatTaskDetail, formatVerifyRow, selectTasks, type ListFilter } from '../../register/views.ts';
 import { waitContext, type WaitContext } from '../../register/waits.ts';
 import { lintSkills } from '../../skills/lint.ts';
 import { SkillDir } from '../../skills/store.ts';
@@ -335,6 +335,17 @@ export async function show(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
     throw new RefusedError(`no task ${id}`);
   }
   runtime.out.stdout(formatTaskDetail(task, snapshot.read.events.filter((event) => event.id === id), contextOf(snapshot, runtime)));
+  return EXIT.ok;
+}
+
+/** `verify`: the caller's verifying tasks, oldest first, each with its proof and the date to verify by. */
+export async function verify(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+  noPositionals(args);
+  const { own } = await settle(runtime, await ownRegister(runtime), () => false);
+  const owner = sessionIdOf(own.roster, callerOf(args.flags, runtime.env));
+  const queue = verifyQueue(own.snapshot.state.tasks.values(), owner);
+  runtime.out.stdout(`VERIFY ${queue.length} ${queue.length === 1 ? 'task' : 'tasks'} of ${owner}, oldest first`);
+  queue.forEach((task) => runtime.out.stdout(formatVerifyRow(task)));
   return EXIT.ok;
 }
 

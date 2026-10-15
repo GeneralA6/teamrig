@@ -1,4 +1,5 @@
-import type { Task } from './fold.ts';
+import { formatUtcDay, parseUtcDay } from '../core/time.ts';
+import { taskNumber, type Task } from './fold.ts';
 import type { TaskStatus } from './model.ts';
 
 /** `Proof: ...` or `Proof = ...` in a note written before `--proof` existed: what follows names the proof. */
@@ -44,6 +45,20 @@ export function heldStartNotice(task: Pick<Task, 'id'>, held: Task): string {
   return `${task.id} waits on your verifying ${held.id}: ${proofText(held)}`;
 }
 
-function proofText(task: Task): string {
+/** The proof as a line names it: `no proof named` for a task set verifying with neither proof nor note. */
+export function proofText(task: Pick<Task, 'proof' | 'note'>): string {
   return proofOf(task) ?? 'no proof named';
+}
+
+/** A session's verifying tasks, oldest first: the order to prove them in. */
+export function verifyQueue(tasks: Iterable<Task>, owner: string): Task[] {
+  return [...tasks]
+    .filter((task) => task.status === 'verifying' && task.owner === owner)
+    .sort((a, b) => Date.parse(a.statusAt) - Date.parse(b.statusAt) || taskNumber(a.id) - taskNumber(b.id));
+}
+
+/** True once the UTC day of the task's verify-by date, its due date, has come. */
+export function verifyByArrived(task: Pick<Task, 'due'>, now: Date): boolean {
+  const day = task.due?.slice(0, 10);
+  return day !== undefined && parseUtcDay(day) !== undefined && day <= formatUtcDay(now);
 }

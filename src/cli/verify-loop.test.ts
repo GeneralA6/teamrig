@@ -32,6 +32,32 @@ describe('runCli: set verifying names its proof', () => {
   });
 });
 
+describe('runCli: verify lists the verifying tasks of a session', () => {
+  it('lists them oldest first, with the proof and the date to verify by', async () => {
+    const kit = await startedTask();
+    await kit.run(['set', 'T1', '--status', 'verifying', '--note', 'shipped', '--proof', 'the nightly run', '--due', '2030-01-09', '--session', 'alpha']);
+    kit.clock.advance(60 * 60 * 1000);
+    await kit.run(['add', '--title', 'Ship the docs', '--priority', 'p2', '--session', 'alpha']);
+    await kit.run(['set', 'T2', '--status', 'in-progress', '--session', 'alpha']);
+    await kit.run(['set', 'T2', '--status', 'verifying', '--note', 'shipped', '--proof', 'the docs build', '--session', 'alpha']);
+
+    const listed = await kit.run(['verify', '--session', 'alpha']);
+    assert.deepEqual(
+      [listed.code, listed.stdout],
+      [
+        EXIT.ok,
+        [
+          'VERIFY 2 tasks of alpha, oldest first',
+          'T1 since 01-08 10:00, verify by 01-09 | Ship the CLI (proof: the nightly run)',
+          'T2 since 01-08 11:00, no verify-by date | Ship the docs (proof: the docs build)',
+        ],
+      ],
+    );
+    const none = await kit.run(['verify', '--session', 'bravo']);
+    assert.deepEqual([none.code, none.stdout], [EXIT.ok, ['VERIFY 0 tasks of bravo, oldest first']]);
+  });
+});
+
 /** A harness where bravo's T1 is verifying and alpha's T2 is planned after it. */
 async function heldStart(kit = new CliHarness()): Promise<CliHarness> {
   await kit.run(['add', '--title', 'Ship the CLI', '--priority', 'p2', '--session', 'bravo']);
