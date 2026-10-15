@@ -409,7 +409,7 @@ flowchart LR
   core["teamrig"]
   ai["AI coding tools: Claude Code today, Codex planned (T204)"]
   editor["Editors: any terminal today, VS Code family and JetBrains planned"]
-  pm["Task tools: its own task list today, Jira, Linear, GitHub Issues, Asana planned (T206)"]
+  pm["Task tools: its own task list and GitHub Issues (read-only import) today, Jira, Linear, Asana planned (T206)"]
   core --- ai
   core --- editor
   core --- pm
