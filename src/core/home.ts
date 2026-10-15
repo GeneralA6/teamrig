@@ -59,7 +59,7 @@ export interface TeamPaths {
   readonly inboxMarks: string;
   /** What the prompt hook showed each Claude Code session of its inbox, so each line is shown once. */
   readonly inboxShown: string;
-  /** The bind hints the prompt hook gave each Claude Code session, so each is given once. */
+  /** The hints the hooks gave each Claude Code session (bind hints, missing requirements), so each is given once. */
   readonly bindHints: string;
   /** The append-only log of session renames, so every name a session has had still finds it. */
   readonly renames: string;

@@ -151,10 +151,14 @@ describe('sessionStartOutput', () => {
     });
   });
 
-  it('shows a notice to the user as a systemMessage', () => {
-    assert.deepEqual(JSON.parse(sessionStartOutput('hello', 'MODEL lead runs model claude-opus-5-5')), {
-      systemMessage: 'MODEL lead runs model claude-opus-5-5',
+  it('shows the notices to the user as one systemMessage, a line each', () => {
+    assert.deepEqual(JSON.parse(sessionStartOutput('hello', ['MODEL lead runs model claude-opus-5-5', undefined, 'teamrig needs git'])), {
+      systemMessage: 'MODEL lead runs model claude-opus-5-5\nteamrig needs git',
       hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: 'hello' },
     });
+  });
+
+  it('shows no systemMessage when every notice is absent', () => {
+    assert.equal('systemMessage' in JSON.parse(sessionStartOutput('hello', [undefined])), false);
   });
 });

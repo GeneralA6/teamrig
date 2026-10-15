@@ -10,6 +10,8 @@ import { boundPromptNote, boundStartNote } from '../../hooks/bind.ts';
 import { modelCheckLine, payloadEffortOf } from '../../hooks/model-check.ts';
 import { ModelNoticeStore } from '../../hooks/model-notices.ts';
 import { commitsOf, protectedBranchesOf, pushGuardOutput } from '../../hooks/push-guard.ts';
+import { JsonlHintLog } from '../../hooks/hint-log.ts';
+import { requirementsNoteOnce } from '../../hooks/requirements-note.ts';
 import { sessionStartContext, sessionStartOutput, type SessionStartInput } from '../../hooks/session-start.ts';
 import { stopModelNotices } from '../../hooks/stop-model.ts';
 import { stopOutput } from '../../hooks/stop.ts';
@@ -414,6 +416,13 @@ export async function sessionStart(args: ParsedArgs, runtime: CliRuntime): Promi
       ? await teamPartsOf(runtime, kit, kit.load.config, payload)
       : { teamRules: undefined, renames: [], titleNote: undefined, refreshNote: undefined, modelNote: undefined, session: undefined, sessionInEnv: false, tree: undefined };
   const context = sessionStartContext({ team: found.team, load: kit.load, ...parts, command: KIT_NAME });
-  runtime.out.stdout(sessionStartOutput(context, parts.modelNote));
+  const requirementsNote = await requirementsNoteOnce({
+    problems: await runtime.requirements.problems(),
+    log: new JsonlHintLog(runtime.files, kit.paths.bindHints),
+    claudeSession: sessionIdOf(payload),
+    now: new Date(runtime.clock.now()),
+    command: KIT_NAME,
+  });
+  runtime.out.stdout(sessionStartOutput(context, [parts.modelNote, requirementsNote]));
   return EXIT.ok;
 }

@@ -116,10 +116,12 @@ export function sessionStartContext(input: SessionStartInput): string {
 }
 
 /**
- * The hook's stdout: Claude Code adds `additionalContext` to the session's context and shows a
- * `systemMessage`, when there is one, to the user, who alone can change the model or the effort.
+ * The hook's stdout: Claude Code adds `additionalContext` to the session's context and shows the
+ * notices, when there are any, to the user as one `systemMessage`: the user alone can change the model
+ * or the effort, or install what teamrig lacks.
  */
-export function sessionStartOutput(context: string, notice?: string): string {
+export function sessionStartOutput(context: string, notices: readonly (string | undefined)[] = []): string {
   const hookSpecificOutput = { hookEventName: 'SessionStart', additionalContext: context };
-  return JSON.stringify(notice === undefined ? { hookSpecificOutput } : { systemMessage: notice, hookSpecificOutput });
+  const shown = notices.filter((notice): notice is string => notice !== undefined);
+  return JSON.stringify(shown.length === 0 ? { hookSpecificOutput } : { systemMessage: shown.join('\n'), hookSpecificOutput });
 }

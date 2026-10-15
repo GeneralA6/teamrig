@@ -5,8 +5,9 @@ import { parseJsonl, toJsonlLine } from '../core/jsonl.ts';
 export const HINT_VERSION = 1;
 
 /**
- * The bind hints the prompt hook already gave, so it gives each once per Claude Code session: once
- * for a tab with no title, and once more for each title that binds nothing.
+ * The hints the hooks already gave, so each is given once per Claude Code session: the prompt hook's
+ * bind hints (once for a tab with no title, once more for each title that binds nothing) and the
+ * session start's note of missing requirements.
  */
 export interface HintLog {
   shown(claudeSession: string, reason: string): Promise<boolean>;
