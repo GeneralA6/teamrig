@@ -425,7 +425,7 @@ export async function sessionStart(args, runtime) {
     const parts = kit.load.status === 'loaded'
         ? await teamPartsOf(runtime, kit, kit.load.config, payload)
         : { teamRules: undefined, renames: [], titleNote: undefined, refreshNote: undefined, modelNote: undefined, verifyNote: undefined, session: undefined, sessionInEnv: false, tree: undefined };
-    const context = sessionStartContext({ team: found.team, load: kit.load, ...parts, command: KIT_NAME });
+    const context = sessionStartContext({ team: found.team, load: kit.load, ...parts, command: KIT_NAME, platform: runtime.platform });
     const requirementsNote = await requirementsNoteOnce({
         problems: await runtime.requirements.problems(),
         log: new JsonlHintLog(runtime.files, kit.paths.bindHints),
