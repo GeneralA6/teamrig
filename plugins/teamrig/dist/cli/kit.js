@@ -1,3 +1,4 @@
+import { basename, dirname } from 'node:path';
 import { loadConfig } from "../config/load.js";
 import { SHIPPED_CONFIG_FORMAT } from "../config/migrate.js";
 import { Roster } from "../config/roster.js";
@@ -81,6 +82,14 @@ export async function findTeam(runtime) {
         case 'team':
             return { team: found.team, from: found.from };
     }
+}
+/**
+ * The team's project folder, where its CLAUDE.md and rule files sit: the folder of its pointer file; for a team
+ * named by `$TEAMRIG_TEAM`, the folder Claude Code started the session in, else the working folder.
+ */
+export async function projectFolder(runtime) {
+    const { from } = await findTeam(runtime);
+    return basename(from) === TEAM_POINTER ? dirname(from) : (teamFolders(runtime.env, [])[0] ?? runtime.cwd);
 }
 /** The kit of a command's team (see `findTeam`). */
 export async function openTeamKit(runtime) {

@@ -26,7 +26,7 @@ export const DEFAULT_REGISTER = {
     requireProofOnVerifying: true,
     verifyGate: 'refuse',
     maxVerifying: 5,
-    check: { staleAfterHours: 72, notPickedUpAfterHours: 24, prioritySkipAfterHours: 24, weekLengthDays: 7 },
+    check: { staleAfterHours: 72, notPickedUpAfterHours: 24, prioritySkipAfterHours: 24, weekLengthDays: 7, stopgapFiles: ['CLAUDE.md', '.claude/rules'] },
 };
 export const DEFAULT_SKILLS = {
     sharedPrefix: 'team',

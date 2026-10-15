@@ -362,6 +362,7 @@ function parseRegister(read, raw) {
             notPickedUpAfterHours: read.integer(check, 'notPickedUpAfterHours', `${path}.check`, defaults.check.notPickedUpAfterHours, { min: 1 }),
             prioritySkipAfterHours: read.integer(check, 'prioritySkipAfterHours', `${path}.check`, defaults.check.prioritySkipAfterHours, { min: 1 }),
             weekLengthDays: read.integer(check, 'weekLengthDays', `${path}.check`, defaults.check.weekLengthDays, { min: 1, max: 31 }),
+            stopgapFiles: read.stringList(check, 'stopgapFiles', `${path}.check`, defaults.check.stopgapFiles, shortLine(CONFIG_LIMITS.stopgapFiles.maxLength, (value) => (value.trim() === '' ? 'expected a path' : undefined)), CONFIG_LIMITS.stopgapFiles.maxItems),
         },
     };
     return goalPattern === undefined ? register : { ...register, goalPattern };
