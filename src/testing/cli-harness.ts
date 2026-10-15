@@ -12,6 +12,7 @@ import type { TranscriptSource } from '../budget/discover.ts';
 import type { RequirementsCheck } from '../requirements/requirements.ts';
 import type { Processes } from '../open/processes.ts';
 import type { CommitLog } from '../push-guard/commit-size.ts';
+import type { GhRunner } from '../github/gh.ts';
 import type { ShellRunner } from '../test-run/shell.ts';
 import { FakeClock } from './fake-clock.ts';
 import { MemoryFiles } from './memory-files.ts';
@@ -56,6 +57,8 @@ export interface RunOptions {
   readonly processes?: Processes;
   /** The shell `teamrig test` runs in; default one that prints nothing and exits 0. */
   readonly shell?: ShellRunner;
+  /** The GitHub CLI `gh sync` reads through; default one that sees no repository. */
+  readonly gh?: GhRunner;
   /** The folders and programs the CLI sees; default none. */
   readonly probe?: PathProbe;
   /** What the requirements check finds; default nothing is missing. */
@@ -97,6 +100,7 @@ export class CliHarness {
       ...(options.platform === undefined ? {} : { platform: options.platform }),
       ...(options.processes === undefined ? {} : { processes: options.processes }),
       ...(options.shell === undefined ? {} : { shell: options.shell }),
+      ...(options.gh === undefined ? {} : { gh: options.gh }),
       ...(options.probe === undefined ? {} : { probe: options.probe }),
       ...(options.requirements === undefined ? {} : { requirements: options.requirements }),
       ...(options.transcripts === undefined ? {} : { transcripts: options.transcripts }),

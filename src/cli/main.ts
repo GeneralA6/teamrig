@@ -5,6 +5,7 @@ import { nodeTranscriptSource } from '../budget/discover.ts';
 import { nodeFiles } from '../core/files.ts';
 import { realSleep, systemClock } from '../core/lock.ts';
 import { NODE_PATH_PROBE } from '../core/path-probe.ts';
+import { nodeGhRunner } from '../github/gh.ts';
 import { nodeProcesses } from '../open/processes.ts';
 import { GIT_CLI, GIT_COMMIT_LOG } from '../push-guard/git.ts';
 import { requirementsCheck } from '../requirements/requirements.ts';
@@ -29,6 +30,7 @@ process.exitCode = await runCli(process.argv.slice(2), {
   platform: process.platform,
   processes: nodeProcesses(),
   shell: nodeShellRunner(),
+  gh: nodeGhRunner(),
   probe: NODE_PATH_PROBE,
   transcripts: nodeTranscriptSource,
   self: { node: process.execPath, script: fileURLToPath(import.meta.url) },
