@@ -10,7 +10,7 @@
 - [Workflows](https://github.com/GeneralA6/teamrig/blob/main/plugins/teamrig/skills/teamrig-guide/workflows.md): a work block, handing work over, closing a task, a handover, a lead checkpoint
 - [Hooks and permissions](https://github.com/GeneralA6/teamrig/blob/main/plugins/teamrig/skills/teamrig-guide/hooks.md): what each hook injects or blocks, and the permission modes tested
 - [Errors and refusals](https://github.com/GeneralA6/teamrig/blob/main/plugins/teamrig/skills/teamrig-guide/errors.md): what teamrig prints when it stops, and the fix
-- [Requirements](https://github.com/GeneralA6/teamrig/blob/main/plugins/teamrig/skills/teamrig-guide/requirements.md): Claude Code, Node.js, git, terminals, operating systems
+- [Requirements](https://github.com/GeneralA6/teamrig/blob/main/plugins/teamrig/skills/teamrig-guide/requirements.md): Claude Code, Node.js, git, terminals, operating systems, and the check that says what is missing
 
 ## Design
 

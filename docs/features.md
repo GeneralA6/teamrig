@@ -4,7 +4,7 @@
 two of them owning the same task, and with a guard against their force-pushes to your main branch. You name the
 sessions; one leads and hands out tasks, every task has one owner, and each session can list its own tasks
 (`teamrig list --session web`) and is told of new inbox notes. Claude runs the `teamrig` [commands](commands.md) for
-you; you need a terminal, Claude Code and Node.js 22.18 or later.
+you; you need a terminal, Claude Code 2.1.139 or later and Node.js 22.18 or later.
 
 To install, see [Get started](../README.md#get-started); to set a team up yourself, see
 [Set up a team by hand](setup-by-hand.md).

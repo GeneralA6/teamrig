@@ -44,6 +44,8 @@ The injected context holds:
    such as `MODEL shop-web runs model claude-sonnet-5; the team config asks for model opus at xhigh effort: type
    /model opus`. It is also shown to the user, who alone can change it. It never blocks. Claude Code gives a hook
    the effort only at the end of a turn, so the effort is checked there ([model notices](#end-of-a-turn-model-notices)).
+8. **What teamrig lacks**: shown to the user only, once per Claude Code session, when git is not on the PATH or
+   Claude Code or Node.js is too old ([the requirements check](requirements.md#the-requirements-check)).
 
 The session is found from `$TEAMRIG_SESSION`, else from the area this Claude Code session last ran
 `teamrig inbox read --session <area>` as, else from the tab's Claude Code title (see [Each prompt](#each-prompt)). A

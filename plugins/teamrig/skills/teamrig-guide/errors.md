@@ -89,6 +89,18 @@ or take it to the lead.
 | `--week "x" is not a YYYY-MM-DD date` | Write the week's first day as `2026-10-12`. |
 | `--team gives the task to that team's lead, from you: it takes no --owner or --source` | Drop `--owner` and `--source` from `add --team`. |
 
+## Requirements
+
+Not refusals: `WARN` lines from `team create`, `requirement` findings from `doctor`, and a note at session start
+([the check](requirements.md#the-requirements-check)).
+
+| Output | Fix |
+| --- | --- |
+| `git is not installed or not on PATH, and teamrig needs it: install it from git-scm.com, then restart Claude Code.` | Install git, or put its folder on the PATH, then restart Claude Code. |
+| `Claude Code 2.1.130 is older than teamrig needs (2.1.139 or later): run claude update, then restart Claude Code.` | Update Claude Code; the hooks do not run on an older one. |
+| `Node.js 20.11.1 is older than teamrig supports (22.18.0 or later): install the current LTS from nodejs.org, then restart Claude Code.` | Install a newer Node.js and make it the `node` on the PATH. |
+| `The teamrig check for git failed (<reason>).` | The check itself failed; the rest still ran. Run `teamrig doctor` again, and report the reason to the lead if it stays. |
+
 ## Failures (exit 1)
 
 | Output | Fix |
