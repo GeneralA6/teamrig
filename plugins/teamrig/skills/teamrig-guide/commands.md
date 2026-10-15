@@ -272,8 +272,9 @@ With no week tagged at all: `REFUSED no week plan tagged yet; pass --week <YYYY-
 
 ### teamrig inbox read
 
-Prints your unread inbox lines and marks them read. It also ties this Claude Code session to the area, so the
-hooks know you: run it at the start of every work block and after every `/clear`.
+Prints your unread inbox lines and marks them read. Lines the prompt hook already showed this Claude Code session
+are marked read too, without being printed again (a line the hook cut is printed whole). It also ties this Claude
+Code session to the area, so the hooks know you: run it at the start of every work block and after every `/clear`.
 
 Flags:
 
@@ -292,7 +293,9 @@ Output:
 READ web: 1 new line, shown above; new ones are shown at your next prompt
 ```
 
-With nothing unread: `READ web: nothing new; new ones are shown at your next prompt`.
+With nothing unread: `READ web: nothing new; new ones are shown at your next prompt`. After the prompt hook showed
+two lines: `READ web: 1 new line, shown above, and 2 the prompt hook showed this session, now marked read too; new
+ones are shown at your next prompt`.
 
 ### teamrig inbox status
 
@@ -650,7 +653,9 @@ Output: a JSON object whose `hookSpecificOutput.additionalContext` holds the rul
 
 ### teamrig hook inbox-reminder
 
-At each prompt, tells the session how many inbox lines are unread.
+At each prompt, shows the inbox lines this Claude Code session has not been shown yet (at most 5 lines and 1,500
+characters, each once), binds a tab started by hand to the session its Claude Code title names, and records a
+rename. See [Hooks and permissions](hooks.md#each-prompt).
 
 Flags: none.
 
@@ -660,10 +665,11 @@ Example:
 teamrig hook inbox-reminder < prompt.json
 ```
 
-Output, when lines are unread:
+Output, when lines are new:
 
 ```text
-INBOX: 2 unread line(s) in /home/you/.teamrig/teams/shop/state/inbox/web.md since 10-15 08:58. Read them with: teamrig inbox read --session web
+INBOX web, new in /home/you/.teamrig/teams/shop/state/inbox/web.md (each line is shown once; reading marks them read):
+- 2026-10-15 08:58 lead: api error codes are in docs/errors.md
 ```
 
 ### teamrig hook push-guard

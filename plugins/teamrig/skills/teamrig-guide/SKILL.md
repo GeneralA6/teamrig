@@ -44,8 +44,8 @@ To update an installed teamrig, follow
 - **Message**: a Claude Code message from one session to another. It wakes the receiver, so it is only for a
   result it needs now, a decision, a blocker, a conflict or an incident. teamrig has no message command; the
   rules only say when to send one and how long it may be.
-- **Hooks**: at session start teamrig injects the team rules and who you are; at each prompt it reminds you of
-  unread inbox lines; before a shell command it guards pushes to protected branches; at the end of a turn it
+- **Hooks**: at session start teamrig injects the team rules and who you are; at each prompt it shows you new
+  inbox lines; before a shell command it guards pushes to protected branches; at the end of a turn it
   may ask for a handover when your context is large.
 - **Tree of teams**: a team may have a parent team. Sub-team leads report to their parent lead, and the root
   lead is the only one the human talks to. At most 3 levels and 8 child teams under one team.
@@ -59,7 +59,8 @@ command.
 
 `teamrig inbox read --session <id>` also ties this Claude Code session to that id (it records a mark with Claude
 Code's session id), so the hooks know you from then on. Run it first in a tab teamrig did not open, and again
-after `/clear`, which starts a new Claude Code session.
+after `/clear`, which starts a new Claude Code session. A tab whose Claude Code title (`claude --name`, `/rename`) is
+a session's id or current name binds itself at its first prompt, and the hook says so; nothing is marked read.
 
 If you do not know which session you are, run `teamrig who` and ask the user. Never guess.
 

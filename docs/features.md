@@ -23,7 +23,7 @@ your machine.
 | **A task list nobody loses** | `teamrig add`, `set`, `update`, `list`, `show`: owner, priority (p1 first), due date, goals and week; `show` also lists who changed the task. `check` finds tasks that break a team rule; `plan` prints the week. | works today |
 | | Dependencies and parent/child tasks | being built (T205) |
 | | Planned start and ETA, history across tasks (`history --by <session>`), token estimates | being built (T209, T210, T211) |
-| **Notes between sessions, no server** | `teamrig inbox add --to web`; the receiver is reminded at its next prompt and reads with `inbox read`. `who` gives the name to message a session by. | works today |
+| **Notes between sessions, no server** | `teamrig inbox add --to web`; the receiver sees the new lines at its next prompt, and `inbox read` marks them read. A tab you start yourself joins the session its title names (`/rename web`). `who` gives the name to message a session by. | works today |
 | **A lead that runs the team** | One session holds the lead role in the team config; every session learns at start who it is and whom to message. | works today |
 | | Names that survive a rename: `teamrig rename` keeps the session's id, and its old names keep finding it until another session takes one; `teamrig doctor` finds name and inbox problems | works today |
 | | Teams of teams: `team create --parent` hangs a sub-team under a lead (up to 3 levels, 8 sub-teams each); `add --team` hands its lead a task, `list`, `check` and `plan` with `--tree` read every team below, and notes go up and down only through leads | works today |
