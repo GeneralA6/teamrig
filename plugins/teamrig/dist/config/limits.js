@@ -1,7 +1,8 @@
 /**
- * Bounds on the config values the core rule pack prints. The parser enforces them, the JSON
- * schema states them, and the pack's budget test renders their extremes, so the always-loaded
- * rules stay inside their character budget whatever a team configures.
+ * Bounds on config values: the parser enforces them and the JSON schema states them. For the values
+ * the core rule pack prints, the pack's budget test renders their extremes, so the always-loaded
+ * rules stay inside their character budget whatever a team configures. `itemMin`/`itemMax` bound
+ * each item of a number list.
  */
 export const CONFIG_LIMITS = {
     maxLines: { min: 3, max: 50 },
@@ -16,6 +17,17 @@ export const CONFIG_LIMITS = {
     forbidFrontmatter: { maxItems: 8, maxLength: 32 },
     requireNoteOn: { maxItems: 5 },
     persistentFailureHours: { min: 1, max: 720 },
+    budgetTargetPct: { min: 1, max: 100 },
+    budgetReservePct: { min: 0, max: 50 },
+    weeklyLimitW: { min: 1_000_000, max: 1_000_000_000_000 },
+    paceEndHoursBeforeReset: { min: 0, max: 48 },
+    dailyPct: { min: 0.1, max: 100 },
+    maxDailyPct: { min: 0.1, max: 100 },
+    sessionShare: { min: 0, max: 100 },
+    sessionDailyPct: { min: 0.1, max: 100 },
+    warnAtPct: { maxItems: 8, itemMin: 1, itemMax: 1_000 },
+    paceTolerancePct: { min: 0, max: 10 },
+    maxBytesPerHook: { min: 100_000, max: 100_000_000 },
 };
 /**
  * Bounds on a tree of teams, which `team create` and `doctor` enforce. A lead's `--tree` roll-up reads

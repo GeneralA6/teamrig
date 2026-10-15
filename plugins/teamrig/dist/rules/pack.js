@@ -29,8 +29,7 @@ function statusDemands(config, command) {
  * behind any value it prints, so a team changes a number without forking the text.
  */
 export function renderCorePack(config, command) {
-    const { roles, skills } = config;
-    const { budget } = config.coordinator;
+    const { roles, skills, budget } = config;
     const cutoff = config.coordinator.schedule.heavyCutoffUtc;
     const rules = [
         `Roles, by session id (\`${command} who\` gives the name to message each by): ${roles.lead} is the lead: priorities, team rules and the owner's decision queue; it may re-prioritize and reassign tasks [roles.lead].` +
@@ -49,7 +48,7 @@ export function renderCorePack(config, command) {
         'Deploy ASAP means the earliest moment a change can be verified (tests, then a check that it runs). State each fix\'s evidence and when it will exist; build nothing on a fix before then.' +
             (cutoff === undefined ? '' : ` No heavy step (builds, test runs, data scripts) starts after ${cutoff} UTC [coordinator.schedule.heavyCutoffUtc].`),
         'Lean calls: every tool call re-reads the whole context, so batch related shell steps into one call, give broad searches and multi-file reading to a subagent that returns the conclusion, and run subagents on your own model and effort.' +
-            (budget.enabled ? ` Pace the week to ${percent(budget.targetPct)} of the weekly limit and keep ${percent(budget.reservePct)} for incidents [coordinator.budget].` : ''),
+            (budget.enabled ? ` Pace the week to ${percent(budget.targetPct)} of the weekly limit and keep ${percent(budget.reservePct)} for incidents [budget].` : ''),
         'Investigate before deciding: give frequency × impact and the cheapest fix for the visible symptom. Questions for the owner come with options, numbers and a recommendation; a question with one correct answer is yours to decide.',
         'Rising resource use (memory, CPU, storage, tokens) needs its root cause; a raised limit is only an owner-approved bridge with a dated root-cause task.',
         'Code that writes data ships a read-only dry run (inserted, unchanged, changed counts). Deleting derived data needs a verified regenerate tool and a parity run first.',
