@@ -1,6 +1,7 @@
 import { isAssignment, isShellName, launch, programName, staticWord, type Assignment } from './launchers.ts';
 import { Location, resolveDir } from './location.ts';
 import { parseShell, stripHeredocs, type ShellDialect, type ShellWord } from './tokenizer.ts';
+import { resolveLiteralVariables } from './variables.ts';
 
 /** One git config value: set, unset (git exits 1), or unreadable (git failed or is missing). */
 export type ConfigValue = { readonly kind: 'set'; readonly value: string } | { readonly kind: 'unset' } | { readonly kind: 'unreadable' };
@@ -199,7 +200,9 @@ class GitInvocationFinder {
     if (!parsed.complete) {
       this.doubt('part of it cannot be read, as a quote, bracket or substitution never closes', true);
     }
-    for (const command of parsed.commands) {
+    // bash reads $NAME set to a literal earlier in the line; other dialects keep every variable unknown.
+    const commands = dialect === 'bash' ? resolveLiteralVariables(parsed.commands, script.text) : parsed.commands;
+    for (const command of commands) {
       location.enter(command.subshells);
       this.visitCommand(command.words, dialect, location, depth);
     }
@@ -249,8 +252,8 @@ class GitInvocationFinder {
 
   /**
    * What a git run inherits from its shell and from the variables its launcher sets: `GIT_DIR` moves it,
-   * `GIT_CONFIG*` overrides config. A variable set in the shell earlier in the line is treated as unknown,
-   * as the guard does not track shell scopes.
+   * `GIT_CONFIG*` overrides config. One set in the shell earlier in the line is treated as unknown: the guard
+   * resolves an earlier literal only where a word reads it (`$NAME`), never in the environment git inherits.
    */
   private gitState(dir: string | undefined, env: readonly Assignment[]): GitState {
     let gitDir = this.shellMovesRepo ? UNKNOWN_WORD : undefined;
