@@ -1,3 +1,4 @@
+import { errorMessage } from '../core/guards.ts';
 import { NewerDataError } from '../core/jsonl.ts';
 import type { Clock, Mutex } from '../core/lock.ts';
 import { EVENT_VERSION, type CreateEvent, type RegisterEvent, type StatusEvent, type TaskFields, type UpdateEvent } from './events.ts';
@@ -19,9 +20,17 @@ export interface RegisterDeps {
   readonly skills: SkillCatalog;
 }
 
+/** What became of the rotation a write runs after its append when the log is due (store.ts). */
+export type RotationOutcome =
+  | { readonly kind: 'none' }
+  | { readonly kind: 'rotated'; readonly segment: number; readonly retired: number }
+  /** The write is saved and every file still reads whole; the next write tries again. */
+  | { readonly kind: 'failed'; readonly error: string };
+
 export interface WriteResult {
   readonly task: Task;
   readonly event: RegisterEvent;
+  readonly rotation: RotationOutcome;
 }
 
 /**
@@ -106,7 +115,10 @@ export class Register {
     return this.write(decide);
   }
 
-  /** Under the lock: refuse newer data, read the working set, decide on one event, append it, return the task after it. */
+  /**
+   * Under the lock: refuse newer data, read the working set, decide on one event, append it, rotate the log
+   * when it is due, and return the task after the event.
+   */
   private write(decide: (snapshot: RegisterSnapshot) => Verdict<RegisterEvent>): Promise<Verdict<WriteResult>> {
     return this.deps.mutex.run(async () => {
       const snapshot = await this.deps.log.read();
@@ -123,8 +135,18 @@ export class Register {
       if (task === undefined) {
         throw new Error(`${event.id} is missing after its own write`);
       }
-      return { ok: true, value: { task, event } };
+      return { ok: true, value: { task, event, rotation: await this.rotation(snapshot) } };
     });
+  }
+
+  /** A rotation that fails leaves the write saved and the files readable (rotate.ts): it is reported, never thrown. */
+  private async rotation(written: RegisterSnapshot): Promise<RotationOutcome> {
+    try {
+      const plan = await this.deps.log.rotateIfDue(written, new Date(this.deps.clock.now()));
+      return plan === null ? { kind: 'none' } : { kind: 'rotated', segment: plan.segment, retired: plan.compaction.retiredNow.length };
+    } catch (error) {
+      return { kind: 'failed', error: errorMessage(error) };
+    }
   }
 }
 

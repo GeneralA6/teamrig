@@ -231,7 +231,8 @@ export class MissingSegmentError extends Error {
   }
 }
 
-async function readPlanned(files: LayoutFiles, paths: LayoutPaths, plan: ReadPlan, tail: EventLogRead): Promise<RegisterSnapshot> {
+/** The register a plan describes, its segments read through `files`; a segment it names that is gone throws. */
+export async function readPlan(files: LayoutFiles, paths: LayoutPaths, plan: ReadPlan, tail: EventLogRead): Promise<RegisterSnapshot> {
   const segments: EventLogRead[] = [];
   for (const n of plan.segments) {
     const path = paths.segment(n);
@@ -248,11 +249,11 @@ async function readPlanned(files: LayoutFiles, paths: LayoutPaths, plan: ReadPla
 export async function readWorkingSet(files: LayoutFiles, paths: LayoutPaths): Promise<RegisterSnapshot> {
   const snapshot = readSnapshotText(await files.read(paths.snapshot));
   const tail = readEvents((await files.read(paths.tail)) ?? '');
-  return readPlanned(files, paths, workingSetPlan(snapshot, tail), tail);
+  return readPlan(files, paths, workingSetPlan(snapshot, tail), tail);
 }
 
 /** Every task ever written, from every segment and the tail: the cost grows with the history. */
 export async function readHistory(files: LayoutFiles, paths: LayoutPaths): Promise<RegisterSnapshot> {
   const tail = readEvents((await files.read(paths.tail)) ?? '');
-  return readPlanned(files, paths, historyPlan(tail), tail);
+  return readPlan(files, paths, historyPlan(tail), tail);
 }
