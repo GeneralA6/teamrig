@@ -20,6 +20,8 @@ export const ENV = {
   claudeProjectDir: 'CLAUDE_PROJECT_DIR',
   /** Moves Claude Code's own folder (settings, plugins, transcripts) away from `~/.claude`. */
   claudeConfigDir: 'CLAUDE_CONFIG_DIR',
+  /** `off` turns `teamrig gh sync` off on this machine: it reads nothing and writes nothing. */
+  github: 'TEAMRIG_GITHUB',
 } as const;
 
 export type Env = Readonly<Record<string, string | undefined>>;
