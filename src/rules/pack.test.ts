@@ -54,6 +54,12 @@ describe('renderCorePack', () => {
     assert.ok(pack.length <= CORE_PACK_MAX_CHARS, `${pack.length} > ${CORE_PACK_MAX_CHARS}`);
   });
 
+  it('has each session work its list in order, record self-made work and stop when it loops or drifts', () => {
+    const pack = renderCorePack(testConfig(), COMMAND);
+    assert.match(pack, /^5\. Work your own task list in priority order \(`teamrig list --session <you>`\); self-made work is a task too, recorded with `teamrig add` before you start it\./m);
+    assert.match(pack, /When you notice you are looping \(the same step again, no progress\) or drifting from your task, stop and ask the lead\.$/m);
+  });
+
   it('states the small-commits rule and its gate', () => {
     const pack = (gate: string) => renderCorePack(testConfig({ commits: { maxLines: 300, gate } }), COMMAND);
     assert.match(pack('warn'), /Over 300 changed non-test lines or 15 non-test files \[commits\.maxLines, commits\.maxFiles\], a commit needs a `Large-commit: <reason>` line/);
@@ -116,6 +122,13 @@ describe('renderSessionContext', () => {
   it('is the core pack alone without team rules', () => {
     assert.equal(context(), core);
     assert.equal(context({ path: 'rules.md', text: ' \n' }), core);
+  });
+
+  it("shows a team's rules file at its size limit in full beside the worst-case core", () => {
+    const text = 'x'.repeat(TEAM_RULES_MAX_CHARS);
+    const full = renderSessionContext(renderCorePack(worstCaseConfig(), COMMAND), { path: 'rules.md', text }, COMMAND);
+    assert.ok(full.endsWith(`# Your team's rules\n${text}`));
+    assert.ok(full.length <= CONTEXT_MAX_CHARS);
   });
 
   it("appends the team's rules when they fit", () => {
