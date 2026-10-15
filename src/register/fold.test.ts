@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import { EVENT_VERSION, type RegisterEvent, type TaskFields } from './events.ts';
 import { foldEvents, RegisterFold, type Task } from './fold.ts';
 import type { TaskStatus } from './model.ts';
+import type { WaitReason } from './waits.ts';
 
-const FIELDS: TaskFields = { title: 'Ship it', owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], week: null };
+const FIELDS: TaskFields = { title: 'Ship it', owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], week: null, after: [] };
 
 const at = (hour: number): string => `2030-01-07T${String(hour).padStart(2, '0')}:00:00.000Z`;
 
@@ -12,8 +13,9 @@ function create(hour: number): RegisterEvent {
   return { v: EVENT_VERSION, type: 'create', id: 'T1', at: at(hour), by: 'lead', task: FIELDS };
 }
 
-function status(hour: number, value: TaskStatus): RegisterEvent {
-  return { v: EVENT_VERSION, type: 'status', id: 'T1', at: at(hour), by: 'alpha', status: value, note: 'n', evidence: null, skill: null };
+function status(hour: number, value: TaskStatus, waits?: readonly WaitReason[]): RegisterEvent {
+  const event: RegisterEvent = { v: EVENT_VERSION, type: 'status', id: 'T1', at: at(hour), by: 'alpha', status: value, note: 'n', evidence: null, skill: null };
+  return waits === undefined ? event : { ...event, waits };
 }
 
 function update(hour: number, changes: Partial<TaskFields>): RegisterEvent {
@@ -35,13 +37,36 @@ describe('foldEvents: when a task took its status and priority', () => {
   it('moves statusAt on a new status only, never on a repeat of the same one', () => {
     assert.equal(taskAfter([create(9), status(10, 'in-progress')]).statusAt, at(10));
     assert.equal(taskAfter([create(9), status(10, 'in-progress'), status(11, 'in-progress')]).statusAt, at(10));
-    assert.equal(taskAfter([create(9), status(10, 'blocked'), status(12, 'open')]).statusAt, at(12));
+    assert.equal(taskAfter([create(9), status(10, 'waiting'), status(12, 'open')]).statusAt, at(12));
   });
 
   it('moves priorityAt on a changed priority only, never on other changes or the same priority', () => {
     assert.equal(taskAfter([create(9), update(10, { priority: 1 })]).priorityAt, at(10));
     assert.equal(taskAfter([create(9), update(10, { priority: 2 })]).priorityAt, at(9));
     assert.equal(taskAfter([create(9), update(10, { due: '2030-01-09' }), status(11, 'in-progress')]).priorityAt, at(9));
+  });
+});
+
+describe('foldEvents: what a waiting task waits for, and when it started', () => {
+  const OWNER: readonly WaitReason[] = [{ kind: 'decision', who: 'owner' }];
+
+  it('keeps the reasons of the latest waiting status, and clears them when the task leaves waiting', () => {
+    const later: readonly WaitReason[] = [{ kind: 'task', id: 'T2' }];
+    assert.deepEqual(taskAfter([create(9), status(10, 'waiting', OWNER)]).waits, OWNER);
+    assert.deepEqual(taskAfter([create(9), status(10, 'waiting', OWNER), status(11, 'waiting', later)]).waits, later);
+    assert.deepEqual(taskAfter([create(9), status(10, 'waiting', OWNER), status(11, 'in-progress')]).waits, []);
+    assert.deepEqual(taskAfter([create(9), status(10, 'waiting')]).waits, [], 'a line from before reasons has none');
+  });
+
+  it('starts a task at its first in-progress or verifying status, and keeps that time', () => {
+    assert.equal(taskAfter([create(9), status(10, 'waiting', OWNER)]).startedAt, null);
+    assert.equal(taskAfter([create(9), status(10, 'verifying')]).startedAt, at(10));
+    assert.equal(taskAfter([create(9), status(10, 'in-progress'), status(11, 'open'), status(12, 'in-progress')]).startedAt, at(10));
+  });
+
+  it('keeps the tasks a task is planned after', () => {
+    assert.deepEqual(taskAfter([create(9), update(10, { after: ['T5', 'T6'] })]).after, ['T5', 'T6']);
+    assert.deepEqual(taskAfter([create(9), update(10, { after: ['T5'] }), update(11, { after: [] })]).after, []);
   });
 });
 
@@ -79,10 +104,10 @@ describe('RegisterFold: going on from a folded state', () => {
     const head = foldEvents(events.slice(0, 2));
     const fold = new RegisterFold(head);
     const before = fold.state();
-    fold.apply(status(11, 'blocked'));
+    fold.apply(status(11, 'waiting'));
     assert.equal(head.tasks.get('T1')?.status, 'open');
     assert.equal(before.tasks.get('T1')?.status, 'open');
-    assert.equal(fold.state().tasks.get('T1')?.status, 'blocked');
+    assert.equal(fold.state().tasks.get('T1')?.status, 'waiting');
   });
 
   it('keeps the next id of the state it went on from, even with no tasks in it', () => {

@@ -1,6 +1,6 @@
 import type { Files } from '../core/files.ts';
 import { toJsonlLine } from '../core/jsonl.ts';
-import type { RegisterEvent } from './events.ts';
+import { eventRecord, type RegisterEvent } from './events.ts';
 import { RETAIN_DAYS } from './compaction.ts';
 import { layoutPaths, readHistory, readWorkingSet, type LayoutPaths } from './layout.ts';
 import { applyRotation, AUTO_ROTATE_CHARS, planRotation, type RotationPlan } from './rotate.ts';
@@ -44,7 +44,7 @@ export class JsonlEventLog implements EventLog {
   }
 
   async append(event: RegisterEvent): Promise<void> {
-    await this.files.append(this.path, toJsonlLine({ ...event }));
+    await this.files.append(this.path, toJsonlLine(eventRecord(event)));
   }
 
   async rotateIfDue(written: RegisterSnapshot, now: Date): Promise<RotationPlan | null> {

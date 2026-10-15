@@ -236,7 +236,7 @@ describe('readBack', () => {
   });
 
   it('names a task that folds otherwise, a retired task still there and a task that was not there', () => {
-    const changed = compaction.text.replace('"in-progress"', '"blocked"');
+    const changed = compaction.text.replace('"in-progress"', '"waiting"');
     assert.deepEqual(readBack(source, { ...compaction, text: changed }, marker).problems, ['T2 folds otherwise from the new files']);
     assert.deepEqual(readBack(source, { ...compaction, retiredNow: ['T1'] }, marker).problems, ['T1 is retired and still in the new working set']);
     const header = toJsonlLine(snapshotHeaderRecord({ ...compaction.header, events: compaction.header.events + 1 }));
@@ -256,7 +256,7 @@ class NoSkills implements SkillCatalog {
 
 /** A tail of `count` status events on T2, enough to pass AUTO_ROTATE_CHARS with 4,000. */
 function busyTail(count: number): string {
-  return Array.from({ length: count }, (_, index) => status('T2', 5, index % 2 === 0 ? 'in-progress' : 'blocked')).join('');
+  return Array.from({ length: count }, (_, index) => status('T2', 5, index % 2 === 0 ? 'in-progress' : 'waiting')).join('');
 }
 
 /** A register over `files`; `autoArchive` stands for the team's `register.autoArchive`, on by default as in the config. */
@@ -285,7 +285,7 @@ describe('a write rotates a log rotated before once its tail is long', () => {
   it('leaves a short tail alone, and rotates a long one after the write it carries', async () => {
     const files = new MemoryFiles({ [LOG]: TEXT });
     await rotate(files, 4);
-    const short = await registerOn(files).setStatus('alpha', 'T2', { status: 'blocked', note: 'waits on review' });
+    const short = await registerOn(files).setStatus('alpha', 'T2', { status: 'waiting', waits: [{ kind: 'approval', who: 'owner' }], note: 'review' });
     assert.deepEqual(short.ok && short.value.rotation, { kind: 'none' });
     await files.append(LOG, busyTail(4_000));
     const long = await registerOn(files).setStatus('alpha', 'T2', START_T2);
