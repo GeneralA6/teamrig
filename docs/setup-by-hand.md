@@ -22,6 +22,7 @@ for a session (step 4).
 | The team | `$TEAMRIG_TEAM`, else the nearest `.teamrig.json` above the current folder, else above `$CLAUDE_PROJECT_DIR` | none |
 | The session | `--session <id or name>` on a command, else `$TEAMRIG_SESSION` | none |
 | Team members and roles | `<kit home>/teams/<team>/config.json` | none |
+| Automatic archiving of the task list | `register.autoArchive` in the team config: `false` stops writes from archiving it; `teamrig compact` still does by hand | on: after the first `compact`, a write past 512 KiB of log archives it and says so in a NOTE line |
 | Context refresh | `refresh` in the team config: `enabled`, `contextTokens`, `tabTitle`, `handoverDir` | on, at 250,000 tokens, marks the tab, `<team>/handover/` |
 | Where `teamrig open` opens a tab | `open.terminal` in the team config: `auto` (tmux inside tmux, else the platform's terminal), `tmux`, `windows-terminal`, `macos-terminal`, `gnome-terminal`, `konsole`, `x-terminal-emulator`, or `print` (prints the command to run) | `auto` |
 
