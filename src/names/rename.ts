@@ -1,6 +1,6 @@
 import { stringField } from '../core/guards.ts';
 import { ID_PATTERN, NAME_PATTERN } from '../core/ids.ts';
-import type { JsonlRecord } from '../core/jsonl.ts';
+import { parseJsonl, type JsonlRecord } from '../core/jsonl.ts';
 
 export const RENAME_VERSION = 1;
 
@@ -51,4 +51,32 @@ export function parseRename(line: JsonlRecord): RenameParse {
     return { kind: 'unreadable' };
   }
   return { kind: 'rename', rename: { v: line.version, id, from, to, at, by } };
+}
+
+export interface RenameLogRead {
+  /** In file order, oldest first. */
+  readonly renames: readonly Rename[];
+  /** Damaged or foreign lines: skipped, never fatal. */
+  readonly unreadable: number;
+  /** Lines in a newer format: skipped on read, and they block every write. */
+  readonly newer: number;
+}
+
+/** The renames in the text of a rename log (`renames.jsonl`), counting the lines it skips. */
+export function readRenames(text: string): RenameLogRead {
+  const parse = parseJsonl(text);
+  const renames: Rename[] = [];
+  let unreadable = parse.unreadable;
+  let newer = 0;
+  for (const line of parse.records) {
+    const result = parseRename(line);
+    if (result.kind === 'rename') {
+      renames.push(result.rename);
+    } else if (result.kind === 'newer') {
+      newer += 1;
+    } else {
+      unreadable += 1;
+    }
+  }
+  return { renames, unreadable, newer };
 }

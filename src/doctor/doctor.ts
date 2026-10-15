@@ -4,7 +4,7 @@ import type { KitConfig } from '../config/types.ts';
 import { formatUtcMinute, MS_PER_DAY, parseUtcDeadline, shortUtc } from '../core/time.ts';
 import { unreadSince } from '../inbox/inbox.ts';
 import type { Unread } from '../inbox/unread.ts';
-import type { RenameLogRead } from '../names/log.ts';
+import type { RenameLogRead } from '../names/rename.ts';
 import { TEAM_RULES_MAX_CHARS } from '../rules/pack.ts';
 
 /**
