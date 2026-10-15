@@ -1,7 +1,7 @@
 /**
  * The README's never-runs-out picture: one week of token use between two resets. First the unplanned week: usage
  * climbs too fast, hits the weekly limit on Thursday and waits there for the reset. Then teamrig's week: a "now" line
- * sweeps across, usage climbs evenly to 99%, each day's tasks turn done as it passes, and deploys pause in the last
+ * sweeps across, usage climbs evenly to 99.5%, each day's tasks turn done as it passes, and deploys pause in the last
  * hours before the reset. One 15 s CSS loop and no script; with motion turned off it is a still of the finished week.
  * It follows the reader's light or dark colour scheme.
  */
@@ -25,8 +25,8 @@ const WORK = { start: 0.25, end: 0.8 } as const;
 /** Deploys pause this share of a day before the reset: 4 hours. */
 const PAUSE = 4 / 24;
 
-/** teamrig's week spends 99% of the limit, a seventh of it each day; the unplanned week spends 2.2 times that pace. */
-export const PLANNED_PER_DAY = 0.99 / 7;
+/** teamrig's week spends 99.5% of the limit, the plan picture's fill, a seventh of it each day; the unplanned week spends 2.2 times that pace. */
+export const PLANNED_PER_DAY = 0.995 / 7;
 export const RUSHED_PER_DAY = 2.2 / 7;
 
 /** A point on the chart, in pixels. */
@@ -144,7 +144,7 @@ function result(t: Timeline): string[] {
   const x = weekX(7) - 32;
   return [
     `<g class="${t.show(WEEK_SWEEP.from + WEEK_SWEEP.duration + 0.2)}">`,
-    `<text x="${x}" y="${WEEK.top + 86}" text-anchor="end" class="result"><tspan class="brand">With teamrig:</tspan> 99% used,</text>`,
+    `<text x="${x}" y="${WEEK.top + 86}" text-anchor="end" class="result"><tspan class="brand">With teamrig:</tspan> 99.5% used,</text>`,
     `<text x="${x}" y="${WEEK.top + 108}" text-anchor="end" class="result">every task done before the reset.</text>`,
     `</g>`,
   ];
@@ -160,7 +160,7 @@ export function renderWeek(): string {
     height: HEIGHT,
     label:
       'A week of token use between two resets. Without a plan, usage climbs too fast, hits the weekly limit on Thursday, ' +
-      'and work waits for the reset. With teamrig, the work is spread over the week: usage climbs evenly to 99%, each ' +
+      'and work waits for the reset. With teamrig, the work is spread over the week: usage climbs evenly to 99.5%, each ' +
       "day's tasks get done, and deploys pause in the last hours before the reset.",
     style: [
       ...themeStyle(),

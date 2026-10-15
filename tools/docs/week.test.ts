@@ -30,7 +30,7 @@ describe('renderWeek', () => {
     const label = root.attributes.get('aria-label') ?? '';
     assert.equal(root.attributes.get('role'), 'img');
     assert.match(label, /^A week of token use between two resets\. Without a plan, usage climbs too fast, hits the weekly limit on Thursday/);
-    assert.match(label, /usage climbs evenly to 99%, each day's tasks get done, and deploys pause in the last hours before the reset\.$/);
+    assert.match(label, /usage climbs evenly to 99\.5%, each day's tasks get done, and deploys pause in the last hours before the reset\.$/);
     assert.equal(textOf(places.find((place) => place.element.name === 'title')?.element ?? ''), label);
   });
 
@@ -81,7 +81,7 @@ describe('renderWeek', () => {
       const now = withClass('now')[0]?.path.at(-2);
       assert.equal(valueOf(rules.get(`.${classesOf(now)[0] ?? ''}`) ?? '', 'transform'), 'translateX(840px)');
       const words = places.filter((place) => place.element.name === 'text' && still(place)).map((place) => textOf(place.element));
-      for (const line of ['Without a plan: out of tokens by Thursday', 'With teamrig: 99% used,', 'every task done before the reset.']) assert.ok(words.includes(line), line);
+      for (const line of ['Without a plan: out of tokens by Thursday', 'With teamrig: 99.5% used,', 'every task done before the reset.']) assert.ok(words.includes(line), line);
     });
   });
 
@@ -103,8 +103,8 @@ describe('used', () => {
     assert.equal(used(7, 1), 1);
   });
 
-  it("ends teamrig's week at 99% of the limit", () => {
-    assert.ok(Math.abs(used(7, PLANNED_PER_DAY) - 0.99) < 1e-9);
+  it("ends teamrig's week at 99.5% of the limit", () => {
+    assert.ok(Math.abs(used(7, PLANNED_PER_DAY) - 0.995) < 1e-9);
   });
 });
 

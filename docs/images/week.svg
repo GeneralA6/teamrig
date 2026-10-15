@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="300" viewBox="0 0 960 300" role="img" aria-label="A week of token use between two resets. Without a plan, usage climbs too fast, hits the weekly limit on Thursday, and work waits for the reset. With teamrig, the work is spread over the week: usage climbs evenly to 99%, each day's tasks get done, and deploys pause in the last hours before the reset.">
-<title>A week of token use between two resets. Without a plan, usage climbs too fast, hits the weekly limit on Thursday, and work waits for the reset. With teamrig, the work is spread over the week: usage climbs evenly to 99%, each day's tasks get done, and deploys pause in the last hours before the reset.</title>
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="300" viewBox="0 0 960 300" role="img" aria-label="A week of token use between two resets. Without a plan, usage climbs too fast, hits the weekly limit on Thursday, and work waits for the reset. With teamrig, the work is spread over the week: usage climbs evenly to 99.5%, each day's tasks get done, and deploys pause in the last hours before the reset.">
+<title>A week of token use between two resets. Without a plan, usage climbs too fast, hits the weekly limit on Thursday, and work waits for the reset. With teamrig, the work is spread over the week: usage climbs evenly to 99.5%, each day's tasks get done, and deploys pause in the last hours before the reset.</title>
 <style>
 :root{--fg:#1f2328;--muted:#59636e;--line:#d1d9e0;--tile:#f6f8fa;--bg:#ffffff;--purple:#8250df;--tint:#f0eafb;--amber:#9a6700;--green:#1a7f37}
 @media (prefers-color-scheme:dark){:root{--fg:#e6edf3;--muted:#9198a1;--line:#3d444d;--tile:#151b23;--bg:#0d1117;--purple:#a371f7;--tint:#221e36;--amber:#d29922;--green:#3fb950}}
@@ -83,14 +83,14 @@ text{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helveti
 @media (prefers-reduced-motion:reduce){*{animation:none!important}}
 </style>
 <defs><pattern id="hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><path d="M0 0V7" class="hatch"/></pattern></defs>
-<path d="M60.0 230.0L70.0 230.0L80.0 230.0L90.0 230.0L100.0 226.1L110.0 222.3L120.0 218.4L130.0 214.6L140.0 210.7L150.0 206.9L160.0 204.5L170.0 204.5L180.0 204.5L180 230L60 230Z" class="area a0"/>
-<path d="M180.0 204.5L190.0 204.5L200.0 204.5L210.0 204.5L220.0 200.7L230.0 196.8L240.0 193.0L250.0 189.1L260.0 185.3L270.0 181.4L280.0 179.1L290.0 179.1L300.0 179.1L300 230L180 230Z" class="area a1"/>
-<path d="M300.0 179.1L310.0 179.1L320.0 179.1L330.0 179.1L340.0 175.2L350.0 171.4L360.0 167.5L370.0 163.7L380.0 159.8L390.0 155.9L400.0 153.6L410.0 153.6L420.0 153.6L420 230L300 230Z" class="area a2"/>
-<path d="M420.0 153.6L430.0 153.6L440.0 153.6L450.0 153.6L460.0 149.8L470.0 145.9L480.0 142.1L490.0 138.2L500.0 134.3L510.0 130.5L520.0 128.2L530.0 128.2L540.0 128.2L540 230L420 230Z" class="area a3"/>
-<path d="M540.0 128.2L550.0 128.2L560.0 128.2L570.0 128.2L580.0 124.3L590.0 120.5L600.0 116.6L610.0 112.7L620.0 108.9L630.0 105.0L640.0 102.7L650.0 102.7L660.0 102.7L660 230L540 230Z" class="area a4"/>
-<path d="M660.0 102.7L670.0 102.7L680.0 102.7L690.0 102.7L700.0 98.9L710.0 95.0L720.0 91.1L730.0 87.3L740.0 83.4L750.0 79.6L760.0 77.3L770.0 77.3L780.0 77.3L780 230L660 230Z" class="area a5"/>
-<path d="M780.0 77.3L790.0 77.3L800.0 77.3L810.0 77.3L820.0 73.4L830.0 69.5L840.0 65.7L850.0 61.8L860.0 58.0L870.0 54.1L880.0 51.8L890.0 51.8L900.0 51.8L900 230L780 230Z" class="area a6"/>
-<path d="M60.0 230.0L70.0 230.0L80.0 230.0L90.0 230.0L100.0 226.1L110.0 222.3L120.0 218.4L130.0 214.6L140.0 210.7L150.0 206.9L160.0 204.5L170.0 204.5L180.0 204.5L190.0 204.5L200.0 204.5L210.0 204.5L220.0 200.7L230.0 196.8L240.0 193.0L250.0 189.1L260.0 185.3L270.0 181.4L280.0 179.1L290.0 179.1L300.0 179.1L310.0 179.1L320.0 179.1L330.0 179.1L340.0 175.2L350.0 171.4L360.0 167.5L370.0 163.7L380.0 159.8L390.0 155.9L400.0 153.6L410.0 153.6L420.0 153.6L430.0 153.6L440.0 153.6L450.0 153.6L460.0 149.8L470.0 145.9L480.0 142.1L490.0 138.2L500.0 134.3L510.0 130.5L520.0 128.2L530.0 128.2L540.0 128.2L550.0 128.2L560.0 128.2L570.0 128.2L580.0 124.3L590.0 120.5L600.0 116.6L610.0 112.7L620.0 108.9L630.0 105.0L640.0 102.7L650.0 102.7L660.0 102.7L670.0 102.7L680.0 102.7L690.0 102.7L700.0 98.9L710.0 95.0L720.0 91.1L730.0 87.3L740.0 83.4L750.0 79.6L760.0 77.3L770.0 77.3L780.0 77.3L790.0 77.3L800.0 77.3L810.0 77.3L820.0 73.4L830.0 69.5L840.0 65.7L850.0 61.8L860.0 58.0L870.0 54.1L880.0 51.8L890.0 51.8L900.0 51.8" stroke-dasharray="873" class="usage a7"/>
+<path d="M60.0 230.0L70.0 230.0L80.0 230.0L90.0 230.0L100.0 226.1L110.0 222.2L120.0 218.4L130.0 214.5L140.0 210.6L150.0 206.7L160.0 204.4L170.0 204.4L180.0 204.4L180 230L60 230Z" class="area a0"/>
+<path d="M180.0 204.4L190.0 204.4L200.0 204.4L210.0 204.4L220.0 200.5L230.0 196.7L240.0 192.8L250.0 188.9L260.0 185.0L270.0 181.2L280.0 178.8L290.0 178.8L300.0 178.8L300 230L180 230Z" class="area a1"/>
+<path d="M300.0 178.8L310.0 178.8L320.0 178.8L330.0 178.8L340.0 175.0L350.0 171.1L360.0 167.2L370.0 163.3L380.0 159.4L390.0 155.6L400.0 153.2L410.0 153.2L420.0 153.2L420 230L300 230Z" class="area a2"/>
+<path d="M420.0 153.2L430.0 153.2L440.0 153.2L450.0 153.2L460.0 149.4L470.0 145.5L480.0 141.6L490.0 137.7L500.0 133.9L510.0 130.0L520.0 127.7L530.0 127.7L540.0 127.7L540 230L420 230Z" class="area a3"/>
+<path d="M540.0 127.7L550.0 127.7L560.0 127.7L570.0 127.7L580.0 123.8L590.0 119.9L600.0 116.0L610.0 112.2L620.0 108.3L630.0 104.4L640.0 102.1L650.0 102.1L660.0 102.1L660 230L540 230Z" class="area a4"/>
+<path d="M660.0 102.1L670.0 102.1L680.0 102.1L690.0 102.1L700.0 98.2L710.0 94.3L720.0 90.4L730.0 86.6L740.0 82.7L750.0 78.8L760.0 76.5L770.0 76.5L780.0 76.5L780 230L660 230Z" class="area a5"/>
+<path d="M780.0 76.5L790.0 76.5L800.0 76.5L810.0 76.5L820.0 72.6L830.0 68.7L840.0 64.9L850.0 61.0L860.0 57.1L870.0 53.2L880.0 50.9L890.0 50.9L900.0 50.9L900 230L780 230Z" class="area a6"/>
+<path d="M60.0 230.0L70.0 230.0L80.0 230.0L90.0 230.0L100.0 226.1L110.0 222.2L120.0 218.4L130.0 214.5L140.0 210.6L150.0 206.7L160.0 204.4L170.0 204.4L180.0 204.4L190.0 204.4L200.0 204.4L210.0 204.4L220.0 200.5L230.0 196.7L240.0 192.8L250.0 188.9L260.0 185.0L270.0 181.2L280.0 178.8L290.0 178.8L300.0 178.8L310.0 178.8L320.0 178.8L330.0 178.8L340.0 175.0L350.0 171.1L360.0 167.2L370.0 163.3L380.0 159.4L390.0 155.6L400.0 153.2L410.0 153.2L420.0 153.2L430.0 153.2L440.0 153.2L450.0 153.2L460.0 149.4L470.0 145.5L480.0 141.6L490.0 137.7L500.0 133.9L510.0 130.0L520.0 127.7L530.0 127.7L540.0 127.7L550.0 127.7L560.0 127.7L570.0 127.7L580.0 123.8L590.0 119.9L600.0 116.0L610.0 112.2L620.0 108.3L630.0 104.4L640.0 102.1L650.0 102.1L660.0 102.1L670.0 102.1L680.0 102.1L690.0 102.1L700.0 98.2L710.0 94.3L720.0 90.4L730.0 86.6L740.0 82.7L750.0 78.8L760.0 76.5L770.0 76.5L780.0 76.5L790.0 76.5L800.0 76.5L810.0 76.5L820.0 72.6L830.0 68.7L840.0 64.9L850.0 61.0L860.0 57.1L870.0 53.2L880.0 50.9L890.0 50.9L900.0 50.9" stroke-dasharray="873" class="usage a7"/>
 <g class="a8"><path d="M60 36V262" class="now"/></g>
 <rect x="880" y="50" width="20" height="180" fill="url(#hatch)"/>
 <text x="872" y="216" text-anchor="end" class="note">deploys pause</text>
@@ -154,7 +154,7 @@ text{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helveti
 <circle cx="462.5" cy="50" r="5" class="hit a31"/>
 <text x="476.5" y="42" class="note strong a32">Without a plan: out of tokens by Thursday</text>
 <g class="a33">
-<text x="868" y="136" text-anchor="end" class="result"><tspan class="brand">With teamrig:</tspan> 99% used,</text>
+<text x="868" y="136" text-anchor="end" class="result"><tspan class="brand">With teamrig:</tspan> 99.5% used,</text>
 <text x="868" y="158" text-anchor="end" class="result">every task done before the reset.</text>
 </g>
 </svg>
