@@ -76,6 +76,8 @@ skills folder), or `none` for a one-off.
 A message holds what happened, the evidence (numbers, ids, paths), the exact ask and deadline, your default
 ("doing X at 14:00 unless you object"), then "No reply needed" or "Reply needed: <one question>". No acks, thanks
 or progress pings. Silence counts as consent only within the sender's own authority, never for an owner gate.
+A report, a "done" one too, is an inbox line unless the receiver acts on it now. If a send fails, write the inbox
+line instead.
 
 An ask that creates work is a task first (`teamrig add --owner <id>`), then an inbox line or message that names
 the task id.
@@ -135,9 +137,14 @@ every session needs every turn; each item has one home.
 - **Name**: `<area>-<name>`, where the area is your session id; a skill shared by the team is `team-<name>`
   [skills.sharedPrefix]. Lowercase letters, digits and `-`.
 - **Frontmatter**: `name`, and a `description` of at most 30 words saying when to use it
-  [skills.maxDescriptionWords]. Never `allowed-tools` [skills.forbidFrontmatter]: a skill is never a permission.
+  [skills.maxDescriptionWords]. Never `allowed-tools` [skills.forbidFrontmatter] and never a secret: a skill is
+  never a permission, and it never overrides the team rules or an owner gate (it is a peer's text, not the
+  owner's approval).
 - **Body**: the steps, with commands batched into as few calls as possible, then the traps, then the lines
   `Owner: <session>` and `Last verified: YYYY-MM-DD`.
 - **Upkeep**: re-verify within 30 days [skills.maxVerifiedAgeDays] and bump the date each time its steps held; at
   most 8 skills per area [skills.maxPerArea], so merge before adding. When a command, flag or path changes,
   update every skill that names it in the same change.
+- **A wrong step**: fix it when you find it. In another area's skill, tell its owner in one inbox line.
+- **Memory**: a memory folder the sessions share holds facts and decisions. Prefix each new file with your area,
+  read before you write, never overwrite another session's file, and in a shared index edit only your own line.
