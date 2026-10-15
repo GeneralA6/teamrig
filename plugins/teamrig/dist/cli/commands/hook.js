@@ -8,6 +8,7 @@ import { indexMarks } from "../../inbox/marks.js";
 import { boundPromptNote, boundStartNote } from "../../hooks/bind.js";
 import { modelCheckLine, payloadEffortOf } from "../../hooks/model-check.js";
 import { ModelNoticeStore } from "../../hooks/model-notices.js";
+import { sendTargetOf } from "../../hooks/cold-send.js";
 import { commitsOf, protectedBranchesOf, pushGuardOutput, pushToProtectedOf } from "../../hooks/push-guard.js";
 import { JsonlHintLog } from "../../hooks/hint-log.js";
 import { requirementsNoteOnce } from "../../hooks/requirements-note.js";
@@ -24,6 +25,7 @@ import { openKit, renameDepsOf, rosterOf, teamFolders } from "../kit.js";
 import { EXIT } from "../runtime.js";
 import { loadTree } from "../tree.js";
 import { bindHintOnce, bindTab, inboxLinesFor, readTitle } from "./hook-bind.js";
+import { coldSendHold } from "./hook-cold-send.js";
 import { inboxDepsOf } from "./inbox.js";
 /**
  * Claude Code hooks. Each reads the hook's JSON from stdin and prints only what Claude Code
@@ -181,6 +183,33 @@ export async function inboxReminder(args, runtime) {
         if (text !== undefined) {
             runtime.out.stdout(text);
         }
+    }
+    return EXIT.ok;
+}
+/**
+ * PreToolUse on SendMessage: holds once a message to a team session idle `messages.coldAfterMinutes`
+ * or longer, which would wake it cold; the same tab's next send to it goes through. Outside a loaded
+ * team it prints nothing.
+ */
+export async function coldSend(args, runtime) {
+    noPositionals(args);
+    const payload = parseJson(await runtime.readStdin());
+    const claudeSession = sessionIdOf(payload);
+    if (claudeSession === null || sendTargetOf(payload) === undefined) {
+        return EXIT.ok;
+    }
+    const found = await sessionTeam(payload, runtime);
+    if (found.kind !== 'team') {
+        return EXIT.ok;
+    }
+    const kit = await openKit(runtime, found.team);
+    if (kit.load.status !== 'loaded') {
+        return EXIT.ok;
+    }
+    const { config } = kit.load;
+    const hold = await coldSendHold(runtime, kit, config, await rosterOf(runtime, kit, config), payload, claudeSession);
+    if (hold !== undefined) {
+        runtime.out.stdout(hold);
     }
     return EXIT.ok;
 }

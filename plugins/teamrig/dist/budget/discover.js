@@ -30,6 +30,18 @@ export const nodeTranscriptFolders = {
         }
         return entries;
     },
+    async changedAt(path) {
+        try {
+            const stats = await stat(path);
+            return stats.isFile() ? stats.mtimeMs : undefined;
+        }
+        catch (error) {
+            if (errorCode(error) === 'ENOENT' || errorCode(error) === 'ENOTDIR') {
+                return undefined;
+            }
+            throw error;
+        }
+    },
 };
 export const nodeTranscriptSource = { ...nodeTranscriptBytes, ...nodeTranscriptFolders };
 /** Claude Code's folder of project transcripts: `$CLAUDE_CONFIG_DIR/projects`, else `~/.claude/projects`. */
@@ -84,4 +96,24 @@ export async function discoverTranscripts(folders, projectsDir, since) {
     return [...found.entries()]
         .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
         .map(([claudeSession, files]) => ({ claudeSession, main: files.main.sort(), subagents: files.subagents }));
+}
+/**
+ * When any of these Claude Code sessions last wrote its own transcript, in any project folder (epoch
+ * ms); undefined when none has one. It checks one path per session and project folder and never lists
+ * every transcript, so a hook can afford it.
+ */
+export async function lastWriteOf(folders, projectsDir, claudeSessions) {
+    let last;
+    for (const project of await folders.entries(projectsDir)) {
+        if (!project.folder) {
+            continue;
+        }
+        for (const id of claudeSessions) {
+            const changedAt = await folders.changedAt(join(projectsDir, project.name, `${id}${TRANSCRIPT}`));
+            if (changedAt !== undefined && (last === undefined || changedAt > last)) {
+                last = changedAt;
+            }
+        }
+    }
+    return last;
 }
