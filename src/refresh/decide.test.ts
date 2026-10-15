@@ -25,7 +25,7 @@ function stopContext(overrides: Partial<StopContext> = {}): StopContext {
 }
 
 function facts(overrides: Partial<BoundaryFacts> = {}): BoundaryFacts {
-  return { requestedBy: undefined, tokens: 120_000, handoverHash: null, ...overrides };
+  return { requestedBy: undefined, tokens: 120_000, handoverHash: null, running: 0, ...overrides };
 }
 
 describe('decideStop', () => {
@@ -43,8 +43,9 @@ describe('decideStop', () => {
     }
   });
 
-  it('asks for the facts of a boundary before judging it', () => {
+  it('asks for the facts of a boundary before judging it, and of a written handover before the notice', () => {
     assert.deepEqual(decideStop(BOUNDARY, stopContext()), { kind: 'measure' });
+    assert.deepEqual(decideStop(READY, stopContext()), { kind: 'measure' });
   });
 
   it('never judges a boundary in a turn a Stop hook already continued', () => {
@@ -85,6 +86,19 @@ describe('decideStop', () => {
     assert.deepEqual(unknown.kind === 'block' ? unknown.state : undefined, { phase: 'asked', task: 'T12', at: NOW, tokens: null, handoverHash: null });
   });
 
+  it('waits while background work runs: a due refresh leaves the boundary for a later stop', () => {
+    assert.deepEqual(decideStop(BOUNDARY, stopContext(), facts({ tokens: 262_144, running: 1 })), { kind: 'none' });
+    assert.deepEqual(decideStop(BOUNDARY, stopContext(), facts({ requestedBy: 'boss', running: 2 })), { kind: 'none' });
+    assert.equal(decideStop(BOUNDARY, stopContext(), facts({ tokens: 262_144, running: 0 })).kind, 'block', 'asks once the work ended');
+  });
+
+  it('records a boundary with no refresh due as judged even while background work runs', () => {
+    assert.deepEqual(decideStop(BOUNDARY, stopContext(), facts({ tokens: 120_000, running: 3 })), {
+      kind: 'write',
+      state: { phase: 'idle', task: 'T12', at: NOW, tokens: 120_000 },
+    });
+  });
+
   it('follows the threshold the team set', () => {
     const settings = { ...DEFAULT_REFRESH, contextTokens: 150_000 };
     const decision = decideStop(BOUNDARY, stopContext({ settings }), facts({ tokens: 150_000 }));
@@ -92,18 +106,23 @@ describe('decideStop', () => {
   });
 
   it('tells the user once that the handover is written, with the tab mark when the team wants it', () => {
-    assert.deepEqual(decideStop(READY, stopContext()), {
+    assert.deepEqual(decideStop(READY, stopContext(), facts()), {
       kind: 'notice',
       state: { ...READY, noticed: true },
       message: 'teamrig: api finished T12 and wrote its handover; type /clear for a fresh start',
       title: 'api: type /clear',
     });
-    const plain = decideStop(READY, stopContext({ settings: { ...DEFAULT_REFRESH, tabTitle: false } }));
+    const plain = decideStop(READY, stopContext({ settings: { ...DEFAULT_REFRESH, tabTitle: false } }), facts());
     assert.equal(plain.kind === 'notice' ? plain.title : 'other', undefined);
   });
 
   it('gives the notice in the turn a Stop hook continued, since that turn runs refresh --ready', () => {
-    assert.equal(decideStop(READY, stopContext({ stopHookActive: true })).kind, 'notice');
+    assert.equal(decideStop(READY, stopContext({ stopHookActive: true }), facts()).kind, 'notice');
+  });
+
+  it('holds the notice while background work runs, so the user is not told to /clear over it', () => {
+    assert.deepEqual(decideStop(READY, stopContext(), facts({ running: 1 })), { kind: 'none' });
+    assert.equal(decideStop(READY, stopContext(), facts({ running: 0 })).kind, 'notice');
   });
 });
 

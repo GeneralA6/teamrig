@@ -151,7 +151,9 @@ After a turn in which you set a task done, the Stop hook measures your context f
 `teamrig refresh <id>`, it keeps you going with one instruction: write your handover to
 `<home>/teams/<team>/handover/<id>.md`, then run `teamrig refresh --ready --session <id>`, and start nothing new.
 After `--ready`, the next turn's end tells the user `teamrig: shop-web finished T2 and wrote its handover; type
-/clear for a fresh start` and sets the tab title to `shop-web: type /clear`. Each finished task is judged once, so
+/clear for a fresh start` and sets the tab title to `shop-web: type /clear`. While background work you started
+(subagents, background commands, monitors, workflows) has not reported back, both wait for a later turn end, so a
+`/clear` never cuts it off. Each finished task is judged once, so
 it never loops. Steps: [workflows.md](workflows.md#handover-at-high-context). `refresh.enabled: false` turns it
 off.
 
