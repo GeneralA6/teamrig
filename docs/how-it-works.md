@@ -7,6 +7,7 @@ sessions: no server, no daemon, no network. Status, as in the [README](../README
 - [The parts](#the-parts)
 - [Who is on the team](#who-is-on-the-team)
 - [Setting up a team](#setting-up-a-team)
+- [Updating the plugin](#updating-the-plugin)
 - [A task's life](#a-tasks-life)
 - [Notes between sessions](#notes-between-sessions)
 - [A fresh context](#a-fresh-context)
@@ -133,6 +134,19 @@ sequenceDiagram
   starts on `best` (Fable where the account has it, else Opus) at `xhigh` effort; the others on Claude Code's own.
   When no terminal opens, it prints the command to paste and exits 3. `teamrig open web/lead` opens a session of
   another team in the same tree.
+
+## Updating the plugin
+
+Claude Code installs the version that the plugin's `plugin.json` gives and moves an install only when that version
+rises, so every change to the plugin raises it. To take the newest one:
+
+```sh
+claude plugin marketplace update teamrig
+claude plugin update teamrig@teamrig
+```
+
+Then run `/reload-plugins` in each open session, or restart it. Claude Code does not check this marketplace for updates
+by itself unless you turn on its auto-update in `/plugin`, under Marketplaces.
 
 ## A task's life
 
