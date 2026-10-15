@@ -45,12 +45,15 @@ function startUntilExit(request, waitMs) {
         });
     });
 }
-/** A `spawn` launcher is the new window: it runs on after this process ends, in its own process group. */
-function startDetached(request) {
+/**
+ * A program that runs on after this process ends, in its own process group: a `spawn` launcher, which is the new
+ * window, or a hidden background program (`extra` hides the console window Windows would open for it).
+ */
+function startDetached(request, extra = {}) {
     return new Promise((resolve) => {
         let child;
         try {
-            child = spawn(request.command, request.args, { cwd: request.cwd, detached: true, stdio: 'ignore' });
+            child = spawn(request.command, request.args, { cwd: request.cwd, detached: true, stdio: 'ignore', ...extra });
         }
         catch (error) {
             resolve(outcomeOfError(error));
@@ -94,5 +97,6 @@ export function nodeProcesses(options = {}) {
     return {
         start: (request) => (request.mode === 'exit' ? startUntilExit(request, waitMs) : startDetached(request)),
         run: (request) => runAttached(request, interrupts),
+        startHidden: (request) => startDetached(request, { env: { ...request.env }, windowsHide: true }),
     };
 }
