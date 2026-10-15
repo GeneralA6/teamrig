@@ -2,6 +2,7 @@ import { errorMessage } from "../core/guards.js";
 import { ENV, KIT_NAME } from "../core/home.js";
 import { TEAM_POINTER } from "../core/team.js";
 import { KIT_VERSION } from "../core/version.js";
+import { CommandHelp } from "./help.js";
 import { parseArgs, UsageError } from "./args.js";
 import { EXIT, RefusedError } from "./runtime.js";
 const registerCommands = () => import("./commands/register.js");
@@ -22,12 +23,12 @@ const COMMANDS = {
     update: { flags: ['session', 'note', ...TASK_FIELDS], load: async () => (await registerCommands()).update },
     list: {
         flags: ['session', 'status', 'source', 'priority', 'due-before', 'week', 'goal'],
-        switches: ['tree'],
+        switches: ['tree', 'all'],
         load: async () => (await registerCommands()).list,
     },
     // --session names the caller on every task and inbox command, so a session can always pass it.
     show: { flags: ['session'], load: async () => (await registerCommands()).show },
-    check: { flags: ['session', 'week'], switches: ['tree'], load: async () => (await registerCommands()).check },
+    check: { flags: ['session', 'week'], switches: ['tree', 'all'], load: async () => (await registerCommands()).check },
     plan: { flags: ['session', 'week'], switches: ['tree'], load: async () => (await registerCommands()).plan },
     'inbox read': { flags: ['session'], load: async () => (await inboxCommands()).read },
     'inbox status': { flags: ['session'], load: async () => (await inboxCommands()).status },
@@ -72,9 +73,11 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   update <id> [--title ..] [--owner ..] [--priority ..] [--ref ..|none] [--due <date>|none]
       [--goals a,b|none] [--week <date>|none] [--note ..]
   list [--session <owner>] [--status a,b|all] [--source <s>] [--priority p1,p2] [--due-before <date>]
-      [--week <date>|none] [--goal <tag>] [--tree]
+      [--week <date>|none] [--goal <tag>] [--tree] [--all]
+      short rows within 3,000 characters; --all: every field of every task
   show <id>
-  check [--week <date>] [--tree]   tasks and skills that break a team rule
+  check [--week <date>] [--tree] [--all]   tasks and skills that break a team rule,
+      in a short form within 3,000 characters; --all: every flag in full
   plan [--week <date>] [--tree]    the week plan (default: the newest week that has started)
       --tree (the lead only): also every team under it, read-only, ids as <team>/T<n>
   inbox read [--session <area>]     prints the unread lines and marks them read
@@ -99,7 +102,10 @@ else above $CLAUDE_PROJECT_DIR.
 Sessions: give an id, a current name or a former one; a session never named is <team>-<id>.
 Dates: YYYY-MM-DD or "YYYY-MM-DD HH:MM", UTC. Kit home: $${ENV.home}, else ~/.${KIT_NAME}.
 Exit: 0 done, 1 failed, 2 refused by a team rule, 3 open printed the command to run itself,
-64 a command line it cannot read.`;
+64 a command line it cannot read.
+One command's help: ${KIT_NAME} <command> --help.`;
+/** Each command's own lines of USAGE, for `<command> --help` and a usage error. */
+export const COMMAND_HELP = new CommandHelp(USAGE, Object.keys(COMMANDS));
 /** The words that print the usage; the LLM guide documents them as `teamrig help`. */
 export const HELP = new Set(['help', '--help', '-h']);
 /** The words that print the version; the LLM guide documents them as `teamrig version`. */
@@ -114,8 +120,14 @@ export async function runCli(argv, runtime) {
         runtime.out.stdout(`${KIT_NAME} ${KIT_VERSION}`);
         return EXIT.ok;
     }
+    let named;
     try {
         const args = parseArgs(argv, COMMAND_FLAGS, COMMAND_SWITCHES, RENAMED_FLAGS);
+        named = args.command;
+        if (args.help) {
+            runtime.out.stdout(COMMAND_HELP.forCommand(args.command));
+            return EXIT.ok;
+        }
         const spec = COMMANDS[args.command];
         if (spec === undefined) {
             throw new UsageError(`unknown command "${args.command}"`);
@@ -125,7 +137,7 @@ export async function runCli(argv, runtime) {
     }
     catch (error) {
         if (error instanceof UsageError) {
-            runtime.out.stderr(`${error.message}\n\n${USAGE}`);
+            runtime.out.stderr(COMMAND_HELP.usageError(error.message, error.command ?? named));
             return EXIT.usage;
         }
         if (error instanceof RefusedError) {

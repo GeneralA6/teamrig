@@ -31,16 +31,33 @@ export function selectTasks(tasks, filter) {
 export function taskLabel(task, team) {
     return team === undefined ? task.id : `${team}/${task.id}`;
 }
+/** The fields every task row starts with: `T12 in-progress`, `p2`, `owner alpha` and `due 01-15` when it has one. */
+function rowHead(task, team) {
+    const parts = [`${taskLabel(task, team)} ${task.status}`, priorityText(task.priority), `owner ${task.owner}`];
+    if (task.due !== null) {
+        parts.push(`due ${shortUtc(task.due)}`);
+    }
+    return parts;
+}
+/** `text` cut to `max` characters, counted in code points so a character is never split, ending in `…` when cut. */
+export function cut(text, max) {
+    const chars = [...text];
+    return chars.length <= max ? text : `${chars.slice(0, max - 1).join('').trimEnd()}…`;
+}
+/**
+ * The short row of `list` and `check`: `T12 in-progress, p2, owner alpha, due 01-15 | <title cut to titleChars>`.
+ * It keeps what orders and assigns the work and leaves the week, source, goals and blocked note to `show`.
+ */
+export function formatShortTask(task, titleChars, team) {
+    return `${rowHead(task, team).join(', ')} | ${cut(task.title, titleChars)}`;
+}
 /**
  * One line that names each field, so a newcomer can read it:
  * `T12 in-progress, p2, owner alpha, due 01-15, week 01-13, from lead, goals G1 | title`.
  * With `team`, the id reads `<team>/T12`.
  */
 export function formatTask(task, team) {
-    const parts = [`${taskLabel(task, team)} ${task.status}`, priorityText(task.priority), `owner ${task.owner}`];
-    if (task.due !== null) {
-        parts.push(`due ${shortUtc(task.due)}`);
-    }
+    const parts = rowHead(task, team);
     if (task.week !== null) {
         parts.push(`week ${shortUtc(task.week)}`);
     }
