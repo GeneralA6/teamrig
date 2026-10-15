@@ -317,30 +317,34 @@ push wherever it sits in the line:
 - wrappers and other spellings of git: `env`, `command`, `sudo`, `nohup`, `timeout`, `xargs`, variable prefixes,
   `git.exe`, a full path to git, `git-push`, and PowerShell's `& git` or `& 'C:\...\git.exe'`;
 - nested shells: `bash -c`, `sh -c`, `eval`, `pwsh -Command` (also `-EncodedCommand`), `Invoke-Expression`,
-  `Start-Process`, `cmd /c` and `start`;
+  `Start-Process`, `cmd /c` and `start`, and a heredoc or here-string a shell reads as its script (`bash <<EOF`,
+  `cat <<EOF | bash`); one that any other command reads is that command's input, not commands;
 - git aliases (from `-c alias.x=`, from a `git config alias.x` earlier in the line, or from git config, `!` shell
   aliases included) and the commands git runs itself (`submodule foreach`, `rebase --exec`, `bisect run`);
 - folder and branch moves earlier in the line: `cd sub && git push`, `git checkout main && git push`;
-- bash variables set to a plain literal earlier in the line: `B=feat; git push -u origin $B` reads as
-  `git push -u origin feat`, and `B=main; git push origin $B` still asks. `NAME=value` or `export NAME=value`
-  (quoted or not) must run before the push in the same shell, through `;`, `&&` or a newline, and the line must
-  never give the name another value. A value that is not plain text (`$(...)`, `$OTHER`, blanks, globs), a
-  prefix (`B=x git push origin $B`), an assignment in a subshell, a `${B:-x}`, or anything else on the line that
-  can set a variable unseen (`if`, loops, functions, `read`, `source`, `eval`, `declare`, arithmetic, arrays,
-  heredocs) leaves it unknown.
+- bash variables set earlier in the line: `B=feat; git push -u origin $B` reads as `git push -u origin feat`,
+  and `B=main; git push origin $B` still asks. `NAME=value` or `export NAME=value` must run before the push in
+  the same shell, through `;`, `&&`, a newline or a `for` loop, and the line must never give the name another
+  value. The value may hold quoted text, blanks and variables set the same way before it; used unquoted, it
+  splits into words as bash splits it, so `G="git -C /w"; $G push origin main` still asks. A value with a
+  substitution, a tilde or a file name pattern, a prefix (`B=x git push origin $B`), an assignment in a subshell
+  or a loop body, a `for` loop's own variable, a `${B:-x}`, or anything else on the line that can set a variable
+  unseen (`if`, `while` and other loops, functions, `read`, `source`, `eval`, `declare`, arithmetic, arrays, a
+  heredoc that never closes) leaves it unknown.
 
 When it cannot read part of a line with confidence, it asks and says why: a quote that never closes, a git
 command, alias, folder, remote or refspec only known when the line runs, an alias git cannot read, scripts nested
 too deep. Some of these, such as `eval "$X"`, `bash -c "$CMD"` or an unclosed quote, ask only when the line, or a
-script or alias it runs, says `push` somewhere: each command Claude runs starts in a fresh shell, so a push the
-line never spells out would have to be built on purpose.
+script or alias it runs, names a push: a word, or a piece of one between blanks, quotes, operators and path
+separators, that is `push`, `--push` or `git-push`. A folder such as `src/push-guard`, a file `x-push.log`, a
+comment, a redirection target or a heredoc a plain `cat` stores in a file does not count. Each command Claude
+runs starts in a fresh shell, so a push the line never spells out would have to be built on purpose.
 
 It is a guard against mistakes, not a sandbox; protect the branch on your git host too. It does not see:
 
 - a push inside a script or program the command runs: `npm run deploy`, `./ship.sh`, `pwsh -File x.ps1`,
   `source x.sh`, `python` or `node`, `make`, `find -exec`, `ssh host git push`;
-- a command line kept in a variable set outside the line, or to anything but a plain literal, such as
-  `bash -c "$CMD"`;
+- a command line kept in a variable the line does not set as above, such as `bash -c "$CMD"`;
 - variables, functions or aliases your shell's startup files set (a readonly or integer variable, an `IFS`, a
   function named like a command), as with a function named `git`;
 - `gh pr merge` and other GitHub CLI commands that change a branch on the server;
