@@ -10,6 +10,17 @@ export const CONTEXT_MAX_CHARS = 10_000;
 function list(items) {
     return items.join('; ');
 }
+/** What the push guard does, as the team's pushGuard config sets it. */
+function pushRule(pushGuard) {
+    const branches = pushGuard.protectedBranches.join(', ');
+    const keys = '[pushGuard]';
+    if (branches === '') {
+        return 'No branch is protected, so the push guard stops no push [pushGuard.protectedBranches].';
+    }
+    return pushGuard.pushToProtected === 'allow'
+        ? `Pushes to ${branches} go through unasked; force-pushing or deleting them is refused ${keys}.`
+        : `Pushes to ${branches} ask the human; force-pushing or deleting them is refused ${keys}.`;
+}
 /** At most two decimals, so float noise (0.30000000000000004) or a tiny value (1e-7) prints short. */
 function percent(value) {
     return `${Math.round(value * 100) / 100}%`;
@@ -62,7 +73,7 @@ export function renderCorePack(config, command) {
         'One logical change per commit (a fix with its tests, a refactor apart from what it enables, a mechanical change alone), committed as each step passes.' +
             ` Over ${config.commits.maxLines} changed non-test lines or ${config.commits.maxFiles} non-test files [commits.maxLines, commits.maxFiles], a commit needs a \`${config.commits.largeCommitTrailer}: <reason>\` line [commits.largeCommitTrailer]` +
             { off: '.', warn: '; a push to a protected branch lists those without one [commits.gate].', refuse: '; a push to a protected branch that sends one is refused [commits.gate].' }[config.commits.gate],
-        `Pushes to ${list(config.pushGuard.protectedBranches)} ask the human; force-pushing or deleting them is refused [pushGuard.protectedBranches]. A refused or blocked route is reported to the lead, never routed around.`,
+        `${pushRule(config.pushGuard)} A refused or blocked route is reported to the lead, never routed around.`,
         'Edit in your own worktree and branch in every git repo, never a main checkout. On Windows remove a worktree\'s node_modules link (`cmd /c rmdir`; Git Bash `cmd //c`), or `git worktree remove` follows it into the main one. Whoever finds a stale comment, doc or dead code fixes it in its own small commit.',
     ];
     return [

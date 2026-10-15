@@ -5,7 +5,7 @@ import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_COMMITS, DEFAULT_LOCK, DEFAULT_
 import { isEffort, isModel } from "./launch.js";
 import { CONFIG_LIMITS } from "./limits.js";
 import { ConfigReader, describe, isValidRegex, shortLine } from "./reader.js";
-import { ESCALATIONS, isCommitGate, isEffortLevel, isEscalation, isOverAction, isTerminalChoice, isWeekday, OVER_ACTIONS, TERMINALS, WEEKDAYS, } from "./types.js";
+import { ESCALATIONS, isCommitGate, isEffortLevel, isEscalation, isOverAction, isPushToProtected, isTerminalChoice, isWeekday, OVER_ACTIONS, PUSH_TO_PROTECTED, TERMINALS, WEEKDAYS, } from "./types.js";
 const isSessionName = (name) => SESSION_NAME.test(name) ? undefined : 'expected a lowercase name: a letter, then letters, digits or -, at most 32';
 const isUtcTime = (time) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(time) ? undefined : 'expected a UTC time as HH:MM');
 const BRANCH_NAME = (name) => (/^[^\s~^:?*[\\]+$/.test(name) ? undefined : 'not a valid branch name');
@@ -135,6 +135,7 @@ export function parseConfig(raw) {
         },
         pushGuard: {
             protectedBranches: read.stringList(pushGuard, 'protectedBranches', 'pushGuard', DEFAULT_PUSH_GUARD.protectedBranches, shortLine(CONFIG_LIMITS.protectedBranches.maxLength, BRANCH_NAME), CONFIG_LIMITS.protectedBranches.maxItems),
+            pushToProtected: parsePushToProtected(read, pushGuard),
         },
         commits: parseCommits(read, read.section(raw, 'commits', '')),
         coordinator: {
@@ -334,6 +335,11 @@ function parseSkills(read, raw) {
 function parseOpen(read, raw) {
     const terminal = read.string(raw, 'terminal', 'open', DEFAULT_OPEN.terminal, (value) => isTerminalChoice(value) ? undefined : `expected one of ${TERMINALS.join(', ')}`);
     return { terminal: isTerminalChoice(terminal) ? terminal : DEFAULT_OPEN.terminal };
+}
+function parsePushToProtected(read, raw) {
+    const fallback = DEFAULT_PUSH_GUARD.pushToProtected;
+    const value = read.string(raw, 'pushToProtected', 'pushGuard', fallback, oneOf(PUSH_TO_PROTECTED));
+    return isPushToProtected(value) ? value : fallback;
 }
 function parseCommits(read, raw) {
     const path = 'commits';
