@@ -22,7 +22,7 @@ import { SKILL_FILE, SkillDir } from '../../skills/store.ts';
 import { noPositionals, onePositional, UsageError, type ParsedArgs } from '../args.ts';
 import { addInputOf, callerOf, changesOf, listFilterOf, statusInputOf, taskIdOf, weekOf } from '../inputs.ts';
 import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, projectFolder, requireConfig, rosterOf, sessionIdOf, type Access, type Kit } from '../kit.ts';
-import { checkLines, listLines, type CheckSection, type TaskRow } from '../reports.ts';
+import { checkLines, listLines, type CheckReport, type CheckSection, type TaskRow } from '../reports.ts';
 import { rollUp, type RolledTeam, type RollUp } from '../roll-up.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
@@ -352,14 +352,12 @@ function checkRegister(snapshot: RegisterSnapshot, config: KitConfig, now: Date,
 }
 
 /**
- * `check [--tree] [--all]`: the task flags, then the skill flags of the Claude Code skills folder, in
- * the short form (src/cli/reports.ts), or with `--all` every flag in full. With `--tree`, the task
- * flags of the lead's team and each team under it, against the lead's week; the skills are the lead's
+ * What `check` reports: the task flags, then the skill flags of the Claude Code skills folder. With `--tree`,
+ * the task flags of the lead's team and each team under it, against the lead's week; the skills are the lead's
  * team's only, as teams on one machine share that folder. The `stopgap T<id>` tags in those skills
  * and in the team's `register.check.stopgapFiles` add a STOPGAP-DONE flag per finished task they name.
  */
-export async function check(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
-  noPositionals(args);
+export async function checkReport(args: ParsedArgs, runtime: CliRuntime): Promise<CheckReport> {
   const now = new Date(runtime.clock.now());
   const tree = args.switches.has('tree');
   const read = await readRegisters(args, runtime);
@@ -380,8 +378,13 @@ export async function check(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   });
   const skills = lintSkills(skillFiles, now, own.config);
   const scope = week === null ? 'no week plan tagged yet, so the week checks are skipped' : `week ${week}`;
-  const report = { sections, scope, skills, skillsDir: own.paths.skills };
-  checkLines(report, args.switches.has('all')).forEach((line) => runtime.out.stdout(line));
+  return { sections, scope, skills, skillsDir: own.paths.skills };
+}
+
+/** `check [--tree] [--all]`: the report in the short form (src/cli/reports.ts), or with `--all` every flag in full. */
+export async function check(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+  noPositionals(args);
+  checkLines(await checkReport(args, runtime), args.switches.has('all')).forEach((line) => runtime.out.stdout(line));
   return EXIT.ok;
 }
 
