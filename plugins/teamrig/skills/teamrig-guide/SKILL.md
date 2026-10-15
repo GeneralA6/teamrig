@@ -83,6 +83,7 @@ current folder or above it, else in `$CLAUDE_PROJECT_DIR` or above. Everything e
     renames.jsonl        the rename log
     refresh/             context-refresh state
     model-notices/       the model notices each session was shown
+    logs/                teamrig test's whole outputs, test-<session>-<n>.log, the newest 20 each
 ```
 
 The config's `paths` (`state`, `inbox`, `skills`) and `refresh.handoverDir` can move these. Skills are read
