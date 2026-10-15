@@ -18,14 +18,18 @@ const COMMANDS: CommandFlags = {
   'inbox add': ['to', 'text'],
 };
 
-function usageMessage(run: () => unknown): string {
+function usageError(run: () => unknown): UsageError {
   try {
     run();
   } catch (error) {
     assert.ok(error instanceof UsageError, 'expected a UsageError');
-    return error.message;
+    return error;
   }
   assert.fail('expected a UsageError');
+}
+
+function usageMessage(run: () => unknown): string {
+  return usageError(run).message;
 }
 
 describe('parseArgs', () => {
@@ -80,6 +84,34 @@ describe('parseArgs', () => {
     assert.deepEqual([...parseArgs(['show', 'T1'], COMMANDS).switches], []);
     assert.equal(usageMessage(() => parseArgs(['inbox', 'add', '--all'], COMMANDS, switches)), 'inbox add takes no --all');
     assert.equal(usageMessage(() => parseArgs(['inbox', 'read', '--all', '--all'], COMMANDS, switches)), '--all is given twice');
+  });
+});
+
+describe('the command a usage error is for, and help requests', () => {
+  it('names the command or group word a refused line was for, so only its usage is printed', () => {
+    const commandOf = (run: () => unknown): string | undefined => usageError(run).command;
+    const switches: CommandSwitches = { 'inbox read': ['all'] };
+    assert.equal(commandOf(() => parseArgs(['add', '--titel', 'x'], COMMANDS)), 'add');
+    assert.equal(commandOf(() => parseArgs(['add', '--title'], COMMANDS)), 'add');
+    assert.equal(commandOf(() => parseArgs(['add', '--priority', 'p1', '--priority', 'p2'], COMMANDS)), 'add');
+    assert.equal(commandOf(() => parseArgs(['show', '--tier', '2'], COMMANDS, {}, { tier: 'priority' })), 'show');
+    assert.equal(commandOf(() => parseArgs(['inbox', 'read', '--all', '--all'], COMMANDS, switches)), 'inbox read');
+    assert.equal(commandOf(() => parseArgs(['inbox', 'drop'], COMMANDS)), 'inbox');
+    assert.equal(commandOf(() => parseArgs(['launch'], COMMANDS)), undefined);
+    assert.equal(commandOf(() => parseArgs([], COMMANDS)), undefined);
+    assert.equal(commandOf(() => noPositionals(parseArgs(['inbox', 'read', 'now'], COMMANDS))), undefined, 'a check inside a command leaves it to the caller');
+  });
+
+  it('reads --help or -h after a command or a group word as a request for its help, and stops reading there', () => {
+    const help = parseArgs(['add', 'extra', '--title', 'x', '--help', '--bogus'], COMMANDS);
+    assert.deepEqual([help.command, help.help, help.positionals, [...help.flags], [...help.switches]], ['add', true, [], [], []]);
+    assert.deepEqual([parseArgs(['show', '-h'], COMMANDS).help, parseArgs(['inbox', 'read', '--help'], COMMANDS).command], [true, 'inbox read']);
+    const group = parseArgs(['inbox', '-h'], COMMANDS);
+    assert.deepEqual([group.command, group.help], ['inbox', true]);
+    assert.equal(parseArgs(['show', 'T1'], COMMANDS).help, false);
+    assert.equal(usageMessage(() => parseArgs(['launch', '--help'], COMMANDS)), 'unknown command "launch"');
+    const text = parseArgs(['inbox', 'add', '--text', '-h'], COMMANDS);
+    assert.deepEqual([text.help, text.flags.get('text')], [false, '-h'], 'a flag value is never a help request');
   });
 });
 

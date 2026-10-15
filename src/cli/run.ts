@@ -2,6 +2,7 @@ import { errorMessage } from '../core/guards.ts';
 import { ENV, KIT_NAME } from '../core/home.ts';
 import { TEAM_POINTER } from '../core/team.ts';
 import { KIT_VERSION } from '../core/version.ts';
+import { CommandHelp } from './help.ts';
 import { parseArgs, UsageError, type CommandFlags, type CommandSwitches, type ParsedArgs, type RenamedFlags } from './args.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from './runtime.ts';
 
@@ -116,7 +117,11 @@ else above $CLAUDE_PROJECT_DIR.
 Sessions: give an id, a current name or a former one; a session never named is <team>-<id>.
 Dates: YYYY-MM-DD or "YYYY-MM-DD HH:MM", UTC. Kit home: $${ENV.home}, else ~/.${KIT_NAME}.
 Exit: 0 done, 1 failed, 2 refused by a team rule, 3 open printed the command to run itself,
-64 a command line it cannot read.`;
+64 a command line it cannot read.
+One command's help: ${KIT_NAME} <command> --help.`;
+
+/** Each command's own lines of USAGE, for `<command> --help` and a usage error. */
+export const COMMAND_HELP = new CommandHelp(USAGE, Object.keys(COMMANDS));
 
 /** The words that print the usage; the LLM guide documents them as `teamrig help`. */
 export const HELP: ReadonlySet<string> = new Set(['help', '--help', '-h']);
@@ -134,8 +139,14 @@ export async function runCli(argv: readonly string[], runtime: CliRuntime): Prom
     return EXIT.ok;
   }
 
+  let named: string | undefined;
   try {
     const args = parseArgs(argv, COMMAND_FLAGS, COMMAND_SWITCHES, RENAMED_FLAGS);
+    named = args.command;
+    if (args.help) {
+      runtime.out.stdout(COMMAND_HELP.forCommand(args.command));
+      return EXIT.ok;
+    }
     const spec = COMMANDS[args.command];
     if (spec === undefined) {
       throw new UsageError(`unknown command "${args.command}"`);
@@ -144,7 +155,7 @@ export async function runCli(argv: readonly string[], runtime: CliRuntime): Prom
     return await command(args, runtime);
   } catch (error) {
     if (error instanceof UsageError) {
-      runtime.out.stderr(`${error.message}\n\n${USAGE}`);
+      runtime.out.stderr(COMMAND_HELP.usageError(error.message, error.command ?? named));
       return EXIT.usage;
     }
     if (error instanceof RefusedError) {

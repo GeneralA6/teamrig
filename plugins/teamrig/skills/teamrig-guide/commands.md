@@ -12,7 +12,9 @@ Rules for every command line:
   `p5` (the team config may define more or fewer).
 - Dates are UTC: `YYYY-MM-DD`, or `"YYYY-MM-DD HH:MM"`. A due day alone means the end of that day. A week is the
   date of its first day.
-- A flag the command does not take, a flag given twice or a flag with no value is a usage error (exit 64).
+- A flag the command does not take, a flag given twice or a flag with no value is a usage error (exit 64). It
+  prints the reason, then only that command's usage lines and where the full help is.
+- `teamrig <command> --help` (or `-h`) prints that command's usage lines, or a group's (`teamrig inbox --help`).
 
 ## Tasks
 
@@ -700,7 +702,7 @@ Output: nothing on most turns; otherwise a JSON `block` decision whose reason te
 ### teamrig help
 
 Prints the usage of every command (also `--help` and `-h`). With no command at all, teamrig prints the usage and
-exits 64.
+exits 64. `teamrig <command> --help` prints only that command's lines, the line shape and where the full help is.
 
 Flags: none.
 
