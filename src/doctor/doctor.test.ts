@@ -20,6 +20,7 @@ function input(overrides: Partial<DoctorInput> & { readonly names?: Record<strin
     roster: new Roster(config, 'app', renames),
     configNames: names,
     renameLog: { path: LOG, renames, unreadable: 0, newer: 0 },
+    requirements: [],
     inboxes: [],
     teamRules: undefined,
     tree: { problems: [], clashes: [] },
@@ -119,6 +120,16 @@ describe('doctorFindings', () => {
   it('flags rules too long to show at session start', () => {
     assert.deepEqual(lines(input({ teamRules: { path: 'rules.md', chars: TEAM_RULES_MAX_CHARS + 1 } })), [
       `WARN rules-long rules.md is ${TEAM_RULES_MAX_CHARS + 1} characters, more than the ${TEAM_RULES_MAX_CHARS} a session is shown at start, so sessions get only a pointer to it: shorten it to keep it in every session's context`,
+    ]);
+  });
+});
+
+describe('doctorFindings of requirements', () => {
+  it('lists what teamrig lacks on this machine first, each with its fix', () => {
+    const found = lines(input({ requirements: [{ kind: 'git-missing' }, { kind: 'node-old', running: '20.11.1' }], inboxes: [] }));
+    assert.deepEqual(found, [
+      'WARN requirement git is not installed or not on PATH, and teamrig needs it: install it from git-scm.com, then restart Claude Code.',
+      'WARN requirement Node.js 20.11.1 is older than teamrig supports (22.18.0 or later): install the current LTS from nodejs.org, then restart Claude Code.',
     ]);
   });
 });

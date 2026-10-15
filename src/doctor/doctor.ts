@@ -5,6 +5,7 @@ import { formatUtcMinute, MS_PER_DAY, parseUtcDeadline, shortUtc } from '../core
 import { unreadSince } from '../inbox/inbox.ts';
 import type { Unread } from '../inbox/unread.ts';
 import type { RenameLogRead } from '../names/rename.ts';
+import { describeRequirement, type RequirementProblem } from '../requirements/requirements.ts';
 import { TEAM_RULES_MAX_CHARS } from '../rules/pack.ts';
 
 /**
@@ -14,6 +15,7 @@ import { TEAM_RULES_MAX_CHARS } from '../rules/pack.ts';
 export const UNREAD_INBOX_DAYS = 7;
 
 /**
+ * - `requirement`: something teamrig needs beside itself is missing or too old (git, Claude Code, Node.js);
  * - `name-gone`: a name of a session no longer on the team;
  * - `name-shared`: a current name two sessions share, or a session's former name another holds now;
  * - `name-config`: a config name the rename log never gave the session (the config was edited to rename);
@@ -26,6 +28,7 @@ export const UNREAD_INBOX_DAYS = 7;
  * - `name-two-teams`: a session name this team shares with another team, though names are machine-wide.
  */
 export type FindingKind =
+  | 'requirement'
   | 'name-gone'
   | 'name-shared'
   | 'name-config'
@@ -42,6 +45,8 @@ export interface Finding {
 }
 
 export interface DoctorInput {
+  /** What teamrig lacks on this machine (`RequirementsCheck`). */
+  readonly requirements: readonly RequirementProblem[];
   readonly roster: Roster;
   /** The config's `names`, to spot a rename made by editing the config. */
   readonly configNames: KitConfig['names'];
@@ -168,6 +173,7 @@ function treeFindings({ tree, command }: DoctorInput): Finding[] {
  */
 export function doctorFindings(input: DoctorInput): Finding[] {
   return [
+    ...input.requirements.map((problem): Finding => ({ kind: 'requirement', detail: describeRequirement(problem, input.command) })),
     ...nameFindings(input.roster, input.command),
     ...configFindings(input),
     ...renameLogFindings(input),
