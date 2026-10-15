@@ -25,11 +25,12 @@ describe('README.md', () => {
     }
   });
 
-  it('lists what teamrig needs under Get started: Claude Code, Node.js, git, the systems and the terminal', () => {
-    const requirements = README.slice(README.indexOf('### Requirements'), README.indexOf('## Your day'));
-    for (const need of [/^- Claude Code, tested on \d+\.\d+\.\d+ and later\./m,/Node\.js 22\.18 or later/, /^- git:/m, /Windows, macOS or Linux/, /Any terminal Claude Code runs in/]) {
-      assert.match(requirements, need);
-    }
+  it('names only the major needs under Get started, Claude Code and Node.js, and says teamrig checks the rest', () => {
+    const requirements = README.slice(README.indexOf('### Requirements\n') + '### Requirements\n'.length, README.indexOf('## Your day')).trim();
+    assert.match(requirements, /^Claude Code and Node\.js 22\.18 or later\./);
+    assert.match(requirements, /teamrig checks for anything else when you start it/);
+    assert.match(requirements, /^\*Coming: .+/m);
+    assert.ok(requirements.split('\n').length <= 4, `Requirements is ${requirements.split('\n').length} lines; keep it to the major needs`);
   });
 
   it('marks what is not built yet with a Coming line', () => {
