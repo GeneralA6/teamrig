@@ -1,5 +1,5 @@
 import { errorMessage } from "../../core/guards.js";
-import { decideReady } from "../../refresh/decide.js";
+import { boundaryOf, decideReady } from "../../refresh/decide.js";
 import { RefreshStore } from "../../refresh/store.js";
 import { noPositionals, onePositional } from "../args.js";
 import { callerOf } from "../inputs.js";
@@ -17,14 +17,15 @@ function requireRefresh(config) {
 }
 /**
  * After the caller's `set <id> --status done`: a boundary for the Stop hook to judge at the end of
- * this turn. The task is already done, so a failure here only warns and the exit stays 0.
+ * this turn, counting the task. The task is already done, so a failure here only warns and the exit stays 0.
  */
 export async function markBoundary(runtime, config, paths, session, task) {
     if (!config.refresh.enabled) {
         return;
     }
     try {
-        await new RefreshStore(runtime.files, paths).setState(session, { phase: 'boundary', task, at: new Date(runtime.clock.now()).toISOString() });
+        const store = new RefreshStore(runtime.files, paths);
+        await store.setState(session, boundaryOf(await store.state(session), task, new Date(runtime.clock.now()).toISOString()));
     }
     catch (error) {
         runtime.out.stderr(`WARN ${task} is done, but its refresh check was not recorded: ${errorMessage(error)}`);

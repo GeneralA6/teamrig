@@ -11,6 +11,14 @@ function tokensOf(record) {
     const tokens = record['tokens'];
     return tokens === null || isNonNegativeInteger(tokens) ? tokens : undefined;
 }
+/** The task count; a file from before the count has none and reads as `absent`, a wrong value as undefined. */
+function finishedOf(record, absent) {
+    const finished = record['finished'];
+    if (finished === undefined) {
+        return absent;
+    }
+    return isNonNegativeInteger(finished) ? finished : undefined;
+}
 function hashOf(record) {
     const hash = record['handoverHash'];
     return hash === null || typeof hash === 'string' ? hash : undefined;
@@ -24,11 +32,14 @@ export function parseRefreshState(text) {
         return undefined;
     }
     switch (record['phase']) {
-        case 'boundary':
-            return { phase: 'boundary', task, at };
+        case 'boundary': {
+            const finished = finishedOf(record, 1);
+            return finished === undefined ? undefined : { phase: 'boundary', task, at, finished };
+        }
         case 'idle': {
             const tokens = tokensOf(record);
-            return tokens === undefined ? undefined : { phase: 'idle', task, at, tokens };
+            const finished = finishedOf(record, 0);
+            return tokens === undefined || finished === undefined ? undefined : { phase: 'idle', task, at, tokens, finished };
         }
         case 'asked': {
             const tokens = tokensOf(record);
