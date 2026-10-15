@@ -61,11 +61,26 @@ export class ConfigReader {
   }
 
   integer(parent: JsonRecord, key: string, path: string, fallback: number, bounds: NumberBounds = {}): number {
-    return this.numeric(parent, key, path, fallback, bounds, true);
+    return this.numeric(parent, key, path, bounds, true) ?? fallback;
   }
 
   number(parent: JsonRecord, key: string, path: string, fallback: number, bounds: NumberBounds = {}): number {
-    return this.numeric(parent, key, path, fallback, bounds, false);
+    return this.numeric(parent, key, path, bounds, false) ?? fallback;
+  }
+
+  /** A whole number the config may leave out; an invalid one is an issue and reads as unset. */
+  optionalInteger(parent: JsonRecord, key: string, path: string, bounds: NumberBounds = {}): number | undefined {
+    return this.numeric(parent, key, path, bounds, true);
+  }
+
+  /** A number the config may leave out; an invalid one is an issue and reads as unset. */
+  optionalNumber(parent: JsonRecord, key: string, path: string, bounds: NumberBounds = {}): number | undefined {
+    return this.numeric(parent, key, path, bounds, false);
+  }
+
+  /** One number list item within `bounds`, for use inside `list` callbacks. */
+  numberItem(value: unknown, itemPath: string, bounds: NumberBounds = {}): number | undefined {
+    return this.checkedNumber(value, itemPath, bounds, false);
   }
 
   boolean(parent: JsonRecord, key: string, path: string, fallback: boolean): boolean {
@@ -148,26 +163,21 @@ export class ConfigReader {
     this.issues.push({ path, message });
   }
 
-  private numeric(
-    parent: JsonRecord,
-    key: string,
-    path: string,
-    fallback: number,
-    bounds: NumberBounds,
-    integer: boolean,
-  ): number {
+  /** The value, or undefined when it is missing or invalid (an invalid one is recorded as an issue). */
+  private numeric(parent: JsonRecord, key: string, path: string, bounds: NumberBounds, integer: boolean): number | undefined {
     const value = parent[key];
-    if (value === undefined) {
-      return fallback;
-    }
+    return value === undefined ? undefined : this.checkedNumber(value, join(path, key), bounds, integer);
+  }
+
+  private checkedNumber(value: unknown, path: string, bounds: NumberBounds, integer: boolean): number | undefined {
     const expected = `${integer ? 'an integer' : 'a number'}${describeBounds(bounds)}`;
     if (typeof value !== 'number' || !Number.isFinite(value) || (integer && !Number.isInteger(value))) {
-      this.problem(join(path, key), expected, value);
-      return fallback;
+      this.problem(path, expected, value);
+      return undefined;
     }
     if ((bounds.min !== undefined && value < bounds.min) || (bounds.max !== undefined && value > bounds.max)) {
-      this.problem(join(path, key), expected, value);
-      return fallback;
+      this.problem(path, expected, value);
+      return undefined;
     }
     return value;
   }
