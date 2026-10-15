@@ -1,5 +1,7 @@
 import { toJsonlLine } from "../core/jsonl.js";
+import { RETAIN_DAYS } from "./compaction.js";
 import { layoutPaths, readHistory, readWorkingSet } from "./layout.js";
+import { applyRotation, AUTO_ROTATE_CHARS, planRotation } from "./rotate.js";
 export class JsonlEventLog {
     path;
     files;
@@ -17,5 +19,17 @@ export class JsonlEventLog {
     }
     async append(event) {
         await this.files.append(this.path, toJsonlLine({ ...event }));
+    }
+    async rotateIfDue(written, now) {
+        if (written.read.rotatedAfter === 0) {
+            return null;
+        }
+        const tailText = (await this.files.read(this.path)) ?? '';
+        if (tailText.length < AUTO_ROTATE_CHARS) {
+            return null;
+        }
+        const plan = await planRotation(this.files, this.layout, { now, retainDays: RETAIN_DAYS, keep: new Set(), checkHistory: false }, tailText);
+        await applyRotation(this.files, this.layout, plan);
+        return plan;
     }
 }

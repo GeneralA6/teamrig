@@ -155,7 +155,8 @@ export class MissingSegmentError extends Error {
         this.path = path;
     }
 }
-async function readPlanned(files, paths, plan, tail) {
+/** The register a plan describes, its segments read through `files`; a segment it names that is gone throws. */
+export async function readPlan(files, paths, plan, tail) {
     const segments = [];
     for (const n of plan.segments) {
         const path = paths.segment(n);
@@ -171,10 +172,10 @@ async function readPlanned(files, paths, plan, tail) {
 export async function readWorkingSet(files, paths) {
     const snapshot = readSnapshotText(await files.read(paths.snapshot));
     const tail = readEvents((await files.read(paths.tail)) ?? '');
-    return readPlanned(files, paths, workingSetPlan(snapshot, tail), tail);
+    return readPlan(files, paths, workingSetPlan(snapshot, tail), tail);
 }
 /** Every task ever written, from every segment and the tail: the cost grows with the history. */
 export async function readHistory(files, paths) {
     const tail = readEvents((await files.read(paths.tail)) ?? '');
-    return readPlanned(files, paths, historyPlan(tail), tail);
+    return readPlan(files, paths, historyPlan(tail), tail);
 }

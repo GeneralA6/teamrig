@@ -1,3 +1,4 @@
+import { errorMessage } from "../core/guards.js";
 import { NewerDataError } from "../core/jsonl.js";
 import { EVENT_VERSION } from "./events.js";
 import { foldEvents, taskNumber } from "./fold.js";
@@ -70,7 +71,10 @@ export class Register {
         }
         return this.write(decide);
     }
-    /** Under the lock: refuse newer data, read the working set, decide on one event, append it, return the task after it. */
+    /**
+     * Under the lock: refuse newer data, read the working set, decide on one event, append it, rotate the log
+     * when it is due, and return the task after the event.
+     */
     write(decide) {
         return this.deps.mutex.run(async () => {
             const snapshot = await this.deps.log.read();
@@ -87,8 +91,18 @@ export class Register {
             if (task === undefined) {
                 throw new Error(`${event.id} is missing after its own write`);
             }
-            return { ok: true, value: { task, event } };
+            return { ok: true, value: { task, event, rotation: await this.rotation(snapshot) } };
         });
+    }
+    /** A rotation that fails leaves the write saved and the files readable (rotate.ts): it is reported, never thrown. */
+    async rotation(written) {
+        try {
+            const plan = await this.deps.log.rotateIfDue(written, new Date(this.deps.clock.now()));
+            return plan === null ? { kind: 'none' } : { kind: 'rotated', segment: plan.segment, retired: plan.compaction.retiredNow.length };
+        }
+        catch (error) {
+            return { kind: 'failed', error: errorMessage(error) };
+        }
     }
 }
 /**
