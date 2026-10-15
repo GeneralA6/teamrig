@@ -3,13 +3,14 @@ import { topPriority } from "../config/priorities.js";
 import { ACTIVE_STATUSES, priorityText } from "./model.js";
 import { verifyingNeeds } from "./verify.js";
 import { byPlanOrder, dueTime, formatTask } from "./views.js";
-import { allReady, unfinishedAfter, waitContext } from "./waits.js";
+import { allReady, isReady, unfinishedAfter, waitContext } from "./waits.js";
 /** In report order: the most urgent first. */
 export const FLAG_KINDS = [
     'OVERDUE',
     'VERIFY-OVERDUE',
     'VERIFY-BLOCKS',
     'READY',
+    'NO-REASON',
     'NOT-PICKED-UP',
     'PRIORITY-SKIP',
     'PILE-UP',
@@ -47,6 +48,7 @@ export function currentWeekOf(snapshot, now) {
  *   until the proof comes (`set` refuses its start);
  * - READY: waiting, and every reason it waits for is ready (its tasks finished, its time passed), so its owner can
  *   go on: only the owner clears a decision or an approval, by setting the next status;
+ * - NO-REASON: waiting with no reason, as a line from an older teamrig reads: nothing says what it waits for;
  * - NOT-PICKED-UP: assigned longer ago than `notPickedUpAfterHours` with no event from its owner since
  *   (an idle session never reads its inbox, so it needs a direct wake);
  * - PRIORITY-SKIP: in progress below an open task of the top priority that has the same owner and is free to start
@@ -55,7 +57,8 @@ export function currentWeekOf(snapshot, now) {
  * - PILE-UP: the oldest verifying task of an owner holding more than `maxVerifying` of them (0 turns it off): shipped
  *   changes pile up unproven;
  * - STALE: no event for `staleAfterHours` (not raised on top of NOT-PICKED-UP, nor for a verifying task with a
- *   due date: it waits quietly for its proof, and the date raises the alarm);
+ *   due date: it waits quietly for its proof, and the date raises the alarm, nor for a waiting task with a time
+ *   still to come: it is parked until then);
  * - OWNER-UNPLANNED: an owner order outside the current week plan;
  * - DUE-UNPLANNED: due inside the current week but outside its plan;
  * - OFF-GOAL: in progress with no goal and outside the current week plan, so nothing the team planned asked
@@ -75,7 +78,8 @@ export function checkTasks(tasks, now, week, config) {
     const flags = active.flatMap((task) => [
         ...verifyFlags(task, needers, piles, config.maxVerifying),
         ...(task.status === 'waiting' && allReady(task.waits, context) ? [{ kind: 'READY', task, detail: 'every reason cleared; set its next status' }] : []),
-        ...timeFlags(task, at, config.check),
+        ...(task.status === 'waiting' && task.waits.length === 0 ? [{ kind: 'NO-REASON', task, detail: 'set what it waits for (--waits) or its next status' }] : []),
+        ...timeFlags(task, at, config.check, context),
         ...(top === undefined ? [] : prioritySkip(task, top, waiting, at, config.check)),
         ...(plan === undefined ? [] : planFlags(task, plan, config.ownerSource)),
     ]);
@@ -93,8 +97,12 @@ function weekPlan(week, lengthDays) {
     const start = week === null ? undefined : parseUtcDay(week)?.getTime();
     return week === null || start === undefined ? undefined : { week, start, end: start + lengthDays * MS_PER_DAY };
 }
+/** A waiting task with a time reason still to come: parked on purpose until then, so not stale. */
+function waitsForTime(task, context) {
+    return task.status === 'waiting' && task.waits.some((reason) => reason.kind === 'time' && !isReady(reason, context));
+}
 /** OVERDUE or VERIFY-OVERDUE, then NOT-PICKED-UP or else STALE. */
-function timeFlags(task, at, check) {
+function timeFlags(task, at, check, context) {
     const flags = [];
     const due = dueTime(task);
     const verifying = task.status === 'verifying';
@@ -105,7 +113,7 @@ function timeFlags(task, at, check) {
     if (task.ownerSeenAt === null && at - Date.parse(task.assignedAt) > check.notPickedUpAfterHours * MS_PER_HOUR) {
         flags.push({ kind: 'NOT-PICKED-UP', task, detail: `assigned ${minute(task.assignedAt)}, no event from ${task.owner} since` });
     }
-    else if (!(verifying && due !== undefined) && at - Date.parse(task.updatedAt) > check.staleAfterHours * MS_PER_HOUR) {
+    else if (!(verifying && due !== undefined) && !waitsForTime(task, context) && at - Date.parse(task.updatedAt) > check.staleAfterHours * MS_PER_HOUR) {
         flags.push({ kind: 'STALE', task, detail: `last event ${minute(task.updatedAt)} by ${task.updatedBy}` });
     }
     return flags;
