@@ -70,6 +70,13 @@ describe('renderCorePack', () => {
     assert.ok(pack.length <= CORE_PACK_MAX_CHARS, `${pack.length} > ${CORE_PACK_MAX_CHARS}`);
   });
 
+  it('pulls status from the register, and has the asker, else the receiver, enter every ask', () => {
+    const pack = renderCorePack(testConfig(), COMMAND);
+    assert.match(pack, /^4\. Status is pulled from the register, never asked\. Start each work block with `teamrig start --session <you>`\./m);
+    assert.match(pack, /register entry, added in the same turn by the asker \(`teamrig add --owner <session>` tells the owner\), else by the receiver;/);
+    assert.doesNotMatch(pack, /board/);
+  });
+
   it('has each session work its list in order, gate self-made work and repeating runs, and stop when it loops or drifts', () => {
     const pack = renderCorePack(testConfig(), COMMAND);
     assert.match(pack, /^5\. Work your own task list in priority order \(`teamrig list --session <you>`\); self-made work is a task too, recorded with `teamrig add` before you start it,/m);
