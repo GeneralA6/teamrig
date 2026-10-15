@@ -40,10 +40,24 @@ export interface CheckSection {
 
 export interface CheckReport {
   readonly sections: readonly CheckSection[];
-  /** `week 2030-01-07`, or why the week checks were skipped. */
+  /** `week 2030-01-07`, or why the week checks were skipped; narrowed to one session, led by whose flags these are. */
   readonly scope: string;
   readonly skills: readonly SkillFlag[];
   readonly skillsDir: string;
+}
+
+/**
+ * A report narrowed to what one session acts on, for `start`: the flags of the tasks it owns and of the skills
+ * it fixes (only a task's owner sets its status). The scope names the session, so the CHECK line says whose
+ * flags these are.
+ */
+export function ownCheck(report: CheckReport, owner: string): CheckReport {
+  return {
+    ...report,
+    sections: report.sections.map((section) => ({ ...section, flags: section.flags.filter((flag) => flag.task.owner === owner) })),
+    scope: `${owner}'s tasks and skills, ${report.scope}`,
+    skills: report.skills.filter((flag) => flag.owner === owner),
+  };
 }
 
 interface TeamFlag {
