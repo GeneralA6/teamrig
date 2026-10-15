@@ -115,6 +115,11 @@ describe('renderCorePack', () => {
     assert.match(pack, /\(`cmd \/c rmdir`; Git Bash `cmd \/\/c`\)/);
   });
 
+  it('tags a stopgap with the task that replaces it, in the form check reads', () => {
+    const pack = renderCorePack(testConfig(), COMMAND);
+    assert.match(pack, /^10\. .*a dated root-cause task\. Tag a stopgap with the task that replaces it: `stopgap T<id>`\.$/m);
+  });
+
   it('keeps comments true to their code', () => {
     assert.match(
       renderCorePack(testConfig(), COMMAND),
