@@ -2,20 +2,21 @@ import type { Roster } from '../config/roster.ts';
 import type { KitConfig } from '../config/types.ts';
 import { formatAddress } from '../core/address.ts';
 import type { TeamPaths } from '../core/home.ts';
-import { readSnapshot } from '../register/register.ts';
 import type { RegisterSnapshot } from '../register/snapshot.ts';
 import { JsonlEventLog } from '../register/store.ts';
 import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf } from './kit.ts';
 import { RefusedError, type CliRuntime } from './runtime.ts';
 import { loadTree, type TreeTeam } from './tree.ts';
 
-/** One team of a roll-up: its id, config, folder and roster, and its register as read. */
+/** One team of a roll-up: its id, config, folder and roster, and its register's working set as read. */
 export interface RolledTeam {
   readonly team: string;
   readonly config: KitConfig;
   readonly paths: TeamPaths;
   readonly roster: Roster;
   readonly snapshot: RegisterSnapshot;
+  /** Reads the register's whole history, for a command the working set cannot serve. */
+  readonly history: () => Promise<RegisterSnapshot>;
 }
 
 /** The caller's own team, then every team under it, depth-first. */
@@ -25,8 +26,8 @@ export interface RollUp {
 }
 
 async function rolledOf(runtime: CliRuntime, team: string, { kit, config, roster }: TreeTeam): Promise<RolledTeam> {
-  const snapshot = await readSnapshot(new JsonlEventLog(runtime.files, kit.paths.events));
-  return { team, config, paths: kit.paths, roster, snapshot };
+  const log = new JsonlEventLog(runtime.files, kit.paths.events);
+  return { team, config, paths: kit.paths, roster, snapshot: await log.read(), history: () => log.readHistory() };
 }
 
 /**
