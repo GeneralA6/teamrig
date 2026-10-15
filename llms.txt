@@ -1,16 +1,16 @@
 # teamrig
 
-> A Claude Code plugin and CLI that runs a team of Claude Code sessions: a shared task register, per-session inboxes, team rules loaded at every start, and a guard on pushes to protected branches.
+> A Claude Code plugin and CLI that runs a team of Claude Code sessions: a shared task register, per-session inboxes, team rules loaded at every start, a guard on pushes to protected branches, and each session's token use measured against the week's pace.
 
 ## Guide
 
 - [teamrig guide](https://github.com/GeneralA6/teamrig/blob/main/plugins/teamrig/skills/teamrig-guide/SKILL.md): start here: the model, which session you are, where files live, the daily loop
-- [Commands](https://github.com/GeneralA6/teamrig/blob/main/plugins/teamrig/skills/teamrig-guide/commands.md): every command with its flags, an example and its output
+- [Commands](https://github.com/GeneralA6/teamrig/blob/main/plugins/teamrig/skills/teamrig-guide/commands.md): every command with its flags, an example and its output, the token budget included
 - [Tasks, inbox, checks, plans and skills](https://github.com/GeneralA6/teamrig/blob/main/plugins/teamrig/skills/teamrig-guide/tasks.md): task statuses, inbox lines and messages, check flags, week plans, skill rules
 - [Workflows](https://github.com/GeneralA6/teamrig/blob/main/plugins/teamrig/skills/teamrig-guide/workflows.md): a work block, handing work over, closing a task, a handover, a lead checkpoint
 - [Hooks and permissions](https://github.com/GeneralA6/teamrig/blob/main/plugins/teamrig/skills/teamrig-guide/hooks.md): what each hook injects or blocks, and the permission modes tested
 - [Errors and refusals](https://github.com/GeneralA6/teamrig/blob/main/plugins/teamrig/skills/teamrig-guide/errors.md): what teamrig prints when it stops, and the fix
-- [Requirements](https://github.com/GeneralA6/teamrig/blob/main/plugins/teamrig/skills/teamrig-guide/requirements.md): Claude Code, Node.js, git, terminals, operating systems, and the check that says what is missing
+- [Requirements](https://github.com/GeneralA6/teamrig/blob/main/plugins/teamrig/skills/teamrig-guide/requirements.md): Claude Code, Node.js, git, terminals, the status line, operating systems, and the check that says what is missing
 
 ## Design
 

@@ -219,7 +219,11 @@ turns this off: `register.autoArchive: false` in the team's `config.json`, after
   status, writes go on, and archiving waits until this teamrig is updated.
 - Being built: dependencies and parent/child tasks (T205); planned start, ETA, history and token estimates
   (T209–T211).
-- Coming: each session's token burn against the week's plan in `check`, once teamrig reads token usage (T247).
+- Token use: `teamrig budget` reads each session's use from the Claude Code transcripts (only the lines added
+  since its last run, kept per session and day for 8 days in `state/usage/`) and shows it against the week's pace
+  line: what is left to the target at 00:00 UTC, spread over the days to the reset and split among the sessions.
+  The week's use in percent comes from status line snapshots, else from `budget.weeklyLimitW`. It measures and
+  shows only; warnings when a session passes its daily budget are coming.
 
 ## Notes between sessions
 
