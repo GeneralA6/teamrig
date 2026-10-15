@@ -4,8 +4,9 @@ import type { KitConfig } from '../../config/types.ts';
 import { errorMessage, isRecord, stringField, type JsonRecord } from '../../core/guards.ts';
 import { ENV, KIT_NAME } from '../../core/home.ts';
 import { resolveTeam, type TeamResolution } from '../../core/team.ts';
-import { reminderFor, sessionIdOf } from '../../inbox/inbox.ts';
+import { sessionIdOf } from '../../inbox/inbox.ts';
 import { indexMarks } from '../../inbox/marks.ts';
+import { boundPromptNote, boundStartNote } from '../../hooks/bind.ts';
 import { modelCheckLine, payloadEffortOf } from '../../hooks/model-check.ts';
 import { ModelNoticeStore } from '../../hooks/model-notices.ts';
 import { commitsOf, protectedBranchesOf, pushGuardOutput } from '../../hooks/push-guard.ts';
@@ -14,7 +15,6 @@ import { stopModelNotices } from '../../hooks/stop-model.ts';
 import { stopOutput } from '../../hooks/stop.ts';
 import { adoptTitle, promptNote, sessionStartNote, type TitleOutcome } from '../../names/detect.ts';
 import { JsonlRenameLog } from '../../names/log.ts';
-import { sessionTitleOf } from '../../names/title.ts';
 import { decideStart, decideStop, handoverHashOf, type BoundaryFacts, type StopContext, type StopDecision } from '../../refresh/decide.ts';
 import { RefreshStore } from '../../refresh/store.ts';
 import { readContextTokens } from '../../refresh/usage.ts';
@@ -22,6 +22,7 @@ import { noPositionals, type ParsedArgs } from '../args.ts';
 import { openKit, renameDepsOf, rosterOf, teamFolders, type Kit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
+import { bindHintOnce, bindTab, inboxLinesFor, readTitle, type TitleRead } from './hook-bind.ts';
 import { inboxDepsOf } from './inbox.ts';
 
 /**
@@ -43,6 +44,17 @@ function parseJson(text: string): unknown {
 function hookTeam(payload: unknown, runtime: CliRuntime): Promise<TeamResolution> {
   const cwd = isRecord(payload) ? stringField(payload, 'cwd') : undefined;
   return resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [cwd, runtime.cwd]));
+}
+
+/**
+ * The team a session's hooks run for: `$TEAMRIG_TEAM`, else the nearest pointer above the folder the
+ * session started in (`$CLAUDE_PROJECT_DIR`), then the payload's folder. The payload's `cwd` follows
+ * a `cd`, so walking it first would let a tab that moved into another team's project read, and bind
+ * to, that team's sessions. The push guard keeps `hookTeam`: a push belongs to the folder it runs in.
+ */
+function sessionTeam(payload: unknown, runtime: CliRuntime): Promise<TeamResolution> {
+  const cwd = isRecord(payload) ? stringField(payload, 'cwd') : undefined;
+  return resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [runtime.env[ENV.claudeProjectDir], cwd, runtime.cwd]));
 }
 
 /** PreToolUse on Bash and PowerShell: asks before a push to a protected branch, refuses a force-push of one. */
@@ -95,8 +107,9 @@ async function teamSessionOf(runtime: CliRuntime, kit: Kit, roster: Roster, clau
 }
 
 /**
- * The area this Claude Code session last read its inbox as, when it is on the roster. It is how a
- * tab started without `$TEAMRIG_SESSION`, such as the one that set the team up, stays its session.
+ * The area this Claude Code session last read its inbox as, or was bound to by its title, when it is
+ * on the roster. It is how a tab started without `$TEAMRIG_SESSION`, such as the one that set the team
+ * up, stays its session.
  */
 async function markedSessionOf(runtime: CliRuntime, kit: Kit, roster: Roster, claudeSession: string | null): Promise<string | undefined> {
   if (claudeSession === null) {
@@ -121,9 +134,12 @@ async function startSessionOf(runtime: CliRuntime, kit: Kit, roster: Roster, pay
  * the rename log, never by moving data. It never throws, so the hook always answers; a failure is
  * retried on the next prompt.
  */
-async function titleOutcome(runtime: CliRuntime, kit: Kit, config: KitConfig, payload: unknown): Promise<TitleOutcome> {
+async function titleOutcome(runtime: CliRuntime, kit: Kit, config: KitConfig, payload: unknown, read: TitleRead): Promise<TitleOutcome> {
+  if (read.kind === 'failed') {
+    return { kind: 'failed', error: read.error };
+  }
+  const { title } = read;
   try {
-    const title = await sessionTitleOf(payload, runtime.files);
     if (title === undefined) {
       return { kind: 'none' };
     }
@@ -135,7 +151,11 @@ async function titleOutcome(runtime: CliRuntime, kit: Kit, config: KitConfig, pa
   }
 }
 
-/** UserPromptSubmit: notes a Claude Code rename of the session, then one line when its inbox has unread lines, or its team pointer is broken. */
+/**
+ * UserPromptSubmit: binds a hand-started tab by its title, notes a Claude Code rename of the session,
+ * says once how to bind a tab that is not bound, and shows the session's new inbox lines; or one line
+ * when its team pointer is broken.
+ */
 export async function inboxReminder(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
   const payload = parseJson(await runtime.readStdin());
@@ -143,7 +163,7 @@ export async function inboxReminder(args: ParsedArgs, runtime: CliRuntime): Prom
   if (claudeSession === null) {
     return EXIT.ok;
   }
-  const found = await hookTeam(payload, runtime);
+  const found = await sessionTeam(payload, runtime);
   switch (found.kind) {
     case 'none':
       return EXIT.ok;
@@ -157,15 +177,20 @@ export async function inboxReminder(args: ParsedArgs, runtime: CliRuntime): Prom
   if (kit.load.status !== 'loaded') {
     return EXIT.ok;
   }
-  const note = promptNote(await titleOutcome(runtime, kit, kit.load.config, payload), KIT_NAME);
-  if (note !== undefined) {
-    runtime.out.stdout(note);
-  }
-  // Found like a rename: `$TEAMRIG_SESSION` first, so a session is reminded before its first `inbox read`.
-  const session = await teamSessionOf(runtime, kit, await rosterOf(runtime, kit, kit.load.config), claudeSession);
-  const line = session === undefined ? undefined : await reminderFor(inboxDepsOf(runtime, kit.paths), session, KIT_NAME);
-  if (line !== undefined) {
-    runtime.out.stdout(line);
+  const { config } = kit.load;
+  const title = await readTitle(runtime, payload);
+  const own = { team: kit.paths.team, roster: await rosterOf(runtime, kit, config) };
+  const binding = await bindTab(runtime, kit, own, claudeSession, title);
+  const bound = boundPromptNote(binding.outcome, own, KIT_NAME);
+  const renamed = promptNote(await titleOutcome(runtime, kit, config, payload, title), KIT_NAME);
+  const hint = await bindHintOnce(runtime, kit, binding, claudeSession);
+  // Found like a rename: `$TEAMRIG_SESSION` first, so a session is shown its lines before its first `inbox read`.
+  const session = await teamSessionOf(runtime, kit, own.roster, claudeSession);
+  const lines = session === undefined ? undefined : await inboxLinesFor(runtime, kit, session, claudeSession);
+  for (const text of [bound, renamed, hint, lines]) {
+    if (text !== undefined) {
+      runtime.out.stdout(text);
+    }
   }
   return EXIT.ok;
 }
@@ -173,14 +198,22 @@ export async function inboxReminder(args: ParsedArgs, runtime: CliRuntime): Prom
 type TeamParts = Pick<SessionStartInput, 'teamRules' | 'renames' | 'titleNote' | 'refreshNote' | 'modelNote' | 'session' | 'sessionInEnv' | 'tree'>;
 
 /**
- * A loaded team's rules.md and rename log, after recording a Claude Code rename of the session, the
- * pointer to its handover after a refresh, and who the session is: `$TEAMRIG_SESSION`, else the area
- * it read its inbox as, so a tab that set the team up keeps its identity across a compact or resume;
- * whether it runs on its configured model and effort; and where the team sits in a tree of teams,
- * read from every team config of the kit home.
+ * A loaded team's rules.md and rename log, after binding a hand-started tab by its Claude Code title
+ * and recording a Claude Code rename of the session; the pointer to its handover after a refresh; who
+ * the session is: `$TEAMRIG_SESSION`, else the area it read its inbox as or was bound to, so a tab that
+ * set the team up keeps its identity across a compact or resume; whether it runs on its configured
+ * model and effort; and where the team sits in a tree of teams, read from every team config of the kit
+ * home.
  */
 async function teamPartsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, payload: unknown): Promise<TeamParts> {
-  const titleNote = sessionStartNote(await titleOutcome(runtime, kit, config, payload));
+  const title = await readTitle(runtime, payload);
+  const claudeSession = sessionIdOf(payload);
+  const bound =
+    claudeSession === null
+      ? undefined
+      : boundStartNote((await bindTab(runtime, kit, { team: kit.paths.team, roster: await rosterOf(runtime, kit, config) }, claudeSession, title)).outcome);
+  const renamed = sessionStartNote(await titleOutcome(runtime, kit, config, payload, title));
+  const titleNote = bound === undefined || renamed === undefined ? (bound ?? renamed) : `${bound} ${renamed}`;
   const { renames } = await new JsonlRenameLog(runtime.files, kit.paths.renames).read();
   const roster = new Roster(config, kit.paths.team, renames);
   const refreshNote = await refreshNoteOf(runtime, kit, config, roster, payload);
@@ -265,7 +298,7 @@ interface StopScope {
 
 /** The Stop payload's team session; undefined outside a team, without a loaded config or without a session. */
 async function stopScopeOf(runtime: CliRuntime, payload: JsonRecord): Promise<StopScope | undefined> {
-  const found = await hookTeam(payload, runtime);
+  const found = await sessionTeam(payload, runtime);
   if (found.kind !== 'team') {
     return undefined;
   }
@@ -365,7 +398,7 @@ export async function stop(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
 export async function sessionStart(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
   const payload = parseJson(await runtime.readStdin());
-  const found = await hookTeam(payload, runtime);
+  const found = await sessionTeam(payload, runtime);
   switch (found.kind) {
     case 'none':
       return EXIT.ok;

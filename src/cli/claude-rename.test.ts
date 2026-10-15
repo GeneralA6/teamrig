@@ -50,7 +50,9 @@ describe('runCli: a Claude Code rename', () => {
     const kit = new CliHarness(NAMED);
     assert.deepEqual((await kit.run(['hook', 'inbox-reminder'], { env: { TEAMRIG_SESSION: 'bravo' }, stdin: hookInput({}) })).stdout, []);
     assert.deepEqual((await kit.run(['hook', 'inbox-reminder'], { env: { TEAMRIG_SESSION: 'zulu' }, stdin: hookInput({ session_title: 'scout' }) })).stdout, []);
-    assert.deepEqual((await kit.run(['hook', 'inbox-reminder'], { stdin: hookInput({ session_title: 'scout' }) })).stdout, []);
+    const unbound = await kit.run(['hook', 'inbox-reminder'], { stdin: hookInput({ session_title: 'scout' }) });
+    assert.equal(unbound.stdout.length, 1, 'only how to bind it');
+    assert.match(unbound.stdout[0] ?? '', /^teamrig: this tab's title "scout" names no session of team app, so it is not bound\./);
     const noClaudeSession = JSON.stringify({ cwd: APP, session_title: 'scout' });
     assert.doesNotMatch(contextOf(await kit.run(['hook', 'session-start'], { stdin: noClaudeSession })), /Claude Code title|renamed in Claude Code/);
     assert.equal(await kit.files.read(RENAMES_PATH), undefined);

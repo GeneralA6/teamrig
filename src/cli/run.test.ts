@@ -450,7 +450,7 @@ describe('runCli: inboxes', () => {
     );
   });
 
-  it('reminds the Claude Code session that last read an inbox of new lines', async () => {
+  it('shows the Claude Code session that last read an inbox its new lines, once', async () => {
     const kit = new CliHarness();
     const stdin = JSON.stringify({ session_id: CLAUDE_SESSION });
     await kit.run(['inbox', 'read', '--session', 'bravo'], { env: { CLAUDE_CODE_SESSION_ID: CLAUDE_SESSION } });
@@ -459,17 +459,20 @@ describe('runCli: inboxes', () => {
     await kit.run(['inbox', 'add', '--to', 'bravo', '--text', 'please rebase', '--session', 'alpha']);
     const reminded = await kit.run(['hook', 'inbox-reminder'], { stdin });
     assert.equal(reminded.code, EXIT.ok);
-    assert.match(reminded.stdout[0] ?? '', /^INBOX: 1 unread line\(s\) .* teamrig inbox read --session bravo$/);
+    assert.match(reminded.stdout[0] ?? '', /^INBOX bravo, new in .*bravo\.md \(each line is shown once; reading marks them read\):\n- 2030-01-08 10:00 alpha: please rebase$/);
+    assert.deepEqual((await kit.run(['hook', 'inbox-reminder'], { stdin })).stdout, [], 'shown once');
+    assert.match((await kit.run(['inbox', 'status', '--session', 'bravo'])).stdout[0] ?? '', /^bravo 1 unread/, 'shown is not read');
   });
 
-  it('reminds a session named by $TEAMRIG_SESSION before it has ever read its inbox', async () => {
+  it('shows a session named by $TEAMRIG_SESSION its lines before it has ever read its inbox', async () => {
     const kit = new CliHarness();
     const stdin = JSON.stringify({ session_id: CLAUDE_SESSION });
     await kit.run(['inbox', 'add', '--to', 'bravo', '--text', 'please rebase', '--session', 'alpha']);
-    assert.deepEqual((await kit.run(['hook', 'inbox-reminder'], { stdin })).stdout, [], 'unnamed and never read: no session to remind');
+    const unbound = await kit.run(['hook', 'inbox-reminder'], { stdin });
+    assert.deepEqual(unbound.stdout.map((line) => line.slice(0, 64)), ['teamrig: this tab is not bound to a session of team app. To bind'], 'no session to show lines to');
 
     const reminded = await kit.run(['hook', 'inbox-reminder'], { stdin, env: { TEAMRIG_SESSION: 'app-bravo' } });
-    assert.match(reminded.stdout[0] ?? '', /^INBOX: 1 unread line\(s\) .* teamrig inbox read --session bravo$/, 'found by its name');
+    assert.match(reminded.stdout[0] ?? '', /^INBOX bravo, new in .*\n- 2030-01-08 10:00 alpha: please rebase$/, 'found by its name');
     const unknown = await kit.run(['hook', 'inbox-reminder'], { stdin, env: { TEAMRIG_SESSION: 'zulu' } });
     assert.deepEqual(unknown.stdout, []);
   });
