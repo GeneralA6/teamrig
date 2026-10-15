@@ -66,7 +66,11 @@ function toolUseOf(block: JsonRecord): ToolUse | undefined {
   if (block['type'] !== 'tool_use' || id === undefined || name === undefined) {
     return undefined;
   }
-  const input = recordField(block, 'input');
+  return toolUseFrom(id, name, recordField(block, 'input'));
+}
+
+/** A tool call from its id, name and input, as a transcript line or a hook payload carries them. */
+export function toolUseFrom(id: string, name: string, input: JsonRecord | undefined): ToolUse {
   const path = input === undefined ? undefined : toolPathOf(input);
   return { id, name, command: input === undefined ? undefined : stringField(input, 'command'), ...(path === undefined ? {} : { path }) };
 }
