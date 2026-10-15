@@ -1,7 +1,17 @@
-/** A command line the CLI cannot act on: it prints the message and the usage, and exits 64. */
+/** A command line the CLI cannot act on: it prints the message and its command's usage, and exits 64. */
 export class UsageError extends Error {
   override readonly name = 'UsageError';
+  /** The command or group word the line named, when known, so only that command's usage is printed. */
+  readonly command: string | undefined;
+
+  constructor(message: string, command?: string) {
+    super(message);
+    this.command = command;
+  }
 }
+
+/** Asks for the help of the command they follow, wherever a flag or word could stand: `set --help`, `inbox -h`. */
+export const HELP_FLAGS: ReadonlySet<string> = new Set(['--help', '-h']);
 
 export type Flags = ReadonlyMap<string, string>;
 
@@ -11,6 +21,8 @@ export interface ParsedArgs {
   readonly flags: Flags;
   /** The flags given that take no value, such as `--ready`. */
   readonly switches: ReadonlySet<string>;
+  /** `--help` or `-h` followed the command: print its help and nothing else; `command` may then be a group word. */
+  readonly help: boolean;
 }
 
 /** Each command's accepted flags, keyed by the command's words: `add`, `inbox read`. */
@@ -25,7 +37,7 @@ export type CommandSwitches = CommandFlags;
  */
 export type RenamedFlags = Readonly<Partial<Record<string, string>>>;
 
-/** The command a line names: two words when they form a command (`inbox read`), else one. */
+/** The command a line names: two words when they form a command (`inbox read`), else one; a group word before `--help`. */
 function commandOf(argv: readonly string[], commandFlags: CommandFlags): { readonly command: string; readonly tail: readonly string[] } {
   const [first = '', second] = argv;
   const pair = `${first} ${second ?? ''}`;
@@ -35,19 +47,26 @@ function commandOf(argv: readonly string[], commandFlags: CommandFlags): { reado
   if (commandFlags[first] !== undefined) {
     return { command: first, tail: argv.slice(1) };
   }
-  const actions = Object.keys(commandFlags)
-    .filter((name) => name.startsWith(`${first} `))
-    .map((name) => name.slice(first.length + 1));
   if (first === '') {
     throw new UsageError('no command given');
   }
-  throw new UsageError(actions.length > 0 ? `${first} ${actions.join('|')}` : `unknown command "${first}"`);
+  const actions = Object.keys(commandFlags)
+    .filter((name) => name.startsWith(`${first} `))
+    .map((name) => name.slice(first.length + 1));
+  if (actions.length === 0) {
+    throw new UsageError(`unknown command "${first}"`);
+  }
+  if (second !== undefined && HELP_FLAGS.has(second)) {
+    return { command: first, tail: argv.slice(1) };
+  }
+  throw new UsageError(`${first} ${actions.join('|')}`, first);
 }
 
 /**
  * Splits `<command> [words] [--name value] [--switch]...`. Only the command's own flags are
  * accepted, so a typo is refused instead of silently meaning nothing; every flag takes exactly one
  * value, except the command's switches, which take none. A renamed flag is refused with its new name.
+ * `--help` or `-h` after the command stops the reading: the line asks for that command's help.
  */
 export function parseArgs(
   argv: readonly string[],
@@ -63,6 +82,9 @@ export function parseArgs(
   const switches = new Set<string>();
   for (let index = 0; index < tail.length; index += 1) {
     const token = tail[index] ?? '';
+    if (HELP_FLAGS.has(token)) {
+      return { command, positionals: [], flags: new Map(), switches: new Set(), help: true };
+    }
     if (!token.startsWith('--')) {
       positionals.push(token);
       continue;
@@ -70,29 +92,29 @@ export function parseArgs(
     const name = token.slice(2);
     const renamed = renamedFlags[name];
     if (renamed !== undefined) {
-      throw new UsageError(`${token} was renamed: use --${renamed}`);
+      throw new UsageError(`${token} was renamed: use --${renamed}`, command);
     }
     if (switchable.includes(name)) {
       if (switches.has(name)) {
-        throw new UsageError(`${token} is given twice`);
+        throw new UsageError(`${token} is given twice`, command);
       }
       switches.add(name);
       continue;
     }
     if (!allowed.includes(name)) {
-      throw new UsageError(`${command} takes no ${token}`);
+      throw new UsageError(`${command} takes no ${token}`, command);
     }
     const value = tail[index + 1];
     if (value === undefined || value.startsWith('--')) {
-      throw new UsageError(`${token} needs a value`);
+      throw new UsageError(`${token} needs a value`, command);
     }
     if (flags.has(name)) {
-      throw new UsageError(`${token} is given twice`);
+      throw new UsageError(`${token} is given twice`, command);
     }
     flags.set(name, value);
     index += 1;
   }
-  return { command, positionals, flags, switches };
+  return { command, positionals, flags, switches, help: false };
 }
 
 export function noPositionals(args: ParsedArgs): void {

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { HELP_FLAGS } from '../../src/cli/args.ts';
 import { COMMAND_FLAGS, COMMAND_SWITCHES, HELP, VERSION } from '../../src/cli/run.ts';
 import { descriptionOf } from '../../src/skills/lint.ts';
 import { checkDocs, headingAnchors, type DocFile } from './doc-check.ts';
@@ -116,9 +117,17 @@ function commandLines(doc: DocFile): CommandLine[] {
 }
 
 /** The command a line runs and the flags it passes, or the reason the CLI would not read it. */
+/** `teamrig <command> --help` or `teamrig inbox -h`: one command's or one group's help, read like `teamrig help`. */
+function isCommandHelp(first: string, second: string): boolean {
+  return HELP_FLAGS.has(second) && (first === '<command>' || Object.keys(COMMAND_FLAGS).some((name) => name === first || name.startsWith(`${first} `)));
+}
+
 function parseCommand(text: string): { readonly command: string; readonly flags: readonly string[] } | string {
   const words = text.replace(QUOTED, '""').split(/\s+/).slice(1);
   const [first = '', second = ''] = words;
+  if (isCommandHelp(first, second)) {
+    return { command: HELP_COMMAND, flags: [] };
+  }
   const pair = `${first} ${second}`;
   let command: string;
   let rest: readonly string[];

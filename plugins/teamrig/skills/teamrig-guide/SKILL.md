@@ -117,7 +117,7 @@ The first word of the output says what happened:
 | `FAILED <why>` (on stderr) | something broke: a file, git, a process | 1 |
 | `REFUSED <why>` | a team rule stopped it; the reason says what to change | 2 |
 | `MANUAL` | `open` could not open a terminal and printed the command to run instead | 3 |
-| a usage message, then the full usage | the command line could not be read | 64 |
+| a usage message, then that command's usage | the command line could not be read | 64 |
 
 A `REFUSED` is never a bug to work around: fix what it names, or take it to the lead. [errors.md](errors.md)
 lists the common ones.

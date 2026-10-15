@@ -181,6 +181,7 @@ stateDiagram-v2
   blocks.
 - `teamrig list` and `teamrig check` print a short form within 3,000 characters by default, since a session reads
   them at every work block: counts, short rows and `+N more`. `--all` prints every field of every task or flag.
+  A command line teamrig cannot read prints only that command's usage lines; `teamrig <command> --help` shows them.
 - A lead hands a child team work with `teamrig add --team web --title "..." --priority p2`: the task lands in `web`'s own
   list, owned by `web`'s lead and marked as from `your-team/lead`, and `web`'s lead splits it among its sessions
   and opens them. Only the parent team's lead may do this.

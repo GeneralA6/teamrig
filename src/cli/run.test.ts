@@ -8,6 +8,9 @@ import type { JsonRecord } from '../core/guards.ts';
 import { ENV } from '../core/home.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import { APP, bash, CLAUDE_SESSION, CliHarness, CONFIG_PATH, contextOf, decisionOf, EVENTS_PATH, KIT, POINTER, SKILLS_DIR, TEAM, type CliResult } from '../testing/cli-harness.ts';
+import { FULL_HELP_POINTER } from './help.ts';
+import { SHORT_FORM_CHARS } from './reports.ts';
+import { COMMAND_HELP, USAGE } from './run.ts';
 import { EXIT } from './runtime.ts';
 
 /** A release one config version ahead of this one, reached by a last step that changes only the version. */
@@ -78,10 +81,52 @@ describe('runCli: help, version and usage errors', () => {
     assert.deepEqual((await new CliHarness().run(['--version'])).stdout, [`teamrig ${KIT_VERSION}`]);
   });
 
-  it('exits 64 with the reason and the usage on a line it cannot read', async () => {
-    const result = await new CliHarness().run(['add', '--titel', 'x', '--session', 'alpha']);
+  it("exits 64 with the reason and only the command's usage on a line it cannot read", async () => {
+    const kit = new CliHarness();
+    const result = await kit.run(['add', '--titel', 'x', '--session', 'alpha']);
     assert.equal(result.code, EXIT.usage);
-    assert.match(result.stderr.join('\n'), /^add takes no --titel\n\nteamrig <command>/);
+    assert.deepEqual(result.stderr, [`add takes no --titel\n\n${COMMAND_HELP.forCommand('add')}`]);
+    assert.match(result.stderr.join('\n'), /^add takes no --titel\n\nteamrig <command>.*\n {2}add --title /);
+
+    const done = await kit.run(['set', 'T1', 'done', '--session', 'alpha']);
+    const head = USAGE.split('\n')[0] ?? '';
+    const setLines = [
+      '  set <id> --status open|in-progress|blocked|done|dropped [--note "<what/why>"] [--evidence <proof>]',
+      '      [--skill <name>|none]',
+    ];
+    assert.deepEqual([done.code, done.stderr], [EXIT.usage, [['unexpected "done"', '', head, ...setLines, FULL_HELP_POINTER].join('\n')]]);
+    assert.equal((done.stderr[0] ?? '').length < USAGE.length / 5, true, 'a fifth of the full help at most');
+
+    const status = await kit.run(['set', 'T1', '--status', 'in_progress', '--session', 'alpha']);
+    assert.match(status.stderr[0] ?? '', /^--status "in_progress" is not open\|.*\n\nteamrig <command>.*\n {2}set <id> --status /);
+
+    const group = await kit.run(['inbox']);
+    assert.deepEqual([group.code, group.stderr], [EXIT.usage, [`inbox read|status|add\n\n${COMMAND_HELP.forCommand('inbox')}`]]);
+    const unknown = await kit.run(['frob']);
+    assert.match(unknown.stderr[0] ?? '', /^unknown command "frob"\n\nteamrig <command>.*\nCommands: add, set, update, list, show, check, plan, inbox, team, /);
+  });
+
+  it("prints one command's help for <command> --help or -h, or a group's, and exits 0", async () => {
+    const kit = new CliHarness();
+    const add = await kit.run(['add', '--help']);
+    assert.deepEqual([add.code, add.stdout, add.stderr], [EXIT.ok, [COMMAND_HELP.forCommand('add')], []]);
+    assert.match(add.stdout[0] ?? '', /\n {2}add --title .*\n.*\n {2}add --team /);
+    assert.deepEqual((await kit.run(['set', 'T1', '-h'])).stdout, [COMMAND_HELP.forCommand('set')]);
+    const inbox = await kit.run(['inbox', '--help']);
+    assert.deepEqual(
+      (inbox.stdout[0] ?? '')
+        .split('\n')
+        .filter((line) => /^ {2}\S/.test(line))
+        .map((line) => line.trim().split(' ').slice(0, 2).join(' ')),
+      ['inbox read', 'inbox status', 'inbox add'],
+    );
+    assert.equal(kit.files.get(EVENTS_PATH), undefined);
+  });
+
+  it('gives every command its own lines in the help, and states the short form limit there', () => {
+    assert.deepEqual(COMMAND_HELP.undocumented(), []);
+    assert.ok(USAGE.includes(`within ${SHORT_FORM_CHARS.toLocaleString('en-US')} characters`));
+    assert.match(USAGE, /\nOne command's help: teamrig <command> --help\.$/);
   });
 
   it('refuses the renamed --tier on any command and a priority in the old spelling, writing nothing', async () => {

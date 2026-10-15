@@ -1,7 +1,7 @@
 # Errors and refusals
 
 What teamrig prints when it stops, and what to do. `REFUSED` (exit 2) means a team rule stopped the command; a
-usage error (exit 64) means the command line could not be read and is followed by the full usage; `FAILED`
+usage error (exit 64) means the command line could not be read and is followed by that command's usage; `FAILED`
 (exit 1, on stderr) means a file, git or another program failed. Never work around a refusal: fix what it names,
 or take it to the lead.
 
