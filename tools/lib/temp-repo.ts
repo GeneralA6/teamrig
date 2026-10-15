@@ -79,13 +79,13 @@ export class TempRepo {
   /**
    * Runs a tool's CLI in `dir` under this Node; `undefined` in `env` removes an inherited variable.
    * An override replaces the inherited name in any case: Windows reads names case-insensitively, and
-   * Git Bash hands Node `COMSPEC` where cmd.exe hands it `ComSpec`.
+   * Git Bash hands Node `COMSPEC` where cmd.exe hands it `ComSpec`. `input` is its stdin, which is empty when absent.
    */
-  run(cli: string, args: readonly string[] = [], env: Readonly<Record<string, string | undefined>> = {}): CliRun {
+  run(cli: string, args: readonly string[] = [], env: Readonly<Record<string, string | undefined>> = {}, input?: string): CliRun {
     const overridden = new Set(Object.keys(env).map((name) => name.toUpperCase()));
     const inherited = Object.entries(this.env).filter(([name]) => !overridden.has(name.toUpperCase()));
     const merged = [...inherited, ...Object.entries(env)].filter((entry): entry is [string, string] => entry[1] !== undefined);
-    const result = spawnSync(process.execPath, [cli, ...args], { cwd: this.dir, env: Object.fromEntries(merged), encoding: 'utf8' });
+    const result = spawnSync(process.execPath, [cli, ...args], { cwd: this.dir, env: Object.fromEntries(merged), encoding: 'utf8', ...(input === undefined ? {} : { input }) });
     return { status: result.status, stdout: result.stdout, stderr: result.stderr };
   }
 
