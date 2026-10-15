@@ -71,15 +71,23 @@ why and who decided.
 ## Shipped, verifying
 
 When the change is merged or deployed but what proves it does not exist yet (a night's flow, a run on another
-machine, a number to measure), set it `verifying` with a note naming that proof, and a due date to verify it by:
+machine, a number to measure), set it `verifying` with `--proof` naming that proof and `--due` the date to verify
+it by:
 
 ```sh
-teamrig set T4 --session api --status verifying --note "tonight's import runs clean on the new parser"
-teamrig update T4 --session api --due 2026-10-17
+teamrig set T4 --session api --status verifying --note "new parser merged" --proof "tonight's import runs clean on the new parser" --due 2026-10-17
 ```
 
 It stays in `list` and `check` until you set it `done` with the proof as evidence, or `in-progress` again when
-the proof fails. Past that date, `check` flags it `VERIFY-OVERDUE`.
+the proof fails. Past that date, `check` flags it `VERIFY-OVERDUE`. The verify loop keeps it in view
+([rules](tasks.md#verify-loop)):
+
+1. Your start context and `teamrig inbox read` end with a `VERIFY <n>: ...` line while you have verifying tasks;
+   `teamrig verify` lists them, oldest first.
+2. Prove the oldest first: `done` with the proof as evidence once it exists; when it fails, `in-progress`, fix,
+   ship and set it `verifying` again.
+3. From its verify-by day, the Stop hook shows the user a `VERIFY T4 was to be verified by ...` line once a day.
+4. A start that needs your verifying task is refused, and you get one inbox line: prove that task next.
 
 ## Waiting
 
@@ -149,6 +157,9 @@ With sub-teams, add `--tree` to `check`. Then act on each flag (full table: [tas
 - `OVERDUE` or `STALE`: ask the owner what blocks it, then re-date it (`--due`) or tell the human.
 - `READY`: a waiting task can go on: one inbox line to its owner, if it has not set the next status.
 - `VERIFY-OVERDUE`: ask the owner whether the proof came: `done` with it, `in-progress` if it failed, or a new date.
+- `VERIFY-BLOCKS`: work waits on a shipped change: one inbox line to its owner to prove it or reopen it.
+- `PILE-UP`: a session ships faster than it proves: one inbox line asking it to work its queue (`teamrig verify`)
+  before new work.
 - `OWNER-UNPLANNED` or `DUE-UNPLANNED`: plan it in with `--week`, or tell the human what it would push out.
 - A `SKILL` flag: tell the skill's owner in one inbox line.
 

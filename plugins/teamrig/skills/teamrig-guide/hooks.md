@@ -12,7 +12,7 @@ they all stay silent.
 | `PreToolUse` on `SendMessage` | `hook cold-send` | Holds once a message that would wake an idle session cold |
 | `PostToolUse` on reads, edits and shell calls | `hook loop-nudge` | Asks the model once to batch when a turn makes [single-step calls in a row](#after-a-tool-call-the-loop-nudge) |
 | `PreToolUse` on `Agent` and `Task` | `hook helper-gate` | Asks before or refuses a helper launch past the daily budget or in quiet hours, [as the team set](#the-daily-budget-warnings-and-the-helper-gate) |
-| `Stop` (end of each turn) | `hook stop` | Asks for a handover when a context refresh is due; tells the user of another effort than `launch` asks, or of a model Claude Code switched to; shows the budget lines |
+| `Stop` (end of each turn) | `hook stop` | Asks for a handover when a context refresh is due; tells the user of another effort than `launch` asks, or of a model Claude Code switched to; shows the budget lines; names a verifying task whose verify-by day has come |
 
 ## Session start
 
@@ -48,7 +48,9 @@ The injected context holds:
    such as `MODEL shop-web runs model claude-sonnet-5; the team config asks for model opus at xhigh effort: type
    /model opus`. It is also shown to the user, who alone can change it. It never blocks. Claude Code gives a hook
    the effort only at the end of a turn, so the effort is checked there ([model notices](#end-of-a-turn-model-notices)).
-8. **What teamrig lacks**: shown to the user only, once per Claude Code session, when git is not on the PATH or
+8. **The verify queue**: while the session has `verifying` tasks, one line naming them, oldest first:
+   `VERIFY 2: T1 (proof: the nightly run), T4 (proof: ...)`. `teamrig verify` lists them in full.
+9. **What teamrig lacks**: shown to the user only, once per Claude Code session, when git is not on the PATH or
    Claude Code or Node.js is too old ([the requirements check](requirements.md#the-requirements-check)).
 
 The session is found from `$TEAMRIG_SESSION`, else from the area this Claude Code session last ran
@@ -167,6 +169,15 @@ The Stop hook also tells the user, in a MODEL line shown once per Claude Code se
 
 The lines go to the user only, so they cost the session no context, and they come with `refresh.enabled` on or
 off. Which lines a session was shown is kept in `state/model-notices/<id>.json`.
+
+## End of a turn: verify-by notices
+
+The Stop hook also tells the user of each of the session's `verifying` tasks whose verify-by day (its due date,
+UTC) has come: `VERIFY T1 was to be verified by 10-14 (proof: the nightly run): done with the proof, or back to
+in-progress`. It reads the task list only at the session's first stop of each UTC day, so a task is named once a
+day until it is `done` or back `in-progress`, and a date moved to today after that stop waits for the next day.
+A failed read leaves the line out. Which tasks were named today is kept in `state/verify-notices.jsonl`, which
+holds only the current day.
 
 ## The daily budget: warnings and the helper gate
 

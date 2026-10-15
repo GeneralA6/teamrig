@@ -83,6 +83,7 @@ current folder or above it, else in `$CLAUDE_PROJECT_DIR` or above. Everything e
     renames.jsonl        the rename log
     refresh/             context-refresh state
     model-notices/       the model notices each session was shown
+    verify-notices.jsonl today's verify notices, so each is given once a day
     logs/                teamrig test's whole outputs, test-<session>-<n>.log, the newest 20 each
 ```
 
@@ -103,8 +104,8 @@ Then work your list in priority order: `p1` before `p2`, and inside a priority t
 ```sh
 teamrig set T4 --session api --status in-progress
 # ... do the work, commit it, verify it ...
-# shipped, but its proof comes later (a night's flow, a measurement)? set it verifying, with a date to verify by:
-# teamrig set T4 --session api --status verifying --note "tonight's run is clean"
+# shipped, but its proof comes later (a night's flow, a measurement)? set it verifying, with the proof and a date:
+# teamrig set T4 --session api --status verifying --note "shipped" --proof "tonight's run is clean" --due 2026-10-17
 teamrig set T4 --session api --status done --note "signup endpoint merged" --evidence "PR #12, 41 tests pass" --skill none
 ```
 
