@@ -1,14 +1,10 @@
 import { formatAddress } from "../../core/address.js";
 import { JsonlDailyLog } from "../../core/daily-log.js";
-import { FileLock } from "../../core/lock.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { postLine } from "../../inbox/inbox.js";
 import { checkTasks, currentWeekOf } from "../../register/check.js";
 import { renderPlan } from "../../register/plan.js";
-import { RegisterPolicy } from "../../register/policy.js";
-import { Register } from "../../register/register.js";
 import { ACTIVE_STATUSES } from "../../register/model.js";
-import { JsonlEventLog } from "../../register/store.js";
 import { heldStart, heldStartNotice, startHolds, verifyQueue } from "../../register/verify.js";
 import { formatTask, formatTaskDetail, formatVerifyRow, selectTasks } from "../../register/views.js";
 import { waitContext } from "../../register/waits.js";
@@ -21,20 +17,12 @@ import { checkLines, listLines } from "../reports.js";
 import { rollUp } from "../roll-up.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { loadTree } from "../tree.js";
+import { teamRegister } from "../team-register.js";
 import { inboxDepsOf } from "./inbox.js";
 import { markBoundary } from "./refresh.js";
 async function teamOf(runtime, kit, access) {
     const config = requireConfig(kit, runtime, access);
-    const { files, clock, sleep, pid } = runtime;
-    const register = new Register({
-        log: new JsonlEventLog(files, kit.paths.events),
-        mutex: new FileLock(kit.paths.eventsLock, config.lock, { files, clock, sleep, pid }),
-        clock,
-        policy: new RegisterPolicy(config),
-        skills: new SkillDir(files, kit.paths.skills),
-        autoArchive: config.register.autoArchive,
-    });
-    return { config, paths: kit.paths, register, roster: await rosterOf(runtime, kit, config) };
+    return { config, paths: kit.paths, register: teamRegister(runtime, kit.paths, config), roster: await rosterOf(runtime, kit, config) };
 }
 async function openTeam(runtime, access) {
     return teamOf(runtime, await openTeamKit(runtime), access);

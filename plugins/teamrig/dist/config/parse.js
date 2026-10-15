@@ -1,13 +1,17 @@
 import { isRecord } from "../core/guards.js";
 import { NAME_PATTERN, NAME_RULE } from "../core/ids.js";
 import { isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, SESSION_NAME, TASK_STATUSES } from "../register/model.js";
-import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_COMMITS, DEFAULT_LOCK, DEFAULT_LOOPS, DEFAULT_MESSAGES, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_PUSH_GUARD, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, DEFAULT_TESTS, } from "./defaults.js";
+import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_COMMITS, DEFAULT_GITHUB, DEFAULT_LOCK, DEFAULT_LOOPS, DEFAULT_MESSAGES, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_PUSH_GUARD, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, DEFAULT_TESTS, } from "./defaults.js";
 import { isEffort, isModel } from "./launch.js";
 import { CONFIG_LIMITS } from "./limits.js";
 import { ConfigReader, describe, isValidRegex, shortLine } from "./reader.js";
 import { ESCALATIONS, isCommitGate, isEffortLevel, isEscalation, isOverAction, isPushToProtected, isTerminalChoice, isVerifyGate, isWeekday, OVER_ACTIONS, PUSH_TO_PROTECTED, TERMINALS, VERIFY_GATES, WEEKDAYS, } from "./types.js";
 const isSessionName = (name) => SESSION_NAME.test(name) ? undefined : 'expected a lowercase name: a letter, then letters, digits or -, at most 32';
 const isUtcTime = (time) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(time) ? undefined : 'expected a UTC time as HH:MM');
+/** A repository as GitHub names it: an owner login, a slash, then letters, digits, `.`, `_` or `-`. */
+const isRepoName = (repo) => /^[a-z0-9][a-z0-9-]{0,38}\/[a-z0-9._-]{1,100}$/i.test(repo) ? undefined : 'expected a GitHub repository as owner/name';
+/** A GitHub login: letters, digits or -, starting with a letter or digit, at most 39 characters. */
+const GITHUB_LOGIN = /^[a-z0-9][a-z0-9-]{0,38}$/i;
 const BRANCH_NAME = (name) => (/^[^\s~^:?*[\\]+$/.test(name) ? undefined : 'not a valid branch name');
 /** The key shape the skills lint recognises in frontmatter. */
 const isFrontmatterKey = (key) => (/^[A-Za-z0-9_-]+$/.test(key) ? undefined : 'expected a frontmatter key: letters, digits, _ or -');
@@ -151,6 +155,7 @@ export function parseConfig(raw) {
         tests: {
             maxFailureChars: read.integer(read.section(raw, 'tests', ''), 'maxFailureChars', 'tests', DEFAULT_TESTS.maxFailureChars, CONFIG_LIMITS.maxFailureChars),
         },
+        github: parseGithub(read, read.section(raw, 'github', ''), sessions),
         alerts: {
             persistentFailureHours: read.integer(alerts, 'persistentFailureHours', 'alerts', DEFAULT_ALERTS.persistentFailureHours, CONFIG_LIMITS.persistentFailureHours),
         },
@@ -161,6 +166,54 @@ export function parseConfig(raw) {
         paths: parsePaths(read, read.section(raw, 'paths', '')),
     };
     return { config, issues: read.issues };
+}
+/**
+ * `github`: the repositories `gh sync` reads and who owns their issues. Repositories and logins are
+ * kept in lowercase, as GitHub matches them, so an imported task's ref stays the same however the
+ * config spells them; a repository listed twice is reported and read once.
+ */
+function parseGithub(read, raw, sessions) {
+    const { maxItems, maxLength } = CONFIG_LIMITS.githubRepos;
+    const repos = [];
+    for (const repo of read.stringList(raw, 'repos', 'github', DEFAULT_GITHUB.repos, shortLine(maxLength, isRepoName), maxItems)) {
+        const key = repo.toLowerCase();
+        if (repos.includes(key)) {
+            read.report('github.repos', `${describe(repo)} is listed twice`);
+            continue;
+        }
+        repos.push(key);
+    }
+    return {
+        repos,
+        owners: readGithubOwners(read, read.section(raw, 'owners', 'github'), sessions),
+        closedDays: read.integer(raw, 'closedDays', 'github', DEFAULT_GITHUB.closedDays, CONFIG_LIMITS.closedDays),
+    };
+}
+/** `github.owners`: a session for each GitHub login; a wrong login or a session not on the team is reported and left out. */
+function readGithubOwners(read, raw, sessions) {
+    const owners = {};
+    for (const login of Object.keys(raw)) {
+        const path = `github.owners.${login}`;
+        if (!GITHUB_LOGIN.test(login)) {
+            read.report(path, 'expected a GitHub login: letters, digits or -, at most 39 characters');
+            continue;
+        }
+        const session = read.optionalString(raw, login, 'github.owners', isSessionName);
+        const key = login.toLowerCase();
+        if (session === undefined) {
+            continue;
+        }
+        if (!sessions.includes(session)) {
+            read.report(path, `${describe(session)} is not one of the sessions`);
+        }
+        else if (owners[key] !== undefined) {
+            read.report(path, 'is listed twice');
+        }
+        else {
+            owners[key] = session;
+        }
+    }
+    return owners;
 }
 /** Config version 1's name for `register.priorities`; the v1-to-v2 migration renames it, so a current file never holds it. */
 const RENAMED_PRIORITIES_KEY = 'tiers';
