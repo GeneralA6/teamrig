@@ -1,7 +1,7 @@
 import { isRecord } from "../core/guards.js";
 import { NAME_PATTERN, NAME_RULE } from "../core/ids.js";
 import { isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, SESSION_NAME, TASK_STATUSES } from "../register/model.js";
-import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_COMMITS, DEFAULT_LOCK, DEFAULT_MESSAGES, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_PUSH_GUARD, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, } from "./defaults.js";
+import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_COMMITS, DEFAULT_LOCK, DEFAULT_LOOPS, DEFAULT_MESSAGES, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_PUSH_GUARD, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, } from "./defaults.js";
 import { isEffort, isModel } from "./launch.js";
 import { CONFIG_LIMITS } from "./limits.js";
 import { ConfigReader, describe, isValidRegex, shortLine } from "./reader.js";
@@ -145,6 +145,9 @@ export function parseConfig(raw) {
             schedule: heavyCutoffUtc === undefined ? {} : { heavyCutoffUtc },
         },
         budget: parseBudget(read, read.section(raw, 'budget', ''), sessions),
+        loops: {
+            chainNudgeAt: read.integer(read.section(raw, 'loops', ''), 'chainNudgeAt', 'loops', DEFAULT_LOOPS.chainNudgeAt, CONFIG_LIMITS.chainNudgeAt),
+        },
         alerts: {
             persistentFailureHours: read.integer(alerts, 'persistentFailureHours', 'alerts', DEFAULT_ALERTS.persistentFailureHours, CONFIG_LIMITS.persistentFailureHours),
         },

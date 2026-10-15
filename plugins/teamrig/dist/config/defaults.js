@@ -63,6 +63,7 @@ export const DEFAULT_BUDGET = {
 /** The share of a session the budget's `sessions` map leaves out, or lists without one. */
 export const DEFAULT_SESSION_SHARE = 1;
 export const DEFAULT_ALERTS = { persistentFailureHours: 24 };
+export const DEFAULT_LOOPS = { chainNudgeAt: 6 };
 /** 250k suits a 1M-token window; on a 200k window Claude Code compacts first, so a team there sets about 150k. */
 export const DEFAULT_REFRESH = { enabled: true, contextTokens: 250_000, tabTitle: true };
 export const DEFAULT_OPEN = { terminal: 'auto' };

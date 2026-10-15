@@ -18,6 +18,7 @@ export const CONFIG_LIMITS = {
     forbidFrontmatter: { maxItems: 8, maxLength: 32 },
     requireNoteOn: { maxItems: 5 },
     persistentFailureHours: { min: 1, max: 720 },
+    chainNudgeAt: { min: 0, max: 50 },
     budgetTargetPct: { min: 1, max: 100 },
     budgetReservePct: { min: 0, max: 50 },
     weeklyLimitW: { min: 1_000_000, max: 1_000_000_000_000 },

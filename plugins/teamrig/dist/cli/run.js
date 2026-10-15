@@ -9,6 +9,7 @@ const registerCommands = () => import("./commands/register.js");
 const inboxCommands = () => import("./commands/inbox.js");
 const configCommands = () => import("./commands/config.js");
 const hookCommands = () => import("./commands/hook.js");
+const loopNudgeCommand = () => import("./commands/hook-loop-nudge.js");
 const teamCommands = () => import("./commands/team.js");
 const commitsCommands = () => import("./commands/commits.js");
 const doctorCommands = () => import("./commands/doctor.js");
@@ -66,6 +67,7 @@ const COMMANDS = {
     'commits check': { flags: ['base', 'tip'], load: async () => (await commitsCommands()).check },
     'hook push-guard': { flags: [], load: async () => (await hookCommands()).pushGuard },
     'hook cold-send': { flags: [], load: async () => (await hookCommands()).coldSend },
+    'hook loop-nudge': { flags: [], load: async () => (await loopNudgeCommand()).loopNudge },
     'hook helper-gate': { flags: [], load: async () => (await hookCommands()).helperGateHook },
     'hook inbox-reminder': { flags: [], load: async () => (await hookCommands()).inboxReminder },
     'hook session-start': { flags: [], load: async () => (await hookCommands()).sessionStart },
@@ -136,7 +138,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   config validate | config migrate
   commits check --base <ref> [--tip <ref>]   commits in base..tip (default HEAD) over the size rule
       with no reason line; any is REFUSED, for an integrate script or CI
-  hook push-guard | hook cold-send | hook helper-gate | hook inbox-reminder | hook session-start | hook stop
+  hook push-guard | hook cold-send | hook loop-nudge | hook helper-gate | hook inbox-reminder | hook session-start | hook stop
       (run by Claude Code, hook JSON on stdin)
   launch <id> --team <team> --project <dir> [--home <dir>] [--encoded-prompt <text>]
       (run by the tab that open starts: sets the session and starts Claude Code)
