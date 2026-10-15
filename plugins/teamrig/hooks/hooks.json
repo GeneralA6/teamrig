@@ -1,5 +1,5 @@
 {
-  "description": "teamrig: load the team rules at session start, ask before a push to a protected branch and refuse a force-push or delete of one, hold once a message that would wake an idle session cold, ask before or refuse a helper launch past the daily budget or in quiet hours as the team set, remind a session of unread inbox lines, record a Claude Code rename of the session as its team name, ask for a handover at a task boundary when a context refresh is due, and warn a session past its daily budget.",
+  "description": "teamrig: load the team rules at session start, ask before a push to a protected branch and refuse a force-push or delete of one, hold once a message that would wake an idle session cold, ask before or refuse a helper launch past the daily budget or in quiet hours as the team set, remind a session of unread inbox lines, ask a session once per turn to batch when it runs single-step calls in a row, record a Claude Code rename of the session as its team name, ask for a handover at a task boundary when a context refresh is due, and warn a session past its daily budget.",
   "hooks": {
     "SessionStart": [
       {
@@ -25,6 +25,14 @@
         "matcher": "Agent|Task",
         "hooks": [
           { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "helper-gate"], "timeout": 15 }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Read|Grep|Glob|Bash|PowerShell|Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "loop-nudge"], "timeout": 15 }
         ]
       }
     ],

@@ -66,7 +66,7 @@ const SESSION_ID = '0123abcd-0000-4000-8000-00000000000a';
 /**
  * One payload per hook the plugin runs, by its command (one event can run several), run inside team
  * `smoke`, which has no config: session start says so, the push guard still refuses a force-push of
- * main, the cold-send hook lets a message go, the reminder stays quiet, and the Stop hook prints
+ * main, the cold-send hook lets a message go, the loop nudge and the reminder stay quiet, and the Stop hook prints
  * nothing (any output there would block the turn).
  */
 const SAMPLES: Readonly<Record<string, Sample>> = {
@@ -80,6 +80,10 @@ const SAMPLES: Readonly<Record<string, Sample>> = {
   },
   'hook cold-send': {
     payload: { hook_event_name: 'PreToolUse', session_id: SESSION_ID, tool_name: 'SendMessage', tool_input: { to: 'lead', message: 'hello' } },
+    check: (stdout) => (stdout === '' ? undefined : `expected no output, got ${JSON.stringify(stdout)}`),
+  },
+  'hook loop-nudge': {
+    payload: { hook_event_name: 'PostToolUse', session_id: SESSION_ID, tool_name: 'Read', tool_use_id: 'toolu_1', tool_input: { file_path: 'a.ts' } },
     check: (stdout) => (stdout === '' ? undefined : `expected no output, got ${JSON.stringify(stdout)}`),
   },
   'hook helper-gate': {
