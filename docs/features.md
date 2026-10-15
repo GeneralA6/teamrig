@@ -46,13 +46,13 @@ your machine.
 
 ## Works with
 
-teamrig runs with Claude Code in a terminal today; other AI tools and task trackers come after its first release.
+teamrig runs with Claude Code in a terminal today; other AI tools and more task trackers come after its first release.
 
 | | Today | Planned |
 | --- | --- | --- |
 | AI coding tools | Claude Code | Codex (T204) |
 | Editors | Any terminal Claude Code runs in; `teamrig open` opens tabs in six ([which](setup-by-hand.md#configuration)) | VS Code family, JetBrains |
-| Task tools | Its own task list | Jira, Linear, GitHub Issues, Asana (T206) |
+| Task tools | Its own task list; GitHub issues imported into it, read-only (`teamrig gh sync`) | Jira, Linear, Asana (T206) |
 
 ## How it works
 

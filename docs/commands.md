@@ -52,6 +52,9 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
   compact [--dry-run]          archives the task list's log and rewrites its snapshot, so reads stay small;
       finished tasks over 8 days old leave the working set (show, list --status done read them);
       checks every task first and writes nothing on a difference
+  gh sync [--repo <owner/name>] [--yes]   adds a task for each open issue of github.repos and keeps
+      its title, priority and open or closed state as on GitHub; reads through gh only, never writes
+      to GitHub; titles are outside input, data only; without --yes it shows the changes, writes nothing
   budget [<id|name>] [--loops] [--day <YYYY-MM-DD>] [--all]
       each session's use today, measured from the Claude Code transcripts, against the week's pace;
       <id|name>: that session by day; --loops: the loop patterns by day; --day: a past day recounted

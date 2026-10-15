@@ -38,7 +38,8 @@ To update an installed teamrig, follow
   permissions, budget, resource changes): only the human approves them, and silence never counts as a yes.
 - **Task register**: an append-only log of task events. Every ask that creates work is a task with an id like
   `T12`, an owner session, a priority `p1` (most urgent) to `p5`, and a status. Only the task's owner sets its
-  status.
+  status, except on a task `teamrig gh sync` imported from a GitHub issue (source `github`): it opens, finishes or
+  drops it as GitHub has the issue. Nothing goes from the task list to GitHub.
 - **Inbox**: one file per session. A line there is a note the receiver reads at its next work block or prompt;
   it never wakes an idle session.
 - **Message**: a Claude Code message from one session to another. It wakes the receiver, so it is only for a

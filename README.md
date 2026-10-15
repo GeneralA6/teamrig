@@ -53,6 +53,10 @@ and a force-push to it is refused. A message that would wake an idle member at f
 cheap inbox line can take its place. When a member's context runs long, it writes a handover before a fresh start. Big
 commits are flagged before they land, and everything runs on your machine, with no account and no cloud bill.
 
+Your GitHub issues can join the task list too, one way only: `teamrig gh sync` adds a task for each open issue of the
+repositories you list and keeps its title, priority and open or closed state as on GitHub. It only ever reads GitHub,
+so the tasks your team adds stay on your machine.
+
 ## Just your terminal
 
 teamrig is Claude Code in the terminal you already have: PowerShell, bash or zsh. Each session is a tab, your lead is
