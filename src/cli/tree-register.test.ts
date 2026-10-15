@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readEvents } from '../register/store.ts';
+import { readEvents } from '../register/snapshot.ts';
 import { EVENTS_PATH } from '../testing/cli-harness.ts';
 import { teamEventsOf, treeHarness } from '../testing/team-tree.ts';
 import type { CliHarness } from '../testing/cli-harness.ts';

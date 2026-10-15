@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { foldEvents } from './fold.ts';
-import { isWritable, readEvents } from './store.ts';
+import { isWritable, readEvents } from './snapshot.ts';
 
 /** Golden logs, one per format version: every later release must read them to exactly this state. */
 async function fixture(name: string): Promise<string> {

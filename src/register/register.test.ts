@@ -8,7 +8,8 @@ import { MemoryFiles } from '../testing/memory-files.ts';
 import { EVENT_VERSION } from './events.ts';
 import { RegisterPolicy, type Verdict } from './policy.ts';
 import { Register, type SkillCatalog, type WriteResult } from './register.ts';
-import { JsonlEventLog, readEvents } from './store.ts';
+import { readEvents } from './snapshot.ts';
+import { JsonlEventLog } from './store.ts';
 
 const LOG = 'register/events.jsonl';
 const START = '2030-01-07T09:00:00.000Z';

@@ -3,7 +3,8 @@ import type { Clock, Mutex } from '../core/lock.ts';
 import { EVENT_VERSION, type CreateEvent, type RegisterEvent, type StatusEvent, type TaskFields, type UpdateEvent } from './events.ts';
 import { foldEvents, type RegisterState, type Task } from './fold.ts';
 import { NO_SKILL, type AddInput, type RegisterPolicy, type StatusInput, type Verdict } from './policy.ts';
-import { isWritable, type EventLog, type EventLogRead } from './store.ts';
+import { isWritable, snapshotOf, type RegisterSnapshot } from './snapshot.ts';
+import type { EventLog } from './store.ts';
 
 /** Tells whether a skill exists, so `done --skill <name>` cannot cite one that was never written. */
 export interface SkillCatalog {
@@ -18,11 +19,6 @@ export interface RegisterDeps {
   readonly skills: SkillCatalog;
 }
 
-export interface RegisterSnapshot {
-  readonly state: RegisterState;
-  readonly read: EventLogRead;
-}
-
 export interface WriteResult {
   readonly task: Task;
   readonly event: RegisterEvent;
@@ -30,8 +26,7 @@ export interface WriteResult {
 
 /** The register as it stands, read without the lock, as every read is. */
 export async function readSnapshot(log: EventLog): Promise<RegisterSnapshot> {
-  const read = await log.read();
-  return { state: foldEvents(read.events, read.seenIds), read };
+  return snapshotOf(await log.read());
 }
 
 /**
