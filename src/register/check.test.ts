@@ -4,6 +4,7 @@ import { testConfig } from '../testing/config.ts';
 import { testTask } from '../testing/task.ts';
 import { checkTasks, currentWeek, currentWeekOf, formatFlag } from './check.ts';
 import { readRegister, type RegisterSnapshot } from './snapshot.ts';
+import { waitContext } from './waits.ts';
 
 const NOW = new Date('2030-01-10T12:00:00.000Z');
 const FRESH = '2030-01-10T09:00:00.000Z';
@@ -117,8 +118,8 @@ describe('checkTasks: PRIORITY-SKIP', () => {
     ]);
   });
 
-  it('leaves a blocked p1, another owner\'s p1, a p1 in progress and work that is not in progress alone', () => {
-    assert.deepEqual(skips([{ ...waiting, status: 'blocked' }, working]), []);
+  it('leaves a waiting p1, another owner\'s p1, a p1 in progress and work that is not in progress alone', () => {
+    assert.deepEqual(skips([{ ...waiting, status: 'waiting' }, working]), []);
     assert.deepEqual(skips([{ ...waiting, owner: 'bravo' }, working]), []);
     assert.deepEqual(skips([waiting, { ...working, priority: 1 }]), []);
     assert.deepEqual(skips([waiting, { ...working, status: 'open' }]), []);
@@ -127,7 +128,7 @@ describe('checkTasks: PRIORITY-SKIP', () => {
   it('waits the configured hours after the latest owner, status or priority change of either task', () => {
     const recent = '2030-01-10T00:00:00.000Z';
     assert.deepEqual(skips([{ ...waiting, priorityAt: recent }, working]), [], 'raised to p1 12 h ago');
-    assert.deepEqual(skips([{ ...waiting, statusAt: recent }, working]), [], 'unblocked 12 h ago');
+    assert.deepEqual(skips([{ ...waiting, statusAt: recent }, working]), [], 'back from waiting 12 h ago');
     assert.deepEqual(skips([waiting, { ...working, assignedAt: recent }]), [], 'handed to alpha 12 h ago');
     const quick = testConfig({ register: { check: { prioritySkipAfterHours: 6 } } }).register;
     assert.equal(skips([{ ...waiting, statusAt: recent }, working], quick).length, 1);
@@ -139,10 +140,55 @@ describe('checkTasks: PRIORITY-SKIP', () => {
     assert.match(skips([newer, older, working])[0] ?? '', /^PRIORITY-SKIP \(p1 T3 waits open, skipped since 01-08 10:00\) T2 /);
   });
 
+  it('leaves a p1 planned after a task not finished yet alone, and counts it once that task finished', () => {
+    const first = testTask({ id: 'T3', priority: 2, status: 'open', ...seen, ...since('2030-01-08T09:00:00.000Z') });
+    const planned = { ...waiting, after: ['T3'] };
+    assert.deepEqual(skips([planned, working, first]), []);
+    assert.equal(skips([planned, working, { ...first, status: 'done' }]).length, 1);
+    assert.equal(skips([planned, working]).length, 1, 'a task the read lacks was retired, so finished');
+  });
+
   it('takes the top priority from the config, and skips the flag when the config names none', () => {
     const levels = testConfig({ register: { priorities: [{ id: 2, name: 'now' }, { id: 3, name: 'later' }] } }).register;
     assert.match(skips([{ ...waiting, priority: 2 }, working], levels)[0] ?? '', /^PRIORITY-SKIP \(p2 T1 /);
     assert.deepEqual(skips([waiting, working], { ...CONFIG, priorities: [] }), []);
+  });
+});
+
+describe('checkTasks: READY', () => {
+  const seen = { ownerSeenAt: FRESH, updatedAt: FRESH };
+  const ready = (tasks: Parameters<typeof checkTasks>[0]) =>
+    checkTasks(tasks, NOW, null, CONFIG)
+      .filter((flag) => flag.kind === 'READY')
+      .map((flag) => flag.task.id);
+
+  it('flags a waiting task once every reason cleared: its tasks finished and its time passed', () => {
+    const done = testTask({ id: 'T2', status: 'done', ...seen });
+    const busy = testTask({ id: 'T3', status: 'in-progress', ...seen });
+    const passed = { kind: 'time' as const, at: '2030-01-10 11:00' };
+    const tasks = [
+      testTask({ id: 'T1', status: 'waiting', waits: [{ kind: 'task', id: 'T2' }, passed], ...seen }),
+      testTask({ id: 'T4', status: 'waiting', waits: [{ kind: 'task', id: 'T3' }], ...seen }),
+      testTask({ id: 'T5', status: 'waiting', waits: [{ kind: 'time', at: '2030-01-10 13:00' }], ...seen }),
+      testTask({ id: 'T6', status: 'waiting', waits: [passed, { kind: 'decision', who: 'owner' }], ...seen }),
+      testTask({ id: 'T7', status: 'waiting', ...seen }),
+      testTask({ id: 'T8', status: 'waiting', waits: [{ kind: 'task', id: 'T99' }], ...seen }),
+      done,
+      busy,
+    ];
+    assert.deepEqual(ready(tasks), ['T1', 'T8'], 'a task the read lacks was retired, so finished');
+  });
+
+  it('prints why, with each ready reason marked', () => {
+    const tasks = [
+      testTask({ id: 'T1', status: 'waiting', note: 'needs the export', waits: [{ kind: 'task', id: 'T2' }], ...seen }),
+      testTask({ id: 'T2', status: 'dropped', ...seen }),
+    ];
+    const [flag] = checkTasks(tasks, NOW, null, CONFIG);
+    assert.equal(
+      flag === undefined ? undefined : formatFlag(flag, undefined, waitContext(new Map(tasks.map((task) => [task.id, task])), NOW)),
+      'READY (every reason cleared; set its next status) T1 waiting, p2, owner alpha, from lead | Add a health check (waiting: on T2 ready; needs the export)',
+    );
   });
 });
 
@@ -157,7 +203,7 @@ describe('checkTasks: OFF-GOAL', () => {
       testTask({ id: 'T2', status: 'in-progress', goals: ['G1'], ...seen }),
       testTask({ id: 'T3', status: 'in-progress', week: '2030-01-07', ...seen }),
       testTask({ id: 'T4', ...seen }),
-      testTask({ id: 'T5', status: 'blocked', ...seen }),
+      testTask({ id: 'T5', status: 'waiting', ...seen }),
     ];
     assert.deepEqual(kinds(tasks), ['OFF-GOAL T1']);
     assert.deepEqual(kinds(tasks, null), [], 'no week plan, no week flags');

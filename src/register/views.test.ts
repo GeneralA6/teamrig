@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { testTask } from '../testing/task.ts';
 import type { RegisterEvent } from './events.ts';
 import { byPlanOrder, cut, formatEvent, formatShortTask, formatTask, formatTaskDetail, selectTasks } from './views.ts';
+import { waitContext, type WaitReason } from './waits.ts';
 
 const AT = '2030-01-07T09:00:00.000Z';
 
@@ -22,7 +23,7 @@ describe('byPlanOrder', () => {
 describe('selectTasks', () => {
   const tasks = [
     testTask({ id: 'T1', owner: 'alpha', due: '2030-01-08', week: '2030-01-07', goals: ['G1'] }),
-    testTask({ id: 'T2', owner: 'bravo', status: 'blocked', priority: 1, source: 'owner' }),
+    testTask({ id: 'T2', owner: 'bravo', status: 'waiting', priority: 1, source: 'owner' }),
     testTask({ id: 'T3', owner: 'alpha', status: 'done' }),
   ];
   const ids = (filter: Parameters<typeof selectTasks>[1]) => selectTasks(tasks, filter).map((task) => task.id);
@@ -46,9 +47,11 @@ describe('formatTask', () => {
     const task = testTask({ id: 'T12', due: '2030-01-15', week: '2030-01-13', source: 'owner', goals: ['G1', 'G2'] });
     assert.equal(formatTask(task), 'T12 open, p2, owner alpha, due 01-15, week 01-13, from owner, goals G1,G2 | Add a health check');
     assert.equal(
-      formatTask(testTask({ status: 'blocked', note: 'waiting on disk' })),
-      'T1 blocked, p2, owner alpha, from lead | Add a health check (blocked: waiting on disk)',
+      formatTask(testTask({ status: 'waiting', note: 'waiting on disk' })),
+      'T1 waiting, p2, owner alpha, from lead | Add a health check (waiting: waiting on disk)',
     );
+    assert.equal(formatTask(testTask({ status: 'waiting' })), 'T1 waiting, p2, owner alpha, from lead | Add a health check');
+    assert.equal(formatTask(testTask({ after: ['T5', 'T6'] })), 'T1 open, p2, owner alpha, after T5,T6, from lead | Add a health check');
     assert.equal(
       formatTask(testTask({ status: 'verifying', note: 'the nightly run is green', due: '2030-01-11' })),
       'T1 verifying, p2, owner alpha, due 01-11, from lead | Add a health check (proof: the nightly run is green)',
@@ -58,10 +61,34 @@ describe('formatTask', () => {
   });
 });
 
+describe('formatTask: what a waiting task waits for', () => {
+  const waits: readonly WaitReason[] = [
+    { kind: 'decision', who: 'owner' },
+    { kind: 'approval', who: 'lead' },
+    { kind: 'task', id: 'T304' },
+    { kind: 'time', at: '2030-01-10 13:00' },
+  ];
+  const task = testTask({ status: 'waiting', note: 'the export', waits });
+
+  it('names every reason in plain words, then the note', () => {
+    assert.equal(
+      formatTask(task),
+      'T1 waiting, p2, owner alpha, from lead | Add a health check (waiting: decision owner · approval lead · on T304 · until Thu 01-10 13:00; the export)',
+    );
+  });
+
+  it('marks each reason ready by the read it was printed from', () => {
+    const tasks = new Map([['T304', testTask({ id: 'T304', status: 'done' })]]);
+    assert.match(formatTask(task, undefined, waitContext(tasks, new Date('2030-01-10T13:00:00.000Z'))), /on T304 ready · until Thu 01-10 13:00 ready;/);
+    assert.match(formatTask(task, undefined, waitContext(new Map([['T304', testTask({ status: 'open' })]]), new Date(0))), /on T304 · until Thu/);
+    assert.match(formatShortTask(task, 60, 'web', waitContext(tasks, new Date(0))), /^web\/T1 waiting, p2, owner alpha \| Add a health check \(waiting: decision owner · approval lead · on T304 ready · until Thu 01-10 13:00\)$/);
+  });
+});
+
 describe('formatShortTask and cut', () => {
   it('keeps the id, status, priority, owner and due date, and cuts the title', () => {
-    const task = testTask({ id: 'T12', due: '2030-01-15', week: '2030-01-13', source: 'owner', goals: ['G1'], status: 'blocked', note: 'waiting on disk' });
-    assert.equal(formatShortTask(task, 10), 'T12 blocked, p2, owner alpha, due 01-15 | Add a hea…');
+    const task = testTask({ id: 'T12', due: '2030-01-15', week: '2030-01-13', source: 'owner', goals: ['G1'], status: 'waiting', note: 'waiting on disk', after: ['T3'] });
+    assert.equal(formatShortTask(task, 10), 'T12 waiting, p2, owner alpha, due 01-15, after T3 | Add a hea…');
     assert.equal(formatShortTask(testTask(), 60, 'web'), 'web/T1 open, p2, owner alpha | Add a health check');
   });
 
@@ -80,19 +107,37 @@ describe('formatEvent and formatTaskDetail', () => {
       id: 'T1',
       at: AT,
       by: 'lead',
-      task: { title: 'x', owner: 'alpha', source: 'owner', ref: 'inbox:3', priority: 1, due: '2030-01-08', goals: ['G1'], week: null },
+      task: { title: 'x', owner: 'alpha', source: 'owner', ref: 'inbox:3', priority: 1, due: '2030-01-08', goals: ['G1'], week: null, after: [] },
     },
-    { v: 1, type: 'create', id: 'T2', at: AT, by: 'lead', task: { title: 'y', owner: 'bravo', source: 'lead', ref: null, priority: 2, due: null, goals: [], week: null } },
+    { v: 1, type: 'create', id: 'T2', at: AT, by: 'lead', task: { title: 'y', owner: 'bravo', source: 'lead', ref: null, priority: 2, due: null, goals: [], week: null, after: ['T1'] } },
     { v: 1, type: 'update', id: 'T1', at: '2030-01-07T10:00:00.000Z', by: 'lead', changes: { due: '2030-01-09', goals: ['G1', 'G2'] }, note: 'later' },
     { v: 1, type: 'status', id: 'T1', at: '2030-01-07T11:00:00.000Z', by: 'alpha', status: 'done', note: 'ok', evidence: 'abc1234', skill: 'none' },
+    {
+      v: 2,
+      type: 'status',
+      id: 'T2',
+      at: '2030-01-07T12:00:00.000Z',
+      by: 'bravo',
+      status: 'waiting',
+      note: 'n',
+      evidence: null,
+      skill: null,
+      waits: [
+        { kind: 'decision', who: 'owner' },
+        { kind: 'time', at: '2030-01-09 12:00' },
+      ],
+    },
+    { v: 2, type: 'update', id: 'T2', at: '2030-01-07T13:00:00.000Z', by: 'lead', changes: { after: ['T1', 'T3'] }, note: null },
   ];
 
   it('prints each event type on one line', () => {
     assert.deepEqual(events.map(formatEvent), [
       '2030-01-07 09:00 lead create owner=alpha source=owner priority=p1 ref=inbox:3 due=2030-01-08 goals=G1',
-      '2030-01-07 09:00 lead create owner=bravo source=lead priority=p2',
+      '2030-01-07 09:00 lead create owner=bravo source=lead priority=p2 after=T1',
       '2030-01-07 10:00 lead update due=2030-01-09 goals=G1,G2 note="later"',
       '2030-01-07 11:00 alpha status done note="ok" evidence=abc1234 skill=none',
+      '2030-01-07 12:00 bravo status waiting waits="decision owner · until Wed 01-09 12:00" note="n"',
+      '2030-01-07 13:00 lead update after=T1,T3',
     ]);
   });
 
