@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { SECRET_TOKEN_PATTERNS } from '../../src/core/secret-patterns.ts';
 import { GENERIC_RULES } from './rules.ts';
 import { scanText } from './scan.ts';
 
@@ -66,15 +67,24 @@ describe('generic scrub rules', () => {
       ['github-token', join('ghp', '_', 'a'.repeat(36))],
       ['github-token', join('github', '_pat_', 'b'.repeat(50))],
       ['anthropic-key', join('sk-', 'ant-', 'c'.repeat(40))],
-      ['sk-key', join('sk-', 'd'.repeat(40))],
+      ['sk-key', join('sk-', 'd4'.repeat(20))],
       ['aws-key', join('AKIA', 'ABCDEFGHIJKLMNOP')],
       ['slack-token', join('xoxb', '-', '1'.repeat(12))],
       ['google-key', join('AIza', 'e'.repeat(35))],
+      ['stripe-key', join('sk', '_live_', 'j5'.repeat(12))],
       ['jwt', join('eyJ', 'f'.repeat(10), '.eyJ', 'g'.repeat(10), '.', 'h'.repeat(10))],
       ['assigned-secret', join('password', ': "', 'i'.repeat(16), '"')],
     ];
     for (const [rule, text] of cases) {
       assert.deepEqual(ruleIds(text), [rule], rule);
+    }
+  });
+
+  it('takes every credential shape from the shared secret patterns, unrevealed', () => {
+    for (const shared of SECRET_TOKEN_PATTERNS) {
+      const rule = GENERIC_RULES.find((candidate) => candidate.id === shared.id);
+      assert.equal(rule?.pattern, shared.pattern, shared.id);
+      assert.equal(rule?.revealMatch, false, shared.id);
     }
   });
 
