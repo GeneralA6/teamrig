@@ -5,8 +5,10 @@ import { testConfig } from '../testing/config.ts';
 import {
   CONTEXT_MAX_CHARS,
   CORE_PACK_MAX_CHARS,
+  LEAD_RULES_MAX_CHARS,
   LIST_MAX_CHARS,
   renderCorePack,
+  renderLeadRules,
   renderSessionContext,
   TEAM_RULES_MAX_CHARS,
   type TeamRules,
@@ -30,6 +32,7 @@ function worstCaseConfig() {
       requireNoteOn: Array.from({ length: CONFIG_LIMITS.requireNoteOn.maxItems }, () => 'in-progress'),
       requireEvidenceOnDone: true,
       requireSkillOnDone: true,
+      ownerSource: longest('o', 32),
     },
     skills: {
       sharedPrefix: longest('s', 32),
@@ -46,6 +49,20 @@ function worstCaseConfig() {
     alerts: { persistentFailureHours: CONFIG_LIMITS.persistentFailureHours.max },
   });
 }
+
+describe('renderLeadRules', () => {
+  it('fits its budget with every printed value at its worst case', () => {
+    const lines = renderLeadRules(worstCaseConfig(), COMMAND);
+    assert.ok(lines.length <= LEAD_RULES_MAX_CHARS, `${lines.length} > ${LEAD_RULES_MAX_CHARS}`);
+  });
+
+  it("names what reaches the owner, the owner's orders as tasks, and plans from the register", () => {
+    const lines = renderLeadRules(testConfig({ register: { ownerSource: 'boss' } }), COMMAND);
+    assert.match(lines, /^As the lead, also:\n- Bring the owner only verified results,/);
+    assert.match(lines, /`teamrig add --owner <id> --source boss` \[register\.ownerSource\]/);
+    assert.match(lines, /`teamrig plan` and run `teamrig check` at each checkpoint, never from memory\.$/);
+  });
+});
 
 describe('renderCorePack', () => {
   it('fits its budget with every printed value at its worst case', () => {
