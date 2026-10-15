@@ -93,12 +93,17 @@ renames nothing. If the `.teamrig.json` pointer is broken it says so in one line
 Before Claude runs a Bash or PowerShell command, the guard reads it and decides:
 
 - **Runs as usual**: no `git push` in it, a `--dry-run`, or a push that updates no protected branch
-  (`main` and `master` by default [pushGuard.protectedBranches]).
-- **Asks the human**: a push that updates a protected branch, `--force-with-lease` included. The reason:
+  (`main` and `master` by default [pushGuard.protectedBranches]; an empty list guards nothing, mirrors included).
+- **Asks the human**: a push that updates a protected branch. The reason:
   "This push updates a protected branch (main, master) while other sessions may be working. Confirm, or push your
-  own branch and rebase it onto the current one." Commits over the size rule (400 changed non-test lines or 15
+  own branch and rebase it onto the current one. To stop asking about normal pushes, set pushGuard.pushToProtected
+  to allow in the team's config.json." Commits over the size rule (400 changed non-test lines or 15
   files without a `Large-commit:` line) are listed with it; with `commits.gate: refuse` they turn the ask into a
-  refusal.
+  refusal. A `--force-with-lease` push is asked with its own reason, which does not name the switch.
+- **Runs with a note**, when `pushGuard.pushToProtected` is `allow`: a normal push to a protected branch, with
+  "teamrig did not ask about this push to a protected branch (main, master): pushGuard.pushToProtected is allow."
+  and any large commits listed; Claude Code's own permissions still decide. `--force-with-lease` and doubts still
+  ask, refusals stay, and `commits.gate: refuse` still refuses large commits.
 - **Refuses**: a force-push (`--force`, a `+` refspec), a delete or `--mirror` of a protected branch:
   "Force-pushing, mirroring or deleting a protected branch (main, master) is refused: it can overwrite other
   sessions' commits. Push your own branch, or use --force-with-lease if you truly mean it."
