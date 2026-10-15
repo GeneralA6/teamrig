@@ -15,8 +15,8 @@ export const GITHUB_SOURCE = 'github';
 export const GITHUB_ACTOR = 'github';
 /** The statuses the import sets on its own tasks: an issue's open state, or how it was closed. */
 export const GITHUB_STATUSES = ['open', 'done', 'dropped'];
-/** Fields the lead may change on a task someone else owns. */
-export const LEAD_FIELDS = ['owner', 'priority', 'due', 'week'];
+/** Fields the lead may change on a task someone else owns: who does it, how urgent, when and in what order. */
+export const LEAD_FIELDS = ['owner', 'priority', 'due', 'week', 'after'];
 /** How `--waits` is typed, for the refusals that ask for it. */
 export const WAITS_USAGE = 'decision:<who>, approval:<who>, task:T<id> or time:<YYYY-MM-DD HH:MM>, comma-separated';
 function ok(value) {
