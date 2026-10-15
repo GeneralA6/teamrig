@@ -169,7 +169,13 @@
             "staleAfterHours": { "type": "integer", "minimum": 1, "default": 72 },
             "notPickedUpAfterHours": { "type": "integer", "minimum": 1, "default": 24 },
             "prioritySkipAfterHours": { "type": "integer", "minimum": 1, "default": 24 },
-            "weekLengthDays": { "type": "integer", "minimum": 1, "maximum": 31, "default": 7 }
+            "weekLengthDays": { "type": "integer", "minimum": 1, "maximum": 31, "default": 7 },
+            "stopgapFiles": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1, "maxLength": 260 },
+              "maxItems": 20,
+              "default": ["CLAUDE.md", ".claude/rules"]
+            }
           }
         }
       }

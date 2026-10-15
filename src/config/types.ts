@@ -24,6 +24,11 @@ export interface RegisterCheckConfig {
   /** A session's in-progress task below its own open top-priority task this long is a PRIORITY-SKIP. */
   readonly prioritySkipAfterHours: number;
   readonly weekLengthDays: number;
+  /**
+   * The files `check` scans for `stopgap T<id>` tags besides every skill: paths relative to the team's project
+   * folder, or absolute; a path ending in `.md` is one file, any other a folder whose `.md` files are read.
+   */
+  readonly stopgapFiles: readonly string[];
 }
 
 export interface RegisterConfig {
