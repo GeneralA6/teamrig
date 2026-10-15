@@ -1,5 +1,6 @@
-import { join, resolve } from 'node:path';
-import { splitCommands, stripHeredocs, type ShellDialect } from './shell.ts';
+import { BranchMoves, type BranchView } from './branch-moves.ts';
+import { findGitInvocations, type GitConfigReader, type GitInvocation } from './invocations.ts';
+import type { ShellDialect, ShellWord } from './tokenizer.ts';
 
 /** `allow` emits nothing, so Claude Code's normal permission flow decides. */
 export type PushDecision = 'allow' | 'ask' | 'deny';
@@ -10,20 +11,28 @@ interface PushFlags {
   dryRun: boolean;
   all: boolean;
   mirror: boolean;
+  prune: boolean;
+  help: boolean;
 }
 
-/** One `git push` invocation: where it runs, its flags, and its remote and refspecs. */
+/** One push (`git push`, `git send-pack`, `git http-push`, `git subtree push`): where it runs, its flags, its remote and refspecs. */
 export interface PushCommand extends Readonly<PushFlags> {
-  readonly dir: string;
-  readonly positionals: readonly string[];
+  /** Undefined when the folder is only known when the line runs. */
+  readonly dir: string | undefined;
+  readonly remote: ShellWord | undefined;
+  readonly refspecs: readonly ShellWord[];
+  /** True when `-c`, `--config-env` or a `GIT_CONFIG*` variable may change where a bare push goes. */
+  readonly configOverride: boolean;
+  /** True for a `send-pack` or `http-push` with no refs, which pushes the matching branches. */
+  readonly matching: boolean;
 }
 
 /** What the guard asks a repository; the hook asks git, tests pass a fake. */
-export interface RepoState {
+export interface RepoState extends GitConfigReader {
   /** The checked-out branch in `dir`, or undefined when git cannot tell. */
   branch(dir: string): string | undefined;
-  /** The remote branch a bare `git push` in `dir` updates, such as `origin/main`, if any. */
-  pushTarget(dir: string): string | undefined;
+  /** The remote branch a bare `git push` of `branch` (by default the checked-out one) in `dir` updates, such as `origin/main`, if any. */
+  pushTarget(dir: string, branch?: string): string | undefined;
 }
 
 export interface GuardContext {
@@ -47,92 +56,166 @@ export interface ProtectedUpdate {
 /** The decision on a whole command line, with the protected updates behind an `ask`. */
 export interface PushVerdict {
   readonly decision: PushDecision;
-  /** Empty unless the decision is `ask`; `--all` lists none, since what it sends depends on the remote. */
+  /** Empty unless the decision is `ask`; `--all` and a doubt list none, since what they send is not known. */
   readonly updates: readonly ProtectedUpdate[];
+  /** Set only when the guard asks because it cannot read part of the line with confidence: why, as {@link doubtReason} words it. */
+  readonly doubt?: string;
 }
 
-const GIT_OPTIONS_WITH_VALUE = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace']);
-const PUSH_OPTIONS_WITH_VALUE = new Set(['-o', '--push-option', '--repo', '--receive-pack', '--exec']);
-const CD_COMMANDS = new Set(['cd', 'pushd', 'set-location', 'sl', 'chdir']);
+/** `git push` long options, so an abbreviation (`--dry`, `--mirr`) reads as git reads it. */
+const PUSH_LONG_OPTIONS: readonly string[] = [
+  'all', 'branches', 'mirror', 'delete', 'tags', 'dry-run', 'porcelain', 'force', 'force-with-lease', 'force-if-includes', 'repo',
+  'set-upstream', 'thin', 'receive-pack', 'exec', 'progress', 'prune', 'no-verify', 'verify', 'follow-tags', 'signed', 'atomic',
+  'push-option', 'ipv4', 'ipv6', 'recurse-submodules', 'quiet', 'verbose', 'help',
+];
+/** Long options whose value may be the next word. */
+const PUSH_VALUED: ReadonlySet<string> = new Set(['repo', 'receive-pack', 'exec', 'push-option']);
 /** `--force-with-lease` is deliberately absent: a leased push to a protected branch only asks. */
-const LONG_FLAGS = new Map<string, keyof PushFlags>([
-  ['--force', 'force'],
-  ['--delete', 'delete'],
-  ['--dry-run', 'dryRun'],
-  ['--all', 'all'],
-  ['--branches', 'all'],
-  ['--mirror', 'mirror'],
+const LONG_FLAGS: ReadonlyMap<string, keyof PushFlags> = new Map<string, keyof PushFlags>([
+  ['force', 'force'],
+  ['delete', 'delete'],
+  ['dry-run', 'dryRun'],
+  ['all', 'all'],
+  ['branches', 'all'],
+  ['mirror', 'mirror'],
+  ['prune', 'prune'],
+  ['help', 'help'],
 ]);
-const SHORT_FLAGS = new Map<string, keyof PushFlags>([
+const SHORT_FLAGS: ReadonlyMap<string, keyof PushFlags> = new Map<string, keyof PushFlags>([
   ['f', 'force'],
   ['d', 'delete'],
   ['n', 'dryRun'],
+  ['h', 'help'],
 ]);
+const SEND_PACK_FLAGS: ReadonlyMap<string, keyof PushFlags> = new Map<string, keyof PushFlags>([
+  ['--all', 'all'],
+  ['--force', 'force'],
+  ['--dry-run', 'dryRun'],
+  ['--mirror', 'mirror'],
+]);
+/** `git subtree` options whose value may be the next word. */
+const SUBTREE_VALUED: ReadonlySet<string> = new Set(['-P', '--prefix', '-m', '--message', '-b', '--branch', '--onto']);
+/** The ways to name the checked-out branch inside `$( )` or backticks, which read as `HEAD`. */
+const CURRENT_BRANCH_QUERY = String.raw`\s*git\s+(?:branch\s+--show-current|rev-parse\s+--abbrev-ref\s+HEAD|symbolic-ref\s+(?:-q\s+)?--short\s+(?:-q\s+)?HEAD)\s*`;
+const CURRENT_BRANCH = new RegExp(String.raw`\$\(${CURRENT_BRANCH_QUERY}\)|` + '`' + CURRENT_BRANCH_QUERY + '`', 'g');
 
-const isGit = (word: string): boolean => /(^|[\\/])git(\.exe)?$/i.test(word);
-const isAssignment = (word: string): boolean => /^[A-Za-z_][A-Za-z0-9_]*=/.test(word);
+const NO_FLAGS: PushFlags = { force: false, delete: false, dryRun: false, all: false, mirror: false, prune: false, help: false };
+const NO_WORD: ShellWord = { text: '', dynamic: false };
 
-/** Resolves a `cd` target against the current folder; `~` is the home folder and `-` is ignored. */
-export function resolveDir(current: string, target: string | undefined, home: string): string {
-  if (target === undefined || target === '' || target === '-') {
-    return current;
+/** The long option a word names, as git's option parser reads an unambiguous abbreviation; `negated` for `--no-x`. */
+function longOption(name: string): { readonly option: string; readonly negated: boolean } | undefined {
+  const match = (candidate: string): string | undefined => {
+    if (PUSH_LONG_OPTIONS.includes(candidate)) {
+      return candidate;
+    }
+    const found = PUSH_LONG_OPTIONS.filter((option) => option.startsWith(candidate));
+    return found.length === 1 ? found[0] : undefined;
+  };
+  const direct = match(name);
+  if (direct !== undefined) {
+    return { option: direct, negated: false };
   }
-  const expanded = target === '~' || target.startsWith('~/') ? join(home, target.slice(1)) : target;
-  return resolve(current, expanded);
+  const negated = name.startsWith('no-') ? match(name.slice(3)) : undefined;
+  return negated === undefined ? undefined : { option: negated, negated: true };
 }
 
-/** Reads one simple command; undefined unless it is a `git push`. */
-export function parsePush(words: readonly string[], cwd: string, home: string): PushCommand | undefined {
-  let index = 0;
-  while (isAssignment(words[index] ?? '')) {
-    index += 1;
-  }
-  if (!isGit(words[index] ?? '')) {
-    return undefined;
-  }
-  index += 1;
-  let dir = cwd;
-  while ((words[index] ?? '').startsWith('-')) {
-    const option = words[index] ?? '';
-    if (option === '-C') {
-      dir = resolveDir(dir, words[index + 1], home);
-    }
-    index += GIT_OPTIONS_WITH_VALUE.has(option) ? 2 : 1;
-  }
-  if (words[index] !== 'push') {
-    return undefined;
-  }
-  const flags: PushFlags = { force: false, delete: false, dryRun: false, all: false, mirror: false };
-  const positionals: string[] = [];
+function readPushArgs(invocation: GitInvocation): PushCommand {
+  const { args } = invocation;
+  const flags: PushFlags = { ...NO_FLAGS };
+  const positionals: ShellWord[] = [];
   let endOfOptions = false;
-  for (index += 1; index < words.length; index += 1) {
-    const arg = words[index] ?? '';
-    if (endOfOptions || !arg.startsWith('-') || arg === '-') {
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index] ?? NO_WORD;
+    const text = arg.text;
+    if (endOfOptions || arg.dynamic || !text.startsWith('-') || text === '-') {
       positionals.push(arg);
-    } else if (arg === '--') {
+    } else if (text === '--') {
       endOfOptions = true;
-    } else if (PUSH_OPTIONS_WITH_VALUE.has(arg)) {
-      index += 1;
-    } else if (arg.startsWith('--')) {
-      const flag = LONG_FLAGS.get(arg.split('=')[0] ?? '');
-      if (flag !== undefined) {
-        flags[flag] = true;
+    } else if (text.startsWith('--')) {
+      const equals = text.indexOf('=');
+      const named = longOption(equals === -1 ? text.slice(2) : text.slice(2, equals));
+      if (named !== undefined && !named.negated && PUSH_VALUED.has(named.option) && equals === -1) {
+        index += 1;
+      }
+      const flag = named === undefined ? undefined : LONG_FLAGS.get(named.option);
+      if (named !== undefined && flag !== undefined) {
+        flags[flag] = !named.negated;
       }
     } else {
-      for (const letter of arg.slice(1)) {
-        const flag = SHORT_FLAGS.get(letter);
+      for (let at = 1; at < text.length; at += 1) {
+        if (text.charAt(at) === 'o') {
+          // -o takes a value: the rest of this word, else the next word.
+          index += at + 1 === text.length ? 1 : 0;
+          break;
+        }
+        const flag = SHORT_FLAGS.get(text.charAt(at));
         if (flag !== undefined) {
           flags[flag] = true;
         }
       }
     }
   }
-  return { dir, ...flags, positionals };
+  const [remote, ...refspecs] = positionals;
+  return { dir: invocation.dir, ...flags, remote, refspecs, configOverride: invocation.configOverride, matching: false };
 }
 
-/** Strips `refs/heads/` and a remote-tracking prefix such as `refs/remotes/origin/`. */
+/** `git send-pack` and `git http-push`: `--all`, `--force`, `--mirror`, `--stdin`; with no refs they push the matching branches. */
+function readSendPack(invocation: GitInvocation): PushCommand {
+  const flags: PushFlags = { ...NO_FLAGS };
+  const positionals: ShellWord[] = [];
+  let stdin = false;
+  for (const arg of invocation.args) {
+    const flag = arg.dynamic ? undefined : SEND_PACK_FLAGS.get(arg.text);
+    if (flag !== undefined) {
+      flags[flag] = true;
+    } else if (arg.text === '--stdin') {
+      stdin = true;
+    } else if (arg.dynamic || !arg.text.startsWith('-')) {
+      positionals.push(arg);
+    }
+  }
+  const [remote, ...refs] = positionals;
+  const refspecs = stdin ? [...refs, { text: '<stdin>', dynamic: true }] : refs;
+  return { dir: invocation.dir, ...flags, remote, refspecs, configOverride: invocation.configOverride, matching: refspecs.length === 0 };
+}
+
+/** `git subtree push --prefix=<dir> <remote> <branch>`, which pushes a split history to `<branch>`. */
+function readSubtreePush(invocation: GitInvocation): PushCommand | undefined {
+  const operands: ShellWord[] = [];
+  const { args } = invocation;
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index] ?? NO_WORD;
+    if (!arg.dynamic && arg.text.startsWith('-')) {
+      index += SUBTREE_VALUED.has(arg.text) ? 1 : 0;
+    } else {
+      operands.push(arg);
+    }
+  }
+  const [command, remote, branch] = operands;
+  if (command?.text !== 'push' || branch === undefined) {
+    return undefined;
+  }
+  return { dir: invocation.dir, ...NO_FLAGS, remote, refspecs: [branch], configOverride: invocation.configOverride, matching: false };
+}
+
+/** Reads a git command as a push; undefined for any other command. */
+export function parsePush(invocation: GitInvocation): PushCommand | undefined {
+  switch (invocation.subcommand) {
+    case 'push':
+      return readPushArgs(invocation);
+    case 'send-pack':
+    case 'http-push':
+      return readSendPack(invocation);
+    case 'subtree':
+      return readSubtreePush(invocation);
+    default:
+      return undefined;
+  }
+}
+
+/** Strips `refs/heads/`, `heads/` and a remote-tracking prefix such as `refs/remotes/origin/`. */
 function branchName(ref: string | undefined): string {
-  return (ref ?? '').replace(/^refs\/heads\//, '').replace(/^refs\/remotes\/[^/]+\//, '');
+  return (ref ?? '').replace(/^(?:refs\/)?heads\//, '').replace(/^refs\/remotes\/[^/]+\//, '');
 }
 
 interface Refspec {
@@ -150,102 +233,205 @@ function readRefspec(refspec: string): Refspec {
   return { plus, source: colon === -1 ? spec : spec.slice(0, colon), destination: colon === -1 ? spec : spec.slice(colon + 1) };
 }
 
-/** The remote branch a push with no refspec updates: its push target, else the branch of the same name. */
-function bareTarget(push: PushCommand, repo: RepoState): string | undefined {
-  const pushTarget = repo.pushTarget(push.dir);
-  return pushTarget === undefined ? repo.branch(push.dir) : pushTarget.replace(/^[^/]+\//, '');
+/** A refspec only known when it runs reads as `HEAD` when it only names the checked-out branch; else undefined. */
+function currentBranchIdiom(text: string): string | undefined {
+  const replaced = text.replace(CURRENT_BRANCH, 'HEAD');
+  return replaced !== text && !/[$`]/.test(replaced) ? replaced : undefined;
 }
 
-/** The branch a refspec destination names; `HEAD` is the checked-out branch. */
-function destinationBranch(destination: string, push: PushCommand, repo: RepoState): string {
-  return branchName(destination === 'HEAD' ? repo.branch(push.dir) : destination);
+/** True when a destination, which may be a glob such as `*`, covers a protected branch. */
+function coversProtected(destination: string, protectedBranches: ReadonlySet<string>): boolean {
+  if (!destination.includes('*')) {
+    return protectedBranches.has(destination);
+  }
+  const escaped = destination.split('*').map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&'));
+  const pattern = new RegExp(`^${escaped.join('.*')}$`);
+  return [...protectedBranches].some((branch) => pattern.test(branch));
 }
 
-/** Decides one push: deny a force, mirror or delete of a protected branch, ask before any other push to one. */
-export function judgePush(push: PushCommand, repo: RepoState, protectedBranches: ReadonlySet<string>): PushDecision {
-  if (push.dryRun) {
-    return 'allow';
+/** The decision on one push. */
+interface Judgement {
+  readonly decision: PushDecision;
+  readonly updates: readonly ProtectedUpdate[];
+  readonly doubt?: string;
+}
+
+const ALLOW: Judgement = { decision: 'allow', updates: [] };
+const DENY: Judgement = { decision: 'deny', updates: [] };
+const ASK_UNLISTED: Judgement = { decision: 'ask', updates: [] };
+const askInDoubt = (doubt: string): Judgement => ({ decision: 'ask', updates: [], doubt });
+/** A variable in the remote's place may hold several words (`$ARGS` = `origin main`), refspecs and force flags included. */
+const DYNAMIC_REMOTE = 'its remote is only known when it runs, and may carry refspecs or flags';
+/** `-c remote.<name>.push=...` or a GIT_CONFIG file can map a bare push, or a refspec with no `:<dst>`, onto any remote branch. */
+const CONFIG_OVERRIDE = 'a -c option or GIT_CONFIG variable can change where it pushes';
+
+/** The checked-out branch as the line's view sees it; `unknown` when the line moved it beyond reading. */
+type CurrentBranch = { readonly kind: 'known'; readonly name: string | undefined } | { readonly kind: 'unknown' };
+
+/** Judges one push: deny a force, mirror or delete of a protected branch, ask before any other push to one, and ask when in doubt. */
+class PushJudge {
+  private readonly repo: RepoState;
+  private readonly protectedBranches: ReadonlySet<string>;
+
+  constructor(repo: RepoState, protectedBranches: ReadonlySet<string>) {
+    this.repo = repo;
+    this.protectedBranches = protectedBranches;
   }
-  if (push.mirror) {
-    return 'deny';
-  }
-  if (push.all) {
-    return push.force ? 'deny' : 'ask';
-  }
-  const isProtected = (ref: string | undefined): boolean => protectedBranches.has(branchName(ref));
-  const refspecs = push.positionals.slice(1);
-  if (refspecs.length === 0) {
-    if (!isProtected(bareTarget(push, repo))) {
-      return 'allow';
+
+  judge(push: PushCommand, view: BranchView): Judgement {
+    if (push.help || push.dryRun) {
+      return ALLOW;
     }
-    return push.force ? 'deny' : 'ask';
-  }
-  let decision: PushDecision = 'allow';
-  for (const { plus, source, destination } of refspecs.map(readRefspec)) {
-    if (!protectedBranches.has(destinationBranch(destination, push, repo))) {
-      continue;
+    if (push.mirror) {
+      return DENY;
     }
-    if (plus || push.force || push.delete || source === '') {
-      return 'deny';
+    if (push.all || push.matching) {
+      return push.force || push.prune ? DENY : ASK_UNLISTED;
     }
-    decision = 'ask';
+    if (push.refspecs.length > 0) {
+      return this.explicit(push, view);
+    }
+    return push.dir === undefined ? askInDoubt('the folder it runs in is only known when it runs') : this.bare(push, push.dir, view);
   }
-  return decision;
+
+  private current(dir: string | undefined, view: BranchView): CurrentBranch {
+    if (view.kind === 'branch') {
+      return { kind: 'known', name: view.branch };
+    }
+    return view.kind === 'repo' && dir !== undefined ? { kind: 'known', name: this.repo.branch(dir) } : { kind: 'unknown' };
+  }
+
+  /** The local ref a push sends as `HEAD`, for listing its commits; undefined when that ref only exists once the line runs. */
+  private headSource(view: BranchView): string | undefined {
+    if (view.kind === 'repo') {
+      return 'HEAD';
+    }
+    return view.kind === 'branch' && view.target === 'read' ? view.branch : undefined;
+  }
+
+  /** A push with no refspec: it updates the branch's push target, else the branch of the same name. */
+  private bare(push: PushCommand, dir: string, view: BranchView): Judgement {
+    if (push.remote?.dynamic === true) {
+      return askInDoubt(DYNAMIC_REMOTE);
+    }
+    if (push.configOverride) {
+      return askInDoubt(CONFIG_OVERRIDE);
+    }
+    const pushDefault = this.repo.config(dir, 'push.default');
+    if (pushDefault.kind === 'set' && pushDefault.value.trim().toLowerCase() === 'matching') {
+      return push.force || push.prune ? DENY : ASK_UNLISTED;
+    }
+    if (view.kind === 'unknown' || (view.kind === 'branch' && view.target === 'unknown')) {
+      return askInDoubt('an earlier command in the line changes the branch or its upstream');
+    }
+    const pushTarget = view.kind === 'branch' && view.target === 'same' ? undefined : this.repo.pushTarget(dir, view.kind === 'branch' ? view.branch : undefined);
+    const local = view.kind === 'branch' ? view.branch : this.repo.branch(dir);
+    const target = branchName(pushTarget === undefined ? local : pushTarget.replace(/^[^/]+\//, ''));
+    if (!this.protectedBranches.has(target)) {
+      return ALLOW;
+    }
+    if (push.force) {
+      return DENY;
+    }
+    const via = push.remote === undefined ? (pushTarget?.split('/')[0] ?? 'origin') : push.remote.dynamic ? undefined : push.remote.text;
+    const source = this.headSource(view);
+    return { decision: 'ask', updates: via === undefined || source === undefined ? [] : [{ dir, base: `${via}/${target}`, source }] };
+  }
+
+  /** A push with refspecs: each destination that is (or, as a glob, covers) a protected branch asks, or denies when forced or deleted. */
+  private explicit(push: PushCommand, view: BranchView): Judgement {
+    let asked = false;
+    let doubt: string | undefined = push.remote?.dynamic === true ? DYNAMIC_REMOTE : undefined;
+    const updates: ProtectedUpdate[] = [];
+    const remote = push.remote === undefined || push.remote.dynamic ? undefined : push.remote.text;
+    for (let index = 0; index < push.refspecs.length; index += 1) {
+      const word = push.refspecs[index] ?? NO_WORD;
+      if (!word.dynamic && word.text === 'tag') {
+        index += 1;
+        continue;
+      }
+      const text = word.dynamic ? currentBranchIdiom(word.text) : word.text;
+      if (text === undefined) {
+        doubt ??= 'a refspec is only known when it runs';
+        continue;
+      }
+      if (text === ':' || text === '+:') {
+        // `:` pushes every branch the remote also has, protected ones included.
+        if (push.force || push.prune || text.startsWith('+')) {
+          return DENY;
+        }
+        asked = true;
+        continue;
+      }
+      const { plus, source, destination } = readRefspec(text);
+      const named = branchName(destination);
+      const target = named === 'HEAD' || named === '@' ? this.current(push.dir, view) : { kind: 'known' as const, name: named };
+      if (target.kind === 'unknown') {
+        doubt ??= push.dir === undefined ? 'the folder it runs in is only known when it runs' : 'an earlier command in the line changes the branch HEAD names';
+        continue;
+      }
+      const branch = branchName(target.name);
+      if (!coversProtected(branch, this.protectedBranches)) {
+        if (push.configOverride && !text.includes(':')) {
+          doubt ??= CONFIG_OVERRIDE;
+        }
+        continue;
+      }
+      if (plus || push.force || push.delete || source === '' || (push.prune && branch.includes('*'))) {
+        return DENY;
+      }
+      asked = true;
+      const sent = source === 'HEAD' || source === '@' ? this.headSource(view) : source;
+      if (push.dir !== undefined && !branch.includes('*') && remote !== undefined && sent !== undefined) {
+        updates.push({ dir: push.dir, base: `${remote}/${branch}`, source: sent });
+      }
+    }
+    if (asked) {
+      return { decision: 'ask', updates };
+    }
+    return doubt === undefined ? ALLOW : askInDoubt(doubt);
+  }
 }
 
 /**
- * The protected branches a push updates, each with the ref it sends there, for a push the guard
- * asks about. `--all`, `--mirror` and a dry run list none.
- */
-export function protectedUpdates(push: PushCommand, repo: RepoState, protectedBranches: ReadonlySet<string>): ProtectedUpdate[] {
-  if (push.dryRun || push.mirror || push.all) {
-    return [];
-  }
-  const [remote, ...refspecs] = push.positionals;
-  if (refspecs.length === 0) {
-    const target = branchName(bareTarget(push, repo));
-    const via = remote ?? repo.pushTarget(push.dir)?.split('/')[0] ?? 'origin';
-    return protectedBranches.has(target) ? [{ dir: push.dir, base: `${via}/${target}`, source: 'HEAD' }] : [];
-  }
-  return refspecs.map(readRefspec).flatMap(({ source, destination }) => {
-    const target = destinationBranch(destination, push, repo);
-    return source !== '' && protectedBranches.has(target) ? [{ dir: push.dir, base: `${remote ?? 'origin'}/${target}`, source }] : [];
-  });
-}
-
-/**
- * Judges a whole Bash or PowerShell command line: the strictest decision among its real
- * `git push` commands, and for an `ask` what each asked push updates. Text in quotes, comments
- * and heredocs is never read as a command, and `cd`, `Set-Location` and `git -C` move the folder
- * a bare push is resolved in.
+ * Judges a whole Bash or PowerShell command line: the strictest decision among the pushes it runs, and for an
+ * `ask` what each asked push updates. The line is read as its shell would (see `findGitInvocations`): text in
+ * quotes, comments and heredocs is never a command, `cd` and `git -C` move the folder, wrappers and nested
+ * shells are seen through, and git aliases are expanded. A branch change earlier in the line (`git checkout
+ * main && git push`) is followed (see `BranchMoves`). When part of the line cannot be read with confidence, the
+ * guard asks: always for a push it cannot read, and for anything else it cannot read when the line says `push`.
  */
 export function evaluatePushes(command: string, context: GuardContext): PushVerdict {
-  if (!/\bpush\b/.test(command)) {
+  const protectedBranches = new Set(context.protectedBranches);
+  const found = findGitInvocations(command, { cwd: context.cwd, home: context.home, dialect: context.dialect, git: context.repo });
+  const moves = new BranchMoves(protectedBranches);
+  const judge = new PushJudge(context.repo, protectedBranches);
+  let asked = false;
+  let doubt: string | undefined;
+  const updates: ProtectedUpdate[] = [];
+  for (const invocation of found.invocations) {
+    const push = parsePush(invocation);
+    if (push !== undefined) {
+      const judgement = judge.judge(push, push.dir === undefined ? { kind: 'unknown' } : moves.view(push.dir));
+      if (judgement.decision === 'deny') {
+        return { decision: 'deny', updates: [] };
+      }
+      if (judgement.decision === 'ask' && judgement.doubt === undefined) {
+        asked = true;
+        updates.push(...judgement.updates);
+      }
+      doubt ??= judgement.doubt;
+    }
+    moves.observe(invocation);
+  }
+  if (asked) {
+    return { decision: 'ask', updates };
+  }
+  if (protectedBranches.size === 0) {
     return { decision: 'allow', updates: [] };
   }
-  const protectedBranches = new Set(context.protectedBranches);
-  let dir = context.cwd;
-  let decision: PushDecision = 'allow';
-  const updates: ProtectedUpdate[] = [];
-  for (const words of splitCommands(stripHeredocs(command), context.dialect)) {
-    if (CD_COMMANDS.has((words[0] ?? '').toLowerCase())) {
-      dir = resolveDir(dir, words.slice(1).find((word) => !word.startsWith('-')), context.home);
-      continue;
-    }
-    const push = parsePush(words, dir, context.home);
-    if (push === undefined) {
-      continue;
-    }
-    const verdict = judgePush(push, context.repo, protectedBranches);
-    if (verdict === 'deny') {
-      return { decision: 'deny', updates: [] };
-    }
-    if (verdict === 'ask') {
-      decision = 'ask';
-      updates.push(...protectedUpdates(push, context.repo, protectedBranches));
-    }
-  }
-  return { decision, updates };
+  doubt ??= found.doubts.find((candidate) => !candidate.gated || found.mentionsPush)?.reason;
+  return doubt === undefined ? { decision: 'allow', updates: [] } : { decision: 'ask', updates: [], doubt };
 }
 
 /** Why the guard stopped a push, naming the team's protected branches. */
@@ -254,4 +440,9 @@ export function decisionReason(decision: Exclude<PushDecision, 'allow'>, protect
   return decision === 'deny'
     ? `Force-pushing, mirroring or deleting a protected branch (${branches}) is refused: it can overwrite other sessions' commits. Push your own branch, or use --force-with-lease if you truly mean it.`
     : `This push updates a protected branch (${branches}) while other sessions may be working. Confirm, or push your own branch and rebase it onto the current one.`;
+}
+
+/** Why the guard asks about a command line it cannot read with confidence, naming the team's protected branches. */
+export function doubtReason(doubt: string, protectedBranches: readonly string[]): string {
+  return `The guard cannot tell whether this command pushes to a protected branch (${protectedBranches.join(', ')}): ${doubt}. Confirm, or write the push out plainly.`;
 }

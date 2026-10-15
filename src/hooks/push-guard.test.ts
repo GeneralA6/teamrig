@@ -5,6 +5,7 @@ import { DEFAULT_COMMITS } from '../config/defaults.ts';
 import type { CommitGate } from '../config/types.ts';
 import { isRecord } from '../core/guards.ts';
 import type { CommitStat } from '../push-guard/commit-size.ts';
+import type { ConfigValue } from '../push-guard/invocations.ts';
 import type { RepoState } from '../push-guard/push.ts';
 import { testConfig } from '../testing/config.ts';
 import { commitsOf, protectedBranchesOf, pushGuardOutput, type PushGuardEnv } from './push-guard.ts';
@@ -12,7 +13,8 @@ import { commitsOf, protectedBranchesOf, pushGuardOutput, type PushGuardEnv } fr
 function fakeRepo(branch: string) {
   return {
     branch: mock.fn((_dir: string): string | undefined => branch),
-    pushTarget: mock.fn((_dir: string): string | undefined => undefined),
+    pushTarget: mock.fn((_dir: string, _branch?: string): string | undefined => undefined),
+    config: mock.fn((_dir: string, _key: string): ConfigValue => ({ kind: 'unset' })),
   } satisfies RepoState;
 }
 
@@ -59,11 +61,24 @@ describe('pushGuardOutput', () => {
   it("resolves a bare push in the payload's folder, else the hook's own", () => {
     const withCwd = env('main');
     pushGuardOutput(payload('git push'), withCwd);
-    assert.equal(withCwd.repo.branch.mock.calls[0]?.arguments[0], '/work/app');
+    assert.equal(withCwd.repo.branch.mock.calls[0]?.arguments[0], resolve('/work/app'));
 
     const without = env('main');
     pushGuardOutput({ tool_name: 'Bash', tool_input: { command: 'git -C sub push' } }, without);
     assert.equal(without.repo.branch.mock.calls[0]?.arguments[0], resolve('/fallback', 'sub'));
+  });
+
+  it('asks, saying what it cannot read, about a push it cannot read with confidence', () => {
+    for (const command of ['git -C "$REPO" push', 'cd "$REPO" && git push', "bash -c 'git push origin feature", 'git push $ARGS']) {
+      const output = pushGuardOutput(payload(command), env());
+      assert.equal(decisionOf(output), 'ask', command);
+      assert.match(output, /The guard cannot tell whether this command pushes to a protected branch \(main\): .+\. Confirm, or write the push out plainly\./, command);
+    }
+  });
+
+  it('runs a PowerShell call operator and a cmd /c line through the same rules', () => {
+    assert.equal(decisionOf(pushGuardOutput(payload("& 'C:\\Program Files\\Git\\cmd\\git.exe' push origin main", { tool_name: 'PowerShell' }), env())), 'ask');
+    assert.equal(decisionOf(pushGuardOutput(payload('cmd /c "git push -f origin main"', { tool_name: 'PowerShell' }), env())), 'deny');
   });
 });
 
@@ -101,8 +116,8 @@ describe('pushGuardOutput: the commits gate', () => {
     assert.deepEqual(
       between.mock.calls.map((call) => call.arguments),
       [
-        ['/work/app', 'origin/main', 'HEAD'],
-        ['/work/app', 'origin/main', 'feature'],
+        [resolve('/work/app'), 'origin/main', 'HEAD'],
+        [resolve('/work/app'), 'origin/main', 'feature'],
       ],
     );
   });

@@ -23,6 +23,38 @@ describe('GIT_CLI', () => {
     const missing = join(tmpdir(), 'teamrig-no-such-folder');
     assert.equal(GIT_CLI.branch(missing), undefined);
     assert.equal(GIT_CLI.pushTarget(missing), undefined);
+    assert.deepEqual(GIT_CLI.config(missing, 'alias.ship'), { kind: 'unreadable' });
+  });
+
+  it('reads a config key as set or unset', () => {
+    const repo = new TempRepo('git-config').init();
+    try {
+      repo.git('config', 'alias.ship', 'push origin main');
+      assert.deepEqual(GIT_CLI.config(repo.dir, 'alias.ship'), { kind: 'set', value: 'push origin main' });
+      assert.deepEqual(GIT_CLI.config(repo.dir, 'alias.teamrig-never-set'), { kind: 'unset' });
+    } finally {
+      repo.remove();
+    }
+  });
+
+  it('reads the push target of a named branch as well as of the checked-out one', () => {
+    const repo = new TempRepo('git-push-target').init();
+    try {
+      repo.git('commit', '-q', '--allow-empty', '-m', 'Base');
+      repo.git('branch', '-M', 'main');
+      repo.git('config', 'push.default', 'simple');
+      repo.git('config', 'remote.origin.url', repo.outside);
+      repo.git('config', 'remote.origin.fetch', '+refs/heads/*:refs/remotes/origin/*');
+      repo.git('update-ref', 'refs/remotes/origin/main', 'HEAD');
+      repo.git('branch', '--set-upstream-to=origin/main', 'main');
+      assert.equal(GIT_CLI.pushTarget(repo.dir), 'origin/main');
+      repo.git('switch', '-q', '-c', 'feature');
+      assert.equal(GIT_CLI.pushTarget(repo.dir, 'main'), 'origin/main');
+      assert.equal(GIT_CLI.pushTarget(repo.dir), undefined);
+      assert.equal(GIT_CLI.pushTarget(repo.dir, '-main'), undefined);
+    } finally {
+      repo.remove();
+    }
   });
 });
 
