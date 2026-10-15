@@ -66,6 +66,8 @@ export interface TeamPaths {
   readonly refresh: string;
   /** The handover notes a session writes before a refresh, `<id>.md` each. */
   readonly handover: string;
+  /** The model notices each session's Stop hook already showed, `<id>.json` each. */
+  readonly modelNotices: string;
 }
 
 /** The team's folder. The id is checked here too, since it becomes part of a path. */
@@ -98,5 +100,6 @@ export function teamPaths(kitHome: string, team: string, userHome: string, overr
     skills: inHome(overrides.skills) ?? join(userHome, '.claude', 'skills'),
     refresh: join(state, 'refresh'),
     handover: inHome(overrides.handover) ?? join(home, 'handover'),
+    modelNotices: join(state, 'model-notices'),
   };
 }

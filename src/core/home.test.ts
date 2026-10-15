@@ -48,6 +48,7 @@ describe('teamPaths', () => {
     assert.equal(paths.skills, join(USER_HOME, '.claude', 'skills'));
     assert.equal(paths.refresh, join(TEAM_HOME, 'state', 'refresh'));
     assert.equal(paths.handover, join(TEAM_HOME, 'handover'));
+    assert.equal(paths.modelNotices, join(TEAM_HOME, 'state', 'model-notices'));
   });
 
   it('never shares a file between two teams', () => {
