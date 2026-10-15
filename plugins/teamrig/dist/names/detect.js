@@ -1,3 +1,4 @@
+import { titleKey } from "../core/ids.js";
 import { checkRename, recordRename } from "./record.js";
 /**
  * Records the title the user gave session `id` in Claude Code as the session's own rename; its id is
@@ -6,11 +7,12 @@ import { checkRename, recordRename } from "./record.js";
  * on every prompt takes the lock only to record.
  */
 export async function adoptTitle(deps, roster, id, title) {
-    if (title === id) {
+    const name = titleKey(title);
+    if (name === id) {
         // The id always names the session, so a tab titled by its id (to bind it) keeps the session's name.
         return { kind: 'unchanged' };
     }
-    const request = { id, to: title, by: id };
+    const request = { id, to: name, by: id };
     const check = checkRename(roster, request);
     if (check.kind === 'unchanged') {
         return { kind: 'unchanged' };

@@ -1,11 +1,13 @@
 import { formatAddress } from "../core/address.js";
+import { titleKey } from "../core/ids.js";
 import { indexMarks, MARK_VERSION } from "../inbox/marks.js";
 /**
- * The sessions of `roster` whose id or current name is exactly `title`. A former name binds nothing:
+ * The sessions of `roster` whose id or current name is `title`, whatever its case (`titleKey`). A former name binds nothing:
  * the title rename that follows would give the session that old name back.
  */
 export function sessionsTitled(roster, title) {
-    return roster.ids.filter((id) => id === title || roster.nameOf(id) === title);
+    const key = titleKey(title);
+    return roster.ids.filter((id) => id === key || roster.nameOf(id) === key);
 }
 /**
  * The mark that binds `claudeSession` to `area`: the area's newest read position (line, last line's
