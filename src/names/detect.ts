@@ -13,11 +13,16 @@ export type TitleOutcome =
   | { readonly kind: 'failed'; readonly error: string };
 
 /**
- * Records the title the user gave session `id` in Claude Code as the session's own rename. The
+ * Records the title the user gave session `id` in Claude Code as the session's own rename; its id is
+ * no rename, since a tab may be titled by its id to bind it (hooks/bind.ts). The
  * roster read without the lock settles the common cases, the same name or a refused one, so a hook
  * on every prompt takes the lock only to record.
  */
 export async function adoptTitle(deps: RenameDeps, roster: Roster, id: string, title: string): Promise<TitleOutcome> {
+  if (title === id) {
+    // The id always names the session, so a tab titled by its id (to bind it) keeps the session's name.
+    return { kind: 'unchanged' };
+  }
   const request = { id, to: title, by: id };
   const check = checkRename(roster, request);
   if (check.kind === 'unchanged') {
