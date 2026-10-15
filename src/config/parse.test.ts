@@ -20,6 +20,7 @@ describe('parseConfig', () => {
     assert.equal(config.configVersion, 1);
     assert.equal(config.messages.maxLines, 10);
     assert.equal(config.messages.coldAfterMinutes, 60);
+    assert.deepEqual(config.loops, { chainNudgeAt: 6 });
     assert.deepEqual(config.register, DEFAULT_REGISTER);
     assert.deepEqual(config.budget, DEFAULT_BUDGET);
     assert.deepEqual(config.coordinator.schedule, {});
@@ -107,6 +108,13 @@ describe('parseConfig', () => {
     const { config, issues } = parseConfig({ ...ROSTER, messages: { coldAfterMinutes: 1441 } });
     assert.deepEqual(paths(issues), ['messages.coldAfterMinutes']);
     assert.equal(config.messages.coldAfterMinutes, 60);
+  });
+
+  it('reads loops.chainNudgeAt, where 0 turns the nudge off, and refuses a value past 50', () => {
+    assert.equal(parseConfig({ ...ROSTER, loops: { chainNudgeAt: 0 } }).config.loops.chainNudgeAt, 0);
+    const { config, issues } = parseConfig({ ...ROSTER, loops: { chainNudgeAt: 51 } });
+    assert.deepEqual(paths(issues), ['loops.chainNudgeAt']);
+    assert.equal(config.loops.chainNudgeAt, 6);
   });
 
   it('reports every wrong field with its path and falls back to the default', () => {

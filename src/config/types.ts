@@ -103,6 +103,15 @@ export interface MessagesConfig {
   readonly coldAfterMinutes: number;
 }
 
+/** Loop discipline inside a turn. */
+export interface LoopsConfig {
+  /**
+   * After this many single-tool calls in a row in one turn, the session gets one line asking it to batch
+   * independent steps into one message; 0 never asks.
+   */
+  readonly chainNudgeAt: number;
+}
+
 export interface CommitsConfig {
   /** Changed non-test lines (added + deleted) a commit may carry without a reason line. */
   readonly maxLines: number;
@@ -314,6 +323,7 @@ export interface KitConfig {
   readonly commits: CommitsConfig;
   readonly coordinator: CoordinatorConfig;
   readonly budget: BudgetConfig;
+  readonly loops: LoopsConfig;
   readonly alerts: AlertsConfig;
   readonly tabStatus: { readonly enabled: boolean };
   readonly refresh: RefreshConfig;
