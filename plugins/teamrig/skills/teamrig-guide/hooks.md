@@ -1,0 +1,107 @@
+# Hooks and permissions
+
+The plugin's `hooks/hooks.json` registers four Claude Code hooks. Each runs
+`node <plugin>/dist/cli/main.js hook <name>` with a 15 second timeout. Outside a project tied to a team (no `$TEAMRIG_TEAM` and no `.teamrig.json`)
+they all stay silent.
+
+| Claude Code event | teamrig hook | What it does |
+| --- | --- | --- |
+| `SessionStart` (startup, resume, `/clear`, compact) | `hook session-start` | Injects the team rules and who you are |
+| `UserPromptSubmit` (each prompt) | `hook inbox-reminder` | Reminds you of unread inbox lines; records a Claude Code rename |
+| `PreToolUse` on `Bash` and `PowerShell` | `hook push-guard` | Asks before a push to a protected branch; refuses a force-push or delete of one |
+| `Stop` (end of each turn) | `hook stop` | Asks for a handover when a context refresh is due |
+
+## Session start
+
+The injected context holds:
+
+1. **The core rules**: numbered rules starting `# Team rules (teamrig core)`, with the team's own values in
+   them and the config key behind each value in `[brackets]`. `teamrig rules --session <id>` prints the same
+   text.
+2. **Who you are**. A known session, found from its last `inbox read` rather than `$TEAMRIG_SESSION`:
+
+   ```text
+   You are the `web` session of team `shop` (name `shop-web`). $TEAMRIG_SESSION is not set here, so pass --session web to every `teamrig` task and inbox command. Message the lead as `shop-lead`.
+   `teamrig who` prints the name to message any session by; message only those names.
+   ```
+
+   An unknown session:
+
+   ```text
+   No session is set ($TEAMRIG_SESSION): ask the user which session you are (`teamrig who` lists them) and pass --session <id> to every `teamrig` task and inbox command. Message the lead as `shop-lead`.
+   ```
+3. **The tree of teams**, when the team has a parent or children: whom to escalate to, and for a lead with
+   sub-teams, how to read and hand them tasks.
+4. **Notes**: a config with problems or from a newer teamrig; a recorded rename.
+5. **The team's own `rules.md`**, when it exists. Where it or the project's CLAUDE.md conflicts with the core
+   rules, they win.
+6. **After a refresh**: `You were refreshed after T2; read your handover first: <path>`, once, at the first
+   `/clear` or new start after the handover was written. A compact or resume keeps the old context, so the
+   note waits.
+7. **A model check**: when the session runs on another model or effort than its `launch` entry in the team
+   config, a line such as `MODEL shop-web runs model sonnet at high effort; the team config asks for model opus at
+   xhigh effort: type /model opus and /effort xhigh`. It is also shown to the user, who alone can change them. It
+   never blocks.
+
+The session is found from `$TEAMRIG_SESSION`, else from the area this Claude Code session last ran
+`teamrig inbox read --session <area>` as. A brand-new tab teamrig did not open has neither, so it is told to ask.
+
+## Each prompt
+
+When your inbox has unread lines, one line is added to your prompt:
+
+```text
+INBOX: 2 unread line(s) in /home/you/.teamrig/teams/shop/state/inbox/web.md since 10-15 08:58. Read them with: teamrig inbox read --session web
+```
+
+Run the command it names. The same hook notices when the user renamed this Claude Code session (`/rename` or
+`--name`) and records the new name as the session's team name, as `teamrig rename` would. If the
+`.teamrig.json` pointer is broken it says so in one line.
+
+## Before a shell command: the push guard
+
+Before Claude runs a Bash or PowerShell command, the guard reads it and decides:
+
+- **Runs as usual**: no `git push` in it, a `--dry-run`, or a push that updates no protected branch
+  (`main` and `master` by default [pushGuard.protectedBranches]).
+- **Asks the human**: a push that updates a protected branch, `--force-with-lease` included. The reason:
+  "This push updates a protected branch (main, master) while other sessions may be working. Confirm, or push your
+  own branch and rebase it onto the current one." Commits over the size rule (400 changed non-test lines or 15
+  files without a `Large-commit:` line) are listed with it; with `commits.gate: refuse` they turn the ask into a
+  refusal.
+- **Refuses**: a force-push (`--force`, a `+` refspec), a delete or `--mirror` of a protected branch:
+  "Force-pushing, mirroring or deleting a protected branch (main, master) is refused: it can overwrite other
+  sessions' commits. Push your own branch, or use --force-with-lease if you truly mean it."
+- **Asks, in doubt**: when it cannot read part of the line (an unclosed quote, a branch or alias only known when
+  the line runs): "The guard cannot tell whether this command pushes to a protected branch (...): <why>. Confirm,
+  or write the push out plainly."
+
+What to do: push your own branch and merge through a pull request, or write the push out plainly so the guard
+can read it. Never route around a refusal; report it to the lead. The guard reads chains, subshells, nested shells,
+wrappers and git aliases, but it does not see a push inside a script or program the command runs, `gh pr merge`,
+git extensions, or pushes run outside Claude Code. It is a guard against mistakes, not a sandbox: protect the
+branch on your git host too.
+
+## End of a turn: context refresh
+
+After a turn in which you set a task done, the Stop hook measures your context from the transcript. At or over
+`refresh.contextTokens` (250,000 by default; about 150,000 suits a 200k window), or when the lead asked with
+`teamrig refresh <id>`, it keeps you going with one instruction: write your handover to
+`<home>/teams/<team>/handover/<id>.md`, then run `teamrig refresh --ready --session <id>`, and start nothing new.
+After `--ready`, the next turn's end tells the user `teamrig: shop-web finished T2 and wrote its handover; type
+/clear for a fresh start` and sets the tab title to `shop-web: type /clear`. Each finished task is judged once, so
+it never loops. Steps: [workflows.md](workflows.md#handover-at-high-context). `refresh.enabled: false` turns it
+off.
+
+## Permissions
+
+teamrig never edits Claude Code's permission or auto-mode settings, and it adds no allow rules.
+
+- **Auto mode**: no settings entry is needed. In a hand test on Claude Code 2.1.300 with no user settings at all,
+  the auto-mode classifier allowed every teamrig command it was given (43 calls: creating a team, adding and
+  setting tasks, inbox lines, reads and lists, from Bash and from PowerShell, whether the user named the command or
+  the session chose it from the team rules): none was denied or asked.
+- **Default mode**: not tested. Claude Code asks before a shell command it has no allow rule for; any allow rule
+  is yours to add.
+- **The push guard** asks or refuses on its own, whatever the mode: a push to a protected branch always asks the
+  human.
