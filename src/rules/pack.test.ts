@@ -53,10 +53,12 @@ describe('renderCorePack', () => {
     assert.ok(pack.length <= CORE_PACK_MAX_CHARS, `${pack.length} > ${CORE_PACK_MAX_CHARS}`);
   });
 
-  it('has each session work its list in order, record self-made work and stop when it loops or drifts', () => {
+  it('has each session work its list in order, gate self-made work and repeating runs, and stop when it loops or drifts', () => {
     const pack = renderCorePack(testConfig(), COMMAND);
-    assert.match(pack, /^5\. Work your own task list in priority order \(`teamrig list --session <you>`\); self-made work is a task too, recorded with `teamrig add` before you start it\./m);
-    assert.match(pack, /When you notice you are looping \(the same step again, no progress\) or drifting from your task, stop and ask the lead\.$/m);
+    assert.match(pack, /^5\. Work your own task list in priority order \(`teamrig list --session <you>`\); self-made work is a task too, recorded with `teamrig add` before you start it,/m);
+    assert.match(pack, /and started only for a goal, a parent task or the week plan, never ahead of your top task that is not waiting \(one-commit fixes exempt\)\./);
+    assert.match(pack, /A loop, cron or scheduled wake-up needs the lead's OK and a written stop\./);
+    assert.match(pack, /If you repeat a step with no progress or drift from your task, stop and ask the lead\.$/m);
   });
 
   it('keeps messages for what the receiver acts on now and sends reports and failed sends to the inbox', () => {
