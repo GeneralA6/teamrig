@@ -68,11 +68,18 @@ export type RegisterEvent = CreateEvent | StatusEvent | UpdateEvent;
 
 export type EventParse =
   | { readonly kind: 'event'; readonly event: RegisterEvent }
-  /** Written by a newer release: kept on disk, skipped by this code, and it blocks writes. */
+  /**
+   * Written by a newer release: a line in a newer format, or a status event naming a status this code does
+   * not know. Kept on disk and skipped by this code, so its task keeps the status read before it; a newer
+   * format blocks every write, and any newer line blocks a rotation, which would drop it (rotate.ts).
+   */
   | { readonly kind: 'newer' }
   | { readonly kind: 'unreadable'; readonly reason: string };
 
 const WEEK = /^\d{4}-\d{2}-\d{2}$/;
+
+/** How a status is spelled (`in-progress`): a well-spelled one this code does not know is a newer teamrig's. */
+const STATUS_NAME = /^[a-z]+(?:-[a-z]+)*$/;
 
 /** Parses one JSONL record. Unknown extra fields are ignored so later minor additions stay readable. */
 export function parseEvent(line: JsonlRecord): EventParse {
@@ -92,7 +99,7 @@ export function parseEvent(line: JsonlRecord): EventParse {
     case 'status': {
       const status = record['status'];
       if (!isTaskStatus(status)) {
-        return unreadable(`unknown status ${JSON.stringify(status)}`);
+        return typeof status === 'string' && STATUS_NAME.test(status) ? { kind: 'newer' } : unreadable(`unknown status ${JSON.stringify(status)}`);
       }
       const problem = textProblem(record, ['note', 'evidence', 'skill']);
       if (problem !== undefined) {

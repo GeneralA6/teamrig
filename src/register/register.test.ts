@@ -129,6 +129,16 @@ describe('Register', () => {
     assert.equal(files.get(LOG), newer);
   });
 
+  it('writes beside a status from a newer teamrig, keeps the line and skips archiving the log', async () => {
+    const created = { v: EVENT_VERSION, type: 'create', id: 'T1', at: START, by: 'lead', task: { title: 'x', owner: 'alpha', source: 'owner', ref: null, priority: 1, due: null, goals: [], week: null } };
+    const future = { v: EVENT_VERSION, type: 'status', id: 'T1', at: START, by: 'alpha', status: 'paused', note: 'n' };
+    const text = `${JSON.stringify(created)}\n${JSON.stringify(future)}\n`;
+    const { files, register } = setup({ [LOG]: text });
+    const result = written(await register.setStatus('alpha', 'T1', { status: 'in-progress' }));
+    assert.equal(result.task.status, 'in-progress');
+    assert.ok(files.get(LOG)?.startsWith(text));
+  });
+
   it('reads a snapshot without the lock', async () => {
     const { mutex, register } = setup();
     written(await register.add('lead', { title: 'Ship it', owner: 'alpha', source: 'owner', priority: 1 }));
