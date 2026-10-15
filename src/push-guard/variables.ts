@@ -94,17 +94,16 @@ export function resolveLiteralVariables(parsed: ShellParse): readonly ShellComma
  * assigned in any other form (`NAME=x cmd`, `NAME+=`, `{NAME}>`, a value with a substitution or a tilde, a
  * `for` loop's variable, a binding inside a compound command or after `!`) is not resolved; anything that can
  * set variables unseen (see {@link UNSAFE_PROGRAMS}, a program a variable names that is not known or is one of
- * those, array elements, IFS, and what {@link ShellParse.bindingsUnclear} flags) leaves the whole line unresolved. A value holds at a later command only when that command surely runs after
- * the statement, in the same shell; a variable in a value gives what it held when the statement ran.
+ * those, array elements, IFS, and what {@link ShellParse.bindingsUnclear} flags) leaves the whole line
+ * unresolved. A value holds at a later command only when that command surely runs after the statement, in the
+ * same shell or in a subshell started after it; a variable in a value gives what it held when the statement ran.
  */
 class LiteralBindings {
   private readonly commands: readonly ShellCommand[];
-  private readonly links: readonly Link[];
   private readonly bound: ReadonlyMap<string, Bound>;
 
   private constructor(commands: readonly ShellCommand[], bound: ReadonlyMap<string, Bound>) {
     this.commands = commands;
-    this.links = commands.map((command) => linkOf(command.terminator));
     this.bound = bound;
   }
 
@@ -155,68 +154,91 @@ class LiteralBindings {
   }
 
   /**
-   * True when the binding statement at `from` has surely run, in the same shell, whenever the command at `to`
-   * runs. The commands of a substitution between them are passed over: they run in a subshell of their own,
-   * so they set nothing here, and the command that holds them carries the link to the next one.
+   * True when the binding statement at `from` has surely run whenever the command at `to` runs: in the same
+   * shell, or in a subshell (a `( )` group or a substitution) started after it, which starts with a copy of
+   * its variables. Read on the list the statement's shell runs (see {@link listItems}).
    */
   private reaches(from: number, to: number): boolean {
     const statement = this.commands[from];
-    if (statement === undefined || this.links[from] === 'pipe') {
+    const target = this.commands[to];
+    if (statement === undefined || target === undefined || !runsInside(target, statement)) {
       return false;
     }
-    const path: number[] = [];
-    for (let index = from; index < to; index += 1) {
-      if ((this.commands[index]?.nesting ?? 0) <= statement.nesting) {
-        path.push(index);
-      }
-    }
-    if (path.some((index) => !sameShell(statement, this.commands[index]) || this.links[index] === 'other') || !sameShell(statement, this.commands[to])) {
+    const items = listItems(this.commands, statement);
+    const start = items.findIndex((item) => item.last === from);
+    const end = items.findIndex((item) => item.first <= to && to <= item.last);
+    const between = start < 0 || end <= start ? [] : items.slice(start, end).map((item) => item.link);
+    // A pipeline runs each of its commands in a subshell of its own.
+    if (between.length === 0 || between[0] === 'pipe' || between.includes('other')) {
       return false;
     }
-    const between = path.map((index) => this.links[index]);
-    if (this.startsList(from)) {
+    if (startsList(items, start)) {
       // It runs whenever its list does, and that list must not be a background job.
       return between.find((link) => link === 'sequence' || link === 'background') !== 'background';
     }
-    return this.insideAndList(from) && between.every((link) => link === 'and' || link === 'pipe');
+    return insideAndList(items, start) && between.every((link) => link === 'and' || link === 'pipe');
   }
+}
 
-  /** True when the command at `index` starts a list: first in the line or in a `( )` group, or after `;`, `&` or a newline. */
-  private startsList(index: number): boolean {
-    const previous = this.previous(index);
-    const before = previous === undefined ? undefined : this.commands[previous];
-    if (previous === undefined || before === undefined || opensGroup(before.terminator)) {
-      return true;
+/** One item of the list a shell runs: a command with the substitutions it holds, or a whole `( )` group. */
+interface ListItem {
+  /** The first command it covers: the first of its substitutions, which come before the command holding them. */
+  readonly first: number;
+  readonly last: number;
+  /** How it hands over to the next item; for a group, the link after its `)`. */
+  readonly link: Link;
+  /** The subshell a `( )` group opens. */
+  readonly group?: number;
+}
+
+/**
+ * The list the shell `shell` runs in sits in, in order: each of its own commands, with the substitutions it holds,
+ * and each `( )` group inside it as one item. A group keeps the nesting of the shell around it while a
+ * substitution adds one, which tells them apart.
+ */
+function listItems(commands: readonly ShellCommand[], shell: ShellCommand): readonly ListItem[] {
+  const depth = shell.subshells.length;
+  const inside = [...commands.entries()].filter(([, command]) => runsInside(command, shell));
+  const groups = new Set(inside.flatMap(([, command]) => (command.nesting === shell.nesting ? command.subshells.slice(depth, depth + 1) : [])));
+  const items: ListItem[] = [];
+  let held: number | undefined;
+  for (const [index, command] of inside) {
+    const child = command.subshells[depth];
+    const link = linkOf(command.terminator);
+    const previous = items.at(-1);
+    if (child !== undefined && !groups.has(child)) {
+      held ??= index;
+    } else if (child !== undefined && previous?.group === child) {
+      items[items.length - 1] = { ...previous, last: index, link };
+    } else {
+      items.push(child === undefined ? { first: held ?? index, last: index, link } : { first: held ?? index, last: index, link, group: child });
+      held = undefined;
     }
-    const link = this.links[previous];
-    return sameShell(before, this.commands[index]) && (link === 'sequence' || link === 'background');
   }
+  return items;
+}
 
-  /** True when the command at `from` follows `&&` and every link back to the start of its list is `&&` or a pipe. */
-  private insideAndList(from: number): boolean {
-    let index = this.previous(from);
-    if (index === undefined || this.links[index] !== 'and') {
-      return false;
-    }
-    while (index !== undefined && sameShell(this.commands[index], this.commands[from]) && (this.links[index] === 'and' || this.links[index] === 'pipe')) {
-      if (this.startsList(index)) {
-        return true;
-      }
-      index = this.previous(index);
-    }
+/** True when the item at `at` starts a list: first in its shell, or after `;`, `&` or a newline. */
+function startsList(items: readonly ListItem[], at: number): boolean {
+  const link = items[at - 1]?.link;
+  return link === undefined || link === 'sequence' || link === 'background';
+}
+
+/** True when the item at `at` follows `&&` and every link back to the start of its list is `&&` or a pipe. */
+function insideAndList(items: readonly ListItem[], at: number): boolean {
+  if (items[at - 1]?.link !== 'and') {
     return false;
   }
-
-  /** The command before the one at `index` in its own list: the nearest earlier one not inside a deeper substitution. */
-  private previous(index: number): number | undefined {
-    const nesting = this.commands[index]?.nesting ?? 0;
-    for (let at = index - 1; at >= 0; at -= 1) {
-      if ((this.commands[at]?.nesting ?? 0) <= nesting) {
-        return at;
-      }
+  for (let index = at - 1; index >= 0; index -= 1) {
+    const link = items[index]?.link;
+    if (link !== 'and' && link !== 'pipe') {
+      return false;
     }
-    return undefined;
+    if (startsList(items, index)) {
+      return true;
+    }
   }
+  return false;
 }
 
 /**
@@ -614,17 +636,23 @@ function dropText(parts: readonly WordPart[], count: number): readonly WordPart[
   return left === 0 ? kept : undefined;
 }
 
+/**
+ * How a command hands over to the next one, read from its terminator without the parentheses of the `( )`
+ * groups it closes or opens. A bare `)` gives no link, since what follows the group (a redirection holding a
+ * substitution) is not read; `()` declares a function.
+ */
 function linkOf(terminator: string): Link {
-  const operator = terminator.replace(/\n+$/, '');
+  const bare = terminator.includes('()') ? terminator : terminator.replace(/[()]/g, '');
+  const operator = bare.replace(/\n+$/, '');
   if (operator === '') {
-    return terminator === '' ? 'other' : 'sequence';
+    return bare === '' ? 'other' : 'sequence';
   }
   return OPERATOR_LINKS.get(operator) ?? 'other';
 }
 
-/** True when a terminator ends by opening a `( )` group, so the next command is the first inside it. */
-function opensGroup(terminator: string): boolean {
-  return terminator.replace(/\n+$/, '').endsWith('(');
+/** True when `command` runs in the shell `shell` runs in, or in a subshell started inside it. */
+function runsInside(command: ShellCommand, shell: ShellCommand): boolean {
+  return shell.subshells.every((id, at) => command.subshells[at] === id);
 }
 
 /** True when two commands run in the same bash shell: the same chain of subshells. */

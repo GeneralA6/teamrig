@@ -71,6 +71,27 @@ describe('resolveLiteralVariables: what resolves', () => {
     }
   });
 
+  it('follows the binding into the subshells started after it, which start with a copy of its variables', () => {
+    for (const line of [
+      'B=feat; (git push origin $B)',
+      'B=feat; (cd sub && git push origin $B)',
+      'B=feat; ( (git push origin $B) )',
+      'B=feat; (cd sub); git push origin $B',
+      'B=feat\n(cd sub)\ngit push origin $B',
+      'B=feat && (true) && git push origin $B',
+      'B=feat; (true) || git push origin $B',
+      'B=feat; (sleep 1) & git push origin $B',
+      'B=feat; (cd sub) > out; git push origin $B',
+      '(cd sub; B=feat; (true); git push origin $B)',
+    ]) {
+      assert.equal(pushCommand(line), 'git push origin feat', line);
+    }
+    for (const line of ['B=feat; echo "$(git push origin $B)"', 'B=feat; (echo `git push origin $B`)', 'B=feat; diff <(git push origin $B) x']) {
+      const push = resolveLiteralVariables(parseShell(line, 'bash')).find((command) => command.words[0]?.text === 'git');
+      assert.equal(push?.words.map((word) => word.text).join(' '), 'git push origin feat', line);
+    }
+  });
+
   it('reads heredoc bodies as input and quoted text as text', () => {
     for (const line of [
       'B=feat; cat <<EOF\nx\nEOF\ngit push origin $B',
@@ -304,8 +325,9 @@ describe('resolveLiteralVariables: what stays unresolved', () => {
       'false || false && B=feat; git push origin $B',
       '(B=feat); git push origin $B',
       '(true) && B=feat; git push origin $B',
-      'B=feat; (git push origin $B)',
-      'B=feat; echo $(git push origin $B)',
+      '(true) > $(echo out) || B=feat; git push origin $B',
+      'B=feat & (git push origin $B)',
+      'B=feat | (git push origin $B)',
       'git push origin $B; B=feat',
       'B=feat | true $(date); git push origin $B',
       '[ "$(git rev-parse HEAD)" = x ] || B=feat && git push origin $B',
