@@ -2,10 +2,9 @@ import { launchOf } from '../../config/launch.ts';
 import { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { errorMessage, isRecord, stringField, type JsonRecord } from '../../core/guards.ts';
-import { ENV, KIT_NAME } from '../../core/home.ts';
+import { KIT_NAME } from '../../core/home.ts';
 import { resolveTeam, type TeamResolution } from '../../core/team.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
-import { indexMarks } from '../../inbox/marks.ts';
 import { boundPromptNote, boundStartNote } from '../../hooks/bind.ts';
 import { modelCheckLine, payloadEffortOf } from '../../hooks/model-check.ts';
 import { ModelNoticeStore } from '../../hooks/model-notices.ts';
@@ -30,8 +29,7 @@ import { bindHintOnce, bindTab, inboxLinesFor, readTitle, type TitleRead } from 
 import { helperGateOutput, promptBudgetLine, stopBudgetLines } from './hook-budget.ts';
 import { startAutoSync } from './gh-auto.ts';
 import { coldSendHold } from './hook-cold-send.ts';
-import { parseJson, sessionTeam } from './hook-input.ts';
-import { inboxDepsOf } from './inbox.ts';
+import { envSession, markedSessionOf, parseJson, sessionTeam, teamSessionOf } from './hook-input.ts';
 import { verifyByLinesOf, verifyNoteOf } from './verify-queue.ts';
 
 /**
@@ -76,39 +74,6 @@ export async function pushGuard(args: ParsedArgs, runtime: CliRuntime): Promise<
     runtime.out.stdout(output);
   }
   return EXIT.ok;
-}
-
-/** `$TEAMRIG_SESSION` as Claude Code passed it to the hook; undefined when unset or blank. */
-function envSession(runtime: CliRuntime): string | undefined {
-  const session = runtime.env[ENV.session]?.trim();
-  return session === '' ? undefined : session;
-}
-
-/**
- * The team session a hook runs for: `$TEAMRIG_SESSION` when it is set (an id or any name the
- * session has had), else the area this Claude Code session last read its inbox as.
- */
-async function teamSessionOf(runtime: CliRuntime, kit: Kit, roster: Roster, claudeSession: string | null): Promise<string | undefined> {
-  const session = envSession(runtime);
-  if (session !== undefined) {
-    const found = roster.lookup(session);
-    return found.ok ? found.id : undefined;
-  }
-  return markedSessionOf(runtime, kit, roster, claudeSession);
-}
-
-/**
- * The area this Claude Code session last read its inbox as, or was bound to by its title, when it is
- * on the roster. It is how a tab started without `$TEAMRIG_SESSION`, such as the one that set the team
- * up, stays its session.
- */
-async function markedSessionOf(runtime: CliRuntime, kit: Kit, roster: Roster, claudeSession: string | null): Promise<string | undefined> {
-  if (claudeSession === null) {
-    return undefined;
-  }
-  const { marks } = await inboxDepsOf(runtime, kit.paths).marks.read();
-  const area = indexMarks(marks).areaBySession.get(claudeSession);
-  return area !== undefined && roster.ids.includes(area) ? area : undefined;
 }
 
 /** `markedSessionOf` for the SessionStart context, which must always load: a failed read means no session. */
