@@ -1,6 +1,7 @@
-import { isAssignment, isShellName, launch, programName, staticWord } from "./launchers.js";
+import { isAssignment, launch, programName, staticWord } from "./launchers.js";
 import { Location, resolveDir } from "./location.js";
-import { parseShell, stripHeredocs } from "./tokenizer.js";
+import { stdinUse } from "./stdin.js";
+import { parseShell } from "./tokenizer.js";
 import { resolveLiteralVariables } from "./variables.js";
 /** Git's own commands; an alias never overrides one. */
 const BUILTINS = new Set(('add am annotate apply archive backfill bisect blame branch bugreport bundle cat-file check-attr check-ignore check-mailmap ' +
@@ -78,9 +79,17 @@ export function shellVariables(words, dialect) {
 function shellQuote(word) {
     return word.dynamic ? word.text : `'${word.text.replace(/'/g, `'\\''`)}'`;
 }
-/** True when a line starts a shell, such as `bash <<EOF`, so its heredoc body is commands, not data. */
-function runsShell(line) {
-    return line.split(/[\s;&|()<>]+/).some((word) => isShellName(programName(word)));
+/** What ends a piece of text for {@link saysPush}: blanks, quotes, operators and path separators, but not `-` or `.`. */
+const MENTION_BREAKS = /[\s'"`;&|()<>{}[\]$=!:,/\\@%^#?*+~]+/;
+/** A piece of text that names git's push: `push`, `--push`, `git-push` or `git-push.exe`. */
+const PUSH_WORD = /^-*(?:git-)?push(?:\.exe)?$/i;
+/** True when `text` names a push as a word of its own: `git push` or `X=push` do, `push-guard/` or `x-push.log` do not. */
+function saysPush(text) {
+    return text.split(MENTION_BREAKS).some((piece) => PUSH_WORD.test(piece));
+}
+/** True when a command takes its stdin from a redirection, such as `< file`, rather than from a pipe. */
+function redirectsInput(command) {
+    return command.redirections.some((redirection) => /^0?</.test(redirection.operator));
 }
 /** Splits `--option=value` into its name and attached value. */
 function splitOption(text) {
@@ -97,7 +106,7 @@ function splitOption(text) {
 class GitInvocationFinder {
     invocations = [];
     doubts = [];
-    texts = [];
+    mentionsPush = false;
     /** Aliases a `git config alias.x value` earlier in the line sets; undefined marks one only known when it runs. */
     lineAliases = new Map();
     /** True once the line sets a `GIT_DIR`-like variable in its shell, so later git commands run in a repository the guard cannot place. */
@@ -110,44 +119,67 @@ class GitInvocationFinder {
     }
     find(command) {
         this.visitScript(staticWord(command), this.context.dialect, new Location(this.context.cwd, this.context.home), 0);
-        return { invocations: this.invocations, doubts: this.doubts, mentionsPush: this.texts.some((text) => /\bpush\b/i.test(text)) };
+        return { invocations: this.invocations, doubts: this.doubts, mentionsPush: this.mentionsPush };
     }
     doubt(reason, gated) {
         this.doubts.push({ reason, gated });
     }
+    mention(text) {
+        this.mentionsPush ||= saysPush(text);
+    }
+    /**
+     * Visits each command of a script in order. A heredoc or here-string is its command's stdin, and a plain
+     * `cat` hands its stdin down a pipe to the next command, so `cat <<EOF | bash` runs the body as commands.
+     */
     visitScript(script, dialect, location, depth) {
         if (depth > MAX_SCRIPT_DEPTH) {
             this.doubt('scripts nest too deep to read', false);
             return;
         }
-        this.texts.push(script.text);
-        const text = dialect === 'cmd' ? script.text : stripHeredocs(script.text, runsShell);
-        const parsed = parseShell(text, dialect);
+        const parsed = parseShell(script.text, dialect);
         if (!parsed.complete) {
             this.doubt('part of it cannot be read, as a quote, bracket or substitution never closes', true);
+            this.mention(script.text);
         }
+        parsed.unreadBodies.forEach((body) => this.mention(body.text));
         // bash reads $NAME set to a literal earlier in the line; other dialects keep every variable unknown.
-        const commands = dialect === 'bash' ? resolveLiteralVariables(parsed.commands, script.text) : parsed.commands;
+        const commands = dialect === 'bash' ? resolveLiteralVariables(parsed) : parsed.commands;
+        let piped;
         for (const command of commands) {
+            command.words.forEach((word) => this.mention(word.text));
+            let stdin = command.stdin;
+            // A substitution's commands, read before the command that holds them, sit between a pipe's two ends.
+            if (piped !== undefined && command.nesting <= piped.nesting) {
+                stdin ??= command.nesting === piped.nesting && !redirectsInput(command) ? piped.body : undefined;
+                piped = undefined;
+            }
             location.enter(command.subshells);
-            this.visitCommand(command.words, dialect, location, depth);
+            const launched = this.visitCommand(command.words, dialect, location, depth, stdin);
+            if (stdin !== undefined) {
+                const use = launched === undefined ? 'read' : stdinUse(command, launched);
+                if (use !== 'stored') {
+                    this.mention(stdin.text);
+                }
+                piped = use === 'passed' ? { body: stdin, nesting: command.nesting } : undefined;
+            }
         }
     }
-    visitCommand(words, dialect, location, depth) {
+    /** Visits one simple command, given what it reads on stdin from the line; returns what it starts, or undefined for a `cd`. */
+    visitCommand(words, dialect, location, depth, stdin) {
         for (const name of shellVariables(words, dialect)) {
             this.shellMovesRepo ||= GIT_DIR_VARIABLES.test(name);
             this.shellOverridesConfig ||= GIT_CONFIG_VARIABLES.test(name);
         }
         if (location.apply(words, dialect)) {
-            return;
+            return undefined;
         }
-        const launched = launch(words, dialect);
+        const launched = launch(words, dialect, stdin);
         switch (launched.kind) {
             case 'nothing':
-                return;
+                break;
             case 'opaque':
                 this.doubt(launched.reason, launched.gated);
-                return;
+                break;
             case 'script': {
                 const inner = location.child();
                 launched.chdirs.forEach((chdir) => inner.moveTo(chdir));
@@ -158,13 +190,13 @@ class GitInvocationFinder {
                 if (launched.sameShell) {
                     location.adopt(inner);
                 }
-                return;
+                break;
             }
             case 'program': {
                 const name = programName(launched.program.text);
                 const subcommand = name.startsWith('git-') ? name.slice(4) : undefined;
                 if (name !== 'git' && (subcommand === undefined || !BUILTINS.has(subcommand))) {
-                    return;
+                    break;
                 }
                 const inner = location.child();
                 launched.chdirs.forEach((chdir) => inner.moveTo(chdir));
@@ -173,6 +205,7 @@ class GitInvocationFinder {
                 this.visitGit(tail, this.gitState(inner.dir, launched.env), depth, 0);
             }
         }
+        return launched;
     }
     /**
      * What a git run inherits from its shell and from the variables its launcher sets: `GIT_DIR` moves it,
@@ -324,7 +357,7 @@ class GitInvocationFinder {
             this.doubt('git aliases nest too deep to read', false);
             return;
         }
-        this.texts.push(value);
+        this.mention(value);
         if (value.startsWith('!')) {
             const script = [value.slice(1), ...args.map(shellQuote)].join(' ');
             this.visitScript(staticWord(script), 'bash', new Location(repoDir, this.context.home), depth + 1);
