@@ -118,7 +118,7 @@ export async function budget(args, runtime) {
     if (args.switches.has('loops')) {
         const days = recountDay === undefined ? loopDays(now, all ? DAYS_KEPT : LOOP_DAYS_SHOWN) : [formatUtcDay(new Date(recountDay))];
         const states = id === undefined ? [...measured.bySession.values(), measured.outside] : [measured.bySession.get(id) ?? { byDay: {}, cursors: {}, recentKeys: [] }];
-        lines = loopLines(id === undefined ? 'every session, outside the team too' : (roster.nameOf(id) ?? id), days, sumDays(states, days));
+        lines = loopLines(id === undefined ? 'every session, outside the team too' : (roster.nameOf(id) ?? id), days, sumDays(states, days), recountDay === undefined ? 'metered' : 'recounted');
     }
     else if (id !== undefined) {
         const session = sessions.find((each) => each.id === id);
