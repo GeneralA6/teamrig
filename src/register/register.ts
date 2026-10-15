@@ -3,7 +3,7 @@ import { NewerDataError } from '../core/jsonl.ts';
 import type { Clock, Mutex } from '../core/lock.ts';
 import { EVENT_VERSION, type CreateEvent, type RegisterEvent, type StatusEvent, type TaskFields, type UpdateEvent } from './events.ts';
 import { foldEvents, taskNumber, type RegisterState, type Task } from './fold.ts';
-import { NO_SKILL, type AddInput, type RegisterPolicy, type StatusInput, type Verdict } from './policy.ts';
+import { GITHUB_ACTOR, NO_SKILL, type AddInput, type ImportChanges, type ImportInput, type RegisterPolicy, type StatusInput, type Verdict } from './policy.ts';
 import { isWritable, type RegisterSnapshot } from './snapshot.ts';
 import type { EventLog } from './store.ts';
 
@@ -72,6 +72,33 @@ export class Register {
    */
   addFromParent(parentLead: string, input: AddInput): Promise<Verdict<WriteResult>> {
     return this.write(({ state }) => single(this.created(parentLead, state.nextId, this.deps.policy.addFromParent(input, state))));
+  }
+
+  /**
+   * The GitHub import's writes (github/sync.ts): each is judged again under the lock, on the register as it
+   * then stands, and written by GITHUB_ACTOR, which is on no roster. The policy limits them to the import's
+   * own tasks: a new one per issue, its title and priority, and open, done or dropped as GitHub has it.
+   */
+  importAdd(input: ImportInput): Promise<Verdict<WriteResult>> {
+    return this.write(({ state }) => this.created(GITHUB_ACTOR, state.nextId, this.deps.policy.importAdd(input, state)));
+  }
+
+  importUpdate(id: string, changes: ImportChanges, note: string): Promise<Verdict<WriteResult>> {
+    return this.write((snapshot) =>
+      onTask(snapshot, id, (task) => {
+        const change = this.deps.policy.importUpdate(task, changes, note);
+        return change.ok ? { ok: true, value: { ...this.base(id, GITHUB_ACTOR), type: 'update', ...change.value } } : change;
+      }),
+    );
+  }
+
+  importStatus(id: string, input: StatusInput): Promise<Verdict<WriteResult>> {
+    return this.write((snapshot) =>
+      onTask(snapshot, id, (task) => {
+        const change = this.deps.policy.importStatus(task, input);
+        return change.ok ? { ok: true, value: { ...this.base(id, GITHUB_ACTOR), type: 'status', ...change.value } } : change;
+      }),
+    );
   }
 
   async setStatus(caller: string, id: string, input: StatusInput): Promise<Verdict<WriteResult>> {
