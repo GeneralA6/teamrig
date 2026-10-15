@@ -208,9 +208,7 @@ export class RegisterPolicy {
     if (name !== 'title' && text.length > this.config.register.maxText) {
       return `${name} has ${text.length} characters; the limit is ${this.config.register.maxText}`;
     }
-    return this.secrets.looksSecret(text)
-      ? `${name} looks like it holds a secret; refer to where it is kept instead`
-      : undefined;
+    return this.secrets.refusal(name, text);
   }
 }
 

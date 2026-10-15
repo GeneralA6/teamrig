@@ -33,7 +33,7 @@ export interface RegisterConfig {
   readonly goalPattern?: string;
   readonly maxTitle: number;
   readonly maxText: number;
-  /** Extra regular expressions that refuse secret-looking text, on top of the built-in ones. */
+  /** Extra regular expressions, matched case-insensitively, that refuse secret-looking text on top of the built-in shapes in `core/secret-patterns.ts`. */
   readonly secretPatterns: readonly string[];
   readonly requireEvidenceOnDone: boolean;
   readonly requireSkillOnDone: boolean;

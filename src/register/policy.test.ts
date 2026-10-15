@@ -48,6 +48,16 @@ describe('RegisterPolicy.add', () => {
     }
   });
 
+  it('refuses a vendor token in every text field, naming its kind and never its value', () => {
+    const token = ['ghp', '_', 'a1'.repeat(18)].join('');
+    const refused = error(policy.add({ ...INPUT, ref: `see ${token}` }, EMPTY));
+    assert.equal(refused, 'ref looks like it holds a secret (GitHub token); refer to where it is kept instead');
+    assert.match(error(policy.add({ ...INPUT, title: `rotate ${token}` }, EMPTY)), /^title looks like it holds a secret \(GitHub token\)/);
+    assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'blocked', note: `key ${token}` }, false)), /^note looks like it holds a secret/);
+    assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'done', note: 'ok', evidence: token, skill: 'none' }, false)), /^evidence looks like it holds a secret/);
+    assert.match(error(policy.update(TASK, 'alpha', { title: 'Add two health checks' }, `see ${token}`)), /^note looks like it holds a secret/);
+  });
+
   it('checks goals and extra secret patterns from the config', () => {
     const strict = new RegisterPolicy(testConfig({ register: { goalPattern: '^G\\d+$', secretPatterns: ['tok_[a-z0-9]{8}'] } }));
     assert.match(error(strict.add({ ...INPUT, goals: ['G1', 'roadmap'] }, EMPTY)), /goal roadmap does not match/);

@@ -1,19 +1,31 @@
-/** Always refused, whatever a team adds: credentials in URLs and `password=`-style assignments. */
-const BUILT_IN: readonly RegExp[] = [
-  /\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]+:[^\s/@]+@/i,
-  /\b(?:password|passwd|secret|api[_-]?key)\s*[=:]\s*\S/i,
-];
+import { SECRET_TEXT_PATTERNS, SECRET_TOKEN_PATTERNS, type SecretPattern } from './secret-patterns.ts';
 
-/** Refuses text that looks like it carries a secret, before it lands in a shared file. */
+/**
+ * Refuses text that looks like it carries a secret, before it lands in a shared file. Every write path that
+ * checks for secrets (inbox lines; task titles, refs, notes and evidence) goes through this one class, which
+ * always applies the shapes in `secret-patterns.ts`, whatever a team adds.
+ */
 export class SecretScanner {
-  private readonly patterns: readonly RegExp[];
+  private readonly patterns: readonly SecretPattern[];
 
   /** `extra` are regular expression sources from the config, matched case-insensitively. */
   constructor(extra: readonly string[] = []) {
-    this.patterns = [...BUILT_IN, ...extra.map((source) => new RegExp(source, 'iu'))];
+    const configured = extra.map((source, index) => ({
+      id: `config-${index + 1}`,
+      description: 'secret pattern from the team config',
+      pattern: new RegExp(source, 'iu'),
+    }));
+    this.patterns = [...SECRET_TOKEN_PATTERNS, ...SECRET_TEXT_PATTERNS, ...configured];
   }
 
-  looksSecret(text: string): boolean {
-    return this.patterns.some((pattern) => pattern.test(text));
+  /** The first secret shape `text` matches; undefined when it matches none. */
+  find(text: string): SecretPattern | undefined {
+    return this.patterns.find(({ pattern }) => pattern.test(text));
+  }
+
+  /** Why `subject` is refused, or undefined when `text` looks clean. The reason names the shape, never the text. */
+  refusal(subject: string, text: string): string | undefined {
+    const found = this.find(text);
+    return found === undefined ? undefined : `${subject} looks like it holds a secret (${found.description}); refer to where it is kept instead`;
   }
 }
