@@ -73,7 +73,7 @@ export class Register {
     }
     /**
      * Under the lock: refuse newer data, read the working set, decide on one event, append it, rotate the log
-     * when it is due, and return the task after the event.
+     * when it is due and the team has not turned that off, and return the task after the event.
      */
     write(decide) {
         return this.deps.mutex.run(async () => {
@@ -94,8 +94,14 @@ export class Register {
             return { ok: true, value: { task, event, rotation: await this.rotation(snapshot) } };
         });
     }
-    /** A rotation that fails leaves the write saved and the files readable (rotate.ts): it is reported, never thrown. */
+    /**
+     * None when the team turned automatic archiving off. A rotation that fails leaves the write saved and the
+     * files readable (rotate.ts): it is reported, never thrown.
+     */
     async rotation(written) {
+        if (!this.deps.autoArchive) {
+            return { kind: 'none' };
+        }
         try {
             const plan = await this.deps.log.rotateIfDue(written, new Date(this.deps.clock.now()));
             return plan === null ? { kind: 'none' } : { kind: 'rotated', segment: plan.segment, retired: plan.compaction.retiredNow.length };

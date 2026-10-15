@@ -6,8 +6,9 @@ import { markerRecord } from "./marker.js";
 import { isWritable, readEvents } from "./snapshot.js";
 /**
  * A tail this long makes a write rotate a register rotated before (about 1,500 events, a few days of a busy
- * team), so a read costs at most about this much beyond the working set. The first rotation is always a
- * person's, with `teamrig compact`: every session must run a teamrig that reads the rotated layout first.
+ * team), so a read costs at most about this much beyond the working set, unless the team set
+ * `register.autoArchive` to false. The first rotation is always a person's, with `teamrig compact`: every
+ * session must run a teamrig that reads the rotated layout first.
  */
 export const AUTO_ROTATE_CHARS = 512 * 1024;
 /** A rotation refused for the problems its plan found; nothing was written. */
