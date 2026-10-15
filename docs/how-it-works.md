@@ -344,14 +344,17 @@ push wherever it sits in the line:
   aliases included) and the commands git runs itself (`submodule foreach`, `rebase --exec`, `bisect run`);
 - folder and branch moves earlier in the line: `cd sub && git push`, `git checkout main && git push`;
 - bash variables set earlier in the line: `B=feat; git push -u origin $B` reads as `git push -u origin feat`,
-  and `B=main; git push origin $B` still asks. `NAME=value` or `export NAME=value` must run before the push in
-  the same shell, through `;`, `&&`, a newline or a `for` loop, and the line must never give the name another
-  value. The value may hold quoted text, blanks and variables set the same way before it; used unquoted, it
-  splits into words as bash splits it, so `G="git -C /w"; $G push origin main` still asks. A value with a
-  substitution, a tilde or a file name pattern, a prefix (`B=x git push origin $B`), an assignment in a subshell
-  or a loop body, a `for` loop's own variable, a `${B:-x}`, or anything else on the line that can set a variable
-  unseen (`if`, `while` and other loops, functions, `read`, `source`, `eval`, `declare`, arithmetic, arrays, a
-  heredoc that never closes) leaves it unknown.
+  and `B=main; git push origin $B` still asks. `NAME=value` or `export NAME=value` must run before the push,
+  through `;`, `&&`, a newline, a `for`, `while` or `until` loop, an `if` or a `{ }` group, in the same shell or
+  in a subshell started after it (`( )`, `$( )`), and the line must never give the name another value. The
+  value may hold quoted text, blanks and variables set the same way before it; used unquoted, it splits into
+  words as bash splits it, so `G="git -C /w"; $G push origin main` still asks. A value with a substitution, a
+  tilde or a file name pattern, a prefix (`B=x git push origin $B`), an assignment in a subshell, a loop, an
+  `if` or a `{ }` group, a `for` loop's own variable, or anything else on the line that can set a variable unseen
+  (a `${...}` that assigns or runs arithmetic, such as `${B:=x}` or `${B:1}`, or reads a name indirectly,
+  `${!R}`; `case`, `select`, `[[ ]]`, functions, `read`, `source`, `eval`, `declare`, arithmetic, arrays, a
+  heredoc that never closes) leaves it unknown. A `${...}` that only reads, such as `${B:-x}` or `${x%%|*}`, is
+  fine.
 
 When it cannot read part of a line with confidence, it asks and says why: a quote that never closes, a git
 command, alias, folder, remote or refspec only known when the line runs, an alias git cannot read, scripts nested
