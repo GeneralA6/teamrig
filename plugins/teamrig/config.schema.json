@@ -418,6 +418,30 @@
         }
       }
     },
+    "leadBoundary": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Off: the lead's own edits, tests and code searches are neither nudged nor shown.",
+          "type": "boolean",
+          "default": true
+        },
+        "ownPaths": {
+          "description": "The lead's own files and folders beyond the team's teamrig folder and Claude Code's memory folders, which always count: editing or searching them is its job. ~ is the user's home, * one folder name.",
+          "type": "array",
+          "maxItems": 16,
+          "items": { "type": "string", "maxLength": 256 },
+          "default": []
+        },
+        "searchNudgeAt": {
+          "description": "The turn's code search (a source-file Read, a Grep, a Glob or a shell search outside the lead's own paths) that brings the lead one nudge, and from which the owner's turn-end line counts searches; 0 never.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 50,
+          "default": 3
+        }
+      }
+    },
     "loops": {
       "type": "object",
       "properties": {

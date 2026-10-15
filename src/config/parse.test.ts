@@ -21,6 +21,7 @@ describe('parseConfig', () => {
     assert.equal(config.messages.maxLines, 10);
     assert.equal(config.messages.coldAfterMinutes, 60);
     assert.deepEqual(config.loops, { chainNudgeAt: 6 });
+    assert.deepEqual(config.leadBoundary, { enabled: true, ownPaths: [], searchNudgeAt: 3 });
     assert.deepEqual(config.tests, { maxFailureChars: 4000 });
     assert.deepEqual(config.github, { repos: [], owners: {}, sessions: {}, closedDays: 14, everyMinutes: 15 });
     assert.deepEqual(config.register, DEFAULT_REGISTER);
@@ -110,6 +111,14 @@ describe('parseConfig', () => {
     const { config, issues } = parseConfig({ ...ROSTER, messages: { coldAfterMinutes: 1441 } });
     assert.deepEqual(paths(issues), ['messages.coldAfterMinutes']);
     assert.equal(config.messages.coldAfterMinutes, 60);
+  });
+
+  it('reads leadBoundary, where searchNudgeAt 0 never nudges for searches, and refuses a threshold past 50', () => {
+    const own = { enabled: false, ownPaths: ['~/ops/lead'], searchNudgeAt: 0 };
+    assert.deepEqual(parseConfig({ ...ROSTER, leadBoundary: own }).config.leadBoundary, own);
+    const { config, issues } = parseConfig({ ...ROSTER, leadBoundary: { searchNudgeAt: 51 } });
+    assert.deepEqual(paths(issues), ['leadBoundary.searchNudgeAt']);
+    assert.equal(config.leadBoundary.searchNudgeAt, 3);
   });
 
   it('reads loops.chainNudgeAt, where 0 turns the nudge off, and refuses a value past 50', () => {

@@ -125,6 +125,19 @@ export interface MessagesConfig {
   readonly coldAfterMinutes: number;
 }
 
+/** How teamrig keeps the lead leading (T320): its own edits, tests and code searches are nudged and shown, never blocked. */
+export interface LeadBoundaryConfig {
+  /** Off: the lead's own work is neither nudged nor shown. */
+  readonly enabled: boolean;
+  /**
+   * The lead's own files and folders beyond the team's teamrig folder and Claude Code's memory folders, which
+   * always count: editing or searching them is its job. `~` is the user's home, `*` one folder name.
+   */
+  readonly ownPaths: readonly string[];
+  /** The turn's code search that brings the lead one nudge, and from which the owner's turn-end line counts searches; 0 never. */
+  readonly searchNudgeAt: number;
+}
+
 /** Loop discipline inside a turn. */
 export interface LoopsConfig {
   /**
@@ -373,6 +386,7 @@ export interface KitConfig {
   readonly commits: CommitsConfig;
   readonly coordinator: CoordinatorConfig;
   readonly budget: BudgetConfig;
+  readonly leadBoundary: LeadBoundaryConfig;
   readonly loops: LoopsConfig;
   readonly tests: TestsConfig;
   readonly github: GithubConfig;

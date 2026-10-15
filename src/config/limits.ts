@@ -21,6 +21,8 @@ export const CONFIG_LIMITS = {
   stopgapFiles: { maxItems: 20, maxLength: 260 },
   persistentFailureHours: { min: 1, max: 720 },
   chainNudgeAt: { min: 0, max: 50 },
+  leadOwnPaths: { maxItems: 16, maxLength: 256 },
+  searchNudgeAt: { min: 0, max: 50 },
   maxFailureChars: { min: 500, max: 50_000 },
   githubRepos: { maxItems: 20, maxLength: 140 },
   closedDays: { min: 1, max: 365 },

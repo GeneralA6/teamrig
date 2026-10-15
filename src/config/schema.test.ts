@@ -80,6 +80,8 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   stopgapFiles: 'register.check.stopgapFiles',
   persistentFailureHours: 'alerts.persistentFailureHours',
   chainNudgeAt: 'loops.chainNudgeAt',
+  leadOwnPaths: 'leadBoundary.ownPaths',
+  searchNudgeAt: 'leadBoundary.searchNudgeAt',
   maxFailureChars: 'tests.maxFailureChars',
   githubRepos: 'github.repos',
   closedDays: 'github.closedDays',
