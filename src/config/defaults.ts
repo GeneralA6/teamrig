@@ -2,6 +2,7 @@ import type {
   AlertsConfig,
   BudgetConfig,
   CommitsConfig,
+  LaunchConfig,
   LockConfig,
   OpenConfig,
   PushGuardConfig,
@@ -68,3 +69,10 @@ export const DEFAULT_ALERTS: AlertsConfig = { persistentFailureHours: 24 };
 export const DEFAULT_REFRESH: RefreshConfig = { enabled: true, contextTokens: 250_000, tabTitle: true };
 
 export const DEFAULT_OPEN: OpenConfig = { terminal: 'auto' };
+
+/**
+ * The lead's model and effort for each key its `launch` entry leaves unset: the most capable model
+ * Claude Code offers (`best`: Fable where the account has it, else Opus) at xhigh effort, since the
+ * lead plans, splits and judges the whole team's work. The other sessions default to Claude Code's own.
+ */
+export const DEFAULT_LEAD_LAUNCH: Required<LaunchConfig> = { model: 'best', effort: 'xhigh' };

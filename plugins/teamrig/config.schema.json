@@ -276,6 +276,28 @@
         }
       }
     },
+    "launch": {
+      "description": "Each session's Claude Code model and effort, by id: teamrig open starts it with claude --model and --effort, and at its start a session running on another model or effort is told the /model and /effort to type. A key left unset is Claude Code's own choice, except for the lead, which starts on model best at xhigh effort for each key it leaves unset.",
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/sessionName" },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "description": "A Claude Code model alias or a full model id such as claude-opus-5-5. best is Fable where the account has it, else Opus; default leaves the model to Claude Code.",
+            "anyOf": [
+              { "enum": ["default", "best", "fable", "opus", "sonnet", "haiku", "opusplan", "fable[1m]", "opus[1m]", "sonnet[1m]", "opusplan[1m]"] },
+              { "type": "string", "pattern": "^claude-[a-z0-9]+(?:[.@-][a-z0-9]+)*(?:\\[1m\\])?$", "maxLength": 100 }
+            ]
+          },
+          "effort": {
+            "description": "The effort level; a model that lacks it runs at the highest level it has below it.",
+            "enum": ["low", "medium", "high", "xhigh", "max"]
+          }
+        }
+      },
+      "default": {}
+    },
     "refresh": {
       "description": "Context refresh: when a session finishes a task (teamrig set <id> --status done) with its context at or over contextTokens, or after the lead ran teamrig refresh <session>, it writes a handover and the user types /clear. A relative handoverDir is resolved against the team's folder; unset, it is <team folder>/handover.",
       "type": "object",

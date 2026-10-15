@@ -14,14 +14,17 @@ import {
   DEFAULT_REGISTER,
   DEFAULT_SKILLS,
 } from './defaults.ts';
+import { isEffort, isModel } from './launch.ts';
 import { CONFIG_LIMITS } from './limits.ts';
 import { ConfigReader, describe, isValidRegex, shortLine, type Check, type ConfigIssue } from './reader.ts';
 import {
   isCommitGate,
+  isEffortLevel,
   isTerminalChoice,
   TERMINALS,
   type CommitsConfig,
   type KitConfig,
+  type LaunchConfig,
   type OpenConfig,
   type PathsConfig,
   type RefreshConfig,
@@ -81,6 +84,29 @@ function readNames(read: ConfigReader, raw: JsonRecord, sessions: readonly strin
 }
 
 /**
+ * `launch`: a model and an effort for sessions on the team. A wrong field is reported and left out,
+ * so the session starts on Claude Code's own choice (or, for the lead, the lead's default) for it.
+ */
+function readLaunch(read: ConfigReader, raw: JsonRecord, sessions: readonly string[]): Record<string, LaunchConfig> {
+  const launch: Record<string, LaunchConfig> = {};
+  for (const [id, value] of Object.entries(raw)) {
+    const path = `launch.${id}`;
+    const entry = read.objectItem(value, path);
+    if (entry === undefined) {
+      continue;
+    }
+    if (!sessions.includes(id)) {
+      read.report(path, 'is not one of the sessions');
+      continue;
+    }
+    const model = read.optionalString(entry, 'model', path, isModel);
+    const effort = read.optionalString(entry, 'effort', path, isEffort);
+    launch[id] = { ...(model === undefined ? {} : { model }), ...(isEffortLevel(effort) ? { effort } : {}) };
+  }
+  return launch;
+}
+
+/**
  * `team`: the team's id and its parent's, both ids. Only the shape is checked here; whether the id
  * matches the team's folder and the parent exists is the tree's to judge, as it sees every team.
  */
@@ -124,6 +150,7 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
     read.report('sessions', 'lists a session more than once');
   }
   const names = readNames(read, read.section(raw, 'names', ''), sessions);
+  const launch = readLaunch(read, read.section(raw, 'launch', ''), sessions);
   const team = readTeam(read, raw);
 
   const messages = read.section(raw, 'messages', '');
@@ -183,6 +210,7 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
     tabStatus: { enabled: read.boolean(tabStatus, 'enabled', 'tabStatus', false) },
     refresh: parseRefresh(read, read.section(raw, 'refresh', '')),
     open: parseOpen(read, read.section(raw, 'open', '')),
+    launch,
     paths: parsePaths(read, read.section(raw, 'paths', '')),
   };
   return { config, issues: read.issues };

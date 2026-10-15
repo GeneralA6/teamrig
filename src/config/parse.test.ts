@@ -69,6 +69,37 @@ describe('parseConfig', () => {
     assert.deepEqual(config.names, { alpha: 'boss' });
   });
 
+  it('keeps the launch settings of each session and defaults to none', () => {
+    assert.deepEqual(parseConfig(ROSTER).config.launch, {});
+    const { config, issues } = parseConfig({ ...ROSTER, launch: { alpha: { model: 'opus', effort: 'max' }, bravo: { model: 'claude-haiku-5-5' } } });
+    assert.deepEqual(issues, []);
+    assert.deepEqual(config.launch, { alpha: { model: 'opus', effort: 'max' }, bravo: { model: 'claude-haiku-5-5' } });
+  });
+
+  it('reports launch settings of strangers and wrong models and efforts, and leaves each out', () => {
+    const { config, issues } = parseConfig({
+      ...ROSTER,
+      launch: { alpha: { model: 'gpt-5', effort: 'high' }, bravo: { model: 'sonnet', effort: 'turbo' }, zulu: { model: 'opus' }, constructor: {}, charlie: 'opus' },
+    });
+    assert.deepEqual(
+      issues.map((issue) => `${issue.path}: ${issue.message}`),
+      [
+        'launch.alpha.model: expected a model alias (default, best, fable, opus, sonnet, haiku, opusplan, fable[1m], opus[1m], sonnet[1m], opusplan[1m]) or a model id starting claude- (got "gpt-5")',
+        'launch.bravo.effort: expected one of low, medium, high, xhigh, max (got "turbo")',
+        'launch.zulu: is not one of the sessions',
+        'launch.constructor: is not one of the sessions',
+        'launch.charlie: expected an object, got "opus"',
+      ],
+    );
+    assert.deepEqual(config.launch, { alpha: { effort: 'high' }, bravo: { model: 'sonnet' } });
+  });
+
+  it('reports a launch that is not an object', () => {
+    const { config, issues } = parseConfig({ ...ROSTER, launch: ['alpha'] });
+    assert.deepEqual(paths(issues), ['launch']);
+    assert.deepEqual(config.launch, {});
+  });
+
   it('reports every wrong field with its path and falls back to the default', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,
