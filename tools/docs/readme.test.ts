@@ -27,7 +27,7 @@ describe('README.md', () => {
 
   it('lists what teamrig needs under Get started: Claude Code, Node.js, git, the systems and the terminal', () => {
     const requirements = README.slice(README.indexOf('### Requirements'), README.indexOf('## Your day'));
-    for (const need of [/Claude Code \d+\.\d+\.\d+ or later/, /Node\.js 22\.18 or later/, /^- git:/m, /Windows, macOS or Linux/, /Any terminal Claude Code runs in/]) {
+    for (const need of [/^- Claude Code, tested on \d+\.\d+\.\d+ and later\./m,/Node\.js 22\.18 or later/, /^- git:/m, /Windows, macOS or Linux/, /Any terminal Claude Code runs in/]) {
       assert.match(requirements, need);
     }
   });
