@@ -19,13 +19,13 @@ export interface QuietWindow {
 export interface BudgetChoices {
   readonly enabled: boolean;
   /** A fixed percent of the week per day, or `pace`: worked out each midnight from what is left. */
-  readonly daily?: number | 'pace';
+  readonly daily?: number | 'pace' | undefined;
   /** The most a `pace` day may get, or `none`. */
-  readonly maxDaily?: number | 'none';
-  readonly overAction?: OverAction;
-  readonly escalate?: Escalation;
-  readonly quiet?: QuietWindow | 'off';
-  readonly quietAction?: OverAction;
+  readonly maxDaily?: number | 'none' | undefined;
+  readonly overAction?: OverAction | undefined;
+  readonly escalate?: Escalation | undefined;
+  readonly quiet?: QuietWindow | 'off' | undefined;
+  readonly quietAction?: OverAction | undefined;
 }
 
 /** The budget keys `budget setup` manages, in the order a preview lists them. */
