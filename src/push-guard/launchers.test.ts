@@ -1,0 +1,259 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { Buffer } from 'node:buffer';
+import { isAssignment, isShellName, launch, programName, staticWord, type Launch } from './launchers.ts';
+import { parseShell, type ShellDialect, type ShellWord } from './tokenizer.ts';
+
+const show = (word: ShellWord): string => (word.dynamic ? `~${word.text}` : word.text);
+
+/** A launch as one line: its kind, what it runs, then ` env=`, ` cd=` and ` stdin` when set. */
+function summary(launched: Launch): string {
+  switch (launched.kind) {
+    case 'nothing':
+      return 'nothing';
+    case 'opaque':
+      return `opaque${launched.gated ? '' : '!'}: ${launched.reason}`;
+    case 'program':
+    case 'script': {
+      const head = launched.kind === 'program' ? `program ${[launched.program, ...launched.args].map(show).join(' ')}` : `script(${launched.dialect}${launched.sameShell ? ', same' : ''}) ${show(launched.script)}`;
+      const env = launched.env.length === 0 ? '' : ` env=${launched.env.map((assignment) => `${assignment.name}=${show(assignment.value)}`).join(',')}`;
+      const chdirs = launched.chdirs.length === 0 ? '' : ` cd=${launched.chdirs.map(show).join(',')}`;
+      const stdin = launched.kind === 'program' && launched.stdinArgs ? ' stdin' : '';
+      return `${head}${env}${chdirs}${stdin}`;
+    }
+  }
+}
+
+/** What the first command of `line` launches. */
+function of(line: string, dialect: ShellDialect = 'bash'): string {
+  return summary(launch(parseShell(line, dialect).commands[0]?.words ?? [], dialect));
+}
+
+function expectLaunches(rows: readonly (readonly [string, string])[], dialect: ShellDialect = 'bash'): void {
+  for (const [line, expected] of rows) {
+    assert.equal(of(line, dialect), expected, line);
+  }
+}
+
+const STDIN = 'opaque: a shell reads its commands from stdin';
+const UNKNOWN_PROGRAM = 'opaque: the program it runs is only known when it runs';
+
+describe('programName, isShellName, isAssignment and staticWord', () => {
+  it('names a program by its lower-case file name without an executable extension', () => {
+    assert.equal(programName('C:\\Program Files\\Git\\cmd\\GIT.EXE'), 'git');
+    assert.equal(programName('/usr/bin/git'), 'git');
+    assert.equal(programName('git.cmd'), 'git');
+    assert.equal(programName('gitk'), 'gitk');
+  });
+
+  it('knows the shells and the assignments', () => {
+    assert.deepEqual(['bash', 'pwsh', 'cmd', 'git'].map(isShellName), [true, true, true, false]);
+    assert.deepEqual(['A=1', '_b=', '1A=1', '=x', 'a-b=1'].map(isAssignment), [true, true, false, false, false]);
+    assert.deepEqual(staticWord('x'), { text: 'x', dynamic: false });
+  });
+});
+
+describe('launch: programs and wrappers', () => {
+  it('reads nothing from an empty command', () => {
+    assert.equal(summary(launch([], 'bash')), 'nothing');
+  });
+
+  it('collects variable prefixes', () => {
+    expectLaunches([
+      ['git push origin main', 'program git push origin main'],
+      ['A=1 B=$x git push', 'program git push env=A=1,B=~$x'],
+    ]);
+  });
+
+  it('reads env: folders, assignments and split strings', () => {
+    expectLaunches([
+      ['env -C /tmp -u X A=1 git push', 'program git push env=A=1 cd=/tmp'],
+      ['env --chdir=/tmp git push', 'program git push cd=/tmp'],
+      ["env -S 'git push origin main'", 'program git push origin main'],
+      ["env --split-string='git push' -x", 'program git push -x'],
+      ['env -S "$X"', 'opaque: env -S splits a command line only known when it runs'],
+    ]);
+  });
+
+  it('runs nothing under an inspecting option', () => {
+    expectLaunches([
+      ['command -v git', 'nothing'],
+      ['command -pv git push', 'nothing'],
+      ['command git push', 'program git push'],
+      ['sudo -l', 'nothing'],
+      ['sudo --list git push', 'nothing'],
+    ]);
+  });
+
+  it('reads the options of sudo, timeout, nice, xargs, wsl, exec, nohup and time', () => {
+    expectLaunches([
+      ['sudo -u me -D /srv git push', 'program git push cd=/srv'],
+      ['sudo --user=me HOME=/x git push', 'program git push env=HOME=/x'],
+      ['timeout -s KILL 10 git push', 'program git push'],
+      ['timeout --signal=KILL 10 git push', 'program git push'],
+      ['nice -n5 git push', 'program git push'],
+      ['xargs -n 1 git push', 'program git push stdin'],
+      ['wsl --cd /x git push', 'program git push cd=/x'],
+      ['exec -a name git push', 'program git push'],
+      ['nohup -- git push', 'program git push'],
+      ['time', 'nothing'],
+    ]);
+  });
+
+  it('stops reading wrappers that nest too deep', () => {
+    assert.equal(of(`${'nohup '.repeat(16)}git push`), 'opaque: wrappers nest too deep to read');
+    assert.equal(of(`${'nohup '.repeat(15)}git push`), 'program git push');
+  });
+
+  it('marks a program only known when it runs', () => {
+    assert.equal(of('$GIT push'), UNKNOWN_PROGRAM);
+    assert.equal(of('& $git push', 'powershell'), UNKNOWN_PROGRAM);
+  });
+});
+
+describe('launch: keywords', () => {
+  it('skips bash keywords and reads data lines as nothing', () => {
+    expectLaunches([
+      ['if git push', 'program git push'],
+      ['! git push', 'program git push'],
+      ['coproc git push', 'program git push'],
+      ['for x in git push', 'nothing'],
+      ['function deploy', 'nothing'],
+    ]);
+  });
+
+  it('skips PowerShell keywords in any case', () => {
+    expectLaunches(
+      [
+        ['If git push', 'program git push'],
+        ['foreach git push', 'nothing'],
+        ['Function Deploy', 'nothing'],
+      ],
+      'powershell',
+    );
+  });
+
+  it("reads cmd's if forms, else and data lines", () => {
+    expectLaunches(
+      [
+        ['if exist x git push', 'program git push'],
+        ['if /i not a==b git push', 'program git push'],
+        ['if a== b git push', 'program git push'],
+        ['if a ==b git push', 'program git push'],
+        ['if %x% EQU 1 git push', 'program git push'],
+        ['if foo git push', 'nothing'],
+        ['else git push', 'program git push'],
+        ['rem git push', 'nothing'],
+        ['set X=1', 'nothing'],
+      ],
+      'cmd',
+    );
+  });
+});
+
+describe('launch: PowerShell expressions and launchers', () => {
+  it('runs the right side of an assignment and skips casts', () => {
+    expectLaunches(
+      [
+        ['$x = git push', 'program git push'],
+        ['$x=git push', 'program git push'],
+        ['[void]$x', 'nothing'],
+        ['$x + 1', 'nothing'],
+        ['& git push', 'program git push'],
+        ['. git push', 'program git push'],
+      ],
+      'powershell',
+    );
+  });
+
+  it('reads Invoke-Expression and Start-Process', () => {
+    expectLaunches(
+      [
+        ["iex 'git push'", 'script(powershell, same) git push'],
+        ["Invoke-Expression -Command 'git push'", 'script(powershell, same) git push'],
+        ['iex', 'nothing'],
+        ["Start-Process -FilePath git -WorkingDirectory C:\\x -ArgumentList 'push origin main' -Wait", 'program git push origin main cd=C:\\x'],
+        ['saps -NoNewWindow git push', 'program git push'],
+        ['Start-Process -Verb RunAs git', 'program git'],
+        ['start git push', 'program git push'],
+        ['Start-Process', 'nothing'],
+      ],
+      'powershell',
+    );
+  });
+});
+
+describe('launch: shells handed a command line', () => {
+  it('reads POSIX shells', () => {
+    expectLaunches([
+      ["bash -c 'git push'", 'script(bash) git push'],
+      ["bash -lc 'git push'", 'script(bash) git push'],
+      ["bash -o pipefail -c 'git push'", 'script(bash) git push'],
+      ["bash --norc -c 'git push'", 'script(bash) git push'],
+      ['bash -c', 'nothing'],
+      ['bash script.sh', 'nothing'],
+      ['bash -- script.sh', 'nothing'],
+      ['bash', STDIN],
+      ['bash -s', STDIN],
+    ]);
+  });
+
+  it('reads pwsh and powershell options, abbreviations and encoded commands', () => {
+    const encoded = Buffer.from('git push origin main', 'utf16le').toString('base64');
+    expectLaunches([
+      ['pwsh -NoProfile -Command git push', 'script(powershell) git push'],
+      ["pwsh --command 'git push'", 'script(powershell) git push'],
+      ["pwsh /c 'git push'", 'script(powershell) git push'],
+      ["pwsh -cwa 'git push'", 'script(powershell) git push'],
+      ["pwsh -ExecutionPolicy Bypass -c 'git push'", 'script(powershell) git push'],
+      ["pwsh -wd /x -c 'git push'", 'script(powershell) git push cd=/x'],
+      ['powershell git push', 'script(powershell) git push'],
+      [`pwsh -EncodedCommand ${encoded}`, 'script(powershell) git push origin main'],
+      ['pwsh -enc $x', 'opaque!: an encoded PowerShell command cannot be read'],
+      ["pwsh -e 'not base64!'", 'opaque!: an encoded PowerShell command cannot be read'],
+      ['pwsh -ec', 'nothing'],
+      ['pwsh -Command', 'nothing'],
+      ['pwsh -File x.ps1', 'nothing'],
+      ['pwsh script.ps1', 'nothing'],
+      ['pwsh -c -', STDIN],
+      ['pwsh -File -', STDIN],
+      ['pwsh -', STDIN],
+      ['pwsh -NoProfile', STDIN],
+    ]);
+  });
+
+  it('reads cmd /c and /k, quoting words with spaces', () => {
+    expectLaunches([
+      ['cmd /c git push', 'script(cmd) git push'],
+      ['cmd //c git push', 'script(cmd) git push'],
+      ['cmd /cgit push', 'script(cmd) git push'],
+      ['cmd /k git push', 'script(cmd) git push'],
+      ['cmd /q /c git commit -m "a b"', 'script(cmd) git commit -m "a b"'],
+      ['cmd /c', 'nothing'],
+      ['cmd', STDIN],
+      ['cmd x', STDIN],
+    ]);
+  });
+
+  it('reads eval in bash only', () => {
+    expectLaunches([
+      ['eval git push', 'script(bash, same) git push'],
+      ['eval', 'nothing'],
+    ]);
+    assert.equal(of('eval x', 'powershell'), 'program eval x');
+  });
+
+  it("reads cmd's start: the title, the folder and its options", () => {
+    expectLaunches(
+      [
+        ['start "" git push', 'program git push'],
+        ['start "my title" /d C:\\x git push', 'program git push cd=C:\\x'],
+        ['start /dC:\\x git push', 'program git push cd=C:\\x'],
+        ['start /b /node 1 git push', 'program git push'],
+        ['start git push', 'program git push'],
+      ],
+      'cmd',
+    );
+    assert.equal(of('start git push'), 'program git push');
+  });
+});
