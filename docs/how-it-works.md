@@ -302,7 +302,14 @@ push wherever it sits in the line:
   `Start-Process`, `cmd /c` and `start`;
 - git aliases (from `-c alias.x=`, from a `git config alias.x` earlier in the line, or from git config, `!` shell
   aliases included) and the commands git runs itself (`submodule foreach`, `rebase --exec`, `bisect run`);
-- folder and branch moves earlier in the line: `cd sub && git push`, `git checkout main && git push`.
+- folder and branch moves earlier in the line: `cd sub && git push`, `git checkout main && git push`;
+- bash variables set to a plain literal earlier in the line: `B=feat; git push -u origin $B` reads as
+  `git push -u origin feat`, and `B=main; git push origin $B` still asks. `NAME=value` or `export NAME=value`
+  (quoted or not) must run before the push in the same shell, through `;`, `&&` or a newline, and the line must
+  never give the name another value. A value that is not plain text (`$(...)`, `$OTHER`, blanks, globs), a
+  prefix (`B=x git push origin $B`), an assignment in a subshell, a `${B:-x}`, or anything else on the line that
+  can set a variable unseen (`if`, loops, functions, `read`, `source`, `eval`, `declare`, arithmetic, arrays,
+  heredocs) leaves it unknown.
 
 When it cannot read part of a line with confidence, it asks and says why: a quote that never closes, a git
 command, alias, folder, remote or refspec only known when the line runs, an alias git cannot read, scripts nested
@@ -314,7 +321,10 @@ It is a guard against mistakes, not a sandbox; protect the branch on your git ho
 
 - a push inside a script or program the command runs: `npm run deploy`, `./ship.sh`, `pwsh -File x.ps1`,
   `source x.sh`, `python` or `node`, `make`, `find -exec`, `ssh host git push`;
-- a command line kept in a variable set by an earlier command, such as `bash -c "$CMD"`;
+- a command line kept in a variable set outside the line, or to anything but a plain literal, such as
+  `bash -c "$CMD"`;
+- variables, functions or aliases your shell's startup files set (a readonly or integer variable, an `IFS`, a
+  function named like a command), as with a function named `git`;
 - `gh pr merge` and other GitHub CLI commands that change a branch on the server;
 - git extensions (`git town`, a `git-<name>` program that is not part of git), and a `remote.<name>.push`
   mapping in the repository's own config for a push that names only its source branch;
