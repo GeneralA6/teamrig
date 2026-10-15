@@ -40,7 +40,7 @@ half-done.
 
 ## Why it's different
 
-![A built-in project manager: plans your week and flags what's late, stuck or forgotten. Thrifty with your tokens: lean rules, batched work, and notes that wait instead of waking anyone. Smarter every day: what one member works out becomes a skill the whole team reuses. Never loses the thread: when its memory fills up, a member hands its work over and starts fresh. Done means proven: a task closes only with evidence and a lesson the team keeps. Safe by default: asks before it pushes to main, never force-pushes, keeps secrets out.](docs/images/why.svg)
+![A built-in project manager: plans your week and flags what's late, stuck or forgotten. Thrifty with your tokens: lean, capped rules, and notes that wait instead of waking anyone. Smarter every day: what one member works out becomes a skill the whole team reuses. Never loses the thread: when its memory runs high, a member leaves a handover for a fresh start. Done means proven: a task closes only with evidence and a lesson the team keeps. Safe by default: asks before a push to main, refuses blind force-pushes and keys in notes.](docs/images/why.svg)
 
 And the basics, done right: every task has one owner, so nothing is done twice, and big commits get flagged before
 they land. Everything runs on your machine, with no account and no cloud bill.

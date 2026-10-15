@@ -21,7 +21,7 @@ describe('renderWhy', () => {
     const label = root.attributes.get('aria-label') ?? '';
     assert.equal(root.attributes.get('role'), 'img');
     assert.match(label, /^Why teamrig is different: A built-in project manager\. Plans your week and flags what's late, stuck or forgotten\. /);
-    assert.match(label, /Safe by default\. Asks before it pushes to main, never force-pushes, keeps secrets out\.$/);
+    assert.match(label, /Safe by default\. Asks before a push to main, refuses blind force-pushes and keys in notes\.$/);
     assert.equal(textOf(places.find((place) => place.element.name === 'title')?.element ?? ''), label);
   });
 

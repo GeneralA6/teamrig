@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="416" viewBox="0 0 960 416" role="img" aria-label="Why teamrig is different: A built-in project manager. Plans your week and flags what's late, stuck or forgotten. Thrifty with your tokens. Lean rules, batched work, and notes that wait instead of waking anyone. Smarter every day. What one member works out becomes a skill the whole team reuses. Never loses the thread. When its memory fills up, a member hands its work over and starts fresh. Done means proven. A task closes only with evidence and a lesson the team keeps. Safe by default. Asks before it pushes to main, never force-pushes, keeps secrets out.">
-<title>Why teamrig is different: A built-in project manager. Plans your week and flags what's late, stuck or forgotten. Thrifty with your tokens. Lean rules, batched work, and notes that wait instead of waking anyone. Smarter every day. What one member works out becomes a skill the whole team reuses. Never loses the thread. When its memory fills up, a member hands its work over and starts fresh. Done means proven. A task closes only with evidence and a lesson the team keeps. Safe by default. Asks before it pushes to main, never force-pushes, keeps secrets out.</title>
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="416" viewBox="0 0 960 416" role="img" aria-label="Why teamrig is different: A built-in project manager. Plans your week and flags what's late, stuck or forgotten. Thrifty with your tokens. Lean, capped rules, and notes that wait instead of waking anyone. Smarter every day. What one member works out becomes a skill the whole team reuses. Never loses the thread. When its memory runs high, a member leaves a handover for a fresh start. Done means proven. A task closes only with evidence and a lesson the team keeps. Safe by default. Asks before a push to main, refuses blind force-pushes and keys in notes.">
+<title>Why teamrig is different: A built-in project manager. Plans your week and flags what's late, stuck or forgotten. Thrifty with your tokens. Lean, capped rules, and notes that wait instead of waking anyone. Smarter every day. What one member works out becomes a skill the whole team reuses. Never loses the thread. When its memory runs high, a member leaves a handover for a fresh start. Done means proven. A task closes only with evidence and a lesson the team keeps. Safe by default. Asks before a push to main, refuses blind force-pushes and keys in notes.</title>
 <style>
 :root{--fg:#1f2328;--muted:#59636e;--line:#d1d9e0;--tile:#f6f8fa;--bg:#ffffff;--purple:#8250df;--tint:#f0eafb;--amber:#9a6700;--green:#1a7f37}
 @media (prefers-color-scheme:dark){:root{--fg:#e6edf3;--muted:#9198a1;--line:#3d444d;--tile:#151b23;--bg:#0d1117;--purple:#a371f7;--tint:#221e36;--amber:#d29922;--green:#3fb950}}
@@ -18,8 +18,8 @@ text{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helveti
 <rect x="352" y="24" width="48" height="48" rx="12" class="chip"/>
 <g transform="translate(362 34) scale(1.1666666666666667)" class="icon"><path d="M3.2 17.5a9 9 0 1 1 17.6 0"/><path d="m12 14.5 4.2-4.7"/><circle cx="12" cy="14.5" r="1.7"/><path d="M7 20.5h10"/></g>
 <text x="352" y="114" class="cardtitle">Thrifty with your tokens</text>
-<text x="352" y="143" class="sub">Lean rules, batched work, and notes</text>
-<text x="352" y="164" class="sub">that wait instead of waking anyone.</text>
+<text x="352" y="143" class="sub">Lean, capped rules, and notes that</text>
+<text x="352" y="164" class="sub">wait instead of waking anyone.</text>
 <rect x="656.5" y="0.5" width="303" height="195" rx="14" class="card"/>
 <rect x="680" y="24" width="48" height="48" rx="12" class="chip"/>
 <g transform="translate(690 34) scale(1.1666666666666667)" class="icon"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.7.6 1.1 1.3 1.1 2.2h5c0-.9.4-1.6 1.1-2.2A6 6 0 0 0 12 3z"/></g>
@@ -30,8 +30,8 @@ text{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helveti
 <rect x="24" y="244" width="48" height="48" rx="12" class="chip"/>
 <g transform="translate(34 254) scale(1.1666666666666667)" class="icon"><path d="M20 11a8 8 0 0 0-14.3-4.9L3.5 8.5"/><path d="M3.5 3.5v5h5"/><path d="M4 13a8 8 0 0 0 14.3 4.9l2.2-2.4"/><path d="M20.5 20.5v-5h-5"/></g>
 <text x="24" y="334" class="cardtitle">Never loses the thread</text>
-<text x="24" y="363" class="sub">When its memory fills up, a member</text>
-<text x="24" y="384" class="sub">hands its work over and starts fresh.</text>
+<text x="24" y="363" class="sub">When its memory runs high, a member</text>
+<text x="24" y="384" class="sub">leaves a handover for a fresh start.</text>
 <rect x="328.5" y="220.5" width="303" height="195" rx="14" class="card"/>
 <rect x="352" y="244" width="48" height="48" rx="12" class="chip"/>
 <g transform="translate(362 254) scale(1.1666666666666667)" class="icon"><rect x="4.5" y="4" width="15" height="17.5" rx="2"/><path d="M9 4V2.5h6V4"/><path d="m8.5 13 2.5 2.5 4.5-5"/></g>
@@ -42,6 +42,6 @@ text{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helveti
 <rect x="680" y="244" width="48" height="48" rx="12" class="chip"/>
 <g transform="translate(690 254) scale(1.1666666666666667)" class="icon"><path d="M12 2.5 4 5.5v6c0 5 3.4 8.6 8 10 4.6-1.4 8-5 8-10v-6z"/><path d="m8.5 12 2.5 2.5 4.5-5"/></g>
 <text x="680" y="334" class="cardtitle">Safe by default</text>
-<text x="680" y="363" class="sub">Asks before it pushes to main, never</text>
-<text x="680" y="384" class="sub">force-pushes, keeps secrets out.</text>
+<text x="680" y="363" class="sub">Asks before a push to main, refuses</text>
+<text x="680" y="384" class="sub">blind force-pushes and keys in notes.</text>
 </svg>
