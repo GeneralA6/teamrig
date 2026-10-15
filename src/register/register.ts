@@ -2,7 +2,7 @@ import { errorMessage } from '../core/guards.ts';
 import { NewerDataError } from '../core/jsonl.ts';
 import type { Clock, Mutex } from '../core/lock.ts';
 import { EVENT_VERSION, type CreateEvent, type RegisterEvent, type StatusEvent, type TaskFields, type UpdateEvent } from './events.ts';
-import { foldEvents, taskNumber, type Task } from './fold.ts';
+import { foldEvents, taskNumber, type RegisterState, type Task } from './fold.ts';
 import { NO_SKILL, type AddInput, type RegisterPolicy, type StatusInput, type Verdict } from './policy.ts';
 import { isWritable, type RegisterSnapshot } from './snapshot.ts';
 import type { EventLog } from './store.ts';
@@ -34,6 +34,8 @@ export type RotationOutcome =
 
 export interface WriteResult {
   readonly task: Task;
+  /** The register after the write, so a reader judges the task against the others (a waiting task's reasons). */
+  readonly state: RegisterState;
   readonly event: RegisterEvent;
   readonly rotation: RotationOutcome;
 }
@@ -76,7 +78,8 @@ export class Register {
     const skillExists = skill === undefined || skill === '' || skill === NO_SKILL || (await this.deps.skills.exists(skill));
     return this.commit(caller, (snapshot) =>
       onTask(snapshot, id, (task) => {
-        const change = this.deps.policy.setStatus(task, caller, input, skillExists);
+        const now = new Date(this.deps.clock.now());
+        const change = this.deps.policy.setStatus(task, caller, input, { state: snapshot.state, now, skillExists });
         if (!change.ok) {
           return change;
         }
@@ -89,7 +92,7 @@ export class Register {
   update(caller: string, id: string, changes: Partial<TaskFields>, note: string | undefined): Promise<Verdict<WriteResult>> {
     return this.commit(caller, (snapshot) =>
       onTask(snapshot, id, (task) => {
-        const change = this.deps.policy.update(task, caller, changes, note);
+        const change = this.deps.policy.update(task, caller, changes, note, snapshot.state);
         if (!change.ok) {
           return change;
         }
@@ -136,11 +139,12 @@ export class Register {
       }
       const event = decision.value;
       await this.deps.log.append(event);
-      const task = foldEvents([event], [], snapshot.state).tasks.get(event.id);
+      const state = foldEvents([event], [], snapshot.state);
+      const task = state.tasks.get(event.id);
       if (task === undefined) {
         throw new Error(`${event.id} is missing after its own write`);
       }
-      return { ok: true, value: { task, event, rotation: await this.rotation(snapshot) } };
+      return { ok: true, value: { task, state, event, rotation: await this.rotation(snapshot) } };
     });
   }
 

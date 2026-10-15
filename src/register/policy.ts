@@ -3,8 +3,9 @@ import { ADDRESS_PATTERN } from '../core/address.ts';
 import { SecretScanner } from '../core/secrets.ts';
 import { parseUtcDay, parseUtcDeadline } from '../core/time.ts';
 import type { TaskFieldName, TaskFields } from './events.ts';
-import type { RegisterState, Task } from './fold.ts';
+import { taskNumber, type RegisterState, type Task } from './fold.ts';
 import { ACTIVE_STATUSES, priorityText, SESSION_NAME, type TaskStatus } from './model.ts';
+import { sameWait, waitSpelling, type WaitReason } from './waits.ts';
 
 /** Team policy, applied on WRITE only: the parser accepts any well-formed history. */
 export type Verdict<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: string };
@@ -24,6 +25,7 @@ export interface AddInput {
   readonly due?: string;
   readonly goals?: readonly string[];
   readonly week?: string;
+  readonly after?: readonly string[];
 }
 
 export interface StatusInput {
@@ -31,6 +33,15 @@ export interface StatusInput {
   readonly note?: string;
   readonly evidence?: string;
   readonly skill?: string;
+  /** The reasons a `waiting` status waits for; at least one, and none with any other status. */
+  readonly waits?: readonly WaitReason[];
+}
+
+/** What a status change is judged against besides the task: the register as read, the time, and whether a cited skill exists. */
+export interface StatusContext {
+  readonly state: RegisterState;
+  readonly now: Date;
+  readonly skillExists: boolean;
 }
 
 export interface StatusChange {
@@ -38,7 +49,12 @@ export interface StatusChange {
   readonly note: string | null;
   readonly evidence: string | null;
   readonly skill: string | null;
+  /** Only with `waiting`. */
+  readonly waits?: readonly WaitReason[];
 }
+
+/** How `--waits` is typed, for the refusals that ask for it. */
+export const WAITS_USAGE = 'decision:<who>, approval:<who>, task:T<id> or time:<YYYY-MM-DD HH:MM>, comma-separated';
 
 export interface UpdateChange {
   readonly changes: Partial<TaskFields>;
@@ -100,8 +116,9 @@ export class RegisterPolicy {
       due: input.due ?? null,
       goals: input.goals ?? [],
       week: input.week ?? null,
+      after: input.after ?? [],
     };
-    const problem = this.checkFields(fields, sourceRule);
+    const problem = this.checkFields(fields, sourceRule) ?? afterProblem(state.nextId, fields.after, state);
     if (problem !== undefined) {
       return refuse(problem);
     }
@@ -111,7 +128,7 @@ export class RegisterPolicy {
     return duplicate === undefined ? ok(fields) : refuse(`${duplicate.id} already tracks this (${duplicate.status}, owner ${duplicate.owner})`);
   }
 
-  setStatus(task: Task, caller: string, input: StatusInput, skillExists: boolean): Verdict<StatusChange> {
+  setStatus(task: Task, caller: string, input: StatusInput, context: StatusContext): Verdict<StatusChange> {
     if (caller !== task.owner) {
       return refuse(`only the owner (${task.owner}) sets the status of ${task.id}`);
     }
@@ -119,7 +136,11 @@ export class RegisterPolicy {
     const note = blankToNull(input.note);
     const evidence = blankToNull(input.evidence);
     const skill = blankToNull(input.skill);
-    if (input.status === task.status && note === null) {
+    const waits = this.checkWaits(task, input, context);
+    if (!waits.ok) {
+      return waits;
+    }
+    if (input.status === task.status && note === null && sameWaits(waits.value, task.waits)) {
       return refuse(`${task.id} is already ${task.status}; add --note to record why you set it again`);
     }
     if (register.requireNoteOn.includes(input.status) && note === null) {
@@ -132,17 +153,51 @@ export class RegisterPolicy {
       if (register.requireSkillOnDone && skill === null) {
         return refuse(`done needs --skill <name> (the skill written or updated) or --skill ${NO_SKILL}`);
       }
-      if (skill !== null && skill !== NO_SKILL && !skillExists) {
+      if (skill !== null && skill !== NO_SKILL && !context.skillExists) {
         return refuse(`no skill named ${skill}; write it first or use --skill ${NO_SKILL}`);
       }
     } else if (skill !== null) {
       return refuse('--skill goes only with done');
     }
     const problem = this.checkText('note', note) ?? this.checkText('evidence', evidence);
-    return problem === undefined ? ok({ status: input.status, note, evidence, skill }) : refuse(problem);
+    const change: StatusChange = { status: input.status, note, evidence, skill, ...(waits.value.length > 0 ? { waits: waits.value } : {}) };
+    return problem === undefined ? ok(change) : refuse(problem);
   }
 
-  update(task: Task, caller: string, changes: Partial<TaskFields>, note: string | undefined): Verdict<UpdateChange> {
+  /** The reasons of a status change: at least one for `waiting`, none for any other status, each one judged. */
+  private checkWaits(task: Task, input: StatusInput, context: StatusContext): Verdict<readonly WaitReason[]> {
+    const waits = input.waits ?? [];
+    if (input.status !== 'waiting') {
+      return waits.length === 0 ? ok([]) : refuse('--waits goes only with --status waiting');
+    }
+    if (waits.length === 0) {
+      return refuse(`waiting needs --waits saying what it waits for: ${WAITS_USAGE}`);
+    }
+    const twice = waits.find((reason, index) => waits.findIndex((other) => sameWait(reason, other)) !== index);
+    if (twice !== undefined) {
+      return refuse(`--waits names ${waitSpelling(twice)} twice`);
+    }
+    const problem = waits.map((reason) => this.waitProblem(task, reason, context)).find((found) => found !== undefined);
+    return problem === undefined ? ok(waits) : refuse(problem);
+  }
+
+  private waitProblem(task: Task, reason: WaitReason, context: StatusContext): string | undefined {
+    switch (reason.kind) {
+      case 'decision':
+      case 'approval': {
+        const { ownerSource } = this.config.register;
+        return reason.who === ownerSource || this.config.sessions.includes(reason.who)
+          ? undefined
+          : `${reason.kind} ${reason.who}: ${reason.who} is neither a session on this team nor ${ownerSource}`;
+      }
+      case 'task':
+        return taskWaitProblem(task, reason.id, context.state);
+      case 'time':
+        return (parseUtcDeadline(reason.at)?.getTime() ?? 0) > context.now.getTime() ? undefined : `time ${reason.at} has passed: name a time to come`;
+    }
+  }
+
+  update(task: Task, caller: string, changes: Partial<TaskFields>, note: string | undefined, state: RegisterState): Verdict<UpdateChange> {
     const names = Object.keys(changes).filter((name): name is TaskFieldName => name in changes);
     if (names.length === 0) {
       return refuse('nothing to change');
@@ -159,7 +214,8 @@ export class RegisterPolicy {
     const merged: TaskFields = { ...pickFields(task), ...changes };
     // A task keeps the source it was added with, even one from the parent team's lead.
     const sourceRule: SourceRule = (source) => (source === task.source ? undefined : this.teamSourceProblem(source));
-    const problem = this.checkFields(merged, sourceRule) ?? this.checkText('note', blankToNull(note));
+    const after = changes.after === undefined ? undefined : afterChangeProblem(task, changes.after, state);
+    const problem = after ?? this.checkFields(merged, sourceRule) ?? this.checkText('note', blankToNull(note));
     return problem === undefined ? ok({ changes, note: blankToNull(note) }) : refuse(problem);
   }
 
@@ -213,8 +269,76 @@ export class RegisterPolicy {
 }
 
 function pickFields(task: Task): TaskFields {
-  const { title, owner, source, ref, priority, due, goals, week } = task;
-  return { title, owner, source, ref, priority, due, goals, week };
+  const { title, owner, source, ref, priority, due, goals, week, after } = task;
+  return { title, owner, source, ref, priority, due, goals, week, after };
+}
+
+function sameWaits(a: readonly WaitReason[], b: readonly WaitReason[]): boolean {
+  return a.length === b.length && a.every((reason) => b.some((other) => sameWait(reason, other)));
+}
+
+/**
+ * A task reason is for a task already started (in progress, or waiting after it started) that found another
+ * task must finish first: one not started stays open with a plan dependency instead.
+ */
+function taskWaitProblem(task: Task, id: string, state: RegisterState): string | undefined {
+  if (id === task.id) {
+    return `${task.id} cannot wait on itself`;
+  }
+  const started = task.status === 'in-progress' || (task.status === 'waiting' && task.startedAt !== null);
+  if (!started) {
+    return `${task.id} has not started, so it does not wait on ${id}: it stays open, planned after it (teamrig update ${task.id} --after ${id})`;
+  }
+  if (taskNumber(id) >= taskNumber(state.nextId)) {
+    return `no task ${id}`;
+  }
+  const target = state.tasks.get(id);
+  return target === undefined || target.status === 'done' || target.status === 'dropped' ? `${id} is already finished; nothing to wait on` : undefined;
+}
+
+/** A plan dependency is for a task not started yet: a started one waits on a task instead. Clearing it is always fine. */
+function afterChangeProblem(task: Task, after: readonly string[], state: RegisterState): string | undefined {
+  const first = after[0];
+  if (first !== undefined && task.status !== 'open') {
+    return `--after plans a task not started yet, and ${task.id} is ${task.status}; a started task waits on another with --status waiting --waits task:${first}`;
+  }
+  return afterProblem(task.id, after, state);
+}
+
+/**
+ * The tasks `id` comes after must exist, be named once, and never lead back to `id`: a loop could never start.
+ * On a create, `id` is the id the new task gets.
+ */
+function afterProblem(id: string, after: readonly string[], state: RegisterState): string | undefined {
+  const twice = after.find((other, index) => after.indexOf(other) !== index);
+  if (twice !== undefined) {
+    return `--after names ${twice} twice`;
+  }
+  if (after.includes(id)) {
+    return `${id} cannot come after itself`;
+  }
+  const missing = after.find((other) => taskNumber(other) >= taskNumber(state.nextId));
+  if (missing !== undefined) {
+    return `no task ${missing}`;
+  }
+  const loop = after.find((other) => leadsTo(other, id, state));
+  return loop === undefined ? undefined : `${loop} already comes after ${id}, directly or not, so ${id} cannot come after ${loop}`;
+}
+
+/** True when `from` is `target` or comes after it, directly or through the tasks it comes after. */
+function leadsTo(from: string, target: string, state: RegisterState): boolean {
+  const seen = new Set<string>();
+  const queue = [from];
+  for (let next = queue.pop(); next !== undefined; next = queue.pop()) {
+    if (next === target) {
+      return true;
+    }
+    if (!seen.has(next)) {
+      seen.add(next);
+      queue.push(...(state.tasks.get(next)?.after ?? []));
+    }
+  }
+  return false;
 }
 
 function blankToNull(text: string | undefined): string | null {

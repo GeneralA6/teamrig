@@ -3,12 +3,23 @@ import assert from 'node:assert/strict';
 import { testConfig } from '../testing/config.ts';
 import { testTask } from '../testing/task.ts';
 import { foldEvents, type RegisterState, type Task } from './fold.ts';
-import { normaliseTitle, RegisterPolicy, type AddInput, type Verdict } from './policy.ts';
+import { normaliseTitle, RegisterPolicy, type AddInput, type StatusContext, type Verdict } from './policy.ts';
+import type { WaitReason } from './waits.ts';
 
 const EMPTY: RegisterState = foldEvents([]);
 const INPUT: AddInput = { title: 'Add a health check', owner: 'alpha', source: 'lead', priority: 2 };
 
-const TASK: Task = testTask({ status: 'in-progress' });
+const TASK: Task = testTask({ status: 'in-progress', startedAt: '2030-01-07T10:00:00.000Z' });
+const NOW = new Date('2030-01-08T12:00:00.000Z');
+/** A status change judged on an empty register at NOW, with no skill on disk. */
+const CTX: StatusContext = { state: EMPTY, now: NOW, skillExists: false };
+const OWNER_DECISION: readonly WaitReason[] = [{ kind: 'decision', who: 'owner' }];
+
+/** A register holding these tasks, its next id after the highest. */
+function stateOf(...tasks: Task[]): RegisterState {
+  const highest = Math.max(0, ...tasks.map((task) => Number(task.id.slice(1))));
+  return { tasks: new Map(tasks.map((task) => [task.id, task])), orphans: 0, nextId: `T${highest + 1}` };
+}
 
 function error<T>(verdict: Verdict<T>): string {
   return verdict.ok ? 'allowed' : verdict.error;
@@ -26,7 +37,7 @@ describe('RegisterPolicy.add', () => {
     const verdict = policy.add({ ...INPUT, title: '  Add a health check ' }, EMPTY);
     assert.deepEqual(verdict, {
       ok: true,
-      value: { title: 'Add a health check', owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], week: null },
+      value: { title: 'Add a health check', owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], week: null, after: [] },
     });
   });
 
@@ -53,9 +64,9 @@ describe('RegisterPolicy.add', () => {
     const refused = error(policy.add({ ...INPUT, ref: `see ${token}` }, EMPTY));
     assert.equal(refused, 'ref looks like it holds a secret (GitHub token); refer to where it is kept instead');
     assert.match(error(policy.add({ ...INPUT, title: `rotate ${token}` }, EMPTY)), /^title looks like it holds a secret \(GitHub token\)/);
-    assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'blocked', note: `key ${token}` }, false)), /^note looks like it holds a secret/);
-    assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'done', note: 'ok', evidence: token, skill: 'none' }, false)), /^evidence looks like it holds a secret/);
-    assert.match(error(policy.update(TASK, 'alpha', { title: 'Add two health checks' }, `see ${token}`)), /^note looks like it holds a secret/);
+    assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'waiting', waits: OWNER_DECISION, note: `key ${token}` }, CTX)), /^note looks like it holds a secret/);
+    assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'done', note: 'ok', evidence: token, skill: 'none' }, CTX)), /^evidence looks like it holds a secret/);
+    assert.match(error(policy.update(TASK, 'alpha', { title: 'Add two health checks' }, `see ${token}`, EMPTY)), /^note looks like it holds a secret/);
   });
 
   it('checks goals and extra secret patterns from the config', () => {
@@ -67,7 +78,7 @@ describe('RegisterPolicy.add', () => {
 
   it('refuses an active task with the same title, but not a closed one', () => {
     const open = foldEvents([
-      { v: 1, type: 'create', id: 'T4', at: TASK.createdAt, by: 'lead', task: { ...INPUT, ref: null, due: null, goals: [], week: null } },
+      { v: 1, type: 'create', id: 'T4', at: TASK.createdAt, by: 'lead', task: { ...INPUT, ref: null, due: null, goals: [], week: null, after: [] } },
     ]);
     assert.match(error(policy.add({ ...INPUT, title: 'add a  HEALTH check' }, open)), /T4 already tracks this \(open, owner alpha\)/);
     const closed = foldEvents([
@@ -87,47 +98,105 @@ describe('RegisterPolicy.setStatus', () => {
   const policy = new RegisterPolicy(testConfig());
 
   it('lets only the owner set the status', () => {
-    assert.match(error(policy.setStatus(TASK, 'bravo', { status: 'blocked', note: 'x' }, false)), /only the owner \(alpha\)/);
-    assert.match(error(policy.setStatus(TASK, 'lead', { status: 'blocked', note: 'x' }, false)), /only the owner/);
+    assert.match(error(policy.setStatus(TASK, 'bravo', { status: 'waiting', waits: OWNER_DECISION, note: 'x' }, CTX)), /only the owner \(alpha\)/);
+    assert.match(error(policy.setStatus(TASK, 'lead', { status: 'waiting', waits: OWNER_DECISION, note: 'x' }, CTX)), /only the owner/);
   });
 
   it('requires a note, evidence and a skill to close a task', () => {
-    assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'done' }, false)), /done needs --note/);
-    assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'verifying' }, false)), /^verifying needs --note saying what proves it$/);
-    assert.equal(policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'the nightly run' }, false).ok, true);
-    assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'done', note: 'ok' }, false)), /needs --evidence/);
-    assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'done', note: 'ok', evidence: 'abc1234' }, false)), /needs --skill/);
+    assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'done' }, CTX)), /done needs --note/);
+    assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'verifying' }, CTX)), /^verifying needs --note saying what proves it$/);
+    assert.equal(policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'the nightly run' }, CTX).ok, true);
+    assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'done', note: 'ok' }, CTX)), /needs --evidence/);
+    assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'done', note: 'ok', evidence: 'abc1234' }, CTX)), /needs --skill/);
     assert.match(
-      error(policy.setStatus(TASK, 'alpha', { status: 'done', note: 'ok', evidence: 'abc1234', skill: 'web-deploy' }, false)),
+      error(policy.setStatus(TASK, 'alpha', { status: 'done', note: 'ok', evidence: 'abc1234', skill: 'web-deploy' }, CTX)),
       /no skill named web-deploy/,
     );
-    assert.deepEqual(policy.setStatus(TASK, 'alpha', { status: 'done', note: ' ok ', evidence: 'abc1234', skill: 'none' }, false), {
+    assert.deepEqual(policy.setStatus(TASK, 'alpha', { status: 'done', note: ' ok ', evidence: 'abc1234', skill: 'none' }, CTX), {
       ok: true,
       value: { status: 'done', note: 'ok', evidence: 'abc1234', skill: 'none' },
     });
-    assert.equal(policy.setStatus(TASK, 'alpha', { status: 'done', note: 'ok', evidence: 'abc', skill: 'web-deploy' }, true).ok, true);
+    assert.equal(policy.setStatus(TASK, 'alpha', { status: 'done', note: 'ok', evidence: 'abc', skill: 'web-deploy' }, { ...CTX, skillExists: true }).ok, true);
   });
 
   it('accepts evidence recorded on an earlier status change', () => {
     const withEvidence: Task = { ...TASK, evidence: 'abc1234' };
-    assert.equal(policy.setStatus(withEvidence, 'alpha', { status: 'done', note: 'ok', skill: 'none' }, false).ok, true);
+    assert.equal(policy.setStatus(withEvidence, 'alpha', { status: 'done', note: 'ok', skill: 'none' }, CTX).ok, true);
   });
 
   it('keeps --skill for done and wants a reason to repeat a status', () => {
-    assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'blocked', note: 'x', skill: 'none' }, false)), /only with done/);
-    assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'in-progress' }, false)), /already in-progress/);
-    assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'dropped' }, false)), /dropped needs --note/);
-    assert.equal(policy.setStatus(TASK, 'alpha', { status: 'open' }, false).ok, true);
+    assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'waiting', waits: OWNER_DECISION, note: 'x', skill: 'none' }, CTX)), /only with done/);
+    assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'in-progress' }, CTX)), /already in-progress/);
+    assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'dropped' }, CTX)), /dropped needs --note/);
+    assert.equal(policy.setStatus(TASK, 'alpha', { status: 'open' }, CTX).ok, true);
   });
 
   it('follows a relaxed config', () => {
     const relaxed = new RegisterPolicy(
       testConfig({ register: { requireEvidenceOnDone: false, requireSkillOnDone: false, requireNoteOn: [] } }),
     );
-    assert.deepEqual(relaxed.setStatus(TASK, 'alpha', { status: 'done' }, false), {
+    assert.deepEqual(relaxed.setStatus(TASK, 'alpha', { status: 'done' }, CTX), {
       ok: true,
       value: { status: 'done', note: null, evidence: null, skill: null },
     });
+  });
+});
+
+describe('RegisterPolicy.setStatus to waiting', () => {
+  const policy = new RegisterPolicy(testConfig());
+  const OPEN = testTask({ id: 'T2', status: 'open' });
+  const DONE = testTask({ id: 'T3', status: 'done' });
+  const BUSY = testTask({ id: 'T4', status: 'in-progress', owner: 'bravo' });
+  const STATE = stateOf(TASK, OPEN, DONE, BUSY);
+  const waiting = (task: Task, waits: readonly WaitReason[], state: RegisterState = STATE) =>
+    policy.setStatus(task, 'alpha', { status: 'waiting', note: 'x', waits }, { ...CTX, state });
+
+  it('keeps every kind of reason, each named once', () => {
+    const waits: WaitReason[] = [
+      { kind: 'decision', who: 'owner' },
+      { kind: 'approval', who: 'bravo' },
+      { kind: 'task', id: 'T4' },
+      { kind: 'time', at: '2030-01-09 13:00' },
+    ];
+    assert.deepEqual(waiting(TASK, waits), { ok: true, value: { status: 'waiting', note: 'x', evidence: null, skill: null, waits } });
+  });
+
+  it('needs a reason, and takes reasons only with waiting', () => {
+    assert.match(error(waiting(TASK, [])), /^waiting needs --waits saying what it waits for: decision:<who>/);
+    assert.equal(error(policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'x', waits: OWNER_DECISION }, CTX)), '--waits goes only with --status waiting');
+    assert.equal(error(waiting(TASK, [...OWNER_DECISION, ...OWNER_DECISION])), '--waits names decision:owner twice');
+  });
+
+  it('names who decides or approves: a session of the team or the owner', () => {
+    assert.equal(error(waiting(TASK, [{ kind: 'approval', who: 'charlie' }])), 'approval charlie: charlie is neither a session on this team nor owner');
+    assert.equal(waiting(TASK, [{ kind: 'decision', who: 'lead' }]).ok, true);
+  });
+
+  it('waits on a task only once started, and only on another live task', () => {
+    assert.equal(
+      error(waiting(OPEN, [{ kind: 'task', id: 'T4' }])),
+      'T2 has not started, so it does not wait on T4: it stays open, planned after it (teamrig update T2 --after T4)',
+    );
+    assert.match(error(waiting(testTask({ id: 'T5', status: 'waiting', startedAt: null }), [{ kind: 'task', id: 'T4' }])), /T5 has not started/);
+    assert.equal(waiting(testTask({ status: 'waiting', startedAt: '2030-01-07T10:00:00.000Z' }), [{ kind: 'task', id: 'T4' }]).ok, true);
+    assert.equal(error(waiting(TASK, [{ kind: 'task', id: 'T1' }])), 'T1 cannot wait on itself');
+    assert.equal(error(waiting(TASK, [{ kind: 'task', id: 'T9' }])), 'no task T9');
+    assert.equal(error(waiting(TASK, [{ kind: 'task', id: 'T3' }])), 'T3 is already finished; nothing to wait on');
+  });
+
+  it('waits until a time to come, never one that passed', () => {
+    assert.equal(error(waiting(TASK, [{ kind: 'time', at: '2030-01-08 11:59' }])), 'time 2030-01-08 11:59 has passed: name a time to come');
+    assert.equal(waiting(TASK, [{ kind: 'time', at: '2030-01-08' }]).ok, true, 'a bare day lasts to its end');
+  });
+
+  it('takes the same status again only with a new note or new reasons', () => {
+    const held = testTask({ status: 'waiting', startedAt: TASK.startedAt, waits: OWNER_DECISION });
+    assert.match(error(policy.setStatus(held, 'alpha', { status: 'waiting', waits: OWNER_DECISION }, CTX)), /already waiting/);
+    assert.equal(policy.setStatus(held, 'alpha', { status: 'waiting', waits: [{ kind: 'approval', who: 'owner' }], note: 'x' }, CTX).ok, true);
+    const relaxed = new RegisterPolicy(testConfig({ register: { requireNoteOn: [] } }));
+    const more = [...OWNER_DECISION, { kind: 'approval' as const, who: 'owner' }];
+    assert.equal(relaxed.setStatus(held, 'alpha', { status: 'waiting', waits: more }, CTX).ok, true, 'new reasons need no note');
+    assert.match(error(relaxed.setStatus(held, 'alpha', { status: 'waiting', waits: [...OWNER_DECISION] }, CTX)), /already waiting/);
   });
 });
 
@@ -135,21 +204,49 @@ describe('RegisterPolicy.update', () => {
   const policy = new RegisterPolicy(testConfig());
 
   it('lets the owner change any field, validated like a new task', () => {
-    assert.deepEqual(policy.update(TASK, 'alpha', { title: 'Add two health checks' }, ' wider '), {
+    assert.deepEqual(policy.update(TASK, 'alpha', { title: 'Add two health checks' }, ' wider ', EMPTY), {
       ok: true,
       value: { changes: { title: 'Add two health checks' }, note: 'wider' },
     });
-    assert.match(error(policy.update(TASK, 'alpha', { priority: 7 }, undefined)), /priority p7 is not one of/);
+    assert.match(error(policy.update(TASK, 'alpha', { priority: 7 }, undefined, EMPTY)), /priority p7 is not one of/);
   });
 
   it('lets the lead change only owner, priority, due and week', () => {
-    assert.equal(policy.update(TASK, 'lead', { owner: 'bravo', due: '2030-01-10' }, undefined).ok, true);
-    assert.match(error(policy.update(TASK, 'lead', { title: 'x', priority: 1 }, undefined)), /asked: title/);
+    assert.equal(policy.update(TASK, 'lead', { owner: 'bravo', due: '2030-01-10' }, undefined, EMPTY).ok, true);
+    assert.match(error(policy.update(TASK, 'lead', { title: 'x', priority: 1 }, undefined, EMPTY)), /asked: title/);
+  });
+
+  it('plans an open task after others, and clears that plan on any task', () => {
+    const first = testTask({ id: 'T1', status: 'in-progress' });
+    const second = testTask({ id: 'T2', status: 'open', after: ['T1'] });
+    const third = testTask({ id: 'T3', status: 'open' });
+    const state = stateOf(first, second, third);
+    assert.deepEqual(policy.update(third, 'alpha', { after: ['T1', 'T2'] }, undefined, state), {
+      ok: true,
+      value: { changes: { after: ['T1', 'T2'] }, note: null },
+    });
+    assert.equal(policy.update(first, 'alpha', { after: [] }, undefined, state).ok, true);
+    assert.equal(
+      error(policy.update(first, 'alpha', { after: ['T3'] }, undefined, state)),
+      '--after plans a task not started yet, and T1 is in-progress; a started task waits on another with --status waiting --waits task:T3',
+    );
+    assert.equal(error(policy.update(third, 'alpha', { after: ['T1', 'T1'] }, undefined, state)), '--after names T1 twice');
+    assert.equal(error(policy.update(third, 'alpha', { after: ['T3'] }, undefined, state)), 'T3 cannot come after itself');
+    assert.equal(error(policy.update(third, 'alpha', { after: ['T4'] }, undefined, state)), 'no task T4');
+    assert.equal(error(policy.update(testTask({ id: 'T1', status: 'open' }), 'alpha', { after: ['T2'] }, undefined, state)), 'T2 already comes after T1, directly or not, so T1 cannot come after T2');
+  });
+
+  it('plans a new task after others, and refuses one that does not exist yet', () => {
+    const state = stateOf(testTask({ id: 'T1' }), testTask({ id: 'T2', after: ['T1'] }));
+    const verdict = policy.add({ ...INPUT, title: 'Ship it', after: ['T2', 'T1'] }, state);
+    assert.equal(verdict.ok && verdict.value.after.join(','), 'T2,T1');
+    assert.equal(error(policy.add({ ...INPUT, title: 'Ship it', after: ['T3'] }, state)), 'T3 cannot come after itself', 'T3 is the id it gets');
+    assert.equal(error(policy.add({ ...INPUT, title: 'Ship it', after: ['T4'] }, state)), 'no task T4');
   });
 
   it('refuses everyone else and empty changes', () => {
-    assert.match(error(policy.update(TASK, 'bravo', { priority: 1 }, undefined)), /only the owner \(alpha\) or the lead/);
-    assert.match(error(policy.update(TASK, 'alpha', {}, undefined)), /nothing to change/);
+    assert.match(error(policy.update(TASK, 'bravo', { priority: 1 }, undefined, EMPTY)), /only the owner \(alpha\) or the lead/);
+    assert.match(error(policy.update(TASK, 'alpha', {}, undefined, EMPTY)), /nothing to change/);
   });
 });
 
@@ -167,8 +264,8 @@ describe('RegisterPolicy.addFromParent', () => {
     const verdict = policy.addFromParent(FROM_PARENT, EMPTY);
     assert.equal(verdict.ok && verdict.value.source, 'app/lead');
     const handed = testTask({ owner: 'lead', source: 'app/lead' });
-    assert.equal(policy.update(handed, 'lead', { priority: 1 }, undefined).ok, true);
-    assert.match(error(policy.update(handed, 'lead', { source: 'web/lead' }, undefined)), /source web.lead is neither a session id nor owner/);
+    assert.equal(policy.update(handed, 'lead', { priority: 1 }, undefined, EMPTY).ok, true);
+    assert.match(error(policy.update(handed, 'lead', { source: 'web/lead' }, undefined, EMPTY)), /source web.lead is neither a session id nor owner/);
   });
 
   it('refuses another owner, a bare source, and the parent address on a team add', () => {
