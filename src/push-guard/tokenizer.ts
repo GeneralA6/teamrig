@@ -1,8 +1,13 @@
 /** Which shell wrote a command line; it decides the quotes, the escape character and what expands. */
 export type ShellDialect = 'bash' | 'powershell' | 'cmd';
 
-/** A piece of a bash word: text, quoted (or escaped) or not, or a plain variable reference `$NAME` or `${NAME}`. */
-export type WordPart = { readonly kind: 'text'; readonly text: string; readonly quoted: boolean } | { readonly kind: 'variable'; readonly name: string };
+/**
+ * A piece of a bash word: text, quoted (or escaped) or not, or a plain variable reference `$NAME` or `${NAME}`,
+ * quoted when written inside double quotes or an expanding heredoc body, where its value is not split into words.
+ */
+export type WordPart =
+  | { readonly kind: 'text'; readonly text: string; readonly quoted: boolean }
+  | { readonly kind: 'variable'; readonly name: string; readonly quoted: boolean };
 
 /** One word of a simple command, after quote removal. */
 export interface ShellWord {
@@ -131,7 +136,17 @@ class WordBuilder {
     this.started = true;
     this.dynamic ||= piece === 'dynamic';
     if (this.parts !== undefined) {
-      this.parts = piece === 'dynamic' ? withVariable(this.parts, chars) : withText(this.parts, chars, piece === 'quoted');
+      this.parts = piece === 'dynamic' ? undefined : withText(this.parts, chars, piece === 'quoted');
+    }
+  }
+
+  /** Adds a `$` expansion as written; a plain variable stays a part, `quoted` inside double quotes or an expanding body. */
+  addDollar(written: string, quoted: boolean): void {
+    this.text += written;
+    this.started = true;
+    this.dynamic = true;
+    if (this.parts !== undefined) {
+      this.parts = withVariable(this.parts, written, quoted);
     }
   }
 
@@ -174,11 +189,11 @@ function withText(parts: WordPart[], text: string, quoted: boolean): WordPart[] 
   return [...parts, { kind: 'text', text, quoted }];
 }
 
-/** `parts` with a dynamic piece added: a plain variable reference, or undefined for anything else. */
-function withVariable(parts: WordPart[], written: string): WordPart[] | undefined {
+/** `parts` with a `$` expansion added: a plain variable reference, or undefined for anything else. */
+function withVariable(parts: WordPart[], written: string, quoted: boolean): WordPart[] | undefined {
   const match = PLAIN_VARIABLE.exec(written);
   const name = match?.[1] ?? match?.[2];
-  return name === undefined ? undefined : [...parts, { kind: 'variable', name }];
+  return name === undefined ? undefined : [...parts, { kind: 'variable', name, quoted }];
 }
 
 /** Escapes that bash's `$'...'` quoting turns into one character. */
@@ -493,7 +508,7 @@ class Scanner {
       } else if (this.dialect === 'powershell' && char === '`') {
         this.readEscape(word);
       } else if (char === '$') {
-        this.readDollar(word);
+        this.readDollar(word, true);
       } else if (this.dialect === 'bash' && char === '`') {
         this.readBackticks(word);
       } else {
@@ -578,7 +593,7 @@ class Scanner {
     } else if (char === '`') {
       this.readBackticks(word);
     } else if (char === '$') {
-      this.readDollar(word);
+      this.readDollar(word, false);
     } else {
       return false;
     }
@@ -594,7 +609,7 @@ class Scanner {
     } else if (char === '`') {
       this.readEscape(word);
     } else if (char === '$') {
-      this.readDollar(word);
+      this.readDollar(word, false);
     } else if (char === '@' && !word.isStarted && this.opensHereString()) {
       this.readHereString(word);
     } else if (char === '@' && (this.at(1) === '(' || (/[A-Za-z_]/.test(this.at(1)) && !word.isStarted))) {
@@ -706,7 +721,7 @@ class Scanner {
       } else if (this.dialect === 'powershell' && char === '`') {
         this.readEscape(word);
       } else if (this.dialect !== 'cmd' && char === '$') {
-        this.readDollar(word);
+        this.readDollar(word, true);
       } else if (this.dialect === 'bash' && char === '`') {
         this.readBackticks(word);
       } else if (this.dialect === 'cmd' && (char === '%' || char === '!')) {
@@ -736,9 +751,10 @@ class Scanner {
 
   /**
    * At `$`: a substitution `$(...)` (its commands are read too), arithmetic `$((...))` or bash `$[...]`, `${...}`
-   * or a variable, kept as written and dynamic. A `$` that starts none of them is literal.
+   * or a variable, kept as written and dynamic; `quoted` inside double quotes or an expanding body. A `$` that
+   * starts none of them is literal.
    */
-  private readDollar(word: WordBuilder): void {
+  private readDollar(word: WordBuilder, quoted: boolean): void {
     const start = this.index;
     const next = this.at(1);
     if (next === '(' && this.dialect === 'bash' && this.at(2) === '(') {
@@ -774,7 +790,7 @@ class Scanner {
       this.index += 1;
       return;
     }
-    word.add(this.source.slice(start, this.index), 'dynamic');
+    word.addDollar(this.source.slice(start, this.index), quoted);
   }
 
   /** Inside `$(`, `@(` or `<(`: reads the commands through the closing `)`; in bash they run in a subshell. */
