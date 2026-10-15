@@ -44,3 +44,30 @@ describe('snapshotOf', () => {
     assert.equal(snapshot.state.tasks.get('T1')?.priority, 2);
   });
 });
+
+describe('readEvents on a rotated log', () => {
+  const marker = (after: unknown, v = 3): string => JSON.stringify({ v, type: 'rotated', after, at: '2030-01-08T00:00:00.000Z' });
+
+  it('reads the marker as the segment the log goes on from: no event, no line counted, no newer version', () => {
+    const read = readEvents([marker(2), CREATE_T1].join('\n'));
+    assert.equal(read.rotatedAfter, 2);
+    assert.equal(read.events.length, 1);
+    assert.deepEqual([read.unreadable, read.newer, read.newestVersion], [0, 0, EVENT_VERSION]);
+  });
+
+  it('reads a log with no marker as never rotated, and keeps the first marker of two', () => {
+    assert.equal(readEvents(CREATE_T1).rotatedAfter, 0);
+    assert.equal(readEvents([marker(4), marker(5), CREATE_T1].join('\n')).rotatedAfter, 4);
+  });
+
+  it('counts a damaged marker as unreadable without blocking writes', () => {
+    const read = readEvents([marker('x'), CREATE_T1].join('\n'));
+    assert.deepEqual([read.rotatedAfter, read.unreadable, read.newer], [0, 1, 0]);
+    assert.equal(read.newestVersion, EVENT_VERSION);
+  });
+
+  it('counts a marker from a newer layout as a newer line, which blocks writes', () => {
+    const read = readEvents([marker(1, 4), CREATE_T1].join('\n'));
+    assert.deepEqual([read.rotatedAfter, read.newer, read.newestVersion], [0, 1, 4]);
+  });
+});
