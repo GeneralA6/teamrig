@@ -49,6 +49,12 @@ describe('formatTask', () => {
       formatTask(testTask({ status: 'blocked', note: 'waiting on disk' })),
       'T1 blocked, p2, owner alpha, from lead | Add a health check (blocked: waiting on disk)',
     );
+    assert.equal(
+      formatTask(testTask({ status: 'verifying', note: 'the nightly run is green', due: '2030-01-11' })),
+      'T1 verifying, p2, owner alpha, due 01-11, from lead | Add a health check (proof: the nightly run is green)',
+    );
+    assert.equal(formatTask(testTask({ status: 'verifying' })), 'T1 verifying, p2, owner alpha, from lead | Add a health check');
+    assert.equal(formatTask(testTask({ status: 'in-progress', note: 'started' })), 'T1 in-progress, p2, owner alpha, from lead | Add a health check');
   });
 });
 

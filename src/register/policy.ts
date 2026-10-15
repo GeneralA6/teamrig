@@ -123,7 +123,7 @@ export class RegisterPolicy {
       return refuse(`${task.id} is already ${task.status}; add --note to record why you set it again`);
     }
     if (register.requireNoteOn.includes(input.status) && note === null) {
-      return refuse(`${input.status} needs --note`);
+      return refuse(input.status === 'verifying' ? 'verifying needs --note saying what proves it' : `${input.status} needs --note`);
     }
     if (input.status === 'done') {
       if (register.requireEvidenceOnDone && evidence === null && task.evidence === null) {

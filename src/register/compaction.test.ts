@@ -155,7 +155,7 @@ describe('isRetirable', () => {
   });
 
   it('keeps an active task, a recent one, and one in the current week plan or a later one', () => {
-    for (const status of ['open', 'in-progress', 'blocked'] as const) {
+    for (const status of ['open', 'in-progress', 'verifying', 'blocked'] as const) {
       assert.equal(isRetirable(testTask({ status, updatedAt: old }), now, 8 * MS_PER_DAY, null), false, status);
     }
     assert.equal(isRetirable(testTask({ status: 'done', updatedAt: '2030-01-30T00:00:00.000Z' }), now, 8 * MS_PER_DAY, null), false);

@@ -1,6 +1,6 @@
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { NAME_PATTERN, NAME_RULE } from '../core/ids.ts';
-import { isTaskStatus, SESSION_NAME, type TaskStatus } from '../register/model.ts';
+import { isTaskStatus, SESSION_NAME, TASK_STATUSES, type TaskStatus } from '../register/model.ts';
 import {
   DEFAULT_ALERTS,
   DEFAULT_BUDGET,
@@ -279,7 +279,7 @@ function parseStatus(read: ConfigReader, value: unknown, path: string): TaskStat
   if (isTaskStatus(value)) {
     return value;
   }
-  read.report(path, `expected one of open, in-progress, blocked, done, dropped, got ${describe(value)}`);
+  read.report(path, `expected one of ${TASK_STATUSES.join(', ')}, got ${describe(value)}`);
   return undefined;
 }
 

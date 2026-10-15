@@ -47,6 +47,8 @@ function statusTail(task: Task): string {
       return ` dropped: ${task.note ?? ''}`;
     case 'in-progress':
       return ' (in progress)';
+    case 'verifying':
+      return ` verifying, proof: ${task.note ?? ''}`;
     case 'open':
       return '';
   }

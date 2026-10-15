@@ -91,7 +91,7 @@ describe('runCli: help, version and usage errors', () => {
     const done = await kit.run(['set', 'T1', 'done', '--session', 'alpha']);
     const head = USAGE.split('\n')[0] ?? '';
     const setLines = [
-      '  set <id> --status open|in-progress|blocked|done|dropped [--note "<what/why>"] [--evidence <proof>]',
+      '  set <id> --status open|in-progress|verifying|blocked|done|dropped [--note "<what/why>"] [--evidence <proof>]',
       '      [--skill <name>|none]',
     ];
     assert.deepEqual([done.code, done.stderr], [EXIT.usage, [['unexpected "done"', '', head, ...setLines, FULL_HELP_POINTER].join('\n')]]);
