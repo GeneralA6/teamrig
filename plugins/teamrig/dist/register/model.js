@@ -1,7 +1,10 @@
 import { ID_PATTERN } from "../core/ids.js";
-/** Task states. The first three are active: the task still needs its owner. */
-export const TASK_STATUSES = ['open', 'in-progress', 'blocked', 'done', 'dropped'];
-export const ACTIVE_STATUSES = ['open', 'in-progress', 'blocked'];
+/**
+ * Task states. The first four are active: the task still needs its owner. `verifying` is a change that has
+ * shipped and waits for what proves it (a test run, a night's flow, a number), named in its status note.
+ */
+export const TASK_STATUSES = ['open', 'in-progress', 'verifying', 'blocked', 'done', 'dropped'];
+export const ACTIVE_STATUSES = ['open', 'in-progress', 'verifying', 'blocked'];
 export function isTaskStatus(value) {
     return TASK_STATUSES.some((status) => status === value);
 }

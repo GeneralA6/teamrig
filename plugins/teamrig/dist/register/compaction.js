@@ -27,7 +27,8 @@ function newestWeek(weeks) {
  * event but those of the tasks it retires, so `show` lists the same events for every task it keeps. The
  * orphans among the events left out are counted in the header.
  * `source` must hold in `read.events` exactly the events its state folds from (a working-set or a
- * history read), and be writable: a log with lines from a newer teamrig is never compacted.
+ * history read), and hold no line from a newer teamrig: the snapshot would drop it, so such a log is
+ * never compacted (rotate.ts).
  */
 export function compactRegister(source, options) {
     const now = options.now.getTime();

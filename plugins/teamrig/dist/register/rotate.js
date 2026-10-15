@@ -85,6 +85,16 @@ function historyProblems(working, history) {
     }
     return problems;
 }
+/**
+ * Lines from a newer teamrig refuse a rotation: the new snapshot holds only the events this code reads, so
+ * it would drop them from the working set, and the next reader would fold their tasks to an older status.
+ */
+function newerProblems(read) {
+    if (!isWritable(read)) {
+        return [`the register has lines from a newer teamrig (v${read.newestVersion}): update teamrig before rotating it`];
+    }
+    return read.newer === 0 ? [] : [`the register has ${read.newer} line(s) from a newer teamrig: update teamrig before rotating it`];
+}
 /** The segment file the tail would become, when one is there already: a leftover, or a problem. */
 async function segmentProblem(files, path, tailText) {
     const existing = await files.read(path);
@@ -115,7 +125,7 @@ export async function planRotation(files, paths, options, tailText) {
     const fromHistory = readPlanUsed.base === undefined;
     const history = options.checkHistory && !fromHistory ? await readPlan(files, paths, historyPlan(tail), tail) : null;
     const problems = [
-        ...(isWritable(source.read) ? [] : [`the register has lines from a newer teamrig (v${source.read.newestVersion}): update teamrig before rotating it`]),
+        ...newerProblems(source.read),
         ...(existing.problem === null ? [] : [existing.problem]),
         ...back.problems,
         ...(history === null ? [] : historyProblems(source, history)),
