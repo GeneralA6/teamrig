@@ -37,7 +37,7 @@ function worstCaseConfig() {
       maxVerifiedAgeDays: CONFIG_LIMITS.maxVerifiedAgeDays.max,
       forbidFrontmatter: filled(CONFIG_LIMITS.forbidFrontmatter, 'k'),
     },
-    pushGuard: { protectedBranches: filled(CONFIG_LIMITS.protectedBranches, 'b') },
+    pushGuard: { protectedBranches: filled(CONFIG_LIMITS.protectedBranches, 'b'), pushToProtected: 'allow' },
     commits: { maxLines: CONFIG_LIMITS.commitMaxLines.max, maxFiles: CONFIG_LIMITS.commitMaxFiles.max, largeCommitTrailer: 'T'.repeat(40), gate: 'refuse' },
     coordinator: { schedule: { heavyCutoffUtc: '22:30' } },
     // Both round to their longest two-decimal form (two digits before the point), and together stay within 100%.
@@ -65,6 +65,18 @@ describe('renderCorePack', () => {
     assert.match(pack('refuse'), /; a push to a protected branch that sends one is refused \[commits\.gate\]\./);
     assert.match(pack('off'), /line \[commits\.largeCommitTrailer\]\.\n/);
     assert.doesNotMatch(pack('off'), /commits\.gate/);
+  });
+
+  it('states what the push guard does with a push to a protected branch', () => {
+    const pack = (pushGuard: Record<string, unknown>) => renderCorePack(testConfig({ pushGuard }), COMMAND);
+    const keys = String.raw`\[pushGuard\.protectedBranches, pushGuard\.pushToProtected\]`;
+    const routed = ' A refused or blocked route is reported to the lead, never routed around.';
+    assert.match(pack({}), new RegExp(String.raw`^15\. Pushes to main, master ask the human; force-pushing or deleting them is refused ${keys}\.${routed}$`, 'm'));
+    assert.match(
+      pack({ protectedBranches: ['release'], pushToProtected: 'allow' }),
+      new RegExp(String.raw`^15\. Normal pushes to release go through without asking, a --force-with-lease push asks; force-pushing or deleting them is refused ${keys}\.${routed}$`, 'm'),
+    );
+    assert.match(pack({ protectedBranches: [], pushToProtected: 'allow' }), new RegExp(String.raw`^15\. No branch is protected, so the push guard stops no push \[pushGuard\.protectedBranches\]\.${routed}$`, 'm'));
   });
 
   it('keeps every edit in a worktree, in every repo, and names the Git Bash form of the junction removal', () => {
