@@ -18,6 +18,7 @@ export const CONFIG_LIMITS = {
     forbidFrontmatter: { maxItems: 8, maxLength: 32 },
     requireNoteOn: { maxItems: 5 },
     maxVerifying: { min: 0, max: 100 },
+    stopgapFiles: { maxItems: 20, maxLength: 260 },
     persistentFailureHours: { min: 1, max: 720 },
     chainNudgeAt: { min: 0, max: 50 },
     maxFailureChars: { min: 500, max: 50_000 },

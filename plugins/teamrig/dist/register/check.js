@@ -16,6 +16,7 @@ export const FLAG_KINDS = [
     'OWNER-UNPLANNED',
     'DUE-UNPLANNED',
     'OFF-GOAL',
+    'STOPGAP-DONE',
     'STALE',
 ];
 /** The week plan in force: the newest week tag that starts on or before now. */
@@ -78,9 +79,13 @@ export function checkTasks(tasks, now, week, config) {
         ...(top === undefined ? [] : prioritySkip(task, top, waiting, at, config.check)),
         ...(plan === undefined ? [] : planFlags(task, plan, config.ownerSource)),
     ]);
-    return flags.sort((a, b) => FLAG_KINDS.indexOf(a.kind) - FLAG_KINDS.indexOf(b.kind));
+    return flags.sort(byFlagKind);
 }
 /** One flag; with `team`, the task id reads `<team>/T12`; `context` marks a waiting task's ready reasons. */
+/** Orders flags by FLAG_KINDS, most urgent first; the sort is stable, so each kind keeps its own order. */
+export function byFlagKind(a, b) {
+    return FLAG_KINDS.indexOf(a.kind) - FLAG_KINDS.indexOf(b.kind);
+}
 export function formatFlag(flag, team, context) {
     return `${flag.kind} (${flag.detail}) ${formatTask(flag.task, team, context)}`;
 }
