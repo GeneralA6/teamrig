@@ -28,6 +28,7 @@ import { loadTree } from '../tree.ts';
 import { bindHintOnce, bindTab, inboxLinesFor, readTitle, type TitleRead } from './hook-bind.ts';
 import { helperGateOutput, promptBudgetLine, stopBudgetLines } from './hook-budget.ts';
 import { coldSendHold } from './hook-cold-send.ts';
+import { parseJson, sessionTeam } from './hook-input.ts';
 import { inboxDepsOf } from './inbox.ts';
 
 /**
@@ -37,29 +38,10 @@ import { inboxDepsOf } from './inbox.ts';
  * nothing at all.
  */
 
-function parseJson(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return undefined;
-  }
-}
-
 /** The payload's folder first: Claude Code may start the hook process somewhere else. */
 function hookTeam(payload: unknown, runtime: CliRuntime): Promise<TeamResolution> {
   const cwd = isRecord(payload) ? stringField(payload, 'cwd') : undefined;
   return resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [cwd, runtime.cwd]));
-}
-
-/**
- * The team a session's hooks run for: `$TEAMRIG_TEAM`, else the nearest pointer above the folder the
- * session started in (`$CLAUDE_PROJECT_DIR`), then the payload's folder. The payload's `cwd` follows
- * a `cd`, so walking it first would let a tab that moved into another team's project read, and bind
- * to, that team's sessions. The push guard keeps `hookTeam`: a push belongs to the folder it runs in.
- */
-function sessionTeam(payload: unknown, runtime: CliRuntime): Promise<TeamResolution> {
-  const cwd = isRecord(payload) ? stringField(payload, 'cwd') : undefined;
-  return resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [runtime.env[ENV.claudeProjectDir], cwd, runtime.cwd]));
 }
 
 /** PreToolUse on Bash and PowerShell: asks before a push to a protected branch, refuses a force-push of one. */
