@@ -6,7 +6,7 @@ export const DEFAULT_OWNER_GATES = [
     'budget',
     'resource changes',
 ];
-export const DEFAULT_MESSAGES = { maxLines: 10 };
+export const DEFAULT_MESSAGES = { maxLines: 10, coldAfterMinutes: 60 };
 export const DEFAULT_REGISTER = {
     ownerSource: 'owner',
     priorities: [

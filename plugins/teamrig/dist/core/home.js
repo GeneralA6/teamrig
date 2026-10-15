@@ -51,6 +51,7 @@ export function teamPaths(kitHome, team, userHome, overrides = {}) {
         inboxMarks: join(state, 'inbox-marks.jsonl'),
         inboxShown: join(state, 'inbox-shown.jsonl'),
         bindHints: join(state, 'bind-hints.jsonl'),
+        coldSends: join(state, 'cold-sends.jsonl'),
         renames: join(state, 'renames.jsonl'),
         renamesLock: join(state, 'renames.lock'),
         skills: inHome(overrides.skills) ?? join(userHome, '.claude', 'skills'),
