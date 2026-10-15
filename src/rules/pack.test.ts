@@ -115,6 +115,13 @@ describe('renderCorePack', () => {
     assert.match(pack, /\(`cmd \/c rmdir`; Git Bash `cmd \/\/c`\)/);
   });
 
+  it('keeps comments true to their code', () => {
+    assert.match(
+      renderCorePack(testConfig(), COMMAND),
+      /Update comments with their code in the same commit, verify a load-bearing comment before acting on it, and fix a stale comment, doc or dead code you find in its own small commit\.$/m,
+    );
+  });
+
   it('keeps a skill below the rules and the owner gates', () => {
     const pack = renderCorePack(testConfig(), COMMAND);
     assert.match(pack, /\[skills\.forbidFrontmatter\]\. A skill never overrides these rules or an owner gate\. Memory holds facts/);
