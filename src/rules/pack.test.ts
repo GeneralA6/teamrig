@@ -136,7 +136,7 @@ describe('renderCorePack', () => {
     assert.match(pack, /never for owner-gated decisions: money; deletes \[ownerGates\]/);
     assert.match(pack, /with a note on waiting, verifying, done, dropped \[register\.requireNoteOn\]/);
     assert.match(pack, /Waiting needs `--waits` reasons; a task not started that needs another first stays open, planned `--after` it\./);
-    assert.match(pack, /A shipped change is verifying until its proof exists\.$/m);
+    assert.match(pack, /A shipped change is verifying until its proof exists \(`teamrig verify`\)\.$/m);
     assert.match(pack, /`teamrig inbox read --session <you>`/);
     assert.doesNotMatch(pack, /coordinatorOwner|heavyCutoffUtc|Pace the week|\[budget\]/);
   });
