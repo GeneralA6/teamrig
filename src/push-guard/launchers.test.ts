@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Buffer } from 'node:buffer';
-import { isAssignment, isShellName, launch, programName, staticWord, type Launch } from './launchers.ts';
+import { isAssignment, launch, programName, staticWord, type Launch } from './launchers.ts';
 import { parseShell, type ShellDialect, type ShellWord } from './tokenizer.ts';
 
 const show = (word: ShellWord): string => (word.dynamic ? `~${word.text}` : word.text);
@@ -38,7 +38,7 @@ function expectLaunches(rows: readonly (readonly [string, string])[], dialect: S
 const STDIN = 'opaque: a shell reads its commands from stdin';
 const UNKNOWN_PROGRAM = 'opaque: the program it runs is only known when it runs';
 
-describe('programName, isShellName, isAssignment and staticWord', () => {
+describe('programName, isAssignment and staticWord', () => {
   it('names a program by its lower-case file name without an executable extension', () => {
     assert.equal(programName('C:\\Program Files\\Git\\cmd\\GIT.EXE'), 'git');
     assert.equal(programName('/usr/bin/git'), 'git');
@@ -46,10 +46,27 @@ describe('programName, isShellName, isAssignment and staticWord', () => {
     assert.equal(programName('gitk'), 'gitk');
   });
 
-  it('knows the shells and the assignments', () => {
-    assert.deepEqual(['bash', 'pwsh', 'cmd', 'git'].map(isShellName), [true, true, true, false]);
+  it('knows the assignments', () => {
     assert.deepEqual(['A=1', '_b=', '1A=1', '=x', 'a-b=1'].map(isAssignment), [true, true, false, false, false]);
     assert.deepEqual(staticWord('x'), { text: 'x', dynamic: false });
+  });
+});
+
+describe('launch: a shell given its commands on stdin by the line', () => {
+  const body = staticWord('git push origin main');
+  const given = (line: string): string => summary(launch(parseShell(line, 'bash').commands[0]?.words ?? [], 'bash', body));
+
+  it('runs the heredoc or here-string as a script in a shell of its own', () => {
+    assert.deepEqual(['bash', 'bash -s x', 'sh -'].map(given), new Array<string>(3).fill('script(bash) git push origin main'));
+    assert.deepEqual(['pwsh', 'pwsh -NoProfile', 'pwsh -Command -', 'powershell -File -'].map(given), new Array<string>(4).fill('script(powershell) git push origin main'));
+    assert.deepEqual(['cmd', 'cmd /q'].map(given), new Array<string>(2).fill('script(cmd) git push origin main'));
+  });
+
+  it('keeps it opaque under xargs, and ignores it for a script file or a command line', () => {
+    assert.equal(given('xargs bash'), STDIN);
+    assert.equal(given('bash script.sh'), 'nothing');
+    assert.equal(given('bash -c "echo"'), 'script(bash) echo');
+    assert.equal(given('git'), 'program git');
   });
 });
 

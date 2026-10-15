@@ -1,10 +1,20 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseShell, stripHeredocs, type ShellDialect } from './tokenizer.ts';
+import { parseShell, type ShellDialect, type ShellWord } from './tokenizer.ts';
+
+const show = (word: ShellWord): string => (word.dynamic ? `~${word.text}` : word.text);
 
 /** The words of each command, a dynamic word marked with a leading `~`. */
 function words(command: string, dialect: ShellDialect = 'bash'): string[][] {
-  return parseShell(command, dialect).commands.map((parsed) => parsed.words.map((word) => (word.dynamic ? `~${word.text}` : word.text)));
+  return parseShell(command, dialect).commands.map((parsed) => parsed.words.map(show));
+}
+
+/** Each command as one line of words, then ` < ` and what it reads on stdin, when the line gives it that. */
+function withStdin(command: string): string[] {
+  return parseShell(command, 'bash').commands.map((parsed) => {
+    const line = parsed.words.map(show).join(' ');
+    return parsed.stdin === undefined ? line : `${line} < ${show(parsed.stdin)}`;
+  });
 }
 
 const complete = (command: string, dialect: ShellDialect = 'bash'): boolean => parseShell(command, dialect).complete;
@@ -102,16 +112,22 @@ describe('parseShell: bash', () => {
     );
   });
 
-  it('marks a command that carries a redirection', () => {
-    const parse = parseShell('a > out; b 2>&1; c <(d); e', 'bash');
+  it("records each command's redirections: the operator with its descriptor, then the target", () => {
+    const parse = parseShell('a > out; b 2>&1 1>>"x y"; c <(d); e 2>', 'bash');
     assert.deepEqual(
-      parse.commands.map((command) => [command.words[0]?.text, command.redirected]),
+      parse.commands.map((command) => [command.words[0]?.text, command.redirections.map((redirection) => [redirection.operator, redirection.target?.text])]),
       [
-        ['a', true],
-        ['b', true],
-        ['d', false],
-        ['c', false],
-        ['e', false],
+        ['a', [['>', 'out']]],
+        [
+          'b',
+          [
+            ['2>&1', undefined],
+            ['1>>', 'x y'],
+          ],
+        ],
+        ['d', []],
+        ['c', []],
+        ['e', [['2>', undefined]]],
       ],
     );
   });
@@ -193,6 +209,14 @@ describe('parseShell: PowerShell', () => {
     assert.deepEqual(words('git --% push "origin" %B% main | Out-Null', 'powershell'), [['git', '--%', 'push', 'origin', '~%B%', 'main'], ['Out-Null']]);
   });
 
+  it('reads a here-string as one word: literal after @\', expanded after @"', () => {
+    assert.deepEqual(words("$x = @'\nbody 'q' \"d\" $y\nx '@ y\n'@; z", 'powershell'), [['~$x', '=', "body 'q' \"d\" $y\nx '@ y"], ['z']]);
+    assert.deepEqual(words('$x = @"\n$(git push) b\n"@; y', 'powershell'), [['git', 'push'], ['~$x', '=', '~$(git push) b'], ['y']]);
+    assert.deepEqual(words('$e = @"\n"@', 'powershell'), [['~$e', '=', '']]);
+    assert.deepEqual(words('$x = @"\n`$(no) b\n"@', 'powershell'), [['~$x', '=', '$(no) b']]);
+    assert.equal(complete("x @'\nnever closes", 'powershell'), false);
+  });
+
   it('drops redirections, including *>', () => {
     assert.deepEqual(words('git push 2>&1 *> $null', 'powershell'), [['git', 'push']]);
   });
@@ -211,17 +235,46 @@ describe('parseShell: cmd', () => {
   });
 });
 
-describe('stripHeredocs', () => {
-  it('removes heredoc and here-string bodies and keeps unterminated ones', () => {
-    assert.equal(stripHeredocs("cat <<'EOF'\ngit push origin main\nEOF\necho done"), "cat <<'EOF'\necho done");
-    assert.equal(stripHeredocs('cat <<-END\n\tbody\n\tEND'), 'cat <<-END');
-    assert.equal(stripHeredocs('x = @"\nbody\n"@; y'), "x = ''; y");
-    assert.equal(stripHeredocs('cat <<EOF\ngit push origin main'), 'cat <<EOF\ngit push origin main');
-    assert.equal(stripHeredocs('grep x <<< "here string"'), 'grep x <<< "here string"');
+describe('parseShell: bash heredocs and here-strings', () => {
+  it("reads a heredoc's body as its command's stdin, not as commands", () => {
+    assert.deepEqual(withStdin("cat <<'EOF'\ngit push origin main\nEOF\necho done"), ['cat < git push origin main', 'echo done']);
+    assert.deepEqual(withStdin('cat <<EOF\nEOF'), ['cat < ']);
+    assert.deepEqual(withStdin('f <<A | g <<B\na\nA\nb\nB\nh'), ['f < a', 'g < b', 'h']);
   });
 
-  it('keeps the body of a heredoc a shell runs', () => {
-    const command = 'bash <<EOF\ngit push origin main\nEOF';
-    assert.equal(stripHeredocs(command, (line) => line.startsWith('bash')), command);
+  it('closes a heredoc only at a line that is exactly its delimiter, after tabs for <<-', () => {
+    assert.deepEqual(withStdin('cat <<EOF\n EOF\nEOF \ngit x\nEOF'), ['cat < \u0020EOF\nEOF \ngit x']);
+    assert.deepEqual(withStdin('cat <<-EOF\n\t\tx\n\tEOF\ny'), ['cat < \t\tx', 'y']);
+  });
+
+  it("reads an unquoted body's substitutions as commands, before its reader, and keeps a quoted body literal", () => {
+    assert.deepEqual(words('cat <<EOF\n$(git push origin main) `rm x` ${y} \\$(no)\nEOF\nz'), [['git', 'push', 'origin', 'main'], ['rm', 'x'], ['cat'], ['z']]);
+    assert.deepEqual(withStdin("cat <<'E F'\n$(git push)\nE F"), ['cat < $(git push)']);
+    assert.deepEqual(withStdin('cat <<E"OF"\n$x\nEOF'), ['cat < $x']);
+  });
+
+  it('keeps the lines as commands when a heredoc never closes or its delimiter is only known when it runs', () => {
+    assert.deepEqual(withStdin('cat <<EOF\ngit push origin main'), ['cat', 'git push origin main']);
+    assert.deepEqual(withStdin('cat <<$X\nbody\n$X'), ['cat', 'body', '~$X']);
+  });
+
+  it('opens no heredoc inside quotes or arithmetic', () => {
+    assert.deepEqual(withStdin('echo "<<EOF"\ngit push'), ['echo <<EOF', 'git push']);
+    assert.deepEqual(withStdin('((x<<2))\ngit push'), ['x', 'git push']);
+  });
+
+  it('gives a command its last input and keeps the bodies nothing reads', () => {
+    const twice = parseShell('cat <<A <<B\na\nA\nb\nB', 'bash');
+    assert.deepEqual([twice.commands.map((command) => command.stdin?.text), twice.unreadBodies.map(show)], [['b'], ['a']]);
+    const file = parseShell('cat <<A < file\na\nA', 'bash');
+    assert.deepEqual([file.commands.map((command) => command.stdin?.text), file.unreadBodies.map(show)], [[undefined], ['a']]);
+  });
+
+  it('reads a here-string as stdin', () => {
+    assert.deepEqual(withStdin('grep x <<< "here string"; y <<<$v'), ['grep x < here string', 'y < ~$v']);
+  });
+
+  it('reads heredocs only in bash', () => {
+    assert.deepEqual(words('cat <<EOF\ngit push\nEOF', 'powershell'), [['cat'], ['git', 'push'], ['EOF']]);
   });
 });

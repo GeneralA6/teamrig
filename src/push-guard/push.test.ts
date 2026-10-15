@@ -195,6 +195,22 @@ describe('evaluatePushes: the decision', () => {
 
   it('keeps an unterminated heredoc, so it cannot hide a push', () => {
     assert.equal(judge('cat <<EOF\ngit push origin main').decision, 'ask');
+    assert.equal(judge('cat <<EOF\n EOF\ngit push origin main').decision, 'ask');
+  });
+
+  it('runs a heredoc or here-string a shell reads, and asks about a push in it', () => {
+    expectRows([
+      ['cat <<EOF | bash\ngit push origin main\nEOF', 'ask'],
+      ["cat <<'EOF' | sh -s\ngit push -f origin main\nEOF", 'deny'],
+      ["bash <<'EOF'\ngit push origin main\nEOF", 'ask'],
+      ['bash <<< "git push origin main"', 'ask'],
+      ["bash -c @'\ngit push origin main\n'@", 'ask'],
+      ["pwsh -Command - <<'EOF'\ngit push origin main\nEOF", 'ask'],
+      ['cat <<EOF | tee x | bash\ngit push origin main\nEOF', 'ask', 'doubt'],
+      ['cat > /dev/stdout <<EOF | bash\ngit push origin main\nEOF', 'ask', 'doubt'],
+      ["bash <<'EOF'\ngit push origin feature\nEOF", 'allow'],
+    ]);
+    assert.equal(judge("@'\ngit push origin main\n'@ | pwsh -Command -", { dialect: 'powershell' }).decision, 'ask');
   });
 });
 

@@ -161,10 +161,6 @@ export function programName(text: string): string {
   return base.replace(/\.(?:exe|cmd|bat|com)$/, '');
 }
 
-/** True for a program that runs a command line it is given: a POSIX shell, PowerShell or cmd. */
-export function isShellName(name: string): boolean {
-  return POSIX_SHELLS.has(name) || POWERSHELLS.has(name) || name === 'cmd';
-}
 
 /** True for a bash `NAME=value` word. */
 export function isAssignment(text: string): boolean {
@@ -196,12 +192,15 @@ class LaunchReader {
   private readonly env: Assignment[] = [];
   private readonly chdirs: ShellWord[] = [];
   private readonly dialect: ShellDialect;
+  /** What the command reads on stdin from the line itself: a heredoc's body or a here-string. */
+  private readonly stdin: ShellWord | undefined;
   private stdinArgs = false;
   /** True once a word is known to name a program, so PowerShell cannot read it as an expression. */
   private called = false;
 
-  constructor(dialect: ShellDialect) {
+  constructor(dialect: ShellDialect, stdin: ShellWord | undefined) {
     this.dialect = dialect;
+    this.stdin = stdin;
   }
 
   read(words: readonly ShellWord[]): Launch {
@@ -316,6 +315,14 @@ class LaunchReader {
     return { kind: 'script', script, dialect, sameShell, env: this.env, chdirs: this.chdirs };
   }
 
+  /**
+   * A shell that reads its commands from stdin runs the heredoc or here-string the line gives it, in a shell
+   * of its own. Without one, or under `xargs`, which feeds stdin to the arguments, the commands are unknown.
+   */
+  private fromStdin(dialect: ShellDialect): Step {
+    return this.stdin === undefined || this.stdinArgs ? STDIN_SCRIPT : this.script(this.stdin, dialect, false);
+  }
+
   /** Reads a wrapper's options, getopt style, and returns the words of the program it runs. */
   private wrapper(spec: WrapperSpec, args: readonly ShellWord[]): Step {
     this.stdinArgs ||= spec.stdinArgs === true;
@@ -400,7 +407,7 @@ class LaunchReader {
     if (command) {
       return operand === undefined ? NOTHING : this.script(operand, 'bash', false);
     }
-    return operand === undefined || stdin ? STDIN_SCRIPT : NOTHING;
+    return operand === undefined || stdin ? this.fromStdin('bash') : NOTHING;
   }
 
   /**
@@ -412,7 +419,7 @@ class LaunchReader {
     for (let index = 0; index < args.length; index += 1) {
       const word = args[index] ?? staticWord('');
       if (word.text === '-') {
-        return STDIN_SCRIPT;
+        return this.fromStdin('powershell');
       }
       const option = powerShellOption(word.text);
       if (option === undefined) {
@@ -422,12 +429,12 @@ class LaunchReader {
       switch (option) {
         case 'command': {
           const rest = args.slice(index + 1);
-          return rest[0]?.text === '-' ? STDIN_SCRIPT : rest.length === 0 ? NOTHING : this.script(joinWords(rest, false), 'powershell', false);
+          return rest[0]?.text === '-' ? this.fromStdin('powershell') : rest.length === 0 ? NOTHING : this.script(joinWords(rest, false), 'powershell', false);
         }
         case 'encoded':
           return value === undefined ? NOTHING : this.encoded(value);
         case 'file':
-          return value?.text === '-' ? STDIN_SCRIPT : NOTHING;
+          return value?.text === '-' ? this.fromStdin('powershell') : NOTHING;
         case 'chdir':
           if (value !== undefined) {
             this.chdirs.push(value);
@@ -441,7 +448,7 @@ class LaunchReader {
           break;
       }
     }
-    return STDIN_SCRIPT;
+    return this.fromStdin('powershell');
   }
 
   private encoded(value: ShellWord): Step {
@@ -465,7 +472,7 @@ class LaunchReader {
         break;
       }
     }
-    return STDIN_SCRIPT;
+    return this.fromStdin('cmd');
   }
 
   /** PowerShell's `Start-Process`: the program is `-FilePath` (or the first operand) with its `-ArgumentList` (or the second). */
@@ -595,7 +602,7 @@ function startProcessParameter(text: string): string | undefined {
   return found.length === 1 ? found[0]?.[0] : undefined;
 }
 
-/** What one simple command starts; see {@link LaunchReader}. */
-export function launch(words: readonly ShellWord[], dialect: ShellDialect): Launch {
-  return new LaunchReader(dialect).read(words);
+/** What one simple command starts, given what it reads on stdin from the line, if anything; see {@link LaunchReader}. */
+export function launch(words: readonly ShellWord[], dialect: ShellDialect, stdin?: ShellWord): Launch {
+  return new LaunchReader(dialect, stdin).read(words);
 }
