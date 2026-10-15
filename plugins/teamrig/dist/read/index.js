@@ -8,7 +8,7 @@
 // The task register (`events.jsonl`).
 export { EVENT_VERSION } from "../register/events.js";
 export { foldEvents, taskNumber } from "../register/fold.js";
-export { ACTIVE_STATUSES, isTaskStatus, priorityText, TASK_STATUSES } from "../register/model.js";
+export { ACTIVE_STATUSES, isTaskStatus, priorityText, SESSION_NAME, TASK_STATUSES } from "../register/model.js";
 export { readEvents, readRegister, snapshotOf } from "../register/snapshot.js";
 export { byPlanOrder, dueTime } from "../register/views.js";
 // The inboxes (`inbox/<area>.md`) and their read marks (`inbox-marks.jsonl`).
