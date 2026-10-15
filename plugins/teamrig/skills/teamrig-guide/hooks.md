@@ -69,7 +69,8 @@ shown does not mark it read. `teamrig inbox read --session web` then marks them 
 first line over 1,500 characters is cut, and a note names the command that prints it whole.
 
 A tab started by hand, with no `$TEAMRIG_SESSION` and no `inbox read` yet, binds itself when its Claude Code title
-(`claude --name` or `/rename`) is a session's id or current name on this team and on no other team of the tree.
+(`claude --name` or `/rename`) is a session's id or current name on this team and on no other team of the tree, in
+any case (`Web` binds `web`).
 The hook then knows it as `inbox read` would, marks nothing read, and says so once:
 
 ```text
@@ -87,8 +88,8 @@ of the tree binds neither, and the line asks for the session's name instead (`te
 `$TEAMRIG_SESSION` and an earlier binding always win over the title.
 
 The same hook notices when the user renamed this Claude Code session (`/rename` or `--name`) and records the new
-name as the session's team name, as `teamrig rename` would; a title equal to the session's id only binds the tab and
-renames nothing. If the `.teamrig.json` pointer is broken it says so in one line.
+name, in lowercase, as the session's team name, as `teamrig rename` would; a title equal to the session's id or
+current name in any case only binds the tab and renames nothing. If the `.teamrig.json` pointer is broken it says so in one line.
 
 ## Before a shell command: the push guard
 
