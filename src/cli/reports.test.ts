@@ -7,7 +7,7 @@ import type { SkillFlag } from '../skills/lint.ts';
 import { CliHarness } from '../testing/cli-harness.ts';
 import { testTask } from '../testing/task.ts';
 import { waitContext } from '../register/waits.ts';
-import { checkLines, fitBudget, listLines, MAX_FLAGS_PER_KIND, printedChars, SHORT_FORM_CHARS, type CheckReport, type TaskRow } from './reports.ts';
+import { checkLines, fitBudget, listLines, MAX_FLAGS_PER_KIND, ownCheck, printedChars, SHORT_FORM_CHARS, type CheckReport, type TaskRow } from './reports.ts';
 import { EXIT } from './runtime.ts';
 
 const LONG_TITLE = 'Move the nightly export onto the shared queue and drop the old cron that wrote it twice';
@@ -207,5 +207,20 @@ describe(`list and check at 200 tasks, through the CLI`, () => {
     assert.equal(own.stdout[0], 'LIST 67 task(s) (short rows; --all for every field)');
     assert.equal((await kit.run(['list', '--all'])).stdout.length, 200);
     assert.equal((await kit.run(['check', '--week', '2030-01-06', '--session', 'lead', '--all'])).stdout.filter((line) => line.startsWith('OVERDUE')).length, 200);
+  });
+});
+
+describe('ownCheck', () => {
+  it('keeps the flags of the tasks and skills one session owns, and names it in the scope', () => {
+    const flags = [flag('OVERDUE', { id: 'T1', owner: 'alpha' }), flag('OVERDUE', { id: 'T2', owner: 'bravo' })];
+    const skills = [skillFlag('alpha-deploy'), { ...skillFlag('bravo-sync'), owner: 'bravo' }, { ...skillFlag('team-x'), owner: null }];
+    const narrowed = ownCheck(report({ sections: [{ team: undefined, flags, context: CONTEXT }], skills }), 'alpha');
+    assert.deepEqual(
+      narrowed.sections.map((section) => section.flags.map((each) => each.task.id)),
+      [['T1']],
+    );
+    assert.deepEqual(narrowed.skills.map((each) => each.skill), ['alpha-deploy']);
+    assert.equal(narrowed.scope, "alpha's tasks and skills, week 2030-01-07");
+    assert.match(checkLines(narrowed, false)[0] ?? '', /^CHECK 1 flag\(s\), alpha's tasks and skills, week 2030-01-07 /);
   });
 });
