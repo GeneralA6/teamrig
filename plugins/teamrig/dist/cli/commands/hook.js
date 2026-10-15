@@ -8,6 +8,7 @@ import { boundPromptNote, boundStartNote } from "../../hooks/bind.js";
 import { modelCheckLine, payloadEffortOf } from "../../hooks/model-check.js";
 import { ModelNoticeStore } from "../../hooks/model-notices.js";
 import { sendTargetOf } from "../../hooks/cold-send.js";
+import { failedSendLine, failedSendOf, failedSendOutput } from "../../hooks/failed-send.js";
 import { commitsOf, protectedBranchesOf, pushGuardOutput, pushToProtectedOf } from "../../hooks/push-guard.js";
 import { JsonlHintLog } from "../../hooks/hint-log.js";
 import { requirementsNoteOnce } from "../../hooks/requirements-note.js";
@@ -171,6 +172,30 @@ export async function coldSend(args, runtime) {
     if (hold !== undefined) {
         runtime.out.stdout(hold);
     }
+    return EXIT.ok;
+}
+/**
+ * PostToolUse on SendMessage: after a send that was not delivered (no live session answers to the name),
+ * hands the model one line to leave the message as an inbox line instead, so it is not lost. Outside a
+ * loaded team it prints nothing.
+ */
+export async function failedSend(args, runtime) {
+    noPositionals(args);
+    const payload = parseJson(await runtime.readStdin());
+    const failed = failedSendOf(payload);
+    if (failed === undefined) {
+        return EXIT.ok;
+    }
+    const found = await sessionTeam(payload, runtime);
+    if (found.kind !== 'team') {
+        return EXIT.ok;
+    }
+    const kit = await openKit(runtime, found.team);
+    if (kit.load.status !== 'loaded') {
+        return EXIT.ok;
+    }
+    const receiver = (await rosterOf(runtime, kit, kit.load.config)).lookup(failed.to);
+    runtime.out.stdout(failedSendOutput(failedSendLine(failed, receiver.ok ? receiver.id : undefined, KIT_NAME)));
     return EXIT.ok;
 }
 /**
