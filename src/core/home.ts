@@ -61,6 +61,8 @@ export interface TeamPaths {
   readonly inboxShown: string;
   /** The hints the hooks gave each Claude Code session (bind hints, missing requirements), so each is given once. */
   readonly bindHints: string;
+  /** The SendMessage calls the cold-send hook held, so the same tab's next send to that session goes through. */
+  readonly coldSends: string;
   /** The append-only log of session renames, so every name a session has had still finds it. */
   readonly renames: string;
   readonly renamesLock: string;
@@ -105,6 +107,7 @@ export function teamPaths(kitHome: string, team: string, userHome: string, overr
     inboxMarks: join(state, 'inbox-marks.jsonl'),
     inboxShown: join(state, 'inbox-shown.jsonl'),
     bindHints: join(state, 'bind-hints.jsonl'),
+    coldSends: join(state, 'cold-sends.jsonl'),
     renames: join(state, 'renames.jsonl'),
     renamesLock: join(state, 'renames.lock'),
     skills: inHome(overrides.skills) ?? join(userHome, '.claude', 'skills'),
