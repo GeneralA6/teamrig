@@ -3,6 +3,7 @@ import { SecretScanner } from "../core/secrets.js";
 import { parseUtcDay, parseUtcDeadline } from "../core/time.js";
 import { taskNumber } from "./fold.js";
 import { ACTIVE_STATUSES, priorityText, SESSION_NAME } from "./model.js";
+import { heldStart, startHolds } from "./verify.js";
 import { sameWait, waitSpelling } from "./waits.js";
 /** The skill name that closes a task which produced no reusable procedure. */
 export const NO_SKILL = 'none';
@@ -67,6 +68,12 @@ export class RegisterPolicy {
             return refuse(`only the owner (${task.owner}) sets the status of ${task.id}`);
         }
         const { register } = this.config;
+        // A start waits for the proof of the shipped changes it builds on; `warn` lets it through and the CLI warns.
+        const holds = startHolds(task, input.status, context.state.tasks);
+        if (holds.length > 0 && register.verifyGate === 'refuse') {
+            const ids = holds.map((held) => held.id);
+            return refuse(`${heldStart(task, holds)}; start ${task.id} once ${ids.join(' and ')} ${ids.length === 1 ? 'is' : 'are'} done`);
+        }
         const note = blankToNull(input.note);
         const evidence = blankToNull(input.evidence);
         const skill = blankToNull(input.skill);
@@ -74,11 +81,22 @@ export class RegisterPolicy {
         if (!waits.ok) {
             return waits;
         }
-        if (input.status === task.status && note === null && sameWaits(waits.value, task.waits)) {
+        const proof = proofChange(task, input);
+        if (!proof.ok) {
+            return proof;
+        }
+        const due = dueChange(task, input);
+        if (!due.ok) {
+            return due;
+        }
+        if (input.status === task.status && note === null && proof.value === task.proof && due.value === null && sameWaits(waits.value, task.waits)) {
             return refuse(`${task.id} is already ${task.status}; add --note to record why you set it again`);
         }
         if (register.requireNoteOn.includes(input.status) && note === null) {
-            return refuse(input.status === 'verifying' ? 'verifying needs --note saying what proves it' : `${input.status} needs --note`);
+            return refuse(input.status === 'verifying' && !register.requireProofOnVerifying ? 'verifying needs --note saying what proves it' : `${input.status} needs --note`);
+        }
+        if (input.status === 'verifying' && register.requireProofOnVerifying && proof.value === null) {
+            return refuse('verifying needs --proof saying what will prove the shipped change works');
         }
         if (input.status === 'done') {
             if (register.requireEvidenceOnDone && evidence === null && task.evidence === null) {
@@ -94,8 +112,16 @@ export class RegisterPolicy {
         else if (skill !== null) {
             return refuse('--skill goes only with done');
         }
-        const problem = this.checkText('note', note) ?? this.checkText('evidence', evidence);
-        const change = { status: input.status, note, evidence, skill, ...(waits.value.length > 0 ? { waits: waits.value } : {}) };
+        const problem = this.checkText('note', note) ?? this.checkText('evidence', evidence) ?? this.checkText('proof', proof.value);
+        const change = {
+            status: input.status,
+            note,
+            evidence,
+            skill,
+            ...(waits.value.length > 0 ? { waits: waits.value } : {}),
+            ...(proof.value === null ? {} : { proof: proof.value }),
+            ...(due.value === null ? {} : { due: due.value }),
+        };
         return problem === undefined ? ok(change) : refuse(problem);
     }
     /** The reasons of a status change: at least one for `waiting`, none for any other status, each one judged. */
@@ -199,6 +225,28 @@ export class RegisterPolicy {
 function pickFields(task) {
     const { title, owner, source, ref, priority, due, goals, week, after } = task;
     return { title, owner, source, ref, priority, due, goals, week, after };
+}
+/**
+ * The proof a status change writes: none outside `verifying`, where `--proof` is refused; the one given; or,
+ * when a verifying task is set verifying again without one, the proof it already had.
+ */
+function proofChange(task, input) {
+    const proof = blankToNull(input.proof);
+    if (input.status !== 'verifying') {
+        return proof === null ? ok(null) : refuse('--proof goes only with --status verifying');
+    }
+    return ok(proof ?? (task.status === 'verifying' ? task.proof : null));
+}
+/** The verify-by date a status change moves the task's due date to: only with `verifying`, and null when it stays. */
+function dueChange(task, input) {
+    const due = blankToNull(input.due);
+    if (due === null || due === task.due) {
+        return ok(null);
+    }
+    if (input.status !== 'verifying') {
+        return refuse(`--due goes only with --status verifying; teamrig update ${task.id} --due sets it otherwise`);
+    }
+    return parseUtcDeadline(due) === undefined ? refuse(`due ${due} is not YYYY-MM-DD or YYYY-MM-DD HH:MM`) : ok(due);
 }
 function sameWaits(a, b) {
     return a.length === b.length && a.every((reason) => b.some((other) => sameWait(reason, other)));

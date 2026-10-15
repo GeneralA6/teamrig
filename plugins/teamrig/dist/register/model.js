@@ -1,7 +1,7 @@
 import { ID_PATTERN } from "../core/ids.js";
 /**
  * Task states. The first four are active: the task still needs its owner. `verifying` is a change that has
- * shipped and waits for what proves it (a test run, a night's flow, a number), named in its status note.
+ * shipped and waits for what proves it (a test run, a night's flow, a number), named by its `--proof`.
  * `waiting` cannot go on until each of its typed reasons clears (waits.ts).
  */
 export const TASK_STATUSES = ['open', 'in-progress', 'verifying', 'waiting', 'done', 'dropped'];

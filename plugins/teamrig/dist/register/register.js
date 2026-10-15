@@ -22,14 +22,14 @@ export class Register {
         return this.deps.log.readHistory();
     }
     add(caller, input) {
-        return this.commit(caller, ({ state }) => this.created(caller, state.nextId, this.deps.policy.add(input, state)));
+        return this.commit(caller, ({ state }) => single(this.created(caller, state.nextId, this.deps.policy.add(input, state))));
     }
     /**
      * A task from the parent team's lead, `parentLead` being its `<team>/<id>`. The tree's rules decide
      * who that may be, so this team's roster check is skipped; the event names that lead as its writer.
      */
     addFromParent(parentLead, input) {
-        return this.write(({ state }) => this.created(parentLead, state.nextId, this.deps.policy.addFromParent(input, state)));
+        return this.write(({ state }) => single(this.created(parentLead, state.nextId, this.deps.policy.addFromParent(input, state))));
     }
     async setStatus(caller, id, input) {
         const skill = input.skill?.trim();
@@ -40,8 +40,13 @@ export class Register {
             if (!change.ok) {
                 return change;
             }
-            const event = { ...this.base(id, caller), type: 'status', ...change.value };
-            return { ok: true, value: event };
+            const { due, ...status } = change.value;
+            const event = { ...this.base(id, caller), type: 'status', ...status };
+            if (due === undefined) {
+                return { ok: true, value: [event] };
+            }
+            const dated = { ...this.base(id, caller), type: 'update', changes: { due }, note: null };
+            return { ok: true, value: [dated, event] };
         }));
     }
     update(caller, id, changes, note) {
@@ -51,7 +56,7 @@ export class Register {
                 return change;
             }
             const event = { ...this.base(id, caller), type: 'update', ...change.value };
-            return { ok: true, value: event };
+            return { ok: true, value: [event] };
         }));
     }
     created(by, id, fields) {
@@ -73,8 +78,9 @@ export class Register {
         return this.write(decide);
     }
     /**
-     * Under the lock: refuse newer data, read the working set, decide on one event, append it, rotate the log
-     * when it is due and the team has not turned that off, and return the task after the event.
+     * Under the lock: refuse newer data, read the working set, decide on the events of one task (one, or a
+     * due date and a status), append them, rotate the log when it is due and the team has not turned that
+     * off, and return the task after the events.
      */
     write(decide) {
         return this.deps.mutex.run(async () => {
@@ -86,9 +92,13 @@ export class Register {
             if (!decision.ok) {
                 return decision;
             }
-            const event = decision.value;
-            await this.deps.log.append(event);
-            const state = foldEvents([event], [], snapshot.state);
+            const events = decision.value;
+            const event = events.at(-1);
+            if (event === undefined) {
+                throw new Error('a write decided on no event');
+            }
+            await this.deps.log.append(events);
+            const state = foldEvents(events, [], snapshot.state);
             const task = state.tasks.get(event.id);
             if (task === undefined) {
                 throw new Error(`${event.id} is missing after its own write`);
@@ -117,6 +127,10 @@ export class Register {
  * The decision on a task of the working set. An id below the next one that is not in it may be a task a
  * compaction retired: it is named as such, as this teamrig changes only tasks in the working set.
  */
+/** One event, as the list a write takes. */
+function single(verdict) {
+    return verdict.ok ? { ok: true, value: [verdict.value] } : verdict;
+}
 function onTask(snapshot, id, decide) {
     const task = snapshot.state.tasks.get(id);
     if (task !== undefined) {

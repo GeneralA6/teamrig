@@ -25,7 +25,7 @@ const testCommand = () => import("./commands/test.js");
 const TASK_FIELDS = ['title', 'owner', 'ref', 'priority', 'due', 'goals', 'week', 'after'];
 const COMMANDS = {
     add: { flags: ['session', 'source', 'team', ...TASK_FIELDS], load: async () => (await registerCommands()).add },
-    set: { flags: ['session', 'status', 'note', 'evidence', 'skill', 'waits'], load: async () => (await registerCommands()).set },
+    set: { flags: ['session', 'status', 'note', 'evidence', 'skill', 'waits', 'proof', 'due'], load: async () => (await registerCommands()).set },
     update: { flags: ['session', 'note', ...TASK_FIELDS], load: async () => (await registerCommands()).update },
     list: {
         flags: ['session', 'status', 'source', 'priority', 'due-before', 'week', 'goal'],
@@ -36,6 +36,7 @@ const COMMANDS = {
     show: { flags: ['session'], load: async () => (await registerCommands()).show },
     check: { flags: ['session', 'week'], switches: ['tree', 'all'], load: async () => (await registerCommands()).check },
     plan: { flags: ['session', 'week'], switches: ['tree'], load: async () => (await registerCommands()).plan },
+    verify: { flags: ['session'], load: async () => (await registerCommands()).verify },
     'inbox read': { flags: ['session'], load: async () => (await inboxCommands()).read },
     'inbox status': { flags: ['session'], load: async () => (await inboxCommands()).status },
     'inbox add': { flags: ['session', 'to', 'text'], load: async () => (await inboxCommands()).add },
@@ -98,6 +99,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   add --team <child team> --title .. --priority p<n> [...]   the parent lead hands that team's lead a task
   set <id> --status open|in-progress|verifying|waiting|done|dropped [--note "<what/why>"] [--evidence <proof>]
       [--skill <name>|none] [--waits decision:<who>,approval:<who>,task:T<id>,time:<date>]
+      [--proof "<what proves it>"] [--due <date>]
+      verifying needs --proof: what will prove the shipped change works; --due sets the date to verify by
       waiting needs --waits: who decides or approves (a session or the owner), a task to finish first
       (only once started) or a time; check flags it READY once its tasks finished and its time passed
   update <id> [--title ..] [--owner ..] [--priority ..] [--ref ..|none] [--due <date>|none]
@@ -110,6 +113,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       in a short form within 3,000 characters; --all: every flag in full
   plan [--week <date>] [--tree]    the week plan (default: the newest week that has started)
       --tree (the lead only): also every team under it, read-only, ids as <team>/T<n>
+  verify [--session <id|name>]   the session's verifying tasks, oldest first, each with its proof and
+      the date to verify by
   inbox read [--session <area>]     prints the unread lines and marks them read
   inbox status [--session <area>]   unread lines per area
   inbox add --to <id|name|team/id> --text "<one line>"

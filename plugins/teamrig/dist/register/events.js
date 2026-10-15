@@ -8,7 +8,8 @@ import { parseWaits } from "./waits.js";
  * the same way: an old line's `tier` reads as its priority and the line is never rewritten.
  * Version 2 later gained, without a new number, a task's `after` list and the `waiting` status with its
  * `waits`, which replaced `blocked`: an older reader ignores the new fields and skips a `waiting` line as
- * a newer teamrig's, and a `blocked` line reads here as `waiting` with no reasons.
+ * a newer teamrig's, and a `blocked` line reads here as `waiting` with no reasons. It also gained a
+ * `verifying` status's `proof`, which an older reader ignores.
  * Parsing checks the FORMAT only (any positive priority, any goal string): team policy is applied
  * on write, so changing the config never erases history.
  */
@@ -49,7 +50,7 @@ export function parseEvent(line) {
             if (!isTaskStatus(status)) {
                 return typeof status === 'string' && STATUS_NAME.test(status) ? { kind: 'newer' } : unreadable(`unknown status ${JSON.stringify(status)}`);
             }
-            const problem = textProblem(record, ['note', 'evidence', 'skill']);
+            const problem = textProblem(record, ['note', 'evidence', 'skill', 'proof']);
             if (problem !== undefined) {
                 return unreadable(problem);
             }
@@ -57,6 +58,7 @@ export function parseEvent(line) {
             if (typeof waits === 'string') {
                 return unreadable(waits);
             }
+            const proof = status === 'verifying' ? textOrNull(record, 'proof') : null;
             const event = {
                 ...base,
                 type: 'status',
@@ -65,6 +67,7 @@ export function parseEvent(line) {
                 evidence: textOrNull(record, 'evidence'),
                 skill: textOrNull(record, 'skill'),
                 ...(waits === undefined ? {} : { waits }),
+                ...(proof === null ? {} : { proof }),
             };
             return { kind: 'event', event };
         }

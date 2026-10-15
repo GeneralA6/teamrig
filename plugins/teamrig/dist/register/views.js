@@ -2,6 +2,7 @@ import { formatUtcMinute, parseUtcDeadline, shortUtc } from "../core/time.js";
 import { taskNumber } from "./fold.js";
 import { ACTIVE_STATUSES, priorityText } from "./model.js";
 import { waitsText } from "./waits.js";
+import { proofOf, proofText } from "./verify.js";
 /** The task's deadline in ms, or undefined when it has none. */
 export function dueTime(task) {
     return task.due === null ? undefined : parseUtcDeadline(task.due)?.getTime();
@@ -46,6 +47,22 @@ function rowHead(task, team) {
     }
     return parts;
 }
+/** How long a proof runs in the one-line verify queue before it is cut. */
+const SUMMARY_PROOF_CHARS = 60;
+/** `VERIFY 2: T1 (proof: ...), T3 (proof: ...)`: a verify queue in one line, each proof cut short; undefined when empty. */
+export function formatVerifySummary(queue) {
+    const named = queue.map((task) => `${task.id} (proof: ${cut(proofText(task), SUMMARY_PROOF_CHARS)})`);
+    return queue.length === 0 ? undefined : `VERIFY ${queue.length}: ${named.join(', ')}`;
+}
+/** A row of `verify`: `T1 since 01-07 10:00, verify by 01-09 | <title> (proof: ...)`. */
+export function formatVerifyRow(task) {
+    const by = task.due === null ? 'no verify-by date' : `verify by ${shortUtc(task.due)}`;
+    return `${task.id} since ${shortUtc(formatUtcMinute(new Date(task.statusAt)))}, ${by} | ${task.title} (proof: ${proofText(task)})`;
+}
+/** The Stop hook's line once a verifying task's verify-by day has come. */
+export function formatVerifyByLine(task) {
+    return `VERIFY ${task.id} was to be verified by ${shortUtc(task.due ?? '')} (proof: ${proofText(task)}): done with the proof, or back to in-progress`;
+}
 /** `text` cut to `max` characters, counted in code points so a character is never split, ending in `…` when cut. */
 export function cut(text, max) {
     const chars = [...text];
@@ -85,7 +102,8 @@ function statusNote(task, context) {
         const parts = [task.waits.length > 0 ? waitsText(task.waits, context) : null, task.note].filter((part) => part !== null);
         return parts.length === 0 ? '' : ` (waiting: ${parts.join('; ')})`;
     }
-    return task.status === 'verifying' && task.note !== null ? ` (proof: ${task.note})` : '';
+    const proof = task.status === 'verifying' ? proofOf(task) : null;
+    return proof === null ? '' : ` (proof: ${proof})`;
 }
 /** One field of an update, as `show` prints it: a priority reads `p2`, a list joins with commas. */
 function changeText(name, value) {
@@ -118,6 +136,7 @@ export function formatEvent(event) {
         case 'status':
             return [
                 `${head} ${event.status}${event.waits === undefined ? '' : ` waits="${waitsText(event.waits)}"`}${note}`,
+                event.proof === undefined ? undefined : `proof="${event.proof}"`,
                 event.evidence === null ? undefined : `evidence=${event.evidence}`,
                 event.skill === null ? undefined : `skill=${event.skill}`,
             ]
@@ -137,6 +156,9 @@ export function formatTaskDetail(task, events, context) {
     }
     if (task.note !== null) {
         lines.push(`note: ${task.note}`);
+    }
+    if (task.proof !== null) {
+        lines.push(`proof: ${task.proof}`);
     }
     if (task.evidence !== null) {
         lines.push(`evidence: ${task.evidence}`);

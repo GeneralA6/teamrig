@@ -2,6 +2,7 @@ import { formatUtcMinute, shortUtc } from "../core/time.js";
 import { priorityText } from "./model.js";
 import { byPlanOrder, taskLabel } from "./views.js";
 import { waitContext, waitsText } from "./waits.js";
+import { proofOf } from "./verify.js";
 /**
  * The week plan as markdown: the tasks tagged with `week`, grouped by priority, then by due date. With
  * `team`, for a roll-up over a tree of teams, the heading names the team and ids read `<team>/T12`.
@@ -47,7 +48,7 @@ function statusTail(task, context) {
         case 'in-progress':
             return ' (in progress)';
         case 'verifying':
-            return ` verifying, proof: ${task.note ?? ''}`;
+            return ` verifying, proof: ${proofOf(task) ?? ''}`;
         case 'open':
             return '';
     }

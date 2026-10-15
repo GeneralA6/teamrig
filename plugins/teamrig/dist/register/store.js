@@ -18,8 +18,8 @@ export class JsonlEventLog {
     readHistory() {
         return readHistory(this.files, this.layout);
     }
-    async append(event) {
-        await this.files.append(this.path, toJsonlLine(eventRecord(event)));
+    async append(events) {
+        await this.files.append(this.path, events.map((event) => toJsonlLine(eventRecord(event))).join(''));
     }
     async rotateIfDue(written, now) {
         if (written.read.rotatedAfter === 0) {
