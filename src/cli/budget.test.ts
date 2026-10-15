@@ -238,6 +238,16 @@ describe('teamrig statusline', () => {
     assert.notEqual(broken.files.get(join(LIVE, SNAPSHOT)), undefined);
   });
 
+  it('with --pass prints the status input again for the status line after it, and still saves the reading', async () => {
+    const kit = new CliHarness(LIMITED);
+    const input = status(APP);
+    const result = await kit.run(['statusline', '--pass'], { stdin: `${input}\n` });
+    assert.deepEqual([result.code, result.stdout, result.stderr], [EXIT.ok, [input], []]);
+    assert.notEqual(kit.files.get(join(LIVE, SNAPSHOT)), undefined);
+    const bad = await kit.run(['statusline', '--pass'], { stdin: 'not json' });
+    assert.deepEqual([bad.code, bad.stdout], [EXIT.ok, ['not json']]);
+  });
+
   it('never fails the status bar: a bad input or a failed write is told on stderr', async () => {
     const kit = new CliHarness(LIMITED);
     assert.deepEqual(await kit.run(['statusline'], { stdin: 'not json' }), {
