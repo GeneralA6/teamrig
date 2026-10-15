@@ -97,7 +97,7 @@ by hand: every change goes through a command, which locks, checks and appends.
 At the start of each work block, in one Bash call:
 
 ```sh
-teamrig inbox read --session api && teamrig list --session api
+teamrig start --session api
 ```
 
 Then work your list in priority order: `p1` before `p2`, and inside a priority the earlier due date first.
