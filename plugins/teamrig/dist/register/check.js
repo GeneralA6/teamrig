@@ -16,6 +16,16 @@ export function currentWeek(tasks, now) {
     return best;
 }
 /**
+ * The week plan in force over a register as read: `currentWeek` of its tasks, or the newest week of
+ * the tasks a compaction retired when that is newer, as a replay of the whole history would find it.
+ */
+export function currentWeekOf(snapshot, now) {
+    const live = currentWeek(snapshot.state.tasks.values(), now);
+    const retired = snapshot.retired?.lastWeek ?? null;
+    const started = retired === null ? undefined : parseUtcDay(retired);
+    return retired !== null && started !== undefined && started.getTime() <= now.getTime() && (live === null || retired > live) ? retired : live;
+}
+/**
  * The daily flags over active tasks:
  * - OVERDUE: past its deadline;
  * - NOT-PICKED-UP: assigned longer ago than `notPickedUpAfterHours` with no event from its owner since

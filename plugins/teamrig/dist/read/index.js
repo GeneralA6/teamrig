@@ -5,10 +5,12 @@
  * teamrig would show. It only re-exports: the logic lives beside the commands that use it, so the
  * two can never drift. `read/index.test.ts` fails if anything reachable from here imports `node:`.
  */
-// The task register (`events.jsonl`).
+// The task register (`events.jsonl`, and once rotated its `archive/` and `snapshot.jsonl`).
 export { EVENT_VERSION } from "../register/events.js";
 export { foldEvents, taskNumber } from "../register/fold.js";
 export { ACTIVE_STATUSES, isTaskStatus, priorityText, SESSION_NAME, TASK_STATUSES } from "../register/model.js";
+export { assemble, historyPlan, layoutPaths, MissingSegmentError, readHistory, readSnapshotText, readWorkingSet, segmentName, workingSetPlan, ARCHIVE_DIR, SNAPSHOT_FILE, } from "../register/layout.js";
+export { LAYOUT_VERSION } from "../register/marker.js";
 export { readEvents, readRegister, snapshotOf } from "../register/snapshot.js";
 export { byPlanOrder, dueTime } from "../register/views.js";
 // The inboxes (`inbox/<area>.md`) and their read marks (`inbox-marks.jsonl`).
