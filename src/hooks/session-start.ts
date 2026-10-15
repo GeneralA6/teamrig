@@ -57,13 +57,22 @@ function identityLines(roster: Roster, input: SessionStartInput): string[] {
   if (found === undefined || !found.ok) {
     const why = session === undefined ? `No session is set ($${ENV.session})` : `$${ENV.session} does not name a session on this team`;
     const toLead = leadName === undefined ? '' : ` Message the lead as \`${leadName}\`.`;
-    return [`${why}: ask the user which session you are (\`${command} who\` lists them) and pass --session <id> to every \`${command}\` task and inbox command.${toLead}`, names, ...tree];
+    return [`${why}: ask the user which session you are (\`${command} who\` lists them) and pass --session <id> to every \`${command}\` task and inbox command.${shellNote(input)}${toLead}`, names, ...tree];
   }
   const roles = roster.rolesOf(found.id);
   const held = roles.length === 0 ? '' : `, roles: ${roles.join(', ')}`;
   const you = `You are the \`${found.id}\` session of team \`${input.team}\` (name \`${roster.nameOf(found.id) ?? found.id}\`${held}).`;
   const pass = input.sessionInEnv ? '' : ` $${ENV.session} is not set here, so pass --session ${found.id} to every \`${command}\` task and inbox command.`;
-  return [lead === found.id || leadName === undefined ? `${you}${pass}` : `${you}${pass} Message the lead as \`${leadName}\`.`, names, ...tree];
+  const shell = shellNote(input);
+  return [lead === found.id || leadName === undefined ? `${you}${pass}${shell}` : `${you}${pass}${shell} Message the lead as \`${leadName}\`.`, names, ...tree];
+}
+
+/**
+ * Claude Code puts a plugin's `bin/` folder on the PATH of its Bash tool only, so on Windows, where a session
+ * also has a PowerShell tool, the intro says which one runs the command.
+ */
+function shellNote({ platform, command }: SessionStartInput): string {
+  return platform === 'win32' ? ` Run \`${command}\` in the Bash tool: the PowerShell tool does not have it.` : '';
 }
 
 /**
