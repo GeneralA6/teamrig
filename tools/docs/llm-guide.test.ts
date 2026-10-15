@@ -119,12 +119,15 @@ function commandLines(doc: DocFile): CommandLine[] {
   return lines.filter(({ text }) => text.startsWith('teamrig '));
 }
 
-/** The command a line runs and the flags it passes, or the reason the CLI would not read it. */
 /** `teamrig <command> --help` or `teamrig inbox -h`: one command's or one group's help, read like `teamrig help`. */
 function isCommandHelp(first: string, second: string): boolean {
   return HELP_FLAGS.has(second) && (first === '<command>' || Object.keys(COMMAND_FLAGS).some((name) => name === first || name.startsWith(`${first} `)));
 }
 
+/**
+ * The command a line runs and the flags it passes, or the reason the CLI would not read it. Words after
+ * a bare `--` are the command line `teamrig test` runs, not flags.
+ */
 function parseCommand(text: string): { readonly command: string; readonly flags: readonly string[] } | string {
   const words = text.replace(QUOTED, '""').split(/\s+/).slice(1);
   const [first = '', second = ''] = words;
@@ -146,7 +149,8 @@ function parseCommand(text: string): { readonly command: string; readonly flags:
   } else {
     return `no command "${first}"`;
   }
-  const flags = rest.filter((word) => word.startsWith('--')).map((word) => word.slice(2).split('=')[0] ?? '');
+  const end = rest.indexOf('--');
+  const flags = (end === -1 ? rest : rest.slice(0, end)).filter((word) => word.startsWith('--')).map((word) => word.slice(2).split('=')[0] ?? '');
   return { command, flags };
 }
 
