@@ -483,7 +483,7 @@ OPENED shop-web (session web) in a new Windows Terminal tab in /home/you/shop, o
 ```
 
 A session with no `launch` entry starts on Claude Code's default model and effort; the lead's unset keys default to
-model `best` at `xhigh` effort.
+model `opus` at `xhigh` effort, and `launch.<lead id>` in the config changes either one.
 
 When no terminal can be opened (or `--terminal print`), it prints `MANUAL no terminal opened (<why>); open a
 new terminal and run this:` and the command, and exits 3. Show the user that command.

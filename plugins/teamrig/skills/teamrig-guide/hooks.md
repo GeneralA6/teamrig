@@ -9,7 +9,7 @@ they all stay silent.
 | `SessionStart` (startup, resume, `/clear`, compact) | `hook session-start` | Injects the team rules and who you are |
 | `UserPromptSubmit` (each prompt) | `hook inbox-reminder` | Reminds you of unread inbox lines; records a Claude Code rename |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook push-guard` | Asks before a push to a protected branch; refuses a force-push or delete of one |
-| `Stop` (end of each turn) | `hook stop` | Asks for a handover when a context refresh is due |
+| `Stop` (end of each turn) | `hook stop` | Asks for a handover when a context refresh is due; tells the user of another effort than `launch` asks, or of a model Claude Code switched to |
 
 ## Session start
 
@@ -38,10 +38,10 @@ The injected context holds:
 6. **After a refresh**: `You were refreshed after T2; read your handover first: <path>`, once, at the first
    `/clear` or new start after the handover was written. A compact or resume keeps the old context, so the
    note waits.
-7. **A model check**: when the session runs on another model or effort than its `launch` entry in the team
-   config, a line such as `MODEL shop-web runs model sonnet at high effort; the team config asks for model opus at
-   xhigh effort: type /model opus and /effort xhigh`. It is also shown to the user, who alone can change them. It
-   never blocks.
+7. **A model check**: when the session runs on another model than its `launch` entry in the team config, a line
+   such as `MODEL shop-web runs model claude-sonnet-5; the team config asks for model opus at xhigh effort: type
+   /model opus`. It is also shown to the user, who alone can change it. It never blocks. Claude Code gives a hook
+   the effort only at the end of a turn, so the effort is checked there ([model notices](#end-of-a-turn-model-notices)).
 
 The session is found from `$TEAMRIG_SESSION`, else from the area this Claude Code session last ran
 `teamrig inbox read --session <area>` as. A brand-new tab teamrig did not open has neither, so it is told to ask.
@@ -92,6 +92,21 @@ After `--ready`, the next turn's end tells the user `teamrig: shop-web finished 
 /clear for a fresh start` and sets the tab title to `shop-web: type /clear`. Each finished task is judged once, so
 it never loops. Steps: [workflows.md](workflows.md#handover-at-high-context). `refresh.enabled: false` turns it
 off.
+
+## End of a turn: model notices
+
+The Stop hook also tells the user, in a MODEL line shown once per Claude Code session (a `/clear` starts over):
+
+- when the session runs at another effort than its `launch` entry asks: `MODEL shop-web runs at high effort; the
+  team config asks for model opus at xhigh effort: type /effort xhigh`;
+- when Claude Code switched the session to another model after its safeguards stopped a reply, a switch it keeps
+  for the rest of the session: `MODEL shop-web now runs model claude-opus-4-8, not claude-fable-5-1: Claude Code
+  switched after its safeguards stopped a reply (cyber) and keeps it for this session; type /model claude-fable-5-1
+  to switch back` (the `/model` names the `launch` model when there is one). This line comes for any session,
+  with a `launch` entry or not, and not once the user has switched back.
+
+The lines go to the user only, so they cost the session no context, and they come with `refresh.enabled` on or
+off. Which lines a session was shown is kept in `state/model-notices/<id>.json`.
 
 ## Permissions
 

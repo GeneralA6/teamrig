@@ -81,6 +81,7 @@ current folder or above it, else in `$CLAUDE_PROJECT_DIR` or above. Everything e
     inbox-marks.jsonl    how far each session has read its inbox
     renames.jsonl        the rename log
     refresh/             context-refresh state
+    model-notices/       the model notices each session was shown
 ```
 
 The config's `paths` (`state`, `inbox`, `skills`) and `refresh.handoverDir` can move these. Skills are read

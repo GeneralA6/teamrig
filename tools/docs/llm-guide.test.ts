@@ -5,13 +5,15 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { HELP_FLAGS } from '../../src/cli/args.ts';
 import { COMMAND_FLAGS, COMMAND_SWITCHES, HELP, VERSION } from '../../src/cli/run.ts';
+import { DEFAULT_LEAD_LAUNCH } from '../../src/config/defaults.ts';
 import { descriptionOf } from '../../src/skills/lint.ts';
 import { checkDocs, headingAnchors, type DocFile } from './doc-check.ts';
 
 /**
  * The LLM guide (the plugin's teamrig-guide skill) and the root llms.txt, held to the code: each CLI command has
  * exactly one section and each section a command, with the command's flags and no others; every teamrig command
- * line the guide shows is one the CLI reads; every link resolves; and the requirements match package.json and CI.
+ * line the guide shows is one the CLI reads; every link resolves; the requirements match package.json and CI; and
+ * the lead's default model and effort, wherever the docs name them, match the code.
  */
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
@@ -293,5 +295,35 @@ describe('the requirements in the guide', () => {
     assert.ok(systems.length > 1 && nodes.length > 1, 'ci.yml has an os and node matrix');
     assert.ok(requirements.includes(`CI runs the tests on ${systems.slice(0, -1).join(', ')} and ${systems.at(-1) ?? ''}`), `requirements.md names ${systems.join(', ')}`);
     assert.ok(requirements.includes(`Node ${nodes.join(' and ')}`), `requirements.md names Node ${nodes.join(' and ')}`);
+  });
+});
+
+/** The sentence of `text` that holds `marker`, its line breaks read as spaces; empty when none does. */
+function sentenceWith(text: string, marker: string): string {
+  const flat = text.replace(/\s*\r?\n\s*/g, ' ');
+  const at = flat.indexOf(marker);
+  if (at < 0) return '';
+  const start = flat.lastIndexOf('. ', at);
+  const end = flat.indexOf('. ', at);
+  return flat.slice(start < 0 ? 0 : start + 2, end < 0 ? undefined : end + 1);
+}
+
+describe("the lead's default launch in the docs", () => {
+  const { model, effort } = DEFAULT_LEAD_LAUNCH;
+  const tick = (word: string): string => `\`${word}\``;
+
+  it('is the model and effort the code starts the lead on', () => {
+    const guide = sentenceWith(guideText('commands.md'), "the lead's unset keys default to");
+    assert.ok(guide.includes(`model ${tick(model)} at ${tick(effort)} effort`), `commands.md: ${guide}`);
+    const howItWorks = sentenceWith(read('docs/how-it-works.md'), 'The lead, for each it leaves unset');
+    assert.ok(howItWorks.includes(`starts on ${tick(model)}`) && howItWorks.includes(`at ${tick(effort)} effort`), `how-it-works.md: ${howItWorks}`);
+    const setup = read('plugins/teamrig/skills/team-setup/SKILL.md');
+    assert.ok(setup.includes(`${tick(`/model ${model}`)} and ${tick(`/effort ${effort}`)}`), 'team-setup names the /model and /effort to type');
+  });
+
+  it('finds a sentence across line breaks, and nothing for a missing marker', () => {
+    assert.equal(sentenceWith('One. The lead\nstarts on `x`. Two.', 'The lead'), 'The lead starts on `x`.');
+    assert.equal(sentenceWith('The lead starts', 'The lead'), 'The lead starts');
+    assert.equal(sentenceWith('One.', 'The lead'), '');
   });
 });
