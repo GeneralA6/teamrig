@@ -210,7 +210,7 @@ teamrig add --session lead --owner api --source owner --priority p2 --title "Rat
 ```
 
 Bring the human only what needs them: verified results, decisions taken, investigated questions (options,
-numbers and a recommendation) and incidents. Progress and plans stay in the register and on the boards.
+numbers and a recommendation) and incidents. Progress and plans stay in the register.
 
 ## Create a team and start its sessions
 
