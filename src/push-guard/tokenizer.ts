@@ -1,12 +1,20 @@
 /** Which shell wrote a command line; it decides the quotes, the escape character and what expands. */
 export type ShellDialect = 'bash' | 'powershell' | 'cmd';
 
+/** A piece of a bash word: text, quoted (or escaped) or not, or a plain variable reference `$NAME` or `${NAME}`. */
+export type WordPart = { readonly kind: 'text'; readonly text: string; readonly quoted: boolean } | { readonly kind: 'variable'; readonly name: string };
+
 /** One word of a simple command, after quote removal. */
 export interface ShellWord {
   /** The word's text; a variable or a substitution stays as written, such as `$B` or `$(git branch)`. */
   readonly text: string;
   /** True when part of the word is only known when the shell runs it: a variable, a substitution, a brace list. */
   readonly dynamic: boolean;
+  /**
+   * bash only: the word as text and plain variable references, in order. Absent when anything else in it
+   * is only known when it runs: a substitution, `${...}` with an operator, `$1` or `$@`, a brace list.
+   */
+  readonly parts?: readonly WordPart[];
 }
 
 /** One simple command: a program and its arguments, or a keyword line such as `for x in a b`. */
@@ -18,6 +26,21 @@ export interface ShellCommand {
    * run in the same process.
    */
   readonly subshells: readonly number[];
+  /**
+   * The separators between it and the next command, newlines included and blanks left out, such as `;`,
+   * `&&`, `|`, `&`, `\n` or `);`. Empty for the last command of a line or of a substitution.
+   */
+  readonly terminator: string;
+  /** True when it carries a redirection, such as `> out.log` or `2>&1`, which the words leave out. */
+  readonly redirected: boolean;
+}
+
+/** A command while the scanner still adds the separators that follow it. */
+interface ScannedCommand {
+  readonly words: readonly ShellWord[];
+  readonly subshells: readonly number[];
+  terminator: string;
+  readonly redirected: boolean;
 }
 
 /** The simple commands of a command line, as its shell would split them. */
@@ -68,13 +91,26 @@ export function parseShell(command: string, dialect: ShellDialect): ShellParse {
   return new Scanner(command, dialect, { nesting: 0, subshells: [], ids: { next: 0 } }).parse();
 }
 
-/** The word being read: its text so far, whether anything dynamic went in, and bash brace-list hints. */
+/** How a piece of a word was written: unquoted text, quoted or escaped text, or something only known when it runs. */
+type Piece = 'unquoted' | 'quoted' | 'dynamic';
+
+/** A bash variable reference with nothing else in it: `$NAME` or `${NAME}`. */
+const PLAIN_VARIABLE = /^\$(?:([A-Za-z_]\w*)|\{([A-Za-z_]\w*)\})$/;
+
+/** The word being read: its text so far, whether anything dynamic went in, its bash parts and brace-list hints. */
 class WordBuilder {
   private text = '';
   private dynamic = false;
   private started = false;
   private brace = false;
   private braceList = false;
+  /** The parts so far; undefined once a piece is dynamic but not a plain variable. */
+  private parts: WordPart[] | undefined = [];
+  private readonly tracksParts: boolean;
+
+  constructor(tracksParts: boolean) {
+    this.tracksParts = tracksParts;
+  }
 
   get isStarted(): boolean {
     return this.started;
@@ -84,10 +120,14 @@ class WordBuilder {
     return this.text;
   }
 
-  add(chars: string, dynamic = false): void {
+  /** Adds text; a piece read through a quote or an escape is `quoted`, as is any text outside bash. */
+  add(chars: string, piece: Piece = 'quoted'): void {
     this.text += chars;
     this.started = true;
-    this.dynamic ||= dynamic;
+    this.dynamic ||= piece === 'dynamic';
+    if (this.parts !== undefined) {
+      this.parts = piece === 'dynamic' ? withVariable(this.parts, chars) : withText(this.parts, chars, piece === 'quoted');
+    }
   }
 
   /** Notes an unquoted bash character: `{a,b}` and `{1..3}` expand to several words, so such a word is dynamic. */
@@ -100,14 +140,39 @@ class WordBuilder {
   }
 
   take(): ShellWord | undefined {
-    const word = this.started ? { text: this.text, dynamic: this.dynamic || this.braceList } : undefined;
+    const word = this.started ? this.word() : undefined;
     this.text = '';
     this.dynamic = false;
     this.started = false;
     this.brace = false;
     this.braceList = false;
+    this.parts = [];
     return word;
   }
+
+  private word(): ShellWord {
+    const word = { text: this.text, dynamic: this.dynamic || this.braceList };
+    return this.tracksParts && this.parts !== undefined && !this.braceList ? { ...word, parts: this.parts } : word;
+  }
+}
+
+/** `parts` with `text` added, joined to the last part when that is text quoted the same way. */
+function withText(parts: WordPart[], text: string, quoted: boolean): WordPart[] {
+  if (text === '') {
+    return parts;
+  }
+  const last = parts.at(-1);
+  if (last?.kind === 'text' && last.quoted === quoted) {
+    return [...parts.slice(0, -1), { kind: 'text', text: last.text + text, quoted }];
+  }
+  return [...parts, { kind: 'text', text, quoted }];
+}
+
+/** `parts` with a dynamic piece added: a plain variable reference, or undefined for anything else. */
+function withVariable(parts: WordPart[], written: string): WordPart[] | undefined {
+  const match = PLAIN_VARIABLE.exec(written);
+  const name = match?.[1] ?? match?.[2];
+  return name === undefined ? undefined : [...parts, { kind: 'variable', name }];
 }
 
 /** Escapes that bash's `$'...'` quoting turns into one character. */
@@ -140,7 +205,7 @@ class Scanner {
   private index = 0;
   private complete = true;
   private nesting: number;
-  private readonly commands: ShellCommand[] = [];
+  private readonly commands: ScannedCommand[] = [];
   private readonly subshells: number[];
   private readonly ids: { next: number };
   private readonly source: string;
@@ -155,8 +220,21 @@ class Scanner {
   }
 
   parse(): ShellParse {
+    return this.scan();
+  }
+
+  /** Reads the whole source; its commands stay open to the separators an enclosing scanner adds after them. */
+  private scan(): { readonly commands: ScannedCommand[]; readonly complete: boolean } {
     this.readList(false);
     return { commands: this.commands, complete: this.complete };
+  }
+
+  /** Adds separator characters to the command read last, if any. */
+  private addTerminator(chars: string): void {
+    const last = this.commands.at(-1);
+    if (last !== undefined) {
+      last.terminator += chars;
+    }
   }
 
   private at(offset = 0): string {
@@ -175,9 +253,10 @@ class Scanner {
   /** Reads commands to the end or, inside a substitution, through the `)` that closes it. */
   private readList(inSubstitution: boolean): void {
     let words: ShellWord[] = [];
-    const word = new WordBuilder();
+    const word = new WordBuilder(this.dialect === 'bash');
     let skipTarget = false;
     let verbatim = false;
+    let redirected = false;
     let depth = 0;
 
     const endWord = (): void => {
@@ -197,9 +276,10 @@ class Scanner {
       skipTarget = false;
       verbatim = false;
       if (words.length > 0) {
-        this.commands.push({ words, subshells: [...this.subshells] });
+        this.commands.push({ words, subshells: [...this.subshells], terminator: '', redirected });
       }
       words = [];
+      redirected = false;
     };
 
     while (!this.done) {
@@ -219,14 +299,17 @@ class Scanner {
       }
       if (char === '\n') {
         endCommand();
+        this.addTerminator(char);
       } else if (char === '(') {
         endCommand();
+        this.addTerminator(char);
         depth += 1;
         if (this.dialect === 'bash') {
           this.openSubshell();
         }
       } else if (char === ')') {
         endCommand();
+        this.addTerminator(char);
         if (depth > 0) {
           depth -= 1;
           if (this.dialect === 'bash') {
@@ -237,6 +320,7 @@ class Scanner {
         words.push({ text: '&', dynamic: false });
       } else if (this.isSeparator(char)) {
         endCommand();
+        this.addTerminator(char);
       } else if (char === '#' && !word.isStarted && this.dialect !== 'cmd') {
         this.skipComment();
         continue;
@@ -250,6 +334,7 @@ class Scanner {
         } else {
           endWord();
         }
+        redirected = true;
         skipTarget = this.readRedirection();
       } else if (/\s/.test(char)) {
         endWord();
@@ -262,7 +347,7 @@ class Scanner {
         if (this.dialect === 'bash') {
           word.noteBrace(char);
         }
-        word.add(char);
+        word.add(char, 'unquoted');
       }
       this.index += 1;
     }
@@ -508,7 +593,7 @@ class Scanner {
       this.index += 1;
       return;
     }
-    word.add(this.source.slice(start, this.index), true);
+    word.add(this.source.slice(start, this.index), 'dynamic');
   }
 
   /** Inside `$(`, `@(` or `<(`: reads the commands through the closing `)`; in bash they run in a subshell. */
@@ -562,11 +647,11 @@ class Scanner {
     } else {
       const subshells = [...this.subshells, this.ids.next];
       this.ids.next += 1;
-      const nested = new Scanner(inner, 'bash', { nesting: this.nesting + 1, subshells, ids: this.ids }).parse();
+      const nested = new Scanner(inner, 'bash', { nesting: this.nesting + 1, subshells, ids: this.ids }).scan();
       this.commands.push(...nested.commands);
       this.complete &&= nested.complete;
     }
-    word.add(this.source.slice(start, this.index), true);
+    word.add(this.source.slice(start, this.index), 'dynamic');
   }
 
   /** bash `<(...)` and `>(...)`: a process substitution, read like `$(...)`; false at a plain redirection. */
@@ -577,7 +662,7 @@ class Scanner {
     const start = this.index;
     this.index += 2;
     this.readSubstitution();
-    word.add(this.source.slice(start, this.index), true);
+    word.add(this.source.slice(start, this.index), 'dynamic');
     return true;
   }
 
@@ -593,7 +678,7 @@ class Scanner {
         this.index += 1;
       }
     }
-    word.add(this.source.slice(start, this.index), true);
+    word.add(this.source.slice(start, this.index), 'dynamic');
   }
 
   /**
@@ -610,7 +695,7 @@ class Scanner {
       word.add('%');
       this.index += 2;
     } else {
-      word.add(match[0], true);
+      word.add(match[0], 'dynamic');
       this.index += match[0].length;
     }
   }
@@ -647,7 +732,7 @@ class Scanner {
    */
   private readVerbatim(): ShellWord[] {
     const words: ShellWord[] = [];
-    const word = new WordBuilder();
+    const word = new WordBuilder(false);
     const flush = (): void => {
       const taken = word.take();
       if (taken !== undefined) {
