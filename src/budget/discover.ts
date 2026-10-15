@@ -16,6 +16,8 @@ export interface FolderEntry {
 export interface TranscriptFolders {
   /** The entries of a folder; empty when it does not exist. */
   entries(dir: string): Promise<readonly FolderEntry[]>;
+  /** When a file last changed (epoch ms); undefined when it does not exist or is a folder. */
+  changedAt(path: string): Promise<number | undefined>;
 }
 
 /** Everything `teamrig budget` reads of Claude Code's transcripts: their folders and their bytes. */
@@ -45,6 +47,17 @@ export const nodeTranscriptFolders: TranscriptFolders = {
       }
     }
     return entries;
+  },
+  async changedAt(path) {
+    try {
+      const stats = await stat(path);
+      return stats.isFile() ? stats.mtimeMs : undefined;
+    } catch (error) {
+      if (errorCode(error) === 'ENOENT' || errorCode(error) === 'ENOTDIR') {
+        return undefined;
+      }
+      throw error;
+    }
   },
 };
 
@@ -118,4 +131,25 @@ export async function discoverTranscripts(folders: TranscriptFolders, projectsDi
   return [...found.entries()]
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([claudeSession, files]) => ({ claudeSession, main: files.main.sort(), subagents: files.subagents }));
+}
+
+/**
+ * When any of these Claude Code sessions last wrote its own transcript, in any project folder (epoch
+ * ms); undefined when none has one. It checks one path per session and project folder and never lists
+ * every transcript, so a hook can afford it.
+ */
+export async function lastWriteOf(folders: TranscriptFolders, projectsDir: string, claudeSessions: readonly string[]): Promise<number | undefined> {
+  let last: number | undefined;
+  for (const project of await folders.entries(projectsDir)) {
+    if (!project.folder) {
+      continue;
+    }
+    for (const id of claudeSessions) {
+      const changedAt = await folders.changedAt(join(projectsDir, project.name, `${id}${TRANSCRIPT}`));
+      if (changedAt !== undefined && (last === undefined || changedAt > last)) {
+        last = changedAt;
+      }
+    }
+  }
+  return last;
 }

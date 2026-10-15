@@ -40,6 +40,10 @@ export class MemoryTranscripts implements TranscriptSource {
     return part;
   }
 
+  async changedAt(path: string): Promise<number | undefined> {
+    return this.changed.get(path);
+  }
+
   /** The files and folders directly in `dir`; a folder's last change is its newest file's. */
   async entries(dir: string): Promise<readonly FolderEntry[]> {
     const found = new Map<string, FolderEntry>();
