@@ -46,7 +46,24 @@ export interface RegisterConfig {
    * after the first `teamrig compact`. Off, only `teamrig compact` archives it.
    */
   readonly autoArchive: boolean;
+  /** Whether `set --status verifying` needs `--proof`, what will prove the shipped change works. */
+  readonly requireProofOnVerifying: boolean;
+  /** What `set --status in-progress` does while a task it needs is still verifying. */
+  readonly verifyGate: VerifyGate;
+  /** A session holding more verifying tasks than this is a PILE-UP in `check`; 0 turns the flag off. */
+  readonly maxVerifying: number;
   readonly check: RegisterCheckConfig;
+}
+
+export const VERIFY_GATES = ['refuse', 'warn'] as const;
+/**
+ * Starting a task while one it needs (`--after`, or `--waits task:`) is verifying: `refuse` it, or `warn` and
+ * start it. Either way the verifying task's owner gets one inbox line a day about it.
+ */
+export type VerifyGate = (typeof VERIFY_GATES)[number];
+
+export function isVerifyGate(value: unknown): value is VerifyGate {
+  return VERIFY_GATES.some((gate) => gate === value);
 }
 
 export interface SkillsConfig {

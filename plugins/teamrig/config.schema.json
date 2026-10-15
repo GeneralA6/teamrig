@@ -146,6 +146,23 @@
           "type": "boolean",
           "default": true
         },
+        "requireProofOnVerifying": {
+          "description": "Whether teamrig set --status verifying needs --proof, what will prove the shipped change works.",
+          "type": "boolean",
+          "default": true
+        },
+        "verifyGate": {
+          "description": "teamrig set --status in-progress while a task it needs (--after, or --waits task:) is verifying: refuse it, or warn and start it. Either way the verifying task's owner gets one inbox line a day about it.",
+          "enum": ["refuse", "warn"],
+          "default": "refuse"
+        },
+        "maxVerifying": {
+          "description": "A session holding more verifying tasks than this is a PILE-UP in teamrig check; 0 turns the flag off.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "default": 5
+        },
         "check": {
           "type": "object",
           "properties": {
