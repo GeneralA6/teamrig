@@ -88,4 +88,19 @@ describe('the read entry', () => {
       assert.equal(read.priorityName(config.config.register.priorities, 7), 'someday');
     }
   });
+
+  it("sorts a reader's own rows in plan order when they carry only an id, a priority and a due", () => {
+    const rows: read.PlanOrdered[] = [
+      { id: 'T10', priority: 2, due: null },
+      { id: 'T3', priority: 2, due: '2030-01-09' },
+      { id: 'T4', priority: 2, due: '2030-01-08 12:00' },
+      { id: 'T9', priority: 1, due: null },
+    ];
+    assert.deepEqual(rows.sort(read.byPlanOrder).map((row) => row.id), ['T9', 'T4', 'T3', 'T10']);
+    assert.equal(read.dueTime({ due: null }), undefined);
+  });
+
+  it('checks a session name with the rule teamrig names inbox files by', () => {
+    assert.deepEqual(['alpha', 'a-2', 'Alpha', '2a', '../x', ''].map((name) => read.SESSION_NAME.test(name)), [true, true, false, false, false, false]);
+  });
 });
