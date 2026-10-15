@@ -94,6 +94,10 @@ export interface TeamPaths {
   readonly warn: string;
   /** The full output of each `teamrig test` run, `test-<session>-<n>.log` each. */
   readonly logs: string;
+  /** The automatic GitHub sync's last start, finish and failing repositories (github/auto.ts). */
+  readonly githubSync: string;
+  /** Held while a hook claims the next automatic sync or a sync records its finish. */
+  readonly githubSyncLock: string;
 }
 
 /** The team's folder. The id is checked here too, since it becomes part of a path. */
@@ -135,5 +139,7 @@ export function teamPaths(kitHome: string, team: string, userHome: string, overr
     lifts: join(state, 'usage', 'lifts.jsonl'),
     warn: join(state, 'usage', 'warn'),
     logs: join(state, 'logs'),
+    githubSync: join(state, 'github-sync.json'),
+    githubSyncLock: join(state, 'github-sync.lock'),
   };
 }
