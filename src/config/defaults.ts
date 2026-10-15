@@ -5,6 +5,7 @@ import type {
   GithubConfig,
   LaunchConfig,
   LockConfig,
+  LeadBoundaryConfig,
   LoopsConfig,
   OpenConfig,
   PushGuardConfig,
@@ -93,6 +94,7 @@ export const DEFAULT_SESSION_SHARE = 1;
 export const DEFAULT_ALERTS: AlertsConfig = { persistentFailureHours: 24 };
 
 export const DEFAULT_LOOPS: LoopsConfig = { chainNudgeAt: 6 };
+export const DEFAULT_LEAD_BOUNDARY: LeadBoundaryConfig = { enabled: true, ownPaths: [], searchNudgeAt: 3 };
 
 /** About a screenful: two or three failing tests with their errors and first stack frames. */
 export const DEFAULT_TESTS: TestsConfig = { maxFailureChars: 4000 };
