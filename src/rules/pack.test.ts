@@ -80,7 +80,8 @@ describe('renderCorePack', () => {
     assert.match(pack, /^1\. Roles, by session id \(`teamrig who` gives the name to message each by\): lead is the lead/m);
     assert.match(pack, /At most 7 lines \[messages\.maxLines\]/);
     assert.match(pack, /never for owner-gated decisions: money; deletes \[ownerGates\]/);
-    assert.match(pack, /with a note on blocked, done, dropped \[register\.requireNoteOn\]/);
+    assert.match(pack, /with a note on blocked, verifying, done, dropped \[register\.requireNoteOn\]/);
+    assert.match(pack, /A shipped change waiting for its proof is verifying until the proof exists\.$/m);
     assert.match(pack, /`teamrig inbox read --session <you>`/);
     assert.doesNotMatch(pack, /coordinatorOwner|heavyCutoffUtc|coordinator\.budget/);
   });
@@ -111,7 +112,7 @@ describe('renderCorePack', () => {
       testConfig({ register: { requireNoteOn: [], requireEvidenceOnDone: false, requireSkillOnDone: false } }),
       COMMAND,
     );
-    assert.match(pack, /only the owning session sets its status \(`teamrig set`\)\.$/m);
+    assert.match(pack, /only the owning session sets its status \(`teamrig set`\)\. A shipped change/);
   });
 });
 
