@@ -6,7 +6,7 @@
  * two can never drift. `read/index.test.ts` fails if anything reachable from here imports `node:`.
  */
 
-// The task register (`register.jsonl`).
+// The task register (`events.jsonl`).
 export { EVENT_VERSION, type CreateEvent, type RegisterEvent, type StatusEvent, type TaskFields, type UpdateEvent } from '../register/events.ts';
 export { foldEvents, taskNumber, type RegisterState, type Task } from '../register/fold.ts';
 export { ACTIVE_STATUSES, isTaskStatus, priorityText, TASK_STATUSES, type TaskStatus } from '../register/model.ts';
