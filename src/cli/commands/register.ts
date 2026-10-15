@@ -2,15 +2,20 @@ import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { formatAddress } from '../../core/address.ts';
 import type { TeamPaths } from '../../core/home.ts';
+import { JsonlDailyLog } from '../../core/daily-log.ts';
 import { FileLock } from '../../core/lock.ts';
+import { SecretScanner } from '../../core/secrets.ts';
+import { postLine } from '../../inbox/inbox.ts';
 import { checkTasks, currentWeekOf } from '../../register/check.ts';
 import type { TaskFields } from '../../register/events.ts';
+import type { Task } from '../../register/fold.ts';
 import { renderPlan } from '../../register/plan.ts';
 import { RegisterPolicy, type AddInput, type StatusInput, type Verdict } from '../../register/policy.ts';
 import { Register, type WriteResult } from '../../register/register.ts';
 import { ACTIVE_STATUSES } from '../../register/model.ts';
 import type { RegisterSnapshot, RetiredTasks } from '../../register/snapshot.ts';
 import { JsonlEventLog } from '../../register/store.ts';
+import { heldStart, heldStartNotice, startHolds } from '../../register/verify.ts';
 import { formatTask, formatTaskDetail, selectTasks, type ListFilter } from '../../register/views.ts';
 import { waitContext, type WaitContext } from '../../register/waits.ts';
 import { lintSkills } from '../../skills/lint.ts';
@@ -22,6 +27,7 @@ import { checkLines, listLines, type CheckSection, type TaskRow } from '../repor
 import { rollUp, type RolledTeam, type RollUp } from '../roll-up.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
+import { inboxDepsOf } from './inbox.ts';
 import { markBoundary } from './refresh.ts';
 
 interface Team {
@@ -169,11 +175,65 @@ export async function set(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
   const { config, paths, register, roster } = team;
   const by = sessionIdOf(roster, caller);
   const input = statusInputIds(team, typed);
-  const exit = report(runtime, await register.setStatus(by, id, input), 'SET', paths.config);
+  const held = await heldStartOf(register, by, id, input);
+  const verdict = await register.setStatus(by, id, input);
+  const warned = config.register.verifyGate === 'warn';
+  if (held !== undefined && verdict.ok === warned) {
+    await tellVerifiers(runtime, team, by, held);
+  }
+  const exit = report(runtime, verdict, 'SET', paths.config);
+  if (held !== undefined && warned) {
+    runtime.out.stderr(`WARN ${heldStart(held.task, held.holds)}; started anyway, as register.verifyGate is warn`);
+  }
   if (input.status === 'done') {
     await markBoundary(runtime, config, paths, by, id);
   }
   return exit;
+}
+
+/** A start the verifying tasks it needs hold: the task, as the caller's own, and those tasks. */
+interface HeldStart {
+  readonly task: Task;
+  readonly holds: readonly Task[];
+}
+
+/**
+ * The verifying tasks that hold the caller's start of its own task, read before the write: the policy
+ * refuses that start (or lets it through in warn mode), and their owners hear of it either way.
+ */
+async function heldStartOf(register: Register, caller: string, id: string, input: StatusInput): Promise<HeldStart | undefined> {
+  if (input.status !== 'in-progress') {
+    return undefined;
+  }
+  const { tasks } = (await register.snapshot()).state;
+  const task = tasks.get(id);
+  const holds = task === undefined || task.owner !== caller ? [] : startHolds(task, input.status, tasks);
+  return task === undefined || holds.length === 0 ? undefined : { task, holds };
+}
+
+/**
+ * One inbox line to the owner of each verifying task that holds a start, once per task pair and UTC
+ * day, never to the caller, who reads the refusal. A line that cannot be posted is named, never thrown.
+ */
+async function tellVerifiers(runtime: CliRuntime, team: Team, caller: string, { task, holds }: HeldStart): Promise<void> {
+  const now = new Date(runtime.clock.now());
+  const told = new JsonlDailyLog(runtime.files, team.paths.verifyNotices);
+  const { inboxes } = inboxDepsOf(runtime, team.paths);
+  const secrets = new SecretScanner(team.config.register.secretPatterns);
+  for (const held of holds) {
+    const key = `held ${task.id} on ${held.id}`;
+    if (held.owner === caller || (await told.seen(key, now))) {
+      continue;
+    }
+    const text = heldStartNotice(task, held);
+    const problem = await postLine(inboxes, secrets, { to: held.owner, from: caller, text, now });
+    if (problem === undefined) {
+      await told.record(key, now);
+      runtime.out.stderr(`NOTE ${held.owner} has an inbox line: ${text}`);
+    } else {
+      runtime.out.stderr(`WARN ${held.owner} was not told of ${task.id}: ${problem}`);
+    }
+  }
 }
 
 export async function update(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
