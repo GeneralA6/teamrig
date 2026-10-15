@@ -8,14 +8,16 @@ export const REFRESH_FORMAT = 1;
  * Where a session is in the context-refresh flow, one small file per session:
  * - `boundary`: it finished `task` (`set <task> --status done`); its Stop hook has not judged it yet.
  * - `idle`: judged with no refresh due; `tokens` is its context then, null when the transcript had no usage.
+ * - `boundary` and `idle` count in `finished` the tasks finished since the context was last fresh (a /clear,
+ *   a new process or a compaction), this one included.
  * - `asked`: its Stop hook asked it to write its handover; `handoverHash` fingerprints the handover file
  *   then (null: there was none), so `refresh --ready` can tell a new handover from an old one.
  * - `ready`: its handover is written and it waits for the user's /clear; `noticed` once the user was told.
  * - `refreshed`: a fresh start was pointed at the handover.
  */
 export type RefreshState =
-  | { readonly phase: 'boundary'; readonly task: string; readonly at: string }
-  | { readonly phase: 'idle'; readonly task: string; readonly at: string; readonly tokens: number | null }
+  | { readonly phase: 'boundary'; readonly task: string; readonly at: string; readonly finished: number }
+  | { readonly phase: 'idle'; readonly task: string; readonly at: string; readonly tokens: number | null; readonly finished: number }
   | { readonly phase: 'asked'; readonly task: string; readonly at: string; readonly tokens: number | null; readonly handoverHash: string | null }
   | { readonly phase: 'ready'; readonly task: string; readonly at: string; readonly noticed: boolean }
   | { readonly phase: 'refreshed'; readonly task: string; readonly at: string };
@@ -38,6 +40,15 @@ function tokensOf(record: JsonRecord): number | null | undefined {
   return tokens === null || isNonNegativeInteger(tokens) ? tokens : undefined;
 }
 
+/** The task count; a file from before the count has none and reads as `absent`, a wrong value as undefined. */
+function finishedOf(record: JsonRecord, absent: number): number | undefined {
+  const finished = record['finished'];
+  if (finished === undefined) {
+    return absent;
+  }
+  return isNonNegativeInteger(finished) ? finished : undefined;
+}
+
 function hashOf(record: JsonRecord): string | null | undefined {
   const hash = record['handoverHash'];
   return hash === null || typeof hash === 'string' ? hash : undefined;
@@ -52,11 +63,14 @@ export function parseRefreshState(text: string): RefreshState | undefined {
     return undefined;
   }
   switch (record['phase']) {
-    case 'boundary':
-      return { phase: 'boundary', task, at };
+    case 'boundary': {
+      const finished = finishedOf(record, 1);
+      return finished === undefined ? undefined : { phase: 'boundary', task, at, finished };
+    }
     case 'idle': {
       const tokens = tokensOf(record);
-      return tokens === undefined ? undefined : { phase: 'idle', task, at, tokens };
+      const finished = finishedOf(record, 0);
+      return tokens === undefined || finished === undefined ? undefined : { phase: 'idle', task, at, tokens, finished };
     }
     case 'asked': {
       const tokens = tokensOf(record);

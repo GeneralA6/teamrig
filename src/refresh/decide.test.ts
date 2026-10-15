@@ -1,21 +1,34 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_REFRESH } from '../config/defaults.ts';
-import { decideReady, decideStart, decideStop, handoverHashOf, thousands, type BoundaryFacts, type StopContext } from './decide.ts';
+import {
+  boundaryOf,
+  decideReady,
+  decideStart,
+  decideStop,
+  handoverHashOf,
+  thousands,
+  type BoundaryFacts,
+  type RefreshSettings,
+  type StopContext,
+} from './decide.ts';
 import type { RefreshState } from './state.ts';
 
 const BEFORE = '2030-01-08T09:00:00.000Z';
 const NOW = '2030-01-08T10:00:00.000Z';
 const HANDOVER = '/team/handover/alpha.md';
 
-const BOUNDARY: RefreshState = { phase: 'boundary', task: 'T12', at: BEFORE };
+const BOUNDARY: RefreshState = { phase: 'boundary', task: 'T12', at: BEFORE, finished: 1 };
 const ASKED: RefreshState = { phase: 'asked', task: 'T12', at: BEFORE, tokens: 262_144, handoverHash: null };
 const READY: RefreshState = { phase: 'ready', task: 'T12', at: BEFORE, noticed: false };
+/** The size rule alone at 250k, so each size test reads apart from the task count. */
+const SIZE_ONLY: RefreshSettings = { ...DEFAULT_REFRESH, contextTokens: 250_000, everyTasks: 0 };
+const COUNTED: RefreshSettings = { ...SIZE_ONLY, everyTasks: 3, everyTasksMinTokens: 80_000 };
 
 function stopContext(overrides: Partial<StopContext> = {}): StopContext {
   return {
     stopHookActive: false,
-    settings: DEFAULT_REFRESH,
+    settings: SIZE_ONLY,
     now: NOW,
     session: { id: 'alpha', name: 'api' },
     handoverPath: HANDOVER,
@@ -34,7 +47,7 @@ describe('decideStop', () => {
     assert.deepEqual(decideStop(BOUNDARY, stopContext({ settings: { ...DEFAULT_REFRESH, enabled: false } })), { kind: 'none' });
     assert.deepEqual(decideStop(READY, stopContext({ settings: { ...DEFAULT_REFRESH, enabled: false } })), { kind: 'none' });
     for (const state of [
-      { phase: 'idle', task: 'T12', at: BEFORE, tokens: 5 },
+      { phase: 'idle', task: 'T12', at: BEFORE, tokens: 5, finished: 1 },
       ASKED,
       { phase: 'refreshed', task: 'T12', at: BEFORE },
       { ...READY, noticed: true },
@@ -56,11 +69,11 @@ describe('decideStop', () => {
   it('records a boundary under the threshold, or of unknown size, as judged and says nothing', () => {
     assert.deepEqual(decideStop(BOUNDARY, stopContext(), facts({ tokens: 249_999 })), {
       kind: 'write',
-      state: { phase: 'idle', task: 'T12', at: NOW, tokens: 249_999 },
+      state: { phase: 'idle', task: 'T12', at: NOW, tokens: 249_999, finished: 1 },
     });
     assert.deepEqual(decideStop(BOUNDARY, stopContext(), facts({ tokens: undefined })), {
       kind: 'write',
-      state: { phase: 'idle', task: 'T12', at: NOW, tokens: null },
+      state: { phase: 'idle', task: 'T12', at: NOW, tokens: null, finished: 1 },
     });
   });
 
@@ -95,7 +108,7 @@ describe('decideStop', () => {
   it('records a boundary with no refresh due as judged even while background work runs', () => {
     assert.deepEqual(decideStop(BOUNDARY, stopContext(), facts({ tokens: 120_000, running: 3 })), {
       kind: 'write',
-      state: { phase: 'idle', task: 'T12', at: NOW, tokens: 120_000 },
+      state: { phase: 'idle', task: 'T12', at: NOW, tokens: 120_000, finished: 1 },
     });
   });
 
@@ -103,6 +116,31 @@ describe('decideStop', () => {
     const settings = { ...DEFAULT_REFRESH, contextTokens: 150_000 };
     const decision = decideStop(BOUNDARY, stopContext({ settings }), facts({ tokens: 150_000 }));
     assert.match(decision.kind === 'block' ? decision.reason : '', /your context is 150k \(refresh at 150k\)/);
+  });
+
+  it('asks for the handover after enough tasks, once the context is worth a fresh start', () => {
+    const third: RefreshState = { ...BOUNDARY, finished: 3 };
+    const decision = decideStop(third, stopContext({ settings: COUNTED }), facts({ tokens: 95_000 }));
+    assert.equal(decision.kind, 'block');
+    assert.match(
+      decision.kind === 'block' ? decision.reason : '',
+      /^teamrig: your context is 95k after 3 tasks \(refresh every 3 tasks\) and you just finished T12\. /,
+    );
+    assert.equal(decideStop({ ...BOUNDARY, finished: 5 }, stopContext({ settings: COUNTED }), facts({ tokens: 80_000 })).kind, 'block', 'past the count, at the floor');
+    assert.deepEqual(decideStop({ ...BOUNDARY, finished: 2 }, stopContext({ settings: COUNTED }), facts({ tokens: 95_000 })), {
+      kind: 'write',
+      state: { phase: 'idle', task: 'T12', at: NOW, tokens: 95_000, finished: 2 },
+    });
+    assert.equal(decideStop(third, stopContext({ settings: COUNTED }), facts({ tokens: 79_999 })).kind, 'write', 'under the floor');
+    assert.equal(decideStop(third, stopContext({ settings: COUNTED }), facts({ tokens: undefined })).kind, 'write', 'size unknown');
+    assert.equal(decideStop(third, stopContext({ settings: SIZE_ONLY }), facts({ tokens: 95_000 })).kind, 'write', 'count off');
+    assert.deepEqual(decideStop(third, stopContext({ settings: COUNTED }), facts({ tokens: 95_000, running: 1 })), { kind: 'none' }, 'waits for running work');
+  });
+
+  it('names the size when the size and the count are both due', () => {
+    const settings: RefreshSettings = { ...COUNTED, contextTokens: 120_000 };
+    const decision = decideStop({ ...BOUNDARY, finished: 4 }, stopContext({ settings }), facts({ tokens: 130_000 }));
+    assert.match(decision.kind === 'block' ? decision.reason : '', /: your context is 130k \(refresh at 120k\) and/);
   });
 
   it('tells the user once that the handover is written, with the tab mark when the team wants it', () => {
@@ -126,9 +164,27 @@ describe('decideStop', () => {
   });
 });
 
+describe('boundaryOf', () => {
+  it('counts the task on top of a boundary or a judged one', () => {
+    assert.deepEqual(boundaryOf({ ...BOUNDARY, finished: 2 }, 'T13', NOW), { phase: 'boundary', task: 'T13', at: NOW, finished: 3 });
+    assert.deepEqual(boundaryOf({ phase: 'idle', task: 'T12', at: BEFORE, tokens: 90_000, finished: 1 }, 'T13', NOW), {
+      phase: 'boundary',
+      task: 'T13',
+      at: NOW,
+      finished: 2,
+    });
+  });
+
+  it('counts from 1 with no state, or once a refresh was asked, written or done', () => {
+    for (const previous of [undefined, ASKED, READY, { phase: 'refreshed', task: 'T12', at: BEFORE }] satisfies (RefreshState | undefined)[]) {
+      assert.deepEqual(boundaryOf(previous, 'T13', NOW), { phase: 'boundary', task: 'T13', at: NOW, finished: 1 }, previous?.phase);
+    }
+  });
+});
+
 describe('decideReady', () => {
   it('refuses unless the Stop hook asked for a handover', () => {
-    for (const state of [undefined, BOUNDARY, { phase: 'idle', task: 'T12', at: BEFORE, tokens: 1 }, { phase: 'refreshed', task: 'T12', at: BEFORE }] satisfies (
+    for (const state of [undefined, BOUNDARY, { phase: 'idle', task: 'T12', at: BEFORE, tokens: 1, finished: 1 }, { phase: 'refreshed', task: 'T12', at: BEFORE }] satisfies (
       | RefreshState
       | undefined
     )[]) {
@@ -175,6 +231,20 @@ describe('decideStart', () => {
     for (const source of ['compact', 'resume', 'fork', undefined]) {
       assert.deepEqual(decideStart(READY, source, DEFAULT_REFRESH, HANDOVER, NOW), { kind: 'none' }, source);
     }
+  });
+
+  it('starts the task count over when the context is small again, a compaction too', () => {
+    const idle: RefreshState = { phase: 'idle', task: 'T12', at: BEFORE, tokens: 150_000, finished: 2 };
+    for (const source of ['clear', 'startup', 'compact']) {
+      assert.deepEqual(decideStart(idle, source, DEFAULT_REFRESH, HANDOVER, NOW), { kind: 'reset', state: { ...idle, finished: 0 } }, source);
+    }
+    const boundary: RefreshState = { ...BOUNDARY, finished: 3 };
+    assert.deepEqual(decideStart(boundary, 'compact', DEFAULT_REFRESH, HANDOVER, NOW), { kind: 'reset', state: { ...boundary, finished: 0 } });
+    for (const source of ['resume', 'fork', undefined]) {
+      assert.deepEqual(decideStart(idle, source, DEFAULT_REFRESH, HANDOVER, NOW), { kind: 'none' }, source);
+    }
+    assert.deepEqual(decideStart({ ...idle, finished: 0 }, 'compact', DEFAULT_REFRESH, HANDOVER, NOW), { kind: 'none' }, 'already 0: nothing to write');
+    assert.deepEqual(decideStart(idle, 'compact', { enabled: false }, HANDOVER, NOW), { kind: 'none' });
   });
 
   it('does nothing before the handover is ready, or with the feature off', () => {

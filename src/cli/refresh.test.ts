@@ -69,7 +69,7 @@ describe('runCli: context refresh', () => {
     assert.deepEqual(stopJson(asked), {
       decision: 'block',
       reason:
-        `teamrig: your context is 300k (refresh at 250k) and you just finished T1. Write your handover to ${HANDOVER('alpha')} ` +
+        `teamrig: your context is 300k (refresh at 120k) and you just finished T1. Write your handover to ${HANDOVER('alpha')} ` +
         '(what is in progress, the next step of each, open questions, where things are), then run ' +
         '`teamrig refresh --ready --session alpha`. Do not start new work.',
     });
@@ -119,13 +119,31 @@ describe('runCli: context refresh', () => {
 
   it('records a boundary under the threshold and says nothing, and refuses --ready when nothing was asked', async () => {
     const kit = new CliHarness();
-    await kit.files.write(TRANSCRIPT, transcript(120_000));
+    await kit.files.write(TRANSCRIPT, transcript(100_000));
     await finishTask(kit, 'alpha');
     assert.deepEqual(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload() }), SILENT);
-    assert.match((await kit.files.read(STATE('alpha'))) ?? '', /"phase":"idle","task":"T1",.*"tokens":120000/);
+    assert.match((await kit.files.read(STATE('alpha'))) ?? '', /"phase":"idle","task":"T1",.*"tokens":100000,"finished":1/);
     const ready = await kit.run(['refresh', '--ready', '--session', 'alpha']);
     assert.equal(ready.code, EXIT.refused);
     assert.match(ready.stdout[0] ?? '', /^REFUSED no refresh was asked of you/);
+  });
+
+  it('asks after the third task at a context worth refreshing, and counts again after a compaction', async () => {
+    const kit = new CliHarness();
+    await kit.files.write(TRANSCRIPT, transcript(90_000));
+    const finishAndStop = async (): Promise<CliResult> => {
+      await finishTask(kit, 'alpha');
+      return kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload() });
+    };
+    assert.deepEqual(await finishAndStop(), SILENT);
+    assert.deepEqual(await finishAndStop(), SILENT);
+    assert.match((await kit.files.read(STATE('alpha'))) ?? '', /"phase":"idle","task":"T2",.*"finished":2/);
+    assert.equal((await kit.run(['hook', 'session-start'], { ...AS_ALPHA, stdin: startPayload('compact') })).code, EXIT.ok);
+    assert.match((await kit.files.read(STATE('alpha'))) ?? '', /"phase":"idle","task":"T2",.*"finished":0/);
+    assert.deepEqual(await finishAndStop(), SILENT);
+    assert.deepEqual(await finishAndStop(), SILENT);
+    const asked = stopJson(await finishAndStop());
+    assert.match(JSON.stringify(asked), /"decision":"block","reason":"teamrig: your context is 90k after 3 tasks \(refresh every 3 tasks\) and you just finished T5\./);
   });
 
   it('refuses a handover that was already there when the Stop hook asked', async () => {

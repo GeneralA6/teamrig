@@ -529,16 +529,30 @@
       "default": {}
     },
     "refresh": {
-      "description": "Context refresh: when a session finishes a task (teamrig set <id> --status done) with its context at or over contextTokens, or after the lead ran teamrig refresh <session>, it writes a handover and the user types /clear. A relative handoverDir is resolved against the team's folder; unset, it is <team folder>/handover.",
+      "description": "Context refresh: when a session finishes a task (teamrig set <id> --status done) with its context at or over contextTokens, or with everyTasks tasks finished since its context was last fresh and the context at everyTasksMinTokens or more, or after the lead ran teamrig refresh <session>, it writes a handover and the user types /clear. A relative handoverDir is resolved against the team's folder; unset, it is <team folder>/handover.",
       "type": "object",
       "properties": {
         "enabled": { "type": "boolean", "default": true },
         "contextTokens": {
-          "description": "The context size, in tokens, that asks for a refresh. 250000 suits a 1M-token window; on a 200k window Claude Code compacts first, so set about 150000.",
+          "description": "The context size, in tokens, that asks for a refresh: under the about 167k where Claude Code compacts a 200k window.",
           "type": "integer",
           "minimum": 10000,
           "maximum": 10000000,
-          "default": 250000
+          "default": 120000
+        },
+        "everyTasks": {
+          "description": "Also refresh once this many tasks were finished since the context was last fresh (a /clear, a new process or a compaction); 0 turns it off.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "default": 3
+        },
+        "everyTasksMinTokens": {
+          "description": "The smallest context, in tokens, the task count refreshes at.",
+          "type": "integer",
+          "minimum": 10000,
+          "maximum": 10000000,
+          "default": 80000
         },
         "tabTitle": { "description": "Title the tab '<name>: type /clear' once the handover is written and the session waits for /clear.", "type": "boolean", "default": true },
         "handoverDir": { "type": "string", "minLength": 1 }

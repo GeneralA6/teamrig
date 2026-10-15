@@ -1,7 +1,7 @@
 import type { KitConfig } from '../../config/types.ts';
 import { errorMessage } from '../../core/guards.ts';
 import type { TeamPaths } from '../../core/home.ts';
-import { decideReady } from '../../refresh/decide.ts';
+import { boundaryOf, decideReady } from '../../refresh/decide.ts';
 import { RefreshStore } from '../../refresh/store.ts';
 import { noPositionals, onePositional, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
@@ -22,14 +22,15 @@ function requireRefresh(config: KitConfig): void {
 
 /**
  * After the caller's `set <id> --status done`: a boundary for the Stop hook to judge at the end of
- * this turn. The task is already done, so a failure here only warns and the exit stays 0.
+ * this turn, counting the task. The task is already done, so a failure here only warns and the exit stays 0.
  */
 export async function markBoundary(runtime: CliRuntime, config: KitConfig, paths: TeamPaths, session: string, task: string): Promise<void> {
   if (!config.refresh.enabled) {
     return;
   }
   try {
-    await new RefreshStore(runtime.files, paths).setState(session, { phase: 'boundary', task, at: new Date(runtime.clock.now()).toISOString() });
+    const store = new RefreshStore(runtime.files, paths);
+    await store.setState(session, boundaryOf(await store.state(session), task, new Date(runtime.clock.now()).toISOString()));
   } catch (error) {
     runtime.out.stderr(`WARN ${task} is done, but its refresh check was not recorded: ${errorMessage(error)}`);
   }

@@ -100,8 +100,11 @@ export const DEFAULT_TESTS: TestsConfig = { maxFailureChars: 4000 };
 /** Off until a team lists a repository; two weeks of closed issues covers a sync missed over a holiday. */
 export const DEFAULT_GITHUB: GithubConfig = { repos: [], owners: {}, closedDays: 14 };
 
-/** 250k suits a 1M-token window; on a 200k window Claude Code compacts first, so a team there sets about 150k. */
-export const DEFAULT_REFRESH: RefreshConfig = { enabled: true, contextTokens: 250_000, tabTitle: true };
+/**
+ * Claude Code compacts a 200k window at about 167k, so 120k refreshes before that; every 3 tasks catches a
+ * session that grows slowly, from 80k up. Measured over 8 days of 12 sessions: about 9 refreshes a day in all.
+ */
+export const DEFAULT_REFRESH: RefreshConfig = { enabled: true, contextTokens: 120_000, everyTasks: 3, everyTasksMinTokens: 80_000, tabTitle: true };
 
 export const DEFAULT_OPEN: OpenConfig = { terminal: 'auto' };
 
