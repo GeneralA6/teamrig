@@ -43,6 +43,8 @@ function created(id, fields, at, by) {
         updatedAt: at,
         updatedBy: by,
         assignedAt: at,
+        statusAt: at,
+        priorityAt: at,
         ownerSeenAt: by === fields.owner ? at : null,
     };
 }
@@ -50,6 +52,7 @@ function withStatus(task, event) {
     return {
         ...task,
         status: event.status,
+        statusAt: event.status === task.status ? task.statusAt : event.at,
         note: event.note,
         evidence: event.evidence ?? task.evidence,
         skill: event.skill,
@@ -59,7 +62,8 @@ function withStatus(task, event) {
     };
 }
 function withChanges(task, changes, at, by) {
-    const next = { ...task, ...changes, updatedAt: at, updatedBy: by };
+    const priorityAt = changes.priority === undefined || changes.priority === task.priority ? task.priorityAt : at;
+    const next = { ...task, ...changes, updatedAt: at, updatedBy: by, priorityAt };
     if (next.owner !== task.owner) {
         return { ...next, assignedAt: at, ownerSeenAt: by === next.owner ? at : null };
     }
