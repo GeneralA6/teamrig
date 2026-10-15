@@ -64,8 +64,12 @@ Flags:
 
 - `--session <id|name>`: the caller, who must own the task.
 - `--status open|in-progress|verifying|waiting|done|dropped`: required.
-- `--note "<what or why>"`: required for `waiting`, `verifying` (what proves it), `done` and `dropped` (`register.requireNoteOn`), and for
+- `--note "<what or why>"`: required for `waiting`, `verifying`, `done` and `dropped` (`register.requireNoteOn`), and for
   setting the status the task already has.
+- `--proof "<what proves it>"`: required for `verifying` (`register.requireProofOnVerifying`), and allowed only
+  with it: what will prove the shipped change works (a test run, a night's flow, a number). Setting `verifying`
+  again keeps the proof the task has.
+- `--due <date>`: allowed only with `verifying`: the date to verify by, written as the task's due date.
 - `--evidence <proof>`: required for `done`: a commit, test count, path or number that proves it. Evidence
   already on the task counts.
 - `--skill <name>|none`: required for `done`, and allowed only with `done`: the skill you wrote or updated, or
@@ -98,6 +102,29 @@ Output:
 ```text
 SET T1 waiting, p2, owner web, due 10-16, week 10-12, from lead | Fix the broken login form (waiting: on T2 · decision owner · until Fri 10-16 13:00; needs the api error codes and the owner's call on the copy)
 ```
+
+A shipped change waiting for its proof:
+
+```sh
+teamrig set T1 --session api --status verifying --note "merged and deployed" --proof "the signup smoke test passes on staging" --due 2026-10-14
+```
+
+Output:
+
+```text
+SET T1 verifying, p2, owner api, due 10-14, from lead | Build the signup endpoint (proof: the signup smoke test passes on staging)
+```
+
+Starting a task that needs a verifying one (planned `--after` it, or waiting on it with `--waits task:`) is
+refused while that task is verifying (`register.verifyGate`), and the verifying task's owner gets one inbox line
+a day about it:
+
+```text
+NOTE api has an inbox line: T2 waits on your verifying T1: the signup smoke test passes on staging
+REFUSED T2 needs T1, still verifying (proof: the signup smoke test passes on staging, owner api); start T2 once T1 is done
+```
+
+With `register.verifyGate` set to `warn`, the start goes through and a `WARN` line names the same tasks.
 
 The status is a flag, never a word after the id: `teamrig set T1 done` is a usage error (`unexpected "done"`).
 
@@ -292,6 +319,32 @@ Output:
 
 With no week tagged at all: `REFUSED no week plan tagged yet; pass --week <YYYY-MM-DD>`.
 
+### teamrig verify
+
+Lists the caller's `verifying` tasks, oldest first (by when each was set verifying): when it was set, the date to
+verify it by and its proof. Work them in that order: `done` with the proof as evidence once it exists, or
+`in-progress` again when it failed.
+
+Flags:
+
+- `--session <id|name>`: the caller, whose tasks it lists.
+
+Example:
+
+```sh
+teamrig verify --session api
+```
+
+Output:
+
+```text
+VERIFY 1 task of api, oldest first
+T1 since 10-12 09:12, verify by 10-14 | Build the signup endpoint (proof: the signup smoke test passes on staging)
+```
+
+A task with no due date shows `no verify-by date`. A task set verifying without `--proof` shows the proof its
+note names (`Proof: ...`), else the whole note. With none: `VERIFY 0 tasks of api, oldest first`.
+
 ## Inbox
 
 ### teamrig inbox read
@@ -320,6 +373,9 @@ READ web: 1 new line, shown above; new ones are shown at your next prompt
 With nothing unread: `READ web: nothing new; new ones are shown at your next prompt`. After the prompt hook showed
 two lines: `READ web: 1 new line, shown above, and 2 the prompt hook showed this session, now marked read too; new
 ones are shown at your next prompt`.
+
+While you have `verifying` tasks, a last line names them, oldest first, with their proofs:
+`VERIFY 1: T1 (proof: the signup smoke test passes on staging)`. `teamrig verify` lists them in full.
 
 ### teamrig inbox status
 

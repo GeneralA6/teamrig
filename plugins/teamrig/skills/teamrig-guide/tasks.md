@@ -11,7 +11,7 @@ A task is `open` when added. Only its owner sets its status, with `teamrig set <
 | --- | --- | --- |
 | `open` | waiting to start | nothing |
 | `in-progress` | the owner is on it now | nothing |
-| `verifying` | shipped, waiting for what proves it (a test run, a night's flow, a number) | `--note` saying what proves it [register.requireNoteOn]; give it a due date (`update --due`): the date to verify it by |
+| `verifying` | shipped, waiting for what proves it (a test run, a night's flow, a number) | `--note` and `--proof` naming what will prove it [register.requireNoteOn, register.requireProofOnVerifying]; `--due <date>`: the date to verify it by |
 | `waiting` | started, and cannot go on until something else happens | `--waits` naming every reason (a decision, an approval, a task, a time) and `--note` [register.requireNoteOn] |
 | `done` | finished and verified | `--note`, `--evidence` (unless the task already has some) and `--skill <name>` or `--skill none` [register.requireEvidenceOnDone, register.requireSkillOnDone] |
 | `dropped` | will not be done | `--note` saying why and who decided |
@@ -36,6 +36,23 @@ line with a warning and shows the task at its earlier status. A `blocked` writte
 Evidence is what proves the work: a commit sha, a pull request, a test count, a path, a measured number. "Done" or
 "works" is not evidence. The skill is the one you wrote or updated while doing the task (it must exist in the
 skills folder), or `none` for a one-off.
+
+## Verify loop
+
+A shipped change is proven by the session that shipped it, oldest first, before work that needs it starts.
+
+- `teamrig set <id> --status verifying --note "<what shipped>" --proof "<what proves it>" --due <date>` starts it.
+  Without `--proof` it is refused [register.requireProofOnVerifying]; with that key `false`, the note names the
+  proof.
+- The queue stays in view: `teamrig verify` lists it, oldest first, and the session start context and
+  `teamrig inbox read` end with one `VERIFY <n>: T1 (proof: ...)` line.
+- From a task's verify-by day (its due date, UTC), the Stop hook shows the user `VERIFY T1 was to be verified by
+  10-14 (proof: ...)` once a day, until the task is `done` or back `in-progress`.
+- A start of a task that needs a verifying task (planned `--after` it, or waiting on it with `--waits task:`) is
+  refused while that task is verifying [register.verifyGate]; `warn` lets the start through with a warning.
+  Either way the verifying task's owner gets one inbox line a day about it, unless it is the one starting.
+- `check` flags a verifying task that work needs (`VERIFY-BLOCKS`), one past its date (`VERIFY-OVERDUE`) and a
+  session holding more than 5 of them (`PILE-UP` [register.maxVerifying], 0 turns it off).
 
 ## Who may change what
 
@@ -92,10 +109,12 @@ checkpoint; a session may run it for itself.
 | --- | --- | --- |
 | `OVERDUE` | the due time has passed | The owner finishes it or says what blocks it; the lead re-dates it (`update --due`) or tells the human. |
 | `VERIFY-OVERDUE` | a `verifying` task's due time, the date to verify it by, has passed | The owner checks the proof: `done` with it as evidence, `in-progress` when it failed, or a new due date and why. |
+| `VERIFY-BLOCKS` | a `verifying` task another active task needs: planned after it (`--after`) or waiting on it (`--waits task:`) | The owner proves it (`done` with the proof) or reopens it (`in-progress`), so the work on it can start. |
 | `READY` | a `waiting` task whose every reason has cleared: its tasks are done or dropped, its time has passed (a decision or an approval never clears by itself) | The owner goes on: `set --status in-progress`, or the next status. |
 | `NOT-PICKED-UP` | assigned over 24 h ago with no event from its owner since [register.check.notPickedUpAfterHours] | The owner is idle and reads no inbox: wake it with `teamrig open <id>` or a message, or tell the human. |
 | `STALE` | no event for 72 h [register.check.staleAfterHours] (not raised on top of NOT-PICKED-UP, nor for a `verifying` task with a due date) | Ask the owner what blocks it, then re-date, re-assign or drop it. |
 | `PRIORITY-SKIP` | in progress while a top-priority (`p1`) task of the same owner waits open and free to start (every task it comes after finished), for over 24 h [register.check.prioritySkipAfterHours] | The owner parks the lower task and starts the waiting one; or the lead fixes the order (`update --priority`). |
+| `PILE-UP` | a session holds more than 5 `verifying` tasks [register.maxVerifying] (0 turns it off); raised on its oldest | The owner works its queue, oldest first (`teamrig verify`), before new work. |
 | `OWNER-UNPLANNED` | an order from the human (`--source owner`) that is not in the current week plan | Plan it in (`update --week <week>`), or tell the human what it would push out. |
 | `DUE-UNPLANNED` | due inside the current week but not in its plan | Plan it in with `--week`, or re-date it. |
 | `OFF-GOAL` | in progress with no goal and not in the current week plan | If it belongs this week, the lead plans it in (`--week`); else the owner tags its goal (`update --goals`) or parks it. |

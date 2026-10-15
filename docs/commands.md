@@ -23,6 +23,8 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
   add --team <child team> --title .. --priority p<n> [...]   the parent lead hands that team's lead a task
   set <id> --status open|in-progress|verifying|waiting|done|dropped [--note "<what/why>"] [--evidence <proof>]
       [--skill <name>|none] [--waits decision:<who>,approval:<who>,task:T<id>,time:<date>]
+      [--proof "<what proves it>"] [--due <date>]
+      verifying needs --proof: what will prove the shipped change works; --due sets the date to verify by
       waiting needs --waits: who decides or approves (a session or the owner), a task to finish first
       (only once started) or a time; check flags it READY once its tasks finished and its time passed
   update <id> [--title ..] [--owner ..] [--priority ..] [--ref ..|none] [--due <date>|none]
@@ -35,6 +37,8 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       in a short form within 3,000 characters; --all: every flag in full
   plan [--week <date>] [--tree]    the week plan (default: the newest week that has started)
       --tree (the lead only): also every team under it, read-only, ids as <team>/T<n>
+  verify [--session <id|name>]   the session's verifying tasks, oldest first, each with its proof and
+      the date to verify by
   inbox read [--session <area>]     prints the unread lines and marks them read
   inbox status [--session <area>]   unread lines per area
   inbox add --to <id|name|team/id> --text "<one line>"

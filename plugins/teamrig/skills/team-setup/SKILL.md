@@ -129,6 +129,10 @@ With sub-teams, add `--tree` to `check`. Act on each flag:
   session in one inbox line to go on.
 - `VERIFY-OVERDUE`: a shipped change past its date to verify by. Ask the owning session whether the proof came: `done` with it,
   `in-progress` if it failed, or a new date.
+- `VERIFY-BLOCKS`: work waits on a shipped change that is not proven yet. Ask the owning session in one inbox line
+  to prove it (`done`) or reopen it (`in-progress`).
+- `PILE-UP`: a session holds more verifying tasks than `register.maxVerifying`. Ask it to work its queue
+  (`teamrig verify`) before new work.
 - `OWNER-UNPLANNED` or `DUE-UNPLANNED`: plan it in with `--week`, or tell the user what it would push out.
 - A skill flag: tell the skill's owner in one inbox line.
 
