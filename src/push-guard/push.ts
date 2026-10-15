@@ -400,9 +400,13 @@ class PushJudge {
  * shells are seen through, and git aliases are expanded. A branch change earlier in the line (`git checkout
  * main && git push`) is followed (see `BranchMoves`). When part of the line cannot be read with confidence, the
  * guard asks: always for a push it cannot read, and for anything else it cannot read when the line says `push`.
+ * With no protected branch there is nothing to guard, so every line is allowed, mirrors and doubts included.
  */
 export function evaluatePushes(command: string, context: GuardContext): PushVerdict {
   const protectedBranches = new Set(context.protectedBranches);
+  if (protectedBranches.size === 0) {
+    return { decision: 'allow', updates: [] };
+  }
   const found = findGitInvocations(command, { cwd: context.cwd, home: context.home, dialect: context.dialect, git: context.repo });
   const moves = new BranchMoves(protectedBranches);
   const judge = new PushJudge(context.repo, protectedBranches);
@@ -426,9 +430,6 @@ export function evaluatePushes(command: string, context: GuardContext): PushVerd
   }
   if (asked) {
     return { decision: 'ask', updates };
-  }
-  if (protectedBranches.size === 0) {
-    return { decision: 'allow', updates: [] };
   }
   doubt ??= found.doubts.find((candidate) => !candidate.gated || found.mentionsPush)?.reason;
   return doubt === undefined ? { decision: 'allow', updates: [] } : { decision: 'ask', updates: [], doubt };
