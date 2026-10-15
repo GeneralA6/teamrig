@@ -54,6 +54,10 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
   budget lift <id|name> --to <pct> --stop-pct <pct> --reason "<why>" [--until <HH:MM|date>] [--reserve]
       (the lead only) that session's daily budget for today, until --until, the day's end or the week
       reaching --stop-pct; --reserve: above budget.lift.maxStopPct, in the last hour before the reset
+  budget setup [--daily pace|<pct>] [--max-daily none|<pct>] [--over <action>] [--escalate <mode>]
+      [--quiet <HH:MM-HH:MM>|off] [--quiet-action <action>] [--off] [--yes]
+      (the lead only) writes the team's budget policy into its config and turns the budget on (--off:
+      off); without --yes it shows the change and writes nothing; flags left out keep their values
   statusline                   Claude Code's status line (status JSON on stdin): saves the week's use
       for budget and prints a short status
   config validate | config migrate
