@@ -379,6 +379,25 @@ describe('evaluatePushes: where a push hides', () => {
       ['git push origin $(git branch --show-current)', 'allow'],
     ]);
   });
+
+  it('reads a variable set to a literal earlier in the line as that literal', () => {
+    expectRows([
+      ['B=feat; git push -u origin $B', 'allow'],
+      ['B=feat && git push origin "$B"', 'allow'],
+      ['export B=feat; git push origin ${B}', 'allow'],
+      ["B='feat'\ngit push origin $B", 'allow'],
+      ['B="feat"; git push origin HEAD:refs/heads/$B', 'allow'],
+      ['cd sub && B=feat && git push origin $B', 'allow'],
+      ['B=feat; git push origin $B 2>&1 | tail -5', 'allow'],
+      ['B=feat; bash -c "git push origin $B"', 'allow'],
+      ['(B=feat; git push origin $B)', 'allow'],
+      ['B=main; git push origin $B', 'ask'],
+      ['B=feat; git push origin $B:main', 'ask'],
+      ['B=main; git push -f origin $B', 'deny'],
+      ['B=+main; git push origin $B', 'deny'],
+      ['D=sub; cd $D && git push', 'allow'],
+    ]);
+  });
 });
 
 describe('evaluatePushes: the fail-safe', () => {
@@ -394,6 +413,25 @@ describe('evaluatePushes: the fail-safe', () => {
       ['GIT_CONFIG_GLOBAL=/tmp/x git push', 'ask', 'doubt'],
       ['GIT_COMMON_DIR=x git push', 'ask', 'doubt'],
     ]);
+  });
+
+  it('asks about a variable it cannot prove holds one literal when the push runs', () => {
+    expectRows([
+      ['B=feat git push origin $B', 'ask', 'doubt'],
+      ['B=$(git rev-parse --abbrev-ref HEAD); git push origin $B', 'ask', 'doubt'],
+      ['B=$OTHER; git push origin $B', 'ask', 'doubt'],
+      ['B=feat; B=main; git push origin $B', 'ask', 'doubt'],
+      ['B=feat; (B=main); git push origin $B', 'ask', 'doubt'],
+      ['(B=feat); git push origin $B', 'ask', 'doubt'],
+      ['false && B=feat; git push origin $B', 'ask', 'doubt'],
+      ['if true; then B=main; fi; B=feat; git push origin $B', 'ask', 'doubt'],
+      ['B=feat; source ./set.sh; git push origin $B', 'ask', 'doubt'],
+      ['B=feat; eval "B=main"; git push origin $B', 'ask', 'doubt'],
+      ['B=feat; read B; git push origin $B', 'ask', 'doubt'],
+      ['B=feat; git push origin ${B:-main}', 'ask', 'doubt'],
+      ["B=feat; bash -c 'git push origin $B'", 'ask', 'doubt'],
+    ]);
+    expectRows([["$B = 'feat'; git push origin $B", 'ask', 'doubt']], { dialect: 'powershell' });
   });
 
   it('treats GIT_DIR or GIT_CONFIG set earlier in the shell as unknown', () => {
