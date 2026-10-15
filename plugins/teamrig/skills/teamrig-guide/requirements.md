@@ -6,7 +6,7 @@ What teamrig needs on the machine, from its code and its CI.
 | --- | --- | --- |
 | Claude Code | any version with plugins; no minimum is set | It loads the plugin, runs its hooks and puts `teamrig` on the PATH. CI does not run Claude Code; a hand test ran on 2.1.300. |
 | Node.js | 22.18 or later (`engines` in `package.json`) | `teamrig` and every hook run `node <plugin>/dist/cli/main.js`, so `node` must be on the PATH. |
-| Operating system | Linux, Windows or macOS | CI runs the tests on ubuntu, windows and macos, each on Node 22 and 24. |
+| Operating system | Linux, Windows or macOS | CI runs the tests on ubuntu, windows and macos, each on Node 22 and 24. CI is paused for now: each change is tested before it is pushed on one machine and Node, so the others go unchecked until CI runs again. |
 | git | any | The push guard reads git config and aliases; `teamrig commits check` runs git. Not needed for tasks or inboxes. |
 | A terminal for `teamrig open` | see below | Only `open` uses one; every other command works in any shell. |
 
