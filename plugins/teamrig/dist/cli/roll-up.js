@@ -1,12 +1,11 @@
 import { formatAddress } from "../core/address.js";
-import { readSnapshot } from "../register/register.js";
 import { JsonlEventLog } from "../register/store.js";
 import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf } from "./kit.js";
 import { RefusedError } from "./runtime.js";
 import { loadTree } from "./tree.js";
 async function rolledOf(runtime, team, { kit, config, roster }) {
-    const snapshot = await readSnapshot(new JsonlEventLog(runtime.files, kit.paths.events));
-    return { team, config, paths: kit.paths, roster, snapshot };
+    const log = new JsonlEventLog(runtime.files, kit.paths.events);
+    return { team, config, paths: kit.paths, roster, snapshot: await log.read(), history: () => log.readHistory() };
 }
 /**
  * The registers behind `list|check|plan --tree`: the caller's team and the teams under it. Only the

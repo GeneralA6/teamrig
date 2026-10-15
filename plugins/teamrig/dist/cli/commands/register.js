@@ -1,9 +1,10 @@
 import { formatAddress } from "../../core/address.js";
 import { FileLock } from "../../core/lock.js";
-import { checkTasks, currentWeek } from "../../register/check.js";
+import { checkTasks, currentWeekOf } from "../../register/check.js";
 import { renderPlan } from "../../register/plan.js";
 import { RegisterPolicy } from "../../register/policy.js";
 import { Register } from "../../register/register.js";
+import { ACTIVE_STATUSES } from "../../register/model.js";
 import { JsonlEventLog } from "../../register/store.js";
 import { formatTask, formatTaskDetail, selectTasks } from "../../register/views.js";
 import { lintSkills } from "../../skills/lint.js";
@@ -61,12 +62,6 @@ function warnDamage(runtime, snapshot, path) {
     if (unreadable + newer + orphans > 0) {
         runtime.out.stderr(`WARN ${path}: ${unreadable} unreadable line(s), ${newer} line(s) from a newer teamrig, ${orphans} event(s) naming no task`);
     }
-}
-async function readTeam(runtime) {
-    const team = await openTeam(runtime, 'read');
-    const snapshot = await team.register.snapshot();
-    warnDamage(runtime, snapshot, team.paths.events);
-    return { team, snapshot };
 }
 /**
  * `add --team <child>`: a parent team's lead hands a child team a task. It lands in the child's
@@ -136,15 +131,32 @@ function treeFilterOf(roster, filter) {
 }
 /** The caller's own register, as a roll-up of one team. */
 async function ownRegister(runtime) {
-    const { team, snapshot } = await readTeam(runtime);
-    const own = { team: team.paths.team, config: team.config, paths: team.paths, roster: team.roster, snapshot };
+    const { config, paths, roster, register } = await openTeam(runtime, 'read');
+    const own = { team: paths.team, config, paths, roster, snapshot: await register.snapshot(), history: () => register.history() };
     return { own, teams: [own] };
 }
-/** The registers of `--tree`, each naming its damaged lines like a one-team read. */
-async function treeRegisters(args, runtime) {
-    const rolled = await rollUp(runtime, callerOf(args.flags, runtime.env));
-    rolled.teams.forEach(({ snapshot, paths }) => warnDamage(runtime, snapshot, paths.events));
-    return rolled;
+/** The registers a command reads: those of `--tree`, else the caller's own. */
+async function readRegisters(args, runtime) {
+    return args.switches.has('tree') ? rollUp(runtime, callerOf(args.flags, runtime.env)) : ownRegister(runtime);
+}
+/** Each register as the command needs it, each naming its damaged lines once, as read. */
+async function settle(runtime, { own, teams }, needsHistory) {
+    const settled = [];
+    for (const rolled of teams) {
+        const { retired } = rolled.snapshot;
+        const snapshot = retired !== null && needsHistory(retired, rolled.snapshot) ? await rolled.history() : rolled.snapshot;
+        warnDamage(runtime, snapshot, rolled.paths.events);
+        settled.push({ ...rolled, snapshot });
+    }
+    return { own: settled.find((rolled) => rolled.team === own.team) ?? own, teams: settled };
+}
+/** A filter that selects finished tasks, the only ones a compaction retires. */
+function selectsFinished(filter) {
+    return () => (filter.statuses ?? ACTIVE_STATUSES).some((status) => !ACTIVE_STATUSES.includes(status));
+}
+/** A week plan no newer than the newest one among the retired tasks may name some of them. */
+function weekMayBeRetired(week) {
+    return (retired) => retired.lastWeek !== null && week <= retired.lastWeek;
 }
 /**
  * `list --tree`: the lead's team and every team under it, ids read `<team>/T12`. As in `check` and
@@ -154,13 +166,13 @@ async function treeRegisters(args, runtime) {
  */
 async function treeRows(args, runtime) {
     const filter = listFilterOf(new Map([...args.flags].filter(([name]) => name !== 'session')));
-    const { teams } = await treeRegisters(args, runtime);
+    const { teams } = await settle(runtime, await rollUp(runtime, callerOf(args.flags, runtime.env)), selectsFinished(filter));
     return teams.flatMap(({ team, roster, snapshot }) => selectTasks(snapshot.state.tasks.values(), treeFilterOf(roster, filter)).map((task) => ({ task, team })));
 }
 async function ownRows(args, runtime) {
     const filter = listFilterOf(args.flags);
-    const { team, snapshot } = await readTeam(runtime);
-    return selectTasks(snapshot.state.tasks.values(), filterIds(team.roster, filter)).map((task) => ({ task, team: undefined }));
+    const { own } = await settle(runtime, await ownRegister(runtime), selectsFinished(filter));
+    return selectTasks(own.snapshot.state.tasks.values(), filterIds(own.roster, filter)).map((task) => ({ task, team: undefined }));
 }
 /** `list [--tree] [--all]`: the short form (src/cli/reports.ts), or with `--all` every field of every task. */
 export async function list(args, runtime) {
@@ -171,7 +183,8 @@ export async function list(args, runtime) {
 }
 export async function show(args, runtime) {
     const id = taskIdOf(onePositional(args, 'id'));
-    const { snapshot } = await readTeam(runtime);
+    const { own } = await settle(runtime, await ownRegister(runtime), (_retired, working) => !working.state.tasks.has(id));
+    const { snapshot } = own;
     const task = snapshot.state.tasks.get(id);
     if (task === undefined) {
         throw new RefusedError(`no task ${id}`);
@@ -182,7 +195,7 @@ export async function show(args, runtime) {
 /** The `--week` given, else the newest week plan that has started. */
 function weekFor(args, snapshot, now) {
     const week = args.flags.get('week');
-    return week === undefined ? currentWeek(snapshot.state.tasks.values(), now) : weekOf(week);
+    return week === undefined ? currentWeekOf(snapshot, now) : weekOf(week);
 }
 /** The task flags of one register; with `team`, for `check --tree`, its task ids name it. */
 function checkRegister(snapshot, config, now, week, team) {
@@ -198,7 +211,8 @@ export async function check(args, runtime) {
     noPositionals(args);
     const now = new Date(runtime.clock.now());
     const tree = args.switches.has('tree');
-    const { own, teams } = tree ? await treeRegisters(args, runtime) : await ownRegister(runtime);
+    // The flags are on active tasks, which a compaction never retires: the working set holds them all.
+    const { own, teams } = await settle(runtime, await readRegisters(args, runtime), () => false);
     const week = weekFor(args, own.snapshot, now);
     const sections = teams.map((rolled) => checkRegister(rolled.snapshot, rolled.config, now, week, tree ? rolled.team : undefined));
     const skills = lintSkills(await new SkillDir(runtime.files, own.paths.skills).readAll(), now, own.config);
@@ -212,8 +226,9 @@ export async function plan(args, runtime) {
     noPositionals(args);
     const now = new Date(runtime.clock.now());
     const tree = args.switches.has('tree');
-    const { own, teams } = tree ? await treeRegisters(args, runtime) : await ownRegister(runtime);
-    const week = weekFor(args, own.snapshot, now);
+    const read = await readRegisters(args, runtime);
+    const week = weekFor(args, read.own.snapshot, now);
+    const { teams } = await settle(runtime, read, week === null ? () => false : weekMayBeRetired(week));
     if (week === null) {
         throw new RefusedError('no week plan tagged yet; pass --week <YYYY-MM-DD>');
     }

@@ -1,14 +1,19 @@
 import { toJsonlLine } from "../core/jsonl.js";
-import { readEvents } from "./snapshot.js";
+import { layoutPaths, readHistory, readWorkingSet } from "./layout.js";
 export class JsonlEventLog {
     path;
     files;
+    layout;
     constructor(files, path) {
         this.files = files;
         this.path = path;
+        this.layout = layoutPaths(path);
     }
-    async read() {
-        return readEvents((await this.files.read(this.path)) ?? '');
+    read() {
+        return readWorkingSet(this.files, this.layout);
+    }
+    readHistory() {
+        return readHistory(this.files, this.layout);
     }
     async append(event) {
         await this.files.append(this.path, toJsonlLine({ ...event }));
