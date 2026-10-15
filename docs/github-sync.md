@@ -1,0 +1,134 @@
+# GitHub sync
+
+`teamrig gh sync` brings the issues of your GitHub repositories into the task list, one way only. Each open issue
+becomes a task (source `github`, ref `gh:<owner>/<name>#<number>`), and its title, priority and open or closed state
+follow GitHub on every run. Nothing ever goes the other way: teamrig never creates, edits, comments on or closes
+anything on GitHub, and a task added with `teamrig add` stays on your machine.
+
+Setting it up takes three steps: list the repositories, give teamrig read access to their issues, then preview and
+write.
+
+## 1. List the repositories
+
+Add a `github` block to the team config (`~/.teamrig/teams/<team>/config.json`):
+
+```json
+"github": {
+  "repos": ["acme/web", "acme/api", "globex/site"],
+  "sessions": { "acme/web": "web", "acme/api": "api", "globex/site": "web" },
+  "owners": { "octocat": "api" },
+  "closedDays": 14
+}
+```
+
+| Key | What it does |
+| --- | --- |
+| `repos` | The repositories to read, as `owner/name` (at most 20). Empty turns the sync off. |
+| `sessions` | Optional. The session that owns each repository's issues, so each session sees the issues of its own repositories. One session can own several. |
+| `owners` | Optional. A GitHub login to a session: an issue assigned to that login goes to that session, whatever its repository. |
+| `closedDays` | How many days back closed issues are read, to finish their tasks. Default 14. |
+
+Who owns a new issue's task: the session of its first assignee listed in `owners`; else its repository's session in
+`sessions`; else the lead. After the import the owner is the team's: reassigning the task in teamrig sticks.
+
+## 2. Give teamrig read access
+
+teamrig reads issues through the GitHub CLI, [`gh`](https://cli.github.com). For each owner (the `acme` in
+`acme/web`) it uses:
+
+- **a read-only token saved for that owner**, when there is one: recommended, and needed when your repositories
+  belong to more than one owner;
+- **else the `gh` login** (`gh auth login`), which works when that account can read the issues of every listed
+  repository.
+
+### Why one token per owner
+
+A fine-grained GitHub token belongs to one *resource owner*: your personal account or one organisation. It can never
+reach the repositories of another owner. So a team that reads `you/tool` and `your-org/app` creates two tokens, one
+for each owner. teamrig finds each by its name, `teamrig-gh-<owner>`, so no config names them.
+
+### Create a token
+
+Do this once per owner:
+
+1. On GitHub: **Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token**.
+2. **Token name**: anything, e.g. `teamrig read issues`. **Expiration**: 90 days is a fair balance.
+3. **Resource owner**: the owner of the repositories, e.g. `acme`.
+4. **Repository access**: **Only select repositories**, and pick the ones in `github.repos`.
+5. **Permissions → Repository permissions → Issues: Read-only**. GitHub adds **Metadata: Read-only** by itself.
+   Give it nothing else.
+6. **Generate token** and copy it. GitHub shows it only once.
+
+For an organisation, an organisation owner may have to approve the token before it works; until then GitHub refuses
+it.
+
+### Save it
+
+Save the token in your system's credential store under `teamrig-gh-<owner>`, the owner in lowercase. Each command asks
+for the token and shows nothing as you paste it. Run it in a terminal window of your own:
+
+| System | Save | Remove |
+| --- | --- | --- |
+| Windows (Credential Manager) | `cmdkey /generic:teamrig-gh-acme /user:teamrig /pass` | `cmdkey /delete:teamrig-gh-acme` |
+| macOS (keychain) | `security add-generic-password -U -s teamrig-gh-acme -a teamrig -w` | `security delete-generic-password -s teamrig-gh-acme` |
+| Linux (Secret Service, `libsecret-tools`) | `secret-tool store --label=teamrig-gh-acme service teamrig-gh-acme` | `secret-tool clear service teamrig-gh-acme` |
+
+On Linux without `secret-tool`, teamrig reads through the `gh` login.
+
+## 3. Preview, then write
+
+```sh
+teamrig gh sync          # shows what it would do, writes nothing
+teamrig gh sync --yes    # writes it
+```
+
+The preview is also the check that access works. It says once per owner how that owner's repositories are read:
+
+```text
+ACCESS acme: read with the token saved as teamrig-gh-acme
+REPO acme/web: 2 to add, 0 to change, 5 unchanged
+ADD new gh:acme/web#7 p1 web: "Fix the login redirect"
+ADD new gh:acme/web#9 p2 web: "Add search to the docs"
+REPO acme/api: 0 to add, 0 to change, 3 unchanged
+ACCESS globex: read with the gh login; no token saved as teamrig-gh-globex
+REPO globex/site: 1 to add, 0 to change, 0 unchanged
+ADD new gh:globex/site#4 p2 web: "Broken footer link"
+PREVIEW nothing was written; teamrig gh sync --yes writes the above as github
+```
+
+A repository that cannot be read gets a `FAILED` line saying what to fix; its tasks stay as they are and the other
+repositories are read on. `teamrig gh sync --repo acme/web` reads one repository only.
+
+## Renewing a token
+
+When a token expires, GitHub refuses it and the `FAILED` line says so. Regenerate it on GitHub (the token's page has
+**Regenerate token**) and save it again with the same command: saving under the same name replaces the old one.
+Changing a token's permissions or repositories on GitHub keeps the token text the same, so there is nothing to save
+again.
+
+## When something fails
+
+| The `FAILED` line says | What it means | Fix |
+| --- | --- | --- |
+| `the token saved as teamrig-gh-acme may not read the issues of acme/web` | The token sees the repository but has no Issues permission. | On GitHub, edit the token: **Issues: Read-only**. |
+| `acme/web is not visible to the token saved as teamrig-gh-acme` | The repository is not one the token was given, or the name is wrong. | Check `github.repos`; on GitHub, add the repository to the token. |
+| `GitHub refused the token saved as teamrig-gh-acme (expired or revoked?)` | Expired, revoked or not yet approved by the organisation. | Regenerate it and save it again, or ask an organisation owner to approve it. |
+| `... is not visible to the gh login` / `the gh login may not read the issues` | No token is saved for that owner, and the `gh` account cannot read it. | Save a token for the owner (step 2). |
+| `gh is not logged in to GitHub` | No token for that owner and no `gh` login. | Save a token, or run `gh auth login`. |
+| `gh, the GitHub CLI, is not installed` | `gh` is missing. | Install it from [cli.github.com](https://cli.github.com). |
+
+`ACCESS acme: read with the gh login; could not read teamrig-gh-acme from ...` means the credential store itself
+could not be read (a locked keyring, for one); teamrig reads through the `gh` login meanwhile.
+
+## Safety
+
+- **Read-only.** The token can read issues and metadata and nothing else, and teamrig runs only `gh issue list`
+  (any other `gh` command is refused in code).
+- **Never on disk in the clear.** The token lives in the system's credential store, encrypted under your login. It
+  is never in the team config, a command line, a log or teamrig's output: teamrig hands it to `gh` as `GH_TOKEN` for
+  that one run.
+- **Same trust as the `gh` login.** Any program running as you can read your credential store, just as it can use
+  your `gh` login. Keep each token to the repositories the team syncs.
+- **Issue text is outside input.** Anyone who can open an issue writes its title: teamrig prints titles quoted, as
+  data, never as instructions, and never reads issue bodies.
+- **Off switch.** `TEAMRIG_GITHUB=off` turns the sync off on one machine.

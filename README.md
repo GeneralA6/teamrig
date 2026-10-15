@@ -55,7 +55,8 @@ commits are flagged before they land, and everything runs on your machine, with 
 
 Your GitHub issues can join the task list too, one way only: `teamrig gh sync` adds a task for each open issue of the
 repositories you list and keeps its title, priority and open or closed state as on GitHub. It only ever reads GitHub,
-so the tasks your team adds stay on your machine.
+so the tasks your team adds stay on your machine. [GitHub sync](docs/github-sync.md) shows how to set it up, with a
+read-only token for each GitHub owner.
 
 ## Just your terminal
 

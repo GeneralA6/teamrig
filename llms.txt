@@ -15,6 +15,7 @@
 ## Design
 
 - [How it works](https://github.com/GeneralA6/teamrig/blob/main/docs/how-it-works.md): the design, the files, safe pushes, updating the plugin
+- [GitHub sync](https://github.com/GeneralA6/teamrig/blob/main/docs/github-sync.md): reading GitHub issues into the task list: repositories, their sessions, a read-only token per owner, and each failure's fix
 - [Team config schema](https://github.com/GeneralA6/teamrig/blob/main/plugins/teamrig/config.schema.json): every key a team config may hold
 
 ## Optional
