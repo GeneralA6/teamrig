@@ -69,12 +69,12 @@ describe('renderCorePack', () => {
 
   it('states what the push guard does with a push to a protected branch', () => {
     const pack = (pushGuard: Record<string, unknown>) => renderCorePack(testConfig({ pushGuard }), COMMAND);
-    const keys = String.raw`\[pushGuard\.protectedBranches, pushGuard\.pushToProtected\]`;
+    const keys = String.raw`\[pushGuard\]`;
     const routed = ' A refused or blocked route is reported to the lead, never routed around.';
     assert.match(pack({}), new RegExp(String.raw`^15\. Pushes to main, master ask the human; force-pushing or deleting them is refused ${keys}\.${routed}$`, 'm'));
     assert.match(
       pack({ protectedBranches: ['release'], pushToProtected: 'allow' }),
-      new RegExp(String.raw`^15\. Normal pushes to release go through without asking, a --force-with-lease push asks; force-pushing or deleting them is refused ${keys}\.${routed}$`, 'm'),
+      new RegExp(String.raw`^15\. Pushes to release go through unasked; force-pushing or deleting them is refused ${keys}\.${routed}$`, 'm'),
     );
     assert.match(pack({ protectedBranches: [], pushToProtected: 'allow' }), new RegExp(String.raw`^15\. No branch is protected, so the push guard stops no push \[pushGuard\.protectedBranches\]\.${routed}$`, 'm'));
   });
