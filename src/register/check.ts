@@ -14,6 +14,7 @@ export const FLAG_KINDS = [
   'VERIFY-OVERDUE',
   'VERIFY-BLOCKS',
   'READY',
+  'NO-REASON',
   'NOT-PICKED-UP',
   'PRIORITY-SKIP',
   'PILE-UP',
@@ -62,6 +63,7 @@ export function currentWeekOf(snapshot: RegisterSnapshot, now: Date): string | n
  *   until the proof comes (`set` refuses its start);
  * - READY: waiting, and every reason it waits for is ready (its tasks finished, its time passed), so its owner can
  *   go on: only the owner clears a decision or an approval, by setting the next status;
+ * - NO-REASON: waiting with no reason, as a line from an older teamrig reads: nothing says what it waits for;
  * - NOT-PICKED-UP: assigned longer ago than `notPickedUpAfterHours` with no event from its owner since
  *   (an idle session never reads its inbox, so it needs a direct wake);
  * - PRIORITY-SKIP: in progress below an open task of the top priority that has the same owner and is free to start
@@ -91,6 +93,7 @@ export function checkTasks(tasks: Iterable<Task>, now: Date, week: string | null
   const flags = active.flatMap((task) => [
     ...verifyFlags(task, needers, piles, config.maxVerifying),
     ...(task.status === 'waiting' && allReady(task.waits, context) ? [{ kind: 'READY' as const, task, detail: 'every reason cleared; set its next status' }] : []),
+    ...(task.status === 'waiting' && task.waits.length === 0 ? [{ kind: 'NO-REASON' as const, task, detail: 'set what it waits for (--waits) or its next status' }] : []),
     ...timeFlags(task, at, config.check, context),
     ...(top === undefined ? [] : prioritySkip(task, top, waiting, at, config.check)),
     ...(plan === undefined ? [] : planFlags(task, plan, config.ownerSource)),
