@@ -1,7 +1,7 @@
 import { readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { errorCode } from '../core/guards.ts';
-import type { Env } from '../core/home.ts';
+import { claudeConfigDir, type Env } from '../core/home.ts';
 import { CLAUDE_SESSION_ID } from '../inbox/marks.ts';
 import { nodeTranscriptBytes, type TranscriptBytes } from './cursor.ts';
 
@@ -65,8 +65,7 @@ export const nodeTranscriptSource: TranscriptSource = { ...nodeTranscriptBytes, 
 
 /** Claude Code's folder of project transcripts: `$CLAUDE_CONFIG_DIR/projects`, else `~/.claude/projects`. */
 export function claudeProjectsDir(env: Env, userHome: string): string {
-  const configDir = env['CLAUDE_CONFIG_DIR']?.trim();
-  return join(configDir ? configDir : join(userHome, '.claude'), 'projects');
+  return join(claudeConfigDir(env, userHome), 'projects');
 }
 
 /** The transcripts of one Claude Code session: its own (none when only its subagents wrote), then its subagents'. */

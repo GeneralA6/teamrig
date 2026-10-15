@@ -1,11 +1,19 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { resolveKitHome, teamHome, teamPaths } from './home.ts';
+import { claudeConfigDir, resolveKitHome, teamHome, teamPaths } from './home.ts';
 
 const USER_HOME = join('/', 'u');
 const KIT = join('/', 'kit');
 const TEAM_HOME = join(KIT, 'teams', 'app');
+
+describe('claudeConfigDir', () => {
+  it('uses $CLAUDE_CONFIG_DIR, else ~/.claude', () => {
+    assert.equal(claudeConfigDir({ CLAUDE_CONFIG_DIR: join('/', 'cfg') }, USER_HOME), join('/', 'cfg'));
+    assert.equal(claudeConfigDir({ CLAUDE_CONFIG_DIR: ' ' }, USER_HOME), join(USER_HOME, '.claude'));
+    assert.equal(claudeConfigDir({}, USER_HOME), join(USER_HOME, '.claude'));
+  });
+});
 
 describe('resolveKitHome', () => {
   it('prefers the env override, then a dot folder in the user home', () => {
