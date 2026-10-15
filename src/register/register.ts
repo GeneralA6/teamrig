@@ -80,14 +80,14 @@ export class Register {
    * own tasks: a new one per issue, its title and priority, and open, done or dropped as GitHub has it.
    */
   importAdd(input: ImportInput): Promise<Verdict<WriteResult>> {
-    return this.write(({ state }) => this.created(GITHUB_ACTOR, state.nextId, this.deps.policy.importAdd(input, state)));
+    return this.write(({ state }) => single(this.created(GITHUB_ACTOR, state.nextId, this.deps.policy.importAdd(input, state))));
   }
 
   importUpdate(id: string, changes: ImportChanges, note: string): Promise<Verdict<WriteResult>> {
     return this.write((snapshot) =>
       onTask(snapshot, id, (task) => {
         const change = this.deps.policy.importUpdate(task, changes, note);
-        return change.ok ? { ok: true, value: { ...this.base(id, GITHUB_ACTOR), type: 'update', ...change.value } } : change;
+        return single(change.ok ? { ok: true, value: { ...this.base(id, GITHUB_ACTOR), type: 'update', ...change.value } } : change);
       }),
     );
   }
@@ -96,7 +96,7 @@ export class Register {
     return this.write((snapshot) =>
       onTask(snapshot, id, (task) => {
         const change = this.deps.policy.importStatus(task, input);
-        return change.ok ? { ok: true, value: { ...this.base(id, GITHUB_ACTOR), type: 'status', ...change.value } } : change;
+        return single(change.ok ? { ok: true, value: { ...this.base(id, GITHUB_ACTOR), type: 'status', ...change.value } } : change);
       }),
     );
   }
