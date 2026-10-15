@@ -1,0 +1,66 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { Roster } from '../config/roster.ts';
+import { attribute } from './attribute.ts';
+import type { ClaudeSessionFiles } from './discover.ts';
+
+const ROSTER = new Roster({ sessions: ['lead', 'alpha', 'bravo'], names: { lead: 'team-lead' }, roles: { lead: 'lead' } }, 'app');
+
+function session(id: string, main: readonly string[], subagents: readonly string[] = []): ClaudeSessionFiles {
+  return { claudeSession: id, main, subagents };
+}
+
+const TITLES: Readonly<Record<string, string>> = {
+  '/b.jsonl': 'alpha',
+  '/c.jsonl': 'team-lead',
+  '/d.jsonl': 'release checks',
+  '/e2.jsonl': 'bravo',
+  '/g.jsonl': 'lead',
+};
+
+async function titleOf(path: string): Promise<string | undefined> {
+  return TITLES[path];
+}
+
+describe('attribute', () => {
+  it('goes by the inbox mark first, then by an exact id or current name, else outside', async () => {
+    const result = await attribute({
+      sessions: [
+        session('a', ['/a.jsonl'], ['/a/subagents/x.jsonl']),
+        session('b', ['/b.jsonl']),
+        session('c', ['/c.jsonl']),
+        session('d', ['/d.jsonl']),
+        session('e', ['/e1.jsonl', '/e2.jsonl']),
+        session('f', [], ['/f/subagents/y.jsonl']),
+        session('g', ['/g.jsonl']),
+        session('h', ['/h.jsonl']),
+      ],
+      roster: ROSTER,
+      areaBySession: new Map([
+        ['a', 'bravo'],
+        ['b', 'gone'],
+        ['f', 'alpha'],
+      ]),
+      titleOf,
+    });
+    assert.deepEqual([...result.byTeamSession.entries()], [
+      ['bravo', ['/a.jsonl', '/a/subagents/x.jsonl', '/e1.jsonl', '/e2.jsonl']],
+      ['alpha', ['/b.jsonl', '/f/subagents/y.jsonl']],
+      ['lead', ['/c.jsonl', '/g.jsonl']],
+    ]);
+    assert.deepEqual(result.outside, ['/d.jsonl', '/h.jsonl']);
+    assert.equal(result.outsideSessions, 2);
+    assert.deepEqual(result.outsideTitles, ['release checks']);
+  });
+
+  it('lists an outside title once', async () => {
+    const result = await attribute({
+      sessions: [session('d1', ['/d.jsonl']), session('d2', ['/d.jsonl'])],
+      roster: ROSTER,
+      areaBySession: new Map(),
+      titleOf,
+    });
+    assert.equal(result.outsideSessions, 2);
+    assert.deepEqual(result.outsideTitles, ['release checks']);
+  });
+});
