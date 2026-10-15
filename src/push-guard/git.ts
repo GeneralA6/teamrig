@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { COMMIT_LOG_FORMAT, parseCommitLog, type CommitLog } from './commit-size.ts';
+import type { ConfigValue } from './invocations.ts';
 import type { RepoState } from './push.ts';
 
 /** One git run's stdout; any failure (no repository, an unknown ref, no git on PATH) reads as undefined. */
@@ -17,11 +18,23 @@ function readGit(dir: string, args: readonly string[]): string | undefined {
   return value === '' ? undefined : value;
 }
 
+/** One config value as git in `dir` reads it: git exits 1 for a key that is not set, and fails otherwise for no git or no folder. */
+function readConfig(dir: string, key: string): ConfigValue {
+  try {
+    const value = execFileSync('git', ['config', '--get', key], { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5_000 });
+    return { kind: 'set', value: value.replace(/\r?\n$/, '') };
+  } catch (error) {
+    return error instanceof Error && 'status' in error && error.status === 1 ? { kind: 'unset' } : { kind: 'unreadable' };
+  }
+}
+
 /** Repository state from the git CLI. */
 export const GIT_CLI: RepoState = {
   // symbolic-ref names a branch before its first commit, and nothing on a detached HEAD.
   branch: (dir) => readGit(dir, ['symbolic-ref', '--short', '-q', 'HEAD']),
-  pushTarget: (dir) => readGit(dir, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{push}']),
+  // A name starting with `-` would read as an option, so it has no push target the guard can ask for.
+  pushTarget: (dir, branch) => (branch?.startsWith('-') === true ? undefined : readGit(dir, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', `${branch ?? ''}@{push}`])),
+  config: readConfig,
 };
 
 /** The newest commits of a range the size rule reads; older ones in a longer range go unchecked. */

@@ -4,12 +4,12 @@ import type { CliRuntime } from '../cli/runtime.ts';
 export type OutsideWorld = Pick<CliRuntime, 'git' | 'commitLog' | 'readStdin' | 'platform' | 'processes' | 'probe' | 'self'>;
 
 /**
- * The outside world when a run does not care about it: the repo on `branch` with no push target, no commits in
+ * The outside world when a run does not care about it: the repo on `branch` with no push target or config, no commits in
  * any range, `stdin` (default empty) on stdin, and a Linux host with no programs or folders, so nothing starts.
  */
 export function quietWorld(branch: string = 'dev', stdin: string = ''): OutsideWorld {
   return {
-    git: { branch: () => branch, pushTarget: () => undefined },
+    git: { branch: () => branch, pushTarget: () => undefined, config: () => ({ kind: 'unset' }) },
     commitLog: { between: () => [] },
     readStdin: async () => stdin,
     platform: 'linux',

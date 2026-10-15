@@ -3,7 +3,7 @@ import type { ConfigLoad } from '../config/load.ts';
 import type { CommitsConfig } from '../config/types.ts';
 import { isRecord, recordField, stringField } from '../core/guards.ts';
 import { describeLargeCommits, largeCommits, type CommitLog, type CommitStat, type LargeCommit } from '../push-guard/commit-size.ts';
-import { decisionReason, evaluatePushes, type ProtectedUpdate, type RepoState } from '../push-guard/push.ts';
+import { decisionReason, doubtReason, evaluatePushes, type ProtectedUpdate, type RepoState } from '../push-guard/push.ts';
 
 export interface PushGuardEnv {
   /** The folder to judge from when the payload names none. */
@@ -48,7 +48,8 @@ function largeCommitsIn(updates: readonly ProtectedUpdate[], env: PushGuardEnv):
  * The PreToolUse hook's stdout for one Bash or PowerShell call: a permission decision when the
  * command pushes to a protected branch, else nothing, so the normal permission flow decides.
  * Under the commits gate, an asked push also lists the large commits it sends (`warn`) or is
- * refused for them (`refuse`).
+ * refused for them (`refuse`). A command the guard cannot read with confidence is asked about,
+ * with a reason that says what it could not read.
  */
 export function pushGuardOutput(payload: unknown, env: PushGuardEnv): string {
   if (!isRecord(payload)) {
@@ -70,12 +71,13 @@ export function pushGuardOutput(payload: unknown, env: PushGuardEnv): string {
   }
   const large = verdict.decision === 'ask' ? largeCommitsIn(verdict.updates, env) : [];
   const refused = large.length > 0 && env.commits.gate === 'refuse';
+  const plain = verdict.doubt === undefined ? decisionReason(verdict.decision, env.protectedBranches) : doubtReason(verdict.doubt, env.protectedBranches);
   const reason =
     large.length === 0
-      ? decisionReason(verdict.decision, env.protectedBranches)
+      ? plain
       : refused
         ? `This push to a protected branch (${env.protectedBranches.join(', ')}) is refused: ${describeLargeCommits(large, env.commits)}`
-        : `${decisionReason('ask', env.protectedBranches)} ${describeLargeCommits(large, env.commits)}`;
+        : `${plain} ${describeLargeCommits(large, env.commits)}`;
   return JSON.stringify({
     hookSpecificOutput: {
       hookEventName: 'PreToolUse',
