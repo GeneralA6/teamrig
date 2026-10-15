@@ -1,33 +1,19 @@
+import { callOf } from '../budget/line.ts';
+import { contextTokens } from '../budget/weights.ts';
 import type { Files } from '../core/files.ts';
-import { isNonNegativeInteger, recordField, type JsonRecord } from '../core/guards.ts';
+import type { JsonRecord } from '../core/guards.ts';
 import { parseObject } from '../core/jsonl.ts';
 import { TRANSCRIPT_TAIL_BYTES } from '../names/title.ts';
-
-/** The usage numbers that together are the context the model read for one reply; a missing one counts 0. */
-const CONTEXT_FIELDS = ['input_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens'] as const;
 
 /**
  * The context of one transcript entry: a main-thread assistant reply's input, cache-creation and
  * cache-read tokens. Undefined for any other entry, a sidechain (subagent) reply, damaged usage, and
- * a reply that read nothing, such as one Claude Code made up itself.
+ * a reply that read nothing, such as one Claude Code made up itself. The usage parsing is the
+ * meter's (`callOf`), so both read a reply the same way.
  */
 function contextOf(entry: JsonRecord): number | undefined {
-  if (entry['type'] !== 'assistant' || entry['isSidechain'] !== false) {
-    return undefined;
-  }
-  const message = recordField(entry, 'message');
-  const usage = message === undefined ? undefined : recordField(message, 'usage');
-  if (usage === undefined) {
-    return undefined;
-  }
-  let total = 0;
-  for (const field of CONTEXT_FIELDS) {
-    const value = usage[field] ?? 0;
-    if (!isNonNegativeInteger(value)) {
-      return undefined;
-    }
-    total += value;
-  }
+  const call = callOf(entry);
+  const total = call === undefined || !call.mainThread ? 0 : contextTokens(call.usage);
   return total > 0 ? total : undefined;
 }
 
