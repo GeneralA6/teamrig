@@ -165,7 +165,8 @@ export async function budget(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   return EXIT.ok;
 }
 
-function pctFlag(flags: Flags, name: string): number | undefined {
+/** A percent flag: above 0 and up to 100, or undefined when it is not given. */
+export function pctFlag(flags: Flags, name: string): number | undefined {
   const text = flags.get(name);
   if (text === undefined) {
     return undefined;

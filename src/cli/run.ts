@@ -29,6 +29,7 @@ const compactCommands = () => import('./commands/compact.ts');
 const rulesCommands = () => import('./commands/rules.ts');
 const openCommands = () => import('./commands/open.ts');
 const budgetCommands = () => import('./commands/budget.ts');
+const budgetSetupCommands = () => import('./commands/budget-setup.ts');
 
 const TASK_FIELDS = ['title', 'owner', 'ref', 'priority', 'due', 'goals', 'week', 'after'];
 
@@ -63,6 +64,11 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
     flags: ['session', 'to', 'stop-pct', 'until', 'reason'],
     switches: ['reserve'],
     load: async () => (await budgetCommands()).lift,
+  },
+  'budget setup': {
+    flags: ['session', 'daily', 'max-daily', 'over', 'escalate', 'quiet', 'quiet-action'],
+    switches: ['yes', 'off'],
+    load: async () => (await budgetSetupCommands()).setup,
   },
   statusline: { flags: [], load: async () => (await budgetCommands()).statusline },
   'config validate': { flags: [], load: async () => (await configCommands()).validate },
@@ -129,6 +135,10 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   budget lift <id|name> --to <pct> --stop-pct <pct> --reason "<why>" [--until <HH:MM|date>] [--reserve]
       (the lead only) that session's daily budget for today, until --until, the day's end or the week
       reaching --stop-pct; --reserve: above budget.lift.maxStopPct, in the last hour before the reset
+  budget setup [--daily pace|<pct>] [--max-daily none|<pct>] [--over <action>] [--escalate <mode>]
+      [--quiet <HH:MM-HH:MM>|off] [--quiet-action <action>] [--off] [--yes]
+      (the lead only) writes the team's budget policy into its config and turns the budget on (--off:
+      off); without --yes it shows the change and writes nothing; flags left out keep their values
   statusline                   Claude Code's status line (status JSON on stdin): saves the week's use
       for budget and prints a short status
   config validate | config migrate
