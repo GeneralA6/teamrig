@@ -16,13 +16,16 @@ export interface ListFilter {
   readonly goal?: string;
 }
 
+/** The fields plan order reads, so a reader can sort its own rows that carry them. */
+export type PlanOrdered = Pick<Task, 'id' | 'priority' | 'due'>;
+
 /** The task's deadline in ms, or undefined when it has none. */
-export function dueTime(task: Task): number | undefined {
+export function dueTime(task: Pick<Task, 'due'>): number | undefined {
   return task.due === null ? undefined : parseUtcDeadline(task.due)?.getTime();
 }
 
 /** Plan order: priority, then due date (undated last), then id. */
-export function byPlanOrder(a: Task, b: Task): number {
+export function byPlanOrder(a: PlanOrdered, b: PlanOrdered): number {
   const dueA = dueTime(a) ?? Number.POSITIVE_INFINITY;
   const dueB = dueTime(b) ?? Number.POSITIVE_INFINITY;
   return a.priority - b.priority || (dueA === dueB ? 0 : dueA < dueB ? -1 : 1) || taskNumber(a.id) - taskNumber(b.id);

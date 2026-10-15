@@ -9,9 +9,9 @@
 // The task register (`events.jsonl`).
 export { EVENT_VERSION, type CreateEvent, type RegisterEvent, type StatusEvent, type TaskFields, type UpdateEvent } from '../register/events.ts';
 export { foldEvents, taskNumber, type RegisterState, type Task } from '../register/fold.ts';
-export { ACTIVE_STATUSES, isTaskStatus, priorityText, TASK_STATUSES, type TaskStatus } from '../register/model.ts';
+export { ACTIVE_STATUSES, isTaskStatus, priorityText, SESSION_NAME, TASK_STATUSES, type TaskStatus } from '../register/model.ts';
 export { readEvents, readRegister, snapshotOf, type EventLogRead, type RegisterSnapshot } from '../register/snapshot.ts';
-export { byPlanOrder, dueTime } from '../register/views.ts';
+export { byPlanOrder, dueTime, type PlanOrdered } from '../register/views.ts';
 
 // The inboxes (`inbox/<area>.md`) and their read marks (`inbox-marks.jsonl`).
 export { indexMarks, MARK_VERSION, parseMark, readMarks, type InboxMark, type MarkIndex, type MarkLogRead } from '../inbox/marks.ts';
