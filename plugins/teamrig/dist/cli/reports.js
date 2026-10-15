@@ -13,7 +13,7 @@ export const SHORT_TITLE_CHARS = 60;
 /** The short `check` shows at most this many flags of each kind, fewer when they would pass SHORT_FORM_CHARS. */
 export const MAX_FLAGS_PER_KIND = 5;
 /** The order of the status counts on a short `list` owner line: what moves first, what waits last. */
-const SUMMARY_STATUSES = ['in-progress', 'blocked', 'open', 'done', 'dropped'];
+const SUMMARY_STATUSES = ['in-progress', 'verifying', 'blocked', 'open', 'done', 'dropped'];
 /** The characters `lines` print, each with its newline. */
 export function printedChars(lines) {
     return lines.reduce((sum, line) => sum + line.length + 1, 0);

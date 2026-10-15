@@ -13,6 +13,8 @@ export const EVENT_VERSION = 2;
 export const LEGACY_PRIORITY_FIELD = 'tier';
 export const TASK_FIELD_NAMES = ['title', 'owner', 'source', 'ref', 'priority', 'due', 'goals', 'week'];
 const WEEK = /^\d{4}-\d{2}-\d{2}$/;
+/** How a status is spelled (`in-progress`): a well-spelled one this code does not know is a newer teamrig's. */
+const STATUS_NAME = /^[a-z]+(?:-[a-z]+)*$/;
 /** Parses one JSONL record. Unknown extra fields are ignored so later minor additions stay readable. */
 export function parseEvent(line) {
     if (line.version > EVENT_VERSION) {
@@ -31,7 +33,7 @@ export function parseEvent(line) {
         case 'status': {
             const status = record['status'];
             if (!isTaskStatus(status)) {
-                return unreadable(`unknown status ${JSON.stringify(status)}`);
+                return typeof status === 'string' && STATUS_NAME.test(status) ? { kind: 'newer' } : unreadable(`unknown status ${JSON.stringify(status)}`);
             }
             const problem = textProblem(record, ['note', 'evidence', 'skill']);
             if (problem !== undefined) {
