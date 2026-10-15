@@ -57,6 +57,10 @@ export interface TeamPaths {
   readonly eventsLock: string;
   readonly inbox: string;
   readonly inboxMarks: string;
+  /** What the prompt hook showed each Claude Code session of its inbox, so each line is shown once. */
+  readonly inboxShown: string;
+  /** The bind hints the prompt hook gave each Claude Code session, so each is given once. */
+  readonly bindHints: string;
   /** The append-only log of session renames, so every name a session has had still finds it. */
   readonly renames: string;
   readonly renamesLock: string;
@@ -95,6 +99,8 @@ export function teamPaths(kitHome: string, team: string, userHome: string, overr
     eventsLock: join(state, 'events.lock'),
     inbox: inHome(overrides.inbox) ?? join(state, 'inbox'),
     inboxMarks: join(state, 'inbox-marks.jsonl'),
+    inboxShown: join(state, 'inbox-shown.jsonl'),
+    bindHints: join(state, 'bind-hints.jsonl'),
     renames: join(state, 'renames.jsonl'),
     renamesLock: join(state, 'renames.lock'),
     skills: inHome(overrides.skills) ?? join(userHome, '.claude', 'skills'),
