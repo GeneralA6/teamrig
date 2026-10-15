@@ -233,8 +233,8 @@ class Scanner {
   private readonly heredocs: OpenHeredoc[] = [];
   private readonly unreadBodies: ShellWord[] = [];
   private bindingsUnclear = false;
-  /** How many bash `${...}` the reader is inside, bounded like substitutions. */
-  private braced = 0;
+  /** How many bash `${...}`, `$((...))` and `$[...]` the reader is inside, bounded like substitutions. */
+  private expansions = 0;
   private readonly subshells: number[];
   private readonly ids: { next: number };
   private readonly source: string;
@@ -761,11 +761,11 @@ class Scanner {
     const next = this.at(1);
     if (next === '(' && this.dialect === 'bash' && this.at(2) === '(') {
       this.index += 3;
-      this.skipNested('(', ')', 2);
+      this.readArithmetic('(', ')', 2, quoted);
       this.bindingsUnclear = true;
     } else if (next === '[' && this.dialect === 'bash') {
       this.index += 2;
-      this.skipNested('[', ']', 1);
+      this.readArithmetic('[', ']', 1, quoted);
       this.bindingsUnclear = true;
     } else if (next === '(') {
       this.index += 2;
@@ -804,12 +804,9 @@ class Scanner {
    * single-quoted piece there that holds anything but plain text is not read with confidence.
    */
   private readBraced(quoted: boolean): void {
-    if (this.braced >= MAX_NESTING) {
-      this.complete = false;
-      this.index = this.source.length;
+    if (!this.enterExpansion()) {
       return;
     }
-    this.braced += 1;
     const inner = new WordBuilder(false);
     this.index += 2;
     while (!this.done && this.at() !== '}') {
@@ -836,7 +833,7 @@ class Scanner {
     }
     this.complete &&= !this.done;
     this.index = Math.min(this.index + 1, this.source.length);
-    this.braced -= 1;
+    this.expansions -= 1;
   }
 
   /** Inside `$(`, `@(` or `<(`: reads the commands through the closing `)`; in bash they run in a subshell. */
@@ -857,15 +854,46 @@ class Scanner {
     this.nesting -= 1;
   }
 
-  /** Skips to the `close` that brings `depth` open brackets to zero, as in `$((1 + (2)))` or `$[a[1]]`. */
-  private skipNested(open: string, close: string, depth: number): void {
+  /**
+   * Reads to the `close` that brings `depth` open brackets to zero, as in `$((1 + (2)))` or `$[a[1]]`, and the
+   * commands of the substitutions inside, which run before the sum. A single quote there is an error bash may
+   * read past, so a line with one is not read with confidence.
+   */
+  private readArithmetic(open: string, close: string, depth: number, quoted: boolean): void {
+    if (!this.enterExpansion()) {
+      return;
+    }
+    const inner = new WordBuilder(false);
     let left = depth;
     while (!this.done && left > 0) {
       const char = this.at();
-      left += char === open ? 1 : char === close ? -1 : 0;
-      this.index += 1;
+      if (char === '$') {
+        this.readDollar(inner, quoted);
+      } else if (char === '`') {
+        this.readBackticks(inner);
+      } else if (char === '"') {
+        this.readDoubleQuoted(inner);
+      } else if (char === '\\') {
+        this.index += 2;
+      } else {
+        this.complete &&= char !== "'";
+        left += char === open ? 1 : char === close ? -1 : 0;
+        this.index += 1;
+      }
     }
     this.complete &&= left === 0;
+    this.expansions -= 1;
+  }
+
+  /** Counts one more bash expansion the reader is inside; false, with the line unreadable, when they nest too deep. */
+  private enterExpansion(): boolean {
+    if (this.expansions >= MAX_NESTING) {
+      this.complete = false;
+      this.index = this.source.length;
+      return false;
+    }
+    this.expansions += 1;
+    return true;
   }
 
   /** bash backticks: the commands inside are read as their own line, in a subshell; the word keeps them as written. */
