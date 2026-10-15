@@ -93,6 +93,8 @@ describe('RegisterPolicy.setStatus', () => {
 
   it('requires a note, evidence and a skill to close a task', () => {
     assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'done' }, false)), /done needs --note/);
+    assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'verifying' }, false)), /^verifying needs --note saying what proves it$/);
+    assert.equal(policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'the nightly run' }, false).ok, true);
     assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'done', note: 'ok' }, false)), /needs --evidence/);
     assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'done', note: 'ok', evidence: 'abc1234' }, false)), /needs --skill/);
     assert.match(

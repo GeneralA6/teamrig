@@ -73,10 +73,11 @@ describe('listLines', () => {
       row({ id: 'T3', owner: 'alpha', status: 'in-progress' }),
       row({ id: 'T4', owner: 'alpha', status: 'dropped' }),
       row({ id: 'T5', owner: 'lead' }, 'web'),
+      row({ id: 'T6', owner: 'alpha', status: 'verifying' }),
     ];
     assert.deepEqual(listLines(rows, false).slice(0, 4), [
-      'LIST 5 task(s) of 3 owners (short rows; --all for every field)',
-      '  alpha 3: 1 in-progress, 1 blocked, 1 dropped',
+      'LIST 6 task(s) of 3 owners (short rows; --all for every field)',
+      '  alpha 4: 1 in-progress, 1 verifying, 1 blocked, 1 dropped',
       '  bravo 1: 1 done',
       '  web/lead 1: 1 open',
     ]);

@@ -18,7 +18,7 @@ export const SHORT_TITLE_CHARS = 60;
 export const MAX_FLAGS_PER_KIND = 5;
 
 /** The order of the status counts on a short `list` owner line: what moves first, what waits last. */
-const SUMMARY_STATUSES: readonly TaskStatus[] = ['in-progress', 'blocked', 'open', 'done', 'dropped'];
+const SUMMARY_STATUSES: readonly TaskStatus[] = ['in-progress', 'verifying', 'blocked', 'open', 'done', 'dropped'];
 
 /** A task with the team a roll-up names its id by (`web/T4`); undefined in a one-team read. */
 export interface TaskRow {

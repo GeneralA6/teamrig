@@ -92,8 +92,18 @@ export function formatTask(task: Task, team?: string): string {
   if (task.goals.length > 0) {
     parts.push(`goals ${task.goals.join(',')}`);
   }
-  const blocked = task.status === 'blocked' && task.note !== null ? ` (blocked: ${task.note})` : '';
-  return `${parts.join(', ')} | ${task.title}${blocked}`;
+  return `${parts.join(', ')} | ${task.title}${statusNote(task)}`;
+}
+
+/** The note a row carries for a status that waits on something: what blocks it, or what will prove it. */
+function statusNote(task: Task): string {
+  if (task.note === null) {
+    return '';
+  }
+  if (task.status === 'blocked') {
+    return ` (blocked: ${task.note})`;
+  }
+  return task.status === 'verifying' ? ` (proof: ${task.note})` : '';
 }
 
 /** One field of an update, as `show` prints it: a priority reads `p2`, a list joins with commas. */

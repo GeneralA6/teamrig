@@ -131,8 +131,8 @@
           "description": "Statuses that cannot be set without a note.",
           "type": "array",
           "maxItems": 5,
-          "items": { "enum": ["open", "in-progress", "blocked", "done", "dropped"] },
-          "default": ["blocked", "done", "dropped"]
+          "items": { "enum": ["open", "in-progress", "verifying", "blocked", "done", "dropped"] },
+          "default": ["blocked", "verifying", "done", "dropped"]
         },
         "autoArchive": {
           "description": "After the first teamrig compact, a write that leaves the task list's log over 512 KiB archives it and says so in a NOTE line. false: only teamrig compact archives it.",

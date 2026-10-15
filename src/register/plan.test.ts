@@ -15,13 +15,14 @@ describe('renderPlan', () => {
       testTask({ id: 'T4', week, priority: 2, status: 'dropped', note: 'merged into T1' }),
       testTask({ id: 'T5', week, priority: 2, status: 'in-progress' }),
       testTask({ id: 'T6', week: '2030-01-14' }),
+      testTask({ id: 'T7', week, priority: 2, status: 'verifying', note: 'the nightly run is green' }),
     ];
     assert.equal(
       renderPlan(tasks, week, new Date('2030-01-07T08:00:00Z'), config),
       [
         '# Week plan 2030-01-07',
         '',
-        '5 tasks: 1 done, 1 dropped, 3 to do. From the task register at 2030-01-07 08:00 UTC.',
+        '6 tasks: 1 done, 1 dropped, 4 to do. From the task register at 2030-01-07 08:00 UTC.',
         '',
         '## p1: Keep it running',
         '',
@@ -33,6 +34,7 @@ describe('renderPlan', () => {
         '- [ ] **T3** Add a health check (alpha · from lead) **blocked:** waiting on disk',
         '- [ ] **T4** ~~Add a health check~~ (alpha · from lead) dropped: merged into T1',
         '- [ ] **T5** Add a health check (alpha · from lead) (in progress)',
+        '- [ ] **T7** Add a health check (alpha · from lead) verifying, proof: the nightly run is green',
       ].join('\n'),
     );
   });

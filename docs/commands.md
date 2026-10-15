@@ -20,7 +20,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
   add --title "<one line>" --priority p<n> [--ref <where it was asked>] [--owner <session>]
       [--source <session>|<owner source>] [--due <date>] [--goals a,b] [--week <date>]
   add --team <child team> --title .. --priority p<n> [...]   the parent lead hands that team's lead a task
-  set <id> --status open|in-progress|blocked|done|dropped [--note "<what/why>"] [--evidence <proof>]
+  set <id> --status open|in-progress|verifying|blocked|done|dropped [--note "<what/why>"] [--evidence <proof>]
       [--skill <name>|none]
   update <id> [--title ..] [--owner ..] [--priority ..] [--ref ..|none] [--due <date>|none]
       [--goals a,b|none] [--week <date>|none] [--note ..]
