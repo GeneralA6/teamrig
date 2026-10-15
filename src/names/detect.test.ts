@@ -26,6 +26,13 @@ function setup(text?: string): { deps: RenameDeps; mutex: InlineMutex } {
 }
 
 describe('adoptTitle', () => {
+  it('records a title that is a name but for its case in lowercase', async () => {
+    const { deps } = setup();
+    const outcome = await adoptTitle(deps, BEFORE, 'alpha', 'Scout');
+    assert.ok(outcome.kind === 'recorded');
+    assert.equal(outcome.rename.to, 'scout');
+  });
+
   it("records a new title as the session's own rename", async () => {
     const { deps, mutex } = setup();
     const outcome = await adoptTitle(deps, BEFORE, 'alpha', 'scout');
@@ -38,6 +45,8 @@ describe('adoptTitle', () => {
     const { deps, mutex } = setup();
     assert.deepEqual(await adoptTitle(deps, BEFORE, 'alpha', 'app-alpha'), { kind: 'unchanged' });
     assert.deepEqual(await adoptTitle(deps, BEFORE, 'alpha', 'alpha'), { kind: 'unchanged' }, 'its id, as a tab titled to bind it');
+    assert.deepEqual(await adoptTitle(deps, BEFORE, 'alpha', 'App-Alpha'), { kind: 'unchanged' }, 'its name in another case');
+    assert.deepEqual(await adoptTitle(deps, BEFORE, 'alpha', 'Alpha'), { kind: 'unchanged' }, 'its id in another case');
     assert.deepEqual(await adoptTitle(deps, BEFORE, 'alpha', 'Fix the build'), {
       kind: 'refused',
       title: 'Fix the build',
