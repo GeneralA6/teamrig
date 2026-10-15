@@ -381,10 +381,18 @@ machine, and with no `github.repos` it prints an `OFF` line; neither reads nor w
 repository could not be read (its tasks stay as they are, and the `FAILED` line says why), 2 when the
 register refused a step (a `SKIPPED` line each), else 0.
 
+On its own: with `github.repos` listed and `github.everyMinutes` above 0 (15 by default), the Stop hook of any team
+session starts `teamrig gh sync --auto` hidden in the background once per that many minutes for the whole team (one
+state file under a lock; nothing keeps running between syncs). A new issue so reaches its owner while sessions work;
+a run by hand still works at any time.
+
 Flags:
 
 - `--repo <owner/name>`: only that repository, one of `github.repos`.
 - `--yes`: writes. Without it the command shows what it would write and writes nothing.
+- `--auto`: what the hooks start. It writes as `--yes` does, then posts one inbox line, from `github`, to each owner
+  naming the tasks added for it, and one to the lead when a repository starts failing (once, not at every run) or
+  when every repository reads again. It reads every repository, so it refuses `--repo`.
 
 Example:
 

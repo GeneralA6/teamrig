@@ -1,4 +1,5 @@
 import { ENV, KIT_NAME } from '../../core/home.ts';
+import { addedTasks, type AddedTask, type RepoFailure } from '../../github/auto.ts';
 import { importRules } from '../../github/map.ts';
 import { importedTasks, planSync, type SyncPlan, type SyncStep } from '../../github/plan.ts';
 import { applySteps, closedSince, readRepo, type StepOutcome } from '../../github/sync.ts';
@@ -9,12 +10,10 @@ import { noPositionals, type ParsedArgs } from '../args.ts';
 import { openTeamKit, requireConfig } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { teamRegister } from '../team-register.ts';
+import { GITHUB_OFF, githubOff, reportAutoSync } from './gh-auto.ts';
 
 /** The rows of steps a repository prints; the rest are counted. */
 export const SHOWN_STEPS = 10;
-
-/** `TEAMRIG_GITHUB=off` turns the import off on this machine, whatever the team config says. */
-const OFF = 'off';
 
 /** How the sync of one repository ended, for the exit code. */
 type RepoEnd = 'ok' | 'failed' | 'refused';
@@ -25,17 +24,22 @@ type RepoEnd = 'ok' | 'failed' | 'refused';
  * (github/tokens.ts), else the gh login, and an ACCESS line says which. gh only ever lists issues
  * (github/gh.ts refuses any other command), and the
  * register's import writes (register.ts) touch only the tasks it added, as `github`. Without `--yes` it
- * shows what it would write and writes nothing. Exit 1 when a repository could not be read (its tasks stay
+ * shows what it would write and writes nothing. `--auto`, which the Stop hook starts (gh-auto.ts), writes as
+ * `--yes` does and tells each owner's inbox its new tasks and the lead's when the failing repositories change. Exit 1 when a repository could not be read (its tasks stay
  * as they are), 2 when the register refused a step, else 0.
  */
 export async function ghSync(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
-  const write = args.switches.has('yes');
+  const auto = args.switches.has('auto');
+  const write = auto || args.switches.has('yes');
+  if (auto && args.flags.has('repo')) {
+    throw new RefusedError('--auto reads every repository of github.repos, to know which still fail; leave out --repo');
+  }
   const kit = await openTeamKit(runtime);
   const config = requireConfig(kit, runtime, write ? 'write' : 'read');
   const say = (line: string): void => runtime.out.stdout(line);
-  if (runtime.env[ENV.github]?.trim().toLowerCase() === OFF) {
-    say(`OFF ${ENV.github}=${OFF} turns the GitHub import off on this machine; nothing was read or written`);
+  if (githubOff(runtime.env)) {
+    say(`OFF ${ENV.github}=${GITHUB_OFF} turns the GitHub import off on this machine; nothing was read or written`);
     return EXIT.ok;
   }
   if (config.github.repos.length === 0) {
@@ -48,6 +52,8 @@ export async function ghSync(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   const tokens = new RepoTokens(runtime.credentials, runtime.env);
   const told = new Set<string>();
   const ends: RepoEnd[] = [];
+  const added: AddedTask[] = [];
+  const failures: RepoFailure[] = [];
   let written = 0;
   for (const repo of reposOf(config.github.repos, args.flags.get('repo'))) {
     const { access, note } = await tokens.accessFor(repo);
@@ -59,6 +65,7 @@ export async function ghSync(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     if (read.kind === 'failed') {
       say(`FAILED ${repo}: ${read.reason}; its tasks stay as they are`);
       ends.push('failed');
+      failures.push({ repo, reason: read.reason });
       continue;
     }
     read.notes.forEach((note) => say(`NOTE ${repo}: ${note}`));
@@ -71,7 +78,15 @@ export async function ghSync(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     const outcomes = await applySteps(register, plan.steps);
     resultLines(repo, plan, outcomes).forEach(say);
     written += outcomes.filter((outcome) => outcome.result.ok).length;
-    ends.push(outcomes.every((outcome) => outcome.result.ok) ? 'ok' : 'refused');
+    added.push(...addedTasks(outcomes));
+    const refused = refusedReason(outcomes);
+    if (refused !== undefined) {
+      failures.push({ repo, reason: refused });
+    }
+    ends.push(refused === undefined ? 'ok' : 'refused');
+  }
+  if (auto) {
+    (await reportAutoSync(runtime, kit, config, added, failures)).forEach(say);
   }
   say(
     write
@@ -79,6 +94,12 @@ export async function ghSync(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
       : `PREVIEW nothing was written; ${KIT_NAME} gh sync --yes writes the above as ${GITHUB_ACTOR}`,
   );
   return ends.includes('failed') ? EXIT.failed : ends.includes('refused') ? EXIT.refused : EXIT.ok;
+}
+
+/** Why the task list refused some of a repository's steps: how many, and the first one's error; undefined when none was. */
+function refusedReason(outcomes: readonly StepOutcome[]): string | undefined {
+  const errors = outcomes.flatMap((outcome) => (outcome.result.ok ? [] : [outcome.result.error]));
+  return errors.length === 0 ? undefined : `the task list refused ${errors.length} step(s), first: ${errors[0]}`;
 }
 
 /** The repositories to read: every one of `github.repos`, or the one `--repo` names, which must be among them. */
