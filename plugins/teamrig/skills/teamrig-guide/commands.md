@@ -1169,8 +1169,10 @@ Output: nothing for a send that goes; otherwise a JSON permission decision (`den
 ### teamrig hook loop-nudge
 
 After a read, edit or shell call, once the turn's run of single-step calls reaches `loops.chainNudgeAt` (6 by
-default; 0 turns it off), hands the model one line asking it to batch, priced in context re-reads. See
-[Hooks and permissions](hooks.md#after-a-tool-call-the-loop-nudge).
+default; 0 turns it off), hands the model one line asking it to batch, priced in context re-reads. On the lead's tab it also nudges the lead
+at the turn's first edit, first test or build and `leadBoundary.searchNudgeAt`-th code search, and the Stop hook shows
+you what the lead did itself. See [Hooks and permissions](hooks.md#after-a-tool-call-the-loop-nudge) and
+[the lead boundary](hooks.md#after-a-tool-call-the-lead-boundary).
 
 Flags: none.
 

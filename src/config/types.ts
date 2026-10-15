@@ -4,7 +4,7 @@ import type { TaskStatus } from '../register/model.ts';
 export const CONFIG_VERSION = 3;
 
 export interface RolesConfig {
-  /** Owns priorities, team rules and the owner's decision queue; may re-prioritize and reassign tasks. */
+  /** Owns priorities, team rules and the owner's decision queue; may re-prioritize and reassign tasks; hands the work itself to others (`leadBoundary`). */
   readonly lead: string;
   /** Owns deploy coordination and fleet health, when the team has that role. */
   readonly coordinatorOwner?: string;

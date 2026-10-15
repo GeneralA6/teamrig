@@ -144,6 +144,34 @@ When an edit and then its test ran in separate calls, the line says so. It comes
 counts 7 and stays quiet. Calls inside a helper are not counted; only the main thread's are. `teamrig budget
 --loops` counts the same patterns over the day.
 
+## After a tool call: the lead boundary
+
+The lead decides, briefs and reads results; the owning session, a helper or a temporary session does the work. On
+the lead's tab (`roles.lead`), the same hook counts the turn's calls that are work to hand off:
+
+- an edit outside its own files, or a git step that changes a repository (`commit`, `push`, `merge`, `rebase` and
+  the like);
+- a test run or a build;
+- a code search: a `Read` of a source file, a `Grep` or `Glob`, a shell `grep`, `rg` or `find`.
+
+Its own files are the team's teamrig folder, Claude Code's memory folders and `leadBoundary.ownPaths` (`~` is your
+home, `*` one folder name), so its board, notes and agenda never count, nor does reading results, boards and docs.
+At the turn's first edit, its first test or build and its `leadBoundary.searchNudgeAt`-th code search (3 by default;
+0 never), the lead's model gets one line:
+
+```text
+teamrig: the lead edited hook.ts itself. The lead hands such work to the owning session (a register task), a helper or a temporary session, and keeps to deciding and briefing [leadBoundary].
+```
+
+At the turn's end you see what the lead did itself:
+
+```text
+Lead boundary: this turn the lead did 2 edits (CLAUDE.md, hook.ts), 1 test or build itself; it delegates such work [leadBoundary].
+```
+
+It never blocks. `leadBoundary.enabled: false` turns both off. A helper's calls are not counted: handing work to one
+is the point.
+
 ## End of a turn: context refresh
 
 After a turn in which you set a task done, the Stop hook measures your context from the transcript. At or over
