@@ -37,7 +37,7 @@ export const DEFAULT_REGISTER: RegisterConfig = {
   requireEvidenceOnDone: true,
   requireSkillOnDone: true,
   requireNoteOn: ['blocked', 'done', 'dropped'],
-  check: { staleAfterHours: 72, notPickedUpAfterHours: 24, weekLengthDays: 7 },
+  check: { staleAfterHours: 72, notPickedUpAfterHours: 24, prioritySkipAfterHours: 24, weekLengthDays: 7 },
 };
 
 export const DEFAULT_SKILLS: SkillsConfig = {

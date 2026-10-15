@@ -4,3 +4,8 @@ import type { PriorityConfig } from './types.ts';
 export function priorityName(priorities: readonly PriorityConfig[], id: number): string | undefined {
   return priorities.find((priority) => priority.id === id)?.name;
 }
+
+/** The most urgent level the config names: its lowest id, `p1` by default; undefined when it names none. */
+export function topPriority(priorities: readonly PriorityConfig[]): number | undefined {
+  return priorities.reduce<number | undefined>((top, priority) => (top === undefined || priority.id < top ? priority.id : top), undefined);
+}

@@ -139,6 +139,7 @@
           "properties": {
             "staleAfterHours": { "type": "integer", "minimum": 1, "default": 72 },
             "notPickedUpAfterHours": { "type": "integer", "minimum": 1, "default": 24 },
+            "prioritySkipAfterHours": { "type": "integer", "minimum": 1, "default": 24 },
             "weekLengthDays": { "type": "integer", "minimum": 1, "maximum": 31, "default": 7 }
           }
         }

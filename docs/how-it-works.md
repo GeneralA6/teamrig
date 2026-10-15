@@ -157,8 +157,11 @@ stateDiagram-v2
 - `teamrig update` changes a task's title, owner, priority, ref, due date, goals or week (`none` clears the last
   four), never the status; on a task it does not own, the lead may change the owner, priority, due date or week.
 - `teamrig check` reports tasks past due, not picked up 24 hours after they were handed out, untouched for 72 hours,
-  or due this week but left out of the week's plan, and owner orders left out of it; then it flags skills in your
-  Claude Code skills folder that break the skill rules. It reports and never blocks.
+  or due this week but left out of the week's plan, and owner orders left out of it. It also reports a session that
+  skips its own priorities: `PRIORITY-SKIP` is a task in progress for over 24 hours
+  (`register.check.prioritySkipAfterHours`) while the same session has an open p1, counted from the latest change of
+  owner, status or priority on either task. Then it flags skills in your Claude Code skills folder that break the
+  skill rules. It reports and never blocks.
 - A lead hands a child team work with `teamrig add --team web --title "..." --priority p2`: the task lands in `web`'s own
   list, owned by `web`'s lead and marked as from `your-team/lead`, and `web`'s lead splits it among its sessions
   and opens them. Only the parent team's lead may do this.
