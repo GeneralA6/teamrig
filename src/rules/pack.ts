@@ -22,12 +22,12 @@ function list(items: readonly string[]): string {
 /** What the push guard does, as the team's pushGuard config sets it. */
 function pushRule(pushGuard: PushGuardConfig): string {
   const branches = pushGuard.protectedBranches.join(', ');
-  const keys = '[pushGuard.protectedBranches, pushGuard.pushToProtected]';
+  const keys = '[pushGuard]';
   if (branches === '') {
     return 'No branch is protected, so the push guard stops no push [pushGuard.protectedBranches].';
   }
   return pushGuard.pushToProtected === 'allow'
-    ? `Normal pushes to ${branches} go through without asking, a --force-with-lease push asks; force-pushing or deleting them is refused ${keys}.`
+    ? `Pushes to ${branches} go through unasked; force-pushing or deleting them is refused ${keys}.`
     : `Pushes to ${branches} ask the human; force-pushing or deleting them is refused ${keys}.`;
 }
 
