@@ -1,4 +1,5 @@
 import type { Roster } from '../config/roster.ts';
+import { titleKey } from '../core/ids.ts';
 import { checkRename, recordRename, type RenameDeps } from './record.ts';
 import type { Rename } from './rename.ts';
 
@@ -19,11 +20,12 @@ export type TitleOutcome =
  * on every prompt takes the lock only to record.
  */
 export async function adoptTitle(deps: RenameDeps, roster: Roster, id: string, title: string): Promise<TitleOutcome> {
-  if (title === id) {
+  const name = titleKey(title);
+  if (name === id) {
     // The id always names the session, so a tab titled by its id (to bind it) keeps the session's name.
     return { kind: 'unchanged' };
   }
-  const request = { id, to: title, by: id };
+  const request = { id, to: name, by: id };
   const check = checkRename(roster, request);
   if (check.kind === 'unchanged') {
     return { kind: 'unchanged' };

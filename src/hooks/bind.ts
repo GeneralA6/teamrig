@@ -1,5 +1,6 @@
 import type { Roster } from '../config/roster.ts';
 import { formatAddress, type SessionAddress } from '../core/address.ts';
+import { titleKey } from '../core/ids.ts';
 import type { MarkLog } from '../inbox/inbox.ts';
 import { indexMarks, MARK_VERSION, type InboxMark } from '../inbox/marks.ts';
 
@@ -24,11 +25,12 @@ export interface TeamRoster {
 }
 
 /**
- * The sessions of `roster` whose id or current name is exactly `title`. A former name binds nothing:
+ * The sessions of `roster` whose id or current name is `title`, whatever its case (`titleKey`). A former name binds nothing:
  * the title rename that follows would give the session that old name back.
  */
 export function sessionsTitled(roster: Roster, title: string): string[] {
-  return roster.ids.filter((id) => id === title || roster.nameOf(id) === title);
+  const key = titleKey(title);
+  return roster.ids.filter((id) => id === key || roster.nameOf(id) === key);
 }
 
 export type BindOutcome =

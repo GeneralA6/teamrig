@@ -51,13 +51,18 @@ function input(title: string | undefined, fields: Partial<BindInput> = {}): Bind
 }
 
 describe('sessionsTitled', () => {
-  it('matches an id or a current name exactly, never a former name or a near miss', () => {
+  it('matches an id or a current name, never a former name or a near miss', () => {
     assert.deepEqual(sessionsTitled(OWN.roster, 'alpha'), ['alpha']);
     assert.deepEqual(sessionsTitled(OWN.roster, 'team-lead'), ['lead']);
     assert.deepEqual(sessionsTitled(OWN.roster, 'scout'), ['bravo']);
     assert.deepEqual(sessionsTitled(OWN.roster, 'app-bravo'), [], 'a former name');
-    assert.deepEqual(sessionsTitled(OWN.roster, 'Alpha'), []);
     assert.deepEqual(sessionsTitled(OWN.roster, 'app-alpha '), []);
+  });
+
+  it('matches whatever the case of the title', () => {
+    assert.deepEqual(sessionsTitled(OWN.roster, 'Alpha'), ['alpha']);
+    assert.deepEqual(sessionsTitled(OWN.roster, 'TEAM-LEAD'), ['lead']);
+    assert.deepEqual(sessionsTitled(OWN.roster, 'App-Bravo'), [], 'a former name');
   });
 });
 
