@@ -513,6 +513,23 @@ describe('evaluatePushes: where a push hides', () => {
       ['B=main; for x in a; do git push origin $B; done', 'ask'],
     ]);
   });
+
+  it('reads past a ${...} that only reads, on one line or across several', () => {
+    const script = [
+      'cd /w; T="node main.js"',
+      `$T set x1 --session a --status in-progress --note "reopened: false ask; for x in 'a|push'; do \\$T set ...; done asks"`,
+      'for r in "a|b"; do R=/p/${r%%|*}; git -C $R fetch -q origin; done',
+    ].join('\n');
+    expectRows([
+      ['T="node main.js"; for x in "a|no false push prompt"; do $T set ${x%%|*} --evidence "${x#*|}"; done', 'allow'],
+      [script, 'allow'],
+      ['T="node main.js"\nfor x in "a|b"; do\n  $T set ${x%%|*} --note "${x#*|} push"\ndone', 'allow'],
+      ['T=git; for x in a; do $T push origin main; done', 'ask'],
+      ['T=git; B=main; echo ${B%%|*} ${#B}; $T push origin $B', 'ask'],
+      ['T=git; for x in "a|b"; do $T push origin ${x%%|*}; done', 'ask', 'doubt'],
+      ['T="node main.js"; : ${T:=git}; $T push origin main', 'ask', 'doubt'],
+    ]);
+  });
 });
 
 describe('evaluatePushes: the fail-safe', () => {
