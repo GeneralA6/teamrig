@@ -3,9 +3,13 @@ import assert from 'node:assert/strict';
 import { FakeGh, ghIssue } from '../testing/fake-gh.ts';
 import { isReadCommand } from './gh.ts';
 import { issueListArgs, listIssues, parseIssueList, plainLine, type IssueListRequest } from './issues.ts';
+import type { RepoAccess } from './tokens.ts';
 
 const OPEN: IssueListRequest = { repo: 'acme/web', state: 'open', limit: 500 };
 const FIELDS = 'number,title,state,stateReason,labels,assignees,url';
+/** Reading through the gh login, as when no token is saved for acme. */
+const LOGIN: RepoAccess = { via: 'login', env: { HOME: '/u' }, owner: 'acme', credential: 'teamrig-gh-acme', save: 'save teamrig-gh-acme' };
+const TOKEN: RepoAccess = { ...LOGIN, via: 'token', env: { HOME: '/u', GH_TOKEN: 'read-token' } };
 
 /** A gh error, as `spawn` raises it. */
 function spawnError(message: string, code: string): Error {
@@ -27,7 +31,7 @@ describe('listIssues', () => {
       ghIssue('acme/web', 7, { title: 'Fix login', labels: ['bug', 'p1'], assignees: ['octocat'] }),
       ghIssue('acme/web', 8, { state: 'CLOSED', stateReason: 'COMPLETED' }),
     ]);
-    const list = await listIssues(gh, { HOME: '/u' }, OPEN);
+    const list = await listIssues(gh, LOGIN, OPEN);
     assert.deepEqual(list, {
       kind: 'listed',
       issues: [
@@ -41,9 +45,9 @@ describe('listIssues', () => {
   });
 
   it('says how to fix a repository the login cannot see', async () => {
-    assert.deepEqual(await listIssues(new FakeGh(), {}, { ...OPEN, repo: 'acme/nope' }), {
+    assert.deepEqual(await listIssues(new FakeGh(), LOGIN, { ...OPEN, repo: 'acme/nope' }), {
       kind: 'failed',
-      reason: 'acme/nope is not visible to the gh login: check github.repos, and that gh auth status shows an account that can read it',
+      reason: 'acme/nope is not visible to the gh login: check github.repos, or save a read-only token for acme with: save teamrig-gh-acme',
     });
   });
 
@@ -51,16 +55,46 @@ describe('listIssues', () => {
     const byCode = new FakeGh().answers('acme/web', { end: { kind: 'exited', code: 4 }, stdout: '', stderr: 'To get started with GitHub CLI, please run:  gh auth login\n' });
     const byText = new FakeGh().answers('acme/web', { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'HTTP 401: Bad credentials (https://api.github.com/graphql)\n' });
     for (const gh of [byCode, byText]) {
-      assert.deepEqual(await listIssues(gh, {}, OPEN), { kind: 'failed', reason: 'gh is not logged in to GitHub: run gh auth login' });
+      assert.deepEqual(await listIssues(gh, LOGIN, OPEN), { kind: 'failed', reason: 'gh is not logged in to GitHub: run gh auth login, or save a read-only token for acme with: save teamrig-gh-acme' });
     }
   });
 
+  it('says the login may not read the issues, and saving a token would', async () => {
+    const gh = new FakeGh().answers('acme/web', { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'GraphQL: Resource not accessible by personal access token (repository.issues)\n' });
+    assert.deepEqual(await listIssues(gh, LOGIN, OPEN), {
+      kind: 'failed',
+      reason: 'the gh login may not read the issues of acme/web: save a read-only token for acme with: save teamrig-gh-acme',
+    });
+  });
+
+  it('names the token for a token GitHub refused, could not see the repository with, or may not read issues with', async () => {
+    const failing = (stderr: string): FakeGh => new FakeGh().answers('acme/web', { end: { kind: 'exited', code: 1 }, stdout: '', stderr });
+    assert.deepEqual(await listIssues(failing('HTTP 401: Bad credentials (https://api.github.com/graphql)\n'), TOKEN, OPEN), {
+      kind: 'failed',
+      reason: 'GitHub refused the token saved as teamrig-gh-acme (expired or revoked?): create a new one and save it again with: save teamrig-gh-acme',
+    });
+    assert.deepEqual(await listIssues(failing("GraphQL: Could not resolve to a Repository with the name 'acme/web'.\n"), TOKEN, OPEN), {
+      kind: 'failed',
+      reason: 'acme/web is not visible to the token saved as teamrig-gh-acme: check github.repos, and on GitHub give that token this repository',
+    });
+    assert.deepEqual(await listIssues(failing('GraphQL: Resource not accessible by personal access token (repository.issues)\n'), TOKEN, OPEN), {
+      kind: 'failed',
+      reason: 'the token saved as teamrig-gh-acme may not read the issues of acme/web: on GitHub, edit that token and set Issues to Read-only; its text stays the same, so nothing needs saving again',
+    });
+  });
+
+  it('runs gh with the token only in its environment, never in its arguments', async () => {
+    const gh = new FakeGh().holds('acme/web', []);
+    await listIssues(gh, TOKEN, OPEN);
+    assert.deepEqual(gh.ran, [{ args: issueListArgs(OPEN), env: { HOME: '/u', GH_TOKEN: 'read-token' } }]);
+  });
+
   it('says gh is not installed, or why it could not start', async () => {
-    assert.deepEqual(await listIssues(new FakeGh().failsWith(spawnError('spawn gh ENOENT', 'ENOENT')), {}, OPEN), {
+    assert.deepEqual(await listIssues(new FakeGh().failsWith(spawnError('spawn gh ENOENT', 'ENOENT')), LOGIN, OPEN), {
       kind: 'failed',
       reason: 'gh, the GitHub CLI, is not installed or not on PATH: install it from https://cli.github.com, then run gh auth login',
     });
-    assert.deepEqual(await listIssues(new FakeGh().failsWith(spawnError('spawn gh EACCES', 'EACCES')), {}, OPEN), {
+    assert.deepEqual(await listIssues(new FakeGh().failsWith(spawnError('spawn gh EACCES', 'EACCES')), LOGIN, OPEN), {
       kind: 'failed',
       reason: 'gh could not start: spawn gh EACCES',
     });
@@ -68,9 +102,9 @@ describe('listIssues', () => {
 
   it('gives any other failure as gh first stderr line, on one plain line, and a stop by its signal', async () => {
     const failed = new FakeGh().answers('acme/web', { end: { kind: 'exited', code: 1 }, stdout: '', stderr: 'HTTP 502:\u001b[31m Bad Gateway\nretry later\n' });
-    assert.deepEqual(await listIssues(failed, {}, OPEN), { kind: 'failed', reason: 'gh issue list -R acme/web exited with code 1: HTTP 502: [31m Bad Gateway' });
+    assert.deepEqual(await listIssues(failed, LOGIN, OPEN), { kind: 'failed', reason: 'gh issue list -R acme/web exited with code 1: HTTP 502: [31m Bad Gateway' });
     const stopped = new FakeGh().answers('acme/web', { end: { kind: 'signal', signal: 'SIGTERM' }, stdout: '', stderr: '' });
-    assert.deepEqual(await listIssues(stopped, {}, OPEN), { kind: 'failed', reason: 'gh was stopped (SIGTERM) before it listed the issues of acme/web; it gets 60 s' });
+    assert.deepEqual(await listIssues(stopped, LOGIN, OPEN), { kind: 'failed', reason: 'gh was stopped (SIGTERM) before it listed the issues of acme/web; it gets 60 s' });
   });
 });
 

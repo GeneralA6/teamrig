@@ -12,6 +12,7 @@ import type { TranscriptSource } from '../budget/discover.ts';
 import type { RequirementsCheck } from '../requirements/requirements.ts';
 import type { Processes } from '../open/processes.ts';
 import type { CommitLog } from '../push-guard/commit-size.ts';
+import type { CredentialStore } from '../github/credentials.ts';
 import type { GhRunner } from '../github/gh.ts';
 import type { ShellRunner } from '../test-run/shell.ts';
 import { FakeClock } from './fake-clock.ts';
@@ -59,6 +60,8 @@ export interface RunOptions {
   readonly shell?: ShellRunner;
   /** The GitHub CLI `gh sync` reads through; default one that sees no repository. */
   readonly gh?: GhRunner;
+  /** The saved secrets `gh sync` reads tokens from; default a store with none. */
+  readonly credentials?: CredentialStore;
   /** The folders and programs the CLI sees; default none. */
   readonly probe?: PathProbe;
   /** What the requirements check finds; default nothing is missing. */
@@ -101,6 +104,7 @@ export class CliHarness {
       ...(options.processes === undefined ? {} : { processes: options.processes }),
       ...(options.shell === undefined ? {} : { shell: options.shell }),
       ...(options.gh === undefined ? {} : { gh: options.gh }),
+      ...(options.credentials === undefined ? {} : { credentials: options.credentials }),
       ...(options.probe === undefined ? {} : { probe: options.probe }),
       ...(options.requirements === undefined ? {} : { requirements: options.requirements }),
       ...(options.transcripts === undefined ? {} : { transcripts: options.transcripts }),

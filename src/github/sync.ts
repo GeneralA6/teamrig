@@ -1,10 +1,10 @@
-import type { Env } from '../core/home.ts';
 import { formatUtcDay } from '../core/time.ts';
 import type { ImportChanges, ImportInput, StatusInput, Verdict } from '../register/policy.ts';
 import type { WriteResult } from '../register/register.ts';
 import type { GhRunner } from './gh.ts';
 import { ISSUE_LIMIT, listIssues, type GithubIssue, type IssueList, type IssueState } from './issues.ts';
 import { latestIssues, type SyncStep } from './plan.ts';
+import type { RepoAccess } from './tokens.ts';
 
 const DAY_MS = 86_400_000;
 
@@ -35,12 +35,12 @@ export function closedSince(now: Date, closedDays: number): string {
  * Reads a repository's open issues, then those closed on or after `since`: two `gh issue list` reads and
  * nothing else. When either fails the repository is left out whole, so its tasks are not judged on half a read.
  */
-export async function readRepo(gh: GhRunner, env: Env, repo: string, since: string): Promise<RepoRead> {
-  const open = await listIssues(gh, env, { repo, state: 'open', limit: ISSUE_LIMIT });
+export async function readRepo(gh: GhRunner, access: RepoAccess, repo: string, since: string): Promise<RepoRead> {
+  const open = await listIssues(gh, access, { repo, state: 'open', limit: ISSUE_LIMIT });
   if (open.kind === 'failed') {
     return { kind: 'failed', repo, reason: open.reason };
   }
-  const closed = await listIssues(gh, env, { repo, state: 'closed', closedSince: since, limit: ISSUE_LIMIT });
+  const closed = await listIssues(gh, access, { repo, state: 'closed', closedSince: since, limit: ISSUE_LIMIT });
   if (closed.kind === 'failed') {
     return { kind: 'failed', repo, reason: closed.reason };
   }
