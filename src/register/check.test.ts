@@ -92,6 +92,13 @@ describe('checkTasks', () => {
     assert.deepEqual(kinds([parked('2030-01-09 09:00')]), ['READY T1', 'STALE T1']);
   });
 
+  it('flags a waiting task with no reason, as an older teamrig wrote it', () => {
+    const bare = testTask({ status: 'waiting', waits: [], ownerSeenAt: FRESH, updatedAt: FRESH });
+    const flags = checkTasks([bare], NOW, null, CONFIG);
+    assert.deepEqual(flags.map((flag) => `${flag.kind}: ${flag.detail}`), ['NO-REASON: set what it waits for (--waits) or its next status']);
+    assert.deepEqual(kinds([testTask({ status: 'waiting', waits: [{ kind: 'decision', who: 'lead' }], ownerSeenAt: FRESH, updatedAt: FRESH })]), []);
+  });
+
   it('flags a task its owner has not touched since assignment, instead of calling it stale', () => {
     assert.deepEqual(kinds([testTask({ assignedAt: '2030-01-09T11:00:00.000Z', updatedAt: '2030-01-01T00:00:00.000Z' })]), [
       'NOT-PICKED-UP T1',
@@ -149,7 +156,7 @@ describe('checkTasks: PRIORITY-SKIP', () => {
   });
 
   it('leaves a waiting p1, another owner\'s p1, a p1 in progress and work that is not in progress alone', () => {
-    assert.deepEqual(skips([{ ...waiting, status: 'waiting' }, working]), []);
+    assert.deepEqual(skips([{ ...waiting, status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }] }, working]), []);
     assert.deepEqual(skips([{ ...waiting, owner: 'bravo' }, working]), []);
     assert.deepEqual(skips([waiting, { ...working, priority: 1 }]), []);
     assert.deepEqual(skips([waiting, { ...working, status: 'open' }]), []);
@@ -233,7 +240,7 @@ describe('checkTasks: OFF-GOAL', () => {
       testTask({ id: 'T2', status: 'in-progress', goals: ['G1'], ...seen }),
       testTask({ id: 'T3', status: 'in-progress', week: '2030-01-07', ...seen }),
       testTask({ id: 'T4', ...seen }),
-      testTask({ id: 'T5', status: 'waiting', ...seen }),
+      testTask({ id: 'T5', status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], ...seen }),
     ];
     assert.deepEqual(kinds(tasks), ['OFF-GOAL T1']);
     assert.deepEqual(kinds(tasks, null), [], 'no week plan, no week flags');
