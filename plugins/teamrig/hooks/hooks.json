@@ -1,5 +1,5 @@
 {
-  "description": "teamrig: load the team rules at session start, ask before a push to a protected branch, remind a session of unread inbox lines, and ask for a handover at a task boundary when a context refresh is due.",
+  "description": "teamrig: load the team rules at session start, ask before a push to a protected branch and refuse a force-push or delete of one, remind a session of unread inbox lines, record a Claude Code rename of the session as its team name, and ask for a handover at a task boundary when a context refresh is due.",
   "hooks": {
     "SessionStart": [
       {
