@@ -202,7 +202,7 @@ describe('parseConfig', () => {
     assert.deepEqual(config.register.priorities, [{ id: 1, name: 'now' }]);
     assert.equal(config.register.goalPattern, '^G\\d+$');
     assert.deepEqual(config.register.requireNoteOn, ['waiting']);
-    assert.deepEqual(config.register.check, { staleAfterHours: 72, notPickedUpAfterHours: 24, prioritySkipAfterHours: 12, weekLengthDays: 7 });
+    assert.deepEqual(config.register.check, { staleAfterHours: 72, notPickedUpAfterHours: 24, prioritySkipAfterHours: 12, weekLengthDays: 7, stopgapFiles: ['CLAUDE.md', '.claude/rules'] });
     assert.deepEqual(config.coordinator.schedule, { heavyCutoffUtc: '22:30' });
     assert.deepEqual(config.budget, { ...DEFAULT_BUDGET, enabled: true, targetPct: 95 });
     assert.deepEqual(config.paths, { inbox: '/srv/team/inbox' });
