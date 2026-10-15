@@ -123,7 +123,8 @@ export class Register {
             if (task === undefined) {
                 throw new Error(`${event.id} is missing after its own write`);
             }
-            return { ok: true, value: { task, state, event, rotation: await this.rotation(snapshot) } };
+            const before = snapshot.state.tasks.get(event.id) ?? null;
+            return { ok: true, value: { task, before, state, event, rotation: await this.rotation(snapshot) } };
         });
     }
     /**

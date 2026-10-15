@@ -178,3 +178,8 @@ export function formatTaskDetail(task, events, context) {
     lines.push('history:', ...events.filter((event) => event.id === task.id).map((event) => `  ${formatEvent(event)}`));
     return lines.join('\n');
 }
+/** The inbox line a task's new owner gets, under the giver's name: `T5 is yours (p2, due 2030-01-10): Show the signup errors`. */
+export function assignedNotice(task) {
+    const due = task.due === null ? '' : `, due ${task.due}`;
+    return `${task.id} is yours (${priorityText(task.priority)}${due}): ${task.title}`;
+}
