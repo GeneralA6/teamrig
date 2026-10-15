@@ -85,6 +85,13 @@ describe('checkTasks', () => {
     assert.deepEqual(kinds([quiet(null)]), ['STALE T1']);
   });
 
+  it('lets a waiting task parked until a time to come stay quiet, and calls it stale once that time passed', () => {
+    const parked = (at: string) =>
+      testTask({ status: 'waiting', waits: [{ kind: 'time', at }], ownerSeenAt: '2030-01-01T08:00:00.000Z', updatedAt: '2030-01-01T08:00:00.000Z' });
+    assert.deepEqual(kinds([parked('2030-01-12 09:00')]), []);
+    assert.deepEqual(kinds([parked('2030-01-09 09:00')]), ['READY T1', 'STALE T1']);
+  });
+
   it('flags a task its owner has not touched since assignment, instead of calling it stale', () => {
     assert.deepEqual(kinds([testTask({ assignedAt: '2030-01-09T11:00:00.000Z', updatedAt: '2030-01-01T00:00:00.000Z' })]), [
       'NOT-PICKED-UP T1',

@@ -6,7 +6,7 @@ import { ACTIVE_STATUSES, priorityText } from './model.ts';
 import type { RegisterSnapshot } from './snapshot.ts';
 import { verifyingNeeds } from './verify.ts';
 import { byPlanOrder, dueTime, formatTask } from './views.ts';
-import { allReady, unfinishedAfter, waitContext, type WaitContext } from './waits.ts';
+import { allReady, isReady, unfinishedAfter, waitContext, type WaitContext } from './waits.ts';
 
 /** In report order: the most urgent first. */
 export const FLAG_KINDS = [
@@ -70,7 +70,8 @@ export function currentWeekOf(snapshot: RegisterSnapshot, now: Date): string | n
  * - PILE-UP: the oldest verifying task of an owner holding more than `maxVerifying` of them (0 turns it off): shipped
  *   changes pile up unproven;
  * - STALE: no event for `staleAfterHours` (not raised on top of NOT-PICKED-UP, nor for a verifying task with a
- *   due date: it waits quietly for its proof, and the date raises the alarm);
+ *   due date: it waits quietly for its proof, and the date raises the alarm, nor for a waiting task with a time
+ *   still to come: it is parked until then);
  * - OWNER-UNPLANNED: an owner order outside the current week plan;
  * - DUE-UNPLANNED: due inside the current week but outside its plan;
  * - OFF-GOAL: in progress with no goal and outside the current week plan, so nothing the team planned asked
@@ -90,7 +91,7 @@ export function checkTasks(tasks: Iterable<Task>, now: Date, week: string | null
   const flags = active.flatMap((task) => [
     ...verifyFlags(task, needers, piles, config.maxVerifying),
     ...(task.status === 'waiting' && allReady(task.waits, context) ? [{ kind: 'READY' as const, task, detail: 'every reason cleared; set its next status' }] : []),
-    ...timeFlags(task, at, config.check),
+    ...timeFlags(task, at, config.check, context),
     ...(top === undefined ? [] : prioritySkip(task, top, waiting, at, config.check)),
     ...(plan === undefined ? [] : planFlags(task, plan, config.ownerSource)),
   ]);
@@ -118,8 +119,13 @@ function weekPlan(week: string | null, lengthDays: number): WeekPlan | undefined
   return week === null || start === undefined ? undefined : { week, start, end: start + lengthDays * MS_PER_DAY };
 }
 
+/** A waiting task with a time reason still to come: parked on purpose until then, so not stale. */
+function waitsForTime(task: Task, context: WaitContext): boolean {
+  return task.status === 'waiting' && task.waits.some((reason) => reason.kind === 'time' && !isReady(reason, context));
+}
+
 /** OVERDUE or VERIFY-OVERDUE, then NOT-PICKED-UP or else STALE. */
-function timeFlags(task: Task, at: number, check: RegisterCheckConfig): Flag[] {
+function timeFlags(task: Task, at: number, check: RegisterCheckConfig, context: WaitContext): Flag[] {
   const flags: Flag[] = [];
   const due = dueTime(task);
   const verifying = task.status === 'verifying';
@@ -129,7 +135,7 @@ function timeFlags(task: Task, at: number, check: RegisterCheckConfig): Flag[] {
   }
   if (task.ownerSeenAt === null && at - Date.parse(task.assignedAt) > check.notPickedUpAfterHours * MS_PER_HOUR) {
     flags.push({ kind: 'NOT-PICKED-UP', task, detail: `assigned ${minute(task.assignedAt)}, no event from ${task.owner} since` });
-  } else if (!(verifying && due !== undefined) && at - Date.parse(task.updatedAt) > check.staleAfterHours * MS_PER_HOUR) {
+  } else if (!(verifying && due !== undefined) && !waitsForTime(task, context) && at - Date.parse(task.updatedAt) > check.staleAfterHours * MS_PER_HOUR) {
     flags.push({ kind: 'STALE', task, detail: `last event ${minute(task.updatedAt)} by ${task.updatedBy}` });
   }
   return flags;
