@@ -64,6 +64,7 @@ function anyProperty(schema: JsonRecord): JsonRecord | undefined {
 /** Where each bounded value sits in the config; typed so a new limit cannot skip the schema check. */
 const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   maxLines: 'messages.maxLines',
+  coldAfterMinutes: 'messages.coldAfterMinutes',
   maxDescriptionWords: 'skills.maxDescriptionWords',
   maxPerArea: 'skills.maxPerArea',
   maxVerifiedAgeDays: 'skills.maxVerifiedAgeDays',

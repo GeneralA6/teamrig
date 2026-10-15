@@ -194,7 +194,10 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
       shortLine(CONFIG_LIMITS.ownerGates.maxLength),
       CONFIG_LIMITS.ownerGates.maxItems,
     ),
-    messages: { maxLines: read.integer(messages, 'maxLines', 'messages', DEFAULT_MESSAGES.maxLines, CONFIG_LIMITS.maxLines) },
+    messages: {
+      maxLines: read.integer(messages, 'maxLines', 'messages', DEFAULT_MESSAGES.maxLines, CONFIG_LIMITS.maxLines),
+      coldAfterMinutes: read.integer(messages, 'coldAfterMinutes', 'messages', DEFAULT_MESSAGES.coldAfterMinutes, CONFIG_LIMITS.coldAfterMinutes),
+    },
     register: parseRegister(read, read.section(raw, 'register', '')),
     skills: parseSkills(read, read.section(raw, 'skills', '')),
     lock: {

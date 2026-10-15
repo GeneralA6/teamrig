@@ -20,7 +20,7 @@ export const DEFAULT_OWNER_GATES: readonly string[] = [
   'resource changes',
 ];
 
-export const DEFAULT_MESSAGES = { maxLines: 10 } as const;
+export const DEFAULT_MESSAGES = { maxLines: 10, coldAfterMinutes: 60 } as const;
 
 export const DEFAULT_REGISTER: RegisterConfig = {
   ownerSource: 'owner',
