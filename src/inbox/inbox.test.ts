@@ -8,22 +8,29 @@ import {
   inboxStatus,
   postLine,
   readInbox,
-  reminderFor,
   sessionIdOf,
   type InboxDeps,
 } from './inbox.ts';
 import { lineHash } from './line-hash.ts';
+import { INJECT_CAPS } from './shown.ts';
 import { InboxDir, JsonlMarkLog } from './store.ts';
 
 const DIR = 'state/inbox';
 const MARKS = 'state/inbox-marks.jsonl';
+const SHOWN = 'state/inbox-shown.jsonl';
+const OTHER_SESSION = '9f8e7d6c-1111-2222-3333-444455556666';
 const SESSION = '0a1b2c3d-1111-2222-3333-444455556666';
 const NOW = new Date('2030-01-08T10:00:00Z');
 const LINES = ['- 2030-01-07 09:00 lead: first', '- 2030-01-07 10:00 bravo: second', '- 2030-01-07 11:00 lead: third'];
 
 function setup(files: Readonly<Record<string, string>> = {}): { files: MemoryFiles; deps: InboxDeps } {
   const memory = new MemoryFiles(files);
-  return { files: memory, deps: { inboxes: new InboxDir(memory, DIR), marks: new JsonlMarkLog(memory, MARKS) } };
+  return { files: memory, deps: { inboxes: new InboxDir(memory, DIR), marks: new JsonlMarkLog(memory, MARKS), shown: new JsonlMarkLog(memory, SHOWN) } };
+}
+
+/** A line of `inbox-shown.jsonl`: the prompt hook showed `claudeSession` the area's lines through `line`. */
+function shownLine(area: string, line: string, through: number, claudeSession: string): string {
+  return `${JSON.stringify({ v: 1, area, line: through, at: NOW.toISOString(), claudeSession, lastLineHash: lineHash(line) })}\n`;
 }
 
 describe('readInbox', () => {
@@ -54,16 +61,42 @@ describe('readInbox', () => {
     assert.equal(formatRead(empty), 'READ alpha: nothing new; new ones are shown at your next prompt');
 
     await deps.inboxes.append('alpha', LINES[0] ?? '');
-    assert.equal(await reminderFor(deps, 'alpha', 'teamrig'), `INBOX: 1 unread line(s) in ${DIR}/alpha.md since 01-07 09:00. Read them with: teamrig inbox read --session alpha`);
+    assert.deepEqual((await inboxStatus(deps, 'alpha')).map((unread) => unread.lines), [[LINES[0]]]);
+  });
+
+  it('marks read, without printing again, the lines the prompt hook showed this Claude Code session', async () => {
+    const { deps } = setup({ [`${DIR}/alpha.md`]: LINES.join('\n'), [SHOWN]: shownLine('alpha', LINES[1] ?? '', 2, SESSION) });
+    const result = await readInbox(deps, { area: 'alpha', claudeSession: SESSION, now: NOW });
+    assert.deepEqual([result.unread.lines, result.lines, result.shownBefore, result.mark.line], [LINES, [LINES[2]], 2, 3]);
+    assert.equal(
+      formatRead(result),
+      'READ alpha: 1 new line, shown above, and 2 the prompt hook showed this session, now marked read too; new ones are shown at your next prompt',
+    );
+    assert.equal(formatRead(await readInbox(deps, { area: 'alpha', claudeSession: SESSION, now: NOW })), 'READ alpha: nothing new; new ones are shown at your next prompt');
+  });
+
+  it('prints every unread line to another Claude Code session, and outside Claude Code', async () => {
+    const files = { [`${DIR}/alpha.md`]: LINES.join('\n'), [SHOWN]: shownLine('alpha', LINES[2] ?? '', 3, SESSION) };
+    const other = await readInbox(setup(files).deps, { area: 'alpha', claudeSession: OTHER_SESSION, now: NOW });
+    const outside = await readInbox(setup(files).deps, { area: 'alpha', claudeSession: null, now: NOW });
+    assert.deepEqual([other.lines, other.shownBefore, outside.lines, outside.shownBefore], [LINES, 0, LINES, 0]);
+  });
+
+  it('prints again a line the prompt hook had to cut, and every line after a rewrite', async () => {
+    const long = `- 2030-01-07 12:00 lead: ${'x'.repeat(INJECT_CAPS.maxChars)}`;
+    const cut = setup({ [`${DIR}/alpha.md`]: [long, ...LINES].join('\n'), [SHOWN]: shownLine('alpha', LINES[0] ?? '', 2, SESSION) });
+    const result = await readInbox(cut.deps, { area: 'alpha', claudeSession: SESSION, now: NOW });
+    assert.deepEqual([result.lines, result.shownBefore], [[long, LINES[1], LINES[2]], 1]);
+
+    const gone = setup({ [`${DIR}/alpha.md`]: LINES.join('\n'), [SHOWN]: shownLine('alpha', 'a line no longer there', 2, SESSION) });
+    assert.deepEqual((await readInbox(gone.deps, { area: 'alpha', claudeSession: SESSION, now: NOW })).lines, LINES);
   });
 });
 
-describe('inboxStatus and reminderFor', () => {
-  it('reports unread lines per area and reminds from the last read on', async () => {
+describe('inboxStatus', () => {
+  it('reports unread lines per area from the last read on', async () => {
     const { deps } = setup({ [`${DIR}/alpha.md`]: LINES.slice(0, 2).join('\n'), [`${DIR}/bravo.md`]: '', [`${DIR}/notes.txt`]: 'x' });
-    assert.equal(await reminderFor(deps, 'charlie', 'teamrig'), undefined, 'no inbox file');
-    assert.equal(await reminderFor(deps, 'bravo', 'teamrig'), undefined, 'nothing unread');
-    assert.match(await reminderFor(deps, 'alpha', 'teamrig') ?? '', /^INBOX: 2 unread line\(s\) .* since 01-07 09:00\./, 'never read: every line is new');
+    assert.deepEqual(await inboxStatus(deps, 'charlie'), [], 'no inbox file');
     await readInbox(deps, { area: 'alpha', claudeSession: SESSION, now: NOW });
     await deps.inboxes.append('alpha', LINES[2] ?? '');
 
@@ -71,10 +104,6 @@ describe('inboxStatus and reminderFor', () => {
       'alpha 1 unread since 01-07 11:00 (read to line 2 of 3 at 01-08 10:00)',
       'bravo 0 unread (never marked read)',
     ]);
-    assert.equal(
-      await reminderFor(deps, 'alpha', 'teamrig'),
-      'INBOX: 1 unread line(s) in state/inbox/alpha.md since 01-07 11:00. Read them with: teamrig inbox read --session alpha',
-    );
   });
 });
 

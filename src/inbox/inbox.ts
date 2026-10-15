@@ -4,6 +4,7 @@ import type { SecretScanner } from '../core/secrets.ts';
 import { SESSION_NAME } from '../register/model.ts';
 import { lineHash } from './line-hash.ts';
 import { CLAUDE_SESSION_ID, indexMarks, MARK_VERSION, type InboxMark, type MarkLogRead } from './marks.ts';
+import { cutWhenShown, newestShownOf, unshownOf } from './shown.ts';
 import { unreadOf, type Unread } from './unread.ts';
 
 /** The inbox files: one per area, one dated line per item. */
@@ -52,27 +53,29 @@ export function formatUnread(unread: Unread): string {
   }
 }
 
-/** The hook's one line; undefined when nothing is unread. */
-export function reminderLine(unread: Unread, path: string, command: string): string | undefined {
-  return unread.lines.length === 0
-    ? undefined
-    : `INBOX: ${unread.lines.length} unread line(s) in ${path}${since(unread)}. Read them with: ${command} inbox read --session ${unread.area}`;
-}
-
 export interface InboxDeps {
   readonly inboxes: Inboxes;
+  /** The read marks (`inbox-marks.jsonl`). */
   readonly marks: MarkLog;
+  /** What the prompt hook showed each Claude Code session (`inbox-shown.jsonl`). */
+  readonly shown: MarkLog;
 }
 
 export interface ReadResult {
   readonly unread: Unread;
+  /** The unread lines to print: all but those the prompt hook already showed this Claude Code session whole. */
+  readonly lines: readonly string[];
+  /** Unread lines the prompt hook already showed this Claude Code session, marked read without printing. */
+  readonly shownBefore: number;
   readonly mark: InboxMark;
 }
 
 /**
  * Hands back the unread lines and marks them read, from one read of the file, so no line slips between.
- * An area nobody has posted to yet reads as empty and is still marked, so the reminder hook follows
- * the session from its first read. The caller checks the area is a session on the team.
+ * Lines the prompt hook already showed this Claude Code session are marked read without being handed
+ * back again, unless the hook had to cut one. An area nobody has posted to yet reads as empty and is
+ * still marked, so the prompt hook follows the session from its first read. The caller checks the
+ * area is a session on the team.
  */
 export async function readInbox(
   deps: InboxDeps,
@@ -80,7 +83,12 @@ export async function readInbox(
 ): Promise<ReadResult> {
   const lines = (await deps.inboxes.lines(input.area)) ?? [];
   const { byArea } = indexMarks((await deps.marks.read()).marks);
-  const unread = unreadOf(input.area, lines, byArea.get(input.area) ?? null, lineHash);
+  const read = byArea.get(input.area) ?? null;
+  const unread = unreadOf(input.area, lines, read, lineHash);
+  const shown = newestShownOf((await deps.shown.read()).marks, input.area, input.claudeSession);
+  const unshown = unshownOf(input.area, lines, read, shown, lineHash);
+  const before = unread.lines.slice(0, unread.lines.length - unshown.length);
+  const printed = [...before.filter((line) => cutWhenShown(line)), ...unshown];
   const last = lines.at(-1);
   const mark: InboxMark = {
     v: MARK_VERSION,
@@ -91,19 +99,20 @@ export async function readInbox(
     lastLineHash: last === undefined ? null : lineHash(last),
   };
   await deps.marks.append(mark);
-  return { unread, mark };
+  return { unread, lines: printed, shownBefore: unread.lines.length - printed.length, mark };
 }
 
 export function formatRead(result: ReadResult): string {
-  const { unread, mark } = result;
-  const count = unread.lines.length;
+  const { unread, mark, shownBefore } = result;
+  const count = result.lines.length;
   const what = count === 0 ? 'nothing new' : `${count} new line${count === 1 ? '' : 's'}, shown above`;
+  const before = shownBefore === 0 ? '' : `, and ${shownBefore} the prompt hook showed this session, now marked read too`;
   const redo = unread.resume === 'rewritten' ? ' (the file was rewritten, so all of it is shown)' : '';
   const next =
     mark.claudeSession === null
       ? 'outside Claude Code, so no prompt will remind you of new ones'
       : 'new ones are shown at your next prompt';
-  return `READ ${mark.area}: ${what}${redo}; ${next}`;
+  return `READ ${mark.area}: ${what}${before}${redo}; ${next}`;
 }
 
 /** Unread lines per area: every area, or one. */
@@ -118,16 +127,6 @@ export async function inboxStatus(deps: InboxDeps, area?: string): Promise<Unrea
     }
   }
   return result;
-}
-
-/** The reminder for a session's inbox; undefined when it has no inbox file or nothing is unread. */
-export async function reminderFor(deps: InboxDeps, area: string, command: string): Promise<string | undefined> {
-  const lines = await deps.inboxes.lines(area);
-  if (lines === undefined) {
-    return undefined;
-  }
-  const { byArea } = indexMarks((await deps.marks.read()).marks);
-  return reminderLine(unreadOf(area, lines, byArea.get(area) ?? null, lineHash), deps.inboxes.pathOf(area), command);
 }
 
 export interface PostInput {
