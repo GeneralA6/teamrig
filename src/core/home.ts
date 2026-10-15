@@ -88,6 +88,8 @@ export interface TeamPaths {
   readonly lifts: string;
   /** What the budget warning already showed each session, `<id>.json` each. */
   readonly warn: string;
+  /** The full output of each `teamrig test` run, `test-<session>-<n>.log` each. */
+  readonly logs: string;
 }
 
 /** The team's folder. The id is checked here too, since it becomes part of a path. */
@@ -127,5 +129,6 @@ export function teamPaths(kitHome: string, team: string, userHome: string, overr
     usage: join(state, 'usage'),
     lifts: join(state, 'usage', 'lifts.jsonl'),
     warn: join(state, 'usage', 'warn'),
+    logs: join(state, 'logs'),
   };
 }
