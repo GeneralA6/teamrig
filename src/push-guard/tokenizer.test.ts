@@ -62,6 +62,81 @@ describe('parseShell: bash', () => {
     );
   });
 
+  it('records the separators after each command, newlines kept and blanks left out', () => {
+    const parse = parseShell('a ; b &&\nc || d | e |& f & g\n\nh; (i) ; x=$(j; k) `l`\nm 2>&1', 'bash');
+    assert.deepEqual(
+      parse.commands.map((command) => [command.words[0]?.text, command.terminator]),
+      [
+        ['a', ';'],
+        ['b', '&&\n'],
+        ['c', '||'],
+        ['d', '|'],
+        ['e', '|&'],
+        ['f', '&'],
+        ['g', '\n\n'],
+        ['h', ';('],
+        ['i', ');'],
+        ['j', ';'],
+        ['k', ''],
+        ['l', ''],
+        ['x=$(j; k)', '\n'],
+        ['m', ''],
+      ],
+    );
+  });
+
+  it('marks a command that carries a redirection', () => {
+    const parse = parseShell('a > out; b 2>&1; c <(d); e', 'bash');
+    assert.deepEqual(
+      parse.commands.map((command) => [command.words[0]?.text, command.redirected]),
+      [
+        ['a', true],
+        ['b', true],
+        ['d', false],
+        ['c', false],
+        ['e', false],
+      ],
+    );
+  });
+
+  it('splits a bash word into quoted and unquoted text and plain variable references', () => {
+    const last = parseShell(`B='x'y "$C"\${D} \\E=f a$1 $(g) \${H:-i} {a,b}$J`, 'bash').commands.at(-1);
+    assert.deepEqual(
+      last?.words.map((word) => word.parts),
+      [
+        [
+          { kind: 'text', text: 'B=', quoted: false },
+          { kind: 'text', text: 'x', quoted: true },
+          { kind: 'text', text: 'y', quoted: false },
+        ],
+        [
+          { kind: 'variable', name: 'C' },
+          { kind: 'variable', name: 'D' },
+        ],
+        [
+          { kind: 'text', text: 'E', quoted: true },
+          { kind: 'text', text: '=f', quoted: false },
+        ],
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+      ],
+    );
+  });
+
+  it('gives words parts only in bash', () => {
+    const dialects: readonly ShellDialect[] = ['powershell', 'cmd'];
+    for (const dialect of dialects) {
+      const parsed = parseShell('git push origin $B %B%', dialect).commands.flatMap((command) => command.words);
+      assert.equal(
+        parsed.some((word) => word.parts !== undefined),
+        false,
+        dialect,
+      );
+    }
+  });
+
   it('reads # as a comment only at a word start', () => {
     assert.deepEqual(words('git push origin a#b # main\nls'), [['git', 'push', 'origin', 'a#b'], ['ls']]);
   });
