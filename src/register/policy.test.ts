@@ -286,8 +286,9 @@ describe('RegisterPolicy.update', () => {
     assert.match(error(policy.update(TASK, 'alpha', { priority: 7 }, undefined, EMPTY)), /priority p7 is not one of/);
   });
 
-  it('lets the lead change only owner, priority, due and week', () => {
+  it('lets the lead change only owner, priority, due, week and after', () => {
     assert.equal(policy.update(TASK, 'lead', { owner: 'bravo', due: '2030-01-10' }, undefined, EMPTY).ok, true);
+    assert.equal(policy.update(TASK, 'lead', { after: [] }, undefined, EMPTY).ok, true);
     assert.match(error(policy.update(TASK, 'lead', { title: 'x', priority: 1 }, undefined, EMPTY)), /asked: title/);
   });
 

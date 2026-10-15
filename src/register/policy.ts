@@ -24,8 +24,8 @@ export const GITHUB_ACTOR = 'github';
 /** The statuses the import sets on its own tasks: an issue's open state, or how it was closed. */
 export const GITHUB_STATUSES: readonly TaskStatus[] = ['open', 'done', 'dropped'];
 
-/** Fields the lead may change on a task someone else owns. */
-export const LEAD_FIELDS: readonly TaskFieldName[] = ['owner', 'priority', 'due', 'week'];
+/** Fields the lead may change on a task someone else owns: who does it, how urgent, when and in what order. */
+export const LEAD_FIELDS: readonly TaskFieldName[] = ['owner', 'priority', 'due', 'week', 'after'];
 
 export interface AddInput {
   readonly title: string;
