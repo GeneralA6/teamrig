@@ -1,6 +1,6 @@
 # teamrig
 
-> A Claude Code plugin and CLI that runs a team of Claude Code sessions: a shared task register, per-session inboxes, team rules loaded at every start, a guard on pushes to protected branches, and each session's token use measured against the week's pace.
+> A Claude Code plugin and CLI that runs a team of Claude Code sessions: a shared task register, per-session inboxes, team rules loaded at every start, a guard on pushes to protected branches, a hold on messages that would wake an idle session at full price, and each session's token use measured against the week's pace.
 
 ## Guide
 

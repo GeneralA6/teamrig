@@ -861,6 +861,23 @@ teamrig hook push-guard < pre-tool-use.json
 Output: nothing for a command that pushes no protected branch; otherwise a JSON permission decision (`ask` or
 `deny`) with the reason.
 
+### teamrig hook cold-send
+
+Before a SendMessage call to a team session idle `messages.coldAfterMinutes` (60 by default) or longer, holds
+the message once: it would wake the receiver cold, and its first call would re-read its whole context at full
+price. The note says to write an inbox line if the receiver need not act now, or to put every ask for it in one
+message and send it again; the same tab's next send to it within 15 minutes goes through.
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig hook cold-send < pre-tool-use.json
+```
+
+Output: nothing for a send that goes; otherwise a JSON permission decision (`deny`) with the note.
+
 ### teamrig hook stop
 
 At the end of each turn, after you set a task done, asks for a handover when your context is over the refresh

@@ -133,7 +133,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   config validate | config migrate
   commits check --base <ref> [--tip <ref>]   commits in base..tip (default HEAD) over the size rule
       with no reason line; any is REFUSED, for an integrate script or CI
-  hook push-guard | hook inbox-reminder | hook session-start | hook stop
+  hook push-guard | hook cold-send | hook inbox-reminder | hook session-start | hook stop
       (run by Claude Code, hook JSON on stdin)
   launch <id> --team <team> --project <dir> [--home <dir>] [--encoded-prompt <text>]
       (run by the tab that open starts: sets the session and starts Claude Code)
