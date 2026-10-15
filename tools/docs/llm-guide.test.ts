@@ -1,0 +1,288 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { COMMAND_FLAGS, COMMAND_SWITCHES, HELP, VERSION } from '../../src/cli/run.ts';
+import { descriptionOf } from '../../src/skills/lint.ts';
+import { checkDocs, headingAnchors, type DocFile } from './doc-check.ts';
+
+/**
+ * The LLM guide (the plugin's teamrig-guide skill) and the root llms.txt, held to the code: each CLI command has
+ * exactly one section and each section a command, with the command's flags and no others; every teamrig command
+ * line the guide shows is one the CLI reads; every link resolves; and the requirements match package.json and CI.
+ */
+
+const ROOT = fileURLToPath(new URL('../../', import.meta.url));
+const GUIDE = 'plugins/teamrig/skills/teamrig-guide';
+const SKILL_NAME = 'teamrig-guide';
+const BLOB = 'https://github.com/GeneralA6/teamrig/blob/main/';
+const MAX_DESCRIPTION_WORDS = 30;
+/** `teamrig help` and `teamrig version` are words `runCli` answers before the command table. */
+const HELP_COMMAND = 'help';
+const VERSION_COMMAND = 'version';
+
+const SECTION = /^### teamrig (.+?)\s*$/;
+const HEADING = /^#{1,3}\s/;
+const FLAG_BULLET = /^- `--([a-z][a-z-]*)/;
+const FENCE = /^\s*(`{3,})\s*([\w-]*)/;
+const INLINE_COMMAND = /`(teamrig [^`]+)`/g;
+const QUOTED = /"[^"]*"/g;
+const BLOB_LINK = /https:\/\/github\.com\/GeneralA6\/teamrig\/blob\/main\/([^)\s#]+)(?:#([^)\s]+))?/g;
+const NO_EMOJI = /\p{Emoji_Presentation}|\u{FE0F}/u;
+
+function read(path: string): string {
+  return readFileSync(join(ROOT, path), 'utf8');
+}
+
+const guide: readonly DocFile[] = readdirSync(join(ROOT, GUIDE))
+  .filter((name) => name.endsWith('.md'))
+  .sort()
+  .map((name) => ({ path: `${GUIDE}/${name}`, text: read(`${GUIDE}/${name}`) }));
+const llms: DocFile = { path: 'llms.txt', text: read('llms.txt') };
+
+function guideText(name: string): string {
+  const doc = guide.find((file) => file.path === `${GUIDE}/${name}`);
+  if (doc === undefined) {
+    throw new Error(`${GUIDE}/${name} is missing`);
+  }
+  return doc.text;
+}
+
+const CODE_COMMANDS: readonly string[] = [...Object.keys(COMMAND_FLAGS), HELP_COMMAND, VERSION_COMMAND].sort();
+
+/** The flags and switches the CLI accepts for a command, sorted; none for help and version. */
+function codeFlags(command: string): string[] {
+  return [...(COMMAND_FLAGS[command] ?? []), ...(COMMAND_SWITCHES[command] ?? [])].sort();
+}
+
+interface Section {
+  readonly command: string;
+  readonly line: number;
+  readonly body: readonly string[];
+}
+
+/** Each `### teamrig <command>` section of commands.md, up to the next heading. */
+function sections(text: string): Section[] {
+  const found: { command: string; line: number; body: string[] }[] = [];
+  let current: { command: string; line: number; body: string[] } | null = null;
+  for (const [index, row] of text.split(/\r?\n/).entries()) {
+    const heading = SECTION.exec(row);
+    if (heading !== null) {
+      current = { command: heading[1] ?? '', line: index + 1, body: [] };
+      found.push(current);
+    } else if (HEADING.test(row)) {
+      current = null;
+    } else {
+      current?.body.push(row);
+    }
+  }
+  return found;
+}
+
+function documentedFlags(section: Section): string[] {
+  return section.body.flatMap((row) => {
+    const flag = FLAG_BULLET.exec(row)?.[1];
+    return flag === undefined ? [] : [flag];
+  });
+}
+
+interface CommandLine {
+  readonly path: string;
+  readonly line: number;
+  readonly text: string;
+}
+
+/** Every teamrig command the guide shows: in `sh` blocks, and in inline code in prose. Other blocks are output. */
+function commandLines(doc: DocFile): CommandLine[] {
+  const lines: CommandLine[] = [];
+  let fence: { readonly marker: string; readonly shell: boolean } | null = null;
+  for (const [index, row] of doc.text.split(/\r?\n/).entries()) {
+    const opened = FENCE.exec(row);
+    const at = { path: doc.path, line: index + 1 };
+    if (fence === null) {
+      if (opened !== null) {
+        fence = { marker: opened[1] ?? '```', shell: opened[2] === 'sh' };
+      } else {
+        lines.push(...Array.from(row.matchAll(INLINE_COMMAND), (match) => ({ ...at, text: match[1] ?? '' })));
+      }
+    } else if (opened !== null && (opened[1] ?? '').startsWith(fence.marker) && opened[2] === '') {
+      fence = null;
+    } else if (fence.shell && !row.trimStart().startsWith('#')) {
+      lines.push(...row.split(/&&|\|\||;| \| /).map((part) => ({ ...at, text: part.trim() })));
+    }
+  }
+  return lines.filter(({ text }) => text.startsWith('teamrig '));
+}
+
+/** The command a line runs and the flags it passes, or the reason the CLI would not read it. */
+function parseCommand(text: string): { readonly command: string; readonly flags: readonly string[] } | string {
+  const words = text.replace(QUOTED, '""').split(/\s+/).slice(1);
+  const [first = '', second = ''] = words;
+  const pair = `${first} ${second}`;
+  let command: string;
+  let rest: readonly string[];
+  if (Object.hasOwn(COMMAND_FLAGS, pair)) {
+    command = pair;
+    rest = words.slice(2);
+  } else if (Object.hasOwn(COMMAND_FLAGS, first)) {
+    command = first;
+    rest = words.slice(1);
+  } else if (HELP.has(first) || VERSION.has(first)) {
+    command = HELP.has(first) ? HELP_COMMAND : VERSION_COMMAND;
+    rest = words.slice(1);
+  } else {
+    return `no command "${first}"`;
+  }
+  const flags = rest.filter((word) => word.startsWith('--')).map((word) => word.slice(2).split('=')[0] ?? '');
+  return { command, flags };
+}
+
+describe('the LLM guide documents the CLI', () => {
+  const all = sections(guideText('commands.md'));
+
+  it('answers help and version under those words', () => {
+    assert.ok(HELP.has(HELP_COMMAND));
+    assert.ok(VERSION.has(VERSION_COMMAND));
+  });
+
+  it('has one section per command and no section for a command that does not exist', () => {
+    const documented = all.map((section) => section.command).sort();
+    assert.deepEqual(
+      CODE_COMMANDS.filter((command) => !documented.includes(command)),
+      [],
+      'commands with no ### teamrig <command> section in commands.md',
+    );
+    assert.deepEqual(
+      documented.filter((command) => !CODE_COMMANDS.includes(command)),
+      [],
+      'sections in commands.md for commands the CLI does not have',
+    );
+    assert.deepEqual(
+      documented.filter((command, index) => documented.indexOf(command) !== index),
+      [],
+      'commands with two sections',
+    );
+  });
+
+  it("lists exactly each command's flags, or says it has none", () => {
+    for (const section of all) {
+      const flags = documentedFlags(section);
+      assert.deepEqual([...flags].sort(), codeFlags(section.command), `the flags of teamrig ${section.command} (commands.md:${section.line})`);
+      assert.equal(section.body.includes('Flags: none.'), flags.length === 0, `teamrig ${section.command} says "Flags: none." exactly when it has none`);
+    }
+  });
+
+  it('gives each command an example that runs it, and its output', () => {
+    for (const section of all) {
+      const example = section.body.indexOf('```sh');
+      assert.ok(example !== -1, `teamrig ${section.command} has a sh example (commands.md:${section.line})`);
+      assert.ok((section.body[example + 1] ?? '').startsWith(`teamrig ${section.command}`), `the example of teamrig ${section.command} runs it`);
+      assert.ok(section.body.some((row) => row.startsWith('Output')), `teamrig ${section.command} shows its output`);
+    }
+  });
+
+  it('shows only command lines the CLI reads, with flags their command takes', () => {
+    const problems = [...guide, llms].flatMap(commandLines).flatMap(({ path, line, text }) => {
+      const parsed = parseCommand(text);
+      if (typeof parsed === 'string') {
+        return [`${path}:${line} ${text}: ${parsed}`];
+      }
+      const allowed = codeFlags(parsed.command);
+      return parsed.flags.filter((flag) => !allowed.includes(flag)).map((flag) => `${path}:${line} ${text}: teamrig ${parsed.command} takes no --${flag}`);
+    });
+    assert.deepEqual(problems, []);
+  });
+});
+
+describe('the LLM guide skill', () => {
+  const skill = guideText('SKILL.md');
+  const front = /^---\r?\n([\s\S]*?)\r?\n---/.exec(skill)?.[1] ?? '';
+
+  it('is named after its folder', () => {
+    assert.equal(/^name:\s*(\S+)\s*$/m.exec(front)?.[1], SKILL_NAME);
+    assert.ok(GUIDE.endsWith(`/${SKILL_NAME}`));
+  });
+
+  it(`has a description of at most ${MAX_DESCRIPTION_WORDS} words`, () => {
+    const description = descriptionOf(front);
+    assert.ok(description !== null, 'SKILL.md has a description');
+    assert.ok(description.split(/\s+/).length <= MAX_DESCRIPTION_WORDS, `${description.split(/\s+/).length} words`);
+  });
+
+  it('keeps the description a plain YAML value, with no ": " in it', () => {
+    assert.doesNotMatch(descriptionOf(front) ?? '', /:\s/);
+  });
+
+  it('links each of its reference files', () => {
+    const files = guide.map((doc) => doc.path.slice(GUIDE.length + 1)).filter((name) => name !== 'SKILL.md');
+    assert.deepEqual(
+      files.filter((name) => !skill.includes(`](${name})`)),
+      [],
+    );
+  });
+
+  it('has no emoji', () => {
+    assert.deepEqual(
+      [...guide, llms].filter((doc) => NO_EMOJI.test(doc.text)).map((doc) => doc.path),
+      [],
+    );
+  });
+
+  it('has relative links and anchors that resolve', () => {
+    const report = checkDocs(guide, (path) => existsSync(join(ROOT, path)));
+    assert.deepEqual(report.problems, []);
+    assert.ok(report.links > 0);
+  });
+
+  it('has links into this repository that resolve, anchors included', () => {
+    const problems = [...guide, llms].flatMap((doc) =>
+      Array.from(doc.text.matchAll(BLOB_LINK), (match) => {
+        const path = match[1] ?? '';
+        const anchor = match[2];
+        if (!existsSync(join(ROOT, path))) {
+          return `${doc.path}: ${path} does not exist`;
+        }
+        return anchor === undefined || headingAnchors(read(path)).has(anchor) ? undefined : `${doc.path}: ${path} has no #${anchor}`;
+      }).filter((problem) => problem !== undefined),
+    );
+    assert.deepEqual(problems, []);
+  });
+});
+
+describe('llms.txt', () => {
+  it('only links: a title, a one-line summary, headings and link bullets', () => {
+    const other = llms.text
+      .split(/\r?\n/)
+      .filter((row) => row !== '' && !/^# \S/.test(row) && !/^> \S/.test(row) && !/^## \S/.test(row) && !/^- \[[^\]]+\]\(https:\/\/[^)]+\)/.test(row));
+    assert.deepEqual(other, []);
+  });
+
+  it('links every guide file', () => {
+    assert.deepEqual(
+      guide.filter((doc) => !llms.text.includes(`${BLOB}${doc.path})`)).map((doc) => doc.path),
+      [],
+    );
+  });
+});
+
+describe('the requirements in the guide', () => {
+  const requirements = guideText('requirements.md');
+
+  it('name the Node.js version package.json requires', () => {
+    const node = /"node":\s*">=([\d.]+)"/.exec(read('package.json'))?.[1];
+    assert.ok(node !== undefined, 'package.json gives engines.node as >=x.y');
+    assert.ok(requirements.includes(`${node} or later`), `requirements.md names Node.js ${node} or later`);
+  });
+
+  it('name the operating systems and Node.js versions CI tests on', () => {
+    const ci = read('.github/workflows/ci.yml');
+    const list = (key: string): string[] =>
+      (new RegExp(`^\\s*${key}: \\[([^\\]]+)\\]`, 'm').exec(ci)?.[1] ?? '').split(',').map((item) => item.trim().replace(/-latest$/, ''));
+    const systems = list('os');
+    const nodes = list('node');
+    assert.ok(systems.length > 1 && nodes.length > 1, 'ci.yml has an os and node matrix');
+    assert.ok(requirements.includes(`CI runs the tests on ${systems.slice(0, -1).join(', ')} and ${systems.at(-1) ?? ''}`), `requirements.md names ${systems.join(', ')}`);
+    assert.ok(requirements.includes(`Node ${nodes.join(' and ')}`), `requirements.md names Node ${nodes.join(' and ')}`);
+  });
+});
