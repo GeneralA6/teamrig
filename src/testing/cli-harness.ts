@@ -8,6 +8,7 @@ import type { Files } from '../core/files.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import type { Env } from '../core/home.ts';
 import type { PathProbe } from '../core/path-probe.ts';
+import type { RequirementsCheck } from '../requirements/requirements.ts';
 import type { Processes } from '../open/processes.ts';
 import type { CommitLog } from '../push-guard/commit-size.ts';
 import { FakeClock } from './fake-clock.ts';
@@ -53,6 +54,8 @@ export interface RunOptions {
   readonly processes?: Processes;
   /** The folders and programs the CLI sees; default none. */
   readonly probe?: PathProbe;
+  /** What the requirements check finds; default nothing is missing. */
+  readonly requirements?: RequirementsCheck;
 }
 
 /**
@@ -88,6 +91,7 @@ export class CliHarness {
       ...(options.platform === undefined ? {} : { platform: options.platform }),
       ...(options.processes === undefined ? {} : { processes: options.processes }),
       ...(options.probe === undefined ? {} : { probe: options.probe }),
+      ...(options.requirements === undefined ? {} : { requirements: options.requirements }),
       out: { stdout: (line) => stdout.push(line), stderr: (line) => stderr.push(line) },
       ...(options.configFormat === undefined ? {} : { configFormat: options.configFormat }),
     });

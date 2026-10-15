@@ -3,6 +3,7 @@ import type { Files } from '../core/files.ts';
 import type { Env } from '../core/home.ts';
 import type { Clock, Sleep } from '../core/lock.ts';
 import type { PathProbe } from '../core/path-probe.ts';
+import type { RequirementsCheck } from '../requirements/requirements.ts';
 import type { Processes } from '../open/processes.ts';
 import type { CommitLog } from '../push-guard/commit-size.ts';
 import type { RepoState } from '../push-guard/push.ts';
@@ -39,6 +40,8 @@ export interface CliRuntime {
   /** Whether a folder or a program is there. */
   readonly probe: PathProbe;
   readonly self: SelfLocation;
+  /** What teamrig needs beside itself (git, Claude Code, Node.js) and lacks: told at session start, by `team create` and by `doctor`. */
+  readonly requirements: RequirementsCheck;
   /** The config format the run reads and migrates to; default the shipped one (tests give a newer release's). */
   readonly configFormat?: ConfigFormat;
   /** All of stdin, for hooks, which Claude Code feeds one JSON object. */
