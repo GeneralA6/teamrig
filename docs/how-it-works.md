@@ -201,7 +201,7 @@ archive, and a task that left cannot be changed. `compact --dry-run` prints what
 reads the new files back and holds every task against the whole history, and writes nothing on any difference.
 After that first `compact`, a write that leaves the log over 512 KiB archives it again and says so in a NOTE line,
 or keeps the write and warns when archiving fails (the next write tries again). Every session must run teamrig
-0.2.1 or later before the first `compact`: an older one refuses to write to an archived task list.
+0.3.1 or later before the first `compact`: an older one refuses to write to an archived task list.
 - Being built: dependencies and parent/child tasks (T205); planned start, ETA, history and token estimates
   (T209–T211).
 - Coming: each session's token burn against the week's plan in `check`, once teamrig reads token usage (T247).

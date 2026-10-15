@@ -575,7 +575,7 @@ deleted, a fresh log starts with a line naming it, and `state/snapshot.jsonl` ho
 done or dropped over 8 days ago, in no week plan from the current one on, leave the snapshot: `show`,
 `list --status done` and past weeks' `plan` still read them, and they cannot be changed. A run first reads the new
 files back and holds every task against the whole history, and writes nothing on any difference. After the first
-run, a write that leaves the log over 512 KiB archives it again. Every session must run teamrig 0.2.1 or later
+run, a write that leaves the log over 512 KiB archives it again. Every session must run teamrig 0.3.1 or later
 before the first run.
 
 Flags:
