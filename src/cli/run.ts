@@ -36,6 +36,7 @@ const budgetSetupCommands = () => import('./commands/budget-setup.ts');
 const statuslineCommands = () => import('./commands/statusline.ts');
 const testCommand = () => import('./commands/test.ts');
 const ghCommands = () => import('./commands/gh.ts');
+const startCommands = () => import('./commands/start.ts');
 
 const TASK_FIELDS = ['title', 'owner', 'ref', 'priority', 'due', 'goals', 'week', 'after'];
 
@@ -59,6 +60,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'team create': { flags: ['sessions', 'lead', 'parent', 'project'], switches: ['dry-run'], load: async () => (await setupCommands()).teamCreate },
   'team tree': { flags: [], load: async () => (await teamCommands()).teamTree },
   rules: { flags: ['session'], load: async () => (await rulesCommands()).rules },
+  start: { flags: ['session'], switches: ['all'], load: async () => (await startCommands()).start },
   open: { flags: ['prompt', 'terminal', 'project'], load: async () => (await openCommands()).open },
   launch: { flags: ['team', 'project', 'home', 'encoded-prompt'], load: async () => (await openCommands()).launch },
   who: { flags: [], load: async () => (await teamCommands()).who },
@@ -112,6 +114,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       a new terminal tab running Claude Code as that session (team/id: another team of the tree);
       with no terminal it prints the command
   rules [--session <id|name>]  the team rules and who the session is, as a session start gives them
+  start [--session <id|name>] [--all]   the start of a work block in one call: the UTC time, the
+      unread inbox lines (marked read), the session's tasks, the check flags it acts on (the lead: all)
+      and the week's use; --all: the tasks and flags in full
   add --title "<one line>" --priority p<n> [--ref <where it was asked>] [--owner <session>]
       [--source <session>|<owner source>] [--due <date>] [--goals a,b] [--week <date>] [--after T5,T6]
       --after: the tasks to finish before this one starts; its line shows "after T5"

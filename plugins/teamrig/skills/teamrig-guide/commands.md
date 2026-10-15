@@ -611,6 +611,42 @@ Output (first lines):
 Where your team's rules or CLAUDE.md conflict with these, yours win. [brackets] name the config key behind a value.
 ```
 
+### teamrig start
+
+Prints what you read at the start of a work block, in one call: the UTC time, your unread inbox lines (marked read,
+as `inbox read` does, which also ties this Claude Code session to your area), your task list, the `check` flags you
+act on and the week's use. The lead gets every flag, as `teamrig check` prints them; any other session gets the
+flags of the tasks and skills it owns. Run it at the start of every work block and after every `/clear`.
+
+Flags:
+
+- `--session <area>`: who you are.
+- `--all`: the tasks and the flags in full, as `list --all` and `check --all` print them.
+
+Example:
+
+```sh
+teamrig start --session web
+```
+
+Output:
+
+```text
+START web, Thu 10-15 09:00 UTC
+- 2026-10-15 08:58 lead: api error codes are in docs/errors.md
+READ web: 1 new line, shown above; new ones are shown at your next prompt
+LIST 2 task(s) (short rows; --all for every field)
+T1 open, p1, owner web, due 10-14 | Add the error codes page
+T2 open, p2, owner web | Retry the signup call
+CHECK 1 flag(s), web's tasks and skills, week 2026-10-12 (short form; --all for every flag in full)
+OVERDUE 1 (due 10-14)
+  T1 open, p1, owner web, due 10-14 | Add the error codes page
+SKILLS 0 flag(s) in ~/.claude/skills
+Week: 31.0% used at 09:00 UTC (status line); the pace line is at 28.6%: 2.4 points ahead. Resets Wed 10-21 01:00 UTC.
+```
+
+A lead with sub-teams runs `teamrig check --tree --session lead` too: `start` reads the lead's own team.
+
 ### teamrig open
 
 Opens a new terminal tab in the project folder running Claude Code as that session (`teamrig open <id|name>`, or

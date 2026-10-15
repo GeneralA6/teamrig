@@ -10,7 +10,7 @@ import { claudeProjectsDir, type TranscriptSource } from '../../budget/discover.
 import { activeLift, decideLift, LiftLog, liftText, type Lift } from '../../budget/lift.ts';
 import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID, type Measured } from '../../budget/measure.ts';
 import { sessionBudgetPct } from '../../budget/pace.ts';
-import { loopLines, recountLines, sessionLines, sumDays, todayLines, type SessionToday } from '../../budget/report.ts';
+import { loopLines, recountLines, sessionLines, sumDays, todayLines, weekLine, type SessionToday } from '../../budget/report.ts';
 import { formatSnapshot, readSnapshots, snapshotOfStatus, statusLineText, weekUseOf } from '../../budget/snapshot.ts';
 import { CURSOR_DAYS_KEPT, DAYS_KEPT, MemoryUsageStore, UsageStore, type UsageState } from '../../budget/store.ts';
 import { readWeek, type WeekReading } from '../../budget/week.ts';
@@ -96,6 +96,11 @@ async function readBudget(runtime: CliRuntime, kit: Kit, config: KitConfig, rost
   const week = readWeek({ budget: config.budget, now, statusUse: weekUseOf(snapshots, now), states: [...measured.bySession.values(), measured.outside] });
   const lifts = recount ? [] : (await new LiftLog(files, kit.paths.lifts).read()).lifts;
   return { now, measured, week, lifts };
+}
+
+/** The week's use line, measured up to now as `budget` measures it, for `start`. */
+export async function weekLineOf(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster): Promise<string> {
+  return weekLine((await readBudget(runtime, kit, config, roster, { recountDay: undefined })).week);
 }
 
 function sessionsToday(reading: Reading, roster: Roster, budget: BudgetConfig): SessionToday[] {

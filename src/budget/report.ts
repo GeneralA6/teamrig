@@ -53,7 +53,8 @@ function useText(w: number, calls: number): string {
   return `${formatW(w)} W in ${formatCount(calls)} call${calls === 1 ? '' : 's'}`;
 }
 
-function weekLine(week: WeekReading): string {
+/** The week's use and its pace: the first line of `budget`, and the last of `start`. */
+export function weekLine(week: WeekReading): string {
   if (week.usedPct === undefined || week.reset === undefined) {
     return "Week: its use is unknown: no status line reading (run teamrig statusline install) and no budget.weeklyLimitW.";
   }
