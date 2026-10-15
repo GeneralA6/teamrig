@@ -12,3 +12,8 @@ export const TERMINALS = ['auto', 'tmux', 'windows-terminal', 'macos-terminal', 
 export function isTerminalChoice(value) {
     return TERMINALS.some((terminal) => terminal === value);
 }
+/** Claude Code's effort levels, lowest first: what `claude --effort` and `/effort` take. */
+export const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'];
+export function isEffortLevel(value) {
+    return EFFORT_LEVELS.some((level) => level === value);
+}

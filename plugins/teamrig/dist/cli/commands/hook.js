@@ -1,9 +1,11 @@
+import { launchOf } from "../../config/launch.js";
 import { Roster } from "../../config/roster.js";
 import { errorMessage, isRecord, stringField } from "../../core/guards.js";
 import { ENV, KIT_NAME } from "../../core/home.js";
 import { resolveTeam } from "../../core/team.js";
 import { reminderFor, sessionIdOf } from "../../inbox/inbox.js";
 import { indexMarks } from "../../inbox/marks.js";
+import { EFFORT_ENV, modelCheckLine } from "../../hooks/model-check.js";
 import { commitsOf, protectedBranchesOf, pushGuardOutput } from "../../hooks/push-guard.js";
 import { sessionStartContext, sessionStartOutput } from "../../hooks/session-start.js";
 import { stopOutput } from "../../hooks/stop.js";
@@ -157,7 +159,8 @@ export async function inboxReminder(args, runtime) {
  * A loaded team's rules.md and rename log, after recording a Claude Code rename of the session, the
  * pointer to its handover after a refresh, and who the session is: `$TEAMRIG_SESSION`, else the area
  * it read its inbox as, so a tab that set the team up keeps its identity across a compact or resume;
- * and where the team sits in a tree of teams, read from every team config of the kit home.
+ * whether it runs on its configured model and effort; and where the team sits in a tree of teams,
+ * read from every team config of the kit home.
  */
 async function teamPartsOf(runtime, kit, config, payload) {
     const titleNote = sessionStartNote(await titleOutcome(runtime, kit, config, payload));
@@ -167,15 +170,30 @@ async function teamPartsOf(runtime, kit, config, payload) {
     const text = await runtime.files.read(kit.paths.teamRules);
     const fromEnv = envSession(runtime);
     const { tree } = await loadTree(runtime);
+    const session = fromEnv ?? (await startSessionOf(runtime, kit, roster, payload));
     return {
         teamRules: text === undefined ? undefined : { path: kit.paths.teamRules, text },
         renames,
         titleNote,
         refreshNote,
-        session: fromEnv ?? (await startSessionOf(runtime, kit, roster, payload)),
+        modelNote: modelNoteOf(runtime, config, roster, session, payload),
+        session,
         sessionInEnv: fromEnv !== undefined,
         tree: tree.placeOf(kit.paths.team),
     };
+}
+/**
+ * The line for a session of the team that runs on another model or effort than its `launch` entry
+ * (for the lead, unset keys: `best` at `xhigh`): the model from the payload, the effort from
+ * `$CLAUDE_EFFORT`. Claude Code leaves either out at some starts, and then that half is not checked.
+ */
+function modelNoteOf(runtime, config, roster, session, payload) {
+    const found = session === undefined ? undefined : roster.lookup(session);
+    if (found === undefined || !found.ok) {
+        return undefined;
+    }
+    const running = { model: isRecord(payload) ? stringField(payload, 'model') : undefined, effort: runtime.env[EFFORT_ENV] };
+    return modelCheckLine(roster.nameOf(found.id) ?? found.id, launchOf(config, found.id), running);
 }
 /**
  * A fresh start (`/clear`, a new process) after the session's handover was marked ready: the note
@@ -295,8 +313,8 @@ export async function sessionStart(args, runtime) {
     const kit = await openKit(runtime, found.team);
     const parts = kit.load.status === 'loaded'
         ? await teamPartsOf(runtime, kit, kit.load.config, payload)
-        : { teamRules: undefined, renames: [], titleNote: undefined, refreshNote: undefined, session: undefined, sessionInEnv: false, tree: undefined };
+        : { teamRules: undefined, renames: [], titleNote: undefined, refreshNote: undefined, modelNote: undefined, session: undefined, sessionInEnv: false, tree: undefined };
     const context = sessionStartContext({ team: found.team, load: kit.load, ...parts, command: KIT_NAME });
-    runtime.out.stdout(sessionStartOutput(context));
+    runtime.out.stdout(sessionStartOutput(context, parts.modelNote));
     return EXIT.ok;
 }

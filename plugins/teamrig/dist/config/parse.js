@@ -2,9 +2,10 @@ import { isRecord } from "../core/guards.js";
 import { NAME_PATTERN, NAME_RULE } from "../core/ids.js";
 import { isTaskStatus, SESSION_NAME } from "../register/model.js";
 import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_COMMITS, DEFAULT_LOCK, DEFAULT_MESSAGES, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_PUSH_GUARD, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SKILLS, } from "./defaults.js";
+import { isEffort, isModel } from "./launch.js";
 import { CONFIG_LIMITS } from "./limits.js";
 import { ConfigReader, describe, isValidRegex, shortLine } from "./reader.js";
-import { isCommitGate, isTerminalChoice, TERMINALS, } from "./types.js";
+import { isCommitGate, isEffortLevel, isTerminalChoice, TERMINALS, } from "./types.js";
 const isSessionName = (name) => SESSION_NAME.test(name) ? undefined : 'expected a lowercase name: a letter, then letters, digits or -, at most 32';
 const isUtcTime = (time) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(time) ? undefined : 'expected a UTC time as HH:MM');
 const BRANCH_NAME = (name) => (/^[^\s~^:?*[\\]+$/.test(name) ? undefined : 'not a valid branch name');
@@ -38,6 +39,28 @@ function readNames(read, raw, sessions) {
         names[id] = name;
     }
     return names;
+}
+/**
+ * `launch`: a model and an effort for sessions on the team. A wrong field is reported and left out,
+ * so the session starts on Claude Code's own choice (or, for the lead, the lead's default) for it.
+ */
+function readLaunch(read, raw, sessions) {
+    const launch = {};
+    for (const [id, value] of Object.entries(raw)) {
+        const path = `launch.${id}`;
+        const entry = read.objectItem(value, path);
+        if (entry === undefined) {
+            continue;
+        }
+        if (!sessions.includes(id)) {
+            read.report(path, 'is not one of the sessions');
+            continue;
+        }
+        const model = read.optionalString(entry, 'model', path, isModel);
+        const effort = read.optionalString(entry, 'effort', path, isEffort);
+        launch[id] = { ...(model === undefined ? {} : { model }), ...(isEffortLevel(effort) ? { effort } : {}) };
+    }
+    return launch;
 }
 /**
  * `team`: the team's id and its parent's, both ids. Only the shape is checked here; whether the id
@@ -82,6 +105,7 @@ export function parseConfig(raw) {
         read.report('sessions', 'lists a session more than once');
     }
     const names = readNames(read, read.section(raw, 'names', ''), sessions);
+    const launch = readLaunch(read, read.section(raw, 'launch', ''), sessions);
     const team = readTeam(read, raw);
     const messages = read.section(raw, 'messages', '');
     const pushGuard = read.section(raw, 'pushGuard', '');
@@ -125,6 +149,7 @@ export function parseConfig(raw) {
         tabStatus: { enabled: read.boolean(tabStatus, 'enabled', 'tabStatus', false) },
         refresh: parseRefresh(read, read.section(raw, 'refresh', '')),
         open: parseOpen(read, read.section(raw, 'open', '')),
+        launch,
         paths: parsePaths(read, read.section(raw, 'paths', '')),
     };
     return { config, issues: read.issues };
