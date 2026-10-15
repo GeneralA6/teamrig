@@ -182,13 +182,37 @@ export function newCursor(offset: number, size: number, day: string): Transcript
   return { offset, size, day, call: null, patterns: INITIAL_PATTERN_STATE };
 }
 
+/** Where a meter keeps each session's usage: its usage file, or memory for a recount that writes nothing. */
+export interface UsageStorage {
+  load(session: string): Promise<StoredUsage>;
+  /** Saves `state` as the revision after `baseRev`; false, saving nothing, when another writer saved since. */
+  save(session: string, state: UsageState, baseRev: number): Promise<boolean>;
+}
+
+/** Usage kept in memory, for a recount of a past day that must not move the usage files. */
+export class MemoryUsageStore implements UsageStorage {
+  private readonly stored = new Map<string, StoredUsage>();
+
+  async load(session: string): Promise<StoredUsage> {
+    return this.stored.get(session) ?? { rev: 0, state: EMPTY_USAGE };
+  }
+
+  async save(session: string, state: UsageState, baseRev: number): Promise<boolean> {
+    if ((this.stored.get(session)?.rev ?? 0) !== baseRev) {
+      return false;
+    }
+    this.stored.set(session, { rev: baseRev + 1, state });
+    return true;
+  }
+}
+
 /**
  * Each session's usage file, `<dir>/<session>.json`. Only the session's own hooks write it, but two of
  * them can run at once: each write replaces the whole file atomically and only when the file still has
  * the revision its writer read, so totals and read positions always change together. A writer that
  * lost writes nothing, and the next run counts its lines again from the positions that won.
  */
-export class UsageStore {
+export class UsageStore implements UsageStorage {
   private readonly files: Files;
   private readonly dir: string;
 
