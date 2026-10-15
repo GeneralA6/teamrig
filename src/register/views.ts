@@ -3,7 +3,7 @@ import type { RegisterEvent } from './events.ts';
 import { taskNumber, type Task } from './fold.ts';
 import { ACTIVE_STATUSES, priorityText, type TaskStatus } from './model.ts';
 import { waitsText, type WaitContext } from './waits.ts';
-import { proofOf } from './verify.ts';
+import { proofOf, proofText } from './verify.ts';
 
 export interface ListFilter {
   readonly owner?: string;
@@ -70,6 +70,26 @@ function rowHead(task: Task, team: string | undefined): string[] {
     parts.push(`after ${task.after.join(',')}`);
   }
   return parts;
+}
+
+/** How long a proof runs in the one-line verify queue before it is cut. */
+const SUMMARY_PROOF_CHARS = 60;
+
+/** `VERIFY 2: T1 (proof: ...), T3 (proof: ...)`: a verify queue in one line, each proof cut short; undefined when empty. */
+export function formatVerifySummary(queue: readonly Task[]): string | undefined {
+  const named = queue.map((task) => `${task.id} (proof: ${cut(proofText(task), SUMMARY_PROOF_CHARS)})`);
+  return queue.length === 0 ? undefined : `VERIFY ${queue.length}: ${named.join(', ')}`;
+}
+
+/** A row of `verify`: `T1 since 01-07 10:00, verify by 01-09 | <title> (proof: ...)`. */
+export function formatVerifyRow(task: Task): string {
+  const by = task.due === null ? 'no verify-by date' : `verify by ${shortUtc(task.due)}`;
+  return `${task.id} since ${shortUtc(formatUtcMinute(new Date(task.statusAt)))}, ${by} | ${task.title} (proof: ${proofText(task)})`;
+}
+
+/** The Stop hook's line once a verifying task's verify-by day has come. */
+export function formatVerifyByLine(task: Task): string {
+  return `VERIFY ${task.id} was to be verified by ${shortUtc(task.due ?? '')} (proof: ${proofText(task)}): done with the proof, or back to in-progress`;
 }
 
 /** `text` cut to `max` characters, counted in code points so a character is never split, ending in `…` when cut. */

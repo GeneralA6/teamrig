@@ -51,6 +51,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   show: { flags: ['session'], load: async () => (await registerCommands()).show },
   check: { flags: ['session', 'week'], switches: ['tree', 'all'], load: async () => (await registerCommands()).check },
   plan: { flags: ['session', 'week'], switches: ['tree'], load: async () => (await registerCommands()).plan },
+  verify: { flags: ['session'], load: async () => (await registerCommands()).verify },
   'inbox read': { flags: ['session'], load: async () => (await inboxCommands()).read },
   'inbox status': { flags: ['session'], load: async () => (await inboxCommands()).status },
   'inbox add': { flags: ['session', 'to', 'text'], load: async () => (await inboxCommands()).add },
@@ -129,6 +130,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       in a short form within 3,000 characters; --all: every flag in full
   plan [--week <date>] [--tree]    the week plan (default: the newest week that has started)
       --tree (the lead only): also every team under it, read-only, ids as <team>/T<n>
+  verify [--session <id|name>]   the session's verifying tasks, oldest first, each with its proof and
+      the date to verify by
   inbox read [--session <area>]     prints the unread lines and marks them read
   inbox status [--session <area>]   unread lines per area
   inbox add --to <id|name|team/id> --text "<one line>"

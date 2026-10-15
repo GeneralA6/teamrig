@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { testTask } from '../testing/task.ts';
-import { heldStart, heldStartNotice, proofOf, startHolds, verifyingNeeds } from './verify.ts';
+import { heldStart, heldStartNotice, proofOf, proofText, startHolds, verifyByArrived, verifyingNeeds, verifyQueue } from './verify.ts';
 
 describe('proofOf', () => {
   it('reads the proof a task was set verifying with', () => {
@@ -48,5 +48,36 @@ describe('verifyingNeeds and startHolds', () => {
     );
     assert.equal(heldStartNotice({ id: 'T4' }, shipped), 'T4 waits on your verifying T1: the nightly run');
     assert.equal(heldStartNotice({ id: 'T4' }, testTask({ status: 'verifying' })), 'T4 waits on your verifying T1: no proof named');
+  });
+});
+
+describe('verifyQueue, verifyByArrived and proofText', () => {
+  it("lists one session's verifying tasks, oldest first, then by id number", () => {
+    const tasks = [
+      testTask({ id: 'T10', status: 'verifying', statusAt: '2030-01-07T12:00:00.000Z' }),
+      testTask({ id: 'T9', status: 'verifying', statusAt: '2030-01-07T12:00:00.000Z' }),
+      testTask({ id: 'T3', status: 'verifying', statusAt: '2030-01-07T08:00:00.000Z' }),
+      testTask({ id: 'T4', status: 'verifying', owner: 'bravo' }),
+      testTask({ id: 'T5', status: 'in-progress' }),
+    ];
+    assert.deepEqual(
+      verifyQueue(tasks, 'alpha').map((task) => task.id),
+      ['T3', 'T9', 'T10'],
+    );
+    assert.deepEqual(verifyQueue(tasks, 'lead'), []);
+  });
+
+  it('comes due at the start of the verify-by day, in UTC', () => {
+    const now = new Date('2030-01-09T00:00:00.000Z');
+    assert.equal(verifyByArrived({ due: '2030-01-09 18:00' }, now), true);
+    assert.equal(verifyByArrived({ due: '2030-01-08' }, now), true);
+    assert.equal(verifyByArrived({ due: '2030-01-10' }, now), false);
+    assert.equal(verifyByArrived({ due: null }, now), false);
+    assert.equal(verifyByArrived({ due: 'soon' }, now), false, 'a date the register never wrote counts as none');
+  });
+
+  it('names a missing proof', () => {
+    assert.equal(proofText({ proof: 'the nightly run', note: null }), 'the nightly run');
+    assert.equal(proofText({ proof: null, note: null }), 'no proof named');
   });
 });
