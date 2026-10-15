@@ -1,37 +1,14 @@
 import { join } from 'node:path';
 import type { Files } from '../core/files.ts';
-import { errorMessage, isRecord, type JsonRecord } from '../core/guards.ts';
+import type { JsonRecord } from '../core/guards.ts';
 import type { Clock } from '../core/lock.ts';
 import { formatUtcMinute } from '../core/time.ts';
-import { CONFIG_MIGRATIONS, migrateConfig, type ConfigMigration } from './migrate.ts';
-import { parseConfig } from './parse.ts';
-import type { ConfigIssue } from './reader.ts';
-import { CONFIG_VERSION, type KitConfig } from './types.ts';
+import { CONFIG_MIGRATIONS, type ConfigMigration } from './migrate.ts';
+import { parseConfigText, type ConfigRead, type PendingMigration } from './text.ts';
+import { CONFIG_VERSION } from './types.ts';
 
-export interface PendingMigration {
-  readonly fromVersion: number;
-  /** The version `migrated` is in. */
-  readonly toVersion: number;
-  readonly changes: readonly string[];
-  /** The migrated object, unknown keys included, ready to be written by `config migrate`. */
-  readonly migrated: JsonRecord;
-}
-
-export type ConfigLoad =
-  | { readonly status: 'missing'; readonly path: string }
-  /** Not JSON, not an object, or an unusable `configVersion`: nothing can be read. */
-  | { readonly status: 'unreadable'; readonly path: string; readonly issue: ConfigIssue }
-  | {
-      readonly status: 'loaded';
-      readonly path: string;
-      readonly config: KitConfig;
-      /** Problems that block gated commands; read-only commands still run on the defaults. */
-      readonly issues: readonly ConfigIssue[];
-      /** Set when a newer release wrote the file: read it best-effort and refuse every write. */
-      readonly newerVersion?: number;
-      /** Set when the file is older than this code; it has been migrated in memory only. */
-      readonly pending?: PendingMigration;
-    };
+/** What reading the config file gave: `missing`, or its parse (`parseConfigText`) with the path it was read from. */
+export type ConfigLoad = { readonly status: 'missing'; readonly path: string } | (ConfigRead & { readonly path: string });
 
 /** Reads, migrates in memory and validates the config file. Never writes. */
 export async function loadConfig(
@@ -44,33 +21,7 @@ export async function loadConfig(
   if (text === undefined) {
     return { status: 'missing', path };
   }
-  let raw: unknown;
-  try {
-    raw = JSON.parse(text);
-  } catch (error) {
-    return { status: 'unreadable', path, issue: { path: '', message: `not valid JSON: ${errorMessage(error)}` } };
-  }
-  if (!isRecord(raw)) {
-    return { status: 'unreadable', path, issue: { path: '', message: 'expected a JSON object at the top level' } };
-  }
-  const migration = migrateConfig(raw, target, migrations);
-  switch (migration.kind) {
-    case 'invalid':
-      return { status: 'unreadable', path, issue: { path: 'configVersion', message: migration.message } };
-    case 'newer': {
-      const { config, issues } = parseConfig(raw);
-      return { status: 'loaded', path, config, issues, newerVersion: migration.version };
-    }
-    case 'current': {
-      const { config, issues } = parseConfig(migration.config);
-      return { status: 'loaded', path, config, issues };
-    }
-    case 'migrated': {
-      const { config, issues } = parseConfig(migration.config);
-      const pending = { fromVersion: migration.fromVersion, toVersion: migration.version, changes: migration.changes, migrated: migration.config };
-      return { status: 'loaded', path, config, issues, pending };
-    }
-  }
+  return { ...parseConfigText(text, migrations, target), path };
 }
 
 /**
