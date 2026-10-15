@@ -72,6 +72,10 @@ export interface TeamPaths {
   readonly handover: string;
   /** The model notices each session's Stop hook already showed, `<id>.json` each. */
   readonly modelNotices: string;
+  /** Each session's metered use, `<id>.json` each, and `outside/` for use outside the team. */
+  readonly usage: string;
+  /** The lead's budget lifts, an append-only log. */
+  readonly lifts: string;
 }
 
 /** The team's folder. The id is checked here too, since it becomes part of a path. */
@@ -107,5 +111,7 @@ export function teamPaths(kitHome: string, team: string, userHome: string, overr
     refresh: join(state, 'refresh'),
     handover: inHome(overrides.handover) ?? join(home, 'handover'),
     modelNotices: join(state, 'model-notices'),
+    usage: join(state, 'usage'),
+    lifts: join(state, 'usage', 'lifts.jsonl'),
   };
 }
