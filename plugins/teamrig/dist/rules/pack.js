@@ -1,5 +1,8 @@
-/** The rendered core pack fits in this many characters with worst-case config values (a CI test holds it). */
-export const CORE_PACK_MAX_CHARS = 6_000;
+/**
+ * The rendered core pack fits in this many characters with worst-case config values (a CI test holds it).
+ * With a team rules file at TEAM_RULES_MAX_CHARS beside it, the two still fit CONTEXT_MAX_CHARS.
+ */
+export const CORE_PACK_MAX_CHARS = 6_400;
 /** The team's own rules file is shown in full only up to this size; a longer one gets a pointer. */
 export const TEAM_RULES_MAX_CHARS = 3_500;
 /** Claude Code caps a SessionStart hook's `additionalContext` at this size. */
@@ -39,6 +42,8 @@ export function renderCorePack(config, command) {
             ` No acks, thanks or progress pings. Anything non-urgent is one inbox line: \`${command} inbox add --to <area> --text "..."\`.`,
         `Status is pulled, never asked: each session keeps one board and writes only its own. At the start of each work block run \`${command} inbox read --session <you>\`.` +
             ` Every ask that creates work is a register entry the asker adds in the same turn (\`${command} add --owner <session>\`); ${statusDemands(config, command)}`,
+        `Work your own task list in priority order (\`${command} list --session <you>\`); self-made work is a task too, recorded with \`${command} add\` before you start it.` +
+            ' When you notice you are looping (the same step again, no progress) or drifting from your task, stop and ask the lead.',
         `Silence is consent only within the sender's own authority, never for owner-gated decisions: ${list(config.ownerGates)} [ownerGates].`,
         'Deploy ASAP means the earliest moment a change can be verified (tests, then a check that it runs). State each fix\'s evidence and when it will exist; build nothing on a fix before then.' +
             (cutoff === undefined ? '' : ` No heavy step (builds, test runs, data scripts) starts after ${cutoff} UTC [coordinator.schedule.heavyCutoffUtc].`),
