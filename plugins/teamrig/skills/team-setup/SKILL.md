@@ -77,9 +77,10 @@ teamrig budget setup --session lead --daily pace --over ask-lead --quiet <HH:MM-
 ```
 
 After a yes, run the same line with `--yes`. A `NOTE no status line reading yet` line means the hooks cannot see the
-week's use: tell the user to make `teamrig statusline` Claude Code's status line (the guide's
-[requirements](../teamrig-guide/requirements.md#the-status-line-optional)). If the user skips this step, say they
-can ask you to turn it on later.
+week's use: offer to run `teamrig statusline install`, which keeps a status line they already have (the guide's
+[requirements](../teamrig-guide/requirements.md#the-status-line-optional)). Show its preview, and after a yes run
+it with `--yes`; when Claude may not change its own settings, the user types `! teamrig statusline install --yes`.
+If the user skips this step, say they can ask you to turn it on later.
 
 ## 6. Tell the user, in three short lines
 

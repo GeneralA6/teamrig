@@ -88,7 +88,7 @@ Today, `teamrig budget` shows each member's use against the week's pace line and
 Claude Code's own records, so you see who runs ahead of plan. Your lead turns it on when the team starts, asking you how to pace the days
 and what happens past the line (`teamrig budget setup`). A member past its share of the day is told, so is your lead, and its new
 helpers can ask you first. The week's use comes from Claude Code's status line:
-use `teamrig statusline`, or keep your own and have it write the
+`teamrig statusline install` sets it up and keeps one you already have, or have yours write the
 [same snapshot](plugins/teamrig/skills/teamrig-guide/commands.md#teamrig-statusline).
 
 *Coming: planning the week to your token limit, and holding deploys before the reset.*

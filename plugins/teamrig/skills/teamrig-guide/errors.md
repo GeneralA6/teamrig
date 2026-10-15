@@ -95,10 +95,22 @@ From `teamrig budget lift` ([commands.md](commands.md#teamrig-budget-lift)) and 
 | `REFUSED --stop-pct 99.5 is above budget.lift.maxStopPct (99.3); only the reserve release (--reserve, in the last hour before the reset) goes up to 99.9` | Use a stop % up to 99.3, or `--reserve` in the last hour before the reset. |
 | `REFUSED --stop-pct 100 is above budget.lift.reserveStopPct (99.9), the most any lift may reach` | Use a stop % up to 99.9. |
 | `REFUSED --reserve releases the reserve only in the last hour before the reset, from <time> UTC` | Wait until that time, or lift without `--reserve`. |
-| `REFUSED --reserve needs the week's reset: no status line snapshot gives it and budget.reset is not set` | Use `teamrig statusline` as the status line, or set `budget.reset`. |
-| `REFUSED the week's use is unknown, so the stop % cannot be judged: ...` | Use `teamrig statusline` as the status line ([requirements.md](requirements.md#the-status-line-optional)), or set `budget.weeklyLimitW`. |
+| `REFUSED --reserve needs the week's reset: no status line snapshot gives it and budget.reset is not set` | Run `teamrig statusline install`, or set `budget.reset`. |
+| `REFUSED the week's use is unknown, so the stop % cannot be judged: ...` | Run `teamrig statusline install` ([requirements.md](requirements.md#the-status-line-optional)), or set `budget.weeklyLimitW`. |
 | `REFUSED the week is at 97.2%, already at or past --stop-pct 97` | The week is past that stop %: pick a higher one within the bounds, or no lift. |
 | `REFUSED --until <time> UTC has passed` | Give a later `--until`. |
+
+## Status line
+
+From `teamrig statusline install` and `uninstall` ([commands.md](commands.md#teamrig-statusline-install)).
+
+| Output | Fix |
+| --- | --- |
+| `REFUSED <settings> is not valid JSON (...); nothing written` | Fix the file at the place the message names, then run it again. |
+| `REFUSED <settings> is not a JSON object; nothing written` | Claude Code's settings must be one JSON object: fix the file. |
+| `REFUSED statusLine has no command string, so nothing can be added in front of it` | Give `statusLine` a `command`, or remove it. |
+| `REFUSED the status line already there is a shell line with "&&", which the pipe in front would split: ...` | Put that line in a script, make the script the status line, and run install again. |
+| `REFUSED the status line starts with the launcher but was changed by hand: ...` | Edit `statusLine.command` in the settings yourself. |
 
 ## Usage errors (exit 64)
 
