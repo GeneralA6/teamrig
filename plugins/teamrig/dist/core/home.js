@@ -16,6 +16,8 @@ export const ENV = {
     claudeSession: 'CLAUDE_CODE_SESSION_ID',
     /** The folder Claude Code started the session in; hooks and tool commands inherit it. */
     claudeProjectDir: 'CLAUDE_PROJECT_DIR',
+    /** Moves Claude Code's own folder (settings, plugins, transcripts) away from `~/.claude`. */
+    claudeConfigDir: 'CLAUDE_CONFIG_DIR',
 };
 /**
  * The kit home is the machine root: each team keeps its config, rules and state in its own folder
@@ -25,6 +27,11 @@ export const ENV = {
 export function resolveKitHome(env, userHome) {
     const fromEnv = env[ENV.home]?.trim();
     return fromEnv ? fromEnv : join(userHome, `.${KIT_NAME}`);
+}
+/** Claude Code's own folder: `$CLAUDE_CONFIG_DIR`, else `~/.claude`. */
+export function claudeConfigDir(env, userHome) {
+    const fromEnv = env[ENV.claudeConfigDir]?.trim();
+    return fromEnv ? fromEnv : join(userHome, '.claude');
 }
 /** The team's folder. The id is checked here too, since it becomes part of a path. */
 export function teamHome(kitHome, team) {

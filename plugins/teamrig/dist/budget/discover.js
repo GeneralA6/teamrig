@@ -1,6 +1,7 @@
 import { readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { errorCode } from "../core/guards.js";
+import { claudeConfigDir } from "../core/home.js";
 import { CLAUDE_SESSION_ID } from "../inbox/marks.js";
 import { nodeTranscriptBytes } from "./cursor.js";
 /** The real filesystem. An entry removed while it is listed is left out. */
@@ -46,8 +47,7 @@ export const nodeTranscriptFolders = {
 export const nodeTranscriptSource = { ...nodeTranscriptBytes, ...nodeTranscriptFolders };
 /** Claude Code's folder of project transcripts: `$CLAUDE_CONFIG_DIR/projects`, else `~/.claude/projects`. */
 export function claudeProjectsDir(env, userHome) {
-    const configDir = env['CLAUDE_CONFIG_DIR']?.trim();
-    return join(configDir ? configDir : join(userHome, '.claude'), 'projects');
+    return join(claudeConfigDir(env, userHome), 'projects');
 }
 const TRANSCRIPT = '.jsonl';
 const SUBAGENTS = 'subagents';

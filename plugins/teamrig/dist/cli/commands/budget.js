@@ -207,16 +207,20 @@ async function statusSnapshotDir(runtime, cwd) {
 /**
  * `statusline`: Claude Code's status line. It saves the status input's reading (the plan's use of the
  * week and its reset) as a snapshot for `budget`, and prints a short status. It always exits 0, so a
- * bad input or a full disk never breaks the status bar; what went wrong goes to stderr.
+ * bad input or a full disk never breaks the status bar; what went wrong goes to stderr. With --pass it
+ * prints the status input again instead of its own status, for the status line after it in a pipe
+ * (`statusline install` puts it in front of one already there).
  */
 export async function statusline(args, runtime) {
     const [extra] = args.positionals;
     if (extra !== undefined) {
         throw new UsageError(`unexpected "${extra}"`);
     }
-    const snapshot = snapshotOfStatus(await runtime.readStdin(), runtime.clock.now());
+    const input = await runtime.readStdin();
+    const shown = (own) => (args.switches.has('pass') ? input.replace(/\r?\n$/, '') : own);
+    const snapshot = snapshotOfStatus(input, runtime.clock.now());
     if (snapshot === undefined) {
-        runtime.out.stdout('Claude');
+        runtime.out.stdout(shown('Claude'));
         runtime.out.stderr('teamrig statusline: the status input is not Claude Code status JSON with a session id; nothing saved');
         return EXIT.ok;
     }
@@ -227,6 +231,6 @@ export async function statusline(args, runtime) {
     catch (error) {
         runtime.out.stderr(`teamrig statusline: the snapshot was not saved: ${errorMessage(error)}`);
     }
-    runtime.out.stdout(statusLineText(snapshot));
+    runtime.out.stdout(shown(statusLineText(snapshot)));
     return EXIT.ok;
 }
