@@ -4,6 +4,7 @@ import type {
   CommitsConfig,
   LaunchConfig,
   LockConfig,
+  LoopsConfig,
   OpenConfig,
   PushGuardConfig,
   RefreshConfig,
@@ -85,6 +86,8 @@ export const DEFAULT_BUDGET: BudgetConfig = {
 export const DEFAULT_SESSION_SHARE = 1;
 
 export const DEFAULT_ALERTS: AlertsConfig = { persistentFailureHours: 24 };
+
+export const DEFAULT_LOOPS: LoopsConfig = { chainNudgeAt: 6 };
 
 /** 250k suits a 1M-token window; on a 200k window Claude Code compacts first, so a team there sets about 150k. */
 export const DEFAULT_REFRESH: RefreshConfig = { enabled: true, contextTokens: 250_000, tabTitle: true };

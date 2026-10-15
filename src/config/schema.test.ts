@@ -76,6 +76,7 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   forbidFrontmatter: 'skills.forbidFrontmatter',
   requireNoteOn: 'register.requireNoteOn',
   persistentFailureHours: 'alerts.persistentFailureHours',
+  chainNudgeAt: 'loops.chainNudgeAt',
   budgetTargetPct: 'budget.targetPct',
   budgetReservePct: 'budget.reservePct',
   weeklyLimitW: 'budget.weeklyLimitW',

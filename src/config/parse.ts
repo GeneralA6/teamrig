@@ -6,6 +6,7 @@ import {
   DEFAULT_BUDGET,
   DEFAULT_COMMITS,
   DEFAULT_LOCK,
+  DEFAULT_LOOPS,
   DEFAULT_MESSAGES,
   DEFAULT_OPEN,
   DEFAULT_OWNER_GATES,
@@ -221,6 +222,9 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
       schedule: heavyCutoffUtc === undefined ? {} : { heavyCutoffUtc },
     },
     budget: parseBudget(read, read.section(raw, 'budget', ''), sessions),
+    loops: {
+      chainNudgeAt: read.integer(read.section(raw, 'loops', ''), 'chainNudgeAt', 'loops', DEFAULT_LOOPS.chainNudgeAt, CONFIG_LIMITS.chainNudgeAt),
+    },
     alerts: {
       persistentFailureHours: read.integer(alerts, 'persistentFailureHours', 'alerts', DEFAULT_ALERTS.persistentFailureHours, CONFIG_LIMITS.persistentFailureHours),
     },
