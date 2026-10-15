@@ -14,7 +14,10 @@ export interface EventLogRead {
   readonly seenIds: readonly string[];
   /** Damaged lines and events this code should understand but cannot: counted, never fatal. */
   readonly unreadable: number;
-  /** Lines in a newer format: skipped on read, and they block every write. */
+  /**
+   * Lines from a newer teamrig, in a newer format or naming a status this code does not know: skipped on
+   * read. A newer format blocks every write; any newer line blocks a rotation.
+   */
   readonly newer: number;
   readonly newestVersion: number;
   /**

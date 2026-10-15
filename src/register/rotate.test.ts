@@ -181,6 +181,15 @@ describe('planRotation and applyRotation', () => {
     assert.deepEqual(plan.problems, ['the register has lines from a newer teamrig (v9): update teamrig before rotating it']);
   });
 
+  it('refuse a log with a status from a newer teamrig, which the new snapshot would drop, and write nothing', async () => {
+    const files = new MemoryFiles({ [LOG]: TEXT + status('T2', 4, 'paused') });
+    const before = contents(files);
+    const plan = await planRotation(files, PATHS, options(4));
+    assert.deepEqual(plan.problems, ['the register has 1 line(s) from a newer teamrig: update teamrig before rotating it']);
+    await assert.rejects(applyRotation(files, PATHS, plan), RotationRefusedError);
+    assert.deepEqual(contents(files), before);
+  });
+
   it('name each way a working set differs from the whole history', async () => {
     const header = { covered: 1, events: 1, nextId: 'T2', orphans: 0, unreadable: 0, newer: 0, newestVersion: EVENT_VERSION, retired: 0, retiredLastWeek: null, at: at(4) };
     const files = new MemoryFiles({

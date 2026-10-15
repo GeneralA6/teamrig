@@ -51,6 +51,11 @@ describe('parseEvent', () => {
     assert.deepEqual(parse({ nothing: 'here' }, 3), { kind: 'newer' });
   });
 
+  it('reads a well-spelled status it does not know as from a newer teamrig, so its task keeps its last status', () => {
+    assert.deepEqual(parse({ ...BASE, type: 'status', status: 'paused' }, 2), { kind: 'newer' });
+    assert.deepEqual(parse({ ...BASE, type: 'status', status: 'on-hold-later' }, 2), { kind: 'newer' });
+  });
+
   it('rejects malformed lines with a reason', () => {
     const cases: [JsonRecord, RegExp][] = [
       [{ ...BASE, id: 'T0', type: 'create', task: TASK }, /bad task id/],
@@ -62,7 +67,8 @@ describe('parseEvent', () => {
       [{ ...BASE, type: 'create', task: { ...TASK, week: 'next' } }, /bad week/],
       [{ ...BASE, type: 'create', task: { ...TASK, goals: [1] } }, /goals is not a list of text/],
       [{ ...BASE, type: 'create', task: { ...TASK, title: '' } }, /title is not text/],
-      [{ ...BASE, type: 'status', status: 'paused' }, /unknown status/],
+      [{ ...BASE, type: 'status', status: 4 }, /unknown status 4/],
+      [{ ...BASE, type: 'status', status: 'Paused!' }, /unknown status "Paused!"/],
       [{ ...BASE, type: 'status', status: 'done', note: 5 }, /note is not text/],
       [{ ...BASE, type: 'update', changes: [] }, /changes is not an object/],
       [{ ...BASE, type: 'update', changes: {}, note: false }, /note is not text/],
