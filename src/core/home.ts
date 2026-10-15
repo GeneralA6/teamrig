@@ -18,6 +18,8 @@ export const ENV = {
   claudeSession: 'CLAUDE_CODE_SESSION_ID',
   /** The folder Claude Code started the session in; hooks and tool commands inherit it. */
   claudeProjectDir: 'CLAUDE_PROJECT_DIR',
+  /** Moves Claude Code's own folder (settings, plugins, transcripts) away from `~/.claude`. */
+  claudeConfigDir: 'CLAUDE_CONFIG_DIR',
 } as const;
 
 export type Env = Readonly<Record<string, string | undefined>>;
@@ -30,6 +32,12 @@ export type Env = Readonly<Record<string, string | undefined>>;
 export function resolveKitHome(env: Env, userHome: string): string {
   const fromEnv = env[ENV.home]?.trim();
   return fromEnv ? fromEnv : join(userHome, `.${KIT_NAME}`);
+}
+
+/** Claude Code's own folder: `$CLAUDE_CONFIG_DIR`, else `~/.claude`. */
+export function claudeConfigDir(env: Env, userHome: string): string {
+  const fromEnv = env[ENV.claudeConfigDir]?.trim();
+  return fromEnv ? fromEnv : join(userHome, '.claude');
 }
 
 /**
