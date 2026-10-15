@@ -57,6 +57,7 @@ export const DEFAULT_BUDGET = {
     paceTolerancePct: 0.5,
     overAction: 'warn',
     escalate: 'session-and-fleet',
+    lift: { maxStopPct: 99.3, reserveStopPct: 99.9 },
     maxBytesPerHook: 4_000_000,
 };
 /** The share of a session the budget's `sessions` map leaves out, or lists without one. */

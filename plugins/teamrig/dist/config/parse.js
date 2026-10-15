@@ -187,6 +187,7 @@ function parseBudget(read, raw, sessions) {
         overAction: isOverAction(overAction) ? overAction : defaults.overAction,
         escalate: isEscalation(escalate) ? escalate : defaults.escalate,
         ...(quietHours === undefined ? {} : { quietHours }),
+        lift: parseBudgetLift(read, read.section(raw, 'lift', path)),
         ...(statusSnapshotDir === undefined ? {} : { statusSnapshotDir }),
         maxBytesPerHook: read.integer(raw, 'maxBytesPerHook', path, defaults.maxBytesPerHook, CONFIG_LIMITS.maxBytesPerHook),
     };
@@ -226,6 +227,18 @@ function parseQuietHours(read, raw) {
         return undefined;
     }
     return { startUtc, endUtc, action };
+}
+/** `budget.lift`: the highest stop % of a lift, and of the reserve release; the reserve bound is never below the other. */
+function parseBudgetLift(read, raw) {
+    const path = 'budget.lift';
+    const defaults = DEFAULT_BUDGET.lift;
+    const maxStopPct = read.number(raw, 'maxStopPct', path, defaults.maxStopPct, CONFIG_LIMITS.liftMaxStopPct);
+    const reserveStopPct = read.number(raw, 'reserveStopPct', path, defaults.reserveStopPct, CONFIG_LIMITS.liftReserveStopPct);
+    if (reserveStopPct < maxStopPct) {
+        read.report(`${path}.reserveStopPct`, `is below maxStopPct (${reserveStopPct} < ${maxStopPct})`);
+        return { maxStopPct, reserveStopPct: maxStopPct };
+    }
+    return { maxStopPct, reserveStopPct };
 }
 /** `budget.sessions`: a share and an optional fixed daily % for sessions on the team. */
 function parseSessionBudgets(read, raw, sessions) {

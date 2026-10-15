@@ -121,6 +121,20 @@ export function pruneUsage(state, now) {
 export function newCursor(offset, size, day) {
     return { offset, size, day, call: null, patterns: INITIAL_PATTERN_STATE };
 }
+/** Usage kept in memory, for a recount of a past day that must not move the usage files. */
+export class MemoryUsageStore {
+    stored = new Map();
+    async load(session) {
+        return this.stored.get(session) ?? { rev: 0, state: EMPTY_USAGE };
+    }
+    async save(session, state, baseRev) {
+        if ((this.stored.get(session)?.rev ?? 0) !== baseRev) {
+            return false;
+        }
+        this.stored.set(session, { rev: baseRev + 1, state });
+        return true;
+    }
+}
 /**
  * Each session's usage file, `<dir>/<session>.json`. Only the session's own hooks write it, but two of
  * them can run at once: each write replaces the whole file atomically and only when the file still has
