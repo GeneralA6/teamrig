@@ -188,6 +188,7 @@ function parseGithub(read, raw, sessions) {
         owners: readGithubOwners(read, read.section(raw, 'owners', 'github'), sessions),
         sessions: readGithubSessions(read, read.section(raw, 'sessions', 'github'), repos, sessions),
         closedDays: read.integer(raw, 'closedDays', 'github', DEFAULT_GITHUB.closedDays, CONFIG_LIMITS.closedDays),
+        everyMinutes: read.integer(raw, 'everyMinutes', 'github', DEFAULT_GITHUB.everyMinutes, CONFIG_LIMITS.githubEveryMinutes),
     };
 }
 /**

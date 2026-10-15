@@ -72,5 +72,7 @@ export function teamPaths(kitHome, team, userHome, overrides = {}) {
         lifts: join(state, 'usage', 'lifts.jsonl'),
         warn: join(state, 'usage', 'warn'),
         logs: join(state, 'logs'),
+        githubSync: join(state, 'github-sync.json'),
+        githubSyncLock: join(state, 'github-sync.lock'),
     };
 }

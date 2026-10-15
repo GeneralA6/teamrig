@@ -27,6 +27,7 @@ import { EXIT } from "../runtime.js";
 import { loadTree } from "../tree.js";
 import { bindHintOnce, bindTab, inboxLinesFor, readTitle } from "./hook-bind.js";
 import { helperGateOutput, promptBudgetLine, stopBudgetLines } from "./hook-budget.js";
+import { startAutoSync } from "./gh-auto.js";
 import { coldSendHold } from "./hook-cold-send.js";
 import { parseJson, sessionTeam } from "./hook-input.js";
 import { inboxDepsOf } from "./inbox.js";
@@ -397,6 +398,7 @@ async function stopOutputOf(runtime, payload) {
     const notices = await modelNoticesOf(runtime, scope, payload).catch(() => []);
     const budget = await stopBudgetLines(runtime, scope, stringField(payload, 'transcript_path')).catch(() => []);
     const verify = await verifyByLinesOf(runtime, scope.kit.paths, scope.id).catch(() => []);
+    await startAutoSync(runtime, scope.kit, scope.config).catch(() => undefined);
     return stopOutput(decision, [...notices, ...budget, ...verify]);
 }
 /**
@@ -404,7 +406,8 @@ async function stopOutputOf(runtime, payload) {
  * handover once when its context reached the team's threshold or the lead asked, then tells the user
  * once that it waits for /clear. It also tells the user, once each, when the session runs at another
  * effort than its `launch` entry or Claude Code switched its model after a safeguard stop, and once a
- * day when the date to verify one of its verifying tasks by has come. A turn with nothing to say reads
+ * day when the date to verify one of its verifying tasks by has come. Once per `github.everyMinutes` for the whole
+ * team it starts `gh sync --auto` hidden in the background (gh-auto.ts). A turn with nothing to say reads
  * only small files and the transcript's tail (and, at the first stop of a UTC day, the register log),
  * and prints nothing. It never blocks on an error, and ignores input that is not a hook payload (which
  * would judge a boundary without its transcript): a refresh is a convenience, and the next stop tries again.

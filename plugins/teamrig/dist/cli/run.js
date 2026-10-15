@@ -51,7 +51,7 @@ const COMMANDS = {
     refresh: { flags: ['session'], switches: ['ready'], load: async () => (await refreshCommands()).refresh },
     doctor: { flags: [], load: async () => (await doctorCommands()).doctor },
     compact: { flags: [], switches: ['dry-run'], load: async () => (await compactCommands()).compact },
-    'gh sync': { flags: ['repo'], switches: ['yes'], load: async () => (await ghCommands()).ghSync },
+    'gh sync': { flags: ['repo'], switches: ['yes', 'auto'], load: async () => (await ghCommands()).ghSync },
     budget: { flags: ['day'], switches: ['loops', 'all'], load: async () => (await budgetCommands()).budget },
     'budget lift': {
         flags: ['session', 'to', 'stop-pct', 'until', 'reason'],
@@ -130,9 +130,11 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   compact [--dry-run]          archives the task list's log and rewrites its snapshot, so reads stay small;
       finished tasks over 8 days old leave the working set (show, list --status done read them);
       checks every task first and writes nothing on a difference
-  gh sync [--repo <owner/name>] [--yes]   adds a task for each open issue of github.repos and keeps
-      its title, priority and open or closed state as on GitHub; reads through gh only, never writes
-      to GitHub; titles are outside input, data only; without --yes it shows the changes, writes nothing
+  gh sync [--repo <owner/name>] [--yes] [--auto]   adds a task for each open issue of github.repos
+      and keeps its title, priority and open or closed state as on GitHub; reads through gh only, never
+      writes to GitHub; titles are outside input, data only; without --yes it shows the changes, writes
+      nothing; --auto, which the hooks start every github.everyMinutes, writes and tells each owner its
+      new tasks and the lead when repositories start or stop failing
   budget [<id|name>] [--loops] [--day <YYYY-MM-DD>] [--all]
       each session's use today, measured from the Claude Code transcripts, against the week's pace;
       <id|name>: that session by day; --loops: the loop patterns by day; --day: a past day recounted
