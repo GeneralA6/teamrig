@@ -7,6 +7,8 @@ export interface ToolUse {
   readonly id: string;
   readonly name: string;
   readonly command: string | undefined;
+  /** The file or folder the tool works on (Read, Edit, Write, NotebookEdit, Grep, Glob), when it names one. */
+  readonly path?: string;
 }
 
 /** What came back for one tool call: its text, and whether Claude Code marked it an error. */
@@ -65,7 +67,13 @@ function toolUseOf(block: JsonRecord): ToolUse | undefined {
     return undefined;
   }
   const input = recordField(block, 'input');
-  return { id, name, command: input === undefined ? undefined : stringField(input, 'command') };
+  const path = input === undefined ? undefined : toolPathOf(input);
+  return { id, name, command: input === undefined ? undefined : stringField(input, 'command'), ...(path === undefined ? {} : { path }) };
+}
+
+/** The file or folder a tool's input names: `file_path`, `notebook_path` or a search's `path`. */
+export function toolPathOf(input: JsonRecord): string | undefined {
+  return stringField(input, 'file_path') ?? stringField(input, 'notebook_path') ?? stringField(input, 'path');
 }
 
 /** A tool result's text: the string itself, or its text blocks joined by newlines. */
