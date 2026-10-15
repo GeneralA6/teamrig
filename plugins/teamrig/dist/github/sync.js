@@ -10,12 +10,12 @@ export function closedSince(now, closedDays) {
  * Reads a repository's open issues, then those closed on or after `since`: two `gh issue list` reads and
  * nothing else. When either fails the repository is left out whole, so its tasks are not judged on half a read.
  */
-export async function readRepo(gh, env, repo, since) {
-    const open = await listIssues(gh, env, { repo, state: 'open', limit: ISSUE_LIMIT });
+export async function readRepo(gh, access, repo, since) {
+    const open = await listIssues(gh, access, { repo, state: 'open', limit: ISSUE_LIMIT });
     if (open.kind === 'failed') {
         return { kind: 'failed', repo, reason: open.reason };
     }
-    const closed = await listIssues(gh, env, { repo, state: 'closed', closedSince: since, limit: ISSUE_LIMIT });
+    const closed = await listIssues(gh, access, { repo, state: 'closed', closedSince: since, limit: ISSUE_LIMIT });
     if (closed.kind === 'failed') {
         return { kind: 'failed', repo, reason: closed.reason };
     }

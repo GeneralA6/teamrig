@@ -70,7 +70,7 @@ export const DEFAULT_LOOPS = { chainNudgeAt: 6 };
 /** About a screenful: two or three failing tests with their errors and first stack frames. */
 export const DEFAULT_TESTS = { maxFailureChars: 4000 };
 /** Off until a team lists a repository; two weeks of closed issues covers a sync missed over a holiday. */
-export const DEFAULT_GITHUB = { repos: [], owners: {}, closedDays: 14 };
+export const DEFAULT_GITHUB = { repos: [], owners: {}, sessions: {}, closedDays: 14 };
 /**
  * Claude Code compacts a 200k window at about 167k, so 120k refreshes before that; every 3 tasks catches a
  * session that grows slowly, from 80k up. Measured over 8 days of 12 sessions: about 9 refreshes a day in all.

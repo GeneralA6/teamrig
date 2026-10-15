@@ -2,6 +2,7 @@ import { ENV, KIT_NAME } from "../../core/home.js";
 import { importRules } from "../../github/map.js";
 import { importedTasks, planSync } from "../../github/plan.js";
 import { applySteps, closedSince, readRepo } from "../../github/sync.js";
+import { RepoTokens } from "../../github/tokens.js";
 import { priorityText } from "../../register/model.js";
 import { GITHUB_ACTOR } from "../../register/policy.js";
 import { noPositionals } from "../args.js";
@@ -14,7 +15,9 @@ export const SHOWN_STEPS = 10;
 const OFF = 'off';
 /**
  * `gh sync [--repo <owner/name>] [--yes]`: brings the task list in step with the GitHub issues of the team's
- * `github.repos`, inbound only. gh only ever lists issues (github/gh.ts refuses any other command), and the
+ * `github.repos`, inbound only. Each owner's repositories are read with the read-only token saved for it
+ * (github/tokens.ts), else the gh login, and an ACCESS line says which. gh only ever lists issues
+ * (github/gh.ts refuses any other command), and the
  * register's import writes (register.ts) touch only the tasks it added, as `github`. Without `--yes` it
  * shows what it would write and writes nothing. Exit 1 when a repository could not be read (its tasks stay
  * as they are), 2 when the register refused a step, else 0.
@@ -36,10 +39,17 @@ export async function ghSync(args, runtime) {
     const register = teamRegister(runtime, kit.paths, config);
     const rules = importRules(config);
     const since = closedSince(new Date(runtime.clock.now()), config.github.closedDays);
+    const tokens = new RepoTokens(runtime.credentials, runtime.env);
+    const told = new Set();
     const ends = [];
     let written = 0;
     for (const repo of reposOf(config.github.repos, args.flags.get('repo'))) {
-        const read = await readRepo(runtime.gh, runtime.env, repo, since);
+        const { access, note } = await tokens.accessFor(repo);
+        if (!told.has(access.owner)) {
+            told.add(access.owner);
+            say(accessLine(access, note));
+        }
+        const read = await readRepo(runtime.gh, access, repo, since);
         if (read.kind === 'failed') {
             say(`FAILED ${repo}: ${read.reason}; its tasks stay as they are`);
             ends.push('failed');
@@ -72,6 +82,12 @@ function reposOf(repos, asked) {
         throw new RefusedError(`--repo ${asked} is not one of github.repos (${repos.join(', ')})`);
     }
     return [repo];
+}
+/** How an owner's repositories are read, said once per owner: a token by the name it is saved under, or the gh login and why. */
+export function accessLine(access, note) {
+    return access.via === 'token'
+        ? `ACCESS ${access.owner}: read with the token saved as ${access.credential}`
+        : `ACCESS ${access.owner}: read with the gh login; ${note ?? `no token saved as ${access.credential}`}`;
 }
 function previewLines(repo, plan) {
     return [

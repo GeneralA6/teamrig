@@ -5,6 +5,7 @@ import { nodeTranscriptSource } from "../budget/discover.js";
 import { nodeFiles } from "../core/files.js";
 import { realSleep, systemClock } from "../core/lock.js";
 import { NODE_PATH_PROBE } from "../core/path-probe.js";
+import { nodeProgramRunner, systemCredentials } from "../github/credentials.js";
 import { nodeGhRunner } from "../github/gh.js";
 import { nodeProcesses } from "../open/processes.js";
 import { GIT_CLI, GIT_COMMIT_LOG } from "../push-guard/git.js";
@@ -30,6 +31,7 @@ process.exitCode = await runCli(process.argv.slice(2), {
     processes: nodeProcesses(),
     shell: nodeShellRunner(),
     gh: nodeGhRunner(),
+    credentials: systemCredentials(process.platform, nodeProgramRunner()),
     probe: NODE_PATH_PROBE,
     transcripts: nodeTranscriptSource,
     self: { node: process.execPath, script: fileURLToPath(import.meta.url) },
