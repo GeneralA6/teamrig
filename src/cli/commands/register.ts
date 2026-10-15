@@ -65,12 +65,21 @@ function filterIds(roster: Roster, filter: ListFilter): ListFilter {
   };
 }
 
-/** The written task's line; `team` names another team's register, so its id reads `<team>/T12`. */
+/**
+ * The written task's line; `team` names another team's register, so its id reads `<team>/T12`. A rotation
+ * the write ran is named on stderr, so the task line stays the one line a script reads.
+ */
 function report(runtime: CliRuntime, verdict: Verdict<WriteResult>, verb: string, team?: string): ExitCode {
   if (!verdict.ok) {
     throw new RefusedError(verdict.error);
   }
   runtime.out.stdout(`${verb} ${formatTask(verdict.value.task, team)}`);
+  const { rotation } = verdict.value;
+  if (rotation.kind === 'rotated') {
+    runtime.out.stderr(`NOTE the task list's log is archived as segment ${rotation.segment}; ${rotation.retired} finished task(s) left the working set`);
+  } else if (rotation.kind === 'failed') {
+    runtime.out.stderr(`WARN the write is saved, but archiving the task list's log failed (the next write tries again): ${rotation.error}`);
+  }
   return EXIT.ok;
 }
 

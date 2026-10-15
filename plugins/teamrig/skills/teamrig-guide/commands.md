@@ -568,6 +568,41 @@ Otherwise `DOCTOR N finding(s)` and one `WARN <kind> <detail and fix>` line each
 `name-shared`, `name-config`, `rename-log`, `inbox-orphan`, `inbox-unread`, `rules-long`, `tree-id`,
 `tree-parent`, `tree-loop`, `tree-depth`, `tree-children`, `name-two-teams`.
 
+### teamrig compact
+
+Archives the task list so reads stay small. Its log becomes the next file in `state/archive/`, whole and never
+deleted, a fresh log starts with a line naming it, and `state/snapshot.jsonl` holds every task as it stood. Tasks
+done or dropped over 8 days ago, in no week plan from the current one on, leave the snapshot: `show`,
+`list --status done` and past weeks' `plan` still read them, and they cannot be changed. A run first reads the new
+files back and holds every task against the whole history, and writes nothing on any difference. After the first
+run, a write that leaves the log over 512 KiB archives it again. Every session must run teamrig 0.2.1 or later
+before the first run.
+
+Flags:
+
+- `--dry-run`: print what it would archive and write, and write nothing.
+
+Example:
+
+```sh
+teamrig compact --dry-run
+```
+
+Output:
+
+```text
+ARCHIVE events.jsonl (3 event(s), 548 B) as archive/events-000001.jsonl
+SNAPSHOT snapshot.jsonl: 3 event(s), 733 B, covering segments 1-1; folded from the history (3 event(s))
+TASKS 2 kept (2 unchanged, 0 changed), 0 retired now, 0 before
+HISTORY 2 task(s) from 3 event(s): the working set holds every active one as the history does
+TAIL events.jsonl starts again with the rotation marker (67 B)
+DRY RUN: nothing was written; teamrig compact writes the above
+```
+
+A run prints the same lines, then `DONE the tail is archived as archive/events-000001.jsonl; ...`, or
+`NOTHING TO DO` when nothing came since the last run. On any difference it prints
+`FAILED the rotation is refused, nothing was written: <each problem>` and exits 1.
+
 ### teamrig config validate
 
 Checks the team config against its schema and prints each problem.
