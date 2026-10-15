@@ -20,9 +20,20 @@ process.stdin.on('end', () => {
 });
 `;
 
+/** The hook command each event runs, named as in the plugin's hooks.json, since dist-smoke picks its sample by command. */
+const COMMANDS: Readonly<Record<string, string>> = {
+  SessionStart: 'session-start',
+  PreToolUse: 'push-guard',
+  UserPromptSubmit: 'inbox-reminder',
+  Stop: 'stop',
+  SubagentStop: 'subagent-stop',
+};
+
 function manifest(events: readonly string[]): string {
-  const group = [{ hooks: [{ type: 'command', command: 'node', args: [`${PLUGIN_ROOT_VAR}/hook.mjs`] }] }];
-  return JSON.stringify({ hooks: Object.fromEntries(events.map((event) => [event, group])) });
+  const groupOf = (event: string) => [
+    { hooks: [{ type: 'command', command: 'node', args: [`${PLUGIN_ROOT_VAR}/hook.mjs`, 'hook', COMMANDS[event] ?? event] }] },
+  ];
+  return JSON.stringify({ hooks: Object.fromEntries(events.map((event) => [event, groupOf(event)])) });
 }
 
 describe('dist-smoke-cli', () => {
@@ -60,7 +71,7 @@ describe('dist-smoke-cli', () => {
     assert.equal(result.status, 1, result.stderr);
     assert.match(result.stdout, new RegExp(`^dist-smoke: 3 problem\\(s\\) on ${process.platform}:$`, 'm'));
     assert.match(result.stdout, /^ {2}bin launcher --version: exit none: /m);
-    assert.match(result.stdout, /^ {2}SubagentStop \(\): no smoke sample for SubagentStop; /m);
+    assert.match(result.stdout, /^ {2}SubagentStop \(hook subagent-stop\): no smoke sample for hook subagent-stop; /m);
     assert.match(result.stdout, new RegExp(`^ {2}${POSIX_LAUNCHER} is committed with mode 100644, not 100755; `, 'm'));
   });
 

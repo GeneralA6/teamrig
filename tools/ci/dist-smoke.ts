@@ -64,24 +64,29 @@ function outputField(stdout: string, field: string): string | undefined {
 const SESSION_ID = '0123abcd-0000-4000-8000-00000000000a';
 
 /**
- * One payload per hook event the plugin uses, run inside team `smoke`, which has no config:
- * session start says so, the push guard still refuses a force-push of main, the reminder stays quiet,
- * and the Stop hook prints nothing (any output there would block the turn).
+ * One payload per hook the plugin runs, by its command (one event can run several), run inside team
+ * `smoke`, which has no config: session start says so, the push guard still refuses a force-push of
+ * main, the cold-send hook lets a message go, the reminder stays quiet, and the Stop hook prints
+ * nothing (any output there would block the turn).
  */
 const SAMPLES: Readonly<Record<string, Sample>> = {
-  SessionStart: {
+  'hook session-start': {
     payload: { hook_event_name: 'SessionStart', session_id: SESSION_ID, source: 'startup' },
     check: (stdout) => (outputField(stdout, 'hookEventName') === 'SessionStart' ? undefined : 'expected SessionStart additionalContext'),
   },
-  PreToolUse: {
+  'hook push-guard': {
     payload: { hook_event_name: 'PreToolUse', session_id: SESSION_ID, tool_name: 'Bash', tool_input: { command: 'git push --force origin main' } },
     check: (stdout) => (outputField(stdout, 'permissionDecision') === 'deny' ? undefined : 'expected a deny for a force-push of main'),
   },
-  UserPromptSubmit: {
+  'hook cold-send': {
+    payload: { hook_event_name: 'PreToolUse', session_id: SESSION_ID, tool_name: 'SendMessage', tool_input: { to: 'lead', message: 'hello' } },
+    check: (stdout) => (stdout === '' ? undefined : `expected no output, got ${JSON.stringify(stdout)}`),
+  },
+  'hook inbox-reminder': {
     payload: { hook_event_name: 'UserPromptSubmit', session_id: SESSION_ID, prompt: 'hello' },
     check: () => undefined,
   },
-  Stop: {
+  'hook stop': {
     payload: { hook_event_name: 'Stop', session_id: SESSION_ID, stop_hook_active: false },
     check: (stdout) => (stdout === '' ? undefined : `expected no output, got ${JSON.stringify(stdout)}`),
   },
@@ -157,10 +162,11 @@ export function smokeDist(input: SmokeInput, run: Runner): string[] {
     findings.push(launcher);
   }
   for (const { event, args } of commands) {
-    const sample = SAMPLES[event];
-    const what = `${event} (${args.slice(1).join(' ')})`;
+    const hook = args.slice(1).join(' ');
+    const sample = SAMPLES[hook];
+    const what = `${event} (${hook})`;
     if (sample === undefined) {
-      findings.push(`${what}: no smoke sample for ${event}; add one to tools/ci/dist-smoke.ts`);
+      findings.push(`${what}: no smoke sample for ${hook}; add one to tools/ci/dist-smoke.ts`);
       continue;
     }
     const result = run({ file: input.nodePath, args, input: JSON.stringify(sample.payload) });

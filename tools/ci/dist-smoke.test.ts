@@ -82,7 +82,7 @@ describe('hookCommandsOf', () => {
     assert.deepEqual(hookCommandsOf({ description: 'x' }, ROOT).findings, ['hooks.json has no "hooks" object']);
   });
 
-  it("keeps the plugin's own hooks.json in exec form, with a smoke sample for each event", async () => {
+  it("keeps the plugin's own hooks.json in exec form, with a smoke sample for each hook", async () => {
     const manifest: unknown = JSON.parse(await readFile(new URL('../../plugins/teamrig/hooks/hooks.json', import.meta.url), 'utf8'));
     const { commands, findings } = hookCommandsOf(manifest, ROOT);
     assert.deepEqual(findings, []);
@@ -145,7 +145,7 @@ describe('smokeDist', () => {
   it('asks for a sample when the manifest adds an event the smoke test does not know', () => {
     const runner = new FakeRunner();
     const findings = smokeDist(input({ manifest: manifestOf({ SubagentStop: [execHook('subagent-stop')] }) }), runner.run);
-    assert.deepEqual(findings, ['SubagentStop (hook subagent-stop): no smoke sample for SubagentStop; add one to tools/ci/dist-smoke.ts']);
+    assert.deepEqual(findings, ['SubagentStop (hook subagent-stop): no smoke sample for hook subagent-stop; add one to tools/ci/dist-smoke.ts']);
   });
 });
 
