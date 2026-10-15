@@ -1,13 +1,19 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseShell } from './tokenizer.ts';
+import { parseShell, type ShellWord } from './tokenizer.ts';
 import { resolveLiteralVariables } from './variables.ts';
 
 /** The words of the line's last command that mentions a push, after resolving; a word left dynamic is marked with a leading `~`. */
 function pushCommand(line: string): string {
+  return pushWords(line)
+    .map((word) => (word.dynamic ? `~${word.text}` : word.text))
+    .join(' ');
+}
+
+/** The resolved words of the line's last command that mentions a push. */
+function pushWords(line: string): readonly ShellWord[] {
   const commands = resolveLiteralVariables(parseShell(line, 'bash'));
-  const push = commands.findLast((command) => command.words.some((word) => word.text.includes('push')));
-  return (push?.words ?? []).map((word) => (word.dynamic ? `~${word.text}` : word.text)).join(' ');
+  return commands.findLast((command) => command.words.some((word) => word.text.includes('push')))?.words ?? [];
 }
 
 describe('resolveLiteralVariables: what resolves', () => {
@@ -76,6 +82,50 @@ describe('resolveLiteralVariables: what resolves', () => {
       assert.equal(pushCommand(line), 'git push origin feat', line);
     }
   });
+
+  it('splits an unquoted value into words at blanks, as the program too, and keeps a quoted one whole', () => {
+    const rows: readonly (readonly [line: string, expected: readonly string[]])[] = [
+      ["B='a b'; git push origin $B", ['git', 'push', 'origin', 'a', 'b']],
+      ["B='a b'; git push origin \"$B\"", ['git', 'push', 'origin', 'a b']],
+      ['B="  a\tb  "; git push origin x$B', ['git', 'push', 'origin', 'x', 'a', 'b']],
+      ["B=''; git push origin \"$B\"", ['git', 'push', 'origin', '']],
+      ['G="git -C /w"; $G push origin main', ['git', '-C', '/w', 'push', 'origin', 'main']],
+      ['X="git push"; $X origin main', ['git', 'push', 'origin', 'main']],
+      ['A=git; X="$A push"; $X origin main', ['git', 'push', 'origin', 'main']],
+      ['C=feat; export B="$C x"; git push origin $B', ['git', 'push', 'origin', 'feat', 'x']],
+      ['B="ma*"; git push origin "$B"', ['git', 'push', 'origin', 'ma*']],
+    ];
+    for (const [line, expected] of rows) {
+      assert.deepEqual(
+        pushWords(line).map((word) => word.text),
+        expected,
+        line,
+      );
+      assert.ok(
+        pushWords(line).every((word) => !word.dynamic),
+        line,
+      );
+    }
+  });
+
+  it('keeps a variable a value names but the line does not know as one dynamic piece', () => {
+    const rows: readonly (readonly [line: string, expected: string])[] = [
+      ['B="feat$C"; git push origin $B', 'git push origin ~feat${C}'],
+      ['H="node --flag $C heavy --session s"\n$H --what "x" -- git push -u origin topic', 'node --flag ~${C} heavy --session s --what x -- git push -u origin topic'],
+      ['C=~/cli.ts; H="node $C heavy"; $H -- git push', 'node ~${C} heavy -- git push'],
+      ['false && C=x; H="git $C"; $H push', 'git ~${C} push'],
+      ['B="x$B"; git push origin $B', 'git push origin ~x${B}'],
+    ];
+    for (const [line, expected] of rows) {
+      assert.equal(pushCommand(line), expected, line);
+    }
+  });
+
+  it('resolves a program a variable names when it sets no variable', () => {
+    for (const line of ['P="node probe.ts"; B=feat; $P "$l"; git push origin $B', 'P=true; B=feat; $P; git push origin $B']) {
+      assert.equal(pushCommand(line), 'git push origin feat', line);
+    }
+  });
 });
 
 describe('resolveLiteralVariables: what stays unresolved', () => {
@@ -87,8 +137,12 @@ describe('resolveLiteralVariables: what stays unresolved', () => {
       'B=$OTHER; git push origin $B',
       'B="feat$C"; git push origin $B',
       'B=`echo feat`; git push origin $B',
-      "B='a b'; git push origin $B",
       "B='ma*'; git push origin $B",
+      "B='a?'; git push origin $B",
+      "B='a(b)'; git push origin $B",
+      "B='a\\b'; git push origin $B",
+      'B=a; B="$B"; git push origin $B',
+      'B=feat; B="$C"; git push origin $B',
       'B=~/x; git push origin $B',
       'B=; git push origin $B',
       "B=''; git push origin $B",
@@ -135,7 +189,17 @@ describe('resolveLiteralVariables: what stays unresolved', () => {
       'B=feat; printf "$F" x; git push origin $B',
       'B=feat; export -n B; git push origin $B',
       'B=feat; export "$X"; git push origin $B',
+      'B=feat; export C=$X; git push origin $B',
+      'B=feat; export C=x{,B=main}; git push origin $B',
+      'B=feat; export C="$(echo x)"; git push origin $B',
       'B=feat; $SET; git push origin $B',
+      'P="export B=main"; B=feat; $P; git push origin $B',
+      'P=export; A=B=main; B=feat; $P $A; git push origin $B',
+      'P=printf; B=feat; $P -v B main; git push origin $B',
+      'P=read; B=feat; $P B; git push origin $B',
+      'P="$Q"; B=feat; $P; git push origin $B',
+      '(P=true); B=feat; $P; git push origin $B',
+      'P=""; B=feat; $P; git push origin $B',
       'B=feat; a[0]=x; git push origin $B',
       'B=feat; IFS=-; git push origin $B',
       'B=feat; cat <<EOF\n${B:=main}\nEOF\ngit push origin $B',

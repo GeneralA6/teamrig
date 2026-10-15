@@ -143,8 +143,8 @@ describe('parseShell: bash', () => {
           { kind: 'text', text: 'y', quoted: false },
         ],
         [
-          { kind: 'variable', name: 'C' },
-          { kind: 'variable', name: 'D' },
+          { kind: 'variable', name: 'C', quoted: true },
+          { kind: 'variable', name: 'D', quoted: false },
         ],
         [
           { kind: 'text', text: 'E', quoted: true },

@@ -451,6 +451,27 @@ describe('evaluatePushes: where a push hides', () => {
       ['cat <<$D\nB=feat\n$D\ngit push origin $B', 'ask', 'doubt'],
     ]);
   });
+
+  it('reads a program and arguments a variable holds as the words bash splits them into', () => {
+    expectRows([
+      ['G="git -C /w"; $G push origin main', 'ask'],
+      ['X="git push"; $X origin main', 'ask'],
+      ['X="git push -f"; $X origin main', 'deny'],
+      ['A="origin main"; git push $A', 'ask'],
+      ['P=git; $P push origin main', 'ask'],
+      ['X="git push"; $X origin topic', 'allow'],
+      ['A="origin topic"; git push $A', 'allow'],
+      ['P="node probe.ts"; $P "$l"', 'allow'],
+      [
+        'S=/tmp/s; C=~/tools/cli.ts; W=/work/t; H="node --disable-warning=ExperimentalWarning $C heavy --session s"\n' +
+          '$H --what "push topic" --max-minutes 20 -- git -C $W push -u origin topic > $S/x.log 2>&1; echo push=$?; grep -E "error" $S/x.log',
+        'allow',
+      ],
+      ['H="$G push"; $H origin main', 'ask', 'doubt'],
+      ['X="git push"; $X origin $B', 'ask', 'doubt'],
+      ['P="export B=main"; B=topic; $P; git push origin $B', 'ask', 'doubt'],
+    ]);
+  });
 });
 
 describe('evaluatePushes: the fail-safe', () => {
