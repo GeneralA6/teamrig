@@ -41,7 +41,8 @@ export function renderCorePack(config, command) {
             ` No acks, thanks or progress pings. Anything non-urgent is one inbox line: \`${command} inbox add --to <area> --text "..."\`.`,
         `Status is pulled, never asked: each session keeps one board and writes only its own. At the start of each work block run \`${command} inbox read --session <you>\`.` +
             ` Every ask that creates work is a register entry the asker adds in the same turn (\`${command} add --owner <session>\`); ${statusDemands(config, command)}` +
-            ' A shipped change waiting for its proof is verifying until the proof exists.',
+            ' Waiting needs `--waits` reasons; a task not started that needs another first stays open, planned `--after` it.' +
+            ' A shipped change is verifying until its proof exists.',
         `Work your own task list in priority order (\`${command} list --session <you>\`); self-made work is a task too, recorded with \`${command} add\` before you start it.` +
             ' When you notice you are looping (the same step again, no progress) or drifting from your task, stop and ask the lead.',
         `Silence is consent only within the sender's own authority, never for owner-gated decisions: ${list(config.ownerGates)} [ownerGates].`,

@@ -1,7 +1,9 @@
 import { ENV } from "../core/home.js";
 import { NAME_PATTERN, NAME_RULE } from "../core/ids.js";
 import { parseUtcDeadline, parseUtcDay } from "../core/time.js";
-import { isTaskStatus, priorityText, TASK_ID, TASK_STATUSES } from "../register/model.js";
+import { isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, priorityText, TASK_ID, TASK_STATUSES } from "../register/model.js";
+import { WAITS_USAGE } from "../register/policy.js";
+import { isWaitKind, waitOf } from "../register/waits.js";
 import { requiredFlag, UsageError } from "./args.js";
 /**
  * Flag text to register inputs. Only the shape is checked here (a priority like p2, a list, a date); the
@@ -92,7 +94,33 @@ export function addInputOf(flags, caller) {
     if (week !== undefined) {
         input.week = week;
     }
+    const after = flags.get('after');
+    if (after !== undefined) {
+        input.after = afterOf(after);
+    }
     return input;
+}
+/** `--after T5,T6`: the tasks to finish before this one starts. */
+function afterOf(text) {
+    return listOf('--after', text).map(taskIdOf);
+}
+/**
+ * `--waits decision:owner,task:T5,time:2030-01-09 12:00`: what a waiting task waits for, each `kind:value`, the
+ * value after the first colon, so a time keeps its own. Who gives a decision or an approval is resolved by the command.
+ */
+export function waitsOf(text) {
+    return listOf('--waits', text).map((item) => {
+        const colon = item.indexOf(':');
+        const kind = item.slice(0, Math.max(colon, 0)).trim();
+        if (!isWaitKind(kind)) {
+            throw new UsageError(`--waits "${item}" is not one of ${WAITS_USAGE}`);
+        }
+        const reason = waitOf(kind, item.slice(colon + 1).trim());
+        if (typeof reason === 'string') {
+            throw new UsageError(`--waits "${item}": ${reason}`);
+        }
+        return reason;
+    });
 }
 /** The fields `update` changes; `none` clears the ref, due date, goals or week. */
 export function changesOf(flags) {
@@ -125,16 +153,26 @@ export function changesOf(flags) {
     if (week !== undefined) {
         changes.week = week === NONE ? null : week;
     }
+    const after = flags.get('after');
+    if (after !== undefined) {
+        changes.after = after === NONE ? [] : afterOf(after);
+    }
     return changes;
 }
-function statusOf(flag, text) {
+/** A status as typed; `next` says what to type for the old `blocked`, which is refused (no alias kept). */
+function statusOf(flag, text, next) {
+    if (text === LEGACY_WAITING_STATUS) {
+        throw new UsageError(`${flag} ${LEGACY_WAITING_HINT}: ${next}`);
+    }
     if (!isTaskStatus(text)) {
         throw new UsageError(`${flag} "${text}" is not ${TASK_STATUSES.join('|')}`);
     }
     return text;
 }
 export function statusInputOf(flags) {
-    const input = { status: statusOf('--status', requiredFlag(flags, 'status')) };
+    const input = {
+        status: statusOf('--status', requiredFlag(flags, 'status'), `use --status waiting --waits <reason> (${WAITS_USAGE})`),
+    };
     const note = flags.get('note');
     if (note !== undefined) {
         input.note = note;
@@ -147,6 +185,10 @@ export function statusInputOf(flags) {
     if (skill !== undefined) {
         input.skill = skill;
     }
+    const waits = flags.get('waits');
+    if (waits !== undefined) {
+        input.waits = waitsOf(waits);
+    }
     return input;
 }
 /** `list` filters; `--session` names the owner whose tasks to show. */
@@ -158,7 +200,7 @@ export function listFilterOf(flags) {
     }
     const status = flags.get('status');
     if (status !== undefined) {
-        filter.statuses = status === 'all' ? TASK_STATUSES : listOf('--status', status).map((item) => statusOf('--status', item));
+        filter.statuses = status === 'all' ? TASK_STATUSES : listOf('--status', status).map((item) => statusOf('--status', item, 'use --status waiting'));
     }
     const source = flags.get('source');
     if (source !== undefined) {

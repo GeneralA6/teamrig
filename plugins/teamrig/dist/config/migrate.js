@@ -1,4 +1,5 @@
 import { isRecord } from "../core/guards.js";
+import { LEGACY_WAITING_STATUS } from "../register/model.js";
 import { CONFIG_VERSION } from "./types.js";
 /** v1 to v2: the priority levels moved from `register.tiers` to `register.priorities`, same entries. */
 export const RENAME_TIERS_TO_PRIORITIES = {
@@ -12,8 +13,28 @@ export const RENAME_TIERS_TO_PRIORITIES = {
         return { config: { ...config, register: { ...rest, priorities: tiers } }, changes: ['register.tiers → register.priorities'] };
     },
 };
+/**
+ * v2 to v3: the status `blocked` became `waiting` (teamrig 0.10.0), so `register.requireNoteOn` names `waiting`
+ * where it named `blocked`, once, in the same place.
+ */
+export const RENAME_BLOCKED_TO_WAITING = {
+    from: 2,
+    apply: (config) => {
+        const register = config['register'];
+        const statuses = isRecord(register) ? register['requireNoteOn'] : undefined;
+        if (!isRecord(register) || !Array.isArray(statuses) || !statuses.includes(LEGACY_WAITING_STATUS)) {
+            return { config, changes: [] };
+        }
+        const renamed = statuses.map((status) => (status === LEGACY_WAITING_STATUS ? 'waiting' : status));
+        const requireNoteOn = renamed.filter((status, index) => renamed.indexOf(status) === index);
+        return {
+            config: { ...config, register: { ...register, requireNoteOn } },
+            changes: [`register.requireNoteOn: ${LEGACY_WAITING_STATUS} → waiting`],
+        };
+    },
+};
 /** The shipped chain, in order: each step reads `from` and produces `from + 1`. */
-export const CONFIG_MIGRATIONS = [RENAME_TIERS_TO_PRIORITIES];
+export const CONFIG_MIGRATIONS = [RENAME_TIERS_TO_PRIORITIES, RENAME_BLOCKED_TO_WAITING];
 /** This release's format. */
 export const SHIPPED_CONFIG_FORMAT = { version: CONFIG_VERSION, migrations: CONFIG_MIGRATIONS };
 /** A file without `configVersion` is the first format, so a minimal hand-written config works. */

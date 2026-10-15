@@ -1,6 +1,7 @@
 import { toJsonlLine } from "../core/jsonl.js";
 import { MS_PER_DAY } from "../core/time.js";
 import { currentWeekOf } from "./check.js";
+import { eventRecord } from "./events.js";
 import { RegisterFold, taskNumber } from "./fold.js";
 import { snapshotHeaderRecord } from "./layout.js";
 /**
@@ -58,7 +59,7 @@ export function compactRegister(source, options) {
         retiredLastWeek: newestWeek([source.retired?.lastWeek ?? null, ...retiring.map((task) => task.week)]),
         at: options.now.toISOString(),
     };
-    const text = [snapshotHeaderRecord(header), ...kept.map((event) => ({ ...event }))].map(toJsonlLine).join('');
+    const text = [snapshotHeaderRecord(header), ...kept.map(eventRecord)].map(toJsonlLine).join('');
     const retiredNow = retiring.map((task) => task.id).sort((a, b) => taskNumber(a) - taskNumber(b));
     return { header, text, kept: source.state.tasks.size - retiring.length, retiredNow };
 }

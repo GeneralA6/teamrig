@@ -2,8 +2,9 @@ import { formatUtcMinute, MS_PER_DAY, MS_PER_HOUR, parseUtcDay, shortUtc } from 
 import { topPriority } from "../config/priorities.js";
 import { ACTIVE_STATUSES, priorityText } from "./model.js";
 import { byPlanOrder, dueTime, formatTask } from "./views.js";
+import { allReady, unfinishedAfter, waitContext } from "./waits.js";
 /** In report order: the most urgent first. */
-export const FLAG_KINDS = ['OVERDUE', 'PROOF-OVERDUE', 'NOT-PICKED-UP', 'PRIORITY-SKIP', 'OWNER-UNPLANNED', 'DUE-UNPLANNED', 'OFF-GOAL', 'STALE'];
+export const FLAG_KINDS = ['OVERDUE', 'VERIFY-OVERDUE', 'READY', 'NOT-PICKED-UP', 'PRIORITY-SKIP', 'OWNER-UNPLANNED', 'DUE-UNPLANNED', 'OFF-GOAL', 'STALE'];
 /** The week plan in force: the newest week tag that starts on or before now. */
 export function currentWeek(tasks, now) {
     let best = null;
@@ -27,11 +28,14 @@ export function currentWeekOf(snapshot, now) {
 }
 /**
  * The daily flags over active tasks:
- * - OVERDUE: past its deadline; PROOF-OVERDUE when the task is verifying, so its proof is late;
+ * - OVERDUE: past its deadline; VERIFY-OVERDUE when the task is verifying: its due date is the date to verify it by;
+ * - READY: waiting, and every reason it waits for is ready (its tasks finished, its time passed), so its owner can
+ *   go on: only the owner clears a decision or an approval, by setting the next status;
  * - NOT-PICKED-UP: assigned longer ago than `notPickedUpAfterHours` with no event from its owner since
  *   (an idle session never reads its inbox, so it needs a direct wake);
- * - PRIORITY-SKIP: in progress below an open (so unblocked) task of the top priority that has the same
- *   owner, for longer than `prioritySkipAfterHours`: the session is not working its list in order;
+ * - PRIORITY-SKIP: in progress below an open task of the top priority that has the same owner and is free to start
+ *   (every task it comes after finished), for longer than `prioritySkipAfterHours`: the session is not working its
+ *   list in order;
  * - STALE: no event for `staleAfterHours` (not raised on top of NOT-PICKED-UP, nor for a verifying task with a
  *   due date: it waits quietly for its proof, and the date raises the alarm);
  * - OWNER-UNPLANNED: an owner order outside the current week plan;
@@ -42,33 +46,36 @@ export function currentWeekOf(snapshot, now) {
  */
 export function checkTasks(tasks, now, week, config) {
     const at = now.getTime();
-    const active = [...tasks].filter((candidate) => ACTIVE_STATUSES.includes(candidate.status)).sort(byPlanOrder);
+    const all = [...tasks];
+    const context = waitContext(new Map(all.map((task) => [task.id, task])), now);
+    const active = all.filter((candidate) => ACTIVE_STATUSES.includes(candidate.status)).sort(byPlanOrder);
     const plan = weekPlan(week, config.check.weekLengthDays);
     const top = topPriority(config.priorities);
-    const waiting = top === undefined ? new Map() : waitingTopTasks(active, top);
+    const waiting = top === undefined ? new Map() : waitingTopTasks(active, top, context);
     const flags = active.flatMap((task) => [
+        ...(task.status === 'waiting' && allReady(task.waits, context) ? [{ kind: 'READY', task, detail: 'every reason cleared; set its next status' }] : []),
         ...timeFlags(task, at, config.check),
         ...(top === undefined ? [] : prioritySkip(task, top, waiting, at, config.check)),
         ...(plan === undefined ? [] : planFlags(task, plan, config.ownerSource)),
     ]);
     return flags.sort((a, b) => FLAG_KINDS.indexOf(a.kind) - FLAG_KINDS.indexOf(b.kind));
 }
-/** One flag; with `team`, the task id reads `<team>/T12`. */
-export function formatFlag(flag, team) {
-    return `${flag.kind} (${flag.detail}) ${formatTask(flag.task, team)}`;
+/** One flag; with `team`, the task id reads `<team>/T12`; `context` marks a waiting task's ready reasons. */
+export function formatFlag(flag, team, context) {
+    return `${flag.kind} (${flag.detail}) ${formatTask(flag.task, team, context)}`;
 }
 function weekPlan(week, lengthDays) {
     const start = week === null ? undefined : parseUtcDay(week)?.getTime();
     return week === null || start === undefined ? undefined : { week, start, end: start + lengthDays * MS_PER_DAY };
 }
-/** OVERDUE or PROOF-OVERDUE, then NOT-PICKED-UP or else STALE. */
+/** OVERDUE or VERIFY-OVERDUE, then NOT-PICKED-UP or else STALE. */
 function timeFlags(task, at, check) {
     const flags = [];
     const due = dueTime(task);
     const verifying = task.status === 'verifying';
     if (due !== undefined && due < at) {
-        const detail = `${verifying ? 'proof due' : 'due'} ${shortUtc(task.due ?? '')}`;
-        flags.push({ kind: verifying ? 'PROOF-OVERDUE' : 'OVERDUE', task, detail });
+        const detail = `${verifying ? 'verify by' : 'due'} ${shortUtc(task.due ?? '')}`;
+        flags.push({ kind: verifying ? 'VERIFY-OVERDUE' : 'OVERDUE', task, detail });
     }
     if (task.ownerSeenAt === null && at - Date.parse(task.assignedAt) > check.notPickedUpAfterHours * MS_PER_HOUR) {
         flags.push({ kind: 'NOT-PICKED-UP', task, detail: `assigned ${minute(task.assignedAt)}, no event from ${task.owner} since` });
@@ -82,12 +89,16 @@ function timeFlags(task, at, check) {
 function standingSince(task) {
     return Math.max(Date.parse(task.assignedAt), Date.parse(task.statusAt), Date.parse(task.priorityAt));
 }
-/** Per owner, the open task of the top priority that has stood longest, so a skip over it counts from the start. */
-function waitingTopTasks(active, top) {
+/**
+ * Per owner, the open task of the top priority, free to start, that has stood longest, so a skip over it counts from
+ * the start. A task planned after one not finished yet is not free to start, so working below it skips nothing.
+ */
+function waitingTopTasks(active, top, context) {
     const waiting = new Map();
     for (const task of active) {
         const held = waiting.get(task.owner);
-        if (task.status === 'open' && task.priority <= top && (held === undefined || standingSince(task) < standingSince(held))) {
+        const free = task.status === 'open' && unfinishedAfter(task.after, context).length === 0;
+        if (free && task.priority <= top && (held === undefined || standingSince(task) < standingSince(held))) {
             waiting.set(task.owner, task);
         }
     }

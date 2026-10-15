@@ -1,21 +1,35 @@
 import { isRecord } from "../core/guards.js";
 import { parseUtcDeadline } from "../core/time.js";
-import { isTaskStatus, TASK_ID } from "./model.js";
+import { isTaskStatus, LEGACY_WAITING_STATUS, TASK_ID } from "./model.js";
+import { parseWaits } from "./waits.js";
 /**
  * The register's event format. Version 0 lines have no `v`; version 1 adds `"v": 1` and nothing
  * else; version 2 names the task field `priority` where older lines wrote `tier`. All three parse
  * the same way: an old line's `tier` reads as its priority and the line is never rewritten.
+ * Version 2 later gained, without a new number, a task's `after` list and the `waiting` status with its
+ * `waits`, which replaced `blocked`: an older reader ignores the new fields and skips a `waiting` line as
+ * a newer teamrig's, and a `blocked` line reads here as `waiting` with no reasons.
  * Parsing checks the FORMAT only (any positive priority, any goal string): team policy is applied
  * on write, so changing the config never erases history.
  */
 export const EVENT_VERSION = 2;
 /** The name lines before version 2 gave the `priority` field; still read, never written. */
 export const LEGACY_PRIORITY_FIELD = 'tier';
-export const TASK_FIELD_NAMES = ['title', 'owner', 'source', 'ref', 'priority', 'due', 'goals', 'week'];
+export const TASK_FIELD_NAMES = ['title', 'owner', 'source', 'ref', 'priority', 'due', 'goals', 'week', 'after'];
 const WEEK = /^\d{4}-\d{2}-\d{2}$/;
 /** How a status is spelled (`in-progress`): a well-spelled one this code does not know is a newer teamrig's. */
 const STATUS_NAME = /^[a-z]+(?:-[a-z]+)*$/;
 /** Parses one JSONL record. Unknown extra fields are ignored so later minor additions stay readable. */
+/**
+ * The record an event is written as. A create line leaves out an empty `after`, which reads back as none, so a
+ * task with no plan dependency costs no bytes and its line is the one an older teamrig wrote.
+ */
+export function eventRecord(event) {
+    if (event.type !== 'create' || event.task.after.length > 0) {
+        return { ...event };
+    }
+    return { ...event, task: Object.fromEntries(Object.entries(event.task).filter(([name]) => name !== 'after')) };
+}
 export function parseEvent(line) {
     if (line.version > EVENT_VERSION) {
         return { kind: 'newer' };
@@ -31,13 +45,17 @@ export function parseEvent(line) {
             return typeof task === 'string' ? unreadable(task) : { kind: 'event', event: { ...base, type: 'create', task } };
         }
         case 'status': {
-            const status = record['status'];
+            const status = record['status'] === LEGACY_WAITING_STATUS ? 'waiting' : record['status'];
             if (!isTaskStatus(status)) {
                 return typeof status === 'string' && STATUS_NAME.test(status) ? { kind: 'newer' } : unreadable(`unknown status ${JSON.stringify(status)}`);
             }
             const problem = textProblem(record, ['note', 'evidence', 'skill']);
             if (problem !== undefined) {
                 return unreadable(problem);
+            }
+            const waits = status === 'waiting' && record['waits'] !== undefined ? parseWaits(record['waits']) : undefined;
+            if (typeof waits === 'string') {
+                return unreadable(waits);
             }
             const event = {
                 ...base,
@@ -46,6 +64,7 @@ export function parseEvent(line) {
                 note: textOrNull(record, 'note'),
                 evidence: textOrNull(record, 'evidence'),
                 skill: textOrNull(record, 'skill'),
+                ...(waits === undefined ? {} : { waits }),
             };
             return { kind: 'event', event };
         }
@@ -154,6 +173,16 @@ function readField(fields, name, value) {
                 return 'goals is not a list of text';
             }
             fields.goals = value;
+            return undefined;
+        case 'after':
+            if (value === undefined || value === null) {
+                fields.after = [];
+                return undefined;
+            }
+            if (!Array.isArray(value) || !value.every((id) => typeof id === 'string' && TASK_ID.test(id))) {
+                return 'after is not a list of task ids';
+            }
+            fields.after = value;
             return undefined;
     }
 }

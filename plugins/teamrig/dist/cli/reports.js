@@ -13,7 +13,7 @@ export const SHORT_TITLE_CHARS = 60;
 /** The short `check` shows at most this many flags of each kind, fewer when they would pass SHORT_FORM_CHARS. */
 export const MAX_FLAGS_PER_KIND = 5;
 /** The order of the status counts on a short `list` owner line: what moves first, what waits last. */
-const SUMMARY_STATUSES = ['in-progress', 'verifying', 'blocked', 'open', 'done', 'dropped'];
+const SUMMARY_STATUSES = ['in-progress', 'verifying', 'waiting', 'open', 'done', 'dropped'];
 /** The characters `lines` print, each with its newline. */
 export function printedChars(lines) {
     return lines.reduce((sum, line) => sum + line.length + 1, 0);
@@ -41,12 +41,12 @@ function firstOf(lines, shown) {
 }
 /** `list`: every field of every row with `all`, else the short form. */
 export function listLines(rows, all) {
-    return all ? rows.map(({ task, team }) => formatTask(task, team)) : shortList(rows);
+    return all ? rows.map(({ task, team, context }) => formatTask(task, team, context)) : shortList(rows);
 }
 function ownerOf({ task, team }) {
     return team === undefined ? task.owner : `${team}/${task.owner}`;
 }
-/** `  alpha 7: 2 in-progress, 1 blocked, 4 open`. */
+/** `  alpha 7: 2 in-progress, 1 waiting, 4 open`. */
 function ownerLine(owner, rows) {
     const counts = SUMMARY_STATUSES.flatMap((status) => {
         const count = rows.filter(({ task }) => task.status === status).length;
@@ -70,7 +70,7 @@ function shortList(rows) {
         ? [...owners].sort(([a, x], [b, y]) => y.length - x.length || a.localeCompare(b)).map(([owner, owned]) => ownerLine(owner, owned))
         : [];
     const sorted = [...rows].sort((a, b) => byPlanOrder(a.task, b.task));
-    return fitBudget([`LIST ${rows.length} task(s)${ownerCount}${hint}`, ...summary, ...sorted.map(({ task, team }) => formatShortTask(task, SHORT_TITLE_CHARS, team))], SHORT_FORM_CHARS, (left) => `+${left} more (--all lists every task in full)`);
+    return fitBudget([`LIST ${rows.length} task(s)${ownerCount}${hint}`, ...summary, ...sorted.map(({ task, team, context }) => formatShortTask(task, SHORT_TITLE_CHARS, team, context))], SHORT_FORM_CHARS, (left) => `+${left} more (--all lists every task in full)`);
 }
 /** `check`: every flag in full with `all`, else the short form. */
 export function checkLines(report, all) {
@@ -82,9 +82,9 @@ function skillsLine({ skills, skillsDir }) {
 /** Each register's `CHECK` line and flags, then the skill flags: every flag, every field. */
 function longCheck(report) {
     return [
-        ...report.sections.flatMap(({ team, flags }) => [
+        ...report.sections.flatMap(({ team, flags, context }) => [
             `CHECK${team === undefined ? '' : ` ${team}:`} ${flags.length} flag(s), ${report.scope}`,
-            ...flags.map((flag) => formatFlag(flag, team)),
+            ...flags.map((flag) => formatFlag(flag, team, context)),
         ]),
         skillsLine(report),
         ...report.skills.map(formatSkillFlag),
@@ -94,9 +94,9 @@ function longCheck(report) {
 function kindLines(kind, rows, shown) {
     const details = new Set(rows.map(({ flag }) => flag.detail));
     const [shared] = details.size === 1 ? [...details] : [];
-    const lines = rows.map(({ flag, team }) => {
+    const lines = rows.map(({ flag, team, context }) => {
         const detail = shared === undefined ? `(${flag.detail}) ` : '';
-        return `  ${detail}${formatShortTask(flag.task, SHORT_TITLE_CHARS, team)}`;
+        return `  ${detail}${formatShortTask(flag.task, SHORT_TITLE_CHARS, team, context)}`;
     });
     return [`${kind} ${rows.length}${shared === undefined ? '' : ` (${shared})`}`, ...firstOf(lines, shown)];
 }
@@ -106,7 +106,7 @@ function kindLines(kind, rows, shown) {
  * every kind, so the whole fits in SHORT_FORM_CHARS; at one each, lines past the budget give way to a `+N more` line.
  */
 function shortCheck(report) {
-    const flags = report.sections.flatMap(({ team, flags: own }) => own.map((flag) => ({ flag, team })));
+    const flags = report.sections.flatMap(({ team, flags: own, context }) => own.map((flag) => ({ flag, team, context })));
     const kinds = FLAG_KINDS.map((kind) => ({
         kind,
         rows: flags.filter(({ flag }) => flag.kind === kind).sort((a, b) => byPlanOrder(a.flag.task, b.flag.task)),
