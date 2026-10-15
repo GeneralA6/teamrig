@@ -23,8 +23,9 @@ describe('README.md', () => {
     for (const path of ['docs/how-it-works.md', 'docs/commands.md', 'CONTRIBUTING.md']) assert.ok(links.includes(path), path);
   });
 
-  it('links the task pane, teamrig-pane', () => {
+  it('links the task pane, teamrig-pane, and names its command', () => {
     assert.ok(targets('link').includes('https://github.com/GeneralA6/teamrig-pane'));
+    assert.match(README, /\[teamrig-pane\]\([^)]+\) and run `\/teamrig`/);
   });
 
   it('draws no pictographs (emoji)', () => {
