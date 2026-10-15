@@ -555,8 +555,23 @@ describe('evaluatePushes: the fail-safe', () => {
     ]);
   });
 
-  it('allows everything when no branch is protected', () => {
-    expectRows([['git push $ARGS', 'allow']], { protectedBranches: [] });
+  it('allows everything when no branch is protected, mirrors, matching pushes and doubts included', () => {
+    const rows: readonly Row[] = [
+      ['git push $ARGS', 'allow'],
+      ['git push origin $B', 'allow'],
+      ['eval "$X" && echo push', 'allow'],
+      ['git push "origin main', 'allow'],
+      ['git push --mirror origin', 'allow'],
+      ['git push --all -f origin', 'allow'],
+      ['git push --all origin', 'allow'],
+      ['git push origin :', 'allow'],
+      ['git push -f origin main', 'allow'],
+      ['git push origin --delete main', 'allow'],
+      ['git push origin main', 'allow'],
+    ];
+    expectRows(rows, { protectedBranches: [] });
+    expectRows([['git push', 'allow']], { protectedBranches: [], config: { 'push.default': 'matching' } });
+    expectRows([['git push --mirror origin', 'deny'], ['git push --all origin', 'ask'], ['eval "$X" && echo push', 'ask', 'doubt']], { protectedBranches: ['release'] });
   });
 
   it('prefers a plain ask over a doubt, and sets the doubt only on a doubt-ask', () => {
