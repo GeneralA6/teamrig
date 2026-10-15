@@ -2,11 +2,10 @@ import { NewerDataError } from "../core/jsonl.js";
 import { EVENT_VERSION } from "./events.js";
 import { foldEvents } from "./fold.js";
 import { NO_SKILL } from "./policy.js";
-import { isWritable } from "./store.js";
+import { isWritable, snapshotOf } from "./snapshot.js";
 /** The register as it stands, read without the lock, as every read is. */
 export async function readSnapshot(log) {
-    const read = await log.read();
-    return { state: foldEvents(read.events, read.seenIds), read };
+    return snapshotOf(await log.read());
 }
 /**
  * The register's write path: under the lock, read the log, replay it, apply the team policy,

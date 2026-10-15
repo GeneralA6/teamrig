@@ -1,4 +1,4 @@
-import { lineHash } from "../inbox/marks.js";
+import { lineHash } from "../inbox/line-hash.js";
 const NONE = { kind: 'none' };
 const MEASURE = { kind: 'measure' };
 /** Tokens as people say them: 262,144 is `262k`. */

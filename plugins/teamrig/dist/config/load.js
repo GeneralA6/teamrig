@@ -1,8 +1,7 @@
 import { join } from 'node:path';
-import { errorMessage, isRecord } from "../core/guards.js";
 import { formatUtcMinute } from "../core/time.js";
-import { CONFIG_MIGRATIONS, migrateConfig } from "./migrate.js";
-import { parseConfig } from "./parse.js";
+import { CONFIG_MIGRATIONS } from "./migrate.js";
+import { parseConfigText } from "./text.js";
 import { CONFIG_VERSION } from "./types.js";
 /** Reads, migrates in memory and validates the config file. Never writes. */
 export async function loadConfig(files, path, migrations = CONFIG_MIGRATIONS, target = CONFIG_VERSION) {
@@ -10,34 +9,7 @@ export async function loadConfig(files, path, migrations = CONFIG_MIGRATIONS, ta
     if (text === undefined) {
         return { status: 'missing', path };
     }
-    let raw;
-    try {
-        raw = JSON.parse(text);
-    }
-    catch (error) {
-        return { status: 'unreadable', path, issue: { path: '', message: `not valid JSON: ${errorMessage(error)}` } };
-    }
-    if (!isRecord(raw)) {
-        return { status: 'unreadable', path, issue: { path: '', message: 'expected a JSON object at the top level' } };
-    }
-    const migration = migrateConfig(raw, target, migrations);
-    switch (migration.kind) {
-        case 'invalid':
-            return { status: 'unreadable', path, issue: { path: 'configVersion', message: migration.message } };
-        case 'newer': {
-            const { config, issues } = parseConfig(raw);
-            return { status: 'loaded', path, config, issues, newerVersion: migration.version };
-        }
-        case 'current': {
-            const { config, issues } = parseConfig(migration.config);
-            return { status: 'loaded', path, config, issues };
-        }
-        case 'migrated': {
-            const { config, issues } = parseConfig(migration.config);
-            const pending = { fromVersion: migration.fromVersion, toVersion: migration.version, changes: migration.changes, migrated: migration.config };
-            return { status: 'loaded', path, config, issues, pending };
-        }
-    }
+    return { ...parseConfigText(text, migrations, target), path };
 }
 /**
  * Writes a pending migration: first a backup of the original file (`config.v<N>.json`, or with a

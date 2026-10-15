@@ -1,5 +1,5 @@
-import { createHash } from 'node:crypto';
 import { isNonNegativeInteger, stringField } from "../core/guards.js";
+import { parseJsonl } from "../core/jsonl.js";
 import { SESSION_NAME } from "../register/model.js";
 export const MARK_VERSION = 1;
 /** A Claude Code session id, as hook stdin and `$CLAUDE_CODE_SESSION_ID` carry it. */
@@ -23,9 +23,25 @@ export function parseMark(line) {
         (lastLineHash === null || typeof lastLineHash === 'string');
     return valid ? { kind: 'mark', mark: { v: line.version, area, line: count, at, claudeSession, lastLineHash } } : { kind: 'unreadable' };
 }
-/** A short, stable fingerprint of a text: an inbox line, or a handover note (`refresh --ready`). */
-export function lineHash(text) {
-    return createHash('sha256').update(text).digest('hex').slice(0, 16);
+/** The marks an `inbox-marks.jsonl` text holds, in write order; damaged and newer lines are counted, never fatal. */
+export function readMarks(text) {
+    const parse = parseJsonl(text);
+    const marks = [];
+    let unreadable = parse.unreadable;
+    let newer = 0;
+    for (const line of parse.records) {
+        const result = parseMark(line);
+        if (result.kind === 'mark') {
+            marks.push(result.mark);
+        }
+        else if (result.kind === 'newer') {
+            newer += 1;
+        }
+        else {
+            unreadable += 1;
+        }
+    }
+    return { marks, unreadable, newer };
 }
 /** The newest mark wins, both for an area's read position and for a session's area. */
 export function indexMarks(marks) {
