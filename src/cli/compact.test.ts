@@ -1,11 +1,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import type { JsonRecord } from '../core/guards.ts';
 import { toJsonlLine } from '../core/jsonl.ts';
 import { MS_PER_DAY } from '../core/time.ts';
 import { RETAIN_DAYS } from '../register/compaction.ts';
 import { EVENT_VERSION } from '../register/events.ts';
 import { layoutPaths } from '../register/layout.ts';
-import { CliHarness, EVENTS_PATH } from '../testing/cli-harness.ts';
+import { CliHarness, CONFIG_PATH, EVENTS_PATH, TEAM } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { USAGE } from './run.ts';
 import { EXIT } from './runtime.ts';
@@ -13,9 +14,9 @@ import { EXIT } from './runtime.ts';
 const AS_ALPHA = { env: { TEAMRIG_SESSION: 'alpha' } };
 const PATHS = layoutPaths(EVENTS_PATH);
 
-/** T1 done and T2 open, three events in a log never rotated. */
-async function twoTasks(): Promise<CliHarness> {
-  const kit = new CliHarness();
+/** T1 done and T2 open, three events in a log never rotated, for a team with `config`. */
+async function twoTasks(config: JsonRecord = TEAM): Promise<CliHarness> {
+  const kit = new CliHarness(config);
   for (const argv of [
     ['add', '--title', 'Old plan', '--priority', 'p2'],
     ['set', 'T1', '--status', 'done', '--note', 'shipped', '--evidence', 'abc1234', '--skill', 'none'],
@@ -104,25 +105,44 @@ function longTail(): string {
   return Array.from({ length: 4_000 }, (_, index) => line(index % 2 === 0 ? 'in-progress' : 'blocked')).join('');
 }
 
+/** How the NOTE and WARN lines of a write name the switch that turns automatic archiving off. */
+const TURN_OFF = `turn automatic archiving off with register.autoArchive: false in ${CONFIG_PATH}`;
+
 describe('a write on a long tail', () => {
-  it('notes the rotation it ran after the write', async () => {
+  it('notes the rotation it ran after the write, and the switch that turns it off', async () => {
     const kit = await twoTasks();
     assert.equal((await kit.run(['compact'], AS_ALPHA)).code, EXIT.ok);
     await kit.files.append(EVENTS_PATH, longTail());
     const set = await kit.run(['set', 'T2', '--status', 'in-progress'], AS_ALPHA);
     assert.equal(set.code, EXIT.ok);
-    assert.deepEqual(set.stderr, ["NOTE the task list's log is archived as segment 2; 0 finished task(s) left the working set"]);
+    assert.deepEqual(set.stderr, [`NOTE the task list's log is archived as segment 2; 0 finished task(s) left the working set (${TURN_OFF})`]);
     assert.ok(kit.files.get(PATHS.segment(2)) !== undefined);
   });
 
-  it('warns when the rotation fails, and keeps the write', async () => {
+  it('warns when the rotation fails, names the switch, and keeps the write', async () => {
     const kit = await twoTasks();
     assert.equal((await kit.run(['compact'], AS_ALPHA)).code, EXIT.ok);
     await kit.files.append(EVENTS_PATH, longTail());
     const files = new FaultyFiles(kit.files).fail('createExclusive', PATHS.segment(2), systemError('EACCES'));
     const set = await kit.run(['set', 'T2', '--status', 'in-progress'], { ...AS_ALPHA, files });
     assert.equal(set.code, EXIT.ok);
-    assert.deepEqual(set.stderr, ["WARN the write is saved, but archiving the task list's log failed (the next write tries again): EACCES: simulated"]);
+    assert.deepEqual(set.stderr, [`WARN the write is saved, but archiving the task list's log failed (the next write tries again; ${TURN_OFF}): EACCES: simulated`]);
     assert.equal((await kit.run(['show', 'T2'], AS_ALPHA)).stdout.some((line) => /in-progress/.test(line)), true);
+  });
+
+  it('never archives with register.autoArchive false, while compact still archives by hand', async () => {
+    const kit = await twoTasks({ ...TEAM, register: { autoArchive: false } });
+    assert.equal((await kit.run(['compact'], AS_ALPHA)).code, EXIT.ok);
+    await kit.files.append(EVENTS_PATH, longTail());
+    const set = await kit.run(['set', 'T2', '--status', 'in-progress'], AS_ALPHA);
+    assert.deepEqual([set.code, set.stderr], [EXIT.ok, []]);
+    assert.equal(kit.files.get(PATHS.segment(2)), undefined);
+    const before = contents(kit);
+    const dry = await kit.run(['compact', '--dry-run'], AS_ALPHA);
+    assert.deepEqual([dry.code, dry.stdout.at(-1)], [EXIT.ok, 'DRY RUN: nothing was written; teamrig compact writes the above']);
+    assert.deepEqual(contents(kit), before);
+    const done = await kit.run(['compact'], AS_ALPHA);
+    assert.deepEqual([done.code, done.stdout.at(-1)], [EXIT.ok, 'DONE the tail is archived as archive/events-000002.jsonl; reads start from the new snapshot']);
+    assert.ok(kit.files.get(PATHS.segment(2)) !== undefined);
   });
 });
