@@ -47,7 +47,8 @@ teamrig <command> ...   (the caller: --session <id|name>, else TEAMRIG_SESSION)
       (run by Claude Code, hook JSON on stdin)
   launch <id> --team <team> --project <dir> [--home <dir>] [--encoded-prompt <text>]
       (run by the tab that open starts: sets the session and starts Claude Code)
-Team: TEAMRIG_TEAM, else the nearest .teamrig.json ({"team": "<id>"}) above the current folder.
+Team: TEAMRIG_TEAM, else the nearest .teamrig.json ({"team": "<id>"}) above the current folder,
+else above $CLAUDE_PROJECT_DIR.
 Sessions: give an id, a current name or a former one; a session never named is <team>-<id>.
 Dates: YYYY-MM-DD or "YYYY-MM-DD HH:MM", UTC. Kit home: $TEAMRIG_HOME, else ~/.teamrig.
 Exit: 0 done, 1 failed, 2 refused by a team rule, 3 open printed the command to run itself,
@@ -56,7 +57,7 @@ Exit: 0 done, 1 failed, 2 refused by a team rule, 3 open printed the command to 
 
 ## What a session sees
 
-<sub>Below, lead, api, web and data are your sessions' names; T1 and T2 are task ids; p1 is the most urgent of your
+<sub>Below, lead, api, web and data are your sessions' ids; T1 and T2 are task ids; p1 is the most urgent of your
 priorities; when you next type to a session, the plugin tells it about new inbox notes.</sub>
 
 ![Claude Code tabs named lead, api, web and data. Each session runs teamrig itself: the lead adds a task for api and one for web, and tells web its task is ready. Web reads the note and starts its task.](images/commands.svg)
