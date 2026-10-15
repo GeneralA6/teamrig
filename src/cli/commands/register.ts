@@ -3,18 +3,16 @@ import type { KitConfig } from '../../config/types.ts';
 import { formatAddress } from '../../core/address.ts';
 import type { TeamPaths } from '../../core/home.ts';
 import { JsonlDailyLog } from '../../core/daily-log.ts';
-import { FileLock } from '../../core/lock.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { postLine } from '../../inbox/inbox.ts';
 import { checkTasks, currentWeekOf } from '../../register/check.ts';
 import type { TaskFields } from '../../register/events.ts';
 import type { Task } from '../../register/fold.ts';
 import { renderPlan } from '../../register/plan.ts';
-import { RegisterPolicy, type AddInput, type StatusInput, type Verdict } from '../../register/policy.ts';
-import { Register, type WriteResult } from '../../register/register.ts';
+import type { AddInput, StatusInput, Verdict } from '../../register/policy.ts';
+import type { Register, WriteResult } from '../../register/register.ts';
 import { ACTIVE_STATUSES } from '../../register/model.ts';
 import type { RegisterSnapshot, RetiredTasks } from '../../register/snapshot.ts';
-import { JsonlEventLog } from '../../register/store.ts';
 import { heldStart, heldStartNotice, startHolds, verifyQueue } from '../../register/verify.ts';
 import { formatTask, formatTaskDetail, formatVerifyRow, selectTasks, type ListFilter } from '../../register/views.ts';
 import { waitContext, type WaitContext } from '../../register/waits.ts';
@@ -27,6 +25,7 @@ import { checkLines, listLines, type CheckSection, type TaskRow } from '../repor
 import { rollUp, type RolledTeam, type RollUp } from '../roll-up.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
+import { teamRegister } from '../team-register.ts';
 import { inboxDepsOf } from './inbox.ts';
 import { markBoundary } from './refresh.ts';
 
@@ -39,16 +38,7 @@ interface Team {
 
 async function teamOf(runtime: CliRuntime, kit: Kit, access: Access): Promise<Team> {
   const config = requireConfig(kit, runtime, access);
-  const { files, clock, sleep, pid } = runtime;
-  const register = new Register({
-    log: new JsonlEventLog(files, kit.paths.events),
-    mutex: new FileLock(kit.paths.eventsLock, config.lock, { files, clock, sleep, pid }),
-    clock,
-    policy: new RegisterPolicy(config),
-    skills: new SkillDir(files, kit.paths.skills),
-    autoArchive: config.register.autoArchive,
-  });
-  return { config, paths: kit.paths, register, roster: await rosterOf(runtime, kit, config) };
+  return { config, paths: kit.paths, register: teamRegister(runtime, kit.paths, config), roster: await rosterOf(runtime, kit, config) };
 }
 
 async function openTeam(runtime: CliRuntime, access: Access): Promise<Team> {
