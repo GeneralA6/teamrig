@@ -81,6 +81,16 @@ describe('parseEvent', () => {
     });
   });
 
+  it('reads the proof of a verifying line, and keeps it off any other status', () => {
+    const verifying = parse({ ...BASE, type: 'status', status: 'verifying', note: 'shipped', proof: 'the nightly run' }, 2);
+    assert.equal(verifying.kind === 'event' && verifying.event.type === 'status' ? verifying.event.proof : undefined, 'the nightly run');
+    const older = parse({ ...BASE, type: 'status', status: 'verifying', note: 'Proof: the nightly run' }, 2);
+    assert.equal(older.kind === 'event' && older.event.type === 'status' ? older.event.proof : 'no event', undefined);
+    const done = parse({ ...BASE, type: 'status', status: 'done', proof: 'the nightly run' }, 2);
+    assert.equal(done.kind === 'event' && done.event.type === 'status' ? done.event.proof : 'no event', undefined);
+    assert.match(reason(parse({ ...BASE, type: 'status', status: 'verifying', proof: 3 }, 2)), /proof is not text/);
+  });
+
   it('reads the reasons of a waiting line, and keeps them off any other status', () => {
     const waits = [
       { kind: 'decision', who: 'owner' },

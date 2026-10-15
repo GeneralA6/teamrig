@@ -208,6 +208,10 @@ export function statusInputOf(flags: Flags): StatusInput {
   if (waits !== undefined) {
     input.waits = waitsOf(waits);
   }
+  const proof = flags.get('proof');
+  if (proof !== undefined) {
+    input.proof = proof;
+  }
   return input;
 }
 

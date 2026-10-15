@@ -35,6 +35,8 @@ export interface StatusInput {
   readonly skill?: string;
   /** The reasons a `waiting` status waits for; at least one, and none with any other status. */
   readonly waits?: readonly WaitReason[];
+  /** What will prove a `verifying` task works; only with that status. */
+  readonly proof?: string;
 }
 
 /** What a status change is judged against besides the task: the register as read, the time, and whether a cited skill exists. */
@@ -51,6 +53,8 @@ export interface StatusChange {
   readonly skill: string | null;
   /** Only with `waiting`. */
   readonly waits?: readonly WaitReason[];
+  /** Only with `verifying`: the proof given, or the one the task already had when it was verifying before. */
+  readonly proof?: string;
 }
 
 /** How `--waits` is typed, for the refusals that ask for it. */
@@ -140,11 +144,18 @@ export class RegisterPolicy {
     if (!waits.ok) {
       return waits;
     }
-    if (input.status === task.status && note === null && sameWaits(waits.value, task.waits)) {
+    const proof = proofChange(task, input);
+    if (!proof.ok) {
+      return proof;
+    }
+    if (input.status === task.status && note === null && proof.value === task.proof && sameWaits(waits.value, task.waits)) {
       return refuse(`${task.id} is already ${task.status}; add --note to record why you set it again`);
     }
     if (register.requireNoteOn.includes(input.status) && note === null) {
-      return refuse(input.status === 'verifying' ? 'verifying needs --note saying what proves it' : `${input.status} needs --note`);
+      return refuse(input.status === 'verifying' && !register.requireProofOnVerifying ? 'verifying needs --note saying what proves it' : `${input.status} needs --note`);
+    }
+    if (input.status === 'verifying' && register.requireProofOnVerifying && proof.value === null) {
+      return refuse('verifying needs --proof saying what will prove the shipped change works');
     }
     if (input.status === 'done') {
       if (register.requireEvidenceOnDone && evidence === null && task.evidence === null) {
@@ -159,8 +170,15 @@ export class RegisterPolicy {
     } else if (skill !== null) {
       return refuse('--skill goes only with done');
     }
-    const problem = this.checkText('note', note) ?? this.checkText('evidence', evidence);
-    const change: StatusChange = { status: input.status, note, evidence, skill, ...(waits.value.length > 0 ? { waits: waits.value } : {}) };
+    const problem = this.checkText('note', note) ?? this.checkText('evidence', evidence) ?? this.checkText('proof', proof.value);
+    const change: StatusChange = {
+      status: input.status,
+      note,
+      evidence,
+      skill,
+      ...(waits.value.length > 0 ? { waits: waits.value } : {}),
+      ...(proof.value === null ? {} : { proof: proof.value }),
+    };
     return problem === undefined ? ok(change) : refuse(problem);
   }
 
@@ -271,6 +289,18 @@ export class RegisterPolicy {
 function pickFields(task: Task): TaskFields {
   const { title, owner, source, ref, priority, due, goals, week, after } = task;
   return { title, owner, source, ref, priority, due, goals, week, after };
+}
+
+/**
+ * The proof a status change writes: none outside `verifying`, where `--proof` is refused; the one given; or,
+ * when a verifying task is set verifying again without one, the proof it already had.
+ */
+function proofChange(task: Task, input: StatusInput): Verdict<string | null> {
+  const proof = blankToNull(input.proof);
+  if (input.status !== 'verifying') {
+    return proof === null ? ok(null) : refuse('--proof goes only with --status verifying');
+  }
+  return ok(proof ?? (task.status === 'verifying' ? task.proof : null));
 }
 
 function sameWaits(a: readonly WaitReason[], b: readonly WaitReason[]): boolean {

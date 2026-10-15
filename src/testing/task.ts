@@ -18,6 +18,7 @@ export function testTask(overrides: Partial<Task> = {}): Task {
     evidence: null,
     skill: null,
     waits: [],
+    proof: null,
     startedAt: null,
     createdAt: '2030-01-07T09:00:00.000Z',
     createdBy: 'lead',

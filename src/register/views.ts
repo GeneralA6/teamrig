@@ -3,6 +3,7 @@ import type { RegisterEvent } from './events.ts';
 import { taskNumber, type Task } from './fold.ts';
 import { ACTIVE_STATUSES, priorityText, type TaskStatus } from './model.ts';
 import { waitsText, type WaitContext } from './waits.ts';
+import { proofOf } from './verify.ts';
 
 export interface ListFilter {
   readonly owner?: string;
@@ -113,7 +114,8 @@ function statusNote(task: Task, context: WaitContext | undefined): string {
     const parts = [task.waits.length > 0 ? waitsText(task.waits, context) : null, task.note].filter((part) => part !== null);
     return parts.length === 0 ? '' : ` (waiting: ${parts.join('; ')})`;
   }
-  return task.status === 'verifying' && task.note !== null ? ` (proof: ${task.note})` : '';
+  const proof = task.status === 'verifying' ? proofOf(task) : null;
+  return proof === null ? '' : ` (proof: ${proof})`;
 }
 
 /** One field of an update, as `show` prints it: a priority reads `p2`, a list joins with commas. */
@@ -148,6 +150,7 @@ export function formatEvent(event: RegisterEvent): string {
     case 'status':
       return [
         `${head} ${event.status}${event.waits === undefined ? '' : ` waits="${waitsText(event.waits)}"`}${note}`,
+        event.proof === undefined ? undefined : `proof="${event.proof}"`,
         event.evidence === null ? undefined : `evidence=${event.evidence}`,
         event.skill === null ? undefined : `skill=${event.skill}`,
       ]
@@ -168,6 +171,9 @@ export function formatTaskDetail(task: Task, events: readonly RegisterEvent[], c
   }
   if (task.note !== null) {
     lines.push(`note: ${task.note}`);
+  }
+  if (task.proof !== null) {
+    lines.push(`proof: ${task.proof}`);
   }
   if (task.evidence !== null) {
     lines.push(`evidence: ${task.evidence}`);

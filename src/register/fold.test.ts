@@ -64,6 +64,13 @@ describe('foldEvents: what a waiting task waits for, and when it started', () =>
     assert.equal(taskAfter([create(9), status(10, 'in-progress'), status(11, 'open'), status(12, 'in-progress')]).startedAt, at(10));
   });
 
+  it('keeps the proof of the latest verifying status, and clears it when the task leaves verifying', () => {
+    const verifying = (hour: number, proof?: string): RegisterEvent => ({ ...status(hour, 'verifying'), ...(proof === undefined ? {} : { proof }) });
+    assert.equal(taskAfter([create(9), verifying(10, 'the nightly run')]).proof, 'the nightly run');
+    assert.equal(taskAfter([create(9), verifying(10, 'the nightly run'), status(11, 'in-progress')]).proof, null);
+    assert.equal(taskAfter([create(9), verifying(10)]).proof, null, 'a line from before --proof has none');
+  });
+
   it('keeps the tasks a task is planned after', () => {
     assert.deepEqual(taskAfter([create(9), update(10, { after: ['T5', 'T6'] })]).after, ['T5', 'T6']);
     assert.deepEqual(taskAfter([create(9), update(10, { after: ['T5'] }), update(11, { after: [] })]).after, []);

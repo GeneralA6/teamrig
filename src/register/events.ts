@@ -10,7 +10,8 @@ import { parseWaits, type WaitReason } from './waits.ts';
  * the same way: an old line's `tier` reads as its priority and the line is never rewritten.
  * Version 2 later gained, without a new number, a task's `after` list and the `waiting` status with its
  * `waits`, which replaced `blocked`: an older reader ignores the new fields and skips a `waiting` line as
- * a newer teamrig's, and a `blocked` line reads here as `waiting` with no reasons.
+ * a newer teamrig's, and a `blocked` line reads here as `waiting` with no reasons. It also gained a
+ * `verifying` status's `proof`, which an older reader ignores.
  * Parsing checks the FORMAT only (any positive priority, any goal string): team policy is applied
  * on write, so changing the config never erases history.
  */
@@ -64,6 +65,8 @@ export interface StatusEvent extends EventBase {
   readonly skill: string | null;
   /** What a `waiting` task waits for; written only with that status, and absent on a `blocked` line read as one. */
   readonly waits?: readonly WaitReason[];
+  /** What will prove a `verifying` task works; written only with that status, and absent on lines from before `--proof`. */
+  readonly proof?: string;
 }
 
 export interface UpdateEvent extends EventBase {
@@ -120,7 +123,7 @@ export function parseEvent(line: JsonlRecord): EventParse {
       if (!isTaskStatus(status)) {
         return typeof status === 'string' && STATUS_NAME.test(status) ? { kind: 'newer' } : unreadable(`unknown status ${JSON.stringify(status)}`);
       }
-      const problem = textProblem(record, ['note', 'evidence', 'skill']);
+      const problem = textProblem(record, ['note', 'evidence', 'skill', 'proof']);
       if (problem !== undefined) {
         return unreadable(problem);
       }
@@ -128,6 +131,7 @@ export function parseEvent(line: JsonlRecord): EventParse {
       if (typeof waits === 'string') {
         return unreadable(waits);
       }
+      const proof = status === 'verifying' ? textOrNull(record, 'proof') : null;
       const event: StatusEvent = {
         ...base,
         type: 'status',
@@ -136,6 +140,7 @@ export function parseEvent(line: JsonlRecord): EventParse {
         evidence: textOrNull(record, 'evidence'),
         skill: textOrNull(record, 'skill'),
         ...(waits === undefined ? {} : { waits }),
+        ...(proof === null ? {} : { proof }),
       };
       return { kind: 'event', event };
     }
