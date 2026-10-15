@@ -1,0 +1,99 @@
+# Errors and refusals
+
+What teamrig prints when it stops, and what to do. `REFUSED` (exit 2) means a team rule stopped the command; a
+usage error (exit 64) means the command line could not be read and is followed by the full usage; `FAILED`
+(exit 1, on stderr) means a file, git or another program failed. Never work around a refusal: fix what it names,
+or take it to the lead.
+
+## No team, wrong session
+
+| Output | Fix |
+| --- | --- |
+| `REFUSED no team here: create one with teamrig team create <team> --sessions <id,id>, set $TEAMRIG_TEAM, or put .teamrig.json {"team": "<id>"} in the project folder` | Run the command from the project folder, or set `$TEAMRIG_TEAM`. Create a team only if the user wants one. |
+| `--session (or $TEAMRIG_SESSION) is required` | Add `--session <your id>`. If you do not know it, run `teamrig who` and ask the user. |
+| `REFUSED db is not a session on this team (sessions: lead (shop-lead), api (shop-api), web (shop-web))` | Use one of the ids or names listed. |
+| `REFUSED the team config has 2 problem(s) (first: ...); run: teamrig config validate` | Run `teamrig config validate` and fix each problem it lists in the config; reads still work meanwhile. |
+| `REFUSED no team config at <path>; create it with: teamrig team create <team> --sessions <id,id>` | The pointer names a team with no config: create it, or fix `.teamrig.json`. |
+
+## Tasks
+
+| Output | Fix |
+| --- | --- |
+| `REFUSED T1 already tracks this (open, owner api)` | An active task has this title: work on that one, or ask its owner. |
+| `REFUSED only the owner (api) sets the status of T1` | Tell the owner in an inbox line; only it sets the status. |
+| `REFUSED done needs --evidence: a commit, test count, path or number that proves it` | Add `--evidence` with real proof. |
+| `REFUSED done needs --skill <name> (the skill written or updated) or --skill none` | Add `--skill <name>` or `--skill none`. |
+| `REFUSED no skill named x; write it first or use --skill none` | Write the skill to `<skills folder>/x/SKILL.md` first, or use `none`. |
+| `REFUSED --skill goes only with done` | Drop `--skill`. |
+| `REFUSED blocked needs --note` (also `done`, `dropped`) | Add `--note` saying what it waits for, what was done, or why it was dropped. |
+| `REFUSED T1 is already done; add --note to record why you set it again` | Add a `--note`, or leave the status as it is. |
+| `REFUSED the lead may change only owner, priority, due, week on a task it does not own (asked: title)` | Ask the owner to change that field. |
+| `REFUSED only the owner (web) or the lead changes T2` | Ask the owner or the lead. |
+| `REFUSED nothing to change` | `update` needs at least one field flag. |
+| `REFUSED priority p9 is not one of p1, p2, p3, p4, p5` | Use a priority the team defines. |
+| `REFUSED the title has 141 characters; the limit is 140` | Shorten the title; put detail in `--ref`. |
+| `REFUSED note has 320 characters; the limit is 300` | Shorten it; point at a file instead. |
+| `REFUSED note looks like it holds a secret (...); refer to where it is kept instead` | Remove the secret and name where it is kept. |
+| `REFUSED due 17-10-2026 is not YYYY-MM-DD or YYYY-MM-DD HH:MM` | Write the date as `2026-10-17`. |
+| `REFUSED no task T9` | Check the id with `teamrig list --status all`. |
+| `REFUSED no week plan tagged yet; pass --week <YYYY-MM-DD>` (from `plan`) | Tag tasks with `--week` first, or pass `--week`. |
+| `REFUSED only shop's parent lead (...) adds tasks to it` (from `add --team`) | Only the parent team's lead hands a child team work. |
+| `REFUSED --tree is for the team's lead ...` | Run it without `--tree`, or as the lead. |
+
+## Inbox
+
+| Output | Fix |
+| --- | --- |
+| `REFUSED an inbox item is one non-empty line` | Put it on one line; a longer note goes in a file the line points at. |
+| `REFUSED no team x with a config in this kit home` | Check the team id with `teamrig team tree`. |
+| A refusal to reach another team's session | A member only writes to its own team; a lead also to its parent lead and child leads. Go through your lead. |
+
+## Team, names and sessions
+
+| Output | Fix |
+| --- | --- |
+| `REFUSED <project> is already tied to team X by <pointer>; give another --project, or remove that pointer first` | The folder belongs to another team: use another folder, or ask the user. |
+| `REFUSED team X already exists at <path> with sessions ...; choose another team name, or change that config by hand` | Pick another team id, or add sessions to the existing team with the user. |
+| `REFUSED the session name N is already used by ..., and Claude Code session names are machine-wide; choose another team id, or rename ... with teamrig rename` | Choose another team id. |
+| `REFUSED team X has N child teams (...), and a team has at most 8: hang some under another team` | Put the new team under another team with `--parent`. |
+| `REFUSED only web itself or the lead may record its new name` | Ask that session or the lead to run `rename`. |
+| `REFUSED x is already the name of ...` / `x is the id of another session` | Choose another name. |
+| `REFUSED Claude Code (claude) is not on PATH; install it, then run this again` | Install Claude Code or fix the PATH. |
+| `REFUSED the project folder <dir> does not exist` | Pass an existing folder to `--project`. |
+| `MANUAL no terminal opened (...); open a new terminal and run this:` and a command (exit 3) | Show the user the command to run in a new terminal; or pass `--terminal <name>`. |
+
+## Refresh
+
+| Output | Fix |
+| --- | --- |
+| `REFUSED only the lead (shop-lead) asks for a refresh` | Only the lead asks; a session refreshes itself when the Stop hook asks. |
+| `REFUSED no refresh was asked of you: ...` | Nothing to do: carry on. |
+| `REFUSED write your handover to <path> first` | Write the handover, then run `refresh --ready` again. |
+| `REFUSED <path> is the handover from before; write this refresh's handover there` | Rewrite the file with the current state. |
+| `REFUSED context refresh is off for this team (refresh.enabled in the team config)` | The team turned refresh off; carry on. |
+
+## Usage errors (exit 64)
+
+| Output | Fix |
+| --- | --- |
+| `unknown command "x"` | See [commands.md](commands.md) or `teamrig help`. |
+| `unexpected "done"` | The status is a flag: `teamrig set T1 --status done ...`. |
+| `<cmd> takes no --x` | That command has no such flag: check its section in [commands.md](commands.md). |
+| `--x is given twice` | Give each flag once; a list is comma-separated (`--goals G1,G2`). |
+| `--x needs a value` | Give the value, quoted if it has spaces. |
+| `priority "2" is not p<n>: write p2` | Write priorities as `p2`. |
+| `priority "t2" is the old tier spelling: write p2` | Write `p2`. |
+| `--tier was renamed: use --priority` | Use `--priority`. |
+| `"9" is not a task id like T12` | Write task ids as `T9`. |
+| `--status "finished" is not open\|in-progress\|blocked\|done\|dropped` | Use one of those five. |
+| `--week "x" is not a YYYY-MM-DD date` | Write the week's first day as `2026-10-12`. |
+| `--team gives the task to that team's lead, from you: it takes no --owner or --source` | Drop `--owner` and `--source` from `add --team`. |
+
+## Failures (exit 1)
+
+| Output | Fix |
+| --- | --- |
+| `FAILED git cannot list the commits in X..HEAD from <dir>` | Run `commits check` inside a git repository, with a base ref that exists (`git fetch` first). |
+| `INVALID <config path>: N problem(s), each read as its default until fixed` | Fix each listed problem in the config, then run `config validate` again. |
+| `FAILED <path> is held by another process (waited 20000 ms); retry` | Another teamrig command holds the lock: run it again. A lock left by a crashed command is cleared after 30 s. |
+| Any other `FAILED` about a file | Run `teamrig doctor`, and report what it prints to the lead. |
