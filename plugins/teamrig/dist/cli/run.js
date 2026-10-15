@@ -19,6 +19,7 @@ const rulesCommands = () => import("./commands/rules.js");
 const openCommands = () => import("./commands/open.js");
 const budgetCommands = () => import("./commands/budget.js");
 const budgetSetupCommands = () => import("./commands/budget-setup.js");
+const statuslineCommands = () => import("./commands/statusline.js");
 const TASK_FIELDS = ['title', 'owner', 'ref', 'priority', 'due', 'goals', 'week', 'after'];
 const COMMANDS = {
     add: { flags: ['session', 'source', 'team', ...TASK_FIELDS], load: async () => (await registerCommands()).add },
@@ -57,7 +58,9 @@ const COMMANDS = {
         switches: ['yes', 'off'],
         load: async () => (await budgetSetupCommands()).setup,
     },
-    statusline: { flags: [], load: async () => (await budgetCommands()).statusline },
+    statusline: { flags: [], switches: ['pass'], load: async () => (await budgetCommands()).statusline },
+    'statusline install': { flags: [], switches: ['yes'], load: async () => (await statuslineCommands()).install },
+    'statusline uninstall': { flags: [], switches: ['yes'], load: async () => (await statuslineCommands()).uninstall },
     'config validate': { flags: [], load: async () => (await configCommands()).validate },
     'config migrate': { flags: [], load: async () => (await configCommands()).migrate },
     'commits check': { flags: ['base', 'tip'], load: async () => (await commitsCommands()).check },
@@ -124,8 +127,12 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       [--quiet <HH:MM-HH:MM>|off] [--quiet-action <action>] [--off] [--yes]
       (the lead only) writes the team's budget policy into its config and turns the budget on (--off:
       off); without --yes it shows the change and writes nothing; flags left out keep their values
-  statusline                   Claude Code's status line (status JSON on stdin): saves the week's use
-      for budget and prints a short status
+  statusline [--pass]          Claude Code's status line (status JSON on stdin): saves the week's use
+      for budget and prints a short status; --pass: prints the status JSON again instead, for the
+      status line after it in a pipe
+  statusline install [--yes]   makes teamrig statusline Claude Code's status line, in front of the one
+      already there; without --yes it shows the change and writes nothing
+  statusline uninstall [--yes] takes it back out: the status line before it returns
   config validate | config migrate
   commits check --base <ref> [--tip <ref>]   commits in base..tip (default HEAD) over the size rule
       with no reason line; any is REFUSED, for an integrate script or CI

@@ -17,7 +17,7 @@ function useText(w, calls) {
 }
 function weekLine(week) {
     if (week.usedPct === undefined || week.reset === undefined) {
-        return "Week: its use is unknown: no status line reading (use teamrig statusline as the status line) and no budget.weeklyLimitW.";
+        return "Week: its use is unknown: no status line reading (run teamrig statusline install) and no budget.weeklyLimitW.";
     }
     const source = week.statusAt === undefined ? ' (metered)' : ` at ${formatTimeOfDay(week.statusAt)} (status line)`;
     const pace = week.pace;
