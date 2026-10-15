@@ -1,4 +1,4 @@
-import type { KitConfig } from '../config/types.ts';
+import type { KitConfig, PushGuardConfig } from '../config/types.ts';
 
 /**
  * The rendered core pack fits in this many characters with worst-case config values (a CI test holds it).
@@ -17,6 +17,18 @@ export interface TeamRules {
 
 function list(items: readonly string[]): string {
   return items.join('; ');
+}
+
+/** What the push guard does, as the team's pushGuard config sets it. */
+function pushRule(pushGuard: PushGuardConfig): string {
+  const branches = pushGuard.protectedBranches.join(', ');
+  const keys = '[pushGuard.protectedBranches, pushGuard.pushToProtected]';
+  if (branches === '') {
+    return 'No branch is protected, so the push guard stops no push [pushGuard.protectedBranches].';
+  }
+  return pushGuard.pushToProtected === 'allow'
+    ? `Normal pushes to ${branches} go through without asking, a --force-with-lease push asks; force-pushing or deleting them is refused ${keys}.`
+    : `Pushes to ${branches} ask the human; force-pushing or deleting them is refused ${keys}.`;
 }
 
 /** At most two decimals, so float noise (0.30000000000000004) or a tiny value (1e-7) prints short. */
@@ -73,7 +85,7 @@ export function renderCorePack(config: KitConfig, command: string): string {
     'One logical change per commit (a fix with its tests, a refactor apart from what it enables, a mechanical change alone), committed as each step passes.' +
       ` Over ${config.commits.maxLines} changed non-test lines or ${config.commits.maxFiles} non-test files [commits.maxLines, commits.maxFiles], a commit needs a \`${config.commits.largeCommitTrailer}: <reason>\` line [commits.largeCommitTrailer]` +
       { off: '.', warn: '; a push to a protected branch lists those without one [commits.gate].', refuse: '; a push to a protected branch that sends one is refused [commits.gate].' }[config.commits.gate],
-    `Pushes to ${list(config.pushGuard.protectedBranches)} ask the human; force-pushing or deleting them is refused [pushGuard.protectedBranches]. A refused or blocked route is reported to the lead, never routed around.`,
+    `${pushRule(config.pushGuard)} A refused or blocked route is reported to the lead, never routed around.`,
     'Edit in your own worktree and branch in every git repo, never a main checkout. On Windows remove a worktree\'s node_modules link (`cmd /c rmdir`; Git Bash `cmd //c`), or `git worktree remove` follows it into the main one. Whoever finds a stale comment, doc or dead code fixes it in its own small commit.',
   ];
   return [
