@@ -74,8 +74,8 @@ export function renderCorePack(config, command) {
         'A message wakes its receiver, so send one only for a result it acts on now, a decision, a blocker, a same-area conflict or an incident.' +
             ` At most ${config.messages.maxLines} lines [messages.maxLines]: what happened, evidence (numbers, ids, paths), the exact ask and deadline, your default, then "No reply needed" or "Reply needed: <one question>".` +
             ` No acks, thanks or progress pings. Anything else, a "done" report or a failed send too, is one inbox line per receiver: \`${command} inbox add --to <area> --text "..."\`.`,
-        `Status is pulled, never asked: each session keeps one board and writes only its own. At the start of each work block run \`${command} start --session <you>\`.` +
-            ` Every ask that creates work is a register entry the asker adds in the same turn (\`${command} add --owner <session>\`); ${statusDemands(config, command)}` +
+        `Status is pulled from the register, never asked. Start each work block with \`${command} start --session <you>\`.` +
+            ` Every ask that creates work is a register entry, added in the same turn by the asker (\`${command} add --owner <session>\` tells the owner), else by the receiver; ${statusDemands(config, command)}` +
             ' Waiting needs `--waits` reasons; a task not started that needs another first stays open, planned `--after` it.' +
             ` A shipped change is verifying until its proof exists (\`${command} verify\`).`,
         `Work your own task list in priority order (\`${command} list --session <you>\`); self-made work is a task too, recorded with \`${command} add\` before you start it,` +
