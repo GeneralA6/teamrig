@@ -1,6 +1,5 @@
-import { createHash } from 'node:crypto';
 import { isNonNegativeInteger, stringField } from '../core/guards.ts';
-import type { JsonlRecord } from '../core/jsonl.ts';
+import { parseJsonl, type JsonlRecord } from '../core/jsonl.ts';
 import { SESSION_NAME } from '../register/model.ts';
 
 export const MARK_VERSION = 1;
@@ -49,9 +48,29 @@ export function parseMark(line: JsonlRecord): MarkParse {
   return valid ? { kind: 'mark', mark: { v: line.version, area, line: count, at, claudeSession, lastLineHash } } : { kind: 'unreadable' };
 }
 
-/** A short, stable fingerprint of a text: an inbox line, or a handover note (`refresh --ready`). */
-export function lineHash(text: string): string {
-  return createHash('sha256').update(text).digest('hex').slice(0, 16);
+export interface MarkLogRead {
+  readonly marks: readonly InboxMark[];
+  readonly unreadable: number;
+  readonly newer: number;
+}
+
+/** The marks an `inbox-marks.jsonl` text holds, in write order; damaged and newer lines are counted, never fatal. */
+export function readMarks(text: string): MarkLogRead {
+  const parse = parseJsonl(text);
+  const marks: InboxMark[] = [];
+  let unreadable = parse.unreadable;
+  let newer = 0;
+  for (const line of parse.records) {
+    const result = parseMark(line);
+    if (result.kind === 'mark') {
+      marks.push(result.mark);
+    } else if (result.kind === 'newer') {
+      newer += 1;
+    } else {
+      unreadable += 1;
+    }
+  }
+  return { marks, unreadable, newer };
 }
 
 export interface MarkIndex {

@@ -2,7 +2,8 @@ import type { Roster } from '../config/roster.ts';
 import { describeNameClash, describeTreeProblem, type NameClash, type TreeProblem } from '../config/tree.ts';
 import type { KitConfig } from '../config/types.ts';
 import { formatUtcMinute, MS_PER_DAY, parseUtcDeadline, shortUtc } from '../core/time.ts';
-import { unreadSince, type Unread } from '../inbox/inbox.ts';
+import { unreadSince } from '../inbox/inbox.ts';
+import type { Unread } from '../inbox/unread.ts';
 import type { RenameLogRead } from '../names/log.ts';
 import { TEAM_RULES_MAX_CHARS } from '../rules/pack.ts';
 

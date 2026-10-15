@@ -2,7 +2,9 @@ import { isRecord, stringField } from '../core/guards.ts';
 import { formatUtcMinute, shortUtc } from '../core/time.ts';
 import type { SecretScanner } from '../core/secrets.ts';
 import { SESSION_NAME } from '../register/model.ts';
-import { CLAUDE_SESSION_ID, indexMarks, lineHash, MARK_VERSION, type InboxMark } from './marks.ts';
+import { lineHash } from './line-hash.ts';
+import { CLAUDE_SESSION_ID, indexMarks, MARK_VERSION, type InboxMark, type MarkLogRead } from './marks.ts';
+import { unreadOf, type Unread } from './unread.ts';
 
 /** The inbox files: one per area, one dated line per item. */
 export interface Inboxes {
@@ -14,58 +16,9 @@ export interface Inboxes {
   pathOf(area: string): string;
 }
 
-export interface MarkLogRead {
-  readonly marks: readonly InboxMark[];
-  readonly unreadable: number;
-  readonly newer: number;
-}
-
 export interface MarkLog {
   read(): Promise<MarkLogRead>;
   append(mark: InboxMark): Promise<void>;
-}
-
-/**
- * Where reading resumes:
- * - `never`: no mark yet, everything is unread;
- * - `grew`: the last line read is where the mark left it, only later lines are new;
- * - `moved`: lines above the mark were trimmed; the last line read was found higher up;
- * - `rewritten`: the last line read is gone, so everything counts as unread.
- */
-export type ResumeKind = 'never' | 'grew' | 'moved' | 'rewritten';
-
-export interface Unread {
-  readonly area: string;
-  readonly total: number;
-  readonly lines: readonly string[];
-  readonly mark: InboxMark | null;
-  readonly resume: ResumeKind;
-}
-
-export function unreadOf(area: string, lines: readonly string[], mark: InboxMark | null): Unread {
-  const from = resumeAt(lines, mark);
-  return { area, total: lines.length, lines: lines.slice(from.index), mark, resume: from.kind };
-}
-
-function resumeAt(lines: readonly string[], mark: InboxMark | null): { index: number; kind: ResumeKind } {
-  if (mark === null) {
-    return { index: 0, kind: 'never' };
-  }
-  if (mark.lastLineHash === null) {
-    // A v0 mark knows only a count: trust it unless the file shrank below it.
-    return mark.line > lines.length ? { index: 0, kind: 'rewritten' } : { index: mark.line, kind: 'grew' };
-  }
-  if (mark.line === 0) {
-    return { index: 0, kind: 'grew' };
-  }
-  // Trimming the top shifts the last line read upwards, so search from the mark down to the top.
-  for (let index = Math.min(mark.line, lines.length) - 1; index >= 0; index -= 1) {
-    const line = lines[index];
-    if (line !== undefined && lineHash(line) === mark.lastLineHash) {
-      return { index: index + 1, kind: index + 1 === mark.line ? 'grew' : 'moved' };
-    }
-  }
-  return { index: 0, kind: 'rewritten' };
 }
 
 const LINE_DATE = /^- (\d{4}-\d{2}-\d{2} \d{2}:\d{2})/;
@@ -127,7 +80,7 @@ export async function readInbox(
 ): Promise<ReadResult> {
   const lines = (await deps.inboxes.lines(input.area)) ?? [];
   const { byArea } = indexMarks((await deps.marks.read()).marks);
-  const unread = unreadOf(input.area, lines, byArea.get(input.area) ?? null);
+  const unread = unreadOf(input.area, lines, byArea.get(input.area) ?? null, lineHash);
   const last = lines.at(-1);
   const mark: InboxMark = {
     v: MARK_VERSION,
@@ -161,7 +114,7 @@ export async function inboxStatus(deps: InboxDeps, area?: string): Promise<Unrea
   for (const name of areas) {
     const lines = await deps.inboxes.lines(name);
     if (lines !== undefined) {
-      result.push(unreadOf(name, lines, byArea.get(name) ?? null));
+      result.push(unreadOf(name, lines, byArea.get(name) ?? null, lineHash));
     }
   }
   return result;
@@ -174,7 +127,7 @@ export async function reminderFor(deps: InboxDeps, area: string, command: string
     return undefined;
   }
   const { byArea } = indexMarks((await deps.marks.read()).marks);
-  return reminderLine(unreadOf(area, lines, byArea.get(area) ?? null), deps.inboxes.pathOf(area), command);
+  return reminderLine(unreadOf(area, lines, byArea.get(area) ?? null, lineHash), deps.inboxes.pathOf(area), command);
 }
 
 export interface PostInput {
