@@ -1,8 +1,9 @@
+import { JsonlDailyLog } from '../../core/daily-log.ts';
 import type { TeamPaths } from '../../core/home.ts';
 import type { Task } from '../../register/fold.ts';
 import { JsonlEventLog } from '../../register/store.ts';
-import { verifyQueue } from '../../register/verify.ts';
-import { formatVerifySummary } from '../../register/views.ts';
+import { verifyByArrived, verifyQueue } from '../../register/verify.ts';
+import { formatVerifyByLine, formatVerifySummary } from '../../register/views.ts';
 import type { CliRuntime } from '../runtime.ts';
 
 /**
@@ -27,4 +28,22 @@ export async function verifyNoteOf(runtime: CliRuntime, paths: TeamPaths, id: st
   } catch {
     return undefined;
   }
+}
+
+/**
+ * The Stop hook's lines for session `id`'s verifying tasks whose verify-by day has come, overdue ones
+ * too. It reads the register at the session's first stop of each UTC day only, so each task gets one
+ * line a day and every other stop reads one small file; a date that arrives later that day waits for
+ * the next one.
+ */
+export async function verifyByLinesOf(runtime: CliRuntime, paths: TeamPaths, id: string): Promise<string[]> {
+  const now = new Date(runtime.clock.now());
+  const scans = new JsonlDailyLog(runtime.files, paths.verifyNotices);
+  const key = `due ${id}`;
+  if (await scans.seen(key, now)) {
+    return [];
+  }
+  const due = (await queueOf(runtime, paths, id)).filter((task) => verifyByArrived(task, now));
+  await scans.record(key, now);
+  return due.map(formatVerifyByLine);
 }

@@ -30,7 +30,7 @@ import { helperGateOutput, promptBudgetLine, stopBudgetLines } from './hook-budg
 import { coldSendHold } from './hook-cold-send.ts';
 import { parseJson, sessionTeam } from './hook-input.ts';
 import { inboxDepsOf } from './inbox.ts';
-import { verifyNoteOf } from './verify-queue.ts';
+import { verifyByLinesOf, verifyNoteOf } from './verify-queue.ts';
 
 /**
  * Claude Code hooks. Each reads the hook's JSON from stdin and prints only what Claude Code
@@ -413,7 +413,7 @@ async function modelNoticesOf(runtime: CliRuntime, scope: StopScope, payload: Js
 
 /**
  * What the Stop hook prints for this turn's end; '' outside a team or without a session. The refresh,
- * the model notices and the budget lines fail apart: an error in one leaves the others.
+ * the model notices, the budget lines and the verify-by lines fail apart: an error in one leaves the others.
  */
 async function stopOutputOf(runtime: CliRuntime, payload: JsonRecord): Promise<string> {
   const scope = await stopScopeOf(runtime, payload);
@@ -423,17 +423,19 @@ async function stopOutputOf(runtime: CliRuntime, payload: JsonRecord): Promise<s
   const decision = await refreshDecisionOf(runtime, scope, payload).catch((): StopDecision => ({ kind: 'none' }));
   const notices = await modelNoticesOf(runtime, scope, payload).catch((): readonly string[] => []);
   const budget = await stopBudgetLines(runtime, scope, stringField(payload, 'transcript_path')).catch((): readonly string[] => []);
-  return stopOutput(decision, [...notices, ...budget]);
+  const verify = await verifyByLinesOf(runtime, scope.kit.paths, scope.id).catch((): readonly string[] => []);
+  return stopOutput(decision, [...notices, ...budget, ...verify]);
 }
 
 /**
  * Stop, at the end of every turn: after the session finished a task (`set done`), asks for its
  * handover once when its context reached the team's threshold or the lead asked, then tells the user
  * once that it waits for /clear. It also tells the user, once each, when the session runs at another
- * effort than its `launch` entry or Claude Code switched its model after a safeguard stop. A turn with
- * nothing to say reads only small files and the transcript's tail, and prints nothing. It never blocks
- * on an error, and ignores input that is not a hook payload (which would judge a boundary without its
- * transcript): a refresh is a convenience, and the next stop tries again.
+ * effort than its `launch` entry or Claude Code switched its model after a safeguard stop, and once a
+ * day when the date to verify one of its verifying tasks by has come. A turn with nothing to say reads
+ * only small files and the transcript's tail (and, at the first stop of a UTC day, the register log),
+ * and prints nothing. It never blocks on an error, and ignores input that is not a hook payload (which
+ * would judge a boundary without its transcript): a refresh is a convenience, and the next stop tries again.
  */
 export async function stop(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
