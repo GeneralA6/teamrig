@@ -6,6 +6,7 @@ import { realSleep, systemClock } from "../core/lock.js";
 import { NODE_PATH_PROBE } from "../core/path-probe.js";
 import { nodeProcesses } from "../open/processes.js";
 import { GIT_CLI, GIT_COMMIT_LOG } from "../push-guard/git.js";
+import { requirementsCheck } from "../requirements/requirements.js";
 import { runCli } from "./run.js";
 /** The process adapter: real files, clock, git, child processes and stdio around the testable runner. */
 process.exitCode = await runCli(process.argv.slice(2), {
@@ -26,5 +27,6 @@ process.exitCode = await runCli(process.argv.slice(2), {
     processes: nodeProcesses(),
     probe: NODE_PATH_PROBE,
     self: { node: process.execPath, script: fileURLToPath(import.meta.url) },
+    requirements: requirementsCheck({ env: process.env, platform: process.platform, probe: NODE_PATH_PROBE, nodeVersion: process.versions.node }),
     readStdin: () => text(process.stdin),
 });

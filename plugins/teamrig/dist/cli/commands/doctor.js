@@ -9,9 +9,10 @@ import { EXIT } from "../runtime.js";
 import { loadTree } from "../tree.js";
 import { inboxDepsOf } from "./inbox.js";
 /**
- * `doctor`: the team's health checks (names, the rename log, inboxes, rules.md, its tree of teams and
- * session names shared with other teams, read from every team config of the kit home). It reads only and
- * exits 0 like `check`: a finding is advice, and each line says the fix.
+ * `doctor`: what teamrig lacks on this machine (git, Claude Code, Node.js), then the team's health checks
+ * (names, the rename log, inboxes, rules.md, its tree of teams and session names shared with other teams,
+ * read from every team config of the kit home). It reads only and exits 0 like `check`: a finding is
+ * advice, and each line says the fix.
  */
 export async function doctor(args, runtime) {
     noPositionals(args);
@@ -22,6 +23,7 @@ export async function doctor(args, runtime) {
     const rules = await runtime.files.read(paths.teamRules);
     const { tree } = await loadTree(runtime);
     const findings = doctorFindings({
+        requirements: await runtime.requirements.problems(),
         roster: new Roster(config, paths.team, renameLog.renames),
         configNames: config.names,
         renameLog: { ...renameLog, path: paths.renames },

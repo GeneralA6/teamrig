@@ -1,23 +1,10 @@
 import { posix, win32 } from 'node:path';
+import { envVariable, pathList } from "../core/path-search.js";
 const PROGRAM = 'claude';
 const WINDOWS_EXTENSIONS = '.COM;.EXE;.BAT;.CMD';
 const SCRIPT = /\.[cm]?js$/i;
 /** npm's cmd-shim ends by running `"%dp0%\<target>" %*`: the target, beside the shim. */
 const SHIM_TARGET = /"%~?dp0%?\\([^"\r\n]+)"\s+%\*/g;
-/** A variable by name; Windows names ignore case (`Path`, `PATH`). */
-function variable(env, name, platform) {
-    if (platform !== 'win32') {
-        return env[name];
-    }
-    const key = Object.keys(env).find((candidate) => candidate.toUpperCase() === name);
-    return key === undefined ? undefined : env[key];
-}
-function listOf(value, delimiter) {
-    return (value ?? '').split(delimiter).flatMap((part) => {
-        const trimmed = part.trim().replace(/^"(.*)"$/, '$1');
-        return trimmed === '' ? [] : [trimmed];
-    });
-}
 /**
  * The program an npm `claude.cmd` shim runs. Node.js starts a `.cmd` only through cmd.exe, which would
  * read the prompt as cmd syntax, so the shim's own target is started instead: a script with Node.js,
@@ -39,9 +26,9 @@ async function shimProgram(deps, shim) {
     return /\.exe$/i.test(path) ? { command: path, prefix: [] } : `${shim} starts ${path}, which is neither a script nor a program`;
 }
 async function windowsSearch(deps) {
-    const extensions = listOf(variable(deps.env, 'PATHEXT', 'win32') ?? WINDOWS_EXTENSIONS, ';').map((extension) => extension.toLowerCase());
+    const extensions = pathList(envVariable(deps.env, 'PATHEXT', 'win32') ?? WINDOWS_EXTENSIONS, ';').map((extension) => extension.toLowerCase());
     const skipped = [];
-    for (const folder of listOf(variable(deps.env, 'PATH', 'win32'), ';')) {
+    for (const folder of pathList(envVariable(deps.env, 'PATH', 'win32'), ';')) {
         for (const extension of extensions) {
             const path = win32.join(folder, `${PROGRAM}${extension}`);
             if ((await deps.probe.kind(path)) !== 'file') {
@@ -62,7 +49,7 @@ async function windowsSearch(deps) {
     return { kind: 'missing', skipped };
 }
 async function posixSearch(deps) {
-    for (const folder of listOf(variable(deps.env, 'PATH', deps.platform), ':')) {
+    for (const folder of pathList(envVariable(deps.env, 'PATH', deps.platform), ':')) {
         const path = posix.join(folder, PROGRAM);
         if ((await deps.probe.kind(path)) === 'file') {
             return { kind: 'found', program: { command: path, prefix: [] } };
