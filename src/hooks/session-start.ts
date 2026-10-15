@@ -28,6 +28,8 @@ export interface SessionStartInput {
   readonly session: string | undefined;
   /** Whether `$TEAMRIG_SESSION` holds `session`, so the session's commands find it without `--session`. */
   readonly sessionInEnv: boolean;
+  /** Where the hook runs, so the rules print the steps only that platform needs. */
+  readonly platform: NodeJS.Platform;
   /** Where the team sits in a tree of teams; undefined for a team on its own. */
   readonly tree: TreePlace | undefined;
   /** The CLI name the rules tell the session to run. */
@@ -124,7 +126,7 @@ export function sessionStartContext(input: SessionStartInput): string {
   if (load.issues.length > 0) {
     notes.push(`The team config has ${load.issues.length} problem(s), each read as its default; run: ${command} config validate`);
   }
-  const core = renderCorePack(load.config, command);
+  const core = renderCorePack(load.config, command, input.platform);
   const rules = isLeadSession(roster, input.session) ? `${core}\n\n${renderLeadRules(load.config, command)}` : core;
   return renderSessionContext(`${rules}\n\n${notes.join('\n')}`, input.teamRules, command);
 }

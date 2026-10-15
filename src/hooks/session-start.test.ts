@@ -28,6 +28,7 @@ function context(overrides: Partial<SessionStartInput> = {}): string {
     sessionInEnv: true,
     tree: undefined,
     command: COMMAND,
+    platform: 'win32',
     ...overrides,
   });
 }
@@ -35,8 +36,13 @@ function context(overrides: Partial<SessionStartInput> = {}): string {
 describe('sessionStartContext', () => {
   it('gives the core rules, then who the session is and how to reach the lead', () => {
     const text = context();
-    assert.ok(text.startsWith(renderCorePack(testConfig(), COMMAND)));
+    assert.ok(text.startsWith(renderCorePack(testConfig(), COMMAND, 'win32')));
     assert.ok(text.endsWith(`\n\nYou are the \`alpha\` session of team \`app\` (name \`app-alpha\`). Message the lead as \`team-lead\`.\n${NAMES}`));
+  });
+
+  it('renders the rules for the platform the hook runs on', () => {
+    assert.ok(context({ platform: 'linux' }).startsWith(renderCorePack(testConfig(), COMMAND, 'linux')));
+    assert.doesNotMatch(context({ platform: 'linux' }), /rmdir/);
   });
 
   it('finds the session by name too, and tells the lead its role', () => {
