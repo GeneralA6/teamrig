@@ -276,12 +276,20 @@ export interface AlertsConfig {
 
 /**
  * Context refresh: when a session finishes a task (`set <id> --status done`) with its context at or over
- * `contextTokens`, or after the lead asked for it, the session writes a handover and the user types /clear.
+ * `contextTokens`, or with `everyTasks` tasks finished since its context was last fresh, or after the lead
+ * asked for it, the session writes a handover and the user types /clear.
  */
 export interface RefreshConfig {
   readonly enabled: boolean;
   /** The context size, in tokens, that asks for a refresh. Absolute, since a hook cannot see the window size. */
   readonly contextTokens: number;
+  /**
+   * Also refresh once this many tasks were finished since the context was last fresh (a /clear, a new
+   * process or a compaction), when the context is at least `everyTasksMinTokens`; 0 turns it off.
+   */
+  readonly everyTasks: number;
+  /** The smallest context the task count refreshes at: under it a fresh start saves little. */
+  readonly everyTasksMinTokens: number;
   /** Title the tab `<name>: type /clear` once the session's handover is written and it waits for /clear. */
   readonly tabTitle: boolean;
   /** The handover folder; a relative one is resolved against the team's folder. Unset: `<team folder>/handover`. */

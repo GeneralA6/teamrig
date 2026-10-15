@@ -302,7 +302,8 @@ function rosterIdOf(roster: Roster, session: string | undefined): string | undef
 /**
  * A fresh start (`/clear`, a new process) after the session's handover was marked ready: the note
  * that points it at the handover, given once. A start that keeps the old context (compact, resume)
- * leaves the handover waiting. It never throws, so the session always gets its rules.
+ * leaves the handover waiting; a small context again (a compaction too) starts the task count over.
+ * It never throws, so the session always gets its rules.
  */
 async function refreshNoteOf(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, payload: unknown): Promise<string | undefined> {
   try {
@@ -318,6 +319,9 @@ async function refreshNoteOf(runtime: CliRuntime, kit: Kit, config: KitConfig, r
       return undefined;
     }
     await store.setState(id, decision.state);
+    if (decision.kind === 'reset') {
+      return undefined;
+    }
     await store.clearRequest(id);
     return decision.note;
   } catch (error) {

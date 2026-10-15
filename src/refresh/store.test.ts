@@ -12,8 +12,8 @@ describe('RefreshStore', () => {
     const files = new MemoryFiles();
     const store = new RefreshStore(files, PATHS);
     assert.equal(await store.state('alpha'), undefined);
-    await store.setState('alpha', { phase: 'boundary', task: 'T3', at: AT });
-    assert.deepEqual(await store.state('alpha'), { phase: 'boundary', task: 'T3', at: AT });
+    await store.setState('alpha', { phase: 'boundary', task: 'T3', at: AT, finished: 1 });
+    assert.deepEqual(await store.state('alpha'), { phase: 'boundary', task: 'T3', at: AT, finished: 1 });
     assert.equal(await store.state('bravo'), undefined);
     assert.equal(files.paths().length, 1);
     assert.match(files.get(join(PATHS.refresh, 'alpha.json')) ?? '', /"phase":"boundary"/);
@@ -22,11 +22,11 @@ describe('RefreshStore', () => {
   it("keeps the lead's request in a file of its own, so neither write overwrites the other", async () => {
     const files = new MemoryFiles();
     const store = new RefreshStore(files, PATHS);
-    await store.setState('alpha', { phase: 'boundary', task: 'T3', at: AT });
+    await store.setState('alpha', { phase: 'boundary', task: 'T3', at: AT, finished: 1 });
     assert.equal(await store.request('alpha'), undefined);
     await store.setRequest('alpha', { by: 'lead', at: AT });
     assert.deepEqual(await store.request('alpha'), { by: 'lead', at: AT });
-    assert.deepEqual(await store.state('alpha'), { phase: 'boundary', task: 'T3', at: AT });
+    assert.deepEqual(await store.state('alpha'), { phase: 'boundary', task: 'T3', at: AT, finished: 1 });
     await store.clearRequest('alpha');
     await store.clearRequest('alpha');
     assert.equal(await store.request('alpha'), undefined);

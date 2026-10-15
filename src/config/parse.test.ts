@@ -318,11 +318,20 @@ describe('parseConfig', () => {
 
   it('reads the refresh settings, defaulting each and refusing a bad threshold or folder', () => {
     assert.deepEqual(parseConfig(ROSTER).config.refresh, DEFAULT_REFRESH);
-    const set = parseConfig({ ...ROSTER, refresh: { enabled: false, contextTokens: 150_000, tabTitle: false, handoverDir: 'notes' } });
+    const chosen = { enabled: false, contextTokens: 150_000, everyTasks: 0, everyTasksMinTokens: 60_000, tabTitle: false, handoverDir: 'notes' };
+    const set = parseConfig({ ...ROSTER, refresh: chosen });
     assert.deepEqual(set.issues, []);
-    assert.deepEqual(set.config.refresh, { enabled: false, contextTokens: 150_000, tabTitle: false, handoverDir: 'notes' });
-    const bad = parseConfig({ ...ROSTER, refresh: { enabled: 'yes', contextTokens: 9_999, tabTitle: 1, handoverDir: ' ' } });
-    assert.deepEqual(paths(bad.issues).sort(), ['refresh.contextTokens', 'refresh.enabled', 'refresh.handoverDir', 'refresh.tabTitle']);
+    assert.deepEqual(set.config.refresh, chosen);
+    const bad = parseConfig({ ...ROSTER, refresh: { enabled: 'yes', contextTokens: 9_999, everyTasks: 101, everyTasksMinTokens: 9_999, tabTitle: 1, handoverDir: ' ' } });
+    assert.deepEqual(paths(bad.issues).sort(), [
+      'refresh.contextTokens',
+      'refresh.enabled',
+      'refresh.everyTasks',
+      'refresh.everyTasksMinTokens',
+      'refresh.handoverDir',
+      'refresh.tabTitle',
+    ]);
+    assert.deepEqual(paths(parseConfig({ ...ROSTER, refresh: { everyTasks: -1 } }).issues), ['refresh.everyTasks']);
     assert.deepEqual(bad.config.refresh, DEFAULT_REFRESH);
     assert.deepEqual(paths(parseConfig({ ...ROSTER, refresh: { contextTokens: 10_000_001 } }).issues), ['refresh.contextTokens']);
   });
