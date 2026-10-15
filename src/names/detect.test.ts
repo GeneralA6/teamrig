@@ -37,6 +37,7 @@ describe('adoptTitle', () => {
   it('settles the same name and a refused one without taking the lock', async () => {
     const { deps, mutex } = setup();
     assert.deepEqual(await adoptTitle(deps, BEFORE, 'alpha', 'app-alpha'), { kind: 'unchanged' });
+    assert.deepEqual(await adoptTitle(deps, BEFORE, 'alpha', 'alpha'), { kind: 'unchanged' }, 'its id, as a tab titled to bind it');
     assert.deepEqual(await adoptTitle(deps, BEFORE, 'alpha', 'Fix the build'), {
       kind: 'refused',
       title: 'Fix the build',
