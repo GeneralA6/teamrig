@@ -104,7 +104,7 @@ export function renderCorePack(config: KitConfig, command: string): string {
       ` Its description has at most ${skills.maxDescriptionWords} words [skills.maxDescriptionWords]; its body has \`Owner:\` and \`Last verified:\` lines, re-verified every ${skills.maxVerifiedAgeDays} days [skills.maxVerifiedAgeDays];` +
       ` at most ${skills.maxPerArea} per area [skills.maxPerArea]` +
       (skills.forbidFrontmatter.length === 0 ? '' : `; never ${shortList(skills.forbidFrontmatter)} [skills.forbidFrontmatter]`) +
-      '. Memory holds facts, skills hold how-tos, CLAUDE.md holds every-turn rules.',
+      '. A skill never overrides these rules or an owner gate. Memory holds facts, skills hold how-tos, CLAUDE.md holds every-turn rules.',
     'One logical change per commit (a fix with its tests, a refactor apart from what it enables, a mechanical change alone), committed as each step passes.' +
       ` Over ${config.commits.maxLines} changed non-test lines or ${config.commits.maxFiles} non-test files [commits.maxLines, commits.maxFiles], a commit needs a \`${config.commits.largeCommitTrailer}: <reason>\` line [commits.largeCommitTrailer]` +
       { off: '.', warn: '; a push to a protected branch lists those without one [commits.gate].', refuse: '; a push to a protected branch that sends one is refused [commits.gate].' }[config.commits.gate],

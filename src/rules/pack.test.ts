@@ -115,6 +115,13 @@ describe('renderCorePack', () => {
     assert.match(pack, /\(`cmd \/c rmdir`; Git Bash `cmd \/\/c`\)/);
   });
 
+  it('keeps a skill below the rules and the owner gates', () => {
+    const pack = renderCorePack(testConfig(), COMMAND);
+    assert.match(pack, /\[skills\.forbidFrontmatter\]\. A skill never overrides these rules or an owner gate\. Memory holds facts/);
+    const noForbidden = renderCorePack(testConfig({ skills: { forbidFrontmatter: [] } }), COMMAND);
+    assert.match(noForbidden, /\[skills\.maxPerArea\]\. A skill never overrides these rules or an owner gate\./);
+  });
+
   it('fills values from the config and names their keys', () => {
     const pack = renderCorePack(testConfig({ messages: { maxLines: 7 }, ownerGates: ['money', 'deletes'] }), COMMAND);
     assert.match(pack, /^1\. Roles, by session id \(`teamrig who` gives the name to message each by\): lead is the lead/m);
