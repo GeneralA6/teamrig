@@ -2,6 +2,7 @@ import type {
   AlertsConfig,
   BudgetConfig,
   CommitsConfig,
+  GithubConfig,
   LaunchConfig,
   LockConfig,
   LoopsConfig,
@@ -95,6 +96,9 @@ export const DEFAULT_LOOPS: LoopsConfig = { chainNudgeAt: 6 };
 
 /** About a screenful: two or three failing tests with their errors and first stack frames. */
 export const DEFAULT_TESTS: TestsConfig = { maxFailureChars: 4000 };
+
+/** Off until a team lists a repository; two weeks of closed issues covers a sync missed over a holiday. */
+export const DEFAULT_GITHUB: GithubConfig = { repos: [], owners: {}, closedDays: 14 };
 
 /** 250k suits a 1M-token window; on a 200k window Claude Code compacts first, so a team there sets about 150k. */
 export const DEFAULT_REFRESH: RefreshConfig = { enabled: true, contextTokens: 250_000, tabTitle: true };

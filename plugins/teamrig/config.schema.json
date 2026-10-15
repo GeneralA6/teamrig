@@ -436,6 +436,40 @@
         }
       }
     },
+    "github": {
+      "description": "teamrig gh sync: GitHub issues read into the register as tasks of source github. It only reads GitHub and never writes to it; local tasks stay local.",
+      "type": "object",
+      "properties": {
+        "repos": {
+          "description": "The repositories to read, as owner/name; matched without case. Empty turns the import off.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}$",
+            "maxLength": 140
+          },
+          "maxItems": 20,
+          "default": []
+        },
+        "owners": {
+          "description": "The session that owns an issue assigned to each GitHub login; matched without case. An issue with no listed assignee goes to the lead.",
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}$"
+          },
+          "additionalProperties": { "$ref": "#/$defs/sessionName" },
+          "default": {}
+        },
+        "closedDays": {
+          "description": "How many days back closed issues are read, to finish the tasks they were imported as.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 365,
+          "default": 14
+        }
+      }
+    },
     "alerts": {
       "type": "object",
       "properties": {

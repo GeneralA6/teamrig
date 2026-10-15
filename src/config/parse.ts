@@ -5,6 +5,7 @@ import {
   DEFAULT_ALERTS,
   DEFAULT_BUDGET,
   DEFAULT_COMMITS,
+  DEFAULT_GITHUB,
   DEFAULT_LOCK,
   DEFAULT_LOOPS,
   DEFAULT_MESSAGES,
@@ -39,6 +40,7 @@ import {
   type BudgetLiftConfig,
   type BudgetReset,
   type CommitsConfig,
+  type GithubConfig,
   type KitConfig,
   type LaunchConfig,
   type OpenConfig,
@@ -63,6 +65,13 @@ const isSessionName: Check<string> = (name) =>
   SESSION_NAME.test(name) ? undefined : 'expected a lowercase name: a letter, then letters, digits or -, at most 32';
 
 const isUtcTime: Check<string> = (time) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(time) ? undefined : 'expected a UTC time as HH:MM');
+
+/** A repository as GitHub names it: an owner login, a slash, then letters, digits, `.`, `_` or `-`. */
+const isRepoName: Check<string> = (repo) =>
+  /^[a-z0-9][a-z0-9-]{0,38}\/[a-z0-9._-]{1,100}$/i.test(repo) ? undefined : 'expected a GitHub repository as owner/name';
+
+/** A GitHub login: letters, digits or -, starting with a letter or digit, at most 39 characters. */
+const GITHUB_LOGIN = /^[a-z0-9][a-z0-9-]{0,38}$/i;
 
 const BRANCH_NAME: Check<string> = (name) => (/^[^\s~^:?*[\\]+$/.test(name) ? undefined : 'not a valid branch name');
 
@@ -231,6 +240,7 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
     tests: {
       maxFailureChars: read.integer(read.section(raw, 'tests', ''), 'maxFailureChars', 'tests', DEFAULT_TESTS.maxFailureChars, CONFIG_LIMITS.maxFailureChars),
     },
+    github: parseGithub(read, read.section(raw, 'github', ''), sessions),
     alerts: {
       persistentFailureHours: read.integer(alerts, 'persistentFailureHours', 'alerts', DEFAULT_ALERTS.persistentFailureHours, CONFIG_LIMITS.persistentFailureHours),
     },
@@ -241,6 +251,54 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
     paths: parsePaths(read, read.section(raw, 'paths', '')),
   };
   return { config, issues: read.issues };
+}
+
+/**
+ * `github`: the repositories `gh sync` reads and who owns their issues. Repositories and logins are
+ * kept in lowercase, as GitHub matches them, so an imported task's ref stays the same however the
+ * config spells them; a repository listed twice is reported and read once.
+ */
+function parseGithub(read: ConfigReader, raw: JsonRecord, sessions: readonly string[]): GithubConfig {
+  const { maxItems, maxLength } = CONFIG_LIMITS.githubRepos;
+  const repos: string[] = [];
+  for (const repo of read.stringList(raw, 'repos', 'github', DEFAULT_GITHUB.repos, shortLine(maxLength, isRepoName), maxItems)) {
+    const key = repo.toLowerCase();
+    if (repos.includes(key)) {
+      read.report('github.repos', `${describe(repo)} is listed twice`);
+      continue;
+    }
+    repos.push(key);
+  }
+  return {
+    repos,
+    owners: readGithubOwners(read, read.section(raw, 'owners', 'github'), sessions),
+    closedDays: read.integer(raw, 'closedDays', 'github', DEFAULT_GITHUB.closedDays, CONFIG_LIMITS.closedDays),
+  };
+}
+
+/** `github.owners`: a session for each GitHub login; a wrong login or a session not on the team is reported and left out. */
+function readGithubOwners(read: ConfigReader, raw: JsonRecord, sessions: readonly string[]): Record<string, string> {
+  const owners: Record<string, string> = {};
+  for (const login of Object.keys(raw)) {
+    const path = `github.owners.${login}`;
+    if (!GITHUB_LOGIN.test(login)) {
+      read.report(path, 'expected a GitHub login: letters, digits or -, at most 39 characters');
+      continue;
+    }
+    const session = read.optionalString(raw, login, 'github.owners', isSessionName);
+    const key = login.toLowerCase();
+    if (session === undefined) {
+      continue;
+    }
+    if (!sessions.includes(session)) {
+      read.report(path, `${describe(session)} is not one of the sessions`);
+    } else if (owners[key] !== undefined) {
+      read.report(path, 'is listed twice');
+    } else {
+      owners[key] = session;
+    }
+  }
+  return owners;
 }
 
 /** Config version 1's name for `register.priorities`; the v1-to-v2 migration renames it, so a current file never holds it. */
