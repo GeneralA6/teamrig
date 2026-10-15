@@ -8,9 +8,10 @@ const PUSH_LONG_OPTIONS = [
 ];
 /** Long options whose value may be the next word. */
 const PUSH_VALUED = new Set(['repo', 'receive-pack', 'exec', 'push-option']);
-/** `--force-with-lease` is deliberately absent: a leased push to a protected branch only asks. */
+/** `--force-with-lease` reads as `leased`, not `force`: a leased push to a protected branch asks rather than being refused. */
 const LONG_FLAGS = new Map([
     ['force', 'force'],
+    ['force-with-lease', 'leased'],
     ['delete', 'delete'],
     ['dry-run', 'dryRun'],
     ['all', 'all'],
@@ -36,7 +37,7 @@ const SUBTREE_VALUED = new Set(['-P', '--prefix', '-m', '--message', '-b', '--br
 /** The ways to name the checked-out branch inside `$( )` or backticks, which read as `HEAD`. */
 const CURRENT_BRANCH_QUERY = String.raw `\s*git\s+(?:branch\s+--show-current|rev-parse\s+--abbrev-ref\s+HEAD|symbolic-ref\s+(?:-q\s+)?--short\s+(?:-q\s+)?HEAD)\s*`;
 const CURRENT_BRANCH = new RegExp(String.raw `\$\(${CURRENT_BRANCH_QUERY}\)|` + '`' + CURRENT_BRANCH_QUERY + '`', 'g');
-const NO_FLAGS = { force: false, delete: false, dryRun: false, all: false, mirror: false, prune: false, help: false };
+const NO_FLAGS = { force: false, leased: false, delete: false, dryRun: false, all: false, mirror: false, prune: false, help: false };
 const NO_WORD = { text: '', dynamic: false };
 /** The long option a word names, as git's option parser reads an unambiguous abbreviation; `negated` for `--no-x`. */
 function longOption(name) {
@@ -96,7 +97,10 @@ function readPushArgs(invocation) {
     const [remote, ...refspecs] = positionals;
     return { dir: invocation.dir, ...flags, remote, refspecs, configOverride: invocation.configOverride, matching: false };
 }
-/** `git send-pack` and `git http-push`: `--all`, `--force`, `--mirror`, `--stdin`; with no refs they push the matching branches. */
+/**
+ * `git send-pack` and `git http-push`: `--all`, `--force`, `--force-with-lease[=…]`, `--mirror`, `--stdin`; with no refs
+ * they push the matching branches.
+ */
 function readSendPack(invocation) {
     const flags = { ...NO_FLAGS };
     const positionals = [];
@@ -105,6 +109,9 @@ function readSendPack(invocation) {
         const flag = arg.dynamic ? undefined : SEND_PACK_FLAGS.get(arg.text);
         if (flag !== undefined) {
             flags[flag] = true;
+        }
+        else if (!arg.dynamic && (arg.text === '--force-with-lease' || arg.text.startsWith('--force-with-lease='))) {
+            flags.leased = true;
         }
         else if (arg.text === '--stdin') {
             stdin = true;
@@ -307,13 +314,19 @@ class PushJudge {
  * shells are seen through, and git aliases are expanded. A branch change earlier in the line (`git checkout
  * main && git push`) is followed (see `BranchMoves`). When part of the line cannot be read with confidence, the
  * guard asks: always for a push it cannot read, and for anything else it cannot read when the line says `push`.
+ * With no protected branch there is nothing to guard, so every line is allowed, mirrors and doubts included.
+ * Under `pushToProtected: allow` a normal push to a protected branch is allowed and marked; a refusal, a leased
+ * push and a doubt are not changed by it.
  */
 export function evaluatePushes(command, context) {
     const protectedBranches = new Set(context.protectedBranches);
+    if (protectedBranches.size === 0) {
+        return { decision: 'allow', updates: [] };
+    }
     const found = findGitInvocations(command, { cwd: context.cwd, home: context.home, dialect: context.dialect, git: context.repo });
     const moves = new BranchMoves(protectedBranches);
     const judge = new PushJudge(context.repo, protectedBranches);
-    let asked = false;
+    let protectedPush;
     let doubt;
     const updates = [];
     for (const invocation of found.invocations) {
@@ -324,21 +337,21 @@ export function evaluatePushes(command, context) {
                 return { decision: 'deny', updates: [] };
             }
             if (judgement.decision === 'ask' && judgement.doubt === undefined) {
-                asked = true;
+                protectedPush = push.leased || protectedPush === 'leased' ? 'leased' : 'normal';
                 updates.push(...judgement.updates);
             }
             doubt ??= judgement.doubt;
         }
         moves.observe(invocation);
     }
-    if (asked) {
-        return { decision: 'ask', updates };
-    }
-    if (protectedBranches.size === 0) {
-        return { decision: 'allow', updates: [] };
+    if (protectedPush === 'leased' || (protectedPush === 'normal' && context.pushToProtected === 'ask')) {
+        return { decision: 'ask', updates, protectedPush };
     }
     doubt ??= found.doubts.find((candidate) => !candidate.gated || found.mentionsPush)?.reason;
-    return doubt === undefined ? { decision: 'allow', updates: [] } : { decision: 'ask', updates: [], doubt };
+    if (doubt !== undefined) {
+        return { decision: 'ask', updates, doubt };
+    }
+    return protectedPush === undefined ? { decision: 'allow', updates: [] } : { decision: 'allow', updates, protectedPush };
 }
 /** Why the guard stopped a push, naming the team's protected branches. */
 export function decisionReason(decision, protectedBranches) {
@@ -346,6 +359,10 @@ export function decisionReason(decision, protectedBranches) {
     return decision === 'deny'
         ? `Force-pushing, mirroring or deleting a protected branch (${branches}) is refused: it can overwrite other sessions' commits. Push your own branch, or use --force-with-lease if you truly mean it.`
         : `This push updates a protected branch (${branches}) while other sessions may be working. Confirm, or push your own branch and rebase it onto the current one.`;
+}
+/** Why the guard asks about a `--force-with-lease` push to a protected branch, which `pushToProtected: allow` does not cover. */
+export function leasedReason(protectedBranches) {
+    return `This --force-with-lease push may rewrite the history of a protected branch (${protectedBranches.join(', ')}) while other sessions may be working. Confirm, or push your own branch instead.`;
 }
 /** Why the guard asks about a command line it cannot read with confidence, naming the team's protected branches. */
 export function doubtReason(doubt, protectedBranches) {

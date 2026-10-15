@@ -8,7 +8,7 @@ import { indexMarks } from "../../inbox/marks.js";
 import { boundPromptNote, boundStartNote } from "../../hooks/bind.js";
 import { modelCheckLine, payloadEffortOf } from "../../hooks/model-check.js";
 import { ModelNoticeStore } from "../../hooks/model-notices.js";
-import { commitsOf, protectedBranchesOf, pushGuardOutput } from "../../hooks/push-guard.js";
+import { commitsOf, protectedBranchesOf, pushGuardOutput, pushToProtectedOf } from "../../hooks/push-guard.js";
 import { JsonlHintLog } from "../../hooks/hint-log.js";
 import { requirementsNoteOnce } from "../../hooks/requirements-note.js";
 import { sessionStartContext, sessionStartOutput } from "../../hooks/session-start.js";
@@ -71,6 +71,7 @@ export async function pushGuard(args, runtime) {
         home: runtime.userHome,
         repo: runtime.git,
         protectedBranches: protectedBranchesOf(load),
+        pushToProtected: pushToProtectedOf(load),
         commits: commitsOf(load),
         commitLog: runtime.commitLog,
     });

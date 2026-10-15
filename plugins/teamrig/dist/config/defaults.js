@@ -33,7 +33,7 @@ export const DEFAULT_SKILLS = {
     forbidFrontmatter: ['allowed-tools'],
 };
 export const DEFAULT_LOCK = { ttlMs: 30_000, pollMs: 50, waitMs: 20_000 };
-export const DEFAULT_PUSH_GUARD = { protectedBranches: ['main', 'master'] };
+export const DEFAULT_PUSH_GUARD = { protectedBranches: ['main', 'master'], pushToProtected: 'ask' };
 /** Tests: a test folder, `*.test.*` and `*.spec.*` files, and pytest's `test_*.py`. `warn` only adds to a push the guard already asks about. */
 export const DEFAULT_COMMITS = {
     maxLines: 400,
