@@ -1,105 +1,82 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="284" viewBox="0 0 960 284" role="img" aria-label="Your lead plans the week from the tokens you have left. It sizes each task in tokens and fills the week in order of priority, p1 first, until the plan reaches 99.5% of your weekly limit, keeping 0.5% for incidents. Each member's tasks fill its lane from one reset to the next, and the tasks that do not fit move to next week.">
-<title>Your lead plans the week from the tokens you have left. It sizes each task in tokens and fills the week in order of priority, p1 first, until the plan reaches 99.5% of your weekly limit, keeping 0.5% for incidents. Each member's tasks fill its lane from one reset to the next, and the tasks that do not fit move to next week.</title>
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="196" viewBox="0 0 960 196" role="img" aria-label="Your lead plans the week from the tokens you have left. The tasks fill the days, most important first, until the plan reaches 99.5% of your weekly limit. The last 0.5% is kept for incidents, and the task that doesn't fit moves to next week.">
+<title>Your lead plans the week from the tokens you have left. The tasks fill the days, most important first, until the plan reaches 99.5% of your weekly limit. The last 0.5% is kept for incidents, and the task that doesn't fit moves to next week.</title>
 <style>
 :root{--fg:#1f2328;--muted:#59636e;--line:#d1d9e0;--tile:#f6f8fa;--bg:#ffffff;--purple:#8250df;--tint:#f0eafb;--amber:#9a6700;--green:#1a7f37}
 @media (prefers-color-scheme:dark){:root{--fg:#e6edf3;--muted:#9198a1;--line:#3d444d;--tile:#151b23;--bg:#0d1117;--purple:#a371f7;--tint:#221e36;--amber:#d29922;--green:#3fb950}}
 text{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif;fill:var(--fg)}
-.note{font-size:13px;fill:var(--muted)}.note.strong{fill:var(--fg);font-weight:600}.day{font-size:14px;fill:var(--muted)}
-.who{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace;font-size:14px}.title{font-size:13px;font-weight:600}.est{font-size:12px}
+.head{font-size:17px;font-weight:600}.caption{font-size:16px}.day{font-size:14px;fill:var(--muted)}.reset{font-size:13px;fill:var(--muted)}
+.title{font-size:16px;font-weight:600}.est{font-size:14px}
 .p1{fill:var(--purple);fill-opacity:0.5}
 .p2{fill:var(--purple);fill-opacity:0.3}
 .p3{fill:var(--purple);fill-opacity:0.16}
 .p4{fill:var(--purple);fill-opacity:0.08}
-.later{fill:none;stroke:var(--muted);stroke-width:1.2;stroke-dasharray:5 4}.later-words{fill:var(--muted)}
-.track{fill:none;stroke:var(--line);stroke-width:1.2}.axis{stroke:var(--line);stroke-width:1.2}
-.limit{stroke:var(--fg);stroke-width:1.4;stroke-dasharray:4 3;stroke-opacity:.55}
-@keyframes a0{0%,8.333%{opacity:0}10.833%,94.167%{opacity:1}96.667%,100%{opacity:0}}
-.a0{opacity:1;animation:a0 12s linear infinite}
-@keyframes a1{0%,18.333%{opacity:0}20.833%,94.167%{opacity:1}96.667%,100%{opacity:0}}
-.a1{opacity:1;animation:a1 12s linear infinite}
-@keyframes a2{0%,28.333%{opacity:0}30.833%,94.167%{opacity:1}96.667%,100%{opacity:0}}
-.a2{opacity:1;animation:a2 12s linear infinite}
-@keyframes a3{0%,38.333%{opacity:0}40.833%,94.167%{opacity:1}96.667%,100%{opacity:0}}
-.a3{opacity:1;animation:a3 12s linear infinite}
-@keyframes a4{0%,48.333%{opacity:0}50.833%,94.167%{opacity:1}96.667%,100%{opacity:0}}
-.a4{opacity:1;animation:a4 12s linear infinite}
+.later{fill:none;stroke:var(--muted);stroke-width:1.4;stroke-dasharray:6 4}.later-words{fill:var(--muted)}
+.track{fill:none;stroke:var(--line);stroke-width:1.4}.day-line{stroke:var(--line);stroke-width:1;stroke-dasharray:2 4}
+.reserve{fill:var(--amber)}.pointer{stroke:var(--amber);stroke-width:2}
+.arrow{fill:none;stroke:var(--muted);stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+@keyframes a0{0%,3.896%{opacity:0}5.844%,92.857%{opacity:1}94.805%,100%{opacity:0}}
+.a0{opacity:1;animation:a0 15.4s linear infinite}
+@keyframes a1{0%,15.584%{opacity:0}17.532%,92.857%{opacity:1}94.805%,100%{opacity:0}}
+.a1{opacity:1;animation:a1 15.4s linear infinite}
+@keyframes a2{0%,15.584%{opacity:0}17.532%,92.857%{opacity:1}94.805%,100%{opacity:0}}
+.a2{opacity:1;animation:a2 15.4s linear infinite}
+@keyframes a3{0%,20.779%{opacity:0}22.727%,92.857%{opacity:1}94.805%,100%{opacity:0}}
+.a3{opacity:1;animation:a3 15.4s linear infinite}
+@keyframes a4{0%,25.974%{opacity:0}27.922%,92.857%{opacity:1}94.805%,100%{opacity:0}}
+.a4{opacity:1;animation:a4 15.4s linear infinite}
+@keyframes a5{0%,38.961%{opacity:0}40.909%,92.857%{opacity:1}94.805%,100%{opacity:0}}
+.a5{opacity:1;animation:a5 15.4s linear infinite}
+@keyframes a6{0%,51.948%{opacity:0}53.896%,92.857%{opacity:1}94.805%,100%{opacity:0}}
+.a6{opacity:1;animation:a6 15.4s linear infinite}
 @media (prefers-reduced-motion:reduce){*{animation:none!important}}
 </style>
-<text x="110" y="30" class="note">Tokens left this week</text>
-<text x="698" y="30" text-anchor="end" class="note">your weekly limit</text>
-<rect x="110" y="42" width="588" height="18" rx="3" class="track"/>
-<path d="M698 34V68" class="limit"/>
-<text x="96" y="125" text-anchor="end" class="who">api</text>
-<text x="96" y="175" text-anchor="end" class="who">web</text>
-<text x="96" y="225" text-anchor="end" class="who">tests</text>
-<path d="M110 248H698" class="axis"/>
-<path d="M194 248v6" class="axis"/>
-<path d="M278 248v6" class="axis"/>
-<path d="M362 248v6" class="axis"/>
-<path d="M446 248v6" class="axis"/>
-<path d="M530 248v6" class="axis"/>
-<path d="M614 248v6" class="axis"/>
-<path d="M110 94V254" class="axis"/>
-<text x="110" y="270" text-anchor="middle" class="note">reset</text>
-<path d="M698 94V254" class="axis"/>
-<text x="698" y="270" text-anchor="middle" class="note">reset</text>
-<text x="152" y="270" text-anchor="middle" class="day">Mon</text>
-<text x="236" y="270" text-anchor="middle" class="day">Tue</text>
-<text x="320" y="270" text-anchor="middle" class="day">Wed</text>
-<text x="404" y="270" text-anchor="middle" class="day">Thu</text>
-<text x="488" y="270" text-anchor="middle" class="day">Fri</text>
-<text x="572" y="270" text-anchor="middle" class="day">Sat</text>
-<text x="656" y="270" text-anchor="middle" class="day">Sun</text>
-<g data-step="p1" class="a0">
-<rect x="110.0" y="42" width="205.8" height="18" class="p1"/>
-<text x="212.9" y="78" text-anchor="middle" class="note">p1 tasks 35%</text>
-<rect x="111.5" y="100" width="242.7" height="40" rx="4" class="p1"/>
-<text x="121.0" y="117" class="title">Signup endpoint</text>
-<text x="121.0" y="133" class="est">p1 · 14%</text>
-<rect x="111.5" y="150" width="210.8" height="40" rx="4" class="p1"/>
-<text x="121.0" y="167" class="title">Signup form</text>
-<text x="121.0" y="183" class="est">p1 · 12%</text>
-<rect x="111.5" y="200" width="157.4" height="40" rx="4" class="p1"/>
-<text x="121.0" y="217" class="title">End-to-end tests</text>
-<text x="121.0" y="233" class="est">p1 · 9%</text>
+<g data-step="tokens" class="a0">
+<text x="40" y="32" class="head">Tokens for this week</text>
+<rect x="40" y="46" width="680" height="68" rx="7" class="track"/>
+<path d="M137.1 46v68" class="day-line"/>
+<path d="M234.3 46v68" class="day-line"/>
+<path d="M331.4 46v68" class="day-line"/>
+<path d="M428.6 46v68" class="day-line"/>
+<path d="M525.7 46v68" class="day-line"/>
+<path d="M622.9 46v68" class="day-line"/>
+<text x="88.6" y="136" text-anchor="middle" class="day">Mon</text>
+<text x="185.7" y="136" text-anchor="middle" class="day">Tue</text>
+<text x="282.9" y="136" text-anchor="middle" class="day">Wed</text>
+<text x="380.0" y="136" text-anchor="middle" class="day">Thu</text>
+<text x="477.1" y="136" text-anchor="middle" class="day">Fri</text>
+<text x="574.3" y="136" text-anchor="middle" class="day">Sat</text>
+<text x="671.4" y="136" text-anchor="middle" class="day">Sun</text>
+<text x="40" y="136" text-anchor="middle" class="reset">reset</text>
+<text x="720" y="136" text-anchor="middle" class="reset">reset</text>
 </g>
-<g data-step="p2" class="a1">
-<rect x="315.8" y="42" width="211.7" height="18" class="p2"/>
-<text x="421.6" y="78" text-anchor="middle" class="note">p2 tasks 36%</text>
-<rect x="357.2" y="100" width="190.1" height="40" rx="4" class="p2"/>
-<text x="366.7" y="117" class="title">Rate limits</text>
-<text x="366.7" y="133" class="est">p2 · 11%</text>
-<rect x="325.3" y="150" width="210.8" height="40" rx="4" class="p2"/>
-<text x="334.8" y="167" class="title">Profile page</text>
-<text x="334.8" y="183" class="est">p2 · 12%</text>
-<rect x="271.9" y="200" width="228.6" height="40" rx="4" class="p2"/>
-<text x="281.4" y="217" class="title">Load test</text>
-<text x="281.4" y="233" class="est">p2 · 13%</text>
+<g data-step="tasks">
+<text x="40" y="176" class="caption a1">Tasks fill the days, most important first, up to 99.5%</text>
+<g data-task="p1" class="a2">
+<rect x="42.0" y="51" width="302.0" height="58" rx="5" class="p1"/>
+<text x="54.0" y="76" class="title">Signup flow</text>
+<text x="54.0" y="97" class="est">p1 · 45%</text>
 </g>
-<g data-step="p3" class="a2">
-<rect x="527.5" y="42" width="167.6" height="18" class="p3"/>
-<text x="611.3" y="78" text-anchor="middle" class="note">p3 tasks 28.5%</text>
-<rect x="550.3" y="100" width="146.2" height="40" rx="4" class="p3"/>
-<text x="559.8" y="117" class="title">Billing API</text>
-<text x="559.8" y="133" class="est">p3 · 8.5%</text>
-<rect x="539.1" y="150" width="157.4" height="40" rx="4" class="p3"/>
-<text x="548.6" y="167" class="title">Dark mode</text>
-<text x="548.6" y="183" class="est">p3 · 9%</text>
-<rect x="503.5" y="200" width="193.0" height="40" rx="4" class="p3"/>
-<text x="513.0" y="217" class="title">Browser tests</text>
-<text x="513.0" y="233" class="est">p3 · 11%</text>
+<g data-task="p2" class="a3">
+<rect x="348.0" y="51" width="213.6" height="58" rx="5" class="p2"/>
+<text x="360.0" y="76" class="title">Profile page</text>
+<text x="360.0" y="97" class="est">p2 · 32%</text>
 </g>
-<g data-step="totals" class="a3">
-<text x="714" y="48" class="note strong">99.5% planned,</text>
-<text x="714" y="66" class="note">0.5% kept for incidents</text>
+<g data-task="p3" class="a4">
+<rect x="565.6" y="51" width="149.0" height="58" rx="5" class="p3"/>
+<text x="577.6" y="76" class="title">Dark mode</text>
+<text x="577.6" y="97" class="est">p3 · 22.5%</text>
 </g>
-<g data-step="next-week" class="a4">
-<text x="738" y="90" class="note strong">Moves to next week</text>
-<rect x="738.0" y="100" width="165.0" height="40" rx="4" class="later"/>
-<text x="747.5" y="117" class="title later-words">Search</text>
-<text x="747.5" y="133" class="est later-words">p4 · 12%</text>
-<rect x="738.0" y="150" width="165.0" height="40" rx="4" class="later"/>
-<text x="747.5" y="167" class="title later-words">Export</text>
-<text x="747.5" y="183" class="est later-words">p4 · 7%</text>
+</g>
+<g data-step="reserve" class="a5">
+<rect x="716.6" y="46" width="3.4" height="68" class="reserve"/>
+<path d="M718.3 37V46" class="pointer"/>
+<text x="720" y="32" text-anchor="end" class="head">0.5% kept for incidents</text>
+</g>
+<g data-step="next-week" class="a6">
+<text x="780" y="32" class="head">Moves to next week</text>
+<path d="M732 80H770m-7 -6l7 6l-7 6" class="arrow"/>
+<rect x="780.0" y="51" width="146.0" height="58" rx="5" class="later"/>
+<text x="792.0" y="76" class="title later-words">Export</text>
+<text x="792.0" y="97" class="est later-words">p4 · 9%</text>
 </g>
 </svg>
