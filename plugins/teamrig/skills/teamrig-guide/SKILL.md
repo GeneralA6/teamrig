@@ -102,6 +102,8 @@ Then work your list in priority order: `p1` before `p2`, and inside a priority t
 ```sh
 teamrig set T4 --session api --status in-progress
 # ... do the work, commit it, verify it ...
+# shipped, but its proof comes later (a night's flow, a measurement)? set it verifying until the proof is in:
+# teamrig set T4 --session api --status verifying --note "tonight's run is clean"
 teamrig set T4 --session api --status done --note "signup endpoint merged" --evidence "PR #12, 41 tests pass" --skill none
 ```
 

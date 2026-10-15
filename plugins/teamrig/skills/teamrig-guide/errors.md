@@ -26,6 +26,7 @@ or take it to the lead.
 | `REFUSED no skill named x; write it first or use --skill none` | Write the skill to `<skills folder>/x/SKILL.md` first, or use `none`. |
 | `REFUSED --skill goes only with done` | Drop `--skill`. |
 | `REFUSED blocked needs --note` (also `done`, `dropped`) | Add `--note` saying what it waits for, what was done, or why it was dropped. |
+| `REFUSED verifying needs --note saying what proves it` | Add `--note` naming the proof you wait for: a test run, a night's flow, a number. |
 | `REFUSED T1 is already done; add --note to record why you set it again` | Add a `--note`, or leave the status as it is. |
 | `REFUSED the lead may change only owner, priority, due, week on a task it does not own (asked: title)` | Ask the owner to change that field. |
 | `REFUSED only the owner (web) or the lead changes T2` | Ask the owner or the lead. |
@@ -85,7 +86,7 @@ or take it to the lead.
 | `priority "t2" is the old tier spelling: write p2` | Write `p2`. |
 | `--tier was renamed: use --priority` | Use `--priority`. |
 | `"9" is not a task id like T12` | Write task ids as `T9`. |
-| `--status "finished" is not open\|in-progress\|blocked\|done\|dropped` | Use one of those five. |
+| `--status "finished" is not open\|in-progress\|verifying\|blocked\|done\|dropped` | Use one of those six. |
 | `--week "x" is not a YYYY-MM-DD date` | Write the week's first day as `2026-10-12`. |
 | `--team gives the task to that team's lead, from you: it takes no --owner or --source` | Drop `--owner` and `--source` from `add --team`. |
 
