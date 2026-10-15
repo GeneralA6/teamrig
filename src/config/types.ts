@@ -93,6 +93,16 @@ export function isCommitGate(value: unknown): value is CommitGate {
 }
 
 /** The small-commits rule: one logical change per commit, and a reason line on any commit over the bounds. */
+export interface MessagesConfig {
+  /** The longest message one session may send another. */
+  readonly maxLines: number;
+  /**
+   * Minutes a session may sit idle before a message to it counts as a cold wake: its first call then
+   * re-reads its whole context at full price. A send to a session idle this long is held once; 0 never holds.
+   */
+  readonly coldAfterMinutes: number;
+}
+
 export interface CommitsConfig {
   /** Changed non-test lines (added + deleted) a commit may carry without a reason line. */
   readonly maxLines: number;
@@ -296,7 +306,7 @@ export interface KitConfig {
   readonly roles: RolesConfig;
   /** Decision areas only the human owner can approve; silence never counts as consent for them. */
   readonly ownerGates: readonly string[];
-  readonly messages: { readonly maxLines: number };
+  readonly messages: MessagesConfig;
   readonly register: RegisterConfig;
   readonly skills: SkillsConfig;
   readonly lock: LockConfig;

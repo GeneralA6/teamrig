@@ -6,6 +6,7 @@
  */
 export const CONFIG_LIMITS = {
   maxLines: { min: 3, max: 50 },
+  coldAfterMinutes: { min: 0, max: 1440 },
   maxDescriptionWords: { min: 5, max: 200 },
   maxPerArea: { min: 1, max: 100 },
   maxVerifiedAgeDays: { min: 1, max: 365 },

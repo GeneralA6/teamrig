@@ -19,6 +19,7 @@ describe('parseConfig', () => {
     assert.deepEqual(config.roles, { lead: 'alpha' });
     assert.equal(config.configVersion, 1);
     assert.equal(config.messages.maxLines, 10);
+    assert.equal(config.messages.coldAfterMinutes, 60);
     assert.deepEqual(config.register, DEFAULT_REGISTER);
     assert.deepEqual(config.budget, DEFAULT_BUDGET);
     assert.deepEqual(config.coordinator.schedule, {});
@@ -99,6 +100,13 @@ describe('parseConfig', () => {
     const { config, issues } = parseConfig({ ...ROSTER, launch: ['alpha'] });
     assert.deepEqual(paths(issues), ['launch']);
     assert.deepEqual(config.launch, {});
+  });
+
+  it('reads messages.coldAfterMinutes, where 0 turns the cold-send hold off, and refuses a value past a day', () => {
+    assert.equal(parseConfig({ ...ROSTER, messages: { coldAfterMinutes: 0 } }).config.messages.coldAfterMinutes, 0);
+    const { config, issues } = parseConfig({ ...ROSTER, messages: { coldAfterMinutes: 1441 } });
+    assert.deepEqual(paths(issues), ['messages.coldAfterMinutes']);
+    assert.equal(config.messages.coldAfterMinutes, 60);
   });
 
   it('reports every wrong field with its path and falls back to the default', () => {

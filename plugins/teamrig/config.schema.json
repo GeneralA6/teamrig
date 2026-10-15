@@ -81,6 +81,13 @@
           "minimum": 3,
           "maximum": 50,
           "default": 10
+        },
+        "coldAfterMinutes": {
+          "description": "Minutes a session may sit idle before a message to it counts as a cold wake (its first call re-reads its whole context at full price). A send to a session idle this long is held once with a note to use an inbox line or send it again; 0 never holds.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1440,
+          "default": 60
         }
       }
     },
