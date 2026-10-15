@@ -544,6 +544,19 @@ describe('evaluatePushes: where a push hides', () => {
       ['T=echo; "if" c; then T=git; fi; $T push origin main', 'ask', 'doubt'],
     ]);
   });
+
+  it('follows the line bindings into the subshells started after them, and never one made inside them', () => {
+    expectRows([
+      ['T="node main.js"; (cd sub && $T set x1 --evidence push)', 'allow'],
+      ['T="node main.js"; (cd sub); $T set x1 --evidence push', 'allow'],
+      ['T="node main.js"; echo "$($T set x1 --evidence push)"', 'allow'],
+      ['T=git; (cd sub && $T push origin main)', 'ask'],
+      ['T=git; echo "$($T push origin main)"', 'ask'],
+      ['T=echo; (T=git; $T push origin main)', 'ask', 'doubt'],
+      ['T=echo; (T=git); $T push origin main', 'ask', 'doubt'],
+      ['T=git & ($T push origin main)', 'ask', 'doubt'],
+    ]);
+  });
 });
 
 describe('evaluatePushes: the fail-safe', () => {
