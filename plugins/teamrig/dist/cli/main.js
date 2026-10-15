@@ -1,6 +1,7 @@
 import { homedir } from 'node:os';
 import { text } from 'node:stream/consumers';
 import { fileURLToPath } from 'node:url';
+import { nodeTranscriptSource } from "../budget/discover.js";
 import { nodeFiles } from "../core/files.js";
 import { realSleep, systemClock } from "../core/lock.js";
 import { NODE_PATH_PROBE } from "../core/path-probe.js";
@@ -26,6 +27,7 @@ process.exitCode = await runCli(process.argv.slice(2), {
     platform: process.platform,
     processes: nodeProcesses(),
     probe: NODE_PATH_PROBE,
+    transcripts: nodeTranscriptSource,
     self: { node: process.execPath, script: fileURLToPath(import.meta.url) },
     requirements: requirementsCheck({ env: process.env, platform: process.platform, probe: NODE_PATH_PROBE, nodeVersion: process.versions.node }),
     readStdin: () => text(process.stdin),
