@@ -26,7 +26,7 @@ describe('teamrig open', () => {
   it('opens a Windows Terminal tab in the project that runs launch by absolute paths', async () => {
     const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started' });
     const result = await openAlpha(processes, { platform: 'win32' });
-    assert.deepEqual(result, { code: EXIT.ok, stdout: [`OPENED app-alpha (session alpha) in a new Windows Terminal tab in ${APP}`], stderr: [] });
+    assert.deepEqual(result, { code: EXIT.ok, stdout: [`OPENED app-alpha (session alpha) in a new Windows Terminal tab in ${APP}, on the default model and effort`], stderr: [] });
     assert.deepEqual(processes.started, [
       { command: 'wt.exe', args: ['-w', '0', 'new-tab', '--title', 'app-alpha', '-d', APP, '--', ...launchArgv()], cwd: APP, mode: 'exit' },
     ]);
@@ -35,7 +35,7 @@ describe('teamrig open', () => {
   it('opens a tmux window inside tmux, and a Terminal window on macOS', async () => {
     const tmux = new FakeProcesses().onStart('tmux', { kind: 'started' });
     const tmuxRun = await openAlpha(tmux, { env: { TMUX: '/tmp/tmux-1/default,1,0' } });
-    assert.deepEqual(tmuxRun.stdout, [`OPENED app-alpha (session alpha) in a new tmux window in ${APP}`]);
+    assert.deepEqual(tmuxRun.stdout, [`OPENED app-alpha (session alpha) in a new tmux window in ${APP}, on the default model and effort`]);
     assert.deepEqual(tmux.started[0]?.args, ['new-window', '-c', APP, '-n', 'app-alpha', ...launchArgv()]);
     const mac = new FakeProcesses().onStart('osascript', { kind: 'started' });
     await openAlpha(mac, { platform: 'darwin' });
@@ -60,7 +60,7 @@ describe('teamrig open', () => {
     const configured = await kit.run(['open', 'alpha'], { probe: FOLDERS, processes });
     assert.equal(configured.code, EXIT.printed);
     const flagged = await kit.run(['open', 'alpha', '--terminal', 'konsole'], { probe: FOLDERS, processes });
-    assert.deepEqual(flagged.stdout, [`OPENED app-alpha (session alpha) in a new Konsole tab in ${APP}`]);
+    assert.deepEqual(flagged.stdout, [`OPENED app-alpha (session alpha) in a new Konsole tab in ${APP}, on the default model and effort`]);
     assert.deepEqual(processes.started.map((request) => request.command), ['konsole']);
   });
 
@@ -113,11 +113,18 @@ describe('teamrig open', () => {
 });
 
 describe('teamrig open <team>/<id>', () => {
+  it('says the model and effort the lead of another team starts on', async () => {
+    const kit = await treeHarness();
+    const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started' });
+    const result = await kit.run(['open', 'web/lead'], { probe: FOLDERS, processes, platform: 'win32' });
+    assert.deepEqual(result.stdout, [`OPENED web-lead (session lead) in a new Windows Terminal tab in ${APP}, on model best at xhigh effort`]);
+  });
+
   it('opens a session of another team of the tree in the same project, launched on its own team', async () => {
     const kit = await treeHarness();
     const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started' });
     const result = await kit.run(['open', 'web/front'], { probe: FOLDERS, processes, platform: 'win32' });
-    assert.deepEqual(result.stdout, [`OPENED web-front (session front) in a new Windows Terminal tab in ${APP}`]);
+    assert.deepEqual(result.stdout, [`OPENED web-front (session front) in a new Windows Terminal tab in ${APP}, on the default model and effort`]);
     assert.deepEqual(processes.started[0]?.args.slice(8), [
       NODE, SCRIPT, 'launch', 'front', '--team', 'web', '--project', APP, '--home', resolve(APP, KIT), '--encoded-prompt', encodePrompt(defaultPrompt('web', 'front')),
     ]);
@@ -148,9 +155,20 @@ describe('teamrig launch', () => {
   it('starts Claude Code as the session, in the project, with its name and first prompt', async () => {
     const processes = new FakeProcesses();
     const result = await launch(processes, ['--encoded-prompt', encodePrompt('Build the "form"; then test')]);
-    assert.deepEqual(result, { code: EXIT.ok, stdout: [`Starting Claude Code as app-alpha (session alpha of team app) in ${APP}`], stderr: [] });
+    assert.deepEqual(result, { code: EXIT.ok, stdout: [`Starting Claude Code as app-alpha (session alpha of team app) in ${APP}, on the default model and effort`], stderr: [] });
     assert.deepEqual(processes.ran, [{ command: CLAUDE, args: ['--name', 'app-alpha', 'Build the "form"; then test'], cwd: APP, env: SESSION_ENV }]);
     assert.deepEqual(processes.started, []);
+  });
+
+  it('starts the lead on the best model at xhigh effort, and any session on its configured model and effort', async () => {
+    const lead = new FakeProcesses();
+    const result = await new CliHarness(TEAM).run(['launch', 'lead', '--team', 'app', '--project', APP], { probe: ON_PATH, processes: lead, env: { PATH: '/usr/local/bin' } });
+    assert.deepEqual(result.stdout, [`Starting Claude Code as app-lead (session lead of team app) in ${APP}, on model best at xhigh effort`]);
+    assert.deepEqual(lead.ran[0]?.args, ['--model', 'best', '--effort', 'xhigh', '--name', 'app-lead', defaultPrompt('app', 'lead')]);
+    const alpha = new FakeProcesses();
+    const configured = await new CliHarness({ ...TEAM, launch: { alpha: { model: 'sonnet', effort: 'high' } } }).run(LAUNCH, { probe: ON_PATH, processes: alpha, env: { PATH: '/usr/local/bin' } });
+    assert.deepEqual(configured.stdout, [`Starting Claude Code as app-alpha (session alpha of team app) in ${APP}, on model sonnet at high effort`]);
+    assert.deepEqual(alpha.ran[0]?.args, ['--model', 'sonnet', '--effort', 'high', '--name', 'app-alpha', defaultPrompt('app', 'alpha')]);
   });
 
   it('runs the script behind an npm claude.cmd with Node.js on Windows, with the default prompt', async () => {
