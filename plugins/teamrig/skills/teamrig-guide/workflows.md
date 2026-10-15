@@ -109,12 +109,13 @@ it stays `open`, planned after it (`teamrig update T4 --after T5`), and its line
 teamrig refreshes a long-running session at a task boundary, so it never loses work to a mid-task compaction.
 
 1. After a turn in which you set a task done, the Stop hook measures your context. When it is at or over
-   `refresh.contextTokens` (250,000 by default), or the lead asked for a refresh (`teamrig refresh <id>`), it
+   `refresh.contextTokens` (120,000 by default), at every third finished task with the context at 80,000 or more
+   (`refresh.everyTasks`, `refresh.everyTasksMinTokens`), or the lead asked for a refresh (`teamrig refresh <id>`), it
    keeps you going with this instruction, once the background work you started (subagents, background commands,
    monitors, workflows) has all reported back:
 
    ```text
-   teamrig: your context is 262k (refresh at 250k) and you just finished T2. Write your handover to <home>/teams/shop/handover/web.md (what is in progress, the next step of each, open questions, where things are), then run `teamrig refresh --ready --session web`. Do not start new work.
+   teamrig: your context is 132k (refresh at 120k) and you just finished T2. Write your handover to <home>/teams/shop/handover/web.md (what is in progress, the next step of each, open questions, where things are), then run `teamrig refresh --ready --session web`. Do not start new work.
    ```
 
 2. Write the handover at that path: what is in progress, the next step of each, open questions, where things
@@ -126,8 +127,8 @@ teamrig refreshes a long-running session at a task boundary, so it never loses w
 5. After the clear, the session-start context says `You were refreshed after T2; read your handover first:
    <path>`. Read it, then run the start of a work block, since a cleared tab is a new Claude Code session.
 
-The hook judges each finished task once and never loops. A team turns this off with `refresh.enabled: false`; on a
-200k context window, set `refresh.contextTokens` to about 150,000.
+The hook judges each finished task once and never loops. A team turns this off with `refresh.enabled: false`, and the task
+count with `refresh.everyTasks: 0`. A `/clear`, a new process or a compaction starts the count over.
 
 ## Use a helper
 
