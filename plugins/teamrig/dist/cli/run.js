@@ -149,7 +149,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       effort unless given; without --yes it shows the hire and writes nothing
   refresh <id|name>            the lead asks a session to write its handover when it next sets a task done
   refresh --ready              the handover is written; teamrig starts the session fresh once idle
-  doctor                       names, rename log, inboxes, rules.md, context size and the tree of teams that need a fix
+  doctor                       names, rename log, inboxes, rules.md, context size and the tree of teams that need a fix;
+      also a variable that overrides every model or effort choice, and a launch with a model but no effort
   compact [--dry-run]          archives the task list's log and rewrites its snapshot, so reads stay small;
       finished tasks over 8 days old leave the working set (show, list --status done read them);
       checks every task first and writes nothing on a difference
