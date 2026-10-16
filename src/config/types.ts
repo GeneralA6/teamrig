@@ -1,4 +1,5 @@
 import type { TaskStatus } from '../register/model.ts';
+import type { CoreRuleKey } from '../rules/keys.ts';
 
 /** The config format this code reads and writes. Older files are migrated in memory on load. */
 export const CONFIG_VERSION = 3;
@@ -71,6 +72,29 @@ export type VerifyGate = (typeof VERIFY_GATES)[number];
 
 export function isVerifyGate(value: unknown): value is VerifyGate {
   return VERIFY_GATES.some((gate) => gate === value);
+}
+
+export const CONFLICT_WINNERS = ['local', 'teamrig'] as const;
+/** Which side of a recorded conflict wins: the local rule over the core rule, or the core rule over the local text kept. */
+export type ConflictWinner = (typeof CONFLICT_WINNERS)[number];
+
+export function isConflictWinner(value: unknown): value is ConflictWinner {
+  return CONFLICT_WINNERS.some((winner) => winner === value);
+}
+
+/**
+ * A local rule (a line of a CLAUDE.md, rules file, skill, memory file, hook or settings file) that conflicts with a
+ * core rule and that the user chose to keep, recorded by `rules keep`. The core pack lists it, naming the side that wins.
+ */
+export interface RuleConflict {
+  /** The file, `~/`-relative under the user's home folder, else absolute. */
+  readonly file: string;
+  /** The start of the line's text, which finds the line again when the lines above it move. */
+  readonly text: string;
+  readonly rule: CoreRuleKey;
+  readonly wins: ConflictWinner;
+  /** Why the user kept it, in their words. */
+  readonly reason?: string;
 }
 
 export interface SkillsConfig {
@@ -442,6 +466,8 @@ export interface KitConfig {
   readonly roles: RolesConfig;
   /** Decision areas only the human owner can approve; silence never counts as consent for them. */
   readonly ownerGates: readonly string[];
+  /** The local rules kept although they conflict with a core rule, each with the side that wins (`rules keep`). */
+  readonly ruleConflicts: readonly RuleConflict[];
   readonly messages: MessagesConfig;
   readonly register: RegisterConfig;
   readonly skills: SkillsConfig;

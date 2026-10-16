@@ -72,6 +72,23 @@
         "resource changes"
       ]
     },
+    "ruleConflicts": {
+      "description": "Local rules (a line of a CLAUDE.md, rules file, skill, memory file, hook or settings file) kept although they conflict with a core rule, each with the side that wins. teamrig rules scan finds them; teamrig rules keep records one, teamrig rules forget drops one. The core pack lists them.",
+      "type": "array",
+      "maxItems": 40,
+      "items": {
+        "type": "object",
+        "required": ["file", "text", "rule", "wins"],
+        "properties": {
+          "file": { "description": "The file, ~/-relative under the user's home folder, else absolute.", "type": "string", "minLength": 1, "maxLength": 512, "pattern": "^[^\\r\\n]+$" },
+          "text": { "description": "The start of the line's text, which finds the line again when the lines above it move.", "type": "string", "minLength": 1, "maxLength": 300, "pattern": "^[^\\r\\n]+$" },
+          "rule": { "description": "The core rule it conflicts with, by key; teamrig rules lists them by number.", "enum": ["roles", "own-change", "messages", "register", "task-order", "owner-gates", "deploy", "lean-calls", "investigate", "resources", "data", "contracts", "skills", "commits", "push", "worktrees"] },
+          "wins": { "description": "local: the local rule wins over the core rule. teamrig: the core rule wins and the local text stays, which may not always hold (removing the line is safer).", "enum": ["local", "teamrig"] },
+          "reason": { "description": "Why the user kept it, in their words.", "type": "string", "minLength": 1, "maxLength": 200, "pattern": "^[^\\r\\n]+$" }
+        }
+      },
+      "default": []
+    },
     "messages": {
       "type": "object",
       "properties": {

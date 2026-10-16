@@ -356,6 +356,40 @@ describe('parseConfig', () => {
     assert.deepEqual(config.pushGuard.protectedBranches, ['main', 'master']);
   });
 
+  it('reads the recorded rule conflicts, dropping each bad one with its issue', () => {
+    assert.deepEqual(parseConfig(ROSTER).config.ruleConflicts, []);
+    const kept = { file: '~/CLAUDE.md', text: 'Commit straight to main.', rule: 'worktrees', wins: 'local' };
+    const { config, issues } = parseConfig({
+      ...ROSTER,
+      ruleConflicts: [
+        kept,
+        { ...kept, wins: 'teamrig', reason: 'kept for the old docs' },
+        { ...kept, rule: 'everything' },
+        { ...kept, wins: 'both' },
+        { file: '~/CLAUDE.md', rule: 'push', wins: 'local' },
+        { ...kept, text: 'two\nlines' },
+        { ...kept, text: 't'.repeat(301) },
+        { ...kept, reason: 'r'.repeat(201) },
+        'not an object',
+      ],
+    });
+    assert.deepEqual(paths(issues), [
+      'ruleConflicts[2].rule',
+      'ruleConflicts[3].wins',
+      'ruleConflicts[4].text',
+      'ruleConflicts[5].text',
+      'ruleConflicts[6].text',
+      'ruleConflicts[7].reason',
+      'ruleConflicts[8]',
+    ]);
+    assert.match(issues[0]?.message ?? '', /^expected one of roles, own-change/);
+    assert.equal(issues[2]?.message, 'is required');
+    assert.deepEqual(config.ruleConflicts, [kept, { ...kept, wins: 'teamrig', reason: 'kept for the old docs' }]);
+    const many = parseConfig({ ...ROSTER, ruleConflicts: Array.from({ length: 41 }, () => kept) });
+    assert.deepEqual(paths(many.issues), ['ruleConflicts']);
+    assert.deepEqual(many.config.ruleConflicts, []);
+  });
+
   it('reads the refresh settings, defaulting each and refusing a bad threshold or folder', () => {
     assert.deepEqual(parseConfig(ROSTER).config.refresh, DEFAULT_REFRESH);
     const chosen = {
