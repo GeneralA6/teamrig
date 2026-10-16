@@ -73,12 +73,16 @@ export function claudeProjectsDir(env: Env, userHome: string): string {
   return join(claudeConfigDir(env, userHome), 'projects');
 }
 
-/** The transcripts of one Claude Code session: its own (none when only its subagents wrote), then its subagents'. */
-export interface ClaudeSessionFiles {
-  readonly claudeSession: string;
-  /** Its own transcripts, one per project folder it ran in. */
+/** Transcripts by kind: Claude Code sessions' own, and their subagents'. */
+export interface TranscriptSet {
+  /** The sessions' own transcripts, one per project folder each ran in. */
   readonly main: readonly string[];
   readonly subagents: readonly string[];
+}
+
+/** The transcripts of one Claude Code session: its own (none when only its subagents wrote), then its subagents'. */
+export interface ClaudeSessionFiles extends TranscriptSet {
+  readonly claudeSession: string;
 }
 
 interface FoundFiles {

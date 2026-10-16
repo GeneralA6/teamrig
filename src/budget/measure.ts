@@ -1,7 +1,7 @@
 import type { Roster } from '../config/roster.ts';
 import type { Clock } from '../core/lock.ts';
 import { attribute } from './attribute.ts';
-import { discoverTranscripts, type TranscriptSource } from './discover.ts';
+import { discoverTranscripts, type TranscriptSet, type TranscriptSource } from './discover.ts';
 import { runMeter } from './meter.ts';
 import type { UsageState, UsageStorage } from './store.ts';
 
@@ -51,10 +51,10 @@ interface Metered {
 }
 
 /** Runs the meter until the session has caught up, at most `maxRuns` times; a run that lost a save race is run again. */
-async function meterSession(deps: MeasureDeps, store: UsageStorage, session: string, transcripts: readonly string[], input: MeasureInput): Promise<Metered> {
+async function meterSession(deps: MeasureDeps, store: UsageStorage, session: string, transcripts: TranscriptSet, input: MeasureInput): Promise<Metered> {
   let state = (await store.load(session)).state;
   for (let run = 0; run < input.maxRuns; run += 1) {
-    const result = await runMeter({ bytes: deps.transcripts, store, clock: deps.clock }, { session, transcripts, maxBytes: input.chunkBytes });
+    const result = await runMeter({ bytes: deps.transcripts, store, clock: deps.clock }, { session, transcripts: [...transcripts.main, ...transcripts.subagents], maxBytes: input.chunkBytes });
     if (result.saved) {
       state = result.state;
       if (!result.catchingUp) {
@@ -75,8 +75,8 @@ export async function measure(deps: MeasureDeps, input: MeasureInput): Promise<M
   const bySession = new Map<string, UsageState>();
   const behind: string[] = [];
   for (const id of input.roster.ids) {
-    const transcripts = found.byTeamSession.get(id) ?? [];
-    if (transcripts.length === 0) {
+    const transcripts = found.byTeamSession.get(id);
+    if (transcripts === undefined) {
       bySession.set(id, (await deps.team.load(id)).state);
       continue;
     }
@@ -87,7 +87,7 @@ export async function measure(deps: MeasureDeps, input: MeasureInput): Promise<M
     }
   }
   const outside: Metered =
-    found.outside.length === 0 ? { state: (await deps.outside.load(OUTSIDE_ID)).state, behind: false } : await meterSession(deps, deps.outside, OUTSIDE_ID, found.outside, input);
+    found.outsideSessions === 0 ? { state: (await deps.outside.load(OUTSIDE_ID)).state, behind: false } : await meterSession(deps, deps.outside, OUTSIDE_ID, found.outside, input);
   if (outside.behind) {
     behind.push(OUTSIDE_ID);
   }

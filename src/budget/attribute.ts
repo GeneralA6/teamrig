@@ -1,13 +1,15 @@
 import type { Roster } from '../config/roster.ts';
 import { sessionsTitled } from '../hooks/bind.ts';
-import type { ClaudeSessionFiles } from './discover.ts';
+import type { ClaudeSessionFiles, TranscriptSet } from './discover.ts';
+
+const NO_TRANSCRIPTS: TranscriptSet = { main: [], subagents: [] };
 
 /** The team session a Claude Code session works as, and why. */
 export interface Attribution {
-  /** Each team session's transcripts, its own Claude Code sessions' and their subagents'. */
-  readonly byTeamSession: ReadonlyMap<string, readonly string[]>;
+  /** Each team session's transcripts: its own Claude Code sessions' and their subagents'. */
+  readonly byTeamSession: ReadonlyMap<string, TranscriptSet>;
   /** The transcripts of Claude Code sessions that are no team session (another project, an unnamed tab). */
-  readonly outside: readonly string[];
+  readonly outside: TranscriptSet;
   /** How many Claude Code sessions are outside the team, and the titles of those that have one. */
   readonly outsideSessions: number;
   readonly outsideTitles: readonly string[];
@@ -28,12 +30,11 @@ export interface AttributionInput {
  * A session that only ran subagents has no title of its own and goes by its mark alone.
  */
 export async function attribute(input: AttributionInput): Promise<Attribution> {
-  const byTeamSession = new Map<string, string[]>();
-  const outside: string[] = [];
+  const byTeamSession = new Map<string, TranscriptSet>();
+  let outside = NO_TRANSCRIPTS;
   const outsideTitles: string[] = [];
   let outsideSessions = 0;
   for (const session of input.sessions) {
-    const files = [...session.main, ...session.subagents];
     const marked = input.areaBySession.get(session.claudeSession);
     let id = marked !== undefined && input.roster.ids.includes(marked) ? marked : undefined;
     let title: string | undefined;
@@ -43,16 +44,21 @@ export async function attribute(input: AttributionInput): Promise<Attribution> {
       id = titled.length === 1 ? titled[0] : undefined;
     }
     if (id === undefined) {
-      outside.push(...files);
+      outside = joined(outside, session);
       outsideSessions += 1;
       if (title !== undefined && !outsideTitles.includes(title)) {
         outsideTitles.push(title);
       }
       continue;
     }
-    byTeamSession.set(id, [...(byTeamSession.get(id) ?? []), ...files]);
+    byTeamSession.set(id, joined(byTeamSession.get(id) ?? NO_TRANSCRIPTS, session));
   }
   return { byTeamSession, outside, outsideSessions, outsideTitles };
+}
+
+/** Both sets' transcripts, each kind in order. */
+function joined(set: TranscriptSet, more: TranscriptSet): TranscriptSet {
+  return { main: [...set.main, ...more.main], subagents: [...set.subagents, ...more.subagents] };
 }
 
 async function titleOfFirst(input: AttributionInput, transcripts: readonly string[]): Promise<string | undefined> {
