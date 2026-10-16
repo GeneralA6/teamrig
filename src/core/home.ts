@@ -87,6 +87,8 @@ export interface TeamPaths {
   readonly bindHints: string;
   /** The SendMessage calls the cold-send hook held, so the same tab's next send to that session goes through. */
   readonly coldSends: string;
+  /** The owner's latest daily meeting with the lead (src/meeting/state.ts); the cold-send hook holds messages to the lead while it is open. */
+  readonly meeting: string;
   /** The append-only log of session renames, so every name a session has had still finds it. */
   readonly renames: string;
   readonly renamesLock: string;
@@ -148,6 +150,7 @@ export function teamPaths(kitHome: string, team: string, userHome: string, overr
     inboxShown: join(state, 'inbox-shown.jsonl'),
     bindHints: join(state, 'bind-hints.jsonl'),
     coldSends: join(state, 'cold-sends.jsonl'),
+    meeting: join(state, 'meeting.json'),
     renames: join(state, 'renames.jsonl'),
     renamesLock: join(state, 'renames.lock'),
     skills: inHome(overrides.skills) ?? join(userHome, '.claude', 'skills'),
