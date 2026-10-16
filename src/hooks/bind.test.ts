@@ -101,7 +101,7 @@ describe('bindMarkOf', () => {
 });
 
 describe('refreshedIn', () => {
-  const ready = (claudePid: number | null, at: string = '2030-01-08T09:00:00.000Z'): RefreshState => ({ phase: 'ready', task: 'T3', at, noticed: true, transcript: null, claudePid });
+  const ready = (claudePid: number | null, at: string = '2030-01-08T09:00:00.000Z'): RefreshState => ({ phase: 'ready', task: 'T3', at, tokens: null, noticed: true, transcript: null, claudePid });
 
   it('names the sessions whose handover is ready and was announced in this process within the day', () => {
     const states = new Map<string, RefreshState | undefined>([

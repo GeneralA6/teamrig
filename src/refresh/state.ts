@@ -18,13 +18,25 @@ export const REFRESH_FORMAT = 1;
  *   from it what that session leaves to take over. `claudePid` is the Claude Code process the notice was
  *   given in (null before, or when it was not found): a /clear keeps the process, so the fresh tab binds by it.
  * - `refreshed`: a fresh start was pointed at the handover.
+ * In `asked`, `ready` and `refreshed`, `task` is the task whose end asked for the refresh, null when another
+ * turn end asked. In `asked` and `ready`, `tokens` is the context the refresh was asked at, null when unknown or
+ * when the context was made small since (a compaction, a /clear): a session that goes on without its fresh
+ * start is asked again only once its context grew well past it.
  */
 export type RefreshState =
   | { readonly phase: 'boundary'; readonly task: string; readonly at: string; readonly finished: number }
   | { readonly phase: 'idle'; readonly task: string; readonly at: string; readonly tokens: number | null; readonly finished: number }
-  | { readonly phase: 'asked'; readonly task: string; readonly at: string; readonly tokens: number | null; readonly handoverHash: string | null }
-  | { readonly phase: 'ready'; readonly task: string; readonly at: string; readonly noticed: boolean; readonly transcript: string | null; readonly claudePid: number | null }
-  | { readonly phase: 'refreshed'; readonly task: string; readonly at: string };
+  | { readonly phase: 'asked'; readonly task: string | null; readonly at: string; readonly tokens: number | null; readonly handoverHash: string | null }
+  | {
+      readonly phase: 'ready';
+      readonly task: string | null;
+      readonly at: string;
+      readonly tokens: number | null;
+      readonly noticed: boolean;
+      readonly transcript: string | null;
+      readonly claudePid: number | null;
+    }
+  | { readonly phase: 'refreshed'; readonly task: string | null; readonly at: string };
 
 /** The lead's ask that a session refresh at its next finished task, whatever its context. */
 export interface RefreshRequest {
@@ -81,7 +93,8 @@ function hashOf(record: JsonRecord): string | null | undefined {
 /** A refresh state file's content; undefined when it is damaged, from another format or names no known phase. */
 export function parseRefreshState(text: string): RefreshState | undefined {
   const record = recordOf(text);
-  const task = record === undefined ? undefined : stringField(record, 'task');
+  // Only a task end names its task: a refresh another turn end asked for has none.
+  const task = record === undefined ? undefined : nullableString(record, 'task');
   const at = record === undefined ? undefined : stringField(record, 'at');
   if (record === undefined || task === undefined || at === undefined) {
     return undefined;
@@ -89,12 +102,12 @@ export function parseRefreshState(text: string): RefreshState | undefined {
   switch (record['phase']) {
     case 'boundary': {
       const finished = finishedOf(record, 1);
-      return finished === undefined ? undefined : { phase: 'boundary', task, at, finished };
+      return task === null || finished === undefined ? undefined : { phase: 'boundary', task, at, finished };
     }
     case 'idle': {
       const tokens = tokensOf(record);
       const finished = finishedOf(record, 0);
-      return tokens === undefined || finished === undefined ? undefined : { phase: 'idle', task, at, tokens, finished };
+      return task === null || tokens === undefined || finished === undefined ? undefined : { phase: 'idle', task, at, tokens, finished };
     }
     case 'asked': {
       const tokens = tokensOf(record);
@@ -106,7 +119,11 @@ export function parseRefreshState(text: string): RefreshState | undefined {
       // A file from before the transcript was recorded has none.
       const transcript = record['transcript'] === undefined ? null : nullableString(record, 'transcript');
       const claudePid = nullablePidOf(record['claudePid']);
-      return typeof noticed === 'boolean' && transcript !== undefined && claudePid !== undefined ? { phase: 'ready', task, at, noticed, transcript, claudePid } : undefined;
+      // A file from before the size was recorded has none.
+      const tokens = record['tokens'] === undefined ? null : tokensOf(record);
+      return typeof noticed === 'boolean' && transcript !== undefined && claudePid !== undefined && tokens !== undefined
+        ? { phase: 'ready', task, at, tokens, noticed, transcript, claudePid }
+        : undefined;
     }
     case 'refreshed':
       return { phase: 'refreshed', task, at };

@@ -7,10 +7,13 @@ import {
   decideStart,
   decideStop,
   handoverHashOf,
+  REASK_SHARE,
+  reaskGrowth,
   thousands,
-  type BoundaryFacts,
+  type DueFacts,
   type RefreshSettings,
   type StopContext,
+  type StopFacts,
   wakePromptOf,
   WAKE_WINDOW_MS,
 } from './decide.ts';
@@ -22,7 +25,7 @@ const HANDOVER = '/team/handover/alpha.md';
 
 const BOUNDARY: RefreshState = { phase: 'boundary', task: 'T12', at: BEFORE, finished: 1 };
 const ASKED: RefreshState = { phase: 'asked', task: 'T12', at: BEFORE, tokens: 262_144, handoverHash: null };
-const READY: RefreshState = { phase: 'ready', task: 'T12', at: BEFORE, noticed: false, transcript: null, claudePid: null };
+const READY: RefreshState = { phase: 'ready', task: 'T12', at: BEFORE, tokens: null, noticed: false, transcript: null, claudePid: null };
 /** The size rule alone at 250k, so each size test reads apart from the task count. */
 const SIZE_ONLY: RefreshSettings = { ...DEFAULT_REFRESH, contextTokens: 250_000, everyTasks: 0 };
 const COUNTED: RefreshSettings = { ...SIZE_ONLY, everyTasks: 3, everyTasksMinTokens: 80_000 };
@@ -41,28 +44,90 @@ function stopContext(overrides: Partial<StopContext> = {}): StopContext {
   };
 }
 
-function facts(overrides: Partial<BoundaryFacts> = {}): BoundaryFacts {
-  return { requestedBy: undefined, tokens: 120_000, handoverHash: null, running: 0, ...overrides };
+/** The facts flat, so a test names only the ones it sets. */
+type FlatFacts = Omit<StopFacts, 'due'> & DueFacts;
+
+/** Every fact read, the due ones too. */
+function facts(overrides: Partial<FlatFacts> = {}): StopFacts {
+  const flat: FlatFacts = { requestedBy: undefined, tokens: 120_000, handoverHash: null, running: 0, ...overrides };
+  return { requestedBy: flat.requestedBy, tokens: flat.tokens, due: { handoverHash: flat.handoverHash, running: flat.running } };
+}
+
+/** The facts every turn end reads, before the due ones. */
+function cheap(overrides: Partial<FlatFacts> = {}): StopFacts {
+  return { ...facts(overrides), due: undefined };
 }
 
 describe('decideStop', () => {
-  it('does nothing without state, with the feature off, or after a boundary was judged', () => {
-    assert.deepEqual(decideStop(undefined, stopContext()), { kind: 'none' });
-    assert.deepEqual(decideStop(BOUNDARY, stopContext({ settings: { ...DEFAULT_REFRESH, enabled: false } })), { kind: 'none' });
-    assert.deepEqual(decideStop(READY, stopContext({ settings: { ...DEFAULT_REFRESH, enabled: false } })), { kind: 'none' });
+  it('does nothing with the feature off', () => {
+    for (const state of [undefined, BOUNDARY, READY]) {
+      assert.deepEqual(decideStop(state, stopContext({ settings: { ...DEFAULT_REFRESH, enabled: false } }), facts({ tokens: 900_000 })), { kind: 'none' }, state?.phase);
+    }
+  });
+
+  it('reads the facts at every turn end, and the due ones only once a refresh or the notice is due', () => {
+    for (const state of [undefined, BOUNDARY, READY, { phase: 'refreshed', task: 'T12', at: BEFORE }] satisfies (RefreshState | undefined)[]) {
+      assert.deepEqual(decideStop(state, stopContext()), { kind: 'measure' }, state?.phase);
+    }
+    assert.deepEqual(decideStop(READY, stopContext(), cheap()), { kind: 'measure' }, 'the notice reads the running work');
+    assert.deepEqual(decideStop(undefined, stopContext(), cheap({ tokens: 262_144 })), { kind: 'measure' }, 'a due refresh reads the handover');
+    assert.deepEqual(decideStop(BOUNDARY, stopContext(), cheap({ tokens: 262_144 })), { kind: 'measure' });
+  });
+
+  it('says nothing at a turn end under the threshold, nor after a notice', () => {
     for (const state of [
+      undefined,
       { phase: 'idle', task: 'T12', at: BEFORE, tokens: 5, finished: 1 },
       ASKED,
       { phase: 'refreshed', task: 'T12', at: BEFORE },
       { ...READY, noticed: true },
-    ] satisfies RefreshState[]) {
-      assert.deepEqual(decideStop(state, stopContext(), facts({ tokens: 900_000 })), { kind: 'none' }, state.phase);
+    ] satisfies (RefreshState | undefined)[]) {
+      assert.deepEqual(decideStop(state, stopContext(), cheap({ tokens: 249_999 })), { kind: 'none' }, state?.phase);
+      assert.deepEqual(decideStop(state, stopContext(), cheap({ tokens: undefined })), { kind: 'none' }, `${state?.phase}, size unknown`);
     }
   });
 
-  it('asks for the facts of a boundary before judging it, and of a written handover before the notice', () => {
-    assert.deepEqual(decideStop(BOUNDARY, stopContext()), { kind: 'measure' });
-    assert.deepEqual(decideStop(READY, stopContext()), { kind: 'measure' });
+  it('asks mid-task at any turn end at or over the threshold, naming no task', () => {
+    const decision = decideStop(undefined, stopContext(), facts({ tokens: 262_144, handoverHash: 'abc' }));
+    assert.deepEqual(decision, {
+      kind: 'block',
+      state: { phase: 'asked', task: null, at: NOW, tokens: 262_144, handoverHash: 'abc' },
+      reason: 'teamrig: your context is 262k (refresh at 250k), so refresh now rather than at a task end. ' + "Write your handover to /team/handover/alpha.md (what is in progress and the next step of each; what to check later, and when; questions still open with the user; the scratchpad files, plan file and scheduled jobs the next session still needs; where things are), then run `teamrig refresh --ready --session alpha`. Do not start new work.",
+    });
+    for (const state of [
+      { phase: 'idle', task: 'T12', at: BEFORE, tokens: 120_000, finished: 1 },
+      { phase: 'refreshed', task: 'T12', at: BEFORE },
+      { ...READY, noticed: true },
+    ] satisfies RefreshState[]) {
+      const asked = decideStop(state, stopContext(), facts({ tokens: 250_000 }));
+      assert.deepEqual(asked.kind === 'block' ? asked.state : undefined, { phase: 'asked', task: null, at: NOW, tokens: 250_000, handoverHash: null }, state.phase);
+    }
+    assert.deepEqual(decideStop(undefined, stopContext(), facts({ tokens: 262_144, running: 1 })), { kind: 'none' }, 'waits for running work');
+  });
+
+  it('asks mid-task once the lead asked, whatever the size', () => {
+    const idle: RefreshState = { phase: 'idle', task: 'T12', at: BEFORE, tokens: 40_000, finished: 1 };
+    const decision = decideStop(idle, stopContext(), facts({ requestedBy: 'boss', tokens: 40_400 }));
+    assert.match(decision.kind === 'block' ? decision.reason : '', /^teamrig: boss asked for a refresh \(your context is 40k\), so refresh now rather than at a task end\. /);
+  });
+
+  it('asks again only once the context grew well past an ask the session went on from', () => {
+    assert.equal(REASK_SHARE, 0.2);
+    assert.equal(reaskGrowth(SIZE_ONLY), 50_000);
+    const noticed: RefreshState = { ...READY, tokens: 262_144, noticed: true };
+    for (const state of [ASKED, noticed]) {
+      assert.deepEqual(decideStop(state, stopContext(), cheap({ tokens: 312_143 })), { kind: 'none' }, state.phase);
+      assert.deepEqual(decideStop(state, stopContext(), cheap({ requestedBy: 'boss', tokens: 300_000 })), { kind: 'none' }, `${state.phase}: the lead's ask was asked`);
+      const again = decideStop(state, stopContext(), facts({ tokens: 312_144 }));
+      assert.deepEqual(again.kind === 'block' ? again.state : undefined, { phase: 'asked', task: null, at: NOW, tokens: 312_144, handoverHash: null }, state.phase);
+    }
+    assert.equal(decideStop({ ...ASKED, tokens: null }, stopContext(), facts({ tokens: 250_000 })).kind, 'block', 'a size forgotten asks at the threshold');
+    assert.equal(decideStop({ ...ASKED, tokens: 40_400 }, stopContext(), facts({ tokens: 250_000 })).kind, 'block', 'never past the threshold for a small ask');
+  });
+
+  it('asks again at the next task end, after the session went on from an ask', () => {
+    const decision = decideStop(boundaryOf(ASKED, 'T13', NOW), stopContext(), facts({ tokens: 262_144 }));
+    assert.match(decision.kind === 'block' ? decision.reason : '', /and you just finished T13\. /);
   });
 
   it('never judges a boundary in a turn a Stop hook already continued', () => {
@@ -79,6 +144,7 @@ describe('decideStop', () => {
       kind: 'write',
       state: { phase: 'idle', task: 'T12', at: NOW, tokens: null, finished: 1 },
     });
+    assert.equal(decideStop(BOUNDARY, stopContext(), cheap({ tokens: 249_999 })).kind, 'write', 'without reading the due facts');
   });
 
   it('asks for the handover at or over the threshold, naming the size, the path and the ready command', () => {
@@ -166,6 +232,11 @@ describe('decideStop', () => {
     });
   });
 
+  it('names no task in the notice of a refresh asked mid-task', () => {
+    const decision = decideStop({ ...READY, task: null }, stopContext(), facts());
+    assert.equal(decision.kind === 'notice' ? decision.message : '', 'teamrig: api wrote its handover; type /clear for a fresh start');
+  });
+
   it("records the session's transcript with the notice, for the fresh start to read what it leaves", () => {
     const decision = decideStop(READY, stopContext({ transcript: '/claude/projects/p/s.jsonl' }), facts());
     assert.deepEqual(decision.kind === 'notice' ? decision.state : undefined, { ...READY, noticed: true, transcript: '/claude/projects/p/s.jsonl' });
@@ -223,12 +294,23 @@ describe('decideReady', () => {
       kind: 'refused',
       reason: `${HANDOVER} is the handover from before; write this refresh's handover there`,
     });
-    assert.deepEqual(decideReady(asked, '# this refresh\n', HANDOVER, NOW), { kind: 'ready', state: { phase: 'ready', task: 'T12', at: NOW, noticed: false, transcript: null, claudePid: null } });
+    assert.deepEqual(decideReady(asked, '# this refresh\n', HANDOVER, NOW), {
+      kind: 'ready',
+      state: { phase: 'ready', task: 'T12', at: NOW, tokens: 262_144, noticed: false, transcript: null, claudePid: null },
+    });
   });
 
   it('marks a new handover ready, and answers the same when run again', () => {
-    assert.deepEqual(decideReady(ASKED, '# notes', HANDOVER, NOW), { kind: 'ready', state: { phase: 'ready', task: 'T12', at: NOW, noticed: false, transcript: null, claudePid: null } });
+    assert.deepEqual(decideReady(ASKED, '# notes', HANDOVER, NOW), {
+      kind: 'ready',
+      state: { phase: 'ready', task: 'T12', at: NOW, tokens: 262_144, noticed: false, transcript: null, claudePid: null },
+    });
     assert.deepEqual(decideReady(READY, '# notes', HANDOVER, NOW), { kind: 'already' });
+  });
+
+  it('keeps a refresh asked mid-task without a task, and the size it was asked at', () => {
+    const decision = decideReady({ ...ASKED, task: null, tokens: null }, '# notes', HANDOVER, NOW);
+    assert.deepEqual(decision.kind === 'ready' ? decision.state : undefined, { phase: 'ready', task: null, at: NOW, tokens: null, noticed: false, transcript: null, claudePid: null });
   });
 });
 
@@ -242,6 +324,26 @@ describe('decideStart', () => {
       });
     }
     assert.deepEqual(decideStart({ phase: 'refreshed', task: 'T12', at: NOW }, 'clear', DEFAULT_REFRESH, HANDOVER, NOW), { kind: 'none' });
+    const midTask = decideStart({ ...READY, task: null, tokens: 262_144 }, 'clear', DEFAULT_REFRESH, HANDOVER, NOW);
+    assert.deepEqual(midTask, {
+      kind: 'inject',
+      note: `You were refreshed mid-task; read your handover first: ${HANDOVER}. Then carry on with its next steps.`,
+      state: { phase: 'refreshed', task: null, at: NOW },
+    });
+  });
+
+  it('forgets the size a refresh was asked at once the context is small again, so the next ask comes at the threshold', () => {
+    const asked: RefreshState = ASKED;
+    const ready: RefreshState = { ...READY, tokens: 262_144, noticed: true };
+    for (const source of ['clear', 'startup', 'compact']) {
+      assert.deepEqual(decideStart(asked, source, DEFAULT_REFRESH, HANDOVER, NOW), { kind: 'reset', state: { ...asked, tokens: null } }, source);
+    }
+    assert.deepEqual(decideStart(ready, 'compact', DEFAULT_REFRESH, HANDOVER, NOW), { kind: 'reset', state: { ...ready, tokens: null } });
+    assert.equal(decideStart(ready, 'clear', DEFAULT_REFRESH, HANDOVER, NOW).kind, 'inject', 'a fresh start takes the handover');
+    for (const source of ['resume', 'fork', undefined]) {
+      assert.deepEqual(decideStart(asked, source, DEFAULT_REFRESH, HANDOVER, NOW), { kind: 'none' }, source);
+    }
+    assert.deepEqual(decideStart({ ...ASKED, tokens: null }, 'compact', DEFAULT_REFRESH, HANDOVER, NOW), { kind: 'none' }, 'already forgotten');
   });
 
   it('leaves the handover waiting on a start that keeps the old context', () => {
@@ -265,7 +367,7 @@ describe('decideStart', () => {
   });
 
   it('does nothing before the handover is ready, or with the feature off', () => {
-    assert.deepEqual(decideStart(ASKED, 'clear', DEFAULT_REFRESH, HANDOVER, NOW), { kind: 'none' });
+    assert.deepEqual(decideStart({ ...ASKED, tokens: null }, 'clear', DEFAULT_REFRESH, HANDOVER, NOW), { kind: 'none' });
     assert.deepEqual(decideStart(undefined, 'clear', DEFAULT_REFRESH, HANDOVER, NOW), { kind: 'none' });
     assert.deepEqual(decideStart(READY, 'clear', { enabled: false }, HANDOVER, NOW), { kind: 'none' });
   });
@@ -286,6 +388,10 @@ describe('wakePromptOf', () => {
       wakePromptOf(TAKEN, HANDOVER, later(WAKE_WINDOW_MS)),
       `You were started fresh after your context refresh at T12: read your handover ${HANDOVER} now, take over what the SessionStart note lists, then carry on with its next steps.`,
     );
+  });
+
+  it('names no task for a refresh asked mid-task', () => {
+    assert.match(wakePromptOf({ ...TAKEN, task: null }, HANDOVER, NOW) ?? '', /^You were started fresh after your context refresh: read your handover /);
   });
 
   it('wakes nothing for a refresh taken earlier, not taken yet, or none', () => {

@@ -38,7 +38,7 @@ describe('teamrig hook refresh-wake', () => {
   it('waits for the SessionStart hook beside it to take the refresh', async () => {
     const kit = new CliHarness();
     const store = storeOf(kit);
-    await store.setState('alpha', { phase: 'ready', task: 'T3', at: new Date(kit.clock.now()).toISOString(), noticed: true, transcript: null, claudePid: null });
+    await store.setState('alpha', { phase: 'ready', task: 'T3', at: new Date(kit.clock.now()).toISOString(), tokens: null, noticed: true, transcript: null, claudePid: null });
     let waits = 0;
     const sleep = async (ms: number): Promise<void> => {
       waits += 1;

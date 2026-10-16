@@ -28,12 +28,18 @@ export interface StopContext {
   readonly transcript: string | null;
 }
 
-/** What the Stop hook reads only at a boundary it has not judged yet, or before saying the handover is written. */
-export interface BoundaryFacts {
+/** What the Stop hook reads at a turn end that may ask for a refresh: a small file and the transcript's tail. */
+export interface StopFacts {
   /** The name of the lead that asked for a refresh; undefined when nobody asked. */
   readonly requestedBy: string | undefined;
   /** The context size; undefined when the transcript does not tell, which never asks for a refresh. */
   readonly tokens: number | undefined;
+  /** Read only once a refresh, or the notice that its handover is written, is due; undefined before. */
+  readonly due: DueFacts | undefined;
+}
+
+/** What a due refresh, or the notice that its handover is written, reads before it acts. */
+export interface DueFacts {
   /** The fingerprint of the handover file as it is now; null when there is none. */
   readonly handoverHash: string | null;
   /** Background work the session started that has not reported back (subagents, commands, monitors, workflows). */
@@ -42,7 +48,7 @@ export interface BoundaryFacts {
 
 export type StopDecision =
   | { readonly kind: 'none' }
-  /** A boundary to judge: read its facts and decide again with them. */
+  /** Read the facts this stop lacks and decide again with them: the `StopFacts` first, their `due` facts once a refresh is due. */
   | { readonly kind: 'measure' }
   /** Judged, no refresh due: record it, say nothing. */
   | { readonly kind: 'write'; readonly state: RefreshState }
@@ -56,6 +62,18 @@ export type NoticeDecision = Extract<StopDecision, { readonly kind: 'notice' }>;
 const NONE: StopDecision = { kind: 'none' };
 const MEASURE: StopDecision = { kind: 'measure' };
 
+/**
+ * A session that goes on without the fresh start a refresh asked for (the user typed, or never typed /clear) is
+ * asked again once its context grew this share of `contextTokens` past the size it was asked at, or at its next
+ * task end: never at every turn end.
+ */
+export const REASK_SHARE = 0.2;
+
+/** How far a context grows past a refresh it went on from before it is asked again. */
+export function reaskGrowth(settings: Pick<RefreshSettings, 'contextTokens'>): number {
+  return Math.round(settings.contextTokens * REASK_SHARE);
+}
+
 /** Tokens as people say them: 262,144 is `262k`. */
 export function thousands(tokens: number): string {
   return `${Math.round(tokens / 1000)}k`;
@@ -67,10 +85,11 @@ export function noticeOf(state: ReadyState, context: StopContext, restart: boole
   const next = restart
     ? `${context.command} starts it fresh once it has been idle ${context.settings.restartDelaySeconds} s (type anything to keep this context)`
     : 'type /clear for a fresh start';
+  const finished = state.task === null ? '' : ` finished ${state.task} and`;
   return {
     kind: 'notice',
     state: { ...state, noticed: true, transcript: context.transcript },
-    message: `${context.command}: ${name} finished ${state.task} and wrote its handover; ${next}`,
+    message: `${context.command}: ${name}${finished} wrote its handover; ${next}`,
     title: context.settings.tabTitle ? `${name}: ${restart ? 'restarting' : 'type /clear'}` : undefined,
     restart,
   };
@@ -91,25 +110,40 @@ export function boundaryOf(previous: RefreshState | undefined, task: string, at:
   return { phase: 'boundary', task, at, finished: finishedSoFar(previous) + 1 };
 }
 
-/** Why a boundary refreshes: the lead asked, the context reached the threshold, or enough tasks were finished. */
+/** Why a turn end refreshes: the lead asked, the context reached the threshold, or enough tasks were finished. */
 type Cause =
   | { readonly kind: 'asked'; readonly by: string; readonly tokens: number | null }
   | { readonly kind: 'size'; readonly tokens: number }
   | { readonly kind: 'tasks'; readonly tokens: number; readonly finished: number };
 
-function causeOf(facts: BoundaryFacts, settings: RefreshSettings, finished: number): Cause | undefined {
-  if (facts.requestedBy !== undefined) {
+/** The context size a turn end asks at: the threshold, or after a refresh the session went on from, well past that ask. */
+function askAt(state: RefreshState | undefined, settings: RefreshSettings): number {
+  const asked = state?.phase === 'asked' || state?.phase === 'ready' ? state.tokens : null;
+  return asked === null ? settings.contextTokens : Math.max(settings.contextTokens, asked + reaskGrowth(settings));
+}
+
+/**
+ * Why this turn end refreshes, if it does: the lead asked, or the context reached `askAt`; at a task end
+ * (`boundary`) also enough tasks at a context worth refreshing. A session asked before that went on is not
+ * asked again for the lead's request it was already asked for.
+ */
+function causeOf(state: RefreshState | undefined, facts: StopFacts, settings: RefreshSettings): Cause | undefined {
+  const askedBefore = state?.phase === 'asked' || state?.phase === 'ready';
+  if (facts.requestedBy !== undefined && !askedBefore) {
     return { kind: 'asked', by: facts.requestedBy, tokens: facts.tokens ?? null };
   }
   const { tokens } = facts;
   if (tokens === undefined) {
     return undefined;
   }
-  if (tokens >= settings.contextTokens) {
+  if (tokens >= askAt(state, settings)) {
     return { kind: 'size', tokens };
   }
-  const counted = settings.everyTasks > 0 && finished >= settings.everyTasks && tokens >= settings.everyTasksMinTokens;
-  return counted ? { kind: 'tasks', tokens, finished } : undefined;
+  if (state?.phase !== 'boundary') {
+    return undefined;
+  }
+  const counted = settings.everyTasks > 0 && state.finished >= settings.everyTasks && tokens >= settings.everyTasksMinTokens;
+  return counted ? { kind: 'tasks', tokens, finished: state.finished } : undefined;
 }
 
 function whyOf(cause: Cause, settings: RefreshSettings): string {
@@ -123,10 +157,12 @@ function whyOf(cause: Cause, settings: RefreshSettings): string {
   }
 }
 
-function handoverAsk(task: string, cause: Cause, context: StopContext): string {
+/** The ask to write the handover: after `task` at its end, or with null at another turn end. */
+function handoverAsk(task: string | null, cause: Cause, context: StopContext): string {
   const why = whyOf(cause, context.settings);
+  const when = task === null ? ', so refresh now rather than at a task end' : ` and you just finished ${task}`;
   return (
-    `${context.command}: ${why} and you just finished ${task}. Write your handover to ${context.handoverPath} ` +
+    `${context.command}: ${why}${when}. Write your handover to ${context.handoverPath} ` +
     '(what is in progress and the next step of each; what to check later, and when; questions still open with the user; ' +
     'the scratchpad files, plan file and scheduled jobs the next session still needs; where things are), then run ' +
     `\`${readyCommand(context.command, context.session.id)}\`. Do not start new work.`
@@ -134,52 +170,53 @@ function handoverAsk(task: string, cause: Cause, context: StopContext): string {
 }
 
 /**
- * The Stop hook, at the end of every turn. Only a boundary (a task just finished) is judged, once:
- * at or over the threshold, after enough tasks at a context worth refreshing, or when the lead asked,
- * the session is kept going to write its handover;
- * otherwise the boundary is recorded as judged and nothing is said. Once the handover is written it
- * tells the user, once, that the session restarts by itself when it can, else that it waits for /clear.
- * While background work the session started still runs, a due refresh and the notice wait for a later
- * stop, since a fresh start would cut that work off. A stop that ends a turn a Stop hook continued never judges a boundary, so
- * the kit never loops; the notice that the handover is written does show there, since that is the
- * turn that runs `refresh --ready`.
+ * The Stop hook, at the end of every turn. A turn end with the context at the threshold, or after the lead
+ * asked, keeps the session going to write its handover, so a long task refreshes before Claude Code compacts
+ * it; a task end (a `boundary`, judged once) also does after enough tasks at a context worth refreshing, and
+ * is recorded as judged when none is due. A session that went on after an ask (the user typed, or never typed
+ * /clear) is asked again only once its context grew `reaskGrowth` past that ask, or at its next task end. Once
+ * the handover is written it tells the user, once, that the session restarts by itself when it can, else that
+ * it waits for /clear. While background work the session started still runs, a due refresh and the notice wait
+ * for a later stop, since a fresh start would cut that work off. A stop that ends a turn a Stop hook continued
+ * never asks, so the kit never loops; the notice that the handover is written does show there, since that is
+ * the turn that runs `refresh --ready`. The facts are read cheapest first: the running work, which takes the
+ * transcript's last 8 MiB, only once a refresh or the notice is due.
  */
-export function decideStop(state: RefreshState | undefined, context: StopContext, facts?: BoundaryFacts): StopDecision {
-  if (state === undefined || !context.settings.enabled) {
+export function decideStop(state: RefreshState | undefined, context: StopContext, facts?: StopFacts): StopDecision {
+  if (!context.settings.enabled) {
     return NONE;
   }
-  if (state.phase === 'ready') {
-    if (state.noticed) {
-      return NONE;
-    }
-    if (facts === undefined) {
+  if (state?.phase === 'ready' && !state.noticed) {
+    const due = facts?.due;
+    if (due === undefined) {
       return MEASURE;
     }
     // A fresh start now would cut the running work off: the notice waits for a stop after it ends.
-    if (facts.running > 0) {
-      return NONE;
-    }
-    return noticeOf(state, context, context.canRestart);
+    return due.running > 0 ? NONE : noticeOf(state, context, context.canRestart);
   }
-  if (state.phase !== 'boundary' || context.stopHookActive) {
+  if (context.stopHookActive) {
     return NONE;
   }
   if (facts === undefined) {
     return MEASURE;
   }
   const tokens = facts.tokens ?? null;
-  const cause = causeOf(facts, context.settings, state.finished);
+  const cause = causeOf(state, facts, context.settings);
   if (cause === undefined) {
-    return { kind: 'write', state: { phase: 'idle', task: state.task, at: context.now, tokens, finished: state.finished } };
+    return state?.phase === 'boundary' ? { kind: 'write', state: { phase: 'idle', task: state.task, at: context.now, tokens, finished: state.finished } } : NONE;
   }
-  // A refresh would cut the running work off: the boundary stays unjudged, so a stop after the work ends judges it.
-  if (facts.running > 0) {
+  if (facts.due === undefined) {
+    return MEASURE;
+  }
+  // A refresh would cut the running work off: a boundary stays unjudged, so a stop after the work ends asks.
+  if (facts.due.running > 0) {
     return NONE;
   }
+  const task = state?.phase === 'boundary' ? state.task : null;
   return {
     kind: 'block',
-    state: { phase: 'asked', task: state.task, at: context.now, tokens, handoverHash: facts.handoverHash },
-    reason: handoverAsk(state.task, cause, context),
+    state: { phase: 'asked', task, at: context.now, tokens, handoverHash: facts.due.handoverHash },
+    reason: handoverAsk(task, cause, context),
   };
 }
 
@@ -206,7 +243,9 @@ export function decideReady(state: RefreshState | undefined, handover: string | 
   if (state?.phase !== 'asked') {
     return {
       kind: 'refused',
-      reason: 'no refresh was asked of you: one is asked when you finish a task with your context over the threshold, or after the lead asked for it',
+      reason:
+        'no refresh was asked of you: one is asked at a turn end with your context over the threshold, at a task end after enough tasks, ' +
+        'or after the lead asked for it',
     };
   }
   if (handover === undefined || handover.trim() === '') {
@@ -215,7 +254,10 @@ export function decideReady(state: RefreshState | undefined, handover: string | 
   if (handoverHashOf(handover) === state.handoverHash) {
     return { kind: 'refused', reason: `${handoverPath} is the handover from before; write this refresh's handover there` };
   }
-  return { kind: 'ready', state: { phase: 'ready', task: state.task, at: now, noticed: false, transcript: null, claudePid: null } };
+  return {
+    kind: 'ready',
+    state: { phase: 'ready', task: state.task, at: now, tokens: state.tokens, noticed: false, transcript: null, claudePid: null },
+  };
 }
 
 /** Starts that drop the old context; a `compact`, `resume` or `fork` start keeps it, so the handover waits. */
@@ -226,12 +268,13 @@ const SMALL_SOURCES: ReadonlySet<string> = new Set([...FRESH_SOURCES, 'compact']
 export type StartDecision =
   | { readonly kind: 'none' }
   | { readonly kind: 'inject'; readonly note: string; readonly state: RefreshState }
-  /** The context is small again: record the task count back at 0, say nothing. */
+  /** The context is small again: record the task count back at 0, or forget the size a refresh was asked at; say nothing. */
   | { readonly kind: 'reset'; readonly state: RefreshState };
 
 /**
  * SessionStart: the first fresh start after the handover was written points the session at it, once.
- * Any start that leaves the context small (a compaction too) starts the task count over.
+ * Any start that leaves the context small (a compaction too) starts the task count over, and forgets the
+ * size a refresh the session went on from was asked at, so its next ask comes at the threshold again.
  */
 export function decideStart(
   state: RefreshState | undefined,
@@ -246,14 +289,18 @@ export function decideStart(
   if ((state.phase === 'boundary' || state.phase === 'idle') && state.finished > 0 && SMALL_SOURCES.has(source)) {
     return { kind: 'reset', state: { ...state, finished: 0 } };
   }
-  if (state.phase !== 'ready' || !FRESH_SOURCES.has(source)) {
-    return { kind: 'none' };
+  if (state.phase === 'ready' && FRESH_SOURCES.has(source)) {
+    const after = state.task === null ? 'mid-task' : `after ${state.task}`;
+    return {
+      kind: 'inject',
+      note: `You were refreshed ${after}; read your handover first: ${handoverPath}. Then carry on with its next steps.`,
+      state: { phase: 'refreshed', task: state.task, at: now },
+    };
   }
-  return {
-    kind: 'inject',
-    note: `You were refreshed after ${state.task}; read your handover first: ${handoverPath}. Then carry on with its next steps.`,
-    state: { phase: 'refreshed', task: state.task, at: now },
-  };
+  if ((state.phase === 'asked' || state.phase === 'ready') && state.tokens !== null && SMALL_SOURCES.has(source)) {
+    return { kind: 'reset', state: { ...state, tokens: null } };
+  }
+  return { kind: 'none' };
 }
 
 /**
@@ -274,5 +321,6 @@ export function wakePromptOf(state: RefreshState | undefined, handoverPath: stri
   if (!(age >= 0 && age <= WAKE_WINDOW_MS)) {
     return undefined;
   }
-  return `You were started fresh after your context refresh at ${state.task}: read your handover ${handoverPath} now, take over what the SessionStart note lists, then carry on with its next steps.`;
+  const at = state.task === null ? '' : ` at ${state.task}`;
+  return `You were started fresh after your context refresh${at}: read your handover ${handoverPath} now, take over what the SessionStart note lists, then carry on with its next steps.`;
 }
