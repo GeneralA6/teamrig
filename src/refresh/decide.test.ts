@@ -33,6 +33,7 @@ function stopContext(overrides: Partial<StopContext> = {}): StopContext {
     session: { id: 'alpha', name: 'api' },
     handoverPath: HANDOVER,
     command: 'teamrig',
+    canRestart: false,
     ...overrides,
   };
 }
@@ -149,9 +150,17 @@ describe('decideStop', () => {
       state: { ...READY, noticed: true },
       message: 'teamrig: api finished T12 and wrote its handover; type /clear for a fresh start',
       title: 'api: type /clear',
+      restart: false,
     });
     const plain = decideStop(READY, stopContext({ settings: { ...DEFAULT_REFRESH, tabTitle: false } }), facts());
     assert.equal(plain.kind === 'notice' ? plain.title : 'other', undefined);
+    assert.deepEqual(decideStop(READY, stopContext({ canRestart: true }), facts()), {
+      kind: 'notice',
+      state: { ...READY, noticed: true },
+      message: 'teamrig: api finished T12 and wrote its handover; teamrig starts it fresh once it has been idle 15 s (type anything to keep this context)',
+      title: 'api: restarting',
+      restart: true,
+    });
   });
 
   it('gives the notice in the turn a Stop hook continued, since that turn runs refresh --ready', () => {

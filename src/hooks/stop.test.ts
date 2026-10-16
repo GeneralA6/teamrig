@@ -14,11 +14,11 @@ describe('stopOutput', () => {
   });
 
   it('shows the notice, and marks the tab only when there is a title', () => {
-    assert.deepEqual(JSON.parse(stopOutput({ kind: 'notice', state: STATE, message: 'type /clear', title: 'api: type /clear' })), {
+    assert.deepEqual(JSON.parse(stopOutput({ kind: 'notice', state: STATE, message: 'type /clear', title: 'api: type /clear', restart: false })), {
       systemMessage: 'type /clear',
       terminalSequence: '\u001b]0;api: type /clear\u0007',
     });
-    assert.deepEqual(JSON.parse(stopOutput({ kind: 'notice', state: STATE, message: 'type /clear', title: undefined })), { systemMessage: 'type /clear' });
+    assert.deepEqual(JSON.parse(stopOutput({ kind: 'notice', state: STATE, message: 'type /clear', title: undefined, restart: false })), { systemMessage: 'type /clear' });
   });
 
   it('shows the model notices with a block, after a notice, or alone', () => {
@@ -28,7 +28,7 @@ describe('stopOutput', () => {
       reason: 'Write your handover.',
       systemMessage: 'MODEL api runs at low effort\nMODEL api now runs model claude-opus-4-8',
     });
-    assert.deepEqual(JSON.parse(stopOutput({ kind: 'notice', state: STATE, message: 'type /clear', title: 'api: type /clear' }, notices.slice(0, 1))), {
+    assert.deepEqual(JSON.parse(stopOutput({ kind: 'notice', state: STATE, message: 'type /clear', title: 'api: type /clear', restart: false }, notices.slice(0, 1))), {
       systemMessage: 'type /clear\nMODEL api runs at low effort',
       terminalSequence: '\u001b]0;api: type /clear\u0007',
     });

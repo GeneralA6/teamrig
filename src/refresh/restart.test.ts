@@ -5,7 +5,7 @@ import type { ProcessInfo } from '../open/session-processes.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { GIVE_UP_MS, runRestart, type RestartDeps, type RestartPlan, type TabOpening } from './restart.ts';
+import { claudeProcessOf, GIVE_UP_MS, runRestart, type RestartDeps, type RestartPlan, type TabOpening } from './restart.ts';
 import type { RestartRequest } from './state.ts';
 import { RefreshStore } from './store.ts';
 
@@ -251,5 +251,31 @@ describe('runRestart', () => {
     assert.equal((await runRestart(world.deps, PLAN)).kind, 'failed');
     assert.deepEqual(world.processes.ends, []);
     assert.equal(await world.store.restart('alpha'), undefined);
+  });
+});
+
+describe('claudeProcessOf', () => {
+  const process = (pid: number, parentPid: number, name: string, commandLine: string): ProcessInfo => ({ pid, parentPid, name, commandLine });
+
+  it('finds the Claude Code a hook runs under: its parent, or past a shell between', async () => {
+    const processes = new FakeSessionProcesses()
+      .add(process(10, 1, 'claude.exe', 'claude'))
+      .add(process(11, 10, 'bash.exe', 'bash -c "node main.js hook stop"'))
+      .add(process(20, 1, 'node', 'node /usr/lib/node_modules/@anthropic-ai/claude-code/cli.js'));
+    assert.equal(await claudeProcessOf(processes, 10), 10);
+    assert.equal(await claudeProcessOf(processes, 11), 10);
+    assert.equal(await claudeProcessOf(processes, 20), 20, 'Claude Code run by Node.js');
+  });
+
+  it('finds none when a process is gone, or Claude Code is further up than a hook would be', async () => {
+    const processes = new FakeSessionProcesses()
+      .add(process(30, 31, 'bash', 'bash'))
+      .add(process(31, 32, 'bash', 'bash'))
+      .add(process(32, 33, 'bash', 'bash'))
+      .add(process(33, 1, 'claude', 'claude'));
+    assert.equal(await claudeProcessOf(processes, 31), 33);
+    assert.equal(await claudeProcessOf(processes, 30), undefined, 'three parents up');
+    assert.equal(await claudeProcessOf(processes, 99), undefined, 'gone');
+    assert.equal(await claudeProcessOf(new FakeSessionProcesses().add(process(40, 41, 'bash', 'bash')), 40), undefined, 'its parent is gone');
   });
 });
