@@ -203,10 +203,11 @@ is the point.
 
 ## End of a turn: context refresh
 
-After a turn in which you set a task done, the Stop hook measures your context from the transcript. At or over
-`refresh.contextTokens` (120,000 by default), at every `refresh.everyTasks` finished tasks (3) with the context at
+At the end of every turn, the Stop hook measures your context from the transcript. At or over
+`refresh.contextTokens` (120,000 by default), at a task end after every `refresh.everyTasks` finished tasks (3) with the context at
 `refresh.everyTasksMinTokens` (80,000) or more, or when the lead asked with `teamrig refresh <id>`, it keeps you going with one instruction: write your handover to
-`<home>/teams/<team>/handover/<id>.md`, then run `teamrig refresh --ready --session <id>`, and start nothing new.
+`<home>/teams/<team>/handover/<id>.md`, then run `teamrig refresh --ready --session <id>`, and start nothing new (mid-task it says
+`refresh now rather than at a task end`).
 After `--ready`, the next turn's end tells the user `teamrig: shop-web finished T2 and wrote its handover; teamrig
 starts it fresh once it has been idle 15 s (type anything to keep this context)` and sets the tab title to
 `shop-web: restarting`. A hidden `teamrig restart` then waits until the tab has been idle
@@ -215,7 +216,7 @@ this tab. Where no mod claims it within 10 s, the restart ends this Claude Code 
 when `teamrig open` started it, else in a new tab. It never does that while this Claude Code runs a background shell
 (a background command or a monitor), which the end would take too: your inbox then says to type `/clear`, which
 keeps it. A prompt the user sends first cancels it, and you keep this
-context until a later task end asks again; text typed but not sent is lost. When the restart cannot start, or
+context until your next task end asks again, or your context grew a fifth of `refresh.contextTokens` more; text typed but not sent is lost. When the restart cannot start, or
 with `refresh.autoRestart: false`, the message says `type /clear for a fresh start` and the title
 `shop-web: type /clear`. On Windows an ended Claude Code runs no SessionEnd hooks: `refresh.endCommand` names a
 program run in their place, given their input. While background work you started (subagents, background

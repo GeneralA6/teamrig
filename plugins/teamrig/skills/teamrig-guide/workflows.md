@@ -137,10 +137,11 @@ it stays `open`, planned after it (`teamrig update T4 --after T5`), and its line
 
 ## Handover at high context
 
-teamrig refreshes a long-running session at a task boundary, so it never loses work to a mid-task compaction.
+teamrig refreshes a long-running session at a turn end once its context is large, before Claude Code compacts it,
+so it never loses work to a compaction.
 
-1. After a turn in which you set a task done, the Stop hook measures your context. When it is at or over
-   `refresh.contextTokens` (120,000 by default), at every third finished task with the context at 80,000 or more
+1. At the end of every turn, the Stop hook measures your context. When it is at or over
+   `refresh.contextTokens` (120,000 by default), at a task end after every third finished task with the context at 80,000 or more
    (`refresh.everyTasks`, `refresh.everyTasksMinTokens`), or the lead asked for a refresh (`teamrig refresh <id>`), it
    keeps you going with this instruction, once the background work you started (subagents, background commands,
    monitors, workflows) has all reported back:
@@ -148,6 +149,10 @@ teamrig refreshes a long-running session at a task boundary, so it never loses w
    ```text
    teamrig: your context is 132k (refresh at 120k) and you just finished T2. Write your handover to <home>/teams/shop/handover/web.md (what is in progress and the next step of each; what to check later, and when; questions still open with the user; the scratchpad files, plan file and scheduled jobs the next session still needs; where things are), then run `teamrig refresh --ready --session web`. Do not start new work.
    ```
+
+   Mid-task it says `teamrig: your context is 132k (refresh at 120k), so refresh now rather than at a task end.`
+   If you go on without the fresh start (the user typed), it asks again at your next task end, or once your
+   context grew a fifth of `refresh.contextTokens` more.
 
 2. Write the handover at that path: what is in progress and the next step of each, what to check later and when,
    questions still open with the user, the scratchpad files, plan file and scheduled jobs the next session still

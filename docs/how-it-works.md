@@ -305,13 +305,16 @@ sequenceDiagram
   H-->>W: SessionStart: you were refreshed after T2, read your handover first
 ```
 
-- Only a finished task counts: the Stop hook judges the size once, after `set <id> --status done`, from the last
-  reply in the session's transcript, and says nothing on any other turn.
+- The Stop hook reads the context size at every turn end, from the last reply in the session's transcript, so a
+  long task refreshes before Claude Code compacts it; at a task end (`set <id> --status done`) it names the task.
+  A session that goes on without its fresh start (you typed, or never typed `/clear`) is asked again at its next
+  task end, or once its context grew a fifth of `refresh.contextTokens` more; a compaction or a `/clear` brings
+  the ask back to the threshold.
 - Two rules in the team config ask for it. `refresh.contextTokens` (120,000 by default) refreshes at that size,
   well before Claude Code compacts a 200k window at about 167k. `refresh.everyTasks` (3 by default) refreshes at
   every third finished task once the context is at `refresh.everyTasksMinTokens` (80,000) or more, so a session
   that grows slowly still gets a fresh start; a `/clear`, a new process or a compaction starts the count over.
-- The lead can ask for a refresh at any size: `teamrig refresh web` applies at web's next finished task.
+- The lead can ask for a refresh at any size: `teamrig refresh web` applies at web's next turn end.
 - It waits while work the session started in the background still runs (subagents, background commands,
   monitors, workflows): a fresh start would cut it off, so the hook asks for the handover, and later restarts
   the session, only at a turn end after the last of it reported back. The restart also waits while a turn still

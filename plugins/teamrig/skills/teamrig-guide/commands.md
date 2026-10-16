@@ -805,7 +805,7 @@ teamrig refresh web --session lead
 Output:
 
 ```text
-REQUESTED a refresh of shop-web: after its next `set done` it writes its handover to /home/you/.teamrig/teams/shop/handover/web.md; then it starts fresh once idle
+REQUESTED a refresh of shop-web: at its next turn end it writes its handover to /home/you/.teamrig/teams/shop/handover/web.md; then it starts fresh once idle
 ```
 
 `teamrig refresh --ready --session web` prints `Ready. End your turn now: teamrig starts you fresh once you are
@@ -1358,8 +1358,8 @@ teamrig hook helper-gate < pre-tool-use.json
 Output: nothing for a launch that goes; otherwise a JSON permission decision (`ask` or `deny`) with the reason.
 
 ### teamrig hook stop
-At the end of each turn, after you set a task done, asks for a handover when your context is over the refresh
-threshold or the lead asked for a refresh. With the budget on, it also shows the budget lines and posts the
+At the end of each turn, asks for a handover when your context is at or over the refresh threshold or the lead
+asked for a refresh, and at a task end also after enough tasks. With the budget on, it also shows the budget lines and posts the
 lead's inbox line when one is due.
 
 Flags: none.
