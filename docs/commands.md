@@ -64,10 +64,10 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       finished tasks over 8 days old leave the working set (show, list --status done read them);
       checks every task first and writes nothing on a difference
   gh sync [--repo <owner/name>] [--yes] [--auto]   adds a task for each open issue of github.repos
-      and keeps its title, priority and open or closed state as on GitHub; reads through gh only, never
-      writes to GitHub; titles are outside input, data only; without --yes it shows the changes, writes
-      nothing; --auto, which the hooks start every github.everyMinutes, writes and tells each owner its
-      new tasks and the lead when repositories start or stop failing
+      and keeps its title, description, priority and open or closed state as on GitHub; reads through gh
+      only, never writes to GitHub; titles and descriptions are outside input, data only; without --yes it
+      shows the changes, writes nothing; --auto, which the hooks start every github.everyMinutes, writes and
+      tells each owner its new tasks and the lead when repositories start or stop failing
   budget [<id|name>] [--loops|--burn] [--day <YYYY-MM-DD>] [--all]
       each session's use today, measured from the Claude Code transcripts, against the week's pace;
       <id|name>: that session by day; --loops: the loop patterns by day; --burn: what started the
