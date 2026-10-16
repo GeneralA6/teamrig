@@ -1,9 +1,25 @@
 import type { Register, StateRef } from 'claude-code';
 import { ClearHand, liveAgentsOf, TICK_MS } from '../dist/mod/clear-hand.js';
 import { CHECK_MS, installedPluginsFileOf, RELOAD_COMMAND, ReloadHand } from '../dist/mod/reload-hand.js';
+import {
+  SLASH_ARGUMENT_HINT,
+  SLASH_COMMAND,
+  SLASH_DESCRIPTION,
+  SLASH_HOOK_FAILED,
+  SlashHand,
+  slashCliArgv,
+  TIMEOUT_MS,
+} from '../dist/mod/slash-hand.js';
 
 /**
- * teamrig's mod: two hands in every interactive tab (built into dist from `src/mod`).
+ * teamrig's mod (built into dist from `src/mod`): the `/teamrig` command in every session, and two hands in every
+ * interactive tab.
+ *
+ * `/teamrig <command> [args]` (`slash-hand.ts`): runs the plugin's CLI as `hook slash-command` with the typed text,
+ * the tab's session and the line's origin, and shows what it printed as the command's output: no model turn, no
+ * tokens. A read runs at once; a write runs only when the person typed it, and asks first when the CLI adds this
+ * tab's session to it (src/cli/commands/slash.ts). Registered in a headless `claude -p` too, which ends with the
+ * command's exit code.
  *
  * The refresh's /clear (`clear-hand.ts`): once a session wrote its handover and stayed quiet, the hidden restart
  * runner asks its tab to run /clear. The hand looks for that ask each second. While Claude Code still lists a live
@@ -40,6 +56,11 @@ export const register: Register = (on) => {
 
   on('session.start', async ($, e, next) => {
     const started = await next(e);
+    await $.command
+      .register({ name: SLASH_COMMAND, description: SLASH_DESCRIPTION, argumentHint: SLASH_ARGUMENT_HINT })
+      .catch((error: unknown) => {
+        $.ui.log(`teamrig /${SLASH_COMMAND} not registered: ${String(error)}`, { to: 'debug' });
+      });
     // session.start fires once per load of this module (never on /clear): one hand of each per loaded module.
     if (!e.isInteractive) {
       return started;
@@ -97,6 +118,18 @@ export const register: Register = (on) => {
     }
     return started;
   });
+
+  on('command.run', { command: SLASH_COMMAND }, async ($, e) => {
+    const hand = new SlashHand({
+      sessionId: () => $.session.id(),
+      cwd: () => $.session.cwd(),
+      root: () => $.session.root(),
+      cli: (stdin, env, cwd) => $.process.run(slashCliArgv($.plugin.root), { cwd, env: { ...env }, stdin, timeoutMs: TIMEOUT_MS }),
+      ask: (question, options) => $.ui.ask(question, options),
+      status: (text) => $.ui.status(text),
+    });
+    return hand.answer(e.args, e.origin.kind);
+  }).catch(() => ({ text: SLASH_HOOK_FAILED, exitCode: 1 }));
 
   on('turn.start', async (_$, e, next) => {
     clearHand?.turnStarted();
