@@ -7,13 +7,13 @@ they all stay silent.
 | Claude Code event | teamrig hook | What it does |
 | --- | --- | --- |
 | `SessionStart` (startup, resume, `/clear`, compact) | `hook session-start` | Injects the team rules and who you are |
-| `UserPromptSubmit` (each prompt) | `hook inbox-reminder` | Shows new inbox lines; binds a tab started by hand by its title; records a Claude Code rename; tells the model when it is past its daily budget |
+| `UserPromptSubmit` (each prompt) | `hook inbox-reminder` | Cancels a waiting automatic restart; shows new inbox lines; binds a tab started by hand by its title; records a Claude Code rename; tells the model when it is past its daily budget |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook push-guard` | Asks before a push to a protected branch; refuses a force-push or delete of one |
 | `PreToolUse` on `SendMessage` | `hook cold-send` | Holds once a message that would wake an idle session cold |
 | `PostToolUse` on `SendMessage` | `hook failed-send` | After a send that was not delivered, hands the model [the inbox line to write instead](#after-a-failed-send-the-inbox-line) |
 | `PostToolUse` on reads, edits and shell calls | `hook loop-nudge` | Asks the model once to batch when a turn makes [single-step calls in a row](#after-a-tool-call-the-loop-nudge) |
 | `PreToolUse` on `Agent` and `Task` | `hook helper-gate` | Asks before or refuses a helper launch past the daily budget or in quiet hours, [as the team set](#the-daily-budget-warnings-and-the-helper-gate) |
-| `Stop` (end of each turn) | `hook stop` | Asks for a handover when a context refresh is due; tells the user of another effort than `launch` asks, or of a model Claude Code switched to; shows the budget lines; names a verifying task whose verify-by day has come; once per `github.everyMinutes` for the whole team, starts `gh sync --auto` hidden in the background |
+| `Stop` (end of each turn) | `hook stop` | Asks for a handover when a context refresh is due, then starts the automatic restart; tells the user of another effort than `launch` asks, or of a model Claude Code switched to; shows the budget lines; names a verifying task whose verify-by day has come; once per `github.everyMinutes` for the whole team, starts `gh sync --auto` hidden in the background |
 
 ## Session start
 
@@ -46,7 +46,7 @@ The injected context holds:
 5. **The team's own `rules.md`**, when it exists. Where it or the project's CLAUDE.md conflicts with the core
    rules, they win.
 6. **After a refresh**: `You were refreshed after T2; read your handover first: <path>`, once, at the first
-   `/clear` or new start after the handover was written. A compact or resume keeps the old context, so the
+   fresh start (the automatic restart, a `/clear` or a new start) after the handover was written. A compact or resume keeps the old context, so the
    note waits.
 7. **A model check**: when the session runs on another model than its `launch` entry in the team config, a line
    such as `MODEL shop-web runs model claude-sonnet-5; the team config asks for model opus at xhigh effort: type
@@ -195,10 +195,17 @@ After a turn in which you set a task done, the Stop hook measures your context f
 `refresh.contextTokens` (120,000 by default), at every `refresh.everyTasks` finished tasks (3) with the context at
 `refresh.everyTasksMinTokens` (80,000) or more, or when the lead asked with `teamrig refresh <id>`, it keeps you going with one instruction: write your handover to
 `<home>/teams/<team>/handover/<id>.md`, then run `teamrig refresh --ready --session <id>`, and start nothing new.
-After `--ready`, the next turn's end tells the user `teamrig: shop-web finished T2 and wrote its handover; type
-/clear for a fresh start` and sets the tab title to `shop-web: type /clear`. While background work you started
-(subagents, background commands, monitors, workflows) has not reported back, both wait for a later turn end, so a
-`/clear` never cuts it off. A `/clear`, a new process or a compaction starts the task count over. Each finished task is judged once, so
+After `--ready`, the next turn's end tells the user `teamrig: shop-web finished T2 and wrote its handover; teamrig
+starts it fresh once it has been idle 15 s (type anything to keep this context)` and sets the tab title to
+`shop-web: restarting`. A hidden `teamrig restart` then waits until the tab has been idle
+`refresh.restartDelaySeconds` (15) with nothing running, ends this Claude Code and starts it again: in the same tab
+when `teamrig open` started it, else in a new tab. A prompt the user sends first cancels it, and you keep this
+context until a later task end asks again; text typed but not sent is lost. When the restart cannot start, or
+with `refresh.autoRestart: false`, the message says `type /clear for a fresh start` and the title
+`shop-web: type /clear`. On Windows an ended Claude Code runs no SessionEnd hooks: `refresh.endCommand` names a
+program run in their place, given their input. While background work you started (subagents, background
+commands, monitors, workflows) has not reported back, all of this waits for a later turn end, so a fresh start
+never cuts it off. A `/clear`, a new process or a compaction starts the task count over. Each finished task is judged once, so
 it never loops. Steps: [workflows.md](workflows.md#handover-at-high-context). `refresh.enabled: false` turns it
 off.
 

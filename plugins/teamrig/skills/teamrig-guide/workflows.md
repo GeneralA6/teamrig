@@ -151,12 +151,16 @@ teamrig refreshes a long-running session at a task boundary, so it never loses w
 
 2. Write the handover at that path: what is in progress, the next step of each, open questions, where things
    are (branches, worktrees, files, ids). It must be new: the old file left as it was is refused.
-3. Run `teamrig refresh --ready --session web`. It prints `Ready. Ask the user to type /clear; your next start
-   reads <path>.`. At the end of that turn the tab title becomes `shop-web: type /clear` (the session's name;
-   `refresh.tabTitle: false` turns that off).
-4. Ask the user to type `/clear`. Start nothing new.
-5. After the clear, the session-start context says `You were refreshed after T2; read your handover first:
-   <path>`. Read it, then run the start of a work block, since a cleared tab is a new Claude Code session.
+3. Run `teamrig refresh --ready --session web`. It prints `Ready. End your turn now: teamrig starts you fresh
+   once you are idle, or asks the user to type /clear; your next start reads <path>.`. At the end of that turn
+   the tab title becomes `shop-web: restarting` (the session's name; `refresh.tabTitle: false` turns that off).
+4. End your turn and start nothing new. Once the tab has been idle 15 s (`refresh.restartDelaySeconds`), teamrig
+   ends this Claude Code and starts it again, in the same tab when `teamrig open` started it, else in a new tab.
+   If the user sends a prompt first, the restart is cancelled and you keep this context. When the restart is off
+   (`refresh.autoRestart: false`) or cannot start, the title reads `shop-web: type /clear`: ask the user to type
+   `/clear`.
+5. After the fresh start, the session-start context says `You were refreshed after T2; read your handover first:
+   <path>`. Read it, then run the start of a work block, since the fresh start is a new Claude Code session.
 
 The hook judges each finished task once and never loops. A team turns this off with `refresh.enabled: false`, and the task
 count with `refresh.everyTasks: 0`. A `/clear`, a new process or a compaction starts the count over.

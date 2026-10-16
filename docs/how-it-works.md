@@ -297,8 +297,8 @@ sequenceDiagram
   W->>H: teamrig set T2 --status done, then the turn ends
   H-->>W: Stop: your context is 132k (refresh at 120k), write your handover
   W->>H: writes handover/web.md, runs teamrig refresh --ready
-  H-->>Y: Stop: web finished T2 and wrote its handover, type /clear (the tab title reads "web: type /clear")
-  Y->>W: /clear
+  H-->>Y: Stop: web finished T2 and wrote its handover, it restarts once idle (the tab title reads "web: restarting")
+  H->>W: idle 15 s: ends Claude Code and starts it again in its tab
   H-->>W: SessionStart: you were refreshed after T2, read your handover first
 ```
 
@@ -310,11 +310,16 @@ sequenceDiagram
   that grows slowly still gets a fresh start; a `/clear`, a new process or a compaction starts the count over.
 - The lead can ask for a refresh at any size: `teamrig refresh web` applies at web's next finished task.
 - It waits while work the session started in the background still runs (subagents, background commands,
-  monitors, workflows): a `/clear` would cut it off, so the hook asks for the handover, and later tells you to
-  `/clear`, only at a turn end after the last of it reported back.
+  monitors, workflows): a fresh start would cut it off, so the hook asks for the handover, and later restarts
+  the session, only at a turn end after the last of it reported back.
 - `refresh --ready` is refused until the handover is written: missing, blank or unchanged since the hook asked.
-- A hook cannot clear a session, so you type `/clear`. A compact or a resume keeps the handover waiting for the next
-  fresh start. Restarting the tab for you is planned (T201, T212).
+- A hook cannot run `/clear`, so teamrig restarts the session instead (`refresh.autoRestart`, on by default). A
+  hidden `teamrig restart` waits until the session has been idle `refresh.restartDelaySeconds` (15) with nothing
+  running, ends its Claude Code and starts it again: in the same tab when `teamrig open` started it (`launch`
+  starts it again), else in a new tab. A prompt you send first cancels it and keeps the context; text typed but
+  not sent is lost. When it is off or cannot start, you type `/clear`. On Windows an ended process runs no
+  SessionEnd hooks, so `refresh.endCommand` can name a program to run in their place. A compact or a resume
+  keeps the handover waiting for the next fresh start.
 - `refresh.enabled: false` turns it off, `refresh.tabTitle: false` leaves the tab title alone and
   `refresh.handoverDir` moves the handovers.
 

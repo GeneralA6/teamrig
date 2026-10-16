@@ -753,13 +753,15 @@ It refuses when `claude` is not on the PATH.
 ### teamrig refresh
 
 Context refresh. The lead asks a session for one (`teamrig refresh <id|name>`): after that session's next
-`set ... --status done` it writes a handover and the user types `/clear`. A session whose handover is written
-runs `teamrig refresh --ready`. See [workflows.md](workflows.md#handover-at-high-context).
+`set ... --status done` it writes a handover, and once it is idle teamrig starts it fresh (`refresh.autoRestart`;
+off, the user types `/clear`). A session whose handover is written runs `teamrig refresh --ready`. The Stop hook
+runs `teamrig restart` hidden for the fresh start; you never run it. See
+[workflows.md](workflows.md#handover-at-high-context).
 
 Flags:
 
 - `--session <id|name>`: the caller.
-- `--ready`: you wrote your handover; the user may now type `/clear`.
+- `--ready`: you wrote your handover; end your turn for the fresh start.
 
 Example:
 
@@ -770,11 +772,12 @@ teamrig refresh web --session lead
 Output:
 
 ```text
-REQUESTED a refresh of shop-web: after its next `set done` it writes its handover to /home/you/.teamrig/teams/shop/handover/web.md; then type /clear in its tab
+REQUESTED a refresh of shop-web: after its next `set done` it writes its handover to /home/you/.teamrig/teams/shop/handover/web.md; then it starts fresh once idle
 ```
 
-`teamrig refresh --ready --session web` prints `Ready. Ask the user to type /clear; your next start reads
-<handover path>.`
+`teamrig refresh --ready --session web` prints `Ready. End your turn now: teamrig starts you fresh once you are
+idle, or asks the user to type /clear; your next start reads <handover path>.` With `refresh.autoRestart: false`
+it says `Ask the user to type /clear` instead.
 
 ## Maintenance
 

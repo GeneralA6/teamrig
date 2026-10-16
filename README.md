@@ -50,7 +50,7 @@ And the basics, done right: every task has one owner, who gets an inbox line the
 verified yet is marked verifying, with a date to verify it by, so it stays in view until it is, and work built on it waits for the proof. A task that
 cannot go on is marked waiting, with what it waits for, and `check` tells you when it can. A push to main asks you first,
 and a force-push to it is refused. A message that would wake an idle member at full price is held once, so a
-cheap inbox line can take its place. When a member's context runs long, it writes a handover before a fresh start. Big
+cheap inbox line can take its place. When a member's context runs long, it writes a handover and teamrig restarts it fresh. Big
 commits are flagged before they land, and everything runs on your machine, with no account and no cloud bill.
 
 Your GitHub issues can join the task list too, one way only: `teamrig gh sync` adds a task for each open issue of the
