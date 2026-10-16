@@ -76,9 +76,11 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
   rename <id|name> <new-name>  records a session's new name; its old names keep finding it
       (the session itself or the lead)
   hire <id> --scope "<its job>" --reason "<why>" [--name <name>] [--model <model>] [--effort <level>]
-      [--daily-pct <pct>] [--review <YYYY-MM-DD>] [--approved-by "<who>"] [--yes]
+      [--daily-pct <pct>] [--review <YYYY-MM-DD>] [--approved-by "<who>"] [--burst] [--yes]
       (the lead only) adds a temporary session, or hires a retired one back, within hiring.policy and its
-      caps, on the lead's model and effort unless given; without --yes it shows the hire and writes nothing
+      caps, on the lead's model and effort unless given; without --yes it shows the hire and writes nothing;
+      --burst: a hire for the burst in force, within its hires, never a cheaper model or lower effort, due to
+      retire when the burst is over (under hiring.policy owner the burst's approver approves it)
   retire <id|name> [--to <heir>] [--no-handover "<why>"] [--reason "<why>"] [--yes]
       (the lead, or a hired session itself under hiring.policy automatic once its tasks are closed) takes a
       session off the team; its open tasks go to --to, and it needs its handover unless --no-handover; its
@@ -106,6 +108,16 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       [--quiet <HH:MM-HH:MM>|off] [--quiet-action <action>] [--off] [--yes]
       (the lead only) writes the team's budget policy into its config and turns the budget on (--off:
       off); without --yes it shows the change and writes nothing; flags left out keep their values
+  burst                        the burst policy, the week's use, its projected surplus at the pace end,
+      the burst in force and its hires; it only reads
+  burst start surplus|deadline --reason "<why>" [--sessions <ids>] [--helpers <n>] [--hires <n>]
+      [--stop-pct <pct>] [--by <HH:MM|date>] [--task <ids>] [--approved-by "<who>"] [--yes]
+      (the lead only, under burst.policy owner with the owner's approval) a time-boxed scale-out: each
+      session in it gets at least its share of what is left to --stop-pct (at most budget.targetPct) a day
+      and runs up to --helpers at once; surplus: the whole team, from burst.surplusHours before the reset
+      until the pace end, once burst.minSparePct is projected unused; deadline: --task by --by, the tasks'
+      owners unless --sessions, needs --stop-pct; without --yes it shows the burst and writes nothing
+  burst end --reason "<why>"   (the lead only) ends the burst in force early; its hires are due to retire
   statusline [--pass]          Claude Code's status line (status JSON on stdin): saves the week's use
       for budget and prints a short status; --pass: prints the status JSON again instead, for the
       status line after it in a pipe
