@@ -20,6 +20,7 @@ your machine.
 | You get | How | Status |
 | --- | --- | --- |
 | **Nothing to run or host** | Plain files on disk, a small CLI with no runtime dependencies, and Claude Code hooks. Works offline; no account. | works today |
+| | Commands at your prompt: `/teamrig budget` or `/teamrig list` in a Claude Code tab runs the command on your machine and shows its output, with no model turn and no tokens. A command that changes the team's files runs only when you type it, and asks first when it adds the tab's session | works today |
 | **A task list nobody loses** | `teamrig add`, `set`, `update`, `list`, `show`: a plain-words description of what and why, owner, priority (p1 first), due date, goals and week; `show` also lists who changed the task. A task given to another session posts it an inbox line naming the task. `check` finds tasks that break a team rule; `plan` prints the week. | works today |
 | | Dependencies and parent/child tasks | being built (T205) |
 | | Planned start and ETA, history across tasks (`history --by <session>`), token estimates | being built (T209, T210, T211) |

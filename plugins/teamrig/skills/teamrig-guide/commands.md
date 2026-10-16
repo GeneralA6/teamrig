@@ -1530,6 +1530,36 @@ teamrig hook clear-claim < session.json
 
 Output: `taken` (the mod then runs `/clear`), `held` (with `--hold`) or `declined: <why>`, exit 0.
 
+### teamrig hook slash-command
+
+Run by the plugin's mod when a person types `/teamrig <command> [args]` in a Claude Code tab; the mod shows what it
+prints as the command's output, with no model turn. Stdin: `{"session_id", "cwd", "args", "origin", "agreed"}`:
+`args` is the text after `/teamrig`, split as a shell would; `origin` is where the line came from (`composer` for
+Enter at the prompt, `bridge` for Remote Control, `peer`, `channel`, `sdk` for `claude -p`, and so on); `agreed` is
+the line the person agreed to run. It runs the line through the CLI, in the tab's team:
+
+- A read runs at once, from any origin. Without `--session`, `list`, `show`, `check`, `plan`, `verify`,
+  `inbox status` and `rules` run as the tab's session (`$TEAMRIG_SESSION`, else the area the tab read its inbox
+  as), after a line saying so.
+- A command that changes the team's files runs only from `composer` or `bridge`; from any other origin it is
+  REFUSED (exit 2). It runs as typed when it names its `--session` or takes none. Else it prints the line with
+  the tab's session and exits 4; the mod asks the person and, on `Run it`, sends that line back as `agreed`,
+  which runs it only while it is still the line it would run.
+- A command Claude Code or teamrig runs itself (`hook ...`, `launch`, `restart`, `statusline`) is refused with
+  exit 64.
+- Nothing typed prints the short help and these rules.
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig hook slash-command < slash.json
+```
+
+Output: what the command printed, its exit code, or (exit 4) the line to agree to, such as
+`teamrig inbox read --session alpha`.
+
 ## Help and version
 
 ### teamrig help

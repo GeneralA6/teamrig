@@ -1,6 +1,6 @@
 # Hooks and permissions
 
-The plugin's `hooks/hooks.json` registers seven Claude Code hooks and one mod ([the refresh's /clear](#the-mod-the-refreshs-clear), [the reload after an install](#the-mod-the-reload-after-an-install)). Each runs
+The plugin's `hooks/hooks.json` registers seven Claude Code hooks and one mod ([the /teamrig command](#the-mod-the-teamrig-command), [the refresh's /clear](#the-mod-the-refreshs-clear), [the reload after an install](#the-mod-the-reload-after-an-install)). Each runs
 `node <plugin>/dist/cli/main.js hook <name>` with a 15 second timeout. Outside a project tied to a team (no `$TEAMRIG_TEAM` and no `.teamrig.json`)
 they all stay silent.
 
@@ -251,6 +251,18 @@ session's state (`teamrig.reload`, typed in `types/index.d.ts`), so the mod the 
 reload goes to Claude Code's debug log and is tried again 5 minutes later. A plugin loaded from a folder
 (`--plugin-dir`) has no `installed_plugins.json` beside its cache and gets no reload; a Claude Code that does not
 load mods leaves `/reload-plugins` to you.
+
+## The mod: the /teamrig command
+
+In every session, a headless `claude -p` included, the mod adds `/teamrig <command> [args]`: it runs
+[`teamrig hook slash-command`](commands.md#teamrig-hook-slash-command) with the text you typed, the tab's session
+and where the line came from, and shows what the command printed as its output (at most 250 lines, then how many
+were left out), with no model turn, so it costs no tokens. A read runs at once. A command that changes the team's
+files runs only when you type it at the prompt or through Remote Control, never when another session, a channel
+or `claude -p` sends it (REFUSED). Typed without `--session`, it shows the line with the tab's session and asks
+first (`Run it` or `Cancel`), since the tab's session can come from an inbox read you meant only as a look. A
+command is stopped after 180 s; `claude -p "/teamrig <command>"` ends with the command's exit code. `/teamrig`
+alone prints the short help and these rules.
 
 ## End of a turn: model notices
 
