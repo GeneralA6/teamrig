@@ -1,5 +1,5 @@
 import { ACTIVE_STATUSES } from "../register/model.js";
-import { GITHUB_SOURCE } from "../register/policy.js";
+import { GITHUB_SOURCE } from "../register/model.js";
 import { issueTask } from "./map.js";
 /** How GitHub closed an issue, in the note the sync writes; any other reason is left out. */
 const CLOSE_REASONS = new Map([

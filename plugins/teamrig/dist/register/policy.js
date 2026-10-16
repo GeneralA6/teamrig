@@ -3,16 +3,12 @@ import { ADDRESS_PATTERN } from "../core/address.js";
 import { SecretScanner } from "../core/secrets.js";
 import { parseUtcDay, parseUtcDeadline } from "../core/time.js";
 import { taskNumber } from "./fold.js";
-import { ACTIVE_STATUSES, priorityText, SESSION_NAME } from "./model.js";
+import { ACTIVE_STATUSES, GITHUB_SOURCE, priorityText, SESSION_NAME } from "./model.js";
 import { heldStart, startHolds } from "./verify.js";
 import { sameWait, waitSpelling } from "./waits.js";
 /** The skill name that closes a task which produced no reusable procedure. */
 export const NO_SKILL = 'none';
-/**
- * The source of a task imported from a GitHub issue: only `teamrig gh sync` writes one (github/sync.ts),
- * and a session cannot give it to a task. The import writes its events as GITHUB_ACTOR.
- */
-export const GITHUB_SOURCE = 'github';
+/** Who the GitHub import's events are written by; its tasks carry GITHUB_SOURCE (model.ts). */
 export const GITHUB_ACTOR = 'github';
 /** The statuses the import sets on its own tasks: an issue's open state, or how it was closed. */
 export const GITHUB_STATUSES = ['open', 'done', 'dropped'];
