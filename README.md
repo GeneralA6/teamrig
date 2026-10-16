@@ -22,6 +22,9 @@ no account. To update later, see [Updating the plugin](docs/how-it-works.md#upda
 To keep your tasks in view, add [teamrig-pane](https://github.com/GeneralA6/teamrig-pane) and run `/teamrig-pane`: it
 shows your session's tasks beside the conversation, and makes no model calls, so it costs no tokens.
 
+To run a command yourself, type it after `/teamrig` in a Claude Code tab, such as `/teamrig budget`: it runs on
+your machine and shows what it printed, also with no model call.
+
 ### Requirements
 
 Claude Code 2.1.139 or later and Node.js 22.18 or later. teamrig checks for anything else when you set up a team and

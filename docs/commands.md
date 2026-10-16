@@ -3,6 +3,13 @@
 Claude runs teamrig's commands for you, from each session's Bash tool, so you rarely type one. They are listed here
 for reference, with what two sessions see when they use them.
 
+To run one yourself, type it after `/teamrig` in a Claude Code tab (`/teamrig budget`, `/teamrig list`): it runs
+on your machine and shows what it printed, with no model turn and no tokens. A read runs at once; without
+`--session`, `list`, `show`, `check`, `plan`, `verify`, `inbox status` and `rules` run as the tab's session. A
+command that changes the team's files runs as typed when it names its `--session` (or takes none); else it shows
+the line with the tab's session and asks first. Those run only when you type them, never when another session,
+a channel or `claude -p` sends them. `/teamrig` alone prints this.
+
 ## Every command
 
 This is what `teamrig help` prints:
@@ -103,6 +110,8 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       (run by Claude Code, hook JSON on stdin)
   hook clear-dir | hook clear-claim [--hold]
       (run by the plugin's mod: the automatic restart's /clear in the tab)
+  hook slash-command
+      (run by the plugin's mod: /teamrig <command> typed in a Claude Code tab; /teamrig alone tells what it runs)
   launch <id> --team <team> --project <dir> [--home <dir>] [--encoded-prompt <text>] [--resume <session>]
       (run by the tab that open starts: sets the session and starts Claude Code)
   restart <id> --team <team> --at <time> --project <dir>
@@ -112,7 +121,7 @@ else above $CLAUDE_PROJECT_DIR.
 Sessions: give an id, a current name or a former one; a session never named is <team>-<id>.
 Dates: YYYY-MM-DD or "YYYY-MM-DD HH:MM", UTC. Kit home: $TEAMRIG_HOME, else ~/.teamrig.
 Exit: 0 done, 1 failed, 2 refused by a team rule, 3 open printed the command to run itself,
-64 a command line it cannot read.
+4 /teamrig printed a line to agree to before it runs, 64 a command line it cannot read.
 One command's help: teamrig <command> --help.
 ```
 
