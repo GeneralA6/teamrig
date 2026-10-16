@@ -7,7 +7,7 @@ import {
   promptLine,
   replyLine,
   resultsLine,
-  systemLine,
+  compactLine,
   transcript,
   type FixtureReply,
   type FixtureResult,
@@ -71,7 +71,7 @@ const S1_W = 1 + 10 + 10;
 describe('runMeter', () => {
   it('counts each reply once, main thread and subagent, on the UTC day it began', async () => {
     const meter = world(at(12), {
-      [MAIN]: transcript([promptLine(at(9)), replyLine(R1), replyLine(R1_MORE), resultsLine(at(9, 1, 6), [{ id: 't1', text: 'x' }]), replyLine(R2), systemLine(at(9, 4))]),
+      [MAIN]: transcript([promptLine(at(9)), replyLine(R1), replyLine(R1_MORE), resultsLine(at(9, 1, 6), [{ id: 't1', text: 'x' }]), replyLine(R2), compactLine(at(9, 4))]),
       [SUB]: transcript([promptLine(at(9, 2), 'task', true), replyLine(S1)]),
     });
     const result = await meter.run();
@@ -79,6 +79,10 @@ describe('runMeter', () => {
     assert.equal(result.catchingUp, false);
     near(day(result.state, DAY)?.w, R1_W + R2_W + S1_W);
     assert.equal(day(result.state, DAY)?.calls, 3);
+    const patterns = day(result.state, DAY)?.patterns;
+    assert.deepEqual([patterns?.otherTurns, patterns?.subagentTurns, patterns?.compactions], [1, 1, 1]);
+    near(patterns?.otherW, R1_W + R2_W, 'main thread W');
+    near(patterns?.subagentW, S1_W, 'subagent W');
     assert.equal(result.bytesRead, (await meter.bytes.size(MAIN) ?? 0) + (await meter.bytes.size(SUB) ?? 0));
     const again = await meter.run();
     assert.equal(again.bytesRead, 0);
@@ -305,7 +309,7 @@ function loopTranscript(prefix: string, startMinute: number, sidechain = false):
       { id: `${prefix}${turn}i`, name: 'Edit' },
       { id: `${prefix}${turn}j`, name: 'Bash', command: 'npm test' },
     ]);
-    lines.push(systemLine(stamp()));
+    lines.push(compactLine(stamp()));
     context = 8_000;
     reply([{ id: `${prefix}${turn}k`, name: 'Read' }]);
   }

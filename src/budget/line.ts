@@ -41,13 +41,28 @@ export interface ResultsLine {
   readonly results: readonly ToolResult[];
 }
 
+/**
+ * What started a turn: the owner, a peer's message, a notification (a finished background task or a
+ * helper's handback), a scheduled wake, a subagent's own prompt, or anything else.
+ */
+export const TURN_TRIGGERS = ['owner', 'peer', 'notification', 'scheduled', 'subagent', 'other'] as const;
+export type TurnTrigger = (typeof TURN_TRIGGERS)[number];
+
 /** A user line with no tool result: a prompt, a peer message or a notification, so a new turn starts. */
 export interface PromptLine {
   readonly kind: 'prompt';
   readonly at: number | undefined;
+  /** What started the turn; `continuation` for the summary that resumes a compacted session. */
+  readonly trigger: TurnTrigger | 'continuation';
 }
 
-export type TranscriptLine = CallLine | ResultsLine | PromptLine;
+/** Claude Code compacted the session's context here. */
+export interface CompactLine {
+  readonly kind: 'compact';
+  readonly at: number | undefined;
+}
+
+export type TranscriptLine = CallLine | ResultsLine | PromptLine | CompactLine;
 
 function timeOf(entry: JsonRecord): number | undefined {
   const text = stringField(entry, 'timestamp');
@@ -121,6 +136,41 @@ export function callOf(entry: JsonRecord): CallLine | undefined {
   };
 }
 
+function promptText(message: JsonRecord): string {
+  const content = message['content'];
+  return typeof content === 'string' ? content : blocksOf(message).map((block) => stringField(block, 'text') ?? '').join('');
+}
+
+/**
+ * What started the turn a user entry begins, from the `origin` and `turnOrigin` Claude Code writes, else
+ * from the text a peer message or a notification starts with.
+ */
+function triggerOf(entry: JsonRecord, message: JsonRecord): TurnTrigger | 'continuation' {
+  if (entry['isCompactSummary'] === true) {
+    return 'continuation';
+  }
+  if (entry['isSidechain'] === true) {
+    return 'subagent';
+  }
+  const origin = recordField(entry, 'origin');
+  const kind = origin === undefined ? undefined : stringField(origin, 'kind');
+  const turnOrigin = stringField(entry, 'turnOrigin');
+  const text = promptText(message);
+  if (turnOrigin === 'scheduled') {
+    return 'scheduled';
+  }
+  if (kind === 'peer') {
+    return origin?.['handback'] === true ? 'notification' : 'peer';
+  }
+  if (kind === 'task-notification' || turnOrigin === 'task_notification' || text.includes('<task-notification')) {
+    return 'notification';
+  }
+  if (kind === 'human' || turnOrigin === 'human') {
+    return 'owner';
+  }
+  return turnOrigin === 'peer' || text.startsWith('<cross-session-message') ? 'peer' : 'other';
+}
+
 /** A user entry as results or a prompt; undefined for any other entry and for text Claude Code adds itself. */
 function userLineOf(entry: JsonRecord): ResultsLine | PromptLine | undefined {
   const message = entry['type'] === 'user' && entry['isMeta'] !== true ? recordField(entry, 'message') : undefined;
@@ -129,21 +179,26 @@ function userLineOf(entry: JsonRecord): ResultsLine | PromptLine | undefined {
   }
   const results = blocksOf(message).flatMap((block) => toolResultOf(block) ?? []);
   const at = timeOf(entry);
-  return results.length > 0 ? { kind: 'results', at, results } : { kind: 'prompt', at };
+  return results.length > 0 ? { kind: 'results', at, results } : { kind: 'prompt', at, trigger: triggerOf(entry, message) };
+}
+
+/** A compaction's boundary line; undefined for any other entry. */
+function compactOf(entry: JsonRecord): CompactLine | undefined {
+  return entry['type'] === 'system' && entry['subtype'] === 'compact_boundary' ? { kind: 'compact', at: timeOf(entry) } : undefined;
 }
 
 /**
  * One transcript line as what the meter counts; undefined for the many lines it ignores (system
- * notes, attachments, snapshots) and for a damaged or torn line. A cheap text test runs first, so
+ * notes other than a compaction, attachments, snapshots) and for a damaged or torn line. A cheap text test runs first, so
  * only a line that can be a reply or a user line is parsed.
  */
 export function parseTranscriptLine(raw: string): TranscriptLine | undefined {
-  if (!raw.includes('"usage"') && !raw.includes('"type":"user"')) {
+  if (!raw.includes('"usage"') && !raw.includes('"type":"user"') && !raw.includes('"compact_boundary"')) {
     return undefined;
   }
   const entry = parseObject(raw);
   if (entry === undefined) {
     return undefined;
   }
-  return callOf(entry) ?? userLineOf(entry);
+  return callOf(entry) ?? userLineOf(entry) ?? compactOf(entry);
 }

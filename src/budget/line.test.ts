@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseObject } from '../core/jsonl.ts';
-import { promptLine, replyLine, resultsLine, systemLine } from '../testing/transcript-lines.ts';
+import { compactLine, promptLine, replyLine, resultsLine, systemLine } from '../testing/transcript-lines.ts';
 import { callOf, parseTranscriptLine } from './line.ts';
 
 const AT = '2026-03-02T10:00:00.000Z';
@@ -96,10 +96,51 @@ describe('parseTranscriptLine', () => {
   });
 
   it('reads a user line without results as a prompt, and skips text Claude Code adds itself', () => {
-    assert.deepEqual(parseTranscriptLine(promptLine(AT)), { kind: 'prompt', at: Date.parse(AT) });
+    assert.deepEqual(parseTranscriptLine(promptLine(AT)), { kind: 'prompt', at: Date.parse(AT), trigger: 'other' });
     assert.equal(parseTranscriptLine(resultsLine(AT, [{ id: 'a', text: 'ok' }]))?.kind, 'results');
     assert.equal(parseTranscriptLine(JSON.stringify({ type: 'user', isMeta: true, message: { content: 'note' } })), undefined);
     assert.equal(parseTranscriptLine(JSON.stringify({ type: 'user', message: 'flat' })), undefined);
+  });
+
+  it('names what started a turn from the origin Claude Code writes, else from the text', () => {
+    const user = (fields: Readonly<Record<string, unknown>>, content: unknown = 'go'): string =>
+      JSON.stringify({ type: 'user', message: { role: 'user', content }, timestamp: AT, ...fields });
+    const triggerOf = (raw: string): string | undefined => {
+      const line = parseTranscriptLine(raw);
+      return line?.kind === 'prompt' ? line.trigger : undefined;
+    };
+    const lines = [
+      user({ origin: { kind: 'human' } }),
+      user({ turnOrigin: 'human' }),
+      user({ origin: { kind: 'peer', name: 'lead' } }),
+      user({ origin: { kind: 'peer', handback: true } }),
+      user({ origin: { kind: 'task-notification', producer: 'session-task' } }),
+      user({}, '<task-notification>\n<task-id>a</task-id>'),
+      user({}, [{ type: 'text', text: '<cross-session-message from="lead">hi' }]),
+      user({ turnOrigin: 'peer' }),
+      user({ turnOrigin: 'scheduled', origin: { kind: 'human' } }),
+      user({ isSidechain: true, origin: { kind: 'human' } }),
+      user({ isCompactSummary: true, origin: { kind: 'human' } }),
+      user({}),
+    ];
+    assert.deepEqual(lines.map(triggerOf), [
+      'owner',
+      'owner',
+      'peer',
+      'notification',
+      'notification',
+      'notification',
+      'peer',
+      'peer',
+      'scheduled',
+      'subagent',
+      'continuation',
+      'other',
+    ]);
+  });
+
+  it('reads a compaction marker', () => {
+    assert.deepEqual(parseTranscriptLine(compactLine(AT)), { kind: 'compact', at: Date.parse(AT) });
   });
 
   it('skips lines it does not count, damaged and torn lines, and replies without readable usage', () => {
