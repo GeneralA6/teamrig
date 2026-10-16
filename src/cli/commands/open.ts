@@ -7,7 +7,7 @@ import { ID_PATTERN, ID_RULE } from '../../core/ids.ts';
 import { ENV_SOURCE } from '../../core/team.ts';
 import { findClaude } from '../../open/claude.ts';
 import { launchFlags } from '../../open/launch-flags.ts';
-import { openTab } from '../../open/open-tab.ts';
+import { openTab, type OpenOutcome } from '../../open/open-tab.ts';
 import { decodePrompt, defaultPrompt, encodePrompt, promptProblem } from '../../open/prompt.ts';
 import { shellCommand } from '../../open/quote.ts';
 import { sessionEnv } from '../../open/session-env.ts';
@@ -66,6 +66,44 @@ async function openTeamOf(runtime: CliRuntime, own: string, named: string | unde
   return named;
 }
 
+/** A new tab for a session: where it opens, in which terminal, and the first prompt. */
+export interface SessionTab {
+  readonly team: string;
+  readonly id: string;
+  readonly name: string;
+  readonly project: string;
+  readonly prompt: string;
+  readonly terminal: TerminalChoice;
+}
+
+export interface SessionTabOutcome {
+  readonly outcome: OpenOutcome;
+  /** The command line the tab runs, for a person to run when no terminal opened. */
+  readonly argv: readonly string[];
+}
+
+/**
+ * Opens a terminal tab titled with the session's name that runs `launch` for it, by absolute paths,
+ * since the plugin's bin folder is on PATH only inside Claude Code: `open` and the automatic restart.
+ */
+export async function openSessionTab(runtime: CliRuntime, tab: SessionTab): Promise<SessionTabOutcome> {
+  const customHome = runtime.env[ENV.home]?.trim();
+  const argv = [
+    runtime.self.node,
+    runtime.self.script,
+    'launch',
+    tab.id,
+    '--team',
+    tab.team,
+    '--project',
+    tab.project,
+    ...(customHome === undefined || customHome === '' ? [] : ['--home', resolve(runtime.cwd, customHome)]),
+    '--encoded-prompt',
+    encodePrompt(tab.prompt),
+  ];
+  return { outcome: await openTab(runtime, tab.terminal, { title: tab.name, folder: tab.project, argv }), argv };
+}
+
 /**
  * `open <id|name> [--prompt <text>] [--terminal <name>] [--project <dir>]`: a new terminal tab in the
  * project folder that runs `launch`, so Claude Code starts there as the session. The command runs by
@@ -84,22 +122,8 @@ export async function open(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   const terminal = terminalOf(args.flags.get('terminal'), config.open.terminal);
   const prompt = checkedPrompt(args.flags.get('prompt') ?? defaultPrompt(team, id));
   const project = await projectOf(runtime, projectFlagOf(args.flags.get('project'), found.from));
-  const customHome = runtime.env[ENV.home]?.trim();
-  const argv = [
-    runtime.self.node,
-    runtime.self.script,
-    'launch',
-    id,
-    '--team',
-    team,
-    '--project',
-    project,
-    ...(customHome === undefined || customHome === '' ? [] : ['--home', resolve(runtime.cwd, customHome)]),
-    '--encoded-prompt',
-    encodePrompt(prompt),
-  ];
   const name = roster.nameOf(id) ?? id;
-  const outcome = await openTab(runtime, terminal, { title: name, folder: project, argv });
+  const { outcome, argv } = await openSessionTab(runtime, { team, id, name, project, prompt, terminal });
   if (outcome.kind === 'opened') {
     runtime.out.stdout(`OPENED ${name} (session ${id}) in a new ${TERMINAL_LABELS[outcome.terminal]} in ${project}, on ${describeLaunch(launchOf(config, id))}`);
     return EXIT.ok;
