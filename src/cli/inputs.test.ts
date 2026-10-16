@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { TASK_STATUSES } from '../register/model.ts';
 import { UsageError } from './args.ts';
-import { addInputOf, callerOf, changesOf, listFilterOf, priorityOf, sessionRef, statusInputOf, taskIdOf, waitsOf, weekOf } from './inputs.ts';
+import { addInputOf, callerOf, changesOf, listFilterOf, priorityOf, sessionRef, sizeOf, statusInputOf, taskIdOf, waitsOf, weekOf } from './inputs.ts';
 
 const flags = (entries: Readonly<Record<string, string>>): ReadonlyMap<string, string> => new Map(Object.entries(entries));
 
@@ -108,6 +108,26 @@ describe('changesOf', () => {
   it('plans after tasks, or clears the plan with none', () => {
     assert.deepEqual(changesOf(flags({ after: 'T5,T6' })), { after: ['T5', 'T6'] });
     assert.deepEqual(changesOf(flags({ after: 'none' })), { after: [] });
+  });
+
+  it('sizes a task, or clears its size with none', () => {
+    assert.deepEqual(changesOf(flags({ size: '1.5%' })), { size: 1.5 });
+    assert.deepEqual(changesOf(flags({ size: 'none' })), { size: null });
+  });
+});
+
+describe('sizeOf', () => {
+  it('reads a percent of the weekly limit, with or without a % sign', () => {
+    assert.equal(sizeOf('1.5'), 1.5);
+    assert.equal(sizeOf('2%'), 2);
+    assert.equal(sizeOf('.5'), 0.5);
+    assert.equal(sizeOf(' 100 '), 100);
+  });
+
+  it('refuses a size that is not above 0 and at most the whole week', () => {
+    for (const text of ['0', '0%', '100.5', '-1', '1e2', 'abc', '', '1.5%%', 'Infinity']) {
+      assert.throws(() => sizeOf(text), /--size ".*" is not a percent of the weekly limit above 0 and at most 100, like 1\.5/, text);
+    }
   });
 });
 

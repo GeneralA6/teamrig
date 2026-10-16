@@ -2,7 +2,7 @@ import { formatUtcMinute, shortUtc } from '../core/time.ts';
 import type { RegisterConfig } from '../config/types.ts';
 import type { Task } from './fold.ts';
 import { priorityText } from './model.ts';
-import { byPlanOrder, taskLabel } from './views.ts';
+import { byPlanOrder, sizeText, taskLabel } from './views.ts';
 import { waitContext, waitsText, type WaitContext } from './waits.ts';
 import { proofOf } from './verify.ts';
 
@@ -37,6 +37,7 @@ function planLine(task: Task, ownerSource: string, context: WaitContext, team: s
     task.after.length === 0 ? undefined : `after ${task.after.join(',')}`,
     task.source === ownerSource ? 'owner order' : `from ${task.source}`,
     task.goals.length === 0 ? undefined : task.goals.join(', '),
+    task.size === null ? undefined : `size ${sizeText(task.size)}`,
   ].filter((part) => part !== undefined);
   const title = task.status === 'dropped' ? `~~${task.title}~~` : task.title;
   return `- [${task.status === 'done' ? 'x' : ' '}] **${taskLabel(task, team)}** ${title} (${meta.join(' · ')})${statusTail(task, context)}`;

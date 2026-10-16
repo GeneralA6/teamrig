@@ -3,7 +3,7 @@ import type { KitConfig } from '../config/types.ts';
 import { ADDRESS_PATTERN } from '../core/address.ts';
 import { SecretScanner } from '../core/secrets.ts';
 import { parseUtcDay, parseUtcDeadline } from '../core/time.ts';
-import type { TaskFieldName, TaskFields } from './events.ts';
+import { sizeProblem, type TaskFieldName, type TaskFields } from './events.ts';
 import { taskNumber, type RegisterState, type Task } from './fold.ts';
 import { ACTIVE_STATUSES, GITHUB_SOURCE, priorityText, SESSION_NAME, type TaskStatus } from './model.ts';
 import { heldStart, startHolds } from './verify.ts';
@@ -21,8 +21,8 @@ export const GITHUB_ACTOR = 'github';
 /** The statuses the import sets on its own tasks: an issue's open state, or how it was closed. */
 export const GITHUB_STATUSES: readonly TaskStatus[] = ['open', 'done', 'dropped'];
 
-/** Fields the lead may change on a task someone else owns: who does it, how urgent, when and in what order. */
-export const LEAD_FIELDS: readonly TaskFieldName[] = ['owner', 'priority', 'due', 'week', 'after'];
+/** Fields the lead may change on a task someone else owns: who does it, how urgent, when, in what order and its size (the lead plans the week). */
+export const LEAD_FIELDS: readonly TaskFieldName[] = ['owner', 'priority', 'due', 'week', 'after', 'size'];
 
 export interface AddInput {
   readonly title: string;
@@ -36,6 +36,8 @@ export interface AddInput {
   readonly goals?: readonly string[];
   readonly week?: string;
   readonly after?: readonly string[];
+  /** What the task costs, in percent of the weekly usage limit. */
+  readonly size?: number;
 }
 
 /** A task for a GitHub issue: its source is GITHUB_SOURCE and its ref the issue's (github/map.ts). */
@@ -155,6 +157,7 @@ export class RegisterPolicy {
       goals: input.goals ?? [],
       week: input.week ?? null,
       after: input.after ?? [],
+      size: input.size ?? null,
     };
     if (fields.description === null && this.config.register.requireDescription) {
       return refuse(DESCRIPTION_NEEDED);
@@ -301,7 +304,7 @@ export class RegisterPolicy {
    * the duplicate-title rule does not apply.
    */
   importAdd(input: ImportInput, state: RegisterState): Verdict<TaskFields> {
-    const fields: TaskFields = { ...input, source: GITHUB_SOURCE, due: null, goals: [], week: null, after: [] };
+    const fields: TaskFields = { ...input, source: GITHUB_SOURCE, due: null, goals: [], week: null, after: [], size: null };
     const holder = [...state.tasks.values()].find((task) => task.source === GITHUB_SOURCE && task.ref === input.ref);
     if (holder !== undefined) {
       return refuse(`${holder.id} already has ref ${input.ref}`);
@@ -402,6 +405,10 @@ export class RegisterPolicy {
     if (fields.description !== null && fields.description.length > MAX_DESCRIPTION) {
       return `the description has ${fields.description.length} characters; the limit is ${MAX_DESCRIPTION}`;
     }
+    const size = fields.size === null ? undefined : sizeProblem(fields.size);
+    if (size !== undefined) {
+      return size;
+    }
     return this.checkText('title', fields.title) ?? this.checkText('description', fields.description) ?? this.checkText('ref', fields.ref);
   }
 
@@ -421,8 +428,8 @@ export class RegisterPolicy {
 const OWN_LIMITS: readonly string[] = ['title', 'description'];
 
 function pickFields(task: Task): TaskFields {
-  const { title, description, owner, source, ref, priority, due, goals, week, after } = task;
-  return { title, description, owner, source, ref, priority, due, goals, week, after };
+  const { title, description, owner, source, ref, priority, due, goals, week, after, size } = task;
+  return { title, description, owner, source, ref, priority, due, goals, week, after, size };
 }
 
 /** An update's description trimmed at both ends, its newlines kept; a blank one clears it, as `none` does. */

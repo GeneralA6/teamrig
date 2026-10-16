@@ -14,6 +14,7 @@ import {
   formatVerifyRow,
   formatVerifySummary,
   selectTasks,
+  sizeText,
 } from './views.ts';
 import { waitContext, type WaitReason } from './waits.ts';
 
@@ -153,9 +154,9 @@ describe('formatEvent and formatTaskDetail', () => {
       id: 'T1',
       at: AT,
       by: 'lead',
-      task: { title: 'x', description: 'Why x.', owner: 'alpha', source: 'owner', ref: 'inbox:3', priority: 1, due: '2030-01-08', goals: ['G1'], week: null, after: [] },
+      task: { title: 'x', description: 'Why x.', owner: 'alpha', source: 'owner', ref: 'inbox:3', priority: 1, due: '2030-01-08', goals: ['G1'], week: null, after: [], size: null },
     },
-    { v: 1, type: 'create', id: 'T2', at: AT, by: 'lead', task: { title: 'y', description: null, owner: 'bravo', source: 'lead', ref: null, priority: 2, due: null, goals: [], week: null, after: ['T1'] } },
+    { v: 1, type: 'create', id: 'T2', at: AT, by: 'lead', task: { title: 'y', description: null, owner: 'bravo', source: 'lead', ref: null, priority: 2, due: null, goals: [], week: null, after: ['T1'], size: null } },
     { v: 1, type: 'update', id: 'T1', at: '2030-01-07T10:00:00.000Z', by: 'lead', changes: { due: '2030-01-09', goals: ['G1', 'G2'] }, note: 'later' },
     { v: 1, type: 'status', id: 'T1', at: '2030-01-07T11:00:00.000Z', by: 'alpha', status: 'done', note: 'ok', evidence: 'abc1234', skill: 'none' },
     {
@@ -230,6 +231,18 @@ describe('formatEvent and formatTaskDetail', () => {
     assert.equal(formatEvent(changed('Why:\nusers ask')), '2030-01-07 09:00 alpha update description="Why: users ask"');
     assert.equal(formatEvent(changed(`${'d'.repeat(90)}`)), `2030-01-07 09:00 alpha update description="${'d'.repeat(79)}…"`);
     assert.equal(formatEvent(changed(null)), '2030-01-07 09:00 alpha update description=none');
+  });
+
+  it('prints a size as a percent of the weekly limit, on create, update and the detail', () => {
+    const sized = testTask({ id: 'T1', size: 1.255 });
+    const created: RegisterEvent = { v: 2, type: 'create', id: 'T1', at: AT, by: 'alpha', task: { ...sized, size: 1.5 } };
+    assert.match(formatEvent(created), / size=1\.5%$/);
+    const resized = (size: number | null): RegisterEvent => ({ v: 2, type: 'update', id: 'T1', at: AT, by: 'lead', changes: { size }, note: null });
+    assert.equal(formatEvent(resized(0.5)), '2030-01-07 09:00 lead update size=0.5%');
+    assert.equal(formatEvent(resized(null)), '2030-01-07 09:00 lead update size=none');
+    assert.ok(formatTaskDetail(sized, []).split('\n').includes('size: 1.25% of the weekly limit'));
+    assert.ok(!formatTaskDetail(testTask(), []).includes('size'), 'a task with none prints no line');
+    assert.deepEqual([sizeText(2), sizeText(0.125), sizeText(33.333)], ['2%', '0.13%', '33.33%']);
   });
 });
 

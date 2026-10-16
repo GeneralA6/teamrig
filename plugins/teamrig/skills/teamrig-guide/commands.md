@@ -43,6 +43,8 @@ Flags:
 - `--week <date>`: puts the task in the week plan that starts on that day.
 - `--after T5,T6`: the tasks to finish before this one starts. It stays `open`, its line shows `after T5,T6`, and
   `check` does not count it as a waiting p1 (`PRIORITY-SKIP`) until they are done or dropped.
+- `--size <pct>`: what the task still costs, in percent of the weekly usage limit (`1.5` or `1.5%`, above 0 and
+  at most 100). `plan` sums the week's sizes against what is left of the limit; `show` prints it.
 - `--team <child team>`: only for a lead with sub-teams: hands that team's lead the task. It takes no
   `--owner` or `--source`.
 
@@ -137,7 +139,7 @@ The status is a flag, never a word after the id: `teamrig set T1 done` is a usag
 ### teamrig update
 
 Changes a task's fields. The owner may change any of them; the lead may change only the owner, priority, due
-date, week and plan order (`--after`) of a task it does not own. A `--note` alone adds context to any task's history, from any session.
+date, week, plan order (`--after`) and size of a task it does not own. A `--note` alone adds context to any task's history, from any session.
 The status never changes here: use `set`.
 
 Flags:
@@ -154,6 +156,7 @@ Flags:
 - `--week <date>|none`: plan it into a week, or `none` to take it out.
 - `--after T5,T6|none`: plan it after these tasks, or `none` to clear it; only while it is open (a started task
   waits with `set --status waiting --waits task:T5`). The owner or the lead changes it.
+- `--size <pct>|none`: a new size, in percent of the weekly usage limit, or `none` to clear it.
 - `--note "<text>"`: records a note with the change.
 
 Example:

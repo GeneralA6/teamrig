@@ -4,7 +4,7 @@ import type { JsonRecord } from '../core/guards.ts';
 import { eventRecord, parseEvent, type EventParse, type RegisterEvent } from './events.ts';
 
 const BASE = { id: 'T3', at: '2030-01-07T09:00:00.000Z', by: 'alpha' };
-const TASK = { title: 'A task', description: null, owner: 'alpha', source: 'owner', ref: null, priority: 2, due: null, goals: [], week: null, after: [] };
+const TASK = { title: 'A task', description: null, owner: 'alpha', source: 'owner', ref: null, priority: 2, due: null, goals: [], week: null, after: [], size: null };
 
 function parse(record: JsonRecord, version = 0): EventParse {
   return parseEvent({ lineNumber: 1, raw: JSON.stringify(record), record, version });
@@ -17,9 +17,9 @@ function reason(result: EventParse): string {
 describe('eventRecord', () => {
   it('leaves an empty after and a null description off a create line, and keeps ones that hold something', () => {
     const create: RegisterEvent = { ...BASE, v: 2, type: 'create', task: TASK };
-    const { after, description, ...withoutEither } = TASK;
+    const { after, description, size, ...withoutEither } = TASK;
     assert.deepEqual(eventRecord(create), { ...create, task: withoutEither });
-    assert.deepEqual([after, description], [[], null]);
+    assert.deepEqual([after, description, size], [[], null, null]);
     const described: RegisterEvent = { ...create, task: { ...TASK, description: 'Why it matters.\nWhat to do.' } };
     assert.deepEqual(eventRecord(described), { ...described, task: { ...withoutEither, description: 'Why it matters.\nWhat to do.' } });
     const planned: RegisterEvent = { ...create, task: { ...TASK, after: ['T1'] } };
@@ -123,6 +123,19 @@ describe('parseEvent', () => {
     assert.deepEqual(parse(eventRecord(update), 2), { kind: 'event', event: update });
   });
 
+  it('reads the size of a create line and of an update, null clearing it, and an older line as not sized', () => {
+    const created = parse({ ...BASE, type: 'create', task: { ...TASK, size: 2.5 } }, 2);
+    assert.equal(created.kind === 'event' && created.event.type === 'create' ? created.event.task.size : undefined, 2.5);
+    const { size, ...older } = TASK;
+    assert.equal(size, null);
+    const old = parse({ ...BASE, type: 'create', task: older }, 2);
+    assert.equal(old.kind === 'event' && old.event.type === 'create' ? old.event.task.size : undefined, null);
+    assert.deepEqual(parse({ ...BASE, type: 'update', changes: { size: 1 } }, 2), { kind: 'event', event: { ...BASE, v: 2, type: 'update', changes: { size: 1 }, note: null } });
+    assert.deepEqual(parse({ ...BASE, type: 'update', changes: { size: null } }, 2), { kind: 'event', event: { ...BASE, v: 2, type: 'update', changes: { size: null }, note: null } });
+    const sized: RegisterEvent = { ...BASE, v: 2, type: 'create', task: { ...TASK, size: 0.75 } };
+    assert.deepEqual(parse(eventRecord(sized), 2), { kind: 'event', event: sized });
+  });
+
   it('rejects malformed lines with a reason', () => {
     const cases: [JsonRecord, RegExp][] = [
       [{ ...BASE, id: 'T0', type: 'create', task: TASK }, /bad task id/],
@@ -136,6 +149,9 @@ describe('parseEvent', () => {
       [{ ...BASE, type: 'create', task: { ...TASK, title: '' } }, /title is not text/],
       [{ ...BASE, type: 'create', task: { ...TASK, description: 5 } }, /description is not text/],
       [{ ...BASE, type: 'update', changes: { description: ['why'] } }, /description is not text/],
+      [{ ...BASE, type: 'create', task: { ...TASK, size: 0 } }, /bad size 0/],
+      [{ ...BASE, type: 'create', task: { ...TASK, size: 101 } }, /bad size 101/],
+      [{ ...BASE, type: 'update', changes: { size: '2' } }, /bad size "2"/],
       [{ ...BASE, type: 'status', status: 4 }, /unknown status 4/],
       [{ ...BASE, type: 'status', status: 'Paused!' }, /unknown status "Paused!"/],
       [{ ...BASE, type: 'status', status: 'done', note: 5 }, /note is not text/],
