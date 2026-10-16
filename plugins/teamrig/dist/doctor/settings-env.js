@@ -9,7 +9,7 @@ export function claudeSettingsFiles(claudeDir, project) {
     return [...new Set([join(claudeDir, 'settings.json'), join(project, '.claude', 'settings.json'), join(project, '.claude', 'settings.local.json')])];
 }
 /** The text as a JSON object, or undefined when it is not one; a leading byte order mark is skipped. */
-function objectOf(text) {
+export function jsonObjectOf(text) {
     let parsed;
     try {
         parsed = JSON.parse(text.replace(/^﻿/, ''));
@@ -28,7 +28,7 @@ async function readOne(files, path) {
     if (text === undefined) {
         return undefined;
     }
-    const settings = objectOf(text);
+    const settings = jsonObjectOf(text);
     if (settings === undefined) {
         return { kind: 'unreadable', path };
     }
