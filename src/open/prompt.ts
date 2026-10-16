@@ -8,6 +8,14 @@ export function defaultPrompt(team: string, id: string): string {
   return `You are the ${id} session of team ${team}. Run \`${KIT_NAME} inbox read\`, then \`${KIT_NAME} list --session ${id}\`, and start your first open task.`;
 }
 
+/**
+ * The first prompt of a session the automatic restart started fresh: its handover first, so it carries on with
+ * the work it left instead of the first open task, then the inbox and the task list.
+ */
+export function refreshPrompt(team: string, id: string, handoverPath: string): string {
+  return `You are the ${id} session of team ${team}, started fresh after a context refresh. Read your handover ${handoverPath} first and carry on with its next steps, then run \`${KIT_NAME} inbox read\` and \`${KIT_NAME} list --session ${id}\`.`;
+}
+
 /** Why a prompt cannot be passed to Claude Code as its first message, or undefined when it can. */
 export function promptProblem(prompt: string): string | undefined {
   if (prompt.trim() === '') {

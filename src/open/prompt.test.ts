@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { decodePrompt, defaultPrompt, encodePrompt, PROMPT_MAX, promptProblem } from './prompt.ts';
+import { decodePrompt, defaultPrompt, encodePrompt, PROMPT_MAX, promptProblem, refreshPrompt } from './prompt.ts';
 
 describe('defaultPrompt', () => {
   it('names the session and its team, and starts with the inbox and the task list', () => {
@@ -9,6 +9,17 @@ describe('defaultPrompt', () => {
       'You are the api session of team shop. Run `teamrig inbox read`, then `teamrig list --session api`, and start your first open task.',
     );
     assert.equal(promptProblem(defaultPrompt('shop', 'api')), undefined);
+  });
+});
+
+describe('refreshPrompt', () => {
+  it('sends a session the restart started fresh to its handover before the inbox and the task list', () => {
+    const prompt = refreshPrompt('shop', 'api', '/cfg/handover/api.md');
+    assert.equal(
+      prompt,
+      'You are the api session of team shop, started fresh after a context refresh. Read your handover /cfg/handover/api.md first and carry on with its next steps, then run `teamrig inbox read` and `teamrig list --session api`.',
+    );
+    assert.equal(promptProblem(prompt), undefined);
   });
 });
 

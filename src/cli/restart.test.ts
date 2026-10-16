@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
+import { decodePrompt, refreshPrompt } from '../open/prompt.ts';
 import type { ProcessInfo } from '../open/session-processes.ts';
 import { RefreshStore } from '../refresh/store.ts';
 import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
@@ -46,6 +47,8 @@ describe('teamrig restart', () => {
     assert.ok(tab);
     assert.deepEqual(tab.args.slice(0, 7), ['-w', '0', 'new-tab', '--title', 'app-alpha', '-d', APP]);
     assert.ok(tab.args.includes('launch'));
+    const encoded = tab.args[tab.args.indexOf('--encoded-prompt') + 1] ?? '';
+    assert.equal(decodePrompt(encoded), refreshPrompt('app', 'alpha', store.handoverPath('alpha')), 'the new session starts at its handover');
     assert.deepEqual(processes.ends, [{ pid: SHELL.pid, how: 'ask' }]);
     assert.equal(await store.restart('alpha'), undefined);
   });

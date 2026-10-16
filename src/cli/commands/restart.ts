@@ -1,7 +1,7 @@
 import { KIT_NAME } from '../../core/home.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { postLine } from '../../inbox/inbox.ts';
-import { defaultPrompt } from '../../open/prompt.ts';
+import { refreshPrompt } from '../../open/prompt.ts';
 import { runRestart, type RestartResult } from '../../refresh/restart.ts';
 import { RefreshStore } from '../../refresh/store.ts';
 import { onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
@@ -74,7 +74,7 @@ export async function restart(args: ParsedArgs, runtime: CliRuntime): Promise<Ex
       sleep: runtime.sleep,
       platform: runtime.platform,
       openTab: async () => {
-        const tab = { team, id, name, project, prompt: defaultPrompt(team, id), terminal: config.open.terminal };
+        const tab = { team, id, name, project, prompt: refreshPrompt(team, id, store.handoverPath(id)), terminal: config.open.terminal };
         const { outcome } = await openSessionTab(runtime, tab);
         return outcome.kind === 'opened' ? { kind: 'opened' } : outcome;
       },

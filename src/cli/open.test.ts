@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { formatConfig } from '../config/load.ts';
 import type { RunOutcome, RunRequest } from '../open/processes.ts';
-import { decodePrompt, defaultPrompt, encodePrompt } from '../open/prompt.ts';
+import { decodePrompt, defaultPrompt, encodePrompt, refreshPrompt } from '../open/prompt.ts';
 import { shellCommand } from '../open/quote.ts';
 import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
 import type { RestartRequest } from '../refresh/state.ts';
@@ -183,7 +183,7 @@ describe('teamrig launch', () => {
     assert.deepEqual(processes.started, []);
   });
 
-  it('starts Claude Code again with the default prompt once the automatic restart ended it, then ends with it', async () => {
+  it('starts Claude Code again, sent to its handover, once the automatic restart ended it, then ends with it', async () => {
     const kit = new CliHarness(TEAM);
     const processes = new RestartedOnce(kit, ENDING);
     const result = await kit.run([...LAUNCH, '--encoded-prompt', encodePrompt('Build it')], { probe: ON_PATH, processes, env: { PATH: '/usr/local/bin' } });
@@ -197,7 +197,7 @@ describe('teamrig launch', () => {
     });
     assert.deepEqual(
       processes.ran.map((run) => run.args.at(-1)),
-      ['Build it', defaultPrompt('app', 'alpha')],
+      ['Build it', refreshPrompt('app', 'alpha', processes.store.handoverPath('alpha'))],
     );
     assert.equal(await processes.store.restart('alpha'), undefined);
   });
