@@ -1,7 +1,8 @@
+import { tmpdir } from 'node:os';
 import { launchOf } from "../../config/launch.js";
 import { Roster } from "../../config/roster.js";
 import { errorMessage, isRecord, stringField } from "../../core/guards.js";
-import { KIT_NAME } from "../../core/home.js";
+import { claudeConfigDir, claudeTempDir, KIT_NAME } from "../../core/home.js";
 import { resolveTeam } from "../../core/team.js";
 import { sessionIdOf } from "../../inbox/inbox.js";
 import { boundPromptNote, boundStartNote } from "../../hooks/bind.js";
@@ -21,6 +22,8 @@ import { adoptTitle, promptNote, sessionStartNote } from "../../names/detect.js"
 import { JsonlRenameLog } from "../../names/log.js";
 import { TRANSCRIPT_TAIL_BYTES } from "../../names/title.js";
 import { decideStart, decideStop, handoverHashOf } from "../../refresh/decide.js";
+import { carryLines, readCarry } from "../../refresh/carry.js";
+import { claudeProcessOf } from "../../refresh/restart.js";
 import { readRunningWork } from "../../refresh/running.js";
 import { RefreshStore } from "../../refresh/store.js";
 import { readContextTokens } from "../../refresh/usage.js";
@@ -28,7 +31,7 @@ import { noPositionals } from "../args.js";
 import { openKit, renameDepsOf, rosterOf, teamFolders } from "../kit.js";
 import { EXIT } from "../runtime.js";
 import { loadTree } from "../tree.js";
-import { bindHintOnce, bindTab, inboxLinesFor, readTitle } from "./hook-bind.js";
+import { bindAfterClear, bindHintOnce, bindTab, inboxLinesFor, readTitle } from "./hook-bind.js";
 import { helperGateOutput, promptBudgetLine, stopBudgetLines } from "./hook-budget.js";
 import { startAutoSync } from "./gh-auto.js";
 import { coldSendHold } from "./hook-cold-send.js";
@@ -246,9 +249,7 @@ async function helperGateOf(runtime, payload) {
 async function teamPartsOf(runtime, kit, config, payload) {
     const title = await readTitle(runtime, payload);
     const claudeSession = sessionIdOf(payload);
-    const bound = claudeSession === null
-        ? undefined
-        : boundStartNote((await bindTab(runtime, kit, { team: kit.paths.team, roster: await rosterOf(runtime, kit, config) }, claudeSession, title)).outcome);
+    const bound = claudeSession === null ? undefined : await startBindNoteOf(runtime, kit, config, payload, claudeSession, title);
     const renamed = sessionStartNote(await titleOutcome(runtime, kit, config, payload, title));
     const titleNote = bound === undefined || renamed === undefined ? (bound ?? renamed) : `${bound} ${renamed}`;
     const { renames } = await new JsonlRenameLog(runtime.files, kit.paths.renames).read();
@@ -272,6 +273,19 @@ async function teamPartsOf(runtime, kit, config, payload) {
     };
 }
 /**
+ * The SessionStart note for a tab bound as it started: by its title, else, after a /clear, by the Claude
+ * Code process its session refreshed in (a /clear keeps the process; the title may name no session).
+ */
+async function startBindNoteOf(runtime, kit, config, payload, claudeSession, title) {
+    const roster = await rosterOf(runtime, kit, config);
+    const { outcome } = await bindTab(runtime, kit, { team: kit.paths.team, roster }, claudeSession, title);
+    const source = isRecord(payload) ? stringField(payload, 'source') : undefined;
+    if (source !== 'clear' || outcome.kind === 'kept' || outcome.kind === 'bound') {
+        return boundStartNote(outcome);
+    }
+    return bindAfterClear(runtime, kit, roster, claudeSession);
+}
+/**
  * The line for a session of the team that runs on another model than its `launch` entry (for the
  * lead, unset: `opus`), from the payload's model; Claude Code leaves it out at some starts, and then
  * nothing is checked. The effort is checked at the first Stop: SessionStart gets no effort level, and
@@ -290,6 +304,22 @@ function rosterIdOf(roster, session) {
     return found?.ok === true ? found.id : undefined;
 }
 /**
+ * What the session that wrote the handover leaves for this fresh one: its scheduled jobs and wake-up, which
+ * ended with its process, and its scratchpad and plan file. A transcript it cannot read is said, never thrown:
+ * the note itself must still reach the session.
+ */
+async function carriedLinesOf(runtime, transcript) {
+    const now = runtime.clock.now();
+    try {
+        const places = { tempDir: claudeTempDir(runtime.env, tmpdir()), claudeDir: claudeConfigDir(runtime.env, runtime.userHome) };
+        const carry = await readCarry(runtime.files, transcript, now, places);
+        return carry === undefined ? [] : carryLines(carry, now);
+    }
+    catch (error) {
+        return [`${KIT_NAME} could not read what your old session left in ${transcript} (${errorMessage(error)}); check CronList against your handover.`];
+    }
+}
+/**
  * A fresh start (`/clear`, a new process) after the session's handover was marked ready: the note
  * that points it at the handover, given once. A start that keeps the old context (compact, resume)
  * leaves the handover waiting; a small context again (a compaction too) starts the task count over.
@@ -304,7 +334,8 @@ async function refreshNoteOf(runtime, kit, config, roster, payload) {
         const store = new RefreshStore(runtime.files, kit.paths);
         const source = isRecord(payload) ? stringField(payload, 'source') : undefined;
         const now = new Date(runtime.clock.now()).toISOString();
-        const decision = decideStart(await store.state(id), source, config.refresh, store.handoverPath(id), now);
+        const state = await store.state(id);
+        const decision = decideStart(state, source, config.refresh, store.handoverPath(id), now);
         if (decision.kind === 'none') {
             return undefined;
         }
@@ -313,7 +344,8 @@ async function refreshNoteOf(runtime, kit, config, roster, payload) {
             return undefined;
         }
         await store.clearRequest(id);
-        return decision.note;
+        const carried = state?.phase === 'ready' && state.transcript !== null ? await carriedLinesOf(runtime, state.transcript) : [];
+        return [decision.note, ...carried].join('\n');
     }
     catch (error) {
         return `${KIT_NAME} could not check for a refresh handover (${errorMessage(error)}); if you wrote one before a /clear, read it first.`;
@@ -380,6 +412,7 @@ async function refreshDecisionOf(runtime, scope, payload) {
         handoverPath: store.handoverPath(id),
         command: KIT_NAME,
         canRestart: config.refresh.autoRestart && target !== undefined,
+        transcript: stringField(payload, 'transcript_path') ?? null,
     };
     const first = decideStop(state, context);
     const decided = first.kind === 'measure' ? decideStop(state, context, await boundaryFactsOf(runtime, roster, store, id, payload)) : first;
@@ -387,9 +420,12 @@ async function refreshDecisionOf(runtime, scope, payload) {
     switch (decision.kind) {
         case 'write':
         case 'block':
-        case 'notice':
             // Written before anything is printed: a block whose state is not recorded would ask again at every stop.
             await store.setState(id, decision.state);
+            break;
+        case 'notice':
+            // With the Claude Code process it is given in: a /clear keeps the process, so the fresh tab binds by it.
+            await store.setState(id, { ...decision.state, claudePid: (await claudeProcessOf(runtime.sessionProcesses, runtime.sessionProcesses.parentPid)) ?? null });
             break;
         case 'none':
         case 'measure':

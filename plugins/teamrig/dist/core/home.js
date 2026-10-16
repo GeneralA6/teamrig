@@ -18,6 +18,8 @@ export const ENV = {
     claudeProjectDir: 'CLAUDE_PROJECT_DIR',
     /** Moves Claude Code's own folder (settings, plugins, transcripts) away from `~/.claude`. */
     claudeConfigDir: 'CLAUDE_CONFIG_DIR',
+    /** Moves Claude Code's temporary files, session scratchpads among them, away from the system's temporary folder. */
+    claudeTempDir: 'CLAUDE_CODE_TMPDIR',
     /** The session `teamrig launch` runs Claude Code for: it starts Claude Code again after an automatic restart. */
     launched: 'TEAMRIG_LAUNCHED',
     /** `off` turns `teamrig gh sync` off on this machine: it reads nothing and writes nothing. */
@@ -36,6 +38,11 @@ export function resolveKitHome(env, userHome) {
 export function claudeConfigDir(env, userHome) {
     const fromEnv = env[ENV.claudeConfigDir]?.trim();
     return fromEnv ? fromEnv : join(userHome, '.claude');
+}
+/** The folder Claude Code keeps its temporary files under (scratchpads: `<it>/claude/<project>/<session>/scratchpad`). */
+export function claudeTempDir(env, systemTemp) {
+    const fromEnv = env[ENV.claudeTempDir]?.trim();
+    return fromEnv ? fromEnv : systemTemp;
 }
 /** The team's folder. The id is checked here too, since it becomes part of a path. */
 export function teamHome(kitHome, team) {

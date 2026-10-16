@@ -48,7 +48,10 @@ export function parseRefreshState(text) {
         }
         case 'ready': {
             const noticed = record['noticed'];
-            return typeof noticed === 'boolean' ? { phase: 'ready', task, at, noticed } : undefined;
+            // A file from before the transcript was recorded has none.
+            const transcript = record['transcript'] === undefined ? null : nullableString(record, 'transcript');
+            const claudePid = nullablePidOf(record['claudePid']);
+            return typeof noticed === 'boolean' && transcript !== undefined && claudePid !== undefined ? { phase: 'ready', task, at, noticed, transcript, claudePid } : undefined;
         }
         case 'refreshed':
             return { phase: 'refreshed', task, at };
@@ -68,6 +71,13 @@ export function parseRefreshRequest(text) {
 }
 export function formatRefreshRequest(request) {
     return toJsonlLine({ [VERSION_FIELD]: REFRESH_FORMAT, ...request });
+}
+/** A process id, null when absent or null, undefined when damaged. */
+function nullablePidOf(value) {
+    if (value === undefined || value === null) {
+        return null;
+    }
+    return isNonNegativeInteger(value) && value > 0 ? value : undefined;
 }
 function nullableString(record, key) {
     const value = record[key];

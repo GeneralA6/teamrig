@@ -13,7 +13,7 @@ export function noticeOf(state, context, restart) {
         : 'type /clear for a fresh start';
     return {
         kind: 'notice',
-        state: { ...state, noticed: true },
+        state: { ...state, noticed: true, transcript: context.transcript },
         message: `${context.command}: ${name} finished ${state.task} and wrote its handover; ${next}`,
         title: context.settings.tabTitle ? `${name}: ${restart ? 'restarting' : 'type /clear'}` : undefined,
         restart,
@@ -58,7 +58,8 @@ function whyOf(cause, settings) {
 function handoverAsk(task, cause, context) {
     const why = whyOf(cause, context.settings);
     return (`${context.command}: ${why} and you just finished ${task}. Write your handover to ${context.handoverPath} ` +
-        '(what is in progress, the next step of each, open questions, where things are), then run ' +
+        '(what is in progress and the next step of each; what to check later, and when; questions still open with the user; ' +
+        'the scratchpad files, plan file and scheduled jobs the next session still needs; where things are), then run ' +
         `\`${readyCommand(context.command, context.session.id)}\`. Do not start new work.`);
 }
 /**
@@ -135,7 +136,7 @@ export function decideReady(state, handover, handoverPath, now) {
     if (handoverHashOf(handover) === state.handoverHash) {
         return { kind: 'refused', reason: `${handoverPath} is the handover from before; write this refresh's handover there` };
     }
-    return { kind: 'ready', state: { phase: 'ready', task: state.task, at: now, noticed: false } };
+    return { kind: 'ready', state: { phase: 'ready', task: state.task, at: now, noticed: false, transcript: null, claudePid: null } };
 }
 /** Starts that drop the old context; a `compact`, `resume` or `fork` start keeps it, so the handover waits. */
 const FRESH_SOURCES = new Set(['clear', 'startup']);
@@ -157,7 +158,26 @@ export function decideStart(state, source, settings, handoverPath, now) {
     }
     return {
         kind: 'inject',
-        note: `You were refreshed after ${state.task}; read your handover first: ${handoverPath}`,
+        note: `You were refreshed after ${state.task}; read your handover first: ${handoverPath}. Then carry on with its next steps.`,
         state: { phase: 'refreshed', task: state.task, at: now },
     };
+}
+/**
+ * How long after a /clear took the refresh the background wake still answers to it: the wake runs beside the
+ * SessionStart hook that takes it, so a refresh taken earlier belongs to another start.
+ */
+export const WAKE_WINDOW_MS = 30_000;
+/**
+ * The prompt that wakes a session /clear just started from its refresh, so it carries on instead of sitting idle
+ * until the user types; undefined when this start took no refresh.
+ */
+export function wakePromptOf(state, handoverPath, now) {
+    if (state?.phase !== 'refreshed') {
+        return undefined;
+    }
+    const age = Date.parse(now) - Date.parse(state.at);
+    if (!(age >= 0 && age <= WAKE_WINDOW_MS)) {
+        return undefined;
+    }
+    return `You were started fresh after your context refresh at ${state.task}: read your handover ${handoverPath} now, take over what the SessionStart note lists, then carry on with its next steps.`;
 }
