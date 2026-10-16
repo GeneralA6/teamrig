@@ -6,6 +6,8 @@ import { resolveKitHome, type TeamPaths } from '../../core/home.ts';
 import type { Clock } from '../../core/lock.ts';
 import { resolveTeam } from '../../core/team.ts';
 import { formatUtcDay, MS_PER_DAY, parseUtcDay, parseUtcDeadline } from '../../core/time.ts';
+import { activeBurst, withBurst, type BurstRecord } from '../../budget/burst.ts';
+import { BurstLog } from '../../budget/burst-log.ts';
 import { claudeProjectsDir, type TranscriptSource } from '../../budget/discover.ts';
 import { activeLift, decideLift, LiftLog, liftText, type Lift } from '../../budget/lift.ts';
 import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID, type Measured } from '../../budget/measure.ts';
@@ -61,6 +63,7 @@ interface Reading {
   readonly measured: Measured;
   readonly week: WeekReading;
   readonly lifts: readonly Lift[];
+  readonly bursts: readonly BurstRecord[];
 }
 
 interface ReadOptions {
@@ -96,22 +99,30 @@ async function readBudget(runtime: CliRuntime, kit: Kit, config: KitConfig, rost
   const snapshots = recount ? [] : await readSnapshots(files, snapshotDirOf(config.budget, kit.paths));
   const week = readWeek({ budget: config.budget, now, statusUse: weekUseOf(snapshots, now), states: [...measured.bySession.values(), measured.outside] });
   const lifts = recount ? [] : (await new LiftLog(files, kit.paths.lifts).read()).lifts;
-  return { now, measured, week, lifts };
+  const bursts = recount ? [] : (await new BurstLog(files, kit.paths.bursts).read()).records;
+  return { now, measured, week, lifts, bursts };
+}
+
+/** The week now, measured up to now as `budget` measures it, for `burst`. */
+export async function weekReadingOf(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster): Promise<WeekReading> {
+  return (await readBudget(runtime, kit, config, roster, { recountDay: undefined })).week;
 }
 
 /** The week's use line, measured up to now as `budget` measures it, for `start`. */
 export async function weekLineOf(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster): Promise<string> {
-  return weekLine((await readBudget(runtime, kit, config, roster, { recountDay: undefined })).week);
+  return weekLine(await weekReadingOf(runtime, kit, config, roster));
 }
 
 function sessionsToday(reading: Reading, roster: Roster, budget: BudgetConfig): SessionToday[] {
   const today = formatUtcDay(new Date(reading.now));
+  const inForce = activeBurst(reading.bursts, reading.now, reading.week.usedPct);
   return roster.ids.map((id) => {
     const usage = reading.measured.bySession.get(id)?.byDay[today];
     const lift = activeLift(reading.lifts, id, reading.now, reading.week.usedPct);
+    const burst = inForce !== undefined && inForce.sessions.includes(id) ? inForce : undefined;
     const allowance = reading.week.allowancePct;
     const shared = allowance === undefined ? budget.sessions[id]?.dailyPct : sessionBudgetPct(allowance, id, roster.ids, budget.sessions);
-    return { id, name: roster.nameOf(id) ?? id, w: usage?.w ?? 0, calls: usage?.calls ?? 0, budgetPct: lift?.toPct ?? shared, lift };
+    return { id, name: roster.nameOf(id) ?? id, w: usage?.w ?? 0, calls: usage?.calls ?? 0, budgetPct: lift?.toPct ?? withBurst(shared, burst, id), lift, burst };
   });
 }
 
@@ -190,15 +201,16 @@ export function pctFlag(flags: Flags, name: string): number | undefined {
   return value;
 }
 
-/** `--until`: `HH:MM` today (UTC) or `YYYY-MM-DD HH:MM`. */
-function untilOf(text: string | undefined, now: number): number | undefined {
+/** A time flag such as `--until`: `HH:MM` today (UTC) or `YYYY-MM-DD HH:MM`; undefined when it is not given. */
+export function timeFlag(flags: Flags, name: string, now: number): number | undefined {
+  const text = flags.get(name);
   if (text === undefined) {
     return undefined;
   }
   const time = /^(\d{2}):(\d{2})$/.exec(text.trim());
   const at = time === null ? parseUtcDeadline(text) : parseUtcDeadline(`${formatUtcDay(new Date(now))} ${text.trim()}`);
   if (at === undefined) {
-    throw new UsageError(`--until "${text}" is not HH:MM or "YYYY-MM-DD HH:MM" (UTC)`);
+    throw new UsageError(`--${name} "${text}" is not HH:MM or "YYYY-MM-DD HH:MM" (UTC)`);
   }
   return at.getTime();
 }
@@ -217,7 +229,7 @@ export async function lift(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
     throw new UsageError('--reason needs a reason');
   }
   const now = runtime.clock.now();
-  const until = untilOf(args.flags.get('until'), now);
+  const until = timeFlag(args.flags, 'until', now);
   const kit = await openTeamKit(runtime);
   const config = requireConfig(kit, runtime, 'write');
   const roster = await rosterOf(runtime, kit, config);

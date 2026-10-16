@@ -3,6 +3,9 @@ import type { Roster } from '../../config/roster.ts';
 import type { BudgetConfig, KitConfig } from '../../config/types.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { formatUtcDay } from '../../core/time.ts';
+import { activeBurst, withBurst } from '../../budget/burst.ts';
+import { surplusHintOf } from '../../budget/burst-lines.ts';
+import { BurstLog } from '../../budget/burst-log.ts';
 import type { TranscriptFolders } from '../../budget/discover.ts';
 import { activeLift, LiftLog } from '../../budget/lift.ts';
 import { OUTSIDE_ID } from '../../budget/measure.ts';
@@ -58,6 +61,8 @@ async function meterTab(runtime: CliRuntime, store: UsageStore, id: string, tran
 /**
  * The session's budget now, after metering the tab whose transcript is given; undefined with the
  * budget off, before the week's use or W per % is known, or without a daily budget for the session.
+ * A lift sets the daily budget; a burst the session is in raises it to at least the burst's. The lead,
+ * with no burst in force, also gets the week's surplus when it is worth one.
  */
 export async function budgetFactsOf(runtime: CliRuntime, scope: BudgetScope, transcript: string | undefined): Promise<BudgetFacts | undefined> {
   const { kit, config, roster, id } = scope;
@@ -83,11 +88,16 @@ export async function budgetFactsOf(runtime: CliRuntime, scope: BudgetScope, tra
   }
   const lift = activeLift((await new LiftLog(files, kit.paths.lifts).read()).lifts, id, now, week.usedPct);
   const shared = week.allowancePct === undefined ? budget.sessions[id]?.dailyPct : sessionBudgetPct(week.allowancePct, id, roster.ids, budget.sessions);
-  const budgetPct = lift?.toPct ?? shared;
+  const inForce = activeBurst((await new BurstLog(files, kit.paths.bursts).read()).records, now, week.usedPct);
+  const burst = inForce !== undefined && inForce.sessions.includes(id) ? inForce : undefined;
+  const budgetPct = lift?.toPct ?? withBurst(shared, burst, id);
   if (budgetPct === undefined) {
     return undefined;
   }
   const todayW = byId.get(id)?.byDay[formatUtcDay(new Date(now))]?.w ?? 0;
+  const isLead = id === config.roles.lead;
+  const surplus =
+    isLead && inForce === undefined ? surplusHintOf({ config: config.burst, window: week.window, now, usedPct: week.usedPct, targetPct: budget.targetPct }) : undefined;
   return {
     now,
     id,
@@ -95,9 +105,11 @@ export async function budgetFactsOf(runtime: CliRuntime, scope: BudgetScope, tra
     usedTodayPct: todayW / week.wPerPct,
     budgetPct,
     lift,
+    burst,
+    surplus,
     weekUsedPct: week.usedPct,
     pace: week.pace,
-    isLead: id === config.roles.lead,
+    isLead,
   };
 }
 

@@ -1,6 +1,8 @@
 import type { BudgetConfig, OverAction, QuietHours } from '../config/types.ts';
 import { KIT_NAME } from '../core/home.ts';
 import { formatUtcDay, MS_PER_DAY } from '../core/time.ts';
+import type { Burst } from './burst.ts';
+import { budgetMarkOf, burstPromptLines, burstStopLines, type BurstMarks, type SurplusHint } from './burst-lines.ts';
 import { formatPct } from './format.ts';
 import { liftText, type Lift } from './lift.ts';
 import type { PaceReading } from './pace.ts';
@@ -9,7 +11,8 @@ import type { PaceReading } from './pace.ts';
  * The live budget warning, pure: from a session's use today and the team's pace, which line its
  * person sees at a turn's end, which line the model gets with the next prompt, whether the lead gets
  * an inbox line, and whether a helper launch goes ahead, asks the person or is refused. Lines come
- * only at crossings, each once, so a session sees a few a day and none on most turns.
+ * only at crossings, each once, so a session sees a few a day and none on most turns. A burst's lines
+ * (`burst-lines.ts`) come the same way: at its start and end, and the lead's surplus line once a week.
  */
 
 /** Past the last warning level, a line at every further step of this many % of the daily budget. */
@@ -26,9 +29,13 @@ export interface BudgetFacts {
   readonly name: string;
   /** Its use since 00:00 UTC, in % of the week. */
   readonly usedTodayPct: number;
-  /** Its daily budget in % of the week, its lift's while lifted. */
+  /** Its daily budget in % of the week: its lift's while lifted, at least its burst's while in a burst. */
   readonly budgetPct: number;
   readonly lift: Lift | undefined;
+  /** The burst in force, when the session is in it. */
+  readonly burst: Burst | undefined;
+  /** For the lead only, with no burst in force: a surplus worth one. */
+  readonly surplus: SurplusHint | undefined;
   /** The week's use, in %. */
   readonly weekUsedPct: number;
   readonly pace: PaceReading | undefined;
@@ -38,8 +45,8 @@ export interface BudgetFacts {
 
 export type WarnBudget = Pick<BudgetConfig, 'warnAtPct' | 'overAction' | 'escalate' | 'quietHours'>;
 
-/** What a session was already shown, so each line shows once. */
-export interface WarnState {
+/** What a session was already shown, so each line shows once; the burst marks cross midnight. */
+export interface WarnState extends BurstMarks {
   /** The UTC day the marks below count for; a new day starts them over. */
   readonly day: string;
   /** The highest warning level (in % of the daily budget) shown today; 0 for none. */
@@ -57,16 +64,20 @@ export interface WarnState {
 }
 
 export function emptyWarnState(day: string): WarnState {
-  return { day, level: 0, modelLevel: 0, ahead: false, leadTold: false, quietFrom: undefined, liftAt: undefined };
+  return { day, level: 0, modelLevel: 0, ahead: false, leadTold: false, quietFrom: undefined, liftAt: undefined, burstAt: undefined, modelBurstAt: undefined, surplusShown: undefined };
 }
 
-/** The state for `now`'s day: a new day keeps only the quiet-hours and lift marks, which cross midnight. */
+/** The state for `now`'s day: a new day keeps only the quiet-hours, lift and burst marks, which cross midnight. */
 function stateFor(state: WarnState | undefined, now: number): WarnState {
   const day = formatUtcDay(new Date(now));
   if (state === undefined) {
     return emptyWarnState(day);
   }
-  return state.day === day ? state : { ...emptyWarnState(day), quietFrom: state.quietFrom, liftAt: state.liftAt };
+  if (state.day === day) {
+    return state;
+  }
+  const { quietFrom, liftAt, burstAt, modelBurstAt, surplusShown } = state;
+  return { ...emptyWarnState(day), quietFrom, liftAt, burstAt, modelBurstAt, surplusShown };
 }
 
 /** The session's use today in % of its daily budget; any use counts as past a budget of 0. */
@@ -210,7 +221,7 @@ function joined(parts: readonly string[]): string {
 
 /** The line at a new warning level. */
 function levelLine(facts: BudgetFacts, budget: WarnBudget, standing: Standing): string {
-  const use = `${facts.name} has used ${formatPct(facts.usedTodayPct)} of the week today; its daily budget is ${formatPct(facts.budgetPct)}${facts.lift === undefined ? '' : ' (lifted)'}.`;
+  const use = `${facts.name} has used ${formatPct(facts.usedTodayPct)} of the week today; its daily budget is ${formatPct(facts.budgetPct)}${budgetMarkOf(facts)}.`;
   if (!standing.over) {
     return joined([`Budget: ${use}`, teamText(facts), MORE]);
   }
@@ -244,7 +255,7 @@ function leadLineOf(facts: BudgetFacts): string {
 }
 
 /**
- * The person's lines at a turn's end: a lift starting or ending, the quiet hours starting, a new
+ * The person's lines at a turn's end: a lift or a burst starting or ending, the quiet hours starting, a new
  * warning level, or the team moving ahead of its pace line while the session is past budget. The
  * lead gets one inbox line a day per session once it escalates, unless the action is only `warn`.
  */
@@ -257,6 +268,8 @@ export function stopWarning(facts: BudgetFacts, budget: WarnBudget, previous: Wa
   } else if (facts.lift === undefined && state.liftAt !== undefined) {
     lines.push(`Budget: ${facts.name}'s lift has ended; its daily budget is ${formatPct(facts.budgetPct)} again.`);
   }
+  const burst = burstStopLines(facts, state);
+  lines.push(...burst.lines);
   if (budget.quietHours !== undefined && standing.quietFrom !== undefined && standing.quietFrom !== state.quietFrom) {
     lines.push(quietLine(budget.quietHours, facts));
   }
@@ -277,6 +290,9 @@ export function stopWarning(facts: BudgetFacts, budget: WarnBudget, previous: Wa
       leadTold: state.leadTold || tellLead,
       quietFrom: standing.quietFrom ?? state.quietFrom,
       liftAt: facts.lift?.at,
+      burstAt: burst.burstAt,
+      modelBurstAt: state.modelBurstAt,
+      surplusShown: state.surplusShown,
     },
   };
 }
@@ -287,22 +303,42 @@ export interface PromptWarning {
   readonly state: WarnState;
 }
 
+/** The model's past-budget line, once per warning level while escalated; undefined when none is due. */
+function escalationLine(facts: BudgetFacts, standing: Standing, state: WarnState): string | undefined {
+  if (!standing.escalated || standing.level <= state.modelLevel) {
+    return undefined;
+  }
+  const team = standing.ahead ? ' and the team is ahead of its pace line' : '';
+  const lift = facts.isLead ? 'As the lead, lift it only with a stop %.' : 'The lead can lift it.';
+  return (
+    `${BUDGET_COMMAND}: you are past today's budget${team}. Finish the step in hand and start no new work items or helpers. ` +
+    `Never skip a test or check to save budget. ${lift}`
+  );
+}
+
 /**
- * The model's line with a prompt, while the session has escalated and once per warning level: finish
- * the step in hand and start nothing new. It never asks for a cheaper model or effort, nor a skipped check.
+ * The model's lines with a prompt, one per line: a burst starting or ending, the lead's surplus once a
+ * week, and, while the session has escalated and once per warning level, finish the step in hand and
+ * start nothing new. None asks for a cheaper model or effort, nor a skipped check.
  */
 export function promptWarning(facts: BudgetFacts, budget: WarnBudget, previous: WarnState | undefined): PromptWarning {
   const state = stateFor(previous, facts.now);
   const standing = standingOf(facts, budget);
-  if (!standing.escalated || standing.level <= state.modelLevel) {
+  const burst = burstPromptLines(facts, state);
+  const escalation = escalationLine(facts, standing, state);
+  const lines = escalation === undefined ? burst.lines : [...burst.lines, escalation];
+  if (lines.length === 0) {
     return { line: undefined, state };
   }
-  const team = standing.ahead ? ' and the team is ahead of its pace line' : '';
-  const lift = facts.isLead ? 'As the lead, lift it only with a stop %.' : 'The lead can lift it.';
-  const line =
-    `${BUDGET_COMMAND}: you are past today's budget${team}. Finish the step in hand and start no new work items or helpers. ` +
-    `Never skip a test or check to save budget. ${lift}`;
-  return { line, state: { ...state, modelLevel: standing.level } };
+  return {
+    line: lines.join('\n'),
+    state: {
+      ...state,
+      modelLevel: escalation === undefined ? state.modelLevel : standing.level,
+      modelBurstAt: burst.modelBurstAt,
+      surplusShown: burst.surplusShown,
+    },
+  };
 }
 
 export type HelperGate = { readonly kind: 'allow' } | { readonly kind: 'ask' | 'deny'; readonly reason: string };

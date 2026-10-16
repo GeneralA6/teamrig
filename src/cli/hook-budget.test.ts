@@ -5,6 +5,7 @@ import type { JsonRecord } from '../core/guards.ts';
 import { APP, CliHarness, decisionOf, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { replyLine, transcript } from '../testing/transcript-lines.ts';
+import { ok } from '../testing/hired-team.ts';
 import { EXIT } from './runtime.ts';
 
 /** The harness clock is Tuesday 2030-01-08 10:00 UTC; this week resets on Monday 2030-01-14 01:00 UTC, so the pace line is at 19.7%. */
@@ -15,9 +16,9 @@ const LEAD_TAB = '0000000d-0000-4000-8000-000000000004';
 const ALPHA_TRANSCRIPT = join(PROJECT, `${ALPHA_TAB}.jsonl`);
 const LEAD_TRANSCRIPT = join(PROJECT, `${LEAD_TAB}.jsonl`);
 
-/** 1% of the week is 10M W; alpha's daily budget is 1%. */
-function config(budget: JsonRecord = {}): JsonRecord {
-  return { ...TEAM, budget: { enabled: true, weeklyLimitW: 1_000_000_000, overAction: 'ask-lead', sessions: { alpha: { dailyPct: 1 } }, ...budget } };
+/** 1% of the week is 10M W; alpha's daily budget is 1%; `extra` adds other config sections. */
+function config(budget: JsonRecord = {}, extra: JsonRecord = {}): JsonRecord {
+  return { ...TEAM, budget: { enabled: true, weeklyLimitW: 1_000_000_000, overAction: 'ask-lead', sessions: { alpha: { dailyPct: 1 } }, ...budget }, ...extra };
 }
 
 function reply(id: string, input: number): string {
@@ -44,8 +45,8 @@ interface World {
 }
 
 /** Alpha's and the lead's tabs read their inboxes; alpha used `ownW` + 1M W today; the week is `usedPct` used. */
-async function world(budget: JsonRecord, ownW: number, usedPct: number): Promise<World> {
-  const kit = new CliHarness(config(budget));
+async function world(budget: JsonRecord, ownW: number, usedPct: number, extra: JsonRecord = {}): Promise<World> {
+  const kit = new CliHarness(config(budget, extra));
   const source = transcripts(kit.clock.now(), ownW);
   await kit.run(['inbox', 'read', '--session', 'alpha'], { env: { CLAUDE_CODE_SESSION_ID: ALPHA_TAB } });
   await kit.run(['inbox', 'read', '--session', 'lead'], { env: { CLAUDE_CODE_SESSION_ID: LEAD_TAB } });
@@ -118,6 +119,31 @@ describe('the budget in the hooks', () => {
     const lead = await world({ sessions: { lead: { dailyPct: 1 } } }, 0, 30);
     assert.match(messageOf(await lead.hook('stop', LEAD_TAB)), /^Budget: app-lead has used 5\.0% of the week today/);
     assert.doesNotMatch(await leadInbox(lead.kit), /past its daily budget/);
+  });
+
+  it("tells a session in a burst at its start and its end, the person at the turn end and the model with the prompt", async () => {
+    const { kit, hook } = await world({}, 0, 5, { burst: { policy: 'lead', surplusHours: 167 } });
+    ok(await kit.run(['burst', 'start', 'surplus', '--reason', 'week-end surplus', '--helpers', '2', '--yes', '--session', 'lead']));
+    assert.match(messageOf(await hook('stop', ALPHA_TAB)), /^Budget: the lead started a surplus burst until Mon 01-14 00:00 UTC or 99\.5% of the week: app-alpha's daily budget is at least \d+\.\d%, up to 2 helpers at once\. More: teamrig burst$/);
+    assert.deepEqual((await hook('stop', ALPHA_TAB)).stdout, []);
+    const told = (await hook('inbox-reminder', ALPHA_TAB, { prompt: 'next', session_title: 'app-alpha' })).stdout;
+    assert.ok(told.some((line) => line.startsWith('teamrig burst: a surplus burst runs until Mon 01-14 00:00 UTC') && line.includes('Run up to 2 helpers at once, on independent tasks only')), told.join('\n'));
+    assert.ok(!(await hook('inbox-reminder', ALPHA_TAB, { prompt: 'again', session_title: 'app-alpha' })).stdout.some((line) => line.startsWith('teamrig burst:')));
+    ok(await kit.run(['burst', 'end', '--reason', 'done early', '--session', 'lead']));
+    assert.equal(messageOf(await hook('stop', ALPHA_TAB)), "Budget: app-alpha's burst has ended; its daily budget is 1.0% again.");
+    const ended = (await hook('inbox-reminder', ALPHA_TAB, { prompt: 'next', session_title: 'app-alpha' })).stdout;
+    assert.ok(ended.some((line) => line.startsWith('teamrig burst: the burst has ended.')), ended.join('\n'));
+  });
+
+  it("tells the lead's model once a week when the surplus is worth a burst, and never starts one", async () => {
+    const { kit, hook } = await world({}, 0, 5, { burst: { surplusHours: 167 } });
+    const prompt = (await hook('inbox-reminder', LEAD_TAB, { prompt: 'next', session_title: 'app-lead' })).stdout;
+    const surplus = prompt.find((line) => line.startsWith('teamrig burst: about'));
+    assert.ok(surplus !== undefined, prompt.join('\n'));
+    assert.match(surplus, /^teamrig burst: about 74\.2% of the week is projected unused at the pace end \(Mon 01-14 00:00 UTC\)\. .* burst\.policy is owner, so ask the owner first and add --approved-by "<who>"\. More: teamrig burst$/);
+    assert.ok(!(await hook('inbox-reminder', LEAD_TAB, { prompt: 'again', session_title: 'app-lead' })).stdout.some((line) => line.startsWith('teamrig burst:')));
+    assert.ok(!(await hook('inbox-reminder', ALPHA_TAB, { prompt: 'next', session_title: 'app-alpha' })).stdout.some((line) => line.startsWith('teamrig burst:')), 'only the lead');
+    assert.equal(kit.files.get(join(TEAM_HOME, 'state', 'usage', 'bursts.jsonl')), undefined);
   });
 
   it('does nothing with the budget off', async () => {

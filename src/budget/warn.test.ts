@@ -1,6 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { OverAction } from '../config/types.ts';
+import type { Burst } from './burst.ts';
+import type { SurplusHint } from './burst-lines.ts';
 import type { Lift } from './lift.ts';
 import { readPace, weekWindow, type PaceBudget } from './pace.ts';
 import { emptyWarnState, helperGate, isPastDailyBudget, levelOf, promptWarning, quietStartOf, sessionQuietFrom, stopWarning, type BudgetFacts, type WarnBudget, type WarnState } from './warn.ts';
@@ -25,6 +27,8 @@ function facts(usedTodayPct: number, weekUsedPct: number, now = DAY, extra: Part
     usedTodayPct,
     budgetPct: 1,
     lift: undefined,
+    burst: undefined,
+    surplus: undefined,
     weekUsedPct,
     pace: readPace(WINDOW, PACE, now, weekUsedPct),
     isLead: false,
@@ -50,6 +54,25 @@ function lift(overrides: Partial<Lift> = {}): Lift {
     ...overrides,
   };
 }
+
+function burst(overrides: Partial<Burst> = {}): Burst {
+  return {
+    kind: 'surplus',
+    sessions: ['alpha'],
+    helpers: 2,
+    hires: 0,
+    dailyPct: 3,
+    stopPct: 99.5,
+    endsAt: Date.parse('2026-10-21T00:00:00Z'),
+    tasks: [],
+    reason: 'surplus',
+    by: 'lead',
+    at: Date.parse('2026-10-15T12:00:00Z'),
+    ...overrides,
+  };
+}
+
+const HINT: SurplusHint = { sparePct: 12, paceEnd: Date.parse('2026-10-21T00:00:00Z'), reset: RESET, ownerApproves: true };
 
 describe('levelOf', () => {
   const table: readonly [number, number][] = [
@@ -194,6 +217,23 @@ describe('stopWarning', () => {
     assert.equal(ended.state.liftAt, undefined);
   });
 
+  it('shows a burst starting and ending, and marks the budget it sets', () => {
+    const started = stopWarning(facts(2.5, AHEAD, DAY, { burst: burst(), budgetPct: 3 }), BUDGET, undefined);
+    assert.match(started.lines[0] ?? '', /^Budget: the lead started a surplus burst until Wed 10-21 00:00 UTC or 99\.5% of the week: alpha's daily budget is at least 3\.0%/);
+    assert.match(started.lines[1] ?? '', /its daily budget is 3\.0% \(burst\)\./);
+    assert.equal(started.state.burstAt, burst().at);
+    const ended = stopWarning(facts(0.5, AHEAD), BUDGET, started.state);
+    assert.deepEqual(ended.lines, ["Budget: alpha's burst has ended; its daily budget is 1.0% again."]);
+    assert.equal(ended.state.burstAt, undefined);
+  });
+
+  it('keeps the burst and surplus marks across midnight, and the model marks it did not change', () => {
+    const state: WarnState = { ...emptyWarnState('2026-10-14'), level: 100, burstAt: 5, modelBurstAt: 5, surplusShown: RESET };
+    const next = stopWarning(facts(0, BEHIND, DAY, { burst: burst({ at: 5 }) }), BUDGET, state);
+    assert.deepEqual(next.lines, []);
+    assert.deepEqual(next.state, { ...emptyWarnState('2026-10-15'), burstAt: 5, modelBurstAt: 5, surplusShown: RESET });
+  });
+
   it('counts any use past a budget of 0', () => {
     const result = stopWarning(facts(0.01, AHEAD, DAY, { budgetPct: 0 }), BUDGET, undefined);
     assert.equal(result.state.level, 100);
@@ -220,6 +260,24 @@ describe('promptWarning', () => {
 
   it('tells the lead to lift itself only with a stop %', () => {
     assert.match(promptWarning(facts(1.1, AHEAD, DAY, { isLead: true }), BUDGET, undefined).line ?? '', /As the lead, lift it only with a stop %\.$/);
+  });
+
+  it('gives the burst lines and the past-budget line together, one per line, and marks each', () => {
+    const result = promptWarning(facts(1.1, AHEAD, DAY, { burst: burst() }), BUDGET, undefined);
+    const lines = (result.line ?? '').split('\n');
+    assert.equal(lines.length, 2);
+    assert.match(lines[0] ?? '', /^teamrig burst: a surplus burst runs until/);
+    assert.match(lines[1] ?? '', /^teamrig budget: you are past today's budget/);
+    assert.equal(result.state.modelBurstAt, burst().at);
+    assert.equal(result.state.modelLevel, 100);
+  });
+
+  it('gives a burst line alone, leaving the warning level as it was', () => {
+    const result = promptWarning(facts(0.1, BEHIND, DAY, { isLead: true, surplus: HINT }), BUDGET, undefined);
+    assert.match(result.line ?? '', /^teamrig burst: about 12\.0% of the week is projected unused/);
+    assert.equal(result.state.modelLevel, 0);
+    assert.equal(result.state.surplusShown, RESET);
+    assert.equal(promptWarning(facts(0.1, BEHIND, DAY, { isLead: true, surplus: HINT }), BUDGET, result.state).line, undefined);
   });
 
   it('keeps the stop marks it did not change', () => {
