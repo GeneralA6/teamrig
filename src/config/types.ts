@@ -316,9 +316,10 @@ export interface RefreshConfig {
   /** Title the tab once the session's handover is written: `<name>: restarting`, or `<name>: type /clear`. */
   readonly tabTitle: boolean;
   /**
-   * Once the handover is written and the turn has ended, end the session's Claude Code process and start it
-   * fresh, which reads the handover: in the same tab when `teamrig open` started it, else in a new tab. A
-   * prompt typed before then keeps the context. Off: the user types /clear.
+   * Once the handover is written and the turn has ended, start the session fresh, which reads the handover:
+   * the plugin's mod runs /clear in its tab; where no mod claims the ask, end its Claude Code process and start
+   * it again, in the same tab when `teamrig open` started it, else in a new tab. A prompt typed before then
+   * keeps the context. Off: the user types /clear.
    */
   readonly autoRestart: boolean;
   /** How long after the turn's end the automatic restart waits, so the user can still type to keep the context. */

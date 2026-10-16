@@ -5,7 +5,9 @@ import type { ProcessInfo } from '../open/session-processes.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { claudeProcessOf, GIVE_UP_MS, runRestart, type RestartDeps, type RestartPlan, type TabOpening } from './restart.ts';
+import { askFileOf, outcomeFileOf } from '../mod/clear-hand.ts';
+import { ClearAsks, type ClearAsk } from './clear-asks.ts';
+import { CLAIM_WAIT_MS, claudeProcessOf, GIVE_UP_MS, runRestart, type RestartDeps, type RestartPlan, type TabOpening } from './restart.ts';
 import type { RestartRequest } from './state.ts';
 import { RefreshStore } from './store.ts';
 
@@ -17,7 +19,8 @@ const TRANSCRIPT = '/claude/projects/p/session.jsonl';
 const DELAY_MS = 15_000;
 const CLAUDE: ProcessInfo = { pid: 4100, parentPid: 4000, name: 'claude.exe', commandLine: `claude --resume ${SESSION}` };
 const TAB_SHELL: ProcessInfo = { pid: 4000, parentPid: 1, name: 'powershell.exe', commandLine: `powershell -NoExit -Command claude --resume ${SESSION}` };
-const PLAN: RestartPlan = { id: 'alpha', at: AT, delayMs: DELAY_MS, endCommand: ['node', 'tracker.cjs', 'end'], fallbackCwd: '/project' };
+const ASK_DIR = '/kit/clear-asks';
+const PLAN: RestartPlan = { team: 'app', id: 'alpha', at: AT, delayMs: DELAY_MS, endCommand: ['node', 'tracker.cjs', 'end'], fallbackCwd: '/project' };
 
 /** What Claude Code writes once a turn has ended. */
 const TURN_END = JSON.stringify({ type: 'system', subtype: 'turn_duration' });
@@ -48,6 +51,7 @@ interface WorldOptions {
 class World {
   readonly files: MemoryFiles;
   readonly store: RefreshStore;
+  readonly asks: ClearAsks;
   readonly processes = new FakeSessionProcesses();
   readonly clock = new FakeClock(START);
   readonly deps: RestartDeps;
@@ -56,16 +60,20 @@ class World {
   opening: TabOpening = { kind: 'opened' };
   /** Writes a transcript line during every wait, as a session at work. */
   busy = false;
+  /** The ask the tab's mod claimed. */
+  claimed: ClearAsk | undefined;
   private readonly actions = new Map<number, () => Promise<void>>();
   private sleeps = 0;
 
   constructor(options: WorldOptions = {}) {
     this.files = new MemoryFiles({ [TRANSCRIPT]: options.transcript ?? `${JSON.stringify({ type: 'assistant' })}\n${TURN_END}\n` });
     this.store = new RefreshStore(this.files, PATHS);
+    this.asks = new ClearAsks(this.files, ASK_DIR);
     (options.running ?? [TAB_SHELL, CLAUDE]).forEach((info) => this.processes.add(info));
     this.deps = {
       store: this.store,
       files: this.files,
+      asks: this.asks,
       processes: this.processes,
       clock: this.clock,
       sleep: async (ms) => {
@@ -84,7 +92,20 @@ class World {
     };
   }
 
-  /** Runs `action` during the `n`th wait (1: the settle, 2: the first quiet window, ...). */
+  /** The tab's mod at work: claims the posted ask, as `hook clear-claim` does. */
+  async claimAsk(): Promise<void> {
+    this.claimed = await this.asks.ask(SESSION);
+    assert.ok(this.claimed, 'an ask is posted');
+    assert.equal(await this.asks.claim(SESSION), true);
+    await this.store.clearRestart('alpha');
+  }
+
+  /** The ask and its outcome are gone once the runner is done. */
+  asksClosed(): boolean {
+    return this.files.get(askFileOf(ASK_DIR, SESSION) ?? '') === undefined && this.files.get(outcomeFileOf(ASK_DIR, SESSION) ?? '') === undefined;
+  }
+
+  /** Runs `action` during the `n`th wait (1: the settle, 2: the first quiet window, 3 on: the waits for the tab's claim). */
   onSleep(n: number, action: () => Promise<void>): this {
     this.actions.set(n, action);
     return this;
@@ -127,7 +148,8 @@ describe('runRestart', () => {
     const world = await new World().arm();
     const result = await runRestart(world.deps, PLAN);
     assert.deepEqual(result, { kind: 'restarted', where: 'same tab', endCommand: { kind: 'done' } });
-    assert.equal(world.clock.now() - START, DELAY_MS);
+    assert.equal(world.clock.now() - START, DELAY_MS + CLAIM_WAIT_MS, 'the tab had the whole wait to claim the ask');
+    assert.ok(world.asksClosed());
     assert.deepEqual(world.processes.ends, [{ pid: CLAUDE.pid, how: 'ask' }]);
     assert.equal(world.processes.alive(TAB_SHELL.pid), true);
     assert.deepEqual(world.opened, []);
@@ -213,14 +235,14 @@ describe('runRestart', () => {
     const world = await new World().arm();
     world.onSleep(2, () => world.files.append(TRANSCRIPT, `${JSON.stringify({ type: 'assistant' })}\n${TURN_END}\n`));
     assert.equal((await runRestart(world.deps, PLAN)).kind, 'restarted');
-    assert.equal(world.clock.now() - START, 2 * DELAY_MS);
+    assert.equal(world.clock.now() - START, 2 * DELAY_MS + CLAIM_WAIT_MS);
   });
 
   it('waits while background work runs, even with the transcript quiet', async () => {
     const world = await new World({ transcript: `${[...BACKGROUND_START, TURN_END].join('\n')}\n` }).arm();
     world.onSleep(4, () => world.files.append(TRANSCRIPT, `${BACKGROUND_END}\n`));
     assert.equal((await runRestart(world.deps, PLAN)).kind, 'restarted');
-    assert.equal(world.clock.now() - START, 4 * DELAY_MS);
+    assert.equal(world.clock.now() - START, 4 * DELAY_MS + CLAIM_WAIT_MS);
   });
 
   it('waits while a turn runs, even with the transcript quiet, as during a long foreground command', async () => {
@@ -229,7 +251,7 @@ describe('runRestart', () => {
     const result = JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_long', content: 'done' }] } });
     world.onSleep(4, () => world.files.append(TRANSCRIPT, `${result}\n${JSON.stringify({ type: 'assistant' })}\n${TURN_END}\n`));
     assert.equal((await runRestart(world.deps, PLAN)).kind, 'restarted');
-    assert.equal(world.clock.now() - START, 4 * DELAY_MS);
+    assert.equal(world.clock.now() - START, 4 * DELAY_MS + CLAIM_WAIT_MS);
   });
 
   it('gives up after an hour of work, keeping the context', async () => {
@@ -287,6 +309,77 @@ describe('runRestart', () => {
     assert.equal((await runRestart(world.deps, PLAN)).kind, 'failed');
     assert.deepEqual(world.processes.ends, []);
     assert.equal(await world.store.restart('alpha'), undefined);
+  });
+});
+
+/** Asks whose claim lands between the runner's last look and its withdraw. */
+class ClaimedAtWithdraw extends ClearAsks {
+  override async withdraw(claudeSession: string): Promise<boolean> {
+    await this.claim(claudeSession);
+    return super.withdraw(claudeSession);
+  }
+}
+
+describe("runRestart through the tab's mod", () => {
+  it('leaves the session to its tab once the mod claims the ask: nothing is ended, opened or run', async () => {
+    const world = await new World().arm();
+    world.onSleep(3, () => world.claimAsk());
+    assert.deepEqual(await runRestart(world.deps, PLAN), { kind: 'cleared' });
+    assert.deepEqual(world.claimed, { team: 'app', id: 'alpha', at: AT, askedAt: new Date(START + DELAY_MS).toISOString() });
+    assert.deepEqual([world.processes.ends, world.opened, world.processes.fed], [[], [], []]);
+    assert.equal(await world.store.restart('alpha'), undefined);
+    assert.equal((await world.store.state('alpha'))?.phase, 'ready', "the SessionStart clear hook takes the refresh, not the runner");
+    assert.ok(world.asksClosed());
+  });
+
+  it('clears the request itself when the claim won but stopped before clearing it', async () => {
+    const world = await new World().arm();
+    world.onSleep(3, async () => {
+      await world.asks.claim(SESSION);
+    });
+    assert.deepEqual(await runRestart(world.deps, PLAN), { kind: 'cleared' });
+    assert.equal(await world.store.restart('alpha'), undefined);
+  });
+
+  it("counts a claim that lands just before its withdraw as the tab's", async () => {
+    const world = await new World().arm();
+    const asks = new ClaimedAtWithdraw(world.files, ASK_DIR);
+    assert.deepEqual(await runRestart({ ...world.deps, asks }, PLAN), { kind: 'cleared' });
+    assert.deepEqual(world.processes.ends, []);
+    assert.equal(await world.store.restart('alpha'), undefined);
+    assert.ok(world.asksClosed());
+  });
+
+  it('stops without acting when the user types while it waits for the claim', async () => {
+    const world = await new World().arm();
+    world.onSleep(5, () => world.store.clearRestart('alpha'));
+    assert.deepEqual(await runRestart(world.deps, PLAN), { kind: 'cancelled', why: 'the restart was cancelled or replaced' });
+    assert.deepEqual([world.processes.ends, world.opened], [[], []]);
+    assert.ok(world.clock.now() - START < DELAY_MS + CLAIM_WAIT_MS, 'it stopped at once');
+    assert.ok(world.asksClosed());
+  });
+
+  it('waits for quiet and asks again when a turn ran while it waited for the claim', async () => {
+    const command = JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_wake', name: 'Bash', input: {} }] } });
+    const result = JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_wake', content: 'done' }] } });
+    const world = await new World().arm();
+    // Waits 3-22 are for the first claim; 23 settles, 24 and 25 are quiet windows; 26 is for the second claim.
+    world.onSleep(3, () => world.files.append(TRANSCRIPT, `${command}
+`));
+    world.onSleep(24, () => world.files.append(TRANSCRIPT, `${result}
+${JSON.stringify({ type: 'assistant' })}
+${TURN_END}
+`));
+    world.onSleep(26, () => world.claimAsk());
+    assert.deepEqual(await runRestart(world.deps, PLAN), { kind: 'cleared' });
+    assert.equal(world.claimed?.askedAt, new Date(START + DELAY_MS + CLAIM_WAIT_MS + 2 * DELAY_MS).toISOString(), 'the second ask');
+    assert.deepEqual(world.processes.ends, []);
+  });
+
+  it('ends the session with no ask when its session id cannot name a file', async () => {
+    const world = await new World().arm({ claudeSession: '../escape' });
+    assert.equal((await runRestart(world.deps, PLAN)).kind, 'restarted');
+    assert.equal(world.clock.now() - START, DELAY_MS, 'no wait for a claim');
   });
 });
 
