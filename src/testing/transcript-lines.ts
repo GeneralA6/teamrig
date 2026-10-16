@@ -80,8 +80,13 @@ export function promptLine(at: string, text = 'go', sidechain = false): string {
   return JSON.stringify({ isSidechain: sidechain, type: 'user', message: { role: 'user', content: text }, timestamp: at });
 }
 
-/** A line the meter ignores: Claude Code's own note, here a compaction marker. */
+/** A line the meter ignores: Claude Code's own note, here a turn's duration. */
 export function systemLine(at: string): string {
+  return JSON.stringify({ type: 'system', subtype: 'turn_duration', durationMs: 1_000, timestamp: at });
+}
+
+/** Claude Code's marker where it compacted the session's context. */
+export function compactLine(at: string): string {
   return JSON.stringify({ type: 'system', subtype: 'compact_boundary', content: 'Conversation compacted', timestamp: at });
 }
 

@@ -1,10 +1,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ToolResult, ToolUse } from './line.ts';
+import { contextTokens, WEIGHTS, type Usage } from './weights.ts';
 import {
   emptyPatterns,
   INITIAL_PATTERN_STATE,
   kindOf,
+  BURN_FIELDS,
   parsePatternCounts,
   parsePatternState,
   PatternTracker,
@@ -89,9 +91,15 @@ function result(id: string, text: string, isError = false): ToolResult {
   return { id, isError, text };
 }
 
-/** One call: it starts, its results arrive, and it is closed with a fixed W. */
+/** A call that reads its whole context from the cache. */
+function warm(context: number): Usage {
+  return { input: 0, cacheWrite5m: 0, cacheWrite1h: 0, cacheWriteUnsplit: 0, cacheRead: context, output: 0 };
+}
+
+/** One call: it starts and is charged a fixed W, its results arrive, and it is closed. */
 function call(tracker: PatternTracker, count: Count, context: number, tools: readonly ToolUse[], results: readonly ToolResult[] = []): void {
-  tracker.callStarted(context, tools, count);
+  tracker.callStarted(warm(context), tools, count);
+  tracker.charged(10, count);
   tracker.results(results, count);
   tracker.callClosed(context, 10, count);
 }
@@ -107,12 +115,12 @@ describe('PatternTracker', () => {
   it('counts a lookup that follows a lookup in the same turn, never across turns', () => {
     const { count, counts } = recorder();
     const tracker = new PatternTracker(INITIAL_PATTERN_STATE);
-    tracker.prompt();
+    tracker.prompt('owner', count);
     call(tracker, count, 1_000, [tool('a', 'Read')]);
     call(tracker, count, 1_000, [bash('b', 'git status')]);
     call(tracker, count, 1_000, [tool('c', 'Grep'), tool('d', 'Read')]);
     call(tracker, count, 1_000, [tool('e', 'Read')]);
-    tracker.prompt();
+    tracker.prompt('owner', count);
     call(tracker, count, 1_000, [tool('f', 'Read')]);
     assert.equal(counts.readChain, 1);
     assert.equal(counts.readChainW, 10);
@@ -161,7 +169,7 @@ describe('PatternTracker', () => {
     call(tracker, count, 1_000, [bash('a', 'npm test')], [result('a', FAIL)]);
     call(tracker, count, 1_000, [tool('b', 'Edit')]);
     call(tracker, count, 1_000, [bash('c', 'npm test')], [result('c', FAIL)]);
-    tracker.prompt();
+    tracker.prompt('owner', count);
     call(tracker, count, 1_000, [bash('d', 'npm test')], [result('d', PASS)]);
     assert.equal(counts.rerunFailedFull + counts.rerunFailedPiped + counts.rerunAfterPass, 0);
   });
@@ -186,7 +194,7 @@ describe('PatternTracker', () => {
   it('settles a result that arrives after its call closed, and ignores results of other tools', () => {
     const { count, counts } = recorder();
     const tracker = new PatternTracker(INITIAL_PATTERN_STATE);
-    tracker.callStarted(1_000, [bash('a', 'npm test'), tool('b', 'Read')], count);
+    tracker.callStarted(warm(1_000), [bash('a', 'npm test'), tool('b', 'Read')], count);
     tracker.callJoined([tool('c', 'Grep')]);
     tracker.callClosed(1_000, 10, count);
     tracker.results([result('b', 'text'), result('a', FAIL)], count);
@@ -196,11 +204,39 @@ describe('PatternTracker', () => {
     assert.equal(counts.passRuns, 0);
   });
 
+  it('counts each turn and its W under what started it, a resumed turn under the turn it compacted', () => {
+    const { count, counts } = recorder();
+    const tracker = new PatternTracker(INITIAL_PATTERN_STATE);
+    tracker.prompt('owner', count);
+    call(tracker, count, 1_000, [tool('a', 'Read')]);
+    tracker.prompt('continuation', count);
+    call(tracker, count, 1_000, [tool('b', 'Read')]);
+    tracker.prompt('peer', count);
+    call(tracker, count, 1_000, [tool('c', 'Read')]);
+    call(tracker, count, 1_000, [tool('d', 'Edit')]);
+    tracker.prompt('notification', count);
+    const seen = [counts.ownerTurns, counts.ownerW, counts.peerTurns, counts.peerW, counts.notificationTurns, counts.notificationW];
+    assert.deepEqual(seen, [1, 20, 1, 20, 1, 0]);
+  });
+
+  it('counts a call that re-wrote most of its context to the cache as cold, with the W of those writes', () => {
+    const { count, counts } = recorder();
+    const tracker = new PatternTracker(INITIAL_PATTERN_STATE);
+    tracker.prompt('owner', count);
+    const usage = (written: number, read: number): Usage => ({ ...warm(read), cacheWrite1h: written });
+    for (const [index, each] of [usage(30_000, 10_000), usage(5_000, 1_000), usage(25_000, 75_000)].entries()) {
+      tracker.callStarted(each, [tool(`t${index}`, 'Read')], count);
+      tracker.callClosed(contextTokens(each), 10, count);
+    }
+    assert.equal(counts.coldCalls, 1);
+    near(counts.coldW, 30_000 * WEIGHTS.cacheWrite1h);
+  });
+
   it('resumes from a stored state exactly where it stopped', () => {
     const { count, counts } = recorder();
     const first = new PatternTracker(INITIAL_PATTERN_STATE);
-    first.prompt();
-    first.callStarted(1_000, [tool('a', 'Edit')], count);
+    first.prompt('owner', count);
+    first.callStarted(warm(1_000), [tool('a', 'Edit')], count);
     const stored = parsePatternState(JSON.parse(JSON.stringify(first.state())));
     assert.deepEqual(stored, first.state());
     const resumed = new PatternTracker(stored ?? INITIAL_PATTERN_STATE);
@@ -211,7 +247,8 @@ describe('PatternTracker', () => {
 });
 
 describe('parsePatternState', () => {
-  const valid = {
+  /** A state as 0.33.0 stored it, before the turn's trigger. */
+  const before034 = {
     turn: 2,
     prev: { turn: 2, single: 'edit' },
     open: [{ id: 'a', kind: 'testFull', piped: false, failed: null }],
@@ -219,6 +256,7 @@ describe('parsePatternState', () => {
     rentTokens: 12.5,
     lastContext: 900,
   };
+  const valid = { ...before034, trigger: 'peer' };
 
   it('reads a stored state, empty parts included', () => {
     assert.deepEqual(parsePatternState(valid), valid);
@@ -229,6 +267,7 @@ describe('parsePatternState', () => {
       turnTest: null,
     });
     assert.deepEqual(parsePatternState(INITIAL_PATTERN_STATE), INITIAL_PATTERN_STATE);
+    assert.deepEqual(parsePatternState(before034), { ...before034, trigger: 'other' });
   });
 
   it('refuses a state with any damaged part', () => {
@@ -237,6 +276,7 @@ describe('parsePatternState', () => {
       { ...valid, turn: -1 },
       { ...valid, rentTokens: Number.NaN },
       { ...valid, lastContext: 'big' },
+      { ...valid, trigger: 'boss' },
       { ...valid, prev: 'x' },
       { ...valid, prev: { turn: 1.5, single: null } },
       { ...valid, prev: { turn: 1, single: 'fly' } },
@@ -259,6 +299,11 @@ describe('parsePatternCounts and emptyPatterns', () => {
     assert.deepEqual(parsePatternCounts(counts), counts);
     assert.equal(parsePatternCounts('counts'), undefined);
     assert.equal(parsePatternCounts({ ...counts, editChain: -1 }), undefined);
+    assert.equal(parsePatternCounts({ ...counts, coldW: -1 }), undefined);
+    const isBurn = (field: string): boolean => BURN_FIELDS.some((each) => each === field);
+    const before034 = Object.fromEntries(Object.entries(counts).filter(([field]) => !isBurn(field)));
+    assert.deepEqual(parsePatternCounts(before034), { ...counts, ...Object.fromEntries(BURN_FIELDS.map((field) => [field, 0])) });
+    assert.equal(parsePatternCounts(Object.fromEntries(Object.entries(counts).filter(([field]) => field !== 'readChain'))), undefined);
     const { readChain, ...missing } = counts;
     assert.equal(readChain, 3);
     assert.equal(parsePatternCounts(missing), undefined);
