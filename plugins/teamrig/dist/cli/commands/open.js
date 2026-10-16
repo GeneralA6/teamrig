@@ -1,14 +1,15 @@
-import { dirname, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { describeLaunch, launchOf } from "../../config/launch.js";
 import { isTerminalChoice, TERMINALS } from "../../config/types.js";
 import { splitAddress } from "../../core/address.js";
-import { ENV } from "../../core/home.js";
+import { ENV, KIT_NAME } from "../../core/home.js";
 import { ID_PATTERN, ID_RULE } from "../../core/ids.js";
-import { ENV_SOURCE } from "../../core/team.js";
+import { HiringLog, rehiredFrom } from "../../hiring/log.js";
+import { CLAUDE_SESSION_ID } from "../../inbox/marks.js";
 import { findClaude } from "../../open/claude.js";
 import { launchFlags } from "../../open/launch-flags.js";
 import { openTab } from "../../open/open-tab.js";
-import { decodePrompt, defaultPrompt, encodePrompt, promptProblem, refreshPrompt } from "../../open/prompt.js";
+import { decodePrompt, defaultPrompt, encodePrompt, promptProblem, refreshPrompt, rehirePrompt, resumePrompt } from "../../open/prompt.js";
 import { shellCommand } from "../../open/quote.js";
 import { sessionEnv } from "../../open/session-env.js";
 import { RefreshStore } from "../../refresh/store.js";
@@ -16,7 +17,8 @@ import { onePositional, requiredFlag, UsageError } from "../args.js";
 import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { loadTree } from "../tree.js";
-import { projectOf } from "./setup.js";
+import { freshOpenOf, resumeVerdictOf } from "./rehire.js";
+import { teamProjectOf } from "./setup.js";
 /** The terminal names a person reads, for the OPENED line. */
 const TERMINAL_LABELS = {
     tmux: 'tmux window',
@@ -41,10 +43,6 @@ function checkedPrompt(prompt) {
         throw new UsageError(`--prompt: ${problem}`);
     }
     return prompt;
-}
-/** The folder a session opens in: `--project`, else the folder holding the team's pointer. */
-function projectFlagOf(flag, from) {
-    return flag ?? (from === ENV_SOURCE ? undefined : dirname(from));
 }
 /**
  * The team a session to open is on: the project's own team, or, for `<team>/<id>`, another team of
@@ -76,16 +74,19 @@ export async function openSessionTab(runtime, tab) {
         '--project',
         tab.project,
         ...(customHome === undefined || customHome === '' ? [] : ['--home', resolve(runtime.cwd, customHome)]),
+        ...(tab.resume === undefined ? [] : ['--resume', tab.resume]),
         '--encoded-prompt',
         encodePrompt(tab.prompt),
     ];
     return { outcome: await openTab(runtime, tab.terminal, { title: tab.name, folder: tab.project, argv }), argv };
 }
 /**
- * `open <id|name> [--prompt <text>] [--terminal <name>] [--project <dir>]`: a new terminal tab in the
- * project folder that runs `launch`, so Claude Code starts there as the session. The command runs by
- * absolute paths, since the plugin's bin folder is on PATH only inside Claude Code. When no terminal
- * opens it prints the command to run instead and exits 3.
+ * `open <id|name> [--prompt <text>] [--terminal <name>] [--project <dir>] [--resume]`: a new terminal tab in
+ * the project folder (by default the one holding the team's pointer) that runs `launch`, so Claude Code starts
+ * there as the session. The command runs by absolute paths, since the plugin's bin folder is on PATH only inside
+ * Claude Code. When no terminal opens it prints the command to run instead and exits 3. A rehired session opens
+ * on the handover its retire left, or, with --resume, in its last Claude Code session when that is small and
+ * recent enough (`hiring.resumeMaxTokens`, `hiring.resumeMaxIdleDays`).
  */
 export async function open(args, runtime) {
     const target = onePositional(args, 'id|name');
@@ -97,18 +98,39 @@ export async function open(args, runtime) {
     const roster = await rosterOf(runtime, kit, config);
     const id = sessionIdOf(roster, address?.session ?? target);
     const terminal = terminalOf(args.flags.get('terminal'), config.open.terminal);
-    const prompt = checkedPrompt(args.flags.get('prompt') ?? defaultPrompt(team, id));
-    const project = await projectOf(runtime, projectFlagOf(args.flags.get('project'), found.from));
+    const project = await teamProjectOf(runtime, args.flags.get('project'), found.from);
+    const from = rehiredFrom((await new HiringLog(runtime.files, kit.paths.hires).read()).records, id);
+    const resume = args.switches.has('resume') ? await resumeOf(runtime, kit.paths, config, id, project, from) : undefined;
+    const prompt = checkedPrompt(args.flags.get('prompt') ?? firstPromptOf(team, id, from, resume));
     const name = roster.nameOf(id) ?? id;
-    const { outcome, argv } = await openSessionTab(runtime, { team, id, name, project, prompt, terminal });
+    const { outcome, argv } = await openSessionTab(runtime, { team, id, name, project, prompt, terminal, ...(resume === undefined ? {} : { resume }) });
     if (outcome.kind === 'opened') {
-        runtime.out.stdout(`OPENED ${name} (session ${id}) in a new ${TERMINAL_LABELS[outcome.terminal]} in ${project}, on ${describeLaunch(launchOf(config, id))}`);
+        const resumed = resume === undefined ? '' : `, resuming Claude Code session ${resume}`;
+        runtime.out.stdout(`OPENED ${name} (session ${id}) in a new ${TERMINAL_LABELS[outcome.terminal]} in ${project}, on ${describeLaunch(launchOf(config, id))}${resumed}`);
         return EXIT.ok;
     }
     const shell = runtime.platform === 'win32' ? ' in PowerShell' : '';
     runtime.out.stdout(`MANUAL no terminal opened (${outcome.reasons.join('; ')}); open a new terminal and run this${shell}:`);
     runtime.out.stdout(shellCommand(runtime.platform, project, argv));
     return EXIT.printed;
+}
+/** The Claude Code session `open --resume` resumes: only a rehired session's, and only one small and recent enough. */
+async function resumeOf(runtime, paths, config, id, project, from) {
+    if (from === undefined) {
+        throw new RefusedError(`${id} was not hired back after a retire: --resume resumes only a rehired session's last Claude Code session`);
+    }
+    const verdict = await resumeVerdictOf(runtime, paths, config.hiring, id, project);
+    if (verdict.kind === 'fresh') {
+        throw new RefusedError(`not resumed: ${verdict.detail}; ${freshOpenOf(from)}: ${KIT_NAME} open ${id}`);
+    }
+    return verdict.claudeSession;
+}
+/** The first prompt unless --prompt gives one: a rehired session's handover first, a resumed one's moved tasks. */
+function firstPromptOf(team, id, from, resume) {
+    if (resume !== undefined) {
+        return resumePrompt(team, id);
+    }
+    return from?.handover === undefined ? defaultPrompt(team, id) : rehirePrompt(team, id, from.handover);
 }
 export function idFlag(flag, value) {
     if (!ID_PATTERN.test(value)) {
@@ -125,6 +147,13 @@ function launchPrompt(encoded, team, id) {
         throw new UsageError('--encoded-prompt is not a prompt that teamrig open wrote');
     }
     return checkedPrompt(prompt);
+}
+/** The Claude Code session id `launch --resume` names, checked so nothing but an id reaches Claude Code. */
+function resumeFlag(value) {
+    if (value !== undefined && !CLAUDE_SESSION_ID.test(value)) {
+        throw new UsageError(`--resume "${value}" is not a Claude Code session id`);
+    }
+    return value;
 }
 /** Whether the automatic restart ended this session's Claude Code for launch to start again; takes its request if so. */
 async function restartTaken(store, id) {
@@ -153,12 +182,13 @@ function claudeExit(runtime, command, result) {
     }
 }
 /**
- * `launch <id> --team <team> --project <dir> [--home <dir>] [--encoded-prompt <text>]`: what a tab
- * that `open` started runs. It sets the session's variables and starts Claude Code under the
+ * `launch <id> --team <team> --project <dir> [--home <dir>] [--encoded-prompt <text>] [--resume <session>]`:
+ * what a tab that `open` started runs. It sets the session's variables and starts Claude Code under the
  * session's name, on its model and effort from the team config's `launch`, with its first prompt,
  * its input and output on this terminal. `$TEAMRIG_LAUNCHED` tells the Stop hook that launch runs it:
  * when the automatic context refresh ended Claude Code for a fresh start, launch starts it again in
- * this tab with the default prompt, and the new session reads its handover first.
+ * this tab with the default prompt, and the new session reads its handover first. `--resume` resumes that
+ * Claude Code session on the first start only: a restart is always fresh.
  */
 export async function launch(args, runtime) {
     const id = idFlag('session', onePositional(args, 'id'));
@@ -168,6 +198,7 @@ export async function launch(args, runtime) {
         throw new RefusedError(`the project folder ${project} does not exist`);
     }
     const prompt = launchPrompt(args.flags.get('encoded-prompt'), team, id);
+    const resume = resumeFlag(args.flags.get('resume'));
     const env = { ...sessionEnv(runtime.env, { id, team, home: args.flags.get('home') }), [ENV.launched]: id };
     const sessionRuntime = { ...runtime, env };
     const kit = await openKit(sessionRuntime, team);
@@ -183,16 +214,20 @@ export async function launch(args, runtime) {
     }
     const name = roster.nameOf(id) ?? id;
     const settings = launchOf(config, id);
-    runtime.out.stdout(`Starting Claude Code as ${name} (session ${id} of team ${team}) in ${project}, on ${describeLaunch(settings)}`);
+    const resumed = resume === undefined ? '' : `, resuming Claude Code session ${resume}`;
+    runtime.out.stdout(`Starting Claude Code as ${name} (session ${id} of team ${team}) in ${project}, on ${describeLaunch(settings)}${resumed}`);
     const { command, prefix } = claude.program;
     const store = new RefreshStore(runtime.files, kit.paths);
     let first = prompt;
+    let resuming = resume;
     for (;;) {
-        const result = await runtime.processes.run({ command, args: [...prefix, ...launchFlags(settings), '--name', name, first], cwd: project, env });
+        const resumeArgs = resuming === undefined ? [] : ['--resume', resuming];
+        const result = await runtime.processes.run({ command, args: [...prefix, ...launchFlags(settings), ...resumeArgs, '--name', name, first], cwd: project, env });
         if (!(await restartTaken(store, id))) {
             return claudeExit(runtime, command, result);
         }
         runtime.out.stdout(`Starting Claude Code again as ${name} with a fresh context: it reads its handover first`);
         first = refreshPrompt(team, id, store.handoverPath(id));
+        resuming = undefined;
     }
 }

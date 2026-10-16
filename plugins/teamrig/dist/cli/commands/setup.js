@@ -1,6 +1,7 @@
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { SHIPPED_CONFIG_FORMAT } from "../../config/migrate.js";
 import { ENV, KIT_NAME, resolveKitHome, teamPaths } from "../../core/home.js";
+import { ENV_SOURCE } from "../../core/team.js";
 import { describeRequirement } from "../../requirements/requirements.js";
 import { applyTeamSetup, planTeamSetup, teamSpecOf } from "../../setup/team-create.js";
 import { onePositional, requiredFlag, UsageError } from "../args.js";
@@ -16,6 +17,10 @@ export async function projectOf(runtime, flag) {
         throw new RefusedError(`the project folder ${project} does not exist`);
     }
     return project;
+}
+/** The folder a team's session works in: `--project`, else the folder holding the team's pointer, else as {@link projectOf}. */
+export function teamProjectOf(runtime, flag, from) {
+    return projectOf(runtime, flag ?? (from === ENV_SOURCE ? undefined : dirname(from)));
 }
 /** One line per file: what the run wrote, or would write, and what it left as it was. */
 function stepLines(step, dryRun) {

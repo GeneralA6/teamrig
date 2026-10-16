@@ -43,6 +43,15 @@ export function readMarks(text) {
     }
     return { marks, unreadable, newer };
 }
+/**
+ * The Claude Code session that last read `area`'s inbox and is still bound to it (its own newest mark names
+ * `area`); undefined when none is on record.
+ */
+export function lastClaudeSessionOf(marks, area) {
+    const bound = indexMarks(marks).areaBySession;
+    const mark = [...marks].reverse().find((found) => found.area === area && found.claudeSession !== null && bound.get(found.claudeSession) === area);
+    return mark?.claudeSession ?? undefined;
+}
 /** The newest mark wins, both for an area's read position and for a session's area. */
 export function indexMarks(marks) {
     const byArea = new Map();

@@ -101,9 +101,10 @@ export const DEFAULT_REFRESH = {
 export const DEFAULT_OPEN = { terminal: 'auto' };
 /**
  * A hire spends the week's budget, so it waits for the owner's yes: at most two hires at 1% of the week a day
- * each, 3% in all, reviewed after a week and due to retire after 4 hours with no open task.
+ * each, 3% in all, reviewed after a week and due to retire after 4 hours with no open task. A rehire resumes its
+ * last Claude Code session only when it holds at most 250k tokens of context and was idle at most a week.
  */
-export const DEFAULT_HIRING = { policy: 'owner', maxSessions: 2, dailyPct: 1, maxDailyPct: 3, idleHours: 4, reviewDays: 7 };
+export const DEFAULT_HIRING = { policy: 'owner', maxSessions: 2, dailyPct: 1, maxDailyPct: 3, idleHours: 4, reviewDays: 7, resumeMaxTokens: 250_000, resumeMaxIdleDays: 7 };
 /**
  * The lead's model and effort for each key its `launch` entry leaves unset: Opus (Claude Code's `opus`
  * alias, its newest Opus) at xhigh effort, since the lead plans, splits and judges the whole team's work.
