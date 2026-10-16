@@ -2,11 +2,15 @@ import { describeLaunch } from "../../config/launch.js";
 import { writeConfigWithBackup } from "../../config/load.js";
 import { describeNameClash, teamNodeOf } from "../../config/tree.js";
 import { EFFORT_LEVELS, isEffortLevel } from "../../config/types.js";
+import { activeBurst } from "../../budget/burst.js";
+import { formatWeekdayMinute } from "../../budget/format.js";
 import { KIT_NAME } from "../../core/home.js";
 import { FileLock } from "../../core/lock.js";
+import { burstHireOf } from "../../hiring/burst-hire.js";
 import { activeHires, HiringLog, retiredSessions } from "../../hiring/log.js";
 import { planHire } from "../../hiring/plan.js";
 import { onePositional, requiredFlag, UsageError } from "../args.js";
+import { readBursts } from "../burst-reading.js";
 import { callerOf } from "../inputs.js";
 import { checkedNextConfig, configFileJson, findTeam, openKit, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
@@ -19,7 +23,8 @@ import { teamProjectOf } from "./setup.js";
  * --yes it only shows the hire; with it, the old config is kept in the backups folder, the hire is
  * logged in the hire log, then the session, its launch and its daily budget are written to the config.
  * A retired id is hired back: it shows the retire and its handover, and whether its last Claude Code session
- * can be resumed (`open --resume`) or it opens fresh on that handover.
+ * can be resumed (`open --resume`) or it opens fresh on that handover. With --burst it is a hire for the burst in
+ * force, within the burst's hires and on the lead's model and effort (src/hiring/burst-hire.ts).
  */
 /** The backup name of a config before `hire` changed it. */
 export const HIRE_BACKUP_NAME = 'config.hire';
@@ -53,6 +58,15 @@ function requestOf(args, runtime, by) {
         now: runtime.clock.now(),
     };
 }
+/** The request tied to the burst in force, for `hire --burst`; refused when the burst takes no such hire. */
+async function burstRequestOf(runtime, kit, config, request, active) {
+    const { records, usedPct } = await readBursts(runtime, kit.paths, config.budget, request.now);
+    const checked = burstHireOf(request, activeBurst(records, request.now, usedPct), active, config);
+    if (!checked.ok) {
+        throw new RefusedError(checked.problem);
+    }
+    return checked.value;
+}
 /** Refuses a name another team's session already has: Claude Code session names are machine-wide. */
 async function refuseNameClash(runtime, team, id, next, roster) {
     const { tree } = await loadTree(runtime);
@@ -81,7 +95,7 @@ function openStepOf(id, rehire) {
     }
     return `then ${freshOpenOf(rehire.from)}: ${fresh}`;
 }
-/** `hire <id> --scope "<its job>" --reason "<why>" [--name] [--model] [--effort] [--daily-pct] [--review] [--approved-by] [--yes]`. */
+/** `hire <id> --scope "<its job>" --reason "<why>" [--name] [--model] [--effort] [--daily-pct] [--review] [--approved-by] [--burst] [--yes]`. */
 export async function hire(args, runtime) {
     const caller = callerOf(args.flags, runtime.env);
     const found = await findTeam(runtime);
@@ -93,14 +107,16 @@ export async function hire(args, runtime) {
     if (by !== lead) {
         throw new RefusedError(`only the lead${lead === undefined ? '' : ` (${roster.nameOf(lead) ?? lead})`} hires sessions`);
     }
-    const request = requestOf(args, runtime, by);
+    const asked = requestOf(args, runtime, by);
     const { files, clock, sleep, pid } = runtime;
     const { load } = kit;
     const log = new HiringLog(files, kit.paths.hires);
     const mutex = new FileLock(kit.paths.hiresLock, config.lock, { files, clock, sleep, pid });
     return mutex.run(async () => {
         const { records, skipped } = await log.read();
-        const plan = planHire(await configFileJson(runtime, load.path), config, activeHires(records), request);
+        const active = activeHires(records);
+        const request = args.switches.has('burst') ? await burstRequestOf(runtime, kit, config, asked, active) : asked;
+        const plan = planHire(await configFileJson(runtime, load.path), config, active, request);
         if (!plan.ok) {
             throw new RefusedError(plan.problem);
         }
@@ -108,7 +124,7 @@ export async function hire(args, runtime) {
         const nextRoster = await rosterOf(runtime, kit, next);
         await refuseNameClash(runtime, kit.paths.team, request.id, next, nextRoster);
         const { hire: record, hired, hiredDailyPct } = plan.value;
-        const what = `${record.session} (name ${nextRoster.nameOf(record.session) ?? record.session}) for "${record.scope}": ${describeLaunch(record)}, ${record.dailyPct}% of the week a day, review by ${record.reviewBy}`;
+        const what = `${record.session} (name ${nextRoster.nameOf(record.session) ?? record.session}) for "${record.scope}": ${describeLaunch(record)}, ${record.dailyPct}% of the week a day, review by ${record.reviewBy}${record.burst === undefined ? '' : `, for the burst started ${formatWeekdayMinute(record.burst)}`}`;
         const caps = `  hired sessions with it: ${hired} of ${config.hiring.maxSessions}, ${hiredDailyPct}% of ${config.hiring.maxDailyPct}% of the week a day`;
         const from = retiredSessions(records).find((record) => record.session === request.id);
         // Measured before anything is written, so the preview shows it too.

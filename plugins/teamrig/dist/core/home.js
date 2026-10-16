@@ -84,6 +84,7 @@ export function teamPaths(kitHome, team, userHome, overrides = {}) {
         modelNotices: join(state, 'model-notices'),
         usage: join(state, 'usage'),
         lifts: join(state, 'usage', 'lifts.jsonl'),
+        bursts: join(state, 'usage', 'bursts.jsonl'),
         hires: join(state, 'hires.jsonl'),
         hiresLock: join(state, 'hires.lock'),
         retireAsks: join(state, 'retire-asks'),

@@ -111,6 +111,12 @@ export const DEFAULT_OPEN = { terminal: 'auto' };
  * each, 3% in all, reviewed after a week and due to retire after 4 hours with no open task. A rehire resumes its
  * last Claude Code session only when it holds at most 250k tokens of context and was idle at most a week.
  */
+/**
+ * A burst spends more of the week, so the owner approves each one. A surplus burst may start from 48 hours before
+ * the reset once at least 5% of the week is projected unused; each burst session runs at most 3 helpers at once,
+ * and one burst hires at most 2 sessions, as many as `hiring.maxSessions` allows by default.
+ */
+export const DEFAULT_BURST = { policy: 'owner', surplusHours: 48, minSparePct: 5, maxHelpers: 3, maxHires: 2 };
 export const DEFAULT_HIRING = { policy: 'owner', maxSessions: 2, dailyPct: 1, maxDailyPct: 3, idleHours: 4, reviewDays: 7, resumeMaxTokens: 250_000, resumeMaxIdleDays: 7 };
 /**
  * The lead's model and effort for each key its `launch` entry leaves unset: Opus (Claude Code's `opus`

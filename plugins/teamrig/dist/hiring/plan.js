@@ -107,6 +107,7 @@ export function planHire(file, config, active, request) {
         ...launch,
         dailyPct,
         reviewBy: reviewBy.value,
+        ...(request.burst === undefined ? {} : { burst: request.burst }),
         by: request.by,
         at: request.now,
     };

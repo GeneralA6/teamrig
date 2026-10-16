@@ -27,11 +27,29 @@ export function parseWarnState(text) {
     const ahead = record['ahead'];
     const leadTold = record['leadTold'];
     const quietFrom = optionalTime(record, 'quietFrom');
-    const liftAt = optionalTime(record, 'liftAt');
-    if (day === undefined || level === undefined || modelLevel === undefined || typeof ahead !== 'boolean' || typeof leadTold !== 'boolean' || !quietFrom.ok || !liftAt.ok) {
+    const marks = [optionalTime(record, 'liftAt'), optionalTime(record, 'burstAt'), optionalTime(record, 'modelBurstAt'), optionalTime(record, 'surplusShown')];
+    const [liftAt, burstAt, modelBurstAt, surplusShown] = marks;
+    if (day === undefined ||
+        level === undefined ||
+        modelLevel === undefined ||
+        typeof ahead !== 'boolean' ||
+        typeof leadTold !== 'boolean' ||
+        !quietFrom.ok ||
+        marks.some((mark) => !mark.ok)) {
         return undefined;
     }
-    return { day, level, modelLevel, ahead, leadTold, quietFrom: quietFrom.value, liftAt: liftAt.value };
+    return {
+        day,
+        level,
+        modelLevel,
+        ahead,
+        leadTold,
+        quietFrom: quietFrom.value,
+        liftAt: liftAt.value,
+        burstAt: burstAt.value,
+        modelBurstAt: modelBurstAt.value,
+        surplusShown: surplusShown.value,
+    };
 }
 export function formatWarnState(state) {
     return toJsonlLine({
@@ -43,6 +61,9 @@ export function formatWarnState(state) {
         leadTold: state.leadTold,
         ...(state.quietFrom === undefined ? {} : { quietFrom: state.quietFrom }),
         ...(state.liftAt === undefined ? {} : { liftAt: state.liftAt }),
+        ...(state.burstAt === undefined ? {} : { burstAt: state.burstAt }),
+        ...(state.modelBurstAt === undefined ? {} : { modelBurstAt: state.modelBurstAt }),
+        ...(state.surplusShown === undefined ? {} : { surplusShown: state.surplusShown }),
     });
 }
 /**

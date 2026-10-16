@@ -2,11 +2,11 @@ import { isRecord } from "../core/guards.js";
 import { NAME_PATTERN, NAME_RULE } from "../core/ids.js";
 import { isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, SESSION_NAME, TASK_STATUSES } from "../register/model.js";
 import { CORE_RULE_KEYS, isCoreRuleKey } from "../rules/keys.js";
-import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_COMMITS, DEFAULT_CONTEXT_FILES, DEFAULT_GITHUB, DEFAULT_HIRING, DEFAULT_LOCK, DEFAULT_LEAD_BOUNDARY, DEFAULT_LOOPS, DEFAULT_MESSAGES, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_PUSH_GUARD, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, DEFAULT_TESTS, DEFAULT_WAKE, } from "./defaults.js";
+import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT_CONTEXT_FILES, DEFAULT_GITHUB, DEFAULT_HIRING, DEFAULT_LOCK, DEFAULT_LEAD_BOUNDARY, DEFAULT_LOOPS, DEFAULT_MESSAGES, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_PUSH_GUARD, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, DEFAULT_TESTS, DEFAULT_WAKE, } from "./defaults.js";
 import { isEffort, isModel } from "./launch.js";
 import { CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from "./limits.js";
 import { ConfigReader, describe, isValidRegex, shortLine } from "./reader.js";
-import { CONFLICT_WINNERS, ESCALATIONS, HIRING_POLICIES, isCommitGate, isConflictWinner, isEffortLevel, isEscalation, isHiringPolicy, isOverAction, isPushToProtected, isTerminalChoice, isVerifyGate, isWeekday, OVER_ACTIONS, PUSH_TO_PROTECTED, TERMINALS, VERIFY_GATES, WEEKDAYS, } from "./types.js";
+import { BURST_POLICIES, CONFLICT_WINNERS, ESCALATIONS, HIRING_POLICIES, isBurstPolicy, isCommitGate, isConflictWinner, isEffortLevel, isEscalation, isHiringPolicy, isOverAction, isPushToProtected, isTerminalChoice, isVerifyGate, isWeekday, OVER_ACTIONS, PUSH_TO_PROTECTED, TERMINALS, VERIFY_GATES, WEEKDAYS, } from "./types.js";
 const isSessionName = (name) => SESSION_NAME.test(name) ? undefined : 'expected a lowercase name: a letter, then letters, digits or -, at most 32';
 const isUtcTime = (time) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(time) ? undefined : 'expected a UTC time as HH:MM');
 /** A repository as GitHub names it: an owner login, a slash, then letters, digits, `.`, `_` or `-`. */
@@ -167,6 +167,7 @@ export function parseConfig(raw) {
         tabStatus: { enabled: read.boolean(tabStatus, 'enabled', 'tabStatus', false) },
         refresh: parseRefresh(read, read.section(raw, 'refresh', '')),
         hiring: parseHiring(read, read.section(raw, 'hiring', '')),
+        burst: parseBurst(read, read.section(raw, 'burst', '')),
         open: parseOpen(read, read.section(raw, 'open', '')),
         launch,
         paths: parsePaths(read, read.section(raw, 'paths', '')),
@@ -546,6 +547,19 @@ function parseHiring(read, raw) {
         reviewDays: read.integer(raw, 'reviewDays', path, defaults.reviewDays, CONFIG_LIMITS.hiringReviewDays),
         resumeMaxTokens: read.integer(raw, 'resumeMaxTokens', path, defaults.resumeMaxTokens, CONFIG_LIMITS.hiringResumeMaxTokens),
         resumeMaxIdleDays: read.integer(raw, 'resumeMaxIdleDays', path, defaults.resumeMaxIdleDays, CONFIG_LIMITS.hiringResumeMaxIdleDays),
+    };
+}
+/** `burst`: who starts one, its surplus trigger and its caps. */
+function parseBurst(read, raw) {
+    const path = 'burst';
+    const defaults = DEFAULT_BURST;
+    const policy = read.string(raw, 'policy', path, defaults.policy, oneOf(BURST_POLICIES));
+    return {
+        policy: isBurstPolicy(policy) ? policy : defaults.policy,
+        surplusHours: read.integer(raw, 'surplusHours', path, defaults.surplusHours, CONFIG_LIMITS.burstSurplusHours),
+        minSparePct: read.number(raw, 'minSparePct', path, defaults.minSparePct, CONFIG_LIMITS.burstMinSparePct),
+        maxHelpers: read.integer(raw, 'maxHelpers', path, defaults.maxHelpers, CONFIG_LIMITS.burstMaxHelpers),
+        maxHires: read.integer(raw, 'maxHires', path, defaults.maxHires, CONFIG_LIMITS.burstMaxHires),
     };
 }
 function parsePaths(read, raw) {

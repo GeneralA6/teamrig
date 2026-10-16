@@ -3,6 +3,8 @@ import { errorMessage } from "../../core/guards.js";
 import { resolveKitHome } from "../../core/home.js";
 import { resolveTeam } from "../../core/team.js";
 import { formatUtcDay, MS_PER_DAY, parseUtcDay, parseUtcDeadline } from "../../core/time.js";
+import { activeBurst, withBurst } from "../../budget/burst.js";
+import { BurstLog } from "../../budget/burst-log.js";
 import { claudeProjectsDir } from "../../budget/discover.js";
 import { activeLift, decideLift, LiftLog, liftText } from "../../budget/lift.js";
 import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID } from "../../budget/measure.js";
@@ -71,20 +73,27 @@ async function readBudget(runtime, kit, config, roster, options) {
     const snapshots = recount ? [] : await readSnapshots(files, snapshotDirOf(config.budget, kit.paths));
     const week = readWeek({ budget: config.budget, now, statusUse: weekUseOf(snapshots, now), states: [...measured.bySession.values(), measured.outside] });
     const lifts = recount ? [] : (await new LiftLog(files, kit.paths.lifts).read()).lifts;
-    return { now, measured, week, lifts };
+    const bursts = recount ? [] : (await new BurstLog(files, kit.paths.bursts).read()).records;
+    return { now, measured, week, lifts, bursts };
+}
+/** The week now, measured up to now as `budget` measures it, for `burst`. */
+export async function weekReadingOf(runtime, kit, config, roster) {
+    return (await readBudget(runtime, kit, config, roster, { recountDay: undefined })).week;
 }
 /** The week's use line, measured up to now as `budget` measures it, for `start`. */
 export async function weekLineOf(runtime, kit, config, roster) {
-    return weekLine((await readBudget(runtime, kit, config, roster, { recountDay: undefined })).week);
+    return weekLine(await weekReadingOf(runtime, kit, config, roster));
 }
 function sessionsToday(reading, roster, budget) {
     const today = formatUtcDay(new Date(reading.now));
+    const inForce = activeBurst(reading.bursts, reading.now, reading.week.usedPct);
     return roster.ids.map((id) => {
         const usage = reading.measured.bySession.get(id)?.byDay[today];
         const lift = activeLift(reading.lifts, id, reading.now, reading.week.usedPct);
+        const burst = inForce !== undefined && inForce.sessions.includes(id) ? inForce : undefined;
         const allowance = reading.week.allowancePct;
         const shared = allowance === undefined ? budget.sessions[id]?.dailyPct : sessionBudgetPct(allowance, id, roster.ids, budget.sessions);
-        return { id, name: roster.nameOf(id) ?? id, w: usage?.w ?? 0, calls: usage?.calls ?? 0, budgetPct: lift?.toPct ?? shared, lift };
+        return { id, name: roster.nameOf(id) ?? id, w: usage?.w ?? 0, calls: usage?.calls ?? 0, budgetPct: lift?.toPct ?? withBurst(shared, burst, id), lift, burst };
     });
 }
 /** The days a loop table shows, oldest first, ending at `now`'s day. */
@@ -160,15 +169,16 @@ export function pctFlag(flags, name) {
     }
     return value;
 }
-/** `--until`: `HH:MM` today (UTC) or `YYYY-MM-DD HH:MM`. */
-function untilOf(text, now) {
+/** A time flag such as `--until`: `HH:MM` today (UTC) or `YYYY-MM-DD HH:MM`; undefined when it is not given. */
+export function timeFlag(flags, name, now) {
+    const text = flags.get(name);
     if (text === undefined) {
         return undefined;
     }
     const time = /^(\d{2}):(\d{2})$/.exec(text.trim());
     const at = time === null ? parseUtcDeadline(text) : parseUtcDeadline(`${formatUtcDay(new Date(now))} ${text.trim()}`);
     if (at === undefined) {
-        throw new UsageError(`--until "${text}" is not HH:MM or "YYYY-MM-DD HH:MM" (UTC)`);
+        throw new UsageError(`--${name} "${text}" is not HH:MM or "YYYY-MM-DD HH:MM" (UTC)`);
     }
     return at.getTime();
 }
@@ -186,7 +196,7 @@ export async function lift(args, runtime) {
         throw new UsageError('--reason needs a reason');
     }
     const now = runtime.clock.now();
-    const until = untilOf(args.flags.get('until'), now);
+    const until = timeFlag(args.flags, 'until', now);
     const kit = await openTeamKit(runtime);
     const config = requireConfig(kit, runtime, 'write');
     const roster = await rosterOf(runtime, kit, config);
