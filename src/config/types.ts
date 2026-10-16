@@ -173,6 +173,25 @@ export interface LoopsConfig {
   readonly chainNudgeAt: number;
 }
 
+/**
+ * Waking a session idle at its prompt when work is handed to it (src/wake/), instead of at its next prompt. A
+ * wake is a model turn, so only urgent work that can start now wakes, tasks handed together wake once, and each
+ * wake says what it costs.
+ */
+export interface WakeConfig {
+  /** Off: a session sees new work only at its next prompt. */
+  readonly enabled: boolean;
+  /**
+   * The least urgent priority that wakes a session: 1 wakes for p1 only. A session past its daily budget, or in
+   * the budget's quiet hours, wakes for p1 only whatever this says.
+   */
+  readonly priority: number;
+  /** How long a wake waits after the first new task it is for, so tasks handed together wake the session once. */
+  readonly batchSeconds: number;
+  /** The least time between two wakes of one session; work handed meanwhile waits and wakes it once. */
+  readonly minGapMinutes: number;
+}
+
 /** What `teamrig test` prints of a failed run. */
 export interface TestsConfig {
   /** The most characters of failing tests it prints, all of them together; the rest stays in the log. */
@@ -479,6 +498,7 @@ export interface KitConfig {
   readonly budget: BudgetConfig;
   readonly leadBoundary: LeadBoundaryConfig;
   readonly loops: LoopsConfig;
+  readonly wake: WakeConfig;
   readonly tests: TestsConfig;
   readonly github: GithubConfig;
   readonly alerts: AlertsConfig;

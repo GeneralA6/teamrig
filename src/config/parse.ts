@@ -21,6 +21,7 @@ import {
   DEFAULT_SESSION_SHARE,
   DEFAULT_SKILLS,
   DEFAULT_TESTS,
+  DEFAULT_WAKE,
 } from './defaults.ts';
 import { isEffort, isModel } from './launch.ts';
 import { CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from './limits.ts';
@@ -65,6 +66,7 @@ import {
   type SkillsConfig,
   type PriorityConfig,
   type TeamLink,
+  type WakeConfig,
 } from './types.ts';
 
 export interface ConfigParse {
@@ -259,6 +261,7 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
     loops: {
       chainNudgeAt: read.integer(read.section(raw, 'loops', ''), 'chainNudgeAt', 'loops', DEFAULT_LOOPS.chainNudgeAt, CONFIG_LIMITS.chainNudgeAt),
     },
+    wake: parseWake(read, read.section(raw, 'wake', '')),
     tests: {
       maxFailureChars: read.integer(read.section(raw, 'tests', ''), 'maxFailureChars', 'tests', DEFAULT_TESTS.maxFailureChars, CONFIG_LIMITS.maxFailureChars),
     },
@@ -282,6 +285,16 @@ function parseLeadBoundary(read: ConfigReader, raw: JsonRecord): LeadBoundaryCon
     enabled: read.boolean(raw, 'enabled', 'leadBoundary', DEFAULT_LEAD_BOUNDARY.enabled),
     ownPaths: read.stringList(raw, 'ownPaths', 'leadBoundary', DEFAULT_LEAD_BOUNDARY.ownPaths, shortLine(CONFIG_LIMITS.leadOwnPaths.maxLength), CONFIG_LIMITS.leadOwnPaths.maxItems),
     searchNudgeAt: read.integer(raw, 'searchNudgeAt', 'leadBoundary', DEFAULT_LEAD_BOUNDARY.searchNudgeAt, CONFIG_LIMITS.searchNudgeAt),
+  };
+}
+
+/** `wake`: a priority as the register numbers them, and both waits bounded to a day at most. */
+function parseWake(read: ConfigReader, raw: JsonRecord): WakeConfig {
+  return {
+    enabled: read.boolean(raw, 'enabled', 'wake', DEFAULT_WAKE.enabled),
+    priority: read.integer(raw, 'priority', 'wake', DEFAULT_WAKE.priority, CONFIG_LIMITS.wakePriority),
+    batchSeconds: read.integer(raw, 'batchSeconds', 'wake', DEFAULT_WAKE.batchSeconds, CONFIG_LIMITS.wakeBatchSeconds),
+    minGapMinutes: read.integer(raw, 'minGapMinutes', 'wake', DEFAULT_WAKE.minGapMinutes, CONFIG_LIMITS.wakeMinGapMinutes),
   };
 }
 

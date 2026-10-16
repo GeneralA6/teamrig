@@ -492,6 +492,38 @@
         }
       }
     },
+    "wake": {
+      "description": "Waking a session idle at its prompt when work is handed to it, instead of at its next prompt. Only open or started work that waits on nothing it comes after wakes, tasks handed together wake once, and each wake says what it costs.",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Off: a session sees new work only at its next prompt.",
+          "type": "boolean",
+          "default": true
+        },
+        "priority": {
+          "description": "The least urgent priority that wakes a session: 1 wakes for p1 only. A session past its daily budget, or in the budget's quiet hours, wakes for p1 only whatever this says.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 99,
+          "default": 1
+        },
+        "batchSeconds": {
+          "description": "How long a wake waits after the first new task it is for, so tasks handed together wake the session once.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3600,
+          "default": 120
+        },
+        "minGapMinutes": {
+          "description": "The least time between two wakes of one session; work handed meanwhile waits and wakes it once.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1440,
+          "default": 15
+        }
+      }
+    },
     "tests": {
       "type": "object",
       "properties": {
