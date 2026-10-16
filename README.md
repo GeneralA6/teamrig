@@ -119,6 +119,11 @@ a peer, a notification or a scheduled wake started, the calls that re-wrote a co
 With a size on each task (`--size`, its share of the weekly limit), `teamrig plan` shows how much of the week fits
 the limit left and `teamrig check` flags the first task that doesn't, for your lead to move to next week.
 
+When the week would end with tokens unused, your lead can spend them in a burst: `teamrig burst` shows the share
+projected unused at the week's end, and `teamrig burst start` gives the team bigger daily budgets and more helpers
+at once until then, or until a task's deadline. Only a person starts one, with your approval by default; it never
+goes past your 99.5% line, and its helpers and temporary sessions keep the same model and effort.
+
 *Coming: moving that task to next week on its own, and holding deploys before the reset.*
 
 ![Your lead plans the week from the tokens you have left. The tasks fill the days, most important first, until the plan reaches 99.5% of your weekly limit. The last 0.5% is kept for incidents, and the task that doesn't fit moves to next week.](docs/images/plan.svg)

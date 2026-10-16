@@ -121,6 +121,30 @@ From `teamrig budget lift` ([commands.md](commands.md#teamrig-budget-lift)) and 
 | `REFUSED the week is at 97.2%, already at or past --stop-pct 97` | The week is past that stop %: pick a higher one within the bounds, or no lift. |
 | `REFUSED --until <time> UTC has passed` | Give a later `--until`. |
 
+## Bursts
+
+From `teamrig burst start`, `teamrig burst end` ([commands.md](commands.md#teamrig-burst-start)) and
+`teamrig hire --burst` ([commands.md](commands.md#teamrig-hire)).
+
+| Output | Fix |
+| --- | --- |
+| `REFUSED only the lead (lead) starts a burst` (or `ends a burst`) | Ask the lead. |
+| `REFUSED burst.policy is off: the team takes no bursts` | Ask the owner whether to allow bursts; the lead then sets `burst.policy` in the team config. |
+| `REFUSED burst.policy is owner: a burst spends more of the week, so the owner approves each one; ...` | Ask the owner, then run it again with `--approved-by "<who>"`. |
+| `REFUSED a surplus burst runs until ...; end it first: teamrig burst end --reason "<why>"` | One burst at a time: end the one in force first, or work within it. |
+| `REFUSED a surplus burst starts only from <time> (burst.surplusHours 48 before the reset) until the pace end` | Wait for the window, or start a deadline burst for work due sooner. |
+| `REFUSED only 3.1% of the week is projected unused at the pace end, below burst.minSparePct (5.0%): ...` | There is no surplus to spend: no burst. `teamrig burst` shows the projection. |
+| `REFUSED a deadline burst needs --stop-pct <n>: ...` (or `--by <time>`, `--task <ids>`) | Add the flag the line names. |
+| `REFUSED --stop-pct 99.7 is above budget.targetPct (99.5): a burst never spends the reserve` | Use a stop % up to `budget.targetPct`. |
+| `REFUSED --helpers 5 is above burst.maxHelpers (3)` (or `--hires`, `burst.maxHires`) | Ask for fewer, or ask the owner to raise the cap. |
+| `REFUSED T12 is done: a burst works on open tasks only` | Name only tasks still open, in progress, verifying or waiting. |
+| `REFUSED the week's use or reset is unknown, so the burst cannot be judged: ...` | Run `teamrig statusline install`, or set `budget.weeklyLimitW` and `budget.reset`. |
+| `REFUSED no burst is in force: nothing to end` | Nothing to end: `teamrig burst` shows the state. |
+| `REFUSED no burst is in force: hire --burst hires for one (teamrig burst)` | Start a burst first, or hire without `--burst`. |
+| `REFUSED the burst allows 1 hire, and 1 is on the team` | Retire a burst hire whose job is done, or work without another. |
+| `REFUSED --model haiku: a burst hire runs on the lead's model (opus), never another` (or `--effort medium is below the lead's high`) | Drop `--model`, or give the lead's model and at least its effort. |
+| `--task and --by name a deadline burst's work: a surplus burst takes neither` (exit 64) | Drop them, or start a deadline burst. |
+
 ## Status line
 
 From `teamrig statusline install` and `uninstall` ([commands.md](commands.md#teamrig-statusline-install)).

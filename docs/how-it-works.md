@@ -46,13 +46,13 @@ flowchart LR
 | Part | When it runs | What it does |
 | --- | --- | --- |
 | SessionStart hook | a session starts, resumes, is cleared or is compacted | gives the session the core rules, its name, the lead's name, where its team sits in a tree of teams and your team's `rules.md`; tells you and the session, in one MODEL line, when it runs on another model than its `launch` entry asks, with the `/model` to type |
-| UserPromptSubmit hook | you send a prompt | the session's new inbox lines, each shown once; a line when it binds a hand-started tab by its title, once per cause when it cannot, when it records a Claude Code rename of the session as its team name, or when `.teamrig.json` is broken; once per level, a line telling the session it is past its daily budget while the team is ahead of its pace line; nothing otherwise |
+| UserPromptSubmit hook | you send a prompt | the session's new inbox lines, each shown once; a line when it binds a hand-started tab by its title, once per cause when it cannot, when it records a Claude Code rename of the session as its team name, or when `.teamrig.json` is broken; once per level, a line telling the session it is past its daily budget while the team is ahead of its pace line; once each, a line when a burst the session is in starts (how to work in it) and when it ends (wind down), and on the lead's tab, once a week, a line when the week's projected surplus is worth a burst ([Bursts](#bursts)); nothing otherwise |
 | PreToolUse hook on Bash and PowerShell | Claude runs a Bash or PowerShell command | finds every `git push` in it, through wrappers, nested shells and git aliases, and asks you or refuses; asks when it cannot read the command ([Safe pushes](#safe-pushes)) |
 | PreToolUse hook on SendMessage | Claude messages another session of the team | when the receiver has been idle `messages.coldAfterMinutes` (60 by default) or longer, the message would wake it cold: its first call re-reads its whole context at full price, about 8 times a warm wake. It holds the message once with a note: an inbox line if the receiver need not act now, else every ask for it in one message, sent again; the same tab's next send to it within 15 minutes goes through. Idle time runs from the receiver's last write to its own transcript; a helper, a receiver off the team or one with no transcript yet is never held |
 | PreToolUse hook on Agent and Task | Claude launches a helper | with the budget on, asks you or refuses when the session is past its daily budget while the team is ahead of its pace line, or in quiet hours, as `budget.overAction` and `budget.quietHours` say; the lead's helpers and a lifted session's always go |
 | PostToolUse hook on reads, edits and shell calls | a Read, Grep, Glob, Bash, PowerShell, Edit, Write, MultiEdit or NotebookEdit call returns | counts the calls in a row since the last prompt that each ran one step (a read, a lookup, an edit, a test, a build); when the run reaches `loops.chainNudgeAt` (6 by default; 0 turns it off), gives the model one line asking it to put independent reads, and an edit with its re-test, in one message, priced in context re-reads. Once per run; a helper's calls are not counted. On the lead's tab, also one line at the lead's first edit outside its own files, first test or build and `leadBoundary.searchNudgeAt`-th code search (3 by default), asking it to hand such work off |
 | Mod (`hooks/register.ts`) | in each interactive tab, while it runs; `/teamrig` in every session | runs `/teamrig <command>` in the tab with no model turn: a read at once, a command that changes the team's files only when you typed it, asking first when it adds the tab's session ([the /teamrig command](../plugins/teamrig/skills/teamrig-guide/hooks.md#the-mod-the-teamrig-command)); runs the refresh's `/clear` when the automatic restart asks ([A fresh context](#a-fresh-context)); runs `/reload-plugins` once an installed plugin changed and no turn runs ([Updating the plugin](#updating-the-plugin)); wakes an idle tab when urgent work is handed to its session ([Waking on urgent work](#waking-on-urgent-work)) |
-| Stop hook | a turn ends | after a task is marked done, asks for a handover when a refresh is due, then tells you once ([A fresh context](#a-fresh-context)); tells you once, in a MODEL line, when the session runs at another effort than its `launch` entry asks, or when Claude Code switched it to another model after its safeguards stopped a reply, with the `/effort` or `/model` to type; a Budget line as the session passes each warning level of its daily budget; on the lead's tab, a Lead boundary line naming the edits, tests and code searches the lead did itself that turn; nothing otherwise |
+| Stop hook | a turn ends | after a task is marked done, asks for a handover when a refresh is due, then tells you once ([A fresh context](#a-fresh-context)); tells you once, in a MODEL line, when the session runs at another effort than its `launch` entry asks, or when Claude Code switched it to another model after its safeguards stopped a reply, with the `/effort` or `/model` to type; a Budget line as the session passes each warning level of its daily budget, and when a burst it is in starts or ends; on the lead's tab, a Lead boundary line naming the edits, tests and code searches the lead did itself that turn; nothing otherwise |
 | `teamrig` commands | Claude runs them in its Bash tool; you type them in a terminal or after `/teamrig` | the task list, the inbox, names, settings, checks (`teamrig help`) |
 
 A session finds its team through `$TEAMRIG_TEAM`, else the nearest `.teamrig.json` above its folder
@@ -111,6 +111,9 @@ The lead hires a temporary member for one job with `teamrig hire`, within the te
 - Each hire is logged in `state/hires.jsonl` with its job, reason, approver, model, effort, daily budget and review
   day. `teamrig check` flags a hired session with no open task for `idleHours` (4) as RETIRE-DUE, and one past its
   review day as REVIEW-DUE.
+- `teamrig hire --burst` hires for the burst in force ([Bursts](#bursts)), within its hires as well as these caps,
+  on the lead's model and at least its effort; the burst's approver approves it. Once the burst is over, `check`
+  flags the hire RETIRE-DUE.
 
 When its job is done, the lead retires it with `teamrig retire <id>`. It refuses while the session owns open tasks
 unless `--to <heir>` takes them, and without its handover note (`handover/<id>.md`) unless `--no-handover "<why>"`.
@@ -275,6 +278,32 @@ turns this off: `register.autoArchive: false` in the team's `config.json`, after
   a session as it passes its daily budget, tell the lead, and can hold its helper launches (`budget.overAction`,
   `budget.quietHours`). The lead sets that policy with `teamrig budget setup`, which shows the change before it
   writes it.
+
+## Bursts
+
+A burst is a time-boxed scale-out for when the week will end with tokens unspent, or work must land by a time.
+For its time, each session in it gets a daily budget of at least its share of what is left to the burst's stop %
+and may run more helpers at once; the lead may also hire sessions for it. The same gates hold as on any other day.
+
+- Who starts one: a person, by command, never a hook. `teamrig burst` shows the week, its projected surplus and
+  what to run; `teamrig burst start surplus|deadline --reason "<why>"` previews the burst, and `--yes` starts it.
+  `burst.policy` is `owner` by default (each burst names its approver with `--approved-by`, since spending more of
+  the week is a budget call), `lead`, or `off`. No value starts a burst by itself; the lead's hook only suggests
+  one, once a week, when the surplus is worth it.
+- A surplus burst covers the whole team (or `--sessions`) from `burst.surplusHours` (48) before the reset until the
+  pace end, once `burst.minSparePct` (5%) of the week is projected unused: the use so far plus the week's mean
+  rate so far, nights included, until the pace end, against `budget.targetPct`.
+- A deadline burst covers the owners of its `--task` tasks (or `--sessions`) until `--by`, at the latest the reset,
+  and needs a `--stop-pct`.
+- Its bounds: the stop % is at most `budget.targetPct`, so a burst never spends the incident reserve; it ends at its
+  time, when the week reaches its stop %, or by `teamrig burst end --reason "<why>"`. It runs up to `--helpers`
+  (`burst.maxHelpers`, 3) at once per session and `--hires` hired sessions (`burst.maxHires`, 2; none unless set).
+  Quiet hours still apply, and a lift wins over it for its session.
+- How its sessions work: the model is told once, with the next prompt, to split only independent tasks, to give
+  each edit in a repo its own worktree, to integrate one change at a time, to keep its model and effort for its
+  helpers and never to skip a test or check. A burst hire runs on the lead's model at no lower effort.
+- Its log: each start and end is a line in `state/usage/bursts.jsonl`; `teamrig budget` marks a session's budget
+  "(burst)" and names the burst, and `check` flags its hires RETIRE-DUE once it is over.
 
 ## Notes between sessions
 
