@@ -28,7 +28,8 @@ your machine and shows what it printed, also with no model call.
 ### Requirements
 
 Claude Code 2.1.139 or later and Node.js 22.18 or later. teamrig checks for anything else when you set up a team and
-when a session starts, and tells you in plain words what is missing and how to fix it.
+when a session starts, and tells you in plain words what is missing and how to fix it. Auto mode runs `teamrig` as is;
+in default mode, allow `Bash(teamrig:*)` ([permissions](plugins/teamrig/skills/teamrig-guide/hooks.md#permissions)).
 
 ## Your day: two hours, not twelve
 
