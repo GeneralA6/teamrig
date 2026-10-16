@@ -235,6 +235,24 @@ teamrig add --session lead --owner api --source owner --priority p2 --title "Rat
 Bring the human only what needs them: verified results, decisions taken, investigated questions (options,
 numbers and a recommendation) and incidents. Progress and plans stay in the register.
 
+## The owner's daily meeting
+
+Once a day the lead meets the human. The `daily-meeting` skill has the steps; in short:
+
+```sh
+teamrig meeting start --session lead
+```
+
+It tells every session to hold its messages to the lead (a CRITICAL one still goes) and prints the agenda. Bring
+each decision as a card the human can decide from alone, record each answer in the same turn with
+`teamrig update <id> --note "owner decided: <decision>" --session lead` (and any new priority or date), then:
+
+```sh
+teamrig meeting end --session lead
+```
+
+Each session gets one inbox line saying the meeting ended, with the decisions on its tasks.
+
 ## Create a team and start its sessions
 
 The lead's tab, with the user's request in hand:

@@ -28,7 +28,7 @@ export interface Feature extends Card {
 export const MOAT: readonly Feature[] = [
   { icon: 'proof', title: 'A built-in project manager', lines: ['One task list for the whole team:', 'owner, priority, due date and proof.'], coming: false },
   { icon: 'plan', title: 'Your week, planned', lines: ['Scheduled from your token budget;', "flags what's late, stuck or off-plan."], coming: false },
-  { icon: 'sun', title: 'Your day back', lines: ['One meeting in the morning. Each', 'decision comes with a recommendation.'], coming: true },
+  { icon: 'sun', title: 'Your day back', lines: ['One meeting in the morning. Each', 'decision comes with a recommendation.'], coming: false },
   { icon: 'learn', title: 'Improves itself', lines: ['What one session works out becomes', 'a skill, and each lesson a team rule.'], coming: false },
   { icon: 'fresh', title: 'Survives a crash or reboot', lines: ['Sessions reopen where they left off;', 'tasks and notes are safe on disk.'], coming: true },
   { icon: 'terminal', title: 'Just your terminal', lines: ['Claude Code in the terminal you have.', 'No IDE, no desktop app, no server.'], coming: false },

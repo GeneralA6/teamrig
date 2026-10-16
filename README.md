@@ -35,19 +35,20 @@ when a session starts, and tells you in plain words what is missing and how to f
 No more twelve-hour days steering agents by hand. With teamrig, your part takes about two hours:
 
 1. **A morning meeting.** Your lead tells you what got done and what's late, and brings each decision as a short card
-   with its recommendation. You answer, and the day is yours.
+   with its recommendation. You answer, and the day is yours. While you meet, the team keeps working and leaves the
+   lead notes instead of messages, unless something is critical.
 2. **The team works.** Each member works its own task list in priority order. Whatever is late or stuck goes to the
    lead, not to you.
 3. **Drop in when you like.** A few decisions may be waiting. Answer them and go: the team keeps working.
 
-*Coming: the morning meeting, and members that wake on a new note instead of at your next prompt.*
+*Coming: members that wake on a new note instead of at your next prompt.*
 
 ## Why it's different
 
-![A built-in project manager: one task list for the whole team, with owner, priority, due date and proof. Your week, planned: scheduled from your token budget, and it flags what's late, stuck or off-plan. Your day back, coming: one meeting in the morning, each decision with a recommendation. Improves itself: what one session works out becomes a skill, and each lesson a team rule. Survives a crash or reboot, coming: sessions reopen where they left off, and tasks and notes are safe on disk. Just your terminal: Claude Code in the terminal you have, with no IDE, no desktop app and no server.](docs/images/why.svg)
+![A built-in project manager: one task list for the whole team, with owner, priority, due date and proof. Your week, planned: scheduled from your token budget, and it flags what's late, stuck or off-plan. Your day back: one meeting in the morning, each decision with a recommendation. Improves itself: what one session works out becomes a skill, and each lesson a team rule. Survives a crash or reboot, coming: sessions reopen where they left off, and tasks and notes are safe on disk. Just your terminal: Claude Code in the terminal you have, with no IDE, no desktop app and no server.](docs/images/why.svg)
 
-*Coming: moving the work that doesn't fit your token budget to next week, the morning meeting, and reopening
-sessions after a crash or reboot.*
+*Coming: moving the work that doesn't fit your token budget to next week, and reopening sessions after a crash or
+reboot.*
 
 And the basics, done right: every task says what it is and why in plain words, and has one owner, who gets an inbox line the moment it is given the task, so nothing is done twice. Work that has shipped but is not
 verified yet is marked verifying, with a date to verify it by, so it stays in view until it is, and work built on it waits for the proof. A task that

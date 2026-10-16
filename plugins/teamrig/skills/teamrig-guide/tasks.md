@@ -94,6 +94,7 @@ A shipped change is proven by the session that shipped it, oldest first, before 
 | Use for | results it will not act on now, reports, announcements, anything not urgent | a result it consumes now, a decision, a blocker, a same-area conflict, an incident |
 | Size | one line | at most 10 lines [messages.maxLines] |
 | Receiver idle an hour or more | no extra cost | held once, since it wakes cold and re-reads its whole context at full price: write an inbox line, or put every ask in it and send it again [messages.coldAfterMinutes] |
+| To the lead during the daily meeting | read after the meeting | held, unless it starts with `CRITICAL` (`teamrig meeting start`) |
 
 A message holds what happened, the evidence (numbers, ids, paths), the exact ask and deadline, your default
 ("doing X at 14:00 unless you object"), then "No reply needed" or "Reply needed: <one question>". No acks, thanks

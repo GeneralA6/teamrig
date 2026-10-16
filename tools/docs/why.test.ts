@@ -21,7 +21,7 @@ describe('renderWhy', () => {
     const label = root.attributes.get('aria-label') ?? '';
     assert.equal(root.attributes.get('role'), 'img');
     assert.ok(label.startsWith('Why teamrig is different: A built-in project manager. One task list for the whole team: owner, priority, due date and proof. '), label);
-    assert.ok(label.includes(' Your day back (coming). One meeting in the morning. '), label);
+    assert.ok(label.includes(' Your day back. One meeting in the morning. '), label);
     assert.ok(label.endsWith('Just your terminal. Claude Code in the terminal you have. No IDE, no desktop app, no server.'), label);
     assert.equal(textOf(places.find((place) => place.element.name === 'title')?.element ?? ''), label);
   });
@@ -34,8 +34,8 @@ describe('renderWhy', () => {
 
   it('tags only the cards whose whole feature is still to come, inside their card', () => {
     const tags = places.filter((place) => place.element.attributes.get('class') === 'tag').map(({ element }) => element.attributes);
-    assert.deepEqual(MOAT.filter((card) => card.coming).map((card) => card.title), ['Your day back', 'Survives a crash or reboot']);
-    assert.equal(tags.length, 2);
+    assert.deepEqual(MOAT.filter((card) => card.coming).map((card) => card.title), ['Survives a crash or reboot']);
+    assert.equal(tags.length, 1);
     for (const tag of tags) {
       const left = number(tag.get('x')) % (304 + 24);
       assert.ok(left > 72 && left + number(tag.get('width')) <= 304, `a tag sits right of the chip, inside its card: ${left}`);
