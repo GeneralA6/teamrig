@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { MemoryFiles } from '../testing/memory-files.ts';
+import type { RestartRequest } from './state.ts';
 import { RefreshStore } from './store.ts';
 
 const PATHS = { refresh: join('/', 'team', 'state', 'refresh'), handover: join('/', 'team', 'handover') };
@@ -30,6 +31,28 @@ describe('RefreshStore', () => {
     await store.clearRequest('alpha');
     await store.clearRequest('alpha');
     assert.equal(await store.request('alpha'), undefined);
+  });
+
+  it('keeps the automatic restart in a file of its own, and reads a damaged one as none', async () => {
+    const files = new MemoryFiles();
+    const store = new RefreshStore(files, PATHS);
+    const restart: RestartRequest = { phase: 'pending', at: AT, pid: 4242, claudeSession: 'c-1', transcript: '/t/c-1.jsonl', cwd: null, supervised: false };
+    await files.write(join(PATHS.refresh, 'alpha.restart.json'), JSON.stringify({ v: 1, ...restart }));
+    assert.deepEqual(await store.restart('alpha'), restart, 'the hand-written good file reads, so the damaged ones below fail for their field');
+    await store.clearRestart('alpha');
+    assert.equal(await store.restart('alpha'), undefined);
+    await store.setRestart('alpha', restart);
+    assert.deepEqual(await store.restart('alpha'), restart);
+    await store.setRestart('alpha', { ...restart, phase: 'ending', supervised: true });
+    assert.deepEqual(await store.restart('alpha'), { ...restart, phase: 'ending', supervised: true });
+    assert.equal(await store.state('alpha'), undefined, 'the state is another file');
+    for (const bad of [{ phase: 'later' }, { pid: 0 }, { pid: 'x' }, { transcript: 3 }, { supervised: 'no' }]) {
+      await files.write(join(PATHS.refresh, 'alpha.restart.json'), JSON.stringify({ v: 1, ...restart, ...bad }));
+      assert.equal(await store.restart('alpha'), undefined, JSON.stringify(bad));
+    }
+    await store.clearRestart('alpha');
+    await store.clearRestart('alpha');
+    assert.equal(await store.restart('alpha'), undefined);
   });
 
   it('reads the handover from the handover folder', async () => {

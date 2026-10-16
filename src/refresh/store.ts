@@ -1,12 +1,24 @@
 import { join } from 'node:path';
 import type { Files } from '../core/files.ts';
 import type { TeamPaths } from '../core/home.ts';
-import { formatRefreshRequest, formatRefreshState, parseRefreshRequest, parseRefreshState, type RefreshRequest, type RefreshState } from './state.ts';
+import {
+  formatRefreshRequest,
+  formatRefreshState,
+  formatRestartRequest,
+  parseRefreshRequest,
+  parseRefreshState,
+  parseRestartRequest,
+  type RefreshRequest,
+  type RefreshState,
+  type RestartRequest,
+} from './state.ts';
 
 /**
  * Each session's refresh files. The state (`<id>.json`) is written only by the session itself, from
  * its commands and hooks; the lead's request (`<id>.request.json`) is a file of its own, so neither
- * write ever overwrites the other's. Ids are session ids, checked by the roster, so they are safe in a path.
+ * write ever overwrites the other's; so is the automatic restart (`<id>.restart.json`), which the
+ * session's hooks, its restart and `teamrig launch` share. Ids are session ids, checked by the roster,
+ * so they are safe in a path.
  */
 export class RefreshStore {
   private readonly files: Files;
@@ -50,11 +62,28 @@ export class RefreshStore {
     return this.files.remove(this.requestPath(id));
   }
 
+  async restart(id: string): Promise<RestartRequest | undefined> {
+    const text = await this.files.read(this.restartPath(id));
+    return text === undefined ? undefined : parseRestartRequest(text);
+  }
+
+  setRestart(id: string, request: RestartRequest): Promise<void> {
+    return this.files.write(this.restartPath(id), formatRestartRequest(request));
+  }
+
+  clearRestart(id: string): Promise<void> {
+    return this.files.remove(this.restartPath(id));
+  }
+
   private statePath(id: string): string {
     return join(this.paths.refresh, `${id}.json`);
   }
 
   private requestPath(id: string): string {
     return join(this.paths.refresh, `${id}.request.json`);
+  }
+
+  private restartPath(id: string): string {
+    return join(this.paths.refresh, `${id}.restart.json`);
   }
 }
