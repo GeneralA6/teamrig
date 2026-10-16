@@ -26,6 +26,7 @@ function input(overrides: Partial<DoctorInput> & { readonly names?: Record<strin
     renameLog: { path: LOG, renames, unreadable: 0, newer: 0 },
     requirements: [],
     inboxes: [],
+    retired: new Set(),
     teamRules: undefined,
     contextFiles: { read: { claudeMd: [], memoryIndex: undefined, skills: { folders: [], count: 0, chars: 0 } }, budgets: DEFAULT_CONTEXT_FILES },
     tree: { problems: [], clashes: [] },
@@ -93,6 +94,13 @@ describe('doctorFindings', () => {
       'WARN name-gone app-zulu, ghost were names of zulu, which is no longer on the team: commands refuse them, filters read them as zulu',
     ]);
     assert.match(lines(input({ names: { zulu: 'ghost' }, renames: [renameOf('zulu', 'ghost', 'phantom')] }))[0] ?? '', /phantom, ghost were names|ghost, phantom were names/);
+  });
+
+  it("keeps quiet on a retired session's inbox and former names, which stay on purpose", () => {
+    const inboxes = [unreadOf('zulu', ['- 2030-01-02 09:00 lead: old'], null, lineHash)];
+    const renames = [renameOf('zulu', 'app-zulu', 'ghost')];
+    assert.deepEqual(lines(input({ inboxes, renames, retired: new Set(['zulu']) })), []);
+    assert.equal(lines(input({ inboxes, renames })).length, 2);
   });
 
   it('says one name of a removed session in the singular', () => {

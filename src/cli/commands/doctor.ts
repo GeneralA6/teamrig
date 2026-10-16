@@ -4,6 +4,7 @@ import { claudeConfigDir, KIT_NAME } from '../../core/home.ts';
 import { readContextFiles } from '../../doctor/context-files.ts';
 import { doctorFindings, formatFinding } from '../../doctor/doctor.ts';
 import { claudeSettingsFiles, readSettingsEnv } from '../../doctor/settings-env.ts';
+import { HiringLog, retiredSessions } from '../../hiring/log.ts';
 import { inboxStatus } from '../../inbox/inbox.ts';
 import { JsonlRenameLog } from '../../names/log.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
@@ -33,12 +34,14 @@ export async function doctor(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   const claudeDir = claudeConfigDir(runtime.env, runtime.userHome);
   const project = await projectFolder(runtime);
   const roster = new Roster(config, paths.team, renameLog.renames);
+  const { records } = await new HiringLog(runtime.files, paths.hires).read();
   const findings = doctorFindings({
     requirements: await runtime.requirements.problems(),
     roster,
     configNames: config.names,
     renameLog: { ...renameLog, path: paths.renames },
     inboxes: await inboxStatus(inboxDepsOf(runtime, paths)),
+    retired: new Set(retiredSessions(records).map((record) => record.session)),
     teamRules: rules === undefined ? undefined : { path: paths.teamRules, chars: rules.trim().length },
     contextFiles: {
       read: await readContextFiles(runtime.files, { claudeDir, project, skills: paths.skills }),
