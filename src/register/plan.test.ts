@@ -40,4 +40,12 @@ describe('renderPlan', () => {
       ].join('\n'),
     );
   });
+
+  it('lists the fit lines under the counts', () => {
+    const config = testConfig().register;
+    const week = '2030-01-07';
+    const text = renderPlan([testTask({ id: 'T1', week, size: 2 })], week, new Date('2030-01-07T08:00:00Z'), config, { fit: ['fits: p2 2% (left 9% of the week)'] });
+    assert.ok(text.includes('1 to do. From the task register at 2030-01-07 08:00 UTC.\n\n- fits: p2 2% (left 9% of the week)\n\n## p'), text);
+  });
 });
+
