@@ -27,6 +27,13 @@ export function isTaskStatus(value: unknown): value is TaskStatus {
 /** Session and area names: the shared id rule, as they name inbox files and folders. */
 export const SESSION_NAME = ID_PATTERN;
 
+/**
+ * The source of a task imported from a GitHub issue: only `teamrig gh sync` writes one (github/sync.ts),
+ * and a session cannot give it to a task (policy.ts). Kept here, with the register's other names, so the
+ * read side (views.ts, and the pane's copy of it) needs no write policy.
+ */
+export const GITHUB_SOURCE = 'github';
+
 /** A priority as the CLI prints and takes it: `p1`, the most urgent, `p2` and so on. */
 export function priorityText(priority: number): string {
   return `p${priority}`;
