@@ -74,6 +74,11 @@ export interface DoctorInput {
   readonly renameLog: RenameLogRead & { readonly path: string };
   /** Every inbox, as `inbox status` reads it. */
   readonly inboxes: readonly Unread[];
+  /**
+   * The sessions `retire` took off the team and no hire brought back (the hire log). Their inboxes and former
+   * names stay on purpose, readable by their id, so they are no orphan or gone name.
+   */
+  readonly retired: ReadonlySet<string>;
   /** The team's rules.md and its length, when it exists. */
   readonly teamRules: { readonly path: string; readonly chars: number } | undefined;
   /** What every call of a session in the project re-reads, and the team's budgets for it. */
@@ -95,14 +100,20 @@ function plural(count: number, one: string, many: string): string {
   return count === 1 ? one : many;
 }
 
-/** Names that find the wrong session, or none: a removed session's, a shared current one, a former one taken over. */
-function nameFindings(roster: Roster, command: string): Finding[] {
+/**
+ * Names that find the wrong session, or none: a removed session's (not a retired one's), a shared current one, a
+ * former one taken over.
+ */
+function nameFindings(input: DoctorInput): Finding[] {
+  const { roster, command, retired } = input;
   const findings: Finding[] = [];
   const gone = new Map<string, string[]>();
   const shared = new Set<string>();
   for (const [name, holder] of roster.allNames()) {
     if (!roster.ids.includes(holder)) {
-      gone.set(holder, [...(gone.get(holder) ?? []), name]);
+      if (!retired.has(holder)) {
+        gone.set(holder, [...(gone.get(holder) ?? []), name]);
+      }
       continue;
     }
     const current = roster.idsCalled(name);
@@ -158,12 +169,15 @@ function waitingSince(unread: Unread): Date | undefined {
   return posted === undefined ? undefined : parseUtcDeadline(posted);
 }
 
-/** Inboxes nobody reads: one keyed by no session id on the team, or unread lines with no read for days. */
+/** Inboxes nobody reads: one keyed by no session id on the team (nor a retired one's), or unread lines with no read for days. */
 function inboxFindings(input: DoctorInput): Finding[] {
-  const { roster, now } = input;
+  const { roster, now, retired } = input;
   return input.inboxes.flatMap((unread): Finding[] => {
     const { area, mark } = unread;
     const count = unread.lines.length;
+    if (retired.has(area)) {
+      return [];
+    }
     if (!roster.ids.includes(area)) {
       const found = roster.lookup(area);
       const hint = found.ok ? `; ${area} is a name of ${found.id}, whose inbox is keyed by its id` : '';
@@ -290,7 +304,7 @@ function launchFindings({ launches, roster }: DoctorInput): Finding[] {
 export function doctorFindings(input: DoctorInput): Finding[] {
   return [
     ...input.requirements.map((problem): Finding => ({ kind: 'requirement', detail: describeRequirement(problem, input.command) })),
-    ...nameFindings(input.roster, input.command),
+    ...nameFindings(input),
     ...configFindings(input),
     ...renameLogFindings(input),
     ...inboxFindings(input),
