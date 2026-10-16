@@ -22,7 +22,7 @@ import { stopOutput } from "../../hooks/stop.js";
 import { adoptTitle, promptNote, sessionStartNote } from "../../names/detect.js";
 import { JsonlRenameLog } from "../../names/log.js";
 import { TRANSCRIPT_TAIL_BYTES } from "../../names/title.js";
-import { decideStart, decideStop, handoverHashOf } from "../../refresh/decide.js";
+import { decideStart, decideStop, handoverHashOf, reaskGrowth, thousands, } from "../../refresh/decide.js";
 import { carryLines, carryStartOf, readCarry } from "../../refresh/carry.js";
 import { claudeProcessOf } from "../../refresh/restart.js";
 import { readRunningWork } from "../../refresh/running.js";
@@ -109,16 +109,16 @@ async function titleOutcome(runtime, kit, config, payload, read) {
 }
 /**
  * A prompt typed while the automatic restart waits for the session to be idle cancels it, so the
- * session keeps its context; one line tells the model. None when no restart waits, or one is already
- * ending the session.
+ * session keeps its context; one line tells the model, with the context growth (`growth` tokens) that asks
+ * again. None when no restart waits, or one is already ending the session.
  */
-async function cancelledRestartLine(runtime, kit, id) {
+async function cancelledRestartLine(runtime, kit, id, growth) {
     const store = new RefreshStore(runtime.files, kit.paths);
     if ((await store.restart(id))?.phase !== 'pending') {
         return undefined;
     }
     await store.clearRestart(id);
-    return `${KIT_NAME}: the user typed, so the automatic restart is cancelled and you keep this context; a later task end asks for a new handover when one is due`;
+    return `${KIT_NAME}: the user typed, so the automatic restart is cancelled and you keep this context; a new handover is asked at your next task end, or once your context grew ${thousands(growth)} more`;
 }
 /**
  * UserPromptSubmit: cancels a pending automatic restart, binds a hand-started tab by its title, notes a
@@ -157,7 +157,7 @@ export async function inboxReminder(args, runtime) {
     const hint = await bindHintOnce(runtime, kit, binding, claudeSession);
     // Found like a rename: `$TEAMRIG_SESSION` first, so a session is shown its lines before its first `inbox read`.
     const session = await teamSessionOf(runtime, kit, own.roster, claudeSession);
-    const cancelled = session === undefined ? undefined : await cancelledRestartLine(runtime, kit, session).catch(() => undefined);
+    const cancelled = session === undefined ? undefined : await cancelledRestartLine(runtime, kit, session, reaskGrowth(config.refresh)).catch(() => undefined);
     const lines = session === undefined ? undefined : await inboxLinesFor(runtime, kit, session, claudeSession);
     const budgetLine = session === undefined ? undefined : await promptBudgetLine(runtime, { kit, config, roster: own.roster, id: session }).catch(() => undefined);
     // An unreadable title may be one the user set, so only a title read as absent is given.
@@ -354,17 +354,23 @@ async function refreshNoteOf(runtime, kit, config, roster, payload) {
         return `${KIT_NAME} could not check for a refresh handover (${errorMessage(error)}); if you wrote one before a /clear, read it first.`;
     }
 }
-/**
- * The refresh facts of a boundary: the lead's request, the context size from the transcript's
- * tail, the handover as it is now (so `refresh --ready` can tell a new one from it), and the
- * background work still running, which a refresh must wait for.
- */
-async function boundaryFactsOf(runtime, roster, store, id, payload) {
+/** The refresh facts every turn end may need: the lead's request and the context size from the transcript's tail. */
+async function stopFactsOf(runtime, roster, store, id, payload) {
     const request = await store.request(id);
     const transcript = stringField(payload, 'transcript_path');
     return {
         requestedBy: request === undefined ? undefined : (roster.nameOf(request.by) ?? request.by),
         tokens: transcript === undefined ? undefined : await readContextTokens(runtime.files, transcript),
+        due: undefined,
+    };
+}
+/**
+ * The facts a due refresh or notice reads: the handover as it is now (so `refresh --ready` can tell a new one
+ * from it), and the background work still running, which a fresh start must wait for.
+ */
+async function dueFactsOf(runtime, store, id, payload) {
+    const transcript = stringField(payload, 'transcript_path');
+    return {
         handoverHash: handoverHashOf(await store.handover(id)),
         running: transcript === undefined ? 0 : await readRunningWork(runtime.files, transcript, runtime.clock.now()),
     };
@@ -417,8 +423,11 @@ async function refreshDecisionOf(runtime, scope, payload) {
         canRestart: config.refresh.autoRestart && target !== undefined,
         transcript: stringField(payload, 'transcript_path') ?? null,
     };
+    // The facts are read only as far as the decision needs them: most turn ends stop at the transcript's tail.
     const first = decideStop(state, context);
-    const decided = first.kind === 'measure' ? decideStop(state, context, await boundaryFactsOf(runtime, roster, store, id, payload)) : first;
+    const facts = first.kind === 'measure' ? await stopFactsOf(runtime, roster, store, id, payload) : undefined;
+    const measured = facts === undefined ? first : decideStop(state, context, facts);
+    const decided = facts !== undefined && measured.kind === 'measure' ? decideStop(state, context, { ...facts, due: await dueFactsOf(runtime, store, id, payload) }) : measured;
     const decision = decided.kind === 'notice' && decided.restart && target !== undefined ? await armRestart(runtime, store, { team: kit.paths.team, id, context, target }, decided) : decided;
     switch (decision.kind) {
         case 'write':
@@ -470,8 +479,8 @@ async function stopOutputOf(runtime, payload) {
     return stopOutput(decision, [...notices, ...budget, ...verify, ...lead]);
 }
 /**
- * Stop, at the end of every turn: after the session finished a task (`set done`), asks for its
- * handover once when its context reached the team's threshold or the lead asked, then tells the user
+ * Stop, at the end of every turn: asks the session for its handover once when its context reached the
+ * team's threshold or the lead asked, and at a task end (`set done`) also after enough tasks, then tells the user
  * once that it restarts by itself when idle (hook-restart.ts, `refresh.autoRestart`), or else waits for /clear. It also tells the user, once each, when the session runs at another
  * effort than its `launch` entry or Claude Code switched its model after a safeguard stop, and once a
  * day when the date to verify one of its verifying tasks by has come. Once per `github.everyMinutes` for the whole

@@ -26,7 +26,8 @@ function hashOf(record) {
 /** A refresh state file's content; undefined when it is damaged, from another format or names no known phase. */
 export function parseRefreshState(text) {
     const record = recordOf(text);
-    const task = record === undefined ? undefined : stringField(record, 'task');
+    // Only a task end names its task: a refresh another turn end asked for has none.
+    const task = record === undefined ? undefined : nullableString(record, 'task');
     const at = record === undefined ? undefined : stringField(record, 'at');
     if (record === undefined || task === undefined || at === undefined) {
         return undefined;
@@ -34,12 +35,12 @@ export function parseRefreshState(text) {
     switch (record['phase']) {
         case 'boundary': {
             const finished = finishedOf(record, 1);
-            return finished === undefined ? undefined : { phase: 'boundary', task, at, finished };
+            return task === null || finished === undefined ? undefined : { phase: 'boundary', task, at, finished };
         }
         case 'idle': {
             const tokens = tokensOf(record);
             const finished = finishedOf(record, 0);
-            return tokens === undefined || finished === undefined ? undefined : { phase: 'idle', task, at, tokens, finished };
+            return task === null || tokens === undefined || finished === undefined ? undefined : { phase: 'idle', task, at, tokens, finished };
         }
         case 'asked': {
             const tokens = tokensOf(record);
@@ -51,7 +52,11 @@ export function parseRefreshState(text) {
             // A file from before the transcript was recorded has none.
             const transcript = record['transcript'] === undefined ? null : nullableString(record, 'transcript');
             const claudePid = nullablePidOf(record['claudePid']);
-            return typeof noticed === 'boolean' && transcript !== undefined && claudePid !== undefined ? { phase: 'ready', task, at, noticed, transcript, claudePid } : undefined;
+            // A file from before the size was recorded has none.
+            const tokens = record['tokens'] === undefined ? null : tokensOf(record);
+            return typeof noticed === 'boolean' && transcript !== undefined && claudePid !== undefined && tokens !== undefined
+                ? { phase: 'ready', task, at, tokens, noticed, transcript, claudePid }
+                : undefined;
         }
         case 'refreshed':
             return { phase: 'refreshed', task, at };
