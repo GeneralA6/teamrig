@@ -311,7 +311,8 @@ sequenceDiagram
 - The lead can ask for a refresh at any size: `teamrig refresh web` applies at web's next finished task.
 - It waits while work the session started in the background still runs (subagents, background commands,
   monitors, workflows): a fresh start would cut it off, so the hook asks for the handover, and later restarts
-  the session, only at a turn end after the last of it reported back.
+  the session, only at a turn end after the last of it reported back. The restart also waits while a turn still
+  runs (a turn stopped with Escape counts as ended).
 - `refresh --ready` is refused until the handover is written: missing, blank or unchanged since the hook asked.
 - A hook cannot run `/clear`, so teamrig restarts the session instead (`refresh.autoRestart`, on by default). A
   hidden `teamrig restart` waits until the session has been idle `refresh.restartDelaySeconds` (15) with nothing
@@ -320,6 +321,13 @@ sequenceDiagram
   not sent is lost. When it is off or cannot start, you type `/clear`. On Windows an ended process runs no
   SessionEnd hooks, so `refresh.endCommand` can name a program to run in their place. A compact or a resume
   keeps the handover waiting for the next fresh start.
+- The fresh session keeps who it is and carries on by itself. The restart starts it with a prompt to read its
+  handover first; after a `/clear`, `hook refresh-wake` starts its first turn with the same ask, so it never sits
+  idle. A `/clear` keeps its id by the tab's Claude Code title or, when the title names no session, by the
+  Claude Code process it refreshed in (for 24 hours).
+- The session-start note lists what the old session leaves, read from the last 64 MB of its transcript: its
+  scheduled jobs (CronCreate) and a pending wake-up (ScheduleWakeup) to make again, its scratchpad and its plan
+  file. A job made before the last compaction is missed, and a wake-up can fire twice after a `/clear`.
 - `refresh.enabled: false` turns it off, `refresh.tabTitle: false` leaves the tab title alone and
   `refresh.handoverDir` moves the handovers.
 
