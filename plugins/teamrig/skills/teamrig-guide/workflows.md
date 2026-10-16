@@ -215,6 +215,8 @@ With sub-teams, run `teamrig check --tree --session lead` too. Then act on each 
 - `VERIFY-BLOCKS`: work waits on a shipped change: one inbox line to its owner to prove it or reopen it.
 - `PILE-UP`: a session ships faster than it proves: one inbox line asking it to work its queue (`teamrig verify`)
   before new work.
+- `OVER-LIMIT`: the week's sized work passes the weekly limit left at this task: move it and the tasks after it to
+  next week (`update --week`), or tell the human what it would cut.
 - `OWNER-UNPLANNED` or `DUE-UNPLANNED`: plan it in with `--week`, or tell the human what it would push out.
 - A `SKILL` flag: tell the skill's owner in one inbox line.
 

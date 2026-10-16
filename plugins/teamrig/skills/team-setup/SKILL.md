@@ -139,6 +139,8 @@ With sub-teams, run `teamrig check --tree --session lead` too. Act on each flag:
   to prove it (`done`) or reopen it (`in-progress`).
 - `PILE-UP`: a session holds more verifying tasks than `register.maxVerifying`. Ask it to work its queue
   (`teamrig verify`) before new work.
+- `OVER-LIMIT`: the week's sized work passes the weekly limit left at this task. Move it and the tasks after it to
+  next week (`update --week`), or tell the user what it would cut.
 - `OWNER-UNPLANNED` or `DUE-UNPLANNED`: plan it in with `--week`, or tell the user what it would push out.
 - A skill flag: tell the skill's owner in one inbox line.
 

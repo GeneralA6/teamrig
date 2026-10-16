@@ -311,6 +311,14 @@ With no week tagged yet, the first line says `no week plan tagged yet, so the we
 Prints a week plan as Markdown: the tasks tagged with that week (`--week` on `add` or `update`), grouped by
 priority, with done, dropped, waiting, verifying and in-progress marks. By default the newest week that has started.
 
+For the week in force, a list under the counts says whether its work fits the weekly usage limit left. The sized
+to-do tasks (`--size`, in % of the weekly limit; open, in progress or waiting: a verifying task's spend is already
+used) are summed in plan order against what is left of the pace target [budget.targetPct] after the week's use
+from the newest status-line reading (`teamrig statusline`): `fits: p1 12% · p2 8.5% (left 31% of the week)`, then
+the first task past that line and how many sized tasks follow it (`check` flags it `OVER-LIMIT`), then how many
+have no size. With `--tree`, one fit over every team shown, as one account limit covers them. With no status-line
+reading yet it says `fits: unknown`.
+
 Flags:
 
 - `--session <id|name>`: the caller.
@@ -329,6 +337,8 @@ Output:
 # Week plan 2026-10-12
 
 1 tasks: 0 done, 0 dropped, 1 to do. From the task register at 2026-10-15 08:58 UTC.
+
+- 1 to do without a size
 
 ## p2: correctness
 
