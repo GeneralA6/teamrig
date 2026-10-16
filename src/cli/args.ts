@@ -40,6 +40,16 @@ export type CommandRest = ReadonlySet<string>;
 export const REST_MARKER = '--';
 
 /**
+ * What running a command does. `read` changes nothing; `write` changes the team's files or acts on the
+ * machine (`inbox read` and `start` mark inbox lines read, `open` starts a tab, `test` runs a command);
+ * `internal` is run by Claude Code, the plugin's mod or another teamrig command, never typed by a person.
+ */
+export type CommandEffect = 'read' | 'write' | 'internal';
+
+/** Each command's effect, keyed like `CommandFlags`. */
+export type CommandEffects = Readonly<Partial<Record<string, CommandEffect>>>;
+
+/**
  * Flags that were renamed, old name to new name. The old name is refused on every command with the
  * new one to use; it is never read as an alias, so one spelling stays in scripts and docs.
  */

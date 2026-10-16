@@ -3,8 +3,9 @@ import { ENV, KIT_NAME } from '../core/home.ts';
 import { TEAM_POINTER } from '../core/team.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import { CommandHelp } from './help.ts';
-import { parseArgs, UsageError, type CommandFlags, type CommandRest, type CommandSwitches, type ParsedArgs, type RenamedFlags } from './args.ts';
+import { parseArgs, UsageError, type CommandEffect, type CommandEffects, type CommandFlags, type CommandRest, type CommandSwitches, type ParsedArgs, type RenamedFlags } from './args.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from './runtime.ts';
+import type { CommandTable } from '../slash/plan.ts';
 
 type Command = (args: ParsedArgs, runtime: CliRuntime) => Promise<ExitCode>;
 
@@ -14,6 +15,8 @@ interface CommandSpec {
   readonly switches?: readonly string[];
   /** The command runs a command line, given after `--`. */
   readonly rest?: boolean;
+  /** What running it does: `/teamrig` runs a `read` at once, a `write` only when the person typed it, never an `internal` one (src/cli/commands/slash.ts). */
+  readonly effect: CommandEffect;
   /** Commands load on first use, so a hook that runs on every tool call loads only its own code. */
   readonly load: () => Promise<Command>;
 }
@@ -42,84 +45,103 @@ const ghCommands = () => import('./commands/gh.ts');
 const startCommands = () => import('./commands/start.ts');
 const hireCommands = () => import('./commands/hire.ts');
 const retireCommands = () => import('./commands/retire.ts');
+const slashCommands = () => import('./commands/slash.ts');
 
 const TASK_FIELDS = ['title', 'description', 'owner', 'ref', 'priority', 'due', 'goals', 'week', 'after', 'size'];
 
 const COMMANDS: Readonly<Record<string, CommandSpec>> = {
-  add: { flags: ['session', 'source', 'team', ...TASK_FIELDS], load: async () => (await registerCommands()).add },
-  set: { flags: ['session', 'status', 'note', 'evidence', 'skill', 'waits', 'proof', 'due'], load: async () => (await registerCommands()).set },
-  update: { flags: ['session', 'note', ...TASK_FIELDS], load: async () => (await registerCommands()).update },
+  add: { effect: 'write', flags: ['session', 'source', 'team', ...TASK_FIELDS], load: async () => (await registerCommands()).add },
+  set: { effect: 'write', flags: ['session', 'status', 'note', 'evidence', 'skill', 'waits', 'proof', 'due'], load: async () => (await registerCommands()).set },
+  update: { effect: 'write', flags: ['session', 'note', ...TASK_FIELDS], load: async () => (await registerCommands()).update },
   list: {
+    effect: 'read',
     flags: ['session', 'status', 'source', 'priority', 'due-before', 'week', 'goal'],
     switches: ['tree', 'all'],
     load: async () => (await registerCommands()).list,
   },
   // --session names the caller on every task and inbox command, so a session can always pass it.
-  show: { flags: ['session'], load: async () => (await registerCommands()).show },
-  check: { flags: ['session', 'week'], switches: ['tree', 'all'], load: async () => (await registerCommands()).check },
-  plan: { flags: ['session', 'week'], switches: ['tree'], load: async () => (await registerCommands()).plan },
-  verify: { flags: ['session'], load: async () => (await registerCommands()).verify },
-  'inbox read': { flags: ['session'], load: async () => (await inboxCommands()).read },
-  'inbox status': { flags: ['session'], load: async () => (await inboxCommands()).status },
-  'inbox add': { flags: ['session', 'to', 'text'], load: async () => (await inboxCommands()).add },
-  'team create': { flags: ['sessions', 'lead', 'parent', 'project'], switches: ['dry-run'], load: async () => (await setupCommands()).teamCreate },
-  'team tree': { flags: [], load: async () => (await teamCommands()).teamTree },
-  rules: { flags: ['session'], load: async () => (await rulesCommands()).rules },
-  start: { flags: ['session'], switches: ['all'], load: async () => (await startCommands()).start },
-  open: { flags: ['prompt', 'terminal', 'project'], switches: ['resume'], load: async () => (await openCommands()).open },
-  launch: { flags: ['team', 'project', 'home', 'encoded-prompt', 'resume'], load: async () => (await openCommands()).launch },
-  restart: { flags: ['team', 'at', 'project'], load: async () => (await restartCommands()).restart },
-  who: { flags: [], load: async () => (await teamCommands()).who },
-  rename: { flags: ['session'], load: async () => (await teamCommands()).rename },
+  show: { effect: 'read', flags: ['session'], load: async () => (await registerCommands()).show },
+  check: { effect: 'read', flags: ['session', 'week'], switches: ['tree', 'all'], load: async () => (await registerCommands()).check },
+  plan: { effect: 'read', flags: ['session', 'week'], switches: ['tree'], load: async () => (await registerCommands()).plan },
+  verify: { effect: 'read', flags: ['session'], load: async () => (await registerCommands()).verify },
+  'inbox read': { effect: 'write', flags: ['session'], load: async () => (await inboxCommands()).read },
+  'inbox status': { effect: 'read', flags: ['session'], load: async () => (await inboxCommands()).status },
+  'inbox add': { effect: 'write', flags: ['session', 'to', 'text'], load: async () => (await inboxCommands()).add },
+  'team create': { effect: 'write', flags: ['sessions', 'lead', 'parent', 'project'], switches: ['dry-run'], load: async () => (await setupCommands()).teamCreate },
+  'team tree': { effect: 'read', flags: [], load: async () => (await teamCommands()).teamTree },
+  rules: { effect: 'read', flags: ['session'], load: async () => (await rulesCommands()).rules },
+  start: { effect: 'write', flags: ['session'], switches: ['all'], load: async () => (await startCommands()).start },
+  open: { effect: 'write', flags: ['prompt', 'terminal', 'project'], switches: ['resume'], load: async () => (await openCommands()).open },
+  launch: { effect: 'internal', flags: ['team', 'project', 'home', 'encoded-prompt', 'resume'], load: async () => (await openCommands()).launch },
+  restart: { effect: 'internal', flags: ['team', 'at', 'project'], load: async () => (await restartCommands()).restart },
+  who: { effect: 'read', flags: [], load: async () => (await teamCommands()).who },
+  rename: { effect: 'write', flags: ['session'], load: async () => (await teamCommands()).rename },
   hire: {
+    effect: 'write',
     flags: ['session', 'scope', 'reason', 'name', 'model', 'effort', 'daily-pct', 'review', 'approved-by'],
     switches: ['yes'],
     load: async () => (await hireCommands()).hire,
   },
-  retire: { flags: ['session', 'to', 'no-handover', 'reason'], switches: ['yes'], load: async () => (await retireCommands()).retire },
-  refresh: { flags: ['session'], switches: ['ready'], load: async () => (await refreshCommands()).refresh },
-  doctor: { flags: [], load: async () => (await doctorCommands()).doctor },
-  compact: { flags: [], switches: ['dry-run'], load: async () => (await compactCommands()).compact },
-  'gh sync': { flags: ['repo'], switches: ['yes', 'auto'], load: async () => (await ghCommands()).ghSync },
-  budget: { flags: ['day'], switches: ['loops', 'burn', 'all'], load: async () => (await budgetCommands()).budget },
+  retire: { effect: 'write', flags: ['session', 'to', 'no-handover', 'reason'], switches: ['yes'], load: async () => (await retireCommands()).retire },
+  refresh: { effect: 'write', flags: ['session'], switches: ['ready'], load: async () => (await refreshCommands()).refresh },
+  doctor: { effect: 'read', flags: [], load: async () => (await doctorCommands()).doctor },
+  compact: { effect: 'write', flags: [], switches: ['dry-run'], load: async () => (await compactCommands()).compact },
+  'gh sync': { effect: 'write', flags: ['repo'], switches: ['yes', 'auto'], load: async () => (await ghCommands()).ghSync },
+  budget: { effect: 'read', flags: ['day'], switches: ['loops', 'burn', 'all'], load: async () => (await budgetCommands()).budget },
   'budget lift': {
+    effect: 'write',
     flags: ['session', 'to', 'stop-pct', 'until', 'reason'],
     switches: ['reserve'],
     load: async () => (await budgetCommands()).lift,
   },
   'budget setup': {
+    effect: 'write',
     flags: ['session', 'daily', 'max-daily', 'over', 'escalate', 'quiet', 'quiet-action'],
     switches: ['yes', 'off'],
     load: async () => (await budgetSetupCommands()).setup,
   },
-  statusline: { flags: [], switches: ['pass'], load: async () => (await budgetCommands()).statusline },
-  'statusline install': { flags: [], switches: ['yes'], load: async () => (await statuslineCommands()).install },
-  'statusline uninstall': { flags: [], switches: ['yes'], load: async () => (await statuslineCommands()).uninstall },
-  'config validate': { flags: [], load: async () => (await configCommands()).validate },
-  'config migrate': { flags: [], load: async () => (await configCommands()).migrate },
-  'commits check': { flags: ['base', 'tip'], load: async () => (await commitsCommands()).check },
-  test: { flags: ['session'], rest: true, load: async () => (await testCommand()).test },
-  'hook push-guard': { flags: [], load: async () => (await hookCommands()).pushGuard },
-  'hook cold-send': { flags: [], load: async () => (await hookCommands()).coldSend },
-  'hook failed-send': { flags: [], load: async () => (await hookCommands()).failedSend },
-  'hook loop-nudge': { flags: [], load: async () => (await loopNudgeCommand()).loopNudge },
-  'hook helper-gate': { flags: [], load: async () => (await hookCommands()).helperGateHook },
-  'hook inbox-reminder': { flags: [], load: async () => (await hookCommands()).inboxReminder },
-  'hook session-start': { flags: [], load: async () => (await hookCommands()).sessionStart },
-  'hook stop': { flags: [], load: async () => (await hookCommands()).stop },
-  'hook refresh-wake': { flags: [], load: async () => (await refreshWakeCommand()).refreshWake },
-  'hook clear-dir': { flags: [], load: async () => (await clearCommands()).clearDir },
-  'hook clear-claim': { flags: [], switches: ['hold'], load: async () => (await clearCommands()).clearClaim },
+  statusline: { effect: 'internal', flags: [], switches: ['pass'], load: async () => (await budgetCommands()).statusline },
+  'statusline install': { effect: 'write', flags: [], switches: ['yes'], load: async () => (await statuslineCommands()).install },
+  'statusline uninstall': { effect: 'write', flags: [], switches: ['yes'], load: async () => (await statuslineCommands()).uninstall },
+  'config validate': { effect: 'read', flags: [], load: async () => (await configCommands()).validate },
+  'config migrate': { effect: 'write', flags: [], load: async () => (await configCommands()).migrate },
+  'commits check': { effect: 'read', flags: ['base', 'tip'], load: async () => (await commitsCommands()).check },
+  test: { effect: 'write', flags: ['session'], rest: true, load: async () => (await testCommand()).test },
+  'hook push-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).pushGuard },
+  'hook cold-send': { effect: 'internal', flags: [], load: async () => (await hookCommands()).coldSend },
+  'hook failed-send': { effect: 'internal', flags: [], load: async () => (await hookCommands()).failedSend },
+  'hook loop-nudge': { effect: 'internal', flags: [], load: async () => (await loopNudgeCommand()).loopNudge },
+  'hook helper-gate': { effect: 'internal', flags: [], load: async () => (await hookCommands()).helperGateHook },
+  'hook inbox-reminder': { effect: 'internal', flags: [], load: async () => (await hookCommands()).inboxReminder },
+  'hook session-start': { effect: 'internal', flags: [], load: async () => (await hookCommands()).sessionStart },
+  'hook stop': { effect: 'internal', flags: [], load: async () => (await hookCommands()).stop },
+  'hook refresh-wake': { effect: 'internal', flags: [], load: async () => (await refreshWakeCommand()).refreshWake },
+  'hook clear-dir': { effect: 'internal', flags: [], load: async () => (await clearCommands()).clearDir },
+  'hook clear-claim': { effect: 'internal', flags: [], switches: ['hold'], load: async () => (await clearCommands()).clearClaim },
+  'hook slash-command': {
+    effect: 'internal',
+    flags: [],
+    load: async () =>
+      (await slashCommands()).slashCommand({
+        table: COMMAND_TABLE,
+        help: COMMAND_HELP,
+        run: runCli,
+      }),
+  },
 };
 
 /** Each command's flags that take a value. The LLM guide test (tools/docs/llm-guide.test.ts) checks the guide documents exactly these. */
 export const COMMAND_FLAGS: CommandFlags = Object.fromEntries(Object.entries(COMMANDS).map(([name, spec]) => [name, spec.flags]));
 /** Each command's flags that take no value, checked by the LLM guide test like `COMMAND_FLAGS`. */
 export const COMMAND_SWITCHES: CommandSwitches = Object.fromEntries(Object.entries(COMMANDS).map(([name, spec]) => [name, spec.switches ?? []]));
+/** Each command's effect, so `/teamrig` knows what runs at once, what only when the person typed it, and what never. */
+export const COMMAND_EFFECTS: CommandEffects = Object.fromEntries(Object.entries(COMMANDS).map(([name, spec]) => [name, spec.effect]));
 /** The commands that take a command line after `--`. */
 export const COMMAND_REST: CommandRest = new Set(Object.entries(COMMANDS).flatMap(([name, spec]) => (spec.rest === true ? [name] : [])));
 /** `--tier` became `--priority` (levels p1, p2, ...): refused everywhere with the new name, never an alias. */
 const RENAMED_FLAGS: RenamedFlags = { tier: 'priority' };
+/** The table a line is read with, and each command's effect: what `/teamrig` plans a line from (src/slash/plan.ts). */
+export const COMMAND_TABLE: CommandTable = { flags: COMMAND_FLAGS, switches: COMMAND_SWITCHES, renamed: RENAMED_FLAGS, rest: COMMAND_REST, effects: COMMAND_EFFECTS };
 
 export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|name>, else $${ENV.session})
   team create <team> --sessions <id,id> [--lead <id>] [--project <dir>] [--parent <team>] [--dry-run]
@@ -216,6 +238,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       (run by Claude Code, hook JSON on stdin)
   hook clear-dir | hook clear-claim [--hold]
       (run by the plugin's mod: the automatic restart's /clear in the tab)
+  hook slash-command
+      (run by the plugin's mod: /teamrig <command> typed in a Claude Code tab; /teamrig alone tells what it runs)
   launch <id> --team <team> --project <dir> [--home <dir>] [--encoded-prompt <text>] [--resume <session>]
       (run by the tab that open starts: sets the session and starts Claude Code)
   restart <id> --team <team> --at <time> --project <dir>
@@ -225,7 +249,7 @@ else above $CLAUDE_PROJECT_DIR.
 Sessions: give an id, a current name or a former one; a session never named is <team>-<id>.
 Dates: YYYY-MM-DD or "YYYY-MM-DD HH:MM", UTC. Kit home: $${ENV.home}, else ~/.${KIT_NAME}.
 Exit: 0 done, 1 failed, 2 refused by a team rule, 3 open printed the command to run itself,
-64 a command line it cannot read.
+4 /teamrig printed a line to agree to before it runs, 64 a command line it cannot read.
 One command's help: ${KIT_NAME} <command> --help.`;
 
 /** Each command's own lines of USAGE, for `<command> --help` and a usage error. */
