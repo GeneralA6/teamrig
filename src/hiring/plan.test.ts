@@ -69,6 +69,7 @@ describe('planHire', () => {
     assert.match(problem({ ...FILE, hiring: { policy: 'owner' } }), /--approved-by/);
     assert.match(problem({ ...FILE, hiring: { policy: 'owner' } }, { approvedBy: ' ' }), /--approved-by/);
     assert.match(problem({ sessions: ['lead'], roles: { lead: 'lead' } }), /hiring\.policy is owner/);
+    assert.equal(planned({ ...FILE, hiring: { policy: 'automatic' } }).hire.session, 'helper');
   });
 
   it('refuses a missing job or reason, a bad or taken id, and a bad model', () => {
