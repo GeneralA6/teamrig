@@ -776,6 +776,103 @@ Week: 31.0% used at 09:00 UTC (status line); the pace line is at 28.6%: 2.4 poin
 
 A lead with sub-teams runs `teamrig check --tree --session lead` too: `start` reads the lead's own team.
 
+### teamrig meeting start
+
+The lead opens the owner's daily meeting and gets its agenda in one call. Every other session gets one inbox line
+(no message, so no idle session wakes): keep working, and leave the lead inbox lines until the meeting ends. Until
+then the `cold-send` hook holds every message to the lead but one starting `CRITICAL`. The agenda:
+
+- `DECISIONS`: each task waiting on the owner's decision or approval, with its card facts (what and why, since when
+  it waits and its newest note, where it was asked), then the card form and how to record each answer;
+- `LATE`: the active tasks past their due date;
+- `DONE`: what finished since the last meeting ended (a day back for the first, 7 days at most);
+- the lead's unread inbox lines, marked read;
+- the week's use and, under it, the planned week's fit to the weekly limit, as `plan` gives it.
+
+Each list shows 10 rows at most, then the command that lists them all. A meeting left open stops holding messages
+4 hours after it started. Started again while open, it tells no one again and prints the agenda. Only the lead runs
+it.
+
+Flags:
+
+- `--session <area>`: who you are: the lead.
+
+Example:
+
+```sh
+teamrig meeting start --session lead
+```
+
+Output:
+
+```text
+MEETING started Thu 10-15 08:00 UTC: told 2 session(s) by inbox line; messages to shop-lead are held but CRITICAL ones
+DECISIONS 1 waiting on owner (decision or approval)
+  T7 waiting, p1, owner web | Pick the pricing tier (waiting: decision owner)
+    what and why: Two tiers are built; the launch page needs one.
+    waiting since 10-14 16:20: the numbers are in the card
+  Card each so owner decides from it alone: ... Never point to a doc; `teamrig show <id>` prints a task whole.
+  Record each answer in the same turn: teamrig update <id> --note "owner decided: <decision>" --session lead; meeting end tells each task's owner.
+LATE 1 past their due date
+  T4 open, p2, owner api, due 10-14 | Retry the signup call
+DONE 2 done or dropped since Wed 10-14 08:30 UTC
+  T2 done, p1, owner api | Rate-limit the signup endpoint
+  T3 done, p2, owner web | Add the error codes page
+- 2026-10-15 07:40 api: the signup retry needs the new error codes first
+READ lead: 1 new line, shown above; new ones are shown at your next prompt
+Week: 31.0% used at 08:00 UTC (status line); the pace line is at 28.6%: 2.4 points ahead. Resets Wed 10-21 01:00 UTC.
+  fits: p1 40% · p2 22% (left 68.5% of the week)
+END teamrig meeting end --session lead: tells every session, with the decisions recorded on its tasks
+```
+
+A line the inbox refuses (a team secret pattern matched it) prints `NOT TOLD <id>: <why>` first; the rest go on.
+
+### teamrig meeting agenda
+
+Prints the meeting's agenda again, as `meeting start` does, after a line that says where the meeting stands: none
+held yet, open (messages to the lead held), left open past 4 hours, or the last one's end. Run it to prepare the
+next meeting or during one; it marks the lead's inbox read. Only the lead runs it.
+
+Flags:
+
+- `--session <area>`: who you are: the lead.
+
+Example:
+
+```sh
+teamrig meeting agenda --session lead
+```
+
+Output: `MEETING none open, the last ended Wed 10-14 08:30 UTC; the agenda for the next (teamrig meeting start
+opens it)`, then the agenda.
+
+### teamrig meeting end
+
+Closes the meeting, or one left open past 4 hours, and tells every other session it ended, in one inbox line each.
+A session's line lists the decisions the lead recorded on its tasks during the meeting: each `update` by the lead
+with its note and the fields it changed. Messages to the lead go again. Only the lead runs it; with no meeting open
+it is refused.
+
+Flags:
+
+- `--session <area>`: who you are: the lead.
+
+Example:
+
+```sh
+teamrig meeting end --session lead
+```
+
+Output:
+
+```text
+MEETING ended Thu 10-15 08:25 UTC after 25 min: told 2 session(s) messages to shop-lead may go again
+RECORDED 1 decision(s), each told to its task's owner
+  web T7: owner decided: the middle tier ships first (changed priority)
+```
+
+With nothing recorded it says so: a decision the register lacks reaches no one.
+
 ### teamrig open
 
 Opens a new terminal tab in the project folder running Claude Code as that session (`teamrig open <id|name>`, or
@@ -1440,6 +1537,10 @@ Before a SendMessage call to a team session idle `messages.coldAfterMinutes` (60
 the message once: it would wake the receiver cold, and its first call would re-read its whole context at full
 price. The note says to write an inbox line if the receiver need not act now, or to put every ask for it in one
 message and send it again; the same tab's next send to it within 15 minutes goes through.
+
+While the owner's daily meeting is open (`teamrig meeting start`), it holds every message to the lead from another
+session, a resend too, unless the message starts with `CRITICAL`; the note says to leave an inbox line instead.
+This hold works with `messages.coldAfterMinutes` at 0 too.
 
 Flags: none.
 

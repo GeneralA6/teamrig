@@ -278,7 +278,7 @@ function treeFilterOf(roster: Roster, filter: ListFilter): ListFilter {
 }
 
 /** The caller's own register, as a roll-up of one team. */
-async function ownRegister(runtime: CliRuntime): Promise<RollUp> {
+export async function ownRegister(runtime: CliRuntime): Promise<RollUp> {
   const { config, paths, roster, register } = await openTeam(runtime, 'read');
   const own: RolledTeam = { team: paths.team, config, paths, roster, snapshot: await register.snapshot(), history: () => register.history() };
   return { own, teams: [own] };
@@ -389,9 +389,10 @@ function checkRegister(snapshot: RegisterSnapshot, config: KitConfig, now: Date,
 /**
  * The week's fit to the weekly limit over every team read (one account's limit covers them all): what is left of
  * the own team's `budget.targetPct` after the newest status-line reading of the week, which costs one folder read
- * (no transcript is measured). `labelled` names each row's team, for a roll-up.
+ * (no transcript is measured). `labelled` names each row's team, for a roll-up. `plan`, `check` and the meeting
+ * agenda (meeting.ts) read it.
  */
-async function weekFitOf(runtime: CliRuntime, { own, teams }: RollUp, week: string, labelled: boolean): Promise<WeekFit> {
+export async function weekFitOf(runtime: CliRuntime, { own, teams }: RollUp, week: string, labelled: boolean): Promise<WeekFit> {
   const { budget } = own.config;
   const now = runtime.clock.now();
   const use = weekUseOf(await readSnapshots(runtime.files, snapshotDirOf(budget, own.paths)), now);

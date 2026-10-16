@@ -28,6 +28,11 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
   start [--session <id|name>] [--all]   the start of a work block in one call: the UTC time, the
       unread inbox lines (marked read), the session's tasks, the check flags it acts on (the lead: all)
       and the week's use; --all: the tasks and flags in full
+  meeting start | meeting agenda | meeting end [--session <id|name>]   the lead's daily meeting with
+      the owner: start tells every session by inbox line that messages to the lead wait until its end
+      (one starting CRITICAL goes) and prints the agenda: the owner's decisions as card facts, the late
+      tasks, what finished since the last meeting, the lead's inbox and the week's use and fit; agenda
+      prints it again; end tells every session, with the decisions recorded on its tasks (update --note)
   add --title "<one line>" --description "<what and why>" --priority p<n> [--ref <where it was asked>]
       [--owner <session>] [--source <session>|<owner source>] [--due <date>] [--goals a,b] [--week <date>]
       [--after T5,T6] [--size <pct>]
