@@ -23,6 +23,7 @@ const inboxCommands = () => import('./commands/inbox.ts');
 const configCommands = () => import('./commands/config.ts');
 const hookCommands = () => import('./commands/hook.ts');
 const loopNudgeCommand = () => import('./commands/hook-loop-nudge.ts');
+const refreshWakeCommand = () => import('./commands/hook-refresh-wake.ts');
 const teamCommands = () => import('./commands/team.ts');
 const commitsCommands = () => import('./commands/commits.ts');
 const doctorCommands = () => import('./commands/doctor.ts');
@@ -103,6 +104,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'hook inbox-reminder': { flags: [], load: async () => (await hookCommands()).inboxReminder },
   'hook session-start': { flags: [], load: async () => (await hookCommands()).sessionStart },
   'hook stop': { flags: [], load: async () => (await hookCommands()).stop },
+  'hook refresh-wake': { flags: [], load: async () => (await refreshWakeCommand()).refreshWake },
 };
 
 /** Each command's flags that take a value. The LLM guide test (tools/docs/llm-guide.test.ts) checks the guide documents exactly these. */
@@ -193,7 +195,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   test [--session <id|name>] -- <command ...>   runs a test command in the shell, writes all it printed
       to a log (each session keeps its newest 20) and prints one PASS or FAIL line, then each failing
       test within tests.maxFailureChars; exit 0 when the command passed, 1 otherwise
-  hook push-guard | hook cold-send | hook failed-send | hook loop-nudge | hook helper-gate | hook inbox-reminder | hook session-start | hook stop
+  hook push-guard | hook cold-send | hook failed-send | hook loop-nudge | hook helper-gate | hook inbox-reminder | hook session-start | hook stop | hook refresh-wake
       (run by Claude Code, hook JSON on stdin)
   launch <id> --team <team> --project <dir> [--home <dir>] [--encoded-prompt <text>]
       (run by the tab that open starts: sets the session and starts Claude Code)

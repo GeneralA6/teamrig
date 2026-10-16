@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import type { Sleep } from '../core/lock.ts';
 import { join, resolve } from 'node:path';
 import { runCli } from '../cli/run.ts';
 import type { ExitCode } from '../cli/runtime.ts';
@@ -59,6 +60,8 @@ export interface RunOptions {
   readonly processes?: Processes;
   /** The running session's processes; default none runs. */
   readonly sessionProcesses?: SessionProcesses;
+  /** How the CLI waits, such as one that changes the world mid-wait; default the clock's, which only moves time. */
+  readonly sleep?: Sleep;
   /** The shell `teamrig test` runs in; default one that prints nothing and exits 0. */
   readonly shell?: ShellRunner;
   /** The GitHub CLI `gh sync` reads through; default one that sees no repository. */
@@ -100,7 +103,7 @@ export class CliHarness {
       pid: 4242,
       files: options.files ?? this.files,
       clock: this.clock,
-      sleep: this.clock.sleep,
+      sleep: options.sleep ?? this.clock.sleep,
       ...quietWorld(options.branch, options.stdin),
       ...(options.commitLog === undefined ? {} : { commitLog: options.commitLog }),
       ...(options.platform === undefined ? {} : { platform: options.platform }),

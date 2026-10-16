@@ -7,6 +7,7 @@ they all stay silent.
 | Claude Code event | teamrig hook | What it does |
 | --- | --- | --- |
 | `SessionStart` (startup, resume, `/clear`, compact) | `hook session-start` | Injects the team rules and who you are |
+| `SessionStart` (`/clear`), in the background | `hook refresh-wake` | Wakes a session that `/clear` started from its context refresh, so it carries on without a prompt |
 | `UserPromptSubmit` (each prompt) | `hook inbox-reminder` | Cancels a waiting automatic restart; shows new inbox lines; binds a tab started by hand by its title; records a Claude Code rename; tells the model when it is past its daily budget |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook push-guard` | Asks before a push to a protected branch; refuses a force-push or delete of one |
 | `PreToolUse` on `SendMessage` | `hook cold-send` | Holds once a message that would wake an idle session cold |
@@ -47,7 +48,8 @@ The injected context holds:
    rules, they win.
 6. **After a refresh**: `You were refreshed after T2; read your handover first: <path>`, once, at the first
    fresh start (the automatic restart, a `/clear` or a new start) after the handover was written. A compact or resume keeps the old context, so the
-   note waits.
+   note waits. After a `/clear`, `hook refresh-wake` then starts a turn by itself that tells the session to read that
+   handover and carry on, so it does not sit idle until someone types.
 7. **A model check**: when the session runs on another model than its `launch` entry in the team config, a line
    such as `MODEL shop-web runs model claude-sonnet-5; the team config asks for model opus at xhigh effort: type
    /model opus`. It is also shown to the user, who alone can change it. It never blocks. Claude Code gives a hook

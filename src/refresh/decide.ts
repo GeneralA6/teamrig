@@ -254,3 +254,24 @@ export function decideStart(
     state: { phase: 'refreshed', task: state.task, at: now },
   };
 }
+
+/**
+ * How long after a /clear took the refresh the background wake still answers to it: the wake runs beside the
+ * SessionStart hook that takes it, so a refresh taken earlier belongs to another start.
+ */
+export const WAKE_WINDOW_MS = 30_000;
+
+/**
+ * The prompt that wakes a session /clear just started from its refresh, so it carries on instead of sitting idle
+ * until the user types; undefined when this start took no refresh.
+ */
+export function wakePromptOf(state: RefreshState | undefined, handoverPath: string, now: string): string | undefined {
+  if (state?.phase !== 'refreshed') {
+    return undefined;
+  }
+  const age = Date.parse(now) - Date.parse(state.at);
+  if (!(age >= 0 && age <= WAKE_WINDOW_MS)) {
+    return undefined;
+  }
+  return `You were started fresh after your context refresh at ${state.task}: read your handover ${handoverPath} now, take over what the SessionStart note lists, then carry on with its next steps.`;
+}
