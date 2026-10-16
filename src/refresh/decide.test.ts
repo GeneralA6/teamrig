@@ -11,6 +11,8 @@ import {
   type BoundaryFacts,
   type RefreshSettings,
   type StopContext,
+  wakePromptOf,
+  WAKE_WINDOW_MS,
 } from './decide.ts';
 import type { RefreshState } from './state.ts';
 
@@ -272,5 +274,24 @@ describe('decideStart', () => {
 describe('thousands', () => {
   it('rounds to the nearest thousand', () => {
     assert.deepEqual([thousands(262_144), thousands(499), thousands(1_500), thousands(0)], ['262k', '0k', '2k', '0k']);
+  });
+});
+
+describe('wakePromptOf', () => {
+  const TAKEN: RefreshState = { phase: 'refreshed', task: 'T12', at: NOW };
+  const later = (ms: number): string => new Date(Date.parse(NOW) + ms).toISOString();
+
+  it('wakes the session whose refresh this /clear just took, pointing it at its handover', () => {
+    assert.equal(
+      wakePromptOf(TAKEN, HANDOVER, later(WAKE_WINDOW_MS)),
+      `You were started fresh after your context refresh at T12: read your handover ${HANDOVER} now, take over what the SessionStart note lists, then carry on with its next steps.`,
+    );
+  });
+
+  it('wakes nothing for a refresh taken earlier, not taken yet, or none', () => {
+    assert.equal(wakePromptOf(TAKEN, HANDOVER, later(WAKE_WINDOW_MS + 1)), undefined);
+    assert.equal(wakePromptOf(TAKEN, HANDOVER, later(-1)), undefined);
+    assert.equal(wakePromptOf(READY, HANDOVER, NOW), undefined);
+    assert.equal(wakePromptOf(undefined, HANDOVER, NOW), undefined);
   });
 });

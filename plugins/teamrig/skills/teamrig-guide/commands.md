@@ -1369,6 +1369,22 @@ teamrig hook stop < stop.json
 
 Output: nothing on most turns; otherwise a JSON `block` decision whose reason tells you to write the handover.
 
+### teamrig hook refresh-wake
+
+Runs in the background after a `/clear` (`asyncRewake`) and wakes the session that `/clear` started from its
+context refresh, so it reads its handover and carries on instead of sitting idle until you type. It waits up to
+10 seconds for `hook session-start` to bind the tab and take the refresh; any other start wakes nothing.
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig hook refresh-wake < session-start.json
+```
+
+Output: nothing and exit 0, or the wake prompt on stderr and exit 2, which Claude Code gives the model as a new turn.
+
 ## Help and version
 
 ### teamrig help
