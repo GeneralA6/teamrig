@@ -3,6 +3,7 @@ import { formatAddress, type SessionAddress } from '../core/address.ts';
 import { titleKey } from '../core/ids.ts';
 import type { MarkLog } from '../inbox/inbox.ts';
 import { indexMarks, MARK_VERSION, type InboxMark } from '../inbox/marks.ts';
+import type { RefreshState } from '../refresh/state.ts';
 
 /**
  * Binding a tab by its Claude Code title: a session started by hand, with no `$TEAMRIG_SESSION` and
@@ -106,6 +107,47 @@ export async function bindByTitle(deps: BindDeps, input: BindInput): Promise<Bin
   const mark = bindMarkOf(byArea.get(only.id), only.id, claudeSession, input.now);
   await deps.marks.append(mark);
   return { kind: 'bound', id: only.id, mark };
+}
+
+/**
+ * How long after its handover was marked ready a session's Claude Code process still binds a cleared tab:
+ * the system reuses process ids, and a session that never came back must not claim a later tab.
+ */
+export const PROCESS_BIND_MAX_AGE_MS = 24 * 60 * 60_000;
+
+/** The sessions whose handover is ready and was announced in Claude Code process `pid` within PROCESS_BIND_MAX_AGE_MS. */
+export function refreshedIn(states: ReadonlyMap<string, RefreshState | undefined>, pid: number, now: Date): string[] {
+  return [...states]
+    .filter(([, state]) => state?.phase === 'ready' && state.claudePid === pid && now.getTime() - Date.parse(state.at) < PROCESS_BIND_MAX_AGE_MS)
+    .map(([id]) => id);
+}
+
+export interface ProcessBindDeps {
+  readonly marks: MarkLog;
+  /** The sessions refreshedIn this tab's Claude Code process. */
+  readonly refreshedHere: () => Promise<readonly string[]>;
+}
+
+/**
+ * Binds a tab /clear started to the session that refreshed in its Claude Code process: /clear keeps the
+ * process but gives the tab a new Claude Code session, which no mark names, and its title may name no
+ * session. Bound only when exactly one session refreshed there; the mark repeats the area's read position.
+ */
+export async function bindByProcess(deps: ProcessBindDeps, claudeSession: string, now: Date): Promise<{ readonly id: string; readonly mark: InboxMark } | undefined> {
+  const sessions = await deps.refreshedHere();
+  const [only] = sessions;
+  if (sessions.length !== 1 || only === undefined) {
+    return undefined;
+  }
+  const { byArea } = indexMarks((await deps.marks.read()).marks);
+  const mark = bindMarkOf(byArea.get(only), only, claudeSession, now);
+  await deps.marks.append(mark);
+  return { id: only, mark };
+}
+
+/** The SessionStart note for a tab bound by its Claude Code process after a /clear. */
+export function processBoundNote(id: string): string {
+  return `This tab was bound to the \`${id}\` session: /clear kept the Claude Code process that session refreshed in; nothing was marked read.`;
 }
 
 /** The prompt hook's line for a tab just bound: which session it is now, and that nothing was marked read. */

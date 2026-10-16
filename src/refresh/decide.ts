@@ -214,7 +214,7 @@ export function decideReady(state: RefreshState | undefined, handover: string | 
   if (handoverHashOf(handover) === state.handoverHash) {
     return { kind: 'refused', reason: `${handoverPath} is the handover from before; write this refresh's handover there` };
   }
-  return { kind: 'ready', state: { phase: 'ready', task: state.task, at: now, noticed: false, transcript: null } };
+  return { kind: 'ready', state: { phase: 'ready', task: state.task, at: now, noticed: false, transcript: null, claudePid: null } };
 }
 
 /** Starts that drop the old context; a `compact`, `resume` or `fork` start keeps it, so the handover waits. */

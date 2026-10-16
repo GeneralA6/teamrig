@@ -6,13 +6,18 @@ import type { InboxMark } from '../inbox/marks.ts';
 import { JsonlMarkLog } from '../inbox/store.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { renameOf } from '../testing/rename.ts';
+import type { RefreshState } from '../refresh/state.ts';
 import {
+  bindByProcess,
   bindByTitle,
   bindHint,
   bindMarkOf,
   boundPromptNote,
   boundStartNote,
   hintReason,
+  PROCESS_BIND_MAX_AGE_MS,
+  processBoundNote,
+  refreshedIn,
   sessionsTitled,
   type BindInput,
   type BindOutcome,
@@ -74,6 +79,41 @@ describe('bindMarkOf', () => {
 
   it('starts an area never read before its first line, dated now', () => {
     assert.deepEqual(bindMarkOf(undefined, 'alpha', TAB, NOW), { v: 1, area: 'alpha', line: 0, at: NOW.toISOString(), claudeSession: TAB, lastLineHash: null });
+  });
+});
+
+describe('refreshedIn', () => {
+  const ready = (claudePid: number | null, at: string = '2030-01-08T09:00:00.000Z'): RefreshState => ({ phase: 'ready', task: 'T3', at, noticed: true, transcript: null, claudePid });
+
+  it('names the sessions whose handover is ready and was announced in this process within the day', () => {
+    const states = new Map<string, RefreshState | undefined>([
+      ['alpha', ready(6900)],
+      ['bravo', ready(6800)],
+      ['lead', ready(null)],
+      ['old', ready(6900, new Date(NOW.getTime() - PROCESS_BIND_MAX_AGE_MS).toISOString())],
+      ['done', { phase: 'refreshed', task: 'T3', at: '2030-01-08T09:00:00.000Z' }],
+      ['none', undefined],
+    ]);
+    assert.deepEqual(refreshedIn(states, 6900, NOW), ['alpha'], 'a reused process id of a session that never came back binds nothing');
+  });
+});
+
+describe('bindByProcess', () => {
+  it("binds the cleared tab to the one session that refreshed in its process, at that area's read position", async () => {
+    const { files, deps } = setup([readMark('alpha', 4, 'fourth', OTHER_TAB)]);
+    const bound = await bindByProcess({ marks: deps.marks, refreshedHere: () => Promise.resolve(['alpha']) }, TAB, NOW);
+    const mark: InboxMark = { ...readMark('alpha', 4, 'fourth', TAB) };
+    assert.deepEqual(bound, { id: 'alpha', mark });
+    assert.equal(await files.read(MARKS), `${markLine(readMark('alpha', 4, 'fourth', OTHER_TAB))}${markLine(mark)}`);
+    assert.match(processBoundNote('alpha'), /^This tab was bound to the `alpha` session: \/clear kept the Claude Code process/);
+  });
+
+  it('binds nothing when no session or two refreshed in the process', async () => {
+    for (const sessions of [[], ['alpha', 'bravo']]) {
+      const { files, deps } = setup();
+      assert.equal(await bindByProcess({ marks: deps.marks, refreshedHere: () => Promise.resolve(sessions) }, TAB, NOW), undefined);
+      assert.equal(await files.read(MARKS), undefined);
+    }
   });
 });
 

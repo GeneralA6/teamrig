@@ -10,8 +10,8 @@ const EVERY_PHASE: readonly RefreshState[] = [
   { phase: 'idle', task: 'T12', at: AT, tokens: null, finished: 0 },
   { phase: 'asked', task: 'T12', at: AT, tokens: 262_000, handoverHash: '0123456789abcdef' },
   { phase: 'asked', task: 'T12', at: AT, tokens: null, handoverHash: null },
-  { phase: 'ready', task: 'T12', at: AT, noticed: false, transcript: null },
-  { phase: 'ready', task: 'T12', at: AT, noticed: true, transcript: '/claude/projects/p/s.jsonl' },
+  { phase: 'ready', task: 'T12', at: AT, noticed: false, transcript: null, claudePid: null },
+  { phase: 'ready', task: 'T12', at: AT, noticed: true, transcript: '/claude/projects/p/s.jsonl', claudePid: 6900 },
   { phase: 'refreshed', task: 'T12', at: AT },
 ];
 
@@ -41,10 +41,17 @@ describe('refresh state files', () => {
       '{"v":1,"phase":"asked","task":"T1","at":"x","tokens":1,"handoverHash":7}',
       '{"v":1,"phase":"asked","task":"T1","at":"x","tokens":"1","handoverHash":null}',
       '{"v":1,"phase":"ready","task":"T1","at":"x","noticed":"no"}',
+      '{"v":1,"phase":"ready","task":"T1","at":"x","noticed":true,"transcript":7}',
+      '{"v":1,"phase":"ready","task":"T1","at":"x","noticed":true,"claudePid":0}',
+      '{"v":1,"phase":"ready","task":"T1","at":"x","noticed":true,"claudePid":"6900"}',
       '[1]',
     ]) {
       assert.equal(parseRefreshState(text), undefined, text);
     }
+  });
+
+  it('reads a ready state from before the transcript and process were recorded as having neither', () => {
+    assert.deepEqual(parseRefreshState('{"v":1,"phase":"ready","task":"T1","at":"x","noticed":true}'), { phase: 'ready', task: 'T1', at: 'x', noticed: true, transcript: null, claudePid: null });
   });
 
   it('reads a boundary or a judged one from before the task count as its first task, or none counted', () => {

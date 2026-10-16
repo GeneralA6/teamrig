@@ -1,9 +1,13 @@
 import { errorMessage } from '../../core/guards.ts';
+import type { Roster } from '../../config/roster.ts';
 import { ENV, KIT_NAME } from '../../core/home.ts';
 import { sessionTitleOf } from '../../names/title.ts';
-import { bindByTitle, bindHint, hintReason, type BindOutcome, type TeamRoster } from '../../hooks/bind.ts';
+import { bindByProcess, bindByTitle, bindHint, hintReason, processBoundNote, refreshedIn, type BindOutcome, type TeamRoster } from '../../hooks/bind.ts';
 import { firstHint, JsonlHintLog } from '../../hooks/hint-log.ts';
 import { injectFor } from '../../inbox/inject.ts';
+import { claudeProcessOf } from '../../refresh/restart.ts';
+import type { RefreshState } from '../../refresh/state.ts';
+import { RefreshStore } from '../../refresh/store.ts';
 import type { Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
@@ -54,6 +58,32 @@ export async function bindTab(runtime: CliRuntime, kit: Kit, own: TeamRoster, cl
     return { own, outcome: title.kind === 'failed' && outcome.kind === 'untitled' ? { kind: 'failed', error: title.error } : outcome };
   } catch (error) {
     return { own, outcome: { kind: 'failed', error: errorMessage(error) } };
+  }
+}
+
+/**
+ * After a /clear its title could not bind: binds the tab to the session that refreshed in this hook's Claude
+ * Code process (hooks/bind.ts), and gives the SessionStart note for it. It never throws: a failure is the note.
+ */
+export async function bindAfterClear(runtime: CliRuntime, kit: Kit, roster: Roster, claudeSession: string): Promise<string | undefined> {
+  try {
+    const pid = await claudeProcessOf(runtime.sessionProcesses, runtime.sessionProcesses.parentPid);
+    if (pid === undefined) {
+      return undefined;
+    }
+    const now = new Date(runtime.clock.now());
+    const store = new RefreshStore(runtime.files, kit.paths);
+    const refreshedHere = async (): Promise<string[]> => {
+      const states = new Map<string, RefreshState | undefined>();
+      for (const id of roster.ids) {
+        states.set(id, await store.state(id));
+      }
+      return refreshedIn(states, pid, now);
+    };
+    const bound = await bindByProcess({ marks: inboxDepsOf(runtime, kit.paths).marks, refreshedHere }, claudeSession, now);
+    return bound === undefined ? undefined : processBoundNote(bound.id);
+  } catch (error) {
+    return `${KIT_NAME} could not bind this tab by its Claude Code process (${errorMessage(error)}).`;
   }
 }
 

@@ -15,14 +15,15 @@ export const REFRESH_FORMAT = 1;
  * - `ready`: its handover is written and it waits for a fresh start (the automatic restart, or the user's
  *   /clear); `noticed` once the user was told. `transcript` is the Claude Code transcript of the session that
  *   wrote it, recorded with the notice (null before, or when Claude Code gave none): the fresh start reads
- *   from it what that session leaves to take over.
+ *   from it what that session leaves to take over. `claudePid` is the Claude Code process the notice was
+ *   given in (null before, or when it was not found): a /clear keeps the process, so the fresh tab binds by it.
  * - `refreshed`: a fresh start was pointed at the handover.
  */
 export type RefreshState =
   | { readonly phase: 'boundary'; readonly task: string; readonly at: string; readonly finished: number }
   | { readonly phase: 'idle'; readonly task: string; readonly at: string; readonly tokens: number | null; readonly finished: number }
   | { readonly phase: 'asked'; readonly task: string; readonly at: string; readonly tokens: number | null; readonly handoverHash: string | null }
-  | { readonly phase: 'ready'; readonly task: string; readonly at: string; readonly noticed: boolean; readonly transcript: string | null }
+  | { readonly phase: 'ready'; readonly task: string; readonly at: string; readonly noticed: boolean; readonly transcript: string | null; readonly claudePid: number | null }
   | { readonly phase: 'refreshed'; readonly task: string; readonly at: string };
 
 /** The lead's ask that a session refresh at its next finished task, whatever its context. */
@@ -103,7 +104,8 @@ export function parseRefreshState(text: string): RefreshState | undefined {
       const noticed = record['noticed'];
       // A file from before the transcript was recorded has none.
       const transcript = record['transcript'] === undefined ? null : nullableString(record, 'transcript');
-      return typeof noticed === 'boolean' && transcript !== undefined ? { phase: 'ready', task, at, noticed, transcript } : undefined;
+      const claudePid = nullablePidOf(record['claudePid']);
+      return typeof noticed === 'boolean' && transcript !== undefined && claudePid !== undefined ? { phase: 'ready', task, at, noticed, transcript, claudePid } : undefined;
     }
     case 'refreshed':
       return { phase: 'refreshed', task, at };
@@ -126,6 +128,14 @@ export function parseRefreshRequest(text: string): RefreshRequest | undefined {
 
 export function formatRefreshRequest(request: RefreshRequest): string {
   return toJsonlLine({ [VERSION_FIELD]: REFRESH_FORMAT, ...request });
+}
+
+/** A process id, null when absent or null, undefined when damaged. */
+function nullablePidOf(value: unknown): number | null | undefined {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  return isNonNegativeInteger(value) && value > 0 ? value : undefined;
 }
 
 function nullableString(record: JsonRecord, key: string): string | null | undefined {
