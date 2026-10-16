@@ -211,6 +211,13 @@ describe('parseConfig', () => {
     assert.equal(config.budget.enabled, false);
   });
 
+  it('reads the context file budgets, from their defaults and within their bounds', () => {
+    assert.deepEqual(parseConfig(ROSTER).config.contextFiles, { maxClaudeMdChars: 12_000, maxMemoryIndexChars: 6_000, maxSkillListingChars: 4_000 });
+    const { config, issues } = parseConfig({ ...ROSTER, contextFiles: { maxClaudeMdChars: 20_000, maxMemoryIndexChars: 499 } });
+    assert.deepEqual(config.contextFiles, { maxClaudeMdChars: 20_000, maxMemoryIndexChars: 6_000, maxSkillListingChars: 4_000 });
+    assert.deepEqual(paths(issues), ['contextFiles.maxMemoryIndexChars']);
+  });
+
   it('keeps valid overrides', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,

@@ -346,6 +346,16 @@ export interface LaunchConfig {
   readonly effort?: EffortLevel;
 }
 
+/** Character budgets for the text Claude Code puts in every call's context; `doctor` flags a file over its budget. */
+export interface ContextFilesConfig {
+  /** The CLAUDE.md files a session loads: the user's, and the project folder's and each parent's. */
+  readonly maxClaudeMdChars: number;
+  /** The project's memory index (`MEMORY.md`). */
+  readonly maxMemoryIndexChars: number;
+  /** The skill listing: one `name: description` line per skill. */
+  readonly maxSkillListingChars: number;
+}
+
 export interface PathsConfig {
   readonly state?: string;
   readonly inbox?: string;
@@ -381,6 +391,7 @@ export interface KitConfig {
   readonly messages: MessagesConfig;
   readonly register: RegisterConfig;
   readonly skills: SkillsConfig;
+  readonly contextFiles: ContextFilesConfig;
   readonly lock: LockConfig;
   readonly pushGuard: PushGuardConfig;
   readonly commits: CommitsConfig;

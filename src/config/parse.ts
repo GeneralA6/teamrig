@@ -5,6 +5,7 @@ import {
   DEFAULT_ALERTS,
   DEFAULT_BUDGET,
   DEFAULT_COMMITS,
+  DEFAULT_CONTEXT_FILES,
   DEFAULT_GITHUB,
   DEFAULT_LOCK,
   DEFAULT_LEAD_BOUNDARY,
@@ -35,6 +36,7 @@ import {
   OVER_ACTIONS,
   PUSH_TO_PROTECTED,
   TERMINALS,
+  type ContextFilesConfig,
   VERIFY_GATES,
   WEEKDAYS,
   type BudgetConfig,
@@ -215,6 +217,7 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
     },
     register: parseRegister(read, read.section(raw, 'register', '')),
     skills: parseSkills(read, read.section(raw, 'skills', '')),
+    contextFiles: parseContextFiles(read, read.section(raw, 'contextFiles', '')),
     lock: {
       ttlMs: read.integer(lock, 'ttlMs', 'lock', DEFAULT_LOCK.ttlMs, { min: 1_000 }),
       pollMs: read.integer(lock, 'pollMs', 'lock', DEFAULT_LOCK.pollMs, { min: 10 }),
@@ -546,6 +549,16 @@ function parseStatus(read: ConfigReader, value: unknown, path: string): TaskStat
   const hint = value === LEGACY_WAITING_STATUS ? ` (${LEGACY_WAITING_HINT})` : '';
   read.report(path, `expected one of ${TASK_STATUSES.join(', ')}, got ${describe(value)}${hint}`);
   return undefined;
+}
+
+function parseContextFiles(read: ConfigReader, raw: JsonRecord): ContextFilesConfig {
+  const path = 'contextFiles';
+  const defaults = DEFAULT_CONTEXT_FILES;
+  return {
+    maxClaudeMdChars: read.integer(raw, 'maxClaudeMdChars', path, defaults.maxClaudeMdChars, CONFIG_LIMITS.claudeMdChars),
+    maxMemoryIndexChars: read.integer(raw, 'maxMemoryIndexChars', path, defaults.maxMemoryIndexChars, CONFIG_LIMITS.memoryIndexChars),
+    maxSkillListingChars: read.integer(raw, 'maxSkillListingChars', path, defaults.maxSkillListingChars, CONFIG_LIMITS.skillListingChars),
+  };
 }
 
 function parseSkills(read: ConfigReader, raw: JsonRecord): SkillsConfig {
