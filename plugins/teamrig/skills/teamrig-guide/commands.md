@@ -727,7 +727,8 @@ new terminal and run this:` and the command, and exits 3. Show the user that com
 ### teamrig launch
 
 What a tab started by `open` runs: it sets the session's variables and starts Claude Code under the session's
-name, model and effort. You do not run it yourself; `open` writes it.
+name, model and effort. You do not run it yourself; `open` writes it. When the automatic context refresh ends
+Claude Code for a fresh start, launch starts it again in the same tab with the default prompt.
 
 Flags:
 
@@ -749,6 +750,35 @@ Starting Claude Code as shop-web (session web of team shop) in /home/you/shop, o
 ```
 
 It refuses when `claude` is not on the PATH.
+
+### teamrig restart
+
+The automatic context refresh's restart. The Stop hook runs it hidden once your handover is written; you do
+not run it yourself. It waits until the session has been idle `refresh.restartDelaySeconds` with nothing
+running, then ends its Claude Code: `launch` starts it again in the same tab, and a tab teamrig did not open
+gets a new tab first. A prompt typed before then cancels it. Then it runs `refresh.endCommand`, if set. A
+restart that did not happen, or an end command that failed, leaves a line in the session's inbox.
+
+Flags:
+
+- `--team <team>`: required.
+- `--at <time>`: required; the time of the restart request it serves, so a newer one replaces it.
+- `--project <dir>`: required; the folder the session's new tab opens in.
+
+Example:
+
+```sh
+teamrig restart web --team shop --at 2030-01-08T10:00:00.000Z --project /home/you/shop
+```
+
+Output:
+
+```text
+RESTARTED shop-web in the same tab
+```
+
+It prints `CANCELLED the restart of shop-web: <why>` when the user typed or the restart is off, and
+`FAILED the restart of shop-web: <why>` (exit 1) when no restart happened.
 
 ### teamrig refresh
 
