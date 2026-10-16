@@ -7,7 +7,7 @@ export interface SkillFile {
   readonly text: string;
 }
 
-export const SKILL_FLAG_KINDS = ['OWNER', 'UNVERIFIED', 'FORBIDDEN-KEY', 'DESCRIPTION', 'AREA-OVER-LIMIT'] as const;
+export const SKILL_FLAG_KINDS = ['OWNER', 'UNVERIFIED', 'VERIFIED-NOTE', 'FORBIDDEN-KEY', 'DESCRIPTION', 'AREA-OVER-LIMIT'] as const;
 export type SkillFlagKind = (typeof SKILL_FLAG_KINDS)[number];
 
 export interface SkillFlag {
@@ -24,6 +24,10 @@ export type SkillTeam = Pick<KitConfig, 'sessions' | 'skills'>;
 const DAY_MS = 86_400_000;
 const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)([\s\S]*)$/;
 const TOP_LEVEL_KEY = /^([A-Za-z0-9_-]+)\s*:/gm;
+/** The `Last verified:` date and the rest of its line. */
+const LAST_VERIFIED = /Last verified:\s*(\d{4}-\d{2}-\d{2})([^\n]*)/;
+/** What may follow that date: the sentence's end and markdown emphasis, nothing a run would add. */
+const DATE_END = /^[\s.*_]*$/;
 
 /** A SKILL.md split into its frontmatter (without the `---` lines) and its body. */
 export function splitFrontmatter(text: string): { readonly front: string; readonly body: string } {
@@ -85,7 +89,8 @@ export function lintSkills(skills: readonly SkillFile[], now: Date, team: SkillT
       flag('OWNER', `owner ${owner} is not a session on the team`);
     }
 
-    const verified = /Last verified:\s*(\d{4}-\d{2}-\d{2})/.exec(body)?.[1];
+    const verifiedLine = LAST_VERIFIED.exec(body);
+    const verified = verifiedLine?.[1];
     const verifiedAt = verified === undefined ? undefined : parseUtcDay(verified);
     if (verified === undefined || verifiedAt === undefined) {
       flag('UNVERIFIED', 'no "Last verified: YYYY-MM-DD"');
@@ -94,6 +99,11 @@ export function lintSkills(skills: readonly SkillFile[], now: Date, team: SkillT
       if (age > rules.maxVerifiedAgeDays) {
         flag('UNVERIFIED', `last verified ${verified}, ${age} d ago > ${rules.maxVerifiedAgeDays}`);
       }
+    }
+    // A note after the date turns the line into a log that every run rewrites at its end, so two sessions
+    // verifying the skill at once edit the same text and one edit is refused; the date alone lets both bumps agree.
+    if (verifiedLine !== null && !DATE_END.test(verifiedLine[2] ?? '')) {
+      flag('VERIFIED-NOTE', 'text after the "Last verified:" date: keep the date alone, a lesson on its own line');
     }
 
     const keys = frontmatterKeys(front);

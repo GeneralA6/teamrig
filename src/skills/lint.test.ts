@@ -48,6 +48,17 @@ describe('lintSkills', () => {
     ]);
   });
 
+  it('flags a note after the verified date, the line parallel runs both rewrite, and allows the sentence end', () => {
+    const logged = skill('alpha-a', { verified: '2030-02-20 (T12: the build passed; T13: wrap long lines first)' });
+    const sentence = { name: 'alpha-b', text: '---\ndescription: ok\n---\nOwner: alpha. Last verified: 2030-02-20.\n' };
+    const bold = { name: 'alpha-c', text: '---\ndescription: ok\n---\nOwner: alpha\n**Last verified: 2030-02-20**\n' };
+    assert.deepEqual(lint(logged, sentence, bold), [
+      'SKILL VERIFIED-NOTE (text after the "Last verified:" date: keep the date alone, a lesson on its own line) alpha alpha-a',
+    ]);
+    const stale = lintSkills([skill('alpha-d', { verified: '2030-01-01 by bravo' })], NOW, team).map((flag) => flag.kind);
+    assert.deepEqual(stale, ['UNVERIFIED', 'VERIFIED-NOTE']);
+  });
+
   it('flags forbidden frontmatter keys but not the same words in the body', () => {
     const front = 'name: alpha-a\ndescription: Use when needed.\nallowed-tools: Bash';
     assert.deepEqual(lint(skill('alpha-a', { front }), { name: 'alpha-b', text: '---\ndescription: ok\n---\nallowed-tools: none\nOwner: alpha\nLast verified: 2030-02-20\n' }), [
