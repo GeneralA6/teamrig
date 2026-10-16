@@ -10,7 +10,7 @@ import { EXIT, RefusedError } from "../runtime.js";
  * Context refresh from the command line: the lead asks for a session's refresh (`refresh <session>`),
  * and a session tells the kit its handover is written (`refresh --ready`). The Stop and SessionStart
  * hooks do the rest, the Stop hook starting the automatic restart (hook-restart.ts); `set done` marks the
- * task boundary the Stop hook judges (`markBoundary`).
+ * task end the Stop hook judges (`markBoundary`), which also asks for a refresh after enough tasks.
  */
 function requireRefresh(config) {
     if (!config.refresh.enabled) {
@@ -71,7 +71,7 @@ export async function refresh(args, runtime) {
     }
     const id = sessionIdOf(roster, target);
     await store.setRequest(id, { by, at: now });
-    runtime.out.stdout(`REQUESTED a refresh of ${roster.nameOf(id) ?? id}: after its next \`set done\` it writes its handover to ` +
+    runtime.out.stdout(`REQUESTED a refresh of ${roster.nameOf(id) ?? id}: at its next turn end it writes its handover to ` +
         `${store.handoverPath(id)}; ${config.refresh.autoRestart ? 'then it starts fresh once idle' : 'then type /clear in its tab'}`);
     return EXIT.ok;
 }
