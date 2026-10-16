@@ -101,8 +101,8 @@ or progress pings. Silence counts as consent only within the sender's own author
 A report, a "done" one too, is an inbox line unless the receiver acts on it now. If a send fails, write the inbox
 line instead.
 
-An ask that creates work is a task first (`teamrig add --owner <id>`), then an inbox line or message that names
-the task id.
+An ask that creates work is a task first (`teamrig add --owner <id>`): `add` posts the owner an inbox line naming
+the task id, so only urgent work needs a message too.
 
 ## Check flags
 
