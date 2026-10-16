@@ -6,9 +6,10 @@ import { ACTIVE_STATUSES } from '../register/model.ts';
 import type { HireRecord } from './log.ts';
 
 /**
- * The `check` flags on hired sessions: RETIRE-DUE when one has had no open task for `hiring.idleHours`
- * (since its hire, or since its newest task took its closed status), REVIEW-DUE when its review day has
- * passed. Pure: it takes the hires still active, the team's tasks and the clock's now.
+ * The `check` flags on hired sessions: RETIRE-DUE when the burst it was hired for is over, or when it has
+ * had no open task for `hiring.idleHours` (since its hire, or since its newest task took its closed status);
+ * REVIEW-DUE when its review day has passed. Pure: it takes the hires still active, the team's tasks, the
+ * bursts over and the clock's now.
  */
 
 export const HIRE_FLAG_KINDS = ['RETIRE-DUE', 'REVIEW-DUE'] as const;
@@ -25,6 +26,8 @@ export interface HireCheckInput {
   readonly hires: readonly HireRecord[];
   readonly tasks: Iterable<Task>;
   readonly config: Pick<KitConfig, 'sessions' | 'hiring'>;
+  /** The `at` of each burst over now (src/budget/burst.ts `burstsOver`). */
+  readonly burstsOver: ReadonlySet<number>;
   readonly now: Date;
 }
 
@@ -36,6 +39,9 @@ function idleSince(hire: HireRecord, owned: readonly Task[]): number {
 }
 
 function retireDue(hire: HireRecord, owned: readonly Task[], input: HireCheckInput): HireFlag | undefined {
+  if (hire.burst !== undefined && input.burstsOver.has(hire.burst)) {
+    return { kind: 'RETIRE-DUE', session: hire.session, detail: 'the burst it was hired for is over' };
+  }
   if (owned.some((task) => ACTIVE_STATUSES.includes(task.status))) {
     return undefined;
   }

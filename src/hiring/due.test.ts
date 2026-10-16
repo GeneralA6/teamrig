@@ -17,6 +17,7 @@ function input(overrides: Partial<HireCheckInput> = {}): HireCheckInput {
     hires: [hire('helper')],
     tasks: [],
     config: { sessions: ['lead', 'helper'], hiring: DEFAULT_HIRING },
+    burstsOver: new Set(),
     now: new Date(HIRED_AT + 5 * HOUR_MS),
     ...overrides,
   };
@@ -45,6 +46,14 @@ describe('hireFlags', () => {
 });
 
 describe('formatHireFlag', () => {
+  it('flags a burst hire RETIRE-DUE once its burst is over, even with an open task', () => {
+    const burstHire: HireRecord = { ...hire('helper'), burst: HIRED_AT };
+    const busy = { hires: [burstHire], tasks: [testTask({ owner: 'helper' })] };
+    assert.deepEqual(hireFlags(input(busy)), []);
+    assert.deepEqual(hireFlags(input({ ...busy, burstsOver: new Set([HIRED_AT - 1]) })), []);
+    assert.deepEqual(hireFlags(input({ ...busy, burstsOver: new Set([HIRED_AT]) })), [{ kind: 'RETIRE-DUE', session: 'helper', detail: 'the burst it was hired for is over' }]);
+  });
+
   it('names the flag, the session and the command that clears it', () => {
     assert.equal(formatHireFlag({ kind: 'RETIRE-DUE', session: 'helper', detail: 'no open task for 5 h, hiring.idleHours 4' }), 'HIRE RETIRE-DUE (no open task for 5 h, hiring.idleHours 4) helper: retire it (teamrig retire helper)');
     assert.equal(formatHireFlag({ kind: 'REVIEW-DUE', session: 'helper', detail: 'review day 2030-01-07 passed' }), 'HIRE REVIEW-DUE (review day 2030-01-07 passed) helper: decide whether its job goes on, else retire it (teamrig retire helper)');
