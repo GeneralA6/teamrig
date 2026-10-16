@@ -19,6 +19,7 @@ import {
   processBoundNote,
   refreshedIn,
   sessionsTitled,
+  tabTitleFor,
   type BindInput,
   type BindOutcome,
   type TeamRoster,
@@ -54,6 +55,23 @@ function setup(marks: readonly InboxMark[] = [], tree: readonly TeamRoster[] = [
 function input(title: string | undefined, fields: Partial<BindInput> = {}): BindInput {
   return { own: OWN, claudeSession: TAB, envSession: false, title, now: NOW, ...fields };
 }
+
+describe('tabTitleFor', () => {
+  it("gives an untitled tab its session's current name", () => {
+    assert.equal(tabTitleFor(OWN.roster, 'lead', undefined), 'team-lead');
+    assert.equal(tabTitleFor(OWN.roster, 'bravo', undefined), 'scout');
+    assert.equal(tabTitleFor(OWN.roster, 'alpha', undefined), 'app-alpha');
+  });
+
+  it('gives nothing to a tab with a title or with no session', () => {
+    assert.equal(tabTitleFor(OWN.roster, 'alpha', 'Fix the login'), undefined);
+    assert.equal(tabTitleFor(OWN.roster, undefined, undefined), undefined);
+  });
+
+  it('falls back to the id for a session the roster does not name', () => {
+    assert.equal(tabTitleFor(OWN.roster, 'zulu', undefined), 'zulu');
+  });
+});
 
 describe('sessionsTitled', () => {
   it('matches an id or a current name, never a former name or a near miss', () => {

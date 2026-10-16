@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
-import { APP, CLAUDE_SESSION, CliHarness, contextOf, RENAMES_PATH, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
+import { APP, CLAUDE_SESSION, CliHarness, contextOf, RENAMES_PATH, TEAM, TEAM_HOME, titledPromptOf } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { treeHarness } from '../testing/team-tree.ts';
 import { EXIT } from './runtime.ts';
@@ -93,13 +93,57 @@ describe('runCli: a hand-started tab binds itself by its Claude Code title (T302
     for (const text of ['first', 'second']) {
       await kit.run(['inbox', 'add', '--to', 'bravo', '--text', text, '--session', 'lead']);
     }
-    assert.match((await kit.run(['hook', 'inbox-reminder'], { stdin: prompt(), env })).stdout[0] ?? '', /lead: first\n.*lead: second$/);
+    // Titled as Claude Code passes back the title the hook gave the tab, so the lines come as plain text.
+    const titled = prompt({ session_title: 'app-bravo' });
+    assert.match((await kit.run(['hook', 'inbox-reminder'], { stdin: titled, env })).stdout[0] ?? '', /lead: first\n.*lead: second$/);
     await kit.run(['inbox', 'add', '--to', 'bravo', '--text', 'third', '--session', 'lead']);
     const read = await kit.run(['inbox', 'read'], { env });
     assert.deepEqual(read.stdout, [
       '- 2030-01-08 10:00 lead: third',
       'READ bravo: 1 new line, shown above, and 2 the prompt hook showed this session, now marked read too; new ones are shown at your next prompt',
     ]);
+  });
+});
+
+describe('runCli: the prompt hook titles a bound tab after its session (T407)', () => {
+  it('titles a tab bound by inbox read, renaming nothing, until Claude Code passes the title back', async () => {
+    const kit = new CliHarness();
+    await kit.run(['inbox', 'read', '--session', 'alpha'], { env: AS_CLAUDE });
+    assert.deepEqual(titledPromptOf(await kit.run(['hook', 'inbox-reminder'], { stdin: prompt() })), { title: 'app-alpha', context: undefined });
+    await kit.run(['inbox', 'add', '--to', 'alpha', '--text', 'T7 is yours', '--session', 'lead']);
+    const titled = titledPromptOf(await kit.run(['hook', 'inbox-reminder'], { stdin: prompt() }));
+    assert.equal(titled.title, 'app-alpha');
+    assert.match(titled.context ?? '', /^INBOX alpha, new in .*\n- 2030-01-08 10:00 lead: T7 is yours$/);
+    assert.deepEqual((await kit.run(['hook', 'inbox-reminder'], { stdin: prompt({ session_title: 'app-alpha' }) })).stdout, []);
+    assert.equal(await kit.files.read(RENAMES_PATH), undefined);
+  });
+
+  it("titles a tab $TEAMRIG_SESSION names by the session's current name", async () => {
+    const kit = new CliHarness({ ...TEAM, names: { lead: 'team-lead' } });
+    const result = await kit.run(['hook', 'inbox-reminder'], { stdin: prompt(), env: { TEAMRIG_SESSION: 'lead' } });
+    assert.equal(titledPromptOf(result).title, 'team-lead');
+  });
+
+  it('binds the Claude Code session a /clear starts by the title the tab kept', async () => {
+    const kit = new CliHarness();
+    await kit.run(['inbox', 'read', '--session', 'bravo'], { env: AS_CLAUDE });
+    assert.equal(titledPromptOf(await kit.run(['hook', 'inbox-reminder'], { stdin: prompt() })).title, 'app-bravo');
+    const cleared = prompt({ session_id: '9f8e7d6c-1111-2222-3333-444455556666', source: 'clear', session_title: 'app-bravo' });
+    const text = contextOf(await kit.run(['hook', 'session-start'], { stdin: cleared }));
+    assert.ok(text.includes('This tab was bound to the `bravo` session from its Claude Code title; nothing was marked read.'), text);
+    assert.ok(text.includes('You are the `bravo` session of team `app`'), text);
+  });
+
+  it('never titles a tab with a title, one with no session, or one whose title it cannot read', async () => {
+    const kit = new CliHarness();
+    const env = { TEAMRIG_SESSION: 'alpha' };
+    assert.deepEqual((await kit.run(['hook', 'inbox-reminder'], { stdin: prompt({ session_title: 'alpha' }), env })).stdout, []);
+    const unbound = await kit.run(['hook', 'inbox-reminder'], { stdin: prompt() });
+    assert.equal(unbound.stdout.length, 1);
+    assert.match(unbound.stdout[0] ?? '', /^teamrig: this tab is not bound to a session of team app\./);
+    const transcript = join(TEAM_HOME, 'transcript.jsonl');
+    const files = new FaultyFiles(kit.files).fail('readTail', transcript, systemError('EACCES', 'EACCES: permission denied'));
+    assert.deepEqual((await kit.run(['hook', 'inbox-reminder'], { stdin: prompt({ transcript_path: transcript }), env, files })).stdout, []);
   });
 });
 
