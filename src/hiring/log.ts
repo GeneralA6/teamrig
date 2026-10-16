@@ -6,8 +6,8 @@ import { parseUtcDay } from '../core/time.ts';
 
 /**
  * The team's hires and retires, an append-only log: who joined for what job, on whose say-so, at what
- * daily budget and until which review day, and who left, with which handover and to which heir. A
- * session whose newest record is a hire is a hired session.
+ * daily budget and until which review day, for which burst if any, and who left, with which handover and
+ * to which heir. A session whose newest record is a hire is a hired session.
  */
 
 /** The format of the hire log's records; a newer one is skipped on read and refuses a write. */
@@ -27,6 +27,8 @@ export interface HireRecord {
   readonly dailyPct: number;
   /** The day its hire is reviewed, `YYYY-MM-DD` (UTC). */
   readonly reviewBy: string;
+  /** The `at` of the burst it was hired for (`hire --burst`): it is due to retire once that burst is over. */
+  readonly burst?: number;
   /** The session that hired it. */
   readonly by: string;
   readonly at: number;
@@ -114,6 +116,7 @@ function recordOf(record: HiringRecord): JsonRecord {
     ...(record.effort === undefined ? {} : { effort: record.effort }),
     dailyPct: record.dailyPct,
     reviewBy: record.reviewBy,
+    ...(record.burst === undefined ? {} : { burst: new Date(record.burst).toISOString() }),
   };
 }
 
@@ -157,6 +160,10 @@ export function parseHiringRecord(record: JsonRecord): HiringRecord | undefined 
   const effort = record['effort'];
   const approvedBy = stringField(record, 'approvedBy');
   const model = stringField(record, 'model');
+  const burst = instantOf(record, 'burst');
+  if (record['burst'] !== undefined && burst === undefined) {
+    return undefined;
+  }
   if (record['kind'] !== 'hire' || scope === undefined || reviewBy === undefined || parseUtcDay(reviewBy) === undefined || !finitePct(dailyPct)) {
     return undefined;
   }
@@ -173,6 +180,7 @@ export function parseHiringRecord(record: JsonRecord): HiringRecord | undefined 
     ...(effort === undefined ? {} : { effort }),
     dailyPct,
     reviewBy,
+    ...(burst === undefined ? {} : { burst }),
     by,
     at,
   };

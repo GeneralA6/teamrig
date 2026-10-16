@@ -29,6 +29,12 @@ describe('parseHiringRecord', () => {
     );
   });
 
+  it('reads back the burst a hire was for', () => {
+    const record = { kind: 'hire', session: 'helper', scope: 'port the importer', reason: 'release week', dailyPct: 1, reviewBy: '2030-01-15', by: 'lead', at: '2030-01-08T10:00:00.000Z', burst: '2030-01-08T09:00:00.000Z' };
+    assert.deepEqual(parseHiringRecord(record), hire({ burst: AT - 3_600_000 }));
+    assert.equal(parseHiringRecord({ ...record, burst: 'last night' }), undefined);
+  });
+
   it('skips a damaged record', () => {
     const good = { kind: 'hire', session: 'helper', scope: 'x', reason: 'y', dailyPct: 1, reviewBy: '2030-01-15', by: 'lead', at: '2030-01-08T10:00:00Z' };
     assert.notEqual(parseHiringRecord(good), undefined);
@@ -70,9 +76,9 @@ describe('HiringLog', () => {
   it('appends whole lines and reads them back, skipping damaged ones', async () => {
     const files = new MemoryFiles({ [PATH]: '{"v":1,"kind":"hire"}' });
     const log = new HiringLog(files, PATH);
-    await log.append(hire({ effort: 'xhigh' }));
+    await log.append(hire({ effort: 'xhigh', burst: AT }));
     await log.append(retire({ heir: 'alpha' }));
-    assert.deepEqual(await log.read(), { records: [hire({ effort: 'xhigh' }), retire({ heir: 'alpha' })], skipped: 1 });
+    assert.deepEqual(await log.read(), { records: [hire({ effort: 'xhigh', burst: AT }), retire({ heir: 'alpha' })], skipped: 1 });
     assert.equal((await files.read(PATH))?.split('\n').filter((line) => line !== '').length, 3);
   });
 

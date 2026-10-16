@@ -30,6 +30,8 @@ export interface HireRequest {
   readonly dailyPct?: number;
   /** `YYYY-MM-DD`; unset: `hiring.reviewDays` from now. */
   readonly reviewBy?: string;
+  /** The `at` of the burst it is hired for, checked by `burstHireOf` (src/hiring/burst-hire.ts). */
+  readonly burst?: number;
   /** The session hiring it. */
   readonly by: string;
   readonly now: number;
@@ -147,6 +149,7 @@ export function planHire(file: JsonRecord, config: KitConfig, active: readonly H
     ...launch,
     dailyPct,
     reviewBy: reviewBy.value,
+    ...(request.burst === undefined ? {} : { burst: request.burst }),
     by: request.by,
     at: request.now,
   };

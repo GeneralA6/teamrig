@@ -64,6 +64,11 @@ describe('planHire', () => {
     assert.equal(result.hire.model, undefined);
   });
 
+  it('ties the hire to the burst it is for', () => {
+    assert.equal(planned(FILE, { burst: NOW - 1000 }).hire.burst, NOW - 1000);
+    assert.equal('burst' in planned(FILE).hire, false);
+  });
+
   it('follows hiring.policy', () => {
     assert.match(problem({ ...FILE, hiring: { policy: 'off' } }), /hiring\.policy is off/);
     assert.match(problem({ ...FILE, hiring: { policy: 'owner' } }), /--approved-by/);
