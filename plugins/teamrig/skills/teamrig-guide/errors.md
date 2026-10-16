@@ -68,6 +68,10 @@ or take it to the lead.
 | `REFUSED <project> is already tied to team X by <pointer>; give another --project, or remove that pointer first` | The folder belongs to another team: use another folder, or ask the user. |
 | `REFUSED team X already exists at <path> with sessions ...; choose another team name, or change that config by hand` | Pick another team id, or add sessions to the existing team with the user. |
 | `REFUSED the session name N is already used by ..., and Claude Code session names are machine-wide; choose another team id, or rename ... with teamrig rename` | Choose another team id. |
+| `REFUSED hiring.policy is off: the team takes no hires by command` | Ask the owner whether to allow hires; the lead then sets `hiring.policy` in the team config. |
+| `REFUSED hiring.policy is owner: the owner approves each hire; ask them, then pass --approved-by "<who>"` | Ask the owner, then run the hire again with `--approved-by`. |
+| `REFUSED the team already has N hired session(s), the most hiring.maxSessions allows` | Hire once a hired session has left the team, or ask the owner to raise `hiring.maxSessions`. |
+| `REFUSED the hired sessions' daily budgets would add up to X% of the week, over hiring.maxDailyPct Y%` | Hire with a smaller `--daily-pct`, or ask the owner to raise `hiring.maxDailyPct`. |
 | `REFUSED team X has N child teams (...), and a team has at most 8: hang some under another team` | Put the new team under another team with `--parent`. |
 | `REFUSED only web itself or the lead may record its new name` | Ask that session or the lead to run `rename`. |
 | `REFUSED x is already the name of ...` / `x is the id of another session` | Choose another name. |

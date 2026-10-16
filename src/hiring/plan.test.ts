@@ -81,7 +81,7 @@ describe('planHire', () => {
 
   it("stays within hiring.maxSessions, counting only hires still on the team", () => {
     const file = { ...FILE, sessions: ['lead', 'alpha', 'one', 'two'], hiring: { policy: 'lead', maxSessions: 2, maxDailyPct: 10 } };
-    assert.match(problem(file, {}, [hired('one'), hired('two')]), /already has 2 hired session\(s\), hiring\.maxSessions is 2/);
+    assert.match(problem(file, {}, [hired('one'), hired('two')]), /already has 2 hired session\(s\), the most hiring\.maxSessions allows/);
     assert.equal(planned(file, {}, [hired('one'), hired('gone')]).hired, 2);
   });
 

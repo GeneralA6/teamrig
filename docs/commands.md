@@ -49,6 +49,10 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
   who [<id|name|role>]         the name to message a session by (no argument: every session)
   rename <id|name> <new-name>  records a session's new name; its old names keep finding it
       (the session itself or the lead)
+  hire <id> --scope "<its job>" --reason "<why>" [--name <name>] [--model <model>] [--effort <level>]
+      [--daily-pct <pct>] [--review <YYYY-MM-DD>] [--approved-by "<who>"] [--yes]
+      (the lead only) adds a temporary session within hiring.policy and its caps, on the lead's model and
+      effort unless given; without --yes it shows the hire and writes nothing
   refresh <id|name>            the lead asks a session to write its handover when it next sets a task done
   refresh --ready              the handover is written; the user types /clear for a fresh start
   doctor                       names, rename log, inboxes, rules.md, context size and the tree of teams that need a fix
