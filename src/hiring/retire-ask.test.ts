@@ -1,0 +1,90 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { join } from 'node:path';
+import { DEFAULT_HIRING } from '../config/defaults.ts';
+import { MemoryFiles } from '../testing/memory-files.ts';
+import { testTask } from '../testing/task.ts';
+import type { HireRecord } from './log.ts';
+import { formatRetireAsk, ownsOpenTask, parseRetireAsk, retireAskDue, retireAskReason, RetireAskStore, type RetireAskInput } from './retire-ask.ts';
+
+const FOLDER = join('/', 'team', 'state', 'retire-asks');
+const ASK = { task: 'T4', at: '2030-01-08T10:00:00.000Z' };
+
+function hire(session: string): HireRecord {
+  return { kind: 'hire', session, scope: 'x', reason: 'y', dailyPct: 1, reviewBy: '2030-01-15', by: 'lead', at: 0 };
+}
+
+function input(overrides: Partial<RetireAskInput> = {}): RetireAskInput {
+  const done = testTask({ id: 'T4', owner: 'helper', status: 'done' });
+  return {
+    config: { sessions: ['lead', 'helper'], hiring: { ...DEFAULT_HIRING, policy: 'automatic' } },
+    hires: [hire('helper')],
+    task: done,
+    tasks: [done, testTask({ id: 'T5', owner: 'lead', status: 'open' })],
+    ...overrides,
+  };
+}
+
+describe('RetireAskStore', () => {
+  it('keeps one ask per session until it is cleared', async () => {
+    const files = new MemoryFiles();
+    const store = new RetireAskStore(files, FOLDER);
+    assert.equal(await store.get('helper'), undefined);
+    await store.set('helper', ASK);
+    assert.deepEqual(await store.get('helper'), ASK);
+    assert.equal(await store.get('other'), undefined);
+    assert.equal(files.paths().length, 1);
+    await store.clear('helper');
+    assert.equal(await store.get('helper'), undefined);
+    await store.clear('helper');
+  });
+
+  it('reads a damaged file or another format as no ask', async () => {
+    const files = new MemoryFiles();
+    const store = new RetireAskStore(files, FOLDER);
+    await files.write(join(FOLDER, 'helper.json'), '{"v":1,');
+    assert.equal(await store.get('helper'), undefined);
+  });
+});
+
+describe('parseRetireAsk', () => {
+  it('round-trips its own format and refuses anything else', () => {
+    assert.deepEqual(parseRetireAsk(formatRetireAsk(ASK)), ASK);
+    assert.equal(parseRetireAsk('{"v":2,"task":"T4","at":"x"}'), undefined);
+    assert.equal(parseRetireAsk('{"v":1,"task":"T4"}'), undefined);
+    assert.equal(parseRetireAsk('{"v":1,"at":"x"}'), undefined);
+    assert.equal(parseRetireAsk('[]'), undefined);
+  });
+});
+
+describe('ownsOpenTask', () => {
+  it('counts only the session\'s tasks that are not closed', () => {
+    assert.equal(ownsOpenTask([testTask({ owner: 'helper', status: 'done' }), testTask({ owner: 'lead', status: 'open' })], 'helper'), false);
+    assert.equal(ownsOpenTask([testTask({ owner: 'helper', status: 'waiting' })], 'helper'), true);
+    assert.equal(ownsOpenTask([], 'helper'), false);
+  });
+});
+
+describe('retireAskDue', () => {
+  it('asks a hired session on the team, under automatic, left with no open task', () => {
+    assert.equal(retireAskDue(input()), true);
+  });
+
+  it('asks nobody under another policy, for a session not hired or not on the team, or one with a task still open', () => {
+    assert.equal(retireAskDue(input({ config: { sessions: ['lead', 'helper'], hiring: DEFAULT_HIRING } })), false);
+    assert.equal(retireAskDue(input({ hires: [hire('other')] })), false);
+    assert.equal(retireAskDue(input({ config: { sessions: ['lead'], hiring: { ...DEFAULT_HIRING, policy: 'automatic' } } })), false);
+    const open = testTask({ id: 'T6', owner: 'helper', status: 'in-progress' });
+    assert.equal(retireAskDue(input({ tasks: [input().task, open] })), false);
+  });
+});
+
+describe('retireAskReason', () => {
+  it('names the task, the handover path, the retire command and the way out', () => {
+    const reason = retireAskReason('helper', ASK, '/team/handover/helper.md');
+    assert.match(reason, /^Your last open task T4 is closed and hiring.policy is automatic/);
+    assert.ok(reason.includes('Write your handover to /team/handover/helper.md'));
+    assert.ok(reason.includes('`teamrig retire helper --session helper --yes`'));
+    assert.ok(reason.endsWith('say so in one line and carry on.'));
+  });
+});

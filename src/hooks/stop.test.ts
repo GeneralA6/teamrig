@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { RefreshState } from '../refresh/state.ts';
-import { stopOutput, tabTitleSequence } from './stop.ts';
+import { blockOutput, stopOutput, tabTitleSequence } from './stop.ts';
 
 const STATE: RefreshState = { phase: 'ready', task: 'T12', at: '2030-01-08T10:00:00.000Z', tokens: null, noticed: true, transcript: null, claudePid: null };
 
@@ -40,6 +40,11 @@ describe('stopOutput', () => {
     assert.equal(stopOutput({ kind: 'none' }), '');
     assert.equal(stopOutput({ kind: 'measure' }), '');
     assert.equal(stopOutput({ kind: 'write', state: STATE }), '');
+  });
+
+  it('blocks with any reason, the notices shown with it', () => {
+    assert.deepEqual(JSON.parse(blockOutput('Retire now.')), { decision: 'block', reason: 'Retire now.' });
+    assert.deepEqual(JSON.parse(blockOutput('Retire now.', ['BUDGET x'])), { decision: 'block', reason: 'Retire now.', systemMessage: 'BUDGET x' });
   });
 
   it('sets the tab title with OSC 0', () => {

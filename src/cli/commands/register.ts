@@ -31,6 +31,7 @@ import { loadTree } from '../tree.ts';
 import { teamRegister } from '../team-register.ts';
 import { inboxDepsOf } from './inbox.ts';
 import { markBoundary } from './refresh.ts';
+import { markRetireAsk } from './retire-ask.ts';
 
 interface Team {
   readonly config: KitConfig;
@@ -203,6 +204,9 @@ export async function set(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
   }
   if (input.status === 'done') {
     await markBoundary(runtime, config, paths, by, id);
+  }
+  if (verdict.ok && (input.status === 'done' || input.status === 'dropped')) {
+    await markRetireAsk(runtime, config, paths, verdict.value);
   }
   return exit;
 }

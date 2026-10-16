@@ -10,6 +10,11 @@ function messageOf(lines: readonly string[]): { readonly systemMessage?: string 
   return lines.length === 0 ? {} : { systemMessage: lines.join('\n') };
 }
 
+/** A block that keeps the session going with `reason` as its next instruction, the `notices` shown to the user with it. */
+export function blockOutput(reason: string, notices: readonly string[] = []): string {
+  return JSON.stringify({ decision: 'block', reason, ...messageOf(notices) });
+}
+
 /**
  * The Stop hook's stdout for a refresh decision and the model `notices` for the user. A block keeps
  * the session going with the reason as its next instruction; a notice shows the user one line and,
@@ -19,7 +24,7 @@ function messageOf(lines: readonly string[]): { readonly systemMessage?: string 
 export function stopOutput(decision: StopDecision, notices: readonly string[] = []): string {
   switch (decision.kind) {
     case 'block':
-      return JSON.stringify({ decision: 'block', reason: decision.reason, ...messageOf(notices) });
+      return blockOutput(decision.reason, notices);
     case 'notice':
       return JSON.stringify({
         ...messageOf([decision.message, ...notices]),
