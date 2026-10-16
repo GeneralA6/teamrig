@@ -755,7 +755,9 @@ It refuses when `claude` is not on the PATH.
 
 The automatic context refresh's restart. The Stop hook runs it hidden once your handover is written; you do
 not run it yourself. It waits until the session has been idle `refresh.restartDelaySeconds` with nothing
-running, then asks the session's tab to run `/clear`, which teamrig's mod does there. When no mod claims the ask
+running, then asks the session's tab to run `/clear`, which teamrig's mod does there. While Claude Code lists a helper of
+the session still running, the mod holds the ask instead: the restart ends nothing, waits for quiet and asks
+again, and gives up an hour after it started. When no mod claims the ask
 within 10 seconds, it ends the session's Claude Code instead: `launch` starts it again in the same tab, and a tab
 teamrig did not open gets a new tab first; then it runs `refresh.endCommand`, if set. It ends no Claude Code that
 still runs a background shell (a background command or a monitor), since the end would take that too; the session
@@ -1407,10 +1409,14 @@ Output: the folder, such as `/home/you/.teamrig/clear-asks`.
 
 Run by the plugin's mod once it finds its tab's ask while no turn runs. It claims the ask only while the restart
 it is for is still pending (no prompt was typed, no later restart replaced it) and the restart has not taken it
-back, then clears the request. Whichever of this claim and the restart's take-back comes first wins, so a tab is
+back, then clears the request. Whichever of this answer and the restart's take-back comes first wins, so a tab is
 never both cleared and ended. Stdin: `{"session_id": "<Claude Code session id>"}`.
 
-Flags: none.
+Flags:
+
+- `--hold`: hold the ask instead of claiming it, as the mod does while Claude Code lists a live agent of the
+  session (or will not list them). The request stays pending: the restart ends nothing and asks again once the
+  session is quiet.
 
 Example:
 
@@ -1418,7 +1424,7 @@ Example:
 teamrig hook clear-claim < session.json
 ```
 
-Output: `taken` (the mod then runs `/clear`) or `declined: <why>`, exit 0.
+Output: `taken` (the mod then runs `/clear`), `held` (with `--hold`) or `declined: <why>`, exit 0.
 
 ## Help and version
 
