@@ -127,7 +127,8 @@ With sub-teams, run `teamrig check --tree --session lead` too. Act on each flag:
   the stopgap; when the task was dropped, to open a new task for it or keep it by a decision.
 - `NOT-PICKED-UP`: an idle session reads no inbox. Wake it with `teamrig open <id>`, or tell the user.
 - `HIRE RETIRE-DUE`: a hired session has had no open task for `hiring.idleHours`. Give it its next task, or retire
-  it: `teamrig retire <id> --session lead` (`--to <heir>` for any open task).
+  it: `teamrig retire <id> --session lead` (`--to <heir>` for any open task). To bring a retired one back, hire
+  its id again: the hire shows whether its last Claude Code session can be resumed (`teamrig open <id> --resume`).
 - `HIRE REVIEW-DUE`: a hired session's review day passed. Decide whether its job goes on; retire it when done.
 - `OVERDUE` or `STALE`: ask the owning session what blocks it, then re-date it (`--due`) or tell the user.
 - `READY`: a waiting task whose reasons have all cleared (its tasks finished, its time passed). Tell the owning
