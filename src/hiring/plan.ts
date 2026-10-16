@@ -82,6 +82,7 @@ function policyProblem(config: KitConfig, request: HireRequest): string | undefi
         ? 'hiring.policy is owner: the owner approves each hire; ask them, then pass --approved-by "<who>"'
         : undefined;
     case 'lead':
+    case 'automatic':
       return undefined;
   }
 }
