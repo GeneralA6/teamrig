@@ -19,6 +19,9 @@ const CLAUDE: ProcessInfo = { pid: 4100, parentPid: 4000, name: 'claude.exe', co
 const TAB_SHELL: ProcessInfo = { pid: 4000, parentPid: 1, name: 'powershell.exe', commandLine: `powershell -NoExit -Command claude --resume ${SESSION}` };
 const PLAN: RestartPlan = { id: 'alpha', at: AT, delayMs: DELAY_MS, endCommand: ['node', 'tracker.cjs', 'end'], fallbackCwd: '/project' };
 
+/** What Claude Code writes once a turn has ended. */
+const TURN_END = JSON.stringify({ type: 'system', subtype: 'turn_duration' });
+
 /** A background command's start and its end, as Claude Code writes them to the transcript. */
 const BACKGROUND_START = [
   JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_bash', name: 'Bash', input: {} }] } }),
@@ -57,7 +60,7 @@ class World {
   private sleeps = 0;
 
   constructor(options: WorldOptions = {}) {
-    this.files = new MemoryFiles({ [TRANSCRIPT]: options.transcript ?? `${JSON.stringify({ type: 'user' })}\n` });
+    this.files = new MemoryFiles({ [TRANSCRIPT]: options.transcript ?? `${JSON.stringify({ type: 'assistant' })}\n${TURN_END}\n` });
     this.store = new RefreshStore(this.files, PATHS);
     (options.running ?? [TAB_SHELL, CLAUDE]).forEach((info) => this.processes.add(info));
     this.deps = {
@@ -208,14 +211,23 @@ describe('runRestart', () => {
 
   it('waits while the transcript grows, and restarts after a whole quiet delay', async () => {
     const world = await new World().arm();
-    world.onSleep(2, () => world.files.append(TRANSCRIPT, `${JSON.stringify({ type: 'assistant' })}\n`));
+    world.onSleep(2, () => world.files.append(TRANSCRIPT, `${JSON.stringify({ type: 'assistant' })}\n${TURN_END}\n`));
     assert.equal((await runRestart(world.deps, PLAN)).kind, 'restarted');
     assert.equal(world.clock.now() - START, 2 * DELAY_MS);
   });
 
   it('waits while background work runs, even with the transcript quiet', async () => {
-    const world = await new World({ transcript: `${BACKGROUND_START.join('\n')}\n` }).arm();
+    const world = await new World({ transcript: `${[...BACKGROUND_START, TURN_END].join('\n')}\n` }).arm();
     world.onSleep(4, () => world.files.append(TRANSCRIPT, `${BACKGROUND_END}\n`));
+    assert.equal((await runRestart(world.deps, PLAN)).kind, 'restarted');
+    assert.equal(world.clock.now() - START, 4 * DELAY_MS);
+  });
+
+  it('waits while a turn runs, even with the transcript quiet, as during a long foreground command', async () => {
+    const command = JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_long', name: 'Bash', input: {} }] } });
+    const world = await new World({ transcript: `${command}\n` }).arm();
+    const result = JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_long', content: 'done' }] } });
+    world.onSleep(4, () => world.files.append(TRANSCRIPT, `${result}\n${JSON.stringify({ type: 'assistant' })}\n${TURN_END}\n`));
     assert.equal((await runRestart(world.deps, PLAN)).kind, 'restarted');
     assert.equal(world.clock.now() - START, 4 * DELAY_MS);
   });
