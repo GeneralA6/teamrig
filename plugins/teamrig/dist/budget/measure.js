@@ -11,7 +11,7 @@ export const MAX_RUNS_PER_SESSION = 64;
 async function meterSession(deps, store, session, transcripts, input) {
     let state = (await store.load(session)).state;
     for (let run = 0; run < input.maxRuns; run += 1) {
-        const result = await runMeter({ bytes: deps.transcripts, store, clock: deps.clock }, { session, transcripts, maxBytes: input.chunkBytes });
+        const result = await runMeter({ bytes: deps.transcripts, store, clock: deps.clock }, { session, transcripts, subagentWeight: input.subagentWeight, maxBytes: input.chunkBytes });
         if (result.saved) {
             state = result.state;
             if (!result.catchingUp) {
@@ -31,8 +31,8 @@ export async function measure(deps, input) {
     const bySession = new Map();
     const behind = [];
     for (const id of input.roster.ids) {
-        const transcripts = found.byTeamSession.get(id) ?? [];
-        if (transcripts.length === 0) {
+        const transcripts = found.byTeamSession.get(id);
+        if (transcripts === undefined) {
             bySession.set(id, (await deps.team.load(id)).state);
             continue;
         }
@@ -42,7 +42,7 @@ export async function measure(deps, input) {
             behind.push(id);
         }
     }
-    const outside = found.outside.length === 0 ? { state: (await deps.outside.load(OUTSIDE_ID)).state, behind: false } : await meterSession(deps, deps.outside, OUTSIDE_ID, found.outside, input);
+    const outside = found.outsideSessions === 0 ? { state: (await deps.outside.load(OUTSIDE_ID)).state, behind: false } : await meterSession(deps, deps.outside, OUTSIDE_ID, found.outside, input);
     if (outside.behind) {
         behind.push(OUTSIDE_ID);
     }

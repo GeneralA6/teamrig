@@ -183,8 +183,11 @@ function summaryOf(tool) {
 /** Counts the loop patterns of one transcript, a line at a time, from the state the last read left. */
 export class PatternTracker {
     current;
-    constructor(state) {
+    /** What one W of this transcript costs in W of a main session: the W worked out here is multiplied by it, the W the meter hands in is weighted already. */
+    weight;
+    constructor(state, weight = 1) {
         this.current = state;
+        this.weight = weight;
     }
     state() {
         return this.current;
@@ -210,12 +213,13 @@ export class PatternTracker {
         const written = usage.cacheWrite5m + usage.cacheWrite1h + usage.cacheWriteUnsplit;
         if (written >= COLD_MIN_TOKENS && written >= context * COLD_MIN_SHARE) {
             count('coldCalls', 1);
-            count('coldW', usage.cacheWrite5m * WEIGHTS.cacheWrite5m + usage.cacheWrite1h * WEIGHTS.cacheWrite1h + usage.cacheWriteUnsplit * WEIGHTS.cacheWriteUnsplit);
+            const writeW = usage.cacheWrite5m * WEIGHTS.cacheWrite5m + usage.cacheWrite1h * WEIGHTS.cacheWrite1h + usage.cacheWriteUnsplit * WEIGHTS.cacheWriteUnsplit;
+            count('coldW', writeW * this.weight);
         }
         const { lastContext, rentTokens } = this.current;
         const compacted = lastContext > 0 && context < lastContext * COMPACTED_BELOW;
         if (!compacted && rentTokens > 0) {
-            count('passRentW', rentTokens * REREAD);
+            count('passRentW', rentTokens * REREAD * this.weight);
         }
         this.current = { ...this.current, open: tools.map(summaryOf), rentTokens: compacted ? 0 : rentTokens, lastContext: context };
     }
@@ -243,11 +247,11 @@ export class PatternTracker {
         }
         if (sameTurn && test !== undefined && !edits && prev.single === 'edit') {
             count('editThenTest', 1);
-            count('editThenTestSavedW', context * REREAD);
+            count('editThenTestSavedW', context * REREAD * this.weight);
         }
         if (sameTurn && single === 'edit' && prev.single === 'edit') {
             count('editChain', 1);
-            count('editChainSavedW', context * REREAD);
+            count('editChainSavedW', context * REREAD * this.weight);
         }
         if (sameTurn && isLookup(single) && isLookup(prev.single)) {
             count('readChain', 1);
@@ -287,7 +291,7 @@ export class PatternTracker {
                 const tokens = result.text.length / CHARS_PER_TOKEN;
                 count('passRuns', 1);
                 count('passTokens', tokens);
-                count('passRentW', tokens * WEIGHTS.cacheWrite1h);
+                count('passRentW', tokens * WEIGHTS.cacheWrite1h * this.weight);
                 this.current = { ...this.current, rentTokens: this.current.rentTokens + tokens };
             }
         }

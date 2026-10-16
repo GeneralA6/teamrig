@@ -24,9 +24,9 @@ async function subagentsOf(folders, transcript) {
         .sort();
 }
 /** One meter run over the tab's own transcripts; a run that lost a save race is left for the next hook. */
-async function meterTab(runtime, store, id, transcript, maxBytes) {
-    const transcripts = [transcript, ...(await subagentsOf(runtime.transcripts, transcript))];
-    await runMeter({ bytes: runtime.transcripts, store, clock: runtime.clock }, { session: id, transcripts, maxBytes });
+async function meterTab(runtime, store, id, transcript, budget) {
+    const transcripts = { main: [transcript], subagents: await subagentsOf(runtime.transcripts, transcript) };
+    await runMeter({ bytes: runtime.transcripts, store, clock: runtime.clock }, { session: id, transcripts, subagentWeight: budget.subagentWeight, maxBytes: budget.maxBytesPerHook });
 }
 /**
  * The session's budget now, after metering the tab whose transcript is given; undefined with the
@@ -41,7 +41,7 @@ export async function budgetFactsOf(runtime, scope, transcript) {
     const { files } = runtime;
     const team = new UsageStore(files, kit.paths.usage);
     if (transcript !== undefined) {
-        await meterTab(runtime, team, id, transcript, budget.maxBytesPerHook);
+        await meterTab(runtime, team, id, transcript, budget);
     }
     const now = runtime.clock.now();
     const byId = new Map();

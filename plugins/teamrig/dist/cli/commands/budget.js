@@ -64,6 +64,7 @@ async function readBudget(runtime, kit, config, roster, options) {
         since: options.recountDay ?? dayStartOf(now) - (CURSOR_DAYS_KEPT - 1) * MS_PER_DAY,
         roster,
         areaBySession: indexMarks(marks).areaBySession,
+        subagentWeight: config.budget.subagentWeight,
         chunkBytes: CATCH_UP_CHUNK_BYTES,
         maxRuns: MAX_RUNS_PER_SESSION,
     });
