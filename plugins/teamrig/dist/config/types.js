@@ -26,9 +26,10 @@ export function isEscalation(value) {
 }
 /**
  * Who may hire a session onto the team (`teamrig hire`): `off` nobody; `owner` the lead, once the owner
- * approved (`--approved-by`, kept with the hire); `lead` the lead, within the caps.
+ * approved (`--approved-by`, kept with the hire); `lead` the lead, within the caps; `automatic` as `lead`,
+ * and a hired session whose tasks are all closed may also retire itself (`teamrig retire`).
  */
-export const HIRING_POLICIES = ['off', 'owner', 'lead'];
+export const HIRING_POLICIES = ['off', 'owner', 'lead', 'automatic'];
 export function isHiringPolicy(value) {
     return HIRING_POLICIES.some((policy) => policy === value);
 }

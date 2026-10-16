@@ -13,14 +13,20 @@ export const UNREAD_INBOX_DAYS = 7;
 function plural(count, one, many) {
     return count === 1 ? one : many;
 }
-/** Names that find the wrong session, or none: a removed session's, a shared current one, a former one taken over. */
-function nameFindings(roster, command) {
+/**
+ * Names that find the wrong session, or none: a removed session's (not a retired one's), a shared current one, a
+ * former one taken over.
+ */
+function nameFindings(input) {
+    const { roster, command, retired } = input;
     const findings = [];
     const gone = new Map();
     const shared = new Set();
     for (const [name, holder] of roster.allNames()) {
         if (!roster.ids.includes(holder)) {
-            gone.set(holder, [...(gone.get(holder) ?? []), name]);
+            if (!retired.has(holder)) {
+                gone.set(holder, [...(gone.get(holder) ?? []), name]);
+            }
             continue;
         }
         const current = roster.idsCalled(name);
@@ -73,12 +79,15 @@ function waitingSince(unread) {
     const posted = unreadSince(unread);
     return posted === undefined ? undefined : parseUtcDeadline(posted);
 }
-/** Inboxes nobody reads: one keyed by no session id on the team, or unread lines with no read for days. */
+/** Inboxes nobody reads: one keyed by no session id on the team (nor a retired one's), or unread lines with no read for days. */
 function inboxFindings(input) {
-    const { roster, now } = input;
+    const { roster, now, retired } = input;
     return input.inboxes.flatMap((unread) => {
         const { area, mark } = unread;
         const count = unread.lines.length;
+        if (retired.has(area)) {
+            return [];
+        }
         if (!roster.ids.includes(area)) {
             const found = roster.lookup(area);
             const hint = found.ok ? `; ${area} is a name of ${found.id}, whose inbox is keyed by its id` : '';
@@ -184,7 +193,7 @@ function launchFindings({ launches, roster }) {
 export function doctorFindings(input) {
     return [
         ...input.requirements.map((problem) => ({ kind: 'requirement', detail: describeRequirement(problem, input.command) })),
-        ...nameFindings(input.roster, input.command),
+        ...nameFindings(input),
         ...configFindings(input),
         ...renameLogFindings(input),
         ...inboxFindings(input),

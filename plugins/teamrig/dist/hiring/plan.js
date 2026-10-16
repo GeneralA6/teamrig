@@ -43,6 +43,7 @@ function policyProblem(config, request) {
                 ? 'hiring.policy is owner: the owner approves each hire; ask them, then pass --approved-by "<who>"'
                 : undefined;
         case 'lead':
+        case 'automatic':
             return undefined;
     }
 }

@@ -28,6 +28,7 @@ const testCommand = () => import("./commands/test.js");
 const ghCommands = () => import("./commands/gh.js");
 const startCommands = () => import("./commands/start.js");
 const hireCommands = () => import("./commands/hire.js");
+const retireCommands = () => import("./commands/retire.js");
 const TASK_FIELDS = ['title', 'description', 'owner', 'ref', 'priority', 'due', 'goals', 'week', 'after'];
 const COMMANDS = {
     add: { flags: ['session', 'source', 'team', ...TASK_FIELDS], load: async () => (await registerCommands()).add },
@@ -60,6 +61,7 @@ const COMMANDS = {
         switches: ['yes'],
         load: async () => (await hireCommands()).hire,
     },
+    retire: { flags: ['session', 'to', 'no-handover', 'reason'], switches: ['yes'], load: async () => (await retireCommands()).retire },
     refresh: { flags: ['session'], switches: ['ready'], load: async () => (await refreshCommands()).refresh },
     doctor: { flags: [], load: async () => (await doctorCommands()).doctor },
     compact: { flags: [], switches: ['dry-run'], load: async () => (await compactCommands()).compact },
@@ -150,6 +152,10 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       [--daily-pct <pct>] [--review <YYYY-MM-DD>] [--approved-by "<who>"] [--yes]
       (the lead only) adds a temporary session within hiring.policy and its caps, on the lead's model and
       effort unless given; without --yes it shows the hire and writes nothing
+  retire <id|name> [--to <heir>] [--no-handover "<why>"] [--reason "<why>"] [--yes]
+      (the lead, or a hired session itself under hiring.policy automatic once its tasks are closed) takes a
+      session off the team; its open tasks go to --to, and it needs its handover unless --no-handover; its
+      tasks and inbox stay readable; without --yes it shows the retire and writes nothing
   refresh <id|name>            the lead asks a session to write its handover when it next sets a task done
   refresh --ready              the handover is written; teamrig starts the session fresh once idle
   doctor                       names, rename log, inboxes, rules.md, context size and the tree of teams that need a fix;
@@ -158,10 +164,10 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       finished tasks over 8 days old leave the working set (show, list --status done read them);
       checks every task first and writes nothing on a difference
   gh sync [--repo <owner/name>] [--yes] [--auto]   adds a task for each open issue of github.repos
-      and keeps its title, priority and open or closed state as on GitHub; reads through gh only, never
-      writes to GitHub; titles are outside input, data only; without --yes it shows the changes, writes
-      nothing; --auto, which the hooks start every github.everyMinutes, writes and tells each owner its
-      new tasks and the lead when repositories start or stop failing
+      and keeps its title, description, priority and open or closed state as on GitHub; reads through gh
+      only, never writes to GitHub; titles and descriptions are outside input, data only; without --yes it
+      shows the changes, writes nothing; --auto, which the hooks start every github.everyMinutes, writes and
+      tells each owner its new tasks and the lead when repositories start or stop failing
   budget [<id|name>] [--loops|--burn] [--day <YYYY-MM-DD>] [--all]
       each session's use today, measured from the Claude Code transcripts, against the week's pace;
       <id|name>: that session by day; --loops: the loop patterns by day; --burn: what started the

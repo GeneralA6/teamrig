@@ -1,7 +1,8 @@
 import { basename, dirname } from 'node:path';
-import { loadConfig } from "../config/load.js";
+import { formatConfig, loadConfig } from "../config/load.js";
 import { SHIPPED_CONFIG_FORMAT } from "../config/migrate.js";
 import { Roster } from "../config/roster.js";
+import { parseConfigText } from "../config/text.js";
 import { isRecord } from "../core/guards.js";
 import { ENV, KIT_NAME, resolveKitHome, teamPaths } from "../core/home.js";
 import { ID_PATTERN } from "../core/ids.js";
@@ -98,6 +99,21 @@ export async function openTeamKit(runtime) {
 }
 export function issueText(issue) {
     return `${issue.path === '' ? '(top level)' : issue.path}: ${issue.message}`;
+}
+/**
+ * The config a command is about to write, read back as every later command will read it; refused, so nothing
+ * is written, when it would not load or would load with a problem.
+ */
+export function checkedNextConfig(json) {
+    const next = parseConfigText(formatConfig(json));
+    if (next.status !== 'loaded') {
+        throw new RefusedError(`the new config cannot be read: ${issueText(next.issue)}`);
+    }
+    const [problem] = next.issues;
+    if (problem !== undefined) {
+        throw new RefusedError(`nothing written: ${issueText(problem)}`);
+    }
+    return next.config;
 }
 /**
  * The team config. A config with problems still loads, each bad field on its default: reads go

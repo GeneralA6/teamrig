@@ -1,3 +1,4 @@
+import { formatHireFlag } from "../hiring/due.js";
 import { FLAG_KINDS, formatFlag } from "../register/check.js";
 import { byPlanOrder, formatShortTask, formatTask } from "../register/views.js";
 import { formatSkillFlag } from "../skills/lint.js";
@@ -15,9 +16,9 @@ export const MAX_FLAGS_PER_KIND = 5;
 /** The order of the status counts on a short `list` owner line: what moves first, what waits last. */
 const SUMMARY_STATUSES = ['in-progress', 'verifying', 'waiting', 'open', 'done', 'dropped'];
 /**
- * A report narrowed to what one session acts on, for `start`: the flags of the tasks it owns and of the skills
- * it fixes (only a task's owner sets its status). The scope names the session, so the CHECK line says whose
- * flags these are.
+ * A report narrowed to what one session acts on, for `start`: the flags of the tasks it owns, of the skills
+ * it fixes (only a task's owner sets its status) and on itself as a hired session. The scope names the session,
+ * so the CHECK line says whose flags these are.
  */
 export function ownCheck(report, owner) {
     return {
@@ -25,6 +26,7 @@ export function ownCheck(report, owner) {
         sections: report.sections.map((section) => ({ ...section, flags: section.flags.filter((flag) => flag.task.owner === owner) })),
         scope: `${owner}'s tasks and skills, ${report.scope}`,
         skills: report.skills.filter((flag) => flag.owner === owner),
+        hires: report.hires.filter((flag) => flag.session === owner),
     };
 }
 /** The characters `lines` print, each with its newline. */
@@ -92,13 +94,18 @@ export function checkLines(report, all) {
 function skillsLine({ skills, skillsDir }) {
     return `SKILLS ${skills.length} flag(s) in ${skillsDir}`;
 }
-/** Each register's `CHECK` line and flags, then the skill flags: every flag, every field. */
+/** The hire flags' `HIRES` line and each flag; nothing on a team with none. */
+function hireLines({ hires }, indent) {
+    return hires.length === 0 ? [] : [`HIRES ${hires.length} flag(s)`, ...hires.map((flag) => `${indent}${formatHireFlag(flag)}`)];
+}
+/** Each register's `CHECK` line and flags, then the hire flags, then the skill flags: every flag, every field. */
 function longCheck(report) {
     return [
         ...report.sections.flatMap(({ team, flags, context }) => [
             `CHECK${team === undefined ? '' : ` ${team}:`} ${flags.length} flag(s), ${report.scope}`,
             ...flags.map((flag) => formatFlag(flag, team, context)),
         ]),
+        ...hireLines(report, ''),
         skillsLine(report),
         ...report.skills.map(formatSkillFlag),
     ];
@@ -115,7 +122,7 @@ function kindLines(kind, rows, shown) {
 }
 /**
  * The short `check`: one `CHECK` line over every register, then each kind with its count and its first flags in plan
- * order, then the skill flags the same way. Each kind shows MAX_FLAGS_PER_KIND flags, or fewer, the same number for
+ * order, then every hire flag (at most two per hired session), then the skill flags the same way as the kinds. Each kind shows MAX_FLAGS_PER_KIND flags, or fewer, the same number for
  * every kind, so the whole fits in SHORT_FORM_CHARS; at one each, lines past the budget give way to a `+N more` line.
  */
 function shortCheck(report) {
@@ -125,11 +132,12 @@ function shortCheck(report) {
         rows: flags.filter(({ flag }) => flag.kind === kind).sort((a, b) => byPlanOrder(a.flag.task, b.flag.task)),
     })).filter(({ rows }) => rows.length > 0);
     const teams = report.sections.length > 1 ? ` in ${report.sections.length} team(s)` : '';
-    const hint = flags.length + report.skills.length > 0 ? ' (short form; --all for every flag in full)' : '';
+    const hint = flags.length + report.skills.length + report.hires.length > 0 ? ' (short form; --all for every flag in full)' : '';
     const head = `CHECK ${flags.length} flag(s)${teams}, ${report.scope}${hint}`;
     const linesShowing = (shown) => [
         head,
         ...kinds.flatMap(({ kind, rows }) => kindLines(kind, rows, shown)),
+        ...hireLines(report, '  '),
         skillsLine(report),
         ...firstOf(report.skills.map((flag) => `  ${formatSkillFlag(flag)}`), shown),
     ];
