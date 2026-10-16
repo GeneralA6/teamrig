@@ -66,8 +66,8 @@ const SESSION_ID = '0123abcd-0000-4000-8000-00000000000a';
 /**
  * One payload per hook the plugin runs, by its command (one event can run several), run inside team
  * `smoke`, which has no config: session start says so, the push guard still refuses a force-push of
- * main, the cold-send hook lets a message go, the failed-send hook stays quiet, the loop nudge and the reminder stay quiet, the Stop hook prints
- * nothing (any output there would block the turn), and the refresh wake wakes nothing.
+ * main, the cold-send hook lets a message go, the failed-send hook stays quiet, the loop nudge and the reminder stay quiet, the Stop and
+ * SubagentStop hooks print nothing (any output there would block the turn), and the refresh wake wakes nothing.
  */
 const SAMPLES: Readonly<Record<string, Sample>> = {
   'hook session-start': {
@@ -107,6 +107,10 @@ const SAMPLES: Readonly<Record<string, Sample>> = {
   },
   'hook stop': {
     payload: { hook_event_name: 'Stop', session_id: SESSION_ID, stop_hook_active: false },
+    check: (stdout) => (stdout === '' ? undefined : `expected no output, got ${JSON.stringify(stdout)}`),
+  },
+  'hook subagent-stop': {
+    payload: { hook_event_name: 'SubagentStop', session_id: SESSION_ID, stop_hook_active: false, agent_id: 'a1', agent_type: 'general-purpose' },
     check: (stdout) => (stdout === '' ? undefined : `expected no output, got ${JSON.stringify(stdout)}`),
   },
   'hook refresh-wake': {

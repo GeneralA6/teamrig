@@ -144,8 +144,8 @@ describe('smokeDist', () => {
 
   it('asks for a sample when the manifest adds an event the smoke test does not know', () => {
     const runner = new FakeRunner();
-    const findings = smokeDist(input({ manifest: manifestOf({ SubagentStop: [execHook('subagent-stop')] }) }), runner.run);
-    assert.deepEqual(findings, ['SubagentStop (hook subagent-stop): no smoke sample for hook subagent-stop; add one to tools/ci/dist-smoke.ts']);
+    const findings = smokeDist(input({ manifest: manifestOf({ PreCompact: [execHook('pre-compact')] }) }), runner.run);
+    assert.deepEqual(findings, ['PreCompact (hook pre-compact): no smoke sample for hook pre-compact; add one to tools/ci/dist-smoke.ts']);
   });
 });
 

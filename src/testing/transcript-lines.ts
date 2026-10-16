@@ -85,6 +85,11 @@ export function systemLine(at: string): string {
   return JSON.stringify({ type: 'system', subtype: 'turn_duration', durationMs: 1_000, timestamp: at });
 }
 
+/** The summary Claude Code writes as a user line to resume a compacted session or helper. */
+export function summaryLine(at: string, sidechain = false): string {
+  return JSON.stringify({ isSidechain: sidechain, type: 'user', isCompactSummary: true, message: { role: 'user', content: 'This session is being continued.' }, timestamp: at });
+}
+
 /** Claude Code's marker where it compacted the session's context. */
 export function compactLine(at: string): string {
   return JSON.stringify({ type: 'system', subtype: 'compact_boundary', content: 'Conversation compacted', timestamp: at });
