@@ -348,19 +348,47 @@ describe('parseConfig', () => {
 
   it('reads the refresh settings, defaulting each and refusing a bad threshold or folder', () => {
     assert.deepEqual(parseConfig(ROSTER).config.refresh, DEFAULT_REFRESH);
-    const chosen = { enabled: false, contextTokens: 150_000, everyTasks: 0, everyTasksMinTokens: 60_000, tabTitle: false, handoverDir: 'notes' };
+    const chosen = {
+      enabled: false,
+      contextTokens: 150_000,
+      everyTasks: 0,
+      everyTasksMinTokens: 60_000,
+      tabTitle: false,
+      autoRestart: false,
+      restartDelaySeconds: 30,
+      endCommand: ['node', 'end.cjs', 'end'],
+      handoverDir: 'notes',
+    };
     const set = parseConfig({ ...ROSTER, refresh: chosen });
     assert.deepEqual(set.issues, []);
     assert.deepEqual(set.config.refresh, chosen);
-    const bad = parseConfig({ ...ROSTER, refresh: { enabled: 'yes', contextTokens: 9_999, everyTasks: 101, everyTasksMinTokens: 9_999, tabTitle: 1, handoverDir: ' ' } });
+    const bad = parseConfig({
+      ...ROSTER,
+      refresh: {
+        enabled: 'yes',
+        contextTokens: 9_999,
+        everyTasks: 101,
+        everyTasksMinTokens: 9_999,
+        tabTitle: 1,
+        autoRestart: 'on',
+        restartDelaySeconds: 4,
+        endCommand: 'node end.cjs',
+        handoverDir: ' ',
+      },
+    });
     assert.deepEqual(paths(bad.issues).sort(), [
+      'refresh.autoRestart',
       'refresh.contextTokens',
       'refresh.enabled',
+      'refresh.endCommand',
       'refresh.everyTasks',
       'refresh.everyTasksMinTokens',
       'refresh.handoverDir',
+      'refresh.restartDelaySeconds',
       'refresh.tabTitle',
     ]);
+    assert.deepEqual(paths(parseConfig({ ...ROSTER, refresh: { restartDelaySeconds: 601 } }).issues), ['refresh.restartDelaySeconds']);
+    assert.deepEqual(paths(parseConfig({ ...ROSTER, refresh: { endCommand: ['node', ''] } }).issues), ['refresh.endCommand[1]']);
     assert.deepEqual(paths(parseConfig({ ...ROSTER, refresh: { everyTasks: -1 } }).issues), ['refresh.everyTasks']);
     assert.deepEqual(bad.config.refresh, DEFAULT_REFRESH);
     assert.deepEqual(paths(parseConfig({ ...ROSTER, refresh: { contextTokens: 10_000_001 } }).issues), ['refresh.contextTokens']);

@@ -299,7 +299,8 @@ export interface AlertsConfig {
 /**
  * Context refresh: when a session finishes a task (`set <id> --status done`) with its context at or over
  * `contextTokens`, or with `everyTasks` tasks finished since its context was last fresh, or after the lead
- * asked for it, the session writes a handover and the user types /clear.
+ * asked for it, the session writes a handover; then teamrig starts it fresh on its own (`autoRestart`), or
+ * the user types /clear.
  */
 export interface RefreshConfig {
   readonly enabled: boolean;
@@ -312,8 +313,22 @@ export interface RefreshConfig {
   readonly everyTasks: number;
   /** The smallest context the task count refreshes at: under it a fresh start saves little. */
   readonly everyTasksMinTokens: number;
-  /** Title the tab `<name>: type /clear` once the session's handover is written and it waits for /clear. */
+  /** Title the tab once the session's handover is written: `<name>: restarting`, or `<name>: type /clear`. */
   readonly tabTitle: boolean;
+  /**
+   * Once the handover is written and the turn has ended, end the session's Claude Code process and start it
+   * fresh, which reads the handover: in the same tab when `teamrig open` started it, else in a new tab. A
+   * prompt typed before then keeps the context. Off: the user types /clear.
+   */
+  readonly autoRestart: boolean;
+  /** How long after the turn's end the automatic restart waits, so the user can still type to keep the context. */
+  readonly restartDelaySeconds: number;
+  /**
+   * A program (its path, then its arguments) run after an automatic restart ended a session, given Claude
+   * Code's SessionEnd hook input (reason `clear`) on stdin: for a SessionEnd hook the end skipped, since on
+   * Windows a process is ended without running them. Empty: none.
+   */
+  readonly endCommand: readonly string[];
   /** The handover folder; a relative one is resolved against the team's folder. Unset: `<team folder>/handover`. */
   readonly handoverDir?: string;
 }
