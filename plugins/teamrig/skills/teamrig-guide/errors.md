@@ -40,7 +40,7 @@ or take it to the lead.
 | `REFUSED --due goes only with --status verifying; teamrig update T1 --due sets it otherwise` | Use `teamrig update T1 --due <date>`. |
 | `REFUSED T2 needs T1, still verifying (proof: ..., owner api); start T2 once T1 is done` | T1's owner got an inbox line: work on something else until it proves T1 (`done`) or reopens it. |
 | `REFUSED T1 is already done; add --note to record why you set it again` | Add a `--note`, or leave the status as it is. |
-| `REFUSED the lead may change only owner, priority, due, week, after on a task it does not own (asked: title)` | Ask the owner to change that field. |
+| `REFUSED the lead may change only owner, priority, due, week, after, size on a task it does not own (asked: title)` | Ask the owner to change that field. |
 | `REFUSED only the owner (web) or the lead changes T2` | Ask the owner or the lead. |
 | `REFUSED nothing to change: give a field or a --note` | `update` needs a field flag, or a `--note` to add alone. |
 | `REFUSED priority p9 is not one of p1, p2, p3, p4, p5` | Use a priority the team defines. |

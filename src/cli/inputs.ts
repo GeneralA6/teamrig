@@ -1,7 +1,7 @@
 import { ENV, type Env } from '../core/home.ts';
 import { NAME_PATTERN, NAME_RULE } from '../core/ids.ts';
 import { parseUtcDeadline, parseUtcDay } from '../core/time.ts';
-import type { TaskFields } from '../register/events.ts';
+import { MAX_SIZE_PCT, sizeProblem, type TaskFields } from '../register/events.ts';
 import { isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, priorityText, TASK_ID, TASK_STATUSES, type TaskStatus } from '../register/model.ts';
 import { WAITS_USAGE, type AddInput, type StatusInput } from '../register/policy.ts';
 import { isWaitKind, waitOf, type WaitReason } from '../register/waits.ts';
@@ -77,6 +77,19 @@ function listOf(flag: string, text: string): string[] {
   return items;
 }
 
+/** A size as typed: a number, a `%` after it allowed (`1.5` or `1.5%`). */
+const SIZE_TEXT = /^(\d+(?:\.\d+)?|\.\d+)%?$/;
+
+/** `--size 1.5`: what the task costs, in percent of the weekly usage limit, above 0 and at most the whole week. */
+export function sizeOf(text: string): number {
+  const number = SIZE_TEXT.exec(text.trim())?.[1];
+  const value = number === undefined ? Number.NaN : Number(number);
+  if (Number.isNaN(value) || sizeProblem(value) !== undefined) {
+    throw new UsageError(`--size "${text}" is not a percent of the weekly limit above 0 and at most ${MAX_SIZE_PCT}, like 1.5`);
+  }
+  return value;
+}
+
 /** `--week`: a day, checked here because `check` and `plan` read it without the policy. */
 export function weekOf(text: string): string {
   if (parseUtcDay(text) === undefined) {
@@ -116,6 +129,10 @@ export function addInputOf(flags: Flags, caller: string): AddInput {
   if (after !== undefined) {
     input.after = afterOf(after);
   }
+  const size = flags.get('size');
+  if (size !== undefined) {
+    input.size = sizeOf(size);
+  }
   return input;
 }
 
@@ -143,7 +160,7 @@ export function waitsOf(text: string): WaitReason[] {
   });
 }
 
-/** The fields `update` changes; `none` clears the description, ref, due date, goals, week or plan dependency. */
+/** The fields `update` changes; `none` clears the description, ref, due date, goals, week, plan dependency or size. */
 export function changesOf(flags: Flags): Partial<TaskFields> {
   const changes: Partial<Mutable<TaskFields>> = {};
   const title = flags.get('title');
@@ -181,6 +198,10 @@ export function changesOf(flags: Flags): Partial<TaskFields> {
   const after = flags.get('after');
   if (after !== undefined) {
     changes.after = after === NONE ? [] : afterOf(after);
+  }
+  const size = flags.get('size');
+  if (size !== undefined) {
+    changes.size = size === NONE ? null : sizeOf(size);
   }
   return changes;
 }

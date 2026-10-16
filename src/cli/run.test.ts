@@ -114,7 +114,7 @@ describe('runCli: help, version and usage errors', () => {
     const kit = new CliHarness();
     const add = await kit.run(['add', '--help']);
     assert.deepEqual([add.code, add.stdout, add.stderr], [EXIT.ok, [COMMAND_HELP.forCommand('add')], []]);
-    assert.match(add.stdout[0] ?? '', /\n {2}add --title .*\n(?: {6}\[.*\n)+ {6}--description: .*\n {6}\S.*\n {6}--after: .*\n {2}add --team /);
+    assert.match(add.stdout[0] ?? '', /\n {2}add --title .*\n(?: {6}\[.*\n)+ {6}--description: .*\n {6}\S.*\n {6}--after: .*\n {6}--size: .*\n {6}\S.*\n {2}add --team /);
     assert.deepEqual((await kit.run(['set', 'T1', '-h'])).stdout, [COMMAND_HELP.forCommand('set')]);
     const inbox = await kit.run(['inbox', '--help']);
     assert.deepEqual(
