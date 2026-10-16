@@ -43,8 +43,8 @@ No more twelve-hour days steering agents by hand. With teamrig, your part takes 
 
 ![A built-in project manager: one task list for the whole team, with owner, priority, due date and proof. Your week, planned: scheduled from your token budget, and it flags what's late, stuck or off-plan. Your day back, coming: one meeting in the morning, each decision with a recommendation. Improves itself: what one session works out becomes a skill, and each lesson a team rule. Survives a crash or reboot, coming: sessions reopen where they left off, and tasks and notes are safe on disk. Just your terminal: Claude Code in the terminal you have, with no IDE, no desktop app and no server.](docs/images/why.svg)
 
-*Coming: scheduling the week from your token budget, the morning meeting, and reopening sessions after a crash or
-reboot.*
+*Coming: moving the work that doesn't fit your token budget to next week, the morning meeting, and reopening
+sessions after a crash or reboot.*
 
 And the basics, done right: every task says what it is and why in plain words, and has one owner, who gets an inbox line the moment it is given the task, so nothing is done twice. Work that has shipped but is not
 verified yet is marked verifying, with a date to verify it by, so it stays in view until it is, and work built on it waits for the proof. A task that
@@ -109,7 +109,8 @@ a peer, a notification or a scheduled wake started, the calls that re-wrote a co
 `teamrig statusline install` sets it up and keeps one you already have, or have yours write the
 [same snapshot](plugins/teamrig/skills/teamrig-guide/commands.md#teamrig-statusline).
 
-*Coming: planning the week to your token limit, and holding deploys before the reset.*
+*Today `plan` shows what fits your weekly limit and `check` flags the first task that doesn't. Coming: moving it to
+next week on its own, and holding deploys before the reset.*
 
 ![Your lead plans the week from the tokens you have left. The tasks fill the days, most important first, until the plan reaches 99.5% of your weekly limit. The last 0.5% is kept for incidents, and the task that doesn't fit moves to next week.](docs/images/plan.svg)
 
