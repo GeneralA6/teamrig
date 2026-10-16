@@ -153,7 +153,7 @@ Flags:
 - `--goals a,b|none`: new goal tags, or `none` to clear them.
 - `--week <date>|none`: plan it into a week, or `none` to take it out.
 - `--after T5,T6|none`: plan it after these tasks, or `none` to clear it; only while it is open (a started task
-  waits with `set --status waiting --waits task:T5`). Only the owner changes it.
+  waits with `set --status waiting --waits task:T5`). The owner or the lead changes it.
 - `--note "<text>"`: records a note with the change.
 
 Example:
