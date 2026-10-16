@@ -2,6 +2,7 @@ import { KIT_NAME } from "../../core/home.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { postLine } from "../../inbox/inbox.js";
 import { refreshPrompt } from "../../open/prompt.js";
+import { ClearAsks, clearAskDir } from "../../refresh/clear-asks.js";
 import { runRestart } from "../../refresh/restart.js";
 import { RefreshStore } from "../../refresh/store.js";
 import { onePositional, requiredFlag, UsageError } from "../args.js";
@@ -13,6 +14,7 @@ import { idFlag, openSessionTab } from "./open.js";
 function inboxLineOf(result) {
     switch (result.kind) {
         case 'cancelled':
+        case 'cleared':
             return undefined;
         case 'failed':
             return `the automatic restart did not happen: ${result.why}; type /clear for a fresh start`;
@@ -34,13 +36,16 @@ function resultLineOf(result, name) {
             return `CANCELLED the restart of ${name}: ${result.why}`;
         case 'failed':
             return `FAILED the restart of ${name}: ${result.why}`;
+        case 'cleared':
+            return `CLEARED ${name}: its tab ran /clear`;
         case 'restarted':
             return `RESTARTED ${name} in ${result.where === 'same tab' ? 'the same tab' : 'a new tab'}`;
     }
 }
 /**
  * `restart <id> --team <team> --at <time> --project <dir>`: the automatic context refresh's restart,
- * which the Stop hook starts hidden once the session's handover is written (`runRestart`). A new tab,
+ * which the Stop hook starts hidden once the session's handover is written (`runRestart`): the tab's mod
+ * runs /clear when it claims the ask in time, else the session's process is ended. A new tab,
  * when one is needed, opens in the project folder the way `open`'s does. What the session must know
  * goes to its inbox, which it reads at its next prompt or start; exit 1 when no restart happened.
  */
@@ -69,12 +74,13 @@ export async function restart(args, runtime) {
         clock: runtime.clock,
         sleep: runtime.sleep,
         platform: runtime.platform,
+        asks: new ClearAsks(runtime.files, clearAskDir(kit.paths.kitHome)),
         openTab: async () => {
             const tab = { team, id, name, project, prompt: refreshPrompt(team, id, store.handoverPath(id)), terminal: config.open.terminal };
             const { outcome } = await openSessionTab(runtime, tab);
             return outcome.kind === 'opened' ? { kind: 'opened' } : outcome;
         },
-    }, { id, at, delayMs: config.refresh.restartDelaySeconds * 1000, endCommand: config.refresh.endCommand, fallbackCwd: project });
+    }, { team, id, at, delayMs: config.refresh.restartDelaySeconds * 1000, endCommand: config.refresh.endCommand, fallbackCwd: project });
     const line = inboxLineOf(result);
     if (line !== undefined) {
         const secrets = new SecretScanner(config.register.secretPatterns);
