@@ -1,12 +1,13 @@
 import type { Roster } from '../config/roster.ts';
 import { describeNameClash, describeTreeProblem, type NameClash, type TreeProblem } from '../config/tree.ts';
-import type { KitConfig } from '../config/types.ts';
+import type { ContextFilesConfig, KitConfig } from '../config/types.ts';
 import { formatUtcMinute, MS_PER_DAY, parseUtcDeadline, shortUtc } from '../core/time.ts';
 import { unreadSince } from '../inbox/inbox.ts';
 import type { Unread } from '../inbox/unread.ts';
 import type { RenameLogRead } from '../names/rename.ts';
 import { describeRequirement, type RequirementProblem } from '../requirements/requirements.ts';
 import { TEAM_RULES_MAX_CHARS } from '../rules/pack.ts';
+import type { ContextFiles } from './context-files.ts';
 
 /**
  * Days an inbox may wait with unread lines and no read before doctor flags it. Hard-coded for now;
@@ -23,6 +24,7 @@ export const UNREAD_INBOX_DAYS = 7;
  * - `inbox-orphan`: an inbox no session on the team reads;
  * - `inbox-unread`: unread lines and no read for over `UNREAD_INBOX_DAYS` days;
  * - `rules-long`: a rules.md longer than a session is shown at start;
+ * - `context-size`: CLAUDE.md files, a memory index or a skill listing over its `contextFiles` budget, re-read every call;
  * - `tree-id`, `tree-parent`, `tree-loop`, `tree-depth`, `tree-children`: a broken link in the
  *   team's tree of teams (see `TreeProblem`);
  * - `name-two-teams`: a session name this team shares with another team, though names are machine-wide.
@@ -36,6 +38,7 @@ export type FindingKind =
   | 'inbox-orphan'
   | 'inbox-unread'
   | 'rules-long'
+  | 'context-size'
   | TreeProblem['kind']
   | 'name-two-teams';
 
@@ -55,6 +58,8 @@ export interface DoctorInput {
   readonly inboxes: readonly Unread[];
   /** The team's rules.md and its length, when it exists. */
   readonly teamRules: { readonly path: string; readonly chars: number } | undefined;
+  /** What every call of a session in the project re-reads, and the team's budgets for it. */
+  readonly contextFiles: { readonly read: ContextFiles; readonly budgets: ContextFilesConfig };
   /** The problems of the team's tree of teams, and the session names it shares with other teams. */
   readonly tree: { readonly problems: readonly TreeProblem[]; readonly clashes: readonly NameClash[] };
   readonly now: Date;
@@ -159,6 +164,37 @@ function rulesFindings(input: DoctorInput): Finding[] {
   return [{ kind: 'rules-long', detail }];
 }
 
+function count(value: number): string {
+  return value.toLocaleString('en-US');
+}
+
+/** At about 4 characters a token, rounded to the hundred: enough to weigh a cut. */
+function tokensOf(chars: number): string {
+  return `~${count(Math.round(chars / 400) * 100)} tokens`;
+}
+
+function sizeFinding(what: string, chars: number, budget: number, key: keyof ContextFilesConfig, fix: string): Finding[] {
+  if (chars <= budget) {
+    return [];
+  }
+  const detail = `${what}: ${count(chars)} characters (${tokensOf(chars)}), over its budget of ${count(budget)} [contextFiles.${key}]; every call re-reads this text, so ${fix}`;
+  return [{ kind: 'context-size', detail }];
+}
+
+function contextFindings({ contextFiles: { read, budgets } }: DoctorInput): Finding[] {
+  const claudeMdChars = read.claudeMd.reduce((sum, file) => sum + file.chars, 0);
+  const claudeMd = read.claudeMd.map((file) => `${file.path} ${count(file.chars)}`).join(', ');
+  const memory = read.memoryIndex;
+  const skills = `skill listing (${read.skills.count} skills in ${read.skills.folders.join(', ')})`;
+  return [
+    ...sizeFinding(`CLAUDE.md files (${claudeMd})`, claudeMdChars, budgets.maxClaudeMdChars, 'maxClaudeMdChars', 'move how-tos into skills and facts into memory files'),
+    ...(memory === undefined
+      ? []
+      : sizeFinding(`memory index ${memory.path}`, memory.chars, budgets.maxMemoryIndexChars, 'maxMemoryIndexChars', 'keep one short line per memory and its detail in the memory file')),
+    ...sizeFinding(skills, read.skills.chars, budgets.maxSkillListingChars, 'maxSkillListingChars', 'shorten descriptions or merge skills'),
+  ];
+}
+
 function treeFindings({ tree, command }: DoctorInput): Finding[] {
   return [
     ...tree.problems.map((problem): Finding => ({ kind: problem.kind, detail: describeTreeProblem(problem, command) })),
@@ -168,7 +204,7 @@ function treeFindings({ tree, command }: DoctorInput): Finding[] {
 
 /**
  * The team's health checks: names that find the wrong session or none, a damaged rename log,
- * inboxes nobody reads, rules too long to show, and a broken tree of teams or a session name two
+ * inboxes nobody reads, rules too long to show, text every call re-reads over its budget, and a broken tree of teams or a session name two
  * teams use. It reads only; every fix is the user's.
  */
 export function doctorFindings(input: DoctorInput): Finding[] {
@@ -179,6 +215,7 @@ export function doctorFindings(input: DoctorInput): Finding[] {
     ...renameLogFindings(input),
     ...inboxFindings(input),
     ...rulesFindings(input),
+    ...contextFindings(input),
     ...treeFindings(input),
   ];
 }

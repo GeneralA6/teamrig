@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { DEFAULT_CONTEXT_FILES } from '../config/defaults.ts';
 import { Roster } from '../config/roster.ts';
 import { describeNameClash, type NameClash, type TreeProblem } from '../config/tree.ts';
 import { lineHash } from '../inbox/line-hash.ts';
@@ -23,6 +24,7 @@ function input(overrides: Partial<DoctorInput> & { readonly names?: Record<strin
     requirements: [],
     inboxes: [],
     teamRules: undefined,
+    contextFiles: { read: { claudeMd: [], memoryIndex: undefined, skills: { folders: [], count: 0, chars: 0 } }, budgets: DEFAULT_CONTEXT_FILES },
     tree: { problems: [], clashes: [] },
     now: NOW,
     command: 'teamrig',
@@ -40,6 +42,31 @@ function lines(input: DoctorInput): string[] {
 }
 
 describe('doctorFindings', () => {
+  it('flags the CLAUDE.md files, memory index and skill listing over their budgets, and is quiet at them', () => {
+    const budgets = { maxClaudeMdChars: 1_000, maxMemoryIndexChars: 500, maxSkillListingChars: 800 };
+    const at = (claudeMd: number, memory: number | undefined, skills: number): DoctorInput =>
+      input({
+        contextFiles: {
+          read: {
+            claudeMd: [
+              { path: '/u/.claude/CLAUDE.md', chars: 200 },
+              { path: '/w/CLAUDE.md', chars: claudeMd - 200 },
+            ],
+            memoryIndex: memory === undefined ? undefined : { path: '/u/.claude/projects/-w/memory/MEMORY.md', chars: memory },
+            skills: { folders: ['/u/.claude/skills'], count: 3, chars: skills },
+          },
+          budgets,
+        },
+      });
+    assert.deepEqual(lines(at(1_000, 500, 800)), []);
+    assert.deepEqual(lines(at(1_000, undefined, 800)), []);
+    assert.deepEqual(lines(at(1_001, 2_000, 801)), [
+      'WARN context-size CLAUDE.md files (/u/.claude/CLAUDE.md 200, /w/CLAUDE.md 801): 1,001 characters (~300 tokens), over its budget of 1,000 [contextFiles.maxClaudeMdChars]; every call re-reads this text, so move how-tos into skills and facts into memory files',
+      'WARN context-size memory index /u/.claude/projects/-w/memory/MEMORY.md: 2,000 characters (~500 tokens), over its budget of 500 [contextFiles.maxMemoryIndexChars]; every call re-reads this text, so keep one short line per memory and its detail in the memory file',
+      'WARN context-size skill listing (3 skills in /u/.claude/skills): 801 characters (~200 tokens), over its budget of 800 [contextFiles.maxSkillListingChars]; every call re-reads this text, so shorten descriptions or merge skills',
+    ]);
+  });
+
   it('finds nothing on a healthy team with renames, a fresh inbox and short rules', () => {
     const renames = [renameOf('alpha', 'app-alpha', 'scout'), renameOf('bravo', 'app-bravo', 'app-alpha'), renameOf('alpha', 'scout', 'ranger')];
     const read = ['- 2030-01-02 09:00 lead: old'];

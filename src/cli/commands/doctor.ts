@@ -1,10 +1,11 @@
 import { Roster } from '../../config/roster.ts';
-import { KIT_NAME } from '../../core/home.ts';
+import { claudeConfigDir, KIT_NAME } from '../../core/home.ts';
+import { readContextFiles } from '../../doctor/context-files.ts';
 import { doctorFindings, formatFinding } from '../../doctor/doctor.ts';
 import { inboxStatus } from '../../inbox/inbox.ts';
 import { JsonlRenameLog } from '../../names/log.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
-import { openTeamKit, requireConfig } from '../kit.ts';
+import { openTeamKit, projectFolder, requireConfig } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
 import { inboxDepsOf } from './inbox.ts';
@@ -12,7 +13,8 @@ import { inboxDepsOf } from './inbox.ts';
 /**
  * `doctor`: what teamrig lacks on this machine (git, Claude Code, Node.js), then the team's health checks
  * (names, the rename log, inboxes, rules.md, its tree of teams and session names shared with other teams,
- * read from every team config of the kit home). It reads only and exits 0 like `check`: a finding is
+ * read from every team config of the kit home), and the text every call of a session in the project re-reads
+ * (CLAUDE.md files, the memory index, the skill listing) against the team's `contextFiles` budgets. It reads only and exits 0 like `check`: a finding is
  * advice, and each line says the fix.
  */
 export async function doctor(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
@@ -30,6 +32,14 @@ export async function doctor(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     renameLog: { ...renameLog, path: paths.renames },
     inboxes: await inboxStatus(inboxDepsOf(runtime, paths)),
     teamRules: rules === undefined ? undefined : { path: paths.teamRules, chars: rules.trim().length },
+    contextFiles: {
+      read: await readContextFiles(runtime.files, {
+        claudeDir: claudeConfigDir(runtime.env, runtime.userHome),
+        project: await projectFolder(runtime),
+        skills: paths.skills,
+      }),
+      budgets: config.contextFiles,
+    },
     tree: { problems: tree.problemsOf(paths.team), clashes: tree.nameClashesOf(paths.team) },
     now: new Date(runtime.clock.now()),
     command: KIT_NAME,
