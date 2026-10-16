@@ -62,6 +62,8 @@ const EXPECTED = {
   'hook refresh-wake': 'internal',
   'hook clear-dir': 'internal',
   'hook clear-claim': 'internal',
+  'hook wake-check': 'internal',
+  'hook wake-dropped': 'internal',
   'hook slash-command': 'internal',
 };
 
