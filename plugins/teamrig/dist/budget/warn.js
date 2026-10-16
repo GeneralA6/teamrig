@@ -73,11 +73,19 @@ export function quietStartOf(quiet, now) {
     }
     return minute < end ? dayStart - MS_PER_DAY + start * 60_000 : undefined;
 }
+/** True when the session's use today is past its daily budget (its lift's while lifted). */
+export function isPastDailyBudget(facts) {
+    return budgetUsePct(facts) > 100;
+}
+/** When the quiet hours the session is in began, epoch ms; undefined outside them, or while its lift exempts it. */
+export function sessionQuietFrom(facts, quiet) {
+    return facts.lift?.quietHoursExempt === true ? undefined : quietStartOf(quiet, facts.now);
+}
 function standingOf(facts, budget) {
     const usePct = budgetUsePct(facts);
-    const over = usePct > 100;
+    const over = isPastDailyBudget(facts);
     const ahead = facts.pace?.state === 'ahead';
-    const quietFrom = facts.lift?.quietHoursExempt === true ? undefined : quietStartOf(budget.quietHours, facts.now);
+    const quietFrom = sessionQuietFrom(facts, budget.quietHours);
     return { over, level: levelOf(usePct, budget.warnAtPct), ahead, escalated: over && (budget.escalate === 'session' || ahead), quietFrom };
 }
 /** How strongly an action holds a helper launch back: only "ask" and "block" do. */

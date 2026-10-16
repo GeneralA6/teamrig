@@ -12,6 +12,7 @@ const hookCommands = () => import("./commands/hook.js");
 const loopNudgeCommand = () => import("./commands/hook-loop-nudge.js");
 const refreshWakeCommand = () => import("./commands/hook-refresh-wake.js");
 const clearCommands = () => import("./commands/hook-clear.js");
+const wakeCommands = () => import("./commands/hook-wake.js");
 const teamCommands = () => import("./commands/team.js");
 const commitsCommands = () => import("./commands/commits.js");
 const doctorCommands = () => import("./commands/doctor.js");
@@ -110,6 +111,8 @@ const COMMANDS = {
     'hook refresh-wake': { effect: 'internal', flags: [], load: async () => (await refreshWakeCommand()).refreshWake },
     'hook clear-dir': { effect: 'internal', flags: [], load: async () => (await clearCommands()).clearDir },
     'hook clear-claim': { effect: 'internal', flags: [], switches: ['hold'], load: async () => (await clearCommands()).clearClaim },
+    'hook wake-check': { effect: 'internal', flags: [], load: async () => (await wakeCommands()).wakeCheck },
+    'hook wake-dropped': { effect: 'internal', flags: [], load: async () => (await wakeCommands()).wakeDropped },
     'hook slash-command': {
         effect: 'internal',
         flags: [],
@@ -244,6 +247,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       (run by Claude Code, hook JSON on stdin)
   hook clear-dir | hook clear-claim [--hold]
       (run by the plugin's mod: the automatic restart's /clear in the tab)
+  hook wake-check | hook wake-dropped
+      (run by the plugin's mod: wakes an idle tab when unblocked urgent work is handed to its session)
   hook slash-command
       (run by the plugin's mod: /teamrig <command> typed in a Claude Code tab; /teamrig alone tells what it runs)
   launch <id> --team <team> --project <dir> [--home <dir>] [--encoded-prompt <text>] [--resume <session>]
