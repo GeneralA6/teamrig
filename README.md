@@ -63,7 +63,8 @@ token for each GitHub owner.
 
 teamrig is Claude Code in the terminal you already have: PowerShell, bash or zsh. Each session is a tab, your lead is
 one of them, and teamrig-pane keeps the task list beside the conversation. A tab you open yourself joins a session
-when you name it after one (`/rename web`). No IDE, no desktop app, no browser dashboard, no server to run.
+when you name it after one (`/rename web`), and a tab that joined one without a name gets the session's name, so it
+stays that session after `/clear`. No IDE, no desktop app, no browser dashboard, no server to run.
 
 ![teamrig in your terminal: one window, with a tab for each session: lead, api, web, data, docs and tests. In the lead's tab you ask what needs you, and the lead brings two decisions, each with its pick: keep logs 30 days or 90, and whether to offer Google sign-in on the form. You answer both in one line. Beside the conversation, teamrig-pane lists the team's tasks, each with its id, owner, priority and due date, and marks which are working, which need you, which have not started and which are done.](docs/images/terminal-view.svg)
 
