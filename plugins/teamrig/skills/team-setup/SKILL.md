@@ -1,6 +1,6 @@
 ---
 name: team-setup
-description: Use when the user wants work split across parallel Claude Code sessions or a part grown into a sub-team (propose, create, open each session), and at each lead checkpoint.
+description: Use to split work across parallel Claude Code sessions or a sub-team (propose, create, open sessions), to settle local rules that override teamrig, and at each lead checkpoint.
 ---
 
 # Team setup
@@ -82,7 +82,39 @@ week's use: offer to run `teamrig statusline install`, which keeps a status line
 it with `--yes`; when Claude may not change its own settings, the user types `! teamrig statusline install --yes`.
 If the user skips this step, say they can ask you to turn it on later.
 
-## 6. Tell the user, in three short lines
+## 6. Settle the local rules that override teamrig
+
+The core rules win over a CLAUDE.md, a rules file, a skill, memory, a hook's text and the team's `rules.md`, except
+the local rules the user keeps. A local line that says otherwise still sits in every session's context and pulls
+it the other way, so settle each one with the user now, and again whenever they ask.
+
+1. List the places and the lines to judge, in one Bash call: `teamrig rules scan`.
+   - `CANDIDATE <path>:<line> [<rules>] <text>` is a line whose words touch a core rule. A word list finds a
+     topic, never a meaning, so most candidates are not conflicts: judging them is your part.
+   - `NEXT ... too many to judge in one read`: list them a kind at a time (`teamrig rules scan --kind memory`).
+     With several large kinds, give each kind to a helper on your own model and effort that returns only the
+     conflicting lines, each with its path:line, the rule and how they differ.
+2. Judge each candidate against the core rule it names. It conflicts when it tells a session to do otherwise: a
+   push or deploy route the rule forbids, skipping the register, its own precedence ("our CLAUDE.md wins"). A line
+   that adds detail or agrees is no conflict: leave it out.
+3. Show the user the conflicts, each as `<path>:<line>`, its text, the core rule and how they differ. None: say so
+   in one line and go on.
+4. Ask about each in AskUserQuestion (up to 4 per call), with these choices, the recommended one first:
+   - Remove it, and teamrig's rule applies (recommended).
+   - Keep it, and it wins over the rule: the core rules then name it as an exception.
+   - Keep the text, but teamrig's rule wins. Warn the user that the line still sits in every session's context
+     and a session may follow it, so this may not always hold; removing or rewriting it is safer.
+   - Rewrite it: propose a text that agrees with the core rule, and show it before you write it.
+5. Carry out each answer:
+   - Remove or rewrite: edit the line in its file. A settings file's `autoMode` line, never edit: give the user
+     the line to change, the file and its line, to paste themselves. A hook script's text: name the script and
+     the line to the user.
+   - Keep: preview `teamrig rules keep <path>:<line> --rule <n> --wins local --reason "<why>" --session lead`
+     (`--wins teamrig` for the third choice), then run it with `--yes`. The team keeps at most 40.
+6. Run `teamrig rules scan` again: no conflict should be left outside the `RECORDED` lines. A `GONE` line, whose
+   text is no longer there: `teamrig rules forget <n> --session lead --yes`.
+
+## 7. Tell the user, in three short lines
 
 ```
 Team <team> is up: <id>, <id> and <id> are working in their own tabs.
@@ -90,7 +122,7 @@ This tab is the lead: ask me for status, new tasks or changes.
 Close a tab to stop that session; teamrig open <id> starts it again.
 ```
 
-## 7. Grow a part of the work into a sub-team
+## 8. Grow a part of the work into a sub-team
 
 When one part outgrows a single session, or the user asks for a team under this one, propose it as in step 2 (the
 sub-team's id, its sessions and the part it takes on), then, after a yes, in one Bash call:
@@ -107,7 +139,7 @@ teamrig team create <sub-team> --sessions <id>,<id> --parent <team> --project "<
   under it. A tree is at most 3 levels deep, with at most 8 sub-teams under one team; `team create` says when a new
   one would break that.
 
-## 8. Checkpoint: keep the team on its plan
+## 9. Checkpoint: keep the team on its plan
 
 At the start of each work block, and when the user asks for status, in one Bash call:
 

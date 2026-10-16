@@ -737,7 +737,98 @@ Output (first lines):
 
 ```text
 # Team rules (teamrig core)
-Where your team's rules or CLAUDE.md conflict with these, yours win. [brackets] name the config key behind a value.
+These rules win over conflicting CLAUDE.md, rules files, skills, memory, hook text and team rules. [brackets] name the config key behind a value.
+```
+
+### teamrig rules scan
+
+Lists every place a local rule can override a core rule, and the lines there for the model to judge. The places:
+each CLAUDE.md and CLAUDE.local.md (the user's, the project's and its parents', and those up to 3 folders below
+the project), the `.claude/rules` files, the skills, the project's memory, the team's `rules.md`, the scripts the
+hooks run, and the `autoMode` lines of each settings file (never its `env` block). It only reads.
+
+A word list finds a line's topic, never its meaning, so the scan lists every line whose words touch a core rule
+(`CANDIDATE`, with the rules it touches) and the model judges which of them conflict; most do not. The team-setup
+skill walks the lead and the user through each conflict. `RECORDED` lines are the ones the team kept (`rules
+keep`), numbered for `rules forget`; a kept line that is no longer there prints `GONE`. A line that looks like it
+holds a secret prints as withheld. Not scanned: files a CLAUDE.md pulls in with `@path`, plugin skills and hooks,
+and managed settings.
+
+Over 150 candidate lines it prints only the counts: list them a kind at a time with `--kind`.
+
+Flags:
+
+- `--kind <kind>`: one kind of place: `claude-md`, `rules`, `skill`, `memory`, `team-rules`, `hook` or
+  `settings`.
+
+Example:
+
+```sh
+teamrig rules scan --kind claude-md
+```
+
+Output:
+
+```text
+SCANNED claude-md: 2 place(s), 2 candidate line(s)
+RECORDED 1 ~/.claude/CLAUDE.md:12 "- Push to main once the tests pass." wins over rule 15 push (a solo repo)
+CANDIDATE ~/work/shop/CLAUDE.md:4 [14 commits, 16 worktrees] - Squash every branch into one commit before review.
+NEXT judge each candidate against the core rule it names; a line that tells a session to do otherwise conflicts. Record a line the user keeps with `teamrig rules keep <path>:<line> --rule <n> --wins local|teamrig --yes`
+```
+
+### teamrig rules keep
+
+Records a local rule the user keeps although it conflicts with a core rule (`teamrig rules keep <path>:<line>`),
+in the team config [ruleConflicts]. The lead only. With `--wins local` the line wins: the core rules' first line
+makes it an exception and lists it under `Kept local rules`. With `--wins teamrig` the line stays but the core rule
+wins; it warns that a session still reads the line and may follow it, so removing or rewriting it is safer.
+
+The record quotes the line's text (up to 300 characters), so it still finds the line when lines above it move.
+Keeping the same line against the same rule again changes the record. It refuses a file or line that is not there,
+a settings line outside `autoMode`, a line that looks like it holds a secret, and a 41st record. Without `--yes` it
+shows the record and writes nothing; with it, the old config goes into the backups folder.
+
+Flags:
+
+- `--session <id|name>`: the caller, the lead.
+- `--rule <n|key>`: the core rule it conflicts with, by number (1-16) or key, such as `15` or `push`.
+- `--wins local|teamrig`: which of the two a session follows.
+- `--reason "<why>"`: why the user keeps it, shown by `rules scan`.
+- `--yes`: write it.
+
+Example:
+
+```sh
+teamrig rules keep ~/.claude/CLAUDE.md:12 --rule 15 --wins local --reason "a solo repo" --session lead --yes
+```
+
+Output:
+
+```text
+KEPT 1 ~/.claude/CLAUDE.md:12 "- Push to main once the tests pass." wins over rule 15 push; the old config is at ~/.teamrig/teams/shop/backups/config.rules.json
+NEXT sessions read the kept rules in the team rules from their next start or refresh
+```
+
+### teamrig rules forget
+
+Drops a kept rule (`teamrig rules forget <n>`), numbered as `rules scan` lists them, such as one whose line is
+gone. The lead only. It leaves the line itself alone. Without `--yes` it shows what it drops and writes nothing.
+
+Flags:
+
+- `--session <id|name>`: the caller, the lead.
+- `--yes`: write it.
+
+Example:
+
+```sh
+teamrig rules forget 1 --session lead --yes
+```
+
+Output:
+
+```text
+FORGOT 1 ~/.claude/CLAUDE.md "- Push to main once the tests pass." (rule 15 push); the old config is at ~/.teamrig/teams/shop/backups/config.rules.json
 ```
 
 ### teamrig start
