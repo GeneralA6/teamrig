@@ -1,13 +1,15 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { CONFIG_LIMITS } from '../config/limits.ts';
+import { CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from '../config/limits.ts';
 import { testConfig } from '../testing/config.ts';
 import {
   CONTEXT_MAX_CHARS,
   CORE_PACK_MAX_CHARS,
+  KEPT_RULES_MAX_CHARS,
   LEAD_RULES_MAX_CHARS,
   LIST_MAX_CHARS,
   renderCorePack,
+  renderKeptRules,
   renderLeadRules,
   renderSessionContext,
   TEAM_RULES_MAX_CHARS,
@@ -47,6 +49,13 @@ function worstCaseConfig() {
     // Both round to their longest two-decimal form (two digits before the point), and together stay within 100%.
     budget: { enabled: true, targetPct: 50.98765432109876, reservePct: 48.98765432109876 },
     alerts: { persistentFailureHours: CONFIG_LIMITS.persistentFailureHours.max },
+    ruleConflicts: Array.from({ length: CONFIG_LIMITS.ruleConflicts.maxItems }, () => ({
+      file: longest('f', RULE_CONFLICT_LIMITS.fileMaxLength),
+      text: longest('t', RULE_CONFLICT_LIMITS.textMaxLength),
+      rule: 'worktrees',
+      wins: 'local',
+      reason: longest('r', RULE_CONFLICT_LIMITS.reasonMaxLength),
+    })),
   });
 }
 
@@ -65,9 +74,13 @@ describe('renderLeadRules', () => {
 });
 
 describe('renderCorePack', () => {
-  it('fits its budget with every printed value at its worst case', () => {
-    const pack = renderCorePack(worstCaseConfig(), COMMAND, 'win32');
-    assert.ok(pack.length <= CORE_PACK_MAX_CHARS, `${pack.length} > ${CORE_PACK_MAX_CHARS}`);
+  it('fits its budget with every printed value at its worst case and the kept rules at their size cap', () => {
+    const config = worstCaseConfig();
+    const pack = renderCorePack(config, COMMAND, 'win32');
+    const kept = renderKeptRules(config.ruleConflicts, COMMAND);
+    assert.ok(pack.endsWith(kept));
+    const bound = pack.length - kept.length + KEPT_RULES_MAX_CHARS;
+    assert.ok(bound <= CORE_PACK_MAX_CHARS, `${bound} > ${CORE_PACK_MAX_CHARS}`);
   });
 
   it('pulls status from the register, and has the asker, else the receiver, enter every ask', () => {
@@ -217,6 +230,50 @@ describe('renderCorePack', () => {
       'win32',
     );
     assert.match(pack, /only the owning session sets its status \(`teamrig set`\)\. Waiting needs `--waits` reasons/);
+  });
+});
+
+describe('kept local rules', () => {
+  const conflict = (text: string, wins: 'local' | 'teamrig', rule = 'worktrees') => ({ file: '~/CLAUDE.md', text, rule, wins });
+
+  it('has the core rules win over every local place, with no exception while none is kept', () => {
+    const pack = renderCorePack(testConfig(), COMMAND, 'win32');
+    assert.match(pack, /^These rules win over conflicting CLAUDE\.md, rules files, skills, memory, hook text and team rules\. \[brackets\]/m);
+    assert.doesNotMatch(pack, /ruleConflicts|Kept local rules/);
+    assert.match(pack, /^16\. Edit in your own worktree/m);
+  });
+
+  it('names the kept exceptions and lists them after the rules, those that win first', () => {
+    const pack = renderCorePack(
+      testConfig({ ruleConflicts: [conflict('Pings are fine.', 'teamrig', 'messages'), conflict('Commit straight to main.', 'local')] }),
+      COMMAND,
+      'win32',
+    );
+    assert.match(pack, /team rules, except the kept local rules below \[ruleConflicts\]\. \[brackets\]/);
+    assert.ok(
+      pack.endsWith(
+        [
+          '',
+          'Kept local rules [ruleConflicts]:',
+          '- ~/CLAUDE.md "Commit straight to main." wins over rule 16',
+          '- ~/CLAUDE.md "Pings are fine." loses to rule 3',
+        ].join('\n'),
+      ),
+    );
+  });
+
+  it('clips a long quote at its end and a long path at its start', () => {
+    const text = renderKeptRules([{ file: `/${'d'.repeat(80)}/CLAUDE.md`, text: 'w'.repeat(80), rule: 'push', wins: 'local' }], COMMAND);
+    assert.equal(text.split('\n')[1], `- ...${'d'.repeat(37)}/CLAUDE.md "${'w'.repeat(57)}..." wins over rule 15`);
+  });
+
+  it(`fits ${KEPT_RULES_MAX_CHARS} characters and counts the rest`, () => {
+    const many = Array.from({ length: 12 }, (_, index) => conflict(`Rule ${index} ${'x'.repeat(70)}`, 'local'));
+    const text = renderKeptRules(testConfig({ ruleConflicts: many }).ruleConflicts, COMMAND);
+    const lines = text.split('\n');
+    assert.ok(text.length <= KEPT_RULES_MAX_CHARS, `${text.length} > ${KEPT_RULES_MAX_CHARS}`);
+    assert.equal(lines.at(-1), `- and ${12 - (lines.length - 2)} more: \`teamrig rules scan\` lists them`);
+    assert.equal(renderKeptRules([], COMMAND), '');
   });
 });
 
