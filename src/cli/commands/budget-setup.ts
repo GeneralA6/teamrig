@@ -4,10 +4,10 @@ import { DEFAULT_BUDGET } from '../../config/defaults.ts';
 import { formatConfig, writeConfigWithBackup } from '../../config/load.ts';
 import { parseConfigText } from '../../config/text.ts';
 import { ESCALATIONS, isEscalation, isOverAction, OVER_ACTIONS, type Escalation, type OverAction } from '../../config/types.ts';
-import { isRecord, type JsonRecord } from '../../core/guards.ts';
+import { isRecord } from '../../core/guards.ts';
 import { noPositionals, UsageError, type Flags, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
-import { issueText, openTeamKit, requireConfig, rosterOf, sessionIdOf } from '../kit.ts';
+import { configFileJson, issueText, openTeamKit, requireConfig, rosterOf, sessionIdOf } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { pctFlag, snapshotDirOf } from './budget.ts';
 
@@ -103,21 +103,6 @@ function keyLine(key: KeyChange): string {
   return key.changed ? `  CHANGE budget.${key.key}: ${from} -> ${valueText(key.key, key.to)}` : `  KEEP budget.${key.key}: ${from}`;
 }
 
-/** The config file's own JSON, not the copy migrated in memory, so nothing else in it changes, its version included. */
-async function fileJson(runtime: CliRuntime, path: string): Promise<JsonRecord> {
-  const text = await runtime.files.read(path);
-  let raw: unknown;
-  try {
-    raw = text === undefined ? undefined : JSON.parse(text);
-  } catch {
-    raw = undefined;
-  }
-  if (!isRecord(raw)) {
-    throw new RefusedError(`${path} changed while it was read; run the command again`);
-  }
-  return raw;
-}
-
 /** `budget setup [--daily ...] [--max-daily ...] [--over ...] [--escalate ...] [--quiet ...] [--quiet-action ...] [--off] [--yes]`. */
 export async function setup(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
@@ -131,7 +116,7 @@ export async function setup(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   if (sessionIdOf(roster, caller) !== lead) {
     throw new RefusedError(`only the lead${lead === undefined ? '' : ` (${roster.nameOf(lead) ?? lead})`} sets the team's budget`);
   }
-  const plan = planBudgetSetup(await fileJson(runtime, load.path), choices);
+  const plan = planBudgetSetup(await configFileJson(runtime, load.path), choices);
   if (!plan.ok) {
     throw new UsageError(plan.problem);
   }
