@@ -47,7 +47,7 @@ export interface Carry extends TranscriptCarry {
 
 /** Where Claude Code keeps a session's files outside its transcript. */
 export interface CarryPlaces {
-  /** The system's temporary folder: scratchpads are `<it>/claude/<project>/<session>/scratchpad`. */
+  /** The system's temporary folder: a scratchpad the transcript does not name is `<it>/claude/<project>/<session>/scratchpad`. */
   readonly tempDir: string;
   /** Claude Code's config folder: plans are `<it>/plans/<slug>.md`. */
   readonly claudeDir: string;
@@ -56,6 +56,7 @@ export interface CarryPlaces {
 /** Lines that can matter; the rest of a large transcript is never parsed. */
 const MARKERS: readonly string[] = ['session_cron_carry', '"CronCreate"', '"CronDelete"', '"ScheduleWakeup"', '"humanSchedule"', '"scheduledFor"', '"is_error":true', '"queue-operation"'];
 const SLUG_KEY = '"slug":"';
+const ENVIRONMENT_KEY = '"type":"environment"';
 const SLUG = /^[A-Za-z0-9_-]+$/;
 
 /** A pending CronCreate call: what it asked for, until its result names the job. */
@@ -222,7 +223,33 @@ export function carryOf(text: string, now: number): TranscriptCarry {
   return { crons, wake, planSlug: lastSlugOf(text) };
 }
 
-/** The old session's scratchpad folder, named by its transcript: `<temp>/claude/<project>/<session>/scratchpad`. */
+/**
+ * The scratchpad Claude Code last gave the session, from its last `environment` attachment. It can sit under
+ * another project folder than the transcript: a session that moved into a worktree keeps its transcript in
+ * the new project folder and its scratchpad where it was. A quoted copy in a tool result is JSON-escaped, so
+ * only a real attachment matches the key.
+ */
+export function toldScratchpadOf(text: string): string | undefined {
+  let end = text.length;
+  while (end > 0) {
+    const at = text.lastIndexOf(ENVIRONMENT_KEY, end - 1);
+    if (at < 0) {
+      return undefined;
+    }
+    const start = text.lastIndexOf('\n', at) + 1;
+    const stop = text.indexOf('\n', at);
+    const attachment = parseObject(text.slice(start, stop < 0 ? text.length : stop).trim())?.['attachment'];
+    const snapshot = isRecord(attachment) && attachment['type'] === 'environment' ? attachment['snapshot'] : undefined;
+    const told = isRecord(snapshot) ? stringField(snapshot, 'scratchpadDirectory') : undefined;
+    if (told !== undefined) {
+      return told;
+    }
+    end = start;
+  }
+  return undefined;
+}
+
+/** The scratchpad folder a transcript's own name gives, `<temp>/claude/<project>/<session>/scratchpad`: the guess when its tail names none. */
 export function scratchpadOf(transcript: string, tempDir: string): string {
   return join(tempDir, 'claude', basename(dirname(transcript)), basename(transcript, '.jsonl'), 'scratchpad');
 }
@@ -234,7 +261,7 @@ export async function readCarry(files: Files, transcript: string, now: number, p
     return undefined;
   }
   const found = carryOf(text, now);
-  const scratchpad = scratchpadOf(transcript, places.tempDir);
+  const scratchpad = toldScratchpadOf(text) ?? scratchpadOf(transcript, places.tempDir);
   const entries = (await files.list(scratchpad)).length;
   const plan = found.planSlug === undefined ? undefined : join(places.claudeDir, 'plans', `${found.planSlug}.md`);
   const planText = plan === undefined ? undefined : await files.read(plan);
