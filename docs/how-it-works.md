@@ -100,6 +100,14 @@ talk to one lead: the root team's.
   `teamrig doctor` names one, along with a broken link in the tree.
 - `teamrig team tree` prints the tree with each team's lead and sessions.
 
+The lead hires a temporary member for one job with `teamrig hire`, within the team config's `hiring` block:
+
+- `policy`: `off` (no hires by command), `owner` (the default: each hire names who approved it) or `lead`.
+- `maxSessions` (2) hired members at once, each on `dailyPct` (1% of the week a day) unless the hire sets its own,
+  all of them on at most `maxDailyPct` (3%) a day; `reviewDays` (7) sets a hire's review day.
+- Each hire is logged in `state/hires.jsonl` with its job, reason, approver, model, effort, daily budget and review
+  day. `idleHours` (4) is for the retire checks of a later version.
+
 ## Setting up a team
 
 You tell Claude in any tab what you want built, for example "Build the signup flow: one session on the API, one on
