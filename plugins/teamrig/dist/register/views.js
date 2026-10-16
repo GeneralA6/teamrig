@@ -3,6 +3,10 @@ import { taskNumber } from "./fold.js";
 import { ACTIVE_STATUSES, GITHUB_SOURCE, priorityText } from "./model.js";
 import { waitsText } from "./waits.js";
 import { proofOf, proofText } from "./verify.js";
+/** A size as printed: percent of the weekly limit, at most two decimals (`1.5%`). */
+export function sizeText(size) {
+    return `${Number(size.toFixed(2))}%`;
+}
 /** The task's deadline in ms, or undefined when it has none. */
 export function dueTime(task) {
     return task.due === null ? undefined : parseUtcDeadline(task.due)?.getTime();
@@ -126,6 +130,9 @@ function changeText(name, value) {
     if (name === 'description') {
         return typeof value === 'string' ? JSON.stringify(cut(value.replace(/\s+/g, ' '), HISTORY_DESCRIPTION_CHARS)) : 'none';
     }
+    if (name === 'size') {
+        return typeof value === 'number' ? sizeText(value) : 'none';
+    }
     return Array.isArray(value) ? value.join(',') : String(value);
 }
 /** One line per event, for `show`. */
@@ -145,6 +152,7 @@ export function formatEvent(event) {
                 task.week === null ? undefined : `week=${task.week}`,
                 task.goals.length === 0 ? undefined : `goals=${task.goals.join(',')}`,
                 task.after.length === 0 ? undefined : `after=${task.after.join(',')}`,
+                task.size === null ? undefined : `size=${sizeText(task.size)}`,
             ]
                 .filter((part) => part !== undefined)
                 .join(' ');
@@ -176,6 +184,9 @@ export function formatTaskDetail(task, events, context) {
     }
     if (task.ref !== null) {
         lines.push(`ref: ${task.ref}`);
+    }
+    if (task.size !== null) {
+        lines.push(`size: ${sizeText(task.size)} of the weekly limit`);
     }
     if (task.note !== null) {
         lines.push(`note: ${task.note}`);

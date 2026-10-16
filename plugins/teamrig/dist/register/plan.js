@@ -1,13 +1,10 @@
 import { formatUtcMinute, shortUtc } from "../core/time.js";
 import { priorityText } from "./model.js";
-import { byPlanOrder, taskLabel } from "./views.js";
+import { byPlanOrder, sizeText, taskLabel } from "./views.js";
 import { waitContext, waitsText } from "./waits.js";
 import { proofOf } from "./verify.js";
-/**
- * The week plan as markdown: the tasks tagged with `week`, grouped by priority, then by due date. With
- * `team`, for a roll-up over a tree of teams, the heading names the team and ids read `<team>/T12`.
- */
-export function renderPlan(tasks, week, now, config, team) {
+/** The week plan as markdown: the tasks tagged with `week`, grouped by priority, then by due date. */
+export function renderPlan(tasks, week, now, config, { team, fit = [] } = {}) {
     const all = [...tasks];
     const context = waitContext(new Map(all.map((task) => [task.id, task])), now);
     const inWeek = all.filter((task) => task.week === week).sort(byPlanOrder);
@@ -17,6 +14,7 @@ export function renderPlan(tasks, week, now, config, team) {
         `# Week plan ${week}${team === undefined ? '' : `, team ${team}`}`,
         '',
         `${inWeek.length} tasks: ${done} done, ${dropped} dropped, ${inWeek.length - done - dropped} to do. From the task register at ${formatUtcMinute(now)} UTC.`,
+        ...(fit.length === 0 ? [] : ['', ...fit.map((line) => `- ${line}`)]),
     ];
     for (const priority of config.priorities) {
         const rows = inWeek.filter((task) => task.priority === priority.id);
@@ -33,6 +31,7 @@ function planLine(task, ownerSource, context, team) {
         task.after.length === 0 ? undefined : `after ${task.after.join(',')}`,
         task.source === ownerSource ? 'owner order' : `from ${task.source}`,
         task.goals.length === 0 ? undefined : task.goals.join(', '),
+        task.size === null ? undefined : `size ${sizeText(task.size)}`,
     ].filter((part) => part !== undefined);
     const title = task.status === 'dropped' ? `~~${task.title}~~` : task.title;
     return `- [${task.status === 'done' ? 'x' : ' '}] **${taskLabel(task, team)}** ${title} (${meta.join(' · ')})${statusTail(task, context)}`;

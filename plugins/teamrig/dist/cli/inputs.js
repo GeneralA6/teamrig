@@ -1,6 +1,7 @@
 import { ENV } from "../core/home.js";
 import { NAME_PATTERN, NAME_RULE } from "../core/ids.js";
 import { parseUtcDeadline, parseUtcDay } from "../core/time.js";
+import { MAX_SIZE_PCT, sizeProblem } from "../register/events.js";
 import { isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, priorityText, TASK_ID, TASK_STATUSES } from "../register/model.js";
 import { WAITS_USAGE } from "../register/policy.js";
 import { isWaitKind, waitOf } from "../register/waits.js";
@@ -64,6 +65,17 @@ function listOf(flag, text) {
     }
     return items;
 }
+/** A size as typed: a number, a `%` after it allowed (`1.5` or `1.5%`). */
+const SIZE_TEXT = /^(\d+(?:\.\d+)?|\.\d+)%?$/;
+/** `--size 1.5`: what the task costs, in percent of the weekly usage limit, above 0 and at most the whole week. */
+export function sizeOf(text) {
+    const number = SIZE_TEXT.exec(text.trim())?.[1];
+    const value = number === undefined ? Number.NaN : Number(number);
+    if (Number.isNaN(value) || sizeProblem(value) !== undefined) {
+        throw new UsageError(`--size "${text}" is not a percent of the weekly limit above 0 and at most ${MAX_SIZE_PCT}, like 1.5`);
+    }
+    return value;
+}
 /** `--week`: a day, checked here because `check` and `plan` read it without the policy. */
 export function weekOf(text) {
     if (parseUtcDay(text) === undefined) {
@@ -102,6 +114,10 @@ export function addInputOf(flags, caller) {
     if (after !== undefined) {
         input.after = afterOf(after);
     }
+    const size = flags.get('size');
+    if (size !== undefined) {
+        input.size = sizeOf(size);
+    }
     return input;
 }
 /** `--after T5,T6`: the tasks to finish before this one starts. */
@@ -126,7 +142,7 @@ export function waitsOf(text) {
         return reason;
     });
 }
-/** The fields `update` changes; `none` clears the description, ref, due date, goals, week or plan dependency. */
+/** The fields `update` changes; `none` clears the description, ref, due date, goals, week, plan dependency or size. */
 export function changesOf(flags) {
     const changes = {};
     const title = flags.get('title');
@@ -164,6 +180,10 @@ export function changesOf(flags) {
     const after = flags.get('after');
     if (after !== undefined) {
         changes.after = after === NONE ? [] : afterOf(after);
+    }
+    const size = flags.get('size');
+    if (size !== undefined) {
+        changes.size = size === NONE ? null : sizeOf(size);
     }
     return changes;
 }
