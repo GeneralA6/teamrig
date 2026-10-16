@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { MODEL_ALIASES, MODEL_ID_MAX_LENGTH, MODEL_ID_PATTERN } from './launch.ts';
-import { CONFIG_LIMITS } from './limits.ts';
+import { CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from './limits.ts';
 import { parseConfig } from './parse.ts';
-import { COMMIT_GATES, EFFORT_LEVELS, PUSH_TO_PROTECTED, VERIFY_GATES } from './types.ts';
+import { CORE_RULE_KEYS } from '../rules/keys.ts';
+import { COMMIT_GATES, CONFLICT_WINNERS, EFFORT_LEVELS, PUSH_TO_PROTECTED, VERIFY_GATES } from './types.ts';
 
 /** The roster has no default; everything else in the schema must state the code's default. */
 const ROSTER = { sessions: ['alpha', 'bravo'], roles: { lead: 'alpha' } };
@@ -16,6 +17,7 @@ const EVERY_KEY = {
   ...ROSTER,
   team: { id: 'web', parent: 'app' },
   names: { alpha: 'team-lead' },
+  ruleConflicts: [{ file: '~/CLAUDE.md', text: 'Commit straight to main.', rule: 'worktrees', wins: 'local', reason: 'solo repo' }],
   launch: { alpha: { model: 'best', effort: 'xhigh' } },
   roles: { lead: 'alpha', coordinatorOwner: 'bravo' },
   register: { goalPattern: '^G\\d+$' },
@@ -74,6 +76,7 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   memoryIndexChars: 'contextFiles.maxMemoryIndexChars',
   skillListingChars: 'contextFiles.maxSkillListingChars',
   ownerGates: 'ownerGates',
+  ruleConflicts: 'ruleConflicts',
   protectedBranches: 'pushGuard.protectedBranches',
   commitMaxLines: 'commits.maxLines',
   commitMaxFiles: 'commits.maxFiles',
@@ -221,6 +224,20 @@ describe('config.schema.json', () => {
 
   it('takes the verify gate choices the parser takes', async () => {
     assert.deepEqual(nodeAt(await loadSchema(), 'register.verifyGate')['enum'], [...VERIFY_GATES]);
+  });
+
+  it('takes the rule conflicts the parser takes', async () => {
+    const items = nodeAt(await loadSchema(), 'ruleConflicts')['items'];
+    assert.ok(isRecord(items));
+    const { file, text, rule, wins, reason } = properties(items);
+    assert.ok(isRecord(file) && isRecord(text) && isRecord(rule) && isRecord(wins) && isRecord(reason));
+    assert.deepEqual(
+      [file['maxLength'], text['maxLength'], reason['maxLength']],
+      [RULE_CONFLICT_LIMITS.fileMaxLength, RULE_CONFLICT_LIMITS.textMaxLength, RULE_CONFLICT_LIMITS.reasonMaxLength],
+    );
+    assert.deepEqual(rule['enum'], [...CORE_RULE_KEYS]);
+    assert.deepEqual(wins['enum'], [...CONFLICT_WINNERS]);
+    assert.deepEqual(items['required'], ['file', 'text', 'rule', 'wins']);
   });
 
   it('requires exactly the roster', async () => {

@@ -1,6 +1,7 @@
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { NAME_PATTERN, NAME_RULE } from '../core/ids.ts';
 import { isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, SESSION_NAME, TASK_STATUSES, type TaskStatus } from '../register/model.ts';
+import { CORE_RULE_KEYS, isCoreRuleKey } from '../rules/keys.ts';
 import {
   DEFAULT_ALERTS,
   DEFAULT_BUDGET,
@@ -22,12 +23,14 @@ import {
   DEFAULT_TESTS,
 } from './defaults.ts';
 import { isEffort, isModel } from './launch.ts';
-import { CONFIG_LIMITS } from './limits.ts';
+import { CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from './limits.ts';
 import { ConfigReader, describe, isValidRegex, shortLine, type Check, type ConfigIssue } from './reader.ts';
 import {
+  CONFLICT_WINNERS,
   ESCALATIONS,
   HIRING_POLICIES,
   isCommitGate,
+  isConflictWinner,
   isEffortLevel,
   isEscalation,
   isHiringPolicy,
@@ -48,6 +51,7 @@ import {
   type CommitsConfig,
   type GithubConfig,
   type HiringConfig,
+  type RuleConflict,
   type LeadBoundaryConfig,
   type KitConfig,
   type LaunchConfig,
@@ -214,6 +218,14 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
       DEFAULT_OWNER_GATES,
       shortLine(CONFIG_LIMITS.ownerGates.maxLength),
       CONFIG_LIMITS.ownerGates.maxItems,
+    ),
+    ruleConflicts: read.list(
+      raw,
+      'ruleConflicts',
+      '',
+      [],
+      (value, itemPath) => parseRuleConflict(read, value, itemPath),
+      CONFIG_LIMITS.ruleConflicts.maxItems,
     ),
     messages: {
       maxLines: read.integer(messages, 'maxLines', 'messages', DEFAULT_MESSAGES.maxLines, CONFIG_LIMITS.maxLines),
@@ -478,6 +490,24 @@ function parseSessionBudgets(read: ConfigReader, raw: JsonRecord, sessions: read
 /** A check that takes only the listed words. */
 function oneOf(words: readonly string[]): Check<string> {
   return (value) => (words.includes(value) ? undefined : `expected one of ${words.join(', ')}`);
+}
+
+/** One recorded rule conflict: each field one line within its bound, the rule a core rule's key. */
+function parseRuleConflict(read: ConfigReader, value: unknown, path: string): RuleConflict | undefined {
+  const conflict = read.objectItem(value, path);
+  if (conflict === undefined) {
+    return undefined;
+  }
+  const before = read.issues.length;
+  const file = read.requiredString(conflict, 'file', path, shortLine(RULE_CONFLICT_LIMITS.fileMaxLength));
+  const text = read.requiredString(conflict, 'text', path, shortLine(RULE_CONFLICT_LIMITS.textMaxLength));
+  const rule = read.requiredString(conflict, 'rule', path, oneOf(CORE_RULE_KEYS));
+  const wins = read.requiredString(conflict, 'wins', path, oneOf(CONFLICT_WINNERS));
+  const reason = read.optionalString(conflict, 'reason', path, shortLine(RULE_CONFLICT_LIMITS.reasonMaxLength));
+  if (read.issues.length !== before || !isCoreRuleKey(rule) || !isConflictWinner(wins)) {
+    return undefined;
+  }
+  return { file, text, rule, wins, ...(reason === undefined ? {} : { reason }) };
 }
 
 function parseRegister(read: ConfigReader, raw: JsonRecord): RegisterConfig {
