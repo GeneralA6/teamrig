@@ -212,7 +212,7 @@ describe('runCli: context refresh', () => {
     const env = { TEAMRIG_SESSION: 'alpha', CLAUDE_PROJECT_DIR: APP };
     stopJson(await kit.run(['hook', 'stop'], { env, stdin: stopPayload(true), sessionProcesses: UNDER_CLAUDE(), processes: new FakeProcesses() }));
     assert.equal((await store.restart('alpha'))?.phase, 'pending');
-    const typed = JSON.stringify({ session_id: CLAUDE_SESSION, cwd: APP, prompt: 'one more thing' });
+    const typed = JSON.stringify({ session_id: CLAUDE_SESSION, cwd: APP, prompt: 'one more thing', session_title: 'app-alpha' });
     const cancelled = await kit.run(['hook', 'inbox-reminder'], { env, stdin: typed });
     assert.ok(
       cancelled.stdout.includes('teamrig: the user typed, so the automatic restart is cancelled and you keep this context; a later task end asks for a new handover when one is due'),

@@ -89,9 +89,10 @@ describe('the budget in the hooks', () => {
   it('tells the model with the next prompt, once per level', async () => {
     const { hook } = await world({}, 10_000_000, 30);
     await hook('stop', ALPHA_TAB);
-    const prompt = await hook('inbox-reminder', ALPHA_TAB, { prompt: 'next' });
+    // The tab's title, as Claude Code passes it once the prompt hook gave it, so the lines come as plain text.
+    const prompt = await hook('inbox-reminder', ALPHA_TAB, { prompt: 'next', session_title: 'app-alpha' });
     assert.ok(prompt.stdout.some((line) => line.startsWith("teamrig budget: you are past today's budget")), prompt.stdout.join('\n'));
-    const again = await hook('inbox-reminder', ALPHA_TAB, { prompt: 'again' });
+    const again = await hook('inbox-reminder', ALPHA_TAB, { prompt: 'again', session_title: 'app-alpha' });
     assert.ok(!again.stdout.some((line) => line.startsWith('teamrig budget:')));
   });
 

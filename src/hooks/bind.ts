@@ -14,7 +14,9 @@ import type { RefreshState } from '../refresh/state.ts';
  *
  * The title is one the user set: `--name`, `/rename`, `teamrig open`, or a hook the user installed.
  * Claude Code hands hooks that title and never its own generated one, so the model cannot pick a
- * title to become another session. A binding grants no more than `inbox read --session <id>` already
+ * title to become another session. teamrig's own prompt hook titles only a tab already bound, after
+ * that tab's session (tabTitleFor), so the title it sets binds nothing new. A binding grants no more
+ * than `inbox read --session <id>` already
  * does from any tab, and it is guarded on top: exact match on an id or a current name only, never one
  * that names two sessions anywhere in the team's tree, and never over `$TEAMRIG_SESSION` or a mark.
  */
@@ -107,6 +109,16 @@ export async function bindByTitle(deps: BindDeps, input: BindInput): Promise<Bin
   const mark = bindMarkOf(byArea.get(only.id), only.id, claudeSession, input.now);
   await deps.marks.append(mark);
   return { kind: 'bound', id: only.id, mark };
+}
+
+/**
+ * The Claude Code title to give a tab whose team session is known and that has no title the user set:
+ * the session's name. The tab then shows which session it is, and since Claude Code keeps the title
+ * across /clear, the new session binds itself by it as it starts. Undefined for a tab with no session,
+ * or with a title: that is the user's, recorded as a rename (names/detect.ts), never overwritten.
+ */
+export function tabTitleFor(roster: Roster, id: string | undefined, title: string | undefined): string | undefined {
+  return id === undefined || title !== undefined ? undefined : (roster.nameOf(id) ?? id);
 }
 
 /**

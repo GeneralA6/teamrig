@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
-import { APP, CLAUDE_SESSION, CliHarness, contextOf, RENAMES_PATH, renameRecordsOf, TEAM, USER_HOME } from '../testing/cli-harness.ts';
+import { APP, CLAUDE_SESSION, CliHarness, contextOf, RENAMES_PATH, renameRecordsOf, TEAM, titledPromptOf, USER_HOME } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { EXIT } from './runtime.ts';
 
@@ -48,7 +48,8 @@ describe('runCli: a Claude Code rename', () => {
 
   it('records nothing without a title or a known session', async () => {
     const kit = new CliHarness(NAMED);
-    assert.deepEqual((await kit.run(['hook', 'inbox-reminder'], { env: { TEAMRIG_SESSION: 'bravo' }, stdin: hookInput({}) })).stdout, []);
+    const untitled = await kit.run(['hook', 'inbox-reminder'], { env: { TEAMRIG_SESSION: 'bravo' }, stdin: hookInput({}) });
+    assert.deepEqual(titledPromptOf(untitled), { title: 'app-bravo', context: undefined }, 'titled by its name, not renamed');
     assert.deepEqual((await kit.run(['hook', 'inbox-reminder'], { env: { TEAMRIG_SESSION: 'zulu' }, stdin: hookInput({ session_title: 'scout' }) })).stdout, []);
     const unbound = await kit.run(['hook', 'inbox-reminder'], { stdin: hookInput({ session_title: 'scout' }) });
     assert.equal(unbound.stdout.length, 1, 'only how to bind it');

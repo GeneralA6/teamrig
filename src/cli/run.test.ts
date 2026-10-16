@@ -472,7 +472,8 @@ describe('runCli: inboxes', () => {
 
   it('shows the Claude Code session that last read an inbox its new lines, once', async () => {
     const kit = new CliHarness();
-    const stdin = JSON.stringify({ session_id: CLAUDE_SESSION });
+    // Titled as the prompt hook titles a bound tab (T407), so the lines come as plain text.
+    const stdin = JSON.stringify({ session_id: CLAUDE_SESSION, session_title: 'app-bravo' });
     await kit.run(['inbox', 'read', '--session', 'bravo'], { env: { CLAUDE_CODE_SESSION_ID: CLAUDE_SESSION } });
     assert.deepEqual((await kit.run(['hook', 'inbox-reminder'], { stdin })).stdout, []);
 
@@ -491,7 +492,8 @@ describe('runCli: inboxes', () => {
     const unbound = await kit.run(['hook', 'inbox-reminder'], { stdin });
     assert.deepEqual(unbound.stdout.map((line) => line.slice(0, 64)), ['teamrig: this tab is not bound to a session of team app. To bind'], 'no session to show lines to');
 
-    const reminded = await kit.run(['hook', 'inbox-reminder'], { stdin, env: { TEAMRIG_SESSION: 'app-bravo' } });
+    const titled = JSON.stringify({ session_id: CLAUDE_SESSION, session_title: 'app-bravo' });
+    const reminded = await kit.run(['hook', 'inbox-reminder'], { stdin: titled, env: { TEAMRIG_SESSION: 'app-bravo' } });
     assert.match(reminded.stdout[0] ?? '', /^INBOX bravo, new in .*\n- 2030-01-08 10:00 alpha: please rebase$/, 'found by its name');
     const unknown = await kit.run(['hook', 'inbox-reminder'], { stdin, env: { TEAMRIG_SESSION: 'zulu' } });
     assert.deepEqual(unknown.stdout, []);

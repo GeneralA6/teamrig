@@ -6,7 +6,7 @@ import type { ExitCode } from '../cli/runtime.ts';
 import { formatConfig } from '../config/load.ts';
 import type { ConfigFormat } from '../config/migrate.ts';
 import type { Files } from '../core/files.ts';
-import type { JsonRecord } from '../core/guards.ts';
+import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
 import type { Env } from '../core/home.ts';
 import type { PathProbe } from '../core/path-probe.ts';
 import type { TranscriptSource } from '../budget/discover.ts';
@@ -148,6 +148,16 @@ export function contextOf(result: CliResult): string {
   const output = parsed.hookSpecificOutput;
   assert.ok(typeof output === 'object' && output !== null && 'additionalContext' in output);
   return String(output.additionalContext);
+}
+
+/** The prompt hook's one JSON line, printed when it titles the tab: the title, and its context when it has one. */
+export function titledPromptOf(result: CliResult): { readonly title: string | undefined; readonly context: string | undefined } {
+  assert.equal(result.stdout.length, 1);
+  const parsed: unknown = JSON.parse(result.stdout[0] ?? '');
+  assert.ok(isRecord(parsed));
+  const output = parsed['hookSpecificOutput'];
+  assert.ok(isRecord(output) && output['hookEventName'] === 'UserPromptSubmit');
+  return { title: stringField(output, 'sessionTitle'), context: stringField(output, 'additionalContext') };
 }
 
 /** The team's rename log as `[id, from, to, by]` per record; empty when it does not exist. */
