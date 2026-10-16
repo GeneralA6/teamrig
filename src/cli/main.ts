@@ -8,6 +8,7 @@ import { NODE_PATH_PROBE } from '../core/path-probe.ts';
 import { nodeProgramRunner, systemCredentials } from '../github/credentials.ts';
 import { nodeGhRunner } from '../github/gh.ts';
 import { nodeProcesses } from '../open/processes.ts';
+import { nodeSessionProcesses } from '../open/session-processes.ts';
 import { GIT_CLI, GIT_COMMIT_LOG } from '../push-guard/git.ts';
 import { requirementsCheck } from '../requirements/requirements.ts';
 import { nodeShellRunner } from '../test-run/shell.ts';
@@ -30,6 +31,7 @@ process.exitCode = await runCli(process.argv.slice(2), {
   },
   platform: process.platform,
   processes: nodeProcesses(),
+  sessionProcesses: nodeSessionProcesses(),
   shell: nodeShellRunner(),
   gh: nodeGhRunner(),
   credentials: systemCredentials(process.platform, nodeProgramRunner()),

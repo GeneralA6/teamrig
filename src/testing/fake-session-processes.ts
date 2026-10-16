@@ -1,0 +1,90 @@
+import type { EndHow, EndOutcome, FeedOutcome, FeedRequest, ProcessInfo, SessionProcesses } from '../open/session-processes.ts';
+
+/**
+ * A process table in memory: only the processes added run, ending one also ends every process it started
+ * (as `taskkill /T` does), and each end and fed program is recorded. Feeding a program gives the outcome set
+ * for its command, by default `done`.
+ */
+export class FakeSessionProcesses implements SessionProcesses {
+  readonly parentPid: number;
+  readonly ends: { readonly pid: number; readonly how: EndHow }[] = [];
+  readonly fed: FeedRequest[] = [];
+  private readonly running = new Map<number, ProcessInfo>();
+  private readonly endFailures = new Map<number, string>();
+  private readonly lingering = new Set<number>();
+  private readonly feedOutcomes = new Map<string, FeedOutcome>();
+  /** Called after each end that ended something, as the operating system would tell a waiting parent. */
+  private onEnded: (pid: number) => void = () => undefined;
+
+  constructor(parentPid: number = 7000) {
+    this.parentPid = parentPid;
+  }
+
+  /** A running process. */
+  add(info: ProcessInfo): this {
+    this.running.set(info.pid, info);
+    return this;
+  }
+
+  /** Ending `pid` fails with `error`, and it runs on. */
+  failEnd(pid: number, error: string): this {
+    this.endFailures.set(pid, error);
+    return this;
+  }
+
+  /** An `ask` end of `pid` reports success but leaves it running, as a program that ignores SIGTERM. */
+  linger(pid: number): this {
+    this.lingering.add(pid);
+    return this;
+  }
+
+  /** From now on, feeding `command` gives `outcome`. */
+  onFeed(command: string, outcome: FeedOutcome): this {
+    this.feedOutcomes.set(command, outcome);
+    return this;
+  }
+
+  /** Runs `listener` with each pid an end removes. */
+  whenEnded(listener: (pid: number) => void): this {
+    this.onEnded = listener;
+    return this;
+  }
+
+  alive(pid: number): boolean {
+    return this.running.has(pid);
+  }
+
+  async describe(pid: number): Promise<ProcessInfo | undefined> {
+    return this.running.get(pid);
+  }
+
+  async end(pid: number, how: EndHow): Promise<EndOutcome> {
+    this.ends.push({ pid, how });
+    const failure = this.endFailures.get(pid);
+    if (failure !== undefined) {
+      return { kind: 'failed', error: failure };
+    }
+    if (!this.running.has(pid)) {
+      return { kind: 'gone' };
+    }
+    if (how === 'ask' && this.lingering.has(pid)) {
+      return { kind: 'ended' };
+    }
+    for (const ended of this.tree(pid)) {
+      this.running.delete(ended);
+      this.onEnded(ended);
+    }
+    return { kind: 'ended' };
+  }
+
+  async feed(request: FeedRequest): Promise<FeedOutcome> {
+    this.fed.push(request);
+    return this.feedOutcomes.get(request.command) ?? { kind: 'done' };
+  }
+
+  /** `pid` and every running process it started, directly or not. */
+  private tree(pid: number): readonly number[] {
+    const children = [...this.running.values()].filter((info) => info.parentPid === pid && info.pid !== pid);
+    return [pid, ...children.flatMap((child) => this.tree(child.pid))];
+  }
+}
