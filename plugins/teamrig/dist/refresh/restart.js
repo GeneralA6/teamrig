@@ -15,6 +15,13 @@ const CLAUDE_PROGRAM = /^claude(\.exe)?$/i;
 const NODE_PROGRAM = /^node(\.exe)?$/i;
 /** A shell a tab runs Claude Code in, as a tab reopened by `powershell -NoExit -Command claude --resume ...`. */
 const TAB_SHELL = /^(powershell|pwsh|cmd)(\.exe)?$/i;
+/**
+ * A shell Claude Code runs a command in (Bash, PowerShell, a Monitor's); a login shell's name starts with a dash.
+ * Not cmd: an MCP server started through `cmd /c` runs as long as the session and ends with it anyway.
+ */
+const COMMAND_SHELL = /^-?(bash|sh|dash|zsh|fish|ksh|powershell|pwsh)(\.exe)?$/i;
+/** A shell under Claude Code counts only when it is still there this much later: a status line command runs for moments. */
+export const SHELL_RECHECK_MS = 2_000;
 function isClaude(info) {
     return CLAUDE_PROGRAM.test(info.name) || (NODE_PROGRAM.test(info.name) && /claude/i.test(info.commandLine));
 }
@@ -158,8 +165,48 @@ async function handToTab(deps, plan, claudeSession) {
         await deps.asks.close(claudeSession);
     }
 }
-/** Ends the session's process: in its own tab under `teamrig launch`, else after a new tab opened. */
+/** The command shells `pid` runs; undefined when the system would not tell. */
+async function shellsUnder(deps, pid) {
+    return (await deps.processes.children(pid))?.filter((info) => COMMAND_SHELL.test(info.name));
+}
+/**
+ * Why ending `claude` would cut off work it runs, or undefined when it would not. An end takes every process
+ * it started, so a shell still there on two looks `SHELL_RECHECK_MS` apart (a background command, a Monitor)
+ * would die with it, as would one the transcript's running work (`running.ts`) no longer shows: that reads
+ * only the transcript's end and the last hours. A process list the system would not give counts as unsafe.
+ * A /clear needs no such look: it keeps the background shells.
+ */
+async function workCutOffBy(deps, claude) {
+    const unknown = `teamrig could not list what its Claude Code (${claude.pid}) runs`;
+    const seen = await shellsUnder(deps, claude.pid);
+    if (seen === undefined) {
+        return unknown;
+    }
+    if (seen.length === 0) {
+        return undefined;
+    }
+    await deps.sleep(SHELL_RECHECK_MS);
+    const again = await shellsUnder(deps, claude.pid);
+    if (again === undefined) {
+        return unknown;
+    }
+    const lasting = again.filter((shell) => seen.some((first) => first.pid === shell.pid));
+    return lasting.length === 0 ? undefined : `ending its Claude Code would also end the background shells it runs (pid ${lasting.map((shell) => shell.pid).join(', ')})`;
+}
+/**
+ * Ends the session's process: in its own tab under `teamrig launch`, else after a new tab opened. Never while it
+ * runs a background shell (`workCutOffBy`): that leaves the session to type /clear.
+ */
 async function endSession(deps, plan, request, claude) {
+    const cutOff = await workCutOffBy(deps, claude);
+    if (cutOff !== undefined) {
+        await deps.store.clearRestart(plan.id);
+        return { kind: 'failed', why: cutOff };
+    }
+    // A second look takes a moment: a prompt typed meanwhile still cancels.
+    if ((await pendingOf(deps, plan)) === undefined) {
+        return CANCELLED;
+    }
     await deps.store.setRestart(plan.id, { ...request, phase: 'ending' });
     if (request.supervised) {
         const problem = await endAndWait(deps, claude.pid, claude.pid);
@@ -188,7 +235,8 @@ async function endSession(deps, plan, request, claude) {
  * and the session still waits for a fresh start. Then it checks the process is Claude Code and:
  * - first asks the tab's mod to run /clear (`handToTab`). The /clear keeps the tab and its process, and
  *   Claude Code runs its own SessionEnd and SessionStart `clear` hooks, so no end command is needed;
- * - when no mod claims the ask and the session is still idle, ends the process. Under `teamrig launch`
+ * - when no mod claims the ask and the session is still idle, ends the process, unless it still runs a
+ *   background shell, which the end would take too: then the session is told to type /clear. Under `teamrig launch`
  *   (supervised) it marks the request `ending`, and launch starts Claude Code again in the same tab once
  *   it has gone. Otherwise it first opens a new tab that starts the session fresh, and only once that
  *   opened ends the old one with its tab; when no tab opens, nothing is ended. Either way it then runs
