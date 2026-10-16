@@ -7,7 +7,7 @@ import { claudeProjectsDir } from "../../budget/discover.js";
 import { activeLift, decideLift, LiftLog, liftText } from "../../budget/lift.js";
 import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID } from "../../budget/measure.js";
 import { sessionBudgetPct } from "../../budget/pace.js";
-import { loopLines, recountLines, sessionLines, sumDays, todayLines, weekLine } from "../../budget/report.js";
+import { burnLines, loopLines, recountLines, sessionLines, sumDays, todayLines, weekLine } from "../../budget/report.js";
 import { formatSnapshot, readSnapshots, snapshotOfStatus, statusLineText, weekUseOf } from "../../budget/snapshot.js";
 import { CURSOR_DAYS_KEPT, DAYS_KEPT, MemoryUsageStore, UsageStore } from "../../budget/store.js";
 import { readWeek } from "../../budget/week.js";
@@ -103,7 +103,7 @@ function recountDayOf(text, now) {
     }
     return day.getTime();
 }
-/** `budget [<session>] [--loops] [--day <day>] [--all]`. */
+/** `budget [<session>] [--loops|--burn] [--day <day>] [--all]`. */
 export async function budget(args, runtime) {
     const [target, extra] = args.positionals;
     if (extra !== undefined) {
@@ -111,6 +111,11 @@ export async function budget(args, runtime) {
     }
     const recountDay = recountDayOf(args.flags.get('day'), runtime.clock.now());
     const all = args.switches.has('all');
+    const loops = args.switches.has('loops');
+    const burn = args.switches.has('burn');
+    if (loops && burn) {
+        throw new UsageError('--loops and --burn are two tables: give one');
+    }
     const kit = await openTeamKit(runtime);
     const config = requireConfig(kit, runtime, 'read');
     const roster = await rosterOf(runtime, kit, config);
@@ -119,10 +124,11 @@ export async function budget(args, runtime) {
     const sessions = sessionsToday(reading, roster, config.budget);
     const { measured, week, now } = reading;
     let lines;
-    if (args.switches.has('loops')) {
+    if (loops || burn) {
         const days = recountDay === undefined ? loopDays(now, all ? DAYS_KEPT : LOOP_DAYS_SHOWN) : [formatUtcDay(new Date(recountDay))];
         const states = id === undefined ? [...measured.bySession.values(), measured.outside] : [measured.bySession.get(id) ?? { byDay: {}, cursors: {}, recentKeys: [] }];
-        lines = loopLines(id === undefined ? 'every session, outside the team too' : (roster.nameOf(id) ?? id), days, sumDays(states, days), recountDay === undefined ? 'metered' : 'recounted');
+        const table = loops ? loopLines : burnLines;
+        lines = table(id === undefined ? 'every session, outside the team too' : (roster.nameOf(id) ?? id), days, sumDays(states, days), recountDay === undefined ? 'metered' : 'recounted');
     }
     else if (id !== undefined) {
         const session = sessions.find((each) => each.id === id);

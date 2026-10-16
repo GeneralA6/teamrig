@@ -1,5 +1,6 @@
 import { isNonNegativeInteger, isRecord, stringField } from "../core/guards.js";
-import { CHARS_PER_TOKEN, WEIGHTS } from "./weights.js";
+import { TURN_TRIGGERS } from "./line.js";
+import { CHARS_PER_TOKEN, contextTokens, WEIGHTS } from "./weights.js";
 /** What one tool call did, as far as the loop patterns care. */
 export const TOOL_KINDS = ['edit', 'editTest', 'testFull', 'testTargeted', 'build', 'teamrigCli', 'git', 'read', 'other'];
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
@@ -24,6 +25,13 @@ const TEST_FAILED = /(?:^|\n)\s*(?:#|ℹ)\s*fail\s+[1-9]|✖|\bnot ok \d|Tests?:
 const REREAD = WEIGHTS.cacheRead;
 /** A call whose context is below this share of the previous call's was compacted: what came before is gone. */
 const COMPACTED_BELOW = 0.65;
+/**
+ * A call that writes at least this many tokens to the cache, and at least this share of its context, is
+ * cold: it paid the write price for a context a warm call reads at the cache price (after an idle hour, a
+ * compaction or at a session's start).
+ */
+const COLD_MIN_TOKENS = 20_000;
+const COLD_MIN_SHARE = 0.5;
 function shellKind(command) {
     const edits = SHELL_EDIT.test(command);
     const nodeTest = NODE_TEST.test(command);
@@ -73,6 +81,30 @@ export function testFailed(result) {
     return result.isError || TEST_FAILED.test(result.text);
 }
 /**
+ * Where the work came from, per day (`teamrig budget --burn`):
+ * - `<trigger>Turns`, `<trigger>W`: the turns each `TURN_TRIGGERS` entry started and their calls' W; a
+ *   subagent's run counts under `subagent`, and the turn that resumes a compacted session under the turn it compacted.
+ * - `coldCalls`, `coldW`: calls that re-wrote most of their context to the cache, and those writes' W.
+ * - `compactions`: the times Claude Code compacted a context.
+ */
+export const BURN_FIELDS = [
+    'ownerTurns',
+    'ownerW',
+    'peerTurns',
+    'peerW',
+    'notificationTurns',
+    'notificationW',
+    'scheduledTurns',
+    'scheduledW',
+    'subagentTurns',
+    'subagentW',
+    'otherTurns',
+    'otherW',
+    'coldCalls',
+    'coldW',
+    'compactions',
+];
+/**
  * The loop-pattern counters, per day. Each pattern is a call that one message could have saved:
  * - `readChain`: a single lookup right after another single lookup in the same turn; `readChainW` is those calls' W.
  * - `editChain`: a single edit right after another single edit in the same turn; `editChainSavedW` prices
@@ -84,6 +116,7 @@ export function testFailed(result) {
  *   passed; the `W` fields are the re-runs' own W.
  * - `passRuns`, `passTokens`, `passRentW`: passing test output and its rent, a cache write when it arrives
  *   plus a re-read by every later call until the context is compacted.
+ * Then where the work came from (`BURN_FIELDS`, since 0.34.0).
  */
 export const PATTERN_FIELDS = [
     'readChain',
@@ -102,6 +135,7 @@ export const PATTERN_FIELDS = [
     'passRuns',
     'passTokens',
     'passRentW',
+    ...BURN_FIELDS,
 ];
 const ZERO_COUNTS = {
     readChain: 0,
@@ -120,12 +154,29 @@ const ZERO_COUNTS = {
     passRuns: 0,
     passTokens: 0,
     passRentW: 0,
+    ownerTurns: 0,
+    ownerW: 0,
+    peerTurns: 0,
+    peerW: 0,
+    notificationTurns: 0,
+    notificationW: 0,
+    scheduledTurns: 0,
+    scheduledW: 0,
+    subagentTurns: 0,
+    subagentW: 0,
+    otherTurns: 0,
+    otherW: 0,
+    coldCalls: 0,
+    coldW: 0,
+    compactions: 0,
 };
+/** Counters a day stored before 0.34.0 lacks: it reads them as 0. */
+const ADDED_LATER = new Set(BURN_FIELDS);
 /** Every counter at 0, as a copy the caller may add to. */
 export function emptyPatterns() {
     return { ...ZERO_COUNTS };
 }
-export const INITIAL_PATTERN_STATE = { turn: 0, prev: null, open: null, turnTest: null, rentTokens: 0, lastContext: 0 };
+export const INITIAL_PATTERN_STATE = { turn: 0, prev: null, open: null, turnTest: null, rentTokens: 0, lastContext: 0, trigger: 'other' };
 function summaryOf(tool) {
     return { id: tool.id, kind: kindOf(tool), piped: PIPED.test(tool.command ?? ''), failed: null };
 }
@@ -138,15 +189,29 @@ export class PatternTracker {
     state() {
         return this.current;
     }
-    /** A new turn: chains and re-runs never span two. */
-    prompt() {
-        this.current = { ...this.current, turn: this.current.turn + 1, turnTest: null };
+    /**
+     * A new turn: chains and re-runs never span two. It counts under what started it; the turn that resumes
+     * a compacted session (`continuation`) goes on under the trigger of the turn it compacted.
+     */
+    prompt(trigger, count) {
+        if (trigger !== 'continuation') {
+            count(`${trigger}Turns`, 1);
+        }
+        const next = trigger === 'continuation' ? this.current.trigger : trigger;
+        this.current = { ...this.current, turn: this.current.turn + 1, turnTest: null, trigger: next };
     }
     /**
      * A new call begins: it re-reads the passing test output still in the context, unless its context
-     * dropped, which means a compaction removed that output.
+     * dropped, which means a compaction removed that output. A call that re-wrote most of its context to
+     * the cache is counted cold, with the W of those writes.
      */
-    callStarted(context, tools, count) {
+    callStarted(usage, tools, count) {
+        const context = contextTokens(usage);
+        const written = usage.cacheWrite5m + usage.cacheWrite1h + usage.cacheWriteUnsplit;
+        if (written >= COLD_MIN_TOKENS && written >= context * COLD_MIN_SHARE) {
+            count('coldCalls', 1);
+            count('coldW', usage.cacheWrite5m * WEIGHTS.cacheWrite5m + usage.cacheWrite1h * WEIGHTS.cacheWrite1h + usage.cacheWriteUnsplit * WEIGHTS.cacheWriteUnsplit);
+        }
         const { lastContext, rentTokens } = this.current;
         const compacted = lastContext > 0 && context < lastContext * COMPACTED_BELOW;
         if (!compacted && rentTokens > 0) {
@@ -157,6 +222,13 @@ export class PatternTracker {
     /** More tools of the call being read (a later line of the same reply). */
     callJoined(tools) {
         this.current = { ...this.current, open: [...(this.current.open ?? []), ...tools.map(summaryOf)] };
+    }
+    /**
+     * W the meter charged to the call being read, at its start or for output it gained: it goes to the turn's
+     * trigger as it is charged, so the triggers' W adds up to the day's W.
+     */
+    charged(w, count) {
+        count(`${this.current.trigger}W`, w);
     }
     /** The call being read is complete: judge its patterns against the previous call of the same turn. */
     callClosed(context, w, count) {
@@ -275,17 +347,21 @@ export function parsePatternState(value) {
     const open = summariesFrom(value['open']);
     const rawTest = value['turnTest'];
     const turnTest = rawTest === null ? null : summaryFrom(rawTest);
+    const rawTrigger = value['trigger'];
+    // A state stored before 0.34.0 has no trigger: its open turn counts as other.
+    const trigger = rawTrigger === undefined ? 'other' : TURN_TRIGGERS.find((each) => each === rawTrigger);
     if (!isNonNegativeInteger(turn) ||
         !finiteNonNegative(rentTokens) ||
         !finiteNonNegative(lastContext) ||
         prev === undefined ||
         open === undefined ||
-        turnTest === undefined) {
+        turnTest === undefined ||
+        trigger === undefined) {
         return undefined;
     }
-    return { turn, prev, open, turnTest, rentTokens, lastContext };
+    return { turn, prev, open, turnTest, rentTokens, lastContext, trigger };
 }
-/** Stored pattern counters; undefined when one is missing or not a non-negative number. */
+/** Stored pattern counters; undefined when one is missing (one added since the day was stored reads as 0) or not a non-negative number. */
 export function parsePatternCounts(value) {
     const record = isRecord(value) ? value : undefined;
     if (record === undefined) {
@@ -294,6 +370,9 @@ export function parsePatternCounts(value) {
     const counts = emptyPatterns();
     for (const field of PATTERN_FIELDS) {
         const count = record[field];
+        if (count === undefined && ADDED_LATER.has(field)) {
+            continue;
+        }
         if (!finiteNonNegative(count)) {
             return undefined;
         }
