@@ -41,6 +41,7 @@ const testCommand = () => import('./commands/test.ts');
 const ghCommands = () => import('./commands/gh.ts');
 const startCommands = () => import('./commands/start.ts');
 const hireCommands = () => import('./commands/hire.ts');
+const retireCommands = () => import('./commands/retire.ts');
 
 const TASK_FIELDS = ['title', 'description', 'owner', 'ref', 'priority', 'due', 'goals', 'week', 'after'];
 
@@ -75,6 +76,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
     switches: ['yes'],
     load: async () => (await hireCommands()).hire,
   },
+  retire: { flags: ['session', 'to', 'no-handover', 'reason'], switches: ['yes'], load: async () => (await retireCommands()).retire },
   refresh: { flags: ['session'], switches: ['ready'], load: async () => (await refreshCommands()).refresh },
   doctor: { flags: [], load: async () => (await doctorCommands()).doctor },
   compact: { flags: [], switches: ['dry-run'], load: async () => (await compactCommands()).compact },
@@ -167,6 +169,10 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       [--daily-pct <pct>] [--review <YYYY-MM-DD>] [--approved-by "<who>"] [--yes]
       (the lead only) adds a temporary session within hiring.policy and its caps, on the lead's model and
       effort unless given; without --yes it shows the hire and writes nothing
+  retire <id|name> [--to <heir>] [--no-handover "<why>"] [--reason "<why>"] [--yes]
+      (the lead, or a hired session itself under hiring.policy automatic once its tasks are closed) takes a
+      session off the team; its open tasks go to --to, and it needs its handover unless --no-handover; its
+      tasks and inbox stay readable; without --yes it shows the retire and writes nothing
   refresh <id|name>            the lead asks a session to write its handover when it next sets a task done
   refresh --ready              the handover is written; teamrig starts the session fresh once idle
   doctor                       names, rename log, inboxes, rules.md, context size and the tree of teams that need a fix;
