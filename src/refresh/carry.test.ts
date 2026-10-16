@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { carryLines, carryOf, readCarry, RECURRING_MAX_AGE_MS, scratchpadOf, type Carry } from './carry.ts';
+import { carryLines, carryOf, readCarry, RECURRING_MAX_AGE_MS, scratchpadOf, toldScratchpadOf, type Carry } from './carry.ts';
 
 const NOW = Date.parse('2030-01-08T10:00:00.000Z');
 const MINUTE = 60_000;
@@ -15,6 +15,11 @@ function call(id: string, name: string, input: object, at: number): object {
 
 function result(id: string, toolUseResult: object, isError = false): object {
   return { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: 'ok', is_error: isError }] }, toolUseResult };
+}
+
+/** The `environment` attachment Claude Code writes with what the session was told about its machine. */
+function environment(snapshot: object): object {
+  return { type: 'attachment', attachment: { type: 'environment', snapshot } };
 }
 
 function cronCreate(id: string, job: string, cron: string, prompt: string, recurring: boolean, at: number): readonly object[] {
@@ -122,6 +127,31 @@ describe('readCarry', () => {
     const files = new MemoryFiles({ [TRANSCRIPT]: lines({ type: 'assistant', slug: 'quiet-river-otter' }) });
     assert.deepEqual(await readCarry(files, TRANSCRIPT, NOW, PLACES), { crons: [], wake: undefined, planSlug: 'quiet-river-otter', scratchpad: undefined, plan: undefined });
     assert.equal(await readCarry(new MemoryFiles(), TRANSCRIPT, NOW, PLACES), undefined);
+  });
+
+  it('names the scratchpad Claude Code last gave the session, though its transcript moved to another project folder', async () => {
+    const before = join(TEMP, 'claude', 'C--work', '6f1c2d3e', 'scratchpad');
+    const told = join(TEMP, 'claude', 'C--work-first', '6f1c2d3e', 'scratchpad');
+    const files = new MemoryFiles({
+      [TRANSCRIPT]: lines(
+        environment({ workingDirectory: '/work', scratchpadDirectory: before }),
+        environment({ workingDirectory: '/work/app', scratchpadDirectory: told }),
+        { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'x', content: JSON.stringify(environment({ scratchpadDirectory: before })) }] } },
+      ),
+      [join(told, 'notes.md')]: 'n',
+    });
+    const carry = await readCarry(files, TRANSCRIPT, NOW, PLACES);
+    assert.deepEqual(carry?.scratchpad, { path: told, entries: 1 });
+  });
+});
+
+describe('toldScratchpadOf', () => {
+  it('skips an environment entry with no scratchpad and a cut first line, and finds none in a transcript without one', () => {
+    const told = join('/', 'tmp', 'claude', 'C--work', 'a1', 'scratchpad');
+    const cut = JSON.stringify(environment({ scratchpadDirectory: '/elsewhere' })).slice(20);
+    assert.equal(toldScratchpadOf(`${cut}\n${lines(environment({ scratchpadDirectory: told }), environment({ workingDirectory: '/work' }))}`), told);
+    assert.equal(toldScratchpadOf(`${cut}\n`), undefined);
+    assert.equal(toldScratchpadOf(lines({ type: 'assistant', slug: 'quiet-river-otter' })), undefined);
   });
 });
 
