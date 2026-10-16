@@ -2,9 +2,10 @@ import type { KitConfig, PushGuardConfig } from '../config/types.ts';
 
 /**
  * The rendered core pack fits in this many characters with worst-case config values (a CI test holds it).
- * With a team rules file at TEAM_RULES_MAX_CHARS beside it, the two still fit CONTEXT_MAX_CHARS.
+ * With a team rules file at TEAM_RULES_MAX_CHARS beside it, the two still fit CONTEXT_MAX_CHARS, with 3 characters
+ * to spare: a longer rule needs shorter words elsewhere, not a higher cap.
  */
-export const CORE_PACK_MAX_CHARS = 6_400;
+export const CORE_PACK_MAX_CHARS = 6_475;
 /** The team's own rules file is shown in full only up to this size; a longer one gets a pointer. */
 export const TEAM_RULES_MAX_CHARS = 3_500;
 /** Claude Code caps a SessionStart hook's `additionalContext` at this size. */
@@ -62,11 +63,16 @@ function percent(value: number): string {
   return `${Math.round(value * 100) / 100}%`;
 }
 
-/** The note, evidence and skill a status change needs, as the register enforces them. */
+/** What a new task carries: a description for a person to read, which `add` demands while the key is on. */
+function descriptionDemand(config: KitConfig): string {
+  return `a plain-words description of what and why${config.register.requireDescription ? ' [register.requireDescription]' : ''}`;
+}
+
+/** The note (only what changed), evidence and skill a status change needs, as the register enforces them. */
 function statusDemands(config: KitConfig, command: string): string {
   const { register } = config;
   const demands = [
-    register.requireNoteOn.length === 0 ? '' : `a note on ${register.requireNoteOn.join(', ')} [register.requireNoteOn]`,
+    register.requireNoteOn.length === 0 ? '' : `a note (only what changed) on ${register.requireNoteOn.join(', ')} [register.requireNoteOn]`,
     register.requireEvidenceOnDone ? 'evidence on done [register.requireEvidenceOnDone]' : '',
     register.requireSkillOnDone ? `--skill <name> or --skill none on done [register.requireSkillOnDone]` : '',
   ].filter((demand) => demand !== '');
@@ -90,7 +96,7 @@ export function renderCorePack(config: KitConfig, command: string, platform: Nod
       ` At most ${config.messages.maxLines} lines [messages.maxLines]: what happened, evidence (numbers, ids, paths), the exact ask and deadline, your default, then "No reply needed" or "Reply needed: <one question>".` +
       ` No acks, thanks or progress pings. Anything else, a "done" report or a failed send too, is one inbox line per receiver: \`${command} inbox add --to <area> --text "..."\`.`,
     `Status is pulled from the register, never asked. Start each work block with \`${command} start --session <you>\`.` +
-      ` Every ask that creates work is a register entry, added in the same turn by the asker (\`${command} add --owner <session>\` tells the owner), else by the receiver; ${statusDemands(config, command)}` +
+      ` Every ask that creates work is a register entry, added in the same turn by the asker (\`${command} add --owner <session>\` tells the owner), else by the receiver, with ${descriptionDemand(config)}; ${statusDemands(config, command)}` +
       ' Waiting needs `--waits` reasons; a task not started that needs another first stays open, planned `--after` it.' +
       ` A shipped change is verifying until its proof exists (\`${command} verify\`).`,
     `Work your own task list in priority order (\`${command} list --session <you>\`); self-made work is a task too, recorded with \`${command} add\` before you start it,` +

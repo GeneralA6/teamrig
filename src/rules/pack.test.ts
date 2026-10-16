@@ -73,8 +73,16 @@ describe('renderCorePack', () => {
   it('pulls status from the register, and has the asker, else the receiver, enter every ask', () => {
     const pack = renderCorePack(testConfig(), COMMAND, 'win32');
     assert.match(pack, /^4\. Status is pulled from the register, never asked\. Start each work block with `teamrig start --session <you>`\./m);
-    assert.match(pack, /register entry, added in the same turn by the asker \(`teamrig add --owner <session>` tells the owner\), else by the receiver;/);
+    assert.match(pack, /register entry, added in the same turn by the asker \(`teamrig add --owner <session>` tells the owner\), else by the receiver,/);
     assert.doesNotMatch(pack, /board/);
+  });
+
+  it('has a new task carry a plain-words description, naming the key only while add demands one', () => {
+    const on = renderCorePack(testConfig(), COMMAND, 'win32');
+    assert.match(on, /else by the receiver, with a plain-words description of what and why \[register\.requireDescription\]; only the owning session/);
+    const off = renderCorePack(testConfig({ register: { requireDescription: false } }), COMMAND, 'win32');
+    assert.match(off, /else by the receiver, with a plain-words description of what and why; only the owning session/);
+    assert.doesNotMatch(off, /requireDescription/);
   });
 
   it('has each session work its list in order, gate self-made work and repeating runs, and stop when it loops or drifts', () => {
@@ -170,7 +178,7 @@ describe('renderCorePack', () => {
     assert.match(pack, /^1\. Roles, by session id \(`teamrig who` gives the name to message each by\): lead is the lead/m);
     assert.match(pack, /At most 7 lines \[messages\.maxLines\]/);
     assert.match(pack, /never for owner-gated decisions: money; deletes \[ownerGates\]/);
-    assert.match(pack, /with a note on waiting, verifying, done, dropped \[register\.requireNoteOn\]/);
+    assert.match(pack, /with a note \(only what changed\) on waiting, verifying, done, dropped \[register\.requireNoteOn\]/);
     assert.match(pack, /Waiting needs `--waits` reasons; a task not started that needs another first stays open, planned `--after` it\./);
     assert.match(pack, /A shipped change is verifying until its proof exists \(`teamrig verify`\)\.$/m);
     assert.match(pack, /`teamrig start --session <you>`/);
