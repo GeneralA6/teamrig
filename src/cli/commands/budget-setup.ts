@@ -1,13 +1,12 @@
 import { planBudgetSetup, type BudgetChoices, type KeyChange, type QuietWindow } from '../../budget/setup.ts';
 import { readSnapshots } from '../../budget/snapshot.ts';
 import { DEFAULT_BUDGET } from '../../config/defaults.ts';
-import { formatConfig, writeConfigWithBackup } from '../../config/load.ts';
-import { parseConfigText } from '../../config/text.ts';
+import { writeConfigWithBackup } from '../../config/load.ts';
 import { ESCALATIONS, isEscalation, isOverAction, OVER_ACTIONS, type Escalation, type OverAction } from '../../config/types.ts';
 import { isRecord } from '../../core/guards.ts';
 import { noPositionals, UsageError, type Flags, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
-import { configFileJson, issueText, openTeamKit, requireConfig, rosterOf, sessionIdOf } from '../kit.ts';
+import { checkedNextConfig, configFileJson, openTeamKit, requireConfig, rosterOf, sessionIdOf } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { pctFlag, snapshotDirOf } from './budget.ts';
 
@@ -120,14 +119,7 @@ export async function setup(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   if (!plan.ok) {
     throw new UsageError(plan.problem);
   }
-  const next = parseConfigText(formatConfig(plan.value.config));
-  if (next.status !== 'loaded') {
-    throw new RefusedError(`the new config cannot be read: ${issueText(next.issue)}`);
-  }
-  const [problem] = next.issues;
-  if (problem !== undefined) {
-    throw new RefusedError(`nothing written: ${issueText(problem)}`);
-  }
+  const next = checkedNextConfig(plan.value.config);
   const { keys } = plan.value;
   const changed = keys.filter((key) => key.changed).length;
   const counts = `${changed} to change, ${keys.length - changed} unchanged`;
@@ -145,7 +137,7 @@ export async function setup(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
     runtime.out.stdout(`WROTE ${load.path}: ${counts}; the old file is at ${backup}`);
   }
   keys.forEach((key) => runtime.out.stdout(keyLine(key)));
-  const budget = next.config.budget;
+  const budget = next.budget;
   if (budget.enabled && budget.weeklyLimitW === undefined && (await readSnapshots(runtime.files, snapshotDirOf(budget, kit.paths))).length === 0) {
     runtime.out.stdout(
       "NOTE no status line reading yet, so the budget stays silent: run `teamrig statusline install`, or set budget.weeklyLimitW",

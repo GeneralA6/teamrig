@@ -1,7 +1,6 @@
 import { describeLaunch } from '../../config/launch.ts';
-import { formatConfig, writeConfigWithBackup } from '../../config/load.ts';
+import { writeConfigWithBackup } from '../../config/load.ts';
 import type { Roster } from '../../config/roster.ts';
-import { parseConfigText } from '../../config/text.ts';
 import { describeNameClash, teamNodeOf } from '../../config/tree.ts';
 import { EFFORT_LEVELS, isEffortLevel, type EffortLevel, type KitConfig } from '../../config/types.ts';
 import { KIT_NAME } from '../../core/home.ts';
@@ -10,7 +9,7 @@ import { activeHires, HiringLog } from '../../hiring/log.ts';
 import { planHire, type HireRequest } from '../../hiring/plan.ts';
 import { onePositional, requiredFlag, UsageError, type Flags, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
-import { configFileJson, issueText, openTeamKit, requireConfig, rosterOf, sessionIdOf } from '../kit.ts';
+import { checkedNextConfig, configFileJson, openTeamKit, requireConfig, rosterOf, sessionIdOf } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
 import { pctFlag } from './budget.ts';
@@ -90,16 +89,9 @@ export async function hire(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
     if (!plan.ok) {
       throw new RefusedError(plan.problem);
     }
-    const next = parseConfigText(formatConfig(plan.value.config));
-    if (next.status !== 'loaded') {
-      throw new RefusedError(`the new config cannot be read: ${issueText(next.issue)}`);
-    }
-    const [problem] = next.issues;
-    if (problem !== undefined) {
-      throw new RefusedError(`nothing written: ${issueText(problem)}`);
-    }
-    const nextRoster = await rosterOf(runtime, kit, next.config);
-    await refuseNameClash(runtime, kit.paths.team, request.id, next.config, nextRoster);
+    const next = checkedNextConfig(plan.value.config);
+    const nextRoster = await rosterOf(runtime, kit, next);
+    await refuseNameClash(runtime, kit.paths.team, request.id, next, nextRoster);
     const { hire: record, hired, hiredDailyPct } = plan.value;
     const what = `${record.session} (name ${nextRoster.nameOf(record.session) ?? record.session}) for "${record.scope}": ${describeLaunch(record)}, ${record.dailyPct}% of the week a day, review by ${record.reviewBy}`;
     const caps = `  hired sessions with it: ${hired} of ${config.hiring.maxSessions}, ${hiredDailyPct}% of ${config.hiring.maxDailyPct}% of the week a day`;
