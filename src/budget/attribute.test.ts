@@ -44,11 +44,11 @@ describe('attribute', () => {
       titleOf,
     });
     assert.deepEqual([...result.byTeamSession.entries()], [
-      ['bravo', ['/a.jsonl', '/a/subagents/x.jsonl', '/e1.jsonl', '/e2.jsonl']],
-      ['alpha', ['/b.jsonl', '/f/subagents/y.jsonl']],
-      ['lead', ['/c.jsonl', '/g.jsonl']],
+      ['bravo', { main: ['/a.jsonl', '/e1.jsonl', '/e2.jsonl'], subagents: ['/a/subagents/x.jsonl'] }],
+      ['alpha', { main: ['/b.jsonl'], subagents: ['/f/subagents/y.jsonl'] }],
+      ['lead', { main: ['/c.jsonl', '/g.jsonl'], subagents: [] }],
     ]);
-    assert.deepEqual(result.outside, ['/d.jsonl', '/h.jsonl']);
+    assert.deepEqual(result.outside, { main: ['/d.jsonl', '/h.jsonl'], subagents: [] });
     assert.equal(result.outsideSessions, 2);
     assert.deepEqual(result.outsideTitles, ['release checks']);
   });
