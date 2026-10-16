@@ -24,6 +24,7 @@ import { JsonlRenameLog } from '../../names/log.ts';
 import { TRANSCRIPT_TAIL_BYTES } from '../../names/title.ts';
 import { decideStart, decideStop, handoverHashOf, type BoundaryFacts, type StopContext, type StopDecision } from '../../refresh/decide.ts';
 import { carryLines, readCarry } from '../../refresh/carry.ts';
+import { claudeProcessOf } from '../../refresh/restart.ts';
 import { readRunningWork } from '../../refresh/running.ts';
 import { RefreshStore } from '../../refresh/store.ts';
 import { readContextTokens } from '../../refresh/usage.ts';
@@ -31,7 +32,7 @@ import { noPositionals, type ParsedArgs } from '../args.ts';
 import { openKit, renameDepsOf, rosterOf, teamFolders, type Kit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
-import { bindHintOnce, bindTab, inboxLinesFor, readTitle, type TitleRead } from './hook-bind.ts';
+import { bindAfterClear, bindHintOnce, bindTab, inboxLinesFor, readTitle, type TitleRead } from './hook-bind.ts';
 import { helperGateOutput, promptBudgetLine, stopBudgetLines } from './hook-budget.ts';
 import { startAutoSync } from './gh-auto.ts';
 import { coldSendHold } from './hook-cold-send.ts';
@@ -265,10 +266,7 @@ type TeamParts = Pick<SessionStartInput, 'teamRules' | 'renames' | 'titleNote' |
 async function teamPartsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, payload: unknown): Promise<TeamParts> {
   const title = await readTitle(runtime, payload);
   const claudeSession = sessionIdOf(payload);
-  const bound =
-    claudeSession === null
-      ? undefined
-      : boundStartNote((await bindTab(runtime, kit, { team: kit.paths.team, roster: await rosterOf(runtime, kit, config) }, claudeSession, title)).outcome);
+  const bound = claudeSession === null ? undefined : await startBindNoteOf(runtime, kit, config, payload, claudeSession, title);
   const renamed = sessionStartNote(await titleOutcome(runtime, kit, config, payload, title));
   const titleNote = bound === undefined || renamed === undefined ? (bound ?? renamed) : `${bound} ${renamed}`;
   const { renames } = await new JsonlRenameLog(runtime.files, kit.paths.renames).read();
@@ -290,6 +288,20 @@ async function teamPartsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, pay
     sessionInEnv: fromEnv !== undefined,
     tree: tree.placeOf(kit.paths.team),
   };
+}
+
+/**
+ * The SessionStart note for a tab bound as it started: by its title, else, after a /clear, by the Claude
+ * Code process its session refreshed in (a /clear keeps the process; the title may name no session).
+ */
+async function startBindNoteOf(runtime: CliRuntime, kit: Kit, config: KitConfig, payload: unknown, claudeSession: string, title: TitleRead): Promise<string | undefined> {
+  const roster = await rosterOf(runtime, kit, config);
+  const { outcome } = await bindTab(runtime, kit, { team: kit.paths.team, roster }, claudeSession, title);
+  const source = isRecord(payload) ? stringField(payload, 'source') : undefined;
+  if (source !== 'clear' || outcome.kind === 'kept' || outcome.kind === 'bound') {
+    return boundStartNote(outcome);
+  }
+  return bindAfterClear(runtime, kit, roster, claudeSession);
 }
 
 /**
@@ -441,9 +453,12 @@ async function refreshDecisionOf(runtime: CliRuntime, scope: StopScope, payload:
   switch (decision.kind) {
     case 'write':
     case 'block':
-    case 'notice':
       // Written before anything is printed: a block whose state is not recorded would ask again at every stop.
       await store.setState(id, decision.state);
+      break;
+    case 'notice':
+      // With the Claude Code process it is given in: a /clear keeps the process, so the fresh tab binds by it.
+      await store.setState(id, { ...decision.state, claudePid: (await claudeProcessOf(runtime.sessionProcesses, runtime.sessionProcesses.parentPid)) ?? null });
       break;
     case 'none':
     case 'measure':

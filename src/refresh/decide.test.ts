@@ -20,7 +20,7 @@ const HANDOVER = '/team/handover/alpha.md';
 
 const BOUNDARY: RefreshState = { phase: 'boundary', task: 'T12', at: BEFORE, finished: 1 };
 const ASKED: RefreshState = { phase: 'asked', task: 'T12', at: BEFORE, tokens: 262_144, handoverHash: null };
-const READY: RefreshState = { phase: 'ready', task: 'T12', at: BEFORE, noticed: false, transcript: null };
+const READY: RefreshState = { phase: 'ready', task: 'T12', at: BEFORE, noticed: false, transcript: null, claudePid: null };
 /** The size rule alone at 250k, so each size test reads apart from the task count. */
 const SIZE_ONLY: RefreshSettings = { ...DEFAULT_REFRESH, contextTokens: 250_000, everyTasks: 0 };
 const COUNTED: RefreshSettings = { ...SIZE_ONLY, everyTasks: 3, everyTasksMinTokens: 80_000 };
@@ -221,11 +221,11 @@ describe('decideReady', () => {
       kind: 'refused',
       reason: `${HANDOVER} is the handover from before; write this refresh's handover there`,
     });
-    assert.deepEqual(decideReady(asked, '# this refresh\n', HANDOVER, NOW), { kind: 'ready', state: { phase: 'ready', task: 'T12', at: NOW, noticed: false, transcript: null } });
+    assert.deepEqual(decideReady(asked, '# this refresh\n', HANDOVER, NOW), { kind: 'ready', state: { phase: 'ready', task: 'T12', at: NOW, noticed: false, transcript: null, claudePid: null } });
   });
 
   it('marks a new handover ready, and answers the same when run again', () => {
-    assert.deepEqual(decideReady(ASKED, '# notes', HANDOVER, NOW), { kind: 'ready', state: { phase: 'ready', task: 'T12', at: NOW, noticed: false, transcript: null } });
+    assert.deepEqual(decideReady(ASKED, '# notes', HANDOVER, NOW), { kind: 'ready', state: { phase: 'ready', task: 'T12', at: NOW, noticed: false, transcript: null, claudePid: null } });
     assert.deepEqual(decideReady(READY, '# notes', HANDOVER, NOW), { kind: 'already' });
   });
 });

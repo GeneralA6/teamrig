@@ -126,6 +126,28 @@ describe('runCli: context refresh', () => {
     assert.match((await kit.files.read(STATE('alpha'))) ?? '', /"phase":"refreshed"/);
   });
 
+  it('keeps the identity of a tab whose title names no session across the refresh /clear, by its Claude Code process', async () => {
+    const kit = new CliHarness();
+    const start = (session: string, title: string): string => JSON.stringify({ session_id: session, cwd: APP, source: 'clear', session_title: title });
+    assert.match(contextOf(await kit.run(['hook', 'session-start'], { stdin: start(CLAUDE_SESSION, 'alpha') })), /bound to the `alpha` session from its Claude Code title/);
+    await kit.files.write(TRANSCRIPT, transcript(300_000));
+    await finishTask(kit, 'alpha');
+    stopJson(await kit.run(['hook', 'stop'], { stdin: stopPayload() }));
+    await kit.files.write(HANDOVER('alpha'), '# In progress\n');
+    assert.equal((await kit.run(['refresh', '--ready', '--session', 'alpha'])).code, EXIT.ok);
+    stopJson(await kit.run(['hook', 'stop'], { stdin: stopPayload(true), sessionProcesses: UNDER_CLAUDE() }));
+    assert.match((await kit.files.read(STATE('alpha'))) ?? '', /"noticed":true,.*"claudePid":6900/);
+
+    const cleared = '9f8e7d6c-1111-2222-3333-444455556666';
+    const elsewhere = new FakeSessionProcesses(7000).add({ pid: 7000, parentPid: 6800, name: 'bash.exe', commandLine: 'bash' }).add({ pid: 6800, parentPid: 1, name: 'claude.exe', commandLine: 'claude' });
+    const other = contextOf(await kit.run(['hook', 'session-start'], { stdin: start(cleared, 'release checks'), sessionProcesses: elsewhere }));
+    assert.ok(!other.includes('alpha'), 'another Claude Code process binds nothing');
+    const fresh = contextOf(await kit.run(['hook', 'session-start'], { stdin: start(cleared, 'release checks'), sessionProcesses: UNDER_CLAUDE() }));
+    assert.match(fresh, /This tab was bound to the `alpha` session: \/clear kept the Claude Code process/);
+    assert.ok(fresh.includes(`You were refreshed after T1; read your handover first: ${HANDOVER('alpha')}`), fresh);
+    assert.match((await kit.files.read(STATE('alpha'))) ?? '', /"phase":"refreshed"/);
+  });
+
   it('waits for background work the session started before asking for the handover and before the notice', async () => {
     const kit = new CliHarness();
     await kit.files.write(TRANSCRIPT, `${BACKGROUND_START}${transcript(300_000)}`);
