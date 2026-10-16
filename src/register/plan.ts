@@ -6,11 +6,15 @@ import { byPlanOrder, sizeText, taskLabel } from './views.ts';
 import { waitContext, waitsText, type WaitContext } from './waits.ts';
 import { proofOf } from './verify.ts';
 
-/**
- * The week plan as markdown: the tasks tagged with `week`, grouped by priority, then by due date. With
- * `team`, for a roll-up over a tree of teams, the heading names the team and ids read `<team>/T12`.
- */
-export function renderPlan(tasks: Iterable<Task>, week: string, now: Date, config: RegisterConfig, team?: string): string {
+export interface PlanOptions {
+  /** For a roll-up over a tree of teams: the heading names the team and ids read `<team>/T12`. */
+  readonly team?: string | undefined;
+  /** The week's fit to the weekly limit (fit.ts fitLines), printed under the counts as a list. */
+  readonly fit?: readonly string[];
+}
+
+/** The week plan as markdown: the tasks tagged with `week`, grouped by priority, then by due date. */
+export function renderPlan(tasks: Iterable<Task>, week: string, now: Date, config: RegisterConfig, { team, fit = [] }: PlanOptions = {}): string {
   const all = [...tasks];
   const context = waitContext(new Map(all.map((task) => [task.id, task])), now);
   const inWeek = all.filter((task) => task.week === week).sort(byPlanOrder);
@@ -20,6 +24,7 @@ export function renderPlan(tasks: Iterable<Task>, week: string, now: Date, confi
     `# Week plan ${week}${team === undefined ? '' : `, team ${team}`}`,
     '',
     `${inWeek.length} tasks: ${done} done, ${dropped} dropped, ${inWeek.length - done - dropped} to do. From the task register at ${formatUtcMinute(now)} UTC.`,
+    ...(fit.length === 0 ? [] : ['', ...fit.map((line) => `- ${line}`)]),
   ];
   for (const priority of config.priorities) {
     const rows = inWeek.filter((task) => task.priority === priority.id);
