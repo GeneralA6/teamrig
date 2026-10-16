@@ -11,6 +11,7 @@ import type { Env } from '../core/home.ts';
 import type { PathProbe } from '../core/path-probe.ts';
 import type { TranscriptSource } from '../budget/discover.ts';
 import type { RequirementsCheck } from '../requirements/requirements.ts';
+import type { WorktreePorts } from '../worktree/remove.ts';
 import type { Processes } from '../open/processes.ts';
 import type { SessionProcesses } from '../open/session-processes.ts';
 import type { CommitLog } from '../push-guard/commit-size.ts';
@@ -74,6 +75,8 @@ export interface RunOptions {
   readonly requirements?: RequirementsCheck;
   /** The Claude Code transcripts `budget` measures; default none. */
   readonly transcripts?: TranscriptSource;
+  /** The worktrees `worktree remove` sees; default none. */
+  readonly worktrees?: WorktreePorts;
 }
 
 /**
@@ -115,6 +118,7 @@ export class CliHarness {
       ...(options.probe === undefined ? {} : { probe: options.probe }),
       ...(options.requirements === undefined ? {} : { requirements: options.requirements }),
       ...(options.transcripts === undefined ? {} : { transcripts: options.transcripts }),
+      ...(options.worktrees === undefined ? {} : { worktrees: options.worktrees }),
       out: { stdout: (line) => stdout.push(line), stderr: (line) => stderr.push(line) },
       ...(options.configFormat === undefined ? {} : { configFormat: options.configFormat }),
     });

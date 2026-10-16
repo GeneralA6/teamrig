@@ -103,6 +103,11 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
   config validate | config migrate
   commits check --base <ref> [--tip <ref>]   commits in base..tip (default HEAD) over the size rule
       with no reason line; any is REFUSED, for an integrate script or CI
+  worktree remove <path> [--delete-branch [--base <ref>]] [--dry-run]   removes a linked git worktree:
+      unlinks each link in it (such as a node_modules junction) and sees it gone, so git cannot follow
+      one and empty its target, then runs git worktree remove; REFUSED before any change for the main
+      checkout, a dirty tree or a real node_modules folder. --delete-branch: deletes its branch too, once
+      every commit of it is on --base (default the branch origin/HEAD names); --dry-run: prints the steps
   test [--session <id|name>] -- <command ...>   runs a test command in the shell, writes all it printed
       to a log (each session keeps its newest 20) and prints one PASS or FAIL line, then each failing
       test within tests.maxFailureChars; exit 0 when the command passed, 1 otherwise
