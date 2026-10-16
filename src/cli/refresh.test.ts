@@ -90,7 +90,7 @@ describe('runCli: context refresh', () => {
       decision: 'block',
       reason:
         `teamrig: your context is 300k (refresh at 120k) and you just finished T1. Write your handover to ${HANDOVER('alpha')} ` +
-        '(what is in progress, the next step of each, open questions, where things are), then run ' +
+        '(what is in progress and the next step of each; what to check later, and when; questions still open with the user; the scratchpad files, plan file and scheduled jobs the next session still needs; where things are), then run ' +
         '`teamrig refresh --ready --session alpha`. Do not start new work.',
     });
     assert.deepEqual(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload(true) }), SILENT, 'asked once, never again in the continued turn');
