@@ -209,14 +209,22 @@ export async function readCarry(files, transcript, now, places) {
 function clockOf(ms) {
     return new Date(ms).toISOString().slice(11, 16);
 }
+/** A /clear starts the fresh session in the process it cleared; every other fresh start is a new process. */
+export function carryStartOf(source) {
+    return source === 'clear' ? 'same-process' : 'new-process';
+}
 /**
- * The lines that tell a fresh session what to take over: each job to make again (unless CronList shows
- * it, as a /clear keeps the process), the wake-up to schedule again, and where the old scratchpad and plan
- * are. Empty when there is nothing.
+ * The lines that tell a fresh session what to take over: its jobs (still scheduled after a /clear, proven
+ * on Claude Code 2.1.301 (T398), so made again only in a new process, and then only those CronList does not
+ * show, as a durable job comes back by itself), the wake-up to schedule again, and where the old scratchpad
+ * and plan are. Empty when there is nothing.
  */
-export function carryLines(carry, now) {
+export function carryLines(carry, now, start) {
     const lines = [];
-    if (carry.crons.length > 0) {
+    if (carry.crons.length > 0 && start === 'same-process') {
+        lines.push(`Your old session's ${carry.crons.length} scheduled job(s) are still scheduled, since a /clear keeps the process (CronList shows them): do not make them again.`);
+    }
+    else if (carry.crons.length > 0) {
         lines.push(`Your old session had ${carry.crons.length} scheduled job(s), which end with its process: run CronList and make each one it does not show again with CronCreate:`);
         for (const cron of carry.crons) {
             lines.push(`- cron ${JSON.stringify(cron.cron)}, recurring ${String(cron.recurring)}, prompt ${JSON.stringify(cron.prompt)}`);

@@ -23,7 +23,7 @@ import { adoptTitle, promptNote, sessionStartNote } from "../../names/detect.js"
 import { JsonlRenameLog } from "../../names/log.js";
 import { TRANSCRIPT_TAIL_BYTES } from "../../names/title.js";
 import { decideStart, decideStop, handoverHashOf } from "../../refresh/decide.js";
-import { carryLines, readCarry } from "../../refresh/carry.js";
+import { carryLines, carryStartOf, readCarry } from "../../refresh/carry.js";
 import { claudeProcessOf } from "../../refresh/restart.js";
 import { readRunningWork } from "../../refresh/running.js";
 import { RefreshStore } from "../../refresh/store.js";
@@ -307,16 +307,16 @@ function rosterIdOf(roster, session) {
     return found?.ok === true ? found.id : undefined;
 }
 /**
- * What the session that wrote the handover leaves for this fresh one: its scheduled jobs and wake-up, which
- * ended with its process, and its scratchpad and plan file. A transcript it cannot read is said, never thrown:
- * the note itself must still reach the session.
+ * What the session that wrote the handover leaves for this fresh one: its scheduled jobs (kept by a /clear,
+ * lost with a new process) and wake-up, and its scratchpad and plan file. A transcript it cannot read is
+ * said, never thrown: the note itself must still reach the session.
  */
-async function carriedLinesOf(runtime, transcript) {
+async function carriedLinesOf(runtime, transcript, source) {
     const now = runtime.clock.now();
     try {
         const places = { tempDir: claudeTempDir(runtime.env, tmpdir()), claudeDir: claudeConfigDir(runtime.env, runtime.userHome) };
         const carry = await readCarry(runtime.files, transcript, now, places);
-        return carry === undefined ? [] : carryLines(carry, now);
+        return carry === undefined ? [] : carryLines(carry, now, carryStartOf(source));
     }
     catch (error) {
         return [`${KIT_NAME} could not read what your old session left in ${transcript} (${errorMessage(error)}); check CronList against your handover.`];
@@ -347,7 +347,7 @@ async function refreshNoteOf(runtime, kit, config, roster, payload) {
             return undefined;
         }
         await store.clearRequest(id);
-        const carried = state?.phase === 'ready' && state.transcript !== null ? await carriedLinesOf(runtime, state.transcript) : [];
+        const carried = state?.phase === 'ready' && state.transcript !== null ? await carriedLinesOf(runtime, state.transcript, source) : [];
         return [decision.note, ...carried].join('\n');
     }
     catch (error) {
