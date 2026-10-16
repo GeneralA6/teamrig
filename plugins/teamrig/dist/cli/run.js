@@ -11,6 +11,7 @@ const configCommands = () => import("./commands/config.js");
 const hookCommands = () => import("./commands/hook.js");
 const loopNudgeCommand = () => import("./commands/hook-loop-nudge.js");
 const refreshWakeCommand = () => import("./commands/hook-refresh-wake.js");
+const clearCommands = () => import("./commands/hook-clear.js");
 const teamCommands = () => import("./commands/team.js");
 const commitsCommands = () => import("./commands/commits.js");
 const doctorCommands = () => import("./commands/doctor.js");
@@ -90,6 +91,8 @@ const COMMANDS = {
     'hook session-start': { flags: [], load: async () => (await hookCommands()).sessionStart },
     'hook stop': { flags: [], load: async () => (await hookCommands()).stop },
     'hook refresh-wake': { flags: [], load: async () => (await refreshWakeCommand()).refreshWake },
+    'hook clear-dir': { flags: [], load: async () => (await clearCommands()).clearDir },
+    'hook clear-claim': { flags: [], load: async () => (await clearCommands()).clearClaim },
 };
 /** Each command's flags that take a value. The LLM guide test (tools/docs/llm-guide.test.ts) checks the guide documents exactly these. */
 export const COMMAND_FLAGS = Object.fromEntries(Object.entries(COMMANDS).map(([name, spec]) => [name, spec.flags]));
@@ -180,10 +183,12 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       test within tests.maxFailureChars; exit 0 when the command passed, 1 otherwise
   hook push-guard | hook cold-send | hook failed-send | hook loop-nudge | hook helper-gate | hook inbox-reminder | hook session-start | hook stop | hook refresh-wake
       (run by Claude Code, hook JSON on stdin)
+  hook clear-dir | hook clear-claim
+      (run by the plugin's mod: the automatic restart's /clear in the tab)
   launch <id> --team <team> --project <dir> [--home <dir>] [--encoded-prompt <text>]
       (run by the tab that open starts: sets the session and starts Claude Code)
   restart <id> --team <team> --at <time> --project <dir>
-      (run hidden by the Stop hook: restarts the session once its handover is written and it is idle)
+      (run hidden by the Stop hook: starts the session fresh once its handover is written and it is idle)
 Team: $${ENV.team}, else the nearest ${TEAM_POINTER} ({"team": "<id>"}) above the current folder,
 else above $CLAUDE_PROJECT_DIR.
 Sessions: give an id, a current name or a former one; a session never named is <team>-<id>.

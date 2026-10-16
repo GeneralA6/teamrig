@@ -1,3 +1,4 @@
+import { isClaudeSessionId } from "../mod/clear-hand.js";
 import { readRunningWork } from "./running.js";
 import { TURN_TAIL_BYTES, turnRunning } from "./turn.js";
 /** Lets Claude Code finish writing the turn's end before the first look at the transcript. */
@@ -19,6 +20,8 @@ function isClaude(info) {
 }
 /** The user typed (the prompt hook cleared the request) or a later notice replaced it. */
 const CANCELLED = { kind: 'cancelled', why: 'the restart was cancelled or replaced' };
+/** How long the tab's mod has to claim the ask before the session is ended instead: it looks every second. */
+export const CLAIM_WAIT_MS = 10_000;
 /** How far up from a hook Claude Code may be: a hook run through a shell has the shell between. */
 const CLAUDE_HOPS = 3;
 /** The Claude Code that runs `pid`: `pid` itself or one of its first parents; undefined when none is. */
@@ -128,43 +131,35 @@ async function waitForQuiet(deps, plan, transcript) {
     }
 }
 /**
- * The automatic context refresh's restart, started hidden by the Stop hook once the session's handover is
- * written (`refresh.autoRestart`). It waits until the session has been quiet for the whole delay, with its
- * last turn ended and no background work, and acts only while its request is still pending (a prompt the user types cancels it)
- * and the session still waits for a fresh start. Then it checks the process is Claude Code and ends it:
- * - Under `teamrig launch` (supervised), it marks the request `ending`, and launch starts Claude Code
- *   again in the same tab once it has gone.
- * - Otherwise it first opens a new tab that starts the session fresh, and only once that opened ends the
- *   old one with its tab; when no tab opens, nothing is ended.
- * Either way it then runs `refresh.endCommand`. The fresh start reads the handover (SessionStart `startup`).
+ * Asks the tab's mod to run /clear (`mod/clear-hand.ts`) and waits up to CLAIM_WAIT_MS for its claim.
+ * `unclaimed` when no mod took it: the tab has none (an older Claude Code, mods off) or a turn ran. The
+ * ask is gone when this returns; an earlier run's outcome is removed with the new ask's posting.
  */
-export async function runRestart(deps, plan) {
-    const armed = await pendingOf(deps, plan);
-    if (armed === undefined) {
-        return { kind: 'cancelled', why: 'no restart is pending' };
+async function handToTab(deps, plan, claudeSession) {
+    await deps.asks.post(claudeSession, { team: plan.team, id: plan.id, at: plan.at, askedAt: new Date(deps.clock.now()).toISOString() });
+    try {
+        const deadline = deps.clock.now() + CLAIM_WAIT_MS;
+        for (;;) {
+            await deps.sleep(POLL_MS);
+            if (await deps.asks.taken(claudeSession)) {
+                return 'cleared';
+            }
+            const pending = (await pendingOf(deps, plan)) !== undefined;
+            if (!pending || deps.clock.now() >= deadline) {
+                // The claim may land between the look and here: whoever creates the outcome first wins.
+                if (!(await deps.asks.withdraw(claudeSession))) {
+                    return 'cleared';
+                }
+                return pending ? 'unclaimed' : 'cancelled';
+            }
+        }
     }
-    if (armed.transcript === null) {
-        await deps.store.clearRestart(plan.id);
-        return { kind: 'failed', why: 'its transcript is unknown, so teamrig cannot tell when it is idle' };
+    finally {
+        await deps.asks.close(claudeSession);
     }
-    const quiet = await waitForQuiet(deps, plan, armed.transcript);
-    if ('kind' in quiet) {
-        return quiet;
-    }
-    const request = quiet;
-    const claude = await deps.processes.describe(request.pid);
-    if (claude === undefined) {
-        await deps.store.clearRestart(plan.id);
-        return { kind: 'cancelled', why: 'its Claude Code has already ended' };
-    }
-    if (!isClaude(claude)) {
-        await deps.store.clearRestart(plan.id);
-        return { kind: 'failed', why: `process ${claude.pid} is ${claude.name}, not Claude Code` };
-    }
-    // That look takes a moment: a prompt typed meanwhile still cancels.
-    if ((await pendingOf(deps, plan)) === undefined) {
-        return CANCELLED;
-    }
+}
+/** Ends the session's process: in its own tab under `teamrig launch`, else after a new tab opened. */
+async function endSession(deps, plan, request, claude) {
     await deps.store.setRestart(plan.id, { ...request, phase: 'ending' });
     if (request.supervised) {
         const problem = await endAndWait(deps, claude.pid, claude.pid);
@@ -185,4 +180,71 @@ export async function runRestart(deps, plan) {
         return { kind: 'failed', why: `${problem}; the fresh session runs in a new tab, so close the old one` };
     }
     return { kind: 'restarted', where: 'new tab', endCommand: await runEndCommand(deps, plan, request) };
+}
+/**
+ * The automatic context refresh's restart, started hidden by the Stop hook once the session's handover is
+ * written (`refresh.autoRestart`). It waits until the session has been quiet for the whole delay, with its
+ * last turn ended and no background work, and acts only while its request is still pending (a prompt the user types cancels it)
+ * and the session still waits for a fresh start. Then it checks the process is Claude Code and:
+ * - first asks the tab's mod to run /clear (`handToTab`). The /clear keeps the tab and its process, and
+ *   Claude Code runs its own SessionEnd and SessionStart `clear` hooks, so no end command is needed;
+ * - when no mod claims the ask and the session is still idle, ends the process. Under `teamrig launch`
+ *   (supervised) it marks the request `ending`, and launch starts Claude Code again in the same tab once
+ *   it has gone. Otherwise it first opens a new tab that starts the session fresh, and only once that
+ *   opened ends the old one with its tab; when no tab opens, nothing is ended. Either way it then runs
+ *   `refresh.endCommand`. The fresh start reads the handover (SessionStart `startup`);
+ * - when a turn ran meanwhile, waits for the session to be quiet again and asks again.
+ */
+export async function runRestart(deps, plan) {
+    const armed = await pendingOf(deps, plan);
+    if (armed === undefined) {
+        return { kind: 'cancelled', why: 'no restart is pending' };
+    }
+    if (armed.transcript === null) {
+        await deps.store.clearRestart(plan.id);
+        return { kind: 'failed', why: 'its transcript is unknown, so teamrig cannot tell when it is idle' };
+    }
+    const transcript = armed.transcript;
+    for (;;) {
+        const quiet = await waitForQuiet(deps, plan, transcript);
+        if ('kind' in quiet) {
+            return quiet;
+        }
+        const request = quiet;
+        const claude = await deps.processes.describe(request.pid);
+        if (claude === undefined) {
+            await deps.store.clearRestart(plan.id);
+            return { kind: 'cancelled', why: 'its Claude Code has already ended' };
+        }
+        if (!isClaude(claude)) {
+            await deps.store.clearRestart(plan.id);
+            return { kind: 'failed', why: `process ${claude.pid} is ${claude.name}, not Claude Code` };
+        }
+        // That look takes a moment: a prompt typed meanwhile still cancels.
+        if ((await pendingOf(deps, plan)) === undefined) {
+            return CANCELLED;
+        }
+        if (!isClaudeSessionId(request.claudeSession)) {
+            return endSession(deps, plan, request, claude);
+        }
+        switch (await handToTab(deps, plan, request.claudeSession)) {
+            case 'cleared':
+                // The claim clears the request; this clears it only when the claim stopped before that.
+                if ((await pendingOf(deps, plan)) !== undefined) {
+                    await deps.store.clearRestart(plan.id);
+                }
+                return { kind: 'cleared' };
+            case 'cancelled':
+                return CANCELLED;
+            case 'unclaimed':
+                break;
+        }
+        if (!(await idleAt(deps, transcript))) {
+            continue;
+        }
+        if ((await pendingOf(deps, plan)) === undefined) {
+            return CANCELLED;
+        }
+        return endSession(deps, plan, request, claude);
+    }
 }
