@@ -161,7 +161,8 @@ teamrig refreshes a long-running session at a task boundary, so it never loses w
    (`refresh.autoRestart: false`) or cannot start, the title reads `shop-web: type /clear`: ask the user to type
    `/clear`.
 5. After the fresh start, the session-start context says `You were refreshed after T2; read your handover first:
-   <path>`, then lists the scheduled jobs and wake-up to make again, the old scratchpad and the plan file. The
+   <path>`, then the scheduled jobs (still scheduled after a `/clear`, to make again after a new process), the
+   wake-up to make again, the old scratchpad and the plan file. The
    restart's first prompt, or after a `/clear` a turn teamrig starts by itself, asks you to read the handover and
    carry on with its next steps. Do so, and run the start of a work block, since the fresh start is a new Claude
    Code session.

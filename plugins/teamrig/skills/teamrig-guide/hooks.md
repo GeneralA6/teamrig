@@ -50,8 +50,9 @@ The injected context holds:
    rules, they win.
 6. **After a refresh**: `You were refreshed after T2; read your handover first: <path>`, once, at the first
    fresh start (the automatic restart, a `/clear` or a new start) after the handover was written. A compact or resume keeps the old context, so the
-   note waits. It then lists what the old session leaves: its scheduled jobs and a pending wake-up to make again
-   (`CronCreate`, `ScheduleWakeup`), its scratchpad and its plan file. After a `/clear`, `hook refresh-wake` then starts a turn by itself that tells the session to read that
+   note waits. It then lists what the old session leaves: its scheduled jobs (`CronCreate`; after a `/clear`
+   they are still scheduled and the note says so, after a new process it lists them to make again), a pending
+   wake-up to make again (`ScheduleWakeup`), its scratchpad and its plan file. After a `/clear`, `hook refresh-wake` then starts a turn by itself that tells the session to read that
    handover and carry on, so it does not sit idle until someone types.
 7. **A model check**: when the session runs on another model than its `launch` entry in the team config, a line
    such as `MODEL shop-web runs model claude-sonnet-5; the team config asks for model opus at xhigh effort: type
