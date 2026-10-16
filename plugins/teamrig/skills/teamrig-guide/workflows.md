@@ -58,7 +58,7 @@ teamrig test --session api -- npm test
 ```
 
 1. Edit only in your own worktree and branch, made off the current main as above (or with Claude Code's
-   EnterWorktree). On Windows, a `node_modules` linked in from the main checkout (`mklink /J`) needs care in step 7.
+   EnterWorktree). A `node_modules` linked in from the main checkout (`mklink /J` on Windows) is removed in step 7.
 2. Commit one logical change at a time, each with its tests, as soon as they pass. Run tests through
    `teamrig test`: a long run costs a few lines, and the whole output stays in a log. Over 400 changed lines or
    15 files, the commit needs a `Large-commit: <reason>` line.
@@ -69,9 +69,10 @@ teamrig test --session api -- npm test
    process restarted on it.
 6. Set the task `verifying` with its proof and date (see "Shipped, verifying"), and `done` once the proof exists.
    If it breaks, fix it or revert it yourself: it is your change.
-7. Remove the worktree and its merged branch. On Windows, remove the `node_modules` link first (`cmd /c rmdir
-   <worktree>\node_modules`; from Git Bash, `cmd //c`) and check it is gone, or `git worktree remove` empties the
-   main checkout's. Never delete the worktree folder recursively.
+7. Remove the worktree and its merged branch with `teamrig worktree remove <worktree> --delete-branch`, run from
+   outside it after a `git fetch`. It unlinks the `node_modules` link first, so `git worktree remove` cannot follow
+   it and empty the main checkout's, and keeps a branch with a commit main lacks. Never delete the worktree folder
+   recursively.
 
 Your team's own commands for steps 4 and 5 (a deploy script, a lock on shared machines) belong in a team skill such
 as `team-ship-change`; this list is the order they fit in.

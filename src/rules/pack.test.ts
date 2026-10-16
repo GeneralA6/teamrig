@@ -141,17 +141,18 @@ describe('renderCorePack', () => {
     assert.match(pack, new RegExp(`; never ${keys.slice(0, 3).join(', ')} and 5 more \\[skills\\.forbidFrontmatter\\]`));
   });
 
-  it('keeps every edit in a worktree, in every repo, and names the Git Bash form of the junction removal', () => {
+  it('keeps every edit in a worktree, in every repo, and names the command that removes one safely', () => {
     const pack = renderCorePack(testConfig(), COMMAND, 'win32');
     assert.match(pack, /Edit in your own worktree and branch in every git repo, never a main checkout\./);
-    assert.match(pack, /\(`cmd \/c rmdir`; Git Bash `cmd \/\/c`\)/);
+    assert.match(pack, /Remove a worktree with `teamrig worktree remove <path>`; a plain `git worktree remove` empties the main node_modules\./);
+    assert.doesNotMatch(pack, /rmdir/);
   });
 
-  it('names the node_modules junction step on Windows alone', () => {
-    assert.match(renderCorePack(testConfig(), COMMAND, 'win32'), /never a main checkout\. Remove a worktree's node_modules link first/);
+  it('names the safe worktree removal on Windows alone', () => {
+    assert.match(renderCorePack(testConfig(), COMMAND, 'win32'), /never a main checkout\. Remove a worktree with /);
     const pack = renderCorePack(testConfig(), COMMAND, 'linux');
     assert.match(pack, /never a main checkout\. Update comments in their code's commit/);
-    assert.doesNotMatch(pack, /node_modules|rmdir/);
+    assert.doesNotMatch(pack, /node_modules|worktree remove/);
   });
 
   it('tags a stopgap with the task that replaces it, in the form check reads', () => {

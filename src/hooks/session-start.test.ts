@@ -42,7 +42,7 @@ describe('sessionStartContext', () => {
 
   it('renders the rules for the platform the hook runs on', () => {
     assert.ok(context({ platform: 'linux' }).startsWith(renderCorePack(testConfig(), COMMAND, 'linux')));
-    assert.doesNotMatch(context({ platform: 'linux' }), /rmdir/);
+    assert.doesNotMatch(context({ platform: 'linux' }), /worktree remove/);
     assert.doesNotMatch(context({ platform: 'linux' }), /PowerShell tool does not have it/);
   });
 
