@@ -89,7 +89,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       test within tests.maxFailureChars; exit 0 when the command passed, 1 otherwise
   hook push-guard | hook cold-send | hook failed-send | hook loop-nudge | hook helper-gate | hook inbox-reminder | hook session-start | hook stop | hook refresh-wake
       (run by Claude Code, hook JSON on stdin)
-  hook clear-dir | hook clear-claim
+  hook clear-dir | hook clear-claim [--hold]
       (run by the plugin's mod: the automatic restart's /clear in the tab)
   launch <id> --team <team> --project <dir> [--home <dir>] [--encoded-prompt <text>]
       (run by the tab that open starts: sets the session and starts Claude Code)

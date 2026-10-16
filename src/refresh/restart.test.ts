@@ -100,6 +100,12 @@ class World {
     await this.store.clearRestart('alpha');
   }
 
+  /** The tab's mod while Claude Code lists a live helper: holds the posted ask, as `hook clear-claim --hold` does. */
+  async holdAsk(): Promise<void> {
+    assert.ok(await this.asks.ask(SESSION), 'an ask is posted');
+    assert.equal(await this.asks.hold(SESSION), true);
+  }
+
   /** The ask and its outcome are gone once the runner is done. */
   asksClosed(): boolean {
     return this.files.get(askFileOf(ASK_DIR, SESSION) ?? '') === undefined && this.files.get(outcomeFileOf(ASK_DIR, SESSION) ?? '') === undefined;
@@ -380,6 +386,90 @@ ${TURN_END}
     const world = await new World().arm({ claudeSession: '../escape' });
     assert.equal((await runRestart(world.deps, PLAN)).kind, 'restarted');
     assert.equal(world.clock.now() - START, DELAY_MS, 'no wait for a claim');
+  });
+});
+
+/** Asks the tab's mod holds as soon as they are posted: its session runs a helper the whole time. */
+class HeldByTab extends ClearAsks {
+  override async post(claudeSession: string, ask: ClearAsk): Promise<void> {
+    await super.post(claudeSession, ask);
+    await this.hold(claudeSession);
+  }
+}
+
+/** Asks whose first hold lands between the runner's last look and its withdraw; later asks go unanswered. */
+class HeldAtFirstWithdraw extends ClearAsks {
+  withdraws = 0;
+
+  override async withdraw(claudeSession: string): Promise<boolean> {
+    this.withdraws += 1;
+    if (this.withdraws === 1) {
+      await this.hold(claudeSession);
+    }
+    return super.withdraw(claudeSession);
+  }
+}
+
+describe('runRestart while the tab holds its ask (a helper still runs)', () => {
+  it('ends nothing on a held answer, though the transcript looks idle, and clears once the tab claims a later ask', async () => {
+    const world = await new World().arm({ supervised: false });
+    // Wait 3 is the first look for the tab's answer; 4 settles, 5 is the quiet window; 6 is the look for the second answer.
+    world.onSleep(3, () => world.holdAsk());
+    world.onSleep(6, () => world.claimAsk());
+    assert.deepEqual(await runRestart(world.deps, PLAN), { kind: 'cleared' });
+    assert.equal(world.claimed?.askedAt, new Date(START + 2 * DELAY_MS + 500).toISOString(), 'the second ask, a whole quiet delay after the hold');
+    assert.deepEqual([world.processes.ends, world.opened, world.processes.fed], [[], [], []]);
+    assert.ok(world.asksClosed());
+  });
+
+  it('keeps the request pending between held rounds, so a prompt typed then still cancels', async () => {
+    const world = await new World().arm();
+    world.onSleep(3, () => world.holdAsk());
+    world.onSleep(5, () => world.store.clearRestart('alpha'));
+    assert.deepEqual(await runRestart(world.deps, PLAN), { kind: 'cancelled', why: 'the restart was cancelled or replaced' });
+    assert.deepEqual([world.processes.ends, world.opened], [[], []]);
+  });
+
+  it('counts a hold that lands just before its withdraw as the tab\'s: nothing is ended that round', async () => {
+    const world = await new World().arm();
+    const asks = new HeldAtFirstWithdraw(world.files, ASK_DIR);
+    assert.deepEqual(await runRestart({ ...world.deps, asks }, PLAN), { kind: 'restarted', where: 'same tab', endCommand: { kind: 'done' } });
+    assert.equal(asks.withdraws, 2, 'the held round asked again');
+    assert.equal(world.clock.now() - START, 2 * (DELAY_MS + CLAIM_WAIT_MS), 'ended only after the second, unanswered ask');
+    assert.deepEqual(world.processes.ends, [{ pid: CLAUDE.pid, how: 'ask' }]);
+  });
+
+  it('gives up after an hour of held asks the way it does for a busy session: nothing ended, the context kept', async () => {
+    const world = await new World().arm({ supervised: false });
+    const asks = new HeldByTab(world.files, ASK_DIR);
+    assert.deepEqual(await runRestart({ ...world.deps, asks }, PLAN), { kind: 'failed', why: 'it stayed busy for 60 minutes' });
+    const ran = world.clock.now() - START;
+    assert.ok(ran >= GIVE_UP_MS && ran < GIVE_UP_MS + DELAY_MS + CLAIM_WAIT_MS, `gave up at ${ran} ms`);
+    assert.deepEqual([world.processes.ends, world.opened, world.processes.fed], [[], [], []]);
+    assert.equal(await world.store.restart('alpha'), undefined);
+    assert.ok(world.asksClosed());
+  });
+
+  it('counts the hour from the run\'s start across held rounds, not from each round', async () => {
+    const world = await new World().arm();
+    const asks = new HeldByTab(world.files, ASK_DIR);
+    // Held for 50 minutes, then busy: still gives up at the hour.
+    let held = true;
+    const busyAfter = START + 50 * 60_000;
+    const deps: RestartDeps = {
+      ...world.deps,
+      asks,
+      sleep: async (ms) => {
+        if (held && world.clock.now() >= busyAfter) {
+          held = false;
+          world.busy = true;
+        }
+        await world.deps.sleep(ms);
+      },
+    };
+    assert.deepEqual(await runRestart(deps, PLAN), { kind: 'failed', why: 'it stayed busy for 60 minutes' });
+    assert.ok(world.clock.now() - START < GIVE_UP_MS + 2 * DELAY_MS);
+    assert.deepEqual(world.processes.ends, []);
   });
 });
 

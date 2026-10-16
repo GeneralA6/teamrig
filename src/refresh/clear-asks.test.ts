@@ -37,14 +37,36 @@ describe('ClearAsks', () => {
   it('lets the first of a claim and a withdraw win', async () => {
     const asks = new ClearAsks(new MemoryFiles(), DIR);
     await asks.post(SESSION, ASK);
-    assert.equal(await asks.taken(SESSION), false);
+    assert.equal(await asks.outcome(SESSION), undefined);
     assert.equal(await asks.claim(SESSION), true);
     assert.equal(await asks.withdraw(SESSION), false);
-    assert.equal(await asks.taken(SESSION), true);
+    assert.equal(await asks.outcome(SESSION), 'taken');
     await asks.post(OTHER, ASK);
     assert.equal(await asks.withdraw(OTHER), true);
     assert.equal(await asks.claim(OTHER), false);
-    assert.equal(await asks.taken(OTHER), false);
+    assert.equal(await asks.outcome(OTHER), 'withdrawn');
+  });
+
+  it('lets the first of a hold, a claim and a withdraw win', async () => {
+    const asks = new ClearAsks(new MemoryFiles(), DIR);
+    await asks.post(SESSION, ASK);
+    assert.equal(await asks.hold(SESSION), true);
+    assert.equal(await asks.claim(SESSION), false);
+    assert.equal(await asks.withdraw(SESSION), false);
+    assert.equal(await asks.outcome(SESSION), 'held');
+    await asks.post(OTHER, ASK);
+    assert.equal(await asks.withdraw(OTHER), true);
+    assert.equal(await asks.hold(OTHER), false);
+    assert.equal(await asks.outcome(OTHER), 'withdrawn');
+  });
+
+  it('reads no outcome from a damaged file', async () => {
+    const files = new MemoryFiles();
+    const asks = new ClearAsks(files, DIR);
+    await files.write(OUTCOME_PATH, 'maybe');
+    assert.equal(await asks.outcome(SESSION), undefined);
+    await files.write(OUTCOME_PATH, 'held\n');
+    assert.equal(await asks.outcome(SESSION), 'held');
   });
 
   it('starts each ask unclaimed, removing an outcome a run that stopped early left', async () => {
