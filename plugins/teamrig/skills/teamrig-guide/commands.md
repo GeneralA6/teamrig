@@ -737,7 +737,8 @@ REQUESTED a refresh of shop-web: after its next `set done` it writes its handove
 
 ### teamrig doctor
 
-Reads the team's names, rename log, inboxes, `rules.md` and tree of teams, and prints each problem with its fix.
+Reads the team's names, rename log, inboxes, `rules.md` and tree of teams, weighs the text every call of a session
+re-reads, and prints each problem with its fix.
 It only reads.
 
 Flags: none.
@@ -756,8 +757,15 @@ DOCTOR clean, team shop
 
 Otherwise `DOCTOR N finding(s)` and one `WARN <kind> <detail and fix>` line each. Kinds: `requirement` (git,
 Claude Code or Node.js, [the check](requirements.md#the-requirements-check)), `name-gone`,
-`name-shared`, `name-config`, `rename-log`, `inbox-orphan`, `inbox-unread`, `rules-long`, `tree-id`,
+`name-shared`, `name-config`, `rename-log`, `inbox-orphan`, `inbox-unread`, `rules-long`, `context-size`, `tree-id`,
 `tree-parent`, `tree-loop`, `tree-depth`, `tree-children`, `name-two-teams`.
+
+`context-size` weighs, in characters (about 4 per token), the user's CLAUDE.md with the project folder's and each
+parent's (`CLAUDE.md`, `CLAUDE.local.md`, `.claude/CLAUDE.md`), the project's memory index (`MEMORY.md`) and the
+skill listing of the team's and the project's skills folders, against [contextFiles.maxClaudeMdChars] (12,000),
+[contextFiles.maxMemoryIndexChars] (6,000) and [contextFiles.maxSkillListingChars] (4,000). The cheapest cuts: move
+how-tos from CLAUDE.md into skills and facts into memory files, keep one short index line per memory, shorten skill
+descriptions or merge skills.
 
 ### teamrig compact
 
