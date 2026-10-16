@@ -7,6 +7,11 @@ export const DEFAULT_OWNER_GATES = [
     'resource changes',
 ];
 export const DEFAULT_MESSAGES = { maxLines: 10, coldAfterMinutes: 60 };
+/**
+ * The most characters a task's description holds, beside `maxTitle` and `maxText` (the note, ref, evidence and
+ * proof): a fixed limit, not a config key, so a GitHub issue body cut to it reads the same on every team.
+ */
+export const MAX_DESCRIPTION = 2_000;
 export const DEFAULT_REGISTER = {
     ownerSource: 'owner',
     priorities: [
@@ -19,6 +24,7 @@ export const DEFAULT_REGISTER = {
     maxTitle: 140,
     maxText: 300,
     secretPatterns: [],
+    requireDescription: true,
     requireEvidenceOnDone: true,
     requireSkillOnDone: true,
     requireNoteOn: ['waiting', 'verifying', 'done', 'dropped'],

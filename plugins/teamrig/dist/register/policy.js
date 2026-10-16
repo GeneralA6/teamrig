@@ -1,3 +1,4 @@
+import { MAX_DESCRIPTION } from "../config/defaults.js";
 import { ADDRESS_PATTERN } from "../core/address.js";
 import { SecretScanner } from "../core/secrets.js";
 import { parseUtcDay, parseUtcDeadline } from "../core/time.js";
@@ -17,6 +18,8 @@ export const GITHUB_ACTOR = 'github';
 export const GITHUB_STATUSES = ['open', 'done', 'dropped'];
 /** Fields the lead may change on a task someone else owns: who does it, how urgent, when and in what order. */
 export const LEAD_FIELDS = ['owner', 'priority', 'due', 'week', 'after'];
+/** The refusal of an `add` with no description while `register.requireDescription` is on. */
+export const DESCRIPTION_NEEDED = 'add needs --description "<what and why, in plain words>"';
 /** How `--waits` is typed, for the refusals that ask for it. */
 export const WAITS_USAGE = 'decision:<who>, approval:<who>, task:T<id> or time:<YYYY-MM-DD HH:MM>, comma-separated';
 function ok(value) {
@@ -57,6 +60,7 @@ export class RegisterPolicy {
     create(input, state, sourceRule) {
         const fields = {
             title: input.title.trim(),
+            description: blankToNull(input.description),
             owner: input.owner,
             source: input.source,
             ref: input.ref ?? null,
@@ -66,6 +70,9 @@ export class RegisterPolicy {
             week: input.week ?? null,
             after: input.after ?? [],
         };
+        if (fields.description === null && this.config.register.requireDescription) {
+            return refuse(DESCRIPTION_NEEDED);
+        }
         const problem = this.checkFields(fields, sourceRule) ?? afterProblem(state.nextId, fields.after, state);
         if (problem !== undefined) {
             return refuse(problem);
@@ -165,7 +172,8 @@ export class RegisterPolicy {
                 return (parseUtcDeadline(reason.at)?.getTime() ?? 0) > context.now.getTime() ? undefined : `time ${reason.at} has passed: name a time to come`;
         }
     }
-    update(task, caller, changes, note, state) {
+    update(task, caller, asked, note, state) {
+        const changes = trimDescription(asked);
         const names = Object.keys(changes).filter((name) => name in changes);
         const text = blankToNull(note);
         if (names.length === 0) {
@@ -184,6 +192,9 @@ export class RegisterPolicy {
             if (notLead.length > 0) {
                 return refuse(`the lead may change only ${LEAD_FIELDS.join(', ')} on a task it does not own (asked: ${notLead.join(', ')})`);
             }
+        }
+        if (changes.description === null && this.config.register.requireDescription) {
+            return refuse(`${task.id} keeps a description while register.requireDescription is on: give a new one instead of none`);
         }
         const merged = { ...pickFields(task), ...changes };
         // A task keeps the source it was added with, even one from the parent team's lead.
@@ -207,8 +218,8 @@ export class RegisterPolicy {
         return problem === undefined ? ok(fields) : refuse(problem);
     }
     /**
-     * A title or priority GitHub changed, on the import's own task only. A field the task already has is left
-     * out, judged under the lock, so a sync that raced another changes nothing twice.
+     * A title, description or priority GitHub changed, on the import's own task only. A field the task already has
+     * is left out, judged under the lock, so a sync that raced another changes nothing twice.
      */
     importUpdate(task, changes, note) {
         const notImported = this.notImported(task);
@@ -217,6 +228,7 @@ export class RegisterPolicy {
         }
         const changed = {
             ...(changes.title !== undefined && changes.title !== task.title ? { title: changes.title } : {}),
+            ...(changes.description !== undefined && changes.description !== task.description ? { description: changes.description } : {}),
             ...(changes.priority !== undefined && changes.priority !== task.priority ? { priority: changes.priority } : {}),
         };
         if (Object.keys(changed).length === 0) {
@@ -290,21 +302,31 @@ export class RegisterPolicy {
         if (badGoal !== undefined) {
             return `goal ${badGoal} does not match ${register.goalPattern}`;
         }
-        return this.checkText('title', fields.title) ?? this.checkText('ref', fields.ref);
+        if (fields.description !== null && fields.description.length > MAX_DESCRIPTION) {
+            return `the description has ${fields.description.length} characters; the limit is ${MAX_DESCRIPTION}`;
+        }
+        return this.checkText('title', fields.title) ?? this.checkText('description', fields.description) ?? this.checkText('ref', fields.ref);
     }
+    /** Checks the length against `maxText` (the title and description have their own limits), then the secret shapes. */
     checkText(name, text) {
         if (text === null) {
             return undefined;
         }
-        if (name !== 'title' && text.length > this.config.register.maxText) {
+        if (!OWN_LIMITS.includes(name) && text.length > this.config.register.maxText) {
             return `${name} has ${text.length} characters; the limit is ${this.config.register.maxText}`;
         }
         return this.secrets.refusal(name, text);
     }
 }
+/** The texts whose length is judged against their own limit, not `maxText`. */
+const OWN_LIMITS = ['title', 'description'];
 function pickFields(task) {
-    const { title, owner, source, ref, priority, due, goals, week, after } = task;
-    return { title, owner, source, ref, priority, due, goals, week, after };
+    const { title, description, owner, source, ref, priority, due, goals, week, after } = task;
+    return { title, description, owner, source, ref, priority, due, goals, week, after };
+}
+/** An update's description trimmed at both ends, its newlines kept; a blank one clears it, as `none` does. */
+function trimDescription(changes) {
+    return changes.description === undefined ? changes : { ...changes, description: blankToNull(changes.description ?? undefined) };
 }
 /**
  * The proof a status change writes: none outside `verifying`, where `--proof` is refused; the one given; or,

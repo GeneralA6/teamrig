@@ -109,7 +109,7 @@ export async function hire(args, runtime) {
         const backup = await writeConfigWithBackup(files, { configPath: load.path, backupsDir: kit.paths.backups, backupName: HIRE_BACKUP_NAME }, plan.value.config, clock);
         runtime.out.stdout(`HIRED ${what}; the old config is at ${backup}`);
         runtime.out.stdout(caps);
-        runtime.out.stdout(`NEXT give it its first task: ${KIT_NAME} add --owner ${record.session} --title "<task>" --session ${by}; then open it: ${KIT_NAME} open ${record.session}`);
+        runtime.out.stdout(`NEXT give it its first task: ${KIT_NAME} add --owner ${record.session} --title "<task>" --description "<what and why>" --session ${by}; then open it: ${KIT_NAME} open ${record.session}`);
         return EXIT.ok;
     });
 }
