@@ -70,6 +70,7 @@ describe('teamPaths', () => {
     assert.equal(paths.lifts, join(TEAM_HOME, 'state', 'usage', 'lifts.jsonl'));
     assert.equal(paths.hires, join(TEAM_HOME, 'state', 'hires.jsonl'));
     assert.equal(paths.hiresLock, join(TEAM_HOME, 'state', 'hires.lock'));
+    assert.equal(paths.retireAsks, join(TEAM_HOME, 'state', 'retire-asks'));
     assert.equal(paths.logs, join(TEAM_HOME, 'state', 'logs'));
   });
 
