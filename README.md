@@ -109,8 +109,10 @@ a peer, a notification or a scheduled wake started, the calls that re-wrote a co
 `teamrig statusline install` sets it up and keeps one you already have, or have yours write the
 [same snapshot](plugins/teamrig/skills/teamrig-guide/commands.md#teamrig-statusline).
 
-*Today `plan` shows what fits your weekly limit and `check` flags the first task that doesn't. Coming: moving it to
-next week on its own, and holding deploys before the reset.*
+With a size on each task (`--size`, its share of the weekly limit), `teamrig plan` shows how much of the week fits
+the limit left and `teamrig check` flags the first task that doesn't, for your lead to move to next week.
+
+*Coming: moving that task to next week on its own, and holding deploys before the reset.*
 
 ![Your lead plans the week from the tokens you have left. The tasks fill the days, most important first, until the plan reaches 99.5% of your weekly limit. The last 0.5% is kept for incidents, and the task that doesn't fit moves to next week.](docs/images/plan.svg)
 
