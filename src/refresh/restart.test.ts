@@ -104,6 +104,21 @@ class World {
   }
 }
 
+/** Session processes during whose look at a process the user types: the prompt hook clears the request. */
+class TypedWhileLooking extends FakeSessionProcesses {
+  private readonly typed: () => Promise<void>;
+
+  constructor(typed: () => Promise<void>) {
+    super();
+    this.typed = typed;
+  }
+
+  override async describe(pid: number): Promise<ProcessInfo | undefined> {
+    await this.typed();
+    return super.describe(pid);
+  }
+}
+
 describe('runRestart', () => {
   it('ends a supervised session once it was quiet for the whole delay, leaves the request ending for launch, and runs the end command', async () => {
     const world = await new World().arm();
@@ -166,6 +181,15 @@ describe('runRestart', () => {
     assert.equal((await runRestart(replaced.deps, PLAN)).kind, 'cancelled');
     assert.deepEqual(replaced.processes.ends, []);
     assert.deepEqual(await replaced.store.restart('alpha'), later);
+  });
+
+  it('stops without ending anything when the user types while it looks at the process', async () => {
+    const world = await new World().arm();
+    const typing = new TypedWhileLooking(() => world.store.clearRestart('alpha'));
+    typing.add(TAB_SHELL).add(CLAUDE);
+    assert.deepEqual(await runRestart({ ...world.deps, processes: typing }, PLAN), { kind: 'cancelled', why: 'the restart was cancelled or replaced' });
+    assert.deepEqual([typing.ends, typing.fed], [[], []]);
+    assert.equal(await world.store.restart('alpha'), undefined);
   });
 
   it('does nothing when no restart is pending', async () => {

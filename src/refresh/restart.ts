@@ -57,6 +57,9 @@ function isClaude(info: ProcessInfo): boolean {
   return CLAUDE_PROGRAM.test(info.name) || (NODE_PROGRAM.test(info.name) && /claude/i.test(info.commandLine));
 }
 
+/** The user typed (the prompt hook cleared the request) or a later notice replaced it. */
+const CANCELLED: RestartResult = { kind: 'cancelled', why: 'the restart was cancelled or replaced' };
+
 /** How far up from a hook Claude Code may be: a hook run through a shell has the shell between. */
 const CLAUDE_HOPS = 3;
 
@@ -146,7 +149,7 @@ async function waitForQuiet(deps: RestartDeps, plan: RestartPlan, transcript: st
     await deps.sleep(wait);
     const request = await pendingOf(deps, plan);
     if (request === undefined) {
-      return { kind: 'cancelled', why: 'the restart was cancelled or replaced' };
+      return CANCELLED;
     }
     if ((await deps.store.state(plan.id))?.phase !== 'ready') {
       await deps.store.clearRestart(plan.id);
@@ -198,6 +201,10 @@ export async function runRestart(deps: RestartDeps, plan: RestartPlan): Promise<
   if (!isClaude(claude)) {
     await deps.store.clearRestart(plan.id);
     return { kind: 'failed', why: `process ${claude.pid} is ${claude.name}, not Claude Code` };
+  }
+  // That look takes a moment: a prompt typed meanwhile still cancels.
+  if ((await pendingOf(deps, plan)) === undefined) {
+    return CANCELLED;
   }
   await deps.store.setRestart(plan.id, { ...request, phase: 'ending' });
   if (request.supervised) {
