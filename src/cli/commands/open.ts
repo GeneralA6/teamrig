@@ -134,7 +134,7 @@ export async function open(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   return EXIT.printed;
 }
 
-function idFlag(flag: string, value: string): string {
+export function idFlag(flag: string, value: string): string {
   if (!ID_PATTERN.test(value)) {
     throw new UsageError(`${flag} "${value}" is not an id (${ID_RULE})`);
   }

@@ -31,6 +31,7 @@ const setupCommands = () => import('./commands/setup.ts');
 const compactCommands = () => import('./commands/compact.ts');
 const rulesCommands = () => import('./commands/rules.ts');
 const openCommands = () => import('./commands/open.ts');
+const restartCommands = () => import('./commands/restart.ts');
 const budgetCommands = () => import('./commands/budget.ts');
 const budgetSetupCommands = () => import('./commands/budget-setup.ts');
 const statuslineCommands = () => import('./commands/statusline.ts');
@@ -64,6 +65,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   start: { flags: ['session'], switches: ['all'], load: async () => (await startCommands()).start },
   open: { flags: ['prompt', 'terminal', 'project'], load: async () => (await openCommands()).open },
   launch: { flags: ['team', 'project', 'home', 'encoded-prompt'], load: async () => (await openCommands()).launch },
+  restart: { flags: ['team', 'at', 'project'], load: async () => (await restartCommands()).restart },
   who: { flags: [], load: async () => (await teamCommands()).who },
   rename: { flags: ['session'], load: async () => (await teamCommands()).rename },
   hire: {
@@ -195,6 +197,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       (run by Claude Code, hook JSON on stdin)
   launch <id> --team <team> --project <dir> [--home <dir>] [--encoded-prompt <text>]
       (run by the tab that open starts: sets the session and starts Claude Code)
+  restart <id> --team <team> --at <time> --project <dir>
+      (run hidden by the Stop hook: restarts the session once its handover is written and it is idle)
 Team: $${ENV.team}, else the nearest ${TEAM_POINTER} ({"team": "<id>"}) above the current folder,
 else above $CLAUDE_PROJECT_DIR.
 Sessions: give an id, a current name or a former one; a session never named is <team>-<id>.
