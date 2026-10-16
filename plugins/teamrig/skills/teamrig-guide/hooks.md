@@ -46,8 +46,9 @@ The injected context holds:
    ``This tab was bound to the `web` session from its Claude Code title; nothing was marked read.``, or, after a
    `/clear` in a tab whose title names no session, by the Claude Code process the session refreshed in (for 24 hours):
    ``This tab was bound to the `web` session: /clear kept the Claude Code process that session refreshed in; nothing was marked read.``
-5. **The team's own `rules.md`**, when it exists. Where it or the project's CLAUDE.md conflicts with the core
-   rules, they win.
+5. **The team's own `rules.md`**, when it exists. Where it, a CLAUDE.md, a rules file, a skill, memory or a hook's
+   text conflicts with the core rules, the core rules win, except the local rules the team kept (`teamrig rules
+   keep`), which the core rules list under `Kept local rules`. `teamrig rules scan` lists the lines to settle.
 6. **After a refresh**: `You were refreshed after T2; read your handover first: <path>`, once, at the first
    fresh start (the automatic restart, a `/clear` or a new start) after the handover was written. A compact or resume keeps the old context, so the
    note waits. It then lists what the old session leaves: its scheduled jobs (`CronCreate`; after a `/clear`
