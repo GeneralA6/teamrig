@@ -917,6 +917,12 @@ its helper launches ([how](hooks.md#the-daily-budget-warnings-and-the-helper-gat
 `teamrig inbox read --session <id>`, or when the user titled it with the session's id or name; the rest counts
 as outside the team.
 
+A subagent's W is multiplied by `budget.subagentWeight` (default 1, since 0.35.0): what one W of a helper costs
+against the weekly limit, in W of a main session. Every W shown, and `budget.weeklyLimitW`, is then in main-session
+W. To find the weight, take a week with both kinds of work and fit the status line's weekly % to the main and the
+subagent W: the ratio of their W per 1% is the weight (one team measured about 2.15). A change counts from the next
+metering on; `--day <YYYY-MM-DD>` recounts a past day at the new weight.
+
 ### teamrig budget
 
 Measures every session's use since the last run, keeps 8 days of it in the team's `state/usage` folder, and
