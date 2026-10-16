@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
+import type { RestartRequest } from '../refresh/state.ts';
 import { RefreshStore } from '../refresh/store.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { FakeProcesses } from '../testing/fake-processes.ts';
@@ -173,6 +174,36 @@ describe('runCli: context refresh', () => {
     const none = new FakeProcesses();
     assert.deepEqual(stopJson(await off.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload(true), sessionProcesses: UNDER_CLAUDE(), processes: none })), clear);
     assert.deepEqual([await offStore.restart('alpha'), none.hidden.filter((run) => run.args[1] === 'restart')], [undefined, []]);
+  });
+
+  it('cancels the armed restart when the user types, keeping the context until a later task end', async () => {
+    const kit = new CliHarness();
+    const store = await handoverWritten(kit);
+    const env = { TEAMRIG_SESSION: 'alpha', CLAUDE_PROJECT_DIR: APP };
+    stopJson(await kit.run(['hook', 'stop'], { env, stdin: stopPayload(true), sessionProcesses: UNDER_CLAUDE(), processes: new FakeProcesses() }));
+    assert.equal((await store.restart('alpha'))?.phase, 'pending');
+    const typed = JSON.stringify({ session_id: CLAUDE_SESSION, cwd: APP, prompt: 'one more thing' });
+    const cancelled = await kit.run(['hook', 'inbox-reminder'], { env, stdin: typed });
+    assert.ok(
+      cancelled.stdout.includes('teamrig: the user typed, so the automatic restart is cancelled and you keep this context; a later task end asks for a new handover when one is due'),
+      cancelled.stdout.join('\n'),
+    );
+    assert.equal(await store.restart('alpha'), undefined);
+    assert.ok(!(await kit.run(['hook', 'inbox-reminder'], { env, stdin: typed })).stdout.some((line) => line.includes('restart')), 'said once');
+    assert.deepEqual(await kit.run(['hook', 'stop'], { env, stdin: stopPayload(), sessionProcesses: UNDER_CLAUDE() }), SILENT, 'not announced again');
+
+    await finishTask(kit, 'alpha');
+    assert.match(JSON.stringify(stopJson(await kit.run(['hook', 'stop'], { env, stdin: stopPayload() }))), /"decision":"block".*you just finished T2/);
+  });
+
+  it('leaves a restart that is already ending the session alone', async () => {
+    const kit = new CliHarness();
+    const store = await handoverWritten(kit);
+    const request: RestartRequest = { phase: 'ending', at: '2030-01-08T10:00:00.000Z', pid: 6900, claudeSession: CLAUDE_SESSION, transcript: TRANSCRIPT, cwd: APP, supervised: true };
+    await store.setRestart('alpha', request);
+    const result = await kit.run(['hook', 'inbox-reminder'], { ...AS_ALPHA, stdin: JSON.stringify({ session_id: CLAUDE_SESSION, cwd: APP, prompt: 'hi' }) });
+    assert.ok(!result.stdout.some((line) => line.includes('restart')));
+    assert.deepEqual(await store.restart('alpha'), request);
   });
 
   it('records a boundary under the threshold and says nothing, and refuses --ready when nothing was asked', async () => {

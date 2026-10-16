@@ -113,8 +113,22 @@ async function titleOutcome(runtime: CliRuntime, kit: Kit, config: KitConfig, pa
 }
 
 /**
- * UserPromptSubmit: binds a hand-started tab by its title, notes a Claude Code rename of the session,
- * says once how to bind a tab that is not bound, shows the session's new inbox lines and, once per
+ * A prompt typed while the automatic restart waits for the session to be idle cancels it, so the
+ * session keeps its context; one line tells the model. None when no restart waits, or one is already
+ * ending the session.
+ */
+async function cancelledRestartLine(runtime: CliRuntime, kit: Kit, id: string): Promise<string | undefined> {
+  const store = new RefreshStore(runtime.files, kit.paths);
+  if ((await store.restart(id))?.phase !== 'pending') {
+    return undefined;
+  }
+  await store.clearRestart(id);
+  return `${KIT_NAME}: the user typed, so the automatic restart is cancelled and you keep this context; a later task end asks for a new handover when one is due`;
+}
+
+/**
+ * UserPromptSubmit: cancels a pending automatic restart, binds a hand-started tab by its title, notes a
+ * Claude Code rename of the session, says once how to bind a tab that is not bound, shows the session's new inbox lines and, once per
  * level while it is past its daily budget and the team is ahead of its pace line, tells the model to
  * finish the step in hand; or one line when its team pointer is broken.
  */
@@ -148,9 +162,10 @@ export async function inboxReminder(args: ParsedArgs, runtime: CliRuntime): Prom
   const hint = await bindHintOnce(runtime, kit, binding, claudeSession);
   // Found like a rename: `$TEAMRIG_SESSION` first, so a session is shown its lines before its first `inbox read`.
   const session = await teamSessionOf(runtime, kit, own.roster, claudeSession);
+  const cancelled = session === undefined ? undefined : await cancelledRestartLine(runtime, kit, session).catch(() => undefined);
   const lines = session === undefined ? undefined : await inboxLinesFor(runtime, kit, session, claudeSession);
   const budgetLine = session === undefined ? undefined : await promptBudgetLine(runtime, { kit, config, roster: own.roster, id: session }).catch(() => undefined);
-  for (const text of [bound, renamed, hint, lines, budgetLine]) {
+  for (const text of [bound, renamed, hint, cancelled, lines, budgetLine]) {
     if (text !== undefined) {
       runtime.out.stdout(text);
     }
