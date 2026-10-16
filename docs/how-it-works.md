@@ -329,8 +329,10 @@ sequenceDiagram
   idle. A `/clear` keeps its id by the tab's Claude Code title or, when the title names no session, by the
   Claude Code process it refreshed in (for 24 hours).
 - The session-start note lists what the old session leaves, read from the last 64 MB of its transcript: its
-  scheduled jobs (CronCreate) and a pending wake-up (ScheduleWakeup) to make again, its scratchpad and its plan
-  file. A job made before the last compaction is missed, and a wake-up can fire twice after a `/clear`.
+  scheduled jobs (CronCreate), a pending wake-up (ScheduleWakeup) to make again, its scratchpad and its plan
+  file. A `/clear` keeps the process and so its jobs: the note says they are still scheduled, and lists them to
+  make again only after a new process. A job made before the last compaction is missed, and a wake-up can fire
+  twice after a `/clear`.
 - `refresh.enabled: false` turns it off, `refresh.tabTitle: false` leaves the tab title alone and
   `refresh.handoverDir` moves the handovers.
 
