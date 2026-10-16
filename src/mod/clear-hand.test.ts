@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { askFileOf, ClearHand, DIR_RETRY_MS, isClaudeSessionId, outcomeFileOf, type ClearHandHost, type CliRun } from './clear-hand.ts';
+import { askFileOf, ClearHand, DIR_RETRY_MS, isClaudeSessionId, liveAgentsOf, outcomeFileOf, type ClearHandHost, type CliRun } from './clear-hand.ts';
 
 const DIR = '/kit/clear-asks';
 const SESSION = '0123abcd-0000-4000-8000-00000000000a';
@@ -21,6 +21,10 @@ class FakeHost implements ClearHandHost {
   clears = 0;
   dirRun: CliRun | Error = { exitCode: 0, stdout: `${DIR}\n` };
   claimRun: CliRun = { exitCode: 0, stdout: 'taken\n' };
+  holdRun: CliRun = { exitCode: 0, stdout: 'held\n' };
+  /** The session's live agents as Claude Code lists them, or why the list failed. */
+  live: number | Error = 0;
+  agentLists = 0;
   /** Thrown by `read`, as a file the mod cannot read. */
   readFailure: unknown;
   /** Holds each /clear until it resolves, as a /clear waits for a turn in progress. */
@@ -44,12 +48,20 @@ class FakeHost implements ClearHandHost {
   async cli(args: readonly string[], stdin: string): Promise<CliRun> {
     this.calls.push({ args, stdin });
     if (args[1] !== 'clear-dir') {
-      return this.claimRun;
+      return args.includes('--hold') ? this.holdRun : this.claimRun;
     }
     if (this.dirRun instanceof Error) {
       throw this.dirRun;
     }
     return this.dirRun;
+  }
+
+  async liveAgents(): Promise<number> {
+    this.agentLists += 1;
+    if (this.live instanceof Error) {
+      throw this.live;
+    }
+    return this.live;
   }
 
   async clear(): Promise<void> {
@@ -115,6 +127,68 @@ describe('ClearHand', () => {
     assert.equal(host.clears, 0);
   });
 
+  it('holds the ask while Claude Code lists a live agent of the session, running no /clear, and claims once none is', async () => {
+    const host = new FakeHost();
+    const hand = new ClearHand(host);
+    host.live = 2;
+    host.ask();
+    assert.deepEqual(await hand.tick(), { kind: 'held', why: '2 agents of this session still live' });
+    assert.deepEqual(host.claims(), [{ args: ['hook', 'clear-claim', '--hold'], stdin: JSON.stringify({ session_id: SESSION }) }]);
+    assert.equal(host.clears, 0);
+    assert.deepEqual(await hand.tick(), { kind: 'no ask' }, 'the held ask is not held twice');
+    host.live = 1;
+    host.ask(NEXT_ASK);
+    assert.deepEqual(await hand.tick(), { kind: 'held', why: '1 agent of this session still live' });
+    host.live = 0;
+    host.ask(ASK);
+    assert.deepEqual(await hand.tick(), { kind: 'cleared' });
+    assert.deepEqual(
+      host.claims().map((call) => call.args),
+      [
+        ['hook', 'clear-claim', '--hold'],
+        ['hook', 'clear-claim', '--hold'],
+        ['hook', 'clear-claim'],
+      ],
+    );
+    assert.equal(host.clears, 1);
+  });
+
+  it('holds the ask when Claude Code will not list the agents, and says why', async () => {
+    const host = new FakeHost();
+    const hand = new ClearHand(host);
+    host.live = new Error('agent.list is not a function');
+    host.ask();
+    assert.deepEqual(await hand.tick(), { kind: 'held', why: "Claude Code would not list this session's agents: agent.list is not a function" });
+    host.live = new Error('timed out');
+    host.ask(NEXT_ASK);
+    assert.deepEqual(await hand.tick(), { kind: 'held', why: "Claude Code would not list this session's agents: timed out" });
+    assert.equal(host.clears, 0);
+    assert.equal(host.claims().every((call) => call.args.includes('--hold')), true);
+  });
+
+  it('runs no /clear when the hold is declined, and passes on why', async () => {
+    const host = new FakeHost();
+    const hand = new ClearHand(host);
+    host.live = 1;
+    host.holdRun = { exitCode: 0, stdout: 'declined: the restart took its ask back\n' };
+    host.ask();
+    assert.deepEqual(await hand.tick(), { kind: 'declined', why: 'declined: the restart took its ask back' });
+    host.holdRun = { exitCode: 1, stdout: 'held' };
+    host.ask(NEXT_ASK);
+    assert.deepEqual(await hand.tick(), { kind: 'declined', why: 'held' }, 'a failed run is never a hold');
+    assert.equal(host.clears, 0);
+  });
+
+  it('leaves an ask that comes during a turn without asking for the agents', async () => {
+    const host = new FakeHost();
+    const hand = new ClearHand(host);
+    host.live = 3;
+    host.ask();
+    hand.turnStarted();
+    assert.deepEqual(await hand.tick(), { kind: 'busy' });
+    assert.deepEqual([host.agentLists, host.claims()], [0, []]);
+  });
+
   it('asks the CLI for the folder once, and after a failure again only after the retry delay', async () => {
     const host = new FakeHost();
     const hand = new ClearHand(host);
@@ -165,6 +239,20 @@ describe('ClearHand', () => {
     assert.deepEqual(await hand.tick(), { kind: 'failed', error: 'gone' });
     host.readFailure = undefined;
     assert.deepEqual(await hand.tick(), { kind: 'cleared' });
+  });
+});
+
+describe('liveAgentsOf', () => {
+  it('counts every agent whose loop has not ended: an idle teammate and a waiting helper are live', () => {
+    const statuses = ['pending', 'running', 'waiting', 'idle', 'completed', 'failed', 'killed'];
+    assert.equal(liveAgentsOf(statuses.map((status) => ({ status }))), 4);
+    assert.equal(liveAgentsOf([{ status: 'idle' }]), 1);
+    assert.equal(liveAgentsOf([{ status: 'completed' }, { status: 'failed' }, { status: 'killed' }]), 0);
+    assert.equal(liveAgentsOf([]), 0);
+  });
+
+  it('counts a status it does not know as live, so a new one never lets a /clear through', () => {
+    assert.equal(liveAgentsOf([{ status: 'paused' }]), 1);
   });
 });
 
