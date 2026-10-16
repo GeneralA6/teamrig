@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_CONTEXT_FILES } from '../config/defaults.ts';
+import { DEFAULT_CONTEXT_FILES, DEFAULT_LEAD_LAUNCH } from '../config/defaults.ts';
+import { launchOf } from '../config/launch.ts';
 import { Roster } from '../config/roster.ts';
 import { describeNameClash, type NameClash, type TreeProblem } from '../config/tree.ts';
 import { lineHash } from '../inbox/line-hash.ts';
@@ -8,8 +9,10 @@ import type { InboxMark } from '../inbox/marks.ts';
 import { unreadOf } from '../inbox/unread.ts';
 import type { Rename } from '../names/rename.ts';
 import { TEAM_RULES_MAX_CHARS } from '../rules/pack.ts';
+import { testConfig } from '../testing/config.ts';
 import { renameOf } from '../testing/rename.ts';
 import { doctorFindings, formatFinding, UNREAD_INBOX_DAYS, type DoctorInput } from './doctor.ts';
+import type { SettingsEnv } from './settings-env.ts';
 
 const NOW = new Date('2030-01-20T10:00:00Z');
 const LOG = '/kit/teams/app/state/renames.jsonl';
@@ -26,6 +29,9 @@ function input(overrides: Partial<DoctorInput> & { readonly names?: Record<strin
     teamRules: undefined,
     contextFiles: { read: { claudeMd: [], memoryIndex: undefined, skills: { folders: [], count: 0, chars: 0 } }, budgets: DEFAULT_CONTEXT_FILES },
     tree: { problems: [], clashes: [] },
+    env: {},
+    settingsEnv: [],
+    launches: [],
     now: NOW,
     command: 'teamrig',
     ...rest,
@@ -158,5 +164,81 @@ describe('doctorFindings of requirements', () => {
       'WARN requirement git is not installed or not on PATH, and teamrig needs it: install it from git-scm.com, then restart Claude Code.',
       'WARN requirement Node.js 20.11.1 is older than teamrig supports (22.18.0 or later): install the current LTS from nodejs.org, then restart Claude Code.',
     ]);
+  });
+});
+
+describe('doctorFindings of model and effort overrides', () => {
+  const USER = '/u/.claude/settings.json';
+  const PROJECT = '/w/app/.claude/settings.local.json';
+  const settings = (path: string, env: Record<string, string>): SettingsEnv => ({ kind: 'env', path, env });
+  const EFFORT_FROM = (where: string) =>
+    `WARN effort-env CLAUDE_CODE_EFFORT_LEVEL=high is set in ${where}: it beats every --effort (the team config's launch efforts among them), /effort and per-call Agent effort, so a session or helper that gets it runs at high whatever it was given; unset it there to let each choose its own`;
+  const FORCE_FROM = (where: string) =>
+    `WARN model-env CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1 is set in ${where}: set to 1 it beats every per-call Agent model, so a helper that gets it never runs on the model its caller gives it; unset it there to let each choose its own`;
+
+  it('is quiet when neither variable is set, or set empty, anywhere', () => {
+    const other = { PATH: '/bin', CLAUDE_CODE_SUBAGENT_MODEL: 'sonnet' };
+    assert.deepEqual(lines(input({ env: other, settingsEnv: [settings(USER, other), settings(PROJECT, {})] })), []);
+    assert.deepEqual(lines(input({ env: { CLAUDE_CODE_EFFORT_LEVEL: ' ', CLAUDE_CODE_SUBAGENT_MODEL_FORCE: '' } })), []);
+  });
+
+  it('flags CLAUDE_CODE_EFFORT_LEVEL set in the environment doctor runs in, with its value and what it beats', () => {
+    assert.deepEqual(lines(input({ env: { CLAUDE_CODE_EFFORT_LEVEL: 'high', ANTHROPIC_API_KEY: 'secret-value' } })), [EFFORT_FROM('the environment doctor runs in')]);
+  });
+
+  it('flags CLAUDE_CODE_EFFORT_LEVEL set in a settings env block only, naming the file', () => {
+    assert.deepEqual(lines(input({ settingsEnv: [settings(USER, {}), settings(PROJECT, { CLAUDE_CODE_EFFORT_LEVEL: 'high' })] })), [EFFORT_FROM(`the env block of ${PROJECT}`)]);
+  });
+
+  it('flags CLAUDE_CODE_SUBAGENT_MODEL_FORCE in the environment and in a settings env block, one line each', () => {
+    const force = { CLAUDE_CODE_SUBAGENT_MODEL_FORCE: '1' };
+    assert.deepEqual(lines(input({ env: force })), [FORCE_FROM('the environment doctor runs in')]);
+    assert.deepEqual(lines(input({ settingsEnv: [settings(USER, force)] })), [FORCE_FROM(`the env block of ${USER}`)]);
+    assert.deepEqual(lines(input({ env: { ...force, CLAUDE_CODE_EFFORT_LEVEL: 'high' }, settingsEnv: [settings(USER, force)] })), [
+      EFFORT_FROM('the environment doctor runs in'),
+      FORCE_FROM('the environment doctor runs in'),
+      FORCE_FROM(`the env block of ${USER}`),
+    ]);
+  });
+
+  it('flags a settings file whose env block it could not read, and still checks the others', () => {
+    const unreadable: SettingsEnv = { kind: 'unreadable', path: USER };
+    assert.deepEqual(lines(input({ settingsEnv: [unreadable, settings(PROJECT, { CLAUDE_CODE_EFFORT_LEVEL: 'high' })] })), [
+      EFFORT_FROM(`the env block of ${PROJECT}`),
+      `WARN settings-json ${USER} is not a JSON object, so doctor could not check its env block for CLAUDE_CODE_EFFORT_LEVEL or CLAUDE_CODE_SUBAGENT_MODEL_FORCE`,
+    ]);
+  });
+});
+
+describe('doctorFindings of launch entries', () => {
+  const launchesOf = (launch: Record<string, Record<string, string>>): DoctorInput['launches'] => {
+    const config = testConfig({ launch });
+    return config.sessions.map((id) => ({ id, launch: launchOf(config, id) }));
+  };
+
+  it('flags a session whose launch names a model but no effort, with the key to set', () => {
+    assert.deepEqual(lines(input({ launches: launchesOf({ alpha: { model: 'opus' }, bravo: { model: 'claude-sonnet-5-5[1m]' } }) })), [
+      "WARN launch-effort app-alpha (session alpha) launches on model opus with no effort, so it runs at that model's default effort (medium on Opus, Sonnet and Haiku 5.5): set launch.alpha.effort in the team config",
+      "WARN launch-effort app-bravo (session bravo) launches on model claude-sonnet-5-5[1m] with no effort, so it runs at that model's default effort (medium on Opus, Sonnet and Haiku 5.5): set launch.bravo.effort in the team config",
+    ]);
+  });
+
+  it('names a renamed session by its current name', () => {
+    const renames = [renameOf('alpha', 'app-alpha', 'scout')];
+    const [line] = lines(input({ renames, launches: launchesOf({ alpha: { model: 'haiku' } }) }));
+    assert.ok(line?.startsWith('WARN launch-effort scout (session alpha) launches on model haiku with no effort'), line);
+  });
+
+  it('is quiet for a launch with a model and an effort, with neither, with only an effort, or on the default model', () => {
+    const launches = launchesOf({ alpha: { model: 'opus', effort: 'high' }, bravo: { effort: 'low' } });
+    assert.deepEqual(lines(input({ launches })), []);
+    assert.deepEqual(lines(input({ launches: launchesOf({}) })), []);
+    assert.deepEqual(lines(input({ launches: launchesOf({ alpha: { model: 'default' } }) })), []);
+  });
+
+  it("is quiet for the lead's model with no effort, since the lead's default effort fills it in", () => {
+    const launches = launchesOf({ lead: { model: 'sonnet' } });
+    assert.deepEqual(launches.find(({ id }) => id === 'lead')?.launch, { model: 'sonnet', effort: DEFAULT_LEAD_LAUNCH.effort });
+    assert.deepEqual(lines(input({ launches })), []);
   });
 });
