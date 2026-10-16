@@ -282,6 +282,16 @@ describe('parseConfig', () => {
     assert.equal(config.register.autoArchive, true);
   });
 
+  it('reads requireDescription, on by default, and falls back to on for a value that is not true or false', () => {
+    assert.equal(parseConfig(ROSTER).config.register.requireDescription, true);
+    const off = parseConfig({ ...ROSTER, register: { requireDescription: false } });
+    assert.deepEqual([off.issues, off.config.register.requireDescription], [[], false]);
+    const { config, issues } = parseConfig({ ...ROSTER, register: { requireDescription: 'no' } });
+    assert.deepEqual(paths(issues), ['register.requireDescription']);
+    assert.match(issues[0]?.message ?? '', /true or false/);
+    assert.equal(config.register.requireDescription, true);
+  });
+
   it('reads the verify loop keys, and falls back to the default on a wrong one', () => {
     const set = parseConfig({ ...ROSTER, register: { requireProofOnVerifying: false, verifyGate: 'warn', maxVerifying: 0 } });
     assert.deepEqual(set.issues, []);
