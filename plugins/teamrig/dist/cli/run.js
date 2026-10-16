@@ -18,6 +18,7 @@ const setupCommands = () => import("./commands/setup.js");
 const compactCommands = () => import("./commands/compact.js");
 const rulesCommands = () => import("./commands/rules.js");
 const openCommands = () => import("./commands/open.js");
+const restartCommands = () => import("./commands/restart.js");
 const budgetCommands = () => import("./commands/budget.js");
 const budgetSetupCommands = () => import("./commands/budget-setup.js");
 const statuslineCommands = () => import("./commands/statusline.js");
@@ -49,6 +50,7 @@ const COMMANDS = {
     start: { flags: ['session'], switches: ['all'], load: async () => (await startCommands()).start },
     open: { flags: ['prompt', 'terminal', 'project'], load: async () => (await openCommands()).open },
     launch: { flags: ['team', 'project', 'home', 'encoded-prompt'], load: async () => (await openCommands()).launch },
+    restart: { flags: ['team', 'at', 'project'], load: async () => (await restartCommands()).restart },
     who: { flags: [], load: async () => (await teamCommands()).who },
     rename: { flags: ['session'], load: async () => (await teamCommands()).rename },
     hire: {
@@ -141,7 +143,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       (the lead only) adds a temporary session within hiring.policy and its caps, on the lead's model and
       effort unless given; without --yes it shows the hire and writes nothing
   refresh <id|name>            the lead asks a session to write its handover when it next sets a task done
-  refresh --ready              the handover is written; the user types /clear for a fresh start
+  refresh --ready              the handover is written; teamrig starts the session fresh once idle
   doctor                       names, rename log, inboxes, rules.md, context size and the tree of teams that need a fix
   compact [--dry-run]          archives the task list's log and rewrites its snapshot, so reads stay small;
       finished tasks over 8 days old leave the working set (show, list --status done read them);
@@ -178,6 +180,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       (run by Claude Code, hook JSON on stdin)
   launch <id> --team <team> --project <dir> [--home <dir>] [--encoded-prompt <text>]
       (run by the tab that open starts: sets the session and starts Claude Code)
+  restart <id> --team <team> --at <time> --project <dir>
+      (run hidden by the Stop hook: restarts the session once its handover is written and it is idle)
 Team: $${ENV.team}, else the nearest ${TEAM_POINTER} ({"team": "<id>"}) above the current folder,
 else above $CLAUDE_PROJECT_DIR.
 Sessions: give an id, a current name or a former one; a session never named is <team>-<id>.

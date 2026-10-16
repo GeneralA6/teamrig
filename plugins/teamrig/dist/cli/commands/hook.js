@@ -32,6 +32,7 @@ import { bindHintOnce, bindTab, inboxLinesFor, readTitle } from "./hook-bind.js"
 import { helperGateOutput, promptBudgetLine, stopBudgetLines } from "./hook-budget.js";
 import { startAutoSync } from "./gh-auto.js";
 import { coldSendHold } from "./hook-cold-send.js";
+import { armRestart, restartTargetOf } from "./hook-restart.js";
 import { envSession, leadOwnPaths, markedSessionOf, parseJson, sessionTeam, teamSessionOf } from "./hook-input.js";
 import { verifyByLinesOf, verifyNoteOf } from "./verify-queue.js";
 /**
@@ -103,8 +104,21 @@ async function titleOutcome(runtime, kit, config, payload, read) {
     }
 }
 /**
- * UserPromptSubmit: binds a hand-started tab by its title, notes a Claude Code rename of the session,
- * says once how to bind a tab that is not bound, shows the session's new inbox lines and, once per
+ * A prompt typed while the automatic restart waits for the session to be idle cancels it, so the
+ * session keeps its context; one line tells the model. None when no restart waits, or one is already
+ * ending the session.
+ */
+async function cancelledRestartLine(runtime, kit, id) {
+    const store = new RefreshStore(runtime.files, kit.paths);
+    if ((await store.restart(id))?.phase !== 'pending') {
+        return undefined;
+    }
+    await store.clearRestart(id);
+    return `${KIT_NAME}: the user typed, so the automatic restart is cancelled and you keep this context; a later task end asks for a new handover when one is due`;
+}
+/**
+ * UserPromptSubmit: cancels a pending automatic restart, binds a hand-started tab by its title, notes a
+ * Claude Code rename of the session, says once how to bind a tab that is not bound, shows the session's new inbox lines and, once per
  * level while it is past its daily budget and the team is ahead of its pace line, tells the model to
  * finish the step in hand; or one line when its team pointer is broken.
  */
@@ -138,9 +152,10 @@ export async function inboxReminder(args, runtime) {
     const hint = await bindHintOnce(runtime, kit, binding, claudeSession);
     // Found like a rename: `$TEAMRIG_SESSION` first, so a session is shown its lines before its first `inbox read`.
     const session = await teamSessionOf(runtime, kit, own.roster, claudeSession);
+    const cancelled = session === undefined ? undefined : await cancelledRestartLine(runtime, kit, session).catch(() => undefined);
     const lines = session === undefined ? undefined : await inboxLinesFor(runtime, kit, session, claudeSession);
     const budgetLine = session === undefined ? undefined : await promptBudgetLine(runtime, { kit, config, roster: own.roster, id: session }).catch(() => undefined);
-    for (const text of [bound, renamed, hint, lines, budgetLine]) {
+    for (const text of [bound, renamed, hint, cancelled, lines, budgetLine]) {
         if (text !== undefined) {
             runtime.out.stdout(text);
         }
@@ -356,6 +371,7 @@ async function refreshDecisionOf(runtime, scope, payload) {
     }
     const store = new RefreshStore(runtime.files, kit.paths);
     const state = await store.state(id);
+    const target = restartTargetOf(runtime, payload);
     const context = {
         stopHookActive: payload['stop_hook_active'] === true,
         settings: config.refresh,
@@ -363,9 +379,11 @@ async function refreshDecisionOf(runtime, scope, payload) {
         session: { id, name: roster.nameOf(id) ?? id },
         handoverPath: store.handoverPath(id),
         command: KIT_NAME,
+        canRestart: config.refresh.autoRestart && target !== undefined,
     };
     const first = decideStop(state, context);
-    const decision = first.kind === 'measure' ? decideStop(state, context, await boundaryFactsOf(runtime, roster, store, id, payload)) : first;
+    const decided = first.kind === 'measure' ? decideStop(state, context, await boundaryFactsOf(runtime, roster, store, id, payload)) : first;
+    const decision = decided.kind === 'notice' && decided.restart && target !== undefined ? await armRestart(runtime, store, { team: kit.paths.team, id, context, target }, decided) : decided;
     switch (decision.kind) {
         case 'write':
         case 'block':
@@ -415,7 +433,7 @@ async function stopOutputOf(runtime, payload) {
 /**
  * Stop, at the end of every turn: after the session finished a task (`set done`), asks for its
  * handover once when its context reached the team's threshold or the lead asked, then tells the user
- * once that it waits for /clear. It also tells the user, once each, when the session runs at another
+ * once that it restarts by itself when idle (hook-restart.ts, `refresh.autoRestart`), or else waits for /clear. It also tells the user, once each, when the session runs at another
  * effort than its `launch` entry or Claude Code switched its model after a safeguard stop, and once a
  * day when the date to verify one of its verifying tasks by has come. Once per `github.everyMinutes` for the whole
  * team it starts `gh sync --auto` hidden in the background (gh-auto.ts). A turn with nothing to say reads

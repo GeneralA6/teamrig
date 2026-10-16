@@ -5,6 +5,20 @@ const MEASURE = { kind: 'measure' };
 export function thousands(tokens) {
     return `${Math.round(tokens / 1000)}k`;
 }
+/** The notice that `state`'s handover is written: the restart to come when `restart`, else the /clear to type. */
+export function noticeOf(state, context, restart) {
+    const { name } = context.session;
+    const next = restart
+        ? `${context.command} starts it fresh once it has been idle ${context.settings.restartDelaySeconds} s (type anything to keep this context)`
+        : 'type /clear for a fresh start';
+    return {
+        kind: 'notice',
+        state: { ...state, noticed: true },
+        message: `${context.command}: ${name} finished ${state.task} and wrote its handover; ${next}`,
+        title: context.settings.tabTitle ? `${name}: ${restart ? 'restarting' : 'type /clear'}` : undefined,
+        restart,
+    };
+}
 /** The command that tells the kit the handover is written; `--session` so it works without `$TEAMRIG_SESSION`. */
 export function readyCommand(command, session) {
     return `${command} refresh --ready --session ${session}`;
@@ -51,9 +65,10 @@ function handoverAsk(task, cause, context) {
  * The Stop hook, at the end of every turn. Only a boundary (a task just finished) is judged, once:
  * at or over the threshold, after enough tasks at a context worth refreshing, or when the lead asked,
  * the session is kept going to write its handover;
- * otherwise the boundary is recorded as judged and nothing is said. While background work the
- * session started still runs, a due refresh and the notice wait for a later stop, since a /clear
- * would cut that work off. A stop that ends a turn a Stop hook continued never judges a boundary, so
+ * otherwise the boundary is recorded as judged and nothing is said. Once the handover is written it
+ * tells the user, once, that the session restarts by itself when it can, else that it waits for /clear.
+ * While background work the session started still runs, a due refresh and the notice wait for a later
+ * stop, since a fresh start would cut that work off. A stop that ends a turn a Stop hook continued never judges a boundary, so
  * the kit never loops; the notice that the handover is written does show there, since that is the
  * turn that runs `refresh --ready`.
  */
@@ -68,17 +83,11 @@ export function decideStop(state, context, facts) {
         if (facts === undefined) {
             return MEASURE;
         }
-        // A /clear now would cut the running work off: the notice waits for a stop after it ends.
+        // A fresh start now would cut the running work off: the notice waits for a stop after it ends.
         if (facts.running > 0) {
             return NONE;
         }
-        const { name } = context.session;
-        return {
-            kind: 'notice',
-            state: { ...state, noticed: true },
-            message: `${context.command}: ${name} finished ${state.task} and wrote its handover; type /clear for a fresh start`,
-            title: context.settings.tabTitle ? `${name}: type /clear` : undefined,
-        };
+        return noticeOf(state, context, context.canRestart);
     }
     if (state.phase !== 'boundary' || context.stopHookActive) {
         return NONE;

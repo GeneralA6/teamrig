@@ -1,4 +1,5 @@
 import { errorMessage } from "../../core/guards.js";
+import { KIT_NAME } from "../../core/home.js";
 import { boundaryOf, decideReady } from "../../refresh/decide.js";
 import { RefreshStore } from "../../refresh/store.js";
 import { noPositionals, onePositional } from "../args.js";
@@ -8,7 +9,8 @@ import { EXIT, RefusedError } from "../runtime.js";
 /**
  * Context refresh from the command line: the lead asks for a session's refresh (`refresh <session>`),
  * and a session tells the kit its handover is written (`refresh --ready`). The Stop and SessionStart
- * hooks do the rest; `set done` marks the task boundary the Stop hook judges (`markBoundary`).
+ * hooks do the rest, the Stop hook starting the automatic restart (hook-restart.ts); `set done` marks the
+ * task boundary the Stop hook judges (`markBoundary`).
  */
 function requireRefresh(config) {
     if (!config.refresh.enabled) {
@@ -57,7 +59,10 @@ export async function refresh(args, runtime) {
             case 'already':
                 break;
         }
-        runtime.out.stdout(`Ready. Ask the user to type /clear; your next start reads ${store.handoverPath(by)}.`);
+        const next = config.refresh.autoRestart
+            ? `End your turn now: ${KIT_NAME} starts you fresh once you are idle, or asks the user to type /clear`
+            : 'Ask the user to type /clear';
+        runtime.out.stdout(`Ready. ${next}; your next start reads ${store.handoverPath(by)}.`);
         return EXIT.ok;
     }
     const lead = roster.holderOf('lead');
@@ -67,6 +72,6 @@ export async function refresh(args, runtime) {
     const id = sessionIdOf(roster, target);
     await store.setRequest(id, { by, at: now });
     runtime.out.stdout(`REQUESTED a refresh of ${roster.nameOf(id) ?? id}: after its next \`set done\` it writes its handover to ` +
-        `${store.handoverPath(id)}; then type /clear in its tab`);
+        `${store.handoverPath(id)}; ${config.refresh.autoRestart ? 'then it starts fresh once idle' : 'then type /clear in its tab'}`);
     return EXIT.ok;
 }
