@@ -35,6 +35,8 @@ export const DEFAULT_SKILLS = {
     maxVerifiedAgeDays: 30,
     forbidFrontmatter: ['allowed-tools'],
 };
+/** Measured on a working team (10-15): 23k of CLAUDE.md, 15k of memory index and 4.6k of skill listing were re-read every call. */
+export const DEFAULT_CONTEXT_FILES = { maxClaudeMdChars: 12_000, maxMemoryIndexChars: 6_000, maxSkillListingChars: 4_000 };
 export const DEFAULT_LOCK = { ttlMs: 30_000, pollMs: 50, waitMs: 20_000 };
 export const DEFAULT_PUSH_GUARD = { protectedBranches: ['main', 'master'], pushToProtected: 'ask' };
 /** Tests: a test folder, `*.test.*` and `*.spec.*` files, and pytest's `test_*.py`. `warn` only adds to a push the guard already asks about. */

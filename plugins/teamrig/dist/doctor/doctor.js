@@ -99,6 +99,33 @@ function rulesFindings(input) {
     const detail = `${rules.path} is ${rules.chars} characters, more than the ${TEAM_RULES_MAX_CHARS} a session is shown at start, so sessions get only a pointer to it: shorten it to keep it in every session's context`;
     return [{ kind: 'rules-long', detail }];
 }
+function count(value) {
+    return value.toLocaleString('en-US');
+}
+/** At about 4 characters a token, rounded to the hundred: enough to weigh a cut. */
+function tokensOf(chars) {
+    return `~${count(Math.round(chars / 400) * 100)} tokens`;
+}
+function sizeFinding(what, chars, budget, key, fix) {
+    if (chars <= budget) {
+        return [];
+    }
+    const detail = `${what}: ${count(chars)} characters (${tokensOf(chars)}), over its budget of ${count(budget)} [contextFiles.${key}]; every call re-reads this text, so ${fix}`;
+    return [{ kind: 'context-size', detail }];
+}
+function contextFindings({ contextFiles: { read, budgets } }) {
+    const claudeMdChars = read.claudeMd.reduce((sum, file) => sum + file.chars, 0);
+    const claudeMd = read.claudeMd.map((file) => `${file.path} ${count(file.chars)}`).join(', ');
+    const memory = read.memoryIndex;
+    const skills = `skill listing (${read.skills.count} skills in ${read.skills.folders.join(', ')})`;
+    return [
+        ...sizeFinding(`CLAUDE.md files (${claudeMd})`, claudeMdChars, budgets.maxClaudeMdChars, 'maxClaudeMdChars', 'move how-tos into skills and facts into memory files'),
+        ...(memory === undefined
+            ? []
+            : sizeFinding(`memory index ${memory.path}`, memory.chars, budgets.maxMemoryIndexChars, 'maxMemoryIndexChars', 'keep one short line per memory and its detail in the memory file')),
+        ...sizeFinding(skills, read.skills.chars, budgets.maxSkillListingChars, 'maxSkillListingChars', 'shorten descriptions or merge skills'),
+    ];
+}
 function treeFindings({ tree, command }) {
     return [
         ...tree.problems.map((problem) => ({ kind: problem.kind, detail: describeTreeProblem(problem, command) })),
@@ -107,7 +134,7 @@ function treeFindings({ tree, command }) {
 }
 /**
  * The team's health checks: names that find the wrong session or none, a damaged rename log,
- * inboxes nobody reads, rules too long to show, and a broken tree of teams or a session name two
+ * inboxes nobody reads, rules too long to show, text every call re-reads over its budget, and a broken tree of teams or a session name two
  * teams use. It reads only; every fix is the user's.
  */
 export function doctorFindings(input) {
@@ -118,6 +145,7 @@ export function doctorFindings(input) {
         ...renameLogFindings(input),
         ...inboxFindings(input),
         ...rulesFindings(input),
+        ...contextFindings(input),
         ...treeFindings(input),
     ];
 }

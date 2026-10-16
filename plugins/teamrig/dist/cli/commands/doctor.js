@@ -1,17 +1,19 @@
 import { Roster } from "../../config/roster.js";
-import { KIT_NAME } from "../../core/home.js";
+import { claudeConfigDir, KIT_NAME } from "../../core/home.js";
+import { readContextFiles } from "../../doctor/context-files.js";
 import { doctorFindings, formatFinding } from "../../doctor/doctor.js";
 import { inboxStatus } from "../../inbox/inbox.js";
 import { JsonlRenameLog } from "../../names/log.js";
 import { noPositionals } from "../args.js";
-import { openTeamKit, requireConfig } from "../kit.js";
+import { openTeamKit, projectFolder, requireConfig } from "../kit.js";
 import { EXIT } from "../runtime.js";
 import { loadTree } from "../tree.js";
 import { inboxDepsOf } from "./inbox.js";
 /**
  * `doctor`: what teamrig lacks on this machine (git, Claude Code, Node.js), then the team's health checks
  * (names, the rename log, inboxes, rules.md, its tree of teams and session names shared with other teams,
- * read from every team config of the kit home). It reads only and exits 0 like `check`: a finding is
+ * read from every team config of the kit home), and the text every call of a session in the project re-reads
+ * (CLAUDE.md files, the memory index, the skill listing) against the team's `contextFiles` budgets. It reads only and exits 0 like `check`: a finding is
  * advice, and each line says the fix.
  */
 export async function doctor(args, runtime) {
@@ -29,6 +31,14 @@ export async function doctor(args, runtime) {
         renameLog: { ...renameLog, path: paths.renames },
         inboxes: await inboxStatus(inboxDepsOf(runtime, paths)),
         teamRules: rules === undefined ? undefined : { path: paths.teamRules, chars: rules.trim().length },
+        contextFiles: {
+            read: await readContextFiles(runtime.files, {
+                claudeDir: claudeConfigDir(runtime.env, runtime.userHome),
+                project: await projectFolder(runtime),
+                skills: paths.skills,
+            }),
+            budgets: config.contextFiles,
+        },
         tree: { problems: tree.problemsOf(paths.team), clashes: tree.nameClashesOf(paths.team) },
         now: new Date(runtime.clock.now()),
         command: KIT_NAME,

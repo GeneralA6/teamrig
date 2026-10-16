@@ -1,7 +1,7 @@
 import { isRecord } from "../core/guards.js";
 import { NAME_PATTERN, NAME_RULE } from "../core/ids.js";
 import { isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, SESSION_NAME, TASK_STATUSES } from "../register/model.js";
-import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_COMMITS, DEFAULT_GITHUB, DEFAULT_LOCK, DEFAULT_LEAD_BOUNDARY, DEFAULT_LOOPS, DEFAULT_MESSAGES, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_PUSH_GUARD, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, DEFAULT_TESTS, } from "./defaults.js";
+import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_COMMITS, DEFAULT_CONTEXT_FILES, DEFAULT_GITHUB, DEFAULT_LOCK, DEFAULT_LEAD_BOUNDARY, DEFAULT_LOOPS, DEFAULT_MESSAGES, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_PUSH_GUARD, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, DEFAULT_TESTS, } from "./defaults.js";
 import { isEffort, isModel } from "./launch.js";
 import { CONFIG_LIMITS } from "./limits.js";
 import { ConfigReader, describe, isValidRegex, shortLine } from "./reader.js";
@@ -135,6 +135,7 @@ export function parseConfig(raw) {
         },
         register: parseRegister(read, read.section(raw, 'register', '')),
         skills: parseSkills(read, read.section(raw, 'skills', '')),
+        contextFiles: parseContextFiles(read, read.section(raw, 'contextFiles', '')),
         lock: {
             ttlMs: read.integer(lock, 'ttlMs', 'lock', DEFAULT_LOCK.ttlMs, { min: 1_000 }),
             pollMs: read.integer(lock, 'pollMs', 'lock', DEFAULT_LOCK.pollMs, { min: 10 }),
@@ -427,6 +428,15 @@ function parseStatus(read, value, path) {
     const hint = value === LEGACY_WAITING_STATUS ? ` (${LEGACY_WAITING_HINT})` : '';
     read.report(path, `expected one of ${TASK_STATUSES.join(', ')}, got ${describe(value)}${hint}`);
     return undefined;
+}
+function parseContextFiles(read, raw) {
+    const path = 'contextFiles';
+    const defaults = DEFAULT_CONTEXT_FILES;
+    return {
+        maxClaudeMdChars: read.integer(raw, 'maxClaudeMdChars', path, defaults.maxClaudeMdChars, CONFIG_LIMITS.claudeMdChars),
+        maxMemoryIndexChars: read.integer(raw, 'maxMemoryIndexChars', path, defaults.maxMemoryIndexChars, CONFIG_LIMITS.memoryIndexChars),
+        maxSkillListingChars: read.integer(raw, 'maxSkillListingChars', path, defaults.maxSkillListingChars, CONFIG_LIMITS.skillListingChars),
+    };
 }
 function parseSkills(read, raw) {
     const path = 'skills';
