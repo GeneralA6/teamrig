@@ -117,6 +117,10 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   hiringReviewDays: 'hiring.reviewDays',
   hiringResumeMaxTokens: 'hiring.resumeMaxTokens',
   hiringResumeMaxIdleDays: 'hiring.resumeMaxIdleDays',
+  burstSurplusHours: 'burst.surplusHours',
+  burstMinSparePct: 'burst.minSparePct',
+  burstMaxHelpers: 'burst.maxHelpers',
+  burstMaxHires: 'burst.maxHires',
 };
 
 function isLimitName(name: string): name is keyof typeof CONFIG_LIMITS {

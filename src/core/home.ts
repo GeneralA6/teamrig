@@ -106,6 +106,8 @@ export interface TeamPaths {
   readonly usage: string;
   /** The lead's budget lifts, an append-only log. */
   readonly lifts: string;
+  /** The lead's bursts and their ends, an append-only log. */
+  readonly bursts: string;
   /** The team's hires and retires, an append-only log. */
   readonly hires: string;
   /** Held while a hire or a retire writes the config and the hire log, so two never interleave. */
@@ -164,6 +166,7 @@ export function teamPaths(kitHome: string, team: string, userHome: string, overr
     modelNotices: join(state, 'model-notices'),
     usage: join(state, 'usage'),
     lifts: join(state, 'usage', 'lifts.jsonl'),
+    bursts: join(state, 'usage', 'bursts.jsonl'),
     hires: join(state, 'hires.jsonl'),
     hiresLock: join(state, 'hires.lock'),
     retireAsks: join(state, 'retire-asks'),

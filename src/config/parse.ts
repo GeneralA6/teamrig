@@ -5,6 +5,7 @@ import { CORE_RULE_KEYS, isCoreRuleKey } from '../rules/keys.ts';
 import {
   DEFAULT_ALERTS,
   DEFAULT_BUDGET,
+  DEFAULT_BURST,
   DEFAULT_COMMITS,
   DEFAULT_CONTEXT_FILES,
   DEFAULT_GITHUB,
@@ -27,9 +28,11 @@ import { isEffort, isModel } from './launch.ts';
 import { CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from './limits.ts';
 import { ConfigReader, describe, isValidRegex, shortLine, type Check, type ConfigIssue } from './reader.ts';
 import {
+  BURST_POLICIES,
   CONFLICT_WINNERS,
   ESCALATIONS,
   HIRING_POLICIES,
+  isBurstPolicy,
   isCommitGate,
   isConflictWinner,
   isEffortLevel,
@@ -49,6 +52,7 @@ import {
   type BudgetConfig,
   type BudgetLiftConfig,
   type BudgetReset,
+  type BurstConfig,
   type CommitsConfig,
   type GithubConfig,
   type HiringConfig,
@@ -272,6 +276,7 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
     tabStatus: { enabled: read.boolean(tabStatus, 'enabled', 'tabStatus', false) },
     refresh: parseRefresh(read, read.section(raw, 'refresh', '')),
     hiring: parseHiring(read, read.section(raw, 'hiring', '')),
+    burst: parseBurst(read, read.section(raw, 'burst', '')),
     open: parseOpen(read, read.section(raw, 'open', '')),
     launch,
     paths: parsePaths(read, read.section(raw, 'paths', '')),
@@ -709,6 +714,20 @@ function parseHiring(read: ConfigReader, raw: JsonRecord): HiringConfig {
     reviewDays: read.integer(raw, 'reviewDays', path, defaults.reviewDays, CONFIG_LIMITS.hiringReviewDays),
     resumeMaxTokens: read.integer(raw, 'resumeMaxTokens', path, defaults.resumeMaxTokens, CONFIG_LIMITS.hiringResumeMaxTokens),
     resumeMaxIdleDays: read.integer(raw, 'resumeMaxIdleDays', path, defaults.resumeMaxIdleDays, CONFIG_LIMITS.hiringResumeMaxIdleDays),
+  };
+}
+
+/** `burst`: who starts one, its surplus trigger and its caps. */
+function parseBurst(read: ConfigReader, raw: JsonRecord): BurstConfig {
+  const path = 'burst';
+  const defaults = DEFAULT_BURST;
+  const policy = read.string(raw, 'policy', path, defaults.policy, oneOf(BURST_POLICIES));
+  return {
+    policy: isBurstPolicy(policy) ? policy : defaults.policy,
+    surplusHours: read.integer(raw, 'surplusHours', path, defaults.surplusHours, CONFIG_LIMITS.burstSurplusHours),
+    minSparePct: read.number(raw, 'minSparePct', path, defaults.minSparePct, CONFIG_LIMITS.burstMinSparePct),
+    maxHelpers: read.integer(raw, 'maxHelpers', path, defaults.maxHelpers, CONFIG_LIMITS.burstMaxHelpers),
+    maxHires: read.integer(raw, 'maxHires', path, defaults.maxHires, CONFIG_LIMITS.burstMaxHires),
   };
 }
 

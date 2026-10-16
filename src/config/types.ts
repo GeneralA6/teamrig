@@ -411,6 +411,32 @@ export interface HiringConfig {
 }
 
 /**
+ * Who may start a burst (`teamrig burst start`), a time-boxed scale-out onto helpers and hired sessions
+ * that spends more of the week: `off` nobody; `owner` the lead, once the owner approved (`--approved-by`,
+ * kept with the burst); `lead` the lead, within the caps. No policy starts a burst on its own: it spends
+ * more of the week, a decision the owner gates, so a person always starts it by command.
+ */
+export const BURST_POLICIES = ['off', 'owner', 'lead'] as const;
+export type BurstPolicy = (typeof BURST_POLICIES)[number];
+
+export function isBurstPolicy(value: unknown): value is BurstPolicy {
+  return BURST_POLICIES.some((policy) => policy === value);
+}
+
+/** Bursts: who starts one, when the week's surplus is worth one, and the caps every burst stays within. */
+export interface BurstConfig {
+  readonly policy: BurstPolicy;
+  /** A surplus burst starts at the earliest this many hours before the week's reset. */
+  readonly surplusHours: number;
+  /** The least share of the week, in %, projected unused at the pace end for a surplus burst. */
+  readonly minSparePct: number;
+  /** The most helpers each burst session runs at once. */
+  readonly maxHelpers: number;
+  /** The most sessions one burst may hire (`hire --burst`); `hiring`'s caps apply as well. */
+  readonly maxHires: number;
+}
+
+/**
  * Where `teamrig open` opens a session's tab: `auto` picks tmux inside tmux, else the platform's
  * terminal; `print` opens nothing and prints the command to run.
  */
@@ -505,6 +531,7 @@ export interface KitConfig {
   readonly tabStatus: { readonly enabled: boolean };
   readonly refresh: RefreshConfig;
   readonly hiring: HiringConfig;
+  readonly burst: BurstConfig;
   /** How `teamrig open` starts a session in a new terminal tab. */
   readonly open: OpenConfig;
   /** Each session's Claude Code model and effort, by id; the lead's unset keys take `DEFAULT_LEAD_LAUNCH`. */

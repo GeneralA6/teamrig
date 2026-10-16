@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_BUDGET, DEFAULT_COMMITS, DEFAULT_HIRING, DEFAULT_OPEN, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_WAKE } from './defaults.ts';
+import { DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT_HIRING, DEFAULT_OPEN, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_WAKE } from './defaults.ts';
 import { parseConfig } from './parse.ts';
 import { CONFIG_VERSION } from './types.ts';
 import type { ConfigIssue } from './reader.ts';
@@ -465,6 +465,17 @@ describe('parseConfig', () => {
       'hiring.reviewDays',
     ]);
     assert.deepEqual(bad.config.hiring, DEFAULT_HIRING);
+  });
+
+  it('reads the burst settings, defaulting each and refusing a bad policy or cap', () => {
+    assert.deepEqual(parseConfig(ROSTER).config.burst, DEFAULT_BURST);
+    const chosen = { policy: 'lead', surplusHours: 24, minSparePct: 2.5, maxHelpers: 0, maxHires: 1 };
+    const set = parseConfig({ ...ROSTER, burst: chosen });
+    assert.deepEqual(set.issues, []);
+    assert.deepEqual(set.config.burst, chosen);
+    const bad = parseConfig({ ...ROSTER, burst: { policy: 'automatic', surplusHours: 168, minSparePct: 0, maxHelpers: 21, maxHires: -1 } });
+    assert.deepEqual(paths(bad.issues).sort(), ['burst.maxHelpers', 'burst.maxHires', 'burst.minSparePct', 'burst.policy', 'burst.surplusHours']);
+    assert.deepEqual(bad.config.burst, DEFAULT_BURST);
   });
 
   it("refuses a hire's daily budget over what all hires may add up to", () => {

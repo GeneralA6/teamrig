@@ -712,6 +712,27 @@
         "resumeMaxIdleDays": { "description": "The most days a rehired session's last Claude Code session may have gone unwritten for teamrig open --resume to resume it; past it the session starts fresh on its handover.", "type": "integer", "minimum": 1, "maximum": 90, "default": 7 }
       }
     },
+    "burst": {
+      "description": "Bursts with teamrig burst: a time-boxed scale-out onto helpers and hired sessions that spends more of the week, for a surplus the week would leave unused at the reset or for a deadline. A person always starts one by command; nothing starts one on its own.",
+      "type": "object",
+      "properties": {
+        "policy": {
+          "description": "off: no bursts. owner: the lead starts one once the owner approved (--approved-by, kept with the burst). lead: the lead starts one within the caps.",
+          "enum": ["off", "owner", "lead"],
+          "default": "owner"
+        },
+        "surplusHours": { "description": "A surplus burst starts at the earliest this many hours before the week's reset.", "type": "integer", "minimum": 1, "maximum": 167, "default": 48 },
+        "minSparePct": {
+          "description": "The least share of the week, in %, projected unused at the pace end (at the week's mean rate so far) for a surplus burst.",
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 100,
+          "default": 5
+        },
+        "maxHelpers": { "description": "The most helpers each burst session runs at once; the burst's model line states it.", "type": "integer", "minimum": 0, "maximum": 20, "default": 3 },
+        "maxHires": { "description": "The most sessions one burst may hire (teamrig hire --burst); the hiring caps apply as well.", "type": "integer", "minimum": 0, "maximum": 20, "default": 2 }
+      }
+    },
     "paths": {
       "description": "Folders moved from their defaults; a relative path is resolved against the team's folder (<kit home>/teams/<team>). Unset, state and inbox stay under the team's folder and skills is ~/.claude/skills.",
       "type": "object",
