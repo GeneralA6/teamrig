@@ -12,7 +12,8 @@ export const REFRESH_FORMAT = 1;
  *   a new process or a compaction), this one included.
  * - `asked`: its Stop hook asked it to write its handover; `handoverHash` fingerprints the handover file
  *   then (null: there was none), so `refresh --ready` can tell a new handover from an old one.
- * - `ready`: its handover is written and it waits for the user's /clear; `noticed` once the user was told.
+ * - `ready`: its handover is written and it waits for a fresh start (the automatic restart, or the user's
+ *   /clear); `noticed` once the user was told.
  * - `refreshed`: a fresh start was pointed at the handover.
  */
 export type RefreshState =
@@ -27,6 +28,25 @@ export interface RefreshRequest {
   /** The lead's session id. */
   readonly by: string;
   readonly at: string;
+}
+
+/**
+ * The automatic restart the Stop hook asked for once the handover was written (`refresh.autoRestart`):
+ * `pending` while it waits out its delay, `ending` once the session's process is being ended, which tells
+ * `teamrig launch` to start it again.
+ */
+export interface RestartRequest {
+  readonly phase: 'pending' | 'ending';
+  /** When the Stop hook asked: the restart started for it acts only on this request, never on a later one. */
+  readonly at: string;
+  /** The Claude Code process to end: the Stop hook's parent. */
+  readonly pid: number;
+  /** Its Claude Code session id, for the SessionEnd input of `refresh.endCommand`. */
+  readonly claudeSession: string;
+  readonly transcript: string | null;
+  readonly cwd: string | null;
+  /** `teamrig launch` runs the process and starts it again; otherwise the restart opens a new tab. */
+  readonly supervised: boolean;
 }
 
 /** A file of this format as an object; undefined for a damaged file or one in another format. */
@@ -101,5 +121,42 @@ export function parseRefreshRequest(text: string): RefreshRequest | undefined {
 }
 
 export function formatRefreshRequest(request: RefreshRequest): string {
+  return toJsonlLine({ [VERSION_FIELD]: REFRESH_FORMAT, ...request });
+}
+
+function nullableString(record: JsonRecord, key: string): string | null | undefined {
+  const value = record[key];
+  return value === null || typeof value === 'string' ? value : undefined;
+}
+
+/** A restart file's content; undefined when it is damaged or from another format. */
+export function parseRestartRequest(text: string): RestartRequest | undefined {
+  const record = recordOf(text);
+  if (record === undefined) {
+    return undefined;
+  }
+  const phase = record['phase'];
+  const at = stringField(record, 'at');
+  const pid = record['pid'];
+  const claudeSession = stringField(record, 'claudeSession');
+  const transcript = nullableString(record, 'transcript');
+  const cwd = nullableString(record, 'cwd');
+  const supervised = record['supervised'];
+  if (
+    (phase !== 'pending' && phase !== 'ending') ||
+    at === undefined ||
+    !isNonNegativeInteger(pid) ||
+    pid === 0 ||
+    claudeSession === undefined ||
+    transcript === undefined ||
+    cwd === undefined ||
+    typeof supervised !== 'boolean'
+  ) {
+    return undefined;
+  }
+  return { phase, at, pid, claudeSession, transcript, cwd, supervised };
+}
+
+export function formatRestartRequest(request: RestartRequest): string {
   return toJsonlLine({ [VERSION_FIELD]: REFRESH_FORMAT, ...request });
 }
