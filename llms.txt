@@ -1,13 +1,13 @@
 # teamrig
 
-> A Claude Code plugin and CLI that runs a team of Claude Code sessions: a shared task register, per-session inboxes, team rules loaded at every start, a guard on pushes to protected branches, a hold on messages that would wake an idle session at full price, each session's token use measured against the week's pace, and a nudge that keeps the lead deciding and delegating rather than doing the work itself.
+> A Claude Code plugin and CLI that runs a team of Claude Code sessions: a shared task register, per-session inboxes, team rules loaded at every start, a guard on pushes to protected branches, a hold on messages that would wake an idle session at full price, each session's token use measured against the week's pace, a nudge that keeps the lead deciding and delegating rather than doing the work itself, and the lead's daily meeting with the owner, its agenda gathered in one call.
 
 ## Guide
 
 - [teamrig guide](https://github.com/GeneralA6/teamrig/blob/main/plugins/teamrig/skills/teamrig-guide/SKILL.md): start here: the model, which session you are, where files live, the daily loop
 - [Commands](https://github.com/GeneralA6/teamrig/blob/main/plugins/teamrig/skills/teamrig-guide/commands.md): every command with its flags, an example and its output, the token budget included
 - [Tasks, inbox, checks, plans and skills](https://github.com/GeneralA6/teamrig/blob/main/plugins/teamrig/skills/teamrig-guide/tasks.md): task fields (a plain-words description of what and why among them) and statuses, inbox lines and messages, check flags, week plans, skill rules
-- [Workflows](https://github.com/GeneralA6/teamrig/blob/main/plugins/teamrig/skills/teamrig-guide/workflows.md): a work block, handing work over, shipping a change, closing a task, a handover, a lead checkpoint
+- [Workflows](https://github.com/GeneralA6/teamrig/blob/main/plugins/teamrig/skills/teamrig-guide/workflows.md): a work block, handing work over, shipping a change, closing a task, a handover, a lead checkpoint, the owner's daily meeting
 - [Hooks and permissions](https://github.com/GeneralA6/teamrig/blob/main/plugins/teamrig/skills/teamrig-guide/hooks.md): what each hook injects or blocks, what the mod runs in a tab (/teamrig <command> with no model turn, the refresh's /clear, /reload-plugins after an install), and the permission modes tested
 - [Errors and refusals](https://github.com/GeneralA6/teamrig/blob/main/plugins/teamrig/skills/teamrig-guide/errors.md): what teamrig prints when it stops, and the fix
 - [Requirements](https://github.com/GeneralA6/teamrig/blob/main/plugins/teamrig/skills/teamrig-guide/requirements.md): Claude Code, Node.js, git, terminals, the status line, operating systems, and the check that says what is missing
