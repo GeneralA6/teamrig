@@ -1,7 +1,6 @@
 import { formatUtcMinute, parseUtcDeadline, shortUtc } from "../core/time.js";
 import { taskNumber } from "./fold.js";
-import { ACTIVE_STATUSES, priorityText } from "./model.js";
-import { GITHUB_SOURCE } from "./policy.js";
+import { ACTIVE_STATUSES, GITHUB_SOURCE, priorityText } from "./model.js";
 import { waitsText } from "./waits.js";
 import { proofOf, proofText } from "./verify.js";
 /** The task's deadline in ms, or undefined when it has none. */
