@@ -31,6 +31,27 @@ export function activeHires(records) {
 export function retiredSessions(records) {
     return newestBySession(records).filter(isRetire);
 }
+/**
+ * The retire a hired session came back from: the retire before its newest hire, when that hire is a rehire of a
+ * retired id. Undefined for a first hire, a retired session, or an id with no record.
+ */
+export function rehiredFrom(records, session) {
+    let retire;
+    let from;
+    for (const record of records) {
+        if (record.session !== session) {
+            continue;
+        }
+        if (isHire(record)) {
+            from = retire;
+        }
+        else {
+            retire = record;
+            from = undefined;
+        }
+    }
+    return from;
+}
 function recordOf(record) {
     const base = { [VERSION_FIELD]: HIRE_FORMAT, kind: record.kind, session: record.session, reason: record.reason, by: record.by, at: new Date(record.at).toISOString() };
     if (!isHire(record)) {

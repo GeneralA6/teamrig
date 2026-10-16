@@ -4,18 +4,22 @@ import { describeNameClash, teamNodeOf } from "../../config/tree.js";
 import { EFFORT_LEVELS, isEffortLevel } from "../../config/types.js";
 import { KIT_NAME } from "../../core/home.js";
 import { FileLock } from "../../core/lock.js";
-import { activeHires, HiringLog } from "../../hiring/log.js";
+import { activeHires, HiringLog, retiredSessions } from "../../hiring/log.js";
 import { planHire } from "../../hiring/plan.js";
 import { onePositional, requiredFlag, UsageError } from "../args.js";
 import { callerOf } from "../inputs.js";
-import { checkedNextConfig, configFileJson, openTeamKit, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
+import { checkedNextConfig, configFileJson, findTeam, openKit, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { loadTree } from "../tree.js";
 import { pctFlag } from "./budget.js";
+import { freshOpenOf, resumeVerdictOf } from "./rehire.js";
+import { teamProjectOf } from "./setup.js";
 /**
  * `hire`: the lead adds a temporary session to the team within `hiring`'s policy and caps. Without
  * --yes it only shows the hire; with it, the old config is kept in the backups folder, the hire is
  * logged in the hire log, then the session, its launch and its daily budget are written to the config.
+ * A retired id is hired back: it shows the retire and its handover, and whether its last Claude Code session
+ * can be resumed (`open --resume`) or it opens fresh on that handover.
  */
 /** The backup name of a config before `hire` changed it. */
 export const HIRE_BACKUP_NAME = 'config.hire';
@@ -60,10 +64,28 @@ async function refuseNameClash(runtime, team, id, next, roster) {
         throw new RefusedError(`nothing written: ${describeNameClash(clash, KIT_NAME)}`);
     }
 }
+/** A rehire's lines: the retire it comes back from, its handover, and whether its last Claude Code session resumes. */
+function rehireLines({ from, verdict }) {
+    const left = from.handover === undefined ? `it left no handover${from.noHandover === undefined ? '' : `: ${from.noHandover}`}` : `its handover: ${from.handover}`;
+    const resume = verdict.kind === 'resume' ? `its last Claude Code session can be resumed: ${verdict.detail}` : `it opens fresh (not resumed: ${verdict.detail})`;
+    return [`REHIRE ${from.session} retired ${new Date(from.at).toISOString().slice(0, 10)} (${from.reason}); ${left}`, `  ${resume}`];
+}
+/** How to open the session once hired: a rehire resumes or opens fresh, as measured. */
+function openStepOf(id, rehire) {
+    const fresh = `${KIT_NAME} open ${id}`;
+    if (rehire === undefined) {
+        return `then open it: ${fresh}`;
+    }
+    if (rehire.verdict.kind === 'resume') {
+        return `then resume its last Claude Code session: ${fresh} --resume, or ${freshOpenOf(rehire.from)}: ${fresh}`;
+    }
+    return `then ${freshOpenOf(rehire.from)}: ${fresh}`;
+}
 /** `hire <id> --scope "<its job>" --reason "<why>" [--name] [--model] [--effort] [--daily-pct] [--review] [--approved-by] [--yes]`. */
 export async function hire(args, runtime) {
     const caller = callerOf(args.flags, runtime.env);
-    const kit = await openTeamKit(runtime);
+    const found = await findTeam(runtime);
+    const kit = await openKit(runtime, found.team);
     const config = requireConfig(kit, runtime, 'write');
     const roster = await rosterOf(runtime, kit, config);
     const lead = roster.holderOf('lead');
@@ -88,12 +110,17 @@ export async function hire(args, runtime) {
         const { hire: record, hired, hiredDailyPct } = plan.value;
         const what = `${record.session} (name ${nextRoster.nameOf(record.session) ?? record.session}) for "${record.scope}": ${describeLaunch(record)}, ${record.dailyPct}% of the week a day, review by ${record.reviewBy}`;
         const caps = `  hired sessions with it: ${hired} of ${config.hiring.maxSessions}, ${hiredDailyPct}% of ${config.hiring.maxDailyPct}% of the week a day`;
+        const from = retiredSessions(records).find((record) => record.session === request.id);
+        // Measured before anything is written, so the preview shows it too.
+        const rehire = from === undefined ? undefined : { from, verdict: await resumeVerdictOf(runtime, kit.paths, config.hiring, request.id, await teamProjectOf(runtime, undefined, found.from)) };
+        const rehireText = rehire === undefined ? [] : rehireLines(rehire);
         if (skipped > 0) {
             runtime.out.stdout(`NOTE ${skipped} damaged or newer line(s) in ${log.path} were skipped, so the caps may count too few hires`);
         }
         if (!args.switches.has('yes')) {
             runtime.out.stdout(`PREVIEW hire ${what}; nothing written (add --yes to write)`);
             runtime.out.stdout(caps);
+            rehireText.forEach((line) => runtime.out.stdout(line));
             return EXIT.ok;
         }
         // The log first: a hire logged for a session the config does not hold counts toward no cap.
@@ -101,7 +128,8 @@ export async function hire(args, runtime) {
         const backup = await writeConfigWithBackup(files, { configPath: load.path, backupsDir: kit.paths.backups, backupName: HIRE_BACKUP_NAME }, plan.value.config, clock);
         runtime.out.stdout(`HIRED ${what}; the old config is at ${backup}`);
         runtime.out.stdout(caps);
-        runtime.out.stdout(`NEXT give it its first task: ${KIT_NAME} add --owner ${record.session} --title "<task>" --description "<what and why>" --session ${by}; then open it: ${KIT_NAME} open ${record.session}`);
+        rehireText.forEach((line) => runtime.out.stdout(line));
+        runtime.out.stdout(`NEXT give it its first task: ${KIT_NAME} add --owner ${record.session} --title "<task>" --description "<what and why>" --session ${by}; ${openStepOf(record.session, rehire)}`);
         return EXIT.ok;
     });
 }

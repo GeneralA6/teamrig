@@ -18,7 +18,7 @@ import { sessionStartContext, sessionStartOutput } from "../../hooks/session-sta
 import { stopModelNotices } from "../../hooks/stop-model.js";
 import { leadStopLine, leadTallyOf } from "../../hooks/lead-boundary.js";
 import { turnToolsOf } from "../../hooks/loop-nudge.js";
-import { stopOutput } from "../../hooks/stop.js";
+import { blockOutput, stopOutput } from "../../hooks/stop.js";
 import { adoptTitle, promptNote, sessionStartNote } from "../../names/detect.js";
 import { JsonlRenameLog } from "../../names/log.js";
 import { TRANSCRIPT_TAIL_BYTES } from "../../names/title.js";
@@ -38,6 +38,7 @@ import { startAutoSync } from "./gh-auto.js";
 import { coldSendHold } from "./hook-cold-send.js";
 import { armRestart, restartTargetOf } from "./hook-restart.js";
 import { envSession, leadOwnPaths, markedSessionOf, parseJson, sessionTeam, teamSessionOf } from "./hook-input.js";
+import { retireAskReasonOf } from "./retire-ask.js";
 import { verifyByLinesOf, verifyNoteOf } from "./verify-queue.js";
 /**
  * Claude Code hooks. Each reads the hook's JSON from stdin and prints only what Claude Code
@@ -462,6 +463,16 @@ async function modelNoticesOf(runtime, scope, payload) {
     });
 }
 /**
+ * The ask for a hired session to retire itself at this turn's end (retire-ask.ts); none on a stop the hook
+ * already blocked, or while the refresh blocks or waits for its restart, so the ask waits for a later stop.
+ */
+async function retireBlockOf(runtime, scope, payload, decision) {
+    if (payload['stop_hook_active'] === true || decision.kind === 'block' || decision.kind === 'notice') {
+        return undefined;
+    }
+    return retireAskReasonOf(runtime, scope.config, scope.kit.paths, scope.id);
+}
+/**
  * What the Stop hook prints for this turn's end; '' outside a team or without a session. The refresh,
  * the model notices, the budget lines and the verify-by lines fail apart: an error in one leaves the others.
  */
@@ -476,14 +487,17 @@ async function stopOutputOf(runtime, payload) {
     const verify = await verifyByLinesOf(runtime, scope.kit.paths, scope.id).catch(() => []);
     await startAutoSync(runtime, scope.kit, scope.config).catch(() => undefined);
     const lead = await leadStopLines(runtime, scope, stringField(payload, 'transcript_path')).catch(() => []);
-    return stopOutput(decision, [...notices, ...budget, ...verify, ...lead]);
+    const lines = [...notices, ...budget, ...verify, ...lead];
+    const retire = await retireBlockOf(runtime, scope, payload, decision).catch(() => undefined);
+    return retire === undefined ? stopOutput(decision, lines) : blockOutput(retire, lines);
 }
 /**
  * Stop, at the end of every turn: asks the session for its handover once when its context reached the
  * team's threshold or the lead asked, and at a task end (`set done`) also after enough tasks, then tells the user
  * once that it restarts by itself when idle (hook-restart.ts, `refresh.autoRestart`), or else waits for /clear. It also tells the user, once each, when the session runs at another
  * effort than its `launch` entry or Claude Code switched its model after a safeguard stop, and once a
- * day when the date to verify one of its verifying tasks by has come. Once per `github.everyMinutes` for the whole
+ * day when the date to verify one of its verifying tasks by has come. Under `hiring.policy` `automatic` it asks a
+ * hired session whose last open task closed, once, to write its handover and retire. Once per `github.everyMinutes` for the whole
  * team it starts `gh sync --auto` hidden in the background (gh-auto.ts). A turn with nothing to say reads
  * only small files and the transcript's tail (and, at the first stop of a UTC day, the register log),
  * and prints nothing. It never blocks on an error, and ignores input that is not a hook payload (which

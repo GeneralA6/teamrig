@@ -23,6 +23,7 @@ import { loadTree } from "../tree.js";
 import { teamRegister } from "../team-register.js";
 import { inboxDepsOf } from "./inbox.js";
 import { markBoundary } from "./refresh.js";
+import { markRetireAsk } from "./retire-ask.js";
 async function teamOf(runtime, kit, access) {
     const config = requireConfig(kit, runtime, access);
     return { config, paths: kit.paths, register: teamRegister(runtime, kit.paths, config), roster: await rosterOf(runtime, kit, config) };
@@ -172,6 +173,9 @@ export async function set(args, runtime) {
     }
     if (input.status === 'done') {
         await markBoundary(runtime, config, paths, by, id);
+    }
+    if (verdict.ok && (input.status === 'done' || input.status === 'dropped')) {
+        await markRetireAsk(runtime, config, paths, verdict.value);
     }
     return exit;
 }
