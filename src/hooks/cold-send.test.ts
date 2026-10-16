@@ -12,6 +12,7 @@ import {
   JsonlColdSendLog,
   RESEND_WINDOW_MS,
   sendTargetOf,
+  sendTextOf,
   type ColdSendFacts,
 } from './cold-send.ts';
 
@@ -37,6 +38,14 @@ describe('sendTargetOf', () => {
     assert.equal(sendTargetOf({ tool_name: 'SendMessage', tool_input: 'app-alpha' }), undefined);
     assert.equal(sendTargetOf({ tool_name: 'SendMessage' }), undefined);
     assert.equal(sendTargetOf('SendMessage'), undefined);
+  });
+
+  it("reads a SendMessage call's text, empty for none or another tool", () => {
+    assert.equal(sendTextOf({ tool_name: 'SendMessage', tool_input: { to: 'lead', message: 'CRITICAL: the API is down' } }), 'CRITICAL: the API is down');
+    assert.equal(sendTextOf({ tool_name: 'SendMessage', tool_input: { to: 'lead', notify_when_idle: true } }), '');
+    assert.equal(sendTextOf({ tool_name: 'SendMessage', tool_input: 'lead' }), '');
+    assert.equal(sendTextOf({ tool_name: 'Bash', tool_input: { message: 'x' } }), '');
+    assert.equal(sendTextOf(null), '');
   });
 });
 

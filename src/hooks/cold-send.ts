@@ -29,6 +29,15 @@ export function sendTargetOf(payload: unknown): string | undefined {
   return to === '' ? undefined : to;
 }
 
+/** The text a SendMessage call sends; empty for a call with none (a pure idle subscription) or another tool. */
+export function sendTextOf(payload: unknown): string {
+  if (!isRecord(payload) || stringField(payload, 'tool_name') !== SEND_TOOL) {
+    return '';
+  }
+  const input = payload['tool_input'];
+  return (isRecord(input) ? stringField(input, 'message') : undefined) ?? '';
+}
+
 /** Whether a session idle `idleMs` wakes cold; `coldAfterMinutes` 0 never does. */
 export function isCold(idleMs: number, coldAfterMinutes: number): boolean {
   return coldAfterMinutes > 0 && idleMs >= coldAfterMinutes * 60_000;
