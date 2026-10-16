@@ -1,4 +1,6 @@
+import { isDefaultModel } from "../config/launch.js";
 import { describeNameClash, describeTreeProblem } from "../config/tree.js";
+import { ENV } from "../core/home.js";
 import { formatUtcMinute, MS_PER_DAY, parseUtcDeadline, shortUtc } from "../core/time.js";
 import { unreadSince } from "../inbox/inbox.js";
 import { describeRequirement } from "../requirements/requirements.js";
@@ -132,10 +134,52 @@ function treeFindings({ tree, command }) {
         ...tree.clashes.map((clash) => ({ kind: 'name-two-teams', detail: describeNameClash(clash, command) })),
     ];
 }
+const ROUTING_OVERRIDES = [
+    {
+        kind: 'effort-env',
+        name: ENV.effortLevel,
+        effect: (value) => `it beats every --effort (the team config's launch efforts among them), /effort and per-call Agent effort, so a session or helper that gets it runs at ${value} whatever it was given`,
+    },
+    {
+        kind: 'model-env',
+        name: ENV.subagentModelForce,
+        effect: () => 'set to 1 it beats every per-call Agent model, so a helper that gets it never runs on the model its caller gives it',
+    },
+];
+/**
+ * A variable set in doctor's own environment or in a settings file's `env` block that overrides every effort or
+ * helper model a session or its caller picks, and a settings file whose block could not be read. Only the
+ * overriding variables' values are printed.
+ */
+function routingEnvFindings({ env, settingsEnv }) {
+    const sources = [
+        { where: 'the environment doctor runs in', env },
+        ...settingsEnv.flatMap((settings) => (settings.kind === 'env' ? [{ where: `the env block of ${settings.path}`, env: settings.env }] : [])),
+    ];
+    const overrides = ROUTING_OVERRIDES.flatMap(({ kind, name, effect }) => sources.flatMap(({ where, env: set }) => {
+        const value = set[name]?.trim();
+        return value ? [{ kind, detail: `${name}=${value} is set in ${where}: ${effect(value)}; unset it there to let each choose its own` }] : [];
+    }));
+    const names = ROUTING_OVERRIDES.map(({ name }) => name).join(' or ');
+    const unreadable = settingsEnv.flatMap((settings) => settings.kind === 'unreadable' ? [{ kind: 'settings-json', detail: `${settings.path} is not a JSON object, so doctor could not check its env block for ${names}` }] : []);
+    return [...overrides, ...unreadable];
+}
+/** A session whose launch names a model but no effort: it starts at that model's default effort, whatever the team meant. */
+function launchFindings({ launches, roster }) {
+    return launches.flatMap(({ id, launch }) => {
+        if (isDefaultModel(launch.model) || launch.effort !== undefined) {
+            return [];
+        }
+        const name = roster.nameOf(id) ?? id;
+        const detail = `${name} (session ${id}) launches on model ${launch.model} with no effort, so it runs at that model's default effort (medium on Opus, Sonnet and Haiku 5.5): set launch.${id}.effort in the team config`;
+        return [{ kind: 'launch-effort', detail }];
+    });
+}
 /**
  * The team's health checks: names that find the wrong session or none, a damaged rename log,
- * inboxes nobody reads, rules too long to show, text every call re-reads over its budget, and a broken tree of teams or a session name two
- * teams use. It reads only; every fix is the user's.
+ * inboxes nobody reads, rules too long to show, text every call re-reads over its budget, a broken tree of teams or a session name two
+ * teams use, a variable that overrides every model or effort choice, and a launch with a model but no effort.
+ * It reads only; every fix is the user's.
  */
 export function doctorFindings(input) {
     return [
@@ -147,6 +191,8 @@ export function doctorFindings(input) {
         ...rulesFindings(input),
         ...contextFindings(input),
         ...treeFindings(input),
+        ...routingEnvFindings(input),
+        ...launchFindings(input),
     ];
 }
 export function formatFinding(finding) {
