@@ -56,7 +56,9 @@ and a force-push to it is refused. The team rules win over a CLAUDE.md, skill or
 each such line and asks you whether to remove it, keep it as an exception, or rewrite it. A message that would wake an idle member at full price is held once, so a
 cheap inbox line can take its place. When a member's context runs long, it writes a handover and teamrig restarts it fresh, and it carries on from there by itself. Big
 commits are flagged before they land, `teamrig worktree remove` clears a finished worktree without emptying the main
-checkout's `node_modules`, and everything runs on your machine, with no account and no cloud bill.
+checkout's `node_modules`, and everything runs on your machine, with no account and no cloud bill. When two members
+edit one skill at once and Claude Code refuses the later edit, that member or helper is sent back to redo it before it
+reports done, so no lesson is lost quietly.
 
 Your GitHub issues can join the task list too, one way only: `teamrig gh sync` adds a task for each open issue of the
 repositories you list and keeps its title, description (the issue's body), priority and open or closed state as on GitHub. It only ever reads GitHub,
