@@ -54,6 +54,15 @@ export async function bindByTitle(deps, input) {
     return { kind: 'bound', id: only.id, mark };
 }
 /**
+ * The Claude Code title to give a tab whose team session is known and that has no title the user set:
+ * the session's name. The tab then shows which session it is, and since Claude Code keeps the title
+ * across /clear, the new session binds itself by it as it starts. Undefined for a tab with no session,
+ * or with a title: that is the user's, recorded as a rename (names/detect.ts), never overwritten.
+ */
+export function tabTitleFor(roster, id, title) {
+    return id === undefined || title !== undefined ? undefined : (roster.nameOf(id) ?? id);
+}
+/**
  * How long after its handover was marked ready a session's Claude Code process still binds a cleared tab:
  * the system reuses process ids, and a session that never came back must not claim a later tab.
  */
