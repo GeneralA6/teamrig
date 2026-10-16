@@ -11,6 +11,7 @@ const AT = '2030-01-08T09:59:59.000Z';
 const ASK_DIR = clearAskDir(KIT);
 const OUTCOME = outcomeFileOf(ASK_DIR, CLAUDE_SESSION) ?? '';
 const CLAIM = ['hook', 'clear-claim'];
+const HOLD = ['hook', 'clear-claim', '--hold'];
 const FROM_TAB = { stdin: JSON.stringify({ session_id: CLAUDE_SESSION }) };
 
 interface Asked {
@@ -39,7 +40,7 @@ describe('teamrig hook clear-claim', () => {
     const kit = new CliHarness();
     const { store, asks } = await asked(kit);
     assert.deepEqual(await kit.run(CLAIM, FROM_TAB), { code: EXIT.ok, stdout: ['taken'], stderr: [] });
-    assert.equal(await asks.taken(CLAUDE_SESSION), true);
+    assert.equal(await asks.outcome(CLAUDE_SESSION), 'taken');
     assert.equal(await store.restart('alpha'), undefined, 'a prompt typed before the /clear is not told the restart was cancelled');
   });
 
@@ -80,6 +81,43 @@ describe('teamrig hook clear-claim', () => {
     const kit = new CliHarness();
     await asked(kit, { team: 'gone' });
     assert.deepEqual((await kit.run(CLAIM, FROM_TAB)).stdout, ['declined: the restart is no longer pending']);
+    assert.equal(kit.files.get(OUTCOME), undefined);
+  });
+});
+
+describe('teamrig hook clear-claim --hold', () => {
+  it('holds the ask of a pending restart, keeping the request pending so the restart asks again', async () => {
+    const kit = new CliHarness();
+    const { store, asks } = await asked(kit);
+    assert.deepEqual(await kit.run(HOLD, FROM_TAB), { code: EXIT.ok, stdout: ['held'], stderr: [] });
+    assert.equal(await asks.outcome(CLAUDE_SESSION), 'held');
+    assert.equal((await store.restart('alpha'))?.phase, 'pending');
+    assert.equal(await asks.withdraw(CLAUDE_SESSION), false, 'the restart learns the tab answered first');
+  });
+
+  it('declines once the runner took its ask back', async () => {
+    const kit = new CliHarness();
+    const { asks } = await asked(kit);
+    await asks.withdraw(CLAUDE_SESSION);
+    assert.deepEqual((await kit.run(HOLD, FROM_TAB)).stdout, ['declined: the restart took its ask back']);
+    assert.equal(await asks.outcome(CLAUDE_SESSION), 'withdrawn');
+  });
+
+  it('loses to an answer already given, and a claim loses to a hold: the first writer wins', async () => {
+    const kit = new CliHarness();
+    const { store, asks } = await asked(kit);
+    await asks.claim(CLAUDE_SESSION);
+    assert.deepEqual((await kit.run(HOLD, FROM_TAB)).stdout, ['declined: the ask was already taken']);
+    await asks.post(CLAUDE_SESSION, { team: 'app', id: 'alpha', at: AT, askedAt: AT });
+    assert.deepEqual((await kit.run(HOLD, FROM_TAB)).stdout, ['held']);
+    assert.deepEqual((await kit.run(CLAIM, FROM_TAB)).stdout, ['declined: the ask was already held']);
+    assert.equal((await store.restart('alpha'))?.phase, 'pending', 'the lost claim cleared nothing');
+  });
+
+  it('declines an ask whose restart is no longer pending, leaving no outcome', async () => {
+    const kit = new CliHarness();
+    await asked(kit, { at: '2030-01-08T09:00:00.000Z' });
+    assert.deepEqual((await kit.run(HOLD, FROM_TAB)).stdout, ['declined: the restart is no longer pending']);
     assert.equal(kit.files.get(OUTCOME), undefined);
   });
 });
