@@ -75,8 +75,11 @@ A shipped change is proven by the session that shipped it, oldest first, before 
   session works its list in that order.
 - **Title**: one line, at most 140 characters [register.maxTitle]. A second active task with the same title
   (ignoring case and extra spaces) is refused.
+- **Description**: what the task is and why, in plain words for a person who has not seen the ask; newlines are
+  kept, at most 2,000 characters. `add` needs one [register.requireDescription]; its owner changes it with
+  `update --description`, and `show` prints it under the title. A status note then says only what changed.
 - **Ref, note, evidence**: at most 300 characters each [register.maxText].
-- **Secrets**: a title, ref, note, evidence or inbox line that looks like it holds a key, token or password is
+- **Secrets**: a title, description, ref, note, evidence or inbox line that looks like it holds a key, token or password is
   refused (`note looks like it holds a secret (...); refer to where it is kept instead`). Write where the secret
   is kept, never the secret. A team may add its own patterns [register.secretPatterns].
 - **Source**: who asked: a session id, or `owner` for an order from the human [register.ownerSource].

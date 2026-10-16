@@ -16,7 +16,7 @@ It prints the time, your unread inbox lines, your task list, the `check` flags o
 week's use.
 
 1. Read each inbox line. A line that asks for work should name a task id; if it does not, add the task yourself
-   (`teamrig add --session api --title "..." --priority p<n> --source <asker>`).
+   (`teamrig add --session api --title "..." --description "<what and why>" --priority p<n> --source <asker>`).
 2. Take the first task of your list: lists are in plan order (priority, then due date, then id).
 3. Mark it started: `teamrig set T4 --session api --status in-progress`.
 4. Before you start any work that is not on the list, add it: self-made work is a task too. Start it only for a
@@ -31,7 +31,7 @@ them) before running anything.
 When another session must do something, in one turn:
 
 ```sh
-teamrig add --session api --owner web --priority p2 --title "Show the signup errors from the api" --due 2026-10-17 --ref "docs/errors.md"
+teamrig add --session api --owner web --priority p2 --title "Show the signup errors from the api" --description "The form shows a blank error; the api now names each field that failed, so show it under that field." --due 2026-10-17 --ref "docs/errors.md"
 ```
 
 1. Add the task with `--owner <their id>`. The register refuses a duplicate of an active task: then point at
@@ -222,7 +222,7 @@ Every order of the human's that creates work becomes a task in the same turn, ad
 the order, with the owner's source [register.ownerSource]:
 
 ```sh
-teamrig add --session lead --owner api --source owner --priority p2 --title "Rate-limit the signup endpoint"
+teamrig add --session lead --owner api --source owner --priority p2 --title "Rate-limit the signup endpoint" --description "Bots create fake accounts; allow 5 signups a minute from one address."
 ```
 
 Bring the human only what needs them: verified results, decisions taken, investigated questions (options,
@@ -236,8 +236,8 @@ The lead's tab, with the user's request in hand:
 teamrig team create shop --sessions api,web --dry-run
 teamrig team create shop --sessions api,web
 teamrig rules --session lead
-teamrig add --session lead --owner api --priority p2 --title "Build the signup endpoint"
-teamrig add --session lead --owner web --priority p2 --title "Build the signup form"
+teamrig add --session lead --owner api --priority p2 --title "Build the signup endpoint" --description "New users cannot sign up yet; take an email and a password and send the welcome mail."
+teamrig add --session lead --owner web --priority p2 --title "Build the signup form" --description "The page for the new signup endpoint, with its errors shown under each field."
 teamrig open api
 teamrig open web
 ```

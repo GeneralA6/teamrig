@@ -44,7 +44,10 @@ or take it to the lead.
 | `REFUSED only the owner (web) or the lead changes T2` | Ask the owner or the lead. |
 | `REFUSED nothing to change: give a field or a --note` | `update` needs a field flag, or a `--note` to add alone. |
 | `REFUSED priority p9 is not one of p1, p2, p3, p4, p5` | Use a priority the team defines. |
-| `REFUSED the title has 141 characters; the limit is 140` | Shorten the title; put detail in `--ref`. |
+| `REFUSED the title has 141 characters; the limit is 140` | Shorten the title; put the detail in `--description`. |
+| `REFUSED add needs --description "<what and why, in plain words>"` | Add `--description` saying what the task is and why, for a person who has not seen the ask. A team that does not want it sets `register.requireDescription` to `false`. |
+| `REFUSED the description has 2001 characters; the limit is 2000` | Shorten it; point at a file for the rest. |
+| `REFUSED T1 keeps a description while register.requireDescription is on: give a new one instead of none` | Give `update --description` a new text instead of `none`. |
 | `REFUSED note has 320 characters; the limit is 300` | Shorten it; point at a file instead. |
 | `REFUSED note looks like it holds a secret (...); refer to where it is kept instead` | Remove the secret and name where it is kept. |
 | `REFUSED due 17-10-2026 is not YYYY-MM-DD or YYYY-MM-DD HH:MM` | Write the date as `2026-10-17`. |
