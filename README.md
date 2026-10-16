@@ -75,7 +75,10 @@ The rest is Claude Code, which you run anyway.
 Start small: one lead and a few members. When one team isn't enough, it becomes teams of teams, each with its own
 lead. You still talk to just one.
 
-*Coming: hiring and retiring members as the project changes.*
+When a job needs one more pair of hands, your lead hires a temporary member for it (`teamrig hire`), within the
+caps you set: how many at once, how much of the week they may use a day, and whether you approve each hire.
+
+*Coming: retiring members when their job is done.*
 
 ![A camera pulls back from your lead as time passes. Day 1: the lead hires a team of three. Week 2: new members join and one whose job is done moves on. Month 2: one team becomes teams of teams, each with its own lead. Month 6: eight teams and 33 members, with members coming and going, and you still talk to one lead.](docs/images/growth.svg)
 
