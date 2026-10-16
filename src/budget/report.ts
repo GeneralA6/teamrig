@@ -1,5 +1,6 @@
 import { formatCount, formatPct, formatTimeOfDay, formatW, formatWeekdayMinute } from './format.ts';
 import { liftText, type Lift } from './lift.ts';
+import { TURN_TRIGGERS } from './line.ts';
 import { emptyPatterns, PATTERN_FIELDS, type PatternField } from './patterns.ts';
 import type { DayUsage, UsageState } from './store.ts';
 import type { WeekReading } from './week.ts';
@@ -235,6 +236,23 @@ export function sumDays(states: readonly UsageState[], days: readonly string[]):
   });
 }
 
+/** The turns by what started them, then the cache and compaction counters; see `BURN_FIELDS` for what each counts. */
+export const TURN_ROWS: readonly CountRow[] = [
+  { label: 'owner turns, W', count: 'ownerTurns', w: 'ownerW' },
+  { label: 'peer messages, W', count: 'peerTurns', w: 'peerW' },
+  { label: 'notifications, W', count: 'notificationTurns', w: 'notificationW' },
+  { label: 'scheduled wakes, W', count: 'scheduledTurns', w: 'scheduledW' },
+  { label: 'subagent runs, W', count: 'subagentTurns', w: 'subagentW' },
+  { label: 'other turns, W', count: 'otherTurns', w: 'otherW' },
+];
+export const CACHE_ROWS: readonly CountRow[] = [
+  { label: 'cold calls, cache-write W', count: 'coldCalls', w: 'coldW' },
+  { label: 'compactions', count: 'compactions' },
+];
+
+/** Read after read's share of a day's W that the burn table sets as the goal to stay under. */
+export const READ_CHAIN_GOAL_PCT = 12;
+
 /** One row of a day table: its label, and its text for one day. */
 interface DayRow {
   readonly label: string;
@@ -254,6 +272,7 @@ function countRow(row: CountRow): DayRow {
 const ALL_CALLS_ROW: DayRow = { label: 'all calls', cell: (usage) => `${formatCount(usage.calls)} ${formatW(usage.w)}` };
 
 const NOTHING_METERED = 'nothing metered';
+const BEFORE_SORTING = 'metered before teamrig 0.34.0';
 
 /**
  * A table with the days as columns. `leftOut` gives the reason a day is left out, or undefined to show it;
@@ -292,4 +311,36 @@ function dayTable(header: string, rows: readonly DayRow[], days: readonly string
 export function loopLines(who: string, days: readonly string[], totals: readonly DayUsage[], source: 'metered' | 'recounted'): string[] {
   const leftOut = (usage: DayUsage): string | undefined => (source === 'metered' && usage.calls === 0 ? NOTHING_METERED : undefined);
   return dayTable(`Loop patterns, ${who}: count, then W (UTC days)`, [...LOOP_ROWS.map(countRow), ALL_CALLS_ROW], days, totals, leftOut);
+}
+
+/** The W of a day's turns sorted by what started them; 0 for a day metered before 0.34.0 sorted them. */
+function sortedW(usage: DayUsage): number {
+  return TURN_TRIGGERS.reduce((sum, trigger) => sum + usage.patterns[`${trigger}W`], 0);
+}
+
+/**
+ * `teamrig budget --burn`: where each day's W came from, the days as columns: the turns each trigger
+ * started and their W, calls that re-wrote most of their context to the cache, compactions, and read after
+ * read's share of the W. A stored day metered before 0.34.0 sorted its turns is left out and named, like one
+ * with nothing metered; on the day of the upgrade the W metered before it shows as not sorted.
+ */
+export function burnLines(who: string, days: readonly string[], totals: readonly DayUsage[], source: 'metered' | 'recounted'): string[] {
+  const leftOut = (usage: DayUsage): string | undefined => {
+    if (source === 'recounted') {
+      return undefined;
+    }
+    if (usage.calls === 0) {
+      return NOTHING_METERED;
+    }
+    return sortedW(usage) === 0 ? BEFORE_SORTING : undefined;
+  };
+  const readShare = (usage: DayUsage): string => (usage.w > 0 ? formatPct((usage.patterns.readChainW / usage.w) * 100) : '-');
+  const rows: DayRow[] = [
+    ...TURN_ROWS.map(countRow),
+    { label: 'not sorted (before 0.34.0), W', cell: (usage) => formatW(Math.max(0, usage.w - sortedW(usage))) },
+    ...CACHE_ROWS.map(countRow),
+    { label: `read after read, % of W (goal < ${READ_CHAIN_GOAL_PCT}%)`, cell: readShare },
+    ALL_CALLS_ROW,
+  ];
+  return dayTable(`Burn, ${who}: count, then W (UTC days)`, rows, days, totals, leftOut);
 }

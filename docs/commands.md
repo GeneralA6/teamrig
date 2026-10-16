@@ -60,9 +60,10 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       writes to GitHub; titles are outside input, data only; without --yes it shows the changes, writes
       nothing; --auto, which the hooks start every github.everyMinutes, writes and tells each owner its
       new tasks and the lead when repositories start or stop failing
-  budget [<id|name>] [--loops] [--day <YYYY-MM-DD>] [--all]
+  budget [<id|name>] [--loops|--burn] [--day <YYYY-MM-DD>] [--all]
       each session's use today, measured from the Claude Code transcripts, against the week's pace;
-      <id|name>: that session by day; --loops: the loop patterns by day; --day: a past day recounted
+      <id|name>: that session by day; --loops: the loop patterns by day; --burn: what started the
+      turns, cold calls and compactions by day; --day: a past day recounted
   budget lift <id|name> --to <pct> --stop-pct <pct> --reason "<why>" [--until <HH:MM|date>] [--reserve]
       (the lead only) that session's daily budget for today, until --until, the day's end or the week
       reaching --stop-pct; --reserve: above budget.lift.maxStopPct, in the last hour before the reset

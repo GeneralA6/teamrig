@@ -932,8 +932,14 @@ Flags:
 - `--loops`: each loop pattern's count and W by day (read after read, edit after edit, a test after an edit,
   reruns, passing test runs), every session's and the outside's together, or one session's. A day with nothing
   metered (before the meter started, or not read) is left out and named, with the `--day` that reads it.
+- `--burn`: where each day's W came from: the turns started by the owner, a peer's message, a notification (a
+  finished background task or a helper's report), a scheduled wake, a subagent or anything else, with their W;
+  cold calls (at least 20,000 tokens and half the context re-written to the cache, after an idle hour or a
+  compaction) with that write's W; compactions; and read after read's share of the W (goal: under 12%). A day
+  metered before teamrig 0.34.0 sorted its turns is left out and named. The lead reads `budget --burn --all`
+  weekly to see where the week went.
 - `--day <YYYY-MM-DD>`: a past UTC day recounted from the transcripts; nothing is written.
-- `--all`: every session, idle ones too, every outside title, and with `--loops` all 8 days.
+- `--all`: every session, idle ones too, every outside title, and with `--loops` or `--burn` all 8 days.
 
 Example:
 
