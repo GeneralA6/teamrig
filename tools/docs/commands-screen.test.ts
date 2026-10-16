@@ -41,7 +41,7 @@ describe('commandsScreen', () => {
   it('shows web reading the lead note and starting its task', async () => {
     const web = (await commandsScreen()).panes[1];
     const text = (web?.lines ?? []).map((line) => line.map((span) => span.text).join(''));
-    assert.ok(text.includes('- 2026-10-12 09:03 lead: T2 is yours (p1): Card checkout page'), text.join('\n'));
+    assert.ok(text.includes('- 2026-10-12 09:03 lead: T2 is yours (p1): Checkout'), text.join('\n'));
     assert.ok(text.includes("- 2026-10-12 09:06 lead: T2 builds on T1's API"), text.join('\n'));
     assert.ok(text.some((line) => line.startsWith('SET T2 in-progress, p1, owner web,')), text.join('\n'));
   });
