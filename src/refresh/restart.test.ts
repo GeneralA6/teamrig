@@ -7,7 +7,7 @@ import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { askFileOf, outcomeFileOf } from '../mod/clear-hand.ts';
 import { ClearAsks, type ClearAsk } from './clear-asks.ts';
-import { CLAIM_WAIT_MS, claudeProcessOf, GIVE_UP_MS, runRestart, type RestartDeps, type RestartPlan, type TabOpening } from './restart.ts';
+import { CLAIM_WAIT_MS, claudeProcessOf, GIVE_UP_MS, runRestart, SHELL_RECHECK_MS, type RestartDeps, type RestartPlan, type TabOpening } from './restart.ts';
 import type { RestartRequest } from './state.ts';
 import { RefreshStore } from './store.ts';
 
@@ -380,6 +380,70 @@ ${TURN_END}
     const world = await new World().arm({ claudeSession: '../escape' });
     assert.equal((await runRestart(world.deps, PLAN)).kind, 'restarted');
     assert.equal(world.clock.now() - START, DELAY_MS, 'no wait for a claim');
+  });
+});
+
+describe('runRestart with shells under its Claude Code', () => {
+  /** A background command's shell, as Claude Code starts it: ending Claude Code's tree would end it. */
+  const SHELL: ProcessInfo = { pid: 4200, parentPid: CLAUDE.pid, name: 'bash.exe', commandLine: 'bash -c "source snapshot.sh && npm run nightly"' };
+  const UNLISTED = { kind: 'failed', why: 'teamrig could not list what its Claude Code (4100) runs' };
+
+  it('ends nothing while Claude Code runs a background shell, in its own tab or not, and says why', async () => {
+    for (const supervised of [true, false]) {
+      const world = await new World({ running: [TAB_SHELL, CLAUDE, SHELL] }).arm({ supervised });
+      const result = await runRestart(world.deps, PLAN);
+      assert.deepEqual(result, { kind: 'failed', why: 'ending its Claude Code would also end the background shells it runs (pid 4200)' });
+      assert.equal(world.clock.now() - START, DELAY_MS + CLAIM_WAIT_MS + SHELL_RECHECK_MS, 'it looked twice');
+      assert.deepEqual(world.processes.ends, []);
+      assert.deepEqual(world.opened, [], 'no new tab either');
+      assert.deepEqual(world.processes.fed, []);
+      assert.equal(await world.store.restart('alpha'), undefined);
+    }
+    const login: ProcessInfo = { pid: 4200, parentPid: CLAUDE.pid, name: '-zsh', commandLine: '-zsh' };
+    const linux = await new World({ platform: 'linux', running: [TAB_SHELL, CLAUDE, login] }).arm();
+    assert.equal((await runRestart(linux.deps, PLAN)).kind, 'failed');
+  });
+
+  it('ends the session when the shell it saw is gone a moment later, as a status line command, even with a new one', async () => {
+    const world = await new World({ running: [TAB_SHELL, CLAUDE, SHELL] }).arm();
+    // Waits 3-22 are for the claim; 23 is the second look.
+    world.onSleep(23, async () => {
+      world.processes.exit(SHELL.pid).add({ ...SHELL, pid: 4300 });
+    });
+    assert.equal((await runRestart(world.deps, PLAN)).kind, 'restarted');
+    assert.deepEqual(world.processes.ends, [{ pid: CLAUDE.pid, how: 'ask' }]);
+  });
+
+  it('stops without ending anything when the user types during the second look', async () => {
+    const world = await new World({ running: [TAB_SHELL, CLAUDE, SHELL] }).arm();
+    world.onSleep(23, async () => {
+      world.processes.exit(SHELL.pid);
+      await world.store.clearRestart('alpha');
+    });
+    assert.equal((await runRestart(world.deps, PLAN)).kind, 'cancelled');
+    assert.deepEqual(world.processes.ends, []);
+  });
+
+  it('ends nothing when the system will not list what Claude Code runs, at either look', async () => {
+    const hidden = await new World().arm();
+    hidden.processes.hideChildren();
+    assert.deepEqual(await runRestart(hidden.deps, PLAN), UNLISTED);
+    assert.deepEqual(hidden.processes.ends, []);
+    const later = await new World({ running: [TAB_SHELL, CLAUDE, SHELL] }).arm();
+    later.onSleep(23, async () => {
+      later.processes.hideChildren();
+    });
+    assert.deepEqual(await runRestart(later.deps, PLAN), UNLISTED);
+    assert.deepEqual(later.processes.ends, []);
+  });
+
+  it('is not held by what is no command shell: an MCP server, cmd, or a shell another child started', async () => {
+    const mcp: ProcessInfo = { pid: 4201, parentPid: CLAUDE.pid, name: 'node.exe', commandLine: 'node mcp.js' };
+    const cmd: ProcessInfo = { pid: 4202, parentPid: CLAUDE.pid, name: 'cmd.exe', commandLine: 'cmd /c npx server' };
+    const deeper: ProcessInfo = { pid: 4203, parentPid: mcp.pid, name: 'bash.exe', commandLine: 'bash' };
+    const world = await new World({ running: [TAB_SHELL, CLAUDE, mcp, cmd, deeper] }).arm();
+    assert.equal((await runRestart(world.deps, PLAN)).kind, 'restarted');
+    assert.equal(world.clock.now() - START, DELAY_MS + CLAIM_WAIT_MS, 'no second look');
   });
 });
 
