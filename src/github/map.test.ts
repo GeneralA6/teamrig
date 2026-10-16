@@ -2,15 +2,24 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { testConfig } from '../testing/config.ts';
 import type { GithubIssue } from './issues.ts';
-import { importRules, issueOutcome, issueOwner, issuePriority, issueRef, issueTask, taskTitle, type ImportRules } from './map.ts';
+import { MAX_DESCRIPTION } from '../config/defaults.ts';
+import { SecretScanner } from '../core/secrets.ts';
+import { importRules, issueOutcome, issueOwner, issuePriority, issueRef, issueTask, SECRET_BODY, taskDescription, taskTitle, type ImportRules } from './map.ts';
 
 const RULES: ImportRules = importRules(testConfig({ github: { repos: ['acme/web'], owners: { octocat: 'bravo', hubot: 'alpha' } } }));
+const SECRETS = new SecretScanner();
+
+/** Built at runtime so no credential-shaped literal sits in the source. */
+function credentialUrl(): string {
+  return ['https://', 'user', ':', 'hunter2', '@', 'example.test'].join('');
+}
 
 function issue(overrides: Partial<GithubIssue> = {}): GithubIssue {
   return {
     repo: 'acme/web',
     number: 7,
     title: 'Fix login',
+    body: '',
     state: 'open',
     stateReason: '',
     labels: [],
@@ -21,22 +30,56 @@ function issue(overrides: Partial<GithubIssue> = {}): GithubIssue {
 }
 
 describe('importRules', () => {
-  it('takes the title cap, the priority levels, the owners and the lead from the config', () => {
-    assert.deepEqual(RULES, { maxTitle: 140, priorities: [1, 2, 3, 4, 5], owners: new Map([['octocat', 'bravo'], ['hubot', 'alpha']]), repoSessions: new Map(), lead: 'lead' });
+  it('takes the title cap, the priority levels, the owners, the lead and the secret shapes from the config', () => {
+    const { secrets, ...rest } = RULES;
+    assert.deepEqual(rest, { maxTitle: 140, priorities: [1, 2, 3, 4, 5], owners: new Map([['octocat', 'bravo'], ['hubot', 'alpha']]), repoSessions: new Map(), lead: 'lead' });
+    assert.equal(secrets.find('uses tok_abcd1234'), undefined);
+    const strict = importRules(testConfig({ register: { secretPatterns: ['tok_[a-z0-9]{8}'] } }));
+    assert.equal(strict.secrets.find('uses tok_abcd1234')?.id, 'config-1');
   });
 });
 
 describe('issueTask', () => {
-  it('makes an open issue a task keyed by its ref, with its title, priority label and assignee', () => {
-    assert.deepEqual(issueTask(issue({ labels: ['bug', 'p1'], assignees: ['octocat'] }), RULES), {
+  it('makes an open issue a task keyed by its ref, with its title, body, priority label and assignee', () => {
+    assert.deepEqual(issueTask(issue({ body: 'Steps:\r\n1. log in', labels: ['bug', 'p1'], assignees: ['octocat'] }), RULES), {
       ref: 'gh:acme/web#7',
       title: 'Fix login',
+      description: 'Steps:\n1. log in',
       priority: 1,
       owner: 'bravo',
       outcome: 'open',
       url: 'https://github.com/acme/web/issues/7',
     });
+    assert.equal(issueTask(issue(), RULES).description, null);
     assert.equal(issueRef('acme/web', 12), 'gh:acme/web#12');
+  });
+});
+
+describe('taskDescription', () => {
+  it('gives none for an empty or blank body', () => {
+    assert.equal(taskDescription('', SECRETS), null);
+    assert.equal(taskDescription(' \r\n\t\n ', SECRETS), null);
+  });
+
+  it('keeps the lines, turning control and format characters into spaces and closing up blank lines', () => {
+    const body = '\n\n## Steps  \r\n1. log\u001b[31m in‮\r\n\r\n\r\n\r\n2. see\tthe error\n\n';
+    assert.equal(taskDescription(body, SECRETS), '## Steps\n1. log [31m in\n\n2. see the error');
+  });
+
+  it(`cuts a body past ${MAX_DESCRIPTION} characters, ending with an ellipsis, never between the halves of a character`, () => {
+    const exact = 'b'.repeat(MAX_DESCRIPTION);
+    assert.equal(taskDescription(exact, SECRETS), exact);
+    const long = taskDescription(`${'b'.repeat(MAX_DESCRIPTION - 2)} tail`, SECRETS) ?? '';
+    assert.equal(long, `${'b'.repeat(MAX_DESCRIPTION - 2)}…`);
+    const split = taskDescription(`${'b'.repeat(MAX_DESCRIPTION - 2)}\u{1F600}more`, SECRETS) ?? '';
+    assert.equal(split, `${'b'.repeat(MAX_DESCRIPTION - 2)}…`);
+    assert.ok(split.length <= MAX_DESCRIPTION);
+  });
+
+  it('leaves out a body that looks like it holds a secret, in the kept part or past the cut', () => {
+    assert.equal(taskDescription(`log in at ${credentialUrl()}`, SECRETS), SECRET_BODY);
+    assert.equal(taskDescription(`${'b'.repeat(MAX_DESCRIPTION)} ${credentialUrl()}`, SECRETS), SECRET_BODY);
+    assert.equal(taskDescription('uses tok_abcd1234', new SecretScanner(['tok_[a-z0-9]{8}'])), SECRET_BODY);
   });
 });
 

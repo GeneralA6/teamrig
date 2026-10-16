@@ -23,11 +23,11 @@ async function runAll(kit: CliHarness, steps: readonly (readonly string[])[], en
 async function rotatedKit(): Promise<CliHarness> {
   const kit = new CliHarness();
   await runAll(kit, [
-    ['add', '--title', 'Old plan', '--priority', 'p2', '--week', '2030-01-07', '--session', 'alpha'],
+    ['add', '--title', 'Old plan', '--description', 'what and why', '--priority', 'p2', '--week', '2030-01-07', '--session', 'alpha'],
     ['set', 'T1', '--status', 'done', '--note', 'shipped', '--evidence', 'abc1234', '--skill', 'none', '--session', 'alpha'],
-    ['add', '--title', 'Dropped idea', '--priority', 'p3', '--session', 'alpha'],
+    ['add', '--title', 'Dropped idea', '--description', 'what and why', '--priority', 'p3', '--session', 'alpha'],
     ['set', 'T2', '--status', 'dropped', '--note', 'not needed', '--session', 'alpha'],
-    ['add', '--title', 'Current plan', '--priority', 'p1', '--week', '2030-01-21', '--session', 'alpha'],
+    ['add', '--title', 'Current plan', '--description', 'what and why', '--priority', 'p1', '--week', '2030-01-21', '--session', 'alpha'],
   ]);
   kit.clock.advance(20 * MS_PER_DAY);
   const compaction = await rotateRegister(kit.files, EVENTS_PATH, { now: new Date(kit.clock.now()) });
@@ -92,7 +92,7 @@ describe('the CLI on a rotated register', () => {
   it('reads the whole history of each team of a tree that needs it', async () => {
     const kit = await treeHarness();
     await runAll(kit, [
-      ['add', '--team', 'web', '--title', 'Old web task', '--priority', 'p2', '--session', 'lead'],
+      ['add', '--team', 'web', '--title', 'Old web task', '--description', 'what and why', '--priority', 'p2', '--session', 'lead'],
     ]);
     await runAll(kit, [['set', 'T1', '--status', 'done', '--note', 'shipped', '--evidence', 'abc1234', '--skill', 'none', '--session', 'lead']], { TEAMRIG_TEAM: 'web' });
     kit.clock.advance(20 * MS_PER_DAY);

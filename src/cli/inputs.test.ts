@@ -58,11 +58,12 @@ describe('addInputOf', () => {
 
   it('reads every optional field', () => {
     const input = addInputOf(
-      flags({ title: 'Ship it', priority: 'p1', owner: 'bravo', source: 'owner', ref: 'msg 4', due: '2030-01-09', goals: 'g1, g2', week: '2030-01-07' }),
+      flags({ title: 'Ship it', description: 'Users ask for it.', priority: 'p1', owner: 'bravo', source: 'owner', ref: 'msg 4', due: '2030-01-09', goals: 'g1, g2', week: '2030-01-07' }),
       'alpha',
     );
     assert.deepEqual(input, {
       title: 'Ship it',
+      description: 'Users ask for it.',
       owner: 'bravo',
       source: 'owner',
       priority: 1,
@@ -90,11 +91,13 @@ describe('addInputOf', () => {
 describe('changesOf', () => {
   it('changes only the fields given', () => {
     assert.deepEqual(changesOf(flags({ title: 'New', priority: 'p3' })), { title: 'New', priority: 3 });
+    assert.deepEqual(changesOf(flags({ description: 'Why it matters.' })), { description: 'Why it matters.' });
     assert.throws(() => changesOf(flags({ priority: 't3' })), /priority "t3" is the old tier spelling: write p3/);
   });
 
-  it('clears the ref, due date, goals and week with none', () => {
-    assert.deepEqual(changesOf(flags({ ref: 'none', due: 'none', goals: 'none', week: 'none' })), {
+  it('clears the description, ref, due date, goals and week with none', () => {
+    assert.deepEqual(changesOf(flags({ description: 'none', ref: 'none', due: 'none', goals: 'none', week: 'none' })), {
+      description: null,
       ref: null,
       due: null,
       goals: [],

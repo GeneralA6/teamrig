@@ -24,6 +24,7 @@ describe('golden register logs', () => {
     assert.deepEqual(state.tasks.get('T1'), {
       id: 'T1',
       title: 'Add a health check to the web service',
+      description: null,
       owner: 'alpha',
       source: 'owner',
       ref: 'inbox/alpha.md:1',

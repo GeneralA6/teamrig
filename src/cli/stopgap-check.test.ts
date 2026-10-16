@@ -20,10 +20,10 @@ async function runAll(kit: CliHarness, steps: readonly (readonly string[])[]): P
 async function taggedKit(config: JsonRecord = TEAM): Promise<CliHarness> {
   const kit = new CliHarness(config);
   await runAll(kit, [
-    ['add', '--title', 'Ship the pool cap', '--priority', 'p2'],
+    ['add', '--title', 'Ship the pool cap', '--description', 'what and why', '--priority', 'p2'],
     ['set', 'T1', '--status', 'done', '--note', 'shipped', '--evidence', 'abc1234', '--skill', 'none'],
-    ['add', '--title', 'Ship the queue', '--priority', 'p2'],
-    ['add', '--title', 'Ship the cache', '--priority', 'p3'],
+    ['add', '--title', 'Ship the queue', '--description', 'what and why', '--priority', 'p2'],
+    ['add', '--title', 'Ship the cache', '--description', 'what and why', '--priority', 'p3'],
     ['set', 'T3', '--status', 'dropped', '--note', 'not needed'],
   ]);
   await kit.files.write(join(APP, 'CLAUDE.md'), '# Rules\n- cap the pool (stopgap T1)\n- queue (stopgap T2), typo (stopgap T9)\n');

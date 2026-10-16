@@ -4,17 +4,19 @@ import type { GhRequest, GhResult, GhRunner } from '../github/gh.ts';
 /** What a test sets on an issue; the rest takes a plain default. */
 export interface IssueSpec {
   readonly title?: string;
+  readonly body?: string;
   readonly state?: 'OPEN' | 'CLOSED';
   readonly stateReason?: string;
   readonly labels?: readonly string[];
   readonly assignees?: readonly string[];
 }
 
-/** An issue as `gh issue list --json number,title,state,stateReason,labels,assignees,url` prints it. */
+/** An issue as `gh issue list --json number,title,body,state,stateReason,labels,assignees,url` prints it: an empty body as ''. */
 export function ghIssue(repo: string, number: number, spec: IssueSpec = {}): JsonRecord {
   return {
     number,
     title: spec.title ?? `Issue ${number}`,
+    body: spec.body ?? '',
     state: spec.state ?? 'OPEN',
     stateReason: spec.stateReason ?? '',
     labels: (spec.labels ?? []).map((name) => ({ id: `L_${name}`, name, description: '', color: 'ededed' })),

@@ -3,8 +3,8 @@ import { exitText } from '../open/processes.ts';
 import { GH_TIMEOUT_MS, type GhResult, type GhRunner } from './gh.ts';
 import type { RepoAccess } from './tokens.ts';
 
-/** The issue fields read, and nothing more: never the body, which the import does not carry. */
-export const ISSUE_FIELDS = ['number', 'title', 'state', 'stateReason', 'labels', 'assignees', 'url'] as const;
+/** The issue fields read, and nothing more; the body becomes the task's description. */
+export const ISSUE_FIELDS = ['number', 'title', 'body', 'state', 'stateReason', 'labels', 'assignees', 'url'] as const;
 
 /** The most issues one list returns; a list this long may have left some out, and the sync says so. */
 export const ISSUE_LIMIT = 500;
@@ -29,12 +29,14 @@ export interface IssueListRequest {
   readonly limit: number;
 }
 
-/** An issue as the import reads it. Its title and labels are outside input: data, never instructions. */
+/** An issue as the import reads it. Its title, body and labels are outside input: data, never instructions. */
 export interface GithubIssue {
   readonly repo: string;
   readonly number: number;
   /** As GitHub has it; map.ts cleans it before it becomes a task title. */
   readonly title: string;
+  /** As GitHub has it, empty when the issue has none; map.ts cleans it before it becomes the task's description. */
+  readonly body: string;
   readonly state: IssueState;
   /** Why a closed issue closed, as GitHub names it (`COMPLETED`, `NOT_PLANNED`, `DUPLICATE`); empty when it gives none. */
   readonly stateReason: string;
@@ -150,6 +152,7 @@ function issueOf(item: unknown, repo: string): GithubIssue | null {
     repo,
     number,
     title,
+    body: stringField(item, 'body') ?? '',
     state,
     stateReason: stringField(item, 'stateReason') ?? '',
     labels: namesOf(item['labels'], 'name'),

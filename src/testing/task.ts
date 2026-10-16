@@ -5,6 +5,7 @@ export function testTask(overrides: Partial<Task> = {}): Task {
   return {
     id: 'T1',
     title: 'Add a health check',
+    description: null,
     owner: 'alpha',
     source: 'lead',
     ref: null,

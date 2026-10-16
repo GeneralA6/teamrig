@@ -194,7 +194,7 @@ describe(`list and check at 200 tasks, through the CLI`, () => {
     const owners = ['alpha', 'bravo', 'lead'];
     for (let index = 0; index < 200; index += 1) {
       const owner = owners[index % owners.length] ?? 'alpha';
-      const added = await kit.run(['add', '--title', `${LONG_TITLE} (part ${index + 1})`, '--priority', 'p2', '--due', '2030-01-07', '--owner', owner, '--session', 'lead']);
+      const added = await kit.run(['add', '--title', `${LONG_TITLE} (part ${index + 1})`, '--description', 'what and why', '--priority', 'p2', '--due', '2030-01-07', '--owner', owner, '--session', 'lead']);
       assert.equal(added.code, EXIT.ok, added.stdout.join('\n'));
     }
     const own = await kit.run(['list', '--session', 'alpha']);

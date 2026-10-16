@@ -1,13 +1,14 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { MAX_DESCRIPTION } from '../config/defaults.ts';
 import { testConfig } from '../testing/config.ts';
 import { testTask } from '../testing/task.ts';
 import { foldEvents, type RegisterState, type Task } from './fold.ts';
-import { GITHUB_ACTOR, normaliseTitle, RegisterPolicy, type AddInput, type ImportInput, type StatusContext, type Verdict } from './policy.ts';
+import { DESCRIPTION_NEEDED, GITHUB_ACTOR, normaliseTitle, RegisterPolicy, type AddInput, type ImportInput, type StatusContext, type Verdict } from './policy.ts';
 import type { WaitReason } from './waits.ts';
 
 const EMPTY: RegisterState = foldEvents([]);
-const INPUT: AddInput = { title: 'Add a health check', owner: 'alpha', source: 'lead', priority: 2 };
+const INPUT: AddInput = { title: 'Add a health check', description: 'what and why', owner: 'alpha', source: 'lead', priority: 2 };
 
 const TASK: Task = testTask({ status: 'in-progress', startedAt: '2030-01-07T10:00:00.000Z' });
 const NOW = new Date('2030-01-08T12:00:00.000Z');
@@ -37,7 +38,7 @@ describe('RegisterPolicy.add', () => {
     const verdict = policy.add({ ...INPUT, title: '  Add a health check ' }, EMPTY);
     assert.deepEqual(verdict, {
       ok: true,
-      value: { title: 'Add a health check', owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], week: null, after: [] },
+      value: { title: 'Add a health check', description: 'what and why', owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], week: null, after: [] },
     });
   });
 
@@ -78,7 +79,7 @@ describe('RegisterPolicy.add', () => {
 
   it('refuses an active task with the same title, but not a closed one', () => {
     const open = foldEvents([
-      { v: 1, type: 'create', id: 'T4', at: TASK.createdAt, by: 'lead', task: { ...INPUT, ref: null, due: null, goals: [], week: null, after: [] } },
+      { v: 1, type: 'create', id: 'T4', at: TASK.createdAt, by: 'lead', task: { ...INPUT, description: null, ref: null, due: null, goals: [], week: null, after: [] } },
     ]);
     assert.match(error(policy.add({ ...INPUT, title: 'add a  HEALTH check' }, open)), /T4 already tracks this \(open, owner alpha\)/);
     const closed = foldEvents([
@@ -91,6 +92,62 @@ describe('RegisterPolicy.add', () => {
   it('accepts only sessions on the roster as callers', () => {
     assert.equal(policy.checkCaller('alpha'), undefined);
     assert.match(policy.checkCaller('charlie') ?? '', /charlie is not a session on this team/);
+  });
+});
+
+describe('RegisterPolicy: the description', () => {
+  const policy = new RegisterPolicy(testConfig());
+  const relaxed = new RegisterPolicy(testConfig({ register: { requireDescription: false } }));
+  const { description: _left, ...BARE } = INPUT;
+  const fieldsOf = <T>(verdict: Verdict<T>): T => {
+    assert.ok(verdict.ok, error(verdict));
+    return verdict.value;
+  };
+
+  it('refuses an add with no description, or a blank one, while register.requireDescription is on', () => {
+    assert.equal(error(policy.add(BARE, EMPTY)), DESCRIPTION_NEEDED);
+    assert.equal(error(policy.add({ ...INPUT, description: ' \n ' }, EMPTY)), DESCRIPTION_NEEDED);
+    assert.equal(DESCRIPTION_NEEDED, 'add needs --description "<what and why, in plain words>"');
+    assert.equal(error(policy.addFromParent({ ...BARE, owner: 'lead', source: 'app/lead' }, EMPTY)), DESCRIPTION_NEEDED);
+  });
+
+  it('takes an add with none when the team turns the demand off', () => {
+    assert.equal(fieldsOf(relaxed.add(BARE, EMPTY)).description, null);
+    assert.equal(fieldsOf(relaxed.add({ ...INPUT, description: '  ' }, EMPTY)).description, null);
+  });
+
+  it('trims the ends and keeps the newlines between', () => {
+    assert.equal(fieldsOf(policy.add({ ...INPUT, description: '\n  Users lose saved carts.\n\n  Keep them a week.  \n' }, EMPTY)).description, 'Users lose saved carts.\n\n  Keep them a week.');
+  });
+
+  it(`holds up to ${MAX_DESCRIPTION} characters, past maxText, and refuses one more or a secret`, () => {
+    const longest = 'd'.repeat(MAX_DESCRIPTION);
+    assert.equal(fieldsOf(policy.add({ ...INPUT, description: longest }, EMPTY)).description, longest);
+    assert.equal(error(policy.add({ ...INPUT, description: `${longest}d` }, EMPTY)), `the description has ${MAX_DESCRIPTION + 1} characters; the limit is ${MAX_DESCRIPTION}`);
+    assert.match(error(policy.add({ ...INPUT, description: `log in at ${credentialUrl()}` }, EMPTY)), /^description looks like it holds a secret \(credentials in a URL\)/);
+    const strict = new RegisterPolicy(testConfig({ register: { secretPatterns: ['tok_[a-z0-9]{8}'] } }));
+    assert.match(error(strict.add({ ...INPUT, description: 'uses tok_abcd1234' }, EMPTY)), /^description looks like it holds a secret/);
+  });
+
+  it('lets the owner give a new description, trimmed, and refuses clearing it while the demand is on', () => {
+    assert.deepEqual(fieldsOf(policy.update(TASK, 'alpha', { description: ' Why: users ask.\nWhat: one check. ' }, undefined, EMPTY)), {
+      changes: { description: 'Why: users ask.\nWhat: one check.' },
+      note: null,
+    });
+    const keeps = `${TASK.id} keeps a description while register.requireDescription is on: give a new one instead of none`;
+    assert.equal(error(policy.update(TASK, 'alpha', { description: null }, undefined, EMPTY)), keeps);
+    assert.equal(error(policy.update(TASK, 'alpha', { description: '   ' }, undefined, EMPTY)), keeps, 'a blank one clears it');
+    assert.deepEqual(fieldsOf(relaxed.update(TASK, 'alpha', { description: ' ' }, undefined, EMPTY)).changes, { description: null });
+    assert.match(error(policy.update(TASK, 'alpha', { description: 'x'.repeat(MAX_DESCRIPTION + 1) }, undefined, EMPTY)), /the limit is 2000$/);
+  });
+
+  it("leaves the description to the owner: the lead may not change it on another session's task", () => {
+    assert.equal(error(policy.update(TASK, 'lead', { description: 'Why it matters.' }, undefined, EMPTY)), 'the lead may change only owner, priority, due, week, after on a task it does not own (asked: description)');
+    assert.equal(error(policy.update(TASK, 'bravo', { description: 'Why it matters.' }, undefined, EMPTY)), 'only the owner (alpha) or the lead changes T1');
+  });
+
+  it('lets an older task with no description change another field', () => {
+    assert.deepEqual(fieldsOf(policy.update(TASK, 'alpha', { priority: 1 }, undefined, EMPTY)).changes, { priority: 1 });
   });
 });
 
@@ -358,7 +415,7 @@ describe('RegisterPolicy.addFromParent', () => {
 
 describe('RegisterPolicy, the GitHub import', () => {
   const policy = new RegisterPolicy(testConfig());
-  const ISSUE: ImportInput = { title: 'Fix login', owner: 'bravo', ref: 'gh:acme/web#7', priority: 1 };
+  const ISSUE: ImportInput = { title: 'Fix login', description: null, owner: 'bravo', ref: 'gh:acme/web#7', priority: 1 };
   const IMPORTED: Task = testTask({ id: 'T2', title: 'Fix login', owner: 'bravo', source: 'github', ref: 'gh:acme/web#7', priority: 1 });
   const URL = 'https://github.com/acme/web/issues/7';
 
@@ -366,7 +423,7 @@ describe('RegisterPolicy, the GitHub import', () => {
     const team = testTask({ title: 'Fix login', ref: 'gh:acme/web#7' });
     assert.deepEqual(policy.importAdd(ISSUE, stateOf(team)), {
       ok: true,
-      value: { title: 'Fix login', owner: 'bravo', source: 'github', ref: 'gh:acme/web#7', priority: 1, due: null, goals: [], week: null, after: [] },
+      value: { title: 'Fix login', description: null, owner: 'bravo', source: 'github', ref: 'gh:acme/web#7', priority: 1, due: null, goals: [], week: null, after: [] },
     });
     assert.equal(error(policy.importAdd(ISSUE, stateOf(team, IMPORTED))), 'T2 already has ref gh:acme/web#7');
     assert.equal(error(policy.importAdd({ ...ISSUE, owner: 'octocat' }, EMPTY)), 'owner octocat is not a session on this team');
@@ -386,6 +443,21 @@ describe('RegisterPolicy, the GitHub import', () => {
     assert.equal(error(policy.importUpdate(IMPORTED, { title: 'Fix login', priority: 1 }, 'again')), 'nothing to change');
     assert.equal(error(policy.importUpdate(IMPORTED, { priority: 9 }, 'p9')), 'priority p9 is not one of p1, p2, p3, p4, p5');
     assert.equal(error(policy.importUpdate(TASK, { title: 'Other' }, 'x')), 'T1 is not a GitHub task (source lead): the import changes only its own');
+  });
+
+  it('carries the issue body as the description, and follows it, emptied too, whatever the add demands', () => {
+    const added = policy.importAdd({ ...ISSUE, description: 'Steps:\n1. log in' }, EMPTY);
+    assert.equal(added.ok && added.value.description, 'Steps:\n1. log in');
+    assert.deepEqual(policy.importUpdate(IMPORTED, { description: 'Now with steps.' }, 'description as on GitHub'), {
+      ok: true,
+      value: { changes: { description: 'Now with steps.' }, note: 'description as on GitHub' },
+    });
+    const described = testTask({ ...IMPORTED, description: 'Now with steps.' });
+    assert.deepEqual(policy.importUpdate(described, { description: null }, 'description as on GitHub'), {
+      ok: true,
+      value: { changes: { description: null }, note: 'description as on GitHub' },
+    });
+    assert.equal(error(policy.importUpdate(described, { description: 'Now with steps.' }, 'again')), 'nothing to change');
   });
 
   it('opens, finishes or drops its own tasks, a done with the issue url and no skill', () => {

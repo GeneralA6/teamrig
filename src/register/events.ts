@@ -11,7 +11,9 @@ import { parseWaits, type WaitReason } from './waits.ts';
  * Version 2 later gained, without a new number, a task's `after` list and the `waiting` status with its
  * `waits`, which replaced `blocked`: an older reader ignores the new fields and skips a `waiting` line as
  * a newer teamrig's, and a `blocked` line reads here as `waiting` with no reasons. It also gained a
- * `verifying` status's `proof`, which an older reader ignores.
+ * `verifying` status's `proof`, and a task's `description` (0.44.0), which an older reader ignores: a description
+ * reads there as none, and an older teamrig's `compact` drops it from the snapshot it rewrites (the archive keeps
+ * the lines as written).
  * Parsing checks the FORMAT only (any positive priority, any goal string): team policy is applied
  * on write, so changing the config never erases history.
  */
@@ -22,6 +24,8 @@ export const LEGACY_PRIORITY_FIELD = 'tier';
 
 export interface TaskFields {
   readonly title: string;
+  /** What the task is and why, in plain words for a person; newlines kept. Absent on older lines: none. */
+  readonly description: string | null;
   readonly owner: string;
   /** Who asked for the task; the config's `ownerSource` marks the human owner. */
   readonly source: string;
@@ -38,7 +42,7 @@ export interface TaskFields {
   readonly after: readonly string[];
 }
 
-export const TASK_FIELD_NAMES = ['title', 'owner', 'source', 'ref', 'priority', 'due', 'goals', 'week', 'after'] as const;
+export const TASK_FIELD_NAMES = ['title', 'description', 'owner', 'source', 'ref', 'priority', 'due', 'goals', 'week', 'after'] as const;
 
 export type TaskFieldName = (typeof TASK_FIELD_NAMES)[number];
 
@@ -92,18 +96,20 @@ const WEEK = /^\d{4}-\d{2}-\d{2}$/;
 /** How a status is spelled (`in-progress`): a well-spelled one this code does not know is a newer teamrig's. */
 const STATUS_NAME = /^[a-z]+(?:-[a-z]+)*$/;
 
-/** Parses one JSONL record. Unknown extra fields are ignored so later minor additions stay readable. */
 /**
- * The record an event is written as. A create line leaves out an empty `after`, which reads back as none, so a
- * task with no plan dependency costs no bytes and its line is the one an older teamrig wrote.
+ * The record an event is written as. A create line leaves out an empty `after` and a null `description`, which
+ * read back as none, so a task without them costs no bytes and its line is the one an older teamrig wrote.
  */
 export function eventRecord(event: RegisterEvent): JsonRecord {
-  if (event.type !== 'create' || event.task.after.length > 0) {
+  if (event.type !== 'create') {
     return { ...event };
   }
-  return { ...event, task: Object.fromEntries(Object.entries(event.task).filter(([name]) => name !== 'after')) };
+  const { task } = event;
+  const left = (name: string): boolean => (name === 'after' && task.after.length === 0) || (name === 'description' && task.description === null);
+  return { ...event, task: Object.fromEntries(Object.entries(task).filter(([name]) => !left(name))) };
 }
 
+/** Parses one JSONL record. Unknown extra fields are ignored so later minor additions stay readable. */
 export function parseEvent(line: JsonlRecord): EventParse {
   if (line.version > EVENT_VERSION) {
     return { kind: 'newer' };
@@ -230,10 +236,11 @@ function readField(fields: { -readonly [K in TaskFieldName]?: TaskFields[K] }, n
       fields[name] = value;
       return undefined;
     case 'ref':
+    case 'description':
       if (value !== undefined && value !== null && typeof value !== 'string') {
-        return 'ref is not text';
+        return `${name} is not text`;
       }
-      fields.ref = typeof value === 'string' ? value : null;
+      fields[name] = typeof value === 'string' ? value : null;
       return undefined;
     case 'priority':
       if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {

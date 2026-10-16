@@ -9,7 +9,7 @@ import { EXIT } from './runtime.ts';
 /** A harness holding T1, owned by alpha and in progress. */
 async function startedTask(): Promise<CliHarness> {
   const kit = new CliHarness();
-  await kit.run(['add', '--title', 'Ship the CLI', '--priority', 'p2', '--session', 'alpha']);
+  await kit.run(['add', '--title', 'Ship the CLI', '--description', 'what and why', '--priority', 'p2', '--session', 'alpha']);
   await kit.run(['set', 'T1', '--status', 'in-progress', '--session', 'alpha']);
   return kit;
 }
@@ -40,7 +40,7 @@ describe('runCli: verify lists the verifying tasks of a session', () => {
     const kit = await startedTask();
     await kit.run(['set', 'T1', '--status', 'verifying', '--note', 'shipped', '--proof', 'the nightly run', '--due', '2030-01-09', '--session', 'alpha']);
     kit.clock.advance(60 * 60 * 1000);
-    await kit.run(['add', '--title', 'Ship the docs', '--priority', 'p2', '--session', 'alpha']);
+    await kit.run(['add', '--title', 'Ship the docs', '--description', 'what and why', '--priority', 'p2', '--session', 'alpha']);
     await kit.run(['set', 'T2', '--status', 'in-progress', '--session', 'alpha']);
     await kit.run(['set', 'T2', '--status', 'verifying', '--note', 'shipped', '--proof', 'the docs build', '--session', 'alpha']);
 
@@ -139,10 +139,10 @@ describe('the Stop hook names a verifying task once its verify-by day has come',
 
 /** A harness where bravo's T1 is verifying and alpha's T2 is planned after it. */
 async function heldStart(kit = new CliHarness()): Promise<CliHarness> {
-  await kit.run(['add', '--title', 'Ship the CLI', '--priority', 'p2', '--session', 'bravo']);
+  await kit.run(['add', '--title', 'Ship the CLI', '--description', 'what and why', '--priority', 'p2', '--session', 'bravo']);
   await kit.run(['set', 'T1', '--status', 'in-progress', '--session', 'bravo']);
   await kit.run(['set', 'T1', '--status', 'verifying', '--note', 'shipped', '--proof', 'the nightly run', '--session', 'bravo']);
-  await kit.run(['add', '--title', 'Build on the CLI', '--priority', 'p2', '--after', 'T1', '--session', 'alpha']);
+  await kit.run(['add', '--title', 'Build on the CLI', '--description', 'what and why', '--priority', 'p2', '--after', 'T1', '--session', 'alpha']);
   return kit;
 }
 
@@ -168,10 +168,10 @@ describe('runCli: a start waits for the verifying tasks it needs', () => {
 
   it('tells nobody when the caller owns the verifying task too', async () => {
     const kit = new CliHarness();
-    await kit.run(['add', '--title', 'Ship the CLI', '--priority', 'p2', '--session', 'alpha']);
+    await kit.run(['add', '--title', 'Ship the CLI', '--description', 'what and why', '--priority', 'p2', '--session', 'alpha']);
     await kit.run(['set', 'T1', '--status', 'in-progress', '--session', 'alpha']);
     await kit.run(['set', 'T1', '--status', 'verifying', '--note', 'shipped', '--proof', 'the nightly run', '--session', 'alpha']);
-    await kit.run(['add', '--title', 'Build on the CLI', '--priority', 'p2', '--after', 'T1', '--session', 'alpha']);
+    await kit.run(['add', '--title', 'Build on the CLI', '--description', 'what and why', '--priority', 'p2', '--after', 'T1', '--session', 'alpha']);
     const start = await kit.run(['set', 'T2', '--status', 'in-progress', '--session', 'alpha']);
     assert.deepEqual([start.code, start.stderr], [EXIT.refused, []]);
   });

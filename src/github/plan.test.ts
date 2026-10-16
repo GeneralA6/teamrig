@@ -13,6 +13,7 @@ function issue(number: number, overrides: Partial<GithubIssue> = {}): GithubIssu
     repo: 'acme/web',
     number,
     title: `Issue ${number}`,
+    body: '',
     state: 'open',
     stateReason: '',
     labels: [],
@@ -46,7 +47,7 @@ describe('planSync', () => {
   it('adds an open issue with no task, and never a closed one', () => {
     const plan = planSync([issue(7, { labels: ['p1'], assignees: ['octocat'] }), issue(8, { state: 'closed' })], new Map(), RULES);
     assert.deepEqual(plan, {
-      steps: [{ kind: 'add', ref: 'gh:acme/web#7', input: { title: 'Issue 7', owner: 'bravo', ref: 'gh:acme/web#7', priority: 1 } }],
+      steps: [{ kind: 'add', ref: 'gh:acme/web#7', input: { title: 'Issue 7', description: null, owner: 'bravo', ref: 'gh:acme/web#7', priority: 1 } }],
       inserted: 1,
       changed: 0,
       unchanged: 0,
@@ -63,6 +64,26 @@ describe('planSync', () => {
     assert.deepEqual(planSync([issue(1, { labels: ['p3'] })], importedTasks([task]), RULES).steps, [
       { kind: 'update', ref: 'gh:acme/web#1', id: 'T1', changes: { title: 'Issue 1', priority: 3 }, note: 'title and priority as on GitHub' },
     ]);
+  });
+
+  it('adds an issue with its body as the description, and brings an edited or emptied body back, counted as changed', () => {
+    const added = planSync([issue(7, { body: 'Steps:\n1. log in' })], new Map(), RULES).steps;
+    assert.deepEqual(added, [{ kind: 'add', ref: 'gh:acme/web#7', input: { title: 'Issue 7', description: 'Steps:\n1. log in', owner: 'lead', ref: 'gh:acme/web#7', priority: 2 } }]);
+    const described = imported('T1', 1, { description: 'Old steps.' });
+    const edited = planSync([issue(1, { body: 'New steps.' })], importedTasks([described]), RULES);
+    assert.deepEqual(edited, {
+      steps: [{ kind: 'update', ref: 'gh:acme/web#1', id: 'T1', changes: { description: 'New steps.' }, note: 'description as on GitHub' }],
+      inserted: 0,
+      changed: 1,
+      unchanged: 0,
+    });
+    assert.deepEqual(planSync([issue(1)], importedTasks([described]), RULES).steps, [
+      { kind: 'update', ref: 'gh:acme/web#1', id: 'T1', changes: { description: null }, note: 'description as on GitHub' },
+    ]);
+    const all = imported('T1', 1, { title: 'Renamed here', priority: 4 });
+    const [step] = planSync([issue(1, { body: 'Why.', labels: ['p3'] })], importedTasks([all]), RULES).steps;
+    assert.equal(step?.kind === 'update' ? step.note : undefined, 'title, description and priority as on GitHub');
+    assert.deepEqual(planSync([issue(1, { body: 'Old steps.' })], importedTasks([described]), RULES).unchanged, 1);
   });
 
   it('finishes, drops or reopens a task as its issue closes or reopens', () => {

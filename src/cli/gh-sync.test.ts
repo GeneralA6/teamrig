@@ -114,9 +114,28 @@ describe('teamrig gh sync', () => {
     assert.equal(reopened.ran.length, 2);
   });
 
+  it('carries the issue body as the description, follows its edits by length only, and keeps a secret out', async () => {
+    const kit = new CliHarness(GITHUB_TEAM);
+    const described = (body: string): FakeGh => new FakeGh().holds('acme/web', [ghIssue('acme/web', 7, { title: 'Fix login', body })]).holds('acme/api', []);
+    await expectRun(kit, ['gh', 'sync', '--yes'], described('Steps:\r\n1. log in\r\n2. see the error'), EXIT.ok);
+    assert.equal(register(kit).tasks.get('T1')?.description, 'Steps:\n1. log in\n2. see the error');
+    const shown = await kit.run(['show', 'T1'], AS_LEAD);
+    assert.deepEqual(shown.stdout.join('\n').split('\n').slice(1, 4), ['description: Steps:', '  1. log in', '  2. see the error']);
+    assert.deepEqual((await expectRun(kit, ['gh', 'sync', '--yes'], described('Just the steps.'), EXIT.ok)).slice(0, 2), [
+      'REPO acme/web: 0 added, 1 changed, 0 unchanged',
+      'UPDATE T1 gh:acme/web#7: description (15 characters)',
+    ]);
+    assert.deepEqual((await expectRun(kit, ['gh', 'sync', '--yes'], described(''), EXIT.ok)).slice(1, 2), ['UPDATE T1 gh:acme/web#7: description none']);
+    assert.equal(register(kit).tasks.get('T1')?.description, null);
+    await expectRun(kit, ['gh', 'sync', '--yes'], described(`log in at ${credentialUrl()}`), EXIT.ok);
+    const kept = register(kit).tasks.get('T1')?.description ?? '';
+    assert.match(kept, /^The issue body was left out because it looks like it holds a secret/);
+    assert.ok(!(kit.files.get(EVENTS_PATH) ?? '').includes('hunter2'));
+  });
+
   it('leaves a task the team added alone, even one that cites the issue', async () => {
     const kit = new CliHarness(GITHUB_TEAM);
-    const added = await kit.run(['add', '--title', 'Fix login', '--priority', 'p1', '--ref', 'gh:acme/web#7'], AS_BRAVO);
+    const added = await kit.run(['add', '--title', 'Fix login', '--description', 'what and why', '--priority', 'p1', '--ref', 'gh:acme/web#7'], AS_BRAVO);
     assert.equal(added.code, EXIT.ok, added.stdout.join('\n'));
     await expectRun(kit, ['gh', 'sync', '--yes'], twoIssues(), EXIT.ok);
     const { tasks } = register(kit);

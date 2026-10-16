@@ -8,8 +8,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /** T1 owned by alpha and T2 by bravo, both overdue two days later, and a line from bravo in alpha's inbox. */
 async function overdueTeam(): Promise<CliHarness> {
   const kit = new CliHarness();
-  await kit.run(['add', '--title', 'Ship the CLI', '--priority', 'p2', '--due', '2030-01-08', '--session', 'alpha']);
-  await kit.run(['add', '--title', 'Ship the docs', '--priority', 'p2', '--owner', 'bravo', '--due', '2030-01-08', '--session', 'alpha']);
+  await kit.run(['add', '--title', 'Ship the CLI', '--description', 'what and why', '--priority', 'p2', '--due', '2030-01-08', '--session', 'alpha']);
+  await kit.run(['add', '--title', 'Ship the docs', '--description', 'what and why', '--priority', 'p2', '--owner', 'bravo', '--due', '2030-01-08', '--session', 'alpha']);
   kit.clock.advance(2 * DAY_MS);
   await kit.run(['inbox', 'add', '--to', 'alpha', '--text', 'the docs moved to the wiki', '--session', 'bravo']);
   return kit;

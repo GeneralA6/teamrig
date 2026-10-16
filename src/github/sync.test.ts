@@ -94,8 +94,8 @@ describe('readRepo', () => {
 describe('applySteps', () => {
   it('writes each step through the register, reports a refused one and goes on', async () => {
     const steps: SyncStep[] = [
-      { kind: 'add', ref: 'gh:acme/web#7', input: { title: 'Fix login', owner: 'bravo', ref: 'gh:acme/web#7', priority: 1 } },
-      { kind: 'add', ref: 'gh:acme/web#7', input: { title: 'Fix login', owner: 'bravo', ref: 'gh:acme/web#7', priority: 1 } },
+      { kind: 'add', ref: 'gh:acme/web#7', input: { title: 'Fix login', description: null, owner: 'bravo', ref: 'gh:acme/web#7', priority: 1 } },
+      { kind: 'add', ref: 'gh:acme/web#7', input: { title: 'Fix login', description: null, owner: 'bravo', ref: 'gh:acme/web#7', priority: 1 } },
       { kind: 'update', ref: 'gh:acme/web#7', id: 'T1', changes: { title: 'Fix the login' }, note: 'title as on GitHub' },
       { kind: 'status', ref: 'gh:acme/web#7', id: 'T1', input: { status: 'done', note: 'closed on GitHub as completed', evidence: URL } },
     ];

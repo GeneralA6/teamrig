@@ -58,8 +58,8 @@ function errorOf(verdict: Verdict<WriteResult>): string {
 describe('Register', () => {
   it('numbers new tasks and appends one line in the current format per write', async () => {
     const { files, register } = setup();
-    const first = written(await register.add('lead', { title: 'First', owner: 'alpha', source: 'owner', priority: 1 }));
-    const second = written(await register.add('lead', { title: 'Second', owner: 'bravo', source: 'lead', priority: 2 }));
+    const first = written(await register.add('lead', { title: 'First', description: 'what and why', owner: 'alpha', source: 'owner', priority: 1 }));
+    const second = written(await register.add('lead', { title: 'Second', description: 'what and why', owner: 'bravo', source: 'lead', priority: 2 }));
 
     assert.equal(first.task.id, 'T1');
     assert.equal(second.task.id, 'T2');
@@ -72,7 +72,7 @@ describe('Register', () => {
 
   it('records the status change and returns the task after it', async () => {
     const { clock, register } = setup();
-    written(await register.add('lead', { title: 'Ship it', owner: 'alpha', source: 'owner', priority: 1 }));
+    written(await register.add('lead', { title: 'Ship it', description: 'what and why', owner: 'alpha', source: 'owner', priority: 1 }));
     clock.advance(60_000);
     const result = written(await register.setStatus('alpha', 'T1', { status: 'in-progress' }));
     assert.equal(result.task.status, 'in-progress');
@@ -92,7 +92,7 @@ describe('Register', () => {
 
   it('writes a verify-by date as an update before the verifying status, in one append', async () => {
     const { files, register } = setup();
-    written(await register.add('lead', { title: 'Ship it', owner: 'alpha', source: 'owner', priority: 1 }));
+    written(await register.add('lead', { title: 'Ship it', description: 'what and why', owner: 'alpha', source: 'owner', priority: 1 }));
     written(await register.setStatus('alpha', 'T1', { status: 'in-progress' }));
     const appended = files.get(LOG)?.length ?? 0;
     const result = written(await register.setStatus('alpha', 'T1', { status: 'verifying', note: 'shipped', proof: 'the nightly run', due: '2030-01-09' }));
@@ -108,7 +108,7 @@ describe('Register', () => {
 
   it('checks a cited skill against the catalog, but never `none`', async () => {
     const { register, skills } = setup();
-    written(await register.add('lead', { title: 'Ship it', owner: 'alpha', source: 'owner', priority: 1 }));
+    written(await register.add('lead', { title: 'Ship it', description: 'what and why', owner: 'alpha', source: 'owner', priority: 1 }));
     const close = { status: 'done' as const, note: 'shipped', evidence: 'abc1234' };
 
     assert.match(errorOf(await register.setStatus('alpha', 'T1', { ...close, skill: ' web-build ' })), /no skill named web-build/);
@@ -120,7 +120,7 @@ describe('Register', () => {
 
   it('lets the lead reassign, which restarts the pick-up clock', async () => {
     const { clock, register } = setup();
-    const added = written(await register.add('lead', { title: 'Ship it', owner: 'alpha', source: 'owner', priority: 1 }));
+    const added = written(await register.add('lead', { title: 'Ship it', description: 'what and why', owner: 'alpha', source: 'owner', priority: 1 }));
     assert.equal(added.before, null, 'a new task has no before');
     clock.advance(3_600_000);
     const result = written(await register.update('lead', 'T1', { owner: 'bravo' }, 'alpha is out'));
@@ -132,18 +132,18 @@ describe('Register', () => {
 
   it('refuses unknown callers before taking the lock, and leaves the log alone on any refusal', async () => {
     const { files, mutex, register } = setup();
-    assert.match(errorOf(await register.add('charlie', { title: 'x', owner: 'alpha', source: 'owner', priority: 1 })), /charlie/);
+    assert.match(errorOf(await register.add('charlie', { title: 'x', description: 'what and why', owner: 'alpha', source: 'owner', priority: 1 })), /charlie/);
     assert.equal(mutex.runs, 0);
     assert.match(errorOf(await register.setStatus('alpha', 'T7', { status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], note: 'x' })), /no task T7/);
     assert.match(errorOf(await register.update('alpha', 'T7', { priority: 2 }, undefined)), /no task T7/);
-    assert.match(errorOf(await register.add('lead', { title: 'x', owner: 'alpha', source: 'owner', priority: 9 })), /priority p9/);
+    assert.match(errorOf(await register.add('lead', { title: 'x', description: 'what and why', owner: 'alpha', source: 'owner', priority: 9 })), /priority p9/);
     assert.equal(files.get(LOG), undefined);
   });
 
   it('refuses to write beside lines from a newer format', async () => {
     const newer = `${JSON.stringify({ v: EVENT_VERSION + 1, type: 'create', id: 'T1' })}\n`;
     const { files, register } = setup({ [LOG]: newer });
-    await assert.rejects(register.add('lead', { title: 'x', owner: 'alpha', source: 'owner', priority: 1 }), NewerDataError);
+    await assert.rejects(register.add('lead', { title: 'x', description: 'what and why', owner: 'alpha', source: 'owner', priority: 1 }), NewerDataError);
     assert.equal(files.get(LOG), newer);
   });
 
@@ -159,7 +159,7 @@ describe('Register', () => {
 
   it('reads a snapshot without the lock', async () => {
     const { mutex, register } = setup();
-    written(await register.add('lead', { title: 'Ship it', owner: 'alpha', source: 'owner', priority: 1 }));
+    written(await register.add('lead', { title: 'Ship it', description: 'what and why', owner: 'alpha', source: 'owner', priority: 1 }));
     const runs = mutex.runs;
     const { state, read } = await register.snapshot();
     assert.equal(mutex.runs, runs);
@@ -172,9 +172,9 @@ describe('Register on a rotated log', () => {
   async function rotated() {
     const world = setup();
     const { clock, files, register } = world;
-    written(await register.add('lead', { title: 'Old', owner: 'alpha', source: 'owner', priority: 1 }));
+    written(await register.add('lead', { title: 'Old', description: 'what and why', owner: 'alpha', source: 'owner', priority: 1 }));
     written(await register.setStatus('alpha', 'T1', { status: 'done', note: 'shipped', evidence: 'abc1234', skill: 'none' }));
-    written(await register.add('lead', { title: 'Open', owner: 'alpha', source: 'owner', priority: 1 }));
+    written(await register.add('lead', { title: 'Open', description: 'what and why', owner: 'alpha', source: 'owner', priority: 1 }));
     clock.advance(10 * 86_400_000);
     await rotateRegister(files, LOG, { now: new Date(clock.now()) });
     return world;
@@ -182,7 +182,7 @@ describe('Register on a rotated log', () => {
 
   it('writes after the marker, numbering on from the whole history', async () => {
     const { files, register } = await rotated();
-    const added = written(await register.add('lead', { title: 'New', owner: 'bravo', source: 'lead', priority: 2 }));
+    const added = written(await register.add('lead', { title: 'New', description: 'what and why', owner: 'bravo', source: 'lead', priority: 2 }));
     assert.equal(added.task.id, 'T3');
     const changed = written(await register.setStatus('alpha', 'T2', { status: 'in-progress' }));
     assert.equal(changed.task.title, 'Open');
@@ -211,7 +211,7 @@ describe('Register on a rotated log', () => {
     const { files, register } = await rotated();
     await files.write(layoutPaths(LOG).snapshot, `${JSON.stringify({ v: 9, type: 'snapshot' })}
 `);
-    await assert.rejects(register.add('lead', { title: 'x', owner: 'alpha', source: 'owner', priority: 1 }), NewerDataError);
+    await assert.rejects(register.add('lead', { title: 'x', description: 'what and why', owner: 'alpha', source: 'owner', priority: 1 }), NewerDataError);
     const { read } = await register.snapshot();
     assert.deepEqual([read.newer, read.newestVersion], [1, 9]);
   });
@@ -220,16 +220,16 @@ describe('Register on a rotated log', () => {
 describe('Register.addFromParent', () => {
   it('writes the task as the parent lead, who is on no roster here, and lands it with the lead', async () => {
     const { files, register } = setup();
-    const { task, event } = written(await register.addFromParent('app/lead', { title: 'Ship login', owner: 'lead', source: 'app/lead', priority: 1 }));
+    const { task, event } = written(await register.addFromParent('app/lead', { title: 'Ship login', description: 'what and why', owner: 'lead', source: 'app/lead', priority: 1 }));
     assert.deepEqual([task.id, task.owner, task.source, task.createdBy, event.by], ['T1', 'lead', 'app/lead', 'app/lead', 'app/lead']);
     assert.equal(readEvents(files.get(LOG) ?? '').events.length, 1);
-    assert.match(errorOf(await register.add('app/lead', { title: 'Other', owner: 'lead', source: 'lead', priority: 1 })), /app.lead is not a session on this team/);
-    assert.match(errorOf(await register.addFromParent('app/lead', { title: 'Ship login', owner: 'lead', source: 'app/lead', priority: 1 })), /T1 already tracks this/);
+    assert.match(errorOf(await register.add('app/lead', { title: 'Other', description: 'what and why', owner: 'lead', source: 'lead', priority: 1 })), /app.lead is not a session on this team/);
+    assert.match(errorOf(await register.addFromParent('app/lead', { title: 'Ship login', description: 'what and why', owner: 'lead', source: 'app/lead', priority: 1 })), /T1 already tracks this/);
   });
 });
 
 describe('Register, the GitHub import', () => {
-  const ISSUE = { title: 'Fix login', owner: 'bravo', ref: 'gh:acme/web#7', priority: 1 };
+  const ISSUE = { title: 'Fix login', description: null, owner: 'bravo', ref: 'gh:acme/web#7', priority: 1 };
   const URL = 'https://github.com/acme/web/issues/7';
 
   it('writes its own tasks as github, under the lock, and keeps each issue to one task', async () => {
@@ -246,7 +246,7 @@ describe('Register, the GitHub import', () => {
 
   it('leaves a team task alone, and is no session that may write through the team path', async () => {
     const { files, register } = setup();
-    written(await register.add('lead', { title: 'Ship login', owner: 'alpha', source: 'lead', priority: 1, ref: 'gh:acme/web#7' }));
+    written(await register.add('lead', { title: 'Ship login', description: 'what and why', owner: 'alpha', source: 'lead', priority: 1, ref: 'gh:acme/web#7' }));
     assert.equal(errorOf(await register.importStatus('T1', { status: 'done', evidence: URL })), 'T1 is not a GitHub task (source lead): the import changes only its own');
     assert.equal(errorOf(await register.importUpdate('T1', { title: 'Other' }, 'x')), 'T1 is not a GitHub task (source lead): the import changes only its own');
     assert.match(errorOf(await register.setStatus('github', 'T1', { status: 'done', evidence: URL, skill: 'none' })), /github is not a session on this team/);
