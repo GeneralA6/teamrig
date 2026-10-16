@@ -4,6 +4,7 @@ import type { Lift } from './lift.ts';
 import { weekWindow } from './pace.ts';
 import { emptyPatterns, type PatternField } from './patterns.ts';
 import {
+  burnLines,
   loopLines,
   OVER_BUDGET_ADVICE,
   recountLines,
@@ -230,5 +231,38 @@ describe('loop patterns', () => {
       'Loop patterns, lead: count, then W (UTC days)',
       'Left out, nothing metered: 10-13, 10-14 (add --day 2026-10-13 to read one).',
     ]);
+  });
+});
+
+describe('burnLines', () => {
+  const DAYS = ['2026-10-13', '2026-10-14'];
+
+  it('tables what started the turns, cold calls, compactions and the read-after-read share by day', () => {
+    const today = usage(1_000_000, 40, { ownerTurns: 2, ownerW: 600_000, peerTurns: 3, peerW: 400_000, coldCalls: 1, coldW: 50_000, compactions: 1, readChainW: 150_000 });
+    const row = (label: string, cell: string): string => `${label.padEnd(36)}  ${cell.padStart(8)}`;
+    assert.deepEqual(burnLines('lead', DAYS, [usage(0, 0), today], 'metered'), [
+      'Burn, lead: count, then W (UTC days)',
+      row('', '10-14'),
+      row('owner turns, W', '2 600k'),
+      row('peer messages, W', '3 400k'),
+      row('notifications, W', '0 0'),
+      row('scheduled wakes, W', '0 0'),
+      row('subagent runs, W', '0 0'),
+      row('other turns, W', '0 0'),
+      row('not sorted (before 0.34.0), W', '0'),
+      row('cold calls, cache-write W', '1 50k'),
+      row('compactions', '1'),
+      row('read after read, % of W (goal < 12%)', '15.0%'),
+      row('all calls', '40 1.00M'),
+      'Left out, nothing metered: 10-13 (add --day 2026-10-13 to read one).',
+    ]);
+  });
+
+  it('leaves out a day metered before its turns were sorted, shows the rest of the upgrade day as not sorted, and shows a recounted day', () => {
+    const lines = burnLines('lead', DAYS, [usage(1_000, 3), usage(3_000, 2, { otherTurns: 1, otherW: 1_000 })], 'metered');
+    assert.match(lines.find((line) => line.startsWith('not sorted')) ?? '', / 2k$/);
+    assert.equal(lines.at(-1), 'Left out, metered before teamrig 0.34.0: 10-13 (add --day 2026-10-13 to read one).');
+    assert.match(burnLines('lead', DAYS, [usage(0, 0), usage(0, 0)], 'recounted')[1] ?? '', /10-13 +10-14$/);
+    assert.match(burnLines('lead', DAYS, [usage(0, 0), usage(0, 0)], 'recounted').find((line) => line.startsWith('read after')) ?? '', / -  +-$/);
   });
 });

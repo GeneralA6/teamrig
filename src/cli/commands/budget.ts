@@ -10,7 +10,7 @@ import { claudeProjectsDir, type TranscriptSource } from '../../budget/discover.
 import { activeLift, decideLift, LiftLog, liftText, type Lift } from '../../budget/lift.ts';
 import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID, type Measured } from '../../budget/measure.ts';
 import { sessionBudgetPct } from '../../budget/pace.ts';
-import { loopLines, recountLines, sessionLines, sumDays, todayLines, weekLine, type SessionToday } from '../../budget/report.ts';
+import { burnLines, loopLines, recountLines, sessionLines, sumDays, todayLines, weekLine, type SessionToday } from '../../budget/report.ts';
 import { formatSnapshot, readSnapshots, snapshotOfStatus, statusLineText, weekUseOf } from '../../budget/snapshot.ts';
 import { CURSOR_DAYS_KEPT, DAYS_KEPT, MemoryUsageStore, UsageStore, type UsageState } from '../../budget/store.ts';
 import { readWeek, type WeekReading } from '../../budget/week.ts';
@@ -133,7 +133,7 @@ function recountDayOf(text: string | undefined, now: number): number | undefined
   return day.getTime();
 }
 
-/** `budget [<session>] [--loops] [--day <day>] [--all]`. */
+/** `budget [<session>] [--loops|--burn] [--day <day>] [--all]`. */
 export async function budget(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const [target, extra] = args.positionals;
   if (extra !== undefined) {
@@ -141,6 +141,11 @@ export async function budget(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   }
   const recountDay = recountDayOf(args.flags.get('day'), runtime.clock.now());
   const all = args.switches.has('all');
+  const loops = args.switches.has('loops');
+  const burn = args.switches.has('burn');
+  if (loops && burn) {
+    throw new UsageError('--loops and --burn are two tables: give one');
+  }
   const kit = await openTeamKit(runtime);
   const config = requireConfig(kit, runtime, 'read');
   const roster = await rosterOf(runtime, kit, config);
@@ -149,10 +154,11 @@ export async function budget(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   const sessions = sessionsToday(reading, roster, config.budget);
   const { measured, week, now } = reading;
   let lines: string[];
-  if (args.switches.has('loops')) {
+  if (loops || burn) {
     const days = recountDay === undefined ? loopDays(now, all ? DAYS_KEPT : LOOP_DAYS_SHOWN) : [formatUtcDay(new Date(recountDay))];
     const states: UsageState[] = id === undefined ? [...measured.bySession.values(), measured.outside] : [measured.bySession.get(id) ?? { byDay: {}, cursors: {}, recentKeys: [] }];
-    lines = loopLines(id === undefined ? 'every session, outside the team too' : (roster.nameOf(id) ?? id), days, sumDays(states, days), recountDay === undefined ? 'metered' : 'recounted');
+    const table = loops ? loopLines : burnLines;
+    lines = table(id === undefined ? 'every session, outside the team too' : (roster.nameOf(id) ?? id), days, sumDays(states, days), recountDay === undefined ? 'metered' : 'recounted');
   } else if (id !== undefined) {
     const session = sessions.find((each) => each.id === id);
     const state = measured.bySession.get(id);

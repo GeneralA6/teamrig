@@ -136,6 +136,15 @@ describe('teamrig budget', () => {
     assert.match(alpha.at(-1) ?? '', /^Left out, nothing metered: 01-01, .*, 01-07 \(add --day 2030-01-01 to read one\)\.$/);
   });
 
+  it('tables what started the turns, cold calls and compactions, one table at a time', async () => {
+    const { run } = await world();
+    const every = ok(await run(['budget', '--burn']));
+    assert.equal(every[0], 'Burn, every session, outside the team too: count, then W (UTC days)');
+    assert.match(every.find((line) => line.startsWith('all calls')) ?? '', /^all calls +4 26\.00M$/);
+    assert.match(every.find((line) => line.startsWith('not sorted')) ?? '', / 0$/);
+    usageError(await run(['budget', '--loops', '--burn']), /--loops and --burn are two tables: give one/);
+  });
+
   it('recounts a past day from the transcripts, writing nothing', async () => {
     const { kit, run } = await world();
     const before = kit.files.paths().map((path) => [path, kit.files.get(path)]);
