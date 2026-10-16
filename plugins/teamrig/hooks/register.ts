@@ -10,9 +10,10 @@ import {
   slashCliArgv,
   TIMEOUT_MS,
 } from '../dist/mod/slash-hand.js';
+import { WAKE_TICK_MS, WAKE_TIMEOUT_MS, WakeHand, wakeCliArgv } from '../dist/mod/wake-hand.js';
 
 /**
- * teamrig's mod (built into dist from `src/mod`): the `/teamrig` command in every session, and two hands in every
+ * teamrig's mod (built into dist from `src/mod`): the `/teamrig` command in every session, and three hands in every
  * interactive tab.
  *
  * `/teamrig <command> [args]` (`slash-hand.ts`): runs the plugin's CLI as `hook slash-command` with the typed text,
@@ -35,6 +36,14 @@ import {
  * runs: at most one per 5 minutes, never two for the same installs. It keeps its last reload in the session's state,
  * so the module the reload loads keeps both. A plugin run from outside Claude Code's cache (`--plugin-dir`) has no
  * installed_plugins.json beside it and gets no reload hand; a tab without this mod still needs /reload-plugins.
+ *
+ * The wake (`wake-hand.ts`): an idle session sees new work only at its next prompt. Every 15 s while no turn runs,
+ * the hand asks the CLI (`hook wake-check`) once the register changed, a batch fell due or 10 minutes passed. The
+ * CLI wakes a session only for its own unblocked work at `wake.priority` (p1 by default; p1 only past its daily
+ * budget or in quiet hours), once per task, batched, and logs each wake with its cost (src/wake/decide.ts). The hand
+ * submits the CLI's prompt with `$.prompt.submit`, Claude Code's own call for a prompt: a turn under the plugin's
+ * name, nothing typed into the terminal, the prompt box and any draft left alone. A toast shows what woke the tab
+ * and the cost; a wake a prompt hook drops is logged (`hook wake-dropped`).
  */
 
 /** The reload hand's last reload, kept in the session (types/index.d.ts). */
@@ -45,6 +54,11 @@ function worthLogging(result: { readonly kind: string }): boolean {
   return result.kind !== 'no ask' && result.kind !== 'overlap';
 }
 
+/** A wake look worth a debug line: a wake, a dropped one or a failure, not the quiet ones. */
+function wakeWorthLogging(result: { readonly kind: string }): boolean {
+  return result.kind === 'woke' || result.kind === 'dropped' || result.kind === 'failed';
+}
+
 /** A check worth a debug line: a reload run, refused or failed. */
 function reloadWorthLogging(result: { readonly kind: string }): boolean {
   return result.kind === 'reloaded' || result.kind === 'refused' || result.kind === 'failed';
@@ -53,6 +67,7 @@ function reloadWorthLogging(result: { readonly kind: string }): boolean {
 export const register: Register = (on) => {
   let clearHand: ClearHand | undefined;
   let reloadHand: ReloadHand | undefined;
+  let wakeHand: WakeHand | undefined;
 
   on('session.start', async ($, e, next) => {
     const started = await next(e);
@@ -116,6 +131,37 @@ export const register: Register = (on) => {
         });
       });
     }
+    if (wakeHand === undefined) {
+      const active = new WakeHand({
+        sessionId: () => $.session.id(),
+        cwd: () => $.session.cwd(),
+        root: () => $.session.root(),
+        cli: async (command, stdin, env, cwd) => {
+          const run = await $.process.run(wakeCliArgv($.plugin.root, command), { cwd, env: { ...env }, stdin, timeoutMs: WAKE_TIMEOUT_MS });
+          return { exitCode: run.exitCode, stdout: run.stdout };
+        },
+        changedAt: (path) => $.fs.stat(path).then(
+          (found) => found.mtimeMs,
+          () => undefined,
+        ),
+        submit: async (text) => {
+          const submitted = await $.prompt.submit({ text });
+          return submitted.drop;
+        },
+        toast: (text) => {
+          $.ui.toast(text);
+        },
+        now: () => Date.now(),
+      });
+      wakeHand = active;
+      $.clock.every(WAKE_TICK_MS, () => {
+        void active.tick().then((result) => {
+          if (wakeWorthLogging(result)) {
+            $.ui.log(`teamrig wake: ${JSON.stringify(result)}`, { to: 'debug' });
+          }
+        });
+      });
+    }
     return started;
   });
 
@@ -134,12 +180,14 @@ export const register: Register = (on) => {
   on('turn.start', async (_$, e, next) => {
     clearHand?.turnStarted();
     reloadHand?.turnStarted(e.turnId);
+    wakeHand?.turnStarted(e.turnId);
     return next(e);
   });
 
   on('turn.complete', async (_$, e, next) => {
     clearHand?.turnEnded();
     reloadHand?.turnEnded(e.turnId);
+    wakeHand?.turnEnded(e.turnId);
     return next(e);
   });
 };
