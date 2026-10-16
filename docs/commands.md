@@ -127,6 +127,8 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       (run by Claude Code, hook JSON on stdin)
   hook clear-dir | hook clear-claim [--hold]
       (run by the plugin's mod: the automatic restart's /clear in the tab)
+  hook wake-check | hook wake-dropped
+      (run by the plugin's mod: wakes an idle tab when unblocked urgent work is handed to its session)
   hook slash-command
       (run by the plugin's mod: /teamrig <command> typed in a Claude Code tab; /teamrig alone tells what it runs)
   launch <id> --team <team> --project <dir> [--home <dir>] [--encoded-prompt <text>] [--resume <session>]

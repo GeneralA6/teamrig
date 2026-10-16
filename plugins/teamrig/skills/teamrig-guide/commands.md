@@ -1762,6 +1762,44 @@ teamrig hook clear-claim < session.json
 
 Output: `taken` (the mod then runs `/clear`), `held` (with `--hold`) or `declined: <why>`, exit 0.
 
+### teamrig hook wake-check
+
+Run by the plugin's mod while its tab is idle at the prompt, when the register changed, a batch falls due or 10
+minutes passed (it looks every 15 seconds). It decides whether new work handed to the tab's session should wake
+it, and logs each wake with its cost to `<team>/state/wakes.jsonl`. A task wakes the session once, when it is the
+session's, open or in progress, at `wake.priority` or more urgent (p1 by default; p1 only while the session is
+past its daily budget or in quiet hours), with every task it comes after finished, and changed by someone else
+since the session last touched it. Tasks handed within `wake.batchSeconds` wake it once, and wakes are
+`wake.minGapMinutes` apart. The first check in a tab takes the work already there as seen.
+Stdin: `{"session_id", "cwd"}`.
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig hook wake-check < session.json
+```
+
+Output: one JSON line, exit 0: `{"kind":"wake","ids","text","toast"}` (the mod submits `text` as a prompt and
+shows `toast`), `{"kind":"wait","watch","recheckAt"}` (check again once the `watch` file changes or at
+`recheckAt`), or `{"kind":"off","why"}`.
+
+### teamrig hook wake-dropped
+
+Run by the plugin's mod when Claude Code dropped a wake prompt it submitted (a prompt hook refused it): logs the
+dropped wake with its reason to `<team>/state/wakes.jsonl`. Stdin: `{"session_id", "cwd", "reason"}`.
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig hook wake-dropped < dropped.json
+```
+
+Output: nothing, exit 0.
+
 ### teamrig hook slash-command
 
 Run by the plugin's mod when a person types `/teamrig <command> [args]` in a Claude Code tab; the mod shows what it
