@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { basename } from 'node:path';
-import { errorCode, errorMessage, isNonNegativeInteger, stringField } from '../core/guards.ts';
+import { errorCode, errorMessage, isNonNegativeInteger, isRecord, stringField, type JsonRecord } from '../core/guards.ts';
 import { parseObject } from '../core/jsonl.ts';
 import { nodeProgramRunner, type ProgramRunner } from '../github/credentials.ts';
 import { exitText, outcomeOfError } from './processes.ts';
@@ -43,6 +43,12 @@ export interface SessionProcesses {
   /** What runs as `pid`; undefined when nothing does, or the system would not tell. */
   describe(pid: number): Promise<ProcessInfo | undefined>;
   /**
+   * The running processes `pid` started, such as the shells a Claude Code runs commands in; undefined when the
+   * system would not tell. A process keeps its starter's id after the starter ends, so where ids are reused a
+   * process an earlier holder of `pid` started is listed too.
+   */
+  children(pid: number): Promise<readonly ProcessInfo[] | undefined>;
+  /**
    * Ends `pid`. On Windows, where a console program cannot be asked to close, it and every process it
    * started end at once (`taskkill /T /F`), and a process whose starter has ended is no longer in that
    * tree; elsewhere `ask` sends SIGTERM and `force` SIGKILL, to `pid` alone.
@@ -81,12 +87,15 @@ function windowsLookup(pid: number): readonly string[] {
   return ['-NoProfile', '-NonInteractive', '-Command', script];
 }
 
-/** PowerShell's one-object JSON; undefined for no output or another shape. */
-export function parseWindowsProcess(stdout: string): ProcessInfo | undefined {
-  const record = parseObject(stdout.trim());
-  if (record === undefined) {
-    return undefined;
-  }
+function windowsChildren(pid: number): readonly string[] {
+  const script =
+    `$c = @(Get-CimInstance Win32_Process -Filter 'ParentProcessId=${pid}' | Select-Object ProcessId,ParentProcessId,Name,CommandLine); ` +
+    'ConvertTo-Json -Compress -InputObject $c';
+  return ['-NoProfile', '-NonInteractive', '-Command', script];
+}
+
+/** One process of PowerShell's JSON; undefined for another shape. */
+function processOfRecord(record: JsonRecord): ProcessInfo | undefined {
   const pid = record['ProcessId'];
   const parentPid = record['ParentProcessId'];
   const name = stringField(record, 'Name');
@@ -97,6 +106,41 @@ export function parseWindowsProcess(stdout: string): ProcessInfo | undefined {
   return { pid, parentPid, name, commandLine: commandLine ?? '' };
 }
 
+/** PowerShell's one-object JSON; undefined for no output or another shape. */
+export function parseWindowsProcess(stdout: string): ProcessInfo | undefined {
+  const record = parseObject(stdout.trim());
+  return record === undefined ? undefined : processOfRecord(record);
+}
+
+/** PowerShell's JSON array of processes; undefined for any other output, or one entry of another shape. */
+export function parseWindowsProcesses(stdout: string): readonly ProcessInfo[] | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout.trim());
+  } catch {
+    return undefined;
+  }
+  if (!Array.isArray(parsed)) {
+    return undefined;
+  }
+  const entries: readonly unknown[] = parsed;
+  const found: ProcessInfo[] = [];
+  for (const entry of entries) {
+    const info = isRecord(entry) ? processOfRecord(entry) : undefined;
+    if (info === undefined) {
+      return undefined;
+    }
+    found.push(info);
+  }
+  return found;
+}
+
+/** The file name of a command line's program; a login shell's starts with a dash, as `-bash`. */
+function programOf(commandLine: string): string {
+  const [program = ''] = commandLine.trim().split(/\s+/);
+  return basename(program);
+}
+
 /** `ps -o ppid= -o args=`'s line for `pid`; undefined for no line. */
 export function parsePosixProcess(pid: number, stdout: string): ProcessInfo | undefined {
   const line = stdout.split(/\r?\n/).find((entry) => entry.trim() !== '');
@@ -105,8 +149,19 @@ export function parsePosixProcess(pid: number, stdout: string): ProcessInfo | un
     return undefined;
   }
   const [, parent = '', commandLine = ''] = match;
-  const [program = ''] = commandLine.trim().split(/\s+/);
-  return { pid, parentPid: Number(parent), name: basename(program), commandLine: commandLine.trim() };
+  return { pid, parentPid: Number(parent), name: programOf(commandLine), commandLine: commandLine.trim() };
+}
+
+/** The processes `pid` started, from `ps -A -o pid= -o ppid= -o args=`'s lines. */
+export function parsePosixChildren(pid: number, stdout: string): readonly ProcessInfo[] {
+  return stdout.split(/\r?\n/).flatMap((line) => {
+    const match = /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line);
+    if (match === null) {
+      return [];
+    }
+    const [, child = '', parent = '', commandLine = ''] = match;
+    return Number(parent) === pid ? [{ pid: Number(child), parentPid: pid, name: programOf(commandLine), commandLine: commandLine.trim() }] : [];
+  });
 }
 
 function feedProgram(request: FeedRequest, timeoutMs: number): Promise<FeedOutcome> {
@@ -161,6 +216,21 @@ export function nodeSessionProcesses(options: SessionProcessesOptions = {}): Ses
         }
         const result = await run({ program: 'ps', args: ['-o', 'ppid=', '-o', 'args=', '-p', String(pid)] });
         return result.end.kind === 'exited' && result.end.code === 0 ? parsePosixProcess(pid, result.stdout) : undefined;
+      } catch {
+        return undefined;
+      }
+    },
+    async children(pid) {
+      if (!isPid(pid)) {
+        return undefined;
+      }
+      try {
+        if (platform === 'win32') {
+          const result = await run({ program: 'powershell.exe', args: windowsChildren(pid) });
+          return result.end.kind === 'exited' && result.end.code === 0 ? parseWindowsProcesses(result.stdout) : undefined;
+        }
+        const result = await run({ program: 'ps', args: ['-A', '-o', 'pid=', '-o', 'ppid=', '-o', 'args='] });
+        return result.end.kind === 'exited' && result.end.code === 0 ? parsePosixChildren(pid, result.stdout) : undefined;
       } catch {
         return undefined;
       }

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ProgramRequest, ProgramResult } from '../github/credentials.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
-import { nodeSessionProcesses, parsePosixProcess, parseWindowsProcess } from './session-processes.ts';
+import { nodeSessionProcesses, parsePosixChildren, parsePosixProcess, parseWindowsProcess, parseWindowsProcesses } from './session-processes.ts';
 
 const NODE = process.execPath;
 const DIR = mkdtempSync(join(tmpdir(), 'teamrig-session-processes-'));
@@ -66,6 +66,30 @@ describe('parseWindowsProcess and parsePosixProcess', () => {
   });
 });
 
+describe('parseWindowsProcesses and parsePosixChildren', () => {
+  it("read PowerShell's array, empty or not, and nothing from another shape", () => {
+    const bash = '{"ProcessId":51,"ParentProcessId":41,"Name":"bash.exe","CommandLine":"bash -c \\"sleep 9\\""}';
+    const mcp = '{"ProcessId":52,"ParentProcessId":41,"Name":"node.exe","CommandLine":null}';
+    assert.deepEqual(parseWindowsProcesses(`[${bash},${mcp}]\r\n`), [
+      { pid: 51, parentPid: 41, name: 'bash.exe', commandLine: 'bash -c "sleep 9"' },
+      { pid: 52, parentPid: 41, name: 'node.exe', commandLine: '' },
+    ]);
+    assert.deepEqual(parseWindowsProcesses('[]'), []);
+    for (const other of ['', 'not json', bash, `[${bash},{"ProcessId":"x"}]`, '[7]']) {
+      assert.equal(parseWindowsProcesses(other), undefined, other);
+    }
+  });
+
+  it("keep the processes ps lists under the pid, a login shell's dash included", () => {
+    const stdout = '    1     0 /sbin/init\n   51    41 -bash\n   52    41 /usr/bin/node /opt/mcp.js --port 3\n   53    52 sh -c ls\n\n';
+    assert.deepEqual(parsePosixChildren(41, stdout), [
+      { pid: 51, parentPid: 41, name: '-bash', commandLine: '-bash' },
+      { pid: 52, parentPid: 41, name: 'node', commandLine: '/usr/bin/node /opt/mcp.js --port 3' },
+    ]);
+    assert.deepEqual(parsePosixChildren(99, stdout), []);
+  });
+});
+
 describe('nodeSessionProcesses with a scripted system', () => {
   it('asks PowerShell on Windows and ps elsewhere, and reads a failed lookup as nothing', async () => {
     const windows = scripted(exited(0, '{"ProcessId":41,"ParentProcessId":7,"Name":"claude.exe","CommandLine":"claude"}'));
@@ -79,11 +103,28 @@ describe('nodeSessionProcesses with a scripted system', () => {
     assert.equal(await broken.describe(41), undefined);
   });
 
+  it('lists the processes one started through PowerShell on Windows and ps elsewhere, and nothing from a failed lookup', async () => {
+    const windows = scripted(exited(0, '[{"ProcessId":51,"ParentProcessId":41,"Name":"bash.exe","CommandLine":"bash"}]'));
+    assert.deepEqual(await nodeSessionProcesses({ platform: 'win32', run: windows.run }).children(41), [
+      { pid: 51, parentPid: 41, name: 'bash.exe', commandLine: 'bash' },
+    ]);
+    assert.equal(windows.asked[0]?.program, 'powershell.exe');
+    assert.match(windows.asked[0]?.args.join(' ') ?? '', /ParentProcessId=41'/);
+    const posix = scripted(exited(0, '   51    41 bash\n   60     1 bash\n'));
+    assert.deepEqual((await nodeSessionProcesses({ platform: 'darwin', run: posix.run }).children(41))?.map((info) => info.pid), [51]);
+    assert.deepEqual(posix.asked[0]?.args, ['-A', '-o', 'pid=', '-o', 'ppid=', '-o', 'args=']);
+    assert.equal(await nodeSessionProcesses({ platform: 'win32', run: scripted(exited(1)).run }).children(41), undefined);
+    assert.equal(await nodeSessionProcesses({ platform: 'linux', run: scripted(exited(1)).run }).children(41), undefined);
+    const broken = nodeSessionProcesses({ platform: 'linux', run: async () => Promise.reject(new Error('no ps')) });
+    assert.equal(await broken.children(41), undefined);
+  });
+
   it('never puts a bad id on a command line', async () => {
     const system = scripted(exited(0));
     const processes = nodeSessionProcesses({ platform: 'win32', run: system.run, signal: () => undefined });
     for (const pid of [0, -1, 1.5, Number.NaN]) {
       assert.equal(await processes.describe(pid), undefined);
+      assert.equal(await processes.children(pid), undefined);
       assert.deepEqual(await processes.end(pid, 'force'), { kind: 'gone' });
       assert.equal(processes.alive(pid), false);
     }
@@ -140,6 +181,18 @@ describe('nodeSessionProcesses on this machine', () => {
     assert.equal(processes.alive(pid), false);
     assert.equal(await processes.describe(pid), undefined);
     assert.deepEqual(await processes.end(pid, 'force'), { kind: 'gone' });
+  });
+
+  it('lists a program it started', async () => {
+    const child = spawn(NODE, ['-e', 'setTimeout(() => {}, 30000)'], { stdio: 'ignore' });
+    const exit = new Promise((resolve) => child.once('exit', resolve));
+    try {
+      const listed = await processes.children(process.pid);
+      assert.ok(listed?.some((info) => info.pid === child.pid && /node/i.test(info.name)), JSON.stringify(listed));
+    } finally {
+      child.kill();
+      await exit;
+    }
   });
 
   it('feeds a program its input, and reports one that fails or is missing', async () => {
@@ -217,5 +270,18 @@ describe('FakeSessionProcesses', () => {
     assert.equal(fake.ends.length, 5);
     assert.deepEqual(await fake.onFeed('node', { kind: 'missing' }).feed({ command: 'node', args: [], cwd: '/', input: '' }), { kind: 'missing' });
     assert.equal(fake.fed.length, 1);
+  });
+
+  it('lists the processes one started until the system will not; one that exits by itself is no end', async () => {
+    const fake = new FakeSessionProcesses()
+      .add({ pid: 11, parentPid: 10, name: 'claude.exe', commandLine: 'claude' })
+      .add({ pid: 12, parentPid: 11, name: 'bash.exe', commandLine: 'bash' })
+      .add({ pid: 13, parentPid: 12, name: 'node.exe', commandLine: 'job' });
+    assert.deepEqual((await fake.children(11))?.map((info) => info.pid), [12]);
+    fake.exit(12);
+    assert.deepEqual(await fake.children(11), []);
+    assert.equal(fake.alive(13), true);
+    assert.deepEqual(fake.ends, []);
+    assert.equal(await fake.hideChildren().children(11), undefined);
   });
 });
