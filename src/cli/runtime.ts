@@ -8,6 +8,7 @@ import type { CredentialStore } from '../github/credentials.ts';
 import type { GhRunner } from '../github/gh.ts';
 import type { RequirementsCheck } from '../requirements/requirements.ts';
 import type { Processes } from '../open/processes.ts';
+import type { SessionProcesses } from '../open/session-processes.ts';
 import type { CommitLog } from '../push-guard/commit-size.ts';
 import type { RepoState } from '../push-guard/push.ts';
 import type { ShellRunner } from '../test-run/shell.ts';
@@ -41,6 +42,8 @@ export interface CliRuntime {
   readonly platform: NodeJS.Platform;
   /** Terminal launchers and Claude Code, for `teamrig open` and `teamrig launch`. */
   readonly processes: Processes;
+  /** The running session's Claude Code process and its tab, which the automatic context refresh ends. */
+  readonly sessionProcesses: SessionProcesses;
   /** The shell `teamrig test` runs its command line in. */
   readonly shell: ShellRunner;
   /** The GitHub CLI, for `teamrig gh sync`; it runs reads only (github/gh.ts). */
