@@ -54,7 +54,8 @@ verified yet is marked verifying, with a date to verify it by, so it stays in vi
 cannot go on is marked waiting, with what it waits for, and `check` tells you when it can. A push to main asks you first,
 and a force-push to it is refused. A message that would wake an idle member at full price is held once, so a
 cheap inbox line can take its place. When a member's context runs long, it writes a handover and teamrig restarts it fresh, and it carries on from there by itself. Big
-commits are flagged before they land, and everything runs on your machine, with no account and no cloud bill.
+commits are flagged before they land, `teamrig worktree remove` clears a finished worktree without emptying the main
+checkout's `node_modules`, and everything runs on your machine, with no account and no cloud bill.
 
 Your GitHub issues can join the task list too, one way only: `teamrig gh sync` adds a task for each open issue of the
 repositories you list and keeps its title, description (the issue's body), priority and open or closed state as on GitHub. It only ever reads GitHub,
