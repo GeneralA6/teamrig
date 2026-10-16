@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { NewerDataError } from '../core/jsonl.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { activeHires, HIRE_FORMAT, HiringLog, parseHiringRecord, type HireRecord, type RetireRecord } from './log.ts';
+import { activeHires, HIRE_FORMAT, HiringLog, parseHiringRecord, retiredSessions, type HireRecord, type RetireRecord } from './log.ts';
 
 const PATH = '/kit/teams/app/state/hires.jsonl';
 const AT = Date.parse('2030-01-08T10:00:00Z');
@@ -23,6 +23,10 @@ describe('parseHiringRecord', () => {
       parseHiringRecord({ kind: 'retire', session: 'helper', reason: 'done', handover: 'handover/helper.md', heir: 'alpha', by: 'lead', at: '2030-01-08T10:00:00.000Z' }),
       retire({ reason: 'done', handover: 'handover/helper.md', heir: 'alpha', at: AT }),
     );
+    assert.deepEqual(
+      parseHiringRecord({ kind: 'retire', session: 'helper', reason: 'done', noHandover: 'nothing to hand over', by: 'helper', at: '2030-01-08T10:00:00.000Z' }),
+      retire({ reason: 'done', noHandover: 'nothing to hand over', by: 'helper', at: AT }),
+    );
   });
 
   it('skips a damaged record', () => {
@@ -40,6 +44,14 @@ describe('activeHires', () => {
     const records = [hire(), hire({ session: 'other' }), retire(), rehire, hire({ session: 'gone' }), retire({ session: 'gone' })];
     assert.deepEqual(activeHires(records), [rehire, hire({ session: 'other' })]);
     assert.deepEqual(activeHires([]), []);
+  });
+});
+
+describe('retiredSessions', () => {
+  it('keeps the sessions whose newest record is a retire, with that retire', () => {
+    const records = [hire(), hire({ session: 'other' }), retire(), hire({ session: 'back' }), retire({ session: 'back' }), hire({ session: 'back', at: AT + 2000 })];
+    assert.deepEqual(retiredSessions(records), [retire()]);
+    assert.deepEqual(retiredSessions([]), []);
   });
 });
 
