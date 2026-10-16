@@ -20,6 +20,7 @@ const refreshCommands = () => import("./commands/refresh.js");
 const setupCommands = () => import("./commands/setup.js");
 const compactCommands = () => import("./commands/compact.js");
 const rulesCommands = () => import("./commands/rules.js");
+const ruleConflictCommands = () => import("./commands/rule-conflicts.js");
 const openCommands = () => import("./commands/open.js");
 const restartCommands = () => import("./commands/restart.js");
 const budgetCommands = () => import("./commands/budget.js");
@@ -54,6 +55,9 @@ const COMMANDS = {
     'team create': { effect: 'write', flags: ['sessions', 'lead', 'parent', 'project'], switches: ['dry-run'], load: async () => (await setupCommands()).teamCreate },
     'team tree': { effect: 'read', flags: [], load: async () => (await teamCommands()).teamTree },
     rules: { effect: 'read', flags: ['session'], load: async () => (await rulesCommands()).rules },
+    'rules scan': { effect: 'read', flags: ['kind'], load: async () => (await ruleConflictCommands()).scan },
+    'rules keep': { effect: 'write', flags: ['session', 'rule', 'wins', 'reason'], switches: ['yes'], load: async () => (await ruleConflictCommands()).keep },
+    'rules forget': { effect: 'write', flags: ['session'], switches: ['yes'], load: async () => (await ruleConflictCommands()).forget },
     start: { effect: 'write', flags: ['session'], switches: ['all'], load: async () => (await startCommands()).start },
     'meeting start': { effect: 'write', flags: ['session'], load: async () => (await meetingCommands()).meetingStart },
     'meeting agenda': { effect: 'write', flags: ['session'], load: async () => (await meetingCommands()).meetingAgenda },
@@ -138,6 +142,13 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       with no terminal it prints the command; a rehired session reads the handover it left first, or,
       with --resume, goes on in its last Claude Code session when that is small and recent enough
   rules [--session <id|name>]  the team rules and who the session is, as a session start gives them
+  rules scan [--kind <kind>]   every place a local rule can override a core rule (CLAUDE.md files, rules
+      files, skills, memory, rules.md, hook scripts, settings autoMode lines), the kept rules, and the lines
+      that touch a core rule for the model to judge; it only reads; over 150 lines, one kind at a time
+  rules keep <path>:<line> --rule <n|key> --wins local|teamrig [--reason "<why>"] [--yes]
+      (the lead only) keeps a local rule that conflicts with a core rule: local wins as a named exception,
+      or teamrig wins and the line stays; without --yes it shows the record and writes nothing
+  rules forget <n> [--yes]     (the lead only) drops kept rule n, as rules scan numbers them
   start [--session <id|name>] [--all]   the start of a work block in one call: the UTC time, the
       unread inbox lines (marked read), the session's tasks, the check flags it acts on (the lead: all)
       and the week's use; --all: the tasks and flags in full

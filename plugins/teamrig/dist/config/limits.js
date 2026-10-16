@@ -14,6 +14,7 @@ export const CONFIG_LIMITS = {
     memoryIndexChars: { min: 500, max: 500_000 },
     skillListingChars: { min: 500, max: 500_000 },
     ownerGates: { maxItems: 8, maxLength: 60 },
+    ruleConflicts: { maxItems: 40 },
     protectedBranches: { maxItems: 8, maxLength: 64 },
     commitMaxLines: { min: 50, max: 5000 },
     commitMaxFiles: { min: 2, max: 500 },
@@ -51,6 +52,15 @@ export const CONFIG_LIMITS = {
     hiringReviewDays: { min: 1, max: 90 },
     hiringResumeMaxTokens: { min: 10_000, max: 1_000_000 },
     hiringResumeMaxIdleDays: { min: 1, max: 90 },
+};
+/**
+ * Bounds on the fields of one recorded rule conflict (`ruleConflicts`). A line longer than `textMaxLength` is
+ * recorded by its start, which is enough to find it again; the pack quotes less still.
+ */
+export const RULE_CONFLICT_LIMITS = {
+    fileMaxLength: 512,
+    textMaxLength: 300,
+    reasonMaxLength: 200,
 };
 /**
  * Bounds on a tree of teams, which `team create` and `doctor` enforce. A lead's `--tree` roll-up reads
