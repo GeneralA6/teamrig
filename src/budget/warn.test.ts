@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import type { OverAction } from '../config/types.ts';
 import type { Lift } from './lift.ts';
 import { readPace, weekWindow, type PaceBudget } from './pace.ts';
-import { emptyWarnState, helperGate, levelOf, promptWarning, quietStartOf, stopWarning, type BudgetFacts, type WarnBudget, type WarnState } from './warn.ts';
+import { emptyWarnState, helperGate, isPastDailyBudget, levelOf, promptWarning, quietStartOf, sessionQuietFrom, stopWarning, type BudgetFacts, type WarnBudget, type WarnState } from './warn.ts';
 
 const RESET = Date.parse('2026-10-21T01:00:00Z');
 const WINDOW = weekWindow(RESET, 1);
@@ -88,6 +88,22 @@ describe('quietStartOf', () => {
     assert.equal(quietStartOf(undefined, DAY), undefined);
     assert.equal(quietStartOf({ ...lunch, endUtc: '12:00' }, DAY), undefined);
     assert.equal(quietStartOf({ ...lunch, startUtc: '25:00' }, DAY), undefined);
+  });
+});
+
+describe('isPastDailyBudget and sessionQuietFrom', () => {
+  it('is past budget only above 100% of it, and any use is past a budget of 0', () => {
+    assert.equal(isPastDailyBudget(facts(1, BEHIND)), false);
+    assert.equal(isPastDailyBudget(facts(1.01, BEHIND)), true);
+    assert.equal(isPastDailyBudget(facts(0, BEHIND, DAY, { budgetPct: 0 })), false);
+    assert.equal(isPastDailyBudget(facts(0.01, BEHIND, DAY, { budgetPct: 0 })), true);
+  });
+
+  it('finds the quiet hours the session is in, unless its lift exempts it', () => {
+    assert.equal(sessionQuietFrom(facts(0, BEHIND, NIGHT), QUIET), Date.parse('2026-10-15T22:00:00Z'));
+    assert.equal(sessionQuietFrom(facts(0, BEHIND, NIGHT, { lift: lift() }), QUIET), undefined);
+    assert.equal(sessionQuietFrom(facts(0, BEHIND, NIGHT, { lift: lift({ quietHoursExempt: false }) }), QUIET), Date.parse('2026-10-15T22:00:00Z'));
+    assert.equal(sessionQuietFrom(facts(0, BEHIND, DAY), QUIET), undefined);
   });
 });
 
