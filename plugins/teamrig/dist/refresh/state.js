@@ -69,3 +69,35 @@ export function parseRefreshRequest(text) {
 export function formatRefreshRequest(request) {
     return toJsonlLine({ [VERSION_FIELD]: REFRESH_FORMAT, ...request });
 }
+function nullableString(record, key) {
+    const value = record[key];
+    return value === null || typeof value === 'string' ? value : undefined;
+}
+/** A restart file's content; undefined when it is damaged or from another format. */
+export function parseRestartRequest(text) {
+    const record = recordOf(text);
+    if (record === undefined) {
+        return undefined;
+    }
+    const phase = record['phase'];
+    const at = stringField(record, 'at');
+    const pid = record['pid'];
+    const claudeSession = stringField(record, 'claudeSession');
+    const transcript = nullableString(record, 'transcript');
+    const cwd = nullableString(record, 'cwd');
+    const supervised = record['supervised'];
+    if ((phase !== 'pending' && phase !== 'ending') ||
+        at === undefined ||
+        !isNonNegativeInteger(pid) ||
+        pid === 0 ||
+        claudeSession === undefined ||
+        transcript === undefined ||
+        cwd === undefined ||
+        typeof supervised !== 'boolean') {
+        return undefined;
+    }
+    return { phase, at, pid, claudeSession, transcript, cwd, supervised };
+}
+export function formatRestartRequest(request) {
+    return toJsonlLine({ [VERSION_FIELD]: REFRESH_FORMAT, ...request });
+}

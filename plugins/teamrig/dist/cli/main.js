@@ -8,6 +8,7 @@ import { NODE_PATH_PROBE } from "../core/path-probe.js";
 import { nodeProgramRunner, systemCredentials } from "../github/credentials.js";
 import { nodeGhRunner } from "../github/gh.js";
 import { nodeProcesses } from "../open/processes.js";
+import { nodeSessionProcesses } from "../open/session-processes.js";
 import { GIT_CLI, GIT_COMMIT_LOG } from "../push-guard/git.js";
 import { requirementsCheck } from "../requirements/requirements.js";
 import { nodeShellRunner } from "../test-run/shell.js";
@@ -29,6 +30,7 @@ process.exitCode = await runCli(process.argv.slice(2), {
     },
     platform: process.platform,
     processes: nodeProcesses(),
+    sessionProcesses: nodeSessionProcesses(),
     shell: nodeShellRunner(),
     gh: nodeGhRunner(),
     credentials: systemCredentials(process.platform, nodeProgramRunner()),

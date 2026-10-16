@@ -1,9 +1,11 @@
 import { join } from 'node:path';
-import { formatRefreshRequest, formatRefreshState, parseRefreshRequest, parseRefreshState } from "./state.js";
+import { formatRefreshRequest, formatRefreshState, formatRestartRequest, parseRefreshRequest, parseRefreshState, parseRestartRequest, } from "./state.js";
 /**
  * Each session's refresh files. The state (`<id>.json`) is written only by the session itself, from
  * its commands and hooks; the lead's request (`<id>.request.json`) is a file of its own, so neither
- * write ever overwrites the other's. Ids are session ids, checked by the roster, so they are safe in a path.
+ * write ever overwrites the other's; so is the automatic restart (`<id>.restart.json`), which the
+ * session's hooks, its restart and `teamrig launch` share. Ids are session ids, checked by the roster,
+ * so they are safe in a path.
  */
 export class RefreshStore {
     files;
@@ -38,10 +40,23 @@ export class RefreshStore {
     clearRequest(id) {
         return this.files.remove(this.requestPath(id));
     }
+    async restart(id) {
+        const text = await this.files.read(this.restartPath(id));
+        return text === undefined ? undefined : parseRestartRequest(text);
+    }
+    setRestart(id, request) {
+        return this.files.write(this.restartPath(id), formatRestartRequest(request));
+    }
+    clearRestart(id) {
+        return this.files.remove(this.restartPath(id));
+    }
     statePath(id) {
         return join(this.paths.refresh, `${id}.json`);
     }
     requestPath(id) {
         return join(this.paths.refresh, `${id}.request.json`);
+    }
+    restartPath(id) {
+        return join(this.paths.refresh, `${id}.restart.json`);
     }
 }

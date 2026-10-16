@@ -476,6 +476,10 @@ function parseCommits(read, raw) {
 const REFRESH_TOKENS = { min: 10_000, max: 10_000_000 };
 /** 0 turns the task count off. */
 const REFRESH_TASKS = { min: 0, max: 100 };
+/** Long enough to read the notice and type, short enough that the fresh start is not missed. */
+const RESTART_DELAY_SECONDS = { min: 5, max: 600 };
+/** A program and its arguments. */
+const END_COMMAND_MAX_ITEMS = 16;
 function parseRefresh(read, raw) {
     const path = 'refresh';
     const defaults = DEFAULT_REFRESH;
@@ -486,6 +490,9 @@ function parseRefresh(read, raw) {
         everyTasks: read.integer(raw, 'everyTasks', path, defaults.everyTasks, REFRESH_TASKS),
         everyTasksMinTokens: read.integer(raw, 'everyTasksMinTokens', path, defaults.everyTasksMinTokens, REFRESH_TOKENS),
         tabTitle: read.boolean(raw, 'tabTitle', path, defaults.tabTitle),
+        autoRestart: read.boolean(raw, 'autoRestart', path, defaults.autoRestart),
+        restartDelaySeconds: read.integer(raw, 'restartDelaySeconds', path, defaults.restartDelaySeconds, RESTART_DELAY_SECONDS),
+        endCommand: read.stringList(raw, 'endCommand', path, defaults.endCommand, undefined, END_COMMAND_MAX_ITEMS),
         ...(handoverDir === undefined ? {} : { handoverDir }),
     };
 }

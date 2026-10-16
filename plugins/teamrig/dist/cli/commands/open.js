@@ -11,6 +11,7 @@ import { openTab } from "../../open/open-tab.js";
 import { decodePrompt, defaultPrompt, encodePrompt, promptProblem } from "../../open/prompt.js";
 import { shellCommand } from "../../open/quote.js";
 import { sessionEnv } from "../../open/session-env.js";
+import { RefreshStore } from "../../refresh/store.js";
 import { onePositional, requiredFlag, UsageError } from "../args.js";
 import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
@@ -46,12 +47,6 @@ function projectFlagOf(flag, from) {
     return flag ?? (from === ENV_SOURCE ? undefined : dirname(from));
 }
 /**
- * `open <id|name> [--prompt <text>] [--terminal <name>] [--project <dir>]`: a new terminal tab in the
- * project folder that runs `launch`, so Claude Code starts there as the session. The command runs by
- * absolute paths, since the plugin's bin folder is on PATH only inside Claude Code. When no terminal
- * opens it prints the command to run instead and exits 3.
- */
-/**
  * The team a session to open is on: the project's own team, or, for `<team>/<id>`, another team of
  * the same tree, whose sessions share the project folder and get their team from `$TEAMRIG_TEAM`.
  */
@@ -65,6 +60,33 @@ async function openTeamOf(runtime, own, named) {
     }
     return named;
 }
+/**
+ * Opens a terminal tab titled with the session's name that runs `launch` for it, by absolute paths,
+ * since the plugin's bin folder is on PATH only inside Claude Code: `open` and the automatic restart.
+ */
+export async function openSessionTab(runtime, tab) {
+    const customHome = runtime.env[ENV.home]?.trim();
+    const argv = [
+        runtime.self.node,
+        runtime.self.script,
+        'launch',
+        tab.id,
+        '--team',
+        tab.team,
+        '--project',
+        tab.project,
+        ...(customHome === undefined || customHome === '' ? [] : ['--home', resolve(runtime.cwd, customHome)]),
+        '--encoded-prompt',
+        encodePrompt(tab.prompt),
+    ];
+    return { outcome: await openTab(runtime, tab.terminal, { title: tab.name, folder: tab.project, argv }), argv };
+}
+/**
+ * `open <id|name> [--prompt <text>] [--terminal <name>] [--project <dir>]`: a new terminal tab in the
+ * project folder that runs `launch`, so Claude Code starts there as the session. The command runs by
+ * absolute paths, since the plugin's bin folder is on PATH only inside Claude Code. When no terminal
+ * opens it prints the command to run instead and exits 3.
+ */
 export async function open(args, runtime) {
     const target = onePositional(args, 'id|name');
     const address = splitAddress(target);
@@ -77,22 +99,8 @@ export async function open(args, runtime) {
     const terminal = terminalOf(args.flags.get('terminal'), config.open.terminal);
     const prompt = checkedPrompt(args.flags.get('prompt') ?? defaultPrompt(team, id));
     const project = await projectOf(runtime, projectFlagOf(args.flags.get('project'), found.from));
-    const customHome = runtime.env[ENV.home]?.trim();
-    const argv = [
-        runtime.self.node,
-        runtime.self.script,
-        'launch',
-        id,
-        '--team',
-        team,
-        '--project',
-        project,
-        ...(customHome === undefined || customHome === '' ? [] : ['--home', resolve(runtime.cwd, customHome)]),
-        '--encoded-prompt',
-        encodePrompt(prompt),
-    ];
     const name = roster.nameOf(id) ?? id;
-    const outcome = await openTab(runtime, terminal, { title: name, folder: project, argv });
+    const { outcome, argv } = await openSessionTab(runtime, { team, id, name, project, prompt, terminal });
     if (outcome.kind === 'opened') {
         runtime.out.stdout(`OPENED ${name} (session ${id}) in a new ${TERMINAL_LABELS[outcome.terminal]} in ${project}, on ${describeLaunch(launchOf(config, id))}`);
         return EXIT.ok;
@@ -102,7 +110,7 @@ export async function open(args, runtime) {
     runtime.out.stdout(shellCommand(runtime.platform, project, argv));
     return EXIT.printed;
 }
-function idFlag(flag, value) {
+export function idFlag(flag, value) {
     if (!ID_PATTERN.test(value)) {
         throw new UsageError(`${flag} "${value}" is not an id (${ID_RULE})`);
     }
@@ -118,11 +126,39 @@ function launchPrompt(encoded, team, id) {
     }
     return checkedPrompt(prompt);
 }
+/** Whether the automatic restart ended this session's Claude Code for launch to start again; takes its request if so. */
+async function restartTaken(store, id) {
+    const request = await store.restart(id);
+    if (request?.phase !== 'ending' || !request.supervised) {
+        return false;
+    }
+    await store.clearRestart(id);
+    return true;
+}
+/** Launch's exit for how Claude Code ended. */
+function claudeExit(runtime, command, result) {
+    switch (result.kind) {
+        case 'exited':
+            if (result.code === 0) {
+                return EXIT.ok;
+            }
+            runtime.out.stderr(`FAILED Claude Code exited with code ${result.code}`);
+            return EXIT.failed;
+        case 'missing':
+            runtime.out.stderr(`FAILED ${command} is gone`);
+            return EXIT.failed;
+        case 'failed':
+            runtime.out.stderr(`FAILED ${command}: ${result.error}`);
+            return EXIT.failed;
+    }
+}
 /**
  * `launch <id> --team <team> --project <dir> [--home <dir>] [--encoded-prompt <text>]`: what a tab
  * that `open` started runs. It sets the session's variables and starts Claude Code under the
  * session's name, on its model and effort from the team config's `launch`, with its first prompt,
- * its input and output on this terminal.
+ * its input and output on this terminal. `$TEAMRIG_LAUNCHED` tells the Stop hook that launch runs it:
+ * when the automatic context refresh ended Claude Code for a fresh start, launch starts it again in
+ * this tab with the default prompt, and the new session reads its handover first.
  */
 export async function launch(args, runtime) {
     const id = idFlag('session', onePositional(args, 'id'));
@@ -132,7 +168,7 @@ export async function launch(args, runtime) {
         throw new RefusedError(`the project folder ${project} does not exist`);
     }
     const prompt = launchPrompt(args.flags.get('encoded-prompt'), team, id);
-    const env = sessionEnv(runtime.env, { id, team, home: args.flags.get('home') });
+    const env = { ...sessionEnv(runtime.env, { id, team, home: args.flags.get('home') }), [ENV.launched]: id };
     const sessionRuntime = { ...runtime, env };
     const kit = await openKit(sessionRuntime, team);
     const config = requireConfig(kit, sessionRuntime, 'read');
@@ -149,19 +185,14 @@ export async function launch(args, runtime) {
     const settings = launchOf(config, id);
     runtime.out.stdout(`Starting Claude Code as ${name} (session ${id} of team ${team}) in ${project}, on ${describeLaunch(settings)}`);
     const { command, prefix } = claude.program;
-    const result = await runtime.processes.run({ command, args: [...prefix, ...launchFlags(settings), '--name', name, prompt], cwd: project, env });
-    switch (result.kind) {
-        case 'exited':
-            if (result.code === 0) {
-                return EXIT.ok;
-            }
-            runtime.out.stderr(`FAILED Claude Code exited with code ${result.code}`);
-            return EXIT.failed;
-        case 'missing':
-            runtime.out.stderr(`FAILED ${command} is gone`);
-            return EXIT.failed;
-        case 'failed':
-            runtime.out.stderr(`FAILED ${command}: ${result.error}`);
-            return EXIT.failed;
+    const store = new RefreshStore(runtime.files, kit.paths);
+    let first = prompt;
+    for (;;) {
+        const result = await runtime.processes.run({ command, args: [...prefix, ...launchFlags(settings), '--name', name, first], cwd: project, env });
+        if (!(await restartTaken(store, id))) {
+            return claudeExit(runtime, command, result);
+        }
+        runtime.out.stdout(`Starting Claude Code again as ${name} with a fresh context: it reads its handover first`);
+        first = defaultPrompt(team, id);
     }
 }

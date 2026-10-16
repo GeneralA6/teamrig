@@ -82,7 +82,16 @@ export const DEFAULT_GITHUB = { repos: [], owners: {}, sessions: {}, closedDays:
  * Claude Code compacts a 200k window at about 167k, so 120k refreshes before that; every 3 tasks catches a
  * session that grows slowly, from 80k up. Measured over 8 days of 12 sessions: about 9 refreshes a day in all.
  */
-export const DEFAULT_REFRESH = { enabled: true, contextTokens: 120_000, everyTasks: 3, everyTasksMinTokens: 80_000, tabTitle: true };
+export const DEFAULT_REFRESH = {
+    enabled: true,
+    contextTokens: 120_000,
+    everyTasks: 3,
+    everyTasksMinTokens: 80_000,
+    tabTitle: true,
+    autoRestart: true,
+    restartDelaySeconds: 15,
+    endCommand: [],
+};
 export const DEFAULT_OPEN = { terminal: 'auto' };
 /**
  * A hire spends the week's budget, so it waits for the owner's yes: at most two hires at 1% of the week a day

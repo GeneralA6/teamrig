@@ -18,6 +18,8 @@ export const ENV = {
     claudeProjectDir: 'CLAUDE_PROJECT_DIR',
     /** Moves Claude Code's own folder (settings, plugins, transcripts) away from `~/.claude`. */
     claudeConfigDir: 'CLAUDE_CONFIG_DIR',
+    /** The session `teamrig launch` runs Claude Code for: it starts Claude Code again after an automatic restart. */
+    launched: 'TEAMRIG_LAUNCHED',
     /** `off` turns `teamrig gh sync` off on this machine: it reads nothing and writes nothing. */
     github: 'TEAMRIG_GITHUB',
 };
