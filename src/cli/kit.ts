@@ -4,6 +4,7 @@ import { SHIPPED_CONFIG_FORMAT } from '../config/migrate.ts';
 import type { ConfigIssue } from '../config/reader.ts';
 import { Roster } from '../config/roster.ts';
 import type { KitConfig } from '../config/types.ts';
+import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { ENV, KIT_NAME, resolveKitHome, teamPaths, type Env, type PathOverrides, type TeamPaths } from '../core/home.ts';
 import { ID_PATTERN } from '../core/ids.ts';
 import { FileLock } from '../core/lock.ts';
@@ -161,4 +162,19 @@ export function requireConfig(kit: Kit, runtime: CliRuntime, access: Access): Ki
     runtime.out.stderr(`WARN config: ${load.issues.length} problem(s), defaults used (first: ${issueText(first)}); run: teamrig config validate`);
   }
   return load.config;
+}
+
+/** The config file's own JSON, not the copy migrated in memory, so nothing else in it changes, its version included. */
+export async function configFileJson(runtime: CliRuntime, path: string): Promise<JsonRecord> {
+  const text = await runtime.files.read(path);
+  let raw: unknown;
+  try {
+    raw = text === undefined ? undefined : JSON.parse(text);
+  } catch {
+    raw = undefined;
+  }
+  if (!isRecord(raw)) {
+    throw new RefusedError(`${path} changed while it was read; run the command again`);
+  }
+  return raw;
 }
