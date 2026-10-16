@@ -22,6 +22,7 @@ const EVERY_KEY = {
   coordinator: { schedule: { heavyCutoffUtc: '22:30' } },
   budget: {
     weeklyLimitW: 680_000_000,
+    subagentWeight: 2,
     reset: { weekday: 'wed', timeUtc: '01:00' },
     dailyPct: 10,
     maxDailyPct: 12,
@@ -92,6 +93,7 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   budgetTargetPct: 'budget.targetPct',
   budgetReservePct: 'budget.reservePct',
   weeklyLimitW: 'budget.weeklyLimitW',
+  subagentWeight: 'budget.subagentWeight',
   paceEndHoursBeforeReset: 'budget.paceEndHoursBeforeReset',
   dailyPct: 'budget.dailyPct',
   maxDailyPct: 'budget.maxDailyPct',

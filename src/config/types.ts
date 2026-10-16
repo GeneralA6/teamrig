@@ -248,6 +248,11 @@ export interface BudgetConfig {
   readonly enabled: boolean;
   /** The weekly limit in weighted tokens (W). Unset: derived from the status line's weekly %. */
   readonly weeklyLimitW?: number;
+  /**
+   * What one W of a subagent's transcript costs against the weekly limit, in W of a main session. The meter
+   * multiplies each subagent call's W by it, so every W (and `weeklyLimitW`) is in main-session W. 1: alike.
+   */
+  readonly subagentWeight: number;
   /** Unset: the reset time the status line reports. */
   readonly reset?: BudgetReset;
   /** Use the week up to this share of the weekly limit. */

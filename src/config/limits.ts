@@ -33,6 +33,7 @@ export const CONFIG_LIMITS = {
   budgetTargetPct: { min: 1, max: 100 },
   budgetReservePct: { min: 0, max: 50 },
   weeklyLimitW: { min: 1_000_000, max: 1_000_000_000_000 },
+  subagentWeight: { min: 0.1, max: 10 },
   paceEndHoursBeforeReset: { min: 0, max: 48 },
   dailyPct: { min: 0.1, max: 100 },
   maxDailyPct: { min: 0.1, max: 100 },

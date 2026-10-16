@@ -371,6 +371,7 @@ function parseBudget(read: ConfigReader, raw: JsonRecord, sessions: readonly str
   return {
     enabled: read.boolean(raw, 'enabled', path, defaults.enabled),
     ...(weeklyLimitW === undefined ? {} : { weeklyLimitW }),
+    subagentWeight: read.number(raw, 'subagentWeight', path, defaults.subagentWeight, CONFIG_LIMITS.subagentWeight),
     ...(reset === undefined ? {} : { reset }),
     targetPct,
     reservePct,
