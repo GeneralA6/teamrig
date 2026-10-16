@@ -88,7 +88,7 @@ describe('decideStop', () => {
       state: { phase: 'asked', task: 'T12', at: NOW, tokens: 262_144, handoverHash: 'abc' },
       reason:
         'teamrig: your context is 262k (refresh at 250k) and you just finished T12. Write your handover to /team/handover/alpha.md ' +
-        '(what is in progress, the next step of each, open questions, where things are), then run ' +
+        '(what is in progress and the next step of each; what to check later, and when; questions still open with the user; the scratchpad files, plan file and scheduled jobs the next session still needs; where things are), then run ' +
         '`teamrig refresh --ready --session alpha`. Do not start new work.',
     });
     assert.equal(decideStop(BOUNDARY, stopContext(), facts({ tokens: 250_000 })).kind, 'block');

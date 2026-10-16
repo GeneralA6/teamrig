@@ -146,11 +146,12 @@ teamrig refreshes a long-running session at a task boundary, so it never loses w
    monitors, workflows) has all reported back:
 
    ```text
-   teamrig: your context is 132k (refresh at 120k) and you just finished T2. Write your handover to <home>/teams/shop/handover/web.md (what is in progress, the next step of each, open questions, where things are), then run `teamrig refresh --ready --session web`. Do not start new work.
+   teamrig: your context is 132k (refresh at 120k) and you just finished T2. Write your handover to <home>/teams/shop/handover/web.md (what is in progress and the next step of each; what to check later, and when; questions still open with the user; the scratchpad files, plan file and scheduled jobs the next session still needs; where things are), then run `teamrig refresh --ready --session web`. Do not start new work.
    ```
 
-2. Write the handover at that path: what is in progress, the next step of each, open questions, where things
-   are (branches, worktrees, files, ids). It must be new: the old file left as it was is refused.
+2. Write the handover at that path: what is in progress and the next step of each, what to check later and when,
+   questions still open with the user, the scratchpad files, plan file and scheduled jobs the next session still
+   needs, and where things are (branches, worktrees, files, ids). It must be new: the old file left as it was is refused.
 3. Run `teamrig refresh --ready --session web`. It prints `Ready. End your turn now: teamrig starts you fresh
    once you are idle, or asks the user to type /clear; your next start reads <path>.`. At the end of that turn
    the tab title becomes `shop-web: restarting` (the session's name; `refresh.tabTitle: false` turns that off).

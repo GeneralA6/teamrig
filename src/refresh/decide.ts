@@ -127,7 +127,8 @@ function handoverAsk(task: string, cause: Cause, context: StopContext): string {
   const why = whyOf(cause, context.settings);
   return (
     `${context.command}: ${why} and you just finished ${task}. Write your handover to ${context.handoverPath} ` +
-    '(what is in progress, the next step of each, open questions, where things are), then run ' +
+    '(what is in progress and the next step of each; what to check later, and when; questions still open with the user; ' +
+    'the scratchpad files, plan file and scheduled jobs the next session still needs; where things are), then run ' +
     `\`${readyCommand(context.command, context.session.id)}\`. Do not start new work.`
   );
 }
