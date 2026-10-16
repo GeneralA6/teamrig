@@ -29,7 +29,8 @@ export interface ContextFileLocations {
   readonly skills: string;
 }
 
-const CLAUDE_MD_FILES: readonly (readonly string[])[] = [['CLAUDE.md'], ['CLAUDE.local.md'], ['.claude', 'CLAUDE.md']];
+/** The CLAUDE.md files Claude Code reads in a folder, as path parts below it. */
+export const CLAUDE_MD_FILES: readonly (readonly string[])[] = [['CLAUDE.md'], ['CLAUDE.local.md'], ['.claude', 'CLAUDE.md']];
 
 /** The project folder, then each parent up to the filesystem root. */
 function foldersUp(project: string): string[] {
@@ -38,6 +39,22 @@ function foldersUp(project: string): string[] {
     folders.push(parent);
   }
   return folders;
+}
+
+/** The CLAUDE.md files every session in `project` loads: the user's, then each of the project folder and its parents. */
+export function claudeMdPaths(claudeDir: string, project: string): string[] {
+  const nearby = foldersUp(project).flatMap((folder) => CLAUDE_MD_FILES.map((parts) => join(folder, ...parts)));
+  return [...new Set([join(claudeDir, 'CLAUDE.md'), ...nearby])];
+}
+
+/** The project's memory folder, `<claudeDir>/projects/<slug>/memory`, where Claude Code keeps MEMORY.md and its files. */
+export function claudeMemoryDir(claudeDir: string, project: string): string {
+  return join(claudeDir, 'projects', claudeProjectSlug(project), 'memory');
+}
+
+/** The skills folders a session in `project` lists: the team's, then the project's own `.claude/skills`. */
+export function skillFolders(teamSkills: string, project: string): string[] {
+  return [...new Set([join(teamSkills), join(project, '.claude', 'skills')])];
 }
 
 async function measure(files: Files, path: string): Promise<ContextFile | undefined> {
@@ -56,11 +73,10 @@ function listingLine(name: string, text: string): string {
  * team's and the project's skills folders. Plugin skills and connector tools are not counted. It only reads.
  */
 export async function readContextFiles(files: Files, at: ContextFileLocations): Promise<ContextFiles> {
-  const nearby = foldersUp(at.project).flatMap((folder) => CLAUDE_MD_FILES.map((parts) => join(folder, ...parts)));
-  const claudeMdPaths = [...new Set([join(at.claudeDir, 'CLAUDE.md'), ...nearby])];
-  const claudeMd = (await Promise.all(claudeMdPaths.map((path) => measure(files, path)))).filter((file): file is ContextFile => file !== undefined);
-  const memoryIndex = await measure(files, join(at.claudeDir, 'projects', claudeProjectSlug(at.project), 'memory', 'MEMORY.md'));
-  const folders = [...new Set([join(at.skills), join(at.project, '.claude', 'skills')])];
+  const paths = claudeMdPaths(at.claudeDir, at.project);
+  const claudeMd = (await Promise.all(paths.map((path) => measure(files, path)))).filter((file): file is ContextFile => file !== undefined);
+  const memoryIndex = await measure(files, join(claudeMemoryDir(at.claudeDir, at.project), 'MEMORY.md'));
+  const folders = skillFolders(at.skills, at.project);
   const skills = (await Promise.all(folders.map((folder) => new SkillDir(files, folder).readAll()))).flat();
   const chars = skills.reduce((sum, skill) => sum + listingLine(skill.name, skill.text).length, 0);
   return { claudeMd, memoryIndex, skills: { folders, count: skills.length, chars } };

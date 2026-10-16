@@ -21,7 +21,7 @@ export function claudeSettingsFiles(claudeDir: string, project: string): string[
 }
 
 /** The text as a JSON object, or undefined when it is not one; a leading byte order mark is skipped. */
-function objectOf(text: string): Readonly<Record<string, unknown>> | undefined {
+export function jsonObjectOf(text: string): Readonly<Record<string, unknown>> | undefined {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text.replace(/^﻿/, ''));
@@ -41,7 +41,7 @@ async function readOne(files: Files, path: string): Promise<SettingsEnv | undefi
   if (text === undefined) {
     return undefined;
   }
-  const settings = objectOf(text);
+  const settings = jsonObjectOf(text);
   if (settings === undefined) {
     return { kind: 'unreadable', path };
   }

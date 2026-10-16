@@ -1,5 +1,6 @@
 import { posix } from 'node:path';
 import type { Files } from '../core/files.ts';
+import type { PathKind, PathProbe } from '../core/path-probe.ts';
 
 /** In-memory `Files` for tests. Paths are compared after normalising separators to `/`. */
 export class MemoryFiles implements Files {
@@ -67,6 +68,22 @@ export class MemoryFiles implements Files {
 
   async remove(path: string): Promise<void> {
     this.contents.delete(normalisePath(path));
+  }
+}
+
+/** A `PathProbe` over a `MemoryFiles`: a path that holds text is a file, a path with files below it is a folder. */
+export class MemoryPathProbe implements PathProbe {
+  private readonly files: MemoryFiles;
+
+  constructor(files: MemoryFiles) {
+    this.files = files;
+  }
+
+  async kind(path: string): Promise<PathKind> {
+    if (this.files.get(path) !== undefined) {
+      return 'file';
+    }
+    return (await this.files.list(path)).length > 0 ? 'folder' : 'none';
   }
 }
 
