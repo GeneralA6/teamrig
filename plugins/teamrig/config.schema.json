@@ -304,6 +304,13 @@
           "minimum": 1000000,
           "maximum": 1000000000000
         },
+        "subagentWeight": {
+          "description": "What one W of a subagent's transcript costs against the weekly limit, in W of a main session. The meter multiplies each subagent call's W by it, so weeklyLimitW is in main-session W. 1: both cost alike.",
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 10,
+          "default": 1
+        },
         "reset": {
           "description": "When the weekly limit resets, for a team without a status line. Unset: the reset time the status line reports.",
           "type": "object",

@@ -80,6 +80,7 @@ export const DEFAULT_COMMITS: CommitsConfig = {
  */
 export const DEFAULT_BUDGET: BudgetConfig = {
   enabled: false,
+  subagentWeight: 1,
   targetPct: 99.5,
   reservePct: 0.5,
   paceEndHoursBeforeReset: 1,

@@ -413,6 +413,7 @@ describe('parseConfig budget', () => {
       budget: {
         enabled: true,
         weeklyLimitW: 680_000_000,
+        subagentWeight: 2.15,
         reset: { weekday: 'wed', timeUtc: '01:00' },
         targetPct: 99,
         reservePct: 1,
@@ -434,6 +435,7 @@ describe('parseConfig budget', () => {
     assert.deepEqual(config.budget, {
       enabled: true,
       weeklyLimitW: 680_000_000,
+      subagentWeight: 2.15,
       reset: { weekday: 'wed', timeUtc: '01:00' },
       targetPct: 99,
       reservePct: 1,
@@ -469,6 +471,7 @@ describe('parseConfig budget', () => {
       ...ROSTER,
       budget: {
         weeklyLimitW: 12.5,
+        subagentWeight: 11,
         reset: { weekday: 'someday', timeUtc: '1am' },
         targetPct: 0,
         reservePct: 60,
@@ -506,6 +509,7 @@ describe('parseConfig budget', () => {
       'budget.sessions.bravo',
       'budget.sessions.carol',
       'budget.statusSnapshotDir',
+      'budget.subagentWeight',
       'budget.targetPct',
       'budget.warnAtPct[1]',
       'budget.warnAtPct[2]',
