@@ -18,3 +18,27 @@ export function pathKey(path: string, platform: NodeJS.Platform = process.platfo
 export function samePath(a: string, b: string, platform: NodeJS.Platform = process.platform): boolean {
   return pathKey(a, platform) === pathKey(b, platform);
 }
+
+/**
+ * The path as people write it in shared text: `~/` and forward slashes below the user's home folder, so it reads the
+ * same on every machine of the same user; the resolved path elsewhere.
+ */
+export function homeRelative(path: string, userHome: string, platform: NodeJS.Platform = process.platform): string {
+  const paths = platform === 'win32' ? win32 : posix;
+  const relative = paths.relative(userHome, path);
+  if (relative === '') {
+    return '~';
+  }
+  const outside = relative === '..' || relative.startsWith(`..${paths.sep}`) || paths.isAbsolute(relative);
+  return outside ? paths.resolve(path) : `~/${relative.replaceAll('\\', '/')}`;
+}
+
+/** The path with a leading `~` (`~/`, or `~\` on Windows) read as the user's home folder; any other path as written. */
+export function expandHome(path: string, userHome: string, platform: NodeJS.Platform = process.platform): string {
+  const paths = platform === 'win32' ? win32 : posix;
+  if (path === '~') {
+    return userHome;
+  }
+  const below = platform === 'win32' ? /^~[\\/]/ : /^~\//;
+  return below.test(path) ? paths.join(userHome, path.slice(2)) : path;
+}
