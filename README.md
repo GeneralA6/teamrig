@@ -38,11 +38,9 @@ No more twelve-hour days steering agents by hand. With teamrig, your part takes 
 1. **A morning meeting.** Your lead tells you what got done and what's late, and brings each decision as a short card
    with its recommendation. You answer, and the day is yours. While you meet, the team keeps working and leaves the
    lead notes instead of messages, unless something is critical.
-2. **The team works.** Each member works its own task list in priority order. Whatever is late or stuck goes to the
-   lead, not to you.
+2. **The team works.** Each member works its own task list in priority order, and an idle member wakes by itself when
+   urgent work is handed to it. Whatever is late or stuck goes to the lead, not to you.
 3. **Drop in when you like.** A few decisions may be waiting. Answer them and go: the team keeps working.
-
-*Coming: members that wake on a new note instead of at your next prompt.*
 
 ## Why it's different
 

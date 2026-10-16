@@ -51,7 +51,7 @@ flowchart LR
 | PreToolUse hook on SendMessage | Claude messages another session of the team | when the receiver has been idle `messages.coldAfterMinutes` (60 by default) or longer, the message would wake it cold: its first call re-reads its whole context at full price, about 8 times a warm wake. It holds the message once with a note: an inbox line if the receiver need not act now, else every ask for it in one message, sent again; the same tab's next send to it within 15 minutes goes through. Idle time runs from the receiver's last write to its own transcript; a helper, a receiver off the team or one with no transcript yet is never held |
 | PreToolUse hook on Agent and Task | Claude launches a helper | with the budget on, asks you or refuses when the session is past its daily budget while the team is ahead of its pace line, or in quiet hours, as `budget.overAction` and `budget.quietHours` say; the lead's helpers and a lifted session's always go |
 | PostToolUse hook on reads, edits and shell calls | a Read, Grep, Glob, Bash, PowerShell, Edit, Write, MultiEdit or NotebookEdit call returns | counts the calls in a row since the last prompt that each ran one step (a read, a lookup, an edit, a test, a build); when the run reaches `loops.chainNudgeAt` (6 by default; 0 turns it off), gives the model one line asking it to put independent reads, and an edit with its re-test, in one message, priced in context re-reads. Once per run; a helper's calls are not counted. On the lead's tab, also one line at the lead's first edit outside its own files, first test or build and `leadBoundary.searchNudgeAt`-th code search (3 by default), asking it to hand such work off |
-| Mod (`hooks/register.ts`) | in each interactive tab, while it runs; `/teamrig` in every session | runs `/teamrig <command>` in the tab with no model turn: a read at once, a command that changes the team's files only when you typed it, asking first when it adds the tab's session ([the /teamrig command](../plugins/teamrig/skills/teamrig-guide/hooks.md#the-mod-the-teamrig-command)); runs the refresh's `/clear` when the automatic restart asks ([A fresh context](#a-fresh-context)); runs `/reload-plugins` once an installed plugin changed and no turn runs ([Updating the plugin](#updating-the-plugin)) |
+| Mod (`hooks/register.ts`) | in each interactive tab, while it runs; `/teamrig` in every session | runs `/teamrig <command>` in the tab with no model turn: a read at once, a command that changes the team's files only when you typed it, asking first when it adds the tab's session ([the /teamrig command](../plugins/teamrig/skills/teamrig-guide/hooks.md#the-mod-the-teamrig-command)); runs the refresh's `/clear` when the automatic restart asks ([A fresh context](#a-fresh-context)); runs `/reload-plugins` once an installed plugin changed and no turn runs ([Updating the plugin](#updating-the-plugin)); wakes an idle tab when urgent work is handed to its session ([Waking on urgent work](#waking-on-urgent-work)) |
 | Stop hook | a turn ends | after a task is marked done, asks for a handover when a refresh is due, then tells you once ([A fresh context](#a-fresh-context)); tells you once, in a MODEL line, when the session runs at another effort than its `launch` entry asks, or when Claude Code switched it to another model after its safeguards stopped a reply, with the `/effort` or `/model` to type; a Budget line as the session passes each warning level of its daily budget; on the lead's tab, a Lead boundary line naming the edits, tests and code searches the lead did itself that turn; nothing otherwise |
 | `teamrig` commands | Claude runs them in its Bash tool; you type them in a terminal or after `/teamrig` | the task list, the inbox, names, settings, checks (`teamrig help`) |
 
@@ -287,7 +287,7 @@ sequenceDiagram
   participant Y as You
   participant W as web session
   L->>F: teamrig inbox add --to web --text "T2 is ready"
-  Note over W: web is idle, nothing wakes it
+  Note over W: web is idle, and a note does not wake it
   Y->>W: your next prompt to web
   W->>F: the UserPromptSubmit hook reads the lines it has not shown this session
   F-->>W: INBOX web, new in ... (each line is shown once; reading marks them read)
@@ -305,7 +305,50 @@ sequenceDiagram
   refusal names the kind, never the value. Task titles, refs, notes and evidence get the same check.
 - In a tree of teams, `--to web/lead` writes to a session of another team, within the rights in
   [Who is on the team](#who-is-on-the-team); the note names its sender as `your-team/lead`.
-- Nothing wakes an idle session, which is why `teamrig check` reports a task not picked up.
+- A note wakes no one; urgent work handed as a task does ([Waking on urgent work](#waking-on-urgent-work)). A task
+  that wakes no one, a p2 one by default, waits for its owner's next prompt, which is why `teamrig check` reports
+  a task not picked up.
+
+## Waking on urgent work
+
+An idle session sees new work only at its next prompt. When urgent work is handed to one, teamrig's mod wakes it: it
+sends the session a prompt through Claude Code's own call for one, as the teamrig plugin, and the session takes a
+turn of its own. Nothing is typed into the terminal, and the prompt box and any draft in it are left alone.
+
+```mermaid
+sequenceDiagram
+  participant L as lead session
+  participant R as task log
+  participant M as teamrig's mod in web's tab
+  participant W as web session
+  L->>R: teamrig add --owner web --priority p1 ...
+  Note over W: web is idle at its prompt
+  M->>R: the log changed: teamrig hook wake-check
+  R-->>M: new p1 work for web: wait 2 minutes for more
+  M->>R: 2 minutes on: teamrig hook wake-check
+  R-->>M: wake, with the prompt and its cost
+  M->>W: the prompt, sent as the teamrig plugin
+  Note over M: toast: teamrig woke this tab for T12 (about 27k W, warm cache)
+```
+
+- What wakes a session: a task it owns that another session handed to it, raised, reopened or freed by finishing a
+  task it comes after (its own changes are not news), open or started, not waiting, with every task it comes
+  `--after` finished, at `wake.priority` or more urgent (p1 by default). Past its daily budget, or in the budget's
+  quiet hours unless the lead's lift exempts it, only p1 wakes it, whatever `wake.priority` says. While the owner's
+  daily meeting is open the lead is not woken; the work waits for the first check after the meeting.
+- How often: each task wakes a session once. The first new task starts a batch of `wake.batchSeconds` (120 s), and
+  one wake names every task handed meanwhile; wakes of one session are at least `wake.minGapMinutes` (15) apart.
+  Work that was there when the tab started, or before a `/clear`, is seen at its first prompt, as before.
+- What it costs: a wake is a model turn whose first call re-reads the session's context, about 27k W while Claude
+  Code's cache is warm and about 210k W once the session has been idle `messages.coldAfterMinutes` (60) or more, or
+  when its transcript is not found. The prompt and a toast give the cost and its share of the week
+  (`budget.weeklyLimitW`). Each wake is a line in `state/wakes.jsonl` (session, tab, tasks, W, cold or not); a wake
+  a prompt hook refused is logged there with its reason.
+- When it looks: every 15 s while no turn runs (a subagent's included), the mod runs `teamrig hook wake-check` once
+  the task log (`state/events.jsonl`) changed, a batch fell due, or 10 minutes passed. Each check holds a lock of the
+  session's, so two tabs never wake it twice; a session open in two tabs at once is not woken, since each tab's first
+  check starts the count over.
+- `wake.enabled: false` turns it off. A headless `claude -p` or a Claude Code that does not load mods is never woken.
 
 ## A fresh context
 

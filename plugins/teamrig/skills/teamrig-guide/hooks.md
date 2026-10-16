@@ -1,6 +1,6 @@
 # Hooks and permissions
 
-The plugin's `hooks/hooks.json` registers seven Claude Code hooks and one mod ([the /teamrig command](#the-mod-the-teamrig-command), [the refresh's /clear](#the-mod-the-refreshs-clear), [the reload after an install](#the-mod-the-reload-after-an-install)). Each runs
+The plugin's `hooks/hooks.json` registers seven Claude Code hooks and one mod ([the /teamrig command](#the-mod-the-teamrig-command), [the refresh's /clear](#the-mod-the-refreshs-clear), [the reload after an install](#the-mod-the-reload-after-an-install), [the wake on urgent work](#the-mod-the-wake-on-urgent-work)). Each runs
 `node <plugin>/dist/cli/main.js hook <name>` with a 15 second timeout. Outside a project tied to a team (no `$TEAMRIG_TEAM` and no `.teamrig.json`)
 they all stay silent.
 
@@ -14,6 +14,7 @@ they all stay silent.
 | `PostToolUse` on `SendMessage` | `hook failed-send` | After a send that was not delivered, hands the model [the inbox line to write instead](#after-a-failed-send-the-inbox-line) |
 | `PostToolUse` on reads, edits and shell calls | `hook loop-nudge` | Asks the model once to batch when a turn makes [single-step calls in a row](#after-a-tool-call-the-loop-nudge) |
 | `PreToolUse` on `Agent` and `Task` | `hook helper-gate` | Asks before or refuses a helper launch past the daily budget or in quiet hours, [as the team set](#the-daily-budget-warnings-and-the-helper-gate) |
+| The mod, while a tab is idle | `hook wake-check`, `hook wake-dropped` | Wakes the tab's session when unblocked urgent work is handed to it, [batched, with its cost shown](#the-mod-the-wake-on-urgent-work) |
 | `Stop` (end of each turn) | `hook stop` | Asks for a handover when a context refresh is due, then starts the automatic restart; tells the user of another effort than `launch` asks, or of a model Claude Code switched to; shows the budget lines; names a verifying task whose verify-by day has come; once per `github.everyMinutes` for the whole team, starts `gh sync --auto` hidden in the background |
 
 ## Session start
@@ -252,6 +253,27 @@ session's state (`teamrig.reload`, typed in `types/index.d.ts`), so the mod the 
 reload goes to Claude Code's debug log and is tried again 5 minutes later. A plugin loaded from a folder
 (`--plugin-dir`) has no `installed_plugins.json` beside its cache and gets no reload; a Claude Code that does not
 load mods leaves `/reload-plugins` to you.
+
+## The mod: the wake on urgent work
+
+An idle session sees new work only at its next prompt. In each interactive tab, every 15 s while no turn runs (a
+subagent's included), the mod runs [`teamrig hook wake-check`](commands.md#teamrig-hook-wake-check) once the task
+log changed, a batch fell due or 10 minutes passed. It wakes the tab's session for a task it owns that another
+session handed to it, raised, reopened or freed (its own changes are not news), open or started, not waiting, with
+every task it comes `--after` finished, at `wake.priority` or more urgent (p1 by default). Past its daily budget,
+or in the budget's quiet hours unless its lift exempts it, only p1 wakes it. While the owner's daily meeting is open
+the lead is not woken; the work waits for the first check after it.
+
+Tasks handed within `wake.batchSeconds` (120) of the first wake it once, each task wakes it once, and wakes of one
+session are `wake.minGapMinutes` (15) apart. Work there when the tab started or before a `/clear` is seen at its
+first prompt. The mod sends the prompt through Claude Code's own call for one (`$.prompt.submit`), as the teamrig
+plugin, so the session takes a turn of its own: nothing is typed into the terminal, and the prompt box and any draft
+in it are left alone. The prompt and a toast name the tasks and the cost: about 27k W while the cache is warm, about
+210k W once idle `messages.coldAfterMinutes` (60) or more, with its share of the week. Each wake is a line in
+`state/wakes.jsonl`; a wake a prompt hook refused is logged there with its reason
+([`hook wake-dropped`](commands.md#teamrig-hook-wake-dropped)). `wake.enabled: false` turns it off. A session open
+in two tabs at once is not woken (each tab's first check starts the count over), nor is a Claude Code that does not
+load mods.
 
 ## The mod: the /teamrig command
 
