@@ -73,6 +73,11 @@ export function claudeProjectsDir(env: Env, userHome: string): string {
   return join(claudeConfigDir(env, userHome), 'projects');
 }
 
+/** Where Claude Code keeps a session's own transcript for a project folder: `<projects>/<project slug>/<session>.jsonl`. */
+export function projectTranscriptPath(projectsDir: string, project: string, claudeSession: string): string {
+  return join(projectsDir, claudeProjectSlug(project), `${claudeSession}${TRANSCRIPT}`);
+}
+
 /** Transcripts by kind: Claude Code sessions' own, and their subagents'. */
 export interface TranscriptSet {
   /** The sessions' own transcripts, one per project folder each ran in. */

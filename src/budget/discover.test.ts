@@ -5,7 +5,7 @@ import { realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
-import { claudeProjectsDir, claudeProjectSlug, discoverTranscripts, lastWriteOf, nodeTranscriptFolders, nodeTranscriptSource } from './discover.ts';
+import { claudeProjectsDir, claudeProjectSlug, discoverTranscripts, lastWriteOf, nodeTranscriptFolders, nodeTranscriptSource, projectTranscriptPath } from './discover.ts';
 
 const ROOT = join('/', 'u', '.claude', 'projects');
 const A = '0123abcd-0000-4000-8000-00000000000a';
@@ -20,6 +20,12 @@ describe('claudeProjectsDir', () => {
     assert.equal(claudeProjectsDir({ CLAUDE_CONFIG_DIR: join('/', 'cfg') }, join('/', 'u')), join('/', 'cfg', 'projects'));
     assert.equal(claudeProjectsDir({ CLAUDE_CONFIG_DIR: ' ' }, join('/', 'u')), ROOT);
     assert.equal(claudeProjectsDir({}, join('/', 'u')), ROOT);
+  });
+});
+
+describe('projectTranscriptPath', () => {
+  it("is the session's own transcript in the project's folder", () => {
+    assert.equal(projectTranscriptPath(ROOT, '/srv/my.app', A), join(ROOT, '-srv-my-app', `${A}.jsonl`));
   });
 });
 
