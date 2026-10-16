@@ -237,7 +237,7 @@ function treeFilterOf(roster, filter) {
     return found?.ok === true ? { ...filter, source: found.id } : filter;
 }
 /** The caller's own register, as a roll-up of one team. */
-async function ownRegister(runtime) {
+export async function ownRegister(runtime) {
     const { config, paths, roster, register } = await openTeam(runtime, 'read');
     const own = { team: paths.team, config, paths, roster, snapshot: await register.snapshot(), history: () => register.history() };
     return { own, teams: [own] };
@@ -329,9 +329,10 @@ function checkRegister(snapshot, config, now, week, team) {
 /**
  * The week's fit to the weekly limit over every team read (one account's limit covers them all): what is left of
  * the own team's `budget.targetPct` after the newest status-line reading of the week, which costs one folder read
- * (no transcript is measured). `labelled` names each row's team, for a roll-up.
+ * (no transcript is measured). `labelled` names each row's team, for a roll-up. `plan`, `check` and the meeting
+ * agenda (meeting.ts) read it.
  */
-async function weekFitOf(runtime, { own, teams }, week, labelled) {
+export async function weekFitOf(runtime, { own, teams }, week, labelled) {
     const { budget } = own.config;
     const now = runtime.clock.now();
     const use = weekUseOf(await readSnapshots(runtime.files, snapshotDirOf(budget, own.paths)), now);
