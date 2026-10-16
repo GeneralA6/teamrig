@@ -25,6 +25,13 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       with no terminal it prints the command; a rehired session reads the handover it left first, or,
       with --resume, goes on in its last Claude Code session when that is small and recent enough
   rules [--session <id|name>]  the team rules and who the session is, as a session start gives them
+  rules scan [--kind <kind>]   every place a local rule can override a core rule (CLAUDE.md files, rules
+      files, skills, memory, rules.md, hook scripts, settings autoMode lines), the kept rules, and the lines
+      that touch a core rule for the model to judge; it only reads; over 150 lines, one kind at a time
+  rules keep <path>:<line> --rule <n|key> --wins local|teamrig [--reason "<why>"] [--yes]
+      (the lead only) keeps a local rule that conflicts with a core rule: local wins as a named exception,
+      or teamrig wins and the line stays; without --yes it shows the record and writes nothing
+  rules forget <n> [--yes]     (the lead only) drops kept rule n, as rules scan numbers them
   start [--session <id|name>] [--all]   the start of a work block in one call: the UTC time, the
       unread inbox lines (marked read), the session's tasks, the check flags it acts on (the lead: all)
       and the week's use; --all: the tasks and flags in full
