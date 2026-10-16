@@ -301,7 +301,7 @@ sequenceDiagram
   H-->>W: Stop: your context is 132k (refresh at 120k), write your handover
   W->>H: writes handover/web.md, runs teamrig refresh --ready
   H-->>Y: Stop: web finished T2 and wrote its handover, it restarts once idle (the tab title reads "web: restarting")
-  H->>W: idle 15 s: ends Claude Code and starts it again in its tab
+  H->>W: idle 15 s: teamrig's mod runs /clear in the tab
   H-->>W: SessionStart: you were refreshed after T2, read your handover first
 ```
 
@@ -317,11 +317,14 @@ sequenceDiagram
   the session, only at a turn end after the last of it reported back. The restart also waits while a turn still
   runs (a turn stopped with Escape counts as ended).
 - `refresh --ready` is refused until the handover is written: missing, blank or unchanged since the hook asked.
-- A hook cannot run `/clear`, so teamrig restarts the session instead (`refresh.autoRestart`, on by default). A
-  hidden `teamrig restart` waits until the session has been idle `refresh.restartDelaySeconds` (15) with nothing
-  running, ends its Claude Code and starts it again: in the same tab when `teamrig open` started it (`launch`
-  starts it again), else in a new tab. A prompt you send first cancels it and keeps the context; text typed but
-  not sent is lost. When it is off or cannot start, you type `/clear`. On Windows an ended process runs no
+- A hook cannot run `/clear`, but a plugin mod can (`refresh.autoRestart`, on by default). A hidden
+  `teamrig restart` waits until the session has been idle `refresh.restartDelaySeconds` (15) with nothing running,
+  then leaves an ask for its tab. teamrig's mod (`hooks/register.ts`) looks for it each second, claims it while
+  the restart is still pending and runs `/clear` in the tab, so the tab and its process stay and Claude Code runs
+  its own SessionEnd and SessionStart hooks. When no mod claims the ask within 10 s (a Claude Code that does not
+  load mods), the restart ends the session's Claude Code and starts it again: in the same tab when `teamrig open`
+  started it (`launch` starts it again), else in a new tab; if a turn ran meanwhile, it waits for quiet and asks
+  again first. A prompt you send first cancels it and keeps the context; text typed but not sent is lost. When it is off or cannot start, you type `/clear`. On Windows an ended process runs no
   SessionEnd hooks, so `refresh.endCommand` can name a program to run in their place. A compact or a resume
   keeps the handover waiting for the next fresh start.
 - The fresh session keeps who it is and carries on by itself. The restart starts it with a prompt to read its

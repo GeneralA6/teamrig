@@ -755,9 +755,10 @@ It refuses when `claude` is not on the PATH.
 
 The automatic context refresh's restart. The Stop hook runs it hidden once your handover is written; you do
 not run it yourself. It waits until the session has been idle `refresh.restartDelaySeconds` with nothing
-running, then ends its Claude Code: `launch` starts it again in the same tab, and a tab teamrig did not open
-gets a new tab first. A prompt typed before then cancels it. Then it runs `refresh.endCommand`, if set. A
-restart that did not happen, or an end command that failed, leaves a line in the session's inbox.
+running, then asks the session's tab to run `/clear`, which teamrig's mod does there. When no mod claims the ask
+within 10 seconds, it ends the session's Claude Code instead: `launch` starts it again in the same tab, and a tab
+teamrig did not open gets a new tab first; then it runs `refresh.endCommand`, if set. A prompt typed before then
+cancels it. A restart that did not happen, or an end command that failed, leaves a line in the session's inbox.
 
 Flags:
 
@@ -777,7 +778,8 @@ Output:
 RESTARTED shop-web in the same tab
 ```
 
-It prints `CANCELLED the restart of shop-web: <why>` when the user typed or the restart is off, and
+It prints `CLEARED shop-web: its tab ran /clear` when the mod cleared the tab,
+`CANCELLED the restart of shop-web: <why>` when the user typed or the restart is off, and
 `FAILED the restart of shop-web: <why>` (exit 1) when no restart happened.
 
 ### teamrig refresh
@@ -1384,6 +1386,38 @@ teamrig hook refresh-wake < session-start.json
 ```
 
 Output: nothing and exit 0, or the wake prompt on stderr and exit 2, which Claude Code gives the model as a new turn.
+
+### teamrig hook clear-dir
+
+Run by the plugin's mod when a tab starts: prints the folder where `teamrig restart` leaves its asks for a tab
+to run `/clear` (`<home>/clear-asks`). The mod then looks there each second for its own session's ask.
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig hook clear-dir
+```
+
+Output: the folder, such as `/home/you/.teamrig/clear-asks`.
+
+### teamrig hook clear-claim
+
+Run by the plugin's mod once it finds its tab's ask while no turn runs. It claims the ask only while the restart
+it is for is still pending (no prompt was typed, no later restart replaced it) and the restart has not taken it
+back, then clears the request. Whichever of this claim and the restart's take-back comes first wins, so a tab is
+never both cleared and ended. Stdin: `{"session_id": "<Claude Code session id>"}`.
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig hook clear-claim < session.json
+```
+
+Output: `taken` (the mod then runs `/clear`) or `declined: <why>`, exit 0.
 
 ## Help and version
 
