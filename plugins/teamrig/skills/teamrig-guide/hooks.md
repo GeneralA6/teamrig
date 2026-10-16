@@ -43,12 +43,15 @@ The injected context holds:
 3. **The tree of teams**, when the team has a parent or children: whom to escalate to, and for a lead with
    sub-teams, how to read and hand them tasks.
 4. **Notes**: a config with problems or from a newer teamrig; a recorded rename; a tab bound by its title:
-   ``This tab was bound to the `web` session from its Claude Code title; nothing was marked read.``
+   ``This tab was bound to the `web` session from its Claude Code title; nothing was marked read.``, or, after a
+   `/clear` in a tab whose title names no session, by the Claude Code process the session refreshed in (for 24 hours):
+   ``This tab was bound to the `web` session: /clear kept the Claude Code process that session refreshed in; nothing was marked read.``
 5. **The team's own `rules.md`**, when it exists. Where it or the project's CLAUDE.md conflicts with the core
    rules, they win.
 6. **After a refresh**: `You were refreshed after T2; read your handover first: <path>`, once, at the first
    fresh start (the automatic restart, a `/clear` or a new start) after the handover was written. A compact or resume keeps the old context, so the
-   note waits. After a `/clear`, `hook refresh-wake` then starts a turn by itself that tells the session to read that
+   note waits. It then lists what the old session leaves: its scheduled jobs and a pending wake-up to make again
+   (`CronCreate`, `ScheduleWakeup`), its scratchpad and its plan file. After a `/clear`, `hook refresh-wake` then starts a turn by itself that tells the session to read that
    handover and carry on, so it does not sit idle until someone types.
 7. **A model check**: when the session runs on another model than its `launch` entry in the team config, a line
    such as `MODEL shop-web runs model claude-sonnet-5; the team config asks for model opus at xhigh effort: type
@@ -200,7 +203,7 @@ After a turn in which you set a task done, the Stop hook measures your context f
 After `--ready`, the next turn's end tells the user `teamrig: shop-web finished T2 and wrote its handover; teamrig
 starts it fresh once it has been idle 15 s (type anything to keep this context)` and sets the tab title to
 `shop-web: restarting`. A hidden `teamrig restart` then waits until the tab has been idle
-`refresh.restartDelaySeconds` (15) with nothing running, ends this Claude Code and starts it again: in the same tab
+`refresh.restartDelaySeconds` (15) with nothing running and its last turn ended, ends this Claude Code and starts it again: in the same tab
 when `teamrig open` started it, else in a new tab. A prompt the user sends first cancels it, and you keep this
 context until a later task end asks again; text typed but not sent is lost. When the restart cannot start, or
 with `refresh.autoRestart: false`, the message says `type /clear for a fresh start` and the title

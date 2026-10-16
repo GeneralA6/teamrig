@@ -161,7 +161,10 @@ teamrig refreshes a long-running session at a task boundary, so it never loses w
    (`refresh.autoRestart: false`) or cannot start, the title reads `shop-web: type /clear`: ask the user to type
    `/clear`.
 5. After the fresh start, the session-start context says `You were refreshed after T2; read your handover first:
-   <path>`. Read it, then run the start of a work block, since the fresh start is a new Claude Code session.
+   <path>`, then lists the scheduled jobs and wake-up to make again, the old scratchpad and the plan file. The
+   restart's first prompt, or after a `/clear` a turn teamrig starts by itself, asks you to read the handover and
+   carry on with its next steps. Do so, and run the start of a work block, since the fresh start is a new Claude
+   Code session.
 
 The hook judges each finished task once and never loops. A team turns this off with `refresh.enabled: false`, and the task
 count with `refresh.everyTasks: 0`. A `/clear`, a new process or a compaction starts the count over.
