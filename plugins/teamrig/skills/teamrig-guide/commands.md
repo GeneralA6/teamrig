@@ -757,8 +757,9 @@ The automatic context refresh's restart. The Stop hook runs it hidden once your 
 not run it yourself. It waits until the session has been idle `refresh.restartDelaySeconds` with nothing
 running, then asks the session's tab to run `/clear`, which teamrig's mod does there. When no mod claims the ask
 within 10 seconds, it ends the session's Claude Code instead: `launch` starts it again in the same tab, and a tab
-teamrig did not open gets a new tab first; then it runs `refresh.endCommand`, if set. A prompt typed before then
-cancels it. A restart that did not happen, or an end command that failed, leaves a line in the session's inbox.
+teamrig did not open gets a new tab first; then it runs `refresh.endCommand`, if set. It ends no Claude Code that
+still runs a background shell (a background command or a monitor), since the end would take that too; the session
+is told to type `/clear`, which keeps it. A prompt typed before then cancels it. A restart that did not happen, or an end command that failed, leaves a line in the session's inbox.
 
 Flags:
 
