@@ -4,7 +4,9 @@ import { SecretScanner } from "../../core/secrets.js";
 import { hireFlags } from "../../hiring/due.js";
 import { activeHires, HiringLog } from "../../hiring/log.js";
 import { postLine } from "../../inbox/inbox.js";
+import { readSnapshots, weekUseOf } from "../../budget/snapshot.js";
 import { byFlagKind, checkTasks, currentWeekOf } from "../../register/check.js";
+import { fitLines, leftOfWeek, overLimitFlag, weekFit } from "../../register/fit.js";
 import { renderPlan } from "../../register/plan.js";
 import { ACTIVE_STATUSES } from "../../register/model.js";
 import { readStopgapTags, stopgapFlags, stopgapTags } from "../../register/stopgap.js";
@@ -21,6 +23,7 @@ import { rollUp } from "../roll-up.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { loadTree } from "../tree.js";
 import { teamRegister } from "../team-register.js";
+import { snapshotDirOf } from "./budget.js";
 import { inboxDepsOf } from "./inbox.js";
 import { markBoundary } from "./refresh.js";
 import { markRetireAsk } from "./retire-ask.js";
@@ -324,6 +327,23 @@ function checkRegister(snapshot, config, now, week, team) {
     return { team, flags: checkTasks(snapshot.state.tasks.values(), now, week, config.register), context: waitContext(snapshot.state.tasks, now) };
 }
 /**
+ * The week's fit to the weekly limit over every team read (one account's limit covers them all): what is left of
+ * the own team's `budget.targetPct` after the newest status-line reading of the week, which costs one folder read
+ * (no transcript is measured). `labelled` names each row's team, for a roll-up.
+ */
+async function weekFitOf(runtime, { own, teams }, week, labelled) {
+    const { budget } = own.config;
+    const now = runtime.clock.now();
+    const use = weekUseOf(await readSnapshots(runtime.files, snapshotDirOf(budget, own.paths)), now);
+    const rows = teams.flatMap((rolled) => [...rolled.snapshot.state.tasks.values()].map((task) => (labelled ? { task, team: rolled.team } : { task })));
+    return weekFit(rows, week, use === undefined ? undefined : leftOfWeek(budget.targetPct, use.usedPct));
+}
+/** OVER-LIMIT goes to the section of the team holding the task: the only one without `--tree`. */
+function withOverLimit(sections, fit) {
+    const flag = overLimitFlag(fit);
+    return sections.map((section) => flag !== undefined && section.team === fit.unfit?.row.team ? { ...section, flags: [...section.flags, flag].sort(byFlagKind) } : section);
+}
+/**
  * What `check` reports: the task flags, then the skill flags of the Claude Code skills folder. With `--tree`,
  * the task flags of the lead's team and each team under it, against the lead's week; the skills are the lead's
  * team's only, as teams on one machine share that folder, and so are the flags on hired sessions (src/hiring/due.ts).
@@ -344,11 +364,12 @@ export async function checkReport(args, runtime) {
     const working = read.own.snapshot;
     const { own, teams } = await settle(runtime, read, (_retired, snapshot) => snapshot === working && tags.some((tag) => !snapshot.state.tasks.has(tag.id)));
     const week = weekFor(args, own.snapshot, now);
-    const sections = teams.map((rolled) => {
+    const checked = teams.map((rolled) => {
         const section = checkRegister(rolled.snapshot, rolled.config, now, week, tree ? rolled.team : undefined);
         const stopgaps = rolled.team === own.team ? stopgapFlags(tags, rolled.snapshot.state.tasks) : [];
         return { ...section, flags: [...section.flags, ...stopgaps].sort(byFlagKind) };
     });
+    const sections = week === null || week !== currentWeekOf(own.snapshot, now) ? checked : withOverLimit(checked, await weekFitOf(runtime, { own, teams }, week, tree));
     const skills = lintSkills(skillFiles, now, own.config);
     const { records } = await new HiringLog(runtime.files, own.paths.hires).read();
     const hires = hireFlags({ hires: activeHires(records), tasks: own.snapshot.state.tasks.values(), config: own.config, now });
@@ -361,18 +382,23 @@ export async function check(args, runtime) {
     checkLines(await checkReport(args, runtime), args.switches.has('all')).forEach((line) => runtime.out.stdout(line));
     return EXIT.ok;
 }
-/** `plan [--tree]`: with `--tree`, one section per team, the lead's team first, for the lead's week. */
+/**
+ * `plan [--tree]`: with `--tree`, one section per team, the lead's team first, for the lead's week. The week's fit
+ * to the weekly limit sits under the first section's counts, for the week in force only (the limit read is this
+ * week's): with `--tree`, one fit over every team shown.
+ */
 export async function plan(args, runtime) {
     noPositionals(args);
     const now = new Date(runtime.clock.now());
     const tree = args.switches.has('tree');
     const read = await readRegisters(args, runtime);
     const week = weekFor(args, read.own.snapshot, now);
-    const { teams } = await settle(runtime, read, week === null ? () => false : weekMayBeRetired(week));
+    const settled = await settle(runtime, read, week === null ? () => false : weekMayBeRetired(week));
     if (week === null) {
         throw new RefusedError('no week plan tagged yet; pass --week <YYYY-MM-DD>');
     }
-    const sections = teams.map((rolled) => renderPlan(rolled.snapshot.state.tasks.values(), week, now, rolled.config.register, tree ? rolled.team : undefined));
+    const fit = week === currentWeekOf(settled.own.snapshot, now) ? fitLines(await weekFitOf(runtime, settled, week, tree)) : [];
+    const sections = settled.teams.map((rolled, index) => renderPlan(rolled.snapshot.state.tasks.values(), week, now, rolled.config.register, { team: tree ? rolled.team : undefined, fit: index === 0 ? fit : [] }));
     runtime.out.stdout(sections.join('\n\n'));
     return EXIT.ok;
 }

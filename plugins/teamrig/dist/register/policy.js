@@ -2,6 +2,7 @@ import { MAX_DESCRIPTION } from "../config/defaults.js";
 import { ADDRESS_PATTERN } from "../core/address.js";
 import { SecretScanner } from "../core/secrets.js";
 import { parseUtcDay, parseUtcDeadline } from "../core/time.js";
+import { sizeProblem } from "./events.js";
 import { taskNumber } from "./fold.js";
 import { ACTIVE_STATUSES, GITHUB_SOURCE, priorityText, SESSION_NAME } from "./model.js";
 import { heldStart, startHolds } from "./verify.js";
@@ -12,8 +13,8 @@ export const NO_SKILL = 'none';
 export const GITHUB_ACTOR = 'github';
 /** The statuses the import sets on its own tasks: an issue's open state, or how it was closed. */
 export const GITHUB_STATUSES = ['open', 'done', 'dropped'];
-/** Fields the lead may change on a task someone else owns: who does it, how urgent, when and in what order. */
-export const LEAD_FIELDS = ['owner', 'priority', 'due', 'week', 'after'];
+/** Fields the lead may change on a task someone else owns: who does it, how urgent, when, in what order and its size (the lead plans the week). */
+export const LEAD_FIELDS = ['owner', 'priority', 'due', 'week', 'after', 'size'];
 /** The refusal of an `add` with no description while `register.requireDescription` is on. */
 export const DESCRIPTION_NEEDED = 'add needs --description "<what and why, in plain words>"';
 /** How `--waits` is typed, for the refusals that ask for it. */
@@ -65,6 +66,7 @@ export class RegisterPolicy {
             goals: input.goals ?? [],
             week: input.week ?? null,
             after: input.after ?? [],
+            size: input.size ?? null,
         };
         if (fields.description === null && this.config.register.requireDescription) {
             return refuse(DESCRIPTION_NEEDED);
@@ -205,7 +207,7 @@ export class RegisterPolicy {
      * the duplicate-title rule does not apply.
      */
     importAdd(input, state) {
-        const fields = { ...input, source: GITHUB_SOURCE, due: null, goals: [], week: null, after: [] };
+        const fields = { ...input, source: GITHUB_SOURCE, due: null, goals: [], week: null, after: [], size: null };
         const holder = [...state.tasks.values()].find((task) => task.source === GITHUB_SOURCE && task.ref === input.ref);
         if (holder !== undefined) {
             return refuse(`${holder.id} already has ref ${input.ref}`);
@@ -301,6 +303,10 @@ export class RegisterPolicy {
         if (fields.description !== null && fields.description.length > MAX_DESCRIPTION) {
             return `the description has ${fields.description.length} characters; the limit is ${MAX_DESCRIPTION}`;
         }
+        const size = fields.size === null ? undefined : sizeProblem(fields.size);
+        if (size !== undefined) {
+            return size;
+        }
         return this.checkText('title', fields.title) ?? this.checkText('description', fields.description) ?? this.checkText('ref', fields.ref);
     }
     /** Checks the length against `maxText` (the title and description have their own limits), then the secret shapes. */
@@ -317,8 +323,8 @@ export class RegisterPolicy {
 /** The texts whose length is judged against their own limit, not `maxText`. */
 const OWN_LIMITS = ['title', 'description'];
 function pickFields(task) {
-    const { title, description, owner, source, ref, priority, due, goals, week, after } = task;
-    return { title, description, owner, source, ref, priority, due, goals, week, after };
+    const { title, description, owner, source, ref, priority, due, goals, week, after, size } = task;
+    return { title, description, owner, source, ref, priority, due, goals, week, after, size };
 }
 /** An update's description trimmed at both ends, its newlines kept; a blank one clears it, as `none` does. */
 function trimDescription(changes) {

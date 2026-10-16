@@ -14,6 +14,7 @@ export const FLAG_KINDS = [
     'NOT-PICKED-UP',
     'PRIORITY-SKIP',
     'PILE-UP',
+    'OVER-LIMIT',
     'OWNER-UNPLANNED',
     'DUE-UNPLANNED',
     'OFF-GOAL',
