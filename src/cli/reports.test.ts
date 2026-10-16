@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import type { HireFlag } from '../hiring/due.ts';
 import { FLAG_KINDS, formatFlag, type Flag, type FlagKind } from '../register/check.ts';
 import type { Task } from '../register/fold.ts';
 import { formatTask } from '../register/views.ts';
@@ -27,7 +28,7 @@ function skillFlag(skill: string): SkillFlag {
 }
 
 function report(overrides: Partial<CheckReport>): CheckReport {
-  return { sections: [], scope: 'week 2030-01-07', skills: [], skillsDir: 'skills-dir', ...overrides };
+  return { sections: [], scope: 'week 2030-01-07', skills: [], skillsDir: 'skills-dir', hires: [], ...overrides };
 }
 
 /** `count` tasks numbered from T1, each with a long title, cycling through three owners. */
@@ -126,6 +127,19 @@ describe('checkLines', () => {
     ]);
   });
 
+  it('prints the hire flags before the skills, in both forms, and counts them toward the hint', () => {
+    const hires: readonly HireFlag[] = [{ kind: 'RETIRE-DUE', session: 'helper', detail: 'no open task for 5 h, hiring.idleHours 4' }];
+    const flagged = report({ sections: [{ team: undefined, context: CONTEXT, flags: [] }], hires });
+    const line = 'HIRE RETIRE-DUE (no open task for 5 h, hiring.idleHours 4) helper: retire it (teamrig retire helper)';
+    assert.deepEqual(checkLines(flagged, true), ['CHECK 0 flag(s), week 2030-01-07', 'HIRES 1 flag(s)', line, 'SKILLS 0 flag(s) in skills-dir']);
+    assert.deepEqual(checkLines(flagged, false), [
+      'CHECK 0 flag(s), week 2030-01-07 (short form; --all for every flag in full)',
+      'HIRES 1 flag(s)',
+      `  ${line}`,
+      'SKILLS 0 flag(s) in skills-dir',
+    ]);
+  });
+
   it('prints one count over every team, each kind with its shared detail, and no hint when nothing is flagged', () => {
     assert.deepEqual(checkLines(report({ sections }), false), [
       'CHECK 2 flag(s) in 2 team(s), week 2030-01-07 (short form; --all for every flag in full)',
@@ -220,6 +234,11 @@ describe('ownCheck', () => {
       [['T1']],
     );
     assert.deepEqual(narrowed.skills.map((each) => each.skill), ['alpha-deploy']);
+    const hires: readonly HireFlag[] = [
+      { kind: 'REVIEW-DUE', session: 'alpha', detail: 'review day 2030-01-07 passed' },
+      { kind: 'RETIRE-DUE', session: 'bravo', detail: 'no open task for 5 h, hiring.idleHours 4' },
+    ];
+    assert.deepEqual(ownCheck(report({ hires }), 'alpha').hires.map((each) => each.session), ['alpha']);
     assert.equal(narrowed.scope, "alpha's tasks and skills, week 2030-01-07");
     assert.match(checkLines(narrowed, false)[0] ?? '', /^CHECK 1 flag\(s\), alpha's tasks and skills, week 2030-01-07 /);
   });

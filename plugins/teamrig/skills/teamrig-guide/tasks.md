@@ -129,6 +129,14 @@ checkpoint; a session may run it for itself.
 The three week flags need a week plan; until a task is tagged with a week, `check` says
 `no week plan tagged yet, so the week checks are skipped`. A task gets at most one week flag.
 
+On a team with hired sessions, `check` then flags them, under a `HIRES <n> flag(s)` line printed only when there
+are some: `HIRE <KIND> (<detail>) <session>: <what to do>`. A session's own `start` shows the flags on itself.
+
+| Hire flag | Raised when | What to do |
+| --- | --- | --- |
+| `RETIRE-DUE` | a hired session has had no open task for 4 h [hiring.idleHours], counted from its hire or from its newest task's last status change | The lead gives it its next task, or retires it (`teamrig retire <id>`); under `hiring.policy` `automatic` it may retire itself. |
+| `REVIEW-DUE` | a hired session's review day has passed | The lead decides whether its job goes on; when it is done, retires it. |
+
 `check` then lints the skills folder: `SKILL <KIND> (<detail>) <owner|-> <skill>`.
 
 | Skill flag | Detail | Fix |
