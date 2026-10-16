@@ -95,7 +95,8 @@ Claude Code's own records, so you see who runs ahead of plan. Your lead turns it
 and what happens past the line (`teamrig budget setup`). A member past its share of the day is told, so is your lead, and its new
 helpers can ask you first. Your lead is reminded to hand edits, tests and code searches to the owning session, a helper or a temporary session, and you see at a turn's end what it did itself. A session that makes six single-step calls in a row is asked once to put them in one message, and
 `teamrig test -- <command>` sums up a test run in one PASS or FAIL line and its failing tests, keeping the rest in a log. `teamrig doctor` weighs what every call re-reads (your CLAUDE.md files, memory index and skill
-listing) and names the cheapest cut when one runs over its budget. The week's use comes from Claude Code's status line:
+listing) and names the cheapest cut when one runs over its budget. `teamrig budget --burn` shows where each day went: the turns you,
+a peer, a notification or a scheduled wake started, the calls that re-wrote a cold cache, and the compactions. The week's use comes from Claude Code's status line:
 `teamrig statusline install` sets it up and keeps one you already have, or have yours write the
 [same snapshot](plugins/teamrig/skills/teamrig-guide/commands.md#teamrig-statusline).
 
