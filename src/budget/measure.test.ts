@@ -63,6 +63,7 @@ function world(input: Partial<MeasureInput> = {}): World {
       since: SINCE,
       roster: ROSTER,
       areaBySession: new Map([[MARKED_BRAVO, 'bravo']]),
+      subagentWeight: 1,
       chunkBytes: 1_000_000,
       maxRuns: 4,
       ...input,
@@ -86,6 +87,16 @@ describe('measure', () => {
     assert.deepEqual([measured.outsideSessions, measured.outsideTitles, measured.behind], [1, ['release checks'], []]);
     assert.equal(wOn((await team.load('alpha')).state), 125);
     assert.equal(wOn((await outside.load(OUTSIDE_ID)).state), 7);
+  });
+
+  it("counts each subagent's W at the subagent weight", async () => {
+    const { deps, input } = world({ subagentWeight: 3 });
+    const measured = await measure(deps, input);
+    assert.deepEqual(
+      ROSTER.ids.map((id) => wOn(measured.bySession.get(id))),
+      [undefined, 120 + 3 * 5, 3 * 40],
+    );
+    assert.equal(wOn(measured.outside), 7);
   });
 
   it('only loads a session with no transcripts, and the outside store when no one is outside', async () => {

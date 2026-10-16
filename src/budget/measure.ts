@@ -31,6 +31,8 @@ export interface MeasureInput {
   readonly roster: Roster;
   /** The team session each Claude Code session last read its inbox as. */
   readonly areaBySession: ReadonlyMap<string, string>;
+  /** What one W of a subagent's transcript costs, in W of a main session (`budget.subagentWeight`). */
+  readonly subagentWeight: number;
   readonly chunkBytes: number;
   readonly maxRuns: number;
 }
@@ -54,7 +56,7 @@ interface Metered {
 async function meterSession(deps: MeasureDeps, store: UsageStorage, session: string, transcripts: TranscriptSet, input: MeasureInput): Promise<Metered> {
   let state = (await store.load(session)).state;
   for (let run = 0; run < input.maxRuns; run += 1) {
-    const result = await runMeter({ bytes: deps.transcripts, store, clock: deps.clock }, { session, transcripts: [...transcripts.main, ...transcripts.subagents], maxBytes: input.chunkBytes });
+    const result = await runMeter({ bytes: deps.transcripts, store, clock: deps.clock }, { session, transcripts, subagentWeight: input.subagentWeight, maxBytes: input.chunkBytes });
     if (result.saved) {
       state = result.state;
       if (!result.catchingUp) {
