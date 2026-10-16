@@ -13,6 +13,7 @@ export class FakeSessionProcesses implements SessionProcesses {
   private readonly endFailures = new Map<number, string>();
   private readonly lingering = new Set<number>();
   private readonly feedOutcomes = new Map<string, FeedOutcome>();
+  private childrenHidden = false;
   /** Called after each end that ended something, as the operating system would tell a waiting parent. */
   private onEnded: (pid: number) => void = () => undefined;
 
@@ -38,6 +39,18 @@ export class FakeSessionProcesses implements SessionProcesses {
     return this;
   }
 
+  /** `pid` ends by itself, as a command that finished: no end is recorded, and what it started runs on. */
+  exit(pid: number): this {
+    this.running.delete(pid);
+    return this;
+  }
+
+  /** From now on the system will not list the processes one started. */
+  hideChildren(): this {
+    this.childrenHidden = true;
+    return this;
+  }
+
   /** From now on, feeding `command` gives `outcome`. */
   onFeed(command: string, outcome: FeedOutcome): this {
     this.feedOutcomes.set(command, outcome);
@@ -56,6 +69,10 @@ export class FakeSessionProcesses implements SessionProcesses {
 
   async describe(pid: number): Promise<ProcessInfo | undefined> {
     return this.running.get(pid);
+  }
+
+  async children(pid: number): Promise<readonly ProcessInfo[] | undefined> {
+    return this.childrenHidden ? undefined : this.childrenOf(pid);
   }
 
   async end(pid: number, how: EndHow): Promise<EndOutcome> {
@@ -84,7 +101,10 @@ export class FakeSessionProcesses implements SessionProcesses {
 
   /** `pid` and every running process it started, directly or not. */
   private tree(pid: number): readonly number[] {
-    const children = [...this.running.values()].filter((info) => info.parentPid === pid && info.pid !== pid);
-    return [pid, ...children.flatMap((child) => this.tree(child.pid))];
+    return [pid, ...this.childrenOf(pid).flatMap((child) => this.tree(child.pid))];
+  }
+
+  private childrenOf(pid: number): readonly ProcessInfo[] {
+    return [...this.running.values()].filter((info) => info.parentPid === pid && info.pid !== pid);
   }
 }
