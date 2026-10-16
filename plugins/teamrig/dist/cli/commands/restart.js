@@ -1,7 +1,7 @@
 import { KIT_NAME } from "../../core/home.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { postLine } from "../../inbox/inbox.js";
-import { defaultPrompt } from "../../open/prompt.js";
+import { refreshPrompt } from "../../open/prompt.js";
 import { runRestart } from "../../refresh/restart.js";
 import { RefreshStore } from "../../refresh/store.js";
 import { onePositional, requiredFlag, UsageError } from "../args.js";
@@ -70,7 +70,7 @@ export async function restart(args, runtime) {
         sleep: runtime.sleep,
         platform: runtime.platform,
         openTab: async () => {
-            const tab = { team, id, name, project, prompt: defaultPrompt(team, id), terminal: config.open.terminal };
+            const tab = { team, id, name, project, prompt: refreshPrompt(team, id, store.handoverPath(id)), terminal: config.open.terminal };
             const { outcome } = await openSessionTab(runtime, tab);
             return outcome.kind === 'opened' ? { kind: 'opened' } : outcome;
         },

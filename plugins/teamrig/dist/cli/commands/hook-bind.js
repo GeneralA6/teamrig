@@ -1,9 +1,11 @@
 import { errorMessage } from "../../core/guards.js";
 import { ENV, KIT_NAME } from "../../core/home.js";
 import { sessionTitleOf } from "../../names/title.js";
-import { bindByTitle, bindHint, hintReason } from "../../hooks/bind.js";
+import { bindByProcess, bindByTitle, bindHint, hintReason, processBoundNote, refreshedIn } from "../../hooks/bind.js";
 import { firstHint, JsonlHintLog } from "../../hooks/hint-log.js";
 import { injectFor } from "../../inbox/inject.js";
+import { claudeProcessOf } from "../../refresh/restart.js";
+import { RefreshStore } from "../../refresh/store.js";
 import { loadTree } from "../tree.js";
 import { inboxDepsOf } from "./inbox.js";
 /** Reads the title once for everything a hook does with it; it never throws. */
@@ -33,6 +35,32 @@ export async function bindTab(runtime, kit, own, claudeSession, title) {
     }
     catch (error) {
         return { own, outcome: { kind: 'failed', error: errorMessage(error) } };
+    }
+}
+/**
+ * After a /clear its title could not bind: binds the tab to the session that refreshed in this hook's Claude
+ * Code process (hooks/bind.ts), and gives the SessionStart note for it. It never throws: a failure is the note.
+ */
+export async function bindAfterClear(runtime, kit, roster, claudeSession) {
+    try {
+        const pid = await claudeProcessOf(runtime.sessionProcesses, runtime.sessionProcesses.parentPid);
+        if (pid === undefined) {
+            return undefined;
+        }
+        const now = new Date(runtime.clock.now());
+        const store = new RefreshStore(runtime.files, kit.paths);
+        const refreshedHere = async () => {
+            const states = new Map();
+            for (const id of roster.ids) {
+                states.set(id, await store.state(id));
+            }
+            return refreshedIn(states, pid, now);
+        };
+        const bound = await bindByProcess({ marks: inboxDepsOf(runtime, kit.paths).marks, refreshedHere }, claudeSession, now);
+        return bound === undefined ? undefined : processBoundNote(bound.id);
+    }
+    catch (error) {
+        return `${KIT_NAME} could not bind this tab by its Claude Code process (${errorMessage(error)}).`;
     }
 }
 /** The prompt hook's line for a tab it could not bind, once per Claude Code session and reason; undefined otherwise. */

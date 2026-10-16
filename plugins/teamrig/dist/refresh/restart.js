@@ -1,4 +1,5 @@
 import { readRunningWork } from "./running.js";
+import { TURN_TAIL_BYTES, turnRunning } from "./turn.js";
 /** Lets Claude Code finish writing the turn's end before the first look at the transcript. */
 export const SETTLE_MS = 3_000;
 /** A session busy this long keeps its context, and is told to type /clear. */
@@ -90,7 +91,15 @@ async function runEndCommand(deps, plan, request) {
     });
     return deps.processes.feed({ command, args, cwd: request.cwd ?? plan.fallbackCwd, input });
 }
-/** The session is quiet when its transcript gained nothing over one whole delay and no background work runs. */
+/** Whether the session's last turn has ended and none of the work it started still runs. */
+async function idleAt(deps, transcript) {
+    const tail = await deps.files.readTail(transcript, TURN_TAIL_BYTES);
+    return !turnRunning(tail ?? '') && (await readRunningWork(deps.files, transcript, deps.clock.now())) === 0;
+}
+/**
+ * The session is quiet when its transcript gained nothing over one whole delay, its last turn has ended
+ * (a long foreground command writes nothing while it runs) and no background work runs.
+ */
 async function waitForQuiet(deps, plan, transcript) {
     const started = deps.clock.now();
     await deps.sleep(Math.min(SETTLE_MS, plan.delayMs));
@@ -107,7 +116,7 @@ async function waitForQuiet(deps, plan, transcript) {
             return { kind: 'cancelled', why: 'the session was refreshed another way' };
         }
         const after = await deps.files.readTail(transcript, QUIET_TAIL_BYTES);
-        if (after === before && (await readRunningWork(deps.files, transcript, deps.clock.now())) === 0) {
+        if (after === before && (await idleAt(deps, transcript))) {
             return request;
         }
         if (deps.clock.now() - started >= GIVE_UP_MS) {
@@ -120,8 +129,8 @@ async function waitForQuiet(deps, plan, transcript) {
 }
 /**
  * The automatic context refresh's restart, started hidden by the Stop hook once the session's handover is
- * written (`refresh.autoRestart`). It waits until the session has been quiet for the whole delay with no
- * background work, and acts only while its request is still pending (a prompt the user types cancels it)
+ * written (`refresh.autoRestart`). It waits until the session has been quiet for the whole delay, with its
+ * last turn ended and no background work, and acts only while its request is still pending (a prompt the user types cancels it)
  * and the session still waits for a fresh start. Then it checks the process is Claude Code and ends it:
  * - Under `teamrig launch` (supervised), it marks the request `ending`, and launch starts Claude Code
  *   again in the same tab once it has gone.

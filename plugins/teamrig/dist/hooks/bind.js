@@ -53,6 +53,37 @@ export async function bindByTitle(deps, input) {
     await deps.marks.append(mark);
     return { kind: 'bound', id: only.id, mark };
 }
+/**
+ * How long after its handover was marked ready a session's Claude Code process still binds a cleared tab:
+ * the system reuses process ids, and a session that never came back must not claim a later tab.
+ */
+export const PROCESS_BIND_MAX_AGE_MS = 24 * 60 * 60_000;
+/** The sessions whose handover is ready and was announced in Claude Code process `pid` within PROCESS_BIND_MAX_AGE_MS. */
+export function refreshedIn(states, pid, now) {
+    return [...states]
+        .filter(([, state]) => state?.phase === 'ready' && state.claudePid === pid && now.getTime() - Date.parse(state.at) < PROCESS_BIND_MAX_AGE_MS)
+        .map(([id]) => id);
+}
+/**
+ * Binds a tab /clear started to the session that refreshed in its Claude Code process: /clear keeps the
+ * process but gives the tab a new Claude Code session, which no mark names, and its title may name no
+ * session. Bound only when exactly one session refreshed there; the mark repeats the area's read position.
+ */
+export async function bindByProcess(deps, claudeSession, now) {
+    const sessions = await deps.refreshedHere();
+    const [only] = sessions;
+    if (sessions.length !== 1 || only === undefined) {
+        return undefined;
+    }
+    const { byArea } = indexMarks((await deps.marks.read()).marks);
+    const mark = bindMarkOf(byArea.get(only), only, claudeSession, now);
+    await deps.marks.append(mark);
+    return { id: only, mark };
+}
+/** The SessionStart note for a tab bound by its Claude Code process after a /clear. */
+export function processBoundNote(id) {
+    return `This tab was bound to the \`${id}\` session: /clear kept the Claude Code process that session refreshed in; nothing was marked read.`;
+}
 /** The prompt hook's line for a tab just bound: which session it is now, and that nothing was marked read. */
 export function boundPromptNote(outcome, own, command) {
     return outcome.kind === 'bound'

@@ -8,7 +8,7 @@ import { ENV_SOURCE } from "../../core/team.js";
 import { findClaude } from "../../open/claude.js";
 import { launchFlags } from "../../open/launch-flags.js";
 import { openTab } from "../../open/open-tab.js";
-import { decodePrompt, defaultPrompt, encodePrompt, promptProblem } from "../../open/prompt.js";
+import { decodePrompt, defaultPrompt, encodePrompt, promptProblem, refreshPrompt } from "../../open/prompt.js";
 import { shellCommand } from "../../open/quote.js";
 import { sessionEnv } from "../../open/session-env.js";
 import { RefreshStore } from "../../refresh/store.js";
@@ -193,6 +193,6 @@ export async function launch(args, runtime) {
             return claudeExit(runtime, command, result);
         }
         runtime.out.stdout(`Starting Claude Code again as ${name} with a fresh context: it reads its handover first`);
-        first = defaultPrompt(team, id);
+        first = refreshPrompt(team, id, store.handoverPath(id));
     }
 }
