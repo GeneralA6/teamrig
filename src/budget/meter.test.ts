@@ -13,12 +13,14 @@ import {
   type FixtureResult,
   type FixtureTool,
 } from '../testing/transcript-lines.ts';
+import type { TranscriptSet } from './discover.ts';
 import { runMeter, type MeterResult } from './meter.ts';
 import { PATTERN_FIELDS } from './patterns.ts';
 import { RECENT_KEYS_KEPT, UsageStore, type DayUsage, type UsageState } from './store.ts';
 
 const MAIN = '/t/p/alpha.jsonl';
 const SUB = '/t/p/alpha/subagents/agent-a1.jsonl';
+const BOTH: TranscriptSet = { main: [MAIN], subagents: [SUB] };
 const DIR = '/state/usage';
 const SESSION = 'alpha';
 const DAY = '2026-03-02';
@@ -41,7 +43,7 @@ function world(now: string, transcripts: Readonly<Record<string, string>> = {}):
   bytes: MemoryTranscripts;
   files: MemoryFiles;
   clock: FakeClock;
-  run: (maxBytes?: number, paths?: readonly string[]) => Promise<MeterResult>;
+  run: (maxBytes?: number, transcripts?: TranscriptSet, subagentWeight?: number) => Promise<MeterResult>;
 } {
   const bytes = new MemoryTranscripts(transcripts);
   const files = new MemoryFiles();
@@ -51,7 +53,8 @@ function world(now: string, transcripts: Readonly<Record<string, string>> = {}):
     bytes,
     files,
     clock,
-    run: (maxBytes = 10_000_000, paths = [MAIN, SUB]) => runMeter({ bytes, store, clock }, { session: SESSION, transcripts: paths, maxBytes }),
+    run: (maxBytes = 10_000_000, transcripts = BOTH, subagentWeight = 1) =>
+      runMeter({ bytes, store, clock }, { session: SESSION, transcripts, subagentWeight, maxBytes }),
   };
 }
 
@@ -87,6 +90,18 @@ describe('runMeter', () => {
     const again = await meter.run();
     assert.equal(again.bytesRead, 0);
     assert.deepEqual(again.state.byDay, result.state.byDay);
+  });
+
+  it("counts a subagent's W at the subagent weight, its added output and its turn's W too", async () => {
+    const meter = world(at(12), {
+      [MAIN]: transcript([promptLine(at(9)), replyLine(R1), replyLine(R1_MORE), replyLine(R2)]),
+      [SUB]: transcript([promptLine(at(9, 2), 'task', true), replyLine(S1), replyLine({ ...S1, at: at(9, 3, 5), usage: { ...S1.usage, output: 6 } })]),
+    });
+    const state = (await meter.run(10_000_000, BOTH, 2.5)).state;
+    const subagentW = 2.5 * (S1_W + 4 * 5);
+    near(day(state, DAY)?.w, R1_W + R2_W + subagentW);
+    near(day(state, DAY)?.patterns.otherW, R1_W + R2_W, 'main thread W');
+    near(day(state, DAY)?.patterns.subagentW, subagentW, 'subagent W');
   });
 
   it('skips a reply logged twice, in another file or later in the same one, and a reply without a time', async () => {
@@ -181,7 +196,7 @@ describe('runMeter', () => {
     const meter = world(at(12), { [MAIN]: transcript([replyLine(R1), replyLine(R2)]) });
     await meter.run();
     meter.bytes.set(MAIN, transcript([replyLine({ id: 'n1', at: at(10), usage: { input: 9 } })]));
-    const result = await meter.run(10_000_000, [MAIN, '/t/p/gone.jsonl']);
+    const result = await meter.run(10_000_000, { main: [MAIN, '/t/p/gone.jsonl'], subagents: [] });
     near(day(result.state, DAY)?.w, R1_W - 40 * 5 + R2_W + 9);
     assert.equal(result.state.cursors['/t/p/gone.jsonl'], undefined);
   });
@@ -191,7 +206,7 @@ describe('runMeter', () => {
     const bytes = new MemoryTranscripts({ [MAIN]: transcript([replyLine(R1)]) });
     const clock = new FakeClock(at(12));
     const store = new UsageStore(files, DIR);
-    const run = (): Promise<MeterResult> => runMeter({ bytes, store, clock }, { session: SESSION, transcripts: [MAIN], maxBytes: 10_000 });
+    const run = (): Promise<MeterResult> => runMeter({ bytes, store, clock }, { session: SESSION, transcripts: { main: [MAIN], subagents: [] }, subagentWeight: 1, maxBytes: 10_000 });
     files.race = async () => {
       await run();
       bytes.append(MAIN, transcript([replyLine(R2)]));
@@ -212,7 +227,7 @@ describe('runMeter', () => {
     const meter = world(before(9), { [MAIN]: transcript([replyLine({ id: 'old', at: before(8), usage: { input: 1 } })]) });
     await meter.run();
     meter.clock.advance(9 * 86_400_000);
-    const result = await meter.run(10_000_000, [SUB]);
+    const result = await meter.run(10_000_000, { main: [], subagents: [SUB] });
     assert.deepEqual(result.state.byDay, {});
     assert.deepEqual(result.state.cursors, {});
   });

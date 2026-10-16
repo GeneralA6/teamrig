@@ -145,6 +145,12 @@ describe('teamrig budget', () => {
     usageError(await run(['budget', '--loops', '--burn']), /--loops and --burn are two tables: give one/);
   });
 
+  it("meters a subagent's W at budget.subagentWeight", async () => {
+    const { kit, source, run } = await world({ ...TEAM, budget: { weeklyLimitW: 1_000_000_000, subagentWeight: 3 } });
+    source.set(join(PROJECT, BRAVO_TAB, 'subagents', 'agent-1.jsonl'), transcript([reply('s1', 1_000_000)]), kit.clock.now());
+    assert.ok(ok(await run(['budget'])).includes('app-bravo used 0.80% of the week today; its daily budget is 4.0%. 8.00M W in 2 calls.'));
+  });
+
   it('recounts a past day from the transcripts, writing nothing', async () => {
     const { kit, run } = await world();
     const before = kit.files.paths().map((path) => [path, kit.files.get(path)]);

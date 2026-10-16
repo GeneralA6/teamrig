@@ -1,6 +1,6 @@
 import { basename, dirname, join } from 'node:path';
 import type { Roster } from '../../config/roster.ts';
-import type { KitConfig } from '../../config/types.ts';
+import type { BudgetConfig, KitConfig } from '../../config/types.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { formatUtcDay } from '../../core/time.ts';
 import type { TranscriptFolders } from '../../budget/discover.ts';
@@ -47,9 +47,12 @@ async function subagentsOf(folders: TranscriptFolders, transcript: string): Prom
 }
 
 /** One meter run over the tab's own transcripts; a run that lost a save race is left for the next hook. */
-async function meterTab(runtime: CliRuntime, store: UsageStore, id: string, transcript: string, maxBytes: number): Promise<void> {
-  const transcripts = [transcript, ...(await subagentsOf(runtime.transcripts, transcript))];
-  await runMeter({ bytes: runtime.transcripts, store, clock: runtime.clock }, { session: id, transcripts, maxBytes });
+async function meterTab(runtime: CliRuntime, store: UsageStore, id: string, transcript: string, budget: BudgetConfig): Promise<void> {
+  const transcripts = { main: [transcript], subagents: await subagentsOf(runtime.transcripts, transcript) };
+  await runMeter(
+    { bytes: runtime.transcripts, store, clock: runtime.clock },
+    { session: id, transcripts, subagentWeight: budget.subagentWeight, maxBytes: budget.maxBytesPerHook },
+  );
 }
 
 /**
@@ -65,7 +68,7 @@ export async function budgetFactsOf(runtime: CliRuntime, scope: BudgetScope, tra
   const { files } = runtime;
   const team = new UsageStore(files, kit.paths.usage);
   if (transcript !== undefined) {
-    await meterTab(runtime, team, id, transcript, budget.maxBytesPerHook);
+    await meterTab(runtime, team, id, transcript, budget);
   }
   const now = runtime.clock.now();
   const byId = new Map<string, UsageState>();

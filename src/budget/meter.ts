@@ -1,6 +1,7 @@
 import type { Clock } from '../core/lock.ts';
 import { formatUtcDay, MS_PER_DAY } from '../core/time.ts';
 import { findLineAtOrAfter, readLines, type TranscriptBytes } from './cursor.ts';
+import type { TranscriptSet } from './discover.ts';
 import { parseTranscriptLine, type CallLine } from './line.ts';
 import { emptyPatterns, PatternTracker, type Count, type PatternField } from './patterns.ts';
 import {
@@ -26,7 +27,9 @@ export interface MeterRun {
   /** The session the transcripts belong to: its usage file is the one updated. */
   readonly session: string;
   /** The session's transcripts, read in this order: its own, then its subagents'. */
-  readonly transcripts: readonly string[];
+  readonly transcripts: TranscriptSet;
+  /** What one W of a subagent's transcript costs, in W of a main session (`budget.subagentWeight`). */
+  readonly subagentWeight: number;
   /** The most bytes this run reads; what is left is read by the next run. */
   readonly maxBytes: number;
 }
@@ -117,17 +120,20 @@ function dayOf(at: number): string {
  * Counts one transcript's new lines into the tally. A reply is several lines sharing its key, each
  * repeating the usage with the output so far: the first line counts the call, a later one only the
  * output it adds. A call whose key was seen in the last few hundred calls was logged twice and is
- * skipped; a call without a timestamp is skipped, as no day can take it.
+ * skipped; a call without a timestamp is skipped, as no day can take it. Every W is multiplied by the
+ * transcript's weight, so a subagent's counts in W of a main session.
  */
 class TranscriptFold {
   private call: OpenCall | null;
   private readonly tracker: PatternTracker;
   private readonly tally: Tally;
+  private readonly weight: number;
 
-  constructor(cursor: TranscriptCursor, tally: Tally) {
+  constructor(cursor: TranscriptCursor, tally: Tally, weight: number) {
     this.call = cursor.call;
-    this.tracker = new PatternTracker(cursor.patterns);
+    this.tracker = new PatternTracker(cursor.patterns, weight);
     this.tally = tally;
+    this.weight = weight;
   }
 
   line(raw: string): void {
@@ -155,7 +161,7 @@ class TranscriptFold {
   private reply(line: CallLine): void {
     const open = this.call;
     if (open !== null && line.key !== undefined && line.key === open.key) {
-      const added = Math.max(0, line.usage.output - open.output) * WEIGHTS.output;
+      const added = Math.max(0, line.usage.output - open.output) * WEIGHTS.output * this.weight;
       this.tally.day(open.day).w += added;
       this.tracker.charged(added, this.tally.counter(open.day));
       this.call = { ...open, output: Math.max(open.output, line.usage.output), w: open.w + added };
@@ -167,7 +173,7 @@ class TranscriptFold {
       return;
     }
     const day = dayOf(line.at);
-    const w = weightOf(line.usage);
+    const w = weightOf(line.usage) * this.weight;
     const context = contextTokens(line.usage);
     const totals = this.tally.day(day);
     totals.w += w;
@@ -192,7 +198,8 @@ class TranscriptFold {
  * Counts a session's API use from its transcripts since the last run, as weighted tokens per UTC day,
  * calls and loop patterns, and saves the totals with each transcript's read position. A transcript
  * seen for the first time (or that shrank, so it was replaced) is read from today's first line, found
- * by a binary search. One run reads at most `maxBytes`; the rest waits for the next run.
+ * by a binary search. One run reads at most `maxBytes`; the rest waits for the next run. A subagent's W
+ * is multiplied by `subagentWeight`.
  */
 export async function runMeter(deps: MeterDeps, run: MeterRun): Promise<MeterResult> {
   const { rev, state } = await deps.store.load(run.session);
@@ -204,7 +211,11 @@ export async function runMeter(deps: MeterDeps, run: MeterRun): Promise<MeterRes
   let budget = run.maxBytes;
   let bytesRead = 0;
   let catchingUp = false;
-  for (const path of run.transcripts) {
+  const weighted = [
+    ...run.transcripts.main.map((path) => ({ path, weight: 1 })),
+    ...run.transcripts.subagents.map((path) => ({ path, weight: run.subagentWeight })),
+  ];
+  for (const { path, weight } of weighted) {
     const size = await deps.bytes.size(path);
     if (size === undefined) {
       continue;
@@ -225,7 +236,7 @@ export async function runMeter(deps: MeterDeps, run: MeterRun): Promise<MeterRes
     budget -= batch.bytes;
     bytesRead += batch.bytes;
     catchingUp ||= batch.capped;
-    const fold = new TranscriptFold(cursor, tally);
+    const fold = new TranscriptFold(cursor, tally, weight);
     for (const line of batch.lines) {
       fold.line(line);
     }

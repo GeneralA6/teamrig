@@ -81,6 +81,11 @@ describe('the budget in the hooks', () => {
     assert.doesNotMatch(await leadInbox(kit), /past its daily budget/);
   });
 
+  it("counts the subagent's W at budget.subagentWeight", async () => {
+    const { hook } = await world({ subagentWeight: 3 }, 8_000_000, 30);
+    assert.match(messageOf(await hook('stop', ALPHA_TAB)), /^Budget: app-alpha has used 1\.1% of the week today; its daily budget is 1\.0%\./);
+  });
+
   it('tells the model with the next prompt, once per level', async () => {
     const { hook } = await world({}, 10_000_000, 30);
     await hook('stop', ALPHA_TAB);

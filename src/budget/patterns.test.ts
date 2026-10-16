@@ -9,6 +9,7 @@ import {
   BURN_FIELDS,
   parsePatternCounts,
   parsePatternState,
+  PATTERN_FIELDS,
   PatternTracker,
   testFailed,
   type Count,
@@ -230,6 +231,30 @@ describe('PatternTracker', () => {
     }
     assert.equal(counts.coldCalls, 1);
     near(counts.coldW, 30_000 * WEIGHTS.cacheWrite1h);
+  });
+
+  it('multiplies the W it works out by its weight, and keeps the W the meter charged as given', () => {
+    const counted = (weight: number): Record<PatternField, number> => {
+      const { count, counts } = recorder();
+      const tracker = new PatternTracker(INITIAL_PATTERN_STATE, weight);
+      const cold: Usage = { ...warm(10_000), cacheWrite1h: 30_000 };
+      tracker.callStarted(cold, [tool('a', 'Read')], count);
+      tracker.charged(10, count);
+      tracker.callClosed(contextTokens(cold), 10, count);
+      call(tracker, count, 1_000, [tool('b', 'Read')]);
+      call(tracker, count, 1_000, [tool('c', 'Edit')]);
+      call(tracker, count, 1_000, [tool('d', 'Edit')]);
+      call(tracker, count, 4_000, [bash('e', 'npm test')], [result('e', PASS)]);
+      call(tracker, count, 4_000, [bash('f', 'npm test')]);
+      return counts;
+    };
+    const once = counted(1);
+    const weighed = counted(2.5);
+    const worked: readonly PatternField[] = ['coldW', 'passRentW', 'editChainSavedW', 'editThenTestSavedW'];
+    assert.ok(worked.every((field) => once[field] > 0) && once.readChainW > 0 && once.rerunAfterPassW > 0);
+    for (const field of PATTERN_FIELDS) {
+      near(weighed[field], worked.includes(field) ? 2.5 * once[field] : once[field]);
+    }
   });
 
   it('resumes from a stored state exactly where it stopped', () => {
