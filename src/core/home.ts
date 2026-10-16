@@ -26,6 +26,10 @@ export const ENV = {
   launched: 'TEAMRIG_LAUNCHED',
   /** `off` turns `teamrig gh sync` off on this machine: it reads nothing and writes nothing. */
   github: 'TEAMRIG_GITHUB',
+  /** Claude Code's effort for every session and helper that gets it, over `--effort`, `/effort` and per-call Agent `effort`; `doctor` warns when set. */
+  effortLevel: 'CLAUDE_CODE_EFFORT_LEVEL',
+  /** At 1, Claude Code picks a helper's model over every per-call Agent `model`; `doctor` warns when set. */
+  subagentModelForce: 'CLAUDE_CODE_SUBAGENT_MODEL_FORCE',
 } as const;
 
 export type Env = Readonly<Record<string, string | undefined>>;

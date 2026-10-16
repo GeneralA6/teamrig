@@ -1,6 +1,8 @@
+import { isDefaultModel } from '../config/launch.ts';
 import type { Roster } from '../config/roster.ts';
 import { describeNameClash, describeTreeProblem, type NameClash, type TreeProblem } from '../config/tree.ts';
-import type { ContextFilesConfig, KitConfig } from '../config/types.ts';
+import type { ContextFilesConfig, KitConfig, LaunchConfig } from '../config/types.ts';
+import { ENV, type Env } from '../core/home.ts';
 import { formatUtcMinute, MS_PER_DAY, parseUtcDeadline, shortUtc } from '../core/time.ts';
 import { unreadSince } from '../inbox/inbox.ts';
 import type { Unread } from '../inbox/unread.ts';
@@ -8,6 +10,7 @@ import type { RenameLogRead } from '../names/rename.ts';
 import { describeRequirement, type RequirementProblem } from '../requirements/requirements.ts';
 import { TEAM_RULES_MAX_CHARS } from '../rules/pack.ts';
 import type { ContextFiles } from './context-files.ts';
+import type { SettingsEnv } from './settings-env.ts';
 
 /**
  * Days an inbox may wait with unread lines and no read before doctor flags it. Hard-coded for now;
@@ -27,7 +30,11 @@ export const UNREAD_INBOX_DAYS = 7;
  * - `context-size`: CLAUDE.md files, a memory index or a skill listing over its `contextFiles` budget, re-read every call;
  * - `tree-id`, `tree-parent`, `tree-loop`, `tree-depth`, `tree-children`: a broken link in the
  *   team's tree of teams (see `TreeProblem`);
- * - `name-two-teams`: a session name this team shares with another team, though names are machine-wide.
+ * - `name-two-teams`: a session name this team shares with another team, though names are machine-wide;
+ * - `effort-env`: `CLAUDE_CODE_EFFORT_LEVEL` set, which beats every `--effort`, `/effort` and per-call Agent effort;
+ * - `model-env`: `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` set, which at 1 beats every per-call Agent model;
+ * - `settings-json`: a Claude Code settings file that is not a JSON object, so its `env` block went unchecked;
+ * - `launch-effort`: a session's `launch` names a model but no effort, so it starts at the model's default effort.
  */
 export type FindingKind =
   | 'requirement'
@@ -40,11 +47,22 @@ export type FindingKind =
   | 'rules-long'
   | 'context-size'
   | TreeProblem['kind']
-  | 'name-two-teams';
+  | 'name-two-teams'
+  | 'effort-env'
+  | 'model-env'
+  | 'settings-json'
+  | 'launch-effort';
 
 export interface Finding {
   readonly kind: FindingKind;
   readonly detail: string;
+}
+
+/** A session and the model and effort it starts on. */
+export interface SessionLaunch {
+  readonly id: string;
+  /** As `launchOf` resolves it: the lead's unset keys filled in. */
+  readonly launch: LaunchConfig;
 }
 
 export interface DoctorInput {
@@ -62,6 +80,12 @@ export interface DoctorInput {
   readonly contextFiles: { readonly read: ContextFiles; readonly budgets: ContextFilesConfig };
   /** The problems of the team's tree of teams, and the session names it shares with other teams. */
   readonly tree: { readonly problems: readonly TreeProblem[]; readonly clashes: readonly NameClash[] };
+  /** The environment doctor runs in; only the variables that override a model or effort choice are read. */
+  readonly env: Env;
+  /** The `env` blocks of the Claude Code settings files the team's sessions read (`readSettingsEnv`). */
+  readonly settingsEnv: readonly SettingsEnv[];
+  /** Each session on the team and the model and effort it starts on. */
+  readonly launches: readonly SessionLaunch[];
   readonly now: Date;
   /** The CLI name the fixes tell the user to run. */
   readonly command: string;
@@ -202,10 +226,66 @@ function treeFindings({ tree, command }: DoctorInput): Finding[] {
   ];
 }
 
+/** A variable that overrides a choice made anywhere else, and what it does to the sessions and helpers that get it. */
+interface RoutingOverride {
+  readonly kind: 'effort-env' | 'model-env';
+  readonly name: string;
+  readonly effect: (value: string) => string;
+}
+
+const ROUTING_OVERRIDES: readonly RoutingOverride[] = [
+  {
+    kind: 'effort-env',
+    name: ENV.effortLevel,
+    effect: (value) => `it beats every --effort (the team config's launch efforts among them), /effort and per-call Agent effort, so a session or helper that gets it runs at ${value} whatever it was given`,
+  },
+  {
+    kind: 'model-env',
+    name: ENV.subagentModelForce,
+    effect: () => 'set to 1 it beats every per-call Agent model, so a helper that gets it never runs on the model its caller gives it',
+  },
+];
+
+/**
+ * A variable set in doctor's own environment or in a settings file's `env` block that overrides every effort or
+ * helper model a session or its caller picks, and a settings file whose block could not be read. Only the
+ * overriding variables' values are printed.
+ */
+function routingEnvFindings({ env, settingsEnv }: DoctorInput): Finding[] {
+  const sources = [
+    { where: 'the environment doctor runs in', env },
+    ...settingsEnv.flatMap((settings) => (settings.kind === 'env' ? [{ where: `the env block of ${settings.path}`, env: settings.env }] : [])),
+  ];
+  const overrides = ROUTING_OVERRIDES.flatMap(({ kind, name, effect }) =>
+    sources.flatMap(({ where, env: set }): Finding[] => {
+      const value = set[name]?.trim();
+      return value ? [{ kind, detail: `${name}=${value} is set in ${where}: ${effect(value)}; unset it there to let each choose its own` }] : [];
+    }),
+  );
+  const names = ROUTING_OVERRIDES.map(({ name }) => name).join(' or ');
+  const unreadable = settingsEnv.flatMap((settings): Finding[] =>
+    settings.kind === 'unreadable' ? [{ kind: 'settings-json', detail: `${settings.path} is not a JSON object, so doctor could not check its env block for ${names}` }] : [],
+  );
+  return [...overrides, ...unreadable];
+}
+
+/** A session whose launch names a model but no effort: it starts at that model's default effort, whatever the team meant. */
+function launchFindings({ launches, roster }: DoctorInput): Finding[] {
+  return launches.flatMap(({ id, launch }): Finding[] => {
+    if (isDefaultModel(launch.model) || launch.effort !== undefined) {
+      return [];
+    }
+    const name = roster.nameOf(id) ?? id;
+    const detail = `${name} (session ${id}) launches on model ${launch.model} with no effort, so it runs at that model's default effort (medium on Opus, Sonnet and Haiku 5.5): set launch.${id}.effort in the team config`;
+    return [{ kind: 'launch-effort', detail }];
+  });
+}
+
 /**
  * The team's health checks: names that find the wrong session or none, a damaged rename log,
- * inboxes nobody reads, rules too long to show, text every call re-reads over its budget, and a broken tree of teams or a session name two
- * teams use. It reads only; every fix is the user's.
+ * inboxes nobody reads, rules too long to show, text every call re-reads over its budget, a broken tree of teams or a session name two
+ * teams use, a variable that overrides every model or effort choice, and a launch with a model but no effort.
+ * It reads only; every fix is the user's.
  */
 export function doctorFindings(input: DoctorInput): Finding[] {
   return [
@@ -217,6 +297,8 @@ export function doctorFindings(input: DoctorInput): Finding[] {
     ...rulesFindings(input),
     ...contextFindings(input),
     ...treeFindings(input),
+    ...routingEnvFindings(input),
+    ...launchFindings(input),
   ];
 }
 
