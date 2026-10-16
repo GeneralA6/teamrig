@@ -20,7 +20,7 @@ const HANDOVER = '/team/handover/alpha.md';
 
 const BOUNDARY: RefreshState = { phase: 'boundary', task: 'T12', at: BEFORE, finished: 1 };
 const ASKED: RefreshState = { phase: 'asked', task: 'T12', at: BEFORE, tokens: 262_144, handoverHash: null };
-const READY: RefreshState = { phase: 'ready', task: 'T12', at: BEFORE, noticed: false };
+const READY: RefreshState = { phase: 'ready', task: 'T12', at: BEFORE, noticed: false, transcript: null };
 /** The size rule alone at 250k, so each size test reads apart from the task count. */
 const SIZE_ONLY: RefreshSettings = { ...DEFAULT_REFRESH, contextTokens: 250_000, everyTasks: 0 };
 const COUNTED: RefreshSettings = { ...SIZE_ONLY, everyTasks: 3, everyTasksMinTokens: 80_000 };
@@ -34,6 +34,7 @@ function stopContext(overrides: Partial<StopContext> = {}): StopContext {
     handoverPath: HANDOVER,
     command: 'teamrig',
     canRestart: false,
+    transcript: null,
     ...overrides,
   };
 }
@@ -163,6 +164,11 @@ describe('decideStop', () => {
     });
   });
 
+  it("records the session's transcript with the notice, for the fresh start to read what it leaves", () => {
+    const decision = decideStop(READY, stopContext({ transcript: '/claude/projects/p/s.jsonl' }), facts());
+    assert.deepEqual(decision.kind === 'notice' ? decision.state : undefined, { ...READY, noticed: true, transcript: '/claude/projects/p/s.jsonl' });
+  });
+
   it('gives the notice in the turn a Stop hook continued, since that turn runs refresh --ready', () => {
     assert.equal(decideStop(READY, stopContext({ stopHookActive: true }), facts()).kind, 'notice');
   });
@@ -215,11 +221,11 @@ describe('decideReady', () => {
       kind: 'refused',
       reason: `${HANDOVER} is the handover from before; write this refresh's handover there`,
     });
-    assert.deepEqual(decideReady(asked, '# this refresh\n', HANDOVER, NOW), { kind: 'ready', state: { phase: 'ready', task: 'T12', at: NOW, noticed: false } });
+    assert.deepEqual(decideReady(asked, '# this refresh\n', HANDOVER, NOW), { kind: 'ready', state: { phase: 'ready', task: 'T12', at: NOW, noticed: false, transcript: null } });
   });
 
   it('marks a new handover ready, and answers the same when run again', () => {
-    assert.deepEqual(decideReady(ASKED, '# notes', HANDOVER, NOW), { kind: 'ready', state: { phase: 'ready', task: 'T12', at: NOW, noticed: false } });
+    assert.deepEqual(decideReady(ASKED, '# notes', HANDOVER, NOW), { kind: 'ready', state: { phase: 'ready', task: 'T12', at: NOW, noticed: false, transcript: null } });
     assert.deepEqual(decideReady(READY, '# notes', HANDOVER, NOW), { kind: 'already' });
   });
 });
@@ -229,7 +235,7 @@ describe('decideStart', () => {
     for (const source of ['clear', 'startup']) {
       assert.deepEqual(decideStart(READY, source, DEFAULT_REFRESH, HANDOVER, NOW), {
         kind: 'inject',
-        note: `You were refreshed after T12; read your handover first: ${HANDOVER}`,
+        note: `You were refreshed after T12; read your handover first: ${HANDOVER}. Then carry on with its next steps.`,
         state: { phase: 'refreshed', task: 'T12', at: NOW },
       });
     }

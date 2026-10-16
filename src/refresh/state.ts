@@ -13,14 +13,16 @@ export const REFRESH_FORMAT = 1;
  * - `asked`: its Stop hook asked it to write its handover; `handoverHash` fingerprints the handover file
  *   then (null: there was none), so `refresh --ready` can tell a new handover from an old one.
  * - `ready`: its handover is written and it waits for a fresh start (the automatic restart, or the user's
- *   /clear); `noticed` once the user was told.
+ *   /clear); `noticed` once the user was told. `transcript` is the Claude Code transcript of the session that
+ *   wrote it, recorded with the notice (null before, or when Claude Code gave none): the fresh start reads
+ *   from it what that session leaves to take over.
  * - `refreshed`: a fresh start was pointed at the handover.
  */
 export type RefreshState =
   | { readonly phase: 'boundary'; readonly task: string; readonly at: string; readonly finished: number }
   | { readonly phase: 'idle'; readonly task: string; readonly at: string; readonly tokens: number | null; readonly finished: number }
   | { readonly phase: 'asked'; readonly task: string; readonly at: string; readonly tokens: number | null; readonly handoverHash: string | null }
-  | { readonly phase: 'ready'; readonly task: string; readonly at: string; readonly noticed: boolean }
+  | { readonly phase: 'ready'; readonly task: string; readonly at: string; readonly noticed: boolean; readonly transcript: string | null }
   | { readonly phase: 'refreshed'; readonly task: string; readonly at: string };
 
 /** The lead's ask that a session refresh at its next finished task, whatever its context. */
@@ -99,7 +101,9 @@ export function parseRefreshState(text: string): RefreshState | undefined {
     }
     case 'ready': {
       const noticed = record['noticed'];
-      return typeof noticed === 'boolean' ? { phase: 'ready', task, at, noticed } : undefined;
+      // A file from before the transcript was recorded has none.
+      const transcript = record['transcript'] === undefined ? null : nullableString(record, 'transcript');
+      return typeof noticed === 'boolean' && transcript !== undefined ? { phase: 'ready', task, at, noticed, transcript } : undefined;
     }
     case 'refreshed':
       return { phase: 'refreshed', task, at };
