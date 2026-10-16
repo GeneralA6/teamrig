@@ -90,6 +90,10 @@ export interface TeamPaths {
   readonly usage: string;
   /** The lead's budget lifts, an append-only log. */
   readonly lifts: string;
+  /** The team's hires and retires, an append-only log. */
+  readonly hires: string;
+  /** Held while a hire or a retire writes the config and the hire log, so two never interleave. */
+  readonly hiresLock: string;
   /** What the budget warning already showed each session, `<id>.json` each. */
   readonly warn: string;
   /** The full output of each `teamrig test` run, `test-<session>-<n>.log` each. */
@@ -137,6 +141,8 @@ export function teamPaths(kitHome: string, team: string, userHome: string, overr
     modelNotices: join(state, 'model-notices'),
     usage: join(state, 'usage'),
     lifts: join(state, 'usage', 'lifts.jsonl'),
+    hires: join(state, 'hires.jsonl'),
+    hiresLock: join(state, 'hires.lock'),
     warn: join(state, 'usage', 'warn'),
     logs: join(state, 'logs'),
     githubSync: join(state, 'github-sync.json'),
