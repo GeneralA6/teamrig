@@ -195,15 +195,15 @@ export function sessionLines(session: SessionToday, state: UsageState, week: Wee
   return lines;
 }
 
-/** One row of the loop table: a pattern's count, and the W it cost or could save. */
-interface LoopRow {
+/** One counter's row: its count, and the W it cost or could save. */
+interface CountRow {
   readonly label: string;
   readonly count: PatternField;
   readonly w?: PatternField;
 }
 
 /** The loop patterns, biggest first in the design's ranking; see `PATTERN_FIELDS` for what each counts. */
-export const LOOP_ROWS: readonly LoopRow[] = [
+export const LOOP_ROWS: readonly CountRow[] = [
   { label: 'read after read, W', count: 'readChain', w: 'readChainW' },
   { label: 'edit after edit, W saved', count: 'editChain', w: 'editChainSavedW' },
   { label: 'test after an edit, W saved', count: 'editThenTest', w: 'editThenTestSavedW' },
@@ -235,35 +235,61 @@ export function sumDays(states: readonly UsageState[], days: readonly string[]):
   });
 }
 
+/** One row of a day table: its label, and its text for one day. */
+interface DayRow {
+  readonly label: string;
+  readonly cell: (usage: DayUsage) => string;
+}
+
+function countRow(row: CountRow): DayRow {
+  return {
+    label: row.label,
+    cell: (usage) => {
+      const count = formatCount(usage.patterns[row.count]);
+      return row.w === undefined ? count : `${count} ${formatW(usage.patterns[row.w])}`;
+    },
+  };
+}
+
+const ALL_CALLS_ROW: DayRow = { label: 'all calls', cell: (usage) => `${formatCount(usage.calls)} ${formatW(usage.w)}` };
+
+const NOTHING_METERED = 'nothing metered';
+
+/**
+ * A table with the days as columns. `leftOut` gives the reason a day is left out, or undefined to show it;
+ * the days left out are named under the table by reason, each with the `--day` that reads one.
+ */
+function dayTable(header: string, rows: readonly DayRow[], days: readonly string[], totals: readonly DayUsage[], leftOut: (usage: DayUsage) => string | undefined): string[] {
+  const shown: { readonly day: string; readonly usage: DayUsage }[] = [];
+  const skipped = new Map<string, string[]>();
+  for (const [index, day] of days.entries()) {
+    const usage = totals[index] ?? { w: 0, calls: 0, patterns: emptyPatterns() };
+    const reason = leftOut(usage);
+    if (reason === undefined) {
+      shown.push({ day, usage });
+    } else {
+      skipped.set(reason, [...(skipped.get(reason) ?? []), day]);
+    }
+  }
+  const notes = [...skipped].map(([reason, each]) => `Left out, ${reason}: ${each.map((day) => day.slice(5)).join(', ')} (add --day ${each[0]} to read one).`);
+  if (shown.length === 0) {
+    return [header, ...notes];
+  }
+  const table = [['', ...shown.map(({ day }) => day.slice(5))], ...rows.map((row) => [row.label, ...shown.map(({ usage }) => row.cell(usage))])];
+  const widths = shown.map((_, index) => Math.max(...table.map((row) => (row[index + 1] ?? '').length)));
+  const labelWidth = Math.max(...table.map((row) => (row[0] ?? '').length));
+  const lines = table.map((row) =>
+    [(row[0] ?? '').padEnd(labelWidth), ...row.slice(1).map((text, index) => text.padStart(widths[index] ?? 0))].join('  ').trimEnd(),
+  );
+  return [header, ...lines, ...notes];
+}
+
 /**
  * `teamrig budget --loops`: each pattern's count and W per day, the days as columns. From the meter's store
  * a day with no calls was never metered (before the meter started, or outside its window), so its column
  * is left out and named under the table; a recounted day (`--day`) was read, so its zeros are shown.
  */
 export function loopLines(who: string, days: readonly string[], totals: readonly DayUsage[], source: 'metered' | 'recounted'): string[] {
-  const metered = days.flatMap((day, index) => {
-    const usage = totals[index];
-    return usage !== undefined && (source === 'recounted' || usage.calls > 0) ? [{ day, usage }] : [];
-  });
-  const unread = days.filter((day) => !metered.some((each) => each.day === day));
-  const leftOut = unread.length === 0 ? [] : [`Left out, nothing metered: ${unread.map((day) => day.slice(5)).join(', ')} (add --day ${unread[0]} to read one).`];
-  const header = `Loop patterns, ${who}: count, then W (UTC days)`;
-  if (metered.length === 0) {
-    return [header, ...leftOut];
-  }
-  const cell = (row: LoopRow, usage: DayUsage): string => {
-    const count = formatCount(usage.patterns[row.count]);
-    return row.w === undefined ? count : `${count} ${formatW(usage.patterns[row.w])}`;
-  };
-  const table = [
-    ['', ...metered.map(({ day }) => day.slice(5))],
-    ...LOOP_ROWS.map((row) => [row.label, ...metered.map(({ usage }) => cell(row, usage))]),
-    ['all calls', ...metered.map(({ usage }) => `${formatCount(usage.calls)} ${formatW(usage.w)}`)],
-  ];
-  const widths = metered.map((_, index) => Math.max(...table.map((row) => (row[index + 1] ?? '').length)));
-  const labelWidth = Math.max(...table.map((row) => (row[0] ?? '').length));
-  const lines = table.map((row) =>
-    [(row[0] ?? '').padEnd(labelWidth), ...row.slice(1).map((text, index) => text.padStart(widths[index] ?? 0))].join('  ').trimEnd(),
-  );
-  return [header, ...lines, ...leftOut];
+  const leftOut = (usage: DayUsage): string | undefined => (source === 'metered' && usage.calls === 0 ? NOTHING_METERED : undefined);
+  return dayTable(`Loop patterns, ${who}: count, then W (UTC days)`, [...LOOP_ROWS.map(countRow), ALL_CALLS_ROW], days, totals, leftOut);
 }
