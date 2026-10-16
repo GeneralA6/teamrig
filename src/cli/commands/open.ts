@@ -8,7 +8,7 @@ import { ENV_SOURCE } from '../../core/team.ts';
 import { findClaude } from '../../open/claude.ts';
 import { launchFlags } from '../../open/launch-flags.ts';
 import { openTab, type OpenOutcome } from '../../open/open-tab.ts';
-import { decodePrompt, defaultPrompt, encodePrompt, promptProblem } from '../../open/prompt.ts';
+import { decodePrompt, defaultPrompt, encodePrompt, promptProblem, refreshPrompt } from '../../open/prompt.ts';
 import { shellCommand } from '../../open/quote.ts';
 import { sessionEnv } from '../../open/session-env.ts';
 import type { RunOutcome } from '../../open/processes.ts';
@@ -223,6 +223,6 @@ export async function launch(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
       return claudeExit(runtime, command, result);
     }
     runtime.out.stdout(`Starting Claude Code again as ${name} with a fresh context: it reads its handover first`);
-    first = defaultPrompt(team, id);
+    first = refreshPrompt(team, id, store.handoverPath(id));
   }
 }
