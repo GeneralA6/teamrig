@@ -6,7 +6,18 @@ import { emptyWarnState, type WarnState } from './warn.ts';
 import { formatWarnState, parseWarnState, WarnStore } from './warn-store.ts';
 
 const FOLDER = join('team', 'state', 'usage', 'warn');
-const STATE: WarnState = { day: '2026-10-15', level: 100, modelLevel: 80, ahead: true, leadTold: true, quietFrom: 1_760_565_600_000, liftAt: 1_760_529_600_000 };
+const STATE: WarnState = {
+  day: '2026-10-15',
+  level: 100,
+  modelLevel: 80,
+  ahead: true,
+  leadTold: true,
+  quietFrom: 1_760_565_600_000,
+  liftAt: 1_760_529_600_000,
+  burstAt: 1_760_500_000_000,
+  modelBurstAt: 1_760_500_000_000,
+  surplusShown: 1_761_008_400_000,
+};
 
 describe('WarnStore', () => {
   it('keeps what each session was shown, one file each', async () => {
@@ -32,14 +43,16 @@ describe('parseWarnState', () => {
   it('round-trips, leaving the optional times out when unset', () => {
     assert.deepEqual(parseWarnState(formatWarnState(STATE)), STATE);
     const empty = emptyWarnState('2026-10-15');
-    assert.ok(!formatWarnState(empty).includes('quietFrom'));
+    for (const key of ['quietFrom', 'liftAt', 'burstAt', 'modelBurstAt', 'surplusShown']) {
+      assert.ok(!formatWarnState(empty).includes(key), key);
+    }
     assert.deepEqual(parseWarnState(formatWarnState(empty)), empty);
   });
 
   it('refuses another format, a wrong field type, a bad time and a missing field', () => {
     const fields = { v: 1, day: '2026-10-15', level: 100, modelLevel: 80, ahead: true, leadTold: true, quietFrom: 1 };
     const { day: _day, ...noDay } = fields;
-    const variants: readonly object[] = [{ ...fields, v: 2 }, { ...fields, level: 'high' }, { ...fields, ahead: 1 }, { ...fields, quietFrom: 'tonight' }, noDay];
+    const variants: readonly object[] = [{ ...fields, v: 2 }, { ...fields, level: 'high' }, { ...fields, ahead: 1 }, { ...fields, quietFrom: 'tonight' }, { ...fields, burstAt: 'then' }, { ...fields, modelBurstAt: null }, { ...fields, surplusShown: 'Wed' }, noDay];
     assert.ok(parseWarnState(JSON.stringify(fields)) !== undefined);
     for (const variant of variants) {
       assert.equal(parseWarnState(JSON.stringify(variant)), undefined, JSON.stringify(variant));

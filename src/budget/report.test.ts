@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import type { Burst } from './burst.ts';
 import type { Lift } from './lift.ts';
 import { weekWindow } from './pace.ts';
 import { emptyPatterns, type PatternField } from './patterns.ts';
@@ -59,7 +60,15 @@ const LIFT: Lift = {
 };
 
 function session(id: string, w: number, calls: number, budgetPct: number | undefined = 10.25 / 3, lift: Lift | undefined = undefined): SessionToday {
-  return { id, name: id === 'lead' ? 'team-lead' : id, w, calls, budgetPct, lift };
+  return { id, name: id === 'lead' ? 'team-lead' : id, w, calls, budgetPct, lift, burst: undefined };
+}
+
+/** A surplus burst for alpha and bravo until the pace end, Wed 10-21 00:00 UTC. */
+const BURST: Burst = { kind: 'surplus', sessions: ['alpha', 'bravo'], helpers: 3, hires: 0, dailyPct: 12.5, stopPct: 99.5, endsAt: Date.parse('2026-10-21T00:00:00Z'), tasks: [], reason: 'surplus', by: 'lead', at: Date.parse('2026-10-19T09:00:00Z') };
+const BURST_LINE = 'Budget: the lead started a surplus burst until Wed 10-21 00:00 UTC or 99.5% of the week';
+
+function inBurst(id: string, w: number): SessionToday {
+  return { ...session(id, w, 100, 12.5), burst: BURST };
 }
 
 const SESSIONS: readonly SessionToday[] = [session('lead', 7_500_000, 310), session('alpha', 30_000_000, 1_000), session('bravo', 0, 0, 2, LIFT)];
@@ -86,6 +95,15 @@ describe('todayLines', () => {
   it('never tells a session past budget to skip a test', () => {
     assert.doesNotMatch(OVER_BUDGET_ADVICE, /skip (a|the) test(?! or check to save)/);
     assert.match(OVER_BUDGET_ADVICE, /Never skip a test or check to save budget\. The lead can lift it\.$/);
+  });
+
+  it('marks the budgets a burst raised and names the burst once, with its sessions', () => {
+    const lines = todayLines({ week: WEEK, sessions: [session('lead', 0, 0), inBurst('alpha', 15_000_000), inBurst('bravo', 0)], outside: NOBODY_OUTSIDE, behind: [], all: true });
+    assert.equal(lines[2], 'alpha used 2.0% of the week today; its daily budget is 12.5% (burst). 15.00M W in 100 calls.');
+    const burstLines = lines.filter((line) => line.startsWith('Budget: the lead started'));
+    assert.equal(burstLines.length, 1, lines.join('\n'));
+    assert.match(burstLines[0] ?? '', /: alpha, bravo each have a daily budget of at least 12\.5%, up to 3 helpers at once\. More: teamrig burst$/);
+    assert.ok(burstLines[0]?.startsWith(BURST_LINE), burstLines[0]);
   });
 
   it('marks a lifted budget and names the idle sessions with --all', () => {
@@ -184,8 +202,15 @@ describe('sessionLines', () => {
     ]);
   });
 
+  it("gives the session's burst under its budget today", () => {
+    const lines = sessionLines(inBurst('alpha', 0), state({}), WEEK);
+    assert.equal(lines[2], 'Its daily budget today is 12.5% of the week (burst).');
+    assert.match(lines[3] ?? '', /: alpha's daily budget is at least 12\.5%, up to 3 helpers at once\. More: teamrig burst$/);
+    assert.ok(lines[3]?.startsWith(BURST_LINE), lines[3]);
+  });
+
   it('says when there is no use and no budget', () => {
-    const unbudgeted: SessionToday = { id: 'lead', name: 'team-lead', w: 0, calls: 0, budgetPct: undefined, lift: undefined };
+    const unbudgeted: SessionToday = { id: 'lead', name: 'team-lead', w: 0, calls: 0, budgetPct: undefined, lift: undefined, burst: undefined };
     assert.deepEqual(sessionLines(unbudgeted, state({}), UNKNOWN), ['team-lead (lead), by UTC day:', '  no use in the last 8 days', W_EXPLAINED]);
     assert.deepEqual(sessionLines(unbudgeted, state({ '2026-10-15': usage(500, 2) }), UNKNOWN).slice(1, 2), ['  2026-10-15  500 W in 2 calls']);
   });
