@@ -132,6 +132,11 @@
           "items": { "type": "string", "minLength": 1 },
           "default": []
         },
+        "requireDescription": {
+          "description": "Whether teamrig add needs --description, what the task is and why in plain words for a person, and teamrig update refuses --description none. Tasks imported from GitHub take the issue body either way.",
+          "type": "boolean",
+          "default": true
+        },
         "requireEvidenceOnDone": { "type": "boolean", "default": true },
         "requireSkillOnDone": { "type": "boolean", "default": true },
         "requireNoteOn": {

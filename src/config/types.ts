@@ -42,6 +42,8 @@ export interface RegisterConfig {
   readonly maxText: number;
   /** Extra regular expressions, matched case-insensitively, that refuse secret-looking text on top of the built-in shapes in `core/secret-patterns.ts`. */
   readonly secretPatterns: readonly string[];
+  /** Whether `add` needs `--description`, what the task is and why in plain words, and `update` refuses to clear one. */
+  readonly requireDescription: boolean;
   readonly requireEvidenceOnDone: boolean;
   readonly requireSkillOnDone: boolean;
   /** Statuses that cannot be set without a note. */
