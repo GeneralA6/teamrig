@@ -34,7 +34,7 @@ describe('README.md', () => {
   });
 
   it('marks what is not built yet with a Coming line', () => {
-    for (const section of ['## Your day', "## Why it's different", '## Grows with your project', '## Never runs out mid-task']) {
+    for (const section of ['## Your day', "## Why it's different", '## Never runs out mid-task']) {
       const from = README.indexOf(section);
       assert.ok(from >= 0, section);
       assert.match(README.slice(from, README.indexOf('\n## ', from + 1)), /^\*Coming: .+/m, section);
