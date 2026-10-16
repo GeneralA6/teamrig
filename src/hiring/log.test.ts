@@ -1,0 +1,65 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { NewerDataError } from '../core/jsonl.ts';
+import { MemoryFiles } from '../testing/memory-files.ts';
+import { activeHires, HIRE_FORMAT, HiringLog, parseHiringRecord, type HireRecord, type RetireRecord } from './log.ts';
+
+const PATH = '/kit/teams/app/state/hires.jsonl';
+const AT = Date.parse('2030-01-08T10:00:00Z');
+
+function hire(overrides: Partial<HireRecord> = {}): HireRecord {
+  return { kind: 'hire', session: 'helper', scope: 'port the importer', reason: 'release week', dailyPct: 1, reviewBy: '2030-01-15', by: 'lead', at: AT, ...overrides };
+}
+
+function retire(overrides: Partial<RetireRecord> = {}): RetireRecord {
+  return { kind: 'retire', session: 'helper', reason: 'its tasks are closed', by: 'lead', at: AT + 1000, ...overrides };
+}
+
+describe('parseHiringRecord', () => {
+  it('reads a hire and a retire with their optional fields', () => {
+    const full = hire({ approvedBy: 'owner', model: 'opus', effort: 'high' });
+    assert.deepEqual(parseHiringRecord({ kind: 'hire', session: 'helper', scope: 'port the importer', reason: 'release week', approvedBy: 'owner', model: 'opus', effort: 'high', dailyPct: 1, reviewBy: '2030-01-15', by: 'lead', at: '2030-01-08T10:00:00.000Z' }), full);
+    assert.deepEqual(
+      parseHiringRecord({ kind: 'retire', session: 'helper', reason: 'done', handover: 'handover/helper.md', heir: 'alpha', by: 'lead', at: '2030-01-08T10:00:00.000Z' }),
+      retire({ reason: 'done', handover: 'handover/helper.md', heir: 'alpha', at: AT }),
+    );
+  });
+
+  it('skips a damaged record', () => {
+    const good = { kind: 'hire', session: 'helper', scope: 'x', reason: 'y', dailyPct: 1, reviewBy: '2030-01-15', by: 'lead', at: '2030-01-08T10:00:00Z' };
+    assert.notEqual(parseHiringRecord(good), undefined);
+    for (const damage of [{ kind: 'fire' }, { session: 7 }, { at: 'soon' }, { scope: undefined }, { reviewBy: 'next week' }, { dailyPct: 0 }, { dailyPct: 101 }, { dailyPct: '1' }, { effort: 'extreme' }]) {
+      assert.equal(parseHiringRecord({ ...good, ...damage }), undefined, JSON.stringify(damage));
+    }
+  });
+});
+
+describe('activeHires', () => {
+  it('keeps the sessions whose newest record is a hire, with that hire', () => {
+    const rehire = hire({ at: AT + 2000, scope: 'second round' });
+    const records = [hire(), hire({ session: 'other' }), retire(), rehire, hire({ session: 'gone' }), retire({ session: 'gone' })];
+    assert.deepEqual(activeHires(records), [rehire, hire({ session: 'other' })]);
+    assert.deepEqual(activeHires([]), []);
+  });
+});
+
+describe('HiringLog', () => {
+  it('appends whole lines and reads them back, skipping damaged ones', async () => {
+    const files = new MemoryFiles({ [PATH]: '{"v":1,"kind":"hire"}' });
+    const log = new HiringLog(files, PATH);
+    await log.append(hire({ effort: 'xhigh' }));
+    await log.append(retire({ heir: 'alpha' }));
+    assert.deepEqual(await log.read(), { records: [hire({ effort: 'xhigh' }), retire({ heir: 'alpha' })], skipped: 1 });
+    assert.equal((await files.read(PATH))?.split('\n').filter((line) => line !== '').length, 3);
+  });
+
+  it('starts a missing log, and refuses to write beside a newer teamrig', async () => {
+    const empty = new HiringLog(new MemoryFiles(), PATH);
+    assert.deepEqual(await empty.read(), { records: [], skipped: 0 });
+    await empty.append(hire());
+    assert.equal((await empty.read()).records.length, 1);
+    const newer = new HiringLog(new MemoryFiles({ [PATH]: `{"v":${HIRE_FORMAT + 1},"kind":"hire"}\n` }), PATH);
+    assert.deepEqual(await newer.read(), { records: [], skipped: 1 });
+    await assert.rejects(newer.append(hire()), NewerDataError);
+  });
+});
