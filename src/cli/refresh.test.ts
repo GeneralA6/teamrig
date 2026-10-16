@@ -121,7 +121,8 @@ describe('runCli: context refresh', () => {
     }
     const fresh = contextOf(await kit.run(['hook', 'session-start'], { ...AS_ALPHA, stdin: startPayload('clear') }));
     assert.ok(fresh.includes(note));
-    assert.ok(fresh.includes('- cron "3 13 * * *", recurring true, prompt "budget check"'), 'the job the old process held is listed to make again');
+    assert.ok(fresh.includes("Your old session's 1 scheduled job(s) are still scheduled, since a /clear keeps the process"), 'a /clear keeps the job');
+    assert.ok(!fresh.includes('- cron "3 13 * * *"'), 'so it is not listed to make again');
     assert.ok(!contextOf(await kit.run(['hook', 'session-start'], { ...AS_ALPHA, stdin: startPayload('startup') })).includes(note), 'once');
     assert.match((await kit.files.read(STATE('alpha'))) ?? '', /"phase":"refreshed"/);
   });

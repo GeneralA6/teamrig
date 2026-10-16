@@ -24,7 +24,7 @@ import { adoptTitle, promptNote, sessionStartNote, type TitleOutcome } from '../
 import { JsonlRenameLog } from '../../names/log.ts';
 import { TRANSCRIPT_TAIL_BYTES } from '../../names/title.ts';
 import { decideStart, decideStop, handoverHashOf, type BoundaryFacts, type StopContext, type StopDecision } from '../../refresh/decide.ts';
-import { carryLines, readCarry } from '../../refresh/carry.ts';
+import { carryLines, carryStartOf, readCarry } from '../../refresh/carry.ts';
 import { claudeProcessOf } from '../../refresh/restart.ts';
 import { readRunningWork } from '../../refresh/running.ts';
 import { RefreshStore } from '../../refresh/store.ts';
@@ -328,16 +328,16 @@ function rosterIdOf(roster: Roster, session: string | undefined): string | undef
 }
 
 /**
- * What the session that wrote the handover leaves for this fresh one: its scheduled jobs and wake-up, which
- * ended with its process, and its scratchpad and plan file. A transcript it cannot read is said, never thrown:
- * the note itself must still reach the session.
+ * What the session that wrote the handover leaves for this fresh one: its scheduled jobs (kept by a /clear,
+ * lost with a new process) and wake-up, and its scratchpad and plan file. A transcript it cannot read is
+ * said, never thrown: the note itself must still reach the session.
  */
-async function carriedLinesOf(runtime: CliRuntime, transcript: string): Promise<readonly string[]> {
+async function carriedLinesOf(runtime: CliRuntime, transcript: string, source: string | undefined): Promise<readonly string[]> {
   const now = runtime.clock.now();
   try {
     const places = { tempDir: claudeTempDir(runtime.env, tmpdir()), claudeDir: claudeConfigDir(runtime.env, runtime.userHome) };
     const carry = await readCarry(runtime.files, transcript, now, places);
-    return carry === undefined ? [] : carryLines(carry, now);
+    return carry === undefined ? [] : carryLines(carry, now, carryStartOf(source));
   } catch (error) {
     return [`${KIT_NAME} could not read what your old session left in ${transcript} (${errorMessage(error)}); check CronList against your handover.`];
   }
@@ -368,7 +368,7 @@ async function refreshNoteOf(runtime: CliRuntime, kit: Kit, config: KitConfig, r
       return undefined;
     }
     await store.clearRequest(id);
-    const carried = state?.phase === 'ready' && state.transcript !== null ? await carriedLinesOf(runtime, state.transcript) : [];
+    const carried = state?.phase === 'ready' && state.transcript !== null ? await carriedLinesOf(runtime, state.transcript, source) : [];
     return [decision.note, ...carried].join('\n');
   } catch (error) {
     return `${KIT_NAME} could not check for a refresh handover (${errorMessage(error)}); if you wrote one before a /clear, read it first.`;

@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { carryLines, carryOf, readCarry, RECURRING_MAX_AGE_MS, scratchpadOf, toldScratchpadOf, type Carry } from './carry.ts';
+import { carryLines, carryOf, carryStartOf, readCarry, RECURRING_MAX_AGE_MS, scratchpadOf, toldScratchpadOf, type Carry } from './carry.ts';
 
 const NOW = Date.parse('2030-01-08T10:00:00.000Z');
 const MINUTE = 60_000;
@@ -155,11 +155,20 @@ describe('toldScratchpadOf', () => {
   });
 });
 
+describe('carryStartOf', () => {
+  it('starts in the same process after a /clear, and in a new one after any other fresh start', () => {
+    assert.equal(carryStartOf('clear'), 'same-process');
+    for (const source of ['startup', 'resume', undefined]) {
+      assert.equal(carryStartOf(source), 'new-process', String(source));
+    }
+  });
+});
+
 describe('carryLines', () => {
   const EMPTY: Carry = { crons: [], wake: undefined, planSlug: undefined, scratchpad: undefined, plan: undefined };
 
   it('says nothing when there is nothing to take over', () => {
-    assert.deepEqual(carryLines(EMPTY, NOW), []);
+    assert.deepEqual(carryLines(EMPTY, NOW, 'new-process'), []);
   });
 
   it('gives each job and the wake-up exactly as they were asked for, and where the old files are', () => {
@@ -170,7 +179,7 @@ describe('carryLines', () => {
       scratchpad: { path: '/tmp/s', entries: 3 },
       plan: '/cfg/plans/p.md',
     };
-    assert.deepEqual(carryLines(carry, NOW), [
+    assert.deepEqual(carryLines(carry, NOW, 'new-process'), [
       'Your old session had 1 scheduled job(s), which end with its process: run CronList and make each one it does not show again with CronCreate:',
       '- cron "3 13 * * *", recurring true, prompt "budget \\"checkpoint\\""',
       'It had a wake-up due at 10:07 UTC: schedule it again with ScheduleWakeup, delaySeconds 421, prompt "check CI".',
@@ -179,7 +188,19 @@ describe('carryLines', () => {
     ]);
   });
 
+  it('after a /clear, says the jobs are still scheduled and lists none to make again', () => {
+    const crons = [
+      { id: 'old1', cron: '3 13 * * *', prompt: 'budget check', recurring: true, createdAt: NOW },
+      { id: 'old2', cron: '30 9 * * 1', prompt: 'weekly', recurring: true, createdAt: NOW },
+    ];
+    assert.deepEqual(carryLines({ ...EMPTY, crons, plan: '/cfg/plans/p.md' }, NOW, 'same-process'), [
+      "Your old session's 2 scheduled job(s) are still scheduled, since a /clear keeps the process (CronList shows them): do not make them again.",
+      'Its plan file: /cfg/plans/p.md.',
+    ]);
+    assert.deepEqual(carryLines(EMPTY, NOW, 'same-process'), []);
+  });
+
   it('asks for the shortest wake-up delay when the old one is nearly due', () => {
-    assert.match(carryLines({ ...EMPTY, wake: { dueAt: NOW + 5_000, prompt: 'p' } }, NOW)[0] ?? '', /delaySeconds 60,/);
+    assert.match(carryLines({ ...EMPTY, wake: { dueAt: NOW + 5_000, prompt: 'p' } }, NOW, 'new-process')[0] ?? '', /delaySeconds 60,/);
   });
 });

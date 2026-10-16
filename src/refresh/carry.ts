@@ -13,7 +13,7 @@ export const RECURRING_MAX_AGE_MS = 7 * 24 * 60 * 60_000;
 /** ScheduleWakeup's shortest delay. */
 const WAKE_MIN_SECONDS = 60;
 
-/** A scheduled job (CronCreate) still live when the session ended: it lives in the process, so it ends with it. */
+/** A scheduled job (CronCreate) still live when the session ended: it lives in the process, so a /clear keeps it and a new process loses it. */
 export interface CarriedCron {
   readonly id: string;
   readonly cron: string;
@@ -272,14 +272,25 @@ function clockOf(ms: number): string {
   return new Date(ms).toISOString().slice(11, 16);
 }
 
+/** How the fresh session started: in the old session's process (a /clear) or in a new one. */
+export type CarryStart = 'same-process' | 'new-process';
+
+/** A /clear starts the fresh session in the process it cleared; every other fresh start is a new process. */
+export function carryStartOf(source: string | undefined): CarryStart {
+  return source === 'clear' ? 'same-process' : 'new-process';
+}
+
 /**
- * The lines that tell a fresh session what to take over: each job to make again (unless CronList shows
- * it, as a /clear keeps the process), the wake-up to schedule again, and where the old scratchpad and plan
- * are. Empty when there is nothing.
+ * The lines that tell a fresh session what to take over: its jobs (still scheduled after a /clear, proven
+ * on Claude Code 2.1.301 (T398), so made again only in a new process, and then only those CronList does not
+ * show, as a durable job comes back by itself), the wake-up to schedule again, and where the old scratchpad
+ * and plan are. Empty when there is nothing.
  */
-export function carryLines(carry: Carry, now: number): readonly string[] {
+export function carryLines(carry: Carry, now: number, start: CarryStart): readonly string[] {
   const lines: string[] = [];
-  if (carry.crons.length > 0) {
+  if (carry.crons.length > 0 && start === 'same-process') {
+    lines.push(`Your old session's ${carry.crons.length} scheduled job(s) are still scheduled, since a /clear keeps the process (CronList shows them): do not make them again.`);
+  } else if (carry.crons.length > 0) {
     lines.push(`Your old session had ${carry.crons.length} scheduled job(s), which end with its process: run CronList and make each one it does not show again with CronCreate:`);
     for (const cron of carry.crons) {
       lines.push(`- cron ${JSON.stringify(cron.cron)}, recurring ${String(cron.recurring)}, prompt ${JSON.stringify(cron.prompt)}`);
