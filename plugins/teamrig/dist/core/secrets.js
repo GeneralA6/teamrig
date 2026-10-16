@@ -1,7 +1,7 @@
 import { SECRET_TEXT_PATTERNS, SECRET_TOKEN_PATTERNS } from "./secret-patterns.js";
 /**
  * Refuses text that looks like it carries a secret, before it lands in a shared file. Every write path that
- * checks for secrets (inbox lines; task titles, refs, notes and evidence) goes through this one class, which
+ * checks for secrets (inbox lines; task titles, descriptions, refs, notes and evidence) goes through this one class, which
  * always applies the shapes in `secret-patterns.ts`, whatever a team adds.
  */
 export class SecretScanner {

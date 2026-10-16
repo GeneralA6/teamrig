@@ -9,28 +9,32 @@ import { parseWaits } from "./waits.js";
  * Version 2 later gained, without a new number, a task's `after` list and the `waiting` status with its
  * `waits`, which replaced `blocked`: an older reader ignores the new fields and skips a `waiting` line as
  * a newer teamrig's, and a `blocked` line reads here as `waiting` with no reasons. It also gained a
- * `verifying` status's `proof`, which an older reader ignores.
+ * `verifying` status's `proof`, and a task's `description` (0.44.0), which an older reader ignores: a description
+ * reads there as none, and an older teamrig's `compact` drops it from the snapshot it rewrites (the archive keeps
+ * the lines as written).
  * Parsing checks the FORMAT only (any positive priority, any goal string): team policy is applied
  * on write, so changing the config never erases history.
  */
 export const EVENT_VERSION = 2;
 /** The name lines before version 2 gave the `priority` field; still read, never written. */
 export const LEGACY_PRIORITY_FIELD = 'tier';
-export const TASK_FIELD_NAMES = ['title', 'owner', 'source', 'ref', 'priority', 'due', 'goals', 'week', 'after'];
+export const TASK_FIELD_NAMES = ['title', 'description', 'owner', 'source', 'ref', 'priority', 'due', 'goals', 'week', 'after'];
 const WEEK = /^\d{4}-\d{2}-\d{2}$/;
 /** How a status is spelled (`in-progress`): a well-spelled one this code does not know is a newer teamrig's. */
 const STATUS_NAME = /^[a-z]+(?:-[a-z]+)*$/;
-/** Parses one JSONL record. Unknown extra fields are ignored so later minor additions stay readable. */
 /**
- * The record an event is written as. A create line leaves out an empty `after`, which reads back as none, so a
- * task with no plan dependency costs no bytes and its line is the one an older teamrig wrote.
+ * The record an event is written as. A create line leaves out an empty `after` and a null `description`, which
+ * read back as none, so a task without them costs no bytes and its line is the one an older teamrig wrote.
  */
 export function eventRecord(event) {
-    if (event.type !== 'create' || event.task.after.length > 0) {
+    if (event.type !== 'create') {
         return { ...event };
     }
-    return { ...event, task: Object.fromEntries(Object.entries(event.task).filter(([name]) => name !== 'after')) };
+    const { task } = event;
+    const left = (name) => (name === 'after' && task.after.length === 0) || (name === 'description' && task.description === null);
+    return { ...event, task: Object.fromEntries(Object.entries(task).filter(([name]) => !left(name))) };
 }
+/** Parses one JSONL record. Unknown extra fields are ignored so later minor additions stay readable. */
 export function parseEvent(line) {
     if (line.version > EVENT_VERSION) {
         return { kind: 'newer' };
@@ -144,10 +148,11 @@ function readField(fields, name, value) {
             fields[name] = value;
             return undefined;
         case 'ref':
+        case 'description':
             if (value !== undefined && value !== null && typeof value !== 'string') {
-                return 'ref is not text';
+                return `${name} is not text`;
             }
-            fields.ref = typeof value === 'string' ? value : null;
+            fields[name] = typeof value === 'string' ? value : null;
             return undefined;
         case 'priority':
             if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {

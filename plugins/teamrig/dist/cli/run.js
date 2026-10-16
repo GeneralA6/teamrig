@@ -28,7 +28,7 @@ const testCommand = () => import("./commands/test.js");
 const ghCommands = () => import("./commands/gh.js");
 const startCommands = () => import("./commands/start.js");
 const hireCommands = () => import("./commands/hire.js");
-const TASK_FIELDS = ['title', 'owner', 'ref', 'priority', 'due', 'goals', 'week', 'after'];
+const TASK_FIELDS = ['title', 'description', 'owner', 'ref', 'priority', 'due', 'goals', 'week', 'after'];
 const COMMANDS = {
     add: { flags: ['session', 'source', 'team', ...TASK_FIELDS], load: async () => (await registerCommands()).add },
     set: { flags: ['session', 'status', 'note', 'evidence', 'skill', 'waits', 'proof', 'due'], load: async () => (await registerCommands()).set },
@@ -114,18 +114,21 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   start [--session <id|name>] [--all]   the start of a work block in one call: the UTC time, the
       unread inbox lines (marked read), the session's tasks, the check flags it acts on (the lead: all)
       and the week's use; --all: the tasks and flags in full
-  add --title "<one line>" --priority p<n> [--ref <where it was asked>] [--owner <session>]
-      [--source <session>|<owner source>] [--due <date>] [--goals a,b] [--week <date>] [--after T5,T6]
+  add --title "<one line>" --description "<what and why>" --priority p<n> [--ref <where it was asked>]
+      [--owner <session>] [--source <session>|<owner source>] [--due <date>] [--goals a,b] [--week <date>]
+      [--after T5,T6]
+      --description: what the task is and why, in plain words for a person (newlines kept, at most 2,000
+      characters), needed unless register.requireDescription is off; show prints it under the title
       --after: the tasks to finish before this one starts; its line shows "after T5"
-  add --team <child team> --title .. --priority p<n> [...]   the parent lead hands that team's lead a task
+  add --team <child team> --title .. --description .. --priority p<n> [...]   hands that team's lead a task
   set <id> --status open|in-progress|verifying|waiting|done|dropped [--note "<what/why>"] [--evidence <proof>]
       [--skill <name>|none] [--waits decision:<who>,approval:<who>,task:T<id>,time:<date>]
       [--proof "<what proves it>"] [--due <date>]
       verifying needs --proof: what will prove the shipped change works; --due sets the date to verify by
       waiting needs --waits: who decides or approves (a session or the owner), a task to finish first
       (only once started) or a time; check flags it READY once its tasks finished and its time passed
-  update <id> [--title ..] [--owner ..] [--priority ..] [--ref ..|none] [--due <date>|none]
-      [--goals a,b|none] [--week <date>|none] [--after T5,T6|none] [--note ..]
+  update <id> [--title ..] [--description ..|none] [--owner ..] [--priority ..] [--ref ..|none]
+      [--due <date>|none] [--goals a,b|none] [--week <date>|none] [--after T5,T6|none] [--note ..]
   list [--session <owner>] [--status a,b|all] [--source <s>] [--priority p1,p2] [--due-before <date>]
       [--week <date>|none] [--goal <tag>] [--tree] [--all]
       short rows within 3,000 characters; --all: every field of every task
