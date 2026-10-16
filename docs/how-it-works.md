@@ -51,6 +51,7 @@ flowchart LR
 | PreToolUse hook on SendMessage | Claude messages another session of the team | when the receiver has been idle `messages.coldAfterMinutes` (60 by default) or longer, the message would wake it cold: its first call re-reads its whole context at full price, about 8 times a warm wake. It holds the message once with a note: an inbox line if the receiver need not act now, else every ask for it in one message, sent again; the same tab's next send to it within 15 minutes goes through. Idle time runs from the receiver's last write to its own transcript; a helper, a receiver off the team or one with no transcript yet is never held |
 | PreToolUse hook on Agent and Task | Claude launches a helper | with the budget on, asks you or refuses when the session is past its daily budget while the team is ahead of its pace line, or in quiet hours, as `budget.overAction` and `budget.quietHours` say; the lead's helpers and a lifted session's always go |
 | PostToolUse hook on reads, edits and shell calls | a Read, Grep, Glob, Bash, PowerShell, Edit, Write, MultiEdit or NotebookEdit call returns | counts the calls in a row since the last prompt that each ran one step (a read, a lookup, an edit, a test, a build); when the run reaches `loops.chainNudgeAt` (6 by default; 0 turns it off), gives the model one line asking it to put independent reads, and an edit with its re-test, in one message, priced in context re-reads. Once per run; a helper's calls are not counted. On the lead's tab, also one line at the lead's first edit outside its own files, first test or build and `leadBoundary.searchNudgeAt`-th code search (3 by default), asking it to hand such work off |
+| Mod (`hooks/register.ts`) | in each interactive tab, while it runs | runs the refresh's `/clear` when the automatic restart asks ([A fresh context](#a-fresh-context)); runs `/reload-plugins` once an installed plugin changed and no turn runs ([Updating the plugin](#updating-the-plugin)) |
 | Stop hook | a turn ends | after a task is marked done, asks for a handover when a refresh is due, then tells you once ([A fresh context](#a-fresh-context)); tells you once, in a MODEL line, when the session runs at another effort than its `launch` entry asks, or when Claude Code switched it to another model after its safeguards stopped a reply, with the `/effort` or `/model` to type; a Budget line as the session passes each warning level of its daily budget; on the lead's tab, a Lead boundary line naming the edits, tests and code searches the lead did itself that turn; nothing otherwise |
 | `teamrig` commands | Claude runs them in its Bash tool | the task list, the inbox, names, settings, checks (`teamrig help`) |
 
@@ -166,8 +167,13 @@ claude plugin marketplace update teamrig
 claude plugin update teamrig@teamrig
 ```
 
-Then run `/reload-plugins` in each open session, or restart it. Claude Code does not check this marketplace for updates
-by itself unless you turn on its auto-update in `/plugin`, under Marketplaces.
+Each open tab then takes the new version by itself: teamrig's mod (`hooks/register.ts`) reads Claude Code's
+`installed_plugins.json` every 15 s, and once an install changed (any plugin's that applies to the tab) and the file
+has read the same for 10 s, it runs `/reload-plugins` in the tab while no turn runs. It runs at most one reload per 5
+minutes in a tab and never two for the same installs; a refused one goes to Claude Code's debug log and is tried again
+5 minutes later. A tab that does not load mods (an older Claude Code, mods off) or a plugin loaded with `--plugin-dir`
+still needs `/reload-plugins` typed, or a restart. Claude Code does not check this marketplace for updates by itself
+unless you turn on its auto-update in `/plugin`, under Marketplaces.
 
 ## A task's life
 

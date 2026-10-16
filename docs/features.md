@@ -44,6 +44,7 @@ your machine.
 | **Hire and retire sessions** | `teamrig hire`: the lead adds a temporary session for one job within `hiring.policy` (off, the owner approves each hire, or the lead decides) and its caps on hired sessions and their daily budget; each hire is logged with its job, approver and review day | works today |
 | | Retiring a hired session, retiring on its own once its tasks close, rehiring from a handover note | planned (T212) |
 | **Settings and upgrades** | `teamrig config validate` and `config migrate` | works today |
+| | Open tabs take a plugin update by themselves: once an install changed and no turn runs, teamrig's mod runs `/reload-plugins` in each tab, at most once per 5 minutes (a Claude Code without mods still needs it typed) | works today |
 | | A new-version notice and `teamrig upgrade` with rollback | planned (T203) |
 | **Works everywhere** | Windows, macOS and Linux; every change is tested on all three. | works today |
 
