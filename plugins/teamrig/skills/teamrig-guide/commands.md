@@ -819,7 +819,8 @@ it says `Ask the user to type /clear` instead.
 ### teamrig doctor
 
 Reads the team's names, rename log, inboxes, `rules.md` and tree of teams, weighs the text every call of a session
-re-reads, and prints each problem with its fix.
+re-reads, checks what would silently override the model or effort a session or helper is given, and prints each
+problem with its fix.
 It only reads.
 
 Flags: none.
@@ -839,7 +840,8 @@ DOCTOR clean, team shop
 Otherwise `DOCTOR N finding(s)` and one `WARN <kind> <detail and fix>` line each. Kinds: `requirement` (git,
 Claude Code or Node.js, [the check](requirements.md#the-requirements-check)), `name-gone`,
 `name-shared`, `name-config`, `rename-log`, `inbox-orphan`, `inbox-unread`, `rules-long`, `context-size`, `tree-id`,
-`tree-parent`, `tree-loop`, `tree-depth`, `tree-children`, `name-two-teams`.
+`tree-parent`, `tree-loop`, `tree-depth`, `tree-children`, `name-two-teams`, `effort-env`, `model-env`, `settings-json`,
+`launch-effort`.
 
 `context-size` weighs, in characters (about 4 per token), the user's CLAUDE.md with the project folder's and each
 parent's (`CLAUDE.md`, `CLAUDE.local.md`, `.claude/CLAUDE.md`), the project's memory index (`MEMORY.md`) and the
@@ -847,6 +849,19 @@ skill listing of the team's and the project's skills folders, against [contextFi
 [contextFiles.maxMemoryIndexChars] (6,000) and [contextFiles.maxSkillListingChars] (4,000). The cheapest cuts: move
 how-tos from CLAUDE.md into skills and facts into memory files, keep one short index line per memory, shorten skill
 descriptions or merge skills.
+
+`effort-env` and `model-env` name a variable set in doctor's own environment or in the `env` block of the user's
+Claude Code settings (`settings.json` in Claude Code's folder) or the project's (`.claude/settings.json`,
+`.claude/settings.local.json`), with its value and the file: `CLAUDE_CODE_EFFORT_LEVEL` beats every `--effort` (the
+config's `launch` efforts among them), `/effort` and per-call Agent effort; `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` set to 1
+beats every per-call Agent model. `settings-json` is one of those files that is not a JSON object, so its block went
+unchecked. `launch-effort` is a session whose `launch` entry names a model but no effort: it starts at that model's
+default effort (medium on Opus, Sonnet and Haiku 5.5), so set `launch.<id>.effort`. The lead's unset effort takes the
+lead's default, so the lead is not flagged.
+
+```text
+WARN launch-effort shop-web (session web) launches on model opus with no effort, so it runs at that model's default effort (medium on Opus, Sonnet and Haiku 5.5): set launch.web.effort in the team config
+```
 
 ### teamrig compact
 
