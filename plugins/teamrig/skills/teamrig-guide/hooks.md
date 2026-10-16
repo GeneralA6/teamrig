@@ -1,6 +1,6 @@
 # Hooks and permissions
 
-The plugin's `hooks/hooks.json` registers seven Claude Code hooks and one mod ([the refresh's /clear](#the-mod-the-refreshs-clear)). Each runs
+The plugin's `hooks/hooks.json` registers seven Claude Code hooks and one mod ([the refresh's /clear](#the-mod-the-refreshs-clear), [the reload after an install](#the-mod-the-reload-after-an-install)). Each runs
 `node <plugin>/dist/cli/main.js hook <name>` with a 15 second timeout. Outside a project tied to a team (no `$TEAMRIG_TEAM` and no `.teamrig.json`)
 they all stay silent.
 
@@ -234,6 +234,19 @@ while one runs: the restart takes that one back and asks again once the session 
 `teamrig hook clear-claim` and, on `taken`, runs `/clear` the way you would. The `/clear` then runs the
 `SessionStart` hooks above, so `hook refresh-wake` starts your first turn at your handover. A Claude Code that does
 not load mods leaves the ask unclaimed, and the restart ends and restarts the session instead.
+
+## The mod: the reload after an install
+
+`claude plugin update` installs a new version, but an open tab runs the one it loaded until `/reload-plugins`. In
+each interactive tab the mod reads Claude Code's `installed_plugins.json` (in the `plugins` folder that holds the
+cache it runs from) when it loads and every 15 s after. Once an install that applies to the tab changed (a user-scope
+one, or a project- or local-scope one for the tab's project: added, removed, or another folder, version or commit),
+the file has read the same for 10 s and no turn runs (a subagent's included), it runs `/reload-plugins` the way you
+would. It runs at most one per 5 minutes and never two for the same installs, and keeps the last one in the
+session's state (`teamrig.reload`, typed in `types/index.d.ts`), so the mod the reload loads keeps both. A refused
+reload goes to Claude Code's debug log and is tried again 5 minutes later. A plugin loaded from a folder
+(`--plugin-dir`) has no `installed_plugins.json` beside its cache and gets no reload; a Claude Code that does not
+load mods leaves `/reload-plugins` to you.
 
 ## End of a turn: model notices
 
