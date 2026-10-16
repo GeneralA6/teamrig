@@ -328,7 +328,14 @@ teamrig never edits Claude Code's permission or auto-mode settings, and it adds 
   the auto-mode classifier allowed every teamrig command it was given (43 calls: creating a team, adding and
   setting tasks, inbox lines, reads and lists, from Bash and from PowerShell, whether the user named the command or
   the session chose it from the team rules): none was denied or asked.
-- **Default mode**: not tested. Claude Code asks before a shell command it has no allow rule for; any allow rule
-  is yours to add.
+- **Default mode**: Claude Code asks before each `teamrig` command until you allow it. One rule covers them all;
+  put it in your user settings (`~/.claude/settings.json`) or the project's `.claude/settings.json`:
+  ```json
+  { "permissions": { "allow": ["Bash(teamrig:*)"] } }
+  ```
+  In a hand test on Claude Code 2.1.301 with no user settings, that rule, given in a settings file
+  (`claude --settings`) and as `--allowedTools`, let every teamrig command run with no question (`--version`,
+  `team create`, and a chain of two, `teamrig who && teamrig list`), while `git --version` was still asked.
+  `Bash(teamrig *)` worked the same. The rule is for the Bash tool, where Claude Code puts `teamrig`.
 - **The push guard** asks or refuses on its own, whatever the mode: a push to a protected branch always asks the
   human.
