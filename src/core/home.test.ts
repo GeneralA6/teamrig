@@ -72,6 +72,8 @@ describe('teamPaths', () => {
     assert.equal(paths.hiresLock, join(TEAM_HOME, 'state', 'hires.lock'));
     assert.equal(paths.retireAsks, join(TEAM_HOME, 'state', 'retire-asks'));
     assert.equal(paths.logs, join(TEAM_HOME, 'state', 'logs'));
+    assert.equal(paths.wake, join(TEAM_HOME, 'state', 'wake'));
+    assert.equal(paths.wakeLog, join(TEAM_HOME, 'state', 'wakes.jsonl'));
   });
 
   it('never shares a file between two teams', () => {

@@ -120,6 +120,10 @@ export interface TeamPaths {
   readonly githubSync: string;
   /** Held while a hook claims the next automatic sync or a sync records its finish. */
   readonly githubSyncLock: string;
+  /** What the wake check kept for each session (src/wake/), `<id>.json` each, and its lock, `<id>.lock`. */
+  readonly wake: string;
+  /** Every wake and every wake Claude Code dropped, with its cost, an append-only log. */
+  readonly wakeLog: string;
 }
 
 /** The team's folder. The id is checked here too, since it becomes part of a path. */
@@ -167,5 +171,7 @@ export function teamPaths(kitHome: string, team: string, userHome: string, overr
     logs: join(state, 'logs'),
     githubSync: join(state, 'github-sync.json'),
     githubSyncLock: join(state, 'github-sync.lock'),
+    wake: join(state, 'wake'),
+    wakeLog: join(state, 'wakes.jsonl'),
   };
 }

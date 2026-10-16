@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_BUDGET, DEFAULT_COMMITS, DEFAULT_HIRING, DEFAULT_OPEN, DEFAULT_REFRESH, DEFAULT_REGISTER } from './defaults.ts';
+import { DEFAULT_BUDGET, DEFAULT_COMMITS, DEFAULT_HIRING, DEFAULT_OPEN, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_WAKE } from './defaults.ts';
 import { parseConfig } from './parse.ts';
 import { CONFIG_VERSION } from './types.ts';
 import type { ConfigIssue } from './reader.ts';
@@ -126,6 +126,15 @@ describe('parseConfig', () => {
     const { config, issues } = parseConfig({ ...ROSTER, loops: { chainNudgeAt: 51 } });
     assert.deepEqual(paths(issues), ['loops.chainNudgeAt']);
     assert.equal(config.loops.chainNudgeAt, 6);
+  });
+
+  it('reads wake, on for p1 by default, and refuses a priority under 1 or waits past their bounds', () => {
+    assert.deepEqual(parseConfig(ROSTER).config.wake, { enabled: true, priority: 1, batchSeconds: 120, minGapMinutes: 15 });
+    const own = { enabled: false, priority: 2, batchSeconds: 0, minGapMinutes: 0 };
+    assert.deepEqual(parseConfig({ ...ROSTER, wake: own }).config.wake, own);
+    const { config, issues } = parseConfig({ ...ROSTER, wake: { priority: 0, batchSeconds: 3601, minGapMinutes: 1441 } });
+    assert.deepEqual(paths(issues), ['wake.priority', 'wake.batchSeconds', 'wake.minGapMinutes']);
+    assert.deepEqual(config.wake, DEFAULT_WAKE);
   });
 
   it('reads tests.maxFailureChars, and refuses a value under 500 or past 50,000', () => {
