@@ -4,6 +4,7 @@ import { formatAddress } from '../../core/address.ts';
 import type { TeamPaths } from '../../core/home.ts';
 import { JsonlDailyLog } from '../../core/daily-log.ts';
 import { SecretScanner } from '../../core/secrets.ts';
+import { burstsOver } from '../../budget/burst.ts';
 import { hireFlags } from '../../hiring/due.ts';
 import { activeHires, HiringLog } from '../../hiring/log.ts';
 import { postLine } from '../../inbox/inbox.ts';
@@ -31,6 +32,7 @@ import { rollUp, type RolledTeam, type RollUp } from '../roll-up.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
 import { teamRegister } from '../team-register.ts';
+import { readBursts } from '../burst-reading.ts';
 import { snapshotDirOf } from './budget.ts';
 import { inboxDepsOf } from './inbox.ts';
 import { markBoundary } from './refresh.ts';
@@ -437,7 +439,9 @@ export async function checkReport(args: ParsedArgs, runtime: CliRuntime): Promis
   const sections = week === null || week !== currentWeekOf(own.snapshot, now) ? checked : withOverLimit(checked, await weekFitOf(runtime, { own, teams }, week, tree));
   const skills = lintSkills(skillFiles, now, own.config);
   const { records } = await new HiringLog(runtime.files, own.paths.hires).read();
-  const hires = hireFlags({ hires: activeHires(records), tasks: own.snapshot.state.tasks.values(), config: own.config, now });
+  const bursts = await readBursts(runtime, own.paths, own.config.budget, now.getTime());
+  const over = burstsOver(bursts.records, now.getTime(), bursts.usedPct);
+  const hires = hireFlags({ hires: activeHires(records), tasks: own.snapshot.state.tasks.values(), config: own.config, burstsOver: over, now });
   const scope = week === null ? 'no week plan tagged yet, so the week checks are skipped' : `week ${week}`;
   return { sections, scope, skills, skillsDir: own.paths.skills, hires };
 }

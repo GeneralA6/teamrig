@@ -69,7 +69,8 @@ export function priorityOf(text: string): number {
   throw new UsageError(`priority "${text}" is not p<n>`);
 }
 
-function listOf(flag: string, text: string): string[] {
+/** A comma list flag, its items trimmed; refused when it names none. */
+export function listOf(flag: string, text: string): string[] {
   const items = text.split(',').map((item) => item.trim()).filter((item) => item !== '');
   if (items.length === 0) {
     throw new UsageError(`${flag} "${text}" is an empty list`);
