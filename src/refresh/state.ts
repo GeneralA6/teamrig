@@ -35,16 +35,17 @@ export interface RefreshRequest {
 
 /**
  * The automatic restart the Stop hook asked for once the handover was written (`refresh.autoRestart`):
- * `pending` while it waits out its delay, `ending` once the session's process is being ended, which tells
- * `teamrig launch` to start it again.
+ * `pending` while it waits out its delay and for the tab's mod to claim its /clear ask (the claim clears the
+ * request), `ending` once the session's process is being ended instead, which tells `teamrig launch` to start
+ * it again.
  */
 export interface RestartRequest {
   readonly phase: 'pending' | 'ending';
   /** When the Stop hook asked: the restart started for it acts only on this request, never on a later one. */
   readonly at: string;
-  /** The Claude Code process to end: the one the Stop hook runs under. */
+  /** The Claude Code process to end when no mod clears the tab: the one the Stop hook runs under. */
   readonly pid: number;
-  /** Its Claude Code session id, for the SessionEnd input of `refresh.endCommand`. */
+  /** Its Claude Code session id: the tab's mod finds its ask by it, and the SessionEnd input of `refresh.endCommand` names it. */
   readonly claudeSession: string;
   readonly transcript: string | null;
   readonly cwd: string | null;

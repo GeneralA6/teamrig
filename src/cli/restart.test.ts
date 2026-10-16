@@ -4,8 +4,9 @@ import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
 import { decodePrompt, refreshPrompt } from '../open/prompt.ts';
 import type { ProcessInfo } from '../open/session-processes.ts';
+import { ClearAsks, clearAskDir } from '../refresh/clear-asks.ts';
 import { RefreshStore } from '../refresh/store.ts';
-import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
+import { APP, CLAUDE_SESSION, CliHarness, KIT, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { FakeProcesses } from '../testing/fake-processes.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { EXIT } from './runtime.ts';
@@ -35,6 +36,22 @@ describe('teamrig restart', () => {
     assert.deepEqual(result, { code: EXIT.ok, stdout: ['RESTARTED app-alpha in the same tab'], stderr: [] });
     assert.deepEqual(processes.ends, [{ pid: CLAUDE.pid, how: 'ask' }]);
     assert.equal((await store.restart('alpha'))?.phase, 'ending');
+    assert.equal(kit.files.get(INBOX), undefined);
+  });
+
+  it("leaves the session to its tab when the tab's mod claims the ask, writing no inbox line", async () => {
+    const { kit, store, processes } = await armed(true);
+    const asks = new ClearAsks(kit.files, clearAskDir(KIT));
+    const sleep = async (ms: number): Promise<void> => {
+      await kit.clock.sleep(ms);
+      if ((await asks.ask(CLAUDE_SESSION)) !== undefined && (await asks.claim(CLAUDE_SESSION))) {
+        await store.clearRestart('alpha');
+      }
+    };
+    const result = await kit.run(RESTART_ALPHA, { sessionProcesses: processes, platform: 'win32', sleep });
+    assert.deepEqual(result, { code: EXIT.ok, stdout: ['CLEARED app-alpha: its tab ran /clear'], stderr: [] });
+    assert.deepEqual(processes.ends, []);
+    assert.equal(await store.restart('alpha'), undefined);
     assert.equal(kit.files.get(INBOX), undefined);
   });
 
