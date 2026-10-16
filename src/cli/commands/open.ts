@@ -52,12 +52,6 @@ function projectFlagOf(flag: string | undefined, from: string): string | undefin
 }
 
 /**
- * `open <id|name> [--prompt <text>] [--terminal <name>] [--project <dir>]`: a new terminal tab in the
- * project folder that runs `launch`, so Claude Code starts there as the session. The command runs by
- * absolute paths, since the plugin's bin folder is on PATH only inside Claude Code. When no terminal
- * opens it prints the command to run instead and exits 3.
- */
-/**
  * The team a session to open is on: the project's own team, or, for `<team>/<id>`, another team of
  * the same tree, whose sessions share the project folder and get their team from `$TEAMRIG_TEAM`.
  */
@@ -72,6 +66,12 @@ async function openTeamOf(runtime: CliRuntime, own: string, named: string | unde
   return named;
 }
 
+/**
+ * `open <id|name> [--prompt <text>] [--terminal <name>] [--project <dir>]`: a new terminal tab in the
+ * project folder that runs `launch`, so Claude Code starts there as the session. The command runs by
+ * absolute paths, since the plugin's bin folder is on PATH only inside Claude Code. When no terminal
+ * opens it prints the command to run instead and exits 3.
+ */
 export async function open(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const target = onePositional(args, 'id|name');
   const address = splitAddress(target);
