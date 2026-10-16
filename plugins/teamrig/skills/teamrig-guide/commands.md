@@ -1696,7 +1696,8 @@ teamrig hook helper-gate < pre-tool-use.json
 Output: nothing for a launch that goes; otherwise a JSON permission decision (`ask` or `deny`) with the reason.
 
 ### teamrig hook stop
-At the end of each turn, asks for a handover when your context is at or over the refresh threshold or the lead
+At the end of each turn, first sends you back once to a skill edit of the turn that Claude Code refused and you never
+redid ([a dropped skill edit](hooks.md#end-of-a-turn-or-a-helper-a-dropped-skill-edit)). It asks for a handover when your context is at or over the refresh threshold or the lead
 asked for a refresh, and at a task end also after enough tasks. With the budget on, it also shows the budget lines and posts the
 lead's inbox line when one is due.
 
@@ -1708,7 +1709,22 @@ Example:
 teamrig hook stop < stop.json
 ```
 
-Output: nothing on most turns; otherwise a JSON `block` decision whose reason tells you to write the handover.
+Output: nothing on most turns; otherwise a JSON `block` decision whose reason tells you to redo the skill edit or to write the handover.
+
+### teamrig hook subagent-stop
+When a helper is about to hand back, sends it back once to a skill edit of its run that Claude Code refused and it
+never redid, to read the file again and redo the change, or say why it dropped it. It reads the helper's own
+transcript (`agent_transcript_path`).
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig hook subagent-stop < subagent-stop.json
+```
+
+Output: nothing for most helpers; otherwise a JSON `block` decision whose reason names each dropped edit.
 
 ### teamrig hook refresh-wake
 

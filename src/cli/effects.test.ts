@@ -59,6 +59,7 @@ const EXPECTED = {
   'hook inbox-reminder': 'internal',
   'hook session-start': 'internal',
   'hook stop': 'internal',
+  'hook subagent-stop': 'internal',
   'hook refresh-wake': 'internal',
   'hook clear-dir': 'internal',
   'hook clear-claim': 'internal',

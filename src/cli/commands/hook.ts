@@ -47,6 +47,7 @@ import { bindAfterClear, bindHintOnce, bindTab, inboxLinesFor, readTitle, type T
 import { helperGateOutput, promptBudgetLine, stopBudgetLines } from './hook-budget.ts';
 import { startAutoSync } from './gh-auto.ts';
 import { coldSendHold } from './hook-cold-send.ts';
+import { droppedEditReasonOf } from './hook-dropped-edit.ts';
 import { meetingHold } from './hook-meeting.ts';
 import { armRestart, restartTargetOf } from './hook-restart.ts';
 import { envSession, leadOwnPaths, markedSessionOf, parseJson, sessionTeam, teamSessionOf } from './hook-input.ts';
@@ -532,6 +533,11 @@ async function stopOutputOf(runtime: CliRuntime, payload: JsonRecord): Promise<s
   if (scope === undefined) {
     return '';
   }
+  // Before the refresh, which records a block's state before it prints: this block leaves the rest to the next stop.
+  const dropped = await droppedEditReasonOf(runtime, payload, 'main').catch((): string | undefined => undefined);
+  if (dropped !== undefined) {
+    return blockOutput(dropped);
+  }
   const decision = await refreshDecisionOf(runtime, scope, payload).catch((): StopDecision => ({ kind: 'none' }));
   const notices = await modelNoticesOf(runtime, scope, payload).catch((): readonly string[] => []);
   const budget = await stopBudgetLines(runtime, scope, stringField(payload, 'transcript_path')).catch((): readonly string[] => []);
@@ -544,7 +550,8 @@ async function stopOutputOf(runtime: CliRuntime, payload: JsonRecord): Promise<s
 }
 
 /**
- * Stop, at the end of every turn: asks the session for its handover once when its context reached the
+ * Stop, at the end of every turn: first sends the session back, once, to a skill edit of the turn that
+ * Claude Code refused and it never redid (hook-dropped-edit.ts), leaving the rest to its next stop. It asks the session for its handover once when its context reached the
  * team's threshold or the lead asked, and at a task end (`set done`) also after enough tasks, then tells the user
  * once that it restarts by itself when idle (hook-restart.ts, `refresh.autoRestart`), or else waits for /clear. It also tells the user, once each, when the session runs at another
  * effort than its `launch` entry or Claude Code switched its model after a safeguard stop, and once a

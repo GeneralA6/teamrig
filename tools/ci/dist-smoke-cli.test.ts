@@ -26,7 +26,7 @@ const COMMANDS: Readonly<Record<string, string>> = {
   PreToolUse: 'push-guard',
   UserPromptSubmit: 'inbox-reminder',
   Stop: 'stop',
-  SubagentStop: 'subagent-stop',
+  PreCompact: 'pre-compact',
 };
 
 function manifest(events: readonly string[]): string {
@@ -63,7 +63,7 @@ describe('dist-smoke-cli', () => {
   });
 
   it('lists a launcher that cannot start, a hook with no sample and a launcher committed without its executable bit', () => {
-    writePlugin(['SessionStart', 'SubagentStop']);
+    writePlugin(['SessionStart', 'PreCompact']);
     repo.git('add', '-A');
     repo.git('update-index', '--chmod=-x', POSIX_LAUNCHER);
     // Neither launcher can start: the POSIX one has no executable bit, and cmd.exe is not where ComSpec says.
@@ -71,7 +71,7 @@ describe('dist-smoke-cli', () => {
     assert.equal(result.status, 1, result.stderr);
     assert.match(result.stdout, new RegExp(`^dist-smoke: 3 problem\\(s\\) on ${process.platform}:$`, 'm'));
     assert.match(result.stdout, /^ {2}bin launcher --version: exit none: /m);
-    assert.match(result.stdout, /^ {2}SubagentStop \(hook subagent-stop\): no smoke sample for hook subagent-stop; /m);
+    assert.match(result.stdout, /^ {2}PreCompact \(hook pre-compact\): no smoke sample for hook pre-compact; /m);
     assert.match(result.stdout, new RegExp(`^ {2}${POSIX_LAUNCHER} is committed with mode 100644, not 100755; `, 'm'));
   });
 

@@ -1,6 +1,6 @@
 # Hooks and permissions
 
-The plugin's `hooks/hooks.json` registers seven Claude Code hooks and one mod ([the /teamrig command](#the-mod-the-teamrig-command), [the refresh's /clear](#the-mod-the-refreshs-clear), [the reload after an install](#the-mod-the-reload-after-an-install), [the wake on urgent work](#the-mod-the-wake-on-urgent-work)). Each runs
+The plugin's `hooks/hooks.json` registers ten Claude Code hooks and one mod ([the /teamrig command](#the-mod-the-teamrig-command), [the refresh's /clear](#the-mod-the-refreshs-clear), [the reload after an install](#the-mod-the-reload-after-an-install), [the wake on urgent work](#the-mod-the-wake-on-urgent-work)). Each runs
 `node <plugin>/dist/cli/main.js hook <name>` with a 15 second timeout. Outside a project tied to a team (no `$TEAMRIG_TEAM` and no `.teamrig.json`)
 they all stay silent.
 
@@ -15,7 +15,7 @@ they all stay silent.
 | `PostToolUse` on reads, edits and shell calls | `hook loop-nudge` | Asks the model once to batch when a turn makes [single-step calls in a row](#after-a-tool-call-the-loop-nudge) |
 | `PreToolUse` on `Agent` and `Task` | `hook helper-gate` | Asks before or refuses a helper launch past the daily budget or in quiet hours, [as the team set](#the-daily-budget-warnings-and-the-helper-gate) |
 | The mod, while a tab is idle | `hook wake-check`, `hook wake-dropped` | Wakes the tab's session when unblocked urgent work is handed to it, [batched, with its cost shown](#the-mod-the-wake-on-urgent-work) |
-| `Stop` (end of each turn) | `hook stop` | Asks for a handover when a context refresh is due, then starts the automatic restart; tells the user of another effort than `launch` asks, or of a model Claude Code switched to; shows the budget lines; names a verifying task whose verify-by day has come; once per `github.everyMinutes` for the whole team, starts `gh sync --auto` hidden in the background |
+| `Stop` (end of each turn) | `hook stop` | Sends the session back once to [a skill edit it dropped](#end-of-a-turn-or-a-helper-a-dropped-skill-edit); asks for a handover when a context refresh is due, then starts the automatic restart; tells the user of another effort than `launch` asks, or of a model Claude Code switched to; shows the budget lines; names a verifying task whose verify-by day has come; once per `github.everyMinutes` for the whole team, starts `gh sync --auto` hidden in the background |
 
 ## Session start
 
@@ -174,6 +174,24 @@ teamrig: the message to team-lead was not sent (No agent named 'team-lead' is re
 
 For a name that is no team session, the line points to `teamrig who`, which prints the names to message by.
 Outside a team with a config it says nothing.
+
+## End of a turn or a helper: a dropped skill edit
+
+Skills are plain files every session edits (a trap it hit, a date it verified), outside any branch or review. When
+two edit one skill at once, Claude Code refuses the later edit: the file changed since it was read, or the text the
+edit anchors on is gone. The refusal is right; the change is lost only when the agent then ends as if it landed. So
+at the end of a turn (`hook stop`) and when a helper is about to hand back (`hook subagent-stop`), teamrig reads the
+turn, or the helper's whole run, and when an `Edit`, `MultiEdit` or `Write` of a file under `.claude/skills/<name>/`
+was refused and not redone later, it sends the agent back once:
+
+```text
+teamrig: a skill edit was refused and never redone, so the file lacks it: web-deploy (/home/you/.claude/skills/web-deploy/SKILL.md: String to replace not found in file.). Another session may have changed the file since you read it: read it again and redo the change on its current text, or say why you dropped it.
+```
+
+It asks once per stop (never on a stop it already sent back), and the rest of that turn's end waits for the next
+stop. A shell edit (`sed`) is not read. Outside a team it says nothing. `check` flags the line that made such
+collisions common: a `Last verified:` line with a note after its date (`VERIFIED-NOTE`), which every run rewrote at
+its end; with the date alone, two runs agree, and a lesson goes on its own line.
 
 ## After a tool call: the lead boundary
 
