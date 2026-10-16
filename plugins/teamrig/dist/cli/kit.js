@@ -2,6 +2,7 @@ import { basename, dirname } from 'node:path';
 import { loadConfig } from "../config/load.js";
 import { SHIPPED_CONFIG_FORMAT } from "../config/migrate.js";
 import { Roster } from "../config/roster.js";
+import { isRecord } from "../core/guards.js";
 import { ENV, KIT_NAME, resolveKitHome, teamPaths } from "../core/home.js";
 import { ID_PATTERN } from "../core/ids.js";
 import { FileLock } from "../core/lock.js";
@@ -130,4 +131,19 @@ export function requireConfig(kit, runtime, access) {
         runtime.out.stderr(`WARN config: ${load.issues.length} problem(s), defaults used (first: ${issueText(first)}); run: teamrig config validate`);
     }
     return load.config;
+}
+/** The config file's own JSON, not the copy migrated in memory, so nothing else in it changes, its version included. */
+export async function configFileJson(runtime, path) {
+    const text = await runtime.files.read(path);
+    let raw;
+    try {
+        raw = text === undefined ? undefined : JSON.parse(text);
+    }
+    catch {
+        raw = undefined;
+    }
+    if (!isRecord(raw)) {
+        throw new RefusedError(`${path} changed while it was read; run the command again`);
+    }
+    return raw;
 }

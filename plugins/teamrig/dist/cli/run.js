@@ -24,6 +24,7 @@ const statuslineCommands = () => import("./commands/statusline.js");
 const testCommand = () => import("./commands/test.js");
 const ghCommands = () => import("./commands/gh.js");
 const startCommands = () => import("./commands/start.js");
+const hireCommands = () => import("./commands/hire.js");
 const TASK_FIELDS = ['title', 'owner', 'ref', 'priority', 'due', 'goals', 'week', 'after'];
 const COMMANDS = {
     add: { flags: ['session', 'source', 'team', ...TASK_FIELDS], load: async () => (await registerCommands()).add },
@@ -50,6 +51,11 @@ const COMMANDS = {
     launch: { flags: ['team', 'project', 'home', 'encoded-prompt'], load: async () => (await openCommands()).launch },
     who: { flags: [], load: async () => (await teamCommands()).who },
     rename: { flags: ['session'], load: async () => (await teamCommands()).rename },
+    hire: {
+        flags: ['session', 'scope', 'reason', 'name', 'model', 'effort', 'daily-pct', 'review', 'approved-by'],
+        switches: ['yes'],
+        load: async () => (await hireCommands()).hire,
+    },
     refresh: { flags: ['session'], switches: ['ready'], load: async () => (await refreshCommands()).refresh },
     doctor: { flags: [], load: async () => (await doctorCommands()).doctor },
     compact: { flags: [], switches: ['dry-run'], load: async () => (await compactCommands()).compact },
@@ -130,6 +136,10 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   who [<id|name|role>]         the name to message a session by (no argument: every session)
   rename <id|name> <new-name>  records a session's new name; its old names keep finding it
       (the session itself or the lead)
+  hire <id> --scope "<its job>" --reason "<why>" [--name <name>] [--model <model>] [--effort <level>]
+      [--daily-pct <pct>] [--review <YYYY-MM-DD>] [--approved-by "<who>"] [--yes]
+      (the lead only) adds a temporary session within hiring.policy and its caps, on the lead's model and
+      effort unless given; without --yes it shows the hire and writes nothing
   refresh <id|name>            the lead asks a session to write its handover when it next sets a task done
   refresh --ready              the handover is written; the user types /clear for a fresh start
   doctor                       names, rename log, inboxes, rules.md, context size and the tree of teams that need a fix

@@ -1,11 +1,11 @@
 import { isRecord } from "../core/guards.js";
 import { NAME_PATTERN, NAME_RULE } from "../core/ids.js";
 import { isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, SESSION_NAME, TASK_STATUSES } from "../register/model.js";
-import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_COMMITS, DEFAULT_CONTEXT_FILES, DEFAULT_GITHUB, DEFAULT_LOCK, DEFAULT_LEAD_BOUNDARY, DEFAULT_LOOPS, DEFAULT_MESSAGES, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_PUSH_GUARD, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, DEFAULT_TESTS, } from "./defaults.js";
+import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_COMMITS, DEFAULT_CONTEXT_FILES, DEFAULT_GITHUB, DEFAULT_HIRING, DEFAULT_LOCK, DEFAULT_LEAD_BOUNDARY, DEFAULT_LOOPS, DEFAULT_MESSAGES, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_PUSH_GUARD, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, DEFAULT_TESTS, } from "./defaults.js";
 import { isEffort, isModel } from "./launch.js";
 import { CONFIG_LIMITS } from "./limits.js";
 import { ConfigReader, describe, isValidRegex, shortLine } from "./reader.js";
-import { ESCALATIONS, isCommitGate, isEffortLevel, isEscalation, isOverAction, isPushToProtected, isTerminalChoice, isVerifyGate, isWeekday, OVER_ACTIONS, PUSH_TO_PROTECTED, TERMINALS, VERIFY_GATES, WEEKDAYS, } from "./types.js";
+import { ESCALATIONS, HIRING_POLICIES, isCommitGate, isEffortLevel, isEscalation, isHiringPolicy, isOverAction, isPushToProtected, isTerminalChoice, isVerifyGate, isWeekday, OVER_ACTIONS, PUSH_TO_PROTECTED, TERMINALS, VERIFY_GATES, WEEKDAYS, } from "./types.js";
 const isSessionName = (name) => SESSION_NAME.test(name) ? undefined : 'expected a lowercase name: a letter, then letters, digits or -, at most 32';
 const isUtcTime = (time) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(time) ? undefined : 'expected a UTC time as HH:MM');
 /** A repository as GitHub names it: an owner login, a slash, then letters, digits, `.`, `_` or `-`. */
@@ -163,6 +163,7 @@ export function parseConfig(raw) {
         },
         tabStatus: { enabled: read.boolean(tabStatus, 'enabled', 'tabStatus', false) },
         refresh: parseRefresh(read, read.section(raw, 'refresh', '')),
+        hiring: parseHiring(read, read.section(raw, 'hiring', '')),
         open: parseOpen(read, read.section(raw, 'open', '')),
         launch,
         paths: parsePaths(read, read.section(raw, 'paths', '')),
@@ -486,6 +487,26 @@ function parseRefresh(read, raw) {
         everyTasksMinTokens: read.integer(raw, 'everyTasksMinTokens', path, defaults.everyTasksMinTokens, REFRESH_TOKENS),
         tabTitle: read.boolean(raw, 'tabTitle', path, defaults.tabTitle),
         ...(handoverDir === undefined ? {} : { handoverDir }),
+    };
+}
+/** `hiring`: a hire's own daily budget cannot pass what all hires may add up to. */
+function parseHiring(read, raw) {
+    const path = 'hiring';
+    const defaults = DEFAULT_HIRING;
+    const policy = read.string(raw, 'policy', path, defaults.policy, oneOf(HIRING_POLICIES));
+    const maxDailyPct = read.number(raw, 'maxDailyPct', path, defaults.maxDailyPct, CONFIG_LIMITS.hiringMaxDailyPct);
+    let dailyPct = read.number(raw, 'dailyPct', path, defaults.dailyPct, CONFIG_LIMITS.hiringDailyPct);
+    if (dailyPct > maxDailyPct) {
+        read.report(`${path}.dailyPct`, `expected at most hiring.maxDailyPct (${maxDailyPct}), got ${dailyPct}`);
+        dailyPct = Math.min(defaults.dailyPct, maxDailyPct);
+    }
+    return {
+        policy: isHiringPolicy(policy) ? policy : defaults.policy,
+        maxSessions: read.integer(raw, 'maxSessions', path, defaults.maxSessions, CONFIG_LIMITS.hiringMaxSessions),
+        dailyPct,
+        maxDailyPct,
+        idleHours: read.integer(raw, 'idleHours', path, defaults.idleHours, CONFIG_LIMITS.hiringIdleHours),
+        reviewDays: read.integer(raw, 'reviewDays', path, defaults.reviewDays, CONFIG_LIMITS.hiringReviewDays),
     };
 }
 function parsePaths(read, raw) {

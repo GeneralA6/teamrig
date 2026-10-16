@@ -44,6 +44,11 @@ export const CONFIG_LIMITS = {
     liftMaxStopPct: { min: 1, max: 100 },
     liftReserveStopPct: { min: 1, max: 100 },
     maxBytesPerHook: { min: 100_000, max: 100_000_000 },
+    hiringMaxSessions: { min: 1, max: 20 },
+    hiringDailyPct: { min: 0.1, max: 100 },
+    hiringMaxDailyPct: { min: 0.1, max: 100 },
+    hiringIdleHours: { min: 1, max: 168 },
+    hiringReviewDays: { min: 1, max: 90 },
 };
 /**
  * Bounds on a tree of teams, which `team create` and `doctor` enforce. A lead's `--tree` roll-up reads
