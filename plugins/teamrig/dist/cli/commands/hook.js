@@ -36,6 +36,7 @@ import { bindAfterClear, bindHintOnce, bindTab, inboxLinesFor, readTitle } from 
 import { helperGateOutput, promptBudgetLine, stopBudgetLines } from "./hook-budget.js";
 import { startAutoSync } from "./gh-auto.js";
 import { coldSendHold } from "./hook-cold-send.js";
+import { meetingHold } from "./hook-meeting.js";
 import { armRestart, restartTargetOf } from "./hook-restart.js";
 import { envSession, leadOwnPaths, markedSessionOf, parseJson, sessionTeam, teamSessionOf } from "./hook-input.js";
 import { retireAskReasonOf } from "./retire-ask.js";
@@ -170,9 +171,10 @@ export async function inboxReminder(args, runtime) {
     return EXIT.ok;
 }
 /**
- * PreToolUse on SendMessage: holds once a message to a team session idle `messages.coldAfterMinutes`
- * or longer, which would wake it cold; the same tab's next send to it goes through. Outside a loaded
- * team it prints nothing.
+ * PreToolUse on SendMessage: while the owner's daily meeting is open, holds every message to the lead but a
+ * CRITICAL one (hook-meeting.ts); otherwise holds once a message to a team session idle
+ * `messages.coldAfterMinutes` or longer, which would wake it cold, and the same tab's next send to it goes
+ * through. Outside a loaded team it prints nothing.
  */
 export async function coldSend(args, runtime) {
     noPositionals(args);
@@ -190,7 +192,8 @@ export async function coldSend(args, runtime) {
         return EXIT.ok;
     }
     const { config } = kit.load;
-    const hold = await coldSendHold(runtime, kit, config, await rosterOf(runtime, kit, config), payload, claudeSession);
+    const roster = await rosterOf(runtime, kit, config);
+    const hold = (await meetingHold(runtime, kit, roster, payload, claudeSession)) ?? (await coldSendHold(runtime, kit, config, roster, payload, claudeSession));
     if (hold !== undefined) {
         runtime.out.stdout(hold);
     }

@@ -1,0 +1,32 @@
+import { KIT_NAME } from "../../core/home.js";
+import { holdOutput, sendTargetOf, sendTextOf } from "../../hooks/cold-send.js";
+import { quietHoldReason } from "../../meeting/quiet.js";
+import { MeetingStore, phaseOf } from "../../meeting/state.js";
+import { teamSessionOf } from "./hook-input.js";
+/**
+ * The meeting's hold for a SendMessage call, as the cold-send hook's stdout; undefined lets the message go. While
+ * the owner's daily meeting is open, a message to the lead from any other session waits as an inbox line, but one
+ * starting CRITICAL (src/meeting/quiet.ts). Unlike the cold hold, a resend does not pass it.
+ */
+export async function meetingHold(runtime, kit, roster, payload, claudeSession) {
+    const to = sendTargetOf(payload);
+    const lead = roster.holderOf('lead');
+    const receiver = to === undefined ? undefined : roster.lookup(to);
+    if (lead === undefined || receiver?.ok !== true || receiver.id !== lead) {
+        return undefined;
+    }
+    const phase = phaseOf(await new MeetingStore(runtime.files, kit.paths.meeting).read(), runtime.clock.now());
+    if (phase.kind !== 'open') {
+        return undefined;
+    }
+    const reason = quietHoldReason({
+        meeting: phase.meeting,
+        to: receiver.id,
+        lead,
+        from: await teamSessionOf(runtime, kit, roster, claudeSession),
+        leadName: roster.nameOf(lead) ?? lead,
+        text: sendTextOf(payload),
+        command: KIT_NAME,
+    });
+    return reason === undefined ? undefined : holdOutput(reason);
+}

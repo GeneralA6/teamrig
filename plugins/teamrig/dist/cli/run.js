@@ -28,6 +28,7 @@ const statuslineCommands = () => import("./commands/statusline.js");
 const testCommand = () => import("./commands/test.js");
 const ghCommands = () => import("./commands/gh.js");
 const startCommands = () => import("./commands/start.js");
+const meetingCommands = () => import("./commands/meeting.js");
 const hireCommands = () => import("./commands/hire.js");
 const retireCommands = () => import("./commands/retire.js");
 const slashCommands = () => import("./commands/slash.js");
@@ -54,6 +55,9 @@ const COMMANDS = {
     'team tree': { effect: 'read', flags: [], load: async () => (await teamCommands()).teamTree },
     rules: { effect: 'read', flags: ['session'], load: async () => (await rulesCommands()).rules },
     start: { effect: 'write', flags: ['session'], switches: ['all'], load: async () => (await startCommands()).start },
+    'meeting start': { effect: 'write', flags: ['session'], load: async () => (await meetingCommands()).meetingStart },
+    'meeting agenda': { effect: 'write', flags: ['session'], load: async () => (await meetingCommands()).meetingAgenda },
+    'meeting end': { effect: 'write', flags: ['session'], load: async () => (await meetingCommands()).meetingEnd },
     open: { effect: 'write', flags: ['prompt', 'terminal', 'project'], switches: ['resume'], load: async () => (await openCommands()).open },
     launch: { effect: 'internal', flags: ['team', 'project', 'home', 'encoded-prompt', 'resume'], load: async () => (await openCommands()).launch },
     restart: { effect: 'internal', flags: ['team', 'at', 'project'], load: async () => (await restartCommands()).restart },
@@ -137,6 +141,11 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   start [--session <id|name>] [--all]   the start of a work block in one call: the UTC time, the
       unread inbox lines (marked read), the session's tasks, the check flags it acts on (the lead: all)
       and the week's use; --all: the tasks and flags in full
+  meeting start | meeting agenda | meeting end [--session <id|name>]   the lead's daily meeting with
+      the owner: start tells every session by inbox line that messages to the lead wait until its end
+      (one starting CRITICAL goes) and prints the agenda: the owner's decisions as card facts, the late
+      tasks, what finished since the last meeting, the lead's inbox and the week's use and fit; agenda
+      prints it again; end tells every session, with the decisions recorded on its tasks (update --note)
   add --title "<one line>" --description "<what and why>" --priority p<n> [--ref <where it was asked>]
       [--owner <session>] [--source <session>|<owner source>] [--due <date>] [--goals a,b] [--week <date>]
       [--after T5,T6] [--size <pct>]
