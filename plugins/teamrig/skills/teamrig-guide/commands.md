@@ -592,6 +592,49 @@ RENAMED web: shop-web -> shop-site
 NOTE shop-web still finds web in every teamrig command; teamrig never edits permission or auto-mode rules, so update any that name shop-web yourself
 ```
 
+### teamrig hire
+
+Adds a temporary session to the team for one job (`teamrig hire <id> --scope "<its job>" --reason "<why>"`), the
+lead only, within the team's `hiring` policy and caps. Without `--yes` it shows the hire and writes nothing. With
+it, the hire goes into the hire log (`state/hires.jsonl`), the old config into the backups folder, and the session
+into the config: `sessions`, `names` with `--name`, `launch` (its model and effort, the lead's own unless
+given) and `budget.sessions.<id>.dailyPct`. Its name is `<team>-<id>` unless `--name` gives one; a name another
+team's session has is refused, as Claude Code session names are machine-wide.
+
+- `hiring.policy`: `off` refuses every hire; `owner` (the default) needs `--approved-by "<who>"`, after you ask
+  the owner; `lead` lets the lead hire within the caps.
+- The caps: at most `hiring.maxSessions` (2) hired sessions at once, with daily budgets adding up to at most
+  `hiring.maxDailyPct` (3% of the week). A hire's daily budget is `--daily-pct`, else `hiring.dailyPct` (1%).
+- Its review day is `--review`, else `hiring.reviewDays` (7) days on.
+- Retiring a hired session comes in a later version.
+
+Flags:
+
+- `--session <id|name>`: the caller, the lead.
+- `--scope "<its job>"`: its job; required.
+- `--reason "<why>"`: why it is needed; required.
+- `--name <name>`: its display and Claude Code session name.
+- `--model <model>`: the model it starts on; the lead's own by default.
+- `--effort <level>`: the effort it starts at; the lead's own by default.
+- `--daily-pct <pct>`: its daily budget, in % of the week.
+- `--review <YYYY-MM-DD>`: its review day.
+- `--approved-by "<who>"`: who approved it; needed under `hiring.policy` `owner`.
+- `--yes`: write it.
+
+Example:
+
+```sh
+teamrig hire importer --scope "port the CSV importer" --reason "release week" --approved-by "the owner" --session lead --yes
+```
+
+Output:
+
+```text
+HIRED importer (name shop-importer) for "port the CSV importer": model opus at xhigh effort, 1% of the week a day, review by 2030-01-15; the old config is at ~/.teamrig/teams/shop/backups/config.hire.json
+  hired sessions with it: 1 of 2, 1% of 3% of the week a day
+NEXT give it its first task: teamrig add --owner importer --title "<task>" --session lead; then open it: teamrig open importer
+```
+
 ### teamrig rules
 
 Prints the team rules and who the session is, exactly as a session start injects them. Run it when you did

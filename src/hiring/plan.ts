@@ -112,7 +112,7 @@ export function planHire(file: JsonRecord, config: KitConfig, active: readonly H
   const { maxSessions, maxDailyPct } = config.hiring;
   const onTeam = active.filter((hire) => config.sessions.includes(hire.session));
   if (onTeam.length >= maxSessions) {
-    return { ok: false, problem: `the team already has ${onTeam.length} hired session(s), hiring.maxSessions is ${maxSessions}: retire one first` };
+    return { ok: false, problem: `the team already has ${onTeam.length} hired session(s), the most hiring.maxSessions allows` };
   }
   const dailyPct = request.dailyPct ?? config.hiring.dailyPct;
   // To hundredths, so 0.1 + 0.2 meets a cap of 0.3.
