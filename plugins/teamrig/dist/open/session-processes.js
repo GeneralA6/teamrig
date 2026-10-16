@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { basename } from 'node:path';
-import { errorCode, errorMessage, isNonNegativeInteger, stringField } from "../core/guards.js";
+import { errorCode, errorMessage, isNonNegativeInteger, isRecord, stringField } from "../core/guards.js";
 import { parseObject } from "../core/jsonl.js";
 import { nodeProgramRunner } from "../github/credentials.js";
 import { exitText, outcomeOfError } from "./processes.js";
@@ -19,12 +19,13 @@ function windowsLookup(pid) {
         'if ($p) { $p | Select-Object ProcessId,ParentProcessId,Name,CommandLine | ConvertTo-Json -Compress }';
     return ['-NoProfile', '-NonInteractive', '-Command', script];
 }
-/** PowerShell's one-object JSON; undefined for no output or another shape. */
-export function parseWindowsProcess(stdout) {
-    const record = parseObject(stdout.trim());
-    if (record === undefined) {
-        return undefined;
-    }
+function windowsChildren(pid) {
+    const script = `$c = @(Get-CimInstance Win32_Process -Filter 'ParentProcessId=${pid}' | Select-Object ProcessId,ParentProcessId,Name,CommandLine); ` +
+        'ConvertTo-Json -Compress -InputObject $c';
+    return ['-NoProfile', '-NonInteractive', '-Command', script];
+}
+/** One process of PowerShell's JSON; undefined for another shape. */
+function processOfRecord(record) {
     const pid = record['ProcessId'];
     const parentPid = record['ParentProcessId'];
     const name = stringField(record, 'Name');
@@ -34,6 +35,39 @@ export function parseWindowsProcess(stdout) {
     }
     return { pid, parentPid, name, commandLine: commandLine ?? '' };
 }
+/** PowerShell's one-object JSON; undefined for no output or another shape. */
+export function parseWindowsProcess(stdout) {
+    const record = parseObject(stdout.trim());
+    return record === undefined ? undefined : processOfRecord(record);
+}
+/** PowerShell's JSON array of processes; undefined for any other output, or one entry of another shape. */
+export function parseWindowsProcesses(stdout) {
+    let parsed;
+    try {
+        parsed = JSON.parse(stdout.trim());
+    }
+    catch {
+        return undefined;
+    }
+    if (!Array.isArray(parsed)) {
+        return undefined;
+    }
+    const entries = parsed;
+    const found = [];
+    for (const entry of entries) {
+        const info = isRecord(entry) ? processOfRecord(entry) : undefined;
+        if (info === undefined) {
+            return undefined;
+        }
+        found.push(info);
+    }
+    return found;
+}
+/** The file name of a command line's program; a login shell's starts with a dash, as `-bash`. */
+function programOf(commandLine) {
+    const [program = ''] = commandLine.trim().split(/\s+/);
+    return basename(program);
+}
 /** `ps -o ppid= -o args=`'s line for `pid`; undefined for no line. */
 export function parsePosixProcess(pid, stdout) {
     const line = stdout.split(/\r?\n/).find((entry) => entry.trim() !== '');
@@ -42,8 +76,18 @@ export function parsePosixProcess(pid, stdout) {
         return undefined;
     }
     const [, parent = '', commandLine = ''] = match;
-    const [program = ''] = commandLine.trim().split(/\s+/);
-    return { pid, parentPid: Number(parent), name: basename(program), commandLine: commandLine.trim() };
+    return { pid, parentPid: Number(parent), name: programOf(commandLine), commandLine: commandLine.trim() };
+}
+/** The processes `pid` started, from `ps -A -o pid= -o ppid= -o args=`'s lines. */
+export function parsePosixChildren(pid, stdout) {
+    return stdout.split(/\r?\n/).flatMap((line) => {
+        const match = /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line);
+        if (match === null) {
+            return [];
+        }
+        const [, child = '', parent = '', commandLine = ''] = match;
+        return Number(parent) === pid ? [{ pid: Number(child), parentPid: pid, name: programOf(commandLine), commandLine: commandLine.trim() }] : [];
+    });
 }
 function feedProgram(request, timeoutMs) {
     return new Promise((resolve) => {
@@ -98,6 +142,22 @@ export function nodeSessionProcesses(options = {}) {
                 }
                 const result = await run({ program: 'ps', args: ['-o', 'ppid=', '-o', 'args=', '-p', String(pid)] });
                 return result.end.kind === 'exited' && result.end.code === 0 ? parsePosixProcess(pid, result.stdout) : undefined;
+            }
+            catch {
+                return undefined;
+            }
+        },
+        async children(pid) {
+            if (!isPid(pid)) {
+                return undefined;
+            }
+            try {
+                if (platform === 'win32') {
+                    const result = await run({ program: 'powershell.exe', args: windowsChildren(pid) });
+                    return result.end.kind === 'exited' && result.end.code === 0 ? parseWindowsProcesses(result.stdout) : undefined;
+                }
+                const result = await run({ program: 'ps', args: ['-A', '-o', 'pid=', '-o', 'ppid=', '-o', 'args='] });
+                return result.end.kind === 'exited' && result.end.code === 0 ? parsePosixChildren(pid, result.stdout) : undefined;
             }
             catch {
                 return undefined;
