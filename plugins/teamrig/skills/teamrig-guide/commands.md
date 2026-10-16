@@ -1053,6 +1053,46 @@ OK 3 commit(s) in origin/main..HEAD, none over 400 non-test lines or 15 files wi
 
 A commit over the rule without the reason line is `REFUSED` (exit 2).
 
+### teamrig worktree remove
+
+Removes a linked git worktree without touching what its links point to. A worktree that shares the main
+checkout's `node_modules` through a link (a directory junction on Windows) needs no copy of it, but a plain
+`git worktree remove` follows a junction and empties the main checkout's `node_modules`. This command first
+unlinks each untracked link in the worktree, the link alone, and checks it is gone; then it runs
+`git worktree remove`, and checks each link's target holds as many entries as before.
+
+It refuses (exit 2) before any change for: the main checkout; a path inside a worktree instead of its top folder;
+a locked worktree; a run from inside the worktree; a real `node_modules` folder (removing the worktree would delete
+it); a link with tracked files under it; and uncommitted changes or untracked files, the files behind a link left
+out. It resolves `<path>` against the current folder.
+
+Flags:
+
+- `--delete-branch`: deletes the worktree's branch after it, once every commit of it is on the base: by ancestry,
+  or as the same change under a new id, as a rebase merge leaves it (`git cherry`). It compares them as of the
+  last fetch, so fetch first. Refused for a detached HEAD or a commit the base lacks.
+- `--base <ref>`: the branch it merged into, for `--delete-branch`; default the branch `origin/HEAD` names.
+- `--dry-run`: prints the steps it would take and changes nothing.
+
+Example:
+
+```sh
+teamrig worktree remove ../app-t4 --delete-branch
+```
+
+Output:
+
+```text
+unlinked node_modules (the link only, to /home/you/app/node_modules)
+removed the worktree /home/you/app-t4
+target /home/you/app/node_modules untouched: 412 entries, as before
+deleted branch t4-parser: every commit of it is on origin/main
+OK removed /home/you/app-t4
+```
+
+A step that fails after a change says what was already done, such as `(its links are already gone: node_modules)`
+(exit 1).
+
 ### teamrig test
 
 Runs a test command in the shell and prints a few lines instead of all it printed, so a long test run costs the

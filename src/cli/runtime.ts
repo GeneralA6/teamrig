@@ -7,6 +7,7 @@ import type { PathProbe } from '../core/path-probe.ts';
 import type { CredentialStore } from '../github/credentials.ts';
 import type { GhRunner } from '../github/gh.ts';
 import type { RequirementsCheck } from '../requirements/requirements.ts';
+import type { WorktreePorts } from '../worktree/remove.ts';
 import type { Processes } from '../open/processes.ts';
 import type { SessionProcesses } from '../open/session-processes.ts';
 import type { CommitLog } from '../push-guard/commit-size.ts';
@@ -57,6 +58,8 @@ export interface CliRuntime {
   readonly transcripts: TranscriptSource;
   /** What teamrig needs beside itself (git, Claude Code, Node.js) and lacks: told at session start, by `team create` and by `doctor`. */
   readonly requirements: RequirementsCheck;
+  /** The git and file steps `teamrig worktree remove` takes. */
+  readonly worktrees: WorktreePorts;
   /** The config format the run reads and migrates to; default the shipped one (tests give a newer release's). */
   readonly configFormat?: ConfigFormat;
   /** All of stdin, for hooks, which Claude Code feeds one JSON object. */

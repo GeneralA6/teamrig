@@ -31,6 +31,7 @@ const clearCommands = () => import('./commands/hook-clear.ts');
 const teamCommands = () => import('./commands/team.ts');
 const commitsCommands = () => import('./commands/commits.ts');
 const doctorCommands = () => import('./commands/doctor.ts');
+const worktreeCommands = () => import('./commands/worktree.ts');
 const refreshCommands = () => import('./commands/refresh.ts');
 const setupCommands = () => import('./commands/setup.ts');
 const compactCommands = () => import('./commands/compact.ts');
@@ -106,6 +107,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'config validate': { effect: 'read', flags: [], load: async () => (await configCommands()).validate },
   'config migrate': { effect: 'write', flags: [], load: async () => (await configCommands()).migrate },
   'commits check': { effect: 'read', flags: ['base', 'tip'], load: async () => (await commitsCommands()).check },
+  'worktree remove': { effect: 'write', flags: ['base'], switches: ['delete-branch', 'dry-run'], load: async () => (await worktreeCommands()).remove },
   test: { effect: 'write', flags: ['session'], rest: true, load: async () => (await testCommand()).test },
   'hook push-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).pushGuard },
   'hook cold-send': { effect: 'internal', flags: [], load: async () => (await hookCommands()).coldSend },
@@ -231,6 +233,11 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   config validate | config migrate
   commits check --base <ref> [--tip <ref>]   commits in base..tip (default HEAD) over the size rule
       with no reason line; any is REFUSED, for an integrate script or CI
+  worktree remove <path> [--delete-branch [--base <ref>]] [--dry-run]   removes a linked git worktree:
+      unlinks each link in it (such as a node_modules junction) and sees it gone, so git cannot follow
+      one and empty its target, then runs git worktree remove; REFUSED before any change for the main
+      checkout, a dirty tree or a real node_modules folder. --delete-branch: deletes its branch too, once
+      every commit of it is on --base (default the branch origin/HEAD names); --dry-run: prints the steps
   test [--session <id|name>] -- <command ...>   runs a test command in the shell, writes all it printed
       to a log (each session keeps its newest 20) and prints one PASS or FAIL line, then each failing
       test within tests.maxFailureChars; exit 0 when the command passed, 1 otherwise
