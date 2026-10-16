@@ -1,5 +1,6 @@
 import { formatCount, formatPct, formatTimeOfDay, formatW, formatWeekdayMinute } from "./format.js";
 import { liftText } from "./lift.js";
+import { TURN_TRIGGERS } from "./line.js";
 import { emptyPatterns, PATTERN_FIELDS } from "./patterns.js";
 /** The lines of `teamrig budget`: short by default, the key numbers and anything past its budget. */
 /** Sessions listed by default; `--all` lists every one. */
@@ -176,33 +177,96 @@ export function sumDays(states, days) {
         return { w, calls, patterns };
     });
 }
+/** The turns by what started them, then the cache and compaction counters; see `BURN_FIELDS` for what each counts. */
+export const TURN_ROWS = [
+    { label: 'owner turns, W', count: 'ownerTurns', w: 'ownerW' },
+    { label: 'peer messages, W', count: 'peerTurns', w: 'peerW' },
+    { label: 'notifications, W', count: 'notificationTurns', w: 'notificationW' },
+    { label: 'scheduled wakes, W', count: 'scheduledTurns', w: 'scheduledW' },
+    { label: 'subagent runs, W', count: 'subagentTurns', w: 'subagentW' },
+    { label: 'other turns, W', count: 'otherTurns', w: 'otherW' },
+];
+export const CACHE_ROWS = [
+    { label: 'cold calls, cache-write W', count: 'coldCalls', w: 'coldW' },
+    { label: 'compactions', count: 'compactions' },
+];
+/** Read after read's share of a day's W that the burn table sets as the goal to stay under. */
+export const READ_CHAIN_GOAL_PCT = 12;
+function countRow(row) {
+    return {
+        label: row.label,
+        cell: (usage) => {
+            const count = formatCount(usage.patterns[row.count]);
+            return row.w === undefined ? count : `${count} ${formatW(usage.patterns[row.w])}`;
+        },
+    };
+}
+const ALL_CALLS_ROW = { label: 'all calls', cell: (usage) => `${formatCount(usage.calls)} ${formatW(usage.w)}` };
+const NOTHING_METERED = 'nothing metered';
+const BEFORE_SORTING = 'metered before teamrig 0.34.0';
+/**
+ * A table with the days as columns. `leftOut` gives the reason a day is left out, or undefined to show it;
+ * the days left out are named under the table by reason, each with the `--day` that reads one.
+ */
+function dayTable(header, rows, days, totals, leftOut) {
+    const shown = [];
+    const skipped = new Map();
+    for (const [index, day] of days.entries()) {
+        const usage = totals[index] ?? { w: 0, calls: 0, patterns: emptyPatterns() };
+        const reason = leftOut(usage);
+        if (reason === undefined) {
+            shown.push({ day, usage });
+        }
+        else {
+            skipped.set(reason, [...(skipped.get(reason) ?? []), day]);
+        }
+    }
+    const notes = [...skipped].map(([reason, each]) => `Left out, ${reason}: ${each.map((day) => day.slice(5)).join(', ')} (add --day ${each[0]} to read one).`);
+    if (shown.length === 0) {
+        return [header, ...notes];
+    }
+    const table = [['', ...shown.map(({ day }) => day.slice(5))], ...rows.map((row) => [row.label, ...shown.map(({ usage }) => row.cell(usage))])];
+    const widths = shown.map((_, index) => Math.max(...table.map((row) => (row[index + 1] ?? '').length)));
+    const labelWidth = Math.max(...table.map((row) => (row[0] ?? '').length));
+    const lines = table.map((row) => [(row[0] ?? '').padEnd(labelWidth), ...row.slice(1).map((text, index) => text.padStart(widths[index] ?? 0))].join('  ').trimEnd());
+    return [header, ...lines, ...notes];
+}
 /**
  * `teamrig budget --loops`: each pattern's count and W per day, the days as columns. From the meter's store
  * a day with no calls was never metered (before the meter started, or outside its window), so its column
  * is left out and named under the table; a recounted day (`--day`) was read, so its zeros are shown.
  */
 export function loopLines(who, days, totals, source) {
-    const metered = days.flatMap((day, index) => {
-        const usage = totals[index];
-        return usage !== undefined && (source === 'recounted' || usage.calls > 0) ? [{ day, usage }] : [];
-    });
-    const unread = days.filter((day) => !metered.some((each) => each.day === day));
-    const leftOut = unread.length === 0 ? [] : [`Left out, nothing metered: ${unread.map((day) => day.slice(5)).join(', ')} (add --day ${unread[0]} to read one).`];
-    const header = `Loop patterns, ${who}: count, then W (UTC days)`;
-    if (metered.length === 0) {
-        return [header, ...leftOut];
-    }
-    const cell = (row, usage) => {
-        const count = formatCount(usage.patterns[row.count]);
-        return row.w === undefined ? count : `${count} ${formatW(usage.patterns[row.w])}`;
+    const leftOut = (usage) => (source === 'metered' && usage.calls === 0 ? NOTHING_METERED : undefined);
+    return dayTable(`Loop patterns, ${who}: count, then W (UTC days)`, [...LOOP_ROWS.map(countRow), ALL_CALLS_ROW], days, totals, leftOut);
+}
+/** The W of a day's turns sorted by what started them; 0 for a day metered before 0.34.0 sorted them. */
+function sortedW(usage) {
+    return TURN_TRIGGERS.reduce((sum, trigger) => sum + usage.patterns[`${trigger}W`], 0);
+}
+/**
+ * `teamrig budget --burn`: where each day's W came from, the days as columns: the turns each trigger
+ * started and their W, calls that re-wrote most of their context to the cache, compactions, and read after
+ * read's share of the W. A stored day metered before 0.34.0 sorted its turns is left out and named, like one
+ * with nothing metered; on the day of the upgrade the W metered before it shows as not sorted.
+ */
+export function burnLines(who, days, totals, source) {
+    const leftOut = (usage) => {
+        if (source === 'recounted') {
+            return undefined;
+        }
+        if (usage.calls === 0) {
+            return NOTHING_METERED;
+        }
+        return sortedW(usage) === 0 ? BEFORE_SORTING : undefined;
     };
-    const table = [
-        ['', ...metered.map(({ day }) => day.slice(5))],
-        ...LOOP_ROWS.map((row) => [row.label, ...metered.map(({ usage }) => cell(row, usage))]),
-        ['all calls', ...metered.map(({ usage }) => `${formatCount(usage.calls)} ${formatW(usage.w)}`)],
+    const readShare = (usage) => (usage.w > 0 ? formatPct((usage.patterns.readChainW / usage.w) * 100) : '-');
+    const rows = [
+        ...TURN_ROWS.map(countRow),
+        { label: 'not sorted (before 0.34.0), W', cell: (usage) => formatW(Math.max(0, usage.w - sortedW(usage))) },
+        ...CACHE_ROWS.map(countRow),
+        { label: `read after read, % of W (goal < ${READ_CHAIN_GOAL_PCT}%)`, cell: readShare },
+        ALL_CALLS_ROW,
     ];
-    const widths = metered.map((_, index) => Math.max(...table.map((row) => (row[index + 1] ?? '').length)));
-    const labelWidth = Math.max(...table.map((row) => (row[0] ?? '').length));
-    const lines = table.map((row) => [(row[0] ?? '').padEnd(labelWidth), ...row.slice(1).map((text, index) => text.padStart(widths[index] ?? 0))].join('  ').trimEnd());
-    return [header, ...lines, ...leftOut];
+    return dayTable(`Burn, ${who}: count, then W (UTC days)`, rows, days, totals, leftOut);
 }

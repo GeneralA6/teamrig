@@ -84,7 +84,10 @@ class TranscriptFold {
         }
         if (line.kind === 'prompt') {
             this.close();
-            this.tracker.prompt();
+            this.tracker.prompt(line.trigger, this.tally.counter(line.at === undefined ? undefined : dayOf(line.at)));
+        }
+        else if (line.kind === 'compact') {
+            this.tally.counter(line.at === undefined ? undefined : dayOf(line.at))('compactions', 1);
         }
         else if (line.kind === 'results') {
             const day = this.call?.day ?? (line.at === undefined ? undefined : dayOf(line.at));
@@ -102,6 +105,7 @@ class TranscriptFold {
         if (open !== null && line.key !== undefined && line.key === open.key) {
             const added = Math.max(0, line.usage.output - open.output) * WEIGHTS.output;
             this.tally.day(open.day).w += added;
+            this.tracker.charged(added, this.tally.counter(open.day));
             this.call = { ...open, output: Math.max(open.output, line.usage.output), w: open.w + added };
             this.tracker.callJoined(line.tools);
             return;
@@ -116,7 +120,8 @@ class TranscriptFold {
         const totals = this.tally.day(day);
         totals.w += w;
         totals.calls += 1;
-        this.tracker.callStarted(context, line.tools, this.tally.counter(day));
+        this.tracker.charged(w, this.tally.counter(day));
+        this.tracker.callStarted(line.usage, line.tools, this.tally.counter(day));
         this.call = { key: line.key ?? null, day, output: line.usage.output, context, w };
     }
     /** The open call is complete: its loop patterns are judged now, against the call before it. */
