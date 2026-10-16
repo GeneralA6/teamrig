@@ -2,10 +2,13 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { formatConfig } from '../config/load.ts';
+import type { RunOutcome, RunRequest } from '../open/processes.ts';
 import { decodePrompt, defaultPrompt, encodePrompt } from '../open/prompt.ts';
 import { shellCommand } from '../open/quote.ts';
 import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
-import { APP, CliHarness, KIT, TEAM, USER_HOME, type RunOptions } from '../testing/cli-harness.ts';
+import type { RestartRequest } from '../refresh/state.ts';
+import { RefreshStore } from '../refresh/store.ts';
+import { APP, CliHarness, KIT, TEAM, TEAM_HOME, USER_HOME, type RunOptions } from '../testing/cli-harness.ts';
 import { teamConfigOf, treeHarness } from '../testing/team-tree.ts';
 import { EXIT } from './runtime.ts';
 
@@ -146,7 +149,27 @@ describe('teamrig launch', () => {
   const CLAUDE = '/usr/local/bin/claude';
   const LAUNCH = ['launch', 'alpha', '--team', 'app', '--project', APP];
   const ON_PATH = new FakePathProbe({ folders: [APP], files: [CLAUDE] });
-  const SESSION_ENV = { TEAMRIG_HOME: KIT, PATH: '/usr/local/bin', TEAMRIG_SESSION: 'alpha', TEAMRIG_TEAM: 'app' };
+  const SESSION_ENV = { TEAMRIG_HOME: KIT, PATH: '/usr/local/bin', TEAMRIG_SESSION: 'alpha', TEAMRIG_TEAM: 'app', TEAMRIG_LAUNCHED: 'alpha' };
+  const ENDING: RestartRequest = { phase: 'ending', at: '2030-01-08T10:00:00.000Z', pid: 4100, claudeSession: 'c1', transcript: null, cwd: null, supervised: true };
+
+  /** Claude Code whose first run the automatic restart ends, leaving `request` as `restart` does. */
+  class RestartedOnce extends FakeProcesses {
+    private readonly request: RestartRequest;
+    readonly store: RefreshStore;
+
+    constructor(kit: CliHarness, request: RestartRequest) {
+      super();
+      this.request = request;
+      this.store = new RefreshStore(kit.files, { refresh: join(TEAM_HOME, 'state', 'refresh'), handover: join(TEAM_HOME, 'handover') });
+    }
+
+    override async run(request: RunRequest): Promise<RunOutcome> {
+      if (this.ran.length === 0) {
+        await this.store.setRestart('alpha', this.request);
+      }
+      return super.run(request);
+    }
+  }
 
   function launch(processes: FakeProcesses, extra: readonly string[] = [], options: RunOptions = {}) {
     return new CliHarness(TEAM).run([...LAUNCH, ...extra], { probe: ON_PATH, processes, env: { PATH: '/usr/local/bin', CLAUDECODE: '1' }, ...options });
@@ -158,6 +181,37 @@ describe('teamrig launch', () => {
     assert.deepEqual(result, { code: EXIT.ok, stdout: [`Starting Claude Code as app-alpha (session alpha of team app) in ${APP}, on the default model and effort`], stderr: [] });
     assert.deepEqual(processes.ran, [{ command: CLAUDE, args: ['--name', 'app-alpha', 'Build the "form"; then test'], cwd: APP, env: SESSION_ENV }]);
     assert.deepEqual(processes.started, []);
+  });
+
+  it('starts Claude Code again with the default prompt once the automatic restart ended it, then ends with it', async () => {
+    const kit = new CliHarness(TEAM);
+    const processes = new RestartedOnce(kit, ENDING);
+    const result = await kit.run([...LAUNCH, '--encoded-prompt', encodePrompt('Build it')], { probe: ON_PATH, processes, env: { PATH: '/usr/local/bin' } });
+    assert.deepEqual(result, {
+      code: EXIT.ok,
+      stdout: [
+        `Starting Claude Code as app-alpha (session alpha of team app) in ${APP}, on the default model and effort`,
+        'Starting Claude Code again as app-alpha with a fresh context: it reads its handover first',
+      ],
+      stderr: [],
+    });
+    assert.deepEqual(
+      processes.ran.map((run) => run.args.at(-1)),
+      ['Build it', defaultPrompt('app', 'alpha')],
+    );
+    assert.equal(await processes.store.restart('alpha'), undefined);
+  });
+
+  it('ends with Claude Code when no restart ended it for launch', async () => {
+    const unsupervised: RestartRequest = { ...ENDING, supervised: false };
+    const pending: RestartRequest = { ...ENDING, phase: 'pending' };
+    for (const request of [unsupervised, pending]) {
+      const kit = new CliHarness(TEAM);
+      const processes = new RestartedOnce(kit, request);
+      assert.equal((await kit.run(LAUNCH, { probe: ON_PATH, processes, env: { PATH: '/usr/local/bin' } })).code, EXIT.ok);
+      assert.equal(processes.ran.length, 1, request.phase);
+      assert.deepEqual(await processes.store.restart('alpha'), request, 'left for the restart that owns it');
+    }
   });
 
   it('starts the lead on Opus at xhigh effort, and any session on its configured model and effort', async () => {

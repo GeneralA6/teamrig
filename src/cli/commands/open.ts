@@ -11,6 +11,8 @@ import { openTab, type OpenOutcome } from '../../open/open-tab.ts';
 import { decodePrompt, defaultPrompt, encodePrompt, promptProblem } from '../../open/prompt.ts';
 import { shellCommand } from '../../open/quote.ts';
 import { sessionEnv } from '../../open/session-env.ts';
+import type { RunOutcome } from '../../open/processes.ts';
+import { RefreshStore } from '../../refresh/store.ts';
 import type { Terminal } from '../../open/terminals.ts';
 import { onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
 import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf } from '../kit.ts';
@@ -152,11 +154,41 @@ function launchPrompt(encoded: string | undefined, team: string, id: string): st
   return checkedPrompt(prompt);
 }
 
+/** Whether the automatic restart ended this session's Claude Code for launch to start again; takes its request if so. */
+async function restartTaken(store: RefreshStore, id: string): Promise<boolean> {
+  const request = await store.restart(id);
+  if (request?.phase !== 'ending' || !request.supervised) {
+    return false;
+  }
+  await store.clearRestart(id);
+  return true;
+}
+
+/** Launch's exit for how Claude Code ended. */
+function claudeExit(runtime: CliRuntime, command: string, result: RunOutcome): ExitCode {
+  switch (result.kind) {
+    case 'exited':
+      if (result.code === 0) {
+        return EXIT.ok;
+      }
+      runtime.out.stderr(`FAILED Claude Code exited with code ${result.code}`);
+      return EXIT.failed;
+    case 'missing':
+      runtime.out.stderr(`FAILED ${command} is gone`);
+      return EXIT.failed;
+    case 'failed':
+      runtime.out.stderr(`FAILED ${command}: ${result.error}`);
+      return EXIT.failed;
+  }
+}
+
 /**
  * `launch <id> --team <team> --project <dir> [--home <dir>] [--encoded-prompt <text>]`: what a tab
  * that `open` started runs. It sets the session's variables and starts Claude Code under the
  * session's name, on its model and effort from the team config's `launch`, with its first prompt,
- * its input and output on this terminal.
+ * its input and output on this terminal. `$TEAMRIG_LAUNCHED` tells the Stop hook that launch runs it:
+ * when the automatic context refresh ended Claude Code for a fresh start, launch starts it again in
+ * this tab with the default prompt, and the new session reads its handover first.
  */
 export async function launch(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const id = idFlag('session', onePositional(args, 'id'));
@@ -166,7 +198,7 @@ export async function launch(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     throw new RefusedError(`the project folder ${project} does not exist`);
   }
   const prompt = launchPrompt(args.flags.get('encoded-prompt'), team, id);
-  const env = sessionEnv(runtime.env, { id, team, home: args.flags.get('home') });
+  const env = { ...sessionEnv(runtime.env, { id, team, home: args.flags.get('home') }), [ENV.launched]: id };
   const sessionRuntime: CliRuntime = { ...runtime, env };
   const kit = await openKit(sessionRuntime, team);
   const config = requireConfig(kit, sessionRuntime, 'read');
@@ -183,19 +215,14 @@ export async function launch(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   const settings = launchOf(config, id);
   runtime.out.stdout(`Starting Claude Code as ${name} (session ${id} of team ${team}) in ${project}, on ${describeLaunch(settings)}`);
   const { command, prefix } = claude.program;
-  const result = await runtime.processes.run({ command, args: [...prefix, ...launchFlags(settings), '--name', name, prompt], cwd: project, env });
-  switch (result.kind) {
-    case 'exited':
-      if (result.code === 0) {
-        return EXIT.ok;
-      }
-      runtime.out.stderr(`FAILED Claude Code exited with code ${result.code}`);
-      return EXIT.failed;
-    case 'missing':
-      runtime.out.stderr(`FAILED ${command} is gone`);
-      return EXIT.failed;
-    case 'failed':
-      runtime.out.stderr(`FAILED ${command}: ${result.error}`);
-      return EXIT.failed;
+  const store = new RefreshStore(runtime.files, kit.paths);
+  let first = prompt;
+  for (;;) {
+    const result = await runtime.processes.run({ command, args: [...prefix, ...launchFlags(settings), '--name', name, first], cwd: project, env });
+    if (!(await restartTaken(store, id))) {
+      return claudeExit(runtime, command, result);
+    }
+    runtime.out.stdout(`Starting Claude Code again as ${name} with a fresh context: it reads its handover first`);
+    first = defaultPrompt(team, id);
   }
 }
