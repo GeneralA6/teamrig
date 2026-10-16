@@ -144,4 +144,4 @@ You may change a task's owner, priority, due date, week and plan order (`--after
 
 - Do not write the team config or `.teamrig.json` by hand: `team create` checks both before it writes, and a repeat with the same team changes nothing.
 - `teamrig team create ... --dry-run` prints what it would write and writes nothing.
-- After a `/clear` in this tab, run `teamrig inbox read --session lead` again: a cleared tab is a new Claude Code session, not yet tied to the lead.
+- After `inbox read --session lead`, the next prompt titles this tab with the lead's name, and a `/clear` keeps that title, so the new Claude Code session it starts binds to the lead by itself. If its start note does not say the tab was bound, run `teamrig inbox read --session lead` again.

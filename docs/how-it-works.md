@@ -139,11 +139,14 @@ sequenceDiagram
   session name another team uses.
 - The tab that ran the setup becomes the lead without a restart. `teamrig inbox read --session lead` ties its Claude
   Code session to the lead, so the hooks still know it after a compact or a resume, and `teamrig rules --session lead`
-  gives it the rules it missed at start. After a `/clear` it runs `inbox read` once more.
+  gives it the rules it missed at start. Its next prompt titles the tab with the lead's name, and Claude Code keeps
+  that title across a `/clear`, so the session a `/clear` starts binds itself to the lead by it.
 - A tab you start by hand binds itself when its Claude Code title (`claude --name`, `/rename`) is a session's id or
   current name on the team of the folder it started in, and on no other team of the tree. The hooks then know it as
   `inbox read` would, but nothing is marked read. A title that names no session, or sessions of two teams, binds
   nothing, and the prompt hook says once how to bind the tab. `$TEAMRIG_SESSION` and an earlier binding always win.
+  A bound tab with no title gets its session's name as title at its next prompt (`sessionTitle` in the prompt
+  hook's answer); a tab with a title keeps it.
 - `teamrig open <session>` opens a tab in tmux (when run inside tmux), Windows Terminal, macOS Terminal, GNOME
   Terminal, Konsole or x-terminal-emulator, in that order; `open.terminal` in the config or `--terminal` picks one.
   The tab runs `teamrig launch`, which sets `$TEAMRIG_SESSION` and starts `claude --name <name> "<first prompt>"`,

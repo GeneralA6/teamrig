@@ -100,6 +100,12 @@ A title that names no session says so in the same line. A title such as `lead` t
 of the tree binds neither, and the line asks for the session's name instead (`teamrig who` lists them).
 `$TEAMRIG_SESSION` and an earlier binding always win over the title.
 
+A tab whose session is known (`$TEAMRIG_SESSION`, `inbox read`, a binding) but that has no title gets the session's
+current name as its Claude Code title at its next prompt: the hook answers in JSON, with its lines as
+`additionalContext` and the name as `sessionTitle`. Claude Code keeps a title across `/clear`, so the session a
+`/clear` starts binds itself by it at its start. A tab with a title keeps it: the title is the user's, and a new one
+is a rename (below). A title the hook cannot read is left alone.
+
 The same hook notices when the user renamed this Claude Code session (`/rename` or `--name`) and records the new
 name, in lowercase, as the session's team name, as `teamrig rename` would; a title equal to the session's id or
 current name in any case only binds the tab and renames nothing. If the `.teamrig.json` pointer is broken it says so in one line.
