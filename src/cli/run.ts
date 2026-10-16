@@ -66,8 +66,8 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'team tree': { flags: [], load: async () => (await teamCommands()).teamTree },
   rules: { flags: ['session'], load: async () => (await rulesCommands()).rules },
   start: { flags: ['session'], switches: ['all'], load: async () => (await startCommands()).start },
-  open: { flags: ['prompt', 'terminal', 'project'], load: async () => (await openCommands()).open },
-  launch: { flags: ['team', 'project', 'home', 'encoded-prompt'], load: async () => (await openCommands()).launch },
+  open: { flags: ['prompt', 'terminal', 'project'], switches: ['resume'], load: async () => (await openCommands()).open },
+  launch: { flags: ['team', 'project', 'home', 'encoded-prompt', 'resume'], load: async () => (await openCommands()).launch },
   restart: { flags: ['team', 'at', 'project'], load: async () => (await restartCommands()).restart },
   who: { flags: [], load: async () => (await teamCommands()).who },
   rename: { flags: ['session'], load: async () => (await teamCommands()).rename },
@@ -126,9 +126,10 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       writes the team config and ties the project folder to the team (the lead defaults to lead);
       --parent hangs it under that team's lead in a tree of teams
   team tree                    the tree of teams this team is in, with each team's lead and sessions
-  open <id|name|team/id> [--prompt "<first prompt>"] [--terminal <name>] [--project <dir>]
+  open <id|name|team/id> [--prompt "<first prompt>"] [--terminal <name>] [--project <dir>] [--resume]
       a new terminal tab running Claude Code as that session (team/id: another team of the tree);
-      with no terminal it prints the command
+      with no terminal it prints the command; a rehired session reads the handover it left first, or,
+      with --resume, goes on in its last Claude Code session when that is small and recent enough
   rules [--session <id|name>]  the team rules and who the session is, as a session start gives them
   start [--session <id|name>] [--all]   the start of a work block in one call: the UTC time, the
       unread inbox lines (marked read), the session's tasks, the check flags it acts on (the lead: all)
@@ -167,8 +168,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       (the session itself or the lead)
   hire <id> --scope "<its job>" --reason "<why>" [--name <name>] [--model <model>] [--effort <level>]
       [--daily-pct <pct>] [--review <YYYY-MM-DD>] [--approved-by "<who>"] [--yes]
-      (the lead only) adds a temporary session within hiring.policy and its caps, on the lead's model and
-      effort unless given; without --yes it shows the hire and writes nothing
+      (the lead only) adds a temporary session, or hires a retired one back, within hiring.policy and its
+      caps, on the lead's model and effort unless given; without --yes it shows the hire and writes nothing
   retire <id|name> [--to <heir>] [--no-handover "<why>"] [--reason "<why>"] [--yes]
       (the lead, or a hired session itself under hiring.policy automatic once its tasks are closed) takes a
       session off the team; its open tasks go to --to, and it needs its handover unless --no-handover; its
@@ -212,7 +213,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       (run by Claude Code, hook JSON on stdin)
   hook clear-dir | hook clear-claim [--hold]
       (run by the plugin's mod: the automatic restart's /clear in the tab)
-  launch <id> --team <team> --project <dir> [--home <dir>] [--encoded-prompt <text>]
+  launch <id> --team <team> --project <dir> [--home <dir>] [--encoded-prompt <text>] [--resume <session>]
       (run by the tab that open starts: sets the session and starts Claude Code)
   restart <id> --team <team> --at <time> --project <dir>
       (run hidden by the Stop hook: starts the session fresh once its handover is written and it is idle)
