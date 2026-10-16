@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { decodePrompt, defaultPrompt, encodePrompt, PROMPT_MAX, promptProblem, refreshPrompt } from './prompt.ts';
+import { decodePrompt, defaultPrompt, encodePrompt, PROMPT_MAX, promptProblem, refreshPrompt, rehirePrompt, resumePrompt } from './prompt.ts';
 
 describe('defaultPrompt', () => {
   it('names the session and its team, and starts with the inbox and the task list', () => {
@@ -47,5 +47,19 @@ describe('encodePrompt and decodePrompt', () => {
     // Valid letters, but not what encodePrompt gives for any text: a lone trailing character.
     assert.equal(decodePrompt('QUJDa'), undefined);
     assert.equal(decodePrompt(''), '');
+  });
+});
+
+describe('rehirePrompt and resumePrompt', () => {
+  it('send a rehired session to the handover it left, or, resumed, to its moved tasks', () => {
+    const fresh = rehirePrompt('shop', 'api', '/cfg/handover/api.md');
+    assert.equal(
+      fresh,
+      'You are the api session of team shop, hired back after a retire. Read the handover your last run left, /cfg/handover/api.md, first, then run `teamrig inbox read` and `teamrig list --session api`, and start your first open task.',
+    );
+    const resumed = resumePrompt('shop', 'api');
+    assert.match(resumed, /^You are the api session of team shop, hired back after a retire and resumed in your last Claude Code session\. Your tasks may have moved since: run `teamrig inbox read`/);
+    assert.equal(promptProblem(fresh), undefined);
+    assert.equal(promptProblem(resumed), undefined);
   });
 });

@@ -8,7 +8,7 @@ import { shellCommand } from '../open/quote.ts';
 import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
 import type { RestartRequest } from '../refresh/state.ts';
 import { RefreshStore } from '../refresh/store.ts';
-import { APP, CliHarness, KIT, TEAM, TEAM_HOME, USER_HOME, type RunOptions } from '../testing/cli-harness.ts';
+import { APP, CLAUDE_SESSION, CliHarness, KIT, TEAM, TEAM_HOME, USER_HOME, type RunOptions } from '../testing/cli-harness.ts';
 import { teamConfigOf, treeHarness } from '../testing/team-tree.ts';
 import { EXIT } from './runtime.ts';
 
@@ -202,6 +202,16 @@ describe('teamrig launch', () => {
     assert.equal(await processes.store.restart('alpha'), undefined);
   });
 
+  it('resumes the Claude Code session it is given on the first start only: the restart starts fresh', async () => {
+    const kit = new CliHarness(TEAM);
+    const processes = new RestartedOnce(kit, ENDING);
+    const result = await kit.run([...LAUNCH, '--resume', CLAUDE_SESSION, '--encoded-prompt', encodePrompt('Go on')], { probe: ON_PATH, processes, env: { PATH: '/usr/local/bin' } });
+    assert.equal(result.code, EXIT.ok, result.stderr.join('\n'));
+    assert.equal(result.stdout[0], `Starting Claude Code as app-alpha (session alpha of team app) in ${APP}, on the default model and effort, resuming Claude Code session ${CLAUDE_SESSION}`);
+    assert.deepEqual(processes.ran[0]?.args, ['--resume', CLAUDE_SESSION, '--name', 'app-alpha', 'Go on']);
+    assert.deepEqual(processes.ran[1]?.args, ['--name', 'app-alpha', refreshPrompt('app', 'alpha', processes.store.handoverPath('alpha'))]);
+  });
+
   it('ends with Claude Code when no restart ended it for launch', async () => {
     const unsupervised: RestartRequest = { ...ENDING, supervised: false };
     const pending: RestartRequest = { ...ENDING, phase: 'pending' };
@@ -279,6 +289,7 @@ describe('teamrig launch', () => {
       [['launch', 'alpha', '--team', 'app'], '--project is required'],
       [[...LAUNCH, '--encoded-prompt', 'a+b'], '--encoded-prompt is not a prompt that teamrig open wrote'],
       [[...LAUNCH, '--encoded-prompt', encodePrompt('-p')], '--prompt: the prompt cannot start with -'],
+      [[...LAUNCH, '--resume', 'c1'], '--resume "c1" is not a Claude Code session id'],
     ] as const) {
       const result = await new CliHarness(TEAM).run(argv, { probe: ON_PATH });
       assert.equal(result.code, EXIT.usage, argv.join(' '));

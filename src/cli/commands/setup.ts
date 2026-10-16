@@ -1,6 +1,7 @@
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { SHIPPED_CONFIG_FORMAT } from '../../config/migrate.ts';
 import { ENV, KIT_NAME, resolveKitHome, teamPaths } from '../../core/home.ts';
+import { ENV_SOURCE } from '../../core/team.ts';
 import { describeRequirement } from '../../requirements/requirements.ts';
 import { applyTeamSetup, planTeamSetup, teamSpecOf, type FileStep, type SetupPlan } from '../../setup/team-create.ts';
 import { onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
@@ -18,6 +19,11 @@ export async function projectOf(runtime: CliRuntime, flag: string | undefined): 
     throw new RefusedError(`the project folder ${project} does not exist`);
   }
   return project;
+}
+
+/** The folder a team's session works in: `--project`, else the folder holding the team's pointer, else as {@link projectOf}. */
+export function teamProjectOf(runtime: CliRuntime, flag: string | undefined, from: string): Promise<string> {
+  return projectOf(runtime, flag ?? (from === ENV_SOURCE ? undefined : dirname(from)));
 }
 
 /** One line per file: what the run wrote, or would write, and what it left as it was. */

@@ -16,6 +16,19 @@ export function refreshPrompt(team: string, id: string, handoverPath: string): s
   return `You are the ${id} session of team ${team}, started fresh after a context refresh. Read your handover ${handoverPath} first and carry on with its next steps, then run \`${KIT_NAME} inbox read\` and \`${KIT_NAME} list --session ${id}\`.`;
 }
 
+/**
+ * The first prompt of a rehired session opened fresh: the handover its last run left at its retire first, so it
+ * knows what it did and where that lives, then the inbox and the task list.
+ */
+export function rehirePrompt(team: string, id: string, handoverPath: string): string {
+  return `You are the ${id} session of team ${team}, hired back after a retire. Read the handover your last run left, ${handoverPath}, first, then run \`${KIT_NAME} inbox read\` and \`${KIT_NAME} list --session ${id}\`, and start your first open task.`;
+}
+
+/** The first prompt of a rehired session resumed in its last Claude Code session: it knows its work, but its tasks may have moved. */
+export function resumePrompt(team: string, id: string): string {
+  return `You are the ${id} session of team ${team}, hired back after a retire and resumed in your last Claude Code session. Your tasks may have moved since: run \`${KIT_NAME} inbox read\` and \`${KIT_NAME} list --session ${id}\`, and start your first open task.`;
+}
+
 /** Why a prompt cannot be passed to Claude Code as its first message, or undefined when it can. */
 export function promptProblem(prompt: string): string | undefined {
   if (prompt.trim() === '') {
