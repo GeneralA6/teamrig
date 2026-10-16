@@ -43,6 +43,7 @@ const EXPECTED = {
   'config validate': 'read',
   'config migrate': 'write',
   'commits check': 'read',
+  'worktree remove': 'write',
   test: 'write',
   'hook push-guard': 'internal',
   'hook cold-send': 'internal',
