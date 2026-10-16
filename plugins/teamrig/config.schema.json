@@ -200,6 +200,15 @@
         }
       }
     },
+    "contextFiles": {
+      "description": "Character budgets for the text Claude Code puts in every call's context; teamrig doctor flags a file over its budget.",
+      "type": "object",
+      "properties": {
+        "maxClaudeMdChars": { "type": "integer", "minimum": 500, "maximum": 500000, "default": 12000 },
+        "maxMemoryIndexChars": { "type": "integer", "minimum": 500, "maximum": 500000, "default": 6000 },
+        "maxSkillListingChars": { "type": "integer", "minimum": 500, "maximum": 500000, "default": 4000 }
+      }
+    },
     "lock": {
       "type": "object",
       "properties": {
