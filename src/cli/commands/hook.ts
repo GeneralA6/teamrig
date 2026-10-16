@@ -1,8 +1,9 @@
+import { tmpdir } from 'node:os';
 import { launchOf } from '../../config/launch.ts';
 import { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { errorMessage, isRecord, stringField, type JsonRecord } from '../../core/guards.ts';
-import { KIT_NAME } from '../../core/home.ts';
+import { claudeConfigDir, claudeTempDir, KIT_NAME } from '../../core/home.ts';
 import { resolveTeam, type TeamResolution } from '../../core/team.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
 import { boundPromptNote, boundStartNote } from '../../hooks/bind.ts';
@@ -22,6 +23,7 @@ import { adoptTitle, promptNote, sessionStartNote, type TitleOutcome } from '../
 import { JsonlRenameLog } from '../../names/log.ts';
 import { TRANSCRIPT_TAIL_BYTES } from '../../names/title.ts';
 import { decideStart, decideStop, handoverHashOf, type BoundaryFacts, type StopContext, type StopDecision } from '../../refresh/decide.ts';
+import { carryLines, readCarry } from '../../refresh/carry.ts';
 import { readRunningWork } from '../../refresh/running.ts';
 import { RefreshStore } from '../../refresh/store.ts';
 import { readContextTokens } from '../../refresh/usage.ts';
@@ -311,6 +313,22 @@ function rosterIdOf(roster: Roster, session: string | undefined): string | undef
 }
 
 /**
+ * What the session that wrote the handover leaves for this fresh one: its scheduled jobs and wake-up, which
+ * ended with its process, and its scratchpad and plan file. A transcript it cannot read is said, never thrown:
+ * the note itself must still reach the session.
+ */
+async function carriedLinesOf(runtime: CliRuntime, transcript: string): Promise<readonly string[]> {
+  const now = runtime.clock.now();
+  try {
+    const places = { tempDir: claudeTempDir(runtime.env, tmpdir()), claudeDir: claudeConfigDir(runtime.env, runtime.userHome) };
+    const carry = await readCarry(runtime.files, transcript, now, places);
+    return carry === undefined ? [] : carryLines(carry, now);
+  } catch (error) {
+    return [`${KIT_NAME} could not read what your old session left in ${transcript} (${errorMessage(error)}); check CronList against your handover.`];
+  }
+}
+
+/**
  * A fresh start (`/clear`, a new process) after the session's handover was marked ready: the note
  * that points it at the handover, given once. A start that keeps the old context (compact, resume)
  * leaves the handover waiting; a small context again (a compaction too) starts the task count over.
@@ -325,7 +343,8 @@ async function refreshNoteOf(runtime: CliRuntime, kit: Kit, config: KitConfig, r
     const store = new RefreshStore(runtime.files, kit.paths);
     const source = isRecord(payload) ? stringField(payload, 'source') : undefined;
     const now = new Date(runtime.clock.now()).toISOString();
-    const decision = decideStart(await store.state(id), source, config.refresh, store.handoverPath(id), now);
+    const state = await store.state(id);
+    const decision = decideStart(state, source, config.refresh, store.handoverPath(id), now);
     if (decision.kind === 'none') {
       return undefined;
     }
@@ -334,7 +353,8 @@ async function refreshNoteOf(runtime: CliRuntime, kit: Kit, config: KitConfig, r
       return undefined;
     }
     await store.clearRequest(id);
-    return decision.note;
+    const carried = state?.phase === 'ready' && state.transcript !== null ? await carriedLinesOf(runtime, state.transcript) : [];
+    return [decision.note, ...carried].join('\n');
   } catch (error) {
     return `${KIT_NAME} could not check for a refresh handover (${errorMessage(error)}); if you wrote one before a /clear, read it first.`;
   }
@@ -412,6 +432,7 @@ async function refreshDecisionOf(runtime: CliRuntime, scope: StopScope, payload:
     handoverPath: store.handoverPath(id),
     command: KIT_NAME,
     canRestart: config.refresh.autoRestart && target !== undefined,
+    transcript: stringField(payload, 'transcript_path') ?? null,
   };
   const first = decideStop(state, context);
   const decided = first.kind === 'measure' ? decideStop(state, context, await boundaryFactsOf(runtime, roster, store, id, payload)) : first;

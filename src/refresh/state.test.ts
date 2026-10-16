@@ -10,7 +10,8 @@ const EVERY_PHASE: readonly RefreshState[] = [
   { phase: 'idle', task: 'T12', at: AT, tokens: null, finished: 0 },
   { phase: 'asked', task: 'T12', at: AT, tokens: 262_000, handoverHash: '0123456789abcdef' },
   { phase: 'asked', task: 'T12', at: AT, tokens: null, handoverHash: null },
-  { phase: 'ready', task: 'T12', at: AT, noticed: false },
+  { phase: 'ready', task: 'T12', at: AT, noticed: false, transcript: null },
+  { phase: 'ready', task: 'T12', at: AT, noticed: true, transcript: '/claude/projects/p/s.jsonl' },
   { phase: 'refreshed', task: 'T12', at: AT },
 ];
 

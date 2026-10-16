@@ -92,7 +92,7 @@ class World {
 
   /** The Stop hook's work: the session waits for a fresh start and asked for this restart. */
   async arm(overrides: Partial<RestartRequest> = {}): Promise<this> {
-    await this.store.setState('alpha', { phase: 'ready', task: 'T3', at: AT, noticed: true });
+    await this.store.setState('alpha', { phase: 'ready', task: 'T3', at: AT, noticed: true, transcript: null });
     await this.store.setRestart('alpha', {
       phase: 'pending',
       at: AT,

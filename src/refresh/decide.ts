@@ -24,6 +24,8 @@ export interface StopContext {
   readonly command: string;
   /** The hook can restart the session once its handover is written: `refresh.autoRestart` is on and Claude Code gave what it needs. */
   readonly canRestart: boolean;
+  /** The session's Claude Code transcript, recorded with the notice so the fresh start can read what it leaves; null when Claude Code gave none. */
+  readonly transcript: string | null;
 }
 
 /** What the Stop hook reads only at a boundary it has not judged yet, or before saying the handover is written. */
@@ -67,7 +69,7 @@ export function noticeOf(state: ReadyState, context: StopContext, restart: boole
     : 'type /clear for a fresh start';
   return {
     kind: 'notice',
-    state: { ...state, noticed: true },
+    state: { ...state, noticed: true, transcript: context.transcript },
     message: `${context.command}: ${name} finished ${state.task} and wrote its handover; ${next}`,
     title: context.settings.tabTitle ? `${name}: ${restart ? 'restarting' : 'type /clear'}` : undefined,
     restart,
@@ -212,7 +214,7 @@ export function decideReady(state: RefreshState | undefined, handover: string | 
   if (handoverHashOf(handover) === state.handoverHash) {
     return { kind: 'refused', reason: `${handoverPath} is the handover from before; write this refresh's handover there` };
   }
-  return { kind: 'ready', state: { phase: 'ready', task: state.task, at: now, noticed: false } };
+  return { kind: 'ready', state: { phase: 'ready', task: state.task, at: now, noticed: false, transcript: null } };
 }
 
 /** Starts that drop the old context; a `compact`, `resume` or `fork` start keeps it, so the handover waits. */
@@ -248,7 +250,7 @@ export function decideStart(
   }
   return {
     kind: 'inject',
-    note: `You were refreshed after ${state.task}; read your handover first: ${handoverPath}`,
+    note: `You were refreshed after ${state.task}; read your handover first: ${handoverPath}. Then carry on with its next steps.`,
     state: { phase: 'refreshed', task: state.task, at: now },
   };
 }

@@ -109,11 +109,19 @@ describe('runCli: context refresh', () => {
     });
     assert.deepEqual(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload() }), SILENT, 'the notice shows once');
 
-    const note = `You were refreshed after T1; read your handover first: ${HANDOVER('alpha')}`;
+    const note = `You were refreshed after T1; read your handover first: ${HANDOVER('alpha')}. Then carry on with its next steps.`;
+    const cron = { cron: '3 13 * * *', prompt: 'budget check', recurring: true };
+    await kit.files.append(
+      TRANSCRIPT,
+      `${JSON.stringify({ type: 'assistant', timestamp: '2030-01-08T09:00:00.000Z', message: { content: [{ type: 'tool_use', id: 'toolu_cron', name: 'CronCreate', input: cron }] } })}\n` +
+        `${JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'toolu_cron', content: 'ok' }] }, toolUseResult: { id: 'c1', humanSchedule: cron.cron, recurring: true } })}\n`,
+    );
     for (const source of ['compact', 'resume']) {
       assert.ok(!contextOf(await kit.run(['hook', 'session-start'], { ...AS_ALPHA, stdin: startPayload(source) })).includes(note), source);
     }
-    assert.ok(contextOf(await kit.run(['hook', 'session-start'], { ...AS_ALPHA, stdin: startPayload('clear') })).includes(note));
+    const fresh = contextOf(await kit.run(['hook', 'session-start'], { ...AS_ALPHA, stdin: startPayload('clear') }));
+    assert.ok(fresh.includes(note));
+    assert.ok(fresh.includes('- cron "3 13 * * *", recurring true, prompt "budget check"'), 'the job the old process held is listed to make again');
     assert.ok(!contextOf(await kit.run(['hook', 'session-start'], { ...AS_ALPHA, stdin: startPayload('startup') })).includes(note), 'once');
     assert.match((await kit.files.read(STATE('alpha'))) ?? '', /"phase":"refreshed"/);
   });
