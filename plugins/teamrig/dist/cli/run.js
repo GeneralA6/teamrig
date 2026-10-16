@@ -92,7 +92,7 @@ const COMMANDS = {
     'hook stop': { flags: [], load: async () => (await hookCommands()).stop },
     'hook refresh-wake': { flags: [], load: async () => (await refreshWakeCommand()).refreshWake },
     'hook clear-dir': { flags: [], load: async () => (await clearCommands()).clearDir },
-    'hook clear-claim': { flags: [], load: async () => (await clearCommands()).clearClaim },
+    'hook clear-claim': { flags: [], switches: ['hold'], load: async () => (await clearCommands()).clearClaim },
 };
 /** Each command's flags that take a value. The LLM guide test (tools/docs/llm-guide.test.ts) checks the guide documents exactly these. */
 export const COMMAND_FLAGS = Object.fromEntries(Object.entries(COMMANDS).map(([name, spec]) => [name, spec.flags]));
@@ -183,7 +183,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       test within tests.maxFailureChars; exit 0 when the command passed, 1 otherwise
   hook push-guard | hook cold-send | hook failed-send | hook loop-nudge | hook helper-gate | hook inbox-reminder | hook session-start | hook stop | hook refresh-wake
       (run by Claude Code, hook JSON on stdin)
-  hook clear-dir | hook clear-claim
+  hook clear-dir | hook clear-claim [--hold]
       (run by the plugin's mod: the automatic restart's /clear in the tab)
   launch <id> --team <team> --project <dir> [--home <dir>] [--encoded-prompt <text>]
       (run by the tab that open starts: sets the session and starts Claude Code)

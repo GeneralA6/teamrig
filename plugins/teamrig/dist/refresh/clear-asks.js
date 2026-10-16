@@ -2,7 +2,7 @@ import { join } from 'node:path';
 import { stringField } from "../core/guards.js";
 import { ID_PATTERN } from "../core/ids.js";
 import { parseObject } from "../core/jsonl.js";
-import { askFileOf, CLAIM_TAKEN, CLAIM_WITHDRAWN, outcomeFileOf } from "../mod/clear-hand.js";
+import { askFileOf, CLAIM_HELD, CLAIM_TAKEN, CLAIM_WITHDRAWN, outcomeFileOf } from "../mod/clear-hand.js";
 /**
  * The asks folder, under the kit home and not a team's: the mod knows only its Claude Code session, so
  * an ask is found by that id alone and names its team itself.
@@ -25,11 +25,16 @@ function parseClearAsk(text) {
     }
     return { team, id, at, askedAt };
 }
+const OUTCOMES = [CLAIM_TAKEN, CLAIM_HELD, CLAIM_WITHDRAWN];
+function outcomeOf(text) {
+    return OUTCOMES.find((outcome) => outcome === text.trim());
+}
 /**
  * Each Claude Code session's ask and its outcome (`<session>.ask`, `<session>.outcome`). The outcome is
- * created once (`createExclusive`): the mod's claim writes `taken`, the restart's withdraw `withdrawn`, and
- * whichever comes second learns that it lost, so a tab is never both cleared and ended. Callers check the
- * session id with `isClaudeSessionId` first; an unsafe one throws.
+ * created once (`createExclusive`): the mod's claim writes `taken`, its hold (a helper still runs) `held`,
+ * the restart's withdraw `withdrawn`, and whichever comes later learns that it lost, so a tab is never both
+ * cleared and ended, nor ended while it held the ask. Callers check the session id with `isClaudeSessionId`
+ * first; an unsafe one throws.
  */
 export class ClearAsks {
     files;
@@ -48,16 +53,22 @@ export class ClearAsks {
         const text = await this.files.read(this.askPath(claudeSession));
         return text === undefined ? undefined : parseClearAsk(text);
     }
-    /** True when this claim won the ask; false when the restart withdrew it first. */
+    /** True when this claim won the ask; false when it was answered first (the restart withdrew it). */
     async claim(claudeSession) {
         return this.files.createExclusive(this.outcomePath(claudeSession), CLAIM_TAKEN);
     }
-    /** True when the ask was taken back unclaimed; false when a tab claimed it first. */
+    /** True when this hold won the ask, so the restart neither clears nor ends the session; false when it was answered first. */
+    async hold(claudeSession) {
+        return this.files.createExclusive(this.outcomePath(claudeSession), CLAIM_HELD);
+    }
+    /** True when the ask was taken back unanswered; false when a tab claimed or held it first. */
     async withdraw(claudeSession) {
         return this.files.createExclusive(this.outcomePath(claudeSession), CLAIM_WITHDRAWN);
     }
-    async taken(claudeSession) {
-        return (await this.files.read(this.outcomePath(claudeSession)))?.trim() === CLAIM_TAKEN;
+    /** How the ask was answered; undefined while it is not (or the outcome is damaged). */
+    async outcome(claudeSession) {
+        const text = await this.files.read(this.outcomePath(claudeSession));
+        return text === undefined ? undefined : outcomeOf(text);
     }
     /** Removes the ask, then its outcome, so a tab looking meanwhile finds no ask before the outcome goes. */
     async close(claudeSession) {
