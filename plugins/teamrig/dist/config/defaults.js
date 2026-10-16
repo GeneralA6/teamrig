@@ -54,6 +54,7 @@ export const DEFAULT_COMMITS = {
  */
 export const DEFAULT_BUDGET = {
     enabled: false,
+    subagentWeight: 1,
     targetPct: 99.5,
     reservePct: 0.5,
     paceEndHoursBeforeReset: 1,
