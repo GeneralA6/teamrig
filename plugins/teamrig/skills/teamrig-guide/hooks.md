@@ -361,6 +361,18 @@ says the team rests), and the stronger of the two wins. Nothing else is ever hel
 finishes. The lead's own helpers, and those of a session the lead lifted (`teamrig budget lift`, always with a
 stop %), always go ahead. What each session was shown is kept in `state/usage/warn/<id>.json`.
 
+A burst ([teamrig burst start](commands.md#teamrig-burst-start)) comes the same way, once each. A session in it
+sees `Budget: the lead started a surplus burst ...` at its next turn end and a line when it ends; its model is
+told with the next prompt how to work in it (`teamrig burst: a surplus burst runs until ... Run up to 3 helpers at
+once, on independent tasks only; give each edit in a repo its own worktree, and integrate one change at a time.
+Helpers run on your model and effort, never a cheaper model or lower effort, and never skip a test or check.`) and,
+at its end, to finish the step in hand and start no new helpers. While it runs, the session's daily budget is at
+least the burst's, so the warnings and the helper gate above count against that; quiet hours still apply, and a
+lift wins over it. With no burst in force, the lead's model is told once a week when the surplus window is open
+and enough of the week is projected unused: `teamrig burst: about 10.3% of the week is projected unused at the
+pace end ...; preview one: teamrig burst start surplus --reason "<why>"`. The hooks only suggest a burst; a
+person starts it.
+
 ## Permissions
 
 teamrig never edits Claude Code's permission or auto-mode settings, and it adds no allow rules.

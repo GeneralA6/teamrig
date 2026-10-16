@@ -634,6 +634,10 @@ team's session has is refused, as Claude Code session names are machine-wide.
   `hiring.maxDailyPct` (3% of the week). A hire's daily budget is `--daily-pct`, else `hiring.dailyPct` (1%).
 - Its review day is `--review`, else `hiring.reviewDays` (7) days on.
 - When its job is done, retire it (`teamrig retire`).
+- A burst hire (`--burst`) is for the burst in force ([teamrig burst start](#teamrig-burst-start)), within that burst's
+  `--hires` as well as the caps above. It runs on the lead's model at no lower effort: another `--model` or a lower
+  `--effort` is refused. Under `hiring.policy` `owner` the burst's approver approves it unless `--approved-by`
+  names one. `teamrig check` flags it RETIRE-DUE once the burst is over.
 
 Hiring a retired id again is a rehire: the same command, with the same caps. It shows the retire it comes back
 from and its handover, and measures its last Claude Code session (the one that last ran `inbox read` as it): it can
@@ -652,6 +656,7 @@ Flags:
 - `--daily-pct <pct>`: its daily budget, in % of the week.
 - `--review <YYYY-MM-DD>`: its review day.
 - `--approved-by "<who>"`: who approved it; needed under `hiring.policy` `owner`.
+- `--burst`: hire it for the burst in force.
 - `--yes`: write it.
 
 Example:
@@ -1465,6 +1470,114 @@ LIFTED api to 6.0% today until the end of the day (UTC) or 97.0% of the week, wh
 
 A caller who is not the lead, a missing stop %, a stop % above the bounds, a week already at the stop % or an
 unknown week (no status line and no `budget.weeklyLimitW`) is `REFUSED` (exit 2).
+
+### teamrig burst
+
+Shows the team's burst policy (`burst.policy`), the week's use, the share of the week projected unused at the pace
+end, the burst in force with its hires, and what to run next. A burst is a time-boxed scale-out: for its time each
+session in it gets a bigger daily budget and may run more helpers at once. It only reads; only a person starts a
+burst ([teamrig burst start](#teamrig-burst-start)). The projection is the use so far plus the week's mean rate so
+far, nights included, until the pace end, against `budget.targetPct`.
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig burst
+```
+
+Output:
+
+```text
+POLICY burst.policy owner: the lead starts one once the owner approves it (--approved-by)
+WEEK 70.0% of the week used; the pace ends Mon 01-14 00:00 UTC, the reset is Mon 01-14 01:00 UTC
+SURPLUS about 10.3% of the week projected unused at the pace end (budget.targetPct 99.5%): worth a surplus burst now
+BURST none yet
+NEXT preview a surplus burst: teamrig burst start surplus --reason "<why>" --approved-by "<who>"
+```
+
+With a burst in force, the BURST line names it, who started it and why, and its hires. Outside the surplus window
+the SURPLUS line says when it opens, and the NEXT line offers a deadline burst instead.
+
+### teamrig burst start
+
+Starts a burst, the lead only. Without `--yes` it shows the burst and writes nothing. Its kind comes first:
+
+- `surplus`: for the week-end surplus. The whole team (or `--sessions`), from `burst.surplusHours` (48) before the
+  reset until the pace end, once `burst.minSparePct` (5%) of the week is projected unused. `--task` and `--by` are
+  refused.
+- `deadline`: for work due by a time. The owners of its `--task` tasks (or `--sessions`), until `--by`, at the
+  latest the reset; it needs `--stop-pct`. Its tasks must still be open: open, in progress, verifying or waiting.
+
+Each session in it gets a daily budget of at least its share of what is left to the stop %, over the burst's days
+(one day at least), and may run up to `--helpers` at once (`burst.maxHelpers`, 3). The lead may hire up to
+`--hires` sessions for it (`burst.maxHires`, 2; none unless set) with `teamrig hire --burst`. The stop % is at
+most `budget.targetPct`, so a burst never spends the incident reserve; it ends at its time, when the week reaches
+the stop %, or by `teamrig burst end`. Quiet hours still apply; a lift wins over it for its session. Each of its
+sessions is told once at its next turn, and its model is told how to work in it: independent tasks only, a
+worktree per repo edit, one integrate at a time, the same model and effort for its helpers, and no skipped test.
+The bursts are kept in the team's `state/usage/bursts.jsonl`.
+
+`burst.policy`: `owner` (the default) needs `--approved-by "<who>"`, after you ask the owner, as a burst spends
+more of the week; `lead` lets the lead start one; `off` refuses every burst. No value starts a burst by itself.
+
+Flags:
+
+- `--session <id|name>`: the caller; it must be the lead.
+- `--reason "<why>"`: required: why the team needs it.
+- `--sessions <ids>`: the sessions in it, comma-separated, instead of the whole team or its tasks' owners.
+- `--helpers <n>`: the most helpers each of its sessions runs at once; at most `burst.maxHelpers`.
+- `--hires <n>`: the most sessions the lead may hire for it; at most `burst.maxHires`.
+- `--stop-pct <pct>`: the week's use at which it ends; required for a deadline burst, else `budget.targetPct`.
+- `--by <HH:MM|date>`: a deadline burst's deadline: `HH:MM` today or `"YYYY-MM-DD HH:MM"`, UTC.
+- `--task <ids>`: a deadline burst's tasks, comma-separated; worked first.
+- `--approved-by "<who>"`: who approved it; needed under `burst.policy` `owner`.
+- `--yes`: start it.
+
+Example:
+
+```sh
+teamrig burst start surplus --reason "week-end surplus" --approved-by "the owner" --hires 1 --session lead --yes
+```
+
+Output:
+
+```text
+STARTED a surplus burst until Mon 01-14 00:00 UTC or 99.5% of the week: shop-lead, shop-api, shop-web each have a daily budget of at least 6.6%, up to 3 helpers at once, 1 hire for the team.
+  the week is at 70.0%; the burst may take it to 99.5% by Mon 01-14 00:00 UTC (budget.targetPct 99.5%)
+NEXT its sessions read it at their next turn; end it early: teamrig burst end --reason "<why>"; hire for it: teamrig hire <id> --burst --scope "<its job>" --reason "<why>"
+```
+
+A caller who is not the lead, a burst the policy refuses, another burst in force, a surplus burst outside its
+window or with too little projected unused, a deadline burst without a stop % or a deadline ahead, a task that is
+not open, caps above the team's, or an unknown week is `REFUSED` (exit 2). An unknown kind, a bad count or time,
+or `--task` on a surplus burst is a usage error (exit 64).
+
+### teamrig burst end
+
+Ends the burst in force early, the lead only. Its sessions' daily budgets are the shared ones again from their next
+turn, their models are told to wind down, and its hires are due to retire (`teamrig check` lists them).
+
+Flags:
+
+- `--session <id|name>`: the caller; it must be the lead.
+- `--reason "<why>"`: required: why it ends early.
+
+Example:
+
+```sh
+teamrig burst end --reason "the release shipped" --session lead
+```
+
+Output:
+
+```text
+ENDED the surplus burst started Sat 01-12 12:00 UTC: its sessions' daily budgets are the shared ones again
+NEXT retire its hires: teamrig retire importer
+```
+
+With no burst in force, or a caller who is not the lead, it is `REFUSED` (exit 2).
 
 ### teamrig statusline
 
