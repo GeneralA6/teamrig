@@ -146,14 +146,18 @@ function shown(lines: readonly string[]): string[] {
   return more > 0 ? [...lines.slice(0, SHOWN_STEPS), `... and ${more} more`] : [...lines];
 }
 
-/** One step on one line; a title is outside input, so it is printed quoted, as data. */
+/** One step on one line; a title is outside input, so it is printed quoted, as data, and a description only by its length. */
 export function stepLine(step: SyncStep, id: string): string {
   switch (step.kind) {
     case 'add':
       return `ADD ${id} ${step.ref} ${priorityText(step.input.priority)} ${step.input.owner}: ${JSON.stringify(step.input.title)}`;
     case 'update': {
-      const { title, priority } = step.changes;
-      const fields = [...(title === undefined ? [] : [`title ${JSON.stringify(title)}`]), ...(priority === undefined ? [] : [`priority ${priorityText(priority)}`])];
+      const { title, description, priority } = step.changes;
+      const fields = [
+        ...(title === undefined ? [] : [`title ${JSON.stringify(title)}`]),
+        ...(description === undefined ? [] : [description === null ? 'description none' : `description (${description.length} characters)`]),
+        ...(priority === undefined ? [] : [`priority ${priorityText(priority)}`]),
+      ];
       return `UPDATE ${id} ${step.ref}: ${fields.join(', ')}`;
     }
     case 'status':

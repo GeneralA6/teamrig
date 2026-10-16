@@ -114,7 +114,7 @@ describe('runCli: help, version and usage errors', () => {
     const kit = new CliHarness();
     const add = await kit.run(['add', '--help']);
     assert.deepEqual([add.code, add.stdout, add.stderr], [EXIT.ok, [COMMAND_HELP.forCommand('add')], []]);
-    assert.match(add.stdout[0] ?? '', /\n {2}add --title .*\n.*\n {6}--after: .*\n {2}add --team /);
+    assert.match(add.stdout[0] ?? '', /\n {2}add --title .*\n(?: {6}\[.*\n)+ {6}--description: .*\n {6}\S.*\n {6}--after: .*\n {2}add --team /);
     assert.deepEqual((await kit.run(['set', 'T1', '-h'])).stdout, [COMMAND_HELP.forCommand('set')]);
     const inbox = await kit.run(['inbox', '--help']);
     assert.deepEqual(
@@ -138,7 +138,7 @@ describe('runCli: help, version and usage errors', () => {
     /** A usage error prints its reason, then the usage. */
     const reasonOf = (result: CliResult): string | undefined => result.stderr[0]?.split('\n')[0];
     for (const argv of [
-      ['add', '--title', 'x', '--tier', '2', '--session', 'alpha'],
+      ['add', '--title', 'x', '--description', 'what and why', '--tier', '2', '--session', 'alpha'],
       ['list', '--tier', '1,2', '--session', 'alpha'],
       ['show', 'T1', '--tier', '2', '--session', 'alpha'],
     ]) {
@@ -146,7 +146,7 @@ describe('runCli: help, version and usage errors', () => {
       assert.equal(result.code, EXIT.usage, argv.join(' '));
       assert.equal(reasonOf(result), '--tier was renamed: use --priority', argv.join(' '));
     }
-    const oldSpelling = await kit.run(['add', '--title', 'x', '--priority', 't2', '--session', 'alpha']);
+    const oldSpelling = await kit.run(['add', '--title', 'x', '--description', 'what and why', '--priority', 't2', '--session', 'alpha']);
     assert.deepEqual([oldSpelling.code, reasonOf(oldSpelling)], [EXIT.usage, 'priority "t2" is the old tier spelling: write p2']);
     const bare = await kit.run(['update', 'T1', '--priority', '3', '--session', 'alpha']);
     assert.deepEqual([bare.code, reasonOf(bare)], [EXIT.usage, 'priority "3" is not p<n>: write p3']);
@@ -157,7 +157,7 @@ describe('runCli: help, version and usage errors', () => {
 describe('runCli: the task register', () => {
   it('adds, lists, sets and shows a task', async () => {
     const kit = new CliHarness();
-    const added = await kit.run(['add', '--title', 'Ship the CLI', '--priority', 'p2', '--session', 'alpha']);
+    const added = await kit.run(['add', '--title', 'Ship the CLI', '--description', 'what and why', '--priority', 'p2', '--session', 'alpha']);
     assert.equal(added.code, EXIT.ok, added.stderr.join('\n'));
     assert.match(added.stdout[0] ?? '', /^ADDED T1 open, p2, owner alpha, from \S+ \| /);
 
@@ -177,7 +177,7 @@ describe('runCli: the task register', () => {
 
   it('exits 2 with REFUSED when a team rule refuses a write', async () => {
     const kit = new CliHarness();
-    await kit.run(['add', '--title', 'Ship the CLI', '--priority', 'p2', '--session', 'alpha']);
+    await kit.run(['add', '--title', 'Ship the CLI', '--description', 'what and why', '--priority', 'p2', '--session', 'alpha']);
     const notOwner = await kit.run(['set', 'T1', '--status', 'in-progress', '--session', 'bravo']);
     assert.equal(notOwner.code, EXIT.refused);
     assert.deepEqual(notOwner.stdout, ['REFUSED only the owner (alpha) sets the status of T1']);
@@ -202,7 +202,7 @@ describe('runCli: the task register', () => {
     assert.equal(listed.code, EXIT.ok);
     assert.match(listed.stderr[0] ?? '', /^WARN config: 1 problem\(s\), defaults used \(first: pushGuard.protectedBranches/);
 
-    const added = await kit.run(['add', '--title', 'x', '--priority', 'p1', '--session', 'alpha']);
+    const added = await kit.run(['add', '--title', 'x', '--description', 'what and why', '--priority', 'p1', '--session', 'alpha']);
     assert.equal(added.code, EXIT.refused);
     assert.match(added.stdout[0] ?? '', /^REFUSED the team config has 1 problem\(s\)/);
   });
@@ -212,18 +212,45 @@ describe('runCli: the task register', () => {
     const listed = await kit.run(['list', '--session', 'alpha']);
     assert.equal(listed.code, EXIT.ok);
     assert.match(listed.stderr[0] ?? '', /config version 99, from a newer teamrig/);
-    assert.equal((await kit.run(['add', '--title', 'x', '--priority', 'p1', '--session', 'alpha'])).code, EXIT.refused);
+    assert.equal((await kit.run(['add', '--title', 'x', '--description', 'what and why', '--priority', 'p1', '--session', 'alpha'])).code, EXIT.refused);
   });
 
   it('updates a task, reading the new owner as a session', async () => {
     const kit = new CliHarness();
-    await kit.run(['add', '--title', 'Ship the CLI', '--priority', 'p2', '--session', 'alpha']);
+    await kit.run(['add', '--title', 'Ship the CLI', '--description', 'what and why', '--priority', 'p2', '--session', 'alpha']);
     const updated = await kit.run(['update', 'T1', '--owner', 'bravo', '--note', 'bravo takes it', '--session', 'alpha']);
     assert.equal(updated.code, EXIT.ok, updated.stdout.join('\n'));
     assert.match(updated.stdout[0] ?? '', /^UPDATED T1 open, p2, owner bravo,/);
     const retitled = await kit.run(['update', 'T1', '--title', 'Ship the CLI twice', '--session', 'bravo']);
     assert.equal(retitled.code, EXIT.ok, retitled.stdout.join('\n'));
     assert.match(retitled.stdout[0] ?? '', /Ship the CLI twice/);
+  });
+
+  it('needs a description to add a task, shows it under the title, and keeps it on an update', async () => {
+    const kit = new CliHarness();
+    const bare = await kit.run(['add', '--title', 'Ship the CLI', '--priority', 'p2', '--session', 'alpha']);
+    assert.deepEqual([bare.code, bare.stdout], [EXIT.refused, ['REFUSED add needs --description "<what and why, in plain words>"']]);
+    assert.equal(kit.files.get(EVENTS_PATH), undefined);
+    const added = await kit.run(['add', '--title', 'Ship the CLI', '--description', 'Users wait on it.\nShip it with docs.', '--ref', 'inbox:3', '--priority', 'p2', '--session', 'alpha']);
+    assert.equal(added.code, EXIT.ok, added.stdout.join('\n'));
+    const shown = await kit.run(['show', 'T1', '--session', 'alpha']);
+    assert.deepEqual(shown.stdout.join('\n').split('\n').slice(1, 4), ['description: Users wait on it.', '  Ship it with docs.', 'ref: inbox:3']);
+    const cleared = await kit.run(['update', 'T1', '--description', 'none', '--session', 'alpha']);
+    assert.deepEqual([cleared.code, cleared.stdout], [EXIT.refused, ['REFUSED T1 keeps a description while register.requireDescription is on: give a new one instead of none']]);
+    const changed = await kit.run(['update', 'T1', '--description', 'Users wait on it.', '--session', 'alpha']);
+    assert.equal(changed.code, EXIT.ok, changed.stdout.join('\n'));
+    const history = await kit.run(['show', 'T1', '--session', 'alpha']);
+    assert.match(history.stdout.join('\n').split('\n').at(-1) ?? '', / alpha update description="Users wait on it\."$/);
+  });
+
+  it('adds a task with no description when the team turns the demand off, and clears one', async () => {
+    const kit = new CliHarness({ ...TEAM, register: { requireDescription: false } });
+    const added = await kit.run(['add', '--title', 'Ship the CLI', '--description', 'Why.', '--priority', 'p2', '--session', 'alpha']);
+    assert.equal(added.code, EXIT.ok, added.stdout.join('\n'));
+    const cleared = await kit.run(['update', 'T1', '--description', 'none', '--session', 'alpha']);
+    assert.equal(cleared.code, EXIT.ok, cleared.stdout.join('\n'));
+    assert.ok(!(await kit.run(['show', 'T1', '--session', 'alpha'])).stdout.join('\n').includes('description:'));
+    assert.equal((await kit.run(['add', '--title', 'Plan the week', '--priority', 'p2', '--session', 'alpha'])).code, EXIT.ok);
   });
 
   it('refuses to show a task it does not hold', async () => {
@@ -233,7 +260,7 @@ describe('runCli: the task register', () => {
 
   it('names damaged lines on stderr and still reads the rest', async () => {
     const kit = new CliHarness();
-    await kit.run(['add', '--title', 'Ship the CLI', '--priority', 'p2', '--session', 'alpha']);
+    await kit.run(['add', '--title', 'Ship the CLI', '--description', 'what and why', '--priority', 'p2', '--session', 'alpha']);
     await kit.files.append(EVENTS_PATH, '{ torn\n');
     const listed = await kit.run(['list', '--session', 'alpha']);
     assert.equal(listed.code, EXIT.ok);
@@ -250,7 +277,7 @@ describe('runCli: the task register', () => {
 
   it('checks the week plan and the skills, and skips the week checks before any plan', async () => {
     const kit = new CliHarness();
-    await kit.run(['add', '--title', 'Ship the CLI', '--priority', 'p2', '--due', '2030-01-10', '--session', 'alpha']);
+    await kit.run(['add', '--title', 'Ship the CLI', '--description', 'what and why', '--priority', 'p2', '--due', '2030-01-10', '--session', 'alpha']);
     await kit.files.write(join(SKILLS_DIR, 'alpha-demo', 'SKILL.md'), 'no frontmatter\n');
 
     const bare = await kit.run(['check', '--session', 'alpha', '--all']);
@@ -283,7 +310,7 @@ describe('runCli: the task register', () => {
     const none = await kit.run(['plan', '--session', 'alpha']);
     assert.deepEqual([none.code, none.stdout], [EXIT.refused, ['REFUSED no week plan tagged yet; pass --week <YYYY-MM-DD>']]);
 
-    await kit.run(['add', '--title', 'Ship the CLI', '--priority', 'p1', '--week', '2030-01-07', '--session', 'alpha']);
+    await kit.run(['add', '--title', 'Ship the CLI', '--description', 'what and why', '--priority', 'p1', '--week', '2030-01-07', '--session', 'alpha']);
     const current = await kit.run(['plan', '--session', 'alpha']);
     assert.equal(current.code, EXIT.ok);
     assert.match(current.stdout.join('\n'), /2030-01-07[\s\S]*Ship the CLI/);
@@ -394,7 +421,7 @@ describe('runCli: session names', () => {
     const read = await kit.run(['inbox', 'read', '--session', 'team-lead']);
     assert.deepEqual(read.stdout[0], '- 2030-01-08 10:00 alpha: ready');
 
-    const added = await kit.run(['add', '--title', 'Ship the names', '--priority', 'p2', '--owner', 'app-bravo', '--session', 'team-lead']);
+    const added = await kit.run(['add', '--title', 'Ship the names', '--description', 'what and why', '--priority', 'p2', '--owner', 'app-bravo', '--session', 'team-lead']);
     assert.equal(added.code, EXIT.ok, added.stdout.join('\n'));
     const byName = await kit.run(['list', '--session', 'app-bravo', '--all']);
     assert.deepEqual(byName.stdout, (await kit.run(['list', '--session', 'bravo', '--all'])).stdout);

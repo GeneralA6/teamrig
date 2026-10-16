@@ -153,9 +153,9 @@ describe('formatEvent and formatTaskDetail', () => {
       id: 'T1',
       at: AT,
       by: 'lead',
-      task: { title: 'x', owner: 'alpha', source: 'owner', ref: 'inbox:3', priority: 1, due: '2030-01-08', goals: ['G1'], week: null, after: [] },
+      task: { title: 'x', description: 'Why x.', owner: 'alpha', source: 'owner', ref: 'inbox:3', priority: 1, due: '2030-01-08', goals: ['G1'], week: null, after: [] },
     },
-    { v: 1, type: 'create', id: 'T2', at: AT, by: 'lead', task: { title: 'y', owner: 'bravo', source: 'lead', ref: null, priority: 2, due: null, goals: [], week: null, after: ['T1'] } },
+    { v: 1, type: 'create', id: 'T2', at: AT, by: 'lead', task: { title: 'y', description: null, owner: 'bravo', source: 'lead', ref: null, priority: 2, due: null, goals: [], week: null, after: ['T1'] } },
     { v: 1, type: 'update', id: 'T1', at: '2030-01-07T10:00:00.000Z', by: 'lead', changes: { due: '2030-01-09', goals: ['G1', 'G2'] }, note: 'later' },
     { v: 1, type: 'status', id: 'T1', at: '2030-01-07T11:00:00.000Z', by: 'alpha', status: 'done', note: 'ok', evidence: 'abc1234', skill: 'none' },
     {
@@ -216,6 +216,20 @@ describe('formatEvent and formatTaskDetail', () => {
     assert.equal(formatEvent(proven), '2030-01-07 14:00 alpha status verifying note="shipped" proof="the nightly run"');
     const detail = formatTaskDetail(testTask({ id: 'T3', status: 'verifying', note: 'shipped', proof: 'the nightly run' }), [proven]).split('\n');
     assert.deepEqual(detail.slice(1, 3), ['note: shipped', 'proof: the nightly run']);
+  });
+
+  it('shows the description under the task line, its later lines indented and a blank one kept blank', () => {
+    const task = testTask({ ref: 'inbox:3', description: 'Users lose saved carts.\n\nKeep them:\n- a week' });
+    const detail = formatTaskDetail(task, []).split('\n');
+    assert.deepEqual(detail.slice(1, 7), ['description: Users lose saved carts.', '', '  Keep them:', '  - a week', 'ref: inbox:3', 'history:']);
+    assert.ok(!formatTaskDetail(testTask(), []).includes('description'), 'a task with none prints no line');
+  });
+
+  it('prints a changed description on one quoted line, cut, and a cleared one as none', () => {
+    const changed = (description: string | null): RegisterEvent => ({ v: 2, type: 'update', id: 'T1', at: AT, by: 'alpha', changes: { description }, note: null });
+    assert.equal(formatEvent(changed('Why:\nusers ask')), '2030-01-07 09:00 alpha update description="Why: users ask"');
+    assert.equal(formatEvent(changed(`${'d'.repeat(90)}`)), `2030-01-07 09:00 alpha update description="${'d'.repeat(79)}…"`);
+    assert.equal(formatEvent(changed(null)), '2030-01-07 09:00 alpha update description=none');
   });
 });
 

@@ -52,7 +52,7 @@ function stopJson(result: CliResult): unknown {
 
 /** Adds a task owned by `session` and marks it done, the boundary the Stop hook judges. */
 async function finishTask(kit: CliHarness, session: string): Promise<CliResult> {
-  const added = await kit.run(['add', '--title', 'Ship it', '--priority', 'p2', '--session', session]);
+  const added = await kit.run(['add', '--title', 'Ship it', '--description', 'what and why', '--priority', 'p2', '--session', session]);
   assert.equal(added.code, EXIT.ok, added.stdout.join('\n'));
   const id = /^ADDED (T\d+) /.exec(added.stdout[0] ?? '')?.[1] ?? '';
   return kit.run(['set', id, '--status', 'done', '--note', 'shipped', '--evidence', 'abc1234', '--skill', 'none', '--session', session]);
@@ -357,7 +357,7 @@ describe('runCli: context refresh', () => {
 
   it('keeps the task done with a warning when its boundary cannot be recorded', async () => {
     const kit = new CliHarness();
-    await kit.run(['add', '--title', 'Ship it', '--priority', 'p2', '--session', 'alpha']);
+    await kit.run(['add', '--title', 'Ship it', '--description', 'what and why', '--priority', 'p2', '--session', 'alpha']);
     const files = new FaultyFiles(kit.files).fail('write', STATE('alpha'), systemError('EACCES'));
     const done = await kit.run(['set', 'T1', '--status', 'done', '--note', 'shipped', '--evidence', 'abc1234', '--skill', 'none', '--session', 'alpha'], { files });
     assert.equal(done.code, EXIT.ok);

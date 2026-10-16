@@ -47,8 +47,8 @@ export function importedTasks(tasks: Iterable<Task>): Map<string, Task> {
 /**
  * The writes that bring the register in step with a repository's issues. An open issue with no task is
  * added; a closed one with no task is not, as there is nothing left to do. On a task the import added,
- * only the title, the priority and whether it is open follow GitHub: any active status stands for an open
- * issue, and its owner, notes and plans stay the team's.
+ * only the title, the description, the priority and whether it is open follow GitHub: any active status
+ * stands for an open issue, and its owner, notes and plans stay the team's.
  */
 export function planSync(issues: readonly GithubIssue[], imported: ReadonlyMap<string, Task>, rules: ImportRules): SyncPlan {
   const perIssue = issues.map((issue) => issueSteps(issue, imported, rules));
@@ -66,14 +66,14 @@ function issueSteps(issue: GithubIssue, imported: ReadonlyMap<string, Task>, rul
   const wanted = issueTask(issue, rules);
   const task = imported.get(wanted.ref);
   if (task === undefined) {
-    const input: ImportInput = { title: wanted.title, owner: wanted.owner, ref: wanted.ref, priority: wanted.priority };
+    const input: ImportInput = { title: wanted.title, description: wanted.description, owner: wanted.owner, ref: wanted.ref, priority: wanted.priority };
     return { known: false, steps: wanted.outcome === 'open' ? [{ kind: 'add', ref: wanted.ref, input }] : [] };
   }
   const steps: SyncStep[] = [];
   const changes = fieldChanges(task, wanted);
   const names = Object.keys(changes);
   if (names.length > 0) {
-    steps.push({ kind: 'update', ref: wanted.ref, id: task.id, changes, note: `${names.join(' and ')} as on GitHub` });
+    steps.push({ kind: 'update', ref: wanted.ref, id: task.id, changes, note: `${namesText(names)} as on GitHub` });
   }
   const status = statusChange(task, wanted, issue.stateReason);
   if (status !== undefined) {
@@ -82,10 +82,17 @@ function issueSteps(issue: GithubIssue, imported: ReadonlyMap<string, Task>, rul
   return { known: true, steps };
 }
 
-/** The title and priority the issue now gives, where they differ from the task's. */
+/** The field names a sync's note lists: `title`, `title and priority`, `title, description and priority`. */
+function namesText(names: readonly string[]): string {
+  const last = names.at(-1) ?? '';
+  return names.length < 2 ? last : `${names.slice(0, -1).join(', ')} and ${last}`;
+}
+
+/** The title, description and priority the issue now gives, where they differ from the task's. */
 function fieldChanges(task: Task, wanted: IssueTask): ImportChanges {
   return {
     ...(task.title === wanted.title ? {} : { title: wanted.title }),
+    ...(task.description === wanted.description ? {} : { description: wanted.description }),
     ...(task.priority === wanted.priority ? {} : { priority: wanted.priority }),
   };
 }

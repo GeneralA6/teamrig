@@ -92,6 +92,10 @@ export function addInputOf(flags: Flags, caller: string): AddInput {
     source: flags.get('source') ?? caller,
     priority: priorityOf(requiredFlag(flags, 'priority')),
   };
+  const description = flags.get('description');
+  if (description !== undefined) {
+    input.description = description;
+  }
   const ref = flags.get('ref');
   if (ref !== undefined) {
     input.ref = ref;
@@ -139,12 +143,16 @@ export function waitsOf(text: string): WaitReason[] {
   });
 }
 
-/** The fields `update` changes; `none` clears the ref, due date, goals or week. */
+/** The fields `update` changes; `none` clears the description, ref, due date, goals, week or plan dependency. */
 export function changesOf(flags: Flags): Partial<TaskFields> {
   const changes: Partial<Mutable<TaskFields>> = {};
   const title = flags.get('title');
   if (title !== undefined) {
     changes.title = title;
+  }
+  const description = flags.get('description');
+  if (description !== undefined) {
+    changes.description = description === NONE ? null : description;
   }
   const owner = flags.get('owner');
   if (owner !== undefined) {

@@ -148,10 +148,19 @@ function statusNote(task: Task, context: WaitContext | undefined): string {
   return proof === null ? '' : ` (proof: ${proof})`;
 }
 
-/** One field of an update, as `show` prints it: a priority reads `p2`, a list joins with commas. */
+/** How much of a description an update line in `show`'s history quotes. */
+const HISTORY_DESCRIPTION_CHARS = 80;
+
+/**
+ * One field of an update, as `show` prints it: a priority reads `p2`, a list joins with commas, and a description is
+ * quoted on one line, cut to HISTORY_DESCRIPTION_CHARS (`none` when cleared): `show` prints the whole one above.
+ */
 function changeText(name: string, value: unknown): string {
   if (name === 'priority' && typeof value === 'number') {
     return priorityText(value);
+  }
+  if (name === 'description') {
+    return typeof value === 'string' ? JSON.stringify(cut(value.replace(/\s+/g, ' '), HISTORY_DESCRIPTION_CHARS)) : 'none';
   }
   return Array.isArray(value) ? value.join(',') : String(value);
 }
@@ -193,9 +202,16 @@ export function formatEvent(event: RegisterEvent): string {
   }
 }
 
-/** `show`: the task line, its status details, then its history; `context` marks a waiting task's ready reasons. */
+/**
+ * `show`: the task line, its description (what and why, its later lines indented two spaces), its status details,
+ * then its history; `context` marks a waiting task's ready reasons.
+ */
 export function formatTaskDetail(task: Task, events: readonly RegisterEvent[], context?: WaitContext): string {
   const lines = [formatTask(task, undefined, context)];
+  if (task.description !== null) {
+    const [first = '', ...rest] = task.description.split('\n');
+    lines.push(`description: ${first}`, ...rest.map((line) => (line.trim() === '' ? '' : `  ${line}`)));
+  }
   if (task.ref !== null) {
     lines.push(`ref: ${task.ref}`);
   }

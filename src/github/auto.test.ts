@@ -53,8 +53,8 @@ describe('isDue', () => {
 describe('addedTasks and addedLines', () => {
   it('takes only the adds that were written, with their owner and title', () => {
     const outcomes: StepOutcome[] = [
-      { step: { kind: 'add', ref: 'gh:acme/web#7', input: { title: 'Fix login', owner: 'bravo', ref: 'gh:acme/web#7', priority: 1 } }, result: { ok: true, value: 'T5' } },
-      { step: { kind: 'add', ref: 'gh:acme/web#8', input: { title: 'Add search', owner: 'lead', ref: 'gh:acme/web#8', priority: 2 } }, result: { ok: false, error: 'refused' } },
+      { step: { kind: 'add', ref: 'gh:acme/web#7', input: { title: 'Fix login', description: null, owner: 'bravo', ref: 'gh:acme/web#7', priority: 1 } }, result: { ok: true, value: 'T5' } },
+      { step: { kind: 'add', ref: 'gh:acme/web#8', input: { title: 'Add search', description: null, owner: 'lead', ref: 'gh:acme/web#8', priority: 2 } }, result: { ok: false, error: 'refused' } },
       { step: { kind: 'status', ref: 'gh:acme/web#9', id: 'T2', input: { status: 'done', note: 'closed on GitHub' } }, result: { ok: true, value: 'T2' } },
     ];
     assert.deepEqual(addedTasks(outcomes), [{ id: 'T5', owner: 'bravo', ref: 'gh:acme/web#7', title: 'Fix login' }]);

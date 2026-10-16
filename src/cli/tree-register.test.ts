@@ -12,7 +12,7 @@ const AS_LEAD = { env: { TEAMRIG_SESSION: 'lead' } };
 describe('teamrig add --team', () => {
   it('hands a child team a task from its parent lead, written in the child register only', async () => {
     const kit = await treeHarness();
-    const result = await kit.run(['add', '--team', 'web', '--title', 'Ship login', '--priority', 'p2', '--session', 'lead']);
+    const result = await kit.run(['add', '--team', 'web', '--title', 'Ship login', '--description', 'what and why', '--priority', 'p2', '--session', 'lead']);
     assert.deepEqual(result, { code: EXIT.ok, stdout: ['ADDED web/T1 open, p2, owner lead, from app/lead | Ship login'], stderr: [] });
     const [event] = readEvents(kit.files.get(teamEventsOf('web')) ?? '').events;
     assert.deepEqual([event?.by, event?.type], ['app/lead', 'create']);
@@ -27,8 +27,17 @@ describe('teamrig add --team', () => {
 
   it("lets a sub-team lead hand its own child team a task, by the lead's name", async () => {
     const kit = await treeHarness();
-    const result = await kit.run(['add', '--team', 'ui', '--title', 'New icons', '--priority', 'p1', '--session', 'web-lead'], { env: WEB });
+    const result = await kit.run(['add', '--team', 'ui', '--title', 'New icons', '--description', 'what and why', '--priority', 'p1', '--session', 'web-lead'], { env: WEB });
     assert.deepEqual(result.stdout, ['ADDED ui/T1 open, p1, owner lead, from web/lead | New icons']);
+  });
+
+  it("carries the description into the child team's task, and needs one there too", async () => {
+    const kit = await treeHarness();
+    const bare = await kit.run(['add', '--team', 'web', '--title', 'Ship login', '--priority', 'p2', '--session', 'lead']);
+    assert.deepEqual(bare.stdout, ['REFUSED add needs --description "<what and why, in plain words>"']);
+    await kit.run(['add', '--team', 'web', '--title', 'Ship login', '--description', 'Users ask for it.', '--priority', 'p2', '--session', 'lead']);
+    const [event] = readEvents(kit.files.get(teamEventsOf('web')) ?? '').events;
+    assert.equal(event?.type === 'create' ? event.task.description : undefined, 'Users ask for it.');
   });
 
   it('refuses all but the parent lead, a root team, an unknown team and --owner or --source, writing nothing', async () => {
@@ -40,11 +49,11 @@ describe('teamrig add --team', () => {
       [['--team', 'blog', '--session', 'lead'], {}, 'REFUSED no team blog with a config in this kit home'],
     ];
     for (const [extra, env, line] of refusals) {
-      const result = await kit.run(['add', '--title', 'Ship login', '--priority', 'p2', ...extra], { env });
+      const result = await kit.run(['add', '--title', 'Ship login', '--description', 'what and why', '--priority', 'p2', ...extra], { env });
       assert.deepEqual([result.code, result.stdout], [EXIT.refused, [line]]);
     }
     for (const flag of ['--owner', '--source']) {
-      const result = await kit.run(['add', '--team', 'web', '--title', 'x', '--priority', 'p2', flag, 'front', '--session', 'lead']);
+      const result = await kit.run(['add', '--team', 'web', '--title', 'x', '--description', 'what and why', '--priority', 'p2', flag, 'front', '--session', 'lead']);
       assert.equal(result.code, EXIT.usage);
       assert.match(result.stderr[0] ?? '', /^--team gives the task to that team's lead, from you: it takes no --owner or --source/);
     }
@@ -58,9 +67,9 @@ describe('teamrig add --team', () => {
 async function seeded(): Promise<CliHarness> {
   const kit = await treeHarness();
   const runs = [
-    kit.run(['add', '--title', 'Root task', '--priority', 'p1', '--owner', 'alpha', '--week', '2030-01-07', '--due', '2030-01-07', '--session', 'lead']),
-    kit.run(['add', '--team', 'web', '--title', 'Ship login', '--priority', 'p2', '--week', '2030-01-07', '--session', 'lead']),
-    kit.run(['add', '--title', 'Icons', '--priority', 'p2', '--owner', 'pixel', '--session', 'lead'], { env: { TEAMRIG_TEAM: 'ui' } }),
+    kit.run(['add', '--title', 'Root task', '--description', 'what and why', '--priority', 'p1', '--owner', 'alpha', '--week', '2030-01-07', '--due', '2030-01-07', '--session', 'lead']),
+    kit.run(['add', '--team', 'web', '--title', 'Ship login', '--description', 'what and why', '--priority', 'p2', '--week', '2030-01-07', '--session', 'lead']),
+    kit.run(['add', '--title', 'Icons', '--description', 'what and why', '--priority', 'p2', '--owner', 'pixel', '--session', 'lead'], { env: { TEAMRIG_TEAM: 'ui' } }),
   ];
   for (const run of runs) {
     assert.equal((await run).code, EXIT.ok);

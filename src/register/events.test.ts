@@ -4,7 +4,7 @@ import type { JsonRecord } from '../core/guards.ts';
 import { eventRecord, parseEvent, type EventParse, type RegisterEvent } from './events.ts';
 
 const BASE = { id: 'T3', at: '2030-01-07T09:00:00.000Z', by: 'alpha' };
-const TASK = { title: 'A task', owner: 'alpha', source: 'owner', ref: null, priority: 2, due: null, goals: [], week: null, after: [] };
+const TASK = { title: 'A task', description: null, owner: 'alpha', source: 'owner', ref: null, priority: 2, due: null, goals: [], week: null, after: [] };
 
 function parse(record: JsonRecord, version = 0): EventParse {
   return parseEvent({ lineNumber: 1, raw: JSON.stringify(record), record, version });
@@ -15,13 +15,15 @@ function reason(result: EventParse): string {
 }
 
 describe('eventRecord', () => {
-  it('leaves an empty after off a create line, and keeps one that names tasks', () => {
+  it('leaves an empty after and a null description off a create line, and keeps ones that hold something', () => {
     const create: RegisterEvent = { ...BASE, v: 2, type: 'create', task: TASK };
-    const { after, ...withoutAfter } = TASK;
-    assert.deepEqual(eventRecord(create), { ...create, task: withoutAfter });
-    assert.deepEqual(after, []);
+    const { after, description, ...withoutEither } = TASK;
+    assert.deepEqual(eventRecord(create), { ...create, task: withoutEither });
+    assert.deepEqual([after, description], [[], null]);
+    const described: RegisterEvent = { ...create, task: { ...TASK, description: 'Why it matters.\nWhat to do.' } };
+    assert.deepEqual(eventRecord(described), { ...described, task: { ...withoutEither, description: 'Why it matters.\nWhat to do.' } });
     const planned: RegisterEvent = { ...create, task: { ...TASK, after: ['T1'] } };
-    assert.deepEqual(eventRecord(planned), planned);
+    assert.deepEqual(eventRecord(planned), { ...planned, task: { ...withoutEither, after: ['T1'] } });
     const cleared: RegisterEvent = { ...BASE, v: 2, type: 'update', changes: { after: [] }, note: null };
     assert.deepEqual(eventRecord(cleared), cleared, 'an update that clears the plan keeps it');
   });
@@ -110,6 +112,17 @@ describe('parseEvent', () => {
     assert.deepEqual(updated, { kind: 'event', event: { ...BASE, v: 2, type: 'update', changes: { after: [] }, note: null } });
   });
 
+  it('reads the description of a create line and of an update, null clearing it, its newlines kept', () => {
+    const created = parse({ ...BASE, type: 'create', task: { ...TASK, description: 'Why.\nWhat.' } }, 2);
+    assert.equal(created.kind === 'event' && created.event.type === 'create' ? created.event.task.description : undefined, 'Why.\nWhat.');
+    const changed = parse({ ...BASE, type: 'update', changes: { description: 'Why now.' } }, 2);
+    assert.deepEqual(changed, { kind: 'event', event: { ...BASE, v: 2, type: 'update', changes: { description: 'Why now.' }, note: null } });
+    const cleared = parse({ ...BASE, type: 'update', changes: { description: null } }, 2);
+    assert.deepEqual(cleared, { kind: 'event', event: { ...BASE, v: 2, type: 'update', changes: { description: null }, note: null } });
+    const update: RegisterEvent = { ...BASE, v: 2, type: 'update', changes: { description: 'Why now.' }, note: 'clearer' };
+    assert.deepEqual(parse(eventRecord(update), 2), { kind: 'event', event: update });
+  });
+
   it('rejects malformed lines with a reason', () => {
     const cases: [JsonRecord, RegExp][] = [
       [{ ...BASE, id: 'T0', type: 'create', task: TASK }, /bad task id/],
@@ -121,6 +134,8 @@ describe('parseEvent', () => {
       [{ ...BASE, type: 'create', task: { ...TASK, week: 'next' } }, /bad week/],
       [{ ...BASE, type: 'create', task: { ...TASK, goals: [1] } }, /goals is not a list of text/],
       [{ ...BASE, type: 'create', task: { ...TASK, title: '' } }, /title is not text/],
+      [{ ...BASE, type: 'create', task: { ...TASK, description: 5 } }, /description is not text/],
+      [{ ...BASE, type: 'update', changes: { description: ['why'] } }, /description is not text/],
       [{ ...BASE, type: 'status', status: 4 }, /unknown status 4/],
       [{ ...BASE, type: 'status', status: 'Paused!' }, /unknown status "Paused!"/],
       [{ ...BASE, type: 'status', status: 'done', note: 5 }, /note is not text/],
