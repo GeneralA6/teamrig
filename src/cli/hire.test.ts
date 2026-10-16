@@ -45,7 +45,7 @@ describe('hire', () => {
     const result = await hire(kit, 'helper', ...JOB, '--name', 'hand', '--effort', 'xhigh', '--daily-pct', '0.5', '--review', '2030-01-10', '--yes');
     assert.equal(result.code, EXIT.ok, result.stderr.join('\n'));
     assert.match(result.stdout[0] ?? '', /^HIRED helper \(name hand\) for "port the importer": model opus at xhigh effort, 0\.5% of the week a day, review by 2030-01-10; the old config is at .*config\.hire\.json$/);
-    assert.match(result.stdout[2] ?? '', /^NEXT give it its first task: teamrig add --owner helper --title "<task>" --session lead; then open it: teamrig open helper$/);
+    assert.match(result.stdout[2] ?? '', /^NEXT give it its first task: teamrig add --owner helper --title "<task>" --description "<what and why>" --session lead; then open it: teamrig open helper$/);
     const config = configOf(kit);
     assert.deepEqual(config['sessions'], ['lead', 'alpha', 'helper']);
     assert.deepEqual(config['names'], { helper: 'hand' });
