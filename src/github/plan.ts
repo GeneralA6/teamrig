@@ -1,6 +1,7 @@
 import type { Task } from '../register/fold.ts';
 import { ACTIVE_STATUSES } from '../register/model.ts';
-import { GITHUB_SOURCE, type ImportChanges, type ImportInput, type StatusInput } from '../register/policy.ts';
+import { GITHUB_SOURCE } from '../register/model.ts';
+import type { ImportChanges, ImportInput, StatusInput } from '../register/policy.ts';
 import type { GithubIssue } from './issues.ts';
 import { issueTask, type ImportRules, type IssueTask } from './map.ts';
 

@@ -5,7 +5,7 @@ import { SecretScanner } from '../core/secrets.ts';
 import { parseUtcDay, parseUtcDeadline } from '../core/time.ts';
 import type { TaskFieldName, TaskFields } from './events.ts';
 import { taskNumber, type RegisterState, type Task } from './fold.ts';
-import { ACTIVE_STATUSES, priorityText, SESSION_NAME, type TaskStatus } from './model.ts';
+import { ACTIVE_STATUSES, GITHUB_SOURCE, priorityText, SESSION_NAME, type TaskStatus } from './model.ts';
 import { heldStart, startHolds } from './verify.ts';
 import { sameWait, waitSpelling, type WaitReason } from './waits.ts';
 
@@ -15,11 +15,7 @@ export type Verdict<T> = { readonly ok: true; readonly value: T } | { readonly o
 /** The skill name that closes a task which produced no reusable procedure. */
 export const NO_SKILL = 'none';
 
-/**
- * The source of a task imported from a GitHub issue: only `teamrig gh sync` writes one (github/sync.ts),
- * and a session cannot give it to a task. The import writes its events as GITHUB_ACTOR.
- */
-export const GITHUB_SOURCE = 'github';
+/** Who the GitHub import's events are written by; its tasks carry GITHUB_SOURCE (model.ts). */
 export const GITHUB_ACTOR = 'github';
 
 /** The statuses the import sets on its own tasks: an issue's open state, or how it was closed. */

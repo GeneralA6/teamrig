@@ -1,8 +1,7 @@
 import { formatUtcMinute, parseUtcDeadline, shortUtc } from '../core/time.ts';
 import type { RegisterEvent } from './events.ts';
 import { taskNumber, type Task } from './fold.ts';
-import { ACTIVE_STATUSES, priorityText, type TaskStatus } from './model.ts';
-import { GITHUB_SOURCE } from './policy.ts';
+import { ACTIVE_STATUSES, GITHUB_SOURCE, priorityText, type TaskStatus } from './model.ts';
 import { waitsText, type WaitContext } from './waits.ts';
 import { proofOf, proofText } from './verify.ts';
 
