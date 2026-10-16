@@ -39,7 +39,7 @@ export interface RestartRequest {
   readonly phase: 'pending' | 'ending';
   /** When the Stop hook asked: the restart started for it acts only on this request, never on a later one. */
   readonly at: string;
-  /** The Claude Code process to end: the Stop hook's parent. */
+  /** The Claude Code process to end: the one the Stop hook runs under. */
   readonly pid: number;
   /** Its Claude Code session id, for the SessionEnd input of `refresh.endCommand`. */
   readonly claudeSession: string;

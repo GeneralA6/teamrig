@@ -7,7 +7,10 @@ import type { RefreshState } from './state.ts';
  * team's settings and the time: the hooks and commands only read and write what these decide.
  */
 
-export type RefreshSettings = Pick<RefreshConfig, 'enabled' | 'contextTokens' | 'everyTasks' | 'everyTasksMinTokens' | 'tabTitle'>;
+export type RefreshSettings = Pick<RefreshConfig, 'enabled' | 'contextTokens' | 'everyTasks' | 'everyTasksMinTokens' | 'tabTitle' | 'restartDelaySeconds'>;
+
+/** A session whose handover is written, waiting for its fresh start. */
+export type ReadyState = Extract<RefreshState, { readonly phase: 'ready' }>;
 
 /** What the Stop hook knows before it reads anything but the session's state file. */
 export interface StopContext {
@@ -19,6 +22,8 @@ export interface StopContext {
   readonly handoverPath: string;
   /** The CLI's name, as the session runs it from its Bash tool. */
   readonly command: string;
+  /** The hook can restart the session once its handover is written: `refresh.autoRestart` is on and Claude Code gave what it needs. */
+  readonly canRestart: boolean;
 }
 
 /** What the Stop hook reads only at a boundary it has not judged yet, or before saying the handover is written. */
@@ -41,8 +46,10 @@ export type StopDecision =
   | { readonly kind: 'write'; readonly state: RefreshState }
   /** Keep the session going with `reason` as its next instruction: write the handover. */
   | { readonly kind: 'block'; readonly state: RefreshState; readonly reason: string }
-  /** Tell the user the session waits for /clear; `title` marks the tab when the team wants it. */
-  | { readonly kind: 'notice'; readonly state: RefreshState; readonly message: string; readonly title: string | undefined };
+  /** Tell the user the session restarts by itself once idle (`restart`), or waits for /clear; `title` marks the tab when the team wants it. */
+  | { readonly kind: 'notice'; readonly state: ReadyState; readonly message: string; readonly title: string | undefined; readonly restart: boolean };
+
+export type NoticeDecision = Extract<StopDecision, { readonly kind: 'notice' }>;
 
 const NONE: StopDecision = { kind: 'none' };
 const MEASURE: StopDecision = { kind: 'measure' };
@@ -50,6 +57,21 @@ const MEASURE: StopDecision = { kind: 'measure' };
 /** Tokens as people say them: 262,144 is `262k`. */
 export function thousands(tokens: number): string {
   return `${Math.round(tokens / 1000)}k`;
+}
+
+/** The notice that `state`'s handover is written: the restart to come when `restart`, else the /clear to type. */
+export function noticeOf(state: ReadyState, context: StopContext, restart: boolean): NoticeDecision {
+  const { name } = context.session;
+  const next = restart
+    ? `${context.command} starts it fresh once it has been idle ${context.settings.restartDelaySeconds} s (type anything to keep this context)`
+    : 'type /clear for a fresh start';
+  return {
+    kind: 'notice',
+    state: { ...state, noticed: true },
+    message: `${context.command}: ${name} finished ${state.task} and wrote its handover; ${next}`,
+    title: context.settings.tabTitle ? `${name}: ${restart ? 'restarting' : 'type /clear'}` : undefined,
+    restart,
+  };
 }
 
 /** The command that tells the kit the handover is written; `--session` so it works without `$TEAMRIG_SESSION`. */
@@ -112,9 +134,10 @@ function handoverAsk(task: string, cause: Cause, context: StopContext): string {
  * The Stop hook, at the end of every turn. Only a boundary (a task just finished) is judged, once:
  * at or over the threshold, after enough tasks at a context worth refreshing, or when the lead asked,
  * the session is kept going to write its handover;
- * otherwise the boundary is recorded as judged and nothing is said. While background work the
- * session started still runs, a due refresh and the notice wait for a later stop, since a /clear
- * would cut that work off. A stop that ends a turn a Stop hook continued never judges a boundary, so
+ * otherwise the boundary is recorded as judged and nothing is said. Once the handover is written it
+ * tells the user, once, that the session restarts by itself when it can, else that it waits for /clear.
+ * While background work the session started still runs, a due refresh and the notice wait for a later
+ * stop, since a fresh start would cut that work off. A stop that ends a turn a Stop hook continued never judges a boundary, so
  * the kit never loops; the notice that the handover is written does show there, since that is the
  * turn that runs `refresh --ready`.
  */
@@ -129,17 +152,11 @@ export function decideStop(state: RefreshState | undefined, context: StopContext
     if (facts === undefined) {
       return MEASURE;
     }
-    // A /clear now would cut the running work off: the notice waits for a stop after it ends.
+    // A fresh start now would cut the running work off: the notice waits for a stop after it ends.
     if (facts.running > 0) {
       return NONE;
     }
-    const { name } = context.session;
-    return {
-      kind: 'notice',
-      state: { ...state, noticed: true },
-      message: `${context.command}: ${name} finished ${state.task} and wrote its handover; type /clear for a fresh start`,
-      title: context.settings.tabTitle ? `${name}: type /clear` : undefined,
-    };
+    return noticeOf(state, context, context.canRestart);
   }
   if (state.phase !== 'boundary' || context.stopHookActive) {
     return NONE;

@@ -2,7 +2,10 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
+import { RefreshStore } from '../refresh/store.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
+import { FakeProcesses } from '../testing/fake-processes.ts';
+import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { APP, CLAUDE_SESSION, CliHarness, contextOf, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
 
@@ -55,6 +58,22 @@ async function finishTask(kit: CliHarness, session: string): Promise<CliResult> 
 }
 
 const AS_ALPHA = { env: { TEAMRIG_SESSION: 'alpha' } };
+
+/** Alpha's handover written after the Stop hook asked for it, so the next stop announces the fresh start. */
+async function handoverWritten(kit: CliHarness): Promise<RefreshStore> {
+  await kit.files.write(TRANSCRIPT, transcript(300_000));
+  await finishTask(kit, 'alpha');
+  stopJson(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload() }));
+  await kit.files.write(HANDOVER('alpha'), '# In progress\n');
+  assert.equal((await kit.run(['refresh', '--ready', '--session', 'alpha'])).code, EXIT.ok);
+  return new RefreshStore(kit.files, { refresh: join(TEAM_HOME, 'state', 'refresh'), handover: join(TEAM_HOME, 'handover') });
+}
+
+/** The hook (pid 7000) run through a shell by Claude Code (6900). */
+const UNDER_CLAUDE = (): FakeSessionProcesses =>
+  new FakeSessionProcesses(7000)
+    .add({ pid: 7000, parentPid: 6900, name: 'bash.exe', commandLine: 'bash -c "node main.js hook stop"' })
+    .add({ pid: 6900, parentPid: 1, name: 'claude.exe', commandLine: 'claude' });
 
 describe('runCli: context refresh', () => {
   it('asks for the handover at a task boundary over the threshold, then points the cleared session at it', async () => {
@@ -115,6 +134,45 @@ describe('runCli: context refresh', () => {
     assert.deepEqual(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload(true) }), SILENT, 'no /clear notice over running work');
     await kit.files.write(TRANSCRIPT, `${BACKGROUND_START}${BACKGROUND_END}${BACKGROUND_START.replaceAll('toolu_bg', 'toolu_bg2')}${BACKGROUND_END.replace('toolu_bg', 'toolu_bg2')}`);
     assert.match(JSON.stringify(stopJson(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload() }))), /wrote its handover; type \/clear/);
+  });
+
+  it('arms the automatic restart once the handover is written, for the Claude Code the hook runs under', async () => {
+    const kit = new CliHarness();
+    const store = await handoverWritten(kit);
+    const processes = new FakeProcesses();
+    const env = { TEAMRIG_SESSION: 'alpha', CLAUDE_PROJECT_DIR: APP, TEAMRIG_LAUNCHED: 'alpha' };
+    assert.deepEqual(stopJson(await kit.run(['hook', 'stop'], { env, stdin: stopPayload(true), sessionProcesses: UNDER_CLAUDE(), processes })), {
+      systemMessage: 'teamrig: app-alpha finished T1 and wrote its handover; teamrig starts it fresh once it has been idle 15 s (type anything to keep this context)',
+      terminalSequence: '\u001b]0;app-alpha: restarting\u0007',
+    });
+    const request = await store.restart('alpha');
+    assert.ok(request);
+    assert.deepEqual(request, { phase: 'pending', at: request.at, pid: 6900, claudeSession: CLAUDE_SESSION, transcript: TRANSCRIPT, cwd: APP, supervised: true });
+    const waiters = processes.hidden.filter((run) => run.args[1] === 'restart');
+    assert.deepEqual(
+      waiters.map((run) => [run.command, run.cwd, ...run.args]),
+      [['/usr/bin/node', APP, '/opt/teamrig/dist/cli/main.js', 'restart', 'alpha', '--team', 'app', '--at', request.at, '--project', APP]],
+    );
+    assert.deepEqual(await kit.run(['hook', 'stop'], { env, stdin: stopPayload(), sessionProcesses: UNDER_CLAUDE(), processes }), SILENT, 'announced once');
+    assert.equal(processes.hidden.filter((run) => run.args[1] === 'restart').length, 1);
+  });
+
+  it('asks for /clear instead, leaving nothing armed, when the restart cannot start or is off', async () => {
+    const missing = new CliHarness();
+    const store = await handoverWritten(missing);
+    const processes = new FakeProcesses().onStart('/usr/bin/node', { kind: 'missing' });
+    const clear = {
+      systemMessage: 'teamrig: app-alpha finished T1 and wrote its handover; type /clear for a fresh start',
+      terminalSequence: '\u001b]0;app-alpha: type /clear\u0007',
+    };
+    assert.deepEqual(stopJson(await missing.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload(true), sessionProcesses: UNDER_CLAUDE(), processes })), clear);
+    assert.equal(await store.restart('alpha'), undefined);
+
+    const off = new CliHarness({ ...TEAM, refresh: { autoRestart: false } });
+    const offStore = await handoverWritten(off);
+    const none = new FakeProcesses();
+    assert.deepEqual(stopJson(await off.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload(true), sessionProcesses: UNDER_CLAUDE(), processes: none })), clear);
+    assert.deepEqual([await offStore.restart('alpha'), none.hidden.filter((run) => run.args[1] === 'restart')], [undefined, []]);
   });
 
   it('records a boundary under the threshold and says nothing, and refuses --ready when nothing was asked', async () => {

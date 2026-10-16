@@ -33,6 +33,7 @@ import { bindHintOnce, bindTab, inboxLinesFor, readTitle, type TitleRead } from 
 import { helperGateOutput, promptBudgetLine, stopBudgetLines } from './hook-budget.ts';
 import { startAutoSync } from './gh-auto.ts';
 import { coldSendHold } from './hook-cold-send.ts';
+import { armRestart, restartTargetOf } from './hook-restart.ts';
 import { envSession, leadOwnPaths, markedSessionOf, parseJson, sessionTeam, teamSessionOf } from './hook-input.ts';
 import { verifyByLinesOf, verifyNoteOf } from './verify-queue.ts';
 
@@ -387,6 +388,7 @@ async function refreshDecisionOf(runtime: CliRuntime, scope: StopScope, payload:
   }
   const store = new RefreshStore(runtime.files, kit.paths);
   const state = await store.state(id);
+  const target = restartTargetOf(runtime, payload);
   const context: StopContext = {
     stopHookActive: payload['stop_hook_active'] === true,
     settings: config.refresh,
@@ -394,9 +396,12 @@ async function refreshDecisionOf(runtime: CliRuntime, scope: StopScope, payload:
     session: { id, name: roster.nameOf(id) ?? id },
     handoverPath: store.handoverPath(id),
     command: KIT_NAME,
+    canRestart: config.refresh.autoRestart && target !== undefined,
   };
   const first = decideStop(state, context);
-  const decision = first.kind === 'measure' ? decideStop(state, context, await boundaryFactsOf(runtime, roster, store, id, payload)) : first;
+  const decided = first.kind === 'measure' ? decideStop(state, context, await boundaryFactsOf(runtime, roster, store, id, payload)) : first;
+  const decision =
+    decided.kind === 'notice' && decided.restart && target !== undefined ? await armRestart(runtime, store, { team: kit.paths.team, id, context, target }, decided) : decided;
   switch (decision.kind) {
     case 'write':
     case 'block':
@@ -449,7 +454,7 @@ async function stopOutputOf(runtime: CliRuntime, payload: JsonRecord): Promise<s
 /**
  * Stop, at the end of every turn: after the session finished a task (`set done`), asks for its
  * handover once when its context reached the team's threshold or the lead asked, then tells the user
- * once that it waits for /clear. It also tells the user, once each, when the session runs at another
+ * once that it restarts by itself when idle (hook-restart.ts, `refresh.autoRestart`), or else waits for /clear. It also tells the user, once each, when the session runs at another
  * effort than its `launch` entry or Claude Code switched its model after a safeguard stop, and once a
  * day when the date to verify one of its verifying tasks by has come. Once per `github.everyMinutes` for the whole
  * team it starts `gh sync --auto` hidden in the background (gh-auto.ts). A turn with nothing to say reads
