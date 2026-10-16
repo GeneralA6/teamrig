@@ -212,7 +212,9 @@ starts it fresh once it has been idle 15 s (type anything to keep this context)`
 `shop-web: restarting`. A hidden `teamrig restart` then waits until the tab has been idle
 `refresh.restartDelaySeconds` (15) with nothing running and its last turn ended, and the plugin's mod runs `/clear` in
 this tab. Where no mod claims it within 10 s, the restart ends this Claude Code and starts it again: in the same tab
-when `teamrig open` started it, else in a new tab. A prompt the user sends first cancels it, and you keep this
+when `teamrig open` started it, else in a new tab. It never does that while this Claude Code runs a background shell
+(a background command or a monitor), which the end would take too: your inbox then says to type `/clear`, which
+keeps it. A prompt the user sends first cancels it, and you keep this
 context until a later task end asks again; text typed but not sent is lost. When the restart cannot start, or
 with `refresh.autoRestart: false`, the message says `type /clear for a fresh start` and the title
 `shop-web: type /clear`. On Windows an ended Claude Code runs no SessionEnd hooks: `refresh.endCommand` names a

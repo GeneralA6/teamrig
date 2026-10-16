@@ -157,7 +157,8 @@ teamrig refreshes a long-running session at a task boundary, so it never loses w
    the tab title becomes `shop-web: restarting` (the session's name; `refresh.tabTitle: false` turns that off).
 4. End your turn and start nothing new. Once the tab has been idle 15 s (`refresh.restartDelaySeconds`), teamrig's
    mod runs `/clear` in this tab; where it cannot, teamrig ends this Claude Code and starts it again, in the same
-   tab when `teamrig open` started it, else in a new tab.
+   tab when `teamrig open` started it, else in a new tab. While a background shell runs (a background command or
+   a monitor), it ends nothing and your inbox says to type `/clear`, which keeps the shell.
    If the user sends a prompt first, the restart is cancelled and you keep this context. When the restart is off
    (`refresh.autoRestart: false`) or cannot start, the title reads `shop-web: type /clear`: ask the user to type
    `/clear`.
