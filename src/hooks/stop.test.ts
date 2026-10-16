@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import type { RefreshState } from '../refresh/state.ts';
 import { stopOutput, tabTitleSequence } from './stop.ts';
 
-const STATE: RefreshState = { phase: 'ready', task: 'T12', at: '2030-01-08T10:00:00.000Z', noticed: true, transcript: null, claudePid: null };
+const STATE: RefreshState = { phase: 'ready', task: 'T12', at: '2030-01-08T10:00:00.000Z', tokens: null, noticed: true, transcript: null, claudePid: null };
 
 describe('stopOutput', () => {
   it('keeps the session going with the reason when it blocks', () => {

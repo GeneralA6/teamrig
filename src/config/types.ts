@@ -297,8 +297,8 @@ export interface AlertsConfig {
 }
 
 /**
- * Context refresh: when a session finishes a task (`set <id> --status done`) with its context at or over
- * `contextTokens`, or with `everyTasks` tasks finished since its context was last fresh, or after the lead
+ * Context refresh: at any turn end with the session's context at or over `contextTokens`, at a task end
+ * (`set <id> --status done`) with `everyTasks` tasks finished since its context was last fresh, or after the lead
  * asked for it, the session writes a handover; then teamrig starts it fresh on its own (`autoRestart`), or
  * the user types /clear.
  */

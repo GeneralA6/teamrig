@@ -10,9 +10,12 @@ const EVERY_PHASE: readonly RefreshState[] = [
   { phase: 'idle', task: 'T12', at: AT, tokens: null, finished: 0 },
   { phase: 'asked', task: 'T12', at: AT, tokens: 262_000, handoverHash: '0123456789abcdef' },
   { phase: 'asked', task: 'T12', at: AT, tokens: null, handoverHash: null },
-  { phase: 'ready', task: 'T12', at: AT, noticed: false, transcript: null, claudePid: null },
-  { phase: 'ready', task: 'T12', at: AT, noticed: true, transcript: '/claude/projects/p/s.jsonl', claudePid: 6900 },
+  { phase: 'ready', task: 'T12', at: AT, tokens: null, noticed: false, transcript: null, claudePid: null },
+  { phase: 'ready', task: 'T12', at: AT, tokens: null, noticed: true, transcript: '/claude/projects/p/s.jsonl', claudePid: 6900 },
   { phase: 'refreshed', task: 'T12', at: AT },
+  { phase: 'asked', task: null, at: AT, tokens: 262_000, handoverHash: null },
+  { phase: 'ready', task: null, at: AT, tokens: 262_000, noticed: true, transcript: null, claudePid: null },
+  { phase: 'refreshed', task: null, at: AT },
 ];
 
 describe('refresh state files', () => {
@@ -44,14 +47,18 @@ describe('refresh state files', () => {
       '{"v":1,"phase":"ready","task":"T1","at":"x","noticed":true,"transcript":7}',
       '{"v":1,"phase":"ready","task":"T1","at":"x","noticed":true,"claudePid":0}',
       '{"v":1,"phase":"ready","task":"T1","at":"x","noticed":true,"claudePid":"6900"}',
+      '{"v":1,"phase":"ready","task":"T1","at":"x","noticed":true,"tokens":-1}',
+      '{"v":1,"phase":"boundary","task":null,"at":"x"}',
+      '{"v":1,"phase":"idle","task":null,"at":"x","tokens":5}',
+      '{"v":1,"phase":"asked","task":7,"at":"x","tokens":1,"handoverHash":null}',
       '[1]',
     ]) {
       assert.equal(parseRefreshState(text), undefined, text);
     }
   });
 
-  it('reads a ready state from before the transcript and process were recorded as having neither', () => {
-    assert.deepEqual(parseRefreshState('{"v":1,"phase":"ready","task":"T1","at":"x","noticed":true}'), { phase: 'ready', task: 'T1', at: 'x', noticed: true, transcript: null, claudePid: null });
+  it('reads a ready state from before the transcript, process and size were recorded as having none', () => {
+    assert.deepEqual(parseRefreshState('{"v":1,"phase":"ready","task":"T1","at":"x","noticed":true}'), { phase: 'ready', task: 'T1', at: 'x', tokens: null, noticed: true, transcript: null, claudePid: null });
   });
 
   it('reads a boundary or a judged one from before the task count as its first task, or none counted', () => {

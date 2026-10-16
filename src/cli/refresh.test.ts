@@ -207,7 +207,7 @@ describe('runCli: context refresh', () => {
     assert.deepEqual([await offStore.restart('alpha'), none.hidden.filter((run) => run.args[1] === 'restart')], [undefined, []]);
   });
 
-  it('cancels the armed restart when the user types, keeping the context until a later task end', async () => {
+  it('cancels the armed restart when the user types, keeping the context until a later task end or more growth', async () => {
     const kit = new CliHarness();
     const store = await handoverWritten(kit);
     const env = { TEAMRIG_SESSION: 'alpha', CLAUDE_PROJECT_DIR: APP };
@@ -216,7 +216,7 @@ describe('runCli: context refresh', () => {
     const typed = JSON.stringify({ session_id: CLAUDE_SESSION, cwd: APP, prompt: 'one more thing', session_title: 'app-alpha' });
     const cancelled = await kit.run(['hook', 'inbox-reminder'], { env, stdin: typed });
     assert.ok(
-      cancelled.stdout.includes('teamrig: the user typed, so the automatic restart is cancelled and you keep this context; a later task end asks for a new handover when one is due'),
+      cancelled.stdout.includes('teamrig: the user typed, so the automatic restart is cancelled and you keep this context; a new handover is asked at your next task end, or once your context grew 24k more'),
       cancelled.stdout.join('\n'),
     );
     assert.equal(await store.restart('alpha'), undefined);
@@ -245,6 +245,32 @@ describe('runCli: context refresh', () => {
     await kit.files.write(HANDOVER('alpha'), '# In progress\n');
     assert.deepEqual((await kit.run(['refresh', '--ready', '--session', 'alpha'])).stdout, [`Ready. Ask the user to type /clear; your next start reads ${HANDOVER('alpha')}.`]);
     assert.match((await kit.run(['refresh', 'bravo', '--session', 'lead'])).stdout.join('\n'), /; then type \/clear in its tab$/);
+  });
+
+  it('asks for the handover at any turn end over the threshold, mid-task, and again only once the context grew', async () => {
+    const kit = new CliHarness({ ...TEAM, refresh: { tabTitle: false } });
+    const stop = async (tokens: number): Promise<CliResult> => {
+      await kit.files.write(TRANSCRIPT, transcript(tokens));
+      return kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload() });
+    };
+    assert.deepEqual(await stop(100_000), SILENT, 'under the threshold');
+    assert.match(
+      JSON.stringify(stopJson(await stop(130_000))),
+      /"decision":"block","reason":"teamrig: your context is 130k \(refresh at 120k\), so refresh now rather than at a task end\. Write your handover/,
+    );
+    assert.match((await kit.files.read(STATE('alpha'))) ?? '', /"phase":"asked","task":null,.*"tokens":130000/);
+    assert.deepEqual(await stop(153_999), SILENT, 'not at every turn end the session goes on');
+    assert.equal(stopJson(await stop(154_000)) !== null, true, 'asked again 24k later');
+    assert.equal((await kit.run(['hook', 'session-start'], { ...AS_ALPHA, stdin: startPayload('compact') })).code, EXIT.ok);
+    assert.match(JSON.stringify(stopJson(await stop(125_000))), /"decision":"block"/, 'a compaction brings the ask back to the threshold');
+
+    await kit.files.write(HANDOVER('alpha'), '# In progress\n');
+    assert.equal((await kit.run(['refresh', '--ready', '--session', 'alpha'])).code, EXIT.ok);
+    assert.deepEqual(stopJson(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload(true) })), {
+      systemMessage: 'teamrig: app-alpha wrote its handover; type /clear for a fresh start',
+    });
+    const fresh = contextOf(await kit.run(['hook', 'session-start'], { ...AS_ALPHA, stdin: startPayload('clear') }));
+    assert.ok(fresh.includes(`You were refreshed mid-task; read your handover first: ${HANDOVER('alpha')}. Then carry on with its next steps.`), fresh);
   });
 
   it('records a boundary under the threshold and says nothing, and refuses --ready when nothing was asked', async () => {
@@ -292,7 +318,7 @@ describe('runCli: context refresh', () => {
     });
   });
 
-  it("lets only the lead ask for a refresh, which applies at the session's next boundary whatever its size", async () => {
+  it("lets only the lead ask for a refresh, which applies at the session's next turn end whatever its size", async () => {
     const kit = new CliHarness({ ...TEAM, refresh: { handoverDir: 'notes' } });
     const refused = await kit.run(['refresh', 'bravo', '--session', 'alpha']);
     assert.deepEqual([refused.code, refused.stdout], [EXIT.refused, ['REFUSED only the lead (app-lead) asks for a refresh']]);
@@ -301,12 +327,16 @@ describe('runCli: context refresh', () => {
     const requested = await kit.run(['refresh', 'app-bravo', '--session', 'lead']);
     const handover = join(TEAM_HOME, 'notes', 'bravo.md');
     assert.deepEqual(requested.stdout, [
-      `REQUESTED a refresh of app-bravo: after its next \`set done\` it writes its handover to ${handover}; then it starts fresh once idle`,
+      `REQUESTED a refresh of app-bravo: at its next turn end it writes its handover to ${handover}; then it starts fresh once idle`,
     ]);
     await finishTask(kit, 'bravo');
     const asked = stopJson(await kit.run(['hook', 'stop'], { env: { TEAMRIG_SESSION: 'bravo' }, stdin: stopPayload(false, { transcript_path: join(USER_HOME, 'gone.jsonl') }) }));
     assert.ok(typeof asked === 'object' && asked !== null && 'reason' in asked);
     assert.match(String(asked.reason), new RegExp(`^teamrig: app-lead asked for a refresh and you just finished T1\\. Write your handover to ${handover.replaceAll('\\', '\\\\')} `));
+
+    assert.equal((await kit.run(['refresh', 'app-alpha', '--session', 'lead'])).code, EXIT.ok);
+    const midTask = stopJson(await kit.run(['hook', 'stop'], { env: { TEAMRIG_SESSION: 'alpha' }, stdin: stopPayload(false, { transcript_path: join(USER_HOME, 'gone.jsonl') }) }));
+    assert.match(JSON.stringify(midTask), /"reason":"teamrig: app-lead asked for a refresh, so refresh now rather than at a task end\. /, 'with no task finished');
   });
 
   it('refuses a refresh line it cannot read, and everything with refresh off', async () => {
