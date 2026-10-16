@@ -85,6 +85,11 @@ export const DEFAULT_GITHUB = { repos: [], owners: {}, sessions: {}, closedDays:
 export const DEFAULT_REFRESH = { enabled: true, contextTokens: 120_000, everyTasks: 3, everyTasksMinTokens: 80_000, tabTitle: true };
 export const DEFAULT_OPEN = { terminal: 'auto' };
 /**
+ * A hire spends the week's budget, so it waits for the owner's yes: at most two hires at 1% of the week a day
+ * each, 3% in all, reviewed after a week and due to retire after 4 hours with no open task.
+ */
+export const DEFAULT_HIRING = { policy: 'owner', maxSessions: 2, dailyPct: 1, maxDailyPct: 3, idleHours: 4, reviewDays: 7 };
+/**
  * The lead's model and effort for each key its `launch` entry leaves unset: Opus (Claude Code's `opus`
  * alias, its newest Opus) at xhigh effort, since the lead plans, splits and judges the whole team's work.
  * Not `best`: in a lead A/B, Fable at xhigh judged no better than Opus and cost 2.4 times as much. A team

@@ -25,6 +25,14 @@ export function isEscalation(value) {
     return ESCALATIONS.some((escalation) => escalation === value);
 }
 /**
+ * Who may hire a session onto the team (`teamrig hire`): `off` nobody; `owner` the lead, once the owner
+ * approved (`--approved-by`, kept with the hire); `lead` the lead, within the caps.
+ */
+export const HIRING_POLICIES = ['off', 'owner', 'lead'];
+export function isHiringPolicy(value) {
+    return HIRING_POLICIES.some((policy) => policy === value);
+}
+/**
  * Where `teamrig open` opens a session's tab: `auto` picks tmux inside tmux, else the platform's
  * terminal; `print` opens nothing and prints the command to run.
  */

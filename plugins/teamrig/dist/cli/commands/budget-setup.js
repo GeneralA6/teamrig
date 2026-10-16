@@ -7,7 +7,7 @@ import { ESCALATIONS, isEscalation, isOverAction, OVER_ACTIONS } from "../../con
 import { isRecord } from "../../core/guards.js";
 import { noPositionals, UsageError } from "../args.js";
 import { callerOf } from "../inputs.js";
-import { issueText, openTeamKit, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
+import { configFileJson, issueText, openTeamKit, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { pctFlag, snapshotDirOf } from "./budget.js";
 /**
@@ -92,21 +92,6 @@ function keyLine(key) {
     const from = valueText(key.key, key.from);
     return key.changed ? `  CHANGE budget.${key.key}: ${from} -> ${valueText(key.key, key.to)}` : `  KEEP budget.${key.key}: ${from}`;
 }
-/** The config file's own JSON, not the copy migrated in memory, so nothing else in it changes, its version included. */
-async function fileJson(runtime, path) {
-    const text = await runtime.files.read(path);
-    let raw;
-    try {
-        raw = text === undefined ? undefined : JSON.parse(text);
-    }
-    catch {
-        raw = undefined;
-    }
-    if (!isRecord(raw)) {
-        throw new RefusedError(`${path} changed while it was read; run the command again`);
-    }
-    return raw;
-}
 /** `budget setup [--daily ...] [--max-daily ...] [--over ...] [--escalate ...] [--quiet ...] [--quiet-action ...] [--off] [--yes]`. */
 export async function setup(args, runtime) {
     noPositionals(args);
@@ -120,7 +105,7 @@ export async function setup(args, runtime) {
     if (sessionIdOf(roster, caller) !== lead) {
         throw new RefusedError(`only the lead${lead === undefined ? '' : ` (${roster.nameOf(lead) ?? lead})`} sets the team's budget`);
     }
-    const plan = planBudgetSetup(await fileJson(runtime, load.path), choices);
+    const plan = planBudgetSetup(await configFileJson(runtime, load.path), choices);
     if (!plan.ok) {
         throw new UsageError(plan.problem);
     }
