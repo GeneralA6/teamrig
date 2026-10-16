@@ -4,6 +4,7 @@ import { claudeConfigDir, KIT_NAME } from "../../core/home.js";
 import { readContextFiles } from "../../doctor/context-files.js";
 import { doctorFindings, formatFinding } from "../../doctor/doctor.js";
 import { claudeSettingsFiles, readSettingsEnv } from "../../doctor/settings-env.js";
+import { HiringLog, retiredSessions } from "../../hiring/log.js";
 import { inboxStatus } from "../../inbox/inbox.js";
 import { JsonlRenameLog } from "../../names/log.js";
 import { noPositionals } from "../args.js";
@@ -32,12 +33,14 @@ export async function doctor(args, runtime) {
     const claudeDir = claudeConfigDir(runtime.env, runtime.userHome);
     const project = await projectFolder(runtime);
     const roster = new Roster(config, paths.team, renameLog.renames);
+    const { records } = await new HiringLog(runtime.files, paths.hires).read();
     const findings = doctorFindings({
         requirements: await runtime.requirements.problems(),
         roster,
         configNames: config.names,
         renameLog: { ...renameLog, path: paths.renames },
         inboxes: await inboxStatus(inboxDepsOf(runtime, paths)),
+        retired: new Set(retiredSessions(records).map((record) => record.session)),
         teamRules: rules === undefined ? undefined : { path: paths.teamRules, chars: rules.trim().length },
         contextFiles: {
             read: await readContextFiles(runtime.files, { claudeDir, project, skills: paths.skills }),

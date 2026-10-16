@@ -1,13 +1,12 @@
 import { planBudgetSetup } from "../../budget/setup.js";
 import { readSnapshots } from "../../budget/snapshot.js";
 import { DEFAULT_BUDGET } from "../../config/defaults.js";
-import { formatConfig, writeConfigWithBackup } from "../../config/load.js";
-import { parseConfigText } from "../../config/text.js";
+import { writeConfigWithBackup } from "../../config/load.js";
 import { ESCALATIONS, isEscalation, isOverAction, OVER_ACTIONS } from "../../config/types.js";
 import { isRecord } from "../../core/guards.js";
 import { noPositionals, UsageError } from "../args.js";
 import { callerOf } from "../inputs.js";
-import { configFileJson, issueText, openTeamKit, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
+import { checkedNextConfig, configFileJson, openTeamKit, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { pctFlag, snapshotDirOf } from "./budget.js";
 /**
@@ -109,14 +108,7 @@ export async function setup(args, runtime) {
     if (!plan.ok) {
         throw new UsageError(plan.problem);
     }
-    const next = parseConfigText(formatConfig(plan.value.config));
-    if (next.status !== 'loaded') {
-        throw new RefusedError(`the new config cannot be read: ${issueText(next.issue)}`);
-    }
-    const [problem] = next.issues;
-    if (problem !== undefined) {
-        throw new RefusedError(`nothing written: ${issueText(problem)}`);
-    }
+    const next = checkedNextConfig(plan.value.config);
     const { keys } = plan.value;
     const changed = keys.filter((key) => key.changed).length;
     const counts = `${changed} to change, ${keys.length - changed} unchanged`;
@@ -131,7 +123,7 @@ export async function setup(args, runtime) {
         runtime.out.stdout(`WROTE ${load.path}: ${counts}; the old file is at ${backup}`);
     }
     keys.forEach((key) => runtime.out.stdout(keyLine(key)));
-    const budget = next.config.budget;
+    const budget = next.budget;
     if (budget.enabled && budget.weeklyLimitW === undefined && (await readSnapshots(runtime.files, snapshotDirOf(budget, kit.paths))).length === 0) {
         runtime.out.stdout("NOTE no status line reading yet, so the budget stays silent: run `teamrig statusline install`, or set budget.weeklyLimitW");
     }

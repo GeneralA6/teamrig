@@ -12,18 +12,34 @@ export const HIRE_FORMAT = 1;
 function isHire(record) {
     return record.kind === 'hire';
 }
-/** The sessions hired and not retired since, each with its newest hire, in the order they were first hired. */
-export function activeHires(records) {
+function isRetire(record) {
+    return record.kind === 'retire';
+}
+/** Each session's newest record, in the order the sessions first appear. */
+function newestBySession(records) {
     const newest = new Map();
     for (const record of records) {
         newest.set(record.session, record);
     }
-    return [...newest.values()].filter(isHire);
+    return [...newest.values()];
+}
+/** The sessions hired and not retired since, each with its newest hire, in the order they were first hired. */
+export function activeHires(records) {
+    return newestBySession(records).filter(isHire);
+}
+/** The sessions retired and not hired again since, each with its retire, in the order they first appear. */
+export function retiredSessions(records) {
+    return newestBySession(records).filter(isRetire);
 }
 function recordOf(record) {
     const base = { [VERSION_FIELD]: HIRE_FORMAT, kind: record.kind, session: record.session, reason: record.reason, by: record.by, at: new Date(record.at).toISOString() };
     if (!isHire(record)) {
-        return { ...base, ...(record.handover === undefined ? {} : { handover: record.handover }), ...(record.heir === undefined ? {} : { heir: record.heir }) };
+        return {
+            ...base,
+            ...(record.handover === undefined ? {} : { handover: record.handover }),
+            ...(record.noHandover === undefined ? {} : { noHandover: record.noHandover }),
+            ...(record.heir === undefined ? {} : { heir: record.heir }),
+        };
     }
     return {
         ...base,
@@ -54,8 +70,18 @@ export function parseHiringRecord(record) {
     }
     if (record['kind'] === 'retire') {
         const handover = stringField(record, 'handover');
+        const noHandover = stringField(record, 'noHandover');
         const heir = stringField(record, 'heir');
-        return { kind: 'retire', session, reason, by, at, ...(handover === undefined ? {} : { handover }), ...(heir === undefined ? {} : { heir }) };
+        return {
+            kind: 'retire',
+            session,
+            reason,
+            by,
+            at,
+            ...(handover === undefined ? {} : { handover }),
+            ...(noHandover === undefined ? {} : { noHandover }),
+            ...(heir === undefined ? {} : { heir }),
+        };
     }
     const scope = stringField(record, 'scope');
     const reviewBy = stringField(record, 'reviewBy');

@@ -1,6 +1,8 @@
 import { formatAddress } from "../../core/address.js";
 import { JsonlDailyLog } from "../../core/daily-log.js";
 import { SecretScanner } from "../../core/secrets.js";
+import { hireFlags } from "../../hiring/due.js";
+import { activeHires, HiringLog } from "../../hiring/log.js";
 import { postLine } from "../../inbox/inbox.js";
 import { byFlagKind, checkTasks, currentWeekOf } from "../../register/check.js";
 import { renderPlan } from "../../register/plan.js";
@@ -320,8 +322,9 @@ function checkRegister(snapshot, config, now, week, team) {
 /**
  * What `check` reports: the task flags, then the skill flags of the Claude Code skills folder. With `--tree`,
  * the task flags of the lead's team and each team under it, against the lead's week; the skills are the lead's
- * team's only, as teams on one machine share that folder. The `stopgap T<id>` tags in those skills
- * and in the team's `register.check.stopgapFiles` add a STOPGAP-DONE flag per finished task they name.
+ * team's only, as teams on one machine share that folder, and so are the flags on hired sessions (src/hiring/due.ts).
+ * The `stopgap T<id>` tags in those skills and in the team's `register.check.stopgapFiles` add a STOPGAP-DONE flag
+ * per finished task they name.
  */
 export async function checkReport(args, runtime) {
     const now = new Date(runtime.clock.now());
@@ -343,8 +346,10 @@ export async function checkReport(args, runtime) {
         return { ...section, flags: [...section.flags, ...stopgaps].sort(byFlagKind) };
     });
     const skills = lintSkills(skillFiles, now, own.config);
+    const { records } = await new HiringLog(runtime.files, own.paths.hires).read();
+    const hires = hireFlags({ hires: activeHires(records), tasks: own.snapshot.state.tasks.values(), config: own.config, now });
     const scope = week === null ? 'no week plan tagged yet, so the week checks are skipped' : `week ${week}`;
-    return { sections, scope, skills, skillsDir: own.paths.skills };
+    return { sections, scope, skills, skillsDir: own.paths.skills, hires };
 }
 /** `check [--tree] [--all]`: the report in the short form (src/cli/reports.ts), or with `--all` every flag in full. */
 export async function check(args, runtime) {
