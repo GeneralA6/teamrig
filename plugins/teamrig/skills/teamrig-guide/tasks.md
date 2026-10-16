@@ -145,6 +145,7 @@ are some: `HIRE <KIND> (<detail>) <session>: <what to do>`. A session's own `sta
 | --- | --- | --- |
 | `OWNER` | `no "Owner: <session>" line`, or `owner x is not a session on the team` | Add or correct the `Owner:` line. |
 | `UNVERIFIED` | `no "Last verified: YYYY-MM-DD"`, or `last verified D, N d ago > 30` | Run the skill again; if its steps held, bump the date; if not, fix it or retire it. |
+| `VERIFIED-NOTE` | `text after the "Last verified:" date: keep the date alone, a lesson on its own line` | Cut the line to `Last verified: YYYY-MM-DD`. A lasting lesson goes on its own line (a trap bullet); a run's details go in its task's evidence. Every run then changes only the date, so two sessions verifying the skill at once never edit the same text. |
 | `FORBIDDEN-KEY` | `allowed-tools is not allowed in a team skill: remove it` | Remove that frontmatter key. |
 | `DESCRIPTION` | `no description`, or `N words > 30` | Write or shorten the description. |
 | `AREA-OVER-LIMIT` | `N skills > 8: merge before adding` | Merge that area's skills. |
