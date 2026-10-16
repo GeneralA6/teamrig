@@ -25,7 +25,8 @@ const DAY_MS = 86_400_000;
 const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)([\s\S]*)$/;
 const TOP_LEVEL_KEY = /^([A-Za-z0-9_-]+)\s*:/gm;
 
-function splitFrontmatter(text: string): { readonly front: string; readonly body: string } {
+/** A SKILL.md split into its frontmatter (without the `---` lines) and its body. */
+export function splitFrontmatter(text: string): { readonly front: string; readonly body: string } {
   const match = FRONTMATTER.exec(text);
   return match === null ? { front: '', body: text } : { front: match[1] ?? '', body: match[2] ?? '' };
 }

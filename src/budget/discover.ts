@@ -63,6 +63,11 @@ export const nodeTranscriptFolders: TranscriptFolders = {
 
 export const nodeTranscriptSource: TranscriptSource = { ...nodeTranscriptBytes, ...nodeTranscriptFolders };
 
+/** Claude Code's folder name for a project: its path with every character but a letter or digit made `-`. */
+export function claudeProjectSlug(project: string): string {
+  return project.replace(/[^A-Za-z0-9]/g, '-');
+}
+
 /** Claude Code's folder of project transcripts: `$CLAUDE_CONFIG_DIR/projects`, else `~/.claude/projects`. */
 export function claudeProjectsDir(env: Env, userHome: string): string {
   return join(claudeConfigDir(env, userHome), 'projects');
