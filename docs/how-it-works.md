@@ -103,11 +103,19 @@ talk to one lead: the root team's.
 
 The lead hires a temporary member for one job with `teamrig hire`, within the team config's `hiring` block:
 
-- `policy`: `off` (no hires by command), `owner` (the default: each hire names who approved it) or `lead`.
+- `policy`: `off` (no hires by command), `owner` (the default: each hire names who approved it), `lead`, or
+  `automatic` (the lead decides, and a hired session may retire itself once its tasks are closed).
 - `maxSessions` (2) hired members at once, each on `dailyPct` (1% of the week a day) unless the hire sets its own,
   all of them on at most `maxDailyPct` (3%) a day; `reviewDays` (7) sets a hire's review day.
 - Each hire is logged in `state/hires.jsonl` with its job, reason, approver, model, effort, daily budget and review
-  day. `idleHours` (4) is for the retire checks of a later version.
+  day. `teamrig check` flags a hired session with no open task for `idleHours` (4) as RETIRE-DUE, and one past its
+  review day as REVIEW-DUE.
+
+When its job is done, the lead retires it with `teamrig retire <id>`. It refuses while the session owns open tasks
+unless `--to <heir>` takes them, and without its handover note (`handover/<id>.md`) unless `--no-handover "<why>"`.
+It takes the session's keys out of `sessions`, `names`, `launch` and `budget.sessions`, keeping the old config in
+`backups/`, and logs the retire in `state/hires.jsonl`. Its tasks, inbox and records stay where they are, readable by
+its id, and `teamrig doctor` reads its inbox as kept, not orphaned.
 
 ## Setting up a team
 
