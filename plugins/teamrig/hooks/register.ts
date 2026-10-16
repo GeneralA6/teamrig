@@ -1,15 +1,18 @@
 import type { Register, StateRef } from 'claude-code';
-import { ClearHand, TICK_MS } from '../dist/mod/clear-hand.js';
+import { ClearHand, liveAgentsOf, TICK_MS } from '../dist/mod/clear-hand.js';
 import { CHECK_MS, installedPluginsFileOf, RELOAD_COMMAND, ReloadHand } from '../dist/mod/reload-hand.js';
 
 /**
  * teamrig's mod: two hands in every interactive tab (built into dist from `src/mod`).
  *
  * The refresh's /clear (`clear-hand.ts`): once a session wrote its handover and stayed quiet, the hidden restart
- * runner asks its tab to run /clear. The hand looks for that ask each second, claims it through the teamrig CLI
- * (`hook clear-claim`, which checks the restart is still pending) and runs /clear the way the person would, so the
- * tab and its process stay. A tab without this mod (an older Claude Code, mods off) leaves the ask unclaimed, and
- * the runner ends the process instead.
+ * runner asks its tab to run /clear. The hand looks for that ask each second. While Claude Code still lists a live
+ * agent of the session (`$.agent.list()`: a helper or a teammate not completed, failed or killed), or will not list
+ * them, it holds the ask through the teamrig CLI (`hook clear-claim --hold`) and runs nothing: the runner then ends
+ * nothing and asks again once the session is quiet. Else it claims the ask (`hook clear-claim`; both check the
+ * restart is still pending) and runs /clear the way the person would, so the tab and its process stay. A tab
+ * without this mod (an older Claude Code, mods off) leaves the ask unclaimed, and the runner ends the process
+ * instead, guarded only by what the transcript shows (helpers it started in the last 6 hours).
  *
  * The reload after an install (`reload-hand.ts`): every 15 s the hand reads Claude Code's installed_plugins.json, and
  * once an install that applies to this tab changed and the file stood for 10 s, it runs /reload-plugins while no turn
@@ -21,7 +24,7 @@ import { CHECK_MS, installedPluginsFileOf, RELOAD_COMMAND, ReloadHand } from '..
 /** The reload hand's last reload, kept in the session (types/index.d.ts). */
 const RELOAD_STATE: StateRef<'teamrig', 'reload'> = { plugin: 'teamrig', key: 'reload' };
 
-/** A tick worth a debug line: an ask acted on or a failure, not the quiet ones. */
+/** A tick worth a debug line: an ask acted on (cleared, held, declined, left while busy) or a failure, not the quiet ones. */
 function worthLogging(result: { readonly kind: string }): boolean {
   return result.kind !== 'no ask' && result.kind !== 'overlap';
 }
@@ -51,6 +54,7 @@ export const register: Register = (on) => {
           const run = await $.process.run(['node', cli, ...args], { stdin });
           return { exitCode: run.exitCode, stdout: run.stdout };
         },
+        liveAgents: async () => liveAgentsOf(await $.agent.list()),
         clear: async () => {
           await $.command.run({ command: 'clear' });
         },
