@@ -1,6 +1,6 @@
 # Hooks and permissions
 
-The plugin's `hooks/hooks.json` registers seven Claude Code hooks. Each runs
+The plugin's `hooks/hooks.json` registers seven Claude Code hooks and one mod ([the refresh's /clear](#the-mod-the-refreshs-clear)). Each runs
 `node <plugin>/dist/cli/main.js hook <name>` with a 15 second timeout. Outside a project tied to a team (no `$TEAMRIG_TEAM` and no `.teamrig.json`)
 they all stay silent.
 
@@ -210,7 +210,8 @@ After a turn in which you set a task done, the Stop hook measures your context f
 After `--ready`, the next turn's end tells the user `teamrig: shop-web finished T2 and wrote its handover; teamrig
 starts it fresh once it has been idle 15 s (type anything to keep this context)` and sets the tab title to
 `shop-web: restarting`. A hidden `teamrig restart` then waits until the tab has been idle
-`refresh.restartDelaySeconds` (15) with nothing running and its last turn ended, ends this Claude Code and starts it again: in the same tab
+`refresh.restartDelaySeconds` (15) with nothing running and its last turn ended, and the plugin's mod runs `/clear` in
+this tab. Where no mod claims it within 10 s, the restart ends this Claude Code and starts it again: in the same tab
 when `teamrig open` started it, else in a new tab. A prompt the user sends first cancels it, and you keep this
 context until a later task end asks again; text typed but not sent is lost. When the restart cannot start, or
 with `refresh.autoRestart: false`, the message says `type /clear for a fresh start` and the title
@@ -220,6 +221,16 @@ commands, monitors, workflows) has not reported back, all of this waits for a la
 never cuts it off. A `/clear`, a new process or a compaction starts the task count over. Each finished task is judged once, so
 it never loops. Steps: [workflows.md](workflows.md#handover-at-high-context). `refresh.enabled: false` turns it
 off.
+
+## The mod: the refresh's /clear
+
+A hook cannot run `/clear`; a plugin mod (`hooks/register.ts`, named under `modules` in `hooks.json`) can, through
+Claude Code's own command API. In each interactive tab it asks `teamrig hook clear-dir` once for the ask folder,
+then looks each second for an ask for its tab's Claude Code session. It tracks turns, and leaves an ask that comes
+while one runs: the restart takes that one back and asks again once the session is quiet. Otherwise it runs
+`teamrig hook clear-claim` and, on `taken`, runs `/clear` the way you would. The `/clear` then runs the
+`SessionStart` hooks above, so `hook refresh-wake` starts your first turn at your handover. A Claude Code that does
+not load mods leaves the ask unclaimed, and the restart ends and restarts the session instead.
 
 ## End of a turn: model notices
 

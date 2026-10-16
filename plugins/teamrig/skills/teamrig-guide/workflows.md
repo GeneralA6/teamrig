@@ -155,8 +155,9 @@ teamrig refreshes a long-running session at a task boundary, so it never loses w
 3. Run `teamrig refresh --ready --session web`. It prints `Ready. End your turn now: teamrig starts you fresh
    once you are idle, or asks the user to type /clear; your next start reads <path>.`. At the end of that turn
    the tab title becomes `shop-web: restarting` (the session's name; `refresh.tabTitle: false` turns that off).
-4. End your turn and start nothing new. Once the tab has been idle 15 s (`refresh.restartDelaySeconds`), teamrig
-   ends this Claude Code and starts it again, in the same tab when `teamrig open` started it, else in a new tab.
+4. End your turn and start nothing new. Once the tab has been idle 15 s (`refresh.restartDelaySeconds`), teamrig's
+   mod runs `/clear` in this tab; where it cannot, teamrig ends this Claude Code and starts it again, in the same
+   tab when `teamrig open` started it, else in a new tab.
    If the user sends a prompt first, the restart is cancelled and you keep this context. When the restart is off
    (`refresh.autoRestart: false`) or cannot start, the title reads `shop-web: type /clear`: ask the user to type
    `/clear`.
