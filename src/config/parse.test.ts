@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_BUDGET, DEFAULT_COMMITS, DEFAULT_OPEN, DEFAULT_REFRESH, DEFAULT_REGISTER } from './defaults.ts';
+import { DEFAULT_BUDGET, DEFAULT_COMMITS, DEFAULT_HIRING, DEFAULT_OPEN, DEFAULT_REFRESH, DEFAULT_REGISTER } from './defaults.ts';
 import { parseConfig } from './parse.ts';
 import { CONFIG_VERSION } from './types.ts';
 import type { ConfigIssue } from './reader.ts';
@@ -364,6 +364,31 @@ describe('parseConfig', () => {
     assert.deepEqual(paths(parseConfig({ ...ROSTER, refresh: { everyTasks: -1 } }).issues), ['refresh.everyTasks']);
     assert.deepEqual(bad.config.refresh, DEFAULT_REFRESH);
     assert.deepEqual(paths(parseConfig({ ...ROSTER, refresh: { contextTokens: 10_000_001 } }).issues), ['refresh.contextTokens']);
+  });
+
+  it('reads the hiring settings, defaulting each and refusing a bad policy, cap or daily budget', () => {
+    assert.deepEqual(parseConfig(ROSTER).config.hiring, DEFAULT_HIRING);
+    const chosen = { policy: 'lead', maxSessions: 4, dailyPct: 1.5, maxDailyPct: 5, idleHours: 2, reviewDays: 14 };
+    const set = parseConfig({ ...ROSTER, hiring: chosen });
+    assert.deepEqual(set.issues, []);
+    assert.deepEqual(set.config.hiring, chosen);
+    const bad = parseConfig({ ...ROSTER, hiring: { policy: 'auto', maxSessions: 0, dailyPct: 0, maxDailyPct: 101, idleHours: 169, reviewDays: 91 } });
+    assert.deepEqual(paths(bad.issues).sort(), [
+      'hiring.dailyPct',
+      'hiring.idleHours',
+      'hiring.maxDailyPct',
+      'hiring.maxSessions',
+      'hiring.policy',
+      'hiring.reviewDays',
+    ]);
+    assert.deepEqual(bad.config.hiring, DEFAULT_HIRING);
+  });
+
+  it("refuses a hire's daily budget over what all hires may add up to", () => {
+    const { config, issues } = parseConfig({ ...ROSTER, hiring: { dailyPct: 4, maxDailyPct: 2 } });
+    assert.deepEqual(paths(issues), ['hiring.dailyPct']);
+    assert.match(issues[0]?.message ?? '', /at most hiring\.maxDailyPct \(2\), got 4/);
+    assert.deepEqual([config.hiring.dailyPct, config.hiring.maxDailyPct], [1, 2]);
   });
 
   it('reads the terminal teamrig open uses, refusing one it does not know', () => {

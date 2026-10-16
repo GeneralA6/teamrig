@@ -7,6 +7,7 @@ import {
   DEFAULT_COMMITS,
   DEFAULT_CONTEXT_FILES,
   DEFAULT_GITHUB,
+  DEFAULT_HIRING,
   DEFAULT_LOCK,
   DEFAULT_LEAD_BOUNDARY,
   DEFAULT_LOOPS,
@@ -25,9 +26,11 @@ import { CONFIG_LIMITS } from './limits.ts';
 import { ConfigReader, describe, isValidRegex, shortLine, type Check, type ConfigIssue } from './reader.ts';
 import {
   ESCALATIONS,
+  HIRING_POLICIES,
   isCommitGate,
   isEffortLevel,
   isEscalation,
+  isHiringPolicy,
   isOverAction,
   isPushToProtected,
   isTerminalChoice,
@@ -44,6 +47,7 @@ import {
   type BudgetReset,
   type CommitsConfig,
   type GithubConfig,
+  type HiringConfig,
   type LeadBoundaryConfig,
   type KitConfig,
   type LaunchConfig,
@@ -252,6 +256,7 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
     },
     tabStatus: { enabled: read.boolean(tabStatus, 'enabled', 'tabStatus', false) },
     refresh: parseRefresh(read, read.section(raw, 'refresh', '')),
+    hiring: parseHiring(read, read.section(raw, 'hiring', '')),
     open: parseOpen(read, read.section(raw, 'open', '')),
     launch,
     paths: parsePaths(read, read.section(raw, 'paths', '')),
@@ -630,6 +635,27 @@ function parseRefresh(read: ConfigReader, raw: JsonRecord): RefreshConfig {
     everyTasksMinTokens: read.integer(raw, 'everyTasksMinTokens', path, defaults.everyTasksMinTokens, REFRESH_TOKENS),
     tabTitle: read.boolean(raw, 'tabTitle', path, defaults.tabTitle),
     ...(handoverDir === undefined ? {} : { handoverDir }),
+  };
+}
+
+/** `hiring`: a hire's own daily budget cannot pass what all hires may add up to. */
+function parseHiring(read: ConfigReader, raw: JsonRecord): HiringConfig {
+  const path = 'hiring';
+  const defaults = DEFAULT_HIRING;
+  const policy = read.string(raw, 'policy', path, defaults.policy, oneOf(HIRING_POLICIES));
+  const maxDailyPct = read.number(raw, 'maxDailyPct', path, defaults.maxDailyPct, CONFIG_LIMITS.hiringMaxDailyPct);
+  let dailyPct = read.number(raw, 'dailyPct', path, defaults.dailyPct, CONFIG_LIMITS.hiringDailyPct);
+  if (dailyPct > maxDailyPct) {
+    read.report(`${path}.dailyPct`, `expected at most hiring.maxDailyPct (${maxDailyPct}), got ${dailyPct}`);
+    dailyPct = Math.min(defaults.dailyPct, maxDailyPct);
+  }
+  return {
+    policy: isHiringPolicy(policy) ? policy : defaults.policy,
+    maxSessions: read.integer(raw, 'maxSessions', path, defaults.maxSessions, CONFIG_LIMITS.hiringMaxSessions),
+    dailyPct,
+    maxDailyPct,
+    idleHours: read.integer(raw, 'idleHours', path, defaults.idleHours, CONFIG_LIMITS.hiringIdleHours),
+    reviewDays: read.integer(raw, 'reviewDays', path, defaults.reviewDays, CONFIG_LIMITS.hiringReviewDays),
   };
 }
 

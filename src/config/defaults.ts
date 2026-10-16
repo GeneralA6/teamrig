@@ -4,6 +4,7 @@ import type {
   CommitsConfig,
   ContextFilesConfig,
   GithubConfig,
+  HiringConfig,
   LaunchConfig,
   LockConfig,
   LeadBoundaryConfig,
@@ -117,6 +118,12 @@ export const DEFAULT_GITHUB: GithubConfig = { repos: [], owners: {}, sessions: {
 export const DEFAULT_REFRESH: RefreshConfig = { enabled: true, contextTokens: 120_000, everyTasks: 3, everyTasksMinTokens: 80_000, tabTitle: true };
 
 export const DEFAULT_OPEN: OpenConfig = { terminal: 'auto' };
+
+/**
+ * A hire spends the week's budget, so it waits for the owner's yes: at most two hires at 1% of the week a day
+ * each, 3% in all, reviewed after a week and due to retire after 4 hours with no open task.
+ */
+export const DEFAULT_HIRING: HiringConfig = { policy: 'owner', maxSessions: 2, dailyPct: 1, maxDailyPct: 3, idleHours: 4, reviewDays: 7 };
 
 /**
  * The lead's model and effort for each key its `launch` entry leaves unset: Opus (Claude Code's `opus`
