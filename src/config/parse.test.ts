@@ -406,17 +406,19 @@ describe('parseConfig', () => {
 
   it('reads the hiring settings, defaulting each and refusing a bad policy, cap or daily budget', () => {
     assert.deepEqual(parseConfig(ROSTER).config.hiring, DEFAULT_HIRING);
-    const chosen = { policy: 'lead', maxSessions: 4, dailyPct: 1.5, maxDailyPct: 5, idleHours: 2, reviewDays: 14 };
+    const chosen = { policy: 'lead', maxSessions: 4, dailyPct: 1.5, maxDailyPct: 5, idleHours: 2, reviewDays: 14, resumeMaxTokens: 120_000, resumeMaxIdleDays: 3 };
     const set = parseConfig({ ...ROSTER, hiring: chosen });
     assert.deepEqual(set.issues, []);
     assert.deepEqual(set.config.hiring, chosen);
-    const bad = parseConfig({ ...ROSTER, hiring: { policy: 'auto', maxSessions: 0, dailyPct: 0, maxDailyPct: 101, idleHours: 169, reviewDays: 91 } });
+    const bad = parseConfig({ ...ROSTER, hiring: { policy: 'auto', maxSessions: 0, dailyPct: 0, maxDailyPct: 101, idleHours: 169, reviewDays: 91, resumeMaxTokens: 9_999, resumeMaxIdleDays: 91 } });
     assert.deepEqual(paths(bad.issues).sort(), [
       'hiring.dailyPct',
       'hiring.idleHours',
       'hiring.maxDailyPct',
       'hiring.maxSessions',
       'hiring.policy',
+      'hiring.resumeMaxIdleDays',
+      'hiring.resumeMaxTokens',
       'hiring.reviewDays',
     ]);
     assert.deepEqual(bad.config.hiring, DEFAULT_HIRING);

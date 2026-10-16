@@ -49,6 +49,8 @@ export const CONFIG_LIMITS = {
   hiringMaxDailyPct: { min: 0.1, max: 100 },
   hiringIdleHours: { min: 1, max: 168 },
   hiringReviewDays: { min: 1, max: 90 },
+  hiringResumeMaxTokens: { min: 10_000, max: 1_000_000 },
+  hiringResumeMaxIdleDays: { min: 1, max: 90 },
 } as const;
 
 /**
