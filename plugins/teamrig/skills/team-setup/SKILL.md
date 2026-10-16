@@ -49,7 +49,7 @@ teamrig team create <team> --sessions <id>,<id> --project "<project>" && teamrig
 One Bash call per session:
 
 ```
-teamrig add --session lead --owner <id> --priority p2 --title "<first task>" && teamrig open <id>
+teamrig add --session lead --owner <id> --priority p2 --title "<first task>" --description "<what and why>" && teamrig open <id>
 ```
 
 - `open` starts a new terminal tab in the project running Claude Code as that session. It reads its inbox and task list, then starts the task.
@@ -96,7 +96,7 @@ When one part outgrows a single session, or the user asks for a team under this 
 sub-team's id, its sessions and the part it takes on), then, after a yes, in one Bash call:
 
 ```
-teamrig team create <sub-team> --sessions <id>,<id> --parent <team> --project "<project>" && teamrig add --session lead --team <sub-team> --priority p2 --title "<the part, in one line>" && teamrig open <sub-team>/lead
+teamrig team create <sub-team> --sessions <id>,<id> --parent <team> --project "<project>" && teamrig add --session lead --team <sub-team> --priority p2 --title "<the part, in one line>" --description "<what and why>" && teamrig open <sub-team>/lead
 ```
 
 - The sub-team gets its own lead and task list in the same project. Its lead splits the task among its sessions and

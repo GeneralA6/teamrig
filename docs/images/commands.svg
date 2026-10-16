@@ -1,8 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="608" height="402" viewBox="0 0 608 402" xml:space="preserve" role="img" aria-label="Four Claude Code tabs named lead, api, web and data. In the lead tab, the lead adds a task for api and one for web, and tells web its task is ready. In the web tab, web reads that note and starts its task.">
+<svg xmlns="http://www.w3.org/2000/svg" width="694" height="402" viewBox="0 0 694 402" xml:space="preserve" role="img" aria-label="Four Claude Code tabs named lead, api, web and data. In the lead tab, the lead adds a task for api and one for web, and tells web its task is ready. In the web tab, web reads that note and starts its task.">
 <title>Four Claude Code tabs named lead, api, web and data. In the lead tab, the lead adds a task for api and one for web, and tells web its task is ready. In the web tab, web reads that note and starts its task.</title>
 <style>text{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,'DejaVu Sans Mono',monospace;font-size:13px;white-space:pre}</style>
-<rect width="608" height="402" rx="8" fill="#1e1e1e" stroke="#3c3c3c"/>
-<path d="M0 8a8 8 0 0 1 8-8h592a8 8 0 0 1 8 8v24h-608z" fill="#2d2d2d"/>
+<rect width="694" height="402" rx="8" fill="#1e1e1e" stroke="#3c3c3c"/>
+<path d="M0 8a8 8 0 0 1 8-8h678a8 8 0 0 1 8 8v24h-694z" fill="#2d2d2d"/>
 <rect x="7" y="6" width="76.6" height="26" rx="5" fill="#1e1e1e"/>
 <circle cx="21" cy="19" r="4" fill="#569cd6"/>
 <text x="32.7" y="23"><tspan fill="#ffffff">lead</tspan></text>
@@ -13,20 +13,20 @@
 <circle cx="235.3" cy="19" r="4" fill="#8b8b8b"/>
 <text x="247" y="23"><tspan fill="#8b8b8b">data</tspan></text>
 <text x="14" y="50"><tspan fill="#8b8b8b">lead: a Claude Code session; Claude runs these commands</tspan></text>
-<text x="14" y="72"><tspan fill="#569cd6">$ </tspan><tspan fill="#ffffff">teamrig add --title &quot;Saved-card API&quot; --priority p1 --owner api</tspan></text>
-<text x="14" y="90"><tspan fill="#89d185">ADDED</tspan><tspan fill="#d4d4d4"> </tspan><tspan fill="#4ec9b0">T1</tspan><tspan fill="#d4d4d4"> open, </tspan><tspan fill="#c586c0">p1</tspan><tspan fill="#d4d4d4">, owner api, from lead | Saved-card API</tspan></text>
-<text x="14" y="108"><tspan fill="#d4d4d4">NOTE api has an inbox line: </tspan><tspan fill="#4ec9b0">T1</tspan><tspan fill="#d4d4d4"> is yours (p1): Saved-card API</tspan></text>
-<text x="14" y="134"><tspan fill="#569cd6">$ </tspan><tspan fill="#ffffff">teamrig add --title &quot;Card checkout page&quot; --priority p1 --owner web</tspan></text>
-<text x="14" y="152"><tspan fill="#89d185">ADDED</tspan><tspan fill="#d4d4d4"> </tspan><tspan fill="#4ec9b0">T2</tspan><tspan fill="#d4d4d4"> open, </tspan><tspan fill="#c586c0">p1</tspan><tspan fill="#d4d4d4">, owner web, from lead | Card checkout page</tspan></text>
-<text x="14" y="170"><tspan fill="#d4d4d4">NOTE web has an inbox line: </tspan><tspan fill="#4ec9b0">T2</tspan><tspan fill="#d4d4d4"> is yours (p1): Card checkout page</tspan></text>
+<text x="14" y="72"><tspan fill="#569cd6">$ </tspan><tspan fill="#ffffff">teamrig add --title &quot;Card API&quot; --description &quot;Save cards&quot; --priority p1 --owner api</tspan></text>
+<text x="14" y="90"><tspan fill="#89d185">ADDED</tspan><tspan fill="#d4d4d4"> </tspan><tspan fill="#4ec9b0">T1</tspan><tspan fill="#d4d4d4"> open, </tspan><tspan fill="#c586c0">p1</tspan><tspan fill="#d4d4d4">, owner api, from lead | Card API</tspan></text>
+<text x="14" y="108"><tspan fill="#d4d4d4">NOTE api has an inbox line: </tspan><tspan fill="#4ec9b0">T1</tspan><tspan fill="#d4d4d4"> is yours (p1): Card API</tspan></text>
+<text x="14" y="134"><tspan fill="#569cd6">$ </tspan><tspan fill="#ffffff">teamrig add --title Checkout --description &quot;Pay by card&quot; --priority p1 --owner web</tspan></text>
+<text x="14" y="152"><tspan fill="#89d185">ADDED</tspan><tspan fill="#d4d4d4"> </tspan><tspan fill="#4ec9b0">T2</tspan><tspan fill="#d4d4d4"> open, </tspan><tspan fill="#c586c0">p1</tspan><tspan fill="#d4d4d4">, owner web, from lead | Checkout</tspan></text>
+<text x="14" y="170"><tspan fill="#d4d4d4">NOTE web has an inbox line: </tspan><tspan fill="#4ec9b0">T2</tspan><tspan fill="#d4d4d4"> is yours (p1): Checkout</tspan></text>
 <text x="14" y="196"><tspan fill="#569cd6">$ </tspan><tspan fill="#ffffff">teamrig inbox add --to web --text &quot;T2 builds on T1's API&quot;</tspan></text>
 <text x="14" y="214"><tspan fill="#89d185">POSTED</tspan><tspan fill="#d4d4d4"> to web; web is reminded at its next prompt</tspan></text>
-<line x1="0" y1="239" x2="608" y2="239" stroke="#3c3c3c"/>
+<line x1="0" y1="239" x2="694" y2="239" stroke="#3c3c3c"/>
 <text x="14" y="257"><tspan fill="#8b8b8b">web: another Claude Code session</tspan></text>
 <text x="14" y="279"><tspan fill="#569cd6">$ </tspan><tspan fill="#ffffff">teamrig inbox read</tspan></text>
-<text x="14" y="297"><tspan fill="#8b8b8b">- 2026-10-12 09:03</tspan><tspan fill="#d4d4d4"> lead: </tspan><tspan fill="#4ec9b0">T2</tspan><tspan fill="#d4d4d4"> is yours (p1): Card checkout page</tspan></text>
+<text x="14" y="297"><tspan fill="#8b8b8b">- 2026-10-12 09:03</tspan><tspan fill="#d4d4d4"> lead: </tspan><tspan fill="#4ec9b0">T2</tspan><tspan fill="#d4d4d4"> is yours (p1): Checkout</tspan></text>
 <text x="14" y="315"><tspan fill="#8b8b8b">- 2026-10-12 09:06</tspan><tspan fill="#d4d4d4"> lead: </tspan><tspan fill="#4ec9b0">T2</tspan><tspan fill="#d4d4d4"> builds on </tspan><tspan fill="#4ec9b0">T1</tspan><tspan fill="#d4d4d4">'s API</tspan></text>
 <text x="14" y="333"><tspan fill="#89d185">READ</tspan><tspan fill="#d4d4d4"> web: 2 new lines, shown above; new ones are shown at your next prompt</tspan></text>
 <text x="14" y="359"><tspan fill="#569cd6">$ </tspan><tspan fill="#ffffff">teamrig set T2 --status in-progress</tspan></text>
-<text x="14" y="377"><tspan fill="#89d185">SET</tspan><tspan fill="#d4d4d4"> </tspan><tspan fill="#4ec9b0">T2</tspan><tspan fill="#d4d4d4"> </tspan><tspan fill="#dcdcaa">in-progress</tspan><tspan fill="#d4d4d4">, </tspan><tspan fill="#c586c0">p1</tspan><tspan fill="#d4d4d4">, owner web, from lead | Card checkout page</tspan></text>
+<text x="14" y="377"><tspan fill="#89d185">SET</tspan><tspan fill="#d4d4d4"> </tspan><tspan fill="#4ec9b0">T2</tspan><tspan fill="#d4d4d4"> </tspan><tspan fill="#dcdcaa">in-progress</tspan><tspan fill="#d4d4d4">, </tspan><tspan fill="#c586c0">p1</tspan><tspan fill="#d4d4d4">, owner web, from lead | Checkout</tspan></text>
 </svg>

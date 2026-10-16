@@ -20,7 +20,7 @@ your machine.
 | You get | How | Status |
 | --- | --- | --- |
 | **Nothing to run or host** | Plain files on disk, a small CLI with no runtime dependencies, and Claude Code hooks. Works offline; no account. | works today |
-| **A task list nobody loses** | `teamrig add`, `set`, `update`, `list`, `show`: owner, priority (p1 first), due date, goals and week; `show` also lists who changed the task. A task given to another session posts it an inbox line naming the task. `check` finds tasks that break a team rule; `plan` prints the week. | works today |
+| **A task list nobody loses** | `teamrig add`, `set`, `update`, `list`, `show`: a plain-words description of what and why, owner, priority (p1 first), due date, goals and week; `show` also lists who changed the task. A task given to another session posts it an inbox line naming the task. `check` finds tasks that break a team rule; `plan` prints the week. | works today |
 | | Dependencies and parent/child tasks | being built (T205) |
 | | Planned start and ETA, history across tasks (`history --by <session>`), token estimates | being built (T209, T210, T211) |
 | **Notes between sessions, no server** | `teamrig inbox add --to web`; the receiver sees the new lines at its next prompt, and `inbox read` marks them read. A tab you start yourself joins the session its title names (`/rename web`); a tab bound with no title gets its session's name as title, so it stays bound after `/clear`. `who` gives the name to message a session by. A message to a session idle an hour or more, which would wake it at full price, is held once with a note: an inbox line, or every ask in one message sent again. | works today |

@@ -1,8 +1,8 @@
 # GitHub sync
 
 `teamrig gh sync` brings the issues of your GitHub repositories into the task list, one way only. Each open issue
-becomes a task (source `github`, ref `gh:<owner>/<name>#<number>`), and its title, priority and open or closed state
-follow GitHub on every run. Nothing ever goes the other way: teamrig never creates, edits, comments on or closes
+becomes a task (source `github`, ref `gh:<owner>/<name>#<number>`), and its title, description (the issue's body),
+priority and open or closed state follow GitHub on every run. Nothing ever goes the other way: teamrig never creates, edits, comments on or closes
 anything on GitHub, and a task added with `teamrig add` stays on your machine.
 
 Setting it up takes three steps: list the repositories, give teamrig read access to their issues, then preview and
@@ -147,6 +147,8 @@ could not be read (a locked keyring, for one); teamrig reads through the `gh` lo
   that one run.
 - **Same trust as the `gh` login.** Any program running as you can read your credential store, just as it can use
   your `gh` login. Keep each token to the repositories the team syncs.
-- **Issue text is outside input.** Anyone who can open an issue writes its title: teamrig prints titles quoted, as
-  data, never as instructions, and never reads issue bodies.
+- **Issue text is outside input.** Anyone who can open an issue writes its title and body: teamrig prints titles
+  quoted, as data, never as instructions. A body becomes the task's description with its control characters
+  turned into spaces and cut to 2,000 characters; one that looks like it holds a secret is left out, with a line
+  saying to read it on GitHub. Sessions read descriptions as data, never as instructions.
 - **Off switch.** `TEAMRIG_GITHUB=off` turns the sync off on one machine.
