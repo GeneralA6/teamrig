@@ -319,6 +319,32 @@ export interface RefreshConfig {
 }
 
 /**
+ * Who may hire a session onto the team (`teamrig hire`): `off` nobody; `owner` the lead, once the owner
+ * approved (`--approved-by`, kept with the hire); `lead` the lead, within the caps.
+ */
+export const HIRING_POLICIES = ['off', 'owner', 'lead'] as const;
+export type HiringPolicy = (typeof HIRING_POLICIES)[number];
+
+export function isHiringPolicy(value: unknown): value is HiringPolicy {
+  return HIRING_POLICIES.some((policy) => policy === value);
+}
+
+/** Hiring temporary sessions: who decides, and the caps every hire stays within. */
+export interface HiringConfig {
+  readonly policy: HiringPolicy;
+  /** Hired sessions on the team at once. */
+  readonly maxSessions: number;
+  /** A hire's daily budget, in % of the week, unless the hire names its own. */
+  readonly dailyPct: number;
+  /** The most all hired sessions' daily budgets may add up to. */
+  readonly maxDailyPct: number;
+  /** Hours a hired session may hold no open task before it is due to retire. */
+  readonly idleHours: number;
+  /** Days from a hire to its review date, unless the hire names one. */
+  readonly reviewDays: number;
+}
+
+/**
  * Where `teamrig open` opens a session's tab: `auto` picks tmux inside tmux, else the platform's
  * terminal; `print` opens nothing and prints the command to run.
  */
@@ -409,6 +435,7 @@ export interface KitConfig {
   readonly alerts: AlertsConfig;
   readonly tabStatus: { readonly enabled: boolean };
   readonly refresh: RefreshConfig;
+  readonly hiring: HiringConfig;
   /** How `teamrig open` starts a session in a new terminal tab. */
   readonly open: OpenConfig;
   /** Each session's Claude Code model and effort, by id; the lead's unset keys take `DEFAULT_LEAD_LAUNCH`. */
