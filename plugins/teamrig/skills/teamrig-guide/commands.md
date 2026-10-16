@@ -253,7 +253,8 @@ history:
 Lists the tasks and skills that break a team rule. The lead runs it at each checkpoint; any session may. What
 each flag means and what to do about it: [tasks.md](tasks.md#check-flags). It also reads the `stopgap T<id>` tags in
 your skills and in `CLAUDE.md` and `.claude/rules` [register.check.stopgapFiles], and flags STOPGAP-DONE for each
-done or dropped task they still name. By default it prints a short form
+done or dropped task they still name, and flags hired sessions to retire (RETIRE-DUE) or to review (REVIEW-DUE).
+By default it prints a short form
 within 3,000 characters: each kind with its count (and its detail when every flag of it shares one), at most 5
 of its tasks as short rows, then `+N more`; the same for skill flags. `--all` prints every flag in full.
 
@@ -614,11 +615,12 @@ given) and `budget.sessions.<id>.dailyPct`. Its name is `<team>-<id>` unless `--
 team's session has is refused, as Claude Code session names are machine-wide.
 
 - `hiring.policy`: `off` refuses every hire; `owner` (the default) needs `--approved-by "<who>"`, after you ask
-  the owner; `lead` lets the lead hire within the caps.
+  the owner; `lead` lets the lead hire within the caps; `automatic` is `lead`, and a hired session whose tasks
+  are all closed may also retire itself.
 - The caps: at most `hiring.maxSessions` (2) hired sessions at once, with daily budgets adding up to at most
   `hiring.maxDailyPct` (3% of the week). A hire's daily budget is `--daily-pct`, else `hiring.dailyPct` (1%).
 - Its review day is `--review`, else `hiring.reviewDays` (7) days on.
-- Retiring a hired session comes in a later version.
+- When its job is done, retire it (`teamrig retire`).
 
 Flags:
 
@@ -645,6 +647,43 @@ Output:
 HIRED importer (name shop-importer) for "port the CSV importer": model opus at xhigh effort, 1% of the week a day, review by 2030-01-15; the old config is at ~/.teamrig/teams/shop/backups/config.hire.json
   hired sessions with it: 1 of 2, 1% of 3% of the week a day
 NEXT give it its first task: teamrig add --owner importer --title "<task>" --description "<what and why>" --session lead; then open it: teamrig open importer
+```
+
+### teamrig retire
+
+Takes a session off the team once its job is done (`teamrig retire <id|name>`): the lead, or a hired session
+itself under `hiring.policy` `automatic` once its tasks are all closed. Without `--yes` it shows the retire and
+writes nothing. With it, the session's open tasks go to the heir (`--to`), who gets one inbox line; the old
+config goes into the backups folder; the session leaves `sessions`, `names`, `launch` and `budget.sessions`;
+and the retire goes into the hire log (`state/hires.jsonl`). Its tasks, inbox and records stay where they are,
+readable by its id.
+
+- It refuses while the session owns open tasks, unless `--to <heir>` hands them over.
+- It refuses without the session's handover (`<handover>/<id>.md`, the file a refresh writes: open work, next
+  steps, branches, traps), unless `--no-handover "<why>"` says why there is none.
+- It refuses while a role (`roles.lead`, `roles.coordinatorOwner`), `github.owners` or `github.sessions` names
+  the session: point those at another session first.
+- `check` flags each hired session to retire (RETIRE-DUE) and each one past its review day (REVIEW-DUE).
+
+Flags:
+
+- `--session <id|name>`: the caller, the lead or the session itself.
+- `--to <id|name>`: the heir its open tasks go to.
+- `--no-handover "<why>"`: retire without a handover, recording why.
+- `--reason "<why>"`: why it leaves; by default, that its job is done.
+- `--yes`: write it.
+
+Example:
+
+```sh
+teamrig retire importer --to backend --session lead --yes
+```
+
+Output:
+
+```text
+RETIRED importer (name shop-importer, hired): its job is done; its open task(s) T12 go to backend; handover ~/.teamrig/teams/shop/handover/importer.md; the old config is at ~/.teamrig/teams/shop/backups/config.retire.json
+NEXT its records stay readable by its id (teamrig list --session importer --all); close its tab if it is open
 ```
 
 ### teamrig rules

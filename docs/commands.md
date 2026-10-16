@@ -56,6 +56,10 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       [--daily-pct <pct>] [--review <YYYY-MM-DD>] [--approved-by "<who>"] [--yes]
       (the lead only) adds a temporary session within hiring.policy and its caps, on the lead's model and
       effort unless given; without --yes it shows the hire and writes nothing
+  retire <id|name> [--to <heir>] [--no-handover "<why>"] [--reason "<why>"] [--yes]
+      (the lead, or a hired session itself under hiring.policy automatic once its tasks are closed) takes a
+      session off the team; its open tasks go to --to, and it needs its handover unless --no-handover; its
+      tasks and inbox stay readable; without --yes it shows the retire and writes nothing
   refresh <id|name>            the lead asks a session to write its handover when it next sets a task done
   refresh --ready              the handover is written; teamrig starts the session fresh once idle
   doctor                       names, rename log, inboxes, rules.md, context size and the tree of teams that need a fix;
