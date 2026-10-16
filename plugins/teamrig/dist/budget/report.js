@@ -1,3 +1,4 @@
+import { budgetMarkOf, burstText, MORE_BURST } from "./burst-lines.js";
 import { formatCount, formatPct, formatTimeOfDay, formatW, formatWeekdayMinute } from "./format.js";
 import { liftText } from "./lift.js";
 import { TURN_TRIGGERS } from "./line.js";
@@ -29,12 +30,12 @@ export function weekLine(week) {
     return `Week: ${formatPct(week.usedPct)} used${source}${paceText}. Resets ${formatWeekdayMinute(week.reset)}.`;
 }
 /** "<who> used 1.1% of the week today; its daily budget is 1.0%. 7.50M W in 310 calls." */
-function useLine(who, w, calls, budgetPct, lifted, week, when = 'today') {
+function useLine(who, w, calls, budgetPct, mark, week, when = 'today') {
     const used = pctOf(w, week);
     if (used === undefined) {
         return `${who} used ${useText(w, calls)} ${when}.`;
     }
-    const budget = budgetPct === undefined ? '' : `; its daily budget is ${formatPct(budgetPct)}${lifted ? ' (lifted)' : ''}`;
+    const budget = budgetPct === undefined ? '' : `; its daily budget is ${formatPct(budgetPct)}${mark}`;
     return `${who} used ${formatPct(used)} of the week ${when}${budget}. ${useText(w, calls)}.`;
 }
 function isPast(w, budgetPct, week) {
@@ -79,13 +80,18 @@ export function todayLines(report) {
     const teamCalls = sessions.reduce((sum, session) => sum + session.calls, 0);
     const lines = [
         weekLine(week),
-        useLine('The team', teamW, teamCalls, week.allowancePct, false, week),
-        ...sessionRows(sessions, all, 'today', (session) => useLine(session.name, session.w, session.calls, session.budgetPct, session.lift !== undefined, week)),
+        useLine('The team', teamW, teamCalls, week.allowancePct, '', week),
+        ...sessionRows(sessions, all, 'today', (session) => useLine(session.name, session.w, session.calls, session.budgetPct, budgetMarkOf(session), week)),
     ];
     for (const session of sessions) {
         if (session.lift !== undefined) {
             lines.push(`Budget: the lead lifted ${liftText(session.lift, session.name)}`);
         }
+    }
+    const inBurst = sessions.filter((session) => session.burst !== undefined);
+    const burst = inBurst[0]?.burst;
+    if (burst !== undefined) {
+        lines.push(`Budget: the lead started ${burstText(burst, inBurst.map((session) => session.name))} ${MORE_BURST}`);
     }
     const outsideText = outsideLine(outside, all);
     if (outsideText !== undefined) {
@@ -114,8 +120,8 @@ export function recountLines(day, report) {
     const teamCalls = sessions.reduce((sum, session) => sum + session.calls, 0);
     const lines = [
         `${day} (UTC), recounted from the transcripts; nothing was written.`,
-        useLine('The team', teamW, teamCalls, undefined, false, week, 'that day'),
-        ...sessionRows(sessions, all, 'that day', (session) => useLine(session.name, session.w, session.calls, undefined, false, week, 'that day')),
+        useLine('The team', teamW, teamCalls, undefined, '', week, 'that day'),
+        ...sessionRows(sessions, all, 'that day', (session) => useLine(session.name, session.w, session.calls, undefined, '', week, 'that day')),
     ];
     if (outside.sessions > 0 || outside.w > 0) {
         lines.push(`Not on the team: ${outsideSessionsText(outside, all)}, ${useText(outside.w, outside.calls)}.`);
@@ -138,10 +144,13 @@ export function sessionLines(session, state, week) {
         lines.push('  no use in the last 8 days');
     }
     if (session.budgetPct !== undefined) {
-        lines.push(`Its daily budget today is ${formatPct(session.budgetPct)} of the week${session.lift === undefined ? '' : ' (lifted)'}.`);
+        lines.push(`Its daily budget today is ${formatPct(session.budgetPct)} of the week${budgetMarkOf(session)}.`);
     }
     if (session.lift !== undefined) {
         lines.push(`Budget: the lead lifted ${liftText(session.lift, session.name)}`);
+    }
+    if (session.burst !== undefined) {
+        lines.push(`Budget: the lead started ${burstText(session.burst, [session.name])} ${MORE_BURST}`);
     }
     lines.push(W_EXPLAINED);
     return lines;

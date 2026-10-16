@@ -2,9 +2,10 @@ import { KIT_NAME } from "../core/home.js";
 import { formatUtcDay } from "../core/time.js";
 import { ACTIVE_STATUSES } from "../register/model.js";
 /**
- * The `check` flags on hired sessions: RETIRE-DUE when one has had no open task for `hiring.idleHours`
- * (since its hire, or since its newest task took its closed status), REVIEW-DUE when its review day has
- * passed. Pure: it takes the hires still active, the team's tasks and the clock's now.
+ * The `check` flags on hired sessions: RETIRE-DUE when the burst it was hired for is over, or when it has
+ * had no open task for `hiring.idleHours` (since its hire, or since its newest task took its closed status);
+ * REVIEW-DUE when its review day has passed. Pure: it takes the hires still active, the team's tasks, the
+ * bursts over and the clock's now.
  */
 export const HIRE_FLAG_KINDS = ['RETIRE-DUE', 'REVIEW-DUE'];
 const HOUR_MS = 3_600_000;
@@ -13,6 +14,9 @@ function idleSince(hire, owned) {
     return owned.reduce((latest, task) => Math.max(latest, Date.parse(task.statusAt)), hire.at);
 }
 function retireDue(hire, owned, input) {
+    if (hire.burst !== undefined && input.burstsOver.has(hire.burst)) {
+        return { kind: 'RETIRE-DUE', session: hire.session, detail: 'the burst it was hired for is over' };
+    }
     if (owned.some((task) => ACTIVE_STATUSES.includes(task.status))) {
         return undefined;
     }

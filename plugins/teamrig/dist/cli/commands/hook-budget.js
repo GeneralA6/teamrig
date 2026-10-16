@@ -1,6 +1,9 @@
 import { basename, dirname, join } from 'node:path';
 import { SecretScanner } from "../../core/secrets.js";
 import { formatUtcDay } from "../../core/time.js";
+import { activeBurst, withBurst } from "../../budget/burst.js";
+import { surplusHintOf } from "../../budget/burst-lines.js";
+import { BurstLog } from "../../budget/burst-log.js";
 import { activeLift, LiftLog } from "../../budget/lift.js";
 import { OUTSIDE_ID } from "../../budget/measure.js";
 import { runMeter } from "../../budget/meter.js";
@@ -31,6 +34,8 @@ async function meterTab(runtime, store, id, transcript, budget) {
 /**
  * The session's budget now, after metering the tab whose transcript is given; undefined with the
  * budget off, before the week's use or W per % is known, or without a daily budget for the session.
+ * A lift sets the daily budget; a burst the session is in raises it to at least the burst's. The lead,
+ * with no burst in force, also gets the week's surplus when it is worth one.
  */
 export async function budgetFactsOf(runtime, scope, transcript) {
     const { kit, config, roster, id } = scope;
@@ -56,11 +61,15 @@ export async function budgetFactsOf(runtime, scope, transcript) {
     }
     const lift = activeLift((await new LiftLog(files, kit.paths.lifts).read()).lifts, id, now, week.usedPct);
     const shared = week.allowancePct === undefined ? budget.sessions[id]?.dailyPct : sessionBudgetPct(week.allowancePct, id, roster.ids, budget.sessions);
-    const budgetPct = lift?.toPct ?? shared;
+    const inForce = activeBurst((await new BurstLog(files, kit.paths.bursts).read()).records, now, week.usedPct);
+    const burst = inForce !== undefined && inForce.sessions.includes(id) ? inForce : undefined;
+    const budgetPct = lift?.toPct ?? withBurst(shared, burst, id);
     if (budgetPct === undefined) {
         return undefined;
     }
     const todayW = byId.get(id)?.byDay[formatUtcDay(new Date(now))]?.w ?? 0;
+    const isLead = id === config.roles.lead;
+    const surplus = isLead && inForce === undefined ? surplusHintOf({ config: config.burst, window: week.window, now, usedPct: week.usedPct, targetPct: budget.targetPct }) : undefined;
     return {
         now,
         id,
@@ -68,9 +77,11 @@ export async function budgetFactsOf(runtime, scope, transcript) {
         usedTodayPct: todayW / week.wPerPct,
         budgetPct,
         lift,
+        burst,
+        surplus,
         weekUsedPct: week.usedPct,
         pace: week.pace,
-        isLead: id === config.roles.lead,
+        isLead,
     };
 }
 /** The lead's inbox line about the session; a refusal (a secret pattern, a bad id) comes back as a line for the person. */

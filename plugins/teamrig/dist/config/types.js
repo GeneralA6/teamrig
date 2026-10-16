@@ -38,6 +38,16 @@ export function isHiringPolicy(value) {
     return HIRING_POLICIES.some((policy) => policy === value);
 }
 /**
+ * Who may start a burst (`teamrig burst start`), a time-boxed scale-out onto helpers and hired sessions
+ * that spends more of the week: `off` nobody; `owner` the lead, once the owner approved (`--approved-by`,
+ * kept with the burst); `lead` the lead, within the caps. No policy starts a burst on its own: it spends
+ * more of the week, a decision the owner gates, so a person always starts it by command.
+ */
+export const BURST_POLICIES = ['off', 'owner', 'lead'];
+export function isBurstPolicy(value) {
+    return BURST_POLICIES.some((policy) => policy === value);
+}
+/**
  * Where `teamrig open` opens a session's tab: `auto` picks tmux inside tmux, else the platform's
  * terminal; `print` opens nothing and prints the command to run.
  */

@@ -4,8 +4,8 @@ import { assertWritable, parseJsonl, toJsonlLine, VERSION_FIELD } from "../core/
 import { parseUtcDay } from "../core/time.js";
 /**
  * The team's hires and retires, an append-only log: who joined for what job, on whose say-so, at what
- * daily budget and until which review day, and who left, with which handover and to which heir. A
- * session whose newest record is a hire is a hired session.
+ * daily budget and until which review day, for which burst if any, and who left, with which handover and
+ * to which heir. A session whose newest record is a hire is a hired session.
  */
 /** The format of the hire log's records; a newer one is skipped on read and refuses a write. */
 export const HIRE_FORMAT = 1;
@@ -70,6 +70,7 @@ function recordOf(record) {
         ...(record.effort === undefined ? {} : { effort: record.effort }),
         dailyPct: record.dailyPct,
         reviewBy: record.reviewBy,
+        ...(record.burst === undefined ? {} : { burst: new Date(record.burst).toISOString() }),
     };
 }
 function finitePct(value) {
@@ -110,6 +111,10 @@ export function parseHiringRecord(record) {
     const effort = record['effort'];
     const approvedBy = stringField(record, 'approvedBy');
     const model = stringField(record, 'model');
+    const burst = instantOf(record, 'burst');
+    if (record['burst'] !== undefined && burst === undefined) {
+        return undefined;
+    }
     if (record['kind'] !== 'hire' || scope === undefined || reviewBy === undefined || parseUtcDay(reviewBy) === undefined || !finitePct(dailyPct)) {
         return undefined;
     }
@@ -126,6 +131,7 @@ export function parseHiringRecord(record) {
         ...(effort === undefined ? {} : { effort }),
         dailyPct,
         reviewBy,
+        ...(burst === undefined ? {} : { burst }),
         by,
         at,
     };

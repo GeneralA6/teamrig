@@ -55,6 +55,10 @@ export const CONFIG_LIMITS = {
     hiringReviewDays: { min: 1, max: 90 },
     hiringResumeMaxTokens: { min: 10_000, max: 1_000_000 },
     hiringResumeMaxIdleDays: { min: 1, max: 90 },
+    burstSurplusHours: { min: 1, max: 167 },
+    burstMinSparePct: { min: 0.1, max: 100 },
+    burstMaxHelpers: { min: 0, max: 20 },
+    burstMaxHires: { min: 0, max: 20 },
 };
 /**
  * Bounds on the fields of one recorded rule conflict (`ruleConflicts`). A line longer than `textMaxLength` is
