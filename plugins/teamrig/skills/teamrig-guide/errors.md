@@ -80,6 +80,9 @@ or take it to the lead.
 | `REFUSED <id> holds roles.<role>: give the role to another session first` | Set the role to another session in the team config, then retire it. |
 | `REFUSED github.owners names <id> for <login>: point it at another session first` | Point that login (or the repository in `github.sessions`) at another session, then retire it. |
 | `REFUSED only the lead retires <id>: a session retires itself only when hired, under hiring.policy automatic` | Ask the lead to retire it. |
+| `REFUSED <id> was not hired back after a retire: --resume resumes only a rehired session's last Claude Code session` | Open it without `--resume`. |
+| `REFUSED not resumed: <why>; open it fresh on its handover: teamrig open <id>` | Its last Claude Code session is gone, too big or too long idle: open it fresh with the command shown. |
+| `--resume "<value>" is not a Claude Code session id` (exit 2) | `launch` was given something other than a session id; open the session again with `teamrig open <id>`. |
 | `REFUSED team X has N child teams (...), and a team has at most 8: hang some under another team` | Put the new team under another team with `--parent`. |
 | `REFUSED only web itself or the lead may record its new name` | Ask that session or the lead to run `rename`. |
 | `REFUSED x is already the name of ...` / `x is the id of another session` | Choose another name. |

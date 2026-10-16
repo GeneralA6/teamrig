@@ -81,7 +81,9 @@ caps you set: how many at once, how much of the week they may use a day, and whe
 When the job is done, the lead retires it (`teamrig retire`): its open tasks go to a member you name, it leaves a
 handover note, and its tasks and notes stay readable. The lead's checks flag a hired member left with no work.
 
-*Coming: hired members that retire themselves once their tasks close, and rehiring one from its handover note.*
+If you let the lead decide (the `automatic` policy), a hired member whose last task closes is asked to write its
+handover note and retire itself. Hiring a retired member back picks up where it left off: from its handover note,
+or in its last Claude Code session when that is recent and small enough.
 
 ![A camera pulls back from your lead as time passes. Day 1: the lead hires a team of three. Week 2: new members join and one whose job is done moves on. Month 2: one team becomes teams of teams, each with its own lead. Month 6: eight teams and 33 members, with members coming and going, and you still talk to one lead.](docs/images/growth.svg)
 

@@ -134,7 +134,7 @@ are some: `HIRE <KIND> (<detail>) <session>: <what to do>`. A session's own `sta
 
 | Hire flag | Raised when | What to do |
 | --- | --- | --- |
-| `RETIRE-DUE` | a hired session has had no open task for 4 h [hiring.idleHours], counted from its hire or from its newest task's last status change | The lead gives it its next task, or retires it (`teamrig retire <id>`); under `hiring.policy` `automatic` it may retire itself. |
+| `RETIRE-DUE` | a hired session has had no open task for 4 h [hiring.idleHours], counted from its hire or from its newest task's last status change | The lead gives it its next task, or retires it (`teamrig retire <id>`); under `hiring.policy` `automatic` it is asked to retire itself once its last open task closes. |
 | `REVIEW-DUE` | a hired session's review day has passed | The lead decides whether its job goes on; when it is done, retires it. |
 
 `check` then lints the skills folder: `SKILL <KIND> (<detail>) <owner|-> <skill>`.

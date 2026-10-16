@@ -615,12 +615,18 @@ given) and `budget.sessions.<id>.dailyPct`. Its name is `<team>-<id>` unless `--
 team's session has is refused, as Claude Code session names are machine-wide.
 
 - `hiring.policy`: `off` refuses every hire; `owner` (the default) needs `--approved-by "<who>"`, after you ask
-  the owner; `lead` lets the lead hire within the caps; `automatic` is `lead`, and a hired session whose tasks
-  are all closed may also retire itself.
+  the owner; `lead` lets the lead hire within the caps; `automatic` is `lead`, and a hired session whose last
+  open task closes is asked once, at its next turn end, to write its handover and retire itself.
 - The caps: at most `hiring.maxSessions` (2) hired sessions at once, with daily budgets adding up to at most
   `hiring.maxDailyPct` (3% of the week). A hire's daily budget is `--daily-pct`, else `hiring.dailyPct` (1%).
 - Its review day is `--review`, else `hiring.reviewDays` (7) days on.
 - When its job is done, retire it (`teamrig retire`).
+
+Hiring a retired id again is a rehire: the same command, with the same caps. It shows the retire it comes back
+from and its handover, and measures its last Claude Code session (the one that last ran `inbox read` as it): it can
+be resumed when its transcript is still in the project folder, its context is at most `hiring.resumeMaxTokens`
+(250,000 tokens) and it was idle at most `hiring.resumeMaxIdleDays` (7 days). Else it opens fresh, and its first
+prompt sends it to that handover. The measure writes nothing, so the preview shows it too.
 
 Flags:
 
@@ -649,6 +655,17 @@ HIRED importer (name shop-importer) for "port the CSV importer": model opus at x
 NEXT give it its first task: teamrig add --owner importer --title "<task>" --description "<what and why>" --session lead; then open it: teamrig open importer
 ```
 
+A rehire adds two lines after the caps, and its NEXT names how to open it:
+
+```text
+REHIRE importer retired 2030-01-10 (its job is done); its handover: ~/.teamrig/teams/shop/handover/importer.md
+  its last Claude Code session can be resumed: its last Claude Code session 0123abcd-0000-4000-8000-00000000000a holds 120000 tokens of context, idle 2.0 day(s)
+NEXT ... then resume its last Claude Code session: teamrig open importer --resume, or open it fresh on its handover: teamrig open importer
+```
+
+Resume only when it was in the middle of something its handover does not hold and its area barely changed since:
+a resumed session re-reads its whole old context on every call.
+
 ### teamrig retire
 
 Takes a session off the team once its job is done (`teamrig retire <id|name>`): the lead, or a hired session
@@ -664,6 +681,8 @@ readable by its id.
 - It refuses while a role (`roles.lead`, `roles.coordinatorOwner`), `github.owners` or `github.sessions` names
   the session: point those at another session first.
 - `check` flags each hired session to retire (RETIRE-DUE) and each one past its review day (REVIEW-DUE).
+- Under `hiring.policy` `automatic`, closing a hired session's last open task (`set` done or dropped) asks it, once,
+  at its next turn end, to write its handover and retire itself; it says so and goes on when its job goes on.
 
 Flags:
 
@@ -748,11 +767,15 @@ A lead with sub-teams runs `teamrig check --tree --session lead` too: `start` re
 
 Opens a new terminal tab in the project folder running Claude Code as that session (`teamrig open <id|name>`, or
 `<team>/<id>` for another team of the same tree). The tab gets `$TEAMRIG_SESSION` and `$TEAMRIG_TEAM`, the
-session's model and effort from the config's `launch`, and a first prompt that reads its inbox and list.
+session's model and effort from the config's `launch`, and a first prompt that reads its inbox and list. A
+rehired session's first prompt reads the handover its retire left first.
 
 Flags:
 
 - `--prompt "<first prompt>"`: a first prompt instead of the default one.
+- `--resume`: a rehired session goes on in its last Claude Code session (`claude --resume`) instead, with a first
+  prompt to read its inbox and list again. It measures that session as `hire` does and refuses, with why, when
+  it is gone, over `hiring.resumeMaxTokens` or idle over `hiring.resumeMaxIdleDays`.
 - `--terminal <name>`: `auto`, `tmux`, `windows-terminal`, `macos-terminal`, `gnome-terminal`, `konsole`,
   `x-terminal-emulator` or `print`; default the config's `open.terminal` (`auto`).
 - `--project <dir>`: the folder to open in; default the folder holding the team's `.teamrig.json`.
@@ -779,7 +802,8 @@ new terminal and run this:` and the command, and exits 3. Show the user that com
 
 What a tab started by `open` runs: it sets the session's variables and starts Claude Code under the session's
 name, model and effort. You do not run it yourself; `open` writes it. When the automatic context refresh ends
-Claude Code for a fresh start, launch starts it again in the same tab with the default prompt.
+Claude Code for a fresh start, launch starts it again in the same tab, fresh, with a prompt to read its handover
+first.
 
 Flags:
 
@@ -787,6 +811,7 @@ Flags:
 - `--project <dir>`: required; the folder must exist.
 - `--home <dir>`: the kit home, when it is not the default.
 - `--encoded-prompt <text>`: the first prompt, as `open` encoded it.
+- `--resume <session>`: the Claude Code session to resume, as `open --resume` gives it; on its first start only.
 
 Example:
 

@@ -104,7 +104,8 @@ talk to one lead: the root team's.
 The lead hires a temporary member for one job with `teamrig hire`, within the team config's `hiring` block:
 
 - `policy`: `off` (no hires by command), `owner` (the default: each hire names who approved it), `lead`, or
-  `automatic` (the lead decides, and a hired session may retire itself once its tasks are closed).
+  `automatic` (the lead decides, and a hired session whose last open task closes is asked at its next turn end to
+  write its handover and retire itself).
 - `maxSessions` (2) hired members at once, each on `dailyPct` (1% of the week a day) unless the hire sets its own,
   all of them on at most `maxDailyPct` (3%) a day; `reviewDays` (7) sets a hire's review day.
 - Each hire is logged in `state/hires.jsonl` with its job, reason, approver, model, effort, daily budget and review
@@ -116,6 +117,11 @@ unless `--to <heir>` takes them, and without its handover note (`handover/<id>.m
 It takes the session's keys out of `sessions`, `names`, `launch` and `budget.sessions`, keeping the old config in
 `backups/`, and logs the retire in `state/hires.jsonl`. Its tasks, inbox and records stay where they are, readable by
 its id, and `teamrig doctor` reads its inbox as kept, not orphaned.
+
+Hiring a retired id again is a rehire. `teamrig hire` shows the retire and handover it comes back from and measures
+the last Claude Code session that read its inbox: when its transcript is still in the project folder, its context is
+at most `resumeMaxTokens` (250,000) and it was idle at most `resumeMaxIdleDays` (7), `teamrig open <id> --resume`
+goes on in it. Else `teamrig open <id>` starts it fresh, its first prompt sending it to the handover.
 
 ## Setting up a team
 

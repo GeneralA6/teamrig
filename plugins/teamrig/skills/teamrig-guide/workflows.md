@@ -206,7 +206,8 @@ With sub-teams, run `teamrig check --tree --session lead` too. Then act on each 
   open a new task or keep it by a decision).
 - `NOT-PICKED-UP`: the owner is idle and reads no inbox: wake it with `teamrig open <id>`, or tell the human.
 - `HIRE RETIRE-DUE`: a hired session has had no open task for `hiring.idleHours`: give it its next task, or retire
-  it (`teamrig retire <id> --session lead`, `--to <heir>` for any open task).
+  it (`teamrig retire <id> --session lead`, `--to <heir>` for any open task). Hiring, retiring and rehiring: the
+  `hire` skill.
 - `HIRE REVIEW-DUE`: a hired session's review day passed: decide whether its job goes on; retire it when done.
 - `OVERDUE` or `STALE`: ask the owner what blocks it, then re-date it (`--due`) or tell the human.
 - `READY`: a waiting task can go on: one inbox line to its owner, if it has not set the next status.
