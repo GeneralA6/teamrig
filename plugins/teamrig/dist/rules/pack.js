@@ -67,7 +67,7 @@ function statusDemands(config, command) {
 /**
  * The always-loaded core rules, filled from the team's config. Each rule names the config key
  * behind any value it prints, so a team changes a number without forking the text. A step only one
- * platform needs, like removing a worktree's node_modules junction on Windows, prints on that platform alone.
+ * platform needs, like removing a worktree without following its node_modules junction on Windows, prints on that platform alone.
  */
 export function renderCorePack(config, command, platform) {
     const { roles, skills, budget } = config;
@@ -107,7 +107,7 @@ export function renderCorePack(config, command, platform) {
             { off: '.', warn: '; a push to a protected branch lists those without one [commits.gate].', refuse: '; a push to a protected branch that sends one is refused [commits.gate].' }[config.commits.gate],
         `${pushRule(config.pushGuard)} A refused or blocked route is reported to the lead, never routed around or handed to another session.`,
         'Edit in your own worktree and branch in every git repo, never a main checkout.' +
-            (platform === 'win32' ? " Remove a worktree's node_modules link first (`cmd /c rmdir`; Git Bash `cmd //c`), or `git worktree remove` empties the main one." : '') +
+            (platform === 'win32' ? ` Remove a worktree with \`${command} worktree remove <path>\`; a plain \`git worktree remove\` empties the main node_modules.` : '') +
             " Update comments in their code's commit, verify a load-bearing one before acting on it, and fix a stale comment, doc or dead code you find in its own small commit.",
     ];
     return [

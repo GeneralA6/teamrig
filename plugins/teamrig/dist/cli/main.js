@@ -12,6 +12,8 @@ import { nodeSessionProcesses } from "../open/session-processes.js";
 import { GIT_CLI, GIT_COMMIT_LOG } from "../push-guard/git.js";
 import { requirementsCheck } from "../requirements/requirements.js";
 import { nodeShellRunner } from "../test-run/shell.js";
+import { NODE_WORKTREE_FILES } from "../worktree/files.js";
+import { GIT_WORKTREES } from "../worktree/git.js";
 import { runCli } from "./run.js";
 /** The process adapter: real files, clock, git, child processes and stdio around the testable runner. */
 process.exitCode = await runCli(process.argv.slice(2), {
@@ -38,5 +40,6 @@ process.exitCode = await runCli(process.argv.slice(2), {
     transcripts: nodeTranscriptSource,
     self: { node: process.execPath, script: fileURLToPath(import.meta.url) },
     requirements: requirementsCheck({ env: process.env, platform: process.platform, probe: NODE_PATH_PROBE, nodeVersion: process.versions.node }),
+    worktrees: { git: GIT_WORKTREES, files: NODE_WORKTREE_FILES },
     readStdin: () => text(process.stdin),
 });
