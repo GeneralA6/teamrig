@@ -301,6 +301,16 @@ describe('the requirements in the guide', () => {
     assert.ok(requirements.includes(`CI runs the tests on ${systems.slice(0, -1).join(', ')} and ${systems.at(-1) ?? ''}`), `requirements.md names ${systems.join(', ')}`);
     assert.ok(requirements.includes(`Node ${nodes.join(' and ')}`), `requirements.md names Node ${nodes.join(' and ')}`);
   });
+
+  it('give the one allow rule default mode needs, wherever a new user looks', () => {
+    const rule = '`Bash(teamrig:*)`';
+    for (const [name, text] of [['requirements.md', requirements], ['setup-by-hand.md', read('docs/setup-by-hand.md')], ['README.md', read('README.md')]] as const) {
+      assert.ok(text.includes(rule) || text.includes('"Bash(teamrig:*)"'), `${name} names ${rule}`);
+    }
+    const permissions = guideText('hooks.md').split('## Permissions\n')[1] ?? '';
+    assert.match(permissions, /\{ "permissions": \{ "allow": \["Bash\(teamrig:\*\)"\] \} \}/);
+    assert.doesNotMatch(permissions, /Default mode\*\*: not tested/);
+  });
 });
 
 /** The sentence of `text` that holds `marker`, its line breaks read as spaces; empty when none does. */
