@@ -7,7 +7,7 @@ import { RefreshStore } from '../refresh/store.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { FakeProcesses } from '../testing/fake-processes.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
-import { APP, CLAUDE_SESSION, CliHarness, contextOf, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
+import { APP, AUTO_RESTART_TEAM, CLAUDE_SESSION, CliHarness, contextOf, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
 
 const STATE = (id: string): string => join(TEAM_HOME, 'state', 'refresh', `${id}.json`);
@@ -99,7 +99,7 @@ describe('runCli: context refresh', () => {
     assert.deepEqual([early.code, early.stdout], [EXIT.refused, [`REFUSED write your handover to ${HANDOVER('alpha')} first`]]);
     await kit.files.write(HANDOVER('alpha'), '# In progress\n- T2: tests left\n');
     const ready = await kit.run(['refresh', '--ready', '--session', 'alpha']);
-    const readyLine = `Ready. End your turn now: teamrig starts you fresh once you are idle, or asks the user to type /clear; your next start reads ${HANDOVER('alpha')}.`;
+    const readyLine = `Ready. Ask the user to type /clear; your next start reads ${HANDOVER('alpha')}.`;
     assert.deepEqual(ready, { code: EXIT.ok, stdout: [readyLine], stderr: [] });
     assert.deepEqual((await kit.run(['refresh', '--ready'], AS_ALPHA)).stdout, [readyLine], 'the same answer again');
 
@@ -169,7 +169,7 @@ describe('runCli: context refresh', () => {
   });
 
   it('arms the automatic restart once the handover is written, for the Claude Code the hook runs under', async () => {
-    const kit = new CliHarness();
+    const kit = new CliHarness(AUTO_RESTART_TEAM);
     const store = await handoverWritten(kit);
     const processes = new FakeProcesses();
     const env = { TEAMRIG_SESSION: 'alpha', CLAUDE_PROJECT_DIR: APP, TEAMRIG_LAUNCHED: 'alpha' };
@@ -189,8 +189,8 @@ describe('runCli: context refresh', () => {
     assert.equal(processes.hidden.filter((run) => run.args[1] === 'restart').length, 1);
   });
 
-  it('asks for /clear instead, leaving nothing armed, when the restart cannot start or is off', async () => {
-    const missing = new CliHarness();
+  it('asks for /clear instead, leaving nothing armed, when the restart cannot start or is off (the default)', async () => {
+    const missing = new CliHarness(AUTO_RESTART_TEAM);
     const store = await handoverWritten(missing);
     const processes = new FakeProcesses().onStart('/usr/bin/node', { kind: 'missing' });
     const clear = {
@@ -200,7 +200,7 @@ describe('runCli: context refresh', () => {
     assert.deepEqual(stopJson(await missing.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload(true), sessionProcesses: UNDER_CLAUDE(), processes })), clear);
     assert.equal(await store.restart('alpha'), undefined);
 
-    const off = new CliHarness({ ...TEAM, refresh: { autoRestart: false } });
+    const off = new CliHarness();
     const offStore = await handoverWritten(off);
     const none = new FakeProcesses();
     assert.deepEqual(stopJson(await off.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload(true), sessionProcesses: UNDER_CLAUDE(), processes: none })), clear);
@@ -208,7 +208,7 @@ describe('runCli: context refresh', () => {
   });
 
   it('cancels the armed restart when the user types, keeping the context until a later task end or more growth', async () => {
-    const kit = new CliHarness();
+    const kit = new CliHarness(AUTO_RESTART_TEAM);
     const store = await handoverWritten(kit);
     const env = { TEAMRIG_SESSION: 'alpha', CLAUDE_PROJECT_DIR: APP };
     stopJson(await kit.run(['hook', 'stop'], { env, stdin: stopPayload(true), sessionProcesses: UNDER_CLAUDE(), processes: new FakeProcesses() }));
@@ -237,8 +237,8 @@ describe('runCli: context refresh', () => {
     assert.deepEqual(await store.restart('alpha'), request);
   });
 
-  it('says to type /clear when the automatic restart is off', async () => {
-    const kit = new CliHarness({ ...TEAM, refresh: { autoRestart: false } });
+  it('says to type /clear by default, the automatic restart being off', async () => {
+    const kit = new CliHarness();
     await kit.files.write(TRANSCRIPT, transcript(300_000));
     await finishTask(kit, 'alpha');
     stopJson(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload() }));
@@ -327,7 +327,7 @@ describe('runCli: context refresh', () => {
     const requested = await kit.run(['refresh', 'app-bravo', '--session', 'lead']);
     const handover = join(TEAM_HOME, 'notes', 'bravo.md');
     assert.deepEqual(requested.stdout, [
-      `REQUESTED a refresh of app-bravo: at its next turn end it writes its handover to ${handover}; then it starts fresh once idle`,
+      `REQUESTED a refresh of app-bravo: at its next turn end it writes its handover to ${handover}; then type /clear in its tab`,
     ]);
     await finishTask(kit, 'bravo');
     const asked = stopJson(await kit.run(['hook', 'stop'], { env: { TEAMRIG_SESSION: 'bravo' }, stdin: stopPayload(false, { transcript_path: join(USER_HOME, 'gone.jsonl') }) }));

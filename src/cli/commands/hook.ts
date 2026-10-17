@@ -553,7 +553,7 @@ async function stopOutputOf(runtime: CliRuntime, payload: JsonRecord): Promise<s
  * Stop, at the end of every turn: first sends the session back, once, to a skill edit of the turn that
  * Claude Code refused and it never redid (hook-dropped-edit.ts), leaving the rest to its next stop. It asks the session for its handover once when its context reached the
  * team's threshold or the lead asked, and at a task end (`set done`) also after enough tasks, then tells the user
- * once that it restarts by itself when idle (hook-restart.ts, `refresh.autoRestart`), or else waits for /clear. It also tells the user, once each, when the session runs at another
+ * once that it waits for /clear, or with `refresh.autoRestart` that it restarts by itself when idle (hook-restart.ts). It also tells the user, once each, when the session runs at another
  * effort than its `launch` entry or Claude Code switched its model after a safeguard stop, and once a
  * day when the date to verify one of its verifying tasks by has come. Under `hiring.policy` `automatic` it asks a
  * hired session whose last open task closed, once, to write its handover and retire. Once per `github.everyMinutes` for the whole

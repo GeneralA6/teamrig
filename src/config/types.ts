@@ -344,8 +344,8 @@ export interface AlertsConfig {
 /**
  * Context refresh: at any turn end with the session's context at or over `contextTokens`, at a task end
  * (`set <id> --status done`) with `everyTasks` tasks finished since its context was last fresh, or after the lead
- * asked for it, the session writes a handover; then teamrig starts it fresh on its own (`autoRestart`), or
- * the user types /clear.
+ * asked for it, the session writes a handover; then the user types /clear, or teamrig starts it fresh on its own
+ * (`autoRestart`).
  */
 export interface RefreshConfig {
   readonly enabled: boolean;
@@ -364,7 +364,7 @@ export interface RefreshConfig {
    * Once the handover is written and the turn has ended, start the session fresh, which reads the handover:
    * the plugin's mod runs /clear in its tab; where no mod claims the ask, end its Claude Code process and start
    * it again, in the same tab when `teamrig open` started it, else in a new tab. A prompt typed before then
-   * keeps the context. Off: the user types /clear.
+   * keeps the context. Off (the default): the user types /clear once done with the screen, which a /clear wipes.
    */
   readonly autoRestart: boolean;
   /** How long after the turn's end the automatic restart waits, so the user can still type to keep the context. */
