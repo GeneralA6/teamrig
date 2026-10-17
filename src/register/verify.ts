@@ -1,6 +1,7 @@
 import { formatUtcDay, parseUtcDay } from '../core/time.ts';
 import { taskNumber, type Task } from './fold.ts';
 import type { TaskStatus } from './model.ts';
+import { needsOf } from './tree.ts';
 
 /** `Proof: ...` or `Proof = ...` in a note written before `--proof` existed: what follows names the proof. */
 const NOTE_PROOF = /\bproof\s*[:=]\s*(.+)$/i;
@@ -22,8 +23,7 @@ export function proofOf(task: Pick<Task, 'proof' | 'note'>): string | null {
  * it waits on, each once. A shipped change is not proven yet, so work built on it waits for the proof.
  */
 export function verifyingNeeds(task: Pick<Task, 'after' | 'waits'>, tasks: ReadonlyMap<string, Task>): Task[] {
-  const waitedOn = task.waits.flatMap((reason) => (reason.kind === 'task' ? [reason.id] : []));
-  return [...new Set([...task.after, ...waitedOn])].flatMap((id) => {
+  return needsOf(task).flatMap((id) => {
     const needed = tasks.get(id);
     return needed?.status === 'verifying' ? [needed] : [];
   });
