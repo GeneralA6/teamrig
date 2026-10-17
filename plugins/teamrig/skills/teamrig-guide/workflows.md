@@ -158,16 +158,17 @@ so it never loses work to a compaction.
 2. Write the handover at that path: what is in progress and the next step of each, what to check later and when,
    questions still open with the user, the scratchpad files, plan file and scheduled jobs the next session still
    needs, and where things are (branches, worktrees, files, ids). It must be new: the old file left as it was is refused.
-3. Run `teamrig refresh --ready --session web`. It prints `Ready. End your turn now: teamrig starts you fresh
-   once you are idle, or asks the user to type /clear; your next start reads <path>.`. At the end of that turn
-   the tab title becomes `shop-web: restarting` (the session's name; `refresh.tabTitle: false` turns that off).
-4. End your turn and start nothing new. Once the tab has been idle 15 s (`refresh.restartDelaySeconds`), teamrig's
+3. Run `teamrig refresh --ready --session web`. It prints `Ready. Ask the user to type /clear; your next start
+   reads <path>.`. At the end of that turn the tab title becomes `shop-web: type /clear` (the session's name;
+   `refresh.tabTitle: false` turns that off).
+4. End your turn and start nothing new. The user types `/clear` once done with your screen, which a `/clear`
+   wipes. With `refresh.autoRestart: true` the title reads `shop-web: restarting` instead: once the tab has been
+   idle 15 s (`refresh.restartDelaySeconds`), teamrig's
    mod runs `/clear` in this tab, after asking Claude Code that no helper of yours still runs (it waits while one does); where it cannot, teamrig ends this Claude Code and starts it again, in the same
    tab when `teamrig open` started it, else in a new tab. While a background shell runs (a background command or
    a monitor), it ends nothing and your inbox says to type `/clear`, which keeps the shell.
-   If the user sends a prompt first, the restart is cancelled and you keep this context. When the restart is off
-   (`refresh.autoRestart: false`) or cannot start, the title reads `shop-web: type /clear`: ask the user to type
-   `/clear`.
+   If the user sends a prompt first, the restart is cancelled and you keep this context. When the restart
+   cannot start, the title reads `shop-web: type /clear`: ask the user to type `/clear`.
 5. After the fresh start, the session-start context says `You were refreshed after T2; read your handover first:
    <path>`, then the scheduled jobs (still scheduled after a `/clear`, to make again after a new process), the
    wake-up to make again, the old scratchpad and the plan file. The

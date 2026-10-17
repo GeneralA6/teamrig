@@ -54,7 +54,7 @@ verified yet is marked verifying, with a date to verify it by, so it stays in vi
 cannot go on is marked waiting, with what it waits for, and `check` tells you when it can. A push to main asks you first,
 and a force-push to it is refused. The team rules win over a CLAUDE.md, skill or memory line that says otherwise: setup finds
 each such line and asks you whether to remove it, keep it as an exception, or rewrite it. A message that would wake an idle member at full price is held once, so a
-cheap inbox line can take its place. When a member's context runs long, it writes a handover and teamrig restarts it fresh, and it carries on from there by itself. Big
+cheap inbox line can take its place. When a member's context runs long, it writes a handover; your `/clear` starts it fresh once you have read its screen, and it carries on from there by itself. Big
 commits are flagged before they land, `teamrig worktree remove` clears a finished worktree without emptying the main
 checkout's `node_modules`, and everything runs on your machine, with no account and no cloud bill. When two members
 edit one skill at once and Claude Code refuses the later edit, that member or helper is sent back to redo it before it
