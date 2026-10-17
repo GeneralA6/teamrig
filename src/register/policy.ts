@@ -5,7 +5,7 @@ import { SecretScanner } from '../core/secrets.ts';
 import { parseUtcDay, parseUtcDeadline } from '../core/time.ts';
 import { sizeProblem, type TaskFieldName, type TaskFields } from './events.ts';
 import { taskNumber, type RegisterState, type Task } from './fold.ts';
-import { ACTIVE_STATUSES, GITHUB_SOURCE, priorityText, SESSION_NAME, type TaskStatus } from './model.ts';
+import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, priorityText, SESSION_NAME, type TaskStatus } from './model.ts';
 import { loopFix, needPath, pathText } from './tree.ts';
 import { heldStart, startHolds } from './verify.ts';
 import { isPeerWait, sameWait, waitSpelling, type PersonWait, type WaitReason } from './waits.ts';
@@ -65,6 +65,8 @@ export interface StatusInput {
   readonly proof?: string;
   /** The date to verify by, as the task's due date; only with `verifying`. */
   readonly due?: string;
+  /** The tasks the work leaves (a finding, a next step), by id; empty for `--followups none`. Only with FOLLOWUP_STATUSES. */
+  readonly followups?: readonly string[];
 }
 
 /**
@@ -98,6 +100,8 @@ export interface StatusChange {
   readonly proof?: string;
   /** Only with `verifying`, and only when it moves the task's due date: the date to verify by. */
   readonly due?: string;
+  /** Only when the change names them: the tasks the work leaves, empty for none. */
+  readonly followups?: readonly string[];
 }
 
 /** The refusal of an `add` with no description while `register.requireDescription` is on. */
@@ -267,6 +271,10 @@ export class RegisterPolicy {
     } else if (skill !== null) {
       return refuse('--skill goes only with done');
     }
+    const followups = this.checkFollowups(task, input, context);
+    if (!followups.ok) {
+      return followups;
+    }
     const problem = this.checkText('note', note) ?? this.checkText('evidence', evidence) ?? this.checkText('proof', proof.value);
     const change: StatusChange = {
       status: input.status,
@@ -276,8 +284,37 @@ export class RegisterPolicy {
       ...(waits.value.length > 0 ? { waits: waits.value } : {}),
       ...(proof.value === null ? {} : { proof: proof.value }),
       ...(due.value === null ? {} : { due: due.value }),
+      ...(followups.value === null ? {} : { followups: followups.value }),
     };
     return problem === undefined ? ok(change) : refuse(problem);
+  }
+
+  /**
+   * The follow-ups a status change names: required on the statuses `register.requireFollowupsOn` lists, allowed
+   * only on FOLLOWUP_STATUSES, each another task on the list and named once; null when the change names none.
+   */
+  private checkFollowups(task: Task, input: StatusInput, context: StatusContext): Verdict<readonly string[] | null> {
+    const { followups } = input;
+    if (followups === undefined) {
+      return this.config.register.requireFollowupsOn.includes(input.status)
+        ? refuse(`${input.status} needs --followups T<id>,... naming the tasks this work leaves (a finding, a next step), or --followups none`)
+        : ok(null);
+    }
+    if (!FOLLOWUP_STATUSES.includes(input.status)) {
+      return refuse(`--followups goes only with ${FOLLOWUP_STATUSES.join(', ')}`);
+    }
+    for (const [index, id] of followups.entries()) {
+      if (id === task.id) {
+        return refuse(`--followups names ${id} itself: name the tasks it leaves`);
+      }
+      if (followups.indexOf(id) !== index) {
+        return refuse(`--followups names ${id} twice`);
+      }
+      if (!context.state.tasks.has(id)) {
+        return refuse(`--followups names ${id}, which is not on the task list: add it first (teamrig add)`);
+      }
+    }
+    return ok(followups);
   }
 
   /** The reasons of a status change: at least one for `waiting`, none for any other status, each one judged. */

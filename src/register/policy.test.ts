@@ -66,7 +66,7 @@ describe('RegisterPolicy.add', () => {
     assert.equal(refused, 'ref looks like it holds a secret (GitHub token); refer to where it is kept instead');
     assert.match(error(policy.add({ ...INPUT, title: `rotate ${token}` }, EMPTY)), /^title looks like it holds a secret \(GitHub token\)/);
     assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'waiting', waits: OWNER_DECISION, note: `key ${token}` }, CTX)), /^note looks like it holds a secret/);
-    assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'done', note: 'ok', evidence: token, skill: 'none' }, CTX)), /^evidence looks like it holds a secret/);
+    assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'done', note: 'ok', evidence: token, skill: 'none', followups: [] }, CTX)), /^evidence looks like it holds a secret/);
     assert.match(error(policy.update(TASK, 'alpha', { title: 'Add two health checks' }, `see ${token}`, EMPTY)), /^note looks like it holds a secret/);
   });
 
@@ -166,23 +166,23 @@ describe('RegisterPolicy.setStatus', () => {
       error(policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'shipped' }, CTX)),
       'verifying needs --proof saying what will prove the shipped change works',
     );
-    assert.equal(policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'shipped', proof: 'the nightly run' }, CTX).ok, true);
+    assert.equal(policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'shipped', proof: 'the nightly run', followups: [] }, CTX).ok, true);
     assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'done', note: 'ok' }, CTX)), /needs --evidence/);
     assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'done', note: 'ok', evidence: 'abc1234' }, CTX)), /needs --skill/);
     assert.match(
       error(policy.setStatus(TASK, 'alpha', { status: 'done', note: 'ok', evidence: 'abc1234', skill: 'web-deploy' }, CTX)),
       /no skill named web-deploy/,
     );
-    assert.deepEqual(policy.setStatus(TASK, 'alpha', { status: 'done', note: ' ok ', evidence: 'abc1234', skill: 'none' }, CTX), {
+    assert.deepEqual(policy.setStatus(TASK, 'alpha', { status: 'done', note: ' ok ', evidence: 'abc1234', skill: 'none', followups: [] }, CTX), {
       ok: true,
-      value: { status: 'done', note: 'ok', evidence: 'abc1234', skill: 'none' },
+      value: { status: 'done', note: 'ok', evidence: 'abc1234', skill: 'none', followups: [] },
     });
-    assert.equal(policy.setStatus(TASK, 'alpha', { status: 'done', note: 'ok', evidence: 'abc', skill: 'web-deploy' }, { ...CTX, skillExists: true }).ok, true);
+    assert.equal(policy.setStatus(TASK, 'alpha', { status: 'done', note: 'ok', evidence: 'abc', skill: 'web-deploy', followups: [] }, { ...CTX, skillExists: true }).ok, true);
   });
 
   it('accepts evidence recorded on an earlier status change', () => {
     const withEvidence: Task = { ...TASK, evidence: 'abc1234' };
-    assert.equal(policy.setStatus(withEvidence, 'alpha', { status: 'done', note: 'ok', skill: 'none' }, CTX).ok, true);
+    assert.equal(policy.setStatus(withEvidence, 'alpha', { status: 'done', note: 'ok', skill: 'none', followups: [] }, CTX).ok, true);
   });
 
   it('keeps --skill for done and wants a reason to repeat a status', () => {
@@ -194,12 +194,54 @@ describe('RegisterPolicy.setStatus', () => {
 
   it('follows a relaxed config', () => {
     const relaxed = new RegisterPolicy(
-      testConfig({ register: { requireEvidenceOnDone: false, requireSkillOnDone: false, requireNoteOn: [] } }),
+      testConfig({ register: { requireEvidenceOnDone: false, requireSkillOnDone: false, requireNoteOn: [], requireFollowupsOn: [] } }),
     );
     assert.deepEqual(relaxed.setStatus(TASK, 'alpha', { status: 'done' }, CTX), {
       ok: true,
       value: { status: 'done', note: null, evidence: null, skill: null },
     });
+  });
+});
+
+describe('RegisterPolicy.setStatus: the follow-ups a closing change names', () => {
+  const policy = new RegisterPolicy(testConfig());
+  const LEFT = testTask({ id: 'T2', title: 'Fix the finding' });
+  const context: StatusContext = { ...CTX, state: stateOf(TASK, LEFT) };
+  const DONE = { status: 'done' as const, note: 'ok', evidence: 'abc1234', skill: 'none' };
+
+  it('refuses verifying and done with no --followups, naming what to type', () => {
+    const needs = (status: string): string => `${status} needs --followups T<id>,... naming the tasks this work leaves (a finding, a next step), or --followups none`;
+    assert.equal(error(policy.setStatus(TASK, 'alpha', DONE, context)), needs('done'));
+    assert.equal(error(policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'shipped', proof: 'p' }, context)), needs('verifying'));
+  });
+
+  it('takes none, or tasks on the list, and writes them', () => {
+    const none = policy.setStatus(TASK, 'alpha', { ...DONE, followups: [] }, context);
+    assert.deepEqual(none.ok ? none.value.followups : undefined, []);
+    const left = policy.setStatus(TASK, 'alpha', { ...DONE, followups: ['T2'] }, context);
+    assert.deepEqual(left.ok ? left.value.followups : undefined, ['T2']);
+  });
+
+  it('refuses the task itself, a task named twice and one not on the list', () => {
+    assert.equal(error(policy.setStatus(TASK, 'alpha', { ...DONE, followups: ['T1'] }, context)), '--followups names T1 itself: name the tasks it leaves');
+    assert.equal(error(policy.setStatus(TASK, 'alpha', { ...DONE, followups: ['T2', 'T2'] }, context)), '--followups names T2 twice');
+    assert.equal(error(policy.setStatus(TASK, 'alpha', { ...DONE, followups: ['T9'] }, context)), '--followups names T9, which is not on the task list: add it first (teamrig add)');
+  });
+
+  it('takes --followups only while shipping, finishing or dropping a task, and on dropped asks none by default', () => {
+    const only = '--followups goes only with verifying, done, dropped';
+    assert.equal(error(policy.setStatus(TASK, 'alpha', { status: 'open', followups: [] }, context)), only);
+    assert.equal(error(policy.setStatus(TASK, 'alpha', { status: 'waiting', waits: OWNER_DECISION, note: 'x', followups: ['T2'] }, context)), only);
+    assert.equal(error(policy.setStatus(TASK, 'alpha', { status: 'dropped', note: 'not needed' }, context)), 'allowed');
+    assert.equal(error(policy.setStatus(TASK, 'alpha', { status: 'dropped', note: 'moved', followups: ['T2'] }, context)), 'allowed');
+  });
+
+  it('asks on the statuses the team lists, and on none when the list is empty', () => {
+    const strict = new RegisterPolicy(testConfig({ register: { requireFollowupsOn: ['dropped'] } }));
+    assert.match(error(strict.setStatus(TASK, 'alpha', { status: 'dropped', note: 'moved' }, context)), /^dropped needs --followups/);
+    assert.equal(error(strict.setStatus(TASK, 'alpha', DONE, context)), 'allowed');
+    const off = new RegisterPolicy(testConfig({ register: { requireFollowupsOn: [] } }));
+    assert.equal(error(off.setStatus(TASK, 'alpha', { status: 'verifying', note: 'shipped', proof: 'p' }, context)), 'allowed');
   });
 });
 
@@ -230,46 +272,46 @@ describe('RegisterPolicy.setStatus to verifying', () => {
   const VERIFYING: Task = { ...TASK, status: 'verifying', note: 'shipped', proof: 'the nightly run is green' };
 
   it('writes the proof trimmed, only with verifying', () => {
-    assert.deepEqual(policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'shipped', proof: ' the nightly run ' }, CTX), {
+    assert.deepEqual(policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'shipped', proof: ' the nightly run ', followups: [] }, CTX), {
       ok: true,
-      value: { status: 'verifying', note: 'shipped', evidence: null, skill: null, proof: 'the nightly run' },
+      value: { status: 'verifying', note: 'shipped', evidence: null, skill: null, proof: 'the nightly run', followups: [] },
     });
     assert.equal(error(policy.setStatus(TASK, 'alpha', { status: 'open', proof: 'x' }, CTX)), '--proof goes only with --status verifying');
   });
 
   it('carries the proof over when a verifying task is set verifying again, and takes a new proof as a change', () => {
-    const again = policy.setStatus(VERIFYING, 'alpha', { status: 'verifying', note: 'still waiting' }, CTX);
+    const again = policy.setStatus(VERIFYING, 'alpha', { status: 'verifying', note: 'still waiting', followups: [] }, CTX);
     assert.deepEqual(again.ok ? again.value.proof : undefined, 'the nightly run is green');
-    const renamed = policy.setStatus(VERIFYING, 'alpha', { status: 'verifying', proof: 'two nightly runs', note: 'shipped' }, CTX);
+    const renamed = policy.setStatus(VERIFYING, 'alpha', { status: 'verifying', proof: 'two nightly runs', note: 'shipped', followups: [] }, CTX);
     assert.deepEqual(renamed.ok ? renamed.value.proof : undefined, 'two nightly runs');
     assert.match(error(policy.setStatus({ ...VERIFYING, note: null }, 'alpha', { status: 'verifying', proof: 'the nightly run is green' }, CTX)), /already verifying/);
   });
 
   it('moves the due date to the verify-by date, only with verifying', () => {
-    const dated = policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'shipped', proof: 'p', due: '2030-01-09 18:00' }, CTX);
+    const dated = policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'shipped', proof: 'p', due: '2030-01-09 18:00', followups: [] }, CTX);
     assert.equal(dated.ok ? dated.value.due : undefined, '2030-01-09 18:00');
-    const same = policy.setStatus({ ...TASK, due: '2030-01-09' }, 'alpha', { status: 'verifying', note: 'shipped', proof: 'p', due: '2030-01-09' }, CTX);
-    assert.deepEqual(same.ok ? Object.keys(same.value) : undefined, ['status', 'note', 'evidence', 'skill', 'proof'], 'the same date moves nothing');
+    const same = policy.setStatus({ ...TASK, due: '2030-01-09' }, 'alpha', { status: 'verifying', note: 'shipped', proof: 'p', due: '2030-01-09', followups: [] }, CTX);
+    assert.deepEqual(same.ok ? Object.keys(same.value) : undefined, ['status', 'note', 'evidence', 'skill', 'proof', 'followups'], 'the same date moves nothing');
     assert.equal(error(policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'x', proof: 'p', due: 'friday' }, CTX)), 'due friday is not YYYY-MM-DD or YYYY-MM-DD HH:MM');
     assert.equal(
       error(policy.setStatus(TASK, 'alpha', { status: 'open', due: '2030-01-09' }, CTX)),
       '--due goes only with --status verifying; teamrig update T1 --due sets it otherwise',
     );
-    const moved = policy.setStatus(VERIFYING, 'alpha', { status: 'verifying', note: 'shipped', due: '2030-01-10' }, CTX);
+    const moved = policy.setStatus(VERIFYING, 'alpha', { status: 'verifying', note: 'shipped', due: '2030-01-10', followups: [] }, CTX);
     assert.equal(moved.ok ? moved.value.due : undefined, '2030-01-10', 'a new date is a change, not a repeat');
   });
 
   it('checks the proof like any text', () => {
-    assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'x', proof: 'p'.repeat(301) }, CTX)), /^proof has 301 characters/);
-    assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'x', proof: credentialUrl() }, CTX)), /proof looks like it holds a secret/);
+    assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'x', proof: 'p'.repeat(301), followups: [] }, CTX)), /^proof has 301 characters/);
+    assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'x', proof: credentialUrl(), followups: [] }, CTX)), /proof looks like it holds a secret/);
   });
 
   it('asks the note for the proof when the team does not require --proof', () => {
     const relaxed = new RegisterPolicy(testConfig({ register: { requireProofOnVerifying: false } }));
     assert.equal(error(relaxed.setStatus(TASK, 'alpha', { status: 'verifying' }, CTX)), 'verifying needs --note saying what proves it');
-    assert.deepEqual(relaxed.setStatus(TASK, 'alpha', { status: 'verifying', note: 'the nightly run' }, CTX), {
+    assert.deepEqual(relaxed.setStatus(TASK, 'alpha', { status: 'verifying', note: 'the nightly run', followups: [] }, CTX), {
       ok: true,
-      value: { status: 'verifying', note: 'the nightly run', evidence: null, skill: null },
+      value: { status: 'verifying', note: 'the nightly run', evidence: null, skill: null, followups: [] },
     });
   });
 });

@@ -95,7 +95,7 @@ describe('Register', () => {
     written(await register.add('lead', { title: 'Ship it', description: 'what and why', owner: 'alpha', source: 'owner', priority: 1 }));
     written(await register.setStatus('alpha', 'T1', { status: 'in-progress' }));
     const appended = files.get(LOG)?.length ?? 0;
-    const result = written(await register.setStatus('alpha', 'T1', { status: 'verifying', note: 'shipped', proof: 'the nightly run', due: '2030-01-09' }));
+    const result = written(await register.setStatus('alpha', 'T1', { status: 'verifying', note: 'shipped', proof: 'the nightly run', due: '2030-01-09', followups: [] }));
     assert.deepEqual([result.task.status, result.task.due, result.task.proof], ['verifying', '2030-01-09', 'the nightly run']);
     const lines = readEvents((files.get(LOG) ?? '').slice(appended)).events;
     assert.deepEqual(
@@ -109,7 +109,7 @@ describe('Register', () => {
   it('checks a cited skill against the catalog, but never `none`', async () => {
     const { register, skills } = setup();
     written(await register.add('lead', { title: 'Ship it', description: 'what and why', owner: 'alpha', source: 'owner', priority: 1 }));
-    const close = { status: 'done' as const, note: 'shipped', evidence: 'abc1234' };
+    const close = { status: 'done' as const, note: 'shipped', evidence: 'abc1234', followups: [] };
 
     assert.match(errorOf(await register.setStatus('alpha', 'T1', { ...close, skill: ' web-build ' })), /no skill named web-build/);
     assert.equal((await register.setStatus('alpha', 'T1', { ...close, skill: 'none' })).ok, true);
@@ -221,7 +221,7 @@ describe('Register on a rotated log', () => {
     const world = setup();
     const { clock, files, register } = world;
     written(await register.add('lead', { title: 'Old', description: 'what and why', owner: 'alpha', source: 'owner', priority: 1 }));
-    written(await register.setStatus('alpha', 'T1', { status: 'done', note: 'shipped', evidence: 'abc1234', skill: 'none' }));
+    written(await register.setStatus('alpha', 'T1', { status: 'done', note: 'shipped', evidence: 'abc1234', skill: 'none', followups: [] }));
     written(await register.add('lead', { title: 'Open', description: 'what and why', owner: 'alpha', source: 'owner', priority: 1 }));
     clock.advance(10 * 86_400_000);
     await rotateRegister(files, LOG, { now: new Date(clock.now()) });

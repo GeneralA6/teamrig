@@ -55,7 +55,7 @@ async function finishTask(kit: CliHarness, session: string): Promise<CliResult> 
   const added = await kit.run(['add', '--title', 'Ship it', '--description', 'what and why', '--priority', 'p2', '--session', session]);
   assert.equal(added.code, EXIT.ok, added.stdout.join('\n'));
   const id = /^ADDED (T\d+) /.exec(added.stdout[0] ?? '')?.[1] ?? '';
-  return kit.run(['set', id, '--status', 'done', '--note', 'shipped', '--evidence', 'abc1234', '--skill', 'none', '--session', session]);
+  return kit.run(['set', id, '--status', 'done', '--note', 'shipped', '--evidence', 'abc1234', '--skill', 'none', '--followups', 'none', '--session', session]);
 }
 
 const AS_ALPHA = { env: { TEAMRIG_SESSION: 'alpha' } };
@@ -359,7 +359,7 @@ describe('runCli: context refresh', () => {
     const kit = new CliHarness();
     await kit.run(['add', '--title', 'Ship it', '--description', 'what and why', '--priority', 'p2', '--session', 'alpha']);
     const files = new FaultyFiles(kit.files).fail('write', STATE('alpha'), systemError('EACCES'));
-    const done = await kit.run(['set', 'T1', '--status', 'done', '--note', 'shipped', '--evidence', 'abc1234', '--skill', 'none', '--session', 'alpha'], { files });
+    const done = await kit.run(['set', 'T1', '--status', 'done', '--note', 'shipped', '--evidence', 'abc1234', '--skill', 'none', '--followups', 'none', '--session', 'alpha'], { files });
     assert.equal(done.code, EXIT.ok);
     assert.match(done.stdout[0] ?? '', /^SET T1 done,/);
     assert.deepEqual(done.stderr, ['WARN T1 is done, but its refresh check was not recorded: EACCES: simulated']);

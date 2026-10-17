@@ -11,7 +11,7 @@ const ASK = join(TEAM_HOME, 'state', 'retire-asks', 'helper.json');
 const STALE = '{"v":1,"task":"T1","at":"2030-01-08T10:00:00.000Z"}\n';
 
 function close(kit: CliHarness, id: string, status: 'done' | 'dropped' = 'done', files?: FaultyFiles): Promise<CliResult> {
-  const closing = status === 'done' ? ['--evidence', 'abc1234', '--skill', 'none'] : [];
+  const closing = status === 'done' ? ['--evidence', 'abc1234', '--skill', 'none', '--followups', 'none'] : [];
   return kit.run(['set', id, '--status', status, '--note', 'finished', ...closing, '--session', 'helper'], files === undefined ? {} : { files });
 }
 

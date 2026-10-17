@@ -21,7 +21,7 @@ async function taggedKit(config: JsonRecord = TEAM): Promise<CliHarness> {
   const kit = new CliHarness(config);
   await runAll(kit, [
     ['add', '--title', 'Ship the pool cap', '--description', 'what and why', '--priority', 'p2'],
-    ['set', 'T1', '--status', 'done', '--note', 'shipped', '--evidence', 'abc1234', '--skill', 'none'],
+    ['set', 'T1', '--status', 'done', '--note', 'shipped', '--evidence', 'abc1234', '--skill', 'none', '--followups', 'none'],
     ['add', '--title', 'Ship the queue', '--description', 'what and why', '--priority', 'p2'],
     ['add', '--title', 'Ship the cache', '--description', 'what and why', '--priority', 'p3'],
     ['set', 'T3', '--status', 'dropped', '--note', 'not needed'],
