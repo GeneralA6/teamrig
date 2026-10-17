@@ -60,6 +60,12 @@ export function planOrder(a: PlanPlace, b: PlanPlace): number {
   return a.priority - b.priority || (dueA === dueB ? 0 : dueA < dueB ? -1 : 1) || taskNumber(a.id) - taskNumber(b.id);
 }
 
+/**
+ * The fields of a task the tree reads. A reader that keeps rows of its own (a status pane) builds a tree from them as
+ * from teamrig's folded tasks, and gets its own rows back from it.
+ */
+export type TreeTask = Pick<Task, 'id' | 'status' | 'owner' | 'priority' | 'due' | 'after' | 'waits'>;
+
 /** The date a task works to: its own due, or an earlier one of a task that needs it. */
 export interface EffectiveDue {
   /** As stored: `YYYY-MM-DD` (its end) or `YYYY-MM-DD HH:MM`, UTC. */
@@ -75,32 +81,35 @@ export interface EffectiveDue {
  * decision or approval, or the owner again once a time passed (`time`, with `at`). `behind` is an in-progress task
  * of the same session with a higher priority than the move's task, which it works first.
  */
-export type NextMove =
-  | { readonly kind: 'work' | PersonWaitKind; readonly who: string; readonly task: Task; readonly behind: Task | undefined }
-  | { readonly kind: 'time'; readonly who: string; readonly task: Task; readonly at: string; readonly behind: Task | undefined };
+export type NextMove<T extends TreeTask = Task> =
+  | { readonly kind: 'work' | PersonWaitKind; readonly who: string; readonly task: T; readonly behind: T | undefined }
+  | { readonly kind: 'time'; readonly who: string; readonly task: T; readonly at: string; readonly behind: T | undefined };
 
 /** Another session's active task that waits on a session: on its unfinished tasks, or on its decision or approval. */
-export interface WaitingOnYou {
-  readonly task: Task;
+export interface WaitingOnYou<T extends TreeTask = Task> {
+  readonly task: T;
   /** The session's unfinished tasks it needs directly, in plan order. */
-  readonly needs: readonly Task[];
+  readonly needs: readonly T[];
   /** Its decisions and approvals asked of the session. */
   readonly asks: readonly PersonWait[];
 }
 
-/** The tree of one register read at `now`. */
-export class TaskTree {
+/**
+ * The tree of one register read at `now`, over teamrig's tasks or a reader's own rows ({@link TreeTask}): what it
+ * hands back (a needer, a move's task, a waiting task) is one of those rows.
+ */
+export class TaskTree<T extends TreeTask = Task> {
   /** How the same read judges a waiting task's reasons ready. */
   readonly context: WaitContext;
-  private readonly tasks: ReadonlyMap<string, Task>;
+  private readonly tasks: ReadonlyMap<string, T>;
   /** Per id, the active tasks that need it, by number. */
-  private readonly needers: ReadonlyMap<string, readonly Task[]>;
+  private readonly needers: ReadonlyMap<string, readonly T[]>;
   private readonly dues = new Map<string, EffectiveDue | undefined>();
 
-  constructor(tasks: ReadonlyMap<string, Task>, now: Date) {
+  constructor(tasks: ReadonlyMap<string, T>, now: Date) {
     this.tasks = tasks;
     this.context = waitContext(tasks, now);
-    const needers = new Map<string, Task[]>();
+    const needers = new Map<string, T[]>();
     for (const task of [...tasks.values()].filter(isActive).sort((a, b) => taskNumber(a.id) - taskNumber(b.id))) {
       for (const id of needsOf(task)) {
         needers.set(id, [...(needers.get(id) ?? []), task]);
@@ -110,7 +119,7 @@ export class TaskTree {
   }
 
   /** The task of the read; undefined when the read lacks it. */
-  task(id: string): Task | undefined {
+  task(id: string): T | undefined {
     return this.tasks.get(id);
   }
 
@@ -121,7 +130,7 @@ export class TaskTree {
   }
 
   /** The active tasks that need it, by number. */
-  neededBy(id: string): readonly Task[] {
+  neededBy(id: string): readonly T[] {
     return this.needers.get(id) ?? [];
   }
 
@@ -129,12 +138,12 @@ export class TaskTree {
    * Whom an active task holds up beyond its owner: the active tasks of other owners that need it, the one with the
    * earliest effective due first, then in plan order. Empty for a finished task or one the read lacks.
    */
-  neededByOthers(id: string): Task[] {
+  neededByOthers(id: string): T[] {
     const task = this.tasks.get(id);
     if (task === undefined || !isActive(task)) {
       return [];
     }
-    const dueAt = (needer: Task) => this.effectiveDue(needer.id)?.at ?? Number.POSITIVE_INFINITY;
+    const dueAt = (needer: T) => this.effectiveDue(needer.id)?.at ?? Number.POSITIVE_INFINITY;
     return this.neededBy(id)
       .filter((needer) => needer.owner !== task.owner)
       .sort((a, b) => (dueAt(a) === dueAt(b) ? this.byPlanOrder(a, b) : dueAt(a) < dueAt(b) ? -1 : 1));
@@ -164,17 +173,17 @@ export class TaskTree {
    * The task's place in plan order on its effective due, for sorting rows of several registers together, each
    * placed by its own register's tree ({@link planOrder}).
    */
-  placeOf(task: Task): PlanPlace {
+  placeOf(task: TreeTask): PlanPlace {
     return { id: task.id, priority: task.priority, at: this.dueTime(task) };
   }
 
   /** Plan order on effective dues: priority, then effective due (undated last), then id. */
-  byPlanOrder(a: Task, b: Task): number {
+  byPlanOrder(a: TreeTask, b: TreeTask): number {
     return planOrder(this.placeOf(a), this.placeOf(b));
   }
 
   /** The tasks in plan order on effective dues. */
-  inPlanOrder(tasks: Iterable<Task>): Task[] {
+  inPlanOrder<U extends TreeTask>(tasks: Iterable<U>): U[] {
     return [...tasks].sort((a, b) => this.byPlanOrder(a, b));
   }
 
@@ -183,7 +192,7 @@ export class TaskTree {
    * unfinished, whose pending decision or approval (the lead's or the owner's) comes first, then a time still to
    * come, else its owner's work. Undefined for a finished task, or when every unfinished need runs into a loop.
    */
-  nextMove(id: string): NextMove | undefined {
+  nextMove(id: string): NextMove<T> | undefined {
     return this.isActiveId(id) ? this.moveFrom(id, new Set()) : undefined;
   }
 
@@ -191,7 +200,7 @@ export class TaskTree {
    * What waits on `session`: every active task of another owner that directly needs an unfinished task of the
    * session, or waits on its decision or approval, in plan order.
    */
-  waitingOn(session: string): WaitingOnYou[] {
+  waitingOn(session: string): WaitingOnYou<T>[] {
     const waiting = [...this.tasks.values()].flatMap((task) => {
       if (!isActive(task) || task.owner === session) {
         return [];
@@ -236,14 +245,14 @@ export class TaskTree {
     return this.needs(id).filter((need) => this.isActiveId(need));
   }
 
-  private unfinishedNeeds(task: Task): Task[] {
+  private unfinishedNeeds(task: T): T[] {
     return needsOf(task).flatMap((id) => {
       const need = this.tasks.get(id);
       return need !== undefined && !isFinished(id, this.context) ? [need] : [];
     });
   }
 
-  private moveFrom(id: string, seen: Set<string>): NextMove | undefined {
+  private moveFrom(id: string, seen: Set<string>): NextMove<T> | undefined {
     const task = this.tasks.get(id);
     if (task === undefined) {
       return undefined;
@@ -271,7 +280,7 @@ export class TaskTree {
   }
 
   /** The first in plan order of the in-progress tasks of `who` with a higher priority than `task`. */
-  private behind(who: string, task: Task): Task | undefined {
+  private behind(who: string, task: T): T | undefined {
     const ahead = [...this.tasks.values()].filter(
       (other) => other.owner === who && other.status === 'in-progress' && other.id !== task.id && other.priority < task.priority,
     );
@@ -315,7 +324,7 @@ function isActive(task: Pick<Task, 'status'>): boolean {
 }
 
 /** The task's own due as an effective due from `from`; undefined when it has none or it does not parse. */
-function ownDue(task: Task, from: string | null): EffectiveDue | undefined {
+function ownDue(task: Pick<Task, 'due'>, from: string | null): EffectiveDue | undefined {
   const at = task.due === null ? undefined : parseUtcDeadline(task.due)?.getTime();
   return task.due === null || at === undefined ? undefined : { due: task.due, at, from };
 }
