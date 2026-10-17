@@ -42,7 +42,8 @@ Flags:
 - `--goals a,b`: goal tags, such as roadmap item ids.
 - `--week <date>`: puts the task in the week plan that starts on that day.
 - `--after T5,T6`: the tasks to finish before this one starts. It stays `open`, its line shows `after T5,T6`, and
-  `check` does not count it as a waiting p1 (`PRIORITY-SKIP`) until they are done or dropped.
+  `check` does not count it as a waiting p1 (`PRIORITY-SKIP`) until they are done or dropped. Each of them
+  takes this task's due date when it is earlier (its effective due: `due 10-17 (from T9)`).
 - `--size <pct>`: what the task still costs, in percent of the weekly usage limit (`1.5` or `1.5%`, above 0 and
   at most 100). `plan` sums the week's sizes against what is left of the limit; `show` prints it.
 - `--team <child team>`: only for a lead with sub-teams: hands that team's lead the task. It takes no
@@ -89,7 +90,7 @@ Flags:
   `time:<YYYY-MM-DD HH:MM>` (UTC; a bare day lasts to its end; a budget hold is a time, never an approval). It
   stays waiting until every reason has cleared. A new decision or approval wait posts the lead one inbox line
   (`T1 waits on your approval: <note>`; an owner wait too, since the lead keeps the owner's queue), unless the lead
-  set it.
+  set it. A task wait (or an `--ask`) that would close a loop is refused with the fix ([errors](errors.md)).
 - `--ask <id|name>`: allowed only with `waiting`, and needs `--text`: adds the work you need as that session's task
   (from you, at your task's priority and goals, its description naming your task), tells that session, and sets
   your task waiting on it, in one write. `--note` defaults to the text, and other `--waits` reasons come first.
@@ -176,7 +177,8 @@ Flags:
 - `--goals a,b|none`: new goal tags, or `none` to clear them.
 - `--week <date>|none`: plan it into a week, or `none` to take it out.
 - `--after T5,T6|none`: plan it after these tasks, or `none` to clear it; only while it is open (a started task
-  waits with `set --status waiting --waits task:T5`). The owner or the lead changes it.
+  waits with `set --status waiting --waits task:T5`). The owner or the lead changes it. A plan that would close a
+  loop (`T5 -> T3 -> T5`: T3 already needs T5) is refused with the fix ([errors](errors.md)).
 - `--size <pct>|none`: a new size, in percent of the weekly usage limit, or `none` to clear it.
 - `--note "<text>"`: records a note with the change.
 
@@ -194,10 +196,12 @@ UPDATED T2 waiting, p2, owner web, due 10-16, week 10-12, from lead | Fix the br
 
 ### teamrig list
 
-Lists tasks, most urgent first: by priority, then due date (undated last), then id. By default only active tasks
-(open, in progress, verifying, waiting), in a short form within 3,000 characters: a count per owner when there are several,
-then one short row per task (its title cut to 60 characters) and `+N more` for the rows left out. `--all` prints
-every field of every task.
+Lists tasks, most urgent first: by priority, then effective due date (undated last), then id. By default only
+active tasks (open, in progress, verifying, waiting), in a short form within 3,000 characters: a count per owner
+when there are several, then one short row per task (its title cut to 60 characters) and `+N more` for the rows
+left out. `--all` prints every field of every task. A task's effective due is its own due date, or the earlier one
+of an active task that needs it (planned after it or waiting on it), so the work a dated task needs comes first;
+`--due-before` reads it too.
 
 Flags:
 
@@ -224,8 +228,10 @@ LIST 1 task(s) (short rows; --all for every field)
 T2 waiting, p2, owner web, due 10-16 | Fix the broken login form (waiting: on T7)
 ```
 
-A short row reads: id, status, priority, owner, due (month-day), the tasks it comes after (`after T5`), then the
-title after `|` and what a waiting task waits for. With `--all`:
+A short row reads: id, status, priority, owner, due (month-day; `due 10-17 (from T9)` when it comes from a task
+that needs it), the tasks it comes after (`after T5`), then the title after `|`, what a waiting task waits for
+and, when active tasks of other sessions need it, the first of them: `· needed by T9 (api, due 10-17)` (`+1` for
+each other; the due left out when the row shows it already). With `--all`:
 
 ```sh
 teamrig list --session web --all
@@ -250,6 +256,8 @@ description on one line, cut to 80 characters.
 Flags:
 
 - `--session <id|name>`: the caller (optional).
+- `--tree`: instead of the fields and the history, the task line, what it needs and what needs it, then the next
+  move (below).
 
 Example:
 
@@ -271,6 +279,30 @@ history:
   2026-10-15 08:58 api status in-progress
   2026-10-15 08:58 api status done note="endpoint merged" evidence=PR #4, 12 tests skill=none
 ```
+
+With `--tree`:
+
+```sh
+teamrig show T9 --tree
+```
+
+Output (`--tree`):
+
+```text
+T9 open, p2, owner web, due 10-17, after T5,T6, from lead | Ship the signup page
+needs:
+  T5 in-progress, p2, owner api, due 10-17 (from T9) | Build the signup endpoint
+  T6 waiting, p2, owner web, due 10-17 (from T9) | Pick the mail provider (waiting: decision lead)
+needed by: none
+Next move: api (T5)
+```
+
+`needs:` lists the tasks it comes after or waits on, each with theirs below it two spaces deeper, in plan order; a
+task the register no longer holds reads `T4 finished`, one met again `T4 (shown above)`, and one that leads back
+to itself `T4 (loop)`. `needed by:` goes the other way, over the active tasks that need it. `Next move` names
+the session that acts first, and on which task: down the unfinished needs in plan order to the first that needs
+nothing unfinished; its pending decision or approval names the lead or `owner` (`, decision`), a time still to
+come its day (`, from Thu`), and `, behind T7 (p1)` says that session has a more urgent task in progress.
 
 ### teamrig check
 
@@ -861,13 +893,16 @@ FORGOT 1 ~/.claude/CLAUDE.md "- Push to main once the tests pass." (rule 15 push
 
 Prints what you read at the start of a work block, in one call: the UTC time, your unread inbox lines (marked read,
 as `inbox read` does, which also ties this Claude Code session to your area), your task list, the `check` flags you
-act on and the week's use. The lead gets every flag, as `teamrig check` prints them; any other session gets the
+act on and the week's use. Between the list and the flags, `WAITING ON YOU` lists the active tasks of other
+sessions that need one of your unfinished tasks or wait on your decision or approval (at most 5, then `+N more`),
+when some do. The lead gets every flag, as `teamrig check` prints them; any other session gets the
 flags of the tasks and skills it owns. Run it at the start of every work block and after every `/clear`.
 
 Flags:
 
 - `--session <area>`: who you are.
-- `--all`: the tasks and the flags in full, as `list --all` and `check --all` print them.
+- `--all`: the tasks and the flags in full, as `list --all` and `check --all` print them, and every task waiting
+  on you.
 
 Example:
 
@@ -882,11 +917,13 @@ START web, Thu 10-15 09:00 UTC
 - 2026-10-15 08:58 lead: api error codes are in docs/errors.md
 READ web: 1 new line, shown above; new ones are shown at your next prompt
 LIST 2 task(s) (short rows; --all for every field)
-T1 open, p1, owner web, due 10-14 | Add the error codes page
+T1 open, p1, owner web, due 10-14 | Add the error codes page · needed by T9 (api, due 10-16)
 T2 open, p2, owner web | Retry the signup call
+WAITING ON YOU 1 task(s) of other sessions wait on web
+  T9 open, p1, owner api, due 10-16, after T1 | Show the error codes in the api docs · needs your T1
 CHECK 1 flag(s), web's tasks and skills, week 2026-10-12 (short form; --all for every flag in full)
 OVERDUE 1 (due 10-14)
-  T1 open, p1, owner web, due 10-14 | Add the error codes page
+  T1 open, p1, owner web, due 10-14 | Add the error codes page · needed by T9 (api, due 10-16)
 SKILLS 0 flag(s) in ~/.claude/skills
 Week: 31.0% used at 09:00 UTC (status line); the pace line is at 28.6%: 2.4 points ahead. Resets Wed 10-21 01:00 UTC.
 ```
@@ -901,7 +938,8 @@ then the `cold-send` hook holds every message to the lead but one starting `CRIT
 
 - `DECISIONS`: each task waiting on the owner's decision or approval, with its card facts (what and why, since when
   it waits and its newest note, where it was asked), then the card form and how to record each answer;
-- `LATE`: the active tasks past their due date;
+- `LATE`: the active tasks past their due date, their own or the earlier one of a task that needs them
+  (`due 10-14 (from T9)`);
 - `DONE`: what finished since the last meeting ended (a day back for the first, 7 days at most);
 - the lead's unread inbox lines, marked read;
 - the week's use and, under it, the planned week's fit to the weekly limit, as `plan` gives it.

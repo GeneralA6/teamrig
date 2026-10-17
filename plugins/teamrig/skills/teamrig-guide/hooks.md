@@ -66,16 +66,21 @@ The injected context holds:
      T12 in-progress, p1, due 10-17 | Ship the checkout page
      T14 verifying, p2 | Cache the price list
      T15 waiting, p2 | Move the images (waiting: on T12 · decision lead)
-     T18 open, p2, after T12 | Add the receipt email
+     T18 open, p2, due 10-17 (from T21), after T12 | Add the receipt email
      ...
      +2 more: `teamrig list --session web`
+   WAITING ON YOU 1 task(s) of other sessions:
+     T21 open, p2, owner api, due 10-17, after T18 | Send the receipt from the api · needs your T18
    ```
 
    Work in hand comes first (in progress, verifying, waiting), then the tasks not started, each in plan order
-   (priority, then due date); at most 6 rows, the rest one `+N more` line. A row names the due date, the plan
-   dependencies not finished yet (`after`) and, for a waiting task, its wait reasons with the ready ones marked.
-   A session with none gets one line: `... none active; ...`. A register it cannot read gives a line naming
-   `teamrig list --session <id>` instead. A resume and any other start keep or begin their context, so they get no
+   (priority, then effective due date); at most 6 rows, the rest one `+N more` line. A row names the due date (the
+   earlier one of a task that needs it, as `due 10-17 (from T21)`), the plan dependencies not finished yet
+   (`after`) and, for a waiting task, its wait reasons with the ready ones marked. Then `WAITING ON YOU` lists the
+   active tasks of other sessions that need one of the session's unfinished tasks or wait on its decision or
+   approval: at most 3 rows, the rest one `+N more` line naming `teamrig start --session <id> --all`; with none,
+   no block. A session with no active task gets one line, `... none active; ...`, then that block. A register it
+   cannot read gives a line naming `teamrig list --session <id>` instead. A resume and any other start keep or begin their context, so they get no
    block; `teamrig start` lists the tasks there.
 8. **A model check**: when the session runs on another model than its `launch` entry in the team config, a line
    such as `MODEL shop-web runs model claude-sonnet-5; the team config asks for model opus at xhigh effort: type
