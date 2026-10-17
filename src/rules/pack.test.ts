@@ -49,7 +49,7 @@ function worstCaseConfig() {
     commits: { maxLines: CONFIG_LIMITS.commitMaxLines.max, maxFiles: CONFIG_LIMITS.commitMaxFiles.max, largeCommitTrailer: 'T'.repeat(40), gate: 'refuse' },
     coordinator: { schedule: { heavyCutoffUtc: '22:30' } },
     // Both round to their longest two-decimal form (two digits before the point), and together stay within 100%.
-    budget: { enabled: true, targetPct: 50.98765432109876, reservePct: 48.98765432109876 },
+    budget: { enabled: true, targetPct: 50.98765432109876, reservePct: 48.98765432109876, subagentWeight: 9.87654321 },
     alerts: { persistentFailureHours: CONFIG_LIMITS.persistentFailureHours.max },
     ruleConflicts: Array.from({ length: CONFIG_LIMITS.ruleConflicts.maxItems }, () => ({
       file: longest('f', RULE_CONFLICT_LIMITS.fileMaxLength),
@@ -108,13 +108,10 @@ describe('renderCorePack', () => {
     assert.match(pack, /If you repeat a step with no progress or drift from your task, stop and ask the lead\.$/m);
   });
 
-  it('keeps messages for what the receiver acts on now and sends reports and failed sends to the inbox', () => {
+  it('keeps messages for what the receiver acts on now and sends reports to the inbox (the failed-send hook covers a failed send)', () => {
     const pack = renderCorePack(testConfig(), COMMAND, 'win32');
     assert.match(pack, /^3\. A message wakes its receiver, so send one only for a result it acts on now, a decision,/m);
-    assert.match(
-      pack,
-      /Anything else, a "done" report or a failed send too, is one inbox line per receiver: `teamrig inbox add --to <area> --text "\.\.\."`\.$/m,
-    );
+    assert.match(pack, /Anything else, a "done" report too, is one inbox line per receiver: `teamrig inbox add --to <area> --text "\.\.\."`\.$/m);
   });
 
   it('gates each hand-run data change on the owner, never prints secrets and binds local services to loopback', () => {
@@ -182,16 +179,17 @@ describe('renderCorePack', () => {
     );
   });
 
-  it('keeps a skill below the rules and the owner gates', () => {
+  it('ranks a skill below the rules once, in the header', () => {
     const pack = renderCorePack(testConfig(), COMMAND, 'win32');
-    assert.match(pack, /\[skills\.forbidFrontmatter\]\. A skill never overrides these rules or an owner gate\. Memory holds facts/);
+    assert.match(pack, /^These rules win over conflicting CLAUDE\.md, rules files, skills,/m);
+    assert.match(pack, /\[skills\.forbidFrontmatter\]\. Memory holds facts/);
     const noForbidden = renderCorePack(testConfig({ skills: { forbidFrontmatter: [] } }), COMMAND, 'win32');
-    assert.match(noForbidden, /\[skills\.maxPerArea\]\. A skill never overrides these rules or an owner gate\./);
+    assert.match(noForbidden, /\[skills\.maxPerArea\]\. Memory holds facts/);
   });
 
   it('fills values from the config and names their keys', () => {
     const pack = renderCorePack(testConfig({ messages: { maxLines: 7 }, ownerGates: ['money', 'deletes'] }), COMMAND, 'win32');
-    assert.match(pack, /^1\. Roles, by session id \(`teamrig who` gives the name to message each by\): lead is the lead/m);
+    assert.match(pack, /^1\. Roles, by session id: lead is the lead/m);
     assert.match(pack, /At most 7 lines \[messages\.maxLines\]/);
     assert.match(pack, /never for owner-gated decisions: money; deletes \[ownerGates\]/);
     assert.match(pack, /with a note \(only what changed\) on waiting, verifying, done, dropped \[register\.requireNoteOn\]/);
@@ -223,6 +221,17 @@ describe('renderCorePack', () => {
       'win32',
     );
     assert.match(pack, /Pace the week to 1% of the weekly limit and keep 0% for incidents/);
+  });
+
+  it('keeps work in the session and prices a helper by budget.subagentWeight', () => {
+    const weighted = renderCorePack(testConfig({ budget: { subagentWeight: 2.15 } }), COMMAND, 'win32');
+    assert.match(
+      weighted,
+      /^8\. Lean calls: every tool call re-reads the whole context, so batch related shell steps into one call\. Work in your own session: a helper's tokens cost 2\.15x yours \[budget\.subagentWeight\], so start one only when it keeps far more than that out of your context or truly runs in parallel, never for a build or test whose result you need; run helpers on your own model and effort\.$/m,
+    );
+    const even = renderCorePack(testConfig({ budget: { subagentWeight: 1 } }), COMMAND, 'win32');
+    assert.match(even, /^8\. .* Work in your own session: start a helper only when it keeps far more tokens out of your context than it uses or truly runs in parallel,/m);
+    assert.doesNotMatch(even, /subagentWeight|subagent that returns/);
   });
 
   it('drops status demands the team turned off', () => {
