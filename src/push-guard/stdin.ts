@@ -16,6 +16,11 @@ const DEVICE = /(?:^|[\\/])(?:dev|proc)(?:[\\/]|$)/i;
 /** A pipe to the next command, maybe after the newline that ends a heredoc's line. */
 const PIPE = /^\|&?\n*$/;
 
+/** True when a command takes its stdin from a redirection, such as `< file`, rather than from a pipe. */
+export function redirectsInput(command: ShellCommand): boolean {
+  return command.redirections.some((redirection) => /^0?</.test(redirection.operator));
+}
+
 /** True when a launch is `cat` with no arguments but `-`, so its stdin is all it writes. */
 function plainCat(launched: Launch): boolean {
   return (

@@ -1,6 +1,6 @@
 import { isAssignment, launch, programName, staticWord, type Assignment, type Launch } from './launchers.ts';
 import { Location, resolveDir } from './location.ts';
-import { stdinUse } from './stdin.ts';
+import { redirectsInput, stdinUse } from './stdin.ts';
 import { parseShell, type ShellCommand, type ShellDialect, type ShellWord } from './tokenizer.ts';
 import { resolveLiteralVariables } from './variables.ts';
 
@@ -159,11 +159,6 @@ const PUSH_WORD = /^-*(?:git-)?push(?:\.exe)?$/i;
 /** True when `text` names a push as a word of its own: `git push` or `X=push` do, `push-guard/` or `x-push.log` do not. */
 function saysPush(text: string): boolean {
   return text.split(MENTION_BREAKS).some((piece) => PUSH_WORD.test(piece));
-}
-
-/** True when a command takes its stdin from a redirection, such as `< file`, rather than from a pipe. */
-function redirectsInput(command: ShellCommand): boolean {
-  return command.redirections.some((redirection) => /^0?</.test(redirection.operator));
 }
 
 /** Splits `--option=value` into its name and attached value. */

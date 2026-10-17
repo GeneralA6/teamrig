@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from './launchers.ts';
-import { stdinUse, type StdinUse } from './stdin.ts';
+import { redirectsInput, stdinUse, type StdinUse } from './stdin.ts';
 import { parseShell } from './tokenizer.ts';
 
 /** What the first command of a bash line does with what it reads on stdin. */
@@ -29,5 +29,16 @@ describe('stdinUse', () => {
   it('reads it otherwise: another program, an argument, the terminal, a device or a file only known when it runs', () => {
     expectUse(['cat', 'cat; x', 'cat x | bash', 'tee n', 'xargs cat > n', '$C > n'], 'read');
     expectUse(['cat > /dev/stdout', 'cat > /proc/self/fd/1', 'cat > "$F"', 'cat > n >&2', 'cat > n 1>&2 | x'], 'read');
+  });
+});
+
+describe('redirectsInput', () => {
+  it('tells a stdin redirection from a pipe or an output redirection', () => {
+    const redirects = (line: string): boolean => {
+      const command = parseShell(line, 'bash').commands[0];
+      assert.ok(command !== undefined, line);
+      return redirectsInput(command);
+    };
+    assert.deepEqual(['bash < s.sh', 'bash 0< s.sh', 'bash > out', 'bash 2> err', 'bash'].map(redirects), [true, true, false, false, false]);
   });
 });
