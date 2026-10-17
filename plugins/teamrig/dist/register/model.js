@@ -6,6 +6,8 @@ import { ID_PATTERN } from "../core/ids.js";
  */
 export const TASK_STATUSES = ['open', 'in-progress', 'verifying', 'waiting', 'done', 'dropped'];
 export const ACTIVE_STATUSES = ['open', 'in-progress', 'verifying', 'waiting'];
+/** The statuses a change may name the task's follow-ups with (`set --followups`): shipping, finishing or dropping it. */
+export const FOLLOWUP_STATUSES = ['verifying', 'done', 'dropped'];
 /**
  * The status `waiting` replaced in teamrig 0.10.0. A line that names it reads as `waiting` with no reasons and is
  * never rewritten; the CLI and the config refuse it, naming `waiting`.
