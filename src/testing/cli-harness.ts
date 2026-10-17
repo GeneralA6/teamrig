@@ -37,6 +37,8 @@ export const APP = resolve('/', 'work', 'app');
 export const POINTER = join(APP, '.teamrig.json');
 export const CLAUDE_SESSION = '0123abcd-0000-4000-8000-00000000000a';
 export const TEAM: JsonRecord = { sessions: ['lead', 'alpha', 'bravo'], roles: { lead: 'lead' } };
+/** {@link TEAM} with the context refresh's automatic restart on (`refresh.autoRestart`, off by default). */
+export const AUTO_RESTART_TEAM: JsonRecord = { ...TEAM, refresh: { autoRestart: true } };
 
 export interface CliResult {
   readonly code: ExitCode;

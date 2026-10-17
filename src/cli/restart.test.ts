@@ -6,7 +6,7 @@ import { decodePrompt, refreshPrompt } from '../open/prompt.ts';
 import type { ProcessInfo } from '../open/session-processes.ts';
 import { ClearAsks, clearAskDir } from '../refresh/clear-asks.ts';
 import { RefreshStore } from '../refresh/store.ts';
-import { APP, CLAUDE_SESSION, CliHarness, KIT, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
+import { APP, AUTO_RESTART_TEAM, CLAUDE_SESSION, CliHarness, KIT, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { FakeProcesses } from '../testing/fake-processes.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { EXIT } from './runtime.ts';
@@ -19,7 +19,7 @@ const SHELL: ProcessInfo = { pid: 4000, parentPid: 1, name: 'powershell.exe', co
 const RESTART_ALPHA = ['restart', 'alpha', '--team', 'app', '--at', AT, '--project', APP];
 
 /** A team whose session alpha wrote its handover and asked for its restart, with its Claude Code running. */
-async function armed(supervised: boolean, config: JsonRecord = TEAM): Promise<{ kit: CliHarness; store: RefreshStore; processes: FakeSessionProcesses }> {
+async function armed(supervised: boolean, config: JsonRecord = AUTO_RESTART_TEAM): Promise<{ kit: CliHarness; store: RefreshStore; processes: FakeSessionProcesses }> {
   const kit = new CliHarness(config);
   // A finished turn: the restart waits while one still runs.
   await kit.files.write(TRANSCRIPT, '{"type":"user"}\n{"type":"system","subtype":"turn_duration"}\n');
@@ -80,7 +80,7 @@ describe('teamrig restart', () => {
   });
 
   it('tells the restarted session when refresh.endCommand failed', async () => {
-    const { kit, processes } = await armed(true, { ...TEAM, refresh: { endCommand: ['node', 'end.cjs'] } });
+    const { kit, processes } = await armed(true, { ...TEAM, refresh: { autoRestart: true, endCommand: ['node', 'end.cjs'] } });
     processes.onFeed('node', { kind: 'failed', error: 'exit code 1' });
     const result = await kit.run(RESTART_ALPHA, { sessionProcesses: processes, platform: 'win32' });
     assert.equal(result.code, EXIT.ok);
@@ -88,7 +88,7 @@ describe('teamrig restart', () => {
   });
 
   it('cancels, clearing the request, when the automatic restart is off', async () => {
-    const { kit, store, processes } = await armed(true, { ...TEAM, refresh: { autoRestart: false } });
+    const { kit, store, processes } = await armed(true, TEAM);
     const result = await kit.run(RESTART_ALPHA, { sessionProcesses: processes });
     assert.deepEqual(result.stdout, ['CANCELLED the restart of app-alpha: the automatic restart is off (refresh.autoRestart in the team config)']);
     assert.deepEqual(processes.ends, []);

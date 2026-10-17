@@ -640,7 +640,7 @@
       "default": {}
     },
     "refresh": {
-      "description": "Context refresh: when a session finishes a task (teamrig set <id> --status done) with its context at or over contextTokens, or with everyTasks tasks finished since its context was last fresh and the context at everyTasksMinTokens or more, or after the lead ran teamrig refresh <session>, it writes a handover; then teamrig starts it fresh on its own (autoRestart), or the user types /clear. A relative handoverDir is resolved against the team's folder; unset, it is <team folder>/handover.",
+      "description": "Context refresh: when a session finishes a task (teamrig set <id> --status done) with its context at or over contextTokens, or with everyTasks tasks finished since its context was last fresh and the context at everyTasksMinTokens or more, or after the lead ran teamrig refresh <session>, it writes a handover; then the user types /clear, or teamrig starts it fresh on its own (autoRestart). A relative handoverDir is resolved against the team's folder; unset, it is <team folder>/handover.",
       "type": "object",
       "properties": {
         "enabled": { "type": "boolean", "default": true },
@@ -667,9 +667,9 @@
         },
         "tabTitle": { "description": "Title the tab once the handover is written: '<name>: restarting', or '<name>: type /clear'.", "type": "boolean", "default": true },
         "autoRestart": {
-          "description": "Once the handover is written and the turn has ended, end the session's Claude Code process and start it fresh, which reads the handover: in the same tab when teamrig open started it, else in a new tab. A prompt typed before then keeps the context. false: the user types /clear.",
+          "description": "Once the handover is written and the turn has ended, start the session fresh on its own, which reads the handover: the plugin's mod runs /clear in its tab; where no mod claims the ask, teamrig ends its Claude Code and starts it again, in the same tab when teamrig open started it, else in a new tab. A prompt typed before then keeps the context. false (the default): the user types /clear once done with the screen, which a /clear wipes.",
           "type": "boolean",
-          "default": true
+          "default": false
         },
         "restartDelaySeconds": {
           "description": "How long after the turn's end the automatic restart waits, so the user can still type to keep the context.",
