@@ -34,6 +34,7 @@ export async function rules(args, runtime) {
         renames,
         titleNote: undefined,
         refreshNote: undefined,
+        liveTasksNote: undefined,
         modelNote: undefined,
         verifyNote: undefined,
         session: flag ?? (inEnv ? fromEnv : undefined),

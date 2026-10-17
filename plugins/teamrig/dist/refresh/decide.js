@@ -80,14 +80,18 @@ function whyOf(cause, settings) {
             return `${cause.by} asked for a refresh${cause.tokens === null ? '' : ` (your context is ${thousands(cause.tokens)})`}`;
     }
 }
-/** The ask to write the handover: after `task` at its end, or with null at another turn end. */
+/**
+ * The ask to write the handover: after `task` at its end, or with null at another turn end. It asks only for what the
+ * register lacks: the fresh start lists the session's tasks live from the register (hooks/live-tasks.ts), so a status
+ * restated here could only go stale.
+ */
 function handoverAsk(task, cause, context) {
     const why = whyOf(cause, context.settings);
     const when = task === null ? ', so refresh now rather than at a task end' : ` and you just finished ${task}`;
-    return (`${context.command}: ${why}${when}. Write your handover to ${context.handoverPath} ` +
-        '(what is in progress and the next step of each; what to check later, and when; questions still open with the user; ' +
-        'the scratchpad files, plan file and scheduled jobs the next session still needs; where things are), then run ' +
-        `\`${readyCommand(context.command, context.session.id)}\`. Do not start new work.`);
+    return (`${context.command}: ${why}${when}. Write your handover to ${context.handoverPath}: what the register lacks ` +
+        '(the next step of each task in progress; what to check later, and when; questions still open with the user; ' +
+        'the scratchpad files, plan file and scheduled jobs the next session still needs; where things are), not task statuses, ' +
+        `which your fresh start reads live from the register. Then run \`${readyCommand(context.command, context.session.id)}\`. Do not start new work.`);
 }
 /**
  * The Stop hook, at the end of every turn. A turn end with the context at the threshold, or after the lead
