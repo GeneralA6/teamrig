@@ -135,15 +135,8 @@ function shortRow(task: Task, titleChars: number, team: string | undefined, tree
  * `(from T194)`. Empty for a finished task, with no `tree`, or when only its owner's own tasks need it.
  */
 function neededByText(task: Task, tree: TaskTree | undefined): string {
-  if (tree === undefined || !ACTIVE_STATUSES.includes(task.status)) {
-    return '';
-  }
-  const dueAt = (needer: Task) => tree.effectiveDue(needer.id)?.at ?? Number.POSITIVE_INFINITY;
-  const [first, ...rest] = tree
-    .neededBy(task.id)
-    .filter((needer) => needer.owner !== task.owner)
-    .sort((a, b) => (dueAt(a) === dueAt(b) ? tree.byPlanOrder(a, b) : dueAt(a) < dueAt(b) ? -1 : 1));
-  if (first === undefined) {
+  const [first, ...rest] = tree?.neededByOthers(task.id) ?? [];
+  if (tree === undefined || first === undefined) {
     return '';
   }
   const due = tree.effectiveDue(first.id);
