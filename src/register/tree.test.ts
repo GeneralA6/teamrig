@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { testTask } from '../testing/task.ts';
 import type { Task } from './fold.ts';
-import { needPath, needsOf, pathText, planOrder, TaskTree } from './tree.ts';
+import { needPath, needsOf, pathText, planOrder, TaskTree, type TreeTask } from './tree.ts';
 
 const NOW = new Date('2030-01-08T10:00:00.000Z');
 
@@ -97,6 +97,33 @@ describe('TaskTree neededByOthers', () => {
     assert.deepEqual(tree.neededByOthers('T8'), []);
     assert.deepEqual(tree.neededByOthers('T99'), []);
     assert.deepEqual(tree.neededByOthers('T2'), []);
+  });
+});
+
+describe('TaskTree over a reader\'s rows', () => {
+  /** A row as a reader keeps it: the fields the tree reads and one of its own, none of teamrig's others. */
+  type Row = TreeTask & { readonly label: string };
+  const row = (fields: Partial<Row> & Pick<Row, 'id'>): Row => ({ status: 'open', owner: 'alpha', priority: 2, due: null, after: [], waits: [], label: `row ${fields.id}`, ...fields });
+  const rows: TaskTree<Row> = new TaskTree(
+    new Map(
+      [
+        row({ id: 'T1', owner: 'alpha' }),
+        row({ id: 'T2', owner: 'bravo', due: '2030-01-10', after: ['T1'] }),
+        row({ id: 'T3', owner: 'alpha', status: 'in-progress', priority: 1 }),
+      ].map((task) => [task.id, task]),
+    ),
+    NOW,
+  );
+
+  it('hands back the reader\'s own rows, with their own fields', () => {
+    assert.deepEqual(rows.neededByOthers('T1').map((needer) => needer.label), ['row T2']);
+    assert.equal(rows.task('T2')?.label, 'row T2');
+    assert.deepEqual(rows.effectiveDue('T1'), { due: '2030-01-10', at: Date.UTC(2030, 0, 10, 23, 59, 59, 999), from: 'T2' });
+    const move = rows.nextMove('T2');
+    assert.equal(move?.task.label, 'row T1');
+    assert.equal(move?.behind?.label, 'row T3');
+    assert.deepEqual(rows.waitingOn('alpha').map((entry) => entry.task.label), ['row T2']);
+    assert.deepEqual(rows.inPlanOrder(rows.neededBy('T1')).map((needer) => needer.label), ['row T2']);
   });
 });
 

@@ -30,7 +30,7 @@ export {
 } from '../register/layout.ts';
 export { LAYOUT_VERSION } from '../register/marker.ts';
 export { readEvents, readRegister, snapshotOf, type EventLogRead, type RegisterSnapshot, type RetiredTasks } from '../register/snapshot.ts';
-export { loopFix, needPath, needsOf, pathText, planOrder, TaskTree, type EffectiveDue, type NextMove, type PlanPlace, type WaitingOnYou } from '../register/tree.ts';
+export { loopFix, needPath, needsOf, pathText, planOrder, TaskTree, type EffectiveDue, type NextMove, type PlanPlace, type TreeTask, type WaitingOnYou } from '../register/tree.ts';
 export { byPlanOrder, dueTime, type PlanOrdered } from '../register/views.ts';
 export {
   allReady,
