@@ -71,6 +71,25 @@ describe('foldEvents: what a waiting task waits for, and when it started', () =>
     assert.equal(taskAfter([create(9), verifying(10)]).proof, null, 'a line from before --proof has none');
   });
 
+  it('gathers the follow-ups every status change named, each once, in the order first named', () => {
+    const closing = (hour: number, value: TaskStatus, followups: readonly string[]): RegisterEvent => ({
+      v: EVENT_VERSION,
+      type: 'status',
+      id: 'T1',
+      at: at(hour),
+      by: 'alpha',
+      status: value,
+      note: 'n',
+      evidence: null,
+      skill: null,
+      followups,
+    });
+    const reopened = [create(9), closing(10, 'verifying', ['T4']), status(11, 'in-progress'), closing(12, 'done', ['T5', 'T4'])];
+    assert.deepEqual(taskAfter(reopened).followups, ['T4', 'T5']);
+    assert.deepEqual(taskAfter([create(9), closing(10, 'done', [])]).followups, []);
+    assert.deepEqual(taskAfter([create(9), status(10, 'done')]).followups, [], 'a line from before --followups names none');
+  });
+
   it('keeps the tasks a task is planned after', () => {
     assert.deepEqual(taskAfter([create(9), update(10, { after: ['T5', 'T6'] })]).after, ['T5', 'T6']);
     assert.deepEqual(taskAfter([create(9), update(10, { after: ['T5'] }), update(11, { after: [] })]).after, []);

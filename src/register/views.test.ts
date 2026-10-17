@@ -350,6 +350,26 @@ describe('formatEvent and formatTaskDetail', () => {
     assert.deepEqual(detail.slice(1, 3), ['note: shipped', 'proof: the nightly run']);
   });
 
+  it('shows the follow-ups a status line named, none as none, and those of a task', () => {
+    const closed: RegisterEvent = {
+      v: 2,
+      type: 'status',
+      id: 'T3',
+      at: '2030-01-07T14:00:00.000Z',
+      by: 'alpha',
+      status: 'done',
+      note: 'ok',
+      evidence: 'abc1234',
+      skill: 'none',
+      followups: ['T4', 'T5'],
+    };
+    assert.equal(formatEvent(closed), '2030-01-07 14:00 alpha status done note="ok" evidence=abc1234 skill=none followups=T4,T5');
+    assert.match(formatEvent({ ...closed, followups: [] }), / skill=none followups=none$/);
+    const task = testTask({ id: 'T3', status: 'done', note: 'ok', evidence: 'abc1234', skill: 'none', followups: ['T4', 'T5'] });
+    assert.deepEqual(formatTaskDetail(task, [closed]).split('\n').slice(1, 6), ['note: ok', 'evidence: abc1234', 'skill: none', 'followups: T4, T5', 'history:']);
+    assert.ok(!formatTaskDetail(testTask(), []).includes('followups'), 'a task with none prints no line');
+  });
+
   it('shows the description under the task line, its later lines indented and a blank one kept blank', () => {
     const task = testTask({ ref: 'inbox:3', description: 'Users lose saved carts.\n\nKeep them:\n- a week' });
     const detail = formatTaskDetail(task, []).split('\n');
