@@ -73,6 +73,8 @@ export interface StatusEvent extends EventBase {
   readonly waits?: readonly WaitReason[];
   /** What will prove a `verifying` task works; written only with that status, and absent on lines from before `--proof`. */
   readonly proof?: string;
+  /** The tasks the work leaves, empty for `--followups none`; absent when the change named none, and on lines from before `--followups`. */
+  readonly followups?: readonly string[];
 }
 
 export interface UpdateEvent extends EventBase {
@@ -148,6 +150,10 @@ export function parseEvent(line: JsonlRecord): EventParse {
         return unreadable(waits);
       }
       const proof = status === 'verifying' ? textOrNull(record, 'proof') : null;
+      const followups = parseFollowups(record['followups']);
+      if (typeof followups === 'string') {
+        return unreadable(followups);
+      }
       const event: StatusEvent = {
         ...base,
         type: 'status',
@@ -157,6 +163,7 @@ export function parseEvent(line: JsonlRecord): EventParse {
         skill: textOrNull(record, 'skill'),
         ...(waits === undefined ? {} : { waits }),
         ...(proof === null ? {} : { proof }),
+        ...(followups === undefined ? {} : { followups }),
       };
       return { kind: 'event', event };
     }
@@ -201,6 +208,14 @@ function textProblem(record: JsonRecord, keys: readonly string[]): string | unde
     return value !== undefined && value !== null && typeof value !== 'string';
   });
   return bad === undefined ? undefined : `${bad} is not text`;
+}
+
+/** A status line's follow-ups: undefined when absent or null, else a list of task ids, or the reason it is not one. */
+function parseFollowups(value: unknown): readonly string[] | undefined | string {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  return Array.isArray(value) && value.every((id): id is string => typeof id === 'string' && TASK_ID.test(id)) ? value : 'followups is not a list of task ids';
 }
 
 /** An optional text field: absent and null both read as null. */

@@ -11,6 +11,9 @@ export type TaskStatus = (typeof TASK_STATUSES)[number];
 
 export const ACTIVE_STATUSES: readonly TaskStatus[] = ['open', 'in-progress', 'verifying', 'waiting'];
 
+/** The statuses a change may name the task's follow-ups with (`set --followups`): shipping, finishing or dropping it. */
+export const FOLLOWUP_STATUSES: readonly TaskStatus[] = ['verifying', 'done', 'dropped'];
+
 /**
  * The status `waiting` replaced in teamrig 0.10.0. A line that names it reads as `waiting` with no reasons and is
  * never rewritten; the CLI and the config refuse it, naming `waiting`.

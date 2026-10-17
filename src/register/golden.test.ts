@@ -40,6 +40,7 @@ describe('golden register logs', () => {
       skill: 'none',
       waits: [],
       proof: null,
+      followups: [],
       startedAt: '2030-01-07T10:00:00.000Z',
       createdAt: '2030-01-07T09:00:00.000Z',
       createdBy: 'lead',

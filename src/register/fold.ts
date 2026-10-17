@@ -17,6 +17,8 @@ export interface Task extends TaskFields {
    * task set verifying before `--proof` existed, whose note says it (`proofOf` in verify.ts reads both).
    */
   readonly proof: string | null;
+  /** Every task its status changes named as left by the work (`--followups`), in the order first named. */
+  readonly followups: readonly string[];
   /** When the task first went in progress (or verifying): only a started task can wait on another task. */
   readonly startedAt: string | null;
   readonly createdAt: string;
@@ -115,6 +117,7 @@ function created(id: string, fields: TaskFields, at: string, by: string): Task {
     skill: null,
     waits: [],
     proof: null,
+    followups: [],
     startedAt: null,
     createdAt: at,
     createdBy: by,
@@ -137,6 +140,7 @@ function withStatus(task: Task, event: Extract<RegisterEvent, { type: 'status' }
     skill: event.skill,
     waits: event.status === 'waiting' ? (event.waits ?? []) : [],
     proof: event.status === 'verifying' ? (event.proof ?? null) : null,
+    followups: event.followups === undefined ? task.followups : [...new Set([...task.followups, ...event.followups])],
     startedAt: task.startedAt ?? (event.status === 'in-progress' || event.status === 'verifying' ? event.at : null),
     updatedAt: event.at,
     updatedBy: event.by,

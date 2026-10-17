@@ -93,6 +93,19 @@ describe('parseEvent', () => {
     assert.match(reason(parse({ ...BASE, type: 'status', status: 'verifying', proof: 3 }, 2)), /proof is not text/);
   });
 
+  it('reads the follow-ups a status line names, none as an empty list, and refuses anything but task ids', () => {
+    const followupsOf = (record: JsonRecord): readonly string[] | undefined | 'no event' => {
+      const result = parse({ ...BASE, type: 'status', status: 'done', note: 'ok', ...record }, 2);
+      return result.kind === 'event' && result.event.type === 'status' ? result.event.followups : 'no event';
+    };
+    assert.deepEqual(followupsOf({ followups: ['T4', 'T5'] }), ['T4', 'T5']);
+    assert.deepEqual(followupsOf({ followups: [] }), []);
+    assert.equal(followupsOf({}), undefined, 'a line from before --followups names none');
+    assert.equal(followupsOf({ followups: null }), undefined);
+    assert.match(reason(parse({ ...BASE, type: 'status', status: 'done', followups: ['T4', 'next'] }, 2)), /followups is not a list of task ids/);
+    assert.match(reason(parse({ ...BASE, type: 'status', status: 'done', followups: 'T4' }, 2)), /followups is not a list of task ids/);
+  });
+
   it('reads the reasons of a waiting line, and keeps them off any other status', () => {
     const waits = [
       { kind: 'decision', who: 'owner' },
