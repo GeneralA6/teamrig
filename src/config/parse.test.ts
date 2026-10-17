@@ -340,6 +340,19 @@ describe('parseConfig', () => {
     assert.deepEqual(bad.config.pushGuard, { protectedBranches: ['release'], pushToProtected: 'ask' });
   });
 
+  it('reads what an ad-hoc package run does, defaulting to deny and refusing another word', () => {
+    assert.equal(parseConfig(ROSTER).config.packageGuard.adHocRunners, 'deny');
+    for (const choice of ['deny', 'ask', 'allow']) {
+      const set = parseConfig({ ...ROSTER, packageGuard: { adHocRunners: choice } });
+      assert.deepEqual(set.issues, []);
+      assert.equal(set.config.packageGuard.adHocRunners, choice);
+    }
+    const bad = parseConfig({ ...ROSTER, packageGuard: { adHocRunners: 'never' } });
+    assert.deepEqual(paths(bad.issues), ['packageGuard.adHocRunners']);
+    assert.match(bad.issues[0]?.message ?? '', /deny, ask, allow/);
+    assert.equal(bad.config.packageGuard.adHocRunners, 'deny');
+  });
+
   it('bounds the lists and texts the rule pack prints', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,
