@@ -217,7 +217,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       session off the team; its open tasks go to --to, and it needs its handover unless --no-handover; its
       tasks and inbox stay readable; without --yes it shows the retire and writes nothing
   refresh <id|name>            the lead asks a session to write its handover when it next sets a task done
-  refresh --ready              the handover is written; teamrig starts the session fresh once idle
+  refresh --ready              the handover is written; the user's /clear starts it fresh (autoRestart: once idle)
   doctor                       names, rename log, inboxes, rules.md, context size and the tree of teams that need a fix;
       also a variable that overrides every model or effort choice, and a launch with a model but no effort
   compact [--dry-run]          archives the task list's log and rewrites its snapshot, so reads stay small;
