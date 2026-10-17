@@ -169,6 +169,8 @@ With sub-teams, run `teamrig check --tree --session lead` too. Act on each flag:
   `in-progress` if it failed, or a new date.
 - `VERIFY-BLOCKS`: work waits on a shipped change that is not proven yet. Ask the owning session in one inbox line
   to prove it (`done`) or reopen it (`in-progress`).
+- `LOOP`: tasks that need each other in a circle, so none can finish. Ask the first one's owning session in one
+  inbox line to make the step its own task (the flag prints the command), or re-plan it yourself (`update --after`).
 - `PILE-UP`: a session holds more verifying tasks than `register.maxVerifying`. Ask it to work its queue
   (`teamrig verify`) before new work.
 - `OVER-LIMIT`: the week's sized work passes the weekly limit left at this task. Move it and the tasks after it to

@@ -21,7 +21,8 @@ the meeting ends, but one starting `CRITICAL`. The `cold-send` hook holds any ot
 that has not read the line yet is held too. Then it prints the agenda:
 
 - `DECISIONS`: each task waiting on the human's decision or approval, with its card facts;
-- `LATE`: the active tasks past their due date;
+- `LATE`: the active tasks past their due date, their own or the earlier one of a task that needs them
+  (`due 10-14 (from T9)`);
 - `DONE`: what finished since the last meeting;
 - your unread inbox lines, marked read;
 - the week's use, and under it what of the planned week fits the weekly limit.

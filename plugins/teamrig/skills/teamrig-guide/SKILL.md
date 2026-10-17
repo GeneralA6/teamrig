@@ -103,7 +103,8 @@ At the start of each work block, in one Bash call:
 teamrig start --session api
 ```
 
-Then work your list in priority order: `p1` before `p2`, and inside a priority the earlier due date first.
+Then work your list in priority order: `p1` before `p2`, and inside a priority the earlier due date first (a task
+takes the earlier due of a task that needs it: `due 10-17 (from T9)`).
 
 ```sh
 teamrig set T4 --session api --status in-progress

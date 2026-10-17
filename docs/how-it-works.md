@@ -227,12 +227,19 @@ stateDiagram-v2
   the owner sets the next status. A task not started that needs another first is not waiting: it stays `open`,
   planned after it (`teamrig update T3 --after T2`), and its line shows `after T2`. A `blocked` written by an
   older teamrig reads as `waiting` with no reasons.
+- A task's effective due is the earliest of its own due date and the effective dues of the active tasks that need
+  it (planned after it or waiting on it), so the work a dated task needs inherits its date: a row shows it as
+  `due 10-17 (from T9)`, and lists, `plan`, the meeting's late tasks and `check`'s date flags go by it. A row
+  also names another session's active task that needs it (`· needed by T9 (api, due 10-17)`); `show <id> --tree`
+  prints what the task needs and what needs it, then the next move (who acts first, on which task); `start` and
+  the live task list name the other sessions' tasks waiting on the session (`WAITING ON YOU`). A plan (`--after`)
+  or a wait (`--waits task:`, `--ask`) that would close a loop is refused: no task in a loop can finish.
 - `teamrig update` changes a task's title, owner, priority, ref, due date, goals, week or the tasks it comes after
   (`none` clears the last five), never the status; on a task it does not own, the lead may change the owner, priority, due date, week or plan order, and
   any session may add a `--note` alone as context.
-- `teamrig check` reports tasks past due, not picked up 24 hours after they were handed out, untouched for 72 hours,
+- `teamrig check` reports tasks past their effective due, not picked up 24 hours after they were handed out, untouched for 72 hours,
   or due this week but left out of the week's plan, and owner orders left out of it. A verifying task past its due
-  date is `VERIFY-OVERDUE`: it was not verified by then. One with a due date is not called stale while it waits. A verifying task another task needs is `VERIFY-BLOCKS`, and a session holding more than 5 (`register.maxVerifying`) gets a `PILE-UP` on its oldest. The first sized task of the week that no longer fits the weekly usage limit left is `OVER-LIMIT` (`plan` prints that line). A waiting task whose every reason has cleared is `READY`, and one waiting on a peer's decision or approval, as an older teamrig wrote it, is `PEER-WAIT`. It also reports a session that
+  date is `VERIFY-OVERDUE`: it was not verified by then. One with a due date is not called stale while it waits. A verifying task another task needs is `VERIFY-BLOCKS`, and a session holding more than 5 (`register.maxVerifying`) gets a `PILE-UP` on its oldest. Tasks that need each other in a circle (rows an older teamrig could write) are a `LOOP`, flagged on the lowest-numbered one. The first sized task of the week that no longer fits the weekly usage limit left is `OVER-LIMIT` (`plan` prints that line). A waiting task whose every reason has cleared is `READY`, and one waiting on a peer's decision or approval, as an older teamrig wrote it, is `PEER-WAIT`. It also reports a session that
   skips its own priorities: `PRIORITY-SKIP` is a task in progress for over 24 hours
   (`register.check.prioritySkipAfterHours`) while the same session has an open p1 free to start (every task it comes after finished), counted from the latest change of
   owner, status or priority on either task. `OFF-GOAL` is a task in progress with no goal outside the week's plan:

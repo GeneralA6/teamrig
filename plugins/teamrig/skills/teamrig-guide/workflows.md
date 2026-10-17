@@ -12,12 +12,13 @@ At the start of each work block, after a `/clear`, and in any tab teamrig did no
 teamrig start --session api
 ```
 
-It prints the time, your unread inbox lines, your task list, the `check` flags of your tasks and skills, and the
-week's use.
+It prints the time, your unread inbox lines, your task list, the other sessions' tasks waiting on yours
+(`WAITING ON YOU`, when some do), the `check` flags of your tasks and skills, and the week's use.
 
 1. Read each inbox line. A line that asks for work should name a task id; if it does not, add the task yourself
    (`teamrig add --session api --title "..." --description "<what and why>" --priority p<n> --source <asker>`).
-2. Take the first task of your list: lists are in plan order (priority, then due date, then id).
+2. Take the first task of your list: lists are in plan order (priority, then effective due date, then id; a task
+   that a dated task needs takes that earlier due, `due 10-17 (from T9)`).
 3. Mark it started: `teamrig set T4 --session api --status in-progress`.
 4. Before you start any work that is not on the list, add it: self-made work is a task too. Start it only for a
    goal, a parent task or the week plan, never ahead of your top task that is not waiting; a one-commit fix is
@@ -184,7 +185,8 @@ so it never loses work to a compaction.
 5. After the fresh start, the session-start context says `You were refreshed after T2; read your handover first:
    <path>`, then the scheduled jobs (still scheduled after a `/clear`, to make again after a new process), the
    wake-up to make again, the old scratchpad and the plan file, then your active tasks as the register holds them
-   (`LIVE TASKS of web, ...`, at most 6 rows and `+N more`; where the handover says otherwise, the register wins).
+   (`LIVE TASKS of web, ...`, at most 6 rows and `+N more`, then the other sessions' tasks waiting on you,
+   `WAITING ON YOU`, at most 3; where the handover says otherwise, the register wins).
    A compaction gets the same task block, since its summary is older than the register too. The
    restart's first prompt, or after a `/clear` a turn teamrig starts by itself, asks you to read the handover and
    carry on with its next steps. Do so, and run the start of a work block, since the fresh start is a new Claude
@@ -231,6 +233,8 @@ With sub-teams, run `teamrig check --tree --session lead` too. Then act on each 
   its task (`set --status waiting --ask <session> --text "<the work>"`).
 - `VERIFY-OVERDUE`: ask the owner whether the proof came: `done` with it, `in-progress` if it failed, or a new date.
 - `VERIFY-BLOCKS`: work waits on a shipped change: one inbox line to its owner to prove it or reopen it.
+- `LOOP`: tasks need each other in a circle, so none can finish: one inbox line to the first one's owner to make
+  the step its own task (the flag prints the command), or re-plan it yourself (`update --after`).
 - `PILE-UP`: a session ships faster than it proves: one inbox line asking it to work its queue (`teamrig verify`)
   before new work.
 - `OVER-LIMIT`: the week's sized work passes the weekly limit left at this task: move it and the tasks after it to

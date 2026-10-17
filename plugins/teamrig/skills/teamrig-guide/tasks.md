@@ -31,6 +31,14 @@ marks a cleared reason `ready`, and `check` flags the task `READY` once all have
 another first is not waiting: it stays `open`, planned after it (`teamrig update T3 --after T2`), and its line
 shows `after T2`.
 
+What a task needs is the tasks it comes after and the tasks it waits on. A task takes the earlier due date of an
+active task that needs it, at any depth (its effective due, `due 10-17 (from T9)` on its row), so the work a dated
+task needs comes first: lists, `plan`, the meeting's late tasks and `check`'s date flags go by it. A row names
+another session's active task that needs it (`· needed by T9 (api, due 10-17)`), `teamrig show T9 --tree`
+prints both ways of the tree and the next move, and `teamrig start` lists the other sessions' tasks waiting on
+yours (`WAITING ON YOU`). A plan or a wait that would close a loop (`T3 -> T9 -> T3`) is refused, since no task
+in a loop can finish: make the step one of them needs its own task.
+
 A peer's work is never a decision or an approval, so `approval:api` is refused: wait on that work by its task.
 `teamrig set T3 --status waiting --ask api --text "<the work>"` adds it as api's task (from you, at T3's priority
 and goals, its description naming T3), tells api, and sets T3 waiting on it, in one write; `--due` is then the
@@ -123,8 +131,9 @@ checkpoint; a session may run it for itself.
 
 | Flag | Raised when | What to do |
 | --- | --- | --- |
-| `OVERDUE` | the due time has passed | The owner finishes it or says what blocks it; the lead re-dates it (`update --due`) or tells the human. |
+| `OVERDUE` | the effective due time has passed: its own, or the earlier due of an active task that needs it (the detail names it: `due 10-14, from T9`) | The owner finishes it or says what blocks it; the lead re-dates it (`update --due`) or tells the human. |
 | `VERIFY-OVERDUE` | a `verifying` task's due time, the date to verify it by, has passed | The owner checks the proof: `done` with it as evidence, `in-progress` when it failed, or a new due date and why. |
+| `LOOP` | active tasks need each other in a circle (`T2 -> T5 -> T2`), planned after or waiting on one another, as an older teamrig could write; raised on the lowest-numbered one | None of them can finish: the owner makes the step its own task (the flag prints the command), or the lead re-plans it (`update --after`). |
 | `VERIFY-BLOCKS` | a `verifying` task another active task needs: planned after it (`--after`) or waiting on it (`--waits task:`) | The owner proves it (`done` with the proof) or reopens it (`in-progress`), so the work on it can start. |
 | `READY` | a `waiting` task whose every reason has cleared: its tasks are done or dropped, its time has passed (a decision or an approval never clears by itself) | The owner goes on: `set --status in-progress`, or the next status. |
 | `NO-REASON` | a `waiting` task with no reason, as a line from an older teamrig reads | The owner sets what it waits for (`set --status waiting --waits ...`) or its next status. |
@@ -135,7 +144,7 @@ checkpoint; a session may run it for itself.
 | `PILE-UP` | a session holds more than 5 `verifying` tasks [register.maxVerifying] (0 turns it off); raised on its oldest | The owner works its queue, oldest first (`teamrig verify`), before new work. |
 | `OVER-LIMIT` | the first sized to-do task of the week in force that no longer fits the weekly usage limit left, summed in plan order (`teamrig plan` shows the line) | The lead moves it and the sized tasks after it to next week (`update --week`), cuts or re-sizes work, or tells the human. |
 | `OWNER-UNPLANNED` | an order from the human (`--source owner`) that is not in the current week plan | Plan it in (`update --week <week>`), or tell the human what it would push out. |
-| `DUE-UNPLANNED` | due inside the current week but not in its plan | Plan it in with `--week`, or re-date it. |
+| `DUE-UNPLANNED` | effectively due inside the current week but not in its plan | Plan it in with `--week`, or re-date it. |
 | `STOPGAP-DONE` | a `stopgap T<id>` tag names a done or dropped task: in a skill, or a file of [register.check.stopgapFiles] (default `CLAUDE.md` and `.claude/rules` in the project folder); the flag lists where | Done: the file's owner removes the stopgap. Dropped: open a new task for it, or keep it by a decision and drop the tag. |
 | `OFF-GOAL` | in progress with no goal and not in the current week plan | If it belongs this week, the lead plans it in (`--week`); else the owner tags its goal (`update --goals`) or parks it. |
 
