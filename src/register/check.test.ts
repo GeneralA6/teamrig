@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { testConfig } from '../testing/config.ts';
 import { testTask } from '../testing/task.ts';
-import { checkTasks, currentWeek, currentWeekOf, formatFlag } from './check.ts';
+import { checkTasks, currentWeek, currentWeekOf, formatFlag, peerWaitFlags } from './check.ts';
 import { readRegister, type RegisterSnapshot } from './snapshot.ts';
 import { waitContext } from './waits.ts';
 
@@ -137,6 +137,20 @@ describe('checkTasks', () => {
     const quick = testConfig({ register: { check: { staleAfterHours: 1, notPickedUpAfterHours: 1, weekLengthDays: 7 } } }).register;
     const flags = checkTasks([testTask({ ownerSeenAt: '2030-01-10T10:00:00.000Z', updatedAt: '2030-01-10T10:00:00.000Z' })], NOW, null, quick);
     assert.deepEqual(flags.map((flag) => flag.kind), ['STALE']);
+  });
+});
+
+describe('peerWaitFlags', () => {
+  it("flags a waiting task on a peer's decision or approval, as an older teamrig wrote it, naming the ask to make", () => {
+    const tasks = [
+      testTask({ id: 'T1', status: 'waiting', waits: [{ kind: 'task', id: 'T4' }, { kind: 'approval', who: 'bravo' }, { kind: 'decision', who: 'alpha' }] }),
+      testTask({ id: 'T2', status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }, { kind: 'approval', who: 'lead' }] }),
+      testTask({ id: 'T3', status: 'in-progress', waits: [{ kind: 'approval', who: 'bravo' }] }),
+    ];
+    assert.deepEqual(
+      peerWaitFlags(tasks, 'lead', 'owner').map((flag) => `${flag.kind} ${flag.task.id}: ${flag.detail}`),
+      [`PEER-WAIT T1: approval:bravo is a peer's work: wait on it by its task (set T1 --status waiting --ask bravo --text "<the work>")`],
+    );
   });
 });
 
