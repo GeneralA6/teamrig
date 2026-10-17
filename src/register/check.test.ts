@@ -4,7 +4,7 @@ import { testConfig } from '../testing/config.ts';
 import { testTask } from '../testing/task.ts';
 import { checkTasks, currentWeek, currentWeekOf, formatFlag, peerWaitFlags } from './check.ts';
 import { readRegister, type RegisterSnapshot } from './snapshot.ts';
-import { waitContext } from './waits.ts';
+import { TaskTree } from './tree.ts';
 
 const NOW = new Date('2030-01-10T12:00:00.000Z');
 const FRESH = '2030-01-10T09:00:00.000Z';
@@ -65,6 +65,33 @@ describe('checkTasks', () => {
     const flags = checkTasks([shipped, after, waits], NOW, null, CONFIG).filter((flag) => flag.kind === 'VERIFY-BLOCKS');
     assert.deepEqual(flags.map((flag) => flag.detail), ['T2 (owner bravo), T3 (owner alpha) need it; prove it or reopen it']);
     assert.equal(checkTasks([shipped, after], NOW, null, CONFIG)[0]?.detail, 'T2 (owner bravo) needs it; prove it or reopen it');
+  });
+
+  it('reads the effective due: a task is late, due this week or quietly verifying by the due of a task that needs it', () => {
+    const seen = { ownerSeenAt: FRESH, updatedAt: FRESH };
+    const needer = (due: string, extra: Parameters<typeof testTask>[0] = {}) => testTask({ id: 'T2', owner: 'bravo', due, after: ['T1'], ...seen, ...extra });
+    const work = testTask({ id: 'T1', ...seen });
+    const late = checkTasks([work, needer('2030-01-09')], NOW, null, CONFIG);
+    assert.deepEqual(late.map((flag) => `${flag.kind} ${flag.task.id}: ${flag.detail}`), ['OVERDUE T1: due 01-09, from T2', 'OVERDUE T2: due 01-09']);
+    const shipped = testTask({ id: 'T1', status: 'verifying', ownerSeenAt: '2030-01-01T08:00:00.000Z', updatedAt: '2030-01-01T08:00:00.000Z' });
+    const proof = checkTasks([shipped, needer('2030-01-09')], NOW, null, CONFIG);
+    assert.deepEqual(proof.map((flag) => `${flag.kind} ${flag.task.id}`), ['OVERDUE T2', 'VERIFY-OVERDUE T1', 'VERIFY-BLOCKS T1']);
+    assert.equal(proof[1]?.detail, 'verify by 01-09, from T2');
+    assert.deepEqual(kinds([shipped, needer('2030-01-12')]), ['VERIFY-BLOCKS T1'], 'an inherited date keeps a verifying task from going stale');
+    assert.deepEqual(kinds([work, needer('2030-01-12', { week: '2030-01-07' })], '2030-01-07'), ['DUE-UNPLANNED T1']);
+  });
+
+  it('flags each loop among active tasks once, on its lowest task, with how its first link goes', () => {
+    const seen = { ownerSeenAt: FRESH, updatedAt: FRESH };
+    const planned = testTask({ id: 'T1', after: ['T2'], ...seen });
+    const held = testTask({ id: 'T2', owner: 'bravo', status: 'waiting', waits: [{ kind: 'task', id: 'T1' }], ...seen });
+    const waiter = testTask({ id: 'T3', status: 'waiting', waits: [{ kind: 'task', id: 'T4' }], ...seen });
+    const back = testTask({ id: 'T4', owner: 'bravo', after: ['T3'], ...seen });
+    assert.deepEqual(checkTasks([planned, held, waiter, back], NOW, null, CONFIG).map((flag) => `${flag.kind} ${flag.task.id}: ${flag.detail}`), [
+      'LOOP T1: T1 -> T2 -> T1 is a loop, and no task in a loop can finish: make the step T1 needs from T2 its own task: teamrig add --owner bravo --title "<the step>", then teamrig update T1 --after <its id>',
+      'LOOP T3: T3 -> T4 -> T3 is a loop, and no task in a loop can finish: make the step T3 needs from T4 its own task: teamrig set T3 --status waiting --ask bravo --text "<the step>"',
+    ]);
+    assert.deepEqual(kinds([planned, { ...held, status: 'done', waits: [] }]), [], 'a finished task closes no loop');
   });
 
   it('flags the oldest verifying task of an owner holding more than maxVerifying, never with 0', () => {
@@ -237,7 +264,7 @@ describe('checkTasks: READY', () => {
     ];
     const [flag] = checkTasks(tasks, NOW, null, CONFIG);
     assert.equal(
-      flag === undefined ? undefined : formatFlag(flag, undefined, waitContext(new Map(tasks.map((task) => [task.id, task])), NOW)),
+      flag === undefined ? undefined : formatFlag(flag, undefined, new TaskTree(new Map(tasks.map((task) => [task.id, task])), NOW)),
       'READY (every reason cleared; set its next status) T1 waiting, p2, owner alpha, from lead | Add a health check (waiting: on T2 ready; needs the export)',
     );
   });

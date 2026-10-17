@@ -7,16 +7,33 @@ import { formatTask } from '../register/views.ts';
 import type { SkillFlag } from '../skills/lint.ts';
 import { CliHarness } from '../testing/cli-harness.ts';
 import { testTask } from '../testing/task.ts';
-import { waitContext } from '../register/waits.ts';
-import { checkLines, fitBudget, listLines, MAX_FLAGS_PER_KIND, ownCheck, printedChars, SHORT_FORM_CHARS, type CheckReport, type TaskRow } from './reports.ts';
+import { TaskTree } from '../register/tree.ts';
+import {
+  checkLines,
+  fitBudget,
+  listLines,
+  MAX_FLAGS_PER_KIND,
+  MAX_WAITING_ROWS,
+  ownCheck,
+  printedChars,
+  SHORT_FORM_CHARS,
+  waitingOnLines,
+  type CheckReport,
+  type TaskRow,
+} from './reports.ts';
 import { EXIT } from './runtime.ts';
 
 const LONG_TITLE = 'Move the nightly export onto the shared queue and drop the old cron that wrote it twice';
-/** A read with no other task in it, at 2030-01-08 12:00 UTC. */
-const CONTEXT = waitContext(new Map(), new Date('2030-01-08T12:00:00.000Z'));
+const NOW = new Date('2030-01-08T12:00:00.000Z');
+/** A read with no other task in it, at NOW: each task keeps its own due. */
+const TREE = new TaskTree(new Map(), NOW);
+
+function treeOf(...tasks: Task[]): TaskTree {
+  return new TaskTree(new Map(tasks.map((task) => [task.id, task])), NOW);
+}
 
 function row(overrides: Partial<Task>, team?: string): TaskRow {
-  return { task: testTask(overrides), team, context: CONTEXT };
+  return { task: testTask(overrides), team, tree: TREE };
 }
 
 function flag(kind: FlagKind, task: Partial<Task>, detail = `${kind.toLowerCase()} detail`): Flag {
@@ -70,6 +87,17 @@ describe('listLines', () => {
     ]);
   });
 
+  it('orders rows of several registers on each one\'s effective due', () => {
+    const work = testTask({ id: 'T3' });
+    const needer = testTask({ id: 'T9', owner: 'bravo', due: '2030-01-09', after: ['T3'] });
+    const web = treeOf(work, needer);
+    const rows: TaskRow[] = [row({ id: 'T1', due: '2030-01-10' }, 'api'), { task: work, team: 'web', tree: web }];
+    assert.deepEqual(listLines(rows, false).slice(-2), [
+      'web/T3 open, p2, owner alpha, due 01-09 (from T9) | Add a health check · needed by T9 (bravo)',
+      'api/T1 open, p2, owner alpha, due 01-10 | Add a health check',
+    ]);
+  });
+
   it('counts each owner by status, the busiest first, then by name', () => {
     const rows = [
       row({ id: 'T1', owner: 'bravo', status: 'done' }),
@@ -107,8 +135,8 @@ describe('listLines', () => {
 
 describe('checkLines', () => {
   const sections = [
-    { team: 'app', context: CONTEXT, flags: [flag('OVERDUE', { id: 'T4', due: '2030-01-07' }, 'due 01-07')] },
-    { team: 'web', context: CONTEXT, flags: [flag('STALE', { id: 'T2' }, 'last event 2030-01-01 by lead')] },
+    { team: 'app', tree: TREE, flags: [flag('OVERDUE', { id: 'T4', due: '2030-01-07' }, 'due 01-07')] },
+    { team: 'web', tree: TREE, flags: [flag('STALE', { id: 'T2' }, 'last event 2030-01-01 by lead')] },
   ];
 
   it('prints each register, every flag in full and every skill flag with --all', () => {
@@ -121,7 +149,7 @@ describe('checkLines', () => {
       'SKILLS 1 flag(s) in skills-dir',
       'SKILL UNVERIFIED (Last verified 2029-11-01, over 30 days) alpha alpha-demo',
     ]);
-    assert.deepEqual(checkLines(report({ sections: [{ team: undefined, context: CONTEXT, flags: [] }] }), true), [
+    assert.deepEqual(checkLines(report({ sections: [{ team: undefined, tree: TREE, flags: [] }] }), true), [
       'CHECK 0 flag(s), week 2030-01-07',
       'SKILLS 0 flag(s) in skills-dir',
     ]);
@@ -129,7 +157,7 @@ describe('checkLines', () => {
 
   it('prints the hire flags before the skills, in both forms, and counts them toward the hint', () => {
     const hires: readonly HireFlag[] = [{ kind: 'RETIRE-DUE', session: 'helper', detail: 'no open task for 5 h, hiring.idleHours 4' }];
-    const flagged = report({ sections: [{ team: undefined, context: CONTEXT, flags: [] }], hires });
+    const flagged = report({ sections: [{ team: undefined, tree: TREE, flags: [] }], hires });
     const line = 'HIRE RETIRE-DUE (no open task for 5 h, hiring.idleHours 4) helper: retire it (teamrig retire helper)';
     assert.deepEqual(checkLines(flagged, true), ['CHECK 0 flag(s), week 2030-01-07', 'HIRES 1 flag(s)', line, 'SKILLS 0 flag(s) in skills-dir']);
     assert.deepEqual(checkLines(flagged, false), [
@@ -149,7 +177,7 @@ describe('checkLines', () => {
       '  web/T2 open, p2, owner alpha | Add a health check',
       'SKILLS 0 flag(s) in skills-dir',
     ]);
-    assert.deepEqual(checkLines(report({ sections: [{ team: undefined, context: CONTEXT, flags: [] }], scope: 'no week plan' }), false), [
+    assert.deepEqual(checkLines(report({ sections: [{ team: undefined, tree: TREE, flags: [] }], scope: 'no week plan' }), false), [
       'CHECK 0 flag(s), no week plan',
       'SKILLS 0 flag(s) in skills-dir',
     ]);
@@ -159,7 +187,7 @@ describe('checkLines', () => {
     const overdue = Array.from({ length: 7 }, (_, index) => flag('OVERDUE', { id: `T${7 - index}` }, `due 01-0${index + 1}`));
     const lines = checkLines(
       report({
-        sections: [{ team: undefined, context: CONTEXT, flags: [flag('STALE', { id: 'T9' }), ...overdue] }],
+        sections: [{ team: undefined, tree: TREE, flags: [flag('STALE', { id: 'T9' }), ...overdue] }],
         skills: Array.from({ length: 6 }, (_, index) => skillFlag(`alpha-skill${index}`)),
       }),
       false,
@@ -183,7 +211,7 @@ describe('checkLines', () => {
 
   it(`shows fewer flags of every kind when ${MAX_FLAGS_PER_KIND} would pass ${SHORT_FORM_CHARS} characters`, () => {
     const flags = FLAG_KINDS.flatMap((kind) => manyTasks(30).map(({ task }) => ({ kind, task, detail: `${kind} detail for ${task.id}` })));
-    const lines = checkLines(report({ sections: [{ team: undefined, context: CONTEXT, flags }] }), false);
+    const lines = checkLines(report({ sections: [{ team: undefined, tree: TREE, flags }] }), false);
     assert.equal(printedChars(lines) <= SHORT_FORM_CHARS, true);
     const more = lines.filter((line) => /^ {2}\+\d+ more$/.test(line));
     assert.equal(more.length, FLAG_KINDS.length);
@@ -195,7 +223,7 @@ describe('checkLines', () => {
   it('cuts whole lines with a more line when even one flag of each kind passes the budget', () => {
     const detail = 'x'.repeat(500);
     const flags = FLAG_KINDS.flatMap((kind) => [flag(kind, { id: 'T1' }, `${detail}1`), flag(kind, { id: 'T2' }, `${detail}2`)]);
-    const lines = checkLines(report({ sections: [{ team: undefined, context: CONTEXT, flags }] }), false);
+    const lines = checkLines(report({ sections: [{ team: undefined, tree: TREE, flags }] }), false);
     assert.equal(printedChars(lines) <= SHORT_FORM_CHARS, true);
     assert.match(lines.at(-1) ?? '', /^\+\d+ more line\(s\) \(--all for every flag in full\)$/);
     assert.equal(lines.filter((line) => line.startsWith('  (')).length < FLAG_KINDS.length, true);
@@ -228,7 +256,7 @@ describe('ownCheck', () => {
   it('keeps the flags of the tasks and skills one session owns, and names it in the scope', () => {
     const flags = [flag('OVERDUE', { id: 'T1', owner: 'alpha' }), flag('OVERDUE', { id: 'T2', owner: 'bravo' })];
     const skills = [skillFlag('alpha-deploy'), { ...skillFlag('bravo-sync'), owner: 'bravo' }, { ...skillFlag('team-x'), owner: null }];
-    const narrowed = ownCheck(report({ sections: [{ team: undefined, flags, context: CONTEXT }], skills }), 'alpha');
+    const narrowed = ownCheck(report({ sections: [{ team: undefined, flags, tree: TREE }], skills }), 'alpha');
     assert.deepEqual(
       narrowed.sections.map((section) => section.flags.map((each) => each.task.id)),
       [['T1']],
@@ -241,5 +269,21 @@ describe('ownCheck', () => {
     assert.deepEqual(ownCheck(report({ hires }), 'alpha').hires.map((each) => each.session), ['alpha']);
     assert.equal(narrowed.scope, "alpha's tasks and skills, week 2030-01-07");
     assert.match(checkLines(narrowed, false)[0] ?? '', /^CHECK 1 flag\(s\), alpha's tasks and skills, week 2030-01-07 /);
+  });
+});
+
+describe('waitingOnLines', () => {
+  it('prints nothing when no task waits, else a heading and the first MAX_WAITING_ROWS rows, every one with --all', () => {
+    assert.equal(MAX_WAITING_ROWS, 5);
+    const mine = testTask({ id: 'T1' });
+    const needers = Array.from({ length: MAX_WAITING_ROWS + 2 }, (_, index) => testTask({ id: `T${index + 2}`, owner: 'bravo', after: ['T1'] }));
+    const tree = treeOf(mine, ...needers);
+    assert.deepEqual(waitingOnLines('alpha', [], tree, false), []);
+    const short = waitingOnLines('alpha', tree.waitingOn('alpha'), tree, false);
+    assert.equal(short[0], `WAITING ON YOU ${MAX_WAITING_ROWS + 2} task(s) of other sessions wait on alpha`);
+    assert.equal(short[1], '  T2 open, p2, owner bravo, after T1 | Add a health check · needs your T1');
+    assert.equal(short.length, 1 + MAX_WAITING_ROWS + 1);
+    assert.equal(short.at(-1), '  +2 more (--all lists every one)');
+    assert.equal(waitingOnLines('alpha', tree.waitingOn('alpha'), tree, true).length, 1 + MAX_WAITING_ROWS + 2);
   });
 });

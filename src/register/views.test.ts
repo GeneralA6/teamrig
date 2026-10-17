@@ -7,19 +7,29 @@ import {
   byPlanOrder,
   cut,
   formatEvent,
+  formatNextMove,
   formatShortTask,
   formatTask,
   formatTaskDetail,
+  formatTaskTree,
   formatVerifyByLine,
   formatVerifyRow,
   formatVerifySummary,
+  formatWaitingOnYou,
   personWaitNotice,
   selectTasks,
   sizeText,
 } from './views.ts';
-import { waitContext, type WaitReason } from './waits.ts';
+import type { Task } from './fold.ts';
+import { TaskTree } from './tree.ts';
+import type { WaitReason } from './waits.ts';
 
 const AT = '2030-01-07T09:00:00.000Z';
+const NOW = new Date('2030-01-08T10:00:00.000Z');
+
+function treeOf(...tasks: Task[]): TaskTree {
+  return new TaskTree(new Map(tasks.map((task) => [task.id, task])), NOW);
+}
 
 describe('byPlanOrder', () => {
   it('sorts by priority, then due date with undated last, then id number', () => {
@@ -40,7 +50,7 @@ describe('selectTasks', () => {
     testTask({ id: 'T2', owner: 'bravo', status: 'waiting', priority: 1, source: 'owner' }),
     testTask({ id: 'T3', owner: 'alpha', status: 'done' }),
   ];
-  const ids = (filter: Parameters<typeof selectTasks>[1]) => selectTasks(tasks, filter).map((task) => task.id);
+  const ids = (filter: Parameters<typeof selectTasks>[1]) => selectTasks(tasks, filter, treeOf(...tasks)).map((task) => task.id);
 
   it('shows active tasks by default and filters on every field', () => {
     assert.deepEqual(ids({}), ['T2', 'T1']);
@@ -53,6 +63,13 @@ describe('selectTasks', () => {
     assert.deepEqual(ids({ week: '2030-01-07' }), ['T1']);
     assert.deepEqual(ids({ week: null }), ['T2']);
     assert.deepEqual(ids({ goal: 'G1' }), ['T1']);
+  });
+
+  it('reads the effective due: a task inherits the earlier due of a task that needs it', () => {
+    const held = [testTask({ id: 'T1' }), testTask({ id: 'T2', due: '2030-01-12' }), testTask({ id: 'T3', owner: 'bravo', due: '2030-01-09', after: ['T1'] })];
+    const tree = treeOf(...held);
+    assert.deepEqual(selectTasks(held, { dueBefore: new Date('2030-01-10T00:00:00Z') }, tree).map((task) => task.id), ['T1', 'T3']);
+    assert.deepEqual(selectTasks(held, {}, tree).map((task) => task.id), ['T1', 'T3', 'T2'], 'T1 is due 01-09 by T3, and a tie goes to the lower id');
   });
 });
 
@@ -106,9 +123,122 @@ describe('formatTask: what a waiting task waits for', () => {
 
   it('marks each reason ready by the read it was printed from', () => {
     const tasks = new Map([['T304', testTask({ id: 'T304', status: 'done' })]]);
-    assert.match(formatTask(task, undefined, waitContext(tasks, new Date('2030-01-10T13:00:00.000Z'))), /on T304 ready · until Thu 01-10 13:00 ready;/);
-    assert.match(formatTask(task, undefined, waitContext(new Map([['T304', testTask({ status: 'open' })]]), new Date(0))), /on T304 · until Thu/);
-    assert.match(formatShortTask(task, 60, 'web', waitContext(tasks, new Date(0))), /^web\/T1 waiting, p2, owner alpha \| Add a health check \(waiting: decision owner · approval lead · on T304 ready · until Thu 01-10 13:00\)$/);
+    assert.match(formatTask(task, undefined, new TaskTree(tasks, new Date('2030-01-10T13:00:00.000Z'))), /on T304 ready · until Thu 01-10 13:00 ready;/);
+    assert.match(formatTask(task, undefined, new TaskTree(new Map([['T304', testTask({ status: 'open' })]]), new Date(0))), /on T304 · until Thu/);
+    assert.match(formatShortTask(task, 60, 'web', new TaskTree(tasks, new Date(0))), /^web\/T1 waiting, p2, owner alpha \| Add a health check \(waiting: decision owner · approval lead · on T304 ready · until Thu 01-10 13:00\)$/);
+  });
+});
+
+describe('a row read with the tree', () => {
+  const holder = testTask({ id: 'T194', owner: 'beta', priority: 1, due: '2030-01-10', after: ['T2', 'T3', 'T7'] });
+  const work = testTask({ id: 'T2', status: 'in-progress', due: '2030-01-15' });
+  const early = testTask({ id: 'T3', due: '2030-01-09' });
+  const later = testTask({ id: 'T5', owner: 'gamma', due: '2030-01-12', after: ['T2'] });
+  const mine = testTask({ id: 'T6', after: ['T2', 'T3'] });
+  const shipped = testTask({ id: 'T7', status: 'done' });
+  const undated = testTask({ id: 'T8' });
+  const asker = testTask({ id: 'T9', owner: 'beta', after: ['T8'] });
+  const tree = treeOf(holder, work, early, later, mine, shipped, undated, asker);
+
+  it('shows the inherited due, naming the task it comes from', () => {
+    assert.equal(formatShortTask(work, 60, undefined, tree), 'T2 in-progress, p2, owner alpha, due 01-10 (from T194) | Add a health check · needed by T194 (beta) +1');
+    assert.equal(formatTask(work, undefined, tree), 'T2 in-progress, p2, owner alpha, due 01-10 (from T194), from lead | Add a health check · needed by T194 (beta) +1');
+  });
+
+  it('names the first task of another session that needs it, with its due unless the row shows it', () => {
+    assert.equal(formatShortTask(early, 60, undefined, tree), 'T3 open, p2, owner alpha, due 01-09 | Add a health check · needed by T194 (beta, due 01-10)');
+    assert.equal(formatShortTask(undated, 60, undefined, tree), 'T8 open, p2, owner alpha | Add a health check · needed by T9 (beta)');
+  });
+
+  it('adds nothing for a finished task, or one only its own owner needs', () => {
+    assert.equal(formatShortTask(shipped, 60, undefined, tree), 'T7 done, p2, owner alpha | Add a health check');
+    assert.equal(formatShortTask(holder, 60, undefined, tree), 'T194 open, p1, owner beta, due 01-10, after T2,T3,T7 | Add a health check');
+    const own = treeOf(work, mine);
+    assert.equal(formatShortTask(work, 60, undefined, own), 'T2 in-progress, p2, owner alpha, due 01-15 | Add a health check');
+  });
+});
+
+describe('formatTaskTree and formatNextMove', () => {
+  it('prints what the task needs, what needs it, and the next move', () => {
+    const root = testTask({ id: 'T1', after: ['T2', 'T9'] });
+    const need = testTask({ id: 'T2', owner: 'beta', after: ['T3'] });
+    const done = testTask({ id: 'T3', owner: 'beta', status: 'done' });
+    const needer = testTask({ id: 'T4', owner: 'gamma', due: '2030-01-10', after: ['T1'] });
+    const top = testTask({ id: 'T5', owner: 'lead', after: ['T4'] });
+    assert.deepEqual(formatTaskTree(root, treeOf(root, need, done, needer, top), 60), [
+      'needs:',
+      '  T2 open, p2, owner beta, due 01-10 (from T4), after T3 | Add a health check',
+      '    T3 done, p2, owner beta | Add a health check',
+      '  T9 finished',
+      'needed by:',
+      '  T4 open, p2, owner gamma, due 01-10, after T1 | Add a health check',
+      '    T5 open, p2, owner lead, after T4 | Add a health check',
+      'Next move: beta (T2)',
+    ]);
+  });
+
+  it('shows a task met again once, and marks a loop', () => {
+    const root = testTask({ id: 'T1', after: ['T3', 'T2'] });
+    const first = testTask({ id: 'T2', after: ['T3'] });
+    const shared = testTask({ id: 'T3' });
+    assert.deepEqual(formatTaskTree(root, treeOf(root, first, shared), 60).slice(0, 4), [
+      'needs:',
+      '  T2 open, p2, owner alpha, after T3 | Add a health check',
+      '    T3 open, p2, owner alpha | Add a health check',
+      '  T3 (shown above)',
+    ]);
+    const one = testTask({ id: 'T6', after: ['T7'] });
+    const other = testTask({ id: 'T7', owner: 'beta', after: ['T6'] });
+    assert.deepEqual(formatTaskTree(one, treeOf(one, other), 60), [
+      'needs:',
+      '  T7 open, p2, owner beta, after T6 | Add a health check',
+      '    T6 (loop)',
+      'needed by:',
+      '  T7 open, p2, owner beta, after T6 | Add a health check',
+      '    T6 (loop)',
+      'Next move: none, what T6 needs runs in a loop (check flags it LOOP)',
+    ]);
+  });
+
+  it('lists a finished task its needs, with no next move', () => {
+    const done = testTask({ id: 'T3', status: 'done', after: ['T2'] });
+    const need = testTask({ id: 'T2', status: 'done' });
+    assert.deepEqual(formatTaskTree(done, treeOf(done, need), 60), [
+      'needs:',
+      '  T2 done, p2, owner alpha | Add a health check',
+      'needed by: none',
+      'Next move: none, T3 is done',
+    ]);
+    assert.deepEqual(formatTaskTree(need, treeOf(need), 60), ['needs: none', 'needed by: none', 'Next move: none, T2 is done']);
+  });
+
+  it('names a decision or approval, a time to pass, and a higher-priority task the mover works first', () => {
+    const decided = testTask({ id: 'T1', status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }] });
+    assert.equal(formatNextMove(decided, treeOf(decided)), 'Next move: owner (T1), decision');
+    const parked = testTask({ id: 'T1', status: 'waiting', waits: [{ kind: 'time', at: '2030-01-10 13:00' }] });
+    assert.equal(formatNextMove(parked, treeOf(parked)), 'Next move: alpha (T1), from Thu 01-10 13:00');
+    const open = testTask({ id: 'T1' });
+    const urgent = testTask({ id: 'T7', status: 'in-progress', priority: 1 });
+    assert.equal(formatNextMove(open, treeOf(open, urgent)), 'Next move: alpha (T1), behind T7 (p1)');
+  });
+});
+
+describe('formatWaitingOnYou', () => {
+  it('names the tasks of yours it needs and the decisions it waits on', () => {
+    const yours = testTask({ id: 'T2', status: 'in-progress' });
+    const theirs = testTask({ id: 'T4', owner: 'beta', status: 'waiting', waits: [{ kind: 'task', id: 'T2' }, { kind: 'approval', who: 'alpha' }] });
+    const tree = treeOf(yours, theirs);
+    const [entry] = tree.waitingOn('alpha');
+    assert.ok(entry !== undefined);
+    assert.equal(formatWaitingOnYou(entry, 60, tree), 'T4 waiting, p2, owner beta | Add a health check (waiting: on T2 · approval alpha) · needs your T2 · waits on your approval');
+    const asked = testTask({ id: 'T5', owner: 'beta', status: 'waiting', waits: [{ kind: 'decision', who: 'alpha' }] });
+    const [only] = treeOf(asked).waitingOn('alpha');
+    assert.ok(only !== undefined);
+    assert.equal(formatWaitingOnYou(only, 60, treeOf(asked)), 'T5 waiting, p2, owner beta | Add a health check (waiting: decision alpha) · waits on your decision');
+    const needOnly = testTask({ id: 'T6', owner: 'beta', after: ['T2'] });
+    const [planned] = treeOf(yours, needOnly).waitingOn('alpha');
+    assert.ok(planned !== undefined);
+    assert.equal(formatWaitingOnYou(planned, 60, treeOf(yours, needOnly)), 'T6 open, p2, owner beta, after T2 | Add a health check · needs your T2');
   });
 });
 

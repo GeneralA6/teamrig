@@ -41,6 +41,18 @@ describe('renderPlan', () => {
     );
   });
 
+  it('orders and dates each task by its effective due, naming the task it comes from', () => {
+    const config = testConfig().register;
+    const week = '2030-01-07';
+    const tasks = [
+      testTask({ id: 'T1', week, due: '2030-01-12' }),
+      testTask({ id: 'T2', week }),
+      testTask({ id: 'T3', owner: 'beta', due: '2030-01-09', after: ['T2'] }),
+    ];
+    const lines = renderPlan(tasks, week, new Date('2030-01-07T08:00:00Z'), config).split('\n').filter((line) => line.startsWith('- ['));
+    assert.deepEqual(lines, ['- [ ] **T2** Add a health check (alpha · due 01-09 from T3 · from lead)', '- [ ] **T1** Add a health check (alpha · due 01-12 · from lead)']);
+  });
+
   it('lists the fit lines under the counts', () => {
     const config = testConfig().register;
     const week = '2030-01-07';

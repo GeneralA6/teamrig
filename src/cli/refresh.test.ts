@@ -401,15 +401,17 @@ describe('runCli: context refresh', () => {
 describe('runCli: live tasks in the start note', () => {
   const LIVE =
     'LIVE TASKS of alpha, read from the register at this start (2 active; where your handover or a compaction summary says otherwise, the register wins):\n' +
-    '  T2 in-progress, p2 | Write the docs\n' +
-    '  T3 waiting, p2 | Ship the docs (waiting: on T2)';
+    '  T2 in-progress, p2, due 01-10 (from T4) | Write the docs\n' +
+    '  T3 waiting, p2 | Ship the docs (waiting: on T2)\n' +
+    'WAITING ON YOU 1 task(s) of other sessions:\n' +
+    '  T4 open, p2, owner bravo, due 01-10, after T2 | Not mine · needs your T2';
 
-  /** Alpha holds T1 done, T2 in progress and T3 waiting on it; bravo holds T4. */
+  /** Alpha holds T1 done, T2 in progress and T3 waiting on it; bravo holds T4, due 01-10 and planned after T2. */
   async function addTasks(kit: CliHarness): Promise<void> {
     const steps = [
       ['add', '--title', 'Write the docs', '--description', 'what and why', '--priority', 'p2', '--session', 'alpha'],
       ['add', '--title', 'Ship the docs', '--description', 'what and why', '--priority', 'p2', '--session', 'alpha'],
-      ['add', '--title', 'Not mine', '--description', 'what and why', '--priority', 'p2', '--session', 'bravo'],
+      ['add', '--title', 'Not mine', '--description', 'what and why', '--priority', 'p2', '--due', '2030-01-10', '--after', 'T2', '--session', 'bravo'],
       ['set', 'T2', '--status', 'in-progress', '--session', 'alpha'],
       ['set', 'T3', '--status', 'in-progress', '--session', 'alpha'],
       ['set', 'T3', '--status', 'waiting', '--waits', 'task:T2', '--note', 'needs the docs', '--session', 'alpha'],

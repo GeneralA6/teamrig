@@ -9,7 +9,7 @@ import { decisionsByOwner, endNotice, startNotice, type NoticeFacts } from '../.
 import { MeetingStore, phaseOf, stoppedAt, type Meeting, type MeetingPhase } from '../../meeting/state.ts';
 import { currentWeekOf } from '../../register/check.ts';
 import { fitLines } from '../../register/fit.ts';
-import { waitContext } from '../../register/waits.ts';
+import { TaskTree } from '../../register/tree.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, type Access, type Kit } from '../kit.ts';
@@ -101,7 +101,7 @@ async function printAgenda(args: ParsedArgs, runtime: CliRuntime, mk: MeetingKit
   const now = new Date(mk.now);
   const lines = agendaLines({
     tasks: [...snapshot.state.tasks.values()],
-    context: waitContext(snapshot.state.tasks, now),
+    tree: new TaskTree(snapshot.state.tasks, now),
     now: mk.now,
     since: agendaSince(previousEnd(phase), mk.now),
     ownerMarker: mk.config.register.ownerSource,
