@@ -50,6 +50,8 @@ class FakeRunner {
         return { ...OK, stdout: 'teamrig 1.2.3\n' };
       case 'session-start':
         return { ...OK, stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: 'rules' } }) };
+      case 'subagent-start':
+        return { ...OK, stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: 'SubagentStart', additionalContext: 'rules' } }) };
       case 'push-guard':
         return { ...OK, stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny' } }) };
       default:
