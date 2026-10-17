@@ -3,7 +3,7 @@ import { NAME_PATTERN, NAME_RULE } from '../core/ids.ts';
 import { parseUtcDeadline, parseUtcDay } from '../core/time.ts';
 import { MAX_SIZE_PCT, sizeProblem, type TaskFields } from '../register/events.ts';
 import { isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, priorityText, TASK_ID, TASK_STATUSES, type TaskStatus } from '../register/model.ts';
-import { WAITS_USAGE, type AddInput, type StatusInput } from '../register/policy.ts';
+import { WAITS_USAGE, type AddInput, type AskInput, type StatusInput } from '../register/policy.ts';
 import { isWaitKind, waitOf, type WaitReason } from '../register/waits.ts';
 import type { ListFilter } from '../register/views.ts';
 import { requiredFlag, UsageError, type Flags } from './args.ts';
@@ -247,6 +247,33 @@ export function statusInputOf(flags: Flags): StatusInput {
     input.due = due;
   }
   return input;
+}
+
+/** What `set` writes: the status change and, with `--ask`, the task it asks another session for. */
+export interface SetInput {
+  readonly status: StatusInput;
+  readonly ask: AskInput | null;
+}
+
+/**
+ * `set <id> --status ... [--ask <session> --text "<the work>"]`: with `--ask`, `--due` is the asked task's due date
+ * rather than a date to verify by; `--text` goes only with `--ask`, which needs it. The command resolves the asked
+ * session to its id.
+ */
+export function setInputOf(flags: Flags): SetInput {
+  const asked = flags.get('ask');
+  const text = flags.get('text');
+  if (asked === undefined) {
+    if (text !== undefined) {
+      throw new UsageError('--text goes only with --ask <session>: it is the work asked for');
+    }
+    return { status: statusInputOf(flags), ask: null };
+  }
+  if (text === undefined || text.trim() === '') {
+    throw new UsageError('--ask needs --text "<the work asked for>": the title of the task it creates');
+  }
+  const { due, ...status } = statusInputOf(flags);
+  return { status, ask: { owner: sessionRef('--ask', asked), title: text, ...(due === undefined ? {} : { due }) } };
 }
 
 /** `list` filters; `--session` names the owner whose tasks to show. */

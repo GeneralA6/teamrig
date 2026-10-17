@@ -51,10 +51,11 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
   add --team <child team> --title .. --description .. --priority p<n> [...]   hands that team's lead a task
   set <id> --status open|in-progress|verifying|waiting|done|dropped [--note "<what/why>"] [--evidence <proof>]
       [--skill <name>|none] [--waits decision:<who>,approval:<who>,task:T<id>,time:<date>]
-      [--proof "<what proves it>"] [--due <date>]
+      [--proof "<what proves it>"] [--due <date>] [--ask <session> --text "<the work>"]
       verifying needs --proof: what will prove the shipped change works; --due sets the date to verify by
-      waiting needs --waits: who decides or approves (a session or the owner), a task to finish first
+      waiting needs --waits: the lead's or the owner's decision or approval, a task to finish first
       (only once started) or a time; check flags it READY once its tasks finished and its time passed
+      --ask (with waiting): adds the work as that session's task and waits on it; --due is its due date
   update <id> [--title ..] [--description ..|none] [--owner ..] [--priority ..] [--ref ..|none]
       [--due <date>|none] [--goals a,b|none] [--week <date>|none] [--after T5,T6|none] [--size <pct>|none]
       [--note ..]   the lead may change owner, priority, due, week, after and size on any task

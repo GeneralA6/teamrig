@@ -6,7 +6,10 @@ import { EXIT } from './runtime.ts';
 
 const MINUTE = 60_000;
 
-/** T1 owned by alpha waits on the owner's decision, T2 owned by bravo is late, and alpha left the lead an inbox line. */
+/**
+ * T1 owned by alpha waits on the owner's decision (which posts the lead a line), T2 owned by bravo is late, and alpha
+ * left the lead an inbox line.
+ */
 async function teamBeforeTheMeeting(config = TEAM): Promise<CliHarness> {
   const kit = new CliHarness(config);
   const added = await kit.run(['add', '--title', 'Pick the pricing tier', '--description', 'which tier ships first', '--priority', 'p1', '--session', 'alpha']);
@@ -36,7 +39,8 @@ describe('runCli: the daily meeting', () => {
     assert.match(stdout[late + 1] ?? '', /^ {2}T2 open, p2, owner bravo, due 01-07 \| Ship the docs/);
     assert.ok(stdout.includes('DONE 0 done or dropped since Mon 01-07 10:00 UTC'), stdout.join('\n'));
     assert.ok(stdout.some((line) => line.endsWith('alpha: the build is green')), stdout.join('\n'));
-    assert.ok(stdout.some((line) => line.startsWith('READ lead: 1 new line')), stdout.join('\n'));
+    assert.ok(stdout.some((line) => line.endsWith("alpha: T1 waits on the owner's decision: two options")), stdout.join('\n'));
+    assert.ok(stdout.some((line) => line.startsWith('READ lead: 2 new lines')), stdout.join('\n'));
     assert.ok(stdout.some((line) => line.startsWith('Week: ')), stdout.join('\n'));
     assert.equal(stdout.at(-1), 'END teamrig meeting end --session lead: tells every session, with the decisions recorded on its tasks');
 
