@@ -1,6 +1,7 @@
 import { formatHireFlag } from "../hiring/due.js";
 import { FLAG_KINDS, formatFlag } from "../register/check.js";
-import { byPlanOrder, formatShortTask, formatTask } from "../register/views.js";
+import { planOrder } from "../register/tree.js";
+import { formatShortTask, formatTask, formatWaitingOnYou } from "../register/views.js";
 import { formatSkillFlag } from "../skills/lint.js";
 /**
  * What `list` and `check` print. A session's reads stay in its context and are re-read on every later call, so by
@@ -13,6 +14,8 @@ export const SHORT_FORM_CHARS = 3_000;
 export const SHORT_TITLE_CHARS = 60;
 /** The short `check` shows at most this many flags of each kind, fewer when they would pass SHORT_FORM_CHARS. */
 export const MAX_FLAGS_PER_KIND = 5;
+/** `start` shows at most this many tasks waiting on the session, then a `+N more` line; `--all` shows every one. */
+export const MAX_WAITING_ROWS = 5;
 /** The order of the status counts on a short `list` owner line: what moves first, what waits last. */
 const SUMMARY_STATUSES = ['in-progress', 'verifying', 'waiting', 'open', 'done', 'dropped'];
 /**
@@ -28,6 +31,10 @@ export function ownCheck(report, owner) {
         skills: report.skills.filter((flag) => flag.owner === owner),
         hires: report.hires.filter((flag) => flag.session === owner),
     };
+}
+/** Plan order on effective dues across registers: each task placed by its own register's tree. */
+function byRowPlanOrder(a, b) {
+    return planOrder(a.tree.placeOf(a.task), b.tree.placeOf(b.task));
 }
 /** The characters `lines` print, each with its newline. */
 export function printedChars(lines) {
@@ -56,7 +63,7 @@ function firstOf(lines, shown) {
 }
 /** `list`: every field of every row with `all`, else the short form. */
 export function listLines(rows, all) {
-    return all ? rows.map(({ task, team, context }) => formatTask(task, team, context)) : shortList(rows);
+    return all ? rows.map(({ task, team, tree }) => formatTask(task, team, tree)) : shortList(rows);
 }
 function ownerOf({ task, team }) {
     return team === undefined ? task.owner : `${team}/${task.owner}`;
@@ -84,8 +91,8 @@ function shortList(rows) {
     const summary = owners.size > 1
         ? [...owners].sort(([a, x], [b, y]) => y.length - x.length || a.localeCompare(b)).map(([owner, owned]) => ownerLine(owner, owned))
         : [];
-    const sorted = [...rows].sort((a, b) => byPlanOrder(a.task, b.task));
-    return fitBudget([`LIST ${rows.length} task(s)${ownerCount}${hint}`, ...summary, ...sorted.map(({ task, team, context }) => formatShortTask(task, SHORT_TITLE_CHARS, team, context))], SHORT_FORM_CHARS, (left) => `+${left} more (--all lists every task in full)`);
+    const sorted = [...rows].sort(byRowPlanOrder);
+    return fitBudget([`LIST ${rows.length} task(s)${ownerCount}${hint}`, ...summary, ...sorted.map(({ task, team, tree }) => formatShortTask(task, SHORT_TITLE_CHARS, team, tree))], SHORT_FORM_CHARS, (left) => `+${left} more (--all lists every task in full)`);
 }
 /** `check`: every flag in full with `all`, else the short form. */
 export function checkLines(report, all) {
@@ -101,9 +108,9 @@ function hireLines({ hires }, indent) {
 /** Each register's `CHECK` line and flags, then the hire flags, then the skill flags: every flag, every field. */
 function longCheck(report) {
     return [
-        ...report.sections.flatMap(({ team, flags, context }) => [
+        ...report.sections.flatMap(({ team, flags, tree }) => [
             `CHECK${team === undefined ? '' : ` ${team}:`} ${flags.length} flag(s), ${report.scope}`,
-            ...flags.map((flag) => formatFlag(flag, team, context)),
+            ...flags.map((flag) => formatFlag(flag, team, tree)),
         ]),
         ...hireLines(report, ''),
         skillsLine(report),
@@ -114,9 +121,9 @@ function longCheck(report) {
 function kindLines(kind, rows, shown) {
     const details = new Set(rows.map(({ flag }) => flag.detail));
     const [shared] = details.size === 1 ? [...details] : [];
-    const lines = rows.map(({ flag, team, context }) => {
+    const lines = rows.map(({ flag, team, tree }) => {
         const detail = shared === undefined ? `(${flag.detail}) ` : '';
-        return `  ${detail}${formatShortTask(flag.task, SHORT_TITLE_CHARS, team, context)}`;
+        return `  ${detail}${formatShortTask(flag.task, SHORT_TITLE_CHARS, team, tree)}`;
     });
     return [`${kind} ${rows.length}${shared === undefined ? '' : ` (${shared})`}`, ...firstOf(lines, shown)];
 }
@@ -126,10 +133,10 @@ function kindLines(kind, rows, shown) {
  * every kind, so the whole fits in SHORT_FORM_CHARS; at one each, lines past the budget give way to a `+N more` line.
  */
 function shortCheck(report) {
-    const flags = report.sections.flatMap(({ team, flags: own, context }) => own.map((flag) => ({ flag, team, context })));
+    const flags = report.sections.flatMap(({ team, flags: own, tree }) => own.map((flag) => ({ flag, team, tree })));
     const kinds = FLAG_KINDS.map((kind) => ({
         kind,
-        rows: flags.filter(({ flag }) => flag.kind === kind).sort((a, b) => byPlanOrder(a.flag.task, b.flag.task)),
+        rows: flags.filter(({ flag }) => flag.kind === kind).sort((x, y) => planOrder(x.tree.placeOf(x.flag.task), y.tree.placeOf(y.flag.task))),
     })).filter(({ rows }) => rows.length > 0);
     const teams = report.sections.length > 1 ? ` in ${report.sections.length} team(s)` : '';
     const hint = flags.length + report.skills.length + report.hires.length > 0 ? ' (short form; --all for every flag in full)' : '';
@@ -148,4 +155,17 @@ function shortCheck(report) {
         }
     }
     return fitBudget(linesShowing(1), SHORT_FORM_CHARS, (left) => `+${left} more line(s) (--all for every flag in full)`);
+}
+/**
+ * `start`'s `WAITING ON YOU` block: the active tasks of other sessions that need the session's unfinished tasks or
+ * wait on its decision or approval (TaskTree.waitingOn), in plan order, at most MAX_WAITING_ROWS of them unless
+ * `all`; nothing when none waits.
+ */
+export function waitingOnLines(owner, waiting, tree, all) {
+    if (waiting.length === 0) {
+        return [];
+    }
+    const rows = waiting.map((entry) => `  ${formatWaitingOnYou(entry, SHORT_TITLE_CHARS, tree)}`);
+    const shown = all || rows.length <= MAX_WAITING_ROWS ? rows : [...rows.slice(0, MAX_WAITING_ROWS), `  +${rows.length - MAX_WAITING_ROWS} more (--all lists every one)`];
+    return [`WAITING ON YOU ${waiting.length} task(s) of other sessions wait on ${owner}`, ...shown];
 }

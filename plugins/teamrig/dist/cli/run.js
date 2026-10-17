@@ -48,7 +48,7 @@ const COMMANDS = {
         load: async () => (await registerCommands()).list,
     },
     // --session names the caller on every task and inbox command, so a session can always pass it.
-    show: { effect: 'read', flags: ['session'], load: async () => (await registerCommands()).show },
+    show: { effect: 'read', flags: ['session'], switches: ['tree'], load: async () => (await registerCommands()).show },
     check: { effect: 'read', flags: ['session', 'week'], switches: ['tree', 'all'], load: async () => (await registerCommands()).check },
     plan: { effect: 'read', flags: ['session', 'week'], switches: ['tree'], load: async () => (await registerCommands()).plan },
     verify: { effect: 'read', flags: ['session'], load: async () => (await registerCommands()).verify },
@@ -164,8 +164,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       or teamrig wins and the line stays; without --yes it shows the record and writes nothing
   rules forget <n> [--yes]     (the lead only) drops kept rule n, as rules scan numbers them
   start [--session <id|name>] [--all]   the start of a work block in one call: the UTC time, the
-      unread inbox lines (marked read), the session's tasks, the check flags it acts on (the lead: all)
-      and the week's use; --all: the tasks and flags in full
+      unread inbox lines (marked read), the session's tasks, the other sessions' tasks waiting on it, the
+      check flags it acts on (the lead: all) and the week's use; --all: the tasks and flags in full, and
+      every task waiting on it
   meeting start | meeting agenda | meeting end [--session <id|name>]   the lead's daily meeting with
       the owner: start tells every session by inbox line that messages to the lead wait until its end
       (one starting CRITICAL goes) and prints the agenda: the owner's decisions as card facts, the late
@@ -192,8 +193,10 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       [--note ..]   the lead may change owner, priority, due, week, after and size on any task
   list [--session <owner>] [--status a,b|all] [--source <s>] [--priority p1,p2] [--due-before <date>]
       [--week <date>|none] [--goal <tag>] [--tree] [--all]
-      short rows within 3,000 characters; --all: every field of every task
-  show <id>
+      short rows within 3,000 characters; --all: every field of every task. A task takes the earlier due
+      of a task that needs it ("due 01-12 (from T9)"), and a row names another session's task needing it
+  show <id> [--tree]   every field and the history; --tree: what it needs and what needs it, each with
+      owner, status and due, then the next move (who acts first, on which task)
   check [--week <date>] [--tree] [--all]   tasks and skills that break a team rule,
       in a short form within 3,000 characters; --all: every flag in full
   plan [--week <date>] [--tree]    the week plan (default: the newest week that has started)
