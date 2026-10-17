@@ -46,7 +46,10 @@ export function planOrder(a, b) {
     const dueB = b.at ?? Number.POSITIVE_INFINITY;
     return a.priority - b.priority || (dueA === dueB ? 0 : dueA < dueB ? -1 : 1) || taskNumber(a.id) - taskNumber(b.id);
 }
-/** The tree of one register read at `now`. */
+/**
+ * The tree of one register read at `now`, over teamrig's tasks or a reader's own rows ({@link TreeTask}): what it
+ * hands back (a needer, a move's task, a waiting task) is one of those rows.
+ */
 export class TaskTree {
     /** How the same read judges a waiting task's reasons ready. */
     context;
@@ -77,6 +80,20 @@ export class TaskTree {
     /** The active tasks that need it, by number. */
     neededBy(id) {
         return this.needers.get(id) ?? [];
+    }
+    /**
+     * Whom an active task holds up beyond its owner: the active tasks of other owners that need it, the one with the
+     * earliest effective due first, then in plan order. Empty for a finished task or one the read lacks.
+     */
+    neededByOthers(id) {
+        const task = this.tasks.get(id);
+        if (task === undefined || !isActive(task)) {
+            return [];
+        }
+        const dueAt = (needer) => this.effectiveDue(needer.id)?.at ?? Number.POSITIVE_INFINITY;
+        return this.neededBy(id)
+            .filter((needer) => needer.owner !== task.owner)
+            .sort((a, b) => (dueAt(a) === dueAt(b) ? this.byPlanOrder(a, b) : dueAt(a) < dueAt(b) ? -1 : 1));
     }
     /**
      * The earliest of the task's own due and the effective due of every active task that needs it, so work that holds
