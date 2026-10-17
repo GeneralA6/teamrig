@@ -13,6 +13,7 @@ import {
   formatVerifyByLine,
   formatVerifyRow,
   formatVerifySummary,
+  personWaitNotice,
   selectTasks,
   sizeText,
 } from './views.ts';
@@ -243,6 +244,23 @@ describe('formatEvent and formatTaskDetail', () => {
     assert.ok(formatTaskDetail(sized, []).split('\n').includes('size: 1.25% of the weekly limit'));
     assert.ok(!formatTaskDetail(testTask(), []).includes('size'), 'a task with none prints no line');
     assert.deepEqual([sizeText(2), sizeText(0.125), sizeText(33.333)], ['2%', '0.13%', '33.33%']);
+  });
+});
+
+describe('personWaitNotice', () => {
+  const task = testTask({ id: 'T2', note: 'pick the  backup\nwindow', title: 'Move the backups' });
+
+  it("tells the lead what the task waits on, the lead's waits as its own, the owner's by name, with the note on one line", () => {
+    assert.equal(personWaitNotice(task, [{ kind: 'approval', who: 'lead' }], 'lead'), 'T2 waits on your approval: pick the backup window');
+    assert.equal(personWaitNotice(task, [{ kind: 'decision', who: 'owner' }], 'lead'), "T2 waits on the owner's decision: pick the backup window");
+    assert.equal(
+      personWaitNotice(task, [{ kind: 'decision', who: 'owner' }, { kind: 'approval', who: 'lead' }, { kind: 'approval', who: 'owner' }], 'lead'),
+      "T2 waits on your approval and the owner's decision and approval: pick the backup window",
+    );
+  });
+
+  it('names the title when the task has no note', () => {
+    assert.equal(personWaitNotice({ ...task, note: null }, [{ kind: 'decision', who: 'lead' }], 'lead'), 'T2 waits on your decision: Move the backups');
   });
 });
 
