@@ -6,7 +6,7 @@ import { ACTIVE_STATUSES, priorityText } from './model.ts';
 import type { RegisterSnapshot } from './snapshot.ts';
 import { verifyingNeeds } from './verify.ts';
 import { byPlanOrder, dueTime, formatTask } from './views.ts';
-import { allReady, isReady, unfinishedAfter, waitContext, type WaitContext } from './waits.ts';
+import { allReady, isPeerWait, isReady, unfinishedAfter, waitContext, waitSpelling, type WaitContext } from './waits.ts';
 
 /** In report order: the most urgent first. */
 export const FLAG_KINDS = [
@@ -15,6 +15,7 @@ export const FLAG_KINDS = [
   'VERIFY-BLOCKS',
   'READY',
   'NO-REASON',
+  'PEER-WAIT',
   'NOT-PICKED-UP',
   'PRIORITY-SKIP',
   'PILE-UP',
@@ -116,6 +117,20 @@ interface WeekPlan {
   readonly week: string;
   readonly start: number;
   readonly end: number;
+}
+
+/**
+ * PEER-WAIT: waiting on a decision or an approval of a peer (anyone but the lead and the owner), as a line from an
+ * older teamrig reads: a peer's work is a task, waited on by its id, which clears by itself once that task finishes.
+ * Apart from {@link checkTasks}, whose register config does not name the lead.
+ */
+export function peerWaitFlags(tasks: Iterable<Task>, lead: string, ownerSource: string): Flag[] {
+  return [...tasks].flatMap((task) => {
+    const peer = task.status === 'waiting' ? task.waits.find((reason) => isPeerWait(reason, lead, ownerSource)) : undefined;
+    return peer === undefined
+      ? []
+      : [{ kind: 'PEER-WAIT' as const, task, detail: `${waitSpelling(peer)} is a peer's work: wait on it by its task (set ${task.id} --status waiting --ask ${peer.who} --text "<the work>")` }];
+  });
 }
 
 function weekPlan(week: string | null, lengthDays: number): WeekPlan | undefined {
