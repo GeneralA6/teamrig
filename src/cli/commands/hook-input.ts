@@ -5,6 +5,7 @@ import { isRecord, stringField } from '../../core/guards.ts';
 import { claudeConfigDir, ENV } from '../../core/home.ts';
 import { resolveTeam, type TeamResolution } from '../../core/team.ts';
 import { OwnPaths } from '../../hooks/lead-boundary.ts';
+import { sessionIdOf } from '../../inbox/inbox.ts';
 import { indexMarks } from '../../inbox/marks.ts';
 import { teamFolders, type Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
@@ -61,6 +62,18 @@ export async function markedSessionOf(runtime: CliRuntime, kit: Kit, roster: Ros
   const { marks } = await inboxDepsOf(runtime, kit.paths).marks.read();
   const area = indexMarks(marks).areaBySession.get(claudeSession);
   return area !== undefined && roster.ids.includes(area) ? area : undefined;
+}
+
+/**
+ * `markedSessionOf` for a start's context (a session's or its helper's), which must always load: a failed
+ * read means no session. A helper's hooks carry the session id of the session that started it.
+ */
+export async function startSessionOf(runtime: CliRuntime, kit: Kit, roster: Roster, payload: unknown): Promise<string | undefined> {
+  try {
+    return await markedSessionOf(runtime, kit, roster, sessionIdOf(payload));
+  } catch {
+    return undefined;
+  }
 }
 
 /** The lead's own paths in this team: its teamrig folder, Claude Code's memory folders and `leadBoundary.ownPaths`. */
