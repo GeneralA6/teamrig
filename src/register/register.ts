@@ -3,9 +3,10 @@ import { NewerDataError } from '../core/jsonl.ts';
 import type { Clock, Mutex } from '../core/lock.ts';
 import { EVENT_VERSION, type CreateEvent, type RegisterEvent, type StatusEvent, type TaskFields, type UpdateEvent } from './events.ts';
 import { foldEvents, taskNumber, type RegisterState, type Task } from './fold.ts';
-import { GITHUB_ACTOR, NO_SKILL, type AddInput, type ImportChanges, type ImportInput, type RegisterPolicy, type StatusInput, type Verdict } from './policy.ts';
+import { GITHUB_ACTOR, NO_SKILL, type AddInput, type AskInput, type ImportChanges, type ImportInput, type RegisterPolicy, type StatusContext, type StatusInput, type Verdict } from './policy.ts';
 import { isWritable, type RegisterSnapshot } from './snapshot.ts';
 import type { EventLog } from './store.ts';
+import type { WaitReason } from './waits.ts';
 
 /** Tells whether a skill exists, so `done --skill <name>` cannot cite one that was never written. */
 export interface SkillCatalog {
@@ -38,14 +39,22 @@ export interface WriteResult {
   readonly before: Task | null;
   /** The register after the write, so a reader judges the task against the others (a waiting task's reasons). */
   readonly state: RegisterState;
-  /** The last event written: the status event of a `set` that also moved the due date before it. */
+  /** The last event written: the status event of a `set` that also moved the due date or asked for a task before it. */
   readonly event: RegisterEvent;
+  /** Every event written, oldest first, ending with {@link event}. */
+  readonly events: readonly RegisterEvent[];
   readonly rotation: RotationOutcome;
+}
+
+/** A `set --ask`: the caller's task, now waiting, and the task the ask created. */
+export interface AskResult extends WriteResult {
+  /** The task the ask created, owned by the session asked. */
+  readonly asked: Task;
 }
 
 /**
  * The register's write path: under the lock, read the log, replay it, apply the team policy,
- * append one event and return the task as it now stands. Reads take no lock.
+ * append its events and return the task as it now stands. Reads take no lock.
  */
 export class Register {
   private readonly deps: RegisterDeps;
@@ -104,24 +113,43 @@ export class Register {
   }
 
   async setStatus(caller: string, id: string, input: StatusInput): Promise<Verdict<WriteResult>> {
-    const skill = input.skill?.trim();
-    const skillExists = skill === undefined || skill === '' || skill === NO_SKILL || (await this.deps.skills.exists(skill));
+    const skillExists = await this.skillExists(input);
     return this.commit(caller, (snapshot) =>
+      onTask(snapshot, id, (task) => this.statusEvents(task, caller, input, { state: snapshot.state, now: new Date(this.deps.clock.now()), skillExists })),
+    );
+  }
+
+  /**
+   * `set <id> --status waiting --ask <session> --text "<the work>"`, in one write: the task asked of that session, then
+   * the caller's task set waiting on it (after any `--waits` reasons given), so neither lands without the other. The
+   * status is judged on the register with the asked task in it; with no `--note`, the work asked for is the note.
+   */
+  async ask(caller: string, id: string, ask: AskInput, input: StatusInput): Promise<Verdict<AskResult>> {
+    const skillExists = await this.skillExists(input);
+    const written = await this.commit(caller, (snapshot) =>
       onTask(snapshot, id, (task) => {
-        const now = new Date(this.deps.clock.now());
-        const change = this.deps.policy.setStatus(task, caller, input, { state: snapshot.state, now, skillExists });
-        if (!change.ok) {
-          return change;
+        const fields = this.deps.policy.ask(task, caller, ask, input, snapshot.state);
+        if (!fields.ok) {
+          return fields;
         }
-        const { due, ...status } = change.value;
-        const event: StatusEvent = { ...this.base(id, caller), type: 'status', ...status };
-        if (due === undefined) {
-          return { ok: true, value: [event] };
-        }
-        const dated: UpdateEvent = { ...this.base(id, caller), type: 'update', changes: { due }, note: null };
-        return { ok: true, value: [dated, event] };
+        const askedId = snapshot.state.nextId;
+        const created: CreateEvent = { ...this.base(askedId, caller), type: 'create', task: fields.value };
+        const state = foldEvents([created], [], snapshot.state);
+        const waits: readonly WaitReason[] = [...(input.waits ?? []), { kind: 'task', id: askedId }];
+        const asking: StatusInput = { ...input, waits, note: input.note ?? fields.value.title };
+        const status = this.statusEvents(task, caller, asking, { state, now: new Date(this.deps.clock.now()), skillExists });
+        return status.ok ? { ok: true, value: [created, ...status.value] } : status;
       }),
     );
+    if (!written.ok) {
+      return written;
+    }
+    const [created] = written.value.events;
+    const asked = created === undefined ? undefined : written.value.state.tasks.get(created.id);
+    if (asked === undefined) {
+      throw new Error(`the ask for ${id} wrote no task`);
+    }
+    return { ok: true, value: { ...written.value, asked } };
   }
 
   update(caller: string, id: string, changes: Partial<TaskFields>, note: string | undefined): Promise<Verdict<WriteResult>> {
@@ -135,6 +163,27 @@ export class Register {
         return { ok: true, value: [event] };
       }),
     );
+  }
+
+  /** Whether the skill a status change cites exists; true when it cites none. */
+  private async skillExists(input: StatusInput): Promise<boolean> {
+    const skill = input.skill?.trim();
+    return skill === undefined || skill === '' || skill === NO_SKILL || (await this.deps.skills.exists(skill));
+  }
+
+  /** A status change as events: the status, after an update that moves the due date when the change sets one. */
+  private statusEvents(task: Task, caller: string, input: StatusInput, context: StatusContext): Verdict<readonly RegisterEvent[]> {
+    const change = this.deps.policy.setStatus(task, caller, input, context);
+    if (!change.ok) {
+      return change;
+    }
+    const { due, ...status } = change.value;
+    const event: StatusEvent = { ...this.base(task.id, caller), type: 'status', ...status };
+    if (due === undefined) {
+      return { ok: true, value: [event] };
+    }
+    const dated: UpdateEvent = { ...this.base(task.id, caller), type: 'update', changes: { due }, note: null };
+    return { ok: true, value: [dated, event] };
   }
 
   private created(by: string, id: string, fields: Verdict<TaskFields>): Verdict<RegisterEvent> {
@@ -159,8 +208,8 @@ export class Register {
   }
 
   /**
-   * Under the lock: refuse newer data, read the working set, decide on the events of one task (one, or a
-   * due date and a status), append them, rotate the log when it is due and the team has not turned that
+   * Under the lock: refuse newer data, read the working set, decide on the events (one; a due date and a status;
+   * or an asked task and the status that waits on it), append them, rotate the log when it is due and the team has not turned that
    * off, and return the task after the events.
    */
   private write(decide: (snapshot: RegisterSnapshot) => Verdict<readonly RegisterEvent[]>): Promise<Verdict<WriteResult>> {
@@ -185,7 +234,7 @@ export class Register {
         throw new Error(`${event.id} is missing after its own write`);
       }
       const before = snapshot.state.tasks.get(event.id) ?? null;
-      return { ok: true, value: { task, before, state, event, rotation: await this.rotation(snapshot) } };
+      return { ok: true, value: { task, before, state, event, events, rotation: await this.rotation(snapshot) } };
     });
   }
 

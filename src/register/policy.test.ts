@@ -4,7 +4,7 @@ import { MAX_DESCRIPTION } from '../config/defaults.ts';
 import { testConfig } from '../testing/config.ts';
 import { testTask } from '../testing/task.ts';
 import { foldEvents, type RegisterState, type Task } from './fold.ts';
-import { DESCRIPTION_NEEDED, GITHUB_ACTOR, normaliseTitle, RegisterPolicy, type AddInput, type ImportInput, type StatusContext, type Verdict } from './policy.ts';
+import { DESCRIPTION_NEEDED, GITHUB_ACTOR, normaliseTitle, RegisterPolicy, type AddInput, type AskInput, type ImportInput, type StatusContext, type Verdict } from './policy.ts';
 import type { WaitReason } from './waits.ts';
 
 const EMPTY: RegisterState = foldEvents([]);
@@ -286,7 +286,7 @@ describe('RegisterPolicy.setStatus to waiting', () => {
   it('keeps every kind of reason, each named once', () => {
     const waits: WaitReason[] = [
       { kind: 'decision', who: 'owner' },
-      { kind: 'approval', who: 'bravo' },
+      { kind: 'approval', who: 'lead' },
       { kind: 'task', id: 'T4' },
       { kind: 'time', at: '2030-01-09 13:00' },
     ];
@@ -299,9 +299,20 @@ describe('RegisterPolicy.setStatus to waiting', () => {
     assert.equal(error(waiting(TASK, [...OWNER_DECISION, ...OWNER_DECISION])), '--waits names decision:owner twice');
   });
 
-  it('names who decides or approves: a session of the team or the owner', () => {
-    assert.equal(error(waiting(TASK, [{ kind: 'approval', who: 'charlie' }])), 'approval charlie: charlie is neither a session on this team nor owner');
+  it('names who decides or approves: the lead or the owner', () => {
+    assert.equal(error(waiting(TASK, [{ kind: 'approval', who: 'charlie' }])), 'approval charlie: charlie is neither the lead (lead) nor owner');
     assert.equal(waiting(TASK, [{ kind: 'decision', who: 'lead' }]).ok, true);
+    assert.equal(waiting(TASK, [{ kind: 'approval', who: 'owner' }]).ok, true);
+  });
+
+  it("refuses a peer's decision or approval, naming the task to wait on instead", () => {
+    assert.equal(
+      error(waiting(TASK, [{ kind: 'approval', who: 'bravo' }])),
+      `approval bravo: decision and approval waits are for the lead (lead) and owner; wait on bravo's work by its task: teamrig set T1 --status waiting --ask bravo --text "<the work you need>"`,
+    );
+    assert.match(error(waiting(TASK, [{ kind: 'task', id: 'T4' }, { kind: 'decision', who: 'alpha' }])), /^decision alpha: decision and approval waits are for the lead/);
+    const led = new RegisterPolicy(testConfig({ roles: { lead: 'bravo' } }));
+    assert.equal(led.setStatus(TASK, 'alpha', { status: 'waiting', note: 'x', waits: [{ kind: 'approval', who: 'bravo' }] }, CTX).ok, true, 'the lead is whoever roles.lead names');
   });
 
   it('waits on a task only once started, and only on another live task', () => {
@@ -329,6 +340,59 @@ describe('RegisterPolicy.setStatus to waiting', () => {
     const more = [...OWNER_DECISION, { kind: 'approval' as const, who: 'owner' }];
     assert.equal(relaxed.setStatus(held, 'alpha', { status: 'waiting', waits: more }, CTX).ok, true, 'new reasons need no note');
     assert.match(error(relaxed.setStatus(held, 'alpha', { status: 'waiting', waits: [...OWNER_DECISION] }, CTX)), /already waiting/);
+  });
+});
+
+describe('RegisterPolicy.ask', () => {
+  const policy = new RegisterPolicy(testConfig());
+  const PLANNED = testTask({ status: 'in-progress', startedAt: '2030-01-07T10:00:00.000Z', priority: 1, goals: ['launch'], week: '2030-01-07', title: 'Ship the release' });
+  const ASK: AskInput = { owner: 'bravo', title: 'Land the schema change', due: '2030-01-10' };
+  const WAITING = { status: 'waiting' as const };
+  const asking = (task: Task, caller = 'alpha', ask: AskInput = ASK, state: RegisterState = stateOf(task)) => policy.ask(task, caller, ask, WAITING, state);
+
+  it("drafts the asked session's task: from the caller, at the task's priority, with its goals, naming it", () => {
+    assert.deepEqual(asking(PLANNED), {
+      ok: true,
+      value: {
+        title: 'Land the schema change',
+        description: 'Asked by alpha for T1 (Ship the release), which waits on this task.',
+        owner: 'bravo',
+        source: 'alpha',
+        ref: null,
+        priority: 1,
+        due: '2030-01-10',
+        goals: ['launch'],
+        week: null,
+        after: [],
+        size: null,
+      },
+    });
+    const undated = asking(PLANNED, 'alpha', { owner: 'alpha', title: 'Write the migration' });
+    assert.equal(undated.ok && undated.value.due, null, 'no --due leaves the task undated; a session may ask itself');
+  });
+
+  it('asks only for its own started task, and only to wait on it', () => {
+    assert.equal(error(asking(PLANNED, 'bravo')), 'only the owner (alpha) sets the status of T1');
+    assert.equal(error(policy.ask(PLANNED, 'alpha', ASK, { status: 'done' }, stateOf(PLANNED))), '--ask goes only with --status waiting');
+    assert.equal(
+      error(asking(testTask({ status: 'open' }))),
+      'T1 has not started, so it does not wait: ask with teamrig add --owner bravo --title "Land the schema change", then plan T1 after that task (teamrig update T1 --after <its id>)',
+    );
+  });
+
+  it('waits on an active task of the same title instead of adding it twice', () => {
+    const tracked = testTask({ id: 'T2', status: 'open', owner: 'bravo', title: 'land the  schema change' });
+    assert.equal(
+      error(asking(PLANNED, 'alpha', ASK, stateOf(PLANNED, tracked))),
+      'T2 already tracks this (open, owner bravo): wait on it with --waits task:T2',
+    );
+    assert.equal(asking(PLANNED, 'alpha', ASK, stateOf(PLANNED, { ...tracked, status: 'done' })).ok, true, 'a finished one is no duplicate');
+  });
+
+  it('judges the asked task as add does', () => {
+    assert.match(error(asking(PLANNED, 'alpha', { ...ASK, owner: 'charlie' })), /owner charlie is not a session/);
+    assert.match(error(asking(PLANNED, 'alpha', { ...ASK, due: 'friday' })), /due friday is not/);
+    assert.match(error(asking(PLANNED, 'alpha', { ...ASK, title: 'x'.repeat(141) })), /141 characters; the limit is 140/);
   });
 });
 

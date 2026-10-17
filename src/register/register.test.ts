@@ -168,6 +168,54 @@ describe('Register', () => {
   });
 });
 
+describe('Register.ask', () => {
+  const ASK = { owner: 'bravo', title: 'Land the schema change', due: '2030-01-10' };
+
+  async function started() {
+    const kit = setup();
+    written(await kit.register.add('lead', { title: 'Ship it', description: 'what and why', owner: 'alpha', source: 'owner', priority: 1, goals: ['launch'] }));
+    written(await kit.register.setStatus('alpha', 'T1', { status: 'in-progress' }));
+    return kit;
+  }
+
+  it('adds the asked task and sets the caller waiting on it, in one append under one lock', async () => {
+    const { files, mutex, register } = await started();
+    const appended = files.get(LOG)?.length ?? 0;
+    const runs = mutex.runs;
+    const verdict = await register.ask('alpha', 'T1', ASK, { status: 'waiting' });
+    assert.ok(verdict.ok, verdict.ok ? '' : verdict.error);
+    const { asked, task, before, events, event } = verdict.value;
+    assert.deepEqual(
+      [asked.id, asked.owner, asked.source, asked.priority, asked.due, asked.goals, asked.status],
+      ['T2', 'bravo', 'alpha', 1, '2030-01-10', ['launch'], 'open'],
+    );
+    assert.deepEqual([task.id, task.status, task.waits, task.note], ['T1', 'waiting', [{ kind: 'task', id: 'T2' }], 'Land the schema change']);
+    assert.equal(before?.status, 'in-progress');
+    assert.equal(mutex.runs, runs + 1);
+    assert.deepEqual(readEvents((files.get(LOG) ?? '').slice(appended)).events, events);
+    assert.deepEqual(events.map((written) => `${written.type} ${written.id}`), ['create T2', 'status T1']);
+    assert.equal(event, events[1]);
+  });
+
+  it('keeps the reasons and note given, the asked task last', async () => {
+    const { register } = await started();
+    const verdict = await register.ask('alpha', 'T1', ASK, { status: 'waiting', note: 'needs the new column', waits: [{ kind: 'decision', who: 'owner' }] });
+    assert.ok(verdict.ok, verdict.ok ? '' : verdict.error);
+    assert.deepEqual(verdict.value.task.waits, [{ kind: 'decision', who: 'owner' }, { kind: 'task', id: 'T2' }]);
+    assert.equal(verdict.value.task.note, 'needs the new column');
+  });
+
+  it('writes nothing when the ask or the status is refused', async () => {
+    const { files, register } = await started();
+    const log = files.get(LOG);
+    assert.match(errorOf(await register.ask('alpha', 'T7', ASK, { status: 'waiting' })), /no task T7/);
+    assert.equal(errorOf(await register.ask('bravo', 'T1', ASK, { status: 'waiting' })), 'only the owner (alpha) sets the status of T1');
+    assert.match(errorOf(await register.ask('alpha', 'T1', ASK, { status: 'waiting', waits: [{ kind: 'approval', who: 'bravo' }] })), /^approval bravo: decision and approval waits/);
+    assert.match(errorOf(await register.ask('alpha', 'T1', ASK, { status: 'waiting', skill: 'web-deploy' })), /--skill goes only with done/);
+    assert.equal(files.get(LOG), log);
+  });
+});
+
 describe('Register on a rotated log', () => {
   async function rotated() {
     const world = setup();

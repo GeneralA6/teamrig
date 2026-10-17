@@ -4,6 +4,7 @@ import type { TaskStatus } from './model.ts';
 import {
   allReady,
   isFinished,
+  isPeerWait,
   isReady,
   isWaitKind,
   parseWaits,
@@ -47,6 +48,24 @@ describe('waitSpelling, sameWait and isWaitKind', () => {
     assert.equal(isWaitKind('time'), true);
     assert.equal(isWaitKind('blocked'), false);
     assert.equal(isWaitKind(4), false);
+  });
+});
+
+describe('isPeerWait', () => {
+  it("is a peer's decision or approval: anyone's but the lead's and the owner's", () => {
+    const reasons: readonly WaitReason[] = [
+      DECISION,
+      APPROVAL,
+      { kind: 'decision', who: 'alpha' },
+      { kind: 'approval', who: 'bravo' },
+      { kind: 'task', id: 'T5' },
+      { kind: 'time', at: '2030-01-11' },
+    ];
+    assert.deepEqual(
+      reasons.map((reason) => isPeerWait(reason, 'lead', 'owner')),
+      [false, false, true, true, false, false],
+    );
+    assert.equal(isPeerWait(APPROVAL, 'alpha', 'owner'), true, 'the lead is whoever the team config names');
   });
 });
 
