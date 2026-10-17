@@ -16,6 +16,7 @@ import { JsonlHintLog } from '../../hooks/hint-log.ts';
 import { promptOutput } from '../../hooks/prompt-output.ts';
 import { showsLiveTasks } from '../../hooks/live-tasks.ts';
 import { requirementsNoteOnce } from '../../hooks/requirements-note.ts';
+import { helperOf } from '../../hooks/helper-start.ts';
 import { sessionStartContext, sessionStartOutput, type SessionStartInput } from '../../hooks/session-start.ts';
 import { stopModelNotices } from '../../hooks/stop-model.ts';
 import { leadStopLine, leadTallyOf } from '../../hooks/lead-boundary.ts';
@@ -52,7 +53,8 @@ import { liveTasksNoteOf } from './live-tasks.ts';
 import { droppedEditReasonOf } from './hook-dropped-edit.ts';
 import { meetingHold } from './hook-meeting.ts';
 import { armRestart, restartTargetOf } from './hook-restart.ts';
-import { envSession, leadOwnPaths, markedSessionOf, parseJson, sessionTeam, teamSessionOf } from './hook-input.ts';
+import { helperContextOf } from './hook-helper-start.ts';
+import { envSession, leadOwnPaths, parseJson, sessionTeam, startSessionOf, teamSessionOf } from './hook-input.ts';
 import { retireAskReasonOf } from './retire-ask.ts';
 import { verifyByLinesOf, verifyNoteOf } from './verify-queue.ts';
 
@@ -98,15 +100,6 @@ export async function pushGuard(args: ParsedArgs, runtime: CliRuntime): Promise<
     runtime.out.stdout(output);
   }
   return EXIT.ok;
-}
-
-/** `markedSessionOf` for the SessionStart context, which must always load: a failed read means no session. */
-async function startSessionOf(runtime: CliRuntime, kit: Kit, roster: Roster, payload: unknown): Promise<string | undefined> {
-  try {
-    return await markedSessionOf(runtime, kit, roster, sessionIdOf(payload));
-  } catch {
-    return undefined;
-  }
 }
 
 /**
@@ -594,7 +587,9 @@ export async function stop(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
 
 /**
  * SessionStart: the core rules from the team config, who the session is (after a refresh, its handover; after a
- * refresh or a compaction, its live tasks), and the team's rules.md.
+ * refresh or a compaction, its live tasks), and the team's rules.md. A compaction inside a helper fires it too,
+ * under the session's id: that start gets the helper's context (hook-helper-start.ts) and binds, renames and
+ * refreshes nothing.
  */
 export async function sessionStart(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
@@ -610,6 +605,12 @@ export async function sessionStart(args: ParsedArgs, runtime: CliRuntime): Promi
       break;
   }
   const kit = await openKit(runtime, found.team);
+  const helper = helperOf(payload);
+  if (helper !== undefined) {
+    // A compaction inside a helper: the helper's rules again, and none of the session's side effects.
+    runtime.out.stdout(sessionStartOutput(await helperContextOf(runtime, kit, payload, helper.agentType)));
+    return EXIT.ok;
+  }
   const parts: TeamParts =
     kit.load.status === 'loaded'
       ? await teamPartsOf(runtime, kit, kit.load.config, payload)
