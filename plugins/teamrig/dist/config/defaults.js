@@ -94,6 +94,8 @@ export const DEFAULT_GITHUB = { repos: [], owners: {}, sessions: {}, closedDays:
 /**
  * Claude Code compacts a 200k window at about 167k, so 120k refreshes before that; every 3 tasks catches a
  * session that grows slowly, from 80k up. Measured over 8 days of 12 sessions: about 9 refreshes a day in all.
+ * The user types /clear for the fresh start (`autoRestart` off): an automatic /clear wiped the screen while the
+ * user was still reading the last reply, still had its question to answer, or was away.
  */
 export const DEFAULT_REFRESH = {
     enabled: true,
@@ -101,7 +103,7 @@ export const DEFAULT_REFRESH = {
     everyTasks: 3,
     everyTasksMinTokens: 80_000,
     tabTitle: true,
-    autoRestart: true,
+    autoRestart: false,
     restartDelaySeconds: 15,
     endCommand: [],
 };
