@@ -15,6 +15,7 @@ import { JsonlHintLog } from "../../hooks/hint-log.js";
 import { promptOutput } from "../../hooks/prompt-output.js";
 import { showsLiveTasks } from "../../hooks/live-tasks.js";
 import { requirementsNoteOnce } from "../../hooks/requirements-note.js";
+import { helperOf } from "../../hooks/helper-start.js";
 import { sessionStartContext, sessionStartOutput } from "../../hooks/session-start.js";
 import { stopModelNotices } from "../../hooks/stop-model.js";
 import { leadStopLine, leadTallyOf } from "../../hooks/lead-boundary.js";
@@ -41,7 +42,8 @@ import { liveTasksNoteOf } from "./live-tasks.js";
 import { droppedEditReasonOf } from "./hook-dropped-edit.js";
 import { meetingHold } from "./hook-meeting.js";
 import { armRestart, restartTargetOf } from "./hook-restart.js";
-import { envSession, leadOwnPaths, markedSessionOf, parseJson, sessionTeam, teamSessionOf } from "./hook-input.js";
+import { helperContextOf } from "./hook-helper-start.js";
+import { envSession, leadOwnPaths, parseJson, sessionTeam, startSessionOf, teamSessionOf } from "./hook-input.js";
 import { retireAskReasonOf } from "./retire-ask.js";
 import { verifyByLinesOf, verifyNoteOf } from "./verify-queue.js";
 /**
@@ -80,15 +82,6 @@ export async function pushGuard(args, runtime) {
         runtime.out.stdout(output);
     }
     return EXIT.ok;
-}
-/** `markedSessionOf` for the SessionStart context, which must always load: a failed read means no session. */
-async function startSessionOf(runtime, kit, roster, payload) {
-    try {
-        return await markedSessionOf(runtime, kit, roster, sessionIdOf(payload));
-    }
-    catch {
-        return undefined;
-    }
 }
 /**
  * A Claude Code rename (`--name`, `/rename`) of the session becomes its new team name: recorded in
@@ -533,7 +526,9 @@ export async function stop(args, runtime) {
 }
 /**
  * SessionStart: the core rules from the team config, who the session is (after a refresh, its handover; after a
- * refresh or a compaction, its live tasks), and the team's rules.md.
+ * refresh or a compaction, its live tasks), and the team's rules.md. A compaction inside a helper fires it too,
+ * under the session's id: that start gets the helper's context (hook-helper-start.ts) and binds, renames and
+ * refreshes nothing.
  */
 export async function sessionStart(args, runtime) {
     noPositionals(args);
@@ -549,6 +544,12 @@ export async function sessionStart(args, runtime) {
             break;
     }
     const kit = await openKit(runtime, found.team);
+    const helper = helperOf(payload);
+    if (helper !== undefined) {
+        // A compaction inside a helper: the helper's rules again, and none of the session's side effects.
+        runtime.out.stdout(sessionStartOutput(await helperContextOf(runtime, kit, payload, helper.agentType)));
+        return EXIT.ok;
+    }
     const parts = kit.load.status === 'loaded'
         ? await teamPartsOf(runtime, kit, kit.load.config, payload)
         : {

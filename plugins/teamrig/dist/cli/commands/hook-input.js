@@ -3,6 +3,7 @@ import { isRecord, stringField } from "../../core/guards.js";
 import { claudeConfigDir, ENV } from "../../core/home.js";
 import { resolveTeam } from "../../core/team.js";
 import { OwnPaths } from "../../hooks/lead-boundary.js";
+import { sessionIdOf } from "../../inbox/inbox.js";
 import { indexMarks } from "../../inbox/marks.js";
 import { teamFolders } from "../kit.js";
 import { inboxDepsOf } from "./inbox.js";
@@ -54,6 +55,18 @@ export async function markedSessionOf(runtime, kit, roster, claudeSession) {
     const { marks } = await inboxDepsOf(runtime, kit.paths).marks.read();
     const area = indexMarks(marks).areaBySession.get(claudeSession);
     return area !== undefined && roster.ids.includes(area) ? area : undefined;
+}
+/**
+ * `markedSessionOf` for a start's context (a session's or its helper's), which must always load: a failed
+ * read means no session. A helper's hooks carry the session id of the session that started it.
+ */
+export async function startSessionOf(runtime, kit, roster, payload) {
+    try {
+        return await markedSessionOf(runtime, kit, roster, sessionIdOf(payload));
+    }
+    catch {
+        return undefined;
+    }
 }
 /** The lead's own paths in this team: its teamrig folder, Claude Code's memory folders and `leadBoundary.ownPaths`. */
 export function leadOwnPaths(runtime, kit, config) {
