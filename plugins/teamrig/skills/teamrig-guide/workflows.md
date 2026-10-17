@@ -198,7 +198,9 @@ count with `refresh.everyTasks: 0`. A `/clear`, a new process or a compaction st
 ## Use a helper
 
 A helper (a subagent) keeps file dumps and long output out of your context. Pick who does a job, and on which
-model, by fit for the task, never by its length.
+model, by fit for the task, never by its length. A helper starts with the team rules and knows it is yours: it
+leaves task statuses, register entries and messages to you unless its brief asks for them, so say so in the brief
+when it should.
 
 1. Run the helper on your own model and effort: a cheaper one misses things the caller then builds on.
 2. When others will build on its results, have it write its full findings (raw numbers, file and line, what it

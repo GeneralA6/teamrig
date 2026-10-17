@@ -1746,7 +1746,8 @@ by hand. What each does: [hooks.md](hooks.md).
 
 ### teamrig hook session-start
 
-Injects the team rules, who you are and your team's `rules.md` when a session starts, resumes or is cleared.
+Injects the team rules, who you are and your team's `rules.md` when a session starts, resumes, is cleared or is
+compacted. A compaction inside a helper gets the helper's context instead ([A helper's start](hooks.md#a-helpers-start)).
 
 Flags: none.
 
@@ -1884,6 +1885,22 @@ teamrig hook stop < stop.json
 ```
 
 Output: nothing on most turns; otherwise a JSON `block` decision whose reason tells you to redo the skill edit or to write the handover.
+
+### teamrig hook subagent-start
+
+Gives a helper, as it starts, the team rules, your team's `rules.md` and whose helper it is, in a helper's words: it
+leaves task statuses, register entries and messages to its session unless its brief asks for them
+([A helper's start](hooks.md#a-helpers-start)). It changes no file.
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig hook subagent-start < subagent-start.json
+```
+
+Output: a JSON object whose `hookSpecificOutput.additionalContext` holds the helper's rules.
 
 ### teamrig hook subagent-stop
 When a helper is about to hand back, sends it back once to a skill edit of its run that Claude Code refused and it
