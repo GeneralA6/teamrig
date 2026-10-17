@@ -221,7 +221,8 @@ stateDiagram-v2
   with the proof as evidence. Work that needs it waits for that proof: its start is refused until then
   (`register.verifyGate`), and the owner hears of it in its inbox.
 - `waiting` is a started task that cannot go on, with every reason it waits for (`--waits`): a decision or an
-  approval (a session's or the owner's), another task to finish first, or a time. It stays waiting until all of
+  approval (the lead's or the owner's; a peer's work is a task, asked for with `set --ask`), another task to
+  finish first, or a time. It stays waiting until all of
   them have cleared: a task when it is done or dropped, a time when it passes, a decision or an approval only when
   the owner sets the next status. A task not started that needs another first is not waiting: it stays `open`,
   planned after it (`teamrig update T3 --after T2`), and its line shows `after T2`. A `blocked` written by an
@@ -231,7 +232,7 @@ stateDiagram-v2
   any session may add a `--note` alone as context.
 - `teamrig check` reports tasks past due, not picked up 24 hours after they were handed out, untouched for 72 hours,
   or due this week but left out of the week's plan, and owner orders left out of it. A verifying task past its due
-  date is `VERIFY-OVERDUE`: it was not verified by then. One with a due date is not called stale while it waits. A verifying task another task needs is `VERIFY-BLOCKS`, and a session holding more than 5 (`register.maxVerifying`) gets a `PILE-UP` on its oldest. The first sized task of the week that no longer fits the weekly usage limit left is `OVER-LIMIT` (`plan` prints that line). A waiting task whose every reason has cleared is `READY`. It also reports a session that
+  date is `VERIFY-OVERDUE`: it was not verified by then. One with a due date is not called stale while it waits. A verifying task another task needs is `VERIFY-BLOCKS`, and a session holding more than 5 (`register.maxVerifying`) gets a `PILE-UP` on its oldest. The first sized task of the week that no longer fits the weekly usage limit left is `OVER-LIMIT` (`plan` prints that line). A waiting task whose every reason has cleared is `READY`, and one waiting on a peer's decision or approval, as an older teamrig wrote it, is `PEER-WAIT`. It also reports a session that
   skips its own priorities: `PRIORITY-SKIP` is a task in progress for over 24 hours
   (`register.check.prioritySkipAfterHours`) while the same session has an open p1 free to start (every task it comes after finished), counted from the latest change of
   owner, status or priority on either task. `OFF-GOAL` is a task in progress with no goal outside the week's plan:

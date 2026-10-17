@@ -51,7 +51,7 @@ reboot.*
 
 And the basics, done right: every task says what it is and why in plain words, and has one owner, who gets an inbox line the moment it is given the task, so nothing is done twice. Work that has shipped but is not
 verified yet is marked verifying, with a date to verify it by, so it stays in view until it is, and work built on it waits for the proof. A task that
-cannot go on is marked waiting, with what it waits for, and `check` tells you when it can. A push to main asks you first,
+cannot go on is marked waiting, with what it waits for, and `check` tells you when it can; work it needs from a teammate becomes that teammate's task in the same step, so no ask is lost. A push to main asks you first,
 and a force-push to it is refused. The team rules win over a CLAUDE.md, skill or memory line that says otherwise: setup finds
 each such line and asks you whether to remove it, keep it as an exception, or rewrite it. A message that would wake an idle member at full price is held once, so a
 cheap inbox line can take its place. When a member's context runs long, it writes a handover; your `/clear` starts it fresh once you have read its screen, and it carries on from there by itself, its tasks read fresh from the register. Big
