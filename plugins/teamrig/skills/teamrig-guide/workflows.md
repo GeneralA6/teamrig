@@ -148,16 +148,18 @@ so it never loses work to a compaction.
    monitors, workflows) has all reported back:
 
    ```text
-   teamrig: your context is 132k (refresh at 120k) and you just finished T2. Write your handover to <home>/teams/shop/handover/web.md (what is in progress and the next step of each; what to check later, and when; questions still open with the user; the scratchpad files, plan file and scheduled jobs the next session still needs; where things are), then run `teamrig refresh --ready --session web`. Do not start new work.
+   teamrig: your context is 132k (refresh at 120k) and you just finished T2. Write your handover to <home>/teams/shop/handover/web.md: what the register lacks (the next step of each task in progress; what to check later, and when; questions still open with the user; the scratchpad files, plan file and scheduled jobs the next session still needs; where things are), not task statuses, which your fresh start reads live from the register. Then run `teamrig refresh --ready --session web`. Do not start new work.
    ```
 
    Mid-task it says `teamrig: your context is 132k (refresh at 120k), so refresh now rather than at a task end.`
    If you go on without the fresh start (the user typed), it asks again at your next task end, or once your
    context grew a fifth of `refresh.contextTokens` more.
 
-2. Write the handover at that path: what is in progress and the next step of each, what to check later and when,
-   questions still open with the user, the scratchpad files, plan file and scheduled jobs the next session still
-   needs, and where things are (branches, worktrees, files, ids). It must be new: the old file left as it was is refused.
+2. Write the handover at that path, with what the register lacks: the next step of each task in progress, what to
+   check later and when, questions still open with the user, the scratchpad files, plan file and scheduled jobs the
+   next session still needs, and where things are (branches, worktrees, files, ids). Leave out task statuses, waits
+   and due dates: the fresh start reads them live from the register (step 5), and a copy here could only go stale.
+   It must be new: the old file left as it was is refused.
 3. Run `teamrig refresh --ready --session web`. It prints `Ready. Ask the user to type /clear; your next start
    reads <path>.`. At the end of that turn the tab title becomes `shop-web: type /clear` (the session's name;
    `refresh.tabTitle: false` turns that off).
@@ -171,7 +173,9 @@ so it never loses work to a compaction.
    cannot start, the title reads `shop-web: type /clear`: ask the user to type `/clear`.
 5. After the fresh start, the session-start context says `You were refreshed after T2; read your handover first:
    <path>`, then the scheduled jobs (still scheduled after a `/clear`, to make again after a new process), the
-   wake-up to make again, the old scratchpad and the plan file. The
+   wake-up to make again, the old scratchpad and the plan file, then your active tasks as the register holds them
+   (`LIVE TASKS of web, ...`, at most 6 rows and `+N more`; where the handover says otherwise, the register wins).
+   A compaction gets the same task block, since its summary is older than the register too. The
    restart's first prompt, or after a `/clear` a turn teamrig starts by itself, asks you to read the handover and
    carry on with its next steps. Do so, and run the start of a work block, since the fresh start is a new Claude
    Code session.

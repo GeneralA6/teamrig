@@ -56,13 +56,34 @@ The injected context holds:
    they are still scheduled and the note says so, after a new process it lists them to make again), a pending
    wake-up to make again (`ScheduleWakeup`), its scratchpad and its plan file. After a `/clear`, `hook refresh-wake` then starts a turn by itself that tells the session to read that
    handover and carry on, so it does not sit idle until someone types.
-7. **A model check**: when the session runs on another model than its `launch` entry in the team config, a line
+7. **Live tasks**: at that fresh start after a refresh, and at every start after a compaction (Claude Code's
+   `/compact` or its automatic one), the session's active tasks as the register holds them at that start, right
+   after the handover pointer. A handover and a compaction summary are older than the start that reads them, so
+   where they say otherwise, the register wins:
+
+   ```text
+   LIVE TASKS of web, read from the register at this start (8 active; where your handover or a compaction summary says otherwise, the register wins):
+     T12 in-progress, p1, due 10-17 | Ship the checkout page
+     T14 verifying, p2 | Cache the price list
+     T15 waiting, p2 | Move the images (waiting: on T12 · decision lead)
+     T18 open, p2, after T12 | Add the receipt email
+     ...
+     +2 more: `teamrig list --session web`
+   ```
+
+   Work in hand comes first (in progress, verifying, waiting), then the tasks not started, each in plan order
+   (priority, then due date); at most 6 rows, the rest one `+N more` line. A row names the due date, the plan
+   dependencies not finished yet (`after`) and, for a waiting task, its wait reasons with the ready ones marked.
+   A session with none gets one line: `... none active; ...`. A register it cannot read gives a line naming
+   `teamrig list --session <id>` instead. A resume and any other start keep or begin their context, so they get no
+   block; `teamrig start` lists the tasks there.
+8. **A model check**: when the session runs on another model than its `launch` entry in the team config, a line
    such as `MODEL shop-web runs model claude-sonnet-5; the team config asks for model opus at xhigh effort: type
    /model opus`. It is also shown to the user, who alone can change it. It never blocks. Claude Code gives a hook
    the effort only at the end of a turn, so the effort is checked there ([model notices](#end-of-a-turn-model-notices)).
-8. **The verify queue**: while the session has `verifying` tasks, one line naming them, oldest first:
+9. **The verify queue**: while the session has `verifying` tasks, one line naming them, oldest first:
    `VERIFY 2: T1 (proof: the nightly run), T4 (proof: ...)`. `teamrig verify` lists them in full.
-9. **What teamrig lacks**: shown to the user only, once per Claude Code session, when git is not on the PATH or
+10. **What teamrig lacks**: shown to the user only, once per Claude Code session, when git is not on the PATH or
    Claude Code or Node.js is too old ([the requirements check](requirements.md#the-requirements-check)).
 
 The session is found from `$TEAMRIG_SESSION`, else from the area this Claude Code session last ran
@@ -226,7 +247,8 @@ is the point.
 At the end of every turn, the Stop hook measures your context from the transcript. At or over
 `refresh.contextTokens` (120,000 by default), at a task end after every `refresh.everyTasks` finished tasks (3) with the context at
 `refresh.everyTasksMinTokens` (80,000) or more, or when the lead asked with `teamrig refresh <id>`, it keeps you going with one instruction: write your handover to
-`<home>/teams/<team>/handover/<id>.md`, then run `teamrig refresh --ready --session <id>`, and start nothing new (mid-task it says
+`<home>/teams/<team>/handover/<id>.md` with what the register lacks, not task statuses (the fresh start
+[lists them live](#session-start)), then run `teamrig refresh --ready --session <id>`, and start nothing new (mid-task it says
 `refresh now rather than at a task end`).
 After `--ready`, the next turn's end tells the user `teamrig: shop-web finished T2 and wrote its handover; type
 /clear for a fresh start` and sets the tab title to `shop-web: type /clear`: the user clears once done with the
