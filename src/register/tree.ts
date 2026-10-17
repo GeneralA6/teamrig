@@ -126,6 +126,21 @@ export class TaskTree {
   }
 
   /**
+   * Whom an active task holds up beyond its owner: the active tasks of other owners that need it, the one with the
+   * earliest effective due first, then in plan order. Empty for a finished task or one the read lacks.
+   */
+  neededByOthers(id: string): Task[] {
+    const task = this.tasks.get(id);
+    if (task === undefined || !isActive(task)) {
+      return [];
+    }
+    const dueAt = (needer: Task) => this.effectiveDue(needer.id)?.at ?? Number.POSITIVE_INFINITY;
+    return this.neededBy(id)
+      .filter((needer) => needer.owner !== task.owner)
+      .sort((a, b) => (dueAt(a) === dueAt(b) ? this.byPlanOrder(a, b) : dueAt(a) < dueAt(b) ? -1 : 1));
+  }
+
+  /**
    * The earliest of the task's own due and the effective due of every active task that needs it, so work that holds
    * a dated task inherits its date; the task's own due wins a tie. A finished task keeps its own due only.
    * Undefined when neither the task nor anything needing it has a date (or the read lacks the task).

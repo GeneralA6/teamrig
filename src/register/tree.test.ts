@@ -76,6 +76,30 @@ describe('TaskTree needs and neededBy', () => {
   });
 });
 
+describe('TaskTree neededByOthers', () => {
+  const tree = treeOf(
+    testTask({ id: 'T1', owner: 'alpha' }),
+    testTask({ id: 'T2', owner: 'alpha', due: '2030-01-09', after: ['T1'] }),
+    testTask({ id: 'T3', owner: 'bravo', due: '2030-01-12', after: ['T1'] }),
+    testTask({ id: 'T4', owner: 'charlie', due: '2030-01-10', status: 'waiting', waits: [{ kind: 'task', id: 'T1' }] }),
+    testTask({ id: 'T5', owner: 'bravo', due: '2030-01-09', status: 'done', after: ['T1'] }),
+    testTask({ id: 'T6', owner: 'delta', priority: 3, after: ['T1'] }),
+    testTask({ id: 'T7', owner: 'echo', priority: 1, after: ['T1'] }),
+    testTask({ id: 'T8', owner: 'bravo', status: 'done' }),
+    testTask({ id: 'T9', owner: 'alpha', after: ['T8'] }),
+  );
+
+  it('lists the active needers of other owners, the earliest effective due first, then in plan order', () => {
+    assert.deepEqual(ids(tree.neededByOthers('T1')), ['T4', 'T3', 'T7', 'T6']);
+  });
+
+  it('is empty for a finished task, one the read lacks, and one only its owner needs', () => {
+    assert.deepEqual(tree.neededByOthers('T8'), []);
+    assert.deepEqual(tree.neededByOthers('T99'), []);
+    assert.deepEqual(tree.neededByOthers('T2'), []);
+  });
+});
+
 describe('TaskTree effectiveDue', () => {
   it('inherits the earliest due of the active tasks that need it, directly or not, naming where it comes from', () => {
     const tree = treeOf(
