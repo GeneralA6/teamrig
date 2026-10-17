@@ -24,12 +24,21 @@ at its earlier status. A task can move from any status to any other, so a droppe
 already has needs a `--note`.
 
 Set `waiting` when a task you started cannot go on, with `--waits` naming each reason: `decision:<who>` or
-`approval:<who>` (a session, or `owner` for the human), `task:T<id>` (a task to finish first) or
+`approval:<who>` (the lead, or `owner` for the human), `task:T<id>` (a task to finish first) or
 `time:<YYYY-MM-DD HH:MM>` (UTC). It stays waiting until all of them have cleared: a task when it is done or
 dropped, a time when it passes, a decision or an approval only when you, its owner, set the next status. `list`
 marks a cleared reason `ready`, and `check` flags the task `READY` once all have. A task not started that needs
 another first is not waiting: it stays `open`, planned after it (`teamrig update T3 --after T2`), and its line
-shows `after T2`. Every session needs teamrig 0.10.0 or later before anyone sets `waiting`: an older one skips the
+shows `after T2`.
+
+A peer's work is never a decision or an approval, so `approval:api` is refused: wait on that work by its task.
+`teamrig set T3 --status waiting --ask api --text "<the work>"` adds it as api's task (from you, at T3's priority
+and goals, its description naming T3), tells api, and sets T3 waiting on it, in one write; `--due` is then the
+asked task's due date. A budget hold is a time (`time:<date>`), never an approval. A new decision or approval wait
+posts the lead one inbox line (`T3 waits on your approval: <note>`; an owner wait too, since the lead keeps the
+owner's decision queue), unless the lead set it.
+
+Every session needs teamrig 0.10.0 or later before anyone sets `waiting`: an older one skips the
 line with a warning and shows the task at its earlier status. A `blocked` written by an older teamrig reads as
 `waiting` with no reasons.
 
@@ -103,7 +112,8 @@ A report, a "done" one too, is an inbox line unless the receiver acts on it now.
 line instead.
 
 An ask that creates work is a task first (`teamrig add --owner <id>`): `add` posts the owner an inbox line naming
-the task id, so only urgent work needs a message too.
+the task id, so only urgent work needs a message too. When a task you started cannot go on without that work,
+`teamrig set <your task> --status waiting --ask <id> --text "<the work>"` adds it and waits on it at once.
 
 ## Check flags
 
@@ -118,6 +128,7 @@ checkpoint; a session may run it for itself.
 | `VERIFY-BLOCKS` | a `verifying` task another active task needs: planned after it (`--after`) or waiting on it (`--waits task:`) | The owner proves it (`done` with the proof) or reopens it (`in-progress`), so the work on it can start. |
 | `READY` | a `waiting` task whose every reason has cleared: its tasks are done or dropped, its time has passed (a decision or an approval never clears by itself) | The owner goes on: `set --status in-progress`, or the next status. |
 | `NO-REASON` | a `waiting` task with no reason, as a line from an older teamrig reads | The owner sets what it waits for (`set --status waiting --waits ...`) or its next status. |
+| `PEER-WAIT` | a `waiting` task waits on the decision or the approval of a session that is neither the lead nor the owner, as an older teamrig wrote | The owner waits on that work by its task instead: `set --status waiting --ask <session> --text "<the work>"`. |
 | `NOT-PICKED-UP` | assigned over 24 h ago with no event from its owner since [register.check.notPickedUpAfterHours] | The owner is idle and reads no inbox: wake it with `teamrig open <id>` or a message, or tell the human. |
 | `STALE` | no event for 72 h [register.check.staleAfterHours] (not raised on top of NOT-PICKED-UP, nor for a `verifying` task with a due date, nor for a `waiting` task with a `time:` reason still to come) | Ask the owner what blocks it, then re-date, re-assign or drop it. |
 | `PRIORITY-SKIP` | in progress while a top-priority (`p1`) task of the same owner waits open and free to start (every task it comes after finished), for over 24 h [register.check.prioritySkipAfterHours] | The owner parks the lower task and starts the waiting one; or the lead fixes the order (`update --priority`). |

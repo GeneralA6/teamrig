@@ -77,15 +77,23 @@ Flags:
 - `--proof "<what proves it>"`: required for `verifying` (`register.requireProofOnVerifying`), and allowed only
   with it: what will prove the shipped change works (a test run, a night's flow, a number). Setting `verifying`
   again keeps the proof the task has.
-- `--due <date>`: allowed only with `verifying`: the date to verify by, written as the task's due date.
+- `--due <date>`: allowed only with `verifying`, the date to verify by, written as the task's due date; or with
+  `--ask`, the asked task's due date.
 - `--evidence <proof>`: required for `done`: a commit, test count, path or number that proves it. Evidence
   already on the task counts.
 - `--skill <name>|none`: required for `done`, and allowed only with `done`: the skill you wrote or updated, or
   `none`. A named skill must exist in the skills folder.
 - `--waits <reason>,<reason>`: required for `waiting`, and allowed only with it: what the task waits for, one or
-  more of `decision:<who>` and `approval:<who>` (a session, or `owner` for the human), `task:T<id>` (a task to
-  finish first; only for a task already started) and `time:<YYYY-MM-DD HH:MM>` (UTC; a bare day lasts to its
-  end). It stays waiting until every reason has cleared.
+  more of `decision:<who>` and `approval:<who>` (the lead, or `owner` for the human; a peer's work is a task, asked
+  for with `--ask`), `task:T<id>` (a task to finish first; only for a task already started) and
+  `time:<YYYY-MM-DD HH:MM>` (UTC; a bare day lasts to its end; a budget hold is a time, never an approval). It
+  stays waiting until every reason has cleared. A new decision or approval wait posts the lead one inbox line
+  (`T1 waits on your approval: <note>`; an owner wait too, since the lead keeps the owner's queue), unless the lead
+  set it.
+- `--ask <id|name>`: allowed only with `waiting`, and needs `--text`: adds the work you need as that session's task
+  (from you, at your task's priority and goals, its description naming your task), tells that session, and sets
+  your task waiting on it, in one write. `--note` defaults to the text, and other `--waits` reasons come first.
+- `--text "<the work>"`: allowed only with `--ask`: the asked task's title.
 
 Example:
 
@@ -109,6 +117,19 @@ Output:
 
 ```text
 SET T1 waiting, p2, owner web, due 10-16, week 10-12, from lead | Fix the broken login form (waiting: on T2 · decision owner · until Fri 10-16 13:00; needs the api error codes and the owner's call on the copy)
+```
+
+Asking another session for the work you need, and waiting on it:
+
+```sh
+teamrig set T1 --session web --status waiting --ask api --text "Return error codes from the login endpoint" --due 2026-10-16
+```
+
+Output (`ADDED` is api's new task; api gets its `T2 is yours` inbox line):
+
+```text
+ADDED T2 open, p2, owner api, due 10-16, from web | Return error codes from the login endpoint
+SET T1 waiting, p2, owner web, from lead | Fix the broken login form (waiting: on T2; Return error codes from the login endpoint)
 ```
 
 A shipped change waiting for its proof:

@@ -31,7 +31,11 @@ or take it to the lead.
 | `REFUSED T3 has not started, so it does not wait on T2: it stays open, planned after it (teamrig update T3 --after T2)` | Leave it open and plan it: `teamrig update T3 --after T2`. |
 | `REFUSED T2 is already finished; nothing to wait on` | Go on: there is nothing to wait for. |
 | `REFUSED time 2026-10-01 has passed: name a time to come` | Give a time still to come, in UTC. |
-| `REFUSED decision lead2: lead2 is neither a session on this team nor owner` | Name a session `teamrig who` lists, or `owner`. |
+| `REFUSED decision lead2: lead2 is neither the lead (lead) nor owner` | Name the lead, or `owner`. |
+| `REFUSED approval api: decision and approval waits are for the lead (lead) and owner; wait on api's work by its task: teamrig set T3 --status waiting --ask api --text "<the work you need>"` | Run the command it names: a peer's work is a task, never an approval. |
+| `REFUSED --ask goes only with --status waiting` | Add `--status waiting`, or ask with `teamrig add --owner <id>`. |
+| `REFUSED T3 has not started, so it does not wait: ask with teamrig add --owner api --title "<the work>", then plan T3 after that task (teamrig update T3 --after <its id>)` | Run both commands it names: T3 stays open until that task is done. |
+| `REFUSED T5 already tracks this (open, owner api): wait on it with --waits task:T5` | Wait on the task that exists: `teamrig set T3 --status waiting --waits task:T5`. |
 | `REFUSED --after plans a task not started yet, and T4 is in-progress; a started task waits on another with --status waiting --waits task:T2` | Set it waiting with `--waits task:T2` instead. |
 | `REFUSED T2 already comes after T3, directly or not, so T3 cannot come after T2` | Break the loop: one of them goes first. |
 | `REFUSED verifying needs --proof saying what will prove the shipped change works` | Add `--proof` naming the proof you wait for: a test run, a night's flow, a number. |
@@ -173,6 +177,8 @@ From `teamrig statusline install` and `uninstall` ([commands.md](commands.md#tea
 | `--status "finished" is not open\|in-progress\|verifying\|waiting\|done\|dropped` | Use one of those six. |
 | `--status blocked was replaced by waiting: use --status waiting --waits <reason> (...)` | Set `waiting` with what it waits for. |
 | `--waits "soon" is not one of decision:<who>, approval:<who>, task:T<id> or time:<YYYY-MM-DD HH:MM>, comma-separated` | Write each reason as `kind:value`. |
+| `--text goes only with --ask <session>: it is the work asked for` | Add `--ask <session>`, or drop `--text` (a status note is `--note`). |
+| `--ask needs --text "<the work asked for>": the title of the task it creates` | Add `--text` naming the work. |
 | `--week "x" is not a YYYY-MM-DD date` | Write the week's first day as `2026-10-12`. |
 | `--team gives the task to that team's lead, from you: it takes no --owner or --source` | Drop `--owner` and `--source` from `add --team`. |
 

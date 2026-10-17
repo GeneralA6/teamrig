@@ -127,11 +127,21 @@ the proof fails. Past that date, `check` flags it `VERIFY-OVERDUE`. The verify l
 teamrig set T4 --session api --status waiting --waits decision:owner --note "which database to use"
 ```
 
-Name every reason, comma-separated: `decision:<who>` or `approval:<who>` (a session, or `owner` for the human),
+Name every reason, comma-separated: `decision:<who>` or `approval:<who>` (the lead, or `owner` for the human),
 `task:T<id>` (a task to finish first) or `time:<YYYY-MM-DD HH:MM>` (UTC). Then move to your next task. It stays
 waiting until every reason has cleared; `check` flags it `READY` once its tasks are done and its time has passed,
-and a decision or an approval clears when you set the next status (`set --status in-progress`). A decision for
-the human goes to the lead with the options, numbers and your recommendation.
+and a decision or an approval clears when you set the next status (`set --status in-progress`). A new decision or
+approval wait posts the lead one inbox line; a decision for the human goes to the lead with the options, numbers
+and your recommendation. A budget hold is a time (`time:<date>`), never an approval.
+
+Work you need from another session is a task, never its approval. Ask for it and wait on it in one step:
+
+```sh
+teamrig set T4 --session web --status waiting --ask api --text "Return error codes from the login endpoint" --due 2026-10-16
+```
+
+It adds api's task (`ADDED T5 ...`, at T4's priority, its description naming T4), tells api, and sets T4 waiting on
+T5.
 
 A task reason is only for a task you already started. One not started that needs another first is not waiting:
 it stays `open`, planned after it (`teamrig update T4 --after T5`), and its line shows `after T5`.
@@ -217,6 +227,8 @@ With sub-teams, run `teamrig check --tree --session lead` too. Then act on each 
 - `HIRE REVIEW-DUE`: a hired session's review day passed: decide whether its job goes on; retire it when done.
 - `OVERDUE` or `STALE`: ask the owner what blocks it, then re-date it (`--due`) or tell the human.
 - `READY`: a waiting task can go on: one inbox line to its owner, if it has not set the next status.
+- `PEER-WAIT`: a task waits on a peer's approval or decision: one inbox line to its owner to wait on that work by
+  its task (`set --status waiting --ask <session> --text "<the work>"`).
 - `VERIFY-OVERDUE`: ask the owner whether the proof came: `done` with it, `in-progress` if it failed, or a new date.
 - `VERIFY-BLOCKS`: work waits on a shipped change: one inbox line to its owner to prove it or reopen it.
 - `PILE-UP`: a session ships faster than it proves: one inbox line asking it to work its queue (`teamrig verify`)
