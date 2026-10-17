@@ -84,6 +84,10 @@ Flags:
   already on the task counts.
 - `--skill <name>|none`: required for `done`, and allowed only with `done`: the skill you wrote or updated, or
   `none`. A named skill must exist in the skills folder.
+- `--followups T<id>,...|none`: required for `verifying` and `done` (`register.requireFollowupsOn`), and allowed
+  only with `verifying`, `done` and `dropped`: the tasks the work leaves (a finding, a next step), each already on
+  the task list (`teamrig add` it first), or `none`. A finding written only in a notes file then cannot close
+  unseen. `show` lists every follow-up the task's changes named.
 - `--waits <reason>,<reason>`: required for `waiting`, and allowed only with it: what the task waits for, one or
   more of `decision:<who>` and `approval:<who>` (the lead, or `owner` for the human; a peer's work is a task, asked
   for with `--ask`), `task:T<id>` (a task to finish first; only for a task already started) and
@@ -99,7 +103,7 @@ Flags:
 Example:
 
 ```sh
-teamrig set T1 --session api --status done --note "endpoint merged" --evidence "PR #4, 12 tests" --skill none
+teamrig set T1 --session api --status done --note "endpoint merged" --evidence "PR #4, 12 tests" --skill none --followups none
 ```
 
 Output:
@@ -136,7 +140,7 @@ SET T1 waiting, p2, owner web, from lead | Fix the broken login form (waiting: o
 A shipped change waiting for its proof:
 
 ```sh
-teamrig set T1 --session api --status verifying --note "merged and deployed" --proof "the signup smoke test passes on staging" --due 2026-10-14
+teamrig set T1 --session api --status verifying --note "merged and deployed" --proof "the signup smoke test passes on staging" --due 2026-10-14 --followups none
 ```
 
 Output:
@@ -277,7 +281,7 @@ skill: none
 history:
   2026-10-15 08:58 lead create owner=api source=lead priority=p2 ref=signup spec, section 2 due=2026-10-17 goals=G1
   2026-10-15 08:58 api status in-progress
-  2026-10-15 08:58 api status done note="endpoint merged" evidence=PR #4, 12 tests skill=none
+  2026-10-15 08:58 api status done note="endpoint merged" evidence=PR #4, 12 tests skill=none followups=none
 ```
 
 With `--tree`:

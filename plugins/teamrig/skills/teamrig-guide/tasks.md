@@ -11,10 +11,10 @@ A task is `open` when added. Only its owner sets its status, with `teamrig set <
 | --- | --- | --- |
 | `open` | waiting to start | nothing |
 | `in-progress` | the owner is on it now | nothing |
-| `verifying` | shipped, waiting for what proves it (a test run, a night's flow, a number) | `--note` and `--proof` naming what will prove it [register.requireNoteOn, register.requireProofOnVerifying]; `--due <date>`: the date to verify it by |
+| `verifying` | shipped, waiting for what proves it (a test run, a night's flow, a number) | `--note`, `--proof` naming what will prove it, and `--followups` naming the tasks the work leaves or `none` [register.requireNoteOn, register.requireProofOnVerifying, register.requireFollowupsOn]; `--due <date>`: the date to verify it by |
 | `waiting` | started, and cannot go on until something else happens | `--waits` naming every reason (a decision, an approval, a task, a time) and `--note` [register.requireNoteOn] |
-| `done` | finished and verified | `--note`, `--evidence` (unless the task already has some) and `--skill <name>` or `--skill none` [register.requireEvidenceOnDone, register.requireSkillOnDone] |
-| `dropped` | will not be done | `--note` saying why and who decided |
+| `done` | finished and verified | `--note`, `--evidence` (unless the task already has some), `--skill <name>` or `--skill none`, and `--followups T<id>,...` or `--followups none` [register.requireEvidenceOnDone, register.requireSkillOnDone, register.requireFollowupsOn] |
+| `dropped` | will not be done | `--note` saying why and who decided; `--followups` may name the tasks the work moved to |
 
 `open`, `in-progress`, `verifying` and `waiting` are the active statuses: `list` shows them by default and `check`
 reads only them. Set `verifying` when the work is merged or deployed but its proof does not exist yet, then `done`
@@ -58,7 +58,8 @@ skills folder), or `none` for a one-off.
 
 A shipped change is proven by the session that shipped it, oldest first, before work that needs it starts.
 
-- `teamrig set <id> --status verifying --note "<what shipped>" --proof "<what proves it>" --due <date>` starts it.
+- `teamrig set <id> --status verifying --note "<what shipped>" --proof "<what proves it>" --due <date> --followups none`
+  starts it (name the tasks the work leaves in place of `none`).
   Without `--proof` it is refused [register.requireProofOnVerifying]; with that key `false`, the note names the
   proof.
 - The queue stays in view: `teamrig verify` lists it, oldest first, and the session start context and

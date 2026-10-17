@@ -50,7 +50,7 @@ No more twelve-hour days steering agents by hand. With teamrig, your part takes 
 reboot.*
 
 And the basics, done right: every task says what it is and why in plain words, and has one owner, who gets an inbox line the moment it is given the task, so nothing is done twice. Work that has shipped but is not
-verified yet is marked verifying, with a date to verify it by, so it stays in view until it is, and work built on it waits for the proof. A task that
+verified yet is marked verifying, with a date to verify it by, so it stays in view until it is, and work built on it waits for the proof. Closing a task names the follow-up tasks it leaves, or none, so a finding is never left in a notes file. A task that
 cannot go on is marked waiting, with what it waits for, and `check` tells you when it can; work it needs from a teammate becomes that teammate's task in the same step, so no ask is lost. Work another task needs takes that task's deadline and names who needs it, and each member sees what waits on it. A push to main asks you first,
 and a force-push to it is refused. The team rules win over a CLAUDE.md, skill or memory line that says otherwise: setup finds
 each such line and asks you whether to remove it, keep it as an exception, or rewrite it. Each helper a member starts gets the same rules and knows whose helper it is. A message that would wake an idle member at full price is held once, so a

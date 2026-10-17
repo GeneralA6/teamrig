@@ -25,6 +25,10 @@ or take it to the lead.
 | `REFUSED done needs --skill <name> (the skill written or updated) or --skill none` | Add `--skill <name>` or `--skill none`. |
 | `REFUSED no skill named x; write it first or use --skill none` | Write the skill to `<skills folder>/x/SKILL.md` first, or use `none`. |
 | `REFUSED --skill goes only with done` | Drop `--skill`. |
+| `REFUSED done needs --followups T<id>,... naming the tasks this work leaves (a finding, a next step), or --followups none` (also `verifying`) | Add each finding or next step as a task (`teamrig add`) and name them, or use `--followups none`. |
+| `REFUSED --followups names T9, which is not on the task list: add it first (teamrig add)` | `teamrig add` the follow-up, then name its id. |
+| `REFUSED --followups names T1 itself: name the tasks it leaves` (also `names T2 twice`) | Name each other task once. |
+| `REFUSED --followups goes only with verifying, done, dropped` | Drop `--followups`. |
 | `REFUSED waiting needs --note` (also `verifying`, `done`, `dropped`) | Add `--note` saying what it waits for, what was done, or why it was dropped. |
 | `REFUSED waiting needs --waits saying what it waits for: decision:<who>, approval:<who>, task:T<id> or time:<YYYY-MM-DD HH:MM>, comma-separated` | Add `--waits` with every reason. |
 | `REFUSED --waits goes only with --status waiting` | Drop `--waits`, or set `waiting`. |
