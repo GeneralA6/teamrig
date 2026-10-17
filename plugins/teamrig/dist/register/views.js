@@ -191,6 +191,7 @@ export function formatEvent(event) {
                 event.proof === undefined ? undefined : `proof="${event.proof}"`,
                 event.evidence === null ? undefined : `evidence=${event.evidence}`,
                 event.skill === null ? undefined : `skill=${event.skill}`,
+                event.followups === undefined ? undefined : `followups=${event.followups.length === 0 ? 'none' : event.followups.join(',')}`,
             ]
                 .filter((part) => part !== undefined)
                 .join(' ');
@@ -227,6 +228,9 @@ export function formatTaskDetail(task, events, tree) {
     }
     if (task.skill !== null) {
         lines.push(`skill: ${task.skill}`);
+    }
+    if (task.followups.length > 0) {
+        lines.push(`followups: ${task.followups.join(', ')}`);
     }
     lines.push('history:', ...events.filter((event) => event.id === task.id).map((event) => `  ${formatEvent(event)}`));
     return lines.join('\n');

@@ -21,6 +21,7 @@ export const CONFIG_LIMITS = {
     testPatterns: { maxItems: 8, maxLength: 100 },
     forbidFrontmatter: { maxItems: 8, maxLength: 32 },
     requireNoteOn: { maxItems: 5 },
+    requireFollowupsOn: { maxItems: 3 },
     maxVerifying: { min: 0, max: 100 },
     stopgapFiles: { maxItems: 20, maxLength: 260 },
     persistentFailureHours: { min: 1, max: 720 },
