@@ -1,6 +1,6 @@
 # teamrig
 
-> A Claude Code plugin and CLI that runs a team of Claude Code sessions: a shared task register, per-session inboxes, team rules loaded at every start, helpers' included, that win over conflicting local rules unless you keep them, a guard on pushes to protected branches, a hold on messages that would wake an idle session at full price, a wake for an idle session when urgent work is handed to it, each session's token use measured against the week's pace, bursts that spend a week's projected surplus once a person starts one, a nudge that keeps the lead deciding and delegating rather than doing the work itself, and the lead's daily meeting with the owner, its agenda gathered in one call.
+> A Claude Code plugin and CLI that runs a team of Claude Code sessions: a shared task register, per-session inboxes, team rules loaded at every start, helpers' included, that win over conflicting local rules unless you keep them, a guard on pushes to protected branches and one on unvetted package runs, a hold on messages that would wake an idle session at full price, a wake for an idle session when urgent work is handed to it, each session's token use measured against the week's pace, bursts that spend a week's projected surplus once a person starts one, a nudge that keeps the lead deciding and delegating rather than doing the work itself, and the lead's daily meeting with the owner, its agenda gathered in one call.
 
 ## Guide
 

@@ -542,6 +542,15 @@ flowchart LR
   class a,b,q,main,h,lock,w planned
 ```
 
+## Unvetted packages
+
+A package runner can fetch a package and run it in one step, outside the project's lockfile, so nobody vetted the
+version that runs (a helper's `npx eslint` once did). Before each Bash or PowerShell command, the package guard reads
+the line with the push guard's parser and refuses `npx` of a tool not in `node_modules/.bin`, `npm create`,
+`pnpm dlx`, `yarn dlx` and the like, naming the vetted route: pin the exact version as a devDependency, then run
+its local bin. `packageGuard.adHocRunners` (`deny` by default, `ask` or `allow`) sets what such a line gets; a
+missing or broken config keeps `deny`, so a config mistake never turns the guard off.
+
 ## Room for other tools
 
 Today teamrig works with Claude Code, any terminal and its own task list; other tools will come through one small

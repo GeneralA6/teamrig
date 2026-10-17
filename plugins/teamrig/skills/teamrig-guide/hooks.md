@@ -11,10 +11,11 @@ they all stay silent.
 | `SessionStart` (`/clear`), in the background | `hook refresh-wake` | Wakes a session that `/clear` started from its context refresh, so it carries on without a prompt |
 | `UserPromptSubmit` (each prompt) | `hook inbox-reminder` | Cancels a waiting automatic restart; shows new inbox lines; binds a tab started by hand by its title; records a Claude Code rename; tells the model when it is past its daily budget |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook push-guard` | Asks before a push to a protected branch; refuses a force-push or delete of one |
+| `PreToolUse` on `Bash` and `PowerShell` | `hook package-guard` | Refuses a package runner that would fetch and run a package outside the project's lockfile ([the package guard](#before-a-shell-command-the-package-guard)) |
 | `PreToolUse` on `SendMessage` | `hook cold-send` | Holds once a message that would wake an idle session cold; during the daily meeting, holds every message to the lead but a CRITICAL one |
 | `PostToolUse` on `SendMessage` | `hook failed-send` | After a send that was not delivered, hands the model [the inbox line to write instead](#after-a-failed-send-the-inbox-line) |
 | `PostToolUse` on reads, edits and shell calls | `hook loop-nudge` | Asks the model once to batch when a turn makes [single-step calls in a row](#after-a-tool-call-the-loop-nudge) |
-| `PreToolUse` on `Agent` and `Task` | `hook helper-gate` | Asks before or refuses a helper launch past the daily budget or in quiet hours, [as the team set](#the-daily-budget-warnings-and-the-helper-gate) |
+| `PreToolUse` on `Agent` and `Task` | `hook helper-gate` | Restates rule 8's helper default at each helper launch; asks before or refuses one past the daily budget or in quiet hours, [as the team set](#the-daily-budget-warnings-and-the-helper-gate) |
 | The mod, while a tab is idle | `hook wake-check`, `hook wake-dropped` | Wakes the tab's session when unblocked urgent work is handed to it, [batched, with its cost shown](#the-mod-the-wake-on-urgent-work) |
 | `Stop` (end of each turn) | `hook stop` | Sends the session back once to [a skill edit it dropped](#end-of-a-turn-or-a-helper-a-dropped-skill-edit); asks for a handover when a context refresh is due, then starts the automatic restart; tells the user of another effort than `launch` asks, or of a model Claude Code switched to; shows the budget lines; names a verifying task whose verify-by day has come; once per `github.everyMinutes` for the whole team, starts `gh sync --auto` hidden in the background |
 
@@ -186,6 +187,26 @@ can read it. Never route around a refusal; report it to the lead. The guard read
 wrappers and git aliases, but it does not see a push inside a script or program the command runs, `gh pr merge`,
 git extensions, or pushes run outside Claude Code. It is a guard against mistakes, not a sandbox: protect the
 branch on your git host too.
+
+## Before a shell command: the package guard
+
+A package runner can fetch a package and run it in one step, outside the project's lockfile, so nobody vetted the
+version that runs. Before Claude runs a Bash or PowerShell command, the guard reads it as the push guard does
+(chains, subshells, nested shells, `cd` and `Set-Location`) and refuses:
+
+- `npx`, `npm exec`, `pnpx`, `bunx` or `bun x` of a tool that is not in `node_modules/.bin` of the folder it runs
+  in or of a folder above it (`--prefix` names another); a version (`npx eslint@9`) or `-p`/`--package` always counts;
+- `npm create`, `npm init <initializer>`, `pnpm dlx`, `pnpm create`, `yarn dlx`, `yarn create` and `bun create`,
+  which always fetch.
+
+`npx --no <bin>` (or `--no-install`), `pnpm exec`, `yarn exec` and a package script run only what is installed, so
+they run as usual. The reason: "teamrig package guard: `npx eslint` fetches and runs a package outside the
+project's lockfile, unvetted. Vet the exact version first (publish date, advisories), add it as a pinned
+devDependency, then run its local bin (npx --no <bin>). [packageGuard.adHocRunners]"
+
+`packageGuard.adHocRunners` sets what such a line gets: `deny` (the default), `ask` the human, or `allow`. A missing
+or broken config keeps `deny`, so a config mistake never turns the guard off. Like the push guard, it reads only the
+line Claude runs, not a script or program that line starts.
 
 ## After a tool call: the loop nudge
 
@@ -375,6 +396,13 @@ holds only the current day.
 
 ## The daily budget: warnings and the helper gate
 
+At each helper launch of a team session, with the budget on or off, the model gets rule 8's helper default. Claude
+Code hands it over with the launch's result, so it speaks of the next helper: `teamrig rule 8: work in your own
+session: a helper's tokens cost 2.2x yours [budget.subagentWeight], so start one only when it keeps far more than
+that out of your context or truly runs in parallel, never for a build or test whose result you need. A broad read
+that returns a short answer is the case that pays; weigh the next helper the same way.` With
+`budget.subagentWeight` at 1 or less it names no factor.
+
 With `budget.enabled` on and the week's use known (from the [status line](commands.md#teamrig-statusline) or
 `budget.weeklyLimitW`), the hooks watch each session's use today against its daily budget. At a turn's end the
 Stop hook counts only this tab's new transcript lines and its subagents' (at most `budget.maxBytesPerHook` bytes)
@@ -436,3 +464,5 @@ teamrig never edits Claude Code's permission or auto-mode settings, and it adds 
   `Bash(teamrig *)` worked the same. The rule is for the Bash tool, where Claude Code puts `teamrig`.
 - **The push guard** asks or refuses on its own, whatever the mode: a push to a protected branch always asks the
   human.
+- **The package guard** refuses an ad-hoc package run on its own, whatever the mode, unless
+  `packageGuard.adHocRunners` is `ask` or `allow`.
