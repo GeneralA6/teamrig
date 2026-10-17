@@ -204,10 +204,10 @@ stateDiagram-v2
   open --> working: set in-progress
   working --> waiting: set waiting, with its reasons
   waiting --> working: set in-progress, once they cleared
-  working --> verifying: set verifying, with its proof and a date
-  verifying --> done: set done, with a note, evidence and a skill
+  working --> verifying: set verifying, with its proof, a date and its follow-ups
+  verifying --> done: set done, with a note, evidence, a skill and its follow-ups
   verifying --> working: set in-progress, the proof failed
-  working --> done: set done, with a note, evidence and a skill
+  working --> done: set done, with a note, evidence, a skill and its follow-ups
   open --> dropped: set dropped, with a note
   working --> dropped: set dropped, with a note
   done --> open: reopened by the owner
@@ -216,6 +216,8 @@ stateDiagram-v2
 - The owner may move a task from any status to any other; the register keeps every move.
 - `done` takes `--skill none` or the name of a skill in your Claude Code skills folder; setting a task to its own
   status again needs `--note`; `add` refuses a title an open, in-progress, verifying or waiting task already has.
+- `verifying` and `done` take `--followups` with the tasks the work leaves, each already on the list, or `none`, so a
+  finding written only in a notes file cannot close unseen [register.requireFollowupsOn]; `show` lists them.
 - `verifying` is a change that has shipped and waits for what proves it: a test run, a night's flow, a number.
   `--proof` names that proof, and `--due` the date to verify it by. It stays active, so `list`, `check`,
   `teamrig verify`, the session's start context and `inbox read` keep it in view until the owner sets it `done`

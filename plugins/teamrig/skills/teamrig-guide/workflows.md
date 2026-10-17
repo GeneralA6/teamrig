@@ -85,21 +85,22 @@ as `team-ship-change`; this list is the order they fit in.
    the old behaviour, in other files too, and fix them in the same commit.
 2. If you had to work out a procedure you will run again, write or fix its skill now (see
    [tasks.md](tasks.md#skills)).
-3. Set it done with the proof:
+3. Add each finding or next step the work leaves as a task (`teamrig add`), so none lives only in a notes file.
+4. Set it done with the proof and those tasks (`--followups none` when it leaves none):
 
 ```sh
-teamrig set T4 --session api --status done --note "signup endpoint merged and live" --evidence "commit 3f9c2ab, 41 tests pass, POST /signup 201" --skill api-release
+teamrig set T4 --session api --status done --note "signup endpoint merged and live" --evidence "commit 3f9c2ab, 41 tests pass, POST /signup 201" --skill api-release --followups T9
 ```
 
 ```text
 SET T4 done, p2, owner api, due 10-17, from lead, goals G1 | Build the signup endpoint
 ```
 
-4. Tell whoever asked, if they wait on it: one inbox line, or a message if it unblocks them now.
+5. Tell whoever asked, if they wait on it: one inbox line, or a message if it unblocks them now.
 
-The register refuses `done` without `--note`, without `--evidence` (unless the task already has some) or without
-`--skill <name>|none`; a named skill must exist. When a task will not be done, set it `dropped` with a note saying
-why and who decided.
+The register refuses `done` without `--note`, without `--evidence` (unless the task already has some), without
+`--skill <name>|none` or without `--followups T<id>,...|none`; a named skill must exist, and a named follow-up must
+be on the task list. When a task will not be done, set it `dropped` with a note saying why and who decided.
 
 ## Shipped, verifying
 
@@ -108,7 +109,7 @@ machine, a number to measure), set it `verifying` with `--proof` naming that pro
 it by:
 
 ```sh
-teamrig set T4 --session api --status verifying --note "new parser merged" --proof "tonight's import runs clean on the new parser" --due 2026-10-17
+teamrig set T4 --session api --status verifying --note "new parser merged" --proof "tonight's import runs clean on the new parser" --due 2026-10-17 --followups none
 ```
 
 It stays in `list` and `check` until you set it `done` with the proof as evidence, or `in-progress` again when
