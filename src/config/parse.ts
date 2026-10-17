@@ -16,6 +16,7 @@ import {
   DEFAULT_MESSAGES,
   DEFAULT_OPEN,
   DEFAULT_OWNER_GATES,
+  DEFAULT_PACKAGE_GUARD,
   DEFAULT_PUSH_GUARD,
   DEFAULT_REFRESH,
   DEFAULT_REGISTER,
@@ -28,10 +29,12 @@ import { isEffort, isModel } from './launch.ts';
 import { CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from './limits.ts';
 import { ConfigReader, describe, isValidRegex, shortLine, type Check, type ConfigIssue } from './reader.ts';
 import {
+  AD_HOC_RUNNERS,
   BURST_POLICIES,
   CONFLICT_WINNERS,
   ESCALATIONS,
   HIRING_POLICIES,
+  isAdHocRunners,
   isBurstPolicy,
   isCommitGate,
   isConflictWinner,
@@ -49,6 +52,7 @@ import {
   type ContextFilesConfig,
   VERIFY_GATES,
   WEEKDAYS,
+  type AdHocRunners,
   type BudgetConfig,
   type BudgetLiftConfig,
   type BudgetReset,
@@ -256,6 +260,7 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
       ),
       pushToProtected: parsePushToProtected(read, pushGuard),
     },
+    packageGuard: { adHocRunners: parseAdHocRunners(read, read.section(raw, 'packageGuard', '')) },
     commits: parseCommits(read, read.section(raw, 'commits', '')),
     coordinator: {
       schedule: heavyCutoffUtc === undefined ? {} : { heavyCutoffUtc },
@@ -663,6 +668,12 @@ function parsePushToProtected(read: ConfigReader, raw: JsonRecord): PushToProtec
   const fallback = DEFAULT_PUSH_GUARD.pushToProtected;
   const value = read.string(raw, 'pushToProtected', 'pushGuard', fallback, oneOf(PUSH_TO_PROTECTED));
   return isPushToProtected(value) ? value : fallback;
+}
+
+function parseAdHocRunners(read: ConfigReader, raw: JsonRecord): AdHocRunners {
+  const fallback = DEFAULT_PACKAGE_GUARD.adHocRunners;
+  const value = read.string(raw, 'adHocRunners', 'packageGuard', fallback, oneOf(AD_HOC_RUNNERS));
+  return isAdHocRunners(value) ? value : fallback;
 }
 
 function parseCommits(read: ConfigReader, raw: JsonRecord): CommitsConfig {

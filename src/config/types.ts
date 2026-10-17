@@ -137,6 +137,24 @@ export function isPushToProtected(value: unknown): value is PushToProtected {
   return PUSH_TO_PROTECTED.some((choice) => choice === value);
 }
 
+export interface PackageGuardConfig {
+  /** What a Bash or PowerShell call that runs a package ad hoc does. */
+  readonly adHocRunners: AdHocRunners;
+}
+
+/**
+ * An ad-hoc package run, one that fetches a package outside the project's lockfile and runs it at once (`npx` of a
+ * tool not in `node_modules/.bin`, `npm exec`, `npm create`/`init <x>`, `pnpm dlx`, `yarn dlx`, `bunx`): `deny`
+ * refuses it, `ask` asks the human, `allow` lets it run.
+ */
+export type AdHocRunners = 'deny' | 'ask' | 'allow';
+
+export const AD_HOC_RUNNERS: readonly AdHocRunners[] = ['deny', 'ask', 'allow'];
+
+export function isAdHocRunners(value: unknown): value is AdHocRunners {
+  return AD_HOC_RUNNERS.some((choice) => choice === value);
+}
+
 export const COMMIT_GATES = ['off', 'warn', 'refuse'] as const;
 /** What a push to a protected branch does about commits over the size rule: nothing, list them, or refuse the push. */
 export type CommitGate = (typeof COMMIT_GATES)[number];
@@ -524,6 +542,7 @@ export interface KitConfig {
   readonly contextFiles: ContextFilesConfig;
   readonly lock: LockConfig;
   readonly pushGuard: PushGuardConfig;
+  readonly packageGuard: PackageGuardConfig;
   readonly commits: CommitsConfig;
   readonly coordinator: CoordinatorConfig;
   readonly budget: BudgetConfig;
