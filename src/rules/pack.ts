@@ -72,13 +72,16 @@ function descriptionDemand(config: KitConfig): string {
   return `a plain-words description of what and why${config.register.requireDescription ? ' [register.requireDescription]' : ''}`;
 }
 
-/** The note (only what changed), evidence and skill a status change needs, as the register enforces them. */
+/** The note (only what changed), evidence, skill and follow-ups a status change needs, as the register enforces them. */
 function statusDemands(config: KitConfig, command: string): string {
   const { register } = config;
   const demands = [
     register.requireNoteOn.length === 0 ? '' : `a note (only what changed) on ${[...new Set(register.requireNoteOn)].join(', ')} [register.requireNoteOn]`,
     register.requireEvidenceOnDone ? 'evidence on done [register.requireEvidenceOnDone]' : '',
     register.requireSkillOnDone ? '--skill <name>|none on done [register.requireSkillOnDone]' : '',
+    register.requireFollowupsOn.length === 0
+      ? ''
+      : `--followups <tasks it leaves>|none on ${[...new Set(register.requireFollowupsOn)].join(', ')} [register.requireFollowupsOn]`,
   ].filter((demand) => demand !== '');
   return `only the owning session sets its status (\`${command} set\`)${demands.length === 0 ? '' : `, with ${demands.join(', ')}`}.`;
 }
@@ -105,7 +108,7 @@ export function renderCorePack(config: KitConfig, command: string, platform: Nod
     register:
       `Status is pulled from the register, never asked. Start each work block with \`${command} start --session <you>\`.` +
       ` Every ask that creates work is a register entry, added in the same turn by the asker (\`${command} add --owner <session>\` tells the owner), else by the receiver, with ${descriptionDemand(config)}; ${statusDemands(config, command)}` +
-      " Wait on a peer's work by its task; decision and approval waits are for the lead and the owner; a task not started stays open, `--after` what it needs." +
+      " Wait on a peer's work by its task." +
       ` A shipped change is verifying until its proof exists (\`${command} verify\`).`,
     'task-order':
       `Work your own task list in priority order (\`${command} list --session <you>\`); self-made work is a task too, recorded with \`${command} add\` before you start it,` +

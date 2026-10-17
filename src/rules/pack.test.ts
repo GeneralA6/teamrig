@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from '../config/limits.ts';
-import { TASK_STATUSES } from '../register/model.ts';
+import { FOLLOWUP_STATUSES, TASK_STATUSES } from '../register/model.ts';
 import { testConfig } from '../testing/config.ts';
 import {
   CONTEXT_MAX_CHARS,
@@ -35,6 +35,7 @@ function worstCaseConfig() {
       requireNoteOn: [...TASK_STATUSES].sort((a, b) => b.length - a.length).slice(0, CONFIG_LIMITS.requireNoteOn.maxItems),
       requireEvidenceOnDone: true,
       requireSkillOnDone: true,
+      requireFollowupsOn: FOLLOWUP_STATUSES.slice(0, CONFIG_LIMITS.requireFollowupsOn.maxItems),
       ownerSource: longest('o', 32),
     },
     skills: {
@@ -194,10 +195,7 @@ describe('renderCorePack', () => {
     assert.match(pack, /At most 7 lines \[messages\.maxLines\]/);
     assert.match(pack, /never for owner-gated decisions: money; deletes \[ownerGates\]/);
     assert.match(pack, /with a note \(only what changed\) on waiting, verifying, done, dropped \[register\.requireNoteOn\]/);
-    assert.match(
-      pack,
-      /Wait on a peer's work by its task; decision and approval waits are for the lead and the owner; a task not started stays open, `--after` what it needs\./,
-    );
+    assert.match(pack, /--followups <tasks it leaves>\|none on verifying, done \[register\.requireFollowupsOn\]\. Wait on a peer's work by its task\./);
     assert.match(pack, /A shipped change is verifying until its proof exists \(`teamrig verify`\)\.$/m);
     assert.match(pack, /`teamrig start --session <you>`/);
     assert.doesNotMatch(pack, /coordinatorOwner|heavyCutoffUtc|Pace the week|\[budget\]/);
@@ -229,17 +227,22 @@ describe('renderCorePack', () => {
 
   it('drops status demands the team turned off', () => {
     const pack = renderCorePack(
-      testConfig({ register: { requireNoteOn: [], requireEvidenceOnDone: false, requireSkillOnDone: false } }),
+      testConfig({ register: { requireNoteOn: [], requireEvidenceOnDone: false, requireSkillOnDone: false, requireFollowupsOn: [] } }),
       COMMAND,
       'win32',
     );
-    assert.match(pack, /only the owning session sets its status \(`teamrig set`\)\. Wait on a peer's work by its task/);
+    assert.match(pack, /only the owning session sets its status \(`teamrig set`\)\. Wait on a peer's work by its task\./);
   });
 
-  it('prints a status the team listed twice once, and the skill demand in one flag', () => {
-    const pack = renderCorePack(testConfig({ register: { requireNoteOn: ['done', 'waiting', 'done'], requireSkillOnDone: true } }), COMMAND, 'win32');
+  it('prints a status the team listed twice once, and the skill and follow-up demands in one flag each', () => {
+    const pack = renderCorePack(
+      testConfig({ register: { requireNoteOn: ['done', 'waiting', 'done'], requireSkillOnDone: true, requireFollowupsOn: ['dropped', 'done', 'dropped'] } }),
+      COMMAND,
+      'win32',
+    );
     assert.match(pack, /with a note \(only what changed\) on done, waiting \[register\.requireNoteOn\]/);
     assert.match(pack, /--skill <name>\|none on done \[register\.requireSkillOnDone\]/);
+    assert.match(pack, /--followups <tasks it leaves>\|none on dropped, done \[register\.requireFollowupsOn\]\./);
   });
 });
 
