@@ -62,7 +62,8 @@ function treeLine(place, input, isLead) {
 }
 /**
  * The SessionStart context: the core rules from the team config, the lead's own lines for the lead, who the
- * session is, where its team sits in a tree of teams, and the team's own rules. Without a usable config it says why no rules are loaded, in one line.
+ * session is, where its team sits in a tree of teams, its notes (after a refresh its handover, after a refresh or a
+ * compaction its live tasks), and the team's own rules. Without a usable config it says why no rules are loaded, in one line.
  */
 export function sessionStartContext(input) {
     const { load, command } = input;
@@ -79,6 +80,9 @@ export function sessionStartContext(input) {
     // In the core part, so the size budget that may cut the team's rules.md never cuts it.
     if (input.refreshNote !== undefined) {
         notes.push(input.refreshNote);
+    }
+    if (input.liveTasksNote !== undefined) {
+        notes.push(input.liveTasksNote);
     }
     if (input.titleNote !== undefined) {
         notes.push(input.titleNote);
