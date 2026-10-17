@@ -83,6 +83,7 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   testPatterns: 'commits.testPatterns',
   forbidFrontmatter: 'skills.forbidFrontmatter',
   requireNoteOn: 'register.requireNoteOn',
+  requireFollowupsOn: 'register.requireFollowupsOn',
   maxVerifying: 'register.maxVerifying',
   stopgapFiles: 'register.check.stopgapFiles',
   persistentFailureHours: 'alerts.persistentFailureHours',

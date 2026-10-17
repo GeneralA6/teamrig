@@ -50,6 +50,11 @@ export interface RegisterConfig {
   /** Statuses that cannot be set without a note. */
   readonly requireNoteOn: readonly TaskStatus[];
   /**
+   * Statuses (of verifying, done and dropped) that cannot be set without `--followups`: the tasks the work leaves,
+   * such as a finding or a next step, or `none`. A finding written only in a notes file then cannot close unseen.
+   */
+  readonly requireFollowupsOn: readonly TaskStatus[];
+  /**
    * Whether a write archives the task list's log by itself once it is long (register/rotate.ts), as it does
    * after the first `teamrig compact`. Off, only `teamrig compact` archives it.
    */

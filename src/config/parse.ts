@@ -1,6 +1,6 @@
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { NAME_PATTERN, NAME_RULE } from '../core/ids.ts';
-import { isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, SESSION_NAME, TASK_STATUSES, type TaskStatus } from '../register/model.ts';
+import { FOLLOWUP_STATUSES, isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, SESSION_NAME, TASK_STATUSES, type TaskStatus } from '../register/model.ts';
 import { CORE_RULE_KEYS, isCoreRuleKey } from '../rules/keys.ts';
 import {
   DEFAULT_ALERTS,
@@ -561,6 +561,14 @@ function parseRegister(read: ConfigReader, raw: JsonRecord): RegisterConfig {
       (value, itemPath) => parseStatus(read, value, itemPath),
       CONFIG_LIMITS.requireNoteOn.maxItems,
     ),
+    requireFollowupsOn: read.list(
+      raw,
+      'requireFollowupsOn',
+      path,
+      defaults.requireFollowupsOn,
+      (value, itemPath) => parseFollowupStatus(read, value, itemPath),
+      CONFIG_LIMITS.requireFollowupsOn.maxItems,
+    ),
     autoArchive: read.boolean(raw, 'autoArchive', path, defaults.autoArchive),
     requireProofOnVerifying: read.boolean(raw, 'requireProofOnVerifying', path, defaults.requireProofOnVerifying),
     verifyGate: isVerifyGate(verifyGate) ? verifyGate : defaults.verifyGate,
@@ -603,6 +611,15 @@ function parseStatus(read: ConfigReader, value: unknown, path: string): TaskStat
   }
   const hint = value === LEGACY_WAITING_STATUS ? ` (${LEGACY_WAITING_HINT})` : '';
   read.report(path, `expected one of ${TASK_STATUSES.join(', ')}, got ${describe(value)}${hint}`);
+  return undefined;
+}
+
+/** A status that may need `--followups`: one of FOLLOWUP_STATUSES. */
+function parseFollowupStatus(read: ConfigReader, value: unknown, path: string): TaskStatus | undefined {
+  if (typeof value === 'string' && FOLLOWUP_STATUSES.some((status) => status === value)) {
+    return parseStatus(read, value, path);
+  }
+  read.report(path, `expected one of ${FOLLOWUP_STATUSES.join(', ')}, got ${describe(value)}`);
   return undefined;
 }
 

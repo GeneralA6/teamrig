@@ -273,9 +273,11 @@ describe('parseConfig', () => {
   it('validates regular expressions and statuses', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,
-      register: { goalPattern: '([', secretPatterns: ['ok-\\d+', '(('], requireNoteOn: ['dropped', 'paused'] },
+      register: { goalPattern: '([', secretPatterns: ['ok-\\d+', '(('], requireNoteOn: ['dropped', 'paused'], requireFollowupsOn: ['dropped', 'open'] },
     });
-    assert.deepEqual(paths(issues).sort(), ['register.goalPattern', 'register.requireNoteOn[1]', 'register.secretPatterns[1]']);
+    assert.deepEqual(paths(issues).sort(), ['register.goalPattern', 'register.requireFollowupsOn[1]', 'register.requireNoteOn[1]', 'register.secretPatterns[1]']);
+    assert.equal(issues.find((issue) => issue.path === 'register.requireFollowupsOn[1]')?.message, 'expected one of verifying, done, dropped, got "open"');
+    assert.deepEqual(config.register.requireFollowupsOn, ['dropped']);
     assert.equal(config.register.goalPattern, undefined);
     assert.deepEqual(config.register.secretPatterns, ['ok-\\d+']);
     assert.deepEqual(config.register.requireNoteOn, ['dropped']);

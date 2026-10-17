@@ -52,6 +52,7 @@ export const DEFAULT_REGISTER: RegisterConfig = {
   requireEvidenceOnDone: true,
   requireSkillOnDone: true,
   requireNoteOn: ['waiting', 'verifying', 'done', 'dropped'],
+  requireFollowupsOn: ['verifying', 'done'],
   autoArchive: true,
   requireProofOnVerifying: true,
   verifyGate: 'refuse',
