@@ -1,12 +1,13 @@
 # Hooks and permissions
 
-The plugin's `hooks/hooks.json` registers ten Claude Code hooks and one mod ([the /teamrig command](#the-mod-the-teamrig-command), [the refresh's /clear](#the-mod-the-refreshs-clear), [the reload after an install](#the-mod-the-reload-after-an-install), [the wake on urgent work](#the-mod-the-wake-on-urgent-work)). Each runs
+The plugin's `hooks/hooks.json` registers eleven Claude Code hooks and one mod ([the /teamrig command](#the-mod-the-teamrig-command), [the refresh's /clear](#the-mod-the-refreshs-clear), [the reload after an install](#the-mod-the-reload-after-an-install), [the wake on urgent work](#the-mod-the-wake-on-urgent-work)). Each runs
 `node <plugin>/dist/cli/main.js hook <name>` with a 15 second timeout. Outside a project tied to a team (no `$TEAMRIG_TEAM` and no `.teamrig.json`)
 they all stay silent.
 
 | Claude Code event | teamrig hook | What it does |
 | --- | --- | --- |
 | `SessionStart` (startup, resume, `/clear`, compact) | `hook session-start` | Injects the team rules and who you are |
+| `SubagentStart` (each helper) | `hook subagent-start` | Gives the helper the team rules and whose helper it is ([A helper's start](#a-helpers-start)) |
 | `SessionStart` (`/clear`), in the background | `hook refresh-wake` | Wakes a session that `/clear` started from its context refresh, so it carries on without a prompt |
 | `UserPromptSubmit` (each prompt) | `hook inbox-reminder` | Cancels a waiting automatic restart; shows new inbox lines; binds a tab started by hand by its title; records a Claude Code rename; tells the model when it is past its daily budget |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook push-guard` | Asks before a push to a protected branch; refuses a force-push or delete of one |
@@ -94,6 +95,21 @@ The injected context holds:
 The session is found from `$TEAMRIG_SESSION`, else from the area this Claude Code session last ran
 `teamrig inbox read --session <area>` as, else from the tab's Claude Code title (see [Each prompt](#each-prompt)). A
 brand-new tab teamrig did not open, with no title naming a session, has none of these, so it is told to ask.
+
+## A helper's start
+
+Claude Code starts a helper (a subagent) with the CLAUDE.md files but without its session's start context, so
+`hook subagent-start` gives it the same core rules and your team's `rules.md`, then one line on whose helper it is:
+
+```text
+You are a helper (`general-purpose`) of the `web` session of team `shop` (name `shop-web`). The rules above bind you as they bind it, but your brief is your task: leave `teamrig start`, task statuses, register entries, inbox lines and messages to it unless your brief asks for them, and return what it needs. $TEAMRIG_SESSION is not set here, so pass --session web to any `teamrig` command your brief asks for.
+```
+
+The session is found the way its own start finds it (a helper's hooks carry its session's id); when none is known
+the line says `of a session of team shop`. A helper never gets a session's identity ("You are the `web` session"),
+the lead's lines, live tasks, verify list or refresh notes, and the hook changes no file. A compaction inside a
+helper fires `SessionStart` under its session's id: teamrig tells it apart by the `agent_id` Claude Code adds to a
+helper's hooks and gives it this same context, binding, renaming and refreshing nothing.
 
 ## Each prompt
 

@@ -46,7 +46,8 @@ To update an installed teamrig, follow
 - **Message**: a Claude Code message from one session to another. It wakes the receiver, so it is only for a
   result it needs now, a decision, a blocker, a conflict or an incident. teamrig has no message command; the
   rules only say when to send one and how long it may be.
-- **Hooks**: at session start teamrig injects the team rules and who you are; at each prompt it shows you new
+- **Hooks**: at session start teamrig injects the team rules and who you are, and gives each helper the same rules
+  as it starts; at each prompt it shows you new
   inbox lines; before a shell command it guards pushes to protected branches; at the end of a turn it
   may ask for a handover when your context is large.
 - **Tree of teams**: a team may have a parent team. Sub-team leads report to their parent lead, and the root
