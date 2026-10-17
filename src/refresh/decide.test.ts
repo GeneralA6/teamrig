@@ -92,7 +92,7 @@ describe('decideStop', () => {
     assert.deepEqual(decision, {
       kind: 'block',
       state: { phase: 'asked', task: null, at: NOW, tokens: 262_144, handoverHash: 'abc' },
-      reason: 'teamrig: your context is 262k (refresh at 250k), so refresh now rather than at a task end. ' + "Write your handover to /team/handover/alpha.md (what is in progress and the next step of each; what to check later, and when; questions still open with the user; the scratchpad files, plan file and scheduled jobs the next session still needs; where things are), then run `teamrig refresh --ready --session alpha`. Do not start new work.",
+      reason: 'teamrig: your context is 262k (refresh at 250k), so refresh now rather than at a task end. ' + 'Write your handover to /team/handover/alpha.md: what the register lacks (the next step of each task in progress; what to check later, and when; questions still open with the user; the scratchpad files, plan file and scheduled jobs the next session still needs; where things are), not task statuses, which your fresh start reads live from the register. Then run `teamrig refresh --ready --session alpha`. Do not start new work.',
     });
     for (const state of [
       { phase: 'idle', task: 'T12', at: BEFORE, tokens: 120_000, finished: 1 },
@@ -153,9 +153,9 @@ describe('decideStop', () => {
       kind: 'block',
       state: { phase: 'asked', task: 'T12', at: NOW, tokens: 262_144, handoverHash: 'abc' },
       reason:
-        'teamrig: your context is 262k (refresh at 250k) and you just finished T12. Write your handover to /team/handover/alpha.md ' +
-        '(what is in progress and the next step of each; what to check later, and when; questions still open with the user; the scratchpad files, plan file and scheduled jobs the next session still needs; where things are), then run ' +
-        '`teamrig refresh --ready --session alpha`. Do not start new work.',
+        'teamrig: your context is 262k (refresh at 250k) and you just finished T12. Write your handover to /team/handover/alpha.md: what the register lacks ' +
+        '(the next step of each task in progress; what to check later, and when; questions still open with the user; the scratchpad files, plan file and scheduled jobs the next session still needs; where things are), ' +
+        'not task statuses, which your fresh start reads live from the register. Then run `teamrig refresh --ready --session alpha`. Do not start new work.',
     });
     assert.equal(decideStop(BOUNDARY, stopContext(), facts({ tokens: 250_000 })).kind, 'block');
   });

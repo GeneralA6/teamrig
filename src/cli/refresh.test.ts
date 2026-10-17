@@ -7,7 +7,7 @@ import { RefreshStore } from '../refresh/store.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { FakeProcesses } from '../testing/fake-processes.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
-import { APP, AUTO_RESTART_TEAM, CLAUDE_SESSION, CliHarness, contextOf, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
+import { APP, AUTO_RESTART_TEAM, CLAUDE_SESSION, CliHarness, contextOf, EVENTS_PATH, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
 
 const STATE = (id: string): string => join(TEAM_HOME, 'state', 'refresh', `${id}.json`);
@@ -89,9 +89,9 @@ describe('runCli: context refresh', () => {
     assert.deepEqual(stopJson(asked), {
       decision: 'block',
       reason:
-        `teamrig: your context is 300k (refresh at 120k) and you just finished T1. Write your handover to ${HANDOVER('alpha')} ` +
-        '(what is in progress and the next step of each; what to check later, and when; questions still open with the user; the scratchpad files, plan file and scheduled jobs the next session still needs; where things are), then run ' +
-        '`teamrig refresh --ready --session alpha`. Do not start new work.',
+        `teamrig: your context is 300k (refresh at 120k) and you just finished T1. Write your handover to ${HANDOVER('alpha')}: what the register lacks ` +
+        '(the next step of each task in progress; what to check later, and when; questions still open with the user; the scratchpad files, plan file and scheduled jobs the next session still needs; where things are), ' +
+        'not task statuses, which your fresh start reads live from the register. Then run `teamrig refresh --ready --session alpha`. Do not start new work.',
     });
     assert.deepEqual(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload(true) }), SILENT, 'asked once, never again in the continued turn');
 
@@ -332,7 +332,7 @@ describe('runCli: context refresh', () => {
     await finishTask(kit, 'bravo');
     const asked = stopJson(await kit.run(['hook', 'stop'], { env: { TEAMRIG_SESSION: 'bravo' }, stdin: stopPayload(false, { transcript_path: join(USER_HOME, 'gone.jsonl') }) }));
     assert.ok(typeof asked === 'object' && asked !== null && 'reason' in asked);
-    assert.match(String(asked.reason), new RegExp(`^teamrig: app-lead asked for a refresh and you just finished T1\\. Write your handover to ${handover.replaceAll('\\', '\\\\')} `));
+    assert.match(String(asked.reason), new RegExp(`^teamrig: app-lead asked for a refresh and you just finished T1\\. Write your handover to ${handover.replaceAll('\\', '\\\\')}: what the register lacks `));
 
     assert.equal((await kit.run(['refresh', 'app-alpha', '--session', 'lead'])).code, EXIT.ok);
     const midTask = stopJson(await kit.run(['hook', 'stop'], { env: { TEAMRIG_SESSION: 'alpha' }, stdin: stopPayload(false, { transcript_path: join(USER_HOME, 'gone.jsonl') }) }));
@@ -395,5 +395,66 @@ describe('runCli: context refresh', () => {
     const text = contextOf(await kit.run(['hook', 'session-start'], { ...AS_ALPHA, stdin: startPayload('clear'), files }));
     assert.match(text, /^# Team rules \(teamrig core\)/);
     assert.ok(text.includes('teamrig could not check for a refresh handover (EACCES: simulated); if you wrote one before a /clear, read it first.'));
+  });
+});
+
+describe('runCli: live tasks in the start note', () => {
+  const LIVE =
+    'LIVE TASKS of alpha, read from the register at this start (2 active; where your handover or a compaction summary says otherwise, the register wins):\n' +
+    '  T2 in-progress, p2 | Write the docs\n' +
+    '  T3 waiting, p2 | Ship the docs (waiting: on T2)';
+
+  /** Alpha holds T1 done, T2 in progress and T3 waiting on it; bravo holds T4. */
+  async function addTasks(kit: CliHarness): Promise<void> {
+    const steps = [
+      ['add', '--title', 'Write the docs', '--description', 'what and why', '--priority', 'p2', '--session', 'alpha'],
+      ['add', '--title', 'Ship the docs', '--description', 'what and why', '--priority', 'p2', '--session', 'alpha'],
+      ['add', '--title', 'Not mine', '--description', 'what and why', '--priority', 'p2', '--session', 'bravo'],
+      ['set', 'T2', '--status', 'in-progress', '--session', 'alpha'],
+      ['set', 'T3', '--status', 'in-progress', '--session', 'alpha'],
+      ['set', 'T3', '--status', 'waiting', '--waits', 'task:T2', '--note', 'needs the docs', '--session', 'alpha'],
+    ];
+    for (const step of steps) {
+      const result = await kit.run(step);
+      assert.equal(result.code, EXIT.ok, [...step, ...result.stdout].join(' '));
+    }
+  }
+
+  const start = async (kit: CliHarness, source: string, files?: FaultyFiles): Promise<string> =>
+    contextOf(await kit.run(['hook', 'session-start'], { ...AS_ALPHA, stdin: startPayload(source), ...(files === undefined ? {} : { files }) }));
+
+  it('lists them after a compaction and at the refresh fresh start, right after the handover pointer', async () => {
+    const kit = new CliHarness();
+    await handoverWritten(kit);
+    await addTasks(kit);
+    assert.ok((await start(kit, 'compact')).endsWith(`\n${LIVE}`), 'after a compaction, the handover still waiting');
+    assert.ok(!(await start(kit, 'resume')).includes('LIVE TASKS'), 'a resume keeps its context');
+
+    const fresh = await start(kit, 'clear');
+    const note = `You were refreshed after T1; read your handover first: ${HANDOVER('alpha')}. Then carry on with its next steps.`;
+    assert.ok(fresh.includes(`${note}\n${LIVE}`), fresh);
+    assert.ok(!(await start(kit, 'startup')).includes('LIVE TASKS'), 'once: a later start is no refresh');
+    assert.ok((await start(kit, 'compact')).endsWith(`\n${LIVE}`), 'every compaction');
+  });
+
+  it('shows none at a start that is no refresh, and says none are active when the session holds none', async () => {
+    const kit = new CliHarness();
+    await finishTask(kit, 'alpha');
+    await addTasks(kit);
+    for (const source of ['startup', 'clear', 'resume']) {
+      assert.ok(!(await start(kit, source)).includes('LIVE TASKS'), source);
+    }
+    const lead = contextOf(await kit.run(['hook', 'session-start'], { env: { TEAMRIG_SESSION: 'lead' }, stdin: startPayload('compact') }));
+    assert.ok(lead.endsWith('LIVE TASKS of lead, read from the register at this start: none active; where your handover or a compaction summary says otherwise, the register wins.'), lead);
+  });
+
+  it('names the command that lists the tasks when the register cannot be read', async () => {
+    const kit = new CliHarness();
+    await finishTask(kit, 'alpha');
+    await addTasks(kit);
+    const files = new FaultyFiles(kit.files).fail('read', EVENTS_PATH, systemError('EACCES'));
+    const text = await start(kit, 'compact', files);
+    assert.match(text, /^# Team rules \(teamrig core\)/);
+    assert.ok(text.endsWith('LIVE TASKS: teamrig could not read the register (EACCES: simulated); run `teamrig list --session alpha` for your tasks.'), text);
   });
 });

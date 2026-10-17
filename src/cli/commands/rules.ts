@@ -35,6 +35,7 @@ export async function rules(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
     renames,
     titleNote: undefined,
     refreshNote: undefined,
+    liveTasksNote: undefined,
     modelNote: undefined,
     verifyNote: undefined,
     session: flag ?? (inEnv ? fromEnv : undefined),

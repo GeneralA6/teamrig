@@ -22,6 +22,7 @@ function context(overrides: Partial<SessionStartInput> = {}): string {
     renames: [],
     titleNote: undefined,
     refreshNote: undefined,
+    liveTasksNote: undefined,
     modelNote: undefined,
     verifyNote: undefined,
     session: 'alpha',
@@ -88,6 +89,13 @@ describe('sessionStartContext', () => {
   it('points a refreshed session at its handover right after who it is, before the title note', () => {
     const text = context({ refreshNote: 'Read your handover.', titleNote: 'Title note.' });
     assert.ok(text.endsWith(`Message the lead as \`team-lead\`.\n${NAMES}\nRead your handover.\nTitle note.`));
+  });
+
+  it('lists the live tasks right after the handover pointer, before the title note', () => {
+    const live = 'LIVE TASKS of alpha, read from the register at this start (1 active; the register wins):\n  T1 in-progress, p2 | Ship it';
+    const text = context({ refreshNote: 'Read your handover.', liveTasksNote: live, titleNote: 'Title note.' });
+    assert.ok(text.endsWith(`Message the lead as \`team-lead\`.\n${NAMES}\nRead your handover.\n${live}\nTitle note.`));
+    assert.ok(context({ liveTasksNote: live }).endsWith(`${NAMES}\n${live}`), 'after a compaction, with no handover');
   });
 
   it('says the model line after the title note', () => {

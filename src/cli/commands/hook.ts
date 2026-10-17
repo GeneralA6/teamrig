@@ -14,6 +14,7 @@ import { failedSendLine, failedSendOf, failedSendOutput } from '../../hooks/fail
 import { commitsOf, protectedBranchesOf, pushGuardOutput, pushToProtectedOf } from '../../hooks/push-guard.ts';
 import { JsonlHintLog } from '../../hooks/hint-log.ts';
 import { promptOutput } from '../../hooks/prompt-output.ts';
+import { showsLiveTasks } from '../../hooks/live-tasks.ts';
 import { requirementsNoteOnce } from '../../hooks/requirements-note.ts';
 import { sessionStartContext, sessionStartOutput, type SessionStartInput } from '../../hooks/session-start.ts';
 import { stopModelNotices } from '../../hooks/stop-model.ts';
@@ -47,6 +48,7 @@ import { bindAfterClear, bindHintOnce, bindTab, inboxLinesFor, readTitle, type T
 import { helperGateOutput, promptBudgetLine, stopBudgetLines } from './hook-budget.ts';
 import { startAutoSync } from './gh-auto.ts';
 import { coldSendHold } from './hook-cold-send.ts';
+import { liveTasksNoteOf } from './live-tasks.ts';
 import { droppedEditReasonOf } from './hook-dropped-edit.ts';
 import { meetingHold } from './hook-meeting.ts';
 import { armRestart, restartTargetOf } from './hook-restart.ts';
@@ -271,15 +273,18 @@ async function helperGateOf(runtime: CliRuntime, payload: JsonRecord): Promise<s
   return scope === undefined ? undefined : helperGateOutput(runtime, scope, stringField(payload, 'transcript_path'));
 }
 
-type TeamParts = Pick<SessionStartInput, 'teamRules' | 'renames' | 'titleNote' | 'refreshNote' | 'modelNote' | 'verifyNote' | 'session' | 'sessionInEnv' | 'tree'>;
+type TeamParts = Pick<
+  SessionStartInput,
+  'teamRules' | 'renames' | 'titleNote' | 'refreshNote' | 'liveTasksNote' | 'modelNote' | 'verifyNote' | 'session' | 'sessionInEnv' | 'tree'
+>;
 
 /**
  * A loaded team's rules.md and rename log, after binding a hand-started tab by its Claude Code title
  * and recording a Claude Code rename of the session; the pointer to its handover after a refresh; who
  * the session is: `$TEAMRIG_SESSION`, else the area it read its inbox as or was bound to, so a tab that
- * set the team up keeps its identity across a compact or resume; whether it runs on its configured
- * model and effort; its verifying tasks; and where the team sits in a tree of teams, read from every
- * team config of the kit home.
+ * set the team up keeps its identity across a compact or resume; after a refresh or a compaction its live
+ * tasks; whether it runs on its configured model and effort; its verifying tasks; and where the team sits
+ * in a tree of teams, read from every team config of the kit home.
  */
 async function teamPartsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, payload: unknown): Promise<TeamParts> {
   const title = await readTitle(runtime, payload);
@@ -289,7 +294,7 @@ async function teamPartsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, pay
   const titleNote = bound === undefined || renamed === undefined ? (bound ?? renamed) : `${bound} ${renamed}`;
   const { renames } = await new JsonlRenameLog(runtime.files, kit.paths.renames).read();
   const roster = new Roster(config, kit.paths.team, renames);
-  const refreshNote = await refreshNoteOf(runtime, kit, config, roster, payload);
+  const refresh = await refreshStartOf(runtime, kit, config, roster, payload);
   const text = await runtime.files.read(kit.paths.teamRules);
   const fromEnv = envSession(runtime);
   const { tree } = await loadTree(runtime);
@@ -299,7 +304,8 @@ async function teamPartsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, pay
     teamRules: text === undefined ? undefined : { path: kit.paths.teamRules, text },
     renames,
     titleNote,
-    refreshNote,
+    refreshNote: refresh.note,
+    liveTasksNote: await liveTasksPartOf(runtime, kit, id, payload, refresh),
     modelNote: modelNoteOf(config, roster, id, payload),
     verifyNote: await verifyNoteOf(runtime, kit.paths, id),
     session,
@@ -358,17 +364,25 @@ async function carriedLinesOf(runtime: CliRuntime, transcript: string, source: s
   }
 }
 
+/** What a start says about the context refresh: its note, and whether this is the fresh start a handover was written for. */
+interface RefreshStart {
+  readonly note: string | undefined;
+  readonly refreshed: boolean;
+}
+
+const NO_REFRESH: RefreshStart = { note: undefined, refreshed: false };
+
 /**
  * A fresh start (`/clear`, a new process) after the session's handover was marked ready: the note
  * that points it at the handover, given once. A start that keeps the old context (compact, resume)
  * leaves the handover waiting; a small context again (a compaction too) starts the task count over.
  * It never throws, so the session always gets its rules.
  */
-async function refreshNoteOf(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, payload: unknown): Promise<string | undefined> {
+async function refreshStartOf(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster, payload: unknown): Promise<RefreshStart> {
   try {
     const id = await teamSessionOf(runtime, kit, roster, sessionIdOf(payload));
     if (id === undefined) {
-      return undefined;
+      return NO_REFRESH;
     }
     const store = new RefreshStore(runtime.files, kit.paths);
     const source = isRecord(payload) ? stringField(payload, 'source') : undefined;
@@ -376,18 +390,24 @@ async function refreshNoteOf(runtime: CliRuntime, kit: Kit, config: KitConfig, r
     const state = await store.state(id);
     const decision = decideStart(state, source, config.refresh, store.handoverPath(id), now);
     if (decision.kind === 'none') {
-      return undefined;
+      return NO_REFRESH;
     }
     await store.setState(id, decision.state);
     if (decision.kind === 'reset') {
-      return undefined;
+      return NO_REFRESH;
     }
     await store.clearRequest(id);
     const carried = state?.phase === 'ready' && state.transcript !== null ? await carriedLinesOf(runtime, state.transcript, source) : [];
-    return [decision.note, ...carried].join('\n');
+    return { note: [decision.note, ...carried].join('\n'), refreshed: true };
   } catch (error) {
-    return `${KIT_NAME} could not check for a refresh handover (${errorMessage(error)}); if you wrote one before a /clear, read it first.`;
+    return { note: `${KIT_NAME} could not check for a refresh handover (${errorMessage(error)}); if you wrote one before a /clear, read it first.`, refreshed: false };
   }
+}
+
+/** The live-task block (hooks/live-tasks.ts) at the fresh start after a refresh and after a compaction; none at another start or for no session. */
+async function liveTasksPartOf(runtime: CliRuntime, kit: Kit, id: string | undefined, payload: unknown, refresh: RefreshStart): Promise<string | undefined> {
+  const source = isRecord(payload) ? stringField(payload, 'source') : undefined;
+  return id !== undefined && showsLiveTasks(source, refresh.refreshed) ? liveTasksNoteOf(runtime, kit.paths, id) : undefined;
 }
 
 /** The refresh facts every turn end may need: the lead's request and the context size from the transcript's tail. */
@@ -572,7 +592,10 @@ export async function stop(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   return EXIT.ok;
 }
 
-/** SessionStart: the core rules from the team config, who the session is (and, after a refresh, its handover), and the team's rules.md. */
+/**
+ * SessionStart: the core rules from the team config, who the session is (after a refresh, its handover; after a
+ * refresh or a compaction, its live tasks), and the team's rules.md.
+ */
 export async function sessionStart(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
   const payload = parseJson(await runtime.readStdin());
@@ -590,7 +613,18 @@ export async function sessionStart(args: ParsedArgs, runtime: CliRuntime): Promi
   const parts: TeamParts =
     kit.load.status === 'loaded'
       ? await teamPartsOf(runtime, kit, kit.load.config, payload)
-      : { teamRules: undefined, renames: [], titleNote: undefined, refreshNote: undefined, modelNote: undefined, verifyNote: undefined, session: undefined, sessionInEnv: false, tree: undefined };
+      : {
+          teamRules: undefined,
+          renames: [],
+          titleNote: undefined,
+          refreshNote: undefined,
+          liveTasksNote: undefined,
+          modelNote: undefined,
+          verifyNote: undefined,
+          session: undefined,
+          sessionInEnv: false,
+          tree: undefined,
+        };
   const context = sessionStartContext({ team: found.team, load: kit.load, ...parts, command: KIT_NAME, platform: runtime.platform });
   const requirementsNote = await requirementsNoteOnce({
     problems: await runtime.requirements.problems(),

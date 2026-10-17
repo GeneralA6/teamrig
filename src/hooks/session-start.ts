@@ -17,6 +17,11 @@ export interface SessionStartInput {
   readonly titleNote: string | undefined;
   /** After a context refresh: where the session's handover is, so it reads it first. */
   readonly refreshNote: string | undefined;
+  /**
+   * After a context refresh or a compaction: the session's active tasks as the register holds them at this start
+   * (hooks/live-tasks.ts), since its handover or the compaction summary may be older.
+   */
+  readonly liveTasksNote: string | undefined;
   /** When the session runs on another model or effort than the team config asks: the line that says so. */
   readonly modelNote: string | undefined;
   /** When the session holds verifying tasks: `VERIFY <n>: T1 (proof: ...), ...`, oldest first, so it proves them. */
@@ -102,7 +107,8 @@ function treeLine(place: TreePlace, input: SessionStartInput, isLead: boolean): 
 
 /**
  * The SessionStart context: the core rules from the team config, the lead's own lines for the lead, who the
- * session is, where its team sits in a tree of teams, and the team's own rules. Without a usable config it says why no rules are loaded, in one line.
+ * session is, where its team sits in a tree of teams, its notes (after a refresh its handover, after a refresh or a
+ * compaction its live tasks), and the team's own rules. Without a usable config it says why no rules are loaded, in one line.
  */
 export function sessionStartContext(input: SessionStartInput): string {
   const { load, command } = input;
@@ -119,6 +125,9 @@ export function sessionStartContext(input: SessionStartInput): string {
   // In the core part, so the size budget that may cut the team's rules.md never cuts it.
   if (input.refreshNote !== undefined) {
     notes.push(input.refreshNote);
+  }
+  if (input.liveTasksNote !== undefined) {
+    notes.push(input.liveTasksNote);
   }
   if (input.titleNote !== undefined) {
     notes.push(input.titleNote);
