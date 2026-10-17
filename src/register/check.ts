@@ -103,12 +103,12 @@ export function checkTasks(tasks: Iterable<Task>, now: Date, week: string | null
   return flags.sort(byFlagKind);
 }
 
-/** One flag; with `team`, the task id reads `<team>/T12`; `context` marks a waiting task's ready reasons. */
 /** Orders flags by FLAG_KINDS, most urgent first; the sort is stable, so each kind keeps its own order. */
 export function byFlagKind(a: Flag, b: Flag): number {
   return FLAG_KINDS.indexOf(a.kind) - FLAG_KINDS.indexOf(b.kind);
 }
 
+/** One flag; with `team`, the task id reads `<team>/T12`; `context` marks a waiting task's ready reasons. */
 export function formatFlag(flag: Flag, team?: string, context?: WaitContext): string {
   return `${flag.kind} (${flag.detail}) ${formatTask(flag.task, team, context)}`;
 }
