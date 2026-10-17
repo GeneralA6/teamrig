@@ -133,17 +133,16 @@ export function bash(command: string): string {
   return JSON.stringify({ tool_name: 'Bash', tool_input: { command }, cwd: APP });
 }
 
-/** The push guard's permission decision, or undefined when it printed nothing. */
+/** A PreToolUse hook's permission decision, or undefined when it printed nothing or only added context. */
 export function decisionOf(result: CliResult): string | undefined {
   const [line] = result.stdout;
   if (line === undefined) {
     return undefined;
   }
   const parsed: unknown = JSON.parse(line);
-  assert.ok(typeof parsed === 'object' && parsed !== null && 'hookSpecificOutput' in parsed);
-  const output = parsed.hookSpecificOutput;
-  assert.ok(typeof output === 'object' && output !== null && 'permissionDecision' in output);
-  return String(output.permissionDecision);
+  const output = isRecord(parsed) ? parsed['hookSpecificOutput'] : undefined;
+  assert.ok(isRecord(output));
+  return stringField(output, 'permissionDecision');
 }
 
 /** The SessionStart hook's context, from its one output line. */

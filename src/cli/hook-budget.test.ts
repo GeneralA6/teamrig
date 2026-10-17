@@ -2,7 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
-import { APP, CliHarness, decisionOf, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
+import { helperLaunchReminder } from '../rules/helper-default.ts';
+import { APP, CliHarness, contextOf, decisionOf, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { replyLine, transcript } from '../testing/transcript-lines.ts';
 import { ok } from '../testing/hired-team.ts';
@@ -13,6 +14,8 @@ const RESET = Date.parse('2030-01-14T01:00:00Z');
 const PROJECT = join(USER_HOME, '.claude', 'projects', 'app');
 const ALPHA_TAB = '0000000a-0000-4000-8000-000000000001';
 const LEAD_TAB = '0000000d-0000-4000-8000-000000000004';
+/** A tab no team session read its inbox in. */
+const STRANGER_TAB = '0000000f-0000-4000-8000-000000000009';
 const ALPHA_TRANSCRIPT = join(PROJECT, `${ALPHA_TAB}.jsonl`);
 const LEAD_TRANSCRIPT = join(PROJECT, `${LEAD_TAB}.jsonl`);
 
@@ -60,6 +63,12 @@ async function world(budget: JsonRecord, ownW: number, usedPct: number, extra: J
 
 const AGENT = { tool_name: 'Agent', tool_input: { description: 'search', prompt: 'find it' } };
 
+/** A helper launch the budget let go: one line with rule 8's helper default at the default weight, and no decision. */
+function remindedOnly(result: CliResult): void {
+  assert.equal(decisionOf(result), undefined);
+  assert.equal(contextOf(result), helperLaunchReminder(1));
+}
+
 function messageOf(result: CliResult): string {
   const [line] = result.stdout;
   assert.ok(line !== undefined, 'no output');
@@ -102,20 +111,21 @@ describe('the budget in the hooks', () => {
     const gate = await asked.hook('helper-gate', ALPHA_TAB, AGENT);
     assert.equal(decisionOf(gate), 'ask');
     assert.match(gate.stdout[0] ?? '', /alpha is past its daily budget/);
+    assert.equal(contextOf(gate), helperLaunchReminder(1));
     const relaxed = await world({}, 10_000_000, 30);
-    assert.deepEqual((await relaxed.hook('helper-gate', ALPHA_TAB, AGENT)).stdout, []);
+    remindedOnly(await relaxed.hook('helper-gate', ALPHA_TAB, AGENT));
   });
 
   it('refuses a helper in quiet hours set to block, except for the lead', async () => {
     const { hook } = await world({ quietHours: { startUtc: '09:00', endUtc: '11:00', action: 'block' } }, 1_000_000, 10);
     assert.equal(decisionOf(await hook('helper-gate', ALPHA_TAB, AGENT)), 'deny');
-    assert.deepEqual((await hook('helper-gate', LEAD_TAB, AGENT)).stdout, []);
+    remindedOnly(await hook('helper-gate', LEAD_TAB, AGENT));
   });
 
   it('says nothing while the team is behind its pace line, and never posts the lead a line about itself', async () => {
     const behind = await world({}, 10_000_000, 10);
     assert.match(messageOf(await behind.hook('stop', ALPHA_TAB)), /The team is not ahead of its pace line, so nothing more happens\./);
-    assert.deepEqual((await behind.hook('helper-gate', ALPHA_TAB, AGENT)).stdout, []);
+    remindedOnly(await behind.hook('helper-gate', ALPHA_TAB, AGENT));
     const lead = await world({ sessions: { lead: { dailyPct: 1 } } }, 0, 30);
     assert.match(messageOf(await lead.hook('stop', LEAD_TAB)), /^Budget: app-lead has used 5\.0% of the week today/);
     assert.doesNotMatch(await leadInbox(lead.kit), /past its daily budget/);
@@ -146,21 +156,31 @@ describe('the budget in the hooks', () => {
     assert.equal(kit.files.get(join(TEAM_HOME, 'state', 'usage', 'bursts.jsonl')), undefined);
   });
 
-  it('does nothing with the budget off', async () => {
+  it('does nothing with the budget off but give a helper launch the helper default', async () => {
     const { hook } = await world({ enabled: false, overAction: 'block' }, 10_000_000, 30);
     assert.deepEqual((await hook('stop', ALPHA_TAB)).stdout, []);
-    assert.deepEqual((await hook('helper-gate', ALPHA_TAB, AGENT)).stdout, []);
+    remindedOnly(await hook('helper-gate', ALPHA_TAB, AGENT));
     const prompt = await hook('inbox-reminder', ALPHA_TAB, { prompt: 'next' });
     assert.ok(!prompt.stdout.some((line) => line.startsWith('teamrig budget:')));
   });
 
-  it('stays silent and never fails a hook when a newer teamrig wrote the usage files', async () => {
+  it('prices the helper default at a launch by budget.subagentWeight', async () => {
+    const { hook } = await world({ subagentWeight: 2.15 }, 0, 5);
+    const gate = await hook('helper-gate', ALPHA_TAB, AGENT);
+    assert.equal(decisionOf(gate), undefined);
+    assert.equal(contextOf(gate), helperLaunchReminder(2.15));
+    assert.match(contextOf(gate), /a helper's tokens cost 2\.15x yours \[budget\.subagentWeight\]/);
+  });
+
+  it('stays silent on the budget and never fails a hook when a newer teamrig wrote the usage files', async () => {
     const { kit, hook } = await world({ overAction: 'block' }, 10_000_000, 30);
     await kit.files.write(join(TEAM_HOME, 'state', 'usage', 'alpha.json'), '{"v":2,"rev":1}');
-    for (const result of [await hook('stop', ALPHA_TAB), await hook('helper-gate', ALPHA_TAB, AGENT)]) {
-      assert.equal(result.code, EXIT.ok);
-      assert.deepEqual(result.stdout, []);
-    }
+    const stop = await hook('stop', ALPHA_TAB);
+    assert.equal(stop.code, EXIT.ok);
+    assert.deepEqual(stop.stdout, []);
+    const gate = await hook('helper-gate', ALPHA_TAB, AGENT);
+    assert.equal(gate.code, EXIT.ok);
+    remindedOnly(gate);
     const prompt = await hook('inbox-reminder', ALPHA_TAB, { prompt: 'next' });
     assert.equal(prompt.code, EXIT.ok);
     assert.ok(!prompt.stdout.some((line) => line.startsWith('teamrig budget:')));
@@ -169,6 +189,9 @@ describe('the budget in the hooks', () => {
   it('prints nothing for a helper launch outside a team or with a bad payload', async () => {
     const { kit } = await world({ overAction: 'block' }, 10_000_000, 30);
     assert.deepEqual((await kit.run(['hook', 'helper-gate'], { stdin: 'not json' })).stdout, []);
-    assert.deepEqual((await kit.run(['hook', 'helper-gate'], { stdin: JSON.stringify({ session_id: ALPHA_TAB, cwd: join(USER_HOME, 'elsewhere'), ...AGENT }) })).stdout, []);
+    const elsewhere = join(USER_HOME, 'elsewhere');
+    assert.deepEqual((await kit.run(['hook', 'helper-gate'], { stdin: JSON.stringify({ session_id: STRANGER_TAB, cwd: elsewhere, ...AGENT }) })).stdout, []);
+    // A bound tab stays a team session in any folder; with no transcript to meter, only the reminder comes.
+    remindedOnly(await kit.run(['hook', 'helper-gate'], { stdin: JSON.stringify({ session_id: ALPHA_TAB, cwd: elsewhere, ...AGENT }) }));
   });
 });

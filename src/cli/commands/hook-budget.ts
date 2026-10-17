@@ -13,10 +13,11 @@ import { runMeter } from '../../budget/meter.ts';
 import { sessionBudgetPct } from '../../budget/pace.ts';
 import { readSnapshots, weekUseOf } from '../../budget/snapshot.ts';
 import { UsageStore, type UsageState } from '../../budget/store.ts';
-import { helperGate, promptWarning, stopWarning, type BudgetFacts } from '../../budget/warn.ts';
+import { helperGate, promptWarning, stopWarning, type BudgetFacts, type HelperGate } from '../../budget/warn.ts';
 import { WarnStore } from '../../budget/warn-store.ts';
 import { readWeek } from '../../budget/week.ts';
 import { postLine } from '../../inbox/inbox.ts';
+import { helperLaunchReminder } from '../../rules/helper-default.ts';
 import type { Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
 import { snapshotDirOf } from './budget.ts';
@@ -153,15 +154,22 @@ export async function promptBudgetLine(runtime: CliRuntime, scope: BudgetScope):
   return result.line;
 }
 
-/** The PreToolUse output that asks the person before a helper launch or refuses it (`helperGate`); undefined lets it go. */
-export async function helperGateOutput(runtime: CliRuntime, scope: BudgetScope, transcript: string | undefined): Promise<string | undefined> {
-  const facts = await budgetFactsOf(runtime, scope, transcript);
-  if (facts === undefined) {
-    return undefined;
-  }
-  const gate = helperGate(facts, scope.config.budget);
-  if (gate.kind === 'allow') {
-    return undefined;
-  }
-  return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: gate.kind, permissionDecisionReason: gate.reason } });
+/**
+ * The budget's say on a helper launch (`helperGate`). The budget off, or usage files it cannot read (a newer
+ * teamrig wrote them), let the launch go, so the reminder beside it still arrives.
+ */
+async function budgetGateOf(runtime: CliRuntime, scope: BudgetScope, transcript: string | undefined): Promise<HelperGate> {
+  const facts = await budgetFactsOf(runtime, scope, transcript).catch(() => undefined);
+  return facts === undefined ? { kind: 'allow' } : helperGate(facts, scope.config.budget);
+}
+
+/**
+ * The PreToolUse output at each helper launch: rule 8's helper default as model context (`helperLaunchReminder`),
+ * plus the budget's ask or refusal when it holds the launch back.
+ */
+export async function helperGateOutput(runtime: CliRuntime, scope: BudgetScope, transcript: string | undefined): Promise<string> {
+  const gate = await budgetGateOf(runtime, scope, transcript);
+  const decision = gate.kind === 'allow' ? {} : { permissionDecision: gate.kind, permissionDecisionReason: gate.reason };
+  const additionalContext = helperLaunchReminder(scope.config.budget.subagentWeight);
+  return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', ...decision, additionalContext } });
 }
