@@ -93,10 +93,11 @@ describe('runCli: help, version and usage errors', () => {
     const setLines = [
       '  set <id> --status open|in-progress|verifying|waiting|done|dropped [--note "<what/why>"] [--evidence <proof>]',
       '      [--skill <name>|none] [--waits decision:<who>,approval:<who>,task:T<id>,time:<date>]',
-      '      [--proof "<what proves it>"] [--due <date>]',
+      '      [--proof "<what proves it>"] [--due <date>] [--ask <session> --text "<the work>"]',
       '      verifying needs --proof: what will prove the shipped change works; --due sets the date to verify by',
-      '      waiting needs --waits: who decides or approves (a session or the owner), a task to finish first',
+      "      waiting needs --waits: the lead's or the owner's decision or approval, a task to finish first",
       '      (only once started) or a time; check flags it READY once its tasks finished and its time passed',
+      "      --ask (with waiting): adds the work as that session's task and waits on it; --due is its due date",
     ];
     assert.deepEqual([done.code, done.stderr], [EXIT.usage, [['unexpected "done"', '', head, ...setLines, FULL_HELP_POINTER].join('\n')]]);
     assert.equal((done.stderr[0] ?? '').length < USAGE.length / 5, true, 'a fifth of the full help at most');

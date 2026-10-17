@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { TASK_STATUSES } from '../register/model.ts';
 import { UsageError } from './args.ts';
-import { addInputOf, callerOf, changesOf, listFilterOf, priorityOf, sessionRef, sizeOf, statusInputOf, taskIdOf, waitsOf, weekOf } from './inputs.ts';
+import { addInputOf, callerOf, changesOf, listFilterOf, priorityOf, sessionRef, setInputOf, sizeOf, statusInputOf, taskIdOf, waitsOf, weekOf } from './inputs.ts';
 
 const flags = (entries: Readonly<Record<string, string>>): ReadonlyMap<string, string> => new Map(Object.entries(entries));
 
@@ -170,6 +170,30 @@ describe('statusInputOf', () => {
 
   it('refuses an unknown status', () => {
     assert.throws(() => statusInputOf(flags({ status: 'finished' })), /--status "finished" is not open\|/);
+  });
+});
+
+describe('setInputOf', () => {
+  it('reads the status alone without --ask', () => {
+    assert.deepEqual(setInputOf(flags({ status: 'verifying', proof: 'the nightly run', due: '2030-01-09' })), {
+      status: { status: 'verifying', proof: 'the nightly run', due: '2030-01-09' },
+      ask: null,
+    });
+  });
+
+  it('with --ask, takes --text as the work asked for and --due as its due date', () => {
+    assert.deepEqual(setInputOf(flags({ status: 'waiting', ask: 'bravo', text: 'Land the schema change', due: '2030-01-10', note: 'needs the column' })), {
+      status: { status: 'waiting', note: 'needs the column' },
+      ask: { owner: 'bravo', title: 'Land the schema change', due: '2030-01-10' },
+    });
+    assert.deepEqual(setInputOf(flags({ status: 'waiting', ask: 'bravo', text: 'Land it' })).ask, { owner: 'bravo', title: 'Land it' });
+  });
+
+  it('pairs --ask and --text, and checks the session shape', () => {
+    assert.throws(() => setInputOf(flags({ status: 'waiting', ask: 'bravo' })), /--ask needs --text "<the work asked for>"/);
+    assert.throws(() => setInputOf(flags({ status: 'waiting', ask: 'bravo', text: '  ' })), /--ask needs --text/);
+    assert.throws(() => setInputOf(flags({ status: 'waiting', text: 'Land it' })), /--text goes only with --ask <session>/);
+    assert.throws(() => setInputOf(flags({ status: 'waiting', ask: 'no way', text: 'Land it' })), /--ask "no way" is not a session id or name/);
   });
 });
 
