@@ -19,7 +19,7 @@ async function twoTasks(config: JsonRecord = TEAM): Promise<CliHarness> {
   const kit = new CliHarness(config);
   for (const argv of [
     ['add', '--title', 'Old plan', '--description', 'what and why', '--priority', 'p2'],
-    ['set', 'T1', '--status', 'done', '--note', 'shipped', '--evidence', 'abc1234', '--skill', 'none'],
+    ['set', 'T1', '--status', 'done', '--note', 'shipped', '--evidence', 'abc1234', '--skill', 'none', '--followups', 'none'],
     ['add', '--title', 'Current plan', '--description', 'what and why', '--priority', 'p1'],
   ]) {
     const result = await kit.run(argv, AS_ALPHA);
@@ -39,8 +39,8 @@ function ids(lines: readonly string[]): string[] {
 }
 
 const PLAN = [
-  'ARCHIVE events.jsonl (3 event(s), 606 B) as archive/events-000001.jsonl',
-  'SNAPSHOT snapshot.jsonl: 3 event(s), 791 B, covering segments 1-1; folded from the history (3 event(s))',
+  'ARCHIVE events.jsonl (3 event(s), 621 B) as archive/events-000001.jsonl',
+  'SNAPSHOT snapshot.jsonl: 3 event(s), 806 B, covering segments 1-1; folded from the history (3 event(s))',
   'TASKS 2 kept (2 unchanged, 0 changed), 0 retired now, 0 before',
   'HISTORY 2 task(s) from 3 event(s): the working set holds every active one as the history does',
   'TAIL events.jsonl starts again with the rotation marker (67 B)',
@@ -90,7 +90,7 @@ describe('teamrig compact', () => {
     assert.deepEqual(refused.stderr, [
       `FAILED the rotation is refused, nothing was written: ${PATHS.segment(1)} is there and is not the start of the tail: move it aside by hand, then rotate again`,
     ]);
-    assert.equal(refused.stdout[0], 'ARCHIVE events.jsonl (3 event(s), 606 B) as archive/events-000001.jsonl, replacing what a stopped rotation left there');
+    assert.equal(refused.stdout[0], 'ARCHIVE events.jsonl (3 event(s), 621 B) as archive/events-000001.jsonl, replacing what a stopped rotation left there');
     assert.deepEqual(contents(kit), before);
   });
 

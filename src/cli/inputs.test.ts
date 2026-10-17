@@ -142,6 +142,12 @@ describe('statusInputOf', () => {
     assert.deepEqual(statusInputOf(flags({ status: 'waiting' })), { status: 'waiting' });
   });
 
+  it('reads the follow-ups as task ids, none as an empty list, and refuses text that is not a task id', () => {
+    assert.deepEqual(statusInputOf(flags({ status: 'done', followups: 'T4, T5' })), { status: 'done', followups: ['T4', 'T5'] });
+    assert.deepEqual(statusInputOf(flags({ status: 'done', followups: 'none' })), { status: 'done', followups: [] });
+    assert.throws(() => statusInputOf(flags({ status: 'done', followups: 'T4,next' })), /"next" is not a task id like T12/);
+  });
+
   it('reads each typed reason a waiting task waits for, a time keeping its own colon', () => {
     assert.deepEqual(statusInputOf(flags({ status: 'waiting', waits: 'decision:owner, approval:lead,task:T5,time:2030-01-09 12:00' })), {
       status: 'waiting',

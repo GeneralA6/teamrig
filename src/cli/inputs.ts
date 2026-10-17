@@ -246,6 +246,10 @@ export function statusInputOf(flags: Flags): StatusInput {
   if (due !== undefined) {
     input.due = due;
   }
+  const followups = flags.get('followups');
+  if (followups !== undefined) {
+    input.followups = followups === NONE ? [] : listOf('--followups', followups).map(taskIdOf);
+  }
   return input;
 }
 

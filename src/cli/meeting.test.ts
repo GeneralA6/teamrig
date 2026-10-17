@@ -102,7 +102,7 @@ describe('runCli: the daily meeting', () => {
     kit.clock.advance(30 * MINUTE);
     await kit.run(['meeting', 'end', '--session', 'lead']);
     kit.clock.advance(MINUTE);
-    await kit.run(['set', 'T2', '--status', 'done', '--note', 'shipped', '--evidence', 'the docs are live', '--skill', 'none', '--session', 'bravo']);
+    await kit.run(['set', 'T2', '--status', 'done', '--note', 'shipped', '--evidence', 'the docs are live', '--skill', 'none', '--followups', 'none', '--session', 'bravo']);
     kit.clock.advance(20 * 60 * MINUTE);
     const next = await kit.run(['meeting', 'start', '--session', 'lead']);
     const done = next.stdout.indexOf('DONE 1 done or dropped since Tue 01-08 10:30 UTC');
