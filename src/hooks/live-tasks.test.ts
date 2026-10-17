@@ -1,0 +1,94 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import type { Task } from '../register/fold.ts';
+import { waitContext } from '../register/waits.ts';
+import { testTask } from '../testing/task.ts';
+import { COMPACT_SOURCE, LIVE_TASK_ROWS, LIVE_TITLE_CHARS, liveTasksNote, showsLiveTasks } from './live-tasks.ts';
+
+const NOW = new Date('2030-01-08T10:00:00.000Z');
+const HEAD = 'LIVE TASKS of alpha, read from the register at this start';
+const WINS = 'where your handover or a compaction summary says otherwise, the register wins';
+
+/** The block for alpha over `tasks`, judged at NOW against those same tasks. */
+function noteOf(tasks: readonly Task[]): string {
+  const byId = new Map(tasks.map((task) => [task.id, task]));
+  return liveTasksNote({ tasks, owner: 'alpha', context: waitContext(byId, NOW), command: 'teamrig' });
+}
+
+describe('showsLiveTasks', () => {
+  it('shows the block at the fresh start of a refresh and after a compaction, at no other start', () => {
+    assert.equal(COMPACT_SOURCE, 'compact');
+    assert.equal(showsLiveTasks('clear', true), true);
+    assert.equal(showsLiveTasks('startup', true), true);
+    assert.equal(showsLiveTasks('compact', false), true);
+    for (const source of ['clear', 'startup', 'resume', undefined]) {
+      assert.equal(showsLiveTasks(source, false), false, String(source));
+    }
+  });
+});
+
+describe('liveTasksNote', () => {
+  it('says none are active in one line when the owner has no open, started, verifying or waiting task', () => {
+    const others = [
+      testTask({ id: 'T1', status: 'done' }),
+      testTask({ id: 'T2', status: 'dropped' }),
+      testTask({ id: 'T3', owner: 'bravo', status: 'in-progress' }),
+    ];
+    assert.equal(noteOf(others), `${HEAD}: none active; ${WINS}.`);
+    assert.equal(noteOf([]), `${HEAD}: none active; ${WINS}.`);
+  });
+
+  it('lists work in hand first, then what waits, then what is not started, each in plan order', () => {
+    const tasks = [
+      testTask({ id: 'T1', title: 'Open p1', priority: 1 }),
+      testTask({ id: 'T2', title: 'Open p0', priority: 0 }),
+      testTask({ id: 'T3', title: 'Started', status: 'in-progress' }),
+      testTask({ id: 'T4', title: 'Shipped', status: 'verifying', proof: 'the nightly run' }),
+      testTask({ id: 'T5', title: 'Blocked', status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }] }),
+    ];
+    assert.equal(
+      noteOf(tasks),
+      [
+        `${HEAD} (5 active; ${WINS}):`,
+        '  T3 in-progress, p2 | Started',
+        '  T4 verifying, p2 | Shipped',
+        '  T5 waiting, p2 | Blocked (waiting: decision owner)',
+        '  T2 open, p0 | Open p0',
+        '  T1 open, p1 | Open p1',
+      ].join('\n'),
+    );
+  });
+
+  it('names the due date and only the plan dependencies still unfinished', () => {
+    const tasks = [
+      testTask({ id: 'T1', status: 'done' }),
+      testTask({ id: 'T2', title: 'First' }),
+      testTask({ id: 'T3', title: 'Then this', due: '2030-01-15', after: ['T1', 'T2'] }),
+    ];
+    assert.deepEqual(noteOf(tasks).split('\n').slice(1), ['  T3 open, p2, due 01-15, after T2 | Then this', '  T2 open, p2 | First']);
+  });
+
+  it('marks the ready wait reasons, and shows the note of a waiting task with no reasons', () => {
+    const tasks = [
+      testTask({ id: 'T1', status: 'done' }),
+      testTask({ id: 'T2', title: 'Waits on two', status: 'waiting', waits: [{ kind: 'task', id: 'T1' }, { kind: 'approval', who: 'lead' }] }),
+      testTask({ id: 'T3', title: 'Old wait', status: 'waiting', note: `the vendor answers ${'x'.repeat(80)}` }),
+      testTask({ id: 'T4', title: 'Bare wait', status: 'waiting' }),
+    ];
+    const rows = noteOf(tasks).split('\n');
+    assert.equal(rows[1], '  T2 waiting, p2 | Waits on two (waiting: on T1 ready · approval lead)');
+    assert.equal(rows[2], `  T3 waiting, p2 | Old wait (waiting: the vendor answers ${'x'.repeat(40)}…)`);
+    assert.equal(rows[3], '  T4 waiting, p2 | Bare wait');
+  });
+
+  it('cuts a long title, and caps the rows with a line naming the command that lists the rest', () => {
+    assert.equal(LIVE_TASK_ROWS, 6);
+    assert.equal(LIVE_TITLE_CHARS, 60);
+    const tasks = Array.from({ length: LIVE_TASK_ROWS + 3 }, (_, index) => testTask({ id: `T${index + 1}`, title: 'y'.repeat(70) }));
+    const lines = noteOf(tasks).split('\n');
+    assert.equal(lines[0], `${HEAD} (9 active; ${WINS}):`);
+    assert.equal(lines.length, 1 + LIVE_TASK_ROWS + 1);
+    assert.equal(lines[1], `  T1 open, p2 | ${'y'.repeat(LIVE_TITLE_CHARS - 1)}…`);
+    assert.equal(lines.at(-1), '  +3 more: `teamrig list --session alpha`');
+  });
+});
