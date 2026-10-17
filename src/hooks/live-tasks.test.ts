@@ -1,9 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Task } from '../register/fold.ts';
-import { waitContext } from '../register/waits.ts';
+import { TaskTree } from '../register/tree.ts';
 import { testTask } from '../testing/task.ts';
-import { COMPACT_SOURCE, LIVE_TASK_ROWS, LIVE_TITLE_CHARS, liveTasksNote, showsLiveTasks } from './live-tasks.ts';
+import { COMPACT_SOURCE, LIVE_TASK_ROWS, LIVE_TITLE_CHARS, LIVE_WAITING_ROWS, liveTasksNote, showsLiveTasks } from './live-tasks.ts';
 
 const NOW = new Date('2030-01-08T10:00:00.000Z');
 const HEAD = 'LIVE TASKS of alpha, read from the register at this start';
@@ -12,7 +12,7 @@ const WINS = 'where your handover or a compaction summary says otherwise, the re
 /** The block for alpha over `tasks`, judged at NOW against those same tasks. */
 function noteOf(tasks: readonly Task[]): string {
   const byId = new Map(tasks.map((task) => [task.id, task]));
-  return liveTasksNote({ tasks, owner: 'alpha', context: waitContext(byId, NOW), command: 'teamrig' });
+  return liveTasksNote({ tasks, owner: 'alpha', tree: new TaskTree(byId, NOW), command: 'teamrig' });
 }
 
 describe('showsLiveTasks', () => {
@@ -59,13 +59,34 @@ describe('liveTasksNote', () => {
     );
   });
 
-  it('names the due date and only the plan dependencies still unfinished', () => {
+  it('names the effective due date, with the task it comes from, and only the plan dependencies still unfinished', () => {
     const tasks = [
       testTask({ id: 'T1', status: 'done' }),
       testTask({ id: 'T2', title: 'First' }),
       testTask({ id: 'T3', title: 'Then this', due: '2030-01-15', after: ['T1', 'T2'] }),
+      testTask({ id: 'T4', title: 'Late on my own', due: '2030-01-20' }),
     ];
-    assert.deepEqual(noteOf(tasks).split('\n').slice(1), ['  T3 open, p2, due 01-15, after T2 | Then this', '  T2 open, p2 | First']);
+    assert.deepEqual(noteOf(tasks).split('\n').slice(1), [
+      '  T2 open, p2, due 01-15 (from T3) | First',
+      '  T3 open, p2, due 01-15, after T2 | Then this',
+      '  T4 open, p2, due 01-20 | Late on my own',
+    ]);
+  });
+
+  it('lists the tasks of other sessions waiting on the owner, at most LIVE_WAITING_ROWS, also when the owner holds none active', () => {
+    assert.equal(LIVE_WAITING_ROWS, 3);
+    const mine = testTask({ id: 'T1', title: 'Mine' });
+    const asks = [{ kind: 'decision' as const, who: 'alpha' }];
+    const needers = Array.from({ length: LIVE_WAITING_ROWS + 1 }, (_, index) => testTask({ id: `T${index + 2}`, owner: 'bravo', title: 'Theirs', after: ['T1'] }));
+    const lines = noteOf([mine, ...needers]).split('\n');
+    assert.equal(lines[2], `WAITING ON YOU ${LIVE_WAITING_ROWS + 1} task(s) of other sessions:`);
+    assert.match(lines[3] ?? '', /^ {2}T2 .*\| Theirs · needs your T1$/);
+    assert.equal(lines.length, 3 + LIVE_WAITING_ROWS + 1);
+    assert.equal(lines.at(-1), '  +1 more: `teamrig start --session alpha --all`');
+    const decided = testTask({ id: 'T7', owner: 'bravo', title: 'Asks me', status: 'waiting', waits: asks });
+    assert.deepEqual(noteOf([decided]).split('\n').slice(1, 2), ['WAITING ON YOU 1 task(s) of other sessions:']);
+    assert.match(noteOf([decided]).split('\n')[0] ?? '', /: none active; /);
+    assert.match(noteOf([decided]), /\| Asks me \(waiting: decision alpha\) · waits on your decision$/);
   });
 
   it('marks the ready wait reasons, and shows the note of a waiting task with no reasons', () => {

@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { MS_PER_DAY } from '../core/time.ts';
 import type { Task } from '../register/fold.ts';
-import { waitContext } from '../register/waits.ts';
+import { TaskTree } from '../register/tree.ts';
 import { testTask } from '../testing/task.ts';
 import { AGENDA_ROWS, agendaLines, agendaSince, DESCRIPTION_CHARS, DONE_WINDOW_DAYS, oneLine, waitsOnOwner, type AgendaInput } from './agenda.ts';
 
@@ -11,7 +11,7 @@ const NOW = Date.parse('2030-01-08T10:00:00Z');
 function inputOf(tasks: readonly Task[], since = NOW - MS_PER_DAY): AgendaInput {
   return {
     tasks,
-    context: waitContext(new Map(tasks.map((task) => [task.id, task])), new Date(NOW)),
+    tree: new TaskTree(new Map(tasks.map((task) => [task.id, task])), new Date(NOW)),
     now: NOW,
     since,
     ownerMarker: 'owner',
@@ -94,6 +94,14 @@ describe('the meeting agenda', () => {
     assert.equal(lines.length, 1 + AGENDA_ROWS + 1);
     assert.equal(lines.at(-1), '  +2 more: teamrig check');
     assert.ok(!lines.some((line) => /\bT9[01]\b/.test(line)), lines.join('\n'));
+  });
+
+  it('lists a task late by the due of a task that needs it', () => {
+    const work = testTask({ id: 'T1' });
+    const needer = testTask({ id: 'T2', owner: 'beta', due: '2030-01-07', after: ['T1'] });
+    const lines = section(agendaLines(inputOf([work, needer])), 'LATE');
+    assert.equal(lines[0], 'LATE 2 past their due date');
+    assert.match(lines[1] ?? '', /^ {2}T1 .*due 01-07 \(from T2\)/);
   });
 
   it('lists the tasks done or dropped since the start, and not those before it', () => {

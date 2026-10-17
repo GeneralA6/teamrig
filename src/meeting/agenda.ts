@@ -2,8 +2,8 @@ import { formatWeekdayMinute } from '../budget/format.ts';
 import { formatUtcMinute, MS_PER_DAY, shortUtc } from '../core/time.ts';
 import type { Task } from '../register/fold.ts';
 import { ACTIVE_STATUSES } from '../register/model.ts';
-import { byPlanOrder, cut, dueTime, formatShortTask } from '../register/views.ts';
-import type { WaitContext } from '../register/waits.ts';
+import type { TaskTree } from '../register/tree.ts';
+import { cut, formatShortTask } from '../register/views.ts';
 
 /**
  * The register's part of the daily meeting's agenda, gathered in one call so the lead spends no turn per item:
@@ -36,7 +36,8 @@ export function waitsOnOwner(task: Task, ownerMarker: string): boolean {
 
 export interface AgendaInput {
   readonly tasks: readonly Task[];
-  readonly context: WaitContext;
+  /** The dependency tree of the same read: effective dues, ready reasons and what needs each task. */
+  readonly tree: TaskTree;
   readonly now: number;
   /** When the finished work starts (agendaSince). */
   readonly since: number;
@@ -52,8 +53,8 @@ export function oneLine(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
 }
 
-function rowOf(task: Task, context: WaitContext): string {
-  return `  ${formatShortTask(task, TITLE_CHARS, undefined, context)}`;
+function rowOf(task: Task, tree: TaskTree): string {
+  return `  ${formatShortTask(task, TITLE_CHARS, undefined, tree)}`;
 }
 
 /** A list's heading, its first AGENDA_ROWS rows and a `+N more` line naming the command that lists them all. */
@@ -63,10 +64,10 @@ function listed(head: string, rows: readonly string[], all: string): string[] {
 }
 
 /** A decision's card facts: its row, then what and why, then since when it waits with its newest note, then where it was asked. */
-function cardFacts(task: Task, context: WaitContext): string[] {
+function cardFacts(task: Task, tree: TaskTree): string[] {
   const note = task.note === null ? '' : `: ${cut(oneLine(task.note), NOTE_CHARS)}`;
   return [
-    rowOf(task, context),
+    rowOf(task, tree),
     ...(task.description === null ? [] : [`    what and why: ${cut(oneLine(task.description), DESCRIPTION_CHARS)}`]),
     `    waiting since ${shortUtc(formatUtcMinute(new Date(task.statusAt)))}${note}`,
     ...(task.ref === null ? [] : [`    asked at: ${task.ref}`]),
@@ -78,35 +79,36 @@ function cardFacts(task: Task, context: WaitContext): string[] {
  * card form is the owner's: each item readable alone, with the numbers to decide by and one exact action.
  */
 function decisionLines(input: AgendaInput): string[] {
-  const waiting = input.tasks.filter((task) => waitsOnOwner(task, input.ownerMarker)).sort(byPlanOrder);
+  const waiting = input.tree.inPlanOrder(input.tasks.filter((task) => waitsOnOwner(task, input.ownerMarker)));
   const head = `DECISIONS ${waiting.length} waiting on ${input.ownerMarker} (decision or approval)`;
   if (waiting.length === 0) {
     return [head];
   }
   return [
     head,
-    ...waiting.flatMap((task) => cardFacts(task, input.context)),
+    ...waiting.flatMap((task) => cardFacts(task, input.tree)),
     `  Card each so ${input.ownerMarker} decides from it alone: what it is and why it matters (1-2 plain lines); the options with their numbers, each figure explained; your recommendation and why; the exact action and what each result leads to. Never point to a doc; \`${input.command} show <id>\` prints a task whole.`,
     `  Record each answer in the same turn: ${input.command} update <id> --note "${input.ownerMarker} decided: <decision>" --session ${input.lead}; meeting end tells each task's owner.`,
   ];
 }
 
-/** LATE: the active tasks past their due date, in plan order. */
+/** LATE: the active tasks past their effective due date (their own, or an earlier one of a task that needs them), in plan order. */
 function lateLines(input: AgendaInput): string[] {
-  const late = input.tasks.filter((task) => ACTIVE_STATUSES.includes(task.status) && (dueTime(task) ?? Number.POSITIVE_INFINITY) < input.now).sort(byPlanOrder);
+  const { tree } = input;
+  const late = tree.inPlanOrder(input.tasks.filter((task) => ACTIVE_STATUSES.includes(task.status) && (tree.dueTime(task) ?? Number.POSITIVE_INFINITY) < input.now));
   return listed(
     `LATE ${late.length} past their due date`,
-    late.map((task) => rowOf(task, input.context)),
+    late.map((task) => rowOf(task, tree)),
     `${input.command} check`,
   );
 }
 
 /** DONE: the tasks done or dropped since the agenda's start, in plan order. */
 function doneLines(input: AgendaInput): string[] {
-  const done = input.tasks.filter((task) => (task.status === 'done' || task.status === 'dropped') && Date.parse(task.statusAt) >= input.since).sort(byPlanOrder);
+  const done = input.tree.inPlanOrder(input.tasks.filter((task) => (task.status === 'done' || task.status === 'dropped') && Date.parse(task.statusAt) >= input.since));
   return listed(
     `DONE ${done.length} done or dropped since ${formatWeekdayMinute(input.since)}`,
-    done.map((task) => rowOf(task, input.context)),
+    done.map((task) => rowOf(task, input.tree)),
     `${input.command} list --status done,dropped`,
   );
 }

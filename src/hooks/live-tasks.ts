@@ -1,7 +1,8 @@
 import { shortUtc } from '../core/time.ts';
 import type { Task } from '../register/fold.ts';
 import { ACTIVE_STATUSES, priorityText, type TaskStatus } from '../register/model.ts';
-import { byPlanOrder, cut } from '../register/views.ts';
+import type { TaskTree } from '../register/tree.ts';
+import { cut, formatWaitingOnYou } from '../register/views.ts';
 import { unfinishedAfter, waitsText, type WaitContext } from '../register/waits.ts';
 
 /**
@@ -14,6 +15,8 @@ import { unfinishedAfter, waitsText, type WaitContext } from '../register/waits.
 export const LIVE_TASK_ROWS = 6;
 /** A row cuts the task title to this many characters. */
 export const LIVE_TITLE_CHARS = 60;
+/** The most rows of other sessions' tasks waiting on the owner; the rest is one `+N more` line naming `start`. */
+export const LIVE_WAITING_ROWS = 3;
 /** A waiting task with no reasons (one set before reasons existed) shows its note instead, cut to this many characters. */
 const LIVE_NOTE_CHARS = 60;
 
@@ -31,8 +34,9 @@ export function showsLiveTasks(source: string | undefined, refreshed: boolean): 
   return refreshed || source === COMPACT_SOURCE;
 }
 
-function byLiveOrder(a: Task, b: Task): number {
-  return LIVE_ORDER.indexOf(a.status) - LIVE_ORDER.indexOf(b.status) || byPlanOrder(a, b);
+/** Work in hand first (LIVE_ORDER), then plan order on effective dues. */
+function byLiveOrder(tree: TaskTree): (a: Task, b: Task) => number {
+  return (a, b) => LIVE_ORDER.indexOf(a.status) - LIVE_ORDER.indexOf(b.status) || tree.byPlanOrder(a, b);
 }
 
 /** What a waiting task waits on: its reasons, ready ones marked; for a task without reasons, its note. */
@@ -46,17 +50,37 @@ function waitingText(task: Task, context: WaitContext): string {
   return task.note === null ? '' : ` (waiting: ${cut(task.note, LIVE_NOTE_CHARS)})`;
 }
 
-/** `  T12 in-progress, p2, due 01-15, after T5 | <title> (waiting: on T5 ready)`: only the plan dependencies not finished yet. */
-function liveRow(task: Task, context: WaitContext): string {
+/**
+ * `  T12 in-progress, p2, due 01-15 (from T20), after T5 | <title> (waiting: on T5 ready)`: the effective due, naming
+ * the task it comes from when another task's earlier date holds this one, and only the plan dependencies not finished yet.
+ */
+function liveRow(task: Task, tree: TaskTree): string {
   const parts = [`${task.id} ${task.status}`, priorityText(task.priority)];
-  if (task.due !== null) {
-    parts.push(`due ${shortUtc(task.due)}`);
+  const due = tree.effectiveDue(task.id);
+  if (due !== undefined) {
+    parts.push(`due ${shortUtc(due.due)}${due.from === null ? '' : ` (from ${due.from})`}`);
   }
-  const after = unfinishedAfter(task.after, context);
+  const after = unfinishedAfter(task.after, tree.context);
   if (after.length > 0) {
     parts.push(`after ${after.join(',')}`);
   }
-  return `  ${parts.join(', ')} | ${cut(task.title, LIVE_TITLE_CHARS)}${waitingText(task, context)}`;
+  return `  ${parts.join(', ')} | ${cut(task.title, LIVE_TITLE_CHARS)}${waitingText(task, tree.context)}`;
+}
+
+/**
+ * `WAITING ON YOU 2 task(s) of other sessions:` and a row each: the active tasks of other sessions that need the
+ * owner's unfinished tasks or wait on its decision or approval, in plan order, at most LIVE_WAITING_ROWS of them and a
+ * `+N more` line naming `start`; nothing when none waits.
+ */
+function waitingLines(owner: string, tree: TaskTree, command: string): string[] {
+  const waiting = tree.waitingOn(owner);
+  if (waiting.length === 0) {
+    return [];
+  }
+  const rows = waiting.slice(0, LIVE_WAITING_ROWS).map((entry) => `  ${formatWaitingOnYou(entry, LIVE_TITLE_CHARS, tree)}`);
+  const left = waiting.length - rows.length;
+  const more = left > 0 ? [`  +${left} more: \`${command} start --session ${owner} --all\``] : [];
+  return [`WAITING ON YOU ${waiting.length} task(s) of other sessions:`, ...rows, ...more];
 }
 
 export interface LiveTasksInput {
@@ -64,26 +88,31 @@ export interface LiveTasksInput {
   readonly tasks: Iterable<Task>;
   /** The session whose tasks these are. */
   readonly owner: string;
-  /** The read that judges which wait reasons are ready and which plan dependencies are finished. */
-  readonly context: WaitContext;
+  /**
+   * The dependency tree of the same read: which wait reasons are ready and which plan dependencies are finished, each
+   * task's effective due, and the other sessions' tasks waiting on the owner.
+   */
+  readonly tree: TaskTree;
   /** The CLI name the `+N more` line tells the session to run. */
   readonly command: string;
 }
 
 /**
  * The block: a heading that says the register wins over the handover and a compaction summary, then the owner's
- * active tasks (work in hand first, then plan order), at most LIVE_TASK_ROWS of them and a `+N more` line naming
- * the command that lists the rest; one line when the owner has none.
+ * active tasks (work in hand first, then plan order on effective dues), at most LIVE_TASK_ROWS of them and a
+ * `+N more` line naming the command that lists the rest (one line when the owner has none), then the other
+ * sessions' tasks waiting on the owner, when some do.
  */
-export function liveTasksNote({ tasks, owner, context, command }: LiveTasksInput): string {
-  const active = [...tasks].filter((task) => task.owner === owner && ACTIVE_STATUSES.includes(task.status)).sort(byLiveOrder);
+export function liveTasksNote({ tasks, owner, tree, command }: LiveTasksInput): string {
+  const active = [...tasks].filter((task) => task.owner === owner && ACTIVE_STATUSES.includes(task.status)).sort(byLiveOrder(tree));
   const source = `LIVE TASKS of ${owner}, read from the register at this start`;
   const wins = 'where your handover or a compaction summary says otherwise, the register wins';
+  const waiting = waitingLines(owner, tree, command);
   if (active.length === 0) {
-    return `${source}: none active; ${wins}.`;
+    return [`${source}: none active; ${wins}.`, ...waiting].join('\n');
   }
-  const rows = active.slice(0, LIVE_TASK_ROWS).map((task) => liveRow(task, context));
+  const rows = active.slice(0, LIVE_TASK_ROWS).map((task) => liveRow(task, tree));
   const left = active.length - rows.length;
   const more = left > 0 ? [`  +${left} more: \`${command} list --session ${owner}\``] : [];
-  return [`${source} (${active.length} active; ${wins}):`, ...rows, ...more].join('\n');
+  return [`${source} (${active.length} active; ${wins}):`, ...rows, ...more, ...waiting].join('\n');
 }

@@ -26,7 +26,7 @@ describe('runCli: set --ask asks a peer for work by a task', () => {
     const asked = await kit.run(['set', 'T1', '--status', 'waiting', '--ask', 'bravo', '--text', 'Land the schema change', '--due', '2030-01-10', '--session', 'alpha']);
     assert.equal(asked.code, EXIT.ok, asked.stderr.join('\n'));
     assert.deepEqual(asked.stdout, [
-      'ADDED T2 open, p2, owner bravo, due 01-10, from alpha | Land the schema change',
+      'ADDED T2 open, p2, owner bravo, due 01-10, from alpha | Land the schema change · needed by T1 (alpha)',
       'SET T1 waiting, p2, owner alpha, from lead | Ship the release (waiting: on T2; Land the schema change)',
     ]);
     assert.deepEqual(asked.stderr, ['NOTE bravo has an inbox line: T2 is yours (p2, due 2030-01-10): Land the schema change']);

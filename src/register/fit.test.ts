@@ -2,11 +2,20 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { testTask } from '../testing/task.ts';
 import { fitLines, leftOfWeek, overLimitFlag, weekFit, type FitRow } from './fit.ts';
+import type { Task } from './fold.ts';
+import { TaskTree } from './tree.ts';
 
 const week = '2030-01-07';
+const NOW = new Date('2030-01-08T10:00:00.000Z');
+
+function treeOf(...tasks: Task[]): TaskTree {
+  return new TaskTree(new Map(tasks.map((task) => [task.id, task])), NOW);
+}
 
 function rows(...tasks: Parameters<typeof testTask>[0][]): FitRow[] {
-  return tasks.map((fields) => ({ task: testTask({ week, ...fields }) }));
+  const all = tasks.map((fields) => testTask({ week, ...fields }));
+  const tree = treeOf(...all);
+  return all.map((task) => ({ task, tree }));
 }
 
 describe('leftOfWeek', () => {
@@ -63,13 +72,18 @@ describe('weekFit', () => {
   it('orders a roll-up over teams by plan order and keeps each row\'s team', () => {
     const fit = weekFit(
       [
-        { task: testTask({ id: 'T2', week, priority: 2, size: 3 }), team: 'beta' },
-        { task: testTask({ id: 'T7', week, priority: 1, size: 3 }), team: 'pipeline' },
+        { task: testTask({ id: 'T2', week, priority: 2, size: 3 }), tree: treeOf(), team: 'beta' },
+        { task: testTask({ id: 'T7', week, priority: 1, size: 3 }), tree: treeOf(), team: 'pipeline' },
       ],
       week,
       4,
     );
     assert.equal(fit.unfit?.row.team, 'beta');
+  });
+
+  it('orders on the effective due, so work a dated task needs comes first', () => {
+    const fit = weekFit(rows({ id: 'T1', size: 3, due: '2030-01-12' }, { id: 'T2', size: 3 }, { id: 'T3', owner: 'beta', due: '2030-01-09', after: ['T2'] }), week, 4);
+    assert.equal(fit.unfit?.row.task.id, 'T1', 'T2 is due 01-09 by T3, so it fits first');
   });
 });
 
@@ -84,7 +98,7 @@ describe('fitLines', () => {
   });
 
   it('names the team of a roll-up row', () => {
-    const fit = weekFit([{ task: testTask({ id: 'T3', week, size: 5 }), team: 'beta' }], week, 1);
+    const fit = weekFit([{ task: testTask({ id: 'T3', week, size: 5 }), tree: treeOf(), team: 'beta' }], week, 1);
     assert.deepEqual(fitLines(fit), ['fits: none (left 1% of the week)', 'does not fit: beta/T3 p2 alpha 5% | Add a health check']);
   });
 

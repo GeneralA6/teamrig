@@ -1,11 +1,12 @@
 import type { Flag } from './check.ts';
 import type { Task } from './fold.ts';
 import { priorityText, type TaskStatus } from './model.ts';
-import { byPlanOrder, sizeText, taskLabel } from './views.ts';
+import { planOrder, type TaskTree } from './tree.ts';
+import { sizeText, taskLabel } from './views.ts';
 
 /**
  * Does the week's planned work fit the weekly usage limit left? A task's `size` is the % of the weekly limit it
- * takes; the week's to-do tasks are summed in plan order (priority, then due) against what is left of the pace
+ * takes; the week's to-do tasks are summed in plan order (priority, then effective due) against what is left of the pace
  * target, and the first one past that line is named with how many come after it.
  */
 
@@ -15,9 +16,13 @@ import { byPlanOrder, sizeText, taskLabel } from './views.ts';
  */
 export const FIT_STATUSES: readonly TaskStatus[] = ['open', 'in-progress', 'waiting'];
 
-/** A task and, in a roll-up over a tree of teams, the team that holds it (its id then reads `<team>/T12`). */
+/**
+ * A task, the dependency tree of its register (for its effective due) and, in a roll-up over a tree of teams, the team
+ * that holds it (its id then reads `<team>/T12`).
+ */
 export interface FitRow {
   readonly task: Task;
+  readonly tree: TaskTree;
   readonly team?: string;
 }
 
@@ -49,7 +54,7 @@ export function leftOfWeek(targetPct: number, usedPct: number): number {
 
 /** The fit of the to-do tasks tagged with `week`, against `leftPct` (undefined: no reading, so nothing is summed). */
 export function weekFit(rows: readonly FitRow[], week: string, leftPct: number | undefined): WeekFit {
-  const toDo = rows.filter(({ task }) => task.week === week && FIT_STATUSES.includes(task.status)).sort((a, b) => byPlanOrder(a.task, b.task));
+  const toDo = rows.filter(({ task }) => task.week === week && FIT_STATUSES.includes(task.status)).sort((a, b) => planOrder(a.tree.placeOf(a.task), b.tree.placeOf(b.task)));
   const sized = toDo.filter(({ task }) => task.size !== null);
   const fits = new Map<number, number>();
   let unfit: Unfit | undefined;

@@ -2,7 +2,7 @@ import { errorMessage } from '../../core/guards.ts';
 import { KIT_NAME, type TeamPaths } from '../../core/home.ts';
 import { liveTasksNote } from '../../hooks/live-tasks.ts';
 import { JsonlEventLog } from '../../register/store.ts';
-import { waitContext } from '../../register/waits.ts';
+import { TaskTree } from '../../register/tree.ts';
 import type { CliRuntime } from '../runtime.ts';
 
 /**
@@ -14,7 +14,7 @@ import type { CliRuntime } from '../runtime.ts';
 export async function liveTasksNoteOf(runtime: CliRuntime, paths: TeamPaths, id: string): Promise<string> {
   try {
     const { state } = await new JsonlEventLog(runtime.files, paths.events).read();
-    return liveTasksNote({ tasks: state.tasks.values(), owner: id, context: waitContext(state.tasks, new Date(runtime.clock.now())), command: KIT_NAME });
+    return liveTasksNote({ tasks: state.tasks.values(), owner: id, tree: new TaskTree(state.tasks, new Date(runtime.clock.now())), command: KIT_NAME });
   } catch (error) {
     return `LIVE TASKS: ${KIT_NAME} could not read the register (${errorMessage(error)}); run \`${KIT_NAME} list --session ${id}\` for your tasks.`;
   }

@@ -4,14 +4,15 @@ import type { RegisterCheckConfig, RegisterConfig } from '../config/types.ts';
 import type { Task } from './fold.ts';
 import { ACTIVE_STATUSES, priorityText } from './model.ts';
 import type { RegisterSnapshot } from './snapshot.ts';
-import { verifyingNeeds } from './verify.ts';
-import { byPlanOrder, dueTime, formatTask } from './views.ts';
-import { allReady, isPeerWait, isReady, unfinishedAfter, waitContext, waitSpelling, type WaitContext } from './waits.ts';
+import { loopFix, pathText, TaskTree } from './tree.ts';
+import { formatTask } from './views.ts';
+import { allReady, isPeerWait, isReady, unfinishedAfter, waitSpelling, type WaitContext } from './waits.ts';
 
 /** In report order: the most urgent first. */
 export const FLAG_KINDS = [
   'OVERDUE',
   'VERIFY-OVERDUE',
+  'LOOP',
   'VERIFY-BLOCKS',
   'READY',
   'NO-REASON',
@@ -60,7 +61,11 @@ export function currentWeekOf(snapshot: RegisterSnapshot, now: Date): string | n
 
 /**
  * The daily flags over active tasks:
- * - OVERDUE: past its deadline; VERIFY-OVERDUE when the task is verifying: its due date is the date to verify it by;
+ * - OVERDUE: past its effective deadline (its own due, or an earlier one of a task that needs it, named in the detail
+ *   as `due 01-10, from T5`); VERIFY-OVERDUE when the task is verifying: that date is the date to verify it by;
+ * - LOOP: the lowest-numbered task of a loop among active tasks (`T2 -> T5 -> T2`), which none of them can finish:
+ *   rows an older teamrig wrote, or links set before the register refused loops; the detail names how its first
+ *   link goes;
  * - VERIFY-BLOCKS: verifying, and another active task is planned after it or waits on it, so that work cannot start
  *   until the proof comes (`set` refuses its start);
  * - READY: waiting, and every reason it waits for is ready (its tasks finished, its time passed), so its owner can
@@ -73,11 +78,11 @@ export function currentWeekOf(snapshot: RegisterSnapshot, now: Date): string | n
  *   list in order;
  * - PILE-UP: the oldest verifying task of an owner holding more than `maxVerifying` of them (0 turns it off): shipped
  *   changes pile up unproven;
- * - STALE: no event for `staleAfterHours` (not raised on top of NOT-PICKED-UP, nor for a verifying task with a
- *   due date: it waits quietly for its proof, and the date raises the alarm, nor for a waiting task with a time
- *   still to come: it is parked until then);
+ * - STALE: no event for `staleAfterHours` (not raised on top of NOT-PICKED-UP, nor for a verifying task with an
+ *   effective due date: it waits quietly for its proof, and the date raises the alarm, nor for a waiting task with a
+ *   time still to come: it is parked until then);
  * - OWNER-UNPLANNED: an owner order outside the current week plan;
- * - DUE-UNPLANNED: due inside the current week but outside its plan;
+ * - DUE-UNPLANNED: effectively due inside the current week but outside its plan;
  * - OFF-GOAL: in progress with no goal and outside the current week plan, so nothing the team planned asked
  *   for it. The register has no parent tasks: a goal tag or the week plan is what ties a task to the plan.
  * The three week flags need a week; null skips them, and each task gets at most one of them.
@@ -85,22 +90,21 @@ export function currentWeekOf(snapshot: RegisterSnapshot, now: Date): string | n
 export function checkTasks(tasks: Iterable<Task>, now: Date, week: string | null, config: RegisterConfig): Flag[] {
   const at = now.getTime();
   const all = [...tasks];
-  const context = waitContext(new Map(all.map((task) => [task.id, task])), now);
-  const active = all.filter((candidate) => ACTIVE_STATUSES.includes(candidate.status)).sort(byPlanOrder);
+  const tree = new TaskTree(new Map(all.map((task) => [task.id, task])), now);
+  const active = tree.inPlanOrder(all.filter((candidate) => ACTIVE_STATUSES.includes(candidate.status)));
   const plan = weekPlan(week, config.check.weekLengthDays);
   const top = topPriority(config.priorities);
-  const waiting = top === undefined ? new Map<string, Task>() : waitingTopTasks(active, top, context);
-  const needers = neededBy(active);
+  const waiting = top === undefined ? new Map<string, Task>() : waitingTopTasks(active, top, tree.context);
   const piles = pileUps(active, config.maxVerifying);
   const flags = active.flatMap((task) => [
-    ...verifyFlags(task, needers, piles, config.maxVerifying),
-    ...(task.status === 'waiting' && allReady(task.waits, context) ? [{ kind: 'READY' as const, task, detail: 'every reason cleared; set its next status' }] : []),
+    ...verifyFlags(task, tree, piles, config.maxVerifying),
+    ...(task.status === 'waiting' && allReady(task.waits, tree.context) ? [{ kind: 'READY' as const, task, detail: 'every reason cleared; set its next status' }] : []),
     ...(task.status === 'waiting' && task.waits.length === 0 ? [{ kind: 'NO-REASON' as const, task, detail: 'set what it waits for (--waits) or its next status' }] : []),
-    ...timeFlags(task, at, config.check, context),
+    ...timeFlags(task, at, config.check, tree),
     ...(top === undefined ? [] : prioritySkip(task, top, waiting, at, config.check)),
-    ...(plan === undefined ? [] : planFlags(task, plan, config.ownerSource)),
+    ...(plan === undefined ? [] : planFlags(task, plan, config.ownerSource, tree)),
   ]);
-  return flags.sort(byFlagKind);
+  return [...flags, ...loopFlags(tree)].sort(byFlagKind);
 }
 
 /** Orders flags by FLAG_KINDS, most urgent first; the sort is stable, so each kind keeps its own order. */
@@ -108,9 +112,9 @@ export function byFlagKind(a: Flag, b: Flag): number {
   return FLAG_KINDS.indexOf(a.kind) - FLAG_KINDS.indexOf(b.kind);
 }
 
-/** One flag; with `team`, the task id reads `<team>/T12`; `context` marks a waiting task's ready reasons. */
-export function formatFlag(flag: Flag, team?: string, context?: WaitContext): string {
-  return `${flag.kind} (${flag.detail}) ${formatTask(flag.task, team, context)}`;
+/** One flag; with `team`, the task id reads `<team>/T12`; `tree` reads the task line as {@link formatTask} does. */
+export function formatFlag(flag: Flag, team?: string, tree?: TaskTree): string {
+  return `${flag.kind} (${flag.detail}) ${formatTask(flag.task, team, tree)}`;
 }
 
 interface WeekPlan {
@@ -143,33 +147,39 @@ function waitsForTime(task: Task, context: WaitContext): boolean {
   return task.status === 'waiting' && task.waits.some((reason) => reason.kind === 'time' && !isReady(reason, context));
 }
 
-/** OVERDUE or VERIFY-OVERDUE, then NOT-PICKED-UP or else STALE. */
-function timeFlags(task: Task, at: number, check: RegisterCheckConfig, context: WaitContext): Flag[] {
+/** OVERDUE or VERIFY-OVERDUE on the effective due, then NOT-PICKED-UP or else STALE. */
+function timeFlags(task: Task, at: number, check: RegisterCheckConfig, tree: TaskTree): Flag[] {
   const flags: Flag[] = [];
-  const due = dueTime(task);
+  const effective = tree.effectiveDue(task.id);
+  const due = effective?.at;
   const verifying = task.status === 'verifying';
-  if (due !== undefined && due < at) {
-    const detail = `${verifying ? 'verify by' : 'due'} ${shortUtc(task.due ?? '')}`;
-    flags.push({ kind: verifying ? 'VERIFY-OVERDUE' : 'OVERDUE', task, detail });
+  if (effective !== undefined && effective.at < at) {
+    const from = effective.from === null ? '' : `, from ${effective.from}`;
+    flags.push({ kind: verifying ? 'VERIFY-OVERDUE' : 'OVERDUE', task, detail: `${verifying ? 'verify by' : 'due'} ${shortUtc(effective.due)}${from}` });
   }
   if (task.ownerSeenAt === null && at - Date.parse(task.assignedAt) > check.notPickedUpAfterHours * MS_PER_HOUR) {
     flags.push({ kind: 'NOT-PICKED-UP', task, detail: `assigned ${minute(task.assignedAt)}, no event from ${task.owner} since` });
-  } else if (!(verifying && due !== undefined) && !waitsForTime(task, context) && at - Date.parse(task.updatedAt) > check.staleAfterHours * MS_PER_HOUR) {
+  } else if (!(verifying && due !== undefined) && !waitsForTime(task, tree.context) && at - Date.parse(task.updatedAt) > check.staleAfterHours * MS_PER_HOUR) {
     flags.push({ kind: 'STALE', task, detail: `last event ${minute(task.updatedAt)} by ${task.updatedBy}` });
   }
   return flags;
 }
 
-/** Per verifying task, the active tasks that need it first: planned after it or waiting on it. */
-function neededBy(active: readonly Task[]): Map<string, Task[]> {
-  const byId = new Map(active.map((task) => [task.id, task]));
-  const needers = new Map<string, Task[]>();
-  for (const task of active) {
-    for (const needed of verifyingNeeds(task, byId)) {
-      needers.set(needed.id, [...(needers.get(needed.id) ?? []), task]);
+/**
+ * LOOP, once per loop among active tasks, on its first task, with how its first link goes: by `set --ask` when that
+ * task waits on the next one, else by a new task it is planned after.
+ */
+function loopFlags(tree: TaskTree): Flag[] {
+  return tree.loops().flatMap((loop) => {
+    const [first, next] = loop;
+    const task = first === undefined ? undefined : tree.task(first);
+    const owner = next === undefined ? undefined : tree.task(next)?.owner;
+    if (task === undefined || next === undefined || owner === undefined) {
+      return [];
     }
-  }
-  return needers;
+    const fix = loopFix(task.id, next, owner, !task.after.includes(next));
+    return [{ kind: 'LOOP' as const, task, detail: `${pathText(loop)} is a loop, and no task in a loop can finish: ${fix}` }];
+  });
 }
 
 /** Per owner holding more than `max` verifying tasks (0: none), its count, keyed by the id of its oldest one. */
@@ -188,10 +198,10 @@ function pileUps(active: readonly Task[], max: number): Map<string, number> {
   return piles;
 }
 
-/** VERIFY-BLOCKS, then PILE-UP on the oldest task of a pile. */
-function verifyFlags(task: Task, needers: ReadonlyMap<string, readonly Task[]>, piles: ReadonlyMap<string, number>, max: number): Flag[] {
+/** VERIFY-BLOCKS on a verifying task that active tasks need (planned after it or waiting on it), then PILE-UP on the oldest task of a pile. */
+function verifyFlags(task: Task, tree: TaskTree, piles: ReadonlyMap<string, number>, max: number): Flag[] {
   const flags: Flag[] = [];
-  const needs = needers.get(task.id) ?? [];
+  const needs = task.status === 'verifying' ? tree.neededBy(task.id) : [];
   if (needs.length > 0) {
     const named = needs.map((needer) => `${needer.id} (owner ${needer.owner})`).join(', ');
     flags.push({ kind: 'VERIFY-BLOCKS', task, detail: `${named} ${needs.length === 1 ? 'needs' : 'need'} it; prove it or reopen it` });
@@ -237,15 +247,15 @@ function prioritySkip(task: Task, top: number, waiting: ReadonlyMap<string, Task
   return [{ kind: 'PRIORITY-SKIP', task, detail: `${priorityText(skipped.priority)} ${skipped.id} waits open, skipped since ${minute(since)}` }];
 }
 
-/** OWNER-UNPLANNED, or else DUE-UNPLANNED, or else OFF-GOAL. */
-function planFlags(task: Task, plan: WeekPlan, ownerSource: string): Flag[] {
+/** OWNER-UNPLANNED, or else DUE-UNPLANNED (on the effective due), or else OFF-GOAL. */
+function planFlags(task: Task, plan: WeekPlan, ownerSource: string, tree: TaskTree): Flag[] {
   if (task.week === plan.week) {
     return [];
   }
   if (task.source === ownerSource) {
     return [{ kind: 'OWNER-UNPLANNED', task, detail: `owner order not in week ${plan.week}` }];
   }
-  const due = dueTime(task);
+  const due = tree.dueTime(task);
   if (due !== undefined && due >= plan.start && due < plan.end) {
     return [{ kind: 'DUE-UNPLANNED', task, detail: `due inside week ${plan.week}, not in its plan` }];
   }
