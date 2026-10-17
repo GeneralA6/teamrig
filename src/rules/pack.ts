@@ -76,9 +76,9 @@ function descriptionDemand(config: KitConfig): string {
 function statusDemands(config: KitConfig, command: string): string {
   const { register } = config;
   const demands = [
-    register.requireNoteOn.length === 0 ? '' : `a note (only what changed) on ${register.requireNoteOn.join(', ')} [register.requireNoteOn]`,
+    register.requireNoteOn.length === 0 ? '' : `a note (only what changed) on ${[...new Set(register.requireNoteOn)].join(', ')} [register.requireNoteOn]`,
     register.requireEvidenceOnDone ? 'evidence on done [register.requireEvidenceOnDone]' : '',
-    register.requireSkillOnDone ? `--skill <name> or --skill none on done [register.requireSkillOnDone]` : '',
+    register.requireSkillOnDone ? '--skill <name>|none on done [register.requireSkillOnDone]' : '',
   ].filter((demand) => demand !== '');
   return `only the owning session sets its status (\`${command} set\`)${demands.length === 0 ? '' : `, with ${demands.join(', ')}`}.`;
 }
@@ -105,7 +105,7 @@ export function renderCorePack(config: KitConfig, command: string, platform: Nod
     register:
       `Status is pulled from the register, never asked. Start each work block with \`${command} start --session <you>\`.` +
       ` Every ask that creates work is a register entry, added in the same turn by the asker (\`${command} add --owner <session>\` tells the owner), else by the receiver, with ${descriptionDemand(config)}; ${statusDemands(config, command)}` +
-      ' Waiting needs `--waits` reasons; a task not started that needs another first stays open, planned `--after` it.' +
+      " Wait on a peer's work by its task; decision and approval waits are for the lead and the owner; a task not started stays open, `--after` what it needs." +
       ` A shipped change is verifying until its proof exists (\`${command} verify\`).`,
     'task-order':
       `Work your own task list in priority order (\`${command} list --session <you>\`); self-made work is a task too, recorded with \`${command} add\` before you start it,` +
