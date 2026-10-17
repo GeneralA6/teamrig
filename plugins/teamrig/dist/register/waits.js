@@ -3,8 +3,9 @@ import { parseUtcDeadline, shortUtc } from "../core/time.js";
 import { TASK_ID } from "./model.js";
 /**
  * What a waiting task waits for, each a typed reason, and when a reason clears:
- * - `decision` and `approval` name who must give it: a session id or the owner's marker. Only the task's owner
- *   knows when it came, so they clear when the owner sets a new status;
+ * - `decision` and `approval` name who must give it: the lead's id or the owner's marker (a peer's work is a
+ *   task to wait on, see {@link isPeerWait}). Only the task's owner knows when it came, so they clear when the
+ *   owner sets a new status;
  * - `task` names a task that must finish first. Only a task already started can wait on one: a task that
  *   needs another before it starts stays open with a plan dependency (`after`) instead. It is ready once that
  *   task is done or dropped;
@@ -28,6 +29,14 @@ export function waitSpelling(reason) {
 /** True when both name the same thing to wait for, so a list never holds one twice. */
 export function sameWait(a, b) {
     return waitSpelling(a) === waitSpelling(b);
+}
+/**
+ * A decision or an approval asked of a peer: anyone but the lead and the owner. A peer's work is a task to wait on
+ * (`task:T<id>`, which clears by itself once that task finishes), so a write refuses such a wait; one an older
+ * teamrig wrote still reads, and `check` flags it PEER-WAIT.
+ */
+export function isPeerWait(reason, lead, ownerSource) {
+    return (reason.kind === 'decision' || reason.kind === 'approval') && reason.who !== lead && reason.who !== ownerSource;
 }
 export function isWaitKind(value) {
     return WAIT_KINDS.some((kind) => kind === value);

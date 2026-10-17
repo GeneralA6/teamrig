@@ -6,18 +6,18 @@ import { hireFlags } from "../../hiring/due.js";
 import { activeHires, HiringLog } from "../../hiring/log.js";
 import { postLine } from "../../inbox/inbox.js";
 import { readSnapshots, weekUseOf } from "../../budget/snapshot.js";
-import { byFlagKind, checkTasks, currentWeekOf } from "../../register/check.js";
+import { byFlagKind, checkTasks, currentWeekOf, peerWaitFlags } from "../../register/check.js";
 import { fitLines, leftOfWeek, overLimitFlag, weekFit } from "../../register/fit.js";
 import { renderPlan } from "../../register/plan.js";
 import { ACTIVE_STATUSES } from "../../register/model.js";
 import { readStopgapTags, stopgapFlags, stopgapTags } from "../../register/stopgap.js";
 import { heldStart, heldStartNotice, startHolds, verifyQueue } from "../../register/verify.js";
-import { assignedNotice, formatTask, formatTaskDetail, formatVerifyRow, selectTasks } from "../../register/views.js";
-import { waitContext } from "../../register/waits.js";
+import { assignedNotice, formatTask, formatTaskDetail, formatVerifyRow, personWaitNotice, selectTasks } from "../../register/views.js";
+import { isPeerWait, sameWait, waitContext } from "../../register/waits.js";
 import { lintSkills } from "../../skills/lint.js";
 import { SKILL_FILE, SkillDir } from "../../skills/store.js";
 import { noPositionals, onePositional, UsageError } from "../args.js";
-import { addInputOf, callerOf, changesOf, listFilterOf, statusInputOf, taskIdOf, weekOf } from "../inputs.js";
+import { addInputOf, callerOf, changesOf, listFilterOf, setInputOf, taskIdOf, weekOf } from "../inputs.js";
 import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, projectFolder, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
 import { checkLines, listLines } from "../reports.js";
 import { rollUp } from "../roll-up.js";
@@ -152,20 +152,48 @@ async function tellNewOwner(runtime, team, by, verdict) {
     if (task.owner === by || task.owner === before?.owner) {
         return;
     }
-    const text = assignedNotice(task);
+    await tellAssigned(runtime, team, by, task);
+}
+/** One inbox line telling a task's owner the task is its own. */
+async function tellAssigned(runtime, team, by, task) {
+    await tellLine(runtime, team, by, task.owner, assignedNotice(task), `${task.owner} was not told of ${task.id}`);
+}
+/**
+ * One inbox line to the lead when a write set a task waiting on a decision or an approval of the lead's or the
+ * owner's that it did not wait on before (the lead keeps the owner's decision queue); never when the lead set it.
+ */
+async function tellLeadOfWaits(runtime, team, by, verdict) {
+    const { lead } = team.config.roles;
+    if (!verdict.ok || by === lead) {
+        return;
+    }
+    const { task, before } = verdict.value;
+    const earlier = before?.status === 'waiting' ? before.waits : [];
+    const added = task.waits.filter((reason) => (reason.kind === 'decision' || reason.kind === 'approval') &&
+        !isPeerWait(reason, lead, team.config.register.ownerSource) &&
+        !earlier.some((other) => sameWait(reason, other)));
+    if (task.status === 'waiting' && added.length > 0) {
+        await tellLine(runtime, team, by, lead, personWaitNotice(task, added, lead), `${lead} was not told that ${task.id} waits on it`);
+    }
+}
+/** Posts one inbox line, naming it on stderr, or naming `unsent` and why: a line that cannot be posted is never thrown. */
+async function tellLine(runtime, team, by, to, text, unsent) {
     const { inboxes } = inboxDepsOf(runtime, team.paths);
     const secrets = new SecretScanner(team.config.register.secretPatterns);
-    const problem = await postLine(inboxes, secrets, { to: task.owner, from: by, text, now: new Date(runtime.clock.now()) });
-    runtime.out.stderr(problem === undefined ? `NOTE ${task.owner} has an inbox line: ${text}` : `WARN ${task.owner} was not told of ${task.id}: ${problem}`);
+    const problem = await postLine(inboxes, secrets, { to, from: by, text, now: new Date(runtime.clock.now()) });
+    runtime.out.stderr(problem === undefined ? `NOTE ${to} has an inbox line: ${text}` : `WARN ${unsent}: ${problem}`);
 }
 export async function set(args, runtime) {
     const id = taskIdOf(onePositional(args, 'id'));
     const caller = callerOf(args.flags, runtime.env);
-    const typed = statusInputOf(args.flags);
+    const typed = setInputOf(args.flags);
     const team = await openTeam(runtime, 'write');
     const { config, paths, register, roster } = team;
     const by = sessionIdOf(roster, caller);
-    const input = statusInputIds(team, typed);
+    const input = statusInputIds(team, typed.status);
+    if (typed.ask !== null) {
+        return setAsking(runtime, team, by, id, { ...typed.ask, owner: sessionIdOf(roster, typed.ask.owner) }, input);
+    }
     const held = await heldStartOf(register, by, id, input);
     const verdict = await register.setStatus(by, id, input);
     const warned = config.register.verifyGate === 'warn';
@@ -173,6 +201,7 @@ export async function set(args, runtime) {
         await tellVerifiers(runtime, team, by, held);
     }
     const exit = report(runtime, verdict, 'SET', paths.config);
+    await tellLeadOfWaits(runtime, team, by, verdict);
     if (held !== undefined && warned) {
         runtime.out.stderr(`WARN ${heldStart(held.task, held.holds)}; started anyway, as register.verifyGate is warn`);
     }
@@ -182,6 +211,23 @@ export async function set(args, runtime) {
     if (verdict.ok && (input.status === 'done' || input.status === 'dropped')) {
         await markRetireAsk(runtime, config, paths, verdict.value);
     }
+    return exit;
+}
+/**
+ * `set --ask`: the asked task and the wait on it in one write, its line printed above the `SET` line; the asked
+ * session hears its task is its own (unless the caller asked itself), and the lead hears of a wait on it or the owner.
+ */
+async function setAsking(runtime, team, by, id, ask, input) {
+    const verdict = await team.register.ask(by, id, ask, input);
+    if (verdict.ok) {
+        const { asked, state } = verdict.value;
+        runtime.out.stdout(`ADDED ${formatTask(asked, undefined, waitContext(state.tasks, new Date(runtime.clock.now())))}`);
+    }
+    const exit = report(runtime, verdict, 'SET', team.paths.config);
+    if (verdict.ok && verdict.value.asked.owner !== by) {
+        await tellAssigned(runtime, team, by, verdict.value.asked);
+    }
+    await tellLeadOfWaits(runtime, team, by, verdict);
     return exit;
 }
 /**
@@ -324,9 +370,11 @@ function weekFor(args, snapshot, now) {
     const week = args.flags.get('week');
     return week === undefined ? currentWeekOf(snapshot, now) : weekOf(week);
 }
-/** The task flags of one register; with `team`, for `check --tree`, its task ids name it. */
+/** The task flags of one register, against its own team's config; with `team`, for `check --tree`, its task ids name it. */
 function checkRegister(snapshot, config, now, week, team) {
-    return { team, flags: checkTasks(snapshot.state.tasks.values(), now, week, config.register), context: waitContext(snapshot.state.tasks, now) };
+    const tasks = [...snapshot.state.tasks.values()];
+    const flags = [...checkTasks(tasks, now, week, config.register), ...peerWaitFlags(tasks, config.roles.lead, config.register.ownerSource)];
+    return { team, flags: flags.sort(byFlagKind), context: waitContext(snapshot.state.tasks, now) };
 }
 /**
  * The week's fit to the weekly limit over every team read (one account's limit covers them all): what is left of
