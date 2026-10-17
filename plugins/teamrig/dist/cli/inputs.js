@@ -228,6 +228,26 @@ export function statusInputOf(flags) {
     }
     return input;
 }
+/**
+ * `set <id> --status ... [--ask <session> --text "<the work>"]`: with `--ask`, `--due` is the asked task's due date
+ * rather than a date to verify by; `--text` goes only with `--ask`, which needs it. The command resolves the asked
+ * session to its id.
+ */
+export function setInputOf(flags) {
+    const asked = flags.get('ask');
+    const text = flags.get('text');
+    if (asked === undefined) {
+        if (text !== undefined) {
+            throw new UsageError('--text goes only with --ask <session>: it is the work asked for');
+        }
+        return { status: statusInputOf(flags), ask: null };
+    }
+    if (text === undefined || text.trim() === '') {
+        throw new UsageError('--ask needs --text "<the work asked for>": the title of the task it creates');
+    }
+    const { due, ...status } = statusInputOf(flags);
+    return { status, ask: { owner: sessionRef('--ask', asked), title: text, ...(due === undefined ? {} : { due }) } };
+}
 /** `list` filters; `--session` names the owner whose tasks to show. */
 export function listFilterOf(flags) {
     const filter = {};

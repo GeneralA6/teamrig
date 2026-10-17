@@ -6,7 +6,7 @@ import { sizeProblem } from "./events.js";
 import { taskNumber } from "./fold.js";
 import { ACTIVE_STATUSES, GITHUB_SOURCE, priorityText, SESSION_NAME } from "./model.js";
 import { heldStart, startHolds } from "./verify.js";
-import { sameWait, waitSpelling } from "./waits.js";
+import { isPeerWait, sameWait, waitSpelling } from "./waits.js";
 /** The skill name that closes a task which produced no reusable procedure. */
 export const NO_SKILL = 'none';
 /** Who the GitHub import's events are written by; its tasks carry GITHUB_SOURCE (model.ts). */
@@ -75,12 +75,44 @@ export class RegisterPolicy {
         if (problem !== undefined) {
             return refuse(problem);
         }
-        const duplicate = [...state.tasks.values()].find((task) => ACTIVE_STATUSES.includes(task.status) && normaliseTitle(task.title) === normaliseTitle(fields.title));
+        const duplicate = activeDuplicate(fields.title, state);
         return duplicate === undefined ? ok(fields) : refuse(`${duplicate.id} already tracks this (${duplicate.status}, owner ${duplicate.owner})`);
+    }
+    /**
+     * The task `set <id> --status waiting --ask <session> --text "<the work>"` creates, which `task` then waits on:
+     * the asked session's, from the caller, at `task`'s priority and with its goals (the work serves the same plan),
+     * its description naming `task`. Only the owner asks for its task, only with `--status waiting` and only once
+     * started: one not started stays open, planned after the asked task. An active task of the same title is waited
+     * on instead.
+     */
+    ask(task, caller, ask, input, state) {
+        if (caller !== task.owner) {
+            return refuse(ownerOnly(task));
+        }
+        if (input.status !== 'waiting') {
+            return refuse('--ask goes only with --status waiting');
+        }
+        if (!hasStarted(task)) {
+            return refuse(`${task.id} has not started, so it does not wait: ask with teamrig add --owner ${ask.owner} --title "${ask.title}", then plan ${task.id} after that task (teamrig update ${task.id} --after <its id>)`);
+        }
+        const duplicate = activeDuplicate(ask.title, state);
+        if (duplicate !== undefined) {
+            return refuse(`${duplicate.id} already tracks this (${duplicate.status}, owner ${duplicate.owner}): wait on it with --waits task:${duplicate.id}`);
+        }
+        const asked = {
+            title: ask.title,
+            description: `Asked by ${caller} for ${task.id} (${task.title}), which waits on this task.`,
+            owner: ask.owner,
+            source: caller,
+            priority: task.priority,
+            goals: task.goals,
+            ...(ask.due === undefined ? {} : { due: ask.due }),
+        };
+        return this.create(asked, state, (source) => this.teamSourceProblem(source));
     }
     setStatus(task, caller, input, context) {
         if (caller !== task.owner) {
-            return refuse(`only the owner (${task.owner}) sets the status of ${task.id}`);
+            return refuse(ownerOnly(task));
         }
         const { register } = this.config;
         // A start waits for the proof of the shipped changes it builds on; `warn` lets it through and the CLI warns.
@@ -158,17 +190,27 @@ export class RegisterPolicy {
     waitProblem(task, reason, context) {
         switch (reason.kind) {
             case 'decision':
-            case 'approval': {
-                const { ownerSource } = this.config.register;
-                return reason.who === ownerSource || this.config.sessions.includes(reason.who)
-                    ? undefined
-                    : `${reason.kind} ${reason.who}: ${reason.who} is neither a session on this team nor ${ownerSource}`;
-            }
+            case 'approval':
+                return this.personWaitProblem(task, reason);
             case 'task':
                 return taskWaitProblem(task, reason.id, context.state);
             case 'time':
                 return (parseUtcDeadline(reason.at)?.getTime() ?? 0) > context.now.getTime() ? undefined : `time ${reason.at} has passed: name a time to come`;
         }
+    }
+    /**
+     * Decision and approval waits are for the lead and the owner: a peer's work is a task, waited on by its id, which
+     * clears by itself once that task finishes, where a peer's decision would hold the task until its owner noticed.
+     */
+    personWaitProblem(task, reason) {
+        const { ownerSource } = this.config.register;
+        const { lead } = this.config.roles;
+        if (!isPeerWait(reason, lead, ownerSource)) {
+            return undefined;
+        }
+        return this.config.sessions.includes(reason.who)
+            ? `${reason.kind} ${reason.who}: decision and approval waits are for the lead (${lead}) and ${ownerSource}; wait on ${reason.who}'s work by its task: teamrig set ${task.id} --status waiting --ask ${reason.who} --text "<the work you need>"`
+            : `${reason.kind} ${reason.who}: ${reason.who} is neither the lead (${lead}) nor ${ownerSource}`;
     }
     update(task, caller, asked, note, state) {
         const changes = trimDescription(asked);
@@ -363,8 +405,7 @@ function taskWaitProblem(task, id, state) {
     if (id === task.id) {
         return `${task.id} cannot wait on itself`;
     }
-    const started = task.status === 'in-progress' || (task.status === 'waiting' && task.startedAt !== null);
-    if (!started) {
+    if (!hasStarted(task)) {
         return `${task.id} has not started, so it does not wait on ${id}: it stays open, planned after it (teamrig update ${task.id} --after ${id})`;
     }
     if (taskNumber(id) >= taskNumber(state.nextId)) {
@@ -372,6 +413,17 @@ function taskWaitProblem(task, id, state) {
     }
     const target = state.tasks.get(id);
     return target === undefined || target.status === 'done' || target.status === 'dropped' ? `${id} is already finished; nothing to wait on` : undefined;
+}
+/** In progress, or waiting after it started: a task that can wait on another. */
+function hasStarted(task) {
+    return task.status === 'in-progress' || (task.status === 'waiting' && task.startedAt !== null);
+}
+function ownerOnly(task) {
+    return `only the owner (${task.owner}) sets the status of ${task.id}`;
+}
+/** The active task with this title, compared as {@link normaliseTitle} does: a new one would track the same work twice. */
+function activeDuplicate(title, state) {
+    return [...state.tasks.values()].find((task) => ACTIVE_STATUSES.includes(task.status) && normaliseTitle(task.title) === normaliseTitle(title));
 }
 /** A plan dependency is for a task not started yet: a started one waits on a task instead. Clearing it is always fine. */
 function afterChangeProblem(task, after, state) {

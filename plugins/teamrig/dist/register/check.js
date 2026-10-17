@@ -3,7 +3,7 @@ import { topPriority } from "../config/priorities.js";
 import { ACTIVE_STATUSES, priorityText } from "./model.js";
 import { verifyingNeeds } from "./verify.js";
 import { byPlanOrder, dueTime, formatTask } from "./views.js";
-import { allReady, isReady, unfinishedAfter, waitContext } from "./waits.js";
+import { allReady, isPeerWait, isReady, unfinishedAfter, waitContext, waitSpelling } from "./waits.js";
 /** In report order: the most urgent first. */
 export const FLAG_KINDS = [
     'OVERDUE',
@@ -11,6 +11,7 @@ export const FLAG_KINDS = [
     'VERIFY-BLOCKS',
     'READY',
     'NO-REASON',
+    'PEER-WAIT',
     'NOT-PICKED-UP',
     'PRIORITY-SKIP',
     'PILE-UP',
@@ -93,6 +94,19 @@ export function byFlagKind(a, b) {
 }
 export function formatFlag(flag, team, context) {
     return `${flag.kind} (${flag.detail}) ${formatTask(flag.task, team, context)}`;
+}
+/**
+ * PEER-WAIT: waiting on a decision or an approval of a peer (anyone but the lead and the owner), as a line from an
+ * older teamrig reads: a peer's work is a task, waited on by its id, which clears by itself once that task finishes.
+ * Apart from {@link checkTasks}, whose register config does not name the lead.
+ */
+export function peerWaitFlags(tasks, lead, ownerSource) {
+    return [...tasks].flatMap((task) => {
+        const peer = task.status === 'waiting' ? task.waits.find((reason) => isPeerWait(reason, lead, ownerSource)) : undefined;
+        return peer === undefined
+            ? []
+            : [{ kind: 'PEER-WAIT', task, detail: `${waitSpelling(peer)} is a peer's work: wait on it by its task (set ${task.id} --status waiting --ask ${peer.who} --text "<the work>")` }];
+    });
 }
 function weekPlan(week, lengthDays) {
     const start = week === null ? undefined : parseUtcDay(week)?.getTime();

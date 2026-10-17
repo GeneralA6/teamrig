@@ -208,3 +208,14 @@ export function assignedNotice(task) {
     const due = task.due === null ? '' : `, due ${task.due}`;
     return `${task.id} is yours (${priorityText(task.priority)}${due}): ${task.title}`;
 }
+/**
+ * The inbox line telling the lead that a task now waits on it, or on the owner, whose decision queue the lead keeps:
+ * `T2 waits on your approval and the owner's decision: <note>`, the note (else the title) on one line.
+ */
+export function personWaitNotice(task, waits, lead) {
+    const kindsOf = (onLead) => waits.filter((reason) => (reason.who === lead) === onLead).map((reason) => reason.kind);
+    const yours = kindsOf(true);
+    const owners = kindsOf(false);
+    const whose = [yours.length === 0 ? '' : `your ${yours.join(' and ')}`, owners.length === 0 ? '' : `the owner's ${owners.join(' and ')}`];
+    return `${task.id} waits on ${whose.filter((part) => part !== '').join(' and ')}: ${(task.note ?? task.title).replace(/\s+/g, ' ')}`;
+}
