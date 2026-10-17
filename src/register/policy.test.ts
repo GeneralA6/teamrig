@@ -327,6 +327,18 @@ describe('RegisterPolicy.setStatus to waiting', () => {
     assert.equal(error(waiting(TASK, [{ kind: 'task', id: 'T3' }])), 'T3 is already finished; nothing to wait on');
   });
 
+  it('refuses a task wait that closes a loop, naming the chain and the step to ask for as its own task', () => {
+    const needing = testTask({ id: 'T5', owner: 'bravo', status: 'open', after: ['T6'] });
+    const between = testTask({ id: 'T6', owner: 'bravo', status: 'waiting', startedAt: TASK.startedAt, waits: [{ kind: 'task', id: 'T1' }] });
+    const state = stateOf(TASK, needing, between);
+    assert.equal(
+      error(waiting(TASK, [{ kind: 'task', id: 'T5' }], state)),
+      'T1 -> T5 -> T6 -> T1 would be a loop, and no task in a loop can finish: make the step T1 needs from T5 its own task: teamrig set T1 --status waiting --ask bravo --text "<the step>"',
+    );
+    const finished = stateOf(TASK, needing, { ...between, status: 'done', waits: [] });
+    assert.equal(waiting(TASK, [{ kind: 'task', id: 'T5' }], finished).ok, true, 'a finished task needs nothing any more');
+  });
+
   it('waits until a time to come, never one that passed', () => {
     assert.equal(error(waiting(TASK, [{ kind: 'time', at: '2030-01-08 11:59' }])), 'time 2030-01-08 11:59 has passed: name a time to come');
     assert.equal(waiting(TASK, [{ kind: 'time', at: '2030-01-08' }]).ok, true, 'a bare day lasts to its end');
@@ -433,7 +445,18 @@ describe('RegisterPolicy.update', () => {
     assert.equal(error(policy.update(third, 'alpha', { after: ['T1', 'T1'] }, undefined, state)), '--after names T1 twice');
     assert.equal(error(policy.update(third, 'alpha', { after: ['T3'] }, undefined, state)), 'T3 cannot come after itself');
     assert.equal(error(policy.update(third, 'alpha', { after: ['T4'] }, undefined, state)), 'no task T4');
-    assert.equal(error(policy.update(testTask({ id: 'T1', status: 'open' }), 'alpha', { after: ['T2'] }, undefined, state)), 'T2 already comes after T1, directly or not, so T1 cannot come after T2');
+    assert.equal(
+      error(policy.update(testTask({ id: 'T1', status: 'open' }), 'alpha', { after: ['T2'] }, undefined, state)),
+      'T1 -> T2 -> T1 would be a loop, and no task in a loop can finish: make the step T1 needs from T2 its own task: teamrig add --owner alpha --title "<the step>", then teamrig update T1 --after <its id>',
+    );
+  });
+
+  it('refuses a plan dependency on a task that waits on it, directly or not', () => {
+    const planned = testTask({ id: 'T1', status: 'open' });
+    const waitingOn = testTask({ id: 'T2', owner: 'bravo', status: 'waiting', startedAt: '2030-01-07T10:00:00.000Z', waits: [{ kind: 'task', id: 'T3' }] });
+    const between = testTask({ id: 'T3', status: 'open', after: ['T1'] });
+    const state = stateOf(planned, waitingOn, between);
+    assert.match(error(policy.update(planned, 'alpha', { after: ['T2'] }, undefined, state)), /^T1 -> T2 -> T3 -> T1 would be a loop, .* teamrig add --owner bravo /);
   });
 
   it('plans a new task after others, and refuses one that does not exist yet', () => {

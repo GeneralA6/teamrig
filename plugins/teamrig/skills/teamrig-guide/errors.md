@@ -37,7 +37,7 @@ or take it to the lead.
 | `REFUSED T3 has not started, so it does not wait: ask with teamrig add --owner api --title "<the work>", then plan T3 after that task (teamrig update T3 --after <its id>)` | Run both commands it names: T3 stays open until that task is done. |
 | `REFUSED T5 already tracks this (open, owner api): wait on it with --waits task:T5` | Wait on the task that exists: `teamrig set T3 --status waiting --waits task:T5`. |
 | `REFUSED --after plans a task not started yet, and T4 is in-progress; a started task waits on another with --status waiting --waits task:T2` | Set it waiting with `--waits task:T2` instead. |
-| `REFUSED T2 already comes after T3, directly or not, so T3 cannot come after T2` | Break the loop: one of them goes first. |
+| `REFUSED T3 -> T2 -> T3 would be a loop, and no task in a loop can finish: make the step T3 needs from T2 its own task: teamrig add --owner api --title "<the step>", then teamrig update T3 --after <its id>` (an `--after` link) or `...: teamrig set T3 --status waiting --ask api --text "<the step>"` (a `--waits task:` link) | T2 already needs T3, by a plan dependency or a task wait. Run the command it names: the step T3 needs becomes a task of its own that needs nothing back. |
 | `REFUSED verifying needs --proof saying what will prove the shipped change works` | Add `--proof` naming the proof you wait for: a test run, a night's flow, a number. |
 | `REFUSED verifying needs --note saying what proves it` (with `register.requireProofOnVerifying` off) | Add `--note` naming the proof you wait for. |
 | `REFUSED --proof goes only with --status verifying` | Drop `--proof`, or set `verifying`. |
