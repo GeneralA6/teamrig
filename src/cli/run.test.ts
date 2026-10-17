@@ -563,6 +563,36 @@ describe('runCli: hook push-guard', () => {
   });
 });
 
+describe('runCli: hook package-guard', () => {
+  it('refuses an npx of a tool not installed and lets one in node_modules/.bin run', async () => {
+    const kit = new CliHarness();
+    assert.equal(decisionOf(await kit.run(['hook', 'package-guard'], { stdin: bash('npx eslint .') })), 'deny');
+    await kit.files.write(join(APP, 'node_modules', '.bin', 'eslint.cmd'), '');
+    assert.deepEqual((await kit.run(['hook', 'package-guard'], { stdin: bash('npx eslint .') })).stdout, []);
+  });
+
+  it('asks or lets it run as the team config says, and refuses when the config or the pointer is missing, unreadable or cannot be opened', async () => {
+    const asks = new CliHarness({ ...TEAM, packageGuard: { adHocRunners: 'ask' } });
+    assert.equal(decisionOf(await asks.run(['hook', 'package-guard'], { stdin: bash('pnpm dlx x') })), 'ask');
+    const allows = new CliHarness({ ...TEAM, packageGuard: { adHocRunners: 'allow' } });
+    assert.deepEqual((await allows.run(['hook', 'package-guard'], { stdin: bash('pnpm dlx x') })).stdout, []);
+    for (const kit of [new CliHarness(null), new CliHarness('{ not json'), new CliHarness(TEAM, '{ not json')]) {
+      const result = await kit.run(['hook', 'package-guard'], { stdin: bash('pnpm dlx x') });
+      assert.equal(result.code, EXIT.ok);
+      assert.equal(decisionOf(result), 'deny');
+    }
+    const locked = new CliHarness({ ...TEAM, packageGuard: { adHocRunners: 'allow' } });
+    const files = new FaultyFiles(locked.files).fail('read', CONFIG_PATH, systemError('EACCES'));
+    assert.equal(decisionOf(await locked.run(['hook', 'package-guard'], { stdin: bash('pnpm dlx x'), files })), 'deny');
+  });
+
+  it("prints nothing outside a team's projects or for input that is not a hook payload", async () => {
+    const outside = new CliHarness(null, null);
+    assert.deepEqual(await outside.run(['hook', 'package-guard'], { stdin: bash('pnpm dlx x') }), { code: EXIT.ok, stdout: [], stderr: [] });
+    assert.deepEqual(await new CliHarness().run(['hook', 'package-guard'], { stdin: 'not json' }), { code: EXIT.ok, stdout: [], stderr: [] });
+  });
+});
+
 describe('runCli: hook session-start', () => {
   it("loads the core rules, the session's identity and the team's rules", async () => {
     const kit = new CliHarness({ ...TEAM, names: { lead: 'team-lead' } });
