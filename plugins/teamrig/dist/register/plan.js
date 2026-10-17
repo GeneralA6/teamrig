@@ -1,13 +1,17 @@
 import { formatUtcMinute, shortUtc } from "../core/time.js";
 import { priorityText } from "./model.js";
-import { byPlanOrder, sizeText, taskLabel } from "./views.js";
-import { waitContext, waitsText } from "./waits.js";
+import { TaskTree } from "./tree.js";
+import { sizeText, taskLabel } from "./views.js";
+import { waitsText } from "./waits.js";
 import { proofOf } from "./verify.js";
-/** The week plan as markdown: the tasks tagged with `week`, grouped by priority, then by due date. */
+/**
+ * The week plan as markdown: the tasks tagged with `week`, grouped by priority, then by effective due date (its own,
+ * or an earlier one of an active task that needs it, which the line names: `due 01-10 from T5`).
+ */
 export function renderPlan(tasks, week, now, config, { team, fit = [] } = {}) {
     const all = [...tasks];
-    const context = waitContext(new Map(all.map((task) => [task.id, task])), now);
-    const inWeek = all.filter((task) => task.week === week).sort(byPlanOrder);
+    const tree = new TaskTree(new Map(all.map((task) => [task.id, task])), now);
+    const inWeek = tree.inPlanOrder(all.filter((task) => task.week === week));
     const done = inWeek.filter((task) => task.status === 'done').length;
     const dropped = inWeek.filter((task) => task.status === 'dropped').length;
     const lines = [
@@ -19,29 +23,30 @@ export function renderPlan(tasks, week, now, config, { team, fit = [] } = {}) {
     for (const priority of config.priorities) {
         const rows = inWeek.filter((task) => task.priority === priority.id);
         if (rows.length > 0) {
-            lines.push('', `## ${priorityText(priority.id)}: ${priority.name}`, '', ...rows.map((task) => planLine(task, config.ownerSource, context, team)));
+            lines.push('', `## ${priorityText(priority.id)}: ${priority.name}`, '', ...rows.map((task) => planLine(task, config.ownerSource, tree, team)));
         }
     }
     return lines.join('\n');
 }
-function planLine(task, ownerSource, context, team) {
+function planLine(task, ownerSource, tree, team) {
+    const due = tree.effectiveDue(task.id);
     const meta = [
         task.owner,
-        task.due === null ? undefined : `due ${shortUtc(task.due)}`,
+        due === undefined ? undefined : `due ${shortUtc(due.due)}${due.from === null ? '' : ` from ${due.from}`}`,
         task.after.length === 0 ? undefined : `after ${task.after.join(',')}`,
         task.source === ownerSource ? 'owner order' : `from ${task.source}`,
         task.goals.length === 0 ? undefined : task.goals.join(', '),
         task.size === null ? undefined : `size ${sizeText(task.size)}`,
     ].filter((part) => part !== undefined);
     const title = task.status === 'dropped' ? `~~${task.title}~~` : task.title;
-    return `- [${task.status === 'done' ? 'x' : ' '}] **${taskLabel(task, team)}** ${title} (${meta.join(' · ')})${statusTail(task, context)}`;
+    return `- [${task.status === 'done' ? 'x' : ' '}] **${taskLabel(task, team)}** ${title} (${meta.join(' · ')})${statusTail(task, tree)}`;
 }
-function statusTail(task, context) {
+function statusTail(task, tree) {
     switch (task.status) {
         case 'done':
             return task.evidence === null ? ' done' : ` done: ${task.evidence}`;
         case 'waiting':
-            return ` **waiting:** ${[task.waits.length > 0 ? waitsText(task.waits, context) : null, task.note].filter((part) => part !== null).join('; ')}`;
+            return ` **waiting:** ${[task.waits.length > 0 ? waitsText(task.waits, tree.context) : null, task.note].filter((part) => part !== null).join('; ')}`;
         case 'dropped':
             return ` dropped: ${task.note ?? ''}`;
         case 'in-progress':

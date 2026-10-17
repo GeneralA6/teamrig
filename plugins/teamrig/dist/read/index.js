@@ -12,6 +12,7 @@ export { ACTIVE_STATUSES, isTaskStatus, priorityText, SESSION_NAME, TASK_STATUSE
 export { assemble, historyPlan, layoutPaths, MissingSegmentError, readHistory, readSnapshotText, readWorkingSet, segmentName, workingSetPlan, ARCHIVE_DIR, SNAPSHOT_FILE, } from "../register/layout.js";
 export { LAYOUT_VERSION } from "../register/marker.js";
 export { readEvents, readRegister, snapshotOf } from "../register/snapshot.js";
+export { loopFix, needPath, needsOf, pathText, planOrder, TaskTree } from "../register/tree.js";
 export { byPlanOrder, dueTime } from "../register/views.js";
 export { allReady, isReady, unfinishedAfter, WAIT_KINDS, waitContext, waitsText, waitText, } from "../register/waits.js";
 // The inboxes (`inbox/<area>.md`) and their read marks (`inbox-marks.jsonl`).

@@ -5,6 +5,7 @@ import { parseUtcDay, parseUtcDeadline } from "../core/time.js";
 import { sizeProblem } from "./events.js";
 import { taskNumber } from "./fold.js";
 import { ACTIVE_STATUSES, GITHUB_SOURCE, priorityText, SESSION_NAME } from "./model.js";
+import { loopFix, needPath, pathText } from "./tree.js";
 import { heldStart, startHolds } from "./verify.js";
 import { isPeerWait, sameWait, waitSpelling } from "./waits.js";
 /** The skill name that closes a task which produced no reusable procedure. */
@@ -399,7 +400,7 @@ function sameWaits(a, b) {
 }
 /**
  * A task reason is for a task already started (in progress, or waiting after it started) that found another
- * task must finish first: one not started stays open with a plan dependency instead.
+ * task must finish first: one not started stays open with a plan dependency instead. It never closes a loop.
  */
 function taskWaitProblem(task, id, state) {
     if (id === task.id) {
@@ -412,7 +413,10 @@ function taskWaitProblem(task, id, state) {
         return `no task ${id}`;
     }
     const target = state.tasks.get(id);
-    return target === undefined || target.status === 'done' || target.status === 'dropped' ? `${id} is already finished; nothing to wait on` : undefined;
+    if (target === undefined || target.status === 'done' || target.status === 'dropped') {
+        return `${id} is already finished; nothing to wait on`;
+    }
+    return loopProblem(task.id, id, state, true);
 }
 /** In progress, or waiting after it started: a task that can wait on another. */
 function hasStarted(task) {
@@ -434,8 +438,8 @@ function afterChangeProblem(task, after, state) {
     return afterProblem(task.id, after, state);
 }
 /**
- * The tasks `id` comes after must exist, be named once, and never lead back to `id`: a loop could never start.
- * On a create, `id` is the id the new task gets.
+ * The tasks `id` comes after must exist, be named once, and never need `id` back, by a plan dependency or a task
+ * wait: a loop could never start. On a create, `id` is the id the new task gets.
  */
 function afterProblem(id, after, state) {
     const twice = after.find((other, index) => after.indexOf(other) !== index);
@@ -449,23 +453,25 @@ function afterProblem(id, after, state) {
     if (missing !== undefined) {
         return `no task ${missing}`;
     }
-    const loop = after.find((other) => leadsTo(other, id, state));
-    return loop === undefined ? undefined : `${loop} already comes after ${id}, directly or not, so ${id} cannot come after ${loop}`;
-}
-/** True when `from` is `target` or comes after it, directly or through the tasks it comes after. */
-function leadsTo(from, target, state) {
-    const seen = new Set();
-    const queue = [from];
-    for (let next = queue.pop(); next !== undefined; next = queue.pop()) {
-        if (next === target) {
-            return true;
-        }
-        if (!seen.has(next)) {
-            seen.add(next);
-            queue.push(...(state.tasks.get(next)?.after ?? []));
+    for (const other of after) {
+        const loop = loopProblem(id, other, state, false);
+        if (loop !== undefined) {
+            return loop;
         }
     }
-    return false;
+    return undefined;
+}
+/**
+ * The refusal when making `id` need `other` (by a task wait when `byWait`, else a plan dependency) would close a loop:
+ * `other` already needs `id`, directly or not, and no task in a loop can ever finish.
+ */
+function loopProblem(id, other, state, byWait) {
+    const path = needPath(state.tasks, other, id);
+    const owner = state.tasks.get(other)?.owner;
+    if (path === undefined || owner === undefined) {
+        return undefined;
+    }
+    return `${pathText([id, ...path])} would be a loop, and no task in a loop can finish: ${loopFix(id, other, owner, byWait)}`;
 }
 function blankToNull(text) {
     return text === undefined || text.trim() === '' ? null : text.trim();

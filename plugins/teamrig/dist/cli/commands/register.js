@@ -12,14 +12,15 @@ import { renderPlan } from "../../register/plan.js";
 import { ACTIVE_STATUSES } from "../../register/model.js";
 import { readStopgapTags, stopgapFlags, stopgapTags } from "../../register/stopgap.js";
 import { heldStart, heldStartNotice, startHolds, verifyQueue } from "../../register/verify.js";
-import { assignedNotice, formatTask, formatTaskDetail, formatVerifyRow, personWaitNotice, selectTasks } from "../../register/views.js";
-import { isPeerWait, sameWait, waitContext } from "../../register/waits.js";
+import { TaskTree } from "../../register/tree.js";
+import { assignedNotice, formatTask, formatTaskDetail, formatTaskTree, formatVerifyRow, personWaitNotice, selectTasks } from "../../register/views.js";
+import { isPeerWait, sameWait } from "../../register/waits.js";
 import { lintSkills } from "../../skills/lint.js";
 import { SKILL_FILE, SkillDir } from "../../skills/store.js";
 import { noPositionals, onePositional, UsageError } from "../args.js";
 import { addInputOf, callerOf, changesOf, listFilterOf, setInputOf, taskIdOf, weekOf } from "../inputs.js";
 import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, projectFolder, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
-import { checkLines, listLines } from "../reports.js";
+import { checkLines, listLines, SHORT_TITLE_CHARS, waitingOnLines } from "../reports.js";
 import { rollUp } from "../roll-up.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { loadTree } from "../tree.js";
@@ -76,7 +77,7 @@ function report(runtime, verdict, verb, configPath, team) {
         throw new RefusedError(verdict.error);
     }
     const { task, state } = verdict.value;
-    runtime.out.stdout(`${verb} ${formatTask(task, team, waitContext(state.tasks, new Date(runtime.clock.now())))}`);
+    runtime.out.stdout(`${verb} ${formatTask(task, team, new TaskTree(state.tasks, new Date(runtime.clock.now())))}`);
     const { rotation } = verdict.value;
     const turnOff = autoArchiveSwitch(configPath);
     if (rotation.kind === 'rotated') {
@@ -221,7 +222,7 @@ async function setAsking(runtime, team, by, id, ask, input) {
     const verdict = await team.register.ask(by, id, ask, input);
     if (verdict.ok) {
         const { asked, state } = verdict.value;
-        runtime.out.stdout(`ADDED ${formatTask(asked, undefined, waitContext(state.tasks, new Date(runtime.clock.now())))}`);
+        runtime.out.stdout(`ADDED ${formatTask(asked, undefined, new TaskTree(state.tasks, new Date(runtime.clock.now())))}`);
     }
     const exit = report(runtime, verdict, 'SET', team.paths.config);
     if (verdict.ok && verdict.value.asked.owner !== by) {
@@ -305,9 +306,9 @@ async function settle(runtime, { own, teams }, needsHistory) {
     }
     return { own: settled.find((rolled) => rolled.team === own.team) ?? own, teams: settled };
 }
-/** How a read of one register judges its waiting tasks' reasons now. */
-function contextOf(snapshot, runtime) {
-    return waitContext(snapshot.state.tasks, new Date(runtime.clock.now()));
+/** The dependency tree of one register's read now: ready wait reasons, effective dues and what needs each task. */
+function taskTreeOf(snapshot, runtime) {
+    return new TaskTree(snapshot.state.tasks, new Date(runtime.clock.now()));
 }
 /** A filter that selects finished tasks, the only ones a compaction retires. */
 function selectsFinished(filter) {
@@ -327,15 +328,15 @@ async function treeRows(args, runtime) {
     const filter = listFilterOf(new Map([...args.flags].filter(([name]) => name !== 'session')));
     const { teams } = await settle(runtime, await rollUp(runtime, callerOf(args.flags, runtime.env)), selectsFinished(filter));
     return teams.flatMap(({ team, roster, snapshot }) => {
-        const context = contextOf(snapshot, runtime);
-        return selectTasks(snapshot.state.tasks.values(), treeFilterOf(roster, filter)).map((task) => ({ task, team, context }));
+        const tree = taskTreeOf(snapshot, runtime);
+        return selectTasks(snapshot.state.tasks.values(), treeFilterOf(roster, filter), tree).map((task) => ({ task, team, tree }));
     });
 }
 async function ownRows(args, runtime) {
     const filter = listFilterOf(args.flags);
     const { own } = await settle(runtime, await ownRegister(runtime), selectsFinished(filter));
-    const context = contextOf(own.snapshot, runtime);
-    return selectTasks(own.snapshot.state.tasks.values(), filterIds(own.roster, filter)).map((task) => ({ task, team: undefined, context }));
+    const tree = taskTreeOf(own.snapshot, runtime);
+    return selectTasks(own.snapshot.state.tasks.values(), filterIds(own.roster, filter), tree).map((task) => ({ task, team: undefined, tree }));
 }
 /** `list [--tree] [--all]`: the short form (src/cli/reports.ts), or with `--all` every field of every task. */
 export async function list(args, runtime) {
@@ -344,6 +345,10 @@ export async function list(args, runtime) {
     listLines(rows, args.switches.has('all')).forEach((line) => runtime.out.stdout(line));
     return EXIT.ok;
 }
+/**
+ * `show <id> [--tree]`: every field of the task and its history; with `--tree`, its line, then what it needs and what
+ * needs it, each node with its owner, status and due, then who moves next (views.ts formatTaskTree).
+ */
 export async function show(args, runtime) {
     const id = taskIdOf(onePositional(args, 'id'));
     const { own } = await settle(runtime, await ownRegister(runtime), (_retired, working) => !working.state.tasks.has(id));
@@ -352,8 +357,23 @@ export async function show(args, runtime) {
     if (task === undefined) {
         throw new RefusedError(`no task ${id}`);
     }
-    runtime.out.stdout(formatTaskDetail(task, snapshot.read.events.filter((event) => event.id === id), contextOf(snapshot, runtime)));
+    const tree = taskTreeOf(snapshot, runtime);
+    if (args.switches.has('tree')) {
+        [formatTask(task, undefined, tree), ...formatTaskTree(task, tree, SHORT_TITLE_CHARS)].forEach((line) => runtime.out.stdout(line));
+        return EXIT.ok;
+    }
+    runtime.out.stdout(formatTaskDetail(task, snapshot.read.events.filter((event) => event.id === id), tree));
     return EXIT.ok;
+}
+/**
+ * `start`'s WAITING ON YOU block: the active tasks of other sessions that need the caller's unfinished tasks or wait
+ * on its decision or approval, from the working set (a finished task waits on no one); `--all` lists every one.
+ */
+export async function waitingReport(args, runtime) {
+    const { own } = await settle(runtime, await ownRegister(runtime), () => false);
+    const owner = sessionIdOf(own.roster, callerOf(args.flags, runtime.env));
+    const tree = taskTreeOf(own.snapshot, runtime);
+    return waitingOnLines(owner, tree.waitingOn(owner), tree, args.switches.has('all'));
 }
 /** `verify`: the caller's verifying tasks, oldest first, each with its proof and the date to verify by. */
 export async function verify(args, runtime) {
@@ -374,7 +394,7 @@ function weekFor(args, snapshot, now) {
 function checkRegister(snapshot, config, now, week, team) {
     const tasks = [...snapshot.state.tasks.values()];
     const flags = [...checkTasks(tasks, now, week, config.register), ...peerWaitFlags(tasks, config.roles.lead, config.register.ownerSource)];
-    return { team, flags: flags.sort(byFlagKind), context: waitContext(snapshot.state.tasks, now) };
+    return { team, flags: flags.sort(byFlagKind), tree: new TaskTree(snapshot.state.tasks, now) };
 }
 /**
  * The week's fit to the weekly limit over every team read (one account's limit covers them all): what is left of
@@ -386,7 +406,10 @@ export async function weekFitOf(runtime, { own, teams }, week, labelled) {
     const { budget } = own.config;
     const now = runtime.clock.now();
     const use = weekUseOf(await readSnapshots(runtime.files, snapshotDirOf(budget, own.paths)), now);
-    const rows = teams.flatMap((rolled) => [...rolled.snapshot.state.tasks.values()].map((task) => (labelled ? { task, team: rolled.team } : { task })));
+    const rows = teams.flatMap((rolled) => {
+        const tree = new TaskTree(rolled.snapshot.state.tasks, new Date(now));
+        return [...rolled.snapshot.state.tasks.values()].map((task) => (labelled ? { task, tree, team: rolled.team } : { task, tree }));
+    });
     return weekFit(rows, week, use === undefined ? undefined : leftOfWeek(budget.targetPct, use.usedPct));
 }
 /** OVER-LIMIT goes to the section of the team holding the task: the only one without `--tree`. */

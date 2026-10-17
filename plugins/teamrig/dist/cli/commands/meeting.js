@@ -7,7 +7,7 @@ import { decisionsByOwner, endNotice, startNotice } from "../../meeting/notices.
 import { MeetingStore, phaseOf, stoppedAt } from "../../meeting/state.js";
 import { currentWeekOf } from "../../register/check.js";
 import { fitLines } from "../../register/fit.js";
-import { waitContext } from "../../register/waits.js";
+import { TaskTree } from "../../register/tree.js";
 import { noPositionals } from "../args.js";
 import { callerOf } from "../inputs.js";
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
@@ -76,7 +76,7 @@ async function printAgenda(args, runtime, mk, phase) {
     const now = new Date(mk.now);
     const lines = agendaLines({
         tasks: [...snapshot.state.tasks.values()],
-        context: waitContext(snapshot.state.tasks, now),
+        tree: new TaskTree(snapshot.state.tasks, now),
         now: mk.now,
         since: agendaSince(previousEnd(phase), mk.now),
         ownerMarker: mk.config.register.ownerSource,

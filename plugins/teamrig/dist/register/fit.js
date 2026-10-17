@@ -1,8 +1,9 @@
 import { priorityText } from "./model.js";
-import { byPlanOrder, sizeText, taskLabel } from "./views.js";
+import { planOrder } from "./tree.js";
+import { sizeText, taskLabel } from "./views.js";
 /**
  * Does the week's planned work fit the weekly usage limit left? A task's `size` is the % of the weekly limit it
- * takes; the week's to-do tasks are summed in plan order (priority, then due) against what is left of the pace
+ * takes; the week's to-do tasks are summed in plan order (priority, then effective due) against what is left of the pace
  * target, and the first one past that line is named with how many come after it.
  */
 /**
@@ -16,7 +17,7 @@ export function leftOfWeek(targetPct, usedPct) {
 }
 /** The fit of the to-do tasks tagged with `week`, against `leftPct` (undefined: no reading, so nothing is summed). */
 export function weekFit(rows, week, leftPct) {
-    const toDo = rows.filter(({ task }) => task.week === week && FIT_STATUSES.includes(task.status)).sort((a, b) => byPlanOrder(a.task, b.task));
+    const toDo = rows.filter(({ task }) => task.week === week && FIT_STATUSES.includes(task.status)).sort((a, b) => planOrder(a.tree.placeOf(a.task), b.tree.placeOf(b.task)));
     const sized = toDo.filter(({ task }) => task.size !== null);
     const fits = new Map();
     let unfit;

@@ -1,28 +1,30 @@
 import { formatUtcMinute, parseUtcDeadline, shortUtc } from "../core/time.js";
-import { taskNumber } from "./fold.js";
 import { ACTIVE_STATUSES, GITHUB_SOURCE, priorityText } from "./model.js";
-import { waitsText } from "./waits.js";
+import { planOrder } from "./tree.js";
+import { waitsText, weekdayUtc } from "./waits.js";
 import { proofOf, proofText } from "./verify.js";
 /** A size as printed: percent of the weekly limit, at most two decimals (`1.5%`). */
 export function sizeText(size) {
     return `${Number(size.toFixed(2))}%`;
 }
-/** The task's deadline in ms, or undefined when it has none. */
+/** The task's own deadline in ms, or undefined when it has none; {@link TaskTree.dueTime} gives the effective one. */
 export function dueTime(task) {
     return task.due === null ? undefined : parseUtcDeadline(task.due)?.getTime();
 }
-/** Plan order: priority, then due date (undated last), then id. */
+/**
+ * Plan order on the tasks' own due dates: priority, then due date (undated last), then id. For rows no effective due
+ * reaches (finished tasks) and readers with no tree; {@link TaskTree.byPlanOrder} orders active work.
+ */
 export function byPlanOrder(a, b) {
-    const dueA = dueTime(a) ?? Number.POSITIVE_INFINITY;
-    const dueB = dueTime(b) ?? Number.POSITIVE_INFINITY;
-    return a.priority - b.priority || (dueA === dueB ? 0 : dueA < dueB ? -1 : 1) || taskNumber(a.id) - taskNumber(b.id);
+    return planOrder({ id: a.id, priority: a.priority, at: dueTime(a) }, { id: b.id, priority: b.priority, at: dueTime(b) });
 }
-export function selectTasks(tasks, filter) {
+/** The tasks that match the filter in plan order; `dueBefore` and the order read the effective due of `tree`. */
+export function selectTasks(tasks, filter, tree) {
     const statuses = filter.statuses ?? ACTIVE_STATUSES;
     const dueBefore = filter.dueBefore?.getTime();
     return [...tasks]
         .filter((task) => {
-        const due = dueTime(task);
+        const due = tree.dueTime(task);
         return (statuses.includes(task.status) &&
             (filter.owner === undefined || task.owner === filter.owner) &&
             (filter.source === undefined || task.source === filter.source) &&
@@ -31,7 +33,7 @@ export function selectTasks(tasks, filter) {
             (filter.week === undefined || task.week === filter.week) &&
             (filter.goal === undefined || task.goals.includes(filter.goal)));
     })
-        .sort(byPlanOrder);
+        .sort((a, b) => tree.byPlanOrder(a, b));
 }
 /** The task's id, or `<team>/<id>` when a roll-up over a tree of teams names its team. */
 export function taskLabel(task, team) {
@@ -39,11 +41,16 @@ export function taskLabel(task, team) {
 }
 /**
  * The fields every task row starts with: `T12 in-progress`, `p2`, `owner alpha`, then `due 01-15` and
- * `after T5,T6` (its plan dependency) when it has them.
+ * `after T5,T6` (its plan dependency) when it has them. With `tree`, the due is the effective one: an earlier due
+ * of a task that needs it names that task (`due 01-10 (from T194)`).
  */
-function rowHead(task, team) {
+function rowHead(task, team, tree) {
     const parts = [`${taskLabel(task, team)} ${task.status}`, priorityText(task.priority), `owner ${task.owner}`];
-    if (task.due !== null) {
+    const inherited = tree?.effectiveDue(task.id);
+    if (inherited !== undefined && inherited.from !== null) {
+        parts.push(`due ${shortUtc(inherited.due)} (from ${inherited.from})`);
+    }
+    else if (task.due !== null) {
         parts.push(`due ${shortUtc(task.due)}`);
     }
     if (task.after.length > 0) {
@@ -74,15 +81,42 @@ export function cut(text, max) {
 }
 /**
  * The short row of `list` and `check`: `T12 in-progress, p2, owner alpha, due 01-15 | <title cut to titleChars>`,
- * and what a waiting task waits for: `(waiting: decision owner · on T5 ready)`. It keeps what orders and assigns
- * the work, and the issue of a task imported from GitHub (`from gh:acme/web#7`) so it can be found there; it leaves
- * the week, other sources, goals and status note to `show`. `context` marks the ready reasons.
+ * what a waiting task waits for: `(waiting: decision owner · on T5 ready)`, and which task of another session needs
+ * it (`· needed by T194 (beta, due 01-10) +1`). It keeps what orders and assigns the work, and the issue of a task
+ * imported from GitHub (`from gh:acme/web#7`) so it can be found there; it leaves the week, other sources, goals and
+ * status note to `show`. `tree` gives the effective due, the ready reasons and the tasks that need it.
  */
-export function formatShortTask(task, titleChars, team, context) {
-    const waits = task.status === 'waiting' && task.waits.length > 0 ? ` (waiting: ${waitsText(task.waits, context)})` : '';
+export function formatShortTask(task, titleChars, team, tree) {
+    return `${shortRow(task, titleChars, team, tree)}${neededByText(task, tree)}`;
+}
+/** {@link formatShortTask} without what needs the task: a node of the tree and the start of a waiting-on-you row. */
+function shortRow(task, titleChars, team, tree) {
+    const waits = task.status === 'waiting' && task.waits.length > 0 ? ` (waiting: ${waitsText(task.waits, tree?.context)})` : '';
     const issue = issueOf(task);
-    const head = issue === undefined ? rowHead(task, team) : [...rowHead(task, team), `from ${issue}`];
+    const head = issue === undefined ? rowHead(task, team, tree) : [...rowHead(task, team, tree), `from ${issue}`];
     return `${head.join(', ')} | ${cut(task.title, titleChars)}${waits}`;
+}
+/**
+ * ` · needed by T194 (beta, due 01-10) +1`: the active tasks of other sessions that need an active task, the first
+ * the one with the earliest effective due, then in plan order. The due is left out when the row already shows it as
+ * `(from T194)`. Empty for a finished task, with no `tree`, or when only its owner's own tasks need it.
+ */
+function neededByText(task, tree) {
+    if (tree === undefined || !ACTIVE_STATUSES.includes(task.status)) {
+        return '';
+    }
+    const dueAt = (needer) => tree.effectiveDue(needer.id)?.at ?? Number.POSITIVE_INFINITY;
+    const [first, ...rest] = tree
+        .neededBy(task.id)
+        .filter((needer) => needer.owner !== task.owner)
+        .sort((a, b) => (dueAt(a) === dueAt(b) ? tree.byPlanOrder(a, b) : dueAt(a) < dueAt(b) ? -1 : 1));
+    if (first === undefined) {
+        return '';
+    }
+    const due = tree.effectiveDue(first.id);
+    const shown = due !== undefined && tree.effectiveDue(task.id)?.from === (due.from ?? first.id);
+    const facts = due === undefined || shown ? [first.owner] : [first.owner, `due ${shortUtc(due.due)}`];
+    return ` · needed by ${first.id} (${facts.join(', ')})${rest.length > 0 ? ` +${rest.length}` : ''}`;
 }
 /** The GitHub issue a task was imported from, as its ref (`gh:acme/web#7`); undefined for any other task. */
 function issueOf(task) {
@@ -92,10 +126,11 @@ function issueOf(task) {
  * One line that names each field, so a newcomer can read it:
  * `T12 in-progress, p2, owner alpha, due 01-15, week 01-13, from lead, goals G1 | title`; a task imported from
  * GitHub is `from` its issue (`from gh:acme/web#7`).
- * With `team`, the id reads `<team>/T12`; `context` marks a waiting task's ready reasons.
+ * With `team`, the id reads `<team>/T12`; `tree` gives the effective due, a waiting task's ready reasons and the
+ * tasks of other sessions that need it, as in {@link formatShortTask}.
  */
-export function formatTask(task, team, context) {
-    const parts = rowHead(task, team);
+export function formatTask(task, team, tree) {
+    const parts = rowHead(task, team, tree);
     if (task.week !== null) {
         parts.push(`week ${shortUtc(task.week)}`);
     }
@@ -103,15 +138,15 @@ export function formatTask(task, team, context) {
     if (task.goals.length > 0) {
         parts.push(`goals ${task.goals.join(',')}`);
     }
-    return `${parts.join(', ')} | ${task.title}${statusNote(task, context)}`;
+    return `${parts.join(', ')} | ${task.title}${statusNote(task, tree)}${neededByText(task, tree)}`;
 }
 /**
  * What a row adds for a status that waits on something: a waiting task's reasons, then its note
  * (`(waiting: decision owner · on T5; the schema first)`), or what will prove a verifying one.
  */
-function statusNote(task, context) {
+function statusNote(task, tree) {
     if (task.status === 'waiting') {
-        const parts = [task.waits.length > 0 ? waitsText(task.waits, context) : null, task.note].filter((part) => part !== null);
+        const parts = [task.waits.length > 0 ? waitsText(task.waits, tree?.context) : null, task.note].filter((part) => part !== null);
         return parts.length === 0 ? '' : ` (waiting: ${parts.join('; ')})`;
     }
     const proof = task.status === 'verifying' ? proofOf(task) : null;
@@ -174,10 +209,10 @@ export function formatEvent(event) {
 }
 /**
  * `show`: the task line, its description (what and why, its later lines indented two spaces), its status details,
- * then its history; `context` marks a waiting task's ready reasons.
+ * then its history; `tree` reads the task line as {@link formatTask} does.
  */
-export function formatTaskDetail(task, events, context) {
-    const lines = [formatTask(task, undefined, context)];
+export function formatTaskDetail(task, events, tree) {
+    const lines = [formatTask(task, undefined, tree)];
     if (task.description !== null) {
         const [first = '', ...rest] = task.description.split('\n');
         lines.push(`description: ${first}`, ...rest.map((line) => (line.trim() === '' ? '' : `  ${line}`)));
@@ -202,6 +237,74 @@ export function formatTaskDetail(task, events, context) {
     }
     lines.push('history:', ...events.filter((event) => event.id === task.id).map((event) => `  ${formatEvent(event)}`));
     return lines.join('\n');
+}
+/**
+ * `show --tree`: what the task needs, down to tasks that need nothing unfinished (`needs:`), then the active tasks
+ * that need it, up to those nothing needs (`needed by:`), each level indented two more spaces, then
+ * {@link formatNextMove}. A finished need ends its branch, and one the read lacks reads `T3 finished` (only a
+ * compaction retires a task, and only a finished one). Within a part, a task met again reads `T4 (shown above)`,
+ * and one already on its own branch `T2 (loop)`. Needs come in plan order, so the first branch leads to the next move.
+ */
+export function formatTaskTree(task, tree, titleChars) {
+    const node = (id) => {
+        const found = tree.task(id);
+        return found === undefined ? `${id} finished` : shortRow(found, titleChars, undefined, tree);
+    };
+    const down = (id) => {
+        const found = tree.task(id);
+        if (found === undefined || (id !== task.id && !ACTIVE_STATUSES.includes(found.status))) {
+            return [];
+        }
+        const needs = tree.needs(id);
+        const known = tree.inPlanOrder(needs.flatMap((need) => tree.task(need) ?? [])).map((need) => need.id);
+        return [...known, ...needs.filter((need) => tree.task(need) === undefined)];
+    };
+    const up = (id) => tree.neededBy(id).map((needer) => needer.id);
+    const part = (name, next) => {
+        const lines = branchLines(task.id, next, node, new Set([task.id]), [task.id]);
+        return lines.length === 0 ? [`${name}: none`] : [`${name}:`, ...lines];
+    };
+    return [...part('needs', down), ...part('needed by', up), formatNextMove(task, tree)];
+}
+/** The lines under `id` along `next`, depth first, two spaces deeper per level; see {@link formatTaskTree}. */
+function branchLines(id, next, node, shown, path) {
+    const indent = '  '.repeat(path.length);
+    return next(id).flatMap((child) => {
+        if (path.includes(child)) {
+            return [`${indent}${child} (loop)`];
+        }
+        if (shown.has(child)) {
+            return [`${indent}${child} (shown above)`];
+        }
+        shown.add(child);
+        return [`${indent}${node(child)}`, ...branchLines(child, next, node, shown, [...path, child])];
+    });
+}
+/**
+ * `Next move: beta (T3)`: who moves first so the task can finish, on which task ({@link TaskTree.nextMove}), with
+ * `, decision` or `, approval` when the lead or the owner decides, `, from Thu 01-10` when a time must pass first,
+ * and `, behind T7 (p1)` when that session works a higher-priority task first. `Next move: none` says why: the task
+ * is finished, or what it needs runs in a loop.
+ */
+export function formatNextMove(task, tree) {
+    const move = tree.nextMove(task.id);
+    if (move === undefined) {
+        return ACTIVE_STATUSES.includes(task.status)
+            ? `Next move: none, what ${task.id} needs runs in a loop (check flags it LOOP)`
+            : `Next move: none, ${task.id} is ${task.status}`;
+    }
+    const what = move.kind === 'work' ? '' : move.kind === 'time' ? `, from ${weekdayUtc(move.at)}` : `, ${move.kind}`;
+    const behind = move.behind === undefined ? '' : `, behind ${move.behind.id} (${priorityText(move.behind.priority)})`;
+    return `Next move: ${move.who} (${move.task.id})${what}${behind}`;
+}
+/**
+ * A row of the waiting-on-you block: another session's task as its short row, then what it waits on from you:
+ * ` · needs your T2, T3` and ` · waits on your decision and approval`.
+ */
+export function formatWaitingOnYou(entry, titleChars, tree) {
+    const needs = entry.needs.length === 0 ? '' : ` · needs your ${entry.needs.map((need) => need.id).join(', ')}`;
+    const asks = entry.asks.length === 0 ? '' : ` · waits on your ${entry.asks.map((ask) => ask.kind).join(' and ')}`;
+    return `${shortRow(entry.task, titleChars, undefined, tree)}${needs}${asks}`;
 }
 /** The inbox line a task's new owner gets, under the giver's name: `T5 is yours (p2, due 2030-01-10): Show the signup errors`. */
 export function assignedNotice(task) {
