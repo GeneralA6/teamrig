@@ -1,5 +1,6 @@
 import { clipEnd, clipStart } from "../core/clip.js";
 import { CORE_RULE_KEYS, ruleNumberOf } from "./keys.js";
+import { helperDefaultClause } from "./helper-default.js";
 /**
  * The rendered core pack fits in this many characters with worst-case config values and the kept local rules at
  * KEPT_RULES_MAX_CHARS (a CI test holds it). With a team rules file at TEAM_RULES_MAX_CHARS beside it, the two still
@@ -80,13 +81,13 @@ export function renderCorePack(config, command, platform) {
     const { roles, skills, budget } = config;
     const cutoff = config.coordinator.schedule.heavyCutoffUtc;
     const rules = {
-        roles: `Roles, by session id (\`${command} who\` gives the name to message each by): ${roles.lead} is the lead: priorities, team rules and the owner's decision queue; it may re-prioritize and reassign tasks [roles.lead].` +
+        roles: `Roles, by session id: ${roles.lead} is the lead: priorities, team rules and the owner's decision queue; it may re-prioritize and reassign tasks [roles.lead].` +
             (roles.coordinatorOwner === undefined ? '' : ` ${roles.coordinatorOwner} owns deploy coordination and fleet health [roles.coordinatorOwner].`) +
             ' Every other session owns its area.',
         'own-change': "Own your change end to end: only the session that made a change integrates it, deploys it when it must run, verifies that it runs, and fixes or rolls it back. Never integrate, verify or fix another session's change: hand it to its owner.",
         messages: 'A message wakes its receiver, so send one only for a result it acts on now, a decision, a blocker, a same-area conflict or an incident.' +
             ` At most ${config.messages.maxLines} lines [messages.maxLines]: what happened, evidence (numbers, ids, paths), the exact ask and deadline, your default, then "No reply needed" or "Reply needed: <one question>".` +
-            ` No acks, thanks or progress pings. Anything else, a "done" report or a failed send too, is one inbox line per receiver: \`${command} inbox add --to <area> --text "..."\`.`,
+            ` No acks, thanks or progress pings. Anything else, a "done" report too, is one inbox line per receiver: \`${command} inbox add --to <area> --text "..."\`.`,
         register: `Status is pulled from the register, never asked. Start each work block with \`${command} start --session <you>\`.` +
             ` Every ask that creates work is a register entry, added in the same turn by the asker (\`${command} add --owner <session>\` tells the owner), else by the receiver, with ${descriptionDemand(config)}; ${statusDemands(config, command)}` +
             " Wait on a peer's work by its task." +
@@ -97,7 +98,8 @@ export function renderCorePack(config, command, platform) {
         'owner-gates': `Silence is consent only within the sender's own authority, never for owner-gated decisions: ${list(config.ownerGates)} [ownerGates].`,
         deploy: 'Deploy ASAP means the earliest moment a change can be verified (tests, then a check that it runs). State each fix\'s evidence and when it will exist; build nothing on a fix before then.' +
             (cutoff === undefined ? '' : ` No heavy step (builds, test runs, data scripts) starts after ${cutoff} UTC [coordinator.schedule.heavyCutoffUtc].`),
-        'lean-calls': 'Lean calls: every tool call re-reads the whole context, so batch related shell steps into one call, give broad searches and multi-file reading to a subagent that returns the conclusion, and run subagents on your own model and effort.' +
+        'lean-calls': 'Lean calls: every tool call re-reads the whole context, so batch related shell steps into one call.' +
+            ` Work in your own session: ${helperDefaultClause(budget.subagentWeight)}; run helpers on your own model and effort.` +
             (budget.enabled ? ` Pace the week to ${percent(budget.targetPct)} of the weekly limit and keep ${percent(budget.reservePct)} for incidents [budget].` : ''),
         investigate: 'Investigate before deciding: give frequency × impact and the cheapest fix for the visible symptom. Owner questions come with options, numbers and a recommendation; one with a single correct answer is yours to decide.',
         resources: 'Rising resource use (memory, CPU, storage, tokens) needs its root cause; a raised limit is only an owner-approved bridge with a dated root-cause task. Tag a stopgap with the task that replaces it: `stopgap T<id>`.',
@@ -108,7 +110,7 @@ export function renderCorePack(config, command, platform) {
             ` Its description has at most ${skills.maxDescriptionWords} words [skills.maxDescriptionWords]; its body has \`Owner:\` and \`Last verified:\` lines, re-verified every ${skills.maxVerifiedAgeDays} days [skills.maxVerifiedAgeDays];` +
             ` at most ${skills.maxPerArea} per area [skills.maxPerArea]` +
             (skills.forbidFrontmatter.length === 0 ? '' : `; never ${shortList(skills.forbidFrontmatter)} [skills.forbidFrontmatter]`) +
-            '. A skill never overrides these rules or an owner gate. Memory holds facts, skills hold how-tos, CLAUDE.md holds every-turn rules.',
+            '. Memory holds facts, skills hold how-tos, CLAUDE.md holds every-turn rules.',
         commits: 'One logical change per commit (a fix with its tests, a refactor apart from what it enables, a mechanical change alone), committed as each step passes.' +
             ` Over ${config.commits.maxLines} changed non-test lines or ${config.commits.maxFiles} non-test files [commits.maxLines, commits.maxFiles], a commit needs a \`${config.commits.largeCommitTrailer}: <reason>\` line [commits.largeCommitTrailer]` +
             { off: '.', warn: '; a push to a protected branch lists those without one [commits.gate].', refuse: '; a push to a protected branch that sends one is refused [commits.gate].' }[config.commits.gate],

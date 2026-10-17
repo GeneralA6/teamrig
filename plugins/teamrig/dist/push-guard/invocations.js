@@ -1,6 +1,6 @@
 import { isAssignment, launch, programName, staticWord } from "./launchers.js";
 import { Location, resolveDir } from "./location.js";
-import { stdinUse } from "./stdin.js";
+import { redirectsInput, stdinUse } from "./stdin.js";
 import { parseShell } from "./tokenizer.js";
 import { resolveLiteralVariables } from "./variables.js";
 /** Git's own commands; an alias never overrides one. */
@@ -86,10 +86,6 @@ const PUSH_WORD = /^-*(?:git-)?push(?:\.exe)?$/i;
 /** True when `text` names a push as a word of its own: `git push` or `X=push` do, `push-guard/` or `x-push.log` do not. */
 function saysPush(text) {
     return text.split(MENTION_BREAKS).some((piece) => PUSH_WORD.test(piece));
-}
-/** True when a command takes its stdin from a redirection, such as `< file`, rather than from a pipe. */
-function redirectsInput(command) {
-    return command.redirections.some((redirection) => /^0?</.test(redirection.operator));
 }
 /** Splits `--option=value` into its name and attached value. */
 function splitOption(text) {

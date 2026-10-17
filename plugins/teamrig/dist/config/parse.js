@@ -2,11 +2,11 @@ import { isRecord } from "../core/guards.js";
 import { NAME_PATTERN, NAME_RULE } from "../core/ids.js";
 import { FOLLOWUP_STATUSES, isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, SESSION_NAME, TASK_STATUSES } from "../register/model.js";
 import { CORE_RULE_KEYS, isCoreRuleKey } from "../rules/keys.js";
-import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT_CONTEXT_FILES, DEFAULT_GITHUB, DEFAULT_HIRING, DEFAULT_LOCK, DEFAULT_LEAD_BOUNDARY, DEFAULT_LOOPS, DEFAULT_MESSAGES, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_PUSH_GUARD, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, DEFAULT_TESTS, DEFAULT_WAKE, } from "./defaults.js";
+import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT_CONTEXT_FILES, DEFAULT_GITHUB, DEFAULT_HIRING, DEFAULT_LOCK, DEFAULT_LEAD_BOUNDARY, DEFAULT_LOOPS, DEFAULT_MESSAGES, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_PACKAGE_GUARD, DEFAULT_PUSH_GUARD, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, DEFAULT_TESTS, DEFAULT_WAKE, } from "./defaults.js";
 import { isEffort, isModel } from "./launch.js";
 import { CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from "./limits.js";
 import { ConfigReader, describe, isValidRegex, shortLine } from "./reader.js";
-import { BURST_POLICIES, CONFLICT_WINNERS, ESCALATIONS, HIRING_POLICIES, isBurstPolicy, isCommitGate, isConflictWinner, isEffortLevel, isEscalation, isHiringPolicy, isOverAction, isPushToProtected, isTerminalChoice, isVerifyGate, isWeekday, OVER_ACTIONS, PUSH_TO_PROTECTED, TERMINALS, VERIFY_GATES, WEEKDAYS, } from "./types.js";
+import { AD_HOC_RUNNERS, BURST_POLICIES, CONFLICT_WINNERS, ESCALATIONS, HIRING_POLICIES, isAdHocRunners, isBurstPolicy, isCommitGate, isConflictWinner, isEffortLevel, isEscalation, isHiringPolicy, isOverAction, isPushToProtected, isTerminalChoice, isVerifyGate, isWeekday, OVER_ACTIONS, PUSH_TO_PROTECTED, TERMINALS, VERIFY_GATES, WEEKDAYS, } from "./types.js";
 const isSessionName = (name) => SESSION_NAME.test(name) ? undefined : 'expected a lowercase name: a letter, then letters, digits or -, at most 32';
 const isUtcTime = (time) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(time) ? undefined : 'expected a UTC time as HH:MM');
 /** A repository as GitHub names it: an owner login, a slash, then letters, digits, `.`, `_` or `-`. */
@@ -147,6 +147,7 @@ export function parseConfig(raw) {
             protectedBranches: read.stringList(pushGuard, 'protectedBranches', 'pushGuard', DEFAULT_PUSH_GUARD.protectedBranches, shortLine(CONFIG_LIMITS.protectedBranches.maxLength, BRANCH_NAME), CONFIG_LIMITS.protectedBranches.maxItems),
             pushToProtected: parsePushToProtected(read, pushGuard),
         },
+        packageGuard: { adHocRunners: parseAdHocRunners(read, read.section(raw, 'packageGuard', '')) },
         commits: parseCommits(read, read.section(raw, 'commits', '')),
         coordinator: {
             schedule: heavyCutoffUtc === undefined ? {} : { heavyCutoffUtc },
@@ -499,6 +500,11 @@ function parsePushToProtected(read, raw) {
     const fallback = DEFAULT_PUSH_GUARD.pushToProtected;
     const value = read.string(raw, 'pushToProtected', 'pushGuard', fallback, oneOf(PUSH_TO_PROTECTED));
     return isPushToProtected(value) ? value : fallback;
+}
+function parseAdHocRunners(read, raw) {
+    const fallback = DEFAULT_PACKAGE_GUARD.adHocRunners;
+    const value = read.string(raw, 'adHocRunners', 'packageGuard', fallback, oneOf(AD_HOC_RUNNERS));
+    return isAdHocRunners(value) ? value : fallback;
 }
 function parseCommits(read, raw) {
     const path = 'commits';

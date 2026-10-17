@@ -14,6 +14,7 @@ import { helperGate, promptWarning, stopWarning } from "../../budget/warn.js";
 import { WarnStore } from "../../budget/warn-store.js";
 import { readWeek } from "../../budget/week.js";
 import { postLine } from "../../inbox/inbox.js";
+import { helperLaunchReminder } from "../../rules/helper-default.js";
 import { snapshotDirOf } from "./budget.js";
 import { inboxDepsOf } from "./inbox.js";
 const TRANSCRIPT = '.jsonl';
@@ -121,15 +122,21 @@ export async function promptBudgetLine(runtime, scope) {
     }
     return result.line;
 }
-/** The PreToolUse output that asks the person before a helper launch or refuses it (`helperGate`); undefined lets it go. */
+/**
+ * The budget's say on a helper launch (`helperGate`). The budget off, or usage files it cannot read (a newer
+ * teamrig wrote them), let the launch go, so the reminder beside it still arrives.
+ */
+async function budgetGateOf(runtime, scope, transcript) {
+    const facts = await budgetFactsOf(runtime, scope, transcript).catch(() => undefined);
+    return facts === undefined ? { kind: 'allow' } : helperGate(facts, scope.config.budget);
+}
+/**
+ * The PreToolUse output at each helper launch: rule 8's helper default as model context (`helperLaunchReminder`),
+ * plus the budget's ask or refusal when it holds the launch back.
+ */
 export async function helperGateOutput(runtime, scope, transcript) {
-    const facts = await budgetFactsOf(runtime, scope, transcript);
-    if (facts === undefined) {
-        return undefined;
-    }
-    const gate = helperGate(facts, scope.config.budget);
-    if (gate.kind === 'allow') {
-        return undefined;
-    }
-    return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: gate.kind, permissionDecisionReason: gate.reason } });
+    const gate = await budgetGateOf(runtime, scope, transcript);
+    const decision = gate.kind === 'allow' ? {} : { permissionDecision: gate.kind, permissionDecisionReason: gate.reason };
+    const additionalContext = helperLaunchReminder(scope.config.budget.subagentWeight);
+    return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', ...decision, additionalContext } });
 }

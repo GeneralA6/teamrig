@@ -12,6 +12,10 @@ export const PUSH_TO_PROTECTED = ['ask', 'allow'];
 export function isPushToProtected(value) {
     return PUSH_TO_PROTECTED.some((choice) => choice === value);
 }
+export const AD_HOC_RUNNERS = ['deny', 'ask', 'allow'];
+export function isAdHocRunners(value) {
+    return AD_HOC_RUNNERS.some((choice) => choice === value);
+}
 export const COMMIT_GATES = ['off', 'warn', 'refuse'];
 export function isCommitGate(value) {
     return COMMIT_GATES.some((gate) => gate === value);
