@@ -55,6 +55,7 @@ const EXPECTED = {
   'worktree remove': 'write',
   test: 'write',
   'hook push-guard': 'internal',
+  'hook package-guard': 'internal',
   'hook cold-send': 'internal',
   'hook failed-send': 'internal',
   'hook loop-nudge': 'internal',

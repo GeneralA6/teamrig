@@ -1801,6 +1801,24 @@ teamrig hook push-guard < pre-tool-use.json
 Output: nothing for a command that pushes no protected branch; otherwise a JSON permission decision (`ask` or
 `deny`) with the reason.
 
+### teamrig hook package-guard
+
+Before a Bash or PowerShell command, refuses (or asks about, as `packageGuard.adHocRunners` says) a package runner
+that would fetch and run a package outside the project's lockfile: `npx`, `npm exec`, `pnpx` or `bunx` of a tool
+not in `node_modules/.bin`, `npm create`, `npm init <initializer>`, `pnpm dlx`, `yarn dlx` and the like. See
+[Hooks and permissions](hooks.md#before-a-shell-command-the-package-guard).
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig hook package-guard < pre-tool-use.json
+```
+
+Output: nothing for a command that runs no package ad hoc, or with `adHocRunners` set to `allow`; otherwise a JSON
+permission decision (`deny` or `ask`) with the reason.
+
 ### teamrig hook cold-send
 
 Before a SendMessage call to a team session idle `messages.coldAfterMinutes` (60 by default) or longer, holds
@@ -1859,7 +1877,8 @@ Output: nothing below or past the threshold, for a helper's call, or outside a t
 
 ### teamrig hook helper-gate
 
-Before an Agent (or Task) call, with the budget on: asks the person, or refuses, when the session is past its
+Before an Agent (or Task) call: gives the model rule 8's helper default (work in your own session; a helper's
+tokens cost `budget.subagentWeight` times yours) and, with the budget on, asks the person, or refuses, when the session is past its
 daily budget while the team is ahead of its pace line, or in quiet hours, as `budget.overAction` and
 `budget.quietHours` say. The lead's helpers and a lifted session's always go. See
 [Hooks and permissions](hooks.md#the-daily-budget-warnings-and-the-helper-gate).
@@ -1872,7 +1891,8 @@ Example:
 teamrig hook helper-gate < pre-tool-use.json
 ```
 
-Output: nothing for a launch that goes; otherwise a JSON permission decision (`ask` or `deny`) with the reason.
+Output: JSON with the helper default as `additionalContext`, plus a permission decision (`ask` or `deny`) with the
+reason for a launch held back; nothing outside a team session.
 
 ### teamrig hook stop
 At the end of each turn, first sends you back once to a skill edit of the turn that Claude Code refused and you never

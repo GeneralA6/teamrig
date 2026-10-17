@@ -1,5 +1,6 @@
 import { tmpdir } from 'node:os';
 import { launchOf } from '../../config/launch.ts';
+import type { ConfigLoad } from '../../config/load.ts';
 import { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { errorMessage, isRecord, stringField, type JsonRecord } from '../../core/guards.ts';
@@ -11,6 +12,7 @@ import { modelCheckLine, payloadEffortOf } from '../../hooks/model-check.ts';
 import { ModelNoticeStore } from '../../hooks/model-notices.ts';
 import { sendTargetOf } from '../../hooks/cold-send.ts';
 import { failedSendLine, failedSendOf, failedSendOutput } from '../../hooks/failed-send.ts';
+import { adHocRunnersOf, packageGuardOutput } from '../../hooks/package-guard.ts';
 import { commitsOf, protectedBranchesOf, pushGuardOutput, pushToProtectedOf } from '../../hooks/push-guard.ts';
 import { JsonlHintLog } from '../../hooks/hint-log.ts';
 import { promptOutput } from '../../hooks/prompt-output.ts';
@@ -71,15 +73,15 @@ function hookTeam(payload: unknown, runtime: CliRuntime): Promise<TeamResolution
   return resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [cwd, runtime.cwd]));
 }
 
-/** PreToolUse on Bash and PowerShell: asks before a push to a protected branch, refuses a force-push of one. */
-export async function pushGuard(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
-  noPositionals(args);
-  const payload = parseJson(await runtime.readStdin());
+/**
+ * The config a guard hook reads, or undefined outside a team's projects, where the guard prints nothing. A broken
+ * pointer, or a config that cannot even be opened, gives no load, so the guard keeps its defaults: neither turns it off.
+ */
+async function guardLoadOf(payload: unknown, runtime: CliRuntime): Promise<{ readonly load: ConfigLoad | undefined } | undefined> {
   const found = await hookTeam(payload, runtime);
   if (found.kind === 'none') {
-    return EXIT.ok;
+    return undefined;
   }
-  // A broken pointer, or a config that cannot even be opened, keeps the default branches: neither turns the guard off.
   const load =
     found.kind === 'team'
       ? await openKit(runtime, found.team).then(
@@ -87,6 +89,18 @@ export async function pushGuard(args: ParsedArgs, runtime: CliRuntime): Promise<
           () => undefined,
         )
       : undefined;
+  return { load };
+}
+
+/** PreToolUse on Bash and PowerShell: asks before a push to a protected branch, refuses a force-push of one. */
+export async function pushGuard(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+  noPositionals(args);
+  const payload = parseJson(await runtime.readStdin());
+  const guard = await guardLoadOf(payload, runtime);
+  if (guard === undefined) {
+    return EXIT.ok;
+  }
+  const { load } = guard;
   const output = pushGuardOutput(payload, {
     cwd: runtime.cwd,
     home: runtime.userHome,
@@ -95,6 +109,26 @@ export async function pushGuard(args: ParsedArgs, runtime: CliRuntime): Promise<
     pushToProtected: pushToProtectedOf(load),
     commits: commitsOf(load),
     commitLog: runtime.commitLog,
+  });
+  if (output !== '') {
+    runtime.out.stdout(output);
+  }
+  return EXIT.ok;
+}
+
+/** PreToolUse on Bash and PowerShell: refuses, or asks about, a package runner that would fetch and run a package ad hoc. */
+export async function packageGuard(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+  noPositionals(args);
+  const payload = parseJson(await runtime.readStdin());
+  const guard = await guardLoadOf(payload, runtime);
+  if (guard === undefined) {
+    return EXIT.ok;
+  }
+  const output = await packageGuardOutput(payload, {
+    cwd: runtime.cwd,
+    home: runtime.userHome,
+    files: runtime.files,
+    adHocRunners: adHocRunnersOf(guard.load),
   });
   if (output !== '') {
     runtime.out.stdout(output);
