@@ -76,8 +76,21 @@ function identityLines(roster: Roster, input: SessionStartInput): string[] {
  * Claude Code puts a plugin's `bin/` folder on the PATH of its Bash tool only, so on Windows, where a session
  * also has a PowerShell tool, the intro says which one runs the command.
  */
-function shellNote({ platform, command }: SessionStartInput): string {
+export function shellNote({ platform, command }: { readonly platform: NodeJS.Platform; readonly command: string }): string {
   return platform === 'win32' ? ` Run \`${command}\` in the Bash tool: the PowerShell tool does not have it.` : '';
+}
+
+/** A team config that loaded no rules: missing, or present but unreadable. */
+export type UnloadedConfig = Exclude<ConfigLoad, { readonly status: 'loaded' }>;
+
+/** The one line a start gets when the team config loaded no rules: why, and the command that fixes it. */
+export function unloadedContext(team: string, load: UnloadedConfig, command: string): string {
+  switch (load.status) {
+    case 'missing':
+      return `${KIT_NAME} is enabled here but team ${team} has no config at ${load.path}, so no team rules are loaded. Create it with: ${command} team create ${team} --sessions <id,id>`;
+    case 'unreadable':
+      return `${KIT_NAME} cannot read the config of team ${team} at ${load.path}, so no team rules are loaded. Run: ${command} config validate`;
+  }
 }
 
 /**
@@ -112,13 +125,8 @@ function treeLine(place: TreePlace, input: SessionStartInput, isLead: boolean): 
  */
 export function sessionStartContext(input: SessionStartInput): string {
   const { load, command } = input;
-  switch (load.status) {
-    case 'missing':
-      return `${KIT_NAME} is enabled here but team ${input.team} has no config at ${load.path}, so no team rules are loaded. Create it with: ${command} team create ${input.team} --sessions <id,id>`;
-    case 'unreadable':
-      return `${KIT_NAME} cannot read the config of team ${input.team} at ${load.path}, so no team rules are loaded. Run: ${command} config validate`;
-    case 'loaded':
-      break;
+  if (load.status !== 'loaded') {
+    return unloadedContext(input.team, load, command);
   }
   const roster = new Roster(load.config, input.team, input.renames);
   const notes = identityLines(roster, input);
