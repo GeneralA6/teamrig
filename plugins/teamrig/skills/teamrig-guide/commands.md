@@ -1035,8 +1035,9 @@ It refuses when `claude` is not on the PATH.
 
 ### teamrig restart
 
-The automatic context refresh's restart. The Stop hook runs it hidden once your handover is written; you do
-not run it yourself. It waits until the session has been idle `refresh.restartDelaySeconds` with nothing
+The automatic context refresh's restart, when `refresh.autoRestart` is on (off by default: the user types
+`/clear`). The Stop hook runs it hidden once your handover is written; you do not run it yourself. It waits
+until the session has been idle `refresh.restartDelaySeconds` with nothing
 running, then asks the session's tab to run `/clear`, which teamrig's mod does there. While Claude Code lists a helper of
 the session still running, the mod holds the ask instead: the restart ends nothing, waits for quiet and asks
 again, and gives up an hour after it started. When no mod claims the ask
@@ -1070,9 +1071,10 @@ It prints `CLEARED shop-web: its tab ran /clear` when the mod cleared the tab,
 ### teamrig refresh
 
 Context refresh. The lead asks a session for one (`teamrig refresh <id|name>`): after that session's next
-`set ... --status done` it writes a handover, and once it is idle teamrig starts it fresh (`refresh.autoRestart`;
-off, the user types `/clear`). A session whose handover is written runs `teamrig refresh --ready`. The Stop hook
-runs `teamrig restart` hidden for the fresh start; you never run it. See
+`set ... --status done` it writes a handover, and the user types `/clear` for the fresh start once done with its
+screen (with `refresh.autoRestart` on, teamrig starts it fresh once it is idle). A session whose handover is
+written runs `teamrig refresh --ready`. With the automatic restart, the Stop hook runs `teamrig restart` hidden
+for the fresh start; you never run it. See
 [workflows.md](workflows.md#handover-at-high-context).
 
 Flags:
@@ -1089,12 +1091,12 @@ teamrig refresh web --session lead
 Output:
 
 ```text
-REQUESTED a refresh of shop-web: at its next turn end it writes its handover to /home/you/.teamrig/teams/shop/handover/web.md; then it starts fresh once idle
+REQUESTED a refresh of shop-web: at its next turn end it writes its handover to /home/you/.teamrig/teams/shop/handover/web.md; then type /clear in its tab
 ```
 
-`teamrig refresh --ready --session web` prints `Ready. End your turn now: teamrig starts you fresh once you are
-idle, or asks the user to type /clear; your next start reads <handover path>.` With `refresh.autoRestart: false`
-it says `Ask the user to type /clear` instead.
+`teamrig refresh --ready --session web` prints `Ready. Ask the user to type /clear; your next start reads
+<handover path>.` With `refresh.autoRestart: true` it says `End your turn now: teamrig starts you fresh once you
+are idle, or asks the user to type /clear` instead.
 
 ## Maintenance
 

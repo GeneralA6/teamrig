@@ -414,7 +414,7 @@ sequenceDiagram
   the last 6 hours); with teamrig's mod on, the tab also asks Claude Code itself before each `/clear`, so a refresh
   waits while the session still runs a helper the transcript no longer shows.
 - `refresh --ready` is refused until the handover is written: missing, blank or unchanged since the hook asked.
-- A hook cannot run `/clear`, but a plugin mod can (`refresh.autoRestart`, on by default). A hidden
+- A hook cannot run `/clear`, but a plugin mod can (`refresh.autoRestart`, off by default: the user types `/clear` once done with the screen). A hidden
   `teamrig restart` waits until the session has been idle `refresh.restartDelaySeconds` (15) with nothing running,
   then leaves an ask for its tab. teamrig's mod (`hooks/register.ts`) looks for it each second, claims it while
   the restart is still pending and runs `/clear` in the tab, so the tab and its process stay and Claude Code runs
