@@ -163,6 +163,13 @@
           "items": { "enum": ["open", "in-progress", "verifying", "waiting", "done", "dropped"] },
           "default": ["waiting", "verifying", "done", "dropped"]
         },
+        "requireFollowupsOn": {
+          "description": "Statuses that cannot be set without --followups: the tasks the work leaves (a finding, a next step), or none.",
+          "type": "array",
+          "maxItems": 3,
+          "items": { "enum": ["verifying", "done", "dropped"] },
+          "default": ["verifying", "done"]
+        },
         "autoArchive": {
           "description": "After the first teamrig compact, a write that leaves the task list's log over 512 KiB archives it and says so in a NOTE line. false: only teamrig compact archives it.",
           "type": "boolean",
