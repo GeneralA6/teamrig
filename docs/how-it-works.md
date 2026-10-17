@@ -573,3 +573,6 @@ list replaced by the marker, then the snapshot. A rotation stopped at any step r
 completes it. The reader hands `unreadOf` its own line hash: the first 16 hex digits of the SHA-256 of
 the line. With no config to read, it names priorities from `DEFAULT_REGISTER`, the register settings a config that
 sets none gets.
+
+The reader builds the dependency tree (`TaskTree`) from the rows it keeps, any row with the fields `TreeTask`
+names, so the effective dues and needed-by names it shows are the ones teamrig prints.
