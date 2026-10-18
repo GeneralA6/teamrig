@@ -76,6 +76,10 @@ const START_PROCESS_PARAMETERS = new Map([
 const START_PROCESS_FLAGS = new Set(['loaduserprofile', 'nonewwindow', 'passthru', 'wait', 'usenewenvironment']);
 /** `start` options in cmd that take the next word as their value. */
 const CMD_START_VALUED = new Set(['/node', '/affinity', '/machine']);
+/** teamrig's subcommands that run the command line after their `--`: `teamrig heavy ... -- git push`. */
+const TEAMRIG_RUNNERS = new Set(['heavy', 'test']);
+/** The shell Node's `spawn` starts with `shell: true`, which runs a teamrig runner's command given as one word. */
+const SPAWN_SHELL = process.platform === 'win32' ? 'cmd' : 'bash';
 /** How many wrappers deep one command may go before the guard stops reading it. */
 const MAX_STEPS = 16;
 const NOTHING = { kind: 'nothing' };
@@ -105,8 +109,8 @@ function joinWords(words, quote) {
 /**
  * Reads what one simple command starts, seeing through keywords (`if`, `do`, `then`), environment prefixes,
  * wrappers (`command`, `env`, `sudo`, `nohup`, `timeout`, `xargs`, `wsl`, ...), the PowerShell call operator
- * and `Start-Process`, and shells handed a command line (`bash -c`, `pwsh -Command` or `-EncodedCommand`,
- * `cmd /c`, `eval`, `Invoke-Expression`). One reader per command, since it collects that command's
+ * and `Start-Process`, shells handed a command line (`bash -c`, `pwsh -Command` or `-EncodedCommand`,
+ * `cmd /c`, `eval`, `Invoke-Expression`) and teamrig's runners (`teamrig heavy -- ...`). One reader per command, since it collects that command's
  * environment and folders.
  */
 class LaunchReader {
@@ -222,6 +226,9 @@ class LaunchReader {
         }
         if (this.dialect !== 'powershell' && name === 'start') {
             return this.cmdStart(args);
+        }
+        if (name === 'teamrig') {
+            return this.teamrig(args, head);
         }
         return { kind: 'program', program: head, args, env: this.env, chdirs: this.chdirs, stdinArgs: this.stdinArgs };
     }
@@ -455,6 +462,31 @@ class LaunchReader {
         }
         this.called = true;
         return { kind: 'next', words: args.slice(index) };
+    }
+    /**
+     * `teamrig heavy` and `teamrig test` run the words after their first `--` as `commandLine` (test-run/shell.ts)
+     * joins them: one word as a command line for the shell `spawn` starts, several as a program and its arguments.
+     * Any other subcommand is teamrig itself.
+     */
+    teamrig(args, head) {
+        const [subcommand] = args;
+        if (subcommand?.dynamic === true) {
+            return { kind: 'opaque', reason: 'the teamrig subcommand it runs is only known when it runs', gated: true };
+        }
+        const end = args.findIndex((arg) => !arg.dynamic && arg.text === '--');
+        if (subcommand === undefined || !TEAMRIG_RUNNERS.has(subcommand.text) || end === -1) {
+            return { kind: 'program', program: head, args, env: this.env, chdirs: this.chdirs, stdinArgs: this.stdinArgs };
+        }
+        const words = args.slice(end + 1);
+        const [only] = words;
+        if (only === undefined) {
+            return NOTHING;
+        }
+        if (words.length === 1) {
+            return this.script(only, SPAWN_SHELL, false);
+        }
+        this.called = true;
+        return { kind: 'next', words };
     }
 }
 /** cmd's `if [/i] [not] exist X command`, `if a==b command`, `if a EQU b command`: the words of the command it runs. */
