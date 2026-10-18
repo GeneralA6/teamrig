@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { animationsIn } from './stylesheet.ts';
 import { themeStyle, TOKENS } from './theme.ts';
 import { MOAT, renderWhy, WHY_HEIGHT } from './why.ts';
-import { parseXml, placesIn, textOf } from './xml.ts';
+import { parseXml, placesIn, textOf, type XmlElement } from './xml.ts';
 
 const svg = renderWhy();
 const root = parseXml(svg);
@@ -32,14 +32,17 @@ describe('renderWhy', () => {
     assert.equal(new Set(MOAT.map((card) => card.icon)).size, MOAT.length);
   });
 
-  it('tags only the cards whose whole feature is still to come, inside their card', () => {
-    const tags = places.filter((place) => place.element.attributes.get('class') === 'tag').map(({ element }) => element.attributes);
-    assert.deepEqual(MOAT.filter((card) => card.coming).map((card) => card.title), ['Survives a crash or reboot']);
+  it('tags only the cards whose whole feature is still to come, inside their card, and says so to screen readers', () => {
+    const tagsOf = (picture: XmlElement) => placesIn(picture).filter((place) => place.element.attributes.get('class') === 'tag').map(({ element }) => element.attributes);
+    assert.deepEqual([MOAT.filter((card) => card.coming).length, tagsOf(root).length], [0, 0]);
+    const oneComing = parseXml(renderWhy(MOAT.map((card, i) => (i === 4 ? { ...card, coming: true } : card))));
+    const tags = tagsOf(oneComing);
     assert.equal(tags.length, 1);
     for (const tag of tags) {
       const left = number(tag.get('x')) % (304 + 24);
       assert.ok(left > 72 && left + number(tag.get('width')) <= 304, `a tag sits right of the chip, inside its card: ${left}`);
     }
+    assert.ok(oneComing.attributes.get('aria-label')?.includes(` ${MOAT[4]?.title} (coming). `));
   });
 
   it('lays the cards out in rows of three that fill the picture and never overlap', () => {
