@@ -648,7 +648,13 @@
           "properties": {
             "startUtc": { "type": "string", "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$" },
             "endUtc": { "type": "string", "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$" },
-            "action": { "enum": ["warn", "ask-lead", "ask", "block"] }
+            "action": { "enum": ["warn", "ask-lead", "ask", "block"] },
+            "paceWeight": {
+              "description": "What a quiet minute counts on the pace line and in the daily budget, against 1 for any other minute. 0 when unset: the team sleeps, so the line stays flat through the night.",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
           }
         },
         "lift": {

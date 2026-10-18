@@ -656,7 +656,8 @@ function parseQuietHours(read: ConfigReader, raw: JsonRecord): QuietHours | unde
     read.report(`${path}.endUtc`, 'is the start time; quiet hours need a start and a different end');
     return undefined;
   }
-  return { startUtc, endUtc, action };
+  const paceWeight = read.optionalNumber(section, 'paceWeight', path, CONFIG_LIMITS.quietPaceWeight);
+  return { startUtc, endUtc, action, ...(paceWeight === undefined ? {} : { paceWeight }) };
 }
 
 /** `budget.lift`: the highest stop % of a lift, and of the reserve release; the reserve bound is never below the other. */
