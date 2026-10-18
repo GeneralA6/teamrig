@@ -2,7 +2,7 @@ import { isRecord } from "../core/guards.js";
 import { NAME_PATTERN, NAME_RULE } from "../core/ids.js";
 import { FOLLOWUP_STATUSES, isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, SESSION_NAME, TASK_STATUSES } from "../register/model.js";
 import { CORE_RULE_KEYS, isCoreRuleKey } from "../rules/keys.js";
-import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT_CONTEXT_FILES, DEFAULT_GITHUB, DEFAULT_HIRING, DEFAULT_LOCK, DEFAULT_LEAD_BOUNDARY, DEFAULT_LOOPS, DEFAULT_MESSAGES, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_PACKAGE_GUARD, DEFAULT_PUSH_GUARD, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, DEFAULT_STATUS_LINE, DEFAULT_TESTS, DEFAULT_WAKE, } from "./defaults.js";
+import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT_CONTEXT_FILES, DEFAULT_COORDINATOR_WAIT, DEFAULT_GITHUB, DEFAULT_HEAVY, DEFAULT_HIRING, DEFAULT_LOCK, DEFAULT_LEAD_BOUNDARY, DEFAULT_LOOPS, DEFAULT_MESSAGES, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_PACKAGE_GUARD, DEFAULT_PUSH_GUARD, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, DEFAULT_STATUS_LINE, DEFAULT_TESTS, DEFAULT_WAKE, HEAVY_TTL_MARGIN_MINUTES, } from "./defaults.js";
 import { isEffort, isModel } from "./launch.js";
 import { CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from "./limits.js";
 import { ConfigReader, describe, isValidRegex, shortLine } from "./reader.js";
@@ -114,12 +114,6 @@ export function parseConfig(raw) {
     const team = readTeam(read, raw);
     const messages = read.section(raw, 'messages', '');
     const pushGuard = read.section(raw, 'pushGuard', '');
-    const coordinator = read.section(raw, 'coordinator', '');
-    const schedule = read.section(coordinator, 'schedule', 'coordinator');
-    if (coordinator[MOVED_BUDGET_KEY] !== undefined) {
-        read.report(`coordinator.${MOVED_BUDGET_KEY}`, 'was moved: use the top-level budget block');
-    }
-    const heavyCutoffUtc = read.optionalString(schedule, 'heavyCutoffUtc', 'coordinator.schedule', isUtcTime);
     const alerts = read.section(raw, 'alerts', '');
     const lock = read.section(raw, 'lock', '');
     const tabStatus = read.section(raw, 'tabStatus', '');
@@ -149,9 +143,7 @@ export function parseConfig(raw) {
         },
         packageGuard: { adHocRunners: parseAdHocRunners(read, read.section(raw, 'packageGuard', '')) },
         commits: parseCommits(read, read.section(raw, 'commits', '')),
-        coordinator: {
-            schedule: heavyCutoffUtc === undefined ? {} : { heavyCutoffUtc },
-        },
+        coordinator: parseCoordinator(read, read.section(raw, 'coordinator', '')),
         budget: parseBudget(read, read.section(raw, 'budget', ''), sessions),
         leadBoundary: parseLeadBoundary(read, read.section(raw, 'leadBoundary', '')),
         loops: {
@@ -276,6 +268,39 @@ function readGithubOwners(read, raw, sessions) {
 const RENAMED_PRIORITIES_KEY = 'tiers';
 /** The budget's old place, `coordinator.budget`; it moved to the top-level `budget` block, with no alias. */
 const MOVED_BUDGET_KEY = 'budget';
+const isPathText = (text) => (text.trim() === '' ? 'expected a path' : undefined);
+function parseCoordinator(read, raw) {
+    const path = 'coordinator';
+    if (raw[MOVED_BUDGET_KEY] !== undefined) {
+        read.report(`${path}.${MOVED_BUDGET_KEY}`, 'was moved: use the top-level budget block');
+    }
+    const dir = read.optionalString(raw, 'dir', path, isPathText);
+    const heavyCutoffUtc = read.optionalString(read.section(raw, 'schedule', path), 'heavyCutoffUtc', `${path}.schedule`, isUtcTime);
+    const wait = read.section(raw, 'wait', path);
+    return {
+        ...(dir === undefined ? {} : { dir }),
+        schedule: heavyCutoffUtc === undefined ? {} : { heavyCutoffUtc },
+        heavy: parseHeavy(read, read.section(raw, 'heavy', path)),
+        wait: { pollSeconds: read.integer(wait, 'pollSeconds', `${path}.wait`, DEFAULT_COORDINATOR_WAIT.pollSeconds, CONFIG_LIMITS.coordinatorPollSeconds) },
+    };
+}
+/** The host lock and a heavy step's limits; a step longer than the lock less its margin is cut to fit, so it never outlives its lock. */
+function parseHeavy(read, raw) {
+    const path = 'coordinator.heavy';
+    const lockPath = read.optionalString(raw, 'lockPath', path, isPathText);
+    const lockTtlMinutes = read.integer(raw, 'lockTtlMinutes', path, DEFAULT_HEAVY.lockTtlMinutes, CONFIG_LIMITS.heavyLockTtlMinutes);
+    const longest = lockTtlMinutes - HEAVY_TTL_MARGIN_MINUTES;
+    const maxRunMinutes = read.integer(raw, 'maxRunMinutes', path, Math.min(DEFAULT_HEAVY.maxRunMinutes, longest), CONFIG_LIMITS.heavyMaxRunMinutes);
+    if (maxRunMinutes > longest) {
+        read.report(`${path}.maxRunMinutes`, `must be at most lockTtlMinutes less ${HEAVY_TTL_MARGIN_MINUTES} (${longest})`);
+    }
+    return {
+        ...(lockPath === undefined ? {} : { lockPath }),
+        lockTtlMinutes,
+        maxRunMinutes: Math.min(maxRunMinutes, longest),
+        waitMinutes: read.integer(raw, 'waitMinutes', path, DEFAULT_HEAVY.waitMinutes, CONFIG_LIMITS.heavyWaitMinutes),
+    };
+}
 function parseBudget(read, raw, sessions) {
     const path = 'budget';
     const defaults = DEFAULT_BUDGET;

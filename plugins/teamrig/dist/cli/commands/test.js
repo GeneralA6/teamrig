@@ -7,18 +7,9 @@ import { commandHeader, logText, pruneLogs, reserveLog } from "../../test-run/lo
 import { cleanOutput, parseTestOutput } from "../../test-run/parse.js";
 import { labelOf, reportLines } from "../../test-run/report.js";
 import { commandLine } from "../../test-run/shell.js";
-import { UsageError } from "../args.js";
-import { sessionRef } from "../inputs.js";
+import { commandWordsOf, sessionRef } from "../inputs.js";
 import { openKit, rosterOf, teamFolders } from "../kit.js";
 import { EXIT } from "../runtime.js";
-/** The words after `--`; anything else on the line, or nothing after it, is a usage error. */
-function commandWords(args) {
-    const [stray] = args.positionals;
-    if (stray !== undefined || args.rest.length === 0) {
-        throw new UsageError(stray === undefined ? 'no command to run after --' : `put "${stray}" and the rest of the command after --`);
-    }
-    return args.rest;
-}
 /** The session the run is for, as given: `--session`, else the session variable, else none. */
 function givenSession(args, runtime) {
     const flag = args.flags.get('session');
@@ -63,7 +54,7 @@ async function runLogged(runtime, command, log) {
  * command passed, 1 otherwise.
  */
 export async function test(args, runtime) {
-    const words = commandWords(args);
+    const words = commandWordsOf(args);
     const place = await logPlace(runtime, givenSession(args, runtime));
     const command = commandLine(words, runtime.platform);
     const log = await reserveLog(runtime.files, place.dir, place.session, commandHeader(command));
