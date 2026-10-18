@@ -1,6 +1,7 @@
 import type { KitConfig, PushGuardConfig, RuleConflict } from '../config/types.ts';
 import { clipEnd, clipStart } from '../core/clip.ts';
 import { CORE_RULE_KEYS, ruleNumberOf, type CoreRuleKey } from './keys.ts';
+import { DECISION_MARKER } from '../tabs/status.ts';
 import { helperDefaultClause } from './helper-default.ts';
 
 /**
@@ -125,7 +126,12 @@ export function renderCorePack(config: KitConfig, command: string, platform: Nod
       ` Work in your own session: ${helperDefaultClause(budget.subagentWeight)}; run helpers on your own model and effort.` +
       (budget.enabled ? ` Pace the week to ${percent(budget.targetPct)} of the weekly limit and keep ${percent(budget.reservePct)} for incidents [budget].` : ''),
     investigate:
-      'Investigate before deciding: give frequency × impact and the cheapest fix for the visible symptom. Owner questions come with options, numbers and a recommendation; one with a single correct answer is yours to decide.',
+      'Investigate before deciding: give frequency × impact and the cheapest fix for the visible symptom.' +
+      // With tab status on, the marker line ends the turn on the decision circle (tabs/status.ts); the words are
+      // shorter there so the worst-case pack still fits CORE_PACK_MAX_CHARS.
+      (config.tabStatus.enabled
+        ? ` Owner questions bring options, numbers, a recommendation and a \`${DECISION_MARKER}\` line; one with one right answer is yours.`
+        : ' Owner questions come with options, numbers and a recommendation; one with a single correct answer is yours to decide.'),
     resources:
       'Rising resource use (memory, CPU, storage, tokens) needs its root cause; a raised limit is only an owner-approved bridge with a dated root-cause task. Tag a stopgap with the task that replaces it: `stopgap T<id>`.',
     data:

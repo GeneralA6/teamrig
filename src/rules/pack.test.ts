@@ -51,6 +51,7 @@ function worstCaseConfig() {
     // Both round to their longest two-decimal form (two digits before the point), and together stay within 100%.
     budget: { enabled: true, targetPct: 50.98765432109876, reservePct: 48.98765432109876, subagentWeight: 9.87654321 },
     alerts: { persistentFailureHours: CONFIG_LIMITS.persistentFailureHours.max },
+    tabStatus: { enabled: true },
     ruleConflicts: Array.from({ length: CONFIG_LIMITS.ruleConflicts.maxItems }, () => ({
       file: longest('f', RULE_CONFLICT_LIMITS.fileMaxLength),
       text: longest('t', RULE_CONFLICT_LIMITS.textMaxLength),
@@ -212,6 +213,14 @@ describe('renderCorePack', () => {
     assert.match(pack, /bravo owns deploy coordination and fleet health \[roles\.coordinatorOwner\]/);
     assert.match(pack, /starts after 22:30 UTC/);
     assert.match(pack, /Pace the week to 99\.5% of the weekly limit and keep 0\.5% for incidents \[budget\]\./);
+  });
+
+  it('has owner questions carry the decision marker line only while tab status shows it', () => {
+    const on = renderCorePack(testConfig({ tabStatus: { enabled: true } }), COMMAND, 'win32');
+    assert.ok(on.includes('Owner questions bring options, numbers, a recommendation and a `Decision needed:` line; one with'), on);
+    const off = renderCorePack(testConfig(), COMMAND, 'win32');
+    assert.ok(off.includes('Owner questions come with options, numbers and a recommendation; one with'), off);
+    assert.ok(!off.includes('Decision needed'), off);
   });
 
   it('prints budget percentages with at most two decimals', () => {
