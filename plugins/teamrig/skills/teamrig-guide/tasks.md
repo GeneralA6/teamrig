@@ -12,7 +12,7 @@ A task is `open` when added. Only its owner sets its status, with `teamrig set <
 | `open` | waiting to start | nothing |
 | `in-progress` | the owner is on it now | nothing |
 | `verifying` | shipped, waiting for what proves it (a test run, a night's flow, a number) | `--note`, `--proof` naming what will prove it, and `--followups` naming the tasks the work leaves or `none` [register.requireNoteOn, register.requireProofOnVerifying, register.requireFollowupsOn]; `--due <date>`: the date to verify it by |
-| `waiting` | started, and cannot go on until something else happens | `--waits` naming every reason (a decision, an approval, a task, a time) and `--note` [register.requireNoteOn] |
+| `waiting` | started, and cannot go on until something else happens | `--waits` naming every reason (a decision, an approval, a task, a time) and `--note` [register.requireNoteOn]; on the owner's decision or approval, a card (`--question`, `--options`, `--recommend`, `--default`) [register.requireDecisionCard] |
 | `done` | finished and verified | `--note`, `--evidence` (unless the task already has some), `--skill <name>` or `--skill none`, and `--followups T<id>,...` or `--followups none` [register.requireEvidenceOnDone, register.requireSkillOnDone, register.requireFollowupsOn] |
 | `dropped` | will not be done | `--note` saying why and who decided; `--followups` may name the tasks the work moved to |
 
@@ -43,8 +43,16 @@ A peer's work is never a decision or an approval, so `approval:api` is refused: 
 `teamrig set T3 --status waiting --ask api --text "<the work>"` adds it as api's task (from you, at T3's priority
 and goals, its description naming T3), tells api, and sets T3 waiting on it, in one write; `--due` is then the
 asked task's due date. A budget hold is a time (`time:<date>`), never an approval. A new decision or approval wait
-posts the lead one inbox line (`T3 waits on your approval: <note>`; an owner wait too, since the lead keeps the
-owner's decision queue), unless the lead set it.
+posts the lead one inbox line (`T3 waits on your approval: <the card's question, else the note>`; an owner wait too,
+since the lead keeps the owner's decision queue), unless the lead set it.
+
+A wait on the owner's decision or approval needs a card, so the owner decides from it alone, never from a bare
+task number [register.requireDecisionCard]: `--question` (what is decided), `--options` (the choices with their
+numbers, separated by `|`: at least two for a decision; none or as many for an approval), `--recommend` (which,
+and why) and `--default` (what happens with no answer by the due date). Each part says at least 3 plain words
+besides task ids. A wait on the lead may carry one too; any other status refuses the flags. Setting `waiting`
+again keeps the card, and a flag given then changes only its part. `show` prints the card, and the meeting
+agenda reads it out with the title of each other task it names.
 
 Every session needs teamrig 0.10.0 or later before anyone sets `waiting`: an older one skips the
 line with a warning and shows the task at its earlier status. A `blocked` written by an older teamrig reads as
@@ -138,6 +146,7 @@ checkpoint; a session may run it for itself.
 | `VERIFY-BLOCKS` | a `verifying` task another active task needs: planned after it (`--after`) or waiting on it (`--waits task:`) | The owner proves it (`done` with the proof) or reopens it (`in-progress`), so the work on it can start. |
 | `READY` | a `waiting` task whose every reason has cleared: its tasks are done or dropped, its time has passed (a decision or an approval never clears by itself) | The owner goes on: `set --status in-progress`, or the next status. |
 | `NO-REASON` | a `waiting` task with no reason, as a line from an older teamrig reads | The owner sets what it waits for (`set --status waiting --waits ...`) or its next status. |
+| `NO-CARD` | a `waiting` task waits on the owner's decision or approval with no card, as one set before cards reads [register.requireDecisionCard] | The owner sets it waiting again with the card (`set --status waiting --waits ... --question ... --options ... --recommend ... --default ...`). |
 | `PEER-WAIT` | a `waiting` task waits on the decision or the approval of a session that is neither the lead nor the owner, as an older teamrig wrote | The owner waits on that work by its task instead: `set --status waiting --ask <session> --text "<the work>"`. |
 | `NOT-PICKED-UP` | assigned over 24 h ago with no event from its owner since [register.check.notPickedUpAfterHours] | The owner is idle and reads no inbox: wake it with `teamrig open <id>` or a message, or tell the human. |
 | `STALE` | no event for 72 h [register.check.staleAfterHours] (not raised on top of NOT-PICKED-UP, nor for a `verifying` task with a due date, nor for a `waiting` task with a `time:` reason still to come) | Ask the owner what blocks it, then re-date, re-assign or drop it. |

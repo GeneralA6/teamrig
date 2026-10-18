@@ -93,8 +93,17 @@ Flags:
   for with `--ask`), `task:T<id>` (a task to finish first; only for a task already started) and
   `time:<YYYY-MM-DD HH:MM>` (UTC; a bare day lasts to its end; a budget hold is a time, never an approval). It
   stays waiting until every reason has cleared. A new decision or approval wait posts the lead one inbox line
-  (`T1 waits on your approval: <note>`; an owner wait too, since the lead keeps the owner's queue), unless the lead
-  set it. A task wait (or an `--ask`) that would close a loop is refused with the fix ([errors](errors.md)).
+  (`T1 waits on your approval: <the card's question, else the note>`; an owner wait too, since the lead keeps the
+  owner's queue), unless the lead set it. A task wait (or an `--ask`) that would close a loop is refused with the fix
+  ([errors](errors.md)).
+- `--question "<what is decided>"`: the decision card's question. The card (this flag, `--options`, `--recommend`
+  and `--default`) is required on a wait on the owner's decision or approval (`register.requireDecisionCard`),
+  allowed on any decision or approval wait, refused otherwise. Each part says at least 3 plain words besides task
+  ids. Setting `waiting` again keeps the card; a flag given then changes only its part.
+- `--options "<a choice> | <another>"`: the choices with their numbers, separated by `|`: at least two for a
+  decision, none or as many for an approval.
+- `--recommend "<which, and why>"`: the card's recommendation.
+- `--default "<what happens with no answer>"`: what happens with no answer by the due date.
 - `--ask <id|name>`: allowed only with `waiting`, and needs `--text`: adds the work you need as that session's task
   (from you, at your task's priority and goals, its description naming your task), tells that session, and sets
   your task waiting on it, in one write. `--note` defaults to the text, and other `--waits` reasons come first.
@@ -253,7 +262,8 @@ marked `ready` has cleared: its task is done or dropped, or its time has passed.
 
 ### teamrig show
 
-Prints one task with its description, pointer, latest note, evidence, skill and full history. The description
+Prints one task with its description, pointer, latest note, decision card (while it waits), evidence, skill and
+full history. The description
 comes right under the task line; its later lines are indented two spaces. The history prints a changed
 description on one line, cut to 80 characters.
 
@@ -1007,8 +1017,13 @@ MEETING started Thu 10-15 08:00 UTC: told 2 session(s) by inbox line; messages t
 DECISIONS 1 waiting on owner (decision or approval)
   T7 waiting, p1, owner web | Pick the pricing tier (waiting: decision owner)
     what and why: Two tiers are built; the launch page needs one.
+    decide: Which tier the launch page shows
+      1. Basic at 9 dollars a month, 40 sign-ups in the trial
+      2. Pro at 29 dollars a month, 12 sign-ups
+    recommended: Basic, three times the sign-ups
+    with no answer: Basic ships on 10-16
     waiting since 10-14 16:20: the numbers are in the card
-  Card each so owner decides from it alone: ... Never point to a doc; `teamrig show <id>` prints a task whole.
+  Read each card to owner as it stands, each figure explained; where one says no card yet, ask its owner for it (check flags it NO-CARD). Never point to a doc; `teamrig show <id>` prints a task whole.
   Record each answer in the same turn: teamrig update <id> --note "owner decided: <decision>" --session lead; meeting end tells each task's owner.
 LATE 1 past their due date
   T4 open, p2, owner api, due 10-14 | Retry the signup call

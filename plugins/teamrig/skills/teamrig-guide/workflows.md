@@ -235,6 +235,8 @@ With sub-teams, run `teamrig check --tree --session lead` too. Then act on each 
 - `HIRE REVIEW-DUE`: a hired session's review day passed: decide whether its job goes on; retire it when done.
 - `OVERDUE` or `STALE`: ask the owner what blocks it, then re-date it (`--due`) or tell the human.
 - `READY`: a waiting task can go on: one inbox line to its owner, if it has not set the next status.
+- `NO-CARD`: a task waits on the owner with no card: one inbox line to its owner to set it waiting again with the
+  card, before the meeting reads it.
 - `PEER-WAIT`: a task waits on a peer's approval or decision: one inbox line to its owner to wait on that work by
   its task (`set --status waiting --ask <session> --text "<the work>"`).
 - `VERIFY-OVERDUE`: ask the owner whether the proof came: `done` with it, `in-progress` if it failed, or a new date.
