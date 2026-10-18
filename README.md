@@ -113,7 +113,8 @@ helpers can ask you first. Your lead is reminded to hand edits, tests and code s
 listing) and names the cheapest cut when one runs over its budget. It also warns of a setting that quietly overrides the model or effort a session or helper is given, and of a session set to start on a model with no effort. `teamrig budget --burn` shows where each day went: the turns you,
 a peer, a notification or a scheduled wake started, the calls that re-wrote a cold cache, and the compactions. A helper's tokens can be priced apart from a session's own
 (`budget.subagentWeight`) when your week's meter counts them differently. The week's use comes from Claude Code's status line:
-`teamrig statusline install` sets it up and keeps one you already have, or have yours write the
+`teamrig statusline install` sets it up (it also shows the session's folder, branch and the command that resumes it)
+and keeps one you already have, or have yours write the
 [same snapshot](plugins/teamrig/skills/teamrig-guide/commands.md#teamrig-statusline).
 
 With a size on each task (`--size`, its share of the weekly limit), `teamrig plan` shows how much of the week fits
