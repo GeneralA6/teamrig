@@ -12,11 +12,12 @@ import { BurstLog } from '../../budget/burst-log.ts';
 import { claudeProjectsDir, type TranscriptSource } from '../../budget/discover.ts';
 import { activeLift, decideLift, LiftLog, liftText, type Lift } from '../../budget/lift.ts';
 import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID, type Measured } from '../../budget/measure.ts';
-import { sessionBudgetPct } from '../../budget/pace.ts';
+import { dailyBudgetOf, liftedParts, type BudgetSplit } from '../../budget/parts.ts';
 import { burnLines, loopLines, recountLines, sessionLines, sumDays, todayLines, weekLine, type SessionToday } from '../../budget/report.ts';
 import { datedSnapshot, formatSnapshot, parseSnapshot, readSnapshots, snapshotOfStatus, statusLineText, weekUseOf, type StatusLineView } from '../../budget/snapshot.ts';
 import { CURSOR_DAYS_KEPT, DAYS_KEPT, MemoryUsageStore, UsageStore, type UsageState } from '../../budget/store.ts';
 import { readWeek, type WeekReading } from '../../budget/week.ts';
+import { readWork } from '../../budget/work.ts';
 import { JsonlMarkLog } from '../../inbox/store.ts';
 import { indexMarks } from '../../inbox/marks.ts';
 import type { RepoState } from '../../push-guard/push.ts';
@@ -115,16 +116,17 @@ export async function weekLineOf(runtime: CliRuntime, kit: Kit, config: KitConfi
   return weekLine(await weekReadingOf(runtime, kit, config, roster));
 }
 
-function sessionsToday(reading: Reading, roster: Roster, budget: BudgetConfig): SessionToday[] {
+/** Each session today: its use, and its part of the team's daily budget by its queued work (`work`), its lift and the burst. */
+function sessionsToday(reading: Reading, roster: Roster, budget: BudgetConfig, work: ReadonlyMap<string, number>): SessionToday[] {
   const today = formatUtcDay(new Date(reading.now));
   const inForce = activeBurst(reading.bursts, reading.now, reading.week.usedPct);
+  const split: BudgetSplit = { ids: roster.ids, sessions: budget.sessions, work, lifted: liftedParts(reading.lifts, roster.ids, reading.now, reading.week.usedPct) };
   return roster.ids.map((id) => {
     const usage = reading.measured.bySession.get(id)?.byDay[today];
     const lift = activeLift(reading.lifts, id, reading.now, reading.week.usedPct);
     const burst = inForce !== undefined && inForce.sessions.includes(id) ? inForce : undefined;
-    const allowance = reading.week.allowancePct;
-    const shared = allowance === undefined ? budget.sessions[id]?.dailyPct : sessionBudgetPct(allowance, id, roster.ids, budget.sessions);
-    return { id, name: roster.nameOf(id) ?? id, w: usage?.w ?? 0, calls: usage?.calls ?? 0, budgetPct: lift?.toPct ?? withBurst(shared, burst, id), lift, burst };
+    const budgetPct = withBurst(dailyBudgetOf(reading.week.allowancePct, id, split), burst, id);
+    return { id, name: roster.nameOf(id) ?? id, w: usage?.w ?? 0, calls: usage?.calls ?? 0, budgetPct, lift, burst };
   });
 }
 
@@ -165,7 +167,8 @@ export async function budget(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   const roster = await rosterOf(runtime, kit, config);
   const id = target === undefined ? undefined : sessionIdOf(roster, target);
   const reading = await readBudget(runtime, kit, config, roster, { recountDay });
-  const sessions = sessionsToday(reading, roster, config.budget);
+  const work = recountDay === undefined ? await readWork(runtime.files, kit.paths.events, config.register.priorities) : new Map<string, number>();
+  const sessions = sessionsToday(reading, roster, config.budget, work);
   const { measured, week, now } = reading;
   let lines: string[];
   if (loops || burn) {
@@ -217,13 +220,13 @@ export function timeFlag(flags: Flags, name: string, now: number): number | unde
   return at.getTime();
 }
 
-/** `budget lift <session> --to <pct> --stop-pct <n> [--until <time>] [--reserve] --reason "<text>"`: the lead only. */
+/** `budget lift <session> --part <pct> --stop-pct <n> [--until <time>] [--reserve] --reason "<text>"`: the lead only. */
 export async function lift(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const caller = callerOf(args.flags, runtime.env);
   const target = onePositional(args, 'session');
-  const toPct = pctFlag(args.flags, 'to');
-  if (toPct === undefined) {
-    throw new UsageError('--to is required');
+  const partPct = pctFlag(args.flags, 'part');
+  if (partPct === undefined) {
+    throw new UsageError('--part is required');
   }
   const stopPct = pctFlag(args.flags, 'stop-pct');
   const reason = requiredFlag(args.flags, 'reason').trim();
@@ -241,10 +244,11 @@ export async function lift(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
     throw new RefusedError(`only the lead${lead === undefined ? '' : ` (${roster.nameOf(lead) ?? lead})`} lifts a session's budget`);
   }
   const id = sessionIdOf(roster, target);
-  const { week } = await readBudget(runtime, kit, config, roster, { recountDay: undefined });
+  const { week, lifts } = await readBudget(runtime, kit, config, roster, { recountDay: undefined });
+  const others = liftedParts(lifts, roster.ids.filter((each) => each !== id), now, week.usedPct);
   const decision = decideLift(
-    { session: id, toPct, stopPct, until, reserve: args.switches.has('reserve'), reason, by, now },
-    { usedPct: week.usedPct, reset: week.reset, limits: config.budget.lift },
+    { session: id, partPct, stopPct, until, reserve: args.switches.has('reserve'), reason, by, now },
+    { usedPct: week.usedPct, reset: week.reset, limits: config.budget.lift, liftedPct: [...others.values()].reduce((sum, part) => sum + part, 0) },
   );
   if (decision.kind === 'refused') {
     throw new RefusedError(decision.reason);

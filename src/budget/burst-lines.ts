@@ -95,7 +95,7 @@ export function burstText(burst: Burst, names: readonly string[]): string {
   return `a ${burst.kind} burst${tasksText(burst)} ${endText(burst)}: ${whose} ${formatPct(burst.dailyPct)}, up to ${plural(burst.helpers, 'helper')} at once${hires}.`;
 }
 
-/** Why a session's daily budget is not the shared one: " (lifted)" (a lift sets it), " (burst)", or ''. */
+/** Why a session's daily budget is not the shared one: " (lifted)" (a lift sets its part), " (burst)", or ''. */
 export function budgetMarkOf(session: { readonly lift: Lift | undefined; readonly burst: Burst | undefined }): string {
   if (session.lift !== undefined) {
     return ' (lifted)';

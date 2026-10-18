@@ -236,7 +236,7 @@ function leadLineOf(facts: BudgetFacts): string {
   return (
     `${facts.name} is past its daily budget: ${formatPct(facts.usedTodayPct)} of the week today against ${formatPct(facts.budgetPct)}, ` +
     `and ${aheadClause(facts)}. ` +
-    `It finishes the step in hand; lift it only with a stop %: teamrig budget lift ${facts.id} --to <pct> --stop-pct <pct> --reason "<why>".`
+    `It finishes the step in hand; lift it only with a stop %: teamrig budget lift ${facts.id} --part <pct> --stop-pct <pct> --reason "<why>".`
   );
 }
 

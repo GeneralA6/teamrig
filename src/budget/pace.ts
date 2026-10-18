@@ -1,5 +1,4 @@
-import { DEFAULT_SESSION_SHARE } from '../config/defaults.ts';
-import { WEEKDAYS, type BudgetConfig, type BudgetReset, type SessionBudget } from '../config/types.ts';
+import { WEEKDAYS, type BudgetConfig, type BudgetReset } from '../config/types.ts';
 import { MS_PER_DAY, MS_PER_HOUR } from '../core/time.ts';
 import type { ActivityProfile } from './active-time.ts';
 
@@ -100,29 +99,6 @@ export function dailyAllowancePct(input: AllowanceInput): number {
   const dayStart = now - (now % MS_PER_DAY);
   const today = profile.activeMs(Math.max(dayStart, window.start), Math.min(dayStart + MS_PER_DAY, window.paceEnd));
   return Math.min((leftPct * today) / remaining, ceiling);
-}
-
-/**
- * Each session's part of the team allowance: its fixed `dailyPct`, else a share of what the fixed ones
- * leave, split by `share` among the team's other sessions (`ids`, the whole roster).
- */
-export function sessionBudgetPct(allowancePct: number, session: string, ids: readonly string[], sessions: Readonly<Record<string, SessionBudget>>): number {
-  const own = sessions[session]?.dailyPct;
-  if (own !== undefined) {
-    return own;
-  }
-  const shareOf = (id: string): number => sessions[id]?.share ?? DEFAULT_SESSION_SHARE;
-  let fixed = 0;
-  let shares = 0;
-  for (const id of ids) {
-    const daily = sessions[id]?.dailyPct;
-    if (daily === undefined) {
-      shares += shareOf(id);
-    } else {
-      fixed += daily;
-    }
-  }
-  return shares > 0 ? (Math.max(0, allowancePct - fixed) * shareOf(session)) / shares : 0;
 }
 
 export type PaceState = 'ahead' | 'behind' | 'on pace';

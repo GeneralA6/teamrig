@@ -10,12 +10,13 @@ import type { TranscriptFolders } from '../../budget/discover.ts';
 import { activeLift, LiftLog } from '../../budget/lift.ts';
 import { OUTSIDE_ID } from '../../budget/measure.ts';
 import { runMeter } from '../../budget/meter.ts';
-import { sessionBudgetPct } from '../../budget/pace.ts';
+import { dailyBudgetOf, liftedParts } from '../../budget/parts.ts';
 import { readSnapshots, weekUseOf } from '../../budget/snapshot.ts';
 import { UsageStore, type UsageState } from '../../budget/store.ts';
 import { helperGate, promptWarning, stopWarning, type BudgetFacts, type HelperGate } from '../../budget/warn.ts';
 import { WarnStore } from '../../budget/warn-store.ts';
 import { readWeek } from '../../budget/week.ts';
+import { readWork } from '../../budget/work.ts';
 import { postLine } from '../../inbox/inbox.ts';
 import { helperLaunchReminder } from '../../rules/helper-default.ts';
 import type { Kit } from '../kit.ts';
@@ -62,7 +63,8 @@ async function meterTab(runtime: CliRuntime, store: UsageStore, id: string, tran
 /**
  * The session's budget now, after metering the tab whose transcript is given; undefined with the
  * budget off, before the week's use or W per % is known, or without a daily budget for the session.
- * A lift sets the daily budget; a burst the session is in raises it to at least the burst's. The lead,
+ * Its part of the team's daily budget is weighed by its queued work in the register, or set by a lift; a burst
+ * the session is in raises it to at least the burst's. The lead,
  * with no burst in force, also gets the week's surplus when it is worth one.
  */
 export async function budgetFactsOf(runtime: CliRuntime, scope: BudgetScope, transcript: string | undefined): Promise<BudgetFacts | undefined> {
@@ -87,11 +89,14 @@ export async function budgetFactsOf(runtime: CliRuntime, scope: BudgetScope, tra
   if (week.usedPct === undefined || week.wPerPct === undefined) {
     return undefined;
   }
-  const lift = activeLift((await new LiftLog(files, kit.paths.lifts).read()).lifts, id, now, week.usedPct);
-  const shared = week.allowancePct === undefined ? budget.sessions[id]?.dailyPct : sessionBudgetPct(week.allowancePct, id, roster.ids, budget.sessions);
+  const { lifts } = await new LiftLog(files, kit.paths.lifts).read();
+  const lift = activeLift(lifts, id, now, week.usedPct);
+  const work = await readWork(files, kit.paths.events, config.register.priorities);
+  const lifted = liftedParts(lifts, roster.ids, now, week.usedPct);
+  const shared = dailyBudgetOf(week.allowancePct, id, { ids: roster.ids, sessions: budget.sessions, work, lifted });
   const inForce = activeBurst((await new BurstLog(files, kit.paths.bursts).read()).records, now, week.usedPct);
   const burst = inForce !== undefined && inForce.sessions.includes(id) ? inForce : undefined;
-  const budgetPct = lift?.toPct ?? withBurst(shared, burst, id);
+  const budgetPct = withBurst(shared, burst, id);
   if (budgetPct === undefined) {
     return undefined;
   }

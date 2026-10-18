@@ -49,7 +49,7 @@ const UNKNOWN: WeekReading = {
 };
 const LIFT: Lift = {
   session: 'bravo',
-  toPct: 2,
+  partPct: 40,
   stopPct: 97,
   endsAt: Date.parse('2026-10-16T00:00:00Z'),
   reserve: false,
@@ -83,7 +83,7 @@ describe('todayLines', () => {
       'The team used 5.0% of the week today; its daily budget is 10.3%. 37.50M W in 1,310 calls.',
       'alpha used 4.0% of the week today; its daily budget is 3.4%. 30.00M W in 1,000 calls.',
       'team-lead used 1.0% of the week today; its daily budget is 3.4%. 7.50M W in 310 calls.',
-      'Budget: the lead lifted bravo to 2.0% today until the end of the day (UTC) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.',
+      "Budget: the lead lifted bravo to 40.0% of the team's daily budget today until the end of the day (UTC) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.",
       'Not on the team: 2 Claude Code sessions (titled release checks, Docs), 1.20M W today. ' +
         'A tab counts for a session once it runs teamrig inbox read --session <id> or is named after it.',
       'Still reading: bravo; run teamrig budget again for the rest.',
@@ -112,7 +112,7 @@ describe('todayLines', () => {
     assert.deepEqual(lines.slice(2, 5), [
       'alpha used 2.0% of the week today; its daily budget is 2.0% (lifted). 15.00M W in 500 calls.',
       'No use today: team-lead.',
-      'Budget: the lead lifted alpha to 2.0% today until the end of the day (UTC) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.',
+      "Budget: the lead lifted alpha to 40.0% of the team's daily budget today until the end of the day (UTC) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.",
     ]);
     assert.equal(lines[5], 'Not on the team: 1 Claude Code session, 0 W today. A tab counts for a session once it runs teamrig inbox read --session <id> or is named after it.');
   });
@@ -138,7 +138,7 @@ describe('todayLines', () => {
       'The team used 37.50M W in 1,310 calls today.',
       'alpha used 30.00M W in 1,000 calls today.',
       'team-lead used 7.50M W in 310 calls today.',
-      'Budget: the lead lifted bravo to 2.0% today until the end of the day (UTC) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.',
+      "Budget: the lead lifted bravo to 40.0% of the team's daily budget today until the end of the day (UTC) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.",
       W_EXPLAINED,
     ]);
   });
@@ -197,7 +197,7 @@ describe('sessionLines', () => {
       '  2026-10-15  7.50M W in 1 call, 1.0% of the week',
       '  2026-10-14  15.00M W in 600 calls, 2.0% of the week',
       'Its daily budget today is 2.0% of the week (lifted).',
-      'Budget: the lead lifted bravo to 2.0% today until the end of the day (UTC) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.',
+      "Budget: the lead lifted bravo to 40.0% of the team's daily budget today until the end of the day (UTC) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.",
       W_EXPLAINED,
     ]);
   });

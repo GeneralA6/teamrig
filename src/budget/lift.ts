@@ -6,15 +6,19 @@ import { formatUtcMinute, MS_PER_DAY, MS_PER_HOUR } from '../core/time.ts';
 import { formatEndTime, formatPct } from './format.ts';
 
 /**
- * The lead's lift of one session's daily budget, for today only. Every lift carries a stop %, the
- * week's use at which it ends, and ends at the stop %, its `--until` or the end of the day, whichever
- * comes first. The reserve release (`--reserve`) is the one lift above `lift.maxStopPct`: only in the
- * last hour before the reset, up to `lift.reserveStopPct`, and always over 15 minutes before the reset.
- * A lift also exempts its session from quiet hours, which the live warning reads.
+ * The lead's lift of one session's daily budget, for today only: a part of the team's daily budget, which is
+ * recomputed at every reading, so the lifted budget moves with it. The lifts in force never give more than the
+ * whole of it. Every lift carries a stop %, the week's use at which it ends, and ends at the stop %, its `--until`
+ * or the end of the day, whichever comes first. The reserve release (`--reserve`) is the one lift above
+ * `lift.maxStopPct`: only in the last hour before the reset, up to `lift.reserveStopPct`, and always over 15
+ * minutes before the reset. A lift also exempts its session from quiet hours, which the live warning reads.
  */
 
-/** The format of the lift log's records; a newer one is skipped on read and refuses a write. */
-export const LIFT_FORMAT = 1;
+/**
+ * The format of the lift log's records; any other is skipped on read, and a newer one refuses a write. Format 1
+ * lifts gave a fixed % of the week; they lasted a day at most, so none is still in force.
+ */
+export const LIFT_FORMAT = 2;
 /** A reserve release is given only this long before the reset. */
 export const RESERVE_OPENS_BEFORE_RESET_MS = MS_PER_HOUR;
 /** A reserve release always ends this long before the reset. */
@@ -22,8 +26,8 @@ export const RESERVE_ENDS_BEFORE_RESET_MS = 15 * 60_000;
 
 export interface Lift {
   readonly session: string;
-  /** The session's daily budget while the lift lasts, in percent of the week. */
-  readonly toPct: number;
+  /** The session's part of the team's daily budget while the lift lasts, in percent of that budget. */
+  readonly partPct: number;
   /** The week's use, in percent, at which the lift ends. */
   readonly stopPct: number;
   /** When it ends at the latest, epoch ms. */
@@ -39,7 +43,7 @@ export interface Lift {
 
 export interface LiftRequest {
   readonly session: string;
-  readonly toPct: number;
+  readonly partPct: number;
   /** Undefined when the command line left it out, which is refused. */
   readonly stopPct: number | undefined;
   readonly until: number | undefined;
@@ -49,11 +53,13 @@ export interface LiftRequest {
   readonly now: number;
 }
 
-/** What a lift is judged against: the week's use and reset now, and the team's bounds. */
+/** What a lift is judged against: the week's use and reset now, the team's bounds and the other lifts in force. */
 export interface LiftContext {
   readonly usedPct: number | undefined;
   readonly reset: number | undefined;
   readonly limits: BudgetLiftConfig;
+  /** The parts the other sessions' lifts in force give, in percent of the team's daily budget, summed. */
+  readonly liftedPct: number;
 }
 
 export type LiftDecision = { readonly kind: 'lift'; readonly lift: Lift } | { readonly kind: 'refused'; readonly reason: string };
@@ -68,6 +74,12 @@ export function decideLift(request: LiftRequest, context: LiftContext): LiftDeci
   const { limits, reset, usedPct } = context;
   if (stopPct === undefined) {
     return refused('a lift needs --stop-pct <n>: the share of the week, in %, at which it ends');
+  }
+  if (request.partPct + context.liftedPct > 100) {
+    return refused(
+      `the other lifts in force give ${formatPct(context.liftedPct)} of the team's daily budget, so --part ${request.partPct} ` +
+        `would give more than all of it; the most this lift may give is ${formatPct(Math.max(0, 100 - context.liftedPct))}`,
+    );
   }
   if (stopPct > limits.reserveStopPct) {
     return refused(`--stop-pct ${stopPct} is above budget.lift.reserveStopPct (${limits.reserveStopPct}), the most any lift may reach`);
@@ -103,7 +115,7 @@ export function decideLift(request: LiftRequest, context: LiftContext): LiftDeci
     kind: 'lift',
     lift: {
       session: request.session,
-      toPct: request.toPct,
+      partPct: request.partPct,
       stopPct,
       endsAt,
       reserve,
@@ -127,11 +139,11 @@ export function activeLift(lifts: readonly Lift[], session: string, now: number,
   return newest;
 }
 
-/** What a lift gives, after "lifted": `teamrig to 2.0% today until 18:00 UTC or 97.0% of the week, ...`. */
+/** What a lift gives, after "lifted": `teamrig to 40% of the team's daily budget today until 18:00 UTC or 97.0% of the week, ...`. */
 export function liftText(lift: Lift, name: string): string {
   return (
-    `${name} to ${formatPct(lift.toPct)} today${lift.reserve ? ' from the reserve' : ''} until ${formatEndTime(lift.endsAt)} ` +
-    `or ${formatPct(lift.stopPct)} of the week, whichever comes first; quiet hours do not apply to it.`
+    `${name} to ${formatPct(lift.partPct)} of the team's daily budget today${lift.reserve ? ' from the reserve' : ''} until ` +
+    `${formatEndTime(lift.endsAt)} or ${formatPct(lift.stopPct)} of the week, whichever comes first; quiet hours do not apply to it.`
   );
 }
 
@@ -139,7 +151,7 @@ function liftRecord(lift: Lift): JsonRecord {
   return {
     [VERSION_FIELD]: LIFT_FORMAT,
     session: lift.session,
-    toPct: lift.toPct,
+    partPct: lift.partPct,
     stopPct: lift.stopPct,
     endsAt: new Date(lift.endsAt).toISOString(),
     reserve: lift.reserve,
@@ -162,7 +174,7 @@ function instantOf(record: JsonRecord, key: string): number | undefined {
 
 /** One record as a lift; undefined when it is damaged. */
 export function parseLift(record: JsonRecord): Lift | undefined {
-  const { toPct, stopPct, reserve, quietHoursExempt } = record;
+  const { partPct, stopPct, reserve, quietHoursExempt } = record;
   const session = stringField(record, 'session');
   const reason = stringField(record, 'reason');
   const by = stringField(record, 'by');
@@ -174,14 +186,14 @@ export function parseLift(record: JsonRecord): Lift | undefined {
     by === undefined ||
     endsAt === undefined ||
     at === undefined ||
-    !finitePct(toPct) ||
+    !finitePct(partPct) ||
     !finitePct(stopPct) ||
     typeof reserve !== 'boolean' ||
     typeof quietHoursExempt !== 'boolean'
   ) {
     return undefined;
   }
-  return { session, toPct, stopPct, endsAt, reserve, quietHoursExempt, reason, by, at };
+  return { session, partPct, stopPct, endsAt, reserve, quietHoursExempt, reason, by, at };
 }
 
 export interface LiftLogRead {
