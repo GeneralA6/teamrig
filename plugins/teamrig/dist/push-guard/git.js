@@ -28,6 +28,7 @@ function readConfig(dir, key) {
 export const GIT_CLI = {
     // symbolic-ref names a branch before its first commit, and nothing on a detached HEAD.
     branch: (dir) => readGit(dir, ['symbolic-ref', '--short', '-q', 'HEAD']),
+    head: (dir) => readGit(dir, ['rev-parse', '--short', '-q', '--verify', 'HEAD']),
     // A name starting with `-` would read as an option, so it has no push target the guard can ask for.
     pushTarget: (dir, branch) => (branch?.startsWith('-') === true ? undefined : readGit(dir, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', `${branch ?? ''}@{push}`])),
     config: readConfig,

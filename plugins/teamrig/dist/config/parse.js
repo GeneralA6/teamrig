@@ -2,7 +2,7 @@ import { isRecord } from "../core/guards.js";
 import { NAME_PATTERN, NAME_RULE } from "../core/ids.js";
 import { FOLLOWUP_STATUSES, isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, SESSION_NAME, TASK_STATUSES } from "../register/model.js";
 import { CORE_RULE_KEYS, isCoreRuleKey } from "../rules/keys.js";
-import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT_CONTEXT_FILES, DEFAULT_GITHUB, DEFAULT_HIRING, DEFAULT_LOCK, DEFAULT_LEAD_BOUNDARY, DEFAULT_LOOPS, DEFAULT_MESSAGES, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_PACKAGE_GUARD, DEFAULT_PUSH_GUARD, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, DEFAULT_TESTS, DEFAULT_WAKE, } from "./defaults.js";
+import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT_CONTEXT_FILES, DEFAULT_GITHUB, DEFAULT_HIRING, DEFAULT_LOCK, DEFAULT_LEAD_BOUNDARY, DEFAULT_LOOPS, DEFAULT_MESSAGES, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_PACKAGE_GUARD, DEFAULT_PUSH_GUARD, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, DEFAULT_STATUS_LINE, DEFAULT_TESTS, DEFAULT_WAKE, } from "./defaults.js";
 import { isEffort, isModel } from "./launch.js";
 import { CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from "./limits.js";
 import { ConfigReader, describe, isValidRegex, shortLine } from "./reader.js";
@@ -170,6 +170,7 @@ export function parseConfig(raw) {
         hiring: parseHiring(read, read.section(raw, 'hiring', '')),
         burst: parseBurst(read, read.section(raw, 'burst', '')),
         open: parseOpen(read, read.section(raw, 'open', '')),
+        statusLine: parseStatusLine(read, read.section(raw, 'statusLine', '')),
         launch,
         paths: parsePaths(read, read.section(raw, 'paths', '')),
     };
@@ -495,6 +496,14 @@ function parseSkills(read, raw) {
 function parseOpen(read, raw) {
     const terminal = read.string(raw, 'terminal', 'open', DEFAULT_OPEN.terminal, (value) => isTerminalChoice(value) ? undefined : `expected one of ${TERMINALS.join(', ')}`);
     return { terminal: isTerminalChoice(terminal) ? terminal : DEFAULT_OPEN.terminal };
+}
+function parseStatusLine(read, raw) {
+    const path = 'statusLine';
+    return {
+        folder: read.boolean(raw, 'folder', path, DEFAULT_STATUS_LINE.folder),
+        branch: read.boolean(raw, 'branch', path, DEFAULT_STATUS_LINE.branch),
+        resume: read.boolean(raw, 'resume', path, DEFAULT_STATUS_LINE.resume),
+    };
 }
 function parsePushToProtected(read, raw) {
     const fallback = DEFAULT_PUSH_GUARD.pushToProtected;

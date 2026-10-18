@@ -111,6 +111,8 @@ export const DEFAULT_REFRESH = {
     endCommand: [],
 };
 export const DEFAULT_OPEN = { terminal: 'auto' };
+/** The status line shows the session's folder, its branch and the command that resumes it, unless the team turns them off. */
+export const DEFAULT_STATUS_LINE = { folder: true, branch: true, resume: true };
 /**
  * A hire spends the week's budget, so it waits for the owner's yes: at most two hires at 1% of the week a day
  * each, 3% in all, reviewed after a week and due to retire after 4 hours with no open task. A rehire resumes its

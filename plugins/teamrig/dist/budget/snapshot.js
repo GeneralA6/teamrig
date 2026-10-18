@@ -117,9 +117,27 @@ export function weekUseOf(snapshots, now) {
     }
     return best;
 }
-/** The status line text: the model and the plan's use, such as `Opus 5.5, week 57%, 5h 6%`. */
-export function statusLineText(snapshot) {
+/** Where the session works, such as `app on main`, `app at 1a2b3c4` (a detached HEAD) or `app`; empty when the view names nothing. */
+function placeText(view) {
+    const parts = view.folder === undefined ? [] : [view.folder];
+    if (view.branch !== undefined) {
+        parts.push(`on ${view.branch}`);
+    }
+    else if (view.commit !== undefined) {
+        parts.push(`at ${view.commit}`);
+    }
+    return parts.join(' ');
+}
+/**
+ * The status line text: the model, where the session works, the plan's use and the command that resumes the
+ * session, such as `Opus 5.5, app on main, week 57%, 5h 6%, claude --resume <session id>`.
+ */
+export function statusLineText(snapshot, view) {
     const parts = [snapshot.model ?? 'Claude'];
+    const place = placeText(view);
+    if (place !== '') {
+        parts.push(place);
+    }
     const week = snapshot.rateLimits?.sevenDay ?? null;
     const fiveHour = snapshot.rateLimits?.fiveHour ?? null;
     if (week !== null) {
@@ -127,6 +145,9 @@ export function statusLineText(snapshot) {
     }
     if (fiveHour !== null) {
         parts.push(`5h ${Math.round(fiveHour.usedPct)}%`);
+    }
+    if (view.resume) {
+        parts.push(`claude --resume ${snapshot.sessionId}`);
     }
     return parts.join(', ');
 }
