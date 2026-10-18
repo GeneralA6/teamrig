@@ -1,6 +1,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { heavyCutoffReason, minutesText, parseSpanMinutes, resetBlackoutReason } from './schedule.ts';
+import { blackoutStart, heavyCutoffReason, minutesText, parseSpanMinutes, resetBlackoutReason } from './schedule.ts';
+
+describe('blackoutStart', () => {
+  it('starts the blackout its hours before the reset', () => {
+    assert.equal(blackoutStart({ at: Date.parse('2030-01-09T01:00:00Z'), source: 'status line' }, 4), Date.parse('2030-01-08T21:00:00Z'));
+  });
+});
 
 describe('resetBlackoutReason', () => {
   const reset = { at: Date.parse('2030-01-09T01:00:00Z'), source: 'status line' };
