@@ -29,6 +29,7 @@ const loopNudgeCommand = () => import('./commands/hook-loop-nudge.ts');
 const refreshWakeCommand = () => import('./commands/hook-refresh-wake.ts');
 const droppedEditCommand = () => import('./commands/hook-dropped-edit.ts');
 const restoreTrackCommand = () => import('./commands/hook-restore-track.ts');
+const tabStatusCommand = () => import('./commands/hook-tab-status.ts');
 const helperStartCommand = () => import('./commands/hook-helper-start.ts');
 const clearCommands = () => import('./commands/hook-clear.ts');
 const wakeCommands = () => import('./commands/hook-wake.ts');
@@ -167,6 +168,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'hook subagent-stop': { effect: 'internal', flags: [], load: async () => (await droppedEditCommand()).subagentStop },
   'hook refresh-wake': { effect: 'internal', flags: [], load: async () => (await refreshWakeCommand()).refreshWake },
   'hook restore-track': { effect: 'internal', flags: [], load: async () => (await restoreTrackCommand()).restoreTrack },
+  'hook tab-status': { effect: 'internal', flags: [], load: async () => (await tabStatusCommand()).tabStatus },
   'hook clear-dir': { effect: 'internal', flags: [], load: async () => (await clearCommands()).clearDir },
   'hook clear-claim': { effect: 'internal', flags: [], switches: ['hold'], load: async () => (await clearCommands()).clearClaim },
   'hook wake-check': { effect: 'internal', flags: [], load: async () => (await wakeCommands()).wakeCheck },
@@ -380,7 +382,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   test [--session <id|name>] -- <command ...>   runs a test command in the shell, writes all it printed
       to a log (each session keeps its newest 20) and prints one PASS or FAIL line, then each failing
       test within tests.maxFailureChars; exit 0 when the command passed, 1 otherwise
-  hook push-guard | hook package-guard | hook cold-send | hook failed-send | hook loop-nudge | hook helper-gate | hook inbox-reminder | hook session-start | hook stop | hook subagent-start | hook subagent-stop | hook refresh-wake | hook restore-track
+  hook push-guard | hook package-guard | hook cold-send | hook failed-send | hook loop-nudge | hook helper-gate | hook inbox-reminder | hook session-start | hook stop | hook subagent-start | hook subagent-stop | hook refresh-wake | hook restore-track | hook tab-status
       (run by Claude Code, hook JSON on stdin)
   hook clear-dir | hook clear-claim [--hold]
       (run by the plugin's mod: the automatic restart's /clear in the tab)
