@@ -1282,6 +1282,8 @@ within 10 seconds, it ends the session's Claude Code instead: `launch` starts it
 teamrig did not open gets a new tab first; then it runs `refresh.endCommand`, if set. It ends no Claude Code that
 still runs a background shell (a background command or a monitor), since the end would take that too; the session
 is told to type `/clear`, which keeps it. A prompt typed before then cancels it. A restart that did not happen, or an end command that failed, leaves a line in the session's inbox.
+Every outcome (cleared, restarted, cancelled, failed) is one JSON line in the team's `state/refresh/restarts.jsonl`
+(`session`, `at`, `endedAt`, `result`): the record to judge a trial or a week of automatic restarts by.
 
 Flags:
 
