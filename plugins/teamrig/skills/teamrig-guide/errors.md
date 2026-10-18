@@ -32,6 +32,11 @@ or take it to the lead.
 | `REFUSED waiting needs --note` (also `verifying`, `done`, `dropped`) | Add `--note` saying what it waits for, what was done, or why it was dropped. |
 | `REFUSED waiting needs --waits saying what it waits for: decision:<who>, approval:<who>, task:T<id> or time:<YYYY-MM-DD HH:MM>, comma-separated` | Add `--waits` with every reason. |
 | `REFUSED --waits goes only with --status waiting` | Drop `--waits`, or set `waiting`. |
+| `REFUSED a wait on owner's decision needs a card, so owner decides from it alone: --question ...` | Add the four card flags it prints: what is decided, the options with their numbers, your recommendation, the default. |
+| `REFUSED a card needs --question, --options, --recommend and --default (--options for a decision): ...` | A task not waiting yet has no card to build on: give every part. |
+| `REFUSED --options lists 1: a decision lists at least 2, separated by \|` | List every choice, separated by `\|`; an approval may list none. |
+| `REFUSED --recommend says "T378 option 2": give at least 3 plain words besides task ids, so it reads without the task list` (any part) | Say it in words: what the option is and what it costs. |
+| `REFUSED --question, --options, --recommend and --default go only with --status waiting on a decision or an approval` | Drop the card flags, or wait on the decision. |
 | `REFUSED T3 has not started, so it does not wait on T2: it stays open, planned after it (teamrig update T3 --after T2)` | Leave it open and plan it: `teamrig update T3 --after T2`. |
 | `REFUSED T2 is already finished; nothing to wait on` | Go on: there is nothing to wait for. |
 | `REFUSED time 2026-10-01 has passed: name a time to come` | Give a time still to come, in UTC. |
