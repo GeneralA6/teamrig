@@ -1,0 +1,53 @@
+import type { TerminalChoice } from '../config/types.ts';
+import type { RestoreEntry } from './entry.ts';
+
+/** A team as the restore sees it: its sessions and names, its lead, its terminal and who last read each inbox. */
+export interface RestoreTeam {
+  readonly team: string;
+  readonly lead: string;
+  /** Each current session's id and name. */
+  readonly names: ReadonlyMap<string, string>;
+  readonly terminal: TerminalChoice;
+  /** The session each Claude Code session last read the inbox of, from the team's inbox marks. */
+  readonly areaBySession: ReadonlyMap<string, string>;
+}
+
+/** The team session a Claude Code session ran as. */
+export interface TeamSession {
+  readonly team: string;
+  readonly session: string;
+  readonly name: string;
+  readonly isLead: boolean;
+  readonly terminal: TerminalChoice;
+  /**
+   * It ran under its team's variables, as `teamrig launch` starts one, so the restore reopens it through
+   * launch. One known only from the inbox it read was started by hand, and is resumed as it was.
+   */
+  readonly launched: boolean;
+}
+
+function sessionOf(team: RestoreTeam, session: string, launched: boolean): TeamSession | undefined {
+  const name = team.names.get(session);
+  return name === undefined ? undefined : { team: team.team, session, name, isLead: session === team.lead, terminal: team.terminal, launched };
+}
+
+/**
+ * The team session an entry belongs to: the team and session its variables name, when that team still has
+ * the session, else the session whose inbox it last read. Undefined for a Claude Code session of no team.
+ */
+export function teamSessionOf(entry: RestoreEntry, teams: readonly RestoreTeam[]): TeamSession | undefined {
+  const { team: teamId, session } = entry;
+  const named = teams.find((team) => team.team === teamId);
+  const launched = named === undefined || session === undefined ? undefined : sessionOf(named, session, true);
+  if (launched !== undefined) {
+    return launched;
+  }
+  for (const team of teams) {
+    const area = team.areaBySession.get(entry.claudeSession);
+    const found = area === undefined ? undefined : sessionOf(team, area, false);
+    if (found !== undefined) {
+      return found;
+    }
+  }
+  return undefined;
+}
