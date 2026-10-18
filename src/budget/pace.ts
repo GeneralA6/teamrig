@@ -1,6 +1,7 @@
 import { DEFAULT_SESSION_SHARE } from '../config/defaults.ts';
 import { WEEKDAYS, type BudgetConfig, type BudgetReset, type SessionBudget } from '../config/types.ts';
 import { MS_PER_DAY, MS_PER_HOUR } from '../core/time.ts';
+import type { ActivityProfile } from './active-time.ts';
 
 /**
  * The pace math of the weekly budget, pure so every edge of the week is tested with plain numbers.
@@ -45,13 +46,21 @@ export function weekWindow(reset: number, paceEndHoursBeforeReset: number): Week
   return { start, reset, paceEnd: Math.max(start, reset - paceEndHoursBeforeReset * MS_PER_HOUR) };
 }
 
-/** Where the pace line stands at `at`: 0 at the week's start, rising evenly to the target at the pace end, then flat. */
-export function paceLinePct(window: WeekWindow, targetPct: number, at: number): number {
+/**
+ * Where the pace line stands at `at`: 0 at the week's start, rising with the active time (`profile`) to the target at
+ * the pace end, then flat; so it stays flat through the hours the team sleeps. A pace span with no active time rises
+ * evenly with clock time instead.
+ */
+export function paceLinePct(window: WeekWindow, targetPct: number, at: number, profile: ActivityProfile): number {
   const span = window.paceEnd - window.start;
   if (span <= 0 || at >= window.paceEnd) {
     return targetPct;
   }
-  return at <= window.start ? 0 : (targetPct * (at - window.start)) / span;
+  if (at <= window.start) {
+    return 0;
+  }
+  const active = profile.activeMs(window.start, window.paceEnd);
+  return active > 0 ? (targetPct * profile.activeMs(window.start, at)) / active : (targetPct * (at - window.start)) / span;
 }
 
 export type PaceBudget = Pick<BudgetConfig, 'targetPct' | 'paceEndHoursBeforeReset' | 'dailyPct' | 'maxDailyPct' | 'paceTolerancePct'>;
@@ -64,26 +73,33 @@ export interface AllowanceInput {
   readonly usedPct: number;
   /** The team's use since 00:00 UTC today, in percent of the week. */
   readonly todayPct: number;
+  /** The active time the pace counts. */
+  readonly profile: ActivityProfile;
 }
 
 /**
- * The team's allowance for today, in percent of the week: the config's fixed `dailyPct`, else what is
- * left to the target at 00:00 UTC spread evenly over the days from 00:00 to the pace end (at least
- * one, so past the pace end it is all that is left). Fixed at 00:00, so it does not grow as the day is
- * used. When the week began after 00:00 (the reset day) it is counted from the reset, with nothing used.
- * Never above `maxDailyPct`.
+ * The team's allowance for today, in percent of the week: the config's fixed `dailyPct`, else recomputed at every
+ * reading from what is left: what is left to the target, spread evenly over the active time from now to the pace
+ * end, times today's active time (the UTC day inside the week and before the pace end). On pace it holds all day;
+ * using less raises it and using more lowers it, so the team never waits while the week has room, and an idle
+ * evening does not shrink it. Never above today's use plus what is left, which is all it is past the pace end or
+ * with no active time left before it. Never above `maxDailyPct`.
  */
 export function dailyAllowancePct(input: AllowanceInput): number {
-  const { window, budget, now } = input;
+  const { window, budget, now, profile } = input;
   const cap = budget.maxDailyPct ?? Number.POSITIVE_INFINITY;
   if (budget.dailyPct !== undefined) {
     return Math.min(budget.dailyPct, cap);
   }
+  const leftPct = Math.max(0, budget.targetPct - input.usedPct);
+  const ceiling = Math.min(input.todayPct + leftPct, cap);
+  const remaining = profile.activeMs(now, window.paceEnd);
+  if (remaining <= 0) {
+    return ceiling;
+  }
   const dayStart = now - (now % MS_PER_DAY);
-  const from = Math.max(dayStart, window.start);
-  const usedAtStart = from === window.start && dayStart < window.start ? 0 : Math.max(0, input.usedPct - input.todayPct);
-  const days = Math.max(1, (window.paceEnd - from) / MS_PER_DAY);
-  return Math.min(Math.max(0, budget.targetPct - usedAtStart) / days, cap);
+  const today = profile.activeMs(Math.max(dayStart, window.start), Math.min(dayStart + MS_PER_DAY, window.paceEnd));
+  return Math.min((leftPct * today) / remaining, ceiling);
 }
 
 /**
@@ -121,8 +137,8 @@ export interface PaceReading {
 }
 
 /** The week's use against the pace line; within `paceTolerancePct` points it is on pace. */
-export function readPace(window: WeekWindow, budget: PaceBudget, now: number, usedPct: number): PaceReading {
-  const linePct = paceLinePct(window, budget.targetPct, now);
+export function readPace(window: WeekWindow, budget: PaceBudget, now: number, usedPct: number, profile: ActivityProfile): PaceReading {
+  const linePct = paceLinePct(window, budget.targetPct, now, profile);
   const gapPts = usedPct - linePct;
   const state: PaceState = Math.abs(gapPts) <= budget.paceTolerancePct ? 'on pace' : gapPts > 0 ? 'ahead' : 'behind';
   return { window, linePct, gapPts, state };

@@ -47,8 +47,8 @@ describe('readWeek', () => {
     assert.equal(round(week.wPerPct), round(1_500 / 57));
     assert.equal(round(week.pace?.linePct), round((99.5 * 35) / 167));
     assert.equal(week.pace?.state, 'ahead');
-    // 57% now, 19% of it today: 38% at 00:00, so (99.5 - 38) / 6 days to the pace end.
-    assert.equal(round(week.allowancePct), 10.25);
+    // 57% now: the 42.5% left over the 132 hours to the pace end, a 24-hour day of it.
+    assert.equal(round(week.allowancePct), round((42.5 * 24) / 132));
   });
 
   it('has no limit estimate while the stores start after the week did', () => {
@@ -62,7 +62,15 @@ describe('readWeek', () => {
     const week = readWeek({ budget, now: NOW, statusUse: undefined, states: COVERED });
     assert.deepEqual([week.reset, week.wPerPct, week.usedPct, week.statusAt, week.limitEstimated], [RESET, 1_000, 1.5, undefined, false]);
     assert.equal(week.pace?.state, 'behind');
-    assert.equal(round(week.allowancePct), round((99.5 - 1) / 6));
+    assert.equal(round(week.allowancePct), round((98 * 24) / 132));
+  });
+
+  it('paces by the active time of budget.quietHours', () => {
+    const budget: BudgetConfig = { ...DEFAULT_BUDGET, quietHours: { startUtc: '22:00', endUtc: '06:00', action: 'ask' } };
+    const week = readWeek({ budget, now: NOW, statusUse: STATUS, states: COVERED });
+    // Wed 01:00 to Thu 12:00 is 16 + 6 of the week's 112 active hours; 42.5% left over the other 90, a 16-hour day of it.
+    assert.equal(round(week.pace?.linePct), round((99.5 * 22) / 112));
+    assert.equal(round(week.allowancePct), round((42.5 * 16) / 90));
   });
 
   it('falls back to a fixed dailyPct, capped, when the allowance cannot be worked out', () => {

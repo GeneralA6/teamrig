@@ -94,9 +94,9 @@ describe('teamrig budget', () => {
     const { run } = await world();
     assert.deepEqual(ok(await run(['budget'])), [
       'Week: 30.0% used at 10:00 UTC (status line); the pace line is at 19.7%: 10.3 points ahead. Resets Mon 01-14 01:00 UTC.',
-      'The team used 2.5% of the week today; its daily budget is 12.0%. 25.00M W in 3 calls.',
-      'app-alpha used 2.0% of the week today; its daily budget is 4.0%. 20.00M W in 2 calls.',
-      'app-bravo used 0.50% of the week today; its daily budget is 4.0%. 5.00M W in 1 call.',
+      'The team used 2.5% of the week today; its daily budget is 12.4%. 25.00M W in 3 calls.',
+      'app-alpha used 2.0% of the week today; its daily budget is 4.1%. 20.00M W in 2 calls.',
+      'app-bravo used 0.50% of the week today; its daily budget is 4.1%. 5.00M W in 1 call.',
       OUTSIDE_LINE,
       W_EXPLAINED,
     ]);
@@ -116,7 +116,7 @@ describe('teamrig budget', () => {
     assert.deepEqual(ok(await run(['budget', 'alpha'])), [
       'app-alpha (alpha), by UTC day:',
       '  2030-01-08  20.00M W in 2 calls, 2.0% of the week',
-      'Its daily budget today is 4.0% of the week.',
+      'Its daily budget today is 4.1% of the week.',
       W_EXPLAINED,
     ]);
     usageError(await run(['budget', 'alpha', 'bravo']), /unexpected "bravo"/);
@@ -150,7 +150,7 @@ describe('teamrig budget', () => {
   it("meters a subagent's W at budget.subagentWeight", async () => {
     const { kit, source, run } = await world({ ...TEAM, budget: { weeklyLimitW: 1_000_000_000, subagentWeight: 3 } });
     source.set(join(PROJECT, BRAVO_TAB, 'subagents', 'agent-1.jsonl'), transcript([reply('s1', 1_000_000)]), kit.clock.now());
-    assert.ok(ok(await run(['budget'])).includes('app-bravo used 0.80% of the week today; its daily budget is 4.0%. 8.00M W in 2 calls.'));
+    assert.ok(ok(await run(['budget'])).includes('app-bravo used 0.80% of the week today; its daily budget is 4.1%. 8.00M W in 2 calls.'));
   });
 
   it('recounts a past day from the transcripts, writing nothing', async () => {
