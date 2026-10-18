@@ -175,6 +175,11 @@
           "type": "boolean",
           "default": true
         },
+        "requireDecisionCard": {
+          "description": "Whether teamrig set --status waiting on the owner's decision or approval needs a decision card (--question, --options, --recommend, --default), so the owner decides from it alone.",
+          "type": "boolean",
+          "default": true
+        },
         "requireProofOnVerifying": {
           "description": "Whether teamrig set --status verifying needs --proof, what will prove the shipped change works.",
           "type": "boolean",

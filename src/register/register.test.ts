@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { NewerDataError } from '../core/jsonl.ts';
+import { TEST_CARD } from '../testing/card.ts';
 import { testConfig } from '../testing/config.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { InlineMutex } from '../testing/inline-mutex.ts';
@@ -199,7 +200,7 @@ describe('Register.ask', () => {
 
   it('keeps the reasons and note given, the asked task last', async () => {
     const { register } = await started();
-    const verdict = await register.ask('alpha', 'T1', ASK, { status: 'waiting', note: 'needs the new column', waits: [{ kind: 'decision', who: 'owner' }] });
+    const verdict = await register.ask('alpha', 'T1', ASK, { status: 'waiting', note: 'needs the new column', waits: [{ kind: 'decision', who: 'owner' }], card: TEST_CARD });
     assert.ok(verdict.ok, verdict.ok ? '' : verdict.error);
     assert.deepEqual(verdict.value.task.waits, [{ kind: 'decision', who: 'owner' }, { kind: 'task', id: 'T2' }]);
     assert.equal(verdict.value.task.note, 'needs the new column');

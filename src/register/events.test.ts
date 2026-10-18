@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { JsonRecord } from '../core/guards.ts';
+import { TEST_CARD } from '../testing/card.ts';
 import { eventRecord, parseEvent, type EventParse, type RegisterEvent } from './events.ts';
 
 const BASE = { id: 'T3', at: '2030-01-07T09:00:00.000Z', by: 'alpha' };
@@ -116,6 +117,10 @@ describe('parseEvent', () => {
     assert.deepEqual(waiting.kind === 'event' && waiting.event.type === 'status' ? waiting.event.waits : undefined, waits);
     const done = parse({ ...BASE, type: 'status', status: 'done', waits }, 2);
     assert.equal(done.kind === 'event' && done.event.type === 'status' ? done.event.waits : 'no event', undefined);
+    const carded = parse({ ...BASE, type: 'status', status: 'waiting', waits, card: TEST_CARD }, 2);
+    assert.deepEqual(carded.kind === 'event' && carded.event.type === 'status' ? carded.event.card : undefined, TEST_CARD);
+    const closed = parse({ ...BASE, type: 'status', status: 'done', card: TEST_CARD }, 2);
+    assert.equal(closed.kind === 'event' && closed.event.type === 'status' ? closed.event.card : 'no event', undefined, 'a card goes only with waiting');
   });
 
   it('reads the tasks a task is planned after, on its create line and an update', () => {
@@ -174,6 +179,7 @@ describe('parseEvent', () => {
       [{ ...BASE, type: 'status', status: 'waiting', waits: 'owner' }, /waits is not a list/],
       [{ ...BASE, type: 'status', status: 'waiting', waits: ['owner'] }, /a wait is not an object/],
       [{ ...BASE, type: 'status', status: 'waiting', waits: [{ kind: 'review', who: 'owner' }] }, /unknown wait kind "review"/],
+      [{ ...BASE, type: 'status', status: 'waiting', waits: [], card: { question: 'which tier' } }, /card needs question, recommend and byDefault as text/],
       [{ ...BASE, type: 'status', status: 'waiting', waits: [{ kind: 'task', who: 'T5' }] }, /a task wait has no id/],
       [{ ...BASE, type: 'status', status: 'waiting', waits: [{ kind: 'time', at: 'soon' }] }, /soon is not YYYY-MM-DD/],
       [{ ...BASE, type: 'create', task: { ...TASK, after: ['T0'] } }, /after is not a list of task ids/],

@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { toJsonlLine } from '../core/jsonl.ts';
 import { MS_PER_DAY } from '../core/time.ts';
+import { TEST_CARD } from '../testing/card.ts';
 import { testConfig } from '../testing/config.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { FaultyFiles, systemError, type FileOperation } from '../testing/faulty-files.ts';
@@ -285,7 +286,7 @@ describe('a write rotates a log rotated before once its tail is long', () => {
   it('leaves a short tail alone, and rotates a long one after the write it carries', async () => {
     const files = new MemoryFiles({ [LOG]: TEXT });
     await rotate(files, 4);
-    const short = await registerOn(files).setStatus('alpha', 'T2', { status: 'waiting', waits: [{ kind: 'approval', who: 'owner' }], note: 'review' });
+    const short = await registerOn(files).setStatus('alpha', 'T2', { status: 'waiting', waits: [{ kind: 'approval', who: 'owner' }], card: TEST_CARD, note: 'review' });
     assert.deepEqual(short.ok && short.value.rotation, { kind: 'none' });
     await files.append(LOG, busyTail(4_000));
     const long = await registerOn(files).setStatus('alpha', 'T2', START_T2);

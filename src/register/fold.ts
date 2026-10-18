@@ -1,3 +1,4 @@
+import type { DecisionCard } from './card.ts';
 import type { RegisterEvent, TaskFields } from './events.ts';
 import type { TaskStatus } from './model.ts';
 import type { WaitReason } from './waits.ts';
@@ -12,6 +13,8 @@ export interface Task extends TaskFields {
   readonly skill: string | null;
   /** What the task waits for while `waiting`, from its latest status change; empty in any other status. */
   readonly waits: readonly WaitReason[];
+  /** What a task waiting on a decision or an approval asks (card.ts), from its latest status change; null otherwise. */
+  readonly card: DecisionCard | null;
   /**
    * What will prove a `verifying` task works, from its latest status change; null in any other status, and on a
    * task set verifying before `--proof` existed, whose note says it (`proofOf` in verify.ts reads both).
@@ -116,6 +119,7 @@ function created(id: string, fields: TaskFields, at: string, by: string): Task {
     evidence: null,
     skill: null,
     waits: [],
+    card: null,
     proof: null,
     followups: [],
     startedAt: null,
@@ -139,6 +143,7 @@ function withStatus(task: Task, event: Extract<RegisterEvent, { type: 'status' }
     evidence: event.evidence ?? task.evidence,
     skill: event.skill,
     waits: event.status === 'waiting' ? (event.waits ?? []) : [],
+    card: event.status === 'waiting' ? (event.card ?? null) : null,
     proof: event.status === 'verifying' ? (event.proof ?? null) : null,
     followups: event.followups === undefined ? task.followups : [...new Set([...task.followups, ...event.followups])],
     startedAt: task.startedAt ?? (event.status === 'in-progress' || event.status === 'verifying' ? event.at : null),

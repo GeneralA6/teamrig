@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { EVENT_VERSION } from '../register/events.ts';
+import { TEST_CARD, TEST_CARD_FLAGS } from '../testing/card.ts';
 import { CliHarness, EVENTS_PATH } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
 
@@ -64,24 +65,24 @@ describe('runCli: a wait on the lead or the owner tells the lead', () => {
 
     const again = await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'approval:lead', '--note', 'the window is Sunday', '--session', 'alpha']);
     assert.deepEqual([again.code, again.stderr], [EXIT.ok, []]);
-    const owner = await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'approval:lead,decision:owner', '--note', 'and the cost', '--session', 'alpha']);
-    assert.deepEqual(owner.stderr, ["NOTE lead has an inbox line: T1 waits on the owner's decision: and the cost"]);
+    const owner = await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'approval:lead,decision:owner', '--note', 'and the cost', ...TEST_CARD_FLAGS, '--session', 'alpha']);
+    assert.deepEqual(owner.stderr, [`NOTE lead has an inbox line: T1 waits on the owner's decision: ${TEST_CARD.question}`]);
     assert.deepEqual(await inboxOf(kit, 'lead'), [
       '- 2030-01-08 10:00 alpha: T1 waits on your approval: pick the backup window',
-      "- 2030-01-08 10:00 alpha: T1 waits on the owner's decision: and the cost",
+      `- 2030-01-08 10:00 alpha: T1 waits on the owner's decision: ${TEST_CARD.question}`,
     ]);
 
     await kit.run(['add', '--title', 'Plan the week', '--description', 'what and why', '--priority', 'p2', '--session', 'lead']);
     await kit.run(['set', 'T2', '--status', 'in-progress', '--session', 'lead']);
-    const own = await kit.run(['set', 'T2', '--status', 'waiting', '--waits', 'decision:owner', '--note', 'the budget', '--session', 'lead']);
+    const own = await kit.run(['set', 'T2', '--status', 'waiting', '--waits', 'decision:owner', '--note', 'the budget', ...TEST_CARD_FLAGS, '--session', 'lead']);
     assert.deepEqual([own.code, own.stderr], [EXIT.ok, []]);
   });
 
   it('tells the lead of a wait set with an ask, after the asked session', async () => {
     const kit = await startedTask();
-    const asked = await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'decision:owner', '--ask', 'bravo', '--text', 'Land it', '--session', 'alpha']);
+    const asked = await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'decision:owner', '--ask', 'bravo', '--text', 'Land it', ...TEST_CARD_FLAGS, '--session', 'alpha']);
     assert.equal(asked.code, EXIT.ok, asked.stderr.join('\n'));
-    assert.deepEqual(asked.stderr, ['NOTE bravo has an inbox line: T2 is yours (p2): Land it', "NOTE lead has an inbox line: T1 waits on the owner's decision: Land it"]);
+    assert.deepEqual(asked.stderr, ['NOTE bravo has an inbox line: T2 is yours (p2): Land it', `NOTE lead has an inbox line: T1 waits on the owner's decision: ${TEST_CARD.question}`]);
   });
 
   it('names a line it could not post, and keeps the wait', async () => {
@@ -118,5 +119,20 @@ describe('runCli: check flags a peer wait an older teamrig wrote', () => {
       ),
       checked.stdout.join('\n'),
     );
+  });
+});
+
+describe('runCli: the decision card', () => {
+  it("refuses a wait on the owner's decision without a card, and shows the card it takes", async () => {
+    const kit = await startedTask();
+    const bare = await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'decision:owner', '--note', 'two options', '--session', 'alpha']);
+    assert.equal(bare.code, EXIT.refused);
+    assert.match([...bare.stdout, ...bare.stderr].join('\n'), /REFUSED a wait on owner's decision needs a card, so owner decides from it alone: --question /);
+    const carded = await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'decision:owner', '--note', 'two options', ...TEST_CARD_FLAGS, '--session', 'alpha']);
+    assert.equal(carded.code, EXIT.ok, carded.stderr.join('\n'));
+    const shown = (await kit.run(['show', 'T1', '--session', 'alpha'])).stdout.join('\n');
+    const lines = shown.split('\n');
+    assert.ok(lines.some((line) => line.endsWith(`decide: ${TEST_CARD.question}`)), shown);
+    assert.ok(lines.some((line) => line.endsWith(`2. ${TEST_CARD.options[1] ?? ''}`)), shown);
   });
 });

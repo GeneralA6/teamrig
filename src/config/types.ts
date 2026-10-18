@@ -59,6 +59,11 @@ export interface RegisterConfig {
    * after the first `teamrig compact`. Off, only `teamrig compact` archives it.
    */
   readonly autoArchive: boolean;
+  /**
+   * Whether `set --status waiting` on the owner's decision or approval needs a decision card (`--question`,
+   * `--options`, `--recommend`, `--default`; register/card.ts), so the owner decides from it alone.
+   */
+  readonly requireDecisionCard: boolean;
   /** Whether `set --status verifying` needs `--proof`, what will prove the shipped change works. */
   readonly requireProofOnVerifying: boolean;
   /** What `set --status in-progress` does while a task it needs is still verifying. */
