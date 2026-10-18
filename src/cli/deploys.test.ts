@@ -1,0 +1,105 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { join } from 'node:path';
+import { CliHarness, KIT, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
+import { FakeIntegrateGit, MAIN_CHECKOUT } from '../testing/fake-integrate-git.ts';
+import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
+
+const LOCK = join(KIT, 'host.lock');
+const CLAIMS = join(TEAM_HOME, 'state', 'deploys', 'claims.json');
+const OTHER = 9001;
+const ROLL = { targets: ['cloud-api'], command: ['node', 'tools/roll.js'] };
+/** app rolls, web deploys on push; the reset is Tuesday 12:00 UTC, so at the clock's 10:00 the 4 h blackout holds. */
+const DEPLOYING = {
+  ...TEAM,
+  budget: { reset: { weekday: 'tue', timeUtc: '12:00' } },
+  coordinator: {
+    schedule: { resetBlackoutHours: 4, heavyCutoffUtc: '22:30' },
+    repos: { app: { mainCheckout: MAIN_CHECKOUT, roll: ROLL }, web: { mainCheckout: '/repo/web', deploysOnPush: ['cloud-web'] } },
+  },
+};
+const PLAIN = { ...TEAM, coordinator: { repos: { app: { mainCheckout: MAIN_CHECKOUT, roll: ROLL } } } };
+
+/** A lock po's build took at 09:50, lasting to `expiresAt`. */
+function heldBy(expiresAt: string = '2030-01-08T12:20:00.000Z'): string {
+  return JSON.stringify({ token: 'other', pid: OTHER, session: 'po', purpose: 'heavy: build', acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt });
+}
+
+function otherRuns(): FakeSessionProcesses {
+  return new FakeSessionProcesses().add({ pid: OTHER, parentPid: 1, name: 'node', commandLine: 'node cli.ts heavy' });
+}
+
+/** A main checkout two commits behind origin. */
+function behind(): FakeIntegrateGit {
+  const git = new FakeIntegrateGit();
+  git.origin.set('main', 'c2');
+  git.ancestry.add('base>c2');
+  git.landed = ['c1', 'c2'];
+  return git;
+}
+
+describe('teamrig deploys', () => {
+  it('shows the lock holder, the cutoff and blackout, the open claims and loads, and what each roll repository has pushed', async () => {
+    const kit = new CliHarness(DEPLOYING);
+    await kit.files.append(LOCK, heldBy());
+    const claim = ['claim', '--session', 'bravo', '--targets', 'cloud-api', '--metric', 'p95', '--why', 'cache probe', '--for', '30m'];
+    assert.equal((await kit.run(claim)).code, 0);
+    assert.equal((await kit.run(['load', '--session', 'alpha', '--what', 'trim', '--at', '08:00'])).code, 0);
+    const ended = (await kit.run(['load', '--session', 'alpha', '--what', 'backfill', '--at', '08:30'])).stdout.join('');
+    assert.equal((await kit.run(['load', 'end', '--session', 'alpha', '--id', /LOAD (\S+)/.exec(ended)?.[1] ?? '', '--at', '09:00'])).code, 0);
+    const open = /LOAD (\S+)/.exec((await kit.run(['load', '--session', 'bravo', '--what', 'reindex', '--targets', 'cloud-api,cloud-web'])).stdout.join(''))?.[1];
+    const result = await kit.run(['deploys'], { integrateGit: behind(), sessionProcesses: otherRuns() });
+    assert.equal(result.code, 0, JSON.stringify(result));
+    const trim = /^ {2}(\S+) by alpha: trim/m.exec(result.stdout.join('\n'))?.[1];
+    assert.deepEqual(result.stdout, [
+      'host lock: po (heavy: build) since 2030-01-08 09:50',
+      'heavy cutoff: from 22:30 UTC until midnight (no heavy step starts)',
+      'deploy blackout: IN FORCE 2030-01-08 08:00 until 2030-01-08 12:00 UTC (no integrate or roll; reset from the budget.reset config)',
+      'claims: 1',
+      '  quiet claim by bravo on cloud-api until 2030-01-08 10:30 UTC (p95)',
+      'loads: 2',
+      `  ${trim} by alpha: trim on the whole host since 2030-01-08 08:00 UTC`,
+      `  ${open} by bravo: reindex on cloud-api,cloud-web since 2030-01-08 10:00 UTC`,
+      'app: 2 commits pushed, not rolled (c1..c2)',
+    ]);
+  });
+
+  it('shows a stale lock as free, an unset cutoff and blackout, no claims or loads, and nothing to roll', async () => {
+    const kit = new CliHarness(PLAIN);
+    await kit.files.append(LOCK, heldBy('2030-01-08T09:55:00.000Z'));
+    await kit.files.append(CLAIMS, JSON.stringify([{ session: 'bravo', targets: ['cloud-api'], metric: 'p95', why: 'probe', from: '2030-01-08T09:00:00.000Z', until: '2030-01-08T09:30:00.000Z' }]));
+    assert.deepEqual(await kit.run(['deploys'], { integrateGit: new FakeIntegrateGit(), sessionProcesses: otherRuns() }), {
+      code: 0,
+      stdout: [
+        'host lock: free: the lock of po (heavy: build) since 2030-01-08 09:50 is stale, and the next heavy step removes it',
+        'heavy cutoff: none (coordinator.schedule.heavyCutoffUtc is not set)',
+        'deploy blackout: none (coordinator.schedule.resetBlackoutHours is not set)',
+        'claims: none',
+        'loads: none',
+        'app: nothing to roll: the main checkout is at origin (base)',
+      ],
+      stderr: [],
+    });
+  });
+
+  it('says what it cannot tell: a lock being written, an unknown reset, unreadable claims, a refused or failed read and no roll block', async () => {
+    const kit = new CliHarness({ ...PLAIN, coordinator: { ...PLAIN.coordinator, schedule: { resetBlackoutHours: 4, heavyCutoffUtc: '09:30' } } });
+    await kit.files.append(LOCK, '{"tok');
+    await kit.files.append(CLAIMS, 'not json');
+    const offBranch = new FakeIntegrateGit();
+    offBranch.checkouts.set(MAIN_CHECKOUT, { top: MAIN_CHECKOUT, branch: 'fix', mainCheckout: MAIN_CHECKOUT, linked: false });
+    const { stdout } = await kit.run(['deploys'], { integrateGit: offBranch });
+    assert.deepEqual(stdout.slice(0, 3), [
+      'host lock: a writer that has not finished writing',
+      'heavy cutoff: IN FORCE from 09:30 UTC until midnight (no heavy step starts)',
+      'deploy blackout: unknown: neither the status line nor budget.reset names the weekly token reset',
+    ]);
+    assert.match(stdout[3] ?? '', /^claims: unreadable \(.+\)$/);
+    assert.equal(stdout.at(-1), `app: a roll would refuse: the app main checkout ${MAIN_CHECKOUT} is on fix, not main`);
+    const offline = new FakeIntegrateGit();
+    offline.fetchFails = 'no network';
+    assert.equal((await kit.run(['deploys'], { integrateGit: offline })).stdout.at(-1), `app: cannot read what is pending: git fetch failed in ${MAIN_CHECKOUT}: no network`);
+    const pushOnly = new CliHarness({ ...TEAM, coordinator: { repos: { web: { mainCheckout: '/repo/web', deploysOnPush: ['cloud-web'] } } } });
+    assert.equal((await pushOnly.run(['deploys'])).stdout.at(-1), 'rolls: no repository in coordinator.repos has a roll block');
+  });
+});

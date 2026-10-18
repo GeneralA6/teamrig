@@ -181,6 +181,9 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       no repository deploys or a secret in what it is
   load end --id <id> [--at <time>] [--session <id|name>]   ends this session's load at --at (default
       now); REFUSED for no such open load, another session's, or an end in the future or before its start
+  deploys                      the deploy state now: the host lock's holder, the heavy cutoff and the
+      reset blackout, the quiet claims and loads still open, and what each repository with a roll block
+      has pushed but not rolled (it fetches each main checkout)
   test [--session <id|name>] -- <command ...>   runs a test command in the shell, writes all it printed
       to a log (each session keeps its newest 20) and prints one PASS or FAIL line, then each failing
       test within tests.maxFailureChars; exit 0 when the command passed, 1 otherwise
