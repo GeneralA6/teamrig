@@ -7,6 +7,7 @@ import type { Clock, Sleep } from '../core/lock.ts';
 import type { PathProbe } from '../core/path-probe.ts';
 import type { CredentialStore } from '../github/credentials.ts';
 import type { GhRunner } from '../github/gh.ts';
+import type { IntegrateGit } from '../integrate/git.ts';
 import type { RequirementsCheck } from '../requirements/requirements.ts';
 import type { WorktreePorts } from '../worktree/remove.ts';
 import type { Processes } from '../open/processes.ts';
@@ -63,6 +64,8 @@ export interface CliRuntime {
   readonly requirements: RequirementsCheck;
   /** The git and file steps `teamrig worktree remove` takes. */
   readonly worktrees: WorktreePorts;
+  /** The git steps `teamrig integrate` takes. */
+  readonly integrateGit: IntegrateGit;
   /** The config format the run reads and migrates to; default the shipped one (tests give a newer release's). */
   readonly configFormat?: ConfigFormat;
   /** All of stdin, for hooks, which Claude Code feeds one JSON object. */
