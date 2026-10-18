@@ -1,5 +1,6 @@
 import type { KitConfig } from '../config/types.ts';
 import { parseUtcDay } from '../core/time.ts';
+import { signatureOf } from './signature.ts';
 
 /** One `<skills>/<name>/SKILL.md`. */
 export interface SkillFile {
@@ -7,7 +8,7 @@ export interface SkillFile {
   readonly text: string;
 }
 
-export const SKILL_FLAG_KINDS = ['OWNER', 'UNVERIFIED', 'VERIFIED-NOTE', 'FORBIDDEN-KEY', 'DESCRIPTION', 'AREA-OVER-LIMIT'] as const;
+export const SKILL_FLAG_KINDS = ['OWNER', 'UNVERIFIED', 'VERIFIED-NOTE', 'FORBIDDEN-KEY', 'DESCRIPTION', 'SIGNATURE', 'AREA-OVER-LIMIT'] as const;
 export type SkillFlagKind = (typeof SKILL_FLAG_KINDS)[number];
 
 export interface SkillFlag {
@@ -25,7 +26,7 @@ const DAY_MS = 86_400_000;
 const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)([\s\S]*)$/;
 const TOP_LEVEL_KEY = /^([A-Za-z0-9_-]+)\s*:/gm;
 /** The `Last verified:` date and the rest of its line. */
-const LAST_VERIFIED = /Last verified:\s*(\d{4}-\d{2}-\d{2})([^\n]*)/;
+export const LAST_VERIFIED =/Last verified:\s*(\d{4}-\d{2}-\d{2})([^\n]*)/;
 /** What may follow that date: the sentence's end and markdown emphasis, nothing a run would add. */
 const DATE_END = /^[\s.*_]*$/;
 
@@ -117,6 +118,10 @@ export function lintSkills(skills: readonly SkillFile[], now: Date, team: SkillT
       flag('DESCRIPTION', 'no description');
     } else if (words > rules.maxDescriptionWords) {
       flag('DESCRIPTION', `${words} words > ${rules.maxDescriptionWords}`);
+    }
+
+    for (const source of signatureOf(skill).invalid) {
+      flag('SIGNATURE', `"Signature: \`${source}\`" is not a valid regex, so the scorecard misses its uses`);
     }
 
     const area = areaOf(skill.name, areas);
