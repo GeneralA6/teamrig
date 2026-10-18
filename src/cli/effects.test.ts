@@ -34,6 +34,7 @@ const EXPECTED = {
   restart: 'internal',
   who: 'read',
   rename: 'write',
+  heavy: 'write',
   hire: 'write',
   retire: 'write',
   refresh: 'write',

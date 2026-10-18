@@ -1,5 +1,6 @@
 import type { TranscriptSource } from '../budget/discover.ts';
 import type { ConfigFormat } from '../config/migrate.ts';
+import type { StepRunner } from '../coordinator/steps.ts';
 import type { Files } from '../core/files.ts';
 import type { Env } from '../core/home.ts';
 import type { Clock, Sleep } from '../core/lock.ts';
@@ -47,6 +48,8 @@ export interface CliRuntime {
   readonly sessionProcesses: SessionProcesses;
   /** The shell `teamrig test` runs its command line in. */
   readonly shell: ShellRunner;
+  /** The shell `teamrig heavy` runs its step in, with this process's stdio and a time limit. */
+  readonly steps: StepRunner;
   /** The GitHub CLI, for `teamrig gh sync`; it runs reads only (github/gh.ts). */
   readonly gh: GhRunner;
   /** The system's saved secrets, where `teamrig gh sync` finds each owner's read-only GitHub token; only ever read. */
@@ -64,6 +67,8 @@ export interface CliRuntime {
   readonly configFormat?: ConfigFormat;
   /** All of stdin, for hooks, which Claude Code feeds one JSON object. */
   readStdin(): Promise<string>;
+  /** A new unique id, such as a host lock's token. */
+  newId(): string;
 }
 
 /**

@@ -3,19 +3,21 @@ import { FakeCredentials } from './fake-credentials.ts';
 import { FakeGh } from './fake-gh.ts';
 import { FakeSessionProcesses } from './fake-session-processes.ts';
 import { FakeShell } from './fake-shell.ts';
+import { FakeSteps } from './fake-steps.ts';
 import { MemoryTranscripts } from './memory-transcripts.ts';
 import { noWorktrees } from './fake-worktrees.ts';
 
 /** The parts of a CLI run that reach outside the kit: git, the commit log, stdin and the operating system. */
-export type OutsideWorld = Pick<CliRuntime, 'git' | 'commitLog' | 'readStdin' | 'platform' | 'processes' | 'sessionProcesses' | 'shell' | 'gh' | 'credentials' | 'probe' | 'self' | 'requirements' | 'transcripts' | 'worktrees'>;
+export type OutsideWorld = Pick<CliRuntime, 'git' | 'commitLog' | 'readStdin' | 'platform' | 'processes' | 'sessionProcesses' | 'shell' | 'gh' | 'credentials' | 'probe' | 'self' | 'requirements' | 'transcripts' | 'worktrees' | 'steps' | 'newId'>;
 
 /**
  * The outside world when a run does not care about it: the repo on `branch` with no push target or config, no commits in
  * any range, `stdin` (default empty) on stdin, and a Linux host with no programs or folders,
  * so nothing starts and no session process runs, a shell command prints nothing and exits 0, gh sees no repository and no token is saved; its requirements check finds
- * nothing missing, and there are no transcripts and no worktrees.
+ * nothing missing, and there are no transcripts and no worktrees; a heavy step exits 0 at once, and new ids count up: `id-1`, `id-2`.
  */
 export function quietWorld(branch: string = 'dev', stdin: string = ''): OutsideWorld {
+  let ids = 0;
   return {
     git: { branch: () => branch, head: () => undefined, pushTarget: () => undefined, config: () => ({ kind: 'unset' }) },
     commitLog: { between: () => [] },
@@ -31,5 +33,10 @@ export function quietWorld(branch: string = 'dev', stdin: string = ''): OutsideW
     requirements: { problems: async () => [] },
     transcripts: new MemoryTranscripts(),
     worktrees: noWorktrees(),
+    steps: new FakeSteps(),
+    newId: () => {
+      ids += 1;
+      return `id-${ids}`;
+    },
   };
 }

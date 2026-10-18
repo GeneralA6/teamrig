@@ -139,6 +139,12 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       one and empty its target, then runs git worktree remove; REFUSED before any change for the main
       checkout, a dirty tree or a real node_modules folder. --delete-branch: deletes its branch too, once
       every commit of it is on --base (default the branch origin/HEAD names); --dry-run: prints the steps
+  heavy --what <label> [--session <id|name>] [--max-minutes <n>] -- <command ...>   runs one heavy step
+      (a build, a test run, a database script) under the host lock, so the host runs one at a time:
+      waits up to coordinator.heavy.waitMinutes for the lock, kills the step and every process it
+      started after coordinator.heavy.maxRunMinutes (--max-minutes) and records its start and end in
+      the coordinator's ledger; REFUSED from coordinator.schedule.heavyCutoffUtc to midnight UTC and
+      when the lock is still held; exit 0 when the command passed, 1 when it failed or was killed
   test [--session <id|name>] -- <command ...>   runs a test command in the shell, writes all it printed
       to a log (each session keeps its newest 20) and prints one PASS or FAIL line, then each failing
       test within tests.maxFailureChars; exit 0 when the command passed, 1 otherwise

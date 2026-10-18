@@ -47,6 +47,7 @@ const budgetSetupCommands = () => import('./commands/budget-setup.ts');
 const burstCommands = () => import('./commands/burst.ts');
 const statuslineCommands = () => import('./commands/statusline.ts');
 const testCommand = () => import('./commands/test.ts');
+const heavyCommand = () => import('./commands/heavy.ts');
 const ghCommands = () => import('./commands/gh.ts');
 const startCommands = () => import('./commands/start.ts');
 const meetingCommands = () => import('./commands/meeting.ts');
@@ -129,6 +130,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'commits check': { effect: 'read', flags: ['base', 'tip'], load: async () => (await commitsCommands()).check },
   'worktree remove': { effect: 'write', flags: ['base'], switches: ['delete-branch', 'dry-run'], load: async () => (await worktreeCommands()).remove },
   test: { effect: 'write', flags: ['session'], rest: true, load: async () => (await testCommand()).test },
+  heavy: { effect: 'write', flags: ['session', 'what', 'max-minutes'], rest: true, load: async () => (await heavyCommand()).heavy },
   'hook push-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).pushGuard },
   'hook package-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).packageGuard },
   'hook cold-send': { effect: 'internal', flags: [], load: async () => (await hookCommands()).coldSend },
@@ -294,6 +296,12 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       one and empty its target, then runs git worktree remove; REFUSED before any change for the main
       checkout, a dirty tree or a real node_modules folder. --delete-branch: deletes its branch too, once
       every commit of it is on --base (default the branch origin/HEAD names); --dry-run: prints the steps
+  heavy --what <label> [--session <id|name>] [--max-minutes <n>] -- <command ...>   runs one heavy step
+      (a build, a test run, a database script) under the host lock, so the host runs one at a time:
+      waits up to coordinator.heavy.waitMinutes for the lock, kills the step and every process it
+      started after coordinator.heavy.maxRunMinutes (--max-minutes) and records its start and end in
+      the coordinator's ledger; REFUSED from coordinator.schedule.heavyCutoffUtc to midnight UTC and
+      when the lock is still held; exit 0 when the command passed, 1 when it failed or was killed
   test [--session <id|name>] -- <command ...>   runs a test command in the shell, writes all it printed
       to a log (each session keeps its newest 20) and prints one PASS or FAIL line, then each failing
       test within tests.maxFailureChars; exit 0 when the command passed, 1 otherwise
