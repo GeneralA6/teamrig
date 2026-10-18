@@ -11,7 +11,7 @@ import type { BackgroundKind } from '../refresh/running.ts';
  */
 
 /** What a session is doing, as its tab shows it. */
-export type TabState = 'ready' | 'working' | 'waiting' | 'error' | 'compacting';
+export type TabState = 'ready' | 'working' | 'waiting' | 'decision' | 'error' | 'compacting';
 
 /**
  * What a hook event does to the tab: shows a state, gives the title back to the terminal (`reset`, as
@@ -19,11 +19,15 @@ export type TabState = 'ready' | 'working' | 'waiting' | 'error' | 'compacting';
  */
 export type TabChange = TabState | 'reset' | undefined;
 
-/** Each state's circle: green waits for a prompt, yellow works, orange waits on the user, red hit an API error, purple compacts. */
+/**
+ * Each state's circle: green waits for a prompt, yellow works, orange waits on the user's answer to a prompt, blue
+ * waits on the user's decision asked in plain text, red hit an API error, purple compacts.
+ */
 export const TAB_CIRCLES: Readonly<Record<TabState, string>> = {
   ready: '🟢',
   working: '🟡',
   waiting: '🟠',
+  decision: '🔵',
   error: '🔴',
   compacting: '🟣',
 };
@@ -46,6 +50,18 @@ const OPENING_SOURCES: ReadonlySet<string> = new Set(['startup', 'resume', 'clea
 /** A prompt that is a slash command: most run in the tab without a turn, so no Stop would end a working state. */
 const SLASH_COMMAND = /^\/[A-Za-z][\w:.-]*(\s|$)/;
 
+/**
+ * What starts the line of a turn's last message that puts a decision to the user (T513): the turn then ends on
+ * `decision` instead of `ready`, until the next prompt. A fixed marker, so no model guesses whether a message asks.
+ */
+export const DECISION_MARKER = 'Decision needed:';
+
+/** A line that opens with the marker, after optional bold or heading markup; never indented, quoted or listed. */
+const DECISION_LINE = new RegExp(String.raw`^(?:\*\*|#{1,6} +)?${DECISION_MARKER}`);
+
+/** A line that opens or closes a fenced code block: a marker inside one is shown, not asked. */
+const FENCE = /^ {0,3}(```|~~~)/;
+
 /** C0 and C1 controls and DEL: inside the title, one would end the sequence early or make Claude Code refuse it. */
 const CONTROLS = /[\u0000-\u001f\u007f-\u009f]/g;
 
@@ -67,7 +83,7 @@ export function tabChangeOf(payload: JsonRecord): TabChange {
     case 'SubagentStart':
       return 'working';
     case 'Stop':
-      return 'ready';
+      return asksDecision(stringField(payload, 'last_assistant_message')) ? 'decision' : 'ready';
     case 'StopFailure':
       return 'error';
     case 'PreCompact':
@@ -80,6 +96,22 @@ export function tabChangeOf(payload: JsonRecord): TabChange {
     default:
       return undefined;
   }
+}
+
+/**
+ * Whether a turn's last message puts a decision to the user: one of its lines outside a fenced code block opens
+ * with `DECISION_MARKER`. Claude Code gives the message to Stop as `last_assistant_message`, so no transcript is read.
+ */
+export function asksDecision(message: string | undefined): boolean {
+  let fenced = false;
+  for (const line of (message ?? '').split(/\r?\n/)) {
+    if (FENCE.test(line)) {
+      fenced = !fenced;
+    } else if (!fenced && DECISION_LINE.test(line)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**

@@ -2,6 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { JsonRecord } from '../core/guards.ts';
 import {
+  asksDecision,
+  DECISION_MARKER,
   FALLBACK_TOPIC,
   firstPromptOf,
   helpersRun,
@@ -27,6 +29,47 @@ function typed(content: unknown, extra: JsonRecord = {}): JsonRecord {
   return { type: 'user', message: { role: 'user', content }, ...extra };
 }
 
+describe('asksDecision', () => {
+  it('finds the marker at the start of any line, bare, bold or as a heading', () => {
+    for (const message of [
+      `${DECISION_MARKER} keep logs 30 days or 90?`,
+      `Two options, a and b.\n${DECISION_MARKER} a or b?\n\nThe rest of the summary.`,
+      `Two options.\r\n**${DECISION_MARKER}** a or b?`,
+      `## ${DECISION_MARKER} a or b?`,
+    ]) {
+      assert.equal(asksDecision(message), true, message);
+    }
+  });
+
+  it('ignores ordinary turn ends, the marker inside a line, quoted, listed, indented or in a code block, and other casing', () => {
+    for (const message of [
+      undefined,
+      '',
+      'Done: T4 shipped, verified on the live tab.',
+      `The lead's card says ${DECISION_MARKER} a or b?`,
+      `> ${DECISION_MARKER} a or b?`,
+      `- ${DECISION_MARKER} a or b?`,
+      `    ${DECISION_MARKER} a or b?`,
+      `\`\`\`\n${DECISION_MARKER} a or b?\n\`\`\``,
+      `~~~md\n${DECISION_MARKER} a or b?\n~~~`,
+      'decision needed: a or b?',
+      'Decision needed a or b?',
+      'Reply needed: a or b?',
+    ]) {
+      assert.equal(asksDecision(message), false, String(message));
+    }
+  });
+
+  it('reads the line after a closed code block again', () => {
+    assert.equal(asksDecision(`\`\`\`\nnpm test\n\`\`\`\n${DECISION_MARKER} merge now?`), true);
+  });
+
+  it('gives the decision circle its own color, apart from every other state', () => {
+    assert.equal(new Set(Object.values(TAB_CIRCLES)).size, Object.keys(TAB_CIRCLES).length);
+    assert.equal(TAB_CIRCLES.decision, '🔵');
+  });
+});
+
 describe('tabChangeOf', () => {
   it('maps each event the plugin wires to the state it shows', () => {
     const cases: readonly [JsonRecord, TabChange][] = [
@@ -43,7 +86,10 @@ describe('tabChangeOf', () => {
       [event('ElicitationResult'), 'working'],
       [event('SubagentStart'), 'working'],
       [event('Stop'), 'ready'],
+      [event('Stop', { last_assistant_message: 'Done: T4 shipped.' }), 'ready'],
+      [event('Stop', { last_assistant_message: 'T4 waits on you.\n\nDecision needed: ship on Friday or Monday?' }), 'decision'],
       [event('StopFailure'), 'error'],
+      [event('StopFailure', { last_assistant_message: 'Decision needed: retry?' }), 'error'],
       [event('PreCompact'), 'compacting'],
       [event('PostCompact', { trigger: 'manual' }), 'ready'],
       [event('PostCompact', { trigger: 'auto' }), 'working'],
