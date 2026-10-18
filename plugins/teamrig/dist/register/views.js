@@ -1,4 +1,5 @@
 import { formatUtcMinute, parseUtcDeadline, shortUtc } from "../core/time.js";
+import { cardLines } from "./card.js";
 import { ACTIVE_STATUSES, GITHUB_SOURCE, priorityText } from "./model.js";
 import { planOrder } from "./tree.js";
 import { waitsText, weekdayUtc } from "./waits.js";
@@ -220,6 +221,9 @@ export function formatTaskDetail(task, events, tree) {
     if (task.note !== null) {
         lines.push(`note: ${task.note}`);
     }
+    if (task.card !== null) {
+        lines.push('card:', ...cardLines(task.card, '  '));
+    }
     if (task.proof !== null) {
         lines.push(`proof: ${task.proof}`);
     }
@@ -317,5 +321,5 @@ export function personWaitNotice(task, waits, lead) {
     const yours = kindsOf(true);
     const owners = kindsOf(false);
     const whose = [yours.length === 0 ? '' : `your ${yours.join(' and ')}`, owners.length === 0 ? '' : `the owner's ${owners.join(' and ')}`];
-    return `${task.id} waits on ${whose.filter((part) => part !== '').join(' and ')}: ${(task.note ?? task.title).replace(/\s+/g, ' ')}`;
+    return `${task.id} waits on ${whose.filter((part) => part !== '').join(' and ')}: ${(task.card?.question ?? task.note ?? task.title).replace(/\s+/g, ' ')}`;
 }

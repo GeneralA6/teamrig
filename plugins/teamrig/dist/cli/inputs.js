@@ -1,6 +1,7 @@
 import { ENV } from "../core/home.js";
 import { NAME_PATTERN, NAME_RULE } from "../core/ids.js";
 import { parseUtcDeadline, parseUtcDay, parseUtcInstant } from "../core/time.js";
+import { OPTION_SEPARATOR } from "../register/card.js";
 import { MAX_SIZE_PCT, sizeProblem } from "../register/events.js";
 import { isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, priorityText, TASK_ID, TASK_STATUSES } from "../register/model.js";
 import { WAITS_USAGE } from "../register/policy.js";
@@ -234,6 +235,10 @@ export function statusInputOf(flags) {
     if (waits !== undefined) {
         input.waits = waitsOf(waits);
     }
+    const card = cardInputOf(flags);
+    if (card !== undefined) {
+        input.card = card;
+    }
     const proof = flags.get('proof');
     if (proof !== undefined) {
         input.proof = proof;
@@ -247,6 +252,43 @@ export function statusInputOf(flags) {
         input.followups = followups === NONE ? [] : listOf('--followups', followups).map(taskIdOf);
     }
     return input;
+}
+/** The card parts a `set` names (`--question`, `--options`, `--recommend`, `--default`); undefined when it names none. */
+function cardInputOf(flags) {
+    const card = {};
+    const question = cardPart(flags, 'question');
+    if (question !== undefined) {
+        card.question = question;
+    }
+    const options = flags.get('options');
+    if (options !== undefined) {
+        card.options = optionsOf(options);
+    }
+    const recommend = cardPart(flags, 'recommend');
+    if (recommend !== undefined) {
+        card.recommend = recommend;
+    }
+    const byDefault = cardPart(flags, 'default');
+    if (byDefault !== undefined) {
+        card.byDefault = byDefault;
+    }
+    return Object.keys(card).length === 0 ? undefined : card;
+}
+/** A card part as typed, trimmed; a blank one is a usage error. */
+function cardPart(flags, name) {
+    const text = flags.get(name)?.trim();
+    if (text === '') {
+        throw new UsageError(`--${name} needs text`);
+    }
+    return text;
+}
+/** `--options "<a> | <b>"`: the choices, each trimmed; an empty one is a usage error. */
+function optionsOf(text) {
+    const options = text.split(OPTION_SEPARATOR).map((option) => option.trim());
+    if (options.some((option) => option === '')) {
+        throw new UsageError(`--options has an empty choice: separate the choices with ${OPTION_SEPARATOR}`);
+    }
+    return options;
 }
 /**
  * `set <id> --status ... [--ask <session> --text "<the work>"]`: with `--ask`, `--due` is the asked task's due date

@@ -1,6 +1,7 @@
 import { isRecord } from "../core/guards.js";
 import { parseUtcDeadline } from "../core/time.js";
 import { isTaskStatus, LEGACY_WAITING_STATUS, TASK_ID } from "./model.js";
+import { parseCard } from "./card.js";
 import { parseWaits } from "./waits.js";
 /**
  * The register's event format. Version 0 lines have no `v`; version 1 adds `"v": 1` and nothing
@@ -9,9 +10,9 @@ import { parseWaits } from "./waits.js";
  * Version 2 later gained, without a new number, a task's `after` list and the `waiting` status with its
  * `waits`, which replaced `blocked`: an older reader ignores the new fields and skips a `waiting` line as
  * a newer teamrig's, and a `blocked` line reads here as `waiting` with no reasons. It also gained a
- * `verifying` status's `proof`, a task's `description` (0.44.0) and its `size` (0.47.0), which an older reader
- * ignores: each reads there as none, and an older teamrig's `compact` drops it from the snapshot it rewrites (the archive keeps
- * the lines as written).
+ * `verifying` status's `proof`, a task's `description` (0.44.0) and its `size` (0.47.0), and a `waiting` status's
+ * decision `card` (0.79.0), which an older reader ignores: each reads there as none, and an older teamrig's
+ * `compact` drops it from the snapshot it rewrites (the archive keeps the lines as written).
  * Parsing checks the FORMAT only (any positive priority, any goal string): team policy is applied
  * on write, so changing the config never erases history.
  */
@@ -68,6 +69,10 @@ export function parseEvent(line) {
             if (typeof waits === 'string') {
                 return unreadable(waits);
             }
+            const card = status === 'waiting' ? parseCard(record['card']) : undefined;
+            if (typeof card === 'string') {
+                return unreadable(card);
+            }
             const proof = status === 'verifying' ? textOrNull(record, 'proof') : null;
             const followups = parseFollowups(record['followups']);
             if (typeof followups === 'string') {
@@ -81,6 +86,7 @@ export function parseEvent(line) {
                 evidence: textOrNull(record, 'evidence'),
                 skill: textOrNull(record, 'skill'),
                 ...(waits === undefined ? {} : { waits }),
+                ...(card === undefined ? {} : { card }),
                 ...(proof === null ? {} : { proof }),
                 ...(followups === undefined ? {} : { followups }),
             };

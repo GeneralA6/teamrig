@@ -559,6 +559,7 @@ function parseRegister(read, raw) {
         requireFollowupsOn: read.list(raw, 'requireFollowupsOn', path, defaults.requireFollowupsOn, (value, itemPath) => parseFollowupStatus(read, value, itemPath), CONFIG_LIMITS.requireFollowupsOn.maxItems),
         autoArchive: read.boolean(raw, 'autoArchive', path, defaults.autoArchive),
         requireProofOnVerifying: read.boolean(raw, 'requireProofOnVerifying', path, defaults.requireProofOnVerifying),
+        requireDecisionCard: read.boolean(raw, 'requireDecisionCard', path, defaults.requireDecisionCard),
         verifyGate: isVerifyGate(verifyGate) ? verifyGate : defaults.verifyGate,
         maxVerifying: read.integer(raw, 'maxVerifying', path, defaults.maxVerifying, CONFIG_LIMITS.maxVerifying),
         check: {

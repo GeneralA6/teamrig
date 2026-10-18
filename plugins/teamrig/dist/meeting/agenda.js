@@ -1,5 +1,6 @@
 import { formatWeekdayMinute } from "../budget/format.js";
 import { formatUtcMinute, MS_PER_DAY, shortUtc } from "../core/time.js";
+import { cardLines, cardTexts, namedTaskIds } from "../register/card.js";
 import { ACTIVE_STATUSES } from "../register/model.js";
 import { cut, formatShortTask } from "../register/views.js";
 /**
@@ -39,14 +40,32 @@ function listed(head, rows, all) {
     const more = rows.length > AGENDA_ROWS ? [`  +${rows.length - AGENDA_ROWS} more: ${all}`] : [];
     return [head, ...rows.slice(0, AGENDA_ROWS), ...more];
 }
-/** A decision's card facts: its row, then what and why, then since when it waits with its newest note, then where it was asked. */
-function cardFacts(task, tree) {
+/**
+ * Each other task a decision's texts name, by its title, so no number stands alone: `T5: <title>`, or
+ * `T5: not in the working set` for one a compaction retired (`show T5` still finds it in the archive).
+ */
+function namedLines(task, texts, byId) {
+    return namedTaskIds(texts)
+        .filter((id) => id !== task.id)
+        .map((id) => {
+        const named = byId.get(id);
+        return `    ${id}: ${named === undefined ? 'not in the working set' : cut(oneLine(named.title), TITLE_CHARS)}`;
+    });
+}
+/**
+ * A decision's card facts: its row, then what and why, then its card (card.ts) or that it has none, then since when
+ * it waits with its newest note, where it was asked, and the title of each other task these name.
+ */
+export function cardFacts(task, tree, byId) {
     const note = task.note === null ? '' : `: ${cut(oneLine(task.note), NOTE_CHARS)}`;
+    const texts = [task.title, task.description ?? '', task.note ?? '', ...(task.card === null ? [] : cardTexts(task.card))];
     return [
         rowOf(task, tree),
         ...(task.description === null ? [] : [`    what and why: ${cut(oneLine(task.description), DESCRIPTION_CHARS)}`]),
+        ...(task.card === null ? [`    no card yet: ask ${task.owner} for one (check flags it NO-CARD)`] : cardLines(task.card, '    ')),
         `    waiting since ${shortUtc(formatUtcMinute(new Date(task.statusAt)))}${note}`,
         ...(task.ref === null ? [] : [`    asked at: ${task.ref}`]),
+        ...namedLines(task, texts, byId),
     ];
 }
 /**
@@ -61,8 +80,8 @@ function decisionLines(input) {
     }
     return [
         head,
-        ...waiting.flatMap((task) => cardFacts(task, input.tree)),
-        `  Card each so ${input.ownerMarker} decides from it alone: what it is and why it matters (1-2 plain lines); the options with their numbers, each figure explained; your recommendation and why; the exact action and what each result leads to. Never point to a doc; \`${input.command} show <id>\` prints a task whole.`,
+        ...waiting.flatMap((task) => cardFacts(task, input.tree, new Map(input.tasks.map((other) => [other.id, other])))),
+        `  Read each card to ${input.ownerMarker} as it stands, each figure explained; where one says no card yet, ask its owner for it (check flags it NO-CARD). Never point to a doc; \`${input.command} show <id>\` prints a task whole.`,
         `  Record each answer in the same turn: ${input.command} update <id> --note "${input.ownerMarker} decided: <decision>" --session ${input.lead}; meeting end tells each task's owner.`,
     ];
 }
