@@ -2275,6 +2275,23 @@ teamrig hook subagent-stop < subagent-stop.json
 
 Output: nothing for most helpers; otherwise a JSON `block` decision whose reason names each dropped edit.
 
+### teamrig hook restore-track
+
+Run by Claude Code at each session start, prompt, turn end, API error and session end, in a team or not:
+records the session in `<home>/restore/sessions/<session id>.json` for the restore after a reboot (the folder
+it started in, its transcript, its Claude Code's process id, its team and session, and whether a turn was
+running), and removes the file at an end the person or Claude Code chose. A compaction's start changes nothing.
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig hook restore-track < stop.json
+```
+
+Output: nothing, and exit 0 even when it could not record.
+
 ### teamrig hook refresh-wake
 
 Runs in the background after a `/clear` (`asyncRewake`) and wakes the session that `/clear` started from its

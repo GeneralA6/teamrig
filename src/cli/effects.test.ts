@@ -74,6 +74,7 @@ const EXPECTED = {
   'hook stop': 'internal',
   'hook subagent-start': 'internal',
   'hook subagent-stop': 'internal',
+  'hook restore-track': 'internal',
   'hook refresh-wake': 'internal',
   'hook clear-dir': 'internal',
   'hook clear-claim': 'internal',

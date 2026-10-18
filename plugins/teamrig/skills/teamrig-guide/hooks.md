@@ -1,8 +1,8 @@
 # Hooks and permissions
 
-The plugin's `hooks/hooks.json` registers eleven Claude Code hooks and one mod ([the /teamrig command](#the-mod-the-teamrig-command), [the refresh's /clear](#the-mod-the-refreshs-clear), [the reload after an install](#the-mod-the-reload-after-an-install), [the wake on urgent work](#the-mod-the-wake-on-urgent-work)). Each runs
+The plugin's `hooks/hooks.json` registers thirteen Claude Code hooks and one mod ([the /teamrig command](#the-mod-the-teamrig-command), [the refresh's /clear](#the-mod-the-refreshs-clear), [the reload after an install](#the-mod-the-reload-after-an-install), [the wake on urgent work](#the-mod-the-wake-on-urgent-work)). Each runs
 `node <plugin>/dist/cli/main.js hook <name>` with a 15 second timeout. Outside a project tied to a team (no `$TEAMRIG_TEAM` and no `.teamrig.json`)
-they all stay silent.
+they all stay silent, and only `hook restore-track` still records the session ([the restore tracker](#every-session-the-restore-tracker)).
 
 | Claude Code event | teamrig hook | What it does |
 | --- | --- | --- |
@@ -18,6 +18,7 @@ they all stay silent.
 | `PreToolUse` on `Agent` and `Task` | `hook helper-gate` | Restates rule 8's helper default at each helper launch; asks before or refuses one past the daily budget or in quiet hours, [as the team set](#the-daily-budget-warnings-and-the-helper-gate) |
 | The mod, while a tab is idle | `hook wake-check`, `hook wake-dropped` | Wakes the tab's session when unblocked urgent work is handed to it, [batched, with its cost shown](#the-mod-the-wake-on-urgent-work) |
 | `Stop` (end of each turn) | `hook stop` | Sends the session back once to [a skill edit it dropped](#end-of-a-turn-or-a-helper-a-dropped-skill-edit); asks for a handover when a context refresh is due, then starts the automatic restart; tells the user of another effort than `launch` asks, or of a model Claude Code switched to; shows the budget lines; names a verifying task whose verify-by day has come; once per `github.everyMinutes` for the whole team, starts `gh sync --auto` hidden in the background |
+| `SessionStart`, `UserPromptSubmit`, `Stop`, `StopFailure` and `SessionEnd`, in a team or not | `hook restore-track` | Records each Claude Code session on the machine, where it started and what it was doing, for the restore after a reboot ([the restore tracker](#every-session-the-restore-tracker)) |
 
 ## Session start
 
@@ -444,6 +445,20 @@ lift wins over it. With no burst in force, the lead's model is told once a week 
 and enough of the week is projected unused: `teamrig burst: about 10.3% of the week is projected unused at the
 pace end ...; preview one: teamrig burst start surplus --reason "<why>"`. The hooks only suggest a burst; a
 person starts it.
+
+## Every session: the restore tracker
+
+`hook restore-track` runs at each session start, prompt, turn end, API error (`StopFailure`) and session end,
+in a team or not, and keeps one file per Claude Code session on the machine: `<home>/restore/sessions/<session
+id>.json`. It holds the folder the session started in (`$CLAUDE_PROJECT_DIR`, which a `cd` or a worktree does
+not move), its transcript, its Claude Code's process id, how it was started (`$CLAUDE_CODE_ENTRYPOINT`,
+`$CLAUDE_CODE_SESSION_KIND`), its team and session when `teamrig launch` started it, and what it was doing at
+its last event: `working` from a prompt to the end of that turn, `ready` after it, `error` after an API error.
+A compaction's start changes nothing, since it comes mid-turn. An end the person or Claude Code chose
+(`/clear`, a resume, a logout, an exit at the prompt) removes the file; any other end stamps `endedAt`, since
+the shutdown may be what closed the terminal, and a Claude Code the shutdown killed leaves its last event
+as it was. The restore after a reboot reads these files. The hook prints nothing, and on any error writes
+nothing and lets the turn go on.
 
 ## Permissions
 
