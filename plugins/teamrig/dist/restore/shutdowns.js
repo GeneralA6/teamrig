@@ -1,0 +1,72 @@
+/** The Windows System log events that tell how the machine last went down. */
+export const SHUTDOWN_EVENTS = {
+    /** A program or person started a shutdown or restart (Windows Update, the Start menu). */
+    initiated: 1074,
+    /** The event log service stopped: the last step of a clean shutdown. */
+    eventLogStopped: 6006,
+    /** The previous shutdown was unexpected. */
+    unexpected: 6008,
+    /** The machine rebooted without shutting down cleanly (Kernel-Power). */
+    powerLost: 41,
+};
+/** How long before the event log stopped the shutdown that stopped it may have started. */
+export const CLEAN_SHUTDOWN_LOOKBACK_MS = 2 * 60 * 60_000;
+export const SHUTDOWN_QUERY_TIMEOUT_MS = 30_000;
+/**
+ * The start of the last shutdown, from the newest events: an unexpected end or a power loss has none; a
+ * started shutdown is its own start; a stopped event log takes the started shutdown before it, within
+ * CLEAN_SHUTDOWN_LOOKBACK_MS, else its own time.
+ */
+export function pickShutdownStart(events) {
+    const sorted = [...events].sort((a, b) => b.at - a.at);
+    const newest = sorted[0];
+    switch (newest?.id) {
+        case SHUTDOWN_EVENTS.initiated:
+            return newest.at;
+        case SHUTDOWN_EVENTS.eventLogStopped: {
+            const started = sorted.find((event) => event.id === SHUTDOWN_EVENTS.initiated && event.at <= newest.at && newest.at - event.at <= CLEAN_SHUTDOWN_LOOKBACK_MS);
+            return started?.at ?? newest.at;
+        }
+        default:
+            return undefined;
+    }
+}
+const IDS = Object.values(SHUTDOWN_EVENTS).join(',');
+/** The PowerShell that prints the newest shutdown events, one `<id> <ISO instant>` line each. */
+export const WINDOWS_SHUTDOWN_SCRIPT = `Get-WinEvent -FilterHashtable @{LogName='System'; Id=${IDS}} -MaxEvents 8 -ErrorAction SilentlyContinue | ` +
+    `ForEach-Object { '{0} {1}' -f $_.Id, $_.TimeCreated.ToUniversalTime().ToString('o') }`;
+const EVENT_LINE = /^(\d+) (\S+)$/;
+/** The events in the script's output; a line of any other shape is skipped. */
+export function parseWindowsEvents(stdout) {
+    const events = [];
+    for (const line of stdout.split(/\r?\n/)) {
+        const match = EVENT_LINE.exec(line.trim());
+        const at = match?.[2] === undefined ? Number.NaN : Date.parse(match[2]);
+        if (match?.[1] !== undefined && !Number.isNaN(at)) {
+            events.push({ id: Number(match[1]), at });
+        }
+    }
+    return events;
+}
+/**
+ * The system's shutdown log. Only Windows records when a shutdown began; elsewhere it is unknown, so the restore
+ * reopens only sessions that never recorded an end. A query that fails or times out also leaves it unknown.
+ */
+export function systemShutdownLog(platform, run) {
+    return {
+        async lastShutdownStart() {
+            if (platform !== 'win32') {
+                return undefined;
+            }
+            try {
+                // -EncodedCommand takes UTF-16LE base64, so the script needs no quoting through the command line.
+                const encoded = Buffer.from(WINDOWS_SHUTDOWN_SCRIPT, 'utf16le').toString('base64');
+                const result = await run({ program: 'powershell.exe', args: ['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded] });
+                return result.end.kind === 'exited' && result.end.code === 0 ? pickShutdownStart(parseWindowsEvents(result.stdout)) : undefined;
+            }
+            catch {
+                return undefined;
+            }
+        },
+    };
+}
