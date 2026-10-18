@@ -1,6 +1,7 @@
 import { isAbsolute, join } from 'node:path';
 import type { TeamPaths } from '../core/home.ts';
 import type { CoordinatorConfig } from '../config/types.ts';
+import { CLAIMS_LOCK_FILE, CLAIMS_MD_FILE } from './claim-store.ts';
 import { CLAIMS_FILE } from './claims.ts';
 import { LEDGER_FILE, LEDGER_MD_FILE } from './ledger.ts';
 
@@ -12,6 +13,8 @@ export interface CoordinatorPlaces {
   readonly ledger: string;
   readonly ledgerMd: string;
   readonly claims: string;
+  readonly claimsMd: string;
+  readonly claimsLock: string;
   readonly hostLock: string;
 }
 
@@ -21,7 +24,7 @@ export function teamPlace(paths: Pick<TeamPaths, 'home'>, path: string): string 
 }
 
 /**
- * Where the coordinator's files are: the ledgers and quiet claims in `coordinator.dir` (default `<state>/deploys`), the host lock at
+ * Where the coordinator's files are: the ledgers, the quiet claims and their lock in `coordinator.dir` (default `<state>/deploys`), the host lock at
  * `coordinator.heavy.lockPath` (default the kit home's, one for the host). A relative path is in the team's folder.
  */
 export function coordinatorPlaces(config: CoordinatorConfig, paths: TeamPaths): CoordinatorPlaces {
@@ -31,6 +34,8 @@ export function coordinatorPlaces(config: CoordinatorConfig, paths: TeamPaths): 
     ledger: join(dir, LEDGER_FILE),
     ledgerMd: join(dir, LEDGER_MD_FILE),
     claims: join(dir, CLAIMS_FILE),
+    claimsMd: join(dir, CLAIMS_MD_FILE),
+    claimsLock: join(dir, CLAIMS_LOCK_FILE),
     hostLock: config.heavy.lockPath === undefined ? join(paths.kitHome, HOST_LOCK_FILE) : inTeam(config.heavy.lockPath),
   };
 }
