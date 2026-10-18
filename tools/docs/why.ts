@@ -23,19 +23,22 @@ export interface Feature extends Card {
 
 /**
  * Each card must stay true to the code: a claim the code does not back is a bug unless the card is tagged coming or the
- * README's Coming line under the picture names it (today: planning the week from the token budget).
+ * README's Coming line under the picture names it (today: moving the work that does not fit the token budget to next
+ * week, and reopening sessions at logon on macOS and Linux).
  */
 export const MOAT: readonly Feature[] = [
   { icon: 'proof', title: 'A built-in project manager', lines: ['One task list for the whole team:', 'owner, priority, due date and proof.'], coming: false },
   { icon: 'plan', title: 'Your week, planned', lines: ['Scheduled from your token budget;', "flags what's late, stuck or off-plan."], coming: false },
   { icon: 'sun', title: 'Your day back', lines: ['One meeting in the morning. Each', 'decision comes with a recommendation.'], coming: false },
   { icon: 'learn', title: 'Improves itself', lines: ['What one session works out becomes', 'a skill, and each lesson a team rule.'], coming: false },
-  { icon: 'fresh', title: 'Survives a crash or reboot', lines: ['Sessions reopen where they left off;', 'tasks and notes are safe on disk.'], coming: true },
+  { icon: 'fresh', title: 'Survives a crash or reboot', lines: ['Sessions reopen where they left off;', 'tasks and notes are safe on disk.'], coming: false },
   { icon: 'terminal', title: 'Just your terminal', lines: ['Claude Code in the terminal you have.', 'No IDE, no desktop app, no server.'], coming: false },
 ];
 
-/** The picture's height: its rows of cards, with a gap between rows. */
-export const WHY_HEIGHT = Math.ceil(MOAT.length / PER_ROW) * (CARD_HEIGHT + GAP) - GAP;
+/** A picture's height: its rows of cards, with a gap between rows. */
+const heightOf = (cards: readonly Feature[]): number => Math.ceil(cards.length / PER_ROW) * (CARD_HEIGHT + GAP) - GAP;
+
+export const WHY_HEIGHT = heightOf(MOAT);
 
 /** One card: its tile, its icon on a purple chip, its "Coming" tag if it has one, its title and its lines. */
 function card(feature: Feature, i: number): string[] {
@@ -61,12 +64,12 @@ function card(feature: Feature, i: number): string[] {
 /** The card as its text alternative says it: the title, "(coming)" when it is, then its lines. */
 const spoken = (feature: Feature): string => `${feature.title}${feature.coming ? ' (coming)' : ''}. ${feature.lines.join(' ')}`;
 
-/** The picture as an SVG file. */
-export function renderWhy(): string {
+/** The picture of `cards` (default: the README's) as an SVG file. */
+export function renderWhy(cards: readonly Feature[] = MOAT): string {
   return renderSvg({
     width: WIDTH,
-    height: WHY_HEIGHT,
-    label: 'Why teamrig is different: ' + MOAT.map(spoken).join(' '),
+    height: heightOf(cards),
+    label: 'Why teamrig is different: ' + cards.map(spoken).join(' '),
     style: [
       ...themeStyle(),
       '.cardtitle{font-size:18px;font-weight:700}.sub{font-size:14.5px;fill:var(--muted)}',
@@ -74,6 +77,6 @@ export function renderWhy(): string {
       '.tag{fill:none;stroke:var(--muted)}.tagtext{font-size:12.5px;font-weight:600;fill:var(--muted)}',
       '.icon{fill:none;stroke:var(--purple);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}',
     ],
-    body: MOAT.flatMap(card),
+    body: cards.flatMap(card),
   });
 }

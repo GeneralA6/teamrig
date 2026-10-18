@@ -44,10 +44,10 @@ No more twelve-hour days steering agents by hand. With teamrig, your part takes 
 
 ## Why it's different
 
-![A built-in project manager: one task list for the whole team, with owner, priority, due date and proof. Your week, planned: scheduled from your token budget, and it flags what's late, stuck or off-plan. Your day back: one meeting in the morning, each decision with a recommendation. Improves itself: what one session works out becomes a skill, and each lesson a team rule. Survives a crash or reboot, coming: sessions reopen where they left off, and tasks and notes are safe on disk. Just your terminal: Claude Code in the terminal you have, with no IDE, no desktop app and no server.](docs/images/why.svg)
+![A built-in project manager: one task list for the whole team, with owner, priority, due date and proof. Your week, planned: scheduled from your token budget, and it flags what's late, stuck or off-plan. Your day back: one meeting in the morning, each decision with a recommendation. Improves itself: what one session works out becomes a skill, and each lesson a team rule. Survives a crash or reboot: sessions reopen where they left off, and tasks and notes are safe on disk. Just your terminal: Claude Code in the terminal you have, with no IDE, no desktop app and no server.](docs/images/why.svg)
 
-*Coming: moving the work that doesn't fit your token budget to next week, and reopening sessions after a crash or
-reboot.*
+*Coming: moving the work that doesn't fit your token budget to next week, and reopening sessions at logon on macOS and
+Linux, as `teamrig restore install` sets up on Windows.*
 
 And the basics, done right: every task says what it is and why in plain words, and has one owner, who gets an inbox line the moment it is given the task, so nothing is done twice. Work that has shipped but is not
 verified yet is marked verifying, with a date to verify it by, so it stays in view until it is, and work built on it waits for the proof. Closing a task names the follow-up tasks it leaves, or none, so a finding is never left in a notes file. A task that
