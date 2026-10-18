@@ -146,10 +146,17 @@ describe('weekUseOf', () => {
 });
 
 describe('statusLineText', () => {
-  it('names the model and the plan windows it knows', () => {
-    const both = snapshot({ rateLimits: { fiveHour: { usedPct: 5.6, resetsAt: NOW }, sevenDay: { usedPct: 57.2, resetsAt: NOW } } });
-    assert.equal(statusLineText(both), 'Opus 5.5, week 57%, 5h 6%');
-    assert.equal(statusLineText(snapshot({ model: null, rateLimits: null })), 'Claude');
+  const both = snapshot({ rateLimits: { fiveHour: { usedPct: 5.6, resetsAt: NOW }, sevenDay: { usedPct: 57.2, resetsAt: NOW } } });
+
+  it('names the model, where the session works, the plan windows it knows and the command that resumes it', () => {
+    assert.equal(statusLineText(both, { folder: 'app', branch: 'main', resume: true }), `Opus 5.5, app on main, week 57%, 5h 6%, claude --resume ${SID}`);
+    assert.equal(statusLineText(snapshot({ model: null, rateLimits: null }), { resume: false }), 'Claude');
+  });
+
+  it('shows a detached HEAD by its commit, a branch over a commit, and each part alone', () => {
+    assert.equal(statusLineText(both, { folder: 'app', commit: '1a2b3c4', resume: false }), 'Opus 5.5, app at 1a2b3c4, week 57%, 5h 6%');
+    assert.equal(statusLineText(both, { branch: 'main', commit: '1a2b3c4', resume: false }), 'Opus 5.5, on main, week 57%, 5h 6%');
+    assert.equal(statusLineText(both, { folder: 'app', resume: false }), 'Opus 5.5, app, week 57%, 5h 6%');
   });
 });
 

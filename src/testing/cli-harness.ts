@@ -15,6 +15,7 @@ import type { WorktreePorts } from '../worktree/remove.ts';
 import type { Processes } from '../open/processes.ts';
 import type { SessionProcesses } from '../open/session-processes.ts';
 import type { CommitLog } from '../push-guard/commit-size.ts';
+import type { RepoState } from '../push-guard/push.ts';
 import type { CredentialStore } from '../github/credentials.ts';
 import type { GhRunner } from '../github/gh.ts';
 import type { ShellRunner } from '../test-run/shell.ts';
@@ -50,6 +51,8 @@ export interface RunOptions {
   readonly env?: Env;
   readonly stdin?: string;
   readonly branch?: string;
+  /** The repository git reads, such as one on a detached HEAD; default one on `branch` with no push target or config. */
+  readonly git?: RepoState;
   readonly cwd?: string;
   /** The files the CLI sees for this run, such as a `FaultyFiles` over `files`; default `files`. */
   readonly files?: Files;
@@ -110,6 +113,7 @@ export class CliHarness {
       clock: this.clock,
       sleep: options.sleep ?? this.clock.sleep,
       ...quietWorld(options.branch, options.stdin),
+      ...(options.git === undefined ? {} : { git: options.git }),
       ...(options.commitLog === undefined ? {} : { commitLog: options.commitLog }),
       ...(options.platform === undefined ? {} : { platform: options.platform }),
       ...(options.processes === undefined ? {} : { processes: options.processes }),
