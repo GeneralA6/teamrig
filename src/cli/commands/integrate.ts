@@ -1,27 +1,11 @@
-import { resolveReset } from '../../budget/pace.ts';
-import { readSnapshots, weekUseOf } from '../../budget/snapshot.ts';
-import type { BudgetConfig } from '../../config/types.ts';
 import { coordinatorPlaces, teamPlace } from '../../coordinator/places.ts';
-import type { ResetTime } from '../../coordinator/schedule.ts';
 import { integrateBranch } from '../../integrate/integrate.ts';
 import type { ParsedArgs } from '../args.ts';
-import { hostLockOf, logLine } from '../coordinator-ports.ts';
+import { hostLockOf, logLine, nextResetFrom } from '../coordinator-ports.ts';
 import { callerOf } from '../inputs.ts';
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { snapshotDirOf } from './budget.ts';
-
-/** The next weekly token reset at each check: the one the status line last reported, else the one `budget.reset` sets; undefined when neither says. */
-function nextResetFrom(runtime: CliRuntime, budget: Pick<BudgetConfig, 'reset'>, snapshotDir: string): (nowMs: number) => Promise<ResetTime | undefined> {
-  return async (nowMs) => {
-    const fromStatus = weekUseOf(await readSnapshots(runtime.files, snapshotDir), nowMs)?.resetsAt;
-    const at = resolveReset(nowMs, fromStatus, budget.reset);
-    if (at === undefined) {
-      return undefined;
-    }
-    return { at, source: at === fromStatus ? 'status line' : 'budget.reset config' };
-  };
-}
 
 /**
  * `teamrig integrate [--keep-remote] [--no-delete-local]`: lands the branch checked out in the current folder on origin's

@@ -49,6 +49,8 @@ const statuslineCommands = () => import('./commands/statusline.ts');
 const testCommand = () => import('./commands/test.ts');
 const heavyCommand = () => import('./commands/heavy.ts');
 const integrateCommand = () => import('./commands/integrate.ts');
+const rollCommand = () => import('./commands/roll.ts');
+const claimCommands = () => import('./commands/claim.ts');
 const ghCommands = () => import('./commands/gh.ts');
 const startCommands = () => import('./commands/start.ts');
 const meetingCommands = () => import('./commands/meeting.ts');
@@ -133,6 +135,9 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   test: { effect: 'write', flags: ['session'], rest: true, load: async () => (await testCommand()).test },
   heavy: { effect: 'write', flags: ['session', 'what', 'max-minutes'], rest: true, load: async () => (await heavyCommand()).heavy },
   integrate: { effect: 'write', flags: ['session'], switches: ['keep-remote', 'no-delete-local'], load: async () => (await integrateCommand()).integrate },
+  roll: { effect: 'write', flags: ['session', 'repo'], load: async () => (await rollCommand()).roll },
+  claim: { effect: 'write', flags: ['session', 'targets', 'metric', 'why', 'for'], load: async () => (await claimCommands()).claim },
+  release: { effect: 'write', flags: ['session'], load: async () => (await claimCommands()).release },
   'hook push-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).pushGuard },
   'hook package-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).packageGuard },
   'hook cold-send': { effect: 'internal', flags: [], load: async () => (await hookCommands()).coldSend },
@@ -313,6 +318,21 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       moved meanwhile), records the push as a deploy of deploysOnPush, deletes the branch on origin
       and here (--keep-remote, --no-delete-local keep them) and, where followMainCheckout, fast-forwards
       the main checkout; exit 0 landed, 1 failed
+  roll [--repo <name>] [--session <id|name>]   brings what was pushed to a repository's default
+      branch to the running system: pulls its main checkout fast-forward to origin, runs its
+      coordinator.repos.<name>.roll afterPull hooks and command (one heavy step in the ledger) and
+      records the deploy; --repo defaults to the repository of this folder, else the only one with a
+      roll block. REFUSED for a main checkout off its default branch, dirty or ahead of origin, a
+      dependency change dependencyGate holds or a gate that refuses, from
+      coordinator.schedule.heavyCutoffUtc to midnight UTC and in the resetBlackoutHours before the
+      weekly token reset; waits up to coordinator.wait.maxMinutes for quiet claims on its targets,
+      its gates and the host lock; nothing pending is DONE with nothing run. A failure after the pull
+      leaves nothing pending, so its roll command is then run by hand; exit 0 rolled, 1 failed
+  claim --targets <a,b> --metric <m> --why "<why>" --for <span> [--session <id|name>]   a quiet
+      claim: integrate and roll wait while it holds a target they deploy, from now for the span (45m,
+      1h30m; at most coordinator.claims.maxMinutes); one per session; REFUSED for a target no
+      repository deploys or a secret in the metric or reason
+  release [--session <id|name>]   ends this session's quiet claim before its time
   test [--session <id|name>] -- <command ...>   runs a test command in the shell, writes all it printed
       to a log (each session keeps its newest 20) and prints one PASS or FAIL line, then each failing
       test within tests.maxFailureChars; exit 0 when the command passed, 1 otherwise
