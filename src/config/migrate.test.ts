@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { JsonRecord } from '../core/guards.ts';
-import { CONFIG_MIGRATIONS, migrateConfig, RENAME_BLOCKED_TO_WAITING, RENAME_TIERS_TO_PRIORITIES, type ConfigMigration } from './migrate.ts';
+import { CONFIG_MIGRATIONS, DROP_FIXED_DAILY_BUDGETS, migrateConfig, RENAME_BLOCKED_TO_WAITING, RENAME_TIERS_TO_PRIORITIES, type ConfigMigration } from './migrate.ts';
 import { CONFIG_VERSION } from './types.ts';
 
 /** v1→v2 renames `messages.maxLines` to `messages.lineLimit`; v2→v3 adds `newKey`. */
@@ -116,6 +116,59 @@ describe('the shipped migrations', () => {
       assert.deepEqual(RENAME_BLOCKED_TO_WAITING.apply(config), { config, changes: [] }, JSON.stringify(config));
     }
     assert.equal(RENAME_BLOCKED_TO_WAITING.from, 2);
+  });
+
+  it('v3 to v4 drops every fixed daily budget and keeps every other key', () => {
+    const budget: JsonRecord = {
+      targetPct: 99.3,
+      dailyPct: 14,
+      maxDailyPct: 20,
+      sessions: { alpha: { dailyPct: 1 }, bravo: { share: 2, dailyPct: 3 }, charlie: { share: 1 } },
+    };
+    const raw: JsonRecord = { configVersion: 3, budget, hiring: { policy: 'lead', maxSessions: 6, dailyPct: 1, maxDailyPct: 15 }, custom: true };
+    const session = "the session's part of the team's daily budget is recomputed from its share and queued work";
+    const hiring = "a hire's daily budget is its part of the team's; hiring.maxSessions bounds hiring";
+    assert.deepEqual(migrateConfig(raw, 4), {
+      kind: 'migrated',
+      fromVersion: 3,
+      version: 4,
+      config: {
+        configVersion: 4,
+        budget: { targetPct: 99.3, sessions: { bravo: { share: 2 }, charlie: { share: 1 } } },
+        hiring: { policy: 'lead', maxSessions: 6 },
+        custom: true,
+      },
+      changes: [
+        'v3→v4: budget.dailyPct removed: the daily budget is recomputed from what is left of the week',
+        'v3→v4: budget.maxDailyPct removed: the daily budget is recomputed from what is left of the week',
+        `v3→v4: budget.sessions.alpha.dailyPct removed: ${session}`,
+        `v3→v4: budget.sessions.bravo.dailyPct removed: ${session}`,
+        `v3→v4: hiring.dailyPct removed: ${hiring}`,
+        `v3→v4: hiring.maxDailyPct removed: ${hiring}`,
+      ],
+    });
+    assert.deepEqual(raw['budget'], budget, 'the input is not mutated');
+    assert.deepEqual(budget['sessions'], { alpha: { dailyPct: 1 }, bravo: { share: 2, dailyPct: 3 }, charlie: { share: 1 } });
+  });
+
+  it('v3 to v4 drops budget.sessions when every entry held only a fixed daily %', () => {
+    const step = DROP_FIXED_DAILY_BUDGETS.apply({ budget: { enabled: true, sessions: { alpha: { dailyPct: 1 }, bravo: { dailyPct: 1 } } } });
+    assert.deepEqual(step.config, { budget: { enabled: true } });
+    assert.equal(step.changes.length, 2);
+  });
+
+  it('v3 to v4 changes nothing but the version when no daily budget is fixed', () => {
+    const configs: JsonRecord[] = [
+      {},
+      { budget: 'not an object', hiring: 3 },
+      { budget: { targetPct: 99, sessions: { alpha: {}, bravo: 'odd', charlie: { share: 2 } } } },
+      { budget: { sessions: 'not an object' } },
+      { hiring: { policy: 'lead', maxSessions: 2 } },
+    ];
+    for (const config of configs) {
+      assert.deepEqual(DROP_FIXED_DAILY_BUDGETS.apply(config), { config, changes: [] }, JSON.stringify(config));
+    }
+    assert.equal(DROP_FIXED_DAILY_BUDGETS.from, 3);
   });
 
   it('a version-1 file reaches the current version through every step', () => {
