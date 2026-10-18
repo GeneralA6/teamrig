@@ -45,6 +45,7 @@ import { meetingHold } from "./hook-meeting.js";
 import { armRestart, restartTargetOf } from "./hook-restart.js";
 import { helperContextOf } from "./hook-helper-start.js";
 import { envSession, leadOwnPaths, parseJson, sessionTeam, startSessionOf, teamSessionOf } from "./hook-input.js";
+import { tabStatusOn, tabTitleOf } from "./hook-tab-status.js";
 import { retireAskReasonOf } from "./retire-ask.js";
 import { verifyByLinesOf, verifyNoteOf } from "./verify-queue.js";
 /**
@@ -413,20 +414,25 @@ async function dueFactsOf(runtime, store, id, payload) {
         running: transcript === undefined ? 0 : await readRunningWork(runtime.files, transcript, runtime.clock.now()),
     };
 }
-/** The hook payload's team session (Stop, helper gate); undefined outside a team, without a loaded config or without a session. */
-async function stopScopeOf(runtime, payload) {
+/** The hook payload's team; undefined outside a team or without a loaded config. */
+async function teamScopeOf(runtime, payload) {
     const found = await sessionTeam(payload, runtime);
     if (found.kind !== 'team') {
         return undefined;
     }
     const kit = await openKit(runtime, found.team);
-    if (kit.load.status !== 'loaded') {
-        return undefined;
-    }
-    const { config } = kit.load;
-    const roster = await rosterOf(runtime, kit, config);
-    const id = await teamSessionOf(runtime, kit, roster, sessionIdOf(payload));
-    return id === undefined ? undefined : { kit, config, roster, id };
+    return kit.load.status === 'loaded' ? { kit, config: kit.load.config } : undefined;
+}
+/** The team session of a payload in `team`; undefined when the tab is no session of it. */
+async function sessionScopeOf(runtime, team, payload) {
+    const roster = await rosterOf(runtime, team.kit, team.config);
+    const id = await teamSessionOf(runtime, team.kit, roster, sessionIdOf(payload));
+    return id === undefined ? undefined : { ...team, roster, id };
+}
+/** The hook payload's team session (Stop, helper gate); undefined outside a team, without a loaded config or without a session. */
+async function stopScopeOf(runtime, payload) {
+    const team = await teamScopeOf(runtime, payload);
+    return team === undefined ? undefined : sessionScopeOf(runtime, team, payload);
 }
 /** The owner's turn-end line when the lead did hand-off work itself (lead-boundary.ts); none for another session, with the boundary off or without a transcript. */
 async function leadStopLines(runtime, scope, transcript) {
@@ -510,13 +516,27 @@ async function retireBlockOf(runtime, scope, payload, decision) {
     return retireAskReasonOf(runtime, scope.config, scope.kit.paths, scope.id);
 }
 /**
- * What the Stop hook prints for this turn's end; '' outside a team or without a session. The refresh,
- * the model notices, the budget lines and the verify-by lines fail apart: an error in one leaves the others.
+ * The tab's title at this turn's end with tab status on (hook-tab-status.ts): a circle before the refresh
+ * notice's title, else before the session's topic. Undefined with tab status off, which leaves the notice's
+ * own title, at a block, whose turn goes on, and on an error.
+ */
+async function stopTabTitleOf(runtime, config, payload, decision) {
+    if (!tabStatusOn(runtime.env, config) || decision.kind === 'block') {
+        return undefined;
+    }
+    return tabTitleOf(runtime, payload, decision.kind === 'notice' ? decision.title : undefined).catch(() => undefined);
+}
+/**
+ * What the Stop hook prints for this turn's end; '' outside a team, and only the tab's title (with tab status
+ * on) in a tab that is no session of it. The refresh, the model notices, the budget lines and the verify-by
+ * lines fail apart: an error in one leaves the others.
  */
 async function stopOutputOf(runtime, payload) {
-    const scope = await stopScopeOf(runtime, payload);
+    const team = await teamScopeOf(runtime, payload);
+    const scope = team === undefined ? undefined : await sessionScopeOf(runtime, team, payload);
     if (scope === undefined) {
-        return '';
+        const none = { kind: 'none' };
+        return team === undefined ? '' : stopOutput(none, [], await stopTabTitleOf(runtime, team.config, payload, none));
     }
     // Before the refresh, which records a block's state before it prints: this block leaves the rest to the next stop.
     const dropped = await droppedEditReasonOf(runtime, payload, 'main').catch(() => undefined);
@@ -531,7 +551,7 @@ async function stopOutputOf(runtime, payload) {
     const lead = await leadStopLines(runtime, scope, stringField(payload, 'transcript_path')).catch(() => []);
     const lines = [...notices, ...budget, ...verify, ...lead];
     const retire = await retireBlockOf(runtime, scope, payload, decision).catch(() => undefined);
-    return retire === undefined ? stopOutput(decision, lines) : blockOutput(retire, lines);
+    return retire === undefined ? stopOutput(decision, lines, await stopTabTitleOf(runtime, scope.config, payload, decision)) : blockOutput(retire, lines);
 }
 /**
  * Stop, at the end of every turn: first sends the session back, once, to a skill edit of the turn that
@@ -541,10 +561,12 @@ async function stopOutputOf(runtime, payload) {
  * effort than its `launch` entry or Claude Code switched its model after a safeguard stop, and once a
  * day when the date to verify one of its verifying tasks by has come. Under `hiring.policy` `automatic` it asks a
  * hired session whose last open task closed, once, to write its handover and retire. Once per `github.everyMinutes` for the whole
- * team it starts `gh sync --auto` hidden in the background (gh-auto.ts). A turn with nothing to say reads
- * only small files and the transcript's tail (and, at the first stop of a UTC day, the register log),
- * and prints nothing. It never blocks on an error, and ignores input that is not a hook payload (which
- * would judge a boundary without its transcript): a refresh is a convenience, and the next stop tries again.
+ * team it starts `gh sync --auto` hidden in the background (gh-auto.ts). With tab status on, it also sets the
+ * tab's title to the ready circle, or the working one while a helper runs, in any tab of the team (hook-tab-status.ts).
+ * A turn with nothing to say reads only small files and the transcript's tail (and, at the first stop of a UTC day,
+ * the register log; with tab status on, the longer tail where helpers start), and prints nothing but the tab's title.
+ * It never blocks on an error, and ignores input that is not a hook payload (which would judge a boundary without
+ * its transcript): a refresh is a convenience, and the next stop tries again.
  */
 export async function stop(args, runtime) {
     noPositionals(args);
