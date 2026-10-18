@@ -1,5 +1,6 @@
 import { isRecord } from '../core/guards.ts';
 import type { Files } from '../core/files.ts';
+import { ENV, type Env } from '../core/home.ts';
 import type { Clock, Sleep } from '../core/lock.ts';
 import { formatUtcMinute } from '../core/time.ts';
 
@@ -66,6 +67,14 @@ function parseLock(text: string): HostLockInfo | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * `env` for a process a step starts while it holds `lock`: a `teamrig heavy` that process starts (a git hook's checks
+ * under a commit or a push) runs at once under the same lock, since waiting for it would wait on its own parent.
+ */
+export function underLock(env: Env, lock: HostLockInfo): Env {
+  return { ...env, [ENV.hostLock]: lock.token };
 }
 
 /** The holder as a session reads it: `<session> (<purpose>) since <UTC minute>`. */
@@ -155,6 +164,12 @@ export class HostLock {
   /** Releases a lock this step took; false when it is no longer the holder (it expired and another step took it). */
   async release(lock: HostLockInfo): Promise<boolean> {
     return this.removeIf((text) => parseLock(text)?.token === lock.token);
+  }
+
+  /** The lock while the taking with `token` holds it and it is not stale; undefined otherwise. Takes and removes nothing. */
+  async heldWith(token: string): Promise<HostLockInfo | undefined> {
+    const seen = await this.read();
+    return seen.kind === 'held' && seen.info.token === token && !this.isStale(seen.info) ? seen.info : undefined;
   }
 
   /** The lock's state, taking and removing nothing, for a reader that only shows it. */

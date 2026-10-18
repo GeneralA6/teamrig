@@ -1,7 +1,7 @@
 import type { CoordinatorConfig } from '../config/types.ts';
 import { claimText, coveringClaims, readClaims } from '../coordinator/claims.ts';
 import { takeWhenClear, type ClearancePhase, type Readiness } from '../coordinator/clearance.ts';
-import type { HostLock } from '../coordinator/host-lock.ts';
+import { underLock, type HostLock, type HostLockInfo } from '../coordinator/host-lock.ts';
 import { appendDeploy } from '../coordinator/ledger.ts';
 import type { CoordinatorPlaces } from '../coordinator/places.ts';
 import { NOT_STARTED_EXIT, recordHeavy } from '../coordinator/recorded-step.ts';
@@ -198,14 +198,17 @@ function readinessOf(setup: RollSetup, ports: RollPorts, request: RollRequest, r
   };
 }
 
-/** Under the host lock: pulls fast-forward to the checked sha, then runs the afterPull hooks and the roll command, each line shown redacted. */
-async function pullAndRoll(setup: RollSetup, ports: RollPorts, request: RollRequest, repo: RollRepo, pending: Pending, tag: string | undefined): Promise<RollRun> {
+/**
+ * Under the host lock `lock`: pulls fast-forward to the checked sha, then runs the afterPull hooks and the roll command,
+ * each line shown redacted. They get the lock's token, so a `teamrig heavy` they start runs under this lock.
+ */
+async function pullAndRoll(setup: RollSetup, ports: RollPorts, request: RollRequest, repo: RollRepo, pending: Pending, tag: string | undefined, lock: HostLockInfo): Promise<RollRun> {
   const pulled = ports.git.fastForward(repo.main, pending.target);
   if (!pulled.ok) {
     return { kind: 'notPulled', reason: pulled.reason };
   }
   ports.say(`pulled ${repo.main} to ${short(pending.target)}`);
-  const env = hookEnv(setup, ports, request, repo, pending, { TEAMRIG_ROLL_TO: pending.target, ...(tag === undefined ? {} : { TEAMRIG_ROLL_TAG: tag }) });
+  const env = underLock(hookEnv(setup, ports, request, repo, pending, { TEAMRIG_ROLL_TO: pending.target, ...(tag === undefined ? {} : { TEAMRIG_ROLL_TAG: tag }) }), lock);
   const timeoutMs = setup.coordinator.heavy.maxRunMinutes * MINUTE_MS;
   const show = (line: string): string => {
     const shown = shownLine(ports.scanner, line);
@@ -314,7 +317,7 @@ export async function rollRepo(setup: RollSetup, ports: RollPorts, request: Roll
     const { tag } = view;
     const startedAt = new Date(ports.clock.now()).toISOString();
     ports.say(`clear; pulling ${plural(pending.commits.length, 'commit')} (${pending.range}) into ${repo.main}`);
-    const run = await recordHeavy(ports, setup.places.ledger, { session: request.session, what: `roll ${repo.name} ${pending.range}` }, () => pullAndRoll(setup, ports, request, repo, pending, tag), runExitCode);
+    const run = await recordHeavy(ports, setup.places.ledger, { session: request.session, what: `roll ${repo.name} ${pending.range}` }, () => pullAndRoll(setup, ports, request, repo, pending, tag, clearance.lock), runExitCode);
     return await settle(setup, ports, request, repo, pending, tag, startedAt, run);
   } finally {
     await ports.lock.release(clearance.lock);

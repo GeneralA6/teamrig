@@ -209,7 +209,7 @@ describe('integrate lands a branch', () => {
     world.git.landed = ['aaaaaaaa1111', 'bbbbbbbb2222'];
     assert.deepEqual(await world.run(), { kind: 'done', summary: 'pushed aaaaaaaa..bbbbbbbb to main' });
     assert.deepEqual(world.steps.ran, [
-      { command: commandLine(['git', 'push', 'origin', 'HEAD:refs/heads/main'], 'linux'), cwd: WORKTREE, env: { PATH: '/bin' }, timeoutMs: DEFAULT_HEAVY.maxRunMinutes * 60_000 },
+      { command: commandLine(['git', 'push', 'origin', 'HEAD:refs/heads/main'], 'linux'), cwd: WORKTREE, env: { PATH: '/bin', TEAMRIG_HOST_LOCK: 'lock-1' }, timeoutMs: DEFAULT_HEAVY.maxRunMinutes * 60_000 },
     ]);
     assert.deepEqual(world.git.log, [
       `fetch ${WORKTREE}`,

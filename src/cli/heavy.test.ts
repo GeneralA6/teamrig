@@ -159,6 +159,80 @@ describe('teamrig heavy', () => {
     assert.deepEqual([result.code, result.stdout.at(-1), kit.files.get(LOCK)], [0, 'DONE exit 0', undefined]);
   });
 
+  it("gives its command the lock's token, so a heavy step the command starts runs under this lock", async () => {
+    const { kit, steps } = harness();
+    await kit.run(BUILD, { steps });
+    assert.equal(steps.ran[0]?.env['TEAMRIG_HOST_LOCK'], 'id-1');
+  });
+
+  it("runs a step its parent's live lock covers at once, in the parent's session, without a ledger record", async () => {
+    const { kit, steps } = harness();
+    await kit.files.write(LOCK, heldBy());
+    const result = await kit.run(['heavy', '--what', 'pre-commit checks', '--', 'npm', 'test'], {
+      steps: steps.ends(0, MINUTE),
+      sessionProcesses: otherRuns(),
+      env: { TEAMRIG_HOST_LOCK: 'other' },
+    });
+    assert.deepEqual(result, {
+      code: 0,
+      stdout: ['2030-01-08T10:00:00.000Z running: pre-commit checks under the host lock of po (heavy: build) since 2030-01-08 09:50 (killed after 45m)', 'DONE exit 0'],
+      stderr: [],
+    });
+    assert.deepEqual([steps.ran.length, steps.ran[0]?.env['TEAMRIG_HOST_LOCK'], kit.clock.sleeps], [1, 'other', []]);
+    assert.deepEqual([kit.files.get(LOCK), kit.files.get(LEDGER)], [heldBy(), undefined], "the parent's lock stays, and its record covers the step");
+  });
+
+  it('runs under a parent lock even from the heavy cutoff on, since its parent started before it', async () => {
+    const { kit, steps } = harness({ ...TEAM, coordinator: { schedule: { heavyCutoffUtc: '09:30' } } });
+    await kit.files.write(LOCK, heldBy());
+    const result = await kit.run(BUILD, { steps, sessionProcesses: otherRuns(), env: { TEAMRIG_HOST_LOCK: 'other' } });
+    assert.deepEqual([result.code, steps.ran.length], [0, 1]);
+  });
+
+  /** The token of the lock taken: removing a lock left behind costs the first taking's token. */
+  for (const [label, lock, token] of [
+    ['a lock its process left behind', heldBy(), 'id-2'],
+    ['no lock at all', undefined, 'id-1'],
+  ] as const) {
+    it(`takes the lock as usual when $TEAMRIG_HOST_LOCK names ${label}`, async () => {
+      const { kit, steps } = harness();
+      if (lock !== undefined) {
+        await kit.files.write(LOCK, lock);
+      }
+      const result = await kit.run(BUILD, { steps, env: { TEAMRIG_HOST_LOCK: 'other' } });
+      assert.deepEqual(result.stdout.slice(0, 2), [
+        '2030-01-08T10:00:00.000Z $TEAMRIG_HOST_LOCK names no live host lock: taking the lock as usual',
+        '2030-01-08T10:00:00.000Z running: build api (killed after 45m)',
+      ]);
+      assert.deepEqual([result.code, steps.ran[0]?.env['TEAMRIG_HOST_LOCK'], ledgerOf(kit).length], [0, token, 2]);
+    });
+  }
+
+  it('waits for a live lock whose token is not the one in $TEAMRIG_HOST_LOCK', async () => {
+    const { kit, steps } = harness({ ...TEAM, coordinator: { heavy: { waitMinutes: 1 }, wait: { pollSeconds: 30 } } });
+    await kit.files.write(LOCK, heldBy());
+    const result = await kit.run(BUILD, { steps, sessionProcesses: otherRuns(), env: { TEAMRIG_HOST_LOCK: 'someone-else' } });
+    assert.deepEqual([result.code, steps.ran, kit.files.get(LOCK)], [2, [], heldBy()]);
+  });
+
+  it('takes the session this Claude Code tab is bound to when none is named', async () => {
+    const { kit, steps } = harness();
+    const tab = { CLAUDE_CODE_SESSION_ID: '9f8e7d6c-1111-2222-3333-444455556666' };
+    await kit.run(['inbox', 'read', '--session', 'alpha'], { env: tab });
+    const result = await kit.run(['heavy', '--what', 'pre-commit checks', '--', 'npm', 'test'], { steps, env: tab });
+    assert.equal(result.code, 0);
+    assert.deepEqual(
+      ledgerOf(kit).map((record) => JSON.stringify(record).includes('"session":"alpha"')),
+      [true, true],
+    );
+  });
+
+  it('prints the usage when no session is named and the tab is bound to none', async () => {
+    const { kit, steps } = harness();
+    const result = await kit.run(['heavy', '--what', 'build', '--', 'npm', 'test'], { steps, env: { CLAUDE_CODE_SESSION_ID: '9f8e7d6c-1111-2222-3333-444455556666' } });
+    assert.deepEqual([result.code, steps.ran], [64, []]);
+  });
+
   it("keeps the lock and ledger where the team's config puts them", async () => {
     const { kit, steps } = harness({ ...TEAM, coordinator: { dir: 'data/deploys', heavy: { lockPath: 'data/deploys/host.lock' } } });
     const lock = join(TEAM_HOME, 'data', 'deploys', 'host.lock');
