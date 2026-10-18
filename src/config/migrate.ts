@@ -49,8 +49,72 @@ export const RENAME_BLOCKED_TO_WAITING: ConfigMigration = {
   },
 };
 
+/** The fixed daily budget keys v4 dropped, by section. */
+const FIXED_DAILY_KEYS = ['dailyPct', 'maxDailyPct'] as const;
+
+/** `record` without `keys`, and one change line for each key it had. */
+function withoutKeys(record: JsonRecord, keys: readonly string[], path: string, why: string): MigrationStep {
+  const kept = Object.fromEntries(Object.entries(record).filter(([key]) => !keys.includes(key)));
+  const changes = keys.filter((key) => key in record).map((key) => `${path}.${key} removed: ${why}`);
+  return { config: kept, changes };
+}
+
+/** `budget.sessions` without a fixed `dailyPct` on any entry; an entry left empty goes, and so does a map left empty. */
+function withoutSessionDailyPct(budget: JsonRecord): MigrationStep {
+  const sessions = budget['sessions'];
+  if (!isRecord(sessions)) {
+    return { config: budget, changes: [] };
+  }
+  const kept: Record<string, unknown> = {};
+  const changes: string[] = [];
+  for (const [id, entry] of Object.entries(sessions)) {
+    if (!isRecord(entry)) {
+      kept[id] = entry;
+      continue;
+    }
+    const step = withoutKeys(entry, ['dailyPct'], `budget.sessions.${id}`, "the session's part of the team's daily budget is recomputed from its share and queued work");
+    changes.push(...step.changes);
+    if (Object.keys(step.config).length > 0 || step.changes.length === 0) {
+      kept[id] = step.config;
+    }
+  }
+  if (changes.length === 0) {
+    return { config: budget, changes };
+  }
+  const config = Object.keys(kept).length === 0 ? Object.fromEntries(Object.entries(budget).filter(([key]) => key !== 'sessions')) : { ...budget, sessions: kept };
+  return { config, changes };
+}
+
+/**
+ * v3 to v4: daily budgets are no longer fixed. The team's daily budget is recomputed at every reading from what is left
+ * of the week and the active time to the reset, and each session's is its part of that, so `budget.dailyPct`,
+ * `budget.maxDailyPct`, `budget.sessions.<id>.dailyPct` and the hiring caps `hiring.dailyPct` and `hiring.maxDailyPct`
+ * go; `hiring.maxSessions` alone bounds hiring.
+ */
+export const DROP_FIXED_DAILY_BUDGETS: ConfigMigration = {
+  from: 3,
+  apply: (config) => {
+    let next = config;
+    const changes: string[] = [];
+    const budget = config['budget'];
+    if (isRecord(budget)) {
+      const fixed = withoutKeys(budget, FIXED_DAILY_KEYS, 'budget', 'the daily budget is recomputed from what is left of the week');
+      const sessions = withoutSessionDailyPct(fixed.config);
+      changes.push(...fixed.changes, ...sessions.changes);
+      next = { ...next, budget: sessions.config };
+    }
+    const hiring = config['hiring'];
+    if (isRecord(hiring)) {
+      const fixed = withoutKeys(hiring, FIXED_DAILY_KEYS, 'hiring', "a hire's daily budget is its part of the team's; hiring.maxSessions bounds hiring");
+      changes.push(...fixed.changes);
+      next = { ...next, hiring: fixed.config };
+    }
+    return { config: changes.length === 0 ? config : next, changes };
+  },
+};
+
 /** The shipped chain, in order: each step reads `from` and produces `from + 1`. */
-export const CONFIG_MIGRATIONS: readonly ConfigMigration[] = [RENAME_TIERS_TO_PRIORITIES, RENAME_BLOCKED_TO_WAITING];
+export const CONFIG_MIGRATIONS: readonly ConfigMigration[] = [RENAME_TIERS_TO_PRIORITIES, RENAME_BLOCKED_TO_WAITING, DROP_FIXED_DAILY_BUDGETS];
 
 /** The config format a release reads and writes: its version and the migration chain that reaches it. */
 export interface ConfigFormat {
