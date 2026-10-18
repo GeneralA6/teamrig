@@ -1,0 +1,476 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import type { CoordinatorConfig, CoordinatorRepoConfig, ScheduleConfig } from '../config/types.ts';
+import { DEFAULT_COORDINATOR_WAIT, DEFAULT_HEAVY } from '../config/defaults.ts';
+import { HostLock } from '../coordinator/host-lock.ts';
+import type { CoordinatorPlaces } from '../coordinator/places.ts';
+import type { ResetTime } from '../coordinator/schedule.ts';
+import { FakeClock } from '../testing/fake-clock.ts';
+import { FakeIntegrateGit, MAIN_CHECKOUT, WORKTREE } from '../testing/fake-integrate-git.ts';
+import { FakeSteps } from '../testing/fake-steps.ts';
+import { MemoryFiles } from '../testing/memory-files.ts';
+import { commandLine } from '../test-run/shell.ts';
+import { integrateBranch, PUSH_ATTEMPTS, rangeText, repoOf, type IntegrateEnd, type IntegrateRequest, type IntegrateSetup } from './integrate.ts';
+
+const PLACES: CoordinatorPlaces = {
+  ledger: '/team/deploys/ledger.jsonl',
+  ledgerMd: '/team/deploys/ledger.md',
+  claims: '/team/deploys/claims.json',
+  hostLock: '/kit/host.lock',
+};
+const REQUEST: IntegrateRequest = { session: 'api', dir: WORKTREE, keepRemote: false, keepLocal: false };
+const PLAIN: CoordinatorRepoConfig = { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], dependencyGate: false, followMainCheckout: false };
+
+interface Options {
+  readonly repos?: Readonly<Record<string, CoordinatorRepoConfig>>;
+  readonly schedule?: ScheduleConfig;
+  readonly waitMinutes?: number;
+  readonly start?: string;
+  readonly reset?: ResetTime;
+  /** The quiet claims file's text. */
+  readonly claims?: string;
+}
+
+class World {
+  readonly git = new FakeIntegrateGit();
+  readonly files: MemoryFiles;
+  readonly clock: FakeClock;
+  readonly steps: FakeSteps;
+  readonly lock: HostLock;
+  readonly said: string[] = [];
+  /** How often the next reset was read. */
+  resetReads = 0;
+  readonly setup: IntegrateSetup;
+  private readonly reset: ResetTime | undefined;
+
+  constructor(options: Options = {}) {
+    this.files = new MemoryFiles(options.claims === undefined ? {} : { [PLACES.claims]: options.claims });
+    this.clock = new FakeClock(options.start ?? '2030-01-08T10:00:00Z');
+    this.steps = new FakeSteps(this.clock).ends(0, 90_000);
+    this.lock = new HostLock(PLACES.hostLock, 150 * 60_000, { files: this.files, clock: this.clock, sleep: this.clock.sleep, pid: 7, alive: () => true, newId: () => 'lock-1' });
+    this.reset = options.reset;
+    const coordinator: CoordinatorConfig = {
+      schedule: options.schedule ?? {},
+      heavy: DEFAULT_HEAVY,
+      wait: { ...DEFAULT_COORDINATOR_WAIT, maxMinutes: options.waitMinutes ?? DEFAULT_COORDINATOR_WAIT.maxMinutes },
+      repos: options.repos ?? {},
+    };
+    this.setup = { coordinator, places: PLACES, inTeam: (path) => (path.startsWith('/') ? path : `/repo/${path}`) };
+    this.pushLands();
+  }
+
+  /** Each push moves origin's main to the worktree's HEAD, as a push that git accepts does. */
+  pushLands(): void {
+    this.steps.whileRunning(async (request) => {
+      const head = this.git.heads.get(request.cwd);
+      if (head !== undefined) {
+        this.git.pushed('main', head);
+      }
+    });
+  }
+
+  run(request: IntegrateRequest = REQUEST): Promise<IntegrateEnd> {
+    return integrateBranch(this.setup, {
+      git: this.git,
+      steps: this.steps,
+      files: this.files,
+      clock: this.clock,
+      sleep: this.clock.sleep,
+      lock: this.lock,
+      env: { PATH: '/bin', GIT_DIR: '/elsewhere/.git' },
+      platform: 'linux',
+      nextReset: async () => {
+        this.resetReads += 1;
+        return this.reset;
+      },
+      newId: () => 'step-1',
+      say: (text) => this.said.push(text),
+    }, request);
+  }
+
+  records(path: string): unknown[] {
+    return (this.files.get(path) ?? '').split('\n').filter((line) => line !== '').map((line): unknown => JSON.parse(line));
+  }
+
+  /** The host lock is free again. */
+  lockFree(): boolean {
+    return this.files.get(PLACES.hostLock) === undefined;
+  }
+}
+
+function refused(end: IntegrateEnd, pattern: RegExp): void {
+  assert.equal(end.kind, 'refused', JSON.stringify(end));
+  assert.match(end.kind === 'refused' ? end.reason : '', pattern);
+}
+
+function failed(end: IntegrateEnd, pattern: RegExp): void {
+  assert.equal(end.kind, 'failed', JSON.stringify(end));
+  assert.match(end.kind === 'failed' ? end.reason : '', pattern);
+}
+
+describe('repoOf', () => {
+  const setup = new World({ repos: { app: { ...PLAIN, mainCheckout: 'app' }, web: { ...PLAIN, mainCheckout: '/repo/web' } } }).setup;
+
+  it('finds the repository by its main checkout, a relative path in the team folder, from a worktree of it', () => {
+    const match = repoOf({ top: WORKTREE, branch: 'feat', mainCheckout: MAIN_CHECKOUT, linked: true }, setup, 'linux');
+    assert.deepEqual(match, { name: 'app', config: { ...PLAIN, mainCheckout: 'app' }, listed: true });
+  });
+
+  it('names an unlisted repository after its main checkout and configures nothing for it', () => {
+    const match = repoOf({ top: '/repo/tools', branch: 'feat', mainCheckout: undefined, linked: false }, setup, 'linux');
+    assert.deepEqual(match, { name: 'tools', config: { ...PLAIN, mainCheckout: '/repo/tools' }, listed: false });
+  });
+});
+
+describe('rangeText', () => {
+  it('names one commit, a range by its ends, and no commits by the fallback', () => {
+    assert.equal(rangeText(['1234567890ab'], 'f'), '12345678');
+    assert.equal(rangeText(['1111111111', '2222222222', '3333333333'], 'f'), '11111111..33333333');
+    assert.equal(rangeText([], 'abcdef0123456'), 'abcdef01');
+  });
+});
+
+describe('integrate refuses a branch it must not land, before the lock', () => {
+  const cases: readonly { readonly name: string; readonly arrange: (world: World) => void; readonly request?: IntegrateRequest; readonly expect: RegExp }[] = [
+    { name: 'a folder outside git', arrange: () => undefined, request: { ...REQUEST, dir: '/nowhere' }, expect: /\/nowhere is not in a git checkout/ },
+    { name: 'a detached HEAD', arrange: (world) => world.git.checkouts.set(WORKTREE, { top: WORKTREE, branch: undefined, mainCheckout: MAIN_CHECKOUT, linked: true }), expect: /detached HEAD/ },
+    { name: 'a failed git status', arrange: (world) => world.git.statusFails.add(WORKTREE), expect: /git status failed/ },
+    { name: 'one uncommitted change', arrange: (world) => world.git.status.set(WORKTREE, [' M a.ts']), expect: /has 1 uncommitted change:/ },
+    { name: 'untracked files too', arrange: (world) => world.git.status.set(WORKTREE, ['?? a.ts', '?? b.ts']), expect: /has 2 uncommitted changes/ },
+    { name: 'the default branch itself', arrange: () => undefined, request: { ...REQUEST, dir: MAIN_CHECKOUT }, expect: /main is a default branch/ },
+    {
+      name: 'master when the default branch is another',
+      arrange: (world) => {
+        world.git.defaultName = 'trunk';
+        world.git.checkouts.set(WORKTREE, { top: WORKTREE, branch: 'master', mainCheckout: MAIN_CHECKOUT, linked: true });
+      },
+      expect: /master is a default branch/,
+    },
+    { name: 'a branch with nothing new', arrange: (world) => world.git.heads.set(WORKTREE, 'base'), expect: /nothing to integrate: every commit of feat is already on origin\/main/ },
+  ];
+  for (const { name, arrange, request, expect } of cases) {
+    it(name, async () => {
+      const world = new World();
+      arrange(world);
+      refused(await world.run(request), expect);
+      assert.deepEqual(world.steps.ran, []);
+      assert.ok(world.lockFree());
+    });
+  }
+
+  it('fails when the first fetch fails', async () => {
+    const world = new World();
+    world.git.fetchFails = 'could not resolve host';
+    failed(await world.run(), /git fetch failed: could not resolve host/);
+    assert.deepEqual(world.steps.ran, []);
+  });
+});
+
+describe('integrate holds a dependency change where the repository asks for it', () => {
+  const gated = { app: { ...PLAIN, dependencyGate: true } };
+
+  it('refuses a lockfile change and names the setting that holds it', async () => {
+    const world = new World({ repos: gated });
+    world.git.paths = ['src/app.ts', 'package-lock.json'];
+    refused(await world.run(), /deps changed \(package-lock\.json\): coordinator\.repos\.app\.dependencyGate/);
+    assert.deepEqual(world.steps.ran, []);
+  });
+
+  it('refuses a package.json change beyond its scripts, reading it at the merge base and at HEAD', async () => {
+    const world = new World({ repos: gated });
+    world.git.paths = ['package.json'];
+    world.git.files.set('base:package.json', JSON.stringify({ dependencies: { a: '1.0.0' } }));
+    world.git.files.set('mine:package.json', JSON.stringify({ dependencies: { a: '1.0.1' } }));
+    refused(await world.run(), /deps changed \(package\.json beyond scripts\)/);
+  });
+
+  it('lands a package.json change to its scripts only', async () => {
+    const world = new World({ repos: gated });
+    world.git.paths = ['package.json'];
+    world.git.files.set('base:package.json', JSON.stringify({ scripts: { test: 'a' } }));
+    world.git.files.set('mine:package.json', JSON.stringify({ scripts: { test: 'b' } }));
+    assert.equal((await world.run()).kind, 'done');
+  });
+
+  it('refuses when it cannot read what the branch changes', async () => {
+    const world = new World({ repos: gated });
+    world.git.mergeBaseIs = undefined;
+    refused(await world.run(), /dependency gate cannot clear it/);
+  });
+
+  it('lets a lockfile change through where the gate is off', async () => {
+    const world = new World({ repos: { app: PLAIN } });
+    world.git.paths = ['package-lock.json'];
+    assert.equal((await world.run()).kind, 'done');
+  });
+});
+
+describe('integrate lands a branch', () => {
+  it('rebases, pushes HEAD to the default branch as a recorded heavy step, then tidies the branch away', async () => {
+    const world = new World();
+    world.git.landed = ['aaaaaaaa1111', 'bbbbbbbb2222'];
+    assert.deepEqual(await world.run(), { kind: 'done', summary: 'pushed aaaaaaaa..bbbbbbbb to main' });
+    assert.deepEqual(world.steps.ran, [
+      { command: commandLine(['git', 'push', 'origin', 'HEAD:refs/heads/main'], 'linux'), cwd: WORKTREE, env: { PATH: '/bin' }, timeoutMs: DEFAULT_HEAVY.maxRunMinutes * 60_000 },
+    ]);
+    assert.deepEqual(world.git.log, [
+      `fetch ${WORKTREE}`,
+      `fetch ${WORKTREE}`,
+      `rebase ${WORKTREE} origin/main`,
+      `deleteRemoteBranch ${WORKTREE} feat`,
+      `detach ${WORKTREE}`,
+      `deleteBranch ${WORKTREE} feat`,
+      `updateLocalBranch ${WORKTREE} main`,
+    ]);
+    const start = { type: 'heavy', id: 'step-1', session: 'api', what: 'integrate app: push feat to main', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+    assert.deepEqual(world.records(PLACES.ledger), [start, { ...start, endedAt: '2030-01-08T10:01:30.000Z', exitCode: 0 }]);
+    assert.equal(world.files.get(PLACES.ledgerMd), undefined);
+    assert.ok(world.lockFree());
+    assert.ok(world.said.includes('NOTE app is not in coordinator.repos: no deploy targets, no dependency gate, no main checkout to follow'));
+    assert.equal(world.said.at(-1), `next: teamrig worktree remove "${WORKTREE}"`);
+  });
+
+  it('records a push a host deploys by itself as that deploy, in both ledgers', async () => {
+    const world = new World({ repos: { app: { ...PLAIN, deploysOnPush: ['cloud-api'] } } });
+    assert.deepEqual(await world.run(), { kind: 'done', summary: 'pushed rebased to main; cloud-api deploy on push' });
+    const deploy = {
+      type: 'deploy',
+      kind: 'deploy',
+      session: 'api',
+      repo: 'app',
+      range: 'rebased',
+      what: 'integrate feat',
+      note: 'pushed to main; cloud-api deploy on push, not watched by teamrig',
+      startedAt: '2030-01-08T10:00:00.000Z',
+      rolledAt: '2030-01-08T10:01:30.000Z',
+    };
+    assert.deepEqual(world.records(PLACES.ledger).at(-1), deploy);
+    assert.match(world.files.get(PLACES.ledgerMd) ?? '', /\n- 2030-01-08 10:01 \| api \| app \| rebased \| integrate feat \| deploy \| pushed to main; cloud-api deploy on push, not watched by teamrig\n$/);
+  });
+
+  it('keeps the branch on origin and here when asked, and says how to remove the worktree with it', async () => {
+    const world = new World();
+    assert.equal((await world.run({ ...REQUEST, keepRemote: true, keepLocal: true })).kind, 'done');
+    assert.deepEqual(world.git.log.slice(3), [`updateLocalBranch ${WORKTREE} main`]);
+    assert.equal(world.said.at(-1), `next: teamrig worktree remove "${WORKTREE}" --delete-branch`);
+  });
+
+  it('takes a push whose command failed after origin took it as landed, and says so', async () => {
+    const world = new World();
+    world.steps.ends(1, 1_000);
+    assert.equal((await world.run()).kind, 'done');
+    assert.ok(world.said.includes("the push exited 1, but origin's main is at rebased: it landed"));
+  });
+
+  it('checks out the default branch in a main checkout it integrated from, where its local branch moved', async () => {
+    const world = new World();
+    world.git.checkouts.set('/solo', { top: '/solo', branch: 'feat', mainCheckout: '/solo', linked: false });
+    world.git.heads.set('/solo', 'mine');
+    world.git.localUpdate = { kind: 'updated' };
+    assert.equal((await world.run({ ...REQUEST, dir: '/solo' })).kind, 'done');
+    assert.equal(world.git.log.at(-1), 'checkout /solo main');
+    assert.equal(world.git.branches.get('main'), 'rebased');
+    assert.ok(!world.said.some((line) => line.startsWith('next:')));
+  });
+});
+
+describe('integrate tidies as far as it can', () => {
+  it('warns about each tidy step that failed and still reports the landing', async () => {
+    const world = new World();
+    world.git.deleteRemoteFails = 'remote rejected';
+    world.git.detachFails = 'index.lock exists';
+    world.git.localUpdate = { kind: 'failed', reason: 'not a fast-forward' };
+    assert.equal((await world.run()).kind, 'done');
+    assert.deepEqual(
+      world.said.filter((line) => line.startsWith('WARNING')),
+      ['WARNING could not delete feat on origin: remote rejected', 'WARNING could not delete the local feat: index.lock exists', "WARNING could not move the local main to origin's: not a fast-forward"],
+    );
+    assert.ok(!world.git.log.includes(`deleteBranch ${WORKTREE} feat`));
+  });
+
+  it('skips a branch already gone from origin and warns when the default branch cannot be checked out', async () => {
+    const world = new World();
+    world.git.origin.delete('feat');
+    world.git.checkouts.set('/solo', { top: '/solo', branch: 'feat', mainCheckout: '/solo', linked: false });
+    world.git.heads.set('/solo', 'mine');
+    world.git.localUpdate = { kind: 'updated' };
+    world.git.checkoutFails = 'would be overwritten';
+    assert.equal((await world.run({ ...REQUEST, dir: '/solo' })).kind, 'done');
+    assert.ok(!world.git.log.some((line) => line.startsWith('deleteRemoteBranch')));
+    assert.ok(world.said.includes('WARNING could not check out main: would be overwritten'));
+  });
+});
+
+describe('integrate under the lock, when the push does not land', () => {
+  it('rebases and pushes again when origin moved during the push', async () => {
+    const world = new World();
+    let pushes = 0;
+    world.steps.whileRunning(async () => {
+      pushes += 1;
+      if (pushes === 1) {
+        world.git.origin.set('main', 'theirs');
+        world.git.rebasedTo = 'rebased-2';
+        return;
+      }
+      world.git.pushed('main', world.git.heads.get(WORKTREE) ?? '');
+    });
+    assert.equal((await world.run()).kind, 'done');
+    assert.equal(world.steps.ran.length, 2);
+    assert.ok(world.said.includes(`origin's main moved to theirs meanwhile: rebasing and pushing again (attempt 2 of ${PUSH_ATTEMPTS})`));
+    assert.deepEqual(world.git.log.filter((line) => line.startsWith('rebase')), [`rebase ${WORKTREE} origin/main`, `rebase ${WORKTREE} origin/main`]);
+  });
+
+  it(`gives up after ${PUSH_ATTEMPTS} pushes that origin kept moving under`, async () => {
+    const world = new World();
+    let moves = 0;
+    world.steps.ends(1).whileRunning(async () => {
+      moves += 1;
+      world.git.origin.set('main', `theirs-${moves}`);
+    });
+    failed(await world.run(), /^the push exited 1; origin's main is at theirs-3, not at rebased$/);
+    assert.equal(world.steps.ran.length, PUSH_ATTEMPTS);
+    assert.ok(world.lockFree());
+  });
+
+  it('fails when the pre-push hook stops the push, and leaves the branch where it is', async () => {
+    const world = new World();
+    world.steps.ends(1).whileRunning(async () => undefined);
+    failed(await world.run(), /^the push exited 1; origin's main is at base, not at rebased$/);
+    assert.equal(world.steps.ran.length, 1);
+    assert.ok(!world.git.log.some((line) => line.startsWith('delete') || line.startsWith('detach')));
+    assert.equal(world.records(PLACES.ledger).length, 2);
+    assert.ok(world.lockFree());
+  });
+
+  it('names a push killed at its time limit or stopped by a signal, and an unreadable origin', async () => {
+    const world = new World();
+    world.steps.ends({ kind: 'timedOut' }).whileRunning(async () => {
+      world.git.origin.delete('main');
+    });
+    failed(await world.run(), /^the push was killed at its time limit \(exit \d+\); origin's main could not be read, not at rebased$/);
+    const stopped = new World();
+    stopped.steps.ends({ kind: 'signal', signal: 'SIGTERM' }).whileRunning(async () => undefined);
+    failed(await stopped.run(), /^the push was stopped by SIGTERM;/);
+  });
+
+  it('fails on a rebase conflict without pushing, and frees the lock', async () => {
+    const world = new World();
+    world.git.rebaseFails = 'rebase onto origin/main stopped (conflicts in a.ts); aborted, the branch is as it was';
+    failed(await world.run(), /conflicts in a\.ts/);
+    assert.deepEqual(world.steps.ran, []);
+    assert.ok(world.lockFree());
+  });
+
+  it('frees the lock when the push cannot start', async () => {
+    const world = new World();
+    world.steps.failsWith(new Error('git is not installed'));
+    await assert.rejects(world.run(), /git is not installed/);
+    assert.ok(world.lockFree());
+  });
+});
+
+describe('integrate waits for what may hold a deploy, and refuses what forbids one', () => {
+  const deploying = { app: { ...PLAIN, deploysOnPush: ['cloud-api'] } };
+  const claim = (until: string, targets: readonly string[] = ['cloud-api']): string =>
+    JSON.stringify([{ session: 'po', targets, metric: 'p95 latency', why: 'baseline', from: '2030-01-08T09:00:00Z', until }]);
+
+  it('waits out a quiet claim on what the push deploys, then lands', async () => {
+    const world = new World({ repos: deploying, claims: claim('2030-01-08T10:05:00Z') });
+    assert.equal((await world.run()).kind, 'done');
+    assert.ok(world.said.includes('waiting: quiet claim by po on cloud-api until 2030-01-08 10:05 UTC (p95 latency)'));
+    assert.equal(world.steps.ran.length, 1);
+    assert.ok(world.clock.now() >= Date.parse('2030-01-08T10:05:00Z'));
+  });
+
+  it('ignores a claim on other targets, and claims at all for a repository that deploys nothing', async () => {
+    const other = new World({ repos: deploying, claims: claim('2030-01-08T12:00:00Z', ['cloud-web']) });
+    assert.equal((await other.run()).kind, 'done');
+    const quiet = new World({ claims: 'not json' });
+    assert.equal((await quiet.run()).kind, 'done');
+    assert.ok(!quiet.said.some((line) => line.startsWith('waiting')));
+  });
+
+  it('gives up on a claim that outlasts the wait, without pushing', async () => {
+    const world = new World({ repos: deploying, waitMinutes: 5, claims: claim('2030-01-08T12:00:00Z') });
+    refused(await world.run(), /quiet claim by po on cloud-api/);
+    assert.deepEqual(world.steps.ran, []);
+    assert.ok(world.lockFree());
+  });
+
+  it('waits on unreadable claims, since they may hold the deploy', async () => {
+    const world = new World({ repos: deploying, waitMinutes: 1, claims: '{' });
+    refused(await world.run(), /quiet claims in \/team\/deploys\/claims\.json are unreadable \(not JSON\)/);
+  });
+
+  it('refuses after the heavy cutoff', async () => {
+    const world = new World({ start: '2030-01-08T22:45:00Z', schedule: { heavyCutoffUtc: '22:30' } });
+    refused(await world.run(), /nothing heavy after 22:30 UTC/);
+    assert.deepEqual(world.steps.ran, []);
+  });
+
+  it('refuses in the blackout before the weekly reset, and reads the reset only when a blackout is set', async () => {
+    const reset: ResetTime = { at: Date.parse('2030-01-08T12:00:00Z'), source: 'status line' };
+    const blackout = new World({ schedule: { resetBlackoutHours: 4 }, reset });
+    refused(await blackout.run(), /^deploy blackout before the weekly token reset: no deploy from 2030-01-08 08:00 until 2030-01-08 12:00 UTC \(reset from the status line\)$/);
+    const before = new World({ schedule: { resetBlackoutHours: 1 }, reset });
+    assert.equal((await before.run()).kind, 'done');
+    const unset = new World({ reset });
+    assert.equal((await unset.run()).kind, 'done');
+    assert.equal(unset.resetReads, 0);
+  });
+});
+
+describe('integrate follows the main checkout where the repository asks for it', () => {
+  const following = { app: { ...PLAIN, followMainCheckout: true } };
+
+  it('fast-forwards a clean main checkout on the default branch to what landed', async () => {
+    const world = new World({ repos: following });
+    world.git.status.set(MAIN_CHECKOUT, ['?? notes.txt']);
+    assert.equal((await world.run()).kind, 'done');
+    assert.ok(world.git.log.includes(`fastForward ${MAIN_CHECKOUT} rebased`));
+    assert.ok(world.said.includes(`fast-forwarded the main checkout ${MAIN_CHECKOUT} to rebased`));
+    assert.ok(!world.said.some((line) => line.includes('npm ci')));
+  });
+
+  it('says to install when what it fast-forwarded over changes the lockfile', async () => {
+    const world = new World({ repos: following });
+    world.git.paths = ['package-lock.json'];
+    assert.equal((await world.run()).kind, 'done');
+    assert.ok(world.said.includes(`NOTE package-lock.json changed: run npm ci --ignore-scripts in ${MAIN_CHECKOUT}`));
+  });
+
+  const kept: readonly { readonly name: string; readonly arrange: (world: World) => void; readonly note: string }[] = [
+    {
+      name: 'on another branch',
+      arrange: (world) => world.git.checkouts.set(MAIN_CHECKOUT, { top: MAIN_CHECKOUT, branch: 'spike', mainCheckout: MAIN_CHECKOUT, linked: false }),
+      note: 'it is on spike, not main',
+    },
+    { name: 'with tracked changes', arrange: (world) => world.git.status.set(MAIN_CHECKOUT, [' M a.ts']), note: 'it has uncommitted changes' },
+    { name: 'where git status fails', arrange: (world) => world.git.statusFails.add(MAIN_CHECKOUT), note: 'git status failed there' },
+    { name: 'with commits of its own', arrange: (world) => world.git.heads.set(MAIN_CHECKOUT, 'local'), note: 'its main has commits that are not on origin' },
+    { name: 'when the fast-forward fails', arrange: (world) => (world.git.fastForwardFails = 'not possible to fast-forward'), note: 'not possible to fast-forward' },
+  ];
+  for (const { name, arrange, note } of kept) {
+    it(`leaves it as it is ${name}`, async () => {
+      const world = new World({ repos: following });
+      arrange(world);
+      assert.equal((await world.run()).kind, 'done');
+      assert.ok(world.said.includes(`NOTE left the main checkout ${MAIN_CHECKOUT} as it is: ${note}`), world.said.join('\n'));
+    });
+  }
+
+  it('says to check the install itself when it cannot read what the fast-forward changed', async () => {
+    const world = new World({ repos: following });
+    world.git.paths = undefined;
+    assert.equal((await world.run()).kind, 'done');
+    assert.ok(world.said.includes(`NOTE could not read what the fast-forward changed: check whether ${MAIN_CHECKOUT} needs npm ci --ignore-scripts`));
+  });
+
+  it('does not follow from the main checkout itself', async () => {
+    const world = new World({ repos: following });
+    world.git.checkouts.set('/repo/app', { top: '/repo/app', branch: 'feat', mainCheckout: '/repo/app', linked: false });
+    world.git.heads.set('/repo/app', 'mine');
+    assert.equal((await world.run({ ...REQUEST, dir: '/repo/app' })).kind, 'done');
+    assert.ok(!world.git.log.some((line) => line.startsWith('fastForward')));
+  });
+});
