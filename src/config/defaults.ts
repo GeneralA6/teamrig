@@ -167,8 +167,8 @@ export const HEAVY_TTL_MARGIN_MINUTES = 10;
 /** A host lock lasts 150 minutes and a heavy step at most 45 of them; a step waits up to an hour for the lock. */
 export const DEFAULT_HEAVY: HeavyConfig = { lockTtlMinutes: 150, maxRunMinutes: 45, waitMinutes: 60 };
 
-/** A waiting coordinator step looks again every 30 seconds. */
-export const DEFAULT_COORDINATOR_WAIT: CoordinatorWaitConfig = { pollSeconds: 30 };
+/** A waiting coordinator step looks again every 30 seconds; a deploy step waits up to an hour for claims and the host lock. */
+export const DEFAULT_COORDINATOR_WAIT: CoordinatorWaitConfig = { pollSeconds: 30, maxMinutes: 60 };
 
 /**
  * A hire spends the week's budget, so it waits for the owner's yes: at most two hires at 1% of the week a day

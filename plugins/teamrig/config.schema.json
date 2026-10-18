@@ -315,13 +315,42 @@
       }
     },
     "coordinator": {
-      "description": "The deploy coordinator: teamrig heavy runs one heavy step on the host at a time, under the host lock, and records each in the ledger.",
+      "description": "The deploy coordinator: teamrig heavy runs one heavy step on the host at a time, under the host lock, and teamrig integrate lands a branch on its repository's default branch; each is recorded in the ledger.",
       "type": "object",
       "properties": {
         "dir": {
           "description": "The coordinator's folder, which holds its ledger (ledger.jsonl); a relative path is in the team's folder. Unset: deploys in the state folder.",
           "type": "string",
           "minLength": 1
+        },
+        "repos": {
+          "description": "The repositories teamrig integrate lands branches of on their default branch, by name.",
+          "type": "object",
+          "propertyNames": { "pattern": "^[a-z0-9][a-z0-9._-]*$" },
+          "additionalProperties": {
+            "type": "object",
+            "required": ["mainCheckout"],
+            "properties": {
+              "mainCheckout": {
+                "description": "The repository's main checkout; a branch integrates from any worktree of it. A relative path is in the team's folder.",
+                "type": "string",
+                "minLength": 1
+              },
+              "deploysOnPush": {
+                "description": "The deploy targets a push to the default branch deploys by itself (a host that builds on push): quiet claims on them hold the integrate, and the push is recorded as their deploy.",
+                "type": "array",
+                "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" }
+              },
+              "dependencyGate": {
+                "description": "Refuse a branch whose package files need a dependency install, so pulling it into the main checkout never changes, unreviewed, the node_modules its worktrees link to.",
+                "type": "boolean"
+              },
+              "followMainCheckout": {
+                "description": "After the push, fast-forward the main checkout to it: only a fast-forward, only on the default branch with no tracked changes.",
+                "type": "boolean"
+              }
+            }
+          }
         },
         "heavy": {
           "description": "The host lock and the limits of one heavy step.",
@@ -365,12 +394,25 @@
               "minimum": 1,
               "maximum": 600,
               "default": 30
+            },
+            "maxMinutes": {
+              "description": "A deploy step (teamrig integrate) waits this many minutes at most for quiet claims and the host lock, then is refused.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1440,
+              "default": 60
             }
           }
         },
         "schedule": {
           "type": "object",
           "properties": {
+            "resetBlackoutHours": {
+              "description": "No deploy (teamrig integrate) starts from this many hours before the weekly token reset until the reset. Unset: no blackout.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 48
+            },
             "heavyCutoffUtc": {
               "description": "No heavy step starts on the host after this UTC time until midnight.",
               "type": "string",

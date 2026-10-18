@@ -64,6 +64,8 @@ export const CONFIG_LIMITS = {
   heavyMaxRunMinutes: { min: 1, max: 1430 },
   heavyWaitMinutes: { min: 0, max: 1440 },
   coordinatorPollSeconds: { min: 1, max: 600 },
+  coordinatorWaitMaxMinutes: { min: 0, max: 1440 },
+  resetBlackoutHours: { min: 1, max: 48 },
 } as const;
 
 /**
