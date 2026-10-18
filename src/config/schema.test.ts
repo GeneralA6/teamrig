@@ -33,6 +33,7 @@ const EVERY_KEY = {
     statusSnapshotDir: '/u',
   },
   refresh: { handoverDir: 'notes' },
+  statusLine: { folder: false, branch: false, resume: false },
   github: { repos: ['acme/web'], owners: { octocat: 'bravo' }, closedDays: 30, everyMinutes: 30 },
   paths: { state: '/s', inbox: '/i', skills: '/k' },
 };

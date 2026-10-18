@@ -474,6 +474,16 @@ export interface OpenConfig {
   readonly terminal: TerminalChoice;
 }
 
+/** What `teamrig statusline` shows beside the model and the plan's use of the week. */
+export interface StatusLineConfig {
+  /** The name of the session's folder. */
+  readonly folder: boolean;
+  /** The branch checked out there, or the commit of a detached HEAD. */
+  readonly branch: boolean;
+  /** The command that resumes the session: `claude --resume <session id>`. */
+  readonly resume: boolean;
+}
+
 /** Claude Code's effort levels, lowest first: what `claude --effort` and `/effort` take. */
 export const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
 export type EffortLevel = (typeof EFFORT_LEVELS)[number];
@@ -558,6 +568,8 @@ export interface KitConfig {
   readonly burst: BurstConfig;
   /** How `teamrig open` starts a session in a new terminal tab. */
   readonly open: OpenConfig;
+  /** What `teamrig statusline` shows. */
+  readonly statusLine: StatusLineConfig;
   /** Each session's Claude Code model and effort, by id; the lead's unset keys take `DEFAULT_LEAD_LAUNCH`. */
   readonly launch: Readonly<Record<string, LaunchConfig>>;
   readonly paths: PathsConfig;

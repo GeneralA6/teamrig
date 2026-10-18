@@ -22,6 +22,7 @@ import {
   DEFAULT_REGISTER,
   DEFAULT_SESSION_SHARE,
   DEFAULT_SKILLS,
+  DEFAULT_STATUS_LINE,
   DEFAULT_TESTS,
   DEFAULT_WAKE,
 } from './defaults.ts';
@@ -72,6 +73,7 @@ import {
   type RegisterConfig,
   type SessionBudget,
   type SkillsConfig,
+  type StatusLineConfig,
   type PriorityConfig,
   type TeamLink,
   type WakeConfig,
@@ -283,6 +285,7 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
     hiring: parseHiring(read, read.section(raw, 'hiring', '')),
     burst: parseBurst(read, read.section(raw, 'burst', '')),
     open: parseOpen(read, read.section(raw, 'open', '')),
+    statusLine: parseStatusLine(read, read.section(raw, 'statusLine', '')),
     launch,
     paths: parsePaths(read, read.section(raw, 'paths', '')),
   };
@@ -662,6 +665,15 @@ function parseOpen(read: ConfigReader, raw: JsonRecord): OpenConfig {
     isTerminalChoice(value) ? undefined : `expected one of ${TERMINALS.join(', ')}`,
   );
   return { terminal: isTerminalChoice(terminal) ? terminal : DEFAULT_OPEN.terminal };
+}
+
+function parseStatusLine(read: ConfigReader, raw: JsonRecord): StatusLineConfig {
+  const path = 'statusLine';
+  return {
+    folder: read.boolean(raw, 'folder', path, DEFAULT_STATUS_LINE.folder),
+    branch: read.boolean(raw, 'branch', path, DEFAULT_STATUS_LINE.branch),
+    resume: read.boolean(raw, 'resume', path, DEFAULT_STATUS_LINE.resume),
+  };
 }
 
 function parsePushToProtected(read: ConfigReader, raw: JsonRecord): PushToProtected {
