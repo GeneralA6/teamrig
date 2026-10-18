@@ -60,6 +60,10 @@ export const CONFIG_LIMITS = {
   burstMinSparePct: { min: 0.1, max: 100 },
   burstMaxHelpers: { min: 0, max: 20 },
   burstMaxHires: { min: 0, max: 20 },
+  heavyLockTtlMinutes: { min: 11, max: 1440 },
+  heavyMaxRunMinutes: { min: 1, max: 1430 },
+  heavyWaitMinutes: { min: 0, max: 1440 },
+  coordinatorPollSeconds: { min: 1, max: 600 },
 } as const;
 
 /**

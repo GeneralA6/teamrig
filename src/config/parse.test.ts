@@ -26,7 +26,7 @@ describe('parseConfig', () => {
     assert.deepEqual(config.github, { repos: [], owners: {}, sessions: {}, closedDays: 14, everyMinutes: 15 });
     assert.deepEqual(config.register, DEFAULT_REGISTER);
     assert.deepEqual(config.budget, DEFAULT_BUDGET);
-    assert.deepEqual(config.coordinator.schedule, {});
+    assert.deepEqual(config.coordinator, { schedule: {}, heavy: { lockTtlMinutes: 150, maxRunMinutes: 45, waitMinutes: 60 }, wait: { pollSeconds: 30 } });
     assert.deepEqual(config.pushGuard.protectedBranches, ['main', 'master']);
     assert.deepEqual(config.paths, {});
     assert.deepEqual(config.commits, DEFAULT_COMMITS);
@@ -245,6 +245,40 @@ describe('parseConfig', () => {
     assert.deepEqual(config.coordinator.schedule, { heavyCutoffUtc: '22:30' });
     assert.deepEqual(config.budget, { ...DEFAULT_BUDGET, enabled: true, targetPct: 95 });
     assert.deepEqual(config.paths, { inbox: '/srv/team/inbox' });
+  });
+
+  it('keeps the coordinator folder, host lock and heavy step limits', () => {
+    const coordinator = { dir: 'data/deploys', heavy: { lockPath: 'data/deploys/host.lock', lockTtlMinutes: 90, maxRunMinutes: 80, waitMinutes: 0 }, wait: { pollSeconds: 5 } };
+    const { config, issues } = parseConfig({ ...ROSTER, coordinator });
+    assert.deepEqual(issues, []);
+    assert.deepEqual(config.coordinator, { ...coordinator, schedule: {} });
+  });
+
+  it('cuts a heavy step longer than its lock less 10 minutes to fit, and says so', () => {
+    const { config, issues } = parseConfig({ ...ROSTER, coordinator: { heavy: { lockTtlMinutes: 60, maxRunMinutes: 55 } } });
+    assert.deepEqual(paths(issues), ['coordinator.heavy.maxRunMinutes']);
+    assert.equal(config.coordinator.heavy.maxRunMinutes, 50);
+  });
+
+  it('fits the default heavy step limit to a short lock without an issue', () => {
+    const { config, issues } = parseConfig({ ...ROSTER, coordinator: { heavy: { lockTtlMinutes: 30 } } });
+    assert.deepEqual(issues, []);
+    assert.equal(config.coordinator.heavy.maxRunMinutes, 20);
+  });
+
+  it('reports an empty coordinator folder or lock path and limits out of range', () => {
+    const { config, issues } = parseConfig({
+      ...ROSTER,
+      coordinator: { dir: ' ', heavy: { lockPath: '', lockTtlMinutes: 5, waitMinutes: -1 }, wait: { pollSeconds: 0 } },
+    });
+    assert.deepEqual(paths(issues).sort(), [
+      'coordinator.dir',
+      'coordinator.heavy.lockPath',
+      'coordinator.heavy.lockTtlMinutes',
+      'coordinator.heavy.waitMinutes',
+      'coordinator.wait.pollSeconds',
+    ]);
+    assert.deepEqual(config.coordinator, { schedule: {}, heavy: { lockTtlMinutes: 150, maxRunMinutes: 45, waitMinutes: 60 }, wait: { pollSeconds: 30 } });
   });
 
   it('drops bad priorities and keeps the defaults when none is left', () => {
