@@ -101,6 +101,16 @@ async function runEndCommand(deps, plan, request) {
     });
     return deps.processes.feed({ command, args, cwd: request.cwd ?? plan.fallbackCwd, input });
 }
+/**
+ * The SessionEnd hooks a hard end skips. teamrig's own restore tracker forgets the ended session, which the fresh
+ * one replaces, so the restore after a reboot never reopens it beside its successor; `refresh.endCommand` then
+ * stands in for any other.
+ */
+async function endHooks(deps, plan, request) {
+    // A registry it cannot write leaves a stale entry, which is no reason to fail a restart that happened.
+    await deps.restore.remove(request.claudeSession).catch(() => undefined);
+    return runEndCommand(deps, plan, request);
+}
 /** Whether the session's last turn has ended and none of the work it started still runs. */
 async function idleAt(deps, transcript) {
     const tail = await deps.files.readTail(transcript, TURN_TAIL_BYTES);
@@ -230,7 +240,7 @@ async function endSession(deps, plan, request, claude) {
             await deps.store.clearRestart(plan.id);
             return { kind: 'failed', why: problem };
         }
-        return { kind: 'restarted', where: 'same tab', endCommand: await runEndCommand(deps, plan, request) };
+        return { kind: 'restarted', where: 'same tab', endCommand: await endHooks(deps, plan, request) };
     }
     const opened = await deps.openTab();
     if (opened.kind === 'none') {
@@ -242,7 +252,7 @@ async function endSession(deps, plan, request, claude) {
     if (problem !== undefined) {
         return { kind: 'failed', why: `${problem}; the fresh session runs in a new tab, so close the old one` };
     }
-    return { kind: 'restarted', where: 'new tab', endCommand: await runEndCommand(deps, plan, request) };
+    return { kind: 'restarted', where: 'new tab', endCommand: await endHooks(deps, plan, request) };
 }
 /**
  * The automatic context refresh's restart, started hidden by the Stop hook once the session's handover is
