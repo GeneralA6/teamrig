@@ -315,8 +315,59 @@
       }
     },
     "coordinator": {
+      "description": "The deploy coordinator: teamrig heavy runs one heavy step on the host at a time, under the host lock, and records each in the ledger.",
       "type": "object",
       "properties": {
+        "dir": {
+          "description": "The coordinator's folder, which holds its ledger (ledger.jsonl); a relative path is in the team's folder. Unset: deploys in the state folder.",
+          "type": "string",
+          "minLength": 1
+        },
+        "heavy": {
+          "description": "The host lock and the limits of one heavy step.",
+          "type": "object",
+          "properties": {
+            "lockPath": {
+              "description": "The host lock file every heavy step takes; a relative path is in the team's folder. Unset: host.lock in the kit home, one lock for every team on the host.",
+              "type": "string",
+              "minLength": 1
+            },
+            "lockTtlMinutes": {
+              "description": "A taken host lock lasts this many minutes; past it, or once its process is gone, another step takes it over.",
+              "type": "integer",
+              "minimum": 11,
+              "maximum": 1440,
+              "default": 150
+            },
+            "maxRunMinutes": {
+              "description": "A heavy step still running after this many minutes is killed with every process it started. At most lockTtlMinutes less 10.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1430,
+              "default": 45
+            },
+            "waitMinutes": {
+              "description": "A heavy step waits this many minutes at most for the host lock, then is refused.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1440,
+              "default": 60
+            }
+          }
+        },
+        "wait": {
+          "description": "How a coordinator step waits.",
+          "type": "object",
+          "properties": {
+            "pollSeconds": {
+              "description": "A waiting step looks again after this many seconds.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600,
+              "default": 30
+            }
+          }
+        },
         "schedule": {
           "type": "object",
           "properties": {

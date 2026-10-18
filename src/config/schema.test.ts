@@ -21,7 +21,12 @@ const EVERY_KEY = {
   launch: { alpha: { model: 'best', effort: 'xhigh' } },
   roles: { lead: 'alpha', coordinatorOwner: 'bravo' },
   register: { goalPattern: '^G\\d+$' },
-  coordinator: { schedule: { heavyCutoffUtc: '22:30' } },
+  coordinator: {
+    dir: 'data/deploys',
+    schedule: { heavyCutoffUtc: '22:30' },
+    heavy: { lockPath: 'data/deploys/host.lock', lockTtlMinutes: 150, maxRunMinutes: 45, waitMinutes: 60 },
+    wait: { pollSeconds: 30 },
+  },
   budget: {
     weeklyLimitW: 680_000_000,
     subagentWeight: 2,
@@ -123,6 +128,10 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   burstMinSparePct: 'burst.minSparePct',
   burstMaxHelpers: 'burst.maxHelpers',
   burstMaxHires: 'burst.maxHires',
+  heavyLockTtlMinutes: 'coordinator.heavy.lockTtlMinutes',
+  heavyMaxRunMinutes: 'coordinator.heavy.maxRunMinutes',
+  heavyWaitMinutes: 'coordinator.heavy.waitMinutes',
+  coordinatorPollSeconds: 'coordinator.wait.pollSeconds',
 };
 
 function isLimitName(name: string): name is keyof typeof CONFIG_LIMITS {

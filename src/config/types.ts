@@ -354,9 +354,34 @@ export interface ScheduleConfig {
   readonly heavyCutoffUtc?: string;
 }
 
-/** The deploy coordinator's settings; M1 reads only what the rule pack states. */
+/** `teamrig heavy`: one heavy step on the host at a time, each under the host lock. */
+export interface HeavyConfig {
+  /**
+   * The host lock file every heavy step takes; a relative path is in the team's folder. Unset: `<kit home>/host.lock`,
+   * one lock for every team on the host.
+   */
+  readonly lockPath?: string;
+  /** A taken host lock lasts this many minutes; past it, another step takes it over. */
+  readonly lockTtlMinutes: number;
+  /** A heavy step still running after this many minutes is killed with every process it started. */
+  readonly maxRunMinutes: number;
+  /** A heavy step waits this many minutes at most for the host lock, then is refused. */
+  readonly waitMinutes: number;
+}
+
+/** How a coordinator step waits. */
+export interface CoordinatorWaitConfig {
+  /** A waiting step looks again after this many seconds. */
+  readonly pollSeconds: number;
+}
+
+/** The deploy coordinator: its folder, the heavy-step cutoff, the host lock and how a step waits. */
 export interface CoordinatorConfig {
+  /** The coordinator's folder, which holds its ledger; a relative path is in the team's folder. Unset: `<state>/deploys`. */
+  readonly dir?: string;
   readonly schedule: ScheduleConfig;
+  readonly heavy: HeavyConfig;
+  readonly wait: CoordinatorWaitConfig;
 }
 
 export interface AlertsConfig {
