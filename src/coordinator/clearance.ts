@@ -4,6 +4,9 @@ import { holderText, type HostLock, type HostLockInfo } from './host-lock.ts';
 /** Whether a deploy step may start: at once, never (a cutoff or blackout), or after a wait (a quiet claim). */
 export type Readiness = { readonly kind: 'go' } | { readonly kind: 'refuse'; readonly reason: string } | { readonly kind: 'wait'; readonly reason: string };
 
+/** When readiness is asked: before the host lock is taken, or under it, the answer the step goes on. */
+export type ClearancePhase = 'before' | 'locked';
+
 /** How the wait for clearance ended: the host lock taken with nothing holding the step, refused, or out of time. */
 export type Clearance =
   | { readonly kind: 'taken'; readonly lock: HostLockInfo }
@@ -30,9 +33,10 @@ export interface ClearancePorts {
 /**
  * Takes the host lock once nothing holds the step back. A refusal ends the wait at once; a reason to wait and a busy
  * lock are waited out, for at most `maxWaitMs` in all. Readiness is asked again under the lock, since a claim may
- * start while the step waited for the lock: then the lock is released and the wait goes on.
+ * start while the step waited for the lock: then the lock is released and the wait goes on. Each ask names its phase,
+ * so a check that costs or changes something can run only under the lock.
  */
-export async function takeWhenClear(readiness: () => Promise<Readiness>, ports: ClearancePorts, request: ClearanceRequest): Promise<Clearance> {
+export async function takeWhenClear(readiness: (phase: ClearancePhase) => Promise<Readiness>, ports: ClearancePorts, request: ClearanceRequest): Promise<Clearance> {
   const { lock, clock, sleep } = ports;
   const deadline = clock.now() + request.maxWaitMs;
   let told: string | undefined;
@@ -50,7 +54,7 @@ export async function takeWhenClear(readiness: () => Promise<Readiness>, ports: 
     return true;
   };
   for (;;) {
-    const before = await readiness();
+    const before = await readiness('before');
     if (before.kind === 'refuse') {
       return { kind: 'refused', reason: before.reason };
     }
@@ -66,7 +70,7 @@ export async function takeWhenClear(readiness: () => Promise<Readiness>, ports: 
     if (taking.kind === 'busy') {
       return { kind: 'gaveUp', reason: `host lock still held by ${holderText(taking.holder)}` };
     }
-    const under = await readiness();
+    const under = await readiness('locked');
     if (under.kind === 'go') {
       return { kind: 'taken', lock: taking.lock };
     }
