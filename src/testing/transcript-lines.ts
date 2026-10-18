@@ -16,6 +16,8 @@ export interface FixtureTool {
   readonly path?: string;
   /** Written as the input's `skill`, as a `Skill` call has it. */
   readonly skill?: string;
+  /** Written as the input's `run_in_background`. */
+  readonly background?: boolean;
 }
 
 export interface FixtureReply {
@@ -57,7 +59,7 @@ export function replyLine(reply: FixtureReply): string {
     type: 'tool_use',
     id: tool.id,
     name: tool.name,
-    input: definedEntries({ command: tool.command, file_path: tool.path, skill: tool.skill }),
+    input: definedEntries({ command: tool.command, file_path: tool.path, skill: tool.skill, run_in_background: tool.background }),
   }));
   return JSON.stringify(
     definedEntries({
