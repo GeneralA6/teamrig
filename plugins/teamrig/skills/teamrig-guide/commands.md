@@ -1445,6 +1445,131 @@ DONE pushed 9a0b1c2d..4f1c2a9e to main; cloud-api deploy on push
 
 A wait prints `waiting: <reason>` lines first, such as a quiet claim or the host lock's holder.
 
+### teamrig roll
+
+Brings what was pushed to a repository's default branch to the running system, one roll on the host at a time, the
+same way for every session: checked, pulled under the host lock, rolled and recorded.
+
+The repository is an entry of `coordinator.repos` with a `roll` block: the one `--repo` names, else the one whose
+`mainCheckout` this folder is in, else the only one with a roll block.
+
+- `targets`: what the roll deploys, such as `["api", "workers"]`. roll waits for quiet claims on them, and its
+  deploy record names them.
+- `gates`: up to 16 `{ "name", "command" }` checks the team's own tools answer, such as "is a batch run open?".
+- `afterPull`: up to 16 commands run after the pull and before the roll command, such as a build the roll needs.
+- `command`: the roll itself, such as `["node", "tools/roll.js"]`.
+
+Each command is a list of words, run with no shell in the main checkout with stdin closed. Each gets `TEAMRIG_TEAM`,
+`TEAMRIG_SESSION`, `TEAMRIG_VERB=roll`, `TEAMRIG_REPO` and `TEAMRIG_PENDING_RANGE` (`<head sha>..<origin sha>`); a
+gate also gets `TEAMRIG_GATE_NAME` and `TEAMRIG_GATE_PHASE` (`before` the host lock, then `locked` under it); the
+afterPull hooks and the command also get `TEAMRIG_ROLL_TO` (the sha pulled) and, when a gate printed a line
+`tag=<tag>`, `TEAMRIG_ROLL_TAG`. A gate's exit 0 lets the roll go, 75 holds it and 2 refuses it; any other end, or
+none within `coordinator.gateTimeoutSeconds` (20), holds it. Its last line, secrets redacted, is the reason.
+
+REFUSED (exit 2) before any gate or lock for a main checkout off its default branch, with uncommitted changes or with
+commits origin lacks, and for a range with a dependency change `dependencyGate` holds. Also from
+`coordinator.schedule.heavyCutoffUtc` to midnight UTC, in the `resetBlackoutHours` before the weekly token reset,
+and when a gate refuses. With nothing pending it is DONE and runs nothing. Otherwise it waits up to
+`coordinator.wait.maxMinutes` for the claims, the gates and the host lock, reads origin again under the lock and asks
+the gates again, then pulls fast-forward to the sha they judged and runs the afterPull hooks and the command, each
+killed after `coordinator.heavy.maxRunMinutes`, all one heavy step in the ledger. Their lines show as they come.
+
+A command that prints the line `no-roll` had nothing to roll: DONE, with no deploy record. Otherwise the deploy is
+recorded with the command's last line, and exit 0 is DONE, any other end FAILED (exit 1): its owners fix forward or
+roll back. The pull stays after a failure, so a new roll finds nothing pending: run the roll command by hand once it
+is fixed. A failed pull rolled nothing: roll again.
+
+Flags:
+
+- `--repo <name>`: the repository to roll.
+- `--session <id|name>`: the session rolling, as the ledger names it; default `$TEAMRIG_SESSION`.
+
+Config:
+
+```json
+"coordinator": {
+  "repos": {
+    "pipeline": {
+      "mainCheckout": "../pipeline",
+      "roll": {
+        "targets": ["api", "workers"],
+        "gates": [{ "name": "flow", "command": ["node", "tools/flow-gate.js"] }],
+        "afterPull": [["npm", "run", "build"]],
+        "command": ["node", "tools/roll.js"]
+      }
+    }
+  }
+}
+```
+
+Example:
+
+```sh
+teamrig roll --session api
+```
+
+Output:
+
+```text
+2030-01-08T10:00:00.000Z 2 commits pending in pipeline (4f1c2a9e..9a0b1c2d)
+2030-01-08T10:00:00.000Z waiting: gate flow holds the roll: a batch run is open
+2030-01-08T10:00:30.000Z clear; pulling 2 commits (4f1c2a9e..9a0b1c2d) into /home/you/pipeline
+2030-01-08T10:00:30.000Z pulled /home/you/pipeline to 9a0b1c2d
+2030-01-08T10:00:30.000Z afterPull: npm run build
+2030-01-08T10:01:10.000Z roll: node tools/roll.js
+2030-01-08T10:03:40.000Z   rolled api, workers on sha-9a0b1c2d
+DONE 4f1c2a9e..9a0b1c2d rolled: rolled api, workers on sha-9a0b1c2d
+```
+
+### teamrig claim
+
+A quiet claim holds the integrates and rolls that deploy its targets while a session measures them, so no deploy
+lands in the middle of a measurement. It lasts from now for `--for`: minutes, hours or both, such as `45m` or
+`1h30m`, at most `coordinator.claims.maxMinutes` (120). Each target must be one a repository deploys, in its
+`deploysOnPush` or `roll.targets`. One claim per session. REFUSED for an unknown target, a longer span, a second
+claim, or a secret in the metric or reason, since the claims are shared files: `claims.json` beside the ledger, and
+`claims.md` for people, both written under their own lock. A claim ends at its time, or with `teamrig release`.
+
+Flags:
+
+- `--targets <a,b>`: the deploy targets the claim holds.
+- `--metric <m>`: what is being measured, shown to the deploys it holds.
+- `--why "<why>"`: why it must not move meanwhile.
+- `--for <span>`: how long, such as `45m`, `2h` or `1h30m`.
+- `--session <id|name>`: the session claiming; default `$TEAMRIG_SESSION`.
+
+Example:
+
+```sh
+teamrig claim --session api --targets api,workers --metric "p95 latency" --why "cache probe" --for 45m
+```
+
+Output:
+
+```text
+CLAIMED api, workers until 2030-01-08 10:45 UTC
+```
+
+### teamrig release
+
+Ends this session's quiet claim before its time, so the deploys it held can go. NONE when the session held none.
+
+Flags:
+
+- `--session <id|name>`: the session whose claim ends; default `$TEAMRIG_SESSION`.
+
+Example:
+
+```sh
+teamrig release --session api
+```
+
+Output:
+
+```text
+RELEASED api, workers (claimed until 2030-01-08 10:45 UTC)
+```
+
 ### teamrig test
 
 Runs a test command in the shell and prints a few lines instead of all it printed, so a long test run costs the
