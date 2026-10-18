@@ -188,6 +188,11 @@ class Scanner {
         let depth = 0;
         /** The depth a bash `((` arithmetic command opened at: inside it `<<` shifts and starts no heredoc. */
         let arithmetic;
+        /**
+         * The command a `( )` group closed on, until the command after its `)` ends: redirections there belong
+         * to the group, so they join that command, as those after a `{ }` group's `}` join the `}` command.
+         */
+        let closedGroup;
         const endWord = () => {
             const taken = word.take();
             if (taken === undefined) {
@@ -208,11 +213,18 @@ class Scanner {
                 awaiting = undefined;
             }
             verbatim = false;
-            const command = words.length > 0 ? { words, subshells: [...this.subshells], terminator: '', redirections, nesting: this.nesting } : undefined;
+            const command = words.length > 0 || (redirections.length > 0 && closedGroup === undefined)
+                ? { words, subshells: [...this.subshells], terminator: '', redirections, nesting: this.nesting }
+                : undefined;
             if (command !== undefined) {
                 this.commands.push(command);
             }
-            this.openHeredocs(command, redirections, arithmetic === undefined);
+            else {
+                closedGroup?.redirections.push(...redirections);
+            }
+            closedGroup = undefined;
+            // A heredoc on a line of redirections alone has no reader: its body is one of the unread ones.
+            this.openHeredocs(words.length > 0 ? command : undefined, redirections, arithmetic === undefined);
             words = [];
             redirections = [];
         };
@@ -258,6 +270,7 @@ class Scanner {
                     if (this.dialect === 'bash') {
                         this.subshells.pop();
                     }
+                    closedGroup = this.commands.at(-1);
                 }
                 if (depth === arithmetic) {
                     arithmetic = undefined;
@@ -274,15 +287,17 @@ class Scanner {
                 this.skipComment();
                 continue;
             }
-            else if (char === '<' || char === '>') {
+            else if (char === '<' || char === '>' || this.isOutputAndErrorRedirection(char)) {
                 if (this.readProcessSubstitution(word)) {
                     continue;
                 }
-                // A file-descriptor number (`2>`) or PowerShell's `*>` belongs to the redirection.
+                // A file-descriptor number (`2>`), PowerShell's `*>` or bash's `{NAME}>` belongs to the redirection.
+                const named = this.dialect === 'bash' && /^\{[A-Za-z_]\w*\}$/.test(word.value);
                 let descriptor = '';
-                if (word.isStarted && /^(?:\d+|\*)$/.test(word.value)) {
+                if (char !== '&' && word.isStarted && (named || /^(?:\d+|\*)$/.test(word.value))) {
                     descriptor = word.value;
                     word.take();
+                    this.bindingsUnclear ||= named;
                 }
                 else {
                     endWord();
@@ -460,10 +475,14 @@ class Scanner {
     isCallOperator(char, atCommandStart) {
         return this.dialect === 'powershell' && char === '&' && this.at(1) !== '&' && this.at(-1) !== '&' && atCommandStart;
     }
+    /** bash `&>` and `&>>` send stdout and stderr to a file: a redirection, where `&&>` and `|&>` end a command first. */
+    isOutputAndErrorRedirection(char) {
+        return this.dialect === 'bash' && char === '&' && this.at(1) === '>' && this.at(-1) !== '&' && this.at(-1) !== '|';
+    }
     isSeparator(char) {
         switch (this.dialect) {
             case 'bash':
-                return char === ';' || char === '&' || char === '|';
+                return char === ';' || char === '|' || (char === '&' && !this.isOutputAndErrorRedirection(char));
             case 'powershell':
                 return char === ';' || char === '&' || char === '|' || char === '{' || char === '}';
             case 'cmd':
@@ -904,18 +923,31 @@ class Scanner {
             this.index += match[0].length;
         }
     }
-    /** Moves past a redirection operator; true when a target word follows (`> file`), false for `2>&1`. */
+    /**
+     * Moves past a redirection operator; true when a target word follows (`> file`), false when a descriptor
+     * does: `2>&1` copies one, `2>&1-` moves it and `2>&-` closes it.
+     */
     readRedirection() {
-        while (/[<>&|-]/.test(this.at(1))) {
+        while (/[<>&|]/.test(this.at(1)) || this.dashEndsOperator()) {
             this.index += 1;
+        }
+        if (this.at() === '-' && this.at(-1) === '&') {
+            return false;
         }
         if (this.at() === '&' && /\d/.test(this.at(1))) {
             while (/\d/.test(this.at(1))) {
                 this.index += 1;
             }
+            if (this.at(1) === '-') {
+                this.index += 1;
+            }
             return false;
         }
         return true;
+    }
+    /** Whether the next `-` belongs to the redirection operator: in `<<-` and in `>&-`, not in `>-`, which writes to a file named `-`. */
+    dashEndsOperator() {
+        return this.at(1) === '-' && (this.at() === '&' || (this.at() === '<' && this.at(-1) === '<' && this.at(-2) !== '<'));
     }
     skipComment() {
         while (!this.done && this.at() !== '\n') {
