@@ -4,7 +4,7 @@ import { NewerDataError, parseObject, recordVersion, VERSION_FIELD } from "../co
  * The skills scorecard's saved state: the per-day counts and where each transcript's read stands, in one JSON file.
  * Each save holds counts and cursors that agree, so when two scans race the last one wins and nothing counts twice.
  */
-export const SCORECARD_FORMAT = 1;
+export const SCORECARD_FORMAT = 2;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const RUN_MODES = ['skill', 'manual'];
 export class ScorecardStore {
@@ -85,6 +85,7 @@ function openRunFrom(value) {
     }
     const { skill, mode, day, calls, failed, refused } = value;
     const runMode = RUN_MODES.find((known) => known === mode);
+    const waitsOn = listFrom(value['waitsOn'], (id) => (typeof id === 'string' && id !== '' ? id : undefined));
     return typeof skill === 'string' &&
         skill !== '' &&
         runMode !== undefined &&
@@ -92,8 +93,9 @@ function openRunFrom(value) {
         DAY.test(day) &&
         isNonNegativeInteger(calls) &&
         isNonNegativeInteger(failed) &&
-        isNonNegativeInteger(refused)
-        ? { skill, mode: runMode, day, calls, failed, refused }
+        isNonNegativeInteger(refused) &&
+        waitsOn !== undefined
+        ? { skill, mode: runMode, day, calls, failed, refused, waitsOn }
         : undefined;
 }
 function listFrom(value, itemFrom) {
