@@ -16,6 +16,14 @@ export interface ProcessInfo {
   readonly commandLine: string;
 }
 
+const CLAUDE_PROGRAM = /^claude(\.exe)?$/i;
+const NODE_PROGRAM = /^node(\.exe)?$/i;
+
+/** Whether a process is Claude Code: its own binary, or Node.js running its script. */
+export function isClaudeProcess(info: ProcessInfo): boolean {
+  return CLAUDE_PROGRAM.test(info.name) || (NODE_PROGRAM.test(info.name) && /claude/i.test(info.commandLine));
+}
+
 export type EndOutcome = { readonly kind: 'ended' } | { readonly kind: 'gone' } | { readonly kind: 'failed'; readonly error: string };
 
 /** A program run with `input` on its stdin; its output is dropped. */

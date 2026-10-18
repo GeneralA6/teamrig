@@ -6,7 +6,18 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ProgramRequest, ProgramResult } from '../github/credentials.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
-import { nodeSessionProcesses, parsePosixChildren, parsePosixProcess, parseWindowsProcess, parseWindowsProcesses } from './session-processes.ts';
+import { isClaudeProcess, nodeSessionProcesses, parsePosixChildren, parsePosixProcess, parseWindowsProcess, parseWindowsProcesses } from './session-processes.ts';
+
+describe('isClaudeProcess', () => {
+  it('knows Claude Code by its binary, or by Node.js running its script', () => {
+    const info = (name: string, commandLine: string) => ({ pid: 1, parentPid: 0, name, commandLine });
+    assert.equal(isClaudeProcess(info('claude.exe', '')), true);
+    assert.equal(isClaudeProcess(info('Claude', '')), true);
+    assert.equal(isClaudeProcess(info('node', 'node /usr/lib/node_modules/@anthropic-ai/claude-code/cli.js')), true);
+    assert.equal(isClaudeProcess(info('node.exe', 'node C:/tools/build.js')), false);
+    assert.equal(isClaudeProcess(info('claude-helper', '')), false);
+  });
+});
 
 const NODE = process.execPath;
 const DIR = mkdtempSync(join(tmpdir(), 'teamrig-session-processes-'));
