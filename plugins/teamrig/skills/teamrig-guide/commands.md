@@ -2183,10 +2183,15 @@ session in that folder, is read by `teamrig budget`. Only `ts` and `session_id` 
 required, and `rate_limits.seven_day` carries the week; the other fields may be `null`.
 
 ```json
-{"ts":"2026-10-15T12:00:50.598Z","session_id":"0b6f9c2e-5d1a-4c3e-9f7a-2e8d4b1c6a90","cwd":"/work/app","agent_name":null,"model":"Opus 5.5","rate_limits":{"five_hour":{"used_percentage":6,"resets_at":1792081200},"seven_day":{"used_percentage":57,"resets_at":1792544400}},"cost_usd":857.79,"context_used_pct":15,"context_input_tokens":153654}
+{"ts":"2026-10-15T12:00:50.598Z","session_id":"0b6f9c2e-5d1a-4c3e-9f7a-2e8d4b1c6a90","cwd":"/work/app","agent_name":null,"model":"Opus 5.5","rate_limits":{"five_hour":{"used_percentage":6,"resets_at":1792081200},"seven_day":{"used_percentage":57,"resets_at":1792544400}},"rate_limits_since":"2026-10-15T11:58:02.114Z","rate_limits_after":"2026-10-15T11:41:17.930Z","cost_usd":857.79,"context_used_pct":15,"context_input_tokens":153654}
 ```
 
-`resets_at` is in seconds since 1970, as Claude Code sends it.
+`resets_at` is in seconds since 1970, as Claude Code sends it. Claude Code redraws the status line with the
+session's last reading until its next reply, so a file written now may hold an old reading. The two optional
+times date it: `rate_limits_since`, when the session's snapshots began to show these rate limits, and
+`rate_limits_after`, when its snapshot last showed other ones. `teamrig budget` drops a reading taken by the
+time another is known to follow, then takes the highest of the rest. Without them it takes the highest
+reading of the week, and the owner's reset in the middle of a week shows only when that week ends.
 
 ### teamrig statusline install
 
