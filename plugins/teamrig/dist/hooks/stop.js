@@ -10,24 +10,26 @@ function messageOf(lines) {
 export function blockOutput(reason, notices = []) {
     return JSON.stringify({ decision: 'block', reason, ...messageOf(notices) });
 }
+/** The output field that sets the tab's title, or nothing without a title. */
+function titleOf(title) {
+    return title === undefined ? {} : { terminalSequence: tabTitleSequence(title) };
+}
 /**
  * The Stop hook's stdout for a refresh decision and the model `notices` for the user. A block keeps
  * the session going with the reason as its next instruction; a notice shows the user one line and,
- * when the team wants it, marks the tab; the model notices are shown with either, or alone. A turn
- * with neither prints nothing, so it costs no context.
+ * when the team wants it, marks the tab; the model notices are shown with either, or alone. `tabTitle`
+ * (tab status) sets the tab's title at any end but a block's, over a notice's own. A turn with none of
+ * them prints nothing, so it costs no context.
  */
-export function stopOutput(decision, notices = []) {
+export function stopOutput(decision, notices = [], tabTitle) {
     switch (decision.kind) {
         case 'block':
             return blockOutput(decision.reason, notices);
         case 'notice':
-            return JSON.stringify({
-                ...messageOf([decision.message, ...notices]),
-                ...(decision.title === undefined ? {} : { terminalSequence: tabTitleSequence(decision.title) }),
-            });
+            return JSON.stringify({ ...messageOf([decision.message, ...notices]), ...titleOf(tabTitle ?? decision.title) });
         case 'none':
         case 'measure':
         case 'write':
-            return notices.length === 0 ? '' : JSON.stringify(messageOf(notices));
+            return notices.length === 0 && tabTitle === undefined ? '' : JSON.stringify({ ...messageOf(notices), ...titleOf(tabTitle) });
     }
 }

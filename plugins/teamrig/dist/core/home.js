@@ -32,6 +32,8 @@ export const ENV = {
     claudeEntrypoint: 'CLAUDE_CODE_ENTRYPOINT',
     /** `bg` for a background session, which the restore after a reboot never reopens. */
     claudeSessionKind: 'CLAUDE_CODE_SESSION_KIND',
+    /** Set (`1`), Claude Code stops writing the terminal tab's title and leaves it to hooks: tab status needs it. */
+    claudeTitleOff: 'CLAUDE_CODE_DISABLE_TERMINAL_TITLE',
 };
 /**
  * The kit home is the machine root: each team keeps its config, rules and state in its own folder
