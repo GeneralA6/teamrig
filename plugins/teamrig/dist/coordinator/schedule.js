@@ -16,6 +16,10 @@ export function heavyCutoffReason(nowMs, cutoffUtc) {
     const minute = now.getUTCHours() * 60 + now.getUTCMinutes();
     return minute >= minuteOfDay(cutoffUtc) ? `nothing heavy after ${cutoffUtc} UTC (now ${formatUtcMinute(now)})` : undefined;
 }
+/** When the blackout before `reset` starts: `hours` before it. */
+export function blackoutStart(reset, hours) {
+    return reset.at - hours * MS_PER_HOUR;
+}
 /**
  * Why no deploy may start at `nowMs`, or undefined when one may: none starts from `hours` before the weekly token reset
  * until the reset, so nothing that may need a fix lands while the week has no budget left to fix it. Unset hours or
@@ -25,7 +29,7 @@ export function resetBlackoutReason(nowMs, reset, hours) {
     if (reset === undefined || hours === undefined) {
         return undefined;
     }
-    const from = reset.at - hours * MS_PER_HOUR;
+    const from = blackoutStart(reset, hours);
     if (nowMs < from || nowMs >= reset.at) {
         return undefined;
     }
