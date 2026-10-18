@@ -156,7 +156,10 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       waits up to coordinator.heavy.waitMinutes for the lock, kills the step and every process it
       started after coordinator.heavy.maxRunMinutes (--max-minutes) and records its start and end in
       the coordinator's ledger; REFUSED from coordinator.schedule.heavyCutoffUtc to midnight UTC and
-      when the lock is still held; exit 0 when the command passed, 1 when it failed or was killed
+      when the lock is still held; exit 0 when the command passed, 1 when it failed or was killed. Its
+      processes get $TEAMRIG_HOST_LOCK: a heavy step started under a live lock (a git hook's checks
+      under heavy, integrate or roll) runs at once under it. No --session: $TEAMRIG_SESSION, the
+      parent step's session, else the session this Claude Code tab is bound to
   integrate [--session <id|name>] [--keep-remote] [--no-delete-local]   lands the branch checked out
       here on origin's default branch: REFUSED for a detached HEAD, the default branch, uncommitted
       changes, nothing new or a dependency change coordinator.repos.<name>.dependencyGate holds, from
