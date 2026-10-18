@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { heavyCutoffReason, minutesText, resetBlackoutReason } from './schedule.ts';
+import { heavyCutoffReason, minutesText, parseSpanMinutes, resetBlackoutReason } from './schedule.ts';
 
 describe('resetBlackoutReason', () => {
   const reset = { at: Date.parse('2030-01-09T01:00:00Z'), source: 'status line' };
@@ -44,5 +44,17 @@ describe('heavyCutoffReason', () => {
 describe('minutesText', () => {
   it('writes minutes under an hour as minutes, longer spans as hours and two-digit minutes', () => {
     assert.deepEqual([1, 45, 60, 65, 140].map(minutesText), ['1m', '45m', '1h00m', '1h05m', '2h20m']);
+  });
+});
+
+describe('parseSpanMinutes', () => {
+  it('reads minutes, hours, and both, and reads back what minutesText writes', () => {
+    assert.deepEqual(['45m', '2h', '1h30m', '1h05m', ' 90m '].map(parseSpanMinutes), [45, 120, 90, 65, 90]);
+    assert.deepEqual([1, 45, 60, 65, 140].map((minutes) => parseSpanMinutes(minutesText(minutes))), [1, 45, 60, 65, 140]);
+  });
+
+  it('reads no other text, and no span of none', () => {
+    const odd = ['', '0m', '0h0m', '30', '90s', '1.5h', 'm', '1h30', '-5m', '30m2h'];
+    assert.deepEqual(odd.map(parseSpanMinutes), odd.map(() => undefined));
   });
 });
