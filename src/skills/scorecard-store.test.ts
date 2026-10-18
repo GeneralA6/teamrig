@@ -16,7 +16,7 @@ const STATE: ScorecardState = {
       lastAt: 1_893_000_000_000,
       calls: 7,
       lastLoad: { 'alpha-ship': 3 },
-      open: [{ skill: 'alpha-ship', mode: 'manual', day: '2030-01-08', calls: 2, failed: 0, refused: 1 }],
+      open: [{ skill: 'alpha-ship', mode: 'manual', day: '2030-01-08', calls: 2, failed: 0, refused: 1, waitsOn: ['toolu_1'] }],
     },
   },
 };
@@ -46,6 +46,7 @@ describe('ScorecardStore', () => {
     assert.equal(await storeWith('{"v":1,').load(), undefined);
     assert.equal(await storeWith(changed((record) => delete record['v'])).load(), undefined);
     assert.equal(await storeWith(changed((record) => (record['v'] = 'x'))).load(), undefined);
+    assert.equal(await storeWith(changed((record) => (record['v'] = SCORECARD_FORMAT - 1))).load(), undefined);
   });
 
   it('reads no state when any part of it is damaged', async () => {
@@ -64,8 +65,10 @@ describe('ScorecardStore', () => {
       changed((record) => (record['cursors'] = { '': STATE.cursors['/c/p/app/s1.jsonl'] })),
       changed((record) => (record['cursors'] = [])),
       cursor((fields) => (fields['open'] = 'none')),
-      cursor((fields) => (fields['open'] = [{ skill: 'alpha-ship', mode: 'auto', day: '2030-01-08', calls: 0, failed: 0, refused: 0 }])),
-      cursor((fields) => (fields['open'] = [{ skill: '', mode: 'skill', day: '2030-01-08', calls: 0, failed: 0, refused: 0 }])),
+      cursor((fields) => (fields['open'] = [{ skill: 'alpha-ship', mode: 'auto', day: '2030-01-08', calls: 0, failed: 0, refused: 0, waitsOn: [] }])),
+      cursor((fields) => (fields['open'] = [{ skill: '', mode: 'skill', day: '2030-01-08', calls: 0, failed: 0, refused: 0, waitsOn: [] }])),
+      cursor((fields) => (fields['open'] = [{ skill: 'alpha-ship', mode: 'skill', day: '2030-01-08', calls: 0, failed: 0, refused: 0 }])),
+      cursor((fields) => (fields['open'] = [{ skill: 'alpha-ship', mode: 'skill', day: '2030-01-08', calls: 0, failed: 0, refused: 0, waitsOn: [''] }])),
       cursor((fields) => (fields['open'] = ['x'])),
       cursor((fields) => (fields['lastLoad'] = { 'alpha-ship': 1.5 })),
       cursor((fields) => (fields['lastAt'] = null)),

@@ -83,7 +83,7 @@ describe('renderScorecard', () => {
       '| alpha-plain | 1 | 0 | - | - | - | - | 0 | 0 | - | 6 | no signature |',
       '| alpha-ship | 2 | 1 | 3.0 | 9.0 | 1.0 | 2.0 | 2 | 1 | 2030-01-05 | 6 |  |',
       '',
-      "missed: a call matching the skill's Signature line with no load in the 30 calls before. A run ends at the next prompt that starts new work; base = the procedure by hand in the baseline.",
+      "missed: a call matching the skill's Signature line with no load in the 30 calls before. A run ends at the next prompt, or for a background step of its own at the notification after it; base = the procedure by hand in the baseline.",
       'Read 3 files, 3.1 MB this run.',
     ]);
   });

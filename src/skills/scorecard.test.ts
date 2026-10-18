@@ -9,7 +9,7 @@ const DAY = '2030-01-08';
 const START = Date.parse(`${DAY}T09:00:00.000Z`);
 const SKILLS: ScorecardSkills = {
   names: new Set(['alpha-inbox', 'alpha-ship']),
-  signatures: [signatureOf({ name: 'alpha-inbox', text: 'Signature: `teamrig inbox read`' })],
+  signatures: [signatureOf({ name: 'alpha-inbox', text: 'Signature: `teamrig inbox read`' }), signatureOf({ name: 'alpha-ship', text: 'Signature: `ship\\.ts`' })],
 };
 const DENIED = 'Permission for this action was denied by the Claude Code auto mode. Reason: x';
 
@@ -37,6 +37,15 @@ class Lines {
 
   bash(minute: number, command: string): this {
     return this.call(minute, { name: 'Bash', command });
+  }
+
+  background(minute: number, command: string): this {
+    return this.call(minute, { name: 'Bash', command, background: true });
+  }
+
+  /** A task notification for the tool `t<n>`. */
+  notification(minute: number, tool: number): this {
+    return this.prompt(minute, `<task-notification>\n<task-id>b${tool}</task-id>\n<tool-use-id>t${tool}</tool-use-id>\n</task-notification>`);
   }
 
   error(minute: number, text: string): this {
@@ -75,15 +84,47 @@ describe('ThreadFold', () => {
     assert.deepEqual(dayOf(tally, 'alpha-ship'), { loads: 1, skill: { runs: 1, calls: 2, failed: 1, refused: 1 }, manual: EMPTY_TALLY, edits: 0 });
   });
 
-  it('keeps a run going through a notification and a resumed compaction, and leaves it open at the end', () => {
+  it('keeps a run going through a resumed compaction, and leaves it open at the end', () => {
     const summary = JSON.stringify({ type: 'user', isCompactSummary: true, message: { role: 'user', content: 'summary' }, timestamp: at(4) });
-    const lines = new Lines().prompt(1).call(2, { name: 'Skill', skill: 'alpha-ship' }).bash(3, 'a').prompt(3, '<task-notification>done</task-notification>').lines;
+    const lines = new Lines().prompt(1).call(2, { name: 'Skill', skill: 'alpha-ship' }).bash(3, 'a').lines;
     const { tally, thread } = fold([...lines, summary, ...new Lines().bash(5, 'b').lines]);
     assert.equal(dayOf(tally, 'alpha-ship')?.skill.runs, 0);
-    assert.deepEqual(thread.cursor(9, 9).open, [{ skill: 'alpha-ship', mode: 'skill', day: DAY, calls: 2, failed: 0, refused: 0 }]);
+    assert.deepEqual(thread.cursor(9, 9).open, [{ skill: 'alpha-ship', mode: 'skill', day: DAY, calls: 2, failed: 0, refused: 0, waitsOn: [] }]);
     thread.closeAll();
     assert.deepEqual(dayOf(tally, 'alpha-ship')?.skill, { runs: 1, calls: 2, failed: 0, refused: 0 });
     assert.deepEqual(thread.cursor(9, 9).open, []);
+  });
+
+  it('keeps a run going through notifications only while a background step of its own is running', () => {
+    const lines = new Lines()
+      .prompt(1)
+      .call(2, { name: 'Skill', skill: 'alpha-ship' })
+      .background(3, 'node ship.ts plan')
+      .background(3, 'npm run lint')
+      .notification(4, 3)
+      .notification(5, 2)
+      .bash(6, 'git push')
+      .background(6, 'node ship.ts merge')
+      .notification(7, 3)
+      .bash(8, 'teamrig worktree remove')
+      .notification(9, 5)
+      .bash(10, 'ls')
+      .prompt(11, '<task-notification>done</task-notification>').lines;
+    const { tally, thread } = fold(lines);
+    assert.deepEqual(dayOf(tally, 'alpha-ship')?.skill, { runs: 1, calls: 6, failed: 0, refused: 0 });
+    assert.deepEqual(thread.cursor(9, 9).open, []);
+  });
+
+  it('ends a run at a notification of another task, a hand run as a loaded one', () => {
+    const lines = new Lines().prompt(1).bash(2, 'teamrig inbox read').background(3, 'npm test').notification(4, 2).bash(5, 'ls').prompt(6, '<task-notification>done</task-notification>').lines;
+    const { tally } = fold(lines);
+    assert.deepEqual(dayOf(tally, 'alpha-inbox')?.manual, { runs: 1, calls: 2, failed: 0, refused: 0 });
+  });
+
+  it('passes the waits of a hand run on to the run of a skill loaded mid-procedure', () => {
+    const lines = new Lines().prompt(1).background(2, 'node ship.ts plan').call(3, { name: 'Skill', skill: 'alpha-ship' }).notification(4, 1).bash(5, 'git push').prompt(6).lines;
+    const { tally } = fold(lines);
+    assert.deepEqual(dayOf(tally, 'alpha-ship'), { loads: 1, skill: { runs: 1, calls: 1, failed: 0, refused: 0 }, manual: EMPTY_TALLY, edits: 0 });
   });
 
   it('loads a skill typed as a slash command, and skips commands and Skill calls that are not installed skills', () => {
@@ -188,7 +229,7 @@ describe('ScorecardTally', () => {
     const start = { [DAY]: { 'alpha-ship': { loads: 1, skill: EMPTY_TALLY, manual: EMPTY_TALLY, edits: 0 } } };
     const tally = new ScorecardTally(start);
     tally.load(DAY, 'alpha-ship');
-    tally.close({ skill: 'alpha-ship', mode: 'manual', day: DAY, calls: 2, failed: 1, refused: 0 });
+    tally.close({ skill: 'alpha-ship', mode: 'manual', day: DAY, calls: 2, failed: 1, refused: 0, waitsOn: [] });
     assert.equal(start[DAY]['alpha-ship'].loads, 1);
     assert.deepEqual(tally.days()[DAY]?.['alpha-ship'], { loads: 2, skill: EMPTY_TALLY, manual: { runs: 1, calls: 2, failed: 1, refused: 0 }, edits: 0 });
   });
