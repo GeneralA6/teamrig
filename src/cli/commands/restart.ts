@@ -1,9 +1,11 @@
+import { errorMessage } from '../../core/guards.ts';
 import { KIT_NAME } from '../../core/home.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { postLine } from '../../inbox/inbox.ts';
 import { refreshPrompt } from '../../open/prompt.ts';
 import { ClearAsks, clearAskDir } from '../../refresh/clear-asks.ts';
 import { runRestart, type RestartResult } from '../../refresh/restart.ts';
+import { RestartLog, type RestartRecord } from '../../refresh/restart-log.ts';
 import { RefreshStore } from '../../refresh/store.ts';
 import { RestoreRegistry, restoreSessionsDir } from '../../restore/registry.ts';
 import { onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
@@ -51,7 +53,8 @@ function resultLineOf(result: RestartResult, name: string): string {
  * which the Stop hook starts hidden once the session's handover is written (`runRestart`): the tab's mod
  * runs /clear when it claims the ask in time, else the session's process is ended. A new tab,
  * when one is needed, opens in the project folder the way `open`'s does. What the session must know
- * goes to its inbox, which it reads at its next prompt or start; exit 1 when no restart happened.
+ * goes to its inbox, which it reads at its next prompt or start; every outcome goes to the restart
+ * log (`RestartLog`); exit 1 when no restart happened.
  */
 export async function restart(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const id = idFlag('session', onePositional(args, 'id'));
@@ -66,9 +69,12 @@ export async function restart(args: ParsedArgs, runtime: CliRuntime): Promise<Ex
   const roster = await rosterOf(runtime, kit, config);
   const name = roster.nameOf(id) ?? id;
   const store = new RefreshStore(runtime.files, kit.paths);
+  const log = new RestartLog(runtime.files, kit.paths);
   if (!config.refresh.enabled || !config.refresh.autoRestart) {
     await store.clearRestart(id);
-    runtime.out.stdout(resultLineOf({ kind: 'cancelled', why: 'the automatic restart is off (refresh.autoRestart in the team config)' }, name));
+    const off: RestartResult = { kind: 'cancelled', why: 'the automatic restart is off (refresh.autoRestart in the team config)' };
+    await logRestart(runtime, log, { session: id, at, endedAt: new Date(runtime.clock.now()).toISOString(), result: off });
+    runtime.out.stdout(resultLineOf(off, name));
     return EXIT.ok;
   }
   const result = await runRestart(
@@ -97,6 +103,16 @@ export async function restart(args: ParsedArgs, runtime: CliRuntime): Promise<Ex
       runtime.out.stderr(`WARN the inbox line to ${name} was not written: ${problem}`);
     }
   }
+  await logRestart(runtime, log, { session: id, at, endedAt: new Date(runtime.clock.now()).toISOString(), result });
   runtime.out.stdout(resultLineOf(result, name));
   return result.kind === 'failed' ? EXIT.failed : EXIT.ok;
+}
+
+/** A log it cannot write is said, but is no reason to fail a restart that already happened. */
+async function logRestart(runtime: CliRuntime, log: RestartLog, entry: RestartRecord): Promise<void> {
+  try {
+    await log.record(entry);
+  } catch (error) {
+    runtime.out.stderr(`WARN the restart log was not written: ${errorMessage(error)}`);
+  }
 }

@@ -1,19 +1,21 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import type { JsonRecord } from '../core/guards.ts';
+import { isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import { decodePrompt, refreshPrompt } from '../open/prompt.ts';
 import type { ProcessInfo } from '../open/session-processes.ts';
 import { ClearAsks, clearAskDir } from '../refresh/clear-asks.ts';
 import { RefreshStore } from '../refresh/store.ts';
 import { APP, AUTO_RESTART_TEAM, CLAUDE_SESSION, CliHarness, KIT, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { FakeProcesses } from '../testing/fake-processes.ts';
+import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { EXIT } from './runtime.ts';
 
 const AT = '2030-01-08T09:59:59.000Z';
 const TRANSCRIPT = join('/', 'u', '.claude', 'projects', 'app', 'session.jsonl');
 const INBOX = join(TEAM_HOME, 'state', 'inbox', 'alpha.md');
+const RESTART_LOG = join(TEAM_HOME, 'state', 'refresh', 'restarts.jsonl');
 const CLAUDE: ProcessInfo = { pid: 4100, parentPid: 4000, name: 'claude.exe', commandLine: 'claude' };
 const SHELL: ProcessInfo = { pid: 4000, parentPid: 1, name: 'powershell.exe', commandLine: 'powershell -NoExit -Command claude --resume x' };
 const RESTART_ALPHA = ['restart', 'alpha', '--team', 'app', '--at', AT, '--project', APP];
@@ -93,6 +95,39 @@ describe('teamrig restart', () => {
     assert.deepEqual(result.stdout, ['CANCELLED the restart of app-alpha: the automatic restart is off (refresh.autoRestart in the team config)']);
     assert.deepEqual(processes.ends, []);
     assert.equal(await store.restart('alpha'), undefined);
+  });
+
+  const outcomes: readonly { readonly name: string; readonly supervised: boolean; readonly config: JsonRecord; readonly kind: string; readonly why: RegExp | undefined }[] = [
+    { name: 'a restart', supervised: true, config: AUTO_RESTART_TEAM, kind: 'restarted', why: undefined },
+    { name: 'a restart that did not happen', supervised: false, config: AUTO_RESTART_TEAM, kind: 'failed', why: /^no new tab opened/ },
+    { name: 'a restart while the automatic restart is off', supervised: true, config: TEAM, kind: 'cancelled', why: /^the automatic restart is off/ },
+  ];
+  for (const outcome of outcomes) {
+    it(`logs ${outcome.name} to the restart log`, async () => {
+      const { kit, processes } = await armed(outcome.supervised, outcome.config);
+      await kit.run(RESTART_ALPHA, { sessionProcesses: processes, processes: new FakeProcesses(), platform: 'win32' });
+      const lines = (kit.files.get(RESTART_LOG) ?? '').split('\n').filter((line) => line !== '');
+      assert.equal(lines.length, 1);
+      const entry: unknown = JSON.parse(lines[0] ?? '');
+      assert.ok(isRecord(entry));
+      assert.equal(stringField(entry, 'session'), 'alpha');
+      assert.equal(stringField(entry, 'at'), AT);
+      assert.ok(Date.parse(stringField(entry, 'endedAt') ?? '') >= Date.parse(AT));
+      const result = recordField(entry, 'result');
+      assert.ok(result !== undefined);
+      assert.equal(stringField(result, 'kind'), outcome.kind);
+      if (outcome.why !== undefined) {
+        assert.match(stringField(result, 'why') ?? '', outcome.why);
+      }
+    });
+  }
+
+  it('still restarts when the restart log cannot be written, and says so', async () => {
+    const { kit, processes } = await armed(true);
+    const files = new FaultyFiles(kit.files).fail('append', RESTART_LOG, systemError('EACCES', 'EACCES: permission denied'));
+    const result = await kit.run(RESTART_ALPHA, { sessionProcesses: processes, platform: 'win32', files });
+    assert.deepEqual(result, { code: EXIT.ok, stdout: ['RESTARTED app-alpha in the same tab'], stderr: ['WARN the restart log was not written: EACCES: permission denied'] });
+    assert.deepEqual(processes.ends, [{ pid: CLAUDE.pid, how: 'ask' }]);
   });
 
   it('refuses a time that is not one', async () => {
