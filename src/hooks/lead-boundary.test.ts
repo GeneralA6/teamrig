@@ -27,16 +27,46 @@ describe('the lead boundary', () => {
     assert.equal(leadWorkOf(tool('Bash', { command: "sed -i 's/a/b/' /d/work/app/CLAUDE.md" }), OWN), 'edit');
   });
 
-  it('counts a git step that changes a repository, also behind a wrapper, but not the words in a note', () => {
-    assert.equal(leadWorkOf(tool('Bash', { command: 'cd D:/work/app && git commit -m x' }), OWN), 'edit');
-    assert.equal(leadWorkOf(tool('Bash', { command: 'node cli.ts heavy --session lead -- git push origin main' }), OWN), 'edit');
-    assert.equal(leadWorkOf(tool('Bash', { command: 'git log --oneline -3' }), OWN), undefined);
-    assert.equal(leadWorkOf(tool('Bash', { command: 'node teamrig.js set T1 --note "after git commit"' }), OWN), undefined);
+  it('counts a shell edit by the program that writes, not by its words in an argument', () => {
+    assert.equal(leadWorkOf(tool('Bash', { command: 'cat <<EOF > src/a.ts\nx\nEOF' }), OWN), 'edit');
+    assert.equal(leadWorkOf(tool('Bash', { command: 'cat src/a.ts > /dev/null' }), OWN), undefined);
+    assert.equal(leadWorkOf(tool('Bash', { command: "perl -pi -e 's/a/b/' src/a.ts" }), OWN), 'edit');
+    assert.equal(leadWorkOf(tool('Bash', { command: `node -e "require('fs').writeFileSync('a.ts', '')"` }), OWN), 'edit');
+    assert.equal(leadWorkOf(tool('Bash', { command: `node --eval="require('fs').writeFileSync('a.ts', '')"` }), OWN), 'edit');
+    assert.equal(leadWorkOf(tool('Bash', { command: `node -p "require('fs').readFileSync('a.ts', 'utf8')" a.ts` }), OWN), undefined);
+    assert.equal(leadWorkOf(tool('Bash', { command: 'git diff | patch -p1' }), OWN), 'edit');
+    assert.equal(leadWorkOf(tool('PowerShell', { command: 'Out-File -FilePath C:\\app\\a.ts' }), OWN), 'edit');
+    assert.equal(leadWorkOf(tool('Bash', { command: 'teamrig add --description "use sed -i or cat > a.ts, then perl -pi"' }), OWN), undefined);
   });
 
-  it('counts tests, builds and code searches, but not reading results or docs', () => {
+  it('counts a git step that changes a repository, also behind a wrapper, but not the words in a note', () => {
+    assert.equal(leadWorkOf(tool('Bash', { command: 'cd D:/work/app && git commit -m x' }), OWN), 'edit');
+    assert.equal(leadWorkOf(tool('Bash', { command: 'git -C D:/work/app -c core.x=1 rebase origin/main' }), OWN), 'edit');
+    assert.equal(leadWorkOf(tool('Bash', { command: 'teamrig heavy --session lead --what ship -- git push origin main' }), OWN), 'edit');
+    assert.equal(leadWorkOf(tool('Bash', { command: 'bash -c "git commit -m x"' }), OWN), 'edit');
+    assert.equal(leadWorkOf(tool('Bash', { command: 'git log --oneline -3' }), OWN), undefined);
+    assert.equal(leadWorkOf(tool('Bash', { command: 'node teamrig.js set T1 --note "after git commit"' }), OWN), undefined);
+    // T505: a register line whose description quotes a hooked commit ran no git.
+    const quoted = 'teamrig add --owner bravo --priority p2 --description "refused: cd W && git commit -m \'x\' -- then git push"';
+    assert.equal(leadWorkOf(tool('Bash', { command: quoted }), OWN), undefined);
+    const commit = tool('Bash', { command: 'git commit -m x' });
+    assert.match(leadNudgeLine([commit], commit, OWN, 3) ?? '', /^teamrig: the lead edited git itself\./);
+  });
+
+  it('counts tests and builds by the program run, not by its words in an argument (T483)', () => {
     assert.equal(leadWorkOf(tool('Bash', { command: 'npm test' }), OWN), 'check');
+    assert.equal(leadWorkOf(tool('Bash', { command: 'npm --prefix app run test:unit' }), OWN), 'check');
+    assert.equal(leadWorkOf(tool('Bash', { command: 'npm run build' }), OWN), 'check');
     assert.equal(leadWorkOf(tool('Bash', { command: 'npx tsc --noEmit -p .' }), OWN), 'check');
+    assert.equal(leadWorkOf(tool('Bash', { command: 'npx vitest run' }), OWN), 'check');
+    assert.equal(leadWorkOf(tool('Bash', { command: 'node --disable-warning=X --test src/a.test.ts' }), OWN), 'check');
+    assert.equal(leadWorkOf(tool('Bash', { command: 'teamrig heavy --what t -- teamrig test -- npm test' }), OWN), 'check');
+    assert.equal(leadWorkOf(tool('Bash', { command: 'npm ci && npm run dev' }), OWN), undefined);
+    assert.equal(leadWorkOf(tool('Bash', { command: 'node cli.js --test-mode' }), OWN), undefined);
+    assert.equal(leadWorkOf(tool('Bash', { command: 'teamrig add --description "time npm ci, jest and build, then npx tsc"' }), OWN), undefined);
+  });
+
+  it('counts code searches, but not reading results or docs', () => {
     assert.equal(leadWorkOf(tool('Read', { path: 'D:/work/app/src/a.ts' }), OWN), 'search');
     assert.equal(leadWorkOf(tool('Read', { path: 'D:/work/app/docs/plan.md' }), OWN), undefined);
     assert.equal(leadWorkOf(g1, OWN), 'search');
@@ -44,6 +74,11 @@ describe('the lead boundary', () => {
     assert.equal(leadWorkOf(tool('Bash', { command: 'grep -rn foo src' }), OWN), 'search');
     assert.equal(leadWorkOf(tool('Bash', { command: 'grep -n x ~/ops/board/lead.md' }), OWN), undefined);
     assert.equal(leadWorkOf(tool('Bash', { command: 'ls | grep x' }), OWN), undefined);
+    assert.equal(leadWorkOf(tool('Bash', { command: 'git log --oneline | grep T505' }), OWN), undefined);
+    assert.equal(leadWorkOf(tool('Bash', { command: 'git grep -n foo' }), OWN), 'search');
+    assert.equal(leadWorkOf(tool('PowerShell', { command: 'Select-String -Path src\\*.ts -Pattern x' }), OWN), 'search');
+    assert.equal(leadWorkOf(tool('PowerShell', { command: 'Get-Content a.log | Select-String x' }), OWN), undefined);
+    assert.equal(leadWorkOf(tool('Bash', { command: 'teamrig add --description "it ran: grep -rn foo src"' }), OWN), undefined);
   });
 
   it('nudges the lead once a turn per kind, and for searches at the threshold only', () => {
