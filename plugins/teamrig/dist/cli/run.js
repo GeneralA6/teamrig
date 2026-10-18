@@ -46,6 +46,7 @@ const hireCommands = () => import("./commands/hire.js");
 const retireCommands = () => import("./commands/retire.js");
 const slashCommands = () => import("./commands/slash.js");
 const restoreCommands = () => import("./commands/restore.js");
+const restoreInstallCommands = () => import("./commands/restore-install.js");
 const TASK_FIELDS = ['title', 'description', 'owner', 'ref', 'priority', 'due', 'goals', 'week', 'after', 'size'];
 const COMMANDS = {
     add: { effect: 'write', flags: ['session', 'source', 'team', ...TASK_FIELDS], load: async () => (await registerCommands()).add },
@@ -80,6 +81,8 @@ const COMMANDS = {
     restore: { effect: 'read', flags: [], load: async () => (await restoreCommands()).restorePreview },
     'restore run': { effect: 'write', flags: ['since', 'terminal', 'home'], switches: ['tab'], load: async () => (await restoreCommands()).restoreRun },
     'restore check': { effect: 'write', flags: ['terminal', 'home'], load: async () => (await restoreCommands()).restoreCheck },
+    'restore install': { effect: 'write', flags: [], switches: ['yes'], load: async () => (await restoreInstallCommands()).restoreInstall },
+    'restore uninstall': { effect: 'write', flags: [], switches: ['yes'], load: async () => (await restoreInstallCommands()).restoreUninstall },
     'restore resume': { effect: 'internal', flags: ['project', 'home', 'effort', 'encoded-prompt'], load: async () => (await restoreCommands()).restoreResume },
     restart: { effect: 'internal', flags: ['team', 'at', 'project'], load: async () => (await restartCommands()).restart },
     who: { effect: 'read', flags: [], load: async () => (await teamCommands()).who },
@@ -190,6 +193,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       when one did not reopen
   restore check [--terminal <name>] [--home <dir>]   at logon: drops what no restore needs and, when
       the shutdown killed sessions, opens a tab running restore run for them
+  restore install [--yes]      has the system run restore check at each logon (Windows: a Run key
+      value naming a launcher in the kit home); without --yes it shows the change and writes nothing
+  restore uninstall [--yes]    stops it: removes the logon entry, then the launcher
   rules [--session <id|name>]  the team rules and who the session is, as a session start gives them
   rules scan [--kind <kind>]   every place a local rule can override a core rule (CLAUDE.md files, rules
       files, skills, memory, rules.md, hook scripts, settings autoMode lines), the kept rules, and the lines
