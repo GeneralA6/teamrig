@@ -1,12 +1,12 @@
 import { claimText, coveringClaims, readClaims } from "../coordinator/claims.js";
 import { takeWhenClear } from "../coordinator/clearance.js";
-import { appendDeploy, rangeText } from "../coordinator/ledger.js";
+import { appendDeploy } from "../coordinator/ledger.js";
 import { NOT_STARTED_EXIT, recordHeavy } from "../coordinator/recorded-step.js";
 import { heavyCutoffReason, resetBlackoutReason } from "../coordinator/schedule.js";
 import { exitCodeOf } from "../coordinator/steps.js";
 import { samePath } from "../core/paths.js";
-import { rangeInstallTouches } from "../integrate/dependencies.js";
 import { askGates, shownLine } from "./gates.js";
+import { plural, readPending, rollRepos, short } from "./pending.js";
 /**
  * `teamrig roll`: brings what was pushed to a repository's default branch to the running system, one roll on the host
  * at a time. It reads what is pending (the main checkout's `HEAD..origin/<default branch>`), refuses what it must not
@@ -18,12 +18,6 @@ import { askGates, shownLine } from "./gates.js";
 const MINUTE_MS = 60_000;
 /** The line a roll command prints when nothing needed rolling: the pull stays, and no deploy is recorded. */
 export const NO_ROLL_LINE = 'no-roll';
-function short(sha) {
-    return sha.slice(0, 8);
-}
-function plural(count, word) {
-    return `${count} ${word}${count === 1 ? '' : 's'}`;
-}
 function succeeded(end) {
     return end.kind === 'exited' && end.code === 0;
 }
@@ -55,7 +49,7 @@ function runExitCode(run) {
 /** The repository to roll: the one named, else the one the folder is in, else the only one with a roll block. */
 function chosenRepo(setup, ports, request) {
     const repos = Object.entries(setup.coordinator.repos);
-    const rolled = repos.flatMap(([name, config]) => (config.roll === undefined ? [] : [{ name, config, roll: config.roll, main: setup.inTeam(config.mainCheckout) }]));
+    const rolled = rollRepos(setup.coordinator, (path) => setup.inTeam(path));
     const names = rolled.length === 0 ? 'none has a roll block' : `with a roll block: ${rolled.map((repo) => repo.name).join(', ')}`;
     if (request.repo !== undefined) {
         const named = rolled.find((repo) => repo.name === request.repo);
@@ -74,58 +68,6 @@ function chosenRepo(setup, ports, request) {
         return { kind: 'chosen', repo: chosen };
     }
     return { kind: 'refused', reason: rolled.length === 0 ? 'no repository in coordinator.repos has a roll block' : `name the repository to roll with --repo (${names})` };
-}
-/** Why a dependency gate holds the range: its package files need an install; undefined when they do not. */
-async function dependencyHold(git, repo, head, target) {
-    const touches = await rangeInstallTouches(git, repo.main, head, target);
-    if (touches === undefined) {
-        return `could not read what ${short(head)}..${short(target)} changes, so the dependency gate cannot clear it`;
-    }
-    if (touches.length === 0) {
-        return undefined;
-    }
-    return `deps changed (${touches.join(', ')}): coordinator.repos.${repo.name}.dependencyGate holds a dependency change, since pulling it changes, unreviewed, the node_modules every worktree links to; pull and install by hand`;
-}
-/** Fetches and reads what a roll would pull now, refusing a main checkout it must not pull into. */
-async function readPending(ports, repo) {
-    const { git } = ports;
-    const { main, name } = repo;
-    const checkout = git.checkoutOf(main);
-    if (checkout === undefined) {
-        return { kind: 'refused', reason: `${main} (coordinator.repos.${name}.mainCheckout) is not a git checkout` };
-    }
-    const fetched = git.fetch(main);
-    if (!fetched.ok) {
-        return { kind: 'failed', reason: `git fetch failed in ${main}: ${fetched.reason}` };
-    }
-    const defaultBranch = git.defaultBranch(main);
-    if (checkout.branch !== defaultBranch) {
-        return { kind: 'refused', reason: `the ${name} main checkout ${main} is on ${checkout.branch ?? 'a detached HEAD'}, not ${defaultBranch}` };
-    }
-    const changes = git.changes(main, false);
-    if (changes === undefined) {
-        return { kind: 'failed', reason: `git status failed in ${main}` };
-    }
-    if (changes.length > 0) {
-        return { kind: 'refused', reason: `the ${name} main checkout ${main} has ${plural(changes.length, 'uncommitted change')}: a roll pulls only into a clean checkout` };
-    }
-    const head = git.sha(main, 'HEAD');
-    const target = git.sha(main, `origin/${defaultBranch}`);
-    if (head === undefined || target === undefined) {
-        return { kind: 'failed', reason: head === undefined ? `HEAD names no commit in ${main}` : `origin/${defaultBranch} is missing in ${main} after the fetch` };
-    }
-    if (head === target) {
-        return { kind: 'none', head };
-    }
-    if (!git.isAncestor(main, head, target)) {
-        return { kind: 'refused', reason: `the ${name} main checkout ${main} has commits that are not on origin/${defaultBranch}: a roll only pulls fast-forward` };
-    }
-    const held = repo.config.dependencyGate ? await dependencyHold(git, repo, head, target) : undefined;
-    if (held !== undefined) {
-        return { kind: 'refused', reason: held };
-    }
-    const commits = git.commits(main, head, target);
-    return { kind: 'pending', pending: { head, target, commits, range: rangeText(commits, target) } };
 }
 /** Every hook's environment: this process's, with the roll's `TEAMRIG_*` variables and `extra`. */
 function hookEnv(setup, ports, request, repo, pending, extra = {}) {
@@ -166,7 +108,7 @@ function readinessOf(setup, ports, request, repo, view) {
             }
         }
         if (phase === 'locked') {
-            view.read = await readPending(ports, repo);
+            view.read = await readPending(ports.git, repo);
             view.tag = undefined;
             if (view.read.kind !== 'pending') {
                 return { kind: 'go' };
@@ -268,7 +210,7 @@ export async function rollRepo(setup, ports, request) {
     }
     const { repo } = chosen;
     const nothing = (head) => ({ kind: 'done', summary: `nothing to roll: the ${repo.name} main checkout is at its origin's default branch (${short(head)})` });
-    const early = await readPending(ports, repo);
+    const early = await readPending(ports.git, repo);
     if (early.kind === 'none') {
         return nothing(early.head);
     }
@@ -289,7 +231,7 @@ export async function rollRepo(setup, ports, request) {
         return { kind: 'refused', reason: clearance.reason };
     }
     try {
-        const latest = view.read ?? (await readPending(ports, repo));
+        const latest = view.read ?? (await readPending(ports.git, repo));
         if (latest.kind === 'none') {
             return nothing(latest.head);
         }

@@ -105,6 +105,18 @@ export class HostLock {
     async release(lock) {
         return this.removeIf((text) => parseLock(text)?.token === lock.token);
     }
+    /** The lock's state, taking and removing nothing, for a reader that only shows it. */
+    async state() {
+        const seen = await this.read();
+        switch (seen.kind) {
+            case 'missing':
+                return { kind: 'free' };
+            case 'unknown':
+                return { kind: 'unknown' };
+            case 'held':
+                return this.isStale(seen.info) ? { kind: 'stale', info: seen.info } : seen;
+        }
+    }
     isStale(info) {
         return Date.parse(info.expiresAt) <= this.ports.clock.now() || !this.ports.alive(info.pid);
     }

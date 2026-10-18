@@ -37,6 +37,7 @@ const rollCommand = () => import("./commands/roll.js");
 const claimCommands = () => import("./commands/claim.js");
 const windowsCommand = () => import("./commands/windows.js");
 const loadCommands = () => import("./commands/load.js");
+const deploysCommand = () => import("./commands/deploys.js");
 const ghCommands = () => import("./commands/gh.js");
 const startCommands = () => import("./commands/start.js");
 const meetingCommands = () => import("./commands/meeting.js");
@@ -125,6 +126,7 @@ const COMMANDS = {
     windows: { effect: 'read', flags: ['targets', 'since', 'until', 'settle', 'min'], load: async () => (await windowsCommand()).windows },
     load: { effect: 'write', flags: ['session', 'what', 'targets', 'at'], load: async () => (await loadCommands()).load },
     'load end': { effect: 'write', flags: ['session', 'id', 'at'], load: async () => (await loadCommands()).loadEnd },
+    deploys: { effect: 'read', flags: [], load: async () => (await deploysCommand()).deploys },
     'hook push-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).pushGuard },
     'hook package-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).packageGuard },
     'hook cold-send': { effect: 'internal', flags: [], load: async () => (await hookCommands()).coldSend },
@@ -329,6 +331,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       no repository deploys or a secret in what it is
   load end --id <id> [--at <time>] [--session <id|name>]   ends this session's load at --at (default
       now); REFUSED for no such open load, another session's, or an end in the future or before its start
+  deploys                      the deploy state now: the host lock's holder, the heavy cutoff and the
+      reset blackout, the quiet claims and loads still open, and what each repository with a roll block
+      has pushed but not rolled (it fetches each main checkout)
   test [--session <id|name>] -- <command ...>   runs a test command in the shell, writes all it printed
       to a log (each session keeps its newest 20) and prints one PASS or FAIL line, then each failing
       test within tests.maxFailureChars; exit 0 when the command passed, 1 otherwise
