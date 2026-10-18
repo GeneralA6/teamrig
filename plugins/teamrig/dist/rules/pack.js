@@ -1,5 +1,6 @@
 import { clipEnd, clipStart } from "../core/clip.js";
 import { CORE_RULE_KEYS, ruleNumberOf } from "./keys.js";
+import { DECISION_MARKER } from "../tabs/status.js";
 import { helperDefaultClause } from "./helper-default.js";
 /**
  * The rendered core pack fits in this many characters with worst-case config values and the kept local rules at
@@ -101,7 +102,12 @@ export function renderCorePack(config, command, platform) {
         'lean-calls': 'Lean calls: every tool call re-reads the whole context, so batch related shell steps into one call.' +
             ` Work in your own session: ${helperDefaultClause(budget.subagentWeight)}; run helpers on your own model and effort.` +
             (budget.enabled ? ` Pace the week to ${percent(budget.targetPct)} of the weekly limit and keep ${percent(budget.reservePct)} for incidents [budget].` : ''),
-        investigate: 'Investigate before deciding: give frequency × impact and the cheapest fix for the visible symptom. Owner questions come with options, numbers and a recommendation; one with a single correct answer is yours to decide.',
+        investigate: 'Investigate before deciding: give frequency × impact and the cheapest fix for the visible symptom.' +
+            // With tab status on, the marker line ends the turn on the decision circle (tabs/status.ts); the words are
+            // shorter there so the worst-case pack still fits CORE_PACK_MAX_CHARS.
+            (config.tabStatus.enabled
+                ? ` Owner questions bring options, numbers, a recommendation and a \`${DECISION_MARKER}\` line; one with one right answer is yours.`
+                : ' Owner questions come with options, numbers and a recommendation; one with a single correct answer is yours to decide.'),
         resources: 'Rising resource use (memory, CPU, storage, tokens) needs its root cause; a raised limit is only an owner-approved bridge with a dated root-cause task. Tag a stopgap with the task that replaces it: `stopgap T<id>`.',
         data: "A hand-run change or delete of stored data needs the owner's OK after counts or a preview. Code that writes data ships a read-only dry run (inserted, unchanged, changed counts)." +
             ' Deleting derived data needs a verified regenerate tool and a parity run first. Never print secret values; bind local services to 127.0.0.1, never 0.0.0.0.',
