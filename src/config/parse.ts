@@ -62,6 +62,7 @@ import {
   type BudgetReset,
   type BurstConfig,
   type CoordinatorConfig,
+  type CoordinatorRepoConfig,
   type HeavyConfig,
   type CommitsConfig,
   type GithubConfig,
@@ -394,20 +395,58 @@ const MOVED_BUDGET_KEY = 'budget';
 
 const isPathText: Check<string> = (text) => (text.trim() === '' ? 'expected a path' : undefined);
 
+/** A repository's or a deploy target's name in the coordinator block. */
+const isCoordinatorName: Check<string> = (name) =>
+  /^[a-z0-9][a-z0-9._-]*$/.test(name) ? undefined : 'expected a name: lowercase letters, digits, ., _ or -, from a letter or digit';
+
 function parseCoordinator(read: ConfigReader, raw: JsonRecord): CoordinatorConfig {
   const path = 'coordinator';
   if (raw[MOVED_BUDGET_KEY] !== undefined) {
     read.report(`${path}.${MOVED_BUDGET_KEY}`, 'was moved: use the top-level budget block');
   }
   const dir = read.optionalString(raw, 'dir', path, isPathText);
-  const heavyCutoffUtc = read.optionalString(read.section(raw, 'schedule', path), 'heavyCutoffUtc', `${path}.schedule`, isUtcTime);
+  const schedule = read.section(raw, 'schedule', path);
+  const heavyCutoffUtc = read.optionalString(schedule, 'heavyCutoffUtc', `${path}.schedule`, isUtcTime);
+  const resetBlackoutHours = read.optionalInteger(schedule, 'resetBlackoutHours', `${path}.schedule`, CONFIG_LIMITS.resetBlackoutHours);
   const wait = read.section(raw, 'wait', path);
   return {
     ...(dir === undefined ? {} : { dir }),
-    schedule: heavyCutoffUtc === undefined ? {} : { heavyCutoffUtc },
+    schedule: { ...(heavyCutoffUtc === undefined ? {} : { heavyCutoffUtc }), ...(resetBlackoutHours === undefined ? {} : { resetBlackoutHours }) },
     heavy: parseHeavy(read, read.section(raw, 'heavy', path)),
-    wait: { pollSeconds: read.integer(wait, 'pollSeconds', `${path}.wait`, DEFAULT_COORDINATOR_WAIT.pollSeconds, CONFIG_LIMITS.coordinatorPollSeconds) },
+    wait: {
+      pollSeconds: read.integer(wait, 'pollSeconds', `${path}.wait`, DEFAULT_COORDINATOR_WAIT.pollSeconds, CONFIG_LIMITS.coordinatorPollSeconds),
+      maxMinutes: read.integer(wait, 'maxMinutes', `${path}.wait`, DEFAULT_COORDINATOR_WAIT.maxMinutes, CONFIG_LIMITS.coordinatorWaitMaxMinutes),
+    },
+    repos: parseCoordinatorRepos(read, read.section(raw, 'repos', path)),
   };
+}
+
+/** The repositories `teamrig integrate` lands, by name; one with a bad name or no main checkout is reported and left out. */
+function parseCoordinatorRepos(read: ConfigReader, raw: JsonRecord): Record<string, CoordinatorRepoConfig> {
+  const repos: Record<string, CoordinatorRepoConfig> = {};
+  for (const [name, value] of Object.entries(raw)) {
+    const path = `coordinator.repos.${name}`;
+    const entry = read.objectItem(value, path);
+    if (entry === undefined) {
+      continue;
+    }
+    const badName = isCoordinatorName(name);
+    if (badName !== undefined) {
+      read.report(path, badName);
+      continue;
+    }
+    const mainCheckout = read.requiredString(entry, 'mainCheckout', path, isPathText);
+    if (mainCheckout === '') {
+      continue;
+    }
+    repos[name] = {
+      mainCheckout,
+      deploysOnPush: read.stringList(entry, 'deploysOnPush', path, [], isCoordinatorName),
+      dependencyGate: read.boolean(entry, 'dependencyGate', path, false),
+      followMainCheckout: read.boolean(entry, 'followMainCheckout', path, false),
+    };
+  }
+  return repos;
 }
 
 /** The host lock and a heavy step's limits; a step longer than the lock less its margin is cut to fit, so it never outlives its lock. */

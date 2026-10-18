@@ -352,6 +352,11 @@ export interface BudgetConfig {
 export interface ScheduleConfig {
   /** No heavy step starts on the host after this UTC time (HH:MM) until midnight. */
   readonly heavyCutoffUtc?: string;
+  /**
+   * No deploy (`teamrig integrate`) starts from this many hours before the weekly token reset until the reset, so
+   * nothing that may need a fix lands while the week has no budget left to fix it. Unset: no blackout.
+   */
+  readonly resetBlackoutHours?: number;
 }
 
 /** `teamrig heavy`: one heavy step on the host at a time, each under the host lock. */
@@ -373,15 +378,40 @@ export interface HeavyConfig {
 export interface CoordinatorWaitConfig {
   /** A waiting step looks again after this many seconds. */
   readonly pollSeconds: number;
+  /** A deploy step (`teamrig integrate`) waits this many minutes at most for quiet claims and the host lock, then is refused. */
+  readonly maxMinutes: number;
 }
 
-/** The deploy coordinator: its folder, the heavy-step cutoff, the host lock and how a step waits. */
+/** A repository `teamrig integrate` lands branches of on its default branch. */
+export interface CoordinatorRepoConfig {
+  /** The repository's main checkout; a branch integrates from any worktree of it. A relative path is in the team's folder. */
+  readonly mainCheckout: string;
+  /**
+   * The deploy targets a push to the default branch deploys by itself (a host that builds on push): quiet claims on
+   * them hold the integrate, and the push is recorded as their deploy.
+   */
+  readonly deploysOnPush: readonly string[];
+  /**
+   * Refuse a branch whose package files need a dependency install, so pulling it into the main checkout never
+   * changes, unreviewed, the node_modules its worktrees link to.
+   */
+  readonly dependencyGate: boolean;
+  /** After the push, fast-forward the main checkout to it: only a fast-forward, only on the default branch with no tracked changes. */
+  readonly followMainCheckout: boolean;
+}
+
+/**
+ * The deploy coordinator: its folder, the heavy-step cutoff and the reset blackout, the host lock, how a step waits,
+ * and the repositories `teamrig integrate` lands branches of.
+ */
 export interface CoordinatorConfig {
   /** The coordinator's folder, which holds its ledger; a relative path is in the team's folder. Unset: `<state>/deploys`. */
   readonly dir?: string;
   readonly schedule: ScheduleConfig;
   readonly heavy: HeavyConfig;
   readonly wait: CoordinatorWaitConfig;
+  /** By name, such as `api`. */
+  readonly repos: Readonly<Record<string, CoordinatorRepoConfig>>;
 }
 
 export interface AlertsConfig {

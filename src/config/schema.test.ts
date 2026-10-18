@@ -23,9 +23,10 @@ const EVERY_KEY = {
   register: { goalPattern: '^G\\d+$' },
   coordinator: {
     dir: 'data/deploys',
-    schedule: { heavyCutoffUtc: '22:30' },
+    schedule: { heavyCutoffUtc: '22:30', resetBlackoutHours: 4 },
     heavy: { lockPath: 'data/deploys/host.lock', lockTtlMinutes: 150, maxRunMinutes: 45, waitMinutes: 60 },
-    wait: { pollSeconds: 30 },
+    wait: { pollSeconds: 30, maxMinutes: 60 },
+    repos: { api: { mainCheckout: 'C:/src/api', deploysOnPush: ['cloud-api'], dependencyGate: true, followMainCheckout: true } },
   },
   budget: {
     weeklyLimitW: 680_000_000,
@@ -132,6 +133,8 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   heavyMaxRunMinutes: 'coordinator.heavy.maxRunMinutes',
   heavyWaitMinutes: 'coordinator.heavy.waitMinutes',
   coordinatorPollSeconds: 'coordinator.wait.pollSeconds',
+  coordinatorWaitMaxMinutes: 'coordinator.wait.maxMinutes',
+  resetBlackoutHours: 'coordinator.schedule.resetBlackoutHours',
 };
 
 function isLimitName(name: string): name is keyof typeof CONFIG_LIMITS {

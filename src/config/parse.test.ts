@@ -26,7 +26,7 @@ describe('parseConfig', () => {
     assert.deepEqual(config.github, { repos: [], owners: {}, sessions: {}, closedDays: 14, everyMinutes: 15 });
     assert.deepEqual(config.register, DEFAULT_REGISTER);
     assert.deepEqual(config.budget, DEFAULT_BUDGET);
-    assert.deepEqual(config.coordinator, { schedule: {}, heavy: { lockTtlMinutes: 150, maxRunMinutes: 45, waitMinutes: 60 }, wait: { pollSeconds: 30 } });
+    assert.deepEqual(config.coordinator, { schedule: {}, heavy: { lockTtlMinutes: 150, maxRunMinutes: 45, waitMinutes: 60 }, wait: { pollSeconds: 30, maxMinutes: 60 }, repos: {} });
     assert.deepEqual(config.pushGuard.protectedBranches, ['main', 'master']);
     assert.deepEqual(config.paths, {});
     assert.deepEqual(config.commits, DEFAULT_COMMITS);
@@ -248,10 +248,10 @@ describe('parseConfig', () => {
   });
 
   it('keeps the coordinator folder, host lock and heavy step limits', () => {
-    const coordinator = { dir: 'data/deploys', heavy: { lockPath: 'data/deploys/host.lock', lockTtlMinutes: 90, maxRunMinutes: 80, waitMinutes: 0 }, wait: { pollSeconds: 5 } };
+    const coordinator = { dir: 'data/deploys', heavy: { lockPath: 'data/deploys/host.lock', lockTtlMinutes: 90, maxRunMinutes: 80, waitMinutes: 0 }, wait: { pollSeconds: 5, maxMinutes: 0 } };
     const { config, issues } = parseConfig({ ...ROSTER, coordinator });
     assert.deepEqual(issues, []);
-    assert.deepEqual(config.coordinator, { ...coordinator, schedule: {} });
+    assert.deepEqual(config.coordinator, { ...coordinator, schedule: {}, repos: {} });
   });
 
   it('cuts a heavy step longer than its lock less 10 minutes to fit, and says so', () => {
@@ -266,6 +266,45 @@ describe('parseConfig', () => {
     assert.equal(config.coordinator.heavy.maxRunMinutes, 20);
   });
 
+  it('reads the reset blackout and the repositories integrate lands, each repository from its defaults', () => {
+    const coordinator = {
+      schedule: { heavyCutoffUtc: '22:30', resetBlackoutHours: 4 },
+      repos: {
+        api: { mainCheckout: 'C:/src/api', deploysOnPush: ['cloud-api'], followMainCheckout: true },
+        web: { mainCheckout: 'repos/web', dependencyGate: true },
+      },
+    };
+    const { config, issues } = parseConfig({ ...ROSTER, coordinator });
+    assert.deepEqual(issues, []);
+    assert.deepEqual(config.coordinator.schedule, coordinator.schedule);
+    assert.deepEqual(config.coordinator.repos, {
+      api: { mainCheckout: 'C:/src/api', deploysOnPush: ['cloud-api'], dependencyGate: false, followMainCheckout: true },
+      web: { mainCheckout: 'repos/web', deploysOnPush: [], dependencyGate: true, followMainCheckout: false },
+    });
+  });
+
+  it('leaves out a repository with no main checkout or a bad name, and reports a bad target, blackout or deploy wait', () => {
+    const { config, issues } = parseConfig({
+      ...ROSTER,
+      coordinator: {
+        schedule: { resetBlackoutHours: 0 },
+        wait: { maxMinutes: 1441 },
+        repos: { api: { deploysOnPush: ['cloud-api'] }, 'My Repo': { mainCheckout: '/src/x' }, web: 'C:/src/web', ok: { mainCheckout: '/src/ok', deploysOnPush: ['Cloud API'] } },
+      },
+    });
+    assert.deepEqual(paths(issues).sort(), [
+      'coordinator.repos.My Repo',
+      'coordinator.repos.api.mainCheckout',
+      'coordinator.repos.ok.deploysOnPush[0]',
+      'coordinator.repos.web',
+      'coordinator.schedule.resetBlackoutHours',
+      'coordinator.wait.maxMinutes',
+    ]);
+    assert.deepEqual(config.coordinator.repos, { ok: { mainCheckout: '/src/ok', deploysOnPush: [], dependencyGate: false, followMainCheckout: false } });
+    assert.deepEqual(config.coordinator.schedule, {});
+    assert.equal(config.coordinator.wait.maxMinutes, 60);
+  });
+
   it('reports an empty coordinator folder or lock path and limits out of range', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,
@@ -278,7 +317,7 @@ describe('parseConfig', () => {
       'coordinator.heavy.waitMinutes',
       'coordinator.wait.pollSeconds',
     ]);
-    assert.deepEqual(config.coordinator, { schedule: {}, heavy: { lockTtlMinutes: 150, maxRunMinutes: 45, waitMinutes: 60 }, wait: { pollSeconds: 30 } });
+    assert.deepEqual(config.coordinator, { schedule: {}, heavy: { lockTtlMinutes: 150, maxRunMinutes: 45, waitMinutes: 60 }, wait: { pollSeconds: 30, maxMinutes: 60 }, repos: {} });
   });
 
   it('drops bad priorities and keeps the defaults when none is left', () => {
