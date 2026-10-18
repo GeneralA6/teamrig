@@ -5,9 +5,11 @@ import type { ProcessInfo } from '../open/session-processes.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
+import { RestoreRegistry, restoreSessionsDir } from '../restore/registry.ts';
 import { askFileOf, outcomeFileOf } from '../mod/clear-hand.ts';
 import { ClearAsks, type ClearAsk } from './clear-asks.ts';
 import { CLAIM_WAIT_MS, claudeProcessOf, GIVE_UP_MS, runRestart, SHELL_RECHECK_MS, type RestartDeps, type RestartPlan, type TabOpening } from './restart.ts';
+import type { RestoreEntry } from '../restore/entry.ts';
 import type { RestartRequest } from './state.ts';
 import { RefreshStore } from './store.ts';
 
@@ -48,6 +50,27 @@ interface WorldOptions {
   readonly transcript?: string;
 }
 
+/** The session's entry in the restore registry, as its tracker left it in a turn. */
+function restoreEntry(): RestoreEntry {
+  return {
+    claudeSession: SESSION,
+    projectDir: '/project',
+    transcriptPath: TRANSCRIPT,
+    entrypoint: 'cli',
+    sessionKind: undefined,
+    pid: CLAUDE.pid,
+    team: 'app',
+    session: 'alpha',
+    state: 'ready',
+    createdAt: START,
+    updatedAt: START,
+    restoreAttempts: 0,
+    restoredAt: undefined,
+    endedAt: undefined,
+    endReason: undefined,
+  };
+}
+
 class World {
   readonly files: MemoryFiles;
   readonly store: RefreshStore;
@@ -74,6 +97,7 @@ class World {
       store: this.store,
       files: this.files,
       asks: this.asks,
+      restore: new RestoreRegistry(this.files, restoreSessionsDir(join('/', 'kit'))),
       processes: this.processes,
       clock: this.clock,
       sleep: async (ms) => {
@@ -164,6 +188,23 @@ describe('runRestart', () => {
     assert.ok(fed);
     assert.deepEqual([fed.command, fed.args, fed.cwd], ['node', ['tracker.cjs', 'end'], '/project/sub']);
     assert.deepEqual(JSON.parse(fed.input), { session_id: SESSION, transcript_path: TRANSCRIPT, cwd: '/project/sub', hook_event_name: 'SessionEnd', reason: 'clear' });
+  });
+
+  it('takes the ended session out of the restore registry, as its skipped SessionEnd hook would', async () => {
+    for (const supervised of [true, false]) {
+      const world = await new World().arm({ supervised });
+      await world.deps.restore.write(restoreEntry());
+      assert.equal((await runRestart(world.deps, PLAN)).kind, 'restarted');
+      assert.equal(await world.deps.restore.read(SESSION), undefined);
+    }
+  });
+
+  it('keeps the session in the restore registry when no restart happened', async () => {
+    const world = await new World().arm({ supervised: false });
+    world.opening = { kind: 'none', reasons: ['no terminal'] };
+    await world.deps.restore.write(restoreEntry());
+    assert.equal((await runRestart(world.deps, PLAN)).kind, 'failed');
+    assert.equal((await world.deps.restore.read(SESSION))?.claudeSession, SESSION);
   });
 
   it('opens the fresh tab first, then closes the old one by ending the shell it runs in (Windows)', async () => {

@@ -2,6 +2,7 @@ import type { Files } from '../core/files.ts';
 import type { Clock, Sleep } from '../core/lock.ts';
 import { CLAIM_HELD, CLAIM_TAKEN, isClaudeSessionId, type ClaimOutcome } from '../mod/clear-hand.ts';
 import type { FeedOutcome, ProcessInfo, SessionProcesses } from '../open/session-processes.ts';
+import type { RestoreRegistry } from '../restore/registry.ts';
 import type { ClearAsks } from './clear-asks.ts';
 import { readRunningWork } from './running.ts';
 import type { RestartRequest } from './state.ts';
@@ -20,6 +21,8 @@ export interface RestartDeps {
   readonly platform: NodeJS.Platform;
   /** The asks a tab's mod claims to run /clear itself, or holds while a helper runs (`mod/clear-hand.ts`). */
   readonly asks: ClearAsks;
+  /** The registry of the restore after a reboot, which the ended session leaves as its SessionEnd hook would have it. */
+  readonly restore: RestoreRegistry;
   /** Opens a new tab that starts the session fresh (`teamrig launch`). */
   openTab(): Promise<TabOpening>;
 }
@@ -157,6 +160,17 @@ async function runEndCommand(deps: RestartDeps, plan: RestartPlan, request: Rest
   return deps.processes.feed({ command, args, cwd: request.cwd ?? plan.fallbackCwd, input });
 }
 
+/**
+ * The SessionEnd hooks a hard end skips. teamrig's own restore tracker forgets the ended session, which the fresh
+ * one replaces, so the restore after a reboot never reopens it beside its successor; `refresh.endCommand` then
+ * stands in for any other.
+ */
+async function endHooks(deps: RestartDeps, plan: RestartPlan, request: RestartRequest): Promise<FeedOutcome | undefined> {
+  // A registry it cannot write leaves a stale entry, which is no reason to fail a restart that happened.
+  await deps.restore.remove(request.claudeSession).catch(() => undefined);
+  return runEndCommand(deps, plan, request);
+}
+
 /** Whether the session's last turn has ended and none of the work it started still runs. */
 async function idleAt(deps: RestartDeps, transcript: string): Promise<boolean> {
   const tail = await deps.files.readTail(transcript, TURN_TAIL_BYTES);
@@ -292,7 +306,7 @@ async function endSession(deps: RestartDeps, plan: RestartPlan, request: Restart
       await deps.store.clearRestart(plan.id);
       return { kind: 'failed', why: problem };
     }
-    return { kind: 'restarted', where: 'same tab', endCommand: await runEndCommand(deps, plan, request) };
+    return { kind: 'restarted', where: 'same tab', endCommand: await endHooks(deps, plan, request) };
   }
   const opened = await deps.openTab();
   if (opened.kind === 'none') {
@@ -304,7 +318,7 @@ async function endSession(deps: RestartDeps, plan: RestartPlan, request: Restart
   if (problem !== undefined) {
     return { kind: 'failed', why: `${problem}; the fresh session runs in a new tab, so close the old one` };
   }
-  return { kind: 'restarted', where: 'new tab', endCommand: await runEndCommand(deps, plan, request) };
+  return { kind: 'restarted', where: 'new tab', endCommand: await endHooks(deps, plan, request) };
 }
 
 /**
