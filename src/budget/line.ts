@@ -9,6 +9,8 @@ export interface ToolUse {
   readonly command: string | undefined;
   /** The file or folder the tool works on (Read, Edit, Write, NotebookEdit, Grep, Glob), when it names one. */
   readonly path?: string;
+  /** The skill a `Skill` call loads. */
+  readonly skill?: string;
 }
 
 /** What came back for one tool call: its text, and whether Claude Code marked it an error. */
@@ -54,6 +56,8 @@ export interface PromptLine {
   readonly at: number | undefined;
   /** What started the turn; `continuation` for the summary that resumes a compacted session. */
   readonly trigger: TurnTrigger | 'continuation';
+  /** The slash commands the prompt runs (`<command-name>/x</command-name>`), without the slash; a skill typed as `/name` loads it. */
+  readonly commands: readonly string[];
 }
 
 /** Claude Code compacted the session's context here. */
@@ -87,7 +91,24 @@ function toolUseOf(block: JsonRecord): ToolUse | undefined {
 /** A tool call from its id, name and input, as a transcript line or a hook payload carries them. */
 export function toolUseFrom(id: string, name: string, input: JsonRecord | undefined): ToolUse {
   const path = input === undefined ? undefined : toolPathOf(input);
-  return { id, name, command: input === undefined ? undefined : stringField(input, 'command'), ...(path === undefined ? {} : { path }) };
+  const skill = name === SKILL_TOOL && input !== undefined ? stringField(input, 'skill') : undefined;
+  return {
+    id,
+    name,
+    command: input === undefined ? undefined : stringField(input, 'command'),
+    ...(path === undefined ? {} : { path }),
+    ...(skill === undefined ? {} : { skill }),
+  };
+}
+
+/** The tool that loads a skill: its input's `skill` names it. */
+export const SKILL_TOOL = 'Skill';
+
+const COMMAND_NAME = /<command-name>\/?([^<\s]+)<\/command-name>/g;
+
+/** The slash commands a prompt's text runs, without the slash, in order. */
+export function commandsIn(text: string): string[] {
+  return Array.from(text.matchAll(COMMAND_NAME), (match) => match[1] ?? '').filter((name) => name !== '');
 }
 
 /** The file or folder a tool's input names: `file_path`, `notebook_path` or a search's `path`. */
@@ -179,7 +200,7 @@ function userLineOf(entry: JsonRecord): ResultsLine | PromptLine | undefined {
   }
   const results = blocksOf(message).flatMap((block) => toolResultOf(block) ?? []);
   const at = timeOf(entry);
-  return results.length > 0 ? { kind: 'results', at, results } : { kind: 'prompt', at, trigger: triggerOf(entry, message) };
+  return results.length > 0 ? { kind: 'results', at, results } : { kind: 'prompt', at, trigger: triggerOf(entry, message), commands: commandsIn(promptText(message)) };
 }
 
 /** A compaction's boundary line; undefined for any other entry. */
