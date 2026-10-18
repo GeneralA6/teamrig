@@ -1,5 +1,6 @@
 import type {
   AlertsConfig,
+  ClaimsConfig,
   CoordinatorWaitConfig,
   HeavyConfig,
   BudgetConfig,
@@ -169,6 +170,12 @@ export const DEFAULT_HEAVY: HeavyConfig = { lockTtlMinutes: 150, maxRunMinutes: 
 
 /** A waiting coordinator step looks again every 30 seconds; a deploy step waits up to an hour for claims and the host lock. */
 export const DEFAULT_COORDINATOR_WAIT: CoordinatorWaitConfig = { pollSeconds: 30, maxMinutes: 60 };
+
+/** A roll's gate answers within 20 seconds, else the roll waits. */
+export const DEFAULT_GATE_TIMEOUT_SECONDS = 20;
+
+/** A quiet claim lasts at most two hours. */
+export const DEFAULT_CLAIMS: ClaimsConfig = { maxMinutes: 120 };
 
 /**
  * A hire spends the week's budget, so it waits for the owner's yes: at most two hires at 1% of the week a day

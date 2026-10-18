@@ -26,7 +26,14 @@ describe('parseConfig', () => {
     assert.deepEqual(config.github, { repos: [], owners: {}, sessions: {}, closedDays: 14, everyMinutes: 15 });
     assert.deepEqual(config.register, DEFAULT_REGISTER);
     assert.deepEqual(config.budget, DEFAULT_BUDGET);
-    assert.deepEqual(config.coordinator, { schedule: {}, heavy: { lockTtlMinutes: 150, maxRunMinutes: 45, waitMinutes: 60 }, wait: { pollSeconds: 30, maxMinutes: 60 }, repos: {} });
+    assert.deepEqual(config.coordinator, {
+      schedule: {},
+      heavy: { lockTtlMinutes: 150, maxRunMinutes: 45, waitMinutes: 60 },
+      wait: { pollSeconds: 30, maxMinutes: 60 },
+      gateTimeoutSeconds: 20,
+      claims: { maxMinutes: 120 },
+      repos: {},
+    });
     assert.deepEqual(config.pushGuard.protectedBranches, ['main', 'master']);
     assert.deepEqual(config.paths, {});
     assert.deepEqual(config.commits, DEFAULT_COMMITS);
@@ -248,7 +255,13 @@ describe('parseConfig', () => {
   });
 
   it('keeps the coordinator folder, host lock and heavy step limits', () => {
-    const coordinator = { dir: 'data/deploys', heavy: { lockPath: 'data/deploys/host.lock', lockTtlMinutes: 90, maxRunMinutes: 80, waitMinutes: 0 }, wait: { pollSeconds: 5, maxMinutes: 0 } };
+    const coordinator = {
+      dir: 'data/deploys',
+      heavy: { lockPath: 'data/deploys/host.lock', lockTtlMinutes: 90, maxRunMinutes: 80, waitMinutes: 0 },
+      wait: { pollSeconds: 5, maxMinutes: 0 },
+      gateTimeoutSeconds: 45,
+      claims: { maxMinutes: 90 },
+    };
     const { config, issues } = parseConfig({ ...ROSTER, coordinator });
     assert.deepEqual(issues, []);
     assert.deepEqual(config.coordinator, { ...coordinator, schedule: {}, repos: {} });
@@ -281,6 +294,45 @@ describe('parseConfig', () => {
       api: { mainCheckout: 'C:/src/api', deploysOnPush: ['cloud-api'], dependencyGate: false, followMainCheckout: true },
       web: { mainCheckout: 'repos/web', deploysOnPush: [], dependencyGate: true, followMainCheckout: false },
     });
+  });
+
+  it('reads a repository’s roll, its gates and afterPull hooks from their defaults', () => {
+    const roll = { targets: ['cloud-api'], gates: [{ name: 'flow', command: ['node', 'gates/flow.js', '--quiet'] }], command: ['node', 'roll.js'] };
+    const { config, issues } = parseConfig({ ...ROSTER, coordinator: { repos: { api: { mainCheckout: 'C:/src/api', roll }, web: { mainCheckout: 'C:/src/web', roll: { command: ['npm', 'run', 'deploy'] } } } } });
+    assert.deepEqual(issues, []);
+    assert.deepEqual(config.coordinator.repos['api']?.roll, { ...roll, afterPull: [] });
+    assert.deepEqual(config.coordinator.repos['web']?.roll, { targets: [], gates: [], afterPull: [], command: ['npm', 'run', 'deploy'] });
+  });
+
+  it('leaves out a roll with no command, and a gate or hook that is not a program with its arguments', () => {
+    const { config, issues } = parseConfig({
+      ...ROSTER,
+      coordinator: {
+        gateTimeoutSeconds: 0,
+        claims: { maxMinutes: 1441 },
+        repos: {
+          api: { mainCheckout: 'C:/src/api', roll: { targets: ['cloud-api'] } },
+          web: {
+            mainCheckout: 'C:/src/web',
+            roll: { gates: [{ name: 'Flow', command: ['node', 'flow.js'] }, { name: 'load', command: [] }, 'node load.js'], afterPull: [['npm', ''], 'npm ci'], command: ['node', 'roll.js'] },
+          },
+        },
+      },
+    });
+    assert.deepEqual(paths(issues).sort(), [
+      'coordinator.claims.maxMinutes',
+      'coordinator.gateTimeoutSeconds',
+      'coordinator.repos.api.roll.command',
+      'coordinator.repos.web.roll.afterPull[0][1]',
+      'coordinator.repos.web.roll.afterPull[1]',
+      'coordinator.repos.web.roll.gates[0].name',
+      'coordinator.repos.web.roll.gates[1].command',
+      'coordinator.repos.web.roll.gates[2]',
+    ]);
+    assert.equal(config.coordinator.repos['api']?.roll, undefined);
+    assert.deepEqual(config.coordinator.repos['web']?.roll, { targets: [], gates: [], afterPull: [], command: ['node', 'roll.js'] });
+    assert.equal(config.coordinator.gateTimeoutSeconds, 20);
+    assert.equal(config.coordinator.claims.maxMinutes, 120);
   });
 
   it('leaves out a repository with no main checkout or a bad name, and reports a bad target, blackout or deploy wait', () => {
@@ -317,7 +369,14 @@ describe('parseConfig', () => {
       'coordinator.heavy.waitMinutes',
       'coordinator.wait.pollSeconds',
     ]);
-    assert.deepEqual(config.coordinator, { schedule: {}, heavy: { lockTtlMinutes: 150, maxRunMinutes: 45, waitMinutes: 60 }, wait: { pollSeconds: 30, maxMinutes: 60 }, repos: {} });
+    assert.deepEqual(config.coordinator, {
+      schedule: {},
+      heavy: { lockTtlMinutes: 150, maxRunMinutes: 45, waitMinutes: 60 },
+      wait: { pollSeconds: 30, maxMinutes: 60 },
+      gateTimeoutSeconds: 20,
+      claims: { maxMinutes: 120 },
+      repos: {},
+    });
   });
 
   it('drops bad priorities and keeps the defaults when none is left', () => {
