@@ -506,6 +506,26 @@ describe('parseConfig', () => {
     assert.equal(bad.config.packageGuard.adHocRunners, 'deny');
   });
 
+  it('reads the read-only shell hook, off and trusting no prefix by default', () => {
+    assert.deepEqual(parseConfig(ROSTER).config.readonlyShell, { enabled: false, allowPrefixes: [] });
+    const allowPrefixes = ['npx tsc --noEmit', 'npx jest', '@scope/tool run', 'node --test=x'];
+    const set = parseConfig({ ...ROSTER, readonlyShell: { enabled: true, allowPrefixes } });
+    assert.deepEqual(set.issues, []);
+    assert.deepEqual(set.config.readonlyShell, { enabled: true, allowPrefixes });
+  });
+
+  it('drops a read-only shell prefix no command as written could match, and refuses too many', () => {
+    const written = ['FOO=1 npx jest', '-rf', 'npx  jest', 'npx jest ', 'npx "jest"', 'npx jest; rm x', `npx ${'x'.repeat(120)}`, 'npx jest'];
+    const bad = parseConfig({ ...ROSTER, readonlyShell: { enabled: 'yes', allowPrefixes: written } });
+    assert.deepEqual(paths(bad.issues), ['readonlyShell.enabled', ...written.slice(0, -1).map((_, index) => `readonlyShell.allowPrefixes[${index}]`)]);
+    assert.match(bad.issues[1]?.message ?? '', /one space apart/);
+    assert.match(bad.issues[7]?.message ?? '', /at most 120 characters/);
+    assert.deepEqual(bad.config.readonlyShell, { enabled: false, allowPrefixes: ['npx jest'] });
+    const many = parseConfig({ ...ROSTER, readonlyShell: { allowPrefixes: Array.from({ length: 17 }, (_, index) => `tool${index}`) } });
+    assert.deepEqual(paths(many.issues), ['readonlyShell.allowPrefixes']);
+    assert.deepEqual(many.config.readonlyShell.allowPrefixes, []);
+  });
+
   it('bounds the lists and texts the rule pack prints', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,

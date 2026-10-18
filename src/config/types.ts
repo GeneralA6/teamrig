@@ -149,6 +149,21 @@ export interface PackageGuardConfig {
  */
 export type AdHocRunners = 'deny' | 'ask' | 'allow';
 
+/**
+ * The opt-in hook that lets a Bash or PowerShell line run without a permission prompt when every command in it
+ * provably only reads (hook-readonly-allow.ts). It only ever allows: a line it cannot prove reads falls through to
+ * Claude Code's own permission check.
+ */
+export interface ReadonlyShellConfig {
+  readonly enabled: boolean;
+  /**
+   * Commands the team trusts with any arguments, each by its leading words (`npx tsc --noEmit`), such as the
+   * project's type check or test runner. The hook cannot read what such a command does, so a prefix vouches for
+   * every argument after it.
+   */
+  readonly allowPrefixes: readonly string[];
+}
+
 export const AD_HOC_RUNNERS: readonly AdHocRunners[] = ['deny', 'ask', 'allow'];
 
 export function isAdHocRunners(value: unknown): value is AdHocRunners {
@@ -666,6 +681,8 @@ export interface KitConfig {
    * needs Claude Code's own title off (`CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1`), else Claude Code writes over it.
    */
   readonly tabStatus: { readonly enabled: boolean };
+  /** Lets a shell line that only reads run without a permission prompt; off by default. */
+  readonly readonlyShell: ReadonlyShellConfig;
   readonly refresh: RefreshConfig;
   readonly hiring: HiringConfig;
   readonly burst: BurstConfig;

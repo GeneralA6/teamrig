@@ -2,6 +2,7 @@ import { deployTargetsOf } from '../coordinator/targets.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { NAME_PATTERN, NAME_RULE } from '../core/ids.ts';
 import { FOLLOWUP_STATUSES, isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, SESSION_NAME, TASK_STATUSES, type TaskStatus } from '../register/model.ts';
+import { PREFIX_PATTERN } from '../readonly-shell/rules.ts';
 import { CORE_RULE_KEYS, isCoreRuleKey } from '../rules/keys.ts';
 import {
   DEFAULT_ALERTS,
@@ -23,6 +24,7 @@ import {
   DEFAULT_OWNER_GATES,
   DEFAULT_PACKAGE_GUARD,
   DEFAULT_PUSH_GUARD,
+  DEFAULT_READONLY_SHELL,
   DEFAULT_REFRESH,
   DEFAULT_REGISTER,
   DEFAULT_SESSION_SHARE,
@@ -81,6 +83,7 @@ import {
   type PathsConfig,
   type PushToProtected,
   type QuietHours,
+  type ReadonlyShellConfig,
   type RefreshConfig,
   type RegisterConfig,
   type SessionBudget,
@@ -286,6 +289,7 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
       persistentFailureHours: read.integer(alerts, 'persistentFailureHours', 'alerts', DEFAULT_ALERTS.persistentFailureHours, CONFIG_LIMITS.persistentFailureHours),
     },
     tabStatus: { enabled: read.boolean(tabStatus, 'enabled', 'tabStatus', false) },
+    readonlyShell: parseReadonlyShell(read, read.section(raw, 'readonlyShell', '')),
     refresh: parseRefresh(read, read.section(raw, 'refresh', '')),
     hiring: parseHiring(read, read.section(raw, 'hiring', '')),
     burst: parseBurst(read, read.section(raw, 'burst', '')),
@@ -833,6 +837,17 @@ function parseAdHocRunners(read: ConfigReader, raw: JsonRecord): AdHocRunners {
   const fallback = DEFAULT_PACKAGE_GUARD.adHocRunners;
   const value = read.string(raw, 'adHocRunners', 'packageGuard', fallback, oneOf(AD_HOC_RUNNERS));
   return isAdHocRunners(value) ? value : fallback;
+}
+
+const isShellPrefix: Check<string> = (value) =>
+  PREFIX_PATTERN.test(value) ? undefined : 'expected words of letters, digits and _ @ . / : = + -, one space apart, the first naming a program';
+
+function parseReadonlyShell(read: ConfigReader, raw: JsonRecord): ReadonlyShellConfig {
+  const { maxItems, maxLength } = CONFIG_LIMITS.readonlyShellPrefixes;
+  return {
+    enabled: read.boolean(raw, 'enabled', 'readonlyShell', DEFAULT_READONLY_SHELL.enabled),
+    allowPrefixes: read.stringList(raw, 'allowPrefixes', 'readonlyShell', DEFAULT_READONLY_SHELL.allowPrefixes, shortLine(maxLength, isShellPrefix), maxItems),
+  };
 }
 
 function parseCommits(read: ConfigReader, raw: JsonRecord): CommitsConfig {
