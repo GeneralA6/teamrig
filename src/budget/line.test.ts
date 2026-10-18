@@ -96,10 +96,30 @@ describe('parseTranscriptLine', () => {
   });
 
   it('reads a user line without results as a prompt, and skips text Claude Code adds itself', () => {
-    assert.deepEqual(parseTranscriptLine(promptLine(AT)), { kind: 'prompt', at: Date.parse(AT), trigger: 'other' });
+    assert.deepEqual(parseTranscriptLine(promptLine(AT)), { kind: 'prompt', at: Date.parse(AT), trigger: 'other', commands: [] });
     assert.equal(parseTranscriptLine(resultsLine(AT, [{ id: 'a', text: 'ok' }]))?.kind, 'results');
     assert.equal(parseTranscriptLine(JSON.stringify({ type: 'user', isMeta: true, message: { content: 'note' } })), undefined);
     assert.equal(parseTranscriptLine(JSON.stringify({ type: 'user', message: 'flat' })), undefined);
+  });
+
+  it('names the skill a Skill call loads, and the slash commands a prompt runs', () => {
+    const reply = JSON.stringify({
+      isSidechain: false,
+      type: 'assistant',
+      timestamp: AT,
+      message: {
+        id: 'm',
+        usage: { input_tokens: 1, output_tokens: 1 },
+        content: [
+          { type: 'tool_use', id: 's', name: 'Skill', input: { skill: 'alpha-check', args: 'x' } },
+          { type: 'tool_use', id: 'b', name: 'Bash', input: { command: 'ls', skill: 'not-a-load' } },
+        ],
+      },
+    });
+    const call = parseTranscriptLine(reply);
+    assert.deepEqual(call?.kind === 'call' ? call.tools.map((tool) => tool.skill) : undefined, ['alpha-check', undefined]);
+    const prompt = parseTranscriptLine(promptLine(AT, '<command-message>x</command-message>\n<command-name>/alpha-check</command-name> <command-name>clear</command-name>'));
+    assert.deepEqual(prompt?.kind === 'prompt' ? prompt.commands : undefined, ['alpha-check', 'clear']);
   });
 
   it('names what started a turn from the origin Claude Code writes, else from the text', () => {

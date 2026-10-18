@@ -14,6 +14,8 @@ export interface FixtureTool {
   readonly command?: string;
   /** Written as the input's `file_path`. */
   readonly path?: string;
+  /** Written as the input's `skill`, as a `Skill` call has it. */
+  readonly skill?: string;
 }
 
 export interface FixtureReply {
@@ -55,7 +57,7 @@ export function replyLine(reply: FixtureReply): string {
     type: 'tool_use',
     id: tool.id,
     name: tool.name,
-    input: { ...(tool.command === undefined ? {} : { command: tool.command }), ...(tool.path === undefined ? {} : { file_path: tool.path }) },
+    input: definedEntries({ command: tool.command, file_path: tool.path, skill: tool.skill }),
   }));
   return JSON.stringify(
     definedEntries({
