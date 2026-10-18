@@ -1,4 +1,5 @@
-import { isAbsolute, join } from 'node:path';
+import { basename, isAbsolute, join } from 'node:path';
+import { DEFAULT_STATUS_LINE } from "../../config/defaults.js";
 import { errorMessage } from "../../core/guards.js";
 import { resolveKitHome } from "../../core/home.js";
 import { resolveTeam } from "../../core/team.js";
@@ -215,22 +216,37 @@ export async function lift(args, runtime) {
     runtime.out.stdout(`LIFTED ${liftText(decision.lift, roster.nameOf(id) ?? id)}`);
     return EXIT.ok;
 }
-/** The snapshot folder of the team the status line's session works in, else the kit's default one. */
-async function statusSnapshotDir(runtime, cwd) {
-    const kitHome = resolveKitHome(runtime.env, runtime.userHome);
+/** The status line setup of the team the session works in; outside a team, or with its config unreadable, the kit's default folder and display. */
+async function statusLineSetup(runtime, cwd) {
+    const fallback = { snapshotDir: defaultSnapshotDir(resolveKitHome(runtime.env, runtime.userHome)), show: DEFAULT_STATUS_LINE };
     const found = await resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [cwd === '' ? undefined : cwd, runtime.cwd]));
     if (found.kind !== 'team') {
-        return defaultSnapshotDir(kitHome);
+        return fallback;
     }
     const kit = await openKit(runtime, found.team);
-    return kit.load.status === 'loaded' ? snapshotDirOf(kit.load.config.budget, kit.paths) : defaultSnapshotDir(kitHome);
+    if (kit.load.status !== 'loaded') {
+        return fallback;
+    }
+    return { snapshotDir: snapshotDirOf(kit.load.config.budget, kit.paths), show: kit.load.config.statusLine };
+}
+/** Where the session in `dir` works, as far as `show` asks: git is asked only for a branch it shows, and for the commit only on a detached HEAD. */
+function statusLineView(git, dir, show) {
+    const branch = show.branch ? git.branch(dir) : undefined;
+    const commit = show.branch && branch === undefined ? git.head(dir) : undefined;
+    return {
+        ...(show.folder ? { folder: basename(dir) } : {}),
+        ...(branch === undefined ? {} : { branch }),
+        ...(commit === undefined ? {} : { commit }),
+        resume: show.resume,
+    };
 }
 /**
  * `statusline`: Claude Code's status line. It saves the status input's reading (the plan's use of the
- * week and its reset) as a snapshot for `budget`, and prints a short status. It always exits 0, so a
- * bad input or a full disk never breaks the status bar; what went wrong goes to stderr. With --pass it
- * prints the status input again instead of its own status, for the status line after it in a pipe
- * (`statusline install` puts it in front of one already there).
+ * week and its reset) as a snapshot for `budget`, and prints a short status: the model, the session's
+ * folder and branch, the plan's use and the command that resumes the session, as the team's `statusLine`
+ * config shows them. It always exits 0, so a bad input or a full disk never breaks the status bar; what
+ * went wrong goes to stderr. With --pass it prints the status input again instead of its own status, for
+ * the status line after it in a pipe (`statusline install` puts it in front of one already there).
  */
 export async function statusline(args, runtime) {
     const [extra] = args.positionals;
@@ -238,20 +254,24 @@ export async function statusline(args, runtime) {
         throw new UsageError(`unexpected "${extra}"`);
     }
     const input = await runtime.readStdin();
-    const shown = (own) => (args.switches.has('pass') ? input.replace(/\r?\n$/, '') : own);
+    const pass = args.switches.has('pass');
+    const passed = input.replace(/\r?\n$/, '');
     const snapshot = snapshotOfStatus(input, runtime.clock.now());
     if (snapshot === undefined) {
-        runtime.out.stdout(shown('Claude'));
+        runtime.out.stdout(pass ? passed : 'Claude');
         runtime.out.stderr('teamrig statusline: the status input is not Claude Code status JSON with a session id; nothing saved');
         return EXIT.ok;
     }
+    let show = DEFAULT_STATUS_LINE;
     try {
-        const dir = await statusSnapshotDir(runtime, snapshot.cwd);
-        await runtime.files.write(join(dir, `${snapshot.sessionId}.json`), formatSnapshot(snapshot));
+        const setup = await statusLineSetup(runtime, snapshot.cwd);
+        show = setup.show;
+        await runtime.files.write(join(setup.snapshotDir, `${snapshot.sessionId}.json`), formatSnapshot(snapshot));
     }
     catch (error) {
         runtime.out.stderr(`teamrig statusline: the snapshot was not saved: ${errorMessage(error)}`);
     }
-    runtime.out.stdout(shown(statusLineText(snapshot)));
+    const dir = snapshot.cwd === '' ? runtime.cwd : snapshot.cwd;
+    runtime.out.stdout(pass ? passed : statusLineText(snapshot, statusLineView(runtime.git, dir, show)));
     return EXIT.ok;
 }
