@@ -26,7 +26,21 @@ function toolUseOf(block) {
 /** A tool call from its id, name and input, as a transcript line or a hook payload carries them. */
 export function toolUseFrom(id, name, input) {
     const path = input === undefined ? undefined : toolPathOf(input);
-    return { id, name, command: input === undefined ? undefined : stringField(input, 'command'), ...(path === undefined ? {} : { path }) };
+    const skill = name === SKILL_TOOL && input !== undefined ? stringField(input, 'skill') : undefined;
+    return {
+        id,
+        name,
+        command: input === undefined ? undefined : stringField(input, 'command'),
+        ...(path === undefined ? {} : { path }),
+        ...(skill === undefined ? {} : { skill }),
+    };
+}
+/** The tool that loads a skill: its input's `skill` names it. */
+export const SKILL_TOOL = 'Skill';
+const COMMAND_NAME = /<command-name>\/?([^<\s]+)<\/command-name>/g;
+/** The slash commands a prompt's text runs, without the slash, in order. */
+export function commandsIn(text) {
+    return Array.from(text.matchAll(COMMAND_NAME), (match) => match[1] ?? '').filter((name) => name !== '');
 }
 /** The file or folder a tool's input names: `file_path`, `notebook_path` or a search's `path`. */
 export function toolPathOf(input) {
@@ -111,7 +125,7 @@ function userLineOf(entry) {
     }
     const results = blocksOf(message).flatMap((block) => toolResultOf(block) ?? []);
     const at = timeOf(entry);
-    return results.length > 0 ? { kind: 'results', at, results } : { kind: 'prompt', at, trigger: triggerOf(entry, message) };
+    return results.length > 0 ? { kind: 'results', at, results } : { kind: 'prompt', at, trigger: triggerOf(entry, message), commands: commandsIn(promptText(message)) };
 }
 /** A compaction's boundary line; undefined for any other entry. */
 function compactOf(entry) {
