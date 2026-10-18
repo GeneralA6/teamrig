@@ -1,4 +1,4 @@
-import { formatUtcMinute } from "../core/time.js";
+import { formatUtcMinute, MS_PER_HOUR } from "../core/time.js";
 /** Minutes after midnight of a valid `HH:MM`. */
 function minuteOfDay(time) {
     const [hours = 0, minutes = 0] = time.split(':').map(Number);
@@ -15,6 +15,21 @@ export function heavyCutoffReason(nowMs, cutoffUtc) {
     const now = new Date(nowMs);
     const minute = now.getUTCHours() * 60 + now.getUTCMinutes();
     return minute >= minuteOfDay(cutoffUtc) ? `nothing heavy after ${cutoffUtc} UTC (now ${formatUtcMinute(now)})` : undefined;
+}
+/**
+ * Why no deploy may start at `nowMs`, or undefined when one may: none starts from `hours` before the weekly token reset
+ * until the reset, so nothing that may need a fix lands while the week has no budget left to fix it. Unset hours or
+ * an unknown reset: no blackout.
+ */
+export function resetBlackoutReason(nowMs, reset, hours) {
+    if (reset === undefined || hours === undefined) {
+        return undefined;
+    }
+    const from = reset.at - hours * MS_PER_HOUR;
+    if (nowMs < from || nowMs >= reset.at) {
+        return undefined;
+    }
+    return `deploy blackout before the weekly token reset: no deploy from ${formatUtcMinute(new Date(from))} until ${formatUtcMinute(new Date(reset.at))} UTC (reset from the ${reset.source})`;
 }
 /** A span as a short duration: `45m`, `2h30m`. */
 export function minutesText(minutes) {
