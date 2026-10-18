@@ -1,8 +1,10 @@
+import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import { text } from 'node:stream/consumers';
 import { fileURLToPath } from 'node:url';
 import { nodeTranscriptSource } from '../budget/discover.ts';
 import { nodeFiles } from '../core/files.ts';
+import { nodeStepRunner } from '../coordinator/steps.ts';
 import { realSleep, systemClock } from '../core/lock.ts';
 import { NODE_PATH_PROBE } from '../core/path-probe.ts';
 import { nodeProgramRunner, systemCredentials } from '../github/credentials.ts';
@@ -35,6 +37,7 @@ process.exitCode = await runCli(process.argv.slice(2), {
   processes: nodeProcesses(),
   sessionProcesses: nodeSessionProcesses(),
   shell: nodeShellRunner(),
+  steps: nodeStepRunner(process.platform),
   gh: nodeGhRunner(),
   credentials: systemCredentials(process.platform, nodeProgramRunner()),
   probe: NODE_PATH_PROBE,
@@ -43,4 +46,5 @@ process.exitCode = await runCli(process.argv.slice(2), {
   requirements: requirementsCheck({ env: process.env, platform: process.platform, probe: NODE_PATH_PROBE, nodeVersion: process.versions.node }),
   worktrees: { git: GIT_WORKTREES, files: NODE_WORKTREE_FILES },
   readStdin: () => text(process.stdin),
+  newId: () => randomUUID(),
 });

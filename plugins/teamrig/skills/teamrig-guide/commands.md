@@ -1351,6 +1351,48 @@ OK removed /home/you/app-t4
 A step that fails after a change says what was already done, such as `(its links are already gone: node_modules)`
 (exit 1).
 
+### teamrig heavy
+
+Runs one heavy step (a build, a test run, a database script) under the host lock, so the host's heavy steps run one
+at a time instead of competing for its CPU and memory. It waits for the lock up to `coordinator.heavy.waitMinutes`
+(60 by default), looking again every `coordinator.wait.pollSeconds` (30) and printing a line for each new holder.
+Then it runs the command in the shell, its output streaming as it comes, and kills it with every process it started
+after `coordinator.heavy.maxRunMinutes` (45). The step's start and end go to the coordinator's ledger,
+`ledger.jsonl` in `coordinator.dir` (default `deploys` in the team's state folder). Exit 0 when the command
+passed, 1 when it failed or was killed. REFUSED (exit 2) from `coordinator.schedule.heavyCutoffUtc` to midnight
+UTC, also when the wait for the lock ran past it, and when the lock is still held after the wait.
+
+The lock is `host.lock` in the kit home, one for every team on the host, unless `coordinator.heavy.lockPath` names
+another. It lasts `coordinator.heavy.lockTtlMinutes` (150); a lock past that, or one whose process is gone, is
+taken over. Only the step that took it releases it.
+
+Everything after `--` is the command, read as `teamrig test` reads it. Run a test run as
+`teamrig heavy ... -- teamrig test -- <command>`: it then gets both the lock and the short summary.
+
+Flags:
+
+- `--what <label>`: what the step is, as the lock, the ledger and a waiting session name it; required.
+- `--session <id|name>`: the session running it; default `$TEAMRIG_SESSION`.
+- `--max-minutes <n>`: kill the step after this many minutes instead of `coordinator.heavy.maxRunMinutes`; a
+  whole number from 1 to `lockTtlMinutes` less 10, so the step never outlives its lock.
+
+Example:
+
+```sh
+teamrig heavy --session api --what "build api" -- npm run build
+```
+
+Output:
+
+```text
+2030-01-08T10:00:00.000Z waiting for the host lock: web (heavy: test web) since 2030-01-08 09:52
+2030-01-08T10:04:30.000Z running: build api (killed after 45m)
+DONE exit 0
+```
+
+The build's own output comes between the last two lines. A step killed at its limit ends with
+`TIMED OUT killed, recorded as exit 124`, a failed one with `FAILED exit <code>`.
+
 ### teamrig test
 
 Runs a test command in the shell and prints a few lines instead of all it printed, so a long test run costs the

@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,21 +9,36 @@ import { KIT_VERSION } from '../core/version.ts';
 
 const MAIN = fileURLToPath(new URL('./main.ts', import.meta.url));
 
-/** The real process: argv, stdio, exit code and git, with the kit home in an empty temp folder. */
-function cli(args: readonly string[], input = ''): { readonly status: number | null; readonly stdout: string } {
+interface CliResult {
+  readonly status: number | null;
+  readonly stdout: string;
+}
+
+/** The real process run in a kit home: argv, stdio, exit code and git. */
+function cliIn(home: string, args: readonly string[], input = ''): CliResult {
+  const result = spawnSync(process.execPath, [MAIN, ...args], {
+    input,
+    encoding: 'utf8',
+    // A fixed team keeps the run off any team pointer above the temp folder on the test machine.
+    env: { ...process.env, TEAMRIG_HOME: home, TEAMRIG_TEAM: 'app' },
+    cwd: home,
+  });
+  return { status: result.status, stdout: result.stdout };
+}
+
+/** Runs the test with a kit home in an empty temp folder, removed after. */
+function inTempHome<T>(use: (home: string) => T): T {
   const home = mkdtempSync(join(tmpdir(), 'teamrig-main-'));
   try {
-    const result = spawnSync(process.execPath, [MAIN, ...args], {
-      input,
-      encoding: 'utf8',
-      // A fixed team keeps the run off any team pointer above the temp folder on the test machine.
-      env: { ...process.env, TEAMRIG_HOME: home, TEAMRIG_TEAM: 'app' },
-      cwd: home,
-    });
-    return { status: result.status, stdout: result.stdout };
+    return use(home);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
+}
+
+/** One command in a fresh kit home. */
+function cli(args: readonly string[], input = ''): CliResult {
+  return inTempHome((home) => cliIn(home, args, input));
 }
 
 describe('main', () => {
@@ -43,5 +58,20 @@ describe('main', () => {
     const result = cli(['hook', 'push-guard'], payload);
     assert.equal(result.status, 0);
     assert.match(result.stdout, /"permissionDecision":"deny"/);
+  });
+
+  it('runs a heavy step under the host lock, releases it and ledgers the step under a fresh id', () => {
+    inTempHome((home) => {
+      assert.equal(cliIn(home, ['team', 'create', 'app', '--sessions', 'api', '--project', home]).status, 0);
+      const run = cliIn(home, ['heavy', '--session', 'api', '--what', 'probe', '--', process.execPath, '-e', 'process.exit(0)']);
+      assert.equal(run.status, 0);
+      assert.match(run.stdout, /running: probe \(killed after 45m\)\nDONE exit 0\n$/);
+      assert.equal(existsSync(join(home, 'host.lock')), false, 'the lock is released');
+      const ledger = readFileSync(join(home, 'teams', 'app', 'state', 'deploys', 'ledger.jsonl'), 'utf8');
+      const ids = [...ledger.matchAll(/"id":"([^"]+)"/g)].map((match) => match[1]);
+      assert.equal(ids.length, 2, 'a start and an end record');
+      assert.equal(ids[0], ids[1]);
+      assert.match(ids[0] ?? '', /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    });
   });
 });
