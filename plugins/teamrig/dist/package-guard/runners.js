@@ -4,11 +4,11 @@ const NO_FLAGS = new Set();
 /** A word only known when the line runs, for an option whose value is missing. */
 const UNKNOWN_WORD = { text: '', dynamic: true };
 /** npx's, npm exec's and bunx's options that take a value, so the word after one is not the command. */
-const EXEC_VALUED = new Set(['-p', '--package', '-c', '--call', '--prefix', '-w', '--workspace', '--registry', '--cache', '--userconfig']);
+export const EXEC_VALUED = new Set(['-p', '--package', '-c', '--call', '--prefix', '-w', '--workspace', '--registry', '--cache', '--userconfig']);
 /** npx's and npm exec's options that make it run an installed bin or fail, never fetch. */
 const NPX_NO_FETCH = new Set(['--no', '--no-install']);
 /** npm's options before its subcommand that take a value. */
-const NPM_VALUED = new Set(['--prefix', '-w', '--workspace', '--registry', '--cache', '--userconfig', '--loglevel']);
+export const NPM_VALUED = new Set(['--prefix', '-w', '--workspace', '--registry', '--cache', '--userconfig', '--loglevel']);
 /** npm init's options that take a value, so the word after one is not the initializer. */
 const NPM_INIT_VALUED = new Set([...NPM_VALUED, '--scope', '--init-author-name', '--init-author-email', '--init-author-url', '--init-license', '--init-version', '--init-module']);
 const PNPM_VALUED = new Set(['-C', '--dir', '-F', '--filter']);
