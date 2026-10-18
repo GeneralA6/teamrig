@@ -21,8 +21,14 @@ export const RUNNING_TAIL_BYTES = 8 * 1024 * 1024;
  */
 export const RUNNING_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 
-/** Tools whose result's `taskId` names work they started; TaskStop's and TaskOutput's name one they did not. */
-const TASK_TOOLS: ReadonlySet<string> = new Set(['Monitor', 'Workflow']);
+/** What a start is: a background command, an async subagent (a helper), a Monitor or a Workflow. */
+export type BackgroundKind = 'command' | 'helper' | 'monitor' | 'workflow';
+
+/** Tools whose result's `taskId` names work they started, by kind; TaskStop's and TaskOutput's name one they did not. */
+const TASK_TOOLS: ReadonlyMap<string, BackgroundKind> = new Map([
+  ['Monitor', 'monitor'],
+  ['Workflow', 'workflow'],
+]);
 
 /** The notification statuses that end the work; any other leaves it running. */
 const FINAL_STATUSES: ReadonlySet<string> = new Set(['completed', 'failed', 'killed', 'stopped']);
@@ -37,21 +43,24 @@ function blocksOf(entry: JsonRecord): readonly JsonRecord[] {
   return Array.isArray(content) ? content.filter(isRecord) : [];
 }
 
-/** The ids of the Monitor and Workflow calls in an assistant entry. */
-function taskToolCallsOf(entry: JsonRecord): readonly string[] {
-  return blocksOf(entry)
-    .filter((block) => block['type'] === 'tool_use' && TASK_TOOLS.has(stringField(block, 'name') ?? ''))
-    .map((block) => stringField(block, 'id'))
-    .filter((id) => id !== undefined);
+/** The Monitor and Workflow calls in an assistant entry, each id with the kind of work it starts. */
+function taskToolCallsOf(entry: JsonRecord): readonly (readonly [string, BackgroundKind])[] {
+  return blocksOf(entry).flatMap((block) => {
+    const id = block['type'] === 'tool_use' ? stringField(block, 'id') : undefined;
+    const kind = TASK_TOOLS.get(stringField(block, 'name') ?? '');
+    return id === undefined || kind === undefined ? [] : [[id, kind] as const];
+  });
 }
 
-/** Whether a tool's result says it started background work; `call` is the call it answers. */
-function startsWork(result: JsonRecord, call: string, taskCalls: ReadonlySet<string>): boolean {
-  return (
-    typeof result['backgroundTaskId'] === 'string' ||
-    result['status'] === 'async_launched' ||
-    (typeof result['taskId'] === 'string' && taskCalls.has(call))
-  );
+/** The kind of background work a tool's result says it started; undefined when it started none. `call` is the call it answers. */
+function startedKindOf(result: JsonRecord, call: string, taskCalls: ReadonlyMap<string, BackgroundKind>): BackgroundKind | undefined {
+  if (typeof result['backgroundTaskId'] === 'string') {
+    return 'command';
+  }
+  if (result['status'] === 'async_launched') {
+    return 'helper';
+  }
+  return typeof result['taskId'] === 'string' ? taskCalls.get(call) : undefined;
 }
 
 /** The call a tool-result entry answers; undefined for any other entry. */
@@ -80,15 +89,15 @@ function timeOf(entry: JsonRecord): number | undefined {
 }
 
 /**
- * The background work still running in transcript lines at `now`: started (a background command's
- * id, an async subagent, a Monitor or Workflow task) within `RUNNING_MAX_AGE_MS` and not ended by a
- * notification. A `cut` text, the tail of a longer file, may start mid-line, so its first line is
- * skipped; damaged lines are skipped too. Only lines naming a start or a notification are parsed.
+ * The kind of each background work still running in transcript lines at `now`: started (a background
+ * command's id, an async subagent, a Monitor or Workflow task) within `RUNNING_MAX_AGE_MS` and not
+ * ended by a notification. A `cut` text, the tail of a longer file, may start mid-line, so its first
+ * line is skipped; damaged lines are skipped too. Only lines naming a start or a notification are parsed.
  */
-export function runningWorkOf(text: string, cut: boolean, now: number): number {
-  const started = new Map<string, number | undefined>();
+export function runningKindsOf(text: string, cut: boolean, now: number): readonly BackgroundKind[] {
+  const started = new Map<string, { readonly kind: BackgroundKind; readonly at: number | undefined }>();
   const ended = new Set<string>();
-  const taskCalls = new Set<string>();
+  const taskCalls = new Map<string, BackgroundKind>();
   const lines = text.split('\n').slice(cut ? 1 : 0);
   for (const line of lines) {
     if (line.includes(NOTIFICATION)) {
@@ -98,27 +107,34 @@ export function runningWorkOf(text: string, cut: boolean, now: number): number {
     if (entry === undefined) {
       continue;
     }
-    taskToolCallsOf(entry).forEach((call) => taskCalls.add(call));
+    taskToolCallsOf(entry).forEach(([call, kind]) => taskCalls.set(call, kind));
     const result = recordField(entry, 'toolUseResult');
     const call = answeredCallOf(entry);
-    if (result !== undefined && call !== undefined && startsWork(result, call, taskCalls)) {
-      started.set(call, timeOf(entry));
+    const kind = result === undefined || call === undefined ? undefined : startedKindOf(result, call, taskCalls);
+    if (call !== undefined && kind !== undefined) {
+      started.set(call, { kind, at: timeOf(entry) });
     }
   }
-  let running = 0;
-  for (const [call, at] of started) {
-    if (!ended.has(call) && (at === undefined || now - at <= RUNNING_MAX_AGE_MS)) {
-      running += 1;
-    }
-  }
-  return running;
+  return [...started]
+    .filter(([call, { at }]) => !ended.has(call) && (at === undefined || now - at <= RUNNING_MAX_AGE_MS))
+    .map(([, { kind }]) => kind);
+}
+
+/** How many background works are still running in transcript lines at `now` (`runningKindsOf`). */
+export function runningWorkOf(text: string, cut: boolean, now: number): number {
+  return runningKindsOf(text, cut, now).length;
 }
 
 /**
- * The background work still running, from the transcript's last `RUNNING_TAIL_BYTES`; 0 when the
- * transcript is missing. A tail as long as the limit is taken as cut.
+ * The kind of each background work still running, from the transcript's last `RUNNING_TAIL_BYTES`;
+ * none when the transcript is missing. A tail as long as the limit is taken as cut.
  */
-export async function readRunningWork(files: Files, transcript: string, now: number): Promise<number> {
+export async function readRunningKinds(files: Files, transcript: string, now: number): Promise<readonly BackgroundKind[]> {
   const text = await files.readTail(transcript, RUNNING_TAIL_BYTES);
-  return text === undefined ? 0 : runningWorkOf(text, Buffer.byteLength(text, 'utf8') >= RUNNING_TAIL_BYTES, now);
+  return text === undefined ? [] : runningKindsOf(text, Buffer.byteLength(text, 'utf8') >= RUNNING_TAIL_BYTES, now);
+}
+
+/** How many background works are still running, from the transcript's tail (`readRunningKinds`); 0 when it is missing. */
+export async function readRunningWork(files: Files, transcript: string, now: number): Promise<number> {
+  return (await readRunningKinds(files, transcript, now)).length;
 }

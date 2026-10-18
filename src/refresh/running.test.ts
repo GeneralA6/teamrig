@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { readRunningWork, RUNNING_MAX_AGE_MS, RUNNING_TAIL_BYTES, runningWorkOf } from './running.ts';
+import { readRunningKinds, readRunningWork, RUNNING_MAX_AGE_MS, RUNNING_TAIL_BYTES, runningKindsOf, runningWorkOf } from './running.ts';
 
 const NOW = Date.parse('2030-01-08T10:00:00Z');
 const TRANSCRIPT = '/t/session.jsonl';
@@ -76,6 +76,25 @@ describe('runningWorkOf', () => {
 
   it('reads Windows line ends', () => {
     assert.equal(runningWorkOf(`${[...BASH, ...AGENT].join('\r\n')}\r\n`, false, NOW), 2);
+  });
+});
+
+describe('runningKindsOf', () => {
+  it('names the kind of each work still running', () => {
+    assert.deepEqual(runningKindsOf(text([...BASH, ...AGENT, ...MONITOR, ...WORKFLOW]), false, NOW), ['command', 'helper', 'monitor', 'workflow']);
+  });
+
+  it('leaves out the work that ended', () => {
+    assert.deepEqual(runningKindsOf(text([...BASH, ...AGENT, ...WORKFLOW, notification('toolu_agent', 'completed')]), false, NOW), ['command', 'workflow']);
+  });
+});
+
+describe('readRunningKinds', () => {
+  it('reads the transcript, and finds nothing in a missing one', async () => {
+    const files = new MemoryFiles();
+    await files.write(TRANSCRIPT, text([...BASH, ...AGENT, notification('toolu_bash', 'completed')]));
+    assert.deepEqual(await readRunningKinds(files, TRANSCRIPT, NOW), ['helper']);
+    assert.deepEqual(await readRunningKinds(new MemoryFiles(), TRANSCRIPT, NOW), []);
   });
 });
 
