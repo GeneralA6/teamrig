@@ -31,6 +31,14 @@ export function callerOf(flags, env) {
     }
     return sessionRef('--session', name);
 }
+/** The command to run: the words after `--`; anything else on the line, or nothing after it, is a usage error. */
+export function commandWordsOf(args) {
+    const [stray] = args.positionals;
+    if (stray !== undefined || args.rest.length === 0) {
+        throw new UsageError(stray === undefined ? 'no command to run after --' : `put "${stray}" and the rest of the command after --`);
+    }
+    return args.rest;
+}
 export function taskIdOf(text) {
     if (!TASK_ID.test(text)) {
         throw new UsageError(`"${text}" is not a task id like T12`);

@@ -114,6 +114,15 @@ export const DEFAULT_OPEN = { terminal: 'auto' };
 /** The status line shows the session's folder, its branch and the command that resumes it, unless the team turns them off. */
 export const DEFAULT_STATUS_LINE = { folder: true, branch: true, resume: true };
 /**
+ * A host lock outlives the longest heavy step it may hold by this many minutes, so the step is killed
+ * before its lock runs out and no second step starts beside it.
+ */
+export const HEAVY_TTL_MARGIN_MINUTES = 10;
+/** A host lock lasts 150 minutes and a heavy step at most 45 of them; a step waits up to an hour for the lock. */
+export const DEFAULT_HEAVY = { lockTtlMinutes: 150, maxRunMinutes: 45, waitMinutes: 60 };
+/** A waiting coordinator step looks again every 30 seconds. */
+export const DEFAULT_COORDINATOR_WAIT = { pollSeconds: 30 };
+/**
  * A hire spends the week's budget, so it waits for the owner's yes: at most two hires at 1% of the week a day
  * each, 3% in all, reviewed after a week and due to retire after 4 hours with no open task. A rehire resumes its
  * last Claude Code session only when it holds at most 250k tokens of context and was idle at most a week.
