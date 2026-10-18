@@ -112,14 +112,28 @@ describe('parseTranscriptLine', () => {
         usage: { input_tokens: 1, output_tokens: 1 },
         content: [
           { type: 'tool_use', id: 's', name: 'Skill', input: { skill: 'alpha-check', args: 'x' } },
-          { type: 'tool_use', id: 'b', name: 'Bash', input: { command: 'ls', skill: 'not-a-load' } },
+          { type: 'tool_use', id: 'b', name: 'Bash', input: { command: 'ls', skill: 'not-a-load', run_in_background: true } },
+          { type: 'tool_use', id: 'c', name: 'Bash', input: { command: 'ls', run_in_background: 'yes' } },
         ],
       },
     });
     const call = parseTranscriptLine(reply);
-    assert.deepEqual(call?.kind === 'call' ? call.tools.map((tool) => tool.skill) : undefined, ['alpha-check', undefined]);
+    assert.deepEqual(call?.kind === 'call' ? call.tools.map((tool) => tool.skill) : undefined, ['alpha-check', undefined, undefined]);
+    assert.deepEqual(call?.kind === 'call' ? call.tools.map((tool) => tool.background) : undefined, [undefined, true, undefined]);
     const prompt = parseTranscriptLine(promptLine(AT, '<command-message>x</command-message>\n<command-name>/alpha-check</command-name> <command-name>clear</command-name>'));
     assert.deepEqual(prompt?.kind === 'prompt' ? prompt.commands : undefined, ['alpha-check', 'clear']);
+  });
+
+  it('names the background call a task notification reports on, and none for a prompt that quotes one', () => {
+    const tagged = '<task-notification>\n<task-id>b1</task-id>\n<tool-use-id>toolu_1</tool-use-id>\n</task-notification>';
+    const notice = JSON.stringify({ type: 'user', origin: { kind: 'task-notification' }, message: { role: 'user', content: tagged }, timestamp: AT });
+    const answers = (raw: string): string | undefined => {
+      const line = parseTranscriptLine(raw);
+      return line?.kind === 'prompt' ? line.answers : undefined;
+    };
+    assert.equal(answers(notice), 'toolu_1');
+    assert.equal(answers(promptLine(AT, '<task-notification>done</task-notification>')), undefined);
+    assert.equal(answers(promptLine(AT, 'see <tool-use-id>toolu_1</tool-use-id>')), undefined);
   });
 
   it('names what started a turn from the origin Claude Code writes, else from the text', () => {

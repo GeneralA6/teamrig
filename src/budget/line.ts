@@ -11,6 +11,8 @@ export interface ToolUse {
   readonly path?: string;
   /** The skill a `Skill` call loads. */
   readonly skill?: string;
+  /** True for a call run in the background (`run_in_background`), whose end a task notification reports. */
+  readonly background?: boolean;
 }
 
 /** What came back for one tool call: its text, and whether Claude Code marked it an error. */
@@ -58,6 +60,8 @@ export interface PromptLine {
   readonly trigger: TurnTrigger | 'continuation';
   /** The slash commands the prompt runs (`<command-name>/x</command-name>`), without the slash; a skill typed as `/name` loads it. */
   readonly commands: readonly string[];
+  /** For a task notification, the id of the background tool call it reports on (its `<tool-use-id>`), when it names one. */
+  readonly answers?: string;
 }
 
 /** Claude Code compacted the session's context here. */
@@ -98,6 +102,7 @@ export function toolUseFrom(id: string, name: string, input: JsonRecord | undefi
     command: input === undefined ? undefined : stringField(input, 'command'),
     ...(path === undefined ? {} : { path }),
     ...(skill === undefined ? {} : { skill }),
+    ...(input?.['run_in_background'] === true ? { background: true } : {}),
   };
 }
 
@@ -200,7 +205,17 @@ function userLineOf(entry: JsonRecord): ResultsLine | PromptLine | undefined {
   }
   const results = blocksOf(message).flatMap((block) => toolResultOf(block) ?? []);
   const at = timeOf(entry);
-  return results.length > 0 ? { kind: 'results', at, results } : { kind: 'prompt', at, trigger: triggerOf(entry, message), commands: commandsIn(promptText(message)) };
+  return results.length > 0 ? { kind: 'results', at, results } : promptOf(entry, message, at);
+}
+
+const TOOL_USE_ID = /<tool-use-id>([^<\s]+)<\/tool-use-id>/;
+
+/** A prompt line; only a notification's own `<tool-use-id>` names the call it answers, never one a message quotes. */
+function promptOf(entry: JsonRecord, message: JsonRecord, at: number | undefined): PromptLine {
+  const text = promptText(message);
+  const trigger = triggerOf(entry, message);
+  const answers = trigger === 'notification' ? TOOL_USE_ID.exec(text)?.[1] : undefined;
+  return { kind: 'prompt', at, trigger, commands: commandsIn(text), ...(answers === undefined ? {} : { answers }) };
 }
 
 /** A compaction's boundary line; undefined for any other entry. */
