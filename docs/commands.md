@@ -145,6 +145,15 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       started after coordinator.heavy.maxRunMinutes (--max-minutes) and records its start and end in
       the coordinator's ledger; REFUSED from coordinator.schedule.heavyCutoffUtc to midnight UTC and
       when the lock is still held; exit 0 when the command passed, 1 when it failed or was killed
+  integrate [--session <id|name>] [--keep-remote] [--no-delete-local]   lands the branch checked out
+      here on origin's default branch: REFUSED for a detached HEAD, the default branch, uncommitted
+      changes, nothing new or a dependency change coordinator.repos.<name>.dependencyGate holds, from
+      coordinator.schedule.heavyCutoffUtc to midnight UTC and in the resetBlackoutHours before the
+      weekly token reset; waits up to coordinator.wait.maxMinutes for quiet claims on its deploysOnPush
+      targets and for the host lock, rebases and pushes (a heavy step in the ledger; again when origin
+      moved meanwhile), records the push as a deploy of deploysOnPush, deletes the branch on origin
+      and here (--keep-remote, --no-delete-local keep them) and, where followMainCheckout, fast-forwards
+      the main checkout; exit 0 landed, 1 failed
   test [--session <id|name>] -- <command ...>   runs a test command in the shell, writes all it printed
       to a log (each session keeps its newest 20) and prints one PASS or FAIL line, then each failing
       test within tests.maxFailureChars; exit 0 when the command passed, 1 otherwise

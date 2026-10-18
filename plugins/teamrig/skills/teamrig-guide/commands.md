@@ -1393,6 +1393,58 @@ DONE exit 0
 The build's own output comes between the last two lines. A step killed at its limit ends with
 `TIMED OUT killed, recorded as exit 124`, a failed one with `FAILED exit <code>`.
 
+### teamrig integrate
+
+Lands the branch checked out in the current folder, a worktree or a plain checkout, on origin's default branch (the
+one `origin/HEAD` names), so every session lands its work one way: checked, pushed under the host lock and recorded.
+
+REFUSED (exit 2) before any change for a folder outside git, a detached HEAD, uncommitted changes, the default branch
+itself (or `main`, `master`) and a branch with nothing that is not on origin already. Also from
+`coordinator.schedule.heavyCutoffUtc` to midnight UTC, and in the `coordinator.schedule.resetBlackoutHours` before
+the weekly token reset: the reset the status line last reported, else the one `budget.reset` sets (unset: no
+blackout).
+
+The repository is the entry of `coordinator.repos` whose `mainCheckout` is this checkout's main one:
+
+- `deploysOnPush`: what a push to the default branch deploys, such as `["cloud-api"]`. integrate waits for quiet
+  claims on these targets, and records the push in the ledger as a deploy of them, which teamrig does not watch.
+- `dependencyGate`: REFUSED when the branch changes `package-lock.json` or `package.json` beyond its scripts,
+  since landing it changes, unreviewed, the `node_modules` every worktree links to; push such a change by hand.
+- `followMainCheckout`: after a landing from a linked worktree, fast-forward the main checkout too, when it is on
+  the default branch with no uncommitted changes; a NOTE says when it was left as it is, or needs `npm ci`.
+
+A repository not listed gets a NOTE and none of these. Then integrate waits up to `coordinator.wait.maxMinutes` (60),
+looking every `coordinator.wait.pollSeconds` (30), for the claims and the host lock (see `teamrig heavy`), fetches,
+rebases onto origin's default branch and pushes there, the push a heavy step in the ledger that runs the pre-push
+hook. It landed when origin's default branch is at the rebased commit, whatever the push's exit code. When origin
+moved meanwhile, it rebases and pushes again, 3 times in all. After a landing it deletes the branch on origin and
+here, moves the local default branch to origin's and prints the `teamrig worktree remove` that ends a worktree.
+Exit 0 landed, 1 failed (FAILED and the reason; the branch is kept).
+
+Flags:
+
+- `--session <id|name>`: the session landing it, as the ledger names it; default `$TEAMRIG_SESSION`.
+- `--keep-remote`: keep the branch on origin.
+- `--no-delete-local`: keep the local branch.
+
+Example:
+
+```sh
+teamrig integrate --session api
+```
+
+Output:
+
+```text
+2030-01-08T10:00:00.000Z pushing t12-parser (4f1c2a9e) to main; the pre-push hook runs now
+2030-01-08T10:03:10.000Z deleted t12-parser on origin
+2030-01-08T10:03:10.000Z deleted the local t12-parser
+2030-01-08T10:03:10.000Z next: teamrig worktree remove "/home/you/api-t12"
+DONE pushed 9a0b1c2d..4f1c2a9e to main; cloud-api deploy on push
+```
+
+A wait prints `waiting: <reason>` lines first, such as a quiet claim or the host lock's holder.
+
 ### teamrig test
 
 Runs a test command in the shell and prints a few lines instead of all it printed, so a long test run costs the

@@ -20,6 +20,7 @@ import type { CredentialStore } from '../github/credentials.ts';
 import type { GhRunner } from '../github/gh.ts';
 import type { ShellRunner } from '../test-run/shell.ts';
 import type { StepRunner } from '../coordinator/steps.ts';
+import type { IntegrateGit } from '../integrate/git.ts';
 import { FakeClock } from './fake-clock.ts';
 import { MemoryFiles } from './memory-files.ts';
 import { quietWorld } from './quiet-world.ts';
@@ -85,6 +86,8 @@ export interface RunOptions {
   readonly worktrees?: WorktreePorts;
   /** The runner `teamrig heavy` runs its step in; default one whose steps exit 0 at once. */
   readonly steps?: StepRunner;
+  /** The git `teamrig integrate` drives; default the fake repository at /w/feat (testing/fake-integrate-git.ts). */
+  readonly integrateGit?: IntegrateGit;
 }
 
 /**
@@ -129,6 +132,7 @@ export class CliHarness {
       ...(options.transcripts === undefined ? {} : { transcripts: options.transcripts }),
       ...(options.worktrees === undefined ? {} : { worktrees: options.worktrees }),
       ...(options.steps === undefined ? {} : { steps: options.steps }),
+      ...(options.integrateGit === undefined ? {} : { integrateGit: options.integrateGit }),
       out: { stdout: (line) => stdout.push(line), stderr: (line) => stderr.push(line) },
       ...(options.configFormat === undefined ? {} : { configFormat: options.configFormat }),
     });
