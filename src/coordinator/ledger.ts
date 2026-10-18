@@ -1,4 +1,6 @@
 import type { Files } from '../core/files.ts';
+import { isStringArray, stringField, type JsonRecord } from '../core/guards.ts';
+import { parseJsonl } from '../core/jsonl.ts';
 import { formatUtcMinute } from '../core/time.ts';
 
 /** The ledger's file name in the coordinator's folder: one JSON record a line, appended. */
@@ -45,6 +47,33 @@ export interface DeployRecord {
   readonly rolledAt: string;
 }
 
+/**
+ * A background load a session declared (`teamrig load`), in the format a team's own coordinator writes too: once when
+ * it starts (`endedAt` null), and again when it ends, under the same `id`.
+ */
+export interface LoadRecord {
+  readonly type: 'load';
+  readonly id: string;
+  readonly session: string;
+  readonly what: string;
+  /** The deploy targets it loads, or `host` for every one. */
+  readonly targets: readonly string[] | 'host';
+  /** An ISO time. */
+  readonly startedAt: string;
+  readonly endedAt: string | null;
+}
+
+export type LedgerRecord = HeavyRecord | DeployRecord | LoadRecord;
+
+/** A deploy as its ledger.md line names it; a session may write one by hand. */
+export interface LedgerMdDeploy {
+  /** When it went live, in ms, to the minute. */
+  readonly rolledAt: number;
+  readonly session: string;
+  readonly repo: string;
+  readonly kind: 'deploy' | 'rollback';
+}
+
 /** The two ledger files a deploy is written to. */
 export interface LedgerPlaces {
   readonly ledger: string;
@@ -66,7 +95,7 @@ export function rangeText(commits: readonly string[], fallback: string): string 
 }
 
 /** Appends one record as one line, in one write. */
-export async function appendHeavy(files: Files, ledger: string, record: HeavyRecord): Promise<void> {
+export async function appendRecord(files: Pick<Files, 'append'>, ledger: string, record: LedgerRecord): Promise<void> {
   await files.append(ledger, `${JSON.stringify(record)}\n`);
 }
 
@@ -78,7 +107,93 @@ export function ledgerLine(record: DeployRecord): string {
 
 /** Appends a deploy to the JSON ledger and its line to ledger.md, starting a missing ledger.md with its header. */
 export async function appendDeploy(files: Files, places: LedgerPlaces, record: DeployRecord): Promise<void> {
-  await files.append(places.ledger, `${JSON.stringify(record)}\n`);
+  await appendRecord(files, places.ledger, record);
   await files.createExclusive(places.ledgerMd, `${LEDGER_MD_HEADER}\n`);
   await files.append(places.ledgerMd, `${ledgerLine(record)}\n`);
+}
+
+/** An ISO time field; undefined when it is missing or no time. */
+function timeField(record: JsonRecord, key: string): string | undefined {
+  const value = stringField(record, key);
+  return value !== undefined && Number.isFinite(Date.parse(value)) ? value : undefined;
+}
+
+/** An end that may not have come yet: null, else an ISO time; undefined when it is neither. */
+function endField(record: JsonRecord, key: string): string | null | undefined {
+  return record[key] === null ? null : timeField(record, key);
+}
+
+function heavyOf(record: JsonRecord): HeavyRecord | undefined {
+  const [id, session, what] = [stringField(record, 'id'), stringField(record, 'session'), stringField(record, 'what')];
+  const [startedAt, endedAt] = [timeField(record, 'startedAt'), endField(record, 'endedAt')];
+  const exitCode = record['exitCode'];
+  const exit = exitCode === null || (typeof exitCode === 'number' && Number.isInteger(exitCode)) ? exitCode : undefined;
+  if (id === undefined || session === undefined || what === undefined || startedAt === undefined || endedAt === undefined || exit === undefined) {
+    return undefined;
+  }
+  return { type: 'heavy', id, session, what, startedAt, endedAt, exitCode: exit };
+}
+
+function deployOf(record: JsonRecord): DeployRecord | undefined {
+  const kind = record['kind'];
+  const [session, repo, range] = [stringField(record, 'session'), stringField(record, 'repo'), stringField(record, 'range')];
+  const [what, note] = [stringField(record, 'what'), stringField(record, 'note')];
+  const [startedAt, rolledAt] = [timeField(record, 'startedAt'), timeField(record, 'rolledAt')];
+  if ((kind !== 'deploy' && kind !== 'rollback') || session === undefined || repo === undefined || range === undefined || what === undefined || note === undefined || startedAt === undefined || rolledAt === undefined) {
+    return undefined;
+  }
+  return { type: 'deploy', kind, session, repo, range, what, note, startedAt, rolledAt };
+}
+
+function loadOf(record: JsonRecord): LoadRecord | undefined {
+  const [id, session, what] = [stringField(record, 'id'), stringField(record, 'session'), stringField(record, 'what')];
+  const [startedAt, endedAt] = [timeField(record, 'startedAt'), endField(record, 'endedAt')];
+  const targets = record['targets'];
+  const loaded = targets === 'host' || isStringArray(targets) ? targets : undefined;
+  if (id === undefined || session === undefined || what === undefined || startedAt === undefined || endedAt === undefined || loaded === undefined) {
+    return undefined;
+  }
+  return { type: 'load', id, session, what, targets: loaded, startedAt, endedAt };
+}
+
+const READERS: Readonly<Record<LedgerRecord['type'], (record: JsonRecord) => LedgerRecord | undefined>> = { heavy: heavyOf, deploy: deployOf, load: loadOf };
+
+function isLedgerType(type: unknown): type is LedgerRecord['type'] {
+  return type === 'heavy' || type === 'deploy' || type === 'load';
+}
+
+/** The ledger's heavy, deploy and load records, in file order; a damaged line, a record of another type or one with a bad field is left out. */
+export function parseLedger(text: string): LedgerRecord[] {
+  return parseJsonl(text).records.flatMap(({ record }) => {
+    const type = record['type'];
+    const read = isLedgerType(type) ? READERS[type](record) : undefined;
+    return read === undefined ? [] : [read];
+  });
+}
+
+const MD_MINUTE = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/;
+
+/** A ledger.md minute, `YYYY-MM-DD HH:MM` UTC, in ms; undefined for anything else. */
+function mdMinute(text: string): number | undefined {
+  const parts = MD_MINUTE.exec(text);
+  if (parts === null) {
+    return undefined;
+  }
+  const time = Date.parse(`${parts[1]}-${parts[2]}-${parts[3]}T${parts[4]}:${parts[5]}:00Z`);
+  return Number.isFinite(time) ? time : undefined;
+}
+
+/** The deploys and rollbacks of ledger.md, in file order; the header, other kinds (`start`) and malformed lines are left out. */
+export function parseLedgerMd(text: string): LedgerMdDeploy[] {
+  return text.split('\n').flatMap((line): LedgerMdDeploy[] => {
+    if (!line.startsWith('- ')) {
+      return [];
+    }
+    const [when = '', session = '', repo = '', , , kind = ''] = line.slice(2).split('|').map((cell) => cell.trim());
+    const rolledAt = mdMinute(when);
+    if (rolledAt === undefined || session === '' || repo === '' || (kind !== 'deploy' && kind !== 'rollback')) {
+      return [];
+    }
+    return [{ rolledAt, session, repo, kind }];
+  });
 }

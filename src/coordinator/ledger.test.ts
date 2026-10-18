@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { appendDeploy, ledgerLine, LEDGER_MD_HEADER, type DeployRecord, rangeText } from './ledger.ts';
+import { appendDeploy, appendRecord, ledgerLine, LEDGER_MD_HEADER, parseLedger, parseLedgerMd, type DeployRecord, type LoadRecord, rangeText } from './ledger.ts';
 
 const PLACES = { ledger: '/team/data/deploys/ledger.jsonl', ledgerMd: '/team/data/deploys/ledger.md' };
 
@@ -51,5 +51,52 @@ describe('rangeText', () => {
     assert.equal(rangeText(['1234567890ab'], 'f'), '12345678');
     assert.equal(rangeText(['1111111111', '2222222222', '3333333333'], 'f'), '11111111..33333333');
     assert.equal(rangeText([], 'abcdef0123456'), 'abcdef01');
+  });
+});
+
+describe('parseLedger', () => {
+  const load: LoadRecord = { type: 'load', id: 'b425c3c9', session: 'ops', what: 'db trim', targets: 'host', startedAt: '2030-01-08T09:00:00.000Z', endedAt: null };
+  const heavy = { type: 'heavy', id: 'h1', session: 'dev', what: 'tests', startedAt: '2030-01-08T09:10:00.000Z', endedAt: '2030-01-08T09:12:00.000Z', exitCode: 0 };
+
+  it('reads what appendRecord writes, each type in file order', async () => {
+    const files = new MemoryFiles();
+    for (const record of [load, deploy(), { ...load, targets: ['api'], endedAt: '2030-01-08T11:00:00.000Z' }]) {
+      await appendRecord(files, PLACES.ledger, record);
+    }
+    await files.append(PLACES.ledger, `${JSON.stringify(heavy)}\n`);
+    assert.deepEqual(parseLedger((await files.read(PLACES.ledger)) ?? ''), [load, deploy(), { ...load, targets: ['api'], endedAt: '2030-01-08T11:00:00.000Z' }, heavy]);
+  });
+
+  it('leaves out damaged lines, other types and records with a bad field', () => {
+    const bad = [
+      '{"type":"heavy"',
+      JSON.stringify({ type: 'claim', id: 'c1' }),
+      JSON.stringify({ ...heavy, startedAt: 'yesterday' }),
+      JSON.stringify({ ...heavy, exitCode: 'ok' }),
+      JSON.stringify({ ...load, targets: 'api' }),
+      JSON.stringify({ ...load, endedAt: 5 }),
+      JSON.stringify({ ...deploy(), kind: 'revert' }),
+      JSON.stringify({ ...deploy(), note: undefined }),
+    ];
+    assert.deepEqual(parseLedger([...bad, JSON.stringify(heavy)].join('\r\n')), [heavy]);
+  });
+});
+
+describe('parseLedgerMd', () => {
+  it('reads the deploys and rollbacks, what ledgerLine writes included, and leaves out the rest', () => {
+    const text = [
+      LEDGER_MD_HEADER,
+      '- 2030-01-08 14:05 | lead | - | - | - | start | ledger started',
+      ledgerLine(deploy()),
+      '- 2030-01-08 12:00 | ops | pipeline | a..b | fleet | rollback | bad image',
+      '- 2030-01-08 12:00 | ops | pipeline | a..b | fleet',
+      '- 2030-01-08 25:00 | ops | pipeline | a..b | fleet | deploy | x',
+      '- 08/01/2030 12:00 | ops | pipeline | a..b | fleet | deploy | x',
+      '  - 2030-01-08 12:00 | ops | pipeline | a..b | fleet | deploy | indented',
+    ].join('\n');
+    assert.deepEqual(parseLedgerMd(text), [
+      { rolledAt: Date.parse('2030-01-08T10:04:00Z'), session: 'api', repo: 'api', kind: 'deploy' },
+      { rolledAt: Date.parse('2030-01-08T12:00:00Z'), session: 'ops', repo: 'pipeline', kind: 'rollback' },
+    ]);
   });
 });

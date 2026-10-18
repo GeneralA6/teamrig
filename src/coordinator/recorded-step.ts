@@ -1,6 +1,6 @@
 import type { Files } from '../core/files.ts';
 import type { Clock } from '../core/lock.ts';
-import { appendHeavy, type HeavyRecord } from './ledger.ts';
+import { appendRecord, type HeavyRecord } from './ledger.ts';
 import { exitCodeOf, type StepEnd, type StepRequest, type StepRunner } from './steps.ts';
 
 /** The exit code recorded for a step that could not start, as a missing folder makes it. */
@@ -41,7 +41,7 @@ export async function recordHeavy<T>(ports: HeavyRecordPorts, ledger: string, ma
     endedAt: null,
     exitCode: null,
   };
-  await appendHeavy(ports.files, ledger, start);
+  await appendRecord(ports.files, ledger, start);
   let exitCode = NOT_STARTED_EXIT;
   try {
     const result = await work();
@@ -49,7 +49,7 @@ export async function recordHeavy<T>(ports: HeavyRecordPorts, ledger: string, ma
     return result;
   } finally {
     const endedAt = new Date(ports.clock.now()).toISOString();
-    await appendHeavy(ports.files, ledger, { ...start, endedAt, exitCode });
+    await appendRecord(ports.files, ledger, { ...start, endedAt, exitCode });
   }
 }
 
