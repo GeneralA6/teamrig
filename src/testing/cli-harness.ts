@@ -20,6 +20,7 @@ import type { CredentialStore } from '../github/credentials.ts';
 import type { GhRunner } from '../github/gh.ts';
 import type { ShellRunner } from '../test-run/shell.ts';
 import type { StepRunner } from '../coordinator/steps.ts';
+import type { HookRunner } from '../roll/hooks.ts';
 import type { IntegrateGit } from '../integrate/git.ts';
 import { FakeClock } from './fake-clock.ts';
 import { MemoryFiles } from './memory-files.ts';
@@ -88,6 +89,8 @@ export interface RunOptions {
   readonly steps?: StepRunner;
   /** The git `teamrig integrate` drives; default the fake repository at /w/feat (testing/fake-integrate-git.ts). */
   readonly integrateGit?: IntegrateGit;
+  /** The runner `teamrig roll` runs its gates, afterPull hooks and roll command in; default one whose programs print nothing and exit 0. */
+  readonly hooks?: HookRunner;
 }
 
 /**
@@ -133,6 +136,7 @@ export class CliHarness {
       ...(options.worktrees === undefined ? {} : { worktrees: options.worktrees }),
       ...(options.steps === undefined ? {} : { steps: options.steps }),
       ...(options.integrateGit === undefined ? {} : { integrateGit: options.integrateGit }),
+      ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
       out: { stdout: (line) => stdout.push(line), stderr: (line) => stderr.push(line) },
       ...(options.configFormat === undefined ? {} : { configFormat: options.configFormat }),
     });

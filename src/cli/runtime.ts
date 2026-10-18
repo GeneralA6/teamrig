@@ -9,6 +9,7 @@ import type { CredentialStore } from '../github/credentials.ts';
 import type { GhRunner } from '../github/gh.ts';
 import type { IntegrateGit } from '../integrate/git.ts';
 import type { RequirementsCheck } from '../requirements/requirements.ts';
+import type { HookRunner } from '../roll/hooks.ts';
 import type { WorktreePorts } from '../worktree/remove.ts';
 import type { Processes } from '../open/processes.ts';
 import type { SessionProcesses } from '../open/session-processes.ts';
@@ -66,6 +67,8 @@ export interface CliRuntime {
   readonly worktrees: WorktreePorts;
   /** The git steps `teamrig integrate` takes. */
   readonly integrateGit: IntegrateGit;
+  /** The programs `teamrig roll` runs, its gates, afterPull hooks and roll command: no shell, each with a time limit. */
+  readonly hooks: HookRunner;
   /** The config format the run reads and migrates to; default the shipped one (tests give a newer release's). */
   readonly configFormat?: ConfigFormat;
   /** All of stdin, for hooks, which Claude Code feeds one JSON object. */
