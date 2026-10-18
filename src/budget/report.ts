@@ -26,7 +26,7 @@ export interface SessionToday {
   readonly name: string;
   readonly w: number;
   readonly calls: number;
-  /** Its daily budget in percent of the week: its lift's while lifted, at least its burst's while in a burst; undefined when unknown. */
+  /** Its daily budget in percent of the week: its part of the team's while lifted, at least its burst's while in a burst; undefined when unknown. */
   readonly budgetPct: number | undefined;
   readonly lift: Lift | undefined;
   /** The burst in force, when the session is in it. */

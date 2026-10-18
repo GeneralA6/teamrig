@@ -11,8 +11,8 @@ const RESET = Date.parse('2030-01-09T01:00:00Z');
 const DAY_END = Date.parse('2030-01-09T00:00:00Z');
 const MINUTE = 60_000;
 
-const REQUEST: LiftRequest = { session: 'alpha', toPct: 2, stopPct: 97, until: undefined, reserve: false, reason: 'release week', by: 'lead', now: NOW };
-const CONTEXT: LiftContext = { usedPct: 57, reset: RESET, limits: DEFAULT_BUDGET.lift };
+const REQUEST: LiftRequest = { session: 'alpha', partPct: 40, stopPct: 97, until: undefined, reserve: false, reason: 'release week', by: 'lead', now: NOW };
+const CONTEXT: LiftContext = { usedPct: 57, reset: RESET, limits: DEFAULT_BUDGET.lift, liftedPct: 0 };
 
 function refusal(decision: LiftDecision): string {
   assert.equal(decision.kind, 'refused');
@@ -28,7 +28,7 @@ function given(decision: LiftDecision): Lift {
 }
 
 function lift(overrides: Partial<Lift> = {}): Lift {
-  return { session: 'alpha', toPct: 2, stopPct: 97, endsAt: DAY_END, reserve: false, quietHoursExempt: true, reason: 'release week', by: 'lead', at: NOW, ...overrides };
+  return { session: 'alpha', partPct: 40, stopPct: 97, endsAt: DAY_END, reserve: false, quietHoursExempt: true, reason: 'release week', by: 'lead', at: NOW, ...overrides };
 }
 
 describe('decideLift', () => {
@@ -47,6 +47,14 @@ describe('decideLift', () => {
     assert.match(refusal(decideLift({ ...REQUEST, stopPct: 99.95 }, CONTEXT)), /above budget\.lift\.reserveStopPct \(99\.9\)/);
     assert.match(refusal(decideLift({ ...REQUEST, stopPct: 99.5 }, CONTEXT)), /above budget\.lift\.maxStopPct \(99\.3\); only the reserve release/);
     assert.equal(given(decideLift({ ...REQUEST, stopPct: 99.3 }, CONTEXT)).stopPct, 99.3);
+  });
+
+  it('refuses a part that, with the other lifts in force, would give more than the whole team budget', () => {
+    assert.match(
+      refusal(decideLift(REQUEST, { ...CONTEXT, liftedPct: 70 })),
+      /other lifts in force give 70\.0% of the team's daily budget, so --part 40 would give more than all of it; the most this lift may give is 30\.0%/,
+    );
+    assert.equal(given(decideLift({ ...REQUEST, partPct: 30 }, { ...CONTEXT, liftedPct: 70 })).partPct, 30);
   });
 
   it('refuses a passed --until, an unknown week and a week already at the stop %', () => {
@@ -68,9 +76,9 @@ describe('decideLift', () => {
 
 describe('activeLift', () => {
   it('is the newest lift given by now, until its end or the stop %', () => {
-    const older = lift({ toPct: 1.5, at: NOW - 2 * 60 * MINUTE });
-    const newer = lift({ toPct: 3, at: NOW - 60 * MINUTE });
-    const later = lift({ toPct: 9, at: NOW + MINUTE });
+    const older = lift({ partPct: 15, at: NOW - 2 * 60 * MINUTE });
+    const newer = lift({ partPct: 30, at: NOW - 60 * MINUTE });
+    const later = lift({ partPct: 90, at: NOW + MINUTE });
     const other = lift({ session: 'bravo' });
     const lifts = [older, newer, later, other];
     assert.equal(activeLift(lifts, 'alpha', NOW, 57), newer);
@@ -85,11 +93,11 @@ describe('liftText', () => {
   it('says what the lift gives and when it ends', () => {
     assert.equal(
       liftText(lift(), 'alpha'),
-      'alpha to 2.0% today until the end of the day (UTC) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.',
+      "alpha to 40.0% of the team's daily budget today until the end of the day (UTC) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.",
     );
     assert.equal(
-      liftText(lift({ toPct: 0.5, reserve: true, endsAt: RESET - 15 * MINUTE, stopPct: 99.9 }), 'alpha'),
-      'alpha to 0.50% today from the reserve until 00:45 UTC or 99.9% of the week, whichever comes first; quiet hours do not apply to it.',
+      liftText(lift({ partPct: 100, reserve: true, endsAt: RESET - 15 * MINUTE, stopPct: 99.9 }), 'alpha'),
+      "alpha to 100.0% of the team's daily budget today from the reserve until 00:45 UTC or 99.9% of the week, whichever comes first; quiet hours do not apply to it.",
     );
   });
 });
@@ -97,7 +105,7 @@ describe('liftText', () => {
 describe('parseLift', () => {
   const record = {
     session: 'alpha',
-    toPct: 2,
+    partPct: 40,
     stopPct: 97,
     endsAt: '2030-01-09T00:00:00.000Z',
     reserve: false,
@@ -112,7 +120,7 @@ describe('parseLift', () => {
   });
 
   it('skips a damaged one', () => {
-    for (const damage of [{ session: 3 }, { toPct: 0 }, { stopPct: 101 }, { toPct: Number.NaN }, { endsAt: 'soon' }, { at: 5 }, { reserve: 'no' }, { quietHoursExempt: null }, { reason: undefined }, { by: undefined }]) {
+    for (const damage of [{ session: 3 }, { partPct: 0 }, { stopPct: 101 }, { partPct: Number.NaN }, { endsAt: 'soon' }, { at: 5 }, { reserve: 'no' }, { quietHoursExempt: null }, { reason: undefined }, { by: undefined }]) {
       assert.equal(parseLift({ ...record, ...damage }), undefined, JSON.stringify(damage));
     }
   });

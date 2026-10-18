@@ -2086,7 +2086,9 @@ hours yet, and `--quiet-action` with `--quiet off` are usage errors (exit 64).
 
 ### teamrig budget lift
 
-The lead lifts one session's daily budget for today. Every lift carries a stop %: it ends at the stop %, at
+The lead lifts one session to a part of the team's daily budget for today: the session gets `--part` % of the
+team's budget, recomputed at every reading like the budget itself, and the other sessions split the rest by their
+shares and queued work. The lifts in force never give more than the whole team budget. Every lift carries a stop %: it ends at the stop %, at
 `--until` or at the end of the UTC day, whichever comes first, and quiet hours do not apply to the session while
 it runs. The stop % is at most `budget.lift.maxStopPct` (99.3). Above that, up to `budget.lift.reserveStopPct`
 (99.9), only with `--reserve` and only in the last hour before the reset; a reserve lift ends 15 minutes before
@@ -2095,7 +2097,7 @@ the reset. Lifts are kept in the team's `state/usage/lifts.jsonl`.
 Flags:
 
 - `--session <id|name>`: the caller; it must be the lead.
-- `--to <pct>`: the session's daily budget today, in percent of the week.
+- `--part <pct>`: the session's part of the team's daily budget today, in percent (above 0, up to 100).
 - `--stop-pct <pct>`: required: the week's use at which the lift ends.
 - `--until <HH:MM|date>`: an earlier end: `HH:MM` today or `"YYYY-MM-DD HH:MM"`, UTC.
 - `--reason "<why>"`: required: why the session needs more today.
@@ -2104,17 +2106,17 @@ Flags:
 Example:
 
 ```sh
-teamrig budget lift api --session lead --to 6 --stop-pct 97 --reason "release day"
+teamrig budget lift api --session lead --part 50 --stop-pct 97 --reason "release day"
 ```
 
 Output:
 
 ```text
-LIFTED api to 6.0% today until the end of the day (UTC) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.
+LIFTED api to 50.0% of the team's daily budget today until the end of the day (UTC) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.
 ```
 
-A caller who is not the lead, a missing stop %, a stop % above the bounds, a week already at the stop % or an
-unknown week (no status line and no `budget.weeklyLimitW`) is `REFUSED` (exit 2).
+A caller who is not the lead, a missing stop %, a stop % above the bounds, a part that with the other lifts in
+force would give more than the whole team budget, a week already at the stop % or an unknown week (no status line and no `budget.weeklyLimitW`) is `REFUSED` (exit 2).
 
 ### teamrig burst
 

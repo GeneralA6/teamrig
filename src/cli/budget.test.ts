@@ -180,23 +180,44 @@ describe('teamrig budget', () => {
 });
 
 describe('teamrig budget lift', () => {
-  const LIFT = ['budget', 'lift', 'alpha', '--to', '6', '--stop-pct', '97', '--reason', 'release'];
+  const LIFT = ['budget', 'lift', 'alpha', '--part', '50', '--stop-pct', '97', '--reason', 'release'];
 
-  it("lifts a session's daily budget for today, logged and shown by budget", async () => {
+  it("lifts a session to a part of the team's daily budget for today, logged and shown by budget", async () => {
     const { kit, run } = await world();
     assert.deepEqual(ok(await run([...LIFT, '--session', 'lead'])), [
-      'LIFTED app-alpha to 6.0% today until the end of the day (UTC) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.',
+      "LIFTED app-alpha to 50.0% of the team's daily budget today until the end of the day (UTC) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.",
     ]);
     assert.equal((kit.files.get(join(TEAM_HOME, 'state', 'usage', 'lifts.jsonl')) ?? '').split('\n').filter((line) => line !== '').length, 1);
     const lines = ok(await run(['budget']));
-    assert.equal(lines[2], 'app-alpha used 2.0% of the week today; its daily budget is 6.0% (lifted). 20.00M W in 2 calls.');
+    // Half the team's 12.4% to alpha; the other half split between lead and bravo.
+    assert.equal(lines[2], 'app-alpha used 2.0% of the week today; its daily budget is 6.2% (lifted). 20.00M W in 2 calls.');
+    assert.equal(lines[3], 'app-bravo used 0.50% of the week today; its daily budget is 3.1%. 5.00M W in 1 call.');
     assert.equal(
       lines[4],
-      'Budget: the lead lifted app-alpha to 6.0% today until the end of the day (UTC) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.',
+      "Budget: the lead lifted app-alpha to 50.0% of the team's daily budget today until the end of the day (UTC) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.",
     );
     assert.deepEqual(ok(await run([...LIFT, '--until', '18:00', '--session', 'lead'])), [
-      'LIFTED app-alpha to 6.0% today until 18:00 UTC or 97.0% of the week, whichever comes first; quiet hours do not apply to it.',
+      "LIFTED app-alpha to 50.0% of the team's daily budget today until 18:00 UTC or 97.0% of the week, whichever comes first; quiet hours do not apply to it.",
     ]);
+  });
+
+  it("refuses lifts that would give more than the team's daily budget, the session's own older lift aside", async () => {
+    const { run } = await world();
+    ok(await run([...LIFT, '--session', 'lead']));
+    const refused = await run(['budget', 'lift', 'bravo', '--part', '60', '--stop-pct', '97', '--reason', 'release', '--session', 'lead']);
+    assert.equal(refused.code, EXIT.refused);
+    assert.match(refused.stdout.join('\n'), /other lifts in force give 50\.0% of the team's daily budget, so --part 60 would give more than all of it/);
+    ok(await run(['budget', 'lift', 'alpha', '--part', '90', '--stop-pct', '97', '--reason', 'release', '--session', 'lead']));
+  });
+
+  it('splits the team budget by each session\'s queued work in the register', async () => {
+    const { run } = await world();
+    const added = await run(['add', '--title', 'Ship the release', '--description', 'what and why', '--priority', 'p1', '--owner', 'alpha', '--session', 'lead']);
+    assert.equal(added.code, EXIT.ok, added.stderr.join('\n'));
+    const lines = ok(await run(['budget']));
+    // alpha's p1 task weighs 5, lead and bravo with none 1 each: 12.4% × 5/7 and × 1/7.
+    assert.equal(lines[2], 'app-alpha used 2.0% of the week today; its daily budget is 8.9%. 20.00M W in 2 calls.');
+    assert.equal(lines[3], 'app-bravo used 0.50% of the week today; its daily budget is 1.8%. 5.00M W in 1 call.');
   });
 
   it('is the lead only', async () => {
@@ -208,7 +229,7 @@ describe('teamrig budget lift', () => {
 
   it('refuses a lift the team bounds do not allow, writing nothing', async () => {
     const { kit, run } = await world();
-    const refused = await run(['budget', 'lift', 'alpha', '--to', '6', '--reason', 'release', '--session', 'lead']);
+    const refused = await run(['budget', 'lift', 'alpha', '--part', '50', '--reason', 'release', '--session', 'lead']);
     assert.equal(refused.code, EXIT.refused);
     assert.match(refused.stdout.join('\n'), /needs --stop-pct/);
     assert.equal(kit.files.get(join(TEAM_HOME, 'state', 'usage', 'lifts.jsonl')), undefined);
@@ -217,13 +238,13 @@ describe('teamrig budget lift', () => {
   it('checks its flags', async () => {
     const { run } = await world();
     const as = ['--session', 'lead'];
-    usageError(await run(['budget', 'lift', 'alpha', '--stop-pct', '97', '--reason', 'r', ...as]), /--to is required/);
-    usageError(await run(['budget', 'lift', 'alpha', '--to', '0', '--stop-pct', '97', '--reason', 'r', ...as]), /--to "0" is not a percent above 0 and up to 100/);
-    usageError(await run(['budget', 'lift', 'alpha', '--to', '6', '--stop-pct', ' ', '--reason', 'r', ...as]), /--stop-pct " " is not a percent/);
-    usageError(await run(['budget', 'lift', 'alpha', '--to', '6', '--stop-pct', '97', '--reason', '  ', ...as]), /--reason needs a reason/);
-    usageError(await run(['budget', 'lift', 'alpha', '--to', '6', '--stop-pct', '97', '--reason', 'r', ...as, '--until', 'soon']), /--until "soon" is not HH:MM/);
-    usageError(await run(['budget', 'lift', 'alpha', '--to', '6', '--stop-pct', '97', ...as]), /--reason is required/);
-    usageError(await run(['budget', 'lift', '--to', '6', '--stop-pct', '97', '--reason', 'r', ...as]), /needs <session>/);
+    usageError(await run(['budget', 'lift', 'alpha', '--stop-pct', '97', '--reason', 'r', ...as]), /--part is required/);
+    usageError(await run(['budget', 'lift', 'alpha', '--part', '0', '--stop-pct', '97', '--reason', 'r', ...as]), /--part "0" is not a percent above 0 and up to 100/);
+    usageError(await run(['budget', 'lift', 'alpha', '--part', '50', '--stop-pct', ' ', '--reason', 'r', ...as]), /--stop-pct " " is not a percent/);
+    usageError(await run(['budget', 'lift', 'alpha', '--part', '50', '--stop-pct', '97', '--reason', '  ', ...as]), /--reason needs a reason/);
+    usageError(await run(['budget', 'lift', 'alpha', '--part', '50', '--stop-pct', '97', '--reason', 'r', ...as, '--until', 'soon']), /--until "soon" is not HH:MM/);
+    usageError(await run(['budget', 'lift', 'alpha', '--part', '50', '--stop-pct', '97', ...as]), /--reason is required/);
+    usageError(await run(['budget', 'lift', '--part', '50', '--stop-pct', '97', '--reason', 'r', ...as]), /needs <session>/);
   });
 });
 

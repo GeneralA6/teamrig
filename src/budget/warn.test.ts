@@ -44,7 +44,7 @@ const AHEAD = 40;
 function lift(overrides: Partial<Lift> = {}): Lift {
   return {
     session: 'alpha',
-    toPct: 2,
+    partPct: 40,
     stopPct: 97,
     endsAt: Date.parse('2026-10-15T23:59:00Z'),
     reserve: false,
@@ -174,7 +174,7 @@ describe('stopWarning', () => {
 
   it('tells the lead once a day, naming the lift command', () => {
     const first = stopWarning(facts(1.1, AHEAD), BUDGET, undefined);
-    assert.match(first.leadLine ?? '', /^alpha is past its daily budget: 1\.1% of the week today against 1\.0%, and the team is 18\.0 points ahead .*teamrig budget lift alpha --to <pct> --stop-pct <pct>/);
+    assert.match(first.leadLine ?? '', /^alpha is past its daily budget: 1\.1% of the week today against 1\.0%, and the team is 18\.0 points ahead .*teamrig budget lift alpha --part <pct> --stop-pct <pct>/);
     const later = stopWarning(facts(1.6, AHEAD), BUDGET, first.state);
     assert.equal(later.leadLine, undefined);
     assert.equal(later.lines.length, 1);
@@ -211,7 +211,7 @@ describe('stopWarning', () => {
 
   it('shows a lift starting and ending', () => {
     const lifted = stopWarning(facts(0.5, AHEAD, DAY, { lift: lift(), budgetPct: 2 }), BUDGET, undefined);
-    assert.match(lifted.lines[0] ?? '', /^Budget: the lead lifted alpha to 2\.0% today until .* or 97\.0% of the week/);
+    assert.match(lifted.lines[0] ?? '', /^Budget: the lead lifted alpha to 40\.0% of the team's daily budget today until .* or 97\.0% of the week/);
     assert.equal(lifted.state.liftAt, lift().at);
     const ended = stopWarning(facts(0.5, AHEAD), BUDGET, lifted.state);
     assert.deepEqual(ended.lines, ["Budget: alpha's lift has ended; its daily budget is 1.0% again."]);

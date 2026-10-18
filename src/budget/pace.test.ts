@@ -9,7 +9,6 @@ import {
   paceLinePct,
   readPace,
   resolveReset,
-  sessionBudgetPct,
   weekWindow,
   type PaceBudget,
 } from './pace.ts';
@@ -166,30 +165,6 @@ describe('dailyAllowancePct', () => {
     assert.equal(dailyAllowancePct({ ...input, budget: fixed }), 14);
     assert.equal(dailyAllowancePct({ ...input, budget: { ...fixed, maxDailyPct: 12 } }), 12);
     assert.equal(dailyAllowancePct({ ...input, budget: { ...BUDGET, maxDailyPct: 8 } }), 8);
-  });
-});
-
-describe('sessionBudgetPct', () => {
-  const ids = ['lead', 'alpha', 'bravo'];
-
-  it('splits the allowance evenly by default', () => {
-    assert.equal(sessionBudgetPct(9, 'alpha', ids, {}), 3);
-  });
-
-  it('splits by share', () => {
-    assert.equal(sessionBudgetPct(8, 'alpha', ids, { alpha: { share: 2 } }), 4);
-    assert.equal(sessionBudgetPct(8, 'bravo', ids, { alpha: { share: 2 }, bravo: { share: 0 } }), 0);
-  });
-
-  it('gives a fixed daily % as is and splits what is left among the others', () => {
-    const sessions = { bravo: { share: 1, dailyPct: 1.5 } };
-    assert.equal(sessionBudgetPct(9, 'bravo', ids, sessions), 1.5);
-    assert.equal(sessionBudgetPct(9, 'alpha', ids, sessions), 3.75);
-    assert.equal(sessionBudgetPct(1, 'alpha', ids, { bravo: { share: 1, dailyPct: 2 } }), 0);
-  });
-
-  it('gives 0 when no session takes a share', () => {
-    assert.equal(sessionBudgetPct(9, 'alpha', ['alpha'], { alpha: { share: 0 } }), 0);
   });
 });
 
