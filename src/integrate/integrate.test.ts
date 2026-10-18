@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { CoordinatorConfig, CoordinatorRepoConfig, ScheduleConfig } from '../config/types.ts';
-import { DEFAULT_COORDINATOR_WAIT, DEFAULT_HEAVY } from '../config/defaults.ts';
+import { DEFAULT_CLAIMS, DEFAULT_COORDINATOR_WAIT, DEFAULT_GATE_TIMEOUT_SECONDS, DEFAULT_HEAVY } from '../config/defaults.ts';
 import { HostLock } from '../coordinator/host-lock.ts';
 import type { CoordinatorPlaces } from '../coordinator/places.ts';
 import type { ResetTime } from '../coordinator/schedule.ts';
@@ -10,12 +10,14 @@ import { FakeIntegrateGit, MAIN_CHECKOUT, WORKTREE } from '../testing/fake-integ
 import { FakeSteps } from '../testing/fake-steps.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { commandLine } from '../test-run/shell.ts';
-import { integrateBranch, PUSH_ATTEMPTS, rangeText, repoOf, type IntegrateEnd, type IntegrateRequest, type IntegrateSetup } from './integrate.ts';
+import { integrateBranch, PUSH_ATTEMPTS, repoOf, type IntegrateEnd, type IntegrateRequest, type IntegrateSetup } from './integrate.ts';
 
 const PLACES: CoordinatorPlaces = {
   ledger: '/team/deploys/ledger.jsonl',
   ledgerMd: '/team/deploys/ledger.md',
   claims: '/team/deploys/claims.json',
+  claimsMd: '/team/deploys/claims.md',
+  claimsLock: '/team/deploys/claims.lock',
   hostLock: '/kit/host.lock',
 };
 const REQUEST: IntegrateRequest = { session: 'api', dir: WORKTREE, keepRemote: false, keepLocal: false };
@@ -53,6 +55,8 @@ class World {
       schedule: options.schedule ?? {},
       heavy: DEFAULT_HEAVY,
       wait: { ...DEFAULT_COORDINATOR_WAIT, maxMinutes: options.waitMinutes ?? DEFAULT_COORDINATOR_WAIT.maxMinutes },
+      gateTimeoutSeconds: DEFAULT_GATE_TIMEOUT_SECONDS,
+      claims: DEFAULT_CLAIMS,
       repos: options.repos ?? {},
     };
     this.setup = { coordinator, places: PLACES, inTeam: (path) => (path.startsWith('/') ? path : `/repo/${path}`) };
@@ -122,13 +126,6 @@ describe('repoOf', () => {
   });
 });
 
-describe('rangeText', () => {
-  it('names one commit, a range by its ends, and no commits by the fallback', () => {
-    assert.equal(rangeText(['1234567890ab'], 'f'), '12345678');
-    assert.equal(rangeText(['1111111111', '2222222222', '3333333333'], 'f'), '11111111..33333333');
-    assert.equal(rangeText([], 'abcdef0123456'), 'abcdef01');
-  });
-});
 
 describe('integrate refuses a branch it must not land, before the lock', () => {
   const cases: readonly { readonly name: string; readonly arrange: (world: World) => void; readonly request?: IntegrateRequest; readonly expect: RegExp }[] = [
