@@ -31,6 +31,16 @@ export function resetBlackoutReason(nowMs, reset, hours) {
     }
     return `deploy blackout before the weekly token reset: no deploy from ${formatUtcMinute(new Date(from))} until ${formatUtcMinute(new Date(reset.at))} UTC (reset from the ${reset.source})`;
 }
+const SPAN = /^(?:(\d{1,4})h)?(?:(\d{1,5})m)?$/;
+/** A span written as minutes, hours or both, `45m`, `2h`, `1h30m`, as minutes; undefined for any other text or a span of none. */
+export function parseSpanMinutes(text) {
+    const match = SPAN.exec(text.trim());
+    if (match === null || (match[1] === undefined && match[2] === undefined)) {
+        return undefined;
+    }
+    const minutes = Number(match[1] ?? 0) * 60 + Number(match[2] ?? 0);
+    return minutes > 0 ? minutes : undefined;
+}
 /** A span as a short duration: `45m`, `2h30m`. */
 export function minutesText(minutes) {
     const hours = Math.floor(minutes / 60);

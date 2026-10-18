@@ -106,6 +106,16 @@ export class ConfigReader {
         }
         return this.checked(itemPath, value, check);
     }
+    /** One list of strings, such as a program and its arguments, for use inside `list` callbacks; an empty list is an issue. */
+    stringListItem(value, itemPath, maxItems) {
+        if (!Array.isArray(value) || value.length === 0 || value.length > maxItems) {
+            this.problem(itemPath, `a list of 1 to ${maxItems} strings`, value);
+            return undefined;
+        }
+        const items = value.map((entry, index) => this.stringItem(entry, `${itemPath}[${index}]`));
+        const strings = items.filter((item) => item !== undefined);
+        return strings.length === items.length ? strings : undefined;
+    }
     /** One object list item, for use inside `list` callbacks. */
     objectItem(value, itemPath) {
         if (!isRecord(value)) {

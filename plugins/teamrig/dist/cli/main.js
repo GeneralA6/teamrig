@@ -14,6 +14,7 @@ import { nodeProcesses } from "../open/processes.js";
 import { nodeSessionProcesses } from "../open/session-processes.js";
 import { GIT_CLI, GIT_COMMIT_LOG } from "../push-guard/git.js";
 import { requirementsCheck } from "../requirements/requirements.js";
+import { nodeHookRunner } from "../roll/hooks.js";
 import { nodeShellRunner } from "../test-run/shell.js";
 import { NODE_WORKTREE_FILES } from "../worktree/files.js";
 import { GIT_WORKTREES } from "../worktree/git.js";
@@ -46,6 +47,7 @@ process.exitCode = await runCli(process.argv.slice(2), {
     requirements: requirementsCheck({ env: process.env, platform: process.platform, probe: NODE_PATH_PROBE, nodeVersion: process.versions.node }),
     worktrees: { git: GIT_WORKTREES, files: NODE_WORKTREE_FILES },
     integrateGit: GIT_INTEGRATE,
+    hooks: nodeHookRunner(process.platform),
     readStdin: () => text(process.stdin),
     newId: () => randomUUID(),
 });

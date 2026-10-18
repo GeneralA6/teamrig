@@ -2,7 +2,8 @@ import { holderText } from "./host-lock.js";
 /**
  * Takes the host lock once nothing holds the step back. A refusal ends the wait at once; a reason to wait and a busy
  * lock are waited out, for at most `maxWaitMs` in all. Readiness is asked again under the lock, since a claim may
- * start while the step waited for the lock: then the lock is released and the wait goes on.
+ * start while the step waited for the lock: then the lock is released and the wait goes on. Each ask names its phase,
+ * so a check that costs or changes something can run only under the lock.
  */
 export async function takeWhenClear(readiness, ports, request) {
     const { lock, clock, sleep } = ports;
@@ -22,7 +23,7 @@ export async function takeWhenClear(readiness, ports, request) {
         return true;
     };
     for (;;) {
-        const before = await readiness();
+        const before = await readiness('before');
         if (before.kind === 'refuse') {
             return { kind: 'refused', reason: before.reason };
         }
@@ -36,7 +37,7 @@ export async function takeWhenClear(readiness, ports, request) {
         if (taking.kind === 'busy') {
             return { kind: 'gaveUp', reason: `host lock still held by ${holderText(taking.holder)}` };
         }
-        const under = await readiness();
+        const under = await readiness('locked');
         if (under.kind === 'go') {
             return { kind: 'taken', lock: taking.lock };
         }

@@ -1,23 +1,10 @@
-import { resolveReset } from "../../budget/pace.js";
-import { readSnapshots, weekUseOf } from "../../budget/snapshot.js";
 import { coordinatorPlaces, teamPlace } from "../../coordinator/places.js";
 import { integrateBranch } from "../../integrate/integrate.js";
-import { hostLockOf, logLine } from "../coordinator-ports.js";
+import { hostLockOf, logLine, nextResetFrom } from "../coordinator-ports.js";
 import { callerOf } from "../inputs.js";
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { snapshotDirOf } from "./budget.js";
-/** The next weekly token reset at each check: the one the status line last reported, else the one `budget.reset` sets; undefined when neither says. */
-function nextResetFrom(runtime, budget, snapshotDir) {
-    return async (nowMs) => {
-        const fromStatus = weekUseOf(await readSnapshots(runtime.files, snapshotDir), nowMs)?.resetsAt;
-        const at = resolveReset(nowMs, fromStatus, budget.reset);
-        if (at === undefined) {
-            return undefined;
-        }
-        return { at, source: at === fromStatus ? 'status line' : 'budget.reset config' };
-    };
-}
 /**
  * `teamrig integrate [--keep-remote] [--no-delete-local]`: lands the branch checked out in the current folder on origin's
  * default branch (src/integrate/integrate.ts). Refused for a branch it must not land, from

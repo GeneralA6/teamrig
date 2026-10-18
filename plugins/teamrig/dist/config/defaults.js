@@ -122,6 +122,10 @@ export const HEAVY_TTL_MARGIN_MINUTES = 10;
 export const DEFAULT_HEAVY = { lockTtlMinutes: 150, maxRunMinutes: 45, waitMinutes: 60 };
 /** A waiting coordinator step looks again every 30 seconds; a deploy step waits up to an hour for claims and the host lock. */
 export const DEFAULT_COORDINATOR_WAIT = { pollSeconds: 30, maxMinutes: 60 };
+/** A roll's gate answers within 20 seconds, else the roll waits. */
+export const DEFAULT_GATE_TIMEOUT_SECONDS = 20;
+/** A quiet claim lasts at most two hours. */
+export const DEFAULT_CLAIMS = { maxMinutes: 120 };
 /**
  * A hire spends the week's budget, so it waits for the owner's yes: at most two hires at 1% of the week a day
  * each, 3% in all, reviewed after a week and due to retire after 4 hours with no open task. A rehire resumes its

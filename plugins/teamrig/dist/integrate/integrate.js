@@ -1,14 +1,14 @@
 import { basename } from 'node:path';
 import { claimText, coveringClaims, readClaims } from "../coordinator/claims.js";
 import { takeWhenClear } from "../coordinator/clearance.js";
-import { appendDeploy } from "../coordinator/ledger.js";
+import { appendDeploy, rangeText } from "../coordinator/ledger.js";
 import { runRecorded } from "../coordinator/recorded-step.js";
 import { heavyCutoffReason, resetBlackoutReason } from "../coordinator/schedule.js";
 import { exitCodeOf } from "../coordinator/steps.js";
 import { gitEnvironment } from "../core/git-run.js";
 import { samePath } from "../core/paths.js";
 import { commandLine } from "../test-run/shell.js";
-import { installTouches, MANIFEST_FILE, packageFilesChange } from "./manifest.js";
+import { rangeInstallTouches } from "./dependencies.js";
 /**
  * `teamrig integrate`: lands a finished branch on origin's default branch, one push on the host at a time. It refuses
  * a branch it must not land (detached, the default branch, uncommitted changes, nothing new, a held dependency
@@ -42,15 +42,6 @@ function endText(end) {
         case 'timedOut':
             return `was killed at its time limit (exit ${exitCodeOf(end)})`;
     }
-}
-/** The landed commits as the ledger names them: `<first>..<last>` by 8-character sha, or the one commit. */
-export function rangeText(commits, fallback) {
-    const first = commits[0];
-    const last = commits[commits.length - 1];
-    if (first === undefined || last === undefined) {
-        return short(fallback);
-    }
-    return first === last ? short(first) : `${short(first)}..${short(last)}`;
 }
 /** The checks that need no lock: what to land, and whether it may land at all. */
 async function planOf(setup, ports, request) {
@@ -92,11 +83,10 @@ async function planOf(setup, ports, request) {
 /** Why the dependency gate holds the branch: its package files need an install; undefined when they do not. */
 async function dependencyHold(git, top, onto, repo) {
     const base = git.mergeBase(top, onto, 'HEAD');
-    const paths = base === undefined ? undefined : git.changedPaths(top, base, 'HEAD');
-    if (base === undefined || paths === undefined) {
+    const touches = base === undefined ? undefined : await rangeInstallTouches(git, top, base, 'HEAD');
+    if (touches === undefined) {
         return `could not read what the branch changes against ${onto}, so the dependency gate cannot clear it`;
     }
-    const touches = installTouches(await packageFilesChange(paths, async (end) => git.fileAt(top, end === 'before' ? base : 'HEAD', MANIFEST_FILE)));
     if (touches.length === 0) {
         return undefined;
     }
@@ -239,12 +229,11 @@ async function followMainCheckout(ports, plan, landed) {
         return;
     }
     say(`fast-forwarded the main checkout ${main} to ${short(landed)}`);
-    const paths = git.changedPaths(main, was, landed);
-    if (paths === undefined) {
+    const touches = await rangeInstallTouches(git, main, was, landed);
+    if (touches === undefined) {
         say(`NOTE could not read what the fast-forward changed: check whether ${main} needs npm ci --ignore-scripts`);
         return;
     }
-    const touches = installTouches(await packageFilesChange(paths, async (end) => git.fileAt(main, end === 'before' ? was : landed, MANIFEST_FILE)));
     if (touches.length > 0) {
         say(`NOTE ${touches.join(', ')} changed: run npm ci --ignore-scripts in ${main}`);
     }

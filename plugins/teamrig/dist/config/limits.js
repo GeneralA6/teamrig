@@ -65,6 +65,8 @@ export const CONFIG_LIMITS = {
     heavyWaitMinutes: { min: 0, max: 1440 },
     coordinatorPollSeconds: { min: 1, max: 600 },
     coordinatorWaitMaxMinutes: { min: 0, max: 1440 },
+    gateTimeoutSeconds: { min: 1, max: 600 },
+    claimMaxMinutes: { min: 1, max: 1440 },
     resetBlackoutHours: { min: 1, max: 48 },
 };
 /**

@@ -5,6 +5,18 @@ export const LEDGER_FILE = 'ledger.jsonl';
 export const LEDGER_MD_FILE = 'ledger.md';
 /** The first line of a ledger.md teamrig starts. */
 export const LEDGER_MD_HEADER = '# Deploy ledger: one line a deploy: rolled at (UTC) | session | repo | range | what | kind | note';
+function short(sha) {
+    return sha.slice(0, 8);
+}
+/** The landed commits as the ledger names them: `<first>..<last>` by 8-character sha, or the one commit. */
+export function rangeText(commits, fallback) {
+    const first = commits[0];
+    const last = commits[commits.length - 1];
+    if (first === undefined || last === undefined) {
+        return short(fallback);
+    }
+    return first === last ? short(first) : `${short(first)}..${short(last)}`;
+}
 /** Appends one record as one line, in one write. */
 export async function appendHeavy(files, ledger, record) {
     await files.append(ledger, `${JSON.stringify(record)}\n`);
