@@ -11,7 +11,7 @@ import { activeLift, decideLift, LiftLog, liftText } from "../../budget/lift.js"
 import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID } from "../../budget/measure.js";
 import { sessionBudgetPct } from "../../budget/pace.js";
 import { burnLines, loopLines, recountLines, sessionLines, sumDays, todayLines, weekLine } from "../../budget/report.js";
-import { formatSnapshot, readSnapshots, snapshotOfStatus, statusLineText, weekUseOf } from "../../budget/snapshot.js";
+import { datedSnapshot, formatSnapshot, parseSnapshot, readSnapshots, snapshotOfStatus, statusLineText, weekUseOf } from "../../budget/snapshot.js";
 import { CURSOR_DAYS_KEPT, DAYS_KEPT, MemoryUsageStore, UsageStore } from "../../budget/store.js";
 import { readWeek } from "../../budget/week.js";
 import { JsonlMarkLog } from "../../inbox/store.js";
@@ -242,7 +242,8 @@ function statusLineView(git, dir, show) {
 }
 /**
  * `statusline`: Claude Code's status line. It saves the status input's reading (the plan's use of the
- * week and its reset) as a snapshot for `budget`, and prints a short status: the model, the session's
+ * week and its reset) as a snapshot for `budget`, dated by the session's previous snapshot (when the
+ * session began to show it, and when it last showed another), and prints a short status: the model, the session's
  * folder and branch, the plan's use and the command that resumes the session, as the team's `statusLine`
  * config shows them. It always exits 0, so a bad input or a full disk never breaks the status bar; what
  * went wrong goes to stderr. With --pass it prints the status input again instead of its own status, for
@@ -266,7 +267,9 @@ export async function statusline(args, runtime) {
     try {
         const setup = await statusLineSetup(runtime, snapshot.cwd);
         show = setup.show;
-        await runtime.files.write(join(setup.snapshotDir, `${snapshot.sessionId}.json`), formatSnapshot(snapshot));
+        const path = join(setup.snapshotDir, `${snapshot.sessionId}.json`);
+        const previous = await runtime.files.read(path);
+        await runtime.files.write(path, formatSnapshot(datedSnapshot(snapshot, previous === undefined ? undefined : parseSnapshot(previous))));
     }
     catch (error) {
         runtime.out.stderr(`teamrig statusline: the snapshot was not saved: ${errorMessage(error)}`);
