@@ -398,11 +398,39 @@ export interface CoordinatorRepoConfig {
   readonly dependencyGate: boolean;
   /** After the push, fast-forward the main checkout to it: only a fast-forward, only on the default branch with no tracked changes. */
   readonly followMainCheckout: boolean;
+  /** How `teamrig roll` deploys what landed on the default branch; unset: the repository is not rolled. */
+  readonly roll?: RollConfig;
+}
+
+/** A check `teamrig roll` asks before it rolls: a program and its arguments, run without a shell from the main checkout. */
+export interface RollGateConfig {
+  /** Names the gate in a wait or refusal, such as `flow`. */
+  readonly name: string;
+  /** Exit 0 lets the roll go, 75 makes it wait, 2 refuses it; anything else, or no answer in time, makes it wait. */
+  readonly command: readonly string[];
+}
+
+/** How `teamrig roll` deploys a repository's default branch from its main checkout, each command run without a shell. */
+export interface RollConfig {
+  /** The deploy targets the roll deploys: quiet claims on them hold it. */
+  readonly targets: readonly string[];
+  /** Asked in order before the host lock and again under it; the first that does not pass holds the roll. */
+  readonly gates: readonly RollGateConfig[];
+  /** Run in order after the pull, before `command`; one that fails ends the roll before it deploys. */
+  readonly afterPull: readonly (readonly string[])[];
+  /** Deploys what the pull brought: exit 0 rolled (a stdout line `no-roll`: nothing needed rolling), else failed. */
+  readonly command: readonly string[];
+}
+
+/** `teamrig claim`: quiet claims, which hold deploys of their targets while a session measures them. */
+export interface ClaimsConfig {
+  /** A claim lasts at most this many minutes. */
+  readonly maxMinutes: number;
 }
 
 /**
  * The deploy coordinator: its folder, the heavy-step cutoff and the reset blackout, the host lock, how a step waits,
- * and the repositories `teamrig integrate` lands branches of.
+ * quiet claims, and the repositories `teamrig integrate` lands branches of and `teamrig roll` deploys.
  */
 export interface CoordinatorConfig {
   /** The coordinator's folder, which holds its ledger; a relative path is in the team's folder. Unset: `<state>/deploys`. */
@@ -410,6 +438,9 @@ export interface CoordinatorConfig {
   readonly schedule: ScheduleConfig;
   readonly heavy: HeavyConfig;
   readonly wait: CoordinatorWaitConfig;
+  /** A roll's gate still running after this many seconds is stopped, and the roll waits. */
+  readonly gateTimeoutSeconds: number;
+  readonly claims: ClaimsConfig;
   /** By name, such as `api`. */
   readonly repos: Readonly<Record<string, CoordinatorRepoConfig>>;
 }

@@ -26,7 +26,17 @@ const EVERY_KEY = {
     schedule: { heavyCutoffUtc: '22:30', resetBlackoutHours: 4 },
     heavy: { lockPath: 'data/deploys/host.lock', lockTtlMinutes: 150, maxRunMinutes: 45, waitMinutes: 60 },
     wait: { pollSeconds: 30, maxMinutes: 60 },
-    repos: { api: { mainCheckout: 'C:/src/api', deploysOnPush: ['cloud-api'], dependencyGate: true, followMainCheckout: true } },
+    gateTimeoutSeconds: 20,
+    claims: { maxMinutes: 120 },
+    repos: {
+      api: {
+        mainCheckout: 'C:/src/api',
+        deploysOnPush: ['cloud-api'],
+        dependencyGate: true,
+        followMainCheckout: true,
+        roll: { targets: ['cloud-api'], gates: [{ name: 'flow', command: ['node', 'gates/flow.js'] }], afterPull: [['node', 'pulled.js']], command: ['node', 'roll.js'] },
+      },
+    },
   },
   budget: {
     weeklyLimitW: 680_000_000,
@@ -134,6 +144,8 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   heavyWaitMinutes: 'coordinator.heavy.waitMinutes',
   coordinatorPollSeconds: 'coordinator.wait.pollSeconds',
   coordinatorWaitMaxMinutes: 'coordinator.wait.maxMinutes',
+  gateTimeoutSeconds: 'coordinator.gateTimeoutSeconds',
+  claimMaxMinutes: 'coordinator.claims.maxMinutes',
   resetBlackoutHours: 'coordinator.schedule.resetBlackoutHours',
 };
 

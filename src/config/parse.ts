@@ -8,7 +8,9 @@ import {
   DEFAULT_BURST,
   DEFAULT_COMMITS,
   DEFAULT_CONTEXT_FILES,
+  DEFAULT_CLAIMS,
   DEFAULT_COORDINATOR_WAIT,
+  DEFAULT_GATE_TIMEOUT_SECONDS,
   DEFAULT_GITHUB,
   DEFAULT_HEAVY,
   DEFAULT_HIRING,
@@ -64,6 +66,8 @@ import {
   type CoordinatorConfig,
   type CoordinatorRepoConfig,
   type HeavyConfig,
+  type RollConfig,
+  type RollGateConfig,
   type CommitsConfig,
   type GithubConfig,
   type HiringConfig,
@@ -409,6 +413,7 @@ function parseCoordinator(read: ConfigReader, raw: JsonRecord): CoordinatorConfi
   const heavyCutoffUtc = read.optionalString(schedule, 'heavyCutoffUtc', `${path}.schedule`, isUtcTime);
   const resetBlackoutHours = read.optionalInteger(schedule, 'resetBlackoutHours', `${path}.schedule`, CONFIG_LIMITS.resetBlackoutHours);
   const wait = read.section(raw, 'wait', path);
+  const claims = read.section(raw, 'claims', path);
   return {
     ...(dir === undefined ? {} : { dir }),
     schedule: { ...(heavyCutoffUtc === undefined ? {} : { heavyCutoffUtc }), ...(resetBlackoutHours === undefined ? {} : { resetBlackoutHours }) },
@@ -417,11 +422,13 @@ function parseCoordinator(read: ConfigReader, raw: JsonRecord): CoordinatorConfi
       pollSeconds: read.integer(wait, 'pollSeconds', `${path}.wait`, DEFAULT_COORDINATOR_WAIT.pollSeconds, CONFIG_LIMITS.coordinatorPollSeconds),
       maxMinutes: read.integer(wait, 'maxMinutes', `${path}.wait`, DEFAULT_COORDINATOR_WAIT.maxMinutes, CONFIG_LIMITS.coordinatorWaitMaxMinutes),
     },
+    gateTimeoutSeconds: read.integer(raw, 'gateTimeoutSeconds', path, DEFAULT_GATE_TIMEOUT_SECONDS, CONFIG_LIMITS.gateTimeoutSeconds),
+    claims: { maxMinutes: read.integer(claims, 'maxMinutes', `${path}.claims`, DEFAULT_CLAIMS.maxMinutes, CONFIG_LIMITS.claimMaxMinutes) },
     repos: parseCoordinatorRepos(read, read.section(raw, 'repos', path)),
   };
 }
 
-/** The repositories `teamrig integrate` lands, by name; one with a bad name or no main checkout is reported and left out. */
+/** The repositories `teamrig integrate` lands and `teamrig roll` deploys, by name; one with a bad name or no main checkout is reported and left out. */
 function parseCoordinatorRepos(read: ConfigReader, raw: JsonRecord): Record<string, CoordinatorRepoConfig> {
   const repos: Record<string, CoordinatorRepoConfig> = {};
   for (const [name, value] of Object.entries(raw)) {
@@ -439,14 +446,49 @@ function parseCoordinatorRepos(read: ConfigReader, raw: JsonRecord): Record<stri
     if (mainCheckout === '') {
       continue;
     }
+    const roll = entry['roll'] === undefined ? undefined : parseRoll(read, entry['roll'], `${path}.roll`);
     repos[name] = {
       mainCheckout,
       deploysOnPush: read.stringList(entry, 'deploysOnPush', path, [], isCoordinatorName),
       dependencyGate: read.boolean(entry, 'dependencyGate', path, false),
       followMainCheckout: read.boolean(entry, 'followMainCheckout', path, false),
+      ...(roll === undefined ? {} : { roll }),
     };
   }
   return repos;
+}
+
+/** A program's arguments in a roll hook, and the hooks of one kind, at most. */
+const ROLL_ARGV_MAX_ITEMS = 64;
+const ROLL_HOOKS_MAX_ITEMS = 16;
+
+/** A repository's roll; one with no usable command is reported and left out, so the repository is not rolled. */
+function parseRoll(read: ConfigReader, raw: unknown, path: string): RollConfig | undefined {
+  const entry = read.objectItem(raw, path);
+  if (entry === undefined) {
+    return undefined;
+  }
+  const command = read.stringListItem(entry['command'], `${path}.command`, ROLL_ARGV_MAX_ITEMS);
+  if (command === undefined) {
+    return undefined;
+  }
+  return {
+    targets: read.stringList(entry, 'targets', path, [], isCoordinatorName),
+    gates: read.list(entry, 'gates', path, [], (value, itemPath) => parseRollGate(read, value, itemPath), ROLL_HOOKS_MAX_ITEMS),
+    afterPull: read.list(entry, 'afterPull', path, [], (value, itemPath) => read.stringListItem(value, itemPath, ROLL_ARGV_MAX_ITEMS), ROLL_HOOKS_MAX_ITEMS),
+    command,
+  };
+}
+
+/** One roll gate; one with a bad name or no usable command is reported and left out. */
+function parseRollGate(read: ConfigReader, value: unknown, path: string): RollGateConfig | undefined {
+  const entry = read.objectItem(value, path);
+  if (entry === undefined) {
+    return undefined;
+  }
+  const name = read.stringItem(entry['name'], `${path}.name`, isCoordinatorName);
+  const command = read.stringListItem(entry['command'], `${path}.command`, ROLL_ARGV_MAX_ITEMS);
+  return name === undefined || command === undefined ? undefined : { name, command };
 }
 
 /** The host lock and a heavy step's limits; a step longer than the lock less its margin is cut to fit, so it never outlives its lock. */

@@ -149,6 +149,17 @@ export class ConfigReader {
     return this.checked(itemPath, value, check);
   }
 
+  /** One list of strings, such as a program and its arguments, for use inside `list` callbacks; an empty list is an issue. */
+  stringListItem(value: unknown, itemPath: string, maxItems: number): readonly string[] | undefined {
+    if (!Array.isArray(value) || value.length === 0 || value.length > maxItems) {
+      this.problem(itemPath, `a list of 1 to ${maxItems} strings`, value);
+      return undefined;
+    }
+    const items = value.map((entry: unknown, index) => this.stringItem(entry, `${itemPath}[${index}]`));
+    const strings = items.filter((item): item is string => item !== undefined);
+    return strings.length === items.length ? strings : undefined;
+  }
+
   /** One object list item, for use inside `list` callbacks. */
   objectItem(value: unknown, itemPath: string): JsonRecord | undefined {
     if (!isRecord(value)) {
