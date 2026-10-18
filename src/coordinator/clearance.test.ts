@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { takeWhenClear, type ClearanceRequest, type Readiness } from './clearance.ts';
+import { takeWhenClear, type ClearancePhase, type ClearanceRequest, type Readiness } from './clearance.ts';
 import { HostLock } from './host-lock.ts';
 
 const LOCK_PATH = '/kit/host.lock';
@@ -97,6 +97,22 @@ describe('takeWhenClear', () => {
     assert.match(clearance.kind === 'gaveUp' ? clearance.reason : '', /^host lock still held by po/);
     assert.equal(waits.length, 1);
     assert.match(waits[0] ?? '', /^the host lock: po/);
+  });
+
+  it('names the phase of each ask: before the lock, then under it', async () => {
+    const { clock, lock, request } = world();
+    const asked: ClearancePhase[] = [];
+    const reply = answers(GO, CLAIMED, GO, GO);
+    const clearance = await takeWhenClear(
+      async (phase) => {
+        asked.push(phase);
+        return reply();
+      },
+      { lock, clock, sleep: clock.sleep },
+      request,
+    );
+    assert.equal(clearance.kind, 'taken');
+    assert.deepEqual(asked, ['before', 'locked', 'before', 'locked']);
   });
 
   it('releases the lock and waits again when a claim started while it waited for the lock', async () => {
