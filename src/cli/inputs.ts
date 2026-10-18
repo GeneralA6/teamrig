@@ -1,6 +1,6 @@
 import { ENV, type Env } from '../core/home.ts';
 import { NAME_PATTERN, NAME_RULE } from '../core/ids.ts';
-import { parseUtcDeadline, parseUtcDay } from '../core/time.ts';
+import { parseUtcDeadline, parseUtcDay, parseUtcInstant } from '../core/time.ts';
 import { MAX_SIZE_PCT, sizeProblem, type TaskFields } from '../register/events.ts';
 import { isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, priorityText, TASK_ID, TASK_STATUSES, type TaskStatus } from '../register/model.ts';
 import { WAITS_USAGE, type AddInput, type AskInput, type StatusInput } from '../register/policy.ts';
@@ -85,6 +85,15 @@ export function listOf(flag: string, text: string): string[] {
     throw new UsageError(`${flag} "${text}" is an empty list`);
   }
   return items;
+}
+
+/** `--since 09:00`: a time in UTC, in ms, as `parseUtcInstant` reads it. */
+export function instantOf(flag: string, text: string, nowMs: number): number {
+  const instant = parseUtcInstant(text, nowMs);
+  if (instant === undefined) {
+    throw new UsageError(`${flag} "${text}" is not a time: HH:MM (today), YYYY-MM-DD HH:MM or YYYY-MM-DD in UTC, or an ISO time with its zone`);
+  }
+  return instant.getTime();
 }
 
 /** A size as typed: a number, a `%` after it allowed (`1.5` or `1.5%`). */
