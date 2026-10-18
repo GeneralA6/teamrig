@@ -3,7 +3,7 @@ import type { CoordinatorConfig, CoordinatorRepoConfig } from '../config/types.t
 import { claimText, coveringClaims, readClaims } from '../coordinator/claims.ts';
 import { takeWhenClear, type Readiness } from '../coordinator/clearance.ts';
 import type { HostLock } from '../coordinator/host-lock.ts';
-import { appendDeploy } from '../coordinator/ledger.ts';
+import { appendDeploy, rangeText } from '../coordinator/ledger.ts';
 import type { CoordinatorPlaces } from '../coordinator/places.ts';
 import { runRecorded } from '../coordinator/recorded-step.ts';
 import { heavyCutoffReason, resetBlackoutReason, type ResetTime } from '../coordinator/schedule.ts';
@@ -14,8 +14,8 @@ import type { Env } from '../core/home.ts';
 import type { Clock, Sleep } from '../core/lock.ts';
 import { samePath } from '../core/paths.ts';
 import { commandLine } from '../test-run/shell.ts';
+import { rangeInstallTouches } from './dependencies.ts';
 import type { Checkout, IntegrateGit } from './git.ts';
-import { installTouches, MANIFEST_FILE, packageFilesChange } from './manifest.ts';
 
 /**
  * `teamrig integrate`: lands a finished branch on origin's default branch, one push on the host at a time. It refuses
@@ -116,16 +116,6 @@ function endText(end: StepEnd): string {
   }
 }
 
-/** The landed commits as the ledger names them: `<first>..<last>` by 8-character sha, or the one commit. */
-export function rangeText(commits: readonly string[], fallback: string): string {
-  const first = commits[0];
-  const last = commits[commits.length - 1];
-  if (first === undefined || last === undefined) {
-    return short(fallback);
-  }
-  return first === last ? short(first) : `${short(first)}..${short(last)}`;
-}
-
 /** The checks that need no lock: what to land, and whether it may land at all. */
 async function planOf(setup: IntegrateSetup, ports: IntegratePorts, request: IntegrateRequest): Promise<Planned> {
   const { git } = ports;
@@ -167,11 +157,10 @@ async function planOf(setup: IntegrateSetup, ports: IntegratePorts, request: Int
 /** Why the dependency gate holds the branch: its package files need an install; undefined when they do not. */
 async function dependencyHold(git: IntegrateGit, top: string, onto: string, repo: string): Promise<string | undefined> {
   const base = git.mergeBase(top, onto, 'HEAD');
-  const paths = base === undefined ? undefined : git.changedPaths(top, base, 'HEAD');
-  if (base === undefined || paths === undefined) {
+  const touches = base === undefined ? undefined : await rangeInstallTouches(git, top, base, 'HEAD');
+  if (touches === undefined) {
     return `could not read what the branch changes against ${onto}, so the dependency gate cannot clear it`;
   }
-  const touches = installTouches(await packageFilesChange(paths, async (end) => git.fileAt(top, end === 'before' ? base : 'HEAD', MANIFEST_FILE)));
   if (touches.length === 0) {
     return undefined;
   }
@@ -315,12 +304,11 @@ async function followMainCheckout(ports: IntegratePorts, plan: Plan, landed: str
     return;
   }
   say(`fast-forwarded the main checkout ${main} to ${short(landed)}`);
-  const paths = git.changedPaths(main, was, landed);
-  if (paths === undefined) {
+  const touches = await rangeInstallTouches(git, main, was, landed);
+  if (touches === undefined) {
     say(`NOTE could not read what the fast-forward changed: check whether ${main} needs npm ci --ignore-scripts`);
     return;
   }
-  const touches = installTouches(await packageFilesChange(paths, async (end) => git.fileAt(main, end === 'before' ? was : landed, MANIFEST_FILE)));
   if (touches.length > 0) {
     say(`NOTE ${touches.join(', ')} changed: run npm ci --ignore-scripts in ${main}`);
   }

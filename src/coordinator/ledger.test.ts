@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { appendDeploy, ledgerLine, LEDGER_MD_HEADER, type DeployRecord } from './ledger.ts';
+import { appendDeploy, ledgerLine, LEDGER_MD_HEADER, type DeployRecord, rangeText } from './ledger.ts';
 
 const PLACES = { ledger: '/team/data/deploys/ledger.jsonl', ledgerMd: '/team/data/deploys/ledger.md' };
 
@@ -43,5 +43,13 @@ describe('appendDeploy', () => {
     const files = new MemoryFiles({ [PLACES.ledgerMd]: '# Deploy ledger\n' });
     await appendDeploy(files, PLACES, deploy());
     assert.equal(files.get(PLACES.ledgerMd), `# Deploy ledger\n${ledgerLine(deploy())}\n`);
+  });
+});
+
+describe('rangeText', () => {
+  it('names one commit, a range by its ends, and no commits by the fallback', () => {
+    assert.equal(rangeText(['1234567890ab'], 'f'), '12345678');
+    assert.equal(rangeText(['1111111111', '2222222222', '3333333333'], 'f'), '11111111..33333333');
+    assert.equal(rangeText([], 'abcdef0123456'), 'abcdef01');
   });
 });

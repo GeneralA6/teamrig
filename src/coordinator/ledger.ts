@@ -51,6 +51,20 @@ export interface LedgerPlaces {
   readonly ledgerMd: string;
 }
 
+function short(sha: string): string {
+  return sha.slice(0, 8);
+}
+
+/** The landed commits as the ledger names them: `<first>..<last>` by 8-character sha, or the one commit. */
+export function rangeText(commits: readonly string[], fallback: string): string {
+  const first = commits[0];
+  const last = commits[commits.length - 1];
+  if (first === undefined || last === undefined) {
+    return short(fallback);
+  }
+  return first === last ? short(first) : `${short(first)}..${short(last)}`;
+}
+
 /** Appends one record as one line, in one write. */
 export async function appendHeavy(files: Files, ledger: string, record: HeavyRecord): Promise<void> {
   await files.append(ledger, `${JSON.stringify(record)}\n`);
