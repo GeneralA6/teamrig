@@ -1,8 +1,9 @@
 import type { CoordinatorConfig } from '../../config/types.ts';
-import { addClaim, deployTargetsOf, releaseClaim, type ClaimOutcome, type ClaimPorts } from '../../coordinator/claim-store.ts';
+import { addClaim, releaseClaim, type ClaimOutcome, type ClaimPorts } from '../../coordinator/claim-store.ts';
 import type { Claim } from '../../coordinator/claims.ts';
 import { coordinatorPlaces, type CoordinatorPlaces } from '../../coordinator/places.ts';
 import { parseSpanMinutes } from '../../coordinator/schedule.ts';
+import { deployTargetsOf } from '../../coordinator/targets.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { formatUtcMinute } from '../../core/time.ts';
 import { requiredFlag, UsageError, type ParsedArgs } from '../args.ts';

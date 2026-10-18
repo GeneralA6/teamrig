@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { SecretScanner } from '../core/secrets.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { addClaim, CLAIMS_LOCK_TTL_MS, claimRefusal, deployTargetsOf, releaseClaim, renderClaimsMd, type ClaimPorts, type ClaimRequest, type ClaimRules } from './claim-store.ts';
+import { addClaim, CLAIMS_LOCK_TTL_MS, claimRefusal, releaseClaim, renderClaimsMd, type ClaimPorts, type ClaimRequest, type ClaimRules } from './claim-store.ts';
 import { HostLock } from './host-lock.ts';
 
 const PLACES = { claims: '/team/deploys/claims.json', claimsMd: '/team/deploys/claims.md' };
@@ -124,16 +124,5 @@ describe('releaseClaim', () => {
 describe('renderClaimsMd', () => {
   it('shows a time that does not parse as it is', () => {
     assert.equal(renderClaimsMd([{ ...HELD[1]!, from: 'soon' }]).split('\n')[1], '- soon → 2030-01-08 09:00 | ops | api | cpu | old');
-  });
-});
-
-describe('deployTargetsOf', () => {
-  it('names each target the repositories deploy on push or roll, once', () => {
-    const roll = { targets: ['api', 'workers'], gates: [], afterPull: [], command: ['node', 'roll.js'] };
-    const repos = {
-      site: { mainCheckout: '/repo/site', deploysOnPush: ['cloud-web', 'api'], dependencyGate: false, followMainCheckout: false },
-      pipeline: { mainCheckout: '/repo/app', deploysOnPush: [], dependencyGate: false, followMainCheckout: false, roll },
-    };
-    assert.deepEqual(deployTargetsOf(repos), ['cloud-web', 'api', 'workers']);
   });
 });
