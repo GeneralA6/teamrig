@@ -58,6 +58,10 @@ export class ConfigReader {
     numberItem(value, itemPath, bounds = {}) {
         return this.checkedNumber(value, itemPath, bounds, false);
     }
+    /** One whole-number item within `bounds`, for use inside list or map callbacks. */
+    integerItem(value, itemPath, bounds = {}) {
+        return this.checkedNumber(value, itemPath, bounds, true);
+    }
     boolean(parent, key, path, fallback) {
         const value = parent[key];
         if (value === undefined) {

@@ -4,10 +4,6 @@ import { holderText } from "./host-lock.js";
 /** The claims for people to read, beside `claims.json`, and the lock their writers share. */
 export const CLAIMS_MD_FILE = 'claims.md';
 export const CLAIMS_LOCK_FILE = 'claims.lock';
-/** Every target a claim may name: what the team's repositories deploy on push and what their rolls roll, each once. */
-export function deployTargetsOf(repos) {
-    return [...new Set(Object.values(repos).flatMap((repo) => [...repo.deploysOnPush, ...(repo.roll?.targets ?? [])]))];
-}
 /** The claims are written under their own lock, held for one read and write: it lasts 60 s and is waited for 15 s. */
 export const CLAIMS_LOCK_TTL_MS = 60_000;
 const CLAIMS_LOCK_WAIT_MS = 15_000;

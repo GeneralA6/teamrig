@@ -1,6 +1,7 @@
-import { addClaim, deployTargetsOf, releaseClaim } from "../../coordinator/claim-store.js";
+import { addClaim, releaseClaim } from "../../coordinator/claim-store.js";
 import { coordinatorPlaces } from "../../coordinator/places.js";
 import { parseSpanMinutes } from "../../coordinator/schedule.js";
+import { deployTargetsOf } from "../../coordinator/targets.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { formatUtcMinute } from "../../core/time.js";
 import { requiredFlag, UsageError } from "../args.js";
