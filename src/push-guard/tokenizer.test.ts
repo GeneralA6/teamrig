@@ -152,6 +152,63 @@ describe('parseShell: bash', () => {
     );
   });
 
+  it('reads &> and &>> as redirections, and keeps a command of redirections alone', () => {
+    const parse = parseShell('a &>out; b&>>log && c &&>x; d |&>y; >new; e & 2>err', 'bash');
+    assert.deepEqual(
+      parse.commands.map((command) => [command.words.map(show), command.redirections.map((redirection) => [redirection.operator, redirection.target?.text])]),
+      [
+        [['a'], [['&>', 'out']]],
+        [['b'], [['&>>', 'log']]],
+        [['c'], []],
+        [[], [['>', 'x']]],
+        [['d'], []],
+        [[], [['>', 'y']]],
+        [[], [['>', 'new']]],
+        [['e'], []],
+        [[], [['2>', 'err']]],
+      ],
+    );
+  });
+
+  it('reads a descriptor that is closed or moved, a {NAME} descriptor and a file named -, keeping the words after them', () => {
+    const parse = parseShell('a 2>&- b; c >&1- d; e 2>& - f; g >- h; i {fd}>/dev/null j; k <<-EOF\n\tx\n\tEOF', 'bash');
+    assert.deepEqual(
+      parse.commands.map((command) => [command.words.map(show), command.redirections.map(({ operator, target }) => [operator, target?.text])]),
+      [
+        [['a', 'b'], [['2>&-', undefined]]],
+        [['c', 'd'], [['>&1-', undefined]]],
+        [['e', 'f'], [['2>&', '-']]],
+        [['g', 'h'], [['>', '-']]],
+        [['i', 'j'], [['{fd}>', '/dev/null']]],
+        [['k'], [['<<-', 'EOF']]],
+      ],
+    );
+  });
+
+  it('leaves a heredoc on a line of redirections alone unread', () => {
+    const parse = parseShell('<<EOF\nbody\nEOF\ncat', 'bash');
+    assert.deepEqual(
+      parse.commands.map((command) => [command.words.map(show), command.stdin === undefined]),
+      [
+        [[], true],
+        [['cat'], true],
+      ],
+    );
+    assert.deepEqual(parse.unreadBodies.map(show), ['body']);
+  });
+
+  it("gives the redirections after a ( ) group's ) to the command it closed on, which keeps the link after them", () => {
+    const parse = parseShell('(a; (b)) > out 2>&1; c', 'bash');
+    assert.deepEqual(
+      parse.commands.map((command) => [command.words.map(show), command.terminator, command.redirections.map((redirection) => redirection.operator)]),
+      [
+        [['a'], ';(', []],
+        [['b'], '));', ['>', '2>&1']],
+        [['c'], '', []],
+      ],
+    );
+  });
+
   it('splits a bash word into quoted and unquoted text and plain variable references', () => {
     const last = parseShell(`B='x'y "$C"\${D} \\E=f a$1 $(g) \${H:-i} {a,b}$J`, 'bash').commands.at(-1);
     assert.deepEqual(
@@ -337,6 +394,7 @@ describe('parseShell: bindings the commands may not show', () => {
       'cat <<$D\nB=feat\n$D',
       'cat <<',
       'echo $[',
+      'echo x {B}>/dev/null',
     ]) {
       assert.equal(unclear(line), true, line);
     }
