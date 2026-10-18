@@ -224,6 +224,14 @@ describe('teamrig launch', () => {
     }
   });
 
+  it('starts at the effort --effort names over the configured one, and with no first prompt on --no-prompt', async () => {
+    const processes = new FakeProcesses();
+    const kit = new CliHarness({ ...TEAM, launch: { alpha: { model: 'sonnet', effort: 'high' } } });
+    const result = await kit.run([...LAUNCH, '--effort', 'max', '--no-prompt'], { probe: ON_PATH, processes, env: { PATH: '/usr/local/bin' } });
+    assert.deepEqual(result.stdout, [`Starting Claude Code as app-alpha (session alpha of team app) in ${APP}, on model sonnet at max effort`]);
+    assert.deepEqual(processes.ran[0]?.args, ['--model', 'sonnet', '--effort', 'max', '--name', 'app-alpha']);
+  });
+
   it('starts the lead on Opus at xhigh effort, and any session on its configured model and effort', async () => {
     const lead = new FakeProcesses();
     const result = await new CliHarness(TEAM).run(['launch', 'lead', '--team', 'app', '--project', APP], { probe: ON_PATH, processes: lead, env: { PATH: '/usr/local/bin' } });
@@ -290,6 +298,8 @@ describe('teamrig launch', () => {
       [[...LAUNCH, '--encoded-prompt', 'a+b'], '--encoded-prompt is not a prompt that teamrig open wrote'],
       [[...LAUNCH, '--encoded-prompt', encodePrompt('-p')], '--prompt: the prompt cannot start with -'],
       [[...LAUNCH, '--resume', 'c1'], '--resume "c1" is not a Claude Code session id'],
+      [[...LAUNCH, '--effort', 'turbo'], '--effort "turbo" is not an effort level'],
+      [[...LAUNCH, '--no-prompt', '--encoded-prompt', encodePrompt('Go on')], '--no-prompt and --encoded-prompt cannot go together'],
     ] as const) {
       const result = await new CliHarness(TEAM).run(argv, { probe: ON_PATH });
       assert.equal(result.code, EXIT.usage, argv.join(' '));
