@@ -16,9 +16,15 @@ import { CLAUDE_SESSION_ID } from '../inbox/marks.ts';
  * - `agent_name`, `model`: the agent's name and the model's display name, or null;
  * - `rate_limits`: null, or `{ five_hour, seven_day }`, each null or absent, or
  *   `{ used_percentage, resets_at }` (percent used, and the reset in epoch seconds);
+ * - `rate_limits_since`: when the session's snapshots began to show these rate limits, ISO 8601 UTC, so
+ *   the reading was taken by then; null or absent: by `ts`;
+ * - `rate_limits_after`: when the session's snapshot last showed other rate limits, ISO 8601 UTC, so the
+ *   reading was taken after it; null or absent when unknown;
  * - `cost_usd`, `context_used_pct`, `context_input_tokens`: numbers, or null.
  *
- * Claude Code sends `rate_limits` only to a claude.ai plan's sessions, after the session's first reply.
+ * Claude Code sends `rate_limits` only to a claude.ai plan's sessions, after the session's first reply,
+ * and redraws the status line with the session's last reading until its next reply: a snapshot written
+ * now may hold a reading days old. The two times date the reading itself.
  */
 
 /** One rate-limit window: percent used and when it resets, in epoch milliseconds. */
@@ -39,6 +45,10 @@ export interface StatusSnapshot {
   readonly agentName: string | null;
   readonly model: string | null;
   readonly rateLimits: RateLimits | null;
+  /** When the session's snapshots began to show `rateLimits`: the reading was taken by then; null: by `ts`. */
+  readonly rateLimitsSince: string | null;
+  /** When the session's snapshot last showed other rate limits: the reading was taken after it; null when unknown. */
+  readonly rateLimitsAfter: string | null;
   readonly costUsd: number | null;
   readonly contextUsedPct: number | null;
   readonly contextInputTokens: number | null;
@@ -92,13 +102,17 @@ export function snapshotOfStatus(input: string, now: number): StatusSnapshot | u
   }
   const workspace = recordField(status, 'workspace');
   const context = recordField(status, 'context_window');
+  const ts = new Date(now).toISOString();
+  const rateLimits = rateLimitsOf(status['rate_limits']);
   return {
-    ts: new Date(now).toISOString(),
+    ts,
     sessionId,
     cwd: (workspace === undefined ? undefined : stringField(workspace, 'current_dir')) ?? stringField(status, 'cwd') ?? '',
     agentName: textOrNull(recordField(status, 'agent')?.['name']),
     model: textOrNull(recordField(status, 'model')?.['display_name']),
-    rateLimits: rateLimitsOf(status['rate_limits']),
+    rateLimits,
+    rateLimitsSince: rateLimits === null ? null : ts,
+    rateLimitsAfter: null,
     costUsd: finite(recordField(status, 'cost')?.['total_cost_usd']),
     contextUsedPct: finite(context?.['used_percentage']),
     contextInputTokens: finite(context?.['total_input_tokens']),
@@ -119,6 +133,8 @@ export function formatSnapshot(snapshot: StatusSnapshot): string {
     agent_name: snapshot.agentName,
     model: snapshot.model,
     rate_limits: limits === null ? null : { five_hour: storedWindow(limits.fiveHour), seven_day: storedWindow(limits.sevenDay) },
+    rate_limits_since: snapshot.rateLimitsSince,
+    rate_limits_after: snapshot.rateLimitsAfter,
     cost_usd: snapshot.costUsd,
     context_used_pct: snapshot.contextUsedPct,
     context_input_tokens: snapshot.contextInputTokens,
@@ -136,43 +152,103 @@ export function parseSnapshot(text: string): StatusSnapshot | undefined {
   if (ts === undefined || Number.isNaN(Date.parse(ts)) || sessionId === undefined || !CLAUDE_SESSION_ID.test(sessionId)) {
     return undefined;
   }
+  const rateLimits = rateLimitsOf(stored['rate_limits']);
+  const since = rateLimits === null ? null : timeUpTo(stored['rate_limits_since'], ts, true);
   return {
     ts,
     sessionId,
     cwd: stringField(stored, 'cwd') ?? '',
     agentName: textOrNull(stored['agent_name']),
     model: textOrNull(stored['model']),
-    rateLimits: rateLimitsOf(stored['rate_limits']),
+    rateLimits,
+    rateLimitsSince: since,
+    rateLimitsAfter: rateLimits === null ? null : timeUpTo(stored['rate_limits_after'], since ?? ts, false),
     costUsd: finite(stored['cost_usd']),
     contextUsedPct: finite(stored['context_used_pct']),
     contextInputTokens: finite(stored['context_input_tokens']),
   };
 }
 
+/** `value` when it is a time before `bound`, or at it with `orAt`; else null, as a reading cannot be dated later than its file. */
+function timeUpTo(value: unknown, bound: string, orAt: boolean): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const at = Date.parse(value);
+  const limit = Date.parse(bound);
+  return at < limit || (orAt && at === limit) ? value : null;
+}
+
+/** Whether two windows hold the same reading: equal use and reset, or both missing. */
+function sameWindow(a: RateWindow | null, b: RateWindow | null): boolean {
+  return a === null || b === null ? a === b : a.usedPct === b.usedPct && a.resetsAt === b.resetsAt;
+}
+
+/**
+ * The snapshot with its reading dated by the session's previous snapshot. Rate limits that one showed
+ * keep its dates, as Claude Code redraws the status line with the last reading until the session's next
+ * reply; other rate limits came with a reply after it was written. Claude Code sets both windows from
+ * each reply, so the five-hour window, which moves sooner, dates the week's reading too.
+ */
+export function datedSnapshot(snapshot: StatusSnapshot, previous: StatusSnapshot | undefined): StatusSnapshot {
+  const limits = snapshot.rateLimits;
+  if (limits === null || previous === undefined || previous.sessionId !== snapshot.sessionId) {
+    return snapshot;
+  }
+  const shown = previous.rateLimits;
+  if (shown !== null && sameWindow(limits.fiveHour, shown.fiveHour) && sameWindow(limits.sevenDay, shown.sevenDay)) {
+    return { ...snapshot, rateLimitsSince: previous.rateLimitsSince ?? previous.ts, rateLimitsAfter: previous.rateLimitsAfter };
+  }
+  return { ...snapshot, rateLimitsAfter: Date.parse(previous.ts) < Date.parse(snapshot.ts) ? previous.ts : null };
+}
+
 /** The plan's use of the week, as the newest status line reading gives it. */
 export interface WeekUse {
   readonly usedPct: number;
   readonly resetsAt: number;
-  /** When the reading was taken. */
+  /** By when the reading was taken: when its session's snapshots began to show it. */
   readonly at: number;
 }
 
+/** A reading of the current week, taken after `after` (when known) and by `since`. */
+interface DatedReading {
+  readonly usedPct: number;
+  readonly resetsAt: number;
+  readonly after: number | undefined;
+  readonly since: number;
+}
+
+/** The snapshot's reading of the week current at `now` (written by `now`, resetting after it), if it has one. */
+function currentReadingOf(snapshot: StatusSnapshot, now: number): DatedReading | undefined {
+  const week = snapshot.rateLimits?.sevenDay ?? null;
+  if (week === null || Date.parse(snapshot.ts) > now || week.resetsAt <= now) {
+    return undefined;
+  }
+  return {
+    usedPct: week.usedPct,
+    resetsAt: week.resetsAt,
+    after: snapshot.rateLimitsAfter === null ? undefined : Date.parse(snapshot.rateLimitsAfter),
+    since: Date.parse(snapshot.rateLimitsSince ?? snapshot.ts),
+  };
+}
+
 /**
- * The week's use at `now` from the snapshots of every session: among readings of the current week
- * (taken by `now`, resetting after it), the highest, as a week's use only grows. A session's input
- * keeps its last reading until its next reply, so the newest file is not always the newest reading.
+ * The week's use at `now` from the snapshots of every session. A week's use only grows, except when the
+ * owner resets it mid-week (its reset time unchanged), and an exited session's file keeps its last
+ * reading for good. So a reading taken by the time another is known to follow is dropped; of the rest,
+ * which no reading is known to follow, the latest week's highest counts.
  */
 export function weekUseOf(snapshots: readonly StatusSnapshot[], now: number): WeekUse | undefined {
+  const readings = snapshots.flatMap((snapshot) => currentReadingOf(snapshot, now) ?? []);
+  const followedBy = readings.reduce((latest, reading) => Math.max(latest, reading.after ?? Number.NEGATIVE_INFINITY), Number.NEGATIVE_INFINITY);
   let best: WeekUse | undefined;
-  for (const snapshot of snapshots) {
-    const week = snapshot.rateLimits?.sevenDay ?? null;
-    const at = Date.parse(snapshot.ts);
-    if (week === null || at > now || week.resetsAt <= now) {
+  for (const reading of readings) {
+    if (reading.since <= followedBy) {
       continue;
     }
-    const later = best === undefined || week.resetsAt > best.resetsAt;
-    if (later || (week.resetsAt === best?.resetsAt && week.usedPct > best.usedPct)) {
-      best = { usedPct: week.usedPct, resetsAt: week.resetsAt, at };
+    const later = best === undefined || reading.resetsAt > best.resetsAt;
+    if (later || (reading.resetsAt === best?.resetsAt && reading.usedPct > best.usedPct)) {
+      best = { usedPct: reading.usedPct, resetsAt: reading.resetsAt, at: reading.since };
     }
   }
   return best;

@@ -14,7 +14,7 @@ import { activeLift, decideLift, LiftLog, liftText, type Lift } from '../../budg
 import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID, type Measured } from '../../budget/measure.ts';
 import { sessionBudgetPct } from '../../budget/pace.ts';
 import { burnLines, loopLines, recountLines, sessionLines, sumDays, todayLines, weekLine, type SessionToday } from '../../budget/report.ts';
-import { formatSnapshot, readSnapshots, snapshotOfStatus, statusLineText, weekUseOf, type StatusLineView } from '../../budget/snapshot.ts';
+import { datedSnapshot, formatSnapshot, parseSnapshot, readSnapshots, snapshotOfStatus, statusLineText, weekUseOf, type StatusLineView } from '../../budget/snapshot.ts';
 import { CURSOR_DAYS_KEPT, DAYS_KEPT, MemoryUsageStore, UsageStore, type UsageState } from '../../budget/store.ts';
 import { readWeek, type WeekReading } from '../../budget/week.ts';
 import { JsonlMarkLog } from '../../inbox/store.ts';
@@ -288,7 +288,8 @@ function statusLineView(git: Pick<RepoState, 'branch' | 'head'>, dir: string, sh
 
 /**
  * `statusline`: Claude Code's status line. It saves the status input's reading (the plan's use of the
- * week and its reset) as a snapshot for `budget`, and prints a short status: the model, the session's
+ * week and its reset) as a snapshot for `budget`, dated by the session's previous snapshot (when the
+ * session began to show it, and when it last showed another), and prints a short status: the model, the session's
  * folder and branch, the plan's use and the command that resumes the session, as the team's `statusLine`
  * config shows them. It always exits 0, so a bad input or a full disk never breaks the status bar; what
  * went wrong goes to stderr. With --pass it prints the status input again instead of its own status, for
@@ -312,7 +313,9 @@ export async function statusline(args: ParsedArgs, runtime: CliRuntime): Promise
   try {
     const setup = await statusLineSetup(runtime, snapshot.cwd);
     show = setup.show;
-    await runtime.files.write(join(setup.snapshotDir, `${snapshot.sessionId}.json`), formatSnapshot(snapshot));
+    const path = join(setup.snapshotDir, `${snapshot.sessionId}.json`);
+    const previous = await runtime.files.read(path);
+    await runtime.files.write(path, formatSnapshot(datedSnapshot(snapshot, previous === undefined ? undefined : parseSnapshot(previous))));
   } catch (error) {
     runtime.out.stderr(`teamrig statusline: the snapshot was not saved: ${errorMessage(error)}`);
   }

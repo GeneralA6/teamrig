@@ -104,6 +104,8 @@ describe('teamrig integrate', () => {
       agentName: null,
       model: null,
       rateLimits: { fiveHour: null, sevenDay: { usedPct: 90, resetsAt: Date.parse('2030-01-08T12:00:00Z') } },
+      rateLimitsSince: null,
+      rateLimitsAfter: null,
       costUsd: null,
       contextUsedPct: null,
       contextInputTokens: null,
