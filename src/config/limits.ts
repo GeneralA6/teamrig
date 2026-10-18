@@ -47,6 +47,7 @@ export const CONFIG_LIMITS = {
   sessionDailyPct: { min: 0.1, max: 100 },
   warnAtPct: { maxItems: 8, itemMin: 1, itemMax: 1_000 },
   paceTolerancePct: { min: 0, max: 10 },
+  quietPaceWeight: { min: 0, max: 1 },
   liftMaxStopPct: { min: 1, max: 100 },
   liftReserveStopPct: { min: 1, max: 100 },
   maxBytesPerHook: { min: 100_000, max: 100_000_000 },

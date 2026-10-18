@@ -312,6 +312,11 @@ export interface QuietHours {
   readonly startUtc: string;
   readonly endUtc: string;
   readonly action: OverAction;
+  /**
+   * What a quiet minute counts on the pace line and in the daily budget, against 1 for any other minute (0..1).
+   * Unset: 0, the team sleeps, so the line stays flat through the night.
+   */
+  readonly paceWeight?: number;
 }
 
 /** One session's part of the team's daily allowance. */

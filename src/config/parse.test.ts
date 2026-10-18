@@ -778,7 +778,7 @@ describe('parseConfig budget', () => {
         paceTolerancePct: 1,
         overAction: 'ask-lead',
         escalate: 'session',
-        quietHours: { startUtc: '22:00', endUtc: '06:00', action: 'ask' },
+        quietHours: { startUtc: '22:00', endUtc: '06:00', action: 'ask', paceWeight: 0.25 },
         lift: { maxStopPct: 98, reserveStopPct: 99.5 },
         statusSnapshotDir: '/srv/usage/live',
         maxBytesPerHook: 2_000_000,
@@ -800,11 +800,17 @@ describe('parseConfig budget', () => {
       paceTolerancePct: 1,
       overAction: 'ask-lead',
       escalate: 'session',
-      quietHours: { startUtc: '22:00', endUtc: '06:00', action: 'ask' },
+      quietHours: { startUtc: '22:00', endUtc: '06:00', action: 'ask', paceWeight: 0.25 },
       lift: { maxStopPct: 98, reserveStopPct: 99.5 },
       statusSnapshotDir: '/srv/usage/live',
       maxBytesPerHook: 2_000_000,
     });
+  });
+
+  it('reports a quiet pace weight out of 0..1 and keeps the quiet hours without it', () => {
+    const { config, issues } = parseConfig({ ...ROSTER, budget: { quietHours: { startUtc: '22:00', endUtc: '06:00', action: 'ask', paceWeight: 1.5 } } });
+    assert.deepEqual(paths(issues), ['budget.quietHours.paceWeight']);
+    assert.deepEqual(config.budget.quietHours, { startUtc: '22:00', endUtc: '06:00', action: 'ask' });
   });
 
   it('keeps the reserve stop % at or above the lift stop %', () => {
