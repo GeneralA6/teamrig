@@ -454,6 +454,42 @@
             }
           }
         },
+        "windows": {
+          "description": "teamrig windows: when a measurement of a deploy target is clean, between the deploys and heavy steps that disturb it.",
+          "type": "object",
+          "properties": {
+            "settleMinutes": {
+              "description": "A target measures cleanly this many minutes after a deploy rolled it.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1440,
+              "default": 30
+            },
+            "targetSettleMinutes": {
+              "description": "Per deploy target, its own settle minutes in place of settleMinutes; each a target some repository deploys.",
+              "type": "object",
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1440
+              }
+            },
+            "assumedRollMinutes": {
+              "description": "How long a deploy is taken to have rolled before its ledger.md line when the ledger has no record of its start.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1440,
+              "default": 20
+            },
+            "minMinutes": {
+              "description": "The shortest clean window worth listing.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1440,
+              "default": 15
+            }
+          }
+        },
         "wait": {
           "description": "How a coordinator step waits.",
           "type": "object",

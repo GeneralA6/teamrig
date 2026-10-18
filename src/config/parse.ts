@@ -1,3 +1,4 @@
+import { deployTargetsOf } from '../coordinator/targets.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { NAME_PATTERN, NAME_RULE } from '../core/ids.ts';
 import { FOLLOWUP_STATUSES, isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, SESSION_NAME, TASK_STATUSES, type TaskStatus } from '../register/model.ts';
@@ -29,6 +30,7 @@ import {
   DEFAULT_STATUS_LINE,
   DEFAULT_TESTS,
   DEFAULT_WAKE,
+  DEFAULT_WINDOWS,
   HEAVY_TTL_MARGIN_MINUTES,
 } from './defaults.ts';
 import { isEffort, isModel } from './launch.ts';
@@ -87,6 +89,7 @@ import {
   type PriorityConfig,
   type TeamLink,
   type WakeConfig,
+  type WindowsConfig,
 } from './types.ts';
 
 export interface ConfigParse {
@@ -414,6 +417,7 @@ function parseCoordinator(read: ConfigReader, raw: JsonRecord): CoordinatorConfi
   const resetBlackoutHours = read.optionalInteger(schedule, 'resetBlackoutHours', `${path}.schedule`, CONFIG_LIMITS.resetBlackoutHours);
   const wait = read.section(raw, 'wait', path);
   const claims = read.section(raw, 'claims', path);
+  const repos = parseCoordinatorRepos(read, read.section(raw, 'repos', path));
   return {
     ...(dir === undefined ? {} : { dir }),
     schedule: { ...(heavyCutoffUtc === undefined ? {} : { heavyCutoffUtc }), ...(resetBlackoutHours === undefined ? {} : { resetBlackoutHours }) },
@@ -424,7 +428,36 @@ function parseCoordinator(read: ConfigReader, raw: JsonRecord): CoordinatorConfi
     },
     gateTimeoutSeconds: read.integer(raw, 'gateTimeoutSeconds', path, DEFAULT_GATE_TIMEOUT_SECONDS, CONFIG_LIMITS.gateTimeoutSeconds),
     claims: { maxMinutes: read.integer(claims, 'maxMinutes', `${path}.claims`, DEFAULT_CLAIMS.maxMinutes, CONFIG_LIMITS.claimMaxMinutes) },
-    repos: parseCoordinatorRepos(read, read.section(raw, 'repos', path)),
+    windows: parseWindows(read, read.section(raw, 'windows', path), deployTargetsOf(repos)),
+    repos,
+  };
+}
+
+/** When a deploy target's measurement is clean; a settle time for a target no repository deploys, or out of bounds, is reported and left out. */
+function parseWindows(read: ConfigReader, raw: JsonRecord, knownTargets: readonly string[]): WindowsConfig {
+  const path = 'coordinator.windows';
+  const targetSettleMinutes: Record<string, number> = {};
+  for (const [target, value] of Object.entries(read.section(raw, 'targetSettleMinutes', path))) {
+    const itemPath = `${path}.targetSettleMinutes.${target}`;
+    const badName = isCoordinatorName(target);
+    if (badName !== undefined) {
+      read.report(itemPath, badName);
+      continue;
+    }
+    if (!knownTargets.includes(target)) {
+      read.report(itemPath, `is not a target any repository deploys (known: ${knownTargets.join(', ') || 'none'})`);
+      continue;
+    }
+    const minutes = read.integerItem(value, itemPath, CONFIG_LIMITS.settleMinutes);
+    if (minutes !== undefined) {
+      targetSettleMinutes[target] = minutes;
+    }
+  }
+  return {
+    settleMinutes: read.integer(raw, 'settleMinutes', path, DEFAULT_WINDOWS.settleMinutes, CONFIG_LIMITS.settleMinutes),
+    targetSettleMinutes,
+    assumedRollMinutes: read.integer(raw, 'assumedRollMinutes', path, DEFAULT_WINDOWS.assumedRollMinutes, CONFIG_LIMITS.assumedRollMinutes),
+    minMinutes: read.integer(raw, 'minMinutes', path, DEFAULT_WINDOWS.minMinutes, CONFIG_LIMITS.windowMinMinutes),
   };
 }
 

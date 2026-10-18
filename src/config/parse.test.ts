@@ -32,6 +32,7 @@ describe('parseConfig', () => {
       wait: { pollSeconds: 30, maxMinutes: 60 },
       gateTimeoutSeconds: 20,
       claims: { maxMinutes: 120 },
+      windows: { settleMinutes: 30, targetSettleMinutes: {}, assumedRollMinutes: 20, minMinutes: 15 },
       repos: {},
     });
     assert.deepEqual(config.pushGuard.protectedBranches, ['main', 'master']);
@@ -261,6 +262,7 @@ describe('parseConfig', () => {
       wait: { pollSeconds: 5, maxMinutes: 0 },
       gateTimeoutSeconds: 45,
       claims: { maxMinutes: 90 },
+      windows: { settleMinutes: 10, targetSettleMinutes: {}, assumedRollMinutes: 5, minMinutes: 30 },
     };
     const { config, issues } = parseConfig({ ...ROSTER, coordinator });
     assert.deepEqual(issues, []);
@@ -335,6 +337,24 @@ describe('parseConfig', () => {
     assert.equal(config.coordinator.claims.maxMinutes, 120);
   });
 
+  it('reads a settle time for each target a repository deploys, and reports the rest', () => {
+    const { config, issues } = parseConfig({
+      ...ROSTER,
+      coordinator: {
+        windows: { settleMinutes: 1441, minMinutes: 0, targetSettleMinutes: { 'cloud-api': 10, workers: 45, Bad: 5, 'cloud-web': -1 } },
+        repos: { api: { mainCheckout: 'C:/src/api', deploysOnPush: ['cloud-api', 'cloud-web'] } },
+      },
+    });
+    assert.deepEqual(paths(issues).sort(), [
+      'coordinator.windows.minMinutes',
+      'coordinator.windows.settleMinutes',
+      'coordinator.windows.targetSettleMinutes.Bad',
+      'coordinator.windows.targetSettleMinutes.cloud-web',
+      'coordinator.windows.targetSettleMinutes.workers',
+    ]);
+    assert.deepEqual(config.coordinator.windows, { settleMinutes: 30, targetSettleMinutes: { 'cloud-api': 10 }, assumedRollMinutes: 20, minMinutes: 15 });
+  });
+
   it('leaves out a repository with no main checkout or a bad name, and reports a bad target, blackout or deploy wait', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,
@@ -375,6 +395,7 @@ describe('parseConfig', () => {
       wait: { pollSeconds: 30, maxMinutes: 60 },
       gateTimeoutSeconds: 20,
       claims: { maxMinutes: 120 },
+      windows: { settleMinutes: 30, targetSettleMinutes: {}, assumedRollMinutes: 20, minMinutes: 15 },
       repos: {},
     });
   });

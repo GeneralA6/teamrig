@@ -28,6 +28,7 @@ const EVERY_KEY = {
     wait: { pollSeconds: 30, maxMinutes: 60 },
     gateTimeoutSeconds: 20,
     claims: { maxMinutes: 120 },
+    windows: { settleMinutes: 30, targetSettleMinutes: { 'cloud-api': 10 }, assumedRollMinutes: 20, minMinutes: 15 },
     repos: {
       api: {
         mainCheckout: 'C:/src/api',
@@ -146,6 +147,9 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   coordinatorWaitMaxMinutes: 'coordinator.wait.maxMinutes',
   gateTimeoutSeconds: 'coordinator.gateTimeoutSeconds',
   claimMaxMinutes: 'coordinator.claims.maxMinutes',
+  settleMinutes: 'coordinator.windows.settleMinutes',
+  assumedRollMinutes: 'coordinator.windows.assumedRollMinutes',
+  windowMinMinutes: 'coordinator.windows.minMinutes',
   resetBlackoutHours: 'coordinator.schedule.resetBlackoutHours',
 };
 

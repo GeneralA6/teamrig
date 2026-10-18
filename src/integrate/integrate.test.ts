@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { CoordinatorConfig, CoordinatorRepoConfig, ScheduleConfig } from '../config/types.ts';
-import { DEFAULT_CLAIMS, DEFAULT_COORDINATOR_WAIT, DEFAULT_GATE_TIMEOUT_SECONDS, DEFAULT_HEAVY } from '../config/defaults.ts';
+import { DEFAULT_CLAIMS, DEFAULT_COORDINATOR_WAIT, DEFAULT_GATE_TIMEOUT_SECONDS, DEFAULT_HEAVY, DEFAULT_WINDOWS } from '../config/defaults.ts';
 import { HostLock } from '../coordinator/host-lock.ts';
 import type { CoordinatorPlaces } from '../coordinator/places.ts';
 import type { ResetTime } from '../coordinator/schedule.ts';
@@ -57,6 +57,7 @@ class World {
       wait: { ...DEFAULT_COORDINATOR_WAIT, maxMinutes: options.waitMinutes ?? DEFAULT_COORDINATOR_WAIT.maxMinutes },
       gateTimeoutSeconds: DEFAULT_GATE_TIMEOUT_SECONDS,
       claims: DEFAULT_CLAIMS,
+      windows: DEFAULT_WINDOWS,
       repos: options.repos ?? {},
     };
     this.setup = { coordinator, places: PLACES, inTeam: (path) => (path.startsWith('/') ? path : `/repo/${path}`) };
