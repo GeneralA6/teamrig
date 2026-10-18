@@ -1,4 +1,9 @@
-import { spawnSync } from 'node:child_process';
+import { outcome, query, queryLine, runGit, type GitOutcome } from '../core/git-run.ts';
+
+export type { GitOutcome };
+
+/** Long enough for git to delete a large worktree. */
+const REMOVE_TIMEOUT_MS = 120_000;
 
 /** One worktree as `git worktree list --porcelain` lists it. */
 export interface WorktreeEntry {
@@ -9,9 +14,6 @@ export interface WorktreeEntry {
   /** Why it is locked (empty when no reason was given); undefined when it is not locked. */
   readonly locked: string | undefined;
 }
-
-/** How a git step that changes something ended: done, or git's own reason for refusing it. */
-export type GitOutcome = { readonly ok: true } | { readonly ok: false; readonly reason: string };
 
 /**
  * What `teamrig worktree remove` asks of git. Each query reads as undefined when git cannot answer it (no git on
@@ -39,45 +41,7 @@ export interface WorktreeGit {
   deleteBranch(mainDir: string, branch: string): GitOutcome;
 }
 
-/** Long enough for git to delete a large worktree; a query answers in well under a second. */
-const REMOVE_TIMEOUT_MS = 120_000;
-const QUERY_TIMEOUT_MS = 10_000;
 const BRANCH_REF = 'refs/heads/';
-
-/**
- * Variables that point git at a repository other than the one its folder is in, as a git hook sets them. Each run
- * drops them, so git acts on the worktree the command names and never on the repository a caller's hook runs in.
- */
-const REPOSITORY_VARIABLES = new Set(['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_NAMESPACE', 'GIT_PREFIX']);
-
-/** The process environment without the variables that redirect git. */
-export function gitEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  return Object.fromEntries(Object.entries(env).filter(([name]) => !REPOSITORY_VARIABLES.has(name.toUpperCase())));
-}
-
-interface GitRun {
-  /** The exit code; null when git did not run or was stopped. */
-  readonly status: number | null;
-  readonly stdout: string;
-  readonly stderr: string;
-}
-
-function runGit(dir: string, args: readonly string[], timeout: number = QUERY_TIMEOUT_MS): GitRun {
-  const result = spawnSync('git', args, { cwd: dir, env: gitEnvironment(process.env), encoding: 'utf8', timeout, maxBuffer: 16 * 1024 * 1024 });
-  return { status: result.status, stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
-}
-
-/** A query's stdout when git exits 0, else undefined. */
-function query(dir: string, args: readonly string[]): string | undefined {
-  const run = runGit(dir, args);
-  return run.status === 0 ? run.stdout : undefined;
-}
-
-/** A one-line query, trimmed; an empty answer reads as unknown too. */
-function queryLine(dir: string, args: readonly string[]): string | undefined {
-  const value = query(dir, args)?.trim();
-  return value === '' ? undefined : value;
-}
 
 /** NUL-separated fields, without the empty one after the last NUL. */
 function fields(text: string): string[] {
@@ -124,14 +88,6 @@ export function parseStatus(text: string): string[] {
     }
   }
   return paths;
-}
-
-function outcome(run: GitRun, what: string): GitOutcome {
-  if (run.status === 0) {
-    return { ok: true };
-  }
-  const said = run.stderr.trim();
-  return { ok: false, reason: said === '' ? `${what} exited ${run.status ?? 'without a code'}` : said };
 }
 
 /** The git CLI. */
