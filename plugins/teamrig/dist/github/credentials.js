@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { errorCode, errorMessage } from "../core/guards.js";
+import { powerShellRequest } from "../core/powershell.js";
 import { endOf } from "../test-run/shell.js";
 /** A credential's name: letters, digits, `.`, `_` or `-`, so it never needs quoting on any command line. */
 export const CREDENTIAL_NAME = /^[\w.-]{1,128}$/;
@@ -51,11 +52,7 @@ const WINDOWS = {
     label: 'the Windows Credential Manager',
     program: 'powershell.exe',
     saveCommand: (name) => `cmdkey /generic:${name} /user:teamrig /pass`,
-    // -EncodedCommand takes UTF-16LE base64, so the script needs no quoting through the command line.
-    request: (name) => ({
-        program: 'powershell.exe',
-        args: ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(windowsReadScript(name), 'utf16le').toString('base64')],
-    }),
+    request: (name) => powerShellRequest(windowsReadScript(name)),
     missing: (result) => result.end.kind === 'exited' && result.end.code === WINDOWS_MISSING_EXIT,
     secretOf: (stdout) => Buffer.from(stdout.trim(), 'base64').toString('utf8'),
 };

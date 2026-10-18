@@ -1,3 +1,4 @@
+import { powerShellRequest } from "../core/powershell.js";
 /** The Windows System log events that tell how the machine last went down. */
 export const SHUTDOWN_EVENTS = {
     /** A program or person started a shutdown or restart (Windows Update, the Start menu). */
@@ -59,9 +60,7 @@ export function systemShutdownLog(platform, run) {
                 return undefined;
             }
             try {
-                // -EncodedCommand takes UTF-16LE base64, so the script needs no quoting through the command line.
-                const encoded = Buffer.from(WINDOWS_SHUTDOWN_SCRIPT, 'utf16le').toString('base64');
-                const result = await run({ program: 'powershell.exe', args: ['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded] });
+                const result = await run(powerShellRequest(WINDOWS_SHUTDOWN_SCRIPT));
                 return result.end.kind === 'exited' && result.end.code === 0 ? pickShutdownStart(parseWindowsEvents(result.stdout)) : undefined;
             }
             catch {
