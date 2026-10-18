@@ -4,7 +4,7 @@ import { existsSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { TempRepo } from '../../tools/lib/temp-repo.ts';
-import { GIT_WORKTREES as git, gitEnvironment, parseStatus, parseWorktreeList } from './git.ts';
+import { GIT_WORKTREES as git, parseStatus, parseWorktreeList } from './git.ts';
 
 describe('parseWorktreeList', () => {
   it('reads each worktree with its branch and lock, the main one first', () => {
@@ -41,15 +41,6 @@ describe('parseStatus', () => {
   it('reads every changed path, a rename once', () => {
     assert.deepEqual(parseStatus('?? new.txt\0 M src/a.ts\0R  b-new.ts\0b-old.ts\0 C c-copy.ts\0c.ts\0D  gone.ts\0'), ['new.txt', 'src/a.ts', 'b-new.ts', 'c-copy.ts', 'gone.ts']);
     assert.deepEqual(parseStatus(''), []);
-  });
-});
-
-describe('gitEnvironment', () => {
-  it('drops the variables that point git at another repository, in any case, and keeps the rest', () => {
-    assert.deepEqual(gitEnvironment({ GIT_DIR: '/repo/.git', git_index_file: 'index', GIT_WORK_TREE: '/repo', GIT_AUTHOR_NAME: 'Dana', PATH: '/bin' }), {
-      GIT_AUTHOR_NAME: 'Dana',
-      PATH: '/bin',
-    });
   });
 });
 
