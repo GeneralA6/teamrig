@@ -661,6 +661,10 @@ export interface KitConfig {
   readonly tests: TestsConfig;
   readonly github: GithubConfig;
   readonly alerts: AlertsConfig;
+  /**
+   * A colored circle before each tab's title for what its session is doing (hook-tab-status.ts). It also
+   * needs Claude Code's own title off (`CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1`), else Claude Code writes over it.
+   */
   readonly tabStatus: { readonly enabled: boolean };
   readonly refresh: RefreshConfig;
   readonly hiring: HiringConfig;

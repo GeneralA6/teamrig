@@ -2449,6 +2449,24 @@ teamrig hook subagent-stop < subagent-stop.json
 
 Output: nothing for most helpers; otherwise a JSON `block` decision whose reason names each dropped edit.
 
+### teamrig hook tab-status
+
+Run by Claude Code at every event but a turn's end (`hook stop` covers that one): with `tabStatus.enabled` in the
+team config and `CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1`, sets the tab's title to a colored circle for what the
+session is doing (ready, working, waiting on you, an API error, compacting) before its topic, and gives the title
+back to the terminal at the session's end ([tab status](hooks.md#every-event-tab-status)).
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig hook tab-status < prompt.json
+```
+
+Output: a JSON object whose `terminalSequence` sets the title; nothing outside a team, with tab status off, for an
+event that changes nothing, or on an error. Exit 0 always.
+
 ### teamrig hook restore-track
 
 Run by Claude Code at each session start, prompt, turn end, API error and session end, in a team or not:
