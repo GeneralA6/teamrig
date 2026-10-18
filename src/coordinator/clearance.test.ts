@@ -1,0 +1,124 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { FakeClock } from '../testing/fake-clock.ts';
+import { MemoryFiles } from '../testing/memory-files.ts';
+import { takeWhenClear, type ClearanceRequest, type Readiness } from './clearance.ts';
+import { HostLock } from './host-lock.ts';
+
+const LOCK_PATH = '/kit/host.lock';
+const ME = 4242;
+const OTHER = 9001;
+const POLL_MS = 30_000;
+
+/** Another step's lock, held until 12:20 by a process that runs. */
+const OTHERS_LOCK = JSON.stringify({
+  token: 'other',
+  pid: OTHER,
+  session: 'po',
+  purpose: 'heavy: build',
+  acquiredAt: '2030-01-08T09:50:00.000Z',
+  expiresAt: '2030-01-08T12:20:00.000Z',
+});
+
+interface World {
+  readonly files: MemoryFiles;
+  readonly clock: FakeClock;
+  readonly lock: HostLock;
+  readonly waits: string[];
+  readonly request: ClearanceRequest;
+}
+
+function world(initial: Readonly<Record<string, string>> = {}, maxWaitMs: number = 60 * 60_000): World {
+  const files = new MemoryFiles(initial);
+  const clock = new FakeClock('2030-01-08T10:00:00Z');
+  const lock = new HostLock(LOCK_PATH, 150 * 60_000, {
+    files,
+    clock,
+    sleep: clock.sleep,
+    pid: ME,
+    alive: (pid) => pid === ME || pid === OTHER,
+    newId: () => 'mine',
+  });
+  const waits: string[] = [];
+  return { files, clock, lock, waits, request: { session: 'api', purpose: 'integrate api', maxWaitMs, pollMs: POLL_MS, onWait: (reason) => waits.push(reason) } };
+}
+
+/** Answers the readiness checks in turn, the last one from then on. */
+function answers(...replies: readonly Readiness[]): () => Promise<Readiness> {
+  let asked = 0;
+  return async () => {
+    const reply = replies[Math.min(asked, replies.length - 1)];
+    asked += 1;
+    assert.ok(reply !== undefined);
+    return reply;
+  };
+}
+
+const GO: Readiness = { kind: 'go' };
+const CLAIMED: Readiness = { kind: 'wait', reason: 'quiet claim by po on cloud-api until 2030-01-08 10:02 UTC (p95)' };
+
+describe('takeWhenClear', () => {
+  it('takes the lock at once when nothing holds the step', async () => {
+    const { files, clock, lock, waits, request } = world();
+    const clearance = await takeWhenClear(answers(GO), { lock, clock, sleep: clock.sleep }, request);
+    assert.equal(clearance.kind, 'taken');
+    assert.match(files.get(LOCK_PATH) ?? '', /"purpose":"integrate api"/);
+    assert.deepEqual(waits, []);
+  });
+
+  it('refuses at once, without the lock, on a cutoff or blackout', async () => {
+    const { files, clock, lock, request } = world();
+    const clearance = await takeWhenClear(answers({ kind: 'refuse', reason: 'nothing heavy after 22:30 UTC' }), { lock, clock, sleep: clock.sleep }, request);
+    assert.deepEqual(clearance, { kind: 'refused', reason: 'nothing heavy after 22:30 UTC' });
+    assert.equal(files.get(LOCK_PATH), undefined);
+    assert.deepEqual(clock.sleeps, []);
+  });
+
+  it('waits out a claim, logging its reason once, then takes the lock', async () => {
+    const { clock, lock, waits, request } = world();
+    const clearance = await takeWhenClear(answers(CLAIMED, CLAIMED, CLAIMED, GO), { lock, clock, sleep: clock.sleep }, request);
+    assert.equal(clearance.kind, 'taken');
+    assert.deepEqual(waits, [CLAIMED.reason]);
+    assert.deepEqual(clock.sleeps, [POLL_MS, POLL_MS, POLL_MS]);
+  });
+
+  it('gives up when a claim outlasts the wait, sleeping no further than its end', async () => {
+    const { files, clock, lock, request } = world({}, 45_000);
+    const clearance = await takeWhenClear(answers(CLAIMED), { lock, clock, sleep: clock.sleep }, request);
+    assert.deepEqual(clearance, { kind: 'gaveUp', reason: CLAIMED.reason });
+    assert.deepEqual(clock.sleeps, [POLL_MS, 15_000]);
+    assert.equal(files.get(LOCK_PATH), undefined);
+  });
+
+  it('gives up when another step holds the lock past the wait', async () => {
+    const { clock, lock, waits, request } = world({ [LOCK_PATH]: OTHERS_LOCK }, 60_000);
+    const clearance = await takeWhenClear(answers(GO), { lock, clock, sleep: clock.sleep }, request);
+    assert.equal(clearance.kind, 'gaveUp');
+    assert.match(clearance.kind === 'gaveUp' ? clearance.reason : '', /^host lock still held by po/);
+    assert.equal(waits.length, 1);
+    assert.match(waits[0] ?? '', /^the host lock: po/);
+  });
+
+  it('releases the lock and waits again when a claim started while it waited for the lock', async () => {
+    const { files, clock, lock, waits, request } = world();
+    const clearance = await takeWhenClear(answers(GO, CLAIMED, CLAIMED, GO, GO), { lock, clock, sleep: clock.sleep }, request);
+    assert.equal(clearance.kind, 'taken');
+    assert.deepEqual(waits, [CLAIMED.reason]);
+    assert.deepEqual(clock.sleeps, [POLL_MS, POLL_MS]);
+    assert.match(files.get(LOCK_PATH) ?? '', /"session":"api"/);
+  });
+
+  it('releases the lock and refuses when the cutoff passed while it waited for the lock', async () => {
+    const { files, clock, lock, request } = world();
+    const clearance = await takeWhenClear(answers(GO, { kind: 'refuse', reason: 'cutoff' }), { lock, clock, sleep: clock.sleep }, request);
+    assert.deepEqual(clearance, { kind: 'refused', reason: 'cutoff' });
+    assert.equal(files.get(LOCK_PATH), undefined);
+  });
+
+  it('releases the lock and gives up when a claim found under the lock outlasts the wait', async () => {
+    const { files, clock, lock, request } = world({}, 0);
+    const clearance = await takeWhenClear(answers(GO, CLAIMED), { lock, clock, sleep: clock.sleep }, request);
+    assert.deepEqual(clearance, { kind: 'gaveUp', reason: CLAIMED.reason });
+    assert.equal(files.get(LOCK_PATH), undefined);
+  });
+});

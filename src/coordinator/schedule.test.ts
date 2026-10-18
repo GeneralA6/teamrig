@@ -1,6 +1,29 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { heavyCutoffReason, minutesText } from './schedule.ts';
+import { heavyCutoffReason, minutesText, resetBlackoutReason } from './schedule.ts';
+
+describe('resetBlackoutReason', () => {
+  const reset = { at: Date.parse('2030-01-09T01:00:00Z'), source: 'status line' };
+
+  it('lets a deploy start before the blackout and from the reset on', () => {
+    assert.equal(resetBlackoutReason(Date.parse('2030-01-08T20:59:59Z'), reset, 4), undefined);
+    assert.equal(resetBlackoutReason(Date.parse('2030-01-09T01:00:00Z'), reset, 4), undefined);
+  });
+
+  it('refuses a deploy from the hours before the reset until it, naming the window and the reset source', () => {
+    assert.equal(
+      resetBlackoutReason(Date.parse('2030-01-08T21:00:00Z'), reset, 4),
+      'deploy blackout before the weekly token reset: no deploy from 2030-01-08 21:00 until 2030-01-09 01:00 UTC (reset from the status line)',
+    );
+    assert.notEqual(resetBlackoutReason(Date.parse('2030-01-09T00:59:59Z'), reset, 4), undefined);
+  });
+
+  it('has no blackout with no hours set or no known reset', () => {
+    const now = Date.parse('2030-01-08T23:00:00Z');
+    assert.equal(resetBlackoutReason(now, reset, undefined), undefined);
+    assert.equal(resetBlackoutReason(now, undefined, 4), undefined);
+  });
+});
 
 describe('heavyCutoffReason', () => {
   it('lets every step start when no cutoff is set', () => {
