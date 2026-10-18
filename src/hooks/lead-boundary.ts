@@ -1,6 +1,10 @@
 import { basename } from 'node:path';
 import type { ToolUse } from '../budget/line.ts';
 import { kindOf } from '../budget/patterns.ts';
+import { programsOf, type ProgramRun } from '../package-guard/programs.ts';
+import { EXEC_VALUED, NPM_VALUED } from '../package-guard/runners.ts';
+import { programName } from '../push-guard/launchers.ts';
+import type { ShellDialect, ShellWord } from '../push-guard/tokenizer.ts';
 
 /**
  * Work the lead hands off instead of doing (T320): an edit outside its own files, a test or a build, a
@@ -8,12 +12,40 @@ import { kindOf } from '../budget/patterns.ts';
  */
 export type LeadWork = 'edit' | 'check' | 'search';
 
-/** Where a shell step starts: a line's start or after `&&`, `;`, `||`, `(`, `$(` or a ` -- `, past a leading `cd`. */
-const STEP = String.raw`(?:^|&&|;|\|\||\$?\(|\s--\s)\s*(?:cd\s+\S+\s*(?:&&|;)\s*)?`;
-/** A git step that changes a repository. */
-const GIT_WRITE = new RegExp(String.raw`${STEP}git\s+(?:-C\s+\S+\s+)?(?:commit|push|merge|rebase|cherry-pick|revert|reset|apply|am)\b`, 'm');
-/** A shell search over files; a pipe into grep filters output and is not one. */
-const SHELL_SEARCH = new RegExp(String.raw`${STEP}(?:grep|rg|find|Select-String|git\s+grep)\s`, 'm');
+/**
+ * What one program a shell call starts does, read from the program and its own arguments as the shell splits
+ * them (T483, T505): words inside a quoted argument, such as a `teamrig add --description` that quotes
+ * `git commit`, run nothing. `git` is an edit by a git step that changes a repository.
+ */
+type RunWork = LeadWork | 'git';
+
+const SHELLS: ReadonlyMap<string, ShellDialect> = new Map<string, ShellDialect>([
+  ['Bash', 'bash'],
+  ['PowerShell', 'powershell'],
+]);
+/** git subcommands that change a repository. */
+const GIT_WRITES: ReadonlySet<string> = new Set(['commit', 'push', 'merge', 'rebase', 'cherry-pick', 'revert', 'reset', 'apply', 'am']);
+/** git's options before its subcommand that take the next word as their value. */
+const GIT_VALUED: ReadonlySet<string> = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace']);
+/** npm's own test command and its aliases. */
+const NPM_TESTS: ReadonlySet<string> = new Set(['test', 't', 'tst']);
+const NPM_RUN: ReadonlySet<string> = new Set(['run', 'run-script', 'rum', 'urn']);
+/** An npm script that runs tests or a build, such as `test:unit` or `build:dist`. */
+const CHECK_SCRIPT = /^(?:test|verify|check|coverage|build|typecheck|lint)(?::[\w:-]+)?$/;
+/** Programs that are a test run or a build wherever they start, `npx` included. */
+const CHECK_PROGRAMS: ReadonlySet<string> = new Set(['jest', 'vitest', 'tsc']);
+/** node's options whose value is a script it runs. */
+const NODE_EVAL: ReadonlySet<string> = new Set(['-e', '--eval', '-p', '--print']);
+/** PowerShell cmdlets that write a file. */
+const WRITE_CMDLETS: ReadonlySet<string> = new Set(['set-content', 'out-file']);
+/** An in-place option of sed or perl: `-i`, `-i.bak`, `-pi`, `--in-place`. */
+const IN_PLACE = /^-[A-Za-z]*i|^--in-place\b/;
+/** A redirection that writes stdout to a file: `>`, `>>`, `>|`, `1>`, `&>`. */
+const FILE_WRITE = /^[1&]?>[>|]?$/;
+/** A redirection target that is no file: a device such as `/dev/null`, or cmd's `NUL`. */
+const DEVICE = /^\/dev\/|^nul$/i;
+/** Programs that search files; one that reads a pipe filters output instead. */
+const SEARCHES: ReadonlySet<string> = new Set(['grep', 'rg', 'find', 'select-string']);
 /** A source file: reading one is research. */
 const CODE_FILE = /\.(?:[cm]?[jt]sx?|py|go|rs|java|kt|cs|rb|php|sh|ps1|sql)$/i;
 const SEARCH_TOOLS: ReadonlySet<string> = new Set(['Grep', 'Glob']);
@@ -33,7 +65,8 @@ function normalized(text: string, home: string): string {
 
 /** The lead's own files and folders (board, notes, agenda, memory): editing or searching them is its job. */
 export class OwnPaths {
-  private readonly home: string;
+  /** The user's home, with forward slashes. */
+  readonly home: string;
   private readonly within: readonly RegExp[];
   private readonly mentioned: readonly RegExp[];
 
@@ -61,23 +94,144 @@ export class OwnPaths {
   }
 }
 
-/** What one of the lead's calls did that it hands off; undefined for its own job. */
-export function leadWorkOf(tool: ToolUse, own: OwnPaths): LeadWork | undefined {
-  const command = tool.command ?? '';
-  const kind = kindOf(tool);
-  if (kind === 'edit' || kind === 'editTest' || GIT_WRITE.test(command)) {
-    return (tool.path === undefined ? own.named(command) : own.owns(tool.path)) ? undefined : 'edit';
+/** The first word that is not an option, skipping the value of each option in `valued`, with its index. */
+function firstOperand(args: readonly ShellWord[], valued: ReadonlySet<string>): { readonly word: ShellWord; readonly index: number } | undefined {
+  let value = false;
+  for (const [index, word] of args.entries()) {
+    if (!value && (word.dynamic || !word.text.startsWith('-'))) {
+      return { word, index };
+    }
+    value = !value && valued.has(word.text);
   }
-  if (kind === 'testFull' || kind === 'testTargeted' || kind === 'build') {
+  return undefined;
+}
+
+/** The first operand's text; undefined when there is none or it is only known when the line runs. */
+function operandText(args: readonly ShellWord[], valued: ReadonlySet<string>): string | undefined {
+  const operand = firstOperand(args, valued)?.word;
+  return operand === undefined || operand.dynamic ? undefined : operand.text;
+}
+
+/** npm: `npm test` (`t`, `tst`), or `npm run` of a test or build script. */
+function npmWork(args: readonly ShellWord[]): RunWork | undefined {
+  const found = firstOperand(args, NPM_VALUED);
+  if (found === undefined || found.word.dynamic) {
+    return undefined;
+  }
+  if (NPM_TESTS.has(found.word.text)) {
     return 'check';
   }
+  const script = NPM_RUN.has(found.word.text) ? operandText(args.slice(found.index + 1), NPM_VALUED) : undefined;
+  return script !== undefined && CHECK_SCRIPT.test(script) ? 'check' : undefined;
+}
+
+/** node: `--test` among its options runs tests; an inline script (`-e`, `-p`) that calls `writeFileSync` edits. */
+function nodeWork(args: readonly ShellWord[]): RunWork | undefined {
+  let work: RunWork | undefined;
+  let script = false;
+  for (const { text } of args) {
+    if (script) {
+      if (text.includes('writeFileSync')) {
+        return 'edit';
+      }
+      script = false;
+      continue;
+    }
+    if (!text.startsWith('-')) {
+      break;
+    }
+    const equals = text.indexOf('=');
+    const option = equals === -1 ? text : text.slice(0, equals);
+    if (NODE_EVAL.has(option) && equals !== -1 && text.includes('writeFileSync', equals)) {
+      return 'edit';
+    }
+    script = NODE_EVAL.has(option) && equals === -1;
+    work = option === '--test' ? 'check' : work;
+  }
+  return work;
+}
+
+/** The run's stdout goes to a file (one only known when the line runs counts), not to a device. */
+function writesFile(run: ProgramRun): boolean {
+  return run.redirections.some(
+    (redirection) => FILE_WRITE.test(redirection.operator) && redirection.target !== undefined && (redirection.target.dynamic || !DEVICE.test(redirection.target.text)),
+  );
+}
+
+/** What one program a shell call starts does that the lead hands off; undefined for anything else. */
+function runWorkOf(run: ProgramRun): RunWork | undefined {
+  switch (run.name) {
+    case 'git': {
+      const subcommand = operandText(run.args, GIT_VALUED);
+      if (subcommand !== undefined && GIT_WRITES.has(subcommand)) {
+        return 'git';
+      }
+      return subcommand === 'grep' && !run.piped ? 'search' : undefined;
+    }
+    case 'cat':
+      return writesFile(run) ? 'edit' : undefined;
+    case 'sed':
+    case 'perl':
+      return run.args.some((arg) => !arg.dynamic && IN_PLACE.test(arg.text)) ? 'edit' : undefined;
+    case 'patch':
+      return 'edit';
+    case 'npm':
+      return npmWork(run.args);
+    case 'npx': {
+      const bin = operandText(run.args, EXEC_VALUED);
+      return bin !== undefined && CHECK_PROGRAMS.has(programName(bin)) ? 'check' : undefined;
+    }
+    case 'node':
+      return nodeWork(run.args);
+    default:
+      if (WRITE_CMDLETS.has(run.name)) {
+        return 'edit';
+      }
+      if (CHECK_PROGRAMS.has(run.name)) {
+        return 'check';
+      }
+      return SEARCHES.has(run.name) && run.args.length > 0 && !run.piped ? 'search' : undefined;
+  }
+}
+
+/** A call's hand-off work, with the name the turn-end line gives an edit: its file, else `git` or `shell`. */
+interface CallWork {
+  readonly work: LeadWork;
+  readonly name: string;
+}
+
+/** A shell call by the programs it starts: an edit before a test or build before a search; a line naming the lead's own files is its job. */
+function shellWorkOf(command: string, dialect: ShellDialect, own: OwnPaths): CallWork | undefined {
+  const works = new Set(programsOf(command, { cwd: undefined, home: own.home, dialect }).map(runWorkOf));
+  if (works.has('git') || works.has('edit')) {
+    return own.named(command) ? undefined : { work: 'edit', name: works.has('git') ? 'git' : 'shell' };
+  }
+  if (works.has('check')) {
+    return { work: 'check', name: 'shell' };
+  }
+  return works.has('search') && !own.named(command) ? { work: 'search', name: 'shell' } : undefined;
+}
+
+function callWorkOf(tool: ToolUse, own: OwnPaths): CallWork | undefined {
+  const dialect = SHELLS.get(tool.name);
+  if (dialect !== undefined) {
+    return shellWorkOf(tool.command ?? '', dialect, own);
+  }
+  const path = tool.path;
+  const mine = path !== undefined && own.owns(path);
+  const name = path === undefined ? 'shell' : basename(path.replace(/\\/g, '/'));
+  if (kindOf(tool) === 'edit') {
+    return mine ? undefined : { work: 'edit', name };
+  }
   if (tool.name === 'Read') {
-    return tool.path !== undefined && CODE_FILE.test(tool.path) && !own.owns(tool.path) ? 'search' : undefined;
+    return path !== undefined && CODE_FILE.test(path) && !mine ? { work: 'search', name } : undefined;
   }
-  if (SEARCH_TOOLS.has(tool.name)) {
-    return tool.path !== undefined && own.owns(tool.path) ? undefined : 'search';
-  }
-  return SHELL_SEARCH.test(command) && !own.named(command) ? 'search' : undefined;
+  return SEARCH_TOOLS.has(tool.name) && !mine ? { work: 'search', name } : undefined;
+}
+
+/** What one of the lead's calls did that it hands off; undefined for its own job. */
+export function leadWorkOf(tool: ToolUse, own: OwnPaths): LeadWork | undefined {
+  return callWorkOf(tool, own)?.work;
 }
 
 /** The lead's hand-off work in one turn. */
@@ -89,13 +243,6 @@ export interface LeadTally {
   readonly searches: number;
 }
 
-function editName(tool: ToolUse): string {
-  if (tool.path !== undefined) {
-    return basename(tool.path.replace(/\\/g, '/'));
-  }
-  return GIT_WRITE.test(tool.command ?? '') ? 'git' : 'shell';
-}
-
 /** The hand-off work among a turn's calls. */
 export function leadTallyOf(turn: readonly ToolUse[], own: OwnPaths): LeadTally {
   let edits = 0;
@@ -103,12 +250,12 @@ export function leadTallyOf(turn: readonly ToolUse[], own: OwnPaths): LeadTally 
   let searches = 0;
   const edited: string[] = [];
   for (const tool of turn) {
-    switch (leadWorkOf(tool, own)) {
+    const call = callWorkOf(tool, own);
+    switch (call?.work) {
       case 'edit': {
         edits += 1;
-        const name = editName(tool);
-        if (!edited.includes(name)) {
-          edited.push(name);
+        if (!edited.includes(call.name)) {
+          edited.push(call.name);
         }
         break;
       }
@@ -131,9 +278,10 @@ export function leadTallyOf(turn: readonly ToolUse[], own: OwnPaths): LeadTally 
  */
 export function leadNudgeLine(turn: readonly ToolUse[], current: ToolUse, own: OwnPaths, searchNudgeAt: number): string | undefined {
   const tally = leadTallyOf(turn, own);
-  switch (leadWorkOf(current, own)) {
+  const call = callWorkOf(current, own);
+  switch (call?.work) {
     case 'edit':
-      return tally.edits === 1 ? `teamrig: the lead edited ${editName(current)} itself. ${HAND_OFF}` : undefined;
+      return tally.edits === 1 ? `teamrig: the lead edited ${call.name} itself. ${HAND_OFF}` : undefined;
     case 'check':
       return tally.checks === 1 ? `teamrig: the lead ran a test or a build itself. ${HAND_OFF}` : undefined;
     case 'search':
