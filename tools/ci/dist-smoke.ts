@@ -67,7 +67,8 @@ const SESSION_ID = '0123abcd-0000-4000-8000-00000000000a';
  * One payload per hook the plugin runs, by its command (one event can run several), run inside team
  * `smoke`, which has no config: session start and a helper's start say so, the push guard still refuses a force-push of
  * main, the package guard refuses an npx of a tool not installed, the cold-send hook lets a message go, the failed-send hook stays quiet, the loop nudge and the reminder stay quiet, the Stop and
- * SubagentStop hooks print nothing (any output there would block the turn), and the refresh wake wakes nothing.
+ * SubagentStop hooks print nothing (any output there would block the turn), the refresh wake wakes nothing, and the
+ * restore tracker prints nothing.
  */
 const SAMPLES: Readonly<Record<string, Sample>> = {
   'hook session-start': {
@@ -123,6 +124,10 @@ const SAMPLES: Readonly<Record<string, Sample>> = {
   },
   'hook refresh-wake': {
     payload: { hook_event_name: 'SessionStart', session_id: SESSION_ID, source: 'clear' },
+    check: (stdout) => (stdout === '' ? undefined : `expected no output, got ${JSON.stringify(stdout)}`),
+  },
+  'hook restore-track': {
+    payload: { hook_event_name: 'Stop', session_id: SESSION_ID, cwd: 'smoke-project', stop_hook_active: false },
     check: (stdout) => (stdout === '' ? undefined : `expected no output, got ${JSON.stringify(stdout)}`),
   },
 };

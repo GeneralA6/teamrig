@@ -30,6 +30,10 @@ export const ENV = {
   effortLevel: 'CLAUDE_CODE_EFFORT_LEVEL',
   /** At 1, Claude Code picks a helper's model over every per-call Agent `model`; `doctor` warns when set. */
   subagentModelForce: 'CLAUDE_CODE_SUBAGENT_MODEL_FORCE',
+  /** How Claude Code was started: `cli` for a terminal tab, the only kind the restore after a reboot reopens. */
+  claudeEntrypoint: 'CLAUDE_CODE_ENTRYPOINT',
+  /** `bg` for a background session, which the restore after a reboot never reopens. */
+  claudeSessionKind: 'CLAUDE_CODE_SESSION_KIND',
 } as const;
 
 export type Env = Readonly<Record<string, string | undefined>>;
