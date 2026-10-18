@@ -34,6 +34,8 @@ export interface PushCommand extends Readonly<PushFlags> {
 export interface RepoState extends GitConfigReader {
   /** The checked-out branch in `dir`, or undefined when git cannot tell. */
   branch(dir: string): string | undefined;
+  /** The short id of the commit checked out in `dir`, or undefined when git cannot tell (no repository, no commit yet). */
+  head(dir: string): string | undefined;
   /** The remote branch a bare `git push` of `branch` (by default the checked-out one) in `dir` updates, such as `origin/main`, if any. */
   pushTarget(dir: string, branch?: string): string | undefined;
 }

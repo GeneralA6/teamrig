@@ -17,7 +17,7 @@ export type OutsideWorld = Pick<CliRuntime, 'git' | 'commitLog' | 'readStdin' | 
  */
 export function quietWorld(branch: string = 'dev', stdin: string = ''): OutsideWorld {
   return {
-    git: { branch: () => branch, pushTarget: () => undefined, config: () => ({ kind: 'unset' }) },
+    git: { branch: () => branch, head: () => undefined, pushTarget: () => undefined, config: () => ({ kind: 'unset' }) },
     commitLog: { between: () => [] },
     readStdin: async () => stdin,
     platform: 'linux',
