@@ -1,5 +1,6 @@
 import { claimText, coveringClaims, readClaims } from "../coordinator/claims.js";
 import { takeWhenClear } from "../coordinator/clearance.js";
+import { underLock } from "../coordinator/host-lock.js";
 import { appendDeploy } from "../coordinator/ledger.js";
 import { NOT_STARTED_EXIT, recordHeavy } from "../coordinator/recorded-step.js";
 import { heavyCutoffReason, resetBlackoutReason } from "../coordinator/schedule.js";
@@ -128,14 +129,17 @@ function readinessOf(setup, ports, request, repo, view) {
         return answer.readiness;
     };
 }
-/** Under the host lock: pulls fast-forward to the checked sha, then runs the afterPull hooks and the roll command, each line shown redacted. */
-async function pullAndRoll(setup, ports, request, repo, pending, tag) {
+/**
+ * Under the host lock `lock`: pulls fast-forward to the checked sha, then runs the afterPull hooks and the roll command,
+ * each line shown redacted. They get the lock's token, so a `teamrig heavy` they start runs under this lock.
+ */
+async function pullAndRoll(setup, ports, request, repo, pending, tag, lock) {
     const pulled = ports.git.fastForward(repo.main, pending.target);
     if (!pulled.ok) {
         return { kind: 'notPulled', reason: pulled.reason };
     }
     ports.say(`pulled ${repo.main} to ${short(pending.target)}`);
-    const env = hookEnv(setup, ports, request, repo, pending, { TEAMRIG_ROLL_TO: pending.target, ...(tag === undefined ? {} : { TEAMRIG_ROLL_TAG: tag }) });
+    const env = underLock(hookEnv(setup, ports, request, repo, pending, { TEAMRIG_ROLL_TO: pending.target, ...(tag === undefined ? {} : { TEAMRIG_ROLL_TAG: tag }) }), lock);
     const timeoutMs = setup.coordinator.heavy.maxRunMinutes * MINUTE_MS;
     const show = (line) => {
         const shown = shownLine(ports.scanner, line);
@@ -242,7 +246,7 @@ export async function rollRepo(setup, ports, request) {
         const { tag } = view;
         const startedAt = new Date(ports.clock.now()).toISOString();
         ports.say(`clear; pulling ${plural(pending.commits.length, 'commit')} (${pending.range}) into ${repo.main}`);
-        const run = await recordHeavy(ports, setup.places.ledger, { session: request.session, what: `roll ${repo.name} ${pending.range}` }, () => pullAndRoll(setup, ports, request, repo, pending, tag), runExitCode);
+        const run = await recordHeavy(ports, setup.places.ledger, { session: request.session, what: `roll ${repo.name} ${pending.range}` }, () => pullAndRoll(setup, ports, request, repo, pending, tag, clearance.lock), runExitCode);
         return await settle(setup, ports, request, repo, pending, tag, startedAt, run);
     }
     finally {

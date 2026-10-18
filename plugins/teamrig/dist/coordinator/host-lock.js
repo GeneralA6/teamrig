@@ -1,4 +1,5 @@
 import { isRecord } from "../core/guards.js";
+import { ENV } from "../core/home.js";
 import { formatUtcMinute } from "../core/time.js";
 /** Tries per taking: a stale lock removed may be retaken by another step first. */
 const ATTEMPTS = 3;
@@ -21,6 +22,13 @@ function parseLock(text) {
     catch {
         return undefined;
     }
+}
+/**
+ * `env` for a process a step starts while it holds `lock`: a `teamrig heavy` that process starts (a git hook's checks
+ * under a commit or a push) runs at once under the same lock, since waiting for it would wait on its own parent.
+ */
+export function underLock(env, lock) {
+    return { ...env, [ENV.hostLock]: lock.token };
 }
 /** The holder as a session reads it: `<session> (<purpose>) since <UTC minute>`. */
 export function holderText(holder) {
@@ -104,6 +112,11 @@ export class HostLock {
     /** Releases a lock this step took; false when it is no longer the holder (it expired and another step took it). */
     async release(lock) {
         return this.removeIf((text) => parseLock(text)?.token === lock.token);
+    }
+    /** The lock while the taking with `token` holds it and it is not stale; undefined otherwise. Takes and removes nothing. */
+    async heldWith(token) {
+        const seen = await this.read();
+        return seen.kind === 'held' && seen.info.token === token && !this.isStale(seen.info) ? seen.info : undefined;
     }
     /** The lock's state, taking and removing nothing, for a reader that only shows it. */
     async state() {

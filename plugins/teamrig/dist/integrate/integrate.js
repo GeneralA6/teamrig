@@ -1,6 +1,7 @@
 import { basename } from 'node:path';
 import { claimText, coveringClaims, readClaims } from "../coordinator/claims.js";
 import { takeWhenClear } from "../coordinator/clearance.js";
+import { underLock } from "../coordinator/host-lock.js";
 import { appendDeploy, rangeText } from "../coordinator/ledger.js";
 import { runRecorded } from "../coordinator/recorded-step.js";
 import { heavyCutoffReason, resetBlackoutReason } from "../coordinator/schedule.js";
@@ -114,8 +115,11 @@ function readinessOf(setup, ports, repo) {
         return covering.length === 0 ? { kind: 'go' } : { kind: 'wait', reason: covering.map(claimText).join('; ') };
     };
 }
-/** Under the host lock: rebases onto the fresh default branch and pushes, again when origin moved meanwhile. */
-async function land(setup, ports, request, plan) {
+/**
+ * Under the host lock `lock`: rebases onto the fresh default branch and pushes, again when origin moved meanwhile. The
+ * push gets the lock's token, so a pre-push hook that wraps its checks in `teamrig heavy` runs them under this lock.
+ */
+async function land(setup, ports, request, plan, lock) {
     const { git } = ports;
     const { top, branch, defaultBranch, repo } = plan;
     const onto = `origin/${defaultBranch}`;
@@ -144,7 +148,7 @@ async function land(setup, ports, request, plan) {
             request: {
                 command: commandLine(['git', 'push', 'origin', `HEAD:refs/heads/${defaultBranch}`], ports.platform),
                 cwd: top,
-                env: gitEnvironment(ports.env),
+                env: underLock(gitEnvironment(ports.env), lock),
                 timeoutMs: setup.coordinator.heavy.maxRunMinutes * MINUTE_MS,
             },
         });
@@ -269,7 +273,7 @@ export async function integrateBranch(setup, ports, request) {
     }
     let landing;
     try {
-        landing = await land(setup, ports, request, plan);
+        landing = await land(setup, ports, request, plan, clearance.lock);
         if (landing.kind === 'landed' && repo.config.deploysOnPush.length > 0) {
             await appendDeploy(ports.files, setup.places, {
                 type: 'deploy',
