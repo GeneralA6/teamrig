@@ -2,7 +2,7 @@ import { basename } from 'node:path';
 import type { CoordinatorConfig, CoordinatorRepoConfig } from '../config/types.ts';
 import { claimText, coveringClaims, readClaims } from '../coordinator/claims.ts';
 import { takeWhenClear, type Readiness } from '../coordinator/clearance.ts';
-import type { HostLock } from '../coordinator/host-lock.ts';
+import { underLock, type HostLock, type HostLockInfo } from '../coordinator/host-lock.ts';
 import { appendDeploy, rangeText } from '../coordinator/ledger.ts';
 import type { CoordinatorPlaces } from '../coordinator/places.ts';
 import { runRecorded } from '../coordinator/recorded-step.ts';
@@ -190,8 +190,11 @@ function readinessOf(setup: IntegrateSetup, ports: IntegratePorts, repo: RepoMat
   };
 }
 
-/** Under the host lock: rebases onto the fresh default branch and pushes, again when origin moved meanwhile. */
-async function land(setup: IntegrateSetup, ports: IntegratePorts, request: IntegrateRequest, plan: Plan): Promise<Landing> {
+/**
+ * Under the host lock `lock`: rebases onto the fresh default branch and pushes, again when origin moved meanwhile. The
+ * push gets the lock's token, so a pre-push hook that wraps its checks in `teamrig heavy` runs them under this lock.
+ */
+async function land(setup: IntegrateSetup, ports: IntegratePorts, request: IntegrateRequest, plan: Plan, lock: HostLockInfo): Promise<Landing> {
   const { git } = ports;
   const { top, branch, defaultBranch, repo } = plan;
   const onto = `origin/${defaultBranch}`;
@@ -220,7 +223,7 @@ async function land(setup: IntegrateSetup, ports: IntegratePorts, request: Integ
       request: {
         command: commandLine(['git', 'push', 'origin', `HEAD:refs/heads/${defaultBranch}`], ports.platform),
         cwd: top,
-        env: gitEnvironment(ports.env),
+        env: underLock(gitEnvironment(ports.env), lock),
         timeoutMs: setup.coordinator.heavy.maxRunMinutes * MINUTE_MS,
       },
     });
@@ -346,7 +349,7 @@ export async function integrateBranch(setup: IntegrateSetup, ports: IntegratePor
   }
   let landing: Landing;
   try {
-    landing = await land(setup, ports, request, plan);
+    landing = await land(setup, ports, request, plan, clearance.lock);
     if (landing.kind === 'landed' && repo.config.deploysOnPush.length > 0) {
       await appendDeploy(ports.files, setup.places, {
         type: 'deploy',

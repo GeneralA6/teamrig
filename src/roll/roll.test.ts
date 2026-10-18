@@ -124,7 +124,7 @@ describe('rollRepo', () => {
     const [before, locked, afterPull, command] = world.hooks.ran;
     assert.deepEqual(teamrigEnv(before?.env ?? {}), { ...base, TEAMRIG_GATE_NAME: 'flow', TEAMRIG_GATE_PHASE: 'before' });
     assert.deepEqual(teamrigEnv(locked?.env ?? {}), { ...base, TEAMRIG_GATE_NAME: 'flow', TEAMRIG_GATE_PHASE: 'locked' });
-    const rolling = { ...base, TEAMRIG_ROLL_TO: 'c2', TEAMRIG_ROLL_TAG: 'sha-0f8e' };
+    const rolling = { ...base, TEAMRIG_ROLL_TO: 'c2', TEAMRIG_ROLL_TAG: 'sha-0f8e', TEAMRIG_HOST_LOCK: 'lock-1' };
     assert.deepEqual(teamrigEnv(afterPull?.env ?? {}), rolling);
     assert.deepEqual(teamrigEnv(command?.env ?? {}), rolling);
     assert.deepEqual([command?.cwd, command?.timeoutMs, command?.env['PATH']], [MAIN_CHECKOUT, HEAVY_MS, '/bin']);
