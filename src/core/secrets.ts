@@ -1,7 +1,7 @@
 import { SECRET_TEXT_PATTERNS, SECRET_TOKEN_PATTERNS, type SecretPattern } from './secret-patterns.ts';
 
 /**
- * Refuses text that looks like it carries a secret, before it lands in a shared file. Every write path that
+ * Refuses text that looks like it carries a secret, before it lands in a shared file, or redacts it. Every write path that
  * checks for secrets (inbox lines; task titles, descriptions, refs, notes and evidence) goes through this one class, which
  * always applies the shapes in `secret-patterns.ts`, whatever a team adds.
  */
@@ -27,5 +27,14 @@ export class SecretScanner {
   refusal(subject: string, text: string): string | undefined {
     const found = this.find(text);
     return found === undefined ? undefined : `${subject} looks like it holds a secret (${found.description}); refer to where it is kept instead`;
+  }
+
+  /**
+   * `text` with each match of a secret shape, up to the end of its word, replaced by `[redacted <shape>]`: for a
+   * line a team's own command printed, written where others read it. A shape matches only a secret's start (a
+   * `password=` and one character), so the rest of the word goes too.
+   */
+  redact(text: string): string {
+    return this.patterns.reduce((line, { pattern, description }) => line.replace(new RegExp(`(?:${pattern.source})\\S*`, `${pattern.flags}g`), `[redacted ${description}]`), text);
   }
 }
