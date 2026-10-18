@@ -4,6 +4,7 @@ import type { OverAction } from '../config/types.ts';
 import type { Burst } from './burst.ts';
 import type { SurplusHint } from './burst-lines.ts';
 import type { Lift } from './lift.ts';
+import { DailyProfile } from './active-time.ts';
 import { readPace, weekWindow, type PaceBudget } from './pace.ts';
 import { emptyWarnState, helperGate, isPastDailyBudget, levelOf, promptWarning, quietStartOf, sessionQuietFrom, stopWarning, type BudgetFacts, type WarnBudget, type WarnState } from './warn.ts';
 
@@ -30,7 +31,7 @@ function facts(usedTodayPct: number, weekUsedPct: number, now = DAY, extra: Part
     burst: undefined,
     surplus: undefined,
     weekUsedPct,
-    pace: readPace(WINDOW, PACE, now, weekUsedPct),
+    pace: readPace(WINDOW, PACE, now, weekUsedPct, DailyProfile.even()),
     isLead: false,
     ...extra,
   };

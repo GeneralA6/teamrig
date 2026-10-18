@@ -1,5 +1,6 @@
 import type { BudgetConfig } from '../config/types.ts';
 import { formatUtcDay } from '../core/time.ts';
+import { DailyProfile } from './active-time.ts';
 import { dailyAllowancePct, readPace, resolveReset, weekWindow, type PaceReading, type WeekWindow } from './pace.ts';
 import type { WeekUse } from './snapshot.ts';
 import type { UsageState } from './store.ts';
@@ -65,11 +66,12 @@ export function readWeek(input: WeekInput): WeekReading {
   const estimate = statusUse !== undefined && covered && weekW > 0 && statusUse.usedPct > 0 ? weekW / statusUse.usedPct : undefined;
   const wPerPct = budget.weeklyLimitW === undefined ? estimate : budget.weeklyLimitW / 100;
   const usedPct = statusUse?.usedPct ?? (covered && wPerPct !== undefined ? weekW / wPerPct : undefined);
-  const pace = window === undefined || usedPct === undefined ? undefined : readPace(window, budget, now, usedPct);
+  const profile = DailyProfile.ofQuietHours(budget.quietHours);
+  const pace = window === undefined || usedPct === undefined ? undefined : readPace(window, budget, now, usedPct, profile);
   const allowancePct =
     window === undefined || usedPct === undefined || wPerPct === undefined
       ? undefined
-      : dailyAllowancePct({ window, budget, now, usedPct, todayPct: todayW / wPerPct });
+      : dailyAllowancePct({ window, budget, now, usedPct, todayPct: todayW / wPerPct, profile });
   return {
     reset,
     window,

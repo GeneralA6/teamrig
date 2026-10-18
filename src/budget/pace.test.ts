@@ -13,7 +13,10 @@ import {
   weekWindow,
   type PaceBudget,
 } from './pace.ts';
+import { DailyProfile } from './active-time.ts';
 
+const EVEN = DailyProfile.even();
+const NIGHTS = DailyProfile.ofQuietHours({ startUtc: '22:00', endUtc: '06:00', action: 'ask' });
 const WED_0100: BudgetReset = { weekday: 'wed', timeUtc: '01:00' };
 /** Wednesday 2026-10-21 01:00 UTC, the reset after Thursday 2026-10-15. */
 const RESET = Date.parse('2026-10-21T01:00:00Z');
@@ -78,55 +81,91 @@ describe('weekWindow and paceLinePct', () => {
 
   it('rises evenly from 0 at the start to the target at the pace end, flat on either side', () => {
     const half = window.start + (window.paceEnd - window.start) / 2;
-    assert.equal(paceLinePct(window, 99.5, window.start - MS_PER_HOUR), 0);
-    assert.equal(paceLinePct(window, 99.5, window.start), 0);
-    assert.equal(round(paceLinePct(window, 99.5, half)), 49.75);
-    assert.equal(paceLinePct(window, 99.5, window.paceEnd), 99.5);
-    assert.equal(paceLinePct(window, 99.5, window.reset), 99.5);
+    assert.equal(paceLinePct(window, 99.5, window.start - MS_PER_HOUR, EVEN), 0);
+    assert.equal(paceLinePct(window, 99.5, window.start, EVEN), 0);
+    assert.equal(round(paceLinePct(window, 99.5, half, EVEN)), 49.75);
+    assert.equal(paceLinePct(window, 99.5, window.paceEnd, EVEN), 99.5);
+    assert.equal(paceLinePct(window, 99.5, window.reset, EVEN), 99.5);
   });
 
   it('gives the target at once when the pace line has no length', () => {
-    assert.equal(paceLinePct({ start: RESET, paceEnd: RESET, reset: RESET }, 90, RESET - MS_PER_DAY), 90);
+    assert.equal(paceLinePct({ start: RESET, paceEnd: RESET, reset: RESET }, 90, RESET - MS_PER_DAY, EVEN), 90);
+  });
+
+  it('rises only in active time, so it is flat through the quiet hours', () => {
+    // Wed 01:00 to Wed 00:00, quiet 22:00-06:00: 16 active hours on each of the seven days, 112 in all.
+    const night = paceLinePct(window, 99.5, at('2026-10-18T22:00:00Z'), NIGHTS);
+    assert.equal(paceLinePct(window, 99.5, at('2026-10-19T05:00:00Z'), NIGHTS), night);
+    assert.equal(round(night), round((99.5 * (16 * 5)) / 112));
+  });
+
+  it('is not falsely ahead in the evening: five active days of use meet the active line at 22:00, not the even one', () => {
+    // Wed 01:00 to Sun 22:00 is 80 of the 112 active hours but 117 of the 167 clock hours.
+    const evening = at('2026-10-18T22:00:00Z');
+    assert.equal(round(paceLinePct(window, 99.5, evening, NIGHTS)), round((99.5 * 80) / 112));
+    assert.equal(round(paceLinePct(window, 99.5, evening, EVEN)), round((99.5 * 117) / 167));
+  });
+
+  it('rises with clock time when the pace span has no active time', () => {
+    const asleep = { activeMs: (): number => 0 };
+    const half = window.start + (window.paceEnd - window.start) / 2;
+    assert.equal(round(paceLinePct(window, 99.5, half, asleep)), 49.75);
   });
 });
 
 describe('dailyAllowancePct', () => {
   const window = weekWindow(RESET, 1);
   const thursday = at('2026-10-15T08:10:00Z');
+  /** Thursday 08:10 to Wednesday 00:00. */
+  const hoursLeft = 5 * 24 + 15 + 50 / 60;
 
-  it('spreads what is left to the target at 00:00 over the days to the pace end', () => {
-    // 42.5% used now, 3.0% of it today: 39.5% at 00:00, six days to Wednesday 00:00.
-    assert.equal(round(dailyAllowancePct({ window, budget: BUDGET, now: thursday, usedPct: 42.5, todayPct: 3 })), 10);
+  function allowance(now: number, usedPct: number, todayPct: number, profile = EVEN): number {
+    return dailyAllowancePct({ window, budget: BUDGET, now, usedPct, todayPct, profile });
+  }
+
+  it('spreads what is left to the target now over the time to the pace end, a day of it', () => {
+    assert.equal(round(allowance(thursday, 42.5, 3)), round((57 * 24) / hoursLeft));
   });
 
-  it('stays the same through the day as the team uses it', () => {
-    const morning = dailyAllowancePct({ window, budget: BUDGET, now: at('2026-10-15T00:05:00Z'), usedPct: 39.6, todayPct: 0.1 });
-    const evening = dailyAllowancePct({ window, budget: BUDGET, now: at('2026-10-15T22:00:00Z'), usedPct: 48, todayPct: 8.5 });
-    assert.equal(round(morning), round(evening));
+  it('holds all day on pace, in active time', () => {
+    const line = (iso: string): number => paceLinePct(window, 99.5, at(iso), NIGHTS);
+    const morning = allowance(at('2026-10-15T06:30:00Z'), line('2026-10-15T06:30:00Z'), 0.2, NIGHTS);
+    const evening = allowance(at('2026-10-15T21:30:00Z'), line('2026-10-15T21:30:00Z'), 13.5, NIGHTS);
+    assert.equal(round(morning), round((99.5 * 16) / 112));
+    assert.equal(round(evening), round(morning));
   });
 
-  it('gives all that is left on the last day and past the pace end', () => {
-    assert.equal(round(dailyAllowancePct({ window, budget: BUDGET, now: at('2026-10-20T12:00:00Z'), usedPct: 92, todayPct: 2 })), 9.5);
-    assert.equal(round(dailyAllowancePct({ window, budget: BUDGET, now: at('2026-10-21T00:30:00Z'), usedPct: 99, todayPct: 0.2 })), 0.7);
+  it('rises while the team uses less than the pace and falls while it uses more', () => {
+    const on = allowance(thursday, 42.5, 3);
+    assert.ok(allowance(thursday, 40, 0.5) > on);
+    assert.ok(allowance(thursday, 50, 10.5) < on);
+    assert.equal(allowance(thursday, 101, 1), 0);
   });
 
-  it('counts the reset day from the reset, with nothing used yet', () => {
+  it('does not shrink through an idle evening', () => {
+    const noon = allowance(at('2026-10-15T12:00:00Z'), 42.5, 3, NIGHTS);
+    const evening = allowance(at('2026-10-15T21:00:00Z'), 42.5, 3, NIGHTS);
+    assert.ok(evening > noon, `${evening} > ${noon}`);
+  });
+
+  it('is never above today\'s use plus what is left, which is all it is past the pace end', () => {
+    // Tuesday 20:00, two active hours left: a day at that rate would be 8 times what is left.
+    assert.equal(round(allowance(at('2026-10-20T20:00:00Z'), 94.5, 10, NIGHTS)), 15);
+    assert.equal(round(allowance(at('2026-10-21T00:30:00Z'), 99, 0.2)), 0.7);
+  });
+
+  it('counts the reset day from the reset', () => {
     const next = weekWindow(at('2026-10-28T01:00:00Z'), 1);
-    const allowance = dailyAllowancePct({ window: next, budget: BUDGET, now: at('2026-10-21T05:00:00Z'), usedPct: 2, todayPct: 3.5 });
-    assert.equal(round(allowance), round(99.5 / (7 - 1 / 24)));
-  });
-
-  it('catches up: a week ahead of the line gets less each day, never below 0', () => {
-    const ahead = dailyAllowancePct({ window, budget: BUDGET, now: thursday, usedPct: 70, todayPct: 4 });
-    assert.equal(round(ahead), round((99.5 - 66) / 6));
-    assert.equal(dailyAllowancePct({ window, budget: BUDGET, now: thursday, usedPct: 101, todayPct: 1 }), 0);
+    const resetDay = dailyAllowancePct({ window: next, budget: BUDGET, now: at('2026-10-21T05:00:00Z'), usedPct: 2, todayPct: 3.5, profile: EVEN });
+    assert.equal(round(resetDay), round((97.5 * 23) / (6 * 24 + 19)));
   });
 
   it('takes the fixed daily % and caps either at maxDailyPct', () => {
+    const input = { window, now: thursday, usedPct: 42.5, todayPct: 3, profile: EVEN };
     const fixed = { ...BUDGET, dailyPct: 14 };
-    assert.equal(dailyAllowancePct({ window, budget: fixed, now: thursday, usedPct: 42.5, todayPct: 3 }), 14);
-    assert.equal(dailyAllowancePct({ window, budget: { ...fixed, maxDailyPct: 12 }, now: thursday, usedPct: 42.5, todayPct: 3 }), 12);
-    assert.equal(dailyAllowancePct({ window, budget: { ...BUDGET, maxDailyPct: 8 }, now: thursday, usedPct: 42.5, todayPct: 3 }), 8);
+    assert.equal(dailyAllowancePct({ ...input, budget: fixed }), 14);
+    assert.equal(dailyAllowancePct({ ...input, budget: { ...fixed, maxDailyPct: 12 } }), 12);
+    assert.equal(dailyAllowancePct({ ...input, budget: { ...BUDGET, maxDailyPct: 8 } }), 8);
   });
 });
 
@@ -159,10 +198,17 @@ describe('readPace', () => {
   const half = window.start + (window.paceEnd - window.start) / 2;
 
   it('reads ahead, behind and on pace within the tolerance', () => {
-    assert.equal(readPace(window, BUDGET, half, 55).state, 'ahead');
-    assert.equal(round(readPace(window, BUDGET, half, 55).gapPts), 5.25);
-    assert.equal(readPace(window, BUDGET, half, 45).state, 'behind');
-    assert.equal(readPace(window, BUDGET, half, 50).state, 'on pace');
-    assert.equal(readPace(window, { ...BUDGET, paceTolerancePct: 0 }, half, 50).state, 'ahead');
+    assert.equal(readPace(window, BUDGET, half, 55, EVEN).state, 'ahead');
+    assert.equal(round(readPace(window, BUDGET, half, 55, EVEN).gapPts), 5.25);
+    assert.equal(readPace(window, BUDGET, half, 45, EVEN).state, 'behind');
+    assert.equal(readPace(window, BUDGET, half, 50, EVEN).state, 'on pace');
+    assert.equal(readPace(window, { ...BUDGET, paceTolerancePct: 0 }, half, 50, EVEN).state, 'ahead');
+  });
+
+  it('reads the line of the profile it is given', () => {
+    const evening = at('2026-10-18T22:00:00Z');
+    const used = (99.5 * (16 * 5)) / 112;
+    assert.equal(readPace(window, BUDGET, evening, used, NIGHTS).state, 'on pace');
+    assert.equal(readPace(window, BUDGET, evening, used, EVEN).state, 'ahead');
   });
 });
