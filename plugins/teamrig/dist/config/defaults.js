@@ -31,6 +31,7 @@ export const DEFAULT_REGISTER = {
     requireFollowupsOn: ['verifying', 'done'],
     autoArchive: true,
     requireProofOnVerifying: true,
+    requireDecisionCard: true,
     verifyGate: 'refuse',
     maxVerifying: 5,
     check: { staleAfterHours: 72, notPickedUpAfterHours: 24, prioritySkipAfterHours: 24, weekLengthDays: 7, stopgapFiles: ['CLAUDE.md', '.claude/rules'] },

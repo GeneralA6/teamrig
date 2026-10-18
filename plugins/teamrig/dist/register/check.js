@@ -1,5 +1,6 @@
 import { formatUtcMinute, MS_PER_DAY, MS_PER_HOUR, parseUtcDay, shortUtc } from "../core/time.js";
 import { topPriority } from "../config/priorities.js";
+import { CARD_FLAGS } from "./card.js";
 import { ACTIVE_STATUSES, priorityText } from "./model.js";
 import { loopFix, pathText, TaskTree } from "./tree.js";
 import { formatTask } from "./views.js";
@@ -13,6 +14,7 @@ export const FLAG_KINDS = [
     'READY',
     'NO-REASON',
     'PEER-WAIT',
+    'NO-CARD',
     'NOT-PICKED-UP',
     'PRIORITY-SKIP',
     'PILE-UP',
@@ -56,6 +58,8 @@ export function currentWeekOf(snapshot, now) {
  * - READY: waiting, and every reason it waits for is ready (its tasks finished, its time passed), so its owner can
  *   go on: only the owner clears a decision or an approval, by setting the next status;
  * - NO-REASON: waiting with no reason, as a line from an older teamrig reads: nothing says what it waits for;
+ * - NO-CARD: waiting on the owner's decision or approval with no card to decide from (card.ts), as one set before
+ *   cards, or while `requireDecisionCard` was off, reads; never with that switch off;
  * - NOT-PICKED-UP: assigned longer ago than `notPickedUpAfterHours` with no event from its owner since
  *   (an idle session never reads its inbox, so it needs a direct wake);
  * - PRIORITY-SKIP: in progress below an open task of the top priority that has the same owner and is free to start
@@ -85,6 +89,7 @@ export function checkTasks(tasks, now, week, config) {
         ...verifyFlags(task, tree, piles, config.maxVerifying),
         ...(task.status === 'waiting' && allReady(task.waits, tree.context) ? [{ kind: 'READY', task, detail: 'every reason cleared; set its next status' }] : []),
         ...(task.status === 'waiting' && task.waits.length === 0 ? [{ kind: 'NO-REASON', task, detail: 'set what it waits for (--waits) or its next status' }] : []),
+        ...noCardFlags(task, config),
         ...timeFlags(task, at, config.check, tree),
         ...(top === undefined ? [] : prioritySkip(task, top, waiting, at, config.check)),
         ...(plan === undefined ? [] : planFlags(task, plan, config.ownerSource, tree)),
@@ -115,6 +120,14 @@ export function peerWaitFlags(tasks, lead, ownerSource) {
 function weekPlan(week, lengthDays) {
     const start = week === null ? undefined : parseUtcDay(week)?.getTime();
     return week === null || start === undefined ? undefined : { week, start, end: start + lengthDays * MS_PER_DAY };
+}
+/** NO-CARD, as {@link checkTasks} describes it. */
+function noCardFlags(task, config) {
+    const { ownerSource } = config;
+    const asksOwner = task.waits.some((reason) => (reason.kind === 'decision' || reason.kind === 'approval') && reason.who === ownerSource);
+    return config.requireDecisionCard && task.status === 'waiting' && task.card === null && asksOwner
+        ? [{ kind: 'NO-CARD', task, detail: `no card for ${ownerSource} to decide from: set it waiting again with ${CARD_FLAGS}` }]
+        : [];
 }
 /** A waiting task with a time reason still to come: parked on purpose until then, so not stale. */
 function waitsForTime(task, context) {

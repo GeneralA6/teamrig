@@ -2,6 +2,7 @@ import { MAX_DESCRIPTION } from "../config/defaults.js";
 import { ADDRESS_PATTERN } from "../core/address.js";
 import { SecretScanner } from "../core/secrets.js";
 import { parseUtcDay, parseUtcDeadline } from "../core/time.js";
+import { CARD_FLAGS, cardProblem, cardTexts, OPTION_SEPARATOR, sameCard } from "./card.js";
 import { sizeProblem } from "./events.js";
 import { taskNumber } from "./fold.js";
 import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, priorityText, SESSION_NAME } from "./model.js";
@@ -18,6 +19,8 @@ export const GITHUB_STATUSES = ['open', 'done', 'dropped'];
 export const LEAD_FIELDS = ['owner', 'priority', 'due', 'week', 'after', 'size'];
 /** The refusal of an `add` with no description while `register.requireDescription` is on. */
 export const DESCRIPTION_NEEDED = 'add needs --description "<what and why, in plain words>"';
+/** How a card is typed, for the refusals that ask for one. */
+export const CARD_USAGE = `--question "<what is decided>" --options "<one choice, its numbers> ${OPTION_SEPARATOR} <another>" --recommend "<which, and why>" --default "<what happens with no answer by the due date>"`;
 /** How `--waits` is typed, for the refusals that ask for it. */
 export const WAITS_USAGE = 'decision:<who>, approval:<who>, task:T<id> or time:<YYYY-MM-DD HH:MM>, comma-separated';
 function ok(value) {
@@ -129,6 +132,10 @@ export class RegisterPolicy {
         if (!waits.ok) {
             return waits;
         }
+        const card = this.cardChange(task, input, waits.value);
+        if (!card.ok) {
+            return card;
+        }
         const proof = proofChange(task, input);
         if (!proof.ok) {
             return proof;
@@ -137,7 +144,8 @@ export class RegisterPolicy {
         if (!due.ok) {
             return due;
         }
-        if (input.status === task.status && note === null && proof.value === task.proof && due.value === null && sameWaits(waits.value, task.waits)) {
+        const same = proof.value === task.proof && due.value === null && sameWaits(waits.value, task.waits) && sameCard(card.value, task.card);
+        if (input.status === task.status && note === null && same) {
             return refuse(`${task.id} is already ${task.status}; add --note to record why you set it again`);
         }
         if (register.requireNoteOn.includes(input.status) && note === null) {
@@ -164,13 +172,20 @@ export class RegisterPolicy {
         if (!followups.ok) {
             return followups;
         }
-        const problem = this.checkText('note', note) ?? this.checkText('evidence', evidence) ?? this.checkText('proof', proof.value);
+        const texts = [
+            ['note', note],
+            ['evidence', evidence],
+            ['proof', proof.value],
+            ...(card.value === null ? [] : cardTexts(card.value).map((text) => ['card', text])),
+        ];
+        const problem = texts.map(([name, text]) => this.checkText(name, text)).find((found) => found !== undefined);
         const change = {
             status: input.status,
             note,
             evidence,
             skill,
             ...(waits.value.length > 0 ? { waits: waits.value } : {}),
+            ...(card.value === null ? {} : { card: card.value }),
             ...(proof.value === null ? {} : { proof: proof.value }),
             ...(due.value === null ? {} : { due: due.value }),
             ...(followups.value === null ? {} : { followups: followups.value }),
@@ -219,6 +234,36 @@ export class RegisterPolicy {
         }
         const problem = waits.map((reason) => this.waitProblem(task, reason, context)).find((found) => found !== undefined);
         return problem === undefined ? ok(waits) : refuse(problem);
+    }
+    /**
+     * The card a status change writes (card.ts): none without a wait on a decision or an approval, where the card
+     * flags are refused; the parts given over the card the task had while waiting, so one part can change alone; or,
+     * with none given, that card. A wait on the owner's decision or approval needs a card while
+     * `register.requireDecisionCard` is on, so the owner decides from it alone (T514).
+     */
+    cardChange(task, input, waits) {
+        const asks = waits.filter((reason) => reason.kind === 'decision' || reason.kind === 'approval');
+        const given = input.card;
+        if (asks.length === 0) {
+            return given === undefined ? ok(null) : refuse(`${CARD_FLAGS} go only with --status waiting on a decision or an approval`);
+        }
+        const before = task.status === 'waiting' ? task.card : null;
+        if (given === undefined) {
+            const { ownerSource, requireDecisionCard } = this.config.register;
+            const owners = asks.filter((reason) => reason.who === ownerSource);
+            if (before !== null || owners.length === 0 || !requireDecisionCard) {
+                return ok(before);
+            }
+            const kinds = owners.map((reason) => reason.kind).join(' and ');
+            return refuse(`a wait on ${ownerSource}'s ${kinds} needs a card, so ${ownerSource} decides from it alone: ${CARD_USAGE}`);
+        }
+        const parts = { ...before, ...given };
+        if (parts.question === undefined || parts.recommend === undefined || parts.byDefault === undefined) {
+            return refuse(`a card needs ${CARD_FLAGS} (--options for a decision): ${CARD_USAGE}`);
+        }
+        const card = { question: parts.question, options: parts.options ?? [], recommend: parts.recommend, byDefault: parts.byDefault };
+        const problem = cardProblem(card, asks.some((reason) => reason.kind === 'decision'));
+        return problem === undefined ? ok(card) : refuse(problem);
     }
     waitProblem(task, reason, context) {
         switch (reason.kind) {

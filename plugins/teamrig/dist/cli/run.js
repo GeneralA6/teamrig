@@ -53,7 +53,7 @@ const restoreInstallCommands = () => import("./commands/restore-install.js");
 const TASK_FIELDS = ['title', 'description', 'owner', 'ref', 'priority', 'due', 'goals', 'week', 'after', 'size'];
 const COMMANDS = {
     add: { effect: 'write', flags: ['session', 'source', 'team', ...TASK_FIELDS], load: async () => (await registerCommands()).add },
-    set: { effect: 'write', flags: ['session', 'status', 'note', 'evidence', 'skill', 'followups', 'waits', 'proof', 'due', 'ask', 'text'], load: async () => (await registerCommands()).set },
+    set: { effect: 'write', flags: ['session', 'status', 'note', 'evidence', 'skill', 'followups', 'waits', 'question', 'options', 'recommend', 'default', 'proof', 'due', 'ask', 'text'], load: async () => (await registerCommands()).set },
     update: { effect: 'write', flags: ['session', 'note', ...TASK_FIELDS], load: async () => (await registerCommands()).update },
     list: {
         effect: 'read',
@@ -238,6 +238,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   add --team <child team> --title .. --description .. --priority p<n> [...]   hands that team's lead a task
   set <id> --status open|in-progress|verifying|waiting|done|dropped [--note "<what/why>"] [--evidence <proof>]
       [--skill <name>|none] [--followups T<id>,...|none] [--waits decision:<who>,approval:<who>,task:T<id>,time:<date>]
+      [--question ".." --options "<a> | <b>" --recommend ".." --default ".."]
       [--proof "<what proves it>"] [--due <date>] [--ask <session> --text "<the work>"]
       verifying needs --proof: what will prove the shipped change works; --due sets the date to verify by
       verifying and done need --followups: the tasks the work leaves (a finding, a next step), or none
@@ -245,6 +246,10 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       waiting needs --waits: the lead's or the owner's decision or approval, a task to finish first
       (only once started) or a time; check flags it READY once its tasks finished and its time passed
       --ask (with waiting): adds the work as that session's task and waits on it; --due is its due date
+      a wait on the owner's decision or approval needs a card the owner decides from alone
+      (register.requireDecisionCard): --question "<what is decided>" --options "<a, its numbers> | <b>"
+      --recommend "<which, and why>" --default "<what happens with no answer>"; each part at least 3 words
+      besides task ids; a later set changes one part alone
   update <id> [--title ..] [--description ..|none] [--owner ..] [--priority ..] [--ref ..|none]
       [--due <date>|none] [--goals a,b|none] [--week <date>|none] [--after T5,T6|none] [--size <pct>|none]
       [--note ..]   the lead may change owner, priority, due, week, after and size on any task
