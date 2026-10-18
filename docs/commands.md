@@ -24,6 +24,15 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       a new terminal tab running Claude Code as that session (team/id: another team of the tree);
       with no terminal it prints the command; a rehired session reads the handover it left first, or,
       with --resume, goes on in its last Claude Code session when that is small and recent enough
+  restore                      what a restore would do now with each Claude Code session this machine
+      recorded: RESTORE (how it comes back, at which effort), KEEP or DISCARD, and why; it only reads
+  restore run [--since <time>] [--terminal <name>] [--home <dir>] [--tab]   reopens the Claude Code
+      sessions the last shutdown killed, after a 60 s countdown (Enter: now, i: all with no prompt,
+      q: cancel): a team session through launch, any other resumed as it ran, each at its last effort;
+      one mid-turn or with work live at the shutdown, and a lead, get a prompt to carry on; exit 1
+      when one did not reopen
+  restore check [--terminal <name>] [--home <dir>]   at logon: drops what no restore needs and, when
+      the shutdown killed sessions, opens a tab running restore run for them
   rules [--session <id|name>]  the team rules and who the session is, as a session start gives them
   rules scan [--kind <kind>]   every place a local rule can override a core rule (CLAUDE.md files, rules
       files, skills, memory, rules.md, hook scripts, settings autoMode lines), the kept rules, and the lines
@@ -195,8 +204,10 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       (run by the plugin's mod: wakes an idle tab when unblocked urgent work is handed to its session)
   hook slash-command
       (run by the plugin's mod: /teamrig <command> typed in a Claude Code tab; /teamrig alone tells what it runs)
-  launch <id> --team <team> --project <dir> [--home <dir>] [--encoded-prompt <text>] [--resume <session>]
+  launch <id> --team <team> --project <dir> [--home <dir>] [--encoded-prompt <text> | --no-prompt] [--resume <session>] [--effort <level>]
       (run by the tab that open starts: sets the session and starts Claude Code)
+  restore resume <claude-session> --project <dir> [--home <dir>] [--effort <level>] [--encoded-prompt <text>]
+      (run by the tab restore run starts for a session outside any team: resumes it in Claude Code)
   restart <id> --team <team> --at <time> --project <dir>
       (run hidden by the Stop hook: starts the session fresh once its handover is written and it is idle)
 Team: $TEAMRIG_TEAM, else the nearest .teamrig.json ({"team": "<id>"}) above the current folder,
