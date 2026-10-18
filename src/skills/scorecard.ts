@@ -6,7 +6,10 @@ import type { SkillSignature } from './signature.ts';
  * The skills scorecard's fold: per UTC day and skill, how often the skill was loaded, what a run of it cost (tool
  * calls, failed and refused results) and how often its procedure ran by hand without it (a missed use). A run starts
  * at a load (a `Skill` call or a typed `/name`) or, without one, at the first call that matches the skill's
- * signature, and ends at the next prompt that starts new work. Each transcript file is one thread, a subagent's too.
+ * signature, and ends at the next prompt, unless that is a resumed compaction or a task notification that comes while
+ * one of the run's own background steps (a call matching its skill's signature) is running. So a run spans turns only
+ * through its own procedure's waits, whether the skill was loaded or not. Each transcript file is one thread, a
+ * subagent's too.
  */
 
 /** A signature hit this many tool calls or fewer after a load of the skill is the skill at work, not a missed use. */
@@ -19,7 +22,7 @@ export const REFUSAL_PREFIXES = [
   "The user doesn't want to proceed with this tool use",
 ] as const;
 
-/** Prompts that start new work and so end the thread's open runs; a notification or a resumed compaction continues them. */
+/** Prompts that start new work and so end the thread's open runs; a resumed compaction continues them, and a notification ends those not waiting. */
 const RUN_ENDING_TRIGGERS: ReadonlySet<PromptLine['trigger']> = new Set(['owner', 'peer', 'scheduled', 'subagent', 'other']);
 
 /** A Write or Edit of a file under a `.claude/skills/<name>/` folder edits that skill. */
@@ -54,6 +57,8 @@ export interface OpenRun {
   readonly calls: number;
   readonly failed: number;
   readonly refused: number;
+  /** Ids of the run's background calls that match its skill's signature and have not reported yet. */
+  readonly waitsOn: readonly string[];
 }
 
 /** Where the read of one transcript file stands, and its thread's state at that point. */
@@ -185,7 +190,9 @@ export class ThreadFold {
   }
 
   private prompt(line: PromptLine, day: string): void {
-    if (RUN_ENDING_TRIGGERS.has(line.trigger)) {
+    if (line.trigger === 'notification') {
+      this.notified(line.answers);
+    } else if (RUN_ENDING_TRIGGERS.has(line.trigger)) {
       this.closeAll();
     }
     for (const command of line.commands) {
@@ -209,11 +216,32 @@ export class ThreadFold {
       this.tally.edit(day, edited);
     }
     const haystack = `${tool.name} ${tool.command ?? ''}`;
-    for (const signature of this.skills.signatures) {
-      if (signature.patterns.some((pattern) => pattern.test(haystack)) && !this.loadedRecently(signature.name) && !this.isOpen(signature.name)) {
-        this.open.push({ skill: signature.name, mode: 'manual', day, calls: 1, failed: 0, refused: 0 });
+    const hits = new Set(this.skills.signatures.filter((signature) => signature.patterns.some((pattern) => pattern.test(haystack))).map((signature) => signature.name));
+    for (const skill of hits) {
+      if (!this.loadedRecently(skill) && !this.isOpen(skill)) {
+        this.open.push({ skill, mode: 'manual', day, calls: 1, failed: 0, refused: 0, waitsOn: [] });
       }
     }
+    if (tool.background === true) {
+      this.open = this.open.map((run) => (hits.has(run.skill) ? { ...run, waitsOn: [...run.waitsOn, tool.id] } : run));
+    }
+  }
+
+  /**
+   * A task notification ends every run with no background step of its own still running. The others go on, no longer
+   * waiting on the call it reports on, so a run carries on with the steps after its wait and ends at the next
+   * notification unless it started another.
+   */
+  private notified(answers: string | undefined): void {
+    const kept: OpenRun[] = [];
+    for (const run of this.open) {
+      if (run.waitsOn.length === 0) {
+        this.tally.close(run);
+      } else {
+        kept.push({ ...run, waitsOn: run.waitsOn.filter((id) => id !== answers) });
+      }
+    }
+    this.open = kept;
   }
 
   private results(results: readonly ToolResult[]): void {
@@ -226,14 +254,18 @@ export class ThreadFold {
     }
   }
 
-  /** A load mid-procedure makes the rest the skill's run, so the hand run so far is dropped; a reload continues the run. */
+  /**
+   * A load mid-procedure makes the rest the skill's run, so the hand run so far is dropped, its waits passed on; a
+   * reload continues the run.
+   */
   private load(skill: string, day: string): void {
     this.tally.load(day, skill);
     this.lastLoad[skill] = this.calls;
     if (this.open.some((run) => run.skill === skill && run.mode === 'skill')) {
       return;
     }
-    this.open = [...this.open.filter((run) => run.skill !== skill), { skill, mode: 'skill', day, calls: 0, failed: 0, refused: 0 }];
+    const waitsOn = this.open.find((run) => run.skill === skill)?.waitsOn ?? [];
+    this.open = [...this.open.filter((run) => run.skill !== skill), { skill, mode: 'skill', day, calls: 0, failed: 0, refused: 0, waitsOn }];
   }
 
   private loadedRecently(skill: string): boolean {
