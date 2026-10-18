@@ -2327,6 +2327,24 @@ teamrig hook package-guard < pre-tool-use.json
 Output: nothing for a command that runs no package ad hoc, or with `adHocRunners` set to `allow`; otherwise a JSON
 permission decision (`deny` or `ask`) with the reason.
 
+### teamrig hook readonly-allow
+
+Before a Bash or PowerShell command, with `readonlyShell.enabled` in the team config, lets a line whose every
+command provably only reads run without a permission prompt: known readers, git and kubectl reading subcommands, the
+team's `readonlyShell.allowPrefixes`, and no write, file redirection, command that runs code or variable a program
+reads. See [Hooks and permissions](hooks.md#before-a-shell-command-the-read-only-allow).
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig hook readonly-allow < pre-tool-use.json
+```
+
+Output: a JSON permission decision `allow` with the reason for a line that only reads; nothing outside a team, with
+the hook off, for any other line, or on an error. Exit 0 always.
+
 ### teamrig hook cold-send
 
 Before a SendMessage call to a team session idle `messages.coldAfterMinutes` (60 by default) or longer, holds

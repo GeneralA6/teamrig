@@ -1,6 +1,6 @@
 # Hooks and permissions
 
-The plugin's `hooks/hooks.json` registers fourteen Claude Code hooks and one mod ([the /teamrig command](#the-mod-the-teamrig-command), [the refresh's /clear](#the-mod-the-refreshs-clear), [the reload after an install](#the-mod-the-reload-after-an-install), [the wake on urgent work](#the-mod-the-wake-on-urgent-work)). Each runs
+The plugin's `hooks/hooks.json` registers fifteen Claude Code hooks and one mod ([the /teamrig command](#the-mod-the-teamrig-command), [the refresh's /clear](#the-mod-the-refreshs-clear), [the reload after an install](#the-mod-the-reload-after-an-install), [the wake on urgent work](#the-mod-the-wake-on-urgent-work)). Each runs
 `node <plugin>/dist/cli/main.js hook <name>` with a 15 second timeout (`hook refresh-wake` 30, `hook tab-status` 5). Outside a project tied to a team (no `$TEAMRIG_TEAM` and no `.teamrig.json`)
 they all stay silent, and only `hook restore-track` still records the session ([the restore tracker](#every-session-the-restore-tracker)).
 
@@ -12,6 +12,7 @@ they all stay silent, and only `hook restore-track` still records the session ([
 | `UserPromptSubmit` (each prompt) | `hook inbox-reminder` | Cancels a waiting automatic restart; shows new inbox lines; binds a tab started by hand by its title; records a Claude Code rename; tells the model when it is past its daily budget |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook push-guard` | Asks before a push to a protected branch; refuses a force-push or delete of one |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook package-guard` | Refuses a package runner that would fetch and run a package outside the project's lockfile ([the package guard](#before-a-shell-command-the-package-guard)) |
+| `PreToolUse` on `Bash` and `PowerShell` | `hook readonly-allow` | With `readonlyShell.enabled`, lets a line whose every command provably only reads run without a permission prompt ([the read-only allow](#before-a-shell-command-the-read-only-allow)) |
 | `PreToolUse` on `SendMessage` | `hook cold-send` | Holds once a message that would wake an idle session cold; during the daily meeting, holds every message to the lead but a CRITICAL one |
 | `PostToolUse` on `SendMessage` | `hook failed-send` | After a send that was not delivered, hands the model [the inbox line to write instead](#after-a-failed-send-the-inbox-line) |
 | `PostToolUse` on reads, edits and shell calls | `hook loop-nudge` | Asks the model once to batch when a turn makes [single-step calls in a row](#after-a-tool-call-the-loop-nudge) |
@@ -209,6 +210,44 @@ devDependency, then run its local bin (npx --no <bin>). [packageGuard.adHocRunne
 `packageGuard.adHocRunners` sets what such a line gets: `deny` (the default), `ask` the human, or `allow`. A missing
 or broken config keeps `deny`, so a config mistake never turns the guard off. Like the push guard, it reads only the
 line Claude runs, not a script or program that line starts.
+
+## Before a shell command: the read-only allow
+
+Claude Code asks before a shell line its settings do not allow, reads included, and a settings rule matches only a
+command's start: `Bash(grep:*)` cannot tell `grep x f` from `grep x f > out.txt`. With `readonlyShell.enabled: true`
+in the team config, `hook readonly-allow` reads the whole line, as Bash or as PowerShell by the tool that runs it,
+and lets it run without a prompt when every command in it, substitutions and loops included, provably only reads:
+
+- **Bash**: `cat`, `head`, `tail`, `grep`, `wc`, `cut`, `tr`, `nl`, `ls`, `echo`, `cd`, `pwd` and `sleep` with any
+  arguments; `sed` printing lines (`sed -n 5,20p`), `awk` printing fields (`{print $1}`), `sort` with no output
+  file, `test` and `[`; `git` with a reading subcommand (`status`, `log`, `diff`, `show`, `blame`, `grep`,
+  `ls-files`, `rev-parse`...) and no `-c`, `--output` or `--ext-diff`; `kubectl get`, `describe`, `logs`, `top` and
+  the like, with no `--raw`, `--kubeconfig` or `--server` and no secret named. Pipes, `&&`, `||`, `;`, `for` loops
+  and `$(...)` join them. A redirection may only read a file, copy or close a descriptor (`2>&1`) or throw output
+  away to `/dev/null`. A line may set its own variables: names with a lower-case letter that Claude Code's
+  environment does not export, since a program reads an exported one (`GIT_DIR`, `npm_config_prefix`).
+- **PowerShell**: reading cmdlets by their full names (`Get-Content`, `Get-ChildItem`, `Select-String`,
+  `Select-Object`, `Where-Object`, `ForEach-Object`, `ConvertFrom-Json`, `Format-Table`...), `Set-Location`, `git`
+  and `kubectl` as in Bash, script blocks written in the line (each checked like it), the line's own variables (not
+  `$PSDefaultParameterValues` or a preference), and string, date and list methods that return a new value. No
+  alias (a profile can redefine one), cast, `-as`, call operator, static member but the clock (`[DateTime]::Now`),
+  `-OutVariable`, splat, or redirection but to `$null`.
+- **Trusted prefixes**: `readonlyShell.allowPrefixes` lists commands the team trusts with any arguments, each by
+  its leading words (`npx tsc --noEmit`; at most 16). A prefix vouches for every argument after it, so leave out a
+  tool one of whose flags writes: `eslint --fix`, `jest -u` (rewrites snapshots), `jest --outputFile`.
+
+It only ever allows: a line it cannot prove reads prints nothing, and Claude Code's own permission check decides,
+as without the hook; so it does outside a team, with a missing or broken config, or on any error. Claude Code ranks
+one hook's `deny` over another's `ask` over an `allow`, and its settings' deny and ask rules still apply under an
+allow, so the push guard's question and the package guard's refusal always win. The hook reads the session's team
+(`$TEAMRIG_TEAM`, else the project's), never the team of a folder the line moves into. Like the guards, it reads only
+the line, so it cannot see:
+
+- git obeying the repository's own config, which can name a program to run (`core.fsmonitor`, `diff.external`): it
+  trusts the repository as git does;
+- a variable only the shell's profile exports (or `set -a` does), or a profile function or alias that shadows a
+  program's name;
+- what a trusted prefix's arguments make its tool do.
 
 ## After a tool call: the loop nudge
 
@@ -489,7 +528,8 @@ leaves the tab green: only a helper keeps it yellow.
 
 ## Permissions
 
-teamrig never edits Claude Code's permission or auto-mode settings, and it adds no allow rules.
+teamrig never edits Claude Code's permission or auto-mode settings, and it adds no allow rules. Only the opt-in
+read-only allow lets a call skip the prompt, and only a shell line it proves only reads.
 
 - **Auto mode**: no settings entry is needed. In a hand test on Claude Code 2.1.300 with no user settings at all,
   the auto-mode classifier allowed every teamrig command it was given (43 calls: creating a team, adding and
@@ -508,3 +548,5 @@ teamrig never edits Claude Code's permission or auto-mode settings, and it adds 
   human.
 - **The package guard** refuses an ad-hoc package run on its own, whatever the mode, unless
   `packageGuard.adHocRunners` is `ask` or `allow`.
+- **The read-only allow** (`readonlyShell.enabled`) lets a shell line that only reads run with no prompt in default
+  mode too; it never asks or refuses, so in a mode that already allows the line it changes nothing.

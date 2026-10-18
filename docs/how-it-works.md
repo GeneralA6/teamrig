@@ -552,6 +552,16 @@ the line with the push guard's parser and refuses `npx` of a tool not in `node_m
 its local bin. `packageGuard.adHocRunners` (`deny` by default, `ask` or `allow`) sets what such a line gets; a
 missing or broken config keeps `deny`, so a config mistake never turns the guard off.
 
+## Reads without a prompt
+
+Claude Code asks before a shell line its settings do not allow, and a settings rule matches only a command's start,
+so it cannot tell `grep x f` from `grep x f > out.txt`. With `readonlyShell.enabled`, a hook reads the whole line
+(Bash with the push guard's parser) and allows it when every command in it provably only reads: known readers, git
+and kubectl reading subcommands, the team's trusted prefixes (`readonlyShell.allowPrefixes`), and no write, file
+redirection, command that runs code or variable a program reads. It only ever allows: any other line gets Claude
+Code's own check, and a guard's ask or refusal wins over its allow
+([what it cannot see](../plugins/teamrig/skills/teamrig-guide/hooks.md#before-a-shell-command-the-read-only-allow)).
+
 ## Room for other tools
 
 Today teamrig works with Claude Code, any terminal and its own task list; other tools will come through one small

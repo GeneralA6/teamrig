@@ -48,7 +48,8 @@ To update an installed teamrig, follow
   rules only say when to send one and how long it may be.
 - **Hooks**: at session start teamrig injects the team rules and who you are, and gives each helper the same rules
   as it starts; at each prompt it shows you new
-  inbox lines; before a shell command it guards pushes to protected branches and refuses an ad-hoc package run;
+  inbox lines; before a shell command it guards pushes to protected branches, refuses an ad-hoc package run and,
+  when the team turns it on, lets a line that only reads run without a prompt;
   at each helper launch it restates when a helper pays; at the end of a turn it
   may ask for a handover when your context is large.
 - **Tree of teams**: a team may have a parent team. Sub-team leads report to their parent lead, and the root
