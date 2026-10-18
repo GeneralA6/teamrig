@@ -1648,7 +1648,10 @@ With no burst in force, or a caller who is not the lead, it is `REFUSED` (exit 2
 
 A status line for Claude Code. It reads the status JSON Claude Code sends on stdin, saves the plan's use of the
 week and its reset as `<Claude session id>.json` in the team's `budget.statusSnapshotDir` (relative to the
-team's folder; unset: `<kit home>/usage/live`), and prints a short status. It always exits 0, so a bad input or
+team's folder; unset: `<kit home>/usage/live`), and prints a short status: the model, the session's folder and its
+branch (`at <commit>` on a detached HEAD), the plan's use of the week and of the last five hours, and the command
+that resumes the session. The team config's `statusLine` turns `folder`, `branch` and `resume` off one by one (each
+is on by default; with `branch` off, git is never asked). It always exits 0, so a bad input or
 a full disk never breaks the status bar; what went wrong goes to stderr. With `--pass` it prints the status JSON
 again instead of its status, for the status line after it in a pipe. A plugin cannot set the status line:
 [teamrig statusline install](#teamrig-statusline-install) sets it up.
@@ -1667,7 +1670,7 @@ teamrig statusline
 Output:
 
 ```text
-Opus 5.5, week 57%, 5h 6%
+Opus 5.5, app on main, week 57%, 5h 6%, claude --resume 0b6f9c2e-5d1a-4c3e-9f7a-2e8d4b1c6a90
 ```
 
 Bring your own status line: any status line that writes the same snapshot JSON, one `.json` file per Claude
