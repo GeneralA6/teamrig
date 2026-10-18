@@ -1,0 +1,410 @@
+import type { CoordinatorConfig, CoordinatorRepoConfig, RollConfig } from '../config/types.ts';
+import { claimText, coveringClaims, readClaims } from '../coordinator/claims.ts';
+import { takeWhenClear, type ClearancePhase, type Readiness } from '../coordinator/clearance.ts';
+import type { HostLock } from '../coordinator/host-lock.ts';
+import { appendDeploy, rangeText } from '../coordinator/ledger.ts';
+import type { CoordinatorPlaces } from '../coordinator/places.ts';
+import { NOT_STARTED_EXIT, recordHeavy } from '../coordinator/recorded-step.ts';
+import { heavyCutoffReason, resetBlackoutReason, type ResetTime } from '../coordinator/schedule.ts';
+import { exitCodeOf } from '../coordinator/steps.ts';
+import type { Files } from '../core/files.ts';
+import type { Env } from '../core/home.ts';
+import type { Clock, Sleep } from '../core/lock.ts';
+import { samePath } from '../core/paths.ts';
+import type { SecretScanner } from '../core/secrets.ts';
+import { rangeInstallTouches } from '../integrate/dependencies.ts';
+import type { IntegrateGit } from '../integrate/git.ts';
+import { askGates, shownLine } from './gates.ts';
+import type { HookEnd, HookRunner } from './hooks.ts';
+
+/**
+ * `teamrig roll`: brings what was pushed to a repository's default branch to the running system, one roll on the host
+ * at a time. It reads what is pending (the main checkout's `HEAD..origin/<default branch>`), refuses what it must not
+ * pull (a main checkout off its default branch, with tracked changes or commits origin lacks, a held dependency
+ * change), waits out the heavy cutoff's refusal, quiet claims on the roll's targets and the team's gates, takes the
+ * host lock, asks again, then pulls fast-forward to the sha it checked, runs the afterPull hooks and the roll command,
+ * all one heavy step in the ledger, and records the deploy. Nothing pending is done with nothing run.
+ */
+
+const MINUTE_MS = 60_000;
+/** The line a roll command prints when nothing needed rolling: the pull stays, and no deploy is recorded. */
+export const NO_ROLL_LINE = 'no-roll';
+
+export interface RollRequest {
+  readonly session: string;
+  /** A key of `coordinator.repos`; undefined picks the repository the folder is in, else the only one with a roll. */
+  readonly repo: string | undefined;
+  /** The folder the command runs in. */
+  readonly dir: string;
+}
+
+export interface RollSetup {
+  /** The team's name, given to every hook as `TEAMRIG_TEAM`. */
+  readonly team: string;
+  readonly coordinator: CoordinatorConfig;
+  readonly places: CoordinatorPlaces;
+  /** A configured path as a place: a relative one is in the team's folder. */
+  inTeam(path: string): string;
+}
+
+export type RollGit = Pick<IntegrateGit, 'checkoutOf' | 'changes' | 'fetch' | 'defaultBranch' | 'sha' | 'commits' | 'isAncestor' | 'changedPaths' | 'fileAt' | 'fastForward'>;
+
+export interface RollPorts {
+  readonly git: RollGit;
+  readonly hooks: HookRunner;
+  readonly files: Files;
+  readonly clock: Clock;
+  readonly sleep: Sleep;
+  readonly lock: Pick<HostLock, 'acquire' | 'release'>;
+  /** This process's environment, which every hook gets with the roll's `TEAMRIG_*` variables. */
+  readonly env: Env;
+  readonly platform: NodeJS.Platform;
+  /** Redacts each line a hook prints before it is shown or recorded. */
+  readonly scanner: Pick<SecretScanner, 'redact'>;
+  /** The next weekly token reset after `nowMs`, read again at every check; undefined when unknown. */
+  nextReset(nowMs: number): Promise<ResetTime | undefined>;
+  newId(): string;
+  /** A progress line. */
+  say(text: string): void;
+}
+
+export type RollEnd = { readonly kind: 'done'; readonly summary: string } | { readonly kind: 'failed'; readonly reason: string } | { readonly kind: 'refused'; readonly reason: string };
+
+/** A repository with a roll block, and where its main checkout is. */
+interface RollRepo {
+  readonly name: string;
+  readonly config: CoordinatorRepoConfig;
+  readonly roll: RollConfig;
+  readonly main: string;
+}
+
+/** What a roll would pull: the main checkout's HEAD up to origin's default branch, and the commits between. */
+interface Pending {
+  readonly head: string;
+  readonly target: string;
+  readonly commits: readonly string[];
+  /** The commits as the ledger names them. */
+  readonly range: string;
+}
+
+type PendingRead =
+  | { readonly kind: 'pending'; readonly pending: Pending }
+  | { readonly kind: 'none'; readonly head: string }
+  | { readonly kind: 'refused'; readonly reason: string }
+  | { readonly kind: 'failed'; readonly reason: string };
+
+/** What the readiness check saw under the lock, which the roll goes on: the pending range and a gate's tag. */
+interface LockedView {
+  read: PendingRead | undefined;
+  tag: string | undefined;
+  /** The range the gates are told of: the last one read. */
+  range: Pending;
+}
+
+/** How the work under the lock went, with the exit code the ledger records for it. */
+type RollRun =
+  | { readonly kind: 'notPulled'; readonly reason: string }
+  | { readonly kind: 'afterPullFailed'; readonly argv: readonly string[]; readonly end: HookEnd }
+  | { readonly kind: 'ran'; readonly end: HookEnd; readonly lastLine: string | undefined; readonly noRoll: boolean };
+
+function short(sha: string): string {
+  return sha.slice(0, 8);
+}
+
+function plural(count: number, word: string): string {
+  return `${count} ${word}${count === 1 ? '' : 's'}`;
+}
+
+function succeeded(end: HookEnd): boolean {
+  return end.kind === 'exited' && end.code === 0;
+}
+
+/** The exit code a hook's end is recorded as: its own, 124 at its time limit, 1 when a signal stopped it or it did not start. */
+export function hookExitCode(end: HookEnd): number {
+  return end.kind === 'notStarted' ? NOT_STARTED_EXIT : exitCodeOf(end);
+}
+
+function hookEndText(end: HookEnd): string {
+  switch (end.kind) {
+    case 'exited':
+      return `exited ${end.code}`;
+    case 'signal':
+      return `was stopped by ${end.signal}`;
+    case 'timedOut':
+      return 'was killed at its time limit';
+    case 'notStarted':
+      return `could not start (${end.error})`;
+  }
+}
+
+function runExitCode(run: RollRun): number {
+  switch (run.kind) {
+    case 'notPulled':
+      return NOT_STARTED_EXIT;
+    case 'afterPullFailed':
+    case 'ran':
+      return hookExitCode(run.end);
+  }
+}
+
+/** The repository to roll: the one named, else the one the folder is in, else the only one with a roll block. */
+function chosenRepo(setup: RollSetup, ports: RollPorts, request: RollRequest): { readonly kind: 'chosen'; readonly repo: RollRepo } | { readonly kind: 'refused'; readonly reason: string } {
+  const repos = Object.entries(setup.coordinator.repos);
+  const rolled = repos.flatMap(([name, config]) => (config.roll === undefined ? [] : [{ name, config, roll: config.roll, main: setup.inTeam(config.mainCheckout) }]));
+  const names = rolled.length === 0 ? 'none has a roll block' : `with a roll block: ${rolled.map((repo) => repo.name).join(', ')}`;
+  if (request.repo !== undefined) {
+    const named = rolled.find((repo) => repo.name === request.repo);
+    if (named !== undefined) {
+      return { kind: 'chosen', repo: named };
+    }
+    const listed = repos.some(([name]) => name === request.repo);
+    return { kind: 'refused', reason: listed ? `coordinator.repos.${request.repo} has no roll block, so there is nothing to roll it with (${names})` : `${request.repo} is not in coordinator.repos (${names})` };
+  }
+  const here = ports.git.checkoutOf(request.dir);
+  const folderMain = here === undefined ? undefined : (here.mainCheckout ?? here.top);
+  const inFolder = folderMain === undefined ? undefined : rolled.find((repo) => samePath(repo.main, folderMain, ports.platform));
+  const only = rolled.length === 1 ? rolled[0] : undefined;
+  const chosen = inFolder ?? only;
+  if (chosen !== undefined) {
+    return { kind: 'chosen', repo: chosen };
+  }
+  return { kind: 'refused', reason: rolled.length === 0 ? 'no repository in coordinator.repos has a roll block' : `name the repository to roll with --repo (${names})` };
+}
+
+/** Why a dependency gate holds the range: its package files need an install; undefined when they do not. */
+async function dependencyHold(git: RollGit, repo: RollRepo, head: string, target: string): Promise<string | undefined> {
+  const touches = await rangeInstallTouches(git, repo.main, head, target);
+  if (touches === undefined) {
+    return `could not read what ${short(head)}..${short(target)} changes, so the dependency gate cannot clear it`;
+  }
+  if (touches.length === 0) {
+    return undefined;
+  }
+  return `deps changed (${touches.join(', ')}): coordinator.repos.${repo.name}.dependencyGate holds a dependency change, since pulling it changes, unreviewed, the node_modules every worktree links to; pull and install by hand`;
+}
+
+/** Fetches and reads what a roll would pull now, refusing a main checkout it must not pull into. */
+async function readPending(ports: RollPorts, repo: RollRepo): Promise<PendingRead> {
+  const { git } = ports;
+  const { main, name } = repo;
+  const checkout = git.checkoutOf(main);
+  if (checkout === undefined) {
+    return { kind: 'refused', reason: `${main} (coordinator.repos.${name}.mainCheckout) is not a git checkout` };
+  }
+  const fetched = git.fetch(main);
+  if (!fetched.ok) {
+    return { kind: 'failed', reason: `git fetch failed in ${main}: ${fetched.reason}` };
+  }
+  const defaultBranch = git.defaultBranch(main);
+  if (checkout.branch !== defaultBranch) {
+    return { kind: 'refused', reason: `the ${name} main checkout ${main} is on ${checkout.branch ?? 'a detached HEAD'}, not ${defaultBranch}` };
+  }
+  const changes = git.changes(main, false);
+  if (changes === undefined) {
+    return { kind: 'failed', reason: `git status failed in ${main}` };
+  }
+  if (changes.length > 0) {
+    return { kind: 'refused', reason: `the ${name} main checkout ${main} has ${plural(changes.length, 'uncommitted change')}: a roll pulls only into a clean checkout` };
+  }
+  const head = git.sha(main, 'HEAD');
+  const target = git.sha(main, `origin/${defaultBranch}`);
+  if (head === undefined || target === undefined) {
+    return { kind: 'failed', reason: head === undefined ? `HEAD names no commit in ${main}` : `origin/${defaultBranch} is missing in ${main} after the fetch` };
+  }
+  if (head === target) {
+    return { kind: 'none', head };
+  }
+  if (!git.isAncestor(main, head, target)) {
+    return { kind: 'refused', reason: `the ${name} main checkout ${main} has commits that are not on origin/${defaultBranch}: a roll only pulls fast-forward` };
+  }
+  const held = repo.config.dependencyGate ? await dependencyHold(git, repo, head, target) : undefined;
+  if (held !== undefined) {
+    return { kind: 'refused', reason: held };
+  }
+  const commits = git.commits(main, head, target);
+  return { kind: 'pending', pending: { head, target, commits, range: rangeText(commits, target) } };
+}
+
+/** Every hook's environment: this process's, with the roll's `TEAMRIG_*` variables and `extra`. */
+function hookEnv(setup: RollSetup, ports: RollPorts, request: RollRequest, repo: RollRepo, pending: Pending, extra: Env = {}): Env {
+  return {
+    ...ports.env,
+    TEAMRIG_TEAM: setup.team,
+    TEAMRIG_SESSION: request.session,
+    TEAMRIG_VERB: 'roll',
+    TEAMRIG_REPO: repo.name,
+    TEAMRIG_PENDING_RANGE: `${pending.head}..${pending.target}`,
+    ...extra,
+  };
+}
+
+/**
+ * Whether the roll may start: the heavy cutoff and the reset blackout refuse it, a quiet claim on its targets and a
+ * gate that does not pass hold it. Under the lock the pending range is read again, so the gates judge what is pulled;
+ * a range with nothing left, refused or unreadable is not the gates' to judge, so the check passes and the roll ends
+ * under the lock.
+ */
+function readinessOf(setup: RollSetup, ports: RollPorts, request: RollRequest, repo: RollRepo, view: LockedView): (phase: ClearancePhase) => Promise<Readiness> {
+  const { schedule } = setup.coordinator;
+  const { targets, gates } = repo.roll;
+  return async (phase) => {
+    const now = ports.clock.now();
+    const hours = schedule.resetBlackoutHours;
+    const refusal = heavyCutoffReason(now, schedule.heavyCutoffUtc) ?? (hours === undefined ? undefined : resetBlackoutReason(now, await ports.nextReset(now), hours));
+    if (refusal !== undefined) {
+      return { kind: 'refuse', reason: refusal };
+    }
+    if (targets.length > 0) {
+      const read = await readClaims(ports.files, setup.places.claims);
+      if (read.kind === 'unreadable') {
+        return { kind: 'wait', reason: `the quiet claims in ${setup.places.claims} are unreadable (${read.reason})` };
+      }
+      const covering = coveringClaims(read.claims, targets, now);
+      if (covering.length > 0) {
+        return { kind: 'wait', reason: covering.map(claimText).join('; ') };
+      }
+    }
+    if (phase === 'locked') {
+      view.read = await readPending(ports, repo);
+      view.tag = undefined;
+      if (view.read.kind !== 'pending') {
+        return { kind: 'go' };
+      }
+      view.range = view.read.pending;
+    }
+    const answer = await askGates(gates, phase, {
+      hooks: ports.hooks,
+      scanner: ports.scanner,
+      cwd: repo.main,
+      env: hookEnv(setup, ports, request, repo, view.range),
+      timeoutSeconds: setup.coordinator.gateTimeoutSeconds,
+    });
+    if (phase === 'locked') {
+      view.tag = answer.tag;
+    }
+    return answer.readiness;
+  };
+}
+
+/** Under the host lock: pulls fast-forward to the checked sha, then runs the afterPull hooks and the roll command, each line shown redacted. */
+async function pullAndRoll(setup: RollSetup, ports: RollPorts, request: RollRequest, repo: RollRepo, pending: Pending, tag: string | undefined): Promise<RollRun> {
+  const pulled = ports.git.fastForward(repo.main, pending.target);
+  if (!pulled.ok) {
+    return { kind: 'notPulled', reason: pulled.reason };
+  }
+  ports.say(`pulled ${repo.main} to ${short(pending.target)}`);
+  const env = hookEnv(setup, ports, request, repo, pending, { TEAMRIG_ROLL_TO: pending.target, ...(tag === undefined ? {} : { TEAMRIG_ROLL_TAG: tag }) });
+  const timeoutMs = setup.coordinator.heavy.maxRunMinutes * MINUTE_MS;
+  const show = (line: string): string => {
+    const shown = shownLine(ports.scanner, line);
+    ports.say(`  ${shown}`);
+    return shown;
+  };
+  for (const argv of repo.roll.afterPull) {
+    ports.say(`afterPull: ${argv.join(' ')}`);
+    const end = await ports.hooks.run({ argv, cwd: repo.main, env, timeoutMs, onLine: show });
+    if (!succeeded(end)) {
+      return { kind: 'afterPullFailed', argv, end };
+    }
+  }
+  ports.say(`roll: ${repo.roll.command.join(' ')}`);
+  let lastLine: string | undefined;
+  let noRoll = false;
+  const end = await ports.hooks.run({
+    argv: repo.roll.command,
+    cwd: repo.main,
+    env,
+    timeoutMs,
+    onLine: (line) => {
+      const shown = show(line);
+      noRoll ||= line.trim() === NO_ROLL_LINE;
+      if (shown.trim() !== '') {
+        lastLine = shown.trim();
+      }
+    },
+  });
+  return { kind: 'ran', end, lastLine, noRoll };
+}
+
+/** What a pulled range ends as, and its deploy record when the roll command rolled something or failed trying. */
+async function settle(setup: RollSetup, ports: RollPorts, request: RollRequest, repo: RollRepo, pending: Pending, tag: string | undefined, startedAt: string, run: RollRun): Promise<RollEnd> {
+  const { range, commits } = pending;
+  const byHand = `a new roll finds nothing pending, so run \`${repo.roll.command.join(' ')}\` in ${repo.main} by hand once it is fixed`;
+  switch (run.kind) {
+    case 'notPulled':
+      return { kind: 'failed', reason: `the pull of ${range} into ${repo.main} failed (${run.reason}): nothing pulled, nothing rolled; roll again` };
+    case 'afterPullFailed':
+      return { kind: 'failed', reason: `${range} pulled, but afterPull \`${run.argv.join(' ')}\` ${hookEndText(run.end)}, so nothing rolled; ${byHand}` };
+    case 'ran':
+      break;
+  }
+  const ok = succeeded(run.end);
+  const said = run.lastLine === undefined || run.lastLine === NO_ROLL_LINE ? '' : `: ${run.lastLine}`;
+  if (ok && run.noRoll) {
+    return { kind: 'done', summary: `${range} pulled; nothing needed rolling${said}` };
+  }
+  const carried = plural(commits.length, 'commit');
+  const what = `roll ${repo.roll.targets.length > 0 ? repo.roll.targets.join(', ') : repo.name}${tag === undefined ? '' : ` (${tag})`}`;
+  await appendDeploy(ports.files, setup.places, {
+    type: 'deploy',
+    kind: 'deploy',
+    session: request.session,
+    repo: repo.name,
+    range,
+    what,
+    note: ok ? `${carried}; ${run.lastLine ?? 'rolled'}` : `${carried}; the roll command ${hookEndText(run.end)}${said}`,
+    startedAt,
+    rolledAt: new Date(ports.clock.now()).toISOString(),
+  });
+  if (ok) {
+    return { kind: 'done', summary: `${range} rolled${said}` };
+  }
+  return { kind: 'failed', reason: `${range} pulled, but the roll command ${hookEndText(run.end)}${said}; its owners fix forward or roll back, and ${byHand}` };
+}
+
+/** Rolls what was pushed to a repository's default branch (see the module comment). */
+export async function rollRepo(setup: RollSetup, ports: RollPorts, request: RollRequest): Promise<RollEnd> {
+  const chosen = chosenRepo(setup, ports, request);
+  if (chosen.kind === 'refused') {
+    return chosen;
+  }
+  const { repo } = chosen;
+  const nothing = (head: string): RollEnd => ({ kind: 'done', summary: `nothing to roll: the ${repo.name} main checkout is at its origin's default branch (${short(head)})` });
+  const early = await readPending(ports, repo);
+  if (early.kind === 'none') {
+    return nothing(early.head);
+  }
+  if (early.kind !== 'pending') {
+    return early;
+  }
+  ports.say(`${plural(early.pending.commits.length, 'commit')} pending in ${repo.name} (${early.pending.range})`);
+  const view: LockedView = { read: undefined, tag: undefined, range: early.pending };
+  const { wait } = setup.coordinator;
+  const clearance = await takeWhenClear(readinessOf(setup, ports, request, repo, view), ports, {
+    session: request.session,
+    purpose: `roll ${repo.name}`,
+    maxWaitMs: wait.maxMinutes * MINUTE_MS,
+    pollMs: wait.pollSeconds * 1_000,
+    onWait: (reason) => ports.say(`waiting: ${reason}`),
+  });
+  if (clearance.kind !== 'taken') {
+    return { kind: 'refused', reason: clearance.reason };
+  }
+  try {
+    const latest = view.read ?? (await readPending(ports, repo));
+    if (latest.kind === 'none') {
+      return nothing(latest.head);
+    }
+    if (latest.kind !== 'pending') {
+      return latest;
+    }
+    const { pending } = latest;
+    const { tag } = view;
+    const startedAt = new Date(ports.clock.now()).toISOString();
+    ports.say(`clear; pulling ${plural(pending.commits.length, 'commit')} (${pending.range}) into ${repo.main}`);
+    const run = await recordHeavy(ports, setup.places.ledger, { session: request.session, what: `roll ${repo.name} ${pending.range}` }, () => pullAndRoll(setup, ports, request, repo, pending, tag), runExitCode);
+    return await settle(setup, ports, request, repo, pending, tag, startedAt, run);
+  } finally {
+    await ports.lock.release(clearance.lock);
+  }
+}
