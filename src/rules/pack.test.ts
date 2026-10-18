@@ -215,11 +215,11 @@ describe('renderCorePack', () => {
     assert.match(pack, /Pace the week to 99\.5% of the weekly limit and keep 0\.5% for incidents \[budget\]\./);
   });
 
-  it('has owner questions carry the decision marker line only while tab status shows it', () => {
+  it('has owner questions stand alone, and carry the decision marker line only while tab status shows it', () => {
     const on = renderCorePack(testConfig({ tabStatus: { enabled: true } }), COMMAND, 'win32');
-    assert.ok(on.includes('Owner questions bring options, numbers, a recommendation and a `Decision needed:` line; one with'), on);
+    assert.ok(on.includes('Owner questions stand alone, no bare task ids: options, numbers, your pick, a `Decision needed:` line; one with'), on);
     const off = renderCorePack(testConfig(), COMMAND, 'win32');
-    assert.ok(off.includes('Owner questions come with options, numbers and a recommendation; one with'), off);
+    assert.ok(off.includes('Owner questions stand alone, no bare task ids: options, numbers and a recommendation; one with'), off);
     assert.ok(!off.includes('Decision needed'), off);
   });
 
