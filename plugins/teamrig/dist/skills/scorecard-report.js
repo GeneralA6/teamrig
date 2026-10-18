@@ -92,7 +92,7 @@ export function renderScorecard(rows, footer) {
             row.flags.join(', '),
         ])),
         '',
-        `missed: a call matching the skill's Signature line with no load in the ${LOAD_WINDOW_CALLS} calls before. A run ends at the next prompt that starts new work; base = the procedure by hand in the baseline.`,
+        `missed: a call matching the skill's Signature line with no load in the ${LOAD_WINDOW_CALLS} calls before. A run ends at the next prompt, or for a background step of its own at the notification after it; base = the procedure by hand in the baseline.`,
         `Read ${footer.files} files, ${(footer.bytesRead / (1024 * 1024)).toFixed(1)} MB this run.`,
     ];
     if (footer.catchingUp) {

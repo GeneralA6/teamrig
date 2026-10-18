@@ -33,6 +33,7 @@ export function toolUseFrom(id, name, input) {
         command: input === undefined ? undefined : stringField(input, 'command'),
         ...(path === undefined ? {} : { path }),
         ...(skill === undefined ? {} : { skill }),
+        ...(input?.['run_in_background'] === true ? { background: true } : {}),
     };
 }
 /** The tool that loads a skill: its input's `skill` names it. */
@@ -125,7 +126,15 @@ function userLineOf(entry) {
     }
     const results = blocksOf(message).flatMap((block) => toolResultOf(block) ?? []);
     const at = timeOf(entry);
-    return results.length > 0 ? { kind: 'results', at, results } : { kind: 'prompt', at, trigger: triggerOf(entry, message), commands: commandsIn(promptText(message)) };
+    return results.length > 0 ? { kind: 'results', at, results } : promptOf(entry, message, at);
+}
+const TOOL_USE_ID = /<tool-use-id>([^<\s]+)<\/tool-use-id>/;
+/** A prompt line; only a notification's own `<tool-use-id>` names the call it answers, never one a message quotes. */
+function promptOf(entry, message, at) {
+    const text = promptText(message);
+    const trigger = triggerOf(entry, message);
+    const answers = trigger === 'notification' ? TOOL_USE_ID.exec(text)?.[1] : undefined;
+    return { kind: 'prompt', at, trigger, commands: commandsIn(text), ...(answers === undefined ? {} : { answers }) };
 }
 /** A compaction's boundary line; undefined for any other entry. */
 function compactOf(entry) {
