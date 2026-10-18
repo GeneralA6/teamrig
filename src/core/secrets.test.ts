@@ -39,4 +39,12 @@ describe('SecretScanner', () => {
     assert.equal(refusal?.includes(token.slice(4)), false);
     assert.equal(scanner.refusal('title', join('TOK', '_ABCD1234')), 'title looks like it holds a secret (secret pattern from the team config); refer to where it is kept instead');
   });
+
+  it('redacts each secret to the end of its word and keeps the rest of the line', () => {
+    const token = join('ghp', '_', 'a'.repeat(36));
+    assert.equal(scanner.redact(join('flow probe: password', '=', 'hunter2 then retry')), 'flow probe: [redacted password or key assignment] then retry');
+    assert.equal(scanner.redact(`push with ${token}, twice: ${token}`), 'push with [redacted GitHub token] twice: [redacted GitHub token]');
+    assert.equal(scanner.redact(join('key TOK', '_ABCD1234xyz ok')), 'key [redacted secret pattern from the team config] ok');
+    assert.equal(scanner.redact('open flow since 23:10 UTC'), 'open flow since 23:10 UTC');
+  });
 });
