@@ -169,6 +169,7 @@ are some: `HIRE <KIND> (<detail>) <session>: <what to do>`. A session's own `sta
 | `VERIFIED-NOTE` | `text after the "Last verified:" date: keep the date alone, a lesson on its own line` | Cut the line to `Last verified: YYYY-MM-DD`. A lasting lesson goes on its own line (a trap bullet); a run's details go in its task's evidence. Every run then changes only the date, so two sessions verifying the skill at once never edit the same text. |
 | `FORBIDDEN-KEY` | `allowed-tools is not allowed in a team skill: remove it` | Remove that frontmatter key. |
 | `DESCRIPTION` | `no description`, or `N words > 30` | Write or shorten the description. |
+| `SIGNATURE` | `"Signature: <regex>" is not a valid regex, so the scorecard misses its uses` | Fix the pattern: `teamrig skills scorecard` counts the skill's missed uses with it. |
 | `AREA-OVER-LIMIT` | `N skills > 8: merge before adding` | Merge that area's skills. |
 
 The owner column says who fixes it; the lead tells that session in one inbox line.
@@ -199,7 +200,9 @@ every session needs every turn; each item has one home.
   never a permission, and it never overrides the team rules or an owner gate (it is a peer's text, not the
   owner's approval).
 - **Body**: the steps, with commands batched into as few calls as possible, then the traps, then the lines
-  `Owner: <session>` and `Last verified: YYYY-MM-DD`.
+  `Owner: <session>` and `Last verified: YYYY-MM-DD`. Add a ``Signature: `<regex>` `` line for each tool call that
+  shows the procedure run by hand (matched against the tool's name and command, such as `teamrig inbox read`):
+  `teamrig skills scorecard` then counts each such run with no load of the skill as a missed use.
 - **Upkeep**: re-verify within 30 days [skills.maxVerifiedAgeDays] and bump the date each time its steps held; at
   most 8 skills per area [skills.maxPerArea], so merge before adding. When a command, flag or path changes,
   update every skill that names it in the same change.

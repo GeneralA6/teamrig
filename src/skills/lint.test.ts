@@ -75,6 +75,13 @@ describe('lintSkills', () => {
     ]);
   });
 
+  it('flags a Signature line that is not a valid regex, and passes a valid one', () => {
+    const signed = (name: string, source: string): SkillFile => ({ name, text: `${skill(name).text}Signature: \`${source}\`\r\n` });
+    assert.deepEqual(lint(signed('alpha-a', 'teamrig (inbox read'), signed('alpha-b', 'teamrig inbox read')), [
+      'SKILL SIGNATURE ("Signature: `teamrig (inbox read`" is not a valid regex, so the scorecard misses its uses) alpha alpha-a',
+    ]);
+  });
+
   it('counts skills per area, keeping hyphenated session names whole', () => {
     const alpha = Array.from({ length: 9 }, (_, index) => skill(`alpha-s${index}`));
     const ops = Array.from({ length: 8 }, (_, index) => skill(`alpha-ops-s${index}`, { owner: 'alpha-ops' }));
