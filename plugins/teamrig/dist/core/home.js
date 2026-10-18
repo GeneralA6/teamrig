@@ -97,6 +97,7 @@ export function teamPaths(kitHome, team, userHome, overrides = {}) {
         verifyNotices: join(state, 'verify-notices.jsonl'),
         modelNotices: join(state, 'model-notices'),
         usage: join(state, 'usage'),
+        skillsScorecard: join(state, 'skills-scorecard.json'),
         lifts: join(state, 'usage', 'lifts.jsonl'),
         bursts: join(state, 'usage', 'bursts.jsonl'),
         hires: join(state, 'hires.jsonl'),

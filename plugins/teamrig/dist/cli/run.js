@@ -27,6 +27,7 @@ const setupCommands = () => import("./commands/setup.js");
 const compactCommands = () => import("./commands/compact.js");
 const rulesCommands = () => import("./commands/rules.js");
 const ruleConflictCommands = () => import("./commands/rule-conflicts.js");
+const skillsCommands = () => import("./commands/skills.js");
 const openCommands = () => import("./commands/open.js");
 const restartCommands = () => import("./commands/restart.js");
 const budgetCommands = () => import("./commands/budget.js");
@@ -74,6 +75,11 @@ const COMMANDS = {
     'rules scan': { effect: 'read', flags: ['kind'], load: async () => (await ruleConflictCommands()).scan },
     'rules keep': { effect: 'write', flags: ['session', 'rule', 'wins', 'reason'], switches: ['yes'], load: async () => (await ruleConflictCommands()).keep },
     'rules forget': { effect: 'write', flags: ['session'], switches: ['yes'], load: async () => (await ruleConflictCommands()).forget },
+    'skills scorecard': {
+        effect: 'read',
+        flags: ['from', 'to', 'baseline-from', 'baseline-to'],
+        load: async () => (await skillsCommands()).scorecard,
+    },
     start: { effect: 'write', flags: ['session'], switches: ['all'], load: async () => (await startCommands()).start },
     'meeting start': { effect: 'write', flags: ['session'], load: async () => (await meetingCommands()).meetingStart },
     'meeting agenda': { effect: 'write', flags: ['session'], load: async () => (await meetingCommands()).meetingAgenda },
@@ -208,6 +214,10 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       (the lead only) keeps a local rule that conflicts with a core rule: local wins as a named exception,
       or teamrig wins and the line stays; without --yes it shows the record and writes nothing
   rules forget <n> [--yes]     (the lead only) drops kept rule n, as rules scan numbers them
+  skills scorecard [--from <day>] [--to <day>] [--baseline-from <day>] [--baseline-to <day>]   per skill:
+      loads, missed uses (a call matching its "Signature: \`<regex>\`" line with no load before it), calls
+      and errors per run, against a baseline (default: the last 7 UTC days, and the 7 before); each run
+      reads only what the transcripts gained since the last one
   start [--session <id|name>] [--all]   the start of a work block in one call: the UTC time, the
       unread inbox lines (marked read), the session's tasks, the other sessions' tasks waiting on it, the
       check flags it acts on (the lead: all) and the week's use; --all: the tasks and flags in full, and
