@@ -730,6 +730,7 @@ function parseRegister(read: ConfigReader, raw: JsonRecord): RegisterConfig {
     ),
     autoArchive: read.boolean(raw, 'autoArchive', path, defaults.autoArchive),
     requireProofOnVerifying: read.boolean(raw, 'requireProofOnVerifying', path, defaults.requireProofOnVerifying),
+    requireDecisionCard: read.boolean(raw, 'requireDecisionCard', path, defaults.requireDecisionCard),
     verifyGate: isVerifyGate(verifyGate) ? verifyGate : defaults.verifyGate,
     maxVerifying: read.integer(raw, 'maxVerifying', path, defaults.maxVerifying, CONFIG_LIMITS.maxVerifying),
     check: {

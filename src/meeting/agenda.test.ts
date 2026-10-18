@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { MS_PER_DAY } from '../core/time.ts';
 import type { Task } from '../register/fold.ts';
 import { TaskTree } from '../register/tree.ts';
+import { TEST_CARD } from '../testing/card.ts';
 import { testTask } from '../testing/task.ts';
 import { AGENDA_ROWS, agendaLines, agendaSince, DESCRIPTION_CHARS, DONE_WINDOW_DAYS, oneLine, waitsOnOwner, type AgendaInput } from './agenda.ts';
 
@@ -35,6 +36,7 @@ const DECIDE = testTask({
   note: 'two options, numbers in the card',
   statusAt: '2030-01-07T15:30:00.000Z',
   ref: 'issue 12',
+  card: TEST_CARD,
 });
 
 describe('the meeting agenda', () => {
@@ -58,17 +60,26 @@ describe('the meeting agenda', () => {
 
   it("gives each owner's decision its card facts, then how to card and record it", () => {
     const lines = section(agendaLines(inputOf([DECIDE, testTask({ id: 'T5', status: 'waiting', waits: [{ kind: 'approval', who: 'owner' }] })])), 'DECISIONS');
-    assert.deepEqual(lines.slice(0, 5), [
+    assert.deepEqual(lines.slice(0, 10), [
       'DECISIONS 2 waiting on owner (decision or approval)',
       '  T4 waiting, p2, owner alpha | Pick the pricing tier (waiting: decision owner)',
       '    what and why: Which tier ships first. The launch waits on it.',
+      '    decide: Which pricing tier ships first',
+      '      1. Basic at 9 dollars a month',
+      '      2. Pro at 29 dollars a month',
+      '    recommended: Basic, the cheaper launch',
+      '    with no answer: Basic ships on the due date',
       '    waiting since 01-07 15:30: two options, numbers in the card',
       '    asked at: issue 12',
     ]);
-    assert.deepEqual(lines.slice(5, 7), ['  T5 waiting, p2, owner alpha | Add a health check (waiting: approval owner)', '    waiting since 01-07 09:00']);
-    assert.match(lines[7] ?? '', /^ {2}Card each so owner decides from it alone: .*Never point to a doc; `teamrig show <id>` prints a task whole\.$/);
-    assert.equal(lines[8], '  Record each answer in the same turn: teamrig update <id> --note "owner decided: <decision>" --session lead; meeting end tells each task\'s owner.');
-    assert.equal(lines.length, 9);
+    assert.deepEqual(lines.slice(10, 13), [
+      '  T5 waiting, p2, owner alpha | Add a health check (waiting: approval owner)',
+      '    no card yet: ask alpha for one (check flags it NO-CARD)',
+      '    waiting since 01-07 09:00',
+    ]);
+    assert.match(lines[13] ?? '', /^ {2}Read each card to owner as it stands, .*Never point to a doc; `teamrig show <id>` prints a task whole\.$/);
+    assert.equal(lines[14], '  Record each answer in the same turn: teamrig update <id> --note "owner decided: <decision>" --session lead; meeting end tells each task\'s owner.');
+    assert.equal(lines.length, 15);
   });
 
   it('cuts a long description', () => {
@@ -115,5 +126,16 @@ describe('the meeting agenda', () => {
     assert.equal(lines[0], `DONE ${AGENDA_ROWS + 2} done or dropped since Mon 01-07 10:00 UTC`);
     assert.ok(!lines.some((line) => /\bT3\b/.test(line)), lines.join('\n'));
     assert.equal(lines.at(-1), '  +2 more: teamrig list --status done,dropped');
+  });
+});
+
+describe('the meeting agenda: no task number stands alone', () => {
+  it('names each other task a decision names by its title', () => {
+    const naming: Task = { ...DECIDE, card: { ...TEST_CARD, recommend: 'Basic, as T2 already shipped it' }, note: 'T2 and T9 both matter' };
+    const lines = section(agendaLines(inputOf([naming, testTask({ id: 'T2', title: 'Ship the basic tier' })])), 'DECISIONS');
+    assert.deepEqual(
+      lines.filter((line) => /^ {4}T\d+: /.test(line)),
+      ['    T2: Ship the basic tier', '    T9: not in the working set'],
+    );
   });
 });

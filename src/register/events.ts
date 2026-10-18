@@ -2,6 +2,7 @@ import { isRecord, type JsonRecord } from '../core/guards.ts';
 import type { JsonlRecord } from '../core/jsonl.ts';
 import { parseUtcDeadline } from '../core/time.ts';
 import { isTaskStatus, LEGACY_WAITING_STATUS, TASK_ID, type TaskStatus } from './model.ts';
+import { parseCard, type DecisionCard } from './card.ts';
 import { parseWaits, type WaitReason } from './waits.ts';
 
 /**
@@ -11,9 +12,9 @@ import { parseWaits, type WaitReason } from './waits.ts';
  * Version 2 later gained, without a new number, a task's `after` list and the `waiting` status with its
  * `waits`, which replaced `blocked`: an older reader ignores the new fields and skips a `waiting` line as
  * a newer teamrig's, and a `blocked` line reads here as `waiting` with no reasons. It also gained a
- * `verifying` status's `proof`, a task's `description` (0.44.0) and its `size` (0.47.0), which an older reader
- * ignores: each reads there as none, and an older teamrig's `compact` drops it from the snapshot it rewrites (the archive keeps
- * the lines as written).
+ * `verifying` status's `proof`, a task's `description` (0.44.0) and its `size` (0.47.0), and a `waiting` status's
+ * decision `card` (0.78.0), which an older reader ignores: each reads there as none, and an older teamrig's
+ * `compact` drops it from the snapshot it rewrites (the archive keeps the lines as written).
  * Parsing checks the FORMAT only (any positive priority, any goal string): team policy is applied
  * on write, so changing the config never erases history.
  */
@@ -71,6 +72,8 @@ export interface StatusEvent extends EventBase {
   readonly skill: string | null;
   /** What a `waiting` task waits for; written only with that status, and absent on a `blocked` line read as one. */
   readonly waits?: readonly WaitReason[];
+  /** What a `waiting` task asks of whoever decides (card.ts); written only with that status, on a decision or an approval wait. */
+  readonly card?: DecisionCard;
   /** What will prove a `verifying` task works; written only with that status, and absent on lines from before `--proof`. */
   readonly proof?: string;
   /** The tasks the work leaves, empty for `--followups none`; absent when the change named none, and on lines from before `--followups`. */
@@ -149,6 +152,10 @@ export function parseEvent(line: JsonlRecord): EventParse {
       if (typeof waits === 'string') {
         return unreadable(waits);
       }
+      const card = status === 'waiting' ? parseCard(record['card']) : undefined;
+      if (typeof card === 'string') {
+        return unreadable(card);
+      }
       const proof = status === 'verifying' ? textOrNull(record, 'proof') : null;
       const followups = parseFollowups(record['followups']);
       if (typeof followups === 'string') {
@@ -162,6 +169,7 @@ export function parseEvent(line: JsonlRecord): EventParse {
         evidence: textOrNull(record, 'evidence'),
         skill: textOrNull(record, 'skill'),
         ...(waits === undefined ? {} : { waits }),
+        ...(card === undefined ? {} : { card }),
         ...(proof === null ? {} : { proof }),
         ...(followups === undefined ? {} : { followups }),
       };

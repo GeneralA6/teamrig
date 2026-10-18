@@ -1,6 +1,7 @@
 import { ENV, type Env } from '../core/home.ts';
 import { NAME_PATTERN, NAME_RULE } from '../core/ids.ts';
 import { parseUtcDeadline, parseUtcDay, parseUtcInstant } from '../core/time.ts';
+import { OPTION_SEPARATOR, type DecisionCard } from '../register/card.ts';
 import { MAX_SIZE_PCT, sizeProblem, type TaskFields } from '../register/events.ts';
 import { isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, priorityText, TASK_ID, TASK_STATUSES, type TaskStatus } from '../register/model.ts';
 import { WAITS_USAGE, type AddInput, type AskInput, type StatusInput } from '../register/policy.ts';
@@ -256,6 +257,10 @@ export function statusInputOf(flags: Flags): StatusInput {
   if (waits !== undefined) {
     input.waits = waitsOf(waits);
   }
+  const card = cardInputOf(flags);
+  if (card !== undefined) {
+    input.card = card;
+  }
   const proof = flags.get('proof');
   if (proof !== undefined) {
     input.proof = proof;
@@ -269,6 +274,46 @@ export function statusInputOf(flags: Flags): StatusInput {
     input.followups = followups === NONE ? [] : listOf('--followups', followups).map(taskIdOf);
   }
   return input;
+}
+
+/** The card parts a `set` names (`--question`, `--options`, `--recommend`, `--default`); undefined when it names none. */
+function cardInputOf(flags: Flags): Partial<DecisionCard> | undefined {
+  const card: Mutable<Partial<DecisionCard>> = {};
+  const question = cardPart(flags, 'question');
+  if (question !== undefined) {
+    card.question = question;
+  }
+  const options = flags.get('options');
+  if (options !== undefined) {
+    card.options = optionsOf(options);
+  }
+  const recommend = cardPart(flags, 'recommend');
+  if (recommend !== undefined) {
+    card.recommend = recommend;
+  }
+  const byDefault = cardPart(flags, 'default');
+  if (byDefault !== undefined) {
+    card.byDefault = byDefault;
+  }
+  return Object.keys(card).length === 0 ? undefined : card;
+}
+
+/** A card part as typed, trimmed; a blank one is a usage error. */
+function cardPart(flags: Flags, name: string): string | undefined {
+  const text = flags.get(name)?.trim();
+  if (text === '') {
+    throw new UsageError(`--${name} needs text`);
+  }
+  return text;
+}
+
+/** `--options "<a> | <b>"`: the choices, each trimmed; an empty one is a usage error. */
+function optionsOf(text: string): string[] {
+  const options = text.split(OPTION_SEPARATOR).map((option) => option.trim());
+  if (options.some((option) => option === '')) {
+    throw new UsageError(`--options has an empty choice: separate the choices with ${OPTION_SEPARATOR}`);
+  }
+  return options;
 }
 
 /** What `set` writes: the status change and, with `--ask`, the task it asks another session for. */

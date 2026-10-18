@@ -232,3 +232,17 @@ describe('listFilterOf', () => {
     assert.throws(() => listFilterOf(flags({ status: 'open,later' })), /--status "later" is not/);
   });
 });
+
+describe('statusInputOf: the decision card', () => {
+  it('reads the card parts, trimmed, the options split on |', () => {
+    const full = flags({ status: 'waiting', waits: 'decision:owner', question: ' Which tier ', options: 'Basic | Pro at 29 ', recommend: 'Basic', default: 'Basic ships' });
+    assert.deepEqual(statusInputOf(full).card, { question: 'Which tier', options: ['Basic', 'Pro at 29'], recommend: 'Basic', byDefault: 'Basic ships' });
+    assert.deepEqual(statusInputOf(flags({ status: 'waiting', waits: 'decision:owner', recommend: 'Pro now' })).card, { recommend: 'Pro now' });
+    assert.equal('card' in statusInputOf(flags({ status: 'waiting', waits: 'decision:owner' })), false);
+  });
+
+  it('refuses a blank part or an empty choice', () => {
+    assert.throws(() => statusInputOf(flags({ status: 'waiting', question: ' ' })), /--question needs text/);
+    assert.throws(() => statusInputOf(flags({ status: 'waiting', options: 'Basic || Pro' })), /--options has an empty choice: separate the choices with \|/);
+  });
+});

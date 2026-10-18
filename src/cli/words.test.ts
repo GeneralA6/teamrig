@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import { TEST_CARD_FLAGS } from '../testing/card.ts';
 import { APP, bash, CLAUDE_SESSION, CliHarness, TEAM_HOME, USER_HOME, type RunOptions } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
 
@@ -36,7 +37,7 @@ async function everyOutput(): Promise<string[]> {
     [['add', '--title', 'Ship login', '--description', 'what and why', '--priority', 'p1', '--owner', 'alpha', '--due', '2030-01-07', '--week', '2030-01-07', '--session', 'lead']],
     [['add', '--title', 'Trim the cache', '--description', 'what and why', '--priority', 'p2', '--owner', 'bravo', '--week', '2030-01-07', '--session', 'lead']],
     [['set', 'T2', '--status', 'blocked', '--note', 'waiting on disk', '--session', 'bravo']],
-    [['set', 'T2', '--status', 'waiting', '--waits', 'decision:owner', '--note', 'waiting on disk', '--session', 'bravo']],
+    [['set', 'T2', '--status', 'waiting', '--waits', 'decision:owner', '--note', 'waiting on disk', ...TEST_CARD_FLAGS, '--session', 'bravo']],
     [['add', '--title', 'Old idea', '--description', 'what and why', '--priority', 'p3', '--session', 'alpha']],
     [['set', 'T3', '--status', 'dropped', '--note', 'merged into T1', '--session', 'alpha']],
     [['update', 'T1', '--priority', 'p2', '--note', 'after the release', '--session', 'lead']],

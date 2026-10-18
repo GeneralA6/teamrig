@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { TEST_CARD } from '../testing/card.ts';
 import { testTask } from '../testing/task.ts';
 import type { RegisterEvent } from './events.ts';
 import {
@@ -418,5 +419,12 @@ describe('assignedNotice', () => {
   it('names the task, its priority, its due date when it has one, and its title', () => {
     assert.equal(assignedNotice(testTask({ id: 'T5', due: '2030-01-10' })), 'T5 is yours (p2, due 2030-01-10): Add a health check');
     assert.equal(assignedNotice(testTask({ id: 'T5', priority: 1 })), 'T5 is yours (p1): Add a health check');
+  });
+});
+
+describe('personWaitNotice: the card', () => {
+  it("names the card's question, so the line reads on its own", () => {
+    const task = testTask({ id: 'T2', note: 'asked again', card: TEST_CARD });
+    assert.equal(personWaitNotice(task, [{ kind: 'decision', who: 'owner' }], 'lead'), "T2 waits on the owner's decision: Which pricing tier ships first");
   });
 });

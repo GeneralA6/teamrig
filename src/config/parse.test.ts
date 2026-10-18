@@ -861,3 +861,12 @@ describe('parseConfig budget', () => {
     assert.equal(config.budget.enabled, false);
   });
 });
+
+describe('parseConfig: the decision card', () => {
+  it('reads whether a wait on the owner needs a decision card, and falls back to the default on a wrong one', () => {
+    assert.equal(parseConfig(ROSTER).config.register.requireDecisionCard, true);
+    assert.equal(parseConfig({ ...ROSTER, register: { requireDecisionCard: false } }).config.register.requireDecisionCard, false);
+    const { config, issues } = parseConfig({ ...ROSTER, register: { requireDecisionCard: 'yes' } });
+    assert.deepEqual([paths(issues), config.register.requireDecisionCard], [['register.requireDecisionCard'], true]);
+  });
+});

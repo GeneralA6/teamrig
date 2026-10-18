@@ -1,5 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { TEST_CARD } from '../testing/card.ts';
+import type { DecisionCard } from './card.ts';
 import { EVENT_VERSION, type RegisterEvent, type TaskFields } from './events.ts';
 import { foldEvents, RegisterFold, type Task } from './fold.ts';
 import type { TaskStatus } from './model.ts';
@@ -139,5 +141,30 @@ describe('RegisterFold: going on from a folded state', () => {
   it('keeps the next id of the state it went on from, even with no tasks in it', () => {
     const state = foldEvents([], [], { tasks: new Map(), orphans: 3, nextId: 'T40' });
     assert.deepEqual([state.nextId, state.orphans, state.tasks.size], ['T40', 3, 0]);
+  });
+});
+
+describe('foldEvents: the decision card', () => {
+  const OWNER: readonly WaitReason[] = [{ kind: 'decision', who: 'owner' }];
+  const carded = (hour: number, card: DecisionCard): RegisterEvent => ({
+    v: EVENT_VERSION,
+    type: 'status',
+    id: 'T1',
+    at: at(hour),
+    by: 'alpha',
+    status: 'waiting',
+    note: 'n',
+    evidence: null,
+    skill: null,
+    waits: OWNER,
+    card,
+  });
+
+  it("keeps the latest waiting status's card, and drops it when the task leaves waiting", () => {
+    const later: DecisionCard = { ...TEST_CARD, recommend: 'Pro, since the launch is late' };
+    assert.deepEqual(taskAfter([create(9), carded(10, TEST_CARD)]).card, TEST_CARD);
+    assert.deepEqual(taskAfter([create(9), carded(10, TEST_CARD), carded(11, later)]).card, later);
+    assert.equal(taskAfter([create(9), carded(10, TEST_CARD), status(11, 'in-progress')]).card, null);
+    assert.equal(taskAfter([create(9), status(10, 'waiting', OWNER)]).card, null, 'a line from before cards has none');
   });
 });
