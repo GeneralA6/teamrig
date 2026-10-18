@@ -16,6 +16,7 @@ import type {
   RefreshConfig,
   RegisterConfig,
   SkillsConfig,
+  StatusLineConfig,
   TestsConfig,
   WakeConfig,
 } from './types.ts';
@@ -151,6 +152,9 @@ export const DEFAULT_REFRESH: RefreshConfig = {
 };
 
 export const DEFAULT_OPEN: OpenConfig = { terminal: 'auto' };
+
+/** The status line shows the session's folder, its branch and the command that resumes it, unless the team turns them off. */
+export const DEFAULT_STATUS_LINE: StatusLineConfig = { folder: true, branch: true, resume: true };
 
 /**
  * A hire spends the week's budget, so it waits for the owner's yes: at most two hires at 1% of the week a day

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT_HIRING, DEFAULT_OPEN, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_WAKE } from './defaults.ts';
+import { DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT_HIRING, DEFAULT_OPEN, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_STATUS_LINE, DEFAULT_WAKE } from './defaults.ts';
 import { parseConfig } from './parse.ts';
 import { CONFIG_VERSION } from './types.ts';
 import type { ConfigIssue } from './reader.ts';
@@ -509,6 +509,16 @@ describe('parseConfig', () => {
     assert.deepEqual(paths(bad.issues), ['open.terminal']);
     assert.match(bad.issues[0]?.message ?? '', /expected one of auto, tmux, windows-terminal/);
     assert.deepEqual(bad.config.open, DEFAULT_OPEN);
+  });
+
+  it('reads what the status line shows, each part on unless turned off, refusing a value that is not true or false', () => {
+    assert.deepEqual(parseConfig(ROSTER).config.statusLine, DEFAULT_STATUS_LINE);
+    const set = parseConfig({ ...ROSTER, statusLine: { resume: false } });
+    assert.deepEqual(set.issues, []);
+    assert.deepEqual(set.config.statusLine, { folder: true, branch: true, resume: false });
+    const bad = parseConfig({ ...ROSTER, statusLine: { branch: 'no' } });
+    assert.deepEqual(paths(bad.issues), ['statusLine.branch']);
+    assert.deepEqual(bad.config.statusLine, DEFAULT_STATUS_LINE);
   });
 
   it('reads where the team sits in a tree, and leaves it unset in an older config', () => {
