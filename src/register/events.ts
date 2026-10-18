@@ -13,7 +13,7 @@ import { parseWaits, type WaitReason } from './waits.ts';
  * `waits`, which replaced `blocked`: an older reader ignores the new fields and skips a `waiting` line as
  * a newer teamrig's, and a `blocked` line reads here as `waiting` with no reasons. It also gained a
  * `verifying` status's `proof`, a task's `description` (0.44.0) and its `size` (0.47.0), and a `waiting` status's
- * decision `card` (0.78.0), which an older reader ignores: each reads there as none, and an older teamrig's
+ * decision `card` (0.79.0), which an older reader ignores: each reads there as none, and an older teamrig's
  * `compact` drops it from the snapshot it rewrites (the archive keeps the lines as written).
  * Parsing checks the FORMAT only (any positive priority, any goal string): team policy is applied
  * on write, so changing the config never erases history.
