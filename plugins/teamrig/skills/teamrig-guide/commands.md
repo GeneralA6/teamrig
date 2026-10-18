@@ -1080,7 +1080,9 @@ Flags:
 - `--project <dir>`: required; the folder must exist.
 - `--home <dir>`: the kit home, when it is not the default.
 - `--encoded-prompt <text>`: the first prompt, as `open` encoded it.
+- `--no-prompt`: start with no first prompt, as the restore after a reboot reopens an idle session; not with `--encoded-prompt`.
 - `--resume <session>`: the Claude Code session to resume, as `open --resume` gives it; on its first start only.
+- `--effort <level>`: the effort to start on instead of the configured one, as the restore reopens a session at its last.
 
 Example:
 
@@ -1092,6 +1094,117 @@ Output:
 
 ```text
 Starting Claude Code as shop-web (session web of team shop) in /home/you/shop, on the default model and effort
+```
+
+It refuses when `claude` is not on the PATH.
+
+### teamrig restore
+
+What a restore after a reboot would do now. The `hook restore-track` hook records every Claude Code session on the
+machine, in a team or not, in `<home>/restore/sessions/`; after a shutdown or reboot killed them, `restore run`
+reopens each one the shutdown interrupted, in its folder, at its last effort. A session that ended on purpose
+(`/exit`, `/clear`), still runs, was active since logon, was not a terminal session (`claude -p`), has no transcript
+left, is too old or failed to resume too often is not reopened. This command prints each recorded session as
+`RESTORE` (how it comes back and at which effort), `KEEP` or `DISCARD`, with the reason, and what each lead's first
+prompt says of its team. It only reads.
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig restore
+```
+
+Output:
+
+```text
+RESTORE  1f3c9a0e-...  shop-lead  killed without exiting; continue: lead; effort xhigh  /home/you/shop
+RESTORE  7b21d4c8-...  shop-web  killed without exiting; continue: mid-turn; effort high  /home/you/shop
+KEEP     c40e8f12-...  still running  /home/you/notes
+Lead shop-lead hears: shop-web continue (mid-turn)
+```
+
+### teamrig restore run
+
+Reopens the Claude Code sessions the last shutdown killed. It lists them and counts down 60 seconds: Enter starts
+at once, `i` reopens every one with no prompt, `q` (or Esc, Ctrl+C) cancels. A team session started by `open` comes
+back through `launch` as itself; any other is resumed as it ran (`restore resume`). One that was mid-turn, hit an
+API error or had background jobs, cron jobs or a wake-up live at the shutdown gets a prompt to re-check the state
+and carry on, and so does each lead, told how its team's sessions came back; the others reopen idle. Each step is
+written to `<home>/restore/restore.log`. A tab that did not open is printed with the command to run, and the
+command exits 1.
+
+Flags:
+
+- `--since <time>`: the logon time; a session active after it is left alone (default: now).
+- `--terminal <name>`: the terminal to open the tabs in instead of the configured one.
+- `--home <dir>`: the kit home, when it is not the default.
+- `--tab`: it runs in a tab of its own, as `restore check` opens it: the tab stays 2 seconds once every session is
+  open, else 8 seconds, so you can read what failed.
+
+Example:
+
+```sh
+teamrig restore run
+```
+
+Output:
+
+```text
+Claude Code sessions the last shutdown interrupted (2):
+  shop-lead   [killed without exiting; continue: lead]   /home/you/shop
+  shop-web   [killed without exiting; continue: mid-turn]   /home/you/shop
+Sessions marked "continue" resume with a message to re-check the state and carry on (mid-turn, an API error, work live at the shutdown, or the lead); the others reopen idle, with no prompt.
+Opened shop-lead (continue: lead)
+Opened shop-web (continue: mid-turn)
+```
+
+### teamrig restore check
+
+What runs at logon. It drops the recorded sessions no restore needs and, when the shutdown killed sessions,
+opens a tab titled `Restore Claude sessions` that runs `restore run --tab` for them; that tab closes by itself once
+they are open. With no terminal to open, it prints the command to run and exits 3.
+
+Flags:
+
+- `--terminal <name>`: the terminal to open the tab in instead of the configured one.
+- `--home <dir>`: the kit home, when it is not the default.
+
+Example:
+
+```sh
+teamrig restore check
+```
+
+Output:
+
+```text
+OPENED the restore of 2 Claude Code sessions in a new Windows Terminal tab
+```
+
+### teamrig restore resume
+
+What the tab `restore run` opens for a session outside any team runs: it resumes that Claude Code session in its
+folder, as no teamrig session. You do not run it yourself.
+
+Flags:
+
+- `--project <dir>`: required; the folder must exist.
+- `--home <dir>`: the kit home the session's hooks record to.
+- `--effort <level>`: the effort to resume on, the session's last.
+- `--encoded-prompt <text>`: the first prompt, as `restore run` encoded it; none reopens it idle.
+
+Example:
+
+```sh
+teamrig restore resume 7b21d4c8-0d1e-4f2a-9b3c-4d5e6f7a8b9c --project /home/you/notes --effort high
+```
+
+Output:
+
+```text
+Resuming Claude Code session 7b21d4c8-0d1e-4f2a-9b3c-4d5e6f7a8b9c in /home/you/notes at high effort
 ```
 
 It refuses when `claude` is not on the PATH.
