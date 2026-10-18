@@ -174,7 +174,7 @@ so it never loses work to a compaction.
    It must be new: the old file left as it was is refused.
 3. Run `teamrig refresh --ready --session web`. It prints `Ready. Ask the user to type /clear; your next start
    reads <path>.`. At the end of that turn the tab title becomes `shop-web: type /clear` (the session's name;
-   `refresh.tabTitle: false` turns that off).
+   `refresh.tabTitle: false` turns that off; with `tabStatus.enabled`, after the tab's state circle).
 4. End your turn and start nothing new. The user types `/clear` once done with your screen, which a `/clear`
    wipes. With `refresh.autoRestart: true` the title reads `shop-web: restarting` instead: once the tab has been
    idle 15 s (`refresh.restartDelaySeconds`), teamrig's

@@ -1,7 +1,7 @@
 # Hooks and permissions
 
-The plugin's `hooks/hooks.json` registers thirteen Claude Code hooks and one mod ([the /teamrig command](#the-mod-the-teamrig-command), [the refresh's /clear](#the-mod-the-refreshs-clear), [the reload after an install](#the-mod-the-reload-after-an-install), [the wake on urgent work](#the-mod-the-wake-on-urgent-work)). Each runs
-`node <plugin>/dist/cli/main.js hook <name>` with a 15 second timeout. Outside a project tied to a team (no `$TEAMRIG_TEAM` and no `.teamrig.json`)
+The plugin's `hooks/hooks.json` registers fourteen Claude Code hooks and one mod ([the /teamrig command](#the-mod-the-teamrig-command), [the refresh's /clear](#the-mod-the-refreshs-clear), [the reload after an install](#the-mod-the-reload-after-an-install), [the wake on urgent work](#the-mod-the-wake-on-urgent-work)). Each runs
+`node <plugin>/dist/cli/main.js hook <name>` with a 15 second timeout (`hook refresh-wake` 30, `hook tab-status` 5). Outside a project tied to a team (no `$TEAMRIG_TEAM` and no `.teamrig.json`)
 they all stay silent, and only `hook restore-track` still records the session ([the restore tracker](#every-session-the-restore-tracker)).
 
 | Claude Code event | teamrig hook | What it does |
@@ -17,8 +17,9 @@ they all stay silent, and only `hook restore-track` still records the session ([
 | `PostToolUse` on reads, edits and shell calls | `hook loop-nudge` | Asks the model once to batch when a turn makes [single-step calls in a row](#after-a-tool-call-the-loop-nudge) |
 | `PreToolUse` on `Agent` and `Task` | `hook helper-gate` | Restates rule 8's helper default at each helper launch; asks before or refuses one past the daily budget or in quiet hours, [as the team set](#the-daily-budget-warnings-and-the-helper-gate) |
 | The mod, while a tab is idle | `hook wake-check`, `hook wake-dropped` | Wakes the tab's session when unblocked urgent work is handed to it, [batched, with its cost shown](#the-mod-the-wake-on-urgent-work) |
-| `Stop` (end of each turn) | `hook stop` | Sends the session back once to [a skill edit it dropped](#end-of-a-turn-or-a-helper-a-dropped-skill-edit); asks for a handover when a context refresh is due, then starts the automatic restart; tells the user of another effort than `launch` asks, or of a model Claude Code switched to; shows the budget lines; names a verifying task whose verify-by day has come; once per `github.everyMinutes` for the whole team, starts `gh sync --auto` hidden in the background |
+| `Stop` (end of each turn) | `hook stop` | Sends the session back once to [a skill edit it dropped](#end-of-a-turn-or-a-helper-a-dropped-skill-edit); asks for a handover when a context refresh is due, then starts the automatic restart; tells the user of another effort than `launch` asks, or of a model Claude Code switched to; shows the budget lines; names a verifying task whose verify-by day has come; once per `github.everyMinutes` for the whole team, starts `gh sync --auto` hidden in the background; with tab status on, sets the tab's ready circle |
 | `SessionStart`, `UserPromptSubmit`, `Stop`, `StopFailure` and `SessionEnd`, in a team or not | `hook restore-track` | Records each Claude Code session on the machine, where it started and what it was doing, for the restore after a reboot ([the restore tracker](#every-session-the-restore-tracker)) |
+| Every event but `Stop`: session start and end, each prompt, `PreToolUse` on `AskUserQuestion` and `ExitPlanMode`, `PermissionRequest`, every tool call's end, `Elicitation` and its result, a helper's start, `StopFailure`, `PreCompact`, `PostCompact` | `hook tab-status` | With `tabStatus.enabled`, puts a colored circle before the tab's title for what the session is doing ([tab status](#every-event-tab-status)) |
 
 ## Session start
 
@@ -459,6 +460,32 @@ A compaction's start changes nothing, since it comes mid-turn. An end the person
 the shutdown may be what closed the terminal, and a Claude Code the shutdown killed leaves its last event
 as it was. The restore after a reboot reads these files. The hook prints nothing, and on any error writes
 nothing and lets the turn go on.
+
+## Every event: tab status
+
+With `tabStatus.enabled: true` in the team config and `CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1` in Claude Code's
+environment (in `env` of `~/.claude/settings.json`; without it Claude Code writes its own title over the circle),
+each tab of the team shows a colored circle before its title for what its session is doing:
+
+| Circle | State | Set by |
+| --- | --- | --- |
+| green | ready for a prompt | a session's start (not a compaction's), a slash command typed (most end with no turn), a turn's end with no helper running, a `/compact` typed |
+| yellow | working | a prompt, a tool call's end, a helper's start, an automatic compaction's end, and a turn's end while a helper or workflow it started still runs |
+| orange | waiting on you | a permission prompt, a question (`AskUserQuestion`), a plan to approve (`ExitPlanMode`), an MCP server's request (`Elicitation`) |
+| red | an API error | `StopFailure` |
+| purple | compacting | `PreCompact` |
+
+After the circle comes the session's topic, the first of: the session's title (a `/rename` or Claude Code's
+own), the first prompt typed (read from a transcript short enough to read whole), the prompt just typed, the
+project folder's name, then `Claude Code`; at most 40 characters, longer ones cut with an ellipsis. When the
+refresh marks the tab (`refresh.tabTitle`), the circle goes before that mark (`shop-web: type /clear`) instead.
+At the session's end the title goes back to the terminal.
+
+`hook tab-status` sets it at every event but `Stop`, whose `hook stop` sets it with its own output, so each event
+has one writer. It works in any tab of the team, a tab that is no session of it too, and prints nothing outside a
+team, with either switch off, or on any error. It reads Claude Code's switch before any file, so with it off the
+hook costs only a Node start per event; its timeout is 5 seconds. A background command or a monitor still running
+leaves the tab green: only a helper keeps it yellow.
 
 ## Permissions
 

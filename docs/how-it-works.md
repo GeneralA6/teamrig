@@ -449,7 +449,8 @@ sequenceDiagram
   make again only after a new process. A job made before the last compaction is missed, and a wake-up can fire
   twice after a `/clear`.
 - `refresh.enabled: false` turns it off, `refresh.tabTitle: false` leaves the tab title alone and
-  `refresh.handoverDir` moves the handovers.
+  `refresh.handoverDir` moves the handovers. With `tabStatus.enabled`, the tab's state circle goes before that
+  title ([tab status](../plugins/teamrig/skills/teamrig-guide/hooks.md#every-event-tab-status)).
 
 ## Safe pushes
 
