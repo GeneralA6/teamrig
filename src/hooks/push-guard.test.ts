@@ -21,6 +21,7 @@ import {
 function fakeRepo(branch: string) {
   return {
     branch: mock.fn((_dir: string): string | undefined => branch),
+    head: mock.fn((_dir: string): string | undefined => undefined),
     pushTarget: mock.fn((_dir: string, _branch?: string): string | undefined => undefined),
     config: mock.fn((_dir: string, _key: string): ConfigValue => ({ kind: 'unset' })),
   } satisfies RepoState;

@@ -13,6 +13,7 @@ describe('GIT_CLI', () => {
     try {
       execFileSync('git', ['init', '-q', '-b', 'trunk'], { cwd: dir, stdio: 'ignore' });
       assert.equal(GIT_CLI.branch(dir), 'trunk');
+      assert.equal(GIT_CLI.head(dir), undefined);
       assert.equal(GIT_CLI.pushTarget(dir), undefined);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -22,8 +23,24 @@ describe('GIT_CLI', () => {
   it('reads as unknown where git cannot run', () => {
     const missing = join(tmpdir(), 'teamrig-no-such-folder');
     assert.equal(GIT_CLI.branch(missing), undefined);
+    assert.equal(GIT_CLI.head(missing), undefined);
     assert.equal(GIT_CLI.pushTarget(missing), undefined);
     assert.deepEqual(GIT_CLI.config(missing, 'alias.ship'), { kind: 'unreadable' });
+  });
+
+  it('reads the short id of the commit HEAD names, on a branch or detached', () => {
+    const repo = new TempRepo('git-head').init();
+    try {
+      repo.write('a.txt', 'a');
+      repo.git('add', 'a.txt');
+      repo.git('commit', '-q', '-m', 'first');
+      const id = repo.git('rev-parse', '--short', 'HEAD').trim();
+      assert.equal(GIT_CLI.head(repo.dir), id);
+      repo.git('checkout', '-q', '--detach');
+      assert.deepEqual([GIT_CLI.branch(repo.dir), GIT_CLI.head(repo.dir)], [undefined, id]);
+    } finally {
+      repo.remove();
+    }
   });
 
   it('reads a config key as set or unset', () => {
