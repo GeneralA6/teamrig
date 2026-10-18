@@ -1,4 +1,5 @@
 import { CLAIM_HELD, CLAIM_TAKEN, isClaudeSessionId } from "../mod/clear-hand.js";
+import { isClaudeProcess } from "../open/session-processes.js";
 import { readRunningWork } from "./running.js";
 import { TURN_TAIL_BYTES, turnRunning } from "./turn.js";
 /** Lets Claude Code finish writing the turn's end before the first look at the transcript. */
@@ -10,9 +11,6 @@ export const END_WAIT_MS = 10_000;
 const POLL_MS = 500;
 /** Enough of the transcript to see that a line was added. */
 const QUIET_TAIL_BYTES = 4_096;
-/** The program Claude Code runs as: its own binary, or Node.js running its script. */
-const CLAUDE_PROGRAM = /^claude(\.exe)?$/i;
-const NODE_PROGRAM = /^node(\.exe)?$/i;
 /** A shell a tab runs Claude Code in, as a tab reopened by `powershell -NoExit -Command claude --resume ...`. */
 const TAB_SHELL = /^(powershell|pwsh|cmd)(\.exe)?$/i;
 /**
@@ -22,9 +20,6 @@ const TAB_SHELL = /^(powershell|pwsh|cmd)(\.exe)?$/i;
 const COMMAND_SHELL = /^-?(bash|sh|dash|zsh|fish|ksh|powershell|pwsh)(\.exe)?$/i;
 /** A shell under Claude Code counts only when it is still there this much later: a status line command runs for moments. */
 export const SHELL_RECHECK_MS = 2_000;
-function isClaude(info) {
-    return CLAUDE_PROGRAM.test(info.name) || (NODE_PROGRAM.test(info.name) && /claude/i.test(info.commandLine));
-}
 /** The user typed (the prompt hook cleared the request) or a later notice replaced it. */
 const CANCELLED = { kind: 'cancelled', why: 'the restart was cancelled or replaced' };
 /** How long the tab's mod has to claim the ask before the session is ended instead: it looks every second. */
@@ -39,7 +34,7 @@ export async function claudeProcessOf(processes, pid) {
         if (info === undefined) {
             return undefined;
         }
-        if (isClaude(info)) {
+        if (isClaudeProcess(info)) {
             return info.pid;
         }
         next = info.parentPid;
@@ -293,7 +288,7 @@ export async function runRestart(deps, plan) {
             await deps.store.clearRestart(plan.id);
             return { kind: 'cancelled', why: 'its Claude Code has already ended' };
         }
-        if (!isClaude(claude)) {
+        if (!isClaudeProcess(claude)) {
             await deps.store.clearRestart(plan.id);
             return { kind: 'failed', why: `process ${claude.pid} is ${claude.name}, not Claude Code` };
         }

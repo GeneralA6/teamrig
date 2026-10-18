@@ -4,6 +4,12 @@ import { errorCode, errorMessage, isNonNegativeInteger, isRecord, stringField } 
 import { parseObject } from "../core/jsonl.js";
 import { nodeProgramRunner } from "../github/credentials.js";
 import { exitText, outcomeOfError } from "./processes.js";
+const CLAUDE_PROGRAM = /^claude(\.exe)?$/i;
+const NODE_PROGRAM = /^node(\.exe)?$/i;
+/** Whether a process is Claude Code: its own binary, or Node.js running its script. */
+export function isClaudeProcess(info) {
+    return CLAUDE_PROGRAM.test(info.name) || (NODE_PROGRAM.test(info.name) && /claude/i.test(info.commandLine));
+}
 /** PowerShell's start alone can take seconds on a busy machine. */
 export const LOOKUP_TIMEOUT_MS = 20_000;
 /** The stand-in for a SessionEnd hook gets as long as Claude Code gives its hooks by default. */
