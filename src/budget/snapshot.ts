@@ -178,9 +178,39 @@ export function weekUseOf(snapshots: readonly StatusSnapshot[], now: number): We
   return best;
 }
 
-/** The status line text: the model and the plan's use, such as `Opus 5.5, week 57%, 5h 6%`. */
-export function statusLineText(snapshot: StatusSnapshot): string {
+/** What the status line shows beside the snapshot: where the session works, and whether to show how to resume it. */
+export interface StatusLineView {
+  /** The session folder's name. */
+  readonly folder?: string;
+  /** The branch checked out there. */
+  readonly branch?: string;
+  /** The short id of a detached HEAD's commit, shown when there is no branch. */
+  readonly commit?: string;
+  /** Show `claude --resume <session id>`. */
+  readonly resume: boolean;
+}
+
+/** Where the session works, such as `app on main`, `app at 1a2b3c4` (a detached HEAD) or `app`; empty when the view names nothing. */
+function placeText(view: StatusLineView): string {
+  const parts = view.folder === undefined ? [] : [view.folder];
+  if (view.branch !== undefined) {
+    parts.push(`on ${view.branch}`);
+  } else if (view.commit !== undefined) {
+    parts.push(`at ${view.commit}`);
+  }
+  return parts.join(' ');
+}
+
+/**
+ * The status line text: the model, where the session works, the plan's use and the command that resumes the
+ * session, such as `Opus 5.5, app on main, week 57%, 5h 6%, claude --resume <session id>`.
+ */
+export function statusLineText(snapshot: StatusSnapshot, view: StatusLineView): string {
   const parts = [snapshot.model ?? 'Claude'];
+  const place = placeText(view);
+  if (place !== '') {
+    parts.push(place);
+  }
   const week = snapshot.rateLimits?.sevenDay ?? null;
   const fiveHour = snapshot.rateLimits?.fiveHour ?? null;
   if (week !== null) {
@@ -188,6 +218,9 @@ export function statusLineText(snapshot: StatusSnapshot): string {
   }
   if (fiveHour !== null) {
     parts.push(`5h ${Math.round(fiveHour.usedPct)}%`);
+  }
+  if (view.resume) {
+    parts.push(`claude --resume ${snapshot.sessionId}`);
   }
   return parts.join(', ');
 }

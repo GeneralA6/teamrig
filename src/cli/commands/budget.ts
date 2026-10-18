@@ -1,6 +1,7 @@
-import { isAbsolute, join } from 'node:path';
+import { basename, isAbsolute, join } from 'node:path';
+import { DEFAULT_STATUS_LINE } from '../../config/defaults.ts';
 import type { Roster } from '../../config/roster.ts';
-import type { BudgetConfig, KitConfig } from '../../config/types.ts';
+import type { BudgetConfig, KitConfig, StatusLineConfig } from '../../config/types.ts';
 import { errorMessage } from '../../core/guards.ts';
 import { resolveKitHome, type TeamPaths } from '../../core/home.ts';
 import type { Clock } from '../../core/lock.ts';
@@ -13,11 +14,12 @@ import { activeLift, decideLift, LiftLog, liftText, type Lift } from '../../budg
 import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID, type Measured } from '../../budget/measure.ts';
 import { sessionBudgetPct } from '../../budget/pace.ts';
 import { burnLines, loopLines, recountLines, sessionLines, sumDays, todayLines, weekLine, type SessionToday } from '../../budget/report.ts';
-import { formatSnapshot, readSnapshots, snapshotOfStatus, statusLineText, weekUseOf } from '../../budget/snapshot.ts';
+import { formatSnapshot, readSnapshots, snapshotOfStatus, statusLineText, weekUseOf, type StatusLineView } from '../../budget/snapshot.ts';
 import { CURSOR_DAYS_KEPT, DAYS_KEPT, MemoryUsageStore, UsageStore, type UsageState } from '../../budget/store.ts';
 import { readWeek, type WeekReading } from '../../budget/week.ts';
 import { JsonlMarkLog } from '../../inbox/store.ts';
 import { indexMarks } from '../../inbox/marks.ts';
+import type { RepoState } from '../../push-guard/push.ts';
 import { customTitleOf, TRANSCRIPT_TAIL_BYTES } from '../../names/title.ts';
 import { UsageError, onePositional, requiredFlag, type Flags, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
@@ -252,23 +254,45 @@ export async function lift(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   return EXIT.ok;
 }
 
-/** The snapshot folder of the team the status line's session works in, else the kit's default one. */
-async function statusSnapshotDir(runtime: CliRuntime, cwd: string): Promise<string> {
-  const kitHome = resolveKitHome(runtime.env, runtime.userHome);
+/** Where the status line saves its snapshot, and what it shows. */
+interface StatusLineSetup {
+  readonly snapshotDir: string;
+  readonly show: StatusLineConfig;
+}
+
+/** The status line setup of the team the session works in; outside a team, or with its config unreadable, the kit's default folder and display. */
+async function statusLineSetup(runtime: CliRuntime, cwd: string): Promise<StatusLineSetup> {
+  const fallback: StatusLineSetup = { snapshotDir: defaultSnapshotDir(resolveKitHome(runtime.env, runtime.userHome)), show: DEFAULT_STATUS_LINE };
   const found = await resolveTeam(runtime.files, runtime.env, teamFolders(runtime.env, [cwd === '' ? undefined : cwd, runtime.cwd]));
   if (found.kind !== 'team') {
-    return defaultSnapshotDir(kitHome);
+    return fallback;
   }
   const kit = await openKit(runtime, found.team);
-  return kit.load.status === 'loaded' ? snapshotDirOf(kit.load.config.budget, kit.paths) : defaultSnapshotDir(kitHome);
+  if (kit.load.status !== 'loaded') {
+    return fallback;
+  }
+  return { snapshotDir: snapshotDirOf(kit.load.config.budget, kit.paths), show: kit.load.config.statusLine };
+}
+
+/** Where the session in `dir` works, as far as `show` asks: git is asked only for a branch it shows, and for the commit only on a detached HEAD. */
+function statusLineView(git: Pick<RepoState, 'branch' | 'head'>, dir: string, show: StatusLineConfig): StatusLineView {
+  const branch = show.branch ? git.branch(dir) : undefined;
+  const commit = show.branch && branch === undefined ? git.head(dir) : undefined;
+  return {
+    ...(show.folder ? { folder: basename(dir) } : {}),
+    ...(branch === undefined ? {} : { branch }),
+    ...(commit === undefined ? {} : { commit }),
+    resume: show.resume,
+  };
 }
 
 /**
  * `statusline`: Claude Code's status line. It saves the status input's reading (the plan's use of the
- * week and its reset) as a snapshot for `budget`, and prints a short status. It always exits 0, so a
- * bad input or a full disk never breaks the status bar; what went wrong goes to stderr. With --pass it
- * prints the status input again instead of its own status, for the status line after it in a pipe
- * (`statusline install` puts it in front of one already there).
+ * week and its reset) as a snapshot for `budget`, and prints a short status: the model, the session's
+ * folder and branch, the plan's use and the command that resumes the session, as the team's `statusLine`
+ * config shows them. It always exits 0, so a bad input or a full disk never breaks the status bar; what
+ * went wrong goes to stderr. With --pass it prints the status input again instead of its own status, for
+ * the status line after it in a pipe (`statusline install` puts it in front of one already there).
  */
 export async function statusline(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const [extra] = args.positionals;
@@ -276,19 +300,23 @@ export async function statusline(args: ParsedArgs, runtime: CliRuntime): Promise
     throw new UsageError(`unexpected "${extra}"`);
   }
   const input = await runtime.readStdin();
-  const shown = (own: string): string => (args.switches.has('pass') ? input.replace(/\r?\n$/, '') : own);
+  const pass = args.switches.has('pass');
+  const passed = input.replace(/\r?\n$/, '');
   const snapshot = snapshotOfStatus(input, runtime.clock.now());
   if (snapshot === undefined) {
-    runtime.out.stdout(shown('Claude'));
+    runtime.out.stdout(pass ? passed : 'Claude');
     runtime.out.stderr('teamrig statusline: the status input is not Claude Code status JSON with a session id; nothing saved');
     return EXIT.ok;
   }
+  let show = DEFAULT_STATUS_LINE;
   try {
-    const dir = await statusSnapshotDir(runtime, snapshot.cwd);
-    await runtime.files.write(join(dir, `${snapshot.sessionId}.json`), formatSnapshot(snapshot));
+    const setup = await statusLineSetup(runtime, snapshot.cwd);
+    show = setup.show;
+    await runtime.files.write(join(setup.snapshotDir, `${snapshot.sessionId}.json`), formatSnapshot(snapshot));
   } catch (error) {
     runtime.out.stderr(`teamrig statusline: the snapshot was not saved: ${errorMessage(error)}`);
   }
-  runtime.out.stdout(shown(statusLineText(snapshot)));
+  const dir = snapshot.cwd === '' ? runtime.cwd : snapshot.cwd;
+  runtime.out.stdout(pass ? passed : statusLineText(snapshot, statusLineView(runtime.git, dir, show)));
   return EXIT.ok;
 }

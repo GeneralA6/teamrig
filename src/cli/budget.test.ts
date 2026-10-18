@@ -1,12 +1,13 @@
-import { describe, it } from 'node:test';
+import { describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { W_EXPLAINED } from '../budget/report.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { APP, CliHarness, KIT, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { replyLine, transcript } from '../testing/transcript-lines.ts';
+import type { RepoState } from '../push-guard/push.ts';
 import { defaultSnapshotDir, snapshotDirOf } from './commands/budget.ts';
 import { EXIT } from './runtime.ts';
 
@@ -227,11 +228,23 @@ describe('teamrig budget lift', () => {
 
 describe('teamrig statusline', () => {
   const SNAPSHOT = `${ALPHA_TAB}.json`;
+  /** The status `status(APP)` prints by default: on the harness's branch `dev`. */
+  const SHOWN = `Opus 5.5, ${basename(APP)} on dev, week 30%, 5h 6%, claude --resume ${ALPHA_TAB}`;
+
+  /** A repository whose branch and HEAD answers are counted. */
+  function countedRepo(branch: string | undefined, head: string | undefined) {
+    return {
+      branch: mock.fn((_dir: string): string | undefined => branch),
+      head: mock.fn((_dir: string): string | undefined => head),
+      pushTarget: (): string | undefined => undefined,
+      config: () => ({ kind: 'unset' }),
+    } satisfies RepoState;
+  }
 
   it("saves the status input's reading to the kit's live folder and prints a short status", async () => {
     const kit = new CliHarness(LIMITED);
     const result = await kit.run(['statusline'], { stdin: status(APP) });
-    assert.deepEqual([result.code, result.stdout, result.stderr], [EXIT.ok, ['Opus 5.5, week 30%, 5h 6%'], []]);
+    assert.deepEqual([result.code, result.stdout, result.stderr], [EXIT.ok, [SHOWN], []]);
     assert.match(kit.files.get(join(LIVE, SNAPSHOT)) ?? '', /"seven_day":\{"used_percentage":30,"resets_at":1894582800\}/);
   });
 
@@ -255,6 +268,35 @@ describe('teamrig statusline', () => {
     assert.notEqual(broken.files.get(join(LIVE, SNAPSHOT)), undefined);
   });
 
+  it("shows a detached HEAD by its commit, asking git for the branch in the session's folder", async () => {
+    const repo = countedRepo(undefined, '1a2b3c4');
+    const kit = new CliHarness(LIMITED);
+    assert.deepEqual(ok(await kit.run(['statusline'], { stdin: status(APP), git: repo })), [
+      `Opus 5.5, ${basename(APP)} at 1a2b3c4, week 30%, 5h 6%, claude --resume ${ALPHA_TAB}`,
+    ]);
+    assert.deepEqual(repo.branch.mock.calls.map((call) => call.arguments), [[APP]]);
+    assert.deepEqual(repo.head.mock.calls.map((call) => call.arguments), [[APP]]);
+  });
+
+  it("shows only what the team's statusLine config leaves on, and asks git nothing when the branch is off", async () => {
+    const repo = countedRepo('main', '1a2b3c4');
+    const bare = new CliHarness({ ...LIMITED, statusLine: { folder: false, branch: false, resume: false } });
+    assert.deepEqual(ok(await bare.run(['statusline'], { stdin: status(APP), git: repo })), ['Opus 5.5, week 30%, 5h 6%']);
+    assert.equal(repo.branch.mock.callCount() + repo.head.mock.callCount(), 0);
+    const branchOnly = new CliHarness({ ...LIMITED, statusLine: { folder: false, resume: false } });
+    assert.deepEqual(ok(await branchOnly.run(['statusline'], { stdin: status(APP), git: repo })), ['Opus 5.5, on main, week 30%, 5h 6%']);
+    assert.equal(repo.head.mock.callCount(), 0);
+  });
+
+  it("shows the default display outside any team, in the folder the status line runs in when the input names none", async () => {
+    const kit = new CliHarness(LIMITED, null);
+    const outside = join('/', 'elsewhere');
+    const input = JSON.stringify({ ...JSON.parse(status(outside)), cwd: '', workspace: {} });
+    assert.deepEqual(ok(await kit.run(['statusline'], { stdin: input, cwd: outside })), [
+      `Opus 5.5, elsewhere on dev, week 30%, 5h 6%, claude --resume ${ALPHA_TAB}`,
+    ]);
+  });
+
   it('with --pass prints the status input again for the status line after it, and still saves the reading', async () => {
     const kit = new CliHarness(LIMITED);
     const input = status(APP);
@@ -275,7 +317,7 @@ describe('teamrig statusline', () => {
     const files = new FaultyFiles(kit.files).fail('write', join(LIVE, SNAPSHOT), systemError('EACCES'));
     assert.deepEqual(await kit.run(['statusline'], { stdin: status(APP), files }), {
       code: EXIT.ok,
-      stdout: ['Opus 5.5, week 30%, 5h 6%'],
+      stdout: [SHOWN],
       stderr: ['teamrig statusline: the snapshot was not saved: EACCES: simulated'],
     });
     usageError(await kit.run(['statusline', 'extra']), /unexpected "extra"/);
