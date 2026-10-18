@@ -25,6 +25,9 @@ export type LockHolder = { readonly kind: 'held'; readonly info: HostLockInfo } 
 
 export type Taking = { readonly kind: 'taken'; readonly lock: HostLockInfo } | { readonly kind: 'busy'; readonly holder: LockHolder };
 
+/** The lock as a reader sees it: free, held, stale (expired or its process gone; the next step removes it) or being written. */
+export type LockState = { readonly kind: 'free' } | { readonly kind: 'stale'; readonly info: HostLockInfo } | LockHolder;
+
 export interface HostLockPorts {
   readonly files: Files;
   readonly clock: Clock;
@@ -152,6 +155,19 @@ export class HostLock {
   /** Releases a lock this step took; false when it is no longer the holder (it expired and another step took it). */
   async release(lock: HostLockInfo): Promise<boolean> {
     return this.removeIf((text) => parseLock(text)?.token === lock.token);
+  }
+
+  /** The lock's state, taking and removing nothing, for a reader that only shows it. */
+  async state(): Promise<LockState> {
+    const seen = await this.read();
+    switch (seen.kind) {
+      case 'missing':
+        return { kind: 'free' };
+      case 'unknown':
+        return { kind: 'unknown' };
+      case 'held':
+        return this.isStale(seen.info) ? { kind: 'stale', info: seen.info } : seen;
+    }
   }
 
   private isStale(info: HostLockInfo): boolean {

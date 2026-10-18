@@ -201,3 +201,26 @@ describe('HostLock.release', () => {
     assert.equal(files.get(PATH), heldBy());
   });
 });
+
+describe('HostLock.state', () => {
+  const OTHERS: HostLockInfo = { token: 'other', pid: OTHER, session: 'po', purpose: 'heavy: build', acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z' };
+
+  it('reads a free, held or unreadable lock without taking it', async () => {
+    assert.deepEqual(await world().lock.state(), { kind: 'free' });
+    assert.deepEqual(await world({ [PATH]: heldBy() }).lock.state(), { kind: 'held', info: OTHERS });
+    const unreadable = world({ [PATH]: '{"tok' });
+    assert.deepEqual(await unreadable.lock.state(), { kind: 'unknown' });
+    assert.equal(await unreadable.files.read(PATH), '{"tok', 'nothing is removed');
+  });
+
+  it('calls a lock stale once it expired or its process is gone, and leaves it for the next step to remove', async () => {
+    assert.deepEqual(await world({ [PATH]: heldBy({ expiresAt: '2030-01-08T10:00:00.000Z' }) }).lock.state(), {
+      kind: 'stale',
+      info: { ...OTHERS, expiresAt: '2030-01-08T10:00:00.000Z' },
+    });
+    const gone = world({ [PATH]: heldBy() });
+    gone.running.delete(OTHER);
+    assert.deepEqual(await gone.lock.state(), { kind: 'stale', info: OTHERS });
+    assert.equal(await gone.files.read(PATH), heldBy());
+  });
+});
