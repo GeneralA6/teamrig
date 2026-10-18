@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { formatSnapshot, parseSnapshot, readSnapshots, snapshotOfStatus, statusLineText, weekUseOf, type StatusSnapshot } from './snapshot.ts';
+import { datedSnapshot, formatSnapshot, parseSnapshot, readSnapshots, snapshotOfStatus, statusLineText, weekUseOf, type StatusSnapshot } from './snapshot.ts';
 
 const SID = '0b6f9c2e-5d1a-4c3e-9f7a-2e8d4b1c6a90';
 const OTHER = '7d2e41a8-93c5-4f60-b1d7-5a9e0c3f8b24';
@@ -28,7 +28,8 @@ const STATUS = JSON.stringify({
 const STORED =
   '{"ts":"2026-10-15T12:00:50.598Z","session_id":"0b6f9c2e-5d1a-4c3e-9f7a-2e8d4b1c6a90","cwd":"/work/app",' +
   '"agent_name":"reviewer","model":"Opus 5.5","rate_limits":{"five_hour":{"used_percentage":6,"resets_at":1792081200},' +
-  '"seven_day":{"used_percentage":57,"resets_at":1792544400}},"cost_usd":857.79,"context_used_pct":15,"context_input_tokens":153654}';
+  '"seven_day":{"used_percentage":57,"resets_at":1792544400}},"rate_limits_since":"2026-10-15T12:00:50.598Z","rate_limits_after":null,' +
+  '"cost_usd":857.79,"context_used_pct":15,"context_input_tokens":153654}';
 
 function snapshot(overrides: Partial<StatusSnapshot> = {}): StatusSnapshot {
   return {
@@ -38,11 +39,18 @@ function snapshot(overrides: Partial<StatusSnapshot> = {}): StatusSnapshot {
     agentName: null,
     model: 'Opus 5.5',
     rateLimits: { fiveHour: null, sevenDay: { usedPct: 57, resetsAt: WEEK_RESET_S * 1000 } },
+    rateLimitsSince: null,
+    rateLimitsAfter: null,
     costUsd: null,
     contextUsedPct: null,
     contextInputTokens: null,
     ...overrides,
   };
+}
+
+/** A snapshot written at `ts` whose week reading is `usedPct`, shown since `since` and taken after `after`. */
+function reading(ts: string, usedPct: number, since: string | null = null, after: string | null = null): StatusSnapshot {
+  return snapshot({ ts, rateLimits: { fiveHour: null, sevenDay: { usedPct, resetsAt: WEEK_RESET_S * 1000 } }, rateLimitsSince: since, rateLimitsAfter: after });
 }
 
 describe('snapshotOfStatus and formatSnapshot', () => {
@@ -98,10 +106,24 @@ describe('parseSnapshot', () => {
       agentName: null,
       model: null,
       rateLimits: { fiveHour: null, sevenDay: { usedPct: 47, resetsAt: WEEK_RESET_S * 1000 } },
+      rateLimitsSince: null,
+      rateLimitsAfter: null,
       costUsd: null,
       contextUsedPct: null,
       contextInputTokens: null,
     });
+  });
+
+  it("reads the reading's dates only when they come before the file, and the time after it before the time since", () => {
+    const dates = (since: unknown, after: unknown, rateLimits: unknown = { seven_day: { used_percentage: 1, resets_at: WEEK_RESET_S } }) => {
+      const read = parseSnapshot(JSON.stringify({ ts: '2026-10-15T12:00:00.000Z', session_id: SID, rate_limits: rateLimits, rate_limits_since: since, rate_limits_after: after }));
+      return [read?.rateLimitsSince, read?.rateLimitsAfter];
+    };
+    assert.deepEqual(dates('2026-10-15T11:00:00.000Z', '2026-10-15T10:00:00.000Z'), ['2026-10-15T11:00:00.000Z', '2026-10-15T10:00:00.000Z']);
+    assert.deepEqual(dates('2026-10-15T12:00:00.000Z', '2026-10-15T12:00:00.000Z'), ['2026-10-15T12:00:00.000Z', null]);
+    assert.deepEqual(dates('2026-10-15T13:00:00.000Z', '2026-10-15T11:30:00.000Z'), [null, '2026-10-15T11:30:00.000Z']);
+    assert.deepEqual(dates('soon', 5), [null, null]);
+    assert.deepEqual(dates('2026-10-15T11:00:00.000Z', '2026-10-15T10:00:00.000Z', null), [null, null]);
   });
 
   it('refuses a damaged file or one without a time or a valid session id', () => {
@@ -112,10 +134,63 @@ describe('parseSnapshot', () => {
   });
 });
 
+describe('datedSnapshot', () => {
+  const first = reading('2026-10-15T10:00:00.000Z', 57, '2026-10-15T10:00:00.000Z', '2026-10-15T09:00:00.000Z');
+  const redrawn = reading('2026-10-15T11:00:00.000Z', 57, '2026-10-15T11:00:00.000Z');
+  const changed = reading('2026-10-15T11:00:00.000Z', 0.4, '2026-10-15T11:00:00.000Z');
+
+  it("keeps a session's first snapshot, one without rate limits and one whose previous file names another session", () => {
+    assert.equal(datedSnapshot(redrawn, undefined), redrawn);
+    const none = snapshot({ rateLimits: null });
+    assert.equal(datedSnapshot(none, first), none);
+    assert.equal(datedSnapshot(changed, { ...first, sessionId: OTHER }), changed);
+  });
+
+  it('carries the dates of rate limits the previous snapshot already showed, as Claude Code redraws them until the next reply', () => {
+    assert.deepEqual(datedSnapshot(redrawn, first), { ...redrawn, rateLimitsSince: '2026-10-15T10:00:00.000Z', rateLimitsAfter: '2026-10-15T09:00:00.000Z' });
+    const undated = reading('2026-10-15T10:30:00.000Z', 57);
+    assert.deepEqual(datedSnapshot(redrawn, undated), { ...redrawn, rateLimitsSince: '2026-10-15T10:30:00.000Z', rateLimitsAfter: null });
+  });
+
+  it('dates other rate limits after the previous snapshot, a change in the five-hour window alone too', () => {
+    assert.deepEqual(datedSnapshot(changed, first), { ...changed, rateLimitsAfter: '2026-10-15T10:00:00.000Z' });
+    assert.deepEqual(datedSnapshot(changed, snapshot({ ts: '2026-10-15T10:00:00.000Z', rateLimits: null })), { ...changed, rateLimitsAfter: '2026-10-15T10:00:00.000Z' });
+    const week = { usedPct: 57, resetsAt: WEEK_RESET_S * 1000 };
+    const fiveHour = snapshot({ ts: '2026-10-15T11:00:00.000Z', rateLimits: { fiveHour: { usedPct: 7, resetsAt: NOW }, sevenDay: week }, rateLimitsSince: '2026-10-15T11:00:00.000Z' });
+    const shown = snapshot({ ts: '2026-10-15T10:00:00.000Z', rateLimits: { fiveHour: { usedPct: 6, resetsAt: NOW }, sevenDay: week } });
+    assert.equal(datedSnapshot(fiveHour, shown).rateLimitsAfter, '2026-10-15T10:00:00.000Z');
+    assert.equal(datedSnapshot(changed, { ...first, ts: changed.ts }).rateLimitsAfter, null, 'a previous file not written before this one dates nothing');
+  });
+});
+
 describe('weekUseOf', () => {
   const resetsAt = WEEK_RESET_S * 1000;
 
-  it('takes the highest reading of the current week, as a week only grows', () => {
+  it("drops readings taken before another one is known to follow, so the owner's mid-week reset shows at once", () => {
+    const use = weekUseOf(
+      [
+        reading('2026-10-15T12:00:40.000Z', 98, '2026-10-15T09:00:00.000Z'),
+        reading('2026-10-15T11:59:00.000Z', 98),
+        reading('2026-10-15T12:00:30.000Z', 0.4, '2026-10-15T12:00:30.000Z', '2026-10-15T12:00:00.000Z'),
+      ],
+      NOW,
+    );
+    assert.deepEqual(use, { usedPct: 0.4, resetsAt, at: Date.parse('2026-10-15T12:00:30.000Z') });
+  });
+
+  it('takes the highest of the readings no other is known to follow', () => {
+    const use = weekUseOf(
+      [
+        reading('2026-10-15T12:00:30.000Z', 0.4, '2026-10-15T12:00:30.000Z', '2026-10-15T12:00:00.000Z'),
+        reading('2026-10-15T12:00:40.000Z', 0.6, '2026-10-15T12:00:10.000Z', '2026-10-15T11:00:00.000Z'),
+        reading('2026-10-15T12:00:20.000Z', 0.5),
+      ],
+      NOW,
+    );
+    assert.deepEqual(use, { usedPct: 0.6, resetsAt, at: Date.parse('2026-10-15T12:00:10.000Z') });
+  });
+
+  it('takes the highest reading of the current week when none is dated, as a week only grows', () => {
     const use = weekUseOf(
       [
         snapshot({ ts: '2026-10-15T12:00:00.000Z', rateLimits: { fiveHour: null, sevenDay: { usedPct: 47, resetsAt } } }),

@@ -2,6 +2,7 @@ import { describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { basename, join } from 'node:path';
 import { W_EXPLAINED } from '../budget/report.ts';
+import { parseSnapshot } from '../budget/snapshot.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { APP, CliHarness, KIT, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
@@ -246,6 +247,31 @@ describe('teamrig statusline', () => {
     const result = await kit.run(['statusline'], { stdin: status(APP) });
     assert.deepEqual([result.code, result.stdout, result.stderr], [EXIT.ok, [SHOWN], []]);
     assert.match(kit.files.get(join(LIVE, SNAPSHOT)) ?? '', /"seven_day":\{"used_percentage":30,"resets_at":1894582800\}/);
+  });
+
+  it("dates each reading by the session's previous snapshot, so a reading after a mid-week reset outranks older higher ones", async () => {
+    const { kit, run } = await world(LIMITED, false);
+    const input = (session: string, weekPct: number, fiveHourPct: number): string =>
+      JSON.stringify({
+        session_id: session,
+        cwd: APP,
+        rate_limits: { five_hour: { used_percentage: fiveHourPct, resets_at: RESET / 1000 - 86_400 }, seven_day: { used_percentage: weekPct, resets_at: RESET / 1000 } },
+      });
+    const dates = (session: string): readonly (string | null | undefined)[] => {
+      const saved = parseSnapshot(kit.files.get(join(LIVE, `${session}.json`)) ?? '');
+      return [saved?.rateLimitsSince, saved?.rateLimitsAfter];
+    };
+    ok(await run(['statusline'], { stdin: input(BRAVO_TAB, 98, 40) }));
+    ok(await run(['statusline'], { stdin: input(ALPHA_TAB, 98, 40) }));
+    kit.clock.advance(60_000);
+    ok(await run(['statusline'], { stdin: input(ALPHA_TAB, 98, 40) }));
+    assert.deepEqual(dates(ALPHA_TAB), ['2030-01-08T10:00:00.000Z', null]);
+    kit.clock.advance(60_000);
+    ok(await run(['statusline'], { stdin: input(BRAVO_TAB, 98, 40) }));
+    ok(await run(['statusline'], { stdin: input(ALPHA_TAB, 0.5, 1) }));
+    assert.deepEqual(dates(ALPHA_TAB), ['2030-01-08T10:02:00.000Z', '2030-01-08T10:01:00.000Z']);
+    assert.deepEqual(dates(BRAVO_TAB), ['2030-01-08T10:00:00.000Z', null]);
+    assert.match(ok(await run(['budget']))[0] ?? '', /^Week: 0\.50% used at 10:02 UTC/);
   });
 
   it("saves to the team's budget.statusSnapshotDir, relative to the team's folder or absolute, and budget reads it there", async () => {
