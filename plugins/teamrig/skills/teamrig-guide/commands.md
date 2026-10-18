@@ -1543,10 +1543,20 @@ taken over. Only the step that took it releases it.
 Everything after `--` is the command, read as `teamrig test` reads it. Run a test run as
 `teamrig heavy ... -- teamrig test -- <command>`: it then gets both the lock and the short summary.
 
+A step's processes get `$TEAMRIG_HOST_LOCK`, the lock's token, and so do `integrate`'s push and `roll`'s
+afterPull hooks and command. A `teamrig heavy` started under a lock that token still names runs at once, in the
+parent's session, with no cutoff check or ledger record of its own: it is part of its parent, and waiting would
+wait on its own parent. So a repository's git hooks can wrap their checks in `teamrig heavy` (no `--session`
+needed): a plain `git commit` then takes the host lock for its hook, and a commit or push under `heavy`,
+`integrate` or `roll` does not wait on itself. Prefer that to `teamrig heavy ... -- git commit`, which Claude
+Code's worktree guard refuses in a worktree session. A token naming no live lock (a leftover exported in a
+shell) is said and ignored.
+
 Flags:
 
 - `--what <label>`: what the step is, as the lock, the ledger and a waiting session name it; required.
-- `--session <id|name>`: the session running it; default `$TEAMRIG_SESSION`.
+- `--session <id|name>`: the session running it; default `$TEAMRIG_SESSION`, else the parent step's session, else
+  the session this Claude Code tab is bound to (`$CLAUDE_CODE_SESSION_ID`).
 - `--max-minutes <n>`: kill the step after this many minutes instead of `coordinator.heavy.maxRunMinutes`; a
   whole number from 1 to `lockTtlMinutes` less 10, so the step never outlives its lock.
 
