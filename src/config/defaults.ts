@@ -22,6 +22,7 @@ import type {
   StatusLineConfig,
   TestsConfig,
   WakeConfig,
+  WindowsConfig,
 } from './types.ts';
 
 /** Defaults for every key except the roster (`sessions`, `roles.lead`), which each team supplies. */
@@ -176,6 +177,9 @@ export const DEFAULT_GATE_TIMEOUT_SECONDS = 20;
 
 /** A quiet claim lasts at most two hours. */
 export const DEFAULT_CLAIMS: ClaimsConfig = { maxMinutes: 120 };
+
+/** A target measures cleanly 30 minutes after a deploy; a deploy the ledger knows only by its ledger.md line rolled for 20 minutes; a window under 15 minutes is left out. */
+export const DEFAULT_WINDOWS: WindowsConfig = { settleMinutes: 30, targetSettleMinutes: {}, assumedRollMinutes: 20, minMinutes: 15 };
 
 /**
  * A hire spends the week's budget, so it waits for the owner's yes: at most two hires at 1% of the week a day

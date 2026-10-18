@@ -83,6 +83,11 @@ export class ConfigReader {
     return this.checkedNumber(value, itemPath, bounds, false);
   }
 
+  /** One whole-number item within `bounds`, for use inside list or map callbacks. */
+  integerItem(value: unknown, itemPath: string, bounds: NumberBounds = {}): number | undefined {
+    return this.checkedNumber(value, itemPath, bounds, true);
+  }
+
   boolean(parent: JsonRecord, key: string, path: string, fallback: boolean): boolean {
     const value = parent[key];
     if (value === undefined) {

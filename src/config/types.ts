@@ -428,9 +428,21 @@ export interface ClaimsConfig {
   readonly maxMinutes: number;
 }
 
+/** `teamrig windows`: when a measurement of a deploy target is clean, between the deploys and heavy steps that disturb it. */
+export interface WindowsConfig {
+  /** A target measures cleanly this many minutes after a deploy rolled it. */
+  readonly settleMinutes: number;
+  /** Per deploy target, its own settle minutes in place of `settleMinutes`. */
+  readonly targetSettleMinutes: Readonly<Record<string, number>>;
+  /** How long a deploy is taken to have rolled before its ledger.md line when the ledger has no record of its start. */
+  readonly assumedRollMinutes: number;
+  /** The shortest clean window worth listing. */
+  readonly minMinutes: number;
+}
+
 /**
  * The deploy coordinator: its folder, the heavy-step cutoff and the reset blackout, the host lock, how a step waits,
- * quiet claims, and the repositories `teamrig integrate` lands branches of and `teamrig roll` deploys.
+ * quiet claims, clean measurement windows, and the repositories `teamrig integrate` lands branches of and `teamrig roll` deploys.
  */
 export interface CoordinatorConfig {
   /** The coordinator's folder, which holds its ledger; a relative path is in the team's folder. Unset: `<state>/deploys`. */
@@ -441,6 +453,7 @@ export interface CoordinatorConfig {
   /** A roll's gate still running after this many seconds is stopped, and the roll waits. */
   readonly gateTimeoutSeconds: number;
   readonly claims: ClaimsConfig;
+  readonly windows: WindowsConfig;
   /** By name, such as `api`. */
   readonly repos: Readonly<Record<string, CoordinatorRepoConfig>>;
 }
