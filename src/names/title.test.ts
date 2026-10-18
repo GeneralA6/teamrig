@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { customTitleOf, sessionTitleOf, TRANSCRIPT_TAIL_BYTES } from './title.ts';
+import { aiTitleOf, customTitleOf, sessionTitleOf, TRANSCRIPT_TAIL_BYTES } from './title.ts';
 
 const TRANSCRIPT = join('/', 'home', 'transcripts', 'session.jsonl');
 
@@ -31,6 +31,19 @@ describe('customTitleOf', () => {
       JSON.stringify({ type: 'custom-title', customTitle: 7 }),
     ].join('\n');
     assert.equal(customTitleOf(text), undefined);
+  });
+});
+
+describe('aiTitleOf', () => {
+  it("finds the newest title Claude Code made up, and only Claude Code's", () => {
+    const text = entries(
+      { type: 'ai-title', aiTitle: 'Fixing the build' },
+      { type: 'ai-title', aiTitle: ' Shipping the fix ' },
+      { type: 'custom-title', customTitle: 'scout' },
+      { type: 'ai-title', aiTitle: '' },
+    );
+    assert.equal(aiTitleOf(text), 'Shipping the fix');
+    assert.equal(aiTitleOf(entries({ type: 'custom-title', customTitle: 'scout' })), undefined);
   });
 });
 
