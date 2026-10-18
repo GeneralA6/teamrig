@@ -8,9 +8,10 @@ import { FakeShell } from './fake-shell.ts';
 import { FakeSteps } from './fake-steps.ts';
 import { MemoryTranscripts } from './memory-transcripts.ts';
 import { noWorktrees } from './fake-worktrees.ts';
+import { quietRestore } from './fake-restore.ts';
 
 /** The parts of a CLI run that reach outside the kit: git, the commit log, stdin and the operating system. */
-export type OutsideWorld = Pick<CliRuntime, 'git' | 'commitLog' | 'readStdin' | 'platform' | 'processes' | 'sessionProcesses' | 'shell' | 'gh' | 'credentials' | 'probe' | 'self' | 'requirements' | 'transcripts' | 'worktrees' | 'integrateGit' | 'hooks' | 'steps' | 'newId'>;
+export type OutsideWorld = Pick<CliRuntime, 'git' | 'commitLog' | 'readStdin' | 'platform' | 'processes' | 'sessionProcesses' | 'shell' | 'gh' | 'credentials' | 'probe' | 'self' | 'requirements' | 'transcripts' | 'worktrees' | 'restore' | 'integrateGit' | 'hooks' | 'steps' | 'newId'>;
 
 /**
  * The outside world when a run does not care about it: the repo on `branch` with no push target or config, no commits in
@@ -36,6 +37,7 @@ export function quietWorld(branch: string = 'dev', stdin: string = ''): OutsideW
     requirements: { problems: async () => [] },
     transcripts: new MemoryTranscripts(),
     worktrees: noWorktrees(),
+    restore: quietRestore(),
     integrateGit: new FakeIntegrateGit(),
     hooks: new FakeHooks(),
     steps: new FakeSteps(),

@@ -12,6 +12,7 @@ import type { PathProbe } from '../core/path-probe.ts';
 import type { TranscriptSource } from '../budget/discover.ts';
 import type { RequirementsCheck } from '../requirements/requirements.ts';
 import type { WorktreePorts } from '../worktree/remove.ts';
+import type { RestorePorts } from '../restore/ports.ts';
 import type { Processes } from '../open/processes.ts';
 import type { SessionProcesses } from '../open/session-processes.ts';
 import type { CommitLog } from '../push-guard/commit-size.ts';
@@ -85,6 +86,8 @@ export interface RunOptions {
   readonly transcripts?: TranscriptSource;
   /** The worktrees `worktree remove` sees; default none. */
   readonly worktrees?: WorktreePorts;
+  /** The shutdown log and countdown `restore` sees; default no shutdown on record and a countdown that goes at once. */
+  readonly restore?: RestorePorts;
   /** The runner `teamrig heavy` runs its step in; default one whose steps exit 0 at once. */
   readonly steps?: StepRunner;
   /** The git `teamrig integrate` drives; default the fake repository at /w/feat (testing/fake-integrate-git.ts). */
@@ -134,6 +137,7 @@ export class CliHarness {
       ...(options.requirements === undefined ? {} : { requirements: options.requirements }),
       ...(options.transcripts === undefined ? {} : { transcripts: options.transcripts }),
       ...(options.worktrees === undefined ? {} : { worktrees: options.worktrees }),
+      ...(options.restore === undefined ? {} : { restore: options.restore }),
       ...(options.steps === undefined ? {} : { steps: options.steps }),
       ...(options.integrateGit === undefined ? {} : { integrateGit: options.integrateGit }),
       ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
