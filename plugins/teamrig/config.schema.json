@@ -817,7 +817,7 @@
       }
     },
     "tabStatus": {
-      "description": "A colored circle before each terminal tab's title for what its session is doing: green ready, yellow working (or a helper still running), orange waiting on the user, red an API error, purple compacting.",
+      "description": "A colored circle before each terminal tab's title for what its session is doing: green ready, yellow working (or a helper still running), orange waiting on the user, blue waiting on the user's decision (a turn whose last message has a `Decision needed:` line), red an API error, purple compacting.",
       "type": "object",
       "properties": {
         "enabled": {

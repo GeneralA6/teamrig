@@ -18,7 +18,7 @@ they all stay silent, and only `hook restore-track` still records the session ([
 | `PostToolUse` on reads, edits and shell calls | `hook loop-nudge` | Asks the model once to batch when a turn makes [single-step calls in a row](#after-a-tool-call-the-loop-nudge) |
 | `PreToolUse` on `Agent` and `Task` | `hook helper-gate` | Restates rule 8's helper default at each helper launch; asks before or refuses one past the daily budget or in quiet hours, [as the team set](#the-daily-budget-warnings-and-the-helper-gate) |
 | The mod, while a tab is idle | `hook wake-check`, `hook wake-dropped` | Wakes the tab's session when unblocked urgent work is handed to it, [batched, with its cost shown](#the-mod-the-wake-on-urgent-work) |
-| `Stop` (end of each turn) | `hook stop` | Sends the session back once to [a skill edit it dropped](#end-of-a-turn-or-a-helper-a-dropped-skill-edit); asks for a handover when a context refresh is due, then starts the automatic restart; tells the user of another effort than `launch` asks, or of a model Claude Code switched to; shows the budget lines; names a verifying task whose verify-by day has come; once per `github.everyMinutes` for the whole team, starts `gh sync --auto` hidden in the background; with tab status on, sets the tab's ready circle |
+| `Stop` (end of each turn) | `hook stop` | Sends the session back once to [a skill edit it dropped](#end-of-a-turn-or-a-helper-a-dropped-skill-edit); asks for a handover when a context refresh is due, then starts the automatic restart; tells the user of another effort than `launch` asks, or of a model Claude Code switched to; shows the budget lines; names a verifying task whose verify-by day has come; once per `github.everyMinutes` for the whole team, starts `gh sync --auto` hidden in the background; with tab status on, sets the tab's ready circle, or the decision circle after a turn that asks the user to decide |
 | `SessionStart`, `UserPromptSubmit`, `Stop`, `StopFailure` and `SessionEnd`, in a team or not | `hook restore-track` | Records each Claude Code session on the machine, where it started and what it was doing, for the restore after a reboot ([the restore tracker](#every-session-the-restore-tracker)) |
 | Every event but `Stop`: session start and end, each prompt, `PreToolUse` on `AskUserQuestion` and `ExitPlanMode`, `PermissionRequest`, every tool call's end, `Elicitation` and its result, a helper's start, `StopFailure`, `PreCompact`, `PostCompact` | `hook tab-status` | With `tabStatus.enabled`, puts a colored circle before the tab's title for what the session is doing ([tab status](#every-event-tab-status)) |
 
@@ -511,6 +511,7 @@ each tab of the team shows a colored circle before its title for what its sessio
 | green | ready for a prompt | a session's start (not a compaction's), a slash command typed (most end with no turn), a turn's end with no helper running, a `/compact` typed |
 | yellow | working | a prompt, a tool call's end, a helper's start, an automatic compaction's end, and a turn's end while a helper or workflow it started still runs |
 | orange | waiting on you | a permission prompt, a question (`AskUserQuestion`), a plan to approve (`ExitPlanMode`), an MCP server's request (`Elicitation`) |
+| blue | waiting on your decision | a turn's end whose last message has a line that starts `Decision needed:` (see below), until your next prompt |
 | red | an API error | `StopFailure` |
 | purple | compacting | `PreCompact` |
 
@@ -519,6 +520,14 @@ own), the first prompt typed (read from a transcript short enough to read whole)
 project folder's name, then `Claude Code`; at most 40 characters, longer ones cut with an ellipsis. When the
 refresh marks the tab (`refresh.tabTitle`), the circle goes before that mark (`shop-web: type /clear`) instead.
 At the session's end the title goes back to the terminal.
+
+The decision circle needs no model guess: `hook stop` reads the turn's last message (Claude Code's
+`last_assistant_message`, no transcript read) and shows blue when one of its lines, outside a fenced code block,
+starts with `Decision needed:`, bare, in bold (`**Decision needed:**`) or as a heading (`## Decision needed:`);
+the marker inside a sentence, quoted (`>`), in a list, indented or in other casing does not count. It wins over
+a helper still running, since the question waits on you either way. With tab status on, core rule 9 has owner
+questions carry that line, so a session that leaves a decision in its tab, and the lead that relays owner
+decisions, ends its turn on blue; an ordinary turn end stays green.
 
 `hook tab-status` sets it at every event but `Stop`, whose `hook stop` sets it with its own output, so each event
 has one writer. It works in any tab of the team, a tab that is no session of it too, and prints nothing outside a
