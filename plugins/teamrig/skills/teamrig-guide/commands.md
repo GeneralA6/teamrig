@@ -1570,6 +1570,91 @@ Output:
 RELEASED api, workers (claimed until 2030-01-08 10:45 UTC)
 ```
 
+### teamrig windows
+
+The clean measurement windows of each target between `--since` and `--until` (default now; a later time is cut to
+now), so a session compares a metric over stretches no change touched. A deploy disturbs the targets of its
+repository (its `deploysOnPush` and `roll.targets`) from its start until it settled:
+`coordinator.windows.targetSettleMinutes` for that target, else `settleMinutes` (30), or `--settle` for every
+target. The deploys are the ledger.md lines, so one a session wrote by hand counts too; a deploy with no ledger
+record of its start is taken to have rolled for `assumedRollMinutes` (20). A heavy step disturbs the whole host. A
+window shorter than `--min` (default `minMinutes`, 15) is left out. Each window names the loads (`teamrig load`) it
+overlaps: a load never cuts a window, since two windows under the same load still compare. A time is `HH:MM`
+(today), `YYYY-MM-DD HH:MM` or `YYYY-MM-DD` in UTC, or an ISO time with its zone. A target no repository deploys
+is a usage error.
+
+Flags:
+
+- `--targets <a,b>`: the deploy targets to find windows for.
+- `--since <time>`: where the search starts.
+- `--until <time>`: where it ends; default now.
+- `--settle <span>`: the settle time for every target, such as `45m` or `1h`, in place of the config's.
+- `--min <span>`: the shortest window worth naming.
+
+Example:
+
+```sh
+teamrig windows --targets api --since 06:00
+```
+
+Output:
+
+```text
+api (settle 30m): 2 clean windows of at least 15m
+  2030-01-08 06:00 to 2030-01-08 06:40 UTC (40m)
+  2030-01-08 08:20 to 2030-01-08 10:00 UTC (1h40m)
+    under load 3f9c1a7e by data: backfill prices (from 2030-01-08 08:30 UTC, still running)
+```
+
+### teamrig load
+
+Declares a background load, such as a long data script or a backfill, in the ledger from `--at` (default now), so
+`teamrig windows` names it on every window it overlaps. It loads its `--targets`, or the whole host. It runs until
+`teamrig load end`. REFUSED for a start in the future, a target no repository deploys, or a secret in what it is,
+since the ledger is shared.
+
+Flags:
+
+- `--what "<what>"`: what the load is.
+- `--targets <a,b>|host`: the deploy targets it loads; default `host`, every one.
+- `--at <time>`: when it started; default now.
+- `--session <id|name>`: the session declaring it; default `$TEAMRIG_SESSION`.
+
+Example:
+
+```sh
+teamrig load --session data --what "backfill prices" --at 08:30
+```
+
+Output:
+
+```text
+LOAD 3f9c1a7e on the whole host from 2030-01-08 08:30 UTC (end it: teamrig load end --id 3f9c1a7e)
+```
+
+### teamrig load end
+
+Ends this session's load at `--at` (default now). REFUSED for no such open load, another session's, or an end in the
+future or before its start.
+
+Flags:
+
+- `--id <id>`: the load's id, as `teamrig load` printed it.
+- `--at <time>`: when it ended; default now.
+- `--session <id|name>`: the session whose load ends; default `$TEAMRIG_SESSION`.
+
+Example:
+
+```sh
+teamrig load end --session data --id 3f9c1a7e
+```
+
+Output:
+
+```text
+ENDED 3f9c1a7e at 2030-01-08 10:00 UTC
+```
+
 ### teamrig test
 
 Runs a test command in the shell and prints a few lines instead of all it printed, so a long test run costs the

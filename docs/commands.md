@@ -169,6 +169,18 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       1h30m; at most coordinator.claims.maxMinutes); one per session; REFUSED for a target no
       repository deploys or a secret in the metric or reason
   release [--session <id|name>]   ends this session's quiet claim before its time
+  windows --targets <a,b> --since <time> [--until <time>] [--settle <span>] [--min <span>]   the clean
+      measurement windows of each target from --since to --until (default now): the stretches no deploy
+      of a repository that deploys it touched (from its start until coordinator.windows settle minutes
+      after it rolled; --settle for every target) and no heavy step, each at least --min (default
+      coordinator.windows.minMinutes) long, each with the declared loads it overlaps. A time is HH:MM
+      (today), YYYY-MM-DD HH:MM or YYYY-MM-DD in UTC, or an ISO time with its zone
+  load --what "<what>" [--targets <a,b>|host] [--at <time>] [--session <id|name>]   declares a
+      background load (a long data script, a backfill) on its targets (default the whole host) in the
+      ledger from --at (default now), so windows names it; REFUSED for a start in the future, a target
+      no repository deploys or a secret in what it is
+  load end --id <id> [--at <time>] [--session <id|name>]   ends this session's load at --at (default
+      now); REFUSED for no such open load, another session's, or an end in the future or before its start
   test [--session <id|name>] -- <command ...>   runs a test command in the shell, writes all it printed
       to a log (each session keeps its newest 20) and prints one PASS or FAIL line, then each failing
       test within tests.maxFailureChars; exit 0 when the command passed, 1 otherwise
