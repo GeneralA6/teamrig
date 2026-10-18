@@ -34,6 +34,8 @@ const EXPECTED = {
   restore: 'read',
   'restore run': 'write',
   'restore check': 'write',
+  'restore install': 'write',
+  'restore uninstall': 'write',
   'restore resume': 'internal',
   restart: 'internal',
   who: 'read',

@@ -1162,9 +1162,9 @@ Opened shop-web (continue: mid-turn)
 
 ### teamrig restore check
 
-What runs at logon. It drops the recorded sessions no restore needs and, when the shutdown killed sessions,
-opens a tab titled `Restore Claude sessions` that runs `restore run --tab` for them; that tab closes by itself once
-they are open. With no terminal to open, it prints the command to run and exits 3.
+What runs at logon, once `restore install` has set it up. It drops the recorded sessions no restore needs and, when
+the shutdown killed sessions, opens a tab titled `Restore Claude sessions` that runs `restore run --tab` for them;
+that tab closes by itself once they are open. With no terminal to open, it prints the command to run and exits 3.
 
 Flags:
 
@@ -1182,6 +1182,67 @@ Output:
 ```text
 OPENED the restore of 2 Claude Code sessions in a new Windows Terminal tab
 ```
+
+### teamrig restore install
+
+Has the system run `restore check` at each logon of this user, so the sessions a crash or reboot killed come back
+by themselves. It first writes a small launcher to `<kit home>/bin/restore-check.mjs`, which finds the installed
+plugin each time it runs, so a plugin update needs no new install. Then it points the logon entry at it: on Windows,
+the `TeamrigSessionRestore` value of the `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` key, which runs the
+launcher with the Node that ran this command, through `conhost --headless` so no window opens. No one sees a
+logon's output, so when the plugin is not found or the check exits other than 0, the launcher writes why to
+`<kit home>/restore/restore.log` as a `logon:` line. Without `--yes` it shows the change and writes nothing. It
+changes this machine, not a team, so it takes no `--session`. Run it once per machine; installing from a Node at
+a path a Node upgrade removes means running it again after the upgrade. macOS and Linux have no logon entry yet:
+there it is `REFUSED`, and `teamrig restore run` after a crash or reboot does the same by hand.
+
+Flags:
+
+- `--yes`: write the change; without it, only show it.
+
+Example:
+
+```sh
+teamrig restore install --yes
+```
+
+Output:
+
+```text
+WROTE the changes below
+  WRITE C:\Users\me\.teamrig\bin\restore-check.mjs
+  SET HKCU\Software\Microsoft\Windows\CurrentVersion\Run TeamrigSessionRestore: (none) -> "C:\Windows\System32\conhost.exe" --headless "C:\Program Files\nodejs\node.exe" "C:\Users\me\.teamrig\bin\restore-check.mjs"
+```
+
+`UNCHANGED <entry>: the restore check already runs at logon` when nothing would change; a launcher that differs
+from this version's, or an entry naming another Node or launcher, is written again. When a step fails, it prints
+`FAILED <step>: <reason>` and the steps done before it, and exits 1.
+
+### teamrig restore uninstall
+
+Stops the restore at logon: removes the logon entry, then the launcher it named. Like `install`, it shows the
+change without `--yes`, and it is `REFUSED` where `install` is. The recorded sessions stay, so `teamrig restore run`
+still works by hand.
+
+Flags:
+
+- `--yes`: write the change; without it, only show it.
+
+Example:
+
+```sh
+teamrig restore uninstall --yes
+```
+
+Output:
+
+```text
+WROTE the changes below
+  REMOVE HKCU\Software\Microsoft\Windows\CurrentVersion\Run TeamrigSessionRestore: "C:\Windows\System32\conhost.exe" --headless "C:\Program Files\nodejs\node.exe" "C:\Users\me\.teamrig\bin\restore-check.mjs"
+  REMOVE C:\Users\me\.teamrig\bin\restore-check.mjs
+```
+
+`UNCHANGED <entry>: the restore check does not run at logon` when there is neither.
 
 ### teamrig restore resume
 

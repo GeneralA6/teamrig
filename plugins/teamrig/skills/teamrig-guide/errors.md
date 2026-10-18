@@ -165,6 +165,16 @@ From `teamrig statusline install` and `uninstall` ([commands.md](commands.md#tea
 | `REFUSED the status line already there is a shell line with "&&", which the pipe in front would split: ...` | Put that line in a script, make the script the status line, and run install again. |
 | `REFUSED the status line starts with the launcher but was changed by hand: ...` | Edit `statusLine.command` in the settings yourself. |
 
+## Restore at logon
+
+From `teamrig restore install` and `uninstall` ([commands.md](commands.md#teamrig-restore-install)).
+
+| Output | Fix |
+| --- | --- |
+| `REFUSED teamrig can set up the logon check on Windows only so far, not on linux; ...` | Run `teamrig restore run` after a crash or reboot. |
+| `FAILED SET <entry>: ...: PowerShell ended with exit 1: ...` (exit 1) | The steps done before it are listed under it: fix the reason it names, then run install again, which redoes only what is missing. |
+| A `logon:` line in `<kit home>/restore/restore.log` | The check at logon did not run or failed, and the line says why; `teamrig restore run` reopens the sessions by hand. |
+
 ## Usage errors (exit 64)
 
 | Output | Fix |
