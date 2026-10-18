@@ -1,6 +1,6 @@
 import { ENV } from "../core/home.js";
 import { NAME_PATTERN, NAME_RULE } from "../core/ids.js";
-import { parseUtcDeadline, parseUtcDay } from "../core/time.js";
+import { parseUtcDeadline, parseUtcDay, parseUtcInstant } from "../core/time.js";
 import { MAX_SIZE_PCT, sizeProblem } from "../register/events.js";
 import { isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, priorityText, TASK_ID, TASK_STATUSES } from "../register/model.js";
 import { WAITS_USAGE } from "../register/policy.js";
@@ -73,6 +73,14 @@ export function listOf(flag, text) {
         throw new UsageError(`${flag} "${text}" is an empty list`);
     }
     return items;
+}
+/** `--since 09:00`: a time in UTC, in ms, as `parseUtcInstant` reads it. */
+export function instantOf(flag, text, nowMs) {
+    const instant = parseUtcInstant(text, nowMs);
+    if (instant === undefined) {
+        throw new UsageError(`${flag} "${text}" is not a time: HH:MM (today), YYYY-MM-DD HH:MM or YYYY-MM-DD in UTC, or an ISO time with its zone`);
+    }
+    return instant.getTime();
 }
 /** A size as typed: a number, a `%` after it allowed (`1.5` or `1.5%`). */
 const SIZE_TEXT = /^(\d+(?:\.\d+)?|\.\d+)%?$/;

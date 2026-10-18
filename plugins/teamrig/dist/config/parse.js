@@ -1,8 +1,9 @@
+import { deployTargetsOf } from "../coordinator/targets.js";
 import { isRecord } from "../core/guards.js";
 import { NAME_PATTERN, NAME_RULE } from "../core/ids.js";
 import { FOLLOWUP_STATUSES, isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, SESSION_NAME, TASK_STATUSES } from "../register/model.js";
 import { CORE_RULE_KEYS, isCoreRuleKey } from "../rules/keys.js";
-import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT_CONTEXT_FILES, DEFAULT_CLAIMS, DEFAULT_COORDINATOR_WAIT, DEFAULT_GATE_TIMEOUT_SECONDS, DEFAULT_GITHUB, DEFAULT_HEAVY, DEFAULT_HIRING, DEFAULT_LOCK, DEFAULT_LEAD_BOUNDARY, DEFAULT_LOOPS, DEFAULT_MESSAGES, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_PACKAGE_GUARD, DEFAULT_PUSH_GUARD, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, DEFAULT_STATUS_LINE, DEFAULT_TESTS, DEFAULT_WAKE, HEAVY_TTL_MARGIN_MINUTES, } from "./defaults.js";
+import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT_CONTEXT_FILES, DEFAULT_CLAIMS, DEFAULT_COORDINATOR_WAIT, DEFAULT_GATE_TIMEOUT_SECONDS, DEFAULT_GITHUB, DEFAULT_HEAVY, DEFAULT_HIRING, DEFAULT_LOCK, DEFAULT_LEAD_BOUNDARY, DEFAULT_LOOPS, DEFAULT_MESSAGES, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_PACKAGE_GUARD, DEFAULT_PUSH_GUARD, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, DEFAULT_STATUS_LINE, DEFAULT_TESTS, DEFAULT_WAKE, DEFAULT_WINDOWS, HEAVY_TTL_MARGIN_MINUTES, } from "./defaults.js";
 import { isEffort, isModel } from "./launch.js";
 import { CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from "./limits.js";
 import { ConfigReader, describe, isValidRegex, shortLine } from "./reader.js";
@@ -282,6 +283,7 @@ function parseCoordinator(read, raw) {
     const resetBlackoutHours = read.optionalInteger(schedule, 'resetBlackoutHours', `${path}.schedule`, CONFIG_LIMITS.resetBlackoutHours);
     const wait = read.section(raw, 'wait', path);
     const claims = read.section(raw, 'claims', path);
+    const repos = parseCoordinatorRepos(read, read.section(raw, 'repos', path));
     return {
         ...(dir === undefined ? {} : { dir }),
         schedule: { ...(heavyCutoffUtc === undefined ? {} : { heavyCutoffUtc }), ...(resetBlackoutHours === undefined ? {} : { resetBlackoutHours }) },
@@ -292,7 +294,35 @@ function parseCoordinator(read, raw) {
         },
         gateTimeoutSeconds: read.integer(raw, 'gateTimeoutSeconds', path, DEFAULT_GATE_TIMEOUT_SECONDS, CONFIG_LIMITS.gateTimeoutSeconds),
         claims: { maxMinutes: read.integer(claims, 'maxMinutes', `${path}.claims`, DEFAULT_CLAIMS.maxMinutes, CONFIG_LIMITS.claimMaxMinutes) },
-        repos: parseCoordinatorRepos(read, read.section(raw, 'repos', path)),
+        windows: parseWindows(read, read.section(raw, 'windows', path), deployTargetsOf(repos)),
+        repos,
+    };
+}
+/** When a deploy target's measurement is clean; a settle time for a target no repository deploys, or out of bounds, is reported and left out. */
+function parseWindows(read, raw, knownTargets) {
+    const path = 'coordinator.windows';
+    const targetSettleMinutes = {};
+    for (const [target, value] of Object.entries(read.section(raw, 'targetSettleMinutes', path))) {
+        const itemPath = `${path}.targetSettleMinutes.${target}`;
+        const badName = isCoordinatorName(target);
+        if (badName !== undefined) {
+            read.report(itemPath, badName);
+            continue;
+        }
+        if (!knownTargets.includes(target)) {
+            read.report(itemPath, `is not a target any repository deploys (known: ${knownTargets.join(', ') || 'none'})`);
+            continue;
+        }
+        const minutes = read.integerItem(value, itemPath, CONFIG_LIMITS.settleMinutes);
+        if (minutes !== undefined) {
+            targetSettleMinutes[target] = minutes;
+        }
+    }
+    return {
+        settleMinutes: read.integer(raw, 'settleMinutes', path, DEFAULT_WINDOWS.settleMinutes, CONFIG_LIMITS.settleMinutes),
+        targetSettleMinutes,
+        assumedRollMinutes: read.integer(raw, 'assumedRollMinutes', path, DEFAULT_WINDOWS.assumedRollMinutes, CONFIG_LIMITS.assumedRollMinutes),
+        minMinutes: read.integer(raw, 'minMinutes', path, DEFAULT_WINDOWS.minMinutes, CONFIG_LIMITS.windowMinMinutes),
     };
 }
 /** The repositories `teamrig integrate` lands and `teamrig roll` deploys, by name; one with a bad name or no main checkout is reported and left out. */
