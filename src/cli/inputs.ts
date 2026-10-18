@@ -6,7 +6,7 @@ import { isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, priorityText,
 import { WAITS_USAGE, type AddInput, type AskInput, type StatusInput } from '../register/policy.ts';
 import { isWaitKind, waitOf, type WaitReason } from '../register/waits.ts';
 import type { ListFilter } from '../register/views.ts';
-import { requiredFlag, UsageError, type Flags } from './args.ts';
+import { requiredFlag, UsageError, type Flags, type ParsedArgs } from './args.ts';
 
 /**
  * Flag text to register inputs. Only the shape is checked here (a priority like p2, a list, a date); the
@@ -37,6 +37,15 @@ export function callerOf(flags: Flags, env: Env): string {
     throw new UsageError(`--session (or $${ENV.session}) is required`);
   }
   return sessionRef('--session', name);
+}
+
+/** The command to run: the words after `--`; anything else on the line, or nothing after it, is a usage error. */
+export function commandWordsOf(args: ParsedArgs): readonly string[] {
+  const [stray] = args.positionals;
+  if (stray !== undefined || args.rest.length === 0) {
+    throw new UsageError(stray === undefined ? 'no command to run after --' : `put "${stray}" and the rest of the command after --`);
+  }
+  return args.rest;
 }
 
 export function taskIdOf(text: string): string {

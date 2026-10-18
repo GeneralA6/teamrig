@@ -7,8 +7,8 @@ import { commandHeader, logText, pruneLogs, reserveLog } from '../../test-run/lo
 import { cleanOutput, parseTestOutput } from '../../test-run/parse.ts';
 import { labelOf, reportLines } from '../../test-run/report.ts';
 import { commandLine, type ShellResult } from '../../test-run/shell.ts';
-import { UsageError, type ParsedArgs } from '../args.ts';
-import { sessionRef } from '../inputs.ts';
+import type { ParsedArgs } from '../args.ts';
+import { commandWordsOf, sessionRef } from '../inputs.ts';
 import { openKit, rosterOf, teamFolders } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 
@@ -18,15 +18,6 @@ interface LogPlace {
   /** The session the log is named after, null for none. */
   readonly session: string | null;
   readonly maxFailureChars: number;
-}
-
-/** The words after `--`; anything else on the line, or nothing after it, is a usage error. */
-function commandWords(args: ParsedArgs): readonly string[] {
-  const [stray] = args.positionals;
-  if (stray !== undefined || args.rest.length === 0) {
-    throw new UsageError(stray === undefined ? 'no command to run after --' : `put "${stray}" and the rest of the command after --`);
-  }
-  return args.rest;
 }
 
 /** The session the run is for, as given: `--session`, else the session variable, else none. */
@@ -75,7 +66,7 @@ async function runLogged(runtime: CliRuntime, command: string, log: string): Pro
  * command passed, 1 otherwise.
  */
 export async function test(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
-  const words = commandWords(args);
+  const words = commandWordsOf(args);
   const place = await logPlace(runtime, givenSession(args, runtime));
   const command = commandLine(words, runtime.platform);
   const log = await reserveLog(runtime.files, place.dir, place.session, commandHeader(command));
