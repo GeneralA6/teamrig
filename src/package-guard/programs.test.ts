@@ -44,6 +44,29 @@ describe('programsOf', () => {
     assert.deepEqual(runs('Set-Location sub; npx.cmd eslint', 'powershell'), [`npx eslint @ ${join(APP, 'sub')}`]);
   });
 
+  it('marks a program that reads a pipe, and keeps its redirections', () => {
+    const piped = (command: string, dialect: ShellDialect = 'bash'): string[] =>
+      programsOf(command, { cwd: undefined, home: HOME, dialect }).map((run) => `${run.name}${run.piped ? ' piped' : ''}`);
+    assert.deepEqual(piped('git log | grep x && grep -rn y src'), ['git', 'grep piped', 'grep']);
+    assert.deepEqual(piped('(git log) | grep x || grep y'), ['git', 'grep piped', 'grep']);
+    assert.deepEqual(piped('a $(b | c) | d'), ['b', 'c piped', 'a', 'd piped']);
+    assert.deepEqual(piped('Get-Content x | Select-String y', 'powershell'), ['get-content', 'select-string piped']);
+    const [cat] = programsOf('cat <<EOF > out.txt\nhi\nEOF', { cwd: APP, home: HOME, dialect: 'bash' });
+    assert.deepEqual(
+      cat?.redirections.map((redirection) => `${redirection.operator} ${redirection.target?.text ?? ''}`),
+      ['<< EOF', '> out.txt'],
+    );
+  });
+
+  it('runs the command teamrig heavy and teamrig test start after their --', () => {
+    assert.deepEqual(runs('teamrig heavy --session a --what "x y" -- npx tsc -p .'), [`npx tsc -p . @ ${APP}`]);
+    assert.deepEqual(runs('teamrig test -- teamrig heavy --what x -- npx jest'), [`npx jest @ ${APP}`]);
+    assert.deepEqual(runs('teamrig heavy --what x -- "npx eslint ."'), [`npx eslint . @ ${APP}`]);
+    assert.deepEqual(runs('teamrig add --description "teamrig heavy -- npx x"'), [`teamrig add --description teamrig heavy -- npx x @ ${APP}`]);
+    assert.deepEqual(runs('teamrig heavy --what x --'), []);
+    assert.deepEqual(runs('teamrig $SUB -- npx x'), []);
+  });
+
   it('names no program only known when the line runs, and stops at a script nested too deep', () => {
     assert.deepEqual(runs('$RUNNER eslint'), []);
     const nested = Array.from({ length: 10 }).reduce<string>((line) => `bash -c ${JSON.stringify(line)}`, 'npx deep');
