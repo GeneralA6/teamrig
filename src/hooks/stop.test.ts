@@ -42,6 +42,20 @@ describe('stopOutput', () => {
     assert.equal(stopOutput({ kind: 'write', state: STATE }), '');
   });
 
+  it("sets the tab status title at any end but a block's, over a notice's own title", () => {
+    const sequence = tabTitleSequence('ready api');
+    assert.deepEqual(JSON.parse(stopOutput({ kind: 'none' }, [], 'ready api')), { terminalSequence: sequence });
+    assert.deepEqual(JSON.parse(stopOutput({ kind: 'measure' }, ['BUDGET x'], 'ready api')), { systemMessage: 'BUDGET x', terminalSequence: sequence });
+    assert.deepEqual(JSON.parse(stopOutput({ kind: 'notice', state: STATE, message: 'type /clear', title: 'api: type /clear', restart: false }, [], 'ready api')), {
+      systemMessage: 'type /clear',
+      terminalSequence: sequence,
+    });
+    assert.deepEqual(JSON.parse(stopOutput({ kind: 'block', state: STATE, reason: 'Write your handover.' }, [], 'ready api')), {
+      decision: 'block',
+      reason: 'Write your handover.',
+    });
+  });
+
   it('blocks with any reason, the notices shown with it', () => {
     assert.deepEqual(JSON.parse(blockOutput('Retire now.')), { decision: 'block', reason: 'Retire now.' });
     assert.deepEqual(JSON.parse(blockOutput('Retire now.', ['BUDGET x'])), { decision: 'block', reason: 'Retire now.', systemMessage: 'BUDGET x' });
