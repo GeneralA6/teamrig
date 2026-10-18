@@ -1655,6 +1655,33 @@ Output:
 ENDED 3f9c1a7e at 2030-01-08 10:00 UTC
 ```
 
+### teamrig deploys
+
+The deploy state now, in one read: who holds the host lock (a stale lock shows as free, since the next heavy step
+removes it), the heavy cutoff and the blackout before the weekly token reset (each marked IN FORCE while it holds),
+the quiet claims and loads still open, and what each repository with a roll block has pushed but not rolled. It
+fetches each main checkout to tell; for one a roll would refuse, it says why.
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig deploys
+```
+
+Output:
+
+```text
+host lock: po (heavy: build api) since 2030-01-08 09:50
+heavy cutoff: from 22:30 UTC until midnight (no heavy step starts)
+deploy blackout: 2030-01-08 21:00 until 2030-01-09 01:00 UTC (no integrate or roll; reset from the status line)
+claims: 1
+  quiet claim by data on cloud-api until 2030-01-08 10:30 UTC (p95 latency)
+loads: none
+app: 2 commits pushed, not rolled (c1a2b3c4..d5e6f7a8)
+```
+
 ### teamrig test
 
 Runs a test command in the shell and prints a few lines instead of all it printed, so a long test run costs the

@@ -42,6 +42,7 @@ const EXPECTED = {
   windows: 'read',
   load: 'write',
   'load end': 'write',
+  deploys: 'read',
   hire: 'write',
   retire: 'write',
   refresh: 'write',
