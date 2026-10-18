@@ -827,6 +827,24 @@
         }
       }
     },
+    "readonlyShell": {
+      "description": "Lets a Bash or PowerShell line run without a permission prompt when every command in it provably only reads: known readers (grep, cat, Get-Content, Select-Object...), git and kubectl reading subcommands, and no write, file redirection, command that runs code, or variable a program reads. It only ever allows: any other line gets Claude Code's own permission check.",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Turns the hook on for every session of the team.",
+          "type": "boolean",
+          "default": false
+        },
+        "allowPrefixes": {
+          "description": "Commands trusted with any arguments, each by its leading words, such as \"npx tsc --noEmit\" or \"npx jest\". The hook cannot read what they do, so a prefix vouches for every argument after it: leave out a tool whose flags write (eslint --fix, jest -u).",
+          "type": "array",
+          "maxItems": 16,
+          "items": { "type": "string", "maxLength": 120, "pattern": "^[\\w@./:+][\\w@./:+-]*(?: [\\w@./:=+-]+)*$" },
+          "default": []
+        }
+      }
+    },
     "open": {
       "description": "How teamrig open starts a session in a new terminal tab.",
       "type": "object",

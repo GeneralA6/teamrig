@@ -5,6 +5,7 @@ import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { MODEL_ALIASES, MODEL_ID_MAX_LENGTH, MODEL_ID_PATTERN } from './launch.ts';
 import { CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from './limits.ts';
 import { parseConfig } from './parse.ts';
+import { PREFIX_PATTERN } from '../readonly-shell/rules.ts';
 import { CORE_RULE_KEYS } from '../rules/keys.ts';
 import { AD_HOC_RUNNERS, COMMIT_GATES, CONFLICT_WINNERS, EFFORT_LEVELS, PUSH_TO_PROTECTED, VERIFY_GATES } from './types.ts';
 
@@ -50,6 +51,7 @@ const EVERY_KEY = {
     statusSnapshotDir: '/u',
   },
   refresh: { handoverDir: 'notes' },
+  readonlyShell: { enabled: true, allowPrefixes: ['npx tsc --noEmit'] },
   statusLine: { folder: false, branch: false, resume: false },
   github: { repos: ['acme/web'], owners: { octocat: 'bravo' }, closedDays: 30, everyMinutes: 30 },
   paths: { state: '/s', inbox: '/i', skills: '/k' },
@@ -107,6 +109,7 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   persistentFailureHours: 'alerts.persistentFailureHours',
   chainNudgeAt: 'loops.chainNudgeAt',
   leadOwnPaths: 'leadBoundary.ownPaths',
+  readonlyShellPrefixes: 'readonlyShell.allowPrefixes',
   searchNudgeAt: 'leadBoundary.searchNudgeAt',
   wakePriority: 'wake.priority',
   wakeBatchSeconds: 'wake.batchSeconds',
@@ -258,6 +261,12 @@ describe('config.schema.json', () => {
     assert.deepEqual(nodeAt(schema, 'pushGuard.pushToProtected')['enum'], [...PUSH_TO_PROTECTED]);
     assert.deepEqual(nodeAt(schema, 'packageGuard.adHocRunners')['enum'], [...AD_HOC_RUNNERS]);
     assert.deepEqual(nodeAt(schema, 'commits.gate')['enum'], [...COMMIT_GATES]);
+  });
+
+  it('takes the read-only shell prefixes the parser takes', async () => {
+    const items = nodeAt(await loadSchema(), 'readonlyShell.allowPrefixes')['items'];
+    assert.ok(isRecord(items));
+    assert.equal(items['pattern'], PREFIX_PATTERN.source);
   });
 
   it('takes the verify gate choices the parser takes', async () => {

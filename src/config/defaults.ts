@@ -16,6 +16,7 @@ import type {
   OpenConfig,
   PackageGuardConfig,
   PushGuardConfig,
+  ReadonlyShellConfig,
   RefreshConfig,
   RegisterConfig,
   SkillsConfig,
@@ -83,6 +84,9 @@ export const DEFAULT_PUSH_GUARD: PushGuardConfig = { protectedBranches: ['main',
 
 /** Refused by default: a helper's `npx eslint` once fetched and ran an unvetted package (T450, 10-16). */
 export const DEFAULT_PACKAGE_GUARD: PackageGuardConfig = { adHocRunners: 'deny' };
+
+/** Off, and trusting no prefix, until a team opts in. */
+export const DEFAULT_READONLY_SHELL: ReadonlyShellConfig = { enabled: false, allowPrefixes: [] };
 
 /** Tests: a test folder, `*.test.*` and `*.spec.*` files, and pytest's `test_*.py`. `warn` only adds to a push the guard already asks about. */
 export const DEFAULT_COMMITS: CommitsConfig = {

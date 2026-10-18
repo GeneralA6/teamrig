@@ -27,6 +27,7 @@ export const CONFIG_LIMITS = {
   persistentFailureHours: { min: 1, max: 720 },
   chainNudgeAt: { min: 0, max: 50 },
   leadOwnPaths: { maxItems: 16, maxLength: 256 },
+  readonlyShellPrefixes: { maxItems: 16, maxLength: 120 },
   searchNudgeAt: { min: 0, max: 50 },
   wakePriority: { min: 1, max: 99 },
   wakeBatchSeconds: { min: 0, max: 3600 },
