@@ -316,6 +316,18 @@ describe('evaluatePushes: where a push hides', () => {
     ]);
   });
 
+  it('reads the command teamrig heavy and teamrig test run after their --, but not a teamrig note', () => {
+    expectRows([
+      ['teamrig heavy --session po --what "ship it" -- git push origin main', 'ask'],
+      ['teamrig test --session po -- git push -f origin main', 'deny'],
+      ['teamrig.cmd heavy --what x -- teamrig test -- git push origin main', 'ask'],
+      ['teamrig heavy --what x -- "git push origin main"', 'ask'],
+      ['teamrig heavy --what x -- git push origin feature', 'allow'],
+      ['teamrig add --description "it ran teamrig heavy -- git push -f origin main"', 'allow'],
+      ['teamrig $SUB -- git push origin main', 'ask', 'doubt'],
+    ]);
+  });
+
   it('knows git by any name or path', () => {
     expectRows([
       ['git.exe push origin main', 'ask'],
