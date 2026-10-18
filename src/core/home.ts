@@ -118,6 +118,8 @@ export interface TeamPaths {
   readonly modelNotices: string;
   /** Each session's metered use, `<id>.json` each, and `outside/` for use outside the team. */
   readonly usage: string;
+  /** The skills scorecard's per-day counts and transcript positions (`teamrig skills scorecard`). */
+  readonly skillsScorecard: string;
   /** The lead's budget lifts, an append-only log. */
   readonly lifts: string;
   /** The lead's bursts and their ends, an append-only log. */
@@ -179,6 +181,7 @@ export function teamPaths(kitHome: string, team: string, userHome: string, overr
     verifyNotices: join(state, 'verify-notices.jsonl'),
     modelNotices: join(state, 'model-notices'),
     usage: join(state, 'usage'),
+    skillsScorecard: join(state, 'skills-scorecard.json'),
     lifts: join(state, 'usage', 'lifts.jsonl'),
     bursts: join(state, 'usage', 'bursts.jsonl'),
     hires: join(state, 'hires.jsonl'),

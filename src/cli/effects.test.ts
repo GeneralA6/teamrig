@@ -23,6 +23,7 @@ const EXPECTED = {
   'team tree': 'read',
   rules: 'read',
   'rules scan': 'read',
+  'skills scorecard': 'read',
   'rules keep': 'write',
   'rules forget': 'write',
   start: 'write',
