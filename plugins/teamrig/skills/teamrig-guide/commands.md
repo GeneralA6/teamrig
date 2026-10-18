@@ -893,6 +893,44 @@ Output:
 FORGOT 1 ~/.claude/CLAUDE.md "- Push to main once the tests pass." (rule 15 push); the old config is at ~/.teamrig/teams/shop/backups/config.rules.json
 ```
 
+### teamrig skills scorecard
+
+Shows how each installed skill is used, read from the Claude Code transcripts: its loads (a `Skill` call or a typed
+`/<name>`), its missed uses (a tool call matching its ``Signature: `<regex>` `` line with no load of it in the 30
+calls before) and the calls and errors (failed or refused) per run, against the same procedure run by hand in a
+baseline. A run lasts from its load to the next prompt that starts new work; a task notification or a resumed
+compaction keeps it going, and a thread idle a day closes it. The window defaults to the last 7 UTC days, today
+included, against the 7 before. Each run reads only what the transcripts gained since the last one (at most 512 MB
+a run, then `Catching up`) and keeps 92 days of counts in the team's state. The flags column adds `not loaded`,
+`no signature` (it cannot show missed uses), `no SKILL.md` and the skill's `check` flags.
+
+Flags:
+
+- `--from <day>`: the window's first UTC day, `YYYY-MM-DD`; default 6 days before `--to`.
+- `--to <day>`: its last day; default today.
+- `--baseline-from <day>`: the baseline's first day; default as many days as the window before `--baseline-to`.
+- `--baseline-to <day>`: its last day; default the day before `--from`.
+
+Example:
+
+```sh
+teamrig skills scorecard --from 2030-01-02
+```
+
+Output:
+
+```text
+Skills scorecard 2030-01-02 to 2030-01-08, baseline 2029-12-26 to 2030-01-01
+
+| skill | loads | missed | calls/run | base calls/run | err/run | base err/run | refused | edits | last verified | desc words | flags |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| shop-inbox | 0 | 4 | - | 6.5 | - | 1.0 | 0 | 0 | 2030-01-05 | 12 | not loaded |
+| shop-ship | 9 | 1 | 11.2 | 18.0 | 0.4 | 2.0 | 1 | 2 | 2030-01-06 | 18 |  |
+
+missed: a call matching the skill's Signature line with no load in the 30 calls before. A run ends at the next prompt that starts new work; base = the procedure by hand in the baseline.
+Read 14 files, 38.2 MB this run.
+```
+
 ### teamrig start
 
 Prints what you read at the start of a work block, in one call: the UTC time, your unread inbox lines (marked read,
