@@ -5,6 +5,7 @@ import { refreshPrompt } from '../../open/prompt.ts';
 import { ClearAsks, clearAskDir } from '../../refresh/clear-asks.ts';
 import { runRestart, type RestartResult } from '../../refresh/restart.ts';
 import { RefreshStore } from '../../refresh/store.ts';
+import { RestoreRegistry, restoreSessionsDir } from '../../restore/registry.ts';
 import { onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
 import { openKit, requireConfig, rosterOf } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
@@ -79,6 +80,7 @@ export async function restart(args: ParsedArgs, runtime: CliRuntime): Promise<Ex
       sleep: runtime.sleep,
       platform: runtime.platform,
       asks: new ClearAsks(runtime.files, clearAskDir(kit.paths.kitHome)),
+      restore: new RestoreRegistry(runtime.files, restoreSessionsDir(kit.paths.kitHome)),
       openTab: async () => {
         const tab = { team, id, name, project, prompt: refreshPrompt(team, id, store.handoverPath(id)), terminal: config.open.terminal };
         const { outcome } = await openSessionTab(runtime, tab);
