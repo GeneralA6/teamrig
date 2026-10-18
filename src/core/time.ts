@@ -2,6 +2,11 @@
 
 const DAY_OR_MINUTE = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?$/;
 
+const CLOCK = /^(\d{2}):(\d{2})$/;
+
+/** An ISO time with its zone; one without would be read in the host's local time. */
+const ZONED_ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$/;
+
 export const MS_PER_HOUR = 3_600_000;
 export const MS_PER_DAY = 86_400_000;
 
@@ -33,6 +38,23 @@ export function parseUtcDay(text: string): Date | undefined {
   }
   const end = parseUtcDeadline(text);
   return end === undefined ? undefined : new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()));
+}
+
+/**
+ * Parses a time a person types, in UTC: `HH:MM` today (the day of `nowMs`), `YYYY-MM-DD HH:MM`, `YYYY-MM-DD` (its
+ * start) or an ISO time with its zone. Undefined for anything else, an impossible date included.
+ */
+export function parseUtcInstant(text: string, nowMs: number): Date | undefined {
+  const trimmed = text.trim();
+  const clock = CLOCK.exec(trimmed);
+  if (clock !== null) {
+    return parseUtcDeadline(`${formatUtcDay(new Date(nowMs))} ${clock[1]}:${clock[2]}`);
+  }
+  if (ZONED_ISO.test(trimmed)) {
+    const ms = Date.parse(trimmed);
+    return Number.isFinite(ms) ? new Date(ms) : undefined;
+  }
+  return parseUtcDay(trimmed) ?? parseUtcDeadline(trimmed);
 }
 
 /** A stored day or minute without its year, for compact lines: `2030-01-09 12:00` → `01-09 12:00`. */
