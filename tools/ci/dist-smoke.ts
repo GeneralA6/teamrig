@@ -68,7 +68,7 @@ const SESSION_ID = '0123abcd-0000-4000-8000-00000000000a';
  * `smoke`, which has no config: session start and a helper's start say so, the push guard still refuses a force-push of
  * main, the package guard refuses an npx of a tool not installed, the cold-send hook lets a message go, the failed-send hook stays quiet, the loop nudge and the reminder stay quiet, the Stop and
  * SubagentStop hooks print nothing (any output there would block the turn), the refresh wake wakes nothing, and the
- * restore tracker prints nothing.
+ * restore tracker and tab status print nothing.
  */
 const SAMPLES: Readonly<Record<string, Sample>> = {
   'hook session-start': {
@@ -128,6 +128,10 @@ const SAMPLES: Readonly<Record<string, Sample>> = {
   },
   'hook restore-track': {
     payload: { hook_event_name: 'Stop', session_id: SESSION_ID, cwd: 'smoke-project', stop_hook_active: false },
+    check: (stdout) => (stdout === '' ? undefined : `expected no output, got ${JSON.stringify(stdout)}`),
+  },
+  'hook tab-status': {
+    payload: { hook_event_name: 'UserPromptSubmit', session_id: SESSION_ID, cwd: 'smoke-project', prompt: 'hello' },
     check: (stdout) => (stdout === '' ? undefined : `expected no output, got ${JSON.stringify(stdout)}`),
   },
 };
