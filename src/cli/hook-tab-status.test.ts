@@ -104,6 +104,18 @@ describe('hook stop: tab status', () => {
     assert.equal(titleOf(await busy.run(['hook', 'stop'], { stdin: stop(), env: TITLE_OFF })), `${TAB_CIRCLES.working} fix the build`);
   });
 
+  it('shows the decision circle at a turn end that asks the user to decide, even while a helper runs, and ready at the next plain end', async () => {
+    const asking = stop({ last_assistant_message: 'Two ways to ship T4.\n\nDecision needed: Friday or Monday?' });
+    assert.equal(titleOf(await (await teamWith()).run(['hook', 'stop'], { stdin: asking, env: TITLE_OFF })), `${TAB_CIRCLES.decision} fix the build`);
+    const busy = await teamWith(ON_TEAM, HELPER);
+    assert.equal(titleOf(await busy.run(['hook', 'stop'], { stdin: asking, env: TITLE_OFF })), `${TAB_CIRCLES.decision} fix the build`);
+    const kit = await teamWith();
+    const prompt = await kit.run(['hook', 'tab-status'], { stdin: payload('UserPromptSubmit', { prompt: 'Friday' }), env: TITLE_OFF });
+    assert.equal(titleOf(prompt), `${TAB_CIRCLES.working} fix the build`);
+    const plain = await kit.run(['hook', 'stop'], { stdin: stop({ last_assistant_message: 'Shipped on Friday.' }), env: TITLE_OFF });
+    assert.equal(titleOf(plain), `${TAB_CIRCLES.ready} fix the build`);
+  });
+
   it("titles a session's tab too, and leaves the tab alone with tab status off or on an error", async () => {
     const env = { ...TITLE_OFF, TEAMRIG_SESSION: 'alpha' };
     assert.equal(titleOf(await (await teamWith()).run(['hook', 'stop'], { stdin: stop({ session_title: 'alpha' }), env })), `${TAB_CIRCLES.ready} alpha`);
