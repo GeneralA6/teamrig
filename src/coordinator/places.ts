@@ -1,7 +1,8 @@
 import { isAbsolute, join } from 'node:path';
 import type { TeamPaths } from '../core/home.ts';
 import type { CoordinatorConfig } from '../config/types.ts';
-import { LEDGER_FILE } from './ledger.ts';
+import { CLAIMS_FILE } from './claims.ts';
+import { LEDGER_FILE, LEDGER_MD_FILE } from './ledger.ts';
 
 /** The host lock's file name in the kit home, where every team on the host shares it. */
 export const HOST_LOCK_FILE = 'host.lock';
@@ -9,18 +10,27 @@ export const HOST_LOCK_FILE = 'host.lock';
 /** The files the coordinator keeps. */
 export interface CoordinatorPlaces {
   readonly ledger: string;
+  readonly ledgerMd: string;
+  readonly claims: string;
   readonly hostLock: string;
 }
 
+/** A configured path as a place: a relative one is in the team's folder. */
+export function teamPlace(paths: Pick<TeamPaths, 'home'>, path: string): string {
+  return isAbsolute(path) ? path : join(paths.home, path);
+}
+
 /**
- * Where the coordinator's files are: the ledger in `coordinator.dir` (default `<state>/deploys`), the host lock at
+ * Where the coordinator's files are: the ledgers and quiet claims in `coordinator.dir` (default `<state>/deploys`), the host lock at
  * `coordinator.heavy.lockPath` (default the kit home's, one for the host). A relative path is in the team's folder.
  */
 export function coordinatorPlaces(config: CoordinatorConfig, paths: TeamPaths): CoordinatorPlaces {
-  const inTeam = (path: string): string => (isAbsolute(path) ? path : join(paths.home, path));
+  const inTeam = (path: string): string => teamPlace(paths, path);
   const dir = config.dir === undefined ? join(paths.state, 'deploys') : inTeam(config.dir);
   return {
     ledger: join(dir, LEDGER_FILE),
+    ledgerMd: join(dir, LEDGER_MD_FILE),
+    claims: join(dir, CLAIMS_FILE),
     hostLock: config.heavy.lockPath === undefined ? join(paths.kitHome, HOST_LOCK_FILE) : inTeam(config.heavy.lockPath),
   };
 }
