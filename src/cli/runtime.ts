@@ -11,6 +11,7 @@ import type { IntegrateGit } from '../integrate/git.ts';
 import type { RequirementsCheck } from '../requirements/requirements.ts';
 import type { HookRunner } from '../roll/hooks.ts';
 import type { WorktreePorts } from '../worktree/remove.ts';
+import type { RestorePorts } from '../restore/ports.ts';
 import type { Processes } from '../open/processes.ts';
 import type { SessionProcesses } from '../open/session-processes.ts';
 import type { CommitLog } from '../push-guard/commit-size.ts';
@@ -65,6 +66,8 @@ export interface CliRuntime {
   readonly requirements: RequirementsCheck;
   /** The git and file steps `teamrig worktree remove` takes. */
   readonly worktrees: WorktreePorts;
+  /** The shutdown log and the countdown of the restore after a reboot. */
+  readonly restore: RestorePorts;
   /** The git steps `teamrig integrate` takes. */
   readonly integrateGit: IntegrateGit;
   /** The programs `teamrig roll` runs, its gates, afterPull hooks and roll command: no shell, each with a time limit. */

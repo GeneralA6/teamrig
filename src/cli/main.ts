@@ -18,6 +18,8 @@ import { nodeHookRunner } from '../roll/hooks.ts';
 import { nodeShellRunner } from '../test-run/shell.ts';
 import { NODE_WORKTREE_FILES } from '../worktree/files.ts';
 import { GIT_WORKTREES } from '../worktree/git.ts';
+import { stdioCountdownTerminal, terminalCountdown } from '../restore/countdown.ts';
+import { SHUTDOWN_QUERY_TIMEOUT_MS, systemShutdownLog } from '../restore/shutdowns.ts';
 import { runCli } from './run.ts';
 
 /** The process adapter: real files, clock, git, child processes and stdio around the testable runner. */
@@ -47,6 +49,10 @@ process.exitCode = await runCli(process.argv.slice(2), {
   self: { node: process.execPath, script: fileURLToPath(import.meta.url) },
   requirements: requirementsCheck({ env: process.env, platform: process.platform, probe: NODE_PATH_PROBE, nodeVersion: process.versions.node }),
   worktrees: { git: GIT_WORKTREES, files: NODE_WORKTREE_FILES },
+  restore: {
+    shutdowns: systemShutdownLog(process.platform, nodeProgramRunner(SHUTDOWN_QUERY_TIMEOUT_MS)),
+    countdown: terminalCountdown(stdioCountdownTerminal(process.stdin, process.stdout)),
+  },
   integrateGit: GIT_INTEGRATE,
   hooks: nodeHookRunner(process.platform),
   readStdin: () => text(process.stdin),
