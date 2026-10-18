@@ -1,31 +1,7 @@
-import { spawnSync } from 'node:child_process';
-/** Long enough for git to delete a large worktree; a query answers in well under a second. */
+import { outcome, query, queryLine, runGit } from "../core/git-run.js";
+/** Long enough for git to delete a large worktree. */
 const REMOVE_TIMEOUT_MS = 120_000;
-const QUERY_TIMEOUT_MS = 10_000;
 const BRANCH_REF = 'refs/heads/';
-/**
- * Variables that point git at a repository other than the one its folder is in, as a git hook sets them. Each run
- * drops them, so git acts on the worktree the command names and never on the repository a caller's hook runs in.
- */
-const REPOSITORY_VARIABLES = new Set(['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_NAMESPACE', 'GIT_PREFIX']);
-/** The process environment without the variables that redirect git. */
-export function gitEnvironment(env) {
-    return Object.fromEntries(Object.entries(env).filter(([name]) => !REPOSITORY_VARIABLES.has(name.toUpperCase())));
-}
-function runGit(dir, args, timeout = QUERY_TIMEOUT_MS) {
-    const result = spawnSync('git', args, { cwd: dir, env: gitEnvironment(process.env), encoding: 'utf8', timeout, maxBuffer: 16 * 1024 * 1024 });
-    return { status: result.status, stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
-}
-/** A query's stdout when git exits 0, else undefined. */
-function query(dir, args) {
-    const run = runGit(dir, args);
-    return run.status === 0 ? run.stdout : undefined;
-}
-/** A one-line query, trimmed; an empty answer reads as unknown too. */
-function queryLine(dir, args) {
-    const value = query(dir, args)?.trim();
-    return value === '' ? undefined : value;
-}
 /** NUL-separated fields, without the empty one after the last NUL. */
 function fields(text) {
     return text.split('\0').filter((field) => field !== '');
@@ -68,13 +44,6 @@ export function parseStatus(text) {
         }
     }
     return paths;
-}
-function outcome(run, what) {
-    if (run.status === 0) {
-        return { ok: true };
-    }
-    const said = run.stderr.trim();
-    return { ok: false, reason: said === '' ? `${what} exited ${run.status ?? 'without a code'}` : said };
 }
 /** The git CLI. */
 export const GIT_WORKTREES = {

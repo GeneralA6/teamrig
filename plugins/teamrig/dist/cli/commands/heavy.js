@@ -1,11 +1,12 @@
 import { HEAVY_TTL_MARGIN_MINUTES } from "../../config/defaults.js";
-import { HostLock, holderText } from "../../coordinator/host-lock.js";
-import { appendHeavy } from "../../coordinator/ledger.js";
+import { holderText } from "../../coordinator/host-lock.js";
 import { coordinatorPlaces } from "../../coordinator/places.js";
+import { runRecorded } from "../../coordinator/recorded-step.js";
 import { heavyCutoffReason, minutesText } from "../../coordinator/schedule.js";
 import { exitCodeOf, TIMED_OUT_EXIT } from "../../coordinator/steps.js";
 import { commandLine } from "../../test-run/shell.js";
 import { requiredFlag, UsageError } from "../args.js";
+import { hostLockOf, logLine } from "../coordinator-ports.js";
 import { callerOf, commandWordsOf } from "../inputs.js";
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
@@ -27,33 +28,6 @@ function refuseAfterCutoff(runtime, cutoffUtc) {
     const reason = heavyCutoffReason(runtime.clock.now(), cutoffUtc);
     if (reason !== undefined) {
         throw new RefusedError(reason);
-    }
-}
-/** A progress line stamped with the time, since a heavy step mostly runs in the background with its output in a log. */
-function logLine(runtime, text) {
-    runtime.out.stdout(`${new Date(runtime.clock.now()).toISOString()} ${text}`);
-}
-/** Runs the step, its start and its end each a ledger record; a step that could not start is recorded as exit 1. */
-async function runRecorded(runtime, ledger, step) {
-    const start = {
-        type: 'heavy',
-        id: runtime.newId(),
-        session: step.session,
-        what: step.what,
-        startedAt: new Date(runtime.clock.now()).toISOString(),
-        endedAt: null,
-        exitCode: null,
-    };
-    await appendHeavy(runtime.files, ledger, start);
-    logLine(runtime, `running: ${step.what} (killed after ${minutesText(step.maxRunMinutes)})`);
-    let end;
-    try {
-        end = await runtime.steps.run({ command: step.command, cwd: runtime.cwd, env: runtime.env, timeoutMs: step.maxRunMinutes * MINUTE_MS });
-        return end;
-    }
-    finally {
-        const endedAt = new Date(runtime.clock.now()).toISOString();
-        await appendHeavy(runtime.files, ledger, { ...start, endedAt, exitCode: end === undefined ? EXIT.failed : exitCodeOf(end) });
     }
 }
 /** The last line: DONE, FAILED or TIMED OUT, with the exit code the ledger recorded. */
@@ -90,21 +64,16 @@ export async function heavy(args, runtime) {
     const maxRunMinutes = maxRunMinutesOf(args, coordinator.heavy);
     refuseAfterCutoff(runtime, coordinator.schedule.heavyCutoffUtc);
     const places = coordinatorPlaces(coordinator, kit.paths);
-    const lock = new HostLock(places.hostLock, coordinator.heavy.lockTtlMinutes * MINUTE_MS, {
-        files: runtime.files,
-        clock: runtime.clock,
-        sleep: runtime.sleep,
-        pid: runtime.pid,
-        alive: (pid) => runtime.sessionProcesses.alive(pid),
-        newId: () => runtime.newId(),
-    });
+    const lock = hostLockOf(runtime, places.hostLock, coordinator.heavy);
     const taking = await lock.acquire(session, `heavy: ${what}`, coordinator.heavy.waitMinutes * MINUTE_MS, coordinator.wait.pollSeconds * 1_000, (holder) => logLine(runtime, `waiting for the host lock: ${holderText(holder)}`));
     if (taking.kind === 'busy') {
         throw new RefusedError(`host lock still held by ${holderText(taking.holder)}`);
     }
     try {
         refuseAfterCutoff(runtime, coordinator.schedule.heavyCutoffUtc);
-        const end = await runRecorded(runtime, places.ledger, { session, what, command: commandLine(words, runtime.platform), maxRunMinutes });
+        logLine(runtime, `running: ${what} (killed after ${minutesText(maxRunMinutes)})`);
+        const request = { command: commandLine(words, runtime.platform), cwd: runtime.cwd, env: runtime.env, timeoutMs: maxRunMinutes * MINUTE_MS };
+        const end = await runRecorded(runtime, places.ledger, { session, what, request });
         return report(runtime, end, maxRunMinutes);
     }
     finally {

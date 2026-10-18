@@ -9,6 +9,7 @@ import { realSleep, systemClock } from "../core/lock.js";
 import { NODE_PATH_PROBE } from "../core/path-probe.js";
 import { nodeProgramRunner, systemCredentials } from "../github/credentials.js";
 import { nodeGhRunner } from "../github/gh.js";
+import { GIT_INTEGRATE } from "../integrate/git.js";
 import { nodeProcesses } from "../open/processes.js";
 import { nodeSessionProcesses } from "../open/session-processes.js";
 import { GIT_CLI, GIT_COMMIT_LOG } from "../push-guard/git.js";
@@ -44,6 +45,7 @@ process.exitCode = await runCli(process.argv.slice(2), {
     self: { node: process.execPath, script: fileURLToPath(import.meta.url) },
     requirements: requirementsCheck({ env: process.env, platform: process.platform, probe: NODE_PATH_PROBE, nodeVersion: process.versions.node }),
     worktrees: { git: GIT_WORKTREES, files: NODE_WORKTREE_FILES },
+    integrateGit: GIT_INTEGRATE,
     readStdin: () => text(process.stdin),
     newId: () => randomUUID(),
 });
