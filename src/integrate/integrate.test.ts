@@ -6,6 +6,7 @@ import { DEFAULT_CLAIMS, DEFAULT_COORDINATOR_WAIT, DEFAULT_GATE_TIMEOUT_SECONDS,
 import { HostLock } from '../coordinator/host-lock.ts';
 import type { CoordinatorPlaces } from '../coordinator/places.ts';
 import type { ResetTime } from '../coordinator/schedule.ts';
+import { TimeZone } from '../core/zone.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';
 import { FakeIntegrateGit, MAIN_CHECKOUT, WORKTREE } from '../testing/fake-integrate-git.ts';
@@ -65,7 +66,7 @@ class World {
       windows: DEFAULT_WINDOWS,
       repos: options.repos ?? {},
     };
-    this.setup = { coordinator, places: PLACES, inTeam: (path) => (path.startsWith('/') ? path : `/repo/${path}`) };
+    this.setup = { coordinator, places: PLACES, zone: TimeZone.UTC, inTeam: (path) => (path.startsWith('/') ? path : `/repo/${path}`) };
     this.pushLands();
   }
 
@@ -510,14 +511,14 @@ describe('integrate waits for what may hold a deploy, and refuses what forbids o
 
   it('refuses after the heavy cutoff', async () => {
     const world = new World({ start: '2030-01-08T22:45:00Z', schedule: { heavyCutoffUtc: '22:30' } });
-    refused(await world.run(), /nothing heavy after 22:30 UTC/);
+    refused(await world.run(), /nothing heavy 22:30-00:00 UTC/);
     assert.deepEqual(world.steps.ran, []);
   });
 
   it('refuses in the blackout before the weekly reset, and reads the reset only when a blackout is set', async () => {
     const reset: ResetTime = { at: Date.parse('2030-01-08T12:00:00Z'), source: 'status line' };
     const blackout = new World({ schedule: { resetBlackoutHours: 4 }, reset });
-    refused(await blackout.run(), /^deploy blackout before the weekly token reset: no deploy from 2030-01-08 08:00 until 2030-01-08 12:00 UTC \(reset from the status line\)$/);
+    refused(await blackout.run(), /^deploy blackout before the weekly token reset: no deploy from Tue 01-08 08:00 UTC until Tue 01-08 12:00 UTC \(reset from the status line\)$/);
     const before = new World({ schedule: { resetBlackoutHours: 1 }, reset });
     assert.equal((await before.run()).kind, 'done');
     const unset = new World({ reset });

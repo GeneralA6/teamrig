@@ -3,7 +3,7 @@ import { isRecord } from '../core/guards.ts';
 import type { Files } from '../core/files.ts';
 import { ENV, type Env } from '../core/home.ts';
 import type { Clock, Sleep } from '../core/lock.ts';
-import { formatUtcMinute } from '../core/time.ts';
+import type { TimeZone } from '../core/zone.ts';
 
 /**
  * The host lock's file. Its fields are the ones a team's own coordinator writes too, so both take the same
@@ -205,31 +205,31 @@ export function underLock(env: Env, lock: HostLockInfo): Env {
   return { ...env, [ENV.hostLock]: lock.token };
 }
 
-/** What a waiter waits on as a session reads it: `<session> (<purpose>) since <UTC minute>` for a holder. */
-export function holderText(holder: LockWait): string {
+/** What a waiter waits on as a session reads it: `<session> (<purpose>) since <minute on zone's clock>` for a holder. */
+export function holderText(holder: LockWait, zone: TimeZone): string {
   switch (holder.kind) {
     case 'held':
-      return `${holder.info.session} (${holder.info.purpose}) since ${formatUtcMinute(new Date(holder.info.acquiredAt))}`;
+      return `${holder.info.session} (${holder.info.purpose}) since ${zone.minute(new Date(holder.info.acquiredAt))}`;
     case 'queued':
-      return `${holder.first.session} (${holder.first.purpose}), first in line since ${formatUtcMinute(new Date(holder.first.arrivedAt))}`;
+      return `${holder.first.session} (${holder.first.purpose}), first in line since ${zone.minute(new Date(holder.first.arrivedAt))}`;
     case 'unknown':
       return 'a writer that has not finished writing';
     case 'draining':
-      return sharesText(holder.shares);
+      return sharesText(holder.shares, zone);
     case 'memory':
-      return `${sharesText(holder.shares)}; ${holder.freeMb} MB free, ${holder.heldMb} MB held for ${holder.shares.length === 1 ? 'it' : 'them'}, ${holder.needMb} MB needed`;
+      return `${sharesText(holder.shares, zone)}; ${holder.freeMb} MB free, ${holder.heldMb} MB held for ${holder.shares.length === 1 ? 'it' : 'them'}, ${holder.needMb} MB needed`;
   }
 }
 
-/** The small steps sharing the host: `2 small steps: <session> (<purpose>) since <UTC minute>, ...`. */
-export function sharesText(shares: readonly HostShare[]): string {
-  const steps = shares.map((share) => holderText({ kind: 'held', info: share })).join(', ');
+/** The small steps sharing the host: `2 small steps: <session> (<purpose>) since <minute on zone's clock>, ...`. */
+export function sharesText(shares: readonly HostShare[], zone: TimeZone): string {
+  const steps = shares.map((share) => holderText({ kind: 'held', info: share }, zone)).join(', ');
   return `${shares.length} small step${shares.length === 1 ? '' : 's'}: ${steps}`;
 }
 
 /** A waiter's report: what it waits on, then how many waiters are ahead of it in line when any are. */
-export function waitText(holder: LockWait, ahead: number): string {
-  return ahead === 0 ? holderText(holder) : `${holderText(holder)}; ${ahead} ahead in line`;
+export function waitText(holder: LockWait, ahead: number, zone: TimeZone): string {
+  return ahead === 0 ? holderText(holder, zone) : `${holderText(holder, zone)}; ${ahead} ahead in line`;
 }
 
 /** Tells one report apart from the last: a new holder, or a new place in line. */

@@ -14,6 +14,7 @@ import type { Env } from '../core/home.ts';
 import type { Clock, Sleep } from '../core/lock.ts';
 import { samePath } from '../core/paths.ts';
 import type { SecretScanner } from '../core/secrets.ts';
+import type { TimeZone } from '../core/zone.ts';
 import { shownLine } from '../roll/gates.ts';
 import { hookEndText, hookExitCode, succeeded, type HookRunner } from '../roll/hooks.ts';
 import { commandLine } from '../test-run/shell.ts';
@@ -49,6 +50,8 @@ export interface IntegrateRequest {
 export interface IntegrateSetup {
   readonly coordinator: CoordinatorConfig;
   readonly places: CoordinatorPlaces;
+  /** The team's clock, for the times its refusals and waits name. */
+  readonly zone: TimeZone;
   /** A configured path as a place: a relative one is in the team's folder. */
   inTeam(path: string): string;
 }
@@ -230,7 +233,9 @@ function readinessOf(setup: IntegrateSetup, ports: IntegratePorts, repo: RepoMat
   return async () => {
     const now = ports.clock.now();
     const hours = schedule.resetBlackoutHours;
-    const refusal = heavyCutoffReason(now, schedule.heavyCutoffUtc) ?? (hours === undefined ? undefined : resetBlackoutReason(now, await ports.nextReset(now), hours));
+    const refusal =
+      heavyCutoffReason(now, schedule.heavyCutoffUtc, setup.zone) ??
+      (hours === undefined ? undefined : resetBlackoutReason(now, await ports.nextReset(now), hours, setup.zone));
     if (refusal !== undefined) {
       return { kind: 'refuse', reason: refusal };
     }
@@ -242,7 +247,7 @@ function readinessOf(setup: IntegrateSetup, ports: IntegratePorts, repo: RepoMat
       return { kind: 'wait', reason: `the quiet claims in ${setup.places.claims} are unreadable (${read.reason})` };
     }
     const covering = coveringClaims(read.claims, targets, now);
-    return covering.length === 0 ? { kind: 'go' } : { kind: 'wait', reason: covering.map(claimText).join('; ') };
+    return covering.length === 0 ? { kind: 'go' } : { kind: 'wait', reason: covering.map((claim) => claimText(claim, setup.zone)).join('; ') };
   };
 }
 
@@ -403,6 +408,7 @@ export async function integrateBranch(setup: IntegrateSetup, ports: IntegratePor
     purpose: `integrate ${repo.name}`,
     maxWaitMs: wait.maxMinutes * MINUTE_MS,
     pollMs: wait.pollSeconds * 1_000,
+    zone: setup.zone,
     onWait: (reason) => ports.say(`waiting: ${reason}`),
   });
   if (clearance.kind !== 'taken') {

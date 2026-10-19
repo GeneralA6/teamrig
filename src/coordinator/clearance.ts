@@ -1,4 +1,5 @@
 import type { Clock, Sleep } from '../core/lock.ts';
+import type { TimeZone } from '../core/zone.ts';
 import { holderText, waitText, type HostLock, type HostLockInfo } from './host-lock.ts';
 
 /** Whether a deploy step may start: at once, never (a cutoff or blackout), or after a wait (a quiet claim). */
@@ -22,6 +23,8 @@ export interface ClearanceRequest {
   readonly pollMs: number;
   /** Hears each new reason to wait once, so a long wait logs a line a change. */
   readonly onWait: (reason: string) => void;
+  /** The team's clock, for the lock holder's time in a wait line. */
+  readonly zone: TimeZone;
 }
 
 export interface ClearancePorts {
@@ -65,10 +68,10 @@ export async function takeWhenClear(readiness: (phase: ClearancePhase) => Promis
       continue;
     }
     const taking = await lock.acquire(request.session, request.purpose, Math.max(0, deadline - clock.now()), request.pollMs, (holder, ahead) =>
-      request.onWait(`the host lock: ${waitText(holder, ahead)}`),
+      request.onWait(`the host lock: ${waitText(holder, ahead, request.zone)}`),
     );
     if (taking.kind === 'busy') {
-      return { kind: 'gaveUp', reason: `host lock still held by ${holderText(taking.holder)}` };
+      return { kind: 'gaveUp', reason: `host lock still held by ${holderText(taking.holder, request.zone)}` };
     }
     if (taking.kind === 'withdrawn') {
       return { kind: 'refused', reason: "withdrawn from the host lock's line (teamrig withdraw)" };

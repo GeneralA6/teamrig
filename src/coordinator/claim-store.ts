@@ -2,7 +2,8 @@ import type { Files } from '../core/files.ts';
 import type { Clock } from '../core/lock.ts';
 import type { SecretScanner } from '../core/secrets.ts';
 import { formatUtcMinute } from '../core/time.ts';
-import { parseClaims, type Claim } from './claims.ts';
+import type { TimeZone } from '../core/zone.ts';
+import { claimEndText, parseClaims, type Claim } from './claims.ts';
 import { holderText, type HostLock } from './host-lock.ts';
 
 /** The claims for people to read, beside `claims.json`, and the lock their writers share. */
@@ -26,6 +27,8 @@ export interface ClaimPlaces {
 export interface ClaimPorts {
   readonly files: Pick<Files, 'read' | 'write'>;
   readonly clock: Clock;
+  /** The team's clock, for the times a refusal names. */
+  readonly zone: TimeZone;
   /** The lock on the claims file, which a team's own coordinator takes too. */
   readonly lock: Pick<HostLock, 'acquire' | 'release'>;
 }
@@ -96,7 +99,7 @@ export function renderClaimsMd(claims: readonly Claim[]): string {
 async function changeClaims<T>(ports: ClaimPorts, places: ClaimPlaces, session: string, change: (active: readonly Claim[]) => ClaimsChange<T>): Promise<ClaimOutcome<T>> {
   const taking = await ports.lock.acquire(session, 'claims write', CLAIMS_LOCK_WAIT_MS, CLAIMS_LOCK_POLL_MS, () => undefined);
   if (taking.kind === 'busy') {
-    return { kind: 'busy', reason: `the claims are being written (${holderText(taking.holder)}); try again` };
+    return { kind: 'busy', reason: `the claims are being written (${holderText(taking.holder, ports.zone)}); try again` };
   }
   if (taking.kind === 'withdrawn') {
     return { kind: 'busy', reason: 'its place in line for the claims was withdrawn; try again' };
@@ -128,7 +131,7 @@ export async function addClaim(ports: ClaimPorts, places: ClaimPlaces, rules: Cl
   return changeClaims(ports, places, request.session, (active) => {
     const own = active.find((claim) => claim.session === request.session);
     if (own !== undefined) {
-      return { kind: 'refused', reason: `${request.session} already holds a claim until ${shownTime(own.until)} UTC; release it first (one per session)` };
+      return { kind: 'refused', reason: `${request.session} already holds a claim until ${claimEndText(own.until, ports.zone)}; release it first (one per session)` };
     }
     const now = ports.clock.now();
     const claim: Claim = {

@@ -13,6 +13,7 @@ import type { Env } from '../core/home.ts';
 import type { Clock, Sleep } from '../core/lock.ts';
 import { samePath } from '../core/paths.ts';
 import type { SecretScanner } from '../core/secrets.ts';
+import type { TimeZone } from '../core/zone.ts';
 import { runDependencyCheck } from '../integrate/dependencies.ts';
 import { LOCKFILE } from '../integrate/manifest.ts';
 import { askGates, shownLine } from './gates.ts';
@@ -46,6 +47,8 @@ export interface RollSetup {
   readonly team: string;
   readonly coordinator: CoordinatorConfig;
   readonly places: CoordinatorPlaces;
+  /** The team's clock, for the times its refusals and waits name. */
+  readonly zone: TimeZone;
   /** A configured path as a place: a relative one is in the team's folder. */
   inTeam(path: string): string;
 }
@@ -151,7 +154,9 @@ function readinessOf(setup: RollSetup, ports: RollPorts, request: RollRequest, r
   return async (phase) => {
     const now = ports.clock.now();
     const hours = schedule.resetBlackoutHours;
-    const refusal = heavyCutoffReason(now, schedule.heavyCutoffUtc) ?? (hours === undefined ? undefined : resetBlackoutReason(now, await ports.nextReset(now), hours));
+    const refusal =
+      heavyCutoffReason(now, schedule.heavyCutoffUtc, setup.zone) ??
+      (hours === undefined ? undefined : resetBlackoutReason(now, await ports.nextReset(now), hours, setup.zone));
     if (refusal !== undefined) {
       return { kind: 'refuse', reason: refusal };
     }
@@ -162,7 +167,7 @@ function readinessOf(setup: RollSetup, ports: RollPorts, request: RollRequest, r
       }
       const covering = coveringClaims(read.claims, targets, now);
       if (covering.length > 0) {
-        return { kind: 'wait', reason: covering.map(claimText).join('; ') };
+        return { kind: 'wait', reason: covering.map((claim) => claimText(claim, setup.zone)).join('; ') };
       }
     }
     if (phase === 'locked') {
@@ -353,6 +358,7 @@ export async function rollRepo(setup: RollSetup, ports: RollPorts, request: Roll
     purpose: `roll ${repo.name}`,
     maxWaitMs: wait.maxMinutes * MINUTE_MS,
     pollMs: wait.pollSeconds * 1_000,
+    zone: setup.zone,
     onWait: (reason) => ports.say(`waiting: ${reason}`),
   });
   if (clearance.kind !== 'taken') {

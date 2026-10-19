@@ -4,7 +4,7 @@ import { integrateBranch } from '../../integrate/integrate.ts';
 import type { ParsedArgs } from '../args.ts';
 import { hostLockOf, logLine, nextResetFrom } from '../coordinator-ports.ts';
 import { callerOf } from '../inputs.ts';
-import { openTeamKit, requireConfig, rosterOf, sessionIdOf } from '../kit.ts';
+import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { snapshotDirOf } from './budget.ts';
 
@@ -23,7 +23,7 @@ export async function integrate(args: ParsedArgs, runtime: CliRuntime): Promise<
   const { coordinator, budget } = config;
   const places = coordinatorPlaces(coordinator, kit.paths);
   const end = await integrateBranch(
-    { coordinator, places, inTeam: (path) => teamPlace(kit.paths, path) },
+    { coordinator, places, zone: teamZone(config, runtime), inTeam: (path) => teamPlace(kit.paths, path) },
     {
       git: runtime.integrateGit,
       steps: runtime.steps,

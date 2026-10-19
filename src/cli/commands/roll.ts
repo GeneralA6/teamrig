@@ -4,7 +4,7 @@ import { rollRepo } from '../../roll/roll.ts';
 import type { ParsedArgs } from '../args.ts';
 import { hostLockOf, logLine, nextResetFrom } from '../coordinator-ports.ts';
 import { callerOf } from '../inputs.ts';
-import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf } from '../kit.ts';
+import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf, teamZone } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { snapshotDirOf } from './budget.ts';
 
@@ -25,7 +25,7 @@ export async function roll(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   const { coordinator, budget } = config;
   const places = coordinatorPlaces(coordinator, kit.paths);
   const end = await rollRepo(
-    { team, coordinator, places, inTeam: (path) => teamPlace(kit.paths, path) },
+    { team, coordinator, places, zone: teamZone(config, runtime), inTeam: (path) => teamPlace(kit.paths, path) },
     {
       git: runtime.integrateGit,
       hooks: runtime.hooks,

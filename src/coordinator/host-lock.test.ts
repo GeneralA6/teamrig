@@ -1,9 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Sleep } from '../core/lock.ts';
+import { TimeZone } from '../core/zone.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import type { Files } from '../core/files.ts';
+import { JERUSALEM } from '../testing/zone.ts';
 import { FIRST_IN_LINE_POLL_MS, HostLock, holderText, TICKET_GRACE_MS, waitText, type HostLockInfo, type HostShare, type LockWait, type LockWaiter, type ShareRequest, type Withdrawal } from './host-lock.ts';
 
 const PATH = '/kit/host.lock';
@@ -143,7 +145,8 @@ describe('HostLock.tryTake', () => {
     const { files, lock } = world({ [PATH]: heldBy() });
     const taking = await lock.tryTake('alpha', 'heavy: test');
     assert.equal(taking.kind, 'busy');
-    assert.equal(taking.kind === 'busy' ? holderText(taking.holder) : '', 'po (heavy: build) since 2030-01-08 09:50');
+    assert.equal(taking.kind === 'busy' ? holderText(taking.holder, TimeZone.UTC) : '', 'po (heavy: build) since 2030-01-08 09:50 UTC');
+    assert.equal(taking.kind === 'busy' ? holderText(taking.holder, JERUSALEM) : '', 'po (heavy: build) since 2030-01-08 11:50 IST');
     assert.equal(files.get(PATH), heldBy());
   });
 
@@ -178,7 +181,7 @@ describe('HostLock.tryTake', () => {
       const { files, lock } = world({ [PATH]: text });
       const taking = await lock.tryTake('alpha', 'heavy: test');
       assert.deepEqual(taking, { kind: 'busy', holder: { kind: 'unknown' } });
-      assert.equal(holderText({ kind: 'unknown' }), 'a writer that has not finished writing');
+      assert.equal(holderText({ kind: 'unknown' }, TimeZone.UTC), 'a writer that has not finished writing');
       assert.equal(files.get(PATH), text);
     });
   }
@@ -203,9 +206,9 @@ describe('HostLock.acquire', () => {
       }
     });
     const told: string[] = [];
-    const taking = await lock.acquire('alpha', 'heavy: test', 60 * 60_000, 30_000, (holder) => told.push(holderText(holder)));
+    const taking = await lock.acquire('alpha', 'heavy: test', 60 * 60_000, 30_000, (holder) => told.push(holderText(holder, TimeZone.UTC)));
     assert.equal(taking.kind, 'taken');
-    assert.deepEqual(told, ['po (heavy: build) since 2030-01-08 09:50']);
+    assert.deepEqual(told, ['po (heavy: build) since 2030-01-08 09:50 UTC']);
     assert.deepEqual(clock.sleeps, [FIRST_IN_LINE_POLL_MS, FIRST_IN_LINE_POLL_MS]);
     assert.equal(JSON.parse(files.get(PATH) ?? '{}').session, 'alpha');
   });
@@ -216,8 +219,8 @@ describe('HostLock.acquire', () => {
       await store.write(PATH, heldBy({ token: 'third', session: 'bravo' }));
     });
     const told: string[] = [];
-    await lock.acquire('alpha', 'heavy: test', 60_000, 30_000, (holder) => told.push(holderText(holder)));
-    assert.deepEqual(told, ['po (heavy: build) since 2030-01-08 09:50', 'bravo (heavy: build) since 2030-01-08 09:50']);
+    await lock.acquire('alpha', 'heavy: test', 60_000, 30_000, (holder) => told.push(holderText(holder, TimeZone.UTC)));
+    assert.deepEqual(told, ['po (heavy: build) since 2030-01-08 09:50 UTC', 'bravo (heavy: build) since 2030-01-08 09:50 UTC']);
   });
 
   it('gives up at the deadline, never sleeping past it, names the holder and leaves the line', async () => {
@@ -239,7 +242,7 @@ describe('HostLock.acquire', () => {
   it('removes a file it cannot read once it has seen it so for 10 seconds', async () => {
     const { clock, files, lock } = world({ [PATH]: '{"tok' });
     const told: string[] = [];
-    const taking = await lock.acquire('alpha', 'heavy: test', 60_000, 30_000, (holder) => told.push(holderText(holder)));
+    const taking = await lock.acquire('alpha', 'heavy: test', 60_000, 30_000, (holder) => told.push(holderText(holder, TimeZone.UTC)));
     assert.equal(taking.kind, 'taken');
     assert.deepEqual(told, ['a writer that has not finished writing']);
     assert.deepEqual(clock.sleeps, Array.from({ length: HostLock.UNREADABLE_GRACE_MS / FIRST_IN_LINE_POLL_MS }, () => FIRST_IN_LINE_POLL_MS));
@@ -300,12 +303,12 @@ describe('HostLock.acquire in arrival order', () => {
       }
     });
     const told: string[] = [];
-    const taking = await lock.acquire('alpha', 'heavy: test', 60 * 60_000, 30_000, (holder, ahead) => told.push(waitText(holder, ahead)));
+    const taking = await lock.acquire('alpha', 'heavy: test', 60 * 60_000, 30_000, (holder, ahead) => told.push(waitText(holder, ahead, TimeZone.UTC)));
     assert.equal(taking.kind, 'taken');
     assert.deepEqual(told, [
-      'po (heavy: build) since 2030-01-08 09:50; 1 ahead in line',
-      'bravo (heavy: lint), first in line since 2030-01-08 09:59; 1 ahead in line',
-      'bravo (heavy: build) since 2030-01-08 09:50',
+      'po (heavy: build) since 2030-01-08 09:50 UTC; 1 ahead in line',
+      'bravo (heavy: lint), first in line since 2030-01-08 09:59 UTC; 1 ahead in line',
+      'bravo (heavy: build) since 2030-01-08 09:50 UTC',
     ]);
     assert.deepEqual(clock.sleeps, [30_000, 30_000, FIRST_IN_LINE_POLL_MS], 'behind a waiter it looks every poll, first in line every 2 s');
     assert.deepEqual([fileOf(files), taking.kind === 'taken' ? taking.lock.token : ''], [
@@ -345,9 +348,10 @@ describe('HostLock.acquire in arrival order', () => {
 
   it('names the waiter first in line, and the place in line only when others are ahead', () => {
     const queued: LockWait = { kind: 'queued', first: waiterOf('2030-01-08T09:59:00.000Z') };
-    assert.equal(holderText(queued), 'bravo (heavy: lint), first in line since 2030-01-08 09:59');
-    assert.equal(waitText(queued, 2), 'bravo (heavy: lint), first in line since 2030-01-08 09:59; 2 ahead in line');
-    assert.equal(waitText({ kind: 'unknown' }, 0), 'a writer that has not finished writing');
+    assert.equal(holderText(queued, TimeZone.UTC), 'bravo (heavy: lint), first in line since 2030-01-08 09:59 UTC');
+    assert.equal(holderText(queued, JERUSALEM), 'bravo (heavy: lint), first in line since 2030-01-08 11:59 IST');
+    assert.equal(waitText(queued, 2, TimeZone.UTC), 'bravo (heavy: lint), first in line since 2030-01-08 09:59 UTC; 2 ahead in line');
+    assert.equal(waitText({ kind: 'unknown' }, 0, TimeZone.UTC), 'a writer that has not finished writing');
   });
 });
 
@@ -514,8 +518,8 @@ describe('HostLock shares', () => {
       }
     });
     const told: string[] = [];
-    const taking = await lock.acquire('alpha', 'heavy: specs', 60_000, 30_000, (holder, ahead) => told.push(waitText(holder, ahead)), small(8191));
-    assert.deepEqual(told, ['1 small step: po (heavy: specs) since 2030-01-08 09:50; 8191 MB free, 2048 MB held for it, 6144 MB needed']);
+    const taking = await lock.acquire('alpha', 'heavy: specs', 60_000, 30_000, (holder, ahead) => told.push(waitText(holder, ahead, TimeZone.UTC)), small(8191));
+    assert.deepEqual(told, ['1 small step: po (heavy: specs) since 2030-01-08 09:50 UTC; 8191 MB free, 2048 MB held for it, 6144 MB needed']);
     assert.deepEqual(clock.sleeps, [FIRST_IN_LINE_POLL_MS, FIRST_IN_LINE_POLL_MS]);
     assert.deepEqual(taking.kind === 'taken' ? taking.sharing : undefined, { freeMb: 8191, others: [] });
   });
@@ -565,8 +569,8 @@ describe('HostLock shares', () => {
       }
     });
     const told: string[] = [];
-    const taking = await lock.acquire('alpha', 'heavy: build', 60 * 60_000, 30_000, (holder) => told.push(holderText(holder)));
-    assert.deepEqual(told, ['1 small step: po (heavy: specs) since 2030-01-08 09:50']);
+    const taking = await lock.acquire('alpha', 'heavy: build', 60 * 60_000, 30_000, (holder) => told.push(holderText(holder, TimeZone.UTC)));
+    assert.deepEqual(told, ['1 small step: po (heavy: specs) since 2030-01-08 09:50 UTC']);
     assert.deepEqual([clock.sleeps, holders], [[FIRST_IN_LINE_POLL_MS, FIRST_IN_LINE_POLL_MS], ['alpha', 'alpha']], 'it holds the lock while it waits');
     const renewed = { token: 't1', pid: ME, session: 'alpha', purpose: 'heavy: build', acquiredAt: '2030-01-08T10:00:00.000Z', expiresAt: '2030-01-08T12:30:04.000Z' };
     assert.deepEqual([taking, fileOf(files)], [{ kind: 'taken', lock: renewed }, renewed]);
@@ -611,8 +615,8 @@ describe('HostLock shares', () => {
 
   it('names the small steps, and the memory they leave, as a waiter reads them', () => {
     const shares = [shareOf(), shareOf({ token: 'b', session: 'web', purpose: 'heavy: lint', acquiredAt: '2030-01-08T09:55:00.000Z' })];
-    const steps = '2 small steps: po (heavy: specs) since 2030-01-08 09:50, web (heavy: lint) since 2030-01-08 09:55';
-    assert.equal(holderText({ kind: 'draining', shares }), steps);
-    assert.equal(holderText({ kind: 'memory', freeMb: 7000, heldMb: 4096, needMb: 6144, shares }), `${steps}; 7000 MB free, 4096 MB held for them, 6144 MB needed`);
+    const steps = '2 small steps: po (heavy: specs) since 2030-01-08 09:50 UTC, web (heavy: lint) since 2030-01-08 09:55 UTC';
+    assert.equal(holderText({ kind: 'draining', shares }, TimeZone.UTC), steps);
+    assert.equal(holderText({ kind: 'memory', freeMb: 7000, heldMb: 4096, needMb: 6144, shares }, TimeZone.UTC), `${steps}; 7000 MB free, 4096 MB held for them, 6144 MB needed`);
   });
 });

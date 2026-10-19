@@ -1,6 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { TimeZone } from '../core/zone.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
+import { JERUSALEM } from '../testing/zone.ts';
 import { claimText, coveringClaims, parseClaims, readClaims, type Claim } from './claims.ts';
 
 const NOW = Date.parse('2030-01-08T10:00:00Z');
@@ -52,10 +54,14 @@ describe('coveringClaims', () => {
 
 describe('claimText', () => {
   it('names the session, targets, end and metric', () => {
-    assert.equal(claimText(claim({ targets: ['cloud-api', 'cloud-web'] })), 'quiet claim by po on cloud-api,cloud-web until 2030-01-08 11:00 UTC (p95 latency)');
+    assert.equal(claimText(claim({ targets: ['cloud-api', 'cloud-web'] }), TimeZone.UTC), 'quiet claim by po on cloud-api,cloud-web until 2030-01-08 11:00 UTC (p95 latency)');
   });
 
   it('shows an end it cannot read as written', () => {
-    assert.equal(claimText(claim({ until: 'soon' })), 'quiet claim by po on cloud-api until soon (p95 latency)');
+    assert.equal(claimText(claim({ until: 'soon' }), TimeZone.UTC), 'quiet claim by po on cloud-api until soon (p95 latency)');
+  });
+
+  it("names the end on the team's clock", () => {
+    assert.equal(claimText(claim(), JERUSALEM), 'quiet claim by po on cloud-api until 2030-01-08 13:00 IST (p95 latency)');
   });
 });

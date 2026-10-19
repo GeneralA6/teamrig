@@ -1663,7 +1663,7 @@ teamrig heavy --session api --what "build api" -- npm run build
 Output:
 
 ```text
-2030-01-08T10:00:00.000Z waiting for the host lock: web (heavy: test web) since 2030-01-08 09:52
+2030-01-08T10:00:00.000Z waiting for the host lock: web (heavy: test web) since 2030-01-08 11:52 IST
 2030-01-08T10:04:30.000Z running: build api (killed after 45m)
 DONE exit 0
 ```
@@ -1872,7 +1872,7 @@ teamrig claim --session api --targets api,workers --metric "p95 latency" --why "
 Output:
 
 ```text
-CLAIMED api, workers until 2030-01-08 10:45 UTC
+CLAIMED api, workers until 2030-01-08 12:45 IST
 ```
 
 ### teamrig release
@@ -1892,7 +1892,7 @@ teamrig release --session api
 Output:
 
 ```text
-RELEASED api, workers (claimed until 2030-01-08 10:45 UTC)
+RELEASED api, workers (claimed until 2030-01-08 12:45 IST)
 ```
 
 ### teamrig windows
@@ -1998,11 +1998,11 @@ teamrig deploys
 Output:
 
 ```text
-host lock: po (heavy: build api) since 2030-01-08 09:50
-heavy cutoff: from 22:30 UTC until midnight (no heavy step starts)
-deploy blackout: 2030-01-08 21:00 until 2030-01-09 01:00 UTC (no integrate or roll; reset from the status line)
+host lock: po (heavy: build api) since 2030-01-08 11:50 IST
+heavy cutoff: 00:30-02:00 IST (no heavy step starts)
+deploy blackout: Tue 01-08 23:00 IST until Wed 01-09 03:00 IST (no integrate or roll; reset from the status line)
 claims: 1
-  quiet claim by data on cloud-api until 2030-01-08 10:30 UTC (p95 latency)
+  quiet claim by data on cloud-api until 2030-01-08 12:30 IST (p95 latency)
 loads: none
 app: 2 commits pushed, not rolled (c1a2b3c4..d5e6f7a8)
 ```
