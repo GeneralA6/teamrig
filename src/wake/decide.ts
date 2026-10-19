@@ -70,6 +70,16 @@ export interface WakePending {
   readonly ids: readonly string[];
 }
 
+/** The day's moments that already gave the session its turn (src/wake/day-start.ts), so each wakes it once. */
+export interface SettledMoments {
+  /** The last day start settled, epoch ms: woken for, or one the session had a turn after. */
+  readonly dayStart: number | undefined;
+  /** The `at` of the last burst settled. */
+  readonly burst: number | undefined;
+}
+
+export const NO_SETTLED_MOMENTS: SettledMoments = { dayStart: undefined, burst: undefined };
+
 /** What the wake check keeps per session between checks. */
 export interface WakeState {
   /** The Claude Code session the state is for: another tab, or a /clear, starts it over. */
@@ -78,6 +88,8 @@ export interface WakeState {
   readonly known: readonly string[];
   readonly pending: WakePending | undefined;
   readonly lastWakeAt: number | undefined;
+  /** Kept across tabs like `lastWakeAt`, so a /clear never wakes the session twice for one moment. */
+  readonly settled: SettledMoments;
 }
 
 export interface WakeInput {
@@ -102,7 +114,7 @@ export interface WakeDecision {
 }
 
 /** Most urgent first, then oldest. */
-function byUrgency(a: Task, b: Task): number {
+export function byUrgency(a: Task, b: Task): number {
   return a.priority - b.priority || taskNumber(a.id) - taskNumber(b.id);
 }
 
@@ -116,8 +128,9 @@ export function decideWake(input: WakeInput): WakeDecision {
   const worthy = [...tasks.values()].filter((task) => isWakeWorthy(task, session, input.maxPriority, context));
   const known = worthy.map((task) => task.id);
   const none: WakeVerdict = { kind: 'none' };
+  const settled = previous?.settled ?? NO_SETTLED_MOMENTS;
   if (previous?.tab !== tab) {
-    return { verdict: none, state: { tab, known, pending: undefined, lastWakeAt: previous?.lastWakeAt } };
+    return { verdict: none, state: { tab, known, pending: undefined, lastWakeAt: previous?.lastWakeAt, settled } };
   }
   const wasKnown = new Set(previous.known);
   const pendingIds = new Set(previous.pending?.ids ?? []);
@@ -125,16 +138,16 @@ export function decideWake(input: WakeInput): WakeDecision {
   const fresh = worthy.filter((task) => !wasKnown.has(task.id) && isNews(task, session, tasks));
   const due = [...kept, ...fresh].sort(byUrgency);
   if (due.length === 0) {
-    return { verdict: none, state: { tab, known, pending: undefined, lastWakeAt: previous.lastWakeAt } };
+    return { verdict: none, state: { tab, known, pending: undefined, lastWakeAt: previous.lastWakeAt, settled } };
   }
   const since = kept.length > 0 && previous.pending !== undefined ? previous.pending.since : now;
   const gapEnd = previous.lastWakeAt === undefined ? Number.NEGATIVE_INFINITY : previous.lastWakeAt + input.minGapMs;
   const at = Math.max(since + input.batchMs, gapEnd);
   const ids = due.map((task) => task.id);
   if (now < at) {
-    return { verdict: { kind: 'later', at, ids }, state: { tab, known, pending: { since, ids }, lastWakeAt: previous.lastWakeAt } };
+    return { verdict: { kind: 'later', at, ids }, state: { tab, known, pending: { since, ids }, lastWakeAt: previous.lastWakeAt, settled } };
   }
-  return { verdict: { kind: 'wake', tasks: due }, state: { tab, known, pending: undefined, lastWakeAt: now } };
+  return { verdict: { kind: 'wake', tasks: due }, state: { tab, known, pending: undefined, lastWakeAt: now, settled } };
 }
 
 /** Whether the session should rest: past its daily budget, or in the budget's quiet hours. */
@@ -211,7 +224,7 @@ export function wakePrompt(session: string, tasks: readonly Task[], cost: WakeCo
 }
 
 /** `T12, T13 and 2 more`. */
-function idsText(tasks: readonly Task[]): string {
+export function idsText(tasks: readonly Task[]): string {
   const named = tasks.slice(0, WAKE_LIST_MAX).map((task) => task.id);
   const more = tasks.length - named.length;
   return more > 0 ? `${named.join(', ')} and ${more} more` : named.join(', ');

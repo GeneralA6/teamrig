@@ -2,7 +2,8 @@ import { join } from 'node:path';
 import type { Files } from '../core/files.ts';
 import { isRecord, isStringArray, stringField, type JsonRecord } from '../core/guards.ts';
 import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
-import type { WakeCost, WakePending, WakeState } from './decide.ts';
+import type { DayMomentKind } from './day-start.ts';
+import { NO_SETTLED_MOMENTS, type SettledMoments, type WakeCost, type WakePending, type WakeState } from './decide.ts';
 
 /** The format of the wake files this code reads and writes; a file in another format reads as no check yet. */
 export const WAKE_FORMAT = 1;
@@ -24,6 +25,29 @@ function pendingOf(record: JsonRecord): { readonly ok: boolean; readonly value: 
   return since !== undefined && isStringArray(ids) ? { ok: true, value: { since, ids } } : { ok: false, value: undefined };
 }
 
+/** A stored time that may be absent: absent is undefined; damage is not ok, so the whole file reads as damaged. */
+function optionalTimeOf(record: JsonRecord, key: string): { readonly ok: boolean; readonly value: number | undefined } {
+  if (record[key] === undefined) {
+    return { ok: true, value: undefined };
+  }
+  const value = finiteField(record, key);
+  return { ok: value !== undefined, value };
+}
+
+/** The stored settled moments: absent (a file from before day starts) is none; damage is not ok. */
+function settledOf(record: JsonRecord): { readonly ok: boolean; readonly value: SettledMoments } {
+  const raw = record['settled'];
+  if (raw === undefined) {
+    return { ok: true, value: NO_SETTLED_MOMENTS };
+  }
+  if (!isRecord(raw)) {
+    return { ok: false, value: NO_SETTLED_MOMENTS };
+  }
+  const dayStart = optionalTimeOf(raw, 'dayStart');
+  const burst = optionalTimeOf(raw, 'burst');
+  return { ok: dayStart.ok && burst.ok, value: { dayStart: dayStart.value, burst: burst.value } };
+}
+
 /** A wake file's content; undefined when it is damaged or from another format, which starts the tab over. */
 export function parseWakeState(text: string): WakeState | undefined {
   const record = parseObject(text.trim());
@@ -33,21 +57,27 @@ export function parseWakeState(text: string): WakeState | undefined {
   const tab = stringField(record, 'tab');
   const known = record['known'];
   const pending = pendingOf(record);
-  const lastWakeAt = record['lastWakeAt'];
-  const last = lastWakeAt === undefined ? undefined : finiteField(record, 'lastWakeAt');
-  if (tab === undefined || !isStringArray(known) || !pending.ok || (lastWakeAt !== undefined && last === undefined)) {
+  const last = optionalTimeOf(record, 'lastWakeAt');
+  const settled = settledOf(record);
+  if (tab === undefined || !isStringArray(known) || !pending.ok || !last.ok || !settled.ok) {
     return undefined;
   }
-  return { tab, known, pending: pending.value, lastWakeAt: last };
+  return { tab, known, pending: pending.value, lastWakeAt: last.value, settled: settled.value };
+}
+
+function formatSettled({ dayStart, burst }: SettledMoments): JsonRecord {
+  return { ...(dayStart === undefined ? {} : { dayStart }), ...(burst === undefined ? {} : { burst }) };
 }
 
 export function formatWakeState(state: WakeState): string {
+  const settled = formatSettled(state.settled);
   return toJsonlLine({
     [VERSION_FIELD]: WAKE_FORMAT,
     tab: state.tab,
     known: [...state.known],
     ...(state.pending === undefined ? {} : { pending: { since: state.pending.since, ids: [...state.pending.ids] } }),
     ...(state.lastWakeAt === undefined ? {} : { lastWakeAt: state.lastWakeAt }),
+    ...(Object.keys(settled).length === 0 ? {} : { settled }),
   });
 }
 
@@ -83,9 +113,20 @@ export class WakeStore {
   }
 }
 
-/** One line of the wake log: a wake submitted, or one Claude Code dropped. */
+/**
+ * One line of the wake log: a wake submitted, for work handed to the session or, with `moments`, for the day's
+ * moments (src/wake/day-start.ts); or one Claude Code dropped.
+ */
 export type WakeRecord =
-  | { readonly kind: 'wake'; readonly at: number; readonly session: string; readonly tab: string; readonly ids: readonly string[]; readonly cost: WakeCost }
+  | {
+      readonly kind: 'wake';
+      readonly at: number;
+      readonly session: string;
+      readonly tab: string;
+      readonly ids: readonly string[];
+      readonly cost: WakeCost;
+      readonly moments?: readonly DayMomentKind[];
+    }
   | { readonly kind: 'dropped'; readonly at: number; readonly session: string; readonly tab: string; readonly reason: string };
 
 /** The format of the wake log's lines. */
@@ -104,6 +145,7 @@ export function formatWakeRecord(record: WakeRecord): string {
     w: cost.w,
     cold: cost.cold,
     ...(cost.weekPct === undefined ? {} : { weekPct: cost.weekPct }),
+    ...(record.moments === undefined ? {} : { moments: [...record.moments] }),
   });
 }
 
