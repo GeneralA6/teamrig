@@ -8,9 +8,10 @@
  * runs at most one reload per RELOAD_GAP_MS, waits as long after a refused one, and never runs two for the same
  * installs.
  *
- * The mod runs inside Claude Code without Node, so this file imports nothing at run time: it compiles to a module
- * the mod imports as it is.
+ * The mod runs inside Claude Code without Node, so this file imports nothing from Node, only the plugin list's reader
+ * (`core/installed-plugins.ts`), which imports none either: they compile to modules the mod imports as they are.
  */
+import { appliesTo, installsOf } from '../core/installed-plugins.ts';
 
 /** How often the hand reads installed_plugins.json. */
 export const CHECK_MS = 15_000;
@@ -20,8 +21,6 @@ export const SETTLE_MS = 10_000;
 export const RELOAD_GAP_MS = 5 * 60_000;
 /** The command the hand runs: Claude Code's own `/reload-plugins`. */
 export const RELOAD_COMMAND = 'reload-plugins';
-/** Where Claude Code records its installed plugins: in the `plugins` folder that holds the `cache` of installs. */
-export const INSTALLED_PLUGINS_FILE = 'installed_plugins.json';
 
 /** What the hand keeps in the session about its last reload, so the mod a reload loads still keeps the gap. */
 export interface ReloadRecord {
@@ -68,26 +67,8 @@ export type CheckResult =
   | { readonly kind: 'overlap' }
   | { readonly kind: 'failed'; readonly error: string };
 
-/** One install as installed_plugins.json (version 2) records it, in the list under its `<plugin>@<marketplace>`. */
-interface Install {
-  /** `user`, or `project` / `local` for the project at `projectPath`. */
-  readonly scope: string;
-  readonly installPath: string;
-  readonly version: string;
-  readonly gitCommitSha: string;
-  readonly projectPath: string | undefined;
-}
-
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function isList(value: unknown): value is readonly unknown[] {
-  return Array.isArray(value);
-}
-
-function isOptionalText(value: unknown): value is string | undefined {
-  return value === undefined || typeof value === 'string';
 }
 
 export function isReloadRecord(value: unknown): value is ReloadRecord {
@@ -96,110 +77,23 @@ export function isReloadRecord(value: unknown): value is ReloadRecord {
   );
 }
 
-function parsed(text: string): unknown {
-  try {
-    const value: unknown = JSON.parse(text);
-    return value;
-  } catch {
-    return undefined;
-  }
-}
-
-function installOf(entry: unknown): Install | undefined {
-  if (!isRecord(entry)) {
-    return undefined;
-  }
-  const scope = entry['scope'];
-  const installPath = entry['installPath'];
-  const version = entry['version'];
-  const gitCommitSha = entry['gitCommitSha'];
-  const projectPath = entry['projectPath'];
-  if (typeof scope !== 'string' || typeof installPath !== 'string') {
-    return undefined;
-  }
-  if (!isOptionalText(version) || !isOptionalText(gitCommitSha) || !isOptionalText(projectPath)) {
-    return undefined;
-  }
-  return { scope, installPath, version: version ?? '', gitCommitSha: gitCommitSha ?? '', projectPath };
-}
-
-/** A path with a drive letter or a UNC start: Windows, where case and the slash's direction do not matter. */
-const WINDOWS_PATH = /^(?:[A-Za-z]:|[\\/]{2})/;
-
-function withoutTrailingSlash(path: string): string {
-  let end = path.length;
-  while (end > 1 && path[end - 1] === '/') {
-    end -= 1;
-  }
-  return path.slice(0, end);
-}
-
-/** Whether two spellings name one folder; on Windows `\` and `/` are one separator and case does not matter. */
-export function samePath(a: string, b: string): boolean {
-  if (WINDOWS_PATH.test(a) || WINDOWS_PATH.test(b)) {
-    const windows = (path: string): string => withoutTrailingSlash(path.replaceAll('\\', '/')).toLowerCase();
-    return windows(a) === windows(b);
-  }
-  return withoutTrailingSlash(a) === withoutTrailingSlash(b);
-}
-
-function appliesTo(install: Install, projectRoot: string): boolean {
-  if (install.scope === 'user') {
-    return true;
-  }
-  const forAProject = install.scope === 'project' || install.scope === 'local';
-  return forAProject && install.projectPath !== undefined && samePath(install.projectPath, projectRoot);
-}
-
 /**
  * The installs that apply to a tab whose project root is `projectRoot`: every user-scope install and the project- and
  * local-scope ones for that project, each as its plugin, folder, version and commit, sorted. Undefined for a text
  * that is not installed_plugins.json's shape, so a file mid-write or of another version reads as no change.
  */
 export function installedFingerprint(text: string, projectRoot: string): string | undefined {
-  const file = parsed(text);
-  if (!isRecord(file)) {
+  const installs = installsOf(text);
+  if (installs === undefined) {
     return undefined;
   }
-  const plugins = file['plugins'];
-  if (!isRecord(plugins)) {
-    return undefined;
-  }
-  const lines: string[] = [];
-  for (const [key, entries] of Object.entries(plugins)) {
-    if (!isList(entries)) {
-      return undefined;
-    }
-    for (const entry of entries) {
-      const install = installOf(entry);
-      if (install === undefined) {
-        return undefined;
-      }
-      if (appliesTo(install, projectRoot)) {
-        lines.push(JSON.stringify([key, install.installPath, install.version, install.gitCommitSha]));
-      }
-    }
-  }
-  return lines.sort().join('\n');
+  return installs
+    .filter(({ install }) => appliesTo(install, projectRoot))
+    .map(({ key, install }) => JSON.stringify([key, install.installPath, install.version, install.gitCommitSha]))
+    .sort()
+    .join('\n');
 }
 
-/**
- * installed_plugins.json for a plugin Claude Code runs from its cache
- * (`<config>/plugins/cache/<marketplace>/<plugin>/<version>`): the file sits in that `plugins` folder, so the path follows the configuration folder this Claude Code really uses
- * (`CLAUDE_CONFIG_DIR` too) with no environment read. Undefined for a plugin run from anywhere else (`--plugin-dir`,
- * a marketplace that is a local folder).
- */
-export function installedPluginsFileOf(pluginRoot: string): string | undefined {
-  const parts = pluginRoot.split(/[\\/]/);
-  while (parts.length > 0 && parts[parts.length - 1] === '') {
-    parts.pop();
-  }
-  const count = parts.length;
-  if (count < 6 || parts[count - 5] !== 'plugins' || parts[count - 4] !== 'cache') {
-    return undefined;
-  }
-  return [...parts.slice(0, count - 4), INSTALLED_PLUGINS_FILE].join('/');
-}
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
