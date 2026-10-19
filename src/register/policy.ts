@@ -69,6 +69,11 @@ export interface StatusInput {
   readonly card?: Partial<DecisionCard>;
   /** What will prove a `verifying` task works; only with that status. */
   readonly proof?: string;
+  /**
+   * What shows the proof of the verifying tasks a start needs exists; only on a start they hold. The start then goes
+   * through, and the CLI asks their owners to confirm (done) or reopen them.
+   */
+  readonly met?: string;
   /** The date to verify by, as the task's due date; only with `verifying`. */
   readonly due?: string;
   /** The tasks the work leaves (a finding, a next step), by id; empty for `--followups none`. Only with FOLLOWUP_STATUSES. */
@@ -106,6 +111,8 @@ export interface StatusChange {
   readonly card?: DecisionCard;
   /** Only with `verifying`: the proof given, or the one the task already had when it was verifying before. */
   readonly proof?: string;
+  /** Only on a start the verifying tasks it needs hold: what shows their proof exists. */
+  readonly met?: string;
   /** Only with `verifying`, and only when it moves the task's due date: the date to verify by. */
   readonly due?: string;
   /** Only when the change names them: the tasks the work leaves, empty for none. */
@@ -239,11 +246,17 @@ export class RegisterPolicy {
       return refuse(ownerOnly(task));
     }
     const { register } = this.config;
-    // A start waits for the proof of the shipped changes it builds on; `warn` lets it through and the CLI warns.
+    // A start waits for the proof of the shipped changes it builds on, unless it names what shows that proof exists
+    // (`--met`), which the CLI asks their owners to confirm; `warn` lets it through and the CLI warns.
     const holds = startHolds(task, input.status, context.state.tasks);
-    if (holds.length > 0 && register.verifyGate === 'refuse') {
+    const met = blankToNull(input.met);
+    if (met !== null && holds.length === 0) {
+      return refuse('--met goes only with a start that a verifying task it needs holds');
+    }
+    if (holds.length > 0 && met === null && register.verifyGate === 'refuse') {
       const ids = holds.map((held) => held.id);
-      return refuse(`${heldStart(task, holds)}; start ${task.id} once ${ids.join(' and ')} ${ids.length === 1 ? 'is' : 'are'} done`);
+      const done = `${ids.join(' and ')} ${ids.length === 1 ? 'is' : 'are'} done`;
+      return refuse(`${heldStart(task, holds)}; start ${task.id} once ${done}, or with --met "<what shows the proof exists>"`);
     }
     const note = blankToNull(input.note);
     const evidence = blankToNull(input.evidence);
@@ -295,6 +308,7 @@ export class RegisterPolicy {
       ['note', note],
       ['evidence', evidence],
       ['proof', proof.value],
+      ['met', met],
       ...(card.value === null ? [] : cardTexts(card.value).map((text): [string, string] => ['card', text])),
     ];
     const problem = texts.map(([name, text]) => this.checkText(name, text)).find((found) => found !== undefined);
@@ -306,6 +320,7 @@ export class RegisterPolicy {
       ...(waits.value.length > 0 ? { waits: waits.value } : {}),
       ...(card.value === null ? {} : { card: card.value }),
       ...(proof.value === null ? {} : { proof: proof.value }),
+      ...(met === null ? {} : { met }),
       ...(due.value === null ? {} : { due: due.value }),
       ...(followups.value === null ? {} : { followups: followups.value }),
     };
