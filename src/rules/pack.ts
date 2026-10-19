@@ -1,5 +1,7 @@
 import type { HookAsks, KitConfig, PushGuardConfig, RuleConflict } from '../config/types.ts';
+import { heavyCutoffSpan } from '../coordinator/schedule.ts';
 import { clipEnd, clipStart } from '../core/clip.ts';
+import { TimeZone } from '../core/zone.ts';
 import { CORE_RULE_KEYS, ruleNumberOf, type CoreRuleKey } from './keys.ts';
 import { DECISION_MARKER } from '../tabs/status.ts';
 import { helperDefaultClause } from './helper-default.ts';
@@ -90,14 +92,22 @@ function statusDemands(config: KitConfig, command: string): string {
   return `only the owning session sets its status (\`${command} set\`)${demands.length === 0 ? '' : `, with ${demands.join(', ')}`}.`;
 }
 
+/** When the rules are read, and the machine's zone that a team without `timeZone` reads them in. */
+export interface RulesClock {
+  readonly now: Date;
+  readonly machineZone: string;
+}
+
 /**
  * The always-loaded core rules, filled from the team's config. Each rule names the config key
  * behind any value it prints, so a team changes a number without forking the text. A step only one
  * platform needs, like removing a worktree without following its node_modules junction on Windows, prints on that platform alone.
+ * The heavy cutoff is named on the team's clock, for the day `clock.now` falls on.
  */
-export function renderCorePack(config: KitConfig, command: string, platform: NodeJS.Platform): string {
+export function renderCorePack(config: KitConfig, command: string, platform: NodeJS.Platform, clock: RulesClock): string {
   const { roles, skills, budget } = config;
-  const cutoff = config.coordinator.schedule.heavyCutoffUtc;
+  const cutoff = heavyCutoffSpan(clock.now.getTime(), config.coordinator.schedule.heavyCutoffUtc);
+  const zone = TimeZone.resolve(config.timeZone, clock.machineZone);
   const rules: Readonly<Record<CoreRuleKey, string>> = {
     roles:
       `Roles, by session id: ${roles.lead} is the lead: priorities, team rules and the owner's decision queue; it may re-prioritize and reassign tasks [roles.lead].` +
@@ -122,7 +132,7 @@ export function renderCorePack(config: KitConfig, command: string, platform: Nod
       `Silence is consent only within the sender's own authority, never for owner-gated decisions: ${list(config.ownerGates)} [ownerGates].`,
     deploy:
       'Deploy ASAP means the earliest moment a change can be verified (tests, then a check that it runs). State each fix\'s evidence and when it will exist; build nothing on a fix before then.' +
-      (cutoff === undefined ? '' : ` No heavy step (builds, test runs, data scripts) starts after ${cutoff} UTC [coordinator.schedule.heavyCutoffUtc].`),
+      (cutoff === undefined ? '' : ` No heavy step (builds, test runs, data scripts) starts ${zone.clockSpan(new Date(cutoff.from), new Date(cutoff.to))} [coordinator.schedule.heavyCutoffUtc].`),
     'lean-calls':
       'Lean calls: every tool call re-reads the whole context, so batch related shell steps into one call.' +
       ` Work in your own session: ${helperDefaultClause(budget.subagentWeight)}; run helpers on your own model and effort.` +

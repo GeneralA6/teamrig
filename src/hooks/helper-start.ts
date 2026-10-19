@@ -3,7 +3,7 @@ import { Roster } from '../config/roster.ts';
 import { isRecord, stringField } from '../core/guards.ts';
 import { ENV } from '../core/home.ts';
 import type { Rename } from '../names/rename.ts';
-import { renderCorePack, renderSessionContext, type TeamRules } from '../rules/pack.ts';
+import { renderCorePack, renderSessionContext, type RulesClock, type TeamRules } from '../rules/pack.ts';
 import { shellNote, unloadedContext } from './session-start.ts';
 
 /** A Claude Code subagent (a helper) a hook runs in: its id, and its type when that is a plain name. */
@@ -46,6 +46,8 @@ export interface HelperStartInput {
   /** Whether `$TEAMRIG_SESSION` holds `session`, so commands find it without `--session`. */
   readonly sessionInEnv: boolean;
   readonly platform: NodeJS.Platform;
+  /** When the rules are read and the machine's zone, which name the heavy cutoff on the team's clock. */
+  readonly clock: RulesClock;
   /** The CLI name the rules tell the helper to run. */
   readonly command: string;
 }
@@ -78,7 +80,7 @@ export function helperStartContext(input: HelperStartInput): string {
     return unloadedContext(input.team, load, command);
   }
   const roster = new Roster(load.config, input.team, input.renames);
-  const core = renderCorePack(load.config, command, input.platform);
+  const core = renderCorePack(load.config, command, input.platform, input.clock);
   return renderSessionContext(`${core}\n\n${helperLine(roster, input)}`, input.teamRules, command);
 }
 
