@@ -15,6 +15,8 @@ import { sendTargetOf } from '../../hooks/cold-send.ts';
 import { failedSendLine, failedSendOf, failedSendOutput } from '../../hooks/failed-send.ts';
 import { adHocRunnersOf, packageGuardOutput } from '../../hooks/package-guard.ts';
 import { hookAsksOf } from '../../hooks/permission.ts';
+import { secretGuardOf, secretGuardOutput } from '../../hooks/secret-guard.ts';
+import { secretRulesOf } from '../../secret-guard/rules.ts';
 import { commitsOf, protectedBranchesOf, pushGuardOutput, pushToProtectedOf, skipHooksOf } from '../../hooks/push-guard.ts';
 import { JsonlHintLog } from '../../hooks/hint-log.ts';
 import { promptOutput } from '../../hooks/prompt-output.ts';
@@ -136,6 +138,26 @@ export async function packageGuard(args: ParsedArgs, runtime: CliRuntime): Promi
     files: runtime.files,
     adHocRunners: adHocRunnersOf(guard.load),
     hookAsks: hookAsksOf(guard.load),
+  });
+  if (output !== '') {
+    runtime.out.stdout(output);
+  }
+  return EXIT.ok;
+}
+
+/** PreToolUse on Bash, PowerShell, Read and Grep: refuses, or asks about, a call that would print a secret into the conversation. */
+export async function secretGuard(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+  noPositionals(args);
+  const payload = parseJson(await runtime.readStdin());
+  const guard = await guardLoadOf(payload, runtime);
+  if (guard === undefined) {
+    return EXIT.ok;
+  }
+  const config = secretGuardOf(guard.load);
+  const output = secretGuardOutput(payload, {
+    cwd: runtime.cwd,
+    rules: secretRulesOf(config, runtime.userHome, runtime.platform),
+    secretReads: config.secretReads,
   });
   if (output !== '') {
     runtime.out.stdout(output);
