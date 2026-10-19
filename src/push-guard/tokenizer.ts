@@ -92,7 +92,8 @@ export interface ShellParse {
   /**
    * bash only: true when the commands may not show the variables the line sets as it runs. Arithmetic
    * (`((...))`, `$((...))`, `$[...]`) and a `${...}` that assigns (`:=`), holds arithmetic (a substring or a
-   * subscript) or expands a value again (`${!R}`, `@P`) can assign while they expand, a `{NAME}>` redirection
+   * subscript other than a plain index such as `[0]`) or expands a value again (`${!R}`, `@P`) can assign
+   * while they expand, a `{NAME}>` redirection
    * stores the descriptor it opens in NAME, and a heredoc left as commands (its delimiter never comes, or is
    * only known when it runs) may hold lines that never run. Quoted text never counts.
    */
@@ -115,16 +116,18 @@ const PLAIN_VARIABLE = /^\$(?:([A-Za-z_]\w*)|\{([A-Za-z_]\w*)\})$/;
 
 /**
  * The head of a bash `${...}`: a `#` (length) or `!` (indirection) prefix, the parameter, a name with an
- * optional `[@]` or `[*]`, and the operator after it, or `[` when another subscript follows.
+ * optional `[@]`, `[*]` or plain index such as `[0]` (arithmetic with nothing to run or assign), and the
+ * operator after it, or `[` when another subscript follows.
  */
-const BRACED_HEAD = /^\$\{([#!]?)([A-Za-z_]\w*(?:\[[@*]\])?|\d+|[@*#?$!-])?(:[-=+?]?|[-=+?]|##?|%%?|\/[/#%]?|\^\^?|,,?|@[A-Za-z]?|\[|\})?/;
+const BRACED_HEAD = /^\$\{([#!]?)([A-Za-z_]\w*(?:\[(?:[@*]|\d+)\])?|\d+|[@*#?$!-])?(:[-=+?]?|[-=+?]|##?|%%?|\/[/#%]?|\^\^?|,,?|@[A-Za-z]?|\[|\})?/;
 
 /** The `${NAME@X}` transforms that never expand the value again: quoting, escapes, attributes and case. */
 const PLAIN_TRANSFORM = /^@[QEAaUuLKk]$/;
 
 /**
  * Whether a bash `${...}` can assign a variable as it expands: `=` and `:=` assign, a substring offset and an
- * array subscript are arithmetic, and indirection and `@P` expand a value the line does not show. The
+ * array subscript other than a plain index are arithmetic, and indirection and `@P` expand a value the line
+ * does not show. The
  * expansions in its word count on their own, as they are read.
  */
 function bracedMayAssign(written: string): boolean {

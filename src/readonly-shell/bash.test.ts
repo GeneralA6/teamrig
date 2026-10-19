@@ -36,6 +36,7 @@ describe('bashLineReads', () => {
         'test -f file.ts && echo exists',
         '{ grep x f; grep y f; }',
         '! grep -q x f',
+        'grep -c x f 2>&1 | tail -5; echo "grep exit ${PIPESTATUS[0]}"',
       ],
       true,
     );
