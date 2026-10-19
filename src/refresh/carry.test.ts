@@ -4,7 +4,9 @@ import { join } from 'node:path';
 import { TimeZone } from '../core/zone.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { JERUSALEM } from '../testing/zone.ts';
-import { carryLines, carryOf, carryStartOf, readCarry, RECURRING_MAX_AGE_MS, scratchpadOf, toldScratchpadOf, type Carry } from './carry.ts';
+import { VERSION_FIELD } from '../core/jsonl.ts';
+import { carryLines, carryOf, carryStartOf, formatCarriedJobs, parseCarriedJobs, readCarry, RECURRING_MAX_AGE_MS, scratchpadOf, toldScratchpadOf, type Carry } from './carry.ts';
+import { REFRESH_FORMAT } from './state.ts';
 
 const NOW = Date.parse('2030-01-08T10:00:00.000Z');
 const MINUTE = 60_000;
@@ -40,6 +42,27 @@ const SNAPSHOT = {
 };
 
 describe('carryOf', () => {
+  it('starts from the jobs a /clear left live in the process, which the fresh transcript never names', () => {
+    const kept = { id: 'kept1', cron: '3 13 * * *', prompt: 'budget checkpoint', recurring: true, createdAt: NOW - 60 * MINUTE };
+    const deleted = { ...kept, id: 'kept2', prompt: 'deleted later' };
+    const once = { ...kept, id: 'once1', cron: '15 10 8 1 *', prompt: 'look once', recurring: false };
+    const stale = { ...kept, id: 'stale1', createdAt: NOW - RECURRING_MAX_AGE_MS - MINUTE };
+    const text = lines(
+      ...cronCreate('toolu_1', 'new1', '30 11 * * *', 'check the roll', true, NOW - 10 * MINUTE),
+      call('toolu_2', 'CronDelete', { id: 'kept2' }, NOW - 5 * MINUTE),
+      { type: 'queue-operation', operation: 'enqueue', content: 'look once' },
+    );
+    assert.deepEqual(
+      carryOf(text, NOW, [kept, deleted, once, stale]).crons.map((cron) => cron.id),
+      ['kept1', 'new1'],
+    );
+    assert.deepEqual(
+      carryOf(lines(SNAPSHOT), NOW, [kept]).crons.map((cron) => cron.id),
+      ['old1', 'old2'],
+      "a compaction's snapshot replaces them",
+    );
+  });
+
   it("counts the jobs from the last compaction's snapshot on, with those made after and less those deleted", () => {
     const earlier = cronCreate('toolu_0', 'gone', '1 1 * * *', 'before the snapshot', true, NOW - 120 * MINUTE);
     const text = lines(
@@ -48,7 +71,7 @@ describe('carryOf', () => {
       ...cronCreate('toolu_1', 'new1', '30 11 * * *', 'check the roll', true, NOW - 10 * MINUTE),
       call('toolu_2', 'CronDelete', { id: 'old2' }, NOW - 5 * MINUTE),
     );
-    const carry = carryOf(text, NOW);
+    const carry = carryOf(text, NOW, []);
     assert.deepEqual(
       carry.crons.map((cron) => [cron.id, cron.cron, cron.prompt, cron.recurring]),
       [
@@ -67,7 +90,7 @@ describe('carryOf', () => {
       { type: 'queue-operation', operation: 'enqueue', content: 'daily check' },
     );
     assert.deepEqual(
-      carryOf(text, NOW).crons.map((cron) => cron.id),
+      carryOf(text, NOW, []).crons.map((cron) => cron.id),
       ['daily'],
     );
   });
@@ -78,7 +101,7 @@ describe('carryOf', () => {
       call('toolu_2', 'CronCreate', { cron: 'bad', prompt: 'x', recurring: true }, NOW - MINUTE),
       result('toolu_2', { id: 'never' }, true),
     );
-    assert.deepEqual(carryOf(text, NOW).crons, []);
+    assert.deepEqual(carryOf(text, NOW, []).crons, []);
   });
 
   it('keeps the last wake-up still to come, at the time its result says', () => {
@@ -87,21 +110,21 @@ describe('carryOf', () => {
       call('toolu_2', 'ScheduleWakeup', { delaySeconds: 1200, prompt: 'check CI', reason: 'r' }, NOW - 5 * MINUTE),
       result('toolu_2', { scheduledFor: NOW + 16 * MINUTE, clampedDelaySeconds: 1200, wasClamped: false }),
     );
-    assert.deepEqual(carryOf(text, NOW).wake, { dueAt: NOW + 16 * MINUTE, prompt: 'check CI' });
+    assert.deepEqual(carryOf(text, NOW, []).wake, { dueAt: NOW + 16 * MINUTE, prompt: 'check CI' });
   });
 
   it('has no wake-up once it is due, fired, stopped or refused', () => {
     const asked = call('toolu_1', 'ScheduleWakeup', { delaySeconds: 600, prompt: 'check CI', reason: 'r' }, NOW - 5 * MINUTE);
-    assert.equal(carryOf(lines(asked), NOW + 10 * MINUTE).wake, undefined);
-    assert.equal(carryOf(lines(asked, { type: 'queue-operation', operation: 'enqueue', content: 'check CI' }), NOW).wake, undefined);
-    assert.equal(carryOf(lines(asked, call('toolu_2', 'ScheduleWakeup', { stop: true }, NOW - MINUTE)), NOW).wake, undefined);
-    assert.equal(carryOf(lines(asked, result('toolu_1', {}, true)), NOW).wake, undefined);
+    assert.equal(carryOf(lines(asked), NOW + 10 * MINUTE, []).wake, undefined);
+    assert.equal(carryOf(lines(asked, { type: 'queue-operation', operation: 'enqueue', content: 'check CI' }), NOW, []).wake, undefined);
+    assert.equal(carryOf(lines(asked, call('toolu_2', 'ScheduleWakeup', { stop: true }, NOW - MINUTE)), NOW, []).wake, undefined);
+    assert.equal(carryOf(lines(asked, result('toolu_1', {}, true)), NOW, []).wake, undefined);
   });
 
   it("names the session's slug from its last entry, and skips lines it cannot read", () => {
     const text = `{"cut":\n${lines({ type: 'user', slug: 'first-slug' }, { type: 'assistant', slug: 'quiet-river-otter' })}`;
-    assert.deepEqual(carryOf(text, NOW), { crons: [], wake: undefined, planSlug: 'quiet-river-otter' });
-    assert.equal(carryOf(lines({ type: 'user', slug: '../bad' }), NOW).planSlug, undefined);
+    assert.deepEqual(carryOf(text, NOW, []), { crons: [], wake: undefined, planSlug: 'quiet-river-otter' });
+    assert.equal(carryOf(lines({ type: 'user', slug: '../bad' }), NOW, []).planSlug, undefined);
   });
 });
 
@@ -120,15 +143,15 @@ describe('readCarry', () => {
       [join(scratchpad, 'tools', 'a.cjs')]: 'a',
       [join(CLAUDE, 'plans', 'quiet-river-otter.md')]: '# plan',
     });
-    const carry = await readCarry(files, TRANSCRIPT, NOW, PLACES);
+    const carry = await readCarry(files, TRANSCRIPT, NOW, PLACES, []);
     assert.deepEqual(carry?.scratchpad, { path: scratchpad, entries: 2 });
     assert.equal(carry?.plan, join(CLAUDE, 'plans', 'quiet-river-otter.md'));
   });
 
   it('leaves out an empty scratchpad and a missing plan, and reads nothing from a missing transcript', async () => {
     const files = new MemoryFiles({ [TRANSCRIPT]: lines({ type: 'assistant', slug: 'quiet-river-otter' }) });
-    assert.deepEqual(await readCarry(files, TRANSCRIPT, NOW, PLACES), { crons: [], wake: undefined, planSlug: 'quiet-river-otter', scratchpad: undefined, plan: undefined });
-    assert.equal(await readCarry(new MemoryFiles(), TRANSCRIPT, NOW, PLACES), undefined);
+    assert.deepEqual(await readCarry(files, TRANSCRIPT, NOW, PLACES, []), { crons: [], wake: undefined, planSlug: 'quiet-river-otter', scratchpad: undefined, plan: undefined });
+    assert.equal(await readCarry(new MemoryFiles(), TRANSCRIPT, NOW, PLACES, []), undefined);
   });
 
   it('names the scratchpad Claude Code last gave the session, though its transcript moved to another project folder', async () => {
@@ -142,8 +165,23 @@ describe('readCarry', () => {
       ),
       [join(told, 'notes.md')]: 'n',
     });
-    const carry = await readCarry(files, TRANSCRIPT, NOW, PLACES);
+    const carry = await readCarry(files, TRANSCRIPT, NOW, PLACES, []);
     assert.deepEqual(carry?.scratchpad, { path: told, entries: 1 });
+  });
+});
+
+describe('parseCarriedJobs', () => {
+  const jobs = { transcript: join('/', 'projects', 'app', 'second.jsonl'), crons: [{ id: 'c1', cron: '3 13 * * *', prompt: 'budget check', recurring: true, createdAt: NOW }] };
+
+  it('reads back what formatCarriedJobs wrote', () => {
+    assert.deepEqual(parseCarriedJobs(formatCarriedJobs(jobs)), jobs);
+  });
+
+  it('reads a damaged file, another format or one with no transcript as none', () => {
+    assert.equal(parseCarriedJobs('{not json'), undefined);
+    assert.equal(parseCarriedJobs(JSON.stringify({ [VERSION_FIELD]: 99, ...jobs })), undefined);
+    assert.equal(parseCarriedJobs(JSON.stringify({ [VERSION_FIELD]: REFRESH_FORMAT, crons: jobs.crons })), undefined);
+    assert.equal(parseCarriedJobs(JSON.stringify({ [VERSION_FIELD]: REFRESH_FORMAT, transcript: jobs.transcript, crons: 'c1' })), undefined);
   });
 });
 

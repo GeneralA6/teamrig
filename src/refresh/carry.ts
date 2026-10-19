@@ -1,8 +1,9 @@
 import { basename, dirname, join } from 'node:path';
 import type { Files } from '../core/files.ts';
 import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
-import { parseObject } from '../core/jsonl.ts';
+import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
 import type { TimeZone } from '../core/zone.ts';
+import { REFRESH_FORMAT } from './state.ts';
 
 /**
  * How much of the old transcript is read: enough to reach back past its last compaction, whose cron
@@ -36,6 +37,15 @@ export interface TranscriptCarry {
   readonly crons: readonly CarriedCron[];
   readonly wake: CarriedWake | undefined;
   readonly planSlug: string | undefined;
+}
+
+/**
+ * The jobs a /clear left live in the process of the fresh session whose transcript is `transcript`: its transcript
+ * never names them, so the next carry starts from them (T657).
+ */
+export interface CarriedJobs {
+  readonly transcript: string;
+  readonly crons: readonly CarriedCron[];
 }
 
 /** What a fresh session should take over from the one it replaced. */
@@ -74,7 +84,7 @@ function blocksOf(entry: JsonRecord): readonly JsonRecord[] {
   return Array.isArray(content) ? content.filter(isRecord) : [];
 }
 
-/** The jobs of a compaction's `session_cron_carry` snapshot. */
+/** The jobs of a compaction's `session_cron_carry` snapshot, or of a carried-jobs file. */
 function snapshotOf(tasks: unknown): Map<string, CarriedCron> {
   const crons = new Map<string, CarriedCron>();
   for (const task of Array.isArray(tasks) ? tasks.filter(isRecord) : []) {
@@ -102,10 +112,14 @@ function lastSlugOf(text: string): string | undefined {
 
 /** Follows a transcript's scheduling calls in order, from its last cron snapshot on. */
 class ScheduleFold {
-  crons = new Map<string, CarriedCron>();
+  crons: Map<string, CarriedCron>;
   wake: CarriedWake | undefined;
   private wakeCall: string | undefined;
   private readonly asks = new Map<string, CronAsk>();
+
+  constructor(inherited: readonly CarriedCron[]) {
+    this.crons = new Map(inherited.map((cron) => [cron.id, cron]));
+  }
 
   entry(entry: JsonRecord): void {
     const attachment = entry['attachment'];
@@ -204,12 +218,12 @@ class ScheduleFold {
 }
 
 /**
- * What a transcript shows its session still had scheduled at `now`: the jobs from its last compaction's
- * snapshot and the CronCreate calls after it, less those deleted, fired once or past their 7 days, and
- * the last wake-up asked for, if it is still to come.
+ * What a transcript shows its session still had scheduled at `now`: the jobs it `inherited` (those a /clear left
+ * live in its process) or, from its last compaction on, that compaction's snapshot, and the CronCreate calls after
+ * them, less those deleted, fired once or past their 7 days, and the last wake-up asked for, if it is still to come.
  */
-export function carryOf(text: string, now: number): TranscriptCarry {
-  const fold = new ScheduleFold();
+export function carryOf(text: string, now: number, inherited: readonly CarriedCron[]): TranscriptCarry {
+  const fold = new ScheduleFold(inherited);
   for (const line of text.split('\n')) {
     if (!MARKERS.some((marker) => line.includes(marker))) {
       continue;
@@ -255,18 +269,35 @@ export function scratchpadOf(transcript: string, tempDir: string): string {
   return join(tempDir, 'claude', basename(dirname(transcript)), basename(transcript, '.jsonl'), 'scratchpad');
 }
 
-/** What the session whose transcript this is leaves for the fresh one; undefined when the transcript is gone. */
-export async function readCarry(files: Files, transcript: string, now: number, places: CarryPlaces): Promise<Carry | undefined> {
+/**
+ * What the session whose transcript this is leaves for the fresh one, counting the jobs it `inherited`; undefined
+ * when the transcript is gone.
+ */
+export async function readCarry(files: Files, transcript: string, now: number, places: CarryPlaces, inherited: readonly CarriedCron[]): Promise<Carry | undefined> {
   const text = await files.readTail(transcript, CARRY_TAIL_BYTES);
   if (text === undefined) {
     return undefined;
   }
-  const found = carryOf(text, now);
+  const found = carryOf(text, now, inherited);
   const scratchpad = toldScratchpadOf(text) ?? scratchpadOf(transcript, places.tempDir);
   const entries = (await files.list(scratchpad)).length;
   const plan = found.planSlug === undefined ? undefined : join(places.claudeDir, 'plans', `${found.planSlug}.md`);
   const planText = plan === undefined ? undefined : await files.read(plan);
   return { ...found, scratchpad: entries > 0 ? { path: scratchpad, entries } : undefined, plan: planText === undefined ? undefined : plan };
+}
+
+/** A carried-jobs file's content; undefined when it is damaged or from another format. */
+export function parseCarriedJobs(text: string): CarriedJobs | undefined {
+  const record = parseObject(text.trim());
+  if (record === undefined || record[VERSION_FIELD] !== REFRESH_FORMAT || !Array.isArray(record['crons'])) {
+    return undefined;
+  }
+  const transcript = stringField(record, 'transcript');
+  return transcript === undefined ? undefined : { transcript, crons: [...snapshotOf(record['crons']).values()] };
+}
+
+export function formatCarriedJobs(jobs: CarriedJobs): string {
+  return toJsonlLine({ [VERSION_FIELD]: REFRESH_FORMAT, ...jobs });
 }
 
 /** How the fresh session started: in the old session's process (a /clear) or in a new one. */

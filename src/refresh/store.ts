@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import type { Files } from '../core/files.ts';
 import type { TeamPaths } from '../core/home.ts';
+import { formatCarriedJobs, parseCarriedJobs, type CarriedJobs } from './carry.ts';
 import {
   formatRefreshRequest,
   formatRefreshState,
@@ -17,8 +18,9 @@ import {
  * Each session's refresh files. The state (`<id>.json`) is written only by the session itself, from
  * its commands and hooks; the lead's request (`<id>.request.json`) is a file of its own, so neither
  * write ever overwrites the other's; so is the automatic restart (`<id>.restart.json`), which the
- * session's hooks, its restart and `teamrig launch` share. Ids are session ids, checked by the roster,
- * so they are safe in a path.
+ * session's hooks, its restart and `teamrig launch` share. The jobs a /clear left live in the session's process
+ * (`<id>.carried.json`) are written by its SessionStart hook. Ids are session ids, checked by the roster, so they
+ * are safe in a path.
  */
 export class RefreshStore {
   private readonly files: Files;
@@ -75,6 +77,20 @@ export class RefreshStore {
     await this.files.remove(this.restartPath(id));
   }
 
+  /** The jobs the last /clear left live in the session's process; undefined when none, or the file is damaged. */
+  async carried(id: string): Promise<CarriedJobs | undefined> {
+    const text = await this.files.read(this.carriedPath(id));
+    return text === undefined ? undefined : parseCarriedJobs(text);
+  }
+
+  setCarried(id: string, jobs: CarriedJobs): Promise<void> {
+    return this.files.write(this.carriedPath(id), formatCarriedJobs(jobs));
+  }
+
+  async clearCarried(id: string): Promise<void> {
+    await this.files.remove(this.carriedPath(id));
+  }
+
   private statePath(id: string): string {
     return join(this.paths.refresh, `${id}.json`);
   }
@@ -85,5 +101,9 @@ export class RefreshStore {
 
   private restartPath(id: string): string {
     return join(this.paths.refresh, `${id}.restart.json`);
+  }
+
+  private carriedPath(id: string): string {
+    return join(this.paths.refresh, `${id}.carried.json`);
   }
 }
