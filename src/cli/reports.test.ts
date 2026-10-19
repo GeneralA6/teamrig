@@ -156,7 +156,7 @@ describe('checkLines', () => {
   });
 
   it('prints the hire flags before the skills, in both forms, and counts them toward the hint', () => {
-    const hires: readonly HireFlag[] = [{ kind: 'RETIRE-DUE', session: 'helper', detail: 'no open task for 5 h, hiring.idleHours 4' }];
+    const hires: readonly HireFlag[] = [{ kind: 'RETIRE-DUE', session: 'helper', detail: 'no open task for 5 h, hiring.idleHours 4', action: 'retire it (teamrig retire helper)' }];
     const flagged = report({ sections: [{ team: undefined, tree: TREE, flags: [] }], hires });
     const line = 'HIRE RETIRE-DUE (no open task for 5 h, hiring.idleHours 4) helper: retire it (teamrig retire helper)';
     assert.deepEqual(checkLines(flagged, true), ['CHECK 0 flag(s), week 2030-01-07', 'HIRES 1 flag(s)', line, 'SKILLS 0 flag(s) in skills-dir']);
@@ -263,8 +263,8 @@ describe('ownCheck', () => {
     );
     assert.deepEqual(narrowed.skills.map((each) => each.skill), ['alpha-deploy']);
     const hires: readonly HireFlag[] = [
-      { kind: 'REVIEW-DUE', session: 'alpha', detail: 'review day 2030-01-07 passed' },
-      { kind: 'RETIRE-DUE', session: 'bravo', detail: 'no open task for 5 h, hiring.idleHours 4' },
+      { kind: 'REVIEW-DUE', session: 'alpha', detail: 'review day 2030-01-07 passed', action: 'decide' },
+      { kind: 'RETIRE-DUE', session: 'bravo', detail: 'no open task for 5 h, hiring.idleHours 4', action: 'retire it' },
     ];
     assert.deepEqual(ownCheck(report({ hires }), 'alpha').hires.map((each) => each.session), ['alpha']);
     assert.equal(narrowed.scope, "alpha's tasks and skills, week 2030-01-07");
