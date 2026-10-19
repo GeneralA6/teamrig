@@ -587,6 +587,16 @@ missing or broken config keeps `deny`, so a config mistake never turns the guard
 key says, `npx --no <bin> --flag`: npx takes the bin as `--no`'s value, so the flag goes to npm (`npx --no tsc
 --version` prints npm's version, and a check run that way once ran nothing and passed); `npx --no -- <bin>` keeps it.
 
+## No prompt while nobody answers
+
+A permission prompt holds a session until a human answers it; overnight that is hours of a session doing nothing.
+`prompts.hookAsks` (since 0.98.0, `ask` by default) set to `refuse` turns every question a teamrig hook would
+raise (the push guard, the commit and package guards under `ask`, the helper gate) into a refusal whose reason tells
+the session to record the step as waiting for the owner's approval and take its next task, so the work queues for the
+owner instead of a session waiting on them. Refusals stay as they were. A prompt Claude Code raises on its own gets
+the same refusal from a `PermissionRequest` hook, all but the question picker and plan mode's exit, which a person
+answers.
+
 ## Reads without a prompt
 
 Claude Code asks before a shell line its settings do not allow, and a settings rule matches only a command's start,

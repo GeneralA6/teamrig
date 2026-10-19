@@ -2486,7 +2486,8 @@ teamrig hook push-guard < pre-tool-use.json
 ```
 
 Output: nothing for a command that pushes no protected branch; otherwise a JSON permission decision (`ask` or
-`deny`) with the reason.
+`deny`) with the reason; under `prompts.hookAsks: refuse` an `ask` is a `deny` whose reason says what to do instead
+([Asks off](hooks.md#asks-off-a-refusal-instead-of-a-prompt)).
 
 ### teamrig hook package-guard
 
@@ -2506,7 +2507,7 @@ teamrig hook package-guard < pre-tool-use.json
 
 Output: nothing for a command that runs no package ad hoc (or with `adHocRunners` set to `allow`) and hands no flag
 to npm; otherwise a JSON permission decision (`deny`, or `ask` for an ad-hoc run when the team set it) with the
-reason.
+reason; under `prompts.hookAsks: refuse` that `ask` is a `deny` whose reason says what to do instead.
 
 ### teamrig hook readonly-allow
 
@@ -2545,6 +2546,25 @@ teamrig hook picker-guard < pre-tool-use.json
 Output: a JSON permission decision `deny` with the reason for a team session's picker; nothing for the lead, a tab
 that is no session of the team, any other tool (`ExitPlanMode` too), outside a team, with the guard off, or on an
 error. Exit 0 always.
+
+### teamrig hook prompt-refuse
+
+When Claude Code is about to show a permission prompt (`PermissionRequest`), with `prompts.hookAsks: refuse` in the
+team config, refuses it: nobody may be there to answer, and the prompt holds the session until someone does. The
+reason names the tool and says to record the step as waiting for the owner and take the next task. The question
+picker (`AskUserQuestion`) and plan mode's exit (`ExitPlanMode`) still open. See
+[Hooks and permissions](hooks.md#asks-off-a-refusal-instead-of-a-prompt).
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig hook prompt-refuse < permission-request.json
+```
+
+Output: a JSON `PermissionRequest` decision `deny` with the message; nothing with asks on, for the picker or plan
+mode's exit, outside a team, or on an error. Exit 0 always.
 
 ### teamrig hook cold-send
 
@@ -2620,7 +2640,8 @@ teamrig hook helper-gate < pre-tool-use.json
 ```
 
 Output: JSON with the helper default as `additionalContext`, plus a permission decision (`ask` or `deny`) with the
-reason for a launch held back; nothing outside a team session.
+reason for a launch held back (under `prompts.hookAsks: refuse` an `ask` is a `deny` whose reason says what to do
+instead); nothing outside a team session.
 
 ### teamrig hook stop
 At the end of each turn, first sends you back once to a skill edit of the turn that Claude Code refused and you never
