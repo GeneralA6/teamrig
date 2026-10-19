@@ -1542,6 +1542,11 @@ run, a write that leaves the log over 512 KiB archives it again and prints
 `register.autoArchive: false` in the team's `config.json`. With it off, only `teamrig compact` archives. Every
 session must run teamrig 0.3.1 or later before the first run.
 
+It also moves the hooks' records over 7 days old, from `state/inbox-shown.jsonl` and `state/bind-hints.jsonl`, to
+`state/archive/inbox-shown-YYYYMMDD.jsonl` and `state/archive/bind-hints-YYYYMMDD.jsonl` (the run's UTC day), never
+deleted. Those logs' own writes do the same once their oldest record is over 8 days old, so a run by hand is rarely
+needed. Only the oldest lines move, up to the first record of the last 7 days.
+
 Flags:
 
 - `--dry-run`: print what it would archive and write, and write nothing.
@@ -1560,11 +1565,14 @@ SNAPSHOT snapshot.jsonl: 3 event(s), 733 B, covering segments 1-1; folded from t
 TASKS 2 kept (2 unchanged, 0 changed), 0 retired now, 0 before
 HISTORY 2 task(s) from 3 event(s): the working set holds every active one as the history does
 TAIL events.jsonl starts again with the rotation marker (67 B)
+AGED inbox-shown: 120 line(s) older than 7 days to archive/inbox-shown-20301020.jsonl, 283 kept
+AGED bind-hints: no line older than 7 days, 7 kept
 DRY RUN: nothing was written; teamrig compact writes the above
 ```
 
-A run prints the same lines, then `DONE the tail is archived as archive/events-000001.jsonl; ...`, or
-`NOTHING TO DO` when nothing came since the last run. On any difference it prints
+A run prints the same lines, then `DONE the tail is archived as archive/events-000001.jsonl; ...`,
+`DONE the hook records over 7 days old are archived; ...` when only those moved, or `NOTHING TO DO` when nothing came
+since the last run and no hook record is over 7 days old. On any difference it prints
 `FAILED the rotation is refused, nothing was written: <each problem>` and exits 1.
 
 ### teamrig config validate
