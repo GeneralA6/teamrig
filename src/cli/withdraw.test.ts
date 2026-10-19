@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { LockWaiter } from '../coordinator/host-lock.ts';
 import { CliHarness, KIT, TEAM } from '../testing/cli-harness.ts';
+import { JERUSALEM } from '../testing/zone.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { FakeSteps } from '../testing/fake-steps.ts';
 import { withdrawalText } from './commands/withdraw.ts';
@@ -49,7 +50,7 @@ describe('teamrig withdraw', () => {
     const kit = new CliHarness(TEAM);
     await queued(kit, BUILD, SPECS, THEIRS);
     const result = await kit.run(['withdraw', '--session', 'alpha', '--what', 'build'], { sessionProcesses: running() });
-    assert.deepEqual(result, { code: 0, stdout: ['WITHDRAWN heavy: build api, waiting since 2030-01-08 09:58: it stops at its next look'], stderr: [] });
+    assert.deepEqual(result, { code: 0, stdout: ['WITHDRAWN heavy: build api, waiting since 2030-01-08 09:58 UTC: it stops at its next look'], stderr: [] });
     assert.deepEqual(await kit.files.list(QUEUE), [nameOf(THEIRS), nameOf(SPECS)]);
   });
 
@@ -61,23 +62,23 @@ describe('teamrig withdraw', () => {
     assert.deepEqual(result, {
       code: 1,
       stdout: [
-        'KEPT integrate app, waiting since 2030-01-08 09:56: an older teamrig queued it and runs it anyway (pid 9001)',
-        'WITHDRAWN heavy: build api, waiting since 2030-01-08 09:58: it stops at its next look',
+        'KEPT integrate app, waiting since 2030-01-08 09:56 UTC: an older teamrig queued it and runs it anyway (pid 9001)',
+        'WITHDRAWN heavy: build api, waiting since 2030-01-08 09:58 UTC: it stops at its next look',
       ],
       stderr: [],
     });
     assert.deepEqual(await kit.files.list(QUEUE), [nameOf(older), nameOf(THEIRS)]);
   });
 
-  it("lists the session's waiting steps and is refused, withdrawing nothing, when none is chosen", async () => {
+  it("lists the session's waiting steps on the team's clock and is refused, withdrawing nothing, when none is chosen", async () => {
     const kit = new CliHarness(TEAM);
     await queued(kit, BUILD, SPECS, THEIRS);
-    const result = await kit.run(['withdraw', '--session', 'alpha'], { sessionProcesses: running() });
+    const result = await kit.run(['withdraw', '--session', 'alpha'], { sessionProcesses: running(), timeZone: 'Asia/Jerusalem' });
     assert.deepEqual(result, {
       code: 2,
       stdout: [
-        'WAITING heavy: build api, waiting since 2030-01-08 09:58 (pid 9001)',
-        'WAITING heavy: specs, waiting since 2030-01-08 09:59 (pid 9001)',
+        'WAITING heavy: build api, waiting since 2030-01-08 11:58 IST (pid 9001)',
+        'WAITING heavy: specs, waiting since 2030-01-08 11:59 IST (pid 9001)',
         'REFUSED name the steps to withdraw: --what <text in their purpose> or --all',
       ],
       stderr: [],
@@ -108,7 +109,7 @@ describe('teamrig withdraw', () => {
     const own = await kit.run(['withdraw', '--all'], { env: TAB, sessionProcesses: running() });
     assert.deepEqual(
       [theirs, own.stdout],
-      [{ code: 2, stdout: ["REFUSED this tab is alpha's: a session withdraws only its own steps, not bravo's"], stderr: [] }, ['WITHDRAWN heavy: build api, waiting since 2030-01-08 09:58: it stops at its next look']],
+      [{ code: 2, stdout: ["REFUSED this tab is alpha's: a session withdraws only its own steps, not bravo's"], stderr: [] }, ['WITHDRAWN heavy: build api, waiting since 2030-01-08 09:58 UTC: it stops at its next look']],
     );
     assert.deepEqual(await kit.files.list(QUEUE), [nameOf(THEIRS)]);
   });
@@ -136,7 +137,7 @@ describe('teamrig withdraw', () => {
       }
     };
     const result = await kit.run(['heavy', '--session', 'alpha', '--what', 'build api', '--', 'npm', 'run', 'build'], { steps, sessionProcesses: running(), sleep });
-    assert.deepEqual(withdrew, ['WITHDRAWN heavy: build api, waiting since 2030-01-08 10:00: it stops at its next look']);
+    assert.deepEqual(withdrew, ['WITHDRAWN heavy: build api, waiting since 2030-01-08 10:00 UTC: it stops at its next look']);
     assert.deepEqual([result.code, result.stdout.at(-1), steps.ran, kit.files.get(LOCK), await kit.files.list(QUEUE)], [
       2,
       "REFUSED withdrawn from the host lock's line (teamrig withdraw): build api did not run",
@@ -150,8 +151,18 @@ describe('teamrig withdraw', () => {
 describe('withdrawalText', () => {
   it('names a step that went first, running or gone, and the process of one that runs', () => {
     assert.deepEqual(
-      [withdrawalText({ kind: 'running', waiter: BUILD }), withdrawalText({ kind: 'left', waiter: BUILD })],
+      [withdrawalText({ kind: 'running', waiter: BUILD }, JERUSALEM), withdrawalText({ kind: 'left', waiter: BUILD }, JERUSALEM)],
       ['RUNNING heavy: build api: it took its turn first and runs (pid 9001)', 'LEFT heavy: build api: it left the line first, having run or given up'],
+    );
+  });
+
+  it("shows a withdrawn or kept step's wait on the zone's clock", () => {
+    assert.deepEqual(
+      [withdrawalText({ kind: 'withdrawn', waiter: BUILD }, JERUSALEM), withdrawalText({ kind: 'kept', waiter: BUILD }, JERUSALEM)],
+      [
+        'WITHDRAWN heavy: build api, waiting since 2030-01-08 11:58 IST: it stops at its next look',
+        'KEPT heavy: build api, waiting since 2030-01-08 11:58 IST: an older teamrig queued it and runs it anyway (pid 9001)',
+      ],
     );
   });
 });

@@ -1696,7 +1696,7 @@ teamrig withdraw --session api --what "build api"
 Output:
 
 ```text
-WITHDRAWN heavy: build api, waiting since 2030-01-08 09:58: it stops at its next look
+WITHDRAWN heavy: build api, waiting since 2030-01-08 11:58 IST: it stops at its next look
 ```
 
 ### teamrig integrate
