@@ -562,6 +562,16 @@ flowchart LR
   class a,b,q,main,h,lock,w planned
 ```
 
+## Skipped hooks
+
+A repository's git hooks are its own checks, so a commit or push run without them ships what they would have
+stopped. Before each Bash or PowerShell command, the push guard's hook also refuses a git command run without them:
+`--no-verify` on `git commit`, `push`, `merge`, `pull`, `rebase`, `am` or `send-email` (and `-n` where it means the
+same, on `commit` and `am`), a husky switch (`HUSKY=0`, `HUSKY_SKIP_HOOKS`), and a `core.hooksPath` override,
+whether given for the run (`git -c`, `GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_KEY_<n>`) or written with `git config`.
+`commitGuard.skipHooks` (`deny` by default, `ask` or `allow`) sets what such a line gets; a missing or broken config
+keeps `deny`. A rule in a team's instructions can be missed; the guard holds it on every line.
+
 ## Unvetted packages
 
 A package runner can fetch a package and run it in one step, outside the project's lockfile, so nobody vetted the
