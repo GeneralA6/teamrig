@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
-import { APP, bash, CliHarness, CONFIG_PATH, decisionOf, KIT, TEAM } from '../testing/cli-harness.ts';
+import { APP, bash, CliHarness, CONFIG_PATH, decisionOf, KIT, TEAM, USER_HOME } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { EXIT } from './runtime.ts';
 
@@ -33,6 +33,17 @@ describe('hook readonly-allow', () => {
     const kit = new CliHarness(ON_TEAM);
     assert.equal(decisionOf(await kit.run(HOOK, { stdin: bash('npm_config_prefix=/tmp/x') })), 'allow');
     assert.deepEqual(await kit.run(HOOK, { stdin: bash('npm_config_prefix=/tmp/x'), env: { npm_config_prefix: '/u/npm' } }), NOTHING);
+  });
+
+  it("refuses a name the newest shell snapshot exports, and every name under its set -a", async () => {
+    const kit = new CliHarness(ON_TEAM);
+    const snapshots = join(USER_HOME, '.claude', 'shell-snapshots');
+    await kit.files.write(join(snapshots, 'snapshot-bash-1-a.sh'), 'set -a');
+    await kit.files.write(join(snapshots, 'snapshot-bash-2-b.sh'), "export pod='x'");
+    assert.deepEqual(await kit.run(HOOK, { stdin: bash('pod=y; cat f') }), NOTHING);
+    assert.equal(decisionOf(await kit.run(HOOK, { stdin: bash('out=y; cat f') })), 'allow');
+    await kit.files.write(join(snapshots, 'snapshot-bash-3-c.sh'), 'set -a');
+    assert.deepEqual(await kit.run(HOOK, { stdin: bash('out=y; cat f') }), NOTHING);
   });
 
   it('prints nothing with the hook off, by default, or with the config missing, broken or unreadable', async () => {

@@ -7,6 +7,7 @@ import { prefixWords, type ReadonlyRules } from './rules.ts';
 const RULES: ReadonlyRules = {
   prefixes: ['npx tsc --noEmit', 'npx jest'].map(prefixWords),
   exported: new Set(['PATH', 'HOME', 'npm_config_prefix']),
+  exportsAll: false,
 };
 
 /** Asserts each line reads (`expected` true) or not, naming the line on failure. */
@@ -74,6 +75,9 @@ describe('bashLineReads', () => {
         'for f in a b; do cat $f; done',
         'for f; do cat "$f"; done',
         'grep -f <(echo foo) file',
+        // An upper-case name off bash's, MSYS's and the listed programs' families is the line's own too.
+        'POD=my-pod-123; S=C:/scratch',
+        'for F in a b; do cat $F; done',
       ],
       true,
     );
@@ -101,7 +105,7 @@ describe('bashLineReads', () => {
       ],
       true,
     );
-    expectAll(['npx tsc --noEmit', 'npx jest'], false, { prefixes: [], exported: new Set() });
+    expectAll(['npx tsc --noEmit', 'npx jest'], false, { prefixes: [], exported: new Set(), exportsAll: false });
   });
 
   it('refuses programs off the list and any write or run', () => {
@@ -161,9 +165,11 @@ describe('bashLineReads', () => {
   it('refuses assignments bash or a program reads, and subscripts, which bash evaluates', () => {
     expectAll(
       [
-        // Upper-case names are bash's own (PATH, IFS, BASH_ENV...), so the line may set none.
-        'POD=my-pod-123',
+        // bash's own names, and the families a listed program reads (names.ts).
         'IFS=x',
+        'PATH=/tmp/x; git status',
+        'GIT_PAGER=x; git log',
+        'S=1; TMPDIR=/tmp/x; sort f',
         // An exported name reaches every program the line runs.
         'npm_config_prefix=/tmp/x',
         'a[i]=1',
@@ -171,6 +177,14 @@ describe('bashLineReads', () => {
       ],
       false,
     );
+  });
+
+  it('refuses a line that exports, or turns on export of every assignment', () => {
+    expectAll(['set -a; S=x; git log', 'set -o allexport; S=x', 'export S=x; git log', 'declare -x S=x', 'typeset -x S=x', 'S=x; export S'], false);
+  });
+
+  it("refuses every assignment under the snapshot's set -a", () => {
+    expectAll(['pod=x', 'S=x; cat f'], false, { ...RULES, exportsAll: true });
   });
 
   it('refuses any variable set for a program but the path conversion switches, static and without a subscript', () => {

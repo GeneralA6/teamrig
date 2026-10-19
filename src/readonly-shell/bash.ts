@@ -1,4 +1,5 @@
 import { parseShell, type Redirection, type ShellCommand, type ShellWord } from '../push-guard/tokenizer.ts';
+import { mayAssign } from './names.ts';
 import { programReads, type ProgramArgument } from './programs.ts';
 import { startsWithPrefix, type ReadonlyRules } from './rules.ts';
 
@@ -41,14 +42,6 @@ function assignmentOf(word: ShellWord): Assignment | undefined {
   const match = ASSIGNMENT.exec(head);
   const name = match?.[1];
   return name === undefined ? undefined : { name, subscript: match?.[2] === '[', word };
-}
-
-/**
- * Whether the line may set `name`: bash's own variables (`PATH`, `IFS`, `BASH_ENV`...) are all upper case, so a
- * name with a lower-case letter is the line's own, and one not in the environment reaches no program.
- */
-function mayAssign(name: string, rules: ReadonlyRules): boolean {
-  return /[a-z]/.test(name) && !rules.exported.has(name);
 }
 
 /** A word as the program receives it: dynamic when a variable, a substitution or a glob decides what it becomes. */

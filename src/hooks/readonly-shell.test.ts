@@ -1,8 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { NO_SNAPSHOT } from '../readonly-shell/snapshot.ts';
 import { READONLY_REASON, readonlyRulesOf, readonlyShellOutput } from './readonly-shell.ts';
 
-const RULES = readonlyRulesOf({ enabled: true, allowPrefixes: ['npx tsc --noEmit'] }, { PATH: '/bin', npm_config_prefix: '/u/npm' });
+const CONFIG = { enabled: true, allowPrefixes: ['npx tsc --noEmit'] };
+const RULES = readonlyRulesOf(CONFIG, { PATH: '/bin', npm_config_prefix: '/u/npm' }, NO_SNAPSHOT);
 
 const call = (tool_name: string, command: unknown) => ({ tool_name, tool_input: { command } });
 
@@ -14,6 +16,13 @@ describe('readonlyRulesOf', () => {
   it("splits the team's prefixes into words and takes the environment's names as exported", () => {
     assert.deepEqual(RULES.prefixes, [['npx', 'tsc', '--noEmit']]);
     assert.deepEqual([...RULES.exported], ['PATH', 'npm_config_prefix']);
+    assert.equal(RULES.exportsAll, false);
+  });
+
+  it("adds the names the shell snapshot exports, and its set -a", () => {
+    const rules = readonlyRulesOf(CONFIG, { PATH: '/bin' }, { names: new Set(['PATH', 'pod']), all: true });
+    assert.deepEqual([...rules.exported], ['PATH', 'pod']);
+    assert.equal(rules.exportsAll, true);
   });
 });
 
