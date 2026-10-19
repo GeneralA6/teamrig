@@ -3,7 +3,9 @@ import { isRecord, stringField } from "../core/guards.js";
  * How `teamrig statusline install` and `uninstall` change Claude Code's `statusLine` setting. With no
  * status line, the kit's launcher becomes it. With one already there, the launcher goes in front of it
  * in a pipe (`<launcher> --pass | <theirs>`): it saves the week's reading, then hands the same input on,
- * so their command runs and shows exactly as before. Uninstall takes the launcher back out.
+ * so their command runs and shows exactly as before. A launcher left with `--pass` and nothing piped after it, as when
+ * their command was cut out by hand, makes Claude Code show the raw status input, so install puts the bare launcher
+ * back. Uninstall takes the launcher back out.
  */
 /** The settings key Claude Code reads the status line from. */
 export const STATUS_LINE_KEY = 'statusLine';
@@ -24,6 +26,9 @@ export function planInstall(settings, launcher) {
         const after = own;
         return { ok: true, value: { settings: { ...settings, [STATUS_LINE_KEY]: { type: 'command', command: after } }, before, after } };
     }
+    if (passesToNothing(before, own)) {
+        return { ok: true, value: { settings: withCommand(settings, own), before, after: own } };
+    }
     if (isLaunchedBy(before, own)) {
         return { ok: true, value: { settings: undefined, before, after: before } };
     }
@@ -35,7 +40,7 @@ export function planInstall(settings, launcher) {
         };
     }
     const after = `${own}${PASS_PIPE}${before}`;
-    return { ok: true, value: { settings: { ...settings, [STATUS_LINE_KEY]: { ...statusLineOf(settings), command: after } }, before, after } };
+    return { ok: true, value: { settings: withCommand(settings, after), before, after } };
 }
 /** Takes the launcher back out: the status line that was there before it returns, or none when there was none. */
 export function planUninstall(settings, launcher) {
@@ -48,7 +53,7 @@ export function planUninstall(settings, launcher) {
     if (before === undefined || !isLaunchedBy(before, own)) {
         return { ok: true, value: { settings: undefined, before, after: before } };
     }
-    if (before === own) {
+    if (before === own || passesToNothing(before, own)) {
         const rest = Object.fromEntries(Object.entries(settings).filter(([key]) => key !== STATUS_LINE_KEY));
         return { ok: true, value: { settings: rest, before, after: undefined } };
     }
@@ -56,10 +61,18 @@ export function planUninstall(settings, launcher) {
         return { ok: false, problem: `the status line starts with the launcher but was changed by hand: edit ${STATUS_LINE_KEY}.command yourself` };
     }
     const after = before.slice(own.length + PASS_PIPE.length);
-    return { ok: true, value: { settings: { ...settings, [STATUS_LINE_KEY]: { ...statusLineOf(settings), command: after } }, before, after } };
+    return { ok: true, value: { settings: withCommand(settings, after), before, after } };
 }
 function isLaunchedBy(command, own) {
     return command === own || command.startsWith(`${own} `);
+}
+/** The launcher passing the status input on with no command after it, a pipe left open or none: Claude Code would show that input raw. */
+function passesToNothing(command, own) {
+    return command.startsWith(`${own} `) && /^--pass(\s*\|)?$/.test(command.slice(own.length).trim());
+}
+/** The settings with the status line's command set to `command`, its other fields kept. */
+function withCommand(settings, command) {
+    return { ...settings, [STATUS_LINE_KEY]: { ...statusLineOf(settings), command } };
 }
 function statusLineOf(settings) {
     const value = settings[STATUS_LINE_KEY];
