@@ -1905,8 +1905,8 @@ target. The deploys are the ledger.md lines, so one a session wrote by hand coun
 record of its start is taken to have rolled for `assumedRollMinutes` (20). A heavy step disturbs the whole host. A
 window shorter than `--min` (default `minMinutes`, 15) is left out. Each window names the loads (`teamrig load`) it
 overlaps: a load never cuts a window, since two windows under the same load still compare. A time is `HH:MM`
-(today), `YYYY-MM-DD HH:MM` or `YYYY-MM-DD` in UTC, or an ISO time with its zone. A target no repository deploys
-is a usage error.
+(today), `YYYY-MM-DD HH:MM` or `YYYY-MM-DD` on the team's clock unless marked `UTC`, or an ISO time with its zone. A
+target no repository deploys is a usage error.
 
 Flags:
 
@@ -1919,16 +1919,16 @@ Flags:
 Example:
 
 ```sh
-teamrig windows --targets api --since 06:00
+teamrig windows --targets api --since 08:00
 ```
 
 Output:
 
 ```text
 api (settle 30m): 2 clean windows of at least 15m
-  2030-01-08 06:00 to 2030-01-08 06:40 UTC (40m)
-  2030-01-08 08:20 to 2030-01-08 10:00 UTC (1h40m)
-    under load 3f9c1a7e by data: backfill prices (from 2030-01-08 08:30 UTC, still running)
+  2030-01-08 08:00 IST to 2030-01-08 08:40 IST (40m)
+  2030-01-08 10:20 IST to 2030-01-08 12:00 IST (1h40m)
+    under load 3f9c1a7e by data: backfill prices (from 2030-01-08 10:30 IST, still running)
 ```
 
 ### teamrig load
@@ -1948,13 +1948,13 @@ Flags:
 Example:
 
 ```sh
-teamrig load --session data --what "backfill prices" --at 08:30
+teamrig load --session data --what "backfill prices" --at 10:30
 ```
 
 Output:
 
 ```text
-LOAD 3f9c1a7e on the whole host from 2030-01-08 08:30 UTC (end it: teamrig load end --id 3f9c1a7e)
+LOAD 3f9c1a7e on the whole host from 2030-01-08 10:30 IST (end it: teamrig load end --id 3f9c1a7e)
 ```
 
 ### teamrig load end
@@ -1977,7 +1977,7 @@ teamrig load end --session data --id 3f9c1a7e
 Output:
 
 ```text
-ENDED 3f9c1a7e at 2030-01-08 10:00 UTC
+ENDED 3f9c1a7e at 2030-01-08 12:00 IST
 ```
 
 ### teamrig deploys
