@@ -9,6 +9,7 @@ import { FakeSteps } from '../testing/fake-steps.ts';
 
 const LEDGER = join(TEAM_HOME, 'state', 'deploys', 'ledger.jsonl');
 const LOCK = join(KIT, 'host.lock');
+const SHARED = `${LOCK}.shared`;
 const MINUTE = 60_000;
 const OTHER = 9001;
 
@@ -35,6 +36,18 @@ function harness(config: Readonly<Record<string, unknown>> = TEAM): { kit: CliHa
 }
 
 const BUILD = ['heavy', '--session', 'alpha', '--what', 'build api', '--', 'npm', 'run', 'build'];
+
+const SPECS = ['heavy', '--session', 'alpha', '--what', 'specs', '--small', '--', 'npm', 'test'];
+
+/** A small step sharing the host: po's spec run, taken at 09:50 by `OTHER`, 2048 MB held for it. */
+function sharedBy(): string {
+  return JSON.stringify({ token: 'other', pid: OTHER, session: 'po', purpose: 'heavy: specs', acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z', reserveMb: 2048 });
+}
+
+/** An ended run of `what` by `session` the day before, whose process tree held `peakTreeMb` at most. */
+function ranBefore(session: string, what: string, peakTreeMb: number): string {
+  return JSON.stringify({ type: 'heavy', id: `${session}-${peakTreeMb}`, session, what, startedAt: '2030-01-07T10:00:00.000Z', endedAt: '2030-01-07T10:05:00.000Z', exitCode: 0, peakTreeMb });
+}
 
 describe('teamrig heavy', () => {
   it('runs the command under the host lock, records its start and end, and prints DONE', async () => {
@@ -287,3 +300,59 @@ describe('teamrig heavy', () => {
     });
   }
 });
+
+describe('teamrig heavy --small', () => {
+  it('shares the host instead of taking the lock, holds its share while it runs and records it as shared', async () => {
+    const { kit, steps } = harness();
+    let whileRunning: unknown[] = [];
+    steps.ends(0, 5 * MINUTE).whileRunning(async () => {
+      whileRunning = [kit.files.get(LOCK), JSON.parse(kit.files.get(`${SHARED}/id-1.json`) ?? '{}')];
+    });
+    const result = await kit.run(SPECS, { steps });
+    const lines = ['2030-01-08T10:00:00.000Z sharing the host: 2048 MB held for it (8000 MB free, 0 other small steps)', '2030-01-08T10:00:00.000Z running: specs (killed after 45m)', 'DONE exit 0'];
+    assert.deepEqual(result, { code: 0, stdout: lines, stderr: [] });
+    const share = { token: 'id-1', pid: 4242, session: 'alpha', purpose: 'heavy: specs', acquiredAt: '2030-01-08T10:00:00.000Z', expiresAt: '2030-01-08T12:30:00.000Z', reserveMb: 2048 };
+    assert.deepEqual(whileRunning, [undefined, share]);
+    assert.equal(kit.files.get(`${SHARED}/id-1.json`), undefined, 'the share is released');
+    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'specs', queuedAt: '2030-01-08T10:00:00.000Z', shared: true, startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+    assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:05:00.000Z', exitCode: 0 }]);
+  });
+
+  it('holds for it the most its latest 20 runs under the same session and label held, with a quarter more', async () => {
+    const { kit, steps } = harness();
+    const runs = [ranBefore('alpha', 'specs', 9000), ...Array.from({ length: 19 }, () => ranBefore('alpha', 'specs', 1000)), ranBefore('alpha', 'specs', 1900)];
+    await kit.files.append(LEDGER, `${[...runs, ranBefore('bravo', 'specs', 9000), ranBefore('alpha', 'lint', 9000)].join('\n')}\n`);
+    steps.ends(0, MINUTE);
+    const { stdout } = await kit.run(SPECS, { steps });
+    assert.equal(stdout[0], '2030-01-08T10:00:00.000Z sharing the host: 2375 MB held for it (8000 MB free, 0 other small steps)');
+  });
+
+  it('joins a small step sharing the host while the memory allows it', async () => {
+    const { kit, steps } = harness({ ...TEAM, coordinator: { heavy: { smallReserveMb: 1000, memoryFloorMb: 4000 } } });
+    await kit.files.append(`${SHARED}/other.json`, sharedBy());
+    steps.ends(0, MINUTE);
+    const { stdout } = await kit.run(SPECS, { steps, sessionProcesses: otherRuns() });
+    assert.equal(stdout[0], '2030-01-08T10:00:00.000Z sharing the host: 1000 MB held for it (8000 MB free, 1 other small step)');
+  });
+
+  it('waits while the small steps sharing the host hold the memory it needs, then refuses', async () => {
+    const { kit, steps } = harness({ ...TEAM, coordinator: { heavy: { waitMinutes: 1 }, wait: { pollSeconds: 30 } } });
+    await kit.files.append(`${SHARED}/other.json`, sharedBy());
+    const memory = new FakeHostMemory();
+    memory.free = 6000;
+    const result = await kit.run(SPECS, { steps, memory, sessionProcesses: otherRuns() });
+    const held = '1 small step: po (heavy: specs) since 2030-01-08 09:50; 6000 MB free, 2048 MB held for it, 6144 MB needed';
+    assert.deepEqual(result, { code: 2, stdout: [`2030-01-08T10:00:00.000Z waiting to share the host: ${held}`, `REFUSED host memory still held by ${held}`], stderr: [] });
+    assert.deepEqual([ledgerOf(kit), kit.files.get(`${SHARED}/id-1.json`)], [[], undefined]);
+  });
+
+  it('makes a step without it wait for the small steps sharing the host, then refuse, leaving no lock', async () => {
+    const { kit, steps } = harness({ ...TEAM, coordinator: { heavy: { waitMinutes: 1 }, wait: { pollSeconds: 30 } } });
+    await kit.files.append(`${SHARED}/other.json`, sharedBy());
+    const result = await kit.run(BUILD, { steps, sessionProcesses: otherRuns() });
+    const held = '1 small step: po (heavy: specs) since 2030-01-08 09:50';
+    assert.deepEqual(result, { code: 2, stdout: [`2030-01-08T10:00:00.000Z waiting for the host lock: ${held}`, `REFUSED host lock still held by ${held}`], stderr: [] });
+    assert.equal(kit.files.get(LOCK), undefined);
+  });
+});
+
