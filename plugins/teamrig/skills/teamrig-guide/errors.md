@@ -39,7 +39,7 @@ or take it to the lead.
 | `REFUSED --question, --options, --recommend and --default go only with --status waiting on a decision or an approval` | Drop the card flags, or wait on the decision. |
 | `REFUSED T3 has not started, so it does not wait on T2: it stays open, planned after it (teamrig update T3 --after T2)` (or `stays waiting`, for one waiting since before it started) | Leave its status and plan it: `teamrig update T3 --after T2`. |
 | `REFUSED T2 is already finished; nothing to wait on` | Go on: there is nothing to wait for. |
-| `REFUSED time 2026-10-01 has passed: name a time to come` | Give a time still to come, in UTC. |
+| `REFUSED time 10-01 09:00 IDT has passed: name a time to come` | Give a time still to come, on the team's clock or marked UTC. |
 | `REFUSED decision lead2: lead2 is neither the lead (lead) nor owner` | Name the lead, or `owner`. |
 | `REFUSED approval api: decision and approval waits are for the lead (lead) and owner; wait on api's work by its task: teamrig set T3 --status waiting --ask api --text "<the work you need>"` | Run the command it names: a peer's work is a task, never an approval. |
 | `REFUSED --ask goes only with --status waiting` | Add `--status waiting`, or ask with `teamrig add --owner <id>`. |
@@ -128,7 +128,7 @@ From `teamrig budget lift` ([commands.md](commands.md#teamrig-budget-lift)) and 
 | `REFUSED a lift needs --stop-pct <n>: the share of the week, in %, at which it ends` | Add `--stop-pct`. |
 | `REFUSED --stop-pct 99.5 is above budget.lift.maxStopPct (99.3); only the reserve release (--reserve, in the last hour before the reset) goes up to 99.9` | Use a stop % up to 99.3, or `--reserve` in the last hour before the reset. |
 | `REFUSED --stop-pct 100 is above budget.lift.reserveStopPct (99.9), the most any lift may reach` | Use a stop % up to 99.9. |
-| `REFUSED --reserve releases the reserve only in the last hour before the reset, from <time> UTC` | Wait until that time, or lift without `--reserve`. |
+| `REFUSED --reserve releases the reserve only in the last hour before the reset, from 2026-10-21 03:00 IDT` | Wait until that time, or lift without `--reserve`. |
 | `REFUSED --reserve needs the week's reset: no status line snapshot gives it and budget.reset is not set` | Run `teamrig statusline install`, or set `budget.reset`. |
 | `REFUSED the week's use is unknown, so the stop % cannot be judged: ...` | Run `teamrig statusline install` ([requirements.md](requirements.md#the-status-line-optional)), or set `budget.weeklyLimitW`. |
 | `REFUSED the week is at 97.2%, already at or past --stop-pct 97` | The week is past that stop %: pick a higher one within the bounds, or no lift. |

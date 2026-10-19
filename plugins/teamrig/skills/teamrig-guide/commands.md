@@ -10,8 +10,9 @@ Rules for every command line:
   caller and has neither stops with `--session (or $TEAMRIG_SESSION) is required`.
 - Sessions are given by id, current name or former name. Task ids look like `T12`. Priorities are `p1` to
   `p5` (the team config may define more or fewer).
-- Dates are UTC: `YYYY-MM-DD`, or `"YYYY-MM-DD HH:MM"`. A due day alone means the end of that day. A week is the
-  date of its first day.
+- Times are on the team's clock (config `timeZone`, else the machine's) and print zone-marked (`10-19 16:40 IDT`). Type
+  `YYYY-MM-DD`, `"YYYY-MM-DD HH:MM"` or `HH:MM` (today) there; add ` UTC` to give one in UTC. A due day alone means the
+  end of that day there. A week is the date of its first day.
 - A flag the command does not take, a flag given twice or a flag with no value is a usage error (exit 64). It
   prints the reason, then only that command's usage lines and where the full help is.
 - `teamrig <command> --help` (or `-h`) prints that command's usage lines, or a group's (`teamrig inbox --help`).
@@ -94,7 +95,7 @@ Flags:
 - `--waits <reason>,<reason>`: required for `waiting`, and allowed only with it: what the task waits for, one or
   more of `decision:<who>` and `approval:<who>` (the lead, or `owner` for the human; a peer's work is a task, asked
   for with `--ask`), `task:T<id>` (a task to finish first; only for a task already started) and
-  `time:<YYYY-MM-DD HH:MM>` (UTC; a bare day lasts to its end; a budget hold is a time, never an approval). It
+  `time:<YYYY-MM-DD HH:MM>` (on the team's clock unless marked UTC; a bare day lasts to its end; a budget hold is a time, never an approval). It
   stays waiting until every reason has cleared. A new decision or approval wait posts the lead one inbox line
   (`T1 waits on your approval: <the card's question, else the note>`; an owner wait too, since the lead keeps the
   owner's queue), unless the lead set it. A task wait (or an `--ask`) that would close a loop is refused with the fix
@@ -418,7 +419,7 @@ Output:
 ```text
 # Week plan 2026-10-12
 
-1 tasks: 0 done, 0 dropped, 1 to do. From the task register at 2026-10-15 08:58 UTC.
+1 tasks: 0 done, 0 dropped, 1 to do. From the task register at 2026-10-15 11:58 IDT.
 
 - 1 to do without a size
 

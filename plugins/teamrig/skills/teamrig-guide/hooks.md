@@ -538,8 +538,8 @@ off. Which lines a session was shown is kept in `state/model-notices/<id>.json`.
 
 ## End of a turn: verify-by notices
 
-The Stop hook also tells the user of each of the session's `verifying` tasks whose verify-by day (its due date,
-UTC) has come: `VERIFY T1 was to be verified by 10-14 (proof: the nightly run): done with the proof, or back to
+The Stop hook also tells the user of each of the session's `verifying` tasks whose verify-by day (its due date, a day
+on the team's clock) has come: `VERIFY T1 was to be verified by 10-14 (proof: the nightly run): done with the proof, or back to
 in-progress`. It reads the task list only at the session's first stop of each UTC day, so a task is named once a
 day until it is `done` or back `in-progress`, and a date moved to today after that stop waits for the next day.
 A failed read leaves the line out. Which tasks were named today is kept in `state/verify-notices.jsonl`, which

@@ -25,7 +25,7 @@ already has needs a `--note`.
 
 Set `waiting` when a task you started cannot go on, with `--waits` naming each reason: `decision:<who>` or
 `approval:<who>` (the lead, or `owner` for the human), `task:T<id>` (a task to finish first) or
-`time:<YYYY-MM-DD HH:MM>` (UTC). It stays waiting until all of them have cleared: a task when it is done or
+`time:<YYYY-MM-DD HH:MM>` (on the team's clock unless marked UTC). It stays waiting until all of them have cleared: a task when it is done or
 dropped, a time when it passes, a decision or an approval only when you, its owner, set the next status. `list`
 marks a cleared reason `ready`, and `check` flags the task `READY` once all have. A task not started that needs
 another first is not waiting: it stays `open`, planned after it (`teamrig update T3 --after T2`), and its line
@@ -76,7 +76,7 @@ A shipped change is proven by the session that shipped it, oldest first, before 
   proof.
 - The queue stays in view: `teamrig verify` lists it, oldest first, and the session start context and
   `teamrig inbox read` end with one `VERIFY <n>: T1 (proof: ...)` line.
-- From a task's verify-by day (its due date, UTC), the Stop hook shows the user `VERIFY T1 was to be verified by
+- From a task's verify-by day (its due date, on the team's clock), the Stop hook shows the user `VERIFY T1 was to be verified by
   10-14 (proof: ...)` once a day, until the task is `done` or back `in-progress`.
 - A start of a task that needs a verifying task (planned `--after` it, or waiting on it with `--waits task:`) is
   refused while that task is verifying [register.verifyGate]; `warn` lets the start through with a warning.
