@@ -1,0 +1,121 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import type { BudgetConfig } from '../config/types.ts';
+import { MemoryFiles } from '../testing/memory-files.ts';
+import { formatPeriod, nextPeriod, parsePeriod, PeriodStore, RESET_DROP_PTS, sightOf, type Period } from './period.ts';
+import type { WeekUse } from './snapshot.ts';
+
+const HOUR = 3_600_000;
+const WEEK = 7 * 24 * HOUR;
+const END = Date.parse('2026-10-21T01:00:00Z');
+const START = Date.parse('2026-10-14T01:00:00Z');
+const NOW = Date.parse('2026-10-19T12:00:00Z');
+/** The week from Wednesday 10-14 01:00 to Wednesday 10-21 01:00, last read at 55% by 11:00 on Monday. */
+const STORED: Period = { start: START, end: END, kind: 'week', lastPct: 55, lastAt: NOW - HOUR };
+
+/** Memory files that count their writes. */
+class CountingFiles extends MemoryFiles {
+  writes = 0;
+
+  override async write(path: string, text: string): Promise<void> {
+    this.writes += 1;
+    await super.write(path, text);
+  }
+}
+
+function use(usedPct: number, at: number, resetsAt = END): WeekUse {
+  return { usedPct, resetsAt, at };
+}
+
+describe('nextPeriod', () => {
+  it('guesses the week before the end when no period is stored', () => {
+    assert.deepEqual(nextPeriod(undefined, { end: END, use: use(55, NOW) }), { start: START, end: END, kind: 'assumed', lastPct: 55, lastAt: NOW });
+    assert.deepEqual(nextPeriod(undefined, { end: END, use: undefined }), { start: START, end: END, kind: 'assumed', lastPct: 0, lastAt: START });
+  });
+
+  it('opens the next week at the end of the one that ended, case a', () => {
+    const after = END + 2 * HOUR;
+    assert.deepEqual(nextPeriod(STORED, { end: END + WEEK, use: use(1, after, END + WEEK) }), { start: END, end: END + WEEK, kind: 'week', lastPct: 1, lastAt: after });
+    // Before any reading of the new week: from the config's next reset, a minute off the plan's.
+    assert.deepEqual(nextPeriod(STORED, { end: END + WEEK - 60_000, use: undefined }), { start: END, end: END + WEEK - 60_000, kind: 'week', lastPct: 0, lastAt: END });
+  });
+
+  it('guesses again when weeks went unseen, or when the end comes before the start', () => {
+    assert.deepEqual(nextPeriod(STORED, { end: END + 2 * WEEK, use: undefined }), { start: END + WEEK, end: END + 2 * WEEK, kind: 'assumed', lastPct: 0, lastAt: END + WEEK });
+    assert.equal(nextPeriod(STORED, { end: START - HOUR, use: undefined }).kind, 'assumed');
+  });
+
+  it(`opens a new budget from the latest reading when a later one falls ${RESET_DROP_PTS} points or more, case b`, () => {
+    assert.deepEqual(nextPeriod(STORED, { end: END, use: use(0.4, NOW) }), { start: STORED.lastAt, end: END, kind: 'reset', lastPct: 0.4, lastAt: NOW });
+    assert.deepEqual(nextPeriod(STORED, { end: END, use: use(55 - RESET_DROP_PTS, NOW) }).kind, 'reset');
+    // A guessed start that moved past the latest reading bounds the new budget's start.
+    const guessed: Period = { ...STORED, kind: 'assumed', lastAt: START + HOUR };
+    assert.equal(nextPeriod(guessed, { end: END + 2 * HOUR, use: use(1, NOW) }).start, START + 2 * HOUR);
+  });
+
+  it('keeps the start for a smaller fall, a reading older than its latest, or no reading', () => {
+    assert.deepEqual(nextPeriod(STORED, { end: END, use: use(54, NOW) }), { ...STORED, lastPct: 54, lastAt: NOW });
+    assert.deepEqual(nextPeriod(STORED, { end: END, use: use(1, NOW - 2 * HOUR) }), STORED);
+    assert.deepEqual(nextPeriod(STORED, { end: END, use: undefined }), STORED);
+  });
+
+  it('keeps a known start when the end moves, and moves a guessed one with it, case d', () => {
+    const later = END + 5 * HOUR;
+    assert.deepEqual(nextPeriod(STORED, { end: later, use: use(56, NOW, later) }), { ...STORED, end: later, lastPct: 56, lastAt: NOW });
+    assert.deepEqual(nextPeriod(STORED, { end: END - HOUR, use: undefined }), { ...STORED, end: END - HOUR });
+    const guessed: Period = { ...STORED, kind: 'assumed' };
+    assert.deepEqual(nextPeriod(guessed, { end: later, use: undefined }), { ...guessed, start: later - WEEK, end: later });
+  });
+});
+
+/** A budget with no configured reset. */
+const UNSET: Pick<BudgetConfig, 'reset'> = {};
+
+describe('sightOf', () => {
+  const configured: Pick<BudgetConfig, 'reset'> = { reset: { weekday: 'wed', timeUtc: '01:00' } };
+
+  it("takes the status line's reset while it is ahead, else the config's, else none", () => {
+    assert.deepEqual(sightOf(UNSET, use(55, NOW, END + HOUR), NOW), { end: END + HOUR, use: use(55, NOW, END + HOUR) });
+    assert.deepEqual(sightOf(configured, use(99, NOW - WEEK, START), NOW), { end: END, use: use(99, NOW - WEEK, START) });
+    assert.deepEqual(sightOf(configured, undefined, NOW), { end: END, use: undefined });
+    assert.equal(sightOf(UNSET, undefined, NOW), undefined);
+  });
+});
+
+describe('the period file', () => {
+  const path = '/kit/usage/period.json';
+
+  it('reads back what it wrote, and reads a damaged or other-format file as none', () => {
+    assert.deepEqual(parsePeriod(formatPeriod(STORED)), STORED);
+    for (const text of [
+      '',
+      'nope',
+      '{"v":2,"start":1,"end":2,"kind":"week","lastPct":0,"lastAt":1}',
+      '{"v":1,"start":2,"end":1,"kind":"week","lastPct":0,"lastAt":1}',
+      '{"v":1,"start":1,"end":2,"kind":"later","lastPct":0,"lastAt":1}',
+      '{"v":1,"start":1,"end":2,"kind":"week","lastAt":1}',
+    ]) {
+      assert.equal(parsePeriod(text), undefined, text);
+    }
+  });
+
+  it('moves the stored period on and writes it only when it changed', async () => {
+    const files = new CountingFiles();
+    const store = new PeriodStore(files, path);
+    const guessed: Period = { ...STORED, kind: 'assumed' };
+    assert.deepEqual(await store.advance({ end: END, use: use(55, NOW - HOUR) }), guessed);
+    const written = await files.read(path);
+    assert.deepEqual(await store.advance({ end: END, use: use(55, NOW - 2 * HOUR) }), guessed);
+    assert.equal(files.writes, 1);
+    assert.equal(await files.read(path), written);
+    assert.deepEqual(await store.read(), guessed);
+  });
+
+  it('starts over from a damaged file, and has no period while no reset is known', async () => {
+    const files = new MemoryFiles({ [path]: 'damaged' });
+    const store = new PeriodStore(files, path);
+    assert.equal(await store.periodAt(UNSET, undefined, NOW), undefined);
+    assert.equal(await files.read(path), 'damaged');
+    assert.deepEqual(await store.periodAt(UNSET, use(55, NOW), NOW), { start: START, end: END, kind: 'assumed', lastPct: 55, lastAt: NOW });
+  });
+});
