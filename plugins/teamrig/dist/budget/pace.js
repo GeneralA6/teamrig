@@ -66,6 +66,27 @@ export function dailyAllowancePct(input) {
     const today = profile.activeMs(Math.max(dayStart, window.start), Math.min(dayStart + MS_PER_DAY, window.paceEnd));
     return Math.min((leftPct * today) / remaining, ceiling);
 }
+/**
+ * The team's in-day pace, in percent of the week: its allowance times the part of today's active time gone by,
+ * today being the UTC day inside the week and before the pace end, as the allowance counts it. With no active time
+ * today, the whole allowance.
+ */
+export function dayPacePct(input) {
+    const { window, now, allowancePct, profile } = input;
+    const dayStart = now - (now % MS_PER_DAY);
+    const from = Math.max(dayStart, window.start);
+    const to = Math.min(dayStart + MS_PER_DAY, window.paceEnd);
+    const today = profile.activeMs(from, to);
+    return today > 0 ? (allowancePct * profile.activeMs(from, Math.min(now, to))) / today : allowancePct;
+}
+/**
+ * The team has room today while its use is below its in-day pace: a session past its part then uses room the
+ * others have left, so nothing holds it. At or past the pace, a session past its part is held, which keeps the
+ * others' parts for them.
+ */
+export function hasRoom(day) {
+    return day.usedPct < day.pacePct;
+}
 /** The week's use against the pace line; within `paceTolerancePct` points it is on pace. */
 export function readPace(window, budget, now, usedPct, profile) {
     const linePct = paceLinePct(window, budget.targetPct, now, profile);

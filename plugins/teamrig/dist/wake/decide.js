@@ -1,5 +1,5 @@
 import { formatPct, formatW } from "../budget/format.js";
-import { isPastDailyBudget, quietStartOf, sessionQuietFrom } from "../budget/warn.js";
+import { isHeld, quietStartOf, sessionQuietFrom } from "../budget/warn.js";
 import { DEFAULT_MESSAGES } from "../config/defaults.js";
 import { KIT_NAME } from "../core/home.js";
 import { isCold } from "../hooks/cold-send.js";
@@ -88,19 +88,19 @@ export function decideWake(input) {
     return { verdict: { kind: 'wake', tasks: due }, state: { tab, known, pending: undefined, lastWakeAt: now, settled } };
 }
 /**
- * Where the session stands against its budget at `now`: past its daily budget (its lift's while lifted), and in
- * quiet hours unless its lift exempts it. With no facts (the week's use is not known yet) it is never past budget,
- * and quiet hours go by the clock alone.
+ * Where the session stands against its budget at `now`: held (past its daily budget, its lift's while lifted, while
+ * the team has no room today), and in quiet hours unless its lift exempts it. With no facts (the week's use is not
+ * known yet) it is never held, and quiet hours go by the clock alone.
  */
 export function wakeRestOf(facts, quietHours, now) {
     if (facts === undefined) {
-        return { over: false, quiet: quietStartOf(quietHours, now) !== undefined };
+        return { held: false, quiet: quietStartOf(quietHours, now) !== undefined };
     }
-    return { over: isPastDailyBudget(facts), quiet: sessionQuietFrom(facts, quietHours) !== undefined };
+    return { held: isHeld(facts), quiet: sessionQuietFrom(facts, quietHours) !== undefined };
 }
-/** The least urgent priority that wakes the session now: p1 only while it is past its daily budget or in quiet hours. */
+/** The least urgent priority that wakes the session now: p1 only while its budget holds it or in quiet hours. */
 export function effectivePriority(configured, rest) {
-    return rest.over || rest.quiet ? Math.min(configured, URGENT_PRIORITY) : configured;
+    return rest.held || rest.quiet ? Math.min(configured, URGENT_PRIORITY) : configured;
 }
 /**
  * The cost of waking a session idle `idleMs` (undefined: unknown, counted cold). It is cold past
