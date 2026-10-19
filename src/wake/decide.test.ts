@@ -11,6 +11,7 @@ import {
   effectivePriority,
   isNews,
   isWakeWorthy,
+  NO_SETTLED_MOMENTS,
   taskListText,
   WAKE_TITLE_MAX,
   wakeCost,
@@ -40,7 +41,7 @@ function input(tasks: ReadonlyMap<string, Task>, previous: WakeState | undefined
   return { tasks, session: 'alpha', tab: TAB, now: NOW, maxPriority: 1, batchMs: BATCH_MS, minGapMs: GAP_MS, previous, ...overrides };
 }
 
-const QUIET: WakeState = { tab: TAB, known: [], pending: undefined, lastWakeAt: undefined };
+const QUIET: WakeState = { tab: TAB, known: [], pending: undefined, lastWakeAt: undefined, settled: NO_SETTLED_MOMENTS };
 
 describe('isWakeWorthy', () => {
   const context = waitContext(tasksOf(testTask({ id: 'T5', status: 'done' }), testTask({ id: 'T6' })), new Date(NOW));
@@ -85,11 +86,15 @@ describe('isNews', () => {
 });
 
 describe('decideWake', () => {
-  it('takes what is there as known at a first check in a tab, keeping the last wake', () => {
+  it('takes what is there as known at a first check in a tab, keeping the last wake and the settled moments', () => {
     const first = decideWake(input(tasksOf(p1()), undefined));
-    assert.deepEqual(first, { verdict: { kind: 'none' }, state: { tab: TAB, known: ['T1'], pending: undefined, lastWakeAt: undefined } });
-    const moved = decideWake(input(tasksOf(p1()), { ...QUIET, tab: 'old', lastWakeAt: NOW - MINUTE }));
-    assert.deepEqual(moved.state, { tab: TAB, known: ['T1'], pending: undefined, lastWakeAt: NOW - MINUTE });
+    assert.deepEqual(first, { verdict: { kind: 'none' }, state: { tab: TAB, known: ['T1'], pending: undefined, lastWakeAt: undefined, settled: NO_SETTLED_MOMENTS } });
+    const settled = { dayStart: NOW - 60 * MINUTE, burst: NOW - 120 * MINUTE };
+    const moved = decideWake(input(tasksOf(p1()), { ...QUIET, tab: 'old', lastWakeAt: NOW - MINUTE, settled }));
+    assert.deepEqual(moved.state, { tab: TAB, known: ['T1'], pending: undefined, lastWakeAt: NOW - MINUTE, settled });
+    const woke = decideWake(input(tasksOf(p1()), { ...QUIET, settled }, { batchMs: 0 }));
+    assert.equal(woke.verdict.kind, 'wake');
+    assert.deepEqual(woke.state.settled, settled);
   });
 
   it('holds a new task for the batch, then wakes for it and everything handed meanwhile, most urgent first', () => {
@@ -101,7 +106,7 @@ describe('decideWake', () => {
     const due = decideWake(input(tasksOf(p1({ id: 'T4' }), p1({ id: 'T2' })), second.state, { now: NOW + BATCH_MS }));
     assert.equal(due.verdict.kind, 'wake');
     assert.deepEqual(due.verdict.kind === 'wake' ? due.verdict.tasks.map((task) => task.id) : [], ['T2', 'T4']);
-    assert.deepEqual(due.state, { tab: TAB, known: ['T4', 'T2'], pending: undefined, lastWakeAt: NOW + BATCH_MS });
+    assert.deepEqual(due.state, { tab: TAB, known: ['T4', 'T2'], pending: undefined, lastWakeAt: NOW + BATCH_MS, settled: NO_SETTLED_MOMENTS });
   });
 
   it('wakes at once with no batch, and never twice for the same task', () => {
@@ -117,12 +122,12 @@ describe('decideWake', () => {
   });
 
   it('drops a pending task the owner touched or that stopped being wake-worthy, and starts the batch over', () => {
-    const pending: WakeState = { tab: TAB, known: ['T1', 'T2'], pending: { since: NOW - MINUTE, ids: ['T1', 'T2'] }, lastWakeAt: undefined };
+    const pending: WakeState = { ...QUIET, known: ['T1', 'T2'], pending: { since: NOW - MINUTE, ids: ['T1', 'T2'] } };
     const touched = p1({ ownerSeenAt: '2030-01-08T09:59:00.000Z' });
     const result = decideWake(input(tasksOf(touched, p1({ id: 'T2', status: 'waiting' }), p1({ id: 'T3' })), pending));
     assert.deepEqual(result.verdict, { kind: 'later', at: NOW + BATCH_MS, ids: ['T3'] });
     const nothing = decideWake(input(tasksOf(touched), pending));
-    assert.deepEqual(nothing, { verdict: { kind: 'none' }, state: { tab: TAB, known: ['T1'], pending: undefined, lastWakeAt: undefined } });
+    assert.deepEqual(nothing, { verdict: { kind: 'none' }, state: { ...QUIET, known: ['T1'] } });
   });
 
   it('ignores a task the session added itself and work less urgent than the priority', () => {
