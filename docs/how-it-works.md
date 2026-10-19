@@ -550,7 +550,9 @@ version that runs (a helper's `npx eslint` once did). Before each Bash or PowerS
 the line with the push guard's parser and refuses `npx` of a tool not in `node_modules/.bin`, `npm create`,
 `pnpm dlx`, `yarn dlx` and the like, naming the vetted route: pin the exact version as a devDependency, then run
 its local bin. `packageGuard.adHocRunners` (`deny` by default, `ask` or `allow`) sets what such a line gets; a
-missing or broken config keeps `deny`, so a config mistake never turns the guard off.
+missing or broken config keeps `deny`, so a config mistake never turns the guard off. It also refuses, whatever that
+key says, `npx --no <bin> --flag`: npx takes the bin as `--no`'s value, so the flag goes to npm (`npx --no tsc
+--version` prints npm's version, and a check run that way once ran nothing and passed); `npx --no -- <bin>` keeps it.
 
 ## Reads without a prompt
 

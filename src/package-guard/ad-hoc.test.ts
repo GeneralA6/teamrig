@@ -32,4 +32,8 @@ describe('adHocCallsOf', () => {
     assert.deepEqual(await adHocCallsOf(line, CONTEXT, installed(APP, 'eslint')), ['pnpm dlx cowsay', 'npm create vite']);
     assert.deepEqual(await adHocCallsOf('git status && npm test', CONTEXT, new MemoryFiles()), []);
   });
+
+  it('lists no npx call that hands its flag to npm, as npm runs and fetches nothing', async () => {
+    assert.deepEqual(await adHocCallsOf('npx --no tsc --version', CONTEXT, new MemoryFiles()), []);
+  });
 });

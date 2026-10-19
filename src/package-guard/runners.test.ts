@@ -4,7 +4,10 @@ import { resolve } from 'node:path';
 import { programsOf } from './programs.ts';
 import { runnerCallOf } from './runners.ts';
 
-/** The first program's runner call as `none`, `fetch <call>` or `bin <bin> <call>` (plus ` prefix <dir>` when given). */
+/**
+ * The first program's runner call as `none`, `fetch <call>`, `bin <bin> <call>` (plus ` prefix <dir>` when given) or
+ * `lost <bin> <flag>`.
+ */
 function callOf(line: string): string {
   const [run] = programsOf(line, { cwd: resolve('/', 'app'), home: resolve('/', 'u'), dialect: 'bash' });
   assert.ok(run !== undefined, line);
@@ -16,6 +19,8 @@ function callOf(line: string): string {
       return `fetch ${call.call}`;
     case 'bin':
       return `bin ${call.bin} ${call.call}${call.prefix === undefined ? '' : ` prefix ${call.prefix.text}`}`;
+    case 'lost-flag':
+      return `lost ${call.bin} ${call.flag}`;
   }
 }
 
@@ -42,6 +47,22 @@ describe('runnerCallOf', () => {
       'npx user/repo': 'fetch npx user/repo',
       'npx "$TOOL"': 'fetch npx <a value only known when it runs>',
       'npx -p': 'fetch npx --package <a value only known when it runs>',
+    });
+  });
+
+  it('reads a bare --no right before the bin, with a flag right after it, as handing that flag to npm', () => {
+    expectCalls({
+      'npx --no tsc --version': 'lost tsc --version',
+      'npx --yes --no eslint -p x': 'lost eslint -p',
+      'npx --no -- tsc --version': 'none',
+      'npx --no-install tsc --version': 'none',
+      'npx --no tsc': 'none',
+      'npx --no tsc x.ts --noEmit': 'none',
+      'npx --no tsc -- --version': 'none',
+      'npx --no --prefix . tsc --version': 'none',
+      'npx --no=true tsc --version': 'none',
+      'npx --no tsc "$FLAG"': 'none',
+      'npx --no "$BIN" --version': 'none',
     });
   });
 

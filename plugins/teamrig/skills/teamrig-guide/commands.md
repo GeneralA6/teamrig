@@ -2384,7 +2384,8 @@ Output: nothing for a command that pushes no protected branch; otherwise a JSON 
 
 Before a Bash or PowerShell command, refuses (or asks about, as `packageGuard.adHocRunners` says) a package runner
 that would fetch and run a package outside the project's lockfile: `npx`, `npm exec`, `pnpx` or `bunx` of a tool
-not in `node_modules/.bin`, `npm create`, `npm init <initializer>`, `pnpm dlx`, `yarn dlx` and the like. See
+not in `node_modules/.bin`, `npm create`, `npm init <initializer>`, `pnpm dlx`, `yarn dlx` and the like; and
+refuses `npx --no <bin> -<flag>`, which hands the flag to npm (`npx --no -- <bin> -<flag>` keeps it). See
 [Hooks and permissions](hooks.md#before-a-shell-command-the-package-guard).
 
 Flags: none.
@@ -2395,8 +2396,9 @@ Example:
 teamrig hook package-guard < pre-tool-use.json
 ```
 
-Output: nothing for a command that runs no package ad hoc, or with `adHocRunners` set to `allow`; otherwise a JSON
-permission decision (`deny` or `ask`) with the reason.
+Output: nothing for a command that runs no package ad hoc (or with `adHocRunners` set to `allow`) and hands no flag
+to npm; otherwise a JSON permission decision (`deny`, or `ask` for an ad-hoc run when the team set it) with the
+reason.
 
 ### teamrig hook readonly-allow
 
