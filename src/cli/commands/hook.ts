@@ -13,6 +13,7 @@ import { ModelNoticeStore } from '../../hooks/model-notices.ts';
 import { sendTargetOf } from '../../hooks/cold-send.ts';
 import { failedSendLine, failedSendOf, failedSendOutput } from '../../hooks/failed-send.ts';
 import { adHocRunnersOf, packageGuardOutput } from '../../hooks/package-guard.ts';
+import { hookAsksOf } from '../../hooks/permission.ts';
 import { commitsOf, protectedBranchesOf, pushGuardOutput, pushToProtectedOf, skipHooksOf } from '../../hooks/push-guard.ts';
 import { JsonlHintLog } from '../../hooks/hint-log.ts';
 import { promptOutput } from '../../hooks/prompt-output.ts';
@@ -112,6 +113,7 @@ export async function pushGuard(args: ParsedArgs, runtime: CliRuntime): Promise<
     commits: commitsOf(load),
     commitLog: runtime.commitLog,
     skipHooks: skipHooksOf(load),
+    hookAsks: hookAsksOf(load),
   });
   if (output !== '') {
     runtime.out.stdout(output);
@@ -132,6 +134,7 @@ export async function packageGuard(args: ParsedArgs, runtime: CliRuntime): Promi
     home: runtime.userHome,
     files: runtime.files,
     adHocRunners: adHocRunnersOf(guard.load),
+    hookAsks: hookAsksOf(guard.load),
   });
   if (output !== '') {
     runtime.out.stdout(output);

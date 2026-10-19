@@ -7,7 +7,8 @@ import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { ENV } from '../core/home.ts';
 import { KIT_VERSION } from '../core/version.ts';
-import { APP, bash, CLAUDE_SESSION, CliHarness, CONFIG_PATH, contextOf, decisionOf, EVENTS_PATH, KIT, POINTER, SKILLS_DIR, TEAM, type CliResult } from '../testing/cli-harness.ts';
+import { ASK_REFUSED_NOTE } from '../hooks/permission.ts';
+import { APP, bash, CLAUDE_SESSION, CliHarness, CONFIG_PATH, contextOf, decisionOf, EVENTS_PATH, KIT, POINTER, reasonOf, SKILLS_DIR, TEAM, type CliResult } from '../testing/cli-harness.ts';
 import { FULL_HELP_POINTER } from './help.ts';
 import { SHORT_FORM_CHARS } from './reports.ts';
 import { COMMAND_HELP, USAGE } from './run.ts';
@@ -569,6 +570,15 @@ describe('runCli: hook push-guard', () => {
     assert.deepEqual(await new CliHarness().run(['hook', 'push-guard'], { stdin: 'not json' }), { code: EXIT.ok, stdout: [], stderr: [] });
   });
 
+  it('refuses a push it would ask about, saying what to do instead, when the team config turns asks off', async () => {
+    const kit = new CliHarness({ ...TEAM, prompts: { hookAsks: 'refuse' } });
+    for (const command of ['git push origin main', 'git push $ARGS']) {
+      const result = await kit.run(['hook', 'push-guard'], { stdin: bash(command) });
+      assert.equal(decisionOf(result), 'deny', command);
+      assert.ok(reasonOf(result)?.endsWith(` ${ASK_REFUSED_NOTE}`), command);
+    }
+  });
+
   it('refuses a commit that skips the hooks, or asks or lets it run as the team config says, refusing on a broken config', async () => {
     const commit = bash('git commit --no-verify -m fix');
     assert.equal(decisionOf(await new CliHarness().run(['hook', 'push-guard'], { stdin: commit })), 'deny');
@@ -593,6 +603,8 @@ describe('runCli: hook package-guard', () => {
     assert.equal(decisionOf(await asks.run(['hook', 'package-guard'], { stdin: bash('pnpm dlx x') })), 'ask');
     const allows = new CliHarness({ ...TEAM, packageGuard: { adHocRunners: 'allow' } });
     assert.deepEqual((await allows.run(['hook', 'package-guard'], { stdin: bash('pnpm dlx x') })).stdout, []);
+    const refuses = new CliHarness({ ...TEAM, packageGuard: { adHocRunners: 'ask' }, prompts: { hookAsks: 'refuse' } });
+    assert.equal(decisionOf(await refuses.run(['hook', 'package-guard'], { stdin: bash('pnpm dlx x') })), 'deny');
     for (const kit of [new CliHarness(null), new CliHarness('{ not json'), new CliHarness(TEAM, '{ not json')]) {
       const result = await kit.run(['hook', 'package-guard'], { stdin: bash('pnpm dlx x') });
       assert.equal(result.code, EXIT.ok);

@@ -157,8 +157,8 @@ export function bash(command: string): string {
   return JSON.stringify({ tool_name: 'Bash', tool_input: { command }, cwd: APP });
 }
 
-/** A PreToolUse hook's permission decision, or undefined when it printed nothing or only added context. */
-export function decisionOf(result: CliResult): string | undefined {
+/** A PreToolUse hook's permission field `key`, or undefined when it printed nothing or only added context. */
+function permissionField(result: CliResult, key: 'permissionDecision' | 'permissionDecisionReason'): string | undefined {
   const [line] = result.stdout;
   if (line === undefined) {
     return undefined;
@@ -166,7 +166,17 @@ export function decisionOf(result: CliResult): string | undefined {
   const parsed: unknown = JSON.parse(line);
   const output = isRecord(parsed) ? parsed['hookSpecificOutput'] : undefined;
   assert.ok(isRecord(output));
-  return stringField(output, 'permissionDecision');
+  return stringField(output, key);
+}
+
+/** A PreToolUse hook's permission decision, or undefined when it printed nothing or only added context. */
+export function decisionOf(result: CliResult): string | undefined {
+  return permissionField(result, 'permissionDecision');
+}
+
+/** The reason a PreToolUse hook gave for its permission decision, or undefined when it gave none. */
+export function reasonOf(result: CliResult): string | undefined {
+  return permissionField(result, 'permissionDecisionReason');
 }
 
 /** The SessionStart hook's context, from its one output line. */

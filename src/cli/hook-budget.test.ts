@@ -2,8 +2,9 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { JsonRecord } from '../core/guards.ts';
+import { ASK_REFUSED_NOTE } from '../hooks/permission.ts';
 import { helperLaunchReminder } from '../rules/helper-default.ts';
-import { APP, CliHarness, contextOf, decisionOf, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
+import { APP, CliHarness, contextOf, decisionOf, reasonOf, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { replyLine, transcript } from '../testing/transcript-lines.ts';
 import { ok } from '../testing/hired-team.ts';
@@ -134,6 +135,15 @@ describe('the budget in the hooks', () => {
     const relaxed = await world({}, 10_000_000, 30);
     await meterLead(relaxed);
     remindedOnly(await relaxed.hook('helper-gate', ALPHA_TAB, AGENT));
+  });
+
+  it('refuses the launch it would ask about when hook asks are off, saying what to do instead', async () => {
+    const refused = await world({ overAction: 'ask' }, 10_000_000, 30, { prompts: { hookAsks: 'refuse' } });
+    await meterLead(refused);
+    const gate = await refused.hook('helper-gate', ALPHA_TAB, AGENT);
+    assert.equal(decisionOf(gate), 'deny');
+    assert.ok(reasonOf(gate)?.endsWith(` ${ASK_REFUSED_NOTE}`), reasonOf(gate));
+    assert.equal(contextOf(gate), helperLaunchReminder(1));
   });
 
   it('holds nothing past its part while the team has room today, and escalates once the room runs out', async () => {
