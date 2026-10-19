@@ -158,6 +158,9 @@ With sub-teams, run `teamrig check --tree --session lead` too. Act on each flag:
 - `STOPGAP-DONE`: a stopgap's task is finished. Ask the owner of each file it lists, in one inbox line, to remove
   the stopgap; when the task was dropped, to open a new task for it or keep it by a decision.
 - `NOT-PICKED-UP`: an idle session reads no inbox. Wake it with `teamrig open <id>`, or tell the user.
+- `HIRE SCALE-OUT`: an area cannot finish its dated work in time, and the week's spare pays for help. Do what it
+  says: move its slice to the idle hire it names, else hire for the slice and move it, else bring the owner a card
+  for the cap that blocks (the `hire` skill).
 - `HIRE RETIRE-DUE`: a hired session has had no open task for `hiring.idleHours`. Give it its next task, or retire
   it: `teamrig retire <id> --session lead` (`--to <heir>` for any open task). To bring a retired one back, hire
   its id again: the hire shows whether its last Claude Code session can be resumed (`teamrig open <id> --resume`).

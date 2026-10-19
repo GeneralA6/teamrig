@@ -324,7 +324,8 @@ come its day (`, from Thu`), and `, behind T7 (p1)` says that session has a more
 Lists the tasks and skills that break a team rule. The lead runs it at each checkpoint; any session may. What
 each flag means and what to do about it: [tasks.md](tasks.md#check-flags). It also reads the `stopgap T<id>` tags in
 your skills and in `CLAUDE.md` and `.claude/rules` [register.check.stopgapFiles], and flags STOPGAP-DONE for each
-done or dropped task they still name, and flags hired sessions to retire (RETIRE-DUE) or to review (REVIEW-DUE).
+done or dropped task they still name, flags an area that cannot finish its dated work in time when the week's spare
+pays for help (SCALE-OUT), and flags hired sessions to retire (RETIRE-DUE) or to review (REVIEW-DUE).
 By default it prints a short form
 within 3,000 characters: each kind with its count (and its detail when every flag of it shares one), at most 5
 of its tasks as short rows, then `+N more`; the same for skill flags. `--all` prints every flag in full.
@@ -766,7 +767,8 @@ readable by its id.
   steps, branches, traps), unless `--no-handover "<why>"` says why there is none.
 - It refuses while a role (`roles.lead`, `roles.coordinatorOwner`), `github.owners` or `github.sessions` names
   the session: point those at another session first.
-- `check` flags each hired session to retire (RETIRE-DUE) and each one past its review day (REVIEW-DUE).
+- `check` flags each hired session to retire (RETIRE-DUE) and each one past its review day (REVIEW-DUE); a hire a
+  SCALE-OUT names to take a slice is not flagged idle meanwhile.
 - Under `hiring.policy` `automatic`, closing a hired session's last open task (`set` done or dropped) asks it, once,
   at its next turn end, to write its handover and retire itself; it says so and goes on when its job goes on.
 

@@ -229,6 +229,8 @@ With sub-teams, run `teamrig check --tree --session lead` too. Then act on each 
 - `STOPGAP-DONE`: one inbox line to the owner of each listed file to remove the stopgap (or, for a dropped task, to
   open a new task or keep it by a decision).
 - `NOT-PICKED-UP`: the owner is idle and reads no inbox: wake it with `teamrig open <id>`, or tell the human.
+- `HIRE SCALE-OUT`: an area cannot finish its dated work in time, and the week's spare pays for help: move its slice
+  to the idle hire it names, else hire for the slice and move it, else bring the owner a card for the cap that blocks.
 - `HIRE RETIRE-DUE`: a hired session has had no open task for `hiring.idleHours`: give it its next task, or retire
   it (`teamrig retire <id> --session lead`, `--to <heir>` for any open task). Hiring, retiring and rehiring: the
   `hire` skill.

@@ -87,6 +87,8 @@ lead. You still talk to just one.
 
 When a job needs one more pair of hands, your lead hires a temporary member for it (`teamrig hire`), within the
 caps you set: how many at once, how much of the week they may use a day, and whether you approve each hire.
+The lead's checks say when: a member with more work due than its pace can finish in time, while the week has budget
+to spare, and which of its tasks to hand over.
 When the job is done, the lead retires it (`teamrig retire`): its open tasks go to a member you name, it leaves a
 handover note, and its tasks and notes stay readable. The lead's checks flag a hired member left with no work.
 
