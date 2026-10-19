@@ -148,6 +148,8 @@ export interface TeamPaths {
   readonly wakeLog: string;
   /** Each session's prompts and replies for the task pane (src/turn-log/), `<id>/<UTC hour>.jsonl` each. */
   readonly turnLog: string;
+  /** Where each session last started: its Claude Code process and session, `<id>.json` each (src/sessions/record.ts). */
+  readonly sessions: string;
 }
 
 /** The team's folder. The id is checked here too, since it becomes part of a path. */
@@ -202,5 +204,6 @@ export function teamPaths(kitHome: string, team: string, userHome: string, overr
     wake: join(state, 'wake'),
     wakeLog: join(state, 'wakes.jsonl'),
     turnLog: join(state, 'turn-log'),
+    sessions: join(state, 'sessions'),
   };
 }

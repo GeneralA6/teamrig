@@ -2486,6 +2486,8 @@ by hand. What each does: [hooks.md](hooks.md).
 
 Injects the team rules, who you are and your team's `rules.md` when a session starts, resumes, is cleared or is
 compacted. A compaction inside a helper gets the helper's context instead ([A helper's start](hooks.md#a-helpers-start)).
+It also records where the session started, in `<team>/state/sessions/<id>.json`: its tab's Claude Code session and
+process (the hook's parent), overwritten at each start; a record it could not write is a line shown to the user.
 
 Flags: none.
 

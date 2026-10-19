@@ -59,6 +59,7 @@ import { meetingHold } from './hook-meeting.ts';
 import { armRestart, restartTargetOf } from './hook-restart.ts';
 import { helperContextOf } from './hook-helper-start.ts';
 import { dueFactsAt } from './hook-refresh-mod.ts';
+import { recordSessionStart } from './hook-session-record.ts';
 import { envSession, hookScopeOf, leadOwnPaths, parseJson, sessionScopeOf, sessionTeam, startSessionOf, teamScopeOf, teamSessionOf, type SessionScope } from './hook-input.ts';
 import { tabStatusOn, tabTitleOf } from './hook-tab-status.ts';
 import { logPrompt, logReply, logStart } from './hook-turn-log.ts';
@@ -342,7 +343,10 @@ async function helperGateOf(runtime: CliRuntime, payload: JsonRecord): Promise<s
 type TeamParts = Pick<
   SessionStartInput,
   'teamRules' | 'renames' | 'titleNote' | 'refreshNote' | 'liveTasksNote' | 'modelNote' | 'verifyNote' | 'session' | 'sessionInEnv' | 'tree'
->;
+> & {
+  /** Why the start's Claude Code process could not be recorded; undefined when it was, or there was nothing to record. */
+  readonly recordNote: string | undefined;
+};
 
 /**
  * A loaded team's rules.md and rename log, after binding a hand-started tab by its Claude Code title
@@ -350,8 +354,8 @@ type TeamParts = Pick<
  * the session is: `$TEAMRIG_SESSION`, else the area it read its inbox as or was bound to, so a tab that
  * set the team up keeps its identity across a compact or resume; after a refresh or a compaction its live
  * tasks; whether it runs on its configured model and effort; its verifying tasks; and where the team sits
- * in a tree of teams, read from every team config of the kit home. It also marks a /clear or a compaction in the
- * session's turn log and prunes the log's old hours (hook-turn-log.ts).
+ * in a tree of teams, read from every team config of the kit home. It records the Claude Code process the session
+ * started in, marks a /clear or a compaction in the session's turn log and prunes the log's old hours (hook-turn-log.ts).
  */
 async function teamPartsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, payload: unknown): Promise<TeamParts> {
   const title = await readTitle(runtime, payload);
@@ -371,6 +375,7 @@ async function teamPartsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, pay
     await logStart(runtime, { config, paths: kit.paths, id }, payload).catch(() => undefined);
   }
   return {
+    recordNote: id === undefined || claudeSession === null ? undefined : await recordSessionStart(runtime, kit, id, claudeSession),
     teamRules: text === undefined ? undefined : { path: kit.paths.teamRules, text },
     renames,
     titleNote,
@@ -683,6 +688,7 @@ export async function sessionStart(args: ParsedArgs, runtime: CliRuntime): Promi
     kit.load.status === 'loaded'
       ? await teamPartsOf(runtime, kit, kit.load.config, payload)
       : {
+          recordNote: undefined,
           teamRules: undefined,
           renames: [],
           titleNote: undefined,
@@ -702,6 +708,6 @@ export async function sessionStart(args: ParsedArgs, runtime: CliRuntime): Promi
     now: new Date(runtime.clock.now()),
     command: KIT_NAME,
   });
-  runtime.out.stdout(sessionStartOutput(context, [parts.modelNote, requirementsNote]));
+  runtime.out.stdout(sessionStartOutput(context, [parts.modelNote, parts.recordNote, requirementsNote]));
   return EXIT.ok;
 }
