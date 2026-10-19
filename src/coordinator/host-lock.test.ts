@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import type { Sleep } from '../core/lock.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { FIRST_IN_LINE_POLL_MS, HostLock, holderText, waitText, type HostLockInfo, type LockWait, type LockWaiter } from './host-lock.ts';
+import { FIRST_IN_LINE_POLL_MS, HostLock, holderText, waitText, type HostLockInfo, type HostShare, type LockWait, type LockWaiter, type ShareRequest } from './host-lock.ts';
 
 const PATH = '/kit/host.lock';
 const QUEUE = `${PATH}.queue`;
+const SHARED = `${PATH}.shared`;
 const TTL_MS = 150 * 60_000;
 const ME = 4242;
 const OTHER = 9001;
@@ -322,5 +323,150 @@ describe('HostLock.state', () => {
     gone.running.delete(OTHER);
     assert.deepEqual(await gone.lock.state(), { kind: 'stale', info: OTHERS });
     assert.equal(await gone.files.read(PATH), heldBy());
+  });
+});
+
+/** A small step sharing the host: po's spec run since 09:50, lasting to 12:20, by `OTHER`, 2048 MB held for it. */
+function shareOf(overrides: Partial<HostShare> = {}): HostShare {
+  return { token: 'other', pid: OTHER, session: 'po', purpose: 'heavy: specs', acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z', reserveMb: 2048, ...overrides };
+}
+
+/** A share's file, `[path, text]`. */
+function shareFile(share: HostShare): [string, string] {
+  return [`${SHARED}/${share.token}.json`, JSON.stringify(share)];
+}
+
+/** A small step asking for 2048 MB with 4096 kept free, on a host with `freeMb` free. */
+function small(freeMb: number): ShareRequest {
+  return { reserveMb: 2048, floorMb: 4096, freeMb: () => freeMb };
+}
+
+describe('HostLock shares', () => {
+  it('lets a small step share a free host at once, alone whatever the free memory, leaving the lock and the line', async () => {
+    const { files, lock } = world();
+    const taking = await lock.acquire('alpha', 'heavy: specs', 60_000, 30_000, () => undefined, small(1000));
+    const share = { token: 't1', pid: ME, session: 'alpha', purpose: 'heavy: specs', acquiredAt: '2030-01-08T10:00:00.000Z', expiresAt: '2030-01-08T12:30:00.000Z', reserveMb: 2048 };
+    assert.deepEqual(taking, { kind: 'taken', lock: share, sharing: { freeMb: 1000, others: [] } });
+    assert.deepEqual([files.get(PATH), files.get(`${SHARED}/t1.json`), await lineOf(files)], [undefined, JSON.stringify(share), []]);
+  });
+
+  it('lets another small step in while the free memory less the MB held for the others leaves the floor and its own', async () => {
+    const [path, text] = shareFile(shareOf());
+    const { lock } = world({ [path]: text });
+    const taking = await lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, small(8192));
+    assert.deepEqual(taking.kind === 'taken' ? taking.sharing : undefined, { freeMb: 8192, others: [shareOf()] });
+  });
+
+  it('keeps a small step waiting while memory is short, telling of it once, and lets it in when the share ends', async () => {
+    const [path, text] = shareFile(shareOf());
+    let sleeps = 0;
+    const { clock, lock } = world({ [path]: text }, (time, store) => async (ms) => {
+      await time.sleep(ms);
+      sleeps += 1;
+      if (sleeps === 2) {
+        await store.remove(path);
+      }
+    });
+    const told: string[] = [];
+    const taking = await lock.acquire('alpha', 'heavy: specs', 60_000, 30_000, (holder, ahead) => told.push(waitText(holder, ahead)), small(8191));
+    assert.deepEqual(told, ['1 small step: po (heavy: specs) since 2030-01-08 09:50; 8191 MB free, 2048 MB held for it, 6144 MB needed']);
+    assert.deepEqual(clock.sleeps, [FIRST_IN_LINE_POLL_MS, FIRST_IN_LINE_POLL_MS]);
+    assert.deepEqual(taking.kind === 'taken' ? taking.sharing : undefined, { freeMb: 8191, others: [] });
+  });
+
+  it('gives up when memory stays short through its wait, writing no share', async () => {
+    const [path, text] = shareFile(shareOf());
+    const { files, lock } = world({ [path]: text });
+    const taking = await lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, small(100));
+    assert.equal(taking.kind === 'busy' ? taking.holder.kind : '', 'memory');
+    assert.deepEqual([await files.list(SHARED), await lineOf(files)], [['other.json'], []]);
+  });
+
+  it('never shares a host whose lock is held, nor ahead of an earlier waiter', async () => {
+    const held = world({ [PATH]: heldBy() });
+    const busy = await held.lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, small(64_000));
+    const [early, text] = ticket(waiterOf('2030-01-08T09:59:00.000Z'));
+    const queued = world({ [early]: text });
+    const behind = await queued.lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, small(64_000));
+    assert.deepEqual([busy.kind === 'busy' ? busy.holder.kind : '', behind.kind === 'busy' ? behind.holder.kind : ''], ['held', 'queued']);
+    assert.deepEqual([await held.files.list(SHARED), await queued.files.list(SHARED)], [[], []]);
+  });
+
+  it('shares a host whose lock is stale, leaving that lock for the next step that takes the lock', async () => {
+    const { files, lock } = world({ [PATH]: heldBy({ pid: 7 }) });
+    const taking = await lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, small(1000));
+    assert.equal(taking.kind === 'taken' ? taking.sharing?.freeMb : undefined, 1000);
+    assert.equal(files.get(PATH), heldBy({ pid: 7 }));
+  });
+
+  it('removes a file it cannot read once it has seen it so for 10 seconds, then shares the host', async () => {
+    const { clock, files, lock } = world({ [PATH]: '{"tok' });
+    const taking = await lock.acquire('alpha', 'heavy: specs', 60_000, 30_000, () => undefined, small(1000));
+    assert.equal(taking.kind === 'taken' ? taking.sharing?.freeMb : undefined, 1000);
+    assert.deepEqual([clock.sleeps.length, files.get(PATH)], [HostLock.UNREADABLE_GRACE_MS / FIRST_IN_LINE_POLL_MS, undefined]);
+  });
+
+  it('makes a step that took the lock wait, holding it, for the shares to end, then renews its lock', async () => {
+    const [path, text] = shareFile(shareOf());
+    const holders: unknown[] = [];
+    let sleeps = 0;
+    const { clock, files, lock } = world({ [path]: text }, (time, store) => async (ms) => {
+      holders.push(JSON.parse(store.get(PATH) ?? '{}').session);
+      await time.sleep(ms);
+      sleeps += 1;
+      if (sleeps === 2) {
+        await store.remove(path);
+      }
+    });
+    const told: string[] = [];
+    const taking = await lock.acquire('alpha', 'heavy: build', 60 * 60_000, 30_000, (holder) => told.push(holderText(holder)));
+    assert.deepEqual(told, ['1 small step: po (heavy: specs) since 2030-01-08 09:50']);
+    assert.deepEqual([clock.sleeps, holders], [[FIRST_IN_LINE_POLL_MS, FIRST_IN_LINE_POLL_MS], ['alpha', 'alpha']], 'it holds the lock while it waits');
+    const renewed = { token: 't1', pid: ME, session: 'alpha', purpose: 'heavy: build', acquiredAt: '2030-01-08T10:00:00.000Z', expiresAt: '2030-01-08T12:30:04.000Z' };
+    assert.deepEqual([taking, fileOf(files)], [{ kind: 'taken', lock: renewed }, renewed]);
+  });
+
+  it('gives up when the shares outlast its wait, releasing the lock it took', async () => {
+    const [path, text] = shareFile(shareOf());
+    const { clock, files, lock } = world({ [path]: text });
+    const taking = await lock.acquire('alpha', 'heavy: build', 5_000, 30_000, () => undefined);
+    assert.equal(taking.kind === 'busy' ? taking.holder.kind : '', 'draining');
+    assert.deepEqual([clock.sleeps, files.get(PATH), files.get(path), await lineOf(files)], [[2_000, 2_000, 1_000], undefined, text, []]);
+  });
+
+  it('never holds its lock past the lock expiry while it waits for the shares', async () => {
+    const [path, text] = shareFile(shareOf({ expiresAt: '2030-01-09T10:00:00.000Z' }));
+    const { clock, files, lock } = world({ [path]: text });
+    const taking = await lock.acquire('alpha', 'heavy: build', 4 * TTL_MS, 30_000, () => undefined);
+    assert.equal(taking.kind === 'busy' ? taking.holder.kind : '', 'draining');
+    assert.deepEqual([clock.sleeps.reduce((total, ms) => total + ms, 0), files.get(PATH)], [TTL_MS, undefined]);
+  });
+
+  it("removes a share whose process is gone, that expired or that cannot be read, and keeps a writer's temporary file", async () => {
+    const gone = shareFile(shareOf({ token: 'gone', pid: 7 }));
+    const late = shareFile(shareOf({ token: 'late', expiresAt: '2030-01-08T10:00:00.000Z' }));
+    const { clock, files, lock } = world(
+      Object.fromEntries([gone, late, [`${SHARED}/damaged.json`, '{"tok'], [`${SHARED}/fresh.json.9001.1.tmp`, '{"tok']]),
+    );
+    assert.equal((await lock.acquire('alpha', 'heavy: build', 0, 30_000, () => undefined)).kind, 'taken');
+    assert.deepEqual([clock.sleeps, await files.list(SHARED)], [[], ['fresh.json.9001.1.tmp']]);
+  });
+
+  it('finds a live share by its token and releases it; lists the live shares oldest first, removing none', async () => {
+    const later = shareOf({ token: 'a-later', session: 'web', acquiredAt: '2030-01-08T09:55:00.000Z' });
+    const stale = shareFile(shareOf({ token: 'stale', pid: 7 }));
+    const { files, lock } = world(Object.fromEntries([shareFile(shareOf()), shareFile(later), stale]));
+    assert.deepEqual(await lock.heldWith('other'), shareOf());
+    assert.deepEqual([await lock.heldWith('stale'), await lock.heldWith('../other'), await lock.heldWith('missing')], [undefined, undefined, undefined]);
+    assert.deepEqual([await lock.shares(), files.get(stale[0])], [[shareOf(), later], stale[1]]);
+    assert.equal(await lock.release(shareOf()), true);
+    assert.deepEqual([files.get(shareFile(shareOf())[0]), await lock.release(shareOf())], [undefined, false]);
+  });
+
+  it('names the small steps, and the memory they leave, as a waiter reads them', () => {
+    const shares = [shareOf(), shareOf({ token: 'b', session: 'web', purpose: 'heavy: lint', acquiredAt: '2030-01-08T09:55:00.000Z' })];
+    const steps = '2 small steps: po (heavy: specs) since 2030-01-08 09:50, web (heavy: lint) since 2030-01-08 09:55';
+    assert.equal(holderText({ kind: 'draining', shares }), steps);
+    assert.equal(holderText({ kind: 'memory', freeMb: 7000, heldMb: 4096, needMb: 6144, shares }), `${steps}; 7000 MB free, 4096 MB held for them, 6144 MB needed`);
   });
 });

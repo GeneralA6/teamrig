@@ -47,10 +47,43 @@ interface Ticket {
   readonly waiter: LockWaiter;
 }
 
-/** What a waiter waits on: the lock's holder, or the earlier waiter the free lock goes to next. */
-export type LockWait = LockHolder | { readonly kind: 'queued'; readonly first: LockWaiter };
+/**
+ * A small step sharing the host (`teamrig heavy --small`): a lock's fields under its own token, in the file
+ * `<lock>.shared/<token>.json`, with the memory held for it while it runs.
+ */
+export interface HostShare extends HostLockInfo {
+  /** The MB held for it: another small step is let in only while the host has this free besides. */
+  readonly reserveMb: number;
+}
 
-export type Taking = { readonly kind: 'taken'; readonly lock: HostLockInfo } | { readonly kind: 'busy'; readonly holder: LockWait };
+/** What a small step asks to share the host: the MB held for it, the least the host keeps free, and its free memory now. */
+export interface ShareRequest {
+  readonly reserveMb: number;
+  readonly floorMb: number;
+  freeMb(): number;
+}
+
+/** How a share was let in: the host's free memory then, and the small steps already sharing it. */
+export interface Sharing {
+  readonly freeMb: number;
+  readonly others: readonly HostShare[];
+}
+
+/**
+ * What a waiter waits on: the lock's holder, the earlier waiter the free lock goes to next, the small steps a step
+ * that took the lock waits to end, or, for a small step, the memory the small steps sharing the host leave it.
+ */
+export type LockWait =
+  | LockHolder
+  | { readonly kind: 'queued'; readonly first: LockWaiter }
+  | { readonly kind: 'draining'; readonly shares: readonly HostShare[] }
+  | { readonly kind: 'memory'; readonly freeMb: number; readonly heldMb: number; readonly needMb: number; readonly shares: readonly HostShare[] };
+
+/** A lock taken, `sharing` set when it is a small step's share of the host; or what the step still waits on. */
+export type Taking = { readonly kind: 'taken'; readonly lock: HostLockInfo; readonly sharing?: Sharing } | { readonly kind: 'busy'; readonly holder: LockWait };
+
+/** Hears what a waiter waits on, with the number of waiters ahead of it. */
+type Tell = (holder: LockWait, ahead: number) => void;
 
 /** The lock as a reader sees it: free, held, stale (expired or its process gone; the next step removes it) or being written. */
 export type LockState = { readonly kind: 'free' } | { readonly kind: 'stale'; readonly info: HostLockInfo } | LockHolder;
@@ -84,6 +117,13 @@ const ARRIVAL_DIGITS = 15;
 /** A ticket's name; a writer's temporary sibling (`<name>.<pid>.<n>.tmp`) does not match. */
 const TICKET_NAME = /^\d{15}-[^/\\]+\.json$/;
 
+/** A share's name, its token's; a writer's temporary sibling does not match. */
+const SHARE_NAME = /^[^/\\]+\.json$/;
+
+function byAcquiredAt(a: HostLockInfo, b: HostLockInfo): number {
+  return Date.parse(a.acquiredAt) - Date.parse(b.acquiredAt);
+}
+
 function isTime(value: unknown): value is string {
   return typeof value === 'string' && !Number.isNaN(Date.parse(value));
 }
@@ -110,6 +150,10 @@ function isLockWaiter(value: unknown): value is LockWaiter {
     isTime(value['arrivedAt']) &&
     isTime(value['expiresAt'])
   );
+}
+
+function isHostShare(value: unknown): value is HostShare {
+  return isHostLockInfo(value) && isRecord(value) && typeof value['reserveMb'] === 'number' && Number.isSafeInteger(value['reserveMb']) && value['reserveMb'] >= 0;
 }
 
 function parseAs<T>(text: string, is: (value: unknown) => value is T): T | undefined {
@@ -142,7 +186,17 @@ export function holderText(holder: LockWait): string {
       return `${holder.first.session} (${holder.first.purpose}), first in line since ${formatUtcMinute(new Date(holder.first.arrivedAt))}`;
     case 'unknown':
       return 'a writer that has not finished writing';
+    case 'draining':
+      return sharesText(holder.shares);
+    case 'memory':
+      return `${sharesText(holder.shares)}; ${holder.freeMb} MB free, ${holder.heldMb} MB held for ${holder.shares.length === 1 ? 'it' : 'them'}, ${holder.needMb} MB needed`;
   }
+}
+
+/** The small steps sharing the host: `2 small steps: <session> (<purpose>) since <UTC minute>, ...`. */
+export function sharesText(shares: readonly HostShare[]): string {
+  const steps = shares.map((share) => holderText({ kind: 'held', info: share })).join(', ');
+  return `${shares.length} small step${shares.length === 1 ? '' : 's'}: ${steps}`;
 }
 
 /** A waiter's report: what it waits on, then how many waiters are ahead of it in line when any are. */
@@ -159,7 +213,22 @@ function waitKey(holder: LockWait, ahead: number): string {
       return `queued ${holder.first.token} ${ahead}`;
     case 'unknown':
       return `unknown ${ahead}`;
+    case 'draining':
+    case 'memory':
+      return `${holder.kind} ${holder.shares.map((share) => share.token).join(',')} ${ahead}`;
   }
+}
+
+/** `onWait`, told only of a new holder or a new place in line. */
+function tellingChanges(onWait: Tell): Tell {
+  let told: string | undefined;
+  return (holder, ahead) => {
+    const key = waitKey(holder, ahead);
+    if (key !== told) {
+      onWait(holder, ahead);
+      told = key;
+    }
+  };
 }
 
 /**
@@ -170,18 +239,26 @@ function waitKey(holder: LockWait, ahead: number): string {
  * Waiters take it in arrival order: each joins a line of tickets in `<lock>.queue`, and only the first live one may
  * take the lock; a ticket whose process is gone or whose wait ran out is removed by the next waiter that sees it.
  * A step that does not join the line (an older kit, a team's own coordinator) may still take a free lock first.
+ * Small steps (`teamrig heavy --small`: a spec run, a lint) share the host instead: in its turn, while the lock is not
+ * held, a small step writes its share, `<lock>.shared/<token>.json`, before it leaves the line, so the next in line
+ * sees it. It is let in at once when no other small step runs, else only while the host's free memory less the MB
+ * held for those leaves `floorMb` plus its own. A step that takes the lock waits, holding it, for the shares to end,
+ * so none is let in meanwhile. A share whose process is gone, that expired or that cannot be read is removed by the
+ * next step that looks. A step that does not know shares (an older kit) takes a free lock while they run.
  */
 export class HostLock {
   static readonly UNREADABLE_GRACE_MS = 10_000;
 
   private readonly path: string;
   private readonly queue: string;
+  private readonly shared: string;
   private readonly ttlMs: number;
   private readonly ports: HostLockPorts;
 
   constructor(path: string, ttlMs: number, ports: HostLockPorts) {
     this.path = path;
     this.queue = `${path}.queue`;
+    this.shared = `${path}.shared`;
     this.ttlMs = ttlMs;
     this.ports = ports;
   }
@@ -223,49 +300,48 @@ export class HostLock {
   /**
    * Takes the lock in its turn: joins the line, then looks again every `pollMs` (the first in line every
    * `FIRST_IN_LINE_POLL_MS` at most) for at most `maxWaitMs`, and leaves the line when done. `onWait` hears each new
-   * holder or place in line once, with the number of waiters ahead. Busy when the wait ran out.
+   * holder or place in line once, with the number of waiters ahead. A lock taken then waits, held, for the small
+   * steps sharing the host to end. With `share`, a small step shares the host in its turn instead (see the class).
+   * Busy when the wait ran out.
    */
-  async acquire(session: string, purpose: string, maxWaitMs: number, pollMs: number, onWait: (holder: LockWait, ahead: number) => void): Promise<Taking> {
-    const { clock, sleep } = this.ports;
-    const deadline = clock.now() + maxWaitMs;
+  async acquire(session: string, purpose: string, maxWaitMs: number, pollMs: number, onWait: Tell, share?: ShareRequest): Promise<Taking> {
+    const deadline = this.ports.clock.now() + maxWaitMs;
     const ticket = await this.joinLine(session, purpose, deadline);
+    const tell = tellingChanges(onWait);
     try {
-      let told: string | undefined;
-      let unknownSince: number | undefined;
-      for (;;) {
-        const ahead = await this.waitersAhead(ticket.name);
-        const removeUnknown = unknownSince !== undefined && clock.now() - unknownSince >= HostLock.UNREADABLE_GRACE_MS;
-        const result = await this.takeInTurn(ticket.waiter, ahead, removeUnknown);
-        if (result.kind === 'taken') {
-          return result;
-        }
-        const { holder } = result;
-        unknownSince = holder.kind === 'unknown' ? (unknownSince ?? clock.now()) : undefined;
-        const key = waitKey(holder, ahead.length);
-        if (key !== told) {
-          onWait(holder, ahead.length);
-          told = key;
-        }
-        const left = deadline - clock.now();
-        if (left <= 0) {
-          return result;
-        }
-        await sleep(Math.min(ahead.length === 0 ? Math.min(pollMs, FIRST_IN_LINE_POLL_MS) : pollMs, left));
-      }
+      const result = await this.waitInLine(ticket, deadline, pollMs, tell, share);
+      return result.kind === 'taken' && result.sharing === undefined ? await this.drain(result.lock, deadline, tell) : result;
     } finally {
       await this.ports.files.remove(join(this.queue, ticket.name));
     }
   }
 
-  /** Releases a lock this step took; false when it is no longer the holder (it expired and another step took it). */
+  /** Releases a lock or share this step took; false when it is no longer the holder (it expired and another step took it). */
   async release(lock: HostLockInfo): Promise<boolean> {
-    return this.removeIf((text) => parseLock(text)?.token === lock.token);
+    if (await this.removeIf((text) => parseLock(text)?.token === lock.token)) {
+      return true;
+    }
+    const share = await this.shareWith(lock.token);
+    if (share === undefined) {
+      return false;
+    }
+    await this.ports.files.remove(share.path);
+    return true;
   }
 
-  /** The lock while the taking with `token` holds it and it is not stale; undefined otherwise. Takes and removes nothing. */
+  /** The lock or share while the taking with `token` holds it and it is not stale; undefined otherwise. Takes and removes nothing. */
   async heldWith(token: string): Promise<HostLockInfo | undefined> {
     const seen = await this.read();
-    return seen.kind === 'held' && seen.info.token === token && !this.isStale(seen.info) ? seen.info : undefined;
+    if (seen.kind === 'held' && seen.info.token === token) {
+      return this.isStale(seen.info) ? undefined : seen.info;
+    }
+    const share = (await this.shareWith(token))?.share;
+    return share === undefined || this.isStale(share) ? undefined : share;
+  }
+
+  /** The small steps sharing the host, oldest first, a stale share left out; takes and removes nothing. */
+  async shares(): Promise<HostShare[]> {
+    return (await this.shareFiles()).flatMap(({ share }) => (share === undefined || this.isStale(share) ? [] : [share])).sort(byAcquiredAt);
   }
 
   /** The lock's state, taking and removing nothing, for a reader that only shows it. */
@@ -279,6 +355,132 @@ export class HostLock {
       case 'held':
         return this.isStale(seen.info) ? { kind: 'stale', info: seen.info } : seen;
     }
+  }
+
+  /** Looks in line until this step takes the lock, or a share with `share`, in its turn, or its wait runs out. */
+  private async waitInLine(ticket: Ticket, deadline: number, pollMs: number, tell: Tell, share: ShareRequest | undefined): Promise<Taking> {
+    const { clock, sleep } = this.ports;
+    let unknownSince: number | undefined;
+    for (;;) {
+      const ahead = await this.waitersAhead(ticket.name);
+      const removeUnknown = unknownSince !== undefined && clock.now() - unknownSince >= HostLock.UNREADABLE_GRACE_MS;
+      const result = share === undefined ? await this.takeInTurn(ticket.waiter, ahead, removeUnknown) : await this.shareInTurn(ticket.waiter, ahead, removeUnknown, share);
+      if (result.kind === 'taken') {
+        return result;
+      }
+      const { holder } = result;
+      unknownSince = holder.kind === 'unknown' ? (unknownSince ?? clock.now()) : undefined;
+      tell(holder, ahead.length);
+      const left = deadline - clock.now();
+      if (left <= 0) {
+        return result;
+      }
+      await sleep(Math.min(ahead.length === 0 ? Math.min(pollMs, FIRST_IN_LINE_POLL_MS) : pollMs, left));
+    }
+  }
+
+  /**
+   * Holds a lock just taken until the small steps sharing the host end, looking every `FIRST_IN_LINE_POLL_MS`; no new
+   * one is let in meanwhile, as the lock is held. Gives up, releasing the lock, at the wait's deadline or when the lock
+   * would expire, so it never goes stale while held. A lock that waited is renewed, so its step gets its whole time.
+   */
+  private async drain(lock: HostLockInfo, deadline: number, tell: Tell): Promise<Taking> {
+    const { clock, sleep } = this.ports;
+    const until = Math.min(deadline, Date.parse(lock.expiresAt));
+    let waited = false;
+    for (;;) {
+      const shares = await this.liveShares();
+      if (shares.length === 0) {
+        return { kind: 'taken', lock: waited ? await this.renew(lock) : lock };
+      }
+      const holder: LockWait = { kind: 'draining', shares };
+      tell(holder, 0);
+      const left = until - clock.now();
+      if (left <= 0) {
+        await this.release(lock);
+        return { kind: 'busy', holder };
+      }
+      waited = true;
+      await sleep(Math.min(FIRST_IN_LINE_POLL_MS, left));
+    }
+  }
+
+  /** The lock this step holds, its expiry moved to a whole TTL from now. */
+  private async renew(lock: HostLockInfo): Promise<HostLockInfo> {
+    const renewed: HostLockInfo = { ...lock, expiresAt: new Date(this.ports.clock.now() + this.ttlMs).toISOString() };
+    await this.ports.files.write(this.path, JSON.stringify(renewed));
+    return renewed;
+  }
+
+  /**
+   * One look in line for a small step. A live lock is waited on, and so is an earlier waiter. Else the step shares the
+   * host, under its ticket's token, at once when no other small step runs, else while the host's free memory less the
+   * MB held for those leaves `floorMb` plus its own; a stale lock is left for the next step that takes the lock.
+   */
+  private async shareInTurn(waiter: LockWaiter, ahead: readonly LockWaiter[], removeUnknown: boolean, request: ShareRequest): Promise<Taking> {
+    const seen = await this.read();
+    if (seen.kind === 'held' && !this.isStale(seen.info)) {
+      return { kind: 'busy', holder: seen };
+    }
+    const [first] = ahead;
+    if (first !== undefined) {
+      return { kind: 'busy', holder: seen.kind === 'unknown' ? { kind: 'unknown' } : { kind: 'queued', first } };
+    }
+    if (seen.kind === 'unknown') {
+      if (!removeUnknown) {
+        return { kind: 'busy', holder: { kind: 'unknown' } };
+      }
+      await this.removeIf((text) => text === seen.text);
+    }
+    const others = await this.liveShares();
+    const freeMb = request.freeMb();
+    const heldMb = others.reduce((total, other) => total + other.reserveMb, 0);
+    const needMb = request.floorMb + request.reserveMb;
+    if (others.length > 0 && freeMb - heldMb < needMb) {
+      return { kind: 'busy', holder: { kind: 'memory', freeMb, heldMb, needMb, shares: others } };
+    }
+    const share: HostShare = { ...this.newLock(waiter.session, waiter.purpose, waiter.token), reserveMb: request.reserveMb };
+    await this.ports.files.write(join(this.shared, `${share.token}.json`), JSON.stringify(share));
+    return { kind: 'taken', lock: share, sharing: { freeMb, others } };
+  }
+
+  /** Every share file, with what it says: undefined when it cannot be read as a share. */
+  private async shareFiles(): Promise<{ readonly path: string; readonly share: HostShare | undefined }[]> {
+    const { files } = this.ports;
+    const found: { readonly path: string; readonly share: HostShare | undefined }[] = [];
+    for (const name of (await files.list(this.shared)).filter((entry) => SHARE_NAME.test(entry))) {
+      const path = join(this.shared, name);
+      const text = await files.read(path);
+      if (text !== undefined) {
+        found.push({ path, share: parseAs(text, isHostShare) });
+      }
+    }
+    return found;
+  }
+
+  /** The live shares, oldest first; a share whose process is gone, that expired or that cannot be read is removed (shares are written whole). */
+  private async liveShares(): Promise<HostShare[]> {
+    const live: HostShare[] = [];
+    for (const { path, share } of await this.shareFiles()) {
+      if (share === undefined || this.isStale(share)) {
+        await this.ports.files.remove(path);
+      } else {
+        live.push(share);
+      }
+    }
+    return live.sort(byAcquiredAt);
+  }
+
+  /** The share the taking with `token` wrote, and its file; undefined when there is none or the token is no file name. */
+  private async shareWith(token: string): Promise<{ readonly path: string; readonly share: HostShare } | undefined> {
+    const name = `${token}.json`;
+    if (!SHARE_NAME.test(name)) {
+      return undefined;
+    }
+    const path = join(this.shared, name);
+    const text = await this.ports.files.read(path);
+    const share = text === undefined ? undefined : parseAs(text, isHostShare);
+    return share?.token === token ? { path, share } : undefined;
   }
 
   /**
