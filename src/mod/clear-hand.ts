@@ -66,6 +66,21 @@ export interface HandAsk {
 /** What the band above the prompt shows: the count to the /clear, or that it comes with the next ask. */
 export type BandView = { readonly kind: 'counting'; readonly secondsLeft: number } | { readonly kind: 'refreshing' };
 
+/** The band's line above the prompt for what it shows. */
+export function bandLine(view: BandView): string {
+  return view.kind === 'counting'
+    ? `teamrig: this session refreshes in ${view.secondsLeft} s, a fresh start from its handover`
+    : 'teamrig: this session is refreshing, a fresh start from its handover';
+}
+
+/** Whether two views draw the same band (undefined: none), so the mod writes the band's value only when it changes. */
+export function sameBand(a: BandView | undefined, b: BandView | undefined): boolean {
+  if (a === undefined || b === undefined) {
+    return a === b;
+  }
+  return a.kind === 'counting' ? b.kind === 'counting' && a.secondsLeft === b.secondsLeft : b.kind === 'refreshing';
+}
+
 /** An ask's answer in its outcome file: whichever of the three is written first wins. */
 export type ClaimOutcome = typeof CLAIM_TAKEN | typeof CLAIM_HELD | typeof CLAIM_WITHDRAWN;
 
