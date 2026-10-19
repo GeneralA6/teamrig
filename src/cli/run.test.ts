@@ -368,20 +368,35 @@ describe('runCli: config', () => {
     ]);
   });
 
-  it('notes an older config, then migrates it and keeps the old file', async () => {
+  it('notes an older config, shows its rewrite and the release it needs, then writes it with --yes and keeps the old file', async () => {
     const [current, next] = [CONFIG_VERSION, CONFIG_VERSION + 1];
     const kit = new CliHarness(CURRENT_TEAM);
     const validated = await kit.run(['config', 'validate'], { configFormat: NEXT_FORMAT });
     assert.equal(validated.code, EXIT.ok);
-    assert.deepEqual(validated.stdout, [`NOTE config version ${current} is older than ${next}; run: teamrig config migrate`, `VALID ${CONFIG_PATH}`]);
+    assert.deepEqual(validated.stdout, [`NOTE config version ${current} is older than ${next}, read as ${next} in memory; teamrig config migrate shows the rewrite`, `VALID ${CONFIG_PATH}`]);
 
-    const migrated = await kit.run(['config', 'migrate'], { configFormat: NEXT_FORMAT });
+    const before = kit.files.get(CONFIG_PATH);
+    const preview = await kit.run(['config', 'migrate'], { configFormat: NEXT_FORMAT });
+    assert.deepEqual(
+      [preview.code, preview.stdout],
+      [
+        EXIT.ok,
+        [
+          `PREVIEW ${CONFIG_PATH} from version ${current} to ${next}; nothing written`,
+          `  v${current}→v${next}: added a flag`,
+          `NOTE every command reads it as version ${next} already; once written, a tab on a teamrig before 9.0.0 refuses every write until it restarts. Restart those tabs, then: teamrig config migrate --yes`,
+        ],
+      ],
+    );
+    assert.equal(kit.files.get(CONFIG_PATH), before);
+
+    const migrated = await kit.run(['config', 'migrate', '--yes'], { configFormat: NEXT_FORMAT });
     assert.equal(migrated.code, EXIT.ok, migrated.stdout.join('\n'));
     assert.match(migrated.stdout[0] ?? '', new RegExp(`^MIGRATED .* from version ${current} to ${next}; the old file is at .*config\\.v${current}\\.json$`));
     assert.deepEqual(migrated.stdout.slice(1), [`  v${current}→v${next}: added a flag`]);
     assert.match(kit.files.get(CONFIG_PATH) ?? '', new RegExp(`"configVersion": ${next}`));
 
-    const again = await kit.run(['config', 'migrate'], { configFormat: NEXT_FORMAT });
+    const again = await kit.run(['config', 'migrate', '--yes'], { configFormat: NEXT_FORMAT });
     assert.deepEqual(again.stdout, [`UNCHANGED ${CONFIG_PATH} needs no migration`]);
   });
 
@@ -391,10 +406,10 @@ describe('runCli: config', () => {
     const validated = await kit.run(['config', 'validate']);
     assert.deepEqual(
       [validated.code, validated.stdout],
-      [EXIT.ok, [`NOTE config version 1 is older than ${CONFIG_VERSION}; run: teamrig config migrate`, `VALID ${CONFIG_PATH}`]],
+      [EXIT.ok, [`NOTE config version 1 is older than ${CONFIG_VERSION}, read as ${CONFIG_VERSION} in memory; teamrig config migrate shows the rewrite`, `VALID ${CONFIG_PATH}`]],
     );
 
-    const migrated = await kit.run(['config', 'migrate']);
+    const migrated = await kit.run(['config', 'migrate', '--yes']);
     assert.equal(migrated.code, EXIT.ok, migrated.stdout.join('\n'));
     assert.deepEqual(migrated.stdout.slice(1), ['  v1→v2: register.tiers → register.priorities']);
     const written: unknown = JSON.parse(kit.files.get(CONFIG_PATH) ?? '');
@@ -403,7 +418,7 @@ describe('runCli: config', () => {
 
   it('migrates a version-2 config: register.requireNoteOn names waiting where it named blocked', async () => {
     const kit = new CliHarness({ ...TEAM, configVersion: 2, register: { requireNoteOn: ['blocked', 'done'] } });
-    const migrated = await kit.run(['config', 'migrate']);
+    const migrated = await kit.run(['config', 'migrate', '--yes']);
     assert.equal(migrated.code, EXIT.ok, migrated.stdout.join('\n'));
     assert.deepEqual(migrated.stdout.slice(1), ['  v2→v3: register.requireNoteOn: blocked → waiting']);
     const written: unknown = JSON.parse(kit.files.get(CONFIG_PATH) ?? '');

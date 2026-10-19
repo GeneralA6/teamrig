@@ -1516,9 +1516,15 @@ read warn and use the default for each bad field, and commands that write refuse
 
 ### teamrig config migrate
 
-Rewrites an older config in the current format and keeps the old file in `backups/`.
+Shows an older config rewritten in the current format; `--yes` writes it and keeps the old file in `backups/`.
 
-Flags: none.
+Flags:
+
+- `--yes`: writes the rewrite. Without it the command shows the rewrite and writes nothing.
+
+Nothing needs the rewrite: every command reads an older file migrated in memory. Once the new version is written,
+a tab running a teamrig older than that version's first release refuses every write until it restarts, so the
+preview names that release. Restart such tabs before `--yes`.
 
 Example:
 
@@ -1529,8 +1535,12 @@ teamrig config migrate
 Output:
 
 ```text
-UNCHANGED /home/you/.teamrig/teams/shop/config.json needs no migration
+PREVIEW /home/you/.teamrig/teams/shop/config.json from version 3 to 4; nothing written
+  v3→v4: budget.dailyPct removed: the daily budget is recomputed from what is left of the week
+NOTE every command reads it as version 4 already; once written, a tab on a teamrig before 0.83.0 refuses every write until it restarts. Restart those tabs, then: teamrig config migrate --yes
 ```
+
+A current config prints `UNCHANGED <path> needs no migration`, and one from a newer teamrig is refused.
 
 ### teamrig commits check
 
