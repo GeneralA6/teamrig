@@ -4,7 +4,7 @@ import { coordinatorPlaces } from '../../coordinator/places.ts';
 import { minutesText, parseSpanMinutes } from '../../coordinator/schedule.ts';
 import { deployTargetsOf, repoTargetsOf } from '../../coordinator/targets.ts';
 import { cleanWindows, disruptions, loadsDuring, loadsOf, type Load, type Span } from '../../coordinator/windows.ts';
-import { formatUtcMinute } from '../../core/time.ts';
+import type { TimeZone } from '../../core/zone.ts';
 import { requiredFlag, UsageError, type Flags, type ParsedArgs } from '../args.ts';
 import { instantOf, listOf, type TypedTimes } from '../inputs.ts';
 import { openTeamKit, requireConfig, teamZone } from '../kit.ts';
@@ -12,8 +12,9 @@ import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 
 const MINUTE_MS = 60_000;
 
-function utc(ms: number): string {
-  return formatUtcMinute(new Date(ms));
+/** An instant as the team reads it: `2030-01-08 12:00 IST`. */
+function minuteText(ms: number, zone: TimeZone): string {
+  return zone.minute(new Date(ms));
 }
 
 /** `--settle 1h`: a span in minutes; undefined when the flag is absent. */
@@ -33,12 +34,12 @@ function countText(count: number): string {
   return count === 0 ? 'no clean window' : `${count} clean window${count === 1 ? '' : 's'}`;
 }
 
-function windowLine(window: Span): string {
-  return `  ${utc(window.from)} to ${utc(window.to)} UTC (${minutesText(Math.round((window.to - window.from) / MINUTE_MS))})`;
+function windowLine(window: Span, zone: TimeZone): string {
+  return `  ${minuteText(window.from, zone)} to ${minuteText(window.to, zone)} (${minutesText(Math.round((window.to - window.from) / MINUTE_MS))})`;
 }
 
-function loadLine(load: Load): string {
-  return `    under load ${load.id} by ${load.session}: ${load.what} (from ${utc(load.from)} UTC, ${load.open ? 'still running' : `ended ${utc(load.to)} UTC`})`;
+function loadLine(load: Load, zone: TimeZone): string {
+  return `    under load ${load.id} by ${load.session}: ${load.what} (from ${minuteText(load.from, zone)}, ${load.open ? 'still running' : `ended ${minuteText(load.to, zone)}`})`;
 }
 
 /** What `windows` measures in: the span, each target's settle time and the shortest window worth naming. */
@@ -61,7 +62,7 @@ function askOf(flags: Flags, coordinator: CoordinatorConfig, times: TypedTimes):
   const untilText = flags.get('until');
   const until = Math.min(nowMs, untilText === undefined ? nowMs : instantOf('--until', untilText, times));
   if (until <= since) {
-    throw new UsageError(`--since ${utc(since)} UTC is not before ${untilText === undefined ? 'now' : '--until'} (${utc(until)} UTC)`);
+    throw new UsageError(`--since ${minuteText(since, times.zone)} is not before ${untilText === undefined ? 'now' : '--until'} (${minuteText(until, times.zone)})`);
   }
   const settle = spanFlag(flags, 'settle');
   const perTarget = new Map(Object.entries(coordinator.windows.targetSettleMinutes));
@@ -84,7 +85,8 @@ export async function windows(args: ParsedArgs, runtime: CliRuntime): Promise<Ex
   const kit = await openTeamKit(runtime);
   const config = requireConfig(kit, runtime, 'read');
   const { coordinator } = config;
-  const ask = askOf(args.flags, coordinator, { nowMs, zone: teamZone(config, runtime) });
+  const zone = teamZone(config, runtime);
+  const ask = askOf(args.flags, coordinator, { nowMs, zone });
   const places = coordinatorPlaces(coordinator, kit.paths);
   const records = parseLedger((await runtime.files.read(places.ledger)) ?? '');
   const md = parseLedgerMd((await runtime.files.read(places.ledgerMd)) ?? '');
@@ -104,8 +106,8 @@ export async function windows(args: ParsedArgs, runtime: CliRuntime): Promise<Ex
     const found = cleanWindows(all, target, ask.span, ask.minMinutes * MINUTE_MS);
     runtime.out.stdout(`${target} (settle ${minutesText(settle)}): ${countText(found.length)} of at least ${minutesText(ask.minMinutes)}`);
     for (const window of found) {
-      runtime.out.stdout(windowLine(window));
-      loadsDuring(loads, target, window).forEach((load) => runtime.out.stdout(loadLine(load)));
+      runtime.out.stdout(windowLine(window, zone));
+      loadsDuring(loads, target, window).forEach((load) => runtime.out.stdout(loadLine(load, zone)));
     }
   }
   return EXIT.ok;

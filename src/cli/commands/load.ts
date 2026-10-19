@@ -4,7 +4,6 @@ import { endLoad, startLoad, type LoadOutcome, type LoadPorts } from '../../coor
 import { coordinatorPlaces } from '../../coordinator/places.ts';
 import { deployTargetsOf } from '../../coordinator/targets.ts';
 import { SecretScanner } from '../../core/secrets.ts';
-import { formatUtcMinute } from '../../core/time.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import { requiredFlag, type ParsedArgs } from '../args.ts';
 import { callerOf, instantOf, listOf, type TypedTimes } from '../inputs.ts';
@@ -18,7 +17,7 @@ interface LoadContext {
   readonly ledger: string;
   readonly scanner: SecretScanner;
   readonly ports: LoadPorts;
-  /** The team's zone, which a typed `--at` is read in. */
+  /** The team's zone, which a typed `--at` is read in and a time is printed in. */
   readonly zone: TimeZone;
 }
 
@@ -59,10 +58,6 @@ function atOf(args: ParsedArgs, times: TypedTimes): number {
   return text === undefined ? times.nowMs : instantOf('--at', text, times);
 }
 
-function utc(ms: number): string {
-  return `${formatUtcMinute(new Date(ms))} UTC`;
-}
-
 /**
  * `teamrig load --what "<what>" [--targets <a,b>|host] [--at <time>]`: declares a background load (a long data
  * script, a backfill) in the ledger from `--at` (default now), so `teamrig windows` names it on the windows it overlaps.
@@ -74,10 +69,10 @@ export async function load(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   const nowMs = runtime.clock.now();
   const context = await loadContextOf(args, runtime);
   const startedAt = atOf(args, { nowMs, zone: context.zone });
-  const rules = { knownTargets: deployTargetsOf(context.coordinator.repos), scanner: context.scanner, nowMs };
+  const rules = { knownTargets: deployTargetsOf(context.coordinator.repos), scanner: context.scanner, nowMs, zone: context.zone };
   const record = recordOf(await startLoad(context.ports, context.ledger, rules, { session: context.session, what, targets, startedAt }));
   const on = record.targets === 'host' ? 'the whole host' : record.targets.join(', ');
-  runtime.out.stdout(`LOAD ${record.id} on ${on} from ${utc(startedAt)} (end it: teamrig load end --id ${record.id})`);
+  runtime.out.stdout(`LOAD ${record.id} on ${on} from ${context.zone.minute(new Date(startedAt))} (end it: teamrig load end --id ${record.id})`);
   return EXIT.ok;
 }
 
@@ -90,7 +85,7 @@ export async function loadEnd(args: ParsedArgs, runtime: CliRuntime): Promise<Ex
   const nowMs = runtime.clock.now();
   const context = await loadContextOf(args, runtime);
   const endedAt = atOf(args, { nowMs, zone: context.zone });
-  const record = recordOf(await endLoad(context.ports, context.ledger, { session: context.session, id, endedAt, nowMs }));
-  runtime.out.stdout(`ENDED ${record.id} at ${utc(endedAt)}`);
+  const record = recordOf(await endLoad(context.ports, context.ledger, { session: context.session, id, endedAt, nowMs, zone: context.zone }));
+  runtime.out.stdout(`ENDED ${record.id} at ${context.zone.minute(new Date(endedAt))}`);
   return EXIT.ok;
 }

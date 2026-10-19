@@ -30,14 +30,14 @@ describe('teamrig windows', () => {
       code: 0,
       stdout: [
         'cloud-api (settle 30m): 3 clean windows of at least 15m',
-        '  2030-01-08 06:00 to 2030-01-08 06:40 UTC (40m)',
-        '  2030-01-08 07:30 to 2030-01-08 08:00 UTC (30m)',
-        '  2030-01-08 08:20 to 2030-01-08 10:00 UTC (1h40m)',
+        '  2030-01-08 06:00 UTC to 2030-01-08 06:40 UTC (40m)',
+        '  2030-01-08 07:30 UTC to 2030-01-08 08:00 UTC (30m)',
+        '  2030-01-08 08:20 UTC to 2030-01-08 10:00 UTC (1h40m)',
         '    under load id-1 by bravo: db trim (from 2030-01-08 08:30 UTC, still running)',
         'cloud-web (settle 10m): 3 clean windows of at least 15m',
-        '  2030-01-08 06:00 to 2030-01-08 06:40 UTC (40m)',
-        '  2030-01-08 07:10 to 2030-01-08 08:00 UTC (50m)',
-        '  2030-01-08 08:20 to 2030-01-08 10:00 UTC (1h40m)',
+        '  2030-01-08 06:00 UTC to 2030-01-08 06:40 UTC (40m)',
+        '  2030-01-08 07:10 UTC to 2030-01-08 08:00 UTC (50m)',
+        '  2030-01-08 08:20 UTC to 2030-01-08 10:00 UTC (1h40m)',
         '    under load id-1 by bravo: db trim (from 2030-01-08 08:30 UTC, still running)',
       ],
       stderr: [],
@@ -49,7 +49,7 @@ describe('teamrig windows', () => {
     await ledgered(kit);
     assert.deepEqual(await kit.run(['windows', '--targets', 'cloud-web', '--since', '2030-01-08', '--until', '2030-01-09', '--settle', '1h', '--min', '1h']), {
       code: 0,
-      stdout: ['cloud-web (settle 1h00m): 2 clean windows of at least 1h00m', '  2030-01-08 00:00 to 2030-01-08 06:40 UTC (6h40m)', '  2030-01-08 08:20 to 2030-01-08 10:00 UTC (1h40m)'],
+      stdout: ['cloud-web (settle 1h00m): 2 clean windows of at least 1h00m', '  2030-01-08 00:00 UTC to 2030-01-08 06:40 UTC (6h40m)', '  2030-01-08 08:20 UTC to 2030-01-08 10:00 UTC (1h40m)'],
       stderr: [],
     });
     assert.deepEqual((await kit.run(['windows', '--targets', 'cloud-web', '--since', '07:00', '--until', '07:30', '--settle', '1h'])).stdout, [

@@ -1,6 +1,6 @@
 import type { Files } from '../core/files.ts';
 import type { SecretScanner } from '../core/secrets.ts';
-import { formatUtcMinute } from '../core/time.ts';
+import type { TimeZone } from '../core/zone.ts';
 import { appendRecord, parseLedger, type LedgerRecord, type LoadRecord } from './ledger.ts';
 
 /** A load's id is the start of a new id, unique among the ledger's loads: short enough to type into `teamrig load end`. */
@@ -29,6 +29,8 @@ export interface LoadRules {
   readonly knownTargets: readonly string[];
   readonly scanner: SecretScanner;
   readonly nowMs: number;
+  /** The team's zone, which a refusal prints its times in. */
+  readonly zone: TimeZone;
 }
 
 /** A session ending its load `id` at `endedAt` (ms). */
@@ -37,10 +39,13 @@ export interface LoadEnd {
   readonly id: string;
   readonly endedAt: number;
   readonly nowMs: number;
+  /** The team's zone, which a refusal prints its times in. */
+  readonly zone: TimeZone;
 }
 
-function utc(ms: number): string {
-  return `${formatUtcMinute(new Date(ms))} UTC`;
+/** An instant as the team reads it: `2030-01-08 12:00 IST`. */
+function minuteText(ms: number, zone: TimeZone): string {
+  return zone.minute(new Date(ms));
 }
 
 function isLoad(record: LedgerRecord): record is LoadRecord {
@@ -53,7 +58,7 @@ function refused(reason: string): LoadOutcome {
 
 function startRefusal(rules: LoadRules, start: LoadStart): string | undefined {
   if (start.startedAt > rules.nowMs) {
-    return `a load cannot start in the future (${utc(start.startedAt)})`;
+    return `a load cannot start in the future (${minuteText(start.startedAt, rules.zone)})`;
   }
   if (start.targets !== 'host') {
     const unknown = start.targets.filter((target) => !rules.knownTargets.includes(target));
@@ -108,11 +113,11 @@ export async function endLoad(ports: LoadPorts, ledger: string, end: LoadEnd): P
     return refused(`load "${end.id}" belongs to ${started.session}`);
   }
   if (end.endedAt > end.nowMs) {
-    return refused(`a load cannot end in the future (${utc(end.endedAt)})`);
+    return refused(`a load cannot end in the future (${minuteText(end.endedAt, end.zone)})`);
   }
   const startedAt = Date.parse(started.startedAt);
   if (end.endedAt < startedAt) {
-    return refused(`load "${end.id}" started at ${utc(startedAt)}, after ${utc(end.endedAt)}`);
+    return refused(`load "${end.id}" started at ${minuteText(startedAt, end.zone)}, after ${minuteText(end.endedAt, end.zone)}`);
   }
   const record: LoadRecord = { ...started, endedAt: new Date(end.endedAt).toISOString() };
   await appendRecord(ports.files, ledger, record);
