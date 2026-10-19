@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatUtcDay, formatUtcMinute, isMinuteInSpan, parseUtcDay, parseUtcDeadline, parseUtcInstant, shortUtc, utcMinuteOf } from './time.ts';
+import { formatUtcDay, formatUtcHour, formatUtcMinute, isMinuteInSpan, parseUtcDay, parseUtcDeadline, parseUtcInstant, shortUtc, utcMinuteOf } from './time.ts';
 
 describe('utcMinuteOf', () => {
   it('reads HH:MM as minutes since midnight, and nothing else', () => {
@@ -37,9 +37,10 @@ describe('parseUtcDeadline', () => {
 });
 
 describe('formatUtc', () => {
-  it('formats minutes and days in UTC', () => {
+  it('formats minutes, hours and days in UTC', () => {
     const date = new Date('2030-05-06T07:08:09Z');
     assert.equal(formatUtcMinute(date), '2030-05-06 07:08');
+    assert.equal(formatUtcHour(date), '2030-05-06T07');
     assert.equal(formatUtcDay(date), '2030-05-06');
   });
 });

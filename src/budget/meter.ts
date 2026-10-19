@@ -1,5 +1,5 @@
 import type { Clock } from '../core/lock.ts';
-import { formatUtcDay, MS_PER_DAY } from '../core/time.ts';
+import { formatUtcDay, formatUtcHour, MS_PER_DAY } from '../core/time.ts';
 import { findLineAtOrAfter, readLines, type TranscriptBytes } from './cursor.ts';
 import type { TranscriptSet } from './discover.ts';
 import { parseTranscriptLine, type CallLine } from './line.ts';
@@ -52,11 +52,12 @@ interface DayTotals {
 }
 
 /**
- * Totals while a run counts: per-day sums, and the latest call keys across all the session's
+ * Totals while a run counts: per-day sums, W per hour, and the latest call keys across all the session's
  * transcripts, so a call two files both logged counts once.
  */
 class Tally {
   private readonly days = new Map<string, DayTotals>();
+  private readonly hours: Map<string, number>;
   private readonly keys: string[];
   private readonly keySet: Set<string>;
 
@@ -64,6 +65,7 @@ class Tally {
     for (const [day, usage] of Object.entries(state.byDay)) {
       this.days.set(day, { w: usage.w, calls: usage.calls, patterns: { ...usage.patterns } });
     }
+    this.hours = new Map(Object.entries(state.byHour));
     this.keys = [...state.recentKeys];
     this.keySet = new Set(this.keys);
   }
@@ -76,6 +78,13 @@ class Tally {
     const created: DayTotals = { w: 0, calls: 0, patterns: emptyPatterns() };
     this.days.set(day, created);
     return created;
+  }
+
+  /** Adds `w` to an hour's W; an hour unknown (a call stored before hours were counted) adds nothing. */
+  addHour(hour: string | null, w: number): void {
+    if (hour !== null) {
+      this.hours.set(hour, (this.hours.get(hour) ?? 0) + w);
+    }
   }
 
   counter(day: string | undefined): Count {
@@ -106,6 +115,10 @@ class Tally {
 
   byDay(): Record<string, DayUsage> {
     return Object.fromEntries([...this.days].map(([day, totals]) => [day, { w: totals.w, calls: totals.calls, patterns: { ...totals.patterns } }]));
+  }
+
+  byHour(): Record<string, number> {
+    return Object.fromEntries(this.hours);
   }
 
   recentKeys(): readonly string[] {
@@ -169,6 +182,7 @@ class TranscriptFold {
     if (open !== null && line.key !== undefined && line.key === open.key) {
       const added = Math.max(0, line.usage.output - open.output) * WEIGHTS.output * this.weight;
       this.tally.day(open.day).w += added;
+      this.tally.addHour(open.hour, added);
       this.tracker.charged(added, this.tally.counter(open.day));
       this.call = { ...open, output: Math.max(open.output, line.usage.output), w: open.w + added };
       this.tracker.callJoined(line.tools);
@@ -180,15 +194,17 @@ class TranscriptFold {
       return;
     }
     const day = dayOf(line.at);
+    const hour = formatUtcHour(new Date(line.at));
     const w = weightOf(line.usage) * this.weight;
     const context = contextTokens(line.usage);
     const totals = this.tally.day(day);
     totals.w += w;
     totals.calls += 1;
+    this.tally.addHour(hour, w);
     this.tracker.charged(w, this.tally.counter(day));
     this.tracker.callStarted(line.usage, line.tools, this.tally.counter(day));
     this.misses.callStarted(line.tools, line.at, day);
-    this.call = { key: line.key ?? null, day, output: line.usage.output, context, w };
+    this.call = { key: line.key ?? null, day, hour, output: line.usage.output, context, w };
   }
 
   /** The open call is complete: its loop patterns are judged now, against the call before it. */
@@ -203,8 +219,8 @@ class TranscriptFold {
 }
 
 /**
- * Counts a session's API use from its transcripts since the last run, as weighted tokens per UTC day,
- * calls, loop patterns and rule misses, and saves the totals with each transcript's read position. A transcript
+ * Counts a session's API use from its transcripts since the last run, as weighted tokens per UTC day and
+ * hour, calls, loop patterns and rule misses, and saves the totals with each transcript's read position. A transcript
  * seen for the first time (or that shrank, so it was replaced) is read from today's first line, found
  * by a binary search. One run reads at most `maxBytes`; the rest waits for the next run. A subagent's W
  * is multiplied by `subagentWeight`.
@@ -250,7 +266,7 @@ export async function runMeter(deps: MeterDeps, run: MeterRun): Promise<MeterRes
     }
     cursors[path] = fold.cursor(batch.end, size, batch.end > cursor.offset ? today : cursor.day);
   }
-  const next = pruneUsage({ byDay: tally.byDay(), cursors, recentKeys: tally.recentKeys() }, now);
+  const next = pruneUsage({ byDay: tally.byDay(), byHour: tally.byHour(), cursors, recentKeys: tally.recentKeys() }, now);
   const saved = await deps.store.save(run.session, next, rev);
   return { state: next, saved, catchingUp, bytesRead };
 }

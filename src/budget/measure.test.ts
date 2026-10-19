@@ -7,7 +7,7 @@ import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
 import { replyLine, transcript, type FixtureReply } from '../testing/transcript-lines.ts';
 import { measure, OUTSIDE_ID, type MeasureDeps, type MeasureInput } from './measure.ts';
 import { emptyPatterns } from './patterns.ts';
-import { MemoryUsageStore, type UsageState } from './store.ts';
+import { EMPTY_USAGE, MemoryUsageStore, type UsageState } from './store.ts';
 
 const NOW = '2030-01-08T10:00:00Z';
 const DAY = '2030-01-08';
@@ -101,11 +101,11 @@ describe('measure', () => {
 
   it('only loads a session with no transcripts, and the outside store when no one is outside', async () => {
     const { deps, input, outside } = world({ areaBySession: new Map([[MARKED_BRAVO, 'bravo'], [STRANGER, 'lead']]) });
-    const stored: UsageState = { byDay: { [DAY]: { w: 9, calls: 1, patterns: emptyPatterns() } }, cursors: {}, recentKeys: [] };
+    const stored: UsageState = { byDay: { [DAY]: { w: 9, calls: 1, patterns: emptyPatterns() } }, byHour: {}, cursors: {}, recentKeys: [] };
     assert.equal(await outside.save(OUTSIDE_ID, stored, 0), true);
     const measured = await measure(deps, { ...input, roster: new Roster({ sessions: ['lead', 'alpha', 'bravo', 'charlie'], names: {}, roles: { lead: 'lead' } }, 'app') });
     assert.equal(wOn(measured.bySession.get('lead')), 7);
-    assert.deepEqual(measured.bySession.get('charlie'), { byDay: {}, cursors: {}, recentKeys: [] });
+    assert.deepEqual(measured.bySession.get('charlie'), EMPTY_USAGE);
     assert.equal(measured.outside, stored);
     assert.equal((await outside.load(OUTSIDE_ID)).rev, 1);
     assert.equal(measured.outsideSessions, 0);

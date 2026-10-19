@@ -34,6 +34,11 @@ export interface DayUsage {
 export interface OpenCall {
   readonly key: string | null;
   readonly day: string;
+  /**
+   * The UTC hour the call began (`YYYY-MM-DDTHH`), where its added output is counted too; null in a cursor
+   * stored before hours were counted, whose added output counts to its day alone.
+   */
+  readonly hour: string | null;
   readonly output: number;
   readonly context: number;
   readonly w: number;
@@ -52,9 +57,18 @@ export interface TranscriptCursor {
   readonly misses: MissState;
 }
 
-/** A session's metered use: totals per UTC day, a read position per transcript, and the last call keys seen. */
+/**
+ * A session's metered use: totals per UTC day, W per UTC hour, a read position per transcript, and the last
+ * call keys seen.
+ */
 export interface UsageState {
   readonly byDay: Readonly<Record<string, DayUsage>>;
+  /**
+   * W per UTC hour (`YYYY-MM-DDTHH`), kept as long as the days, so use is counted from any hour: a reset
+   * of the week. An hour with no use has no entry. A file from before hours were counted has none, and an
+   * older teamrig that rewrites the file drops them, so a day's hours can sum to less than its W.
+   */
+  readonly byHour: Readonly<Record<string, number>>;
   readonly cursors: Readonly<Record<string, TranscriptCursor>>;
   readonly recentKeys: readonly string[];
 }
@@ -65,9 +79,10 @@ export interface StoredUsage {
   readonly state: UsageState;
 }
 
-export const EMPTY_USAGE: UsageState = { byDay: {}, cursors: {}, recentKeys: [] };
+export const EMPTY_USAGE: UsageState = { byDay: {}, byHour: {}, cursors: {}, recentKeys: [] };
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const HOUR = /^\d{4}-\d{2}-\d{2}T\d{2}$/;
 
 function finiteNonNegative(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0;
@@ -90,17 +105,20 @@ function openCallFrom(value: unknown): OpenCall | null | undefined {
     return undefined;
   }
   const { key, day, output, context, w } = value;
+  // A call stored before hours were counted has no hour.
+  const hour = value['hour'] ?? null;
   if (
     !(key === null || typeof key === 'string') ||
     typeof day !== 'string' ||
     !DAY.test(day) ||
+    !(hour === null || (typeof hour === 'string' && HOUR.test(hour) && hour.startsWith(day))) ||
     !isNonNegativeInteger(output) ||
     !isNonNegativeInteger(context) ||
     !finiteNonNegative(w)
   ) {
     return undefined;
   }
-  return { key, day, output, context, w };
+  return { key, day, hour, output, context, w };
 }
 
 function cursorFrom(value: unknown): TranscriptCursor | undefined {
@@ -164,27 +182,33 @@ export function parseUsage(text: string): UsageState | undefined {
     return undefined;
   }
   const byDay = mapFrom(record['byDay'], (key) => DAY.test(key), dayUsageFrom);
+  const rawHours = record['byHour'];
+  // A file from before hours were counted has none.
+  const byHour = rawHours === undefined ? {} : mapFrom(rawHours, (key) => HOUR.test(key), (w) => (finiteNonNegative(w) ? w : undefined));
   const cursors = mapFrom(record['cursors'], (key) => key !== '', cursorFrom);
   const recentKeys = record['recentKeys'];
-  if (byDay === undefined || cursors === undefined || !isStringArray(recentKeys)) {
+  if (byDay === undefined || byHour === undefined || cursors === undefined || !isStringArray(recentKeys)) {
     return undefined;
   }
-  return { byDay, cursors, recentKeys };
+  return { byDay, byHour, cursors, recentKeys };
 }
 
 export function formatUsage(state: UsageState, rev: number): string {
-  return `${JSON.stringify({ [VERSION_FIELD]: USAGE_FORMAT, rev, byDay: state.byDay, cursors: state.cursors, recentKeys: state.recentKeys })}\n`;
+  const { byDay, byHour, cursors, recentKeys } = state;
+  return `${JSON.stringify({ [VERSION_FIELD]: USAGE_FORMAT, rev, byDay, byHour, cursors, recentKeys })}\n`;
 }
 
 /**
- * Drops what a usage file no longer needs at `now`: days older than the kept window, transcript
- * positions that have not moved since before yesterday, and all but the latest call keys.
+ * Drops what a usage file no longer needs at `now`: days and their hours older than the kept window,
+ * transcript positions that have not moved since before yesterday, and all but the latest call keys.
  */
 export function pruneUsage(state: UsageState, now: number): UsageState {
   const oldestDay = formatUtcDay(new Date(now - (DAYS_KEPT - 1) * MS_PER_DAY));
   const oldestCursor = formatUtcDay(new Date(now - (CURSOR_DAYS_KEPT - 1) * MS_PER_DAY));
   return {
     byDay: Object.fromEntries(Object.entries(state.byDay).filter(([day]) => day >= oldestDay)),
+    // An hour key starts with its day, and a longer key sorts after its prefix.
+    byHour: Object.fromEntries(Object.entries(state.byHour).filter(([hour]) => hour >= oldestDay)),
     cursors: Object.fromEntries(Object.entries(state.cursors).filter(([, cursor]) => cursor.day >= oldestCursor)),
     recentKeys: state.recentKeys.slice(-RECENT_KEYS_KEPT),
   };
