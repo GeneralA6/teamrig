@@ -14,6 +14,7 @@ they all stay silent, and only `hook restore-track` still records the session ([
 | `PreToolUse` on `Bash` and `PowerShell` | `hook package-guard` | Refuses a package runner that would fetch and run a package outside the project's lockfile, and an `npx --no <bin>` that hands the bin's flag to npm ([the package guard](#before-a-shell-command-the-package-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook readonly-allow` | With `readonlyShell.enabled`, lets a line whose every command provably only reads run without a permission prompt ([the read-only allow](#before-a-shell-command-the-read-only-allow)) |
 | `PreToolUse` on `AskUserQuestion` | `hook picker-guard` | With `pickerGuard.enabled`, refuses the question picker to every session but the lead, with the reason to record the decision on its task and go on ([the picker guard](#before-a-question-the-picker-guard)) |
+| `PermissionRequest` | `hook prompt-refuse` | With `prompts.hookAsks: refuse`, refuses each permission prompt Claude Code is about to raise but the question picker's and plan mode's exit, with the reason to record the step for the owner and go on ([asks off](#asks-off-a-refusal-instead-of-a-prompt)) |
 | `PreToolUse` on `SendMessage` | `hook cold-send` | Holds once a message that would wake an idle session cold; during the daily meeting, holds every message to the lead but a CRITICAL one |
 | `PostToolUse` on `SendMessage` | `hook failed-send` | After a send that was not delivered, hands the model [the inbox line to write instead](#after-a-failed-send-the-inbox-line) |
 | `PostToolUse` on reads, edits and shell calls | `hook loop-nudge` | Asks the model once to batch when a turn makes [single-step calls in a row](#after-a-tool-call-the-loop-nudge) |
@@ -171,7 +172,9 @@ Before Claude runs a Bash or PowerShell command, the guard reads it and decides:
   own branch and rebase it onto the current one. To stop asking about normal pushes, set pushGuard.pushToProtected
   to allow in the team's config.json." Commits over the size rule (400 changed non-test lines or 15
   files without a `Large-commit:` line) are listed with it; with `commits.gate: refuse` they turn the ask into a
-  refusal. A `--force-with-lease` push is asked with its own reason, which does not name the switch.
+  refusal. A `--force-with-lease` push is asked with its own reason, which does not name the switch. Under
+  `prompts.hookAsks: refuse` each question here is a refusal instead, without the switch hint (see
+  [Asks off](#asks-off-a-refusal-instead-of-a-prompt)).
 - **Runs with a note**, when `pushGuard.pushToProtected` is `allow`: a normal push to a protected branch, with
   "teamrig did not ask about this push to a protected branch (main, master): pushGuard.pushToProtected is allow."
   and any large commits listed; Claude Code's own permissions still decide. `--force-with-lease` and doubts still
@@ -246,6 +249,24 @@ whatever `packageGuard.adHocRunners` says, as it cannot run what it names: "team
 `packageGuard.adHocRunners` sets what an ad-hoc line gets: `deny` (the default), `ask` the human, or `allow`. A missing
 or broken config keeps `deny`, so a config mistake never turns the guard off. Like the push guard, it reads only the
 line Claude runs, not a script or program that line starts.
+
+## Asks off: a refusal instead of a prompt
+
+A permission prompt holds the session until a human answers it, for hours when nobody is there. With
+`prompts.hookAsks` set to `refuse` in the team config, every question a teamrig hook would raise is a refusal
+instead: the push guard's (a push to a protected branch, a `--force-with-lease` push, a line it cannot read), the
+commit guard's and the package guard's under their `ask` choice, and the helper gate's. The hook's own reason
+comes first, then:
+"Asks are off [prompts.hookAsks], so teamrig refuses this instead of asking; do not retry it or route around it.
+Record the step as waiting for the owner (`teamrig set <task> --status waiting --waits approval:owner --note "<the
+command>"`) and take your next task."
+
+A refusal stays as it was, with no note. `ask` (the default) keeps the questions; a missing or broken config keeps
+`ask` too. The same switch reaches the prompts Claude Code raises on its own (a call its permission rules do not
+allow, in a mode that asks, or a check of its own that always asks): `hook prompt-refuse` answers each
+`PermissionRequest` with a refusal whose message is "Claude Code would ask a person to allow this <tool> call."
+and then the note above. The question picker and plan mode's exit still open: the
+[picker guard](#before-a-question-the-picker-guard) and the person decide those.
 
 ## Before a shell command: the read-only allow
 
@@ -653,7 +674,7 @@ read-only allow lets a call skip the prompt, and only a shell line it proves onl
   `team create`, and a chain of two, `teamrig who && teamrig list`), while `git --version` was still asked.
   `Bash(teamrig *)` worked the same. The rule is for the Bash tool, where Claude Code puts `teamrig`.
 - **The push guard** asks or refuses on its own, whatever the mode: a push to a protected branch always asks the
-  human.
+  human, or is refused under `prompts.hookAsks: refuse`.
 - **The commit guard** refuses a git command run without the repository's hooks on its own, whatever the mode,
   unless `commitGuard.skipHooks` is `ask` or `allow`.
 - **The package guard** refuses an ad-hoc package run on its own, whatever the mode, unless
@@ -662,3 +683,5 @@ read-only allow lets a call skip the prompt, and only a shell line it proves onl
   mode too; it never asks or refuses, so in a mode that already allows the line it changes nothing.
 - **The picker guard** (`pickerGuard.enabled`) refuses the question picker to every session but the lead on its
   own, whatever the mode.
+- **The prompt refusal** (`prompts.hookAsks: refuse`) answers every permission prompt but the picker's and plan
+  mode's exit with a refusal, whatever raised it.
