@@ -402,6 +402,11 @@ export interface HeavyConfig {
   readonly maxRunMinutes: number;
   /** A heavy step waits this many minutes at most for the host lock, then is refused. */
   readonly waitMinutes: number;
+  /**
+   * While a heavy step runs, its process tree's memory and the host's free memory are sampled this often, for its
+   * ledger record's `peakTreeMb` and `lowFreeMb`; 0 samples nothing.
+   */
+  readonly memorySampleSeconds: number;
 }
 
 /** How a coordinator step waits. */
