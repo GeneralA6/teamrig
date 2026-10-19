@@ -2366,14 +2366,16 @@ WROTE the changes below; the old settings file is at /home/me/.teamrig/backups/c
 ```
 
 `UNCHANGED <settings>: teamrig is already the status line` when nothing would change; a launcher that differs from
-this version's is written again. Settings that are not a JSON object, a status line without a command and a
+this version's is written again. A launcher line left as `node "<launcher>" --pass` with nothing piped after it, which
+makes Claude Code show the raw status JSON, is changed back to the bare launcher. Settings that are not a JSON object, a status line without a command and a
 compound shell line are `REFUSED` (exit 2).
 
 ### teamrig statusline uninstall
 
 Takes the launcher back out: the status line that was there before it returns, or none when there was none, and
-the launcher file is removed. Like `install`, it shows the change without `--yes` and keeps the old settings file
-first. A launcher line changed by hand is `REFUSED`: edit `statusLine.command` yourself.
+the launcher file is removed; a launcher left passing its input to nothing counts as alone. Like `install`, it shows
+the change without `--yes` and keeps the old settings file first. A launcher line changed by hand is `REFUSED`: edit
+`statusLine.command` yourself.
 
 Flags:
 
