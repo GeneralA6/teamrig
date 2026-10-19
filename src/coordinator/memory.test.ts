@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { nodeMemoryProbe, parseProcessRows, treeMb, treeOf, watchMemory, type Every, type MemoryProbe, type ProcessRow } from './memory.ts';
+import { nodeMemoryProbe, parseProcessRows, treeMb, watchMemory, type Every, type MemoryProbe, type ProcessRow } from './memory.ts';
+import { treeOf } from './processes.ts';
 
 const MB = 2 ** 20;
 
@@ -62,21 +63,16 @@ class FakeTimer {
   };
 }
 
-describe('treeOf and treeMb', () => {
-  it('sum a process and every descendant, leaving out processes beside it', () => {
-    assert.deepEqual(
-      treeOf(10, ROWS).map((row) => row.pid),
-      [10, 11, 12, 13],
-    );
+describe('treeMb', () => {
+  it('sums a process and every descendant, leaving out processes beside it', () => {
     assert.equal(treeMb(10, ROWS), 1000);
   });
 
-  it('are empty and 0 for a process that is not listed', () => {
-    assert.deepEqual(treeOf(99, ROWS), []);
+  it('is 0 for a process that is not listed', () => {
     assert.equal(treeMb(99, ROWS), 0);
   });
 
-  it('stop at a parent loop or a process that names itself as its parent', () => {
+  it('stops at a parent loop or a process that names itself as its parent', () => {
     const looped: ProcessRow[] = [
       { pid: 5, parent: 5, bytes: MB },
       { pid: 6, parent: 7, bytes: MB },
