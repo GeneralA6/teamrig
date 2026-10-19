@@ -1,4 +1,6 @@
 import { ENV, type Env } from '../core/home.ts';
+import { isPluginCacheBin } from '../core/installed-plugins.ts';
+import { envKey, pathList } from '../core/path-search.ts';
 
 /**
  * Variables a running Claude Code session sets for its own tools. A terminal started from inside one
@@ -25,6 +27,24 @@ function withoutVariables(env: Env, names: readonly string[]): Env {
   return Object.fromEntries(Object.entries(env).filter(([name]) => !names.includes(name.toUpperCase())));
 }
 
+/**
+ * PATH without Claude Code's plugin `bin` folders (isPluginCacheBin). The opener's PATH holds those of the plugin
+ * versions its own session started with. Claude Code adds a session's own at the end of its Bash tool's PATH, and adds
+ * them again after a plugin update and /reload-plugins, so an inherited one would sit ahead of them and keep every Bash
+ * call in the new session on the opener's version for the life of its process (T494). Every other entry stays as it was.
+ */
+function withoutPluginBins(env: Env, platform: NodeJS.Platform): Env {
+  const key = envKey(env, 'PATH', platform);
+  const value = key === undefined ? undefined : env[key];
+  if (key === undefined || value === undefined) {
+    return env;
+  }
+  const delimiter = platform === 'win32' ? ';' : ':';
+  // pathList reads one entry the way a PATH search does (trimmed, unquoted); the kept entries keep their own spelling.
+  const kept = value.split(delimiter).filter((entry) => !pathList(entry, delimiter).some(isPluginCacheBin));
+  return { ...env, [key]: kept.join(delimiter) };
+}
+
 export interface SessionIdentity {
   readonly id: string;
   readonly team: string;
@@ -34,11 +54,12 @@ export interface SessionIdentity {
 
 /**
  * The environment Claude Code starts in: the session and team set, so every hook and `teamrig`
- * command in it knows who it is, and the opener's own Claude Code session variables left out.
+ * command in it knows who it is, and the opener's own Claude Code session variables and plugin
+ * `bin` folders left out.
  */
-export function sessionEnv(env: Env, identity: SessionIdentity): Env {
+export function sessionEnv(env: Env, identity: SessionIdentity, platform: NodeJS.Platform): Env {
   return {
-    ...withoutVariables(env, CLAUDE_SESSION_VARIABLES),
+    ...withoutVariables(withoutPluginBins(env, platform), CLAUDE_SESSION_VARIABLES),
     [ENV.session]: identity.id,
     [ENV.team]: identity.team,
     ...(identity.home === undefined ? {} : { [ENV.home]: identity.home }),
@@ -47,11 +68,12 @@ export function sessionEnv(env: Env, identity: SessionIdentity): Env {
 
 /**
  * The environment a session outside any team resumes in: neither the opener's Claude Code session variables nor its
- * teamrig session, so the resumed session is not taken for the opener; the kit home set when it is not the default.
+ * teamrig session, so the resumed session is not taken for the opener, nor its plugin `bin` folders; the kit home set
+ * when it is not the default.
  */
-export function plainSessionEnv(env: Env, home: string | undefined): Env {
+export function plainSessionEnv(env: Env, home: string | undefined, platform: NodeJS.Platform): Env {
   return {
-    ...withoutVariables(env, [...CLAUDE_SESSION_VARIABLES, ...TEAMRIG_SESSION_VARIABLES]),
+    ...withoutVariables(withoutPluginBins(env, platform), [...CLAUDE_SESSION_VARIABLES, ...TEAMRIG_SESSION_VARIABLES]),
     ...(home === undefined ? {} : { [ENV.home]: home }),
   };
 }

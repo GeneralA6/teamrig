@@ -183,6 +183,12 @@ describe('teamrig launch', () => {
     assert.deepEqual(processes.started, []);
   });
 
+  it("starts Claude Code without the opener's plugin bin folders on PATH, so the session's own teamrig answers its Bash calls", async () => {
+    const processes = new FakeProcesses();
+    await launch(processes, [], { env: { PATH: '/home/me/.claude/plugins/cache/teamrig/teamrig/0.75.0/bin:/usr/local/bin' } });
+    assert.deepEqual(processes.ran.map((run) => run.env), [SESSION_ENV]);
+  });
+
   it('starts Claude Code again, sent to its handover, once the automatic restart ended it, then ends with it', async () => {
     const kit = new CliHarness(TEAM);
     const processes = new RestartedOnce(kit, ENDING);

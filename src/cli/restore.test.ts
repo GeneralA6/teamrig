@@ -197,6 +197,13 @@ describe('teamrig restore resume', () => {
     assert.equal(processes.ran[0]?.env['TEAMRIG_HOME'], '/other/kit');
   });
 
+  it("resumes without the opener's plugin bin folders on PATH", async () => {
+    const processes = new FakeProcesses();
+    const env = { ...OPENER_ENV, PATH: '/home/me/.claude/plugins/cache/teamrig/teamrig/0.75.0/bin:/usr/local/bin' };
+    okResult(await new CliHarness(TEAM).run(['restore', 'resume', NOTES, '--project', APP], { probe: ON_PATH, processes, env }));
+    assert.equal(processes.ran[0]?.env['PATH'], '/usr/local/bin');
+  });
+
   it('refuses a folder that is gone and anything but a Claude Code session id', async () => {
     const kit = new CliHarness(TEAM);
     assert.equal((await kit.run(['restore', 'resume', NOTES, '--project', '/gone'], { probe: ON_PATH })).code, EXIT.refused);
