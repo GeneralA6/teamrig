@@ -69,6 +69,29 @@ describe('NODE_WORKTREE_FILES', () => {
     assert.equal(await files.kindOf(at), 'missing');
   });
 
+  it('makes a link to a folder, which reads as the link unlinkLink took away', async () => {
+    const modules = target('relinked-modules');
+    const tree = join(DIR, 'tree-c');
+    mkdirSync(tree);
+    const at = join(tree, 'node_modules');
+    await files.makeLink(at, modules);
+    assert.equal(await files.kindOf(at), 'link');
+    assert.equal(realpathSync.native(await files.linkTarget(at)), modules);
+    assert.equal(await files.entryCount(at), 2, 'counts through the link');
+    await files.unlinkLink(at);
+    assert.deepEqual(readdirSync(modules).sort(), ['keep.txt', 'pkg']);
+  });
+
+  it('refuses a link where something is, or in a folder that is gone', async () => {
+    const modules = target('busy-modules');
+    const taken = join(DIR, 'taken');
+    mkdirSync(taken);
+    await assert.rejects(files.makeLink(taken, modules));
+    assert.equal(await files.kindOf(taken), 'folder');
+    await assert.rejects(files.makeLink(join(DIR, 'no-such-tree', 'node_modules'), modules));
+    assert.equal(existsSync(join(DIR, 'no-such-tree')), false);
+  });
+
   it('reads a missing folder as empty and a missing path as missing', async () => {
     const missing = join(DIR, 'no-such-folder');
     assert.deepEqual(await files.entries(missing), []);

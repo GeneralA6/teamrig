@@ -15,6 +15,8 @@ export class FakeWorktreeFiles implements WorktreeFiles {
   private readonly nodes = new Map<string, FakeNode>();
   /** Each path unlinkLink was called with, in order. */
   readonly unlinked: string[] = [];
+  /** Each link makeLink made, as `path -> target`, in order. */
+  readonly linked: string[] = [];
   /** Links whose unlink leaves them in place, as a system that did not remove them would. */
   readonly stuck = new Set<string>();
 
@@ -84,6 +86,18 @@ export class FakeWorktreeFiles implements WorktreeFiles {
     if (!this.stuck.has(key)) {
       this.nodes.delete(key);
     }
+  }
+
+  async makeLink(path: string, target: string): Promise<void> {
+    const key = resolve(path);
+    if (this.nodes.has(key)) {
+      throw new Error(`EEXIST: file already exists: ${path}`);
+    }
+    if (this.nodes.get(dirname(key))?.kind !== 'folder') {
+      throw new Error(`ENOENT: no such folder: ${dirname(path)}`);
+    }
+    this.nodes.set(key, { kind: 'link', target });
+    this.linked.push(`${key} -> ${resolve(target)}`);
   }
 
   async canonical(path: string): Promise<string | undefined> {
