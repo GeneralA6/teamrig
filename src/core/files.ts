@@ -1,4 +1,4 @@
-import { appendFile, link, mkdir, open, readdir, readFile, rename, rm, writeFile, type FileHandle } from 'node:fs/promises';
+import { appendFile, link, mkdir, open, readdir, readFile, rename, unlink, writeFile, type FileHandle } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { errorCode } from './guards.ts';
 import type { Sleep } from './lock.ts';
@@ -29,8 +29,11 @@ export interface Files {
   createExclusive(path: string, text: string): Promise<boolean>;
   /** Entry names in a folder; empty when the folder does not exist. */
   list(dir: string): Promise<string[]>;
-  /** Removes a file; a missing file is not an error. */
-  remove(path: string): Promise<void>;
+  /**
+   * Removes a file: true when this call removed it, false when it was missing, which is no error. Of two processes
+   * removing one file, only one is told true, so a removal can settle which of them acted first.
+   */
+  remove(path: string): Promise<boolean>;
 }
 
 /**
@@ -38,7 +41,18 @@ export interface Files {
  * those steps are repeated for about a second (`sleep` paces them) before the error is thrown.
  */
 export function nodeFiles(sleep: Sleep): Files {
-  const removeFile = (path: string): Promise<void> => retryTransient(() => rm(path, { force: true }), sleep);
+  const removeFile = (path: string): Promise<boolean> =>
+    retryTransient(async () => {
+      try {
+        await unlink(path);
+        return true;
+      } catch (error) {
+        if (errorCode(error) === 'ENOENT') {
+          return false;
+        }
+        throw error;
+      }
+    }, sleep);
   return {
     async read(path) {
       try {
@@ -119,7 +133,7 @@ export function nodeFiles(sleep: Sleep): Files {
       }
     },
     async remove(path) {
-      await removeFile(path);
+      return removeFile(path);
     },
   };
 }

@@ -66,8 +66,8 @@ export class MemoryFiles implements Files {
     return [...names].sort();
   }
 
-  async remove(path: string): Promise<void> {
-    this.contents.delete(normalisePath(path));
+  async remove(path: string): Promise<boolean> {
+    return this.contents.delete(normalisePath(path));
   }
 }
 

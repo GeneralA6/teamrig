@@ -58,8 +58,8 @@ export class RefreshStore {
     return this.files.write(this.requestPath(id), formatRefreshRequest(request));
   }
 
-  clearRequest(id: string): Promise<void> {
-    return this.files.remove(this.requestPath(id));
+  async clearRequest(id: string): Promise<void> {
+    await this.files.remove(this.requestPath(id));
   }
 
   async restart(id: string): Promise<RestartRequest | undefined> {
@@ -71,8 +71,8 @@ export class RefreshStore {
     return this.files.write(this.restartPath(id), formatRestartRequest(request));
   }
 
-  clearRestart(id: string): Promise<void> {
-    return this.files.remove(this.restartPath(id));
+  async clearRestart(id: string): Promise<void> {
+    await this.files.remove(this.restartPath(id));
   }
 
   private statePath(id: string): string {

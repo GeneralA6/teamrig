@@ -81,11 +81,10 @@ describe('nodeFiles', () => {
     assert.deepEqual(await readdir(join(root, 'r')), ['taken']);
   });
 
-  it('removes a file and ignores a missing one', async () => {
+  it('removes a file, telling that it did, and ignores a missing one', async () => {
     const path = join(root, 'gone.txt');
     await files.write(path, 'x');
-    await files.remove(path);
-    await files.remove(path);
+    assert.deepEqual([await files.remove(path), await files.remove(path)], [true, false]);
     assert.equal(await files.read(path), undefined);
   });
 });
