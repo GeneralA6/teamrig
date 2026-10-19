@@ -1,5 +1,8 @@
+import { join } from 'node:path';
 import { isRecord } from "../../core/guards.js";
+import { claudeConfigDir } from "../../core/home.js";
 import { readonlyRulesOf, readonlyShellOutput } from "../../hooks/readonly-shell.js";
+import { newestSnapshotExports } from "../../readonly-shell/snapshot.js";
 import { noPositionals } from "../args.js";
 import { openKit } from "../kit.js";
 import { EXIT } from "../runtime.js";
@@ -15,7 +18,8 @@ async function readonlyAllowOutputOf(runtime, payload) {
     if (kit?.load.status !== 'loaded' || !kit.load.config.readonlyShell.enabled) {
         return '';
     }
-    return readonlyShellOutput(payload, readonlyRulesOf(kit.load.config.readonlyShell, runtime.env));
+    const snapshot = await newestSnapshotExports(runtime.files, join(claudeConfigDir(runtime.env, runtime.userHome), 'shell-snapshots'));
+    return readonlyShellOutput(payload, readonlyRulesOf(kit.load.config.readonlyShell, runtime.env, snapshot));
 }
 /**
  * PreToolUse on Bash and PowerShell: with `readonlyShell.enabled`, lets a line whose every command provably only
