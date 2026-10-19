@@ -1,12 +1,14 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { join } from 'node:path';
+import { DEDUP_LOG_AGE } from '../core/aged-log.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { toJsonlLine } from '../core/jsonl.ts';
 import { MS_PER_DAY } from '../core/time.ts';
 import { RETAIN_DAYS } from '../register/compaction.ts';
 import { EVENT_VERSION } from '../register/events.ts';
 import { layoutPaths } from '../register/layout.ts';
-import { CliHarness, CONFIG_PATH, EVENTS_PATH, TEAM } from '../testing/cli-harness.ts';
+import { CliHarness, CONFIG_PATH, EVENTS_PATH, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { USAGE } from './run.ts';
 import { EXIT } from './runtime.ts';
@@ -46,12 +48,17 @@ const PLAN = [
   'TAIL events.jsonl starts again with the rotation marker (67 B)',
 ];
 
+/** The hooks' dedup logs, with nothing to archive. */
+const NO_AGED = ['AGED inbox-shown: no line older than 7 days, 0 kept', 'AGED bind-hints: no line older than 7 days, 0 kept'];
+const SHOWN_PATH = join(TEAM_HOME, 'state', 'inbox-shown.jsonl');
+const HINTS_PATH = join(TEAM_HOME, 'state', 'bind-hints.jsonl');
+
 describe('teamrig compact', () => {
   it('prints what it would write on a dry run, and writes nothing', async () => {
     const kit = await twoTasks();
     const before = contents(kit);
     const dry = await kit.run(['compact', '--dry-run'], AS_ALPHA);
-    assert.deepEqual([dry.code, dry.stdout, dry.stderr], [EXIT.ok, [...PLAN, 'DRY RUN: nothing was written; teamrig compact writes the above'], []]);
+    assert.deepEqual([dry.code, dry.stdout, dry.stderr], [EXIT.ok, [...PLAN, ...NO_AGED, 'DRY RUN: nothing was written; teamrig compact writes the above'], []]);
     assert.deepEqual(contents(kit), before);
   });
 
@@ -59,12 +66,12 @@ describe('teamrig compact', () => {
     const kit = await twoTasks();
     const log = kit.files.get(EVENTS_PATH);
     const done = await kit.run(['compact'], AS_ALPHA);
-    assert.deepEqual([done.code, done.stdout, done.stderr], [EXIT.ok, [...PLAN, 'DONE the tail is archived as archive/events-000001.jsonl; reads start from the new snapshot'], []]);
+    assert.deepEqual([done.code, done.stdout, done.stderr], [EXIT.ok, [...PLAN, ...NO_AGED, 'DONE the tail is archived as archive/events-000001.jsonl; reads start from the new snapshot'], []]);
     assert.equal(kit.files.get(PATHS.segment(1)), log);
     assert.deepEqual(ids((await kit.run(['list'], AS_ALPHA)).stdout), ['T2']);
     const after = contents(kit);
     const again = await kit.run(['compact'], AS_ALPHA);
-    assert.deepEqual([again.code, again.stdout.at(-1)], [EXIT.ok, 'NOTHING TO DO: no event since the last rotation and no task to retire; nothing was written']);
+    assert.deepEqual([again.code, again.stdout.at(-1)], [EXIT.ok, 'NOTHING TO DO: no event since the last rotation, no task to retire and no hook record over 7 days old; nothing was written']);
     assert.deepEqual(contents(kit), after);
   });
 
@@ -96,6 +103,36 @@ describe('teamrig compact', () => {
 
   it('names the retain days its help gives', () => {
     assert.ok(USAGE.includes(`finished tasks over ${RETAIN_DAYS} days old leave the working set`));
+    assert.ok(USAGE.includes(`records over ${DEDUP_LOG_AGE.keepDays} days old to the archive`));
+  });
+
+  it("plans, then archives, the hooks' records over a week old when the register has nothing to rotate (T336)", async () => {
+    const kit = await twoTasks();
+    assert.equal((await kit.run(['compact'], AS_ALPHA)).code, EXIT.ok);
+    const shownOld = `${JSON.stringify({ v: 1, area: 'alpha', line: 1, at: '2029-12-30T09:00:00.000Z', claudeSession: null, lastLineHash: null })}
+`;
+    const shownNew = `${JSON.stringify({ v: 1, area: 'alpha', line: 2, at: '2030-01-07T09:00:00.000Z', claudeSession: null, lastLineHash: null })}
+`;
+    const hintOld = `${JSON.stringify({ v: 1, claudeSession: 'gone', reason: 'untitled', at: '2029-12-31T09:00:00.000Z' })}
+`;
+    await kit.files.write(SHOWN_PATH, shownOld + shownNew);
+    await kit.files.write(HINTS_PATH, hintOld);
+    const aged = [
+      'AGED inbox-shown: 1 line(s) older than 7 days to archive/inbox-shown-20300108.jsonl, 1 kept',
+      'AGED bind-hints: 1 line(s) older than 7 days to archive/bind-hints-20300108.jsonl, 0 kept',
+    ];
+    const before = contents(kit);
+    const dry = await kit.run(['compact', '--dry-run'], AS_ALPHA);
+    assert.deepEqual(dry.stdout.slice(-3), [...aged, 'DRY RUN: nothing was written; teamrig compact writes the above']);
+    assert.deepEqual(contents(kit), before);
+
+    const done = await kit.run(['compact'], AS_ALPHA);
+    assert.deepEqual([done.code, done.stdout.slice(-3)], [EXIT.ok, [...aged, 'DONE the hook records over 7 days old are archived; the register had nothing to rotate']]);
+    assert.deepEqual(
+      [kit.files.get(SHOWN_PATH), kit.files.get(join(TEAM_HOME, 'state', 'archive', 'inbox-shown-20300108.jsonl'))],
+      [shownNew, shownOld],
+    );
+    assert.deepEqual([kit.files.get(HINTS_PATH), kit.files.get(join(TEAM_HOME, 'state', 'archive', 'bind-hints-20300108.jsonl'))], ['', hintOld]);
   });
 });
 
