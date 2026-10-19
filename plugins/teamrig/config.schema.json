@@ -521,7 +521,7 @@
           "type": "object",
           "properties": {
             "pollSeconds": {
-              "description": "A waiting step looks again after this many seconds.",
+              "description": "A waiting step looks again after this many seconds; the first in line for the host lock every 2 at most.",
               "type": "integer",
               "minimum": 1,
               "maximum": 600,

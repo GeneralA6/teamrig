@@ -406,7 +406,7 @@ export interface HeavyConfig {
 
 /** How a coordinator step waits. */
 export interface CoordinatorWaitConfig {
-  /** A waiting step looks again after this many seconds. */
+  /** A waiting step looks again after this many seconds; the first in line for the host lock every 2 at most. */
   readonly pollSeconds: number;
   /** A deploy step (`teamrig integrate`) waits this many minutes at most for quiet claims and the host lock, then is refused. */
   readonly maxMinutes: number;

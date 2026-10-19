@@ -1587,7 +1587,11 @@ A step that fails after a change says what was already done, such as `(its links
 
 Runs one heavy step (a build, a test run, a database script) under the host lock, so the host's heavy steps run one
 at a time instead of competing for its CPU and memory. It waits for the lock up to `coordinator.heavy.waitMinutes`
-(60 by default), looking again every `coordinator.wait.pollSeconds` (30) and printing a line for each new holder.
+(60 by default). Waiters take it in arrival order: each joins a line of tickets in `<lock>.queue` and only the
+first live one may take the lock, looking every 2 s; the rest look every `coordinator.wait.pollSeconds` (30). It
+prints a line for each new holder or place in line (`...; 2 ahead in line`). A ticket whose process is gone or whose
+wait ran out is removed by the next waiter. A step that does not join the line (an older kit, a team's own
+coordinator) may still take a free lock first.
 Then it runs the command in the shell, its output streaming as it comes, and kills it with every process it started
 after `coordinator.heavy.maxRunMinutes` (45). The step's start and end go to the coordinator's ledger,
 `ledger.jsonl` in `coordinator.dir` (default `deploys` in the team's state folder). Exit 0 when the command
