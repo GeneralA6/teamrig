@@ -1,12 +1,17 @@
-/** What a team's config and the hook's environment add to the read-only shell check. */
+/** What a team's config, the hook's environment and the shell snapshot add to the read-only shell check. */
 export interface ReadonlyRules {
   /**
    * The command prefixes the team trusts (`readonlyShell.allowPrefixes`), each as its words: a command that starts
    * with one runs whatever arguments follow, which the team vouches for.
    */
   readonly prefixes: readonly (readonly string[])[];
-  /** The names in the environment the shell inherits: assigning one changes what every later program reads. */
+  /**
+   * The names the shell exports: those of the environment it inherits and those its snapshot exports. Assigning one
+   * changes what every later program reads.
+   */
   readonly exported: ReadonlySet<string>;
+  /** True when the shell's snapshot turns on `set -a`, under which every assignment exports. */
+  readonly exportsAll: boolean;
 }
 
 /** One word of a command as the prefix match reads it. */

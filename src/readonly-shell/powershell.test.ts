@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { powershellLineReads } from './powershell.ts';
 import { prefixWords, type ReadonlyRules } from './rules.ts';
 
-const RULES: ReadonlyRules = { prefixes: ['npx tsc --noEmit', 'npx jest'].map(prefixWords), exported: new Set() };
+const RULES: ReadonlyRules = { prefixes: ['npx tsc --noEmit', 'npx jest'].map(prefixWords), exported: new Set(), exportsAll: false };
 
 /** Asserts each line reads (`expected` true) or not, naming the line on failure. */
 function expectAll(lines: readonly string[], expected: boolean, rules: ReadonlyRules = RULES): void {
@@ -74,7 +74,7 @@ describe('powershellLineReads', () => {
       ],
       true,
     );
-    expectAll(['npx tsc --noEmit'], false, { prefixes: [], exported: new Set() });
+    expectAll(['npx tsc --noEmit'], false, { prefixes: [], exported: new Set(), exportsAll: false });
   });
 
   it('refuses cmdlets and programs off the list, and writes', () => {

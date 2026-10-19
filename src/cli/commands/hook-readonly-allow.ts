@@ -1,5 +1,8 @@
+import { join } from 'node:path';
 import { isRecord, type JsonRecord } from '../../core/guards.ts';
+import { claudeConfigDir } from '../../core/home.ts';
 import { readonlyRulesOf, readonlyShellOutput } from '../../hooks/readonly-shell.ts';
+import { newestSnapshotExports } from '../../readonly-shell/snapshot.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { openKit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
@@ -16,7 +19,8 @@ async function readonlyAllowOutputOf(runtime: CliRuntime, payload: JsonRecord): 
   if (kit?.load.status !== 'loaded' || !kit.load.config.readonlyShell.enabled) {
     return '';
   }
-  return readonlyShellOutput(payload, readonlyRulesOf(kit.load.config.readonlyShell, runtime.env));
+  const snapshot = await newestSnapshotExports(runtime.files, join(claudeConfigDir(runtime.env, runtime.userHome), 'shell-snapshots'));
+  return readonlyShellOutput(payload, readonlyRulesOf(kit.load.config.readonlyShell, runtime.env, snapshot));
 }
 
 /**
