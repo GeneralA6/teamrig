@@ -206,7 +206,8 @@ export function renderKeptRules(conflicts: readonly RuleConflict[], command: str
 
 /**
  * What only the lead does every turn, shown to the lead alone so no other session pays for it: what it brings the
- * owner, the owner's orders it relays as tasks, and plans read from the register, never from memory.
+ * owner, the owner's orders it relays as tasks, plans read from the register, never from memory, and the hire flags
+ * (src/hiring/scale-out.ts, src/hiring/due.ts) it clears: when an area gets a hire, and when the hire goes.
  */
 export function renderLeadRules(config: KitConfig, command: string): string {
   return [
@@ -214,6 +215,7 @@ export function renderLeadRules(config: KitConfig, command: string): string {
     '- Bring the owner only verified results, decisions you made, investigated questions (options, numbers, a recommendation) and incidents.',
     `- Each owner order you relay is a task in the same turn: \`${command} add --owner <id> --source ${config.register.ownerSource}\` [register.ownerSource].`,
     `- Plan the week from \`${command} plan\` and run \`${command} check\` at each checkpoint, never from memory.`,
+    "- Clear each HIRE flag by its action: a SCALE-OUT gives its slice to a hire within the owner's caps, else brings the owner a card; a RETIRE-DUE retires.",
   ].join('\n');
 }
 

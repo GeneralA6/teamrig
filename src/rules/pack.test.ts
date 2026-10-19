@@ -68,11 +68,12 @@ describe('renderLeadRules', () => {
     assert.ok(lines.length <= LEAD_RULES_MAX_CHARS, `${lines.length} > ${LEAD_RULES_MAX_CHARS}`);
   });
 
-  it("names what reaches the owner, the owner's orders as tasks, and plans from the register", () => {
+  it("names what reaches the owner, the owner's orders as tasks, plans from the register and the hire flags", () => {
     const lines = renderLeadRules(testConfig({ register: { ownerSource: 'boss' } }), COMMAND);
     assert.match(lines, /^As the lead, also:\n- Bring the owner only verified results,/);
     assert.match(lines, /`teamrig add --owner <id> --source boss` \[register\.ownerSource\]/);
-    assert.match(lines, /`teamrig plan` and run `teamrig check` at each checkpoint, never from memory\.$/);
+    assert.match(lines, /`teamrig plan` and run `teamrig check` at each checkpoint, never from memory\.\n/);
+    assert.match(lines, /\n- Clear each HIRE flag by its action: a SCALE-OUT gives its slice to a hire .*; a RETIRE-DUE retires\.$/);
   });
 });
 
