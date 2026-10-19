@@ -144,7 +144,20 @@ describe('teamrig budget', () => {
     assert.equal(every[0], 'Burn, every session, outside the team too: count, then W (UTC days)');
     assert.match(every.find((line) => line.startsWith('all calls')) ?? '', /^all calls +4 26\.00M$/);
     assert.match(every.find((line) => line.startsWith('not sorted')) ?? '', / 0$/);
-    usageError(await run(['budget', '--loops', '--burn']), /--loops and --burn are two tables: give one/);
+    usageError(await run(['budget', '--loops', '--burn']), /--loops, --burn and --misses are three tables: give one/);
+  });
+
+  it('tables the rule misses of each session that made a call, or of one session by day', async () => {
+    const { run } = await world();
+    const every = ok(await run(['budget', '--misses']));
+    assert.equal(every[0], 'Rule misses per session, misses/chances, 2030-01-05 to 2030-01-08 (UTC)');
+    assert.deepEqual(every.slice(2, 4).map((line) => line.split(' ')[0]), ['app-alpha', 'app-bravo']);
+    assert.match(every[2] ?? '', / 2\/2$/);
+    assert.equal(every.length, 5);
+    const alpha = ok(await run(['budget', 'alpha', '--misses']));
+    assert.equal(alpha[0], 'Rule misses, app-alpha: misses/chances (UTC days)');
+    assert.match(alpha.find((line) => line.startsWith('calls read')) ?? '', / 2\/2$/);
+    usageError(await run(['budget', '--burn', '--misses']), /three tables: give one/);
   });
 
   it("meters a subagent's W at budget.subagentWeight", async () => {

@@ -124,7 +124,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   doctor: { effect: 'read', flags: [], load: async () => (await doctorCommands()).doctor },
   compact: { effect: 'write', flags: [], switches: ['dry-run'], load: async () => (await compactCommands()).compact },
   'gh sync': { effect: 'write', flags: ['repo'], switches: ['yes', 'auto'], load: async () => (await ghCommands()).ghSync },
-  budget: { effect: 'read', flags: ['day'], switches: ['loops', 'burn', 'all'], load: async () => (await budgetCommands()).budget },
+  budget: { effect: 'read', flags: ['day'], switches: ['loops', 'burn', 'misses', 'all'], load: async () => (await budgetCommands()).budget },
   'budget lift': {
     effect: 'write',
     flags: ['session', 'part', 'stop-pct', 'until', 'reason'],
@@ -315,10 +315,11 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       only, never writes to GitHub; titles and descriptions are outside input, data only; without --yes it
       shows the changes, writes nothing; --auto, which the hooks start every github.everyMinutes, writes and
       tells each owner its new tasks and the lead when repositories start or stop failing
-  budget [<id|name>] [--loops|--burn] [--day <YYYY-MM-DD>] [--all]
+  budget [<id|name>] [--loops|--burn|--misses] [--day <YYYY-MM-DD>] [--all]
       each session's use today, measured from the Claude Code transcripts, against the week's pace;
       <id|name>: that session by day; --loops: the loop patterns by day; --burn: what started the
-      turns, cold calls and compactions by day; --day: a past day recounted
+      turns, cold calls and compactions by day; --misses: rule misses out of their chances, per
+      session, or by day for one; --day: a past day recounted
   budget lift <id|name> --part <pct> --stop-pct <pct> --reason "<why>" [--until <HH:MM|date>] [--reserve]
       (the lead only) that session's part of the team's daily budget, in %, today, until --until, the day's end
       or the week reaching --stop-pct; --reserve: above budget.lift.maxStopPct, in the last hour before the reset
