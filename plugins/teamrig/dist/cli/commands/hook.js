@@ -11,6 +11,7 @@ import { ModelNoticeStore } from "../../hooks/model-notices.js";
 import { sendTargetOf } from "../../hooks/cold-send.js";
 import { failedSendLine, failedSendOf, failedSendOutput } from "../../hooks/failed-send.js";
 import { adHocRunnersOf, packageGuardOutput } from "../../hooks/package-guard.js";
+import { hookAsksOf } from "../../hooks/permission.js";
 import { commitsOf, protectedBranchesOf, pushGuardOutput, pushToProtectedOf, skipHooksOf } from "../../hooks/push-guard.js";
 import { JsonlHintLog } from "../../hooks/hint-log.js";
 import { promptOutput } from "../../hooks/prompt-output.js";
@@ -92,6 +93,7 @@ export async function pushGuard(args, runtime) {
         commits: commitsOf(load),
         commitLog: runtime.commitLog,
         skipHooks: skipHooksOf(load),
+        hookAsks: hookAsksOf(load),
     });
     if (output !== '') {
         runtime.out.stdout(output);
@@ -111,6 +113,7 @@ export async function packageGuard(args, runtime) {
         home: runtime.userHome,
         files: runtime.files,
         adHocRunners: adHocRunnersOf(guard.load),
+        hookAsks: hookAsksOf(guard.load),
     });
     if (output !== '') {
         runtime.out.stdout(output);

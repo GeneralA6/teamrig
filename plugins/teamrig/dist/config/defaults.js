@@ -62,6 +62,7 @@ export const DEFAULT_PUSH_GUARD = { protectedBranches: ['main', 'master'], pushT
 export const DEFAULT_PACKAGE_GUARD = { adHocRunners: 'deny' };
 /** Refused by default: the hooks are the repository's own checks, and a session that skips them ships what they would catch. */
 export const DEFAULT_COMMIT_GUARD = { skipHooks: 'deny' };
+export const DEFAULT_PROMPTS = { hookAsks: 'ask' };
 /** Off, and trusting no prefix, until a team opts in. */
 export const DEFAULT_READONLY_SHELL = { enabled: false, allowPrefixes: [] };
 /** Tests: a test folder, `*.test.*` and `*.spec.*` files, and pytest's `test_*.py`. `warn` only adds to a push the guard already asks about. */

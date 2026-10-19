@@ -42,7 +42,7 @@ function shortList(items) {
     return text;
 }
 /** What the push guard does, as the team's pushGuard config sets it. */
-function pushRule(pushGuard) {
+function pushRule(pushGuard, hookAsks) {
     const branches = shortList(pushGuard.protectedBranches);
     const keys = '[pushGuard]';
     if (branches === '') {
@@ -50,7 +50,9 @@ function pushRule(pushGuard) {
     }
     return pushGuard.pushToProtected === 'allow'
         ? `Pushes to ${branches} go through unasked; force-pushing or deleting them is refused ${keys}.`
-        : `Pushes to ${branches} ask the human; force-pushing or deleting them is refused ${keys}.`;
+        : hookAsks === 'refuse'
+            ? `Pushes to ${branches} are refused, not asked [prompts.hookAsks]: record the step as waiting approval:owner and take your next task; force-pushing or deleting them is refused ${keys}.`
+            : `Pushes to ${branches} ask the human; force-pushing or deleting them is refused ${keys}.`;
 }
 /** At most two decimals, so float noise (0.30000000000000004) or a tiny value (1e-7) prints short. */
 function percent(value) {
@@ -121,7 +123,7 @@ export function renderCorePack(config, command, platform) {
         commits: 'One logical change per commit (a fix with its tests, a refactor apart from what it enables, a mechanical change alone), committed as each step passes.' +
             ` Over ${config.commits.maxLines} changed non-test lines or ${config.commits.maxFiles} non-test files [commits.maxLines, commits.maxFiles], a commit needs a \`${config.commits.largeCommitTrailer}: <reason>\` line [commits.largeCommitTrailer]` +
             { off: '.', warn: '; a push to a protected branch lists those without one [commits.gate].', refuse: '; a push to a protected branch that sends one is refused [commits.gate].' }[config.commits.gate],
-        push: `${pushRule(config.pushGuard)} A refused or blocked route is reported to the lead, never routed around or handed to another session.`,
+        push: `${pushRule(config.pushGuard, config.prompts.hookAsks)} A refused or blocked route is reported to the lead, never routed around or handed to another session.`,
         worktrees: 'Edit in your own worktree and branch in every git repo, never a main checkout.' +
             (platform === 'win32' ? ` Remove a worktree with \`${command} worktree remove <path>\`; a plain \`git worktree remove\` empties the main node_modules.` : '') +
             " Update comments in their code's commit, verify a load-bearing one before acting on it, and fix a stale comment, doc or dead code you find in its own small commit.",

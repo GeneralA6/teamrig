@@ -5,11 +5,11 @@ import { isMinuteInSpan, utcMinuteOf } from "../core/time.js";
 import { FOLLOWUP_STATUSES, isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, SESSION_NAME, TASK_STATUSES } from "../register/model.js";
 import { PREFIX_PATTERN } from "../readonly-shell/rules.js";
 import { CORE_RULE_KEYS, isCoreRuleKey } from "../rules/keys.js";
-import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT_CONTEXT_FILES, DEFAULT_CLAIMS, DEFAULT_COORDINATOR_WAIT, DEFAULT_GATE_TIMEOUT_SECONDS, DEFAULT_GITHUB, DEFAULT_HEAVY, DEFAULT_HIRING, DEFAULT_LOCK, DEFAULT_LEAD_BOUNDARY, DEFAULT_LOOPS, DEFAULT_MESSAGES, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_COMMIT_GUARD, DEFAULT_PACKAGE_GUARD, DEFAULT_PUSH_GUARD, DEFAULT_READONLY_SHELL, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SCALE_OUT, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, DEFAULT_STATUS_LINE, DEFAULT_TESTS, DEFAULT_WAKE, DEFAULT_WINDOWS, HEAVY_TTL_MARGIN_MINUTES, } from "./defaults.js";
+import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT_CONTEXT_FILES, DEFAULT_CLAIMS, DEFAULT_COORDINATOR_WAIT, DEFAULT_GATE_TIMEOUT_SECONDS, DEFAULT_GITHUB, DEFAULT_HEAVY, DEFAULT_HIRING, DEFAULT_LOCK, DEFAULT_LEAD_BOUNDARY, DEFAULT_LOOPS, DEFAULT_MESSAGES, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_COMMIT_GUARD, DEFAULT_PACKAGE_GUARD, DEFAULT_PROMPTS, DEFAULT_PUSH_GUARD, DEFAULT_READONLY_SHELL, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SCALE_OUT, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, DEFAULT_STATUS_LINE, DEFAULT_TESTS, DEFAULT_WAKE, DEFAULT_WINDOWS, HEAVY_TTL_MARGIN_MINUTES, } from "./defaults.js";
 import { isEffort, isModel } from "./launch.js";
 import { CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from "./limits.js";
 import { ConfigReader, describe, isValidRegex, shortLine } from "./reader.js";
-import { AD_HOC_RUNNERS, BURST_POLICIES, CONFLICT_WINNERS, ESCALATIONS, HIRING_POLICIES, isAdHocRunners, isBurstPolicy, isCommitGate, isConflictWinner, isEffortLevel, isEscalation, isHiringPolicy, isOverAction, isPushToProtected, isSkipHooks, isTerminalChoice, isVerifyGate, isWeekday, OVER_ACTIONS, PUSH_TO_PROTECTED, SKIP_HOOKS, TERMINALS, VERIFY_GATES, WEEKDAYS, } from "./types.js";
+import { AD_HOC_RUNNERS, BURST_POLICIES, CONFLICT_WINNERS, ESCALATIONS, HIRING_POLICIES, isAdHocRunners, isBurstPolicy, isCommitGate, isConflictWinner, isEffortLevel, isEscalation, isHiringPolicy, isOverAction, isHookAsks, isPushToProtected, isSkipHooks, isTerminalChoice, isVerifyGate, isWeekday, HOOK_ASKS, OVER_ACTIONS, PUSH_TO_PROTECTED, SKIP_HOOKS, TERMINALS, VERIFY_GATES, WEEKDAYS, } from "./types.js";
 const isSessionName = (name) => SESSION_NAME.test(name) ? undefined : 'expected a lowercase name: a letter, then letters, digits or -, at most 32';
 const isUtcTime = (time) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(time) ? undefined : 'expected a UTC time as HH:MM');
 /** A repository as GitHub names it: an owner login, a slash, then letters, digits, `.`, `_` or `-`. */
@@ -148,6 +148,7 @@ export function parseConfig(raw) {
         },
         packageGuard: { adHocRunners: parseAdHocRunners(read, read.section(raw, 'packageGuard', '')) },
         commitGuard: { skipHooks: parseSkipHooks(read, read.section(raw, 'commitGuard', '')) },
+        prompts: { hookAsks: parseHookAsks(read, read.section(raw, 'prompts', '')) },
         commits: parseCommits(read, read.section(raw, 'commits', '')),
         coordinator: parseCoordinator(read, read.section(raw, 'coordinator', '')),
         budget,
@@ -680,6 +681,11 @@ function parseSkipHooks(read, raw) {
     const fallback = DEFAULT_COMMIT_GUARD.skipHooks;
     const value = read.string(raw, 'skipHooks', 'commitGuard', fallback, oneOf(SKIP_HOOKS));
     return isSkipHooks(value) ? value : fallback;
+}
+function parseHookAsks(read, raw) {
+    const fallback = DEFAULT_PROMPTS.hookAsks;
+    const value = read.string(raw, 'hookAsks', 'prompts', fallback, oneOf(HOOK_ASKS));
+    return isHookAsks(value) ? value : fallback;
 }
 const isShellPrefix = (value) => PREFIX_PATTERN.test(value) ? undefined : 'expected words of letters, digits and _ @ . / : = + -, one space apart, the first naming a program';
 function parseReadonlyShell(read, raw) {
