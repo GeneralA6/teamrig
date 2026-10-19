@@ -46,7 +46,7 @@ import { readRunningWork } from '../../refresh/running.ts';
 import { RefreshStore } from '../../refresh/store.ts';
 import { readContextTokens } from '../../refresh/usage.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
-import { openKit, renameDepsOf, rosterOf, teamFolders, teamZone, type Kit } from '../kit.ts';
+import { openKit, renameDepsOf, rosterOf, rulesClockOf, teamFolders, teamZone, type Kit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
 import { bindAfterClear, bindHintOnce, bindTab, inboxLinesFor, readTitle, type TitleRead } from './hook-bind.ts';
@@ -709,7 +709,7 @@ export async function sessionStart(args: ParsedArgs, runtime: CliRuntime): Promi
           sessionInEnv: false,
           tree: undefined,
         };
-  const context = sessionStartContext({ team: found.team, load: kit.load, ...parts, command: KIT_NAME, platform: runtime.platform });
+  const context = sessionStartContext({ team: found.team, load: kit.load, ...parts, command: KIT_NAME, platform: runtime.platform, clock: rulesClockOf(runtime) });
   const requirementsNote = await requirementsNoteOnce({
     problems: await runtime.requirements.problems(),
     log: new JsonlHintLog(runtime.files, kit.paths.bindHints),

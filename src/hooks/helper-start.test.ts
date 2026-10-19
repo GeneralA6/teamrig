@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import type { ConfigLoad } from '../config/load.ts';
 import { renderCorePack, renderLeadRules } from '../rules/pack.ts';
 import { testConfig } from '../testing/config.ts';
+import { RULES_CLOCK } from '../testing/zone.ts';
 import { renameOf } from '../testing/rename.ts';
 import { helperOf, helperStartContext, subagentStartOutput, type HelperStartInput } from './helper-start.ts';
 
@@ -26,6 +27,7 @@ function context(overrides: Partial<HelperStartInput> = {}): string {
     session: 'alpha',
     sessionInEnv: true,
     platform: 'win32',
+    clock: RULES_CLOCK,
     command: COMMAND,
     ...overrides,
   });
@@ -55,7 +57,7 @@ describe('helperOf', () => {
 describe('helperStartContext', () => {
   it("gives the session's core rules, then whose helper it is and what it leaves to that session", () => {
     const text = context();
-    assert.ok(text.startsWith(renderCorePack(testConfig({ names: { lead: 'team-lead' } }), COMMAND, 'win32')));
+    assert.ok(text.startsWith(renderCorePack(testConfig({ names: { lead: 'team-lead' } }), COMMAND, 'win32', RULES_CLOCK)));
     assert.ok(text.endsWith(`\n\nYou are a helper (\`general-purpose\`) of the \`alpha\` session of team \`app\` (name \`app-alpha\`). ${DUTY}${SHELL}`));
   });
 

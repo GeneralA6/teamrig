@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import type { ConfigLoad } from '../config/load.ts';
 import { CONTEXT_MAX_CHARS, renderCorePack } from '../rules/pack.ts';
 import { testConfig } from '../testing/config.ts';
+import { RULES_CLOCK } from '../testing/zone.ts';
 import { renameOf } from '../testing/rename.ts';
 import { sessionStartContext, sessionStartOutput, type SessionStartInput } from './session-start.ts';
 
@@ -30,6 +31,7 @@ function context(overrides: Partial<SessionStartInput> = {}): string {
     tree: undefined,
     command: COMMAND,
     platform: 'win32',
+    clock: RULES_CLOCK,
     ...overrides,
   });
 }
@@ -37,12 +39,12 @@ function context(overrides: Partial<SessionStartInput> = {}): string {
 describe('sessionStartContext', () => {
   it('gives the core rules, then who the session is and how to reach the lead', () => {
     const text = context();
-    assert.ok(text.startsWith(renderCorePack(testConfig(), COMMAND, 'win32')));
+    assert.ok(text.startsWith(renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK)));
     assert.ok(text.endsWith(`\n\nYou are the \`alpha\` session of team \`app\` (name \`app-alpha\`). Run \`teamrig\` in the Bash tool: the PowerShell tool does not have it. Message the lead as \`team-lead\`.\n${NAMES}`));
   });
 
   it('renders the rules for the platform the hook runs on', () => {
-    assert.ok(context({ platform: 'linux' }).startsWith(renderCorePack(testConfig(), COMMAND, 'linux')));
+    assert.ok(context({ platform: 'linux' }).startsWith(renderCorePack(testConfig(), COMMAND, 'linux', RULES_CLOCK)));
     assert.doesNotMatch(context({ platform: 'linux' }), /worktree remove/);
     assert.doesNotMatch(context({ platform: 'linux' }), /PowerShell tool does not have it/);
   });

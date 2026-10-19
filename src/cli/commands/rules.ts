@@ -4,7 +4,7 @@ import { sessionStartContext } from '../../hooks/session-start.ts';
 import { JsonlRenameLog } from '../../names/log.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { sessionRef } from '../inputs.ts';
-import { findTeam, openKit, requireConfig, sessionIdOf } from '../kit.ts';
+import { findTeam, openKit, requireConfig, rulesClockOf, sessionIdOf } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
 
@@ -30,6 +30,7 @@ export async function rules(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const context = sessionStartContext({
     team,
     platform: runtime.platform,
+    clock: rulesClockOf(runtime),
     load: kit.load,
     teamRules: text === undefined ? undefined : { path: kit.paths.teamRules, text },
     renames,

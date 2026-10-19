@@ -4,7 +4,7 @@ import type { TreePlace } from '../config/tree.ts';
 import { formatAddress } from '../core/address.ts';
 import { ENV, KIT_NAME } from '../core/home.ts';
 import type { Rename } from '../names/rename.ts';
-import { renderCorePack, renderLeadRules, renderSessionContext, type TeamRules } from '../rules/pack.ts';
+import { renderCorePack, renderLeadRules, renderSessionContext, type RulesClock, type TeamRules } from '../rules/pack.ts';
 
 export interface SessionStartInput {
   readonly team: string;
@@ -35,6 +35,8 @@ export interface SessionStartInput {
   readonly sessionInEnv: boolean;
   /** Where the hook runs, so the rules print the steps only that platform needs. */
   readonly platform: NodeJS.Platform;
+  /** When the rules are read and the machine's zone, which name the heavy cutoff on the team's clock. */
+  readonly clock: RulesClock;
   /** Where the team sits in a tree of teams; undefined for a team on its own. */
   readonly tree: TreePlace | undefined;
   /** The CLI name the rules tell the session to run. */
@@ -152,7 +154,7 @@ export function sessionStartContext(input: SessionStartInput): string {
   if (load.issues.length > 0) {
     notes.push(`The team config has ${load.issues.length} problem(s), each read as its default; run: ${command} config validate`);
   }
-  const core = renderCorePack(load.config, command, input.platform);
+  const core = renderCorePack(load.config, command, input.platform, input.clock);
   const rules = isLeadSession(roster, input.session) ? `${core}\n\n${renderLeadRules(load.config, command)}` : core;
   return renderSessionContext(`${rules}\n\n${notes.join('\n')}`, input.teamRules, command);
 }

@@ -4,7 +4,7 @@ import { KIT_NAME } from '../../core/home.ts';
 import { helperOf, helperStartContext, subagentStartOutput, type HelperStartInput } from '../../hooks/helper-start.ts';
 import { JsonlRenameLog } from '../../names/log.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
-import { openKit, type Kit } from '../kit.ts';
+import { openKit, rulesClockOf, type Kit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { envSession, parseJson, sessionTeam, startSessionOf } from './hook-input.ts';
 
@@ -15,7 +15,7 @@ import { envSession, parseJson, sessionTeam, startSessionOf } from './hook-input
  * and starts no refresh: those belong to the session.
  */
 export async function helperContextOf(runtime: CliRuntime, kit: Kit, payload: unknown, agentType: string | undefined): Promise<string> {
-  const base = { team: kit.paths.team, agentType, platform: runtime.platform, command: KIT_NAME };
+  const base = { team: kit.paths.team, agentType, platform: runtime.platform, clock: rulesClockOf(runtime), command: KIT_NAME };
   const { load } = kit;
   if (load.status !== 'loaded') {
     return helperStartContext({ ...base, load, teamRules: undefined, renames: [], session: undefined, sessionInEnv: false });
