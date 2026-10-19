@@ -1,6 +1,19 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { nodeHookRunner, type HookRequest } from './hooks.ts';
+import { hookEndText, hookExitCode, nodeHookRunner, succeeded, type HookEnd, type HookRequest } from './hooks.ts';
+
+const ENDS: readonly HookEnd[] = [{ kind: 'exited', code: 3 }, { kind: 'timedOut' }, { kind: 'signal', signal: 'SIGKILL' }, { kind: 'notStarted', error: 'ENOENT' }];
+
+describe('hook ends', () => {
+  it('records a hook’s own code, 124 at its time limit, and 1 for a signal or a hook that did not start', () => {
+    assert.deepEqual(ENDS.map(hookExitCode), [3, 124, 1, 1]);
+  });
+
+  it('says how each ended, and succeeds only on exit 0', () => {
+    assert.deepEqual(ENDS.map(hookEndText), ['exited 3', 'was killed at its time limit', 'was stopped by SIGKILL', 'could not start (ENOENT)']);
+    assert.deepEqual([{ kind: 'exited', code: 0 } as const, ...ENDS].map(succeeded), [true, false, false, false, false]);
+  });
+});
 
 /** A real run of this Node binary with `script`: the runner's own spawn, with no shell. */
 function request(script: string, overrides: Partial<HookRequest> = {}): { readonly lines: string[]; readonly request: HookRequest } {

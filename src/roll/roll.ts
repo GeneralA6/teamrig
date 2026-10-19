@@ -6,14 +6,13 @@ import { appendDeploy } from '../coordinator/ledger.ts';
 import type { CoordinatorPlaces } from '../coordinator/places.ts';
 import { NOT_STARTED_EXIT, recordHeavy } from '../coordinator/recorded-step.ts';
 import { heavyCutoffReason, resetBlackoutReason, type ResetTime } from '../coordinator/schedule.ts';
-import { exitCodeOf } from '../coordinator/steps.ts';
 import type { Files } from '../core/files.ts';
 import type { Env } from '../core/home.ts';
 import type { Clock, Sleep } from '../core/lock.ts';
 import { samePath } from '../core/paths.ts';
 import type { SecretScanner } from '../core/secrets.ts';
 import { askGates, shownLine } from './gates.ts';
-import type { HookEnd, HookRunner } from './hooks.ts';
+import { hookEndText, hookExitCode, succeeded, type HookEnd, type HookRunner } from './hooks.ts';
 import { plural, readPending, rollRepos, short, type Pending, type PendingRead, type RollGit, type RollRepo } from './pending.ts';
 
 /**
@@ -81,27 +80,6 @@ type RollRun =
   | { readonly kind: 'afterPullFailed'; readonly argv: readonly string[]; readonly end: HookEnd }
   | { readonly kind: 'ran'; readonly end: HookEnd; readonly lastLine: string | undefined; readonly noRoll: boolean };
 
-function succeeded(end: HookEnd): boolean {
-  return end.kind === 'exited' && end.code === 0;
-}
-
-/** The exit code a hook's end is recorded as: its own, 124 at its time limit, 1 when a signal stopped it or it did not start. */
-export function hookExitCode(end: HookEnd): number {
-  return end.kind === 'notStarted' ? NOT_STARTED_EXIT : exitCodeOf(end);
-}
-
-function hookEndText(end: HookEnd): string {
-  switch (end.kind) {
-    case 'exited':
-      return `exited ${end.code}`;
-    case 'signal':
-      return `was stopped by ${end.signal}`;
-    case 'timedOut':
-      return 'was killed at its time limit';
-    case 'notStarted':
-      return `could not start (${end.error})`;
-  }
-}
 
 function runExitCode(run: RollRun): number {
   switch (run.kind) {
