@@ -11,6 +11,11 @@ export interface ProgramArgument {
   readonly dynamic: boolean;
   /** It reaches the program as exactly one argument whatever its variables hold: no unquoted variable or glob. */
   readonly single: boolean;
+  /**
+   * Set on an unquoted glob made only of one-digit or `*` brackets (`containers[0]`, `items[*]`): it matches at most
+   * the one file named this, `text` with each bracket read as its character, so the program gets `text` or this.
+   */
+  readonly bracketMatch?: string;
 }
 
 /** Whether a program, given these arguments (its own name left out), only reads. */
@@ -249,17 +254,25 @@ function kubectlShortFlags(text: string): boolean {
   return true;
 }
 
-/** One static kubectl argument: no forbidden option, no secret named, no `-s` in a short-flag cluster. */
-function kubectlArgument(arg: ProgramArgument): boolean {
-  if (/secret/i.test(arg.text) || KUBECTL_FORBIDDEN.has(arg.text.split('=')[0] ?? '')) {
+/** One kubectl argument's text: no forbidden option, no secret named, no `-s` in a short-flag cluster. */
+function kubectlText(text: string): boolean {
+  if (/secret/i.test(text) || KUBECTL_FORBIDDEN.has(text.split('=')[0] ?? '')) {
     return false;
   }
-  return !/^-[^-]/.test(arg.text) || kubectlShortFlags(arg.text);
+  return !/^-[^-]/.test(text) || kubectlShortFlags(text);
+}
+
+/** One kubectl argument: static, or a bracket glob whose both possible texts pass (`-o custom-columns=IMG:.spec.containers[0].image`). */
+function kubectlArgument(arg: ProgramArgument): boolean {
+  if (!arg.dynamic) {
+    return kubectlText(arg.text);
+  }
+  return arg.bracketMatch !== undefined && kubectlText(arg.text) && kubectlText(arg.bracketMatch);
 }
 
 /**
  * kubectl reading the cluster: the read command right after `kubectl` (a leading flag is not read), `config`
- * and `rollout` only with their read subcommands, no `cluster-info dump`, and every argument static.
+ * and `rollout` only with their read subcommands, no `cluster-info dump`, and every argument static or a bracket glob that reads either way.
  */
 const kubectlArguments: ArgumentCheck = (args) => {
   const [command, subcommand] = args;
@@ -274,7 +287,7 @@ const kubectlArguments: ArgumentCheck = (args) => {
   if (command.text === 'cluster-info' && rest.some((arg) => is(arg, 'dump'))) {
     return false;
   }
-  return rest.every((arg) => !arg.dynamic && kubectlArgument(arg));
+  return rest.every(kubectlArgument);
 };
 
 /** Every program the hook lets run, by the name the line calls it by, with what its arguments may be. */
