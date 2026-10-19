@@ -393,7 +393,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       dependencyCheck on a dependency change (REFUSED unless it exits 0) and pushes (each a heavy step
       in the ledger; again when origin moved meanwhile), records the push as a deploy of deploysOnPush, deletes the branch on origin
       and here (--keep-remote, --no-delete-local keep them) and, where followMainCheckout, fast-forwards
-      the main checkout; exit 0 landed, 1 failed
+      the main checkout; once the shell that started it ends, it stops waiting, or kills the push
+      and frees the lock (exit 129); exit 0 landed, 1 failed or stopped
   roll [--repo <name>] [--session <id|name>]   brings what was pushed to a repository's default
       branch to the running system: pulls its main checkout fast-forward to origin, runs its
       coordinator.repos.<name>.roll dependencyInstall for a dependency change (after its
@@ -405,7 +406,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       weekly token reset; waits up to coordinator.wait.maxMinutes for quiet claims on its targets,
       its gates and the host lock; nothing pending is DONE with nothing run. A failed check or
       install moves the main checkout back; a failed afterPull hook or roll command leaves nothing
-      pending, so its roll command is then run by hand; exit 0 rolled, 1 failed
+      pending, so its roll command is then run by hand; once the shell that started it ends, it
+      stops waiting, or kills its hook and frees the lock (exit 129); exit 0 rolled, 1 failed or stopped
   claim --targets <a,b> --metric <m> --why "<why>" --for <span> [--session <id|name>]   a quiet
       claim: integrate and roll wait while it holds a target they deploy, from now for the span (45m,
       1h30m; at most coordinator.claims.maxMinutes); one per session; REFUSED for a target no
