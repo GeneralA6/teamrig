@@ -76,3 +76,7 @@ export function formatUtcMinute(date) {
 export function formatUtcDay(date) {
     return date.toISOString().slice(0, 10);
 }
+/** `YYYY-MM-DDTHH` in UTC: the hour, which sorts as text in time order. */
+export function formatUtcHour(date) {
+    return date.toISOString().slice(0, 13);
+}

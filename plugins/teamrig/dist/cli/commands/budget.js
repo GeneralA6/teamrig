@@ -12,8 +12,8 @@ import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID } from 
 import { dailyBudgetOf, liftedParts } from "../../budget/parts.js";
 import { burnLines, loopLines, missLines, missMatrixLines, recountLines, sessionLines, sumDays, sumUsage, todayLines, weekLine, } from "../../budget/report.js";
 import { datedSnapshot, formatSnapshot, parseSnapshot, readSnapshots, snapshotOfStatus, statusLineText, weekUseOf } from "../../budget/snapshot.js";
-import { CURSOR_DAYS_KEPT, DAYS_KEPT, MemoryUsageStore, UsageStore } from "../../budget/store.js";
-import { readWeek } from "../../budget/week.js";
+import { CURSOR_DAYS_KEPT, DAYS_KEPT, EMPTY_USAGE, MemoryUsageStore, UsageStore } from "../../budget/store.js";
+import { readWeek, wSince } from "../../budget/week.js";
 import { readWork } from "../../budget/work.js";
 import { JsonlMarkLog } from "../../inbox/store.js";
 import { indexMarks } from "../../inbox/marks.js";
@@ -92,11 +92,12 @@ function sessionsToday(reading, roster, budget, work) {
     const inForce = activeBurst(reading.bursts, reading.now, reading.week.usedPct);
     const split = { ids: roster.ids, sessions: budget.sessions, work, lifted: liftedParts(reading.lifts, roster.ids, reading.now, reading.week.usedPct) };
     return roster.ids.map((id) => {
-        const usage = reading.measured.bySession.get(id)?.byDay[today];
+        const state = reading.measured.bySession.get(id);
+        const w = state === undefined ? 0 : wSince([state], reading.week.todayFrom, reading.now);
         const lift = activeLift(reading.lifts, id, reading.now, reading.week.usedPct);
         const burst = inForce !== undefined && inForce.sessions.includes(id) ? inForce : undefined;
         const budgetPct = withBurst(dailyBudgetOf(reading.week.allowancePct, id, split), burst, id);
-        return { id, name: roster.nameOf(id) ?? id, w: usage?.w ?? 0, calls: usage?.calls ?? 0, budgetPct, lift, burst };
+        return { id, name: roster.nameOf(id) ?? id, w, calls: state?.byDay[today]?.calls ?? 0, budgetPct, lift, burst };
     });
 }
 /** The days a loop table shows, oldest first, ending at `now`'s day. */
@@ -116,8 +117,6 @@ function recountDayOf(text, now) {
     }
     return day.getTime();
 }
-/** A store with nothing metered, for a session the meter has not read. */
-const NOTHING_STORED = { byDay: {}, cursors: {}, recentKeys: [] };
 /** `budget [<session>] [--loops|--burn|--misses] [--day <day>] [--all]`. */
 export async function budget(args, runtime) {
     const [target, extra] = args.positionals;
@@ -144,11 +143,11 @@ export async function budget(args, runtime) {
     const days = recountDay === undefined ? loopDays(now, all ? DAYS_KEPT : LOOP_DAYS_SHOWN) : [formatUtcDay(new Date(recountDay))];
     const source = recountDay === undefined ? 'metered' : 'recounted';
     if (misses && id === undefined) {
-        const rows = roster.ids.map((each) => ({ name: roster.nameOf(each) ?? each, usage: sumUsage(sumDays([measured.bySession.get(each) ?? NOTHING_STORED], days)) }));
+        const rows = roster.ids.map((each) => ({ name: roster.nameOf(each) ?? each, usage: sumUsage(sumDays([measured.bySession.get(each) ?? EMPTY_USAGE], days)) }));
         lines = missMatrixLines(days, rows);
     }
     else if (loops || burn || misses) {
-        const states = id === undefined ? [...measured.bySession.values(), measured.outside] : [measured.bySession.get(id) ?? NOTHING_STORED];
+        const states = id === undefined ? [...measured.bySession.values(), measured.outside] : [measured.bySession.get(id) ?? EMPTY_USAGE];
         const table = loops ? loopLines : burn ? burnLines : missLines;
         lines = table(id === undefined ? 'every session, outside the team too' : (roster.nameOf(id) ?? id), days, sumDays(states, days), source);
     }
@@ -160,7 +159,7 @@ export async function budget(args, runtime) {
     else {
         const today = formatUtcDay(new Date(now));
         const outsideToday = measured.outside.byDay[today];
-        const outside = { w: outsideToday?.w ?? 0, calls: outsideToday?.calls ?? 0, sessions: measured.outsideSessions, titles: measured.outsideTitles };
+        const outside = { w: wSince([measured.outside], week.todayFrom, now), calls: outsideToday?.calls ?? 0, sessions: measured.outsideSessions, titles: measured.outsideTitles };
         const behind = measured.behind.map((each) => (each === OUTSIDE_ID ? 'outside the team' : (roster.nameOf(each) ?? each)));
         lines = recountDay === undefined ? todayLines({ week, sessions, outside, behind, all }) : recountLines(today, { week, sessions, outside, all });
     }
