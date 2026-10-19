@@ -38,6 +38,7 @@ const clearCommands = () => import('./commands/hook-clear.ts');
 const wakeCommands = () => import('./commands/hook-wake.ts');
 const refreshModCommands = () => import('./commands/hook-refresh-mod.ts');
 const teamCommands = () => import('./commands/team.ts');
+const sessionsCommands = () => import('./commands/sessions.ts');
 const commitsCommands = () => import('./commands/commits.ts');
 const doctorCommands = () => import('./commands/doctor.ts');
 const worktreeCommands = () => import('./commands/worktree.ts');
@@ -116,6 +117,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'restore resume': { effect: 'internal', flags: ['project', 'home', 'effort', 'encoded-prompt'], load: async () => (await restoreCommands()).restoreResume },
   restart: { effect: 'internal', flags: ['team', 'at', 'project'], load: async () => (await restartCommands()).restart },
   who: { effect: 'read', flags: [], load: async () => (await teamCommands()).who },
+  sessions: { effect: 'read', flags: [], load: async () => (await sessionsCommands()).sessions },
   rename: { effect: 'write', flags: ['session'], load: async () => (await teamCommands()).rename },
   hire: {
     effect: 'write',
@@ -306,6 +308,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   inbox add --to <id|name|team/id> --text "<one line>"
       team/id: a lead may write to its parent team's lead and its child teams' leads
   who [<id|name|role>]         the name to message a session by (no argument: every session)
+  sessions                     each session: running (and the MB its Claude Code's processes hold), closed
+      or never recorded; then the host's free memory and commit charge
   rename <id|name> <new-name>  records a session's new name; its old names keep finding it
       (the session itself or the lead)
   hire <id> --scope "<its job>" --reason "<why>" [--name <name>] [--model <model>] [--effort <level>]

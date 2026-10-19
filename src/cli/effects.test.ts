@@ -40,6 +40,7 @@ const EXPECTED = {
   'restore resume': 'internal',
   restart: 'internal',
   who: 'read',
+  sessions: 'read',
   rename: 'write',
   heavy: 'write',
   withdraw: 'write',
