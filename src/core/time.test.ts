@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatUtcDay, formatUtcHour, formatUtcMinute, isMinuteInSpan, parseDayStart, parseDeadline, parseTypedInstant, parseUtcDay, parseUtcDeadline, parseUtcInstant, showStored, storedDeadline, typedDeadline, typedTimeHint, utcMinuteOf } from './time.ts';
+import { formatUtcDay, formatUtcHour, formatUtcMinute, isMinuteInSpan, parseDayStart, parseDeadline, parseTypedInstant, parseUtcDay, parseUtcDeadline, showStored, storedDeadline, typedDeadline, typedTimeHint, utcMinuteOf } from './time.ts';
 import { TimeZone } from './zone.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 
@@ -52,24 +52,6 @@ describe('parseUtcDay', () => {
     assert.equal(parseUtcDay('2030-01-07')?.toISOString(), '2030-01-07T00:00:00.000Z');
     assert.equal(parseUtcDay('2030-01-07 10:00'), undefined);
     assert.equal(parseUtcDay('2030-02-30'), undefined);
-  });
-});
-
-describe('parseUtcInstant', () => {
-  const NOW = Date.parse('2030-01-08T15:20:00Z');
-
-  it('reads a clock time as today, a day as its start, a minute and a zoned ISO time, all in UTC', () => {
-    assert.deepEqual(
-      ['09:05', '2030-01-07', '2030-01-07 23:45', '2030-01-07T23:45', '2030-01-07T23:45:30.500Z', '2030-01-08T01:00+02:00'].map((text) => parseUtcInstant(text, NOW)?.toISOString()),
-      ['2030-01-08T09:05:00.000Z', '2030-01-07T00:00:00.000Z', '2030-01-07T23:45:00.000Z', '2030-01-07T23:45:00.000Z', '2030-01-07T23:45:30.500Z', '2030-01-07T23:00:00.000Z'],
-    );
-  });
-
-  it('refuses an impossible time, an ISO time with seconds but no zone, and anything else', () => {
-    assert.deepEqual(
-      ['24:00', '9:05', '2030-02-30', '2030-01-07 23:60', '2030-01-07T23:45:30', 'now', ''].map((text) => parseUtcInstant(text, NOW)),
-      [undefined, undefined, undefined, undefined, undefined, undefined, undefined],
-    );
   });
 });
 
