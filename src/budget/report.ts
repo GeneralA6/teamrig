@@ -4,6 +4,7 @@ import { budgetMarkOf, burstText, MORE_BURST } from './burst-lines.ts';
 import { formatCount, formatPct, formatTimeOfDay, formatW, formatWeekdayMinute } from './format.ts';
 import { liftText, type Lift } from './lift.ts';
 import { TURN_TRIGGERS } from './line.ts';
+import { hasRoom } from './pace.ts';
 import { emptyPatterns, PATTERN_FIELDS, type PatternField } from './patterns.ts';
 import type { DayUsage, UsageState } from './store.ts';
 import type { WeekReading } from './week.ts';
@@ -124,6 +125,25 @@ function outsideLine(outside: OutsideToday, all: boolean): string | undefined {
   );
 }
 
+/**
+ * Who is past the daily budget, and what that means: a session past its part is held (finishes the step in hand)
+ * only while the team has no room today (`hasRoom`); while it has room, the sessions past their parts are named
+ * apart, not held. The team past its own allowance has no room: its in-day pace never passes the allowance.
+ */
+function pastLines(report: TodayReport, teamPast: boolean): string[] {
+  const { week, sessions } = report;
+  const pastSessions = sessions.filter((session) => isPast(session.w, session.budgetPct, week)).map((session) => session.name);
+  const teamDay = week.teamDay;
+  if (!teamPast && teamDay !== undefined && hasRoom(teamDay)) {
+    const room =
+      `Past their part, not held while the team has room today (${formatPct(teamDay.usedPct)} of the week used, ` +
+      `below its in-day pace of ${formatPct(teamDay.pacePct)}): ${pastSessions.join(', ')}.`;
+    return pastSessions.length > 0 ? [room] : [];
+  }
+  const past = [...(teamPast ? ['the team'] : []), ...pastSessions];
+  return past.length > 0 ? [`Past the daily budget: ${past.join(', ')}. ${OVER_BUDGET_ADVICE}`] : [];
+}
+
 /** `teamrig budget`: the week, the team and each session today, lifts, use outside the team, and who is past budget. */
 export function todayLines(report: TodayReport): string[] {
   const { week, sessions, outside, all } = report;
@@ -151,13 +171,7 @@ export function todayLines(report: TodayReport): string[] {
   if (report.behind.length > 0) {
     lines.push(`Still reading: ${report.behind.join(', ')}; run teamrig budget again for the rest.`);
   }
-  const past = [
-    ...(isPast(teamW, week.allowancePct, week) ? ['the team'] : []),
-    ...sessions.filter((session) => isPast(session.w, session.budgetPct, week)).map((session) => session.name),
-  ];
-  if (past.length > 0) {
-    lines.push(`Past the daily budget: ${past.join(', ')}. ${OVER_BUDGET_ADVICE}`);
-  }
+  lines.push(...pastLines(report, isPast(teamW, week.allowancePct, week)));
   if (week.usedPct !== undefined && week.wPerPct === undefined) {
     lines.push('Daily budgets need the week in W: set budget.weeklyLimitW, or let teamrig meter a whole week to estimate it.');
   }
