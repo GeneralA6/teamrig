@@ -191,6 +191,24 @@ describe('GIT_INTEGRATE cleanup', () => {
     }
   });
 
+  it('resets the checkout back to a commit, and refuses where a local change would be lost', () => {
+    const { repo } = repoWithOrigin('integrate-reset');
+    try {
+      const before = git.sha(repo.dir, 'HEAD');
+      assert.ok(before !== undefined);
+      const after = commit(repo, 'other.txt', 'other\n', 'other');
+      repo.write('other.txt', 'edited\n');
+      assert.equal(git.resetTo(repo.dir, before).ok, false);
+      assert.equal(git.sha(repo.dir, 'HEAD'), after);
+      repo.git('checkout', '--', 'other.txt');
+      assert.deepEqual(git.resetTo(repo.dir, before), { ok: true });
+      assert.equal(git.sha(repo.dir, 'HEAD'), before);
+      assert.deepEqual(git.changes(repo.dir, true), []);
+    } finally {
+      repo.remove();
+    }
+  });
+
   it('leaves main alone where another checkout has it, and fast-forwards that checkout instead', () => {
     const { repo } = repoWithOrigin('integrate-follow');
     const linked = join(repo.outside, 'feat');

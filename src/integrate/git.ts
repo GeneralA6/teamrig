@@ -48,6 +48,8 @@ export interface IntegrateGit {
   checkout(dir: string, branch: string): GitOutcome;
   /** `git merge --ff-only <to>` in the checkout. */
   fastForward(dir: string, to: string): GitOutcome;
+  /** `git reset --keep <to>`: moves the checked-out branch and its files back to `to`; refused where a local change would be lost. */
+  resetTo(dir: string, to: string): GitOutcome;
 }
 
 /** A fetch, a push of a deleted branch or a rebase talks to origin or rewrites commits: allow it far longer than a query. */
@@ -133,4 +135,5 @@ export const GIT_INTEGRATE: IntegrateGit = {
   },
   checkout: (dir, branch) => outcome(runGit(dir, ['checkout', '--end-of-options', branch]), 'git checkout'),
   fastForward: (dir, to) => outcome(runGit(dir, ['merge', '--ff-only', '--end-of-options', to], LONG_TIMEOUT_MS), 'git merge --ff-only'),
+  resetTo: (dir, to) => outcome(runGit(dir, ['reset', '--keep', '--end-of-options', to], LONG_TIMEOUT_MS), 'git reset --keep'),
 };
