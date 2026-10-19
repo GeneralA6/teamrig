@@ -6,6 +6,7 @@ import type { KitConfig } from '../../config/types.ts';
 import { errorMessage, isRecord, stringField, type JsonRecord } from '../../core/guards.ts';
 import { claudeConfigDir, claudeTempDir, KIT_NAME } from '../../core/home.ts';
 import { resolveTeam, type TeamResolution } from '../../core/team.ts';
+import type { TimeZone } from '../../core/zone.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
 import { boundPromptNote, boundStartNote, tabTitleFor } from '../../hooks/bind.ts';
 import { modelCheckLine, payloadEffortOf } from '../../hooks/model-check.ts';
@@ -395,12 +396,12 @@ function rosterIdOf(roster: Roster, session: string | undefined): string | undef
  * lost with a new process) and wake-up, and its scratchpad and plan file. A transcript it cannot read is
  * said, never thrown: the note itself must still reach the session.
  */
-async function carriedLinesOf(runtime: CliRuntime, transcript: string, source: string | undefined): Promise<readonly string[]> {
+async function carriedLinesOf(runtime: CliRuntime, transcript: string, source: string | undefined, zone: TimeZone): Promise<readonly string[]> {
   const now = runtime.clock.now();
   try {
     const places = { tempDir: claudeTempDir(runtime.env, tmpdir()), claudeDir: claudeConfigDir(runtime.env, runtime.userHome) };
     const carry = await readCarry(runtime.files, transcript, now, places);
-    return carry === undefined ? [] : carryLines(carry, now, carryStartOf(source));
+    return carry === undefined ? [] : carryLines(carry, now, carryStartOf(source), zone);
   } catch (error) {
     return [`${KIT_NAME} could not read what your old session left in ${transcript} (${errorMessage(error)}); check CronList against your handover.`];
   }
@@ -439,7 +440,7 @@ async function refreshStartOf(runtime: CliRuntime, kit: Kit, config: KitConfig, 
       return NO_REFRESH;
     }
     await store.clearRequest(id);
-    const carried = state?.phase === 'ready' && state.transcript !== null ? await carriedLinesOf(runtime, state.transcript, source) : [];
+    const carried = state?.phase === 'ready' && state.transcript !== null ? await carriedLinesOf(runtime, state.transcript, source, teamZone(config, runtime)) : [];
     return { note: [decision.note, ...carried].join('\n'), refreshed: true };
   } catch (error) {
     return { note: `${KIT_NAME} could not check for a refresh handover (${errorMessage(error)}); if you wrote one before a /clear, read it first.`, refreshed: false };

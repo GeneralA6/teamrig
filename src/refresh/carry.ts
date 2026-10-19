@@ -2,6 +2,7 @@ import { basename, dirname, join } from 'node:path';
 import type { Files } from '../core/files.ts';
 import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
 import { parseObject } from '../core/jsonl.ts';
+import type { TimeZone } from '../core/zone.ts';
 
 /**
  * How much of the old transcript is read: enough to reach back past its last compaction, whose cron
@@ -268,10 +269,6 @@ export async function readCarry(files: Files, transcript: string, now: number, p
   return { ...found, scratchpad: entries > 0 ? { path: scratchpad, entries } : undefined, plan: planText === undefined ? undefined : plan };
 }
 
-function clockOf(ms: number): string {
-  return new Date(ms).toISOString().slice(11, 16);
-}
-
 /** How the fresh session started: in the old session's process (a /clear) or in a new one. */
 export type CarryStart = 'same-process' | 'new-process';
 
@@ -283,10 +280,10 @@ export function carryStartOf(source: string | undefined): CarryStart {
 /**
  * The lines that tell a fresh session what to take over: its jobs (still scheduled after a /clear, proven
  * on Claude Code 2.1.301 (T398), so made again only in a new process, and then only those CronList does not
- * show, as a durable job comes back by itself), the wake-up to schedule again, and where the old scratchpad
- * and plan are. Empty when there is nothing.
+ * show, as a durable job comes back by itself), the wake-up to schedule again (its time on the team's clock),
+ * and where the old scratchpad and plan are. Empty when there is nothing.
  */
-export function carryLines(carry: Carry, now: number, start: CarryStart): readonly string[] {
+export function carryLines(carry: Carry, now: number, start: CarryStart, zone: TimeZone): readonly string[] {
   const lines: string[] = [];
   if (carry.crons.length > 0 && start === 'same-process') {
     lines.push(`Your old session's ${carry.crons.length} scheduled job(s) are still scheduled, since a /clear keeps the process (CronList shows them): do not make them again.`);
@@ -298,7 +295,7 @@ export function carryLines(carry: Carry, now: number, start: CarryStart): readon
   }
   if (carry.wake !== undefined) {
     const seconds = Math.max(WAKE_MIN_SECONDS, Math.ceil((carry.wake.dueAt - now) / 1000));
-    lines.push(`It had a wake-up due at ${clockOf(carry.wake.dueAt)} UTC: schedule it again with ScheduleWakeup, delaySeconds ${seconds}, prompt ${JSON.stringify(carry.wake.prompt)}.`);
+    lines.push(`It had a wake-up due at ${zone.clock(new Date(carry.wake.dueAt))}: schedule it again with ScheduleWakeup, delaySeconds ${seconds}, prompt ${JSON.stringify(carry.wake.prompt)}.`);
   }
   if (carry.scratchpad !== undefined) {
     lines.push(`Its scratchpad stays at ${carry.scratchpad.path} (${carry.scratchpad.entries} entries); yours is a new, empty one, so read or copy from the old one what you still need.`);
