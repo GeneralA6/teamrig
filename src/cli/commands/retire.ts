@@ -4,7 +4,7 @@ import { KIT_NAME } from '../../core/home.ts';
 import { FileLock } from '../../core/lock.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { activeHires, HiringLog } from '../../hiring/log.ts';
-import { RetireAskStore } from '../../hiring/retire-ask.ts';
+import { SessionAskStore } from '../../core/session-asks.ts';
 import { planRetire, type RetirePlan, type RetireRequest } from '../../hiring/retire.ts';
 import { postLine } from '../../inbox/inbox.ts';
 import { ACTIVE_STATUSES } from '../../register/model.ts';
@@ -118,7 +118,7 @@ export async function retire(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     await log.append(plan.value.retire);
     const session = plan.value.retire.session;
     // A due ask to retire is done with, and would ask the session again if it were hired back.
-    await new RetireAskStore(files, kit.paths.retireAsks).clear(session);
+    await new SessionAskStore(files, kit.paths.retireAsks).clear(session);
     runtime.out.stdout(`RETIRED ${what}; the old config is at ${backup}`);
     runtime.out.stdout(`NEXT its records stay readable by its id (${KIT_NAME} list --session ${session} --all)${by === session ? '; finish this turn and close the tab' : '; close its tab if it is open'}`);
     return EXIT.ok;

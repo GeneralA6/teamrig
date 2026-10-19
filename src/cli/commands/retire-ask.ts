@@ -2,7 +2,8 @@ import type { KitConfig } from '../../config/types.ts';
 import { errorMessage } from '../../core/guards.ts';
 import type { TeamPaths } from '../../core/home.ts';
 import { activeHires, HiringLog } from '../../hiring/log.ts';
-import { ownsOpenTask, retireAskDue, retireAskReason, RetireAskStore } from '../../hiring/retire-ask.ts';
+import { SessionAskStore } from '../../core/session-asks.ts';
+import { ownsOpenTask, retireAskDue, retireAskReason } from '../../hiring/retire-ask.ts';
 import type { WriteResult } from '../../register/register.ts';
 import { JsonlEventLog } from '../../register/store.ts';
 import { RefreshStore } from '../../refresh/store.ts';
@@ -25,7 +26,7 @@ export async function markRetireAsk(runtime: CliRuntime, config: KitConfig, path
   try {
     const { records } = await new HiringLog(runtime.files, paths.hires).read();
     if (retireAskDue({ config, hires: activeHires(records), task, tasks: state.tasks.values() })) {
-      await new RetireAskStore(runtime.files, paths.retireAsks).set(task.owner, { task: task.id, at: new Date(runtime.clock.now()).toISOString() });
+      await new SessionAskStore(runtime.files, paths.retireAsks).set(task.owner, { task: task.id, at: new Date(runtime.clock.now()).toISOString() });
     }
   } catch (error) {
     runtime.out.stderr(`WARN ${task.id} is closed, but the ask for ${task.owner} to retire was not recorded: ${errorMessage(error)}`);
@@ -41,7 +42,7 @@ export async function retireAskReasonOf(runtime: CliRuntime, config: KitConfig, 
   if (config.hiring.policy !== 'automatic') {
     return undefined;
   }
-  const store = new RetireAskStore(runtime.files, paths.retireAsks);
+  const store = new SessionAskStore(runtime.files, paths.retireAsks);
   const ask = await store.get(id);
   if (ask === undefined) {
     return undefined;

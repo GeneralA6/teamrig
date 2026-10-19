@@ -1,74 +1,15 @@
-import { join } from 'node:path';
 import type { KitConfig } from '../config/types.ts';
-import type { Files } from '../core/files.ts';
-import { stringField } from '../core/guards.ts';
 import { KIT_NAME } from '../core/home.ts';
-import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
+import type { SessionAsk } from '../core/session-asks.ts';
 import type { Task } from '../register/fold.ts';
 import { ACTIVE_STATUSES } from '../register/model.ts';
 import type { HireRecord } from './log.ts';
 
 /**
  * Under `hiring.policy` `automatic`, a hired session whose last open task closes is asked at its next turn
- * end to write its handover and retire itself. `set` records the ask; the Stop hook takes it, checks the
- * session still has no open task, and blocks once with `retireAskReason`.
+ * end to write its handover and retire itself. `set` records the ask (a `SessionAsk` in `paths.retireAsks`); the
+ * Stop hook takes it, checks the session still has no open task, and blocks once with `retireAskReason`.
  */
-
-export const RETIRE_ASK_FORMAT = 1;
-
-/** A due ask: the task whose close left the session with no open one, and when it closed. */
-export interface RetireAsk {
-  readonly task: string;
-  readonly at: string;
-}
-
-/** An ask file's content; undefined when it is damaged or from another format. */
-export function parseRetireAsk(text: string): RetireAsk | undefined {
-  const record = parseObject(text.trim());
-  if (record === undefined || record[VERSION_FIELD] !== RETIRE_ASK_FORMAT) {
-    return undefined;
-  }
-  const task = stringField(record, 'task');
-  const at = stringField(record, 'at');
-  return task === undefined || at === undefined ? undefined : { task, at };
-}
-
-export function formatRetireAsk(ask: RetireAsk): string {
-  return toJsonlLine({ [VERSION_FIELD]: RETIRE_ASK_FORMAT, task: ask.task, at: ask.at });
-}
-
-/**
- * The due asks, one small file per session (`<id>.json`): `set` writes one, the session's own Stop hook
- * removes it before it asks, and `retire` removes it. Ids are session ids, checked by the roster, so they
- * are safe in a path.
- */
-export class RetireAskStore {
-  private readonly files: Files;
-  private readonly folder: string;
-
-  constructor(files: Files, folder: string) {
-    this.files = files;
-    this.folder = folder;
-  }
-
-  /** The session's due ask; none when there is none or its file is damaged. */
-  async get(id: string): Promise<RetireAsk | undefined> {
-    const text = await this.files.read(this.pathOf(id));
-    return text === undefined ? undefined : parseRetireAsk(text);
-  }
-
-  async set(id: string, ask: RetireAsk): Promise<void> {
-    await this.files.write(this.pathOf(id), formatRetireAsk(ask));
-  }
-
-  async clear(id: string): Promise<void> {
-    await this.files.remove(this.pathOf(id));
-  }
-
-  private pathOf(id: string): string {
-    return join(this.folder, `${id}.json`);
-  }
-}
 
 /** Whether `session` owns a task that is not closed. */
 export function ownsOpenTask(tasks: Iterable<Task>, session: string): boolean {
@@ -102,7 +43,7 @@ export function retireAskDue(input: RetireAskInput): boolean {
 }
 
 /** The Stop hook's block reason: write the handover, then retire, unless the job goes on. */
-export function retireAskReason(id: string, ask: RetireAsk, handoverPath: string): string {
+export function retireAskReason(id: string, ask: SessionAsk, handoverPath: string): string {
   return (
     `Your last open task ${ask.task} is closed and hiring.policy is automatic, so your job here may be done. ` +
     `Write your handover to ${handoverPath} (what you did, where it lives, what is left), then retire: ` +
