@@ -3,13 +3,13 @@ import { waitsText } from "../register/waits.js";
 import { startableTasks } from "./day-start.js";
 import { taskListText } from "./decide.js";
 /**
- * What the ask sends the session to; undefined in quiet hours or past its daily budget, once the task stopped
+ * What the ask sends the session to; undefined in quiet hours or while its budget holds it, once the task stopped
  * waiting or changed hands, or with nothing it can start.
  */
 export function keepWorkingOf(input) {
     const { tasks, session, ask, now, rest } = input;
     const waiting = tasks.get(ask.task);
-    if (rest.quiet || rest.over || waiting?.owner !== session || waiting.status !== 'waiting') {
+    if (rest.quiet || rest.held || waiting?.owner !== session || waiting.status !== 'waiting') {
         return undefined;
     }
     const startable = startableTasks(tasks, session, now);

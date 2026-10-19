@@ -1,6 +1,6 @@
 import { formatUtcDay } from "../core/time.js";
 import { DailyProfile } from "./active-time.js";
-import { dailyAllowancePct, readPace, resolveReset, weekWindow } from "./pace.js";
+import { dailyAllowancePct, dayPacePct, readPace, resolveReset, weekWindow } from "./pace.js";
 function sumW(states, counts) {
     let total = 0;
     for (const state of states) {
@@ -32,6 +32,9 @@ export function readWeek(input) {
     const allowancePct = window === undefined || usedPct === undefined || wPerPct === undefined
         ? undefined
         : dailyAllowancePct({ window, budget, now, usedPct, todayPct: todayW / wPerPct, profile });
+    const teamDay = window === undefined || wPerPct === undefined || allowancePct === undefined
+        ? undefined
+        : { usedPct: todayW / wPerPct, pacePct: dayPacePct({ window, now, allowancePct, profile }) };
     return {
         reset,
         window,
@@ -43,5 +46,6 @@ export function readWeek(input) {
         pace,
         allowancePct,
         todayW,
+        teamDay,
     };
 }
