@@ -1,15 +1,9 @@
-import { formatUtcMinute, MS_PER_HOUR } from '../core/time.ts';
+import { formatUtcMinute, MS_PER_HOUR, utcMinuteOf } from '../core/time.ts';
 
 /** The weekly token reset a blackout counts back from, and where its time came from (`status line`, `config`). */
 export interface ResetTime {
   readonly at: number;
   readonly source: string;
-}
-
-/** Minutes after midnight of a valid `HH:MM`. */
-function minuteOfDay(time: string): number {
-  const [hours = 0, minutes = 0] = time.split(':').map(Number);
-  return hours * 60 + minutes;
 }
 
 /**
@@ -22,7 +16,8 @@ export function heavyCutoffReason(nowMs: number, cutoffUtc: string | undefined):
   }
   const now = new Date(nowMs);
   const minute = now.getUTCHours() * 60 + now.getUTCMinutes();
-  return minute >= minuteOfDay(cutoffUtc) ? `nothing heavy after ${cutoffUtc} UTC (now ${formatUtcMinute(now)})` : undefined;
+  const cutoff = utcMinuteOf(cutoffUtc);
+  return cutoff !== undefined && minute >= cutoff ? `nothing heavy after ${cutoffUtc} UTC (now ${formatUtcMinute(now)})` : undefined;
 }
 
 /** When the blackout before `reset` starts: `hours` before it. */

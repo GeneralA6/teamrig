@@ -1,6 +1,23 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatUtcDay, formatUtcMinute, parseUtcDay, parseUtcDeadline, parseUtcInstant, shortUtc } from './time.ts';
+import { formatUtcDay, formatUtcMinute, isMinuteInSpan, parseUtcDay, parseUtcDeadline, parseUtcInstant, shortUtc, utcMinuteOf } from './time.ts';
+
+describe('utcMinuteOf', () => {
+  it('reads HH:MM as minutes since midnight, and nothing else', () => {
+    assert.deepEqual(
+      ['00:00', '06:30', '23:59', '24:00', '06:60', '6:30', '06:30 ', ''].map(utcMinuteOf),
+      [0, 390, 1439, undefined, undefined, undefined, undefined, undefined],
+    );
+  });
+});
+
+describe('isMinuteInSpan', () => {
+  it('takes the start in and the end out, across midnight too, and an empty span never', () => {
+    assert.deepEqual([539, 540, 659, 660].map((minute) => isMinuteInSpan(minute, 540, 660)), [false, true, true, false]);
+    assert.deepEqual([1319, 1320, 0, 359, 360].map((minute) => isMinuteInSpan(minute, 1320, 360)), [false, true, true, true, false]);
+    assert.equal(isMinuteInSpan(540, 540, 540), false);
+  });
+});
 
 describe('parseUtcDeadline', () => {
   it('reads a bare day as the end of that day in UTC', () => {
