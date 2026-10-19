@@ -150,6 +150,9 @@ With sub-teams, run `teamrig check --tree --session lead` too. Act on each flag:
 - `PRIORITY-SKIP`: a session works below its own waiting top-priority task. Send it one inbox line to park the lower
   task and start the waiting one (`teamrig inbox add --session lead --to <id> --text "..."`), or, when the order is
   wrong, change it: `teamrig update T<n> --session lead --priority p2`.
+- `SELF-MADE`: a session added more tasks for itself in 24 h than `register.check.maxSelfMadePerDay`. Read them
+  (`teamrig list --session <id> --source <id> --status all`), then ask it in one inbox line to drop or park each
+  that serves no goal, parent task or week plan; when it repeats a step with no progress, to stop and ask you.
 - `OFF-GOAL`: work in progress with no goal outside the week's plan. If it belongs in this week, plan it in:
   `teamrig update T<n> --session lead --week <week>`. If not, ask the session in one inbox line to tag its goal
   (`update --goals`, only its owner may) or to park it.
