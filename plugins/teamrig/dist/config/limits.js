@@ -23,6 +23,7 @@ export const CONFIG_LIMITS = {
     requireNoteOn: { maxItems: 5 },
     requireFollowupsOn: { maxItems: 3 },
     maxVerifying: { min: 0, max: 100 },
+    maxSelfMadePerDay: { min: 0, max: 200 },
     stopgapFiles: { maxItems: 20, maxLength: 260 },
     persistentFailureHours: { min: 1, max: 720 },
     chainNudgeAt: { min: 0, max: 50 },

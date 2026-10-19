@@ -1,6 +1,7 @@
 import { formatUtcMinute, MS_PER_DAY, MS_PER_HOUR, parseUtcDay, shortUtc } from "../core/time.js";
 import { topPriority } from "../config/priorities.js";
 import { CARD_FLAGS } from "./card.js";
+import { taskNumber } from "./fold.js";
 import { ACTIVE_STATUSES, priorityText } from "./model.js";
 import { loopFix, pathText, TaskTree } from "./tree.js";
 import { formatTask } from "./views.js";
@@ -17,6 +18,7 @@ export const FLAG_KINDS = [
     'NO-CARD',
     'NOT-PICKED-UP',
     'PRIORITY-SKIP',
+    'SELF-MADE',
     'PILE-UP',
     'OVER-LIMIT',
     'OWNER-UNPLANNED',
@@ -65,6 +67,9 @@ export function currentWeekOf(snapshot, now) {
  * - PRIORITY-SKIP: in progress below an open task of the top priority that has the same owner and is free to start
  *   (every task it comes after finished), for longer than `prioritySkipAfterHours`: the session is not working its
  *   list in order;
+ * - SELF-MADE: the first task still active past `maxSelfMadePerDay` of the tasks its owner added for itself (created
+ *   by it, asked by no one else) in the 24 h before now (0 turns it off): a session adding its own work faster than
+ *   anything asked for it may be looping or drifting from its goal;
  * - PILE-UP: the oldest verifying task of an owner holding more than `maxVerifying` of them (0 turns it off): shipped
  *   changes pile up unproven;
  * - STALE: no event for `staleAfterHours` (not raised on top of NOT-PICKED-UP, nor for a verifying task with an
@@ -85,8 +90,10 @@ export function checkTasks(tasks, now, week, config) {
     const top = topPriority(config.priorities);
     const waiting = top === undefined ? new Map() : waitingTopTasks(active, top, tree.context);
     const piles = pileUps(active, config.maxVerifying);
+    const runs = selfMadeRuns(all, at, config.check.maxSelfMadePerDay);
     const flags = active.flatMap((task) => [
         ...verifyFlags(task, tree, piles, config.maxVerifying),
+        ...selfMadeFlags(task, runs, config.check.maxSelfMadePerDay),
         ...(task.status === 'waiting' && allReady(task.waits, tree.context) ? [{ kind: 'READY', task, detail: 'every reason cleared; set its next status' }] : []),
         ...(task.status === 'waiting' && task.waits.length === 0 ? [{ kind: 'NO-REASON', task, detail: 'set what it waits for (--waits) or its next status' }] : []),
         ...noCardFlags(task, config),
@@ -195,6 +202,43 @@ function verifyFlags(task, tree, piles, max) {
         flags.push({ kind: 'PILE-UP', task, detail: `${task.owner} holds ${held} verifying tasks, more than ${max}; this is the oldest` });
     }
     return flags;
+}
+/** Created by its owner and asked for by no one else: `add` takes the caller as the source unless `--source` names another. */
+function isSelfMade(task) {
+    return task.createdBy === task.owner && task.source === task.owner;
+}
+/**
+ * Per owner that added more than `max` tasks for itself in the 24 h before `at` (0: none), its count, keyed by the id
+ * of the first of them past `max` that is still active. A run whose surplus is all finished raises nothing: no work of
+ * it is left to read.
+ */
+function selfMadeRuns(all, at, max) {
+    const runs = new Map();
+    if (max === 0) {
+        return runs;
+    }
+    const byOwner = new Map();
+    for (const task of all) {
+        const created = Date.parse(task.createdAt);
+        if (isSelfMade(task) && created > at - MS_PER_DAY && created <= at) {
+            byOwner.set(task.owner, [...(byOwner.get(task.owner) ?? []), task]);
+        }
+    }
+    for (const made of byOwner.values()) {
+        const surplus = [...made].sort((a, b) => taskNumber(a.id) - taskNumber(b.id)).slice(max);
+        const first = surplus.find((task) => ACTIVE_STATUSES.includes(task.status));
+        if (first !== undefined) {
+            runs.set(first.id, made.length);
+        }
+    }
+    return runs;
+}
+function selfMadeFlags(task, runs, max) {
+    const made = runs.get(task.id);
+    if (made === undefined) {
+        return [];
+    }
+    return [{ kind: 'SELF-MADE', task, detail: `${task.owner} added ${made} tasks for itself in 24 h, more than ${max}; this is the first still active past ${max}` }];
 }
 /** Since when the task has stood where it is in its owner's list: its latest change of owner, status or priority. */
 function standingSince(task) {
