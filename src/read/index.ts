@@ -60,3 +60,7 @@ export { CONFIG_VERSION, type KitConfig, type PriorityConfig } from '../config/t
 // by its id, its name or a name it had before, as every teamrig command does.
 export { Roster, type SessionLookup } from '../config/roster.ts';
 export { readRenames, RENAME_VERSION, type Rename, type RenameLogRead } from '../names/rename.ts';
+
+// Each session's turn log (`turn-log/<session id>/<UTC hour>.jsonl`): its prompts, replies and clears, one parsed
+// JSON line at a time.
+export { parseEntry, TURN_LOG_VERSION, type TurnLogEntry, type TurnLogKind } from '../turn-log/entry.ts';

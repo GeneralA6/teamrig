@@ -125,4 +125,10 @@ describe('the read entry', () => {
   it('checks a session name with the rule teamrig names inbox files by', () => {
     assert.deepEqual(['alpha', 'a-2', 'Alpha', '2a', '../x', ''].map((name) => read.SESSION_NAME.test(name)), [true, true, false, false, false, false]);
   });
+
+  it('reads a turn-log line as the hooks write it, and none from a newer teamrig', () => {
+    const reply = { at: '2030-01-08T09:00:00.000Z', kind: 'reply', text: 'shipped', claude: 'claude-1', truncated: true, upTo: 'u-7' };
+    assert.deepEqual(read.parseEntry({ v: read.TURN_LOG_VERSION, ...reply, later: 'a field it does not know' }), reply);
+    assert.equal(read.parseEntry({ v: read.TURN_LOG_VERSION + 1, ...reply }), undefined);
+  });
 });
