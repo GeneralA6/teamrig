@@ -333,6 +333,7 @@ describe('teamrig statusline', () => {
     const lines = ok(await run(['budget']));
     // The pace line runs from 10:00 to an hour before the reset, 134 hours: 1 of them is 0.74%.
     assert.match(lines[0] ?? '', /^Week: 0\.50% used at 11:00 UTC \(status line\); the pace line is at 0\.74%/);
+    assert.match(lines[0] ?? '', / Counted from \w{3} 01-08 10:00 UTC, after a reset inside the week\.$/);
     // Today's use counts from 10:00 too: the team's 09:00 calls were the last budget's.
     assert.match(lines[1] ?? '', /^The team used 0[.0]*% of the week today/);
     const period = parsePeriod(kit.files.get(join(TEAM_HOME, 'state', 'usage', 'period.json')) ?? '');

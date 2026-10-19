@@ -2,7 +2,7 @@ import type { BudgetConfig } from '../config/types.ts';
 import { formatUtcDay, formatUtcHour, MS_PER_DAY } from '../core/time.ts';
 import { DailyProfile } from './active-time.ts';
 import { dailyAllowancePct, dayPacePct, readPace, weekWindow, type PaceReading, type TeamDay, type WeekWindow } from './pace.ts';
-import type { Metered, Period } from './period.ts';
+import type { Metered, Period, PeriodKind } from './period.ts';
 import type { WeekUse } from './snapshot.ts';
 import type { UsageState } from './store.ts';
 
@@ -14,6 +14,8 @@ import type { UsageState } from './store.ts';
 export interface WeekReading {
   readonly reset: number | undefined;
   readonly window: WeekWindow | undefined;
+  /** How the window's start is known (budget/period.ts); undefined with the window. */
+  readonly periodKind: PeriodKind | undefined;
   readonly usedPct: number | undefined;
   /** When the status line reading was taken; undefined when the use is metered or unknown. */
   readonly statusAt: number | undefined;
@@ -43,7 +45,7 @@ export interface WeekInput {
   /** The newest status line reading of the week, if any. */
   readonly statusUse: WeekUse | undefined;
   /** The span the use counts in (budget/period.ts); undefined while no reset is known. */
-  readonly period: Pick<Period, 'start' | 'end'> | undefined;
+  readonly period: Pick<Period, 'start' | 'end' | 'kind'> | undefined;
   /** Every usage store: each team session's and the outside one. */
   readonly states: readonly UsageState[];
 }
@@ -108,6 +110,7 @@ export function readWeek(input: WeekInput): WeekReading {
   return {
     reset,
     window,
+    periodKind: period?.kind,
     usedPct,
     statusAt: statusUse?.at,
     wPerPct,
