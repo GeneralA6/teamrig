@@ -1671,6 +1671,33 @@ DONE exit 0
 The build's own output comes between the last two lines. A step killed at its limit ends with
 `TIMED OUT killed, recorded as exit 124`, a failed one with `FAILED exit <code>`.
 
+### teamrig withdraw
+
+Takes this session's steps that wait for the host lock out of its line, so a re-ordered or abandoned `heavy`,
+`integrate` or `roll` leaves it instead of running later. Each withdrawn step stops at its next look, runs nothing and
+is refused (`REFUSED withdrawn from the host lock's line`). A step that took its turn first is `RUNNING`, one that left
+the line first `LEFT`; one an older teamrig queued is `KEPT`, as its step runs anyway. With neither `--what` nor
+`--all` it lists the session's waiting steps and is refused. From a tab bound to a session it withdraws only that
+session's steps. Exit 0 when each chosen step was withdrawn or none waits, 1 when any is `RUNNING`, `LEFT` or `KEPT`.
+
+Flags:
+
+- `--what <text>`: withdraws the steps whose purpose holds the text (`heavy: <label>`, `integrate <repo>`).
+- `--all`: withdraws every waiting step of the session.
+- `--session <id|name>`: the session; default `$TEAMRIG_SESSION`, else the session the tab is bound to.
+
+Example:
+
+```sh
+teamrig withdraw --session api --what "build api"
+```
+
+Output:
+
+```text
+WITHDRAWN heavy: build api, waiting since 2030-01-08 09:58: it stops at its next look
+```
+
 ### teamrig integrate
 
 Lands the branch checked out in the current folder, a worktree or a plain checkout, on origin's default branch (the
