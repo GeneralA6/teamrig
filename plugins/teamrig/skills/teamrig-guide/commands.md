@@ -1594,7 +1594,9 @@ wait ran out is removed by the next waiter. A step that does not join the line (
 coordinator) may still take a free lock first.
 Then it runs the command in the shell, its output streaming as it comes, and kills it with every process it started
 after `coordinator.heavy.maxRunMinutes` (45). The step's start and end go to the coordinator's ledger,
-`ledger.jsonl` in `coordinator.dir` (default `deploys` in the team's state folder). Exit 0 when the command
+`ledger.jsonl` in `coordinator.dir` (default `deploys` in the team's state folder), with when it began to wait
+(`queuedAt`) and, sampled every `coordinator.heavy.memorySampleSeconds` (15; 0 samples nothing), the most memory its
+process tree held at once (`peakTreeMb`) and the least free memory the host had (`lowFreeMb`). Exit 0 when the command
 passed, 1 when it failed or was killed. REFUSED (exit 2) from `coordinator.schedule.heavyCutoffUtc` to midnight
 UTC, also when the wait for the lock ran past it, and when the lock is still held after the wait.
 
