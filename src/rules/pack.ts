@@ -78,7 +78,7 @@ function pushRule(pushGuard: PushGuardConfig, hookAsks: HookAsks): string {
 function refusedRouteRule(hookAsks: HookAsks): string {
   return hookAsks === 'refuse'
     ? 'A refused or blocked route waits on approval:owner; take your next task, never route around it or hand it off.'
-    : 'A refused or blocked route is reported to the lead, never routed around or handed to another session.';
+    : 'A route refused, blocked or prompting unexpectedly is reported to the lead, never routed around or handed to another session.';
 }
 
 /** At most two decimals, so float noise (0.30000000000000004) or a tiny value (1e-7) prints short. */
@@ -156,7 +156,7 @@ export function renderCorePack(config: KitConfig, command: string, platform: Nod
       " A loop, cron or scheduled wake-up needs the lead's OK and a written stop. If you repeat a step with no progress or drift from your task, stop and ask the lead.",
     'owner-gates':
       `Silence is consent only within the sender's authority, never for owner gates: ${list(config.ownerGates)} [ownerGates].` +
-      ' A timing go the lead relays from the owner approves finished, tested work.',
+      " An owner's go relayed by the lead approves finished, tested work.",
     deploy:
       "Deploy ASAP: as soon as a change can be verified (tests, then a check it runs). State each fix's evidence and when it will exist; build nothing on it before then." +
       (cutoff === undefined ? '' : ` No heavy step (builds, test runs, data scripts) starts ${zone.clockSpan(new Date(cutoff.from), new Date(cutoff.to))} [coordinator.schedule.heavyCutoffUtc].`),
@@ -176,7 +176,7 @@ export function renderCorePack(config: KitConfig, command: string, platform: Nod
       'Rising resource use (memory, CPU, storage, tokens) needs its root cause; a raised limit is only an owner-approved bridge with a dated root-cause task. Tag a stopgap with the task that replaces it: `stopgap T<id>`.',
     data:
       "A hand-run change or delete of stored data needs the owner's OK after counts or a preview. Code that writes data ships a read-only dry run (inserted, unchanged, changed counts)." +
-      ' Deleting derived data needs a verified regenerate tool and a parity run that explains each differing row; archive history and audit data before any TTL.' +
+      ' Deleting derived data needs a verified regenerate tool and a parity run explaining each differing row; archive history and audit data before any TTL.' +
       ' Never print secret values; bind local services to 127.0.0.1, never 0.0.0.0.',
     contracts:
       `Tell the other side before changing a contract it reads (an API parameter, shared table or file). The same external failure for ${config.alerts.persistentFailureHours} h must page a human [alerts.persistentFailureHours].`,
@@ -195,7 +195,7 @@ export function renderCorePack(config: KitConfig, command: string, platform: Nod
       'Edit in your own worktree and branch in every git repo, never a main checkout.' +
       (platform === 'win32' ? ` Remove a worktree with \`${command} worktree remove <path>\`; a plain \`git worktree remove\` empties the main node_modules.` : '') +
       " Update comments in their code's commit, deleting one you cannot make true; verify a load-bearing comment or recorded number at its source before use;" +
-      ' fix a stale comment, doc or dead code (proven unread) you find in its own small commit and tell its area.',
+      ' fix a stale comment, doc or proven-dead code you find in its own commit and tell its area.',
   };
   const kept = renderKeptRules(config.ruleConflicts, command);
   const except = kept === '' ? '' : ', except the kept local rules below [ruleConflicts]';

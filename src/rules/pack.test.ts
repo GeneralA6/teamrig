@@ -158,7 +158,7 @@ describe('renderCorePack', () => {
   it('gates each hand-run data change on the owner, never prints secrets and binds local services to loopback', () => {
     const pack = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK);
     assert.match(pack, /^11\. A hand-run change or delete of stored data needs the owner's OK after counts or a preview\. Code that writes data/m);
-    assert.match(pack, /a parity run that explains each differing row; archive history and audit data before any TTL\. Never print secret values;/);
+    assert.match(pack, /a parity run explaining each differing row; archive history and audit data before any TTL\. Never print secret values;/);
     assert.match(pack, /Never print secret values; bind local services to 127\.0\.0\.1, never 0\.0\.0\.0\.$/m);
   });
 
@@ -174,7 +174,7 @@ describe('renderCorePack', () => {
   it('states what the push guard does with a push to a protected branch', () => {
     const pack = (pushGuard: Record<string, unknown>) => renderCorePack(testConfig({ pushGuard }), COMMAND, 'win32', RULES_CLOCK);
     const keys = String.raw`\[pushGuard\]`;
-    const routed = ' A refused or blocked route is reported to the lead, never routed around or handed to another session.';
+    const routed = ' A route refused, blocked or prompting unexpectedly is reported to the lead, never routed around or handed to another session.';
     assert.match(pack({}), new RegExp(String.raw`^15\. Pushes to main, master ask the human; force-pushing or deleting them is refused ${keys}\.${routed}$`, 'm'));
     assert.match(
       pack({ protectedBranches: ['release'], pushToProtected: 'allow' }),
@@ -230,7 +230,7 @@ describe('renderCorePack', () => {
   it('keeps comments true to their code, checks a recorded number at its source, and proves dead code unread', () => {
     const pack = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK);
     assert.match(pack, /Update comments in their code's commit, deleting one you cannot make true; verify a load-bearing comment or recorded number at its source before use;/);
-    assert.match(pack, / fix a stale comment, doc or dead code \(proven unread\) you find in its own small commit and tell its area\.$/m);
+    assert.match(pack, / fix a stale comment, doc or proven-dead code you find in its own commit and tell its area\.$/m);
   });
 
   it('ranks a skill below the rules once, in the header', () => {
@@ -249,7 +249,7 @@ describe('renderCorePack', () => {
     const pack = renderCorePack(testConfig({ messages: { maxLines: 7 }, ownerGates: ['money', 'deletes'] }), COMMAND, 'win32', RULES_CLOCK);
     assert.match(pack, /^1\. Roles, by session id: lead is the lead/m);
     assert.match(pack, / Every other session owns its area; cross-area issues and clashes go to the lead\.$/m);
-    assert.match(pack, /\[ownerGates\]\. A timing go the lead relays from the owner approves finished, tested work\.$/m);
+    assert.match(pack, /\[ownerGates\]\. An owner's go relayed by the lead approves finished, tested work\.$/m);
     assert.match(pack, /At most 7 lines \[messages\.maxLines\]/);
     assert.match(pack, /never for owner gates: money; deletes \[ownerGates\]/);
     assert.match(pack, /with a note \(only what changed\) on waiting, verifying, done, dropped \[register\.requireNoteOn\]/);
