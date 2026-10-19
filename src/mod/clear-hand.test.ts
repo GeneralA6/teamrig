@@ -1,11 +1,38 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { askFileOf, ClearHand, DIR_RETRY_MS, isClaudeSessionId, liveAgentsOf, outcomeFileOf, type ClearHandHost, type CliRun } from './clear-hand.ts';
+import { DEFAULT_REFRESH } from '../config/defaults.ts';
+import { personHoldOf } from '../refresh/restart.ts';
+import {
+  askFileOf,
+  ClearHand,
+  DEFAULT_PERSON_HOLD,
+  DIR_RETRY_MS,
+  HOLD_BUTTON_MS,
+  isClaudeSessionId,
+  liveAgentsOf,
+  outcomeFileOf,
+  parseHandAsk,
+  REFRESHING_SHOWN_MS,
+  type ClearHandHost,
+  type CliRun,
+  type PersonHold,
+} from './clear-hand.ts';
 
 const DIR = '/kit/clear-asks';
 const SESSION = '0123abcd-0000-4000-8000-00000000000a';
-const ASK = '{"team":"app","id":"alpha","at":"2030-01-08T09:59:59.000Z","askedAt":"2030-01-08T10:00:15.000Z"}\n';
-const NEXT_ASK = '{"team":"app","id":"alpha","at":"2030-01-08T09:59:59.000Z","askedAt":"2030-01-08T10:01:00.000Z"}\n';
+const AT = '2030-01-08T09:59:59.000Z';
+/** No hold for the person: the hand claims each ask it is free to. */
+const NO_HOLD: PersonHold = { countdownMs: 0, afterActivityMs: 0 };
+/** The config's defaults: a 20 s count, and 5 min after the person's last key. */
+const HOLD: PersonHold = { countdownMs: 20_000, afterActivityMs: 300_000 };
+
+/** The runner's ask as it posts it: `n` makes each one new, `at` names the restart request. */
+function askOf(n: number, hold: PersonHold = NO_HOLD, at: string = AT): string {
+  return `${JSON.stringify({ team: 'app', id: 'alpha', at, askedAt: new Date(Date.parse(AT) + n * 15_000).toISOString(), hold })}\n`;
+}
+
+const ASK = askOf(1);
+const NEXT_ASK = askOf(2);
 
 interface CliCall {
   readonly args: readonly string[];
@@ -27,6 +54,8 @@ class FakeHost implements ClearHandHost {
   agentLists = 0;
   /** Thrown by `read`, as a file the mod cannot read. */
   readFailure: unknown;
+  /** The prompt box's text, or why Claude Code would not read it. */
+  prompt: string | Error = '';
   /** Holds each /clear until it resolves, as a /clear waits for a turn in progress. */
   clearing: Promise<void> = Promise.resolve();
 
@@ -62,6 +91,13 @@ class FakeHost implements ClearHandHost {
       throw this.live;
     }
     return this.live;
+  }
+
+  async draft(): Promise<string> {
+    if (this.prompt instanceof Error) {
+      throw this.prompt;
+    }
+    return this.prompt;
   }
 
   async clear(): Promise<void> {
@@ -239,6 +275,171 @@ describe('ClearHand', () => {
     assert.deepEqual(await hand.tick(), { kind: 'failed', error: 'gone' });
     host.readFailure = undefined;
     assert.deepEqual(await hand.tick(), { kind: 'cleared' });
+  });
+});
+
+/** A hand whose runner holds the person's /clear the config's default way, with the clock at 0. */
+function personHand(): { readonly host: FakeHost; readonly hand: ClearHand } {
+  const host = new FakeHost();
+  return { host, hand: new ClearHand(host) };
+}
+
+describe('ClearHand: the person at the tab', () => {
+  it('counts down on the band, holding each ask until the count ends, then claims the next', async () => {
+    const { host, hand } = personHand();
+    host.ask(askOf(1, HOLD));
+    assert.deepEqual(await hand.tick(), { kind: 'held', why: 'the band counts down: 20 s left' });
+    assert.deepEqual(hand.band(), { kind: 'counting', secondsLeft: 20 });
+    host.time = 4_500;
+    assert.deepEqual(hand.band(), { kind: 'counting', secondsLeft: 16 }, 'whole seconds, rounded up');
+    host.time = 15_000;
+    host.ask(askOf(2, HOLD));
+    assert.deepEqual(await hand.tick(), { kind: 'held', why: 'the band counts down: 5 s left' }, 'the same count: one request');
+    host.time = 30_000;
+    assert.deepEqual(hand.band(), { kind: 'refreshing' }, 'the count ended: the /clear comes with the next ask');
+    host.ask(askOf(3, HOLD));
+    assert.deepEqual(await hand.tick(), { kind: 'cleared' });
+    assert.equal(hand.band(), undefined);
+    assert.deepEqual(
+      host.claims().map((call) => call.args.slice(2)),
+      [['--hold'], ['--hold'], []],
+      'each ask answered at once: the runner ends a tab that leaves one',
+    );
+  });
+
+  it("counts the config's defaults down on an ask that carries no hold (an older runner's)", async () => {
+    const { host, hand } = personHand();
+    host.ask('{"team":"app","id":"alpha","at":"2030-01-08T09:59:59.000Z","askedAt":"2030-01-08T10:00:15.000Z"}\n');
+    assert.deepEqual(await hand.tick(), { kind: 'held', why: 'the band counts down: 20 s left' });
+  });
+
+  it('starts a new count for a new restart request, and after a turn', async () => {
+    const { host, hand } = personHand();
+    host.ask(askOf(1, HOLD));
+    await hand.tick();
+    host.time = 15_000;
+    host.ask(askOf(2, HOLD, '2030-01-08T10:00:14.000Z'));
+    assert.deepEqual(await hand.tick(), { kind: 'held', why: 'the band counts down: 20 s left' });
+    hand.turnStarted();
+    assert.equal(hand.band(), undefined, 'a turn hides the band');
+    hand.turnEnded();
+    host.time = 60_000;
+    host.ask(askOf(3, HOLD));
+    assert.deepEqual(await hand.tick(), { kind: 'held', why: 'the band counts down: 20 s left' });
+  });
+
+  it('holds while the prompt box holds a draft, or Claude Code will not read it, and hides the band', async () => {
+    const { host, hand } = personHand();
+    host.ask(askOf(1, HOLD));
+    await hand.tick();
+    host.prompt = '  half a thought ';
+    host.ask(askOf(2, HOLD));
+    assert.deepEqual(await hand.tick(), { kind: 'held', why: 'the prompt box holds an unsent draft' });
+    assert.equal(hand.band(), undefined);
+    host.prompt = new Error('no prompt box');
+    host.ask(askOf(3, HOLD));
+    assert.deepEqual(await hand.tick(), { kind: 'held', why: 'Claude Code would not read the prompt box: no prompt box' });
+    host.prompt = ' \n';
+    host.ask(askOf(4, HOLD));
+    assert.deepEqual(await hand.tick(), { kind: 'held', why: 'the band counts down: 20 s left' }, 'blank is no draft: a new count');
+    assert.equal(host.clears, 0);
+  });
+
+  it("holds afterActivityMs after the person's last key or prompt, hiding the band, then counts from the next ask", async () => {
+    const { host, hand } = personHand();
+    host.ask(askOf(1, HOLD));
+    await hand.tick();
+    host.time = 5_000;
+    hand.personActed();
+    assert.equal(hand.band(), undefined, 'typing hides the band');
+    host.time = 65_000;
+    host.ask(askOf(2, HOLD));
+    assert.deepEqual(await hand.tick(), { kind: 'held', why: 'the person was active in this tab 60 s ago' });
+    host.time = 305_000;
+    host.ask(askOf(3, HOLD));
+    assert.deepEqual(await hand.tick(), { kind: 'held', why: 'the band counts down: 20 s left' });
+  });
+
+  it('holds HOLD_BUTTON_MS after the band\'s Hold, then counts again', async () => {
+    const { host, hand } = personHand();
+    host.ask(askOf(1, HOLD));
+    await hand.tick();
+    hand.holdRefresh();
+    assert.equal(hand.band(), undefined);
+    host.time = 60_000;
+    host.ask(askOf(2, HOLD));
+    assert.deepEqual(await hand.tick(), { kind: 'held', why: 'the person pressed Hold: 9 min left' });
+    host.time = HOLD_BUTTON_MS;
+    host.ask(askOf(3, HOLD));
+    assert.deepEqual(await hand.tick(), { kind: 'held', why: 'the band counts down: 20 s left' });
+  });
+
+  it("claims the next ask after Refresh now, through the person's Hold, activity and count", async () => {
+    const { host, hand } = personHand();
+    host.ask(askOf(1, HOLD));
+    await hand.tick();
+    hand.holdRefresh();
+    hand.personActed();
+    hand.refreshNow();
+    assert.deepEqual(hand.band(), { kind: 'refreshing' });
+    host.ask(askOf(2, HOLD));
+    assert.deepEqual(await hand.tick(), { kind: 'cleared' });
+    assert.equal(hand.band(), undefined);
+  });
+
+  it('lets a draft or a live helper hold the ask after Refresh now, which it then forgets', async () => {
+    const { host, hand } = personHand();
+    hand.refreshNow();
+    host.prompt = 'wait';
+    host.ask(askOf(1, HOLD));
+    assert.deepEqual(await hand.tick(), { kind: 'held', why: 'the prompt box holds an unsent draft' });
+    assert.equal(hand.band(), undefined);
+    host.prompt = '';
+    hand.refreshNow();
+    host.live = 1;
+    host.ask(askOf(2, HOLD));
+    assert.deepEqual(await hand.tick(), { kind: 'held', why: '1 agent of this session still live' });
+    host.live = 0;
+    host.ask(askOf(3, HOLD));
+    assert.deepEqual(await hand.tick(), { kind: 'held', why: 'the band counts down: 20 s left' }, 'a count, not the forgotten Refresh now');
+  });
+
+  it('ends the count when the restart is no longer pending, and reads "refreshing" only REFRESHING_SHOWN_MS', async () => {
+    const { host, hand } = personHand();
+    host.ask(askOf(1, HOLD));
+    await hand.tick();
+    host.holdRun = { exitCode: 0, stdout: 'declined: the restart is no longer pending\n' };
+    host.ask(askOf(2, HOLD));
+    assert.deepEqual(await hand.tick(), { kind: 'declined', why: 'declined: the restart is no longer pending' });
+    assert.equal(hand.band(), undefined);
+
+    host.holdRun = { exitCode: 0, stdout: 'held\n' };
+    host.ask(askOf(3, HOLD, '2030-01-08T10:00:30.000Z'));
+    await hand.tick();
+    host.time = 20_000 + REFRESHING_SHOWN_MS - 1;
+    assert.deepEqual(hand.band(), { kind: 'refreshing' });
+    host.time += 1;
+    assert.equal(hand.band(), undefined, 'no ask came: the band does not stay');
+    hand.refreshNow();
+    host.time += REFRESHING_SHOWN_MS;
+    assert.equal(hand.band(), undefined);
+  });
+});
+
+describe('parseHandAsk', () => {
+  it("reads the ask's request and the hold it carries", () => {
+    assert.deepEqual(parseHandAsk(askOf(1, HOLD)), { request: AT, hold: HOLD });
+    assert.deepEqual(parseHandAsk(askOf(1, NO_HOLD)), { request: AT, hold: NO_HOLD });
+  });
+
+  it("holds the config's defaults when the ask carries no hold or a damaged one", () => {
+    assert.deepEqual(DEFAULT_PERSON_HOLD, personHoldOf(DEFAULT_REFRESH), "the mod's fallback is the config's default");
+    for (const hold of [undefined, null, [], { countdownMs: 20_000 }, { countdownMs: -1, afterActivityMs: 0 }, { countdownMs: '20s', afterActivityMs: 0 }]) {
+      assert.deepEqual(parseHandAsk(JSON.stringify({ at: AT, hold })).hold, DEFAULT_PERSON_HOLD, JSON.stringify(hold));
+    }
+    for (const text of ['not json', '[]', '{"at":3}']) {
+      assert.deepEqual(parseHandAsk(text), { request: undefined, hold: DEFAULT_PERSON_HOLD }, text);
+    }
   });
 });
 

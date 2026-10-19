@@ -10,6 +10,14 @@
  * that the restart is still pending) and on a claim runs /clear the way the person would. Claude Code then
  * runs the SessionStart `clear` hooks that read the handover and wake the session.
  *
+ * The hand also holds the /clear for the person (the ask's `PersonHold`, from the team's config): while the
+ * prompt holds an unsent draft, within `afterActivityMs` of the person's last key or prompt in the tab, and
+ * for HOLD_BUTTON_MS after they press "Hold" on the band above the prompt. Then it counts down
+ * `countdownMs` on that band, holding each ask until the count ends, so the person sees the /clear coming;
+ * "Refresh now" ends the count and every hold of theirs but a draft. The hand answers each ask at once: the
+ * runner ends a tab that leaves an ask unanswered, so a hold is an answer, and the runner asks again after
+ * its quiet delay.
+ *
  * The mod runs inside Claude Code without Node, so this file imports nothing at run time: it compiles to
  * a module the mod imports as it is, and the CLI shares its file names from here.
  */
@@ -37,6 +45,26 @@ export interface PersonHold {
   /** `refresh.holdAfterActivityMinutes` in ms: how long after the person's last key or prompt in the tab the /clear waits. */
   readonly afterActivityMs: number;
 }
+
+/** The hold of an ask that carries none (a restart older than the hold): the config's defaults, 20 s and 5 min. */
+export const DEFAULT_PERSON_HOLD: PersonHold = { countdownMs: 20_000, afterActivityMs: 5 * 60_000 };
+/** How long the band's "Hold" button holds the /clear. */
+export const HOLD_BUTTON_MS = 10 * 60_000;
+/**
+ * How long the band reads "refreshing" once the count ended or the person pressed "Refresh now": the next ask
+ * comes one quiet delay later; a restart that ended meanwhile sends none, and the band must not stay.
+ */
+export const REFRESHING_SHOWN_MS = 60_000;
+
+/** What the hand reads of an ask: the restart request it is for, and how to hold the /clear for the person. */
+export interface HandAsk {
+  /** The request's `at`; undefined in a damaged ask, which the claim then declines. */
+  readonly request: string | undefined;
+  readonly hold: PersonHold;
+}
+
+/** What the band above the prompt shows: the count to the /clear, or that it comes with the next ask. */
+export type BandView = { readonly kind: 'counting'; readonly secondsLeft: number } | { readonly kind: 'refreshing' };
 
 /** An ask's answer in its outcome file: whichever of the three is written first wins. */
 export type ClaimOutcome = typeof CLAIM_TAKEN | typeof CLAIM_HELD | typeof CLAIM_WITHDRAWN;
@@ -69,6 +97,37 @@ export function outcomeFileOf(dir: string, claudeSession: string): string | unde
   return isClaudeSessionId(claudeSession) ? `${dir}/${claudeSession}.outcome` : undefined;
 }
 
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isDuration(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
+function holdOf(value: unknown): PersonHold {
+  if (!isRecord(value)) {
+    return DEFAULT_PERSON_HOLD;
+  }
+  const { countdownMs, afterActivityMs } = value;
+  return isDuration(countdownMs) && isDuration(afterActivityMs) ? { countdownMs, afterActivityMs } : DEFAULT_PERSON_HOLD;
+}
+
+/** The ask file's request and hold; DEFAULT_PERSON_HOLD when it carries none or a damaged one. */
+export function parseHandAsk(text: string): HandAsk {
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return { request: undefined, hold: DEFAULT_PERSON_HOLD };
+  }
+  if (!isRecord(value)) {
+    return { request: undefined, hold: DEFAULT_PERSON_HOLD };
+  }
+  const { at, hold } = value;
+  return { request: typeof at === 'string' ? at : undefined, hold: holdOf(hold) };
+}
+
 /** A CLI run's result, as the mod reads it. */
 export interface CliRun {
   readonly exitCode: number;
@@ -85,6 +144,8 @@ export interface ClearHandHost {
   cli(args: readonly string[], stdin: string): Promise<CliRun>;
   /** How many of the session's agents (subagents, teammates) are live (`liveAgentsOf`); rejects when Claude Code would not tell. */
   liveAgents(): Promise<number>;
+  /** The text in the tab's prompt box: the person's unsent draft, which a /clear must not land under; rejects when Claude Code would not tell. */
+  draft(): Promise<string>;
   /** Runs /clear in the tab, as if the person typed it. */
   clear(): Promise<void>;
   now(): number;
@@ -99,7 +160,10 @@ export type TickResult =
   /** A turn runs, so the hand leaves this ask: the runner takes it back and asks again once the session is quiet. */
   | { readonly kind: 'busy' }
   | { readonly kind: 'declined'; readonly why: string }
-  /** The session still runs a helper, or Claude Code would not list its agents: the hand held the ask and ran no /clear. */
+  /**
+   * The hand held the ask and ran no /clear: the session still runs a helper (or Claude Code would not list its
+   * agents), the person is at the tab or asked to hold, or the band still counts down.
+   */
   | { readonly kind: 'held'; readonly why: string }
   | { readonly kind: 'cleared' }
   /** The tick before still runs (a /clear waits for a turn in progress). */
@@ -130,17 +194,61 @@ export class ClearHand {
   /** A turn runs: from turn.start to turn.complete. */
   private busy = false;
   private ticking = false;
+  /** When the person last typed in the prompt box or sent a prompt. */
+  private lastActivity: number | undefined;
+  /** Until when the band's "Hold" button holds the /clear. */
+  private holdUntil: number | undefined;
+  /** When the person pressed "Refresh now": the next ask is claimed unless a draft or a helper holds it. */
+  private nowAskedAt: number | undefined;
+  /** The band's count for one restart request, which ends at `endsAt`. */
+  private countdown: { readonly request: string | undefined; readonly endsAt: number } | undefined;
 
   constructor(host: ClearHandHost) {
     this.host = host;
   }
 
+  /** A turn starts: the ask that comes after it starts a new count. */
   turnStarted(): void {
     this.busy = true;
+    this.endCount();
   }
 
   turnEnded(): void {
     this.busy = false;
+  }
+
+  /** The person typed in the prompt box or sent a prompt: the /clear waits `afterActivityMs` from now, and the band hides. */
+  personActed(): void {
+    this.lastActivity = this.host.now();
+    this.countdown = undefined;
+  }
+
+  /** The band's "Refresh now": the next ask is claimed, through every hold of the person's but a draft. */
+  refreshNow(): void {
+    this.nowAskedAt = this.host.now();
+    this.holdUntil = undefined;
+  }
+
+  /** The band's "Hold": no /clear for HOLD_BUTTON_MS, and the band hides. */
+  holdRefresh(): void {
+    this.holdUntil = this.host.now() + HOLD_BUTTON_MS;
+    this.endCount();
+  }
+
+  /** What the band above the prompt shows now; undefined: no band. */
+  band(): BandView | undefined {
+    const now = this.host.now();
+    const { countdown, nowAskedAt } = this;
+    if (nowAskedAt === undefined && countdown !== undefined && now < countdown.endsAt) {
+      return { kind: 'counting', secondsLeft: Math.ceil((countdown.endsAt - now) / 1000) };
+    }
+    const since = nowAskedAt ?? countdown?.endsAt;
+    return since !== undefined && now - since < REFRESHING_SHOWN_MS ? { kind: 'refreshing' } : undefined;
+  }
+
+  private endCount(): void {
+    this.countdown = undefined;
+    this.nowAskedAt = undefined;
   }
 
   async tick(): Promise<TickResult> {
@@ -176,12 +284,19 @@ export class ClearHand {
       return { kind: 'busy' };
     }
     const stdin = JSON.stringify({ session_id: claudeSession });
-    const held = await this.heldBy();
+    const held = await this.heldBy(parseHandAsk(text));
     if (held !== undefined) {
       const hold = await this.host.cli(['hook', 'clear-claim', `--${HOLD_SWITCH}`], stdin);
-      return answered(hold, CLAIM_HELD) ? { kind: 'held', why: held } : declined(hold);
+      if (answered(hold, CLAIM_HELD)) {
+        return { kind: 'held', why: held };
+      }
+      // The restart is no longer pending: no /clear follows this count.
+      this.endCount();
+      return declined(hold);
     }
     const claim = await this.host.cli(['hook', 'clear-claim'], stdin);
+    // Cleared, or the restart is no longer pending: either way the count is over.
+    this.endCount();
     if (!answered(claim, CLAIM_TAKEN)) {
       return declined(claim);
     }
@@ -189,14 +304,69 @@ export class ClearHand {
     return { kind: 'cleared' };
   }
 
+  /**
+   * Why the hand holds this ask, in order: a live helper; an unsent draft; then, unless the person pressed
+   * "Refresh now", their "Hold", their activity in the tab and the band's count. Undefined: claim it.
+   */
+  private async heldBy(ask: HandAsk): Promise<string | undefined> {
+    const helper = (await this.helperHold()) ?? (await this.draftHold());
+    if (helper !== undefined) {
+      this.endCount();
+      return helper;
+    }
+    if (this.nowAskedAt !== undefined) {
+      return undefined;
+    }
+    const person = this.personHold(ask.hold);
+    if (person !== undefined) {
+      this.countdown = undefined;
+      return person;
+    }
+    return this.countHold(ask);
+  }
+
   /** Why a /clear would cut off a helper now, or undefined when the session runs none: a list that fails counts as one. */
-  private async heldBy(): Promise<string | undefined> {
+  private async helperHold(): Promise<string | undefined> {
     try {
       const live = await this.host.liveAgents();
       return live === 0 ? undefined : `${live} ${live === 1 ? 'agent' : 'agents'} of this session still live`;
     } catch (error) {
       return `Claude Code would not list this session's agents: ${messageOf(error)}`;
     }
+  }
+
+  /** Why a /clear would land under the person's draft, or undefined when the prompt box is empty: a read that fails counts as one. */
+  private async draftHold(): Promise<string | undefined> {
+    try {
+      return (await this.host.draft()).trim() === '' ? undefined : 'the prompt box holds an unsent draft';
+    } catch (error) {
+      return `Claude Code would not read the prompt box: ${messageOf(error)}`;
+    }
+  }
+
+  /** Why the person holds the /clear now: their "Hold", or their last key or prompt within `afterActivityMs`. */
+  private personHold(hold: PersonHold): string | undefined {
+    const now = this.host.now();
+    if (this.holdUntil !== undefined && now < this.holdUntil) {
+      return `the person pressed Hold: ${Math.ceil((this.holdUntil - now) / 60_000)} min left`;
+    }
+    if (this.lastActivity !== undefined && now - this.lastActivity < hold.afterActivityMs) {
+      return `the person was active in this tab ${Math.floor((now - this.lastActivity) / 1000)} s ago`;
+    }
+    return undefined;
+  }
+
+  /** Starts the band's count at a request's first ask that passed every other hold, and holds until it ends. */
+  private countHold(ask: HandAsk): string | undefined {
+    if (ask.hold.countdownMs === 0) {
+      return undefined;
+    }
+    const now = this.host.now();
+    if (this.countdown === undefined || this.countdown.request !== ask.request) {
+      this.countdown = { request: ask.request, endsAt: now + ask.hold.countdownMs };
+    }
+    const left = this.countdown.endsAt - now;
+    return left > 0 ? `the band counts down: ${Math.ceil(left / 1000)} s left` : undefined;
   }
 
   /** The ask folder, asked of the CLI once (`hook clear-dir`), and again only DIR_RETRY_MS after a failure. */
