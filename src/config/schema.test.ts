@@ -109,6 +109,8 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   chainNudgeAt: 'loops.chainNudgeAt',
   leadOwnPaths: 'leadBoundary.ownPaths',
   readonlyShellPrefixes: 'readonlyShell.allowPrefixes',
+  secretPaths: 'secretGuard.paths',
+  secretEnvNames: 'secretGuard.envNames',
   searchNudgeAt: 'leadBoundary.searchNudgeAt',
   turnLogKeepHours: 'turnLog.keepHours',
   wakePriority: 'wake.priority',

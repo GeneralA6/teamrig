@@ -603,6 +603,17 @@ describe('parseConfig', () => {
     assert.equal(bad.config.prompts.hookAsks, 'ask');
   });
 
+  it('reads the secret guard, refusing with the default secrets alone unless the team says otherwise', () => {
+    assert.deepEqual(parseConfig(ROSTER).config.secretGuard, { secretReads: 'deny', paths: [], envNames: [] });
+    const own = { secretReads: 'ask', paths: ['k8s/secrets/*.yaml', '!**/fixtures/*.pem'], envNames: ['^STRIPE_', '!^GIT_AUTHOR'] };
+    const set = parseConfig({ ...ROSTER, secretGuard: own });
+    assert.deepEqual(set.issues, []);
+    assert.deepEqual(set.config.secretGuard, own);
+    const bad = parseConfig({ ...ROSTER, secretGuard: { secretReads: 'never', paths: ['!'], envNames: ['(', '!'] } });
+    assert.deepEqual(paths(bad.issues), ['secretGuard.secretReads', 'secretGuard.paths[0]', 'secretGuard.envNames[0]', 'secretGuard.envNames[1]']);
+    assert.deepEqual(bad.config.secretGuard, { secretReads: 'deny', paths: [], envNames: [] });
+  });
+
   it('reads the read-only shell hook, off and trusting no prefix by default', () => {
     assert.deepEqual(parseConfig(ROSTER).config.readonlyShell, { enabled: false, allowPrefixes: [] });
     const allowPrefixes = ['npx tsc --noEmit', 'npx jest', '@scope/tool run', 'node --test=x'];
