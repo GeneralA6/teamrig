@@ -159,6 +159,18 @@ export interface PackageGuardConfig {
  */
 export type AdHocRunners = 'deny' | 'ask' | 'allow';
 
+export interface CommitGuardConfig {
+  /** What a Bash or PowerShell call that runs git without the repository's hooks does. */
+  readonly skipHooks: SkipHooks;
+}
+
+/**
+ * A git command run without the repository's hooks: `--no-verify` (or `-n` for `git commit` and `git am`), `HUSKY`
+ * set for it, or a `core.hooksPath` that `-c`, a `GIT_CONFIG*` variable or `git config` sets or unsets: `deny`
+ * refuses it, `ask` asks the human, `allow` lets it run.
+ */
+export type SkipHooks = 'deny' | 'ask' | 'allow';
+
 /**
  * The opt-in hook that lets a Bash or PowerShell line run without a permission prompt when every command in it
  * provably only reads (hook-readonly-allow.ts). It only ever allows: a line it cannot prove reads falls through to
@@ -178,6 +190,12 @@ export const AD_HOC_RUNNERS: readonly AdHocRunners[] = ['deny', 'ask', 'allow'];
 
 export function isAdHocRunners(value: unknown): value is AdHocRunners {
   return AD_HOC_RUNNERS.some((choice) => choice === value);
+}
+
+export const SKIP_HOOKS: readonly SkipHooks[] = ['deny', 'ask', 'allow'];
+
+export function isSkipHooks(value: unknown): value is SkipHooks {
+  return SKIP_HOOKS.some((choice) => choice === value);
 }
 
 export const COMMIT_GATES = ['off', 'warn', 'refuse'] as const;
@@ -717,6 +735,7 @@ export interface KitConfig {
   readonly lock: LockConfig;
   readonly pushGuard: PushGuardConfig;
   readonly packageGuard: PackageGuardConfig;
+  readonly commitGuard: CommitGuardConfig;
   readonly commits: CommitsConfig;
   readonly coordinator: CoordinatorConfig;
   readonly budget: BudgetConfig;

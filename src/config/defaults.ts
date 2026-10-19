@@ -5,6 +5,7 @@ import type {
   HeavyConfig,
   BudgetConfig,
   BurstConfig,
+  CommitGuardConfig,
   CommitsConfig,
   ContextFilesConfig,
   GithubConfig,
@@ -97,6 +98,9 @@ export const DEFAULT_PUSH_GUARD: PushGuardConfig = { protectedBranches: ['main',
 
 /** Refused by default: a helper's `npx eslint` once fetched and ran an unvetted package (T450, 10-16). */
 export const DEFAULT_PACKAGE_GUARD: PackageGuardConfig = { adHocRunners: 'deny' };
+
+/** Refused by default: the hooks are the repository's own checks, and a session that skips them ships what they would catch. */
+export const DEFAULT_COMMIT_GUARD: CommitGuardConfig = { skipHooks: 'deny' };
 
 /** Off, and trusting no prefix, until a team opts in. */
 export const DEFAULT_READONLY_SHELL: ReadonlyShellConfig = { enabled: false, allowPrefixes: [] };

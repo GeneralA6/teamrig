@@ -560,6 +560,19 @@ describe('parseConfig', () => {
     assert.equal(bad.config.packageGuard.adHocRunners, 'deny');
   });
 
+  it('reads what a git command that skips the hooks does, defaulting to deny and refusing another word', () => {
+    assert.equal(parseConfig(ROSTER).config.commitGuard.skipHooks, 'deny');
+    for (const choice of ['deny', 'ask', 'allow']) {
+      const set = parseConfig({ ...ROSTER, commitGuard: { skipHooks: choice } });
+      assert.deepEqual(set.issues, []);
+      assert.equal(set.config.commitGuard.skipHooks, choice);
+    }
+    const bad = parseConfig({ ...ROSTER, commitGuard: { skipHooks: 'never' } });
+    assert.deepEqual(paths(bad.issues), ['commitGuard.skipHooks']);
+    assert.match(bad.issues[0]?.message ?? '', /deny, ask, allow/);
+    assert.equal(bad.config.commitGuard.skipHooks, 'deny');
+  });
+
   it('reads the read-only shell hook, off and trusting no prefix by default', () => {
     assert.deepEqual(parseConfig(ROSTER).config.readonlyShell, { enabled: false, allowPrefixes: [] });
     const allowPrefixes = ['npx tsc --noEmit', 'npx jest', '@scope/tool run', 'node --test=x'];
