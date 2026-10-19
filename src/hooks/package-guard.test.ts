@@ -5,7 +5,7 @@ import { DEFAULT_PACKAGE_GUARD } from '../config/defaults.ts';
 import { isRecord, stringField } from '../core/guards.ts';
 import { testConfig } from '../testing/config.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { adHocReason, adHocRunnersOf, packageGuardOutput, type PackageGuardEnv } from './package-guard.ts';
+import { adHocReason, adHocRunnersOf, lostFlagReason, packageGuardOutput, type PackageGuardEnv } from './package-guard.ts';
 
 const APP = resolve('/', 'work', 'app');
 const OTHER = resolve('/', 'work', 'other');
@@ -51,6 +51,21 @@ describe('packageGuardOutput', () => {
     assert.equal(verdictOf(await packageGuardOutput(powershell, env({ files })))?.decision, 'deny');
   });
 
+  it('refuses an npx --no that hands its bin a flag npm takes, whatever adHocRunners says, naming the form that keeps it', async () => {
+    for (const adHocRunners of ['deny', 'ask', 'allow'] as const) {
+      const verdict = verdictOf(await packageGuardOutput(payload('npx --no tsc --version'), env({ adHocRunners })));
+      assert.equal(verdict?.decision, 'deny', adHocRunners);
+      assert.equal(verdict?.reason, lostFlagReason([{ bin: 'tsc', flag: '--version' }]));
+    }
+    assert.equal(await packageGuardOutput(payload('npx --no -- tsc --version'), env()), '');
+  });
+
+  it('names a lost flag and an ad-hoc run in one refusal, denied though the team set ask', async () => {
+    const verdict = verdictOf(await packageGuardOutput(payload('npx --no tsc --version && npx eslint .'), env({ adHocRunners: 'ask' })));
+    assert.equal(verdict?.decision, 'deny');
+    assert.equal(verdict?.reason, `${lostFlagReason([{ bin: 'tsc', flag: '--version' }])} ${adHocReason(['npx eslint'])}`);
+  });
+
   it('stays quiet for a line with no ad-hoc run, and for input that is not a shell call', async () => {
     for (const input of [payload('npm ci && npm test'), 'not a payload', { tool_name: 'Bash', tool_input: {} }]) {
       assert.equal(await packageGuardOutput(input, env()), '');
@@ -59,8 +74,23 @@ describe('packageGuardOutput', () => {
 });
 
 describe('adHocReason', () => {
-  it('names every call, in the plural for more than one', () => {
+  it('names every call, in the plural for more than one, and the local run that keeps its flags', () => {
     assert.match(adHocReason(['npx a', 'pnpm dlx b']), /^teamrig package guard: `npx a`, `pnpm dlx b` fetch and run packages outside/);
+    assert.match(adHocReason(['npx a']), /run its local bin \(npx --no -- <bin>\)/);
+  });
+});
+
+describe('lostFlagReason', () => {
+  it('names each call, what npm takes from it and the form with --', () => {
+    assert.equal(
+      lostFlagReason([
+        { bin: 'tsc', flag: '--version' },
+        { bin: 'eslint', flag: '--fix' },
+      ]),
+      'teamrig package guard: `npx --no tsc --version` runs npm with --version, not tsc (run `npx --no -- tsc --version`); ' +
+        '`npx --no eslint --fix` runs npm with --fix, not eslint (run `npx --no -- eslint --fix`). ' +
+        "npx takes the word after a bare --no as that option's value, so the flags after it go to npm; put -- after --no.",
+    );
   });
 });
 

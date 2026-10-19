@@ -14,7 +14,12 @@ export type RunnerCall =
   /** Fetches the package it names: `pnpm dlx x`, `npm create x`, `npx -p x`, `npx x@1.2.3`. */
   | { readonly kind: 'fetch'; readonly call: string }
   /** Runs `bin` from `node_modules/.bin` when installed where it runs, else fetches a package of that name. */
-  | { readonly kind: 'bin'; readonly call: string; readonly bin: string; readonly prefix: ShellWord | undefined };
+  | { readonly kind: 'bin'; readonly call: string; readonly bin: string; readonly prefix: ShellWord | undefined }
+  /**
+   * Hands `flag`, meant for `bin`, to npm: npx takes the word after a bare `--no` as that option's value, so it never
+   * puts `--` before `bin`. `npx --no tsc --version` prints npm's version; `npx --no -- tsc --version` runs tsc.
+   */
+  | { readonly kind: 'lost-flag'; readonly bin: string; readonly flag: string };
 
 const NONE: RunnerCall = { kind: 'none' };
 const NO_FLAGS: ReadonlySet<string> = new Set();
@@ -48,6 +53,8 @@ interface Options {
   readonly values: ReadonlyMap<string, ShellWord>;
   /** The words after the options: the command or the subcommand first. */
   readonly rest: readonly ShellWord[];
+  /** The last option word as written (`--` when that ended them), or undefined for none. */
+  readonly last: string | undefined;
 }
 
 /** Reads leading options; `--` ends them, and a word only known when the line runs is the first that is not one. */
@@ -55,12 +62,14 @@ function readOptions(args: readonly ShellWord[], valued: ReadonlySet<string>): O
   const flags = new Set<string>();
   const values = new Map<string, ShellWord>();
   let index = 0;
+  let last: string | undefined;
   while (index < args.length) {
     const word = args[index] ?? UNKNOWN_WORD;
     if (word.dynamic || !word.text.startsWith('-')) {
       break;
     }
     index += 1;
+    last = word.text;
     if (word.text === '--') {
       break;
     }
@@ -74,7 +83,7 @@ function readOptions(args: readonly ShellWord[], valued: ReadonlySet<string>): O
       index += 1;
     }
   }
-  return { flags, values, rest: args.slice(index) };
+  return { flags, values, rest: args.slice(index), last };
 }
 
 /** The value of the first of `names` given. */
@@ -110,6 +119,20 @@ function execCall(runner: string, args: readonly ShellWord[], noFetch: ReadonlyS
     return NONE;
   }
   return { kind: 'bin', call, bin: command.text, prefix: valueOf(options, '--prefix') ?? outerPrefix };
+}
+
+/**
+ * npx, read as {@link execCall} reads it, except a bare `--no` right before the command with a flag right after it
+ * (see the `lost-flag` {@link RunnerCall}). `--no` before another option, a word or `--` after the command, and
+ * `--no-install` keep the command's flags for it.
+ */
+function npxCall(args: readonly ShellWord[]): RunnerCall {
+  const options = readOptions(args, EXEC_VALUED);
+  const [command, next] = options.rest;
+  if (options.last === '--no' && command !== undefined && !command.dynamic && next !== undefined && !next.dynamic && next.text.startsWith('-') && next.text !== '--') {
+    return { kind: 'lost-flag', bin: command.text, flag: next.text };
+  }
+  return execCall('npx', args, NPX_NO_FETCH, undefined);
 }
 
 /** `npm create x`, `pnpm dlx x` and the like: each fetches the package its first word or its package option names. */
@@ -165,7 +188,7 @@ function bunCall(args: readonly ShellWord[]): RunnerCall {
 
 /** Each package runner by program name. */
 const RUNNERS: ReadonlyMap<string, (args: readonly ShellWord[]) => RunnerCall> = new Map([
-  ['npx', (args: readonly ShellWord[]) => execCall('npx', args, NPX_NO_FETCH, undefined)],
+  ['npx', npxCall],
   ['npm', npmCall],
   ['pnpx', (args: readonly ShellWord[]) => fetchCall('pnpx', args, DLX_VALUED)],
   ['pnpm', pnpmCall],

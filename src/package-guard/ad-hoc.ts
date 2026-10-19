@@ -10,10 +10,13 @@ import { runnerCallOf, type RunnerCall } from './runners.ts';
  * at run time (`eval "$X"`) or a runner started by another program is not seen.
  */
 
+/** A runner call that may fetch a package: the others run nothing (`none`) or hand their flag to npm (`lost-flag`). */
+type MayFetchCall = Extract<RunnerCall, { readonly kind: 'fetch' | 'bin' }>;
+
 /** True when `call` would fetch: always for a `fetch`, and for a `bin` not installed where it runs or in a folder only known then. */
-async function fetches(files: Files, run: ProgramRun, call: RunnerCall, home: string): Promise<boolean> {
-  if (call.kind !== 'bin') {
-    return call.kind === 'fetch';
+async function fetches(files: Files, run: ProgramRun, call: MayFetchCall, home: string): Promise<boolean> {
+  if (call.kind === 'fetch') {
+    return true;
   }
   const prefix = call.prefix;
   const dir = prefix === undefined ? run.dir : prefix.dynamic ? undefined : resolveDir(run.dir, prefix.text, home);
@@ -25,7 +28,7 @@ export async function adHocCallsOf(command: string, context: ProgramsContext, fi
   const calls = new Set<string>();
   for (const run of programsOf(command, context)) {
     const call = runnerCallOf(run);
-    if (call.kind !== 'none' && (await fetches(files, run, call, context.home))) {
+    if ((call.kind === 'fetch' || call.kind === 'bin') && (await fetches(files, run, call, context.home))) {
       calls.add(call.call);
     }
   }

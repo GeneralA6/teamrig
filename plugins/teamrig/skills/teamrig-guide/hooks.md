@@ -11,7 +11,7 @@ they all stay silent, and only `hook restore-track` still records the session ([
 | `SessionStart` (`/clear`), in the background | `hook refresh-wake` | Wakes a session that `/clear` started from its context refresh, so it carries on without a prompt |
 | `UserPromptSubmit` (each prompt) | `hook inbox-reminder` | Cancels a waiting automatic restart; shows new inbox lines; binds a tab started by hand by its title; records a Claude Code rename; tells the model when it is past its daily budget |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook push-guard` | Asks before a push to a protected branch; refuses a force-push or delete of one |
-| `PreToolUse` on `Bash` and `PowerShell` | `hook package-guard` | Refuses a package runner that would fetch and run a package outside the project's lockfile ([the package guard](#before-a-shell-command-the-package-guard)) |
+| `PreToolUse` on `Bash` and `PowerShell` | `hook package-guard` | Refuses a package runner that would fetch and run a package outside the project's lockfile, and an `npx --no <bin>` that hands the bin's flag to npm ([the package guard](#before-a-shell-command-the-package-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook readonly-allow` | With `readonlyShell.enabled`, lets a line whose every command provably only reads run without a permission prompt ([the read-only allow](#before-a-shell-command-the-read-only-allow)) |
 | `PreToolUse` on `SendMessage` | `hook cold-send` | Holds once a message that would wake an idle session cold; during the daily meeting, holds every message to the lead but a CRITICAL one |
 | `PostToolUse` on `SendMessage` | `hook failed-send` | After a send that was not delivered, hands the model [the inbox line to write instead](#after-a-failed-send-the-inbox-line) |
@@ -202,12 +202,18 @@ version that runs. Before Claude runs a Bash or PowerShell command, the guard re
 - `npm create`, `npm init <initializer>`, `pnpm dlx`, `pnpm create`, `yarn dlx`, `yarn create` and `bun create`,
   which always fetch.
 
-`npx --no <bin>` (or `--no-install`), `pnpm exec`, `yarn exec` and a package script run only what is installed, so
+`npx --no -- <bin>` (or `--no-install`), `pnpm exec`, `yarn exec` and a package script run only what is installed, so
 they run as usual. The reason: "teamrig package guard: `npx eslint` fetches and runs a package outside the
 project's lockfile, unvetted. Vet the exact version first (publish date, advisories), add it as a pinned
-devDependency, then run its local bin (npx --no <bin>). [packageGuard.adHocRunners]"
+devDependency, then run its local bin (npx --no -- <bin>). [packageGuard.adHocRunners]"
 
-`packageGuard.adHocRunners` sets what such a line gets: `deny` (the default), `ask` the human, or `allow`. A missing
+The `--` matters: npx takes the word after a bare `--no` as that option's value, so it never marks the bin as the
+command, and a flag right after the bin goes to npm. `npx --no tsc --version` prints npm's version; `npx --no -- tsc
+--version`, `npx --no-install tsc --version` and `npx --no tsc x.ts --noEmit` run tsc. The guard refuses that form
+whatever `packageGuard.adHocRunners` says, as it cannot run what it names: "teamrig package guard: `npx --no tsc
+--version` runs npm with --version, not tsc (run `npx --no -- tsc --version`). ..."
+
+`packageGuard.adHocRunners` sets what an ad-hoc line gets: `deny` (the default), `ask` the human, or `allow`. A missing
 or broken config keeps `deny`, so a config mistake never turns the guard off. Like the push guard, it reads only the
 line Claude runs, not a script or program that line starts.
 
