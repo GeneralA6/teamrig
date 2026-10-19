@@ -107,6 +107,7 @@ export const register: Register = (on) => {
           return { exitCode: run.exitCode, stdout: run.stdout };
         },
         liveAgents: async () => liveAgentsOf(await $.agent.list()),
+        draft: async () => (await $.prompt.read()).text,
         clear: async () => {
           await $.command.run({ command: 'clear' });
         },
