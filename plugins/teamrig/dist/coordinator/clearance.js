@@ -37,6 +37,9 @@ export async function takeWhenClear(readiness, ports, request) {
         if (taking.kind === 'busy') {
             return { kind: 'gaveUp', reason: `host lock still held by ${holderText(taking.holder)}` };
         }
+        if (taking.kind === 'withdrawn') {
+            return { kind: 'refused', reason: "withdrawn from the host lock's line (teamrig withdraw)" };
+        }
         const under = await readiness('locked');
         if (under.kind === 'go') {
             return { kind: 'taken', lock: taking.lock };

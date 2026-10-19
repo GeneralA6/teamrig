@@ -155,6 +155,9 @@ export async function heavy(args, runtime) {
     if (taking.kind === 'busy') {
         throw new RefusedError(busyText(taking));
     }
+    if (taking.kind === 'withdrawn') {
+        throw new RefusedError(`withdrawn from the host lock's line (teamrig withdraw): ${what} did not run`);
+    }
     try {
         refuseAfterCutoff(runtime, coordinator.schedule.heavyCutoffUtc);
         const sharing = share === undefined ? undefined : sharingText(share, taking);

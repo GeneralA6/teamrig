@@ -24,7 +24,16 @@ export async function restoreUninstall(args, runtime) {
     const launcherThere = (await runtime.files.read(launcher)) !== undefined;
     const steps = [
         ...(before === undefined ? [] : [{ line: `REMOVE ${entry.where}: ${before}`, act: () => entry.remove() }]),
-        ...(launcherThere ? [{ line: `REMOVE ${launcher}`, act: () => runtime.files.remove(launcher) }] : []),
+        ...(launcherThere
+            ? [
+                {
+                    line: `REMOVE ${launcher}`,
+                    act: async () => {
+                        await runtime.files.remove(launcher);
+                    },
+                },
+            ]
+            : []),
     ];
     return apply(args, runtime, steps, `${entry.where}: the restore check does not run at logon`);
 }
