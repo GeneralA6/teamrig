@@ -57,14 +57,14 @@ export class SecretPaths {
    * True when a word naming `path` may name a secret file: the path itself is one, or, when it holds wildcards, one
    * of the secret names fits them (`.env*` fits `.env`). A last name of wildcards alone (`dir/*`) is tried only
    * against secret names spelled out and secret folders, else every `grep x *` would name a `*.pem` it cannot see.
-   * Bash wildcards never match a leading dot.
+   * `dotfiles` is false for a bash word, whose wildcards never match a leading dot.
    */
-  mayName(path: string, dialect: ShellDialect): boolean {
+  mayName(path: string, dotfiles: boolean): boolean {
     const normal = normalisePath(path);
     if (!hasWildcard(normal)) {
       return this.decide(normal);
     }
-    const options: GlobOptions = { ignoreCase: this.ignoreCase, dotfiles: dialect !== 'bash' };
+    const options: GlobOptions = { ignoreCase: this.ignoreCase, dotfiles };
     const word = globRegExp(normal, options);
     const folder = normal.slice(0, normal.lastIndexOf('/') + 1).replace(/[*?]|\[[^\]/]+\]/g, 'x');
     const onlyWildcards = /^(?:[*?]|\[[^\]/]+\])+$/.test(normal.slice(normal.lastIndexOf('/') + 1));
