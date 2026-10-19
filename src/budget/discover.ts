@@ -78,6 +78,31 @@ export function projectTranscriptPath(projectsDir: string, project: string, clau
   return join(projectsDir, claudeProjectSlug(project), `${claudeSession}${TRANSCRIPT}`);
 }
 
+/**
+ * A Claude Code session's own transcript: in its project's folder when it has one there, else the newest of that
+ * session in any project folder (a session Claude Code filed under another folder); undefined when it has none.
+ */
+export async function findTranscript(folders: TranscriptFolders, projectsDir: string, project: string | undefined, claudeSession: string): Promise<string | undefined> {
+  if (project !== undefined) {
+    const own = projectTranscriptPath(projectsDir, project, claudeSession);
+    if ((await folders.changedAt(own)) !== undefined) {
+      return own;
+    }
+  }
+  let newest: { readonly path: string; readonly changedAt: number } | undefined;
+  for (const entry of await folders.entries(projectsDir)) {
+    if (!entry.folder) {
+      continue;
+    }
+    const path = join(projectsDir, entry.name, `${claudeSession}${TRANSCRIPT}`);
+    const changedAt = await folders.changedAt(path);
+    if (changedAt !== undefined && (newest === undefined || changedAt > newest.changedAt)) {
+      newest = { path, changedAt };
+    }
+  }
+  return newest?.path;
+}
+
 /** Transcripts by kind: Claude Code sessions' own, and their subagents'. */
 export interface TranscriptSet {
   /** The sessions' own transcripts, one per project folder each ran in. */
