@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import { SHELL_RECHECK_MS } from '../open/end-tab.ts';
 import type { ProcessInfo } from '../open/session-processes.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
@@ -8,7 +9,7 @@ import { MemoryFiles } from '../testing/memory-files.ts';
 import { RestoreRegistry, restoreSessionsDir } from '../restore/registry.ts';
 import { askFileOf, outcomeFileOf } from '../mod/clear-hand.ts';
 import { ClearAsks, type ClearAsk, type PostedClearAsk } from './clear-asks.ts';
-import { CLAIM_WAIT_MS, claudeProcessOf, GIVE_UP_MS, personHoldOf, runRestart, SHELL_RECHECK_MS, type RestartDeps, type RestartPlan, type TabOpening } from './restart.ts';
+import { CLAIM_WAIT_MS, claudeProcessOf, GIVE_UP_MS, personHoldOf, runRestart, type RestartDeps, type RestartPlan, type TabOpening } from './restart.ts';
 import type { RestoreEntry } from '../restore/entry.ts';
 import type { RestartRequest } from './state.ts';
 import { RefreshStore } from './store.ts';
