@@ -182,16 +182,19 @@ describe('nodeSessionProcesses on this machine', () => {
     assert.match(self?.name ?? '', /node/i);
   });
 
+  // Once the child exits, the system may hand its pid to another process at once (Windows does on a busy host), so
+  // the spec only checks the pid no longer describes its own child, and never ends that pid again (T626).
   it('ends a running program, and then finds it gone', async () => {
-    const child = spawn(NODE, ['-e', 'setTimeout(() => {}, 30000)'], { stdio: 'ignore' });
+    const marker = `teamrig-spec-${process.pid}-${Date.now()}`;
+    const child = spawn(NODE, ['-e', 'setTimeout(() => {}, 30000)', marker], { stdio: 'ignore' });
     const exit = new Promise((resolve) => child.once('exit', resolve));
     const pid = child.pid ?? 0;
     assert.equal(processes.alive(pid), true);
+    assert.match((await processes.describe(pid))?.commandLine ?? '', new RegExp(marker));
     assert.deepEqual(await processes.end(pid, 'ask'), { kind: 'ended' });
     await exit;
-    assert.equal(processes.alive(pid), false);
-    assert.equal(await processes.describe(pid), undefined);
-    assert.deepEqual(await processes.end(pid, 'force'), { kind: 'gone' });
+    const later = await processes.describe(pid);
+    assert.equal(later?.commandLine.includes(marker) ?? false, false, `pid ${pid} still runs the child: ${later?.commandLine ?? ''}`);
   });
 
   it('lists a program it started', async () => {
