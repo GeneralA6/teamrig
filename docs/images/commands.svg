@@ -24,8 +24,8 @@
 <line x1="0" y1="239" x2="694" y2="239" stroke="#3c3c3c"/>
 <text x="14" y="257"><tspan fill="#8b8b8b">web: another Claude Code session</tspan></text>
 <text x="14" y="279"><tspan fill="#569cd6">$ </tspan><tspan fill="#ffffff">teamrig inbox read</tspan></text>
-<text x="14" y="297"><tspan fill="#8b8b8b">- 2026-10-12 09:03</tspan><tspan fill="#d4d4d4"> lead: </tspan><tspan fill="#4ec9b0">T2</tspan><tspan fill="#d4d4d4"> is yours (p1): Checkout</tspan></text>
-<text x="14" y="315"><tspan fill="#8b8b8b">- 2026-10-12 09:06</tspan><tspan fill="#d4d4d4"> lead: </tspan><tspan fill="#4ec9b0">T2</tspan><tspan fill="#d4d4d4"> builds on </tspan><tspan fill="#4ec9b0">T1</tspan><tspan fill="#d4d4d4">'s API</tspan></text>
+<text x="14" y="297"><tspan fill="#8b8b8b">- 2026-10-12 09:03</tspan><tspan fill="#d4d4d4"> UTC lead: </tspan><tspan fill="#4ec9b0">T2</tspan><tspan fill="#d4d4d4"> is yours (p1): Checkout</tspan></text>
+<text x="14" y="315"><tspan fill="#8b8b8b">- 2026-10-12 09:06</tspan><tspan fill="#d4d4d4"> UTC lead: </tspan><tspan fill="#4ec9b0">T2</tspan><tspan fill="#d4d4d4"> builds on </tspan><tspan fill="#4ec9b0">T1</tspan><tspan fill="#d4d4d4">'s API</tspan></text>
 <text x="14" y="333"><tspan fill="#89d185">READ</tspan><tspan fill="#d4d4d4"> web: 2 new lines, shown above; new ones are shown at your next prompt</tspan></text>
 <text x="14" y="359"><tspan fill="#569cd6">$ </tspan><tspan fill="#ffffff">teamrig set T2 --status in-progress</tspan></text>
 <text x="14" y="377"><tspan fill="#89d185">SET</tspan><tspan fill="#d4d4d4"> </tspan><tspan fill="#4ec9b0">T2</tspan><tspan fill="#d4d4d4"> </tspan><tspan fill="#dcdcaa">in-progress</tspan><tspan fill="#d4d4d4">, </tspan><tspan fill="#c586c0">p1</tspan><tspan fill="#d4d4d4">, owner web, from lead | Checkout</tspan></text>
