@@ -229,6 +229,7 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
   const alerts = read.section(raw, 'alerts', '');
   const lock = read.section(raw, 'lock', '');
   const tabStatus = read.section(raw, 'tabStatus', '');
+  const pickerGuard = read.section(raw, 'pickerGuard', '');
   const budget = parseBudget(read, read.section(raw, 'budget', ''), sessions);
 
   const config: KitConfig = {
@@ -293,6 +294,7 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
       persistentFailureHours: read.integer(alerts, 'persistentFailureHours', 'alerts', DEFAULT_ALERTS.persistentFailureHours, CONFIG_LIMITS.persistentFailureHours),
     },
     tabStatus: { enabled: read.boolean(tabStatus, 'enabled', 'tabStatus', false) },
+    pickerGuard: { enabled: read.boolean(pickerGuard, 'enabled', 'pickerGuard', false) },
     readonlyShell: parseReadonlyShell(read, read.section(raw, 'readonlyShell', '')),
     refresh: parseRefresh(read, read.section(raw, 'refresh', '')),
     hiring: parseHiring(read, read.section(raw, 'hiring', '')),

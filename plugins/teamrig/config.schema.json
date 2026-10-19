@@ -858,6 +858,17 @@
         }
       }
     },
+    "pickerGuard": {
+      "description": "Refuses Claude Code's question picker (AskUserQuestion) to every session but the lead: the picker stops the session until the person answers, so none of its other tasks moves meanwhile. The refusal tells the session to record the decision on its task (a waiting status with its decision card), which reaches the owner through the lead, and go on with its next task; only with no task left, to end its turn with the question and a `Decision needed:` line. The lead keeps the picker, and plan mode's ExitPlanMode stays allowed.",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Refuses the question picker in every session of the team but the lead.",
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
     "readonlyShell": {
       "description": "Lets a Bash or PowerShell line run without a permission prompt when every command in it provably only reads: known readers (grep, cat, Get-Content, Select-Object...), git and kubectl reading subcommands, and no write, file redirection, command that runs code, or variable a program reads. It only ever allows: any other line gets Claude Code's own permission check.",
       "type": "object",
