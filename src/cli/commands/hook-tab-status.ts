@@ -9,6 +9,7 @@ import { noPositionals, type ParsedArgs } from '../args.ts';
 import { openKit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { parseJson, sessionTeam } from './hook-input.ts';
+import { refusedPickerSession } from './hook-picker-guard.ts';
 
 /** The values Claude Code reads as on for a switch such as `CLAUDE_CODE_DISABLE_TERMINAL_TITLE`. */
 const ON_VALUES: ReadonlySet<string> = new Set(['1', 'true', 'yes', 'on']);
@@ -54,7 +55,10 @@ export async function tabTitleOf(runtime: CliRuntime, payload: JsonRecord, label
   return tabTitle(state, topicOf(payload, named === undefined || named === '' ? await transcriptTailOf(runtime, payload) : undefined));
 }
 
-/** What the hook prints for this payload: the tab title as a terminal sequence, or '' with tab status off or no change. */
+/**
+ * What the hook prints for this payload: the tab title as a terminal sequence, or '' with tab status off or no change.
+ * A question picker the picker guard refuses leaves the title: the picker never opens, and the session goes on.
+ */
 async function tabStatusOutputOf(runtime: CliRuntime, payload: JsonRecord): Promise<string> {
   // The switch first: it costs no file read, and on most machines it is off.
   if (!titleLeftToHooks(runtime.env)) {
@@ -63,6 +67,9 @@ async function tabStatusOutputOf(runtime: CliRuntime, payload: JsonRecord): Prom
   const found = await sessionTeam(payload, runtime);
   const kit = found.kind === 'team' ? await openKit(runtime, found.team) : undefined;
   if (kit?.load.status !== 'loaded' || !kit.load.config.tabStatus.enabled) {
+    return '';
+  }
+  if ((await refusedPickerSession(runtime, kit, kit.load.config, payload)) !== undefined) {
     return '';
   }
   const title = await tabTitleOf(runtime, payload);
