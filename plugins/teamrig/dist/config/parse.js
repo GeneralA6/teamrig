@@ -5,7 +5,7 @@ import { isMinuteInSpan, utcMinuteOf } from "../core/time.js";
 import { FOLLOWUP_STATUSES, isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, SESSION_NAME, TASK_STATUSES } from "../register/model.js";
 import { PREFIX_PATTERN } from "../readonly-shell/rules.js";
 import { CORE_RULE_KEYS, isCoreRuleKey } from "../rules/keys.js";
-import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT_CONTEXT_FILES, DEFAULT_CLAIMS, DEFAULT_COORDINATOR_WAIT, DEFAULT_GATE_TIMEOUT_SECONDS, DEFAULT_GITHUB, DEFAULT_HEAVY, DEFAULT_HIRING, DEFAULT_LOCK, DEFAULT_LEAD_BOUNDARY, DEFAULT_LOOPS, DEFAULT_MESSAGES, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_COMMIT_GUARD, DEFAULT_PACKAGE_GUARD, DEFAULT_PROMPTS, DEFAULT_PUSH_GUARD, DEFAULT_READONLY_SHELL, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SCALE_OUT, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, DEFAULT_STATUS_LINE, DEFAULT_TESTS, DEFAULT_WAKE, DEFAULT_WINDOWS, HEAVY_TTL_MARGIN_MINUTES, } from "./defaults.js";
+import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT_CONTEXT_FILES, DEFAULT_CLAIMS, DEFAULT_COORDINATOR_WAIT, DEFAULT_GATE_TIMEOUT_SECONDS, DEFAULT_GITHUB, DEFAULT_HEAVY, DEFAULT_HIRING, DEFAULT_LOCK, DEFAULT_LEAD_BOUNDARY, DEFAULT_TURN_LOG, DEFAULT_LOOPS, DEFAULT_MESSAGES, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_COMMIT_GUARD, DEFAULT_PACKAGE_GUARD, DEFAULT_PROMPTS, DEFAULT_PUSH_GUARD, DEFAULT_READONLY_SHELL, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SCALE_OUT, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, DEFAULT_STATUS_LINE, DEFAULT_TESTS, DEFAULT_WAKE, DEFAULT_WINDOWS, HEAVY_TTL_MARGIN_MINUTES, } from "./defaults.js";
 import { isEffort, isModel } from "./launch.js";
 import { CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from "./limits.js";
 import { ConfigReader, describe, isValidRegex, shortLine } from "./reader.js";
@@ -166,6 +166,7 @@ export function parseConfig(raw) {
         },
         tabStatus: { enabled: read.boolean(tabStatus, 'enabled', 'tabStatus', false) },
         pickerGuard: { enabled: read.boolean(pickerGuard, 'enabled', 'pickerGuard', false) },
+        turnLog: parseTurnLog(read, read.section(raw, 'turnLog', '')),
         readonlyShell: parseReadonlyShell(read, read.section(raw, 'readonlyShell', '')),
         refresh: parseRefresh(read, read.section(raw, 'refresh', '')),
         hiring: parseHiring(read, read.section(raw, 'hiring', '')),
@@ -176,6 +177,13 @@ export function parseConfig(raw) {
         paths: parsePaths(read, read.section(raw, 'paths', '')),
     };
     return { config, issues: read.issues };
+}
+/** `turnLog`: kept from an hour to a week. */
+function parseTurnLog(read, raw) {
+    return {
+        enabled: read.boolean(raw, 'enabled', 'turnLog', DEFAULT_TURN_LOG.enabled),
+        keepHours: read.integer(raw, 'keepHours', 'turnLog', DEFAULT_TURN_LOG.keepHours, CONFIG_LIMITS.turnLogKeepHours),
+    };
 }
 /** `leadBoundary`: the lead's own paths are single lines; the search threshold is bounded like the chain nudge. */
 function parseLeadBoundary(read, raw) {

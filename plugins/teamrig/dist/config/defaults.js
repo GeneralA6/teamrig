@@ -97,6 +97,8 @@ export const DEFAULT_SESSION_SHARE = 1;
 export const DEFAULT_ALERTS = { persistentFailureHours: 24 };
 export const DEFAULT_LOOPS = { chainNudgeAt: 6 };
 export const DEFAULT_LEAD_BOUNDARY = { enabled: true, ownPaths: [], searchNudgeAt: 3 };
+/** On, for a day: what a tab showed stays readable through a night of refreshes. */
+export const DEFAULT_TURN_LOG = { enabled: true, keepHours: 24 };
 /**
  * On, for p1 only. In one team of 12 sessions, others handed a session 3 to 6 p1 tasks a day once its register
  * settled, so even all of them waking a session cold (about 210k W each) costs about 1.3M W a day, under 0.2% of
