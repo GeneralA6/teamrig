@@ -145,6 +145,17 @@ describe('smokeDist', () => {
     ]);
   });
 
+  it('reports a hook that is off without a config but still printed', () => {
+    const deny = JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny' } });
+    const runner = new FakeRunner({ 'readonly-allow': { ...OK, stdout: deny }, 'picker-guard': { ...OK, stdout: deny } });
+    const manifest = manifestOf({ PreToolUse: [execHook('readonly-allow'), execHook('picker-guard')] });
+    assert.deepEqual(smokeDist(input({ manifest }), runner.run), [
+      `PreToolUse (hook readonly-allow): expected no output with the hook off, got ${JSON.stringify(deny)}`,
+      `PreToolUse (hook picker-guard): expected no output with the guard off, got ${JSON.stringify(deny)}`,
+    ]);
+    assert.deepEqual(smokeDist(input({ manifest }), new FakeRunner().run), []);
+  });
+
   it('asks for a sample when the manifest adds an event the smoke test does not know', () => {
     const runner = new FakeRunner();
     const findings = smokeDist(input({ manifest: manifestOf({ PreCompact: [execHook('pre-compact')] }) }), runner.run);
