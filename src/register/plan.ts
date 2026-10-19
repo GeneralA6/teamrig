@@ -65,7 +65,7 @@ function statusTail(task: Task, tree: TaskTree): string {
     case 'in-progress':
       return ' (in progress)';
     case 'verifying':
-      return ` verifying, proof: ${proofOf(task) ?? ''}${task.waits.length > 0 ? `; waiting: ${waitsText(task.waits, tree.context)}` : ''}`;
+      return ` verifying, proof: ${proofOf(task) ?? ''}${task.waits.length > 0 ? `; waiting: ${waitsText(task.waits, tree.zone, tree.context)}` : ''}`;
     case 'open':
       return '';
   }
