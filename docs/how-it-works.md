@@ -624,6 +624,19 @@ owner instead of a session waiting on them. Refusals stay as they were. A prompt
 the same refusal from a `PermissionRequest` hook, all but the question picker and plan mode's exit, which a person
 answers.
 
+## Secrets kept out of the conversation
+
+A secret printed into a session stays in its transcript and in every prompt after it. Before each Bash, PowerShell,
+Read or Grep call, the secret guard reads the call (a shell line with the push guard's parser) and refuses one that
+would print a secret file's content (`.env`, `~/.npmrc`, `~/.ssh/**`, `*.pem`...), the whole environment, a
+secret variable's value (by name: `TOKEN`, `SECRET`, `PASSW`, `KEY`, a store's URL by its kind...) or a Kubernetes
+secret's data, and reads the line a container or a host runs too. Output piped or redirected away from the screen
+passes (`cat .env | wc -c`, `echo "$T" | docker login --password-stdin`), and the reason names the ways to use or
+check a secret unprinted. `secretGuard.secretReads` (`deny` by default, `ask` or `allow`) sets what such a call
+gets; `secretGuard.paths` and `secretGuard.envNames` add the team's own files and names, and a `!` entry keeps one
+printable. The read-only allow never lets such a line skip the prompt
+([what it cannot see](../plugins/teamrig/skills/teamrig-guide/hooks.md#before-a-shell-command-or-a-read-the-secret-guard)).
+
 ## Reads without a prompt
 
 Claude Code asks before a shell line its settings do not allow, and a settings rule matches only a command's start,
@@ -631,7 +644,7 @@ so it cannot tell `grep x f` from `grep x f > out.txt`. With `readonlyShell.enab
 (Bash with the push guard's parser) and allows it when every command in it provably only reads: known readers, git
 and kubectl reading subcommands, the team's trusted prefixes (`readonlyShell.allowPrefixes`), and no write, file
 redirection, command that runs code or variable a program reads. It only ever allows: any other line gets Claude
-Code's own check, and a guard's ask or refusal wins over its allow
+Code's own check, a guard's ask or refusal wins over its allow, and a line that prints a secret is never allowed
 ([what it cannot see](../plugins/teamrig/skills/teamrig-guide/hooks.md#before-a-shell-command-the-read-only-allow)).
 
 ## Never stuck on a question

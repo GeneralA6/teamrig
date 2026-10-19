@@ -12,6 +12,7 @@ they all stay silent, and only `hook restore-track` still records the session ([
 | `UserPromptSubmit` (each prompt) | `hook inbox-reminder` | Cancels a waiting automatic restart; shows new inbox lines; binds a tab started by hand by its title; records a Claude Code rename; tells the model when its budget holds it |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook push-guard` | Asks before a push to a protected branch; refuses a force-push or delete of one, and a git command run without the repository's hooks ([the commit guard](#before-a-shell-command-the-commit-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook package-guard` | Refuses a package runner that would fetch and run a package outside the project's lockfile, and an `npx --no <bin>` that hands the bin's flag to npm ([the package guard](#before-a-shell-command-the-package-guard)) |
+| `PreToolUse` on `Bash`, `PowerShell`, `Read` and `Grep` | `hook secret-guard` | Refuses a call that would print a secret file, a secret variable, the whole environment or a Kubernetes secret's data into the conversation ([the secret guard](#before-a-shell-command-or-a-read-the-secret-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook readonly-allow` | With `readonlyShell.enabled`, lets a line whose every command provably only reads run without a permission prompt ([the read-only allow](#before-a-shell-command-the-read-only-allow)) |
 | `PreToolUse` on `AskUserQuestion` | `hook picker-guard` | With `pickerGuard.enabled`, refuses the question picker to every session but the lead, with the reason to record the decision on its task and go on ([the picker guard](#before-a-question-the-picker-guard)) |
 | `PermissionRequest` | `hook prompt-refuse` | With `prompts.hookAsks: refuse`, refuses each permission prompt Claude Code is about to raise but the question picker's and plan mode's exit, with the reason to record the step for the owner and go on ([asks off](#asks-off-a-refusal-instead-of-a-prompt)) |
@@ -268,6 +269,51 @@ allow, in a mode that asks, or a check of its own that always asks): `hook promp
 and then the note above. The question picker and plan mode's exit still open: the
 [picker guard](#before-a-question-the-picker-guard) and the person decide those.
 
+## Before a shell command or a read: the secret guard
+
+A secret printed into the session stays in its transcript and in every prompt after it. Before Claude runs a Bash,
+PowerShell, Read or Grep call, `hook secret-guard` reads it (a shell line as the push guard does: chains, subshells,
+nested shells, `cd`, pipes and substitutions) and refuses a call that would print:
+
+- **a secret file's content**: a printer (`cat`, `head`, `grep`, `sed`, `jq`, `base64`, `Get-Content`,
+  `Select-String`...) or `git show`, `diff` or `blame` naming one, a `<` feeding one, inline code that prints one
+  (`python -c "print(open('.env').read())"`), the Read tool on one, or a Grep that shows content (`output_mode:
+  content`) of one by its path or glob. The defaults: `**/.env`, `**/.env.*`, `~/.npmrc`, `~/.ssh/**`,
+  `~/.aws/credentials`, `~/.kube/config`, `~/.docker/config.json`, `~/.git-credentials`, `~/.config/gh/hosts.yml`,
+  `**/*.pem` and `**/*.key`; `.env.example`, `.env.sample` and `~/.ssh/*.pub` stay readable. A word with
+  wildcards counts when a secret name fits them (`cat .env*`).
+- **the whole environment**: `env`, `printenv`, `export -p`, `declare -x`, cmd's `set`, `Get-ChildItem Env:`,
+  `[Environment]::GetEnvironmentVariables()`, `/proc/<pid>/environ`, and inline code that prints `process.env` or
+  `os.environ`.
+- **a secret variable's value**: `echo $GITHUB_TOKEN`, `printenv NPM_TOKEN`, a bare `$env:GH_TOKEN`,
+  `[Environment]::GetEnvironmentVariable("X")`, and inline code (`node -e`, `python -c`, `ruby -e`, `perl -e`,
+  `php -r`) that prints one. A name is secret when a default pattern matches it (case ignored): `TOKEN`, `SECRET`,
+  `PASSW`, `PASS`, `CRED`, `AUTH` (not `AUTHOR`), `PRIVATE`, `KEY`, `DSN`, `WEBHOOK`, `COOKIE`, `PAT`, `SALT`,
+  and a store's connection URL or string by its kind (`DB_URL`, `DATABASE_URL`, `PG_URI`, `CACHE_URL`,
+  `BROKER_URL`, `CONNECTION_STRING`).
+- **a Kubernetes secret's data**: `kubectl get secret` with `-o yaml`, `json`, `jsonpath` or a template,
+  `kubectl edit secret`, `kubectl view-secret`, and `kubectl create secret ... -o yaml`.
+
+The line a container or a host runs is read as a line of its own, four levels deep: `kubectl exec ... --`,
+`docker exec`, `docker compose exec`, `ssh host '...'`. Output that never reaches the screen passes: a redirect into
+a file, a pipe into a program that passes it on unprinted (`wc`, `sha256sum`, `Set-Clipboard`, `ssh-add`,
+`docker login --password-stdin`, `gh secret set`...), a quiet search (`grep -q`, `-c`, `-l`), an in-place edit, a
+PowerShell assignment or condition, and a substitution whose command prints nothing of it (`curl -H "Authorization:
+Bearer $(cat ~/.token)"`). The reason: "teamrig secret guard: this call would print the content of .env into the conversation. Hand a secret to the tool that needs it (stdin, an env file option, a pipe), check it without printing it (grep -q, wc -c, a hash), or ask the owner to look in their own terminal. A false match: add its !glob to secretGuard.paths or its !pattern to secretGuard.envNames. [secretGuard.secretReads]"
+
+`secretGuard.secretReads` sets what such a call gets: `deny` (the default), `ask` the human, or `allow`. A missing
+or broken config keeps `deny`. `secretGuard.paths` adds the team's own files: globs where `~/` starts at home, one
+with no leading `/` or drive matches at any depth, and the last glob that matches decides, so `!glob` keeps a file
+readable. `secretGuard.envNames` adds the team's own name patterns, and `!pattern` keeps a variable printable. The
+defaults name a store's URL by its kind, never by its product: a team adds its own stack's names
+(`ACME\w*_URL`). The read-only allow never lets a line that prints a secret run without a prompt, whatever
+`secretReads` says. The guard reads only the call, so it cannot see:
+
+- a value kept in a variable and printed later (`t=$(cat .env); echo "$t"`), or a path built when the line runs
+  (`cat $(ls .env*)`, `Get-Content (Join-Path ~ .npmrc)`);
+- a secret file inside a folder a search walks (`grep -r x .`, a Grep over a folder with no glob);
+- a script or program the line starts (`node print-env.js`), `docker inspect`, or `docker run -e`.
+
 ## Before a shell command: the read-only allow
 
 Claude Code asks before a shell line its settings do not allow, reads included, and a settings rule matches only a
@@ -302,7 +348,9 @@ and lets it run without a prompt when every command in it, substitutions and loo
 It only ever allows: a line it cannot prove reads prints nothing, and Claude Code's own permission check decides,
 as without the hook; so it does outside a team, with a missing or broken config, or on any error. Claude Code ranks
 one hook's `deny` over another's `ask` over an `allow`, and its settings' deny and ask rules still apply under an
-allow, so the push guard's question and the package guard's refusal always win. The hook reads the session's team
+allow, so the push guard's question and the package and secret guards' refusals always win. It never allows a line
+that prints a secret ([the secret guard](#before-a-shell-command-or-a-read-the-secret-guard)), even when
+`secretGuard.secretReads` is `allow`. The hook reads the session's team
 (`$TEAMRIG_TEAM`, else the project's), never the team of a folder the line moves into. Like the guards, it reads only
 the line, so it cannot see:
 
@@ -729,6 +777,8 @@ read-only allow lets a call skip the prompt, and only a shell line it proves onl
   unless `commitGuard.skipHooks` is `ask` or `allow`.
 - **The package guard** refuses an ad-hoc package run on its own, whatever the mode, unless
   `packageGuard.adHocRunners` is `ask` or `allow`.
+- **The secret guard** refuses a call that would print a secret on its own, whatever the mode, unless
+  `secretGuard.secretReads` is `ask` or `allow`.
 - **The read-only allow** (`readonlyShell.enabled`) lets a shell line that only reads run with no prompt in default
   mode too; it never asks or refuses, so in a mode that already allows the line it changes nothing.
 - **The picker guard** (`pickerGuard.enabled`) refuses the question picker to every session but the lead on its
