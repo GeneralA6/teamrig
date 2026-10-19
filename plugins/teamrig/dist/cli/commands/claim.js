@@ -1,13 +1,13 @@
 import { addClaim, releaseClaim } from "../../coordinator/claim-store.js";
+import { claimEndText } from "../../coordinator/claims.js";
 import { coordinatorPlaces } from "../../coordinator/places.js";
 import { parseSpanMinutes } from "../../coordinator/schedule.js";
 import { deployTargetsOf } from "../../coordinator/targets.js";
 import { SecretScanner } from "../../core/secrets.js";
-import { formatUtcMinute } from "../../core/time.js";
 import { requiredFlag, UsageError } from "../args.js";
 import { claimsLockOf } from "../coordinator-ports.js";
 import { callerOf, listOf } from "../inputs.js";
-import { openTeamKit, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
+import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 async function claimContextOf(args, runtime) {
     const caller = callerOf(args.flags, runtime.env);
@@ -21,11 +21,8 @@ async function claimContextOf(args, runtime) {
         coordinator,
         places,
         secretPatterns: config.register.secretPatterns,
-        ports: { files: runtime.files, clock: runtime.clock, lock: claimsLockOf(runtime, places.claimsLock) },
+        ports: { files: runtime.files, clock: runtime.clock, zone: teamZone(config, runtime), lock: claimsLockOf(runtime, places.claimsLock) },
     };
-}
-function untilText(claim) {
-    return `${formatUtcMinute(new Date(Date.parse(claim.until)))} UTC`;
 }
 /** The claim a write returned; a refusal is REFUSED, and a write another writer held up past the wait is FAILED. */
 function writtenOrExit(runtime, outcome) {
@@ -61,7 +58,7 @@ export async function claim(args, runtime) {
     if (written.kind === 'exit') {
         return written.code;
     }
-    runtime.out.stdout(`CLAIMED ${written.value.targets.join(', ')} until ${untilText(written.value)}`);
+    runtime.out.stdout(`CLAIMED ${written.value.targets.join(', ')} until ${claimEndText(written.value.until, context.ports.zone)}`);
     return EXIT.ok;
 }
 /** `teamrig release`: ends this session's quiet claim before its time. Exit 0 ended or none held, 1 when the claims stayed busy, 2 refused. */
@@ -72,6 +69,6 @@ export async function release(args, runtime) {
         return written.code;
     }
     const ended = written.value;
-    runtime.out.stdout(ended === undefined ? 'NONE this session held no claim' : `RELEASED ${ended.targets.join(', ')} (claimed until ${untilText(ended)})`);
+    runtime.out.stdout(ended === undefined ? 'NONE this session held no claim' : `RELEASED ${ended.targets.join(', ')} (claimed until ${claimEndText(ended.until, context.ports.zone)})`);
     return EXIT.ok;
 }

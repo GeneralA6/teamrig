@@ -1,4 +1,4 @@
-import { formatUtcMinute, MS_PER_DAY, MS_PER_HOUR, parseUtcDay, shortUtc } from "../core/time.js";
+import { MS_PER_DAY, MS_PER_HOUR, parseDayStart, showStored } from "../core/time.js";
 import { topPriority } from "../config/priorities.js";
 import { CARD_FLAGS } from "./card.js";
 import { taskNumber } from "./fold.js";
@@ -27,11 +27,11 @@ export const FLAG_KINDS = [
     'STOPGAP-DONE',
     'STALE',
 ];
-/** The week plan in force: the newest week tag that starts on or before now. */
-export function currentWeek(tasks, now) {
+/** The week plan in force: the newest week tag that starts on or before now, a week tag being a day of the team's `zone`. */
+export function currentWeek(tasks, now, zone) {
     let best = null;
     for (const task of tasks) {
-        const start = task.week === null ? undefined : parseUtcDay(task.week);
+        const start = task.week === null ? undefined : parseDayStart(task.week, zone);
         if (task.week !== null && start !== undefined && start.getTime() <= now.getTime() && (best === null || task.week > best)) {
             best = task.week;
         }
@@ -42,10 +42,10 @@ export function currentWeek(tasks, now) {
  * The week plan in force over a register as read: `currentWeek` of its tasks, or the newest week of
  * the tasks a compaction retired when that is newer, as a replay of the whole history would find it.
  */
-export function currentWeekOf(snapshot, now) {
-    const live = currentWeek(snapshot.state.tasks.values(), now);
+export function currentWeekOf(snapshot, now, zone) {
+    const live = currentWeek(snapshot.state.tasks.values(), now, zone);
     const retired = snapshot.retired?.lastWeek ?? null;
-    const started = retired === null ? undefined : parseUtcDay(retired);
+    const started = retired === null ? undefined : parseDayStart(retired, zone);
     return retired !== null && started !== undefined && started.getTime() <= now.getTime() && (live === null || retired > live) ? retired : live;
 }
 /**
@@ -81,12 +81,12 @@ export function currentWeekOf(snapshot, now) {
  *   for it. The register has no parent tasks: a goal tag or the week plan is what ties a task to the plan.
  * The three week flags need a week; null skips them, and each task gets at most one of them.
  */
-export function checkTasks(tasks, now, week, config) {
+export function checkTasks(tasks, now, zone, week, config) {
     const at = now.getTime();
     const all = [...tasks];
-    const tree = new TaskTree(new Map(all.map((task) => [task.id, task])), now);
+    const tree = new TaskTree(new Map(all.map((task) => [task.id, task])), now, zone);
     const active = tree.inPlanOrder(all.filter((candidate) => ACTIVE_STATUSES.includes(candidate.status)));
-    const plan = weekPlan(week, config.check.weekLengthDays);
+    const plan = weekPlan(week, config.check.weekLengthDays, zone);
     const top = topPriority(config.priorities);
     const waiting = top === undefined ? new Map() : waitingTopTasks(active, top, tree.context);
     const piles = pileUps(active, config.maxVerifying);
@@ -98,7 +98,7 @@ export function checkTasks(tasks, now, week, config) {
         ...(task.status === 'waiting' && task.waits.length === 0 ? [{ kind: 'NO-REASON', task, detail: 'set what it waits for (--waits) or its next status' }] : []),
         ...noCardFlags(task, config),
         ...timeFlags(task, at, config.check, tree),
-        ...(top === undefined ? [] : prioritySkip(task, top, waiting, at, config.check)),
+        ...(top === undefined ? [] : prioritySkip(task, top, waiting, at, config.check, zone)),
         ...(plan === undefined ? [] : planFlags(task, plan, config.ownerSource, tree)),
     ]);
     return [...flags, ...loopFlags(tree)].sort(byFlagKind);
@@ -124,8 +124,8 @@ export function peerWaitFlags(tasks, lead, ownerSource) {
             : [{ kind: 'PEER-WAIT', task, detail: `${waitSpelling(peer)} is a peer's work: wait on it by its task (set ${task.id} --status waiting --ask ${peer.who} --text "<the work>")` }];
     });
 }
-function weekPlan(week, lengthDays) {
-    const start = week === null ? undefined : parseUtcDay(week)?.getTime();
+function weekPlan(week, lengthDays, zone) {
+    const start = week === null ? undefined : parseDayStart(week, zone)?.getTime();
     return week === null || start === undefined ? undefined : { week, start, end: start + lengthDays * MS_PER_DAY };
 }
 /** NO-CARD, as {@link checkTasks} describes it. */
@@ -148,13 +148,13 @@ function timeFlags(task, at, check, tree) {
     const verifying = task.status === 'verifying';
     if (effective !== undefined && effective.at < at) {
         const from = effective.from === null ? '' : `, from ${effective.from}`;
-        flags.push({ kind: verifying ? 'VERIFY-OVERDUE' : 'OVERDUE', task, detail: `${verifying ? 'verify by' : 'due'} ${shortUtc(effective.due)}${from}` });
+        flags.push({ kind: verifying ? 'VERIFY-OVERDUE' : 'OVERDUE', task, detail: `${verifying ? 'verify by' : 'due'} ${showStored(effective.due, tree.zone)}${from}` });
     }
     if (task.ownerSeenAt === null && at - Date.parse(task.assignedAt) > check.notPickedUpAfterHours * MS_PER_HOUR) {
-        flags.push({ kind: 'NOT-PICKED-UP', task, detail: `assigned ${minute(task.assignedAt)}, no event from ${task.owner} since` });
+        flags.push({ kind: 'NOT-PICKED-UP', task, detail: `assigned ${minute(task.assignedAt, tree.zone)}, no event from ${task.owner} since` });
     }
     else if (!(verifying && due !== undefined) && !waitsForTime(task, tree.context) && at - Date.parse(task.updatedAt) > check.staleAfterHours * MS_PER_HOUR) {
-        flags.push({ kind: 'STALE', task, detail: `last event ${minute(task.updatedAt)} by ${task.updatedBy}` });
+        flags.push({ kind: 'STALE', task, detail: `last event ${minute(task.updatedAt, tree.zone)} by ${task.updatedBy}` });
     }
     return flags;
 }
@@ -260,7 +260,7 @@ function waitingTopTasks(active, top, context) {
     return waiting;
 }
 /** PRIORITY-SKIP, counted from when both tasks took their current owner, status and priority. */
-function prioritySkip(task, top, waiting, at, check) {
+function prioritySkip(task, top, waiting, at, check, zone) {
     const skipped = waiting.get(task.owner);
     if (task.status !== 'in-progress' || task.priority <= top || skipped === undefined) {
         return [];
@@ -269,7 +269,7 @@ function prioritySkip(task, top, waiting, at, check) {
     if (at - since <= check.prioritySkipAfterHours * MS_PER_HOUR) {
         return [];
     }
-    return [{ kind: 'PRIORITY-SKIP', task, detail: `${priorityText(skipped.priority)} ${skipped.id} waits open, skipped since ${minute(since)}` }];
+    return [{ kind: 'PRIORITY-SKIP', task, detail: `${priorityText(skipped.priority)} ${skipped.id} waits open, skipped since ${minute(since, zone)}` }];
 }
 /** OWNER-UNPLANNED, or else DUE-UNPLANNED (on the effective due), or else OFF-GOAL. */
 function planFlags(task, plan, ownerSource, tree) {
@@ -288,6 +288,6 @@ function planFlags(task, plan, ownerSource, tree) {
     }
     return [];
 }
-function minute(instant) {
-    return shortUtc(formatUtcMinute(new Date(instant)));
+function minute(instant, zone) {
+    return zone.shortMinute(new Date(instant));
 }

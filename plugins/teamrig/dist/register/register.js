@@ -53,7 +53,7 @@ export class Register {
     }
     async setStatus(caller, id, input) {
         const skillExists = await this.skillExists(input);
-        return this.commit(caller, (snapshot) => onTask(snapshot, id, (task) => this.statusEvents(task, caller, input, { state: snapshot.state, now: new Date(this.deps.clock.now()), skillExists })));
+        return this.commit(caller, (snapshot) => onTask(snapshot, id, (task) => this.statusEvents(task, caller, input, { state: snapshot.state, now: new Date(this.deps.clock.now()), zone: this.deps.zone, skillExists })));
     }
     /**
      * `set <id> --status waiting --ask <session> --text "<the work>"`, in one write: the task asked of that session, then
@@ -72,7 +72,7 @@ export class Register {
             const state = foldEvents([created], [], snapshot.state);
             const waits = [...(input.waits ?? []), { kind: 'task', id: askedId }];
             const asking = { ...input, waits, note: input.note ?? fields.value.title };
-            const status = this.statusEvents(task, caller, asking, { state, now: new Date(this.deps.clock.now()), skillExists });
+            const status = this.statusEvents(task, caller, asking, { state, now: new Date(this.deps.clock.now()), zone: this.deps.zone, skillExists });
             return status.ok ? { ok: true, value: [created, ...status.value] } : status;
         }));
         if (!written.ok) {
@@ -171,7 +171,7 @@ export class Register {
             return { kind: 'none' };
         }
         try {
-            const plan = await this.deps.log.rotateIfDue(written, new Date(this.deps.clock.now()));
+            const plan = await this.deps.log.rotateIfDue(written, new Date(this.deps.clock.now()), this.deps.zone);
             return plan === null ? { kind: 'none' } : { kind: 'rotated', segment: plan.segment, retired: plan.compaction.retiredNow.length };
         }
         catch (error) {

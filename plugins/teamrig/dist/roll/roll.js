@@ -81,7 +81,8 @@ function readinessOf(setup, ports, request, repo, view) {
     return async (phase) => {
         const now = ports.clock.now();
         const hours = schedule.resetBlackoutHours;
-        const refusal = heavyCutoffReason(now, schedule.heavyCutoffUtc) ?? (hours === undefined ? undefined : resetBlackoutReason(now, await ports.nextReset(now), hours));
+        const refusal = heavyCutoffReason(now, schedule.heavyCutoffUtc, setup.zone) ??
+            (hours === undefined ? undefined : resetBlackoutReason(now, await ports.nextReset(now), hours, setup.zone));
         if (refusal !== undefined) {
             return { kind: 'refuse', reason: refusal };
         }
@@ -92,7 +93,7 @@ function readinessOf(setup, ports, request, repo, view) {
             }
             const covering = coveringClaims(read.claims, targets, now);
             if (covering.length > 0) {
-                return { kind: 'wait', reason: covering.map(claimText).join('; ') };
+                return { kind: 'wait', reason: covering.map((claim) => claimText(claim, setup.zone)).join('; ') };
             }
         }
         if (phase === 'locked') {
@@ -278,6 +279,7 @@ export async function rollRepo(setup, ports, request) {
         purpose: `roll ${repo.name}`,
         maxWaitMs: wait.maxMinutes * MINUTE_MS,
         pollMs: wait.pollSeconds * 1_000,
+        zone: setup.zone,
         onWait: (reason) => ports.say(`waiting: ${reason}`),
     });
     if (clearance.kind !== 'taken') {

@@ -1,4 +1,4 @@
-import { shortUtc } from "../core/time.js";
+import { showStored } from "../core/time.js";
 import { ACTIVE_STATUSES, priorityText } from "../register/model.js";
 import { cut, formatWaitingOnYou } from "../register/views.js";
 import { unfinishedAfter, waitsText } from "../register/waits.js";
@@ -36,7 +36,7 @@ function waitingText(task, context) {
         return '';
     }
     if (task.waits.length > 0) {
-        return ` (waiting: ${waitsText(task.waits, context)})`;
+        return ` (waiting: ${waitsText(task.waits, context.zone, context)})`;
     }
     return task.note === null ? '' : ` (waiting: ${cut(task.note, LIVE_NOTE_CHARS)})`;
 }
@@ -48,7 +48,7 @@ function liveRow(task, tree) {
     const parts = [`${task.id} ${task.status}`, priorityText(task.priority)];
     const due = tree.effectiveDue(task.id);
     if (due !== undefined) {
-        parts.push(`due ${shortUtc(due.due)}${due.from === null ? '' : ` (from ${due.from})`}`);
+        parts.push(`due ${showStored(due.due, tree.zone)}${due.from === null ? '' : ` (from ${due.from})`}`);
     }
     const after = unfinishedAfter(task.after, tree.context);
     if (after.length > 0) {

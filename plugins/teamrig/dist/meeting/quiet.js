@@ -1,4 +1,3 @@
-import { formatWeekdayMinute } from "../budget/format.js";
 /**
  * The meeting's quiet window: while the owner meets the lead, a message to the lead waits as an inbox line, as
  * every session was told at the start. Only a message that starts with CRITICAL goes through, for what needs the
@@ -16,7 +15,7 @@ export function quietHoldReason(facts) {
     if (meeting === undefined || facts.to !== facts.lead || facts.from === facts.lead || facts.text.trim() === '' || isCritical(facts.text)) {
         return undefined;
     }
-    return (`Held: ${facts.leadName} is in the owner's daily meeting since ${formatWeekdayMinute(Date.parse(meeting.startedAt))}. ` +
+    return (`Held: ${facts.leadName} is in the owner's daily meeting since ${facts.zone.weekdayMinute(new Date(meeting.startedAt))}. ` +
         `Keep working and leave this as one inbox line, which ${facts.leadName} reads after the meeting: ${facts.command} inbox add --to ${facts.lead} --text "...". ` +
         `Only what needs the owner now goes as a message: start it with ${CRITICAL_WORD}: and send it again.`);
 }

@@ -1,7 +1,7 @@
 import { MAX_DESCRIPTION } from "../config/defaults.js";
 import { ADDRESS_PATTERN } from "../core/address.js";
 import { SecretScanner } from "../core/secrets.js";
-import { parseUtcDay, parseUtcDeadline } from "../core/time.js";
+import { parseDeadline, parseUtcDay, parseUtcDeadline, showStored } from "../core/time.js";
 import { CARD_FLAGS, cardProblem, cardTexts, OPTION_SEPARATOR, sameCard } from "./card.js";
 import { sizeProblem } from "./events.js";
 import { taskNumber } from "./fold.js";
@@ -281,7 +281,7 @@ export class RegisterPolicy {
             case 'task':
                 return taskWaitProblem(task, reason.id, context.state);
             case 'time':
-                return (parseUtcDeadline(reason.at)?.getTime() ?? 0) > context.now.getTime() ? undefined : `time ${reason.at} has passed: name a time to come`;
+                return (parseDeadline(reason.at, context.zone)?.getTime() ?? 0) > context.now.getTime() ? undefined : `time ${showStored(reason.at, context.zone)} has passed: name a time to come`;
         }
     }
     /**

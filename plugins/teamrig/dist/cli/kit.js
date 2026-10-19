@@ -8,6 +8,7 @@ import { ENV, KIT_NAME, resolveKitHome, teamPaths } from "../core/home.js";
 import { ID_PATTERN } from "../core/ids.js";
 import { FileLock } from "../core/lock.js";
 import { resolveTeam, TEAM_POINTER } from "../core/team.js";
+import { TimeZone } from "../core/zone.js";
 import { JsonlRenameLog } from "../names/log.js";
 import { RefusedError } from "./runtime.js";
 /** The rename log, its lock and the roster it gives, for recording a rename. */
@@ -114,6 +115,14 @@ export function checkedNextConfig(json) {
         throw new RefusedError(`nothing written: ${issueText(problem)}`);
     }
     return next.config;
+}
+/** The zone the team's people read and type times in: the config's `timeZone`, else the machine's. */
+export function teamZone(config, runtime) {
+    return TimeZone.resolve(config.timeZone, runtime.timeZone);
+}
+/** The clock the start rules are read on: this moment, and the machine's zone a team without `timeZone` reads them in. */
+export function rulesClockOf(runtime) {
+    return { now: new Date(runtime.clock.now()), machineZone: runtime.timeZone };
 }
 /**
  * The team config. A config with problems still loads, each bad field on its default: reads go

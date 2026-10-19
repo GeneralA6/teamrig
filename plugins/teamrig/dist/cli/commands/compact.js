@@ -5,7 +5,7 @@ import { RETAIN_DAYS } from "../../register/compaction.js";
 import { layoutPaths, segmentName, ARCHIVE_DIR, SNAPSHOT_FILE } from "../../register/layout.js";
 import { applyRotation, planRotation, RotationRefusedError } from "../../register/rotate.js";
 import { noPositionals } from "../args.js";
-import { openTeamKit, requireConfig } from "../kit.js";
+import { openTeamKit, requireConfig, teamZone } from "../kit.js";
 import { EXIT } from "../runtime.js";
 function bytes(text) {
     return `${Buffer.byteLength(text, 'utf8').toLocaleString('en-US')} B`;
@@ -39,7 +39,8 @@ export async function compact(args, runtime) {
     const config = requireConfig(kit, runtime, dryRun ? 'read' : 'write');
     const { files, clock, sleep, pid } = runtime;
     const paths = layoutPaths(kit.paths.events);
-    const options = () => ({ now: new Date(clock.now()), retainDays: RETAIN_DAYS, keep: new Set(), checkHistory: true });
+    const zone = teamZone(config, runtime);
+    const options = () => ({ now: new Date(clock.now()), zone, retainDays: RETAIN_DAYS, keep: new Set(), checkHistory: true });
     const plan = dryRun
         ? await planRotation(files, paths, options())
         : await new FileLock(kit.paths.eventsLock, config.lock, { files, clock, sleep, pid }).run(async () => {

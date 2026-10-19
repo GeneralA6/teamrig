@@ -1,6 +1,6 @@
 import { stringField } from "../core/guards.js";
 import { assertWritable, parseJsonl, toJsonlLine, VERSION_FIELD } from "../core/jsonl.js";
-import { formatUtcMinute, MS_PER_DAY, MS_PER_HOUR } from "../core/time.js";
+import { MS_PER_DAY, MS_PER_HOUR } from "../core/time.js";
 import { formatEndTime, formatPct } from "./format.js";
 /**
  * The lead's lift of one session's daily budget, for today only: a part of the team's daily budget, which is
@@ -25,7 +25,7 @@ function refused(reason) {
 /** Whether the lift may be given, and when it ends. */
 export function decideLift(request, context) {
     const { stopPct, now, reserve } = request;
-    const { limits, reset, usedPct } = context;
+    const { limits, reset, usedPct, zone } = context;
     if (stopPct === undefined) {
         return refused('a lift needs --stop-pct <n>: the share of the week, in %, at which it ends');
     }
@@ -44,10 +44,10 @@ export function decideLift(request, context) {
         return refused('--reserve needs the week\'s reset: no status line snapshot gives it and budget.reset is not set');
     }
     if (reserve && reset !== undefined && now < reset - RESERVE_OPENS_BEFORE_RESET_MS) {
-        return refused(`--reserve releases the reserve only in the last hour before the reset, from ${formatUtcMinute(new Date(reset - RESERVE_OPENS_BEFORE_RESET_MS))} UTC`);
+        return refused(`--reserve releases the reserve only in the last hour before the reset, from ${zone.minute(new Date(reset - RESERVE_OPENS_BEFORE_RESET_MS))}`);
     }
     if (request.until !== undefined && request.until <= now) {
-        return refused(`--until ${formatUtcMinute(new Date(request.until))} UTC has passed`);
+        return refused(`--until ${zone.minute(new Date(request.until))} has passed`);
     }
     if (usedPct === undefined) {
         return refused("the week's use is unknown, so the stop % cannot be judged: run teamrig statusline install, or set budget.weeklyLimitW");
@@ -59,7 +59,7 @@ export function decideLift(request, context) {
     const latest = reserve && reset !== undefined ? reset - RESERVE_ENDS_BEFORE_RESET_MS : dayEnd;
     const endsAt = Math.min(request.until ?? latest, latest);
     if (endsAt <= now) {
-        return refused(`the reserve release ends 15 minutes before the reset, at ${formatUtcMinute(new Date(endsAt))} UTC, which has passed`);
+        return refused(`the reserve release ends 15 minutes before the reset, at ${zone.minute(new Date(endsAt))}, which has passed`);
     }
     return {
         kind: 'lift',
@@ -87,10 +87,10 @@ export function activeLift(lifts, session, now, usedPct) {
     }
     return newest;
 }
-/** What a lift gives, after "lifted": `teamrig to 40% of the team's daily budget today until 18:00 UTC or 97.0% of the week, ...`. */
-export function liftText(lift, name) {
+/** What a lift gives, after "lifted", on the team's clock: `teamrig to 40% of the team's daily budget today until 18:00 IDT or 97.0% of the week, ...`. */
+export function liftText(lift, name, zone) {
     return (`${name} to ${formatPct(lift.partPct)} of the team's daily budget today${lift.reserve ? ' from the reserve' : ''} until ` +
-        `${formatEndTime(lift.endsAt)} or ${formatPct(lift.stopPct)} of the week, whichever comes first; quiet hours do not apply to it.`);
+        `${formatEndTime(lift.endsAt, zone)} or ${formatPct(lift.stopPct)} of the week, whichever comes first; quiet hours do not apply to it.`);
 }
 function liftRecord(lift) {
     return {

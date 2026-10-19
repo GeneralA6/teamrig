@@ -1,4 +1,3 @@
-import { formatWeekdayMinute } from "../../budget/format.js";
 import { KIT_NAME } from "../../core/home.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { postLine } from "../../inbox/inbox.js";
@@ -10,7 +9,7 @@ import { fitLines } from "../../register/fit.js";
 import { TaskTree } from "../../register/tree.js";
 import { noPositionals } from "../args.js";
 import { callerOf } from "../inputs.js";
-import { openTeamKit, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
+import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { weekLineOf } from "./budget.js";
 import { inboxDepsOf, read } from "./inbox.js";
@@ -29,10 +28,10 @@ async function meetingKit(args, runtime, access) {
         throw new RefusedError(`only the lead${lead === undefined ? '' : ` (${roster.nameOf(lead) ?? lead})`} runs the owner's daily meeting`);
     }
     const store = new MeetingStore(runtime.files, kit.paths.meeting);
-    return { kit, config, roster, lead, leadName: roster.nameOf(lead) ?? lead, store, now: runtime.clock.now() };
+    return { kit, config, roster, lead, leadName: roster.nameOf(lead) ?? lead, store, now: runtime.clock.now(), zone: teamZone(config, runtime) };
 }
 function noticeFacts(mk) {
-    return { lead: mk.lead, leadName: mk.leadName, at: mk.now, command: KIT_NAME };
+    return { lead: mk.lead, leadName: mk.leadName, at: mk.now, command: KIT_NAME, zone: mk.zone };
 }
 /** One inbox line to every session but the lead; prints a line for each it could not post to, and returns how many it told. */
 async function tellSessions(runtime, mk, textFor) {
@@ -62,11 +61,11 @@ function phaseLine(phase, mk) {
         case 'none':
             return `MEETING none held yet; the agenda for the first (${KIT_NAME} meeting start opens it)`;
         case 'open':
-            return `MEETING open since ${formatWeekdayMinute(Date.parse(phase.meeting.startedAt))}: messages to ${mk.leadName} are held but CRITICAL ones`;
+            return `MEETING open since ${mk.zone.weekdayMinute(new Date(phase.meeting.startedAt))}: messages to ${mk.leadName} are held but CRITICAL ones`;
         case 'lapsed':
-            return `MEETING the one started ${formatWeekdayMinute(Date.parse(phase.meeting.startedAt))} was never ended and holds no message since ${formatWeekdayMinute(phase.until)}; ${KIT_NAME} meeting end tells the sessions it ended`;
+            return `MEETING the one started ${mk.zone.weekdayMinute(new Date(phase.meeting.startedAt))} was never ended and holds no message since ${mk.zone.weekdayMinute(new Date(phase.until))}; ${KIT_NAME} meeting end tells the sessions it ended`;
         case 'closed':
-            return `MEETING none open, the last ended ${formatWeekdayMinute(phase.until)}; the agenda for the next (${KIT_NAME} meeting start opens it)`;
+            return `MEETING none open, the last ended ${mk.zone.weekdayMinute(new Date(phase.until))}; the agenda for the next (${KIT_NAME} meeting start opens it)`;
     }
 }
 /** The agenda: the register's part (decisions, late, done), the lead's inbox marked read, then the week's use and, under it, the planned week's fit (as `plan` gives it). */
@@ -74,9 +73,10 @@ async function printAgenda(args, runtime, mk, phase) {
     const rollUp = await ownRegister(runtime);
     const { snapshot } = rollUp.own;
     const now = new Date(mk.now);
+    const { zone } = mk;
     const lines = agendaLines({
         tasks: [...snapshot.state.tasks.values()],
-        tree: new TaskTree(snapshot.state.tasks, now),
+        tree: new TaskTree(snapshot.state.tasks, now, zone),
         now: mk.now,
         since: agendaSince(previousEnd(phase), mk.now),
         ownerMarker: mk.config.register.ownerSource,
@@ -86,7 +86,7 @@ async function printAgenda(args, runtime, mk, phase) {
     lines.forEach((line) => runtime.out.stdout(line));
     await read({ ...args, flags: new Map([['session', mk.lead]]) }, runtime);
     runtime.out.stdout(await weekLineOf(runtime, mk.kit, mk.config, mk.roster));
-    const week = currentWeekOf(snapshot, now);
+    const week = currentWeekOf(snapshot, now, zone);
     if (week !== null) {
         fitLines(await weekFitOf(runtime, rollUp, week, false)).forEach((line) => runtime.out.stdout(`  ${line}`));
     }
@@ -99,7 +99,7 @@ export async function meetingStart(args, runtime) {
     const mk = await meetingKit(args, runtime, 'write');
     const phase = phaseOf(await mk.store.read(), mk.now);
     if (phase.kind === 'open') {
-        runtime.out.stdout(`MEETING already open since ${formatWeekdayMinute(Date.parse(phase.meeting.startedAt))}; the sessions were told then`);
+        runtime.out.stdout(`MEETING already open since ${mk.zone.weekdayMinute(new Date(phase.meeting.startedAt))}; the sessions were told then`);
         await printAgenda(args, runtime, mk, phase);
         return EXIT.ok;
     }
@@ -107,7 +107,7 @@ export async function meetingStart(args, runtime) {
     const meeting = { startedAt: new Date(mk.now).toISOString(), by: mk.lead, endedAt: null, since: before === undefined ? null : new Date(before).toISOString() };
     await mk.store.write(meeting);
     const told = await tellSessions(runtime, mk, () => startNotice(noticeFacts(mk)));
-    runtime.out.stdout(`MEETING started ${formatWeekdayMinute(mk.now)}: told ${told} session(s) by inbox line; messages to ${mk.leadName} are held but CRITICAL ones`);
+    runtime.out.stdout(`MEETING started ${mk.zone.weekdayMinute(new Date(mk.now))}: told ${told} session(s) by inbox line; messages to ${mk.leadName} are held but CRITICAL ones`);
     await printAgenda(args, runtime, mk, { kind: 'open', meeting });
     runtime.out.stdout(`END ${KIT_NAME} meeting end --session ${mk.lead}: tells every session, with the decisions recorded on its tasks`);
     return EXIT.ok;
@@ -137,7 +137,7 @@ export async function meetingEnd(args, runtime) {
     const decisions = decisionsByOwner(snapshot.read.events, snapshot.state.tasks, mk.lead, startedAt);
     const told = await tellSessions(runtime, mk, (session) => endNotice(noticeFacts(mk), decisions.get(session) ?? []));
     const minutes = Math.round((mk.now - startedAt) / 60_000);
-    runtime.out.stdout(`MEETING ended ${formatWeekdayMinute(mk.now)} after ${minutes} min: told ${told} session(s) messages to ${mk.leadName} may go again`);
+    runtime.out.stdout(`MEETING ended ${mk.zone.weekdayMinute(new Date(mk.now))} after ${minutes} min: told ${told} session(s) messages to ${mk.leadName} may go again`);
     const recorded = [...decisions].flatMap(([owner, lines]) => lines.map((line) => `  ${owner} ${line}`));
     runtime.out.stdout(recorded.length === 0
         ? `RECORDED nothing on another session's task during it: a decision the register lacks reaches no one (${KIT_NAME} update <id> --note "..." --session ${mk.lead})`

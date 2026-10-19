@@ -3,9 +3,12 @@ import { readSnapshots, weekUseOf } from "../budget/snapshot.js";
 import { CLAIMS_LOCK_TTL_MS } from "../coordinator/claim-store.js";
 import { HostLock } from "../coordinator/host-lock.js";
 const MINUTE_MS = 60_000;
-/** A progress line stamped with the time, since a coordinator command mostly runs in the background with its output in a log. */
-export function logLine(runtime, text) {
-    runtime.out.stdout(`${new Date(runtime.clock.now()).toISOString()} ${text}`);
+/**
+ * Progress lines, each stamped with the time on the team's clock to the second (`2030-01-08 12:00:05 IST running: …`),
+ * since a coordinator command mostly runs in the background with its output in a log.
+ */
+export function logLineOf(runtime, zone) {
+    return (text) => runtime.out.stdout(`${zone.second(new Date(runtime.clock.now()))} ${text}`);
 }
 /** The host lock at `path`, held by this process for `coordinator.heavy.lockTtlMinutes`; a holder whose process ended is stale. */
 export function hostLockOf(runtime, path, heavy) {

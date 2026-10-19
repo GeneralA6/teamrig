@@ -38,7 +38,7 @@ export async function readStopgapTags(files, folder, entries) {
  * are to be removed; a dropped one's never will, so each stopgap needs a new task or a decision to keep it. Tags
  * of active tasks, and of ids the register does not know, are not flagged. The flags come in plan order.
  */
-export function stopgapFlags(tags, tasks) {
+export function stopgapFlags(tags, tasks, zone) {
     const places = new Map();
     for (const tag of tags) {
         places.set(tag.id, [...(places.get(tag.id) ?? []), tag.at]);
@@ -53,5 +53,5 @@ export function stopgapFlags(tags, tasks) {
         const ask = task.status === 'done' ? 'remove the stopgap' : 'replace the task or keep the stopgap by a decision';
         return [{ kind: 'STOPGAP-DONE', task, detail: `tagged in ${shown}${more}; ${ask}` }];
     });
-    return flags.sort((a, b) => byPlanOrder(a.task, b.task));
+    return flags.sort((a, b) => byPlanOrder(a.task, b.task, zone));
 }

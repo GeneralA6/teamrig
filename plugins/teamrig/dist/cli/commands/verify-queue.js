@@ -31,14 +31,14 @@ export async function verifyNoteOf(runtime, paths, id) {
  * line a day and every other stop reads one small file; a date that arrives later that day waits for
  * the next one.
  */
-export async function verifyByLinesOf(runtime, paths, id) {
+export async function verifyByLinesOf(runtime, paths, id, zone) {
     const now = new Date(runtime.clock.now());
     const scans = new JsonlDailyLog(runtime.files, paths.verifyNotices);
     const key = `due ${id}`;
     if (await scans.seen(key, now)) {
         return [];
     }
-    const due = (await queueOf(runtime, paths, id)).filter((task) => verifyByArrived(task, now));
+    const due = (await queueOf(runtime, paths, id)).filter((task) => verifyByArrived(task, now, zone));
     await scans.record(key, now);
-    return due.map(formatVerifyByLine);
+    return due.map((task) => formatVerifyByLine(task, zone));
 }

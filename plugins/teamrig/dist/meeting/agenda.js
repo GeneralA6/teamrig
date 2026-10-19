@@ -1,5 +1,4 @@
-import { formatWeekdayMinute } from "../budget/format.js";
-import { formatUtcMinute, MS_PER_DAY, shortUtc } from "../core/time.js";
+import { MS_PER_DAY } from "../core/time.js";
 import { cardLines, cardTexts, namedTaskIds } from "../register/card.js";
 import { ACTIVE_STATUSES } from "../register/model.js";
 import { cut, formatShortTask } from "../register/views.js";
@@ -63,7 +62,7 @@ export function cardFacts(task, tree, byId) {
         rowOf(task, tree),
         ...(task.description === null ? [] : [`    what and why: ${cut(oneLine(task.description), DESCRIPTION_CHARS)}`]),
         ...(task.card === null ? [`    no card yet: ask ${task.owner} for one (check flags it NO-CARD)`] : cardLines(task.card, '    ')),
-        `    waiting since ${shortUtc(formatUtcMinute(new Date(task.statusAt)))}${note}`,
+        `    waiting since ${tree.zone.shortMinute(new Date(task.statusAt))}${note}`,
         ...(task.ref === null ? [] : [`    asked at: ${task.ref}`]),
         ...namedLines(task, texts, byId),
     ];
@@ -94,7 +93,7 @@ function lateLines(input) {
 /** DONE: the tasks done or dropped since the agenda's start, in plan order. */
 function doneLines(input) {
     const done = input.tree.inPlanOrder(input.tasks.filter((task) => (task.status === 'done' || task.status === 'dropped') && Date.parse(task.statusAt) >= input.since));
-    return listed(`DONE ${done.length} done or dropped since ${formatWeekdayMinute(input.since)}`, done.map((task) => rowOf(task, input.tree)), `${input.command} list --status done,dropped`);
+    return listed(`DONE ${done.length} done or dropped since ${input.tree.zone.weekdayMinute(new Date(input.since))}`, done.map((task) => rowOf(task, input.tree)), `${input.command} list --status done,dropped`);
 }
 /** The register's agenda: the owner's decisions first, as they are what the meeting is for, then the late tasks, then the finished ones. */
 export function agendaLines(input) {

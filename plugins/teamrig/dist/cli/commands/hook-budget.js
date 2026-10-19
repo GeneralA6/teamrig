@@ -16,6 +16,7 @@ import { readWork } from "../../budget/work.js";
 import { postLine } from "../../inbox/inbox.js";
 import { holdBack } from "../../hooks/permission.js";
 import { helperLaunchReminder } from "../../rules/helper-default.js";
+import { teamZone } from "../kit.js";
 import { snapshotDirOf } from "./budget.js";
 import { inboxDepsOf } from "./inbox.js";
 const TRANSCRIPT = '.jsonl';
@@ -92,6 +93,7 @@ export async function budgetFactsOf(runtime, scope, transcript) {
         pace: week.pace,
         teamDay,
         isLead,
+        zone: teamZone(config, runtime),
     };
 }
 /** The lead's inbox line about the session; a refusal (a secret pattern, a bad id) comes back as a line for the person. */

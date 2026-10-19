@@ -48,7 +48,7 @@ export function helperStartContext(input) {
         return unloadedContext(input.team, load, command);
     }
     const roster = new Roster(load.config, input.team, input.renames);
-    const core = renderCorePack(load.config, command, input.platform);
+    const core = renderCorePack(load.config, command, input.platform, input.clock);
     return renderSessionContext(`${core}\n\n${helperLine(roster, input)}`, input.teamRules, command);
 }
 /** The SubagentStart hook's stdout: Claude Code adds `additionalContext` to the helper's context. */

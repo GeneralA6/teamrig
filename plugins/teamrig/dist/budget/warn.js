@@ -53,8 +53,9 @@ export function levelOf(usePct, warnAtPct) {
     }
     return Number.isFinite(usePct) ? last + Math.floor((usePct - last) / WARN_STEP_PCT) * WARN_STEP_PCT : last;
 }
-/** When the quiet hours `now` falls in began, epoch ms; undefined outside them. They may cross midnight. */
-export function quietStartOf(quiet, now) {
+const MINUTES_PER_DAY = MS_PER_DAY / MS_PER_MINUTE;
+/** The quiet hours `now` falls in, epoch ms; undefined outside them. They may cross midnight. */
+export function quietSpanOf(quiet, now) {
     const start = quiet === undefined ? undefined : utcMinuteOf(quiet.startUtc);
     const end = quiet === undefined ? undefined : utcMinuteOf(quiet.endUtc);
     if (start === undefined || end === undefined || start === end) {
@@ -65,7 +66,8 @@ export function quietStartOf(quiet, now) {
     if (!isMinuteInSpan(minute, start, end)) {
         return undefined;
     }
-    return (minute >= start ? dayStart : dayStart - MS_PER_DAY) + start * MS_PER_MINUTE;
+    const from = (minute >= start ? dayStart : dayStart - MS_PER_DAY) + start * MS_PER_MINUTE;
+    return { from, to: from + ((end - start + MINUTES_PER_DAY) % MINUTES_PER_DAY) * MS_PER_MINUTE };
 }
 /** True when the session's use today is past its daily budget (its lift's while lifted). */
 export function isPastDailyBudget(facts) {
@@ -80,17 +82,17 @@ export function isPastDailyBudget(facts) {
 export function isHeld(facts) {
     return isPastDailyBudget(facts) && !hasRoom(facts.teamDay);
 }
-/** When the quiet hours the session is in began, epoch ms; undefined outside them, or while its lift exempts it. */
-export function sessionQuietFrom(facts, quiet) {
-    return facts.lift?.quietHoursExempt === true ? undefined : quietStartOf(quiet, facts.now);
+/** The quiet hours the session is in; undefined outside them, or while its lift exempts it. */
+export function sessionQuietSpan(facts, quiet) {
+    return facts.lift?.quietHoursExempt === true ? undefined : quietSpanOf(quiet, facts.now);
 }
 function standingOf(facts, budget) {
     const usePct = budgetUsePct(facts);
     const over = isPastDailyBudget(facts);
     const held = isHeld(facts);
     const ahead = facts.pace?.state === 'ahead';
-    const quietFrom = sessionQuietFrom(facts, budget.quietHours);
-    return { over, level: levelOf(usePct, budget.warnAtPct), ahead, held, escalated: held && (budget.escalate === 'session' || ahead), quietFrom };
+    const quiet = sessionQuietSpan(facts, budget.quietHours);
+    return { over, level: levelOf(usePct, budget.warnAtPct), ahead, held, escalated: held && (budget.escalate === 'session' || ahead), quiet };
 }
 /** How strongly an action holds a helper launch back: only "ask" and "block" do. */
 function gateRank(action) {
@@ -166,10 +168,11 @@ function levelLine(facts, budget, standing) {
     }
     return joined([`Budget: ${use}`, `${capitalized(heldClause(facts, standing))}.`, escalatedText(facts, budget), MORE]);
 }
-function quietLine(quiet, facts) {
+/** The person's line as quiet hours start, their times on the team's clock. */
+function quietLine(quiet, span, facts) {
     const helpers = facts.isLead ? undefined : helperClause(quiet.action);
     const what = helpers === undefined ? 'the team rests; start no new work.' : `${helpers}.`;
-    return `Quiet hours (${quiet.startUtc}-${quiet.endUtc} UTC): ${what} ${MORE}`;
+    return `Quiet hours (${facts.zone.clockSpan(new Date(span.from), new Date(span.to))}): ${what} ${MORE}`;
 }
 function leadLineOf(facts, standing) {
     return (`${facts.name} is past its daily budget: ${formatPct(facts.usedTodayPct)} of the week today against ${formatPct(facts.budgetPct)}, ` +
@@ -187,15 +190,15 @@ export function stopWarning(facts, budget, previous) {
     const standing = standingOf(facts, budget);
     const lines = [];
     if (facts.lift !== undefined && facts.lift.at !== state.liftAt) {
-        lines.push(`Budget: the lead lifted ${liftText(facts.lift, facts.name)}`);
+        lines.push(`Budget: the lead lifted ${liftText(facts.lift, facts.name, facts.zone)}`);
     }
     else if (facts.lift === undefined && state.liftAt !== undefined) {
         lines.push(`Budget: ${facts.name}'s lift has ended; its daily budget is ${formatPct(facts.budgetPct)} again.`);
     }
     const burst = burstStopLines(facts, state);
     lines.push(...burst.lines);
-    if (budget.quietHours !== undefined && standing.quietFrom !== undefined && standing.quietFrom !== state.quietFrom) {
-        lines.push(quietLine(budget.quietHours, facts));
+    if (budget.quietHours !== undefined && standing.quiet !== undefined && standing.quiet.from !== state.quietFrom) {
+        lines.push(quietLine(budget.quietHours, standing.quiet, facts));
     }
     // A state saved before `held` was kept reads as not held: a session escalated then sees this line once more.
     const wasEscalated = state.held && (budget.escalate === 'session' || state.ahead);
@@ -216,7 +219,7 @@ export function stopWarning(facts, budget, previous) {
             ahead: standing.ahead,
             held: standing.held,
             leadTold: state.leadTold || tellLead,
-            quietFrom: standing.quietFrom ?? state.quietFrom,
+            quietFrom: standing.quiet?.from ?? state.quietFrom,
             liftAt: facts.lift?.at,
             burstAt: burst.burstAt,
             modelBurstAt: state.modelBurstAt,
@@ -276,8 +279,8 @@ export function helperGate(facts, budget) {
         });
     }
     const quiet = budget.quietHours;
-    if (quiet !== undefined && standing.quietFrom !== undefined) {
-        reasons.push({ action: quiet.action, text: `It is quiet hours (${quiet.startUtc}-${quiet.endUtc} UTC).` });
+    if (quiet !== undefined && standing.quiet !== undefined) {
+        reasons.push({ action: quiet.action, text: `It is quiet hours (${facts.zone.clockSpan(new Date(standing.quiet.from), new Date(standing.quiet.to))}).` });
     }
     const strongest = Math.max(0, ...reasons.map((reason) => gateRank(reason.action)));
     if (strongest === 0) {

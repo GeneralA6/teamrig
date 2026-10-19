@@ -1,23 +1,26 @@
-import { formatUtcMinute, parseUtcDeadline, shortUtc } from "../core/time.js";
+import { parseDeadline, showStored, storedText } from "../core/time.js";
 import { cardLines } from "./card.js";
 import { ACTIVE_STATUSES, GITHUB_SOURCE, priorityText } from "./model.js";
 import { planOrder } from "./tree.js";
-import { waitsText, weekdayUtc } from "./waits.js";
+import { waitsText, weekdayText } from "./waits.js";
 import { proofOf, proofText } from "./verify.js";
 /** A size as printed: percent of the weekly limit, at most two decimals (`1.5%`). */
 export function sizeText(size) {
     return `${Number(size.toFixed(2))}%`;
 }
-/** The task's own deadline in ms, or undefined when it has none; {@link TaskTree.dueTime} gives the effective one. */
-export function dueTime(task) {
-    return task.due === null ? undefined : parseUtcDeadline(task.due)?.getTime();
+/**
+ * The task's own deadline in ms, a stored day read as a day of the team's `zone`; undefined when it has none.
+ * {@link TaskTree.dueTime} gives the effective one.
+ */
+export function dueTime(task, zone) {
+    return task.due === null ? undefined : parseDeadline(task.due, zone)?.getTime();
 }
 /**
  * Plan order on the tasks' own due dates: priority, then due date (undated last), then id. For rows no effective due
  * reaches (finished tasks) and readers with no tree; {@link TaskTree.byPlanOrder} orders active work.
  */
-export function byPlanOrder(a, b) {
-    return planOrder({ id: a.id, priority: a.priority, at: dueTime(a) }, { id: b.id, priority: b.priority, at: dueTime(b) });
+export function byPlanOrder(a, b, zone) {
+    return planOrder({ id: a.id, priority: a.priority, at: dueTime(a, zone) }, { id: b.id, priority: b.priority, at: dueTime(b, zone) });
 }
 /** The tasks that match the filter in plan order; `dueBefore` and the order read the effective due of `tree`. */
 export function selectTasks(tasks, filter, tree) {
@@ -42,17 +45,17 @@ export function taskLabel(task, team) {
 }
 /**
  * The fields every task row starts with: `T12 in-progress`, `p2`, `owner alpha`, then `due 01-15` and
- * `after T5,T6` (its plan dependency) when it has them. With `tree`, the due is the effective one: an earlier due
- * of a task that needs it names that task (`due 01-10 (from T194)`).
+ * `after T5,T6` (its plan dependency) when it has them. The due is the effective one of `tree`, in its zone: an
+ * earlier due of a task that needs it names that task (`due 01-10 (from T194)`).
  */
 function rowHead(task, team, tree) {
     const parts = [`${taskLabel(task, team)} ${task.status}`, priorityText(task.priority), `owner ${task.owner}`];
-    const inherited = tree?.effectiveDue(task.id);
+    const inherited = tree.effectiveDue(task.id);
     if (inherited !== undefined && inherited.from !== null) {
-        parts.push(`due ${shortUtc(inherited.due)} (from ${inherited.from})`);
+        parts.push(`due ${showStored(inherited.due, tree.zone)} (from ${inherited.from})`);
     }
     else if (task.due !== null) {
-        parts.push(`due ${shortUtc(task.due)}`);
+        parts.push(`due ${showStored(task.due, tree.zone)}`);
     }
     if (task.after.length > 0) {
         parts.push(`after ${task.after.join(',')}`);
@@ -66,14 +69,14 @@ export function formatVerifySummary(queue) {
     const named = queue.map((task) => `${task.id} (proof: ${cut(proofText(task), SUMMARY_PROOF_CHARS)})`);
     return queue.length === 0 ? undefined : `VERIFY ${queue.length}: ${named.join(', ')}`;
 }
-/** A row of `verify`: `T1 since 01-07 10:00, verify by 01-09 | <title> (proof: ...)`. */
-export function formatVerifyRow(task) {
-    const by = task.due === null ? 'no verify-by date' : `verify by ${shortUtc(task.due)}`;
-    return `${task.id} since ${shortUtc(formatUtcMinute(new Date(task.statusAt)))}, ${by} | ${task.title} (proof: ${proofText(task)})`;
+/** A row of `verify`, times in the team's `zone`: `T1 since 01-07 12:00 IST, verify by 01-09 | <title> (proof: ...)`. */
+export function formatVerifyRow(task, zone) {
+    const by = task.due === null ? 'no verify-by date' : `verify by ${showStored(task.due, zone)}`;
+    return `${task.id} since ${zone.shortMinute(new Date(task.statusAt))}, ${by} | ${task.title} (proof: ${proofText(task)})`;
 }
-/** The Stop hook's line once a verifying task's verify-by day has come. */
-export function formatVerifyByLine(task) {
-    return `VERIFY ${task.id} was to be verified by ${shortUtc(task.due ?? '')} (proof: ${proofText(task)}): done with the proof, or back to in-progress`;
+/** The Stop hook's line once a verifying task's verify-by day has come, its time in the team's `zone`. */
+export function formatVerifyByLine(task, zone) {
+    return `VERIFY ${task.id} was to be verified by ${showStored(task.due ?? '', zone)} (proof: ${proofText(task)}): done with the proof, or back to in-progress`;
 }
 /** `text` cut to `max` characters, counted in code points so a character is never split, ending in `…` when cut. */
 export function cut(text, max) {
@@ -85,14 +88,15 @@ export function cut(text, max) {
  * what a waiting task waits for: `(waiting: decision owner · on T5 ready)`, and which task of another session needs
  * it (`· needed by T194 (beta, due 01-10) +1`). It keeps what orders and assigns the work, and the issue of a task
  * imported from GitHub (`from gh:acme/web#7`) so it can be found there; it leaves the week, other sources, goals and
- * status note to `show`. `tree` gives the effective due, the ready reasons and the tasks that need it.
+ * status note to `show`. `tree` gives the effective due, the ready reasons, the tasks that need it and the zone
+ * times show in.
  */
 export function formatShortTask(task, titleChars, team, tree) {
     return `${shortRow(task, titleChars, team, tree)}${neededByText(task, tree)}`;
 }
 /** {@link formatShortTask} without what needs the task: a node of the tree and the start of a waiting-on-you row. */
 function shortRow(task, titleChars, team, tree) {
-    const waits = task.status === 'waiting' && task.waits.length > 0 ? ` (waiting: ${waitsText(task.waits, tree?.context)})` : '';
+    const waits = task.status === 'waiting' && task.waits.length > 0 ? ` (waiting: ${waitsText(task.waits, tree.zone, tree.context)})` : '';
     const issue = issueOf(task);
     const head = issue === undefined ? rowHead(task, team, tree) : [...rowHead(task, team, tree), `from ${issue}`];
     return `${head.join(', ')} | ${cut(task.title, titleChars)}${waits}`;
@@ -100,16 +104,16 @@ function shortRow(task, titleChars, team, tree) {
 /**
  * ` · needed by T194 (beta, due 01-10) +1`: the active tasks of other sessions that need an active task, the first
  * the one with the earliest effective due, then in plan order. The due is left out when the row already shows it as
- * `(from T194)`. Empty for a finished task, with no `tree`, or when only its owner's own tasks need it.
+ * `(from T194)`. Empty for a finished task, or when only its owner's own tasks need it.
  */
 function neededByText(task, tree) {
-    const [first, ...rest] = tree?.neededByOthers(task.id) ?? [];
-    if (tree === undefined || first === undefined) {
+    const [first, ...rest] = tree.neededByOthers(task.id);
+    if (first === undefined) {
         return '';
     }
     const due = tree.effectiveDue(first.id);
     const shown = due !== undefined && tree.effectiveDue(task.id)?.from === (due.from ?? first.id);
-    const facts = due === undefined || shown ? [first.owner] : [first.owner, `due ${shortUtc(due.due)}`];
+    const facts = due === undefined || shown ? [first.owner] : [first.owner, `due ${showStored(due.due, tree.zone)}`];
     return ` · needed by ${first.id} (${facts.join(', ')})${rest.length > 0 ? ` +${rest.length}` : ''}`;
 }
 /** The GitHub issue a task was imported from, as its ref (`gh:acme/web#7`); undefined for any other task. */
@@ -126,7 +130,7 @@ function issueOf(task) {
 export function formatTask(task, team, tree) {
     const parts = rowHead(task, team, tree);
     if (task.week !== null) {
-        parts.push(`week ${shortUtc(task.week)}`);
+        parts.push(`week ${showStored(task.week, tree.zone)}`);
     }
     parts.push(`from ${issueOf(task) ?? task.source}`);
     if (task.goals.length > 0) {
@@ -140,7 +144,7 @@ export function formatTask(task, team, tree) {
  */
 function statusNote(task, tree) {
     if (task.status === 'waiting') {
-        const parts = [task.waits.length > 0 ? waitsText(task.waits, tree?.context) : null, task.note].filter((part) => part !== null);
+        const parts = [task.waits.length > 0 ? waitsText(task.waits, tree.zone, tree.context) : null, task.note].filter((part) => part !== null);
         return parts.length === 0 ? '' : ` (waiting: ${parts.join('; ')})`;
     }
     const proof = task.status === 'verifying' ? proofOf(task) : null;
@@ -150,9 +154,13 @@ function statusNote(task, tree) {
 const HISTORY_DESCRIPTION_CHARS = 80;
 /**
  * One field of an update, as `show` prints it: a priority reads `p2`, a list joins with commas, and a description is
- * quoted on one line, cut to HISTORY_DESCRIPTION_CHARS (`none` when cleared): `show` prints the whole one above.
+ * quoted on one line, cut to HISTORY_DESCRIPTION_CHARS (`none` when cleared): `show` prints the whole one above. A due
+ * time reads in the team's `zone`.
  */
-function changeText(name, value) {
+function changeText(name, value, zone) {
+    if (name === 'due' && typeof value === 'string') {
+        return storedText(value, zone);
+    }
     if (name === 'priority' && typeof value === 'number') {
         return priorityText(value);
     }
@@ -164,9 +172,9 @@ function changeText(name, value) {
     }
     return Array.isArray(value) ? value.join(',') : String(value);
 }
-/** One line per event, for `show`. */
-export function formatEvent(event) {
-    const head = `${formatUtcMinute(new Date(event.at))} ${event.by} ${event.type}`;
+/** One line per event, for `show`, its times in the team's `zone`. */
+export function formatEvent(event, zone) {
+    const head = `${zone.minute(new Date(event.at))} ${event.by} ${event.type}`;
     const note = 'note' in event && event.note !== null ? ` note="${event.note}"` : '';
     switch (event.type) {
         case 'create': {
@@ -177,7 +185,7 @@ export function formatEvent(event) {
                 `source=${task.source}`,
                 `priority=${priorityText(task.priority)}`,
                 task.ref === null ? undefined : `ref=${task.ref}`,
-                task.due === null ? undefined : `due=${task.due}`,
+                task.due === null ? undefined : `due=${storedText(task.due, zone)}`,
                 task.week === null ? undefined : `week=${task.week}`,
                 task.goals.length === 0 ? undefined : `goals=${task.goals.join(',')}`,
                 task.after.length === 0 ? undefined : `after=${task.after.join(',')}`,
@@ -188,7 +196,7 @@ export function formatEvent(event) {
         }
         case 'status':
             return [
-                `${head} ${event.status}${event.waits === undefined ? '' : ` waits="${waitsText(event.waits)}"`}${note}`,
+                `${head} ${event.status}${event.waits === undefined ? '' : ` waits="${waitsText(event.waits, zone)}"`}${note}`,
                 event.proof === undefined ? undefined : `proof="${event.proof}"`,
                 event.met === undefined ? undefined : `met="${event.met}"`,
                 event.evidence === null ? undefined : `evidence=${event.evidence}`,
@@ -198,7 +206,7 @@ export function formatEvent(event) {
                 .filter((part) => part !== undefined)
                 .join(' ');
         case 'update': {
-            const fields = Object.entries(event.changes).map(([name, value]) => `${name}=${changeText(name, value)}`);
+            const fields = Object.entries(event.changes).map(([name, value]) => `${name}=${changeText(name, value, zone)}`);
             return `${[head, ...fields].join(' ')}${note}`;
         }
     }
@@ -237,7 +245,7 @@ export function formatTaskDetail(task, events, tree) {
     if (task.followups.length > 0) {
         lines.push(`followups: ${task.followups.join(', ')}`);
     }
-    lines.push('history:', ...events.filter((event) => event.id === task.id).map((event) => `  ${formatEvent(event)}`));
+    lines.push('history:', ...events.filter((event) => event.id === task.id).map((event) => `  ${formatEvent(event, tree.zone)}`));
     return lines.join('\n');
 }
 /**
@@ -295,7 +303,7 @@ export function formatNextMove(task, tree) {
             ? `Next move: none, what ${task.id} needs runs in a loop (check flags it LOOP)`
             : `Next move: none, ${task.id} is ${task.status}`;
     }
-    const what = move.kind === 'work' ? '' : move.kind === 'time' ? `, from ${weekdayUtc(move.at)}` : `, ${move.kind}`;
+    const what = move.kind === 'work' ? '' : move.kind === 'time' ? `, from ${weekdayText(move.at, tree.zone)}` : `, ${move.kind}`;
     const behind = move.behind === undefined ? '' : `, behind ${move.behind.id} (${priorityText(move.behind.priority)})`;
     return `Next move: ${move.who} (${move.task.id})${what}${behind}`;
 }
@@ -308,9 +316,12 @@ export function formatWaitingOnYou(entry, titleChars, tree) {
     const asks = entry.asks.length === 0 ? '' : ` · waits on your ${entry.asks.map((ask) => ask.kind).join(' and ')}`;
     return `${shortRow(entry.task, titleChars, undefined, tree)}${needs}${asks}`;
 }
-/** The inbox line a task's new owner gets, under the giver's name: `T5 is yours (p2, due 2030-01-10): Show the signup errors`. */
-export function assignedNotice(task) {
-    const due = task.due === null ? '' : `, due ${task.due}`;
+/**
+ * The inbox line a task's new owner gets, under the giver's name, a due time in the team's `zone`:
+ * `T5 is yours (p2, due 2030-01-10): Show the signup errors`.
+ */
+export function assignedNotice(task, zone) {
+    const due = task.due === null ? '' : `, due ${storedText(task.due, zone)}`;
     return `${task.id} is yours (${priorityText(task.priority)}${due}): ${task.title}`;
 }
 /**

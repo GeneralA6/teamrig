@@ -3,6 +3,7 @@ import { SessionAskStore } from "../../core/session-asks.js";
 import { JsonlEventLog } from "../../register/store.js";
 import { wakeRestOf } from "../../wake/decide.js";
 import { keepWorkingOf, keepWorkingReason } from "../../wake/keep-working.js";
+import { teamZone } from "../kit.js";
 import { budgetFactsOf } from "./hook-budget.js";
 /**
  * The keep-working ask (wake/keep-working.ts) on the command line: `set` records it when a task goes waiting, and
@@ -35,6 +36,7 @@ export async function keepWorkingReasonOf(runtime, scope) {
     const now = runtime.clock.now();
     const rest = wakeRestOf(await budgetFactsOf(runtime, scope, undefined), config.budget.quietHours, now);
     const snapshot = await new JsonlEventLog(runtime.files, kit.paths.events).read();
-    const work = keepWorkingOf({ tasks: snapshot.state.tasks, session: id, ask, now, rest });
-    return work === undefined ? undefined : keepWorkingReason(id, work);
+    const zone = teamZone(config, runtime);
+    const work = keepWorkingOf({ tasks: snapshot.state.tasks, session: id, ask, now, zone, rest });
+    return work === undefined ? undefined : keepWorkingReason(id, work, zone);
 }

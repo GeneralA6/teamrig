@@ -33,7 +33,7 @@ import { readRunningWork } from "../../refresh/running.js";
 import { RefreshStore } from "../../refresh/store.js";
 import { readContextTokens } from "../../refresh/usage.js";
 import { noPositionals } from "../args.js";
-import { openKit, renameDepsOf, rosterOf, teamFolders } from "../kit.js";
+import { openKit, renameDepsOf, rosterOf, rulesClockOf, teamFolders, teamZone } from "../kit.js";
 import { EXIT } from "../runtime.js";
 import { loadTree } from "../tree.js";
 import { bindAfterClear, bindHintOnce, bindTab, inboxLinesFor, readTitle } from "./hook-bind.js";
@@ -198,7 +198,7 @@ export async function inboxReminder(args, runtime) {
         await logPrompt(runtime, { config, paths: kit.paths, id: session }, payload).catch(() => undefined);
     }
     const cancelled = session === undefined ? undefined : await cancelledRestartLine(runtime, kit, session, reaskGrowth(config.refresh)).catch(() => undefined);
-    const lines = session === undefined ? undefined : await inboxLinesFor(runtime, kit, session, claudeSession);
+    const lines = session === undefined ? undefined : await inboxLinesFor(runtime, kit, session, claudeSession, teamZone(config, runtime));
     const budgetLine = session === undefined ? undefined : await promptBudgetLine(runtime, { kit, config, roster: own.roster, id: session }).catch(() => undefined);
     // An unreadable title may be one the user set, so only a title read as absent is given.
     const tabTitle = title.kind === 'read' ? tabTitleFor(own.roster, session, title.title) : undefined;
@@ -231,7 +231,7 @@ export async function coldSend(args, runtime) {
     }
     const { config } = kit.load;
     const roster = await rosterOf(runtime, kit, config);
-    const hold = (await meetingHold(runtime, kit, roster, payload, claudeSession)) ?? (await coldSendHold(runtime, kit, config, roster, payload, claudeSession));
+    const hold = (await meetingHold(runtime, kit, config, roster, payload, claudeSession)) ?? (await coldSendHold(runtime, kit, config, roster, payload, claudeSession));
     if (hold !== undefined) {
         runtime.out.stdout(hold);
     }
@@ -314,7 +314,7 @@ async function teamPartsOf(runtime, kit, config, payload) {
         renames,
         titleNote,
         refreshNote: refresh.note,
-        liveTasksNote: await liveTasksPartOf(runtime, kit, id, payload, refresh),
+        liveTasksNote: await liveTasksPartOf(runtime, kit, config, id, payload, refresh),
         modelNote: modelNoteOf(config, roster, id, payload),
         verifyNote: await verifyNoteOf(runtime, kit.paths, id),
         session,
@@ -358,12 +358,12 @@ function rosterIdOf(roster, session) {
  * lost with a new process) and wake-up, and its scratchpad and plan file. A transcript it cannot read is
  * said, never thrown: the note itself must still reach the session.
  */
-async function carriedLinesOf(runtime, transcript, source) {
+async function carriedLinesOf(runtime, transcript, source, zone) {
     const now = runtime.clock.now();
     try {
         const places = { tempDir: claudeTempDir(runtime.env, tmpdir()), claudeDir: claudeConfigDir(runtime.env, runtime.userHome) };
         const carry = await readCarry(runtime.files, transcript, now, places);
-        return carry === undefined ? [] : carryLines(carry, now, carryStartOf(source));
+        return carry === undefined ? [] : carryLines(carry, now, carryStartOf(source), zone);
     }
     catch (error) {
         return [`${KIT_NAME} could not read what your old session left in ${transcript} (${errorMessage(error)}); check CronList against your handover.`];
@@ -395,7 +395,7 @@ async function refreshStartOf(runtime, kit, config, roster, payload) {
             return NO_REFRESH;
         }
         await store.clearRequest(id);
-        const carried = state?.phase === 'ready' && state.transcript !== null ? await carriedLinesOf(runtime, state.transcript, source) : [];
+        const carried = state?.phase === 'ready' && state.transcript !== null ? await carriedLinesOf(runtime, state.transcript, source, teamZone(config, runtime)) : [];
         return { note: [decision.note, ...carried].join('\n'), refreshed: true };
     }
     catch (error) {
@@ -403,9 +403,9 @@ async function refreshStartOf(runtime, kit, config, roster, payload) {
     }
 }
 /** The live-task block (hooks/live-tasks.ts) at the fresh start after a refresh and after a compaction; none at another start or for no session. */
-async function liveTasksPartOf(runtime, kit, id, payload, refresh) {
+async function liveTasksPartOf(runtime, kit, config, id, payload, refresh) {
     const source = isRecord(payload) ? stringField(payload, 'source') : undefined;
-    return id !== undefined && showsLiveTasks(source, refresh.refreshed) ? liveTasksNoteOf(runtime, kit.paths, id) : undefined;
+    return id !== undefined && showsLiveTasks(source, refresh.refreshed) ? liveTasksNoteOf(runtime, kit.paths, id, teamZone(config, runtime)) : undefined;
 }
 /** The refresh facts every turn end may need: the lead's request and the context size from the transcript's tail. */
 async function stopFactsOf(runtime, roster, store, id, payload) {
@@ -562,7 +562,7 @@ async function stopOutputOf(runtime, payload) {
     const decision = await refreshDecisionOf(runtime, scope, payload).catch(() => ({ kind: 'none' }));
     const notices = await modelNoticesOf(runtime, scope, payload).catch(() => []);
     const budget = await stopBudgetLines(runtime, scope, stringField(payload, 'transcript_path')).catch(() => []);
-    const verify = await verifyByLinesOf(runtime, scope.kit.paths, scope.id).catch(() => []);
+    const verify = await verifyByLinesOf(runtime, scope.kit.paths, scope.id, teamZone(scope.config, runtime)).catch(() => []);
     await startAutoSync(runtime, scope.kit, scope.config).catch(() => undefined);
     const lead = await leadStopLines(runtime, scope, stringField(payload, 'transcript_path')).catch(() => []);
     const lines = [...notices, ...budget, ...verify, ...lead];
@@ -636,7 +636,7 @@ export async function sessionStart(args, runtime) {
             sessionInEnv: false,
             tree: undefined,
         };
-    const context = sessionStartContext({ team: found.team, load: kit.load, ...parts, command: KIT_NAME, platform: runtime.platform });
+    const context = sessionStartContext({ team: found.team, load: kit.load, ...parts, command: KIT_NAME, platform: runtime.platform, clock: rulesClockOf(runtime) });
     const requirementsNote = await requirementsNoteOnce({
         problems: await runtime.requirements.problems(),
         log: new JsonlHintLog(runtime.files, kit.paths.bindHints),

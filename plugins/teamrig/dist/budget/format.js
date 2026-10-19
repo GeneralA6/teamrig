@@ -18,17 +18,11 @@ export function formatW(value) {
 export function formatCount(value) {
     return Math.round(value).toLocaleString('en-US');
 }
-/** An instant as `HH:MM UTC`. */
-export function formatTimeOfDay(at) {
-    return `${new Date(at).toISOString().slice(11, 16)} UTC`;
-}
-/** When something ends: `HH:MM UTC`, or `the end of the day (UTC)` at midnight. */
-export function formatEndTime(at) {
-    return at % MS_PER_DAY === 0 ? 'the end of the day (UTC)' : formatTimeOfDay(at);
-}
-const WEEKDAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-/** An instant as `Wed 10-21 01:00 UTC`. */
-export function formatWeekdayMinute(at) {
-    const date = new Date(at);
-    return `${WEEKDAY_NAMES[date.getUTCDay()] ?? ''} ${date.toISOString().slice(5, 16).replace('T', ' ')} UTC`;
+/**
+ * When something ends, on the team's clock: `18:00 IDT`, and at a UTC midnight `03:00 IDT (the end of the budget
+ * day)`: budget days are UTC days, so the day a lift lasts ends there.
+ */
+export function formatEndTime(at, zone) {
+    const clock = zone.clock(new Date(at));
+    return at % MS_PER_DAY === 0 ? `${clock} (the end of the budget day)` : clock;
 }

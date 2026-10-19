@@ -1,3 +1,4 @@
+import { lineOnClock } from "./inbox.js";
 import { lineHash } from "./line-hash.js";
 import { indexMarks, MARK_VERSION } from "./marks.js";
 import { cutWhenShown, INJECT_CAPS, newestShownOf, unshownOf } from "./shown.js";
@@ -22,7 +23,8 @@ export function fitLines(pending, caps) {
 /** The lines to show at this prompt, with the mark that records them; undefined when nothing new waits. */
 export function injectionOf(input, caps = INJECT_CAPS) {
     const unshown = unshownOf(input.area, input.lines, input.read, input.shown, lineHash);
-    const fitted = fitLines(unshown, caps);
+    const onClock = unshown.map((line) => lineOnClock(line, input.zone));
+    const fitted = fitLines(onClock, caps);
     if (fitted.length === 0) {
         return undefined;
     }
@@ -30,7 +32,7 @@ export function injectionOf(input, caps = INJECT_CAPS) {
     const last = input.lines[through - 1];
     const more = unshown.length - fitted.length;
     const readAll = `${input.command} inbox read --session ${input.area}`;
-    const cut = fitted.some((line, index) => line !== unshown[index]);
+    const cut = fitted.some((line, index) => line !== onClock[index]);
     const text = [
         `INBOX ${input.area}, new in ${input.path} (each line is shown once; reading marks them read):`,
         ...fitted,

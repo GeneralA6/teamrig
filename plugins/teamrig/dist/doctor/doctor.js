@@ -1,7 +1,7 @@
 import { isDefaultModel } from "../config/launch.js";
 import { describeNameClash, describeTreeProblem } from "../config/tree.js";
 import { ENV } from "../core/home.js";
-import { formatUtcMinute, MS_PER_DAY, parseUtcDeadline, shortUtc } from "../core/time.js";
+import { MS_PER_DAY } from "../core/time.js";
 import { unreadSince } from "../inbox/inbox.js";
 import { describeRequirement } from "../requirements/requirements.js";
 import { TEAM_RULES_MAX_CHARS } from "../rules/pack.js";
@@ -76,12 +76,11 @@ function waitingSince(unread) {
     if (unread.mark !== null) {
         return new Date(unread.mark.at);
     }
-    const posted = unreadSince(unread);
-    return posted === undefined ? undefined : parseUtcDeadline(posted);
+    return unreadSince(unread);
 }
 /** Inboxes nobody reads: one keyed by no session id on the team (nor a retired one's), or unread lines with no read for days. */
 function inboxFindings(input) {
-    const { roster, now, retired } = input;
+    const { roster, now, retired, zone } = input;
     return input.inboxes.flatMap((unread) => {
         const { area, mark } = unread;
         const count = unread.lines.length;
@@ -98,7 +97,7 @@ function inboxFindings(input) {
         if (count === 0 || (since !== undefined && now.getTime() - since.getTime() <= UNREAD_INBOX_DAYS * MS_PER_DAY)) {
             return [];
         }
-        const read = mark === null ? 'has never read it' : `last read it ${shortUtc(formatUtcMinute(new Date(mark.at)))}`;
+        const read = mark === null ? 'has never read it' : `last read it ${zone.shortMinute(new Date(mark.at))}`;
         return [{ kind: 'inbox-unread', detail: `${area} has ${count} unread line(s) and ${read}: over ${UNREAD_INBOX_DAYS} days with no read` }];
     });
 }

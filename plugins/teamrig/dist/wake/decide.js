@@ -1,5 +1,5 @@
 import { formatPct, formatW } from "../budget/format.js";
-import { isHeld, quietStartOf, sessionQuietFrom } from "../budget/warn.js";
+import { isHeld, quietSpanOf, sessionQuietSpan } from "../budget/warn.js";
 import { DEFAULT_MESSAGES } from "../config/defaults.js";
 import { KIT_NAME } from "../core/home.js";
 import { isCold } from "../hooks/cold-send.js";
@@ -62,7 +62,7 @@ export function byUrgency(a, b) {
  */
 export function decideWake(input) {
     const { tasks, session, tab, now, previous } = input;
-    const context = waitContext(tasks, new Date(now));
+    const context = waitContext(tasks, new Date(now), input.zone);
     const worthy = [...tasks.values()].filter((task) => isWakeWorthy(task, session, input.maxPriority, context));
     const known = worthy.map((task) => task.id);
     const none = { kind: 'none' };
@@ -94,9 +94,9 @@ export function decideWake(input) {
  */
 export function wakeRestOf(facts, quietHours, now) {
     if (facts === undefined) {
-        return { held: false, quiet: quietStartOf(quietHours, now) !== undefined };
+        return { held: false, quiet: quietSpanOf(quietHours, now) !== undefined };
     }
-    return { held: isHeld(facts), quiet: sessionQuietFrom(facts, quietHours) !== undefined };
+    return { held: isHeld(facts), quiet: sessionQuietSpan(facts, quietHours) !== undefined };
 }
 /** The least urgent priority that wakes the session now: p1 only while its budget holds it or in quiet hours. */
 export function effectivePriority(configured, rest) {

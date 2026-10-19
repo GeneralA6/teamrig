@@ -3,7 +3,6 @@ import { writeConfigWithBackup } from "../../config/load.js";
 import { describeNameClash, teamNodeOf } from "../../config/tree.js";
 import { EFFORT_LEVELS, isEffortLevel } from "../../config/types.js";
 import { activeBurst } from "../../budget/burst.js";
-import { formatWeekdayMinute } from "../../budget/format.js";
 import { KIT_NAME } from "../../core/home.js";
 import { FileLock } from "../../core/lock.js";
 import { burstHireOf } from "../../hiring/burst-hire.js";
@@ -12,7 +11,7 @@ import { planHire } from "../../hiring/plan.js";
 import { onePositional, requiredFlag, UsageError } from "../args.js";
 import { readBursts } from "../burst-reading.js";
 import { callerOf } from "../inputs.js";
-import { checkedNextConfig, configFileJson, findTeam, openKit, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
+import { checkedNextConfig, configFileJson, findTeam, openKit, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { loadTree } from "../tree.js";
 import { freshOpenOf, resumeVerdictOf } from "./rehire.js";
@@ -76,11 +75,11 @@ async function refuseNameClash(runtime, team, id, next, roster) {
         throw new RefusedError(`nothing written: ${describeNameClash(clash, KIT_NAME)}`);
     }
 }
-/** A rehire's lines: the retire it comes back from, its handover, and whether its last Claude Code session resumes. */
-function rehireLines({ from, verdict }) {
+/** A rehire's lines: the retire it comes back from (its day on the team's clock), its handover, and whether its last Claude Code session resumes. */
+function rehireLines({ from, verdict }, zone) {
     const left = from.handover === undefined ? `it left no handover${from.noHandover === undefined ? '' : `: ${from.noHandover}`}` : `its handover: ${from.handover}`;
     const resume = verdict.kind === 'resume' ? `its last Claude Code session can be resumed: ${verdict.detail}` : `it opens fresh (not resumed: ${verdict.detail})`;
-    return [`REHIRE ${from.session} retired ${new Date(from.at).toISOString().slice(0, 10)} (${from.reason}); ${left}`, `  ${resume}`];
+    return [`REHIRE ${from.session} retired ${zone.day(new Date(from.at))} (${from.reason}); ${left}`, `  ${resume}`];
 }
 /** How to open the session once hired: a rehire resumes or opens fresh, as measured. */
 function openStepOf(id, rehire) {
@@ -122,12 +121,12 @@ export async function hire(args, runtime) {
         const nextRoster = await rosterOf(runtime, kit, next);
         await refuseNameClash(runtime, kit.paths.team, request.id, next, nextRoster);
         const { hire: record, hired } = plan.value;
-        const what = `${record.session} (name ${nextRoster.nameOf(record.session) ?? record.session}) for "${record.scope}": ${describeLaunch(record)}, review by ${record.reviewBy}${record.burst === undefined ? '' : `, for the burst started ${formatWeekdayMinute(record.burst)}`}`;
+        const what = `${record.session} (name ${nextRoster.nameOf(record.session) ?? record.session}) for "${record.scope}": ${describeLaunch(record)}, review by ${record.reviewBy}${record.burst === undefined ? '' : `, for the burst started ${teamZone(config, runtime).weekdayMinute(new Date(record.burst))}`}`;
         const caps = `  hired sessions with it: ${hired} of ${config.hiring.maxSessions}`;
         const from = retiredSessions(records).find((record) => record.session === request.id);
         // Measured before anything is written, so the preview shows it too.
         const rehire = from === undefined ? undefined : { from, verdict: await resumeVerdictOf(runtime, kit.paths, config.hiring, request.id, await teamProjectOf(runtime, undefined, found.from)) };
-        const rehireText = rehire === undefined ? [] : rehireLines(rehire);
+        const rehireText = rehire === undefined ? [] : rehireLines(rehire, teamZone(config, runtime));
         if (skipped > 0) {
             runtime.out.stdout(`NOTE ${skipped} damaged or newer line(s) in ${log.path} were skipped, so the caps may count too few hires`);
         }

@@ -2,13 +2,13 @@ import { formatAddress, splitAddress } from "../../core/address.js";
 import { ENV } from "../../core/home.js";
 import { NAME_RULE } from "../../core/ids.js";
 import { SecretScanner } from "../../core/secrets.js";
-import { formatRead, formatUnread, inboxStatus, postLine, readInbox } from "../../inbox/inbox.js";
+import { formatRead, formatUnread, inboxStatus, lineOnClock, postLine, readInbox } from "../../inbox/inbox.js";
 import { CLAUDE_SESSION_ID } from "../../inbox/marks.js";
 import { reachOf } from "../../inbox/reach.js";
 import { InboxDir, JsonlMarkLog } from "../../inbox/store.js";
 import { noPositionals, requiredFlag, UsageError } from "../args.js";
 import { callerOf, sessionRef } from "../inputs.js";
-import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
+import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { loadTree } from "../tree.js";
 import { verifyNoteOf } from "./verify-queue.js";
@@ -32,10 +32,12 @@ export async function read(args, runtime) {
     noPositionals(args);
     const caller = callerOf(args.flags, runtime.env);
     const kit = await openTeamKit(runtime);
-    const area = sessionIdOf(await rosterOf(runtime, kit, requireConfig(kit, runtime, 'read')), caller);
+    const config = requireConfig(kit, runtime, 'read');
+    const area = sessionIdOf(await rosterOf(runtime, kit, config), caller);
     const now = new Date(runtime.clock.now());
     const result = await readInbox(inboxDepsOf(runtime, kit.paths), { area, claudeSession: claudeSessionOf(runtime.env), now });
-    result.lines.forEach((line) => runtime.out.stdout(line));
+    const zone = teamZone(config, runtime);
+    result.lines.forEach((line) => runtime.out.stdout(lineOnClock(line, zone)));
     runtime.out.stdout(formatRead(result));
     const verify = await verifyNoteOf(runtime, kit.paths, area);
     if (verify !== undefined) {
@@ -49,13 +51,15 @@ export async function status(args, runtime) {
     const only = args.flags.get('session');
     const ref = only === undefined ? undefined : sessionRef('--session', only);
     const kit = await openTeamKit(runtime);
-    const roster = await rosterOf(runtime, kit, requireConfig(kit, runtime, 'read'));
+    const config = requireConfig(kit, runtime, 'read');
+    const roster = await rosterOf(runtime, kit, config);
     const area = ref === undefined ? undefined : pastOrPresentIdOf(roster, ref);
     const unread = await inboxStatus(inboxDepsOf(runtime, kit.paths), area);
     if (unread.length === 0) {
         runtime.out.stdout(`INBOX no inbox ${area === undefined ? 'files' : `for ${area}`} in ${kit.paths.inbox}`);
     }
-    unread.forEach((item) => runtime.out.stdout(formatUnread(item)));
+    const zone = teamZone(config, runtime);
+    unread.forEach((item) => runtime.out.stdout(formatUnread(item, zone)));
     return EXIT.ok;
 }
 function ownTeamRecipient(paths, config, id) {
