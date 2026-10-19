@@ -13,7 +13,19 @@ import { claudeProjectsDir, type TranscriptSource } from '../../budget/discover.
 import { activeLift, decideLift, LiftLog, liftText, type Lift } from '../../budget/lift.ts';
 import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID, type Measured } from '../../budget/measure.ts';
 import { dailyBudgetOf, liftedParts, type BudgetSplit } from '../../budget/parts.ts';
-import { burnLines, loopLines, recountLines, sessionLines, sumDays, todayLines, weekLine, type SessionToday } from '../../budget/report.ts';
+import {
+  burnLines,
+  loopLines,
+  missLines,
+  missMatrixLines,
+  recountLines,
+  sessionLines,
+  sumDays,
+  sumUsage,
+  todayLines,
+  weekLine,
+  type SessionToday,
+} from '../../budget/report.ts';
 import { datedSnapshot, formatSnapshot, parseSnapshot, readSnapshots, snapshotOfStatus, statusLineText, weekUseOf, type StatusLineView } from '../../budget/snapshot.ts';
 import { CURSOR_DAYS_KEPT, DAYS_KEPT, MemoryUsageStore, UsageStore, type UsageState } from '../../budget/store.ts';
 import { readWeek, type WeekReading } from '../../budget/week.ts';
@@ -149,7 +161,10 @@ function recountDayOf(text: string | undefined, now: number): number | undefined
   return day.getTime();
 }
 
-/** `budget [<session>] [--loops|--burn] [--day <day>] [--all]`. */
+/** A store with nothing metered, for a session the meter has not read. */
+const NOTHING_STORED: UsageState = { byDay: {}, cursors: {}, recentKeys: [] };
+
+/** `budget [<session>] [--loops|--burn|--misses] [--day <day>] [--all]`. */
 export async function budget(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const [target, extra] = args.positionals;
   if (extra !== undefined) {
@@ -159,8 +174,9 @@ export async function budget(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   const all = args.switches.has('all');
   const loops = args.switches.has('loops');
   const burn = args.switches.has('burn');
-  if (loops && burn) {
-    throw new UsageError('--loops and --burn are two tables: give one');
+  const misses = args.switches.has('misses');
+  if ([loops, burn, misses].filter(Boolean).length > 1) {
+    throw new UsageError('--loops, --burn and --misses are three tables: give one');
   }
   const kit = await openTeamKit(runtime);
   const config = requireConfig(kit, runtime, 'read');
@@ -171,11 +187,15 @@ export async function budget(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   const sessions = sessionsToday(reading, roster, config.budget, work);
   const { measured, week, now } = reading;
   let lines: string[];
-  if (loops || burn) {
-    const days = recountDay === undefined ? loopDays(now, all ? DAYS_KEPT : LOOP_DAYS_SHOWN) : [formatUtcDay(new Date(recountDay))];
-    const states: UsageState[] = id === undefined ? [...measured.bySession.values(), measured.outside] : [measured.bySession.get(id) ?? { byDay: {}, cursors: {}, recentKeys: [] }];
-    const table = loops ? loopLines : burnLines;
-    lines = table(id === undefined ? 'every session, outside the team too' : (roster.nameOf(id) ?? id), days, sumDays(states, days), recountDay === undefined ? 'metered' : 'recounted');
+  const days = recountDay === undefined ? loopDays(now, all ? DAYS_KEPT : LOOP_DAYS_SHOWN) : [formatUtcDay(new Date(recountDay))];
+  const source = recountDay === undefined ? 'metered' : 'recounted';
+  if (misses && id === undefined) {
+    const rows = roster.ids.map((each) => ({ name: roster.nameOf(each) ?? each, usage: sumUsage(sumDays([measured.bySession.get(each) ?? NOTHING_STORED], days)) }));
+    lines = missMatrixLines(days, rows);
+  } else if (loops || burn || misses) {
+    const states: UsageState[] = id === undefined ? [...measured.bySession.values(), measured.outside] : [measured.bySession.get(id) ?? NOTHING_STORED];
+    const table = loops ? loopLines : burn ? burnLines : missLines;
+    lines = table(id === undefined ? 'every session, outside the team too' : (roster.nameOf(id) ?? id), days, sumDays(states, days), source);
   } else if (id !== undefined) {
     const session = sessions.find((each) => each.id === id);
     const state = measured.bySession.get(id);

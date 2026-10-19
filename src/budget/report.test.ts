@@ -7,10 +7,13 @@ import { emptyPatterns, type PatternField } from './patterns.ts';
 import {
   burnLines,
   loopLines,
+  missLines,
+  missMatrixLines,
   OVER_BUDGET_ADVICE,
   recountLines,
   sessionLines,
   sumDays,
+  sumUsage,
   todayLines,
   W_EXPLAINED,
   type OutsideToday,
@@ -289,5 +292,83 @@ describe('burnLines', () => {
     assert.equal(lines.at(-1), 'Left out, metered before teamrig 0.34.0: 10-13 (add --day 2026-10-13 to read one).');
     assert.match(burnLines('lead', DAYS, [usage(0, 0), usage(0, 0)], 'recounted')[1] ?? '', /10-13 +10-14$/);
     assert.match(burnLines('lead', DAYS, [usage(0, 0), usage(0, 0)], 'recounted').find((line) => line.startsWith('read after')) ?? '', / -  +-$/);
+  });
+});
+
+const MISS_DAYS = ['2026-10-13', '2026-10-14'];
+
+describe('sumUsage', () => {
+  it('sums the use of several stores on one day, a missing one as zero', () => {
+    assert.deepEqual(sumUsage([usage(1, 1, { missCalls: 1 }), undefined, usage(2, 3, { missCalls: 2, heavySteps: 1 })]), usage(3, 4, { missCalls: 3, heavySteps: 1 }));
+    assert.deepEqual(sumUsage([]), usage(0, 0));
+  });
+});
+
+describe('missLines', () => {
+  it("tables each rule's misses out of its chances by day", () => {
+    const today = usage(5_000, 20, {
+      missCalls: 20,
+      workBlocks: 2,
+      missNoStart: 1,
+      followupsNone: 3,
+      missFollowupWords: 1,
+      worktreeRemoves: 2,
+      subagentW: 1_000,
+      heavySteps: 4,
+      missHeavyOutside: 3,
+      missAdHocFetch: 1,
+    });
+    const row = (label: string, cell: string): string => `${label.padEnd(45)}  ${cell.padStart(5)}`;
+    assert.deepEqual(missLines('lead', MISS_DAYS, [usage(0, 0), today], 'metered'), [
+      'Rule misses, lead: misses/chances (UTC days)',
+      row('', '10-14'),
+      row('4 register: work blocks without teamrig start', '1/2'),
+      row('4 register: --followups none, work left named', '1/3'),
+      row('16 worktrees: plain git worktree remove', '0/2'),
+      row("8 lean-calls: helpers' share of W", '20.0%'),
+      row('tests and builds outside teamrig heavy', '3/4'),
+      row('npx or dlx that fetches a package', '1'),
+      row('calls read for misses', '20/20'),
+      row('all calls', '20 5k'),
+      'Left out, nothing metered: 10-13 (add --day 2026-10-13 to read one).',
+    ]);
+  });
+
+  it('leaves out a day metered before misses were counted, and shows a recounted day', () => {
+    const lines = missLines('lead', MISS_DAYS, [usage(1_000, 3), usage(2_000, 4, { missCalls: 2 })], 'metered');
+    assert.match(lines.find((line) => line.startsWith('calls read')) ?? '', / 2\/4$/);
+    assert.equal(lines.at(-1), 'Left out, metered before teamrig 0.87.0: 10-13 (add --day 2026-10-13 to read one).');
+    const recounted = missLines('lead', MISS_DAYS, [usage(0, 0), usage(0, 0)], 'recounted');
+    assert.match(recounted[1] ?? '', /10-13 +10-14$/);
+    assert.match(recounted.find((line) => line.startsWith('8 lean-calls')) ?? '', / - +-$/);
+  });
+});
+
+describe('missMatrixLines', () => {
+  it('gives a row per session that made a call, its misses summed over the days', () => {
+    const widths = [5, 7, 11, 11, 9, 5, 3, 5];
+    const row = (...cells: readonly string[]): string =>
+      cells
+        .map((cell, index) => (index === 0 ? cell.padEnd(widths[0] ?? 0) : cell.padStart(widths[index] ?? 0)))
+        .join('  ')
+        .trimEnd();
+    const lines = missMatrixLines(MISS_DAYS, [
+      { name: 'lead', usage: usage(1_000, 10, { missCalls: 10, workBlocks: 1, missNoStart: 1, subagentW: 500 }) },
+      { name: 'idle', usage: usage(0, 0) },
+      { name: 'alpha', usage: usage(4_000, 8, { missCalls: 4, heavySteps: 2 }) },
+    ]);
+    assert.deepEqual(lines.slice(0, 4), [
+      'Rule misses per session, misses/chances, 2026-10-13 to 2026-10-14 (UTC)',
+      row('', '4 start', '4 followups', '16 worktree', '8 helpers', 'heavy', 'npx', 'read'),
+      row('lead', '1/1', '0/0', '0/0', '50.0%', '0/0', '0', '10/10'),
+      row('alpha', '0/0', '0/0', '0/0', '0.0%', '0/2', '0', '4/8'),
+    ]);
+    assert.equal(lines.length, 5);
+    assert.ok(lines[4]?.startsWith('4 start = 4 register: work blocks without teamrig start; 4 followups = '), lines[4]);
+    assert.ok(lines[4]?.endsWith('; read = calls read for misses. One session by day: teamrig budget <session> --misses.'), lines[4]);
+  });
+
+  it('says when no session made a call', () => {
+    assert.deepEqual(missMatrixLines(['2026-10-13'], [{ name: 'idle', usage: usage(0, 0) }]), ['Rule misses per session, misses/chances, 2026-10-13 (UTC)', 'Nothing metered.']);
   });
 });
