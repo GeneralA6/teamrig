@@ -28,7 +28,7 @@ import { isPeerWait, sameWait, type PersonWait } from '../../register/waits.ts';
 import { lintSkills } from '../../skills/lint.ts';
 import { SKILL_FILE, SkillDir } from '../../skills/store.ts';
 import { noPositionals, onePositional, UsageError, type ParsedArgs } from '../args.ts';
-import { addInputOf, callerOf, changesOf, listFilterOf, setInputOf, taskIdOf, weekOf } from '../inputs.ts';
+import { addInputOf, callerOf, changesOf, listFilterOf, setInputOf, taskIdOf, weekOf, type TypedTimes } from '../inputs.ts';
 import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, projectFolder, requireConfig, rosterOf, sessionIdOf, teamZone, type Access, type Kit } from '../kit.ts';
 import { checkLines, listLines, SHORT_TITLE_CHARS, waitingOnLines, type CheckReport, type CheckSection, type TaskRow } from '../reports.ts';
 import { rollUp, type RolledTeam, type RollUp } from '../roll-up.ts';
@@ -50,6 +50,11 @@ interface Team {
   readonly roster: Roster;
   /** The zone the team's people read and type times in. */
   readonly zone: TimeZone;
+}
+
+/** What a time the caller types is read against: this moment and the zone of the caller's own team. */
+function typedTimes(runtime: CliRuntime, zone: TimeZone): TypedTimes {
+  return { nowMs: runtime.clock.now(), zone };
 }
 
 async function teamOf(runtime: CliRuntime, kit: Kit, access: Access): Promise<Team> {
@@ -156,7 +161,7 @@ async function addToChild(args: ParsedArgs, runtime: CliRuntime, caller: string,
     throw new RefusedError(`only ${child}'s parent lead (${formatAddress(parentLead)}) adds tasks to it; ${formatAddress(from)} may not`);
   }
   const target = await teamOf(runtime, await openKit(runtime, child), 'write');
-  const input = { ...addInputOf(args.flags, caller), owner: childLead, source: formatAddress(from) };
+  const input = { ...addInputOf(args.flags, caller, typedTimes(runtime, teamZone(config, runtime))), owner: childLead, source: formatAddress(from) };
   return report(runtime, await target.register.addFromParent(formatAddress(from), input), 'ADDED', target, child);
 }
 
@@ -167,8 +172,8 @@ export async function add(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
   if (child !== undefined) {
     return addToChild(args, runtime, caller, child);
   }
-  const input = addInputOf(args.flags, caller);
   const team = await openTeam(runtime, 'write');
+  const input = addInputOf(args.flags, caller, typedTimes(runtime, team.zone));
   const by = sessionIdOf(team.roster, caller);
   const verdict = await team.register.add(by, addInputIds(team, input));
   const code = report(runtime, verdict, 'ADDED', team);
@@ -230,8 +235,8 @@ async function tellLine(runtime: CliRuntime, team: Team, by: string, to: string,
 export async function set(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const id = taskIdOf(onePositional(args, 'id'));
   const caller = callerOf(args.flags, runtime.env);
-  const typed = setInputOf(args.flags);
   const team = await openTeam(runtime, 'write');
+  const typed = setInputOf(args.flags, typedTimes(runtime, team.zone));
   const { config, paths, register, roster } = team;
   const by = sessionIdOf(roster, caller);
   const input = statusInputIds(team, typed.status);
@@ -334,8 +339,8 @@ async function tellVerifiers(runtime: CliRuntime, team: Team, caller: string, { 
 export async function update(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const id = taskIdOf(onePositional(args, 'id'));
   const caller = callerOf(args.flags, runtime.env);
-  const changes = changesOf(args.flags);
   const team = await openTeam(runtime, 'write');
+  const changes = changesOf(args.flags, typedTimes(runtime, team.zone));
   const by = sessionIdOf(team.roster, caller);
   const verdict = await team.register.update(by, id, changeIds(team.roster, changes), args.flags.get('note'));
   const code = report(runtime, verdict, 'UPDATED', team);
@@ -401,8 +406,9 @@ function weekMayBeRetired(week: string): HistoryNeed {
  * reads its tree this way.
  */
 async function treeRows(args: ParsedArgs, runtime: CliRuntime): Promise<TaskRow[]> {
-  const filter = listFilterOf(new Map([...args.flags].filter(([name]) => name !== 'session')));
-  const { teams } = await settle(runtime, await rollUp(runtime, callerOf(args.flags, runtime.env)), selectsFinished(filter));
+  const up = await rollUp(runtime, callerOf(args.flags, runtime.env));
+  const filter = listFilterOf(new Map([...args.flags].filter(([name]) => name !== 'session')), typedTimes(runtime, teamZone(up.own.config, runtime)));
+  const { teams } = await settle(runtime, up, selectsFinished(filter));
   return teams.flatMap((rolled) => {
     const { team, roster, snapshot } = rolled;
     const tree = taskTreeOf(rolled, runtime);
@@ -411,8 +417,9 @@ async function treeRows(args: ParsedArgs, runtime: CliRuntime): Promise<TaskRow[
 }
 
 async function ownRows(args: ParsedArgs, runtime: CliRuntime): Promise<TaskRow[]> {
-  const filter = listFilterOf(args.flags);
-  const { own } = await settle(runtime, await ownRegister(runtime), selectsFinished(filter));
+  const up = await ownRegister(runtime);
+  const filter = listFilterOf(args.flags, typedTimes(runtime, teamZone(up.own.config, runtime)));
+  const { own } = await settle(runtime, up, selectsFinished(filter));
   const tree = taskTreeOf(own, runtime);
   return selectTasks(own.snapshot.state.tasks.values(), filterIds(own.roster, filter), tree).map((task) => ({ task, team: undefined, tree }));
 }

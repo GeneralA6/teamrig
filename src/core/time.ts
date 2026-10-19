@@ -175,7 +175,17 @@ export function storedDeadline(text: string, nowMs: number, zone: TimeZone): str
   return at === undefined ? undefined : formatUtcMinute(at);
 }
 
-/** How to type a time, for refusals: `HH:MM or YYYY-MM-DD HH:MM in Asia/Jerusalem (IST), or marked UTC`. */
+/** A deadline a person types, as the instant its stored form (`storedDeadline`) reads as; undefined when it reads as neither. */
+export function typedDeadline(text: string, nowMs: number, zone: TimeZone): Date | undefined {
+  const stored = storedDeadline(text, nowMs, zone);
+  return stored === undefined ? undefined : parseDeadline(stored, zone);
+}
+
+/**
+ * How to type a time, for refusals: `HH:MM or YYYY-MM-DD HH:MM in Asia/Jerusalem (IST), or marked UTC`, or for a team
+ * whose clock is UTC, `HH:MM or YYYY-MM-DD HH:MM in UTC`.
+ */
 export function typedTimeHint(zone: TimeZone, nowMs: number): string {
-  return `HH:MM or YYYY-MM-DD HH:MM in ${zone.name} (${zone.label(new Date(nowMs))}), or marked UTC`;
+  const label = zone.label(new Date(nowMs));
+  return label === TimeZone.UTC.name ? 'HH:MM or YYYY-MM-DD HH:MM in UTC' : `HH:MM or YYYY-MM-DD HH:MM in ${zone.name} (${label}), or marked UTC`;
 }

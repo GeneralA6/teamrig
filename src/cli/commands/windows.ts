@@ -6,8 +6,8 @@ import { deployTargetsOf, repoTargetsOf } from '../../coordinator/targets.ts';
 import { cleanWindows, disruptions, loadsDuring, loadsOf, type Load, type Span } from '../../coordinator/windows.ts';
 import { formatUtcMinute } from '../../core/time.ts';
 import { requiredFlag, UsageError, type Flags, type ParsedArgs } from '../args.ts';
-import { instantOf, listOf } from '../inputs.ts';
-import { openTeamKit, requireConfig } from '../kit.ts';
+import { instantOf, listOf, type TypedTimes } from '../inputs.ts';
+import { openTeamKit, requireConfig, teamZone } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 
 const MINUTE_MS = 60_000;
@@ -49,16 +49,17 @@ interface WindowAsk {
   readonly minMinutes: number;
 }
 
-function askOf(flags: Flags, coordinator: CoordinatorConfig, nowMs: number): WindowAsk {
+function askOf(flags: Flags, coordinator: CoordinatorConfig, times: TypedTimes): WindowAsk {
+  const { nowMs } = times;
   const targets = listOf('--targets', requiredFlag(flags, 'targets'));
   const known = deployTargetsOf(coordinator.repos);
   const unknown = targets.filter((target) => !known.includes(target));
   if (unknown.length > 0) {
     throw new UsageError(`--targets: ${unknown.join(', ')} ${unknown.length === 1 ? 'is' : 'are'} not a deploy target of this team (known: ${known.join(', ')})`);
   }
-  const since = instantOf('--since', requiredFlag(flags, 'since'), nowMs);
+  const since = instantOf('--since', requiredFlag(flags, 'since'), times);
   const untilText = flags.get('until');
-  const until = Math.min(nowMs, untilText === undefined ? nowMs : instantOf('--until', untilText, nowMs));
+  const until = Math.min(nowMs, untilText === undefined ? nowMs : instantOf('--until', untilText, times));
   if (until <= since) {
     throw new UsageError(`--since ${utc(since)} UTC is not before ${untilText === undefined ? 'now' : '--until'} (${utc(until)} UTC)`);
   }
@@ -81,8 +82,9 @@ function askOf(flags: Flags, coordinator: CoordinatorConfig, nowMs: number): Win
 export async function windows(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const nowMs = runtime.clock.now();
   const kit = await openTeamKit(runtime);
-  const { coordinator } = requireConfig(kit, runtime, 'read');
-  const ask = askOf(args.flags, coordinator, nowMs);
+  const config = requireConfig(kit, runtime, 'read');
+  const { coordinator } = config;
+  const ask = askOf(args.flags, coordinator, { nowMs, zone: teamZone(config, runtime) });
   const places = coordinatorPlaces(coordinator, kit.paths);
   const records = parseLedger((await runtime.files.read(places.ledger)) ?? '');
   const md = parseLedgerMd((await runtime.files.read(places.ledgerMd)) ?? '');

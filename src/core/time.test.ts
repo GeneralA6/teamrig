@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatUtcDay, formatUtcHour, formatUtcMinute, isMinuteInSpan, parseDayStart, parseDeadline, parseTypedInstant, parseUtcDay, parseUtcDeadline, parseUtcInstant, shortUtc, showStored, storedDeadline, typedTimeHint, utcMinuteOf } from './time.ts';
+import { formatUtcDay, formatUtcHour, formatUtcMinute, isMinuteInSpan, parseDayStart, parseDeadline, parseTypedInstant, parseUtcDay, parseUtcDeadline, parseUtcInstant, shortUtc, showStored, storedDeadline, typedDeadline, typedTimeHint, utcMinuteOf } from './time.ts';
 import { TimeZone } from './zone.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 
@@ -119,5 +119,16 @@ describe('in the team zone', () => {
 
   it('says how to type a time, with the zone', () => {
     assert.equal(typedTimeHint(JERUSALEM, NOW), 'HH:MM or YYYY-MM-DD HH:MM in Asia/Jerusalem (IDT), or marked UTC');
+    assert.equal(typedTimeHint(TimeZone.UTC, NOW), 'HH:MM or YYYY-MM-DD HH:MM in UTC', 'a UTC clock needs no mark');
+  });
+});
+
+describe('typedDeadline', () => {
+  it('reads a typed deadline as the instant its stored form ends at', () => {
+    const now = Date.parse('2030-01-08T12:00:00.000Z');
+    assert.equal(typedDeadline('2030-01-09', now, JERUSALEM)?.toISOString(), '2030-01-09T21:59:59.999Z', 'a bare day ends at midnight in the zone');
+    assert.equal(typedDeadline('2030-01-09 12:00', now, JERUSALEM)?.toISOString(), '2030-01-09T10:00:00.000Z', 'a typed minute is on the zone clock');
+    assert.equal(typedDeadline('12:00 UTC', now, JERUSALEM)?.toISOString(), '2030-01-08T12:00:00.000Z');
+    assert.equal(typedDeadline('tomorrow', now, JERUSALEM), undefined);
   });
 });

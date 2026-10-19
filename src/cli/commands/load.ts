@@ -5,9 +5,10 @@ import { coordinatorPlaces } from '../../coordinator/places.ts';
 import { deployTargetsOf } from '../../coordinator/targets.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { formatUtcMinute } from '../../core/time.ts';
+import type { TimeZone } from '../../core/zone.ts';
 import { requiredFlag, type ParsedArgs } from '../args.ts';
-import { callerOf, instantOf, listOf } from '../inputs.ts';
-import { openTeamKit, requireConfig, rosterOf, sessionIdOf } from '../kit.ts';
+import { callerOf, instantOf, listOf, type TypedTimes } from '../inputs.ts';
+import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 
 /** What a load command works on: the session, the coordinator's config, the ledger and the loads' ports. */
@@ -17,6 +18,8 @@ interface LoadContext {
   readonly ledger: string;
   readonly scanner: SecretScanner;
   readonly ports: LoadPorts;
+  /** The team's zone, which a typed `--at` is read in. */
+  readonly zone: TimeZone;
 }
 
 async function loadContextOf(args: ParsedArgs, runtime: CliRuntime): Promise<LoadContext> {
@@ -30,6 +33,7 @@ async function loadContextOf(args: ParsedArgs, runtime: CliRuntime): Promise<Loa
     ledger: coordinatorPlaces(config.coordinator, kit.paths).ledger,
     scanner: new SecretScanner(config.register.secretPatterns),
     ports: { files: runtime.files, newId: () => runtime.newId() },
+    zone: teamZone(config, runtime),
   };
 }
 
@@ -50,9 +54,9 @@ function recordOf(outcome: LoadOutcome): LoadRecord {
 }
 
 /** `--at <time>` in ms, else now. */
-function atOf(args: ParsedArgs, nowMs: number): number {
+function atOf(args: ParsedArgs, times: TypedTimes): number {
   const text = args.flags.get('at');
-  return text === undefined ? nowMs : instantOf('--at', text, nowMs);
+  return text === undefined ? times.nowMs : instantOf('--at', text, times);
 }
 
 function utc(ms: number): string {
@@ -68,8 +72,8 @@ export async function load(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   const what = requiredFlag(args.flags, 'what');
   const targets = loadTargetsOf(args.flags.get('targets'));
   const nowMs = runtime.clock.now();
-  const startedAt = atOf(args, nowMs);
   const context = await loadContextOf(args, runtime);
+  const startedAt = atOf(args, { nowMs, zone: context.zone });
   const rules = { knownTargets: deployTargetsOf(context.coordinator.repos), scanner: context.scanner, nowMs };
   const record = recordOf(await startLoad(context.ports, context.ledger, rules, { session: context.session, what, targets, startedAt }));
   const on = record.targets === 'host' ? 'the whole host' : record.targets.join(', ');
@@ -84,8 +88,8 @@ export async function load(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
 export async function loadEnd(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const id = requiredFlag(args.flags, 'id');
   const nowMs = runtime.clock.now();
-  const endedAt = atOf(args, nowMs);
   const context = await loadContextOf(args, runtime);
+  const endedAt = atOf(args, { nowMs, zone: context.zone });
   const record = recordOf(await endLoad(context.ports, context.ledger, { session: context.session, id, endedAt, nowMs }));
   runtime.out.stdout(`ENDED ${record.id} at ${utc(endedAt)}`);
   return EXIT.ok;

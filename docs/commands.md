@@ -214,7 +214,8 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       of a repository that deploys it touched (from its start until coordinator.windows settle minutes
       after it rolled; --settle for every target) and no heavy step, each at least --min (default
       coordinator.windows.minMinutes) long, each with the declared loads it overlaps. A time is HH:MM
-      (today), YYYY-MM-DD HH:MM or YYYY-MM-DD in UTC, or an ISO time with its zone
+      (today), YYYY-MM-DD HH:MM or YYYY-MM-DD on the team's clock unless marked UTC, or an ISO time with
+      its zone
   load --what "<what>" [--targets <a,b>|host] [--at <time>] [--session <id|name>]   declares a
       background load (a long data script, a backfill) on its targets (default the whole host) in the
       ledger from --at (default now), so windows names it; REFUSED for a start in the future, a target
@@ -244,7 +245,8 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
 Team: $TEAMRIG_TEAM, else the nearest .teamrig.json ({"team": "<id>"}) above the current folder,
 else above $CLAUDE_PROJECT_DIR.
 Sessions: give an id, a current name or a former one; a session never named is <team>-<id>.
-Dates: YYYY-MM-DD or "YYYY-MM-DD HH:MM", UTC. Kit home: $TEAMRIG_HOME, else ~/.teamrig.
+Times: YYYY-MM-DD (a day), "YYYY-MM-DD HH:MM" or HH:MM (today), on the team's clock (timeZone, else the
+machine's) unless marked UTC; printed zone-marked (01-08 14:00 IST). Kit home: $TEAMRIG_HOME, else ~/.teamrig.
 Exit: 0 done, 1 failed, 2 refused by a team rule, 3 open printed the command to run itself,
 4 /teamrig printed a line to agree to before it runs, 64 a command line it cannot read.
 One command's help: teamrig <command> --help.
