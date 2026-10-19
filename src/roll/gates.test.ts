@@ -44,6 +44,7 @@ describe('gateReadiness', () => {
       kind: 'wait',
       reason: 'gate flow could not start (spawn node ENOENT), so the roll waits',
     });
+    assert.deepEqual(gateReadiness('flow', { kind: 'stopped' }, undefined, 20), { kind: 'wait', reason: 'gate flow was killed when its launching shell ended, so the roll waits' });
   });
 });
 

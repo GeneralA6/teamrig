@@ -15,7 +15,8 @@ export interface HookScript {
 
 /**
  * A hook runner that runs nothing: each request is recorded, and each program answers by its scripts in turn, the
- * last one from then on; a program with no script prints nothing and exits 0.
+ * last one from then on; a program with no script prints nothing and exits 0. A run whose `stop` has aborted once its
+ * `during` returns ends `stopped`, as the real runner kills it then.
  */
 export class FakeHooks implements HookRunner {
   readonly ran: HookRequest[] = [];
@@ -51,6 +52,9 @@ export class FakeHooks implements HookRunner {
       request.onLine(line);
     }
     this.clock?.advance(script.takesMs ?? 0);
+    if (request.stop?.aborted === true) {
+      return { kind: 'stopped' };
+    }
     const end = script.end ?? 0;
     return typeof end === 'number' ? { kind: 'exited', code: end } : end;
   }

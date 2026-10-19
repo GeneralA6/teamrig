@@ -255,7 +255,8 @@ function readinessOf(setup: IntegrateSetup, ports: IntegratePorts, repo: RepoMat
 
 /**
  * Under the host lock `lock`: rebases onto the fresh default branch, runs the dependency check on what the rebase made
- * (see {@link dependencyCheckRefusal}) and pushes, again from the rebase when origin moved meanwhile. The check and the
+ * (see {@link dependencyCheckRefusal}) and pushes, again from the rebase when origin moved meanwhile, unless the push
+ * was killed as its launching shell ended (no one waits for it any more). The check and the
  * push get the lock's token, so a pre-push hook that wraps its checks in `teamrig heavy` runs them under this lock.
  */
 async function land(setup: IntegrateSetup, ports: IntegratePorts, request: IntegrateRequest, plan: Plan, lock: HostLockInfo): Promise<Landing> {
@@ -304,7 +305,7 @@ async function land(setup: IntegrateSetup, ports: IntegratePorts, request: Integ
       return { kind: 'landed', range: rangeText(git.commits(top, before, after), after), after, startedAt, endedAt };
     }
     const moved = after !== undefined && after !== before;
-    if (moved && attempt < PUSH_ATTEMPTS) {
+    if (moved && attempt < PUSH_ATTEMPTS && end.kind !== 'stopped') {
       ports.say(`origin's ${defaultBranch} moved to ${short(after)} meanwhile: rebasing and pushing again (attempt ${attempt + 1} of ${PUSH_ATTEMPTS})`);
       continue;
     }

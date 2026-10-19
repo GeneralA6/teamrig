@@ -2,16 +2,16 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { hookEndText, hookExitCode, nodeHookRunner, succeeded, type HookEnd, type HookRequest } from './hooks.ts';
 
-const ENDS: readonly HookEnd[] = [{ kind: 'exited', code: 3 }, { kind: 'timedOut' }, { kind: 'signal', signal: 'SIGKILL' }, { kind: 'notStarted', error: 'ENOENT' }];
+const ENDS: readonly HookEnd[] = [{ kind: 'exited', code: 3 }, { kind: 'timedOut' }, { kind: 'signal', signal: 'SIGKILL' }, { kind: 'notStarted', error: 'ENOENT' }, { kind: 'stopped' }];
 
 describe('hook ends', () => {
-  it('records a hook’s own code, 124 at its time limit, and 1 for a signal or a hook that did not start', () => {
-    assert.deepEqual(ENDS.map(hookExitCode), [3, 124, 1, 1]);
+  it('records a hook’s own code, 124 at its time limit, 1 for a signal or a hook that did not start, and 129 for one its stop killed', () => {
+    assert.deepEqual(ENDS.map(hookExitCode), [3, 124, 1, 1, 129]);
   });
 
   it('says how each ended, and succeeds only on exit 0', () => {
-    assert.deepEqual(ENDS.map(hookEndText), ['exited 3', 'was killed at its time limit', 'was stopped by SIGKILL', 'could not start (ENOENT)']);
-    assert.deepEqual([{ kind: 'exited', code: 0 } as const, ...ENDS].map(succeeded), [true, false, false, false, false]);
+    assert.deepEqual(ENDS.map(hookEndText), ['exited 3', 'was killed at its time limit', 'was stopped by SIGKILL', 'could not start (ENOENT)', 'was killed when its launching shell ended']);
+    assert.deepEqual([{ kind: 'exited', code: 0 } as const, ...ENDS].map(succeeded), [true, false, false, false, false, false]);
   });
 });
 
@@ -49,6 +49,14 @@ describe('nodeHookRunner', () => {
   it('kills a hook at its time limit', async () => {
     const { request: run } = request('setInterval(() => undefined, 1000)', { timeoutMs: 300 });
     assert.deepEqual(await runner.run(run), { kind: 'timedOut' });
+  });
+
+  it('kills a hook once its stop aborts, well before its time is up, and one whose stop aborted before it started', async () => {
+    const stop = new AbortController();
+    const { request: run } = request('setInterval(() => undefined, 1000)', { timeoutMs: 60_000, stop: stop.signal });
+    setTimeout(() => stop.abort(), 300);
+    assert.deepEqual(await runner.run(run), { kind: 'stopped' });
+    assert.deepEqual(await runner.run(run), { kind: 'stopped' });
   });
 
   it('reports a program that cannot start, and an empty command', async () => {
