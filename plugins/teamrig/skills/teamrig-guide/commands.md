@@ -1751,6 +1751,9 @@ rebases onto origin's default branch, runs the `dependencyCheck` on a dependency
 hook. It landed when origin's default branch is at the rebased commit, whatever the push's exit code. When origin
 moved meanwhile, it rebases and pushes again, 3 times in all. After a landing it deletes the branch on origin and
 here, moves the local default branch to origin's and prints the `teamrig worktree remove` that ends a worktree.
+Like `teamrig heavy`, it watches the processes that started it. Once its launching shell ends it stops waiting
+(`STOPPED before the host lock was free: nothing ran`), or kills the push it runs, records exit 129, frees the lock
+and pushes no more (FAILED).
 Exit 0 landed, 1 failed (FAILED and the reason; the branch is kept), 2 when the dependency check refused it.
 
 Flags:
@@ -1821,6 +1824,10 @@ A command that prints the line `no-roll` had nothing to roll: DONE, with no depl
 recorded with the command's last line, and exit 0 is DONE, any other end FAILED (exit 1): its owners fix forward or
 roll back. The pull stays after a failure, so a new roll finds nothing pending: run the roll command by hand once it
 is fixed. A failed pull rolled nothing: roll again.
+
+Like `teamrig heavy`, it watches the processes that started it. Once its launching shell ends it stops waiting
+(`STOPPED before the host lock was free: nothing ran`), or kills the hook or roll command it runs, records exit 129
+and frees the lock (FAILED).
 
 Flags:
 
