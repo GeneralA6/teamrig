@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { PlainLogFile } from '../core/log-file.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { firstHint, JsonlHintLog } from './hint-log.ts';
@@ -12,7 +13,7 @@ const NOW = new Date('2030-01-08T10:00:00Z');
 describe('firstHint', () => {
   it('lets each reason through once per Claude Code session, and records it', async () => {
     const files = new MemoryFiles();
-    const log = new JsonlHintLog(files, LOG);
+    const log = new JsonlHintLog(new PlainLogFile(files, LOG));
     assert.equal(await firstHint(log, TAB, 'untitled', NOW), true);
     assert.equal(await firstHint(log, TAB, 'untitled', NOW), false);
     assert.equal(await firstHint(log, TAB, 'unmatched:Fix it', NOW), true);
@@ -22,15 +23,15 @@ describe('firstHint', () => {
 
   it('counts a line from a newer teamrig, and skips damaged lines', async () => {
     const files = new MemoryFiles({ [LOG]: `not json\n{"v":2,"claudeSession":"${TAB}","reason":"untitled"}\n` });
-    assert.equal(await firstHint(new JsonlHintLog(files, LOG), TAB, 'untitled', NOW), false);
+    assert.equal(await firstHint(new JsonlHintLog(new PlainLogFile(files, LOG)), TAB, 'untitled', NOW), false);
   });
 
   it('lets the hint through when the log cannot be read or written', async () => {
     const memory = new MemoryFiles();
     const unreadable = new FaultyFiles(memory).fail('read', LOG, systemError('EBUSY'));
-    assert.equal(await firstHint(new JsonlHintLog(unreadable, LOG), TAB, 'untitled', NOW), true);
+    assert.equal(await firstHint(new JsonlHintLog(new PlainLogFile(unreadable, LOG)), TAB, 'untitled', NOW), true);
     const unwritable = new FaultyFiles(memory).fail('append', LOG, systemError('EACCES'));
-    assert.equal(await firstHint(new JsonlHintLog(unwritable, LOG), TAB, 'untitled', NOW), true);
-    assert.equal(await firstHint(new JsonlHintLog(unwritable, LOG), TAB, 'untitled', NOW), true);
+    assert.equal(await firstHint(new JsonlHintLog(new PlainLogFile(unwritable, LOG)), TAB, 'untitled', NOW), true);
+    assert.equal(await firstHint(new JsonlHintLog(new PlainLogFile(unwritable, LOG)), TAB, 'untitled', NOW), true);
   });
 });

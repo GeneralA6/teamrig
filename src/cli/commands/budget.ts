@@ -5,6 +5,7 @@ import type { BudgetConfig, KitConfig, StatusLineConfig } from '../../config/typ
 import { errorMessage } from '../../core/guards.ts';
 import { resolveKitHome, type TeamPaths } from '../../core/home.ts';
 import type { Clock } from '../../core/lock.ts';
+import { PlainLogFile } from '../../core/log-file.ts';
 import { resolveTeam } from '../../core/team.ts';
 import { formatUtcDay, MS_PER_DAY, parseUtcDay, typedDeadline, typedTimeHint } from '../../core/time.ts';
 import { activeBurst, burstFloorOf, withBurst, type BurstRecord, type InBurst } from '../../budget/burst.ts';
@@ -103,7 +104,7 @@ async function readBudget(runtime: CliRuntime, kit: Kit, config: KitConfig, rost
   const recount = options.recountDay !== undefined;
   const now = options.recountDay === undefined ? runtime.clock.now() : options.recountDay + MS_PER_DAY - 1;
   const clock: Clock = { now: () => now };
-  const { marks } = await new JsonlMarkLog(files, kit.paths.inboxMarks).read();
+  const { marks } = await new JsonlMarkLog(new PlainLogFile(files, kit.paths.inboxMarks)).read();
   const measured = await measure(
     {
       transcripts: runtime.transcripts,

@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { PlainLogFile } from '../core/log-file.ts';
 import { SecretScanner } from '../core/secrets.ts';
 import { TimeZone } from '../core/zone.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
@@ -28,7 +29,7 @@ const LINES = ['- 2030-01-07 09:00 lead: first', '- 2030-01-07 10:00 bravo: seco
 
 function setup(files: Readonly<Record<string, string>> = {}): { files: MemoryFiles; deps: InboxDeps } {
   const memory = new MemoryFiles(files);
-  return { files: memory, deps: { inboxes: new InboxDir(memory, DIR), marks: new JsonlMarkLog(memory, MARKS), shown: new JsonlMarkLog(memory, SHOWN) } };
+  return { files: memory, deps: { inboxes: new InboxDir(memory, DIR), marks: new JsonlMarkLog(new PlainLogFile(memory, MARKS)), shown: new JsonlMarkLog(new PlainLogFile(memory, SHOWN)) } };
 }
 
 /** A line of `inbox-shown.jsonl`: the prompt hook showed `claudeSession` the area's lines through `line`. */

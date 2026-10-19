@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Roster } from '../config/roster.ts';
+import { PlainLogFile } from '../core/log-file.ts';
 import { lineHash } from '../inbox/line-hash.ts';
 import type { InboxMark } from '../inbox/marks.ts';
 import { JsonlMarkLog } from '../inbox/store.ts';
@@ -49,7 +50,7 @@ function setup(marks: readonly InboxMark[] = [], tree: readonly TeamRoster[] = [
     reads += 1;
     return Promise.resolve(tree);
   };
-  return { files, deps: { marks: new JsonlMarkLog(files, MARKS), treeTeams }, treeReads: () => reads };
+  return { files, deps: { marks: new JsonlMarkLog(new PlainLogFile(files, MARKS)), treeTeams }, treeReads: () => reads };
 }
 
 function input(title: string | undefined, fields: Partial<BindInput> = {}): BindInput {
