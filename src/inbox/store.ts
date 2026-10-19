@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import type { Files } from '../core/files.ts';
 import { toJsonlLine } from '../core/jsonl.ts';
+import type { LogFile } from '../core/log-file.ts';
 import { SESSION_NAME } from '../register/model.ts';
 import type { Inboxes, MarkLog } from './inbox.ts';
 import { readMarks, type InboxMark, type MarkLogRead } from './marks.ts';
@@ -49,20 +50,19 @@ export class InboxDir implements Inboxes {
   }
 }
 
+/** Marks as one JSONL line each, in the log they are given: `inbox-marks.jsonl` or `inbox-shown.jsonl`. */
 export class JsonlMarkLog implements MarkLog {
-  private readonly files: Files;
-  private readonly path: string;
+  private readonly log: LogFile;
 
-  constructor(files: Files, path: string) {
-    this.files = files;
-    this.path = path;
+  constructor(log: LogFile) {
+    this.log = log;
   }
 
   async read(): Promise<MarkLogRead> {
-    return readMarks((await this.files.read(this.path)) ?? '');
+    return readMarks((await this.log.read()) ?? '');
   }
 
   async append(mark: InboxMark): Promise<void> {
-    await this.files.append(this.path, toJsonlLine({ ...mark }));
+    await this.log.append(toJsonlLine({ ...mark }));
   }
 }

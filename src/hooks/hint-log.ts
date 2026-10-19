@@ -1,6 +1,6 @@
-import type { Files } from '../core/files.ts';
 import { stringField } from '../core/guards.ts';
 import { parseJsonl, toJsonlLine } from '../core/jsonl.ts';
+import type { LogFile } from '../core/log-file.ts';
 
 export const HINT_VERSION = 1;
 
@@ -16,22 +16,20 @@ export interface HintLog {
 
 /** `bind-hints.jsonl`: one `{"v":1,"claudeSession":"…","reason":"…","at":"…"}` line per hint given. */
 export class JsonlHintLog implements HintLog {
-  private readonly files: Files;
-  private readonly path: string;
+  private readonly log: LogFile;
 
-  constructor(files: Files, path: string) {
-    this.files = files;
-    this.path = path;
+  constructor(log: LogFile) {
+    this.log = log;
   }
 
   /** A line of any version naming the session and reason counts: a newer teamrig gave that hint too. */
   async shown(claudeSession: string, reason: string): Promise<boolean> {
-    const { records } = parseJsonl((await this.files.read(this.path)) ?? '');
+    const { records } = parseJsonl((await this.log.read()) ?? '');
     return records.some((line) => stringField(line.record, 'claudeSession') === claudeSession && stringField(line.record, 'reason') === reason);
   }
 
   async record(claudeSession: string, reason: string, at: Date): Promise<void> {
-    await this.files.append(this.path, toJsonlLine({ v: HINT_VERSION, claudeSession, reason, at: at.toISOString() }));
+    await this.log.append(toJsonlLine({ v: HINT_VERSION, claudeSession, reason, at: at.toISOString() }));
   }
 }
 

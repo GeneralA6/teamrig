@@ -1,6 +1,7 @@
 import { errorMessage } from '../../core/guards.ts';
 import type { Roster } from '../../config/roster.ts';
 import { ENV, KIT_NAME } from '../../core/home.ts';
+import { PlainLogFile } from '../../core/log-file.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import { sessionTitleOf } from '../../names/title.ts';
 import { bindByProcess, bindByTitle, bindHint, hintReason, processBoundNote, refreshedIn, type BindOutcome, type TeamRoster } from '../../hooks/bind.ts';
@@ -95,7 +96,7 @@ export async function bindHintOnce(runtime: CliRuntime, kit: Kit, binding: TabBi
   if (hint === undefined || reason === undefined) {
     return undefined;
   }
-  const log = new JsonlHintLog(runtime.files, kit.paths.bindHints);
+  const log = new JsonlHintLog(new PlainLogFile(runtime.files, kit.paths.bindHints));
   return (await firstHint(log, claudeSession, reason, new Date(runtime.clock.now()))) ? hint : undefined;
 }
 

@@ -2,6 +2,7 @@ import { claudeProjectsDir, projectTranscriptPath } from '../../budget/discover.
 import type { HiringConfig } from '../../config/types.ts';
 import { errorMessage } from '../../core/guards.ts';
 import type { TeamPaths } from '../../core/home.ts';
+import { PlainLogFile } from '../../core/log-file.ts';
 import { lastClaudeSessionOf } from '../../inbox/marks.ts';
 import { JsonlMarkLog } from '../../inbox/store.ts';
 import { resumeVerdict, type ResumeVerdict } from '../../hiring/rehire.ts';
@@ -16,7 +17,7 @@ import type { CliRuntime } from '../runtime.ts';
  */
 export async function resumeVerdictOf(runtime: CliRuntime, paths: TeamPaths, hiring: HiringConfig, id: string, project: string): Promise<ResumeVerdict> {
   try {
-    const { marks } = await new JsonlMarkLog(runtime.files, paths.inboxMarks).read();
+    const { marks } = await new JsonlMarkLog(new PlainLogFile(runtime.files, paths.inboxMarks)).read();
     return await claudeSessionVerdict(runtime, hiring, lastClaudeSessionOf(marks, id), project);
   } catch (error) {
     return unmeasured(error);

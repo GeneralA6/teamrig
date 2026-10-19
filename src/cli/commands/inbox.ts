@@ -2,6 +2,7 @@ import type { KitConfig } from '../../config/types.ts';
 import { formatAddress, splitAddress, type SessionAddress } from '../../core/address.ts';
 import { ENV, type Env, type TeamPaths } from '../../core/home.ts';
 import { NAME_RULE } from '../../core/ids.ts';
+import { PlainLogFile } from '../../core/log-file.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { formatRead, formatUnread, inboxStatus, lineOnClock, postLine, readInbox, type InboxDeps } from '../../inbox/inbox.ts';
 import { CLAUDE_SESSION_ID } from '../../inbox/marks.ts';
@@ -17,8 +18,8 @@ import { verifyNoteOf } from './verify-queue.ts';
 export function inboxDepsOf(runtime: CliRuntime, paths: TeamPaths): InboxDeps {
   return {
     inboxes: new InboxDir(runtime.files, paths.inbox),
-    marks: new JsonlMarkLog(runtime.files, paths.inboxMarks),
-    shown: new JsonlMarkLog(runtime.files, paths.inboxShown),
+    marks: new JsonlMarkLog(new PlainLogFile(runtime.files, paths.inboxMarks)),
+    shown: new JsonlMarkLog(new PlainLogFile(runtime.files, paths.inboxShown)),
   };
 }
 

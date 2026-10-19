@@ -3,6 +3,7 @@ import { claudeProjectsDir } from '../../budget/discover.ts';
 import type { TerminalChoice } from '../../config/types.ts';
 import { errorMessage } from '../../core/guards.ts';
 import { ENV, resolveKitHome } from '../../core/home.ts';
+import { PlainLogFile } from '../../core/log-file.ts';
 import { indexMarks } from '../../inbox/marks.ts';
 import { JsonlMarkLog } from '../../inbox/store.ts';
 import { openTab, type OpenOutcome } from '../../open/open-tab.ts';
@@ -42,7 +43,7 @@ async function restoreTeamsOf(runtime: CliRuntime): Promise<RestoreTeam[]> {
   const { teams } = await loadTree(runtime);
   const found: RestoreTeam[] = [];
   for (const [team, { kit, config, roster }] of teams) {
-    const { marks } = await new JsonlMarkLog(runtime.files, kit.paths.inboxMarks).read();
+    const { marks } = await new JsonlMarkLog(new PlainLogFile(runtime.files, kit.paths.inboxMarks)).read();
     found.push({
       team,
       lead: config.roles.lead,

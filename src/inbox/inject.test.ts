@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { PlainLogFile } from '../core/log-file.ts';
 import { TimeZone } from '../core/zone.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
@@ -115,7 +116,7 @@ describe('injectionOf', () => {
 
 describe('injectFor', () => {
   function deps(files: MemoryFiles | FaultyFiles): InboxDeps {
-    return { inboxes: new InboxDir(files, DIR), marks: new JsonlMarkLog(files, MARKS), shown: new JsonlMarkLog(files, SHOWN) };
+    return { inboxes: new InboxDir(files, DIR), marks: new JsonlMarkLog(new PlainLogFile(files, MARKS)), shown: new JsonlMarkLog(new PlainLogFile(files, SHOWN)) };
   }
   const request = { area: 'alpha', claudeSession: TAB, now: NOW, zone: TimeZone.UTC, command: 'teamrig' };
 
