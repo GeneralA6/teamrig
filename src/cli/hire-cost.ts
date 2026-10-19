@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import { LiftLog } from '../budget/lift.ts';
 import { OUTSIDE_ID } from '../budget/measure.ts';
 import { addedSessionPct, liftedParts } from '../budget/parts.ts';
+import { PeriodStore } from '../budget/period.ts';
 import { readSnapshots, weekUseOf } from '../budget/snapshot.ts';
 import { UsageStore, type UsageState } from '../budget/store.ts';
 import { readWeek } from '../budget/week.ts';
@@ -21,7 +22,7 @@ import type { CliRuntime } from './runtime.ts';
  */
 export async function readHirePct(
   runtime: CliRuntime,
-  paths: Pick<TeamPaths, 'usage' | 'lifts' | 'home' | 'kitHome'>,
+  paths: Pick<TeamPaths, 'usage' | 'period' | 'lifts' | 'home' | 'kitHome'>,
   config: Pick<KitConfig, 'sessions' | 'budget' | 'register'>,
   tasks: Iterable<Task>,
   now: number,
@@ -35,7 +36,9 @@ export async function readHirePct(
   }
   states.push((await new UsageStore(files, join(paths.usage, 'outside')).load(OUTSIDE_ID)).state);
   const snapshots = await readSnapshots(files, snapshotDirOf(budget, paths));
-  const week = readWeek({ budget, now, statusUse: weekUseOf(snapshots, now), states });
+  const statusUse = weekUseOf(snapshots, now);
+  const period = await new PeriodStore(files, paths.period).periodAt(budget, statusUse, now);
+  const week = readWeek({ budget, now, statusUse, period, states });
   if (week.allowancePct === undefined) {
     return undefined;
   }

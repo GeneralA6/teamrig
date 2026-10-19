@@ -2067,7 +2067,11 @@ metering on; `--day <YYYY-MM-DD>` recounts a past day at the new weight.
 
 Measures every session's use since the last run, keeps 8 days of it in the team's `state/usage` folder, and
 shows the week against the pace line: the week's use and reset from the status line snapshots (see
-[teamrig statusline](#teamrig-statusline)), else from `budget.weeklyLimitW` and `budget.reset`. The team's daily
+[teamrig statusline](#teamrig-statusline)), else from `budget.weeklyLimitW` and `budget.reset`. The use counts in
+the period kept in the team's `state/usage/period.json`: from the last reset to the next, each week opening where the
+last one ended, and a moved reset keeping its start. A reading 2 points or more below the latest one, its reset
+unchanged, is a reset inside the week: a new budget runs from that latest reading to the reset, and the pace line and
+today's use start there. With no period kept yet, the week before the reset is taken. The team's daily
 budget is never a fixed number: at every reading, what is left to `budget.targetPct` is spread over the active
 time to the pace end (`budget.paceEndHoursBeforeReset` before the reset; quiet hours count at
 `budget.quietHours.paceWeight`), times today's active time. What the lead's lifts leave is split among the other

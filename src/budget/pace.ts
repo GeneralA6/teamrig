@@ -7,7 +7,10 @@ import type { ActivityProfile } from './active-time.ts';
  * All instants are epoch milliseconds; all shares are percent of the week's limit.
  */
 
-/** One week of the plan's limit: from the last reset to the next, and the end of the pace line before it. */
+/**
+ * The span of the plan's limit the week's use counts in: from its start (the last reset, or one inside the week) to
+ * the next reset, and the end of the pace line before it.
+ */
 export interface WeekWindow {
   readonly start: number;
   readonly reset: number;
@@ -36,9 +39,8 @@ export function resolveReset(now: number, fromStatus: number | undefined, config
   return configured === undefined ? undefined : nextConfiguredReset(now, configured);
 }
 
-/** The week ending at `reset`, its pace line ending `paceEndHoursBeforeReset` hours before. */
-export function weekWindow(reset: number, paceEndHoursBeforeReset: number): WeekWindow {
-  const start = reset - MS_PER_WEEK;
+/** The span from `start` (by default the week before) to `reset`, its pace line ending `paceEndHoursBeforeReset` hours before the reset. */
+export function weekWindow(reset: number, paceEndHoursBeforeReset: number, start = reset - MS_PER_WEEK): WeekWindow {
   return { start, reset, paceEnd: Math.max(start, reset - paceEndHoursBeforeReset * MS_PER_HOUR) };
 }
 

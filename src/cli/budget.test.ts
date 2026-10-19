@@ -1,6 +1,7 @@
 import { describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { basename, join } from 'node:path';
+import { parsePeriod } from '../budget/period.ts';
 import { W_EXPLAINED } from '../budget/report.ts';
 import { parseSnapshot } from '../budget/snapshot.ts';
 import type { JsonRecord } from '../core/guards.ts';
@@ -320,6 +321,22 @@ describe('teamrig statusline', () => {
     assert.deepEqual(dates(ALPHA_TAB), ['2030-01-08T10:02:00.000Z', '2030-01-08T10:01:00.000Z']);
     assert.deepEqual(dates(BRAVO_TAB), ['2030-01-08T10:00:00.000Z', null]);
     assert.match(ok(await run(['budget']))[0] ?? '', /^Week: 0\.50% used at 10:02 UTC/);
+  });
+
+  it('counts a new budget from the reading before the use fell inside the week, once a reader saw both', async () => {
+    // The week read 30% at 10:00; at 11:00 it reads 0.5% with the same reset: the use was reset inside the week.
+    const { kit, run } = await world();
+    assert.match(ok(await run(['budget']))[0] ?? '', /^Week: 30\.0% used at 10:00 UTC/);
+    kit.clock.advance(3_600_000);
+    const fallen = JSON.stringify({ session_id: ALPHA_TAB, cwd: APP, rate_limits: { seven_day: { used_percentage: 0.5, resets_at: RESET / 1000 } } });
+    ok(await run(['statusline'], { stdin: fallen }));
+    const lines = ok(await run(['budget']));
+    // The pace line runs from 10:00 to an hour before the reset, 134 hours: 1 of them is 0.74%.
+    assert.match(lines[0] ?? '', /^Week: 0\.50% used at 11:00 UTC \(status line\); the pace line is at 0\.74%/);
+    // Today's use counts from 10:00 too: the team's 09:00 calls were the last budget's.
+    assert.match(lines[1] ?? '', /^The team used 0[.0]*% of the week today/);
+    const period = parsePeriod(kit.files.get(join(TEAM_HOME, 'state', 'usage', 'period.json')) ?? '');
+    assert.deepEqual([period?.kind, period?.start], ['reset', Date.parse('2030-01-08T10:00:00Z')]);
   });
 
   it("saves to the team's budget.statusSnapshotDir, relative to the team's folder or absolute, and budget reads it there", async () => {

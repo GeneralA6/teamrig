@@ -1,6 +1,7 @@
 import type { BurstRecord } from '../budget/burst.ts';
 import { BurstLog } from '../budget/burst-log.ts';
-import { resolveReset, weekWindow, type WeekWindow } from '../budget/pace.ts';
+import { weekWindow, type WeekWindow } from '../budget/pace.ts';
+import { PeriodStore } from '../budget/period.ts';
 import { readSnapshots, weekUseOf } from '../budget/snapshot.ts';
 import type { BudgetConfig } from '../config/types.ts';
 import type { TeamPaths } from '../core/home.ts';
@@ -18,13 +19,13 @@ export interface BurstReading {
   readonly records: readonly BurstRecord[];
   /** The week's use from the newest status-line reading, in %; undefined with none this week. */
   readonly usedPct: number | undefined;
-  /** The week that reading counts in: up to its reset, else the config's; undefined with neither. */
+  /** The period that reading counts in (budget/period.ts); undefined while no reset is known. */
   readonly window: WeekWindow | undefined;
 }
 
-export async function readBursts(runtime: CliRuntime, paths: Pick<TeamPaths, 'bursts' | 'home' | 'kitHome'>, budget: BudgetConfig, now: number): Promise<BurstReading> {
+export async function readBursts(runtime: CliRuntime, paths: Pick<TeamPaths, 'bursts' | 'period' | 'home' | 'kitHome'>, budget: BudgetConfig, now: number): Promise<BurstReading> {
   const { records } = await new BurstLog(runtime.files, paths.bursts).read();
   const use = weekUseOf(await readSnapshots(runtime.files, snapshotDirOf(budget, paths)), now);
-  const reset = resolveReset(now, use?.resetsAt, budget.reset);
-  return { records, usedPct: use?.usedPct, window: reset === undefined ? undefined : weekWindow(reset, budget.paceEndHoursBeforeReset) };
+  const period = await new PeriodStore(runtime.files, paths.period).periodAt(budget, use, now);
+  return { records, usedPct: use?.usedPct, window: period === undefined ? undefined : weekWindow(period.end, budget.paceEndHoursBeforeReset, period.start) };
 }

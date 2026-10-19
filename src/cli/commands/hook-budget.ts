@@ -10,6 +10,7 @@ import { activeLift, LiftLog } from '../../budget/lift.ts';
 import { OUTSIDE_ID } from '../../budget/measure.ts';
 import { runMeter } from '../../budget/meter.ts';
 import { dailyBudgetOf, liftedParts } from '../../budget/parts.ts';
+import { PeriodStore } from '../../budget/period.ts';
 import { readSnapshots, weekUseOf } from '../../budget/snapshot.ts';
 import { UsageStore, type UsageState } from '../../budget/store.ts';
 import { helperGate, promptWarning, stopWarning, type BudgetFacts, type HelperGate } from '../../budget/warn.ts';
@@ -86,7 +87,9 @@ export async function budgetFactsOf(runtime: CliRuntime, scope: BudgetScope, tra
   }
   const outside = (await new UsageStore(files, join(kit.paths.usage, 'outside')).load(OUTSIDE_ID)).state;
   const snapshots = await readSnapshots(files, snapshotDirOf(budget, kit.paths));
-  const week = readWeek({ budget, now, statusUse: weekUseOf(snapshots, now), states: [...byId.values(), outside] });
+  const statusUse = weekUseOf(snapshots, now);
+  const period = await new PeriodStore(files, kit.paths.period).periodAt(budget, statusUse, now);
+  const week = readWeek({ budget, now, statusUse, period, states: [...byId.values(), outside] });
   const { teamDay } = week;
   if (week.usedPct === undefined || week.wPerPct === undefined || teamDay === undefined) {
     return undefined;

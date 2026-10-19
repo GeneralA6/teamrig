@@ -11,6 +11,8 @@ import { readWeek, wSince } from './week.ts';
 const NOW = Date.parse('2026-10-15T12:00:00Z');
 const RESET = Date.parse('2026-10-21T01:00:00Z');
 const STATUS: WeekUse = { usedPct: 57, resetsAt: RESET, at: Date.parse('2026-10-15T11:00:00Z') };
+/** The period of that week. */
+const PERIOD = { start: Date.parse('2026-10-14T01:00:00Z'), end: RESET };
 
 function state(wByDay: Readonly<Record<string, number>>): UsageState {
   const byDay = Object.fromEntries(Object.entries(wByDay).map(([day, w]) => [day, { w, calls: 1, patterns: emptyPatterns() }]));
@@ -26,7 +28,7 @@ function round(value: number | undefined): number | undefined {
 
 describe('readWeek', () => {
   it('knows nothing but today\'s W without a status line, a limit or a reset', () => {
-    const week = readWeek({ budget: DEFAULT_BUDGET, now: NOW, statusUse: undefined, states: COVERED });
+    const week = readWeek({ budget: DEFAULT_BUDGET, now: NOW, statusUse: undefined, period: undefined, states: COVERED });
     assert.deepEqual(week, {
       reset: undefined,
       window: undefined,
@@ -44,7 +46,7 @@ describe('readWeek', () => {
   });
 
   it('takes the use and reset from the status line and estimates the limit once the week is metered whole', () => {
-    const week = readWeek({ budget: DEFAULT_BUDGET, now: NOW, statusUse: STATUS, states: COVERED });
+    const week = readWeek({ budget: DEFAULT_BUDGET, now: NOW, statusUse: STATUS, period: PERIOD, states: COVERED });
     assert.deepEqual([week.reset, week.usedPct, week.statusAt, week.covered, week.limitEstimated], [RESET, 57, STATUS.at, true, true]);
     assert.equal(round(week.wPerPct), round(1_500 / 57));
     assert.equal(round(week.pace?.linePct), round((99.5 * 35) / 167));
@@ -58,7 +60,7 @@ describe('readWeek', () => {
     const lastReset = Date.parse('2026-10-14T01:00:00Z');
     const status: WeekUse = { usedPct: 2, resetsAt: RESET, at: resetDay };
     const hours = { ...state({ '2026-10-13': 5_000, '2026-10-14': 1_000 }), byHour: { '2026-10-14T00': 600, '2026-10-14T05': 400 } };
-    const week = readWeek({ budget: DEFAULT_BUDGET, now: resetDay, statusUse: status, states: [hours] });
+    const week = readWeek({ budget: DEFAULT_BUDGET, now: resetDay, statusUse: status, period: PERIOD, states: [hours] });
     assert.deepEqual([week.window?.start, week.todayFrom], [lastReset, lastReset]);
     assert.deepEqual([week.todayW, week.wPerPct, week.teamDay?.usedPct], [400, 200, 2]);
   });
@@ -66,19 +68,29 @@ describe('readWeek', () => {
   it("counts a store whose hours were lost with its whole first day, as before hours were kept", () => {
     const resetDay = Date.parse('2026-10-14T12:00:00Z');
     const status: WeekUse = { usedPct: 2, resetsAt: RESET, at: resetDay };
-    const week = readWeek({ budget: DEFAULT_BUDGET, now: resetDay, statusUse: status, states: [state({ '2026-10-13': 5_000, '2026-10-14': 1_000 })] });
+    const week = readWeek({ budget: DEFAULT_BUDGET, now: resetDay, statusUse: status, period: PERIOD, states: [state({ '2026-10-13': 5_000, '2026-10-14': 1_000 })] });
     assert.deepEqual([week.todayW, week.wPerPct], [1_000, 500]);
+  });
+
+  it("counts a new budget from a reset inside the week: its pace line and today's use start there", () => {
+    const reset = Date.parse('2026-10-15T10:00:00Z');
+    const status: WeekUse = { usedPct: 1, resetsAt: RESET, at: NOW };
+    const hours = { ...state({ '2026-10-14': 1_000, '2026-10-15': 300 }), byHour: { '2026-10-15T09': 200, '2026-10-15T10': 100 } };
+    const week = readWeek({ budget: DEFAULT_BUDGET, now: NOW, statusUse: status, period: { start: reset, end: RESET }, states: [hours] });
+    assert.deepEqual([week.window?.start, week.todayFrom, week.todayW, week.wPerPct, week.covered], [reset, reset, 100, 100, true]);
+    // 2 of the 134 hours from the reset to the pace end, an hour before the week's.
+    assert.equal(round(week.pace?.linePct), round((99.5 * 2) / 134));
   });
 
   it('has no limit estimate while the stores start after the week did', () => {
     const late = [state({ '2026-10-15': 500 })];
-    const week = readWeek({ budget: DEFAULT_BUDGET, now: NOW, statusUse: STATUS, states: late });
+    const week = readWeek({ budget: DEFAULT_BUDGET, now: NOW, statusUse: STATUS, period: PERIOD, states: late });
     assert.deepEqual([week.usedPct, week.covered, week.wPerPct, week.allowancePct, week.limitEstimated], [57, false, undefined, undefined, false]);
   });
 
-  it('meters the use from budget.weeklyLimitW and budget.reset when there is no status line', () => {
-    const budget: BudgetConfig = { ...DEFAULT_BUDGET, weeklyLimitW: 100_000, reset: { weekday: 'wed', timeUtc: '01:00' } };
-    const week = readWeek({ budget, now: NOW, statusUse: undefined, states: COVERED });
+  it('meters the use from budget.weeklyLimitW when there is no status line', () => {
+    const budget: BudgetConfig = { ...DEFAULT_BUDGET, weeklyLimitW: 100_000 };
+    const week = readWeek({ budget, now: NOW, statusUse: undefined, period: PERIOD, states: COVERED });
     assert.deepEqual([week.reset, week.wPerPct, week.usedPct, week.statusAt, week.limitEstimated], [RESET, 1_000, 1.5, undefined, false]);
     assert.equal(week.pace?.state, 'behind');
     assert.equal(round(week.allowancePct), round((98 * 24) / 132));
@@ -86,7 +98,7 @@ describe('readWeek', () => {
 
   it('paces by the active time of budget.quietHours', () => {
     const budget: BudgetConfig = { ...DEFAULT_BUDGET, quietHours: { startUtc: '22:00', endUtc: '06:00', action: 'ask' } };
-    const week = readWeek({ budget, now: NOW, statusUse: STATUS, states: COVERED });
+    const week = readWeek({ budget, now: NOW, statusUse: STATUS, period: PERIOD, states: COVERED });
     // Wed 01:00 to Thu 12:00 is 16 + 6 of the week's 112 active hours; 42.5% left over the other 90, a 16-hour day of it.
     assert.equal(round(week.pace?.linePct), round((99.5 * 22) / 112));
     assert.equal(round(week.allowancePct), round((42.5 * 16) / 90));
@@ -96,7 +108,7 @@ describe('readWeek', () => {
   });
 
   it("has no allowance while the week's use cannot be read: no fixed number stands in for it", () => {
-    const unknown = readWeek({ budget: DEFAULT_BUDGET, now: NOW, statusUse: undefined, states: [] });
+    const unknown = readWeek({ budget: DEFAULT_BUDGET, now: NOW, statusUse: undefined, period: PERIOD, states: [] });
     assert.deepEqual([unknown.allowancePct, unknown.teamDay], [undefined, undefined]);
   });
 });

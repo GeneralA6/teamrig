@@ -1,7 +1,8 @@
 import type { BudgetConfig } from '../config/types.ts';
 import { formatUtcDay, formatUtcHour, MS_PER_DAY } from '../core/time.ts';
 import { DailyProfile } from './active-time.ts';
-import { dailyAllowancePct, dayPacePct, readPace, resolveReset, weekWindow, type PaceReading, type TeamDay, type WeekWindow } from './pace.ts';
+import { dailyAllowancePct, dayPacePct, readPace, weekWindow, type PaceReading, type TeamDay, type WeekWindow } from './pace.ts';
+import type { Period } from './period.ts';
 import type { WeekUse } from './snapshot.ts';
 import type { UsageState } from './store.ts';
 
@@ -26,8 +27,8 @@ export interface WeekReading {
   /** The team's allowance for today, in percent of the week; undefined while the week's use or limit is unknown. */
   readonly allowancePct: number | undefined;
   /**
-   * Where today's use is counted from: 00:00 UTC, or on the week's first day the instant it began, so the last
-   * week's use that day is not today's (`wSince` counts from its hour).
+   * Where today's use is counted from: 00:00 UTC, or on the day the period began (the weekly reset, or one inside
+   * the week) that instant, so the use before it that day is not today's (`wSince` counts from its hour).
    */
   readonly todayFrom: number;
   /** Everyone's W since `todayFrom`, the team's sessions and the use outside it. */
@@ -41,6 +42,8 @@ export interface WeekInput {
   readonly now: number;
   /** The newest status line reading of the week, if any. */
   readonly statusUse: WeekUse | undefined;
+  /** The span the use counts in (budget/period.ts); undefined while no reset is known. */
+  readonly period: Pick<Period, 'start' | 'end'> | undefined;
   /** Every usage store: each team session's and the outside one. */
   readonly states: readonly UsageState[];
 }
@@ -73,9 +76,9 @@ function earliestDay(states: readonly UsageState[]): string | undefined {
 }
 
 export function readWeek(input: WeekInput): WeekReading {
-  const { budget, now, statusUse, states } = input;
-  const reset = resolveReset(now, statusUse?.resetsAt, budget.reset);
-  const window = reset === undefined ? undefined : weekWindow(reset, budget.paceEndHoursBeforeReset);
+  const { budget, now, statusUse, states, period } = input;
+  const reset = period?.end;
+  const window = period === undefined ? undefined : weekWindow(period.end, budget.paceEndHoursBeforeReset, period.start);
   const dayStart = now - (now % MS_PER_DAY);
   const todayFrom = window === undefined ? dayStart : Math.max(dayStart, window.start);
   const todayW = wSince(states, todayFrom, now);

@@ -13,6 +13,7 @@ import { claudeProjectsDir, type TranscriptSource } from '../../budget/discover.
 import { activeLift, decideLift, LiftLog, liftText, type Lift } from '../../budget/lift.ts';
 import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID, type Measured } from '../../budget/measure.ts';
 import { dailyBudgetOf, liftedParts, type BudgetSplit } from '../../budget/parts.ts';
+import { nextPeriod, PeriodStore, sightOf, type Period } from '../../budget/period.ts';
 import {
   burnLines,
   loopLines,
@@ -112,7 +113,9 @@ async function readBudget(runtime: CliRuntime, kit: Kit, config: KitConfig, rost
     },
   );
   const snapshots = recount ? [] : await readSnapshots(files, snapshotDirOf(config.budget, kit.paths));
-  const week = readWeek({ budget: config.budget, now, statusUse: weekUseOf(snapshots, now), states: [...measured.bySession.values(), measured.outside] });
+  const statusUse = weekUseOf(snapshots, now);
+  const period = recount ? recountPeriodOf(config.budget, now) : await new PeriodStore(files, kit.paths.period).periodAt(config.budget, statusUse, now);
+  const week = readWeek({ budget: config.budget, now, statusUse, period, states: [...measured.bySession.values(), measured.outside] });
   const lifts = recount ? [] : (await new LiftLog(files, kit.paths.lifts).read()).lifts;
   const bursts = recount ? [] : (await new BurstLog(files, kit.paths.bursts).read()).records;
   return { now, measured, week, lifts, bursts };
@@ -146,6 +149,12 @@ function sessionsToday(reading: Reading, roster: Roster, budget: BudgetConfig, w
 /** The days a loop table shows, oldest first, ending at `now`'s day. */
 function loopDays(now: number, count: number): string[] {
   return Array.from({ length: count }, (_, index) => formatUtcDay(new Date(now - (count - 1 - index) * MS_PER_DAY)));
+}
+
+/** A recount's period: it reads no stored state, so the week before the configured reset, a guess. */
+function recountPeriodOf(budget: BudgetConfig, now: number): Period | undefined {
+  const sight = sightOf(budget, undefined, now);
+  return sight === undefined ? undefined : nextPeriod(undefined, sight);
 }
 
 function recountDayOf(text: string | undefined, now: number): number | undefined {
