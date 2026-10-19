@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import { CONFIG_MIGRATIONS, type ConfigFormat } from '../config/migrate.ts';
 import { CONFIG_VERSION } from '../config/types.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
+import { teamInboxOf } from '../testing/team-tree.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { ENV } from '../core/home.ts';
 import { KIT_VERSION } from '../core/version.ts';
@@ -430,7 +431,7 @@ describe('runCli: session names', () => {
     const posted = await kit.run(['inbox', 'add', '--to', 'team-lead', '--text', 'ready', '--session', 'app-alpha']);
     assert.match(posted.stdout[0] ?? '', /^POSTED to lead; lead is reminded at its next prompt$/);
     const read = await kit.run(['inbox', 'read', '--session', 'team-lead']);
-    assert.deepEqual(read.stdout[0], '- 2030-01-08 10:00 alpha: ready');
+    assert.deepEqual(read.stdout[0], '- 2030-01-08 10:00 UTC alpha: ready');
 
     const added = await kit.run(['add', '--title', 'Ship the names', '--description', 'what and why', '--priority', 'p2', '--owner', 'app-bravo', '--session', 'team-lead']);
     assert.equal(added.code, EXIT.ok, added.stdout.join('\n'));
@@ -478,6 +479,16 @@ describe('runCli: session names', () => {
 });
 
 describe('runCli: inboxes', () => {
+  it("shows the lines and when they wait since on the team's clock", async () => {
+    const kit = new CliHarness();
+    const inIsrael = { timeZone: 'Asia/Jerusalem' };
+    await kit.run(['inbox', 'add', '--to', 'bravo', '--text', 'the build is green', '--session', 'alpha']);
+    assert.match((await kit.run(['inbox', 'status'], inIsrael)).stdout.join('\n'), /^bravo 1 unread since 01-08 12:00 IST /m);
+    const read = await kit.run(['inbox', 'read', '--session', 'bravo'], inIsrael);
+    assert.deepEqual(read.stdout.slice(0, 1), ['- 2030-01-08 12:00 IST alpha: the build is green']);
+    assert.equal(kit.files.get(teamInboxOf('app', 'bravo')),'- 2030-01-08 10:00 alpha: the build is green\n', 'the file keeps UTC');
+  });
+
   it('posts a line, reads it once, then has nothing new', async () => {
     const kit = new CliHarness();
     const posted = await kit.run(['inbox', 'add', '--to', 'bravo', '--text', 'the build is green', '--session', 'alpha']);
@@ -489,7 +500,7 @@ describe('runCli: inboxes', () => {
 
     const first = await kit.run(['inbox', 'read', '--session', 'bravo']);
     assert.equal(first.code, EXIT.ok);
-    assert.deepEqual(first.stdout.slice(0, 1), ['- 2030-01-08 10:00 alpha: the build is green']);
+    assert.deepEqual(first.stdout.slice(0, 1), ['- 2030-01-08 10:00 UTC alpha: the build is green']);
     assert.match(first.stdout[1] ?? '', /^READ bravo: 1 new line, shown above; /);
 
     const again = await kit.run(['inbox', 'read', '--session', 'bravo']);
@@ -518,7 +529,7 @@ describe('runCli: inboxes', () => {
     await kit.run(['inbox', 'add', '--to', 'bravo', '--text', 'please rebase', '--session', 'alpha']);
     const reminded = await kit.run(['hook', 'inbox-reminder'], { stdin });
     assert.equal(reminded.code, EXIT.ok);
-    assert.match(reminded.stdout[0] ?? '', /^INBOX bravo, new in .*bravo\.md \(each line is shown once; reading marks them read\):\n- 2030-01-08 10:00 alpha: please rebase$/);
+    assert.match(reminded.stdout[0] ?? '', /^INBOX bravo, new in .*bravo\.md \(each line is shown once; reading marks them read\):\n- 2030-01-08 10:00 UTC alpha: please rebase$/);
     assert.deepEqual((await kit.run(['hook', 'inbox-reminder'], { stdin })).stdout, [], 'shown once');
     assert.match((await kit.run(['inbox', 'status', '--session', 'bravo'])).stdout[0] ?? '', /^bravo 1 unread/, 'shown is not read');
   });
@@ -532,7 +543,7 @@ describe('runCli: inboxes', () => {
 
     const titled = JSON.stringify({ session_id: CLAUDE_SESSION, session_title: 'app-bravo' });
     const reminded = await kit.run(['hook', 'inbox-reminder'], { stdin: titled, env: { TEAMRIG_SESSION: 'app-bravo' } });
-    assert.match(reminded.stdout[0] ?? '', /^INBOX bravo, new in .*\n- 2030-01-08 10:00 alpha: please rebase$/, 'found by its name');
+    assert.match(reminded.stdout[0] ?? '', /^INBOX bravo, new in .*\n- 2030-01-08 10:00 UTC alpha: please rebase$/, 'found by its name');
     const unknown = await kit.run(['hook', 'inbox-reminder'], { stdin, env: { TEAMRIG_SESSION: 'zulu' } });
     assert.deepEqual(unknown.stdout, []);
   });

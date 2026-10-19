@@ -147,7 +147,7 @@ async function heldStart(kit = new CliHarness()): Promise<CliHarness> {
 }
 
 describe('runCli: a start waits for the verifying tasks it needs', () => {
-  const told = '- 2030-01-08 10:00 alpha: T2 waits on your verifying T1: the nightly run';
+  const told = '- 2030-01-08 10:00 UTC alpha: T2 waits on your verifying T1: the nightly run';
 
   it('refuses the start and tells the verifying task owner once a day', async () => {
     const kit = await heldStart();

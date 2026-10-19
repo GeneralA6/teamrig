@@ -23,10 +23,10 @@ describe('runCli: a hand-started tab binds itself by its Claude Code title (T302
     const result = await kit.run(['hook', 'inbox-reminder'], { stdin: prompt({ session_title: 'alpha' }) });
     assert.equal(result.code, EXIT.ok);
     assert.equal(result.stdout[0], 'teamrig: this tab is now the `alpha` session of team app (name `app-alpha`), from its Claude Code title; nothing was marked read.');
-    assert.match(result.stdout[1] ?? '', /^INBOX alpha, new in .*\n- 2030-01-08 10:00 lead: T7 is yours$/);
+    assert.match(result.stdout[1] ?? '', /^INBOX alpha, new in .*\n- 2030-01-08 10:00 UTC lead: T7 is yours$/);
     assert.equal(result.stdout.length, 2);
     assert.equal(await kit.files.read(RENAMES_PATH), undefined);
-    assert.match((await kit.run(['inbox', 'status', '--session', 'alpha'])).stdout[0] ?? '', /^alpha 1 unread .*\(read to line 0 of 1 at 01-08 10:00\)$/);
+    assert.match((await kit.run(['inbox', 'status', '--session', 'alpha'])).stdout[0] ?? '', /^alpha 1 unread .*\(read to line 0 of 1 at 01-08 10:00 UTC\)$/);
 
     assert.deepEqual((await kit.run(['hook', 'inbox-reminder'], { stdin: prompt({ session_title: 'alpha' }) })).stdout, []);
     assert.ok(contextOf(await kit.run(['hook', 'session-start'], { stdin: prompt({ source: 'resume' }) })).includes('You are the `alpha` session of team `app`'));
@@ -99,7 +99,7 @@ describe('runCli: a hand-started tab binds itself by its Claude Code title (T302
     await kit.run(['inbox', 'add', '--to', 'bravo', '--text', 'third', '--session', 'lead']);
     const read = await kit.run(['inbox', 'read'], { env });
     assert.deepEqual(read.stdout, [
-      '- 2030-01-08 10:00 lead: third',
+      '- 2030-01-08 10:00 UTC lead: third',
       'READ bravo: 1 new line, shown above, and 2 the prompt hook showed this session, now marked read too; new ones are shown at your next prompt',
     ]);
   });
@@ -113,7 +113,7 @@ describe('runCli: the prompt hook titles a bound tab after its session (T407)', 
     await kit.run(['inbox', 'add', '--to', 'alpha', '--text', 'T7 is yours', '--session', 'lead']);
     const titled = titledPromptOf(await kit.run(['hook', 'inbox-reminder'], { stdin: prompt() }));
     assert.equal(titled.title, 'app-alpha');
-    assert.match(titled.context ?? '', /^INBOX alpha, new in .*\n- 2030-01-08 10:00 lead: T7 is yours$/);
+    assert.match(titled.context ?? '', /^INBOX alpha, new in .*\n- 2030-01-08 10:00 UTC lead: T7 is yours$/);
     assert.deepEqual((await kit.run(['hook', 'inbox-reminder'], { stdin: prompt({ session_title: 'app-alpha' }) })).stdout, []);
     assert.equal(await kit.files.read(RENAMES_PATH), undefined);
   });

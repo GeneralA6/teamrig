@@ -4,6 +4,7 @@ import { DEFAULT_CONTEXT_FILES, DEFAULT_LEAD_LAUNCH } from '../config/defaults.t
 import { launchOf } from '../config/launch.ts';
 import { Roster } from '../config/roster.ts';
 import { describeNameClash, type NameClash, type TreeProblem } from '../config/tree.ts';
+import { TimeZone } from '../core/zone.ts';
 import { lineHash } from '../inbox/line-hash.ts';
 import type { InboxMark } from '../inbox/marks.ts';
 import { unreadOf } from '../inbox/unread.ts';
@@ -11,6 +12,7 @@ import type { Rename } from '../names/rename.ts';
 import { TEAM_RULES_MAX_CHARS } from '../rules/pack.ts';
 import { testConfig } from '../testing/config.ts';
 import { renameOf } from '../testing/rename.ts';
+import { JERUSALEM } from '../testing/zone.ts';
 import { doctorFindings, formatFinding, UNREAD_INBOX_DAYS, type DoctorInput } from './doctor.ts';
 import type { SettingsEnv } from './settings-env.ts';
 
@@ -34,6 +36,7 @@ function input(overrides: Partial<DoctorInput> & { readonly names?: Record<strin
     settingsEnv: [],
     launches: [],
     now: NOW,
+    zone: TimeZone.UTC,
     command: 'teamrig',
     ...rest,
   };
@@ -141,12 +144,13 @@ describe('doctorFindings', () => {
       unreadOf('lead', ['written by hand'], null, lineHash),
     ];
     assert.deepEqual(lines(input({ inboxes })), [
-      'WARN inbox-unread alpha has 1 unread line(s) and last read it 01-12 09:00: over 7 days with no read',
+      'WARN inbox-unread alpha has 1 unread line(s) and last read it 01-12 09:00 UTC: over 7 days with no read',
       'WARN inbox-unread bravo has 1 unread line(s) and has never read it: over 7 days with no read',
       'WARN inbox-unread lead has 1 unread line(s) and has never read it: over 7 days with no read',
     ]);
     const fresh = [unreadOf('bravo', ['- 2030-01-19 09:00 lead: new'], null, lineHash), unreadOf('alpha', read, markAt('alpha', read, '2030-01-02T09:00:00Z'), lineHash)];
     assert.deepEqual(lines(input({ inboxes: fresh })), []);
+    assert.match(lines(input({ inboxes, zone: JERUSALEM }))[0] ?? '', /and last read it 01-12 11:00 IST: /);
   });
 
   it('flags each tree problem and each session name another team uses, with its fix', () => {

@@ -1,4 +1,5 @@
-import type { InboxDeps } from './inbox.ts';
+import type { TimeZone } from '../core/zone.ts';
+import { lineOnClock, type InboxDeps } from './inbox.ts';
 import { lineHash } from './line-hash.ts';
 import { indexMarks, MARK_VERSION, type InboxMark } from './marks.ts';
 import { cutWhenShown, INJECT_CAPS, newestShownOf, unshownOf, type InjectCaps } from './shown.ts';
@@ -38,13 +39,16 @@ export interface InjectionInput {
   readonly shown: InboxMark | null;
   readonly claudeSession: string;
   readonly now: Date;
+  /** The team's clock, which the lines' times are shown on. */
+  readonly zone: TimeZone;
   readonly command: string;
 }
 
 /** The lines to show at this prompt, with the mark that records them; undefined when nothing new waits. */
 export function injectionOf(input: InjectionInput, caps: InjectCaps = INJECT_CAPS): Injection | undefined {
   const unshown = unshownOf(input.area, input.lines, input.read, input.shown, lineHash);
-  const fitted = fitLines(unshown, caps);
+  const onClock = unshown.map((line) => lineOnClock(line, input.zone));
+  const fitted = fitLines(onClock, caps);
   if (fitted.length === 0) {
     return undefined;
   }
@@ -52,7 +56,7 @@ export function injectionOf(input: InjectionInput, caps: InjectCaps = INJECT_CAP
   const last = input.lines[through - 1];
   const more = unshown.length - fitted.length;
   const readAll = `${input.command} inbox read --session ${input.area}`;
-  const cut = fitted.some((line, index) => line !== unshown[index]);
+  const cut = fitted.some((line, index) => line !== onClock[index]);
   const text = [
     `INBOX ${input.area}, new in ${input.path} (each line is shown once; reading marks them read):`,
     ...fitted,
@@ -77,7 +81,7 @@ export function injectionOf(input: InjectionInput, caps: InjectCaps = INJECT_CAP
  */
 export async function injectFor(
   deps: InboxDeps,
-  input: { readonly area: string; readonly claudeSession: string; readonly now: Date; readonly command: string },
+  input: { readonly area: string; readonly claudeSession: string; readonly now: Date; readonly zone: TimeZone; readonly command: string },
 ): Promise<string | undefined> {
   const lines = await deps.inboxes.lines(input.area);
   if (lines === undefined) {

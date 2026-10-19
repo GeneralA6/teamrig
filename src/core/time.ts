@@ -78,11 +78,6 @@ export function parseUtcInstant(text: string, nowMs: number): Date | undefined {
   return parseUtcDay(trimmed) ?? parseUtcDeadline(trimmed);
 }
 
-/** A stored day or minute without its year, for compact lines: `2030-01-09 12:00` → `01-09 12:00`. */
-export function shortUtc(text: string): string {
-  return text.slice(5).replace('T', ' ');
-}
-
 /** `YYYY-MM-DD HH:MM` in UTC. */
 export function formatUtcMinute(date: Date): string {
   return date.toISOString().slice(0, 16).replace('T', ' ');

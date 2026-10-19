@@ -3,13 +3,13 @@ import { formatAddress, splitAddress, type SessionAddress } from '../../core/add
 import { ENV, type Env, type TeamPaths } from '../../core/home.ts';
 import { NAME_RULE } from '../../core/ids.ts';
 import { SecretScanner } from '../../core/secrets.ts';
-import { formatRead, formatUnread, inboxStatus, postLine, readInbox, type InboxDeps } from '../../inbox/inbox.ts';
+import { formatRead, formatUnread, inboxStatus, lineOnClock, postLine, readInbox, type InboxDeps } from '../../inbox/inbox.ts';
 import { CLAUDE_SESSION_ID } from '../../inbox/marks.ts';
 import { reachOf } from '../../inbox/reach.ts';
 import { InboxDir, JsonlMarkLog } from '../../inbox/store.ts';
 import { noPositionals, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
 import { callerOf, sessionRef } from '../inputs.ts';
-import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, requireConfig, rosterOf, sessionIdOf } from '../kit.ts';
+import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, requireConfig, rosterOf, sessionIdOf, teamZone } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
 import { verifyNoteOf } from './verify-queue.ts';
@@ -36,10 +36,12 @@ export async function read(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   noPositionals(args);
   const caller = callerOf(args.flags, runtime.env);
   const kit = await openTeamKit(runtime);
-  const area = sessionIdOf(await rosterOf(runtime, kit, requireConfig(kit, runtime, 'read')), caller);
+  const config = requireConfig(kit, runtime, 'read');
+  const area = sessionIdOf(await rosterOf(runtime, kit, config), caller);
   const now = new Date(runtime.clock.now());
   const result = await readInbox(inboxDepsOf(runtime, kit.paths), { area, claudeSession: claudeSessionOf(runtime.env), now });
-  result.lines.forEach((line) => runtime.out.stdout(line));
+  const zone = teamZone(config, runtime);
+  result.lines.forEach((line) => runtime.out.stdout(lineOnClock(line, zone)));
   runtime.out.stdout(formatRead(result));
   const verify = await verifyNoteOf(runtime, kit.paths, area);
   if (verify !== undefined) {
@@ -54,13 +56,15 @@ export async function status(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   const only = args.flags.get('session');
   const ref = only === undefined ? undefined : sessionRef('--session', only);
   const kit = await openTeamKit(runtime);
-  const roster = await rosterOf(runtime, kit, requireConfig(kit, runtime, 'read'));
+  const config = requireConfig(kit, runtime, 'read');
+  const roster = await rosterOf(runtime, kit, config);
   const area = ref === undefined ? undefined : pastOrPresentIdOf(roster, ref);
   const unread = await inboxStatus(inboxDepsOf(runtime, kit.paths), area);
   if (unread.length === 0) {
     runtime.out.stdout(`INBOX no inbox ${area === undefined ? 'files' : `for ${area}`} in ${kit.paths.inbox}`);
   }
-  unread.forEach((item) => runtime.out.stdout(formatUnread(item)));
+  const zone = teamZone(config, runtime);
+  unread.forEach((item) => runtime.out.stdout(formatUnread(item, zone)));
   return EXIT.ok;
 }
 

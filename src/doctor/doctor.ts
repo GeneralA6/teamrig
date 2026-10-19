@@ -3,7 +3,8 @@ import type { Roster } from '../config/roster.ts';
 import { describeNameClash, describeTreeProblem, type NameClash, type TreeProblem } from '../config/tree.ts';
 import type { ContextFilesConfig, KitConfig, LaunchConfig } from '../config/types.ts';
 import { ENV, type Env } from '../core/home.ts';
-import { formatUtcMinute, MS_PER_DAY, parseUtcDeadline, shortUtc } from '../core/time.ts';
+import { MS_PER_DAY } from '../core/time.ts';
+import type { TimeZone } from '../core/zone.ts';
 import { unreadSince } from '../inbox/inbox.ts';
 import type { Unread } from '../inbox/unread.ts';
 import type { RenameLogRead } from '../names/rename.ts';
@@ -92,6 +93,8 @@ export interface DoctorInput {
   /** Each session on the team and the model and effort it starts on. */
   readonly launches: readonly SessionLaunch[];
   readonly now: Date;
+  /** The team's clock, which the findings' times are shown on. */
+  readonly zone: TimeZone;
   /** The CLI name the fixes tell the user to run. */
   readonly command: string;
 }
@@ -165,13 +168,12 @@ function waitingSince(unread: Unread): Date | undefined {
   if (unread.mark !== null) {
     return new Date(unread.mark.at);
   }
-  const posted = unreadSince(unread);
-  return posted === undefined ? undefined : parseUtcDeadline(posted);
+  return unreadSince(unread);
 }
 
 /** Inboxes nobody reads: one keyed by no session id on the team (nor a retired one's), or unread lines with no read for days. */
 function inboxFindings(input: DoctorInput): Finding[] {
-  const { roster, now, retired } = input;
+  const { roster, now, retired, zone } = input;
   return input.inboxes.flatMap((unread): Finding[] => {
     const { area, mark } = unread;
     const count = unread.lines.length;
@@ -188,7 +190,7 @@ function inboxFindings(input: DoctorInput): Finding[] {
     if (count === 0 || (since !== undefined && now.getTime() - since.getTime() <= UNREAD_INBOX_DAYS * MS_PER_DAY)) {
       return [];
     }
-    const read = mark === null ? 'has never read it' : `last read it ${shortUtc(formatUtcMinute(new Date(mark.at)))}`;
+    const read = mark === null ? 'has never read it' : `last read it ${zone.shortMinute(new Date(mark.at))}`;
     return [{ kind: 'inbox-unread', detail: `${area} has ${count} unread line(s) and ${read}: over ${UNREAD_INBOX_DAYS} days with no read` }];
   });
 }
