@@ -27,7 +27,17 @@ import {
   weekLine,
   type SessionToday,
 } from '../../budget/report.ts';
-import { datedSnapshot, formatSnapshot, parseSnapshot, readSnapshots, snapshotOfStatus, statusLineText, weekUseOf, type StatusLineView } from '../../budget/snapshot.ts';
+import {
+  datedSnapshot,
+  formatSnapshot,
+  parseSnapshot,
+  pruneSnapshots,
+  readSnapshots,
+  snapshotOfStatus,
+  statusLineText,
+  weekUseOf,
+  type StatusLineView,
+} from '../../budget/snapshot.ts';
 import { CURSOR_DAYS_KEPT, DAYS_KEPT, EMPTY_USAGE, MemoryUsageStore, UsageStore, type UsageState } from '../../budget/store.ts';
 import { meteredOf, readWeek, wSince, type WeekReading } from '../../budget/week.ts';
 import { readWork } from '../../budget/work.ts';
@@ -321,10 +331,20 @@ function statusLineView(git: Pick<RepoState, 'branch' | 'head'>, dir: string, sh
   };
 }
 
+/** Prunes the snapshot folder's old snapshots (`pruneSnapshots`); a failure is told on stderr, never breaking the status bar. */
+async function pruneQuietly(runtime: CliRuntime, dir: string): Promise<void> {
+  try {
+    await pruneSnapshots(runtime.files, dir, runtime.clock.now());
+  } catch (error) {
+    runtime.out.stderr(`teamrig statusline: old snapshots were not pruned: ${errorMessage(error)}`);
+  }
+}
+
 /**
  * `statusline`: Claude Code's status line. It saves the status input's reading (the plan's use of the
  * week and its reset) as a snapshot for `budget`, dated by the session's previous snapshot (when the
- * session began to show it, and when it last showed another), and prints a short status: the model, the session's
+ * session began to show it, and when it last showed another), removes the folder's snapshots written more
+ * than 8 days ago (at most one sweep an hour), and prints a short status: the model, the session's
  * folder and branch, the plan's use and the command that resumes the session, as the team's `statusLine`
  * config shows them. It always exits 0, so a bad input or a full disk never breaks the status bar; what
  * went wrong goes to stderr. With --pass it prints the status input again instead of its own status, for
@@ -351,6 +371,7 @@ export async function statusline(args: ParsedArgs, runtime: CliRuntime): Promise
     const path = join(setup.snapshotDir, `${snapshot.sessionId}.json`);
     const previous = await runtime.files.read(path);
     await runtime.files.write(path, formatSnapshot(datedSnapshot(snapshot, previous === undefined ? undefined : parseSnapshot(previous))));
+    await pruneQuietly(runtime, setup.snapshotDir);
   } catch (error) {
     runtime.out.stderr(`teamrig statusline: the snapshot was not saved: ${errorMessage(error)}`);
   }
