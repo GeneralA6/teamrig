@@ -6,7 +6,7 @@ they all stay silent, and only `hook restore-track` still records the session ([
 
 | Claude Code event | teamrig hook | What it does |
 | --- | --- | --- |
-| `SessionStart` (startup, resume, `/clear`, compact) | `hook session-start` | Injects the team rules and who you are |
+| `SessionStart` (startup, resume, `/clear`, compact) | `hook session-start` | Injects the team rules and who you are, and records the session's Claude Code process (`state/sessions/<id>.json`) |
 | `SubagentStart` (each helper) | `hook subagent-start` | Gives the helper the team rules and whose helper it is ([A helper's start](#a-helpers-start)) |
 | `SessionStart` (`/clear`), in the background | `hook refresh-wake` | Wakes a session that `/clear` started from its context refresh, so it carries on without a prompt |
 | `UserPromptSubmit` (each prompt) | `hook inbox-reminder` | Cancels a waiting automatic restart; shows new inbox lines; binds a tab started by hand by its title; records a Claude Code rename; tells the model when its budget holds it |

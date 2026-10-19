@@ -75,6 +75,7 @@ describe('teamPaths', () => {
     assert.equal(paths.logs, join(TEAM_HOME, 'state', 'logs'));
     assert.equal(paths.wake, join(TEAM_HOME, 'state', 'wake'));
     assert.equal(paths.wakeLog, join(TEAM_HOME, 'state', 'wakes.jsonl'));
+    assert.equal(paths.sessions, join(TEAM_HOME, 'state', 'sessions'));
   });
 
   it('never shares a file between two teams', () => {
