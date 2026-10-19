@@ -4,9 +4,9 @@ import { underLock } from "../coordinator/host-lock.js";
 import { appendDeploy } from "../coordinator/ledger.js";
 import { NOT_STARTED_EXIT, recordHeavy } from "../coordinator/recorded-step.js";
 import { heavyCutoffReason, resetBlackoutReason } from "../coordinator/schedule.js";
-import { exitCodeOf } from "../coordinator/steps.js";
 import { samePath } from "../core/paths.js";
 import { askGates, shownLine } from "./gates.js";
+import { hookEndText, hookExitCode, succeeded } from "./hooks.js";
 import { plural, readPending, rollRepos, short } from "./pending.js";
 /**
  * `teamrig roll`: brings what was pushed to a repository's default branch to the running system, one roll on the host
@@ -19,25 +19,6 @@ import { plural, readPending, rollRepos, short } from "./pending.js";
 const MINUTE_MS = 60_000;
 /** The line a roll command prints when nothing needed rolling: the pull stays, and no deploy is recorded. */
 export const NO_ROLL_LINE = 'no-roll';
-function succeeded(end) {
-    return end.kind === 'exited' && end.code === 0;
-}
-/** The exit code a hook's end is recorded as: its own, 124 at its time limit, 1 when a signal stopped it or it did not start. */
-export function hookExitCode(end) {
-    return end.kind === 'notStarted' ? NOT_STARTED_EXIT : exitCodeOf(end);
-}
-function hookEndText(end) {
-    switch (end.kind) {
-        case 'exited':
-            return `exited ${end.code}`;
-        case 'signal':
-            return `was stopped by ${end.signal}`;
-        case 'timedOut':
-            return 'was killed at its time limit';
-        case 'notStarted':
-            return `could not start (${end.error})`;
-    }
-}
 function runExitCode(run) {
     switch (run.kind) {
         case 'notPulled':

@@ -341,11 +341,12 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       parent step's session, else the session this Claude Code tab is bound to
   integrate [--session <id|name>] [--keep-remote] [--no-delete-local]   lands the branch checked out
       here on origin's default branch: REFUSED for a detached HEAD, the default branch, uncommitted
-      changes, nothing new or a dependency change coordinator.repos.<name>.dependencyGate holds, from
-      coordinator.schedule.heavyCutoffUtc to midnight UTC and in the resetBlackoutHours before the
-      weekly token reset; waits up to coordinator.wait.maxMinutes for quiet claims on its deploysOnPush
-      targets and for the host lock, rebases and pushes (a heavy step in the ledger; again when origin
-      moved meanwhile), records the push as a deploy of deploysOnPush, deletes the branch on origin
+      changes, nothing new or a dependency change coordinator.repos.<name>.dependencyGate holds and
+      no dependencyCheck may clear, from coordinator.schedule.heavyCutoffUtc to midnight UTC and in the
+      resetBlackoutHours before the weekly token reset; waits up to coordinator.wait.maxMinutes for
+      quiet claims on its deploysOnPush targets and for the host lock, rebases, runs the
+      dependencyCheck on a dependency change (REFUSED unless it exits 0) and pushes (each a heavy step
+      in the ledger; again when origin moved meanwhile), records the push as a deploy of deploysOnPush, deletes the branch on origin
       and here (--keep-remote, --no-delete-local keep them) and, where followMainCheckout, fast-forwards
       the main checkout; exit 0 landed, 1 failed
   roll [--repo <name>] [--session <id|name>]   brings what was pushed to a repository's default
