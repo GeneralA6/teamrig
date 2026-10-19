@@ -4,6 +4,7 @@ import { text } from 'node:stream/consumers';
 import { fileURLToPath } from 'node:url';
 import { nodeTranscriptSource } from '../budget/discover.ts';
 import { nodeFiles } from '../core/files.ts';
+import { nodeHostMemory } from '../coordinator/memory.ts';
 import { nodeStepRunner } from '../coordinator/steps.ts';
 import { realSleep, systemClock } from '../core/lock.ts';
 import { NODE_PATH_PROBE } from '../core/path-probe.ts';
@@ -43,6 +44,7 @@ process.exitCode = await runCli(process.argv.slice(2), {
   sessionProcesses: nodeSessionProcesses(),
   shell: nodeShellRunner(),
   steps: nodeStepRunner(process.platform),
+  memory: nodeHostMemory(process.platform),
   gh: nodeGhRunner(),
   credentials: systemCredentials(process.platform, nodeProgramRunner()),
   probe: NODE_PATH_PROBE,

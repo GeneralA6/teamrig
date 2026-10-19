@@ -1,6 +1,7 @@
 import type { CliRuntime } from '../cli/runtime.ts';
 import { FakeCredentials } from './fake-credentials.ts';
 import { FakeGh } from './fake-gh.ts';
+import { FakeHostMemory } from './fake-host-memory.ts';
 import { FakeHooks } from './fake-hooks.ts';
 import { FakeIntegrateGit } from './fake-integrate-git.ts';
 import { FakeSessionProcesses } from './fake-session-processes.ts';
@@ -11,7 +12,7 @@ import { noWorktrees } from './fake-worktrees.ts';
 import { quietRestore } from './fake-restore.ts';
 
 /** The parts of a CLI run that reach outside the kit: git, the commit log, stdin and the operating system. */
-export type OutsideWorld = Pick<CliRuntime, 'git' | 'commitLog' | 'readStdin' | 'platform' | 'processes' | 'sessionProcesses' | 'shell' | 'gh' | 'credentials' | 'probe' | 'self' | 'requirements' | 'transcripts' | 'worktrees' | 'restore' | 'integrateGit' | 'hooks' | 'steps' | 'newId'>;
+export type OutsideWorld = Pick<CliRuntime, 'git' | 'commitLog' | 'readStdin' | 'platform' | 'processes' | 'sessionProcesses' | 'shell' | 'gh' | 'credentials' | 'probe' | 'self' | 'requirements' | 'transcripts' | 'worktrees' | 'restore' | 'integrateGit' | 'hooks' | 'steps' | 'memory' | 'newId'>;
 
 /**
  * The outside world when a run does not care about it: the repo on `branch` with no push target or config, no commits in
@@ -41,6 +42,7 @@ export function quietWorld(branch: string = 'dev', stdin: string = ''): OutsideW
     integrateGit: new FakeIntegrateGit(),
     hooks: new FakeHooks(),
     steps: new FakeSteps(),
+    memory: new FakeHostMemory(),
     newId: () => {
       ids += 1;
       return `id-${ids}`;

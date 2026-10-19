@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { FIRST_IN_LINE_POLL_MS } from '../coordinator/host-lock.ts';
 import { APP, CliHarness, KIT, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
+import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { FakeSteps } from '../testing/fake-steps.ts';
 
@@ -53,7 +54,7 @@ describe('teamrig heavy', () => {
       expiresAt: '2030-01-08T12:30:00.000Z',
     });
     assert.equal(kit.files.get(LOCK), undefined, 'the lock is released');
-    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:05:00.000Z', exitCode: 0 }]);
   });
 
@@ -87,7 +88,7 @@ describe('teamrig heavy', () => {
       ],
       stderr: [],
     });
-    assert.deepEqual(ledgerOf(kit)[1], { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', startedAt: '2030-01-08T10:00:00.000Z', endedAt: '2030-01-08T10:45:00.000Z', exitCode: 124 });
+    assert.deepEqual(ledgerOf(kit)[1], { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: '2030-01-08T10:45:00.000Z', exitCode: 124 });
   });
 
   it('prints FAILED for a step a signal stopped, recorded as exit 1', async () => {
@@ -151,6 +152,25 @@ describe('teamrig heavy', () => {
     });
     assert.deepEqual(kit.clock.sleeps, Array.from({ length: MINUTE / FIRST_IN_LINE_POLL_MS }, () => FIRST_IN_LINE_POLL_MS), 'the first in line looks every 2 s');
     assert.equal(kit.files.get(LOCK), heldBy());
+  });
+
+  it('records when the step began to wait and what its process tree and the host held while it ran', async () => {
+    const { kit, steps } = harness();
+    steps.ends(0, 5 * MINUTE);
+    const memory = new FakeHostMemory().measures({ peakTreeMb: 1900, lowFreeMb: 6400 });
+    await kit.files.write(LOCK, heldBy('2030-01-08T10:03:00.000Z'));
+    assert.equal((await kit.run(BUILD, { steps, memory, sessionProcesses: otherRuns() })).code, 0);
+    assert.deepEqual(memory.watches, [{ root: 4242, intervalMs: 15_000, stopped: true }], "its own process's tree, every 15 s");
+    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:03:00.000Z', endedAt: null, exitCode: null };
+    assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:08:00.000Z', exitCode: 0, peakTreeMb: 1900, lowFreeMb: 6400 }]);
+  });
+
+  it('watches no memory when the config samples it every 0 seconds', async () => {
+    const { kit, steps } = harness({ ...TEAM, coordinator: { heavy: { memorySampleSeconds: 0 } } });
+    const memory = new FakeHostMemory().measures({ peakTreeMb: 1900, lowFreeMb: 6400 });
+    assert.equal((await kit.run(BUILD, { steps, memory })).code, 0);
+    assert.deepEqual(memory.watches, []);
+    assert.equal(ledgerOf(kit).some((record) => JSON.stringify(record).includes('peakTreeMb')), false);
   });
 
   it('takes over a lock its process left behind', async () => {
