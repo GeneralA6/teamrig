@@ -6,7 +6,8 @@ import { parseLedger } from '../../coordinator/ledger.ts';
 import { coordinatorPlaces } from '../../coordinator/places.ts';
 import { runRecorded, type StepWatch } from '../../coordinator/recorded-step.ts';
 import { heavyCutoffReason, minutesText } from '../../coordinator/schedule.ts';
-import { exitCodeOf, TIMED_OUT_EXIT, type StepEnd } from '../../coordinator/steps.ts';
+import { endedText, type StarterWatching } from '../../coordinator/starter-watch.ts';
+import { exitCodeOf, STOPPED_EXIT, TIMED_OUT_EXIT, type StepEnd } from '../../coordinator/steps.ts';
 import { ENV } from '../../core/home.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import { commandLine } from '../../test-run/shell.ts';
@@ -76,9 +77,13 @@ function sharingText(share: ShareRequest, taking: Extract<Taking, { kind: 'taken
   return `sharing the host: ${share.reserveMb} MB held for it (${taking.sharing.freeMb} MB free, ${others} other small step${others === 1 ? '' : 's'})`;
 }
 
-/** The last line: DONE, FAILED or TIMED OUT, with the exit code the ledger recorded. */
-function report(runtime: CliRuntime, say: Say, end: StepEnd, maxRunMinutes: number): ExitCode {
+/** The last line: DONE, FAILED, TIMED OUT or STOPPED, with the exit code the ledger recorded. */
+function report(runtime: CliRuntime, say: Say, end: StepEnd, maxRunMinutes: number, watching: StarterWatching): ExitCode {
   switch (end.kind) {
+    case 'stopped':
+      say(`its launching shell ended (${endedText(watching)}): killed its process tree`);
+      runtime.out.stdout(`STOPPED killed, recorded as exit ${STOPPED_EXIT}`);
+      return EXIT.failed;
     case 'timedOut':
       say(`timed out after ${minutesText(maxRunMinutes)}: killed its process tree`);
       runtime.out.stdout(`TIMED OUT killed, recorded as exit ${TIMED_OUT_EXIT}`);
@@ -130,10 +135,43 @@ async function sessionOf(args: ParsedArgs, runtime: CliRuntime, kit: Kit, roster
  * cutoff check and ledger record cover it, and waiting for the lock would wait on its own parent. `parent` is its
  * holder as `holderText` writes it.
  */
-async function runUnderParent(runtime: CliRuntime, say: Say, parent: string, what: string, words: readonly string[], maxRunMinutes: number): Promise<ExitCode> {
+async function runUnderParent(runtime: CliRuntime, say: Say, parent: string, step: Step): Promise<ExitCode> {
+  const { what, words, maxRunMinutes, watching } = step;
   say(`running: ${what} under the host lock of ${parent} (killed after ${minutesText(maxRunMinutes)})`);
-  const end = await runtime.steps.run({ command: commandLine(words, runtime.platform), cwd: runtime.cwd, env: runtime.env, timeoutMs: maxRunMinutes * MINUTE_MS });
-  return report(runtime, say, end, maxRunMinutes);
+  const end = await runtime.steps.run({ command: commandLine(words, runtime.platform), cwd: runtime.cwd, env: runtime.env, timeoutMs: maxRunMinutes * MINUTE_MS, stop: watching.stop });
+  return report(runtime, say, end, maxRunMinutes, watching);
+}
+
+/** One heavy step as asked: its label, its command's words, its time limit and the watch on the shell that started it. */
+interface Step {
+  readonly what: string;
+  readonly words: readonly string[];
+  readonly maxRunMinutes: number;
+  readonly watching: StarterWatching;
+}
+
+/**
+ * Watches the processes that started this one, so a step whose launching shell ends (Claude Code's reaper ends a Bash
+ * tool's shell alone) neither takes the host lock nor runs on holding it; said when the system would not list them.
+ */
+async function watchStarters(runtime: CliRuntime, say: Say): Promise<StarterWatching> {
+  const watching = await runtime.starters.watch();
+  if (watching.starters.length === 0) {
+    say('could not list the processes that started this one: the step runs on if its shell ends');
+  }
+  return watching;
+}
+
+/** What `taking` settles to; undefined when `stop` aborted first, since once the shell is gone no one reads why it ended. */
+async function unlessStopped<T>(stop: AbortSignal, taking: Promise<T>): Promise<T | undefined> {
+  try {
+    return await taking;
+  } catch (error) {
+    if (stop.aborted) {
+      return undefined;
+    }
+    throw error;
+  }
 }
 
 /**
@@ -145,8 +183,9 @@ async function runUnderParent(runtime: CliRuntime, say: Say, parent: string, wha
  * every `memorySampleSeconds`, the most its process tree held and the least free memory the host had. Its processes get `$TEAMRIG_HOST_LOCK`,
  * so a `heavy` among them (a git hook's checks) runs at once under this lock. With `--small` (a spec run, a lint) the
  * step shares the host with other small steps instead, while the host keeps `memoryFloorMb` free besides the MB held
- * for them (`reserveMbOf`); a step without it waits for them to end. Exit 0 when the command passed, 1 when it failed
- * or was killed, 2 refused.
+ * for them (`reserveMbOf`); a step without it waits for them to end. Once the shell that started it ends (Claude Code's
+ * reaper ends a Bash tool's shell alone), it stops waiting for the lock, or kills its step and records exit 129, and
+ * frees the lock. Exit 0 when the command passed, 1 when it failed, was killed or was stopped, 2 refused.
  */
 export async function heavy(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const words = commandWordsOf(args);
@@ -161,42 +200,57 @@ export async function heavy(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const lock = hostLockOf(runtime, places.hostLock, coordinator.heavy);
   const parent = await parentLockOf(runtime, lock, say);
   const session = await sessionOf(args, runtime, kit, await rosterOf(runtime, kit, config), parent);
-  if (parent !== undefined) {
-    return runUnderParent(runtime, say, holderText({ kind: 'held', info: parent }, zone), what, words, maxRunMinutes);
-  }
-  refuseAfterCutoff(runtime, coordinator.schedule.heavyCutoffUtc, zone);
-  const queuedAt = runtime.clock.now();
-  const small = args.switches.has('small');
-  const share: ShareRequest | undefined = small
-    ? { reserveMb: await reserveMbOf(runtime, places.ledger, session, what, coordinator.heavy), floorMb: coordinator.heavy.memoryFloorMb, freeMb: () => runtime.memory.freeMb() }
-    : undefined;
-  const waiting = small ? 'waiting to share the host' : 'waiting for the host lock';
-  const taking = await lock.acquire(
-    session,
-    `heavy: ${what}`,
-    coordinator.heavy.waitMinutes * MINUTE_MS,
-    coordinator.wait.pollSeconds * 1_000,
-    (holder, ahead) => say(`${waiting}: ${waitText(holder, ahead, zone)}`),
-    share,
-  );
-  if (taking.kind === 'busy') {
-    throw new RefusedError(busyText(taking, zone));
-  }
-  if (taking.kind === 'withdrawn') {
-    throw new RefusedError(`withdrawn from the host lock's line (teamrig withdraw): ${what} did not run`);
-  }
+  const watching = await watchStarters(runtime, say);
   try {
-    refuseAfterCutoff(runtime, coordinator.schedule.heavyCutoffUtc, zone);
-    const sharing = share === undefined ? undefined : sharingText(share, taking);
-    if (sharing !== undefined) {
-      say(sharing);
+    const step: Step = { what, words, maxRunMinutes, watching };
+    if (parent !== undefined) {
+      return await runUnderParent(runtime, say, holderText({ kind: 'held', info: parent }, zone), step);
     }
-    say(`running: ${what} (killed after ${minutesText(maxRunMinutes)})`);
-    const request = { command: commandLine(words, runtime.platform), cwd: runtime.cwd, env: underLock(runtime.env, taking.lock), timeoutMs: maxRunMinutes * MINUTE_MS };
-    const mark = { session, what, queuedAt, ...(taking.sharing === undefined ? {} : { shared: true as const }), request };
-    const end = await runRecorded(runtime, places.ledger, mark, watchOf(runtime, coordinator.heavy));
-    return report(runtime, say, end, maxRunMinutes);
+    refuseAfterCutoff(runtime, coordinator.schedule.heavyCutoffUtc, zone);
+    const queuedAt = runtime.clock.now();
+    const small = args.switches.has('small');
+    const share: ShareRequest | undefined = small
+      ? { reserveMb: await reserveMbOf(runtime, places.ledger, session, what, coordinator.heavy), floorMb: coordinator.heavy.memoryFloorMb, freeMb: () => runtime.memory.freeMb() }
+      : undefined;
+    const waiting = small ? 'waiting to share the host' : 'waiting for the host lock';
+    const taking = await unlessStopped(
+      watching.stop,
+      lock.acquire(
+        session,
+        `heavy: ${what}`,
+        coordinator.heavy.waitMinutes * MINUTE_MS,
+        coordinator.wait.pollSeconds * 1_000,
+        (holder, ahead) => say(`${waiting}: ${waitText(holder, ahead, zone)}`),
+        share,
+        watching.stop,
+      ),
+    );
+    if (taking === undefined) {
+      say(`its launching shell ended (${endedText(watching)}) while it waited: no one waits for it any more`);
+      runtime.out.stdout('STOPPED before the host lock was free: nothing ran');
+      return EXIT.failed;
+    }
+    if (taking.kind === 'busy') {
+      throw new RefusedError(busyText(taking, zone));
+    }
+    if (taking.kind === 'withdrawn') {
+      throw new RefusedError(`withdrawn from the host lock's line (teamrig withdraw): ${what} did not run`);
+    }
+    try {
+      refuseAfterCutoff(runtime, coordinator.schedule.heavyCutoffUtc, zone);
+      const sharing = share === undefined ? undefined : sharingText(share, taking);
+      if (sharing !== undefined) {
+        say(sharing);
+      }
+      say(`running: ${what} (killed after ${minutesText(maxRunMinutes)})`);
+      const request = { command: commandLine(words, runtime.platform), cwd: runtime.cwd, env: underLock(runtime.env, taking.lock), timeoutMs: maxRunMinutes * MINUTE_MS, stop: watching.stop };
+      const mark = { session, what, queuedAt, ...(taking.sharing === undefined ? {} : { shared: true as const }), request };
+      const end = await runRecorded(runtime, places.ledger, mark, watchOf(runtime, coordinator.heavy));
+      return report(runtime, say, end, maxRunMinutes, watching);
+    } finally {
+      await lock.release(taking.lock);
+    }
   } finally {
-    await lock.release(taking.lock);
+    watching.close();
   }
 }

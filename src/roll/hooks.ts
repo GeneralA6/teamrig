@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { NOT_STARTED_EXIT } from '../coordinator/recorded-step.ts';
-import { exitCodeOf, nodeTreeKill, type StepEnd, type TreeKill } from '../coordinator/steps.ts';
+import { exitCodeOf, nodeTreeKill, type LimitedEnd, type TreeKill } from '../coordinator/steps.ts';
 import type { Env } from '../core/home.ts';
 import { endOf } from '../test-run/shell.ts';
 
@@ -21,7 +21,7 @@ export interface HookRequest {
 }
 
 /** How a hook ended: as a step does, or not started at all (no such program, or a missing folder). */
-export type HookEnd = StepEnd | { readonly kind: 'notStarted'; readonly error: string };
+export type HookEnd = LimitedEnd | { readonly kind: 'notStarted'; readonly error: string };
 
 export interface HookRunner {
   run(request: HookRequest): Promise<HookEnd>;

@@ -21,6 +21,7 @@ import type { CredentialStore } from '../github/credentials.ts';
 import type { GhRunner } from '../github/gh.ts';
 import type { ShellRunner } from '../test-run/shell.ts';
 import type { HostMemory } from '../coordinator/memory.ts';
+import type { StarterWatch } from '../coordinator/starter-watch.ts';
 import type { StepRunner } from '../coordinator/steps.ts';
 import type { HookRunner } from '../roll/hooks.ts';
 import type { IntegrateGit } from '../integrate/git.ts';
@@ -95,6 +96,8 @@ export interface RunOptions {
   readonly steps?: StepRunner;
   /** The host memory `teamrig heavy` watches its step with; default one that measures nothing. */
   readonly memory?: HostMemory;
+  /** The processes that started a `teamrig heavy` run; default a shell and its Claude Code, which never end. */
+  readonly starters?: StarterWatch;
   /** The git `teamrig integrate` drives; default the fake repository at /w/feat (testing/fake-integrate-git.ts). */
   readonly integrateGit?: IntegrateGit;
   /** The runner `teamrig roll` runs its gates, afterPull hooks and roll command in; default one whose programs print nothing and exit 0. */
@@ -149,6 +152,7 @@ export class CliHarness {
       ...(options.restore === undefined ? {} : { restore: options.restore }),
       ...(options.steps === undefined ? {} : { steps: options.steps }),
       ...(options.memory === undefined ? {} : { memory: options.memory }),
+      ...(options.starters === undefined ? {} : { starters: options.starters }),
       ...(options.integrateGit === undefined ? {} : { integrateGit: options.integrateGit }),
       ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
       out: { stdout: (line) => stdout.push(line), stderr: (line) => stderr.push(line) },

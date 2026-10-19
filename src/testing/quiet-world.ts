@@ -6,20 +6,22 @@ import { FakeHooks } from './fake-hooks.ts';
 import { FakeIntegrateGit } from './fake-integrate-git.ts';
 import { FakeSessionProcesses } from './fake-session-processes.ts';
 import { FakeShell } from './fake-shell.ts';
+import { FakeStarterWatch } from './fake-starter-watch.ts';
 import { FakeSteps } from './fake-steps.ts';
 import { MemoryTranscripts } from './memory-transcripts.ts';
 import { noWorktrees } from './fake-worktrees.ts';
 import { quietRestore } from './fake-restore.ts';
 
 /** The parts of a CLI run that reach outside the kit: git, the commit log, stdin and the operating system. */
-export type OutsideWorld = Pick<CliRuntime, 'git' | 'commitLog' | 'readStdin' | 'platform' | 'processes' | 'sessionProcesses' | 'shell' | 'gh' | 'credentials' | 'probe' | 'self' | 'requirements' | 'transcripts' | 'worktrees' | 'restore' | 'integrateGit' | 'hooks' | 'steps' | 'memory' | 'newId'>;
+export type OutsideWorld = Pick<CliRuntime, 'git' | 'commitLog' | 'readStdin' | 'platform' | 'processes' | 'sessionProcesses' | 'shell' | 'gh' | 'credentials' | 'probe' | 'self' | 'requirements' | 'transcripts' | 'worktrees' | 'restore' | 'integrateGit' | 'hooks' | 'steps' | 'memory' | 'starters' | 'newId'>;
 
 /**
  * The outside world when a run does not care about it: the repo on `branch` with no push target or config, no commits in
  * any range, `stdin` (default empty) on stdin, and a Linux host with no programs or folders,
  * so nothing starts and no session process runs, a shell command prints nothing and exits 0, gh sees no repository and no token is saved; its requirements check finds
  * nothing missing, and there are no transcripts and no worktrees; integrate finds only the fake repository at /w/feat
- * (testing/fake-integrate-git.ts), a heavy step and each program a roll runs exit 0 at once, and new ids count up: `id-1`, `id-2`.
+ * (testing/fake-integrate-git.ts), a heavy step and each program a roll runs exit 0 at once while the shell that started it
+ * runs on, and new ids count up: `id-1`, `id-2`.
  */
 export function quietWorld(branch: string = 'dev', stdin: string = ''): OutsideWorld {
   let ids = 0;
@@ -43,6 +45,7 @@ export function quietWorld(branch: string = 'dev', stdin: string = ''): OutsideW
     hooks: new FakeHooks(),
     steps: new FakeSteps(),
     memory: new FakeHostMemory(),
+    starters: new FakeStarterWatch(),
     newId: () => {
       ids += 1;
       return `id-${ids}`;

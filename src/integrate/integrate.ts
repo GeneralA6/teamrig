@@ -126,6 +126,8 @@ function endText(end: StepEnd): string {
       return `was stopped by ${end.signal}`;
     case 'timedOut':
       return `was killed at its time limit (exit ${exitCodeOf(end)})`;
+    case 'stopped':
+      return `was killed when its launching shell ended (exit ${exitCodeOf(end)})`;
   }
 }
 

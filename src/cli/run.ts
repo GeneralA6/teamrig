@@ -368,7 +368,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       (a build, a test run, a database script) under the host lock, so the host runs one at a time:
       waits up to coordinator.heavy.waitMinutes for the lock, kills the step and every process it
       started after coordinator.heavy.maxRunMinutes (--max-minutes) and records its start and end in
-      the coordinator's ledger; REFUSED from coordinator.schedule.heavyCutoffUtc to midnight UTC and
+      the coordinator's ledger; once the shell that started it ends, it stops waiting for the lock or
+      kills the step (exit 129); REFUSED from coordinator.schedule.heavyCutoffUtc to midnight UTC and
       when the lock is still held; exit 0 when the command passed, 1 when it failed or was killed. Its
       processes get $TEAMRIG_HOST_LOCK: a heavy step started under a live lock (a git hook's checks
       under heavy, integrate or roll) runs at once under it. No --session: $TEAMRIG_SESSION, the
