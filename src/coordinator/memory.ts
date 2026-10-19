@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { freemem } from 'node:os';
+import { treeOf, wholeNumberTriples, type ProcessLink } from './processes.ts';
 
 const MB = 2 ** 20;
 
@@ -7,9 +8,7 @@ const MB = 2 ** 20;
 const LIST_MAX_BUFFER = 16 * MB;
 
 /** One process as the host lists it: its id, its parent's and its working set (resident memory), in bytes. */
-export interface ProcessRow {
-  readonly pid: number;
-  readonly parent: number;
+export interface ProcessRow extends ProcessLink {
   readonly bytes: number;
 }
 
@@ -50,27 +49,6 @@ export const nodeEvery: Every = (ms, tick) => {
   timer.unref();
   return () => clearInterval(timer);
 };
-
-/** The process `root` and every descendant still running, by parent links; empty when `root` is not listed. */
-export function treeOf(root: number, rows: readonly ProcessRow[]): ProcessRow[] {
-  const children = new Map<number, ProcessRow[]>();
-  for (const row of rows) {
-    if (row.pid !== row.parent) {
-      children.set(row.parent, [...(children.get(row.parent) ?? []), row]);
-    }
-  }
-  const tree = rows.filter((row) => row.pid === root);
-  const seen = new Set(tree.map((row) => row.pid));
-  for (let index = 0; index < tree.length; index += 1) {
-    for (const child of children.get(tree[index]?.pid ?? -1) ?? []) {
-      if (!seen.has(child.pid)) {
-        seen.add(child.pid);
-        tree.push(child);
-      }
-    }
-  }
-  return tree;
-}
 
 /** The MB the tree of `root` holds; 0 when `root` is not listed. */
 export function treeMb(root: number, rows: readonly ProcessRow[]): number {
@@ -113,11 +91,7 @@ export function watchMemory(probe: MemoryProbe, root: number, intervalMs: number
 
 /** Rows of `<pid>,<parent>,<bytes>` lines; a line that is not three whole numbers is left out. */
 export function parseProcessRows(text: string): ProcessRow[] {
-  return text.split(/\r?\n/).flatMap((line): ProcessRow[] => {
-    const cells = line.trim().split(/[,\s]+/).map(Number);
-    const [pid, parent, bytes] = cells;
-    return cells.length === 3 && pid !== undefined && parent !== undefined && bytes !== undefined && cells.every(Number.isSafeInteger) ? [{ pid, parent, bytes }] : [];
-  });
+  return wholeNumberTriples(text).map(([pid, parent, bytes]) => ({ pid, parent, bytes }));
 }
 
 /** Win32_Process lists every process with its parent and working set; `ps` prints the resident set in KB. */
