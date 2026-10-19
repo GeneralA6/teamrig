@@ -112,7 +112,7 @@ describe('teamrig integrate', () => {
     });
     await kit.files.write(join(TEAM_HOME, 'live', `${SESSION_ID}.json`), snapshot);
     const result = await kit.run(INTEGRATE, { ...IN_WORKTREE, integrateGit: git, steps });
-    assert.deepEqual(result.stdout, ['REFUSED deploy blackout before the weekly token reset: no deploy from 2030-01-08 08:00 until 2030-01-08 12:00 UTC (reset from the status line)']);
+    assert.deepEqual(result.stdout, ['REFUSED deploy blackout before the weekly token reset: no deploy from Tue 01-08 08:00 UTC until Tue 01-08 12:00 UTC (reset from the status line)']);
     assert.deepEqual(steps.ran, []);
   });
 
@@ -125,6 +125,6 @@ describe('teamrig integrate', () => {
   it('takes the reset from budget.reset when no status line reported one', async () => {
     const { kit, git, steps } = world({ ...DEPLOYING, budget: { reset: { weekday: 'tue', timeUtc: '11:00' } }, coordinator: { ...DEPLOYING.coordinator, schedule: { resetBlackoutHours: 2 } } });
     const result = await kit.run(INTEGRATE, { ...IN_WORKTREE, integrateGit: git, steps });
-    assert.deepEqual(result.stdout, ['REFUSED deploy blackout before the weekly token reset: no deploy from 2030-01-08 09:00 until 2030-01-08 11:00 UTC (reset from the budget.reset config)']);
+    assert.deepEqual(result.stdout, ['REFUSED deploy blackout before the weekly token reset: no deploy from Tue 01-08 09:00 UTC until Tue 01-08 11:00 UTC (reset from the budget.reset config)']);
   });
 });

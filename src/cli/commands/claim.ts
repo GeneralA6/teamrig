@@ -1,15 +1,14 @@
 import type { CoordinatorConfig } from '../../config/types.ts';
 import { addClaim, releaseClaim, type ClaimOutcome, type ClaimPorts } from '../../coordinator/claim-store.ts';
-import type { Claim } from '../../coordinator/claims.ts';
+import { claimEndText } from '../../coordinator/claims.ts';
 import { coordinatorPlaces, type CoordinatorPlaces } from '../../coordinator/places.ts';
 import { parseSpanMinutes } from '../../coordinator/schedule.ts';
 import { deployTargetsOf } from '../../coordinator/targets.ts';
 import { SecretScanner } from '../../core/secrets.ts';
-import { formatUtcMinute } from '../../core/time.ts';
 import { requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
 import { claimsLockOf } from '../coordinator-ports.ts';
 import { callerOf, listOf } from '../inputs.ts';
-import { openTeamKit, requireConfig, rosterOf, sessionIdOf } from '../kit.ts';
+import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 
 /** What a claim command works on: the session, the coordinator's config and places, and the claims' ports. */
@@ -33,12 +32,8 @@ async function claimContextOf(args: ParsedArgs, runtime: CliRuntime): Promise<Cl
     coordinator,
     places,
     secretPatterns: config.register.secretPatterns,
-    ports: { files: runtime.files, clock: runtime.clock, lock: claimsLockOf(runtime, places.claimsLock) },
+    ports: { files: runtime.files, clock: runtime.clock, zone: teamZone(config, runtime), lock: claimsLockOf(runtime, places.claimsLock) },
   };
-}
-
-function untilText(claim: Claim): string {
-  return `${formatUtcMinute(new Date(Date.parse(claim.until)))} UTC`;
 }
 
 /** The claim a write returned; a refusal is REFUSED, and a write another writer held up past the wait is FAILED. */
@@ -76,7 +71,7 @@ export async function claim(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   if (written.kind === 'exit') {
     return written.code;
   }
-  runtime.out.stdout(`CLAIMED ${written.value.targets.join(', ')} until ${untilText(written.value)}`);
+  runtime.out.stdout(`CLAIMED ${written.value.targets.join(', ')} until ${claimEndText(written.value.until, context.ports.zone)}`);
   return EXIT.ok;
 }
 
@@ -88,6 +83,6 @@ export async function release(args: ParsedArgs, runtime: CliRuntime): Promise<Ex
     return written.code;
   }
   const ended = written.value;
-  runtime.out.stdout(ended === undefined ? 'NONE this session held no claim' : `RELEASED ${ended.targets.join(', ')} (claimed until ${untilText(ended)})`);
+  runtime.out.stdout(ended === undefined ? 'NONE this session held no claim' : `RELEASED ${ended.targets.join(', ')} (claimed until ${claimEndText(ended.until, context.ports.zone)})`);
   return EXIT.ok;
 }

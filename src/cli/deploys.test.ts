@@ -52,9 +52,9 @@ describe('teamrig deploys', () => {
     assert.equal(result.code, 0, JSON.stringify(result));
     const trim = /^ {2}(\S+) by alpha: trim/m.exec(result.stdout.join('\n'))?.[1];
     assert.deepEqual(result.stdout, [
-      'host lock: po (heavy: build) since 2030-01-08 09:50',
-      'heavy cutoff: from 22:30 UTC until midnight (no heavy step starts)',
-      'deploy blackout: IN FORCE 2030-01-08 08:00 until 2030-01-08 12:00 UTC (no integrate or roll; reset from the budget.reset config)',
+      'host lock: po (heavy: build) since 2030-01-08 09:50 UTC',
+      'heavy cutoff: 22:30-00:00 UTC (no heavy step starts)',
+      'deploy blackout: IN FORCE Tue 01-08 08:00 UTC until Tue 01-08 12:00 UTC (no integrate or roll; reset from the budget.reset config)',
       'claims: 1',
       '  quiet claim by bravo on cloud-api until 2030-01-08 10:30 UTC (p95)',
       'loads: 2',
@@ -64,6 +64,25 @@ describe('teamrig deploys', () => {
     ]);
   });
 
+  it("shows the times on the team's clock", async () => {
+    const kit = new CliHarness(DEPLOYING);
+    const inIsrael = { timeZone: 'Asia/Jerusalem' };
+    await kit.files.append(LOCK, heldBy());
+    const claim = ['claim', '--session', 'bravo', '--targets', 'cloud-api', '--metric', 'p95', '--why', 'cache probe', '--for', '30m'];
+    assert.deepEqual((await kit.run(claim, inIsrael)).stdout, ['CLAIMED cloud-api until 2030-01-08 12:30 IST']);
+    assert.equal((await kit.run(['load', '--session', 'alpha', '--what', 'trim', '--at', '11:00'], inIsrael)).code, 0);
+    const result = await kit.run(['deploys'], { integrateGit: behind(), sessionProcesses: otherRuns(), ...inIsrael });
+    assert.deepEqual(result.stdout.slice(0, 6), [
+      'host lock: po (heavy: build) since 2030-01-08 11:50 IST',
+      'heavy cutoff: 00:30-02:00 IST (no heavy step starts)',
+      'deploy blackout: IN FORCE Tue 01-08 10:00 IST until Tue 01-08 14:00 IST (no integrate or roll; reset from the budget.reset config)',
+      'claims: 1',
+      '  quiet claim by bravo on cloud-api until 2030-01-08 12:30 IST (p95)',
+      'loads: 1',
+    ]);
+    assert.match(result.stdout[6] ?? '', / by alpha: trim on the whole host since 2030-01-08 11:00 IST$/);
+  });
+
   it('shows a stale lock as free, an unset cutoff and blackout, no claims or loads, and nothing to roll', async () => {
     const kit = new CliHarness(PLAIN);
     await kit.files.append(LOCK, heldBy('2030-01-08T09:55:00.000Z'));
@@ -71,7 +90,7 @@ describe('teamrig deploys', () => {
     assert.deepEqual(await kit.run(['deploys'], { integrateGit: new FakeIntegrateGit(), sessionProcesses: otherRuns() }), {
       code: 0,
       stdout: [
-        'host lock: free: the lock of po (heavy: build) since 2030-01-08 09:50 is stale, and the next heavy step removes it',
+        'host lock: free: the lock of po (heavy: build) since 2030-01-08 09:50 UTC is stale, and the next heavy step removes it',
         'heavy cutoff: none (coordinator.schedule.heavyCutoffUtc is not set)',
         'deploy blackout: none (coordinator.schedule.resetBlackoutHours is not set)',
         'claims: none',
@@ -100,7 +119,7 @@ describe('teamrig deploys', () => {
     const { stdout } = await kit.run(['deploys'], { integrateGit: offBranch });
     assert.deepEqual(stdout.slice(0, 3), [
       'host lock: a writer that has not finished writing',
-      'heavy cutoff: IN FORCE from 09:30 UTC until midnight (no heavy step starts)',
+      'heavy cutoff: IN FORCE 09:30-00:00 UTC (no heavy step starts)',
       'deploy blackout: unknown: neither the status line nor budget.reset names the weekly token reset',
     ]);
     assert.match(stdout[3] ?? '', /^claims: unreadable \(.+\)$/);

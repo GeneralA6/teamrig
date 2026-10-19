@@ -138,8 +138,14 @@ describe('teamrig heavy', () => {
   it('refuses from the heavy cutoff on, before taking the lock', async () => {
     const { kit, steps } = harness({ ...TEAM, coordinator: { schedule: { heavyCutoffUtc: '09:30' } } });
     const result = await kit.run(BUILD, { steps });
-    assert.deepEqual(result, { code: 2, stdout: ['REFUSED nothing heavy after 09:30 UTC (now 2030-01-08 10:00)'], stderr: [] });
+    assert.deepEqual(result, { code: 2, stdout: ['REFUSED nothing heavy 09:30-00:00 UTC (now 10:00 UTC)'], stderr: [] });
     assert.deepEqual([steps.ran, kit.files.get(LOCK), kit.files.get(LEDGER)], [[], undefined, undefined]);
+  });
+
+  it("names the cutoff on the team's clock", async () => {
+    const { kit, steps } = harness({ ...TEAM, coordinator: { schedule: { heavyCutoffUtc: '09:30' } } });
+    const result = await kit.run(BUILD, { steps, timeZone: 'Asia/Jerusalem' });
+    assert.deepEqual(result, { code: 2, stdout: ['REFUSED nothing heavy 11:30-02:00 IST (now 12:00 IST)'], stderr: [] });
   });
 
   it('waits for a held lock, and refuses when the wait ran past the cutoff', async () => {
@@ -148,7 +154,7 @@ describe('teamrig heavy', () => {
     const result = await kit.run(BUILD, { steps, sessionProcesses: otherRuns() });
     assert.deepEqual(result, {
       code: 2,
-      stdout: ['2030-01-08T10:00:00.000Z waiting for the host lock: po (heavy: build) since 2030-01-08 09:50', 'REFUSED nothing heavy after 10:30 UTC (now 2030-01-08 10:40)'],
+      stdout: ['2030-01-08T10:00:00.000Z waiting for the host lock: po (heavy: build) since 2030-01-08 09:50 UTC', 'REFUSED nothing heavy 10:30-00:00 UTC (now 10:40 UTC)'],
       stderr: [],
     });
     assert.deepEqual([steps.ran, kit.files.get(LOCK), kit.files.get(LEDGER)], [[], undefined, undefined]);
@@ -160,7 +166,7 @@ describe('teamrig heavy', () => {
     const result = await kit.run(BUILD, { steps, sessionProcesses: otherRuns() });
     assert.deepEqual(result, {
       code: 2,
-      stdout: ['2030-01-08T10:00:00.000Z waiting for the host lock: po (heavy: build) since 2030-01-08 09:50', 'REFUSED host lock still held by po (heavy: build) since 2030-01-08 09:50'],
+      stdout: ['2030-01-08T10:00:00.000Z waiting for the host lock: po (heavy: build) since 2030-01-08 09:50 UTC', 'REFUSED host lock still held by po (heavy: build) since 2030-01-08 09:50 UTC'],
       stderr: [],
     });
     assert.deepEqual(kit.clock.sleeps, Array.from({ length: MINUTE / FIRST_IN_LINE_POLL_MS }, () => FIRST_IN_LINE_POLL_MS), 'the first in line looks every 2 s');
@@ -228,7 +234,7 @@ describe('teamrig heavy', () => {
     });
     assert.deepEqual(result, {
       code: 0,
-      stdout: ['2030-01-08T10:00:00.000Z running: pre-commit checks under the host lock of po (heavy: build) since 2030-01-08 09:50 (killed after 45m)', 'DONE exit 0'],
+      stdout: ['2030-01-08T10:00:00.000Z running: pre-commit checks under the host lock of po (heavy: build) since 2030-01-08 09:50 UTC (killed after 45m)', 'DONE exit 0'],
       stderr: [],
     });
     assert.deepEqual([steps.ran.length, steps.ran[0]?.env['TEAMRIG_HOST_LOCK'], kit.clock.sleeps], [1, 'other', []]);

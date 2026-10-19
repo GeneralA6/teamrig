@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { TimeZone } from '../core/zone.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { takeWhenClear, type ClearancePhase, type ClearanceRequest, type Readiness } from './clearance.ts';
@@ -41,7 +42,7 @@ function world(initial: Readonly<Record<string, string>> = {}, maxWaitMs: number
     newId: () => 'mine',
   });
   const waits: string[] = [];
-  return { files, clock, lock, waits, request: { session: 'api', purpose: 'integrate api', maxWaitMs, pollMs: POLL_MS, onWait: (reason) => waits.push(reason) } };
+  return { files, clock, lock, waits, request: { session: 'api', purpose: 'integrate api', maxWaitMs, pollMs: POLL_MS, onWait: (reason) => waits.push(reason), zone: TimeZone.UTC } };
 }
 
 /** Answers the readiness checks in turn, the last one from then on. */

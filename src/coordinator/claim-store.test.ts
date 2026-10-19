@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { SecretScanner } from '../core/secrets.ts';
+import { TimeZone } from '../core/zone.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { addClaim, CLAIMS_LOCK_TTL_MS, claimRefusal, releaseClaim, renderClaimsMd, type ClaimPorts, type ClaimRequest, type ClaimRules } from './claim-store.ts';
@@ -28,7 +29,7 @@ function world(initial: Readonly<Record<string, string>> = {}): World {
   const files = new MemoryFiles(initial);
   const clock = new FakeClock('2030-01-08T10:00:00Z');
   const lock = new HostLock(LOCK, CLAIMS_LOCK_TTL_MS, { files, clock, sleep: clock.sleep, pid: 7, alive: (pid) => pid === 7 || pid === 9, newId: () => 'claims-1' });
-  return { files, clock, ports: { files, clock, lock } };
+  return { files, clock, ports: { files, clock, zone: TimeZone.UTC, lock } };
 }
 
 function claimsIn(files: MemoryFiles): unknown {
@@ -94,7 +95,7 @@ describe('addClaim', () => {
     const other = JSON.stringify({ token: 'dc', pid: 9, session: 'claims', purpose: 'claims write', acquiredAt: '2030-01-08T09:59:50.000Z', expiresAt: '2030-01-08T10:00:50.000Z' });
     const { files, clock, ports } = world({ [LOCK]: other });
     const outcome = await addClaim(ports, PLACES, RULES, REQUEST);
-    assert.deepEqual(outcome, { kind: 'busy', reason: 'the claims are being written (claims (claims write) since 2030-01-08 09:59); try again' });
+    assert.deepEqual(outcome, { kind: 'busy', reason: 'the claims are being written (claims (claims write) since 2030-01-08 09:59 UTC); try again' });
     assert.equal(clock.now(), Date.parse('2030-01-08T10:00:15Z'), 'it waited the 15 s');
     assert.equal(files.get(PLACES.claims), undefined);
     assert.equal(files.get(LOCK), other, 'the other writer’s lock stays');

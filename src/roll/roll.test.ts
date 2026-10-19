@@ -7,6 +7,7 @@ import { HostLock } from '../coordinator/host-lock.ts';
 import type { CoordinatorPlaces } from '../coordinator/places.ts';
 import type { Env } from '../core/home.ts';
 import { SecretScanner } from '../core/secrets.ts';
+import { TimeZone } from '../core/zone.ts';
 import { BASELINE_LOCK_ENV } from '../integrate/dependencies.ts';
 import { LOCKFILE } from '../integrate/manifest.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
@@ -61,7 +62,7 @@ class World {
       windows: DEFAULT_WINDOWS,
       repos: options.repos ?? { pipeline: PIPELINE },
     };
-    this.setup = { team: 'app', coordinator, places: PLACES, inTeam: (path) => (path.startsWith('/') ? path : `/repo/${path}`) };
+    this.setup = { team: 'app', coordinator, places: PLACES, zone: TimeZone.UTC, inTeam: (path) => (path.startsWith('/') ? path : `/repo/${path}`) };
     this.pushed('c1', 'c2');
   }
 
@@ -208,7 +209,7 @@ describe('rollRepo', () => {
     assert.ok(world.said.includes('waiting: quiet claim by ops on workers until 2030-01-08 10:05 UTC (p95)'));
     assert.ok(world.clock.now() >= Date.parse('2030-01-08T10:05:00Z'));
     const late = new World({ schedule: { heavyCutoffUtc: '09:00' } });
-    refused(await late.run(), 'nothing heavy after 09:00 UTC (now 2030-01-08 10:00)');
+    refused(await late.run(), 'nothing heavy 09:00-00:00 UTC (now 10:00 UTC)');
     assert.deepEqual([late.hooks.ran.length, late.pulled()], [0, false]);
   });
 

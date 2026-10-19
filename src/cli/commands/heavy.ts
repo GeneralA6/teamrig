@@ -8,11 +8,12 @@ import { runRecorded, type StepWatch } from '../../coordinator/recorded-step.ts'
 import { heavyCutoffReason, minutesText } from '../../coordinator/schedule.ts';
 import { exitCodeOf, TIMED_OUT_EXIT, type StepEnd } from '../../coordinator/steps.ts';
 import { ENV } from '../../core/home.ts';
+import type { TimeZone } from '../../core/zone.ts';
 import { commandLine } from '../../test-run/shell.ts';
 import { requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
 import { hostLockOf, logLine } from '../coordinator-ports.ts';
 import { commandWordsOf, sessionRef } from '../inputs.ts';
-import { openTeamKit, requireConfig, rosterOf, sessionIdOf, type Kit } from '../kit.ts';
+import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { envSession, markedSessionOf } from './hook-input.ts';
 
@@ -38,8 +39,8 @@ function maxRunMinutesOf(args: ParsedArgs, heavy: HeavyConfig): number {
   return minutes;
 }
 
-function refuseAfterCutoff(runtime: CliRuntime, cutoffUtc: string | undefined): void {
-  const reason = heavyCutoffReason(runtime.clock.now(), cutoffUtc);
+function refuseAfterCutoff(runtime: CliRuntime, cutoffUtc: string | undefined, zone: TimeZone): void {
+  const reason = heavyCutoffReason(runtime.clock.now(), cutoffUtc, zone);
   if (reason !== undefined) {
     throw new RefusedError(reason);
   }
@@ -62,8 +63,8 @@ async function reserveMbOf(runtime: CliRuntime, ledger: string, session: string,
 }
 
 /** Why a step was refused when its wait ran out: the lock's holder, or the small steps holding the memory it needs. */
-function busyText(taking: Extract<Taking, { kind: 'busy' }>): string {
-  return `${taking.holder.kind === 'memory' ? 'host memory still held by' : 'host lock still held by'} ${holderText(taking.holder)}`;
+function busyText(taking: Extract<Taking, { kind: 'busy' }>, zone: TimeZone): string {
+  return `${taking.holder.kind === 'memory' ? 'host memory still held by' : 'host lock still held by'} ${holderText(taking.holder, zone)}`;
 }
 
 /** The line a small step prints when it shares the host. */
@@ -126,10 +127,11 @@ async function sessionOf(args: ParsedArgs, runtime: CliRuntime, kit: Kit, roster
 
 /**
  * A step started by a step that holds the host lock runs at once under that lock: it is part of its parent, whose
- * cutoff check and ledger record cover it, and waiting for the lock would wait on its own parent.
+ * cutoff check and ledger record cover it, and waiting for the lock would wait on its own parent. `parent` is its
+ * holder as `holderText` writes it.
  */
-async function runUnderParent(runtime: CliRuntime, parent: HostLockInfo, what: string, words: readonly string[], maxRunMinutes: number): Promise<ExitCode> {
-  logLine(runtime, `running: ${what} under the host lock of ${holderText({ kind: 'held', info: parent })} (killed after ${minutesText(maxRunMinutes)})`);
+async function runUnderParent(runtime: CliRuntime, parent: string, what: string, words: readonly string[], maxRunMinutes: number): Promise<ExitCode> {
+  logLine(runtime, `running: ${what} under the host lock of ${parent} (killed after ${minutesText(maxRunMinutes)})`);
   const end = await runtime.steps.run({ command: commandLine(words, runtime.platform), cwd: runtime.cwd, env: runtime.env, timeoutMs: maxRunMinutes * MINUTE_MS });
   return report(runtime, end, maxRunMinutes);
 }
@@ -152,15 +154,16 @@ export async function heavy(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const kit = await openTeamKit(runtime);
   const config = requireConfig(kit, runtime, 'read');
   const { coordinator } = config;
+  const zone = teamZone(config, runtime);
   const maxRunMinutes = maxRunMinutesOf(args, coordinator.heavy);
   const places = coordinatorPlaces(coordinator, kit.paths);
   const lock = hostLockOf(runtime, places.hostLock, coordinator.heavy);
   const parent = await parentLockOf(runtime, lock);
   const session = await sessionOf(args, runtime, kit, await rosterOf(runtime, kit, config), parent);
   if (parent !== undefined) {
-    return runUnderParent(runtime, parent, what, words, maxRunMinutes);
+    return runUnderParent(runtime, holderText({ kind: 'held', info: parent }, zone), what, words, maxRunMinutes);
   }
-  refuseAfterCutoff(runtime, coordinator.schedule.heavyCutoffUtc);
+  refuseAfterCutoff(runtime, coordinator.schedule.heavyCutoffUtc, zone);
   const queuedAt = runtime.clock.now();
   const small = args.switches.has('small');
   const share: ShareRequest | undefined = small
@@ -172,17 +175,17 @@ export async function heavy(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
     `heavy: ${what}`,
     coordinator.heavy.waitMinutes * MINUTE_MS,
     coordinator.wait.pollSeconds * 1_000,
-    (holder, ahead) => logLine(runtime, `${waiting}: ${waitText(holder, ahead)}`),
+    (holder, ahead) => logLine(runtime, `${waiting}: ${waitText(holder, ahead, zone)}`),
     share,
   );
   if (taking.kind === 'busy') {
-    throw new RefusedError(busyText(taking));
+    throw new RefusedError(busyText(taking, zone));
   }
   if (taking.kind === 'withdrawn') {
     throw new RefusedError(`withdrawn from the host lock's line (teamrig withdraw): ${what} did not run`);
   }
   try {
-    refuseAfterCutoff(runtime, coordinator.schedule.heavyCutoffUtc);
+    refuseAfterCutoff(runtime, coordinator.schedule.heavyCutoffUtc, zone);
     const sharing = share === undefined ? undefined : sharingText(share, taking);
     if (sharing !== undefined) {
       logLine(runtime, sharing);
