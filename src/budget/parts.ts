@@ -20,43 +20,31 @@ function weightOf(split: BudgetSplit, id: string): number {
 
 /**
  * The session's part of the team's daily budget (`allowancePct`, in percent of the week): a lifted session's is
- * its lift's part of it; a fixed `dailyPct` is given as is; what those leave is split among the other sessions by
- * weight. Recomputed with the budget, so no session waits while the week has room and the parts never add up to
- * more than the team's budget.
+ * its lift's part of it; what the lifts leave is split among the other sessions by weight. Recomputed with the
+ * budget, so no session waits while the week has room and the parts never add up to more than the team's budget.
  */
 export function sessionBudgetPct(allowancePct: number, session: string, split: BudgetSplit): number {
   const liftedPart = split.lifted.get(session);
   if (liftedPart !== undefined) {
     return (allowancePct * liftedPart) / 100;
   }
-  const own = split.sessions[session]?.dailyPct;
-  if (own !== undefined) {
-    return own;
-  }
   let liftedPct = 0;
-  let fixed = 0;
   let weights = 0;
   for (const id of split.ids) {
     const part = split.lifted.get(id);
-    const daily = split.sessions[id]?.dailyPct;
-    if (part !== undefined) {
-      liftedPct += part;
-    } else if (daily !== undefined) {
-      fixed += daily;
-    } else {
+    if (part === undefined) {
       weights += weightOf(split, id);
+    } else {
+      liftedPct += part;
     }
   }
-  const rest = Math.max(0, (allowancePct * Math.max(0, 100 - liftedPct)) / 100 - fixed);
+  const rest = (allowancePct * Math.max(0, 100 - liftedPct)) / 100;
   return weights > 0 ? (rest * weightOf(split, session)) / weights : 0;
 }
 
-/**
- * The session's daily budget now, in percent of the week: its part of the team's (`sessionBudgetPct`), or its
- * fixed `dailyPct` while the team's is unknown; undefined when neither is known.
- */
+/** The session's daily budget now, in percent of the week (`sessionBudgetPct`); undefined while the team's is unknown. */
 export function dailyBudgetOf(allowancePct: number | undefined, session: string, split: BudgetSplit): number | undefined {
-  return allowancePct === undefined ? split.sessions[session]?.dailyPct : sessionBudgetPct(allowancePct, session, split);
+  return allowancePct === undefined ? undefined : sessionBudgetPct(allowancePct, session, split);
 }
 
 /** The lifts in force at `now` (`activeLift`), as each lifted session's part of the team's budget. */

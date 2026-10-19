@@ -8,7 +8,7 @@ import { noPositionals, UsageError, type Flags, type ParsedArgs } from '../args.
 import { callerOf } from '../inputs.ts';
 import { checkedNextConfig, configFileJson, openTeamKit, requireConfig, rosterOf, sessionIdOf } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { pctFlag, snapshotDirOf } from './budget.ts';
+import { snapshotDirOf } from './budget.ts';
 
 /**
  * `budget setup`: the lead writes the team's budget policy into the team config. Without --yes it only
@@ -20,11 +20,6 @@ import { pctFlag, snapshotDirOf } from './budget.ts';
 export const BUDGET_BACKUP_NAME = 'config.budget';
 
 const QUIET_WINDOW = /^(\d{2}:\d{2})-(\d{2}:\d{2})$/;
-
-/** A percent flag that also takes one word: `--daily pace`, `--max-daily none`. */
-function pctOrWord<W extends string>(flags: Flags, name: string, word: W): number | W | undefined {
-  return flags.get(name)?.trim() === word ? word : pctFlag(flags, name);
-}
 
 function overActionFlag(flags: Flags, name: string): OverAction | undefined {
   const text = flags.get(name);
@@ -58,8 +53,6 @@ function quietFlag(flags: Flags): QuietWindow | 'off' | undefined {
 function choicesOf(args: ParsedArgs): BudgetChoices {
   return {
     enabled: !args.switches.has('off'),
-    daily: pctOrWord(args.flags, 'daily', 'pace'),
-    maxDaily: pctOrWord(args.flags, 'max-daily', 'none'),
     overAction: overActionFlag(args.flags, 'over'),
     escalate: escalateFlag(args.flags),
     quiet: quietFlag(args.flags),
@@ -73,10 +66,6 @@ function valueText(key: KeyChange['key'], value: unknown): string {
     switch (key) {
       case 'enabled':
         return 'off (not set)';
-      case 'dailyPct':
-        return 'pace (not set)';
-      case 'maxDailyPct':
-        return 'no cap (not set)';
       case 'quietHours':
         return 'none (not set)';
       case 'overAction':
@@ -87,9 +76,6 @@ function valueText(key: KeyChange['key'], value: unknown): string {
   }
   if (typeof value === 'boolean') {
     return value ? 'on' : 'off';
-  }
-  if (typeof value === 'number') {
-    return `${value}%`;
   }
   if (isRecord(value)) {
     return `${String(value['startUtc'])}-${String(value['endUtc'])} UTC, ${String(value['action'])}`;
@@ -102,7 +88,7 @@ function keyLine(key: KeyChange): string {
   return key.changed ? `  CHANGE budget.${key.key}: ${from} -> ${valueText(key.key, key.to)}` : `  KEEP budget.${key.key}: ${from}`;
 }
 
-/** `budget setup [--daily ...] [--max-daily ...] [--over ...] [--escalate ...] [--quiet ...] [--quiet-action ...] [--off] [--yes]`. */
+/** `budget setup [--over ...] [--escalate ...] [--quiet ...] [--quiet-action ...] [--off] [--yes]`. */
 export async function setup(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
   const caller = callerOf(args.flags, runtime.env);

@@ -769,9 +769,7 @@ describe('parseConfig budget', () => {
         targetPct: 99,
         reservePct: 1,
         paceEndHoursBeforeReset: 2,
-        dailyPct: 14,
-        maxDailyPct: 12,
-        sessions: { alpha: { share: 2 }, bravo: { share: 0.5, dailyPct: 1.5 } },
+        sessions: { alpha: { share: 2 }, bravo: { share: 0.5 } },
         warnAtPct: [50, 100, 150],
         paceTolerancePct: 1,
         overAction: 'ask-lead',
@@ -791,9 +789,7 @@ describe('parseConfig budget', () => {
       targetPct: 99,
       reservePct: 1,
       paceEndHoursBeforeReset: 2,
-      dailyPct: 14,
-      maxDailyPct: 12,
-      sessions: { alpha: { share: 2 }, bravo: { share: 0.5, dailyPct: 1.5 } },
+      sessions: { alpha: { share: 2 }, bravo: { share: 0.5 } },
       warnAtPct: [50, 100, 150],
       paceTolerancePct: 1,
       overAction: 'ask-lead',
@@ -818,9 +814,16 @@ describe('parseConfig budget', () => {
   });
 
   it('gives a listed session without a share the default share', () => {
-    const { config, issues } = parseConfig({ ...ROSTER, budget: { sessions: { alpha: { dailyPct: 2 } } } });
+    const { config, issues } = parseConfig({ ...ROSTER, budget: { sessions: { alpha: {} } } });
     assert.deepEqual(issues, []);
-    assert.deepEqual(config.budget.sessions, { alpha: { share: 1, dailyPct: 2 } });
+    assert.deepEqual(config.budget.sessions, { alpha: { share: 1 } });
+  });
+
+  it('flags the fixed daily budgets this format no longer reads, instead of ignoring them', () => {
+    const { config, issues } = parseConfig({ ...ROSTER, budget: { dailyPct: 10, maxDailyPct: 12, sessions: { alpha: { share: 2, dailyPct: 1 } } } });
+    assert.deepEqual(paths(issues), ['budget.dailyPct', 'budget.maxDailyPct', 'budget.sessions.alpha.dailyPct']);
+    issues.forEach((issue) => assert.match(issue.message, /^is no longer read: .*; delete it$/));
+    assert.deepEqual(config.budget, { ...DEFAULT_BUDGET, sessions: { alpha: { share: 2 } } });
   });
 
   it('refuses out-of-range numbers, unknown words and malformed parts, keeping the defaults', () => {
@@ -833,9 +836,7 @@ describe('parseConfig budget', () => {
         targetPct: 0,
         reservePct: 60,
         paceEndHoursBeforeReset: 49,
-        dailyPct: 0,
-        maxDailyPct: 'twelve',
-        sessions: { alpha: { share: -1, dailyPct: 101 }, carol: { share: 1 }, bravo: 'half' },
+        sessions: { alpha: { share: -1 }, carol: { share: 1 }, bravo: 'half' },
         warnAtPct: [80, 0, 'x'],
         paceTolerancePct: 11,
         overAction: 'stop',
@@ -847,12 +848,10 @@ describe('parseConfig budget', () => {
       },
     });
     assert.deepEqual(paths(issues).sort(), [
-      'budget.dailyPct',
       'budget.escalate',
       'budget.lift.maxStopPct',
       'budget.lift.reserveStopPct',
       'budget.maxBytesPerHook',
-      'budget.maxDailyPct',
       'budget.overAction',
       'budget.paceEndHoursBeforeReset',
       'budget.paceTolerancePct',
@@ -861,7 +860,6 @@ describe('parseConfig budget', () => {
       'budget.reservePct',
       'budget.reset.timeUtc',
       'budget.reset.weekday',
-      'budget.sessions.alpha.dailyPct',
       'budget.sessions.alpha.share',
       'budget.sessions.bravo',
       'budget.sessions.carol',

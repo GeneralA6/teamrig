@@ -19,9 +19,12 @@ const STRANGER_TAB = '0000000f-0000-4000-8000-000000000009';
 const ALPHA_TRANSCRIPT = join(PROJECT, `${ALPHA_TAB}.jsonl`);
 const LEAD_TRANSCRIPT = join(PROJECT, `${LEAD_TAB}.jsonl`);
 
-/** 1% of the week is 10M W; alpha's daily budget is 1%; `extra` adds other config sections. */
+/**
+ * 1% of the week is 10M W; alpha's weight is a tenth of the lead's and bravo's, so its daily budget is 0.1/2.1 of the
+ * team's (99.5 - used) * 24/134: 0.59% of the week at 30% used, 0.81% at 5%; `extra` adds other config sections.
+ */
 function config(budget: JsonRecord = {}, extra: JsonRecord = {}): JsonRecord {
-  return { ...TEAM, budget: { enabled: true, weeklyLimitW: 1_000_000_000, overAction: 'ask-lead', sessions: { alpha: { dailyPct: 1 } }, ...budget }, ...extra };
+  return { ...TEAM, budget: { enabled: true, weeklyLimitW: 1_000_000_000, overAction: 'ask-lead', sessions: { alpha: { share: 0.1 } }, ...budget }, ...extra };
 }
 
 function reply(id: string, input: number): string {
@@ -85,15 +88,15 @@ describe('the budget in the hooks', () => {
   it('meters the tab and its subagents at the turn end, warns once, and tells the lead once', async () => {
     const { kit, hook } = await world({}, 10_000_000, 30);
     const first = await hook('stop', ALPHA_TAB);
-    assert.match(messageOf(first), /^Budget: app-alpha has used 1\.1% of the week today; its daily budget is 1\.0%\. The team is 10\.\d points ahead of its pace line\. The lead has an inbox line\./);
-    assert.match(await leadInbox(kit), /alpha: app-alpha is past its daily budget: 1\.1% of the week today against 1\.0%/);
+    assert.match(messageOf(first), /^Budget: app-alpha has used 1\.1% of the week today; its daily budget is 0\.59%\. The team is 10\.\d points ahead of its pace line\. The lead has an inbox line\./);
+    assert.match(await leadInbox(kit), /alpha: app-alpha is past its daily budget: 1\.1% of the week today against 0\.59%,/);
     assert.deepEqual((await hook('stop', ALPHA_TAB)).stdout, []);
     assert.doesNotMatch(await leadInbox(kit), /past its daily budget/);
   });
 
   it("counts the subagent's W at budget.subagentWeight", async () => {
     const { hook } = await world({ subagentWeight: 3 }, 8_000_000, 30);
-    assert.match(messageOf(await hook('stop', ALPHA_TAB)), /^Budget: app-alpha has used 1\.1% of the week today; its daily budget is 1\.0%\./);
+    assert.match(messageOf(await hook('stop', ALPHA_TAB)), /^Budget: app-alpha has used 1\.1% of the week today; its daily budget is 0\.59%\./);
   });
 
   it('tells the model with the next prompt, once per level', async () => {
@@ -126,7 +129,7 @@ describe('the budget in the hooks', () => {
     const behind = await world({}, 10_000_000, 10);
     assert.match(messageOf(await behind.hook('stop', ALPHA_TAB)), /The team is not ahead of its pace line, so nothing more happens\./);
     remindedOnly(await behind.hook('helper-gate', ALPHA_TAB, AGENT));
-    const lead = await world({ sessions: { lead: { dailyPct: 1 } } }, 0, 30);
+    const lead = await world({ sessions: { lead: { share: 0.1 } } }, 0, 30);
     assert.match(messageOf(await lead.hook('stop', LEAD_TAB)), /^Budget: app-lead has used 5\.0% of the week today/);
     assert.doesNotMatch(await leadInbox(lead.kit), /past its daily budget/);
   });
@@ -140,7 +143,7 @@ describe('the budget in the hooks', () => {
     assert.ok(told.some((line) => line.startsWith('teamrig burst: a surplus burst runs until Mon 01-14 00:00 UTC') && line.includes('Run up to 2 helpers at once, on independent tasks only')), told.join('\n'));
     assert.ok(!(await hook('inbox-reminder', ALPHA_TAB, { prompt: 'again', session_title: 'app-alpha' })).stdout.some((line) => line.startsWith('teamrig burst:')));
     ok(await kit.run(['burst', 'end', '--reason', 'done early', '--session', 'lead']));
-    assert.equal(messageOf(await hook('stop', ALPHA_TAB)), "Budget: app-alpha's burst has ended; its daily budget is 1.0% again.");
+    assert.equal(messageOf(await hook('stop', ALPHA_TAB)), "Budget: app-alpha's burst has ended; its daily budget is 0.81% again.");
     const ended = (await hook('inbox-reminder', ALPHA_TAB, { prompt: 'next', session_title: 'app-alpha' })).stdout;
     assert.ok(ended.some((line) => line.startsWith('teamrig burst: the burst has ended.')), ended.join('\n'));
   });

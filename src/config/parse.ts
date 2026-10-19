@@ -586,8 +586,9 @@ function parseBudget(read: ConfigReader, raw: JsonRecord, sessions: readonly str
   }
   const weeklyLimitW = read.optionalInteger(raw, 'weeklyLimitW', path, CONFIG_LIMITS.weeklyLimitW);
   const reset = parseBudgetReset(read, raw);
-  const dailyPct = read.optionalNumber(raw, 'dailyPct', path, CONFIG_LIMITS.dailyPct);
-  const maxDailyPct = read.optionalNumber(raw, 'maxDailyPct', path, CONFIG_LIMITS.maxDailyPct);
+  const why = "the team's daily budget is the pace, recomputed at every reading from what is left of the week";
+  read.dropped(raw, 'dailyPct', path, why);
+  read.dropped(raw, 'maxDailyPct', path, why);
   const overAction = read.string(raw, 'overAction', path, defaults.overAction, oneOf(OVER_ACTIONS));
   const escalate = read.string(raw, 'escalate', path, defaults.escalate, oneOf(ESCALATIONS));
   const quietHours = parseQuietHours(read, raw);
@@ -600,8 +601,6 @@ function parseBudget(read: ConfigReader, raw: JsonRecord, sessions: readonly str
     targetPct,
     reservePct,
     paceEndHoursBeforeReset: read.number(raw, 'paceEndHoursBeforeReset', path, defaults.paceEndHoursBeforeReset, CONFIG_LIMITS.paceEndHoursBeforeReset),
-    ...(dailyPct === undefined ? {} : { dailyPct }),
-    ...(maxDailyPct === undefined ? {} : { maxDailyPct }),
     sessions: parseSessionBudgets(read, read.section(raw, 'sessions', path), sessions),
     warnAtPct: read.list(
       raw,
@@ -673,7 +672,7 @@ function parseBudgetLift(read: ConfigReader, raw: JsonRecord): BudgetLiftConfig 
   return { maxStopPct, reserveStopPct };
 }
 
-/** `budget.sessions`: a share and an optional fixed daily % for sessions on the team. */
+/** `budget.sessions`: a share for sessions on the team. */
 function parseSessionBudgets(read: ConfigReader, raw: JsonRecord, sessions: readonly string[]): Record<string, SessionBudget> {
   const budgets: Record<string, SessionBudget> = {};
   for (const [id, value] of Object.entries(raw)) {
@@ -686,11 +685,8 @@ function parseSessionBudgets(read: ConfigReader, raw: JsonRecord, sessions: read
       read.report(path, 'is not one of the sessions');
       continue;
     }
-    const dailyPct = read.optionalNumber(entry, 'dailyPct', path, CONFIG_LIMITS.sessionDailyPct);
-    budgets[id] = {
-      share: read.number(entry, 'share', path, DEFAULT_SESSION_SHARE, CONFIG_LIMITS.sessionShare),
-      ...(dailyPct === undefined ? {} : { dailyPct }),
-    };
+    read.dropped(entry, 'dailyPct', path, "a session's daily budget is its part of the team's, by its share and queued work");
+    budgets[id] = { share: read.number(entry, 'share', path, DEFAULT_SESSION_SHARE, CONFIG_LIMITS.sessionShare) };
   }
   return budgets;
 }

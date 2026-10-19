@@ -41,23 +41,15 @@ describe('sessionBudgetPct', () => {
     assert.equal(sessionBudgetPct(12, 'bravo', split({}, { lifted: new Map([['alpha', 60], ['lead', 40]]) })), 0);
   });
 
-  it('gives a fixed daily % as is and splits what is left among the others', () => {
-    const sessions = { bravo: { share: 1, dailyPct: 1.5 } };
-    assert.equal(sessionBudgetPct(9, 'bravo', split(sessions)), 1.5);
-    assert.equal(sessionBudgetPct(9, 'alpha', split(sessions)), 3.75);
-    assert.equal(sessionBudgetPct(1, 'alpha', split({ bravo: { share: 1, dailyPct: 2 } })), 0);
-  });
-
   it('gives 0 when no session takes a share', () => {
     assert.equal(sessionBudgetPct(9, 'alpha', { ...split({ alpha: { share: 0 } }), ids: ['alpha'] }), 0);
   });
 });
 
 describe('dailyBudgetOf', () => {
-  it("is the session's part of a known allowance, else its fixed daily %, else unknown", () => {
+  it("is the session's part of a known allowance, else unknown", () => {
     assert.equal(dailyBudgetOf(9, 'alpha', split()), 3);
-    assert.equal(dailyBudgetOf(undefined, 'alpha', split({ alpha: { share: 1, dailyPct: 2 } })), 2);
-    assert.equal(dailyBudgetOf(undefined, 'alpha', split()), undefined);
+    assert.equal(dailyBudgetOf(undefined, 'alpha', split({ alpha: { share: 2 } })), undefined);
   });
 });
 
