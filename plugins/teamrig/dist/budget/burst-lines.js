@@ -43,7 +43,7 @@ export function burstText(burst, names) {
     const whose = names.length === 1 ? `${names.join('')}'s daily budget is at least` : `${names.join(', ')} each have a daily budget of at least`;
     return `a ${burst.kind} burst${tasksText(burst)} ${endText(burst)}: ${whose} ${formatPct(burst.dailyPct)}, up to ${plural(burst.helpers, 'helper')} at once${hires}.`;
 }
-/** Why a session's daily budget is not the shared one: " (lifted)" (a lift sets it), " (burst)", or ''. */
+/** Why a session's daily budget is not the shared one: " (lifted)" (a lift sets its part), " (burst)", or ''. */
 export function budgetMarkOf(session) {
     if (session.lift !== undefined) {
         return ' (lifted)';

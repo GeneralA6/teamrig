@@ -440,8 +440,9 @@ function parseBudget(read, raw, sessions) {
     }
     const weeklyLimitW = read.optionalInteger(raw, 'weeklyLimitW', path, CONFIG_LIMITS.weeklyLimitW);
     const reset = parseBudgetReset(read, raw);
-    const dailyPct = read.optionalNumber(raw, 'dailyPct', path, CONFIG_LIMITS.dailyPct);
-    const maxDailyPct = read.optionalNumber(raw, 'maxDailyPct', path, CONFIG_LIMITS.maxDailyPct);
+    const why = "the team's daily budget is the pace, recomputed at every reading from what is left of the week";
+    read.dropped(raw, 'dailyPct', path, why);
+    read.dropped(raw, 'maxDailyPct', path, why);
     const overAction = read.string(raw, 'overAction', path, defaults.overAction, oneOf(OVER_ACTIONS));
     const escalate = read.string(raw, 'escalate', path, defaults.escalate, oneOf(ESCALATIONS));
     const quietHours = parseQuietHours(read, raw);
@@ -454,8 +455,6 @@ function parseBudget(read, raw, sessions) {
         targetPct,
         reservePct,
         paceEndHoursBeforeReset: read.number(raw, 'paceEndHoursBeforeReset', path, defaults.paceEndHoursBeforeReset, CONFIG_LIMITS.paceEndHoursBeforeReset),
-        ...(dailyPct === undefined ? {} : { dailyPct }),
-        ...(maxDailyPct === undefined ? {} : { maxDailyPct }),
         sessions: parseSessionBudgets(read, read.section(raw, 'sessions', path), sessions),
         warnAtPct: read.list(raw, 'warnAtPct', path, defaults.warnAtPct, (value, itemPath) => read.numberItem(value, itemPath, { min: CONFIG_LIMITS.warnAtPct.itemMin, max: CONFIG_LIMITS.warnAtPct.itemMax }), CONFIG_LIMITS.warnAtPct.maxItems),
         paceTolerancePct: read.number(raw, 'paceTolerancePct', path, defaults.paceTolerancePct, CONFIG_LIMITS.paceTolerancePct),
@@ -501,7 +500,8 @@ function parseQuietHours(read, raw) {
         read.report(`${path}.endUtc`, 'is the start time; quiet hours need a start and a different end');
         return undefined;
     }
-    return { startUtc, endUtc, action };
+    const paceWeight = read.optionalNumber(section, 'paceWeight', path, CONFIG_LIMITS.quietPaceWeight);
+    return { startUtc, endUtc, action, ...(paceWeight === undefined ? {} : { paceWeight }) };
 }
 /** `budget.lift`: the highest stop % of a lift, and of the reserve release; the reserve bound is never below the other. */
 function parseBudgetLift(read, raw) {
@@ -515,7 +515,7 @@ function parseBudgetLift(read, raw) {
     }
     return { maxStopPct, reserveStopPct };
 }
-/** `budget.sessions`: a share and an optional fixed daily % for sessions on the team. */
+/** `budget.sessions`: a share for sessions on the team. */
 function parseSessionBudgets(read, raw, sessions) {
     const budgets = {};
     for (const [id, value] of Object.entries(raw)) {
@@ -528,11 +528,8 @@ function parseSessionBudgets(read, raw, sessions) {
             read.report(path, 'is not one of the sessions');
             continue;
         }
-        const dailyPct = read.optionalNumber(entry, 'dailyPct', path, CONFIG_LIMITS.sessionDailyPct);
-        budgets[id] = {
-            share: read.number(entry, 'share', path, DEFAULT_SESSION_SHARE, CONFIG_LIMITS.sessionShare),
-            ...(dailyPct === undefined ? {} : { dailyPct }),
-        };
+        read.dropped(entry, 'dailyPct', path, "a session's daily budget is its part of the team's, by its share and queued work");
+        budgets[id] = { share: read.number(entry, 'share', path, DEFAULT_SESSION_SHARE, CONFIG_LIMITS.sessionShare) };
     }
     return budgets;
 }
@@ -714,22 +711,17 @@ function parseRefresh(read, raw) {
         ...(handoverDir === undefined ? {} : { handoverDir }),
     };
 }
-/** `hiring`: a hire's own daily budget cannot pass what all hires may add up to. */
+/** `hiring`: who decides, the session cap, idle and review days, and when a rehire resumes. */
 function parseHiring(read, raw) {
     const path = 'hiring';
     const defaults = DEFAULT_HIRING;
     const policy = read.string(raw, 'policy', path, defaults.policy, oneOf(HIRING_POLICIES));
-    const maxDailyPct = read.number(raw, 'maxDailyPct', path, defaults.maxDailyPct, CONFIG_LIMITS.hiringMaxDailyPct);
-    let dailyPct = read.number(raw, 'dailyPct', path, defaults.dailyPct, CONFIG_LIMITS.hiringDailyPct);
-    if (dailyPct > maxDailyPct) {
-        read.report(`${path}.dailyPct`, `expected at most hiring.maxDailyPct (${maxDailyPct}), got ${dailyPct}`);
-        dailyPct = Math.min(defaults.dailyPct, maxDailyPct);
-    }
+    const why = "a hire's daily budget is its part of the team's, by its share and queued work; maxSessions bounds hiring";
+    read.dropped(raw, 'dailyPct', path, why);
+    read.dropped(raw, 'maxDailyPct', path, why);
     return {
         policy: isHiringPolicy(policy) ? policy : defaults.policy,
         maxSessions: read.integer(raw, 'maxSessions', path, defaults.maxSessions, CONFIG_LIMITS.hiringMaxSessions),
-        dailyPct,
-        maxDailyPct,
         idleHours: read.integer(raw, 'idleHours', path, defaults.idleHours, CONFIG_LIMITS.hiringIdleHours),
         reviewDays: read.integer(raw, 'reviewDays', path, defaults.reviewDays, CONFIG_LIMITS.hiringReviewDays),
         resumeMaxTokens: read.integer(raw, 'resumeMaxTokens', path, defaults.resumeMaxTokens, CONFIG_LIMITS.hiringResumeMaxTokens),

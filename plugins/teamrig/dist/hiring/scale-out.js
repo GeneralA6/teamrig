@@ -2,7 +2,7 @@ import { formatPct } from "../budget/format.js";
 import { KIT_NAME } from "../core/home.js";
 import { MS_PER_DAY, shortUtc } from "../core/time.js";
 import { ACTIVE_STATUSES } from "../register/model.js";
-import { hireCapProblem, hiredDailyPcts } from "./plan.js";
+import { hireCapProblem, hiresOnTeam } from "./plan.js";
 /** Statuses of work under way: a task such work needs stays with its area. */
 const STARTED = ['in-progress', 'waiting', 'verifying'];
 /** A count past what the pace finishes by more than this rounding is behind. */
@@ -109,9 +109,9 @@ function hireAction(config) {
     const hire = `${KIT_NAME} hire <new id> --scope "<the slice>" --reason "SCALE-OUT"${owner ? ' --approved-by "<who>"' : ''}`;
     return `the lead ${owner ? 'asks the owner, then ' : ''}hires for it (${hire}), then ${KIT_NAME} update <id> --owner <new id>, for each`;
 }
-/** SCALE-OUT on each area that needs one, within the spare and the caps, and the idle hires given a slice. */
+/** SCALE-OUT on each area that needs one, within the spare and the cap, and the idle hires given a slice. */
 export function scaleOutFlags(input) {
-    const { config } = input;
+    const { config, hirePct } = input;
     if (config.hiring.policy === 'off') {
         return { flags: [], busy: new Set() };
     }
@@ -122,17 +122,17 @@ export function scaleOutFlags(input) {
         .flatMap((area) => needOf(area, tasks, input) ?? [])
         .sort((a, b) => b.behind.count - b.behind.finishes - (a.behind.count - a.behind.finishes));
     const idle = idleHires(input, tasks);
-    const hired = hiredDailyPcts(config, input.hires);
+    let hired = hiresOnTeam(config, input.hires);
     const busy = new Set();
     const flags = [];
-    if (input.spare === undefined) {
+    if (input.spare === undefined || hirePct === undefined) {
         return { flags: [], busy };
     }
     const { paceEnd } = input.spare;
     let spare = input.spare.sparePct;
     const now = input.now.getTime();
     for (const need of needs) {
-        const costPct = config.hiring.dailyPct * sliceDays(need.last, now, paceEnd);
+        const costPct = hirePct * sliceDays(need.last, now, paceEnd);
         if (spare < costPct) {
             continue;
         }
@@ -144,12 +144,12 @@ export function scaleOutFlags(input) {
             flags.push({ kind: 'SCALE-OUT', session: need.area, detail, action: moveAction(to) });
             continue;
         }
-        const capProblem = hireCapProblem(config.hiring, hired, config.hiring.dailyPct);
+        const capProblem = hireCapProblem(config.hiring, hired);
         if (capProblem !== undefined) {
             flags.push({ kind: 'SCALE-OUT', session: need.area, detail, action: `${capProblem}: the lead brings the owner a card to raise the cap, or moves the slice to another area` });
             continue;
         }
-        hired.push(config.hiring.dailyPct);
+        hired += 1;
         flags.push({ kind: 'SCALE-OUT', session: need.area, detail, action: hireAction(config) });
     }
     return { flags, busy };

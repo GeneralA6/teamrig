@@ -97,7 +97,7 @@ const COMMANDS = {
     rename: { effect: 'write', flags: ['session'], load: async () => (await teamCommands()).rename },
     hire: {
         effect: 'write',
-        flags: ['session', 'scope', 'reason', 'name', 'model', 'effort', 'daily-pct', 'review', 'approved-by'],
+        flags: ['session', 'scope', 'reason', 'name', 'model', 'effort', 'review', 'approved-by'],
         switches: ['yes', 'burst'],
         load: async () => (await hireCommands()).hire,
     },
@@ -109,13 +109,13 @@ const COMMANDS = {
     budget: { effect: 'read', flags: ['day'], switches: ['loops', 'burn', 'all'], load: async () => (await budgetCommands()).budget },
     'budget lift': {
         effect: 'write',
-        flags: ['session', 'to', 'stop-pct', 'until', 'reason'],
+        flags: ['session', 'part', 'stop-pct', 'until', 'reason'],
         switches: ['reserve'],
         load: async () => (await budgetCommands()).lift,
     },
     'budget setup': {
         effect: 'write',
-        flags: ['session', 'daily', 'max-daily', 'over', 'escalate', 'quiet', 'quiet-action'],
+        flags: ['session', 'over', 'escalate', 'quiet', 'quiet-action'],
         switches: ['yes', 'off'],
         load: async () => (await budgetSetupCommands()).setup,
     },
@@ -273,7 +273,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   rename <id|name> <new-name>  records a session's new name; its old names keep finding it
       (the session itself or the lead)
   hire <id> --scope "<its job>" --reason "<why>" [--name <name>] [--model <model>] [--effort <level>]
-      [--daily-pct <pct>] [--review <YYYY-MM-DD>] [--approved-by "<who>"] [--burst] [--yes]
+      [--review <YYYY-MM-DD>] [--approved-by "<who>"] [--burst] [--yes]
       (the lead only) adds a temporary session, or hires a retired one back, within hiring.policy and its
       caps, on the lead's model and effort unless given; without --yes it shows the hire and writes nothing;
       --burst: a hire for the burst in force, within its hires, never a cheaper model or lower effort, due to
@@ -298,11 +298,11 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       each session's use today, measured from the Claude Code transcripts, against the week's pace;
       <id|name>: that session by day; --loops: the loop patterns by day; --burn: what started the
       turns, cold calls and compactions by day; --day: a past day recounted
-  budget lift <id|name> --to <pct> --stop-pct <pct> --reason "<why>" [--until <HH:MM|date>] [--reserve]
-      (the lead only) that session's daily budget for today, until --until, the day's end or the week
-      reaching --stop-pct; --reserve: above budget.lift.maxStopPct, in the last hour before the reset
-  budget setup [--daily pace|<pct>] [--max-daily none|<pct>] [--over <action>] [--escalate <mode>]
-      [--quiet <HH:MM-HH:MM>|off] [--quiet-action <action>] [--off] [--yes]
+  budget lift <id|name> --part <pct> --stop-pct <pct> --reason "<why>" [--until <HH:MM|date>] [--reserve]
+      (the lead only) that session's part of the team's daily budget, in %, today, until --until, the day's end
+      or the week reaching --stop-pct; --reserve: above budget.lift.maxStopPct, in the last hour before the reset
+  budget setup [--over <action>] [--escalate <mode>] [--quiet <HH:MM-HH:MM>|off]
+      [--quiet-action <action>] [--off] [--yes]
       (the lead only) writes the team's budget policy into its config and turns the budget on (--off:
       off); without --yes it shows the change and writes nothing; flags left out keep their values
   burst                        the burst policy, the week's use, its projected surplus at the pace end,

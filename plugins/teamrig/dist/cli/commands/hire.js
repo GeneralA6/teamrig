@@ -15,13 +15,13 @@ import { callerOf } from "../inputs.js";
 import { checkedNextConfig, configFileJson, findTeam, openKit, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { loadTree } from "../tree.js";
-import { pctFlag } from "./budget.js";
 import { freshOpenOf, resumeVerdictOf } from "./rehire.js";
 import { teamProjectOf } from "./setup.js";
 /**
  * `hire`: the lead adds a temporary session to the team within `hiring`'s policy and caps. Without
  * --yes it only shows the hire; with it, the old config is kept in the backups folder, the hire is
- * logged in the hire log, then the session, its launch and its daily budget are written to the config.
+ * logged in the hire log, then the session and its launch are written to the config. A hire gets no fixed daily
+ * budget: its part of the team's follows its share and queued work, like any session's.
  * A retired id is hired back: it shows the retire and its handover, and whether its last Claude Code session
  * can be resumed (`open --resume`) or it opens fresh on that handover. With --burst it is a hire for the burst in
  * force, within the burst's hires and on the lead's model and effort (src/hiring/burst-hire.ts).
@@ -43,7 +43,6 @@ function requestOf(args, runtime, by) {
     const reviewBy = flags.get('review');
     const approvedBy = flags.get('approved-by');
     const effort = effortFlag(flags);
-    const dailyPct = pctFlag(flags, 'daily-pct');
     return {
         id: onePositional(args, 'id'),
         scope: requiredFlag(flags, 'scope'),
@@ -53,7 +52,6 @@ function requestOf(args, runtime, by) {
         ...(reviewBy === undefined ? {} : { reviewBy }),
         ...(approvedBy === undefined ? {} : { approvedBy }),
         ...(effort === undefined ? {} : { effort }),
-        ...(dailyPct === undefined ? {} : { dailyPct }),
         by,
         now: runtime.clock.now(),
     };
@@ -95,7 +93,7 @@ function openStepOf(id, rehire) {
     }
     return `then ${freshOpenOf(rehire.from)}: ${fresh}`;
 }
-/** `hire <id> --scope "<its job>" --reason "<why>" [--name] [--model] [--effort] [--daily-pct] [--review] [--approved-by] [--burst] [--yes]`. */
+/** `hire <id> --scope "<its job>" --reason "<why>" [--name] [--model] [--effort] [--review] [--approved-by] [--burst] [--yes]`. */
 export async function hire(args, runtime) {
     const caller = callerOf(args.flags, runtime.env);
     const found = await findTeam(runtime);
@@ -123,9 +121,9 @@ export async function hire(args, runtime) {
         const next = checkedNextConfig(plan.value.config);
         const nextRoster = await rosterOf(runtime, kit, next);
         await refuseNameClash(runtime, kit.paths.team, request.id, next, nextRoster);
-        const { hire: record, hired, hiredDailyPct } = plan.value;
-        const what = `${record.session} (name ${nextRoster.nameOf(record.session) ?? record.session}) for "${record.scope}": ${describeLaunch(record)}, ${record.dailyPct}% of the week a day, review by ${record.reviewBy}${record.burst === undefined ? '' : `, for the burst started ${formatWeekdayMinute(record.burst)}`}`;
-        const caps = `  hired sessions with it: ${hired} of ${config.hiring.maxSessions}, ${hiredDailyPct}% of ${config.hiring.maxDailyPct}% of the week a day`;
+        const { hire: record, hired } = plan.value;
+        const what = `${record.session} (name ${nextRoster.nameOf(record.session) ?? record.session}) for "${record.scope}": ${describeLaunch(record)}, review by ${record.reviewBy}${record.burst === undefined ? '' : `, for the burst started ${formatWeekdayMinute(record.burst)}`}`;
+        const caps = `  hired sessions with it: ${hired} of ${config.hiring.maxSessions}`;
         const from = retiredSessions(records).find((record) => record.session === request.id);
         // Measured before anything is written, so the preview shows it too.
         const rehire = from === undefined ? undefined : { from, verdict: await resumeVerdictOf(runtime, kit.paths, config.hiring, request.id, await teamProjectOf(runtime, undefined, found.from)) };

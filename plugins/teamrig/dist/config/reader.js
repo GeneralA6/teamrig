@@ -132,6 +132,12 @@ export class ConfigReader {
     report(path, message) {
         this.issues.push({ path, message });
     }
+    /** A key this config format no longer reads: flagged, so a hand-written one is not silently ignored. */
+    dropped(parent, key, path, why) {
+        if (parent[key] !== undefined) {
+            this.report(join(path, key), `is no longer read: ${why}; delete it`);
+        }
+    }
     /** The value, or undefined when it is missing or invalid (an invalid one is recorded as an issue). */
     numeric(parent, key, path, bounds, integer) {
         const value = parent[key];

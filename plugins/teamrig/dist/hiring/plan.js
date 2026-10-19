@@ -9,31 +9,20 @@ import { formatUtcDay, parseUtcDay } from "../core/time.js";
  * checked afterwards by the config parser every command reads with (the id's and name's rules live there).
  */
 const DAY_MS = 86_400_000;
-function ownValue(record, key) {
-    return Object.hasOwn(record, key) ? record[key] : undefined;
-}
 function recordAt(record, key) {
     const value = record[key];
     return isRecord(value) ? value : {};
 }
-/** The daily budget of each hire still on the team, as the config has it now, so a later `budget` change counts. */
-export function hiredDailyPcts(config, active) {
-    return active.filter((hire) => config.sessions.includes(hire.session)).map((hire) => ownValue(config.budget.sessions, hire.session)?.dailyPct ?? hire.dailyPct);
-}
-/** A sum of daily budgets to hundredths, so 0.1 + 0.2 meets a cap of 0.3. */
-function sumPct(pcts) {
-    return Math.round(pcts.reduce((sum, pct) => sum + pct, 0) * 100) / 100;
+/** How many of the active hires are still on the team: a retired or removed one no longer counts against the cap. */
+export function hiresOnTeam(config, active) {
+    return active.filter((hire) => config.sessions.includes(hire.session)).length;
 }
 /**
- * Why one more hire at `dailyPct` would pass `hiring`'s caps beside the hires on the team, whose daily budgets are
- * `hired` ({@link hiredDailyPcts}): the hired sessions at once, or the sum of their daily budgets. Undefined when it fits.
+ * Why one more hire beside the `hired` hires on the team ({@link hiresOnTeam}) would pass `hiring.maxSessions`;
+ * undefined when it fits. A hire has no fixed daily budget, so the count is the only cap.
  */
-export function hireCapProblem(hiring, hired, dailyPct) {
-    if (hired.length >= hiring.maxSessions) {
-        return `the team already has ${hired.length} hired session(s), the most hiring.maxSessions allows`;
-    }
-    const total = sumPct([...hired, dailyPct]);
-    return total > hiring.maxDailyPct ? `the hired sessions' daily budgets would add up to ${total}% of the week, over hiring.maxDailyPct ${hiring.maxDailyPct}%` : undefined;
+export function hireCapProblem(hiring, hired) {
+    return hired >= hiring.maxSessions ? `the team already has ${hired} hired session(s), the most hiring.maxSessions allows` : undefined;
 }
 function reviewDayOf(request, config) {
     if (request.reviewBy === undefined) {
@@ -62,7 +51,10 @@ function policyProblem(config, request) {
             return undefined;
     }
 }
-/** The new session written into `sessions`, `names`, `launch` and `budget.sessions`, and its hire record; or why not. */
+/**
+ * The new session written into `sessions`, `names` and `launch`, and its hire record; or why not. It gets no fixed daily
+ * budget: like any session, its part of the team's daily budget follows its share and its queued work (src/budget/parts.ts).
+ */
 export function planHire(file, config, active, request) {
     const refusal = policyProblem(config, request);
     if (refusal !== undefined) {
@@ -85,9 +77,8 @@ export function planHire(file, config, active, request) {
     if (modelProblem !== undefined) {
         return { ok: false, problem: `--model ${request.model}: ${modelProblem}` };
     }
-    const hired = hiredDailyPcts(config, active);
-    const dailyPct = request.dailyPct ?? config.hiring.dailyPct;
-    const capProblem = hireCapProblem(config.hiring, hired, dailyPct);
+    const hired = hiresOnTeam(config, active);
+    const capProblem = hireCapProblem(config.hiring, hired);
     if (capProblem !== undefined) {
         return { ok: false, problem: capProblem };
     }
@@ -100,13 +91,11 @@ export function planHire(file, config, active, request) {
     const model = request.model ?? leads.model;
     const effort = request.effort ?? leads.effort;
     const launch = { ...(isDefaultModel(model) ? {} : { model }), ...(effort === undefined ? {} : { effort }) };
-    const budget = recordAt(file, 'budget');
     const next = {
         ...file,
         sessions: [...sessions, request.id],
         ...(request.name === undefined ? {} : { names: { ...recordAt(file, 'names'), [request.id]: request.name } }),
         launch: { ...recordAt(file, 'launch'), [request.id]: launch },
-        budget: { ...budget, sessions: { ...recordAt(budget, 'sessions'), [request.id]: { dailyPct } } },
     };
     const hire = {
         kind: 'hire',
@@ -115,11 +104,10 @@ export function planHire(file, config, active, request) {
         reason: request.reason.trim(),
         ...(request.approvedBy === undefined ? {} : { approvedBy: request.approvedBy.trim() }),
         ...launch,
-        dailyPct,
         reviewBy: reviewBy.value,
         ...(request.burst === undefined ? {} : { burst: request.burst }),
         by: request.by,
         at: request.now,
     };
-    return { ok: true, value: { config: next, hire, hired: hired.length + 1, hiredDailyPct: sumPct([...hired, dailyPct]) } };
+    return { ok: true, value: { config: next, hire, hired: hired + 1 } };
 }

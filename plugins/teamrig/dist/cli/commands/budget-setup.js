@@ -8,7 +8,7 @@ import { noPositionals, UsageError } from "../args.js";
 import { callerOf } from "../inputs.js";
 import { checkedNextConfig, configFileJson, openTeamKit, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
-import { pctFlag, snapshotDirOf } from "./budget.js";
+import { snapshotDirOf } from "./budget.js";
 /**
  * `budget setup`: the lead writes the team's budget policy into the team config. Without --yes it only
  * shows what would change; with it, the old file is kept in the backups folder first. Flags left out
@@ -17,10 +17,6 @@ import { pctFlag, snapshotDirOf } from "./budget.js";
 /** The backup name of a config before `budget setup` changed it. */
 export const BUDGET_BACKUP_NAME = 'config.budget';
 const QUIET_WINDOW = /^(\d{2}:\d{2})-(\d{2}:\d{2})$/;
-/** A percent flag that also takes one word: `--daily pace`, `--max-daily none`. */
-function pctOrWord(flags, name, word) {
-    return flags.get(name)?.trim() === word ? word : pctFlag(flags, name);
-}
 function overActionFlag(flags, name) {
     const text = flags.get(name);
     if (text !== undefined && !isOverAction(text)) {
@@ -50,8 +46,6 @@ function quietFlag(flags) {
 function choicesOf(args) {
     return {
         enabled: !args.switches.has('off'),
-        daily: pctOrWord(args.flags, 'daily', 'pace'),
-        maxDaily: pctOrWord(args.flags, 'max-daily', 'none'),
         overAction: overActionFlag(args.flags, 'over'),
         escalate: escalateFlag(args.flags),
         quiet: quietFlag(args.flags),
@@ -64,10 +58,6 @@ function valueText(key, value) {
         switch (key) {
             case 'enabled':
                 return 'off (not set)';
-            case 'dailyPct':
-                return 'pace (not set)';
-            case 'maxDailyPct':
-                return 'no cap (not set)';
             case 'quietHours':
                 return 'none (not set)';
             case 'overAction':
@@ -79,9 +69,6 @@ function valueText(key, value) {
     if (typeof value === 'boolean') {
         return value ? 'on' : 'off';
     }
-    if (typeof value === 'number') {
-        return `${value}%`;
-    }
     if (isRecord(value)) {
         return `${String(value['startUtc'])}-${String(value['endUtc'])} UTC, ${String(value['action'])}`;
     }
@@ -91,7 +78,7 @@ function keyLine(key) {
     const from = valueText(key.key, key.from);
     return key.changed ? `  CHANGE budget.${key.key}: ${from} -> ${valueText(key.key, key.to)}` : `  KEEP budget.${key.key}: ${from}`;
 }
-/** `budget setup [--daily ...] [--max-daily ...] [--over ...] [--escalate ...] [--quiet ...] [--quiet-action ...] [--off] [--yes]`. */
+/** `budget setup [--over ...] [--escalate ...] [--quiet ...] [--quiet-action ...] [--off] [--yes]`. */
 export async function setup(args, runtime) {
     noPositionals(args);
     const caller = callerOf(args.flags, runtime.env);
