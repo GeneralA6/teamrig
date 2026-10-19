@@ -1,11 +1,44 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
-import { exitCodeOf, nodeStepRunner, TIMED_OUT_EXIT } from './steps.ts';
+import { exitCodeOf, nodeStepRunner, nodeTreeKill, TIMED_OUT_EXIT, type TreeKill } from './steps.ts';
+
+/**
+ * The real tree kill, held until `started` exists: under load the shell can take longer than a short limit to start
+ * the step's grandchild, and a kill that lands while it is being started can miss it (T645). Waits at most 10 s.
+ */
+function killOnceStarted(started: string, kill: TreeKill): TreeKill {
+  return (pid) => {
+    void (async () => {
+      for (let tries = 0; tries < 200 && !existsSync(started); tries += 1) {
+        await wait(50);
+      }
+      kill(pid);
+    })();
+  };
+}
+
+/** Whether process `pid` runs: signal 0 only checks, and EPERM means it runs as another user. */
+function isRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error instanceof Error && 'code' in error && error.code === 'EPERM';
+  }
+}
+
+/** Whether process `pid` ends within `ms`: a tree kill returns before the last process in it has ended. */
+async function endsWithin(pid: number, ms: number): Promise<boolean> {
+  for (let waited = 0; waited < ms && isRunning(pid); waited += 50) {
+    await wait(50);
+  }
+  return !isRunning(pid);
+}
 
 describe('exitCodeOf', () => {
   it('records a step’s own exit code, 124 for one killed at its limit and 1 for one a signal stopped', () => {
@@ -40,13 +73,14 @@ describe('nodeStepRunner', () => {
   });
 
   it('kills the step with every process it started once its time is up', async () => {
-    const marker = join(dir, 'grandchild-lived');
-    await writeFile(join(dir, 'grandchild.cjs'), `setTimeout(() => require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'yes'), 1500);`);
+    const started = join(dir, 'grandchild-started');
+    await writeFile(join(dir, 'grandchild.cjs'), `require('node:fs').writeFileSync(${JSON.stringify(started)}, String(process.pid)); setTimeout(() => undefined, 10_000);`);
     await writeFile(join(dir, 'child.cjs'), `require('node:child_process').spawn(process.execPath, [${JSON.stringify(join(dir, 'grandchild.cjs'))}], { stdio: 'ignore' }); setInterval(() => undefined, 1000);`);
-    const end = await runner.run({ command: 'node child.cjs', cwd: dir, env: process.env, timeoutMs: 500 });
+    const killing = nodeStepRunner(process.platform, killOnceStarted(started, nodeTreeKill(process.platform)));
+    const end = await killing.run({ command: 'node child.cjs', cwd: dir, env: process.env, timeoutMs: 500 });
     assert.deepEqual(end, { kind: 'timedOut' });
-    await wait(2_500);
-    assert.equal(existsSync(marker), false, 'the grandchild was killed with its parent');
+    const grandchild = Number(await readFile(started, 'utf8'));
+    assert.equal(await endsWithin(grandchild, 5_000), true, 'the grandchild was killed with its parent');
   });
 
   it('rejects when the step cannot start', async () => {
