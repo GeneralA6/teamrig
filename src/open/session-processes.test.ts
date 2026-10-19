@@ -6,7 +6,18 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ProgramRequest, ProgramResult } from '../github/credentials.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
-import { isClaudeProcess, nodeSessionProcesses, parsePosixChildren, parsePosixProcess, parseWindowsProcess, parseWindowsProcesses } from './session-processes.ts';
+import {
+  isClaudeProcess,
+  lineageOf,
+  nodeSessionProcesses,
+  parsePosixChildren,
+  parsePosixListing,
+  parsePosixProcess,
+  parseWindowsListing,
+  parseWindowsProcess,
+  parseWindowsProcesses,
+  type ListedProcess,
+} from './session-processes.ts';
 
 describe('isClaudeProcess', () => {
   it('knows Claude Code by its binary, or by Node.js running its script', () => {
@@ -39,6 +50,17 @@ function scripted(result: ProgramResult): { readonly asked: ProgramRequest[]; re
 
 function exited(code: number, stdout = '', stderr = ''): ProgramResult {
   return { end: { kind: 'exited', code }, stdout, stderr };
+}
+
+/** One process of PowerShell's full listing, started at `started` ms (null where Windows does not say). */
+function listingEntry(pid: number, parentPid: number, name: string, started: number | null): string {
+  return JSON.stringify({ ProcessId: pid, ParentProcessId: parentPid, Name: name, CommandLine: name, Started: started });
+}
+
+/** A listed process named `p<pid>`, with its start when given. */
+function listed(pid: number, parentPid: number, startedMs?: number): ListedProcess {
+  const info = { pid, parentPid, name: `p${pid}`, commandLine: '' };
+  return startedMs === undefined ? { info } : { info, startedMs };
 }
 
 /** An error as `process.kill` throws it. */
@@ -101,7 +123,66 @@ describe('parseWindowsProcesses and parsePosixChildren', () => {
   });
 });
 
+describe('parseWindowsListing, parsePosixListing and lineageOf', () => {
+  it("read PowerShell's full listing with each start, leaving out an entry of another shape", () => {
+    const stdout = `[${listingEntry(4, 0, 'System', 0)},${listingEntry(51, 41, 'bash.exe', 2000)},{"ProcessId":"x"},${listingEntry(52, 51, 'node.exe', 1.5)}]\r\n`;
+    assert.deepEqual(parseWindowsListing(stdout), [
+      { info: { pid: 4, parentPid: 0, name: 'System', commandLine: 'System' }, startedMs: 0 },
+      { info: { pid: 51, parentPid: 41, name: 'bash.exe', commandLine: 'bash.exe' }, startedMs: 2000 },
+    ]);
+    for (const other of ['', 'not json', listingEntry(51, 41, 'bash.exe', 1)]) {
+      assert.equal(parseWindowsListing(other), undefined, other);
+    }
+  });
+
+  it('read every process ps lists', () => {
+    assert.deepEqual(parsePosixListing('    1     0 /sbin/init\n   51    41 -bash\n\n'), [
+      { pid: 1, parentPid: 0, name: 'init', commandLine: '/sbin/init' },
+      { pid: 51, parentPid: 41, name: '-bash', commandLine: '-bash' },
+    ]);
+  });
+
+  it('follow each starter from the process up to the oldest still listed', () => {
+    assert.deepEqual(lineageOf(53, [listed(41, 7, 100), listed(51, 41, 200), listed(53, 51, 300), listed(60, 1, 50)]).map((info) => info.pid), [53, 51, 41]);
+    assert.deepEqual(lineageOf(53, [listed(51, 41), listed(53, 51, 300)]).map((info) => info.pid), [53, 51], 'an unknown start stops nothing');
+  });
+
+  it("stop at a starter that started after its child: a later process that took an ended starter's id", () => {
+    assert.deepEqual(lineageOf(53, [listed(51, 41, 900), listed(53, 51, 300)]).map((info) => info.pid), [53]);
+  });
+
+  it('stop at a loop and at id 0, and list nothing for a process not listed', () => {
+    assert.deepEqual(lineageOf(5, [listed(5, 6), listed(6, 5)]).map((info) => info.pid), [5, 6]);
+    assert.deepEqual(lineageOf(4, [listed(0, 0, 0), listed(4, 0, 0)]).map((info) => info.pid), [4]);
+    assert.deepEqual(lineageOf(99, [listed(5, 6)]), []);
+  });
+});
+
 describe('nodeSessionProcesses with a scripted system', () => {
+  it("lists a process's starters from one full listing: PowerShell with each start on Windows, ps elsewhere", async () => {
+    const windows = scripted(exited(0, `[${listingEntry(41, 7, 'claude.exe', 100)},${listingEntry(51, 41, 'bash.exe', 200)},${listingEntry(53, 51, 'node.exe', 300)}]`));
+    assert.deepEqual((await nodeSessionProcesses({ platform: 'win32', run: windows.run }).lineage(53))?.map((info) => info.name), ['node.exe', 'bash.exe', 'claude.exe']);
+    assert.equal(windows.asked[0]?.program, 'powershell.exe');
+    assert.match(windows.asked[0]?.args.join(' ') ?? '', /CreationDate/);
+    const posix = scripted(exited(0, '   41     7 claude\n   51    41 bash\n   53    51 node cli.js\n'));
+    assert.deepEqual((await nodeSessionProcesses({ platform: 'linux', run: posix.run }).lineage(53))?.map((info) => info.pid), [53, 51, 41]);
+    assert.deepEqual(posix.asked[0]?.args, ['-A', '-o', 'pid=', '-o', 'ppid=', '-o', 'args=']);
+    assert.equal(await nodeSessionProcesses({ platform: 'linux', run: posix.run }).lineage(0), undefined);
+    assert.equal(posix.asked.length, 1, 'a bad id never reaches ps');
+  });
+
+  it('lists no starters when the listing fails, cannot be read or cannot be run', async () => {
+    const failed = [
+      nodeSessionProcesses({ platform: 'win32', run: scripted(exited(1)).run }),
+      nodeSessionProcesses({ platform: 'win32', run: scripted(exited(0, 'not json')).run }),
+      nodeSessionProcesses({ platform: 'linux', run: scripted(exited(1)).run }),
+      nodeSessionProcesses({ platform: 'linux', run: async () => Promise.reject(new Error('no ps')) }),
+    ];
+    for (const processes of failed) {
+      assert.equal(await processes.lineage(53), undefined);
+    }
+  });
+
   it('asks PowerShell on Windows and ps elsewhere, and reads a failed lookup as nothing', async () => {
     const windows = scripted(exited(0, '{"ProcessId":41,"ParentProcessId":7,"Name":"claude.exe","CommandLine":"claude"}'));
     assert.equal((await nodeSessionProcesses({ platform: 'win32', run: windows.run }).describe(41))?.name, 'claude.exe');
@@ -180,6 +261,11 @@ describe('nodeSessionProcesses on this machine', () => {
     const self = await processes.describe(process.pid);
     assert.equal(self?.parentPid, process.ppid);
     assert.match(self?.name ?? '', /node/i);
+  });
+
+  it('lists this process first in its lineage, then the one that started it', async () => {
+    const lineage = await processes.lineage(process.pid);
+    assert.deepEqual(lineage?.slice(0, 2).map((info) => info.pid), [process.pid, process.ppid]);
   });
 
   // Once the child exits, the system may hand its pid to another process at once (Windows does on a busy host), so
@@ -297,5 +383,18 @@ describe('FakeSessionProcesses', () => {
     assert.equal(fake.alive(13), true);
     assert.deepEqual(fake.ends, []);
     assert.equal(await fake.hideChildren().children(11), undefined);
+  });
+
+  it('lists a process with its starters, through a loop once, until the system will not', async () => {
+    const fake = new FakeSessionProcesses()
+      .add({ pid: 11, parentPid: 10, name: 'claude.exe', commandLine: 'claude' })
+      .add({ pid: 12, parentPid: 11, name: 'bash.exe', commandLine: 'bash' })
+      .add({ pid: 13, parentPid: 12, name: 'node.exe', commandLine: 'job' })
+      .add({ pid: 21, parentPid: 22, name: 'a', commandLine: 'a' })
+      .add({ pid: 22, parentPid: 21, name: 'b', commandLine: 'b' });
+    assert.deepEqual((await fake.lineage(13))?.map((info) => info.pid), [13, 12, 11]);
+    assert.deepEqual((await fake.lineage(21))?.map((info) => info.pid), [21, 22]);
+    assert.deepEqual(await fake.lineage(99), []);
+    assert.equal(await fake.hideLineage().lineage(13), undefined);
   });
 });

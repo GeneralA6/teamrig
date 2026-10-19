@@ -14,6 +14,7 @@ export class FakeSessionProcesses implements SessionProcesses {
   private readonly lingering = new Set<number>();
   private readonly feedOutcomes = new Map<string, FeedOutcome>();
   private childrenHidden = false;
+  private lineageHidden = false;
   /** Called after each end that ended something, as the operating system would tell a waiting parent. */
   private onEnded: (pid: number) => void = () => undefined;
 
@@ -51,6 +52,12 @@ export class FakeSessionProcesses implements SessionProcesses {
     return this;
   }
 
+  /** From now on the system will not list a process's starters. */
+  hideLineage(): this {
+    this.lineageHidden = true;
+    return this;
+  }
+
   /** From now on, feeding `command` gives `outcome`. */
   onFeed(command: string, outcome: FeedOutcome): this {
     this.feedOutcomes.set(command, outcome);
@@ -73,6 +80,17 @@ export class FakeSessionProcesses implements SessionProcesses {
 
   async children(pid: number): Promise<readonly ProcessInfo[] | undefined> {
     return this.childrenHidden ? undefined : this.childrenOf(pid);
+  }
+
+  async lineage(pid: number): Promise<readonly ProcessInfo[] | undefined> {
+    if (this.lineageHidden) {
+      return undefined;
+    }
+    const chain: ProcessInfo[] = [];
+    for (let info = this.running.get(pid); info !== undefined && !chain.includes(info); info = this.running.get(info.parentPid)) {
+      chain.push(info);
+    }
+    return chain;
   }
 
   async end(pid: number, how: EndHow): Promise<EndOutcome> {
