@@ -165,7 +165,7 @@ describe('renderCorePack', () => {
   });
 
   it('tells the session to record a push to a protected branch for the owner when hook asks are off', () => {
-    const pack = (pushGuard: Record<string, unknown>) => renderCorePack(testConfig({ pushGuard, prompts: { hookAsks: 'refuse' } }), COMMAND, 'win32');
+    const pack = (pushGuard: Record<string, unknown>) => renderCorePack(testConfig({ pushGuard, prompts: { hookAsks: 'refuse' } }), COMMAND, 'win32', RULES_CLOCK);
     assert.match(
       pack({}),
       /^15\. Pushes to main, master are refused, not asked \[prompts\.hookAsks\]: record the step as waiting approval:owner and take your next task; force-pushing or deleting them is refused \[pushGuard\]\. /m,
