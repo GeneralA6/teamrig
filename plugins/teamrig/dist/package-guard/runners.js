@@ -25,12 +25,14 @@ function readOptions(args, valued) {
     const flags = new Set();
     const values = new Map();
     let index = 0;
+    let last;
     while (index < args.length) {
         const word = args[index] ?? UNKNOWN_WORD;
         if (word.dynamic || !word.text.startsWith('-')) {
             break;
         }
         index += 1;
+        last = word.text;
         if (word.text === '--') {
             break;
         }
@@ -45,7 +47,7 @@ function readOptions(args, valued) {
             index += 1;
         }
     }
-    return { flags, values, rest: args.slice(index) };
+    return { flags, values, rest: args.slice(index), last };
 }
 /** The value of the first of `names` given. */
 function valueOf(options, ...names) {
@@ -78,6 +80,19 @@ function execCall(runner, args, noFetch, outerPrefix) {
         return NONE;
     }
     return { kind: 'bin', call, bin: command.text, prefix: valueOf(options, '--prefix') ?? outerPrefix };
+}
+/**
+ * npx, read as {@link execCall} reads it, except a bare `--no` right before the command with a flag right after it
+ * (see the `lost-flag` {@link RunnerCall}). `--no` before another option, a word or `--` after the command, and
+ * `--no-install` keep the command's flags for it.
+ */
+function npxCall(args) {
+    const options = readOptions(args, EXEC_VALUED);
+    const [command, next] = options.rest;
+    if (options.last === '--no' && command !== undefined && !command.dynamic && next !== undefined && !next.dynamic && next.text.startsWith('-') && next.text !== '--') {
+        return { kind: 'lost-flag', bin: command.text, flag: next.text };
+    }
+    return execCall('npx', args, NPX_NO_FETCH, undefined);
 }
 /** `npm create x`, `pnpm dlx x` and the like: each fetches the package its first word or its package option names. */
 function fetchCall(runner, args, valued) {
@@ -126,7 +141,7 @@ function bunCall(args) {
 }
 /** Each package runner by program name. */
 const RUNNERS = new Map([
-    ['npx', (args) => execCall('npx', args, NPX_NO_FETCH, undefined)],
+    ['npx', npxCall],
     ['npm', npmCall],
     ['pnpx', (args) => fetchCall('pnpx', args, DLX_VALUED)],
     ['pnpm', pnpmCall],
