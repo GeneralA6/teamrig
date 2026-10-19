@@ -372,7 +372,8 @@ sequenceDiagram
 
 - The inbox file is never edited: `inbox read` adds a mark to `state/inbox-marks.jsonl`.
 - The prompt hook shows at most 5 new lines and 1,500 characters at a time, cuts a longer line, and says how many
-  wait. It records what it showed each Claude Code session in `state/inbox-shown.jsonl`; that is not a read.
+  wait. It records what it showed each Claude Code session in `state/inbox-shown.jsonl`; that is not a read. Its
+  records over 7 days old, and those of the hooks' hints in `state/bind-hints.jsonl`, move to `state/archive/`.
 - You may trim an inbox file by hand; the read mark notices, and if the last line read is gone, the whole file
   counts as unread.
 - A note is one line; an empty line, several lines or a line that looks like a secret is refused. A secret here is
