@@ -1,7 +1,9 @@
-import { DEFAULT_COMMITS, DEFAULT_PUSH_GUARD } from "../config/defaults.js";
+import { DEFAULT_COMMIT_GUARD, DEFAULT_COMMITS, DEFAULT_PUSH_GUARD } from "../config/defaults.js";
 import { isRecord, recordField, stringField } from "../core/guards.js";
 import { describeLargeCommits, largeCommits } from "../push-guard/commit-size.js";
-import { decisionReason, doubtReason, evaluatePushes, leasedReason, } from "../push-guard/push.js";
+import { hookSkips } from "../push-guard/hook-skips.js";
+import { findGitInvocations } from "../push-guard/invocations.js";
+import { decisionReason, doubtReason, finderContextOf, judgePushes, leasedReason, } from "../push-guard/push.js";
 /**
  * The branches to guard. A missing or unreadable config keeps the defaults, so a broken
  * config never switches the guard off; a loaded one has already replaced each bad field
@@ -17,6 +19,16 @@ export function pushToProtectedOf(load) {
 /** The small-commits rule, with the same fallback as the protected branches. */
 export function commitsOf(load) {
     return load?.status === 'loaded' ? load.config.commits : DEFAULT_COMMITS;
+}
+/** What a git command run without the repository's hooks gets, with the same fallback: a broken config refuses it. */
+export function skipHooksOf(load) {
+    return load?.status === 'loaded' ? load.config.commitGuard.skipHooks : DEFAULT_COMMIT_GUARD.skipHooks;
+}
+/** Why the guard stops a line that runs git without the repository's hooks, naming each skip as written. */
+export function skipHooksReason(skips) {
+    const named = [...new Set(skips.map((skip) => `git ${skip.subcommand} (${skip.by})`))].join(', ');
+    return (`teamrig commit guard: this runs git without the repository's hooks: ${named}. The hooks are the repository's ` +
+        "own checks: let them run and fix what they report; if a hook itself is broken, tell the lead. [commitGuard.skipHooks]");
 }
 /** The large commits the updates would send, each once. A range git cannot list adds none, so a broken log never blocks a push. */
 function largeCommitsIn(updates, env) {
@@ -57,7 +69,8 @@ function permission(decision, reason) {
  * instead of a question, and the normal permission flow still decides. Under the commits gate, an
  * asked or allowed push also lists the large commits it sends (`warn`) or is refused for them
  * (`refuse`). A command the guard cannot read with confidence is asked about, with a reason that
- * says what it could not read.
+ * says what it could not read. A line that runs git without the repository's hooks (see `hookSkips`) is refused or
+ * asked about first, as `skipHooks` says; a refused push stays refused under `ask`.
  */
 export function pushGuardOutput(payload, env) {
     if (!isRecord(payload)) {
@@ -67,14 +80,22 @@ export function pushGuardOutput(payload, env) {
     if (command === undefined) {
         return '';
     }
-    const verdict = evaluatePushes(command, {
+    const context = {
         cwd: stringField(payload, 'cwd') ?? env.cwd,
         home: env.home,
         dialect: stringField(payload, 'tool_name') === 'PowerShell' ? 'powershell' : 'bash',
         protectedBranches: env.protectedBranches,
         pushToProtected: env.pushToProtected,
         repo: env.repo,
-    });
+    };
+    const found = findGitInvocations(command, finderContextOf(context));
+    const verdict = judgePushes(found, context);
+    if (env.skipHooks !== 'allow') {
+        const skips = hookSkips(found.invocations);
+        if (skips.length > 0 && (env.skipHooks === 'deny' || verdict.decision !== 'deny')) {
+            return permission(env.skipHooks, skipHooksReason(skips));
+        }
+    }
     if (verdict.decision === 'allow' && verdict.protectedPush === undefined) {
         return '';
     }
