@@ -179,11 +179,10 @@ export function renderCorePack(config: KitConfig, command: string, platform: Nod
     contracts:
       `Tell the other side before changing a contract it reads (an API parameter, shared table or file). The same external failure for ${config.alerts.persistentFailureHours} h must page a human [alerts.persistentFailureHours].`,
     skills:
-      `A procedure you had to investigate and will run again becomes a skill in the same turn: \`<area>-<name>/SKILL.md\`, shared ones \`${skills.sharedPrefix}-<name>\` [skills.sharedPrefix].` +
-      ` Its description has at most ${skills.maxDescriptionWords} words [skills.maxDescriptionWords]; its body has \`Owner:\` and \`Last verified:\` lines, re-verified every ${skills.maxVerifiedAgeDays} days [skills.maxVerifiedAgeDays];` +
-      ` at most ${skills.maxPerArea} per area [skills.maxPerArea]` +
-      (skills.forbidFrontmatter.length === 0 ? '' : `; never ${shortList(skills.forbidFrontmatter)} [skills.forbidFrontmatter]`) +
-      '. Memory holds facts, skills how-tos, CLAUDE.md every-turn rules.',
+      // The skill limits (description words, Owner and Last verified lines, per-area count, forbidden keys) live in
+      // the guide alone: lintSkills (skills/lint.ts) flags each breach in `check`, so the pack names only the pointer.
+      `A procedure you had to investigate and will run again becomes a skill in the same turn: \`<area>-<name>/SKILL.md\`, shared ones \`${skills.sharedPrefix}-<name>\` [skills.sharedPrefix],` +
+      ` within the guide's skill limits (\`${command} check\` flags a breach). Memory holds facts, skills how-tos, CLAUDE.md every-turn rules.`,
     commits:
       'One logical change per commit (a fix with its tests, a refactor apart from what it enables, a mechanical change alone), committed as each step passes.' +
       ` Over ${config.commits.maxLines} changed non-test lines or ${config.commits.maxFiles} non-test files [commits.maxLines, commits.maxFiles], a commit needs a \`${config.commits.largeCommitTrailer}: <reason>\` line [commits.largeCommitTrailer]` +

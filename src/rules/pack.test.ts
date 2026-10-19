@@ -197,16 +197,13 @@ describe('renderCorePack', () => {
     assert.doesNotMatch(pack({}), /reported to the lead/);
   });
 
-  it(`prints a branch or frontmatter list in full up to ${LIST_MAX_CHARS} characters, past it its first items and how many more`, () => {
+  it(`prints a branch list in full up to ${LIST_MAX_CHARS} characters, past it its first items and how many more`, () => {
     const pushTo = (protectedBranches: readonly string[]) =>
       renderCorePack(testConfig({ pushGuard: { protectedBranches: [...protectedBranches] } }), COMMAND, 'win32', RULES_CLOCK);
     const atLimit = ['x'.repeat(59), 'y'.repeat(59)];
     assert.match(pushTo(atLimit), new RegExp(`Pushes to ${atLimit.join(', ')} ask the human`));
     assert.match(pushTo(['x'.repeat(59), 'y'.repeat(60)]), new RegExp(`Pushes to ${'x'.repeat(59)} and 1 more ask the human`));
     assert.match(pushTo(filled(CONFIG_LIMITS.protectedBranches, 'b')), new RegExp(`Pushes to ${'b'.repeat(64)} and 7 more ask`));
-    const keys = Array.from({ length: 8 }, (_, index) => `${'k'.repeat(30)}-${index}`);
-    const pack = renderCorePack(testConfig({ skills: { forbidFrontmatter: keys } }), COMMAND, 'win32', RULES_CLOCK);
-    assert.match(pack, new RegExp(`; never ${keys.slice(0, 3).join(', ')} and 5 more \\[skills\\.forbidFrontmatter\\]`));
   });
 
   it('keeps every edit in a worktree, in every repo, and names the command that removes one safely', () => {
@@ -238,9 +235,13 @@ describe('renderCorePack', () => {
   it('ranks a skill below the rules once, in the header', () => {
     const pack = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK);
     assert.match(pack, /^These rules win over conflicting CLAUDE\.md, rules files, skills,/m);
-    assert.match(pack, /\[skills\.forbidFrontmatter\]\. Memory holds facts/);
-    const noForbidden = renderCorePack(testConfig({ skills: { forbidFrontmatter: [] } }), COMMAND, 'win32', RULES_CLOCK);
-    assert.match(noForbidden, /\[skills\.maxPerArea\]\. Memory holds facts/);
+  });
+
+  it("points a new skill to the guide's limits, which check enforces, instead of printing each one", () => {
+    const pack = renderCorePack(testConfig({ skills: { sharedPrefix: 'crew', forbidFrontmatter: ['allowed-tools'] } }), COMMAND, 'win32', RULES_CLOCK);
+    assert.match(pack, /^13\. A procedure you had to investigate and will run again becomes a skill in the same turn: `<area>-<name>\/SKILL\.md`, shared ones `crew-<name>` \[skills\.sharedPrefix\],/m);
+    assert.match(pack, / within the guide's skill limits \(`teamrig check` flags a breach\)\. Memory holds facts, skills how-tos, CLAUDE\.md every-turn rules\.$/m);
+    assert.doesNotMatch(pack, /maxDescriptionWords|maxVerifiedAgeDays|maxPerArea|forbidFrontmatter|allowed-tools/);
   });
 
   it('fills values from the config and names their keys', () => {
