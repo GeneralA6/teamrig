@@ -1,3 +1,4 @@
+import { ruleLabel, ruleNumberOf } from "../rules/keys.js";
 import { budgetMarkOf, burstText, MORE_BURST } from "./burst-lines.js";
 import { formatCount, formatPct, formatTimeOfDay, formatW, formatWeekdayMinute } from "./format.js";
 import { liftText } from "./lift.js";
@@ -167,24 +168,26 @@ export const LOOP_ROWS = [
     { label: 'passing test runs, rent W', count: 'passRuns', w: 'passRentW' },
     { label: '  their output tokens', count: 'passTokens' },
 ];
+/** The sum of several days' or stores' use; one that is undefined adds nothing. */
+export function sumUsage(usages) {
+    const patterns = emptyPatterns();
+    let w = 0;
+    let calls = 0;
+    for (const usage of usages) {
+        if (usage === undefined) {
+            continue;
+        }
+        w += usage.w;
+        calls += usage.calls;
+        for (const field of PATTERN_FIELDS) {
+            patterns[field] += usage.patterns[field];
+        }
+    }
+    return { w, calls, patterns };
+}
 /** The days' totals over several stores, such as every session's. */
 export function sumDays(states, days) {
-    return days.map((day) => {
-        const patterns = emptyPatterns();
-        let w = 0;
-        let calls = 0;
-        for (const usage of states.map((state) => state.byDay[day])) {
-            if (usage === undefined) {
-                continue;
-            }
-            w += usage.w;
-            calls += usage.calls;
-            for (const field of PATTERN_FIELDS) {
-                patterns[field] += usage.patterns[field];
-            }
-        }
-        return { w, calls, patterns };
-    });
+    return days.map((day) => sumUsage(states.map((state) => state.byDay[day])));
 }
 /** The turns by what started them, then the cache and compaction counters; see `BURN_FIELDS` for what each counts. */
 export const TURN_ROWS = [
@@ -235,10 +238,16 @@ function dayTable(header, rows, days, totals, leftOut) {
         return [header, ...notes];
     }
     const table = [['', ...shown.map(({ day }) => day.slice(5))], ...rows.map((row) => [row.label, ...shown.map(({ usage }) => row.cell(usage))])];
-    const widths = shown.map((_, index) => Math.max(...table.map((row) => (row[index + 1] ?? '').length)));
-    const labelWidth = Math.max(...table.map((row) => (row[0] ?? '').length));
-    const lines = table.map((row) => [(row[0] ?? '').padEnd(labelWidth), ...row.slice(1).map((text, index) => text.padStart(widths[index] ?? 0))].join('  ').trimEnd());
-    return [header, ...lines, ...notes];
+    return [header, ...aligned(table), ...notes];
+}
+/** A table's rows as lines: the first column padded on the right, the others on the left. */
+function aligned(table) {
+    const columns = Math.max(...table.map((row) => row.length));
+    const widths = Array.from({ length: columns }, (_, index) => Math.max(...table.map((row) => (row[index] ?? '').length)));
+    return table.map((row) => row
+        .map((text, index) => (index === 0 ? text.padEnd(widths[0] ?? 0) : text.padStart(widths[index] ?? 0)))
+        .join('  ')
+        .trimEnd());
 }
 /**
  * `teamrig budget --loops`: each pattern's count and W per day, the days as columns. From the meter's store
@@ -278,4 +287,72 @@ export function burnLines(who, days, totals, source) {
         ALL_CALLS_ROW,
     ];
     return dayTable(`Burn, ${who}: count, then W (UTC days)`, rows, days, totals, leftOut);
+}
+/** The version that began counting rule misses: a day metered before it has none to show. */
+const MISSES_SINCE = '0.87.0';
+const BEFORE_MISSES = `metered before teamrig ${MISSES_SINCE}`;
+/** `misses/chances`: the misses of a rule out of the times it applied. */
+function ratioCell(misses, chances) {
+    return (usage) => `${formatCount(usage.patterns[misses])}/${formatCount(usage.patterns[chances])}`;
+}
+/** Helpers' W as a share of all W, rule 8's measure of work handed to helpers. */
+function helperShare(usage) {
+    return usage.w > 0 ? formatPct((usage.patterns.subagentW / usage.w) * 100) : '-';
+}
+/** The rule misses, by rule; see `MISS_FIELDS` for what each counts. */
+export const MISS_ROWS = [
+    { short: `${ruleNumberOf('register')} start`, label: `${ruleLabel('register')}: work blocks without teamrig start`, cell: ratioCell('missNoStart', 'workBlocks') },
+    {
+        short: `${ruleNumberOf('register')} followups`,
+        label: `${ruleLabel('register')}: --followups none, work left named`,
+        cell: ratioCell('missFollowupWords', 'followupsNone'),
+    },
+    {
+        short: `${ruleNumberOf('worktrees')} worktree`,
+        label: `${ruleLabel('worktrees')}: plain git worktree remove`,
+        cell: ratioCell('missGitWorktreeRemove', 'worktreeRemoves'),
+    },
+    { short: `${ruleNumberOf('lean-calls')} helpers`, label: `${ruleLabel('lean-calls')}: helpers' share of W`, cell: helperShare },
+    { short: 'heavy', label: 'tests and builds outside teamrig heavy', cell: ratioCell('missHeavyOutside', 'heavySteps') },
+    { short: 'npx', label: 'npx or dlx that fetches a package', cell: (usage) => formatCount(usage.patterns.missAdHocFetch) },
+];
+/** The calls read for misses out of all calls: fewer on a day metered partly before `MISSES_SINCE`. */
+function readCell(usage) {
+    return `${formatCount(usage.patterns.missCalls)}/${formatCount(usage.calls)}`;
+}
+/**
+ * `teamrig budget <session> --misses`: each rule's misses out of its chances per day, the days as columns.
+ * A day the meter never read is left out like `--loops` leaves it, and so is one metered before misses
+ * were counted, whose zeros would read as no miss; a recounted day (`--day`) shows what it read.
+ */
+export function missLines(who, days, totals, source) {
+    const leftOut = (usage) => {
+        if (source === 'recounted') {
+            return undefined;
+        }
+        if (usage.calls === 0) {
+            return NOTHING_METERED;
+        }
+        return usage.patterns.missCalls === 0 ? BEFORE_MISSES : undefined;
+    };
+    const rows = [...MISS_ROWS, { label: 'calls read for misses', cell: readCell }, ALL_CALLS_ROW];
+    return dayTable(`Rule misses, ${who}: misses/chances (UTC days)`, rows, days, totals, leftOut);
+}
+/**
+ * `teamrig budget --misses`: each session's misses out of its chances, summed over `days`, one row per
+ * session that made a call. Its last column is the calls read for misses out of all calls, so a session
+ * metered partly before `MISSES_SINCE` shows how much of it was read.
+ */
+export function missMatrixLines(days, sessions) {
+    const first = days[0] ?? '';
+    const last = days[days.length - 1] ?? first;
+    const span = first === last ? first : `${first} to ${last}`;
+    const header = `Rule misses per session, misses/chances, ${span} (UTC)`;
+    const active = sessions.filter((session) => session.usage.calls > 0);
+    if (active.length === 0) {
+        return [header, 'Nothing metered.'];
+    }
+    const table = [['', ...MISS_ROWS.map((row) => row.short), 'read'], ...active.map(({ name, usage }) => [name, ...MISS_ROWS.map((row) => row.cell(usage)), readCell(usage)])];
+    const legend = MISS_ROWS.map((row) => `${row.short} = ${row.label}`).join('; ');
+    return [header, ...aligned(table), `${legend}; read = calls read for misses. One session by day: teamrig budget <session> --misses.`];
 }

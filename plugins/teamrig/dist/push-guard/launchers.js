@@ -122,6 +122,8 @@ class LaunchReader {
     stdinArgs = false;
     /** True once a word is known to name a program, so PowerShell cannot read it as an expression. */
     called = false;
+    /** True once a teamrig runner is read: what it starts runs under the host lock. */
+    runner = false;
     constructor(dialect, stdin) {
         this.dialect = dialect;
         this.stdin = stdin;
@@ -230,10 +232,10 @@ class LaunchReader {
         if (name === 'teamrig') {
             return this.teamrig(args, head);
         }
-        return { kind: 'program', program: head, args, env: this.env, chdirs: this.chdirs, stdinArgs: this.stdinArgs };
+        return { kind: 'program', program: head, args, env: this.env, chdirs: this.chdirs, stdinArgs: this.stdinArgs, runner: this.runner };
     }
     script(script, dialect, sameShell) {
-        return { kind: 'script', script, dialect, sameShell, env: this.env, chdirs: this.chdirs };
+        return { kind: 'script', script, dialect, sameShell, env: this.env, chdirs: this.chdirs, runner: this.runner };
     }
     /**
      * A shell that reads its commands from stdin runs the heredoc or here-string the line gives it, in a shell
@@ -466,7 +468,7 @@ class LaunchReader {
     /**
      * `teamrig heavy` and `teamrig test` run the words after their first `--` as `commandLine` (test-run/shell.ts)
      * joins them: one word as a command line for the shell `spawn` starts, several as a program and its arguments.
-     * Any other subcommand is teamrig itself.
+     * What they start is marked `runner`. Any other subcommand is teamrig itself.
      */
     teamrig(args, head) {
         const [subcommand] = args;
@@ -475,13 +477,14 @@ class LaunchReader {
         }
         const end = args.findIndex((arg) => !arg.dynamic && arg.text === '--');
         if (subcommand === undefined || !TEAMRIG_RUNNERS.has(subcommand.text) || end === -1) {
-            return { kind: 'program', program: head, args, env: this.env, chdirs: this.chdirs, stdinArgs: this.stdinArgs };
+            return { kind: 'program', program: head, args, env: this.env, chdirs: this.chdirs, stdinArgs: this.stdinArgs, runner: this.runner };
         }
         const words = args.slice(end + 1);
         const [only] = words;
         if (only === undefined) {
             return NOTHING;
         }
+        this.runner = true;
         if (words.length === 1) {
             return this.script(only, SPAWN_SHELL, false);
         }

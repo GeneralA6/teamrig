@@ -105,6 +105,31 @@ export const BURN_FIELDS = [
     'compactions',
 ];
 /**
+ * The rule misses a day shows (`teamrig budget --misses`), each next to the chances it had, counted by
+ * `MissTracker` (misses.ts):
+ * - `missCalls`: the calls read for misses, so a day metered before they were counted is not read as clean.
+ * - `workBlocks`, `missNoStart`: work blocks of at least `START_WITHIN_CALLS` calls, and those with no
+ *   `teamrig start` in those calls (rule 4).
+ * - `followupsNone`, `missFollowupWords`: `teamrig set` to verifying or done with `--followups none`, and
+ *   those whose note or evidence names work left (rule 4).
+ * - `worktreeRemoves`, `missGitWorktreeRemove`: worktree removals, and those made with a plain
+ *   `git worktree remove` instead of `teamrig worktree remove` (rule 16).
+ * - `missAdHocFetch`: an npx, `npm exec`, `npm create` or `pnpm dlx` that fetches the package it names.
+ * - `heavySteps`, `missHeavyOutside`: test runs and builds, and those not run under `teamrig heavy` or `teamrig test`.
+ */
+export const MISS_FIELDS = [
+    'missCalls',
+    'workBlocks',
+    'missNoStart',
+    'followupsNone',
+    'missFollowupWords',
+    'worktreeRemoves',
+    'missGitWorktreeRemove',
+    'missAdHocFetch',
+    'heavySteps',
+    'missHeavyOutside',
+];
+/**
  * The loop-pattern counters, per day. Each pattern is a call that one message could have saved:
  * - `readChain`: a single lookup right after another single lookup in the same turn; `readChainW` is those calls' W.
  * - `editChain`: a single edit right after another single edit in the same turn; `editChainSavedW` prices
@@ -116,7 +141,7 @@ export const BURN_FIELDS = [
  *   passed; the `W` fields are the re-runs' own W.
  * - `passRuns`, `passTokens`, `passRentW`: passing test output and its rent, a cache write when it arrives
  *   plus a re-read by every later call until the context is compacted.
- * Then where the work came from (`BURN_FIELDS`, since 0.34.0).
+ * Then where the work came from (`BURN_FIELDS`, since 0.34.0) and the rule misses (`MISS_FIELDS`, since 0.87.0).
  */
 export const PATTERN_FIELDS = [
     'readChain',
@@ -136,6 +161,7 @@ export const PATTERN_FIELDS = [
     'passTokens',
     'passRentW',
     ...BURN_FIELDS,
+    ...MISS_FIELDS,
 ];
 const ZERO_COUNTS = {
     readChain: 0,
@@ -169,9 +195,19 @@ const ZERO_COUNTS = {
     coldCalls: 0,
     coldW: 0,
     compactions: 0,
+    missCalls: 0,
+    workBlocks: 0,
+    missNoStart: 0,
+    followupsNone: 0,
+    missFollowupWords: 0,
+    worktreeRemoves: 0,
+    missGitWorktreeRemove: 0,
+    missAdHocFetch: 0,
+    heavySteps: 0,
+    missHeavyOutside: 0,
 };
-/** Counters a day stored before 0.34.0 lacks: it reads them as 0. */
-const ADDED_LATER = new Set(BURN_FIELDS);
+/** Counters a day stored before they were added lacks (`BURN_FIELDS` before 0.34.0, `MISS_FIELDS` before 0.87.0): it reads them as 0. */
+const ADDED_LATER = new Set([...BURN_FIELDS, ...MISS_FIELDS]);
 /** Every counter at 0, as a copy the caller may add to. */
 export function emptyPatterns() {
     return { ...ZERO_COUNTS };

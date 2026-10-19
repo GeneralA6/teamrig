@@ -3,6 +3,7 @@ import { isNonNegativeInteger, isRecord, isStringArray } from "../core/guards.js
 import { ID_PATTERN, ID_RULE } from "../core/ids.js";
 import { NewerDataError, parseObject, recordVersion, VERSION_FIELD } from "../core/jsonl.js";
 import { formatUtcDay, MS_PER_DAY } from "../core/time.js";
+import { INITIAL_MISS_STATE, parseMissState } from "./misses.js";
 import { INITIAL_PATTERN_STATE, parsePatternCounts, parsePatternState } from "./patterns.js";
 /** The format of the usage files this code reads and writes; an older or damaged file reads as empty, a newer one is refused. */
 export const USAGE_FORMAT = 1;
@@ -54,10 +55,19 @@ function cursorFrom(value) {
     const { offset, size, day } = value;
     const call = openCallFrom(value['call']);
     const patterns = parsePatternState(value['patterns']);
-    if (!isNonNegativeInteger(offset) || !isNonNegativeInteger(size) || typeof day !== 'string' || !DAY.test(day) || call === undefined || patterns === undefined) {
+    const rawMisses = value['misses'];
+    // A cursor stored before 0.87.0 has no miss state: its transcript goes on as if read from its start.
+    const misses = rawMisses === undefined ? INITIAL_MISS_STATE : parseMissState(rawMisses);
+    if (!isNonNegativeInteger(offset) ||
+        !isNonNegativeInteger(size) ||
+        typeof day !== 'string' ||
+        !DAY.test(day) ||
+        call === undefined ||
+        patterns === undefined ||
+        misses === undefined) {
         return undefined;
     }
-    return { offset, size, day, call, patterns };
+    return { offset, size, day, call, patterns, misses };
 }
 /** Every entry of a stored map through `parse`; undefined when the map or any entry is damaged. */
 function mapFrom(value, keyValid, parse) {
@@ -117,9 +127,9 @@ export function pruneUsage(state, now) {
         recentKeys: state.recentKeys.slice(-RECENT_KEYS_KEPT),
     };
 }
-/** A transcript's position before its first read: no call open and no pattern seen. */
+/** A transcript's position before its first read: no call open and no pattern or miss seen. */
 export function newCursor(offset, size, day) {
-    return { offset, size, day, call: null, patterns: INITIAL_PATTERN_STATE };
+    return { offset, size, day, call: null, patterns: INITIAL_PATTERN_STATE, misses: INITIAL_MISS_STATE };
 }
 /** Usage kept in memory, for a recount of a past day that must not move the usage files. */
 export class MemoryUsageStore {
