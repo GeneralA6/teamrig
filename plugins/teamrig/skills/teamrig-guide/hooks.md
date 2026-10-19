@@ -230,8 +230,12 @@ and lets it run without a prompt when every command in it, substitutions and loo
   `ls-files`, `rev-parse`...) and no `-c`, `--output` or `--ext-diff`; `kubectl get`, `describe`, `logs`, `top` and
   the like, with no `--raw`, `--kubeconfig` or `--server` and no secret named. Pipes, `&&`, `||`, `;`, `for` loops
   and `$(...)` join them. A redirection may only read a file, copy or close a descriptor (`2>&1`) or throw output
-  away to `/dev/null`. A line may set its own variables: names with a lower-case letter that Claude Code's
-  environment does not export, since a program reads an exported one (`GIT_DIR`, `npm_config_prefix`).
+  away to `/dev/null`. A line may set its own variables, but no name Claude Code's environment or its newest shell
+  snapshot exports (a program reads an exported one: `npm_config_prefix`), none bash or a listed program reads
+  (`PATH`, `IFS`, `TMPDIR`, `GIT_*`, `KUBE*`, `LESS*`, `NODE_*`, `PAGER`, `EDITOR`...), and none at all under the
+  snapshot's `set -a`; a line that exports (`export`, `declare -x`, `set -a`) is refused. A variable the line sets
+  once to plain text, unconditionally and outside any block or pipeline, reads as that text in the commands after
+  it, so `pod=x; kubectl logs -n app $pod` is checked as `kubectl logs -n app x`.
 - **PowerShell**: reading cmdlets by their full names (`Get-Content`, `Get-ChildItem`, `Select-String`,
   `Select-Object`, `Where-Object`, `ForEach-Object`, `ConvertFrom-Json`, `Format-Table`...), `Set-Location`, `git`
   and `kubectl` as in Bash, script blocks written in the line (each checked like it), the line's own variables (not
