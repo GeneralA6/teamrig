@@ -79,6 +79,12 @@ export function resultsLine(at: string, results: readonly FixtureResult[], sidec
   return JSON.stringify({ isSidechain: sidechain, type: 'user', message: { role: 'user', content }, timestamp: at });
 }
 
+/** A model line with text blocks, then a tool call for each of `toolIds`, under its own `uuid`. */
+export function textLine(uuid: string, texts: readonly string[], toolIds: readonly string[] = []): string {
+  const content = [...texts.map((text) => ({ type: 'text', text })), ...toolIds.map((id) => ({ type: 'tool_use', id, name: 'Bash', input: {} }))];
+  return JSON.stringify({ uuid, isSidechain: false, type: 'assistant', message: { role: 'assistant', content } });
+}
+
 /** A user prompt line. */
 export function promptLine(at: string, text = 'go', sidechain = false): string {
   return JSON.stringify({ isSidechain: sidechain, type: 'user', message: { role: 'user', content: text }, timestamp: at });
