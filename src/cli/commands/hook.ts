@@ -45,7 +45,7 @@ import { readRunningWork } from '../../refresh/running.ts';
 import { RefreshStore } from '../../refresh/store.ts';
 import { readContextTokens } from '../../refresh/usage.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
-import { openKit, renameDepsOf, rosterOf, teamFolders, type Kit } from '../kit.ts';
+import { openKit, renameDepsOf, rosterOf, teamFolders, teamZone, type Kit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
 import { bindAfterClear, bindHintOnce, bindTab, inboxLinesFor, readTitle, type TitleRead } from './hook-bind.ts';
@@ -347,7 +347,7 @@ async function teamPartsOf(runtime: CliRuntime, kit: Kit, config: KitConfig, pay
     renames,
     titleNote,
     refreshNote: refresh.note,
-    liveTasksNote: await liveTasksPartOf(runtime, kit, id, payload, refresh),
+    liveTasksNote: await liveTasksPartOf(runtime, kit, config, id, payload, refresh),
     modelNote: modelNoteOf(config, roster, id, payload),
     verifyNote: await verifyNoteOf(runtime, kit.paths, id),
     session,
@@ -447,9 +447,9 @@ async function refreshStartOf(runtime: CliRuntime, kit: Kit, config: KitConfig, 
 }
 
 /** The live-task block (hooks/live-tasks.ts) at the fresh start after a refresh and after a compaction; none at another start or for no session. */
-async function liveTasksPartOf(runtime: CliRuntime, kit: Kit, id: string | undefined, payload: unknown, refresh: RefreshStart): Promise<string | undefined> {
+async function liveTasksPartOf(runtime: CliRuntime, kit: Kit, config: KitConfig, id: string | undefined, payload: unknown, refresh: RefreshStart): Promise<string | undefined> {
   const source = isRecord(payload) ? stringField(payload, 'source') : undefined;
-  return id !== undefined && showsLiveTasks(source, refresh.refreshed) ? liveTasksNoteOf(runtime, kit.paths, id) : undefined;
+  return id !== undefined && showsLiveTasks(source, refresh.refreshed) ? liveTasksNoteOf(runtime, kit.paths, id, teamZone(config, runtime)) : undefined;
 }
 
 /** The refresh facts every turn end may need: the lead's request and the context size from the transcript's tail. */
@@ -631,7 +631,7 @@ async function stopOutputOf(runtime: CliRuntime, payload: JsonRecord): Promise<s
   const decision = await refreshDecisionOf(runtime, scope, payload).catch((): StopDecision => ({ kind: 'none' }));
   const notices = await modelNoticesOf(runtime, scope, payload).catch((): readonly string[] => []);
   const budget = await stopBudgetLines(runtime, scope, stringField(payload, 'transcript_path')).catch((): readonly string[] => []);
-  const verify = await verifyByLinesOf(runtime, scope.kit.paths, scope.id).catch((): readonly string[] => []);
+  const verify = await verifyByLinesOf(runtime, scope.kit.paths, scope.id, teamZone(scope.config, runtime)).catch((): readonly string[] => []);
   await startAutoSync(runtime, scope.kit, scope.config).catch(() => undefined);
   const lead = await leadStopLines(runtime, scope, stringField(payload, 'transcript_path')).catch((): readonly string[] => []);
   const lines = [...notices, ...budget, ...verify, ...lead];

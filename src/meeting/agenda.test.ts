@@ -6,13 +6,14 @@ import { TaskTree } from '../register/tree.ts';
 import { TEST_CARD } from '../testing/card.ts';
 import { testTask } from '../testing/task.ts';
 import { AGENDA_ROWS, agendaLines, agendaSince, DESCRIPTION_CHARS, DONE_WINDOW_DAYS, oneLine, waitsOnOwner, type AgendaInput } from './agenda.ts';
+import { TimeZone } from '../core/zone.ts';
 
 const NOW = Date.parse('2030-01-08T10:00:00Z');
 
 function inputOf(tasks: readonly Task[], since = NOW - MS_PER_DAY): AgendaInput {
   return {
     tasks,
-    tree: new TaskTree(new Map(tasks.map((task) => [task.id, task])), new Date(NOW)),
+    tree: new TaskTree(new Map(tasks.map((task) => [task.id, task])), new Date(NOW), TimeZone.UTC),
     now: NOW,
     since,
     ownerMarker: 'owner',
@@ -69,13 +70,13 @@ describe('the meeting agenda', () => {
       '      2. Pro at 29 dollars a month',
       '    recommended: Basic, the cheaper launch',
       '    with no answer: Basic ships on the due date',
-      '    waiting since 01-07 15:30: two options, numbers in the card',
+      '    waiting since 01-07 15:30 UTC: two options, numbers in the card',
       '    asked at: issue 12',
     ]);
     assert.deepEqual(lines.slice(10, 13), [
       '  T5 waiting, p2, owner alpha | Add a health check (waiting: approval owner)',
       '    no card yet: ask alpha for one (check flags it NO-CARD)',
-      '    waiting since 01-07 09:00',
+      '    waiting since 01-07 09:00 UTC',
     ]);
     assert.match(lines[13] ?? '', /^ {2}Read each card to owner as it stands, .*Never point to a doc; `teamrig show <id>` prints a task whole\.$/);
     assert.equal(lines[14], '  Record each answer in the same turn: teamrig update <id> --note "owner decided: <decision>" --session lead; meeting end tells each task\'s owner.');

@@ -36,7 +36,7 @@ describe('runCli: the daily meeting', () => {
     assert.match(stdout[2] ?? '', /^ {2}T1 waiting, p1, owner alpha \| Pick the pricing tier/);
     assert.equal(stdout[3], '    what and why: which tier ships first');
     assert.equal(stdout[4], `    decide: ${TEST_CARD.question}`);
-    assert.ok(stdout.includes('    waiting since 01-08 10:00: two options'), stdout.join('\n'));
+    assert.ok(stdout.includes('    waiting since 01-08 10:00 UTC: two options'), stdout.join('\n'));
     const late = stdout.indexOf('LATE 1 past their due date');
     assert.match(stdout[late + 1] ?? '', /^ {2}T2 open, p2, owner bravo, due 01-07 \| Ship the docs/);
     assert.ok(stdout.includes('DONE 0 done or dropped since Mon 01-07 10:00 UTC'), stdout.join('\n'));

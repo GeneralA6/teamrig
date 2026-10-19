@@ -2,6 +2,7 @@ import { burstText } from '../budget/burst-lines.ts';
 import type { Burst } from '../budget/burst.ts';
 import { KIT_NAME } from '../core/home.ts';
 import { formatUtcMinute, MS_PER_DAY, MS_PER_MINUTE, utcMinuteOf } from '../core/time.ts';
+import type { TimeZone } from '../core/zone.ts';
 import type { Task } from '../register/fold.ts';
 import { waitContext } from '../register/waits.ts';
 import { byUrgency, costText, idsText, isWakeWorthy, taskListText, type SettledMoments, type WakeCost, type WakeRest } from './decide.ts';
@@ -49,8 +50,8 @@ export function dueMoments(now: number, dayStartUtc: string | undefined, burst: 
 }
 
 /** The session's work it can start now, of any priority, most urgent first. */
-export function startableTasks(tasks: ReadonlyMap<string, Task>, session: string, now: number): readonly Task[] {
-  const context = waitContext(tasks, new Date(now));
+export function startableTasks(tasks: ReadonlyMap<string, Task>, session: string, now: number, zone: TimeZone): readonly Task[] {
+  const context = waitContext(tasks, new Date(now), zone);
   return [...tasks.values()].filter((task) => isWakeWorthy(task, session, Number.POSITIVE_INFINITY, context)).sort(byUrgency);
 }
 

@@ -1,5 +1,6 @@
 import { JsonlDailyLog } from '../../core/daily-log.ts';
 import type { TeamPaths } from '../../core/home.ts';
+import type { TimeZone } from '../../core/zone.ts';
 import type { Task } from '../../register/fold.ts';
 import { JsonlEventLog } from '../../register/store.ts';
 import { verifyByArrived, verifyQueue } from '../../register/verify.ts';
@@ -36,14 +37,14 @@ export async function verifyNoteOf(runtime: CliRuntime, paths: TeamPaths, id: st
  * line a day and every other stop reads one small file; a date that arrives later that day waits for
  * the next one.
  */
-export async function verifyByLinesOf(runtime: CliRuntime, paths: TeamPaths, id: string): Promise<string[]> {
+export async function verifyByLinesOf(runtime: CliRuntime, paths: TeamPaths, id: string, zone: TimeZone): Promise<string[]> {
   const now = new Date(runtime.clock.now());
   const scans = new JsonlDailyLog(runtime.files, paths.verifyNotices);
   const key = `due ${id}`;
   if (await scans.seen(key, now)) {
     return [];
   }
-  const due = (await queueOf(runtime, paths, id)).filter((task) => verifyByArrived(task, now));
+  const due = (await queueOf(runtime, paths, id)).filter((task) => verifyByArrived(task, now, zone));
   await scans.record(key, now);
-  return due.map(formatVerifyByLine);
+  return due.map((task) => formatVerifyByLine(task, zone));
 }

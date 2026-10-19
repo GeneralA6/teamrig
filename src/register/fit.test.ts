@@ -4,12 +4,13 @@ import { testTask } from '../testing/task.ts';
 import { fitLines, leftOfWeek, overLimitFlag, weekFit, type FitRow } from './fit.ts';
 import type { Task } from './fold.ts';
 import { TaskTree } from './tree.ts';
+import { TimeZone } from '../core/zone.ts';
 
 const week = '2030-01-07';
 const NOW = new Date('2030-01-08T10:00:00.000Z');
 
 function treeOf(...tasks: Task[]): TaskTree {
-  return new TaskTree(new Map(tasks.map((task) => [task.id, task])), NOW);
+  return new TaskTree(new Map(tasks.map((task) => [task.id, task])), NOW, TimeZone.UTC);
 }
 
 function rows(...tasks: Parameters<typeof testTask>[0][]): FitRow[] {

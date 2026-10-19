@@ -118,8 +118,8 @@ describe('the read entry', () => {
       { id: 'T4', priority: 2, due: '2030-01-08 12:00' },
       { id: 'T9', priority: 1, due: null },
     ];
-    assert.deepEqual(rows.sort(read.byPlanOrder).map((row) => row.id), ['T9', 'T4', 'T3', 'T10']);
-    assert.equal(read.dueTime({ due: null }), undefined);
+    assert.deepEqual(rows.sort((a, b) => read.byPlanOrder(a, b, read.TimeZone.UTC)).map((row) => row.id), ['T9', 'T4', 'T3', 'T10']);
+    assert.equal(read.dueTime({ due: null }, read.TimeZone.UTC), undefined);
   });
 
   it('checks a session name with the rule teamrig names inbox files by', () => {

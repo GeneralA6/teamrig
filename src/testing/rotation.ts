@@ -1,4 +1,5 @@
 import { toJsonlLine } from '../core/jsonl.ts';
+import { TimeZone } from '../core/zone.ts';
 import { compactRegister, RETAIN_DAYS, type Compaction } from '../register/compaction.ts';
 import { layoutPaths, readWorkingSet } from '../register/layout.ts';
 import { markerRecord } from '../register/marker.ts';
@@ -7,6 +8,8 @@ import type { MemoryFiles } from './memory-files.ts';
 
 export interface RotateOptions {
   readonly now: Date;
+  /** The team's zone; UTC when left out. */
+  readonly zone?: TimeZone;
   readonly retainDays?: number;
   readonly keep?: ReadonlySet<string>;
 }
@@ -29,6 +32,7 @@ export async function rotateRegister(files: MemoryFiles, eventsPath: string, opt
   const compaction = compactRegister(source, {
     covered,
     now: options.now,
+    zone: options.zone ?? TimeZone.UTC,
     retainDays: options.retainDays ?? RETAIN_DAYS,
     keep: options.keep ?? new Set(),
   });

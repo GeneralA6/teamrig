@@ -3,6 +3,7 @@ import { isHeld, quietStartOf, sessionQuietFrom, type BudgetFacts } from '../bud
 import { DEFAULT_MESSAGES } from '../config/defaults.ts';
 import type { QuietHours } from '../config/types.ts';
 import { KIT_NAME } from '../core/home.ts';
+import type { TimeZone } from '../core/zone.ts';
 import { isCold } from '../hooks/cold-send.ts';
 import { taskNumber, type Task } from '../register/fold.ts';
 import type { TaskStatus } from '../register/model.ts';
@@ -97,6 +98,8 @@ export interface WakeInput {
   readonly session: string;
   readonly tab: string;
   readonly now: number;
+  /** The team's zone, which a waiting task's stored day is a day of. */
+  readonly zone: TimeZone;
   readonly maxPriority: number;
   readonly batchMs: number;
   readonly minGapMs: number;
@@ -124,7 +127,7 @@ export function byUrgency(a: Task, b: Task): number {
  */
 export function decideWake(input: WakeInput): WakeDecision {
   const { tasks, session, tab, now, previous } = input;
-  const context = waitContext(tasks, new Date(now));
+  const context = waitContext(tasks, new Date(now), input.zone);
   const worthy = [...tasks.values()].filter((task) => isWakeWorthy(task, session, input.maxPriority, context));
   const known = worthy.map((task) => task.id);
   const none: WakeVerdict = { kind: 'none' };

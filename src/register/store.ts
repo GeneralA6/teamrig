@@ -1,5 +1,6 @@
 import type { Files } from '../core/files.ts';
 import { toJsonlLine } from '../core/jsonl.ts';
+import type { TimeZone } from '../core/zone.ts';
 import { eventRecord, type RegisterEvent } from './events.ts';
 import { RETAIN_DAYS } from './compaction.ts';
 import { layoutPaths, readHistory, readWorkingSet, type LayoutPaths } from './layout.ts';
@@ -22,7 +23,7 @@ export interface EventLog {
    * AUTO_ROTATE_CHARS (rotate.ts), and says how; null when it is not due. `written` is the read the write
    * decided on. A log never rotated is left alone: its first rotation is a person's, with `teamrig compact`.
    */
-  rotateIfDue(written: RegisterSnapshot, now: Date): Promise<RotationPlan | null>;
+  rotateIfDue(written: RegisterSnapshot, now: Date, zone: TimeZone): Promise<RotationPlan | null>;
 }
 
 export class JsonlEventLog implements EventLog {
@@ -48,7 +49,7 @@ export class JsonlEventLog implements EventLog {
     await this.files.append(this.path, events.map((event) => toJsonlLine(eventRecord(event))).join(''));
   }
 
-  async rotateIfDue(written: RegisterSnapshot, now: Date): Promise<RotationPlan | null> {
+  async rotateIfDue(written: RegisterSnapshot, now: Date, zone: TimeZone): Promise<RotationPlan | null> {
     if (written.read.rotatedAfter === 0) {
       return null;
     }
@@ -56,7 +57,7 @@ export class JsonlEventLog implements EventLog {
     if (tailText.length < AUTO_ROTATE_CHARS) {
       return null;
     }
-    const plan = await planRotation(this.files, this.layout, { now, retainDays: RETAIN_DAYS, keep: new Set(), checkHistory: false }, tailText);
+    const plan = await planRotation(this.files, this.layout, { now, zone, retainDays: RETAIN_DAYS, keep: new Set(), checkHistory: false }, tailText);
     await applyRotation(this.files, this.layout, plan);
     return plan;
   }

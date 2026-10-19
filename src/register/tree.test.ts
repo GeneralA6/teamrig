@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import { testTask } from '../testing/task.ts';
 import type { Task } from './fold.ts';
 import { needPath, needsOf, pathText, planOrder, TaskTree, type TreeTask } from './tree.ts';
+import { TimeZone } from '../core/zone.ts';
 
 const NOW = new Date('2030-01-08T10:00:00.000Z');
 
 function treeOf(...tasks: Task[]): TaskTree {
-  return new TaskTree(new Map(tasks.map((task) => [task.id, task])), NOW);
+  return new TaskTree(new Map(tasks.map((task) => [task.id, task])), NOW, TimeZone.UTC);
 }
 
 function ids(tasks: readonly Pick<Task, 'id'>[]): string[] {
@@ -112,7 +113,7 @@ describe('TaskTree over a reader\'s rows', () => {
         row({ id: 'T3', owner: 'alpha', status: 'in-progress', priority: 1 }),
       ].map((task) => [task.id, task]),
     ),
-    NOW,
+    NOW, TimeZone.UTC,
   );
 
   it('hands back the reader\'s own rows, with their own fields', () => {

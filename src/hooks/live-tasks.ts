@@ -1,4 +1,4 @@
-import { shortUtc } from '../core/time.ts';
+import { showStored } from '../core/time.ts';
 import type { Task } from '../register/fold.ts';
 import { ACTIVE_STATUSES, priorityText, type TaskStatus } from '../register/model.ts';
 import type { TaskTree } from '../register/tree.ts';
@@ -45,7 +45,7 @@ function waitingText(task: Task, context: WaitContext): string {
     return '';
   }
   if (task.waits.length > 0) {
-    return ` (waiting: ${waitsText(task.waits, context)})`;
+    return ` (waiting: ${waitsText(task.waits, context.zone, context)})`;
   }
   return task.note === null ? '' : ` (waiting: ${cut(task.note, LIVE_NOTE_CHARS)})`;
 }
@@ -58,7 +58,7 @@ function liveRow(task: Task, tree: TaskTree): string {
   const parts = [`${task.id} ${task.status}`, priorityText(task.priority)];
   const due = tree.effectiveDue(task.id);
   if (due !== undefined) {
-    parts.push(`due ${shortUtc(due.due)}${due.from === null ? '' : ` (from ${due.from})`}`);
+    parts.push(`due ${showStored(due.due, tree.zone)}${due.from === null ? '' : ` (from ${due.from})`}`);
   }
   const after = unfinishedAfter(task.after, tree.context);
   if (after.length > 0) {

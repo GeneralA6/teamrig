@@ -49,7 +49,7 @@ describe('the CLI on a rotated register', () => {
     const checked = await kit.run(['check'], AS_ALPHA);
     assert.deepEqual(checked.stdout.slice(0, 3), [
       'CHECK 1 flag(s), week 2030-01-21 (short form; --all for every flag in full)',
-      'STALE 1 (last event 01-08 10:00 by alpha)',
+      'STALE 1 (last event 01-08 10:00 UTC by alpha)',
       '  T3 open, p1, owner alpha | Current plan',
     ]);
     const planned = await kit.run(['plan'], AS_ALPHA);

@@ -4,6 +4,7 @@ import type { Task } from '../register/fold.ts';
 import { TaskTree } from '../register/tree.ts';
 import { testTask } from '../testing/task.ts';
 import { COMPACT_SOURCE, LIVE_TASK_ROWS, LIVE_TITLE_CHARS, LIVE_WAITING_ROWS, liveTasksNote, showsLiveTasks } from './live-tasks.ts';
+import { TimeZone } from '../core/zone.ts';
 
 const NOW = new Date('2030-01-08T10:00:00.000Z');
 const HEAD = 'LIVE TASKS of alpha, read from the register at this start';
@@ -12,7 +13,7 @@ const WINS = 'where your handover or a compaction summary says otherwise, the re
 /** The block for alpha over `tasks`, judged at NOW against those same tasks. */
 function noteOf(tasks: readonly Task[]): string {
   const byId = new Map(tasks.map((task) => [task.id, task]));
-  return liveTasksNote({ tasks, owner: 'alpha', tree: new TaskTree(byId, NOW), command: 'teamrig' });
+  return liveTasksNote({ tasks, owner: 'alpha', tree: new TaskTree(byId, NOW, TimeZone.UTC), command: 'teamrig' });
 }
 
 describe('showsLiveTasks', () => {

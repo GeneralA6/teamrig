@@ -22,14 +22,15 @@ import {
   type TaskRow,
 } from './reports.ts';
 import { EXIT } from './runtime.ts';
+import { TimeZone } from '../core/zone.ts';
 
 const LONG_TITLE = 'Move the nightly export onto the shared queue and drop the old cron that wrote it twice';
 const NOW = new Date('2030-01-08T12:00:00.000Z');
 /** A read with no other task in it, at NOW: each task keeps its own due. */
-const TREE = new TaskTree(new Map(), NOW);
+const TREE = new TaskTree(new Map(), NOW, TimeZone.UTC);
 
 function treeOf(...tasks: Task[]): TaskTree {
-  return new TaskTree(new Map(tasks.map((task) => [task.id, task])), NOW);
+  return new TaskTree(new Map(tasks.map((task) => [task.id, task])), NOW, TimeZone.UTC);
 }
 
 function row(overrides: Partial<Task>, team?: string): TaskRow {
@@ -73,7 +74,7 @@ describe('printedChars and fitBudget', () => {
 describe('listLines', () => {
   it('prints every field of every row with --all, ids naming their team', () => {
     const rows = [row({ id: 'T2', week: '2030-01-07', goals: ['G1'] }), row({ id: 'T1' }, 'web')];
-    assert.deepEqual(listLines(rows, true), [formatTask(testTask({ id: 'T2', week: '2030-01-07', goals: ['G1'] })), formatTask(testTask(), 'web')]);
+    assert.deepEqual(listLines(rows, true), [formatTask(testTask({ id: 'T2', week: '2030-01-07', goals: ['G1'] }), undefined, TREE), formatTask(testTask(), 'web', TREE)]);
     assert.deepEqual(listLines([], true), []);
   });
 
@@ -143,9 +144,9 @@ describe('checkLines', () => {
     const lines = checkLines(report({ sections, skills: [skillFlag('alpha-demo')] }), true);
     assert.deepEqual(lines, [
       'CHECK app: 1 flag(s), week 2030-01-07',
-      formatFlag(sections[0]?.flags[0] ?? flag('OVERDUE', {}), 'app'),
+      formatFlag(sections[0]?.flags[0] ?? flag('OVERDUE', {}), 'app', TREE),
       'CHECK web: 1 flag(s), week 2030-01-07',
-      formatFlag(sections[1]?.flags[0] ?? flag('STALE', {}), 'web'),
+      formatFlag(sections[1]?.flags[0] ?? flag('STALE', {}), 'web', TREE),
       'SKILLS 1 flag(s) in skills-dir',
       'SKILL UNVERIFIED (Last verified 2029-11-01, over 30 days) alpha alpha-demo',
     ]);

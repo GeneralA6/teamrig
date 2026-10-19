@@ -32,6 +32,11 @@ export { LAYOUT_VERSION } from '../register/marker.ts';
 export { readEvents, readRegister, snapshotOf, type EventLogRead, type RegisterSnapshot, type RetiredTasks } from '../register/snapshot.ts';
 export { loopFix, needPath, needsOf, pathText, planOrder, TaskTree, type EffectiveDue, type NextMove, type PlanPlace, type TreeTask, type WaitingOnYou } from '../register/tree.ts';
 export { byPlanOrder, dueTime, type PlanOrdered } from '../register/views.ts';
+
+// Time: the team's zone (`config.timeZone`, else the machine's). A stored bare day is a day of it, a stored minute is
+// UTC, and every time prints in it, zone-marked (`01-31 11:05 IST`); a reader passes it to the calls that print one.
+export { showStored, storedText } from '../core/time.ts';
+export { TimeZone } from '../core/zone.ts';
 export {
   allReady,
   isReady,

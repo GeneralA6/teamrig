@@ -120,6 +120,13 @@ export function parseDeadline(text: string, zone: TimeZone): Date | undefined {
   return new Date(nextDay.getTime() - 1);
 }
 
+/** A stored day or minute as people read it in full: `2030-01-31`, or `2030-01-31 11:05 IST` for `2030-01-31 09:05`. */
+export function storedText(text: string, zone: TimeZone): string {
+  const trimmed = text.trim();
+  const at = parseUtcDay(trimmed) === undefined ? parseUtcDeadline(trimmed) : undefined;
+  return at === undefined ? trimmed : zone.minute(at);
+}
+
 /** A stored day or minute as people read it, without the year: `01-31`, or `01-31 11:05 IST` for `2030-01-31 09:05`. */
 export function showStored(text: string, zone: TimeZone): string {
   const trimmed = text.trim();

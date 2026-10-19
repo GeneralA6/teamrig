@@ -12,7 +12,7 @@ import { dayStartPrompt, dayStartToast, decideDayStart, dueMoments, nextDayStart
 import { decideWake, effectivePriority, URGENT_PRIORITY, wakeCost, wakePrompt, wakeRestOf, wakeToast, type WakeState } from '../../wake/decide.ts';
 import { logWake, WakeStore } from '../../wake/store.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
-import { openKit, rosterOf, type Kit } from '../kit.ts';
+import { openKit, rosterOf, teamZone, type Kit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { teamRegister } from '../team-register.ts';
 import { budgetFactsOf } from './hook-budget.ts';
@@ -127,7 +127,7 @@ async function momentsOf(runtime: CliRuntime, scope: Extract<Scope, { kind: 'fou
   }
   const next = nextDayStartAt(dayStartUtc, now);
   const none: MomentsCheck = { verdict: { kind: 'none' }, state, lastTurnAt: undefined, next };
-  const startable = startableTasks(tasks, id, now);
+  const startable = startableTasks(tasks, id, now, teamZone(config, runtime));
   const logged = activeBurst((await new BurstLog(runtime.files, kit.paths.bursts).read()).records, now, undefined);
   const inBurst = logged?.sessions.includes(id) === true ? logged : undefined;
   if (startable.length === 0 || dueMoments(now, dayStartUtc, inBurst, state.settled).length === 0) {
@@ -162,6 +162,7 @@ async function decide(runtime: CliRuntime, scope: Extract<Scope, { kind: 'found'
       session: id,
       tab,
       now,
+      zone: teamZone(config, runtime),
       maxPriority: await maxPriorityOf(runtime, scope),
       batchMs: config.wake.batchSeconds * SECOND_MS,
       minGapMs: config.wake.minGapMinutes * MINUTE_MS,

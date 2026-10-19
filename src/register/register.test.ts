@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { NewerDataError } from '../core/jsonl.ts';
 import { TEST_CARD } from '../testing/card.ts';
+import { TimeZone } from '../core/zone.ts';
 import { testConfig } from '../testing/config.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { InlineMutex } from '../testing/inline-mutex.ts';
@@ -40,6 +41,7 @@ function setup(initial: Readonly<Record<string, string>> = {}) {
     log: new JsonlEventLog(files, LOG),
     mutex,
     clock,
+    zone: TimeZone.UTC,
     policy: new RegisterPolicy(testConfig()),
     skills,
     autoArchive: true,

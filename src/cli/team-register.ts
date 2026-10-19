@@ -5,6 +5,7 @@ import { RegisterPolicy } from '../register/policy.ts';
 import { Register } from '../register/register.ts';
 import { JsonlEventLog } from '../register/store.ts';
 import { SkillDir } from '../skills/store.ts';
+import { teamZone } from './kit.ts';
 import type { CliRuntime } from './runtime.ts';
 
 /** The team's register on disk: its event log under the team's lock, judged by the team's policy. */
@@ -17,5 +18,6 @@ export function teamRegister(runtime: CliRuntime, paths: TeamPaths, config: KitC
     policy: new RegisterPolicy(config),
     skills: new SkillDir(files, paths.skills),
     autoArchive: config.register.autoArchive,
+    zone: teamZone(config, runtime),
   });
 }

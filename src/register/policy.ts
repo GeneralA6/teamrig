@@ -2,7 +2,8 @@ import { MAX_DESCRIPTION } from '../config/defaults.ts';
 import type { KitConfig } from '../config/types.ts';
 import { ADDRESS_PATTERN } from '../core/address.ts';
 import { SecretScanner } from '../core/secrets.ts';
-import { parseUtcDay, parseUtcDeadline } from '../core/time.ts';
+import { parseDeadline, parseUtcDay, parseUtcDeadline, showStored } from '../core/time.ts';
+import type { TimeZone } from '../core/zone.ts';
 import { CARD_FLAGS, cardProblem, cardTexts, OPTION_SEPARATOR, sameCard, type DecisionCard } from './card.ts';
 import { sizeProblem, type TaskFieldName, type TaskFields } from './events.ts';
 import { taskNumber, type RegisterState, type Task } from './fold.ts';
@@ -93,10 +94,14 @@ export interface AskInput {
   readonly due?: string;
 }
 
-/** What a status change is judged against besides the task: the register as read, the time, and whether a cited skill exists. */
+/**
+ * What a status change is judged against besides the task: the register as read, the time, the team's zone (a stored
+ * day is a day of it), and whether a cited skill exists.
+ */
 export interface StatusContext {
   readonly state: RegisterState;
   readonly now: Date;
+  readonly zone: TimeZone;
   readonly skillExists: boolean;
 }
 
@@ -411,7 +416,7 @@ export class RegisterPolicy {
       case 'task':
         return taskWaitProblem(task, reason.id, context.state);
       case 'time':
-        return (parseUtcDeadline(reason.at)?.getTime() ?? 0) > context.now.getTime() ? undefined : `time ${reason.at} has passed: name a time to come`;
+        return (parseDeadline(reason.at, context.zone)?.getTime() ?? 0) > context.now.getTime() ? undefined : `time ${showStored(reason.at, context.zone)} has passed: name a time to come`;
     }
   }
 

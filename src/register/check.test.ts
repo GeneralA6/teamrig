@@ -7,16 +7,20 @@ import { checkTasks, currentWeek, currentWeekOf, formatFlag, peerWaitFlags } fro
 import type { Task } from './fold.ts';
 import { readRegister, type RegisterSnapshot } from './snapshot.ts';
 import { TaskTree } from './tree.ts';
+import { TimeZone } from '../core/zone.ts';
+import { JERUSALEM } from '../testing/zone.ts';
 
 const NOW = new Date('2030-01-10T12:00:00.000Z');
 const FRESH = '2030-01-10T09:00:00.000Z';
 const CONFIG = testConfig().register;
+/** A read with no task in it, at NOW: each flagged task keeps its own due. */
+const TREE = new TaskTree(new Map(), NOW, TimeZone.UTC);
 
 describe('currentWeek', () => {
   it('picks the newest week tag that has started', () => {
     const tasks = [testTask({ week: '2030-01-07' }), testTask({ week: '2029-12-31' }), testTask({ week: '2030-01-14' })];
-    assert.equal(currentWeek(tasks, NOW), '2030-01-07');
-    assert.equal(currentWeek([testTask()], NOW), null);
+    assert.equal(currentWeek(tasks, NOW, TimeZone.UTC), '2030-01-07');
+    assert.equal(currentWeek([testTask()], NOW, TimeZone.UTC), null);
   });
 });
 
@@ -28,21 +32,21 @@ describe('currentWeekOf', () => {
   };
 
   it('is the current week of the tasks read when nothing is retired, or nothing newer is', () => {
-    assert.equal(currentWeekOf(withTasks(['2030-01-07', null], null), NOW), '2030-01-07');
-    assert.equal(currentWeekOf(withTasks(['2030-01-07'], { count: 2, lastWeek: '2029-12-31' }), NOW), '2030-01-07');
-    assert.equal(currentWeekOf(withTasks([null], { count: 2, lastWeek: null }), NOW), null);
+    assert.equal(currentWeekOf(withTasks(['2030-01-07', null], null), NOW, TimeZone.UTC), '2030-01-07');
+    assert.equal(currentWeekOf(withTasks(['2030-01-07'], { count: 2, lastWeek: '2029-12-31' }), NOW, TimeZone.UTC), '2030-01-07');
+    assert.equal(currentWeekOf(withTasks([null], { count: 2, lastWeek: null }), NOW, TimeZone.UTC), null);
   });
 
   it('is the newest week of the retired tasks when no task read is in a newer one that has started', () => {
-    assert.equal(currentWeekOf(withTasks([null], { count: 1, lastWeek: '2029-12-31' }), NOW), '2029-12-31');
-    assert.equal(currentWeekOf(withTasks(['2029-12-24', '2099-01-05'], { count: 1, lastWeek: '2029-12-31' }), NOW), '2029-12-31');
-    assert.equal(currentWeekOf(withTasks([], { count: 1, lastWeek: '2099-01-05' }), NOW), null, 'a week that has not started');
+    assert.equal(currentWeekOf(withTasks([null], { count: 1, lastWeek: '2029-12-31' }), NOW, TimeZone.UTC), '2029-12-31');
+    assert.equal(currentWeekOf(withTasks(['2029-12-24', '2099-01-05'], { count: 1, lastWeek: '2029-12-31' }), NOW, TimeZone.UTC), '2029-12-31');
+    assert.equal(currentWeekOf(withTasks([], { count: 1, lastWeek: '2099-01-05' }), NOW, TimeZone.UTC), null, 'a week that has not started');
   });
 });
 
 describe('checkTasks', () => {
   const kinds = (tasks: Parameters<typeof checkTasks>[0], week: string | null = null) =>
-    checkTasks(tasks, NOW, week, CONFIG).map((flag) => `${flag.kind} ${flag.task.id}`);
+    checkTasks(tasks, NOW, TimeZone.UTC, week, CONFIG).map((flag) => `${flag.kind} ${flag.task.id}`);
 
   it('flags overdue tasks; a bare day is due at its end', () => {
     assert.deepEqual(kinds([testTask({ due: '2030-01-09', ownerSeenAt: FRESH, updatedAt: FRESH })]), ['OVERDUE T1']);
@@ -52,9 +56,9 @@ describe('checkTasks', () => {
   it('flags a verifying task past its verify-by date, not as overdue work', () => {
     const late = testTask({ status: 'verifying', due: '2030-01-09', ownerSeenAt: FRESH, updatedAt: FRESH });
     assert.deepEqual(kinds([late]), ['VERIFY-OVERDUE T1']);
-    const [flag] = checkTasks([late], NOW, null, CONFIG);
+    const [flag] = checkTasks([late], NOW, TimeZone.UTC, null, CONFIG);
     assert.ok(flag);
-    assert.equal(formatFlag(flag), 'VERIFY-OVERDUE (verify by 01-09) T1 verifying, p2, owner alpha, due 01-09, from lead | Add a health check');
+    assert.equal(formatFlag(flag, undefined, TREE), 'VERIFY-OVERDUE (verify by 01-09) T1 verifying, p2, owner alpha, due 01-09, from lead | Add a health check');
     assert.deepEqual(kinds([testTask({ status: 'verifying', due: '2030-01-10', ownerSeenAt: FRESH, updatedAt: FRESH })]), []);
   });
 
@@ -64,19 +68,19 @@ describe('checkTasks', () => {
     const waits = testTask({ id: 'T3', status: 'waiting', waits: [{ kind: 'task', id: 'T1' }], ownerSeenAt: FRESH, updatedAt: FRESH });
     const finished = testTask({ id: 'T4', status: 'done', after: ['T1'] });
     assert.deepEqual(kinds([shipped, after, finished]), ['VERIFY-BLOCKS T1']);
-    const flags = checkTasks([shipped, after, waits], NOW, null, CONFIG).filter((flag) => flag.kind === 'VERIFY-BLOCKS');
+    const flags = checkTasks([shipped, after, waits], NOW, TimeZone.UTC, null, CONFIG).filter((flag) => flag.kind === 'VERIFY-BLOCKS');
     assert.deepEqual(flags.map((flag) => flag.detail), ['T2 (owner bravo), T3 (owner alpha) need it; prove it or reopen it']);
-    assert.equal(checkTasks([shipped, after], NOW, null, CONFIG)[0]?.detail, 'T2 (owner bravo) needs it; prove it or reopen it');
+    assert.equal(checkTasks([shipped, after], NOW, TimeZone.UTC, null, CONFIG)[0]?.detail, 'T2 (owner bravo) needs it; prove it or reopen it');
   });
 
   it('reads the effective due: a task is late, due this week or quietly verifying by the due of a task that needs it', () => {
     const seen = { ownerSeenAt: FRESH, updatedAt: FRESH };
     const needer = (due: string, extra: Parameters<typeof testTask>[0] = {}) => testTask({ id: 'T2', owner: 'bravo', due, after: ['T1'], ...seen, ...extra });
     const work = testTask({ id: 'T1', ...seen });
-    const late = checkTasks([work, needer('2030-01-09')], NOW, null, CONFIG);
+    const late = checkTasks([work, needer('2030-01-09')], NOW, TimeZone.UTC, null, CONFIG);
     assert.deepEqual(late.map((flag) => `${flag.kind} ${flag.task.id}: ${flag.detail}`), ['OVERDUE T1: due 01-09, from T2', 'OVERDUE T2: due 01-09']);
     const shipped = testTask({ id: 'T1', status: 'verifying', ownerSeenAt: '2030-01-01T08:00:00.000Z', updatedAt: '2030-01-01T08:00:00.000Z' });
-    const proof = checkTasks([shipped, needer('2030-01-09')], NOW, null, CONFIG);
+    const proof = checkTasks([shipped, needer('2030-01-09')], NOW, TimeZone.UTC, null, CONFIG);
     assert.deepEqual(proof.map((flag) => `${flag.kind} ${flag.task.id}`), ['OVERDUE T2', 'VERIFY-OVERDUE T1', 'VERIFY-BLOCKS T1']);
     assert.equal(proof[1]?.detail, 'verify by 01-09, from T2');
     assert.deepEqual(kinds([shipped, needer('2030-01-12')]), ['VERIFY-BLOCKS T1'], 'an inherited date keeps a verifying task from going stale');
@@ -89,7 +93,7 @@ describe('checkTasks', () => {
     const held = testTask({ id: 'T2', owner: 'bravo', status: 'waiting', waits: [{ kind: 'task', id: 'T1' }], ...seen });
     const waiter = testTask({ id: 'T3', status: 'waiting', waits: [{ kind: 'task', id: 'T4' }], ...seen });
     const back = testTask({ id: 'T4', owner: 'bravo', after: ['T3'], ...seen });
-    assert.deepEqual(checkTasks([planned, held, waiter, back], NOW, null, CONFIG).map((flag) => `${flag.kind} ${flag.task.id}: ${flag.detail}`), [
+    assert.deepEqual(checkTasks([planned, held, waiter, back], NOW, TimeZone.UTC, null, CONFIG).map((flag) => `${flag.kind} ${flag.task.id}: ${flag.detail}`), [
       'LOOP T1: T1 -> T2 -> T1 is a loop, and no task in a loop can finish: make the step T1 needs from T2 its own task: teamrig add --owner bravo --title "<the step>", then teamrig update T1 --after <its id>',
       'LOOP T3: T3 -> T4 -> T3 is a loop, and no task in a loop can finish: make the step T3 needs from T4 its own task: teamrig set T3 --status waiting --ask bravo --text "<the step>"',
     ]);
@@ -101,11 +105,11 @@ describe('checkTasks', () => {
       testTask({ id: `T${n}`, owner, status: 'verifying', due: '2030-01-11', statusAt: `2030-01-0${n}T08:00:00.000Z`, ownerSeenAt: FRESH, updatedAt: FRESH });
     const pile = [verifying(3), verifying(2), verifying(4), verifying(5, 'bravo')];
     const two = { ...CONFIG, maxVerifying: 2 };
-    assert.deepEqual(checkTasks(pile, NOW, null, two).map((flag) => `${flag.kind} ${flag.task.id}: ${flag.detail}`), [
+    assert.deepEqual(checkTasks(pile, NOW, TimeZone.UTC, null, two).map((flag) => `${flag.kind} ${flag.task.id}: ${flag.detail}`), [
       'PILE-UP T2: alpha holds 3 verifying tasks, more than 2; this is the oldest',
     ]);
     assert.deepEqual(kinds(pile), [], 'the default allows 5');
-    assert.deepEqual(checkTasks(pile, NOW, null, { ...CONFIG, maxVerifying: 0 }), []);
+    assert.deepEqual(checkTasks(pile, NOW, TimeZone.UTC, null, { ...CONFIG, maxVerifying: 0 }), []);
   });
 
   it('lets a verifying task with a due date wait quietly for its proof, and calls one with none stale', () => {
@@ -123,7 +127,7 @@ describe('checkTasks', () => {
 
   it('flags a waiting task with no reason, as an older teamrig wrote it', () => {
     const bare = testTask({ status: 'waiting', waits: [], ownerSeenAt: FRESH, updatedAt: FRESH });
-    const flags = checkTasks([bare], NOW, null, CONFIG);
+    const flags = checkTasks([bare], NOW, TimeZone.UTC, null, CONFIG);
     assert.deepEqual(flags.map((flag) => `${flag.kind}: ${flag.detail}`), ['NO-REASON: set what it waits for (--waits) or its next status']);
     assert.deepEqual(kinds([testTask({ status: 'waiting', waits: [{ kind: 'decision', who: 'lead' }], ownerSeenAt: FRESH, updatedAt: FRESH })]), []);
   });
@@ -137,8 +141,8 @@ describe('checkTasks', () => {
 
   it('flags tasks with no event for the stale window', () => {
     const old = testTask({ ownerSeenAt: '2030-01-07T08:00:00.000Z', updatedAt: '2030-01-07T11:00:00.000Z', updatedBy: 'bravo' });
-    const flags = checkTasks([old], NOW, null, CONFIG);
-    assert.deepEqual(flags.map((flag) => formatFlag(flag)), ['STALE (last event 01-07 11:00 by bravo) T1 open, p2, owner alpha, from lead | Add a health check']);
+    const flags = checkTasks([old], NOW, TimeZone.UTC, null, CONFIG);
+    assert.deepEqual(flags.map((flag) => formatFlag(flag, undefined, TREE)), ['STALE (last event 01-07 11:00 UTC by bravo) T1 open, p2, owner alpha, from lead | Add a health check']);
   });
 
   it('flags owner orders and tasks due this week that are outside the week plan', () => {
@@ -164,7 +168,7 @@ describe('checkTasks', () => {
 
   it('reads its thresholds from the config', () => {
     const quick = testConfig({ register: { check: { staleAfterHours: 1, notPickedUpAfterHours: 1, weekLengthDays: 7 } } }).register;
-    const flags = checkTasks([testTask({ ownerSeenAt: '2030-01-10T10:00:00.000Z', updatedAt: '2030-01-10T10:00:00.000Z' })], NOW, null, quick);
+    const flags = checkTasks([testTask({ ownerSeenAt: '2030-01-10T10:00:00.000Z', updatedAt: '2030-01-10T10:00:00.000Z' })], NOW, TimeZone.UTC, null, quick);
     assert.deepEqual(flags.map((flag) => flag.kind), ['STALE']);
   });
 });
@@ -190,11 +194,11 @@ describe('checkTasks: PRIORITY-SKIP', () => {
   const waiting = testTask({ id: 'T1', priority: 1, ...seen, ...since('2030-01-08T09:00:00.000Z') });
   const working = testTask({ id: 'T2', priority: 3, status: 'in-progress', ...seen, ...since('2030-01-08T10:00:00.000Z') });
   const skips = (tasks: Parameters<typeof checkTasks>[0], config = CONFIG) =>
-    checkTasks(tasks, NOW, null, config).map((flag) => formatFlag(flag));
+    checkTasks(tasks, NOW, TimeZone.UTC, null, config).map((flag) => formatFlag(flag, undefined, TREE));
 
   it('flags work in progress below its own open p1, counted from the later of the two', () => {
     assert.deepEqual(skips([waiting, working]), [
-      'PRIORITY-SKIP (p1 T1 waits open, skipped since 01-08 10:00) T2 in-progress, p3, owner alpha, from lead | Add a health check',
+      'PRIORITY-SKIP (p1 T1 waits open, skipped since 01-08 10:00 UTC) T2 in-progress, p3, owner alpha, from lead | Add a health check',
     ]);
   });
 
@@ -217,7 +221,7 @@ describe('checkTasks: PRIORITY-SKIP', () => {
   it('names the p1 that has waited longest', () => {
     const older = testTask({ id: 'T3', priority: 1, ...seen, ...since('2030-01-07T09:00:00.000Z') });
     const newer = { ...waiting, ...since('2030-01-08T11:00:00.000Z') };
-    assert.match(skips([newer, older, working])[0] ?? '', /^PRIORITY-SKIP \(p1 T3 waits open, skipped since 01-08 10:00\) T2 /);
+    assert.match(skips([newer, older, working])[0] ?? '', /^PRIORITY-SKIP \(p1 T3 waits open, skipped since 01-08 10:00 UTC\) T2 /);
   });
 
   it('leaves a p1 planned after a task not finished yet alone, and counts it once that task finished', () => {
@@ -238,7 +242,7 @@ describe('checkTasks: PRIORITY-SKIP', () => {
 describe('checkTasks: READY', () => {
   const seen = { ownerSeenAt: FRESH, updatedAt: FRESH };
   const ready = (tasks: Parameters<typeof checkTasks>[0]) =>
-    checkTasks(tasks, NOW, null, CONFIG)
+    checkTasks(tasks, NOW, TimeZone.UTC, null, CONFIG)
       .filter((flag) => flag.kind === 'READY')
       .map((flag) => flag.task.id);
 
@@ -264,9 +268,9 @@ describe('checkTasks: READY', () => {
       testTask({ id: 'T1', status: 'waiting', note: 'needs the export', waits: [{ kind: 'task', id: 'T2' }], ...seen }),
       testTask({ id: 'T2', status: 'dropped', ...seen }),
     ];
-    const [flag] = checkTasks(tasks, NOW, null, CONFIG);
+    const [flag] = checkTasks(tasks, NOW, TimeZone.UTC, null, CONFIG);
     assert.equal(
-      flag === undefined ? undefined : formatFlag(flag, undefined, new TaskTree(new Map(tasks.map((task) => [task.id, task])), NOW)),
+      flag === undefined ? undefined : formatFlag(flag, undefined, new TaskTree(new Map(tasks.map((task) => [task.id, task])), NOW, TimeZone.UTC)),
       'READY (every reason cleared; set its next status) T1 waiting, p2, owner alpha, from lead | Add a health check (waiting: on T2 ready; needs the export)',
     );
   });
@@ -275,7 +279,7 @@ describe('checkTasks: READY', () => {
 describe('checkTasks: OFF-GOAL', () => {
   const seen = { ownerSeenAt: FRESH, updatedAt: FRESH };
   const kinds = (tasks: Parameters<typeof checkTasks>[0], week: string | null = '2030-01-07') =>
-    checkTasks(tasks, NOW, week, CONFIG).map((flag) => `${flag.kind} ${flag.task.id}`);
+    checkTasks(tasks, NOW, TimeZone.UTC, week, CONFIG).map((flag) => `${flag.kind} ${flag.task.id}`);
 
   it('flags work in progress with no goal outside the week plan', () => {
     const tasks = [
@@ -288,7 +292,7 @@ describe('checkTasks: OFF-GOAL', () => {
     assert.deepEqual(kinds(tasks), ['OFF-GOAL T1']);
     assert.deepEqual(kinds(tasks, null), [], 'no week plan, no week flags');
     assert.deepEqual(
-      checkTasks(tasks, NOW, '2030-01-07', CONFIG).map((flag) => formatFlag(flag)),
+      checkTasks(tasks, NOW, TimeZone.UTC, '2030-01-07', CONFIG).map((flag) => formatFlag(flag, undefined, TREE)),
       ['OFF-GOAL (in progress with no goal, not in week 2030-01-07) T1 in-progress, p2, owner alpha, from lead | Add a health check'],
     );
   });
@@ -305,7 +309,7 @@ describe('checkTasks: OFF-GOAL', () => {
 describe('checkTasks: NO-CARD', () => {
   const seen = { ownerSeenAt: FRESH, updatedAt: FRESH };
   const noCard = (tasks: Parameters<typeof checkTasks>[0], config = CONFIG) =>
-    checkTasks(tasks, NOW, null, config)
+    checkTasks(tasks, NOW, TimeZone.UTC, null, config)
       .filter((flag) => flag.kind === 'NO-CARD')
       .map((flag) => `${flag.task.id}: ${flag.detail}`);
 
@@ -358,5 +362,14 @@ describe('checkTasks: SELF-MADE', () => {
     const run = [made(1, { status: 'done' }), made(2), made(3), made(4, { status: 'done' }), made(5, { status: 'dropped' }), made(6, { status: 'in-progress', goals: ['G1'] })];
     assert.deepEqual(selfMade(run), ['SELF-MADE T6: alpha added 6 tasks for itself in 24 h, more than 3; this is the first still active past 3']);
     assert.deepEqual(selfMade(run.slice(0, 5)), [], 'the surplus is finished');
+  });
+});
+
+describe("currentWeek in the team's zone", () => {
+  it('starts a week plan at midnight there', () => {
+    const tasks = [testTask({ week: '2030-01-14' })];
+    const sunday = new Date('2030-01-13T22:30:00.000Z');
+    assert.equal(currentWeek(tasks, sunday, JERUSALEM), '2030-01-14', 'Jerusalem is at Mon 01-14 00:30');
+    assert.equal(currentWeek(tasks, sunday, TimeZone.UTC), null, 'UTC is at Sun 01-13 22:30');
   });
 });

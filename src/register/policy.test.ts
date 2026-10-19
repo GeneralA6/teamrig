@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { MAX_DESCRIPTION } from '../config/defaults.ts';
+import { TimeZone } from '../core/zone.ts';
 import { testConfig } from '../testing/config.ts';
 import { TEST_CARD } from '../testing/card.ts';
 import { testTask } from '../testing/task.ts';
@@ -8,6 +9,7 @@ import { foldEvents, type RegisterState, type Task } from './fold.ts';
 import type { DecisionCard } from './card.ts';
 import { CARD_USAGE, DESCRIPTION_NEEDED, GITHUB_ACTOR, normaliseTitle, RegisterPolicy, type AddInput, type AskInput, type ImportInput, type StatusContext, type StatusInput, type Verdict } from './policy.ts';
 import type { WaitReason } from './waits.ts';
+import { JERUSALEM } from '../testing/zone.ts';
 
 const EMPTY: RegisterState = foldEvents([]);
 const INPUT: AddInput = { title: 'Add a health check', description: 'what and why', owner: 'alpha', source: 'lead', priority: 2 };
@@ -15,7 +17,7 @@ const INPUT: AddInput = { title: 'Add a health check', description: 'what and wh
 const TASK: Task = testTask({ status: 'in-progress', startedAt: '2030-01-07T10:00:00.000Z' });
 const NOW = new Date('2030-01-08T12:00:00.000Z');
 /** A status change judged on an empty register at NOW, with no skill on disk. */
-const CTX: StatusContext = { state: EMPTY, now: NOW, skillExists: false };
+const CTX: StatusContext = { state: EMPTY, now: NOW, zone: TimeZone.UTC, skillExists: false };
 const OWNER_DECISION: readonly WaitReason[] = [{ kind: 'decision', who: 'owner' }];
 
 /** A register holding these tasks, its next id after the highest. */
@@ -413,7 +415,7 @@ describe('RegisterPolicy.setStatus to waiting', () => {
   });
 
   it('waits until a time to come, never one that passed', () => {
-    assert.equal(error(waiting(TASK, [{ kind: 'time', at: '2030-01-08 11:59' }])), 'time 2030-01-08 11:59 has passed: name a time to come');
+    assert.equal(error(waiting(TASK, [{ kind: 'time', at: '2030-01-08 11:59' }])), 'time 01-08 11:59 UTC has passed: name a time to come');
     assert.equal(waiting(TASK, [{ kind: 'time', at: '2030-01-08' }]).ok, true, 'a bare day lasts to its end');
   });
 
@@ -707,5 +709,17 @@ describe('RegisterPolicy.setStatus: the decision card', () => {
   it('checks each part like any text', () => {
     assert.match(error(set(TASK, { waits: OWNER_DECISION, card: { ...TEST_CARD, question: credentialUrl() } })), /card looks like it holds a secret/);
     assert.match(error(set(TASK, { waits: OWNER_DECISION, card: { ...TEST_CARD, byDefault: 'x '.repeat(200) } })), /^card has 400 characters/);
+  });
+});
+
+describe("RegisterPolicy.setStatus: a time wait in the team's zone", () => {
+  const policy = new RegisterPolicy(testConfig());
+  const day: readonly WaitReason[] = [{ kind: 'time', at: '2030-01-08' }];
+  const late: StatusContext = { ...CTX, state: foldEvents([]), now: new Date('2030-01-08T22:30:00.000Z') };
+  const wait = (context: StatusContext) => policy.setStatus(TASK, 'alpha', { status: 'waiting', note: 'x', waits: day }, context);
+
+  it('refuses a bare day that has ended there', () => {
+    assert.equal(wait({ ...late, zone: TimeZone.UTC }).ok, true, 'UTC is at 01-08 22:30');
+    assert.deepEqual(wait({ ...late, zone: JERUSALEM }), { ok: false, error: 'time 01-08 has passed: name a time to come' }, 'Jerusalem is at 01-09 00:30');
   });
 });

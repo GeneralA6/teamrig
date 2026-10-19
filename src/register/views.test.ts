@@ -6,6 +6,7 @@ import type { RegisterEvent } from './events.ts';
 import {
   assignedNotice,
   byPlanOrder,
+  dueTime,
   cut,
   formatEvent,
   formatNextMove,
@@ -24,12 +25,17 @@ import {
 import type { Task } from './fold.ts';
 import { TaskTree } from './tree.ts';
 import type { WaitReason } from './waits.ts';
+import { TimeZone } from '../core/zone.ts';
+import { JERUSALEM } from '../testing/zone.ts';
 
 const AT = '2030-01-07T09:00:00.000Z';
 const NOW = new Date('2030-01-08T10:00:00.000Z');
 
+/** A read with no task in it, at NOW: each task keeps its own due. */
+const TREE = treeOf();
+
 function treeOf(...tasks: Task[]): TaskTree {
-  return new TaskTree(new Map(tasks.map((task) => [task.id, task])), NOW);
+  return new TaskTree(new Map(tasks.map((task) => [task.id, task])), NOW, TimeZone.UTC);
 }
 
 describe('byPlanOrder', () => {
@@ -41,7 +47,7 @@ describe('byPlanOrder', () => {
       testTask({ id: 'T4', priority: 2, due: '2030-01-08 12:00' }),
       testTask({ id: 'T9', priority: 1 }),
     ];
-    assert.deepEqual(tasks.sort(byPlanOrder).map((task) => task.id), ['T9', 'T4', 'T3', 'T2', 'T10']);
+    assert.deepEqual(tasks.sort((a, b) => byPlanOrder(a, b, TimeZone.UTC)).map((task) => task.id), ['T9', 'T4', 'T3', 'T2', 'T10']);
   });
 });
 
@@ -77,32 +83,32 @@ describe('selectTasks', () => {
 describe('formatTask', () => {
   it('prints one compact line', () => {
     const task = testTask({ id: 'T12', due: '2030-01-15', week: '2030-01-13', source: 'owner', goals: ['G1', 'G2'] });
-    assert.equal(formatTask(task), 'T12 open, p2, owner alpha, due 01-15, week 01-13, from owner, goals G1,G2 | Add a health check');
+    assert.equal(formatTask(task, undefined, TREE), 'T12 open, p2, owner alpha, due 01-15, week 01-13, from owner, goals G1,G2 | Add a health check');
     assert.equal(
-      formatTask(testTask({ status: 'waiting', note: 'waiting on disk' })),
+      formatTask(testTask({ status: 'waiting', note: 'waiting on disk' }), undefined, TREE),
       'T1 waiting, p2, owner alpha, from lead | Add a health check (waiting: waiting on disk)',
     );
-    assert.equal(formatTask(testTask({ status: 'waiting' })), 'T1 waiting, p2, owner alpha, from lead | Add a health check');
-    assert.equal(formatTask(testTask({ after: ['T5', 'T6'] })), 'T1 open, p2, owner alpha, after T5,T6, from lead | Add a health check');
+    assert.equal(formatTask(testTask({ status: 'waiting' }), undefined, TREE), 'T1 waiting, p2, owner alpha, from lead | Add a health check');
+    assert.equal(formatTask(testTask({ after: ['T5', 'T6'] }), undefined, TREE), 'T1 open, p2, owner alpha, after T5,T6, from lead | Add a health check');
     assert.equal(
-      formatTask(testTask({ status: 'verifying', note: 'the nightly run is green', due: '2030-01-11' })),
+      formatTask(testTask({ status: 'verifying', note: 'the nightly run is green', due: '2030-01-11' }), undefined, TREE),
       'T1 verifying, p2, owner alpha, due 01-11, from lead | Add a health check (proof: the nightly run is green)',
     );
-    assert.equal(formatTask(testTask({ status: 'verifying' })), 'T1 verifying, p2, owner alpha, from lead | Add a health check');
+    assert.equal(formatTask(testTask({ status: 'verifying' }), undefined, TREE), 'T1 verifying, p2, owner alpha, from lead | Add a health check');
     assert.equal(
-      formatTask(testTask({ status: 'verifying', note: 'shipped', proof: 'the nightly run is green' })),
+      formatTask(testTask({ status: 'verifying', note: 'shipped', proof: 'the nightly run is green' }), undefined, TREE),
       'T1 verifying, p2, owner alpha, from lead | Add a health check (proof: the nightly run is green)',
     );
-    assert.equal(formatTask(testTask({ status: 'in-progress', note: 'started' })), 'T1 in-progress, p2, owner alpha, from lead | Add a health check');
+    assert.equal(formatTask(testTask({ status: 'in-progress', note: 'started' }), undefined, TREE), 'T1 in-progress, p2, owner alpha, from lead | Add a health check');
   });
 });
 
 describe('a task imported from GitHub', () => {
   it('names its issue in the short and the full row, and only for the github source', () => {
     const issue = testTask({ source: 'github', ref: 'gh:acme/web#7' });
-    assert.equal(formatShortTask(issue, 80), 'T1 open, p2, owner alpha, from gh:acme/web#7 | Add a health check');
-    assert.equal(formatTask(issue), 'T1 open, p2, owner alpha, from gh:acme/web#7 | Add a health check');
-    assert.equal(formatShortTask(testTask({ ref: 'gh:acme/web#7' }), 80), 'T1 open, p2, owner alpha | Add a health check');
+    assert.equal(formatShortTask(issue, 80, undefined, TREE), 'T1 open, p2, owner alpha, from gh:acme/web#7 | Add a health check');
+    assert.equal(formatTask(issue, undefined, TREE), 'T1 open, p2, owner alpha, from gh:acme/web#7 | Add a health check');
+    assert.equal(formatShortTask(testTask({ ref: 'gh:acme/web#7' }), 80, undefined, TREE), 'T1 open, p2, owner alpha | Add a health check');
   });
 });
 
@@ -117,16 +123,16 @@ describe('formatTask: what a waiting task waits for', () => {
 
   it('names every reason in plain words, then the note', () => {
     assert.equal(
-      formatTask(task),
-      'T1 waiting, p2, owner alpha, from lead | Add a health check (waiting: decision owner · approval lead · on T304 · until Thu 01-10 13:00; the export)',
+      formatTask(task, undefined, treeOf(testTask({ id: 'T304' }))),
+      'T1 waiting, p2, owner alpha, from lead | Add a health check (waiting: decision owner · approval lead · on T304 · until Thu 01-10 13:00 UTC; the export)',
     );
   });
 
   it('marks each reason ready by the read it was printed from', () => {
     const tasks = new Map([['T304', testTask({ id: 'T304', status: 'done' })]]);
-    assert.match(formatTask(task, undefined, new TaskTree(tasks, new Date('2030-01-10T13:00:00.000Z'))), /on T304 ready · until Thu 01-10 13:00 ready;/);
-    assert.match(formatTask(task, undefined, new TaskTree(new Map([['T304', testTask({ status: 'open' })]]), new Date(0))), /on T304 · until Thu/);
-    assert.match(formatShortTask(task, 60, 'web', new TaskTree(tasks, new Date(0))), /^web\/T1 waiting, p2, owner alpha \| Add a health check \(waiting: decision owner · approval lead · on T304 ready · until Thu 01-10 13:00\)$/);
+    assert.match(formatTask(task, undefined, new TaskTree(tasks, new Date('2030-01-10T13:00:00.000Z'), TimeZone.UTC)), /on T304 ready · until Thu 01-10 13:00 UTC ready;/);
+    assert.match(formatTask(task, undefined, new TaskTree(new Map([['T304', testTask({ status: 'open' })]]), new Date(0), TimeZone.UTC)), /on T304 · until Thu/);
+    assert.match(formatShortTask(task, 60, 'web', new TaskTree(tasks, new Date(0), TimeZone.UTC)), /^web\/T1 waiting, p2, owner alpha \| Add a health check \(waiting: decision owner · approval lead · on T304 ready · until Thu 01-10 13:00 UTC\)$/);
   });
 });
 
@@ -217,7 +223,7 @@ describe('formatTaskTree and formatNextMove', () => {
     const decided = testTask({ id: 'T1', status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }] });
     assert.equal(formatNextMove(decided, treeOf(decided)), 'Next move: owner (T1), decision');
     const parked = testTask({ id: 'T1', status: 'waiting', waits: [{ kind: 'time', at: '2030-01-10 13:00' }] });
-    assert.equal(formatNextMove(parked, treeOf(parked)), 'Next move: alpha (T1), from Thu 01-10 13:00');
+    assert.equal(formatNextMove(parked, treeOf(parked)), 'Next move: alpha (T1), from Thu 01-10 13:00 UTC');
     const open = testTask({ id: 'T1' });
     const urgent = testTask({ id: 'T7', status: 'in-progress', priority: 1 });
     assert.equal(formatNextMove(open, treeOf(open, urgent)), 'Next move: alpha (T1), behind T7 (p1)');
@@ -246,8 +252,8 @@ describe('formatWaitingOnYou', () => {
 describe('formatShortTask and cut', () => {
   it('keeps the id, status, priority, owner and due date, and cuts the title', () => {
     const task = testTask({ id: 'T12', due: '2030-01-15', week: '2030-01-13', source: 'owner', goals: ['G1'], status: 'waiting', note: 'waiting on disk', after: ['T3'] });
-    assert.equal(formatShortTask(task, 10), 'T12 waiting, p2, owner alpha, due 01-15, after T3 | Add a hea…');
-    assert.equal(formatShortTask(testTask(), 60, 'web'), 'web/T1 open, p2, owner alpha | Add a health check');
+    assert.equal(formatShortTask(task, 10, undefined, TREE), 'T12 waiting, p2, owner alpha, due 01-15, after T3 | Add a hea…');
+    assert.equal(formatShortTask(testTask(), 60, 'web', TREE), 'web/T1 open, p2, owner alpha | Add a health check');
   });
 
   it('cuts in code points, so a character outside the basic plane is never split', () => {
@@ -269,12 +275,12 @@ describe('the verify queue lines', () => {
   });
 
   it('prints a row with when it started verifying and the date to verify by', () => {
-    assert.equal(formatVerifyRow(shipped), 'T1 since 01-07 10:30, verify by 01-09 | Add a health check (proof: the nightly run)');
-    assert.equal(formatVerifyRow(testTask({ status: 'verifying' })), 'T1 since 01-07 09:00, no verify-by date | Add a health check (proof: no proof named)');
+    assert.equal(formatVerifyRow(shipped, TimeZone.UTC), 'T1 since 01-07 10:30 UTC, verify by 01-09 | Add a health check (proof: the nightly run)');
+    assert.equal(formatVerifyRow(testTask({ status: 'verifying' }), TimeZone.UTC), 'T1 since 01-07 09:00 UTC, no verify-by date | Add a health check (proof: no proof named)');
   });
 
   it("names the proof once the verify-by day has come", () => {
-    assert.equal(formatVerifyByLine(shipped), 'VERIFY T1 was to be verified by 01-09 (proof: the nightly run): done with the proof, or back to in-progress');
+    assert.equal(formatVerifyByLine(shipped, TimeZone.UTC), 'VERIFY T1 was to be verified by 01-09 (proof: the nightly run): done with the proof, or back to in-progress');
   });
 });
 
@@ -311,23 +317,23 @@ describe('formatEvent and formatTaskDetail', () => {
 
   it('prints a note-only update as its note', () => {
     const event: RegisterEvent = { v: 1, type: 'update', id: 'T1', at: '2030-01-07T10:00:00.000Z', by: 'bravo', changes: {}, note: 'context' };
-    assert.match(formatEvent(event), / bravo update note="context"$/);
+    assert.match(formatEvent(event, TimeZone.UTC), / bravo update note="context"$/);
   });
 
   it('prints each event type on one line', () => {
-    assert.deepEqual(events.map(formatEvent), [
-      '2030-01-07 09:00 lead create owner=alpha source=owner priority=p1 ref=inbox:3 due=2030-01-08 goals=G1',
-      '2030-01-07 09:00 lead create owner=bravo source=lead priority=p2 after=T1',
-      '2030-01-07 10:00 lead update due=2030-01-09 goals=G1,G2 note="later"',
-      '2030-01-07 11:00 alpha status done note="ok" evidence=abc1234 skill=none',
-      '2030-01-07 12:00 bravo status waiting waits="decision owner · until Wed 01-09 12:00" note="n"',
-      '2030-01-07 13:00 lead update after=T1,T3',
+    assert.deepEqual(events.map((event) => formatEvent(event, TimeZone.UTC)), [
+      '2030-01-07 09:00 UTC lead create owner=alpha source=owner priority=p1 ref=inbox:3 due=2030-01-08 goals=G1',
+      '2030-01-07 09:00 UTC lead create owner=bravo source=lead priority=p2 after=T1',
+      '2030-01-07 10:00 UTC lead update due=2030-01-09 goals=G1,G2 note="later"',
+      '2030-01-07 11:00 UTC alpha status done note="ok" evidence=abc1234 skill=none',
+      '2030-01-07 12:00 UTC bravo status waiting waits="decision owner · until Wed 01-09 12:00 UTC" note="n"',
+      '2030-01-07 13:00 UTC lead update after=T1,T3',
     ]);
   });
 
   it('shows a task with its own history only', () => {
     const task = testTask({ status: 'done', ref: 'inbox:3', note: 'ok', evidence: 'abc1234', skill: 'none' });
-    const detail = formatTaskDetail(task, events).split('\n');
+    const detail = formatTaskDetail(task, events, TREE).split('\n');
     assert.deepEqual(detail.slice(1, 6), ['ref: inbox:3', 'note: ok', 'evidence: abc1234', 'skill: none', 'history:']);
     assert.equal(detail.length, 9);
     assert.ok(detail.slice(6).every((line) => !line.includes('owner=bravo')));
@@ -346,8 +352,8 @@ describe('formatEvent and formatTaskDetail', () => {
       skill: null,
       proof: 'the nightly run',
     };
-    assert.equal(formatEvent(proven), '2030-01-07 14:00 alpha status verifying note="shipped" proof="the nightly run"');
-    const detail = formatTaskDetail(testTask({ id: 'T3', status: 'verifying', note: 'shipped', proof: 'the nightly run' }), [proven]).split('\n');
+    assert.equal(formatEvent(proven, TimeZone.UTC), '2030-01-07 14:00 UTC alpha status verifying note="shipped" proof="the nightly run"');
+    const detail = formatTaskDetail(testTask({ id: 'T3', status: 'verifying', note: 'shipped', proof: 'the nightly run' }), [proven], TREE).split('\n');
     assert.deepEqual(detail.slice(1, 3), ['note: shipped', 'proof: the nightly run']);
   });
 
@@ -364,36 +370,36 @@ describe('formatEvent and formatTaskDetail', () => {
       skill: 'none',
       followups: ['T4', 'T5'],
     };
-    assert.equal(formatEvent(closed), '2030-01-07 14:00 alpha status done note="ok" evidence=abc1234 skill=none followups=T4,T5');
-    assert.match(formatEvent({ ...closed, followups: [] }), / skill=none followups=none$/);
+    assert.equal(formatEvent(closed, TimeZone.UTC), '2030-01-07 14:00 UTC alpha status done note="ok" evidence=abc1234 skill=none followups=T4,T5');
+    assert.match(formatEvent({ ...closed, followups: [] }, TimeZone.UTC), / skill=none followups=none$/);
     const task = testTask({ id: 'T3', status: 'done', note: 'ok', evidence: 'abc1234', skill: 'none', followups: ['T4', 'T5'] });
-    assert.deepEqual(formatTaskDetail(task, [closed]).split('\n').slice(1, 6), ['note: ok', 'evidence: abc1234', 'skill: none', 'followups: T4, T5', 'history:']);
-    assert.ok(!formatTaskDetail(testTask(), []).includes('followups'), 'a task with none prints no line');
+    assert.deepEqual(formatTaskDetail(task, [closed], TREE).split('\n').slice(1, 6), ['note: ok', 'evidence: abc1234', 'skill: none', 'followups: T4, T5', 'history:']);
+    assert.ok(!formatTaskDetail(testTask(), [], TREE).includes('followups'), 'a task with none prints no line');
   });
 
   it('shows the description under the task line, its later lines indented and a blank one kept blank', () => {
     const task = testTask({ ref: 'inbox:3', description: 'Users lose saved carts.\n\nKeep them:\n- a week' });
-    const detail = formatTaskDetail(task, []).split('\n');
+    const detail = formatTaskDetail(task, [], TREE).split('\n');
     assert.deepEqual(detail.slice(1, 7), ['description: Users lose saved carts.', '', '  Keep them:', '  - a week', 'ref: inbox:3', 'history:']);
-    assert.ok(!formatTaskDetail(testTask(), []).includes('description'), 'a task with none prints no line');
+    assert.ok(!formatTaskDetail(testTask(), [], TREE).includes('description'), 'a task with none prints no line');
   });
 
   it('prints a changed description on one quoted line, cut, and a cleared one as none', () => {
     const changed = (description: string | null): RegisterEvent => ({ v: 2, type: 'update', id: 'T1', at: AT, by: 'alpha', changes: { description }, note: null });
-    assert.equal(formatEvent(changed('Why:\nusers ask')), '2030-01-07 09:00 alpha update description="Why: users ask"');
-    assert.equal(formatEvent(changed(`${'d'.repeat(90)}`)), `2030-01-07 09:00 alpha update description="${'d'.repeat(79)}…"`);
-    assert.equal(formatEvent(changed(null)), '2030-01-07 09:00 alpha update description=none');
+    assert.equal(formatEvent(changed('Why:\nusers ask'), TimeZone.UTC), '2030-01-07 09:00 UTC alpha update description="Why: users ask"');
+    assert.equal(formatEvent(changed(`${'d'.repeat(90)}`), TimeZone.UTC), `2030-01-07 09:00 UTC alpha update description="${'d'.repeat(79)}…"`);
+    assert.equal(formatEvent(changed(null), TimeZone.UTC), '2030-01-07 09:00 UTC alpha update description=none');
   });
 
   it('prints a size as a percent of the weekly limit, on create, update and the detail', () => {
     const sized = testTask({ id: 'T1', size: 1.255 });
     const created: RegisterEvent = { v: 2, type: 'create', id: 'T1', at: AT, by: 'alpha', task: { ...sized, size: 1.5 } };
-    assert.match(formatEvent(created), / size=1\.5%$/);
+    assert.match(formatEvent(created, TimeZone.UTC), / size=1\.5%$/);
     const resized = (size: number | null): RegisterEvent => ({ v: 2, type: 'update', id: 'T1', at: AT, by: 'lead', changes: { size }, note: null });
-    assert.equal(formatEvent(resized(0.5)), '2030-01-07 09:00 lead update size=0.5%');
-    assert.equal(formatEvent(resized(null)), '2030-01-07 09:00 lead update size=none');
-    assert.ok(formatTaskDetail(sized, []).split('\n').includes('size: 1.25% of the weekly limit'));
-    assert.ok(!formatTaskDetail(testTask(), []).includes('size'), 'a task with none prints no line');
+    assert.equal(formatEvent(resized(0.5), TimeZone.UTC), '2030-01-07 09:00 UTC lead update size=0.5%');
+    assert.equal(formatEvent(resized(null), TimeZone.UTC), '2030-01-07 09:00 UTC lead update size=none');
+    assert.ok(formatTaskDetail(sized, [], TREE).split('\n').includes('size: 1.25% of the weekly limit'));
+    assert.ok(!formatTaskDetail(testTask(), [], TREE).includes('size'), 'a task with none prints no line');
     assert.deepEqual([sizeText(2), sizeText(0.125), sizeText(33.333)], ['2%', '0.13%', '33.33%']);
   });
 });
@@ -417,8 +423,8 @@ describe('personWaitNotice', () => {
 
 describe('assignedNotice', () => {
   it('names the task, its priority, its due date when it has one, and its title', () => {
-    assert.equal(assignedNotice(testTask({ id: 'T5', due: '2030-01-10' })), 'T5 is yours (p2, due 2030-01-10): Add a health check');
-    assert.equal(assignedNotice(testTask({ id: 'T5', priority: 1 })), 'T5 is yours (p1): Add a health check');
+    assert.equal(assignedNotice(testTask({ id: 'T5', due: '2030-01-10' }), TimeZone.UTC), 'T5 is yours (p2, due 2030-01-10): Add a health check');
+    assert.equal(assignedNotice(testTask({ id: 'T5', priority: 1 }), TimeZone.UTC), 'T5 is yours (p1): Add a health check');
   });
 });
 
@@ -426,5 +432,24 @@ describe('personWaitNotice: the card', () => {
   it("names the card's question, so the line reads on its own", () => {
     const task = testTask({ id: 'T2', note: 'asked again', card: TEST_CARD });
     assert.equal(personWaitNotice(task, [{ kind: 'decision', who: 'owner' }], 'lead'), "T2 waits on the owner's decision: Which pricing tier ships first");
+  });
+});
+
+describe("the views in the team's zone", () => {
+  it('ends a bare due day at midnight there and reads a stored minute as UTC', () => {
+    assert.equal(dueTime({ due: '2030-01-09' }, JERUSALEM), Date.parse('2030-01-09T21:59:59.999Z'));
+    assert.equal(dueTime({ due: '2030-01-09 21:00' }, JERUSALEM), Date.parse('2030-01-09T21:00:00.000Z'));
+  });
+
+  it('orders a bare day by its end there', () => {
+    const day = { id: 'T3', priority: 2, due: '2030-01-09' };
+    const minute = { id: 'T4', priority: 2, due: '2030-01-09 22:30' };
+    assert.deepEqual([day, minute].sort((a, b) => byPlanOrder(a, b, TimeZone.UTC)).map((row) => row.id), ['T4', 'T3']);
+    assert.deepEqual([minute, day].sort((a, b) => byPlanOrder(a, b, JERUSALEM)).map((row) => row.id), ['T3', 'T4'], 'the day ends at 22:00 UTC there');
+  });
+
+  it('prints an event minute there, zone-marked', () => {
+    const event: RegisterEvent = { v: 1, type: 'update', id: 'T1', at: AT, by: 'bravo', changes: {}, note: 'context' };
+    assert.match(formatEvent(event, JERUSALEM), /^2030-01-07 11:00 IST bravo update /);
   });
 });

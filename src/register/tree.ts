@@ -1,4 +1,5 @@
-import { parseUtcDeadline } from '../core/time.ts';
+import { parseDeadline } from '../core/time.ts';
+import type { TimeZone } from '../core/zone.ts';
 import { taskNumber, type Task } from './fold.ts';
 import { ACTIVE_STATUSES } from './model.ts';
 import { isFinished, isReady, waitContext, type PersonWait, type PersonWaitKind, type WaitContext } from './waits.ts';
@@ -68,7 +69,7 @@ export type TreeTask = Pick<Task, 'id' | 'status' | 'owner' | 'priority' | 'due'
 
 /** The date a task works to: its own due, or an earlier one of a task that needs it. */
 export interface EffectiveDue {
-  /** As stored: `YYYY-MM-DD` (its end) or `YYYY-MM-DD HH:MM`, UTC. */
+  /** As stored: `YYYY-MM-DD`, a day of the team's zone (its end there), or `YYYY-MM-DD HH:MM` in UTC. */
   readonly due: string;
   /** The same in ms. */
   readonly at: number;
@@ -101,14 +102,17 @@ export interface WaitingOnYou<T extends TreeTask = Task> {
 export class TaskTree<T extends TreeTask = Task> {
   /** How the same read judges a waiting task's reasons ready. */
   readonly context: WaitContext;
+  /** The team's zone: a stored due day is a day of it, and rows show times in it. */
+  readonly zone: TimeZone;
   private readonly tasks: ReadonlyMap<string, T>;
   /** Per id, the active tasks that need it, by number. */
   private readonly needers: ReadonlyMap<string, readonly T[]>;
   private readonly dues = new Map<string, EffectiveDue | undefined>();
 
-  constructor(tasks: ReadonlyMap<string, T>, now: Date) {
+  constructor(tasks: ReadonlyMap<string, T>, now: Date, zone: TimeZone) {
     this.tasks = tasks;
-    this.context = waitContext(tasks, now);
+    this.zone = zone;
+    this.context = waitContext(tasks, now, zone);
     const needers = new Map<string, T[]>();
     for (const task of [...tasks.values()].filter(isActive).sort((a, b) => taskNumber(a.id) - taskNumber(b.id))) {
       for (const id of needsOf(task)) {
@@ -164,7 +168,7 @@ export class TaskTree<T extends TreeTask = Task> {
   /** The task's effective deadline in ms, or undefined when it has none; a task the read lacks keeps its own. */
   dueTime(task: Pick<Task, 'id' | 'due'>): number | undefined {
     if (!this.tasks.has(task.id)) {
-      return task.due === null ? undefined : parseUtcDeadline(task.due)?.getTime();
+      return task.due === null ? undefined : parseDeadline(task.due, this.zone)?.getTime();
     }
     return this.effectiveDue(task.id)?.at;
   }
@@ -292,7 +296,7 @@ export class TaskTree<T extends TreeTask = Task> {
     if (task === undefined) {
       return undefined;
     }
-    let best = ownDue(task, null);
+    let best = ownDue(task, null, this.zone);
     if (!isActive(task)) {
       return best;
     }
@@ -304,7 +308,7 @@ export class TaskTree<T extends TreeTask = Task> {
         continue;
       }
       seen.add(next.id);
-      const due = ownDue(next, next.id);
+      const due = ownDue(next, next.id, this.zone);
       if (due !== undefined && (best === undefined || due.at < best.at)) {
         best = due;
       }
@@ -323,9 +327,9 @@ function isActive(task: Pick<Task, 'status'>): boolean {
   return ACTIVE_STATUSES.includes(task.status);
 }
 
-/** The task's own due as an effective due from `from`; undefined when it has none or it does not parse. */
-function ownDue(task: Pick<Task, 'due'>, from: string | null): EffectiveDue | undefined {
-  const at = task.due === null ? undefined : parseUtcDeadline(task.due)?.getTime();
+/** The task's own due as an effective due from `from`, read in `zone`; undefined when it has none or it does not parse. */
+function ownDue(task: Pick<Task, 'due'>, from: string | null, zone: TimeZone): EffectiveDue | undefined {
+  const at = task.due === null ? undefined : parseDeadline(task.due, zone)?.getTime();
   return task.due === null || at === undefined ? undefined : { due: task.due, at, from };
 }
 
