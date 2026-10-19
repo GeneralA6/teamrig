@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { DEFAULT_REFRESH } from '../config/defaults.ts';
 import {
   boundaryOf,
+  decideCompact,
+  decideMidTurn,
   decideReady,
   decideStart,
   decideStop,
@@ -10,7 +12,9 @@ import {
   REASK_SHARE,
   reaskGrowth,
   thousands,
+  type AskContext,
   type DueFacts,
+  type MidTurnFacts,
   type RefreshSettings,
   type StopContext,
   type StopFacts,
@@ -24,7 +28,9 @@ const NOW = '2030-01-08T10:00:00.000Z';
 const HANDOVER = '/team/handover/alpha.md';
 
 const BOUNDARY: RefreshState = { phase: 'boundary', task: 'T12', at: BEFORE, finished: 1 };
-const ASKED: RefreshState = { phase: 'asked', task: 'T12', at: BEFORE, tokens: 262_144, handoverHash: null };
+const ASKED: RefreshState = { phase: 'asked', task: 'T12', at: BEFORE, tokens: 262_144, handoverHash: null, midTurn: false };
+/** Asked at a tool result at 131k; the handover file had the fingerprint `old` then. */
+const MID_TURN: RefreshState = { phase: 'asked', task: null, at: BEFORE, tokens: 131_000, handoverHash: 'old', midTurn: true };
 const READY: RefreshState = { phase: 'ready', task: 'T12', at: BEFORE, tokens: null, noticed: false, transcript: null, claudePid: null };
 /** The size rule alone at 250k, so each size test reads apart from the task count. */
 const SIZE_ONLY: RefreshSettings = { ...DEFAULT_REFRESH, contextTokens: 250_000, everyTasks: 0 };
@@ -91,7 +97,7 @@ describe('decideStop', () => {
     const decision = decideStop(undefined, stopContext(), facts({ tokens: 262_144, handoverHash: 'abc' }));
     assert.deepEqual(decision, {
       kind: 'block',
-      state: { phase: 'asked', task: null, at: NOW, tokens: 262_144, handoverHash: 'abc' },
+      state: { phase: 'asked', task: null, at: NOW, tokens: 262_144, handoverHash: 'abc', midTurn: false },
       reason: 'teamrig: your context is 262k (refresh at 250k), so refresh now rather than at a task end. ' + 'Write your handover to /team/handover/alpha.md: what the register lacks (the next step of each task in progress; what to check later, and when; questions still open with the user; the scratchpad files, plan file and scheduled jobs the next session still needs; where things are), not task statuses, which your fresh start reads live from the register. Then run `teamrig refresh --ready --session alpha`. Do not start new work.',
     });
     for (const state of [
@@ -100,7 +106,7 @@ describe('decideStop', () => {
       { ...READY, noticed: true },
     ] satisfies RefreshState[]) {
       const asked = decideStop(state, stopContext(), facts({ tokens: 250_000 }));
-      assert.deepEqual(asked.kind === 'block' ? asked.state : undefined, { phase: 'asked', task: null, at: NOW, tokens: 250_000, handoverHash: null }, state.phase);
+      assert.deepEqual(asked.kind === 'block' ? asked.state : undefined, { phase: 'asked', task: null, at: NOW, tokens: 250_000, handoverHash: null, midTurn: false }, state.phase);
     }
     assert.deepEqual(decideStop(undefined, stopContext(), facts({ tokens: 262_144, running: 1 })), { kind: 'none' }, 'waits for running work');
   });
@@ -119,7 +125,7 @@ describe('decideStop', () => {
       assert.deepEqual(decideStop(state, stopContext(), cheap({ tokens: 312_143 })), { kind: 'none' }, state.phase);
       assert.deepEqual(decideStop(state, stopContext(), cheap({ requestedBy: 'boss', tokens: 300_000 })), { kind: 'none' }, `${state.phase}: the lead's ask was asked`);
       const again = decideStop(state, stopContext(), facts({ tokens: 312_144 }));
-      assert.deepEqual(again.kind === 'block' ? again.state : undefined, { phase: 'asked', task: null, at: NOW, tokens: 312_144, handoverHash: null }, state.phase);
+      assert.deepEqual(again.kind === 'block' ? again.state : undefined, { phase: 'asked', task: null, at: NOW, tokens: 312_144, handoverHash: null, midTurn: false }, state.phase);
     }
     assert.equal(decideStop({ ...ASKED, tokens: null }, stopContext(), facts({ tokens: 250_000 })).kind, 'block', 'a size forgotten asks at the threshold');
     assert.equal(decideStop({ ...ASKED, tokens: 40_400 }, stopContext(), facts({ tokens: 250_000 })).kind, 'block', 'never past the threshold for a small ask');
@@ -151,7 +157,7 @@ describe('decideStop', () => {
     const decision = decideStop(BOUNDARY, stopContext(), facts({ tokens: 262_144, handoverHash: 'abc' }));
     assert.deepEqual(decision, {
       kind: 'block',
-      state: { phase: 'asked', task: 'T12', at: NOW, tokens: 262_144, handoverHash: 'abc' },
+      state: { phase: 'asked', task: 'T12', at: NOW, tokens: 262_144, handoverHash: 'abc', midTurn: false },
       reason:
         'teamrig: your context is 262k (refresh at 250k) and you just finished T12. Write your handover to /team/handover/alpha.md: what the register lacks ' +
         '(the next step of each task in progress; what to check later, and when; questions still open with the user; the scratchpad files, plan file and scheduled jobs the next session still needs; where things are), ' +
@@ -166,7 +172,7 @@ describe('decideStop', () => {
     assert.match(small.kind === 'block' ? small.reason : '', /^teamrig: boss asked for a refresh \(your context is 40k\) and you just finished T12\. /);
     const unknown = decideStop(BOUNDARY, stopContext(), facts({ requestedBy: 'boss', tokens: undefined }));
     assert.match(unknown.kind === 'block' ? unknown.reason : '', /^teamrig: boss asked for a refresh and you just finished T12\. /);
-    assert.deepEqual(unknown.kind === 'block' ? unknown.state : undefined, { phase: 'asked', task: 'T12', at: NOW, tokens: null, handoverHash: null });
+    assert.deepEqual(unknown.kind === 'block' ? unknown.state : undefined, { phase: 'asked', task: 'T12', at: NOW, tokens: null, handoverHash: null, midTurn: false });
   });
 
   it('waits while background work runs: a due refresh leaves the boundary for a later stop', () => {
@@ -249,6 +255,112 @@ describe('decideStop', () => {
   it('holds the notice while background work runs, so the user is not told to /clear over it', () => {
     assert.deepEqual(decideStop(READY, stopContext(), facts({ running: 1 })), { kind: 'none' });
     assert.equal(decideStop(READY, stopContext(), facts({ running: 0 })).kind, 'notice');
+  });
+
+  it('asks once more at the end of a turn a tool result asked in, keeping that ask for refresh --ready', () => {
+    assert.deepEqual(decideStop(MID_TURN, stopContext()), { kind: 'measure' });
+    assert.deepEqual(decideStop(MID_TURN, stopContext(), cheap()), { kind: 'measure' });
+    const again = decideStop(MID_TURN, stopContext(), facts({ tokens: 140_000, handoverHash: 'new' }));
+    assert.equal(again.kind, 'block');
+    assert.deepEqual(again.kind === 'block' ? again.state : undefined, { ...MID_TURN, midTurn: false });
+    const reason = again.kind === 'block' ? again.reason : '';
+    assert.match(reason, /^teamrig: the refresh asked within this turn at 131k is still due, so refresh now rather than at a task end\. /);
+    assert.match(reason, /Then run `teamrig refresh --ready --session alpha`\. Do not start new work\.$/);
+  });
+
+  it('holds the second ask while background work runs, and never asks in a turn a Stop hook continued', () => {
+    assert.deepEqual(decideStop(MID_TURN, stopContext(), facts({ running: 1 })), { kind: 'none' });
+    assert.deepEqual(decideStop(MID_TURN, stopContext({ stopHookActive: true }), facts()), { kind: 'none' });
+  });
+
+  it('asks a session that went on after the second ask again at the threshold, as after any ask', () => {
+    const answered: RefreshState = { ...MID_TURN, midTurn: false };
+    assert.deepEqual(decideStop(answered, stopContext(), facts({ tokens: 249_999 })), { kind: 'none' });
+    assert.equal(decideStop(answered, stopContext(), facts({ tokens: 250_000 })).kind, 'block');
+  });
+});
+
+function askContext(settings: RefreshSettings = SIZE_ONLY): AskContext {
+  return { settings, now: NOW, session: { id: 'alpha', name: 'api' }, handoverPath: HANDOVER, command: 'teamrig' };
+}
+
+/** The context at a tool result, its due facts read too. */
+function midTurnFacts(tokens: number, due: Partial<DueFacts> = {}): MidTurnFacts {
+  return { tokens, due: { handoverHash: null, running: 0, ...due } };
+}
+
+/** The context at a tool result, before the due facts are read. */
+function sizeOnly(tokens: number): MidTurnFacts {
+  return { tokens, due: undefined };
+}
+
+describe('decideMidTurn', () => {
+  it('never asks with the feature off, nor looks again', () => {
+    assert.deepEqual(decideMidTurn(undefined, askContext({ ...SIZE_ONLY, enabled: false }), midTurnFacts(400_000)), { kind: 'none', nextAt: null });
+  });
+
+  it('says nothing under the threshold and names the size to look again at', () => {
+    assert.deepEqual(decideMidTurn(undefined, askContext(), sizeOnly(249_999)), { kind: 'none', nextAt: 250_000 });
+    assert.deepEqual(decideMidTurn(ASKED, askContext(), sizeOnly(300_000)), { kind: 'none', nextAt: 312_144 });
+  });
+
+  it('reads the due facts only at the threshold, and holds the ask while background work runs', () => {
+    assert.deepEqual(decideMidTurn(undefined, askContext(), sizeOnly(250_000)), { kind: 'measure' });
+    assert.deepEqual(decideMidTurn(undefined, askContext(), midTurnFacts(250_000, { running: 2 })), { kind: 'none', nextAt: 250_000 });
+  });
+
+  it('asks within the turn at the threshold, to finish the step, write the handover and end the turn', () => {
+    const decision = decideMidTurn(undefined, askContext(), midTurnFacts(251_000, { handoverHash: 'h' }));
+    assert.equal(decision.kind, 'ask');
+    if (decision.kind !== 'ask') {
+      return;
+    }
+    assert.deepEqual(decision.state, { phase: 'asked', task: null, at: NOW, tokens: 251_000, handoverHash: 'h', midTurn: true });
+    assert.equal(decision.nextAt, 301_000);
+    assert.match(decision.reason, /^teamrig: your context is 251k \(refresh at 250k\), so refresh within this turn: finish the step you are on and start no other\. /);
+    assert.match(decision.reason, /Write your handover to \/team\/handover\/alpha\.md: what the register lacks/);
+    assert.match(decision.reason, /Then run `teamrig refresh --ready --session alpha` and end your turn: the fresh start follows it\.$/);
+  });
+
+  it("keeps a finished task the Stop hook has not judged yet as the ask's task", () => {
+    const decision = decideMidTurn(BOUNDARY, askContext(), midTurnFacts(260_000));
+    assert.equal(decision.kind === 'ask' && decision.state.phase === 'asked' ? decision.state.task : undefined, 'T12');
+  });
+
+  it('asks a session that went on from an ask again only once its context grew well past it', () => {
+    assert.equal(decideMidTurn(ASKED, askContext(), midTurnFacts(312_144)).kind, 'ask');
+  });
+});
+
+describe('decideCompact', () => {
+  const window = 200_000;
+
+  it("skips Claude Code's own compaction under the ceiling while the handover is asked for or written", () => {
+    assert.deepEqual(decideCompact(ASKED, askContext(), { tokens: 170_000, window }), {
+      kind: 'skip',
+      reason: 'teamrig: the handover is asked for and the fresh start follows this turn, so compaction waits until 185k (now 170k)',
+    });
+    const written = decideCompact(READY, askContext(), { tokens: 184_999, window });
+    assert.equal(written.kind === 'skip' && written.reason.startsWith('teamrig: the handover is written and'), true);
+  });
+
+  it('lets it go with no handover pending, so a session with no fresh start coming never runs out of room', () => {
+    const refreshed: RefreshState = { phase: 'refreshed', task: null, at: BEFORE };
+    const idle: RefreshState = { phase: 'idle', task: 'T12', at: BEFORE, tokens: 100_000, finished: 1 };
+    for (const state of [undefined, BOUNDARY, idle, refreshed]) {
+      assert.deepEqual(decideCompact(state, askContext(), { tokens: 170_000, window }), { kind: 'go' }, state?.phase);
+    }
+  });
+
+  it('lets it go at the ceiling, a prompt too long for the window too', () => {
+    assert.deepEqual(decideCompact(ASKED, askContext(), { tokens: 185_000, window }), { kind: 'go' });
+    assert.deepEqual(decideCompact(ASKED, askContext(), { tokens: 230_000, window }), { kind: 'go' });
+  });
+
+  it('lets it go with the stop off, the feature off, or a ceiling that leaves no room under the window', () => {
+    assert.deepEqual(decideCompact(ASKED, askContext({ ...SIZE_ONLY, compactCeilingTokens: 0 }), { tokens: 170_000, window }), { kind: 'go' });
+    assert.deepEqual(decideCompact(ASKED, askContext({ ...SIZE_ONLY, enabled: false }), { tokens: 170_000, window }), { kind: 'go' });
+    assert.deepEqual(decideCompact(ASKED, askContext({ ...SIZE_ONLY, compactCeilingTokens: 200_000 }), { tokens: 170_000, window }), { kind: 'go' });
   });
 });
 

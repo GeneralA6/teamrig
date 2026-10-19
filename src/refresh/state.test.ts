@@ -8,12 +8,13 @@ const EVERY_PHASE: readonly RefreshState[] = [
   { phase: 'boundary', task: 'T12', at: AT, finished: 1 },
   { phase: 'idle', task: 'T12', at: AT, tokens: 120_000, finished: 2 },
   { phase: 'idle', task: 'T12', at: AT, tokens: null, finished: 0 },
-  { phase: 'asked', task: 'T12', at: AT, tokens: 262_000, handoverHash: '0123456789abcdef' },
-  { phase: 'asked', task: 'T12', at: AT, tokens: null, handoverHash: null },
+  { phase: 'asked', task: 'T12', at: AT, tokens: 262_000, handoverHash: '0123456789abcdef', midTurn: false },
+  { phase: 'asked', task: 'T12', at: AT, tokens: null, handoverHash: null, midTurn: false },
+  { phase: 'asked', task: null, at: AT, tokens: 131_000, handoverHash: null, midTurn: true },
   { phase: 'ready', task: 'T12', at: AT, tokens: null, noticed: false, transcript: null, claudePid: null },
   { phase: 'ready', task: 'T12', at: AT, tokens: null, noticed: true, transcript: '/claude/projects/p/s.jsonl', claudePid: 6900 },
   { phase: 'refreshed', task: 'T12', at: AT },
-  { phase: 'asked', task: null, at: AT, tokens: 262_000, handoverHash: null },
+  { phase: 'asked', task: null, at: AT, tokens: 262_000, handoverHash: null, midTurn: false },
   { phase: 'ready', task: null, at: AT, tokens: 262_000, noticed: true, transcript: null, claudePid: null },
   { phase: 'refreshed', task: null, at: AT },
 ];
@@ -51,6 +52,7 @@ describe('refresh state files', () => {
       '{"v":1,"phase":"boundary","task":null,"at":"x"}',
       '{"v":1,"phase":"idle","task":null,"at":"x","tokens":5}',
       '{"v":1,"phase":"asked","task":7,"at":"x","tokens":1,"handoverHash":null}',
+      '{"v":1,"phase":"asked","task":"T1","at":"x","tokens":1,"handoverHash":null,"midTurn":"yes"}',
       '[1]',
     ]) {
       assert.equal(parseRefreshState(text), undefined, text);
@@ -59,6 +61,17 @@ describe('refresh state files', () => {
 
   it('reads a ready state from before the transcript, process and size were recorded as having none', () => {
     assert.deepEqual(parseRefreshState('{"v":1,"phase":"ready","task":"T1","at":"x","noticed":true}'), { phase: 'ready', task: 'T1', at: 'x', tokens: null, noticed: true, transcript: null, claudePid: null });
+  });
+
+  it("reads an ask from before the mod asked within a turn as the Stop hook's", () => {
+    assert.deepEqual(parseRefreshState('{"v":1,"phase":"asked","task":"T1","at":"x","tokens":1,"handoverHash":null}'), {
+      phase: 'asked',
+      task: 'T1',
+      at: 'x',
+      tokens: 1,
+      handoverHash: null,
+      midTurn: false,
+    });
   });
 
   it('reads a boundary or a judged one from before the task count as its first task, or none counted', () => {
