@@ -119,6 +119,20 @@ describe('runsOf', () => {
     assert.deepEqual(into('bash -c "a | b; c" | wc -c'), ['a | b', 'b | wc', 'c | wc', 'wc']);
   });
 
+  it('gives a pipe after a PowerShell group to the command holding the group, or to the command the group starts', () => {
+    const into = (command: string): string[] =>
+      runsOf(command, context('powershell')).programs.map((run) => `${run.name}${run.pipe === undefined ? '' : ` | ${run.pipe.into?.name ?? '?'}`}`);
+    assert.deepEqual(into('Get-Item (Join-Path a b) | Set-Clipboard'), ['get-item | set-clipboard', 'join-path', 'set-clipboard']);
+    assert.deepEqual(into('(Get-Content a) | Set-Clipboard'), ['get-content | set-clipboard', 'set-clipboard']);
+    assert.deepEqual(into('Write-Output (Get-Item (Join-Path a b) | Select-Object x) | Set-Clipboard'), [
+      'write-output | set-clipboard',
+      'get-item | select-object',
+      'join-path',
+      'select-object',
+      'set-clipboard',
+    ]);
+  });
+
   it('names the command whose value a substitution or a PowerShell group gives its output to', () => {
     const named = (command: ProgramRun | BareCommand | undefined): string =>
       command === undefined ? '?' : 'name' in command ? command.name : command.words.map((word) => word.text).join(' ');

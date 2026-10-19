@@ -72,11 +72,22 @@ interface Outlet {
   readonly substitution: OpenSubstitution | undefined;
 }
 
+/** A run or a bare command while the walker may still learn where its output goes. */
+type Draft<T> = { -readonly [K in keyof T]: T[K] };
+
 /** What one command starts: its launch, and the program run or the bare command it adds, if any. */
 interface Visited {
   readonly launched: Launch;
-  readonly run: ProgramRun | undefined;
-  readonly bare: BareCommand | undefined;
+  readonly run: Draft<ProgramRun> | undefined;
+  readonly bare: Draft<BareCommand> | undefined;
+}
+
+/** PowerShell: a `(` the reader is inside. */
+interface Group {
+  /** The command before the `(`, which takes the group's value; undefined when that is only known when it runs. */
+  readonly holder: Draft<ProgramRun> | Draft<BareCommand> | undefined;
+  /** False for a group that starts its command, as in `(gc f) | wc`, whose value is the command's own output. */
+  readonly held: boolean;
 }
 
 /** What a command line runs: the programs it starts, and the commands of it that start none. */
@@ -127,8 +138,8 @@ function visitScript(script: ShellWord, dialect: ShellDialect, location: Locatio
   const pipes = new Map<number, OpenPipe>();
   /** Commands inside a substitution still waiting for the command after them that holds it, deepest last. */
   const unheld: Array<{ readonly nesting: number; readonly slot: OpenSubstitution }> = [];
-  /** PowerShell: for each `(` the reader is inside, the command before it, which takes the group's value. */
-  const groups: Array<ProgramRun | BareCommand | undefined> = [];
+  /** PowerShell: the groups the reader is inside, innermost last. */
+  const groups: Group[] = [];
   for (const command of commands) {
     const pipeIn = pipes.get(command.nesting);
     const ownPipe: OpenPipe | undefined = PIPE_END.test(command.terminator) ? { into: undefined } : undefined;
@@ -140,8 +151,13 @@ function visitScript(script: ShellWord, dialect: ShellDialect, location: Locatio
     const ownSubstitution: OpenSubstitution | undefined = command.nesting > 0 ? { holder: undefined } : undefined;
     const grouped = dialect === 'powershell' && groups.length > 0;
     const outermost = command.nesting === 0 && !grouped;
-    const pipe = ownPipe ?? (outermost ? outlet.pipe : undefined);
-    const substitution = ownSubstitution ?? (grouped ? { holder: groups.at(-1) } : outlet.substitution);
+    /** In `X (a) | y`, the pipe after the `)` takes the output of X, not of a. */
+    const closed = dialect === 'powershell' && ownPipe !== undefined ? closedBeforePipe(command.terminator, groups) : undefined;
+    const pipe = closed?.held === true ? undefined : (ownPipe ?? (outermost ? outlet.pipe : undefined));
+    if (closed?.held === true && closed.holder !== undefined) {
+      closed.holder.pipe = ownPipe;
+    }
+    const substitution = ownSubstitution ?? (grouped ? { holder: groups.at(-1)?.holder } : outlet.substitution);
     let stdin = command.stdin;
     if (piped !== undefined && command.nesting <= piped.nesting) {
       stdin ??= command.nesting === piped.nesting && !redirectsInput(command) ? piped.body : undefined;
@@ -161,7 +177,7 @@ function visitScript(script: ShellWord, dialect: ShellDialect, location: Locatio
       unheld.push({ nesting: command.nesting, slot: ownSubstitution });
     }
     if (dialect === 'powershell') {
-      trackGroups(command.terminator, holder, groups);
+      trackGroups(command.terminator, { holder, held: command.words.length > 0 }, groups);
     }
     if (stdin !== undefined) {
       piped = visited !== undefined && stdinUse(command, visited.launched) === 'passed' ? { body: stdin, nesting: command.nesting } : undefined;
@@ -195,7 +211,7 @@ function visitCommand(
   } else if (launched.kind === 'program' && !launched.program.dynamic) {
     const inner = location.child();
     launched.chdirs.forEach((chdir) => inner.moveTo(chdir));
-    const run: ProgramRun = {
+    const run: Draft<ProgramRun> = {
       name: programName(launched.program.text),
       args: launched.args,
       dialect,
@@ -211,20 +227,34 @@ function visitCommand(
     runs.programs.push(run);
     return { launched, run, bare: undefined };
   } else if (launched.kind === 'nothing' && command.words.length > 0) {
-    const bare: BareCommand = { words: command.words, dialect, redirections: command.redirections, pipe: outlet.pipe, substitution: outlet.substitution };
+    const bare: Draft<BareCommand> = { words: command.words, dialect, redirections: command.redirections, pipe: outlet.pipe, substitution: outlet.substitution };
     runs.bare.push(bare);
     return { launched, run: undefined, bare };
   }
   return { launched, run: undefined, bare: undefined };
 }
 
-/** PowerShell: opens a group that `holder` takes the value of at each `(` after it, and closes one at each `)`. */
-function trackGroups(terminator: string, holder: ProgramRun | BareCommand | undefined, groups: Array<ProgramRun | BareCommand | undefined>): void {
+/** PowerShell: opens `group` at each `(` of the terminator, and closes one at each `)`. */
+function trackGroups(terminator: string, group: Group, groups: Group[]): void {
   for (const char of terminator) {
     if (char === '(') {
-      groups.push(holder);
+      groups.push(group);
     } else if (char === ')') {
       groups.pop();
     }
   }
+}
+
+/** PowerShell: the last group a terminator ending in a pipe closes before it, whose holder's output the pipe takes. */
+function closedBeforePipe(terminator: string, groups: readonly Group[]): Group | undefined {
+  const open = [...groups];
+  let closed: Group | undefined;
+  for (const char of terminator) {
+    if (char === '(') {
+      open.push({ holder: undefined, held: false });
+    } else if (char === ')') {
+      closed = open.pop();
+    }
+  }
+  return closed;
 }
