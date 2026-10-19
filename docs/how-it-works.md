@@ -201,6 +201,12 @@ minutes in a tab and never two for the same installs; a refused one goes to Clau
 still needs `/reload-plugins` typed, or a restart. Claude Code does not check this marketplace for updates by itself
 unless you turn on its auto-update in `/plugin`, under Marketplaces.
 
+The `teamrig` the Bash tool runs is the first plugin `bin` folder on its PATH. Claude Code adds the tab's own at the end
+of PATH and, from version 2.1.301, adds the new one again after `/reload-plugins`; an older Claude Code keeps the
+version the tab started with until it restarts. A session teamrig starts (`teamrig open`, `teamrig restore`) leaves
+the opener's plugin `bin` folders off the PATH it hands on, so its Bash tool runs the session's own install and follows
+its updates.
+
 ## A task's life
 
 Every task has one owner, and only the owner moves it; these are the usual moves.
