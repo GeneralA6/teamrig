@@ -290,7 +290,9 @@ turns this off: `register.autoArchive: false` in the team's `config.json`, after
   (T209–T211).
 - Token use: `teamrig budget` reads each session's use from the Claude Code transcripts (only the lines added
   since its last run, kept per session and day for 8 days in `state/usage/`) and shows it against the week's pace
-  line: what is left to the target at 00:00 UTC, spread over the days to the reset and split among the sessions.
+  line. The team's daily budget is never a fixed number: at every reading, what is left to the target is spread
+  over the active time to the pace end (quiet hours count at `budget.quietHours.paceWeight`), and each session's
+  part of today's is its share times its queued work, after the lead's lifts.
   The week's use in percent comes from status line snapshots (`teamrig statusline install` sets the status line
   up), else from `budget.weeklyLimitW`. A subagent's W is multiplied by `budget.subagentWeight` (default 1), what
   one W of a helper costs in W of a main session, so all W share one price. The hooks warn

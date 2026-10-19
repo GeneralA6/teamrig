@@ -7,8 +7,8 @@ import { APP, CliHarness, CONFIG_PATH, TEAM, TEAM_HOME, type CliResult } from '.
 import { EXIT } from './runtime.ts';
 
 const BACKUP = join(TEAM_HOME, 'backups', 'config.budget.json');
-/** The owner's policy of the design: pace capped at 12%, ask the lead, ask before helpers at night. */
-const POLICY = ['--daily', 'pace', '--max-daily', '12', '--over', 'ask-lead', '--escalate', 'session-and-fleet', '--quiet', '22:00-06:00', '--quiet-action', 'ask'];
+/** The owner's policy of the design: ask the lead, ask before helpers at night. */
+const POLICY = ['--over', 'ask-lead', '--escalate', 'session-and-fleet', '--quiet', '22:00-06:00', '--quiet-action', 'ask'];
 
 function setup(kit: CliHarness, ...argv: string[]): Promise<CliResult> {
   return kit.run(['budget', 'setup', '--session', 'lead', ...argv]);
@@ -35,11 +35,9 @@ describe('budget setup', () => {
     const kit = new CliHarness();
     const result = await setup(kit, '--over', 'ask-lead');
     assert.equal(result.code, EXIT.ok, result.stdout.join('\n'));
-    assert.match(result.stdout[0] ?? '', /^PREVIEW .*config\.json: 2 to change, 4 unchanged; nothing written \(add --yes to write\)$/);
-    assert.deepEqual(result.stdout.slice(1, 7), [
+    assert.match(result.stdout[0] ?? '', /^PREVIEW .*config\.json: 2 to change, 2 unchanged; nothing written \(add --yes to write\)$/);
+    assert.deepEqual(result.stdout.slice(1, 5), [
       '  CHANGE budget.enabled: off (not set) -> on',
-      '  KEEP budget.dailyPct: pace (not set)',
-      '  KEEP budget.maxDailyPct: no cap (not set)',
       '  CHANGE budget.overAction: warn (not set) -> ask-lead',
       '  KEEP budget.escalate: session-and-fleet (not set)',
       '  KEEP budget.quietHours: none (not set)',
@@ -52,12 +50,10 @@ describe('budget setup', () => {
     const kit = new CliHarness();
     const result = await setup(kit, ...POLICY, '--yes');
     assert.equal(result.code, EXIT.ok, result.stdout.join('\n'));
-    assert.match(result.stdout[0] ?? '', /^WROTE .*config\.json: 5 to change, 1 unchanged; the old file is at .*config\.budget\.json$/);
+    assert.match(result.stdout[0] ?? '', /^WROTE .*config\.json: 4 to change, 0 unchanged; the old file is at .*config\.budget\.json$/);
     assert.ok(result.stdout.includes('  CHANGE budget.quietHours: none (not set) -> 22:00-06:00 UTC, ask'));
-    assert.ok(result.stdout.includes('  CHANGE budget.maxDailyPct: no cap (not set) -> 12%'));
     assert.deepEqual(budgetIn(kit), {
       enabled: true,
-      maxDailyPct: 12,
       overAction: 'ask-lead',
       escalate: 'session-and-fleet',
       quietHours: { startUtc: '22:00', endUtc: '06:00', action: 'ask' },
@@ -107,8 +103,9 @@ describe('budget setup', () => {
 
   it('refuses flags it cannot read, writing nothing', async () => {
     const cases: readonly (readonly string[])[] = [
-      ['--daily', '0'],
-      ['--max-daily', 'lots'],
+      // The team's daily budget is the pace, recomputed at every reading: no flag sets a fixed one.
+      ['--daily', 'pace'],
+      ['--max-daily', '12'],
       ['--over', 'pause'],
       ['--escalate', 'fleet'],
       ['--quiet', '2200-0600'],

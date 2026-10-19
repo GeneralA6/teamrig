@@ -319,12 +319,10 @@ export interface QuietHours {
   readonly paceWeight?: number;
 }
 
-/** One session's part of the team's daily allowance. */
+/** One session's weight in the split of the team's daily budget (`sessionBudgetPct`). */
 export interface SessionBudget {
-  /** Its weight: the session gets allowance × share / the sum of every session's share. */
+  /** Times its queued work: the session gets the team's budget × that / the sum over the sessions. */
   readonly share: number;
-  /** A fixed daily budget, in % of the week, in place of its share. */
-  readonly dailyPct?: number;
 }
 
 /**
@@ -360,10 +358,6 @@ export interface BudgetConfig {
   readonly reservePct: number;
   /** The pace line reaches `targetPct` this many hours before the reset. */
   readonly paceEndHoursBeforeReset: number;
-  /** The team's allowance per UTC day, in % of the week. Unset: what is left to the target, spread over the days left. */
-  readonly dailyPct?: number;
-  /** A ceiling on the team's daily allowance. Unset: none. */
-  readonly maxDailyPct?: number;
   /** Each session's part, by id; a session not listed has a share of 1. */
   readonly sessions: Readonly<Record<string, SessionBudget>>;
   /** The live warning shows a line as a session passes each of these % of its daily budget. */

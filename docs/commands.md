@@ -131,8 +131,8 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
   budget lift <id|name> --part <pct> --stop-pct <pct> --reason "<why>" [--until <HH:MM|date>] [--reserve]
       (the lead only) that session's part of the team's daily budget, in %, today, until --until, the day's end
       or the week reaching --stop-pct; --reserve: above budget.lift.maxStopPct, in the last hour before the reset
-  budget setup [--daily pace|<pct>] [--max-daily none|<pct>] [--over <action>] [--escalate <mode>]
-      [--quiet <HH:MM-HH:MM>|off] [--quiet-action <action>] [--off] [--yes]
+  budget setup [--over <action>] [--escalate <mode>] [--quiet <HH:MM-HH:MM>|off]
+      [--quiet-action <action>] [--off] [--yes]
       (the lead only) writes the team's budget policy into its config and turns the budget on (--off:
       off); without --yes it shows the change and writes nothing; flags left out keep their values
   burst                        the burst policy, the week's use, its projected surplus at the pace end,

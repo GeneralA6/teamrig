@@ -23,7 +23,7 @@ export interface WeekReading {
   /** The meter's counts reach back to the week's start, so the week's W is whole. */
   readonly covered: boolean;
   readonly pace: PaceReading | undefined;
-  /** The team's allowance for today, in percent of the week. */
+  /** The team's allowance for today, in percent of the week; undefined while the week's use or limit is unknown. */
   readonly allowancePct: number | undefined;
   /** Everyone's W today: the team's sessions and the use outside it. */
   readonly todayW: number;
@@ -81,7 +81,7 @@ export function readWeek(input: WeekInput): WeekReading {
     limitEstimated: budget.weeklyLimitW === undefined && wPerPct !== undefined,
     covered,
     pace,
-    allowancePct: allowancePct ?? (budget.dailyPct === undefined ? undefined : Math.min(budget.dailyPct, budget.maxDailyPct ?? budget.dailyPct)),
+    allowancePct,
     todayW,
   };
 }

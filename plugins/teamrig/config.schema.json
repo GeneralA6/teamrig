@@ -592,27 +592,14 @@
           "maximum": 48,
           "default": 1
         },
-        "dailyPct": {
-          "description": "The team's allowance per UTC day, in % of the week. Unset: what is left to targetPct at 00:00 UTC, spread over the days left to the pace end.",
-          "type": "number",
-          "minimum": 0.1,
-          "maximum": 100
-        },
-        "maxDailyPct": {
-          "description": "A ceiling on the team's daily allowance. Unset: none.",
-          "type": "number",
-          "minimum": 0.1,
-          "maximum": 100
-        },
         "sessions": {
-          "description": "Each session's part of the daily allowance, by id: allowance × share / the sum of the shares, or a fixed dailyPct. A session not listed has a share of 1.",
+          "description": "Each session's weight in the split of the team's daily budget, by id: its part is the budget × share × its queued work / the sum over the sessions, recomputed at every reading. A session not listed has a share of 1.",
           "type": "object",
           "propertyNames": { "$ref": "#/$defs/sessionName" },
           "additionalProperties": {
             "type": "object",
             "properties": {
-              "share": { "type": "number", "minimum": 0, "maximum": 100, "default": 1 },
-              "dailyPct": { "description": "A fixed daily budget in % of the week, in place of the share.", "type": "number", "minimum": 0.1, "maximum": 100 }
+              "share": { "type": "number", "minimum": 0, "maximum": 100, "default": 1 }
             }
           },
           "default": {}

@@ -62,7 +62,7 @@ export function paceLinePct(window: WeekWindow, targetPct: number, at: number, p
   return active > 0 ? (targetPct * profile.activeMs(window.start, at)) / active : (targetPct * (at - window.start)) / span;
 }
 
-export type PaceBudget = Pick<BudgetConfig, 'targetPct' | 'paceEndHoursBeforeReset' | 'dailyPct' | 'maxDailyPct' | 'paceTolerancePct'>;
+export type PaceBudget = Pick<BudgetConfig, 'targetPct' | 'paceEndHoursBeforeReset' | 'paceTolerancePct'>;
 
 export interface AllowanceInput {
   readonly window: WeekWindow;
@@ -77,21 +77,17 @@ export interface AllowanceInput {
 }
 
 /**
- * The team's allowance for today, in percent of the week: the config's fixed `dailyPct`, else recomputed at every
- * reading from what is left: what is left to the target, spread evenly over the active time from now to the pace
- * end, times today's active time (the UTC day inside the week and before the pace end). On pace it holds all day;
- * using less raises it and using more lowers it, so the team never waits while the week has room, and an idle
- * evening does not shrink it. Never above today's use plus what is left, which is all it is past the pace end or
- * with no active time left before it. Never above `maxDailyPct`.
+ * The team's allowance for today, in percent of the week, never a fixed number: recomputed at every reading from
+ * what is left to the target, spread evenly over the active time from now to the pace end, times today's active
+ * time (the UTC day inside the week and before the pace end). On pace it holds all day; using less raises it and
+ * using more lowers it, so the team never waits while the week has room, and an idle evening does not shrink it.
+ * Never above today's use plus what is left, which is all it is past the pace end or with no active time left
+ * before it.
  */
 export function dailyAllowancePct(input: AllowanceInput): number {
   const { window, budget, now, profile } = input;
-  const cap = budget.maxDailyPct ?? Number.POSITIVE_INFINITY;
-  if (budget.dailyPct !== undefined) {
-    return Math.min(budget.dailyPct, cap);
-  }
   const leftPct = Math.max(0, budget.targetPct - input.usedPct);
-  const ceiling = Math.min(input.todayPct + leftPct, cap);
+  const ceiling = input.todayPct + leftPct;
   const remaining = profile.activeMs(now, window.paceEnd);
   if (remaining <= 0) {
     return ceiling;

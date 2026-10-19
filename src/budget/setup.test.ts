@@ -23,8 +23,6 @@ describe('planBudgetSetup', () => {
   it('turns the budget on with the chosen policy, keeping the rest of the file', () => {
     const plan = planned(TEAM, {
       enabled: true,
-      daily: 'pace',
-      maxDaily: 12,
       overAction: 'ask-lead',
       escalate: 'session-and-fleet',
       quiet: { startUtc: '22:00', endUtc: '06:00' },
@@ -32,13 +30,12 @@ describe('planBudgetSetup', () => {
     });
     assert.deepEqual(budgetOf(plan), {
       enabled: true,
-      maxDailyPct: 12,
       overAction: 'ask-lead',
       escalate: 'session-and-fleet',
       quietHours: { startUtc: '22:00', endUtc: '06:00', action: 'ask' },
     });
     assert.deepEqual(plan.config['sessions'], TEAM['sessions']);
-    assert.deepEqual(changedKeys(plan), ['enabled', 'maxDailyPct', 'overAction', 'escalate', 'quietHours']);
+    assert.deepEqual(changedKeys(plan), ['enabled', 'overAction', 'escalate', 'quietHours']);
   });
 
   it('lists every policy key once, in order, with what it was and becomes', () => {
@@ -52,26 +49,16 @@ describe('planBudgetSetup', () => {
       { key: 'overAction', from: 'warn', to: 'ask', changed: true },
     );
     assert.deepEqual(
-      plan.keys.find((key) => key.key === 'dailyPct'),
-      { key: 'dailyPct', from: undefined, to: undefined, changed: false },
+      plan.keys.find((key) => key.key === 'escalate'),
+      { key: 'escalate', from: undefined, to: undefined, changed: false },
     );
   });
 
   it('keeps every key a choice leaves out, including other budget keys', () => {
-    const budget = { enabled: true, weeklyLimitW: 5_000_000, dailyPct: 10, sessions: { alpha: { share: 2 } }, quietHours: { startUtc: '23:00', endUtc: '07:00', action: 'warn' } };
+    const budget = { enabled: true, weeklyLimitW: 5_000_000, targetPct: 99, sessions: { alpha: { share: 2 } }, quietHours: { startUtc: '23:00', endUtc: '07:00', action: 'warn' } };
     const plan = planned({ ...TEAM, budget }, { enabled: true });
     assert.deepEqual(budgetOf(plan), budget);
     assert.deepEqual(changedKeys(plan), []);
-  });
-
-  it('pace removes a fixed daily percent, and none removes the cap', () => {
-    const plan = planned({ ...TEAM, budget: { dailyPct: 10, maxDailyPct: 20 } }, { enabled: true, daily: 'pace', maxDaily: 'none' });
-    assert.deepEqual(budgetOf(plan), { enabled: true });
-    assert.deepEqual(changedKeys(plan), ['enabled', 'dailyPct', 'maxDailyPct']);
-  });
-
-  it('sets a fixed daily percent', () => {
-    assert.deepEqual(budgetOf(planned(TEAM, { enabled: true, daily: 8 })), { enabled: true, dailyPct: 8 });
   });
 
   it('turns the budget off, keeping its policy for later', () => {

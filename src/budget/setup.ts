@@ -18,18 +18,17 @@ export interface QuietWindow {
 /** What `budget setup` sets; a choice left undefined keeps the config's value. */
 export interface BudgetChoices {
   readonly enabled: boolean;
-  /** A fixed percent of the week per day, or `pace`: worked out each midnight from what is left. */
-  readonly daily?: number | 'pace' | undefined;
-  /** The most a `pace` day may get, or `none`. */
-  readonly maxDaily?: number | 'none' | undefined;
   readonly overAction?: OverAction | undefined;
   readonly escalate?: Escalation | undefined;
   readonly quiet?: QuietWindow | 'off' | undefined;
   readonly quietAction?: OverAction | undefined;
 }
 
-/** The budget keys `budget setup` manages, in the order a preview lists them. */
-export const SETUP_KEYS = ['enabled', 'dailyPct', 'maxDailyPct', 'overAction', 'escalate', 'quietHours'] as const;
+/**
+ * The budget keys `budget setup` manages, in the order a preview lists them. No daily number among them: the
+ * team's daily budget is the pace, recomputed at every reading.
+ */
+export const SETUP_KEYS = ['enabled', 'overAction', 'escalate', 'quietHours'] as const;
 export type SetupKey = (typeof SETUP_KEYS)[number];
 
 export interface KeyChange {
@@ -105,8 +104,6 @@ export function planBudgetSetup(config: JsonRecord, choices: BudgetChoices): Che
   }
   const budget: Record<string, unknown> = { ...before };
   apply(budget, 'enabled', choices.enabled);
-  apply(budget, 'dailyPct', choices.daily === undefined ? KEEP : choices.daily === 'pace' ? undefined : choices.daily);
-  apply(budget, 'maxDailyPct', choices.maxDaily === undefined ? KEEP : choices.maxDaily === 'none' ? undefined : choices.maxDaily);
   apply(budget, 'overAction', choices.overAction ?? KEEP);
   apply(budget, 'escalate', choices.escalate ?? KEEP);
   apply(budget, 'quietHours', quietHours.value);

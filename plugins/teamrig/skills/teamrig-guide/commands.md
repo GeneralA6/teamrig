@@ -690,12 +690,11 @@ NOTE shop-web still finds web in every teamrig command; teamrig never edits perm
 ### teamrig hire
 
 Adds a temporary session to the team for one job (`teamrig hire <id> --scope "<its job>" --reason "<why>"`), the
-lead only, within the team's `hiring` policy and caps. Without `--yes` it shows the hire and writes nothing. With
-it, the hire goes into the hire log (`state/hires.jsonl`), the old config into the backups folder, and the session
-into the config: `sessions`, `names` with `--name` and `launch` (its model and effort, the lead's own unless
-given); no daily budget, as its part of the team's follows its share and queued work. Its name is `<team>-<id>`
-unless `--name` gives one; a name another
-team's session has is refused, as Claude Code session names are machine-wide.
+lead only, within the team's `hiring` policy and `hiring.maxSessions`. Without `--yes` it shows the hire and writes
+nothing. With it, the hire goes into the hire log (`state/hires.jsonl`), the old config into the backups folder, and
+the session into the config: `sessions`, `names` with `--name` and `launch` (its model and effort, the lead's own
+unless given); no daily budget, as its part of the team's follows its share and queued work. Its name is
+`<team>-<id>` unless `--name` gives one; a name another team's session has is refused, as Claude Code session names are machine-wide.
 
 - `hiring.policy`: `off` refuses every hire; `owner` (the default) needs `--approved-by "<who>"`, after you ask
   the owner; `lead` lets the lead hire within the cap; `automatic` is `lead`, and a hired session whose last
@@ -1991,8 +1990,10 @@ metering on; `--day <YYYY-MM-DD>` recounts a past day at the new weight.
 Measures every session's use since the last run, keeps 8 days of it in the team's `state/usage` folder, and
 shows the week against the pace line: the week's use and reset from the status line snapshots (see
 [teamrig statusline](#teamrig-statusline)), else from `budget.weeklyLimitW` and `budget.reset`. The team's daily
-budget is what is left to `budget.targetPct` at 00:00 UTC, spread over the days to the pace end
-(`budget.paceEndHoursBeforeReset` before the reset), split among the sessions by `budget.sessions`. Short by
+budget is never a fixed number: at every reading, what is left to `budget.targetPct` is spread over the active
+time to the pace end (`budget.paceEndHoursBeforeReset` before the reset; quiet hours count at
+`budget.quietHours.paceWeight`), times today's active time. What the lead's lifts leave is split among the other
+sessions by `budget.sessions.<id>.share` times their queued work. Short by
 default: the busiest 7 sessions, then who is past the daily budget. A session id or name shows that session by
 day.
 
@@ -2038,14 +2039,13 @@ each policy key, what it is now and what it would become, and writes nothing. Wi
 file in the team's `backups` folder (`config.budget.json`, or with a timestamp when that name is taken). Flags left
 out keep the config's values, and the rest of the file stays as it was, its `configVersion` included. The new file
 must pass the checks every command reads the config with. The team-setup skill runs it when a team starts, asking
-the person each choice; run it again to change one.
+the person each choice; run it again to change one. It sets no daily number: the team's daily budget is the pace,
+recomputed at every reading from what is left of the week and the active time to the reset, and each session's is
+its part of that ([teamrig budget](#teamrig-budget)).
 
 Flags:
 
 - `--session <id|name>`: the caller; it must be the lead.
-- `--daily pace|<pct>`: the team's allowance per UTC day, in percent of the week. `pace` works it out each midnight
-  (UTC) from what is left of the week over the days left; a number is the same every day (`budget.dailyPct`).
-- `--max-daily none|<pct>`: the most any day may get, or `none` (`budget.maxDailyPct`).
 - `--over <action>`: past a session's daily budget, `warn` shows the lines only, `ask-lead` also writes the lead an
   inbox line, `ask` also asks the person before a helper launch, and `block` refuses helper launches
   (`budget.overAction`).
@@ -2060,16 +2060,14 @@ Flags:
 Example:
 
 ```sh
-teamrig budget setup --session lead --daily pace --max-daily 15 --over ask-lead --quiet 23:00-07:00 --quiet-action ask
+teamrig budget setup --session lead --over ask-lead --quiet 23:00-07:00 --quiet-action ask
 ```
 
 Output:
 
 ```text
-PREVIEW /home/you/.teamrig/teams/shop/config.json: 4 to change, 2 unchanged; nothing written (add --yes to write)
+PREVIEW /home/you/.teamrig/teams/shop/config.json: 3 to change, 1 unchanged; nothing written (add --yes to write)
   CHANGE budget.enabled: off (not set) -> on
-  KEEP budget.dailyPct: pace (not set)
-  CHANGE budget.maxDailyPct: no cap (not set) -> 15%
   CHANGE budget.overAction: warn (not set) -> ask-lead
   KEEP budget.escalate: session-and-fleet (not set)
   CHANGE budget.quietHours: none (not set) -> 23:00-07:00 UTC, ask

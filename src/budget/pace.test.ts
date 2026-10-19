@@ -158,14 +158,6 @@ describe('dailyAllowancePct', () => {
     const resetDay = dailyAllowancePct({ window: next, budget: BUDGET, now: at('2026-10-21T05:00:00Z'), usedPct: 2, todayPct: 3.5, profile: EVEN });
     assert.equal(round(resetDay), round((97.5 * 23) / (6 * 24 + 19)));
   });
-
-  it('takes the fixed daily % and caps either at maxDailyPct', () => {
-    const input = { window, now: thursday, usedPct: 42.5, todayPct: 3, profile: EVEN };
-    const fixed = { ...BUDGET, dailyPct: 14 };
-    assert.equal(dailyAllowancePct({ ...input, budget: fixed }), 14);
-    assert.equal(dailyAllowancePct({ ...input, budget: { ...fixed, maxDailyPct: 12 } }), 12);
-    assert.equal(dailyAllowancePct({ ...input, budget: { ...BUDGET, maxDailyPct: 8 } }), 8);
-  });
 });
 
 describe('readPace', () => {

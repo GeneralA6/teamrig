@@ -14,7 +14,7 @@ const FILE: JsonRecord = {
   hiring: { policy: 'lead' },
   names: { alpha: 'al', helper: 'temp' },
   launch: { helper: { model: 'sonnet' } },
-  budget: { weeklyLimitW: 5000000, sessions: { alpha: { share: 2 }, helper: { dailyPct: 1 } } },
+  budget: { weeklyLimitW: 5000000, sessions: { alpha: { share: 2 }, helper: { share: 1 } } },
 };
 
 const HIRE: HireRecord = { kind: 'hire', session: 'helper', scope: 'x', reason: 'y', reviewBy: '2030-01-15', by: 'lead', at: NOW - 1000 };

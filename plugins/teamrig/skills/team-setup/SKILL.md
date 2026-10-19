@@ -58,12 +58,10 @@ teamrig add --session lead --owner <id> --priority p2 --title "<first task>" --d
 
 ## 5. Turn on the daily budget
 
-The budget turns the week's tokens into a daily allowance for the team, so the work lasts until the weekly reset.
-Ask the user in one AskUserQuestion call with these three questions, the recommended answer first:
+The budget turns what is left of the week into a daily budget for the team, recomputed at every reading, so the work
+lasts until the weekly reset; there is no daily number to choose. Ask the user in one AskUserQuestion call with these
+two questions, the recommended answer first:
 
-- Daily allowance: `pace` (recommended): each midnight, what is left of the week spread over the days left. Offer a
-  cap with it (`--max-daily <pct>`), so a slow start cannot pile up into one huge day. Or a fixed percent per day
-  (`--daily <pct>`).
 - Past the line, when a session goes over its share of the day while the team runs ahead of pace: `ask-lead`
   (recommended): the lead is told and decides; `warn`: a line only; `ask`: the user is asked before its helpers
   start. `block` refuses helper launches, an urgent fix's included: never recommend it.
@@ -73,7 +71,7 @@ Ask the user in one AskUserQuestion call with these three questions, the recomme
 Preview in one Bash call and show the user the lines:
 
 ```
-teamrig budget setup --session lead --daily pace --over ask-lead --quiet <HH:MM-HH:MM> --quiet-action ask
+teamrig budget setup --session lead --over ask-lead --quiet <HH:MM-HH:MM> --quiet-action ask
 ```
 
 After a yes, run the same line with `--yes`. A `NOTE no status line reading yet` line means the hooks cannot see the

@@ -73,9 +73,7 @@ describe('readWeek', () => {
     assert.equal(round(week.allowancePct), round((42.5 * 16) / 90));
   });
 
-  it('falls back to a fixed dailyPct, capped, when the allowance cannot be worked out', () => {
-    const budget: BudgetConfig = { ...DEFAULT_BUDGET, dailyPct: 2 };
-    assert.equal(readWeek({ budget, now: NOW, statusUse: undefined, states: [] }).allowancePct, 2);
-    assert.equal(readWeek({ budget: { ...budget, maxDailyPct: 1.5 }, now: NOW, statusUse: undefined, states: [] }).allowancePct, 1.5);
+  it("has no allowance while the week's use cannot be read: no fixed number stands in for it", () => {
+    assert.equal(readWeek({ budget: DEFAULT_BUDGET, now: NOW, statusUse: undefined, states: [] }).allowancePct, undefined);
   });
 });
