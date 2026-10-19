@@ -130,7 +130,9 @@ teamrig set T4 --session api --status waiting --waits decision:owner --note "whi
 ```
 
 Name every reason, comma-separated: `decision:<who>` or `approval:<who>` (the lead, or `owner` for the human),
-`task:T<id>` (a task to finish first) or `time:<YYYY-MM-DD HH:MM>` (UTC). Then move to your next task. It stays
+`task:T<id>` (a task to finish first) or `time:<YYYY-MM-DD HH:MM>` (UTC). Then move to your next task. This is how a
+session asks the owner: with `pickerGuard.enabled`, the question picker, which would stop it until the answer, is
+refused to every session but the lead. It stays
 waiting until every reason has cleared; `check` flags it `READY` once its tasks are done and its time has passed,
 and a decision or an approval clears when you set the next status (`set --status in-progress`). A new decision or
 approval wait posts the lead one inbox line; a decision for the human goes to the lead with the options, numbers
