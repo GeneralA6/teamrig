@@ -1,5 +1,5 @@
 import { isDefaultModel, isModel, launchOf } from '../config/launch.ts';
-import type { EffortLevel, KitConfig } from '../config/types.ts';
+import type { EffortLevel, HiringConfig, KitConfig } from '../config/types.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { ID_PATTERN } from '../core/ids.ts';
 import { formatUtcDay, parseUtcDay } from '../core/time.ts';
@@ -55,9 +55,26 @@ function recordAt(record: JsonRecord, key: string): JsonRecord {
   return isRecord(value) ? value : {};
 }
 
-/** A hire's daily budget as the config has it now, so a later `budget` change counts. */
-function dailyPctOf(config: KitConfig, hire: HireRecord): number {
-  return ownValue(config.budget.sessions, hire.session)?.dailyPct ?? hire.dailyPct;
+/** The daily budget of each hire still on the team, as the config has it now, so a later `budget` change counts. */
+export function hiredDailyPcts(config: Pick<KitConfig, 'sessions' | 'budget'>, active: readonly HireRecord[]): number[] {
+  return active.filter((hire) => config.sessions.includes(hire.session)).map((hire) => ownValue(config.budget.sessions, hire.session)?.dailyPct ?? hire.dailyPct);
+}
+
+/** A sum of daily budgets to hundredths, so 0.1 + 0.2 meets a cap of 0.3. */
+function sumPct(pcts: readonly number[]): number {
+  return Math.round(pcts.reduce((sum, pct) => sum + pct, 0) * 100) / 100;
+}
+
+/**
+ * Why one more hire at `dailyPct` would pass `hiring`'s caps beside the hires on the team, whose daily budgets are
+ * `hired` ({@link hiredDailyPcts}): the hired sessions at once, or the sum of their daily budgets. Undefined when it fits.
+ */
+export function hireCapProblem(hiring: Pick<HiringConfig, 'maxSessions' | 'maxDailyPct'>, hired: readonly number[], dailyPct: number): string | undefined {
+  if (hired.length >= hiring.maxSessions) {
+    return `the team already has ${hired.length} hired session(s), the most hiring.maxSessions allows`;
+  }
+  const total = sumPct([...hired, dailyPct]);
+  return total > hiring.maxDailyPct ? `the hired sessions' daily budgets would add up to ${total}% of the week, over hiring.maxDailyPct ${hiring.maxDailyPct}%` : undefined;
 }
 
 function reviewDayOf(request: HireRequest, config: KitConfig): Checked<string> {
@@ -112,16 +129,11 @@ export function planHire(file: JsonRecord, config: KitConfig, active: readonly H
   if (modelProblem !== undefined) {
     return { ok: false, problem: `--model ${request.model}: ${modelProblem}` };
   }
-  const { maxSessions, maxDailyPct } = config.hiring;
-  const onTeam = active.filter((hire) => config.sessions.includes(hire.session));
-  if (onTeam.length >= maxSessions) {
-    return { ok: false, problem: `the team already has ${onTeam.length} hired session(s), the most hiring.maxSessions allows` };
-  }
+  const hired = hiredDailyPcts(config, active);
   const dailyPct = request.dailyPct ?? config.hiring.dailyPct;
-  // To hundredths, so 0.1 + 0.2 meets a cap of 0.3.
-  const hiredDailyPct = Math.round(onTeam.reduce((sum, hire) => sum + dailyPctOf(config, hire), dailyPct) * 100) / 100;
-  if (hiredDailyPct > maxDailyPct) {
-    return { ok: false, problem: `the hired sessions' daily budgets would add up to ${hiredDailyPct}% of the week, over hiring.maxDailyPct ${maxDailyPct}%` };
+  const capProblem = hireCapProblem(config.hiring, hired, dailyPct);
+  if (capProblem !== undefined) {
+    return { ok: false, problem: capProblem };
   }
   const reviewBy = reviewDayOf(request, config);
   if (!reviewBy.ok) {
@@ -153,5 +165,5 @@ export function planHire(file: JsonRecord, config: KitConfig, active: readonly H
     by: request.by,
     at: request.now,
   };
-  return { ok: true, value: { config: next, hire, hired: onTeam.length + 1, hiredDailyPct } };
+  return { ok: true, value: { config: next, hire, hired: hired.length + 1, hiredDailyPct: sumPct([...hired, dailyPct]) } };
 }
