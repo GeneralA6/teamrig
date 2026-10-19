@@ -76,7 +76,7 @@ function issueSteps(issue: GithubIssue, imported: ReadonlyMap<string, Task>, rul
   if (names.length > 0) {
     steps.push({ kind: 'update', ref: wanted.ref, id: task.id, changes, note: `${namesText(names)} as on GitHub` });
   }
-  const status = statusChange(task, wanted, issue.stateReason);
+  const status = statusChange(task, wanted, issue);
   if (status !== undefined) {
     steps.push({ kind: 'status', ref: wanted.ref, id: task.id, input: status });
   }
@@ -98,16 +98,25 @@ function fieldChanges(task: Task, wanted: IssueTask): ImportChanges {
   };
 }
 
-/** The status the issue calls for, when the task is not in it: an active status counts as open. */
-function statusChange(task: Task, wanted: IssueTask, stateReason: string): StatusInput | undefined {
+/**
+ * The status the issue calls for, when the task is not in it: an active status counts as open. A task set done or
+ * dropped while its issue is open goes back to open only once GitHub changed the issue after that, as reopening it
+ * does, so the team's own close of an issue still open on GitHub stands.
+ */
+function statusChange(task: Task, wanted: IssueTask, issue: GithubIssue): StatusInput | undefined {
   switch (wanted.outcome) {
     case 'open':
-      return ACTIVE_STATUSES.includes(task.status) ? undefined : { status: 'open', note: 'open on GitHub' };
+      return ACTIVE_STATUSES.includes(task.status) || !changedSince(issue, task.statusAt) ? undefined : { status: 'open', note: 'open on GitHub, changed there since this task closed' };
     case 'done':
-      return task.status === 'done' ? undefined : { status: 'done', note: closedNote(stateReason), evidence: wanted.url };
+      return task.status === 'done' ? undefined : { status: 'done', note: closedNote(issue.stateReason), evidence: wanted.url };
     case 'dropped':
-      return task.status === 'dropped' ? undefined : { status: 'dropped', note: closedNote(stateReason) };
+      return task.status === 'dropped' ? undefined : { status: 'dropped', note: closedNote(issue.stateReason) };
   }
+}
+
+/** Whether GitHub changed the issue after `at`; an issue gh gave no time for counts as unchanged. */
+function changedSince(issue: GithubIssue, at: string): boolean {
+  return issue.updatedAt !== undefined && Date.parse(issue.updatedAt) > Date.parse(at);
 }
 
 /** The note on a closed issue's task: how GitHub closed it, when it is a reason GitHub names. */

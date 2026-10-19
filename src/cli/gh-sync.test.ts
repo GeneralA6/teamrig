@@ -106,12 +106,31 @@ describe('teamrig gh sync', () => {
     const [first, second] = [tasks.get('T1'), tasks.get('T2')];
     assert.deepEqual([first?.status, first?.evidence, first?.owner, first?.updatedBy], ['done', 'https://github.com/acme/web/issues/7', 'bravo', 'github']);
     assert.deepEqual([second?.owner, second?.priority, second?.status], ['alpha', 2, 'open']);
-    const reopened = new FakeGh().holds('acme/web', [ghIssue('acme/web', 7, { title: 'Fix the login', labels: ['p1'] }), ghIssue('acme/web', 8, { title: 'Add search' })]).holds('acme/api', []);
+    const reopened = new FakeGh()
+      .holds('acme/web', [ghIssue('acme/web', 7, { title: 'Fix the login', labels: ['p1'], updatedAt: '2030-01-08T11:00:00Z' }), ghIssue('acme/web', 8, { title: 'Add search' })])
+      .holds('acme/api', []);
     assert.deepEqual((await expectRun(kit, ['gh', 'sync', '--yes', '--repo', 'ACME/web'], reopened, EXIT.ok)).slice(0, 2), [
       'REPO acme/web: 0 added, 1 changed, 1 unchanged',
-      'SET T1 gh:acme/web#7 open: open on GitHub',
+      'SET T1 gh:acme/web#7 open: open on GitHub, changed there since this task closed',
     ]);
     assert.equal(reopened.ran.length, 2);
+  });
+
+  it('keeps a task the team dropped while its issue is open, until the issue changes on GitHub', async () => {
+    const kit = new CliHarness(GITHUB_TEAM);
+    await expectRun(kit, ['gh', 'sync', '--yes'], twoIssues(), EXIT.ok);
+    const dropped = await kit.run(['set', 'T1', '--status', 'dropped', '--note', 'not ours to fix'], AS_BRAVO);
+    assert.equal(dropped.code, EXIT.ok, dropped.stdout.join('\n'));
+    assert.deepEqual((await expectRun(kit, ['gh', 'sync', '--yes'], twoIssues(), EXIT.ok)).slice(0, 1), ['REPO acme/web: 0 added, 0 changed, 2 unchanged']);
+    assert.equal(register(kit).tasks.get('T1')?.status, 'dropped');
+    const commented = new FakeGh()
+      .holds('acme/web', [ghIssue('acme/web', 7, { title: 'Fix login', labels: ['p1'], assignees: ['octocat'], updatedAt: '2030-01-08T11:00:00Z' }), ghIssue('acme/web', 8, { title: 'Add search' })])
+      .holds('acme/api', []);
+    assert.deepEqual((await expectRun(kit, ['gh', 'sync', '--yes'], commented, EXIT.ok)).slice(0, 2), [
+      'REPO acme/web: 0 added, 1 changed, 1 unchanged',
+      'SET T1 gh:acme/web#7 open: open on GitHub, changed there since this task closed',
+    ]);
+    assert.equal(register(kit).tasks.get('T1')?.status, 'open');
   });
 
   it('carries the issue body as the description, follows its edits by length only, and keeps a secret out', async () => {

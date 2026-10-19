@@ -6,7 +6,7 @@ import { issueListArgs, listIssues, parseIssueList, plainLine, type IssueListReq
 import type { RepoAccess } from './tokens.ts';
 
 const OPEN: IssueListRequest = { repo: 'acme/web', state: 'open', limit: 500 };
-const FIELDS = 'number,title,body,state,stateReason,labels,assignees,url';
+const FIELDS = 'number,title,body,state,stateReason,labels,assignees,url,updatedAt';
 /** Reading through the gh login, as when no token is saved for acme. */
 const LOGIN: RepoAccess = { via: 'login', env: { HOME: '/u' }, owner: 'acme', credential: 'teamrig-gh-acme', save: 'save teamrig-gh-acme' };
 const TOKEN: RepoAccess = { ...LOGIN, via: 'token', env: { HOME: '/u', GH_TOKEN: 'read-token' } };
@@ -35,7 +35,7 @@ describe('listIssues', () => {
     assert.deepEqual(list, {
       kind: 'listed',
       issues: [
-        { repo: 'acme/web', number: 7, title: 'Fix login', body: 'Steps:\n1. log in', state: 'open', stateReason: '', labels: ['bug', 'p1'], assignees: ['octocat'], url: 'https://github.com/acme/web/issues/7' },
+        { repo: 'acme/web', number: 7, title: 'Fix login', body: 'Steps:\n1. log in', state: 'open', stateReason: '', labels: ['bug', 'p1'], assignees: ['octocat'], url: 'https://github.com/acme/web/issues/7', updatedAt: '2030-01-01T00:00:00Z' },
       ],
       unreadable: 0,
       full: false,
@@ -119,21 +119,21 @@ describe('parseIssueList', () => {
     // Recorded from `gh issue list --json number,title,body,state,stateReason`: an open issue's stateReason is empty.
     const recorded = { body: 'Seen in 2.62.', number: 14704, state: 'OPEN', stateReason: '', title: 'run list shows cancelled jobs' };
     const items = [
-      { ...recorded, url: 'https://github.com/cli/cli/issues/14704', labels: [{ name: 'bug' }, { id: 'no name' }], assignees: [{ login: 5 }, { login: 'octocat' }] },
+      { ...recorded, updatedAt: '2024-11-05T10:11:12Z', url: 'https://github.com/cli/cli/issues/14704', labels: [{ name: 'bug' }, { id: 'no name' }], assignees: [{ login: 5 }, { login: 'octocat' }] },
       { ...recorded, number: '14705', url: 'https://github.com/cli/cli/issues/14705' },
       { ...recorded, number: 0, url: 'https://github.com/cli/cli/issues/0' },
       { ...recorded, state: 'MERGED', url: 'https://github.com/cli/cli/issues/14704' },
       { ...recorded, url: 'javascript:alert(1)' },
       { ...recorded, title: null, url: 'https://github.com/cli/cli/issues/14704' },
-      { ...recorded, body: null, stateReason: null, labels: 'bug', url: 'https://github.com/cli/cli/issues/14706' },
+      { ...recorded, body: null, stateReason: null, labels: 'bug', updatedAt: 'yesterday', url: 'https://github.com/cli/cli/issues/14706' },
       'an issue',
     ];
     const list = parseIssueList(JSON.stringify(items), { ...OPEN, repo: 'cli/cli', limit: 8 });
     assert.deepEqual(list, {
       kind: 'listed',
       issues: [
-        { repo: 'cli/cli', number: 14704, title: 'run list shows cancelled jobs', body: 'Seen in 2.62.', state: 'open', stateReason: '', labels: ['bug'], assignees: ['octocat'], url: 'https://github.com/cli/cli/issues/14704' },
-        { repo: 'cli/cli', number: 14704, title: 'run list shows cancelled jobs', body: '', state: 'open', stateReason: '', labels: [], assignees: [], url: 'https://github.com/cli/cli/issues/14706' },
+        { repo: 'cli/cli', number: 14704, title: 'run list shows cancelled jobs', body: 'Seen in 2.62.', state: 'open', stateReason: '', labels: ['bug'], assignees: ['octocat'], url: 'https://github.com/cli/cli/issues/14704', updatedAt: '2024-11-05T10:11:12Z' },
+        { repo: 'cli/cli', number: 14704, title: 'run list shows cancelled jobs', body: '', state: 'open', stateReason: '', labels: [], assignees: [], url: 'https://github.com/cli/cli/issues/14706', updatedAt: undefined },
       ],
       unreadable: 6,
       full: true,

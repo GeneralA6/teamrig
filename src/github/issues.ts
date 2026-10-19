@@ -4,7 +4,7 @@ import { GH_TIMEOUT_MS, type GhResult, type GhRunner } from './gh.ts';
 import type { RepoAccess } from './tokens.ts';
 
 /** The issue fields read, and nothing more; the body becomes the task's description. */
-export const ISSUE_FIELDS = ['number', 'title', 'body', 'state', 'stateReason', 'labels', 'assignees', 'url'] as const;
+export const ISSUE_FIELDS = ['number', 'title', 'body', 'state', 'stateReason', 'labels', 'assignees', 'url', 'updatedAt'] as const;
 
 /** The most issues one list returns; a list this long may have left some out, and the sync says so. */
 export const ISSUE_LIMIT = 500;
@@ -44,6 +44,8 @@ export interface GithubIssue {
   /** The assignees' logins, in GitHub's order. */
   readonly assignees: readonly string[];
   readonly url: string;
+  /** When GitHub last changed the issue (reopened, edited, commented on), an ISO time; undefined when gh gave none. */
+  readonly updatedAt: string | undefined;
 }
 
 /** A repository's issues in one state, or the one line saying why gh could not list them. */
@@ -158,7 +160,14 @@ function issueOf(item: unknown, repo: string): GithubIssue | null {
     labels: namesOf(item['labels'], 'name'),
     assignees: namesOf(item['assignees'], 'login'),
     url,
+    updatedAt: timeField(item, 'updatedAt'),
   };
+}
+
+/** A time gh prints (`2030-01-07T09:00:00Z`); undefined when missing or not a time. */
+function timeField(item: JsonRecord, key: string): string | undefined {
+  const text = stringField(item, key);
+  return text !== undefined && Number.isFinite(Date.parse(text)) ? text : undefined;
 }
 
 /** The `key` of each object in a list, such as each label's name; anything else is left out. */

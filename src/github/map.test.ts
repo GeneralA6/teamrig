@@ -25,6 +25,7 @@ function issue(overrides: Partial<GithubIssue> = {}): GithubIssue {
     labels: [],
     assignees: [],
     url: 'https://github.com/acme/web/issues/7',
+    updatedAt: '2030-01-01T00:00:00Z',
     ...overrides,
   };
 }
