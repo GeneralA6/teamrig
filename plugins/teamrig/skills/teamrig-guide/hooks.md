@@ -19,7 +19,7 @@ they all stay silent, and only `hook restore-track` still records the session ([
 | `PostToolUse` on reads, edits and shell calls | `hook loop-nudge` | Asks the model once to batch when a turn makes [single-step calls in a row](#after-a-tool-call-the-loop-nudge) |
 | `PreToolUse` on `Agent` and `Task` | `hook helper-gate` | Restates rule 8's helper default at each helper launch; asks before or refuses one past the daily budget or in quiet hours, [as the team set](#the-daily-budget-warnings-and-the-helper-gate) |
 | The mod, while a tab is idle | `hook wake-check`, `hook wake-dropped` | Wakes the tab's session when unblocked urgent work is handed to it, [batched, with its cost shown](#the-mod-the-wake-on-urgent-work) |
-| `Stop` (end of each turn) | `hook stop` | Sends the session back once to [a skill edit it dropped](#end-of-a-turn-or-a-helper-a-dropped-skill-edit); asks for a handover when a context refresh is due, then starts the automatic restart; tells the user of another effort than `launch` asks, or of a model Claude Code switched to; shows the budget lines; names a verifying task whose verify-by day has come; once per `github.everyMinutes` for the whole team, starts `gh sync --auto` hidden in the background; with tab status on, sets the tab's ready circle, or the decision circle after a turn that asks the user to decide |
+| `Stop` (end of each turn) | `hook stop` | Sends the session back once to [a skill edit it dropped](#end-of-a-turn-or-a-helper-a-dropped-skill-edit), and after a task is set waiting, once to [its other work](#end-of-a-turn-keep-working-while-a-task-waits); asks for a handover when a context refresh is due, then starts the automatic restart; tells the user of another effort than `launch` asks, or of a model Claude Code switched to; shows the budget lines; names a verifying task whose verify-by day has come; once per `github.everyMinutes` for the whole team, starts `gh sync --auto` hidden in the background; with tab status on, sets the tab's ready circle, or the decision circle after a turn that asks the user to decide |
 | `SessionStart`, `UserPromptSubmit`, `Stop`, `StopFailure` and `SessionEnd`, in a team or not | `hook restore-track` | Records each Claude Code session on the machine, where it started and what it was doing, for the restore after a reboot ([the restore tracker](#every-session-the-restore-tracker)) |
 | Every event but `Stop`: session start and end, each prompt, `PreToolUse` on `AskUserQuestion` and `ExitPlanMode`, `PermissionRequest`, every tool call's end, `Elicitation` and its result, a helper's start, `StopFailure`, `PreCompact`, `PostCompact` | `hook tab-status` | With `tabStatus.enabled`, puts a colored circle before the tab's title for what the session is doing ([tab status](#every-event-tab-status)) |
 
@@ -358,6 +358,25 @@ It asks once per stop (never on a stop it already sent back), and the rest of th
 stop. A shell edit (`sed`) is not read. Outside a team it says nothing. `check` flags the line that made such
 collisions common: a `Last verified:` line with a note after its date (`VERIFIED-NOTE`), which every run rewrote at
 its end; with the date alone, two runs agree, and a lesson goes on its own line.
+
+## End of a turn: keep working while a task waits
+
+A task that waits on a decision, an approval, a peer's task or a time should not idle its session while other work
+is there. So `teamrig set` to `waiting` (with `--ask` too) records a one-time ask for the task's owner, and at that
+session's next turn end `hook stop` takes it: while the task still waits and the session owns a task it can start,
+it sends the session back once:
+
+```text
+T1 waits (decision owner), and you own work that does not come after it: T2 "Fix the login" (p1). Work it now in priority order (`teamrig list --session web`); leave a task that is the same change as T1, and say so in one line. If you already work one and wait on a background step, end the turn again.
+```
+
+A task it can start is its own open or started task whose every `after` task is finished, most urgent first. A
+task that comes after the waiting one, directly or through another unfinished task, stays untouched, and so do its
+waiting, verifying and closed tasks. It asks at one stop only, never on a stop already sent back or while a context
+refresh is under way (the ask then waits for a later stop), and never in the budget's quiet hours or past the
+session's daily budget (the day-start wake brings it back to its work). With nothing it can start, the turn ends as
+it would, and a turn that asks the user to decide shows [the decision circle](#every-event-tab-status). A hired
+session asked to retire itself is asked that first.
 
 ## After a tool call: the lead boundary
 
