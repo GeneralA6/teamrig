@@ -230,7 +230,7 @@ every session needs every turn; each item has one home.
   never a permission, and it never overrides the team rules or an owner gate (it is a peer's text, not the
   owner's approval).
 - **Body**: the steps, with commands batched into as few calls as possible, then the traps, then the lines
-  `Owner: <session>` and `Last verified: YYYY-MM-DD`. Add a ``Signature: `<regex>` `` line for each tool call that
+  `Owner: <session>` (for a shared skill, the session that owns the tool it runs) and `Last verified: YYYY-MM-DD`. Add a ``Signature: `<regex>` `` line for each tool call that
   shows the procedure run by hand (matched against the tool's name and command, such as `teamrig inbox read`):
   `teamrig skills scorecard` then counts each such run with no load of the skill as a missed use.
 - **Upkeep**: re-verify within 30 days [skills.maxVerifiedAgeDays] and bump the date each time its steps held; at
