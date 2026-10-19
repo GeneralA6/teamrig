@@ -1,3 +1,4 @@
+import { dirname } from 'node:path';
 import { claimText, coveringClaims, readClaims } from "../coordinator/claims.js";
 import { takeWhenClear } from "../coordinator/clearance.js";
 import { underLock } from "../coordinator/host-lock.js";
@@ -5,16 +6,19 @@ import { appendDeploy } from "../coordinator/ledger.js";
 import { NOT_STARTED_EXIT, recordHeavy } from "../coordinator/recorded-step.js";
 import { heavyCutoffReason, resetBlackoutReason } from "../coordinator/schedule.js";
 import { samePath } from "../core/paths.js";
+import { runDependencyCheck } from "../integrate/dependencies.js";
+import { LOCKFILE } from "../integrate/manifest.js";
 import { askGates, shownLine } from "./gates.js";
 import { hookEndText, hookExitCode, succeeded } from "./hooks.js";
 import { plural, readPending, rollRepos, short } from "./pending.js";
 /**
  * `teamrig roll`: brings what was pushed to a repository's default branch to the running system, one roll on the host
  * at a time. It reads what is pending (the main checkout's `HEAD..origin/<default branch>`), refuses what it must not
- * pull (a main checkout off its default branch, with tracked changes or commits origin lacks, a held dependency
- * change), waits out the heavy cutoff's refusal, quiet claims on the roll's targets and the team's gates, takes the
- * host lock, asks again, then pulls fast-forward to the sha it checked, runs the afterPull hooks and the roll command,
- * all one heavy step in the ledger, and records the deploy. Nothing pending is done with nothing run.
+ * pull (a main checkout off its default branch, with tracked changes or commits origin lacks, a dependency change the
+ * gate holds), waits out the heavy cutoff's refusal, quiet claims on the roll's targets and the team's gates, takes the
+ * host lock, asks again, then pulls fast-forward to the sha it checked, checks and installs a dependency change, runs
+ * the afterPull hooks and the roll command, all one heavy step in the ledger, and records the deploy. Nothing pending
+ * is done with nothing run.
  */
 const MINUTE_MS = 60_000;
 /** The line a roll command prints when nothing needed rolling: the pull stays, and no deploy is recorded. */
@@ -23,6 +27,8 @@ function runExitCode(run) {
     switch (run.kind) {
         case 'notPulled':
             return NOT_STARTED_EXIT;
+        case 'checkFailed':
+        case 'installFailed':
         case 'afterPullFailed':
         case 'ran':
             return hookExitCode(run.end);
@@ -111,8 +117,41 @@ function readinessOf(setup, ports, request, repo, view) {
     };
 }
 /**
- * Under the host lock `lock`: pulls fast-forward to the checked sha, then runs the afterPull hooks and the roll command,
- * each line shown redacted. They get the lock's token, so a `teamrig heavy` they start runs under this lock.
+ * Under the lock, right after the pull of a range that changes the package files: the dependency check on what was
+ * pulled, the old HEAD's package-lock.json its baseline, then the install. A failed check moves the main checkout back
+ * to the old HEAD with nothing installed; a failed install moves it back and installs the old HEAD's dependencies
+ * again, so the node_modules every worktree links to matches the checkout. Undefined goes on to the afterPull hooks.
+ */
+async function installDeps(setup, ports, repo, head, deps, env, show) {
+    const { touches, check } = deps;
+    const timeoutMs = setup.coordinator.heavy.maxRunMinutes * MINUTE_MS;
+    const changed = `deps changed (${touches.join(', ')})`;
+    if (check !== undefined) {
+        ports.say(`${changed}: dependency check ${check.join(' ')}`);
+        const baseline = ports.git.fileAt(repo.main, head, LOCKFILE);
+        const end = await runDependencyCheck(ports, { argv: check, cwd: repo.main, baseline, folder: dirname(setup.places.ledger), env, timeoutMs, onLine: show });
+        if (!succeeded(end)) {
+            return { kind: 'checkFailed', touches, argv: check, end, back: ports.git.resetTo(repo.main, head) };
+        }
+    }
+    const install = { argv: deps.install, cwd: repo.main, env, timeoutMs, onLine: show };
+    ports.say(`${changed}: dependency install ${deps.install.join(' ')}`);
+    const end = await ports.hooks.run(install);
+    if (succeeded(end)) {
+        ports.say(`installed: the worktrees that link to the node_modules in ${repo.main} have the new dependencies now`);
+        return undefined;
+    }
+    const back = ports.git.resetTo(repo.main, head);
+    if (!back.ok) {
+        return { kind: 'installFailed', touches, argv: deps.install, end, undo: { kind: 'notMovedBack', reason: back.reason } };
+    }
+    ports.say(`moved ${repo.main} back to ${short(head)}; installing its dependencies again`);
+    return { kind: 'installFailed', touches, argv: deps.install, end, undo: { kind: 'reinstalled', end: await ports.hooks.run(install) } };
+}
+/**
+ * Under the host lock `lock`: pulls fast-forward to the checked sha, checks and installs a dependency change (see
+ * {@link installDeps}), then runs the afterPull hooks and the roll command, each line shown redacted. They get the
+ * lock's token, so a `teamrig heavy` they start runs under this lock.
  */
 async function pullAndRoll(setup, ports, request, repo, pending, tag, lock) {
     const pulled = ports.git.fastForward(repo.main, pending.target);
@@ -127,6 +166,12 @@ async function pullAndRoll(setup, ports, request, repo, pending, tag, lock) {
         ports.say(`  ${shown}`);
         return shown;
     };
+    if (pending.deps !== undefined) {
+        const failed = await installDeps(setup, ports, repo, pending.head, pending.deps, env, show);
+        if (failed !== undefined) {
+            return failed;
+        }
+    }
     for (const argv of repo.roll.afterPull) {
         ports.say(`afterPull: ${argv.join(' ')}`);
         const end = await ports.hooks.run({ argv, cwd: repo.main, env, timeoutMs, onLine: show });
@@ -159,6 +204,9 @@ async function settle(setup, ports, request, repo, pending, tag, startedAt, run)
     switch (run.kind) {
         case 'notPulled':
             return { kind: 'failed', reason: `the pull of ${range} into ${repo.main} failed (${run.reason}): nothing pulled, nothing rolled; roll again` };
+        case 'checkFailed':
+        case 'installFailed':
+            return dependencyEnd(repo, pending, run);
         case 'afterPullFailed':
             return { kind: 'failed', reason: `${range} pulled, but afterPull \`${run.argv.join(' ')}\` ${hookEndText(run.end)}, so nothing rolled; ${byHand}` };
         case 'ran':
@@ -186,6 +234,26 @@ async function settle(setup, ports, request, repo, pending, tag, startedAt, run)
         return { kind: 'done', summary: `${range} rolled${said}` };
     }
     return { kind: 'failed', reason: `${range} pulled, but the roll command ${hookEndText(run.end)}${said}; its owners fix forward or roll back, and ${byHand}` };
+}
+/** How a range whose dependency check or install failed ends: nothing rolled, and the main checkout back at its old HEAD or what to do by hand. */
+function dependencyEnd(repo, pending, run) {
+    const { main } = repo;
+    const head = short(pending.head);
+    const step = `deps changed (${run.touches.join(', ')}): the dependency ${run.kind === 'checkFailed' ? 'check' : 'install'} \`${run.argv.join(' ')}\` ${hookEndText(run.end)}`;
+    if (run.kind === 'checkFailed') {
+        return run.back.ok
+            ? { kind: 'refused', reason: `${step}, so ${main} is back at ${head} and nothing rolled; its output is above` }
+            : { kind: 'failed', reason: `${step}, and moving ${main} back to ${head} failed (${run.back.reason}): it is at ${short(pending.target)} with the old dependencies, so reset it to ${pending.head} by hand, else a new roll finds nothing pending` };
+    }
+    const byHand = `run \`${run.argv.join(' ')}\` in ${main} by hand`;
+    switch (run.undo.kind) {
+        case 'notMovedBack':
+            return { kind: 'failed', reason: `${step}, and moving ${main} back to ${head} failed (${run.undo.reason}): the node_modules every worktree links to may be broken; reset it to ${pending.head} and ${byHand}` };
+        case 'reinstalled':
+            return succeeded(run.undo.end)
+                ? { kind: 'failed', reason: `${step}, so ${main} is back at ${head} with its dependencies installed again and nothing rolled; fix the install and roll again` }
+                : { kind: 'failed', reason: `${step}, and installing ${head}'s dependencies again ${hookEndText(run.undo.end)}: the node_modules every worktree links to may be broken; ${byHand}` };
+    }
 }
 /** Rolls what was pushed to a repository's default branch (see the module comment). */
 export async function rollRepo(setup, ports, request) {

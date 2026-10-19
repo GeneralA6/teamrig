@@ -10,16 +10,33 @@ export function short(sha) {
 export function plural(count, word) {
     return `${count} ${word}${count === 1 ? '' : 's'}`;
 }
-/** Why a dependency gate holds the range: its package files need an install; undefined when they do not. */
-async function dependencyHold(git, repo, head, target) {
-    const touches = await rangeInstallTouches(git, repo.main, head, target);
+/**
+ * What the range's package files need after the pull: nothing, an install (checked first when `dependencyGate` is on)
+ * or a hold. The gate holds a dependency change unless `dependencyCheck` and `roll.dependencyInstall` are both set;
+ * with the gate off, an install set runs unchecked, and with neither the range rolls as it is.
+ */
+async function dependencyStep(git, repo, head, target) {
+    const { name, main, config, roll } = repo;
+    const install = roll.dependencyInstall;
+    if (!config.dependencyGate && install === undefined) {
+        return { kind: 'step', step: undefined };
+    }
+    const touches = await rangeInstallTouches(git, main, head, target);
     if (touches === undefined) {
-        return `could not read what ${short(head)}..${short(target)} changes, so the dependency gate cannot clear it`;
+        return { kind: 'held', reason: `could not read what ${short(head)}..${short(target)} changes, so the roll cannot tell whether it changes the dependencies` };
     }
     if (touches.length === 0) {
-        return undefined;
+        return { kind: 'step', step: undefined };
     }
-    return `deps changed (${touches.join(', ')}): coordinator.repos.${repo.name}.dependencyGate holds a dependency change, since pulling it changes, unreviewed, the node_modules every worktree links to; pull and install by hand`;
+    const check = config.dependencyGate ? config.dependencyCheck : undefined;
+    if (install !== undefined && (check !== undefined || !config.dependencyGate)) {
+        return { kind: 'step', step: { touches, check, install } };
+    }
+    const unset = [...(check === undefined ? ['dependencyCheck'] : []), ...(install === undefined ? ['roll.dependencyInstall'] : [])].map((key) => `coordinator.repos.${name}.${key}`);
+    return {
+        kind: 'held',
+        reason: `deps changed (${touches.join(', ')}): coordinator.repos.${name}.dependencyGate holds a dependency change, since pulling it changes, unreviewed, the node_modules every worktree links to; set ${unset.join(' and ')} to roll one, or pull and install by hand`,
+    };
 }
 /** Fetches and reads what a roll would pull now, refusing a main checkout it must not pull into. */
 export async function readPending(git, repo) {
@@ -54,10 +71,10 @@ export async function readPending(git, repo) {
     if (!git.isAncestor(main, head, target)) {
         return { kind: 'refused', reason: `the ${name} main checkout ${main} has commits that are not on origin/${defaultBranch}: a roll only pulls fast-forward` };
     }
-    const held = repo.config.dependencyGate ? await dependencyHold(git, repo, head, target) : undefined;
-    if (held !== undefined) {
-        return { kind: 'refused', reason: held };
+    const deps = await dependencyStep(git, repo, head, target);
+    if (deps.kind === 'held') {
+        return { kind: 'refused', reason: deps.reason };
     }
     const commits = git.commits(main, head, target);
-    return { kind: 'pending', pending: { head, target, commits, range: rangeText(commits, target) } };
+    return { kind: 'pending', pending: { head, target, commits, range: rangeText(commits, target), deps: deps.step } };
 }

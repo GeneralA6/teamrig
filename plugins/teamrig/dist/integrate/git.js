@@ -79,4 +79,5 @@ export const GIT_INTEGRATE = {
     },
     checkout: (dir, branch) => outcome(runGit(dir, ['checkout', '--end-of-options', branch]), 'git checkout'),
     fastForward: (dir, to) => outcome(runGit(dir, ['merge', '--ff-only', '--end-of-options', to], LONG_TIMEOUT_MS), 'git merge --ff-only'),
+    resetTo: (dir, to) => outcome(runGit(dir, ['reset', '--keep', '--end-of-options', to], LONG_TIMEOUT_MS), 'git reset --keep'),
 };
