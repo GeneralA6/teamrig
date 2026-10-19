@@ -31,6 +31,10 @@ marks a cleared reason `ready`, and `check` flags the task `READY` once all have
 another first is not waiting: it stays `open`, planned after it (`teamrig update T3 --after T2`), and its line
 shows `after T2`.
 
+While a task waits, keep working your other tasks in priority order: those that do not come after it, and not the
+same change. At your next turn end after the `set`, the Stop hook sends you back once when you own such a task
+([how](hooks.md#end-of-a-turn-keep-working-while-a-task-waits)); with nothing left to start, end the turn.
+
 What a task needs is the tasks it comes after and the tasks it waits on. A task takes the earlier due date of an
 active task that needs it, at any depth (its effective due, `due 10-17 (from T9)` on its row), so the work a dated
 task needs comes first: lists, `plan`, the meeting's late tasks and `check`'s date flags go by it. A row names
