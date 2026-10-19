@@ -616,6 +616,35 @@ describe('runCli: hook push-guard', () => {
   });
 });
 
+describe('runCli: hook secret-guard', () => {
+  const read = (file_path: string): string => JSON.stringify({ tool_name: 'Read', tool_input: { file_path }, cwd: APP });
+
+  it('refuses a line or a Read that would print a secret, and lets a line that keeps it off the screen run', async () => {
+    const kit = new CliHarness();
+    assert.equal(decisionOf(await kit.run(['hook', 'secret-guard'], { stdin: bash('cat .env') })), 'deny');
+    assert.equal(decisionOf(await kit.run(['hook', 'secret-guard'], { stdin: read(join(APP, '.env')) })), 'deny');
+    assert.deepEqual((await kit.run(['hook', 'secret-guard'], { stdin: bash('cat .env | wc -c') })).stdout, []);
+  });
+
+  it("asks or lets it run as the team config says, adds the team's own files, and refuses when the config is missing or unreadable", async () => {
+    assert.equal(decisionOf(await new CliHarness({ ...TEAM, secretGuard: { secretReads: 'ask' } }).run(['hook', 'secret-guard'], { stdin: bash('cat .env') })), 'ask');
+    const allows = new CliHarness({ ...TEAM, secretGuard: { secretReads: 'allow' } });
+    assert.deepEqual((await allows.run(['hook', 'secret-guard'], { stdin: bash('cat .env') })).stdout, []);
+    const own = new CliHarness({ ...TEAM, secretGuard: { paths: ['vault/*.json'] } });
+    assert.equal(decisionOf(await own.run(['hook', 'secret-guard'], { stdin: read(join(APP, 'vault', 'db.json')) })), 'deny');
+    for (const kit of [new CliHarness(null), new CliHarness('{ not json')]) {
+      const result = await kit.run(['hook', 'secret-guard'], { stdin: bash('cat .env') });
+      assert.equal(result.code, EXIT.ok);
+      assert.equal(decisionOf(result), 'deny');
+    }
+  });
+
+  it("prints nothing outside a team's projects or for input that is not a hook payload", async () => {
+    assert.deepEqual(await new CliHarness(null, null).run(['hook', 'secret-guard'], { stdin: bash('cat .env') }), { code: EXIT.ok, stdout: [], stderr: [] });
+    assert.deepEqual(await new CliHarness().run(['hook', 'secret-guard'], { stdin: 'not json' }), { code: EXIT.ok, stdout: [], stderr: [] });
+  });
+});
+
 describe('runCli: hook package-guard', () => {
   it('refuses an npx of a tool not installed and lets one in node_modules/.bin run', async () => {
     const kit = new CliHarness();
