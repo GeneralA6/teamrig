@@ -49,25 +49,25 @@ describe('SecretPaths.listed', () => {
 
 describe('SecretPaths.mayName', () => {
   it('takes a word with wildcards as naming a secret when a secret name fits it', () => {
-    assert.equal(secrets.mayName(`${REPO}/.env*`, 'bash'), true);
-    assert.equal(secrets.mayName(`${HOME}/.ssh/*`, 'bash'), true);
-    assert.equal(secrets.mayName(`${REPO}/infra/k8s/secrets/*`, 'powershell'), true);
-    assert.equal(secrets.mayName(`${REPO}/*.txt`, 'bash'), false);
-    assert.equal(secrets.mayName(`${REPO}/certs/*.pem`, 'bash'), true);
+    assert.equal(secrets.mayName(`${REPO}/.env*`, false), true);
+    assert.equal(secrets.mayName(`${HOME}/.ssh/*`, false), true);
+    assert.equal(secrets.mayName(`${REPO}/infra/k8s/secrets/*`, true), true);
+    assert.equal(secrets.mayName(`${REPO}/*.txt`, false), false);
+    assert.equal(secrets.mayName(`${REPO}/certs/*.pem`, false), true);
   });
 
   it('tries a name of wildcards alone only against names spelled out and secret folders', () => {
-    assert.equal(secrets.mayName(`${REPO}/certs/*`, 'bash'), false);
-    assert.equal(secrets.mayName(`${HOME}/.aws/*`, 'bash'), true);
+    assert.equal(secrets.mayName(`${REPO}/certs/*`, false), false);
+    assert.equal(secrets.mayName(`${HOME}/.aws/*`, false), true);
   });
 
   it('never lets a bash wildcard reach a dot file, as bash does not', () => {
-    assert.equal(secrets.mayName(`${REPO}/*`, 'bash'), false);
-    assert.equal(secrets.mayName(`${REPO}/*`, 'powershell'), true);
+    assert.equal(secrets.mayName(`${REPO}/*`, false), false);
+    assert.equal(secrets.mayName(`${REPO}/*`, true), true);
   });
 
   it('keeps an example a wildcard names readable', () => {
-    assert.equal(secrets.mayName(`${REPO}/.env.ex*`, 'bash'), false);
+    assert.equal(secrets.mayName(`${REPO}/.env.ex*`, false), false);
   });
 });
 
