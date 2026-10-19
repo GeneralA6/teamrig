@@ -122,6 +122,19 @@ Work that is not on your list yet is a task too: `teamrig add` it before you sta
 something, add the task for them (`--owner <their id>`) and tell them in one inbox line, or a message if it is
 urgent. See [workflows.md](workflows.md) for each step in full.
 
+## Times
+
+Every time people read is on the team's clock (config `timeZone`, else the machine's zone), with its zone's mark:
+teamrig prints `10-19 16:40 IDT`, and core rule 3 names the zone and its offset from UTC now.
+
+- Write times the same way in task text, notes, inbox lines and messages: `04:00 IDT`, never a bare `04:00`.
+- Type them the same way: `--due 2026-10-21`, `--waits "time:2026-10-21 09:00"` and `HH:MM` are read on the
+  team's clock; add ` UTC` to give one in UTC.
+- Use UTC only where it is the subject: a config key kept in UTC (`heavyCutoffUtc`, `quietHours`), a stamp quoted
+  from a log or a file (stored stamps stay ISO UTC, ending `Z`), a protocol or format that is UTC.
+- Name a time that repeats by what it is (the weekly reset, the heavy cutoff) and its config key: a clock time
+  moves when daylight saving starts or ends.
+
 ## How to read what teamrig prints
 
 The first word of the output says what happened:
