@@ -17,6 +17,7 @@ import type {
   OpenConfig,
   PackageGuardConfig,
   PromptsConfig,
+  SecretGuardConfig,
   PushGuardConfig,
   ReadonlyShellConfig,
   RefreshConfig,
@@ -105,6 +106,9 @@ export const DEFAULT_PACKAGE_GUARD: PackageGuardConfig = { adHocRunners: 'deny' 
 export const DEFAULT_COMMIT_GUARD: CommitGuardConfig = { skipHooks: 'deny' };
 
 export const DEFAULT_PROMPTS: PromptsConfig = { hookAsks: 'ask' };
+
+/** Refused by default: a secret printed into a session lands in its transcript and every later prompt (T660, 10-19). */
+export const DEFAULT_SECRET_GUARD: SecretGuardConfig = { secretReads: 'deny', paths: [], envNames: [] };
 
 /** Off, and trusting no prefix, until a team opts in. */
 export const DEFAULT_READONLY_SHELL: ReadonlyShellConfig = { enabled: false, allowPrefixes: [] };

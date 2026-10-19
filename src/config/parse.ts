@@ -26,6 +26,7 @@ import {
   DEFAULT_OPEN,
   DEFAULT_OWNER_GATES,
   DEFAULT_COMMIT_GUARD,
+  DEFAULT_SECRET_GUARD,
   DEFAULT_PACKAGE_GUARD,
   DEFAULT_PROMPTS,
   DEFAULT_PUSH_GUARD,
@@ -60,6 +61,7 @@ import {
   isOverAction,
   isHookAsks,
   isPushToProtected,
+  isSecretReads,
   isSkipHooks,
   isTerminalChoice,
   isVerifyGate,
@@ -67,6 +69,7 @@ import {
   HOOK_ASKS,
   OVER_ACTIONS,
   PUSH_TO_PROTECTED,
+  SECRET_READS,
   SKIP_HOOKS,
   TERMINALS,
   type ContextFilesConfig,
@@ -94,6 +97,7 @@ import {
   type PushToProtected,
   type HookAsks,
   type QuietHours,
+  type SecretGuardConfig,
   type SkipHooks,
   type ReadonlyShellConfig,
   type ScaleOutConfig,
@@ -295,6 +299,7 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
     packageGuard: { adHocRunners: parseAdHocRunners(read, read.section(raw, 'packageGuard', '')) },
     commitGuard: { skipHooks: parseSkipHooks(read, read.section(raw, 'commitGuard', '')) },
     prompts: { hookAsks: parseHookAsks(read, read.section(raw, 'prompts', '')) },
+    secretGuard: parseSecretGuard(read, read.section(raw, 'secretGuard', '')),
     commits: parseCommits(read, read.section(raw, 'commits', '')),
     coordinator: parseCoordinator(read, read.section(raw, 'coordinator', '')),
     budget,
@@ -915,6 +920,27 @@ function parseHookAsks(read: ConfigReader, raw: JsonRecord): HookAsks {
 
 const isShellPrefix: Check<string> = (value) =>
   PREFIX_PATTERN.test(value) ? undefined : 'expected words of letters, digits and _ @ . / : = + -, one space apart, the first naming a program';
+
+function parseSecretGuard(read: ConfigReader, raw: JsonRecord): SecretGuardConfig {
+  const path = 'secretGuard';
+  const defaults = DEFAULT_SECRET_GUARD;
+  const secretReads = read.string(raw, 'secretReads', path, defaults.secretReads, oneOf(SECRET_READS));
+  const { secretPaths, secretEnvNames } = CONFIG_LIMITS;
+  return {
+    secretReads: isSecretReads(secretReads) ? secretReads : defaults.secretReads,
+    paths: read.stringList(raw, 'paths', path, defaults.paths, shortLine(secretPaths.maxLength, isSecretGlob), secretPaths.maxItems),
+    envNames: read.stringList(raw, 'envNames', path, defaults.envNames, shortLine(secretEnvNames.maxLength, isSecretNamePattern), secretEnvNames.maxItems),
+  };
+}
+
+/** A glob with something to match after its `!`. */
+const isSecretGlob: Check<string> = (value) => (value.replace(/^!/, '').trim() === '' ? 'expected a glob, with a leading ! to keep a path readable' : undefined);
+
+/** A regular expression with something to match after its `!`. */
+const isSecretNamePattern: Check<string> = (value) => {
+  const body = value.replace(/^!/, '');
+  return body === '' ? 'expected a regular expression, with a leading ! to keep a variable printable' : isValidRegex(body);
+};
 
 function parseReadonlyShell(read: ConfigReader, raw: JsonRecord): ReadonlyShellConfig {
   const { maxItems, maxLength } = CONFIG_LIMITS.readonlyShellPrefixes;

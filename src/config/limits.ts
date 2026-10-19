@@ -29,6 +29,8 @@ export const CONFIG_LIMITS = {
   chainNudgeAt: { min: 0, max: 50 },
   leadOwnPaths: { maxItems: 16, maxLength: 256 },
   readonlyShellPrefixes: { maxItems: 16, maxLength: 120 },
+  secretPaths: { maxItems: 32, maxLength: 200 },
+  secretEnvNames: { maxItems: 16, maxLength: 120 },
   searchNudgeAt: { min: 0, max: 50 },
   turnLogKeepHours: { min: 1, max: 168 },
   wakePriority: { min: 1, max: 99 },

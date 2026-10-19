@@ -185,6 +185,30 @@ export interface PromptsConfig {
  */
 export type HookAsks = 'ask' | 'refuse';
 
+export interface SecretGuardConfig {
+  /** What a Bash, PowerShell, Read or Grep call that would print a secret does. */
+  readonly secretReads: SecretReads;
+  /**
+   * The team's own secret files, globs read after the guard's defaults (`.env`, `~/.npmrc`, `~/.ssh/**`...): `~/`
+   * starts at home, a glob without a leading `/` or drive matches at any depth, and the last glob that matches a path
+   * decides, so `!glob` keeps a path readable.
+   */
+  readonly paths: readonly string[];
+  /**
+   * The team's own patterns for environment variables whose values are secrets, regular expressions over the name
+   * (case ignored) read after the guard's defaults (`TOKEN`, `SECRET`, `PASSW`...); the last pattern that matches a
+   * name decides, so `!pattern` keeps a variable printable.
+   */
+  readonly envNames: readonly string[];
+}
+
+/**
+ * A call that would print a secret: a secret file's content (`cat .env`, `Get-Content ~/.npmrc`, the Read tool), the
+ * whole environment (`env`, `printenv`, `Get-ChildItem Env:`), a secret variable (`echo $GITHUB_TOKEN`), or a
+ * Kubernetes secret's data: `deny` refuses it, `ask` asks the human, `allow` lets it run.
+ */
+export type SecretReads = 'deny' | 'ask' | 'allow';
+
 /**
  * The opt-in hook that lets a Bash or PowerShell line run without a permission prompt when every command in it
  * provably only reads (hook-readonly-allow.ts). It only ever allows: a line it cannot prove reads falls through to
@@ -216,6 +240,12 @@ export const HOOK_ASKS: readonly HookAsks[] = ['ask', 'refuse'];
 
 export function isHookAsks(value: unknown): value is HookAsks {
   return HOOK_ASKS.some((choice) => choice === value);
+}
+
+export const SECRET_READS: readonly SecretReads[] = ['deny', 'ask', 'allow'];
+
+export function isSecretReads(value: unknown): value is SecretReads {
+  return SECRET_READS.some((choice) => choice === value);
 }
 
 export const COMMIT_GATES = ['off', 'warn', 'refuse'] as const;
@@ -792,6 +822,8 @@ export interface KitConfig {
   readonly packageGuard: PackageGuardConfig;
   readonly commitGuard: CommitGuardConfig;
   readonly prompts: PromptsConfig;
+  /** Refuses a call that would print a secret file, the environment or a secret variable (hook-secret-guard). */
+  readonly secretGuard: SecretGuardConfig;
   readonly commits: CommitsConfig;
   readonly coordinator: CoordinatorConfig;
   readonly budget: BudgetConfig;
