@@ -751,6 +751,8 @@ names are machine-wide.
 - The cap: at most `hiring.maxSessions` (2) hired sessions at once. A hire has no fixed daily budget: like any
   session, its part of the team's follows its share and queued work ([teamrig budget](#teamrig-budget)).
 - Its review day is `--review`, else `hiring.reviewDays` (7) days on.
+- With `--yes` it refuses when the host has no room for one more session, as [teamrig open](#teamrig-open) measures
+  it; without, it says so.
 - When its job is done, retire it (`teamrig retire`).
 - A burst hire (`--burst`) is for the burst in force ([teamrig burst start](#teamrig-burst-start)), within that burst's
   `--hires` as well as the cap above. It runs on the lead's model at no lower effort: another `--model` or a lower
@@ -1142,6 +1144,11 @@ Opens a new terminal tab in the project folder running Claude Code as that sessi
 `<team>/<id>` for another team of the same tree). The tab gets `$TEAMRIG_SESSION` and `$TEAMRIG_TEAM`, the
 session's model and effort from the config's `launch`, and a first prompt that reads its inbox and list. A
 rehired session's first prompt reads the handover its retire left first.
+
+It refuses any session but the lead when the host has no room for one more: its free memory must stay over
+`coordinator.heavy.memoryFloorMb` with the session counted, and its commit charge within `open.headroom.commitMaxPct`
+(92%; Windows and Linux). A session is counted at the median running session's Claude Code process tree, else at
+`open.headroom.sessionMb` (1200 MB). [teamrig sessions](#teamrig-sessions) shows what each one holds.
 
 Flags:
 

@@ -18,6 +18,10 @@ describe('SessionRecordStore', () => {
     assert.deepEqual(await store.read('alpha'), cleared);
     assert.equal(await store.read('bravo'), undefined);
     assert.deepEqual(files.paths(), [normalisePath(join(PATHS.sessions, 'alpha.json'))]);
+    assert.deepEqual([...(await store.readEach(['bravo', 'alpha']))], [
+      ['bravo', undefined],
+      ['alpha', cleared],
+    ]);
   });
 });
 

@@ -11,8 +11,10 @@ import { activeHires, HiringLog, retiredSessions, type HireRecord, type RetireRe
 import { planHire, type HireRequest } from '../../hiring/plan.ts';
 import type { ResumeVerdict } from '../../hiring/rehire.ts';
 import type { TimeZone } from '../../core/zone.ts';
+import { noRoomText } from '../../sessions/headroom.ts';
 import { onePositional, requiredFlag, UsageError, type Flags, type ParsedArgs } from '../args.ts';
 import { readBursts } from '../burst-reading.ts';
+import { headroomOf } from '../headroom.ts';
 import { callerOf } from '../inputs.ts';
 import { checkedNextConfig, configFileJson, findTeam, openKit, requireConfig, rosterOf, sessionIdOf, teamZone, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
@@ -28,6 +30,7 @@ import { teamProjectOf } from './setup.ts';
  * A retired id is hired back: it shows the retire and its handover, and whether its last Claude Code session
  * can be resumed (`open --resume`) or it opens fresh on that handover. With --burst it is a hire for the burst in
  * force, within the burst's hires and on the lead's model and effort (src/hiring/burst-hire.ts).
+ * With --yes it refuses when the host has no room for one more session (`open.headroom`); the preview says so.
  */
 
 /** The backup name of a config before `hire` changed it. */
@@ -123,6 +126,8 @@ export async function hire(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
     throw new RefusedError(`only the lead${lead === undefined ? '' : ` (${roster.nameOf(lead) ?? lead})`} hires sessions`);
   }
   const asked = requestOf(args, runtime, by);
+  // Outside the hire lock: listing the host's processes takes about a second.
+  const headroom = await headroomOf(runtime, kit.paths, config, roster.ids);
   const { files, clock, sleep, pid } = runtime;
   const { load } = kit;
   const log = new HiringLog(files, kit.paths.hires);
@@ -153,7 +158,13 @@ export async function hire(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
       runtime.out.stdout(`PREVIEW hire ${what}; nothing written (add --yes to write)`);
       runtime.out.stdout(caps);
       rehireText.forEach((line) => runtime.out.stdout(line));
+      if (headroom.short.length > 0) {
+        runtime.out.stdout(`NOTE ${noRoomText(`hire ${request.id}`, headroom)}; --yes refuses until there is room`);
+      }
       return EXIT.ok;
+    }
+    if (headroom.short.length > 0) {
+      throw new RefusedError(noRoomText(`hire ${request.id}`, headroom));
     }
     // The log first: a hire logged for a session the config does not hold counts toward no cap.
     await log.append(record);

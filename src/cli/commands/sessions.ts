@@ -2,7 +2,7 @@ import type { Roster } from '../../config/roster.ts';
 import type { CommitCharge } from '../../coordinator/memory.ts';
 import { KIT_NAME } from '../../core/home.ts';
 import { measureSessions, type SessionPlace } from '../../sessions/measure.ts';
-import { SessionRecordStore, type SessionRecord } from '../../sessions/record.ts';
+import { SessionRecordStore } from '../../sessions/record.ts';
 import { UsageError, type ParsedArgs } from '../args.ts';
 import { openTeamKit, requireConfig, rosterOf } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
@@ -42,8 +42,7 @@ export async function sessions(args: ParsedArgs, runtime: CliRuntime): Promise<E
   }
   const kit = await openTeamKit(runtime);
   const roster = await rosterOf(runtime, kit, requireConfig(kit, runtime, 'read'));
-  const store = new SessionRecordStore(runtime.files, kit.paths);
-  const records = new Map(await Promise.all(roster.ids.map(async (id): Promise<[string, SessionRecord | undefined]> => [id, await store.read(id)])));
+  const records = await new SessionRecordStore(runtime.files, kit.paths).readEach(roster.ids);
   const [rows, commit] = await Promise.all([runtime.memory.processes(), runtime.memory.commit()]);
   if (rows === undefined) {
     runtime.out.stdout(`${KIT_NAME} could not list the host's processes, so it cannot tell which sessions run.`);

@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { formatConfig } from '../config/load.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
+import { SessionRecordStore } from '../sessions/record.ts';
+import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { CliHarness, CONFIG_PATH, KIT, TEAM_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
 
@@ -58,6 +60,23 @@ describe('hire', () => {
     assert.equal(logged['by'], 'lead');
     const read = await kit.run(['config', 'validate']);
     assert.equal(read.code, EXIT.ok, read.stdout.join('\n'));
+  });
+
+  it('refuses a hire with --yes when the host has no room for one more session, and only says so without', async () => {
+    const kit = new CliHarness(LEAD_TEAM);
+    const records = new SessionRecordStore(kit.files, { sessions: join(TEAM_HOME, 'state', 'sessions') });
+    await records.write('lead', { claudePid: 6900, claudeSession: 'claude-lead', at: '2030-01-08T09:00:00.000Z' });
+    const memory = new FakeHostMemory().lists([{ pid: 6900, parent: 1, bytes: 2000 * 2 ** 20 }], { usedMb: 91_000, limitMb: 100_000 });
+    memory.free = 20_000;
+    const short =
+      'no room on the host to hire helper, counted at 2000 MB: with it the commit charge would be 93000 MB, over 92% of its ' +
+      '100000 MB limit (open.headroom.commitMaxPct). Close a session first: teamrig sessions lists what each one holds';
+    const preview = await kit.run(['hire', 'helper', ...JOB, '--session', 'lead'], { memory });
+    assert.equal(preview.code, EXIT.ok, preview.stderr.join('\n'));
+    assert.equal(preview.stdout.at(-1), `NOTE ${short}; --yes refuses until there is room`);
+    assert.equal(refusal(await kit.run(['hire', 'helper', ...JOB, '--yes', '--session', 'lead'], { memory })), `REFUSED ${short}`);
+    assert.equal(kit.files.get(CONFIG_PATH), formatConfig(LEAD_TEAM));
+    assert.equal(kit.files.get(HIRES), undefined);
   });
 
   it('counts earlier hires toward the caps', async () => {

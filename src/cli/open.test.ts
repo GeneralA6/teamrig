@@ -5,6 +5,7 @@ import { formatConfig } from '../config/load.ts';
 import type { RunOutcome, RunRequest } from '../open/processes.ts';
 import { decodePrompt, defaultPrompt, encodePrompt, refreshPrompt } from '../open/prompt.ts';
 import { shellCommand } from '../open/quote.ts';
+import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakePathProbe, FakeProcesses } from '../testing/fake-processes.ts';
 import type { RestartRequest } from '../refresh/state.ts';
 import { RefreshStore } from '../refresh/store.ts';
@@ -33,6 +34,22 @@ describe('teamrig open', () => {
     assert.deepEqual(processes.started, [
       { command: 'wt.exe', args: ['-w', '0', 'new-tab', '--title', 'app-alpha', '-d', APP, '--', ...launchArgv()], cwd: APP, mode: 'exit' },
     ]);
+  });
+
+  it('refuses a session the host has no room for, and opens the lead whatever the room', async () => {
+    const memory = new FakeHostMemory();
+    memory.free = 5000;
+    const processes = new FakeProcesses().onStart('wt.exe', { kind: 'started' });
+    const refused = await openAlpha(processes, { platform: 'win32', memory });
+    assert.equal(refused.code, EXIT.refused);
+    assert.deepEqual(refused.stdout, [
+      'REFUSED no room on the host to open app-alpha (session alpha), counted at 1200 MB: 5000 MB free, under the 4096 MB heavy ' +
+        'steps keep free (coordinator.heavy.memoryFloorMb) plus 1200 MB for it. Close a session first: teamrig sessions lists what each one holds',
+    ]);
+    assert.deepEqual(processes.started, []);
+    const lead = await new CliHarness(TEAM).run(['open', 'lead'], { probe: FOLDERS, processes, platform: 'win32', memory });
+    assert.equal(lead.code, EXIT.ok, lead.stdout.join('\n'));
+    assert.equal(processes.started.length, 1);
   });
 
   it('opens a tmux window inside tmux, and a Terminal window on macOS', async () => {
