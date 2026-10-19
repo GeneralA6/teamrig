@@ -63,7 +63,9 @@ teamrig test --session api -- npm test
 2. Commit one logical change at a time, each with its tests, as soon as they pass. Run tests through
    `teamrig test`: a long run costs a few lines, and the whole output stays in a log. Over 400 changed lines or
    15 files, the commit needs a `Large-commit: <reason>` line.
-3. Before you push: `git fetch`, rebase on the current main, and run the tests again.
+3. Before you push: `git fetch`, rebase on the current main, and run the tests again. On a conflict, resolve the
+   files, `git add` them and `git rebase --continue`, then also run the specs of every file main changed too (the
+   files of `git diff --name-only <old base> origin/main` that you changed) before you integrate.
 4. Integrate by your team's own route: a pull request, a release script, or a push to main, which asks the human
    first. A route that is refused goes to the lead; never route around it or hand it to another session.
 5. If the change must run, deploy it now, then check that the new code runs: the build has your commit, and the
@@ -77,6 +79,10 @@ teamrig test --session api -- npm test
 
 Your team's own commands for steps 4 and 5 (a deploy script, a lock on shared machines) belong in a team skill such
 as `team-ship-change`; this list is the order they fit in.
+
+A change that removes or loosens a safety step (a guard, a gate, a check, a retry) first writes down the cases it
+covers, its run history (how often it fired, and on what), what is still unknown, and a first step that can be
+undone, such as a warn-only mode or a flag.
 
 ## Close a task with proof
 

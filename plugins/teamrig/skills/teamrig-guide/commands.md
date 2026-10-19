@@ -2083,6 +2083,7 @@ lands in the middle of a measurement. It lasts from now for `--for`: minutes, ho
 `deploysOnPush` or `roll.targets`. One claim per session. REFUSED for an unknown target, a longer span, a second
 claim, or a secret in the metric or reason, since the claims are shared files: `claims.json` beside the ledger, and
 `claims.md` for people, both written under their own lock. A claim ends at its time, or with `teamrig release`.
+Nothing else holds a deploy: a measurement without a claim adapts to the deploys, and no deploy waits for it.
 
 Flags:
 
