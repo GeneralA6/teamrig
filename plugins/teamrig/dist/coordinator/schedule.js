@@ -1,9 +1,4 @@
-import { formatUtcMinute, MS_PER_HOUR } from "../core/time.js";
-/** Minutes after midnight of a valid `HH:MM`. */
-function minuteOfDay(time) {
-    const [hours = 0, minutes = 0] = time.split(':').map(Number);
-    return hours * 60 + minutes;
-}
+import { formatUtcMinute, MS_PER_HOUR, utcMinuteOf } from "../core/time.js";
 /**
  * Why no heavy step may start at `nowMs`, or undefined when one may: none starts from `cutoffUtc` (`HH:MM`) until
  * midnight UTC. Unset: no cutoff.
@@ -14,7 +9,8 @@ export function heavyCutoffReason(nowMs, cutoffUtc) {
     }
     const now = new Date(nowMs);
     const minute = now.getUTCHours() * 60 + now.getUTCMinutes();
-    return minute >= minuteOfDay(cutoffUtc) ? `nothing heavy after ${cutoffUtc} UTC (now ${formatUtcMinute(now)})` : undefined;
+    const cutoff = utcMinuteOf(cutoffUtc);
+    return cutoff !== undefined && minute >= cutoff ? `nothing heavy after ${cutoffUtc} UTC (now ${formatUtcMinute(now)})` : undefined;
 }
 /** When the blackout before `reset` starts: `hours` before it. */
 export function blackoutStart(reset, hours) {

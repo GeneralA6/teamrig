@@ -51,8 +51,9 @@ export function isNews(task, session, tasks) {
         return before !== undefined && before.updatedBy !== session && timeOf(before.statusAt) > seen;
     });
 }
+export const NO_SETTLED_MOMENTS = { dayStart: undefined, burst: undefined };
 /** Most urgent first, then oldest. */
-function byUrgency(a, b) {
+export function byUrgency(a, b) {
     return a.priority - b.priority || taskNumber(a.id) - taskNumber(b.id);
 }
 /**
@@ -65,8 +66,9 @@ export function decideWake(input) {
     const worthy = [...tasks.values()].filter((task) => isWakeWorthy(task, session, input.maxPriority, context));
     const known = worthy.map((task) => task.id);
     const none = { kind: 'none' };
+    const settled = previous?.settled ?? NO_SETTLED_MOMENTS;
     if (previous?.tab !== tab) {
-        return { verdict: none, state: { tab, known, pending: undefined, lastWakeAt: previous?.lastWakeAt } };
+        return { verdict: none, state: { tab, known, pending: undefined, lastWakeAt: previous?.lastWakeAt, settled } };
     }
     const wasKnown = new Set(previous.known);
     const pendingIds = new Set(previous.pending?.ids ?? []);
@@ -74,16 +76,16 @@ export function decideWake(input) {
     const fresh = worthy.filter((task) => !wasKnown.has(task.id) && isNews(task, session, tasks));
     const due = [...kept, ...fresh].sort(byUrgency);
     if (due.length === 0) {
-        return { verdict: none, state: { tab, known, pending: undefined, lastWakeAt: previous.lastWakeAt } };
+        return { verdict: none, state: { tab, known, pending: undefined, lastWakeAt: previous.lastWakeAt, settled } };
     }
     const since = kept.length > 0 && previous.pending !== undefined ? previous.pending.since : now;
     const gapEnd = previous.lastWakeAt === undefined ? Number.NEGATIVE_INFINITY : previous.lastWakeAt + input.minGapMs;
     const at = Math.max(since + input.batchMs, gapEnd);
     const ids = due.map((task) => task.id);
     if (now < at) {
-        return { verdict: { kind: 'later', at, ids }, state: { tab, known, pending: { since, ids }, lastWakeAt: previous.lastWakeAt } };
+        return { verdict: { kind: 'later', at, ids }, state: { tab, known, pending: { since, ids }, lastWakeAt: previous.lastWakeAt, settled } };
     }
-    return { verdict: { kind: 'wake', tasks: due }, state: { tab, known, pending: undefined, lastWakeAt: now } };
+    return { verdict: { kind: 'wake', tasks: due }, state: { tab, known, pending: undefined, lastWakeAt: now, settled } };
 }
 /**
  * Where the session stands against its budget at `now`: past its daily budget (its lift's while lifted), and in
@@ -134,7 +136,7 @@ export function wakePrompt(session, tasks, cost) {
         `This wake costs ${costText(cost)}.`);
 }
 /** `T12, T13 and 2 more`. */
-function idsText(tasks) {
+export function idsText(tasks) {
     const named = tasks.slice(0, WAKE_LIST_MAX).map((task) => task.id);
     const more = tasks.length - named.length;
     return more > 0 ? `${named.join(', ')} and ${more} more` : named.join(', ');
