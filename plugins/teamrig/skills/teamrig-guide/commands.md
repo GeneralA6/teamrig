@@ -2344,7 +2344,9 @@ week and its reset as `<Claude session id>.json` in the team's `budget.statusSna
 team's folder; unset: `<kit home>/usage/live`), and prints a short status: the model, the session's folder and its
 branch (`at <commit>` on a detached HEAD), the plan's use of the week and of the last five hours, and the command
 that resumes the session. The team config's `statusLine` turns `folder`, `branch` and `resume` off one by one (each
-is on by default; with `branch` off, git is never asked). It always exits 0, so a bad input or
+is on by default; with `branch` off, git is never asked). It also removes the folder's snapshots written more than
+8 days ago, which hold no reading of the current week, sweeping the folder at most once an hour (its `.pruned` file
+says when it last did), so every reader's walk of the folder stays bounded. It always exits 0, so a bad input or
 a full disk never breaks the status bar; what went wrong goes to stderr. With `--pass` it prints the status JSON
 again instead of its status, for the status line after it in a pipe. A plugin cannot set the status line:
 [teamrig statusline install](#teamrig-statusline-install) sets it up.
