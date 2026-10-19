@@ -14,6 +14,7 @@ export async function recordHeavy(ports, ledger, mark, work, exitOf, watch) {
         session: mark.session,
         what: mark.what,
         ...(mark.queuedAt === undefined ? {} : { queuedAt: new Date(mark.queuedAt).toISOString() }),
+        ...(mark.shared === true ? { shared: true } : {}),
         startedAt: new Date(ports.clock.now()).toISOString(),
         endedAt: null,
         exitCode: null,

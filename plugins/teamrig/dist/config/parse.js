@@ -433,6 +433,8 @@ function parseHeavy(read, raw) {
         maxRunMinutes: Math.min(maxRunMinutes, longest),
         waitMinutes: read.integer(raw, 'waitMinutes', path, DEFAULT_HEAVY.waitMinutes, CONFIG_LIMITS.heavyWaitMinutes),
         memorySampleSeconds: read.integer(raw, 'memorySampleSeconds', path, DEFAULT_HEAVY.memorySampleSeconds, CONFIG_LIMITS.heavyMemorySampleSeconds),
+        memoryFloorMb: read.integer(raw, 'memoryFloorMb', path, DEFAULT_HEAVY.memoryFloorMb, CONFIG_LIMITS.heavyMemoryFloorMb),
+        smallReserveMb: read.integer(raw, 'smallReserveMb', path, DEFAULT_HEAVY.smallReserveMb, CONFIG_LIMITS.heavySmallReserveMb),
     };
 }
 function parseBudget(read, raw, sessions) {

@@ -1,5 +1,5 @@
 import { claimText, readClaims } from "../../coordinator/claims.js";
-import { holderText } from "../../coordinator/host-lock.js";
+import { holderText, sharesText } from "../../coordinator/host-lock.js";
 import { parseLedger } from "../../coordinator/ledger.js";
 import { coordinatorPlaces, teamPlace } from "../../coordinator/places.js";
 import { blackoutStart, heavyCutoffReason } from "../../coordinator/schedule.js";
@@ -69,7 +69,12 @@ export async function deploys(_args, runtime) {
     const { coordinator, budget } = requireConfig(kit, runtime, 'read');
     const places = coordinatorPlaces(coordinator, kit.paths);
     const say = (line) => runtime.out.stdout(line);
-    say(`host lock: ${lockText(await hostLockOf(runtime, places.hostLock, coordinator.heavy).state())}`);
+    const lock = hostLockOf(runtime, places.hostLock, coordinator.heavy);
+    say(`host lock: ${lockText(await lock.state())}`);
+    const shares = await lock.shares();
+    if (shares.length > 0) {
+        say(`sharing the host: ${sharesText(shares)}`);
+    }
     say(`heavy cutoff: ${cutoffText(nowMs, coordinator.schedule.heavyCutoffUtc)}`);
     const reset = await nextResetFrom(runtime, budget, snapshotDirOf(budget, kit.paths))(nowMs);
     say(`deploy blackout: ${blackoutText(nowMs, reset, coordinator.schedule.resetBlackoutHours)}`);

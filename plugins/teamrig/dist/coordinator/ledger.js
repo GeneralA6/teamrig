@@ -49,6 +49,7 @@ function heavyExtrasOf(record) {
     const [queuedAt, peakTreeMb, lowFreeMb] = [timeField(record, 'queuedAt'), mbField(record, 'peakTreeMb'), mbField(record, 'lowFreeMb')];
     return {
         ...(queuedAt === undefined ? {} : { queuedAt }),
+        ...(record['shared'] === true ? { shared: true } : {}),
         ...(peakTreeMb === undefined ? {} : { peakTreeMb }),
         ...(lowFreeMb === undefined ? {} : { lowFreeMb }),
     };
