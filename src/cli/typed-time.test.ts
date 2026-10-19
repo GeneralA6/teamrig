@@ -50,7 +50,7 @@ describe("runCli: a time typed on the team's clock", () => {
   it('reads windows --since on the zone clock', async () => {
     const kit = new CliHarness(DEPLOYING);
     const since = async (time: string, options?: typeof JERUSALEM) => kit.run(['windows', '--targets', 'cloud-web', '--since', time], options);
-    assert.match((await since('12:30', JERUSALEM)).stderr[0] ?? '', /^--since 2030-01-08 10:30 UTC is not before now \(2030-01-08 10:00 UTC\)\n/);
+    assert.match((await since('12:30', JERUSALEM)).stderr[0] ?? '', /^--since 2030-01-08 12:30 IST is not before now \(2030-01-08 12:00 IST\)\n/, 'the refusal prints on the clock it read');
     assert.match((await since('11:30')).stderr[0] ?? '', /^--since 2030-01-08 11:30 UTC is not before now \(2030-01-08 10:00 UTC\)\n/, 'a UTC machine reads it as UTC');
     const local = await since('11:30', JERUSALEM);
     assert.equal(local.code, EXIT.ok, `11:30 IST is 09:30 UTC, before the clock: ${local.stderr.join('\n')}`);
