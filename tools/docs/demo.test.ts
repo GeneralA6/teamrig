@@ -55,7 +55,7 @@ describe('runDemo', () => {
       { session: 'web', argv: ['inbox', 'read'] },
     ]);
     assert.match(runs[1]?.output[0] ?? '', /^POSTED to web; web is reminded at its next prompt$/);
-    assert.deepEqual(runs[2]?.output.slice(0, 2), ['- 2026-10-12 09:00 lead: T1 is yours (p2): A', '- 2026-10-12 09:03 lead: go']);
+    assert.deepEqual(runs[2]?.output.slice(0, 2), ['- 2026-10-12 09:00 UTC lead: T1 is yours (p2): A', '- 2026-10-12 09:03 UTC lead: go']);
   });
 
   it('draws the same output on every run', async () => {
