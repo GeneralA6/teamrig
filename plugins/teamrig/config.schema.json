@@ -990,6 +990,14 @@
           "type": "string",
           "enum": ["auto", "tmux", "windows-terminal", "macos-terminal", "gnome-terminal", "konsole", "x-terminal-emulator", "print"],
           "default": "auto"
+        },
+        "headroom": {
+          "description": "The room teamrig open and teamrig hire --yes need on the host before they add a session: free memory over coordinator.heavy.memoryFloorMb with the session, and the commit charge within commitMaxPct. The lead opens whatever the room.",
+          "type": "object",
+          "properties": {
+            "sessionMb": { "description": "The MB a new session is counted to need while no session runs to measure; else the median running session's Claude Code process tree.", "type": "integer", "minimum": 100, "maximum": 65536, "default": 1200 },
+            "commitMaxPct": { "description": "The most of the host's commit limit, in %, its commit charge may reach with the new session counted (Windows and Linux; elsewhere free memory alone is checked).", "type": "integer", "minimum": 50, "maximum": 100, "default": 92 }
+          }
         }
       }
     },

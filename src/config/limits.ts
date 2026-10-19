@@ -72,6 +72,8 @@ export const CONFIG_LIMITS = {
   heavyMemorySampleSeconds: { min: 0, max: 600 },
   heavyMemoryFloorMb: { min: 0, max: 1_048_576 },
   heavySmallReserveMb: { min: 0, max: 1_048_576 },
+  headroomSessionMb: { min: 100, max: 65_536 },
+  headroomCommitMaxPct: { min: 50, max: 100 },
   coordinatorPollSeconds: { min: 1, max: 600 },
   coordinatorWaitMaxMinutes: { min: 0, max: 1440 },
   gateTimeoutSeconds: { min: 1, max: 600 },

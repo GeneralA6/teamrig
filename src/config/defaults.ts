@@ -9,6 +9,7 @@ import type {
   CommitsConfig,
   ContextFilesConfig,
   GithubConfig,
+  HeadroomConfig,
   HiringConfig,
   LaunchConfig,
   LockConfig,
@@ -196,7 +197,13 @@ export const DEFAULT_REFRESH: RefreshConfig = {
   endCommand: [],
 };
 
-export const DEFAULT_OPEN: OpenConfig = { terminal: 'auto' };
+/**
+ * A session is counted at 1.2 GB (on 10-19, 18 sessions held 21.9 GB with their helpers and MCP servers), and the
+ * commit charge stays at most 92% with it (it reached 100% that morning, and Claude Code then killed running steps).
+ */
+export const DEFAULT_HEADROOM: HeadroomConfig = { sessionMb: 1200, commitMaxPct: 92 };
+
+export const DEFAULT_OPEN: OpenConfig = { terminal: 'auto', headroom: DEFAULT_HEADROOM };
 
 /** The status line shows the session's folder, its branch and the command that resumes it, unless the team turns them off. */
 export const DEFAULT_STATUS_LINE: StatusLineConfig = { folder: true, branch: true, resume: true };
