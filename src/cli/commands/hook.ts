@@ -58,7 +58,7 @@ import { droppedEditReasonOf } from './hook-dropped-edit.ts';
 import { meetingHold } from './hook-meeting.ts';
 import { armRestart, restartTargetOf } from './hook-restart.ts';
 import { helperContextOf } from './hook-helper-start.ts';
-import { envSession, leadOwnPaths, parseJson, sessionTeam, startSessionOf, teamSessionOf } from './hook-input.ts';
+import { envSession, hookScopeOf, leadOwnPaths, parseJson, sessionScopeOf, sessionTeam, startSessionOf, teamScopeOf, teamSessionOf, type SessionScope } from './hook-input.ts';
 import { tabStatusOn, tabTitleOf } from './hook-tab-status.ts';
 import { logPrompt, logReply, logStart } from './hook-turn-log.ts';
 import { keepWorkingReasonOf } from './keep-working.ts';
@@ -308,7 +308,7 @@ export async function helperGateHook(args: ParsedArgs, runtime: CliRuntime): Pro
 }
 
 async function helperGateOf(runtime: CliRuntime, payload: JsonRecord): Promise<string | undefined> {
-  const scope = await stopScopeOf(runtime, payload);
+  const scope = await hookScopeOf(runtime, payload);
   return scope === undefined ? undefined : helperGateOutput(runtime, scope, stringField(payload, 'transcript_path'));
 }
 
@@ -476,43 +476,8 @@ async function dueFactsOf(runtime: CliRuntime, store: RefreshStore, id: string, 
   };
 }
 
-/** The team a hook payload's session runs in, with its loaded config. */
-interface TeamScope {
-  readonly kit: Kit;
-  readonly config: KitConfig;
-}
-
-/** The team session a Stop hook runs for, with its team's loaded config. */
-interface StopScope extends TeamScope {
-  readonly roster: Roster;
-  readonly id: string;
-}
-
-/** The hook payload's team; undefined outside a team or without a loaded config. */
-async function teamScopeOf(runtime: CliRuntime, payload: JsonRecord): Promise<TeamScope | undefined> {
-  const found = await sessionTeam(payload, runtime);
-  if (found.kind !== 'team') {
-    return undefined;
-  }
-  const kit = await openKit(runtime, found.team);
-  return kit.load.status === 'loaded' ? { kit, config: kit.load.config } : undefined;
-}
-
-/** The team session of a payload in `team`; undefined when the tab is no session of it. */
-async function sessionScopeOf(runtime: CliRuntime, team: TeamScope, payload: JsonRecord): Promise<StopScope | undefined> {
-  const roster = await rosterOf(runtime, team.kit, team.config);
-  const id = await teamSessionOf(runtime, team.kit, roster, sessionIdOf(payload));
-  return id === undefined ? undefined : { ...team, roster, id };
-}
-
-/** The hook payload's team session (Stop, helper gate); undefined outside a team, without a loaded config or without a session. */
-async function stopScopeOf(runtime: CliRuntime, payload: JsonRecord): Promise<StopScope | undefined> {
-  const team = await teamScopeOf(runtime, payload);
-  return team === undefined ? undefined : sessionScopeOf(runtime, team, payload);
-}
-
 /** The owner's turn-end line when the lead did hand-off work itself (lead-boundary.ts); none for another session, with the boundary off or without a transcript. */
-async function leadStopLines(runtime: CliRuntime, scope: StopScope, transcript: string | undefined): Promise<readonly string[]> {
+async function leadStopLines(runtime: CliRuntime, scope: SessionScope, transcript: string | undefined): Promise<readonly string[]> {
   const { kit, config, id } = scope;
   if (!config.leadBoundary.enabled || id !== config.roles.lead || transcript === undefined) {
     return [];
@@ -527,7 +492,7 @@ async function leadStopLines(runtime: CliRuntime, scope: StopScope, transcript: 
 }
 
 /** The refresh decision for this turn's end; none with refresh off. */
-async function refreshDecisionOf(runtime: CliRuntime, scope: StopScope, payload: JsonRecord): Promise<StopDecision> {
+async function refreshDecisionOf(runtime: CliRuntime, scope: SessionScope, payload: JsonRecord): Promise<StopDecision> {
   const { kit, config, roster, id } = scope;
   if (!config.refresh.enabled) {
     return { kind: 'none' };
@@ -571,7 +536,7 @@ async function refreshDecisionOf(runtime: CliRuntime, scope: StopScope, payload:
 }
 
 /** The model notices for the user at this turn's end (`stopModelNotices`); none without a Claude Code session id. */
-async function modelNoticesOf(runtime: CliRuntime, scope: StopScope, payload: JsonRecord): Promise<readonly string[]> {
+async function modelNoticesOf(runtime: CliRuntime, scope: SessionScope, payload: JsonRecord): Promise<readonly string[]> {
   const claude = sessionIdOf(payload);
   if (claude === null) {
     return [];
@@ -592,7 +557,7 @@ async function modelNoticesOf(runtime: CliRuntime, scope: StopScope, payload: Js
  * (retire-ask.ts), else, while a task of it waits, to work its other tasks (keep-working.ts). None on a stop the
  * hook already blocked, or while the refresh blocks or waits for its restart, so the asks wait for a later stop.
  */
-async function askBlockOf(runtime: CliRuntime, scope: StopScope, payload: JsonRecord, decision: StopDecision): Promise<string | undefined> {
+async function askBlockOf(runtime: CliRuntime, scope: SessionScope, payload: JsonRecord, decision: StopDecision): Promise<string | undefined> {
   if (payload['stop_hook_active'] === true || decision.kind === 'block' || decision.kind === 'notice') {
     return undefined;
   }

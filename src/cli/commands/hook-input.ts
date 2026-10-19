@@ -1,13 +1,13 @@
 import { join } from 'node:path';
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
-import { isRecord, stringField } from '../../core/guards.ts';
+import { isRecord, stringField, type JsonRecord } from '../../core/guards.ts';
 import { claudeConfigDir, ENV } from '../../core/home.ts';
 import { resolveTeam, type TeamResolution } from '../../core/team.ts';
 import { OwnPaths } from '../../hooks/lead-boundary.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
 import { indexMarks } from '../../inbox/marks.ts';
-import { teamFolders, type Kit } from '../kit.ts';
+import { openKit, rosterOf, teamFolders, type Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
 import { inboxDepsOf } from './inbox.ts';
 
@@ -74,6 +74,41 @@ export async function startSessionOf(runtime: CliRuntime, kit: Kit, roster: Rost
   } catch {
     return undefined;
   }
+}
+
+/** The team a hook payload's session runs in, with its loaded config. */
+export interface TeamScope {
+  readonly kit: Kit;
+  readonly config: KitConfig;
+}
+
+/** The team session a hook runs for, with its team's loaded config. */
+export interface SessionScope extends TeamScope {
+  readonly roster: Roster;
+  readonly id: string;
+}
+
+/** The hook payload's team; undefined outside a team or without a loaded config. */
+export async function teamScopeOf(runtime: CliRuntime, payload: JsonRecord): Promise<TeamScope | undefined> {
+  const found = await sessionTeam(payload, runtime);
+  if (found.kind !== 'team') {
+    return undefined;
+  }
+  const kit = await openKit(runtime, found.team);
+  return kit.load.status === 'loaded' ? { kit, config: kit.load.config } : undefined;
+}
+
+/** The team session of a payload in `team`; undefined when the tab is no session of it. */
+export async function sessionScopeOf(runtime: CliRuntime, team: TeamScope, payload: JsonRecord): Promise<SessionScope | undefined> {
+  const roster = await rosterOf(runtime, team.kit, team.config);
+  const id = await teamSessionOf(runtime, team.kit, roster, sessionIdOf(payload));
+  return id === undefined ? undefined : { ...team, roster, id };
+}
+
+/** The hook payload's team session (Stop, helper gate, the mod's refresh checks); undefined outside a team, without a loaded config or without a session. */
+export async function hookScopeOf(runtime: CliRuntime, payload: JsonRecord): Promise<SessionScope | undefined> {
+  const team = await teamScopeOf(runtime, payload);
+  return team === undefined ? undefined : sessionScopeOf(runtime, team, payload);
 }
 
 /** The lead's own paths in this team: its teamrig folder, Claude Code's memory folders and `leadBoundary.ownPaths`. */
