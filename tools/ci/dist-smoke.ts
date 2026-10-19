@@ -142,6 +142,10 @@ const SAMPLES: Readonly<Record<string, Sample>> = {
     payload: { hook_event_name: 'PreToolUse', session_id: SESSION_ID, tool_name: 'AskUserQuestion', tool_input: { questions: [] } },
     check: (stdout) => (stdout === '' ? undefined : `expected no output with the guard off, got ${JSON.stringify(stdout)}`),
   },
+  'hook prompt-refuse': {
+    payload: { hook_event_name: 'PermissionRequest', session_id: SESSION_ID, tool_name: 'Bash', tool_input: { command: 'git push origin main' } },
+    check: (stdout) => (stdout === '' ? undefined : `expected no output with asks on, got ${JSON.stringify(stdout)}`),
+  },
 };
 
 function isStringList(value: unknown): value is readonly string[] {
