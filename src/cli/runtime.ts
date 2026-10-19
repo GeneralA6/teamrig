@@ -58,7 +58,7 @@ export interface CliRuntime {
   readonly shell: ShellRunner;
   /** The shell `teamrig heavy` runs its step in, with this process's stdio and a time limit. */
   readonly steps: StepRunner;
-  /** The host's free memory and a watch of a heavy step's process tree, for its ledger record. */
+  /** The host's free memory, processes and commit charge, and a watch of a heavy step's process tree (its ledger record). */
   readonly memory: HostMemory;
   /** The processes that started this one, so a heavy step whose launching shell was ended stops too. */
   readonly starters: StarterWatch;
