@@ -1,6 +1,7 @@
 import { deployTargetsOf } from "../coordinator/targets.js";
 import { isRecord } from "../core/guards.js";
 import { NAME_PATTERN, NAME_RULE } from "../core/ids.js";
+import { isMinuteInSpan, utcMinuteOf } from "../core/time.js";
 import { FOLLOWUP_STATUSES, isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, SESSION_NAME, TASK_STATUSES } from "../register/model.js";
 import { PREFIX_PATTERN } from "../readonly-shell/rules.js";
 import { CORE_RULE_KEYS, isCoreRuleKey } from "../rules/keys.js";
@@ -119,6 +120,7 @@ export function parseConfig(raw) {
     const alerts = read.section(raw, 'alerts', '');
     const lock = read.section(raw, 'lock', '');
     const tabStatus = read.section(raw, 'tabStatus', '');
+    const budget = parseBudget(read, read.section(raw, 'budget', ''), sessions);
     const config = {
         configVersion: read.integer(raw, 'configVersion', '', 1, { min: 1 }),
         ...(team === undefined ? {} : { team }),
@@ -146,12 +148,12 @@ export function parseConfig(raw) {
         packageGuard: { adHocRunners: parseAdHocRunners(read, read.section(raw, 'packageGuard', '')) },
         commits: parseCommits(read, read.section(raw, 'commits', '')),
         coordinator: parseCoordinator(read, read.section(raw, 'coordinator', '')),
-        budget: parseBudget(read, read.section(raw, 'budget', ''), sessions),
+        budget,
         leadBoundary: parseLeadBoundary(read, read.section(raw, 'leadBoundary', '')),
         loops: {
             chainNudgeAt: read.integer(read.section(raw, 'loops', ''), 'chainNudgeAt', 'loops', DEFAULT_LOOPS.chainNudgeAt, CONFIG_LIMITS.chainNudgeAt),
         },
-        wake: parseWake(read, read.section(raw, 'wake', '')),
+        wake: parseWake(read, read.section(raw, 'wake', ''), budget.quietHours),
         tests: {
             maxFailureChars: read.integer(read.section(raw, 'tests', ''), 'maxFailureChars', 'tests', DEFAULT_TESTS.maxFailureChars, CONFIG_LIMITS.maxFailureChars),
         },
@@ -179,14 +181,33 @@ function parseLeadBoundary(read, raw) {
         searchNudgeAt: read.integer(raw, 'searchNudgeAt', 'leadBoundary', DEFAULT_LEAD_BOUNDARY.searchNudgeAt, CONFIG_LIMITS.searchNudgeAt),
     };
 }
-/** `wake`: a priority as the register numbers them, and both waits bounded to a day at most. */
-function parseWake(read, raw) {
-    return {
+/** True when an `HH:MM` falls in the quiet hours, which may cross midnight. */
+function isInQuietHours(time, quiet) {
+    const minute = utcMinuteOf(time);
+    const start = utcMinuteOf(quiet.startUtc);
+    const end = utcMinuteOf(quiet.endUtc);
+    return minute !== undefined && start !== undefined && end !== undefined && isMinuteInSpan(minute, start, end);
+}
+/**
+ * `wake`: a priority as the register numbers them, both waits bounded to a day at most, and a day start outside
+ * the budget's quiet hours, where it would wake no one.
+ */
+function parseWake(read, raw, quietHours) {
+    const wake = {
         enabled: read.boolean(raw, 'enabled', 'wake', DEFAULT_WAKE.enabled),
         priority: read.integer(raw, 'priority', 'wake', DEFAULT_WAKE.priority, CONFIG_LIMITS.wakePriority),
         batchSeconds: read.integer(raw, 'batchSeconds', 'wake', DEFAULT_WAKE.batchSeconds, CONFIG_LIMITS.wakeBatchSeconds),
         minGapMinutes: read.integer(raw, 'minGapMinutes', 'wake', DEFAULT_WAKE.minGapMinutes, CONFIG_LIMITS.wakeMinGapMinutes),
     };
+    const dayStartUtc = read.optionalString(raw, 'dayStartUtc', 'wake', isUtcTime);
+    if (dayStartUtc === undefined) {
+        return wake;
+    }
+    if (quietHours !== undefined && isInQuietHours(dayStartUtc, quietHours)) {
+        read.report('wake.dayStartUtc', `is in the budget's quiet hours (${quietHours.startUtc} to ${quietHours.endUtc} UTC), where no session wakes`);
+        return wake;
+    }
+    return { ...wake, dayStartUtc };
 }
 /**
  * `github`: the repositories `gh sync` reads and who owns their issues. Repositories and logins are

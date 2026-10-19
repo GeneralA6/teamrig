@@ -1,8 +1,11 @@
+import { activeBurst } from "../../budget/burst.js";
+import { BurstLog } from "../../budget/burst-log.js";
 import { claudeProjectsDir, lastWriteOf } from "../../budget/discover.js";
 import { isRecord, stringField } from "../../core/guards.js";
 import { FileLock, LockBusyError } from "../../core/lock.js";
 import { MeetingStore, phaseOf } from "../../meeting/state.js";
 import { sessionIdOf } from "../../inbox/inbox.js";
+import { dayStartPrompt, dayStartToast, decideDayStart, dueMoments, nextDayStartAt, startableTasks } from "../../wake/day-start.js";
 import { decideWake, effectivePriority, URGENT_PRIORITY, wakeCost, wakePrompt, wakeRestOf, wakeToast } from "../../wake/decide.js";
 import { logWake, WakeStore } from "../../wake/store.js";
 import { noPositionals } from "../args.js";
@@ -63,6 +66,45 @@ async function meetingHoldsWake(runtime, scope) {
     const meeting = await new MeetingStore(runtime.files, scope.kit.paths.meeting).read();
     return phaseOf(meeting, runtime.clock.now()).kind === 'open';
 }
+/** The earliest of the times given; null with none. */
+function earliest(...times) {
+    const set = times.filter((time) => time !== undefined);
+    return set.length === 0 ? null : Math.min(...set);
+}
+/**
+ * The day's moments (src/wake/day-start.ts), checked when no handed work wakes the session and only with
+ * `wake.dayStartUtc` set. The budget and the tab's last turn are read only once a moment is due and the session has
+ * work it can start; a moments wake takes in any batch still pending, since it names all that work.
+ */
+async function momentsOf(runtime, scope, tasks, state, now) {
+    const { config, kit, roster, id, tab } = scope;
+    const { dayStartUtc } = config.wake;
+    if (dayStartUtc === undefined) {
+        return { verdict: { kind: 'none' }, state, lastTurnAt: undefined, next: undefined };
+    }
+    const next = nextDayStartAt(dayStartUtc, now);
+    const none = { verdict: { kind: 'none' }, state, lastTurnAt: undefined, next };
+    const startable = startableTasks(tasks, id, now);
+    const logged = activeBurst((await new BurstLog(runtime.files, kit.paths.bursts).read()).records, now, undefined);
+    const inBurst = logged?.sessions.includes(id) === true ? logged : undefined;
+    if (startable.length === 0 || dueMoments(now, dayStartUtc, inBurst, state.settled).length === 0) {
+        return none;
+    }
+    const facts = await budgetFactsOf(runtime, { kit, config, roster, id }, undefined);
+    const lastTurnAt = await lastWriteOf(runtime.transcripts, claudeProjectsDir(runtime.env, runtime.userHome), [tab]);
+    const decision = decideDayStart({
+        due: dueMoments(now, dayStartUtc, facts === undefined ? inBurst : facts.burst, state.settled),
+        startable,
+        lastTurnAt,
+        rest: wakeRestOf(facts, config.budget.quietHours, now),
+        now,
+        lastWakeAt: state.lastWakeAt,
+        minGapMs: config.wake.minGapMinutes * MINUTE_MS,
+        settled: state.settled,
+    });
+    const woke = decision.verdict.kind === 'wake' ? { pending: undefined, lastWakeAt: now } : {};
+    return { verdict: decision.verdict, state: { ...state, ...woke, settled: decision.settled }, lastTurnAt, next };
+}
 /** Decides under the session's wake lock, so two tabs of one session never wake it twice. */
 async function decide(runtime, scope, store) {
     const { config, kit, id, tab } = scope;
@@ -70,25 +112,35 @@ async function decide(runtime, scope, store) {
     const lock = new FileLock(store.lockOf(id), { ...config.lock, waitMs: 0 }, { files, clock, sleep, pid });
     return lock.run(async () => {
         const { tasks } = (await teamRegister(runtime, kit.paths, config).snapshot()).state;
+        const now = clock.now();
         const decision = decideWake({
             tasks,
             session: id,
             tab,
-            now: clock.now(),
+            now,
             maxPriority: await maxPriorityOf(runtime, scope),
             batchMs: config.wake.batchSeconds * SECOND_MS,
             minGapMs: config.wake.minGapMinutes * MINUTE_MS,
             previous: await store.read(id),
         });
-        await store.write(id, decision.state);
-        return decision.verdict;
+        if (decision.verdict.kind === 'wake') {
+            await store.write(id, decision.state);
+            return { kind: 'handed', tasks: decision.verdict.tasks };
+        }
+        const day = await momentsOf(runtime, scope, tasks, decision.state, now);
+        await store.write(id, day.state);
+        if (day.verdict.kind === 'wake') {
+            return { kind: 'moments', moments: day.verdict.moments, tasks: day.verdict.tasks, lastTurnAt: day.lastTurnAt };
+        }
+        const handedAt = decision.verdict.kind === 'later' ? decision.verdict.at : undefined;
+        return { kind: 'wait', recheckAt: earliest(handedAt, day.verdict.kind === 'later' ? day.verdict.at : undefined, day.next) };
     });
 }
 /**
  * Run by the plugin's mod while its tab is idle at the prompt: whether new work handed to the tab's session should
- * wake it now (src/wake/decide.ts). On a wake it logs the wake and its cost to the team's wake log and answers the
- * prompt to submit; a busy lock (another tab of the session checking) answers a recheck now. The lead is not woken
- * while the owner's daily meeting is open.
+ * wake it now (src/wake/decide.ts), else whether the day's start or a burst should (src/wake/day-start.ts). On a
+ * wake it logs the wake and its cost to the team's wake log and answers the prompt to submit; a busy lock (another
+ * tab of the session checking) answers a recheck now. The lead is not woken while the owner's daily meeting is open.
  */
 export async function wakeCheck(args, runtime) {
     noPositionals(args);
@@ -111,15 +163,21 @@ export async function wakeCheck(args, runtime) {
         }
         throw error;
     }
-    if (verdict.kind !== 'wake') {
-        return answer(runtime, { kind: 'wait', watch: kit.paths.events, recheckAt: verdict.kind === 'later' ? verdict.at : null });
+    if (verdict.kind === 'wait') {
+        return answer(runtime, { kind: 'wait', watch: kit.paths.events, recheckAt: verdict.recheckAt });
     }
     const now = runtime.clock.now();
-    const last = await lastWriteOf(runtime.transcripts, claudeProjectsDir(runtime.env, runtime.userHome), [tab]);
+    const last = verdict.kind === 'moments' ? verdict.lastTurnAt : await lastWriteOf(runtime.transcripts, claudeProjectsDir(runtime.env, runtime.userHome), [tab]);
     const cost = wakeCost(last === undefined ? undefined : now - last, config.messages.coldAfterMinutes, config.budget.weeklyLimitW);
     const ids = verdict.tasks.map((task) => task.id);
-    await logWake(runtime.files, kit.paths.wakeLog, { kind: 'wake', at: now, session: id, tab, ids, cost });
-    return answer(runtime, { kind: 'wake', ids, text: wakePrompt(id, verdict.tasks, cost), toast: wakeToast(verdict.tasks, cost) });
+    if (verdict.kind === 'handed') {
+        await logWake(runtime.files, kit.paths.wakeLog, { kind: 'wake', at: now, session: id, tab, ids, cost });
+        return answer(runtime, { kind: 'wake', ids, text: wakePrompt(id, verdict.tasks, cost), toast: wakeToast(verdict.tasks, cost) });
+    }
+    const moments = verdict.moments.map((moment) => moment.kind);
+    await logWake(runtime.files, kit.paths.wakeLog, { kind: 'wake', at: now, session: id, tab, ids, cost, moments });
+    const text = dayStartPrompt(id, scope.roster.nameOf(id) ?? id, verdict.moments, verdict.tasks, cost);
+    return answer(runtime, { kind: 'wake', ids, text, toast: dayStartToast(verdict.moments, verdict.tasks, cost) });
 }
 /** Run by the mod when Claude Code dropped a wake it submitted (a prompt hook refused it): logs it with the reason. */
 export async function wakeDropped(args, runtime) {

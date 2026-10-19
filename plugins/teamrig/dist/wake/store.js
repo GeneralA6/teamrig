@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { isRecord, isStringArray, stringField } from "../core/guards.js";
 import { parseObject, toJsonlLine, VERSION_FIELD } from "../core/jsonl.js";
+import { NO_SETTLED_MOMENTS } from "./decide.js";
 /** The format of the wake files this code reads and writes; a file in another format reads as no check yet. */
 export const WAKE_FORMAT = 1;
 function finiteField(record, key) {
@@ -18,6 +19,27 @@ function pendingOf(record) {
     const ids = pending?.['ids'];
     return since !== undefined && isStringArray(ids) ? { ok: true, value: { since, ids } } : { ok: false, value: undefined };
 }
+/** A stored time that may be absent: absent is undefined; damage is not ok, so the whole file reads as damaged. */
+function optionalTimeOf(record, key) {
+    if (record[key] === undefined) {
+        return { ok: true, value: undefined };
+    }
+    const value = finiteField(record, key);
+    return { ok: value !== undefined, value };
+}
+/** The stored settled moments: absent (a file from before day starts) is none; damage is not ok. */
+function settledOf(record) {
+    const raw = record['settled'];
+    if (raw === undefined) {
+        return { ok: true, value: NO_SETTLED_MOMENTS };
+    }
+    if (!isRecord(raw)) {
+        return { ok: false, value: NO_SETTLED_MOMENTS };
+    }
+    const dayStart = optionalTimeOf(raw, 'dayStart');
+    const burst = optionalTimeOf(raw, 'burst');
+    return { ok: dayStart.ok && burst.ok, value: { dayStart: dayStart.value, burst: burst.value } };
+}
 /** A wake file's content; undefined when it is damaged or from another format, which starts the tab over. */
 export function parseWakeState(text) {
     const record = parseObject(text.trim());
@@ -27,20 +49,25 @@ export function parseWakeState(text) {
     const tab = stringField(record, 'tab');
     const known = record['known'];
     const pending = pendingOf(record);
-    const lastWakeAt = record['lastWakeAt'];
-    const last = lastWakeAt === undefined ? undefined : finiteField(record, 'lastWakeAt');
-    if (tab === undefined || !isStringArray(known) || !pending.ok || (lastWakeAt !== undefined && last === undefined)) {
+    const last = optionalTimeOf(record, 'lastWakeAt');
+    const settled = settledOf(record);
+    if (tab === undefined || !isStringArray(known) || !pending.ok || !last.ok || !settled.ok) {
         return undefined;
     }
-    return { tab, known, pending: pending.value, lastWakeAt: last };
+    return { tab, known, pending: pending.value, lastWakeAt: last.value, settled: settled.value };
+}
+function formatSettled({ dayStart, burst }) {
+    return { ...(dayStart === undefined ? {} : { dayStart }), ...(burst === undefined ? {} : { burst }) };
 }
 export function formatWakeState(state) {
+    const settled = formatSettled(state.settled);
     return toJsonlLine({
         [VERSION_FIELD]: WAKE_FORMAT,
         tab: state.tab,
         known: [...state.known],
         ...(state.pending === undefined ? {} : { pending: { since: state.pending.since, ids: [...state.pending.ids] } }),
         ...(state.lastWakeAt === undefined ? {} : { lastWakeAt: state.lastWakeAt }),
+        ...(Object.keys(settled).length === 0 ? {} : { settled }),
     });
 }
 /**
@@ -84,6 +111,7 @@ export function formatWakeRecord(record) {
         w: cost.w,
         cold: cost.cold,
         ...(cost.weekPct === undefined ? {} : { weekPct: cost.weekPct }),
+        ...(record.moments === undefined ? {} : { moments: [...record.moments] }),
     });
 }
 /** Appends a record to the team's wake log, an append-only file the person reads to see each wake and its cost. */
