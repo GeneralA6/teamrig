@@ -65,7 +65,8 @@ async function scopeOf(runtime: CliRuntime, payload: unknown, needsWake: boolean
 
 /**
  * The least urgent priority that wakes the session now. Waking for p1 alone needs no budget read; for more, a
- * session past its daily budget or in the budget's quiet hours (unless its lift exempts it) still wakes for p1 only.
+ * session its budget holds (past its daily budget while the team has no room today) or in the budget's quiet hours
+ * (unless its lift exempts it) still wakes for p1 only.
  */
 async function maxPriorityOf(runtime: CliRuntime, scope: Extract<Scope, { kind: 'found' }>): Promise<number> {
   const { config } = scope;

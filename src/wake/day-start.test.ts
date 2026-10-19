@@ -22,7 +22,7 @@ const DAY = 24 * HOUR;
 const SIX = Date.parse('2030-01-08T06:00:00.000Z');
 const NOW = SIX + 2 * HOUR;
 const GAP_MS = 15 * MINUTE;
-const AWAKE = { over: false, quiet: false };
+const AWAKE = { held: false, quiet: false };
 const COLD = { w: 210_000, cold: true, weekPct: 0.021 };
 
 const BURST: Burst = {
@@ -122,7 +122,7 @@ describe('decideDayStart', () => {
   });
 
   it('keeps the moments due, with no wake, in quiet hours, past the daily budget or with no work it can start', () => {
-    for (const overrides of [{ rest: { over: false, quiet: true } }, { rest: { over: true, quiet: false } }, { startable: [] }, { due: [] }]) {
+    for (const overrides of [{ rest: { held: false, quiet: true } }, { rest: { held: true, quiet: false } }, { startable: [] }, { due: [] }]) {
       assert.deepEqual(decideDayStart(input(overrides)), { verdict: { kind: 'none' }, settled: NO_SETTLED_MOMENTS }, JSON.stringify(overrides));
     }
   });

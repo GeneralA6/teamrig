@@ -150,28 +150,34 @@ describe('wakeRestOf', () => {
     surplus: undefined,
     weekUsedPct: 10,
     pace: undefined,
+    // The team at its in-day pace: no room, so a session past its part is held.
+    teamDay: { usedPct: 5, pacePct: 5 },
     isLead: false,
     ...overrides,
   });
 
-  it('goes by the clock alone with no budget facts, never past budget', () => {
-    assert.deepEqual(wakeRestOf(undefined, QUIET_HOURS, NOW), { over: false, quiet: true });
-    assert.deepEqual(wakeRestOf(undefined, undefined, NOW), { over: false, quiet: false });
+  it('goes by the clock alone with no budget facts, never held', () => {
+    assert.deepEqual(wakeRestOf(undefined, QUIET_HOURS, NOW), { held: false, quiet: true });
+    assert.deepEqual(wakeRestOf(undefined, undefined, NOW), { held: false, quiet: false });
   });
 
-  it("reads past budget and quiet hours from the session's facts, and its lift's exemption", () => {
-    assert.deepEqual(wakeRestOf(facts(), undefined, NOW), { over: false, quiet: false });
-    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 1.5 }), QUIET_HOURS, NOW), { over: true, quiet: true });
+  it("reads the hold and quiet hours from the session's facts, and its lift's exemption", () => {
+    assert.deepEqual(wakeRestOf(facts(), undefined, NOW), { held: false, quiet: false });
+    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 1.5 }), QUIET_HOURS, NOW), { held: true, quiet: true });
     const lift = { session: 'alpha', partPct: 40, stopPct: 97, endsAt: NOW + 60 * MINUTE, reserve: false, quietHoursExempt: true, reason: 'incident', by: 'lead', at: NOW - MINUTE };
-    assert.deepEqual(wakeRestOf(facts({ lift }), QUIET_HOURS, NOW), { over: false, quiet: false });
+    assert.deepEqual(wakeRestOf(facts({ lift }), QUIET_HOURS, NOW), { held: false, quiet: false });
+  });
+
+  it('never holds a session past its part while the team has room today', () => {
+    assert.deepEqual(wakeRestOf(facts({ usedTodayPct: 1.5, teamDay: { usedPct: 4.9, pacePct: 5 } }), undefined, NOW), { held: false, quiet: false });
   });
 });
 
 describe('effectivePriority', () => {
-  it('keeps the configured priority unless the session is past its budget or in quiet hours, then p1', () => {
-    assert.equal(effectivePriority(3, { over: false, quiet: false }), 3);
-    assert.equal(effectivePriority(3, { over: true, quiet: false }), 1);
-    assert.equal(effectivePriority(3, { over: false, quiet: true }), 1);
+  it('keeps the configured priority unless the budget holds the session or it is in quiet hours, then p1', () => {
+    assert.equal(effectivePriority(3, { held: false, quiet: false }), 3);
+    assert.equal(effectivePriority(3, { held: true, quiet: false }), 1);
+    assert.equal(effectivePriority(3, { held: false, quiet: true }), 1);
   });
 });
 

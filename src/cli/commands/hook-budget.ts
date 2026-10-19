@@ -62,9 +62,10 @@ async function meterTab(runtime: CliRuntime, store: UsageStore, id: string, tran
 
 /**
  * The session's budget now, after metering the tab whose transcript is given; undefined with the
- * budget off, before the week's use or W per % is known, or without a daily budget for the session.
+ * budget off, before the week's use, W per % and reset are known, or without a daily budget for the session.
  * Its part of the team's daily budget is weighed by its queued work in the register, or set by a lift; a burst
- * the session is in raises it to at least the burst's. The lead,
+ * the session is in raises it to at least the burst's. Everyone's use today against the team's in-day pace
+ * (`teamDay`) says whether a session past its part is held. The lead,
  * with no burst in force, also gets the week's surplus when it is worth one.
  */
 export async function budgetFactsOf(runtime: CliRuntime, scope: BudgetScope, transcript: string | undefined): Promise<BudgetFacts | undefined> {
@@ -86,7 +87,8 @@ export async function budgetFactsOf(runtime: CliRuntime, scope: BudgetScope, tra
   const outside = (await new UsageStore(files, join(kit.paths.usage, 'outside')).load(OUTSIDE_ID)).state;
   const snapshots = await readSnapshots(files, snapshotDirOf(budget, kit.paths));
   const week = readWeek({ budget, now, statusUse: weekUseOf(snapshots, now), states: [...byId.values(), outside] });
-  if (week.usedPct === undefined || week.wPerPct === undefined) {
+  const { teamDay } = week;
+  if (week.usedPct === undefined || week.wPerPct === undefined || teamDay === undefined) {
     return undefined;
   }
   const { lifts } = await new LiftLog(files, kit.paths.lifts).read();
@@ -115,6 +117,7 @@ export async function budgetFactsOf(runtime: CliRuntime, scope: BudgetScope, tra
     surplus,
     weekUsedPct: week.usedPct,
     pace: week.pace,
+    teamDay,
     isLead,
   };
 }

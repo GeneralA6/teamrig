@@ -31,6 +31,8 @@ export function parseWarnState(text: string): WarnState | undefined {
   const level = finiteField(record, 'level');
   const modelLevel = finiteField(record, 'modelLevel');
   const ahead = record['ahead'];
+  // Absent in a file saved before teamrig kept it: not held.
+  const held = record['held'] ?? false;
   const leadTold = record['leadTold'];
   const quietFrom = optionalTime(record, 'quietFrom');
   const marks = [optionalTime(record, 'liftAt'), optionalTime(record, 'burstAt'), optionalTime(record, 'modelBurstAt'), optionalTime(record, 'surplusShown')] as const;
@@ -40,6 +42,7 @@ export function parseWarnState(text: string): WarnState | undefined {
     level === undefined ||
     modelLevel === undefined ||
     typeof ahead !== 'boolean' ||
+    typeof held !== 'boolean' ||
     typeof leadTold !== 'boolean' ||
     !quietFrom.ok ||
     marks.some((mark) => !mark.ok)
@@ -51,6 +54,7 @@ export function parseWarnState(text: string): WarnState | undefined {
     level,
     modelLevel,
     ahead,
+    held,
     leadTold,
     quietFrom: quietFrom.value,
     liftAt: liftAt.value,
@@ -67,6 +71,7 @@ export function formatWarnState(state: WarnState): string {
     level: state.level,
     modelLevel: state.modelLevel,
     ahead: state.ahead,
+    held: state.held,
     leadTold: state.leadTold,
     ...(state.quietFrom === undefined ? {} : { quietFrom: state.quietFrom }),
     ...(state.liftAt === undefined ? {} : { liftAt: state.liftAt }),

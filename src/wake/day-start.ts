@@ -10,8 +10,8 @@ import { byUrgency, costText, idsText, isWakeWorthy, taskListText, type SettledM
  * The day's moments, pure. A wake for handed work (decide.ts) never starts a session's day: a session idle since the
  * night stays idle while its list waits. So the day's start (`wake.dayStartUtc`) gives each session one turn, and so
  * does a burst the session is in, once it starts. A moment wakes a session once, only with work it can start (its own
- * task, open or started, every task it comes after finished, any priority), never in quiet hours or past its daily
- * budget (it wakes once those end), and not at all when the session had a turn after the moment.
+ * task, open or started, every task it comes after finished, any priority), never in quiet hours or while its budget
+ * holds it (`isHeld`; it wakes once those end), and not at all when the session had a turn after the moment.
  */
 
 export type DayMomentKind = 'day-start' | 'burst';
@@ -83,7 +83,7 @@ function settle(settled: SettledMoments, moments: readonly DayMoment[]): Settled
 
 /**
  * Whether the due moments wake the session now, later or not, and what is settled. A moment the session had a turn
- * after is settled with no wake. The rest wake it at once, together, unless it rests (quiet hours, past its daily
+ * after is settled with no wake. The rest wake it at once, together, unless it rests (quiet hours, held by its
  * budget) or has no work it can start: then they stay due for a later check. Wakes stay `wake.minGapMinutes` apart.
  */
 export function decideDayStart(input: DayStartInput): DayStartDecision {
@@ -91,7 +91,7 @@ export function decideDayStart(input: DayStartInput): DayStartDecision {
   const hadTurn = (moment: DayMoment): boolean => lastTurnAt !== undefined && lastTurnAt >= moment.at;
   const settled = settle(input.settled, due.filter(hadTurn));
   const open = due.filter((moment) => !hadTurn(moment));
-  if (open.length === 0 || rest.quiet || rest.over || input.startable.length === 0) {
+  if (open.length === 0 || rest.quiet || rest.held || input.startable.length === 0) {
     return { verdict: { kind: 'none' }, settled };
   }
   const gapEnd = input.lastWakeAt === undefined ? Number.NEGATIVE_INFINITY : input.lastWakeAt + input.minGapMs;

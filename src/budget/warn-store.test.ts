@@ -11,6 +11,7 @@ const STATE: WarnState = {
   level: 100,
   modelLevel: 80,
   ahead: true,
+  held: true,
   leadTold: true,
   quietFrom: 1_760_565_600_000,
   liftAt: 1_760_529_600_000,
@@ -52,8 +53,9 @@ describe('parseWarnState', () => {
   it('refuses another format, a wrong field type, a bad time and a missing field', () => {
     const fields = { v: 1, day: '2026-10-15', level: 100, modelLevel: 80, ahead: true, leadTold: true, quietFrom: 1 };
     const { day: _day, ...noDay } = fields;
-    const variants: readonly object[] = [{ ...fields, v: 2 }, { ...fields, level: 'high' }, { ...fields, ahead: 1 }, { ...fields, quietFrom: 'tonight' }, { ...fields, burstAt: 'then' }, { ...fields, modelBurstAt: null }, { ...fields, surplusShown: 'Wed' }, noDay];
-    assert.ok(parseWarnState(JSON.stringify(fields)) !== undefined);
+    const variants: readonly object[] = [{ ...fields, v: 2 }, { ...fields, level: 'high' }, { ...fields, ahead: 1 }, { ...fields, held: 'yes' }, { ...fields, quietFrom: 'tonight' }, { ...fields, burstAt: 'then' }, { ...fields, modelBurstAt: null }, { ...fields, surplusShown: 'Wed' }, noDay];
+    // A file saved before `held` was kept reads as not held.
+    assert.equal(parseWarnState(JSON.stringify(fields))?.held, false);
     for (const variant of variants) {
       assert.equal(parseWarnState(JSON.stringify(variant)), undefined, JSON.stringify(variant));
     }

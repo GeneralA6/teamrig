@@ -84,11 +84,24 @@ async function leadInbox(kit: CliHarness): Promise<string> {
   return (await kit.run(['inbox', 'read', '--session', 'lead'], { env: { CLAUDE_CODE_SESSION_ID: LEAD_TAB } })).stdout.join('\n');
 }
 
+/**
+ * Meters the lead's 50M W at its turn end, so the team's day holds 5% of the week besides alpha's: with alpha's 1.1%,
+ * past its in-day pace at 30% used (5.2% at 10:00 UTC), so the team has no room today.
+ */
+async function meterLead({ hook }: World): Promise<void> {
+  await hook('stop', LEAD_TAB);
+}
+
 describe('the budget in the hooks', () => {
   it('meters the tab and its subagents at the turn end, warns once, and tells the lead once', async () => {
-    const { kit, hook } = await world({}, 10_000_000, 30);
+    const team = await world({}, 10_000_000, 30);
+    const { kit, hook } = team;
+    await meterLead(team);
     const first = await hook('stop', ALPHA_TAB);
-    assert.match(messageOf(first), /^Budget: app-alpha has used 1\.1% of the week today; its daily budget is 0\.59%\. The team is 10\.\d points ahead of its pace line\. The lead has an inbox line\./);
+    assert.match(
+      messageOf(first),
+      /^Budget: app-alpha has used 1\.1% of the week today; its daily budget is 0\.59%\. The team has used 6\.1% of the week today, at or past its in-day pace of 5\.2%, and the team is 10\.\d points ahead of its pace line\. The lead has an inbox line\./,
+    );
     assert.match(await leadInbox(kit), /alpha: app-alpha is past its daily budget: 1\.1% of the week today against 0\.59%,/);
     assert.deepEqual((await hook('stop', ALPHA_TAB)).stdout, []);
     assert.doesNotMatch(await leadInbox(kit), /past its daily budget/);
@@ -100,7 +113,9 @@ describe('the budget in the hooks', () => {
   });
 
   it('tells the model with the next prompt, once per level', async () => {
-    const { hook } = await world({}, 10_000_000, 30);
+    const team = await world({}, 10_000_000, 30);
+    const { hook } = team;
+    await meterLead(team);
     await hook('stop', ALPHA_TAB);
     // The tab's title, as Claude Code passes it once the prompt hook gave it, so the lines come as plain text.
     const prompt = await hook('inbox-reminder', ALPHA_TAB, { prompt: 'next', session_title: 'app-alpha' });
@@ -111,12 +126,32 @@ describe('the budget in the hooks', () => {
 
   it('asks before a helper launch past budget with overAction ask, and lets it go with ask-lead', async () => {
     const asked = await world({ overAction: 'ask' }, 10_000_000, 30);
+    await meterLead(asked);
     const gate = await asked.hook('helper-gate', ALPHA_TAB, AGENT);
     assert.equal(decisionOf(gate), 'ask');
     assert.match(gate.stdout[0] ?? '', /alpha is past its daily budget/);
     assert.equal(contextOf(gate), helperLaunchReminder(1));
     const relaxed = await world({}, 10_000_000, 30);
+    await meterLead(relaxed);
     remindedOnly(await relaxed.hook('helper-gate', ALPHA_TAB, AGENT));
+  });
+
+  it('holds nothing past its part while the team has room today, and escalates once the room runs out', async () => {
+    const team = await world({ overAction: 'block' }, 10_000_000, 30);
+    const { kit, hook } = team;
+    assert.match(
+      messageOf(await hook('stop', ALPHA_TAB)),
+      /^Budget: app-alpha has used 1\.1% of the week today; its daily budget is 0\.59%\. The team has room today: 1\.1% of the week used, below its in-day pace of 5\.2%, so nothing more happens\./,
+    );
+    remindedOnly(await hook('helper-gate', ALPHA_TAB, AGENT));
+    assert.doesNotMatch(await leadInbox(kit), /past its daily budget/);
+    await meterLead(team);
+    assert.match(
+      messageOf(await hook('stop', ALPHA_TAB)),
+      /^Budget: app-alpha is past its daily budget, and the team has used 6\.1% of the week today, at or past its in-day pace of 5\.2%, and the team is 10\.\d points ahead of its pace line\. New helpers are refused; the lead has an inbox line\./,
+    );
+    assert.equal(decisionOf(await hook('helper-gate', ALPHA_TAB, AGENT)), 'deny');
+    assert.match(await leadInbox(kit), /alpha: app-alpha is past its daily budget/);
   });
 
   it('refuses a helper in quiet hours set to block, except for the lead', async () => {
@@ -126,8 +161,13 @@ describe('the budget in the hooks', () => {
   });
 
   it('says nothing while the team is behind its pace line, and never posts the lead a line about itself', async () => {
-    const behind = await world({}, 10_000_000, 10);
-    assert.match(messageOf(await behind.hook('stop', ALPHA_TAB)), /The team is not ahead of its pace line, so nothing more happens\./);
+    // At 10% used the in-day pace is 6.7%: the lead's 5% and alpha's 2.1% leave the team no room.
+    const behind = await world({}, 20_000_000, 10);
+    await meterLead(behind);
+    assert.match(
+      messageOf(await behind.hook('stop', ALPHA_TAB)),
+      /The team has used 7\.1% of the week today, at or past its in-day pace of 6\.7%, but the team is not ahead of its pace line, so nothing more happens\./,
+    );
     remindedOnly(await behind.hook('helper-gate', ALPHA_TAB, AGENT));
     const lead = await world({ sessions: { lead: { share: 0.1 } } }, 0, 30);
     assert.match(messageOf(await lead.hook('stop', LEAD_TAB)), /^Budget: app-lead has used 5\.0% of the week today/);
