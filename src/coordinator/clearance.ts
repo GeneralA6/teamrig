@@ -1,5 +1,5 @@
 import type { Clock, Sleep } from '../core/lock.ts';
-import { holderText, type HostLock, type HostLockInfo } from './host-lock.ts';
+import { holderText, waitText, type HostLock, type HostLockInfo } from './host-lock.ts';
 
 /** Whether a deploy step may start: at once, never (a cutoff or blackout), or after a wait (a quiet claim). */
 export type Readiness = { readonly kind: 'go' } | { readonly kind: 'refuse'; readonly reason: string } | { readonly kind: 'wait'; readonly reason: string };
@@ -64,8 +64,8 @@ export async function takeWhenClear(readiness: (phase: ClearancePhase) => Promis
       }
       continue;
     }
-    const taking = await lock.acquire(request.session, request.purpose, Math.max(0, deadline - clock.now()), request.pollMs, (holder) =>
-      request.onWait(`the host lock: ${holderText(holder)}`),
+    const taking = await lock.acquire(request.session, request.purpose, Math.max(0, deadline - clock.now()), request.pollMs, (holder, ahead) =>
+      request.onWait(`the host lock: ${waitText(holder, ahead)}`),
     );
     if (taking.kind === 'busy') {
       return { kind: 'gaveUp', reason: `host lock still held by ${holderText(taking.holder)}` };

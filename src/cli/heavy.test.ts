@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import { FIRST_IN_LINE_POLL_MS } from '../coordinator/host-lock.ts';
 import { APP, CliHarness, KIT, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { FakeSteps } from '../testing/fake-steps.ts';
@@ -148,7 +149,7 @@ describe('teamrig heavy', () => {
       stdout: ['2030-01-08T10:00:00.000Z waiting for the host lock: po (heavy: build) since 2030-01-08 09:50', 'REFUSED host lock still held by po (heavy: build) since 2030-01-08 09:50'],
       stderr: [],
     });
-    assert.deepEqual(kit.clock.sleeps, [30_000, 30_000]);
+    assert.deepEqual(kit.clock.sleeps, Array.from({ length: MINUTE / FIRST_IN_LINE_POLL_MS }, () => FIRST_IN_LINE_POLL_MS), 'the first in line looks every 2 s');
     assert.equal(kit.files.get(LOCK), heldBy());
   });
 
@@ -189,10 +190,10 @@ describe('teamrig heavy', () => {
     assert.deepEqual([result.code, steps.ran.length], [0, 1]);
   });
 
-  /** The token of the lock taken: removing a lock left behind costs the first taking's token. */
-  for (const [label, lock, token] of [
-    ['a lock its process left behind', heldBy(), 'id-2'],
-    ['no lock at all', undefined, 'id-1'],
+  /** The lock taken carries its ticket's token, also when taking it first removes a lock left behind. */
+  for (const [label, lock] of [
+    ['a lock its process left behind', heldBy()],
+    ['no lock at all', undefined],
   ] as const) {
     it(`takes the lock as usual when $TEAMRIG_HOST_LOCK names ${label}`, async () => {
       const { kit, steps } = harness();
@@ -204,7 +205,7 @@ describe('teamrig heavy', () => {
         '2030-01-08T10:00:00.000Z $TEAMRIG_HOST_LOCK names no live host lock: taking the lock as usual',
         '2030-01-08T10:00:00.000Z running: build api (killed after 45m)',
       ]);
-      assert.deepEqual([result.code, steps.ran[0]?.env['TEAMRIG_HOST_LOCK'], ledgerOf(kit).length], [0, token, 2]);
+      assert.deepEqual([result.code, steps.ran[0]?.env['TEAMRIG_HOST_LOCK'], ledgerOf(kit).length], [0, 'id-1', 2]);
     });
   }
 
