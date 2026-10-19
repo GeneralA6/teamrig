@@ -1,5 +1,6 @@
 import { KIT_NAME } from '../core/home.ts';
 import type { SessionAsk } from '../core/session-asks.ts';
+import type { TimeZone } from '../core/zone.ts';
 import type { Task } from '../register/fold.ts';
 import { waitsText } from '../register/waits.ts';
 import { startableTasks } from './day-start.ts';
@@ -26,6 +27,8 @@ export interface KeepWorkingInput {
   readonly session: string;
   readonly ask: SessionAsk;
   readonly now: number;
+  /** The team's clock, for the times its waits name. */
+  readonly zone: TimeZone;
   /** Where the session stands against its budget (`wakeRestOf`). */
   readonly rest: WakeRest;
 }
@@ -35,20 +38,20 @@ export interface KeepWorkingInput {
  * waiting or changed hands, or with nothing it can start.
  */
 export function keepWorkingOf(input: KeepWorkingInput): KeepWorking | undefined {
-  const { tasks, session, ask, now, rest } = input;
+  const { tasks, session, ask, now, zone, rest } = input;
   const waiting = tasks.get(ask.task);
   if (rest.quiet || rest.held || waiting?.owner !== session || waiting.status !== 'waiting') {
     return undefined;
   }
-  const startable = startableTasks(tasks, session, now);
+  const startable = startableTasks(tasks, session, now, zone);
   return startable.length === 0 ? undefined : { waiting, startable };
 }
 
 /** The Stop hook's block reason: work the tasks that do not come after the waiting one, most urgent first. */
-export function keepWorkingReason(session: string, work: KeepWorking): string {
+export function keepWorkingReason(session: string, work: KeepWorking, zone: TimeZone): string {
   const { waiting, startable } = work;
   return (
-    `${waiting.id} waits (${waitsText(waiting.waits)}), and you own work that does not come after it: ${taskListText(startable)}. ` +
+    `${waiting.id} waits (${waitsText(waiting.waits, zone)}), and you own work that does not come after it: ${taskListText(startable)}. ` +
     `Work it now in priority order (\`${KIT_NAME} list --session ${session}\`); leave a task that is the same change as ${waiting.id}, and say so in one line. ` +
     'If you already work one and wait on a background step, end the turn again.'
   );

@@ -5,6 +5,7 @@ import type { WriteResult } from '../../register/register.ts';
 import { JsonlEventLog } from '../../register/store.ts';
 import { wakeRestOf } from '../../wake/decide.ts';
 import { keepWorkingOf, keepWorkingReason } from '../../wake/keep-working.ts';
+import { teamZone } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
 import { budgetFactsOf, type BudgetScope } from './hook-budget.ts';
 
@@ -40,6 +41,7 @@ export async function keepWorkingReasonOf(runtime: CliRuntime, scope: BudgetScop
   const now = runtime.clock.now();
   const rest = wakeRestOf(await budgetFactsOf(runtime, scope, undefined), config.budget.quietHours, now);
   const snapshot = await new JsonlEventLog(runtime.files, kit.paths.events).read();
-  const work = keepWorkingOf({ tasks: snapshot.state.tasks, session: id, ask, now, rest });
-  return work === undefined ? undefined : keepWorkingReason(id, work);
+  const zone = teamZone(config, runtime);
+  const work = keepWorkingOf({ tasks: snapshot.state.tasks, session: id, ask, now, zone, rest });
+  return work === undefined ? undefined : keepWorkingReason(id, work, zone);
 }

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { TimeZone } from '../core/zone.ts';
 import type { Task } from '../register/fold.ts';
 import { testTask } from '../testing/task.ts';
 import type { WakeRest } from './decide.ts';
@@ -16,7 +17,7 @@ function tasksOf(...tasks: readonly Task[]): ReadonlyMap<string, Task> {
 const AWAKE: WakeRest = { quiet: false, held: false };
 
 function workOf(tasks: ReadonlyMap<string, Task>, rest = AWAKE): KeepWorking | undefined {
-  return keepWorkingOf({ tasks, session: 'alpha', ask: ASK, now: NOW, rest });
+  return keepWorkingOf({ tasks, session: 'alpha', ask: ASK, now: NOW, zone: TimeZone.UTC, rest });
 }
 
 function idsOf(tasks: ReadonlyMap<string, Task>): readonly string[] | undefined {
@@ -87,7 +88,7 @@ describe('keepWorkingReason', () => {
     const work = workOf(tasks);
     assert.ok(work !== undefined);
     assert.equal(
-      keepWorkingReason('alpha', work),
+      keepWorkingReason('alpha', work, TimeZone.UTC),
       'T1 waits (decision owner), and you own work that does not come after it: T2 "Fix the login" (p1), T3 "Tidy the docs" (p2). ' +
         'Work it now in priority order (`teamrig list --session alpha`); leave a task that is the same change as T1, and say so in one line. ' +
         'If you already work one and wait on a background step, end the turn again.',
