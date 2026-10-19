@@ -372,14 +372,16 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       the main checkout; exit 0 landed, 1 failed
   roll [--repo <name>] [--session <id|name>]   brings what was pushed to a repository's default
       branch to the running system: pulls its main checkout fast-forward to origin, runs its
-      coordinator.repos.<name>.roll afterPull hooks and command (one heavy step in the ledger) and
-      records the deploy; --repo defaults to the repository of this folder, else the only one with a
-      roll block. REFUSED for a main checkout off its default branch, dirty or ahead of origin, a
+      coordinator.repos.<name>.roll dependencyInstall for a dependency change (after its
+      dependencyCheck), its afterPull hooks and command (one heavy step in the ledger) and records
+      the deploy; --repo defaults to the repository of this folder, else the only one with a roll
+      block. REFUSED for a main checkout off its default branch, dirty or ahead of origin, a
       dependency change dependencyGate holds or a gate that refuses, from
       coordinator.schedule.heavyCutoffUtc to midnight UTC and in the resetBlackoutHours before the
       weekly token reset; waits up to coordinator.wait.maxMinutes for quiet claims on its targets,
-      its gates and the host lock; nothing pending is DONE with nothing run. A failure after the pull
-      leaves nothing pending, so its roll command is then run by hand; exit 0 rolled, 1 failed
+      its gates and the host lock; nothing pending is DONE with nothing run. A failed check or
+      install moves the main checkout back; a failed afterPull hook or roll command leaves nothing
+      pending, so its roll command is then run by hand; exit 0 rolled, 1 failed
   claim --targets <a,b> --metric <m> --why "<why>" --for <span> [--session <id|name>]   a quiet
       claim: integrate and roll wait while it holds a target they deploy, from now for the span (45m,
       1h30m; at most coordinator.claims.maxMinutes); one per session; REFUSED for a target no

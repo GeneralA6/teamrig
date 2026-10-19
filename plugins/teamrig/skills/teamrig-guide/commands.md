@@ -1652,7 +1652,8 @@ The repository is the entry of `coordinator.repos` whose `mainCheckout` is this 
   claims on these targets, and records the push in the ledger as a deploy of them, which teamrig does not watch.
 - `dependencyGate`: REFUSED when the branch changes `package-lock.json` or `package.json` beyond its scripts,
   since landing it changes, unreviewed, the `node_modules` every worktree links to; with no `dependencyCheck`, push
-  such a change by hand.
+  such a change by hand. `teamrig roll` holds a pushed range that changes them the same way unless
+  `dependencyCheck` and `roll.dependencyInstall` are both set.
 - `dependencyCheck`: with `dependencyGate`, the check that clears a dependency change, such as
   `["node", "tools/check-change.ts"]`: a program and its arguments, run with no shell in the branch's checkout under
   the host lock, after each rebase and before the push, its stdout shown with secrets redacted, killed after
@@ -1705,6 +1706,8 @@ The repository is an entry of `coordinator.repos` with a `roll` block: the one `
 - `targets`: what the roll deploys, such as `["api", "workers"]`. roll waits for quiet claims on them, and its
   deploy record names them.
 - `gates`: up to 16 `{ "name", "command" }` checks the team's own tools answer, such as "is a batch run open?".
+- `dependencyInstall`: the install a pushed dependency change needs, such as `["npm", "ci", "--ignore-scripts"]`,
+  run after the pull and before the afterPull hooks (see below).
 - `afterPull`: up to 16 commands run after the pull and before the roll command, such as a build the roll needs.
 - `command`: the roll itself, such as `["node", "tools/roll.js"]`.
 
@@ -1716,12 +1719,21 @@ afterPull hooks and the command also get `TEAMRIG_ROLL_TO` (the sha pulled) and,
 none within `coordinator.gateTimeoutSeconds` (20), holds it. Its last line, secrets redacted, is the reason.
 
 REFUSED (exit 2) before any gate or lock for a main checkout off its default branch, with uncommitted changes or with
-commits origin lacks, and for a range with a dependency change `dependencyGate` holds. Also from
+commits origin lacks, and for a range with a dependency change `dependencyGate` holds: one with no `dependencyCheck`
+or no `roll.dependencyInstall` set, or a range roll cannot read. Also from
 `coordinator.schedule.heavyCutoffUtc` to midnight UTC, in the `resetBlackoutHours` before the weekly token reset,
 and when a gate refuses. With nothing pending it is DONE and runs nothing. Otherwise it waits up to
 `coordinator.wait.maxMinutes` for the claims, the gates and the host lock, reads origin again under the lock and asks
-the gates again, then pulls fast-forward to the sha they judged and runs the afterPull hooks and the command, each
-killed after `coordinator.heavy.maxRunMinutes`, all one heavy step in the ledger. Their lines show as they come.
+the gates again, then pulls fast-forward to the sha they judged and runs the dependency steps, the afterPull hooks
+and the command, each killed after `coordinator.heavy.maxRunMinutes`, all one heavy step in the ledger. Their lines
+show as they come.
+
+A range that changes `package-lock.json`, or `package.json` beyond its scripts, runs `dependencyInstall` in the main
+checkout right after the pull; with `dependencyGate`, `dependencyCheck` runs first, its `TEAMRIG_BASELINE_LOCK` a file
+holding the old HEAD's `package-lock.json`. A failed check moves the main checkout back to its old HEAD with nothing
+installed: REFUSED, nothing rolled. A failed install moves it back and installs again, so the `node_modules` every
+worktree links to matches the checkout: FAILED, nothing rolled. When moving back or that install fails too, FAILED
+names what to run by hand. With the gate off and no `dependencyInstall`, the range rolls with no install.
 
 A command that prints the line `no-roll` had nothing to roll: DONE, with no deploy record. Otherwise the deploy is
 recorded with the command's last line, and exit 0 is DONE, any other end FAILED (exit 1): its owners fix forward or
@@ -1743,6 +1755,7 @@ Config:
       "roll": {
         "targets": ["api", "workers"],
         "gates": [{ "name": "flow", "command": ["node", "tools/flow-gate.js"] }],
+        "dependencyInstall": ["npm", "ci", "--ignore-scripts"],
         "afterPull": [["npm", "run", "build"]],
         "command": ["node", "tools/roll.js"]
       }
