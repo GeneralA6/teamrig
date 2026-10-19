@@ -1,4 +1,8 @@
-/** UTC date helpers. The kit stores instants as ISO strings and shows minutes as `YYYY-MM-DD HH:MM`. */
+/**
+ * Date helpers. The kit stores instants as ISO strings in UTC, a minute as `YYYY-MM-DD HH:MM` in UTC and a day as
+ * `YYYY-MM-DD`, a day of the team's zone; it shows people every time in that zone (zone.ts).
+ */
+import { TimeZone } from './zone.ts';
 
 const DAY_OR_MINUTE = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?$/;
 
@@ -92,4 +96,79 @@ export function formatUtcDay(date: Date): string {
 /** `YYYY-MM-DDTHH` in UTC: the hour, which sorts as text in time order. */
 export function formatUtcHour(date: Date): string {
   return date.toISOString().slice(0, 13);
+}
+
+/** A minute a person types, with or without its day, and maybe marked with its zone: `2030-01-31 09:05 IST`. */
+const TYPED_MINUTE = /^(?:(\d{4}-\d{2}-\d{2})[ T])?(\d{2}:\d{2})(?: (\S+))?$/;
+
+/** A stored day `YYYY-MM-DD` (a week tag): the start of that day in the team's zone. */
+export function parseDayStart(text: string, zone: TimeZone): Date | undefined {
+  const day = parseUtcDay(text);
+  return day === undefined ? undefined : zone.instant(TimeZone.UTC.wall(day));
+}
+
+/**
+ * A stored deadline: `YYYY-MM-DD HH:MM` is that minute in UTC, and a bare `YYYY-MM-DD` the end of that day in the
+ * team's zone, so "due 2030-01-31" is on time until 23:59 there. Undefined for malformed or impossible dates.
+ */
+export function parseDeadline(text: string, zone: TimeZone): Date | undefined {
+  const day = parseUtcDay(text);
+  if (day === undefined) {
+    return parseUtcDeadline(text);
+  }
+  const nextDay = zone.instant(TimeZone.UTC.wall(new Date(day.getTime() + MS_PER_DAY)));
+  return new Date(nextDay.getTime() - 1);
+}
+
+/** A stored day or minute as people read it, without the year: `01-31`, or `01-31 11:05 IST` for `2030-01-31 09:05`. */
+export function showStored(text: string, zone: TimeZone): string {
+  const trimmed = text.trim();
+  if (parseUtcDay(trimmed) !== undefined) {
+    return trimmed.slice(5);
+  }
+  const at = parseUtcDeadline(trimmed);
+  return at === undefined ? trimmed : zone.shortMinute(at);
+}
+
+/**
+ * A time a person types, read on the team zone's clock unless marked UTC: `HH:MM` today there or
+ * `YYYY-MM-DD HH:MM`, each unmarked, marked `UTC` or marked with the zone's name at that time (`09:05 IST`);
+ * `YYYY-MM-DD`, the start of that day there; or an ISO time with its zone. Undefined for anything else, a mark of
+ * another zone and an impossible date included.
+ */
+export function parseTypedInstant(text: string, nowMs: number, zone: TimeZone): Date | undefined {
+  const trimmed = text.trim();
+  if (ZONED_ISO.test(trimmed)) {
+    const ms = Date.parse(trimmed);
+    return Number.isFinite(ms) ? new Date(ms) : undefined;
+  }
+  const match = TYPED_MINUTE.exec(trimmed);
+  if (match === null) {
+    return parseDayStart(trimmed, zone);
+  }
+  const [, day = zone.day(new Date(nowMs)), clock = '', mark] = match;
+  const wallAsUtc = parseUtcDeadline(`${day} ${clock}`);
+  if (wallAsUtc === undefined || mark?.toUpperCase() === 'UTC') {
+    return wallAsUtc;
+  }
+  const at = zone.instant(TimeZone.UTC.wall(wallAsUtc));
+  return mark === undefined || mark.toUpperCase() === zone.label(at).toUpperCase() ? at : undefined;
+}
+
+/**
+ * The stored form of a deadline a person types: a bare day stays that day of the team's zone, and a time, read as
+ * `parseTypedInstant` reads it, becomes its minute in UTC. Undefined when it reads as neither.
+ */
+export function storedDeadline(text: string, nowMs: number, zone: TimeZone): string | undefined {
+  const trimmed = text.trim();
+  if (parseUtcDay(trimmed) !== undefined) {
+    return trimmed;
+  }
+  const at = parseTypedInstant(trimmed, nowMs, zone);
+  return at === undefined ? undefined : formatUtcMinute(at);
+}
+
+/** How to type a time, for refusals: `HH:MM or YYYY-MM-DD HH:MM in Asia/Jerusalem (IST), or marked UTC`. */
+export function typedTimeHint(zone: TimeZone, nowMs: number): string {
+  return `HH:MM or YYYY-MM-DD HH:MM in ${zone.name} (${zone.label(new Date(nowMs))}), or marked UTC`;
 }
