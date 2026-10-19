@@ -4,6 +4,7 @@ import { TEST_CARD } from '../testing/card.ts';
 import { testConfig } from '../testing/config.ts';
 import { testTask } from '../testing/task.ts';
 import { checkTasks, currentWeek, currentWeekOf, formatFlag, peerWaitFlags } from './check.ts';
+import type { Task } from './fold.ts';
 import { readRegister, type RegisterSnapshot } from './snapshot.ts';
 import { TaskTree } from './tree.ts';
 
@@ -317,5 +318,45 @@ describe('checkTasks: NO-CARD', () => {
     ];
     assert.deepEqual(noCard(tasks), ['T1: no card for owner to decide from: set it waiting again with --question, --options, --recommend and --default']);
     assert.deepEqual(noCard(tasks, { ...CONFIG, requireDecisionCard: false }), [], 'never with the switch off');
+  });
+});
+
+describe('checkTasks: SELF-MADE', () => {
+  const made = (n: number, overrides: Partial<Task> = {}) =>
+    testTask({ id: `T${n}`, owner: 'alpha', source: 'alpha', createdBy: 'alpha', createdAt: '2030-01-10T08:00:00.000Z', ownerSeenAt: FRESH, updatedAt: FRESH, ...overrides });
+  const withMax = (maxSelfMadePerDay: number) => ({ ...CONFIG, check: { ...CONFIG.check, maxSelfMadePerDay } });
+  const selfMade = (tasks: readonly Task[], config: typeof CONFIG = withMax(3)) =>
+    checkTasks(tasks, NOW, null, config).map((flag) => `${flag.kind} ${flag.task.id}: ${flag.detail}`);
+
+  it('flags the first task past the count its owner added for itself in 24 h, never with 0', () => {
+    const run = [made(1), made(2), made(3), made(4), made(5)];
+    assert.deepEqual(selfMade(run), ['SELF-MADE T4: alpha added 5 tasks for itself in 24 h, more than 3; this is the first still active past 3']);
+    assert.deepEqual(selfMade(run.slice(0, 3)), [], 'at the count');
+    assert.deepEqual(selfMade(run, withMax(0)), []);
+    assert.deepEqual(selfMade(run, CONFIG), [], 'the default allows 10');
+  });
+
+  it("counts only an owner's own tasks asked by no one else, created in the 24 h before now", () => {
+    const others = [
+      made(4, { source: 'lead' }),
+      made(5, { createdBy: 'lead', source: 'lead' }),
+      made(6, { source: 'owner' }),
+      made(7, { owner: 'bravo' }),
+      made(8, { createdAt: '2030-01-09T12:00:00.000Z' }),
+      made(9, { createdAt: '2030-01-10T13:00:00.000Z' }),
+    ];
+    const run = [made(1), made(2), made(3), ...others];
+    assert.deepEqual(selfMade(run), []);
+    assert.deepEqual(selfMade([...run, made(10, { createdAt: '2030-01-09T12:01:00.000Z' })]), [
+      'SELF-MADE T10: alpha added 4 tasks for itself in 24 h, more than 3; this is the first still active past 3',
+    ]);
+    const bravo = [1, 2, 3, 4].map((n) => made(n + 10, { owner: 'bravo', source: 'bravo', createdBy: 'bravo' }));
+    assert.deepEqual(selfMade([...run, ...bravo]), ['SELF-MADE T14: bravo added 4 tasks for itself in 24 h, more than 3; this is the first still active past 3']);
+  });
+
+  it('counts finished tasks of the run, raises the flag on the first one past the count still active, and none once all are finished', () => {
+    const run = [made(1, { status: 'done' }), made(2), made(3), made(4, { status: 'done' }), made(5, { status: 'dropped' }), made(6, { status: 'in-progress', goals: ['G1'] })];
+    assert.deepEqual(selfMade(run), ['SELF-MADE T6: alpha added 6 tasks for itself in 24 h, more than 3; this is the first still active past 3']);
+    assert.deepEqual(selfMade(run.slice(0, 5)), [], 'the surplus is finished');
   });
 });
