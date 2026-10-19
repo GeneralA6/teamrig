@@ -56,7 +56,7 @@ export class FaultyFiles implements Files {
     return this.inner.list(dir);
   }
 
-  async remove(path: string): Promise<void> {
+  async remove(path: string): Promise<boolean> {
     this.check('remove', path);
     return this.inner.remove(path);
   }
