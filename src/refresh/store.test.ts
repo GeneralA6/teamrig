@@ -55,6 +55,22 @@ describe('RefreshStore', () => {
     assert.equal(await store.restart('alpha'), undefined);
   });
 
+  it('keeps the jobs a /clear left live in a file of its own, reads a damaged one as none, and clears it', async () => {
+    const files = new MemoryFiles();
+    const store = new RefreshStore(files, PATHS);
+    const jobs = { transcript: join('/', 'projects', 'app', 'second.jsonl'), crons: [{ id: 'c1', cron: '3 13 * * *', prompt: 'budget check', recurring: true, createdAt: Date.parse(AT) }] };
+    assert.equal(await store.carried('alpha'), undefined);
+    await store.setCarried('alpha', jobs);
+    assert.deepEqual(await store.carried('alpha'), jobs);
+    assert.equal(files.paths().length, 1);
+    assert.match(files.get(join(PATHS.refresh, 'alpha.carried.json')) ?? '', /"c1"/);
+    await files.write(join(PATHS.refresh, 'bravo.carried.json'), '{not json');
+    assert.equal(await store.carried('bravo'), undefined);
+    await store.clearCarried('alpha');
+    await store.clearCarried('alpha');
+    assert.equal(await store.carried('alpha'), undefined);
+  });
+
   it('reads the handover from the handover folder', async () => {
     const files = new MemoryFiles();
     const store = new RefreshStore(files, PATHS);
