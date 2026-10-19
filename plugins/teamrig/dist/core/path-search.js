@@ -1,12 +1,16 @@
 import { posix, win32 } from 'node:path';
 /** The extensions Node.js appends to a bare program name on Windows, in order: `.com`, then `.exe`. */
 const WINDOWS_PROGRAM_EXTENSIONS = ['.com', '.exe'];
+/** The name a variable has in `env`, given in upper case; Windows names ignore case (`Path` for `PATH`). Undefined when it is not set. */
+export function envKey(env, name, platform) {
+    if (platform !== 'win32') {
+        return Object.hasOwn(env, name) ? name : undefined;
+    }
+    return Object.keys(env).find((candidate) => candidate.toUpperCase() === name);
+}
 /** A variable by name; Windows names ignore case (`Path`, `PATH`). */
 export function envVariable(env, name, platform) {
-    if (platform !== 'win32') {
-        return env[name];
-    }
-    const key = Object.keys(env).find((candidate) => candidate.toUpperCase() === name);
+    const key = envKey(env, name, platform);
     return key === undefined ? undefined : env[key];
 }
 /** A PATH-like list split on `delimiter`, each part trimmed and unquoted, empty parts left out. */
