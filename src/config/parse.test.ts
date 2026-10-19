@@ -311,6 +311,20 @@ describe('parseConfig', () => {
     });
   });
 
+  it('reads the dependency check a gated repository runs, and reports one that never runs or is no program', () => {
+    const check = ['node', 'tools/check-change.ts'];
+    const repos = {
+      gated: { mainCheckout: 'repos/gated', dependencyGate: true, dependencyCheck: check },
+      open: { mainCheckout: 'repos/open', dependencyCheck: check },
+      bad: { mainCheckout: 'repos/bad', dependencyGate: true, dependencyCheck: 'node check.ts' },
+    };
+    const { config, issues } = parseConfig({ ...ROSTER, coordinator: { repos } });
+    assert.deepEqual(paths(issues).sort(), ['coordinator.repos.bad.dependencyCheck', 'coordinator.repos.open.dependencyCheck']);
+    assert.match(issues.find((issue) => issue.path === 'coordinator.repos.open.dependencyCheck')?.message ?? '', /runs only with dependencyGate true/);
+    assert.deepEqual(config.coordinator.repos['gated'], { mainCheckout: 'repos/gated', deploysOnPush: [], dependencyGate: true, dependencyCheck: check, followMainCheckout: false });
+    assert.equal(config.coordinator.repos['bad']?.dependencyCheck, undefined);
+  });
+
   it('reads a repository’s roll, its gates and afterPull hooks from their defaults', () => {
     const roll = { targets: ['cloud-api'], gates: [{ name: 'flow', command: ['node', 'gates/flow.js', '--quiet'] }], command: ['node', 'roll.js'] };
     const { config, issues } = parseConfig({ ...ROSTER, coordinator: { repos: { api: { mainCheckout: 'C:/src/api', roll }, web: { mainCheckout: 'C:/src/web', roll: { command: ['npm', 'run', 'deploy'] } } } } });
