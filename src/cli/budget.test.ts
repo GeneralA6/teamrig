@@ -198,7 +198,7 @@ describe('teamrig budget lift', () => {
   it("lifts a session to a part of the team's daily budget for today, logged and shown by budget", async () => {
     const { kit, run } = await world();
     assert.deepEqual(ok(await run([...LIFT, '--session', 'lead'])), [
-      "LIFTED app-alpha to 50.0% of the team's daily budget today until the end of the day (UTC) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.",
+      "LIFTED app-alpha to 50.0% of the team's daily budget today until 00:00 UTC (the end of the budget day) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.",
     ]);
     assert.equal((kit.files.get(join(TEAM_HOME, 'state', 'usage', 'lifts.jsonl')) ?? '').split('\n').filter((line) => line !== '').length, 1);
     const lines = ok(await run(['budget']));
@@ -207,7 +207,7 @@ describe('teamrig budget lift', () => {
     assert.equal(lines[3], 'app-bravo used 0.50% of the week today; its daily budget is 3.1%. 5.00M W in 1 call.');
     assert.equal(
       lines[4],
-      "Budget: the lead lifted app-alpha to 50.0% of the team's daily budget today until the end of the day (UTC) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.",
+      "Budget: the lead lifted app-alpha to 50.0% of the team's daily budget today until 00:00 UTC (the end of the budget day) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.",
     );
     assert.deepEqual(ok(await run([...LIFT, '--until', '18:00', '--session', 'lead'])), [
       "LIFTED app-alpha to 50.0% of the team's daily budget today until 18:00 UTC or 97.0% of the week, whichever comes first; quiet hours do not apply to it.",
@@ -231,6 +231,20 @@ describe('teamrig budget lift', () => {
     // alpha's p1 task weighs 5, lead and bravo with none 1 each: 12.4% × 5/7 and × 1/7.
     assert.equal(lines[2], 'app-alpha used 2.0% of the week today; its daily budget is 8.9%. 20.00M W in 2 calls.');
     assert.equal(lines[3], 'app-bravo used 0.50% of the week today; its daily budget is 1.8%. 5.00M W in 1 call.');
+  });
+
+  it("reads --until on the team's clock, and prints the lift's end and the week on it", async () => {
+    const { run } = await world();
+    const JERUSALEM = { timeZone: 'Asia/Jerusalem' };
+    assert.deepEqual(ok(await run([...LIFT, '--until', '14:00', '--session', 'lead'], JERUSALEM)), [
+      "LIFTED app-alpha to 50.0% of the team's daily budget today until 14:00 IST or 97.0% of the week, whichever comes first; quiet hours do not apply to it.",
+    ]);
+    const lines = ok(await run(['budget'], JERUSALEM));
+    assert.match(lines[0] ?? '', / Resets \w{3} \d{2}-\d{2} \d{2}:\d{2} IST\.$/);
+    assert.match(lines[4] ?? '', /lifted app-alpha to 50\.0% of the team's daily budget today until 14:00 IST or /);
+    const passed = await run([...LIFT, '--until', '11:00', '--session', 'lead'], JERUSALEM);
+    assert.equal(passed.code, EXIT.refused);
+    assert.match(passed.stdout.join('\n'), /--until 2030-01-08 11:00 IST has passed/);
   });
 
   it('is the lead only', async () => {

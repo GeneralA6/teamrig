@@ -154,6 +154,11 @@ export class TimeZone {
     return WEEKDAYS[new Date(Date.UTC(wall.year, wall.month - 1, wall.day)).getUTCDay()] ?? '';
   }
 
+  /** `Tue 10-20 01:30 IDT`, for an instant days away. */
+  weekdayMinute(date: Date): string {
+    return `${this.weekday(date)} ${this.shortMinute(date)}`;
+  }
+
   private sameMinute(a: WallTime, b: WallTime): boolean {
     return a.year === b.year && a.month === b.month && a.day === b.day && a.hour === b.hour && a.minute === b.minute;
   }

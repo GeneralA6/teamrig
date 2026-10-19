@@ -1,6 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_BURST } from '../config/defaults.ts';
+import { TimeZone } from '../core/zone.ts';
+import { JERUSALEM } from '../testing/zone.ts';
 import type { Burst } from './burst.ts';
 import { burstPromptLines, burstStopLines, burstText, surplusHintOf, type BurstFacts, type BurstMarks, type SurplusHint } from './burst-lines.ts';
 import { weekWindow } from './pace.ts';
@@ -37,28 +39,32 @@ const HINT: SurplusHint = { sparePct: 34, paceEnd: PACE_END, reset: RESET, owner
 const NONE: BurstMarks = { burstAt: undefined, modelBurstAt: undefined, surplusShown: undefined };
 
 function facts(extra: Partial<BurstFacts> = {}): BurstFacts {
-  return { name: 'alpha', budgetPct: 2, burst: undefined, surplus: undefined, ...extra };
+  return { name: 'alpha', budgetPct: 2, burst: undefined, surplus: undefined, zone: TimeZone.UTC, ...extra };
 }
 
 describe('burstText', () => {
   it("names the kind, its tasks and deadline, its end, the session's budget and the caps", () => {
     assert.equal(
-      burstText(SURPLUS_BURST, ['alpha']),
+      burstText(SURPLUS_BURST, ['alpha'], TimeZone.UTC),
       "a surplus burst until Wed 01-09 00:00 UTC or 99.5% of the week: alpha's daily budget is at least 19.8%, up to 3 helpers at once.",
     );
     assert.equal(
-      burstText(DEADLINE_BURST, ['alpha']),
+      burstText(DEADLINE_BURST, ['alpha'], TimeZone.UTC),
       "a deadline burst for T1, T2 (due Tue 01-08 20:00 UTC) until Tue 01-08 20:00 UTC or 80.0% of the week: alpha's daily budget is at least 19.8%, up to 1 helper at once, 1 hire for the team.",
     );
     const { deadline: _deadline, ...undated } = DEADLINE_BURST;
-    assert.match(burstText({ ...undated, hires: 2 }, ['alpha']), /^a deadline burst for T1, T2 until .*, 2 hires for the team\.$/);
+    assert.match(burstText({ ...undated, hires: 2 }, ['alpha'], TimeZone.UTC), /^a deadline burst for T1, T2 until .*, 2 hires for the team\.$/);
+  });
+
+  it("prints its deadline and end on the team's clock", () => {
+    assert.match(burstText(DEADLINE_BURST, ['alpha'], JERUSALEM), /^a deadline burst for T1, T2 \(due Tue 01-08 22:00 IST\) until Tue 01-08 22:00 IST or 80\.0% of the week: /);
   });
 });
 
 describe('burstStopLines', () => {
   it("shows the person a burst's start once and its end once", () => {
     const start = burstStopLines(facts({ burst: SURPLUS_BURST }), NONE);
-    assert.deepEqual(start.lines, [`Budget: the lead started ${burstText(SURPLUS_BURST, ['alpha'])} More: teamrig burst`]);
+    assert.deepEqual(start.lines, [`Budget: the lead started ${burstText(SURPLUS_BURST, ['alpha'], TimeZone.UTC)} More: teamrig burst`]);
     assert.equal(start.burstAt, NOW);
     const again = burstStopLines(facts({ burst: SURPLUS_BURST }), { ...NONE, burstAt: NOW });
     assert.deepEqual(again, { lines: [], burstAt: NOW });
@@ -88,6 +94,11 @@ describe('burstPromptLines', () => {
     const [line] = burstPromptLines(facts({ burst: DEADLINE_BURST }), NONE).lines;
     assert.match(line ?? '', /Work its tasks first: T1, T2\. Run up to 1 helper at once/);
     assert.match(line ?? '', /The lead may hire up to 1 session for it \(teamrig hire --burst\)\./);
+  });
+
+  it("tells the model the burst's end and the pace end on the team's clock", () => {
+    assert.match(burstPromptLines(facts({ burst: SURPLUS_BURST, zone: JERUSALEM }), NONE).lines[0] ?? '', /^teamrig burst: a surplus burst runs until Wed 01-09 02:00 IST or 99\.5% of the week\. /);
+    assert.match(burstPromptLines(facts({ surplus: HINT, zone: JERUSALEM }), NONE).lines[0] ?? '', /unused at the pace end \(Wed 01-09 02:00 IST\)\. /);
   });
 
   it('tells the model once that the burst ended: wind down, its hires are due to retire', () => {

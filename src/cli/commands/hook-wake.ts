@@ -221,7 +221,7 @@ export async function wakeCheck(args: ParsedArgs, runtime: CliRuntime): Promise<
   }
   const moments = verdict.moments.map((moment) => moment.kind);
   await logWake(runtime.files, kit.paths.wakeLog, { kind: 'wake', at: now, session: id, tab, ids, cost, moments });
-  const text = dayStartPrompt(id, scope.roster.nameOf(id) ?? id, verdict.moments, verdict.tasks, cost);
+  const text = dayStartPrompt(id, scope.roster.nameOf(id) ?? id, verdict.moments, verdict.tasks, cost, teamZone(config, runtime));
   return answer(runtime, { kind: 'wake', ids, text, toast: dayStartToast(verdict.moments, verdict.tasks, cost) });
 }
 

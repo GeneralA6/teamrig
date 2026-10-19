@@ -2,6 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_BUDGET } from '../config/defaults.ts';
 import { NewerDataError } from '../core/jsonl.ts';
+import { TimeZone } from '../core/zone.ts';
+import { JERUSALEM } from '../testing/zone.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { activeLift, decideLift, LIFT_FORMAT, LiftLog, liftText, parseLift, type Lift, type LiftContext, type LiftDecision, type LiftRequest } from './lift.ts';
 
@@ -12,7 +14,7 @@ const DAY_END = Date.parse('2030-01-09T00:00:00Z');
 const MINUTE = 60_000;
 
 const REQUEST: LiftRequest = { session: 'alpha', partPct: 40, stopPct: 97, until: undefined, reserve: false, reason: 'release week', by: 'lead', now: NOW };
-const CONTEXT: LiftContext = { usedPct: 57, reset: RESET, limits: DEFAULT_BUDGET.lift, liftedPct: 0 };
+const CONTEXT: LiftContext = { usedPct: 57, reset: RESET, limits: DEFAULT_BUDGET.lift, liftedPct: 0, zone: TimeZone.UTC };
 
 function refusal(decision: LiftDecision): string {
   assert.equal(decision.kind, 'refused');
@@ -59,6 +61,7 @@ describe('decideLift', () => {
 
   it('refuses a passed --until, an unknown week and a week already at the stop %', () => {
     assert.match(refusal(decideLift({ ...REQUEST, until: NOW }, CONTEXT)), /--until 2030-01-08 10:00 UTC has passed/);
+    assert.match(refusal(decideLift({ ...REQUEST, until: NOW }, { ...CONTEXT, zone: JERUSALEM })), /--until 2030-01-08 12:00 IST has passed/);
     assert.match(refusal(decideLift(REQUEST, { ...CONTEXT, usedPct: undefined })), /use is unknown/);
     assert.match(refusal(decideLift(REQUEST, { ...CONTEXT, usedPct: 97 })), /already at or past --stop-pct 97/);
   });
@@ -92,13 +95,17 @@ describe('activeLift', () => {
 describe('liftText', () => {
   it('says what the lift gives and when it ends', () => {
     assert.equal(
-      liftText(lift(), 'alpha'),
-      "alpha to 40.0% of the team's daily budget today until the end of the day (UTC) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.",
+      liftText(lift(), 'alpha', TimeZone.UTC),
+      "alpha to 40.0% of the team's daily budget today until 00:00 UTC (the end of the budget day) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.",
     );
     assert.equal(
-      liftText(lift({ partPct: 100, reserve: true, endsAt: RESET - 15 * MINUTE, stopPct: 99.9 }), 'alpha'),
+      liftText(lift({ partPct: 100, reserve: true, endsAt: RESET - 15 * MINUTE, stopPct: 99.9 }), 'alpha', TimeZone.UTC),
       "alpha to 100.0% of the team's daily budget today from the reserve until 00:45 UTC or 99.9% of the week, whichever comes first; quiet hours do not apply to it.",
     );
+  });
+
+  it("says when it ends on the team's clock", () => {
+    assert.match(liftText(lift(), 'alpha', JERUSALEM), /^alpha to 40\.0% of the team's daily budget today until 02:00 IST \(the end of the budget day\) or 97\.0% of the week, /);
   });
 });
 

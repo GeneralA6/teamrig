@@ -1,4 +1,5 @@
 import { MS_PER_DAY } from '../core/time.ts';
+import type { TimeZone } from '../core/zone.ts';
 
 /** How `teamrig budget` writes its numbers: short, and the same everywhere. */
 
@@ -23,14 +24,21 @@ export function formatCount(value: number): string {
   return Math.round(value).toLocaleString('en-US');
 }
 
-/** An instant as `HH:MM UTC`. */
-export function formatTimeOfDay(at: number): string {
-  return `${new Date(at).toISOString().slice(11, 16)} UTC`;
+/**
+ * When something ends, on the team's clock: `18:00 IDT`, and at a UTC midnight `03:00 IDT (the end of the budget
+ * day)`: budget days are UTC days, so the day a lift lasts ends there.
+ */
+export function formatEndTime(at: number, zone: TimeZone): string {
+  const clock = zone.clock(new Date(at));
+  return at % MS_PER_DAY === 0 ? `${clock} (the end of the budget day)` : clock;
 }
 
-/** When something ends: `HH:MM UTC`, or `the end of the day (UTC)` at midnight. */
-export function formatEndTime(at: number): string {
-  return at % MS_PER_DAY === 0 ? 'the end of the day (UTC)' : formatTimeOfDay(at);
+/** A stretch of the day on the team's clock: `01:00-09:00 IDT`, or `01:00 IDT-08:00 IST` across a change of clocks. */
+export function formatClockSpan(from: number, to: number, zone: TimeZone): string {
+  const start = zone.clock(new Date(from));
+  const end = zone.clock(new Date(to));
+  const label = zone.label(new Date(from));
+  return label === zone.label(new Date(to)) ? `${start.slice(0, -label.length - 1)}-${end}` : `${start}-${end}`;
 }
 
 const WEEKDAY_NAMES: readonly string[] = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];

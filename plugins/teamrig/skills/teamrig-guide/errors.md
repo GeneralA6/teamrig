@@ -132,7 +132,7 @@ From `teamrig budget lift` ([commands.md](commands.md#teamrig-budget-lift)) and 
 | `REFUSED --reserve needs the week's reset: no status line snapshot gives it and budget.reset is not set` | Run `teamrig statusline install`, or set `budget.reset`. |
 | `REFUSED the week's use is unknown, so the stop % cannot be judged: ...` | Run `teamrig statusline install` ([requirements.md](requirements.md#the-status-line-optional)), or set `budget.weeklyLimitW`. |
 | `REFUSED the week is at 97.2%, already at or past --stop-pct 97` | The week is past that stop %: pick a higher one within the bounds, or no lift. |
-| `REFUSED --until <time> UTC has passed` | Give a later `--until`. |
+| `REFUSED --until <time> has passed` | Give a later `--until`. |
 
 ## Bursts
 
