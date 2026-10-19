@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { commandHeader, endLine, KEPT_LOGS, logText, pruneLogs, reserveLog } from './logs.ts';
+import { commandHeader, endLine, KEPT_LOGS, logBody, pruneLogs, reserveLog } from './logs.ts';
 
 const DIR = '/kit/teams/app/state/logs';
 
@@ -78,11 +78,11 @@ describe('pruneLogs', () => {
   });
 });
 
-describe('logText', () => {
-  it('holds the command line, what it printed and how it ended', () => {
-    assert.equal(logText('npm test', 'ok 1\nnot ok 2', { kind: 'exited', code: 1 }), '$ npm test\nok 1\nnot ok 2\nexit 1\n');
-    assert.equal(logText('npm test', 'done\n', { kind: 'exited', code: 0 }), '$ npm test\ndone\nexit 0\n');
-    assert.equal(logText('npm test', '', { kind: 'signal', signal: 'SIGTERM' }), '$ npm test\nended by SIGTERM\n');
+describe('logBody', () => {
+  it('holds what the command printed and how it ended, for the line after the command', () => {
+    assert.equal(logBody('ok 1\nnot ok 2', { kind: 'exited', code: 1 }), 'ok 1\nnot ok 2\nexit 1\n');
+    assert.equal(logBody('done\n', { kind: 'exited', code: 0 }), 'done\nexit 0\n');
+    assert.equal(logBody('', { kind: 'signal', signal: 'SIGTERM' }), 'ended by SIGTERM\n');
   });
 
   it('says how a command ended in one line', () => {

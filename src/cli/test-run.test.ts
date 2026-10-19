@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { APP, CliHarness, KIT, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { FakeShell } from '../testing/fake-shell.ts';
+import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { NODE_SPEC_FAILED } from '../testing/test-output.ts';
 
 const LOGS = join(TEAM_HOME, 'state', 'logs');
@@ -113,6 +114,15 @@ describe('teamrig test', () => {
     const kit = new CliHarness('{ not json');
     const result = await kit.run(['test', '--session', 'alpha', '--', 'npm test'], { shell: new FakeShell() });
     assert.equal(result.stdout[0], `PASS npm test in 0.0 s. Log: ${join(LOGS, 'test-alpha-1.log')}`);
+  });
+
+  it('adds to its log and never writes over it, which Windows refuses while a scan or reader holds the new file', async () => {
+    const { kit, shell } = harness();
+    const log = join(LOGS, 'test-alpha-1.log');
+    const held = new FaultyFiles(kit.files).fail('write', log, systemError('EPERM', 'EPERM: operation not permitted, rename'));
+    const result = await kit.run(['test', '--session', 'alpha', '--', 'npm', 'test'], { shell: shell.prints(PASSED, 0, 41_000), files: held });
+    assert.deepEqual(result, { code: 0, stdout: [`PASS npm test: 1,532 tests in 41 s. Log: ${log}`], stderr: [] });
+    assert.equal(kit.files.get(log), `$ npm test\n${PASSED}exit 0\n`);
   });
 
   it('fails with the reason when the command cannot start, and the log says why', async () => {
