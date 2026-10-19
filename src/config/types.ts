@@ -24,6 +24,11 @@ export interface RegisterCheckConfig {
   readonly notPickedUpAfterHours: number;
   /** A session's in-progress task below its own open top-priority task this long is a PRIORITY-SKIP. */
   readonly prioritySkipAfterHours: number;
+  /**
+   * A session that added more tasks for itself (created by it, asked by no one else) in the last 24 h than this is a
+   * SELF-MADE; 0 turns the flag off.
+   */
+  readonly maxSelfMadePerDay: number;
   readonly weekLengthDays: number;
   /**
    * The files `check` scans for `stopgap T<id>` tags besides every skill: paths relative to the team's project

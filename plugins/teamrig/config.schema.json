@@ -203,6 +203,13 @@
             "staleAfterHours": { "type": "integer", "minimum": 1, "default": 72 },
             "notPickedUpAfterHours": { "type": "integer", "minimum": 1, "default": 24 },
             "prioritySkipAfterHours": { "type": "integer", "minimum": 1, "default": 24 },
+            "maxSelfMadePerDay": {
+              "description": "A session that added more tasks for itself (created by it, asked by no one else) in the last 24 hours than this is a SELF-MADE in teamrig check; 0 turns the flag off.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 200,
+              "default": 10
+            },
             "weekLengthDays": { "type": "integer", "minimum": 1, "maximum": 31, "default": 7 },
             "stopgapFiles": {
               "type": "array",
