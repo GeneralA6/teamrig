@@ -17,8 +17,9 @@ export const DAYS_KEPT = 8;
 export const CURSOR_DAYS_KEPT = 2;
 /** How many recent call keys a usage file keeps to skip a call logged twice. */
 export const RECENT_KEYS_KEPT = 200;
-export const EMPTY_USAGE = { byDay: {}, cursors: {}, recentKeys: [] };
+export const EMPTY_USAGE = { byDay: {}, byHour: {}, cursors: {}, recentKeys: [] };
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const HOUR = /^\d{4}-\d{2}-\d{2}T\d{2}$/;
 function finiteNonNegative(value) {
     return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
@@ -38,15 +39,18 @@ function openCallFrom(value) {
         return undefined;
     }
     const { key, day, output, context, w } = value;
+    // A call stored before hours were counted has no hour.
+    const hour = value['hour'] ?? null;
     if (!(key === null || typeof key === 'string') ||
         typeof day !== 'string' ||
         !DAY.test(day) ||
+        !(hour === null || (typeof hour === 'string' && HOUR.test(hour) && hour.startsWith(day))) ||
         !isNonNegativeInteger(output) ||
         !isNonNegativeInteger(context) ||
         !finiteNonNegative(w)) {
         return undefined;
     }
-    return { key, day, output, context, w };
+    return { key, day, hour, output, context, w };
 }
 function cursorFrom(value) {
     if (!isRecord(value)) {
@@ -104,25 +108,31 @@ export function parseUsage(text) {
         return undefined;
     }
     const byDay = mapFrom(record['byDay'], (key) => DAY.test(key), dayUsageFrom);
+    const rawHours = record['byHour'];
+    // A file from before hours were counted has none.
+    const byHour = rawHours === undefined ? {} : mapFrom(rawHours, (key) => HOUR.test(key), (w) => (finiteNonNegative(w) ? w : undefined));
     const cursors = mapFrom(record['cursors'], (key) => key !== '', cursorFrom);
     const recentKeys = record['recentKeys'];
-    if (byDay === undefined || cursors === undefined || !isStringArray(recentKeys)) {
+    if (byDay === undefined || byHour === undefined || cursors === undefined || !isStringArray(recentKeys)) {
         return undefined;
     }
-    return { byDay, cursors, recentKeys };
+    return { byDay, byHour, cursors, recentKeys };
 }
 export function formatUsage(state, rev) {
-    return `${JSON.stringify({ [VERSION_FIELD]: USAGE_FORMAT, rev, byDay: state.byDay, cursors: state.cursors, recentKeys: state.recentKeys })}\n`;
+    const { byDay, byHour, cursors, recentKeys } = state;
+    return `${JSON.stringify({ [VERSION_FIELD]: USAGE_FORMAT, rev, byDay, byHour, cursors, recentKeys })}\n`;
 }
 /**
- * Drops what a usage file no longer needs at `now`: days older than the kept window, transcript
- * positions that have not moved since before yesterday, and all but the latest call keys.
+ * Drops what a usage file no longer needs at `now`: days and their hours older than the kept window,
+ * transcript positions that have not moved since before yesterday, and all but the latest call keys.
  */
 export function pruneUsage(state, now) {
     const oldestDay = formatUtcDay(new Date(now - (DAYS_KEPT - 1) * MS_PER_DAY));
     const oldestCursor = formatUtcDay(new Date(now - (CURSOR_DAYS_KEPT - 1) * MS_PER_DAY));
     return {
         byDay: Object.fromEntries(Object.entries(state.byDay).filter(([day]) => day >= oldestDay)),
+        // An hour key starts with its day, and a longer key sorts after its prefix.
+        byHour: Object.fromEntries(Object.entries(state.byHour).filter(([hour]) => hour >= oldestDay)),
         cursors: Object.fromEntries(Object.entries(state.cursors).filter(([, cursor]) => cursor.day >= oldestCursor)),
         recentKeys: state.recentKeys.slice(-RECENT_KEYS_KEPT),
     };

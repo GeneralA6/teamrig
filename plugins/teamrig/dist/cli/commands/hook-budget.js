@@ -1,6 +1,5 @@
 import { basename, dirname, join } from 'node:path';
 import { SecretScanner } from "../../core/secrets.js";
-import { formatUtcDay } from "../../core/time.js";
 import { activeBurst, withBurst } from "../../budget/burst.js";
 import { surplusHintOf } from "../../budget/burst-lines.js";
 import { BurstLog } from "../../budget/burst-log.js";
@@ -12,7 +11,7 @@ import { readSnapshots, weekUseOf } from "../../budget/snapshot.js";
 import { UsageStore } from "../../budget/store.js";
 import { helperGate, promptWarning, stopWarning } from "../../budget/warn.js";
 import { WarnStore } from "../../budget/warn-store.js";
-import { readWeek } from "../../budget/week.js";
+import { readWeek, wSince } from "../../budget/week.js";
 import { readWork } from "../../budget/work.js";
 import { postLine } from "../../inbox/inbox.js";
 import { holdBack } from "../../hooks/permission.js";
@@ -76,7 +75,8 @@ export async function budgetFactsOf(runtime, scope, transcript) {
     if (budgetPct === undefined) {
         return undefined;
     }
-    const todayW = byId.get(id)?.byDay[formatUtcDay(new Date(now))]?.w ?? 0;
+    const own = byId.get(id);
+    const todayW = own === undefined ? 0 : wSince([own], week.todayFrom, now);
     const isLead = id === config.roles.lead;
     const surplus = isLead && inForce === undefined ? surplusHintOf({ config: config.burst, window: week.window, now, usedPct: week.usedPct, targetPct: budget.targetPct }) : undefined;
     return {
