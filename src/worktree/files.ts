@@ -1,4 +1,4 @@
-import { lstat, readdir, readlink, unlink } from 'node:fs/promises';
+import { lstat, readdir, readlink, symlink, unlink } from 'node:fs/promises';
 import { realpathSync, type Dirent } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { errorCode } from '../core/guards.ts';
@@ -26,6 +26,8 @@ export interface WorktreeFiles {
   entryCount(path: string): Promise<number | undefined>;
   /** Removes the link at `path` itself; a real folder is refused by the system, never emptied. */
   unlinkLink(path: string): Promise<void>;
+  /** Makes `path` a link to the folder `target`, as `unlinkLink` found it; refused when something is at `path` or its folder is gone. */
+  makeLink(path: string, target: string): Promise<void>;
   /** The one spelling of an existing path (its case, separators and links resolved), to compare two spellings; undefined when nothing is there. */
   canonical(path: string): Promise<string | undefined>;
 }
@@ -85,6 +87,10 @@ export const NODE_WORKTREE_FILES: WorktreeFiles = {
   async unlinkLink(path) {
     // unlink, never rm or rmdir: it removes a symlink or a junction itself and fails on a real folder.
     await unlink(path);
+  },
+  async makeLink(path, target) {
+    // A junction on Windows, which needs no privilege; elsewhere Node ignores the type and makes a symlink.
+    await symlink(target, path, 'junction');
   },
   async canonical(path) {
     try {
