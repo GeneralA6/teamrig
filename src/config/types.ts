@@ -750,8 +750,17 @@ export function isTerminalChoice(value: unknown): value is TerminalChoice {
   return TERMINALS.some((terminal) => terminal === value);
 }
 
+/** The room `teamrig open` and `teamrig hire --yes` need on the host before they add a session (src/sessions/headroom.ts). */
+export interface HeadroomConfig {
+  /** The MB a new session is counted to need while no session runs to measure; else the median running session's tree. */
+  readonly sessionMb: number;
+  /** The most of the host's commit limit, in %, its commit charge may reach with the new session counted. */
+  readonly commitMaxPct: number;
+}
+
 export interface OpenConfig {
   readonly terminal: TerminalChoice;
+  readonly headroom: HeadroomConfig;
 }
 
 /** What `teamrig statusline` shows beside the model and the plan's use of the week. */

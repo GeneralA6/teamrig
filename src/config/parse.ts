@@ -23,6 +23,7 @@ import {
   DEFAULT_TURN_LOG,
   DEFAULT_LOOPS,
   DEFAULT_MESSAGES,
+  DEFAULT_HEADROOM,
   DEFAULT_OPEN,
   DEFAULT_OWNER_GATES,
   DEFAULT_COMMIT_GUARD,
@@ -94,6 +95,7 @@ import {
   type LeadBoundaryConfig,
   type KitConfig,
   type LaunchConfig,
+  type HeadroomConfig,
   type OpenConfig,
   type PathsConfig,
   type PushToProtected,
@@ -884,7 +886,16 @@ function parseOpen(read: ConfigReader, raw: JsonRecord): OpenConfig {
   const terminal = read.string(raw, 'terminal', 'open', DEFAULT_OPEN.terminal, (value) =>
     isTerminalChoice(value) ? undefined : `expected one of ${TERMINALS.join(', ')}`,
   );
-  return { terminal: isTerminalChoice(terminal) ? terminal : DEFAULT_OPEN.terminal };
+  return { terminal: isTerminalChoice(terminal) ? terminal : DEFAULT_OPEN.terminal, headroom: parseHeadroom(read, read.section(raw, 'headroom', 'open')) };
+}
+
+/** `open.headroom`: the room a new session needs on the host. */
+function parseHeadroom(read: ConfigReader, raw: JsonRecord): HeadroomConfig {
+  const path = 'open.headroom';
+  return {
+    sessionMb: read.integer(raw, 'sessionMb', path, DEFAULT_HEADROOM.sessionMb, CONFIG_LIMITS.headroomSessionMb),
+    commitMaxPct: read.integer(raw, 'commitMaxPct', path, DEFAULT_HEADROOM.commitMaxPct, CONFIG_LIMITS.headroomCommitMaxPct),
+  };
 }
 
 function parseStatusLine(read: ConfigReader, raw: JsonRecord): StatusLineConfig {
