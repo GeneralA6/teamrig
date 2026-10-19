@@ -5,11 +5,16 @@ import { prefixWords } from "../readonly-shell/rules.js";
 /** Why the line ran without a prompt, as Claude Code shows it. */
 export const READONLY_REASON = 'teamrig read-only shell: every command in the line only reads. [readonlyShell]';
 /**
- * The rules a team's config and the hook's environment give the check. The shell a Bash call runs in inherits
- * Claude Code's environment, the hook's too, so a name set there reaches every program the line runs.
+ * The rules a team's config, the hook's environment and the shell snapshot give the check. The shell a Bash call
+ * runs in inherits Claude Code's environment, the hook's too, then sources the snapshot, so a name either exports
+ * reaches every program the line runs.
  */
-export function readonlyRulesOf(config, env) {
-    return { prefixes: config.allowPrefixes.map(prefixWords), exported: new Set(Object.keys(env)) };
+export function readonlyRulesOf(config, env, snapshot) {
+    return {
+        prefixes: config.allowPrefixes.map(prefixWords),
+        exported: new Set([...Object.keys(env), ...snapshot.names]),
+        exportsAll: snapshot.all,
+    };
 }
 /** Whether the call's line only reads, judged in the dialect of the tool that runs it; any other tool never does. */
 function lineReads(tool, command, rules) {
