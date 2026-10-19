@@ -110,6 +110,7 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   leadOwnPaths: 'leadBoundary.ownPaths',
   readonlyShellPrefixes: 'readonlyShell.allowPrefixes',
   searchNudgeAt: 'leadBoundary.searchNudgeAt',
+  turnLogKeepHours: 'turnLog.keepHours',
   wakePriority: 'wake.priority',
   wakeBatchSeconds: 'wake.batchSeconds',
   wakeMinGapMinutes: 'wake.minGapMinutes',

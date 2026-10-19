@@ -906,6 +906,24 @@
         }
       }
     },
+    "turnLog": {
+      "description": "Each session's prompts and replies, kept in state/turn-log/<session>/<UTC hour>.jsonl for the task pane, so a /clear or a compaction never takes away what the person was reading in the tab. Secret shapes are redacted.",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Off: nothing is written.",
+          "type": "boolean",
+          "default": true
+        },
+        "keepHours": {
+          "description": "How long each entry is kept, in hours; whole hours past it are removed at a session start.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 168,
+          "default": 24
+        }
+      }
+    },
     "readonlyShell": {
       "description": "Lets a Bash or PowerShell line run without a permission prompt when every command in it provably only reads: known readers (grep, cat, Get-Content, Select-Object...), git and kubectl reading subcommands, and no write, file redirection, command that runs code, or variable a program reads. It only ever allows: any other line gets Claude Code's own permission check.",
       "type": "object",

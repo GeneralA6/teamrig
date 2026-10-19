@@ -19,6 +19,7 @@ import {
   DEFAULT_HIRING,
   DEFAULT_LOCK,
   DEFAULT_LEAD_BOUNDARY,
+  DEFAULT_TURN_LOG,
   DEFAULT_LOOPS,
   DEFAULT_MESSAGES,
   DEFAULT_OPEN,
@@ -102,6 +103,7 @@ import {
   type StatusLineConfig,
   type PriorityConfig,
   type TeamLink,
+  type TurnLogConfig,
   type WakeConfig,
   type WindowsConfig,
 } from './types.ts';
@@ -305,6 +307,7 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
     },
     tabStatus: { enabled: read.boolean(tabStatus, 'enabled', 'tabStatus', false) },
     pickerGuard: { enabled: read.boolean(pickerGuard, 'enabled', 'pickerGuard', false) },
+    turnLog: parseTurnLog(read, read.section(raw, 'turnLog', '')),
     readonlyShell: parseReadonlyShell(read, read.section(raw, 'readonlyShell', '')),
     refresh: parseRefresh(read, read.section(raw, 'refresh', '')),
     hiring: parseHiring(read, read.section(raw, 'hiring', '')),
@@ -315,6 +318,14 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
     paths: parsePaths(read, read.section(raw, 'paths', '')),
   };
   return { config, issues: read.issues };
+}
+
+/** `turnLog`: kept from an hour to a week. */
+function parseTurnLog(read: ConfigReader, raw: JsonRecord): TurnLogConfig {
+  return {
+    enabled: read.boolean(raw, 'enabled', 'turnLog', DEFAULT_TURN_LOG.enabled),
+    keepHours: read.integer(raw, 'keepHours', 'turnLog', DEFAULT_TURN_LOG.keepHours, CONFIG_LIMITS.turnLogKeepHours),
+  };
 }
 
 /** `leadBoundary`: the lead's own paths are single lines; the search threshold is bounded like the chain nudge. */

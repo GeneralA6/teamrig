@@ -25,6 +25,7 @@ import type {
   SkillsConfig,
   StatusLineConfig,
   TestsConfig,
+  TurnLogConfig,
   WakeConfig,
   WindowsConfig,
 } from './types.ts';
@@ -144,6 +145,8 @@ export const DEFAULT_ALERTS: AlertsConfig = { persistentFailureHours: 24 };
 
 export const DEFAULT_LOOPS: LoopsConfig = { chainNudgeAt: 6 };
 export const DEFAULT_LEAD_BOUNDARY: LeadBoundaryConfig = { enabled: true, ownPaths: [], searchNudgeAt: 3 };
+/** On, for a day: what a tab showed stays readable through a night of refreshes. */
+export const DEFAULT_TURN_LOG: TurnLogConfig = { enabled: true, keepHours: 24 };
 
 /**
  * On, for p1 only. In one team of 12 sessions, others handed a session 3 to 6 p1 tasks a day once its register

@@ -22,6 +22,7 @@ describe('parseConfig', () => {
     assert.equal(config.messages.coldAfterMinutes, 60);
     assert.deepEqual(config.loops, { chainNudgeAt: 6 });
     assert.deepEqual(config.leadBoundary, { enabled: true, ownPaths: [], searchNudgeAt: 3 });
+    assert.deepEqual(config.turnLog, { enabled: true, keepHours: 24 });
     assert.deepEqual(config.tests, { maxFailureChars: 4000 });
     assert.deepEqual(config.github, { repos: [], owners: {}, sessions: {}, closedDays: 14, everyMinutes: 15 });
     assert.deepEqual(config.register, DEFAULT_REGISTER);
@@ -127,6 +128,15 @@ describe('parseConfig', () => {
     const { config, issues } = parseConfig({ ...ROSTER, leadBoundary: { searchNudgeAt: 51 } });
     assert.deepEqual(paths(issues), ['leadBoundary.searchNudgeAt']);
     assert.equal(config.leadBoundary.searchNudgeAt, 3);
+  });
+
+  it('reads turnLog, and refuses keeping entries under an hour or past a week', () => {
+    const off = { enabled: false, keepHours: 168 };
+    assert.deepEqual(parseConfig({ ...ROSTER, turnLog: off }).config.turnLog, off);
+    const { config, issues } = parseConfig({ ...ROSTER, turnLog: { keepHours: 0 } });
+    assert.deepEqual(paths(issues), ['turnLog.keepHours']);
+    assert.equal(config.turnLog.keepHours, 24);
+    assert.deepEqual(paths(parseConfig({ ...ROSTER, turnLog: { keepHours: 169 } }).issues), ['turnLog.keepHours']);
   });
 
   it('reads loops.chainNudgeAt, where 0 turns the nudge off, and refuses a value past 50', () => {
