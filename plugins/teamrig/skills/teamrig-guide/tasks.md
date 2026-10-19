@@ -76,7 +76,9 @@ A shipped change is proven by the session that shipped it, oldest first, before 
   10-14 (proof: ...)` once a day, until the task is `done` or back `in-progress`.
 - A start of a task that needs a verifying task (planned `--after` it, or waiting on it with `--waits task:`) is
   refused while that task is verifying [register.verifyGate]; `warn` lets the start through with a warning.
-  Either way the verifying task's owner gets one inbox line a day about it, unless it is the one starting.
+  Either way the verifying task's owner gets one inbox line a day about it, unless it is the one starting. Once the
+  proof exists, `--met "<what shows it>"` lets the start through, and the owner's line asks it to set the task
+  `done` or reopen it.
 - `check` flags a verifying task that work needs (`VERIFY-BLOCKS`), one past its date (`VERIFY-OVERDUE`) and a
   session holding more than 5 of them (`PILE-UP` [register.maxVerifying], 0 turns it off).
 

@@ -80,6 +80,9 @@ Flags:
   again keeps the proof the task has.
 - `--due <date>`: allowed only with `verifying`, the date to verify by, written as the task's due date; or with
   `--ask`, the asked task's due date.
+- `--met "<what shows it>"`: allowed only when setting `in-progress`: starts a task that a verifying task it needs
+  still holds, naming what shows that task's proof exists. The start's line keeps it as `met`, apart from the
+  evidence, and the verifying task's owner gets an inbox line to set it done or reopen it.
 - `--evidence <proof>`: required for `done`: a commit, test count, path or number that proves it. Evidence
   already on the task counts.
 - `--skill <name>|none`: required for `done`, and allowed only with `done`: the skill you wrote or updated, or
@@ -164,10 +167,20 @@ a day about it:
 
 ```text
 NOTE api has an inbox line: T2 waits on your verifying T1: the signup smoke test passes on staging
-REFUSED T2 needs T1, still verifying (proof: the signup smoke test passes on staging, owner api); start T2 once T1 is done
+REFUSED T2 needs T1, still verifying (proof: the signup smoke test passes on staging, owner api); start T2 once T1 is done, or with --met "<what shows the proof exists>"
 ```
 
-With `register.verifyGate` set to `warn`, the start goes through and a `WARN` line names the same tasks.
+Once the proof exists but its owner has not set T1 `done` yet, start T2 with `--met "<what shows it>"`: the start
+goes through, `show T2` keeps what met it on the start's line (`met="..."`, apart from T2's evidence), and T1's owner
+gets an inbox line to confirm it or reopen T1:
+
+```text
+$ teamrig set T2 --status in-progress --met "the staging smoke test passed at 09:12"
+NOTE api has an inbox line: T2 started on your verifying T1, its proof met: the staging smoke test passed at 09:12; set T1 done if that holds, else reopen it
+SET T2 in-progress, p2, owner web, from lead | Build the signup form
+```
+
+With `register.verifyGate` set to `warn`, the start goes through and a `WARN` line names the same tasks (none with `--met`).
 
 The status is a flag, never a word after the id: `teamrig set T1 done` is a usage error (`unexpected "done"`).
 

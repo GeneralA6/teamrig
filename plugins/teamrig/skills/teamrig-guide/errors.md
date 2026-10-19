@@ -51,7 +51,8 @@ or take it to the lead.
 | `REFUSED verifying needs --note saying what proves it` (with `register.requireProofOnVerifying` off) | Add `--note` naming the proof you wait for. |
 | `REFUSED --proof goes only with --status verifying` | Drop `--proof`, or set `verifying`. |
 | `REFUSED --due goes only with --status verifying; teamrig update T1 --due sets it otherwise` | Use `teamrig update T1 --due <date>`. |
-| `REFUSED T2 needs T1, still verifying (proof: ..., owner api); start T2 once T1 is done` | T1's owner got an inbox line: work on something else until it proves T1 (`done`) or reopens it. |
+| `REFUSED T2 needs T1, still verifying (proof: ..., owner api); start T2 once T1 is done, or with --met "..."` | T1's owner got an inbox line: work on something else until it proves T1 (`done`) or reopens it. If the proof already exists, start T2 with `--met "<what shows it>"`; T1's owner is asked to confirm it. |
+| `REFUSED --met goes only with a start that a verifying task it needs holds` | `--met` names what met a held proof: drop it, since nothing verifying holds this change. |
 | `REFUSED T1 is already done; add --note to record why you set it again` | Add a `--note`, or leave the status as it is. |
 | `REFUSED the lead may change only owner, priority, due, week, after, size on a task it does not own (asked: title)` | Ask the owner to change that field. |
 | `REFUSED only the owner (web) or the lead changes T2` | Ask the owner or the lead. |
