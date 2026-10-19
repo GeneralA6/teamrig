@@ -1,4 +1,4 @@
-import type { KitConfig, PushGuardConfig, RuleConflict } from '../config/types.ts';
+import type { HookAsks, KitConfig, PushGuardConfig, RuleConflict } from '../config/types.ts';
 import { clipEnd, clipStart } from '../core/clip.ts';
 import { CORE_RULE_KEYS, ruleNumberOf, type CoreRuleKey } from './keys.ts';
 import { DECISION_MARKER } from '../tabs/status.ts';
@@ -53,7 +53,7 @@ function shortList(items: readonly string[]): string {
 }
 
 /** What the push guard does, as the team's pushGuard config sets it. */
-function pushRule(pushGuard: PushGuardConfig): string {
+function pushRule(pushGuard: PushGuardConfig, hookAsks: HookAsks): string {
   const branches = shortList(pushGuard.protectedBranches);
   const keys = '[pushGuard]';
   if (branches === '') {
@@ -61,7 +61,9 @@ function pushRule(pushGuard: PushGuardConfig): string {
   }
   return pushGuard.pushToProtected === 'allow'
     ? `Pushes to ${branches} go through unasked; force-pushing or deleting them is refused ${keys}.`
-    : `Pushes to ${branches} ask the human; force-pushing or deleting them is refused ${keys}.`;
+    : hookAsks === 'refuse'
+      ? `Pushes to ${branches} are refused, not asked [prompts.hookAsks]: record the step as waiting approval:owner and take your next task; force-pushing or deleting them is refused ${keys}.`
+      : `Pushes to ${branches} ask the human; force-pushing or deleting them is refused ${keys}.`;
 }
 
 /** At most two decimals, so float noise (0.30000000000000004) or a tiny value (1e-7) prints short. */
@@ -151,7 +153,7 @@ export function renderCorePack(config: KitConfig, command: string, platform: Nod
       ` Over ${config.commits.maxLines} changed non-test lines or ${config.commits.maxFiles} non-test files [commits.maxLines, commits.maxFiles], a commit needs a \`${config.commits.largeCommitTrailer}: <reason>\` line [commits.largeCommitTrailer]` +
       { off: '.', warn: '; a push to a protected branch lists those without one [commits.gate].', refuse: '; a push to a protected branch that sends one is refused [commits.gate].' }[config.commits.gate],
     push:
-      `${pushRule(config.pushGuard)} A refused or blocked route is reported to the lead, never routed around or handed to another session.`,
+      `${pushRule(config.pushGuard, config.prompts.hookAsks)} A refused or blocked route is reported to the lead, never routed around or handed to another session.`,
     worktrees:
       'Edit in your own worktree and branch in every git repo, never a main checkout.' +
       (platform === 'win32' ? ` Remove a worktree with \`${command} worktree remove <path>\`; a plain \`git worktree remove\` empties the main node_modules.` : '') +
