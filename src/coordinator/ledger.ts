@@ -24,6 +24,8 @@ export interface HeavyRecord {
   readonly what: string;
   /** An ISO time: when the step began to wait for the host lock, so its wait is `startedAt` less this. */
   readonly queuedAt?: string;
+  /** Set when the step was a small one sharing the host (`heavy --small`), not holding the host lock. */
+  readonly shared?: true;
   /** An ISO time: when it took the host lock and started. */
   readonly startedAt: string;
   readonly endedAt: string | null;
@@ -132,10 +134,11 @@ function mbField(record: JsonRecord, key: string): number | undefined {
 }
 
 /** The optional fields a record carries, each left out when it is missing or bad, since they only add to it. */
-function heavyExtrasOf(record: JsonRecord): Pick<HeavyRecord, 'queuedAt' | 'peakTreeMb' | 'lowFreeMb'> {
+function heavyExtrasOf(record: JsonRecord): Pick<HeavyRecord, 'queuedAt' | 'shared' | 'peakTreeMb' | 'lowFreeMb'> {
   const [queuedAt, peakTreeMb, lowFreeMb] = [timeField(record, 'queuedAt'), mbField(record, 'peakTreeMb'), mbField(record, 'lowFreeMb')];
   return {
     ...(queuedAt === undefined ? {} : { queuedAt }),
+    ...(record['shared'] === true ? { shared: true } : {}),
     ...(peakTreeMb === undefined ? {} : { peakTreeMb }),
     ...(lowFreeMb === undefined ? {} : { lowFreeMb }),
   };

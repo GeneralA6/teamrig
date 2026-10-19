@@ -81,9 +81,9 @@ describe('parseLedger', () => {
     assert.deepEqual(parseLedger([...bad, JSON.stringify(heavy)].join('\r\n')), [heavy]);
   });
 
-  it("reads a heavy step's wait and memory, and leaves out only a bad optional field", () => {
-    const measured = { ...heavy, queuedAt: '2030-01-08T09:01:00.000Z', peakTreeMb: 1800, lowFreeMb: 6200 };
-    const damaged = { ...heavy, queuedAt: 'soon', peakTreeMb: -1, lowFreeMb: 1.5 };
+  it("reads a heavy step's wait, sharing and memory, and leaves out only a bad optional field", () => {
+    const measured = { ...heavy, queuedAt: '2030-01-08T09:01:00.000Z', shared: true, peakTreeMb: 1800, lowFreeMb: 6200 };
+    const damaged = { ...heavy, queuedAt: 'soon', shared: 'yes', peakTreeMb: -1, lowFreeMb: 1.5 };
     assert.deepEqual(parseLedger([JSON.stringify(measured), JSON.stringify(damaged)].join('\n')), [measured, heavy]);
   });
 });
