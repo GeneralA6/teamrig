@@ -70,7 +70,7 @@ export interface AllowanceInput {
   readonly now: number;
   /** The week's use now, in percent. */
   readonly usedPct: number;
-  /** The team's use since 00:00 UTC today, in percent of the week. */
+  /** The team's use today inside the week (on its first day, since it began), in percent of the week. */
   readonly todayPct: number;
   /** The active time the pace counts. */
   readonly profile: ActivityProfile;
@@ -99,7 +99,7 @@ export function dailyAllowancePct(input: AllowanceInput): number {
 
 /** The team's use today against its in-day pace, both in percent of the week. */
 export interface TeamDay {
-  /** Everyone's use since 00:00 UTC: the team's sessions and the use outside it. */
+  /** Everyone's use today inside the week (on its first day, since it began): the team's sessions and the use outside it. */
   readonly usedPct: number;
   /** Its in-day pace (`dayPacePct`). */
   readonly pacePct: number;
