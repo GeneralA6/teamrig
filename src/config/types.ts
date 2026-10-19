@@ -561,15 +561,14 @@ export interface ScaleOutConfig {
   readonly topPriorities: number;
 }
 
-/** Hiring temporary sessions: who decides, the caps every hire stays within, and when an area needs one. */
+/**
+ * Hiring temporary sessions: who decides, the cap every hire stays within, and when an area needs one. A hire has
+ * no fixed daily budget: its part of the team's follows its share and queued work, like any session's.
+ */
 export interface HiringConfig {
   readonly policy: HiringPolicy;
   /** Hired sessions on the team at once. */
   readonly maxSessions: number;
-  /** A hire's daily budget, in % of the week, unless the hire names its own. */
-  readonly dailyPct: number;
-  /** The most all hired sessions' daily budgets may add up to. */
-  readonly maxDailyPct: number;
   /** Hours a hired session may hold no open task before it is due to retire. */
   readonly idleHours: number;
   /** Days from a hire to its review date, unless the hire names one. */

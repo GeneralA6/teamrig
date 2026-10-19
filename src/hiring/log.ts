@@ -5,13 +5,19 @@ import { assertWritable, parseJsonl, toJsonlLine, VERSION_FIELD } from '../core/
 import { parseUtcDay } from '../core/time.ts';
 
 /**
- * The team's hires and retires, an append-only log: who joined for what job, on whose say-so, at what
- * daily budget and until which review day, for which burst if any, and who left, with which handover and
- * to which heir. A session whose newest record is a hire is a hired session.
+ * The team's hires and retires, an append-only log: who joined for what job, on whose say-so, until which
+ * review day, for which burst if any, and who left, with which handover and to which heir. A session whose
+ * newest record is a hire is a hired session.
  */
 
-/** The format of the hire log's records; a newer one is skipped on read and refuses a write. */
-export const HIRE_FORMAT = 1;
+/**
+ * The format of the hire log's records; a newer one is skipped on read and refuses a write. Format 2 dropped the
+ * hire's fixed `dailyPct`, so a teamrig that still requires it refuses to write beside a hire it cannot read.
+ */
+export const HIRE_FORMAT = 2;
+
+/** The formats read: a hire stays on the team for weeks, so a format-1 hire still counts, its `dailyPct` ignored. */
+const READ_FORMATS: readonly number[] = [1, HIRE_FORMAT];
 
 export interface HireRecord {
   readonly kind: 'hire';
@@ -23,8 +29,6 @@ export interface HireRecord {
   readonly approvedBy?: string;
   readonly model?: string;
   readonly effort?: EffortLevel;
-  /** Its daily budget, in % of the week. */
-  readonly dailyPct: number;
   /** The day its hire is reviewed, `YYYY-MM-DD` (UTC). */
   readonly reviewBy: string;
   /** The `at` of the burst it was hired for (`hire --burst`): it is due to retire once that burst is over. */
@@ -114,14 +118,9 @@ function recordOf(record: HiringRecord): JsonRecord {
     ...(record.approvedBy === undefined ? {} : { approvedBy: record.approvedBy }),
     ...(record.model === undefined ? {} : { model: record.model }),
     ...(record.effort === undefined ? {} : { effort: record.effort }),
-    dailyPct: record.dailyPct,
     reviewBy: record.reviewBy,
     ...(record.burst === undefined ? {} : { burst: new Date(record.burst).toISOString() }),
   };
-}
-
-function finitePct(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= 100;
 }
 
 function instantOf(record: JsonRecord, key: string): number | undefined {
@@ -156,7 +155,6 @@ export function parseHiringRecord(record: JsonRecord): HiringRecord | undefined 
   }
   const scope = stringField(record, 'scope');
   const reviewBy = stringField(record, 'reviewBy');
-  const dailyPct = record['dailyPct'];
   const effort = record['effort'];
   const approvedBy = stringField(record, 'approvedBy');
   const model = stringField(record, 'model');
@@ -164,7 +162,7 @@ export function parseHiringRecord(record: JsonRecord): HiringRecord | undefined 
   if (record['burst'] !== undefined && burst === undefined) {
     return undefined;
   }
-  if (record['kind'] !== 'hire' || scope === undefined || reviewBy === undefined || parseUtcDay(reviewBy) === undefined || !finitePct(dailyPct)) {
+  if (record['kind'] !== 'hire' || scope === undefined || reviewBy === undefined || parseUtcDay(reviewBy) === undefined) {
     return undefined;
   }
   if (effort !== undefined && !isEffortLevel(effort)) {
@@ -178,7 +176,6 @@ export function parseHiringRecord(record: JsonRecord): HiringRecord | undefined 
     ...(approvedBy === undefined ? {} : { approvedBy }),
     ...(model === undefined ? {} : { model }),
     ...(effort === undefined ? {} : { effort }),
-    dailyPct,
     reviewBy,
     ...(burst === undefined ? {} : { burst }),
     by,
@@ -206,7 +203,7 @@ export class HiringLog {
     const parse = parseJsonl((await this.files.read(this.path)) ?? '');
     const records: HiringRecord[] = [];
     for (const { record, version } of parse.records) {
-      const parsed = version === HIRE_FORMAT ? parseHiringRecord(record) : undefined;
+      const parsed = READ_FORMATS.includes(version) ? parseHiringRecord(record) : undefined;
       if (parsed !== undefined) {
         records.push(parsed);
       }

@@ -1,11 +1,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { APP, CliHarness, TEAM, type CliResult } from '../testing/cli-harness.ts';
+import type { JsonRecord } from '../core/guards.ts';
 import { ok } from '../testing/hired-team.ts';
 
 /**
  * The harness clock is Tuesday 2030-01-08 10:00 UTC; the status line's week resets on Monday 2030-01-14 01:00 UTC,
- * so at 5% used about 74% of the week is projected unused at the pace end: room for a hire.
+ * so at 5% used about 74% of the week is projected unused at the pace end: room for a hire. A hire's daily part is
+ * its part of the team's daily budget beside lead and bravo (weight 1 each) and alpha (3 queued p1 tasks, weight 15).
  */
 const RESET = Date.parse('2030-01-14T01:00:00Z');
 const TAB = '0000000a-0000-4000-8000-000000000001';
@@ -24,8 +26,8 @@ async function finish(kit: CliHarness, id: string, session: string): Promise<voi
 }
 
 /** alpha finished T1-T7 today, a pace of 1 a day, and holds T8-T10, p1 and due by the end of tomorrow. */
-async function behindTeam(): Promise<CliHarness> {
-  const kit = new CliHarness({ ...TEAM, budget: { enabled: true, weeklyLimitW: 1_000_000_000 }, hiring: { policy: 'lead' } });
+async function behindTeam(budget: JsonRecord = {}): Promise<CliHarness> {
+  const kit = new CliHarness({ ...TEAM, budget: { enabled: true, weeklyLimitW: 1_000_000_000, ...budget }, hiring: { policy: 'lead' } });
   ok(await kit.run(['statusline'], { stdin: status(5) }));
   for (let task = 1; task <= 10; task += 1) {
     const due = task > 7 ? ['--due', '2030-01-09'] : [];
@@ -46,7 +48,7 @@ describe('check SCALE-OUT', () => {
     const kit = await behindTeam();
     const [heading, flag] = await hireLines(kit);
     assert.equal(heading, 'HIRES 1 flag(s)');
-    assert.match(flag ?? '', /^HIRE SCALE-OUT \(3 due by 01-09, its pace finishes 1\.6 by then \(7 done in 7 d\); slice T9 T10, due by 01-09, about 2\.0% of the week, 7\d\.\d% spare\) alpha: the lead hires for it/);
+    assert.match(flag ?? '', /^HIRE SCALE-OUT \(3 due by 01-09, its pace finishes 1\.6 by then \(7 done in 7 d\); slice T9 T10, due by 01-09, about 1\.9% of the week, 7\d\.\d% spare\) alpha: the lead hires for it/);
     assert.match(ok(await kit.run(['start', '--session', 'alpha'])).stdout.join('\n'), /HIRE SCALE-OUT .* alpha:/);
     assert.doesNotMatch(ok(await kit.run(['start', '--session', 'bravo'])).stdout.join('\n'), /HIRE /);
 
@@ -63,6 +65,11 @@ describe('check SCALE-OUT', () => {
     await finish(kit, 'T10', 'helper');
     kit.clock.advance(5 * HOUR_MS);
     assert.deepEqual(await hireLines(kit), ['HIRES 1 flag(s)', 'HIRE RETIRE-DUE (no open task for 5 h, hiring.idleHours 4) helper: retire it (teamrig retire helper)']);
+  });
+
+  it("prices the slice at a new hire's part of the team's daily budget, smaller beside a session of a bigger share", async () => {
+    const kit = await behindTeam({ sessions: { alpha: { share: 3 } } });
+    assert.match((await hireLines(kit))[1] ?? '', /slice T9 T10, due by 01-09, about 0\.71% of the week, 7\d\.\d% spare\) alpha:/);
   });
 
   it('flags nothing when the week has no spare for the slice', async () => {

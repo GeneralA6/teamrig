@@ -8,7 +8,7 @@ const PATH = '/kit/teams/app/state/hires.jsonl';
 const AT = Date.parse('2030-01-08T10:00:00Z');
 
 function hire(overrides: Partial<HireRecord> = {}): HireRecord {
-  return { kind: 'hire', session: 'helper', scope: 'port the importer', reason: 'release week', dailyPct: 1, reviewBy: '2030-01-15', by: 'lead', at: AT, ...overrides };
+  return { kind: 'hire', session: 'helper', scope: 'port the importer', reason: 'release week', reviewBy: '2030-01-15', by: 'lead', at: AT, ...overrides };
 }
 
 function retire(overrides: Partial<RetireRecord> = {}): RetireRecord {
@@ -18,7 +18,7 @@ function retire(overrides: Partial<RetireRecord> = {}): RetireRecord {
 describe('parseHiringRecord', () => {
   it('reads a hire and a retire with their optional fields', () => {
     const full = hire({ approvedBy: 'owner', model: 'opus', effort: 'high' });
-    assert.deepEqual(parseHiringRecord({ kind: 'hire', session: 'helper', scope: 'port the importer', reason: 'release week', approvedBy: 'owner', model: 'opus', effort: 'high', dailyPct: 1, reviewBy: '2030-01-15', by: 'lead', at: '2030-01-08T10:00:00.000Z' }), full);
+    assert.deepEqual(parseHiringRecord({ kind: 'hire', session: 'helper', scope: 'port the importer', reason: 'release week', approvedBy: 'owner', model: 'opus', effort: 'high', reviewBy: '2030-01-15', by: 'lead', at: '2030-01-08T10:00:00.000Z' }), full);
     assert.deepEqual(
       parseHiringRecord({ kind: 'retire', session: 'helper', reason: 'done', handover: 'handover/helper.md', heir: 'alpha', by: 'lead', at: '2030-01-08T10:00:00.000Z' }),
       retire({ reason: 'done', handover: 'handover/helper.md', heir: 'alpha', at: AT }),
@@ -30,15 +30,15 @@ describe('parseHiringRecord', () => {
   });
 
   it('reads back the burst a hire was for', () => {
-    const record = { kind: 'hire', session: 'helper', scope: 'port the importer', reason: 'release week', dailyPct: 1, reviewBy: '2030-01-15', by: 'lead', at: '2030-01-08T10:00:00.000Z', burst: '2030-01-08T09:00:00.000Z' };
+    const record = { kind: 'hire', session: 'helper', scope: 'port the importer', reason: 'release week', reviewBy: '2030-01-15', by: 'lead', at: '2030-01-08T10:00:00.000Z', burst: '2030-01-08T09:00:00.000Z' };
     assert.deepEqual(parseHiringRecord(record), hire({ burst: AT - 3_600_000 }));
     assert.equal(parseHiringRecord({ ...record, burst: 'last night' }), undefined);
   });
 
   it('skips a damaged record', () => {
-    const good = { kind: 'hire', session: 'helper', scope: 'x', reason: 'y', dailyPct: 1, reviewBy: '2030-01-15', by: 'lead', at: '2030-01-08T10:00:00Z' };
+    const good = { kind: 'hire', session: 'helper', scope: 'x', reason: 'y', reviewBy: '2030-01-15', by: 'lead', at: '2030-01-08T10:00:00Z' };
     assert.notEqual(parseHiringRecord(good), undefined);
-    for (const damage of [{ kind: 'fire' }, { session: 7 }, { at: 'soon' }, { scope: undefined }, { reviewBy: 'next week' }, { dailyPct: 0 }, { dailyPct: 101 }, { dailyPct: '1' }, { effort: 'extreme' }]) {
+    for (const damage of [{ kind: 'fire' }, { session: 7 }, { at: 'soon' }, { scope: undefined }, { reviewBy: 'next week' }, { effort: 'extreme' }]) {
       assert.equal(parseHiringRecord({ ...good, ...damage }), undefined, JSON.stringify(damage));
     }
   });
@@ -80,6 +80,15 @@ describe('HiringLog', () => {
     await log.append(retire({ heir: 'alpha' }));
     assert.deepEqual(await log.read(), { records: [hire({ effort: 'xhigh', burst: AT }), retire({ heir: 'alpha' })], skipped: 1 });
     assert.equal((await files.read(PATH))?.split('\n').filter((line) => line !== '').length, 3);
+    assert.match(await files.read(PATH) ?? '', new RegExp(`\\{"v":${HIRE_FORMAT},"kind":"retire"`));
+  });
+
+  it("still counts a format-1 hire, its fixed daily % ignored", async () => {
+    const v1 = { v: 1, kind: 'hire', session: 'helper', scope: 'port the importer', reason: 'release week', dailyPct: 1, reviewBy: '2030-01-15', by: 'lead', at: '2030-01-08T10:00:00.000Z' };
+    const log = new HiringLog(new MemoryFiles({ [PATH]: `${JSON.stringify(v1)}\n` }), PATH);
+    assert.deepEqual(await log.read(), { records: [hire()], skipped: 0 });
+    await log.append(retire());
+    assert.deepEqual((await log.read()).records, [hire(), retire()]);
   });
 
   it('starts a missing log, and refuses to write beside a newer teamrig', async () => {

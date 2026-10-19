@@ -26,8 +26,6 @@ export interface HireRequest {
   readonly model?: string;
   /** Unset: the lead's own. */
   readonly effort?: EffortLevel;
-  /** Unset: `hiring.dailyPct`. */
-  readonly dailyPct?: number;
   /** `YYYY-MM-DD`; unset: `hiring.reviewDays` from now. */
   readonly reviewBy?: string;
   /** The `at` of the burst it is hired for, checked by `burstHireOf` (src/hiring/burst-hire.ts). */
@@ -41,13 +39,8 @@ export interface HirePlan {
   /** The whole next config file. */
   readonly config: JsonRecord;
   readonly hire: HireRecord;
-  /** The hired sessions on the team with this one, and the sum of their daily budgets. */
+  /** The hired sessions on the team with this one. */
   readonly hired: number;
-  readonly hiredDailyPct: number;
-}
-
-function ownValue<T>(record: Readonly<Record<string, T>>, key: string): T | undefined {
-  return Object.hasOwn(record, key) ? record[key] : undefined;
 }
 
 function recordAt(record: JsonRecord, key: string): JsonRecord {
@@ -55,26 +48,17 @@ function recordAt(record: JsonRecord, key: string): JsonRecord {
   return isRecord(value) ? value : {};
 }
 
-/** The daily budget of each hire still on the team, as the config has it now, so a later `budget` change counts. */
-export function hiredDailyPcts(config: Pick<KitConfig, 'sessions' | 'budget'>, active: readonly HireRecord[]): number[] {
-  return active.filter((hire) => config.sessions.includes(hire.session)).map((hire) => ownValue(config.budget.sessions, hire.session)?.dailyPct ?? hire.dailyPct);
-}
-
-/** A sum of daily budgets to hundredths, so 0.1 + 0.2 meets a cap of 0.3. */
-function sumPct(pcts: readonly number[]): number {
-  return Math.round(pcts.reduce((sum, pct) => sum + pct, 0) * 100) / 100;
+/** How many of the active hires are still on the team: a retired or removed one no longer counts against the cap. */
+export function hiresOnTeam(config: Pick<KitConfig, 'sessions'>, active: readonly HireRecord[]): number {
+  return active.filter((hire) => config.sessions.includes(hire.session)).length;
 }
 
 /**
- * Why one more hire at `dailyPct` would pass `hiring`'s caps beside the hires on the team, whose daily budgets are
- * `hired` ({@link hiredDailyPcts}): the hired sessions at once, or the sum of their daily budgets. Undefined when it fits.
+ * Why one more hire beside the `hired` hires on the team ({@link hiresOnTeam}) would pass `hiring.maxSessions`;
+ * undefined when it fits. A hire has no fixed daily budget, so the count is the only cap.
  */
-export function hireCapProblem(hiring: Pick<HiringConfig, 'maxSessions' | 'maxDailyPct'>, hired: readonly number[], dailyPct: number): string | undefined {
-  if (hired.length >= hiring.maxSessions) {
-    return `the team already has ${hired.length} hired session(s), the most hiring.maxSessions allows`;
-  }
-  const total = sumPct([...hired, dailyPct]);
-  return total > hiring.maxDailyPct ? `the hired sessions' daily budgets would add up to ${total}% of the week, over hiring.maxDailyPct ${hiring.maxDailyPct}%` : undefined;
+export function hireCapProblem(hiring: Pick<HiringConfig, 'maxSessions'>, hired: number): string | undefined {
+  return hired >= hiring.maxSessions ? `the team already has ${hired} hired session(s), the most hiring.maxSessions allows` : undefined;
 }
 
 function reviewDayOf(request: HireRequest, config: KitConfig): Checked<string> {
@@ -106,7 +90,10 @@ function policyProblem(config: KitConfig, request: HireRequest): string | undefi
   }
 }
 
-/** The new session written into `sessions`, `names`, `launch` and `budget.sessions`, and its hire record; or why not. */
+/**
+ * The new session written into `sessions`, `names` and `launch`, and its hire record; or why not. It gets no fixed daily
+ * budget: like any session, its part of the team's daily budget follows its share and its queued work (src/budget/parts.ts).
+ */
 export function planHire(file: JsonRecord, config: KitConfig, active: readonly HireRecord[], request: HireRequest): Checked<HirePlan> {
   const refusal = policyProblem(config, request);
   if (refusal !== undefined) {
@@ -129,9 +116,8 @@ export function planHire(file: JsonRecord, config: KitConfig, active: readonly H
   if (modelProblem !== undefined) {
     return { ok: false, problem: `--model ${request.model}: ${modelProblem}` };
   }
-  const hired = hiredDailyPcts(config, active);
-  const dailyPct = request.dailyPct ?? config.hiring.dailyPct;
-  const capProblem = hireCapProblem(config.hiring, hired, dailyPct);
+  const hired = hiresOnTeam(config, active);
+  const capProblem = hireCapProblem(config.hiring, hired);
   if (capProblem !== undefined) {
     return { ok: false, problem: capProblem };
   }
@@ -144,13 +130,11 @@ export function planHire(file: JsonRecord, config: KitConfig, active: readonly H
   const model = request.model ?? leads.model;
   const effort = request.effort ?? leads.effort;
   const launch = { ...(isDefaultModel(model) ? {} : { model }), ...(effort === undefined ? {} : { effort }) };
-  const budget = recordAt(file, 'budget');
   const next: JsonRecord = {
     ...file,
     sessions: [...sessions, request.id],
     ...(request.name === undefined ? {} : { names: { ...recordAt(file, 'names'), [request.id]: request.name } }),
     launch: { ...recordAt(file, 'launch'), [request.id]: launch },
-    budget: { ...budget, sessions: { ...recordAt(budget, 'sessions'), [request.id]: { dailyPct } } },
   };
   const hire: HireRecord = {
     kind: 'hire',
@@ -159,11 +143,10 @@ export function planHire(file: JsonRecord, config: KitConfig, active: readonly H
     reason: request.reason.trim(),
     ...(request.approvedBy === undefined ? {} : { approvedBy: request.approvedBy.trim() }),
     ...launch,
-    dailyPct,
     reviewBy: reviewBy.value,
     ...(request.burst === undefined ? {} : { burst: request.burst }),
     by: request.by,
     at: request.now,
   };
-  return { ok: true, value: { config: next, hire, hired: hired.length + 1, hiredDailyPct: sumPct([...hired, dailyPct]) } };
+  return { ok: true, value: { config: next, hire, hired: hired + 1 } };
 }

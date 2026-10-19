@@ -692,23 +692,24 @@ NOTE shop-web still finds web in every teamrig command; teamrig never edits perm
 Adds a temporary session to the team for one job (`teamrig hire <id> --scope "<its job>" --reason "<why>"`), the
 lead only, within the team's `hiring` policy and caps. Without `--yes` it shows the hire and writes nothing. With
 it, the hire goes into the hire log (`state/hires.jsonl`), the old config into the backups folder, and the session
-into the config: `sessions`, `names` with `--name`, `launch` (its model and effort, the lead's own unless
-given) and `budget.sessions.<id>.dailyPct`. Its name is `<team>-<id>` unless `--name` gives one; a name another
+into the config: `sessions`, `names` with `--name` and `launch` (its model and effort, the lead's own unless
+given); no daily budget, as its part of the team's follows its share and queued work. Its name is `<team>-<id>`
+unless `--name` gives one; a name another
 team's session has is refused, as Claude Code session names are machine-wide.
 
 - `hiring.policy`: `off` refuses every hire; `owner` (the default) needs `--approved-by "<who>"`, after you ask
-  the owner; `lead` lets the lead hire within the caps; `automatic` is `lead`, and a hired session whose last
+  the owner; `lead` lets the lead hire within the cap; `automatic` is `lead`, and a hired session whose last
   open task closes is asked once, at its next turn end, to write its handover and retire itself.
-- The caps: at most `hiring.maxSessions` (2) hired sessions at once, with daily budgets adding up to at most
-  `hiring.maxDailyPct` (3% of the week). A hire's daily budget is `--daily-pct`, else `hiring.dailyPct` (1%).
+- The cap: at most `hiring.maxSessions` (2) hired sessions at once. A hire has no fixed daily budget: like any
+  session, its part of the team's follows its share and queued work ([teamrig budget](#teamrig-budget)).
 - Its review day is `--review`, else `hiring.reviewDays` (7) days on.
 - When its job is done, retire it (`teamrig retire`).
 - A burst hire (`--burst`) is for the burst in force ([teamrig burst start](#teamrig-burst-start)), within that burst's
-  `--hires` as well as the caps above. It runs on the lead's model at no lower effort: another `--model` or a lower
+  `--hires` as well as the cap above. It runs on the lead's model at no lower effort: another `--model` or a lower
   `--effort` is refused. Under `hiring.policy` `owner` the burst's approver approves it unless `--approved-by`
   names one. `teamrig check` flags it RETIRE-DUE once the burst is over.
 
-Hiring a retired id again is a rehire: the same command, with the same caps. It shows the retire it comes back
+Hiring a retired id again is a rehire: the same command, with the same cap. It shows the retire it comes back
 from and its handover, and measures its last Claude Code session (the one that last ran `inbox read` as it): it can
 be resumed when its transcript is still in the project folder, its context is at most `hiring.resumeMaxTokens`
 (250,000 tokens) and it was idle at most `hiring.resumeMaxIdleDays` (7 days). Else it opens fresh, and its first
@@ -722,7 +723,6 @@ Flags:
 - `--name <name>`: its display and Claude Code session name.
 - `--model <model>`: the model it starts on; the lead's own by default.
 - `--effort <level>`: the effort it starts at; the lead's own by default.
-- `--daily-pct <pct>`: its daily budget, in % of the week.
 - `--review <YYYY-MM-DD>`: its review day.
 - `--approved-by "<who>"`: who approved it; needed under `hiring.policy` `owner`.
 - `--burst`: hire it for the burst in force.
@@ -737,8 +737,8 @@ teamrig hire importer --scope "port the CSV importer" --reason "release week" --
 Output:
 
 ```text
-HIRED importer (name shop-importer) for "port the CSV importer": model opus at xhigh effort, 1% of the week a day, review by 2030-01-15; the old config is at ~/.teamrig/teams/shop/backups/config.hire.json
-  hired sessions with it: 1 of 2, 1% of 3% of the week a day
+HIRED importer (name shop-importer) for "port the CSV importer": model opus at xhigh effort, review by 2030-01-15; the old config is at ~/.teamrig/teams/shop/backups/config.hire.json
+  hired sessions with it: 1 of 2
 NEXT give it its first task: teamrig add --owner importer --title "<task>" --description "<what and why>" --session lead; then open it: teamrig open importer
 ```
 

@@ -7,7 +7,7 @@ import type { Task } from '../register/fold.ts';
 import { ACTIVE_STATUSES, type TaskStatus } from '../register/model.ts';
 import type { TaskTree } from '../register/tree.ts';
 import type { HireCheckInput, HireFlag } from './due.ts';
-import { hireCapProblem, hiredDailyPcts } from './plan.ts';
+import { hireCapProblem, hiresOnTeam } from './plan.ts';
 
 /**
  * SCALE-OUT, the `check` flag on an area that cannot finish its dated work in time. Its pace is the tasks it finished
@@ -15,19 +15,25 @@ import { hireCapProblem, hiredDailyPcts } from './plan.ts';
  * of the top `topPriorities` priorities with an effective due, their own or that of a task that needs them, so work
  * other areas wait on counts too. Walking that work by due date, wherever more is due by a date than the pace finishes
  * by then, a slice moves out: the latest open tasks due by that date that no started task needs (none mid-change),
- * until every date fits. The slice costs `hiring.dailyPct` a day until its last due or the week's pace end, whichever
- * comes first (a day at least), and goes to an idle hire first, else to a new hire within `hiring`'s caps, else to the
- * owner as a card when a cap blocks. No flag while the week's projected spare cannot pay the cost (the areas furthest
- * behind pay first), with no reading of the week, under `hiring.policy` off, or for the lead or a hired session. Its
- * retire is RETIRE-DUE (src/hiring/due.ts): a hire whose slice is done, or that got none, sits idle. Pure: it takes the
- * team's tasks and tree, the hires still active, the week's surplus and now.
+ * until every date fits. The slice costs a new hire's part of the team's daily budget today (`hirePct`) a day until
+ * its last due or the week's pace end, whichever comes first (a day at least), and goes to an idle hire first, else to
+ * a new hire within `hiring.maxSessions`, else to the owner as a card when that cap blocks. No flag while the week's
+ * projected spare cannot pay the cost (the areas furthest behind pay first), with no reading of the week or of the
+ * team's daily budget, under `hiring.policy` off, or for the lead or a hired session. Its retire is RETIRE-DUE
+ * (src/hiring/due.ts): a hire whose slice is done, or that got none, sits idle. Pure: it takes the team's tasks and
+ * tree, the hires still active, the week's surplus, a hire's daily part and now.
  */
 
 export interface ScaleOutInput extends HireCheckInput {
   readonly tree: TaskTree;
-  readonly config: Pick<KitConfig, 'sessions' | 'roles' | 'hiring' | 'register' | 'budget'>;
+  readonly config: Pick<KitConfig, 'sessions' | 'roles' | 'hiring' | 'register'>;
   /** The week's projected surplus (src/budget/burst.ts `surplusOf`); undefined with no reading of the week. */
   readonly spare: Pick<Surplus, 'sparePct' | 'paceEnd'> | undefined;
+  /**
+   * A new hire's part of the team's daily budget today, in percent of the week like `spare` (src/budget/parts.ts
+   * `addedSessionPct`): what a slice costs a day. Undefined while the team's daily budget is unknown.
+   */
+  readonly hirePct: number | undefined;
 }
 
 export interface ScaleOutResult {
@@ -185,9 +191,9 @@ function hireAction(config: ScaleOutInput['config']): string {
   return `the lead ${owner ? 'asks the owner, then ' : ''}hires for it (${hire}), then ${KIT_NAME} update <id> --owner <new id>, for each`;
 }
 
-/** SCALE-OUT on each area that needs one, within the spare and the caps, and the idle hires given a slice. */
+/** SCALE-OUT on each area that needs one, within the spare and the cap, and the idle hires given a slice. */
 export function scaleOutFlags(input: ScaleOutInput): ScaleOutResult {
-  const { config } = input;
+  const { config, hirePct } = input;
   if (config.hiring.policy === 'off') {
     return { flags: [], busy: new Set() };
   }
@@ -198,17 +204,17 @@ export function scaleOutFlags(input: ScaleOutInput): ScaleOutResult {
     .flatMap((area) => needOf(area, tasks, input) ?? [])
     .sort((a, b) => b.behind.count - b.behind.finishes - (a.behind.count - a.behind.finishes));
   const idle = idleHires(input, tasks);
-  const hired = hiredDailyPcts(config, input.hires);
+  let hired = hiresOnTeam(config, input.hires);
   const busy = new Set<string>();
   const flags: HireFlag[] = [];
-  if (input.spare === undefined) {
+  if (input.spare === undefined || hirePct === undefined) {
     return { flags: [], busy };
   }
   const { paceEnd } = input.spare;
   let spare = input.spare.sparePct;
   const now = input.now.getTime();
   for (const need of needs) {
-    const costPct = config.hiring.dailyPct * sliceDays(need.last, now, paceEnd);
+    const costPct = hirePct * sliceDays(need.last, now, paceEnd);
     if (spare < costPct) {
       continue;
     }
@@ -220,12 +226,12 @@ export function scaleOutFlags(input: ScaleOutInput): ScaleOutResult {
       flags.push({ kind: 'SCALE-OUT', session: need.area, detail, action: moveAction(to) });
       continue;
     }
-    const capProblem = hireCapProblem(config.hiring, hired, config.hiring.dailyPct);
+    const capProblem = hireCapProblem(config.hiring, hired);
     if (capProblem !== undefined) {
       flags.push({ kind: 'SCALE-OUT', session: need.area, detail, action: `${capProblem}: the lead brings the owner a card to raise the cap, or moves the slice to another area` });
       continue;
     }
-    hired.push(config.hiring.dailyPct);
+    hired += 1;
     flags.push({ kind: 'SCALE-OUT', session: need.area, detail, action: hireAction(config) });
   }
   return { flags, busy };

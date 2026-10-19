@@ -928,22 +928,17 @@ function parseRefresh(read: ConfigReader, raw: JsonRecord): RefreshConfig {
   };
 }
 
-/** `hiring`: a hire's own daily budget cannot pass what all hires may add up to. */
+/** `hiring`: who decides, the session cap, idle and review days, and when a rehire resumes. */
 function parseHiring(read: ConfigReader, raw: JsonRecord): HiringConfig {
   const path = 'hiring';
   const defaults = DEFAULT_HIRING;
   const policy = read.string(raw, 'policy', path, defaults.policy, oneOf(HIRING_POLICIES));
-  const maxDailyPct = read.number(raw, 'maxDailyPct', path, defaults.maxDailyPct, CONFIG_LIMITS.hiringMaxDailyPct);
-  let dailyPct = read.number(raw, 'dailyPct', path, defaults.dailyPct, CONFIG_LIMITS.hiringDailyPct);
-  if (dailyPct > maxDailyPct) {
-    read.report(`${path}.dailyPct`, `expected at most hiring.maxDailyPct (${maxDailyPct}), got ${dailyPct}`);
-    dailyPct = Math.min(defaults.dailyPct, maxDailyPct);
-  }
+  const why = "a hire's daily budget is its part of the team's, by its share and queued work; maxSessions bounds hiring";
+  read.dropped(raw, 'dailyPct', path, why);
+  read.dropped(raw, 'maxDailyPct', path, why);
   return {
     policy: isHiringPolicy(policy) ? policy : defaults.policy,
     maxSessions: read.integer(raw, 'maxSessions', path, defaults.maxSessions, CONFIG_LIMITS.hiringMaxSessions),
-    dailyPct,
-    maxDailyPct,
     idleHours: read.integer(raw, 'idleHours', path, defaults.idleHours, CONFIG_LIMITS.hiringIdleHours),
     reviewDays: read.integer(raw, 'reviewDays', path, defaults.reviewDays, CONFIG_LIMITS.hiringReviewDays),
     resumeMaxTokens: read.integer(raw, 'resumeMaxTokens', path, defaults.resumeMaxTokens, CONFIG_LIMITS.hiringResumeMaxTokens),

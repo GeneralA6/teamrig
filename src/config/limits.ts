@@ -52,8 +52,6 @@ export const CONFIG_LIMITS = {
   liftReserveStopPct: { min: 1, max: 100 },
   maxBytesPerHook: { min: 100_000, max: 100_000_000 },
   hiringMaxSessions: { min: 1, max: 20 },
-  hiringDailyPct: { min: 0.1, max: 100 },
-  hiringMaxDailyPct: { min: 0.1, max: 100 },
   hiringIdleHours: { min: 1, max: 168 },
   hiringReviewDays: { min: 1, max: 90 },
   hiringResumeMaxTokens: { min: 10_000, max: 1_000_000 },

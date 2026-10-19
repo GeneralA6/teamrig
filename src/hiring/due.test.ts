@@ -10,7 +10,7 @@ const HOUR_MS = 3_600_000;
 const RETIRE = 'retire it (teamrig retire helper)';
 
 function hire(session: string, reviewBy = '2030-01-15'): HireRecord {
-  return { kind: 'hire', session, scope: 'x', reason: 'y', dailyPct: 1, reviewBy, by: 'lead', at: HIRED_AT };
+  return { kind: 'hire', session, scope: 'x', reason: 'y', reviewBy, by: 'lead', at: HIRED_AT };
 }
 
 function input(overrides: Partial<HireCheckInput> = {}): HireCheckInput {
