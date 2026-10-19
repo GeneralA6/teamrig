@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import type { ShellDialect } from '../push-guard/tokenizer.ts';
-import { programsOf } from './programs.ts';
+import { programsOf, runsOf } from './programs.ts';
 
 const APP = resolve('/', 'work', 'app');
 const HOME = resolve('/', 'u');
@@ -81,5 +81,43 @@ describe('programsOf', () => {
     assert.deepEqual(runs('$RUNNER eslint'), []);
     const nested = Array.from({ length: 10 }).reduce<string>((line) => `bash -c ${JSON.stringify(line)}`, 'npx deep');
     assert.deepEqual(runs(nested), []);
+  });
+});
+
+describe('runsOf', () => {
+  const context = (dialect: ShellDialect) => ({ cwd: APP, home: HOME, dialect });
+
+  it('keeps each command that starts no program: a bare env, a PowerShell expression', () => {
+    const bare = (command: string, dialect: ShellDialect = 'bash'): string[] =>
+      runsOf(command, context(dialect)).bare.map((run) => `${run.dialect}: ${run.words.map((word) => word.text).join(' ')}`);
+    assert.deepEqual(bare('env -i && env X=1 node a.js'), ['bash: env -i']);
+    assert.deepEqual(bare('$env:HOME; Get-Date', 'powershell'), ['powershell: $env:HOME']);
+    assert.deepEqual(bare('bash -c "env"'), ['bash: env']);
+    assert.deepEqual(bare('cd sub && git status'), []);
+  });
+
+  it('gives each program the dialect of the script that starts it', () => {
+    const dialects = runsOf('cat a; pwsh -Command "Get-Content b"', context('bash')).programs.map((run) => `${run.name} ${run.dialect}`);
+    assert.deepEqual(dialects, ['cat bash', 'get-content powershell']);
+  });
+
+  it('names the program a command pipes its output into, unknown when the line cannot tell', () => {
+    const into = (command: string): string[] =>
+      runsOf(command, context('bash')).programs.map((run) => `${run.name}${run.pipe === undefined ? '' : ` | ${run.pipe.into?.name ?? '?'}`}`);
+    assert.deepEqual(into('echo "$T" | docker login --password-stdin'), ['echo | docker', 'docker']);
+    assert.deepEqual(into('a | $X; b | c | d'), ['a | ?', 'b | c', 'c | d', 'd']);
+    assert.deepEqual(into('a $(b | c) | d'), ['b | c', 'c', 'a | d', 'd']);
+    assert.deepEqual(into('a | bash -c "b"'), ['a | ?', 'b']);
+    const [bare] = runsOf('$env:T | docker login --password-stdin > out.txt', context('powershell')).bare;
+    assert.equal(bare?.pipe?.into?.name, 'docker');
+    assert.deepEqual(runsOf('$env:T > out.txt', context('powershell')).bare[0]?.redirections.map((redirection) => redirection.operator), ['>']);
+  });
+
+  it('gives a program the body it reads on stdin from the line, a piped one too', () => {
+    const bodies = (command: string): (string | undefined)[] => runsOf(command, context('bash')).programs.map((run) => run.stdin?.text);
+    assert.deepEqual(bodies("node <<'EOF'\nconsole.log(1)\nEOF"), ['console.log(1)']);
+    assert.deepEqual(bodies('python3 <<< "print(2)"'), ['print(2)']);
+    assert.deepEqual(bodies('cat <<EOF | node\nx()\nEOF'), ['x()', 'x()']);
+    assert.deepEqual(bodies('node a.js'), [undefined]);
   });
 });
