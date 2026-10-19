@@ -1,14 +1,27 @@
 ---
 name: hire
-description: Use when the lead needs a temporary session for one job, when a hired session's work is done, or to hire a retired one back (resume or fresh).
+description: Use when the lead needs a temporary session for one job (check flags SCALE-OUT), when a hired session's work is done, or to rehire a retired one.
 ---
 
 # Hire, retire and rehire a session
 
 A hired session is a temporary member for one job. You, the lead, hire it within the team config's `hiring` policy
 and caps, give it tasks, and retire it once its job is done. Its tasks, inbox and records stay readable by its id.
+`check` says when: `HIRE SCALE-OUT` on an area that cannot finish its dated work in time, `HIRE RETIRE-DUE` on a
+hire with no work left.
 
 ## 1. Hire
+
+`check` flags `HIRE SCALE-OUT (<detail>) <area>: <action>` when more of an area's dated work is due by a date than
+its pace finishes by then. Its pace is the tasks it finished over the last `hiring.scaleOut.windowDays` (7), measured
+once it finished `minDone` (3); its dated work is its active tasks of the top `topPriorities` (2) priorities with a
+due, their own or that of a task that needs them. The detail names the slice to move (its latest open tasks that no
+started work needs), its cost (`hiring.dailyPct` a day until the slice's last due or the week's pace end) and the
+week's spare; no flag is raised while the spare cannot pay. Do what the action says:
+- it names an idle hire: move the slice to it, `teamrig update <task> --owner <hire> --session lead` for each task;
+- else hire for the slice (the steps below, `--scope` the slice's task ids, `--reason "SCALE-OUT"`), then move it;
+- a cap (`hiring.maxSessions`, `hiring.maxDailyPct`) blocks: bring the owner a card to raise it, or move the slice
+  to another area.
 
 1. Decide its job in one line (`--scope`), why the team needs it now (`--reason`) and a short id
    (lowercase letters, digits and dashes, not on the team yet).
@@ -25,8 +38,9 @@ and caps, give it tasks, and retire it once its job is done. Its tasks, inbox an
 
 ## 2. Retire
 
-When `check` flags `HIRE RETIRE-DUE` (no open task for `hiring.idleHours`) or `HIRE REVIEW-DUE` (its review day
-passed), give it its next task or retire it.
+When `check` flags `HIRE RETIRE-DUE` (no open task for `hiring.idleHours`, as when a SCALE-OUT hire's slice is done)
+or `HIRE REVIEW-DUE` (its review day passed), give it its next task or retire it. An idle hire a SCALE-OUT names to
+take a slice is not flagged RETIRE-DUE meanwhile.
 
 1. Ask it to write its handover (open work, next steps, branches, traps) to `<handover>/<id>.md`.
 2. Preview, then write: `teamrig retire <id> --session lead [--to <heir>] --yes`. `--to` takes its open tasks; with

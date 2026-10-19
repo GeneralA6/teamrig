@@ -161,11 +161,13 @@ checkpoint; a session may run it for itself.
 The three week flags need a week plan; until a task is tagged with a week, `check` says
 `no week plan tagged yet, so the week checks are skipped`. A task gets at most one week flag.
 
-On a team with hired sessions, `check` then flags them, under a `HIRES <n> flag(s)` line printed only when there
-are some: `HIRE <KIND> (<detail>) <session>: <what to do>`. A session's own `start` shows the flags on itself.
+`check` then prints the hire flags, under a `HIRES <n> flag(s)` line printed only when there are some:
+`HIRE <KIND> (<detail>) <session>: <what to do>`, the session being the area a SCALE-OUT is on or the hired session.
+A session's own `start` shows the flags on itself.
 
 | Hire flag | Raised when | What to do |
 | --- | --- | --- |
+| `SCALE-OUT` | more of an area's dated work (its active tasks of the top 2 priorities [hiring.scaleOut.topPriorities] with a due, their own or a needing task's) is due by a date than its pace finishes by then: the tasks it finished over the last 7 days [hiring.scaleOut.windowDays], once it finished 3 [hiring.scaleOut.minDone]. Never for the lead or a hired session, nor while the week's projected spare cannot pay the slice: `hiring.dailyPct` a day until its last due or the week's pace end | The lead moves the slice it names (the latest open tasks no started work needs) to the idle hire it names, else hires for it within `hiring.maxSessions` and `hiring.maxDailyPct` and moves it, else brings the owner a card to raise the cap. |
 | `RETIRE-DUE` | a hired session has had no open task for 4 h [hiring.idleHours], counted from its hire or from its newest task's last status change | The lead gives it its next task, or retires it (`teamrig retire <id>`); under `hiring.policy` `automatic` it is asked to retire itself once its last open task closes. |
 | `REVIEW-DUE` | a hired session's review day has passed | The lead decides whether its job goes on; when it is done, retires it. |
 
