@@ -1,11 +1,11 @@
-import { basename } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import type { CoordinatorConfig, CoordinatorRepoConfig } from '../config/types.ts';
 import { claimText, coveringClaims, readClaims } from '../coordinator/claims.ts';
 import { takeWhenClear, type Readiness } from '../coordinator/clearance.ts';
 import { underLock, type HostLock, type HostLockInfo } from '../coordinator/host-lock.ts';
 import { appendDeploy, rangeText } from '../coordinator/ledger.ts';
 import type { CoordinatorPlaces } from '../coordinator/places.ts';
-import { runRecorded } from '../coordinator/recorded-step.ts';
+import { recordHeavy, runRecorded } from '../coordinator/recorded-step.ts';
 import { heavyCutoffReason, resetBlackoutReason, type ResetTime } from '../coordinator/schedule.ts';
 import { exitCodeOf, type StepEnd, type StepRunner } from '../coordinator/steps.ts';
 import type { Files } from '../core/files.ts';
@@ -13,19 +13,26 @@ import { gitEnvironment } from '../core/git-run.ts';
 import type { Env } from '../core/home.ts';
 import type { Clock, Sleep } from '../core/lock.ts';
 import { samePath } from '../core/paths.ts';
+import type { SecretScanner } from '../core/secrets.ts';
+import { shownLine } from '../roll/gates.ts';
+import { hookEndText, hookExitCode, succeeded, type HookRunner } from '../roll/hooks.ts';
 import { commandLine } from '../test-run/shell.ts';
 import { rangeInstallTouches } from './dependencies.ts';
 import type { Checkout, IntegrateGit } from './git.ts';
+import { LOCKFILE } from './manifest.ts';
 
 /**
  * `teamrig integrate`: lands a finished branch on origin's default branch, one push on the host at a time. It refuses
- * a branch it must not land (detached, the default branch, uncommitted changes, nothing new, a held dependency
- * change), waits out quiet claims on what the push deploys, takes the host lock, rebases onto the fresh default
- * branch and pushes (the pre-push hook runs as a heavy step), then tidies the branch away and, when configured,
- * fast-forwards the main checkout. It never deploys: a push a host deploys by itself is recorded as that deploy.
+ * a branch it must not land (detached, the default branch, uncommitted changes, nothing new, a dependency change the
+ * gate holds and no dependency check clears), waits out quiet claims on what the push deploys, takes the host lock,
+ * rebases onto the fresh default branch, runs the dependency check when the branch changes the package files, and
+ * pushes (the pre-push hook runs as a heavy step), then tidies the branch away and, when configured, fast-forwards the
+ * main checkout. It never deploys: a push a host deploys by itself is recorded as that deploy.
  */
 
 const MINUTE_MS = 60_000;
+/** Names, for the dependency check, the file holding the default branch's package-lock.json. */
+export const BASELINE_LOCK_ENV = 'TEAMRIG_BASELINE_LOCK';
 /** A push origin rejects because its default branch moved meanwhile is rebased and pushed again, this many times in all. */
 export const PUSH_ATTEMPTS = 3;
 /** Branch names never integrated, whatever origin's default branch is. */
@@ -51,6 +58,10 @@ export interface IntegrateSetup {
 export interface IntegratePorts {
   readonly git: IntegrateGit;
   readonly steps: StepRunner;
+  /** Runs the dependency check, without a shell. */
+  readonly hooks: HookRunner;
+  /** Redacts the dependency check's lines before they show. */
+  readonly scanner: Pick<SecretScanner, 'redact'>;
   readonly files: Files;
   readonly clock: Clock;
   readonly sleep: Sleep;
@@ -96,9 +107,10 @@ interface Plan {
 /** The checks before the lock: a plan to land, or why not. */
 type Planned = { readonly kind: 'ready'; readonly plan: Plan } | Exclude<IntegrateEnd, { kind: 'done' }>;
 
-/** How the push went: landed (the commits it landed, as `rangeText` names them, and when), or not. */
+/** How the push went: landed (the commits it landed, as `rangeText` names them, and when), refused by the dependency check, or failed. */
 type Landing =
   | { readonly kind: 'landed'; readonly range: string; readonly after: string; readonly startedAt: string; readonly endedAt: string }
+  | { readonly kind: 'refused'; readonly reason: string }
   | { readonly kind: 'failed'; readonly reason: string };
 
 function short(sha: string): string {
@@ -147,14 +159,14 @@ async function planOf(setup: IntegrateSetup, ports: IntegratePorts, request: Int
     return { kind: 'refused', reason: `nothing to integrate: every commit of ${branch} is already on ${onto}` };
   }
   const repo = repoOf(checkout, setup, ports.platform);
-  const held = repo.config.dependencyGate ? await dependencyHold(git, top, onto, repo.name) : undefined;
+  const held = repo.config.dependencyGate && repo.config.dependencyCheck === undefined ? await dependencyHold(git, top, onto, repo.name) : undefined;
   if (held !== undefined) {
     return { kind: 'refused', reason: held };
   }
   return { kind: 'ready', plan: { top, branch, linked: checkout.linked, mainCheckout: checkout.mainCheckout, defaultBranch, repo } };
 }
 
-/** Why the dependency gate holds the branch: its package files need an install; undefined when they do not. */
+/** Why the dependency gate, with no check to clear a change, holds the branch: its package files need an install; undefined when they do not. */
 async function dependencyHold(git: IntegrateGit, top: string, onto: string, repo: string): Promise<string | undefined> {
   const base = git.mergeBase(top, onto, 'HEAD');
   const touches = base === undefined ? undefined : await rangeInstallTouches(git, top, base, 'HEAD');
@@ -164,7 +176,68 @@ async function dependencyHold(git: IntegrateGit, top: string, onto: string, repo
   if (touches.length === 0) {
     return undefined;
   }
-  return `deps changed (${touches.join(', ')}): coordinator.repos.${repo}.dependencyGate holds a dependency change, since landing it changes, unreviewed, the node_modules every worktree links to; push it and install by hand`;
+  return (
+    `deps changed (${touches.join(', ')}): coordinator.repos.${repo}.dependencyGate holds a dependency change, since landing it changes, unreviewed, ` +
+    `the node_modules every worktree links to; set coordinator.repos.${repo}.dependencyCheck to the check that clears one, or push it and install by hand`
+  );
+}
+
+/** Runs `work` with `file` written, and removes it after, however `work` ends; with no file, just `work`. */
+async function withFile<T>(files: Files, file: { readonly path: string; readonly text: string } | undefined, work: () => Promise<T>): Promise<T> {
+  if (file === undefined) {
+    return work();
+  }
+  await files.write(file.path, file.text);
+  try {
+    return await work();
+  } finally {
+    await files.remove(file.path);
+  }
+}
+
+/**
+ * Under the host lock `lock`, after the rebase onto `base`: runs the repository's dependency check when the gate is on
+ * and the rebased branch changes the package files, with `base`'s package-lock.json in the file
+ * {@link BASELINE_LOCK_ENV} names, kept only while the check runs. Undefined lets the push go; else the refusal, the
+ * check's output shown above it.
+ */
+async function dependencyCheckRefusal(setup: IntegrateSetup, ports: IntegratePorts, request: IntegrateRequest, plan: Plan, lock: HostLockInfo, base: string): Promise<Landing | undefined> {
+  const { top, branch, defaultBranch, repo } = plan;
+  const argv = repo.config.dependencyCheck;
+  if (!repo.config.dependencyGate || argv === undefined) {
+    return undefined;
+  }
+  const touches = await rangeInstallTouches(ports.git, top, base, 'HEAD');
+  if (touches === undefined) {
+    return { kind: 'refused', reason: `could not read what ${branch} changes against ${short(base)}, so the dependency check cannot clear it` };
+  }
+  if (touches.length === 0) {
+    return undefined;
+  }
+  const lockfile = ports.git.fileAt(top, base, LOCKFILE);
+  const baseline = lockfile === undefined ? undefined : { path: join(dirname(setup.places.ledger), `baseline-${ports.newId()}.${LOCKFILE}`), text: lockfile };
+  const changed = `deps changed (${touches.join(', ')})`;
+  ports.say(`${changed}: dependency check ${argv.join(' ')}`);
+  const end = await withFile(ports.files, baseline, () =>
+    recordHeavy(
+      ports,
+      setup.places.ledger,
+      { session: request.session, what: `integrate ${repo.name}: dependency check of ${branch}` },
+      () =>
+        ports.hooks.run({
+          argv,
+          cwd: top,
+          env: underLock({ ...gitEnvironment(ports.env), [BASELINE_LOCK_ENV]: baseline?.path }, lock),
+          timeoutMs: setup.coordinator.heavy.maxRunMinutes * MINUTE_MS,
+          onLine: (line) => ports.say(`  ${shownLine(ports.scanner, line)}`),
+        }),
+      hookExitCode,
+    ),
+  );
+  if (succeeded(end)) {
+    return undefined;
+  }
+  return { kind: 'refused', reason: `${changed}: the dependency check \`${argv.join(' ')}\` ${hookEndText(end)}, so ${branch} stays off ${defaultBranch}; its output is above` };
 }
 
 /** Whether the push may start now: the heavy cutoff and the reset blackout refuse it, a quiet claim on what it deploys holds it. */
@@ -191,8 +264,9 @@ function readinessOf(setup: IntegrateSetup, ports: IntegratePorts, repo: RepoMat
 }
 
 /**
- * Under the host lock `lock`: rebases onto the fresh default branch and pushes, again when origin moved meanwhile. The
- * push gets the lock's token, so a pre-push hook that wraps its checks in `teamrig heavy` runs them under this lock.
+ * Under the host lock `lock`: rebases onto the fresh default branch, runs the dependency check on what the rebase made
+ * (see {@link dependencyCheckRefusal}) and pushes, again from the rebase when origin moved meanwhile. The check and the
+ * push get the lock's token, so a pre-push hook that wraps its checks in `teamrig heavy` runs them under this lock.
  */
 async function land(setup: IntegrateSetup, ports: IntegratePorts, request: IntegrateRequest, plan: Plan, lock: HostLockInfo): Promise<Landing> {
   const { git } = ports;
@@ -214,6 +288,10 @@ async function land(setup: IntegrateSetup, ports: IntegratePorts, request: Integ
     const head = git.sha(top, 'HEAD');
     if (head === undefined) {
       return { kind: 'failed', reason: `HEAD names no commit in ${top} after the rebase` };
+    }
+    const refused = await dependencyCheckRefusal(setup, ports, request, plan, lock, before);
+    if (refused !== undefined) {
+      return refused;
     }
     const startedAt = new Date(ports.clock.now()).toISOString();
     ports.say(`pushing ${branch} (${short(head)}) to ${defaultBranch}; the pre-push hook runs now`);
@@ -366,7 +444,7 @@ export async function integrateBranch(setup: IntegrateSetup, ports: IntegratePor
   } finally {
     await ports.lock.release(clearance.lock);
   }
-  if (landing.kind === 'failed') {
+  if (landing.kind !== 'landed') {
     return landing;
   }
   tidy(ports, request, plan);
