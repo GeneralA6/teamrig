@@ -1,7 +1,7 @@
 import type { BudgetConfig } from '../config/types.ts';
 import { formatUtcDay } from '../core/time.ts';
 import { DailyProfile } from './active-time.ts';
-import { dailyAllowancePct, readPace, resolveReset, weekWindow, type PaceReading, type WeekWindow } from './pace.ts';
+import { dailyAllowancePct, dayPacePct, readPace, resolveReset, weekWindow, type PaceReading, type TeamDay, type WeekWindow } from './pace.ts';
 import type { WeekUse } from './snapshot.ts';
 import type { UsageState } from './store.ts';
 
@@ -27,6 +27,8 @@ export interface WeekReading {
   readonly allowancePct: number | undefined;
   /** Everyone's W today: the team's sessions and the use outside it. */
   readonly todayW: number;
+  /** Everyone's use today against the team's in-day pace (`hasRoom`); undefined with the allowance. */
+  readonly teamDay: TeamDay | undefined;
 }
 
 export interface WeekInput {
@@ -72,6 +74,10 @@ export function readWeek(input: WeekInput): WeekReading {
     window === undefined || usedPct === undefined || wPerPct === undefined
       ? undefined
       : dailyAllowancePct({ window, budget, now, usedPct, todayPct: todayW / wPerPct, profile });
+  const teamDay =
+    window === undefined || wPerPct === undefined || allowancePct === undefined
+      ? undefined
+      : { usedPct: todayW / wPerPct, pacePct: dayPacePct({ window, now, allowancePct, profile }) };
   return {
     reset,
     window,
@@ -83,5 +89,6 @@ export function readWeek(input: WeekInput): WeekReading {
     pace,
     allowancePct,
     todayW,
+    teamDay,
   };
 }

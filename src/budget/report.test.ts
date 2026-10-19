@@ -25,7 +25,10 @@ import type { WeekReading } from './week.ts';
 
 const RESET = Date.parse('2026-10-21T01:00:00Z');
 const WINDOW = weekWindow(RESET, 1);
-/** 57% used by the status line at 11:00, 1% of the week = 7.5M W, a 10.25% team allowance today. */
+/**
+ * 57% used by the status line at 11:00, 1% of the week = 7.5M W, a 10.25% team allowance today; everyone's 5.16%
+ * today is past the in-day pace of 10.25 × 11/24, so the team has no room.
+ */
 const WEEK: WeekReading = {
   reset: RESET,
   window: WINDOW,
@@ -37,7 +40,9 @@ const WEEK: WeekReading = {
   pace: { window: WINDOW, linePct: 20.853, gapPts: 36.147, state: 'ahead' },
   allowancePct: 10.25,
   todayW: 38_700_000,
+  teamDay: { usedPct: 5.16, pacePct: (10.25 * 11) / 24 },
 };
+const ROOM = { usedPct: 3, pacePct: (10.25 * 11) / 24 };
 const UNKNOWN: WeekReading = {
   reset: undefined,
   window: undefined,
@@ -49,6 +54,7 @@ const UNKNOWN: WeekReading = {
   pace: undefined,
   allowancePct: undefined,
   todayW: 0,
+  teamDay: undefined,
 };
 const LIFT: Lift = {
   session: 'bravo',
@@ -93,6 +99,13 @@ describe('todayLines', () => {
       `Past the daily budget: alpha. ${OVER_BUDGET_ADVICE}`,
       `${W_EXPLAINED} 1% of the week is about 7.50M W, estimated from the status line.`,
     ]);
+  });
+
+  it('never holds a session past its part while the team has room today', () => {
+    const lines = todayLines({ ...REPORT, week: { ...WEEK, teamDay: ROOM } });
+    assert.equal(lines.find((line) => line.startsWith('Past')), 'Past their part, not held while the team has room today (3.0% of the week used, below its in-day pace of 4.7%): alpha.');
+    const teamPast = todayLines({ ...REPORT, week: { ...WEEK, allowancePct: 1, teamDay: ROOM } });
+    assert.match(teamPast.find((line) => line.startsWith('Past')) ?? '', /^Past the daily budget: the team, alpha\. /);
   });
 
   it('never tells a session past budget to skip a test', () => {

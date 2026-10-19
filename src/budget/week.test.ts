@@ -38,6 +38,7 @@ describe('readWeek', () => {
       pace: undefined,
       allowancePct: undefined,
       todayW: 500,
+      teamDay: undefined,
     });
   });
 
@@ -71,9 +72,13 @@ describe('readWeek', () => {
     // Wed 01:00 to Thu 12:00 is 16 + 6 of the week's 112 active hours; 42.5% left over the other 90, a 16-hour day of it.
     assert.equal(round(week.pace?.linePct), round((99.5 * 22) / 112));
     assert.equal(round(week.allowancePct), round((42.5 * 16) / 90));
+    // Thursday 12:00 is 6 of the day's 16 active hours, and today's 500 W are 500 / (1,500 / 57) % of the week.
+    assert.equal(round(week.teamDay?.pacePct), round((((42.5 * 16) / 90) * 6) / 16));
+    assert.equal(round(week.teamDay?.usedPct), round((500 * 57) / 1_500));
   });
 
   it("has no allowance while the week's use cannot be read: no fixed number stands in for it", () => {
-    assert.equal(readWeek({ budget: DEFAULT_BUDGET, now: NOW, statusUse: undefined, states: [] }).allowancePct, undefined);
+    const unknown = readWeek({ budget: DEFAULT_BUDGET, now: NOW, statusUse: undefined, states: [] });
+    assert.deepEqual([unknown.allowancePct, unknown.teamDay], [undefined, undefined]);
   });
 });
