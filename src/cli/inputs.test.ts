@@ -1,10 +1,15 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { TimeZone } from '../core/zone.ts';
 import { TASK_STATUSES } from '../register/model.ts';
+import { JERUSALEM } from '../testing/zone.ts';
 import { UsageError } from './args.ts';
-import { addInputOf, callerOf, changesOf, listFilterOf, priorityOf, sessionRef, setInputOf, sizeOf, statusInputOf, taskIdOf, waitsOf, weekOf } from './inputs.ts';
+import { addInputOf, callerOf, changesOf, deadlineOf, instantOf, listFilterOf, priorityOf, sessionRef, setInputOf, sizeOf, statusInputOf, taskIdOf, waitsOf, weekOf, type TypedTimes } from './inputs.ts';
 
 const flags = (entries: Readonly<Record<string, string>>): ReadonlyMap<string, string> => new Map(Object.entries(entries));
+
+/** 2030-01-08 12:00 UTC, in a UTC team: a typed time reads as the stored one. */
+const TIMES: TypedTimes = { nowMs: Date.parse('2030-01-08T12:00:00.000Z'), zone: TimeZone.UTC };
 
 describe('names and ids', () => {
   it('takes the caller from --session, else the session variable', () => {
@@ -48,7 +53,7 @@ describe('priorityOf', () => {
 
 describe('addInputOf', () => {
   it('defaults the owner and source to the caller and sets only the fields given', () => {
-    assert.deepEqual(addInputOf(flags({ title: 'Ship it', priority: 'p2' }), 'alpha'), {
+    assert.deepEqual(addInputOf(flags({ title: 'Ship it', priority: 'p2' }), 'alpha', TIMES), {
       title: 'Ship it',
       owner: 'alpha',
       source: 'alpha',
@@ -59,7 +64,7 @@ describe('addInputOf', () => {
   it('reads every optional field', () => {
     const input = addInputOf(
       flags({ title: 'Ship it', description: 'Users ask for it.', priority: 'p1', owner: 'bravo', source: 'owner', ref: 'msg 4', due: '2030-01-09', goals: 'g1, g2', week: '2030-01-07' }),
-      'alpha',
+      'alpha', TIMES,
     );
     assert.deepEqual(input, {
       title: 'Ship it',
@@ -75,28 +80,28 @@ describe('addInputOf', () => {
   });
 
   it('refuses a missing title or priority, a priority that is not p<n> and an empty goal list', () => {
-    assert.throws(() => addInputOf(flags({ priority: 'p1' }), 'alpha'), /--title is required/);
-    assert.throws(() => addInputOf(flags({ title: 'x' }), 'alpha'), /--priority is required/);
-    assert.throws(() => addInputOf(flags({ title: 'x', priority: '1' }), 'alpha'), /priority "1" is not p<n>: write p1/);
-    assert.throws(() => addInputOf(flags({ title: 'x', priority: 'p1', goals: ' , ' }), 'alpha'), /--goals " , " is an empty list/);
+    assert.throws(() => addInputOf(flags({ priority: 'p1' }), 'alpha', TIMES), /--title is required/);
+    assert.throws(() => addInputOf(flags({ title: 'x' }), 'alpha', TIMES), /--priority is required/);
+    assert.throws(() => addInputOf(flags({ title: 'x', priority: '1' }), 'alpha', TIMES), /priority "1" is not p<n>: write p1/);
+    assert.throws(() => addInputOf(flags({ title: 'x', priority: 'p1', goals: ' , ' }), 'alpha', TIMES), /--goals " , " is an empty list/);
   });
 
   it('reads the tasks it comes after as task ids', () => {
-    assert.deepEqual(addInputOf(flags({ title: 'x', priority: 'p2', after: 'T5, T6' }), 'alpha').after, ['T5', 'T6']);
-    assert.equal(addInputOf(flags({ title: 'x', priority: 'p2' }), 'alpha').after, undefined, 'none given leaves it to the default');
-    assert.throws(() => addInputOf(flags({ title: 'x', priority: 'p2', after: 'T5,soon' }), 'alpha'), /"soon" is not a task id like T12/);
+    assert.deepEqual(addInputOf(flags({ title: 'x', priority: 'p2', after: 'T5, T6' }), 'alpha', TIMES).after, ['T5', 'T6']);
+    assert.equal(addInputOf(flags({ title: 'x', priority: 'p2' }), 'alpha', TIMES).after, undefined, 'none given leaves it to the default');
+    assert.throws(() => addInputOf(flags({ title: 'x', priority: 'p2', after: 'T5,soon' }), 'alpha', TIMES), /"soon" is not a task id like T12/);
   });
 });
 
 describe('changesOf', () => {
   it('changes only the fields given', () => {
-    assert.deepEqual(changesOf(flags({ title: 'New', priority: 'p3' })), { title: 'New', priority: 3 });
-    assert.deepEqual(changesOf(flags({ description: 'Why it matters.' })), { description: 'Why it matters.' });
-    assert.throws(() => changesOf(flags({ priority: 't3' })), /priority "t3" is the old tier spelling: write p3/);
+    assert.deepEqual(changesOf(flags({ title: 'New', priority: 'p3' }), TIMES), { title: 'New', priority: 3 });
+    assert.deepEqual(changesOf(flags({ description: 'Why it matters.' }), TIMES), { description: 'Why it matters.' });
+    assert.throws(() => changesOf(flags({ priority: 't3' }), TIMES), /priority "t3" is the old tier spelling: write p3/);
   });
 
   it('clears the description, ref, due date, goals and week with none', () => {
-    assert.deepEqual(changesOf(flags({ description: 'none', ref: 'none', due: 'none', goals: 'none', week: 'none' })), {
+    assert.deepEqual(changesOf(flags({ description: 'none', ref: 'none', due: 'none', goals: 'none', week: 'none' }), TIMES), {
       description: null,
       ref: null,
       due: null,
@@ -106,13 +111,13 @@ describe('changesOf', () => {
   });
 
   it('plans after tasks, or clears the plan with none', () => {
-    assert.deepEqual(changesOf(flags({ after: 'T5,T6' })), { after: ['T5', 'T6'] });
-    assert.deepEqual(changesOf(flags({ after: 'none' })), { after: [] });
+    assert.deepEqual(changesOf(flags({ after: 'T5,T6' }), TIMES), { after: ['T5', 'T6'] });
+    assert.deepEqual(changesOf(flags({ after: 'none' }), TIMES), { after: [] });
   });
 
   it('sizes a task, or clears its size with none', () => {
-    assert.deepEqual(changesOf(flags({ size: '1.5%' })), { size: 1.5 });
-    assert.deepEqual(changesOf(flags({ size: 'none' })), { size: null });
+    assert.deepEqual(changesOf(flags({ size: '1.5%' }), TIMES), { size: 1.5 });
+    assert.deepEqual(changesOf(flags({ size: 'none' }), TIMES), { size: null });
   });
 });
 
@@ -133,23 +138,23 @@ describe('sizeOf', () => {
 
 describe('statusInputOf', () => {
   it('reads the status and its optional proof', () => {
-    assert.deepEqual(statusInputOf(flags({ status: 'done', note: 'shipped', evidence: 'abc123', skill: 'none' })), {
+    assert.deepEqual(statusInputOf(flags({ status: 'done', note: 'shipped', evidence: 'abc123', skill: 'none' }), TIMES), {
       status: 'done',
       note: 'shipped',
       evidence: 'abc123',
       skill: 'none',
     });
-    assert.deepEqual(statusInputOf(flags({ status: 'waiting' })), { status: 'waiting' });
+    assert.deepEqual(statusInputOf(flags({ status: 'waiting' }), TIMES), { status: 'waiting' });
   });
 
   it('reads the follow-ups as task ids, none as an empty list, and refuses text that is not a task id', () => {
-    assert.deepEqual(statusInputOf(flags({ status: 'done', followups: 'T4, T5' })), { status: 'done', followups: ['T4', 'T5'] });
-    assert.deepEqual(statusInputOf(flags({ status: 'done', followups: 'none' })), { status: 'done', followups: [] });
-    assert.throws(() => statusInputOf(flags({ status: 'done', followups: 'T4,next' })), /"next" is not a task id like T12/);
+    assert.deepEqual(statusInputOf(flags({ status: 'done', followups: 'T4, T5' }), TIMES), { status: 'done', followups: ['T4', 'T5'] });
+    assert.deepEqual(statusInputOf(flags({ status: 'done', followups: 'none' }), TIMES), { status: 'done', followups: [] });
+    assert.throws(() => statusInputOf(flags({ status: 'done', followups: 'T4,next' }), TIMES), /"next" is not a task id like T12/);
   });
 
   it('reads each typed reason a waiting task waits for, a time keeping its own colon', () => {
-    assert.deepEqual(statusInputOf(flags({ status: 'waiting', waits: 'decision:owner, approval:lead,task:T5,time:2030-01-09 12:00' })), {
+    assert.deepEqual(statusInputOf(flags({ status: 'waiting', waits: 'decision:owner, approval:lead,task:T5,time:2030-01-09 12:00' }), TIMES), {
       status: 'waiting',
       waits: [
         { kind: 'decision', who: 'owner' },
@@ -158,59 +163,59 @@ describe('statusInputOf', () => {
         { kind: 'time', at: '2030-01-09 12:00' },
       ],
     });
-    assert.deepEqual(waitsOf('time:2030-01-09'), [{ kind: 'time', at: '2030-01-09' }]);
+    assert.deepEqual(waitsOf('time:2030-01-09', TIMES), [{ kind: 'time', at: '2030-01-09' }]);
   });
 
   it('refuses a reason of no known kind or with a bad value', () => {
-    assert.throws(() => waitsOf('owner'), /--waits "owner" is not one of decision:<who>, approval:<who>, task:T<id> or time:/);
-    assert.throws(() => waitsOf('review:owner'), /--waits "review:owner" is not one of/);
-    assert.throws(() => waitsOf('decision:'), /--waits "decision:": decision needs who gives it/);
-    assert.throws(() => waitsOf('task:5'), /--waits "task:5": 5 is not a task id like T12/);
-    assert.throws(() => waitsOf('time:tomorrow'), /--waits "time:tomorrow": tomorrow is not YYYY-MM-DD or YYYY-MM-DD HH:MM/);
+    assert.throws(() => waitsOf('owner', TIMES), /--waits "owner" is not one of decision:<who>, approval:<who>, task:T<id> or time:/);
+    assert.throws(() => waitsOf('review:owner', TIMES), /--waits "review:owner" is not one of/);
+    assert.throws(() => waitsOf('decision:', TIMES), /--waits "decision:": decision needs who gives it/);
+    assert.throws(() => waitsOf('task:5', TIMES), /--waits "task:5": 5 is not a task id like T12/);
+    assert.throws(() => waitsOf('time:tomorrow', TIMES), /--waits time: "tomorrow" is not YYYY-MM-DD or a time: HH:MM or YYYY-MM-DD HH:MM in UTC$/);
   });
 
   it('refuses blocked, naming waiting that replaced it', () => {
-    assert.throws(() => statusInputOf(flags({ status: 'blocked' })), /^UsageError: --status blocked was replaced by waiting: use --status waiting --waits <reason> \(decision:<who>/);
-    assert.throws(() => listFilterOf(flags({ status: 'open,blocked' })), /--status blocked was replaced by waiting: use --status waiting$/);
+    assert.throws(() => statusInputOf(flags({ status: 'blocked' }), TIMES), /^UsageError: --status blocked was replaced by waiting: use --status waiting --waits <reason> \(decision:<who>/);
+    assert.throws(() => listFilterOf(flags({ status: 'open,blocked' }), TIMES), /--status blocked was replaced by waiting: use --status waiting$/);
   });
 
   it('refuses an unknown status', () => {
-    assert.throws(() => statusInputOf(flags({ status: 'finished' })), /--status "finished" is not open\|/);
+    assert.throws(() => statusInputOf(flags({ status: 'finished' }), TIMES), /--status "finished" is not open\|/);
   });
 });
 
 describe('setInputOf', () => {
   it('reads the status alone without --ask', () => {
-    assert.deepEqual(setInputOf(flags({ status: 'verifying', proof: 'the nightly run', due: '2030-01-09' })), {
+    assert.deepEqual(setInputOf(flags({ status: 'verifying', proof: 'the nightly run', due: '2030-01-09' }), TIMES), {
       status: { status: 'verifying', proof: 'the nightly run', due: '2030-01-09' },
       ask: null,
     });
   });
 
   it('with --ask, takes --text as the work asked for and --due as its due date', () => {
-    assert.deepEqual(setInputOf(flags({ status: 'waiting', ask: 'bravo', text: 'Land the schema change', due: '2030-01-10', note: 'needs the column' })), {
+    assert.deepEqual(setInputOf(flags({ status: 'waiting', ask: 'bravo', text: 'Land the schema change', due: '2030-01-10', note: 'needs the column' }), TIMES), {
       status: { status: 'waiting', note: 'needs the column' },
       ask: { owner: 'bravo', title: 'Land the schema change', due: '2030-01-10' },
     });
-    assert.deepEqual(setInputOf(flags({ status: 'waiting', ask: 'bravo', text: 'Land it' })).ask, { owner: 'bravo', title: 'Land it' });
+    assert.deepEqual(setInputOf(flags({ status: 'waiting', ask: 'bravo', text: 'Land it' }), TIMES).ask, { owner: 'bravo', title: 'Land it' });
   });
 
   it('pairs --ask and --text, and checks the session shape', () => {
-    assert.throws(() => setInputOf(flags({ status: 'waiting', ask: 'bravo' })), /--ask needs --text "<the work asked for>"/);
-    assert.throws(() => setInputOf(flags({ status: 'waiting', ask: 'bravo', text: '  ' })), /--ask needs --text/);
-    assert.throws(() => setInputOf(flags({ status: 'waiting', text: 'Land it' })), /--text goes only with --ask <session>/);
-    assert.throws(() => setInputOf(flags({ status: 'waiting', ask: 'no way', text: 'Land it' })), /--ask "no way" is not a session id or name/);
+    assert.throws(() => setInputOf(flags({ status: 'waiting', ask: 'bravo' }), TIMES), /--ask needs --text "<the work asked for>"/);
+    assert.throws(() => setInputOf(flags({ status: 'waiting', ask: 'bravo', text: '  ' }), TIMES), /--ask needs --text/);
+    assert.throws(() => setInputOf(flags({ status: 'waiting', text: 'Land it' }), TIMES), /--text goes only with --ask <session>/);
+    assert.throws(() => setInputOf(flags({ status: 'waiting', ask: 'no way', text: 'Land it' }), TIMES), /--ask "no way" is not a session id or name/);
   });
 });
 
 describe('listFilterOf', () => {
   it('reads no filter as the defaults', () => {
-    assert.deepEqual(listFilterOf(flags({})), {});
+    assert.deepEqual(listFilterOf(flags({}), TIMES), {});
   });
 
   it('reads every filter', () => {
     const filter = listFilterOf(
-      flags({ session: 'bravo', status: 'open,waiting', source: 'owner', priority: 'p1,p2', 'due-before': '2030-01-09 12:00', week: 'none', goal: 'g1' }),
+      flags({ session: 'bravo', status: 'open,waiting', source: 'owner', priority: 'p1,p2', 'due-before': '2030-01-09 12:00', week: 'none', goal: 'g1' }), TIMES,
     );
     assert.deepEqual(filter, {
       owner: 'bravo',
@@ -224,25 +229,59 @@ describe('listFilterOf', () => {
   });
 
   it('reads --status all as every status and a week as its day', () => {
-    assert.deepEqual(listFilterOf(flags({ status: 'all', week: '2030-01-07' })), { statuses: TASK_STATUSES, week: '2030-01-07' });
+    assert.deepEqual(listFilterOf(flags({ status: 'all', week: '2030-01-07' }), TIMES), { statuses: TASK_STATUSES, week: '2030-01-07' });
   });
 
   it('refuses a malformed deadline or status', () => {
-    assert.throws(() => listFilterOf(flags({ 'due-before': 'tomorrow' })), /--due-before "tomorrow" is not YYYY-MM-DD/);
-    assert.throws(() => listFilterOf(flags({ status: 'open,later' })), /--status "later" is not/);
+    assert.throws(() => listFilterOf(flags({ 'due-before': 'tomorrow' }), TIMES), /--due-before "tomorrow" is not YYYY-MM-DD/);
+    assert.throws(() => listFilterOf(flags({ status: 'open,later' }), TIMES), /--status "later" is not/);
   });
 });
 
 describe('statusInputOf: the decision card', () => {
   it('reads the card parts, trimmed, the options split on |', () => {
     const full = flags({ status: 'waiting', waits: 'decision:owner', question: ' Which tier ', options: 'Basic | Pro at 29 ', recommend: 'Basic', default: 'Basic ships' });
-    assert.deepEqual(statusInputOf(full).card, { question: 'Which tier', options: ['Basic', 'Pro at 29'], recommend: 'Basic', byDefault: 'Basic ships' });
-    assert.deepEqual(statusInputOf(flags({ status: 'waiting', waits: 'decision:owner', recommend: 'Pro now' })).card, { recommend: 'Pro now' });
-    assert.equal('card' in statusInputOf(flags({ status: 'waiting', waits: 'decision:owner' })), false);
+    assert.deepEqual(statusInputOf(full, TIMES).card, { question: 'Which tier', options: ['Basic', 'Pro at 29'], recommend: 'Basic', byDefault: 'Basic ships' });
+    assert.deepEqual(statusInputOf(flags({ status: 'waiting', waits: 'decision:owner', recommend: 'Pro now' }), TIMES).card, { recommend: 'Pro now' });
+    assert.equal('card' in statusInputOf(flags({ status: 'waiting', waits: 'decision:owner' }), TIMES), false);
   });
 
   it('refuses a blank part or an empty choice', () => {
-    assert.throws(() => statusInputOf(flags({ status: 'waiting', question: ' ' })), /--question needs text/);
-    assert.throws(() => statusInputOf(flags({ status: 'waiting', options: 'Basic || Pro' })), /--options has an empty choice: separate the choices with \|/);
+    assert.throws(() => statusInputOf(flags({ status: 'waiting', question: ' ' }), TIMES), /--question needs text/);
+    assert.throws(() => statusInputOf(flags({ status: 'waiting', options: 'Basic || Pro' }), TIMES), /--options has an empty choice: separate the choices with \|/);
+  });
+});
+
+describe("a typed time in the team's zone", () => {
+  /** 2030-01-08 14:00 IST (12:00 UTC) in a Jerusalem team. */
+  const LOCAL: TypedTimes = { nowMs: Date.parse('2030-01-08T12:00:00.000Z'), zone: JERUSALEM };
+
+  it('stores a typed due minute in UTC and keeps a bare day as typed', () => {
+    assert.equal(addInputOf(flags({ title: 'Ship it', priority: 'p2', due: '2030-01-09 09:00' }), 'alpha', LOCAL).due, '2030-01-09 07:00');
+    assert.equal(addInputOf(flags({ title: 'Ship it', priority: 'p2', due: '2030-01-09' }), 'alpha', LOCAL).due, '2030-01-09', 'a bare day is a day of the zone, stored as is');
+    assert.equal(changesOf(flags({ due: '16:30' }), LOCAL).due, '2030-01-08 14:30', 'HH:MM is today there');
+    assert.equal(deadlineOf('--due', '2030-01-09 09:00 UTC', LOCAL), '2030-01-09 09:00', 'a time marked UTC is read as UTC');
+    assert.equal(deadlineOf('--due', '2030-01-09 09:00 IST', LOCAL), '2030-01-09 07:00', "a time marked with the zone's name is read there");
+  });
+
+  it('reads a wait time and a verify-by due there', () => {
+    assert.deepEqual(waitsOf('time:2030-01-09 12:00', LOCAL), [{ kind: 'time', at: '2030-01-09 10:00' }]);
+    assert.equal(statusInputOf(flags({ status: 'verifying', proof: 'the nightly run', due: '2030-01-09 08:00' }), LOCAL).due, '2030-01-09 06:00');
+  });
+
+  it('ends a --due-before day at midnight there', () => {
+    assert.equal(listFilterOf(flags({ 'due-before': '2030-01-09' }), LOCAL).dueBefore?.toISOString(), '2030-01-09T21:59:59.999Z');
+    assert.equal(listFilterOf(flags({ 'due-before': '2030-01-09 12:00' }), LOCAL).dueBefore?.toISOString(), '2030-01-09T10:00:00.000Z');
+  });
+
+  it('reads --since on the clock there', () => {
+    assert.equal(instantOf('--since', '09:00', LOCAL), Date.parse('2030-01-08T07:00:00.000Z'));
+    assert.equal(instantOf('--since', '09:00', TIMES), Date.parse('2030-01-08T09:00:00.000Z'));
+  });
+
+  it("refuses a time it cannot read, naming the zone's clock", () => {
+    assert.throws(() => deadlineOf('--due', 'soon', LOCAL), /^UsageError: --due "soon" is not YYYY-MM-DD or a time: HH:MM or YYYY-MM-DD HH:MM in Asia\/Jerusalem \(IST\), or marked UTC$/);
+    assert.throws(() => deadlineOf('--due', '2030-01-09 09:00 IDT', LOCAL), /is not YYYY-MM-DD or a time/, 'January is IST there: an IDT mark is refused');
+    assert.throws(() => instantOf('--since', 'soon', LOCAL), /--since "soon" is not a time: HH:MM or YYYY-MM-DD HH:MM in Asia\/Jerusalem \(IST\), or marked UTC; YYYY-MM-DD \(its start\) or an ISO time with its zone/);
   });
 });
