@@ -58,6 +58,7 @@ import { armRestart, restartTargetOf } from './hook-restart.ts';
 import { helperContextOf } from './hook-helper-start.ts';
 import { envSession, leadOwnPaths, parseJson, sessionTeam, startSessionOf, teamSessionOf } from './hook-input.ts';
 import { tabStatusOn, tabTitleOf } from './hook-tab-status.ts';
+import { keepWorkingReasonOf } from './keep-working.ts';
 import { retireAskReasonOf } from './retire-ask.ts';
 import { verifyByLinesOf, verifyNoteOf } from './verify-queue.ts';
 
@@ -574,14 +575,15 @@ async function modelNoticesOf(runtime: CliRuntime, scope: StopScope, payload: Js
 }
 
 /**
- * The ask for a hired session to retire itself at this turn's end (retire-ask.ts); none on a stop the hook
- * already blocked, or while the refresh blocks or waits for its restart, so the ask waits for a later stop.
+ * The one-time ask that sends the session back at this turn's end: for a hired session, to retire itself
+ * (retire-ask.ts), else, while a task of it waits, to work its other tasks (keep-working.ts). None on a stop the
+ * hook already blocked, or while the refresh blocks or waits for its restart, so the asks wait for a later stop.
  */
-async function retireBlockOf(runtime: CliRuntime, scope: StopScope, payload: JsonRecord, decision: StopDecision): Promise<string | undefined> {
+async function askBlockOf(runtime: CliRuntime, scope: StopScope, payload: JsonRecord, decision: StopDecision): Promise<string | undefined> {
   if (payload['stop_hook_active'] === true || decision.kind === 'block' || decision.kind === 'notice') {
     return undefined;
   }
-  return retireAskReasonOf(runtime, scope.config, scope.kit.paths, scope.id);
+  return (await retireAskReasonOf(runtime, scope.config, scope.kit.paths, scope.id)) ?? keepWorkingReasonOf(runtime, scope);
 }
 
 /**
@@ -620,8 +622,8 @@ async function stopOutputOf(runtime: CliRuntime, payload: JsonRecord): Promise<s
   await startAutoSync(runtime, scope.kit, scope.config).catch(() => undefined);
   const lead = await leadStopLines(runtime, scope, stringField(payload, 'transcript_path')).catch((): readonly string[] => []);
   const lines = [...notices, ...budget, ...verify, ...lead];
-  const retire = await retireBlockOf(runtime, scope, payload, decision).catch((): string | undefined => undefined);
-  return retire === undefined ? stopOutput(decision, lines, await stopTabTitleOf(runtime, scope.config, payload, decision)) : blockOutput(retire, lines);
+  const ask = await askBlockOf(runtime, scope, payload, decision).catch((): string | undefined => undefined);
+  return ask === undefined ? stopOutput(decision, lines, await stopTabTitleOf(runtime, scope.config, payload, decision)) : blockOutput(ask, lines);
 }
 
 /**
@@ -631,7 +633,9 @@ async function stopOutputOf(runtime: CliRuntime, payload: JsonRecord): Promise<s
  * once that it waits for /clear, or with `refresh.autoRestart` that it restarts by itself when idle (hook-restart.ts). It also tells the user, once each, when the session runs at another
  * effort than its `launch` entry or Claude Code switched its model after a safeguard stop, and once a
  * day when the date to verify one of its verifying tasks by has come. Under `hiring.policy` `automatic` it asks a
- * hired session whose last open task closed, once, to write its handover and retire. Once per `github.everyMinutes` for the whole
+ * hired session whose last open task closed, once, to write its handover and retire; after a `set` to waiting it sends the
+ * session, once, to its work it can start that does not come after the waiting task (keep-working.ts),
+ * never in quiet hours or past its daily budget. Once per `github.everyMinutes` for the whole
  * team it starts `gh sync --auto` hidden in the background (gh-auto.ts). With tab status on, it also sets the
  * tab's title to the ready circle, or the working one while a helper runs, in any tab of the team (hook-tab-status.ts).
  * A turn with nothing to say reads only small files and the transcript's tail (and, at the first stop of a UTC day,

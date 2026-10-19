@@ -39,6 +39,7 @@ import { readHirePct } from '../hire-cost.ts';
 import { snapshotDirOf } from './budget.ts';
 import { inboxDepsOf } from './inbox.ts';
 import { markBoundary } from './refresh.ts';
+import { markKeepWorkingAsk } from './keep-working.ts';
 import { markRetireAsk } from './retire-ask.ts';
 
 interface Team {
@@ -253,12 +254,16 @@ export async function set(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
   if (verdict.ok && (input.status === 'done' || input.status === 'dropped')) {
     await markRetireAsk(runtime, config, paths, verdict.value);
   }
+  if (verdict.ok && input.status === 'waiting') {
+    await markKeepWorkingAsk(runtime, paths, verdict.value);
+  }
   return exit;
 }
 
 /**
  * `set --ask`: the asked task and the wait on it in one write, its line printed above the `SET` line; the asked
  * session hears its task is its own (unless the caller asked itself), and the lead hears of a wait on it or the owner.
+ * The caller's task now waits, so its next stop sends it to its other work (keep-working.ts).
  */
 async function setAsking(runtime: CliRuntime, team: Team, by: string, id: string, ask: AskInput, input: StatusInput): Promise<ExitCode> {
   const verdict = await team.register.ask(by, id, ask, input);
@@ -271,6 +276,9 @@ async function setAsking(runtime: CliRuntime, team: Team, by: string, id: string
     await tellAssigned(runtime, team, by, verdict.value.asked);
   }
   await tellLeadOfWaits(runtime, team, by, verdict);
+  if (verdict.ok) {
+    await markKeepWorkingAsk(runtime, team.paths, verdict.value);
+  }
   return exit;
 }
 

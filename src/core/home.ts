@@ -130,6 +130,8 @@ export interface TeamPaths {
   readonly hiresLock: string;
   /** Each hired session's due ask to retire itself (hiring/retire-ask.ts), `<id>.json` each. */
   readonly retireAsks: string;
+  /** Each session's due ask to keep working while a task of it waits (wake/keep-working.ts), `<id>.json` each. */
+  readonly keepWorkingAsks: string;
   /** What the budget warning already showed each session, `<id>.json` each. */
   readonly warn: string;
   /** The full output of each `teamrig test` run, `test-<session>-<n>.log` each. */
@@ -187,6 +189,7 @@ export function teamPaths(kitHome: string, team: string, userHome: string, overr
     hires: join(state, 'hires.jsonl'),
     hiresLock: join(state, 'hires.lock'),
     retireAsks: join(state, 'retire-asks'),
+    keepWorkingAsks: join(state, 'keep-working-asks'),
     warn: join(state, 'usage', 'warn'),
     logs: join(state, 'logs'),
     githubSync: join(state, 'github-sync.json'),
