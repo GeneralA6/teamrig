@@ -1,6 +1,7 @@
+import type { RefreshConfig } from '../config/types.ts';
 import type { Files } from '../core/files.ts';
 import type { Clock, Sleep } from '../core/lock.ts';
-import { CLAIM_HELD, CLAIM_TAKEN, isClaudeSessionId, type ClaimOutcome } from '../mod/clear-hand.ts';
+import { CLAIM_HELD, CLAIM_TAKEN, isClaudeSessionId, type ClaimOutcome, type PersonHold } from '../mod/clear-hand.ts';
 import { isClaudeProcess, type FeedOutcome, type ProcessInfo, type SessionProcesses } from '../open/session-processes.ts';
 import type { RestoreRegistry } from '../restore/registry.ts';
 import type { ClearAsks } from './clear-asks.ts';
@@ -38,6 +39,13 @@ export interface RestartPlan {
   readonly endCommand: readonly string[];
   /** Where the end command runs when the session's own folder is unknown. */
   readonly fallbackCwd: string;
+  /** How the tab's mod holds the /clear for the person, which each ask carries to it. */
+  readonly hold: PersonHold;
+}
+
+/** The team's `refresh.countdownSeconds` and `refresh.holdAfterActivityMinutes` as the hold an ask carries, in ms. */
+export function personHoldOf(refresh: Pick<RefreshConfig, 'countdownSeconds' | 'holdAfterActivityMinutes'>): PersonHold {
+  return { countdownMs: refresh.countdownSeconds * 1000, afterActivityMs: refresh.holdAfterActivityMinutes * 60_000 };
 }
 
 export type RestartResult =
@@ -225,7 +233,7 @@ function tabAnswerOf(outcome: ClaimOutcome | undefined): 'cleared' | 'held' {
  * is removed with the new ask's posting.
  */
 async function handToTab(deps: RestartDeps, plan: RestartPlan, claudeSession: string): Promise<'cleared' | 'held' | 'cancelled' | 'unclaimed'> {
-  await deps.asks.post(claudeSession, { team: plan.team, id: plan.id, at: plan.at, askedAt: new Date(deps.clock.now()).toISOString() });
+  await deps.asks.post(claudeSession, { team: plan.team, id: plan.id, at: plan.at, askedAt: new Date(deps.clock.now()).toISOString(), hold: plan.hold });
   try {
     const deadline = deps.clock.now() + CLAIM_WAIT_MS;
     for (;;) {
