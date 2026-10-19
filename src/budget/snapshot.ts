@@ -2,6 +2,7 @@ import { basename, join } from 'node:path';
 import { isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import { parseObject } from '../core/jsonl.ts';
 import type { Files } from '../core/files.ts';
+import { MS_PER_DAY, MS_PER_HOUR } from '../core/time.ts';
 import { CLAUDE_SESSION_ID } from '../inbox/marks.ts';
 
 /**
@@ -25,6 +26,9 @@ import { CLAUDE_SESSION_ID } from '../inbox/marks.ts';
  * Claude Code sends `rate_limits` only to a claude.ai plan's sessions, after the session's first reply,
  * and redraws the status line with the session's last reading until its next reply: a snapshot written
  * now may hold a reading days old. The two times date the reading itself.
+ *
+ * `teamrig statusline` also prunes the folder (`pruneSnapshots`): a snapshot written more than 8 days
+ * ago is removed, as it can no longer hold a reading of the current week.
  */
 
 /** One rate-limit window: percent used and when it resets, in epoch milliseconds. */
@@ -301,15 +305,68 @@ export function statusLineText(snapshot: StatusSnapshot, view: StatusLineView): 
   return parts.join(', ');
 }
 
-/** Every snapshot in a folder; other files and unreadable ones are skipped. */
-export async function readSnapshots(files: Pick<Files, 'list' | 'read'>, dir: string): Promise<StatusSnapshot[]> {
-  const snapshots: StatusSnapshot[] = [];
+/** A snapshot in its folder: its file's path and what it holds. */
+interface SnapshotFile {
+  readonly path: string;
+  readonly snapshot: StatusSnapshot;
+}
+
+async function readSnapshotFiles(files: Pick<Files, 'list' | 'read'>, dir: string): Promise<SnapshotFile[]> {
+  const found: SnapshotFile[] = [];
   for (const name of await files.list(dir)) {
-    const text = name.endsWith('.json') ? await files.read(join(dir, name)) : undefined;
+    const path = join(dir, name);
+    const text = name.endsWith('.json') ? await files.read(path) : undefined;
     const snapshot = text === undefined ? undefined : parseSnapshot(text);
     if (snapshot !== undefined) {
-      snapshots.push(snapshot);
+      found.push({ path, snapshot });
     }
   }
-  return snapshots;
+  return found;
+}
+
+/** Every snapshot in a folder; other files and unreadable ones are skipped. */
+export async function readSnapshots(files: Pick<Files, 'list' | 'read'>, dir: string): Promise<StatusSnapshot[]> {
+  return (await readSnapshotFiles(files, dir)).map((each) => each.snapshot);
+}
+
+/**
+ * Days a snapshot is kept after it was written: 8, as many as the usage files keep a day's totals. A
+ * reading is taken by its snapshot's `ts` and its week resets at most 7 days later, so a snapshot older
+ * than that holds no reading of the current week (`weekUseOf` skips it), and a session that shows the
+ * reading again after a pause needs no previous snapshot to date it.
+ */
+export const SNAPSHOT_DAYS_KEPT = 8;
+/** At most one sweep of a folder per hour, so a status line redraw reads one small file, not the folder. */
+export const SNAPSHOT_PRUNE_EVERY_MS = MS_PER_HOUR;
+/** The file in a snapshot folder that holds when it was last swept, ISO 8601 UTC; not a `.json` name, so no reader takes it for a snapshot. */
+export const SNAPSHOT_PRUNED_FILE = '.pruned';
+
+/** Whether the folder was last swept within the hour before `now`, as its marker says; a missing, damaged or future time is not. */
+function sweptRecently(marker: string | undefined, now: number): boolean {
+  const at = marker === undefined ? Number.NaN : Date.parse(marker.trim());
+  return at <= now && now - at < SNAPSHOT_PRUNE_EVERY_MS;
+}
+
+/**
+ * Removes the folder's snapshots written more than `SNAPSHOT_DAYS_KEPT` days before `now`, so the folder
+ * holds the sessions of the last 8 days, not every session ever run, and every reader's walk of it
+ * stays bounded. It sweeps at most once an hour per folder, claimed by stamping the marker file first
+ * (two status lines that sweep together remove the same files, which is harmless); in between it reads
+ * only the marker. Files that are not snapshots, damaged ones among them, are left alone. Returns how
+ * many snapshots it removed: 0 when no sweep was due.
+ */
+export async function pruneSnapshots(files: Pick<Files, 'list' | 'read' | 'write' | 'remove'>, dir: string, now: number): Promise<number> {
+  const marker = join(dir, SNAPSHOT_PRUNED_FILE);
+  if (sweptRecently(await files.read(marker), now)) {
+    return 0;
+  }
+  await files.write(marker, new Date(now).toISOString());
+  const oldest = now - SNAPSHOT_DAYS_KEPT * MS_PER_DAY;
+  let removed = 0;
+  for (const { path, snapshot } of await readSnapshotFiles(files, dir)) {
+    if (Date.parse(snapshot.ts) < oldest && (await files.remove(path))) {
+      removed += 1;
+    }
+  }
+  return removed;
 }
