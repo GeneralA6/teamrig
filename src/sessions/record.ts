@@ -55,6 +55,11 @@ export class SessionRecordStore {
     return text === undefined ? undefined : parseSessionRecord(text);
   }
 
+  /** The records of `ids`, in their order: undefined for a session with none. */
+  async readEach(ids: readonly string[]): Promise<Map<string, SessionRecord | undefined>> {
+    return new Map(await Promise.all(ids.map(async (id): Promise<[string, SessionRecord | undefined]> => [id, await this.read(id)])));
+  }
+
   write(id: string, record: SessionRecord): Promise<void> {
     return this.files.write(this.pathOf(id), formatSessionRecord(record));
   }

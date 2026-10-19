@@ -14,8 +14,10 @@ import { shellCommand } from '../../open/quote.ts';
 import { sessionEnv } from '../../open/session-env.ts';
 import type { RunOutcome } from '../../open/processes.ts';
 import { RefreshStore } from '../../refresh/store.ts';
+import { noRoomText } from '../../sessions/headroom.ts';
 import type { Terminal } from '../../open/terminals.ts';
 import { onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
+import { headroomOf } from '../headroom.ts';
 import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
@@ -121,7 +123,8 @@ export async function openSessionTab(runtime: CliRuntime, tab: SessionTab): Prom
  * there as the session. The command runs by absolute paths, since the plugin's bin folder is on PATH only inside
  * Claude Code. When no terminal opens it prints the command to run instead and exits 3. A rehired session opens
  * on the handover its retire left, or, with --resume, in its last Claude Code session when that is small and
- * recent enough (`hiring.resumeMaxTokens`, `hiring.resumeMaxIdleDays`).
+ * recent enough (`hiring.resumeMaxTokens`, `hiring.resumeMaxIdleDays`). It refuses any session but the lead when
+ * the host has no room for one more (`open.headroom`, src/sessions/headroom.ts).
  */
 export async function open(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const target = onePositional(args, 'id|name');
@@ -138,6 +141,13 @@ export async function open(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   const resume = args.switches.has('resume') ? await resumeOf(runtime, kit.paths, config, id, project, from) : undefined;
   const prompt = checkedPrompt(args.flags.get('prompt') ?? firstPromptOf(team, id, from, resume));
   const name = roster.nameOf(id) ?? id;
+  // The lead opens whatever the room: it is the session that decides which others run.
+  if (id !== roster.holderOf('lead')) {
+    const headroom = await headroomOf(runtime, kit.paths, config, roster.ids);
+    if (headroom.short.length > 0) {
+      throw new RefusedError(noRoomText(`open ${name} (session ${id})`, headroom));
+    }
+  }
   const { outcome, argv } = await openSessionTab(runtime, { team, id, name, project, prompt, terminal, ...(resume === undefined ? {} : { resume }) });
   if (outcome.kind === 'opened') {
     const resumed = resume === undefined ? '' : `, resuming Claude Code session ${resume}`;
