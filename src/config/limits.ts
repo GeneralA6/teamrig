@@ -57,6 +57,10 @@ export const CONFIG_LIMITS = {
   hiringReviewDays: { min: 1, max: 90 },
   hiringResumeMaxTokens: { min: 10_000, max: 1_000_000 },
   hiringResumeMaxIdleDays: { min: 1, max: 90 },
+  // At most RETAIN_DAYS (src/register/compaction.ts): a compaction retires older finished tasks from the working set.
+  scaleOutWindowDays: { min: 1, max: 8 },
+  scaleOutMinDone: { min: 1, max: 100 },
+  scaleOutTopPriorities: { min: 1, max: 10 },
   burstSurplusHours: { min: 1, max: 167 },
   burstMinSparePct: { min: 0.1, max: 100 },
   burstMaxHelpers: { min: 0, max: 20 },
