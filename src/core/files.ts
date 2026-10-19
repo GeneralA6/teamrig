@@ -1,4 +1,4 @@
-import { appendFile, link, mkdir, open, readdir, readFile, rename, unlink, writeFile, type FileHandle } from 'node:fs/promises';
+import { appendFile, link, mkdir, open, readdir, readFile, rename, stat, unlink, writeFile, type FileHandle } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { errorCode } from './guards.ts';
 import type { Sleep } from './lock.ts';
@@ -34,6 +34,11 @@ export interface Files {
    * removing one file, only one is told true, so a removal can settle which of them acted first.
    */
   remove(path: string): Promise<boolean>;
+  /**
+   * A short text made of the file's size and when it last changed, or undefined when there is no file there, so a
+   * reader can tell that a file changed since it last read it without reading it again.
+   */
+  stamp(path: string): Promise<string | undefined>;
 }
 
 /**
@@ -134,6 +139,17 @@ export function nodeFiles(sleep: Sleep): Files {
     },
     async remove(path) {
       return removeFile(path);
+    },
+    async stamp(path) {
+      try {
+        const stats = await stat(path);
+        return stats.isFile() ? `${stats.size}:${stats.mtimeMs}` : undefined;
+      } catch (error) {
+        if (errorCode(error) === 'ENOENT') {
+          return undefined;
+        }
+        throw error;
+      }
     },
   };
 }

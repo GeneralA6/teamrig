@@ -61,6 +61,11 @@ export class FaultyFiles implements Files {
     return this.inner.remove(path);
   }
 
+  async stamp(path: string): Promise<string | undefined> {
+    this.check('stamp', path);
+    return this.inner.stamp(path);
+  }
+
   private check(operation: FileOperation, path: string): void {
     const error = this.faults.get(keyOf(operation, path));
     if (error !== undefined) {

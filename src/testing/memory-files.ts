@@ -2,13 +2,18 @@ import { posix } from 'node:path';
 import type { Files } from '../core/files.ts';
 import type { PathKind, PathProbe } from '../core/path-probe.ts';
 
-/** In-memory `Files` for tests. Paths are compared after normalising separators to `/`. */
+/**
+ * In-memory `Files` for tests. Paths are compared after normalising separators to `/`. A file's stamp is its
+ * size in bytes and the number of the change that last set it, counted over every file.
+ */
 export class MemoryFiles implements Files {
   private readonly contents = new Map<string, string>();
+  private readonly changedBy = new Map<string, number>();
+  private changes = 0;
 
   constructor(initial: Readonly<Record<string, string>> = {}) {
     for (const [path, text] of Object.entries(initial)) {
-      this.contents.set(normalisePath(path), text);
+      this.put(normalisePath(path), text);
     }
   }
 
@@ -36,11 +41,11 @@ export class MemoryFiles implements Files {
 
   async append(path: string, text: string): Promise<void> {
     const key = normalisePath(path);
-    this.contents.set(key, (this.contents.get(key) ?? '') + text);
+    this.put(key, (this.contents.get(key) ?? '') + text);
   }
 
   async write(path: string, text: string): Promise<void> {
-    this.contents.set(normalisePath(path), text);
+    this.put(normalisePath(path), text);
   }
 
   async createExclusive(path: string, text: string): Promise<boolean> {
@@ -48,7 +53,7 @@ export class MemoryFiles implements Files {
     if (this.contents.has(key)) {
       return false;
     }
-    this.contents.set(key, text);
+    this.put(key, text);
     return true;
   }
 
@@ -67,7 +72,21 @@ export class MemoryFiles implements Files {
   }
 
   async remove(path: string): Promise<boolean> {
-    return this.contents.delete(normalisePath(path));
+    const key = normalisePath(path);
+    this.changedBy.delete(key);
+    return this.contents.delete(key);
+  }
+
+  async stamp(path: string): Promise<string | undefined> {
+    const key = normalisePath(path);
+    const text = this.contents.get(key);
+    return text === undefined ? undefined : `${Buffer.byteLength(text, 'utf8')}:${this.changedBy.get(key) ?? 0}`;
+  }
+
+  private put(key: string, text: string): void {
+    this.changes += 1;
+    this.contents.set(key, text);
+    this.changedBy.set(key, this.changes);
   }
 }
 
