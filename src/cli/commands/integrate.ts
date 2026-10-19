@@ -2,7 +2,7 @@ import { coordinatorPlaces, teamPlace } from '../../coordinator/places.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { integrateBranch } from '../../integrate/integrate.ts';
 import type { ParsedArgs } from '../args.ts';
-import { hostLockOf, logLine, nextResetFrom } from '../coordinator-ports.ts';
+import { hostLockOf, logLineOf, nextResetFrom } from '../coordinator-ports.ts';
 import { callerOf } from '../inputs.ts';
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
@@ -19,11 +19,12 @@ export async function integrate(args: ParsedArgs, runtime: CliRuntime): Promise<
   const caller = callerOf(args.flags, runtime.env);
   const kit = await openTeamKit(runtime);
   const config = requireConfig(kit, runtime, 'read');
+  const zone = teamZone(config, runtime);
   const session = sessionIdOf(await rosterOf(runtime, kit, config), caller);
   const { coordinator, budget } = config;
   const places = coordinatorPlaces(coordinator, kit.paths);
   const end = await integrateBranch(
-    { coordinator, places, zone: teamZone(config, runtime), inTeam: (path) => teamPlace(kit.paths, path) },
+    { coordinator, places, zone, inTeam: (path) => teamPlace(kit.paths, path) },
     {
       git: runtime.integrateGit,
       steps: runtime.steps,
@@ -37,7 +38,7 @@ export async function integrate(args: ParsedArgs, runtime: CliRuntime): Promise<
       platform: runtime.platform,
       nextReset: nextResetFrom(runtime, budget, snapshotDirOf(budget, kit.paths)),
       newId: () => runtime.newId(),
-      say: (text) => logLine(runtime, text),
+      say: logLineOf(runtime, zone),
     },
     { session, dir: runtime.cwd, keepRemote: args.switches.has('keep-remote'), keepLocal: args.switches.has('no-delete-local') },
   );

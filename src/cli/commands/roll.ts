@@ -2,7 +2,7 @@ import { coordinatorPlaces, teamPlace } from '../../coordinator/places.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { rollRepo } from '../../roll/roll.ts';
 import type { ParsedArgs } from '../args.ts';
-import { hostLockOf, logLine, nextResetFrom } from '../coordinator-ports.ts';
+import { hostLockOf, logLineOf, nextResetFrom } from '../coordinator-ports.ts';
 import { callerOf } from '../inputs.ts';
 import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf, teamZone } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
@@ -21,11 +21,12 @@ export async function roll(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   const { team } = await findTeam(runtime);
   const kit = await openKit(runtime, team);
   const config = requireConfig(kit, runtime, 'read');
+  const zone = teamZone(config, runtime);
   const session = sessionIdOf(await rosterOf(runtime, kit, config), caller);
   const { coordinator, budget } = config;
   const places = coordinatorPlaces(coordinator, kit.paths);
   const end = await rollRepo(
-    { team, coordinator, places, zone: teamZone(config, runtime), inTeam: (path) => teamPlace(kit.paths, path) },
+    { team, coordinator, places, zone, inTeam: (path) => teamPlace(kit.paths, path) },
     {
       git: runtime.integrateGit,
       hooks: runtime.hooks,
@@ -38,7 +39,7 @@ export async function roll(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
       scanner: new SecretScanner(config.register.secretPatterns),
       nextReset: nextResetFrom(runtime, budget, snapshotDirOf(budget, kit.paths)),
       newId: () => runtime.newId(),
-      say: (text) => logLine(runtime, text),
+      say: logLineOf(runtime, zone),
     },
     { session, repo: args.flags.get('repo'), dir: runtime.cwd },
   );

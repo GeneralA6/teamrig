@@ -62,6 +62,12 @@ describe('formats', () => {
     assert.equal(NEW_YORK.minute(late), '2026-10-19 18:30 EDT');
   });
 
+  it('stamps a log line to the second', () => {
+    const at = new Date('2030-01-08T10:00:05.250Z');
+    assert.equal(TimeZone.UTC.second(at), '2030-01-08 10:00:05 UTC');
+    assert.equal(JERUSALEM.second(at), '2030-01-08 12:00:05 IST');
+  });
+
   it('writes a stretch of the day, with both zones across a change of clocks', () => {
     const from = new Date('2026-10-15T22:00:00Z');
     const to = new Date('2026-10-16T06:00:00Z');

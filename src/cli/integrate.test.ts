@@ -45,10 +45,10 @@ describe('teamrig integrate', () => {
     assert.deepEqual(result, {
       code: 0,
       stdout: [
-        '2030-01-08T10:00:00.000Z pushing feat (rebased) to main; the pre-push hook runs now',
-        '2030-01-08T10:02:00.000Z deleted feat on origin',
-        '2030-01-08T10:02:00.000Z deleted the local feat',
-        `2030-01-08T10:02:00.000Z next: teamrig worktree remove "${WORKTREE}"`,
+        '2030-01-08 10:00:00 UTC pushing feat (rebased) to main; the pre-push hook runs now',
+        '2030-01-08 10:02:00 UTC deleted feat on origin',
+        '2030-01-08 10:02:00 UTC deleted the local feat',
+        `2030-01-08 10:02:00 UTC next: teamrig worktree remove "${WORKTREE}"`,
         'DONE pushed rebased to main; cloud-api deploy on push',
       ],
       stderr: [],
@@ -78,7 +78,7 @@ describe('teamrig integrate', () => {
     const result = await kit.run([...INTEGRATE, '--keep-remote', '--no-delete-local'], { ...IN_WORKTREE, integrateGit: git, steps });
     assert.equal(result.code, 0);
     assert.ok(!git.log.some((line) => line.startsWith('deleteRemoteBranch') || line.startsWith('detach')));
-    assert.equal(result.stdout.at(-2), `2030-01-08T10:02:00.000Z next: teamrig worktree remove "${WORKTREE}" --delete-branch`);
+    assert.equal(result.stdout.at(-2), `2030-01-08 10:02:00 UTC next: teamrig worktree remove "${WORKTREE}" --delete-branch`);
   });
 
   it('prints FAILED and exits 1 when the push does not land', async () => {
