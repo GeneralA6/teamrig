@@ -2637,7 +2637,10 @@ it, and logs each wake with its cost to `<team>/state/wakes.jsonl`. A task wakes
 session's, open or in progress, at `wake.priority` or more urgent (p1 by default; p1 only while the session is
 past its daily budget or in quiet hours), with every task it comes after finished, and changed by someone else
 since the session last touched it. Tasks handed within `wake.batchSeconds` wake it once, and wakes are
-`wake.minGapMinutes` apart. The first check in a tab takes the work already there as seen.
+`wake.minGapMinutes` apart. The first check in a tab takes the work already there as seen. With
+`wake.dayStartUtc` set, a session with work it can start (any priority) and no turn since that time gets one wake
+that day, and a burst it is in wakes it once when it starts; quiet hours or a spent daily budget only delay these.
+They are logged with `moments`.
 Stdin: `{"session_id", "cwd"}`.
 
 Flags: none.

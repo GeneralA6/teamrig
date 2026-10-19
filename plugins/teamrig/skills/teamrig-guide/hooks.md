@@ -405,6 +405,13 @@ in it are left alone. The prompt and a toast name the tasks and the cost: about 
 in two tabs at once is not woken (each tab's first check starts the count over), nor is a Claude Code that does not
 load mods.
 
+The day start: work already on an idle session's list wakes nothing, so a session idle since the night stays idle.
+With `wake.dayStartUtc` set (`HH:MM` UTC, outside the budget's quiet hours; unset by default), each session with
+work it can start, of any priority, and no turn since that time gets one wake that day, and a burst wakes each of
+its sessions once when the lead starts it. A session that had a turn since is left alone; quiet hours, a spent
+daily budget or nothing it can start delay the wake until they end. The prompt names the moment, the work and the
+cost; the wake log marks it with `moments`.
+
 ## The mod: the /teamrig command
 
 In every session, a headless `claude -p` included, the mod adds `/teamrig <command> [args]`: it runs

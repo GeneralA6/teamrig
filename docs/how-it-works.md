@@ -387,6 +387,12 @@ sequenceDiagram
 - How often: each task wakes a session once. The first new task starts a batch of `wake.batchSeconds` (120 s), and
   one wake names every task handed meanwhile; wakes of one session are at least `wake.minGapMinutes` (15) apart.
   Work that was there when the tab started, or before a `/clear`, is seen at its first prompt, as before.
+- The day start: a session idle since the night is not woken by work already on its list, so with
+  `wake.dayStartUtc` set (an `HH:MM` UTC outside the budget's quiet hours; unset by default) each session with work
+  it can start (its own, open or started, of any priority, every task it comes after finished) and no turn since
+  that time gets one wake that day, and so does each session in a burst once the lead starts it. A session that had
+  a turn since is not woken; one in quiet hours or past its daily budget, or with nothing it can start, is woken
+  once that changes. The wake log marks these wakes with `moments` (`day-start`, `burst`).
 - What it costs: a wake is a model turn whose first call re-reads the session's context, about 27k W while Claude
   Code's cache is warm and about 210k W once the session has been idle `messages.coldAfterMinutes` (60) or more, or
   when its transcript is not found. The prompt and a toast give the cost and its share of the week
