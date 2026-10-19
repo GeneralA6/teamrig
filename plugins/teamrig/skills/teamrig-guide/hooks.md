@@ -9,7 +9,7 @@ they all stay silent, and only `hook restore-track` still records the session ([
 | `SessionStart` (startup, resume, `/clear`, compact) | `hook session-start` | Injects the team rules and who you are |
 | `SubagentStart` (each helper) | `hook subagent-start` | Gives the helper the team rules and whose helper it is ([A helper's start](#a-helpers-start)) |
 | `SessionStart` (`/clear`), in the background | `hook refresh-wake` | Wakes a session that `/clear` started from its context refresh, so it carries on without a prompt |
-| `UserPromptSubmit` (each prompt) | `hook inbox-reminder` | Cancels a waiting automatic restart; shows new inbox lines; binds a tab started by hand by its title; records a Claude Code rename; tells the model when it is past its daily budget |
+| `UserPromptSubmit` (each prompt) | `hook inbox-reminder` | Cancels a waiting automatic restart; shows new inbox lines; binds a tab started by hand by its title; records a Claude Code rename; tells the model when its budget holds it |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook push-guard` | Asks before a push to a protected branch; refuses a force-push or delete of one, and a git command run without the repository's hooks ([the commit guard](#before-a-shell-command-the-commit-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook package-guard` | Refuses a package runner that would fetch and run a package outside the project's lockfile, and an `npx --no <bin>` that hands the bin's flag to npm ([the package guard](#before-a-shell-command-the-package-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook readonly-allow` | With `readonlyShell.enabled`, lets a line whose every command provably only reads run without a permission prompt ([the read-only allow](#before-a-shell-command-the-read-only-allow)) |
@@ -17,7 +17,7 @@ they all stay silent, and only `hook restore-track` still records the session ([
 | `PreToolUse` on `SendMessage` | `hook cold-send` | Holds once a message that would wake an idle session cold; during the daily meeting, holds every message to the lead but a CRITICAL one |
 | `PostToolUse` on `SendMessage` | `hook failed-send` | After a send that was not delivered, hands the model [the inbox line to write instead](#after-a-failed-send-the-inbox-line) |
 | `PostToolUse` on reads, edits and shell calls | `hook loop-nudge` | Asks the model once to batch when a turn makes [single-step calls in a row](#after-a-tool-call-the-loop-nudge) |
-| `PreToolUse` on `Agent` and `Task` | `hook helper-gate` | Restates rule 8's helper default at each helper launch; asks before or refuses one past the daily budget or in quiet hours, [as the team set](#the-daily-budget-warnings-and-the-helper-gate) |
+| `PreToolUse` on `Agent` and `Task` | `hook helper-gate` | Restates rule 8's helper default at each helper launch; asks before or refuses one while its budget holds it or in quiet hours, [as the team set](#the-daily-budget-warnings-and-the-helper-gate) |
 | The mod, while a tab is idle | `hook wake-check`, `hook wake-dropped` | Wakes the tab's session when unblocked urgent work is handed to it, [batched, with its cost shown](#the-mod-the-wake-on-urgent-work) |
 | `Stop` (end of each turn) | `hook stop` | Sends the session back once to [a skill edit it dropped](#end-of-a-turn-or-a-helper-a-dropped-skill-edit), and after a task is set waiting, once to [its other work](#end-of-a-turn-keep-working-while-a-task-waits); asks for a handover when a context refresh is due, then starts the automatic restart; tells the user of another effort than `launch` asks, or of a model Claude Code switched to; shows the budget lines; names a verifying task whose verify-by day has come; once per `github.everyMinutes` for the whole team, starts `gh sync --auto` hidden in the background; with tab status on, sets the tab's ready circle, or the decision circle after a turn that asks the user to decide |
 | `SessionStart`, `UserPromptSubmit`, `Stop`, `StopFailure` and `SessionEnd`, in a team or not | `hook restore-track` | Records each Claude Code session on the machine, where it started and what it was doing, for the restore after a reboot ([the restore tracker](#every-session-the-restore-tracker)) |
@@ -373,8 +373,8 @@ T1 waits (decision owner), and you own work that does not come after it: T2 "Fix
 A task it can start is its own open or started task whose every `after` task is finished, most urgent first. A
 task that comes after the waiting one, directly or through another unfinished task, stays untouched, and so do its
 waiting, verifying and closed tasks. It asks at one stop only, never on a stop already sent back or while a context
-refresh is under way (the ask then waits for a later stop), and never in the budget's quiet hours or past the
-session's daily budget (the day-start wake brings it back to its work). With nothing it can start, the turn ends as
+refresh is under way (the ask then waits for a later stop), and never in the budget's quiet hours or while its
+budget holds it (the day-start wake brings it back to its work). With nothing it can start, the turn ends as
 it would, and a turn that asks the user to decide shows [the decision circle](#every-event-tab-status). A hired
 session asked to retire itself is asked that first.
 
@@ -465,8 +465,9 @@ An idle session sees new work only at its next prompt. In each interactive tab, 
 subagent's included), the mod runs [`teamrig hook wake-check`](commands.md#teamrig-hook-wake-check) once the task
 log changed, a batch fell due or 10 minutes passed. It wakes the tab's session for a task it owns that another
 session handed to it, raised, reopened or freed (its own changes are not news), open or started, not waiting, with
-every task it comes `--after` finished, at `wake.priority` or more urgent (p1 by default). Past its daily budget,
-or in the budget's quiet hours unless its lift exempts it, only p1 wakes it. While the owner's daily meeting is open
+every task it comes `--after` finished, at `wake.priority` or more urgent (p1 by default). Held by its budget (past
+its daily budget while the team has no room today), or in the budget's quiet hours unless its lift exempts it, only
+p1 wakes it. While the owner's daily meeting is open
 the lead is not woken; the work waits for the first check after it.
 
 Tasks handed within `wake.batchSeconds` (120) of the first wake it once, each task wakes it once, and wakes of one
@@ -483,8 +484,8 @@ load mods.
 The day start: work already on an idle session's list wakes nothing, so a session idle since the night stays idle.
 With `wake.dayStartUtc` set (`HH:MM` UTC, outside the budget's quiet hours; unset by default), each session with
 work it can start, of any priority, and no turn since that time gets one wake that day, and a burst wakes each of
-its sessions once when the lead starts it. A session that had a turn since is left alone; quiet hours, a spent
-daily budget or nothing it can start delay the wake until they end. The prompt names the moment, the work and the
+its sessions once when the lead starts it. A session that had a turn since is left alone; quiet hours, a hold by
+its budget or nothing it can start delay the wake until they end. The prompt names the moment, the work and the
 cost; the wake log marks it with `moments`.
 
 ## The mod: the /teamrig command
@@ -538,13 +539,22 @@ Stop hook counts only this tab's new transcript lines and its subagents' (at mos
 and reads every other session's use as last stored. Each line comes once, so most turns show none:
 
 - as the session passes each of `budget.warnAtPct` (80 and 100 by default) of its daily budget, then every 25
-  points more: `Budget: shop-web has used 1.1% of the week today; its daily budget is 1.0%. The team is 10.3
-  points ahead of its pace line. The lead has an inbox line. More: teamrig budget`;
-- when the team moves ahead of its pace line while the session is past its budget;
+  points more: `Budget: shop-web has used 1.1% of the week today; its daily budget is 1.0%. The team has used 4.2%
+  of the week today, at or past its in-day pace of 4.0%, and the team is 10.3 points ahead of its pace line. The
+  lead has an inbox line. More: teamrig budget`;
+- when the session escalates with no new level: the team's room for the day runs out, or the team moves ahead of
+  its pace line, while the session is past its budget;
 - when quiet hours (`budget.quietHours`) begin, and when a lift from the lead starts or ends.
 
-Past its budget, a session is escalated when `budget.escalate` is `session`, or, with `session-and-fleet` (the
-default), only while the whole team is also ahead of its pace line. Then `budget.overAction` applies:
+A session's daily budget is its part of the team's, and no session waits while the team has room. The team has
+room today while everyone's use today (its sessions' and the use outside the team, which shares the weekly limit)
+is below its in-day pace: today's allowance times the share of today's active time gone by (quiet hours count at
+`budget.quietHours.paceWeight`; on the day the week starts or the pace ends, only the part inside the week counts).
+Past its part while the team has room, a session is not held, and its line says so: `The team has room today: 2.0%
+of the week used, below its in-day pace of 4.0%, so nothing more happens.` Past its part once the team has no room,
+it is held: only p1 work wakes it, and it is escalated when `budget.escalate` is `session`, or, with
+`session-and-fleet` (the default), only while the whole team is also ahead of its pace line. Then
+`budget.overAction` applies:
 
 | `overAction` | What happens |
 | --- | --- |
@@ -554,7 +564,8 @@ default), only while the whole team is also ahead of its pace line. Then `budget
 | `block` | the lead's line, and new helper launches are refused |
 
 While escalated, the model is told with the next prompt, once per level: `teamrig budget: you are past today's
-budget and the team is ahead of its pace line. Finish the step in hand and start no new work items or helpers.
+budget and the team has no room left today, and it is ahead of its pace line. Finish the step in hand and start
+no new work items or helpers.
 Never skip a test or check to save budget. The lead can lift it.`
 
 In quiet hours, `budget.quietHours.action` applies to helper launches as well (`ask` or `block`; `warn` only
