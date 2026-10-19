@@ -31,6 +31,8 @@ export interface ProgramRun {
   readonly pipe: PipeOut | undefined;
   /** True when a PowerShell assignment takes its output: `$x = Get-Content f`. */
   readonly captured: boolean;
+  /** Set when it runs inside a substitution or a PowerShell `( )`: its output becomes a value of the command holding it. */
+  readonly substitution: Substitution | undefined;
 }
 
 /** Where a command's output goes when it pipes it on to the next command. */
@@ -39,12 +41,19 @@ export interface PipeOut {
   readonly into: ProgramRun | undefined;
 }
 
+/** Where the output of a command inside a substitution goes: `cat t` in `curl -H "$(cat t)"`, or in `$x = (cat t)`. */
+export interface Substitution {
+  /** The command that takes the output as a value; undefined when that is only known when it runs, or is a `cd`. */
+  readonly holder: ProgramRun | BareCommand | undefined;
+}
+
 /** A command that starts no program: a PowerShell expression such as `$env:HOME`, or a wrapper with nothing to run, such as a bare `env`. */
 export interface BareCommand {
   readonly words: readonly ShellWord[];
   readonly dialect: ShellDialect;
   readonly redirections: readonly Redirection[];
   readonly pipe: PipeOut | undefined;
+  readonly substitution: Substitution | undefined;
 }
 
 /** A pipe while the walker has not yet read the command it feeds. */
@@ -52,10 +61,22 @@ interface OpenPipe {
   into: ProgramRun | undefined;
 }
 
-/** What one command starts: its launch, and the program run it adds, if any. */
+/** A substitution while the walker has not yet read the command holding it, which bash reads after it. */
+interface OpenSubstitution {
+  holder: ProgramRun | BareCommand | undefined;
+}
+
+/** Where a nested script's own commands send their output: the pipe and the substitution of the command running it. */
+interface Outlet {
+  readonly pipe: OpenPipe | undefined;
+  readonly substitution: OpenSubstitution | undefined;
+}
+
+/** What one command starts: its launch, and the program run or the bare command it adds, if any. */
 interface Visited {
   readonly launched: Launch;
   readonly run: ProgramRun | undefined;
+  readonly bare: BareCommand | undefined;
 }
 
 /** What a command line runs: the programs it starts, and the commands of it that start none. */
@@ -71,6 +92,9 @@ export interface ProgramsContext {
   readonly dialect: ShellDialect;
 }
 
+/** The outlet of the line's own commands: the screen. */
+const SCREEN: Outlet = { pipe: undefined, substitution: undefined };
+
 /** Nested scripts deeper than this are not read, as in the push guard. */
 const MAX_SCRIPT_DEPTH = 8;
 /** A separator that pipes a command's output into the next one: `|`, `|&`, or `)|` after a group, not `||`. */
@@ -79,7 +103,7 @@ const PIPE_END = /(?:^|[^|])\|&?\n*$/;
 /** What `command` runs, each in the order it runs. */
 export function runsOf(command: string, context: ProgramsContext): LineRuns {
   const runs: LineRuns = { programs: [], bare: [] };
-  visitScript(staticWord(command), context.dialect, new Location(context.cwd, context.home), 0, false, runs);
+  visitScript(staticWord(command), context.dialect, new Location(context.cwd, context.home), 0, false, runs, SCREEN);
   return runs;
 }
 
@@ -90,9 +114,9 @@ export function programsOf(command: string, context: ProgramsContext): ProgramRu
 
 /**
  * Visits each command of a script; a plain `cat` hands its stdin down a pipe, so `cat <<EOF | bash` runs the body.
- * `runner` is true when a teamrig runner started the script.
+ * `runner` is true when a teamrig runner started the script; `outlet` takes the output of its commands that send it nowhere else.
  */
-function visitScript(script: ShellWord, dialect: ShellDialect, location: Location, depth: number, runner: boolean, runs: LineRuns): void {
+function visitScript(script: ShellWord, dialect: ShellDialect, location: Location, depth: number, runner: boolean, runs: LineRuns, outlet: Outlet): void {
   if (depth > MAX_SCRIPT_DEPTH) {
     return;
   }
@@ -101,23 +125,43 @@ function visitScript(script: ShellWord, dialect: ShellDialect, location: Locatio
   let piped: { readonly body: ShellWord; readonly nesting: number } | undefined;
   /** Per nesting depth: the pipe the last command read at that depth sends its output into, if it pipes. */
   const pipes = new Map<number, OpenPipe>();
+  /** Commands inside a substitution still waiting for the command after them that holds it, deepest last. */
+  const unheld: Array<{ readonly nesting: number; readonly slot: OpenSubstitution }> = [];
+  /** PowerShell: for each `(` the reader is inside, the command before it, which takes the group's value. */
+  const groups: Array<ProgramRun | BareCommand | undefined> = [];
   for (const command of commands) {
     const pipeIn = pipes.get(command.nesting);
-    const pipe: OpenPipe | undefined = PIPE_END.test(command.terminator) ? { into: undefined } : undefined;
-    if (pipe === undefined) {
+    const ownPipe: OpenPipe | undefined = PIPE_END.test(command.terminator) ? { into: undefined } : undefined;
+    if (ownPipe === undefined) {
       pipes.delete(command.nesting);
     } else {
-      pipes.set(command.nesting, pipe);
+      pipes.set(command.nesting, ownPipe);
     }
+    const ownSubstitution: OpenSubstitution | undefined = command.nesting > 0 ? { holder: undefined } : undefined;
+    const grouped = dialect === 'powershell' && groups.length > 0;
+    const outermost = command.nesting === 0 && !grouped;
+    const pipe = ownPipe ?? (outermost ? outlet.pipe : undefined);
+    const substitution = ownSubstitution ?? (grouped ? { holder: groups.at(-1) } : outlet.substitution);
     let stdin = command.stdin;
     if (piped !== undefined && command.nesting <= piped.nesting) {
       stdin ??= command.nesting === piped.nesting && !redirectsInput(command) ? piped.body : undefined;
       piped = undefined;
     }
     location.enter(command.subshells);
-    const visited = visitCommand(command, pipeIn !== undefined, pipe, dialect, location, depth, stdin, runner, runs);
+    const visited = visitCommand(command, pipeIn !== undefined, { pipe, substitution }, dialect, location, depth, stdin, runner, runs);
     if (pipeIn !== undefined) {
       pipeIn.into = visited?.run;
+    }
+    const holder = visited?.run ?? visited?.bare;
+    for (let waiting = unheld.at(-1); waiting !== undefined && waiting.nesting > command.nesting; waiting = unheld.at(-1)) {
+      waiting.slot.holder = holder;
+      unheld.pop();
+    }
+    if (ownSubstitution !== undefined) {
+      unheld.push({ nesting: command.nesting, slot: ownSubstitution });
+    }
+    if (dialect === 'powershell') {
+      trackGroups(command.terminator, holder, groups);
     }
     if (stdin !== undefined) {
       piped = visited !== undefined && stdinUse(command, visited.launched) === 'passed' ? { body: stdin, nesting: command.nesting } : undefined;
@@ -129,7 +173,7 @@ function visitScript(script: ShellWord, dialect: ShellDialect, location: Locatio
 function visitCommand(
   command: ShellCommand,
   fromPipe: boolean,
-  pipe: PipeOut | undefined,
+  outlet: Outlet,
   dialect: ShellDialect,
   location: Location,
   depth: number,
@@ -144,7 +188,7 @@ function visitCommand(
   if (launched.kind === 'script') {
     const inner = location.child();
     launched.chdirs.forEach((chdir) => inner.moveTo(chdir));
-    visitScript(launched.script, launched.dialect, inner, depth + 1, runner || launched.runner, runs);
+    visitScript(launched.script, launched.dialect, inner, depth + 1, runner || launched.runner, runs, outlet);
     if (launched.sameShell) {
       location.adopt(inner);
     }
@@ -160,13 +204,27 @@ function visitCommand(
       stdin,
       piped: fromPipe,
       runner: runner || launched.runner,
-      pipe,
+      pipe: outlet.pipe,
       captured: launched.captured,
+      substitution: outlet.substitution,
     };
     runs.programs.push(run);
-    return { launched, run };
+    return { launched, run, bare: undefined };
   } else if (launched.kind === 'nothing' && command.words.length > 0) {
-    runs.bare.push({ words: command.words, dialect, redirections: command.redirections, pipe });
+    const bare: BareCommand = { words: command.words, dialect, redirections: command.redirections, pipe: outlet.pipe, substitution: outlet.substitution };
+    runs.bare.push(bare);
+    return { launched, run: undefined, bare };
   }
-  return { launched, run: undefined };
+  return { launched, run: undefined, bare: undefined };
+}
+
+/** PowerShell: opens a group that `holder` takes the value of at each `(` after it, and closes one at each `)`. */
+function trackGroups(terminator: string, holder: ProgramRun | BareCommand | undefined, groups: Array<ProgramRun | BareCommand | undefined>): void {
+  for (const char of terminator) {
+    if (char === '(') {
+      groups.push(holder);
+    } else if (char === ')') {
+      groups.pop();
+    }
+  }
 }
