@@ -86,7 +86,7 @@ export class RegisterPolicy {
      * The task `set <id> --status waiting --ask <session> --text "<the work>"` creates, which `task` then waits on:
      * the asked session's, from the caller, at `task`'s priority and with its goals (the work serves the same plan),
      * its description naming `task`. Only the owner asks for its task, only with `--status waiting` and only once
-     * started: one not started stays open, planned after the asked task. An active task of the same title is waited
+     * started: one not started keeps its status, planned after the asked task. An active task of the same title is waited
      * on instead.
      */
     ask(task, caller, ask, input, state) {
@@ -484,7 +484,7 @@ function taskWaitProblem(task, id, state) {
         return `${task.id} cannot wait on itself`;
     }
     if (!hasStarted(task)) {
-        return `${task.id} has not started, so it does not wait on ${id}: it stays open, planned after it (teamrig update ${task.id} --after ${id})`;
+        return `${task.id} has not started, so it does not wait on ${id}: it stays ${task.status}, planned after it (teamrig update ${task.id} --after ${id})`;
     }
     if (taskNumber(id) >= taskNumber(state.nextId)) {
         return `no task ${id}`;
@@ -499,6 +499,10 @@ function taskWaitProblem(task, id, state) {
 function hasStarted(task) {
     return task.status === 'in-progress' || (task.status === 'waiting' && task.startedAt !== null);
 }
+/** Open, or waiting without ever starting (on an approval, or a row an older register migrated): a task a plan fits. */
+function notStarted(task) {
+    return task.status === 'open' || (task.status === 'waiting' && task.startedAt === null);
+}
 function ownerOnly(task) {
     return `only the owner (${task.owner}) sets the status of ${task.id}`;
 }
@@ -506,11 +510,15 @@ function ownerOnly(task) {
 function activeDuplicate(title, state) {
     return [...state.tasks.values()].find((task) => ACTIVE_STATUSES.includes(task.status) && normaliseTitle(task.title) === normaliseTitle(title));
 }
-/** A plan dependency is for a task not started yet: a started one waits on a task instead. Clearing it is always fine. */
+/**
+ * A plan dependency is for a task not started yet, as {@link taskWaitProblem} sends it here: a started one waits on
+ * a task instead, and a finished one needs neither. Clearing it is always fine.
+ */
 function afterChangeProblem(task, after, state) {
     const first = after[0];
-    if (first !== undefined && task.status !== 'open') {
-        return `--after plans a task not started yet, and ${task.id} is ${task.status}; a started task waits on another with --status waiting --waits task:${first}`;
+    if (first !== undefined && !notStarted(task)) {
+        const instead = hasStarted(task) ? `; a started task waits on another with --status waiting --waits task:${first}` : '';
+        return `--after plans a task not started yet, and ${task.id} is ${task.status}${instead}`;
     }
     return afterProblem(task.id, after, state);
 }
