@@ -1,7 +1,22 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { MemoryFiles } from '../testing/memory-files.ts';
-import { datedSnapshot, formatSnapshot, parseSnapshot, readSnapshots, snapshotOfStatus, statusLineText, weekUseOf, type StatusSnapshot } from './snapshot.ts';
+import type { Files } from '../core/files.ts';
+import { MS_PER_DAY } from '../core/time.ts';
+import { MemoryFiles, normalisePath } from '../testing/memory-files.ts';
+import {
+  datedSnapshot,
+  formatSnapshot,
+  parseSnapshot,
+  pruneSnapshots,
+  readSnapshots,
+  SNAPSHOT_DAYS_KEPT,
+  SNAPSHOT_PRUNE_EVERY_MS,
+  SNAPSHOT_PRUNED_FILE,
+  snapshotOfStatus,
+  statusLineText,
+  weekUseOf,
+  type StatusSnapshot,
+} from './snapshot.ts';
 
 const SID = '0b6f9c2e-5d1a-4c3e-9f7a-2e8d4b1c6a90';
 const OTHER = '7d2e41a8-93c5-4f60-b1d7-5a9e0c3f8b24';
@@ -246,5 +261,119 @@ describe('readSnapshots', () => {
     const read = await readSnapshots(files, '/live');
     assert.deepEqual(read.map((each) => each.sessionId).sort(), [OTHER, SID].sort());
     assert.deepEqual(await readSnapshots(files, '/nowhere'), []);
+  });
+});
+
+type SweptFiles = Pick<Files, 'list' | 'read' | 'write' | 'remove'>;
+
+/** A folder whose lists and reads are counted, to see what a sweep walks. */
+class CountedFiles implements SweptFiles {
+  lists = 0;
+  readonly reads: string[] = [];
+  private readonly inner: SweptFiles;
+
+  constructor(inner: SweptFiles) {
+    this.inner = inner;
+  }
+
+  async list(dir: string): Promise<string[]> {
+    this.lists += 1;
+    return this.inner.list(dir);
+  }
+
+  async read(path: string): Promise<string | undefined> {
+    this.reads.push(normalisePath(path));
+    return this.inner.read(path);
+  }
+
+  async write(path: string, text: string): Promise<void> {
+    return this.inner.write(path, text);
+  }
+
+  async remove(path: string): Promise<boolean> {
+    return this.inner.remove(path);
+  }
+}
+
+describe('pruneSnapshots', () => {
+  const THIRD = '3c9a5e71-2b4d-4f86-a0e3-9d1b7c5f2a48';
+  const MARKER = `/live/${SNAPSHOT_PRUNED_FILE}`;
+  /** Written exactly 8 days before NOW: kept. */
+  const EDGE = new Date(NOW - SNAPSHOT_DAYS_KEPT * MS_PER_DAY).toISOString();
+  /** Written one millisecond before the 8 days: removed. */
+  const STALE = new Date(NOW - SNAPSHOT_DAYS_KEPT * MS_PER_DAY - 1).toISOString();
+
+  function folder(): MemoryFiles {
+    return new MemoryFiles({
+      [`/live/${SID}.json`]: formatSnapshot(snapshot({ ts: new Date(NOW).toISOString() })),
+      [`/live/${OTHER}.json`]: formatSnapshot(snapshot({ sessionId: OTHER, ts: EDGE })),
+      [`/live/${THIRD}.json`]: formatSnapshot(snapshot({ sessionId: THIRD, ts: STALE })),
+      '/live/broken.json': '{"ts":',
+      '/live/notes.txt': 'kept',
+    });
+  }
+
+  it('removes the snapshots written more than 8 days ago, leaves newer ones and files that are not snapshots, and stamps the sweep', async () => {
+    const files = folder();
+    assert.equal(await pruneSnapshots(files, '/live', NOW), 1);
+    assert.deepEqual(files.paths(), [MARKER, '/live/broken.json', '/live/notes.txt', `/live/${OTHER}.json`, `/live/${SID}.json`].sort());
+    assert.equal(files.get(MARKER), new Date(NOW).toISOString());
+    assert.deepEqual((await readSnapshots(files, '/live')).map((each) => each.sessionId).sort(), [OTHER, SID].sort());
+  });
+
+  it("removes no reading of the current week: a removed snapshot's week reset within 7 days of it", async () => {
+    /** A snapshot `ageMs` old whose reading resets as late as a week can: 7 days after it. */
+    const aged = (sessionId: string, ageMs: number, usedPct: number): string => {
+      const ts = NOW - ageMs;
+      return formatSnapshot(snapshot({ sessionId, ts: new Date(ts).toISOString(), rateLimits: { fiveHour: null, sevenDay: { usedPct, resetsAt: ts + 7 * MS_PER_DAY } } }));
+    };
+    const files = new MemoryFiles({
+      [`/live/${SID}.json`]: aged(SID, 6 * MS_PER_DAY, 40),
+      [`/live/${OTHER}.json`]: aged(OTHER, 7 * MS_PER_DAY + 1, 70),
+      [`/live/${THIRD}.json`]: aged(THIRD, SNAPSHOT_DAYS_KEPT * MS_PER_DAY + 1, 90),
+    });
+    const before = weekUseOf(await readSnapshots(files, '/live'), NOW);
+    assert.equal(await pruneSnapshots(files, '/live', NOW), 1);
+    assert.equal(files.get(`/live/${THIRD}.json`), undefined);
+    assert.equal(before?.usedPct, 40);
+    assert.deepEqual(weekUseOf(await readSnapshots(files, '/live'), NOW), before);
+  });
+
+  it('sweeps at most once an hour, reading only the marker in between', async () => {
+    const files = folder();
+    await files.write(MARKER, new Date(NOW - SNAPSHOT_PRUNE_EVERY_MS).toISOString());
+    const counted = new CountedFiles(files);
+    assert.equal(await pruneSnapshots(counted, '/live', NOW - 1), 0);
+    assert.deepEqual([counted.lists, counted.reads], [0, [MARKER]]);
+    assert.notEqual(files.get(`/live/${THIRD}.json`), undefined);
+    assert.equal(await pruneSnapshots(counted, '/live', NOW), 1);
+    assert.equal(files.get(`/live/${THIRD}.json`), undefined);
+    assert.equal(files.get(MARKER), new Date(NOW).toISOString());
+  });
+
+  it('sweeps when the marker is damaged or dated after now, as after a clock set back', async () => {
+    for (const marker of ['not a time', new Date(NOW + 1).toISOString()]) {
+      const files = folder();
+      await files.write(MARKER, marker);
+      assert.equal(await pruneSnapshots(files, '/live', NOW), 1, marker);
+    }
+  });
+
+  it('counts only the snapshots this sweep removed, not those another sweep removed first', async () => {
+    const files = new MemoryFiles({ [`/live/${THIRD}.json`]: formatSnapshot(snapshot({ sessionId: THIRD, ts: STALE })) });
+    const raced: SweptFiles = {
+      list: (dir) => files.list(dir),
+      read: (path) => files.read(path),
+      write: (path, text) => files.write(path, text),
+      remove: async (path) => (await files.remove(path)) && files.remove(path),
+    };
+    assert.equal(await pruneSnapshots(raced, '/live', NOW), 0);
+    assert.equal(files.get(`/live/${THIRD}.json`), undefined);
+  });
+
+  it('does nothing but stamp a missing folder', async () => {
+    const files = new MemoryFiles();
+    assert.equal(await pruneSnapshots(files, '/nowhere', NOW), 0);
+    assert.deepEqual(files.paths(), [`/nowhere/${SNAPSHOT_PRUNED_FILE}`]);
   });
 });
