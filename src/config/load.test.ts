@@ -10,7 +10,7 @@ const CONFIG = '/kit/config.json';
 const BACKUPS = '/kit/backups';
 const ROSTER = { sessions: ['alpha'], roles: { lead: 'alpha' } };
 const ADD_FLAG: readonly ConfigMigration[] = [
-  { from: 1, apply: (config) => ({ config: { ...config, flag: true }, changes: ['added flag'] }) },
+  { from: 1, firstRelease: '9.1.0', apply: (config) => ({ config: { ...config, flag: true }, changes: ['added flag'] }) },
 ];
 
 describe('loadConfig', () => {
@@ -53,6 +53,7 @@ describe('loadConfig', () => {
         fromVersion: 1,
         toVersion: 2,
         changes: ['v1→v2: added flag'],
+        firstRelease: '9.1.0',
         migrated: { ...ROSTER, configVersion: 2, flag: true },
       });
       assert.equal(load.config.configVersion, 2);
@@ -62,7 +63,7 @@ describe('loadConfig', () => {
 });
 
 describe('writeMigration', () => {
-  const pending = { fromVersion: 1, toVersion: 2, changes: ['added flag'], migrated: { ...ROSTER, configVersion: 2, flag: true } };
+  const pending = { fromVersion: 1, toVersion: 2, changes: ['added flag'], firstRelease: '9.1.0', migrated: { ...ROSTER, configVersion: 2, flag: true } };
 
   it('backs up the original before writing the migrated config', async () => {
     const original = '{"configVersion": 1}\n';

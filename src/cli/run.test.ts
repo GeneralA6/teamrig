@@ -18,7 +18,7 @@ import { EXIT } from './runtime.ts';
 /** A release one config version ahead of this one, reached by a last step that changes only the version. */
 const NEXT_FORMAT: ConfigFormat = {
   version: CONFIG_VERSION + 1,
-  migrations: [...CONFIG_MIGRATIONS, { from: CONFIG_VERSION, apply: (config) => ({ config, changes: ['added a flag'] }) }],
+  migrations: [...CONFIG_MIGRATIONS, { from: CONFIG_VERSION, firstRelease: '9.0.0', apply: (config) => ({ config, changes: ['added a flag'] }) }],
 };
 /** The team roster in this release's config format, so nothing is pending a migration. */
 const CURRENT_TEAM: JsonRecord = { ...TEAM, configVersion: CONFIG_VERSION };

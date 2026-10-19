@@ -12,12 +12,18 @@ export interface MigrationStep {
 export interface ConfigMigration {
   /** The version this step reads; it produces `from + 1`. */
   readonly from: number;
+  /**
+   * The first teamrig release that reads the version this step produces: once a file in that version is written, a
+   * tab running an older release refuses every write until it restarts.
+   */
+  readonly firstRelease: string;
   apply(config: JsonRecord): MigrationStep;
 }
 
 /** v1 to v2: the priority levels moved from `register.tiers` to `register.priorities`, same entries. */
 export const RENAME_TIERS_TO_PRIORITIES: ConfigMigration = {
   from: 1,
+  firstRelease: '0.1.1',
   apply: (config) => {
     const register = config['register'];
     if (!isRecord(register) || !('tiers' in register)) {
@@ -34,6 +40,7 @@ export const RENAME_TIERS_TO_PRIORITIES: ConfigMigration = {
  */
 export const RENAME_BLOCKED_TO_WAITING: ConfigMigration = {
   from: 2,
+  firstRelease: '0.10.0',
   apply: (config) => {
     const register = config['register'];
     const statuses = isRecord(register) ? register['requireNoteOn'] : undefined;
@@ -93,6 +100,7 @@ function withoutSessionDailyPct(budget: JsonRecord): MigrationStep {
  */
 export const DROP_FIXED_DAILY_BUDGETS: ConfigMigration = {
   from: 3,
+  firstRelease: '0.83.0',
   apply: (config) => {
     let next = config;
     const changes: string[] = [];
@@ -133,6 +141,8 @@ export type MigrationResult =
       readonly fromVersion: number;
       readonly version: number;
       readonly changes: readonly string[];
+      /** The first teamrig release that reads `version`; an older one refuses every write under the migrated file. */
+      readonly firstRelease: string;
     }
   /** Written by a newer release; this code may read it best-effort but must never write it. */
   | { readonly kind: 'newer'; readonly version: number }
@@ -155,6 +165,7 @@ export function migrateConfig(
     return { kind: 'newer', version };
   }
   let config = raw;
+  let firstRelease: string | undefined;
   const changes: string[] = [];
   for (let from = version; from < target; from += 1) {
     const step = migrations.find((migration) => migration.from === from);
@@ -164,8 +175,9 @@ export function migrateConfig(
     const result = step.apply(config);
     config = { ...result.config, configVersion: from + 1 };
     changes.push(...result.changes.map((change) => `v${from}→v${from + 1}: ${change}`));
+    firstRelease = step.firstRelease;
   }
-  return version === target
+  return firstRelease === undefined
     ? { kind: 'current', config, version }
-    : { kind: 'migrated', config, fromVersion: version, version: target, changes };
+    : { kind: 'migrated', config, fromVersion: version, version: target, changes, firstRelease };
 }
