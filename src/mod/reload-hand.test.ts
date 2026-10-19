@@ -3,11 +3,9 @@ import assert from 'node:assert/strict';
 import {
   CHECK_MS,
   installedFingerprint,
-  installedPluginsFileOf,
   isReloadRecord,
   RELOAD_GAP_MS,
   ReloadHand,
-  samePath,
   SETTLE_MS,
   type CheckResult,
   type ReloadHandHost,
@@ -406,34 +404,6 @@ describe('installedFingerprint', () => {
       AT_42,
     ]) {
       assert.notEqual(fingerprintOf(changed), base);
-    }
-  });
-});
-
-describe('samePath', () => {
-  it('treats Windows paths alike whatever their case and slashes, and POSIX paths exactly', () => {
-    assert.equal(samePath('D:\\Work\\Shop', 'd:/work/shop/'), true);
-    assert.equal(samePath('\\\\server\\share\\shop', '//SERVER/share/shop'), true);
-    assert.equal(samePath('D:\\work\\shop', 'D:\\work\\other'), false);
-    assert.equal(samePath('C:/shop', '/shop'), false);
-    assert.equal(samePath('/home/me/shop/', '/home/me/shop'), true);
-    assert.equal(samePath('/home/me/shop', '/home/me/Shop'), false);
-    assert.equal(samePath('/', '/'), true);
-  });
-});
-
-describe('installedPluginsFileOf', () => {
-  it('finds installed_plugins.json beside the cache a plugin runs from', () => {
-    assert.equal(installedPluginsFileOf(`${CACHE}\\teamrig\\teamrig\\0.41.0`), 'C:/Users/me/.claude/plugins/installed_plugins.json');
-    assert.equal(
-      installedPluginsFileOf('/home/me/.config/claude/plugins/cache/teamrig/teamrig/0.41.0/'),
-      '/home/me/.config/claude/plugins/installed_plugins.json',
-    );
-  });
-
-  it('finds none for a plugin run from anywhere else', () => {
-    for (const root of ['D:\\src\\teamrig\\plugins\\teamrig','/home/me/plugins/teamrig/0.41.0', 'plugins/cache/m/p/1', '']) {
-      assert.equal(installedPluginsFileOf(root), undefined, root);
     }
   });
 });

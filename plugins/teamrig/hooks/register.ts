@@ -1,6 +1,7 @@
 import type { Register, StateRef } from 'claude-code';
+import { installedPluginsFileOf } from '../dist/core/installed-plugins.js';
 import { ClearHand, liveAgentsOf, TICK_MS } from '../dist/mod/clear-hand.js';
-import { CHECK_MS, installedPluginsFileOf, RELOAD_COMMAND, ReloadHand } from '../dist/mod/reload-hand.js';
+import { CHECK_MS, RELOAD_COMMAND, ReloadHand } from '../dist/mod/reload-hand.js';
 import {
   SLASH_ARGUMENT_HINT,
   SLASH_COMMAND,
