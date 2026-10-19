@@ -179,6 +179,11 @@ With sub-teams, run `teamrig check --tree --session lead` too. Act on each flag:
 - `OWNER-UNPLANNED` or `DUE-UNPLANNED`: plan it in with `--week`, or tell the user what it would push out.
 - A skill flag: tell the skill's owner in one inbox line.
 
+A lesson a session reports (a miss that will happen again) is routed by its numbers: measure it, sort it
+(would a team building any other product hit it?), and see that its task names a form, the first that fits of a
+mechanism, a skill or a rule line, with its numbers as config defaults. Steps:
+[Turn a lesson into a fix](../teamrig-guide/workflows.md#turn-a-lesson-into-a-fix).
+
 You may change a task's owner, priority, due date, week and plan order (`--after`); its status and goals are its owner's.
 
 ## Traps
