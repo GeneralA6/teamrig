@@ -193,7 +193,7 @@ describe('teamrig heavy', () => {
     const result = await kit.run(BUILD, { steps, sessionProcesses: otherRuns(), sleep });
     assert.deepEqual(result, {
       code: 2,
-      stdout: ['2030-01-08T10:00:00.000Z waiting for the host lock: po (heavy: build) since 2030-01-08 09:50', "REFUSED withdrawn from the host lock's line (teamrig withdraw): build api did not run"],
+      stdout: ['2030-01-08 10:00:00 UTC waiting for the host lock: po (heavy: build) since 2030-01-08 09:50 UTC', "REFUSED withdrawn from the host lock's line (teamrig withdraw): build api did not run"],
       stderr: [],
     });
     assert.deepEqual([steps.ran, kit.files.get(LOCK), kit.files.get(LEDGER), await kit.files.list(queue)], [[], heldBy(), undefined, []]);
