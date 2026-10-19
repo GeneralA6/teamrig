@@ -1592,13 +1592,29 @@ first live one may take the lock, looking every 2 s; the rest look every `coordi
 prints a line for each new holder or place in line (`...; 2 ahead in line`). A ticket whose process is gone or whose
 wait ran out is removed by the next waiter. A step that does not join the line (an older kit, a team's own
 coordinator) may still take a free lock first.
+
+With `--small` (a spec run, a lint) the step shares the host with other small steps instead of taking the lock.
+In its turn, while the lock is not held, it writes a share in `<lock>.shared` and runs. It is let in at once when
+no other small step runs. Otherwise it is let in only while the host's free memory, less the MB held for the
+running small steps, leaves `coordinator.heavy.memoryFloorMb` (4096) plus its own. Until then it waits first in
+line (`...; 7000 MB free, 4096 MB held for them, 6144 MB needed`). The MB held for a step is the most its process
+tree held in its latest 20 runs under the same session and `--what`, plus a quarter. With no run measured yet, it
+is `coordinator.heavy.smallReserveMb` (2048).
+
+A step without `--small` that takes the lock holds it while it waits for the small steps to end. So builds,
+integrates, rolls and full suites still run alone, and no new small step is let in meanwhile. It gives up, releasing
+the lock, when its wait runs out, and its lock is renewed if it had to wait. A share whose process is gone, or that
+expired, is removed by the next step that looks. An older kit does not know shares and may take a free lock while
+small steps run.
+
 Then it runs the command in the shell, its output streaming as it comes, and kills it with every process it started
 after `coordinator.heavy.maxRunMinutes` (45). The step's start and end go to the coordinator's ledger,
 `ledger.jsonl` in `coordinator.dir` (default `deploys` in the team's state folder), with when it began to wait
 (`queuedAt`) and, sampled every `coordinator.heavy.memorySampleSeconds` (15; 0 samples nothing), the most memory its
-process tree held at once (`peakTreeMb`) and the least free memory the host had (`lowFreeMb`). Exit 0 when the command
-passed, 1 when it failed or was killed. REFUSED (exit 2) from `coordinator.schedule.heavyCutoffUtc` to midnight
-UTC, also when the wait for the lock ran past it, and when the lock is still held after the wait.
+process tree held at once (`peakTreeMb`) and the least free memory the host had (`lowFreeMb`), and `shared: true` for
+a small step. Exit 0 when the command passed, 1 when it failed or was killed. REFUSED (exit 2) from
+`coordinator.schedule.heavyCutoffUtc` to midnight UTC, also when the wait for the lock ran past it, and when the lock
+(or, for a small step, the memory it needs) is still held after the wait.
 
 The lock is `host.lock` in the kit home, one for every team on the host, unless `coordinator.heavy.lockPath` names
 another. It lasts `coordinator.heavy.lockTtlMinutes` (150); a lock past that, or one whose process is gone, is
@@ -1623,6 +1639,7 @@ Flags:
   the session this Claude Code tab is bound to (`$CLAUDE_CODE_SESSION_ID`).
 - `--max-minutes <n>`: kill the step after this many minutes instead of `coordinator.heavy.maxRunMinutes`; a
   whole number from 1 to `lockTtlMinutes` less 10, so the step never outlives its lock.
+- `--small`: share the host with other small steps while memory allows, instead of taking the lock (see above).
 
 Example:
 
@@ -1926,7 +1943,7 @@ ENDED 3f9c1a7e at 2030-01-08 10:00 UTC
 ### teamrig deploys
 
 The deploy state now, in one read: who holds the host lock (a stale lock shows as free, since the next heavy step
-removes it), the heavy cutoff and the blackout before the weekly token reset (each marked IN FORCE while it holds),
+removes it) and, on a `sharing the host:` line, the small steps (`heavy --small`) sharing it, the heavy cutoff and the blackout before the weekly token reset (each marked IN FORCE while it holds),
 the quiet claims and loads still open, and what each repository with a roll block has pushed but not rolled. It
 fetches each main checkout to tell; for one a roll would refuse, it says why.
 
