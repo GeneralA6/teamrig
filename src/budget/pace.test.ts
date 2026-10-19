@@ -5,6 +5,8 @@ import type { BudgetReset } from '../config/types.ts';
 import { MS_PER_DAY, MS_PER_HOUR } from '../core/time.ts';
 import {
   dailyAllowancePct,
+  dayPacePct,
+  hasRoom,
   nextConfiguredReset,
   paceLinePct,
   readPace,
@@ -157,6 +159,33 @@ describe('dailyAllowancePct', () => {
     const next = weekWindow(at('2026-10-28T01:00:00Z'), 1);
     const resetDay = dailyAllowancePct({ window: next, budget: BUDGET, now: at('2026-10-21T05:00:00Z'), usedPct: 2, todayPct: 3.5, profile: EVEN });
     assert.equal(round(resetDay), round((97.5 * 23) / (6 * 24 + 19)));
+  });
+});
+
+describe('dayPacePct and hasRoom', () => {
+  const window = weekWindow(RESET, 1);
+
+  function pace(iso: string, profile = EVEN, inWindow = window): number {
+    return dayPacePct({ window: inWindow, now: at(iso), allowancePct: 12, profile });
+  }
+
+  it("is the allowance times the part of today's active time gone by", () => {
+    assert.equal(round(pace('2026-10-15T06:00:00Z')), 3);
+    assert.equal(round(pace('2026-10-15T06:00:00Z', NIGHTS)), 0);
+    assert.equal(round(pace('2026-10-15T14:00:00Z', NIGHTS)), 6);
+    assert.equal(round(pace('2026-10-15T23:00:00Z', NIGHTS)), 12);
+  });
+
+  it('counts the reset day from the reset, and is the whole allowance with no active time left today', () => {
+    const next = weekWindow(at('2026-10-28T01:00:00Z'), 1);
+    assert.equal(round(pace('2026-10-21T05:00:00Z', EVEN, next)), round((12 * 4) / 23));
+    assert.equal(pace('2026-10-21T00:30:00Z'), 12);
+  });
+
+  it('has room only below the pace', () => {
+    assert.equal(hasRoom({ usedPct: 2.9, pacePct: 3 }), true);
+    assert.equal(hasRoom({ usedPct: 3, pacePct: 3 }), false);
+    assert.equal(hasRoom({ usedPct: 0, pacePct: 0 }), false);
   });
 });
 
