@@ -148,6 +148,14 @@ export class TimeZone {
     return this.minute(date).slice(5);
   }
 
+  /** How far this zone's clock is from UTC at an instant: `UTC+2`, `UTC+5:45`, `UTC-9:30`, `UTC+0` on Greenwich's. */
+  utcOffset(date: Date): string {
+    const minutes = Math.round(this.offsetMs(date) / 60_000);
+    const whole = Math.abs(minutes);
+    const rest = whole % 60 === 0 ? '' : `:${pad(whole % 60)}`;
+    return `UTC${minutes < 0 ? '-' : '+'}${Math.floor(whole / 60)}${rest}`;
+  }
+
   /** `YYYY-MM-DD HH:MM:SS IDT`, for a log line's stamp; every zone's offset today is whole minutes, so the seconds are UTC's. */
   second(date: Date): string {
     const wall = this.wall(date);

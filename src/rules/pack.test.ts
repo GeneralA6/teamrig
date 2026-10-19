@@ -28,6 +28,8 @@ function worstCaseConfig() {
   const lead = longest('l', 32);
   const coordinator = longest('c', 32);
   return testConfig({
+    // Its mark and offset, `ACWST` and `UTC+8:45`, print widest of every zone's, in either season.
+    timeZone: 'Australia/Eucla',
     sessions: [lead, coordinator],
     roles: { lead, coordinatorOwner: coordinator },
     ownerGates: filled(CONFIG_LIMITS.ownerGates, 'g'),
@@ -114,7 +116,25 @@ describe('renderCorePack', () => {
   it('keeps messages for what the receiver acts on now and sends reports to the inbox (the failed-send hook covers a failed send)', () => {
     const pack = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK);
     assert.match(pack, /^3\. A message wakes its receiver, so send one only for a result it acts on now, a decision,/m);
-    assert.match(pack, /Anything else, a "done" report too, is one inbox line per receiver: `teamrig inbox add --to <area> --text "\.\.\."`\.$/m);
+    assert.match(pack, /Anything else, a "done" report too, is one inbox line per receiver: `teamrig inbox add --to <area> --text "\.\.\."`\./);
+  });
+
+  it("writes times on the team's clock, zone-marked, with the offset from UTC off it", () => {
+    const onUtc = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK);
+    assert.match(onUtc, /^3\. .* Write times on the team's clock, zone-marked \(`04:00 UTC`\) \[timeZone\]\.$/m);
+    const inIsrael = renderCorePack(testConfig({ timeZone: 'Asia/Jerusalem' }), COMMAND, 'win32', RULES_CLOCK);
+    assert.match(inIsrael, /^3\. .* Write times on the team's clock, zone-marked \(`04:00 IST`, UTC\+2 now\); UTC only when UTC is the subject \[timeZone\]\.$/m);
+    const summer = { ...RULES_CLOCK, now: new Date('2030-07-08T10:00:00.000Z') };
+    const inSummer = renderCorePack(testConfig({ timeZone: 'America/New_York' }), COMMAND, 'win32', summer);
+    assert.match(inSummer, /zone-marked \(`04:00 EDT`, UTC-4 now\);/, 'the mark and offset of the day the rules are read');
+  });
+
+  it("has only a change's own session integrate, deploy, verify and fix it", () => {
+    const pack = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK);
+    assert.match(
+      pack,
+      /^2\. Own your change end to end: only the session that made it integrates, deploys \(when it must run\), verifies and fixes or rolls it back; another session's change goes to its owner\.$/m,
+    );
   });
 
   it('gates each hand-run data change on the owner, never prints secrets and binds local services to loopback', () => {
@@ -175,7 +195,7 @@ describe('renderCorePack', () => {
   it('names the safe worktree removal on Windows alone', () => {
     assert.match(renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK), /never a main checkout\. Remove a worktree with /);
     const pack = renderCorePack(testConfig(), COMMAND, 'linux', RULES_CLOCK);
-    assert.match(pack, /never a main checkout\. Update comments in their code's commit/);
+    assert.match(pack, /never a main checkout\. Update comments with their code/);
     assert.doesNotMatch(pack, /node_modules|worktree remove/);
   });
 
@@ -187,7 +207,7 @@ describe('renderCorePack', () => {
   it('keeps comments true to their code', () => {
     assert.match(
       renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK),
-      /Update comments in their code's commit, verify a load-bearing one before acting on it, and fix a stale comment, doc or dead code you find in its own small commit\.$/m,
+      /Update comments with their code, verify a load-bearing one before acting on it, and fix a stale comment, doc or dead code you find in its own commit\.$/m,
     );
   });
 
@@ -203,9 +223,9 @@ describe('renderCorePack', () => {
     const pack = renderCorePack(testConfig({ messages: { maxLines: 7 }, ownerGates: ['money', 'deletes'] }), COMMAND, 'win32', RULES_CLOCK);
     assert.match(pack, /^1\. Roles, by session id: lead is the lead/m);
     assert.match(pack, /At most 7 lines \[messages\.maxLines\]/);
-    assert.match(pack, /never for owner-gated decisions: money; deletes \[ownerGates\]/);
+    assert.match(pack, /never for owner gates: money; deletes \[ownerGates\]/);
     assert.match(pack, /with a note \(only what changed\) on waiting, verifying, done, dropped \[register\.requireNoteOn\]/);
-    assert.match(pack, /--followups <tasks it leaves>\|none on verifying, done \[register\.requireFollowupsOn\]\. Wait on a peer's work by its task\./);
+    assert.match(pack, /--followups <tasks it leaves>\|none on verifying, done \[register\.requireFollowupsOn\]\. Wait on a peer by its task\./);
     assert.match(pack, /A shipped change is verifying until its proof exists \(`teamrig verify`\)\.$/m);
     assert.match(pack, /`teamrig start --session <you>`/);
     assert.doesNotMatch(pack, /coordinatorOwner|heavyCutoffUtc|Pace the week|\[budget\]/);
@@ -268,7 +288,7 @@ describe('renderCorePack', () => {
       'win32',
       RULES_CLOCK,
     );
-    assert.match(pack, /only the owning session sets its status \(`teamrig set`\)\. Wait on a peer's work by its task\./);
+    assert.match(pack, /only the owning session sets its status \(`teamrig set`\)\. Wait on a peer by its task\./);
   });
 
   it('prints a status the team listed twice once, and the skill and follow-up demands in one flag each', () => {
