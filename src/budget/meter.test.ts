@@ -253,9 +253,30 @@ describe('runMeter', () => {
       near(actual?.patterns[field], expected?.patterns[field] ?? -1, field);
     }
     const patterns = expected?.patterns;
-    for (const field of ['readChain', 'editChain', 'editThenTest', 'editTestJoined', 'rerunFailedPiped', 'rerunFailedFull', 'rerunAfterPass', 'passRuns'] as const) {
+    const counted = ['readChain', 'editChain', 'editThenTest', 'editTestJoined', 'rerunFailedPiped', 'rerunFailedFull', 'rerunAfterPass', 'passRuns'] as const;
+    for (const field of [...counted, 'missCalls', 'workBlocks', 'missNoStart', 'heavySteps', 'missHeavyOutside'] as const) {
       assert.ok((patterns?.[field] ?? 0) > 0, `${field} never counted`);
     }
+  });
+
+  it('counts rule misses on the day: a work block with no teamrig start in its first calls, a plain git worktree remove', async () => {
+    const replies = (prefix: string, hour: number, count: number, command: string | undefined): string[] =>
+      Array.from({ length: count }, (_, index) =>
+        replyLine({
+          id: `${prefix}${index}`,
+          requestId: `q${prefix}${index}`,
+          at: at(hour, index + 1),
+          usage: { input: 1, output: 1 },
+          tools: command === undefined ? [] : [{ id: `t${prefix}${index}`, name: 'Bash', command }],
+        }),
+      );
+    const meter = world(at(23), {
+      [MAIN]: transcript([promptLine(at(9)), ...replies('a', 9, 1, 'teamrig start --session alpha'), promptLine(at(11)), ...replies('b', 11, 10, 'git worktree remove .worktrees/x')]),
+    });
+    const result = await meter.run(10_000_000, { main: [MAIN], subagents: [] });
+    const patterns = day(result.state, DAY)?.patterns;
+    assert.deepEqual([patterns?.missCalls, patterns?.workBlocks, patterns?.missNoStart, patterns?.worktreeRemoves, patterns?.missGitWorktreeRemove], [11, 2, 1, 10, 10]);
+    assert.deepEqual(result.state.cursors[MAIN]?.misses, { lastAt: Date.parse(at(11, 10)), block: null });
   });
 
   it('counts a results line with no reply open to the day it was written', async () => {

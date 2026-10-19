@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { NewerDataError } from '../core/jsonl.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
+import { INITIAL_MISS_STATE } from './misses.ts';
 import { emptyPatterns, INITIAL_PATTERN_STATE } from './patterns.ts';
 import { EMPTY_USAGE, formatUsage, MemoryUsageStore, newCursor, parseUsage, pruneUsage, RECENT_KEYS_KEPT, UsageStore, type UsageState } from './store.ts';
 
@@ -10,7 +11,7 @@ const FILE = '/state/usage/alpha.json';
 
 const DAY = { w: 1_234.5, calls: 7, patterns: { ...emptyPatterns(), readChain: 2 } };
 const CALL = { key: 'msg_1|req_1', day: '2026-03-02', output: 40, context: 5_000, w: 700 };
-const CURSOR = { offset: 900, size: 1_000, day: '2026-03-02', call: CALL, patterns: { ...INITIAL_PATTERN_STATE, turn: 3 } };
+const CURSOR = { offset: 900, size: 1_000, day: '2026-03-02', call: CALL, patterns: { ...INITIAL_PATTERN_STATE, turn: 3 }, misses: { lastAt: 1_700_000_000_000, block: { day: '2026-03-02', calls: 2 } } };
 const STATE: UsageState = {
   byDay: { '2026-03-02': DAY },
   cursors: { '/t/p/alpha.jsonl': CURSOR, '/t/p/alpha/subagents/agent-a.jsonl': newCursor(10, 10, '2026-03-01') },
@@ -90,6 +91,8 @@ describe('parseUsage', () => {
       { ...stored, cursors: { a: { ...cursor, day: 'today' } } },
       { ...stored, cursors: { a: { ...cursor, patterns: {} } } },
       { ...stored, cursors: { a: { ...cursor, call: 'open' } } },
+      { ...stored, cursors: { a: { ...cursor, misses: 'none' } } },
+      { ...stored, cursors: { a: { ...cursor, misses: { lastAt: -1, block: null } } } },
       { ...stored, cursors: { a: { ...cursor, call: { ...CALL, key: 5 } } } },
       { ...stored, cursors: { a: { ...cursor, call: { ...CALL, day: 3 } } } },
       { ...stored, cursors: { a: { ...cursor, call: { ...CALL, day: 'today' } } } },
@@ -101,6 +104,11 @@ describe('parseUsage', () => {
     for (const value of damaged) {
       assert.equal(parseUsage(JSON.stringify(value)), undefined, JSON.stringify(value));
     }
+  });
+
+  it('reads a cursor stored before misses were counted as having seen none', () => {
+    const { misses: _misses, ...older } = CURSOR;
+    assert.deepEqual(parseUsage(JSON.stringify({ ...stored, cursors: { a: older } }))?.cursors['a'], { ...CURSOR, misses: INITIAL_MISS_STATE });
   });
 
   it('keeps an unkeyed open call', () => {

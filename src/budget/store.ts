@@ -4,6 +4,7 @@ import { isNonNegativeInteger, isRecord, isStringArray } from '../core/guards.ts
 import { ID_PATTERN, ID_RULE } from '../core/ids.ts';
 import { NewerDataError, parseObject, recordVersion, VERSION_FIELD } from '../core/jsonl.ts';
 import { formatUtcDay, MS_PER_DAY } from '../core/time.ts';
+import { INITIAL_MISS_STATE, parseMissState, type MissState } from './misses.ts';
 import { INITIAL_PATTERN_STATE, parsePatternCounts, parsePatternState, type PatternCounts, type PatternState } from './patterns.ts';
 
 /** The format of the usage files this code reads and writes; an older or damaged file reads as empty, a newer one is refused. */
@@ -48,6 +49,7 @@ export interface TranscriptCursor {
   readonly day: string;
   readonly call: OpenCall | null;
   readonly patterns: PatternState;
+  readonly misses: MissState;
 }
 
 /** A session's metered use: totals per UTC day, a read position per transcript, and the last call keys seen. */
@@ -108,10 +110,21 @@ function cursorFrom(value: unknown): TranscriptCursor | undefined {
   const { offset, size, day } = value;
   const call = openCallFrom(value['call']);
   const patterns = parsePatternState(value['patterns']);
-  if (!isNonNegativeInteger(offset) || !isNonNegativeInteger(size) || typeof day !== 'string' || !DAY.test(day) || call === undefined || patterns === undefined) {
+  const rawMisses = value['misses'];
+  // A cursor stored before 0.87.0 has no miss state: its transcript goes on as if read from its start.
+  const misses = rawMisses === undefined ? INITIAL_MISS_STATE : parseMissState(rawMisses);
+  if (
+    !isNonNegativeInteger(offset) ||
+    !isNonNegativeInteger(size) ||
+    typeof day !== 'string' ||
+    !DAY.test(day) ||
+    call === undefined ||
+    patterns === undefined ||
+    misses === undefined
+  ) {
     return undefined;
   }
-  return { offset, size, day, call, patterns };
+  return { offset, size, day, call, patterns, misses };
 }
 
 /** Every entry of a stored map through `parse`; undefined when the map or any entry is damaged. */
@@ -177,9 +190,9 @@ export function pruneUsage(state: UsageState, now: number): UsageState {
   };
 }
 
-/** A transcript's position before its first read: no call open and no pattern seen. */
+/** A transcript's position before its first read: no call open and no pattern or miss seen. */
 export function newCursor(offset: number, size: number, day: string): TranscriptCursor {
-  return { offset, size, day, call: null, patterns: INITIAL_PATTERN_STATE };
+  return { offset, size, day, call: null, patterns: INITIAL_PATTERN_STATE, misses: INITIAL_MISS_STATE };
 }
 
 /** Where a meter keeps each session's usage: its usage file, or memory for a recount that writes nothing. */
