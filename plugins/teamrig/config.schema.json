@@ -1024,6 +1024,13 @@
           "maximum": 600,
           "default": 15
         },
+        "compactCeilingTokens": {
+          "description": "While a session's handover is asked for or written, the plugin's mod stops Claude Code's own compaction (trigger auto) of its main conversation as long as its context, as Claude Code estimates it, is under this many tokens: the /clear at the turn's end replaces it. Past it a compaction goes through; /compact and a subagent's own compaction are never stopped. 0: never stopped.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000000,
+          "default": 185000
+        },
         "endCommand": {
           "description": "A program (its path, then its arguments) run after an automatic restart ended a session, given Claude Code's SessionEnd hook input (reason clear) on stdin: for a SessionEnd hook the end skipped, since on Windows a process is ended without running them. Empty: none.",
           "type": "array",

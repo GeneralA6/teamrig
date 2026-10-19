@@ -950,6 +950,8 @@ const REFRESH_TOKENS = { min: 10_000, max: 10_000_000 } as const;
 const REFRESH_TASKS = { min: 0, max: 100 } as const;
 /** Long enough to read the notice and type, short enough that the fresh start is not missed. */
 const RESTART_DELAY_SECONDS = { min: 5, max: 600 } as const;
+/** 0 turns the stop of Claude Code's compaction off. */
+const COMPACT_CEILING_TOKENS = { min: 0, max: 10_000_000 } as const;
 /** A program and its arguments. */
 const END_COMMAND_MAX_ITEMS = 16;
 
@@ -965,6 +967,7 @@ function parseRefresh(read: ConfigReader, raw: JsonRecord): RefreshConfig {
     tabTitle: read.boolean(raw, 'tabTitle', path, defaults.tabTitle),
     autoRestart: read.boolean(raw, 'autoRestart', path, defaults.autoRestart),
     restartDelaySeconds: read.integer(raw, 'restartDelaySeconds', path, defaults.restartDelaySeconds, RESTART_DELAY_SECONDS),
+    compactCeilingTokens: read.integer(raw, 'compactCeilingTokens', path, defaults.compactCeilingTokens, COMPACT_CEILING_TOKENS),
     endCommand: read.stringList(raw, 'endCommand', path, defaults.endCommand, undefined, END_COMMAND_MAX_ITEMS),
     ...(handoverDir === undefined ? {} : { handoverDir }),
   };

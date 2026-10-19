@@ -170,7 +170,9 @@ export const DEFAULT_GITHUB: GithubConfig = { repos: [], owners: {}, sessions: {
  * Claude Code compacts a 200k window at about 167k, so 120k refreshes before that; every 3 tasks catches a
  * session that grows slowly, from 80k up. Measured over 8 days of 12 sessions: about 9 refreshes a day in all.
  * The user types /clear for the fresh start (`autoRestart` off): an automatic /clear wiped the screen while the
- * user was still reading the last reply, still had its question to answer, or was away.
+ * user was still reading the last reply, still had its question to answer, or was away. While a handover is
+ * pending, the compaction at 167k waits up to 185k: 18k of room to finish the step and write it, and 15k under the
+ * window for a large tool result.
  */
 export const DEFAULT_REFRESH: RefreshConfig = {
   enabled: true,
@@ -180,6 +182,7 @@ export const DEFAULT_REFRESH: RefreshConfig = {
   tabTitle: true,
   autoRestart: false,
   restartDelaySeconds: 15,
+  compactCeilingTokens: 185_000,
   endCommand: [],
 };
 

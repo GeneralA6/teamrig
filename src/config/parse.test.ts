@@ -694,6 +694,7 @@ describe('parseConfig', () => {
       tabTitle: false,
       autoRestart: false,
       restartDelaySeconds: 30,
+      compactCeilingTokens: 0,
       endCommand: ['node', 'end.cjs', 'end'],
       handoverDir: 'notes',
     };
@@ -710,12 +711,14 @@ describe('parseConfig', () => {
         tabTitle: 1,
         autoRestart: 'on',
         restartDelaySeconds: 4,
+        compactCeilingTokens: -1,
         endCommand: 'node end.cjs',
         handoverDir: ' ',
       },
     });
     assert.deepEqual(paths(bad.issues).sort(), [
       'refresh.autoRestart',
+      'refresh.compactCeilingTokens',
       'refresh.contextTokens',
       'refresh.enabled',
       'refresh.endCommand',
