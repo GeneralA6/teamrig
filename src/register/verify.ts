@@ -1,4 +1,5 @@
-import { formatUtcDay, parseUtcDay } from '../core/time.ts';
+import { parseDeadline } from '../core/time.ts';
+import type { TimeZone } from '../core/zone.ts';
 import { taskNumber, type Task } from './fold.ts';
 import type { TaskStatus } from './model.ts';
 import { needsOf } from './tree.ts';
@@ -62,8 +63,8 @@ export function verifyQueue(tasks: Iterable<Task>, owner: string): Task[] {
     .sort((a, b) => Date.parse(a.statusAt) - Date.parse(b.statusAt) || taskNumber(a.id) - taskNumber(b.id));
 }
 
-/** True once the UTC day of the task's verify-by date, its due date, has come. */
-export function verifyByArrived(task: Pick<Task, 'due'>, now: Date): boolean {
-  const day = task.due?.slice(0, 10);
-  return day !== undefined && parseUtcDay(day) !== undefined && day <= formatUtcDay(now);
+/** True once the day of the task's verify-by date, its due date, has come in the team's `zone`. */
+export function verifyByArrived(task: Pick<Task, 'due'>, now: Date, zone: TimeZone): boolean {
+  const by = task.due === null ? undefined : parseDeadline(task.due, zone);
+  return by !== undefined && zone.day(by) <= zone.day(now);
 }

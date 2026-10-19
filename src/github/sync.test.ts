@@ -4,6 +4,7 @@ import type { JsonRecord } from '../core/guards.ts';
 import { RegisterPolicy } from '../register/policy.ts';
 import { Register } from '../register/register.ts';
 import { JsonlEventLog } from '../register/store.ts';
+import { TimeZone } from '../core/zone.ts';
 import { testConfig } from '../testing/config.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeGh, ghIssue } from '../testing/fake-gh.ts';
@@ -41,6 +42,7 @@ function register(): Register {
     log: new JsonlEventLog(new MemoryFiles(), 'register/events.jsonl'),
     mutex: new InlineMutex(),
     clock: new FakeClock('2030-01-08T10:00:00.000Z'),
+    zone: TimeZone.UTC,
     policy: new RegisterPolicy(testConfig()),
     skills: { exists: async () => false },
     autoArchive: true,

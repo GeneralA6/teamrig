@@ -51,8 +51,8 @@ describe('runCli: verify lists the verifying tasks of a session', () => {
         EXIT.ok,
         [
           'VERIFY 2 tasks of alpha, oldest first',
-          'T1 since 01-08 10:00, verify by 01-09 | Ship the CLI (proof: the nightly run)',
-          'T2 since 01-08 11:00, no verify-by date | Ship the docs (proof: the docs build)',
+          'T1 since 01-08 10:00 UTC, verify by 01-09 | Ship the CLI (proof: the nightly run)',
+          'T2 since 01-08 11:00 UTC, no verify-by date | Ship the docs (proof: the docs build)',
         ],
       ],
     );

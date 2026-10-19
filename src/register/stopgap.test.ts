@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { testTask } from '../testing/task.ts';
 import type { Task } from './fold.ts';
 import { MAX_PLACES_SHOWN, stopgapFlags, stopgapTags } from './stopgap.ts';
+import { TimeZone } from '../core/zone.ts';
 
 function tasksOf(...tasks: Task[]): ReadonlyMap<string, Task> {
   return new Map(tasks.map((task) => [task.id, task]));
@@ -33,7 +34,7 @@ describe('stopgapFlags', () => {
         { id: 'T2', at: 'rules/x.md:1' },
         { id: 'T1', at: 'ship/SKILL.md:81' },
       ],
-      tasksOf(done, dropped),
+      tasksOf(done, dropped), TimeZone.UTC,
     );
     assert.deepEqual(flags, [
       { kind: 'STOPGAP-DONE', task: done, detail: 'tagged in CLAUDE.md:3, ship/SKILL.md:81; remove the stopgap' },
@@ -43,13 +44,13 @@ describe('stopgapFlags', () => {
 
   it(`names the first ${MAX_PLACES_SHOWN} places and counts the rest`, () => {
     const tags = ['a:1', 'b:2', 'c:3', 'd:4', 'e:5'].map((at) => ({ id: 'T1', at }));
-    const [flag] = stopgapFlags(tags, tasksOf(testTask({ id: 'T1', status: 'done' })));
+    const [flag] = stopgapFlags(tags, tasksOf(testTask({ id: 'T1', status: 'done' })), TimeZone.UTC);
     assert.equal(flag?.detail, 'tagged in a:1, b:2, c:3 and 2 more; remove the stopgap');
   });
 
   it('leaves tags of active tasks and of unknown ids alone', () => {
     const active = (['open', 'in-progress', 'waiting', 'verifying'] as const).map((status, index) => testTask({ id: `T${index + 1}`, status }));
     const tags = ['T1', 'T2', 'T3', 'T4', 'T99'].map((id) => ({ id, at: 'CLAUDE.md:1' }));
-    assert.deepEqual(stopgapFlags(tags, tasksOf(...active)), []);
+    assert.deepEqual(stopgapFlags(tags, tasksOf(...active), TimeZone.UTC), []);
   });
 });

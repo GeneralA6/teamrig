@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { toJsonlLine } from '../core/jsonl.ts';
 import { MS_PER_DAY } from '../core/time.ts';
 import { TEST_CARD } from '../testing/card.ts';
+import { TimeZone } from '../core/zone.ts';
 import { testConfig } from '../testing/config.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { FaultyFiles, systemError, type FileOperation } from '../testing/faulty-files.ts';
@@ -40,7 +41,7 @@ const TEXT = create('T1', 0) + status('T1', 1, 'done') + create('T2', 2) + statu
 const LATER = status('T2', 5, 'done') + create('T3', 5);
 
 function options(day: number, changes: Partial<RotationOptions> = {}): RotationOptions {
-  return { now: new Date(START + day * MS_PER_DAY), retainDays: RETAIN_DAYS, keep: new Set(), checkHistory: true, ...changes };
+  return { now: new Date(START + day * MS_PER_DAY), zone: TimeZone.UTC, retainDays: RETAIN_DAYS, keep: new Set(), checkHistory: true, ...changes };
 }
 
 async function rotate(files: MemoryFiles, day: number): Promise<RotationPlan> {
@@ -225,7 +226,7 @@ describe('planRotation and applyRotation', () => {
 
 describe('readBack', () => {
   const source = readRegister(TEXT);
-  const compaction = compactRegister(source, { covered: 1, now: new Date(START + 4 * MS_PER_DAY), retainDays: RETAIN_DAYS, keep: new Set() });
+  const compaction = compactRegister(source, { covered: 1, now: new Date(START + 4 * MS_PER_DAY), zone: TimeZone.UTC, retainDays: RETAIN_DAYS, keep: new Set() });
   const marker = toJsonlLine(markerRecord(1, at(4)));
 
   it('finds every task unchanged in the files a compaction writes', () => {
@@ -266,6 +267,7 @@ function registerOn(files: MemoryFiles | FaultyFiles, autoArchive = true): Regis
     log: new JsonlEventLog(files, LOG),
     mutex: new InlineMutex(),
     clock: new FakeClock(at(6)),
+    zone: TimeZone.UTC,
     policy: new RegisterPolicy(testConfig()),
     skills: new NoSkills(),
     autoArchive,

@@ -22,6 +22,7 @@ import {
   type WakeInput,
   type WakeState,
 } from './decide.ts';
+import { TimeZone } from '../core/zone.ts';
 
 const NOW = Date.parse('2030-01-08T10:00:00.000Z');
 const TAB = 'tab-1';
@@ -38,13 +39,13 @@ function tasksOf(...tasks: Task[]): ReadonlyMap<string, Task> {
 }
 
 function input(tasks: ReadonlyMap<string, Task>, previous: WakeState | undefined, overrides: Partial<WakeInput> = {}): WakeInput {
-  return { tasks, session: 'alpha', tab: TAB, now: NOW, maxPriority: 1, batchMs: BATCH_MS, minGapMs: GAP_MS, previous, ...overrides };
+  return { tasks, session: 'alpha', tab: TAB, now: NOW, zone: TimeZone.UTC, maxPriority: 1, batchMs: BATCH_MS, minGapMs: GAP_MS, previous, ...overrides };
 }
 
 const QUIET: WakeState = { tab: TAB, known: [], pending: undefined, lastWakeAt: undefined, settled: NO_SETTLED_MOMENTS };
 
 describe('isWakeWorthy', () => {
-  const context = waitContext(tasksOf(testTask({ id: 'T5', status: 'done' }), testTask({ id: 'T6' })), new Date(NOW));
+  const context = waitContext(tasksOf(testTask({ id: 'T5', status: 'done' }), testTask({ id: 'T6' })), new Date(NOW), TimeZone.UTC);
 
   it('takes a task of its own, open or started task at the priority or more urgent', () => {
     assert.equal(isWakeWorthy(p1(), 'alpha', 1, context), true);

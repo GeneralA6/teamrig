@@ -2,6 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { testTask } from '../testing/task.ts';
 import { heldStart, heldStartNotice, metStartNotice, proofOf, proofText, startHolds, verifyByArrived, verifyingNeeds, verifyQueue } from './verify.ts';
+import { TimeZone } from '../core/zone.ts';
+import { JERUSALEM } from '../testing/zone.ts';
 
 describe('proofOf', () => {
   it('reads the proof a task was set verifying with', () => {
@@ -73,15 +75,23 @@ describe('verifyQueue, verifyByArrived and proofText', () => {
 
   it('comes due at the start of the verify-by day, in UTC', () => {
     const now = new Date('2030-01-09T00:00:00.000Z');
-    assert.equal(verifyByArrived({ due: '2030-01-09 18:00' }, now), true);
-    assert.equal(verifyByArrived({ due: '2030-01-08' }, now), true);
-    assert.equal(verifyByArrived({ due: '2030-01-10' }, now), false);
-    assert.equal(verifyByArrived({ due: null }, now), false);
-    assert.equal(verifyByArrived({ due: 'soon' }, now), false, 'a date the register never wrote counts as none');
+    assert.equal(verifyByArrived({ due: '2030-01-09 18:00' }, now, TimeZone.UTC), true);
+    assert.equal(verifyByArrived({ due: '2030-01-08' }, now, TimeZone.UTC), true);
+    assert.equal(verifyByArrived({ due: '2030-01-10' }, now, TimeZone.UTC), false);
+    assert.equal(verifyByArrived({ due: null }, now, TimeZone.UTC), false);
+    assert.equal(verifyByArrived({ due: 'soon' }, now, TimeZone.UTC), false, 'a date the register never wrote counts as none');
   });
 
   it('names a missing proof', () => {
     assert.equal(proofText({ proof: 'the nightly run', note: null }), 'the nightly run');
     assert.equal(proofText({ proof: null, note: null }), 'no proof named');
+  });
+});
+
+describe("verifyByArrived in the team's zone", () => {
+  it('comes due at the start of the verify-by day there', () => {
+    const now = new Date('2030-01-08T22:30:00.000Z');
+    assert.equal(verifyByArrived({ due: '2030-01-09' }, now, JERUSALEM), true, 'Jerusalem is at 01-09 00:30');
+    assert.equal(verifyByArrived({ due: '2030-01-09' }, now, TimeZone.UTC), false, 'UTC is at 01-08 22:30');
   });
 });

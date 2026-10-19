@@ -1,5 +1,6 @@
 import { toJsonlLine } from '../core/jsonl.ts';
 import { MS_PER_DAY } from '../core/time.ts';
+import type { TimeZone } from '../core/zone.ts';
 import { currentWeekOf } from './check.ts';
 import { eventRecord, type RegisterEvent } from './events.ts';
 import { RegisterFold, taskNumber, type Task } from './fold.ts';
@@ -16,6 +17,8 @@ export interface CompactionOptions {
   /** The last segment the new snapshot covers: `source` must be the fold of segments 1..covered. */
   readonly covered: number;
   readonly now: Date;
+  /** The team's zone, which a week tag is a day of. */
+  readonly zone: TimeZone;
   readonly retainDays: number;
   /** Ids kept in the working set whatever their age: a task a write is about to change. */
   readonly keep: ReadonlySet<string>;
@@ -57,7 +60,7 @@ function newestWeek(weeks: readonly (string | null)[]): string | null {
  */
 export function compactRegister(source: RegisterSnapshot, options: CompactionOptions): Compaction {
   const now = options.now.getTime();
-  const floor = currentWeekOf(source, options.now);
+  const floor = currentWeekOf(source, options.now, options.zone);
   const retainMs = options.retainDays * MS_PER_DAY;
   const retiring = [...source.state.tasks.values()].filter((task) => !options.keep.has(task.id) && isRetirable(task, now, retainMs, floor));
   const retiredIds = new Set(retiring.map((task) => task.id));

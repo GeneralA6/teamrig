@@ -1,5 +1,6 @@
 import { isAbsolute, join } from 'node:path';
 import type { Files } from '../core/files.ts';
+import type { TimeZone } from '../core/zone.ts';
 import type { Flag } from './check.ts';
 import type { Task } from './fold.ts';
 import { byPlanOrder } from './views.ts';
@@ -56,7 +57,7 @@ export async function readStopgapTags(files: Files, folder: string, entries: rea
  * are to be removed; a dropped one's never will, so each stopgap needs a new task or a decision to keep it. Tags
  * of active tasks, and of ids the register does not know, are not flagged. The flags come in plan order.
  */
-export function stopgapFlags(tags: readonly StopgapTag[], tasks: ReadonlyMap<string, Task>): Flag[] {
+export function stopgapFlags(tags: readonly StopgapTag[], tasks: ReadonlyMap<string, Task>, zone: TimeZone): Flag[] {
   const places = new Map<string, string[]>();
   for (const tag of tags) {
     places.set(tag.id, [...(places.get(tag.id) ?? []), tag.at]);
@@ -71,5 +72,5 @@ export function stopgapFlags(tags: readonly StopgapTag[], tasks: ReadonlyMap<str
     const ask = task.status === 'done' ? 'remove the stopgap' : 'replace the task or keep the stopgap by a decision';
     return [{ kind: 'STOPGAP-DONE' as const, task, detail: `tagged in ${shown}${more}; ${ask}` }];
   });
-  return flags.sort((a, b) => byPlanOrder(a.task, b.task));
+  return flags.sort((a, b) => byPlanOrder(a.task, b.task, zone));
 }

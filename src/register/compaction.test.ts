@@ -12,6 +12,7 @@ import { EVENT_VERSION } from './events.ts';
 import { layoutPaths, readHistory, readSnapshotText, readWorkingSet } from './layout.ts';
 import { TASK_STATUSES } from './model.ts';
 import { readEvents, readRegister, type RegisterSnapshot } from './snapshot.ts';
+import { TimeZone } from '../core/zone.ts';
 
 const LOG = 'state/events.jsonl';
 const PATHS = layoutPaths(LOG);
@@ -95,7 +96,7 @@ function assertParity(working: RegisterSnapshot, history: RegisterSnapshot, whol
   assert.ok(retired.every((task) => task.status === 'done' || task.status === 'dropped'), 'only finished tasks retire');
   assert.deepEqual([working.state.nextId, working.state.orphans], [whole.state.nextId, whole.state.orphans]);
   assert.deepEqual([working.read.unreadable, working.read.newer, working.read.newestVersion], [whole.read.unreadable, whole.read.newer, whole.read.newestVersion]);
-  assert.equal(currentWeekOf(working, now), currentWeekOf(whole, now), 'current week');
+  assert.equal(currentWeekOf(working, now, TimeZone.UTC), currentWeekOf(whole, now, TimeZone.UTC), 'current week');
 }
 
 /** Rotates `lines` at each split point in turn, appending the lines between, and checks parity after each. */
@@ -179,7 +180,7 @@ describe('compactRegister', () => {
   it('keeps the active, the recent and the current week, and carries the counts in its header', () => {
     // T1, T2 and T4 are finished and older than the retention; T3 is in the current week's plan. The
     // orphan T40 stays with the kept events, so only the second create of the retired T2 is counted.
-    const compaction = compactRegister(source, { covered: 4, now, retainDays: 8, keep: new Set() });
+    const compaction = compactRegister(source, { covered: 4, now, zone: TimeZone.UTC, retainDays: 8, keep: new Set() });
     assert.deepEqual(compaction.retiredNow, ['T1', 'T2', 'T4']);
     assert.equal(compaction.kept, 1);
     assert.deepEqual(compaction.header, {
@@ -201,12 +202,12 @@ describe('compactRegister', () => {
   });
 
   it('keeps the ids it is asked to keep, and adds to the tasks retired before', () => {
-    const compaction = compactRegister(source, { covered: 1, now, retainDays: 8, keep: new Set(['T2']) });
+    const compaction = compactRegister(source, { covered: 1, now, zone: TimeZone.UTC, retainDays: 8, keep: new Set(['T2']) });
     assert.deepEqual(compaction.retiredNow, ['T1', 'T4']);
     const previous: RegisterSnapshot = { ...source, retired: { count: 5, lastWeek: '2029-12-31' } };
-    const again = compactRegister(previous, { covered: 2, now, retainDays: 8, keep: new Set() });
+    const again = compactRegister(previous, { covered: 2, now, zone: TimeZone.UTC, retainDays: 8, keep: new Set() });
     assert.deepEqual([again.header.retired, again.header.retiredLastWeek], [8, '2030-01-07']);
-    const none = compactRegister(readRegister(''), { covered: 1, now, retainDays: 8, keep: new Set() });
+    const none = compactRegister(readRegister(''), { covered: 1, now, zone: TimeZone.UTC, retainDays: 8, keep: new Set() });
     assert.deepEqual([none.header.retired, none.header.retiredLastWeek, none.kept], [0, null, 0]);
   });
 });

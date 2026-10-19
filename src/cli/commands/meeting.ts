@@ -12,7 +12,7 @@ import { fitLines } from '../../register/fit.ts';
 import { TaskTree } from '../../register/tree.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
-import { openTeamKit, requireConfig, rosterOf, sessionIdOf, type Access, type Kit } from '../kit.ts';
+import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone, type Access, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { weekLineOf } from './budget.ts';
 import { inboxDepsOf, read } from './inbox.ts';
@@ -99,9 +99,10 @@ async function printAgenda(args: ParsedArgs, runtime: CliRuntime, mk: MeetingKit
   const rollUp = await ownRegister(runtime);
   const { snapshot } = rollUp.own;
   const now = new Date(mk.now);
+  const zone = teamZone(mk.config, runtime);
   const lines = agendaLines({
     tasks: [...snapshot.state.tasks.values()],
-    tree: new TaskTree(snapshot.state.tasks, now),
+    tree: new TaskTree(snapshot.state.tasks, now, zone),
     now: mk.now,
     since: agendaSince(previousEnd(phase), mk.now),
     ownerMarker: mk.config.register.ownerSource,
@@ -111,7 +112,7 @@ async function printAgenda(args: ParsedArgs, runtime: CliRuntime, mk: MeetingKit
   lines.forEach((line) => runtime.out.stdout(line));
   await read({ ...args, flags: new Map([['session', mk.lead]]) }, runtime);
   runtime.out.stdout(await weekLineOf(runtime, mk.kit, mk.config, mk.roster));
-  const week = currentWeekOf(snapshot, now);
+  const week = currentWeekOf(snapshot, now, zone);
   if (week !== null) {
     fitLines(await weekFitOf(runtime, rollUp, week, false)).forEach((line) => runtime.out.stdout(`  ${line}`));
   }

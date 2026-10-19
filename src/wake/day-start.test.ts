@@ -15,6 +15,7 @@ import {
   type DayStartInput,
 } from './day-start.ts';
 import { NO_SETTLED_MOMENTS } from './decide.ts';
+import { TimeZone } from '../core/zone.ts';
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -98,10 +99,10 @@ describe('startableTasks', () => {
       testTask({ id: 'T8', priority: 2, owner: 'bravo', status: 'done' }),
     );
     assert.deepEqual(
-      startableTasks(tasks, 'alpha', NOW).map((task) => task.id),
+      startableTasks(tasks, 'alpha', NOW, TimeZone.UTC).map((task) => task.id),
       ['T2', 'T7', 'T1'],
     );
-    assert.deepEqual(startableTasks(tasks, 'charlie', NOW), []);
+    assert.deepEqual(startableTasks(tasks, 'charlie', NOW, TimeZone.UTC), []);
   });
 });
 

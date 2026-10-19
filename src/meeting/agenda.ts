@@ -1,5 +1,5 @@
 import { formatWeekdayMinute } from '../budget/format.ts';
-import { formatUtcMinute, MS_PER_DAY, shortUtc } from '../core/time.ts';
+import { MS_PER_DAY } from '../core/time.ts';
 import { cardLines, cardTexts, namedTaskIds } from '../register/card.ts';
 import type { Task } from '../register/fold.ts';
 import { ACTIVE_STATUSES } from '../register/model.ts';
@@ -88,7 +88,7 @@ export function cardFacts(task: Task, tree: TaskTree, byId: ReadonlyMap<string, 
     rowOf(task, tree),
     ...(task.description === null ? [] : [`    what and why: ${cut(oneLine(task.description), DESCRIPTION_CHARS)}`]),
     ...(task.card === null ? [`    no card yet: ask ${task.owner} for one (check flags it NO-CARD)`] : cardLines(task.card, '    ')),
-    `    waiting since ${shortUtc(formatUtcMinute(new Date(task.statusAt)))}${note}`,
+    `    waiting since ${tree.zone.shortMinute(new Date(task.statusAt))}${note}`,
     ...(task.ref === null ? [] : [`    asked at: ${task.ref}`]),
     ...namedLines(task, texts, byId),
   ];

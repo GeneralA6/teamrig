@@ -1,5 +1,6 @@
 import { isRecord, type JsonRecord } from '../core/guards.ts';
-import { parseUtcDeadline, shortUtc } from '../core/time.ts';
+import { parseDeadline, parseUtcDeadline, showStored } from '../core/time.ts';
+import type { TimeZone } from '../core/zone.ts';
 import { TASK_ID, type TaskStatus } from './model.ts';
 
 /**
@@ -10,7 +11,8 @@ import { TASK_ID, type TaskStatus } from './model.ts';
  * - `task` names a task that must finish first. Only a task already started can wait on one: a task that
  *   needs another before it starts stays open with a plan dependency (`after`) instead. It is ready once that
  *   task is done or dropped;
- * - `time` is a UTC minute (`YYYY-MM-DD HH:MM`, a bare day meaning its end). It is ready once that time passed.
+ * - `time` is a stored minute in UTC (`YYYY-MM-DD HH:MM`) or a bare day of the team's zone, meaning its end there. It is
+ *   ready once that time passed.
  * A task stays waiting until its owner sets a new status, which clears every reason; `check` flags a waiting
  * task whose reasons are all ready.
  */
@@ -101,16 +103,18 @@ function storedWait(record: JsonRecord): WaitReason | string {
   return typeof value === 'string' ? waitOf(kind, value) : `a ${kind} wait has no ${VALUE_FIELD[kind]}`;
 }
 
-/** What a reader knows when it judges a reason ready: the time, and the status of each task it read. */
+/** What a reader knows when it judges a reason ready: the time, the team's zone, and the status of each task it read. */
 export interface WaitContext {
   readonly now: number;
+  /** The team's zone: a stored day is a day of it, and times show in it. */
+  readonly zone: TimeZone;
   /** A task's status; undefined when the read lacks it, which a write never names unless a compaction retired it: finished. */
   statusOf(id: string): TaskStatus | undefined;
 }
 
-/** The context of one register read at `now`. */
-export function waitContext(tasks: ReadonlyMap<string, { readonly status: TaskStatus }>, now: Date): WaitContext {
-  return { now: now.getTime(), statusOf: (id) => tasks.get(id)?.status };
+/** The context of one register read at `now`, in the team's `zone`. */
+export function waitContext(tasks: ReadonlyMap<string, { readonly status: TaskStatus }>, now: Date, zone: TimeZone): WaitContext {
+  return { now: now.getTime(), zone, statusOf: (id) => tasks.get(id)?.status };
 }
 
 /** True when the task is done or dropped, or retired from the read, which only a finished task is. */
@@ -128,7 +132,7 @@ export function isReady(reason: WaitReason, context: WaitContext): boolean {
     case 'task':
       return isFinished(reason.id, context);
     case 'time':
-      return (parseUtcDeadline(reason.at)?.getTime() ?? Number.POSITIVE_INFINITY) <= context.now;
+      return (parseDeadline(reason.at, context.zone)?.getTime() ?? Number.POSITIVE_INFINITY) <= context.now;
   }
 }
 
@@ -137,24 +141,24 @@ export function allReady(waits: readonly WaitReason[], context: WaitContext): bo
   return waits.length > 0 && waits.every((reason) => isReady(reason, context));
 }
 
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
-
-/** `Thu 10-16 13:00`: a stored UTC time with its weekday and without its year. */
-export function weekdayUtc(at: string): string {
-  const date = parseUtcDeadline(at);
-  const day = date === undefined ? undefined : WEEKDAYS[date.getUTCDay()];
-  return day === undefined ? shortUtc(at) : `${day} ${shortUtc(at)}`;
+/** `Thu 10-16 16:00 IDT`: a stored time in the team's zone, with its weekday and without its year. */
+export function weekdayText(at: string, zone: TimeZone): string {
+  const date = parseDeadline(at, zone);
+  return date === undefined ? showStored(at, zone) : `${zone.weekday(date)} ${showStored(at, zone)}`;
 }
 
-/** One reason in plain words: `decision owner`, `approval lead`, `on T304`, `until Thu 10-16 13:00`; `ready` follows a ready one. */
-export function waitText(reason: WaitReason, context?: WaitContext): string {
-  const words = reason.kind === 'task' ? `on ${reason.id}` : reason.kind === 'time' ? `until ${weekdayUtc(reason.at)}` : `${reason.kind} ${reason.who}`;
+/**
+ * One reason in plain words, a time in `zone`: `decision owner`, `approval lead`, `on T304`, `until Thu 10-16 16:00 IDT`;
+ * `ready` follows a ready one.
+ */
+export function waitText(reason: WaitReason, zone: TimeZone, context?: WaitContext): string {
+  const words = reason.kind === 'task' ? `on ${reason.id}` : reason.kind === 'time' ? `until ${weekdayText(reason.at, zone)}` : `${reason.kind} ${reason.who}`;
   return context !== undefined && isReady(reason, context) ? `${words} ready` : words;
 }
 
 /** Every reason in plain words, joined by ` · `; without a context, no reason reads ready. */
-export function waitsText(waits: readonly WaitReason[], context?: WaitContext): string {
-  return waits.map((reason) => waitText(reason, context)).join(' · ');
+export function waitsText(waits: readonly WaitReason[], zone: TimeZone, context?: WaitContext): string {
+  return waits.map((reason) => waitText(reason, zone, context)).join(' · ');
 }
 
 /** The tasks of a plan dependency (`after T5,T6`) not finished yet: while any is left, the task is not free to start. */

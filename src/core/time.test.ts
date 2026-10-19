@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { formatUtcDay, formatUtcHour, formatUtcMinute, isMinuteInSpan, parseDayStart, parseDeadline, parseTypedInstant, parseUtcDay, parseUtcDeadline, parseUtcInstant, shortUtc, showStored, storedDeadline, typedTimeHint, utcMinuteOf } from './time.ts';
 import { TimeZone } from './zone.ts';
+import { JERUSALEM } from '../testing/zone.ts';
 
 describe('utcMinuteOf', () => {
   it('reads HH:MM as minutes since midnight, and nothing else', () => {
@@ -80,7 +81,7 @@ describe('parseUtcInstant', () => {
 });
 
 describe('in the team zone', () => {
-  const JERUSALEM = TimeZone.of('Asia/Jerusalem') ?? TimeZone.UTC;
+
   const NOW = Date.parse('2026-10-19T21:30:00Z');
 
   it("reads a stored bare day as that day of the team's zone, and a stored minute as UTC", () => {

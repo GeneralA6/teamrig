@@ -2,7 +2,8 @@ import type { Surplus } from '../budget/burst.ts';
 import { formatPct } from '../budget/format.ts';
 import type { KitConfig } from '../config/types.ts';
 import { KIT_NAME } from '../core/home.ts';
-import { MS_PER_DAY, shortUtc } from '../core/time.ts';
+import { MS_PER_DAY, showStored } from '../core/time.ts';
+import type { TimeZone } from '../core/zone.ts';
 import type { Task } from '../register/fold.ts';
 import { ACTIVE_STATUSES, type TaskStatus } from '../register/model.ts';
 import type { TaskTree } from '../register/tree.ts';
@@ -158,13 +159,14 @@ function round(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
-function detailOf(need: AreaNeed, windowDays: number, costPct: number, sparePct: number): string {
+/** A scale-out flag's detail, its dues in the team's `zone`. */
+function detailOf(need: AreaNeed, windowDays: number, costPct: number, sparePct: number, zone: TimeZone): string {
   const { behind, slice, last, stuck } = need;
   const ids = slice.map((item) => item.task.id).join(' ');
   const stuckText = stuck > 0 ? `; ${stuck} more stay late: started, or needed by started work` : '';
   return (
-    `${behind.count} due by ${shortUtc(behind.due)}, its pace finishes ${round(behind.finishes)} by then (${need.done} done in ${windowDays} d); ` +
-    `slice ${ids}, due by ${shortUtc(last.due)}, about ${formatPct(costPct)} of the week, ${formatPct(sparePct)} spare${stuckText}`
+    `${behind.count} due by ${showStored(behind.due, zone)}, its pace finishes ${round(behind.finishes)} by then (${need.done} done in ${windowDays} d); ` +
+    `slice ${ids}, due by ${showStored(last.due, zone)}, about ${formatPct(costPct)} of the week, ${formatPct(sparePct)} spare${stuckText}`
   );
 }
 
@@ -218,7 +220,7 @@ export function scaleOutFlags(input: ScaleOutInput): ScaleOutResult {
     if (spare < costPct) {
       continue;
     }
-    const detail = detailOf(need, config.hiring.scaleOut.windowDays, costPct, spare);
+    const detail = detailOf(need, config.hiring.scaleOut.windowDays, costPct, spare, input.tree.zone);
     spare -= costPct;
     const to = idle.find((session) => !busy.has(session));
     if (to !== undefined) {

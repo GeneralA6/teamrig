@@ -10,6 +10,7 @@ import { testConfig } from '../testing/config.ts';
 import { testTask } from '../testing/task.ts';
 import type { HireRecord } from './log.ts';
 import { scaleOutFlags, type ScaleOutInput, type ScaleOutResult } from './scale-out.ts';
+import { TimeZone } from '../core/zone.ts';
 
 const NOW = new Date('2030-01-08T00:00:00Z');
 const DAY_MS = 86_400_000;
@@ -39,7 +40,7 @@ function scaleOut(tasks: readonly Task[], overrides: Partial<ScaleOutInput> = {}
   return scaleOutFlags({
     hires: [],
     tasks,
-    tree: new TaskTree(new Map(tasks.map((task) => [task.id, task])), NOW),
+    tree: new TaskTree(new Map(tasks.map((task) => [task.id, task])), NOW, TimeZone.UTC),
     config: config(),
     burstsOver: new Set(),
     spare: { sparePct: 10, paceEnd: NOW.getTime() + 6 * DAY_MS },
@@ -55,7 +56,7 @@ const ALPHA_BEHIND = [...finished('alpha', 7, 100), ...dated('alpha', [1, 2, 3, 
 describe('scaleOutFlags: when an area is behind', () => {
   it('flags an area with more due by a date than its pace finishes, naming the latest tasks to move and the cost', () => {
     const { flags, busy } = scaleOut(ALPHA_BEHIND);
-    const detail = '4 due by 01-10 00:00, its pace finishes 2 by then (7 done in 7 d); slice T3 T4, due by 01-10 00:00, about 2.0% of the week, 10.0% spare';
+    const detail = '4 due by 01-10 00:00 UTC, its pace finishes 2 by then (7 done in 7 d); slice T3 T4, due by 01-10 00:00 UTC, about 2.0% of the week, 10.0% spare';
     assert.deepEqual(flags, [{ kind: 'SCALE-OUT', session: 'alpha', detail, action: HIRE }]);
     assert.deepEqual([...busy], []);
   });

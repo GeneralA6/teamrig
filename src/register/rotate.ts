@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import type { Files } from '../core/files.ts';
 import { toJsonlLine } from '../core/jsonl.ts';
+import type { TimeZone } from '../core/zone.ts';
 import { compactRegister, type Compaction } from './compaction.ts';
 import { assemble, historyPlan, readPlan, readSnapshotText, workingSetPlan, type LayoutPaths } from './layout.ts';
 import { markerRecord } from './marker.ts';
@@ -32,6 +33,8 @@ export const AUTO_ROTATE_CHARS = 512 * 1024;
 
 export interface RotationOptions {
   readonly now: Date;
+  /** The team's zone, which a week tag is a day of (compaction.ts). */
+  readonly zone: TimeZone;
   readonly retainDays: number;
   /** Ids kept in the working set whatever their age (compaction.ts). */
   readonly keep: ReadonlySet<string>;
@@ -186,7 +189,7 @@ export async function planRotation(files: RotationFiles, paths: LayoutPaths, opt
   const readPlanUsed = working.skipped === undefined ? working : historyPlan(tail);
   const source = await readPlan(files, paths, readPlanUsed, tail);
   const segment = tail.rotatedAfter + 1;
-  const compaction = compactRegister(source, { covered: segment, now: options.now, retainDays: options.retainDays, keep: options.keep });
+  const compaction = compactRegister(source, { covered: segment, now: options.now, zone: options.zone, retainDays: options.retainDays, keep: options.keep });
   const markerText = toJsonlLine(markerRecord(segment, options.now.toISOString()));
   const back = readBack(source, compaction, markerText);
   const existing = await segmentProblem(files, paths.segment(segment), text);

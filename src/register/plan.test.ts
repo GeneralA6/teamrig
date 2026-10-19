@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { testConfig } from '../testing/config.ts';
 import { testTask } from '../testing/task.ts';
 import { renderPlan } from './plan.ts';
+import { TimeZone } from '../core/zone.ts';
+import { JERUSALEM } from '../testing/zone.ts';
 
 describe('renderPlan', () => {
   it('renders the week by priority with each status', () => {
@@ -19,7 +21,7 @@ describe('renderPlan', () => {
       testTask({ id: 'T8', week, priority: 2, after: ['T5', 'T3'], size: 1.5 }),
     ];
     assert.equal(
-      renderPlan(tasks, week, new Date('2030-01-07T08:00:00Z'), config),
+      renderPlan(tasks, week, new Date('2030-01-07T08:00:00Z'), TimeZone.UTC, config),
       [
         '# Week plan 2030-01-07',
         '',
@@ -49,15 +51,23 @@ describe('renderPlan', () => {
       testTask({ id: 'T2', week }),
       testTask({ id: 'T3', owner: 'beta', due: '2030-01-09', after: ['T2'] }),
     ];
-    const lines = renderPlan(tasks, week, new Date('2030-01-07T08:00:00Z'), config).split('\n').filter((line) => line.startsWith('- ['));
+    const lines = renderPlan(tasks, week, new Date('2030-01-07T08:00:00Z'), TimeZone.UTC, config).split('\n').filter((line) => line.startsWith('- ['));
     assert.deepEqual(lines, ['- [ ] **T2** Add a health check (alpha · due 01-09 from T3 · from lead)', '- [ ] **T1** Add a health check (alpha · due 01-12 · from lead)']);
   });
 
   it('lists the fit lines under the counts', () => {
     const config = testConfig().register;
     const week = '2030-01-07';
-    const text = renderPlan([testTask({ id: 'T1', week, size: 2 })], week, new Date('2030-01-07T08:00:00Z'), config, { fit: ['fits: p2 2% (left 9% of the week)'] });
+    const text = renderPlan([testTask({ id: 'T1', week, size: 2 })], week, new Date('2030-01-07T08:00:00Z'), TimeZone.UTC, config, { fit: ['fits: p2 2% (left 9% of the week)'] });
     assert.ok(text.includes('1 to do. From the task register at 2030-01-07 08:00 UTC.\n\n- fits: p2 2% (left 9% of the week)\n\n## p'), text);
   });
 });
 
+
+describe("renderPlan in the team's zone", () => {
+  it('stamps the plan there, zone-marked', () => {
+    const week = '2030-01-07';
+    const text = renderPlan([testTask({ id: 'T1', week })], week, new Date('2030-01-07T08:00:00Z'), JERUSALEM, testConfig().register);
+    assert.ok(text.includes('From the task register at 2030-01-07 10:00 IST.'), text);
+  });
+});

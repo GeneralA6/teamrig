@@ -1,6 +1,7 @@
 import { errorMessage } from '../core/guards.ts';
 import { NewerDataError } from '../core/jsonl.ts';
 import type { Clock, Mutex } from '../core/lock.ts';
+import type { TimeZone } from '../core/zone.ts';
 import { EVENT_VERSION, type CreateEvent, type RegisterEvent, type StatusEvent, type TaskFields, type UpdateEvent } from './events.ts';
 import { foldEvents, taskNumber, type RegisterState, type Task } from './fold.ts';
 import { GITHUB_ACTOR, NO_SKILL, type AddInput, type AskInput, type ImportChanges, type ImportInput, type RegisterPolicy, type StatusContext, type StatusInput, type Verdict } from './policy.ts';
@@ -19,6 +20,8 @@ export interface RegisterDeps {
   readonly clock: Clock;
   readonly policy: RegisterPolicy;
   readonly skills: SkillCatalog;
+  /** The team's zone: a stored day (a due, a time to wait until, a week tag) is a day of it. */
+  readonly zone: TimeZone;
   /**
    * The team's `register.autoArchive`: false, and a write never rotates the log, however long its tail
    * grows; `teamrig compact` still rotates it by hand.
@@ -115,7 +118,7 @@ export class Register {
   async setStatus(caller: string, id: string, input: StatusInput): Promise<Verdict<WriteResult>> {
     const skillExists = await this.skillExists(input);
     return this.commit(caller, (snapshot) =>
-      onTask(snapshot, id, (task) => this.statusEvents(task, caller, input, { state: snapshot.state, now: new Date(this.deps.clock.now()), skillExists })),
+      onTask(snapshot, id, (task) => this.statusEvents(task, caller, input, { state: snapshot.state, now: new Date(this.deps.clock.now()), zone: this.deps.zone, skillExists })),
     );
   }
 
@@ -137,7 +140,7 @@ export class Register {
         const state = foldEvents([created], [], snapshot.state);
         const waits: readonly WaitReason[] = [...(input.waits ?? []), { kind: 'task', id: askedId }];
         const asking: StatusInput = { ...input, waits, note: input.note ?? fields.value.title };
-        const status = this.statusEvents(task, caller, asking, { state, now: new Date(this.deps.clock.now()), skillExists });
+        const status = this.statusEvents(task, caller, asking, { state, now: new Date(this.deps.clock.now()), zone: this.deps.zone, skillExists });
         return status.ok ? { ok: true, value: [created, ...status.value] } : status;
       }),
     );
@@ -247,7 +250,7 @@ export class Register {
       return { kind: 'none' };
     }
     try {
-      const plan = await this.deps.log.rotateIfDue(written, new Date(this.deps.clock.now()));
+      const plan = await this.deps.log.rotateIfDue(written, new Date(this.deps.clock.now()), this.deps.zone);
       return plan === null ? { kind: 'none' } : { kind: 'rotated', segment: plan.segment, retired: plan.compaction.retiredNow.length };
     } catch (error) {
       return { kind: 'failed', error: errorMessage(error) };

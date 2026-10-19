@@ -15,9 +15,11 @@ import {
   waitSpelling,
   waitsText,
   waitText,
-  weekdayUtc,
+  weekdayText,
   type WaitReason,
 } from './waits.ts';
+import { TimeZone } from '../core/zone.ts';
+import { JERUSALEM } from '../testing/zone.ts';
 
 const NOW = new Date('2030-01-10T12:00:00.000Z');
 const TASKS = new Map<string, { readonly status: TaskStatus }>([
@@ -26,7 +28,7 @@ const TASKS = new Map<string, { readonly status: TaskStatus }>([
   ['T3', { status: 'in-progress' }],
   ['T4', { status: 'waiting' }],
 ]);
-const CONTEXT = waitContext(TASKS, NOW);
+const CONTEXT = waitContext(TASKS, NOW, TimeZone.UTC);
 
 const DECISION: WaitReason = { kind: 'decision', who: 'owner' };
 const APPROVAL: WaitReason = { kind: 'approval', who: 'lead' };
@@ -134,19 +136,19 @@ describe('isFinished, isReady and allReady', () => {
 
 describe('waitText and waitsText', () => {
   it('says each reason in plain words, with the weekday of a time', () => {
-    assert.equal(weekdayUtc('2030-01-10 13:00'), 'Thu 01-10 13:00');
-    assert.equal(weekdayUtc('2030-01-10'), 'Thu 01-10');
-    assert.equal(weekdayUtc('soon'), '', 'a stored time a reader cannot read prints as cut');
+    assert.equal(weekdayText('2030-01-10 13:00', TimeZone.UTC), 'Thu 01-10 13:00 UTC');
+    assert.equal(weekdayText('2030-01-10', TimeZone.UTC), 'Thu 01-10');
+    assert.equal(weekdayText('soon', TimeZone.UTC), 'soon', 'a stored time a reader cannot read prints as stored');
     assert.equal(
-      waitsText([DECISION, APPROVAL, { kind: 'task', id: 'T304' }, { kind: 'time', at: '2030-01-10 13:00' }]),
-      'decision owner · approval lead · on T304 · until Thu 01-10 13:00',
+      waitsText([DECISION, APPROVAL, { kind: 'task', id: 'T304' }, { kind: 'time', at: '2030-01-10 13:00' }], TimeZone.UTC),
+      'decision owner · approval lead · on T304 · until Thu 01-10 13:00 UTC',
     );
   });
 
   it('marks a ready reason only when it has a read to judge by', () => {
-    assert.equal(waitText({ kind: 'task', id: 'T1' }), 'on T1');
-    assert.equal(waitText({ kind: 'task', id: 'T1' }, CONTEXT), 'on T1 ready');
-    assert.equal(waitText(DECISION, CONTEXT), 'decision owner');
+    assert.equal(waitText({ kind: 'task', id: 'T1' }, TimeZone.UTC), 'on T1');
+    assert.equal(waitText({ kind: 'task', id: 'T1' }, TimeZone.UTC, CONTEXT), 'on T1 ready');
+    assert.equal(waitText(DECISION, TimeZone.UTC, CONTEXT), 'decision owner');
   });
 });
 
@@ -154,5 +156,19 @@ describe('unfinishedAfter', () => {
   it('keeps the tasks of a plan dependency not finished yet, in order', () => {
     assert.deepEqual(unfinishedAfter(['T4', 'T1', 'T3', 'T9'], CONTEXT), ['T4', 'T3']);
     assert.deepEqual(unfinishedAfter([], CONTEXT), []);
+  });
+});
+
+describe("a time wait in the team's zone", () => {
+  it('prints a stored minute there, zone-marked, and its weekday there', () => {
+    assert.equal(weekdayText('2030-01-10 23:30', JERUSALEM), 'Fri 01-11 01:30 IST', 'a stored minute is UTC; its local day can be the next one');
+    assert.equal(weekdayText('2030-01-10', JERUSALEM), 'Thu 01-10', 'a bare day is a day of the zone');
+  });
+
+  it('readies a bare day once that day has ended there', () => {
+    const at = new Date('2030-01-10T22:30:00.000Z');
+    const day: WaitReason = { kind: 'time', at: '2030-01-10' };
+    assert.equal(isReady(day, waitContext(TASKS, at, JERUSALEM)), true, 'Jerusalem is at 01-11 00:30');
+    assert.equal(isReady(day, waitContext(TASKS, at, TimeZone.UTC)), false, 'UTC is at 01-10 22:30');
   });
 });
