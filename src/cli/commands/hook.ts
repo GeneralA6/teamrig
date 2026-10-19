@@ -13,7 +13,7 @@ import { ModelNoticeStore } from '../../hooks/model-notices.ts';
 import { sendTargetOf } from '../../hooks/cold-send.ts';
 import { failedSendLine, failedSendOf, failedSendOutput } from '../../hooks/failed-send.ts';
 import { adHocRunnersOf, packageGuardOutput } from '../../hooks/package-guard.ts';
-import { commitsOf, protectedBranchesOf, pushGuardOutput, pushToProtectedOf } from '../../hooks/push-guard.ts';
+import { commitsOf, protectedBranchesOf, pushGuardOutput, pushToProtectedOf, skipHooksOf } from '../../hooks/push-guard.ts';
 import { JsonlHintLog } from '../../hooks/hint-log.ts';
 import { promptOutput } from '../../hooks/prompt-output.ts';
 import { showsLiveTasks } from '../../hooks/live-tasks.ts';
@@ -110,6 +110,7 @@ export async function pushGuard(args: ParsedArgs, runtime: CliRuntime): Promise<
     pushToProtected: pushToProtectedOf(load),
     commits: commitsOf(load),
     commitLog: runtime.commitLog,
+    skipHooks: skipHooksOf(load),
   });
   if (output !== '') {
     runtime.out.stdout(output);

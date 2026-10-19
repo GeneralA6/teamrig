@@ -2,7 +2,7 @@ import { describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { DEFAULT_COMMITS } from '../config/defaults.ts';
-import type { CommitGate, PushToProtected } from '../config/types.ts';
+import type { CommitGate, PushToProtected, SkipHooks } from '../config/types.ts';
 import { isRecord } from '../core/guards.ts';
 import type { CommitStat } from '../push-guard/commit-size.ts';
 import type { ConfigValue } from '../push-guard/invocations.ts';
@@ -15,6 +15,8 @@ import {
   protectedBranchesOf,
   pushGuardOutput,
   pushToProtectedOf,
+  skipHooksOf,
+  skipHooksReason,
   type PushGuardEnv,
 } from './push-guard.ts';
 
@@ -36,6 +38,7 @@ function env(branch = 'feature') {
     pushToProtected: 'ask',
     commits: DEFAULT_COMMITS,
     commitLog: { between: () => [] },
+    skipHooks: 'deny',
   } satisfies PushGuardEnv;
 }
 
@@ -250,5 +253,52 @@ describe('commitsOf', () => {
     const config = testConfig({ commits: { gate: 'refuse' } });
     assert.equal(commitsOf({ status: 'loaded', path: 'c.json', config, issues: [] }).gate, 'refuse');
     assert.deepEqual(commitsOf({ status: 'missing', path: 'c.json' }), DEFAULT_COMMITS);
+  });
+});
+
+describe('pushGuardOutput: skipped hooks', () => {
+  const skipping = (skipHooks: SkipHooks): PushGuardEnv => ({ ...env(), skipHooks });
+
+  it('refuses a git command run without the hooks under deny, naming each skip and the switch', () => {
+    const { decision, reason } = hookOutput(pushGuardOutput(payload('git add -A && git commit --no-verify -m fix && HUSKY=0 git push origin feature'), skipping('deny')));
+    assert.equal(decision, 'deny');
+    assert.equal(reason, skipHooksReason([
+      { dir: resolve('/work/app'), subcommand: 'commit', by: '--no-verify' },
+      { dir: resolve('/work/app'), subcommand: 'push', by: 'HUSKY=0' },
+    ]));
+    assert.equal(
+      reason,
+      "teamrig commit guard: this runs git without the repository's hooks: git commit (--no-verify), git push (HUSKY=0). The hooks are the " +
+        "repository's own checks: let them run and fix what they report; if a hook itself is broken, tell the lead. [commitGuard.skipHooks]",
+    );
+  });
+
+  it('asks under ask, keeps refusing a force-push to a protected branch, and emits nothing under allow', () => {
+    assert.deepEqual(hookOutput(pushGuardOutput(payload('git commit -n -m fix'), skipping('ask'))).decision, 'ask');
+    const forced = hookOutput(pushGuardOutput(payload('git push --no-verify -f origin main'), skipping('ask')));
+    assert.equal(forced.decision, 'deny');
+    assert.match(forced.reason, /^Force-pushing, mirroring or deleting a protected branch \(main\)/);
+    assert.equal(pushGuardOutput(payload('git commit --no-verify -m fix'), skipping('allow')), '');
+    assert.equal(decisionOf(pushGuardOutput(payload('git push --no-verify origin main'), skipping('allow'))), 'ask', 'allow leaves the push question');
+  });
+
+  it('refuses one even when no branch is protected, in PowerShell too, and leaves a line whose hooks run', () => {
+    const unguarded: PushGuardEnv = { ...env(), protectedBranches: [] };
+    assert.equal(hookOutput(pushGuardOutput(payload('git commit -nm fix'), unguarded)).decision, 'deny');
+    assert.equal(hookOutput(pushGuardOutput(payload('git -c core.hooksPath=NUL commit -m fix', { tool_name: 'PowerShell' }), env())).decision, 'deny');
+    for (const command of ['git commit -m "skip --no-verify next time"', 'git push -n origin feature', 'git config --get core.hooksPath']) {
+      assert.equal(pushGuardOutput(payload(command), env()), '', command);
+    }
+  });
+});
+
+describe('skipHooksOf', () => {
+  it("uses the team's choice when the config loads, else refuses", () => {
+    const config = testConfig({ commitGuard: { skipHooks: 'ask' } });
+    assert.equal(skipHooksOf({ status: 'loaded', path: 'c.json', config, issues: [] }), 'ask');
+    assert.equal(skipHooksOf({ status: 'loaded', path: 'c.json', config: testConfig(), issues: [] }), 'deny');
+    assert.equal(skipHooksOf({ status: 'missing', path: 'c.json' }), 'deny');
+    assert.equal(skipHooksOf({ status: 'unreadable', path: 'c.json', issue: { path: '', message: 'bad' } }), 'deny');
+    assert.equal(skipHooksOf(undefined), 'deny');
   });
 });

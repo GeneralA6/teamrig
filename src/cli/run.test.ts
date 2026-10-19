@@ -566,6 +566,16 @@ describe('runCli: hook push-guard', () => {
   it('allows silently on input that is not a hook payload', async () => {
     assert.deepEqual(await new CliHarness().run(['hook', 'push-guard'], { stdin: 'not json' }), { code: EXIT.ok, stdout: [], stderr: [] });
   });
+
+  it('refuses a commit that skips the hooks, or asks or lets it run as the team config says, refusing on a broken config', async () => {
+    const commit = bash('git commit --no-verify -m fix');
+    assert.equal(decisionOf(await new CliHarness().run(['hook', 'push-guard'], { stdin: commit })), 'deny');
+    assert.equal(decisionOf(await new CliHarness({ ...TEAM, commitGuard: { skipHooks: 'ask' } }).run(['hook', 'push-guard'], { stdin: commit })), 'ask');
+    assert.deepEqual((await new CliHarness({ ...TEAM, commitGuard: { skipHooks: 'allow' } }).run(['hook', 'push-guard'], { stdin: commit })).stdout, []);
+    for (const kit of [new CliHarness(null), new CliHarness('{ not json')]) {
+      assert.equal(decisionOf(await kit.run(['hook', 'push-guard'], { stdin: commit })), 'deny');
+    }
+  });
 });
 
 describe('runCli: hook package-guard', () => {

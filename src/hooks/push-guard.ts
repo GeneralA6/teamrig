@@ -1,13 +1,17 @@
-import { DEFAULT_COMMITS, DEFAULT_PUSH_GUARD } from '../config/defaults.ts';
+import { DEFAULT_COMMIT_GUARD, DEFAULT_COMMITS, DEFAULT_PUSH_GUARD } from '../config/defaults.ts';
 import type { ConfigLoad } from '../config/load.ts';
-import type { CommitsConfig, PushToProtected } from '../config/types.ts';
+import type { CommitsConfig, PushToProtected, SkipHooks } from '../config/types.ts';
 import { isRecord, recordField, stringField } from '../core/guards.ts';
 import { describeLargeCommits, largeCommits, type CommitLog, type CommitStat, type LargeCommit } from '../push-guard/commit-size.ts';
+import { hookSkips, type HookSkip } from '../push-guard/hook-skips.ts';
+import { findGitInvocations } from '../push-guard/invocations.ts';
 import {
   decisionReason,
   doubtReason,
-  evaluatePushes,
+  finderContextOf,
+  judgePushes,
   leasedReason,
+  type GuardContext,
   type ProtectedUpdate,
   type PushDecision,
   type PushVerdict,
@@ -25,6 +29,8 @@ export interface PushGuardEnv {
   /** The small-commits rule; its gate decides whether an asked or allowed push lists or refuses large commits. */
   readonly commits: CommitsConfig;
   readonly commitLog: CommitLog;
+  /** What a git command run without the repository's hooks gets. */
+  readonly skipHooks: SkipHooks;
 }
 
 /**
@@ -44,6 +50,20 @@ export function pushToProtectedOf(load: ConfigLoad | undefined): PushToProtected
 /** The small-commits rule, with the same fallback as the protected branches. */
 export function commitsOf(load: ConfigLoad | undefined): CommitsConfig {
   return load?.status === 'loaded' ? load.config.commits : DEFAULT_COMMITS;
+}
+
+/** What a git command run without the repository's hooks gets, with the same fallback: a broken config refuses it. */
+export function skipHooksOf(load: ConfigLoad | undefined): SkipHooks {
+  return load?.status === 'loaded' ? load.config.commitGuard.skipHooks : DEFAULT_COMMIT_GUARD.skipHooks;
+}
+
+/** Why the guard stops a line that runs git without the repository's hooks, naming each skip as written. */
+export function skipHooksReason(skips: readonly HookSkip[]): string {
+  const named = [...new Set(skips.map((skip) => `git ${skip.subcommand} (${skip.by})`))].join(', ');
+  return (
+    `teamrig commit guard: this runs git without the repository's hooks: ${named}. The hooks are the repository's ` +
+    "own checks: let them run and fix what they report; if a hook itself is broken, tell the lead. [commitGuard.skipHooks]"
+  );
 }
 
 /** The large commits the updates would send, each once. A range git cannot list adds none, so a broken log never blocks a push. */
@@ -90,7 +110,8 @@ function permission(decision: Exclude<PushDecision, 'allow'>, reason: string): s
  * instead of a question, and the normal permission flow still decides. Under the commits gate, an
  * asked or allowed push also lists the large commits it sends (`warn`) or is refused for them
  * (`refuse`). A command the guard cannot read with confidence is asked about, with a reason that
- * says what it could not read.
+ * says what it could not read. A line that runs git without the repository's hooks (see `hookSkips`) is refused or
+ * asked about first, as `skipHooks` says; a refused push stays refused under `ask`.
  */
 export function pushGuardOutput(payload: unknown, env: PushGuardEnv): string {
   if (!isRecord(payload)) {
@@ -100,14 +121,22 @@ export function pushGuardOutput(payload: unknown, env: PushGuardEnv): string {
   if (command === undefined) {
     return '';
   }
-  const verdict = evaluatePushes(command, {
+  const context: GuardContext = {
     cwd: stringField(payload, 'cwd') ?? env.cwd,
     home: env.home,
     dialect: stringField(payload, 'tool_name') === 'PowerShell' ? 'powershell' : 'bash',
     protectedBranches: env.protectedBranches,
     pushToProtected: env.pushToProtected,
     repo: env.repo,
-  });
+  };
+  const found = findGitInvocations(command, finderContextOf(context));
+  const verdict = judgePushes(found, context);
+  if (env.skipHooks !== 'allow') {
+    const skips = hookSkips(found.invocations);
+    if (skips.length > 0 && (env.skipHooks === 'deny' || verdict.decision !== 'deny')) {
+      return permission(env.skipHooks, skipHooksReason(skips));
+    }
+  }
   if (verdict.decision === 'allow' && verdict.protectedPush === undefined) {
     return '';
   }
