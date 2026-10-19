@@ -70,6 +70,14 @@ describe('teamrig statusline install', () => {
     assert.equal(kit.files.get(BACKUP), undefined);
   });
 
+  it('proposes the bare launcher for one left passing its input to nothing, which shows the raw status JSON', async () => {
+    const stranded = `${OWN} --pass`;
+    const kit = await withSettings(formatConfig({ statusLine: { type: 'command', command: stranded } }));
+    await kit.files.write(LAUNCHER, LAUNCHER_SCRIPT);
+    const result = await kit.run(['statusline', 'install']);
+    assert.deepEqual([result.code, result.stdout], [EXIT.ok, ['PREVIEW nothing written (add --yes to write)', `  CHANGE ${SETTINGS} statusLine.command: ${stranded} -> ${OWN}`]]);
+  });
+
   it('refuses settings it cannot read and a status line the pipe would split, writing nothing', async () => {
     const broken = await withSettings('{ "theme": ');
     const unreadable = await broken.run(['statusline', 'install', '--yes']);

@@ -36,6 +36,15 @@ describe('planInstall', () => {
     }
   });
 
+  it('puts the bare launcher back when its --pass has nothing piped after it, keeping the other fields', () => {
+    for (const command of [`${OWN} --pass`, `${OWN} --pass | `, `${OWN} --pass|`]) {
+      assert.deepEqual(planInstall({ statusLine: { type: 'command', command, padding: 1 } }, LAUNCHER), {
+        ok: true,
+        value: { settings: { statusLine: { type: 'command', command: OWN, padding: 1 } }, before: command, after: OWN },
+      });
+    }
+  });
+
   it('refuses a compound shell line and a status line without a command', () => {
     const compound = planInstall({ statusLine: { type: 'command', command: 'cd ~ && ./status.sh' } }, LAUNCHER);
     assert.equal(compound.ok, false);
@@ -56,11 +65,13 @@ describe('planUninstall', () => {
     });
   });
 
-  it('removes the status line when the launcher was alone', () => {
-    assert.deepEqual(planUninstall({ theme: 'dark', statusLine: { type: 'command', command: OWN } }, LAUNCHER), {
-      ok: true,
-      value: { settings: { theme: 'dark' }, before: OWN, after: undefined },
-    });
+  it('removes the status line when the launcher was alone, or passed its input on to nothing', () => {
+    for (const before of [OWN, `${OWN} --pass`, `${OWN} --pass | `]) {
+      assert.deepEqual(planUninstall({ theme: 'dark', statusLine: { type: 'command', command: before } }, LAUNCHER), {
+        ok: true,
+        value: { settings: { theme: 'dark' }, before, after: undefined },
+      });
+    }
   });
 
   it('changes nothing when the launcher is not the status line', () => {
