@@ -9,9 +9,13 @@ export interface IssueSpec {
   readonly stateReason?: string;
   readonly labels?: readonly string[];
   readonly assignees?: readonly string[];
+  readonly updatedAt?: string;
 }
 
-/** An issue as `gh issue list --json number,title,body,state,stateReason,labels,assignees,url` prints it: an empty body as ''. */
+/**
+ * An issue as `gh issue list --json number,title,body,state,stateReason,labels,assignees,url,updatedAt` prints it: an
+ * empty body as '', and changed last on 2030-01-01, before any task a test makes.
+ */
 export function ghIssue(repo: string, number: number, spec: IssueSpec = {}): JsonRecord {
   return {
     number,
@@ -22,6 +26,7 @@ export function ghIssue(repo: string, number: number, spec: IssueSpec = {}): Jso
     labels: (spec.labels ?? []).map((name) => ({ id: `L_${name}`, name, description: '', color: 'ededed' })),
     assignees: (spec.assignees ?? []).map((login) => ({ id: `U_${login}`, login, name: '' })),
     url: `https://github.com/${repo}/issues/${number}`,
+    updatedAt: spec.updatedAt ?? '2030-01-01T00:00:00Z',
   };
 }
 

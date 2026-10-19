@@ -31,7 +31,9 @@ Add a `github` block to the team config (`~/.teamrig/teams/<team>/config.json`):
 | `everyMinutes` | How often it runs on its own, in minutes (0 to 1440). Default 15; 0 leaves it to `teamrig gh sync --yes`. |
 
 Who owns a new issue's task: the session of its first assignee listed in `owners`; else its repository's session in
-`sessions`; else the lead. After the import the owner is the team's: reassigning the task in teamrig sticks.
+`sessions`; else the lead. After the import the owner is the team's: reassigning the task in teamrig sticks. So is
+closing it: a task the team sets done or dropped while its issue is open stays closed until the issue changes on
+GitHub after that (reopened, edited or commented on).
 
 ## 2. Give teamrig read access
 

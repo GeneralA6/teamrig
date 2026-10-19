@@ -19,6 +19,7 @@ function issue(number: number, overrides: Partial<GithubIssue> = {}): GithubIssu
     labels: [],
     assignees: [],
     url: `https://github.com/acme/web/issues/${number}`,
+    updatedAt: '2030-01-01T00:00:00Z',
     ...overrides,
   };
 }
@@ -91,18 +92,35 @@ describe('planSync', () => {
     const issues = [
       issue(1, { state: 'closed', stateReason: 'COMPLETED' }),
       issue(2, { state: 'closed', stateReason: 'NOT_PLANNED' }),
-      issue(3),
+      issue(3, { updatedAt: '2030-01-07T09:30:00Z' }),
       issue(4, { state: 'closed', stateReason: 'DUPLICATE' }),
     ];
     assert.deepEqual(planSync(issues, tasks, RULES), {
       steps: [
         { kind: 'status', ref: 'gh:acme/web#1', id: 'T1', input: { status: 'done', note: 'closed on GitHub as completed', evidence: 'https://github.com/acme/web/issues/1' } },
         { kind: 'status', ref: 'gh:acme/web#2', id: 'T2', input: { status: 'dropped', note: 'closed on GitHub as not planned' } },
-        { kind: 'status', ref: 'gh:acme/web#3', id: 'T3', input: { status: 'open', note: 'open on GitHub' } },
+        { kind: 'status', ref: 'gh:acme/web#3', id: 'T3', input: { status: 'open', note: 'open on GitHub, changed there since this task closed' } },
       ],
       inserted: 0,
       changed: 3,
       unchanged: 1,
+    });
+  });
+
+  it('keeps a task the team closed while its issue is open, until GitHub changes the issue after the close', () => {
+    const closedAt = '2030-01-07T09:00:00.000Z';
+    const tasks = importedTasks([
+      imported('T1', 1, { status: 'dropped', statusAt: closedAt }),
+      imported('T2', 2, { status: 'done', statusAt: closedAt }),
+      imported('T3', 3, { status: 'dropped', statusAt: closedAt }),
+      imported('T4', 4, { status: 'done', statusAt: closedAt }),
+    ]);
+    const issues = [issue(1), issue(2, { updatedAt: closedAt }), issue(3, { updatedAt: undefined }), issue(4, { updatedAt: '2030-01-07T09:00:01Z' })];
+    assert.deepEqual(planSync(issues, tasks, RULES), {
+      steps: [{ kind: 'status', ref: 'gh:acme/web#4', id: 'T4', input: { status: 'open', note: 'open on GitHub, changed there since this task closed' } }],
+      inserted: 0,
+      changed: 1,
+      unchanged: 3,
     });
   });
 
