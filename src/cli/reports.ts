@@ -47,14 +47,14 @@ export interface CheckReport {
   readonly scope: string;
   readonly skills: readonly SkillFlag[];
   readonly skillsDir: string;
-  /** The flags on hired sessions (RETIRE-DUE, REVIEW-DUE); printed only when there are some. */
+  /** The hire flags: SCALE-OUT on an area, then RETIRE-DUE and REVIEW-DUE on a hired session; printed only when there are some. */
   readonly hires: readonly HireFlag[];
 }
 
 /**
  * A report narrowed to what one session acts on, for `start`: the flags of the tasks it owns, of the skills
- * it fixes (only a task's owner sets its status) and on itself as a hired session. The scope names the session,
- * so the CHECK line says whose flags these are.
+ * it fixes (only a task's owner sets its status), on itself as a hired session and a SCALE-OUT on its area. The
+ * scope names the session, so the CHECK line says whose flags these are.
  */
 export function ownCheck(report: CheckReport, owner: string): CheckReport {
   return {
