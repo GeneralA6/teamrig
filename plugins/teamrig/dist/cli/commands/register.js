@@ -12,7 +12,7 @@ import { fitLines, leftOfWeek, overLimitFlag, weekFit } from "../../register/fit
 import { renderPlan } from "../../register/plan.js";
 import { ACTIVE_STATUSES } from "../../register/model.js";
 import { readStopgapTags, stopgapFlags, stopgapTags } from "../../register/stopgap.js";
-import { heldStart, heldStartNotice, startHolds, verifyQueue } from "../../register/verify.js";
+import { heldStart, heldStartNotice, metStartNotice, startHolds, verifyQueue } from "../../register/verify.js";
 import { TaskTree } from "../../register/tree.js";
 import { assignedNotice, formatTask, formatTaskDetail, formatTaskTree, formatVerifyRow, personWaitNotice, selectTasks } from "../../register/views.js";
 import { isPeerWait, sameWait } from "../../register/waits.js";
@@ -200,12 +200,14 @@ export async function set(args, runtime) {
     const held = await heldStartOf(register, by, id, input);
     const verdict = await register.setStatus(by, id, input);
     const warned = config.register.verifyGate === 'warn';
-    if (held !== undefined && verdict.ok === warned) {
-        await tellVerifiers(runtime, team, by, held);
+    // The start as written: one that named its held proof as met asks the verifying owners to confirm it.
+    const met = verdict.ok && verdict.value.event.type === 'status' ? (verdict.value.event.met ?? null) : null;
+    if (held !== undefined && (verdict.ok || !warned)) {
+        await tellVerifiers(runtime, team, by, held, met);
     }
     const exit = report(runtime, verdict, 'SET', paths.config);
     await tellLeadOfWaits(runtime, team, by, verdict);
-    if (held !== undefined && warned) {
+    if (held !== undefined && warned && verdict.ok && met === null) {
         runtime.out.stderr(`WARN ${heldStart(held.task, held.holds)}; started anyway, as register.verifyGate is warn`);
     }
     if (input.status === 'done') {
@@ -248,19 +250,20 @@ async function heldStartOf(register, caller, id, input) {
 }
 /**
  * One inbox line to the owner of each verifying task that holds a start, once per task pair and UTC
- * day, never to the caller, who reads the refusal. A line that cannot be posted is named, never thrown.
+ * day, never to the caller, who reads the refusal: that the start waits, or, for a start that went
+ * through with `--met`, what met the proof, to confirm or reopen. A line that cannot be posted is named, never thrown.
  */
-async function tellVerifiers(runtime, team, caller, { task, holds }) {
+async function tellVerifiers(runtime, team, caller, { task, holds }, met) {
     const now = new Date(runtime.clock.now());
     const told = new JsonlDailyLog(runtime.files, team.paths.verifyNotices);
     const { inboxes } = inboxDepsOf(runtime, team.paths);
     const secrets = new SecretScanner(team.config.register.secretPatterns);
     for (const held of holds) {
-        const key = `held ${task.id} on ${held.id}`;
+        const key = `${met === null ? 'held' : 'met'} ${task.id} on ${held.id}`;
         if (held.owner === caller || (await told.seen(key, now))) {
             continue;
         }
-        const text = heldStartNotice(task, held);
+        const text = met === null ? heldStartNotice(task, held) : metStartNotice(task, held, met);
         const problem = await postLine(inboxes, secrets, { to: held.owner, from: caller, text, now });
         if (problem === undefined) {
             await told.record(key, now);

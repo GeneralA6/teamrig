@@ -190,6 +190,7 @@ export function formatEvent(event) {
             return [
                 `${head} ${event.status}${event.waits === undefined ? '' : ` waits="${waitsText(event.waits)}"`}${note}`,
                 event.proof === undefined ? undefined : `proof="${event.proof}"`,
+                event.met === undefined ? undefined : `met="${event.met}"`,
                 event.evidence === null ? undefined : `evidence=${event.evidence}`,
                 event.skill === null ? undefined : `skill=${event.skill}`,
                 event.followups === undefined ? undefined : `followups=${event.followups.length === 0 ? 'none' : event.followups.join(',')}`,
