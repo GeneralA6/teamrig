@@ -449,7 +449,7 @@ describe('integrate under the lock, when the push does not land', () => {
     assert.ok(world.lockFree());
   });
 
-  it('names a push killed at its time limit or stopped by a signal, and an unreadable origin', async () => {
+  it('names a push killed at its time limit, stopped by a signal or killed as its shell ended, and an unreadable origin', async () => {
     const world = new World();
     world.steps.ends({ kind: 'timedOut' }).whileRunning(async () => {
       world.git.origin.delete('main');
@@ -458,6 +458,9 @@ describe('integrate under the lock, when the push does not land', () => {
     const stopped = new World();
     stopped.steps.ends({ kind: 'signal', signal: 'SIGTERM' }).whileRunning(async () => undefined);
     failed(await stopped.run(), /^the push was stopped by SIGTERM;/);
+    const orphaned = new World();
+    orphaned.steps.ends({ kind: 'stopped' }).whileRunning(async () => undefined);
+    failed(await orphaned.run(), /^the push was killed when its launching shell ended \(exit 129\);/);
   });
 
   it('fails on a rebase conflict without pushing, and frees the lock', async () => {

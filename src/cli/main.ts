@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { nodeTranscriptSource } from '../budget/discover.ts';
 import { nodeFiles } from '../core/files.ts';
 import { nodeHostMemory } from '../coordinator/memory.ts';
+import { nodeEvery, starterWatch } from '../coordinator/starter-watch.ts';
 import { nodeStepRunner } from '../coordinator/steps.ts';
 import { realSleep, systemClock } from '../core/lock.ts';
 import { NODE_PATH_PROBE } from '../core/path-probe.ts';
@@ -24,6 +25,8 @@ import { LOGON_QUERY_TIMEOUT_MS, systemLogonEntry } from '../restore/logon.ts';
 import { SHUTDOWN_QUERY_TIMEOUT_MS, systemShutdownLog } from '../restore/shutdowns.ts';
 import { runCli } from './run.ts';
 
+const sessionProcesses = nodeSessionProcesses();
+
 /** The process adapter: real files, clock, git, child processes and stdio around the testable runner. */
 process.exitCode = await runCli(process.argv.slice(2), {
   env: process.env,
@@ -42,7 +45,8 @@ process.exitCode = await runCli(process.argv.slice(2), {
   },
   platform: process.platform,
   processes: nodeProcesses(),
-  sessionProcesses: nodeSessionProcesses(),
+  sessionProcesses,
+  starters: starterWatch(sessionProcesses, process.pid, nodeEvery),
   shell: nodeShellRunner(),
   steps: nodeStepRunner(process.platform),
   memory: nodeHostMemory(process.platform),

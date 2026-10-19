@@ -5,6 +5,7 @@ import { FIRST_IN_LINE_POLL_MS } from '../coordinator/host-lock.ts';
 import { APP, CliHarness, KIT, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
+import { FakeStarterWatch, SHELL } from '../testing/fake-starter-watch.ts';
 import { FakeSteps } from '../testing/fake-steps.ts';
 
 const LEDGER = join(TEAM_HOME, 'state', 'deploys', 'ledger.jsonl');
@@ -216,6 +217,70 @@ describe('teamrig heavy', () => {
     assert.equal((await kit.run(BUILD, { steps, memory })).code, 0);
     assert.deepEqual(memory.watches, []);
     assert.equal(ledgerOf(kit).some((record) => JSON.stringify(record).includes('peakTreeMb')), false);
+  });
+
+  it('stops waiting for the lock once the shell that started it ended, leaving the lock to its holder', async () => {
+    const { kit, steps } = harness({ ...TEAM, coordinator: { wait: { pollSeconds: 30 } } });
+    await kit.files.write(LOCK, heldBy());
+    const starters = new FakeStarterWatch();
+    const sleep = async (ms: number): Promise<void> => {
+      await kit.clock.sleep(ms);
+      starters.end();
+    };
+    const result = await kit.run(BUILD, { steps, starters, sleep, sessionProcesses: otherRuns() });
+    assert.deepEqual(result, {
+      code: 1,
+      stdout: [
+        '2030-01-08 10:00:00 UTC waiting for the host lock: po (heavy: build) since 2030-01-08 09:50 UTC',
+        '2030-01-08 10:00:30 UTC its launching shell ended (bash.exe 4100) while it waited: no one waits for it any more',
+        'STOPPED before the host lock was free: nothing ran',
+      ],
+      stderr: [],
+    });
+    assert.deepEqual([steps.ran, kit.files.get(LOCK), kit.files.get(LEDGER), starters.openWatches], [[], heldBy(), undefined, 0]);
+  });
+
+  it('kills a running step once the shell that started it ended, records exit 129 and frees the lock', async () => {
+    const { kit, steps } = harness();
+    const starters = new FakeStarterWatch();
+    steps.ends(0, MINUTE).whileRunning(async () => starters.end());
+    const result = await kit.run(BUILD, { steps, starters });
+    assert.deepEqual(result, {
+      code: 1,
+      stdout: [
+        '2030-01-08 10:00:00 UTC running: build api (killed after 45m)',
+        '2030-01-08 10:00:00 UTC its launching shell ended (bash.exe 4100): killed its process tree',
+        'STOPPED killed, recorded as exit 129',
+      ],
+      stderr: [],
+    });
+    assert.equal(steps.ran[0]?.stop?.aborted, true);
+    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+    assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:00:00.000Z', exitCode: 129 }]);
+    assert.deepEqual([kit.files.get(LOCK), starters.openWatches], [undefined, 0]);
+  });
+
+  it("kills a step run under its parent's lock once its shell ended, leaving the parent's lock", async () => {
+    const { kit, steps } = harness();
+    await kit.files.write(LOCK, heldBy());
+    const starters = new FakeStarterWatch([SHELL]);
+    const result = await kit.run(['heavy', '--session', 'alpha', '--what', 'pre-commit checks', '--', 'npm', 'test'], {
+      steps: steps.whileRunning(async () => starters.end(SHELL)),
+      starters,
+      sessionProcesses: otherRuns(),
+      env: { TEAMRIG_HOST_LOCK: 'other' },
+    });
+    assert.deepEqual([result.code, result.stdout.at(-1), kit.files.get(LOCK), starters.openWatches], [1, 'STOPPED killed, recorded as exit 129', heldBy(), 0]);
+  });
+
+  it('says when it cannot list the processes that started it, and runs the step as usual', async () => {
+    const { kit, steps } = harness();
+    const result = await kit.run(BUILD, { steps, starters: new FakeStarterWatch([]) });
+    assert.deepEqual(result.stdout, [
+      '2030-01-08 10:00:00 UTC could not list the processes that started this one: the step runs on if its shell ends',
+      '2030-01-08 10:00:00 UTC running: build api (killed after 45m)',
+      'DONE exit 0',
+    ]);
   });
 
   it('takes over a lock its process left behind', async () => {
