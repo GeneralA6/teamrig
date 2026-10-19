@@ -1,14 +1,11 @@
 import { WEEKDAYS, type BudgetConfig, type BudgetReset } from '../config/types.ts';
-import { MS_PER_DAY, MS_PER_HOUR } from '../core/time.ts';
+import { MS_PER_DAY, MS_PER_HOUR, MS_PER_MINUTE, MS_PER_WEEK } from '../core/time.ts';
 import type { ActivityProfile } from './active-time.ts';
 
 /**
  * The pace math of the weekly budget, pure so every edge of the week is tested with plain numbers.
  * All instants are epoch milliseconds; all shares are percent of the week's limit.
  */
-
-const MS_PER_WEEK = 7 * MS_PER_DAY;
-const MS_PER_MINUTE = 60_000;
 
 /** One week of the plan's limit: from the last reset to the next, and the end of the pace line before it. */
 export interface WeekWindow {
