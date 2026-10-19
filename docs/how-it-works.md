@@ -178,7 +178,9 @@ sequenceDiagram
   Terminal, Konsole or x-terminal-emulator, in that order; `open.terminal` in the config or `--terminal` picks one.
   It refuses any session but the lead, and `hire --yes` refuses a hire, when the host has no room for one more:
   free memory over `coordinator.heavy.memoryFloorMb` and the commit charge within `open.headroom.commitMaxPct` (92%),
-  with the session counted at the median running one, else `open.headroom.sessionMb` (1200 MB).
+  with the session counted at the median running one, else `open.headroom.sessionMb` (1200 MB). A session
+  `teamrig close` ended goes on in its last Claude Code session when that is small and recent enough, else opens
+  fresh; `state/session-log.jsonl` logs each close and reopen.
   The tab runs `teamrig launch`, which sets `$TEAMRIG_SESSION` and starts `claude --name <name> "<first prompt>"`,
   with `--model` and `--effort` from the session's `launch` entry in the config. The lead, for each it leaves unset,
   starts on `opus` (Claude Code's newest Opus) at `xhigh` effort; the others on Claude Code's own. The `OPENED` and

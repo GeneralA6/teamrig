@@ -5,23 +5,25 @@ import { splitAddress } from '../../core/address.ts';
 import { ENV, KIT_NAME, type Env, type TeamPaths } from '../../core/home.ts';
 import { ID_PATTERN, ID_RULE } from '../../core/ids.ts';
 import { HiringLog, rehiredFrom, type RetireRecord } from '../../hiring/log.ts';
+import type { ResumeVerdict } from '../../hiring/rehire.ts';
 import { CLAUDE_SESSION_ID } from '../../inbox/marks.ts';
 import { findClaude, type ClaudeProgram } from '../../open/claude.ts';
 import { launchFlags } from '../../open/launch-flags.ts';
 import { openTab, type OpenOutcome } from '../../open/open-tab.ts';
-import { decodePrompt, defaultPrompt, encodePrompt, promptProblem, refreshPrompt, rehirePrompt, resumePrompt } from '../../open/prompt.ts';
+import { decodePrompt, defaultPrompt, encodePrompt, promptProblem, refreshPrompt, rehirePrompt, reopenPrompt, resumePrompt } from '../../open/prompt.ts';
 import { shellCommand } from '../../open/quote.ts';
 import { sessionEnv } from '../../open/session-env.ts';
 import type { RunOutcome } from '../../open/processes.ts';
 import { RefreshStore } from '../../refresh/store.ts';
 import { noRoomText } from '../../sessions/headroom.ts';
+import { closedOf, SessionLog } from '../../sessions/log.ts';
 import type { Terminal } from '../../open/terminals.ts';
 import { onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
 import { headroomOf } from '../headroom.ts';
 import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
-import { freshOpenOf, resumeVerdictOf } from './rehire.ts';
+import { claudeSessionVerdict, freshOpenOf, resumeVerdictOf } from './rehire.ts';
 import { teamProjectOf } from './setup.ts';
 
 /** The terminal names a person reads, for the OPENED line. */
@@ -124,7 +126,8 @@ export async function openSessionTab(runtime: CliRuntime, tab: SessionTab): Prom
  * Claude Code. When no terminal opens it prints the command to run instead and exits 3. A rehired session opens
  * on the handover its retire left, or, with --resume, in its last Claude Code session when that is small and
  * recent enough (`hiring.resumeMaxTokens`, `hiring.resumeMaxIdleDays`). It refuses any session but the lead when
- * the host has no room for one more (`open.headroom`, src/sessions/headroom.ts).
+ * the host has no room for one more (`open.headroom`, src/sessions/headroom.ts). A session `teamrig close` ended
+ * goes on in its last Claude Code session by the same limits, else opens fresh, and the reopen is logged.
  */
 export async function open(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const target = onePositional(args, 'id|name');
@@ -138,8 +141,11 @@ export async function open(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   const terminal = terminalFlag(args.flags.get('terminal')) ?? config.open.terminal;
   const project = await teamProjectOf(runtime, args.flags.get('project'), found.from);
   const from = rehiredFrom((await new HiringLog(runtime.files, kit.paths.hires).read()).records, id);
-  const resume = args.switches.has('resume') ? await resumeOf(runtime, kit.paths, config, id, project, from) : undefined;
-  const prompt = checkedPrompt(args.flags.get('prompt') ?? firstPromptOf(team, id, from, resume));
+  const sessionLog = new SessionLog(runtime.files, kit.paths.sessionLog);
+  const closed = closedOf((await sessionLog.read()).records, id);
+  const reopen = closed === undefined ? undefined : await claudeSessionVerdict(runtime, config.hiring, closed.claudeSession, project);
+  const resume = await resumeOf(runtime, kit.paths, config, { id, project, from, reopen, asked: args.switches.has('resume') });
+  const prompt = checkedPrompt(args.flags.get('prompt') ?? firstPromptOf(team, id, from, resume, reopen));
   const name = roster.nameOf(id) ?? id;
   // The lead opens whatever the room: it is the session that decides which others run.
   if (id !== roster.holderOf('lead')) {
@@ -150,8 +156,10 @@ export async function open(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   }
   const { outcome, argv } = await openSessionTab(runtime, { team, id, name, project, prompt, terminal, ...(resume === undefined ? {} : { resume }) });
   if (outcome.kind === 'opened') {
-    const resumed = resume === undefined ? '' : `, resuming Claude Code session ${resume}`;
-    runtime.out.stdout(`OPENED ${name} (session ${id}) in a new ${TERMINAL_LABELS[outcome.terminal]} in ${project}, on ${describeLaunch(launchOf(config, id))}${resumed}`);
+    if (closed !== undefined) {
+      await sessionLog.append({ kind: 'reopen', session: id, at: new Date(runtime.clock.now()).toISOString(), ...(resume === undefined ? {} : { resumed: resume }) });
+    }
+    runtime.out.stdout(`OPENED ${name} (session ${id}) in a new ${TERMINAL_LABELS[outcome.terminal]} in ${project}, on ${describeLaunch(launchOf(config, id))}${startNoteOf(resume, reopen)}`);
     return EXIT.ok;
   }
   const shell = runtime.platform === 'win32' ? ' in PowerShell' : '';
@@ -160,10 +168,39 @@ export async function open(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   return EXIT.printed;
 }
 
-/** The Claude Code session `open --resume` resumes: only a rehired session's, and only one small and recent enough. */
-async function resumeOf(runtime: CliRuntime, paths: TeamPaths, config: KitConfig, id: string, project: string, from: RetireRecord | undefined): Promise<string> {
+/** What decides which Claude Code session a tab goes on in. */
+interface ResumeFacts {
+  readonly id: string;
+  readonly project: string;
+  /** The retire a rehired session comes back from. */
+  readonly from: RetireRecord | undefined;
+  /** Whether a session `teamrig close` ended can go on in its last Claude Code session; undefined when it was not closed. */
+  readonly reopen: ResumeVerdict | undefined;
+  /** `--resume` was given. */
+  readonly asked: boolean;
+}
+
+/**
+ * The Claude Code session the tab resumes, undefined for a new one. A closed session resumes its last one when that
+ * is small and recent enough, else opens fresh (and `--resume` refuses); any other resumes only with `--resume`, and
+ * only a rehired session's.
+ */
+async function resumeOf(runtime: CliRuntime, paths: TeamPaths, config: KitConfig, facts: ResumeFacts): Promise<string | undefined> {
+  const { id, project, from, reopen, asked } = facts;
+  if (reopen !== undefined) {
+    if (reopen.kind === 'resume') {
+      return reopen.claudeSession;
+    }
+    if (asked) {
+      throw new RefusedError(`not resumed: ${reopen.detail}; ${KIT_NAME} open ${id} opens it fresh`);
+    }
+    return undefined;
+  }
+  if (!asked) {
+    return undefined;
+  }
   if (from === undefined) {
-    throw new RefusedError(`${id} was not hired back after a retire: --resume resumes only a rehired session's last Claude Code session`);
+    throw new RefusedError(`${id} was neither hired back after a retire nor closed: --resume resumes only a rehired session's last Claude Code session`);
   }
   const verdict = await resumeVerdictOf(runtime, paths, config.hiring, id, project);
   if (verdict.kind === 'fresh') {
@@ -172,8 +209,22 @@ async function resumeOf(runtime: CliRuntime, paths: TeamPaths, config: KitConfig
   return verdict.claudeSession;
 }
 
-/** The first prompt unless --prompt gives one: a rehired session's handover first, a resumed one's moved tasks. */
-function firstPromptOf(team: string, id: string, from: RetireRecord | undefined, resume: string | undefined): string {
+/** What the OPENED line adds: the Claude Code session the tab resumes, or why a closed session opens fresh. */
+function startNoteOf(resume: string | undefined, reopen: ResumeVerdict | undefined): string {
+  if (resume !== undefined) {
+    return `, resuming Claude Code session ${resume}`;
+  }
+  return reopen?.kind === 'fresh' ? `, fresh (${reopen.detail})` : '';
+}
+
+/**
+ * The first prompt unless --prompt gives one: a reopened or resumed session's moved tasks, a closed one opened fresh
+ * the default, a rehired one's handover first.
+ */
+function firstPromptOf(team: string, id: string, from: RetireRecord | undefined, resume: string | undefined, reopen: ResumeVerdict | undefined): string {
+  if (reopen !== undefined) {
+    return resume === undefined ? defaultPrompt(team, id) : reopenPrompt(team, id);
+  }
   if (resume !== undefined) {
     return resumePrompt(team, id);
   }
