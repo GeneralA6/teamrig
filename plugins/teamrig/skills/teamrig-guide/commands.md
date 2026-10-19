@@ -1039,7 +1039,7 @@ DECISIONS 1 waiting on owner (decision or approval)
       2. Pro at 29 dollars a month, 12 sign-ups
     recommended: Basic, three times the sign-ups
     with no answer: Basic ships on 10-16
-    waiting since 10-14 16:20: the numbers are in the card
+    waiting since 10-14 16:20 IDT: the numbers are in the card
   Read each card to owner as it stands, each figure explained; where one says no card yet, ask its owner for it (check flags it NO-CARD). Never point to a doc; `teamrig show <id>` prints a task whole.
   Record each answer in the same turn: teamrig update <id> --note "owner decided: <decision>" --session lead; meeting end tells each task's owner.
 LATE 1 past their due date
