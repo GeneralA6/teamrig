@@ -45,6 +45,12 @@ describe('localChecks', () => {
     }
   });
 
+  it("runs the plugin's own tests after the build, in an empty home", () => {
+    const at = checks.findIndex((check) => check.name === 'plugin tests');
+    assert.deepEqual(checks[at], { name: 'plugin tests', argv: ['claude', 'plugin', 'test', 'plugins/teamrig'], isolatedHome: true });
+    assert.ok(at > checks.findIndex((check) => check.name === 'build: compile'), 'the mod loads the built dist');
+  });
+
   it('checks the commits since the base, names each check once and reads no CI event', () => {
     assert.deepEqual(localChecks('upstream/main').find((check) => check.name === 'DCO')?.argv, ['node', 'tools/dco/cli.ts', '--range', 'upstream/main..HEAD']);
     assert.equal(new Set(checks.map((check) => check.name)).size, checks.length);
