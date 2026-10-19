@@ -1641,7 +1641,9 @@ expired, is removed by the next step that looks. An older kit does not know shar
 small steps run.
 
 Then it runs the command in the shell, its output streaming as it comes, and kills it with every process it started
-after `coordinator.heavy.maxRunMinutes` (45). The step's start and end go to the coordinator's ledger,
+after `coordinator.heavy.maxRunMinutes` (45). The step ends, and frees the lock, only once that kill is done; on
+Windows the kill lists the host's processes again after each round and ends any process the step started while it was
+being killed. The step's start and end go to the coordinator's ledger,
 `ledger.jsonl` in `coordinator.dir` (default `deploys` in the team's state folder), with when it began to wait
 (`queuedAt`) and, sampled every `coordinator.heavy.memorySampleSeconds` (15; 0 samples nothing), the most memory its
 process tree held at once (`peakTreeMb`) and the least free memory the host had (`lowFreeMb`), and `shared: true` for
