@@ -13,6 +13,8 @@ interface Surroundings {
   readonly env: readonly Assignment[];
   /** Folders it starts in, in order, such as `env -C dir` or `sudo -D dir`. */
   readonly chdirs: readonly ShellWord[];
+  /** True when `teamrig heavy` or `teamrig test` starts it, so it runs under the host lock. */
+  readonly runner: boolean;
 }
 
 /** A program the command line starts, after every wrapper (`env`, `sudo`, `command`, ...) is read. */
@@ -201,6 +203,8 @@ class LaunchReader {
   private stdinArgs = false;
   /** True once a word is known to name a program, so PowerShell cannot read it as an expression. */
   private called = false;
+  /** True once a teamrig runner is read: what it starts runs under the host lock. */
+  private runner = false;
 
   constructor(dialect: ShellDialect, stdin: ShellWord | undefined) {
     this.dialect = dialect;
@@ -315,11 +319,11 @@ class LaunchReader {
     if (name === 'teamrig') {
       return this.teamrig(args, head);
     }
-    return { kind: 'program', program: head, args, env: this.env, chdirs: this.chdirs, stdinArgs: this.stdinArgs };
+    return { kind: 'program', program: head, args, env: this.env, chdirs: this.chdirs, stdinArgs: this.stdinArgs, runner: this.runner };
   }
 
   private script(script: ShellWord, dialect: ShellDialect, sameShell: boolean): ScriptLaunch {
-    return { kind: 'script', script, dialect, sameShell, env: this.env, chdirs: this.chdirs };
+    return { kind: 'script', script, dialect, sameShell, env: this.env, chdirs: this.chdirs, runner: this.runner };
   }
 
   /**
@@ -547,7 +551,7 @@ class LaunchReader {
   /**
    * `teamrig heavy` and `teamrig test` run the words after their first `--` as `commandLine` (test-run/shell.ts)
    * joins them: one word as a command line for the shell `spawn` starts, several as a program and its arguments.
-   * Any other subcommand is teamrig itself.
+   * What they start is marked `runner`. Any other subcommand is teamrig itself.
    */
   private teamrig(args: readonly ShellWord[], head: ShellWord): Step {
     const [subcommand] = args;
@@ -556,13 +560,14 @@ class LaunchReader {
     }
     const end = args.findIndex((arg) => !arg.dynamic && arg.text === '--');
     if (subcommand === undefined || !TEAMRIG_RUNNERS.has(subcommand.text) || end === -1) {
-      return { kind: 'program', program: head, args, env: this.env, chdirs: this.chdirs, stdinArgs: this.stdinArgs };
+      return { kind: 'program', program: head, args, env: this.env, chdirs: this.chdirs, stdinArgs: this.stdinArgs, runner: this.runner };
     }
     const words = args.slice(end + 1);
     const [only] = words;
     if (only === undefined) {
       return NOTHING;
     }
+    this.runner = true;
     if (words.length === 1) {
       return this.script(only, SPAWN_SHELL, false);
     }
