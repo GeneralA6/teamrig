@@ -3,6 +3,7 @@ import { formatUtcDay, MS_PER_DAY } from '../core/time.ts';
 import { findLineAtOrAfter, readLines, type TranscriptBytes } from './cursor.ts';
 import type { TranscriptSet } from './discover.ts';
 import { parseTranscriptLine, type CallLine } from './line.ts';
+import { MissTracker } from './misses.ts';
 import { emptyPatterns, PatternTracker, type Count, type PatternField } from './patterns.ts';
 import {
   newCursor,
@@ -121,17 +122,20 @@ function dayOf(at: number): string {
  * repeating the usage with the output so far: the first line counts the call, a later one only the
  * output it adds. A call whose key was seen in the last few hundred calls was logged twice and is
  * skipped; a call without a timestamp is skipped, as no day can take it. Every W is multiplied by the
- * transcript's weight, so a subagent's counts in W of a main session.
+ * transcript's weight, so a subagent's counts in W of a main session. The rule misses of each call's
+ * shell commands are counted alongside (`MissTracker`), on the same days.
  */
 class TranscriptFold {
   private call: OpenCall | null;
   private readonly tracker: PatternTracker;
+  private readonly misses: MissTracker;
   private readonly tally: Tally;
   private readonly weight: number;
 
   constructor(cursor: TranscriptCursor, tally: Tally, weight: number) {
     this.call = cursor.call;
     this.tracker = new PatternTracker(cursor.patterns, weight);
+    this.misses = new MissTracker(cursor.misses, (day) => tally.counter(day));
     this.tally = tally;
     this.weight = weight;
   }
@@ -141,21 +145,23 @@ class TranscriptFold {
     if (line === undefined) {
       return;
     }
+    const lineDay = line.at === undefined ? undefined : dayOf(line.at);
     if (line.kind === 'prompt') {
       this.close();
-      this.tracker.prompt(line.trigger, this.tally.counter(line.at === undefined ? undefined : dayOf(line.at)));
+      this.tracker.prompt(line.trigger, this.tally.counter(lineDay));
+      this.misses.prompt(line.trigger, line.at, lineDay);
     } else if (line.kind === 'compact') {
-      this.tally.counter(line.at === undefined ? undefined : dayOf(line.at))('compactions', 1);
+      this.tally.counter(lineDay)('compactions', 1);
     } else if (line.kind === 'results') {
-      const day = this.call?.day ?? (line.at === undefined ? undefined : dayOf(line.at));
-      this.tracker.results(line.results, this.tally.counter(day));
+      this.tracker.results(line.results, this.tally.counter(this.call?.day ?? lineDay));
+      this.misses.seen(line.at);
     } else {
       this.reply(line);
     }
   }
 
   cursor(offset: number, size: number, day: string): TranscriptCursor {
-    return { offset, size, day, call: this.call, patterns: this.tracker.state() };
+    return { offset, size, day, call: this.call, patterns: this.tracker.state(), misses: this.misses.state() };
   }
 
   private reply(line: CallLine): void {
@@ -166,6 +172,7 @@ class TranscriptFold {
       this.tracker.charged(added, this.tally.counter(open.day));
       this.call = { ...open, output: Math.max(open.output, line.usage.output), w: open.w + added };
       this.tracker.callJoined(line.tools);
+      this.misses.callJoined(line.tools, open.day);
       return;
     }
     this.close();
@@ -180,6 +187,7 @@ class TranscriptFold {
     totals.calls += 1;
     this.tracker.charged(w, this.tally.counter(day));
     this.tracker.callStarted(line.usage, line.tools, this.tally.counter(day));
+    this.misses.callStarted(line.tools, line.at, day);
     this.call = { key: line.key ?? null, day, output: line.usage.output, context, w };
   }
 
@@ -196,7 +204,7 @@ class TranscriptFold {
 
 /**
  * Counts a session's API use from its transcripts since the last run, as weighted tokens per UTC day,
- * calls and loop patterns, and saves the totals with each transcript's read position. A transcript
+ * calls, loop patterns and rule misses, and saves the totals with each transcript's read position. A transcript
  * seen for the first time (or that shrank, so it was replaced) is read from today's first line, found
  * by a binary search. One run reads at most `maxBytes`; the rest waits for the next run. A subagent's W
  * is multiplied by `subagentWeight`.
