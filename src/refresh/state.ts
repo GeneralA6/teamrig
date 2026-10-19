@@ -11,7 +11,9 @@ export const REFRESH_FORMAT = 1;
  * - `boundary` and `idle` count in `finished` the tasks finished since the context was last fresh (a /clear,
  *   a new process or a compaction), this one included.
  * - `asked`: its Stop hook asked it to write its handover; `handoverHash` fingerprints the handover file
- *   then (null: there was none), so `refresh --ready` can tell a new handover from an old one.
+ *   then (null: there was none), so `refresh --ready` can tell a new handover from an old one. `midTurn` when
+ *   the plugin's mod asked at a tool result within a turn rather than the Stop hook at its end: the turn's end
+ *   asks once more when the handover is not marked ready by then (a file from before it has none: false).
  * - `ready`: its handover is written and it waits for a fresh start (the automatic restart, or the user's
  *   /clear); `noticed` once the user was told. `transcript` is the Claude Code transcript of the session that
  *   wrote it, recorded with the notice (null before, or when Claude Code gave none): the fresh start reads
@@ -26,7 +28,14 @@ export const REFRESH_FORMAT = 1;
 export type RefreshState =
   | { readonly phase: 'boundary'; readonly task: string; readonly at: string; readonly finished: number }
   | { readonly phase: 'idle'; readonly task: string; readonly at: string; readonly tokens: number | null; readonly finished: number }
-  | { readonly phase: 'asked'; readonly task: string | null; readonly at: string; readonly tokens: number | null; readonly handoverHash: string | null }
+  | {
+      readonly phase: 'asked';
+      readonly task: string | null;
+      readonly at: string;
+      readonly tokens: number | null;
+      readonly handoverHash: string | null;
+      readonly midTurn: boolean;
+    }
   | {
       readonly phase: 'ready';
       readonly task: string | null;
@@ -112,7 +121,11 @@ export function parseRefreshState(text: string): RefreshState | undefined {
     case 'asked': {
       const tokens = tokensOf(record);
       const handoverHash = hashOf(record);
-      return tokens === undefined || handoverHash === undefined ? undefined : { phase: 'asked', task, at, tokens, handoverHash };
+      // A file from before the mod asked within a turn was always the Stop hook's.
+      const midTurn = record['midTurn'] ?? false;
+      return tokens === undefined || handoverHash === undefined || typeof midTurn !== 'boolean'
+        ? undefined
+        : { phase: 'asked', task, at, tokens, handoverHash, midTurn };
     }
     case 'ready': {
       const noticed = record['noticed'];
