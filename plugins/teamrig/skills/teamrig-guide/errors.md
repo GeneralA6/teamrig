@@ -222,3 +222,25 @@ Not refusals: `WARN` lines from `team create`, `requirement` findings from `doct
 | `INVALID <config path>: N problem(s), each read as its default until fixed` | Fix each listed problem in the config, then run `config validate` again. |
 | `FAILED <path> is held by another process (waited 20000 ms); retry` | Another teamrig command holds the lock: run it again. A lock left by a crashed command is cleared after 30 s. |
 | Any other `FAILED` about a file | Run `teamrig doctor`, and report what it prints to the lead. |
+
+## Traps outside teamrig
+
+Not teamrig output: what any session on a shared checkout or on Windows runs into, and the habit that avoids it.
+
+- **No bare `git stash` on a shared checkout.** Every worktree of a repository shares one stash stack, so another
+  session's `git stash pop` takes your changes. Commit on your own branch, or move scratch files to your scratchpad.
+- **Name a program literally.** A program held in a variable set by `$(...)`, or set outside the line, is only
+  known when the line runs, so [the push guard](hooks.md#before-a-shell-command-the-push-guard) asks the human. In
+  auto mode, Claude Code also refuses a session isolated in a worktree a command whose program comes from a variable,
+  and a complex command that names git in a part it cannot check (`github` and typed notes count). Write the program
+  or its full path in the command, and put a long script in a file in your scratchpad.
+- **Claude Code's cron times are local time**, not UTC: convert a UTC time before you schedule it.
+- **Delete through a guarded variable or a literal path.** With `DIR` empty, `rm -rf "$DIR"/x` aims at the root, so
+  Claude Code asks the human; `"${DIR:?}"/x` stops when it is empty. Claude Code reads a relative path against the
+  session's folder, not a `cd` earlier in the line, so write the full path.
+- **Edit with the Edit tool**, never a throwaway script written by a heredoc and removed with `rm`: that `rm` raises
+  the checks above, and the change is never shown as an edit. A scratch file goes in your scratchpad, by its full
+  path, and stays there.
+- **Git Bash rewrites arguments.** One that looks like a Unix path (`/app`) becomes a Windows path
+  (`C:/Program Files/Git/app`), and a `$` in `node -e` code can be expanded before node reads it. Write the code to a
+  file in your scratchpad and run `node <file>`.
