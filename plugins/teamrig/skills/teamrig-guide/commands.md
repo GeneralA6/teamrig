@@ -1645,6 +1645,12 @@ The lock is `host.lock` in the kit home, one for every team on the host, unless 
 another. It lasts `coordinator.heavy.lockTtlMinutes` (150); a lock past that, or one whose process is gone, is
 taken over. Only the step that took it releases it.
 
+It checks the processes that started it, up to the tab's Claude Code, every 5 seconds: Claude Code may end a Bash
+tool's shell alone (its low-memory reaper does), and on Windows what that shell started runs on. Once one of them
+ends, no one waits for the step. Still waiting, it stops and runs nothing (`STOPPED before the host lock was free:
+nothing ran`); running, it kills the step with every process it started, records exit 129 and frees the lock
+(`STOPPED killed, recorded as exit 129`). When the system will not list them, it says so and the step runs on.
+
 Everything after `--` is the command, read as `teamrig test` reads it. Run a test run as
 `teamrig heavy ... -- teamrig test -- <command>`: it then gets both the lock and the short summary.
 
@@ -1681,7 +1687,8 @@ DONE exit 0
 ```
 
 The build's own output comes between the last two lines. A step killed at its limit ends with
-`TIMED OUT killed, recorded as exit 124`, a failed one with `FAILED exit <code>`.
+`TIMED OUT killed, recorded as exit 124`, one killed as its shell ended with `STOPPED killed, recorded as exit 129`,
+a failed one with `FAILED exit <code>`.
 
 ### teamrig withdraw
 
