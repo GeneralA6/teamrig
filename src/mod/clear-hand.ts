@@ -27,6 +27,17 @@ export const CLAIM_WITHDRAWN = 'withdrawn';
 /** The switch that makes `hook clear-claim` hold the ask instead of claiming it. */
 export const HOLD_SWITCH = 'hold';
 
+/**
+ * How the tab's hand keeps a /clear from landing under the person, from the team's config: the restart's ask
+ * carries it (`refresh/clear-asks.ts` PostedClearAsk), since the mod reads no config.
+ */
+export interface PersonHold {
+  /** `refresh.countdownSeconds` in ms: how long the band above the prompt counts down before the /clear; 0, no band. */
+  readonly countdownMs: number;
+  /** `refresh.holdAfterActivityMinutes` in ms: how long after the person's last key or prompt in the tab the /clear waits. */
+  readonly afterActivityMs: number;
+}
+
 /** An ask's answer in its outcome file: whichever of the three is written first wins. */
 export type ClaimOutcome = typeof CLAIM_TAKEN | typeof CLAIM_HELD | typeof CLAIM_WITHDRAWN;
 

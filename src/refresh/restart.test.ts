@@ -7,8 +7,8 @@ import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { RestoreRegistry, restoreSessionsDir } from '../restore/registry.ts';
 import { askFileOf, outcomeFileOf } from '../mod/clear-hand.ts';
-import { ClearAsks, type ClearAsk } from './clear-asks.ts';
-import { CLAIM_WAIT_MS, claudeProcessOf, GIVE_UP_MS, runRestart, SHELL_RECHECK_MS, type RestartDeps, type RestartPlan, type TabOpening } from './restart.ts';
+import { ClearAsks, type ClearAsk, type PostedClearAsk } from './clear-asks.ts';
+import { CLAIM_WAIT_MS, claudeProcessOf, GIVE_UP_MS, personHoldOf, runRestart, SHELL_RECHECK_MS, type RestartDeps, type RestartPlan, type TabOpening } from './restart.ts';
 import type { RestoreEntry } from '../restore/entry.ts';
 import type { RestartRequest } from './state.ts';
 import { RefreshStore } from './store.ts';
@@ -22,7 +22,7 @@ const DELAY_MS = 15_000;
 const CLAUDE: ProcessInfo = { pid: 4100, parentPid: 4000, name: 'claude.exe', commandLine: `claude --resume ${SESSION}` };
 const TAB_SHELL: ProcessInfo = { pid: 4000, parentPid: 1, name: 'powershell.exe', commandLine: `powershell -NoExit -Command claude --resume ${SESSION}` };
 const ASK_DIR = '/kit/clear-asks';
-const PLAN: RestartPlan = { team: 'app', id: 'alpha', at: AT, delayMs: DELAY_MS, endCommand: ['node', 'tracker.cjs', 'end'], fallbackCwd: '/project' };
+const PLAN: RestartPlan = { team: 'app', id: 'alpha', at: AT, delayMs: DELAY_MS, endCommand: ['node', 'tracker.cjs', 'end'], fallbackCwd: '/project', hold: { countdownMs: 20_000, afterActivityMs: 300_000 } };
 
 /** What Claude Code writes once a turn has ended. */
 const TURN_END = JSON.stringify({ type: 'system', subtype: 'turn_duration' });
@@ -85,6 +85,8 @@ class World {
   busy = false;
   /** The ask the tab's mod claimed. */
   claimed: ClearAsk | undefined;
+  /** That ask's file as the restart wrote it, with what only the mod reads. */
+  posted: unknown;
   private readonly actions = new Map<number, () => Promise<void>>();
   private sleeps = 0;
 
@@ -120,6 +122,7 @@ class World {
   async claimAsk(): Promise<void> {
     this.claimed = await this.asks.ask(SESSION);
     assert.ok(this.claimed, 'an ask is posted');
+    this.posted = JSON.parse(this.files.get(askFileOf(ASK_DIR, SESSION) ?? '') ?? '');
     assert.equal(await this.asks.claim(SESSION), true);
     await this.store.clearRestart('alpha');
   }
@@ -172,6 +175,13 @@ class TypedWhileLooking extends FakeSessionProcesses {
     return super.describe(pid);
   }
 }
+
+describe('personHoldOf', () => {
+  it("turns the team's countdown seconds and activity minutes into the ask's ms", () => {
+    assert.deepEqual(personHoldOf({ countdownSeconds: 20, holdAfterActivityMinutes: 5 }), PLAN.hold);
+    assert.deepEqual(personHoldOf({ countdownSeconds: 0, holdAfterActivityMinutes: 0 }), { countdownMs: 0, afterActivityMs: 0 }, 'both off');
+  });
+});
 
 describe('runRestart', () => {
   it('ends a supervised session once it was quiet for the whole delay, leaves the request ending for launch, and runs the end command', async () => {
@@ -373,6 +383,7 @@ describe("runRestart through the tab's mod", () => {
     world.onSleep(3, () => world.claimAsk());
     assert.deepEqual(await runRestart(world.deps, PLAN), { kind: 'cleared' });
     assert.deepEqual(world.claimed, { team: 'app', id: 'alpha', at: AT, askedAt: new Date(START + DELAY_MS).toISOString() });
+    assert.deepEqual(world.posted, { ...world.claimed, hold: PLAN.hold }, "the file carries the plan's hold, for the tab's mod");
     assert.deepEqual([world.processes.ends, world.opened, world.processes.fed], [[], [], []]);
     assert.equal(await world.store.restart('alpha'), undefined);
     assert.equal((await world.store.state('alpha'))?.phase, 'ready', "the SessionStart clear hook takes the refresh, not the runner");
@@ -432,7 +443,7 @@ ${TURN_END}
 
 /** Asks the tab's mod holds as soon as they are posted: its session runs a helper the whole time. */
 class HeldByTab extends ClearAsks {
-  override async post(claudeSession: string, ask: ClearAsk): Promise<void> {
+  override async post(claudeSession: string, ask: PostedClearAsk): Promise<void> {
     await super.post(claudeSession, ask);
     await this.hold(claudeSession);
   }

@@ -4,7 +4,7 @@ import { SecretScanner } from '../../core/secrets.ts';
 import { postLine } from '../../inbox/inbox.ts';
 import { refreshPrompt } from '../../open/prompt.ts';
 import { ClearAsks, clearAskDir } from '../../refresh/clear-asks.ts';
-import { runRestart, type RestartResult } from '../../refresh/restart.ts';
+import { personHoldOf, runRestart, type RestartResult } from '../../refresh/restart.ts';
 import { RestartLog, type RestartRecord } from '../../refresh/restart-log.ts';
 import { RefreshStore } from '../../refresh/store.ts';
 import { RestoreRegistry, restoreSessionsDir } from '../../restore/registry.ts';
@@ -93,7 +93,7 @@ export async function restart(args: ParsedArgs, runtime: CliRuntime): Promise<Ex
         return outcome.kind === 'opened' ? { kind: 'opened' } : outcome;
       },
     },
-    { team, id, at, delayMs: config.refresh.restartDelaySeconds * 1000, endCommand: config.refresh.endCommand, fallbackCwd: project },
+    { team, id, at, delayMs: config.refresh.restartDelaySeconds * 1000, endCommand: config.refresh.endCommand, fallbackCwd: project, hold: personHoldOf(config.refresh) },
   );
   const line = inboxLineOf(result);
   if (line !== undefined) {

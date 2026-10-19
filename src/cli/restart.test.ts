@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import { decodePrompt, refreshPrompt } from '../open/prompt.ts';
 import type { ProcessInfo } from '../open/session-processes.ts';
+import { askFileOf } from '../mod/clear-hand.ts';
 import { ClearAsks, clearAskDir } from '../refresh/clear-asks.ts';
 import { RefreshStore } from '../refresh/store.ts';
 import { APP, AUTO_RESTART_TEAM, CLAUDE_SESSION, CliHarness, KIT, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
@@ -44,14 +45,18 @@ describe('teamrig restart', () => {
   it("leaves the session to its tab when the tab's mod claims the ask, writing no inbox line", async () => {
     const { kit, store, processes } = await armed(true);
     const asks = new ClearAsks(kit.files, clearAskDir(KIT));
+    let posted: unknown;
     const sleep = async (ms: number): Promise<void> => {
       await kit.clock.sleep(ms);
+      const text = kit.files.get(askFileOf(clearAskDir(KIT), CLAUDE_SESSION) ?? '');
+      posted = text === undefined ? posted : JSON.parse(text);
       if ((await asks.ask(CLAUDE_SESSION)) !== undefined && (await asks.claim(CLAUDE_SESSION))) {
         await store.clearRestart('alpha');
       }
     };
     const result = await kit.run(RESTART_ALPHA, { sessionProcesses: processes, platform: 'win32', sleep });
     assert.deepEqual(result, { code: EXIT.ok, stdout: ['CLEARED app-alpha: its tab ran /clear'], stderr: [] });
+    assert.deepEqual(isRecord(posted) ? posted['hold'] : undefined, { countdownMs: 20_000, afterActivityMs: 300_000 }, "the team's default hold, for the tab's mod");
     assert.deepEqual(processes.ends, []);
     assert.equal(await store.restart('alpha'), undefined);
     assert.equal(kit.files.get(INBOX), undefined);

@@ -3,7 +3,7 @@ import type { Files } from '../core/files.ts';
 import { stringField } from '../core/guards.ts';
 import { ID_PATTERN } from '../core/ids.ts';
 import { parseObject } from '../core/jsonl.ts';
-import { askFileOf, CLAIM_HELD, CLAIM_TAKEN, CLAIM_WITHDRAWN, outcomeFileOf, type ClaimOutcome } from '../mod/clear-hand.ts';
+import { askFileOf, CLAIM_HELD, CLAIM_TAKEN, CLAIM_WITHDRAWN, outcomeFileOf, type ClaimOutcome, type PersonHold } from '../mod/clear-hand.ts';
 
 /**
  * The restart's ask that a tab run /clear: which team session and which request it is for, so the claim
@@ -15,6 +15,14 @@ export interface ClearAsk {
   readonly id: string;
   readonly at: string;
   readonly askedAt: string;
+}
+
+/**
+ * The ask as the restart posts it: with how the tab's mod holds the /clear for the person, which only the mod
+ * reads. A claim reads the ask without it, so an ask an older restart posted is still claimed.
+ */
+export interface PostedClearAsk extends ClearAsk {
+  readonly hold: PersonHold;
 }
 
 /**
@@ -64,7 +72,7 @@ export class ClearAsks {
   }
 
   /** Posts a new ask, first removing an outcome a run that stopped before its close left, so the ask starts unclaimed. */
-  async post(claudeSession: string, ask: ClearAsk): Promise<void> {
+  async post(claudeSession: string, ask: PostedClearAsk): Promise<void> {
     await this.files.remove(this.outcomePath(claudeSession));
     await this.files.write(this.askPath(claudeSession), `${JSON.stringify(ask)}\n`);
   }

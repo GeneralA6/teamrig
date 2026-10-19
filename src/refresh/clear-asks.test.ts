@@ -3,12 +3,13 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { askFileOf, outcomeFileOf } from '../mod/clear-hand.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { ClearAsks, clearAskDir, type ClearAsk } from './clear-asks.ts';
+import { ClearAsks, clearAskDir, type ClearAsk, type PostedClearAsk } from './clear-asks.ts';
 
 const DIR = '/kit/clear-asks';
 const SESSION = '0123abcd-0000-4000-8000-00000000000a';
 const OTHER = '0123abcd-0000-4000-8000-00000000000b';
 const ASK: ClearAsk = { team: 'app', id: 'alpha', at: '2030-01-08T09:59:59.000Z', askedAt: '2030-01-08T10:00:15.000Z' };
+const POSTED: PostedClearAsk = { ...ASK, hold: { countdownMs: 20_000, afterActivityMs: 300_000 } };
 const ASK_PATH = askFileOf(DIR, SESSION) ?? '';
 const OUTCOME_PATH = outcomeFileOf(DIR, SESSION) ?? '';
 
@@ -17,12 +18,16 @@ describe('ClearAsks', () => {
     assert.equal(clearAskDir(join('/', 'kit')), join('/', 'kit', 'clear-asks'));
   });
 
-  it('posts an ask and reads it back', async () => {
-    const asks = new ClearAsks(new MemoryFiles(), DIR);
+  it('posts an ask with its hold for the mod, and reads it back', async () => {
+    const files = new MemoryFiles();
+    const asks = new ClearAsks(files, DIR);
     assert.equal(await asks.ask(SESSION), undefined);
-    await asks.post(SESSION, ASK);
-    assert.deepEqual(await asks.ask(SESSION), ASK);
+    await asks.post(SESSION, POSTED);
+    assert.deepEqual(JSON.parse(files.get(ASK_PATH) ?? ''), POSTED, 'the file carries the hold');
+    assert.deepEqual(await asks.ask(SESSION), ASK, 'a claim reads the ask without it');
     assert.equal(await asks.ask(OTHER), undefined);
+    await files.write(ASK_PATH, JSON.stringify(ASK));
+    assert.deepEqual(await asks.ask(SESSION), ASK, "an older restart's ask, with no hold");
   });
 
   it('reads no ask from a damaged file, or one whose team or id would leave its folder', async () => {
@@ -36,12 +41,12 @@ describe('ClearAsks', () => {
 
   it('lets the first of a claim and a withdraw win', async () => {
     const asks = new ClearAsks(new MemoryFiles(), DIR);
-    await asks.post(SESSION, ASK);
+    await asks.post(SESSION, POSTED);
     assert.equal(await asks.outcome(SESSION), undefined);
     assert.equal(await asks.claim(SESSION), true);
     assert.equal(await asks.withdraw(SESSION), false);
     assert.equal(await asks.outcome(SESSION), 'taken');
-    await asks.post(OTHER, ASK);
+    await asks.post(OTHER, POSTED);
     assert.equal(await asks.withdraw(OTHER), true);
     assert.equal(await asks.claim(OTHER), false);
     assert.equal(await asks.outcome(OTHER), 'withdrawn');
@@ -49,12 +54,12 @@ describe('ClearAsks', () => {
 
   it('lets the first of a hold, a claim and a withdraw win', async () => {
     const asks = new ClearAsks(new MemoryFiles(), DIR);
-    await asks.post(SESSION, ASK);
+    await asks.post(SESSION, POSTED);
     assert.equal(await asks.hold(SESSION), true);
     assert.equal(await asks.claim(SESSION), false);
     assert.equal(await asks.withdraw(SESSION), false);
     assert.equal(await asks.outcome(SESSION), 'held');
-    await asks.post(OTHER, ASK);
+    await asks.post(OTHER, POSTED);
     assert.equal(await asks.withdraw(OTHER), true);
     assert.equal(await asks.hold(OTHER), false);
     assert.equal(await asks.outcome(OTHER), 'withdrawn');
@@ -72,14 +77,14 @@ describe('ClearAsks', () => {
   it('starts each ask unclaimed, removing an outcome a run that stopped early left', async () => {
     const asks = new ClearAsks(new MemoryFiles(), DIR);
     assert.equal(await asks.withdraw(SESSION), true);
-    await asks.post(SESSION, ASK);
+    await asks.post(SESSION, POSTED);
     assert.equal(await asks.claim(SESSION), true);
   });
 
   it('closes an ask together with its outcome', async () => {
     const files = new MemoryFiles();
     const asks = new ClearAsks(files, DIR);
-    await asks.post(SESSION, ASK);
+    await asks.post(SESSION, POSTED);
     await asks.claim(SESSION);
     await asks.close(SESSION);
     assert.deepEqual([files.get(ASK_PATH), files.get(OUTCOME_PATH)], [undefined, undefined]);
@@ -87,7 +92,7 @@ describe('ClearAsks', () => {
 
   it('refuses a session id unsafe in a file name', async () => {
     const asks = new ClearAsks(new MemoryFiles(), DIR);
-    await assert.rejects(asks.post('../x', ASK), /"\.\.\/x" is not a Claude Code session id/);
+    await assert.rejects(asks.post('../x', POSTED), /"\.\.\/x" is not a Claude Code session id/);
     await assert.rejects(asks.claim('a b'), /not a Claude Code session id/);
   });
 });
