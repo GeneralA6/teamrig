@@ -84,6 +84,7 @@ const EXPECTED = {
   'hook restore-track': 'internal',
   'hook tab-status': 'internal',
   'hook readonly-allow': 'internal',
+  'hook picker-guard': 'internal',
   'hook refresh-wake': 'internal',
   'hook clear-dir': 'internal',
   'hook clear-claim': 'internal',
