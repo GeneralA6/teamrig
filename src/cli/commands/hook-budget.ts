@@ -18,6 +18,7 @@ import { WarnStore } from '../../budget/warn-store.ts';
 import { readWeek } from '../../budget/week.ts';
 import { readWork } from '../../budget/work.ts';
 import { postLine } from '../../inbox/inbox.ts';
+import { holdBack } from '../../hooks/permission.ts';
 import { helperLaunchReminder } from '../../rules/helper-default.ts';
 import type { Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
@@ -173,11 +174,11 @@ async function budgetGateOf(runtime: CliRuntime, scope: BudgetScope, transcript:
 
 /**
  * The PreToolUse output at each helper launch: rule 8's helper default as model context (`helperLaunchReminder`),
- * plus the budget's ask or refusal when it holds the launch back.
+ * plus the budget's ask or refusal when it holds the launch back (an ask is a refusal under `prompts.hookAsks: refuse`).
  */
 export async function helperGateOutput(runtime: CliRuntime, scope: BudgetScope, transcript: string | undefined): Promise<string> {
   const gate = await budgetGateOf(runtime, scope, transcript);
-  const decision = gate.kind === 'allow' ? {} : { permissionDecision: gate.kind, permissionDecisionReason: gate.reason };
+  const decision = gate.kind === 'allow' ? {} : holdBack(gate.kind, gate.reason, scope.config.prompts.hookAsks);
   const additionalContext = helperLaunchReminder(scope.config.budget.subagentWeight);
   return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', ...decision, additionalContext } });
 }

@@ -6,12 +6,13 @@ import { isRecord, stringField } from '../core/guards.ts';
 import { testConfig } from '../testing/config.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { adHocReason, adHocRunnersOf, lostFlagReason, packageGuardOutput, type PackageGuardEnv } from './package-guard.ts';
+import { ASK_REFUSED_NOTE } from './permission.ts';
 
 const APP = resolve('/', 'work', 'app');
 const OTHER = resolve('/', 'work', 'other');
 
 function env(overrides: Partial<PackageGuardEnv> = {}): PackageGuardEnv {
-  return { cwd: APP, home: resolve('/', 'u'), files: new MemoryFiles(), adHocRunners: 'deny', ...overrides };
+  return { cwd: APP, home: resolve('/', 'u'), files: new MemoryFiles(), adHocRunners: 'deny', hookAsks: 'ask', ...overrides };
 }
 
 function payload(command: string, extra: Readonly<Record<string, string>> = {}): unknown {
@@ -41,6 +42,12 @@ describe('packageGuardOutput', () => {
   it('asks instead when the team set ask, and stays quiet when it set allow', async () => {
     assert.equal(verdictOf(await packageGuardOutput(payload('pnpm dlx cowsay'), env({ adHocRunners: 'ask' })))?.decision, 'ask');
     assert.equal(await packageGuardOutput(payload('pnpm dlx cowsay'), env({ adHocRunners: 'allow' })), '');
+  });
+
+  it('refuses what it would ask about when asks are off, saying what to do instead', async () => {
+    const verdict = verdictOf(await packageGuardOutput(payload('pnpm dlx cowsay'), env({ adHocRunners: 'ask', hookAsks: 'refuse' })));
+    assert.deepEqual(verdict, { decision: 'deny', reason: `${adHocReason(['pnpm dlx cowsay'])} ${ASK_REFUSED_NOTE}` });
+    assert.equal(verdictOf(await packageGuardOutput(payload('npx eslint .'), env({ hookAsks: 'refuse' })))?.reason, adHocReason(['npx eslint']));
   });
 
   it("judges from the payload's folder and shell, and the env folder when the payload names none", async () => {

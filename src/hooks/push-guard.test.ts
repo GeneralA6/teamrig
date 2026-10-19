@@ -7,6 +7,7 @@ import { isRecord } from '../core/guards.ts';
 import type { CommitStat } from '../push-guard/commit-size.ts';
 import type { ConfigValue } from '../push-guard/invocations.ts';
 import { leasedReason, type RepoState } from '../push-guard/push.ts';
+import { ASK_REFUSED_NOTE } from './permission.ts';
 import { testConfig } from '../testing/config.ts';
 import {
   allowedPushNote,
@@ -39,6 +40,7 @@ function env(branch = 'feature') {
     commits: DEFAULT_COMMITS,
     commitLog: { between: () => [] },
     skipHooks: 'deny',
+    hookAsks: 'ask',
   } satisfies PushGuardEnv;
 }
 
@@ -289,6 +291,39 @@ describe('pushGuardOutput: skipped hooks', () => {
     for (const command of ['git commit -m "skip --no-verify next time"', 'git push -n origin feature', 'git config --get core.hooksPath']) {
       assert.equal(pushGuardOutput(payload(command), env()), '', command);
     }
+  });
+});
+
+describe('pushGuardOutput: hookAsks refuse', () => {
+  const refusing = (overrides: Partial<PushGuardEnv> = {}): PushGuardEnv => ({ ...env(), hookAsks: 'refuse', ...overrides });
+
+  it('refuses a normal push to a protected branch, saying what to do instead and leaving out the switch hint', () => {
+    const refused = hookOutput(pushGuardOutput(payload('git push origin main'), refusing()));
+    assert.equal(refused.decision, 'deny');
+    assert.match(refused.reason, /^This push updates a protected branch \(main\)/);
+    assert.ok(refused.reason.endsWith(` ${ASK_REFUSED_NOTE}`), refused.reason);
+    assert.ok(!refused.reason.includes(PUSH_TO_PROTECTED_HINT), refused.reason);
+  });
+
+  it('refuses a push it cannot read, a leased push and a git command without hooks under ask, each with the note', () => {
+    const cases: readonly (readonly [string, PushGuardEnv])[] = [
+      ['git push $ARGS', refusing()],
+      ['git push --force-with-lease origin main', refusing({ pushToProtected: 'allow' })],
+      ['git commit -n -m fix', refusing({ skipHooks: 'ask' })],
+    ];
+    for (const [command, judged] of cases) {
+      const { decision, reason } = hookOutput(pushGuardOutput(payload(command), judged));
+      assert.equal(decision, 'deny', command);
+      assert.ok(reason.endsWith(` ${ASK_REFUSED_NOTE}`), command);
+    }
+  });
+
+  it('keeps a refusal as it was and lets an allowed push through with its note', () => {
+    const forced = hookOutput(pushGuardOutput(payload('git push -f origin main'), refusing()));
+    assert.equal(forced.decision, 'deny');
+    assert.ok(!forced.reason.includes(ASK_REFUSED_NOTE), forced.reason);
+    const allowed: unknown = JSON.parse(pushGuardOutput(payload('git push origin main'), refusing({ pushToProtected: 'allow' })));
+    assert.deepEqual(allowed, { systemMessage: allowedPushNote(['main']) });
   });
 });
 

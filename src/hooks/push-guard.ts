@@ -1,6 +1,6 @@
 import { DEFAULT_COMMIT_GUARD, DEFAULT_COMMITS, DEFAULT_PUSH_GUARD } from '../config/defaults.ts';
 import type { ConfigLoad } from '../config/load.ts';
-import type { CommitsConfig, PushToProtected, SkipHooks } from '../config/types.ts';
+import type { CommitsConfig, HookAsks, PushToProtected, SkipHooks } from '../config/types.ts';
 import { isRecord, recordField, stringField } from '../core/guards.ts';
 import { describeLargeCommits, largeCommits, type CommitLog, type CommitStat, type LargeCommit } from '../push-guard/commit-size.ts';
 import { hookSkips, type HookSkip } from '../push-guard/hook-skips.ts';
@@ -17,6 +17,7 @@ import {
   type PushVerdict,
   type RepoState,
 } from '../push-guard/push.ts';
+import { holdBackOutput } from './permission.ts';
 
 export interface PushGuardEnv {
   /** The folder to judge from when the payload names none. */
@@ -31,6 +32,8 @@ export interface PushGuardEnv {
   readonly commitLog: CommitLog;
   /** What a git command run without the repository's hooks gets. */
   readonly skipHooks: SkipHooks;
+  /** Whether a push the guard would ask about raises the prompt or is refused with what to do instead. */
+  readonly hookAsks: HookAsks;
 }
 
 /**
@@ -99,10 +102,6 @@ function stopReason(verdict: PushVerdict, decision: Exclude<PushDecision, 'allow
   return verdict.protectedPush === 'leased' ? leasedReason(protectedBranches) : decisionReason(decision, protectedBranches);
 }
 
-function permission(decision: Exclude<PushDecision, 'allow'>, reason: string): string {
-  return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: decision, permissionDecisionReason: reason } });
-}
-
 /**
  * The PreToolUse hook's stdout for one Bash or PowerShell call: a permission decision when the
  * command pushes to a protected branch, else nothing, so the normal permission flow decides.
@@ -111,7 +110,8 @@ function permission(decision: Exclude<PushDecision, 'allow'>, reason: string): s
  * asked or allowed push also lists the large commits it sends (`warn`) or is refused for them
  * (`refuse`). A command the guard cannot read with confidence is asked about, with a reason that
  * says what it could not read. A line that runs git without the repository's hooks (see `hookSkips`) is refused or
- * asked about first, as `skipHooks` says; a refused push stays refused under `ask`.
+ * asked about first, as `skipHooks` says; a refused push stays refused under `ask`. Under `hookAsks: refuse`
+ * every such question is a refusal instead, its reason saying what to do (see `holdBack`).
  */
 export function pushGuardOutput(payload: unknown, env: PushGuardEnv): string {
   if (!isRecord(payload)) {
@@ -134,7 +134,7 @@ export function pushGuardOutput(payload: unknown, env: PushGuardEnv): string {
   if (env.skipHooks !== 'allow') {
     const skips = hookSkips(found.invocations);
     if (skips.length > 0 && (env.skipHooks === 'deny' || verdict.decision !== 'deny')) {
-      return permission(env.skipHooks, skipHooksReason(skips));
+      return holdBackOutput(env.skipHooks, skipHooksReason(skips), env.hookAsks);
     }
   }
   if (verdict.decision === 'allow' && verdict.protectedPush === undefined) {
@@ -143,11 +143,12 @@ export function pushGuardOutput(payload: unknown, env: PushGuardEnv): string {
   const large = verdict.decision === 'deny' ? [] : largeCommitsIn(verdict.updates, env);
   const listing = large.length === 0 ? '' : ` ${describeLargeCommits(large, env.commits)}`;
   if (large.length > 0 && env.commits.gate === 'refuse') {
-    return permission('deny', `This push to a protected branch (${env.protectedBranches.join(', ')}) is refused: ${describeLargeCommits(large, env.commits)}`);
+    return holdBackOutput('deny', `This push to a protected branch (${env.protectedBranches.join(', ')}) is refused: ${describeLargeCommits(large, env.commits)}`, env.hookAsks);
   }
   if (verdict.decision === 'allow') {
     return JSON.stringify({ systemMessage: `${allowedPushNote(env.protectedBranches)}${listing}` });
   }
-  const hint = verdict.decision === 'ask' && verdict.protectedPush === 'normal' ? ` ${PUSH_TO_PROTECTED_HINT}` : '';
-  return permission(verdict.decision, `${stopReason(verdict, verdict.decision, env.protectedBranches)}${listing}${hint}`);
+  const asked = verdict.decision === 'ask' && verdict.protectedPush === 'normal' && env.hookAsks === 'ask';
+  const hint = asked ? ` ${PUSH_TO_PROTECTED_HINT}` : '';
+  return holdBackOutput(verdict.decision, `${stopReason(verdict, verdict.decision, env.protectedBranches)}${listing}${hint}`, env.hookAsks);
 }

@@ -1,11 +1,12 @@
 import { DEFAULT_PACKAGE_GUARD } from '../config/defaults.ts';
 import type { ConfigLoad } from '../config/load.ts';
-import type { AdHocRunners } from '../config/types.ts';
+import type { AdHocRunners, HookAsks } from '../config/types.ts';
 import type { Files } from '../core/files.ts';
 import { isRecord, recordField, stringField } from '../core/guards.ts';
 import { adHocCallsOf } from '../package-guard/ad-hoc.ts';
 import { lostFlagsOf, type LostFlag } from '../package-guard/lost-flags.ts';
 import type { ProgramsContext } from '../package-guard/programs.ts';
+import { holdBackOutput } from './permission.ts';
 
 export interface PackageGuardEnv {
   /** The folder to judge from when the payload names none. */
@@ -14,6 +15,8 @@ export interface PackageGuardEnv {
   /** Where the guard looks for each bin a runner would run (`node_modules/.bin`). */
   readonly files: Files;
   readonly adHocRunners: AdHocRunners;
+  /** Whether a run the guard would ask about raises the prompt or is refused with what to do instead. */
+  readonly hookAsks: HookAsks;
 }
 
 /** What an ad-hoc package run gets. A missing or unreadable config keeps the default, so a broken config never switches the guard off. */
@@ -52,7 +55,8 @@ async function adHocVerdict(command: string, context: ProgramsContext, files: Fi
 /**
  * The PreToolUse output for a Bash or PowerShell call: a refusal (or a question, as `packageGuard.adHocRunners`
  * says) when the line runs a package ad hoc, and a refusal whatever that key says when an npx call hands its bin's
- * flag to npm, as that line cannot run what it names; else nothing, so the normal permission flow decides.
+ * flag to npm, as that line cannot run what it names; else nothing, so the normal permission flow decides. Under
+ * `hookAsks: refuse` the question is a refusal instead, its reason saying what to do (see `holdBack`).
  */
 export async function packageGuardOutput(payload: unknown, env: PackageGuardEnv): Promise<string> {
   if (!isRecord(payload)) {
@@ -74,7 +78,5 @@ export async function packageGuardOutput(payload: unknown, env: PackageGuardEnv)
   if (verdict === undefined) {
     return '';
   }
-  return JSON.stringify({
-    hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: verdict.decision, permissionDecisionReason: verdict.reason },
-  });
+  return holdBackOutput(verdict.decision, verdict.reason, env.hookAsks);
 }
