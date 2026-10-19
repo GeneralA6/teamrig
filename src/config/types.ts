@@ -71,9 +71,9 @@ export interface RegisterConfig {
   readonly requireDecisionCard: boolean;
   /** Whether `set --status verifying` needs `--proof`, what will prove the shipped change works. */
   readonly requireProofOnVerifying: boolean;
-  /** What `set --status in-progress` does while a task it needs is still verifying. */
+  /** What `set --status in-progress` does while a task it needs is still verifying, or, on a first start, while its owner's own verify steps are due. */
   readonly verifyGate: VerifyGate;
-  /** A session holding more verifying tasks than this is a PILE-UP in `check`; 0 turns the flag off. */
+  /** A session holding more verifying tasks than this is a PILE-UP in `check`, and its oldest are due to verify before new work starts; 0 turns both off. */
   readonly maxVerifying: number;
   readonly check: RegisterCheckConfig;
 }

@@ -22,7 +22,7 @@ import type { Register, WriteResult } from '../../register/register.ts';
 import { ACTIVE_STATUSES } from '../../register/model.ts';
 import type { RegisterSnapshot, RetiredTasks } from '../../register/snapshot.ts';
 import { readStopgapTags, stopgapFlags, stopgapTags } from '../../register/stopgap.ts';
-import { heldStart, heldStartNotice, metStartNotice, startHolds, verifyQueue } from '../../register/verify.ts';
+import { dueStartHolds, dueVerifyHold, heldStart, heldStartNotice, metStartNotice, startHolds, verifyQueue, type DueVerify } from '../../register/verify.ts';
 import { TaskTree } from '../../register/tree.ts';
 import { assignedNotice, formatTask, formatTaskDetail, formatTaskTree, formatVerifyRow, personWaitNotice, selectTasks, type ListFilter } from '../../register/views.ts';
 import { isPeerWait, sameWait, type PersonWait } from '../../register/waits.ts';
@@ -246,7 +246,7 @@ export async function set(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
   if (typed.ask !== null) {
     return setAsking(runtime, team, by, id, { ...typed.ask, owner: sessionIdOf(roster, typed.ask.owner) }, input);
   }
-  const held = await heldStartOf(register, by, id, input);
+  const { held, due } = await startGatesOf(register, by, id, input, new Date(runtime.clock.now()), team.zone, config.register.maxVerifying);
   const verdict = await register.setStatus(by, id, input);
   const warned = config.register.verifyGate === 'warn';
   // The start as written: one that named its held proof as met asks the verifying owners to confirm it.
@@ -258,6 +258,9 @@ export async function set(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
   await tellLeadOfWaits(runtime, team, by, verdict);
   if (held !== undefined && warned && verdict.ok && met === null) {
     runtime.out.stderr(`WARN ${heldStart(held.task, held.holds)}; started anyway, as register.verifyGate is warn`);
+  }
+  if (due !== undefined && warned && verdict.ok) {
+    runtime.out.stderr(`WARN ${dueVerifyHold(due.task, due.due)}; started anyway, as register.verifyGate is warn`);
   }
   if (input.status === 'done') {
     await markBoundary(runtime, config, paths, by, id);
@@ -299,18 +302,36 @@ interface HeldStart {
   readonly holds: readonly Task[];
 }
 
+/** A first start its owner's own due verify steps hold: the task, as the caller's own, and those steps. */
+interface DueStart {
+  readonly task: Task;
+  readonly due: readonly DueVerify[];
+}
+
+/** What holds the caller's start of its own task: the verifying tasks it needs, and its owner's due verify steps. */
+interface StartGates {
+  readonly held: HeldStart | undefined;
+  readonly due: DueStart | undefined;
+}
+
+const OPEN_START: StartGates = { held: undefined, due: undefined };
+
 /**
- * The verifying tasks that hold the caller's start of its own task, read before the write: the policy
- * refuses that start (or lets it through in warn mode), and their owners hear of it either way.
+ * What holds the caller's start of its own task, read before the write: the policy refuses that start (or lets
+ * it through in warn mode); the owners of the verifying tasks it needs hear of it either way.
  */
-async function heldStartOf(register: Register, caller: string, id: string, input: StatusInput): Promise<HeldStart | undefined> {
+async function startGatesOf(register: Register, caller: string, id: string, input: StatusInput, now: Date, zone: TimeZone, maxVerifying: number): Promise<StartGates> {
   if (input.status !== 'in-progress') {
-    return undefined;
+    return OPEN_START;
   }
   const { tasks } = (await register.snapshot()).state;
   const task = tasks.get(id);
-  const holds = task === undefined || task.owner !== caller ? [] : startHolds(task, input.status, tasks);
-  return task === undefined || holds.length === 0 ? undefined : { task, holds };
+  if (task === undefined || task.owner !== caller) {
+    return OPEN_START;
+  }
+  const holds = startHolds(task, input.status, tasks);
+  const due = dueStartHolds(task, input.status, tasks, now, zone, maxVerifying);
+  return { held: holds.length === 0 ? undefined : { task, holds }, due: due.length === 0 ? undefined : { task, due } };
 }
 
 /**

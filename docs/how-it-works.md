@@ -237,7 +237,9 @@ stateDiagram-v2
   `teamrig verify`, the session's start context and `inbox read` keep it in view until the owner sets it `done`
   with the proof as evidence. Work that needs it waits for that proof: its start is refused until then
   (`register.verifyGate`), and the owner hears of it in its inbox. A start that names what met the proof
-  (`--met`) goes through, and the owner is asked to confirm it (`done`) or reopen the task.
+  (`--met`) goes through, and the owner is asked to confirm it (`done`) or reopen the task. The owner's own first
+  start of new work also waits while one of its verify steps is due: its proof's waits cleared, its verify-by day
+  came, or it holds more than `register.maxVerifying`, so shipped changes get proven instead of piling up.
 - `waiting` is a started task that cannot go on, with every reason it waits for (`--waits`): a decision or an
   approval (the lead's or the owner's; a peer's work is a task, asked for with `set --ask`), another task to
   finish first, or a time. It stays waiting until all of

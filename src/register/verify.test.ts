@@ -1,9 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { testTask } from '../testing/task.ts';
-import { heldStart, heldStartNotice, metStartNotice, proofOf, proofText, startHolds, verifyByArrived, verifyingNeeds, verifyQueue } from './verify.ts';
 import { TimeZone } from '../core/zone.ts';
 import { JERUSALEM } from '../testing/zone.ts';
+import type { Task } from './fold.ts';
+import { dueStartHolds, dueVerifies, dueVerifyHold, heldStart, heldStartNotice, metStartNotice, proofOf, proofText, startHolds, verifyByArrived, verifyingNeeds, verifyQueue, type DueVerify } from './verify.ts';
+import { waitContext, type WaitReason } from './waits.ts';
 
 describe('proofOf', () => {
   it('reads the proof a task was set verifying with', () => {
@@ -93,5 +95,64 @@ describe("verifyByArrived in the team's zone", () => {
     const now = new Date('2030-01-08T22:30:00.000Z');
     assert.equal(verifyByArrived({ due: '2030-01-09' }, now, JERUSALEM), true, 'Jerusalem is at 01-09 00:30');
     assert.equal(verifyByArrived({ due: '2030-01-09' }, now, TimeZone.UTC), false, 'UTC is at 01-08 22:30');
+  });
+});
+
+describe('dueVerifies, dueStartHolds and dueVerifyHold', () => {
+  const NOW = new Date('2030-01-09T12:00:00.000Z');
+  const ASKED_OWNER: readonly WaitReason[] = [{ kind: 'approval', who: 'owner' }];
+  const verifying = (id: string, hour: number, overrides: Partial<Task> = {}): Task =>
+    testTask({
+      id,
+      status: 'verifying',
+      proof: 'the nightly run',
+      startedAt: '2030-01-07T08:00:00.000Z',
+      statusAt: `2030-01-08T${String(hour).padStart(2, '0')}:00:00.000Z`,
+      ...overrides,
+    });
+  const tasksOf = (...tasks: Task[]): ReadonlyMap<string, Task> => new Map(tasks.map((task) => [task.id, task]));
+  const dueOf = (tasks: ReadonlyMap<string, Task>, max = 5): string[] =>
+    dueVerifies(tasks.values(), 'alpha', waitContext(tasks, NOW, TimeZone.UTC), max).map(({ task, why }) => `${task.id} ${why}`);
+
+  it("is due once its proof's waits cleared or its verify-by day came, never while it waits on another party", () => {
+    const tasks = tasksOf(
+      verifying('T1', 9, { due: '2030-01-09' }),
+      verifying('T2', 10, { waits: [{ kind: 'task', id: 'T8' }] }),
+      verifying('T3', 11, { waits: [{ kind: 'task', id: 'T9' }], due: '2030-01-08' }),
+      verifying('T4', 12, { waits: ASKED_OWNER }),
+      verifying('T5', 13, { due: '2030-01-10' }),
+      verifying('T6', 14, { owner: 'bravo', due: '2030-01-08' }),
+      testTask({ id: 'T8', status: 'done' }),
+      testTask({ id: 'T9', status: 'in-progress' }),
+    );
+    assert.deepEqual(dueOf(tasks), ['T1 verify by 01-09', "T2 proof's waits cleared"]);
+  });
+
+  it('makes the oldest it can act on due while its owner holds more than the limit, and none with the limit off', () => {
+    const tasks = tasksOf(verifying('T1', 9, { waits: ASKED_OWNER }), verifying('T2', 10), verifying('T3', 11), verifying('T4', 12));
+    assert.deepEqual(dueOf(tasks, 2), ['T2 4 verifying, over 2', 'T3 4 verifying, over 2'], 'the asked T1 counts toward the pile, but is not due');
+    assert.deepEqual(dueOf(tasks, 4), []);
+    assert.deepEqual(dueOf(tasks, 0), []);
+  });
+
+  it("holds only a task's first start, with its owner's due verify steps", () => {
+    const fresh = testTask({ id: 'T2' });
+    const resumed = testTask({ id: 'T3', status: 'waiting', startedAt: '2030-01-08T08:00:00.000Z' });
+    const tasks = tasksOf(verifying('T1', 9, { due: '2030-01-09' }), fresh, resumed);
+    const ids = (held: readonly DueVerify[]): string[] => held.map((due) => due.task.id);
+    assert.deepEqual(ids(dueStartHolds(fresh, 'in-progress', tasks, NOW, TimeZone.UTC, 5)), ['T1']);
+    assert.deepEqual(ids(dueStartHolds(resumed, 'in-progress', tasks, NOW, TimeZone.UTC, 5)), [], 'a task already started goes on');
+    assert.deepEqual(ids(dueStartHolds(fresh, 'waiting', tasks, NOW, TimeZone.UTC, 5)), []);
+    assert.deepEqual(ids(dueStartHolds({ ...fresh, owner: 'bravo' }, 'in-progress', tasks, NOW, TimeZone.UTC, 5)), [], "only its own owner's verify steps hold it");
+  });
+
+  it('names up to three due verify steps, counts the rest, and says how to clear each', () => {
+    const due = ['T1', 'T2', 'T3', 'T4', 'T5'].map((id): DueVerify => ({ task: testTask({ id }), why: 'verify by 01-08' }));
+    assert.equal(
+      dueVerifyHold({ id: 'T9' }, due.slice(0, 1)),
+      'T9 is new work; T1 (verify by 01-08) is due to verify first (teamrig verify): set each done with its proof, in-progress if it failed, ' +
+        'or verifying with --ask or --waits for what its proof waits on; a verify-by date moves with --due and a --note saying why',
+    );
+    assert.match(dueVerifyHold({ id: 'T9' }, due), /^T9 is new work; T1 \(verify by 01-08\), T2 \(verify by 01-08\), T3 \(verify by 01-08\) and 2 more are due to verify first /);
   });
 });
