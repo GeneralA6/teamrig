@@ -1,4 +1,5 @@
 import { coordinatorPlaces, teamPlace } from '../../coordinator/places.ts';
+import { SecretScanner } from '../../core/secrets.ts';
 import { integrateBranch } from '../../integrate/integrate.ts';
 import type { ParsedArgs } from '../args.ts';
 import { hostLockOf, logLine, nextResetFrom } from '../coordinator-ports.ts';
@@ -26,6 +27,8 @@ export async function integrate(args: ParsedArgs, runtime: CliRuntime): Promise<
     {
       git: runtime.integrateGit,
       steps: runtime.steps,
+      hooks: runtime.hooks,
+      scanner: new SecretScanner(config.register.secretPatterns),
       files: runtime.files,
       clock: runtime.clock,
       sleep: runtime.sleep,

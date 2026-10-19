@@ -1,16 +1,18 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { dirname, join } from 'node:path';
 import type { CoordinatorConfig, CoordinatorRepoConfig, ScheduleConfig } from '../config/types.ts';
 import { DEFAULT_CLAIMS, DEFAULT_COORDINATOR_WAIT, DEFAULT_GATE_TIMEOUT_SECONDS, DEFAULT_HEAVY, DEFAULT_WINDOWS } from '../config/defaults.ts';
 import { HostLock } from '../coordinator/host-lock.ts';
 import type { CoordinatorPlaces } from '../coordinator/places.ts';
 import type { ResetTime } from '../coordinator/schedule.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
+import { FakeHooks } from '../testing/fake-hooks.ts';
 import { FakeIntegrateGit, MAIN_CHECKOUT, WORKTREE } from '../testing/fake-integrate-git.ts';
 import { FakeSteps } from '../testing/fake-steps.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { commandLine } from '../test-run/shell.ts';
-import { integrateBranch, PUSH_ATTEMPTS, repoOf, type IntegrateEnd, type IntegrateRequest, type IntegrateSetup } from './integrate.ts';
+import { BASELINE_LOCK_ENV, integrateBranch, PUSH_ATTEMPTS, repoOf, type IntegrateEnd, type IntegrateRequest, type IntegrateSetup } from './integrate.ts';
 
 const PLACES: CoordinatorPlaces = {
   ledger: '/team/deploys/ledger.jsonl',
@@ -38,6 +40,7 @@ class World {
   readonly files: MemoryFiles;
   readonly clock: FakeClock;
   readonly steps: FakeSteps;
+  readonly hooks: FakeHooks;
   readonly lock: HostLock;
   readonly said: string[] = [];
   /** How often the next reset was read. */
@@ -49,6 +52,7 @@ class World {
     this.files = new MemoryFiles(options.claims === undefined ? {} : { [PLACES.claims]: options.claims });
     this.clock = new FakeClock(options.start ?? '2030-01-08T10:00:00Z');
     this.steps = new FakeSteps(this.clock).ends(0, 90_000);
+    this.hooks = new FakeHooks(this.clock);
     this.lock = new HostLock(PLACES.hostLock, 150 * 60_000, { files: this.files, clock: this.clock, sleep: this.clock.sleep, pid: 7, alive: () => true, newId: () => 'lock-1' });
     this.reset = options.reset;
     const coordinator: CoordinatorConfig = {
@@ -78,6 +82,8 @@ class World {
     return integrateBranch(this.setup, {
       git: this.git,
       steps: this.steps,
+      hooks: this.hooks,
+      scanner: { redact: (text) => text.replaceAll('s3cret', '[redacted]') },
       files: this.files,
       clock: this.clock,
       sleep: this.clock.sleep,
@@ -200,6 +206,107 @@ describe('integrate holds a dependency change where the repository asks for it',
     const world = new World({ repos: { app: PLAIN } });
     world.git.paths = ['package-lock.json'];
     assert.equal((await world.run()).kind, 'done');
+  });
+
+  it('says which setting clears a change it holds', async () => {
+    const world = new World({ repos: gated });
+    world.git.paths = ['package-lock.json'];
+    refused(await world.run(), /set coordinator\.repos\.app\.dependencyCheck to the check that clears one/);
+  });
+});
+
+describe('integrate runs the dependency check, where one is set, on what the rebase made', () => {
+  const CHECK = ['node', 'check-change.ts'];
+  const checked = { app: { ...PLAIN, dependencyGate: true, dependencyCheck: CHECK } };
+  const BASELINE = join(dirname(PLACES.ledger), 'baseline-step-1.package-lock.json');
+
+  it('runs it in the branch’s checkout under the host lock, with the default branch’s lockfile, then pushes', async () => {
+    const world = new World({ repos: checked });
+    world.git.paths = ['package-lock.json'];
+    world.git.files.set('base:package-lock.json', '{"lockfileVersion":3}');
+    const during: { baseline?: string | undefined; head?: string | undefined; lockHeld?: boolean } = {};
+    world.hooks.answer(CHECK, {
+      lines: ['pins hold'],
+      during: async (request) => {
+        const path = request.env[BASELINE_LOCK_ENV];
+        during.baseline = path === undefined ? undefined : world.files.get(path);
+        during.head = world.git.heads.get(request.cwd);
+        during.lockHeld = !world.lockFree();
+      },
+    });
+    assert.equal((await world.run()).kind, 'done');
+    const [run] = world.hooks.ran;
+    assert.deepEqual(run?.argv, CHECK);
+    assert.equal(run?.cwd, WORKTREE);
+    assert.equal(run?.env[BASELINE_LOCK_ENV], BASELINE);
+    assert.equal(run?.env['TEAMRIG_HOST_LOCK'], 'lock-1');
+    assert.equal(run?.env['GIT_DIR'], undefined);
+    assert.deepEqual(during, { baseline: '{"lockfileVersion":3}', head: 'rebased', lockHeld: true });
+    assert.equal(world.files.get(BASELINE), undefined);
+    assert.ok(world.said.includes('deps changed (package-lock.json): dependency check node check-change.ts'));
+    assert.ok(world.said.includes('  pins hold'));
+    assert.equal(world.steps.ran.length, 1);
+    const checks = world.records(PLACES.ledger).filter((record) => JSON.stringify(record).includes('dependency check of feat'));
+    assert.equal(checks.length, 2);
+  });
+
+  it('refuses a change the check fails, shows its output redacted, pushes nothing and removes the lockfile copy', async () => {
+    const world = new World({ repos: checked });
+    world.git.paths = ['package-lock.json'];
+    world.git.files.set('base:package-lock.json', '{}');
+    world.hooks.answer(CHECK, { lines: ['token s3cret moved a pin'], end: 3 });
+    refused(await world.run(), /deps changed \(package-lock\.json\): the dependency check `node check-change\.ts` exited 3, so feat stays off main; its output is above/);
+    assert.ok(world.said.includes('  token [redacted] moved a pin'));
+    assert.deepEqual(world.steps.ran, []);
+    assert.equal(world.files.get(BASELINE), undefined);
+    assert.ok(world.lockFree());
+  });
+
+  it('refuses when the check cannot start, and leaves the lockfile copy unset where the default branch has none', async () => {
+    const world = new World({ repos: checked });
+    world.git.paths = ['package-lock.json'];
+    world.hooks.answer(CHECK, { end: { kind: 'notStarted', error: 'ENOENT' } });
+    refused(await world.run(), /the dependency check `node check-change\.ts` could not start \(ENOENT\)/);
+    assert.equal(world.hooks.ran[0]?.env[BASELINE_LOCK_ENV], undefined);
+  });
+
+  it('runs no check for a branch that changes no package files', async () => {
+    const world = new World({ repos: checked });
+    assert.equal((await world.run()).kind, 'done');
+    assert.deepEqual(world.hooks.ran, []);
+  });
+
+  it('refuses when it cannot read what the rebased branch changes', async () => {
+    const world = new World({ repos: checked });
+    world.git.paths = undefined;
+    refused(await world.run(), /could not read what feat changes against base, so the dependency check cannot clear it/);
+    assert.deepEqual(world.steps.ran, []);
+  });
+
+  it('checks again, against the default branch it rebased onto, when origin moved during the push', async () => {
+    const world = new World({ repos: checked });
+    world.git.paths = ['package-lock.json'];
+    world.git.files.set('base:package-lock.json', 'base lock');
+    world.git.files.set('theirs:package-lock.json', 'their lock');
+    const baselines: (string | undefined)[] = [];
+    world.hooks.answer(CHECK, {
+      during: async (request) => {
+        const path = request.env[BASELINE_LOCK_ENV];
+        baselines.push(path === undefined ? undefined : world.files.get(path));
+      },
+    });
+    let pushes = 0;
+    world.steps.whileRunning(async () => {
+      pushes += 1;
+      if (pushes === 1) {
+        world.git.origin.set('main', 'theirs');
+        world.git.rebasedTo = 'rebased-2';
+        return;
+      }
+      world.git.pushed('main', world.git.heads.get(WORKTREE) ?? '');
+    });
+    assert.equal((await world.run()).kind, 'done');
+    assert.deepEqual(baselines, ['base lock', 'their lock']);
   });
 });
 

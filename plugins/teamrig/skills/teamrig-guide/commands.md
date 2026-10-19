@@ -1651,17 +1651,24 @@ The repository is the entry of `coordinator.repos` whose `mainCheckout` is this 
 - `deploysOnPush`: what a push to the default branch deploys, such as `["cloud-api"]`. integrate waits for quiet
   claims on these targets, and records the push in the ledger as a deploy of them, which teamrig does not watch.
 - `dependencyGate`: REFUSED when the branch changes `package-lock.json` or `package.json` beyond its scripts,
-  since landing it changes, unreviewed, the `node_modules` every worktree links to; push such a change by hand.
+  since landing it changes, unreviewed, the `node_modules` every worktree links to; with no `dependencyCheck`, push
+  such a change by hand.
+- `dependencyCheck`: with `dependencyGate`, the check that clears a dependency change, such as
+  `["node", "tools/check-change.ts"]`: a program and its arguments, run with no shell in the branch's checkout under
+  the host lock, after each rebase and before the push, its stdout shown with secrets redacted, killed after
+  `coordinator.heavy.maxRunMinutes`, a heavy step in the ledger. It gets `TEAMRIG_BASELINE_LOCK`, a file holding the
+  default branch's `package-lock.json` (unset when that branch has none), removed after. Exit 0 lands the change;
+  any other end, or a range integrate cannot read, is REFUSED and nothing is pushed.
 - `followMainCheckout`: after a landing from a linked worktree, fast-forward the main checkout too, when it is on
   the default branch with no uncommitted changes; a NOTE says when it was left as it is, or needs `npm ci`.
 
 A repository not listed gets a NOTE and none of these. Then integrate waits up to `coordinator.wait.maxMinutes` (60),
 looking every `coordinator.wait.pollSeconds` (30), for the claims and the host lock (see `teamrig heavy`), fetches,
-rebases onto origin's default branch and pushes there, the push a heavy step in the ledger that runs the pre-push
+rebases onto origin's default branch, runs the `dependencyCheck` on a dependency change and pushes there, the push a heavy step in the ledger that runs the pre-push
 hook. It landed when origin's default branch is at the rebased commit, whatever the push's exit code. When origin
 moved meanwhile, it rebases and pushes again, 3 times in all. After a landing it deletes the branch on origin and
 here, moves the local default branch to origin's and prints the `teamrig worktree remove` that ends a worktree.
-Exit 0 landed, 1 failed (FAILED and the reason; the branch is kept).
+Exit 0 landed, 1 failed (FAILED and the reason; the branch is kept), 2 when the dependency check refused it.
 
 Flags:
 
