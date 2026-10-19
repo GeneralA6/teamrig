@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { TimeZone } from '../core/zone.ts';
 import { JERUSALEM } from '../testing/zone.ts';
-import { formatClockSpan, formatCount, formatEndTime, formatPct, formatW, formatWeekdayMinute } from './format.ts';
+import { formatClockSpan, formatCount, formatEndTime, formatPct, formatW } from './format.ts';
 
 describe('budget number formats', () => {
   it('writes shares with two decimals below 1% and one above', () => {
@@ -31,7 +31,5 @@ describe('budget number formats', () => {
   });
 
   it('writes an instant with its weekday', () => {
-    assert.equal(formatWeekdayMinute(Date.parse('2026-10-21T01:00:00Z')), 'Wed 10-21 01:00 UTC');
-    assert.equal(formatWeekdayMinute(Date.parse('2030-01-06T23:59:00Z')), 'Sun 01-06 23:59 UTC');
   });
 });

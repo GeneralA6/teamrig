@@ -2,11 +2,13 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { RegisterEvent, UpdateEvent } from '../register/events.ts';
 import type { Task } from '../register/fold.ts';
+import { TimeZone } from '../core/zone.ts';
 import { testTask } from '../testing/task.ts';
+import { JERUSALEM } from '../testing/zone.ts';
 import { NOTE_CHARS } from './agenda.ts';
 import { decisionsByOwner, decisionText, endNotice, startNotice, type NoticeFacts } from './notices.ts';
 
-const FACTS: NoticeFacts = { lead: 'lead', leadName: 'team-lead', at: Date.parse('2030-01-08T09:00:00Z'), command: 'teamrig' };
+const FACTS: NoticeFacts = { lead: 'lead', leadName: 'team-lead', at: Date.parse('2030-01-08T09:00:00Z'), command: 'teamrig', zone: TimeZone.UTC };
 const SINCE = Date.parse('2030-01-08T09:00:00Z');
 
 function update(id: string, at: string, overrides: Partial<UpdateEvent> = {}): UpdateEvent {
@@ -25,6 +27,12 @@ describe('the meeting notices', () => {
   it('tells a session the meeting ended, with the decisions on its tasks when there are some', () => {
     assert.equal(endNotice(FACTS, []), "the owner's daily meeting with team-lead ended Tue 01-08 09:00 UTC: messages to team-lead may go again.");
     assert.match(endNotice(FACTS, ['T1: go', 'T2: wait']), /may go again\. Decided on your tasks: T1: go; T2: wait\.$/);
+  });
+
+  it("gives the meeting's times on the team's clock", () => {
+    const local = { ...FACTS, zone: JERUSALEM };
+    assert.match(startNotice(local), /^the owner's daily meeting with team-lead started Tue 01-08 11:00 IST: keep working/);
+    assert.match(endNotice(local, []), /ended Tue 01-08 11:00 IST: messages to team-lead may go again\.$/);
   });
 
   it('gives a decision as its task, its note on one line cut short, and the fields changed', () => {

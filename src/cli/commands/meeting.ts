@@ -1,8 +1,8 @@
-import { formatWeekdayMinute } from '../../budget/format.ts';
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { KIT_NAME } from '../../core/home.ts';
 import { SecretScanner } from '../../core/secrets.ts';
+import type { TimeZone } from '../../core/zone.ts';
 import { postLine } from '../../inbox/inbox.ts';
 import { agendaLines, agendaSince } from '../../meeting/agenda.ts';
 import { decisionsByOwner, endNotice, startNotice, type NoticeFacts } from '../../meeting/notices.ts';
@@ -34,6 +34,8 @@ interface MeetingKit {
   readonly leadName: string;
   readonly store: MeetingStore;
   readonly now: number;
+  /** The team's clock, which the meeting's lines and notices print on. */
+  readonly zone: TimeZone;
 }
 
 /** The caller's team, refused unless the caller is its lead: the meeting is the lead's with the owner. */
@@ -50,11 +52,11 @@ async function meetingKit(args: ParsedArgs, runtime: CliRuntime, access: Access)
     throw new RefusedError(`only the lead${lead === undefined ? '' : ` (${roster.nameOf(lead) ?? lead})`} runs the owner's daily meeting`);
   }
   const store = new MeetingStore(runtime.files, kit.paths.meeting);
-  return { kit, config, roster, lead, leadName: roster.nameOf(lead) ?? lead, store, now: runtime.clock.now() };
+  return { kit, config, roster, lead, leadName: roster.nameOf(lead) ?? lead, store, now: runtime.clock.now(), zone: teamZone(config, runtime) };
 }
 
 function noticeFacts(mk: MeetingKit): NoticeFacts {
-  return { lead: mk.lead, leadName: mk.leadName, at: mk.now, command: KIT_NAME };
+  return { lead: mk.lead, leadName: mk.leadName, at: mk.now, command: KIT_NAME, zone: mk.zone };
 }
 
 /** One inbox line to every session but the lead; prints a line for each it could not post to, and returns how many it told. */
@@ -86,11 +88,11 @@ function phaseLine(phase: MeetingPhase, mk: MeetingKit): string {
     case 'none':
       return `MEETING none held yet; the agenda for the first (${KIT_NAME} meeting start opens it)`;
     case 'open':
-      return `MEETING open since ${formatWeekdayMinute(Date.parse(phase.meeting.startedAt))}: messages to ${mk.leadName} are held but CRITICAL ones`;
+      return `MEETING open since ${mk.zone.weekdayMinute(new Date(phase.meeting.startedAt))}: messages to ${mk.leadName} are held but CRITICAL ones`;
     case 'lapsed':
-      return `MEETING the one started ${formatWeekdayMinute(Date.parse(phase.meeting.startedAt))} was never ended and holds no message since ${formatWeekdayMinute(phase.until)}; ${KIT_NAME} meeting end tells the sessions it ended`;
+      return `MEETING the one started ${mk.zone.weekdayMinute(new Date(phase.meeting.startedAt))} was never ended and holds no message since ${mk.zone.weekdayMinute(new Date(phase.until))}; ${KIT_NAME} meeting end tells the sessions it ended`;
     case 'closed':
-      return `MEETING none open, the last ended ${formatWeekdayMinute(phase.until)}; the agenda for the next (${KIT_NAME} meeting start opens it)`;
+      return `MEETING none open, the last ended ${mk.zone.weekdayMinute(new Date(phase.until))}; the agenda for the next (${KIT_NAME} meeting start opens it)`;
   }
 }
 
@@ -99,7 +101,7 @@ async function printAgenda(args: ParsedArgs, runtime: CliRuntime, mk: MeetingKit
   const rollUp = await ownRegister(runtime);
   const { snapshot } = rollUp.own;
   const now = new Date(mk.now);
-  const zone = teamZone(mk.config, runtime);
+  const { zone } = mk;
   const lines = agendaLines({
     tasks: [...snapshot.state.tasks.values()],
     tree: new TaskTree(snapshot.state.tasks, now, zone),
@@ -126,7 +128,7 @@ export async function meetingStart(args: ParsedArgs, runtime: CliRuntime): Promi
   const mk = await meetingKit(args, runtime, 'write');
   const phase = phaseOf(await mk.store.read(), mk.now);
   if (phase.kind === 'open') {
-    runtime.out.stdout(`MEETING already open since ${formatWeekdayMinute(Date.parse(phase.meeting.startedAt))}; the sessions were told then`);
+    runtime.out.stdout(`MEETING already open since ${mk.zone.weekdayMinute(new Date(phase.meeting.startedAt))}; the sessions were told then`);
     await printAgenda(args, runtime, mk, phase);
     return EXIT.ok;
   }
@@ -134,7 +136,7 @@ export async function meetingStart(args: ParsedArgs, runtime: CliRuntime): Promi
   const meeting: Meeting = { startedAt: new Date(mk.now).toISOString(), by: mk.lead, endedAt: null, since: before === undefined ? null : new Date(before).toISOString() };
   await mk.store.write(meeting);
   const told = await tellSessions(runtime, mk, () => startNotice(noticeFacts(mk)));
-  runtime.out.stdout(`MEETING started ${formatWeekdayMinute(mk.now)}: told ${told} session(s) by inbox line; messages to ${mk.leadName} are held but CRITICAL ones`);
+  runtime.out.stdout(`MEETING started ${mk.zone.weekdayMinute(new Date(mk.now))}: told ${told} session(s) by inbox line; messages to ${mk.leadName} are held but CRITICAL ones`);
   await printAgenda(args, runtime, mk, { kind: 'open', meeting });
   runtime.out.stdout(`END ${KIT_NAME} meeting end --session ${mk.lead}: tells every session, with the decisions recorded on its tasks`);
   return EXIT.ok;
@@ -166,7 +168,7 @@ export async function meetingEnd(args: ParsedArgs, runtime: CliRuntime): Promise
   const decisions = decisionsByOwner(snapshot.read.events, snapshot.state.tasks, mk.lead, startedAt);
   const told = await tellSessions(runtime, mk, (session) => endNotice(noticeFacts(mk), decisions.get(session) ?? []));
   const minutes = Math.round((mk.now - startedAt) / 60_000);
-  runtime.out.stdout(`MEETING ended ${formatWeekdayMinute(mk.now)} after ${minutes} min: told ${told} session(s) messages to ${mk.leadName} may go again`);
+  runtime.out.stdout(`MEETING ended ${mk.zone.weekdayMinute(new Date(mk.now))} after ${minutes} min: told ${told} session(s) messages to ${mk.leadName} may go again`);
   const recorded = [...decisions].flatMap(([owner, lines]) => lines.map((line) => `  ${owner} ${line}`));
   runtime.out.stdout(
     recorded.length === 0

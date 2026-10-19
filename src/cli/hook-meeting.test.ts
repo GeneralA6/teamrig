@@ -30,6 +30,12 @@ describe('the cold-send hook during the daily meeting', () => {
     assert.deepEqual(critical.stdout, []);
   });
 
+  it("names the meeting's start on the team's clock", async () => {
+    const kit = await teamInMeeting();
+    const held = await kit.run(['hook', 'cold-send'], { stdin: send('lead', 'the build is green'), env: { TEAMRIG_SESSION: 'alpha' }, timeZone: 'Asia/Jerusalem' });
+    assert.match(held.stdout[0] ?? '', /Held: app-lead is in the owner's daily meeting since Tue 01-08 12:00 IST\. /);
+  });
+
   it("lets the lead's own messages and messages to other sessions go", async () => {
     const kit = await teamInMeeting();
     assert.deepEqual((await kit.run(['hook', 'cold-send'], { stdin: send('lead', 'a note to self', LEAD_TAB) })).stdout, []);

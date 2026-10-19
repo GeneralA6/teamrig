@@ -959,7 +959,7 @@ Read 14 files, 38.2 MB this run.
 
 ### teamrig start
 
-Prints what you read at the start of a work block, in one call: the UTC time, your unread inbox lines (marked read,
+Prints what you read at the start of a work block, in one call: the time on the team's clock, your unread inbox lines (marked read,
 as `inbox read` does, which also ties this Claude Code session to your area), your task list, the `check` flags you
 act on and the week's use. Between the list and the flags, `WAITING ON YOU` lists the active tasks of other
 sessions that need one of your unfinished tasks or wait on your decision or approval (at most 5, then `+N more`),
@@ -981,7 +981,7 @@ teamrig start --session web
 Output:
 
 ```text
-START web, Thu 10-15 09:00 UTC
+START web, Thu 10-15 12:00 IDT
 - 2026-10-15 08:58 lead: api error codes are in docs/errors.md
 READ web: 1 new line, shown above; new ones are shown at your next prompt
 LIST 2 task(s) (short rows; --all for every field)
@@ -1029,7 +1029,7 @@ teamrig meeting start --session lead
 Output:
 
 ```text
-MEETING started Thu 10-15 08:00 UTC: told 2 session(s) by inbox line; messages to shop-lead are held but CRITICAL ones
+MEETING started Thu 10-15 11:00 IDT: told 2 session(s) by inbox line; messages to shop-lead are held but CRITICAL ones
 DECISIONS 1 waiting on owner (decision or approval)
   T7 waiting, p1, owner web | Pick the pricing tier (waiting: decision owner)
     what and why: Two tiers are built; the launch page needs one.
@@ -1043,7 +1043,7 @@ DECISIONS 1 waiting on owner (decision or approval)
   Record each answer in the same turn: teamrig update <id> --note "owner decided: <decision>" --session lead; meeting end tells each task's owner.
 LATE 1 past their due date
   T4 open, p2, owner api, due 10-14 | Retry the signup call
-DONE 2 done or dropped since Wed 10-14 08:30 UTC
+DONE 2 done or dropped since Wed 10-14 11:30 IDT
   T2 done, p1, owner api | Rate-limit the signup endpoint
   T3 done, p2, owner web | Add the error codes page
 - 2026-10-15 07:40 api: the signup retry needs the new error codes first
@@ -1071,7 +1071,7 @@ Example:
 teamrig meeting agenda --session lead
 ```
 
-Output: `MEETING none open, the last ended Wed 10-14 08:30 UTC; the agenda for the next (teamrig meeting start
+Output: `MEETING none open, the last ended Wed 10-14 11:30 IDT; the agenda for the next (teamrig meeting start
 opens it)`, then the agenda.
 
 ### teamrig meeting end
@@ -1094,7 +1094,7 @@ teamrig meeting end --session lead
 Output:
 
 ```text
-MEETING ended Thu 10-15 08:25 UTC after 25 min: told 2 session(s) messages to shop-lead may go again
+MEETING ended Thu 10-15 11:25 IDT after 25 min: told 2 session(s) messages to shop-lead may go again
 RECORDED 1 decision(s), each told to its task's owner
   web T7: owner decided: the middle tier ships first (changed priority)
 ```

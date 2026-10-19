@@ -1,5 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { TimeZone } from '../core/zone.ts';
+import { JERUSALEM } from '../testing/zone.ts';
 import { isCritical, quietHoldReason, type QuietFacts } from './quiet.ts';
 
 const FACTS: QuietFacts = {
@@ -10,6 +12,7 @@ const FACTS: QuietFacts = {
   leadName: 'team-lead',
   text: 'the build is green',
   command: 'teamrig',
+  zone: TimeZone.UTC,
 };
 
 describe('the meeting quiet window', () => {
@@ -18,6 +21,10 @@ describe('the meeting quiet window', () => {
     assert.equal(isCritical('  critical the site is down'), true);
     assert.equal(isCritical('not CRITICAL'), false);
     assert.equal(isCritical('CRITICALLY late'), false);
+  });
+
+  it("gives the meeting's start on the team's clock", () => {
+    assert.match(quietHoldReason({ ...FACTS, zone: JERUSALEM }) ?? '', /^Held: team-lead is in the owner's daily meeting since Tue 01-08 11:00 IST\. /);
   });
 
   it('holds a message to the lead during the meeting, naming the inbox line to leave instead', () => {

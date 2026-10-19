@@ -40,11 +40,3 @@ export function formatClockSpan(from: number, to: number, zone: TimeZone): strin
   const label = zone.label(new Date(from));
   return label === zone.label(new Date(to)) ? `${start.slice(0, -label.length - 1)}-${end}` : `${start}-${end}`;
 }
-
-const WEEKDAY_NAMES: readonly string[] = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-/** An instant as `Wed 10-21 01:00 UTC`. */
-export function formatWeekdayMinute(at: number): string {
-  const date = new Date(at);
-  return `${WEEKDAY_NAMES[date.getUTCDay()] ?? ''} ${date.toISOString().slice(5, 16).replace('T', ' ')} UTC`;
-}

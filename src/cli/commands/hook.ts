@@ -255,7 +255,7 @@ export async function coldSend(args: ParsedArgs, runtime: CliRuntime): Promise<E
   }
   const { config } = kit.load;
   const roster = await rosterOf(runtime, kit, config);
-  const hold = (await meetingHold(runtime, kit, roster, payload, claudeSession)) ?? (await coldSendHold(runtime, kit, config, roster, payload, claudeSession));
+  const hold = (await meetingHold(runtime, kit, config, roster, payload, claudeSession)) ?? (await coldSendHold(runtime, kit, config, roster, payload, claudeSession));
   if (hold !== undefined) {
     runtime.out.stdout(hold);
   }

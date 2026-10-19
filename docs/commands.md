@@ -48,7 +48,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       loads, missed uses (a call matching its "Signature: `<regex>`" line with no load before it), calls
       and errors per run, against a baseline (default: the last 7 UTC days, and the 7 before); each run
       reads only what the transcripts gained since the last one
-  start [--session <id|name>] [--all]   the start of a work block in one call: the UTC time, the
+  start [--session <id|name>] [--all]   the start of a work block in one call: the team's time, the
       unread inbox lines (marked read), the session's tasks, the other sessions' tasks waiting on it, the
       check flags it acts on (the lead: all) and the week's use; --all: the tasks and flags in full, and
       every task waiting on it
