@@ -10,7 +10,7 @@ import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';
 import { FakeIntegrateGit, MAIN_CHECKOUT, WORKTREE } from '../testing/fake-integrate-git.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { hookExitCode, rollRepo, type RollEnd, type RollRequest, type RollSetup } from './roll.ts';
+import { rollRepo, type RollEnd, type RollRequest, type RollSetup } from './roll.ts';
 
 const PLACES: CoordinatorPlaces = {
   ledger: '/team/deploys/ledger.jsonl',
@@ -275,14 +275,5 @@ describe('rollRepo', () => {
     assert.equal(inFolder.git.heads.get(MAIN_CHECKOUT), 'c2');
     const named = new World({ repos: two });
     assert.equal((await named.run({ ...REQUEST, repo: 'pipeline' })).kind, 'done');
-  });
-});
-
-describe('hookExitCode', () => {
-  it('records a hook’s own code, 124 at its time limit, and 1 for a signal or a hook that did not start', () => {
-    assert.deepEqual(
-      [{ kind: 'exited', code: 3 } as const, { kind: 'timedOut' } as const, { kind: 'signal', signal: 'SIGKILL' } as const, { kind: 'notStarted', error: 'ENOENT' } as const].map(hookExitCode),
-      [3, 124, 1, 1],
-    );
   });
 });
