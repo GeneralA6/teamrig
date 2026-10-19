@@ -2,6 +2,7 @@ import { DEFAULT_PACKAGE_GUARD } from "../config/defaults.js";
 import { isRecord, recordField, stringField } from "../core/guards.js";
 import { adHocCallsOf } from "../package-guard/ad-hoc.js";
 import { lostFlagsOf } from "../package-guard/lost-flags.js";
+import { holdBackOutput } from "./permission.js";
 /** What an ad-hoc package run gets. A missing or unreadable config keeps the default, so a broken config never switches the guard off. */
 export function adHocRunnersOf(load) {
     return load?.status === 'loaded' ? load.config.packageGuard.adHocRunners : DEFAULT_PACKAGE_GUARD.adHocRunners;
@@ -26,7 +27,8 @@ async function adHocVerdict(command, context, files, decision) {
 /**
  * The PreToolUse output for a Bash or PowerShell call: a refusal (or a question, as `packageGuard.adHocRunners`
  * says) when the line runs a package ad hoc, and a refusal whatever that key says when an npx call hands its bin's
- * flag to npm, as that line cannot run what it names; else nothing, so the normal permission flow decides.
+ * flag to npm, as that line cannot run what it names; else nothing, so the normal permission flow decides. Under
+ * `hookAsks: refuse` the question is a refusal instead, its reason saying what to do (see `holdBack`).
  */
 export async function packageGuardOutput(payload, env) {
     if (!isRecord(payload)) {
@@ -47,7 +49,5 @@ export async function packageGuardOutput(payload, env) {
     if (verdict === undefined) {
         return '';
     }
-    return JSON.stringify({
-        hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: verdict.decision, permissionDecisionReason: verdict.reason },
-    });
+    return holdBackOutput(verdict.decision, verdict.reason, env.hookAsks);
 }

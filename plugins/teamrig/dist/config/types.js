@@ -20,6 +20,10 @@ export const SKIP_HOOKS = ['deny', 'ask', 'allow'];
 export function isSkipHooks(value) {
     return SKIP_HOOKS.some((choice) => choice === value);
 }
+export const HOOK_ASKS = ['ask', 'refuse'];
+export function isHookAsks(value) {
+    return HOOK_ASKS.some((choice) => choice === value);
+}
 export const COMMIT_GATES = ['off', 'warn', 'refuse'];
 export function isCommitGate(value) {
     return COMMIT_GATES.some((gate) => gate === value);
