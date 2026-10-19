@@ -9,7 +9,8 @@ export const DEFAULT_BASE = 'origin/main';
 /**
  * Every check CI runs on a pull request, in the order the local gate runs them (fast ones first). The
  * coverage gate runs the whole test suite, so `npm test` is not repeated; `npm run build` is its two steps.
- * Unlike CI, it runs on one machine and one Node: a failure only another OS or Node shows goes unseen.
+ * Unlike CI, it runs on one machine and one Node: a failure only another OS or Node shows goes unseen. It also
+ * runs the plugin's own tests (its mod's engine specs) in the Claude Code installed here, which CI does not.
  */
 export function localChecks(base: string): readonly LocalCheck[] {
   const range = `${base}..HEAD`;
@@ -24,6 +25,8 @@ export function localChecks(base: string): readonly LocalCheck[] {
     { name: 'build: compile', argv: ['node', TSC, '-p', 'tsconfig.build.json'] },
     { name: 'dist matches the source', argv: ['node', 'tools/ci/dist-fresh-cli.ts'] },
     { name: 'dist smoke', argv: ['node', 'tools/ci/dist-smoke-cli.ts'] },
+    // After the build: the mod's hooks load the built dist. An empty home: no account, settings or other plugins.
+    { name: 'plugin tests', argv: ['claude', 'plugin', 'test', 'plugins/teamrig'], isolatedHome: true },
     { name: 'doc pictures', argv: ['node', 'tools/docs/images-cli.ts', '--check'] },
     { name: 'doc links', argv: ['node', 'tools/docs/doc-check-cli.ts'] },
   ];
