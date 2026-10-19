@@ -16,6 +16,7 @@ import { hostLockOf, logLineOf, type Say } from '../coordinator-ports.ts';
 import { commandWordsOf, sessionRef } from '../inputs.ts';
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
+import { stoppedWhileWaiting, unlessStopped, watchStarters } from '../stoppable.ts';
 import { envSession, markedSessionOf } from './hook-input.ts';
 
 const MINUTE_MS = 60_000;
@@ -151,30 +152,6 @@ interface Step {
 }
 
 /**
- * Watches the processes that started this one, so a step whose launching shell ends (Claude Code's reaper ends a Bash
- * tool's shell alone) neither takes the host lock nor runs on holding it; said when the system would not list them.
- */
-async function watchStarters(runtime: CliRuntime, say: Say): Promise<StarterWatching> {
-  const watching = await runtime.starters.watch();
-  if (watching.starters.length === 0) {
-    say('could not list the processes that started this one: the step runs on if its shell ends');
-  }
-  return watching;
-}
-
-/** What `taking` settles to; undefined when `stop` aborted first, since once the shell is gone no one reads why it ended. */
-async function unlessStopped<T>(stop: AbortSignal, taking: Promise<T>): Promise<T | undefined> {
-  try {
-    return await taking;
-  } catch (error) {
-    if (stop.aborted) {
-      return undefined;
-    }
-    throw error;
-  }
-}
-
-/**
  * `teamrig heavy --what <label> -- <command ...>`: runs one heavy step (a build, a test run, a database script)
  * under the host lock, so the host's heavy steps run one at a time. Refused from `coordinator.schedule.heavyCutoffUtc`
  * to midnight UTC, also when the wait for the lock ran past it, and when the lock is still held after
@@ -226,9 +203,7 @@ export async function heavy(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
       ),
     );
     if (taking === undefined) {
-      say(`its launching shell ended (${endedText(watching)}) while it waited: no one waits for it any more`);
-      runtime.out.stdout('STOPPED before the host lock was free: nothing ran');
-      return EXIT.failed;
+      return stoppedWhileWaiting(runtime, say, watching);
     }
     if (taking.kind === 'busy') {
       throw new RefusedError(busyText(taking, zone));

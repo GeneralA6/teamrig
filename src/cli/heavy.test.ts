@@ -4,25 +4,14 @@ import { join } from 'node:path';
 import { FIRST_IN_LINE_POLL_MS } from '../coordinator/host-lock.ts';
 import { APP, CliHarness, KIT, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
-import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { FakeStarterWatch, SHELL } from '../testing/fake-starter-watch.ts';
 import { FakeSteps } from '../testing/fake-steps.ts';
+import { heldBy, OTHER, otherRuns } from '../testing/held-lock.ts';
 
 const LEDGER = join(TEAM_HOME, 'state', 'deploys', 'ledger.jsonl');
 const LOCK = join(KIT, 'host.lock');
 const SHARED = `${LOCK}.shared`;
 const MINUTE = 60_000;
-const OTHER = 9001;
-
-/** A lock another step holds: taken at 09:50 by `OTHER`, lasting to `expiresAt`. */
-function heldBy(expiresAt: string = '2030-01-08T12:20:00.000Z'): string {
-  return JSON.stringify({ token: 'other', pid: OTHER, session: 'po', purpose: 'heavy: build', acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt });
-}
-
-/** `OTHER` runs, so its lock is live until it expires. */
-function otherRuns(): FakeSessionProcesses {
-  return new FakeSessionProcesses().add({ pid: OTHER, parentPid: 1, name: 'node', commandLine: 'node cli.ts heavy' });
-}
 
 function ledgerOf(kit: CliHarness, path: string = LEDGER): unknown[] {
   return (kit.files.get(path) ?? '')
@@ -232,7 +221,7 @@ describe('teamrig heavy', () => {
       code: 1,
       stdout: [
         '2030-01-08 10:00:00 UTC waiting for the host lock: po (heavy: build) since 2030-01-08 09:50 UTC',
-        '2030-01-08 10:00:30 UTC its launching shell ended (bash.exe 4100) while it waited: no one waits for it any more',
+        '2030-01-08 10:00:02 UTC its launching shell ended (bash.exe 4100) while it waited: no one waits for it any more',
         'STOPPED before the host lock was free: nothing ran',
       ],
       stderr: [],
