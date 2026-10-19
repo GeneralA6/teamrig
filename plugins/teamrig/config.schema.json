@@ -1024,6 +1024,20 @@
           "maximum": 600,
           "default": 15
         },
+        "holdAfterActivityMinutes": {
+          "description": "The plugin's mod holds the automatic /clear while the person typed in the tab's prompt (a key, a paste) or sent a prompt there this recently, and while the prompt holds a draft: a /clear never lands under the person. 0: only a draft holds it.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 60,
+          "default": 5
+        },
+        "countdownSeconds": {
+          "description": "Before the plugin's mod runs the automatic /clear, a band above the prompt counts down this many seconds, with Refresh now and Hold 10 min; a key in the prompt holds it too. 0: no band, the /clear runs at once.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 120,
+          "default": 20
+        },
         "compactCeilingTokens": {
           "description": "While a session's handover is asked for or written, the plugin's mod stops Claude Code's own compaction (trigger auto) of its main conversation as long as its context, as Claude Code estimates it, is under this many tokens: the /clear at the turn's end replaces it. Past it a compaction goes through; /compact and a subagent's own compaction are never stopped. 0: never stopped.",
           "type": "integer",

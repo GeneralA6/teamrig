@@ -694,6 +694,8 @@ describe('parseConfig', () => {
       tabTitle: false,
       autoRestart: false,
       restartDelaySeconds: 30,
+      holdAfterActivityMinutes: 0,
+      countdownSeconds: 0,
       compactCeilingTokens: 0,
       endCommand: ['node', 'end.cjs', 'end'],
       handoverDir: 'notes',
@@ -711,6 +713,8 @@ describe('parseConfig', () => {
         tabTitle: 1,
         autoRestart: 'on',
         restartDelaySeconds: 4,
+        holdAfterActivityMinutes: 61,
+        countdownSeconds: -1,
         compactCeilingTokens: -1,
         endCommand: 'node end.cjs',
         handoverDir: ' ',
@@ -720,15 +724,18 @@ describe('parseConfig', () => {
       'refresh.autoRestart',
       'refresh.compactCeilingTokens',
       'refresh.contextTokens',
+      'refresh.countdownSeconds',
       'refresh.enabled',
       'refresh.endCommand',
       'refresh.everyTasks',
       'refresh.everyTasksMinTokens',
       'refresh.handoverDir',
+      'refresh.holdAfterActivityMinutes',
       'refresh.restartDelaySeconds',
       'refresh.tabTitle',
     ]);
     assert.deepEqual(paths(parseConfig({ ...ROSTER, refresh: { restartDelaySeconds: 601 } }).issues), ['refresh.restartDelaySeconds']);
+    assert.deepEqual(paths(parseConfig({ ...ROSTER, refresh: { countdownSeconds: 121 } }).issues), ['refresh.countdownSeconds']);
     assert.deepEqual(paths(parseConfig({ ...ROSTER, refresh: { endCommand: ['node', ''] } }).issues), ['refresh.endCommand[1]']);
     assert.deepEqual(paths(parseConfig({ ...ROSTER, refresh: { everyTasks: -1 } }).issues), ['refresh.everyTasks']);
     assert.deepEqual(bad.config.refresh, DEFAULT_REFRESH);
