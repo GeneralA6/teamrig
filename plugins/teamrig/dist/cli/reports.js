@@ -20,8 +20,8 @@ export const MAX_WAITING_ROWS = 5;
 const SUMMARY_STATUSES = ['in-progress', 'verifying', 'waiting', 'open', 'done', 'dropped'];
 /**
  * A report narrowed to what one session acts on, for `start`: the flags of the tasks it owns, of the skills
- * it fixes (only a task's owner sets its status) and on itself as a hired session. The scope names the session,
- * so the CHECK line says whose flags these are.
+ * it fixes (only a task's owner sets its status), on itself as a hired session and a SCALE-OUT on its area. The
+ * scope names the session, so the CHECK line says whose flags these are.
  */
 export function ownCheck(report, owner) {
     return {

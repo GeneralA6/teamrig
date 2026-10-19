@@ -1,9 +1,10 @@
 import { formatAddress } from "../../core/address.js";
 import { JsonlDailyLog } from "../../core/daily-log.js";
 import { SecretScanner } from "../../core/secrets.js";
-import { burstsOver } from "../../budget/burst.js";
+import { burstsOver, surplusOf } from "../../budget/burst.js";
 import { hireFlags } from "../../hiring/due.js";
 import { activeHires, HiringLog } from "../../hiring/log.js";
+import { scaleOutFlags } from "../../hiring/scale-out.js";
 import { postLine } from "../../inbox/inbox.js";
 import { readSnapshots, weekUseOf } from "../../budget/snapshot.js";
 import { byFlagKind, checkTasks, currentWeekOf, peerWaitFlags } from "../../register/check.js";
@@ -448,7 +449,11 @@ export async function checkReport(args, runtime) {
     const { records } = await new HiringLog(runtime.files, own.paths.hires).read();
     const bursts = await readBursts(runtime, own.paths, own.config.budget, now.getTime());
     const over = burstsOver(bursts.records, now.getTime(), bursts.usedPct);
-    const hires = hireFlags({ hires: activeHires(records), tasks: own.snapshot.state.tasks.values(), config: own.config, burstsOver: over, now });
+    const { usedPct, window } = bursts;
+    const spare = usedPct === undefined || window === undefined ? undefined : surplusOf({ window, now: now.getTime(), usedPct, targetPct: own.config.budget.targetPct, config: own.config.burst });
+    const input = { hires: activeHires(records), tasks: [...own.snapshot.state.tasks.values()], config: own.config, burstsOver: over, now };
+    const scaleOut = scaleOutFlags({ ...input, tree: new TaskTree(own.snapshot.state.tasks, now), spare });
+    const hires = [...scaleOut.flags, ...hireFlags(input, scaleOut.busy)];
     const scope = week === null ? 'no week plan tagged yet, so the week checks are skipped' : `week ${week}`;
     return { sections, scope, skills, skillsDir: own.paths.skills, hires };
 }

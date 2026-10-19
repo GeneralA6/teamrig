@@ -132,17 +132,32 @@ export const DEFAULT_CLAIMS = { maxMinutes: 120 };
 /** A target measures cleanly 30 minutes after a deploy; a deploy the ledger knows only by its ledger.md line rolled for 20 minutes; a window under 15 minutes is left out. */
 export const DEFAULT_WINDOWS = { settleMinutes: 30, targetSettleMinutes: {}, assumedRollMinutes: 20, minMinutes: 15 };
 /**
- * A hire spends the week's budget, so it waits for the owner's yes: at most two hires at 1% of the week a day
- * each, 3% in all, reviewed after a week and due to retire after 4 hours with no open task. A rehire resumes its
- * last Claude Code session only when it holds at most 250k tokens of context and was idle at most a week.
- */
-/**
  * A burst spends more of the week, so the owner approves each one. A surplus burst may start from 48 hours before
  * the reset once at least 5% of the week is projected unused; each burst session runs at most 3 helpers at once,
  * and one burst hires at most 2 sessions, as many as `hiring.maxSessions` allows by default.
  */
 export const DEFAULT_BURST = { policy: 'owner', surplusHours: 48, minSparePct: 5, maxHelpers: 3, maxHires: 2 };
-export const DEFAULT_HIRING = { policy: 'owner', maxSessions: 2, dailyPct: 1, maxDailyPct: 3, idleHours: 4, reviewDays: 7, resumeMaxTokens: 250_000, resumeMaxIdleDays: 7 };
+/**
+ * An area's pace is the tasks it finished over the last week, counted once it finished at least 3; the dated
+ * tasks of the top two priorities are the work it must finish in time.
+ */
+export const DEFAULT_SCALE_OUT = { windowDays: 7, minDone: 3, topPriorities: 2 };
+/**
+ * A hire spends the week's budget, so it waits for the owner's yes: at most two hires at 1% of the week a day
+ * each, 3% in all, reviewed after a week and due to retire after 4 hours with no open task. A rehire resumes its
+ * last Claude Code session only when it holds at most 250k tokens of context and was idle at most a week.
+ */
+export const DEFAULT_HIRING = {
+    policy: 'owner',
+    maxSessions: 2,
+    dailyPct: 1,
+    maxDailyPct: 3,
+    idleHours: 4,
+    reviewDays: 7,
+    resumeMaxTokens: 250_000,
+    resumeMaxIdleDays: 7,
+    scaleOut: DEFAULT_SCALE_OUT,
+};
 /**
  * The lead's model and effort for each key its `launch` entry leaves unset: Opus (Claude Code's `opus`
  * alias, its newest Opus) at xhigh effort, since the lead plans, splits and judges the whole team's work.

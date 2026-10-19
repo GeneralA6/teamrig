@@ -4,7 +4,7 @@ import { NAME_PATTERN, NAME_RULE } from "../core/ids.js";
 import { FOLLOWUP_STATUSES, isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, SESSION_NAME, TASK_STATUSES } from "../register/model.js";
 import { PREFIX_PATTERN } from "../readonly-shell/rules.js";
 import { CORE_RULE_KEYS, isCoreRuleKey } from "../rules/keys.js";
-import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT_CONTEXT_FILES, DEFAULT_CLAIMS, DEFAULT_COORDINATOR_WAIT, DEFAULT_GATE_TIMEOUT_SECONDS, DEFAULT_GITHUB, DEFAULT_HEAVY, DEFAULT_HIRING, DEFAULT_LOCK, DEFAULT_LEAD_BOUNDARY, DEFAULT_LOOPS, DEFAULT_MESSAGES, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_PACKAGE_GUARD, DEFAULT_PUSH_GUARD, DEFAULT_READONLY_SHELL, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, DEFAULT_STATUS_LINE, DEFAULT_TESTS, DEFAULT_WAKE, DEFAULT_WINDOWS, HEAVY_TTL_MARGIN_MINUTES, } from "./defaults.js";
+import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT_CONTEXT_FILES, DEFAULT_CLAIMS, DEFAULT_COORDINATOR_WAIT, DEFAULT_GATE_TIMEOUT_SECONDS, DEFAULT_GITHUB, DEFAULT_HEAVY, DEFAULT_HIRING, DEFAULT_LOCK, DEFAULT_LEAD_BOUNDARY, DEFAULT_LOOPS, DEFAULT_MESSAGES, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_PACKAGE_GUARD, DEFAULT_PUSH_GUARD, DEFAULT_READONLY_SHELL, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SCALE_OUT, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, DEFAULT_STATUS_LINE, DEFAULT_TESTS, DEFAULT_WAKE, DEFAULT_WINDOWS, HEAVY_TTL_MARGIN_MINUTES, } from "./defaults.js";
 import { isEffort, isModel } from "./launch.js";
 import { CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from "./limits.js";
 import { ConfigReader, describe, isValidRegex, shortLine } from "./reader.js";
@@ -707,6 +707,17 @@ function parseHiring(read, raw) {
         reviewDays: read.integer(raw, 'reviewDays', path, defaults.reviewDays, CONFIG_LIMITS.hiringReviewDays),
         resumeMaxTokens: read.integer(raw, 'resumeMaxTokens', path, defaults.resumeMaxTokens, CONFIG_LIMITS.hiringResumeMaxTokens),
         resumeMaxIdleDays: read.integer(raw, 'resumeMaxIdleDays', path, defaults.resumeMaxIdleDays, CONFIG_LIMITS.hiringResumeMaxIdleDays),
+        scaleOut: parseScaleOut(read, read.section(raw, 'scaleOut', path)),
+    };
+}
+/** `hiring.scaleOut`: how `check` measures an area's pace against its dated work. */
+function parseScaleOut(read, raw) {
+    const path = 'hiring.scaleOut';
+    const defaults = DEFAULT_SCALE_OUT;
+    return {
+        windowDays: read.integer(raw, 'windowDays', path, defaults.windowDays, CONFIG_LIMITS.scaleOutWindowDays),
+        minDone: read.integer(raw, 'minDone', path, defaults.minDone, CONFIG_LIMITS.scaleOutMinDone),
+        topPriorities: read.integer(raw, 'topPriorities', path, defaults.topPriorities, CONFIG_LIMITS.scaleOutTopPriorities),
     };
 }
 /** `burst`: who starts one, its surplus trigger and its caps. */
