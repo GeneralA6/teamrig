@@ -143,6 +143,15 @@ describe('renderCorePack', () => {
     assert.match(pack({ protectedBranches: [], pushToProtected: 'allow' }), new RegExp(String.raw`^15\. No branch is protected, so the push guard stops no push \[pushGuard\.protectedBranches\]\.${routed}$`, 'm'));
   });
 
+  it('tells the session to record a push to a protected branch for the owner when hook asks are off', () => {
+    const pack = (pushGuard: Record<string, unknown>) => renderCorePack(testConfig({ pushGuard, prompts: { hookAsks: 'refuse' } }), COMMAND, 'win32');
+    assert.match(
+      pack({}),
+      /^15\. Pushes to main, master are refused, not asked \[prompts\.hookAsks\]: record the step as waiting approval:owner and take your next task; force-pushing or deleting them is refused \[pushGuard\]\. /m,
+    );
+    assert.match(pack({ pushToProtected: 'allow' }), /^15\. Pushes to main, master go through unasked;/m);
+  });
+
   it(`prints a branch or frontmatter list in full up to ${LIST_MAX_CHARS} characters, past it its first items and how many more`, () => {
     const pushTo = (protectedBranches: readonly string[]) =>
       renderCorePack(testConfig({ pushGuard: { protectedBranches: [...protectedBranches] } }), COMMAND, 'win32');
