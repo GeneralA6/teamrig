@@ -57,7 +57,9 @@ describe('nodeStepRunner', () => {
   });
 
   after(async () => {
-    await rm(dir, { recursive: true, force: true });
+    // Windows frees an ended step's hold on its folder (its working directory) a moment after the
+    // process ends, so under load the first rmdir can meet EBUSY; rm retries those.
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   });
 
   it('runs the command line in the shell and returns its exit code', async () => {
