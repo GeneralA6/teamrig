@@ -58,6 +58,16 @@ describe('programsOf', () => {
     );
   });
 
+  it('marks what a teamrig runner starts, at any depth, and nothing after it on the line', () => {
+    const marked = (command: string): string[] =>
+      programsOf(command, { cwd: APP, home: HOME, dialect: 'bash' }).map((run) => `${run.name}${run.runner ? ' runner' : ''}`);
+    assert.deepEqual(marked('npm test'), ['npm']);
+    assert.deepEqual(marked('teamrig heavy --what x -- npm test && npm run build'), ['npm runner', 'npm']);
+    assert.deepEqual(marked('teamrig heavy --what x -- "tsc && bash -c \'node --test\'"'), ['tsc runner', 'node runner']);
+    assert.deepEqual(marked('teamrig test -- teamrig heavy --what x -- npx jest'), ['npx runner']);
+    assert.deepEqual(marked('teamrig start --session a; teamrig heavy --what x'), ['teamrig', 'teamrig']);
+  });
+
   it('runs the command teamrig heavy and teamrig test start after their --', () => {
     assert.deepEqual(runs('teamrig heavy --session a --what "x y" -- npx tsc -p .'), [`npx tsc -p . @ ${APP}`]);
     assert.deepEqual(runs('teamrig test -- teamrig heavy --what x -- npx jest'), [`npx jest @ ${APP}`]);

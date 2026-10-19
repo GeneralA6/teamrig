@@ -21,6 +21,8 @@ export interface ProgramRun {
   readonly redirections: readonly Redirection[];
   /** True when the command that starts it reads the output of the command before it through a pipe. */
   readonly piped: boolean;
+  /** True when `teamrig heavy` or `teamrig test` starts it, at any depth, so it runs under the host lock. */
+  readonly runner: boolean;
 }
 
 export interface ProgramsContext {
@@ -38,12 +40,15 @@ const PIPE_END = /(?:^|[^|])\|&?\n*$/;
 /** The programs `command` starts, in the order it starts them. */
 export function programsOf(command: string, context: ProgramsContext): ProgramRun[] {
   const runs: ProgramRun[] = [];
-  visitScript(staticWord(command), context.dialect, new Location(context.cwd, context.home), 0, runs);
+  visitScript(staticWord(command), context.dialect, new Location(context.cwd, context.home), 0, false, runs);
   return runs;
 }
 
-/** Visits each command of a script; a plain `cat` hands its stdin down a pipe, so `cat <<EOF | bash` runs the body. */
-function visitScript(script: ShellWord, dialect: ShellDialect, location: Location, depth: number, runs: ProgramRun[]): void {
+/**
+ * Visits each command of a script; a plain `cat` hands its stdin down a pipe, so `cat <<EOF | bash` runs the body.
+ * `runner` is true when a teamrig runner started the script.
+ */
+function visitScript(script: ShellWord, dialect: ShellDialect, location: Location, depth: number, runner: boolean, runs: ProgramRun[]): void {
   if (depth > MAX_SCRIPT_DEPTH) {
     return;
   }
@@ -61,7 +66,7 @@ function visitScript(script: ShellWord, dialect: ShellDialect, location: Locatio
       piped = undefined;
     }
     location.enter(command.subshells);
-    const launched = visitCommand(command, fromPipe, dialect, location, depth, stdin, runs);
+    const launched = visitCommand(command, fromPipe, dialect, location, depth, stdin, runner, runs);
     if (stdin !== undefined) {
       piped = launched !== undefined && stdinUse(command, launched) === 'passed' ? { body: stdin, nesting: command.nesting } : undefined;
     }
@@ -76,6 +81,7 @@ function visitCommand(
   location: Location,
   depth: number,
   stdin: ShellWord | undefined,
+  runner: boolean,
   runs: ProgramRun[],
 ): Launch | undefined {
   if (location.apply(command.words, dialect)) {
@@ -85,14 +91,14 @@ function visitCommand(
   if (launched.kind === 'script') {
     const inner = location.child();
     launched.chdirs.forEach((chdir) => inner.moveTo(chdir));
-    visitScript(launched.script, launched.dialect, inner, depth + 1, runs);
+    visitScript(launched.script, launched.dialect, inner, depth + 1, runner || launched.runner, runs);
     if (launched.sameShell) {
       location.adopt(inner);
     }
   } else if (launched.kind === 'program' && !launched.program.dynamic) {
     const inner = location.child();
     launched.chdirs.forEach((chdir) => inner.moveTo(chdir));
-    runs.push({ name: programName(launched.program.text), args: launched.args, dir: inner.dir, redirections: command.redirections, piped: fromPipe });
+    runs.push({ name: programName(launched.program.text), args: launched.args, dir: inner.dir, redirections: command.redirections, piped: fromPipe, runner: runner || launched.runner });
   }
   return launched;
 }
