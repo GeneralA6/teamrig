@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
-import { findGitInvocations, shellVariables, type ConfigValue, type GitConfigReader, type GitInvocations } from './invocations.ts';
+import { configWrite, findGitInvocations, shellVariables, type ConfigValue, type GitConfigReader, type GitInvocations } from './invocations.ts';
 import { parseShell, type ShellDialect, type ShellWord } from './tokenizer.ts';
 
 /** A resolved start folder, as the hook gives one. */
@@ -284,5 +284,51 @@ describe('shellVariables', () => {
   it("reads cmd's set", () => {
     assert.deepEqual(variables('set X=1', 'cmd'), ['X']);
     assert.deepEqual(variables('echo X=1', 'cmd'), []);
+  });
+});
+
+describe('configWrite', () => {
+  /** What `git config <args>` writes, as `set key value`, `unset key` or `none`. */
+  const write = (line: string): string => {
+    const found = configWrite(parseShell(line, 'bash').commands[0]?.words.slice(2) ?? []);
+    if (found === undefined) {
+      return 'none';
+    }
+    return found.kind === 'set' ? `set ${show(found.key)} ${show(found.value)}` : `unset ${show(found.key)}`;
+  };
+
+  it('reads a set or an unset in either form, past the options and their values', () => {
+    const rows: readonly (readonly [string, string])[] = [
+      ['git config alias.q status', 'set alias.q status'],
+      ['git config --global -f x --type=bool core.hooksPath /dev/null', 'set core.hooksPath /dev/null'],
+      ['git config --file=x alias.q push', 'set alias.q push'],
+      ["git config set --global alias.q 'push origin'", 'set alias.q push origin'],
+      ['git config "$K" v', 'set ~$K v'],
+      ['git config --unset core.hooksPath', 'unset core.hooksPath'],
+      ['git config --unset-all alias.q x', 'unset alias.q'],
+      ['git config unset --global core.hooksPath', 'unset core.hooksPath'],
+    ];
+    for (const [line, expected] of rows) {
+      assert.equal(write(line), expected, line);
+    }
+  });
+
+  it('reads none for a read, an edit, a section change or a line with no key or value', () => {
+    for (const line of ['git config --get alias.q', 'git config get alias.q', 'git config --list', 'git config list', 'git config edit', 'git config --rename-section a b', 'git config alias.q', 'git config', 'git config unset']) {
+      assert.equal(write(line), 'none', line);
+    }
+  });
+});
+
+describe('findGitInvocations: hooks overrides', () => {
+  const overrides = (command: string): (string | undefined)[] => find(command).invocations.map((found) => found.hooksOverride);
+
+  it('records what may turn the hooks off on every git run it reaches, hooked or not, and nothing on a plain one', () => {
+    assert.deepEqual(overrides('HUSKY=0 git status'), ['HUSKY=0']);
+    assert.deepEqual(overrides('git -c core.hooksPath=x status && git status'), ['-c core.hooksPath=x', undefined]);
+    assert.deepEqual(overrides('git --config-env=core.hooksPath=H status'), ['--config-env core.hooksPath=H']);
+    assert.deepEqual(overrides('export HUSKY_SKIP_HOOKS=1; git status; git log'), ['HUSKY_SKIP_HOOKS set in its shell', 'HUSKY_SKIP_HOOKS set in its shell']);
+    assert.deepEqual(overrides('HUSKY=0 git sp'), ['HUSKY=0'], 'a shell alias stands for the git it runs, which keeps the override');
+    assert.deepEqual(overrides('HUSKY=1 git status; git -c user.name=x status'), [undefined, undefined]);
   });
 });
