@@ -145,6 +145,8 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   heavyMaxRunMinutes: 'coordinator.heavy.maxRunMinutes',
   heavyWaitMinutes: 'coordinator.heavy.waitMinutes',
   heavyMemorySampleSeconds: 'coordinator.heavy.memorySampleSeconds',
+  heavyMemoryFloorMb: 'coordinator.heavy.memoryFloorMb',
+  heavySmallReserveMb: 'coordinator.heavy.smallReserveMb',
   coordinatorPollSeconds: 'coordinator.wait.pollSeconds',
   coordinatorWaitMaxMinutes: 'coordinator.wait.maxMinutes',
   gateTimeoutSeconds: 'coordinator.gateTimeoutSeconds',
