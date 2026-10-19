@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
+import type { Burst } from '../budget/burst.ts';
+import { BurstLog } from '../budget/burst-log.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { EXIT } from './runtime.ts';
 import { APP, CliHarness, EVENTS_PATH, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
@@ -145,6 +147,99 @@ describe('hook wake-check', () => {
     const kit = await teamWithAlphaTab();
     assert.deepEqual(answerOf(await kit.run(['hook', 'wake-check'], { stdin: payload({}, OTHER_TAB) })), off('this tab is not a team session'));
     assert.deepEqual(answerOf(await kit.run(['hook', 'wake-check'], { stdin: '{}' })), off('no session id'));
+  });
+});
+
+describe('hook wake-check at the day start and a burst', () => {
+  const DAY = 24 * 60 * MINUTE;
+  const DAY_START = { ...TEAM, wake: { dayStartUtc: '06:00' } };
+  const BURSTS = join(TEAM_HOME, 'state', 'usage', 'bursts.jsonl');
+  const ALPHA_TRANSCRIPT = join(USER_HOME, '.claude', 'projects', 'work-app', `${ALPHA_TAB}.jsonl`);
+  /** The harness's clock starts at 2030-01-08 10:00 UTC, so today's 06:00 has passed: the next day start is tomorrow's. */
+  const TOMORROW_SIX = Date.parse('2030-01-09T06:00:00.000Z');
+  const waitTill = (recheckAt: number | null) => ({ kind: 'wait', watch: EVENTS_PATH, recheckAt });
+
+  function turnAt(at: number): MemoryTranscripts {
+    const transcripts = new MemoryTranscripts();
+    transcripts.set(ALPHA_TRANSCRIPT, '{}\n', at);
+    return transcripts;
+  }
+
+  function startBurst(kit: CliHarness, sessions: readonly string[]): Promise<void> {
+    const at = kit.clock.now();
+    const burst: Burst = { kind: 'surplus', sessions, helpers: 2, hires: 0, dailyPct: 2.5, stopPct: 99.5, endsAt: at + DAY, tasks: [], reason: 'surplus', by: 'lead', at };
+    return new BurstLog(kit.files, BURSTS).append(burst);
+  }
+
+  it('wakes an idle session once at the day start for work of any priority, never again that day in any tab, and again the next day', async () => {
+    const kit = await teamWithAlphaTab(DAY_START);
+    await hand(kit, 'Tidy the docs', 'p3');
+    assert.deepEqual(answerOf(await check(kit)), {
+      kind: 'wake',
+      ids: ['T1'],
+      text:
+        'The day started at 06:00 UTC and this tab has had no turn since. Work you can start: T1 "Tidy the docs" (p3). ' +
+        'Start a work block (`teamrig start --session alpha`) and work your list in priority order. This wake costs about 210k W, cold.',
+      toast: 'teamrig woke this tab for the day start: T1 (about 210k W, cold)',
+    });
+    assert.deepEqual(await logLines(kit), [
+      { v: 1, at: new Date(kit.clock.now()).toISOString(), kind: 'wake', session: 'alpha', tab: ALPHA_TAB, ids: ['T1'], w: 210_000, cold: true, moments: ['day-start'] },
+    ]);
+    kit.clock.advance(60 * MINUTE);
+    assert.deepEqual(answerOf(await check(kit)), waitTill(TOMORROW_SIX), 'never twice a day');
+    await kit.run(['inbox', 'read', '--session', 'alpha'], { env: { CLAUDE_CODE_SESSION_ID: OTHER_TAB } });
+    const otherCheck = () => kit.run(['hook', 'wake-check'], { stdin: payload({}, OTHER_TAB) });
+    assert.deepEqual(answerOf(await otherCheck()), waitTill(TOMORROW_SIX), 'nor in a new tab of the session');
+    kit.clock.advance(TOMORROW_SIX - kit.clock.now());
+    assert.match((await otherCheck()).stdout[0] ?? '', /"toast":"teamrig woke this tab for the day start: T1 \(about 210k W, cold\)"/);
+  });
+
+  it('settles the day start with no wake for a tab that had a turn after it', async () => {
+    const kit = await teamWithAlphaTab(DAY_START);
+    await hand(kit, 'Ship the page', 'p2');
+    assert.deepEqual(answerOf(await check(kit, turnAt(kit.clock.now() - 60 * MINUTE))), waitTill(TOMORROW_SIX));
+    assert.deepEqual(answerOf(await check(kit)), waitTill(TOMORROW_SIX), 'settled for the day');
+    assert.deepEqual(await logLines(kit), []);
+  });
+
+  it('keeps the day start due while the session has no work it can start, and wakes it once it has some', async () => {
+    const kit = await teamWithAlphaTab(DAY_START);
+    assert.deepEqual(answerOf(await check(kit)), waitTill(TOMORROW_SIX));
+    await hand(kit, 'Ship the page', 'p2');
+    assert.match((await check(kit)).stdout[0] ?? '', /"toast":"teamrig woke this tab for the day start: T1 /);
+  });
+
+  it('keeps the day start due through quiet hours and wakes once they end', async () => {
+    const budget = { enabled: true, overAction: 'ask', quietHours: { startUtc: '09:30', endUtc: '11:00', action: 'ask' } };
+    const kit = await teamWithAlphaTab({ ...TEAM, wake: { dayStartUtc: '09:00' }, budget });
+    await hand(kit, 'Ship the page', 'p2');
+    assert.deepEqual(answerOf(await check(kit)), waitTill(Date.parse('2030-01-09T09:00:00.000Z')));
+    kit.clock.advance(60 * MINUTE);
+    assert.match((await check(kit)).stdout[0] ?? '', /"toast":"teamrig woke this tab for the day start: T1 /);
+  });
+
+  it('wakes a session in a burst once the burst starts, and not one outside it', async () => {
+    const kit = await teamWithAlphaTab(DAY_START);
+    await hand(kit, 'Ship the page', 'p2');
+    const turned = turnAt(kit.clock.now() - 60 * MINUTE);
+    assert.deepEqual(answerOf(await check(kit, turned)), waitTill(TOMORROW_SIX));
+    await startBurst(kit, ['bravo']);
+    assert.deepEqual(answerOf(await check(kit, turned)), waitTill(TOMORROW_SIX));
+    kit.clock.advance(MINUTE);
+    await startBurst(kit, ['alpha', 'bravo']);
+    const woke = (await check(kit, turned)).stdout[0] ?? '';
+    assert.match(woke, /"text":"The lead started a surplus burst until .*: app-alpha's daily budget is at least 2\.5%, up to 2 helpers at once\. Work you can start: T1/);
+    assert.match(woke, /"toast":"teamrig woke this tab for the burst: T1 \(about 210k W, cold\)"/);
+    kit.clock.advance(60 * MINUTE);
+    assert.deepEqual(answerOf(await check(kit)), waitTill(TOMORROW_SIX), 'once per burst');
+  });
+
+  it('lets a wake for handed work go first, then waits out the gap before the day start', async () => {
+    const kit = await teamWithAlphaTab({ ...TEAM, wake: { dayStartUtc: '06:00', batchSeconds: 0 } });
+    await check(kit);
+    await hand(kit, 'Fix the outage', 'p1');
+    assert.match((await check(kit)).stdout[0] ?? '', /"text":"New work was handed to you while this tab was idle: T1/);
+    assert.deepEqual(answerOf(await check(kit)), waitTill(kit.clock.now() + 15 * MINUTE));
   });
 });
 
