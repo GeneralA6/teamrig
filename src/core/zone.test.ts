@@ -20,6 +20,15 @@ describe('TimeZone.of', () => {
   });
 });
 
+describe('TimeZone.resolve', () => {
+  it("takes the configured zone, else the machine's, else UTC", () => {
+    assert.deepEqual(
+      [TimeZone.resolve('Asia/Tokyo', 'Asia/Jerusalem'), TimeZone.resolve(undefined, 'Asia/Jerusalem'), TimeZone.resolve('Mars/Olympus', 'Asia/Jerusalem'), TimeZone.resolve(undefined, 'Mars/Olympus')].map((found) => found.name),
+      ['Asia/Tokyo', 'Asia/Jerusalem', 'Asia/Jerusalem', 'UTC'],
+    );
+  });
+});
+
 describe('label', () => {
   it("takes the zone's short name, and the initials of its long name where the short one is only an offset", () => {
     const cases: readonly (readonly [string, string, string])[] = [

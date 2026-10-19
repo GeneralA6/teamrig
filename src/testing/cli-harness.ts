@@ -67,6 +67,8 @@ export interface RunOptions {
   readonly commitLog?: CommitLog;
   /** The operating system the CLI sees; default Linux. */
   readonly platform?: NodeJS.Platform;
+  /** The machine's time zone; default UTC. */
+  readonly timeZone?: string;
   /** The programs the CLI starts; default none is installed. */
   readonly processes?: Processes;
   /** The running session's processes; default none runs. */
@@ -126,6 +128,7 @@ export class CliHarness {
       pid: 4242,
       files: options.files ?? this.files,
       clock: this.clock,
+      timeZone: options.timeZone ?? 'UTC',
       sleep: options.sleep ?? this.clock.sleep,
       ...quietWorld(options.branch, options.stdin),
       ...(options.git === undefined ? {} : { git: options.git }),

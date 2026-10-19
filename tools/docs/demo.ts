@@ -66,6 +66,7 @@ export async function runDemo(steps: readonly DemoStep[], config: JsonRecord = D
       pid: 1,
       files,
       clock,
+      timeZone: 'UTC',
       sleep: clock.sleep,
       ...quietWorld('main'),
       out: { stdout: (line) => out.push(line), stderr: (line) => out.push(line) },

@@ -744,6 +744,11 @@ export interface KitConfig {
   /** Unset in a config written before team trees: the team is then the root of its own tree. */
   readonly team?: TeamLink;
   /**
+   * The IANA time zone, such as `Asia/Jerusalem`, the kit shows people every time in (zone-marked: `09:00 IDT`)
+   * and reads the times they type in; unset, the machine's own. Stored times stay UTC.
+   */
+  readonly timeZone?: string;
+  /**
    * Every session id on the team, the lead included. Ids key every file and record (inboxes, read
    * marks, task owners), so they never change; a rename only appends to the team's rename log.
    */

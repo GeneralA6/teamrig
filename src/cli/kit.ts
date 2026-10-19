@@ -10,6 +10,7 @@ import { ENV, KIT_NAME, resolveKitHome, teamPaths, type Env, type PathOverrides,
 import { ID_PATTERN } from '../core/ids.ts';
 import { FileLock } from '../core/lock.ts';
 import { resolveTeam, TEAM_POINTER } from '../core/team.ts';
+import { TimeZone } from '../core/zone.ts';
 import { JsonlRenameLog } from '../names/log.ts';
 import type { RenameDeps } from '../names/record.ts';
 import { RefusedError, type CliRuntime } from './runtime.ts';
@@ -145,6 +146,11 @@ export function checkedNextConfig(json: JsonRecord): KitConfig {
     throw new RefusedError(`nothing written: ${issueText(problem)}`);
   }
   return next.config;
+}
+
+/** The zone the team's people read and type times in: the config's `timeZone`, else the machine's. */
+export function teamZone(config: Pick<KitConfig, 'timeZone'>, runtime: Pick<CliRuntime, 'timeZone'>): TimeZone {
+  return TimeZone.resolve(config.timeZone, runtime.timeZone);
 }
 
 /**

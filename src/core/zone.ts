@@ -69,6 +69,11 @@ export class TimeZone {
     }
   }
 
+  /** The team's zone: the config's `timeZone`, else the machine's; UTC should the system know neither. */
+  static resolve(configured: string | undefined, machine: string): TimeZone {
+    return TimeZone.of(configured ?? machine) ?? TimeZone.of(machine) ?? TimeZone.UTC;
+  }
+
   /**
    * The zone's short name at an instant: `IDT`, `CEST`, `UTC`. Where the system names it only by its offset
    * (`GMT+3`), the initials of its long name ("Israel Daylight Time": `IDT`), else that offset.

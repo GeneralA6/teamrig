@@ -155,6 +155,13 @@ describe('parseConfig', () => {
     assert.deepEqual(config.wake, DEFAULT_WAKE);
   });
 
+  it('reads timeZone, leaves it unset by default, and refuses a name the system does not know', () => {
+    assert.equal(parseConfig({ ...ROSTER, timeZone: 'Asia/Jerusalem' }).config.timeZone, 'Asia/Jerusalem');
+    assert.equal('timeZone' in parseConfig(ROSTER).config, false);
+    const unknown = parseConfig({ ...ROSTER, timeZone: 'IDT' });
+    assert.deepEqual([paths(unknown.issues), 'timeZone' in unknown.config], [['timeZone'], false]);
+  });
+
   it('reads wake.dayStartUtc, and refuses a malformed one or one in the quiet hours', () => {
     const quietHours = { startUtc: '22:00', endUtc: '06:00', action: 'ask' };
     const budget = { enabled: true, quietHours };
