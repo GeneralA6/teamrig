@@ -2,7 +2,9 @@ import { join } from 'node:path';
 import { isRecord, type JsonRecord } from '../../core/guards.ts';
 import { claudeConfigDir } from '../../core/home.ts';
 import { readonlyRulesOf, readonlyShellOutput } from '../../hooks/readonly-shell.ts';
+import { secretFindingsOf } from '../../hooks/secret-guard.ts';
 import { newestSnapshotExports } from '../../readonly-shell/snapshot.ts';
+import { secretRulesOf } from '../../secret-guard/rules.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { openKit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
@@ -20,13 +22,14 @@ async function readonlyAllowOutputOf(runtime: CliRuntime, payload: JsonRecord): 
     return '';
   }
   const snapshot = await newestSnapshotExports(runtime.files, join(claudeConfigDir(runtime.env, runtime.userHome), 'shell-snapshots'));
-  return readonlyShellOutput(payload, readonlyRulesOf(kit.load.config.readonlyShell, runtime.env, snapshot));
+  const secrets = secretRulesOf(kit.load.config.secretGuard, runtime.userHome, runtime.platform);
+  return readonlyShellOutput(payload, readonlyRulesOf(kit.load.config.readonlyShell, runtime.env, snapshot), (call) => secretFindingsOf(call, runtime.cwd, secrets).length > 0);
 }
 
 /**
  * PreToolUse on Bash and PowerShell: with `readonlyShell.enabled`, lets a line whose every command provably only
  * reads (hooks/readonly-shell.ts) run without a permission prompt. Outside a team, with the hook off, for a line it
- * cannot prove reads, for input that is not a hook payload or on any error, it prints nothing, so Claude Code's own
+ * cannot prove reads or one that prints a secret (hooks/secret-guard.ts), for input that is not a hook payload or on any error, it prints nothing, so Claude Code's own
  * permission check decides: it fails closed.
  */
 export async function readonlyAllow(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
