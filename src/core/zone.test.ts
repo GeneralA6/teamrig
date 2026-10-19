@@ -62,6 +62,15 @@ describe('formats', () => {
     assert.equal(NEW_YORK.minute(late), '2026-10-19 18:30 EDT');
   });
 
+  it('names the offset from UTC, with its minutes only where it has some', () => {
+    const winter = new Date('2030-01-08T10:00:00.000Z');
+    const summer = new Date('2030-07-08T10:00:00.000Z');
+    assert.deepEqual(
+      [TimeZone.UTC.utcOffset(winter), JERUSALEM.utcOffset(winter), NEW_YORK.utcOffset(winter), NEW_YORK.utcOffset(summer), zone('Asia/Kathmandu').utcOffset(winter), zone('Pacific/Marquesas').utcOffset(winter)],
+      ['UTC+0', 'UTC+2', 'UTC-5', 'UTC-4', 'UTC+5:45', 'UTC-9:30'],
+    );
+  });
+
   it('stamps a log line to the second', () => {
     const at = new Date('2030-01-08T10:00:05.250Z');
     assert.equal(TimeZone.UTC.second(at), '2030-01-08 10:00:05 UTC');

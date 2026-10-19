@@ -92,6 +92,18 @@ function statusDemands(config: KitConfig, command: string): string {
   return `only the owning session sets its status (\`${command} set\`)${demands.length === 0 ? '' : `, with ${demands.join(', ')}`}.`;
 }
 
+/**
+ * Rule 3's times: on the team's clock, zone-marked. Off UTC it adds the zone's offset now, so a session converts
+ * from UTC without a lookup, and keeps UTC for where UTC is the subject.
+ */
+function timesClause(zone: TimeZone, now: Date): string {
+  const label = zone.label(now);
+  if (label === 'UTC') {
+    return " Write times on the team's clock, zone-marked (`04:00 UTC`) [timeZone].";
+  }
+  return ` Write times on the team's clock, zone-marked (\`04:00 ${label}\`, ${zone.utcOffset(now)} now); UTC only when UTC is the subject [timeZone].`;
+}
+
 /** When the rules are read, and the machine's zone that a team without `timeZone` reads them in. */
 export interface RulesClock {
   readonly now: Date;
@@ -114,24 +126,25 @@ export function renderCorePack(config: KitConfig, command: string, platform: Nod
       (roles.coordinatorOwner === undefined ? '' : ` ${roles.coordinatorOwner} owns deploy coordination and fleet health [roles.coordinatorOwner].`) +
       ' Every other session owns its area.',
     'own-change':
-      "Own your change end to end: only the session that made a change integrates it, deploys it when it must run, verifies that it runs, and fixes or rolls it back. Never integrate, verify or fix another session's change: hand it to its owner.",
+      "Own your change end to end: only the session that made it integrates, deploys (when it must run), verifies and fixes or rolls it back; another session's change goes to its owner.",
     messages:
       'A message wakes its receiver, so send one only for a result it acts on now, a decision, a blocker, a same-area conflict or an incident.' +
       ` At most ${config.messages.maxLines} lines [messages.maxLines]: what happened, evidence (numbers, ids, paths), the exact ask and deadline, your default, then "No reply needed" or "Reply needed: <one question>".` +
-      ` No acks, thanks or progress pings. Anything else, a "done" report too, is one inbox line per receiver: \`${command} inbox add --to <area> --text "..."\`.`,
+      ` No acks, thanks or progress pings. Anything else, a "done" report too, is one inbox line per receiver: \`${command} inbox add --to <area> --text "..."\`.` +
+      timesClause(zone, clock.now),
     register:
       `Status is pulled from the register, never asked. Start each work block with \`${command} start --session <you>\`.` +
       ` Every ask that creates work is a register entry, added in the same turn by the asker (\`${command} add --owner <session>\` tells the owner), else by the receiver, with ${descriptionDemand(config)}; ${statusDemands(config, command)}` +
-      " Wait on a peer's work by its task." +
+      ' Wait on a peer by its task.' +
       ` A shipped change is verifying until its proof exists (\`${command} verify\`).`,
     'task-order':
       `Work your own task list in priority order (\`${command} list --session <you>\`); self-made work is a task too, recorded with \`${command} add\` before you start it,` +
       ' and started only for a goal, a parent task or the week plan, never ahead of your top task that is not waiting (one-commit fixes exempt).' +
       " A loop, cron or scheduled wake-up needs the lead's OK and a written stop. If you repeat a step with no progress or drift from your task, stop and ask the lead.",
     'owner-gates':
-      `Silence is consent only within the sender's own authority, never for owner-gated decisions: ${list(config.ownerGates)} [ownerGates].`,
+      `Silence is consent only within the sender's authority, never for owner gates: ${list(config.ownerGates)} [ownerGates].`,
     deploy:
-      'Deploy ASAP means the earliest moment a change can be verified (tests, then a check that it runs). State each fix\'s evidence and when it will exist; build nothing on a fix before then.' +
+      "Deploy ASAP: as soon as a change can be verified (tests, then a check it runs). State each fix's evidence and when it will exist; build nothing on it before then." +
       (cutoff === undefined ? '' : ` No heavy step (builds, test runs, data scripts) starts ${zone.clockSpan(new Date(cutoff.from), new Date(cutoff.to))} [coordinator.schedule.heavyCutoffUtc].`),
     'lean-calls':
       'Lean calls: every tool call re-reads the whole context, so batch related shell steps into one call.' +
@@ -151,13 +164,13 @@ export function renderCorePack(config: KitConfig, command: string, platform: Nod
       "A hand-run change or delete of stored data needs the owner's OK after counts or a preview. Code that writes data ships a read-only dry run (inserted, unchanged, changed counts)." +
       ' Deleting derived data needs a verified regenerate tool and a parity run first. Never print secret values; bind local services to 127.0.0.1, never 0.0.0.0.',
     contracts:
-      `Tell the other side before changing a contract it reads (an API parameter, a shared table or file). The same external failure for ${config.alerts.persistentFailureHours} h must page a human [alerts.persistentFailureHours].`,
+      `Tell the other side before changing a contract it reads (an API parameter, shared table or file). The same external failure for ${config.alerts.persistentFailureHours} h must page a human [alerts.persistentFailureHours].`,
     skills:
       `A procedure you had to investigate and will run again becomes a skill in the same turn: \`<area>-<name>/SKILL.md\`, shared ones \`${skills.sharedPrefix}-<name>\` [skills.sharedPrefix].` +
       ` Its description has at most ${skills.maxDescriptionWords} words [skills.maxDescriptionWords]; its body has \`Owner:\` and \`Last verified:\` lines, re-verified every ${skills.maxVerifiedAgeDays} days [skills.maxVerifiedAgeDays];` +
       ` at most ${skills.maxPerArea} per area [skills.maxPerArea]` +
       (skills.forbidFrontmatter.length === 0 ? '' : `; never ${shortList(skills.forbidFrontmatter)} [skills.forbidFrontmatter]`) +
-      '. Memory holds facts, skills hold how-tos, CLAUDE.md holds every-turn rules.',
+      '. Memory holds facts, skills how-tos, CLAUDE.md every-turn rules.',
     commits:
       'One logical change per commit (a fix with its tests, a refactor apart from what it enables, a mechanical change alone), committed as each step passes.' +
       ` Over ${config.commits.maxLines} changed non-test lines or ${config.commits.maxFiles} non-test files [commits.maxLines, commits.maxFiles], a commit needs a \`${config.commits.largeCommitTrailer}: <reason>\` line [commits.largeCommitTrailer]` +
@@ -167,7 +180,7 @@ export function renderCorePack(config: KitConfig, command: string, platform: Nod
     worktrees:
       'Edit in your own worktree and branch in every git repo, never a main checkout.' +
       (platform === 'win32' ? ` Remove a worktree with \`${command} worktree remove <path>\`; a plain \`git worktree remove\` empties the main node_modules.` : '') +
-      " Update comments in their code's commit, verify a load-bearing one before acting on it, and fix a stale comment, doc or dead code you find in its own small commit.",
+      ' Update comments with their code, verify a load-bearing one before acting on it, and fix a stale comment, doc or dead code you find in its own commit.',
   };
   const kept = renderKeptRules(config.ruleConflicts, command);
   const except = kept === '' ? '' : ', except the kept local rules below [ruleConflicts]';
