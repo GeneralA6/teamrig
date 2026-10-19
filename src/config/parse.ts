@@ -23,6 +23,7 @@ import {
   DEFAULT_MESSAGES,
   DEFAULT_OPEN,
   DEFAULT_OWNER_GATES,
+  DEFAULT_COMMIT_GUARD,
   DEFAULT_PACKAGE_GUARD,
   DEFAULT_PUSH_GUARD,
   DEFAULT_READONLY_SHELL,
@@ -55,11 +56,13 @@ import {
   isHiringPolicy,
   isOverAction,
   isPushToProtected,
+  isSkipHooks,
   isTerminalChoice,
   isVerifyGate,
   isWeekday,
   OVER_ACTIONS,
   PUSH_TO_PROTECTED,
+  SKIP_HOOKS,
   TERMINALS,
   type ContextFilesConfig,
   VERIFY_GATES,
@@ -85,6 +88,7 @@ import {
   type PathsConfig,
   type PushToProtected,
   type QuietHours,
+  type SkipHooks,
   type ReadonlyShellConfig,
   type ScaleOutConfig,
   type RefreshConfig,
@@ -278,6 +282,7 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
       pushToProtected: parsePushToProtected(read, pushGuard),
     },
     packageGuard: { adHocRunners: parseAdHocRunners(read, read.section(raw, 'packageGuard', '')) },
+    commitGuard: { skipHooks: parseSkipHooks(read, read.section(raw, 'commitGuard', '')) },
     commits: parseCommits(read, read.section(raw, 'commits', '')),
     coordinator: parseCoordinator(read, read.section(raw, 'coordinator', '')),
     budget,
@@ -873,6 +878,12 @@ function parseAdHocRunners(read: ConfigReader, raw: JsonRecord): AdHocRunners {
   const fallback = DEFAULT_PACKAGE_GUARD.adHocRunners;
   const value = read.string(raw, 'adHocRunners', 'packageGuard', fallback, oneOf(AD_HOC_RUNNERS));
   return isAdHocRunners(value) ? value : fallback;
+}
+
+function parseSkipHooks(read: ConfigReader, raw: JsonRecord): SkipHooks {
+  const fallback = DEFAULT_COMMIT_GUARD.skipHooks;
+  const value = read.string(raw, 'skipHooks', 'commitGuard', fallback, oneOf(SKIP_HOOKS));
+  return isSkipHooks(value) ? value : fallback;
 }
 
 const isShellPrefix: Check<string> = (value) =>
