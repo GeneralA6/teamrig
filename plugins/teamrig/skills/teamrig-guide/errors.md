@@ -87,7 +87,6 @@ or take it to the lead.
 | `REFUSED hiring.policy is off: the team takes no hires by command` | Ask the owner whether to allow hires; the lead then sets `hiring.policy` in the team config. |
 | `REFUSED hiring.policy is owner: the owner approves each hire; ask them, then pass --approved-by "<who>"` | Ask the owner, then run the hire again with `--approved-by`. |
 | `REFUSED the team already has N hired session(s), the most hiring.maxSessions allows` | Retire a hired session whose job is done (`teamrig retire`), or ask the owner to raise `hiring.maxSessions`. |
-| `REFUSED the hired sessions' daily budgets would add up to X% of the week, over hiring.maxDailyPct Y%` | Hire with a smaller `--daily-pct`, or ask the owner to raise `hiring.maxDailyPct`. |
 | `REFUSED <id> owns open task(s) T1: pass --to <heir> to hand them over, or close them first` | Retire it with `--to <heir>`, or let it close its tasks first. |
 | `REFUSED no handover at <path>: write it (open work, next steps, branches, traps) or pass --no-handover "<why>"` | Ask the session to write its handover there, or retire it with `--no-handover "<why>"`. |
 | `REFUSED <id> holds roles.<role>: give the role to another session first` | Set the role to another session in the team config, then retire it. |

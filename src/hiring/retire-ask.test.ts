@@ -11,7 +11,7 @@ const FOLDER = join('/', 'team', 'state', 'retire-asks');
 const ASK = { task: 'T4', at: '2030-01-08T10:00:00.000Z' };
 
 function hire(session: string): HireRecord {
-  return { kind: 'hire', session, scope: 'x', reason: 'y', dailyPct: 1, reviewBy: '2030-01-15', by: 'lead', at: 0 };
+  return { kind: 'hire', session, scope: 'x', reason: 'y', reviewBy: '2030-01-15', by: 'lead', at: 0 };
 }
 
 function input(overrides: Partial<RetireAskInput> = {}): RetireAskInput {

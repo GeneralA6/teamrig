@@ -179,6 +179,13 @@ export class ConfigReader {
     this.issues.push({ path, message });
   }
 
+  /** A key this config format no longer reads: flagged, so a hand-written one is not silently ignored. */
+  dropped(parent: JsonRecord, key: string, path: string, why: string): void {
+    if (parent[key] !== undefined) {
+      this.report(join(path, key), `is no longer read: ${why}; delete it`);
+    }
+  }
+
   /** The value, or undefined when it is missing or invalid (an invalid one is recorded as an issue). */
   private numeric(parent: JsonRecord, key: string, path: string, bounds: NumberBounds, integer: boolean): number | undefined {
     const value = parent[key];

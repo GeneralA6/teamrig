@@ -16,19 +16,19 @@ hire with no work left.
 its pace finishes by then. Its pace is the tasks it finished over the last `hiring.scaleOut.windowDays` (7), measured
 once it finished `minDone` (3); its dated work is its active tasks of the top `topPriorities` (2) priorities with a
 due, their own or that of a task that needs them. The detail names the slice to move (its latest open tasks that no
-started work needs), its cost (`hiring.dailyPct` a day until the slice's last due or the week's pace end) and the
-week's spare; no flag is raised while the spare cannot pay. Do what the action says:
+started work needs), its cost (a new hire's part of the team's daily budget today, a day until the slice's last due
+or the week's pace end) and the week's spare; no flag is raised while the spare cannot pay. Do what the action says:
 - it names an idle hire: move the slice to it, `teamrig update <task> --owner <hire> --session lead` for each task;
 - else hire for the slice (the steps below, `--scope` the slice's task ids, `--reason "SCALE-OUT"`), then move it;
-- a cap (`hiring.maxSessions`, `hiring.maxDailyPct`) blocks: bring the owner a card to raise it, or move the slice
-  to another area.
+- the cap (`hiring.maxSessions`) blocks: bring the owner a card to raise it, or move the slice to another area.
 
 1. Decide its job in one line (`--scope`), why the team needs it now (`--reason`) and a short id
    (lowercase letters, digits and dashes, not on the team yet).
 2. Preview it, which writes nothing:
    `teamrig hire <id> --scope "<its job>" --reason "<why>" --session lead`
-   It shows its name, model and effort (yours unless `--model` or `--effort`), its daily budget and review day, and
-   how many hired sessions and how much of the week they would use with it.
+   It shows its name, model and effort (yours unless `--model` or `--effort`), its review day, and how many hired
+   sessions the team would have with it, of `hiring.maxSessions`. It gets no fixed daily budget: its part of the
+   team's follows its share and queued work, like any session's.
 3. Under `hiring.policy` `owner`, show the user the preview and ask; on a yes, add `--approved-by "<who>"`. Under
    `lead` or `automatic`, decide yourself.
 4. Write it: the same command with `--yes`.

@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { SessionBudget } from '../config/types.ts';
 import type { Lift } from './lift.ts';
-import { dailyBudgetOf, liftedParts, sessionBudgetPct, type BudgetSplit } from './parts.ts';
+import { addedSessionPct, dailyBudgetOf, liftedParts, sessionBudgetPct, type BudgetSplit } from './parts.ts';
 
 const IDS = ['lead', 'alpha', 'bravo'];
 const NOW = Date.parse('2030-01-08T10:00:00Z');
@@ -66,5 +66,14 @@ describe('liftedParts', () => {
     const lifts = [lift(), lift({ session: 'bravo', partPct: 20, endsAt: NOW }), lift({ session: 'lead', partPct: 10, stopPct: 50 })];
     assert.deepEqual([...liftedParts(lifts, IDS, NOW, 57)], [['alpha', 50]]);
     assert.deepEqual([...liftedParts(lifts, IDS, NOW, undefined)], [['lead', 10], ['alpha', 50]]);
+  });
+});
+
+describe('addedSessionPct', () => {
+  it('gives one more session at the default weight its part beside the shares, queued work and lifts', () => {
+    const weighted = split({ lead: { share: 2 } }, { work: new Map([['alpha', 3]]) });
+    assert.equal(addedSessionPct(10, weighted), 10 / 7, 'weights lead 2, alpha 3, bravo 1, the added session 1');
+    assert.equal(addedSessionPct(10, { ...weighted, lifted: new Map([['bravo', 30]]) }), 7 / 6, "bravo's lift takes 30% first");
+    assert.equal(addedSessionPct(9, split()), 9 / 4);
   });
 });

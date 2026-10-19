@@ -33,8 +33,8 @@ describe('hire', () => {
     const result = await hire(kit, 'helper', ...JOB);
     assert.equal(result.code, EXIT.ok, result.stderr.join('\n'));
     assert.deepEqual(result.stdout, [
-      'PREVIEW hire helper (name app-helper) for "port the importer": model opus at high effort, 1% of the week a day, review by 2030-01-15; nothing written (add --yes to write)',
-      '  hired sessions with it: 1 of 2, 1% of 3% of the week a day',
+      'PREVIEW hire helper (name app-helper) for "port the importer": model opus at high effort, review by 2030-01-15; nothing written (add --yes to write)',
+      '  hired sessions with it: 1 of 2',
     ]);
     assert.equal(kit.files.get(CONFIG_PATH), formatConfig(LEAD_TEAM));
     assert.equal(kit.files.get(HIRES), undefined);
@@ -42,15 +42,15 @@ describe('hire', () => {
 
   it('logs the hire and writes the session with --yes, keeping the old config first', async () => {
     const kit = new CliHarness(LEAD_TEAM);
-    const result = await hire(kit, 'helper', ...JOB, '--name', 'hand', '--effort', 'xhigh', '--daily-pct', '0.5', '--review', '2030-01-10', '--yes');
+    const result = await hire(kit, 'helper', ...JOB, '--name', 'hand', '--effort', 'xhigh', '--review', '2030-01-10', '--yes');
     assert.equal(result.code, EXIT.ok, result.stderr.join('\n'));
-    assert.match(result.stdout[0] ?? '', /^HIRED helper \(name hand\) for "port the importer": model opus at xhigh effort, 0\.5% of the week a day, review by 2030-01-10; the old config is at .*config\.hire\.json$/);
+    assert.match(result.stdout[0] ?? '', /^HIRED helper \(name hand\) for "port the importer": model opus at xhigh effort, review by 2030-01-10; the old config is at .*config\.hire\.json$/);
     assert.match(result.stdout[2] ?? '', /^NEXT give it its first task: teamrig add --owner helper --title "<task>" --description "<what and why>" --session lead; then open it: teamrig open helper$/);
     const config = configOf(kit);
     assert.deepEqual(config['sessions'], ['lead', 'alpha', 'helper']);
     assert.deepEqual(config['names'], { helper: 'hand' });
     assert.deepEqual(config['launch'], { lead: { model: 'opus', effort: 'high' }, helper: { model: 'opus', effort: 'xhigh' } });
-    assert.deepEqual(config['budget'], { sessions: { helper: { dailyPct: 0.5 } } });
+    assert.deepEqual(config['budget'], LEAD_TEAM['budget'], 'a hire gets no fixed daily budget');
     assert.equal(kit.files.get(BACKUP), formatConfig(LEAD_TEAM));
     const logged: unknown = JSON.parse(kit.files.get(HIRES) ?? '');
     assert.ok(isRecord(logged));
@@ -86,7 +86,8 @@ describe('hire', () => {
     const kit = new CliHarness(LEAD_TEAM);
     assert.equal((await hire(kit, 'helper', '--scope', 'x')).code, EXIT.usage);
     assert.equal((await hire(kit, 'helper', ...JOB, '--effort', 'extreme')).code, EXIT.usage);
-    assert.equal((await hire(kit, 'helper', ...JOB, '--daily-pct', '0')).code, EXIT.usage);
+    // --daily-pct went with the fixed daily budgets.
+    assert.equal((await hire(kit, 'helper', ...JOB, '--daily-pct', '1')).code, EXIT.usage);
     assert.equal((await hire(kit, ...JOB)).code, EXIT.usage);
   });
 });

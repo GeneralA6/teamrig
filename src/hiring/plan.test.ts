@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { parseConfig } from '../config/parse.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import type { HireRecord } from './log.ts';
-import { hireCapProblem, hiredDailyPcts, planHire, type HirePlan, type HireRequest } from './plan.ts';
+import { hireCapProblem, hiresOnTeam, planHire, type HirePlan, type HireRequest } from './plan.ts';
 
 const NOW = Date.parse('2030-01-08T10:00:00Z');
 
@@ -11,8 +11,8 @@ const FILE: JsonRecord = { sessions: ['lead', 'alpha'], roles: { lead: 'lead' },
 
 const REQUEST: HireRequest = { id: 'helper', scope: 'port the importer', reason: 'release week', by: 'lead', now: NOW };
 
-function hired(session: string, dailyPct = 1): HireRecord {
-  return { kind: 'hire', session, scope: 'x', reason: 'y', dailyPct, reviewBy: '2030-01-15', by: 'lead', at: NOW - 1000 };
+function hired(session: string): HireRecord {
+  return { kind: 'hire', session, scope: 'x', reason: 'y', reviewBy: '2030-01-15', by: 'lead', at: NOW - 1000 };
 }
 
 function plan(file: JsonRecord, request: Partial<HireRequest> = {}, active: readonly HireRecord[] = []): ReturnType<typeof planHire> {
@@ -34,26 +34,26 @@ function problem(file: JsonRecord, request: Partial<HireRequest> = {}, active: r
 }
 
 describe('planHire', () => {
-  it("writes the session, its launch and its daily budget, with the lead's model and effort and the default review day", () => {
+  it("writes the session and its launch, with the lead's model and effort and the default review day, and no daily budget", () => {
     const result = planned({ ...FILE, launch: { lead: { model: 'opus', effort: 'high' } }, budget: { sessions: { alpha: { share: 2 } } } });
     assert.deepEqual(result.config, {
       ...FILE,
       launch: { lead: { model: 'opus', effort: 'high' }, helper: { model: 'opus', effort: 'high' } },
-      budget: { sessions: { alpha: { share: 2 }, helper: { dailyPct: 1 } } },
+      budget: { sessions: { alpha: { share: 2 } } },
       sessions: ['lead', 'alpha', 'helper'],
     });
-    assert.deepEqual(result.hire, { kind: 'hire', session: 'helper', scope: 'port the importer', reason: 'release week', model: 'opus', effort: 'high', dailyPct: 1, reviewBy: '2030-01-15', by: 'lead', at: NOW });
-    assert.deepEqual([result.hired, result.hiredDailyPct], [1, 1]);
+    assert.deepEqual(result.hire, { kind: 'hire', session: 'helper', scope: 'port the importer', reason: 'release week', model: 'opus', effort: 'high', reviewBy: '2030-01-15', by: 'lead', at: NOW });
+    assert.equal(result.hired, 1);
   });
 
-  it('takes the name, model, effort, daily budget, review day and approver it is given', () => {
+  it('takes the name, model, effort, review day and approver it is given', () => {
     const result = planned(
       { ...FILE, names: { alpha: 'al' }, hiring: { policy: 'owner' } },
-      { name: 'hand', model: 'claude-opus-5-5', effort: 'xhigh', dailyPct: 0.5, reviewBy: '2030-01-09', approvedBy: ' owner ' },
+      { name: 'hand', model: 'claude-opus-5-5', effort: 'xhigh', reviewBy: '2030-01-09', approvedBy: ' owner ' },
     );
     assert.deepEqual(result.config['names'], { alpha: 'al', helper: 'hand' });
     assert.deepEqual(result.config['launch'], { helper: { model: 'claude-opus-5-5', effort: 'xhigh' } });
-    assert.deepEqual(result.config['budget'], { sessions: { helper: { dailyPct: 0.5 } } });
+    assert.equal(result.config['budget'], undefined);
     assert.equal(result.hire.approvedBy, 'owner');
     assert.equal(result.hire.reviewBy, '2030-01-09');
   });
@@ -86,17 +86,9 @@ describe('planHire', () => {
   });
 
   it("stays within hiring.maxSessions, counting only hires still on the team", () => {
-    const file = { ...FILE, sessions: ['lead', 'alpha', 'one', 'two'], hiring: { policy: 'lead', maxSessions: 2, maxDailyPct: 10 } };
+    const file = { ...FILE, sessions: ['lead', 'alpha', 'one', 'two'], hiring: { policy: 'lead', maxSessions: 2 } };
     assert.match(problem(file, {}, [hired('one'), hired('two')]), /already has 2 hired session\(s\), the most hiring\.maxSessions allows/);
     assert.equal(planned(file, {}, [hired('one'), hired('gone')]).hired, 2);
-  });
-
-  it("stays within hiring.maxDailyPct, reading each hire's daily budget from the config", () => {
-    const file = { ...FILE, sessions: ['lead', 'alpha', 'one'], hiring: { policy: 'lead', maxDailyPct: 2 }, budget: { sessions: { one: { dailyPct: 1.5 } } } };
-    assert.match(problem(file, {}, [hired('one', 0.5)]), /add up to 2\.5% of the week, over hiring\.maxDailyPct 2%/);
-    assert.equal(planned(file, { dailyPct: 0.5 }, [hired('one', 0.5)]).hiredDailyPct, 2);
-    const tenths = { ...FILE, sessions: ['lead', 'alpha', 'one'], hiring: { policy: 'lead', dailyPct: 0.1, maxDailyPct: 0.3 } };
-    assert.equal(planned(tenths, { dailyPct: 0.2 }, [hired('one', 0.1)]).hiredDailyPct, 0.3);
   });
 
   it('refuses a review day that is not a date or has passed', () => {
@@ -106,20 +98,16 @@ describe('planHire', () => {
   });
 });
 
-describe('hiredDailyPcts', () => {
-  it("gives each hire on the team its daily budget from the config, else the hire's own", () => {
-    const { config } = parseConfig({ ...FILE, sessions: ['lead', 'alpha', 'one', 'two'], budget: { sessions: { one: { dailyPct: 1.5 } } } });
-    assert.deepEqual(hiredDailyPcts(config, [hired('one', 0.5), hired('two', 2), hired('gone')]), [1.5, 2]);
+describe('hiresOnTeam', () => {
+  it('counts the active hires still on the team', () => {
+    const { config } = parseConfig({ ...FILE, sessions: ['lead', 'alpha', 'one', 'two'] });
+    assert.equal(hiresOnTeam(config, [hired('one'), hired('two'), hired('gone')]), 2);
   });
 });
 
 describe('hireCapProblem', () => {
-  const caps = { maxSessions: 2, maxDailyPct: 3 };
-
-  it('refuses one more hire at hiring.maxSessions, or past hiring.maxDailyPct, to hundredths', () => {
-    assert.equal(hireCapProblem(caps, [1, 1], 1), 'the team already has 2 hired session(s), the most hiring.maxSessions allows');
-    assert.equal(hireCapProblem(caps, [2.5], 1), "the hired sessions' daily budgets would add up to 3.5% of the week, over hiring.maxDailyPct 3%");
-    assert.equal(hireCapProblem(caps, [2], 1), undefined);
-    assert.equal(hireCapProblem({ maxSessions: 3, maxDailyPct: 0.3 }, [0.1], 0.2), undefined);
+  it('refuses one more hire at hiring.maxSessions', () => {
+    assert.equal(hireCapProblem({ maxSessions: 2 }, 2), 'the team already has 2 hired session(s), the most hiring.maxSessions allows');
+    assert.equal(hireCapProblem({ maxSessions: 2 }, 1), undefined);
   });
 });

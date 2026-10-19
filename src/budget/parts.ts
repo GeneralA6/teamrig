@@ -70,3 +70,14 @@ export function liftedParts(lifts: readonly Lift[], ids: readonly string[], now:
   }
   return parts;
 }
+
+/** An id no roster holds (a session id starts with a lowercase letter), for the session `addedSessionPct` adds. */
+const ADDED_SESSION = '+added';
+
+/**
+ * The part of the team's daily budget (`allowancePct`, in percent of the week) one more session would get: added at
+ * the default share with no queued work, it takes its part out of the other sessions', as a new hire does.
+ */
+export function addedSessionPct(allowancePct: number, split: BudgetSplit): number {
+  return sessionBudgetPct(allowancePct, ADDED_SESSION, { ...split, ids: [...split.ids, ADDED_SESSION] });
+}

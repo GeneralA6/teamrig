@@ -107,10 +107,9 @@ The lead hires a temporary member for one job with `teamrig hire`, within the te
 - `policy`: `off` (no hires by command), `owner` (the default: each hire names who approved it), `lead`, or
   `automatic` (the lead decides, and a hired session whose last open task closes is asked at its next turn end to
   write its handover and retire itself).
-- `maxSessions` (2) hired members at once, each on `dailyPct` (1% of the week a day) unless the hire sets its own,
-  all of them on at most `maxDailyPct` (3%) a day; `reviewDays` (7) sets a hire's review day.
-- Each hire is logged in `state/hires.jsonl` with its job, reason, approver, model, effort, daily budget and review
-  day. `teamrig check` flags a hired session with no open task for `idleHours` (4) as RETIRE-DUE, and one past its
+- `maxSessions` (2) hired members at once; each gets its part of the team's daily budget by its share and queued
+  work, like any session; `reviewDays` (7) sets a hire's review day.
+- Each hire is logged in `state/hires.jsonl` with its job, reason, approver, model, effort and review day. `teamrig check` flags a hired session with no open task for `idleHours` (4) as RETIRE-DUE, and one past its
   review day as REVIEW-DUE.
 - `teamrig hire --burst` hires for the burst in force ([Bursts](#bursts)), within its hires as well as these caps,
   on the lead's model and at least its effort; the burst's approver approves it. Once the burst is over, `check`
@@ -119,10 +118,11 @@ The lead hires a temporary member for one job with `teamrig hire`, within the te
   work is due by a date than its pace finishes by then. Its pace is the tasks it finished over the last `windowDays`
   (7), once it finished `minDone` (3); its dated work is its active tasks of the top `topPriorities` (2) priorities
   with a due, their own or that of a task that needs them. The flag names the slice to move (the latest open tasks no
-  started work needs) and its cost, `dailyPct` a day until the slice's last due or the week's pace end; the areas
-  furthest behind are paid first, out of the week's projected spare, and none once it cannot pay. Its action moves
-  the slice to an idle hire, else hires within the caps above, else brings the owner a card to raise a cap. The
-  hire retires as RETIRE-DUE once its slice is done.
+  started work needs) and its cost, a new hire's part of the team's daily budget today, a day until the slice's last
+  due or the week's pace end; the areas furthest behind are paid first, out of the week's projected spare, and none
+  once it cannot pay or the team's daily budget is unknown. Its action moves the slice to an idle hire, else hires
+  within `maxSessions`, else brings the owner a card to raise it. The hire retires as RETIRE-DUE once its slice is
+  done.
 
 When its job is done, the lead retires it with `teamrig retire <id>`. It refuses while the session owns open tasks
 unless `--to <heir>` takes them, and without its handover note (`handover/<id>.md`) unless `--no-handover "<why>"`.

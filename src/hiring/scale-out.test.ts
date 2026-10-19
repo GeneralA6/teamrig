@@ -32,7 +32,7 @@ function dated(owner: string, ids: readonly number[], overrides: Partial<Task> =
 }
 
 function hire(session: string, overrides: Partial<HireRecord> = {}): HireRecord {
-  return { kind: 'hire', session, scope: 'x', reason: 'y', dailyPct: 1, reviewBy: '2030-01-15', by: 'lead', at: NOW.getTime() - DAY_MS, ...overrides };
+  return { kind: 'hire', session, scope: 'x', reason: 'y', reviewBy: '2030-01-15', by: 'lead', at: NOW.getTime() - DAY_MS, ...overrides };
 }
 
 function scaleOut(tasks: readonly Task[], overrides: Partial<ScaleOutInput> = {}): ScaleOutResult {
@@ -43,6 +43,7 @@ function scaleOut(tasks: readonly Task[], overrides: Partial<ScaleOutInput> = {}
     config: config(),
     burstsOver: new Set(),
     spare: { sparePct: 10, paceEnd: NOW.getTime() + 6 * DAY_MS },
+    hirePct: 1,
     now: NOW,
     ...overrides,
   });
@@ -104,14 +105,20 @@ describe('scaleOutFlags: the slice', () => {
     const halfDay = { sparePct: 10, paceEnd: NOW.getTime() + DAY_MS / 2 };
     assert.match(scaleOut(ALPHA_BEHIND, { spare: halfDay }).flags[0]?.detail ?? '', /about 1\.0% of the week/);
   });
+
+  it("prices each day of the slice at a new hire's part of today's team budget, as given", () => {
+    assert.match(scaleOut(ALPHA_BEHIND, { hirePct: 2.5 }).flags[0]?.detail ?? '', /about 5\.0% of the week, 10\.0% spare$/);
+    assert.deepEqual(scaleOut(ALPHA_BEHIND, { hirePct: 6 }).flags, [], 'two days at 6% pass the 10% spare');
+  });
 });
 
 describe('scaleOutFlags: the budget and who takes the slice', () => {
   /** bravo: 7 done, three due in two days: one past what it finishes, so behind alpha. */
   const BRAVO_BEHIND = [...finished('bravo', 7, 200), ...dated('bravo', [21, 22, 23])];
 
-  it('flags nothing with no reading of the week, a spare too small, or hiring.policy off', () => {
+  it("flags nothing with no reading of the week or of the team's daily budget, a spare too small, or hiring.policy off", () => {
     assert.deepEqual(scaleOut(ALPHA_BEHIND, { spare: undefined }).flags, []);
+    assert.deepEqual(scaleOut(ALPHA_BEHIND, { hirePct: undefined }).flags, []);
     assert.deepEqual(scaleOut(ALPHA_BEHIND, { spare: { sparePct: 1.5, paceEnd: NOW.getTime() + 6 * DAY_MS } }).flags, []);
     assert.deepEqual(scaleOut(ALPHA_BEHIND, { config: config({ policy: 'off' }) }).flags, []);
   });
@@ -138,13 +145,13 @@ describe('scaleOutFlags: the budget and who takes the slice', () => {
     assert.equal(scaleOut(ALPHA_BEHIND, { config: config({ policy: 'owner' }) }).flags[0]?.action, action);
   });
 
-  it('brings the owner a card when a cap blocks, counting the hires flagged before it', () => {
+  it('brings the owner a card when hiring.maxSessions blocks, counting the hires flagged before it', () => {
     const card = ': the lead brings the owner a card to raise the cap, or moves the slice to another area';
     const team = config({}, ['lead', 'alpha', 'bravo', 'helper']);
     const flags = scaleOut([...BRAVO_BEHIND, ...ALPHA_BEHIND, testTask({ id: 'T50', owner: 'helper' })], { config: team, hires: [hire('helper')] }).flags;
     assert.deepEqual(flags.map((flag) => flag.action), [HIRE, `the team already has 2 hired session(s), the most hiring.maxSessions allows${card}`]);
-    const tight = config({ maxDailyPct: 1.5 }, ['lead', 'alpha', 'helper']);
+    const tight = config({ maxSessions: 1 }, ['lead', 'alpha', 'helper']);
     const capped = scaleOut([...ALPHA_BEHIND, testTask({ id: 'T50', owner: 'helper' })], { config: tight, hires: [hire('helper')] });
-    assert.equal(capped.flags[0]?.action, `the hired sessions' daily budgets would add up to 2% of the week, over hiring.maxDailyPct 1.5%${card}`);
+    assert.equal(capped.flags[0]?.action, `the team already has 1 hired session(s), the most hiring.maxSessions allows${card}`);
   });
 });

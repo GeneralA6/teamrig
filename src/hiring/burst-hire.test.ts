@@ -13,7 +13,7 @@ const REQUEST: HireRequest = { id: 'second', scope: 'port the importer', reason:
 const BURST: Burst = { kind: 'surplus', sessions: ['lead', 'alpha'], helpers: 3, hires: 1, dailyPct: 10, stopPct: 99.5, endsAt: AT + 86_400_000, tasks: [], reason: 'surplus', approvedBy: 'the owner', by: 'lead', at: AT };
 
 function hired(session: string, burst?: number): HireRecord {
-  return { kind: 'hire', session, scope: 'x', reason: 'y', dailyPct: 1, reviewBy: '2030-01-15', by: 'lead', at: AT, ...(burst === undefined ? {} : { burst }) };
+  return { kind: 'hire', session, scope: 'x', reason: 'y', reviewBy: '2030-01-15', by: 'lead', at: AT, ...(burst === undefined ? {} : { burst }) };
 }
 
 /** `burst` null checks a hire with no burst in force. */

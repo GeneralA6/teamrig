@@ -35,6 +35,7 @@ import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.t
 import { loadTree } from '../tree.ts';
 import { teamRegister } from '../team-register.ts';
 import { readBursts } from '../burst-reading.ts';
+import { readHirePct } from '../hire-cost.ts';
 import { snapshotDirOf } from './budget.ts';
 import { inboxDepsOf } from './inbox.ts';
 import { markBoundary } from './refresh.ts';
@@ -523,8 +524,10 @@ export async function checkReport(args: ParsedArgs, runtime: CliRuntime): Promis
   const over = burstsOver(bursts.records, now.getTime(), bursts.usedPct);
   const { usedPct, window } = bursts;
   const spare = usedPct === undefined || window === undefined ? undefined : surplusOf({ window, now: now.getTime(), usedPct, targetPct: own.config.budget.targetPct, config: own.config.burst });
-  const input = { hires: activeHires(records), tasks: [...own.snapshot.state.tasks.values()], config: own.config, burstsOver: over, now };
-  const scaleOut = scaleOutFlags({ ...input, tree: new TaskTree(own.snapshot.state.tasks, now), spare });
+  const tasks = [...own.snapshot.state.tasks.values()];
+  const hirePct = spare === undefined ? undefined : await readHirePct(runtime, own.paths, own.config, tasks, now.getTime());
+  const input = { hires: activeHires(records), tasks, config: own.config, burstsOver: over, now };
+  const scaleOut = scaleOutFlags({ ...input, tree: new TaskTree(own.snapshot.state.tasks, now), spare, hirePct });
   const hires = [...scaleOut.flags, ...hireFlags(input, scaleOut.busy)];
   const scope = week === null ? 'no week plan tagged yet, so the week checks are skipped' : `week ${week}`;
   return { sections, scope, skills, skillsDir: own.paths.skills, hires };

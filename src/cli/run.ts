@@ -115,7 +115,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   rename: { effect: 'write', flags: ['session'], load: async () => (await teamCommands()).rename },
   hire: {
     effect: 'write',
-    flags: ['session', 'scope', 'reason', 'name', 'model', 'effort', 'daily-pct', 'review', 'approved-by'],
+    flags: ['session', 'scope', 'reason', 'name', 'model', 'effort', 'review', 'approved-by'],
     switches: ['yes', 'burst'],
     load: async () => (await hireCommands()).hire,
   },
@@ -294,7 +294,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   rename <id|name> <new-name>  records a session's new name; its old names keep finding it
       (the session itself or the lead)
   hire <id> --scope "<its job>" --reason "<why>" [--name <name>] [--model <model>] [--effort <level>]
-      [--daily-pct <pct>] [--review <YYYY-MM-DD>] [--approved-by "<who>"] [--burst] [--yes]
+      [--review <YYYY-MM-DD>] [--approved-by "<who>"] [--burst] [--yes]
       (the lead only) adds a temporary session, or hires a retired one back, within hiring.policy and its
       caps, on the lead's model and effort unless given; without --yes it shows the hire and writes nothing;
       --burst: a hire for the burst in force, within its hires, never a cheaper model or lower effort, due to

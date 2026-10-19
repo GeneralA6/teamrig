@@ -961,23 +961,15 @@
       }
     },
     "hiring": {
-      "description": "Hiring temporary sessions with teamrig hire: who decides, and the caps every hire stays within. A hire is written into sessions, launch and budget.sessions, and logged with its reason and review date.",
+      "description": "Hiring temporary sessions with teamrig hire: who decides, and the cap every hire stays within. A hire is written into sessions, names and launch, and logged with its reason and review date; its part of the team's daily budget follows its share and queued work, like any session's.",
       "type": "object",
       "properties": {
         "policy": {
-          "description": "off: no hires. owner: the lead hires once the owner approved (--approved-by, kept with the hire). lead: the lead hires within the caps. automatic: as lead, and a hired session whose tasks are all closed may retire itself (teamrig retire).",
+          "description": "off: no hires. owner: the lead hires once the owner approved (--approved-by, kept with the hire). lead: the lead hires within maxSessions. automatic: as lead, and a hired session whose tasks are all closed may retire itself (teamrig retire).",
           "enum": ["off", "owner", "lead", "automatic"],
           "default": "owner"
         },
         "maxSessions": { "description": "Hired sessions on the team at once.", "type": "integer", "minimum": 1, "maximum": 20, "default": 2 },
-        "dailyPct": {
-          "description": "A hire's daily budget, in % of the week, written as budget.sessions.<id>.dailyPct, unless teamrig hire --daily-pct names its own. At most maxDailyPct.",
-          "type": "number",
-          "minimum": 0.1,
-          "maximum": 100,
-          "default": 1
-        },
-        "maxDailyPct": { "description": "The most all hired sessions' daily budgets may add up to, in % of the week.", "type": "number", "minimum": 0.1, "maximum": 100, "default": 3 },
         "idleHours": { "description": "Hours a hired session may hold no open task before it is due to retire.", "type": "integer", "minimum": 1, "maximum": 168, "default": 4 },
         "reviewDays": { "description": "Days from a hire to its review date, unless teamrig hire --review names one.", "type": "integer", "minimum": 1, "maximum": 90, "default": 7 },
         "resumeMaxTokens": { "description": "The most context tokens a rehired session's last Claude Code session may hold for teamrig open --resume to resume it; past it the session starts fresh on its handover.", "type": "integer", "minimum": 10000, "maximum": 1000000, "default": 250000 },

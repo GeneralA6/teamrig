@@ -45,7 +45,7 @@ describe('retire', () => {
     const config = configOf(kit);
     assert.deepEqual(config['sessions'], ['lead', 'alpha']);
     assert.deepEqual(config['launch'], {});
-    assert.deepEqual(config['budget'], { sessions: {} });
+    assert.equal(config['budget'], undefined, 'the hire wrote no budget entry, so the retire leaves none');
     assert.equal(kit.files.get(BACKUP), before);
     const lines = kit.files.get(HIRES)?.trim().split('\n') ?? [];
     const logged: unknown = JSON.parse(lines[1] ?? '');
