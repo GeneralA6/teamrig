@@ -1,6 +1,6 @@
 import { ruleLabel, ruleNumberOf } from "../rules/keys.js";
 import { budgetMarkOf, burstText, MORE_BURST } from "./burst-lines.js";
-import { formatCount, formatPct, formatTimeOfDay, formatW, formatWeekdayMinute } from "./format.js";
+import { formatCount, formatPct, formatW } from "./format.js";
 import { liftText } from "./lift.js";
 import { TURN_TRIGGERS } from "./line.js";
 import { hasRoom } from "./pace.js";
@@ -19,17 +19,17 @@ function pctOf(w, week) {
 function useText(w, calls) {
     return `${formatW(w)} W in ${formatCount(calls)} call${calls === 1 ? '' : 's'}`;
 }
-/** The week's use and its pace: the first line of `budget`, and the last of `start`. */
-export function weekLine(week) {
+/** The week's use and its pace, on the team's clock: the first line of `budget`, and the last of `start`. */
+export function weekLine(week, zone) {
     if (week.usedPct === undefined || week.reset === undefined) {
         return "Week: its use is unknown: no status line reading (run teamrig statusline install) and no budget.weeklyLimitW.";
     }
-    const source = week.statusAt === undefined ? ' (metered)' : ` at ${formatTimeOfDay(week.statusAt)} (status line)`;
+    const source = week.statusAt === undefined ? ' (metered)' : ` at ${zone.clock(new Date(week.statusAt))} (status line)`;
     const pace = week.pace;
     const paceText = pace === undefined
         ? ''
         : `; the pace line is at ${formatPct(pace.linePct)}: ${pace.state === 'on pace' ? 'on pace' : `${Math.abs(pace.gapPts).toFixed(1)} points ${pace.state}`}`;
-    return `Week: ${formatPct(week.usedPct)} used${source}${paceText}. Resets ${formatWeekdayMinute(week.reset)}.`;
+    return `Week: ${formatPct(week.usedPct)} used${source}${paceText}. Resets ${zone.weekdayMinute(new Date(week.reset))}.`;
 }
 /** "<who> used 1.1% of the week today; its daily budget is 1.0%. 7.50M W in 310 calls." */
 function useLine(who, w, calls, budgetPct, mark, week, when = 'today') {
@@ -94,23 +94,23 @@ function pastLines(report, teamPast) {
 }
 /** `teamrig budget`: the week, the team and each session today, lifts, use outside the team, and who is past budget. */
 export function todayLines(report) {
-    const { week, sessions, outside, all } = report;
+    const { week, sessions, outside, all, zone } = report;
     const teamW = sessions.reduce((sum, session) => sum + session.w, 0);
     const teamCalls = sessions.reduce((sum, session) => sum + session.calls, 0);
     const lines = [
-        weekLine(week),
+        weekLine(week, zone),
         useLine('The team', teamW, teamCalls, week.allowancePct, '', week),
         ...sessionRows(sessions, all, 'today', (session) => useLine(session.name, session.w, session.calls, session.budgetPct, budgetMarkOf(session), week)),
     ];
     for (const session of sessions) {
         if (session.lift !== undefined) {
-            lines.push(`Budget: the lead lifted ${liftText(session.lift, session.name)}`);
+            lines.push(`Budget: the lead lifted ${liftText(session.lift, session.name, zone)}`);
         }
     }
     const inBurst = sessions.filter((session) => session.burst !== undefined);
     const burst = inBurst[0]?.burst;
     if (burst !== undefined) {
-        lines.push(`Budget: the lead started ${burstText(burst, inBurst.map((session) => session.name))} ${MORE_BURST}`);
+        lines.push(`Budget: the lead started ${burstText(burst, inBurst.map((session) => session.name), zone)} ${MORE_BURST}`);
     }
     const outsideText = outsideLine(outside, all);
     if (outsideText !== undefined) {
@@ -143,7 +143,7 @@ export function recountLines(day, report) {
     return lines;
 }
 /** `teamrig budget <session>`: its use on each stored day, its budget today and its lift. */
-export function sessionLines(session, state, week) {
+export function sessionLines(session, state, week, zone) {
     const days = Object.keys(state.byDay).sort().reverse();
     const lines = [`${session.name} (${session.id}), by UTC day:`];
     for (const day of days) {
@@ -160,10 +160,10 @@ export function sessionLines(session, state, week) {
         lines.push(`Its daily budget today is ${formatPct(session.budgetPct)} of the week${budgetMarkOf(session)}.`);
     }
     if (session.lift !== undefined) {
-        lines.push(`Budget: the lead lifted ${liftText(session.lift, session.name)}`);
+        lines.push(`Budget: the lead lifted ${liftText(session.lift, session.name, zone)}`);
     }
     if (session.burst !== undefined) {
-        lines.push(`Budget: the lead started ${burstText(session.burst, [session.name])} ${MORE_BURST}`);
+        lines.push(`Budget: the lead started ${burstText(session.burst, [session.name], zone)} ${MORE_BURST}`);
     }
     lines.push(W_EXPLAINED);
     return lines;

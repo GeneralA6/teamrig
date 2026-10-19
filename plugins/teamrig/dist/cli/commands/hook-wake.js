@@ -9,7 +9,7 @@ import { dayStartPrompt, dayStartToast, decideDayStart, dueMoments, nextDayStart
 import { decideWake, effectivePriority, URGENT_PRIORITY, wakeCost, wakePrompt, wakeRestOf, wakeToast } from "../../wake/decide.js";
 import { logWake, WakeStore } from "../../wake/store.js";
 import { noPositionals } from "../args.js";
-import { openKit, rosterOf } from "../kit.js";
+import { openKit, rosterOf, teamZone } from "../kit.js";
 import { EXIT } from "../runtime.js";
 import { teamRegister } from "../team-register.js";
 import { budgetFactsOf } from "./hook-budget.js";
@@ -85,7 +85,7 @@ async function momentsOf(runtime, scope, tasks, state, now) {
     }
     const next = nextDayStartAt(dayStartUtc, now);
     const none = { verdict: { kind: 'none' }, state, lastTurnAt: undefined, next };
-    const startable = startableTasks(tasks, id, now);
+    const startable = startableTasks(tasks, id, now, teamZone(config, runtime));
     const logged = activeBurst((await new BurstLog(runtime.files, kit.paths.bursts).read()).records, now, undefined);
     const inBurst = logged?.sessions.includes(id) === true ? logged : undefined;
     if (startable.length === 0 || dueMoments(now, dayStartUtc, inBurst, state.settled).length === 0) {
@@ -119,6 +119,7 @@ async function decide(runtime, scope, store) {
             session: id,
             tab,
             now,
+            zone: teamZone(config, runtime),
             maxPriority: await maxPriorityOf(runtime, scope),
             batchMs: config.wake.batchSeconds * SECOND_MS,
             minGapMs: config.wake.minGapMinutes * MINUTE_MS,
@@ -177,7 +178,7 @@ export async function wakeCheck(args, runtime) {
     }
     const moments = verdict.moments.map((moment) => moment.kind);
     await logWake(runtime.files, kit.paths.wakeLog, { kind: 'wake', at: now, session: id, tab, ids, cost, moments });
-    const text = dayStartPrompt(id, scope.roster.nameOf(id) ?? id, verdict.moments, verdict.tasks, cost);
+    const text = dayStartPrompt(id, scope.roster.nameOf(id) ?? id, verdict.moments, verdict.tasks, cost, teamZone(config, runtime));
     return answer(runtime, { kind: 'wake', ids, text, toast: dayStartToast(verdict.moments, verdict.tasks, cost) });
 }
 /** Run by the mod when Claude Code dropped a wake it submitted (a prompt hook refused it): logs it with the reason. */

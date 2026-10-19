@@ -14,6 +14,10 @@ export { LAYOUT_VERSION } from "../register/marker.js";
 export { readEvents, readRegister, snapshotOf } from "../register/snapshot.js";
 export { loopFix, needPath, needsOf, pathText, planOrder, TaskTree } from "../register/tree.js";
 export { byPlanOrder, dueTime } from "../register/views.js";
+// Time: the team's zone (`config.timeZone`, else the machine's). A stored bare day is a day of it, a stored minute is
+// UTC, and every time prints in it, zone-marked (`01-31 11:05 IST`); a reader passes it to the calls that print one.
+export { showStored, storedText } from "../core/time.js";
+export { TimeZone } from "../core/zone.js";
 export { allReady, isReady, unfinishedAfter, WAIT_KINDS, waitContext, waitsText, waitText, } from "../register/waits.js";
 // The inboxes (`inbox/<area>.md`) and their read marks (`inbox-marks.jsonl`).
 export { indexMarks, MARK_VERSION, parseMark, readMarks } from "../inbox/marks.js";

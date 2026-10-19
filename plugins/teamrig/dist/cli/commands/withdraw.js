@@ -1,10 +1,9 @@
 import { coordinatorPlaces } from "../../coordinator/places.js";
 import { ENV } from "../../core/home.js";
-import { formatUtcMinute } from "../../core/time.js";
 import { UsageError } from "../args.js";
 import { hostLockOf } from "../coordinator-ports.js";
 import { sessionRef } from "../inputs.js";
-import { openTeamKit, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
+import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { envSession, markedSessionOf } from "./hook-input.js";
 /**
@@ -44,21 +43,24 @@ function chosenOf(args) {
     }
     return { picks: (waiter) => waiter.purpose.includes(what), text: what };
 }
-function sinceText(waiter) {
-    return `waiting since ${formatUtcMinute(new Date(waiter.arrivedAt))}`;
+function sinceText(waiter, zone) {
+    return `waiting since ${zone.minute(new Date(waiter.arrivedAt))}`;
 }
-/** The line printed for one ticket: withdrawn, or why it was not (its step went first, or an older teamrig queued it). */
-export function withdrawalText(withdrawal) {
+/**
+ * The line printed for one ticket: withdrawn, or why it was not (its step went first, or an older teamrig queued it),
+ * its wait on the zone's clock.
+ */
+export function withdrawalText(withdrawal, zone) {
     const { waiter } = withdrawal;
     switch (withdrawal.kind) {
         case 'withdrawn':
-            return `WITHDRAWN ${waiter.purpose}, ${sinceText(waiter)}: it stops at its next look`;
+            return `WITHDRAWN ${waiter.purpose}, ${sinceText(waiter, zone)}: it stops at its next look`;
         case 'running':
             return `RUNNING ${waiter.purpose}: it took its turn first and runs (pid ${waiter.pid})`;
         case 'left':
             return `LEFT ${waiter.purpose}: it left the line first, having run or given up`;
         case 'kept':
-            return `KEPT ${waiter.purpose}, ${sinceText(waiter)}: an older teamrig queued it and runs it anyway (pid ${waiter.pid})`;
+            return `KEPT ${waiter.purpose}, ${sinceText(waiter, zone)}: an older teamrig queued it and runs it anyway (pid ${waiter.pid})`;
     }
 }
 /**
@@ -72,6 +74,7 @@ export async function withdraw(args, runtime) {
     const kit = await openTeamKit(runtime);
     const config = requireConfig(kit, runtime, 'read');
     const session = await ownSessionOf(args, runtime, kit, await rosterOf(runtime, kit, config));
+    const zone = teamZone(config, runtime);
     const lock = hostLockOf(runtime, coordinatorPlaces(config.coordinator, kit.paths).hostLock, config.coordinator.heavy);
     if (chosen === undefined) {
         const waiting = (await lock.line()).filter((waiter) => waiter.session === session);
@@ -80,7 +83,7 @@ export async function withdraw(args, runtime) {
             return EXIT.ok;
         }
         for (const waiter of waiting) {
-            runtime.out.stdout(`WAITING ${waiter.purpose}, ${sinceText(waiter)} (pid ${waiter.pid})`);
+            runtime.out.stdout(`WAITING ${waiter.purpose}, ${sinceText(waiter, zone)} (pid ${waiter.pid})`);
         }
         throw new RefusedError('name the steps to withdraw: --what <text in their purpose> or --all');
     }
@@ -90,7 +93,7 @@ export async function withdraw(args, runtime) {
         return EXIT.ok;
     }
     for (const withdrawal of done) {
-        runtime.out.stdout(withdrawalText(withdrawal));
+        runtime.out.stdout(withdrawalText(withdrawal, zone));
     }
     return done.every((withdrawal) => withdrawal.kind === 'withdrawn') ? EXIT.ok : EXIT.failed;
 }

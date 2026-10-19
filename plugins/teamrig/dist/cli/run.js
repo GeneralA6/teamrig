@@ -224,7 +224,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       loads, missed uses (a call matching its "Signature: \`<regex>\`" line with no load before it), calls
       and errors per run, against a baseline (default: the last 7 UTC days, and the 7 before); each run
       reads only what the transcripts gained since the last one
-  start [--session <id|name>] [--all]   the start of a work block in one call: the UTC time, the
+  start [--session <id|name>] [--all]   the start of a work block in one call: the team's time, the
       unread inbox lines (marked read), the session's tasks, the other sessions' tasks waiting on it, the
       check flags it acts on (the lead: all) and the week's use; --all: the tasks and flags in full, and
       every task waiting on it
@@ -390,7 +390,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       of a repository that deploys it touched (from its start until coordinator.windows settle minutes
       after it rolled; --settle for every target) and no heavy step, each at least --min (default
       coordinator.windows.minMinutes) long, each with the declared loads it overlaps. A time is HH:MM
-      (today), YYYY-MM-DD HH:MM or YYYY-MM-DD in UTC, or an ISO time with its zone
+      (today), YYYY-MM-DD HH:MM or YYYY-MM-DD on the team's clock unless marked UTC, or an ISO time with
+      its zone
   load --what "<what>" [--targets <a,b>|host] [--at <time>] [--session <id|name>]   declares a
       background load (a long data script, a backfill) on its targets (default the whole host) in the
       ledger from --at (default now), so windows names it; REFUSED for a start in the future, a target
@@ -420,7 +421,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
 Team: $${ENV.team}, else the nearest ${TEAM_POINTER} ({"team": "<id>"}) above the current folder,
 else above $CLAUDE_PROJECT_DIR.
 Sessions: give an id, a current name or a former one; a session never named is <team>-<id>.
-Dates: YYYY-MM-DD or "YYYY-MM-DD HH:MM", UTC. Kit home: $${ENV.home}, else ~/.${KIT_NAME}.
+Times: YYYY-MM-DD (a day), "YYYY-MM-DD HH:MM" or HH:MM (today), on the team's clock (timeZone, else the
+machine's) unless marked UTC; printed zone-marked (01-08 14:00 IST). Kit home: $${ENV.home}, else ~/.${KIT_NAME}.
 Exit: 0 done, 1 failed, 2 refused by a team rule, 3 open printed the command to run itself,
 4 /teamrig printed a line to agree to before it runs, 64 a command line it cannot read.
 One command's help: ${KIT_NAME} <command> --help.`;

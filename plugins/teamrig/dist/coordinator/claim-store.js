@@ -1,5 +1,5 @@
 import { formatUtcMinute } from "../core/time.js";
-import { parseClaims } from "./claims.js";
+import { claimEndText, parseClaims } from "./claims.js";
 import { holderText } from "./host-lock.js";
 /** The claims for people to read, beside `claims.json`, and the lock their writers share. */
 export const CLAIMS_MD_FILE = 'claims.md';
@@ -52,7 +52,7 @@ export function renderClaimsMd(claims) {
 async function changeClaims(ports, places, session, change) {
     const taking = await ports.lock.acquire(session, 'claims write', CLAIMS_LOCK_WAIT_MS, CLAIMS_LOCK_POLL_MS, () => undefined);
     if (taking.kind === 'busy') {
-        return { kind: 'busy', reason: `the claims are being written (${holderText(taking.holder)}); try again` };
+        return { kind: 'busy', reason: `the claims are being written (${holderText(taking.holder, ports.zone)}); try again` };
     }
     if (taking.kind === 'withdrawn') {
         return { kind: 'busy', reason: 'its place in line for the claims was withdrawn; try again' };
@@ -84,7 +84,7 @@ export async function addClaim(ports, places, rules, request) {
     return changeClaims(ports, places, request.session, (active) => {
         const own = active.find((claim) => claim.session === request.session);
         if (own !== undefined) {
-            return { kind: 'refused', reason: `${request.session} already holds a claim until ${shownTime(own.until)} UTC; release it first (one per session)` };
+            return { kind: 'refused', reason: `${request.session} already holds a claim until ${claimEndText(own.until, ports.zone)}; release it first (one per session)` };
         }
         const now = ports.clock.now();
         const claim = {

@@ -2,6 +2,7 @@ import { deployTargetsOf } from "../coordinator/targets.js";
 import { isRecord } from "../core/guards.js";
 import { NAME_PATTERN, NAME_RULE } from "../core/ids.js";
 import { isMinuteInSpan, utcMinuteOf } from "../core/time.js";
+import { TimeZone } from "../core/zone.js";
 import { FOLLOWUP_STATUSES, isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, SESSION_NAME, TASK_STATUSES } from "../register/model.js";
 import { PREFIX_PATTERN } from "../readonly-shell/rules.js";
 import { CORE_RULE_KEYS, isCoreRuleKey } from "../rules/keys.js";
@@ -11,6 +12,7 @@ import { CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from "./limits.js";
 import { ConfigReader, describe, isValidRegex, shortLine } from "./reader.js";
 import { AD_HOC_RUNNERS, BURST_POLICIES, CONFLICT_WINNERS, ESCALATIONS, HIRING_POLICIES, isAdHocRunners, isBurstPolicy, isCommitGate, isConflictWinner, isEffortLevel, isEscalation, isHiringPolicy, isOverAction, isHookAsks, isPushToProtected, isSkipHooks, isTerminalChoice, isVerifyGate, isWeekday, HOOK_ASKS, OVER_ACTIONS, PUSH_TO_PROTECTED, SKIP_HOOKS, TERMINALS, VERIFY_GATES, WEEKDAYS, } from "./types.js";
 const isSessionName = (name) => SESSION_NAME.test(name) ? undefined : 'expected a lowercase name: a letter, then letters, digits or -, at most 32';
+const isTimeZone = (name) => (TimeZone.of(name) === undefined ? 'expected an IANA time zone name such as Asia/Jerusalem' : undefined);
 const isUtcTime = (time) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(time) ? undefined : 'expected a UTC time as HH:MM');
 /** A repository as GitHub names it: an owner login, a slash, then letters, digits, `.`, `_` or `-`. */
 const isRepoName = (repo) => /^[a-z0-9][a-z0-9-]{0,38}\/[a-z0-9._-]{1,100}$/i.test(repo) ? undefined : 'expected a GitHub repository as owner/name';
@@ -115,6 +117,7 @@ export function parseConfig(raw) {
     const names = readNames(read, read.section(raw, 'names', ''), sessions);
     const launch = readLaunch(read, read.section(raw, 'launch', ''), sessions);
     const team = readTeam(read, raw);
+    const timeZone = read.optionalString(raw, 'timeZone', '', isTimeZone);
     const messages = read.section(raw, 'messages', '');
     const pushGuard = read.section(raw, 'pushGuard', '');
     const alerts = read.section(raw, 'alerts', '');
@@ -125,6 +128,7 @@ export function parseConfig(raw) {
     const config = {
         configVersion: read.integer(raw, 'configVersion', '', 1, { min: 1 }),
         ...(team === undefined ? {} : { team }),
+        ...(timeZone === undefined ? {} : { timeZone }),
         sessions,
         names,
         roles: coordinatorOwner === undefined ? { lead } : { lead, coordinatorOwner },

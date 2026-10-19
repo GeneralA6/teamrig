@@ -1,6 +1,6 @@
 import { ENV } from "../core/home.js";
 import { NAME_PATTERN, NAME_RULE } from "../core/ids.js";
-import { parseUtcDeadline, parseUtcDay, parseUtcInstant } from "../core/time.js";
+import { parseTypedInstant, parseUtcDay, storedDeadline, typedDeadline, typedTimeHint } from "../core/time.js";
 import { OPTION_SEPARATOR } from "../register/card.js";
 import { MAX_SIZE_PCT, sizeProblem } from "../register/events.js";
 import { isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, priorityText, TASK_ID, TASK_STATUSES } from "../register/model.js";
@@ -75,13 +75,21 @@ export function listOf(flag, text) {
     }
     return items;
 }
-/** `--since 09:00`: a time in UTC, in ms, as `parseUtcInstant` reads it. */
-export function instantOf(flag, text, nowMs) {
-    const instant = parseUtcInstant(text, nowMs);
+/** `--since 09:00`: a time in ms, as `parseTypedInstant` reads it. */
+export function instantOf(flag, text, times) {
+    const instant = parseTypedInstant(text, times.nowMs, times.zone);
     if (instant === undefined) {
-        throw new UsageError(`${flag} "${text}" is not a time: HH:MM (today), YYYY-MM-DD HH:MM or YYYY-MM-DD in UTC, or an ISO time with its zone`);
+        throw new UsageError(`${flag} "${text}" is not a time: ${typedTimeHint(times.zone, times.nowMs)}; YYYY-MM-DD (its start) or an ISO time with its zone`);
     }
     return instant.getTime();
+}
+/** `--due 2030-01-10` or `--due "2030-01-10 09:00"`: a typed deadline in its stored form (`storedDeadline`). */
+export function deadlineOf(flag, text, times) {
+    const stored = storedDeadline(text, times.nowMs, times.zone);
+    if (stored === undefined) {
+        throw new UsageError(`${flag} "${text}" is not YYYY-MM-DD or a time: ${typedTimeHint(times.zone, times.nowMs)}`);
+    }
+    return stored;
 }
 /** A size as typed: a number, a `%` after it allowed (`1.5` or `1.5%`). */
 const SIZE_TEXT = /^(\d+(?:\.\d+)?|\.\d+)%?$/;
@@ -101,7 +109,7 @@ export function weekOf(text) {
     }
     return text;
 }
-export function addInputOf(flags, caller) {
+export function addInputOf(flags, caller, times) {
     const input = {
         title: requiredFlag(flags, 'title'),
         owner: flags.get('owner') ?? caller,
@@ -118,7 +126,7 @@ export function addInputOf(flags, caller) {
     }
     const due = flags.get('due');
     if (due !== undefined) {
-        input.due = due;
+        input.due = deadlineOf('--due', due, times);
     }
     const goals = flags.get('goals');
     if (goals !== undefined) {
@@ -146,14 +154,15 @@ function afterOf(text) {
  * `--waits decision:owner,task:T5,time:2030-01-09 12:00`: what a waiting task waits for, each `kind:value`, the
  * value after the first colon, so a time keeps its own. Who gives a decision or an approval is resolved by the command.
  */
-export function waitsOf(text) {
+export function waitsOf(text, times) {
     return listOf('--waits', text).map((item) => {
         const colon = item.indexOf(':');
         const kind = item.slice(0, Math.max(colon, 0)).trim();
         if (!isWaitKind(kind)) {
             throw new UsageError(`--waits "${item}" is not one of ${WAITS_USAGE}`);
         }
-        const reason = waitOf(kind, item.slice(colon + 1).trim());
+        const value = item.slice(colon + 1).trim();
+        const reason = waitOf(kind, kind === 'time' ? deadlineOf('--waits time:', value, times) : value);
         if (typeof reason === 'string') {
             throw new UsageError(`--waits "${item}": ${reason}`);
         }
@@ -161,7 +170,7 @@ export function waitsOf(text) {
     });
 }
 /** The fields `update` changes; `none` clears the description, ref, due date, goals, week, plan dependency or size. */
-export function changesOf(flags) {
+export function changesOf(flags, times) {
     const changes = {};
     const title = flags.get('title');
     if (title !== undefined) {
@@ -185,7 +194,7 @@ export function changesOf(flags) {
     }
     const due = flags.get('due');
     if (due !== undefined) {
-        changes.due = due === NONE ? null : due;
+        changes.due = due === NONE ? null : deadlineOf('--due', due, times);
     }
     const goals = flags.get('goals');
     if (goals !== undefined) {
@@ -215,7 +224,7 @@ function statusOf(flag, text, next) {
     }
     return text;
 }
-export function statusInputOf(flags) {
+export function statusInputOf(flags, times) {
     const input = {
         status: statusOf('--status', requiredFlag(flags, 'status'), `use --status waiting --waits <reason> (${WAITS_USAGE})`),
     };
@@ -233,7 +242,7 @@ export function statusInputOf(flags) {
     }
     const waits = flags.get('waits');
     if (waits !== undefined) {
-        input.waits = waitsOf(waits);
+        input.waits = waitsOf(waits, times);
     }
     const card = cardInputOf(flags);
     if (card !== undefined) {
@@ -249,7 +258,7 @@ export function statusInputOf(flags) {
     }
     const due = flags.get('due');
     if (due !== undefined) {
-        input.due = due;
+        input.due = deadlineOf('--due', due, times);
     }
     const followups = flags.get('followups');
     if (followups !== undefined) {
@@ -299,23 +308,23 @@ function optionsOf(text) {
  * rather than a date to verify by; `--text` goes only with `--ask`, which needs it. The command resolves the asked
  * session to its id.
  */
-export function setInputOf(flags) {
+export function setInputOf(flags, times) {
     const asked = flags.get('ask');
     const text = flags.get('text');
     if (asked === undefined) {
         if (text !== undefined) {
             throw new UsageError('--text goes only with --ask <session>: it is the work asked for');
         }
-        return { status: statusInputOf(flags), ask: null };
+        return { status: statusInputOf(flags, times), ask: null };
     }
     if (text === undefined || text.trim() === '') {
         throw new UsageError('--ask needs --text "<the work asked for>": the title of the task it creates');
     }
-    const { due, ...status } = statusInputOf(flags);
+    const { due, ...status } = statusInputOf(flags, times);
     return { status, ask: { owner: sessionRef('--ask', asked), title: text, ...(due === undefined ? {} : { due }) } };
 }
 /** `list` filters; `--session` names the owner whose tasks to show. */
-export function listFilterOf(flags) {
+export function listFilterOf(flags, times) {
     const filter = {};
     const owner = flags.get('session');
     if (owner !== undefined) {
@@ -335,9 +344,9 @@ export function listFilterOf(flags) {
     }
     const dueBefore = flags.get('due-before');
     if (dueBefore !== undefined) {
-        const at = parseUtcDeadline(dueBefore);
+        const at = typedDeadline(dueBefore, times.nowMs, times.zone);
         if (at === undefined) {
-            throw new UsageError(`--due-before "${dueBefore}" is not YYYY-MM-DD or "YYYY-MM-DD HH:MM"`);
+            throw new UsageError(`--due-before "${dueBefore}" is not YYYY-MM-DD or a time: ${typedTimeHint(times.zone, times.nowMs)}`);
         }
         filter.dueBefore = at;
     }

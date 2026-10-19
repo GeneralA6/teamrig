@@ -1,4 +1,4 @@
-import { parseUtcDeadline } from "../core/time.js";
+import { parseDeadline } from "../core/time.js";
 import { taskNumber } from "./fold.js";
 import { ACTIVE_STATUSES } from "./model.js";
 import { isFinished, isReady, waitContext } from "./waits.js";
@@ -53,13 +53,16 @@ export function planOrder(a, b) {
 export class TaskTree {
     /** How the same read judges a waiting task's reasons ready. */
     context;
+    /** The team's zone: a stored due day is a day of it, and rows show times in it. */
+    zone;
     tasks;
     /** Per id, the active tasks that need it, by number. */
     needers;
     dues = new Map();
-    constructor(tasks, now) {
+    constructor(tasks, now, zone) {
         this.tasks = tasks;
-        this.context = waitContext(tasks, now);
+        this.zone = zone;
+        this.context = waitContext(tasks, now, zone);
         const needers = new Map();
         for (const task of [...tasks.values()].filter(isActive).sort((a, b) => taskNumber(a.id) - taskNumber(b.id))) {
             for (const id of needsOf(task)) {
@@ -109,7 +112,7 @@ export class TaskTree {
     /** The task's effective deadline in ms, or undefined when it has none; a task the read lacks keeps its own. */
     dueTime(task) {
         if (!this.tasks.has(task.id)) {
-            return task.due === null ? undefined : parseUtcDeadline(task.due)?.getTime();
+            return task.due === null ? undefined : parseDeadline(task.due, this.zone)?.getTime();
         }
         return this.effectiveDue(task.id)?.at;
     }
@@ -223,7 +226,7 @@ export class TaskTree {
         if (task === undefined) {
             return undefined;
         }
-        let best = ownDue(task, null);
+        let best = ownDue(task, null, this.zone);
         if (!isActive(task)) {
             return best;
         }
@@ -235,7 +238,7 @@ export class TaskTree {
                 continue;
             }
             seen.add(next.id);
-            const due = ownDue(next, next.id);
+            const due = ownDue(next, next.id, this.zone);
             if (due !== undefined && (best === undefined || due.at < best.at)) {
                 best = due;
             }
@@ -251,9 +254,9 @@ export class TaskTree {
 function isActive(task) {
     return ACTIVE_STATUSES.includes(task.status);
 }
-/** The task's own due as an effective due from `from`; undefined when it has none or it does not parse. */
-function ownDue(task, from) {
-    const at = task.due === null ? undefined : parseUtcDeadline(task.due)?.getTime();
+/** The task's own due as an effective due from `from`, read in `zone`; undefined when it has none or it does not parse. */
+function ownDue(task, from, zone) {
+    const at = task.due === null ? undefined : parseDeadline(task.due, zone)?.getTime();
     return task.due === null || at === undefined ? undefined : { due: task.due, at, from };
 }
 /** Breadth first from `from` along `next` to `to`: the shortest chain, both ends included; undefined when none. */

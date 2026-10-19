@@ -1,6 +1,6 @@
 import { burstText } from "../budget/burst-lines.js";
 import { KIT_NAME } from "../core/home.js";
-import { formatUtcMinute, MS_PER_DAY, MS_PER_MINUTE, utcMinuteOf } from "../core/time.js";
+import { MS_PER_DAY, MS_PER_MINUTE, utcMinuteOf } from "../core/time.js";
 import { waitContext } from "../register/waits.js";
 import { byUrgency, costText, idsText, isWakeWorthy, taskListText } from "./decide.js";
 /** The latest day start at or before `now`, epoch ms; undefined for a malformed time. */
@@ -30,8 +30,8 @@ export function dueMoments(now, dayStartUtc, burst, settled) {
     return due;
 }
 /** The session's work it can start now, of any priority, most urgent first. */
-export function startableTasks(tasks, session, now) {
-    const context = waitContext(tasks, new Date(now));
+export function startableTasks(tasks, session, now, zone) {
+    const context = waitContext(tasks, new Date(now), zone);
     return [...tasks.values()].filter((task) => isWakeWorthy(task, session, Number.POSITIVE_INFINITY, context)).sort(byUrgency);
 }
 function settle(settled, moments) {
@@ -56,19 +56,15 @@ export function decideDayStart(input) {
     }
     return { verdict: { kind: 'wake', moments: open, tasks: input.startable }, settled: settle(settled, open) };
 }
-/** `06:00`: a moment's minute of the day, UTC. */
-function minuteText(at) {
-    return formatUtcMinute(new Date(at)).slice(11);
-}
-function momentLine(moment, name) {
+function momentLine(moment, name, zone) {
     return moment.kind === 'day-start'
-        ? `The day started at ${minuteText(moment.at)} UTC and this tab has had no turn since.`
-        : `The lead started ${burstText(moment.burst, [name])}`;
+        ? `The day started at ${zone.clock(new Date(moment.at))} and this tab has had no turn since.`
+        : `The lead started ${burstText(moment.burst, [name], zone)}`;
 }
 /** The prompt the session reads, under the plugin's name; `name` is the session's name in the burst's line. */
-export function dayStartPrompt(session, name, moments, tasks, cost) {
+export function dayStartPrompt(session, name, moments, tasks, cost, zone) {
     return [
-        ...moments.map((moment) => momentLine(moment, name)),
+        ...moments.map((moment) => momentLine(moment, name, zone)),
         `Work you can start: ${taskListText(tasks)}.`,
         `Start a work block (\`${KIT_NAME} start --session ${session}\`) and work your list in priority order. This wake costs ${costText(cost)}.`,
     ].join(' ');

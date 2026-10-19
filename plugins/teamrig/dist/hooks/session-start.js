@@ -103,7 +103,7 @@ export function sessionStartContext(input) {
     if (load.issues.length > 0) {
         notes.push(`The team config has ${load.issues.length} problem(s), each read as its default; run: ${command} config validate`);
     }
-    const core = renderCorePack(load.config, command, input.platform);
+    const core = renderCorePack(load.config, command, input.platform, input.clock);
     const rules = isLeadSession(roster, input.session) ? `${core}\n\n${renderLeadRules(load.config, command)}` : core;
     return renderSessionContext(`${rules}\n\n${notes.join('\n')}`, input.teamRules, command);
 }

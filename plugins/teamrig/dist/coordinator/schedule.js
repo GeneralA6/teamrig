@@ -1,16 +1,20 @@
-import { formatUtcMinute, MS_PER_HOUR, utcMinuteOf } from "../core/time.js";
-/**
- * Why no heavy step may start at `nowMs`, or undefined when one may: none starts from `cutoffUtc` (`HH:MM`) until
- * midnight UTC. Unset: no cutoff.
- */
-export function heavyCutoffReason(nowMs, cutoffUtc) {
-    if (cutoffUtc === undefined) {
+import { MS_PER_DAY, MS_PER_HOUR, MS_PER_MINUTE, utcMinuteOf } from "../core/time.js";
+/** The part of `nowMs`'s UTC day when no heavy step starts: from `cutoffUtc` (`HH:MM`, UTC) until midnight UTC. Unset: none. */
+export function heavyCutoffSpan(nowMs, cutoffUtc) {
+    const cutoff = cutoffUtc === undefined ? undefined : utcMinuteOf(cutoffUtc);
+    if (cutoff === undefined) {
         return undefined;
     }
-    const now = new Date(nowMs);
-    const minute = now.getUTCHours() * 60 + now.getUTCMinutes();
-    const cutoff = utcMinuteOf(cutoffUtc);
-    return cutoff !== undefined && minute >= cutoff ? `nothing heavy after ${cutoffUtc} UTC (now ${formatUtcMinute(now)})` : undefined;
+    const dayStart = nowMs - (nowMs % MS_PER_DAY);
+    return { from: dayStart + cutoff * MS_PER_MINUTE, to: dayStart + MS_PER_DAY };
+}
+/**
+ * Why no heavy step may start at `nowMs`, or undefined when one may: none starts from `cutoffUtc` (`HH:MM`, UTC) until
+ * midnight UTC. Unset: no cutoff. The reason names the span and the time on `zone`'s clock.
+ */
+export function heavyCutoffReason(nowMs, cutoffUtc, zone) {
+    const span = heavyCutoffSpan(nowMs, cutoffUtc);
+    return span !== undefined && nowMs >= span.from ? `nothing heavy ${zone.clockSpan(new Date(span.from), new Date(span.to))} (now ${zone.clock(new Date(nowMs))})` : undefined;
 }
 /** When the blackout before `reset` starts: `hours` before it. */
 export function blackoutStart(reset, hours) {
@@ -19,9 +23,9 @@ export function blackoutStart(reset, hours) {
 /**
  * Why no deploy may start at `nowMs`, or undefined when one may: none starts from `hours` before the weekly token reset
  * until the reset, so nothing that may need a fix lands while the week has no budget left to fix it. Unset hours or
- * an unknown reset: no blackout.
+ * an unknown reset: no blackout. The reason names both ends on `zone`'s clock.
  */
-export function resetBlackoutReason(nowMs, reset, hours) {
+export function resetBlackoutReason(nowMs, reset, hours, zone) {
     if (reset === undefined || hours === undefined) {
         return undefined;
     }
@@ -29,7 +33,7 @@ export function resetBlackoutReason(nowMs, reset, hours) {
     if (nowMs < from || nowMs >= reset.at) {
         return undefined;
     }
-    return `deploy blackout before the weekly token reset: no deploy from ${formatUtcMinute(new Date(from))} until ${formatUtcMinute(new Date(reset.at))} UTC (reset from the ${reset.source})`;
+    return `deploy blackout before the weekly token reset: no deploy from ${zone.weekdayMinute(new Date(from))} until ${zone.weekdayMinute(new Date(reset.at))} (reset from the ${reset.source})`;
 }
 const SPAN = /^(?:(\d{1,4})h)?(?:(\d{1,5})m)?$/;
 /** A span written as minutes, hours or both, `45m`, `2h`, `1h30m`, as minutes; undefined for any other text or a span of none. */

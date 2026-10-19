@@ -33,7 +33,7 @@ function newestWeek(weeks) {
  */
 export function compactRegister(source, options) {
     const now = options.now.getTime();
-    const floor = currentWeekOf(source, options.now);
+    const floor = currentWeekOf(source, options.now, options.zone);
     const retainMs = options.retainDays * MS_PER_DAY;
     const retiring = [...source.state.tasks.values()].filter((task) => !options.keep.has(task.id) && isRetirable(task, now, retainMs, floor));
     const retiredIds = new Set(retiring.map((task) => task.id));

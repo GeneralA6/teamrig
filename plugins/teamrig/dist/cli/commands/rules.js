@@ -4,7 +4,7 @@ import { sessionStartContext } from "../../hooks/session-start.js";
 import { JsonlRenameLog } from "../../names/log.js";
 import { noPositionals } from "../args.js";
 import { sessionRef } from "../inputs.js";
-import { findTeam, openKit, requireConfig, sessionIdOf } from "../kit.js";
+import { findTeam, openKit, requireConfig, rulesClockOf, sessionIdOf } from "../kit.js";
 import { EXIT } from "../runtime.js";
 import { loadTree } from "../tree.js";
 /**
@@ -29,6 +29,7 @@ export async function rules(args, runtime) {
     const context = sessionStartContext({
         team,
         platform: runtime.platform,
+        clock: rulesClockOf(runtime),
         load: kit.load,
         teamRules: text === undefined ? undefined : { path: kit.paths.teamRules, text },
         renames,

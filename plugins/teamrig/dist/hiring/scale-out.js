@@ -1,6 +1,6 @@
 import { formatPct } from "../budget/format.js";
 import { KIT_NAME } from "../core/home.js";
-import { MS_PER_DAY, shortUtc } from "../core/time.js";
+import { MS_PER_DAY, showStored } from "../core/time.js";
 import { ACTIVE_STATUSES } from "../register/model.js";
 import { hireCapProblem, hiresOnTeam } from "./plan.js";
 /** Statuses of work under way: a task such work needs stays with its area. */
@@ -83,12 +83,13 @@ function needOf(area, tasks, input) {
 function round(value) {
     return Math.round(value * 10) / 10;
 }
-function detailOf(need, windowDays, costPct, sparePct) {
+/** A scale-out flag's detail, its dues in the team's `zone`. */
+function detailOf(need, windowDays, costPct, sparePct, zone) {
     const { behind, slice, last, stuck } = need;
     const ids = slice.map((item) => item.task.id).join(' ');
     const stuckText = stuck > 0 ? `; ${stuck} more stay late: started, or needed by started work` : '';
-    return (`${behind.count} due by ${shortUtc(behind.due)}, its pace finishes ${round(behind.finishes)} by then (${need.done} done in ${windowDays} d); ` +
-        `slice ${ids}, due by ${shortUtc(last.due)}, about ${formatPct(costPct)} of the week, ${formatPct(sparePct)} spare${stuckText}`);
+    return (`${behind.count} due by ${showStored(behind.due, zone)}, its pace finishes ${round(behind.finishes)} by then (${need.done} done in ${windowDays} d); ` +
+        `slice ${ids}, due by ${showStored(last.due, zone)}, about ${formatPct(costPct)} of the week, ${formatPct(sparePct)} spare${stuckText}`);
 }
 /** The days of this week the slice runs: from now to its last due or the pace end, whichever comes first; one at least. */
 function sliceDays(last, now, paceEnd) {
@@ -136,7 +137,7 @@ export function scaleOutFlags(input) {
         if (spare < costPct) {
             continue;
         }
-        const detail = detailOf(need, config.hiring.scaleOut.windowDays, costPct, spare);
+        const detail = detailOf(need, config.hiring.scaleOut.windowDays, costPct, spare, input.tree.zone);
         spare -= costPct;
         const to = idle.find((session) => !busy.has(session));
         if (to !== undefined) {

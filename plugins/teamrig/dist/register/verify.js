@@ -1,4 +1,4 @@
-import { formatUtcDay, parseUtcDay } from "../core/time.js";
+import { parseDeadline } from "../core/time.js";
 import { taskNumber } from "./fold.js";
 import { needsOf } from "./tree.js";
 /** `Proof: ...` or `Proof = ...` in a note written before `--proof` existed: what follows names the proof. */
@@ -51,8 +51,8 @@ export function verifyQueue(tasks, owner) {
         .filter((task) => task.status === 'verifying' && task.owner === owner)
         .sort((a, b) => Date.parse(a.statusAt) - Date.parse(b.statusAt) || taskNumber(a.id) - taskNumber(b.id));
 }
-/** True once the UTC day of the task's verify-by date, its due date, has come. */
-export function verifyByArrived(task, now) {
-    const day = task.due?.slice(0, 10);
-    return day !== undefined && parseUtcDay(day) !== undefined && day <= formatUtcDay(now);
+/** True once the day of the task's verify-by date, its due date, has come in the team's `zone`. */
+export function verifyByArrived(task, now, zone) {
+    const by = task.due === null ? undefined : parseDeadline(task.due, zone);
+    return by !== undefined && zone.day(by) <= zone.day(now);
 }

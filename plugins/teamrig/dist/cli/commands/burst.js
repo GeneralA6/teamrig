@@ -2,13 +2,13 @@ import { KIT_NAME } from "../../core/home.js";
 import { activeBurst, BURST_KINDS, decideBurst, isBurst, isBurstKind, surplusOf } from "../../budget/burst.js";
 import { BurstLog } from "../../budget/burst-log.js";
 import { BURST_COMMAND, burstText } from "../../budget/burst-lines.js";
-import { formatPct, formatWeekdayMinute } from "../../budget/format.js";
+import { formatPct } from "../../budget/format.js";
 import { activeHires, HiringLog } from "../../hiring/log.js";
 import { ACTIVE_STATUSES } from "../../register/model.js";
 import { noPositionals, onePositional, requiredFlag, UsageError } from "../args.js";
 import { readBursts } from "../burst-reading.js";
 import { callerOf, listOf } from "../inputs.js";
-import { openTeamKit, requireConfig, rosterOf, sessionIdOf } from "../kit.js";
+import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { pctFlag, timeFlag, weekReadingOf } from "./budget.js";
 import { ownRegister } from "./register.js";
@@ -53,15 +53,15 @@ function hiresFor(burst, hires, config) {
     return hires.filter((hire) => hire.burst === burst.at && config.sessions.includes(hire.session));
 }
 /** The week's line, or why it is unknown. */
-function weekStatusLine(week) {
+function weekStatusLine(week, zone) {
     const { usedPct, window } = week;
     if (usedPct === undefined || window === undefined) {
         return `WEEK the week's use or reset is unknown, so no burst can be judged: run ${KIT_NAME} statusline install, or set budget.weeklyLimitW and budget.reset`;
     }
-    return `WEEK ${formatPct(usedPct)} of the week used; the pace ends ${formatWeekdayMinute(window.paceEnd)}, the reset is ${formatWeekdayMinute(window.reset)}`;
+    return `WEEK ${formatPct(usedPct)} of the week used; the pace ends ${zone.weekdayMinute(new Date(window.paceEnd))}, the reset is ${zone.weekdayMinute(new Date(window.reset))}`;
 }
 /** The surplus line, when the week is known. */
-function surplusStatusLine(week, config, now) {
+function surplusStatusLine(week, config, now, zone) {
     const { usedPct, window } = week;
     if (usedPct === undefined || window === undefined) {
         return undefined;
@@ -72,7 +72,7 @@ function surplusStatusLine(week, config, now) {
     }
     const projected = `about ${formatPct(surplus.sparePct)} of the week projected unused at the pace end (budget.targetPct ${formatPct(config.budget.targetPct)})`;
     if (!surplus.open) {
-        return `SURPLUS ${projected}; a surplus burst may start from ${formatWeekdayMinute(surplus.opensAt)} (burst.surplusHours ${config.burst.surplusHours} before the reset)`;
+        return `SURPLUS ${projected}; a surplus burst may start from ${zone.weekdayMinute(new Date(surplus.opensAt))} (burst.surplusHours ${config.burst.surplusHours} before the reset)`;
     }
     return surplus.worth
         ? `SURPLUS ${projected}: worth a surplus burst now`
@@ -101,22 +101,23 @@ export async function burst(args, runtime) {
     const config = requireConfig(kit, runtime, 'read');
     const roster = await rosterOf(runtime, kit, config);
     const now = runtime.clock.now();
+    const zone = teamZone(config, runtime);
     const week = await weekReadingOf(runtime, kit, config, roster);
     const { records } = await new BurstLog(runtime.files, kit.paths.bursts).read();
     const inForce = activeBurst(records, now, week.usedPct);
-    const lines = [`POLICY burst.policy ${config.burst.policy}: ${POLICY_TEXT[config.burst.policy]}`, weekStatusLine(week)];
-    const surplus = surplusStatusLine(week, config, now);
+    const lines = [`POLICY burst.policy ${config.burst.policy}: ${POLICY_TEXT[config.burst.policy]}`, weekStatusLine(week, zone)];
+    const surplus = surplusStatusLine(week, config, now, zone);
     if (surplus !== undefined) {
         lines.push(surplus);
     }
     if (inForce === undefined) {
         const last = records.filter(isBurst).at(-1);
-        lines.push(last === undefined ? 'BURST none yet' : `BURST none in force; the last, a ${last.kind} burst, started ${formatWeekdayMinute(last.at)} (${last.reason})`);
+        lines.push(last === undefined ? 'BURST none yet' : `BURST none in force; the last, a ${last.kind} burst, started ${zone.weekdayMinute(new Date(last.at))} (${last.reason})`);
     }
     else {
         const approved = inForce.approvedBy === undefined ? '' : `, approved by ${inForce.approvedBy}`;
-        lines.push(`BURST in force: ${burstText(inForce, namesOf(roster, inForce.sessions))}`);
-        lines.push(`  started ${formatWeekdayMinute(inForce.at)} by ${roster.nameOf(inForce.by) ?? inForce.by}${approved}: ${inForce.reason}`);
+        lines.push(`BURST in force: ${burstText(inForce, namesOf(roster, inForce.sessions), zone)}`);
+        lines.push(`  started ${zone.weekdayMinute(new Date(inForce.at))} by ${roster.nameOf(inForce.by) ?? inForce.by}${approved}: ${inForce.reason}`);
         const hired = hiresFor(inForce, activeHires((await new HiringLog(runtime.files, kit.paths.hires).read()).records), config);
         if (hired.length > 0) {
             lines.push(`  its hires: ${namesOf(roster, hired.map((hire) => hire.session)).join(', ')} (${hired.length} of ${inForce.hires})`);
@@ -182,9 +183,10 @@ export async function start(args, runtime) {
     const helpers = countFlag(flags, 'helpers');
     const hires = countFlag(flags, 'hires');
     const stopPct = pctFlag(flags, 'stop-pct');
-    const deadline = timeFlag(flags, 'by', now);
     const kit = await openTeamKit(runtime);
     const config = requireConfig(kit, runtime, 'write');
+    const zone = teamZone(config, runtime);
+    const deadline = timeFlag(flags, 'by', { nowMs: now, zone });
     const roster = await rosterOf(runtime, kit, config);
     const by = leadOnly(roster, caller, 'starts a burst');
     const tasks = await tasksOf(runtime, flags.get('task'));
@@ -192,13 +194,13 @@ export async function start(args, runtime) {
     const week = await weekReadingOf(runtime, kit, config, roster);
     const log = new BurstLog(runtime.files, kit.paths.bursts);
     const { records } = await log.read();
-    const decision = decideBurst({ kind, sessions, helpers, hires, stopPct, deadline, tasks: tasks.ids, reason, approvedBy: flags.get('approved-by'), by, now }, { usedPct: week.usedPct, window: week.window, targetPct: config.budget.targetPct, config: config.burst, active: activeBurst(records, now, week.usedPct) });
+    const decision = decideBurst({ kind, sessions, helpers, hires, stopPct, deadline, tasks: tasks.ids, reason, approvedBy: flags.get('approved-by'), by, now }, { usedPct: week.usedPct, window: week.window, targetPct: config.budget.targetPct, config: config.burst, active: activeBurst(records, now, week.usedPct), zone });
     if (decision.kind === 'refused') {
         throw new RefusedError(decision.reason);
     }
     const started = decision.burst;
-    const what = burstText(started, namesOf(roster, started.sessions));
-    const spend = `  the week is at ${formatPct(week.usedPct ?? 0)}; the burst may take it to ${formatPct(started.stopPct)} by ${formatWeekdayMinute(started.endsAt)} (budget.targetPct ${formatPct(config.budget.targetPct)})`;
+    const what = burstText(started, namesOf(roster, started.sessions), zone);
+    const spend = `  the week is at ${formatPct(week.usedPct ?? 0)}; the burst may take it to ${formatPct(started.stopPct)} by ${zone.weekdayMinute(new Date(started.endsAt))} (budget.targetPct ${formatPct(config.budget.targetPct)})`;
     if (!args.switches.has('yes')) {
         runtime.out.stdout(`PREVIEW ${what} Nothing written (add --yes to write).`);
         runtime.out.stdout(spend);
@@ -230,7 +232,7 @@ export async function end(args, runtime) {
         throw new RefusedError('no burst is in force: nothing to end');
     }
     await new BurstLog(runtime.files, kit.paths.bursts).append({ kind: 'end', burstAt: inForce.at, reason, by, at: now });
-    runtime.out.stdout(`ENDED the ${inForce.kind} burst started ${formatWeekdayMinute(inForce.at)}: its sessions' daily budgets are the shared ones again`);
+    runtime.out.stdout(`ENDED the ${inForce.kind} burst started ${teamZone(config, runtime).weekdayMinute(new Date(inForce.at))}: its sessions' daily budgets are the shared ones again`);
     const hired = hiresFor(inForce, activeHires((await new HiringLog(runtime.files, kit.paths.hires).read()).records), config);
     if (hired.length > 0) {
         runtime.out.stdout(`NEXT retire its hires: ${hired.map((each) => `${KIT_NAME} retire ${each.session}`).join('; ')}`);

@@ -140,7 +140,8 @@ function readinessOf(setup, ports, repo) {
     return async () => {
         const now = ports.clock.now();
         const hours = schedule.resetBlackoutHours;
-        const refusal = heavyCutoffReason(now, schedule.heavyCutoffUtc) ?? (hours === undefined ? undefined : resetBlackoutReason(now, await ports.nextReset(now), hours));
+        const refusal = heavyCutoffReason(now, schedule.heavyCutoffUtc, setup.zone) ??
+            (hours === undefined ? undefined : resetBlackoutReason(now, await ports.nextReset(now), hours, setup.zone));
         if (refusal !== undefined) {
             return { kind: 'refuse', reason: refusal };
         }
@@ -152,7 +153,7 @@ function readinessOf(setup, ports, repo) {
             return { kind: 'wait', reason: `the quiet claims in ${setup.places.claims} are unreadable (${read.reason})` };
         }
         const covering = coveringClaims(read.claims, targets, now);
-        return covering.length === 0 ? { kind: 'go' } : { kind: 'wait', reason: covering.map(claimText).join('; ') };
+        return covering.length === 0 ? { kind: 'go' } : { kind: 'wait', reason: covering.map((claim) => claimText(claim, setup.zone)).join('; ') };
     };
 }
 /**
@@ -311,6 +312,7 @@ export async function integrateBranch(setup, ports, request) {
         purpose: `integrate ${repo.name}`,
         maxWaitMs: wait.maxMinutes * MINUTE_MS,
         pollMs: wait.pollSeconds * 1_000,
+        zone: setup.zone,
         onWait: (reason) => ports.say(`waiting: ${reason}`),
     });
     if (clearance.kind !== 'taken') {

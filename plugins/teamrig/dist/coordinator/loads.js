@@ -1,11 +1,11 @@
-import { formatUtcMinute } from "../core/time.js";
 import { appendRecord, parseLedger } from "./ledger.js";
 /** A load's id is the start of a new id, unique among the ledger's loads: short enough to type into `teamrig load end`. */
 const ID_LENGTH = 8;
 /** New ids tried before giving up; with random ids, one clash is already rare. */
 const ID_TRIES = 10;
-function utc(ms) {
-    return `${formatUtcMinute(new Date(ms))} UTC`;
+/** An instant as the team reads it: `2030-01-08 12:00 IST`. */
+function minuteText(ms, zone) {
+    return zone.minute(new Date(ms));
 }
 function isLoad(record) {
     return record.type === 'load';
@@ -15,7 +15,7 @@ function refused(reason) {
 }
 function startRefusal(rules, start) {
     if (start.startedAt > rules.nowMs) {
-        return `a load cannot start in the future (${utc(start.startedAt)})`;
+        return `a load cannot start in the future (${minuteText(start.startedAt, rules.zone)})`;
     }
     if (start.targets !== 'host') {
         const unknown = start.targets.filter((target) => !rules.knownTargets.includes(target));
@@ -67,11 +67,11 @@ export async function endLoad(ports, ledger, end) {
         return refused(`load "${end.id}" belongs to ${started.session}`);
     }
     if (end.endedAt > end.nowMs) {
-        return refused(`a load cannot end in the future (${utc(end.endedAt)})`);
+        return refused(`a load cannot end in the future (${minuteText(end.endedAt, end.zone)})`);
     }
     const startedAt = Date.parse(started.startedAt);
     if (end.endedAt < startedAt) {
-        return refused(`load "${end.id}" started at ${utc(startedAt)}, after ${utc(end.endedAt)}`);
+        return refused(`load "${end.id}" started at ${minuteText(startedAt, end.zone)}, after ${minuteText(end.endedAt, end.zone)}`);
     }
     const record = { ...started, endedAt: new Date(end.endedAt).toISOString() };
     await appendRecord(ports.files, ledger, record);

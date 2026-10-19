@@ -1,5 +1,4 @@
 import { isRecord, isStringArray, stringField } from "../core/guards.js";
-import { formatUtcMinute } from "../core/time.js";
 /** The quiet claims' file name in the coordinator's folder: one JSON array, written whole. */
 export const CLAIMS_FILE = 'claims.json';
 function claimOf(value) {
@@ -39,9 +38,12 @@ export async function readClaims(files, path) {
 export function coveringClaims(claims, targets, nowMs) {
     return claims.filter((claim) => Date.parse(claim.until) > nowMs && claim.targets.some((target) => targets.includes(target)));
 }
-/** `quiet claim by po on cloud-api until 2030-01-08 12:00 UTC (p95 latency)`. */
-export function claimText(claim) {
-    const until = new Date(Date.parse(claim.until));
-    const end = Number.isNaN(until.getTime()) ? claim.until : `${formatUtcMinute(until)} UTC`;
-    return `quiet claim by ${claim.session} on ${claim.targets.join(',')} until ${end} (${claim.metric})`;
+/** When a claim ends, on `zone`'s clock; a stored end that is not a time is shown as written. */
+export function claimEndText(until, zone) {
+    const at = Date.parse(until);
+    return Number.isNaN(at) ? until : zone.minute(new Date(at));
+}
+/** `quiet claim by po on cloud-api until 2030-01-08 12:00 UTC (p95 latency)`, the end on `zone`'s clock. */
+export function claimText(claim, zone) {
+    return `quiet claim by ${claim.session} on ${claim.targets.join(',')} until ${claimEndText(claim.until, zone)} (${claim.metric})`;
 }

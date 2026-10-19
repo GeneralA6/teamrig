@@ -118,7 +118,7 @@ export async function planRotation(files, paths, options, tailText) {
     const readPlanUsed = working.skipped === undefined ? working : historyPlan(tail);
     const source = await readPlan(files, paths, readPlanUsed, tail);
     const segment = tail.rotatedAfter + 1;
-    const compaction = compactRegister(source, { covered: segment, now: options.now, retainDays: options.retainDays, keep: options.keep });
+    const compaction = compactRegister(source, { covered: segment, now: options.now, zone: options.zone, retainDays: options.retainDays, keep: options.keep });
     const markerText = toJsonlLine(markerRecord(segment, options.now.toISOString()));
     const back = readBack(source, compaction, markerText);
     const existing = await segmentProblem(files, paths.segment(segment), text);
