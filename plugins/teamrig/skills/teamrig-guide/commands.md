@@ -993,7 +993,7 @@ CHECK 1 flag(s), web's tasks and skills, week 2026-10-12 (short form; --all for 
 OVERDUE 1 (due 10-14)
   T1 open, p1, owner web, due 10-14 | Add the error codes page · needed by T9 (api, due 10-16)
 SKILLS 0 flag(s) in ~/.claude/skills
-Week: 31.0% used at 09:00 UTC (status line); the pace line is at 28.6%: 2.4 points ahead. Resets Wed 10-21 01:00 UTC.
+Week: 31.0% used at 12:00 IDT (status line); the pace line is at 28.6%: 2.4 points ahead. Resets Wed 10-21 04:00 IDT.
 ```
 
 A lead with sub-teams runs `teamrig check --tree --session lead` too: `start` reads the lead's own team.
@@ -1048,7 +1048,7 @@ DONE 2 done or dropped since Wed 10-14 08:30 UTC
   T3 done, p2, owner web | Add the error codes page
 - 2026-10-15 07:40 api: the signup retry needs the new error codes first
 READ lead: 1 new line, shown above; new ones are shown at your next prompt
-Week: 31.0% used at 08:00 UTC (status line); the pace line is at 28.6%: 2.4 points ahead. Resets Wed 10-21 01:00 UTC.
+Week: 31.0% used at 11:00 IDT (status line); the pace line is at 28.6%: 2.4 points ahead. Resets Wed 10-21 04:00 IDT.
   fits: p1 40% · p2 22% (left 68.5% of the week)
 END teamrig meeting end --session lead: tells every session, with the decisions recorded on its tasks
 ```
@@ -2114,7 +2114,7 @@ teamrig budget
 Output:
 
 ```text
-Week: 57.0% used at 11:00 UTC (status line); the pace line is at 20.9%: 36.1 points ahead. Resets Wed 10-21 01:00 UTC.
+Week: 57.0% used at 14:00 IDT (status line); the pace line is at 20.9%: 36.1 points ahead. Resets Wed 10-21 04:00 IDT.
 The team used 5.0% of the week today; its daily budget is 10.3%. 37.50M W in 1,310 calls.
 api used 4.0% of the week today; its daily budget is 3.4%. 30.00M W in 1,000 calls.
 lead used 1.0% of the week today; its daily budget is 3.4%. 7.50M W in 310 calls.
@@ -2182,7 +2182,7 @@ hours yet, and `--quiet-action` with `--quiet off` are usage errors (exit 64).
 The lead lifts one session to a part of the team's daily budget for today: the session gets `--part` % of the
 team's budget, recomputed at every reading like the budget itself, and the other sessions split the rest by their
 shares and queued work. The lifts in force never give more than the whole team budget. Every lift carries a stop %: it ends at the stop %, at
-`--until` or at the end of the UTC day, whichever comes first, and quiet hours do not apply to the session while
+`--until` or at the end of the budget day (a UTC day), whichever comes first, and quiet hours do not apply to the session while
 it runs. The stop % is at most `budget.lift.maxStopPct` (99.3). Above that, up to `budget.lift.reserveStopPct`
 (99.9), only with `--reserve` and only in the last hour before the reset; a reserve lift ends 15 minutes before
 the reset. Lifts are kept in the team's `state/usage/lifts.jsonl`.
@@ -2192,7 +2192,7 @@ Flags:
 - `--session <id|name>`: the caller; it must be the lead.
 - `--part <pct>`: the session's part of the team's daily budget today, in percent (above 0, up to 100).
 - `--stop-pct <pct>`: required: the week's use at which the lift ends.
-- `--until <HH:MM|date>`: an earlier end: `HH:MM` today or `"YYYY-MM-DD HH:MM"`, UTC.
+- `--until <HH:MM|date>`: an earlier end: `HH:MM` today or `"YYYY-MM-DD HH:MM"`, on the team's clock unless marked `UTC`.
 - `--reason "<why>"`: required: why the session needs more today.
 - `--reserve`: release the reserve, above `budget.lift.maxStopPct`, in the last hour before the reset.
 
@@ -2205,7 +2205,7 @@ teamrig budget lift api --session lead --part 50 --stop-pct 97 --reason "release
 Output:
 
 ```text
-LIFTED api to 50.0% of the team's daily budget today until the end of the day (UTC) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.
+LIFTED api to 50.0% of the team's daily budget today until 03:00 IDT (the end of the budget day) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.
 ```
 
 A caller who is not the lead, a missing stop %, a stop % above the bounds, a part that with the other lifts in
@@ -2231,7 +2231,7 @@ Output:
 
 ```text
 POLICY burst.policy owner: the lead starts one once the owner approves it (--approved-by)
-WEEK 70.0% of the week used; the pace ends Mon 01-14 00:00 UTC, the reset is Mon 01-14 01:00 UTC
+WEEK 70.0% of the week used; the pace ends Mon 01-14 02:00 IST, the reset is Mon 01-14 03:00 IST
 SURPLUS about 10.3% of the week projected unused at the pace end (budget.targetPct 99.5%): worth a surplus burst now
 BURST none yet
 NEXT preview a surplus burst: teamrig burst start surplus --reason "<why>" --approved-by "<who>"
@@ -2270,7 +2270,7 @@ Flags:
 - `--helpers <n>`: the most helpers each of its sessions runs at once; at most `burst.maxHelpers`.
 - `--hires <n>`: the most sessions the lead may hire for it; at most `burst.maxHires`.
 - `--stop-pct <pct>`: the week's use at which it ends; required for a deadline burst, else `budget.targetPct`.
-- `--by <HH:MM|date>`: a deadline burst's deadline: `HH:MM` today or `"YYYY-MM-DD HH:MM"`, UTC.
+- `--by <HH:MM|date>`: a deadline burst's deadline: `HH:MM` today or `"YYYY-MM-DD HH:MM"`, on the team's clock unless marked `UTC`.
 - `--task <ids>`: a deadline burst's tasks, comma-separated; worked first.
 - `--approved-by "<who>"`: who approved it; needed under `burst.policy` `owner`.
 - `--yes`: start it.
@@ -2284,8 +2284,8 @@ teamrig burst start surplus --reason "week-end surplus" --approved-by "the owner
 Output:
 
 ```text
-STARTED a surplus burst until Mon 01-14 00:00 UTC or 99.5% of the week: shop-lead, shop-api, shop-web each have a daily budget of at least 6.6%, up to 3 helpers at once, 1 hire for the team.
-  the week is at 70.0%; the burst may take it to 99.5% by Mon 01-14 00:00 UTC (budget.targetPct 99.5%)
+STARTED a surplus burst until Mon 01-14 02:00 IST or 99.5% of the week: shop-lead, shop-api, shop-web each have a daily budget of at least 6.6%, up to 3 helpers at once, 1 hire for the team.
+  the week is at 70.0%; the burst may take it to 99.5% by Mon 01-14 02:00 IST (budget.targetPct 99.5%)
 NEXT its sessions read it at their next turn; end it early: teamrig burst end --reason "<why>"; hire for it: teamrig hire <id> --burst --scope "<its job>" --reason "<why>"
 ```
 
@@ -2313,7 +2313,7 @@ teamrig burst end --reason "the release shipped" --session lead
 Output:
 
 ```text
-ENDED the surplus burst started Sat 01-12 12:00 UTC: its sessions' daily budgets are the shared ones again
+ENDED the surplus burst started Sat 01-12 14:00 IST: its sessions' daily budgets are the shared ones again
 NEXT retire its hires: teamrig retire importer
 ```
 

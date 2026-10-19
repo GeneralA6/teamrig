@@ -71,6 +71,12 @@ describe('burst', () => {
     assert.equal(kit.files.get(BURSTS), undefined);
   });
 
+  it("prints the pace end and the reset on the team's clock", async () => {
+    const kit = await team();
+    const [, week] = ok(await kit.run(['burst'], { timeZone: 'Asia/Jerusalem' })).stdout;
+    assert.equal(week, 'WEEK 5.0% of the week used; the pace ends Mon 01-14 02:00 IST, the reset is Mon 01-14 03:00 IST');
+  });
+
   it('says when the surplus window opens, when the spare is too small, and when the week is unknown', async () => {
     const shut = await team({ burst: { surplusHours: 48 } });
     assert.match(ok(await shut.run(['burst'])).stdout.join('\n'), /SURPLUS .*; a surplus burst may start from Sat 01-12 01:00 UTC \(burst\.surplusHours 48 before the reset\)/);
@@ -142,7 +148,7 @@ describe('burst start', () => {
     assert.match(usage(await lead(kit, 'burst', 'start', 'surplus', '--reason', ' ')), /--reason needs a reason/);
     assert.match(usage(await lead(kit, 'burst', 'start', 'surplus', '--reason', 'r', '--helpers', '1.5')), /--helpers "1\.5" is not a whole number of 0 or more/);
     assert.match(usage(await lead(kit, 'burst', 'start', 'surplus', '--reason', 'r', '--hires', '-1')), /--hires "-1" is not a whole number/);
-    assert.match(usage(await lead(kit, 'burst', 'start', 'deadline', '--task', 'T1', '--by', 'soon', '--stop-pct', '40', '--reason', 'r')), /--by "soon" is not HH:MM or "YYYY-MM-DD HH:MM" \(UTC\)/);
+    assert.match(usage(await lead(kit, 'burst', 'start', 'deadline', '--task', 'T1', '--by', 'soon', '--stop-pct', '40', '--reason', 'r')), /--by "soon" is not HH:MM or YYYY-MM-DD HH:MM in UTC/);
     assert.match(refusal(await lead(kit, 'burst', 'start', 'surplus', '--reason', 'r', ...OWNER_OK, '--helpers', '9')), /--helpers 9 is above burst\.maxHelpers \(3\)/);
   });
 });

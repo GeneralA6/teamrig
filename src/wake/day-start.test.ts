@@ -16,6 +16,7 @@ import {
 } from './day-start.ts';
 import { NO_SETTLED_MOMENTS } from './decide.ts';
 import { TimeZone } from '../core/zone.ts';
+import { JERUSALEM } from '../testing/zone.ts';
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -141,12 +142,16 @@ describe('the day-start prompt and toast', () => {
 
   it('tells the session which moments woke it, its work, how to start and what the wake costs', () => {
     assert.equal(
-      dayStartPrompt('alpha', 'app-alpha', [DAY_START], tasks, COLD),
+      dayStartPrompt('alpha', 'app-alpha', [DAY_START], tasks, COLD, TimeZone.UTC),
       'The day started at 06:00 UTC and this tab has had no turn since. Work you can start: T4 "Ship the page" (p1), T9 "Tidy the docs" (p3). ' +
         'Start a work block (`teamrig start --session alpha`) and work your list in priority order. This wake costs about 210k W, cold, 0.02% of the week.',
     );
-    const both = dayStartPrompt('alpha', 'app-alpha', [DAY_START, BURST_MOMENT], tasks, COLD);
+    const both = dayStartPrompt('alpha', 'app-alpha', [DAY_START, BURST_MOMENT], tasks, COLD, TimeZone.UTC);
     assert.match(both, /^The day started at 06:00 UTC and this tab has had no turn since\. The lead started a surplus burst until .*: app-alpha's daily budget is at least 2\.5%, up to 3 helpers at once\. Work you can start: T4/);
+  });
+
+  it("gives the day's start on the team's clock", () => {
+    assert.match(dayStartPrompt('alpha', 'app-alpha', [DAY_START], tasks, COLD, JERUSALEM), /^The day started at 08:00 IST and this tab has had no turn since\. /);
   });
 
   it('tells the person which moments woke the tab, for which tasks, and the cost', () => {

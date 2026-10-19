@@ -54,9 +54,10 @@ describe('formats', () => {
   it("shows an instant on the zone's clock and calendar, marked with the zone", () => {
     const late = new Date('2026-10-19T22:30:00Z');
     assert.deepEqual(
-      [JERUSALEM.minute(late), JERUSALEM.shortMinute(late), JERUSALEM.clock(late), JERUSALEM.day(late), JERUSALEM.weekday(late)],
-      ['2026-10-20 01:30 IDT', '10-20 01:30 IDT', '01:30 IDT', '2026-10-20', 'Tue'],
+      [JERUSALEM.minute(late), JERUSALEM.shortMinute(late), JERUSALEM.clock(late), JERUSALEM.day(late), JERUSALEM.weekday(late), JERUSALEM.weekdayMinute(late)],
+      ['2026-10-20 01:30 IDT', '10-20 01:30 IDT', '01:30 IDT', '2026-10-20', 'Tue', 'Tue 10-20 01:30 IDT'],
     );
+    assert.equal(TimeZone.UTC.weekdayMinute(late), 'Mon 10-19 22:30 UTC', 'the weekday is the one on the clock shown');
     assert.equal(TimeZone.UTC.minute(late), '2026-10-19 22:30 UTC');
     assert.equal(NEW_YORK.minute(late), '2026-10-19 18:30 EDT');
   });

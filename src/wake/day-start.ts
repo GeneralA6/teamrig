@@ -1,7 +1,7 @@
 import { burstText } from '../budget/burst-lines.ts';
 import type { Burst } from '../budget/burst.ts';
 import { KIT_NAME } from '../core/home.ts';
-import { formatUtcMinute, MS_PER_DAY, MS_PER_MINUTE, utcMinuteOf } from '../core/time.ts';
+import { MS_PER_DAY, MS_PER_MINUTE, utcMinuteOf } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
 import type { Task } from '../register/fold.ts';
 import { waitContext } from '../register/waits.ts';
@@ -102,21 +102,16 @@ export function decideDayStart(input: DayStartInput): DayStartDecision {
   return { verdict: { kind: 'wake', moments: open, tasks: input.startable }, settled: settle(settled, open) };
 }
 
-/** `06:00`: a moment's minute of the day, UTC. */
-function minuteText(at: number): string {
-  return formatUtcMinute(new Date(at)).slice(11);
-}
-
-function momentLine(moment: DayMoment, name: string): string {
+function momentLine(moment: DayMoment, name: string, zone: TimeZone): string {
   return moment.kind === 'day-start'
-    ? `The day started at ${minuteText(moment.at)} UTC and this tab has had no turn since.`
-    : `The lead started ${burstText(moment.burst, [name])}`;
+    ? `The day started at ${zone.clock(new Date(moment.at))} and this tab has had no turn since.`
+    : `The lead started ${burstText(moment.burst, [name], zone)}`;
 }
 
 /** The prompt the session reads, under the plugin's name; `name` is the session's name in the burst's line. */
-export function dayStartPrompt(session: string, name: string, moments: readonly DayMoment[], tasks: readonly Task[], cost: WakeCost): string {
+export function dayStartPrompt(session: string, name: string, moments: readonly DayMoment[], tasks: readonly Task[], cost: WakeCost, zone: TimeZone): string {
   return [
-    ...moments.map((moment) => momentLine(moment, name)),
+    ...moments.map((moment) => momentLine(moment, name, zone)),
     `Work you can start: ${taskListText(tasks)}.`,
     `Start a work block (\`${KIT_NAME} start --session ${session}\`) and work your list in priority order. This wake costs ${costText(cost)}.`,
   ].join(' ');

@@ -1,6 +1,7 @@
 import type { BurstConfig } from '../config/types.ts';
-import { formatUtcMinute, MS_PER_DAY, MS_PER_HOUR } from '../core/time.ts';
-import { formatPct, formatWeekdayMinute } from './format.ts';
+import { MS_PER_DAY, MS_PER_HOUR } from '../core/time.ts';
+import type { TimeZone } from '../core/zone.ts';
+import { formatPct } from './format.ts';
 import type { WeekWindow } from './pace.ts';
 
 /**
@@ -132,6 +133,8 @@ export interface BurstContext {
   readonly targetPct: number;
   readonly config: BurstConfig;
   readonly active: Burst | undefined;
+  /** The team's zone, which a refusal prints its times in. */
+  readonly zone: TimeZone;
 }
 
 export type BurstDecision = { readonly kind: 'burst'; readonly burst: Burst } | { readonly kind: 'refused'; readonly reason: string };
@@ -173,7 +176,7 @@ function endOf(request: BurstRequest, context: BurstContext, window: WeekWindow,
   if (request.kind === 'surplus') {
     const surplus = surplusOf({ window, now, usedPct, targetPct: context.targetPct, config: context.config });
     if (surplus === undefined || !surplus.open) {
-      const from = formatWeekdayMinute(window.reset - context.config.surplusHours * MS_PER_HOUR);
+      const from = context.zone.weekdayMinute(new Date(window.reset - context.config.surplusHours * MS_PER_HOUR));
       return { problem: `a surplus burst starts only from ${from} (burst.surplusHours ${context.config.surplusHours} before the reset) until the pace end` };
     }
     if (!surplus.worth) {
@@ -189,7 +192,7 @@ function endOf(request: BurstRequest, context: BurstContext, window: WeekWindow,
     return { problem: 'a deadline burst needs --by <time>: when its tasks are due' };
   }
   if (request.deadline <= now) {
-    return { problem: `--by ${formatUtcMinute(new Date(request.deadline))} UTC has passed` };
+    return { problem: `--by ${context.zone.minute(new Date(request.deadline))} has passed` };
   }
   if (request.tasks.length === 0) {
     return { problem: 'a deadline burst needs --task <ids>: the tasks due by --by' };
@@ -214,7 +217,7 @@ export function decideBurst(request: BurstRequest, context: BurstContext): Burst
     return refused('a burst needs --reason "<why>"');
   }
   if (active !== undefined) {
-    return refused(`a ${active.kind} burst runs until ${formatWeekdayMinute(active.endsAt)} or ${formatPct(active.stopPct)} of the week; end it first: teamrig burst end --reason "<why>"`);
+    return refused(`a ${active.kind} burst runs until ${context.zone.weekdayMinute(new Date(active.endsAt))} or ${formatPct(active.stopPct)} of the week; end it first: teamrig burst end --reason "<why>"`);
   }
   if (request.sessions.length === 0) {
     return refused('a burst needs at least one session');

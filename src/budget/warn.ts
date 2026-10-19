@@ -1,9 +1,10 @@
 import type { BudgetConfig, OverAction, QuietHours } from '../config/types.ts';
 import { KIT_NAME } from '../core/home.ts';
 import { formatUtcDay, isMinuteInSpan, MS_PER_DAY, MS_PER_MINUTE, utcMinuteOf } from '../core/time.ts';
+import type { TimeZone } from '../core/zone.ts';
 import type { Burst } from './burst.ts';
 import { budgetMarkOf, burstPromptLines, burstStopLines, type BurstMarks, type SurplusHint } from './burst-lines.ts';
-import { formatPct } from './format.ts';
+import { formatClockSpan, formatPct } from './format.ts';
 import { liftText, type Lift } from './lift.ts';
 import { hasRoom, type PaceReading, type TeamDay } from './pace.ts';
 
@@ -43,6 +44,8 @@ export interface BudgetFacts {
   readonly teamDay: TeamDay;
   /** The session is the team's lead: it lifts budgets, so its own helpers never ask and it gets no inbox line. */
   readonly isLead: boolean;
+  /** The team's zone, which the lines print their times in. */
+  readonly zone: TimeZone;
 }
 
 export type WarnBudget = Pick<BudgetConfig, 'warnAtPct' | 'overAction' | 'escalate' | 'quietHours'>;
@@ -109,8 +112,16 @@ export function levelOf(usePct: number, warnAtPct: readonly number[]): number {
   return Number.isFinite(usePct) ? last + Math.floor((usePct - last) / WARN_STEP_PCT) * WARN_STEP_PCT : last;
 }
 
-/** When the quiet hours `now` falls in began, epoch ms; undefined outside them. They may cross midnight. */
-export function quietStartOf(quiet: QuietHours | undefined, now: number): number | undefined {
+/** A stretch of quiet hours, epoch ms. */
+export interface QuietSpan {
+  readonly from: number;
+  readonly to: number;
+}
+
+const MINUTES_PER_DAY = MS_PER_DAY / MS_PER_MINUTE;
+
+/** The quiet hours `now` falls in, epoch ms; undefined outside them. They may cross midnight. */
+export function quietSpanOf(quiet: QuietHours | undefined, now: number): QuietSpan | undefined {
   const start = quiet === undefined ? undefined : utcMinuteOf(quiet.startUtc);
   const end = quiet === undefined ? undefined : utcMinuteOf(quiet.endUtc);
   if (start === undefined || end === undefined || start === end) {
@@ -121,7 +132,8 @@ export function quietStartOf(quiet: QuietHours | undefined, now: number): number
   if (!isMinuteInSpan(minute, start, end)) {
     return undefined;
   }
-  return (minute >= start ? dayStart : dayStart - MS_PER_DAY) + start * MS_PER_MINUTE;
+  const from = (minute >= start ? dayStart : dayStart - MS_PER_DAY) + start * MS_PER_MINUTE;
+  return { from, to: from + ((end - start + MINUTES_PER_DAY) % MINUTES_PER_DAY) * MS_PER_MINUTE };
 }
 
 /** Where a session stands now. */
@@ -133,8 +145,8 @@ interface Standing {
   readonly held: boolean;
   /** Held, and (unless the team escalates on the session alone) the team is ahead of its pace line. */
   readonly escalated: boolean;
-  /** When the current quiet hours began, unless the session's lift exempts it from them. */
-  readonly quietFrom: number | undefined;
+  /** The current quiet hours, unless the session's lift exempts it from them. */
+  readonly quiet: QuietSpan | undefined;
 }
 
 /** True when the session's use today is past its daily budget (its lift's while lifted). */
@@ -152,9 +164,9 @@ export function isHeld(facts: BudgetFacts): boolean {
   return isPastDailyBudget(facts) && !hasRoom(facts.teamDay);
 }
 
-/** When the quiet hours the session is in began, epoch ms; undefined outside them, or while its lift exempts it. */
-export function sessionQuietFrom(facts: BudgetFacts, quiet: QuietHours | undefined): number | undefined {
-  return facts.lift?.quietHoursExempt === true ? undefined : quietStartOf(quiet, facts.now);
+/** The quiet hours the session is in; undefined outside them, or while its lift exempts it. */
+export function sessionQuietSpan(facts: BudgetFacts, quiet: QuietHours | undefined): QuietSpan | undefined {
+  return facts.lift?.quietHoursExempt === true ? undefined : quietSpanOf(quiet, facts.now);
 }
 
 function standingOf(facts: BudgetFacts, budget: WarnBudget): Standing {
@@ -162,8 +174,8 @@ function standingOf(facts: BudgetFacts, budget: WarnBudget): Standing {
   const over = isPastDailyBudget(facts);
   const held = isHeld(facts);
   const ahead = facts.pace?.state === 'ahead';
-  const quietFrom = sessionQuietFrom(facts, budget.quietHours);
-  return { over, level: levelOf(usePct, budget.warnAtPct), ahead, held, escalated: held && (budget.escalate === 'session' || ahead), quietFrom };
+  const quiet = sessionQuietSpan(facts, budget.quietHours);
+  return { over, level: levelOf(usePct, budget.warnAtPct), ahead, held, escalated: held && (budget.escalate === 'session' || ahead), quiet };
 }
 
 /** How strongly an action holds a helper launch back: only "ask" and "block" do. */
@@ -251,10 +263,11 @@ function levelLine(facts: BudgetFacts, budget: WarnBudget, standing: Standing): 
   return joined([`Budget: ${use}`, `${capitalized(heldClause(facts, standing))}.`, escalatedText(facts, budget), MORE]);
 }
 
-function quietLine(quiet: QuietHours, facts: BudgetFacts): string {
+/** The person's line as quiet hours start, their times on the team's clock. */
+function quietLine(quiet: QuietHours, span: QuietSpan, facts: BudgetFacts): string {
   const helpers = facts.isLead ? undefined : helperClause(quiet.action);
   const what = helpers === undefined ? 'the team rests; start no new work.' : `${helpers}.`;
-  return `Quiet hours (${quiet.startUtc}-${quiet.endUtc} UTC): ${what} ${MORE}`;
+  return `Quiet hours (${formatClockSpan(span.from, span.to, facts.zone)}): ${what} ${MORE}`;
 }
 
 /** What the Stop hook shows and records at a turn's end. */
@@ -285,14 +298,14 @@ export function stopWarning(facts: BudgetFacts, budget: WarnBudget, previous: Wa
   const standing = standingOf(facts, budget);
   const lines: string[] = [];
   if (facts.lift !== undefined && facts.lift.at !== state.liftAt) {
-    lines.push(`Budget: the lead lifted ${liftText(facts.lift, facts.name)}`);
+    lines.push(`Budget: the lead lifted ${liftText(facts.lift, facts.name, facts.zone)}`);
   } else if (facts.lift === undefined && state.liftAt !== undefined) {
     lines.push(`Budget: ${facts.name}'s lift has ended; its daily budget is ${formatPct(facts.budgetPct)} again.`);
   }
   const burst = burstStopLines(facts, state);
   lines.push(...burst.lines);
-  if (budget.quietHours !== undefined && standing.quietFrom !== undefined && standing.quietFrom !== state.quietFrom) {
-    lines.push(quietLine(budget.quietHours, facts));
+  if (budget.quietHours !== undefined && standing.quiet !== undefined && standing.quiet.from !== state.quietFrom) {
+    lines.push(quietLine(budget.quietHours, standing.quiet, facts));
   }
   // A state saved before `held` was kept reads as not held: a session escalated then sees this line once more.
   const wasEscalated = state.held && (budget.escalate === 'session' || state.ahead);
@@ -312,7 +325,7 @@ export function stopWarning(facts: BudgetFacts, budget: WarnBudget, previous: Wa
       ahead: standing.ahead,
       held: standing.held,
       leadTold: state.leadTold || tellLead,
-      quietFrom: standing.quietFrom ?? state.quietFrom,
+      quietFrom: standing.quiet?.from ?? state.quietFrom,
       liftAt: facts.lift?.at,
       burstAt: burst.burstAt,
       modelBurstAt: state.modelBurstAt,
@@ -385,8 +398,8 @@ export function helperGate(facts: BudgetFacts, budget: WarnBudget): HelperGate {
     });
   }
   const quiet = budget.quietHours;
-  if (quiet !== undefined && standing.quietFrom !== undefined) {
-    reasons.push({ action: quiet.action, text: `It is quiet hours (${quiet.startUtc}-${quiet.endUtc} UTC).` });
+  if (quiet !== undefined && standing.quiet !== undefined) {
+    reasons.push({ action: quiet.action, text: `It is quiet hours (${formatClockSpan(standing.quiet.from, standing.quiet.to, facts.zone)}).` });
   }
   const strongest = Math.max(0, ...reasons.map((reason) => gateRank(reason.action)));
   if (strongest === 0) {

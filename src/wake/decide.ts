@@ -1,5 +1,5 @@
 import { formatPct, formatW } from '../budget/format.ts';
-import { isHeld, quietStartOf, sessionQuietFrom, type BudgetFacts } from '../budget/warn.ts';
+import { isHeld, quietSpanOf, sessionQuietSpan, type BudgetFacts } from '../budget/warn.ts';
 import { DEFAULT_MESSAGES } from '../config/defaults.ts';
 import type { QuietHours } from '../config/types.ts';
 import { KIT_NAME } from '../core/home.ts';
@@ -166,9 +166,9 @@ export interface WakeRest {
  */
 export function wakeRestOf(facts: BudgetFacts | undefined, quietHours: QuietHours | undefined, now: number): WakeRest {
   if (facts === undefined) {
-    return { held: false, quiet: quietStartOf(quietHours, now) !== undefined };
+    return { held: false, quiet: quietSpanOf(quietHours, now) !== undefined };
   }
-  return { held: isHeld(facts), quiet: sessionQuietFrom(facts, quietHours) !== undefined };
+  return { held: isHeld(facts), quiet: sessionQuietSpan(facts, quietHours) !== undefined };
 }
 
 /** The least urgent priority that wakes the session now: p1 only while its budget holds it or in quiet hours. */

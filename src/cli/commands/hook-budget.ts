@@ -19,7 +19,7 @@ import { readWork } from '../../budget/work.ts';
 import { postLine } from '../../inbox/inbox.ts';
 import { holdBack } from '../../hooks/permission.ts';
 import { helperLaunchReminder } from '../../rules/helper-default.ts';
-import type { Kit } from '../kit.ts';
+import { teamZone, type Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
 import { snapshotDirOf } from './budget.ts';
 import { inboxDepsOf } from './inbox.ts';
@@ -120,6 +120,7 @@ export async function budgetFactsOf(runtime: CliRuntime, scope: BudgetScope, tra
     pace: week.pace,
     teamDay,
     isLead,
+    zone: teamZone(config, runtime),
   };
 }
 

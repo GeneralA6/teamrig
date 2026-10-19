@@ -1,6 +1,7 @@
 import type { BurstConfig } from '../config/types.ts';
 import { KIT_NAME } from '../core/home.ts';
-import { formatPct, formatWeekdayMinute } from './format.ts';
+import type { TimeZone } from '../core/zone.ts';
+import { formatPct } from './format.ts';
 import { surplusOf, type Burst } from './burst.ts';
 import type { Lift } from './lift.ts';
 import type { WeekWindow } from './pace.ts';
@@ -56,6 +57,8 @@ export interface BurstFacts {
   readonly burst: Burst | undefined;
   /** For the lead only, with no burst in force: a surplus worth one. */
   readonly surplus: SurplusHint | undefined;
+  /** The team's zone, which the lines print their times in. */
+  readonly zone: TimeZone;
 }
 
 /** What the burst lines already showed a session, so each shows once. */
@@ -72,27 +75,27 @@ function plural(count: number, word: string): string {
   return `${count} ${word}${count === 1 ? '' : 's'}`;
 }
 
-/** When it ends, as a clause: "until Wed 01-09 00:00 UTC or 99.5% of the week". */
-function endText(burst: Burst): string {
-  return `until ${formatWeekdayMinute(burst.endsAt)} or ${formatPct(burst.stopPct)} of the week`;
+/** When it ends, as a clause on the team's clock: "until Wed 01-09 02:00 IST or 99.5% of the week". */
+function endText(burst: Burst, zone: TimeZone): string {
+  return `until ${zone.weekdayMinute(new Date(burst.endsAt))} or ${formatPct(burst.stopPct)} of the week`;
 }
 
 /** Its tasks, as a clause; '' for a surplus burst. */
-function tasksText(burst: Burst): string {
+function tasksText(burst: Burst, zone: TimeZone): string {
   if (burst.tasks.length === 0) {
     return '';
   }
-  return ` for ${burst.tasks.join(', ')}${burst.deadline === undefined ? '' : ` (due ${formatWeekdayMinute(burst.deadline)})`}`;
+  return ` for ${burst.tasks.join(', ')}${burst.deadline === undefined ? '' : ` (due ${zone.weekdayMinute(new Date(burst.deadline))})`}`;
 }
 
 /**
  * A burst as the person reads it, for the sessions named: "a surplus burst until ...: alpha's daily
  * budget is at least ...", or "alpha, bravo each have a daily budget of at least ..." for several.
  */
-export function burstText(burst: Burst, names: readonly string[]): string {
+export function burstText(burst: Burst, names: readonly string[], zone: TimeZone): string {
   const hires = burst.hires === 0 ? '' : `, ${plural(burst.hires, 'hire')} for the team`;
   const whose = names.length === 1 ? `${names.join('')}'s daily budget is at least` : `${names.join(', ')} each have a daily budget of at least`;
-  return `a ${burst.kind} burst${tasksText(burst)} ${endText(burst)}: ${whose} ${formatPct(burst.dailyPct)}, up to ${plural(burst.helpers, 'helper')} at once${hires}.`;
+  return `a ${burst.kind} burst${tasksText(burst, zone)} ${endText(burst, zone)}: ${whose} ${formatPct(burst.dailyPct)}, up to ${plural(burst.helpers, 'helper')} at once${hires}.`;
 }
 
 /** Why a session's daily budget is not the shared one: " (lifted)" (a lift sets its part), " (burst)", or ''. */
@@ -107,7 +110,7 @@ export function budgetMarkOf(session: { readonly lift: Lift | undefined; readonl
 export function burstStopLines(facts: BurstFacts, marks: BurstMarks): { readonly lines: readonly string[]; readonly burstAt: number | undefined } {
   const { burst } = facts;
   if (burst !== undefined) {
-    return burst.at === marks.burstAt ? { lines: [], burstAt: burst.at } : { lines: [`Budget: the lead started ${burstText(burst, [facts.name])} ${MORE_BURST}`], burstAt: burst.at };
+    return burst.at === marks.burstAt ? { lines: [], burstAt: burst.at } : { lines: [`Budget: the lead started ${burstText(burst, [facts.name], facts.zone)} ${MORE_BURST}`], burstAt: burst.at };
   }
   if (marks.burstAt !== undefined) {
     return { lines: [`Budget: ${facts.name}'s burst has ended; its daily budget is ${formatPct(facts.budgetPct)} again.`], burstAt: undefined };
@@ -116,11 +119,11 @@ export function burstStopLines(facts: BurstFacts, marks: BurstMarks): { readonly
 }
 
 /** How the model works in a burst: the caps, the split, the gates it keeps. */
-function burstModelLine(burst: Burst): string {
+function burstModelLine(burst: Burst, zone: TimeZone): string {
   const first = burst.tasks.length === 0 ? '' : ` Work its tasks first: ${burst.tasks.join(', ')}.`;
   const hires = burst.hires === 0 ? '' : ` The lead may hire up to ${plural(burst.hires, 'session')} for it (${KIT_NAME} hire --burst).`;
   return (
-    `${BURST_COMMAND}: a ${burst.kind} burst runs ${endText(burst)}.${first} ` +
+    `${BURST_COMMAND}: a ${burst.kind} burst runs ${endText(burst, zone)}.${first} ` +
     `Run up to ${plural(burst.helpers, 'helper')} at once, on independent tasks only; give each edit in a repo its own worktree, and integrate one change at a time. ` +
     `Helpers run on your model and effort, never a cheaper model or lower effort, and never skip a test or check.${hires} ${MORE_BURST}`
   );
@@ -130,10 +133,10 @@ const BURST_END_LINE =
   `${BURST_COMMAND}: the burst has ended. Finish the step in hand and start no new helpers; ` +
   `the burst's hires are due to retire (${KIT_NAME} check lists them). ${MORE_BURST}`;
 
-function surplusLine(surplus: SurplusHint): string {
+function surplusLine(surplus: SurplusHint, zone: TimeZone): string {
   const approval = surplus.ownerApproves ? ' burst.policy is owner, so ask the owner first and add --approved-by "<who>".' : '';
   return (
-    `${BURST_COMMAND}: about ${formatPct(surplus.sparePct)} of the week is projected unused at the pace end (${formatWeekdayMinute(surplus.paceEnd)}). ` +
+    `${BURST_COMMAND}: about ${formatPct(surplus.sparePct)} of the week is projected unused at the pace end (${zone.weekdayMinute(new Date(surplus.paceEnd))}). ` +
     `A surplus burst can spend it on independent tasks; preview one: ${BURST_COMMAND} start surplus --reason "<why>".${approval} ${MORE_BURST}`
   );
 }
@@ -149,13 +152,13 @@ export function burstPromptLines(facts: BurstFacts, marks: BurstMarks): BurstPro
   const lines: string[] = [];
   const { burst, surplus } = facts;
   if (burst !== undefined && burst.at !== marks.modelBurstAt) {
-    lines.push(burstModelLine(burst));
+    lines.push(burstModelLine(burst, facts.zone));
   } else if (burst === undefined && marks.modelBurstAt !== undefined) {
     lines.push(BURST_END_LINE);
   }
   const showSurplus = burst === undefined && surplus !== undefined && surplus.reset !== marks.surplusShown;
   if (showSurplus) {
-    lines.push(surplusLine(surplus));
+    lines.push(surplusLine(surplus, facts.zone));
   }
   return { lines, modelBurstAt: burst?.at, surplusShown: showSurplus ? surplus.reset : marks.surplusShown };
 }

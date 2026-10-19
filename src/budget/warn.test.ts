@@ -1,12 +1,14 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { OverAction } from '../config/types.ts';
+import { TimeZone } from '../core/zone.ts';
+import { JERUSALEM } from '../testing/zone.ts';
 import type { Burst } from './burst.ts';
 import type { SurplusHint } from './burst-lines.ts';
 import type { Lift } from './lift.ts';
 import { DailyProfile } from './active-time.ts';
 import { readPace, weekWindow, type PaceBudget, type TeamDay } from './pace.ts';
-import { emptyWarnState, helperGate, isHeld, isPastDailyBudget, levelOf, promptWarning, quietStartOf, sessionQuietFrom, stopWarning, type BudgetFacts, type WarnBudget, type WarnState } from './warn.ts';
+import { emptyWarnState, helperGate, isHeld, isPastDailyBudget, levelOf, promptWarning, quietSpanOf, sessionQuietSpan, stopWarning, type BudgetFacts, type WarnBudget, type WarnState } from './warn.ts';
 
 const RESET = Date.parse('2026-10-21T01:00:00Z');
 const WINDOW = weekWindow(RESET, 1);
@@ -38,6 +40,7 @@ function facts(usedTodayPct: number, weekUsedPct: number, now = DAY, extra: Part
     pace: readPace(WINDOW, PACE, now, weekUsedPct, DailyProfile.even()),
     teamDay: NO_ROOM,
     isLead: false,
+    zone: TimeZone.UTC,
     ...extra,
   };
 }
@@ -103,24 +106,27 @@ describe('levelOf', () => {
   });
 });
 
-describe('quietStartOf', () => {
-  it('finds the start of quiet hours that cross midnight, on either side of it', () => {
-    assert.equal(quietStartOf(QUIET, NIGHT), Date.parse('2026-10-15T22:00:00Z'));
-    assert.equal(quietStartOf(QUIET, Date.parse('2026-10-16T05:59:00Z')), Date.parse('2026-10-15T22:00:00Z'));
-    assert.equal(quietStartOf(QUIET, Date.parse('2026-10-16T06:00:00Z')), undefined);
-    assert.equal(quietStartOf(QUIET, DAY), undefined);
+/** The quiet hours of the night of 10-15: 22:00 to 06:00 UTC. */
+const QUIET_NIGHT = { from: Date.parse('2026-10-15T22:00:00Z'), to: Date.parse('2026-10-16T06:00:00Z') };
+
+describe('quietSpanOf', () => {
+  it('finds the quiet hours that cross midnight, on either side of it', () => {
+    assert.deepEqual(quietSpanOf(QUIET, NIGHT), QUIET_NIGHT);
+    assert.deepEqual(quietSpanOf(QUIET, Date.parse('2026-10-16T05:59:00Z')), QUIET_NIGHT);
+    assert.equal(quietSpanOf(QUIET, Date.parse('2026-10-16T06:00:00Z')), undefined);
+    assert.equal(quietSpanOf(QUIET, DAY), undefined);
   });
 
   it('finds quiet hours within one day, and none for unset, equal or malformed hours', () => {
     const lunch = { startUtc: '12:00', endUtc: '15:00', action: 'ask' } as const;
-    assert.equal(quietStartOf(lunch, DAY), Date.parse('2026-10-15T12:00:00Z'));
-    assert.equal(quietStartOf(undefined, DAY), undefined);
-    assert.equal(quietStartOf({ ...lunch, endUtc: '12:00' }, DAY), undefined);
-    assert.equal(quietStartOf({ ...lunch, startUtc: '25:00' }, DAY), undefined);
+    assert.deepEqual(quietSpanOf(lunch, DAY), { from: Date.parse('2026-10-15T12:00:00Z'), to: Date.parse('2026-10-15T15:00:00Z') });
+    assert.equal(quietSpanOf(undefined, DAY), undefined);
+    assert.equal(quietSpanOf({ ...lunch, endUtc: '12:00' }, DAY), undefined);
+    assert.equal(quietSpanOf({ ...lunch, startUtc: '25:00' }, DAY), undefined);
   });
 });
 
-describe('isPastDailyBudget and sessionQuietFrom', () => {
+describe('isPastDailyBudget and sessionQuietSpan', () => {
   it('is past budget only above 100% of it, and any use is past a budget of 0', () => {
     assert.equal(isPastDailyBudget(facts(1, BEHIND)), false);
     assert.equal(isPastDailyBudget(facts(1.01, BEHIND)), true);
@@ -135,10 +141,10 @@ describe('isPastDailyBudget and sessionQuietFrom', () => {
   });
 
   it('finds the quiet hours the session is in, unless its lift exempts it', () => {
-    assert.equal(sessionQuietFrom(facts(0, BEHIND, NIGHT), QUIET), Date.parse('2026-10-15T22:00:00Z'));
-    assert.equal(sessionQuietFrom(facts(0, BEHIND, NIGHT, { lift: lift() }), QUIET), undefined);
-    assert.equal(sessionQuietFrom(facts(0, BEHIND, NIGHT, { lift: lift({ quietHoursExempt: false }) }), QUIET), Date.parse('2026-10-15T22:00:00Z'));
-    assert.equal(sessionQuietFrom(facts(0, BEHIND, DAY), QUIET), undefined);
+    assert.deepEqual(sessionQuietSpan(facts(0, BEHIND, NIGHT), QUIET), QUIET_NIGHT);
+    assert.equal(sessionQuietSpan(facts(0, BEHIND, NIGHT, { lift: lift() }), QUIET), undefined);
+    assert.deepEqual(sessionQuietSpan(facts(0, BEHIND, NIGHT, { lift: lift({ quietHoursExempt: false }) }), QUIET), QUIET_NIGHT);
+    assert.equal(sessionQuietSpan(facts(0, BEHIND, DAY), QUIET), undefined);
   });
 });
 
@@ -242,6 +248,10 @@ describe('stopWarning', () => {
     assert.deepEqual(result.lines, ['Quiet hours (22:00-06:00 UTC): the team rests; start no new work. More: teamrig budget']);
   });
 
+  it("shows the quiet hours on the team's clock", () => {
+    assert.deepEqual(stopWarning(facts(0, BEHIND, NIGHT, { zone: JERUSALEM }), BUDGET, undefined).lines, ['Quiet hours (01:00-09:00 IDT): new helpers ask first. More: teamrig budget']);
+  });
+
   it('shows a lift starting and ending', () => {
     const lifted = stopWarning(facts(0.5, AHEAD, DAY, { lift: lift(), budgetPct: 2 }), BUDGET, undefined);
     assert.match(lifted.lines[0] ?? '', /^Budget: the lead lifted alpha to 40\.0% of the team's daily budget today until .* or 97\.0% of the week/);
@@ -338,6 +348,11 @@ describe('helperGate', () => {
       assert.equal(helperGate(facts(used, week, now), { ...BUDGET, overAction }).kind, kind);
     });
   }
+
+  it("gives the quiet hours on the team's clock", () => {
+    const gate = helperGate(facts(1.5, AHEAD, NIGHT, { zone: JERUSALEM }), { ...BUDGET, overAction: 'ask' });
+    assert.match(gate.kind === 'ask' ? gate.reason : gate.kind, /It is quiet hours \(01:00-09:00 IDT\)\./);
+  });
 
   it('gives the reasons and the way out', () => {
     const gate = helperGate(facts(1.5, AHEAD, NIGHT), { ...BUDGET, overAction: 'ask' });

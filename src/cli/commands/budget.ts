@@ -6,7 +6,7 @@ import { errorMessage } from '../../core/guards.ts';
 import { resolveKitHome, type TeamPaths } from '../../core/home.ts';
 import type { Clock } from '../../core/lock.ts';
 import { resolveTeam } from '../../core/team.ts';
-import { formatUtcDay, MS_PER_DAY, parseUtcDay, parseUtcDeadline } from '../../core/time.ts';
+import { formatUtcDay, MS_PER_DAY, parseUtcDay, typedDeadline, typedTimeHint } from '../../core/time.ts';
 import { activeBurst, withBurst, type BurstRecord } from '../../budget/burst.ts';
 import { BurstLog } from '../../budget/burst-log.ts';
 import { claudeProjectsDir, type TranscriptSource } from '../../budget/discover.ts';
@@ -35,8 +35,8 @@ import { indexMarks } from '../../inbox/marks.ts';
 import type { RepoState } from '../../push-guard/push.ts';
 import { customTitleOf, TRANSCRIPT_TAIL_BYTES } from '../../names/title.ts';
 import { UsageError, onePositional, requiredFlag, type Flags, type ParsedArgs } from '../args.ts';
-import { callerOf } from '../inputs.ts';
-import { openKit, openTeamKit, requireConfig, rosterOf, sessionIdOf, teamFolders, type Kit } from '../kit.ts';
+import { callerOf, type TypedTimes } from '../inputs.ts';
+import { openKit, openTeamKit, requireConfig, rosterOf, sessionIdOf, teamFolders, teamZone, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 
 /**
@@ -125,7 +125,7 @@ export async function weekReadingOf(runtime: CliRuntime, kit: Kit, config: KitCo
 
 /** The week's use line, measured up to now as `budget` measures it, for `start`. */
 export async function weekLineOf(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster): Promise<string> {
-  return weekLine(await weekReadingOf(runtime, kit, config, roster));
+  return weekLine(await weekReadingOf(runtime, kit, config, roster), teamZone(config, runtime));
 }
 
 /** Each session today: its use, and its part of the team's daily budget by its queued work (`work`), its lift and the burst. */
@@ -184,6 +184,7 @@ export async function budget(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   const work = recountDay === undefined ? await readWork(runtime.files, kit.paths.events, config.register.priorities) : new Map<string, number>();
   const sessions = sessionsToday(reading, roster, config.budget, work);
   const { measured, week, now } = reading;
+  const zone = teamZone(config, runtime);
   let lines: string[];
   const days = recountDay === undefined ? loopDays(now, all ? DAYS_KEPT : LOOP_DAYS_SHOWN) : [formatUtcDay(new Date(recountDay))];
   const source = recountDay === undefined ? 'metered' : 'recounted';
@@ -197,13 +198,13 @@ export async function budget(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   } else if (id !== undefined) {
     const session = sessions.find((each) => each.id === id);
     const state = measured.bySession.get(id);
-    lines = session === undefined || state === undefined ? [] : sessionLines(session, state, week);
+    lines = session === undefined || state === undefined ? [] : sessionLines(session, state, week, zone);
   } else {
     const today = formatUtcDay(new Date(now));
     const outsideToday = measured.outside.byDay[today];
     const outside = { w: wSince([measured.outside], week.todayFrom, now), calls: outsideToday?.calls ?? 0, sessions: measured.outsideSessions, titles: measured.outsideTitles };
     const behind = measured.behind.map((each) => (each === OUTSIDE_ID ? 'outside the team' : (roster.nameOf(each) ?? each)));
-    lines = recountDay === undefined ? todayLines({ week, sessions, outside, behind, all }) : recountLines(today, { week, sessions, outside, all });
+    lines = recountDay === undefined ? todayLines({ week, sessions, outside, behind, all, zone }) : recountLines(today, { week, sessions, outside, all });
   }
   for (const line of lines) {
     runtime.out.stdout(line);
@@ -224,16 +225,15 @@ export function pctFlag(flags: Flags, name: string): number | undefined {
   return value;
 }
 
-/** A time flag such as `--until`: `HH:MM` today (UTC) or `YYYY-MM-DD HH:MM`; undefined when it is not given. */
-export function timeFlag(flags: Flags, name: string, now: number): number | undefined {
+/** A time flag such as `--until`: `HH:MM` today or `YYYY-MM-DD HH:MM`, on the team's clock unless marked UTC; undefined when it is not given. */
+export function timeFlag(flags: Flags, name: string, times: TypedTimes): number | undefined {
   const text = flags.get(name);
   if (text === undefined) {
     return undefined;
   }
-  const time = /^(\d{2}):(\d{2})$/.exec(text.trim());
-  const at = time === null ? parseUtcDeadline(text) : parseUtcDeadline(`${formatUtcDay(new Date(now))} ${text.trim()}`);
+  const at = typedDeadline(text, times.nowMs, times.zone);
   if (at === undefined) {
-    throw new UsageError(`--${name} "${text}" is not HH:MM or "YYYY-MM-DD HH:MM" (UTC)`);
+    throw new UsageError(`--${name} "${text}" is not ${typedTimeHint(times.zone, times.nowMs)}`);
   }
   return at.getTime();
 }
@@ -252,9 +252,10 @@ export async function lift(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
     throw new UsageError('--reason needs a reason');
   }
   const now = runtime.clock.now();
-  const until = timeFlag(args.flags, 'until', now);
   const kit = await openTeamKit(runtime);
   const config = requireConfig(kit, runtime, 'write');
+  const zone = teamZone(config, runtime);
+  const until = timeFlag(args.flags, 'until', { nowMs: now, zone });
   const roster = await rosterOf(runtime, kit, config);
   const by = sessionIdOf(roster, caller);
   const lead = roster.holderOf('lead');
@@ -266,13 +267,13 @@ export async function lift(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
   const others = liftedParts(lifts, roster.ids.filter((each) => each !== id), now, week.usedPct);
   const decision = decideLift(
     { session: id, partPct, stopPct, until, reserve: args.switches.has('reserve'), reason, by, now },
-    { usedPct: week.usedPct, reset: week.reset, limits: config.budget.lift, liftedPct: [...others.values()].reduce((sum, part) => sum + part, 0) },
+    { usedPct: week.usedPct, reset: week.reset, limits: config.budget.lift, liftedPct: [...others.values()].reduce((sum, part) => sum + part, 0), zone },
   );
   if (decision.kind === 'refused') {
     throw new RefusedError(decision.reason);
   }
   await new LiftLog(runtime.files, kit.paths.lifts).append(decision.lift);
-  runtime.out.stdout(`LIFTED ${liftText(decision.lift, roster.nameOf(id) ?? id)}`);
+  runtime.out.stdout(`LIFTED ${liftText(decision.lift, roster.nameOf(id) ?? id, zone)}`);
   return EXIT.ok;
 }
 

@@ -1,7 +1,8 @@
+import type { TimeZone } from '../core/zone.ts';
 import { ruleLabel, ruleNumberOf } from '../rules/keys.ts';
 import type { Burst } from './burst.ts';
 import { budgetMarkOf, burstText, MORE_BURST } from './burst-lines.ts';
-import { formatCount, formatPct, formatTimeOfDay, formatW, formatWeekdayMinute } from './format.ts';
+import { formatCount, formatPct, formatW } from './format.ts';
 import { liftText, type Lift } from './lift.ts';
 import { TURN_TRIGGERS } from './line.ts';
 import { hasRoom } from './pace.ts';
@@ -52,6 +53,8 @@ export interface TodayReport {
   /** The names of sessions whose transcripts still have unread lines. */
   readonly behind: readonly string[];
   readonly all: boolean;
+  /** The team's zone, which the lines print their times in. */
+  readonly zone: TimeZone;
 }
 
 function pctOf(w: number, week: WeekReading): number | undefined {
@@ -62,18 +65,18 @@ function useText(w: number, calls: number): string {
   return `${formatW(w)} W in ${formatCount(calls)} call${calls === 1 ? '' : 's'}`;
 }
 
-/** The week's use and its pace: the first line of `budget`, and the last of `start`. */
-export function weekLine(week: WeekReading): string {
+/** The week's use and its pace, on the team's clock: the first line of `budget`, and the last of `start`. */
+export function weekLine(week: WeekReading, zone: TimeZone): string {
   if (week.usedPct === undefined || week.reset === undefined) {
     return "Week: its use is unknown: no status line reading (run teamrig statusline install) and no budget.weeklyLimitW.";
   }
-  const source = week.statusAt === undefined ? ' (metered)' : ` at ${formatTimeOfDay(week.statusAt)} (status line)`;
+  const source = week.statusAt === undefined ? ' (metered)' : ` at ${zone.clock(new Date(week.statusAt))} (status line)`;
   const pace = week.pace;
   const paceText =
     pace === undefined
       ? ''
       : `; the pace line is at ${formatPct(pace.linePct)}: ${pace.state === 'on pace' ? 'on pace' : `${Math.abs(pace.gapPts).toFixed(1)} points ${pace.state}`}`;
-  return `Week: ${formatPct(week.usedPct)} used${source}${paceText}. Resets ${formatWeekdayMinute(week.reset)}.`;
+  return `Week: ${formatPct(week.usedPct)} used${source}${paceText}. Resets ${zone.weekdayMinute(new Date(week.reset))}.`;
 }
 
 /** "<who> used 1.1% of the week today; its daily budget is 1.0%. 7.50M W in 310 calls." */
@@ -148,23 +151,23 @@ function pastLines(report: TodayReport, teamPast: boolean): string[] {
 
 /** `teamrig budget`: the week, the team and each session today, lifts, use outside the team, and who is past budget. */
 export function todayLines(report: TodayReport): string[] {
-  const { week, sessions, outside, all } = report;
+  const { week, sessions, outside, all, zone } = report;
   const teamW = sessions.reduce((sum, session) => sum + session.w, 0);
   const teamCalls = sessions.reduce((sum, session) => sum + session.calls, 0);
   const lines = [
-    weekLine(week),
+    weekLine(week, zone),
     useLine('The team', teamW, teamCalls, week.allowancePct, '', week),
     ...sessionRows(sessions, all, 'today', (session) => useLine(session.name, session.w, session.calls, session.budgetPct, budgetMarkOf(session), week)),
   ];
   for (const session of sessions) {
     if (session.lift !== undefined) {
-      lines.push(`Budget: the lead lifted ${liftText(session.lift, session.name)}`);
+      lines.push(`Budget: the lead lifted ${liftText(session.lift, session.name, zone)}`);
     }
   }
   const inBurst = sessions.filter((session) => session.burst !== undefined);
   const burst = inBurst[0]?.burst;
   if (burst !== undefined) {
-    lines.push(`Budget: the lead started ${burstText(burst, inBurst.map((session) => session.name))} ${MORE_BURST}`);
+    lines.push(`Budget: the lead started ${burstText(burst, inBurst.map((session) => session.name), zone)} ${MORE_BURST}`);
   }
   const outsideText = outsideLine(outside, all);
   if (outsideText !== undefined) {
@@ -199,7 +202,7 @@ export function recountLines(day: string, report: Pick<TodayReport, 'sessions' |
 }
 
 /** `teamrig budget <session>`: its use on each stored day, its budget today and its lift. */
-export function sessionLines(session: SessionToday, state: UsageState, week: WeekReading): string[] {
+export function sessionLines(session: SessionToday, state: UsageState, week: WeekReading, zone: TimeZone): string[] {
   const days = Object.keys(state.byDay).sort().reverse();
   const lines = [`${session.name} (${session.id}), by UTC day:`];
   for (const day of days) {
@@ -216,10 +219,10 @@ export function sessionLines(session: SessionToday, state: UsageState, week: Wee
     lines.push(`Its daily budget today is ${formatPct(session.budgetPct)} of the week${budgetMarkOf(session)}.`);
   }
   if (session.lift !== undefined) {
-    lines.push(`Budget: the lead lifted ${liftText(session.lift, session.name)}`);
+    lines.push(`Budget: the lead lifted ${liftText(session.lift, session.name, zone)}`);
   }
   if (session.burst !== undefined) {
-    lines.push(`Budget: the lead started ${burstText(session.burst, [session.name])} ${MORE_BURST}`);
+    lines.push(`Budget: the lead started ${burstText(session.burst, [session.name], zone)} ${MORE_BURST}`);
   }
   lines.push(W_EXPLAINED);
   return lines;

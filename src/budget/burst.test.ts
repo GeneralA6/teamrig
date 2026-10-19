@@ -1,6 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_BURST } from '../config/defaults.ts';
+import { TimeZone } from '../core/zone.ts';
+import { JERUSALEM } from '../testing/zone.ts';
 import type { BurstConfig } from '../config/types.ts';
 import {
   activeBurst,
@@ -42,7 +44,7 @@ const REQUEST: BurstRequest = {
   by: 'lead',
   now: NOW,
 };
-const CONTEXT: BurstContext = { usedPct: 60, window: WINDOW, targetPct: 99.5, config: OWNER, active: undefined };
+const CONTEXT: BurstContext = { usedPct: 60, window: WINDOW, targetPct: 99.5, config: OWNER, active: undefined, zone: TimeZone.UTC };
 const DUE = Date.parse('2030-01-08T20:00:00Z');
 const DEADLINE: BurstRequest = { ...REQUEST, kind: 'deadline', stopPct: 80, deadline: DUE, tasks: ['T1', 'T2'] };
 
@@ -177,6 +179,7 @@ describe('decideBurst', () => {
 
   it('refuses a surplus burst outside its window, or with too little projected unused', () => {
     assert.match(refusal(decideBurst({ ...REQUEST, now: RESET - 49 * HOUR }, CONTEXT)), /starts only from Mon 01-07 01:00 UTC \(burst\.surplusHours 48/);
+    assert.match(refusal(decideBurst({ ...REQUEST, now: RESET - 49 * HOUR }, { ...CONTEXT, zone: JERUSALEM })), /starts only from Mon 01-07 03:00 IST \(/);
     assert.match(refusal(decideBurst({ ...REQUEST, now: PACE_END }, CONTEXT)), /starts only from/);
     assert.match(refusal(decideBurst(REQUEST, { ...CONTEXT, usedPct: 88 })), /projected unused at the pace end, below burst\.minSparePct \(5\.0%\)/);
   });
@@ -185,6 +188,7 @@ describe('decideBurst', () => {
     assert.match(refusal(decideBurst({ ...DEADLINE, stopPct: undefined }, CONTEXT)), /needs --stop-pct/);
     assert.match(refusal(decideBurst({ ...DEADLINE, deadline: undefined }, CONTEXT)), /needs --by <time>/);
     assert.match(refusal(decideBurst({ ...DEADLINE, deadline: NOW }, CONTEXT)), /--by 2030-01-08 10:00 UTC has passed/);
+    assert.match(refusal(decideBurst({ ...DEADLINE, deadline: NOW }, { ...CONTEXT, zone: JERUSALEM })), /--by 2030-01-08 12:00 IST has passed/);
     assert.match(refusal(decideBurst({ ...DEADLINE, tasks: [] }, CONTEXT)), /needs --task <ids>/);
   });
 
