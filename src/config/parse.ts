@@ -539,9 +539,11 @@ function parseRoll(read: ConfigReader, raw: unknown, path: string): RollConfig |
   if (command === undefined) {
     return undefined;
   }
+  const dependencyInstall = entry['dependencyInstall'] === undefined ? undefined : read.stringListItem(entry['dependencyInstall'], `${path}.dependencyInstall`, ROLL_ARGV_MAX_ITEMS);
   return {
     targets: read.stringList(entry, 'targets', path, [], isCoordinatorName),
     gates: read.list(entry, 'gates', path, [], (value, itemPath) => parseRollGate(read, value, itemPath), ROLL_HOOKS_MAX_ITEMS),
+    ...(dependencyInstall === undefined ? {} : { dependencyInstall }),
     afterPull: read.list(entry, 'afterPull', path, [], (value, itemPath) => read.stringListItem(value, itemPath, ROLL_ARGV_MAX_ITEMS), ROLL_HOOKS_MAX_ITEMS),
     command,
   };

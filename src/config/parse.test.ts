@@ -333,6 +333,17 @@ describe('parseConfig', () => {
     assert.deepEqual(config.coordinator.repos['web']?.roll, { targets: [], gates: [], afterPull: [], command: ['npm', 'run', 'deploy'] });
   });
 
+  it('reads a roll’s dependency install, and leaves out one that is not a program with its arguments', () => {
+    const install = ['npm', 'ci', '--ignore-scripts'];
+    const { config, issues } = parseConfig({
+      ...ROSTER,
+      coordinator: { repos: { api: { mainCheckout: 'C:/src/api', roll: { dependencyInstall: install, command: ['node', 'roll.js'] } }, web: { mainCheckout: 'C:/src/web', roll: { dependencyInstall: 'npm ci', command: ['node', 'roll.js'] } } } },
+    });
+    assert.deepEqual(paths(issues), ['coordinator.repos.web.roll.dependencyInstall']);
+    assert.deepEqual(config.coordinator.repos['api']?.roll?.dependencyInstall, install);
+    assert.deepEqual(config.coordinator.repos['web']?.roll, { targets: [], gates: [], afterPull: [], command: ['node', 'roll.js'] });
+  });
+
   it('leaves out a roll with no command, and a gate or hook that is not a program with its arguments', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,

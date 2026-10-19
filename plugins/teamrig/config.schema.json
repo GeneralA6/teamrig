@@ -347,11 +347,11 @@
                 "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" }
               },
               "dependencyGate": {
-                "description": "Refuse a branch whose package files need a dependency install, so pulling it into the main checkout never changes, unreviewed, the node_modules its worktrees link to; dependencyCheck can clear one.",
+                "description": "Refuse a branch (integrate) or a pushed range (roll) whose package files need a dependency install, so the main checkout node_modules, which its worktrees link to, never changes unreviewed; dependencyCheck clears one for integrate, and with roll.dependencyInstall for roll.",
                 "type": "boolean"
               },
               "dependencyCheck": {
-                "description": "With dependencyGate, what clears a dependency change for teamrig integrate: a program and its arguments, run without a shell in the branch checkout under the host lock, after the rebase and before the push, with the default branch package-lock.json in the file TEAMRIG_BASELINE_LOCK names (unset when it has none). Exit 0 lands the change, anything else refuses it.",
+                "description": "With dependencyGate, what clears a dependency change: a program and its arguments, run without a shell under the host lock with the base package-lock.json in the file TEAMRIG_BASELINE_LOCK names (unset when the base has none). teamrig integrate runs it in the branch checkout after the rebase and before the push, the default branch its base; teamrig roll in the main checkout after the pull, its old HEAD the base. Exit 0 lets the change go, anything else refuses it.",
                 "type": "array",
                 "minItems": 1,
                 "maxItems": 64,
@@ -389,6 +389,13 @@
                   }
                       }
                     }
+                  },
+                  "dependencyInstall": {
+                    "description": "Installs a pulled range's dependency change (package-lock.json, or package.json beyond its scripts), such as npm ci --ignore-scripts: run after the pull and the dependencyCheck, before afterPull. A failed install moves the main checkout back and runs again to restore its dependencies. With dependencyGate, a dependency change rolls only when this and dependencyCheck are set.",
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 64,
+                    "items": { "type": "string", "minLength": 1 }
                   },
                   "afterPull": {
                     "description": "Run in order after the pull, before command; one that fails ends the roll before it deploys.",
