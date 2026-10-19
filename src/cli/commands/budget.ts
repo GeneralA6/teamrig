@@ -28,7 +28,7 @@ import {
 } from '../../budget/report.ts';
 import { datedSnapshot, formatSnapshot, parseSnapshot, readSnapshots, snapshotOfStatus, statusLineText, weekUseOf, type StatusLineView } from '../../budget/snapshot.ts';
 import { CURSOR_DAYS_KEPT, DAYS_KEPT, EMPTY_USAGE, MemoryUsageStore, UsageStore, type UsageState } from '../../budget/store.ts';
-import { readWeek, type WeekReading } from '../../budget/week.ts';
+import { readWeek, wSince, type WeekReading } from '../../budget/week.ts';
 import { readWork } from '../../budget/work.ts';
 import { JsonlMarkLog } from '../../inbox/store.ts';
 import { indexMarks } from '../../inbox/marks.ts';
@@ -134,11 +134,12 @@ function sessionsToday(reading: Reading, roster: Roster, budget: BudgetConfig, w
   const inForce = activeBurst(reading.bursts, reading.now, reading.week.usedPct);
   const split: BudgetSplit = { ids: roster.ids, sessions: budget.sessions, work, lifted: liftedParts(reading.lifts, roster.ids, reading.now, reading.week.usedPct) };
   return roster.ids.map((id) => {
-    const usage = reading.measured.bySession.get(id)?.byDay[today];
+    const state = reading.measured.bySession.get(id);
+    const w = state === undefined ? 0 : wSince([state], reading.week.todayFrom, reading.now);
     const lift = activeLift(reading.lifts, id, reading.now, reading.week.usedPct);
     const burst = inForce !== undefined && inForce.sessions.includes(id) ? inForce : undefined;
     const budgetPct = withBurst(dailyBudgetOf(reading.week.allowancePct, id, split), burst, id);
-    return { id, name: roster.nameOf(id) ?? id, w: usage?.w ?? 0, calls: usage?.calls ?? 0, budgetPct, lift, burst };
+    return { id, name: roster.nameOf(id) ?? id, w, calls: state?.byDay[today]?.calls ?? 0, budgetPct, lift, burst };
   });
 }
 
@@ -200,7 +201,7 @@ export async function budget(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   } else {
     const today = formatUtcDay(new Date(now));
     const outsideToday = measured.outside.byDay[today];
-    const outside = { w: outsideToday?.w ?? 0, calls: outsideToday?.calls ?? 0, sessions: measured.outsideSessions, titles: measured.outsideTitles };
+    const outside = { w: wSince([measured.outside], week.todayFrom, now), calls: outsideToday?.calls ?? 0, sessions: measured.outsideSessions, titles: measured.outsideTitles };
     const behind = measured.behind.map((each) => (each === OUTSIDE_ID ? 'outside the team' : (roster.nameOf(each) ?? each)));
     lines = recountDay === undefined ? todayLines({ week, sessions, outside, behind, all }) : recountLines(today, { week, sessions, outside, all });
   }

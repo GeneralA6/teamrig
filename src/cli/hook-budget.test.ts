@@ -41,9 +41,9 @@ function transcripts(at: number, ownW: number): MemoryTranscripts {
   return source;
 }
 
-/** Claude Code's status input: the week `usedPct` used. */
-function status(usedPct: number): string {
-  return JSON.stringify({ session_id: ALPHA_TAB, cwd: APP, workspace: { current_dir: APP }, rate_limits: { seven_day: { used_percentage: usedPct, resets_at: RESET / 1000 } } });
+/** Claude Code's status input: the week `usedPct` used, resetting at `resetsAt`. */
+function status(usedPct: number, resetsAt = RESET): string {
+  return JSON.stringify({ session_id: ALPHA_TAB, cwd: APP, workspace: { current_dir: APP }, rate_limits: { seven_day: { used_percentage: usedPct, resets_at: resetsAt / 1000 } } });
 }
 
 interface World {
@@ -162,6 +162,18 @@ describe('the budget in the hooks', () => {
     );
     assert.equal(decisionOf(await hook('helper-gate', ALPHA_TAB, AGENT)), 'deny');
     assert.match(await leadInbox(kit), /alpha: app-alpha is past its daily budget/);
+  });
+
+  it("counts a session's use today from the week's start on the day the week began", async () => {
+    // This week began at 01:00 today: alpha's 50M W at 00:30 was the last week's, so its 10M + 1M W since are today's.
+    const kit = new CliHarness(config());
+    const source = transcripts(kit.clock.now(), 10_000_000);
+    const lastWeek = replyLine({ id: 'a0', requestId: 'q-a0', at: '2030-01-08T00:30:00.000Z', usage: { input: 50_000_000 } });
+    source.set(ALPHA_TRANSCRIPT, transcript([lastWeek, reply('a1', 10_000_000)]), kit.clock.now());
+    await kit.run(['inbox', 'read', '--session', 'alpha'], { env: { CLAUDE_CODE_SESSION_ID: ALPHA_TAB } });
+    assert.equal((await kit.run(['statusline'], { stdin: status(30, Date.parse('2030-01-15T01:00:00Z')) })).code, EXIT.ok);
+    const stop = await kit.run(['hook', 'stop'], { stdin: JSON.stringify({ session_id: ALPHA_TAB, cwd: APP, transcript_path: ALPHA_TRANSCRIPT }), transcripts: source });
+    assert.match(messageOf(stop), /^Budget: app-alpha has used 1.1% of the week today; .* 1.1% of the week used, below its in-day pace/);
   });
 
   it('refuses a helper in quiet hours set to block, except for the lead', async () => {

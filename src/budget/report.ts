@@ -26,7 +26,9 @@ export const W_EXPLAINED = 'W = weighted tokens: input 1, cache writes 1.25 to 2
 export interface SessionToday {
   readonly id: string;
   readonly name: string;
+  /** Its W since the week's `todayFrom`. */
   readonly w: number;
+  /** Its calls since 00:00 UTC: calls are counted per day only. */
   readonly calls: number;
   /** Its daily budget in percent of the week: its part of the team's while lifted, at least its burst's while in a burst; undefined when unknown. */
   readonly budgetPct: number | undefined;

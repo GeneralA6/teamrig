@@ -2,7 +2,6 @@ import { basename, dirname, join } from 'node:path';
 import type { Roster } from '../../config/roster.ts';
 import type { BudgetConfig, KitConfig } from '../../config/types.ts';
 import { SecretScanner } from '../../core/secrets.ts';
-import { formatUtcDay } from '../../core/time.ts';
 import { activeBurst, withBurst } from '../../budget/burst.ts';
 import { surplusHintOf } from '../../budget/burst-lines.ts';
 import { BurstLog } from '../../budget/burst-log.ts';
@@ -15,7 +14,7 @@ import { readSnapshots, weekUseOf } from '../../budget/snapshot.ts';
 import { UsageStore, type UsageState } from '../../budget/store.ts';
 import { helperGate, promptWarning, stopWarning, type BudgetFacts, type HelperGate } from '../../budget/warn.ts';
 import { WarnStore } from '../../budget/warn-store.ts';
-import { readWeek } from '../../budget/week.ts';
+import { readWeek, wSince } from '../../budget/week.ts';
 import { readWork } from '../../budget/work.ts';
 import { postLine } from '../../inbox/inbox.ts';
 import { holdBack } from '../../hooks/permission.ts';
@@ -103,7 +102,8 @@ export async function budgetFactsOf(runtime: CliRuntime, scope: BudgetScope, tra
   if (budgetPct === undefined) {
     return undefined;
   }
-  const todayW = byId.get(id)?.byDay[formatUtcDay(new Date(now))]?.w ?? 0;
+  const own = byId.get(id);
+  const todayW = own === undefined ? 0 : wSince([own], week.todayFrom, now);
   const isLead = id === config.roles.lead;
   const surplus =
     isLead && inForce === undefined ? surplusHintOf({ config: config.burst, window: week.window, now, usedPct: week.usedPct, targetPct: budget.targetPct }) : undefined;

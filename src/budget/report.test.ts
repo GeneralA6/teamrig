@@ -39,6 +39,7 @@ const WEEK: WeekReading = {
   covered: true,
   pace: { window: WINDOW, linePct: 20.853, gapPts: 36.147, state: 'ahead' },
   allowancePct: 10.25,
+  todayFrom: Date.parse('2026-10-15T00:00:00Z'),
   todayW: 38_700_000,
   teamDay: { usedPct: 5.16, pacePct: (10.25 * 11) / 24 },
 };
@@ -53,6 +54,7 @@ const UNKNOWN: WeekReading = {
   covered: false,
   pace: undefined,
   allowancePct: undefined,
+  todayFrom: Date.parse('2026-10-15T00:00:00Z'),
   todayW: 0,
   teamDay: undefined,
 };

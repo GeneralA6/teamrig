@@ -5,7 +5,7 @@ import type { BudgetConfig } from '../config/types.ts';
 import { emptyPatterns } from './patterns.ts';
 import type { WeekUse } from './snapshot.ts';
 import type { UsageState } from './store.ts';
-import { readWeek } from './week.ts';
+import { readWeek, wSince } from './week.ts';
 
 /** Thursday 2026-10-15 12:00 UTC; the week runs from Wednesday 10-14 01:00 to Wednesday 10-21 01:00. */
 const NOW = Date.parse('2026-10-15T12:00:00Z');
@@ -37,6 +37,7 @@ describe('readWeek', () => {
       covered: false,
       pace: undefined,
       allowancePct: undefined,
+      todayFrom: Date.parse('2026-10-15T00:00:00Z'),
       todayW: 500,
       teamDay: undefined,
     });
@@ -50,6 +51,23 @@ describe('readWeek', () => {
     assert.equal(week.pace?.state, 'ahead');
     // 57% now: the 42.5% left over the 132 hours to the pace end, a 24-hour day of it.
     assert.equal(round(week.allowancePct), round((42.5 * 24) / 132));
+  });
+
+  it("counts the week from its reset's hour: the use before it that day is the last week's", () => {
+    const resetDay = Date.parse('2026-10-14T12:00:00Z');
+    const lastReset = Date.parse('2026-10-14T01:00:00Z');
+    const status: WeekUse = { usedPct: 2, resetsAt: RESET, at: resetDay };
+    const hours = { ...state({ '2026-10-13': 5_000, '2026-10-14': 1_000 }), byHour: { '2026-10-14T00': 600, '2026-10-14T05': 400 } };
+    const week = readWeek({ budget: DEFAULT_BUDGET, now: resetDay, statusUse: status, states: [hours] });
+    assert.deepEqual([week.window?.start, week.todayFrom], [lastReset, lastReset]);
+    assert.deepEqual([week.todayW, week.wPerPct, week.teamDay?.usedPct], [400, 200, 2]);
+  });
+
+  it("counts a store whose hours were lost with its whole first day, as before hours were kept", () => {
+    const resetDay = Date.parse('2026-10-14T12:00:00Z');
+    const status: WeekUse = { usedPct: 2, resetsAt: RESET, at: resetDay };
+    const week = readWeek({ budget: DEFAULT_BUDGET, now: resetDay, statusUse: status, states: [state({ '2026-10-13': 5_000, '2026-10-14': 1_000 })] });
+    assert.deepEqual([week.todayW, week.wPerPct], [1_000, 500]);
   });
 
   it('has no limit estimate while the stores start after the week did', () => {
@@ -80,5 +98,25 @@ describe('readWeek', () => {
   it("has no allowance while the week's use cannot be read: no fixed number stands in for it", () => {
     const unknown = readWeek({ budget: DEFAULT_BUDGET, now: NOW, statusUse: undefined, states: [] });
     assert.deepEqual([unknown.allowancePct, unknown.teamDay], [undefined, undefined]);
+  });
+});
+
+describe('wSince', () => {
+  const hours = { ...state({ '2026-10-13': 5_000, '2026-10-14': 1_000, '2026-10-15': 300 }), byHour: { '2026-10-14T00': 600, '2026-10-14T05': 400 } };
+
+  it("counts the whole days after the instant's day and that day less its hours before the instant's hour", () => {
+    assert.equal(wSince([hours], Date.parse('2026-10-14T01:30:00Z'), NOW), 400 + 300);
+    assert.equal(wSince([hours], Date.parse('2026-10-14T05:59:00Z'), NOW), 400 + 300);
+    assert.equal(wSince([hours], Date.parse('2026-10-14T06:00:00Z'), NOW), 0 + 300);
+  });
+
+  it('sums every store and leaves out the days after now', () => {
+    const later = state({ '2026-10-14': 50, '2026-10-16': 7_000 });
+    assert.equal(wSince([hours, later], Date.parse('2026-10-14T00:00:00Z'), NOW), 1_000 + 300 + 50);
+  });
+
+  it('counts a day whose hours sum past its W as none, never below zero', () => {
+    const damaged = { ...state({ '2026-10-14': 100 }), byHour: { '2026-10-14T00': 600 } };
+    assert.equal(wSince([damaged], Date.parse('2026-10-14T03:00:00Z'), NOW), 0);
   });
 });
