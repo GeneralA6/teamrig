@@ -12,7 +12,8 @@ import { FakeIntegrateGit, MAIN_CHECKOUT, WORKTREE } from '../testing/fake-integ
 import { FakeSteps } from '../testing/fake-steps.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { commandLine } from '../test-run/shell.ts';
-import { BASELINE_LOCK_ENV, integrateBranch, PUSH_ATTEMPTS, repoOf, type IntegrateEnd, type IntegrateRequest, type IntegrateSetup } from './integrate.ts';
+import { BASELINE_LOCK_ENV } from './dependencies.ts';
+import { integrateBranch, PUSH_ATTEMPTS, repoOf, type IntegrateEnd, type IntegrateRequest, type IntegrateSetup } from './integrate.ts';
 
 const PLACES: CoordinatorPlaces = {
   ledger: '/team/deploys/ledger.jsonl',
