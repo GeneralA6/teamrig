@@ -13,6 +13,7 @@ import {
   DEFAULT_COMMITS,
   DEFAULT_CONTEXT_FILES,
   DEFAULT_CLAIMS,
+  DEFAULT_DECISIONS,
   DEFAULT_COORDINATOR_WAIT,
   DEFAULT_GATE_TIMEOUT_SECONDS,
   DEFAULT_GITHUB,
@@ -253,6 +254,7 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
   const tabStatus = read.section(raw, 'tabStatus', '');
   const pickerGuard = read.section(raw, 'pickerGuard', '');
   const budget = parseBudget(read, read.section(raw, 'budget', ''), sessions);
+  const decisions = read.section(raw, 'decisions', '');
 
   const config: KitConfig = {
     configVersion: read.integer(raw, 'configVersion', '', 1, { min: 1 }),
@@ -318,6 +320,10 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
     github: parseGithub(read, read.section(raw, 'github', ''), sessions),
     alerts: {
       persistentFailureHours: read.integer(alerts, 'persistentFailureHours', 'alerts', DEFAULT_ALERTS.persistentFailureHours, CONFIG_LIMITS.persistentFailureHours),
+    },
+    decisions: {
+      batchTimesUtc: read.stringList(decisions, 'batchTimesUtc', 'decisions', DEFAULT_DECISIONS.batchTimesUtc, isUtcTime, CONFIG_LIMITS.decisionBatchTimes.maxItems),
+      batchAt: read.integer(decisions, 'batchAt', 'decisions', DEFAULT_DECISIONS.batchAt, CONFIG_LIMITS.decisionBatchAt),
     },
     tabStatus: { enabled: read.boolean(tabStatus, 'enabled', 'tabStatus', false) },
     pickerGuard: { enabled: read.boolean(pickerGuard, 'enabled', 'pickerGuard', false) },
