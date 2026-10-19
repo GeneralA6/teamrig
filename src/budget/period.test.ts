@@ -2,7 +2,18 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { BudgetConfig } from '../config/types.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { formatPeriod, nextPeriod, parsePeriod, PeriodStore, RESET_DROP_PTS, sightOf, type Period } from './period.ts';
+import {
+  formatPeriod,
+  LATE_START_PTS,
+  LATE_START_RATIO,
+  nextPeriod,
+  parsePeriod,
+  PeriodStore,
+  RESET_DROP_PTS,
+  sightOf,
+  type Metered,
+  type Period,
+} from './period.ts';
 import type { WeekUse } from './snapshot.ts';
 
 const HOUR = 3_600_000;
@@ -26,6 +37,17 @@ class CountingFiles extends MemoryFiles {
 function use(usedPct: number, at: number, resetsAt = END): WeekUse {
   return { usedPct, resetsAt, at };
 }
+
+/** Metered W at 1M W per percent: `pctPerHour` percent in each hour from `from` to `to`, both on the hour. */
+function flat(pctPerHour: number, from: number, to: number): Metered {
+  const wPerPct = 1_000_000;
+  return { wPerPct, wFrom: (at) => (Math.max(0, to - Math.max(from, at - (at % HOUR))) / HOUR) * pctPerHour * wPerPct };
+}
+
+/** 1% an hour since Wednesday 01:00: 131% by Monday noon. */
+const SINCE_WEDNESDAY = flat(1, START, NOW);
+/** Where that W reaches a 55% reading at noon: 55 hours before. */
+const INFERRED: Period = { start: NOW - 55 * HOUR, end: END, kind: 'inferred', lastPct: 55, lastAt: NOW };
 
 describe('nextPeriod', () => {
   it('guesses the week before the end when no period is stored', () => {
@@ -68,6 +90,29 @@ describe('nextPeriod', () => {
   });
 });
 
+describe('nextPeriod, a reset that no stored period saw', () => {
+  it(`starts a guess where the metered W reaches the use, when that W is ${LATE_START_RATIO} times the use and ${LATE_START_PTS} points over it`, () => {
+    assert.deepEqual(nextPeriod(undefined, { end: END, use: use(55, NOW), metered: SINCE_WEDNESDAY }), INFERRED);
+    assert.deepEqual(nextPeriod({ ...STORED, kind: 'assumed' }, { end: END, use: use(55, NOW), metered: SINCE_WEDNESDAY }), INFERRED);
+    // A use read at 0 right after the reset: the reading's hour.
+    assert.equal(nextPeriod(undefined, { end: END, use: use(0, NOW), metered: SINCE_WEDNESDAY }).start, NOW);
+  });
+
+  it('keeps the guess while the metered W is near the use', () => {
+    // 70% metered against 55%: under the ratio.
+    assert.equal(nextPeriod(undefined, { end: END, use: use(55, NOW), metered: flat(1, NOW - 70 * HOUR, NOW) }).kind, 'assumed');
+    // 14% against 5%: over the ratio, under the points.
+    assert.equal(nextPeriod(undefined, { end: END, use: use(5, NOW), metered: flat(1, NOW - 14 * HOUR, NOW) }).kind, 'assumed');
+  });
+
+  it('keeps an inferred start on later readings and as the end moves, and leaves a known start alone', () => {
+    const later = NOW + HOUR;
+    const sight = { end: END + HOUR, use: use(56, later, END + HOUR), metered: flat(1, START, later) };
+    assert.deepEqual(nextPeriod(INFERRED, sight), { ...INFERRED, end: END + HOUR, lastPct: 56, lastAt: later });
+    assert.deepEqual(nextPeriod(STORED, { end: END, use: use(55, NOW), metered: SINCE_WEDNESDAY }), { ...STORED, lastPct: 55, lastAt: NOW });
+  });
+});
+
 /** A budget with no configured reset. */
 const UNSET: Pick<BudgetConfig, 'reset'> = {};
 
@@ -78,6 +123,7 @@ describe('sightOf', () => {
     assert.deepEqual(sightOf(UNSET, use(55, NOW, END + HOUR), NOW), { end: END + HOUR, use: use(55, NOW, END + HOUR) });
     assert.deepEqual(sightOf(configured, use(99, NOW - WEEK, START), NOW), { end: END, use: use(99, NOW - WEEK, START) });
     assert.deepEqual(sightOf(configured, undefined, NOW), { end: END, use: undefined });
+    assert.deepEqual(sightOf(configured, undefined, NOW, SINCE_WEDNESDAY), { end: END, use: undefined, metered: SINCE_WEDNESDAY });
     assert.equal(sightOf(UNSET, undefined, NOW), undefined);
   });
 });
@@ -87,6 +133,7 @@ describe('the period file', () => {
 
   it('reads back what it wrote, and reads a damaged or other-format file as none', () => {
     assert.deepEqual(parsePeriod(formatPeriod(STORED)), STORED);
+    assert.deepEqual(parsePeriod(formatPeriod(INFERRED)), INFERRED);
     for (const text of [
       '',
       'nope',
@@ -117,5 +164,11 @@ describe('the period file', () => {
     assert.equal(await store.periodAt(UNSET, undefined, NOW), undefined);
     assert.equal(await files.read(path), 'damaged');
     assert.deepEqual(await store.periodAt(UNSET, use(55, NOW), NOW), { start: START, end: END, kind: 'assumed', lastPct: 55, lastAt: NOW });
+  });
+
+  it('infers the start from the metered W it is given, and stores it', async () => {
+    const store = new PeriodStore(new MemoryFiles(), path);
+    assert.deepEqual(await store.periodAt(UNSET, use(55, NOW), NOW, SINCE_WEDNESDAY), INFERRED);
+    assert.deepEqual(await store.read(), INFERRED);
   });
 });

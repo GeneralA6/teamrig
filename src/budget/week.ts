@@ -2,7 +2,7 @@ import type { BudgetConfig } from '../config/types.ts';
 import { formatUtcDay, formatUtcHour, MS_PER_DAY } from '../core/time.ts';
 import { DailyProfile } from './active-time.ts';
 import { dailyAllowancePct, dayPacePct, readPace, weekWindow, type PaceReading, type TeamDay, type WeekWindow } from './pace.ts';
-import type { Period } from './period.ts';
+import type { Metered, Period } from './period.ts';
 import type { WeekUse } from './snapshot.ts';
 import type { UsageState } from './store.ts';
 
@@ -68,6 +68,12 @@ export function wSince(states: readonly UsageState[], from: number, now: number)
     }
   }
   return total;
+}
+
+/** The usage stores' W for the period's inference (budget/period.ts); undefined without `budget.weeklyLimitW`. */
+export function meteredOf(budget: Pick<BudgetConfig, 'weeklyLimitW'>, states: readonly UsageState[], now: number): Metered | undefined {
+  const limit = budget.weeklyLimitW;
+  return limit === undefined ? undefined : { wPerPct: limit / 100, wFrom: (from) => wSince(states, from, now) };
 }
 
 function earliestDay(states: readonly UsageState[]): string | undefined {

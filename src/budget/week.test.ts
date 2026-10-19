@@ -5,7 +5,7 @@ import type { BudgetConfig } from '../config/types.ts';
 import { emptyPatterns } from './patterns.ts';
 import type { WeekUse } from './snapshot.ts';
 import type { UsageState } from './store.ts';
-import { readWeek, wSince } from './week.ts';
+import { meteredOf, readWeek, wSince } from './week.ts';
 
 /** Thursday 2026-10-15 12:00 UTC; the week runs from Wednesday 10-14 01:00 to Wednesday 10-21 01:00. */
 const NOW = Date.parse('2026-10-15T12:00:00Z');
@@ -130,5 +130,14 @@ describe('wSince', () => {
   it('counts a day whose hours sum past its W as none, never below zero', () => {
     const damaged = { ...state({ '2026-10-14': 100 }), byHour: { '2026-10-14T00': 600 } };
     assert.equal(wSince([damaged], Date.parse('2026-10-14T03:00:00Z'), NOW), 0);
+  });
+});
+
+describe('meteredOf', () => {
+  it("counts the stores' W from an hour, at the configured W per percent, and is undefined without a limit", () => {
+    const metered = meteredOf({ weeklyLimitW: 100_000 }, COVERED, NOW);
+    assert.equal(metered?.wPerPct, 1_000);
+    assert.equal(metered?.wFrom(PERIOD.start), wSince(COVERED, PERIOD.start, NOW));
+    assert.equal(meteredOf({}, COVERED, NOW), undefined);
   });
 });

@@ -29,7 +29,7 @@ import {
 } from '../../budget/report.ts';
 import { datedSnapshot, formatSnapshot, parseSnapshot, readSnapshots, snapshotOfStatus, statusLineText, weekUseOf, type StatusLineView } from '../../budget/snapshot.ts';
 import { CURSOR_DAYS_KEPT, DAYS_KEPT, EMPTY_USAGE, MemoryUsageStore, UsageStore, type UsageState } from '../../budget/store.ts';
-import { readWeek, wSince, type WeekReading } from '../../budget/week.ts';
+import { meteredOf, readWeek, wSince, type WeekReading } from '../../budget/week.ts';
 import { readWork } from '../../budget/work.ts';
 import { JsonlMarkLog } from '../../inbox/store.ts';
 import { indexMarks } from '../../inbox/marks.ts';
@@ -114,8 +114,11 @@ async function readBudget(runtime: CliRuntime, kit: Kit, config: KitConfig, rost
   );
   const snapshots = recount ? [] : await readSnapshots(files, snapshotDirOf(config.budget, kit.paths));
   const statusUse = weekUseOf(snapshots, now);
-  const period = recount ? recountPeriodOf(config.budget, now) : await new PeriodStore(files, kit.paths.period).periodAt(config.budget, statusUse, now);
-  const week = readWeek({ budget: config.budget, now, statusUse, period, states: [...measured.bySession.values(), measured.outside] });
+  const states = [...measured.bySession.values(), measured.outside];
+  const period = recount
+    ? recountPeriodOf(config.budget, now)
+    : await new PeriodStore(files, kit.paths.period).periodAt(config.budget, statusUse, now, meteredOf(config.budget, states, now));
+  const week = readWeek({ budget: config.budget, now, statusUse, period, states });
   const lifts = recount ? [] : (await new LiftLog(files, kit.paths.lifts).read()).lifts;
   const bursts = recount ? [] : (await new BurstLog(files, kit.paths.bursts).read()).records;
   return { now, measured, week, lifts, bursts };
