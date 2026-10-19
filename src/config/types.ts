@@ -417,15 +417,17 @@ export interface CoordinatorRepoConfig {
    */
   readonly deploysOnPush: readonly string[];
   /**
-   * Refuse a branch whose package files need a dependency install, so pulling it into the main checkout never
-   * changes, unreviewed, the node_modules its worktrees link to; `dependencyCheck` can clear one.
+   * Refuse a branch (integrate) or a pushed range (roll) whose package files need a dependency install, so the main
+   * checkout's node_modules, which its worktrees link to, never changes unreviewed; `dependencyCheck` clears one for
+   * integrate, and with `roll.dependencyInstall` for roll.
    */
   readonly dependencyGate: boolean;
   /**
-   * With `dependencyGate`, what clears a dependency change for `teamrig integrate`: a program and its arguments, run
-   * without a shell in the branch's checkout under the host lock, after the rebase and before the push, with the
-   * default branch's package-lock.json in the file `TEAMRIG_BASELINE_LOCK` names (unset when that branch has none).
-   * Exit 0 lands the change, anything else refuses it. Unset: the gate refuses every dependency change.
+   * With `dependencyGate`, what clears a dependency change: a program and its arguments, run without a shell under the
+   * host lock with the base's package-lock.json in the file `TEAMRIG_BASELINE_LOCK` names (unset when the base has
+   * none). `teamrig integrate` runs it in the branch's checkout after the rebase and before the push, the default
+   * branch its base; `teamrig roll` in the main checkout after the pull, its old HEAD the base. Exit 0 lets the
+   * change go, anything else refuses it. Unset: the gate refuses every dependency change.
    */
   readonly dependencyCheck?: readonly string[];
   /** After the push, fast-forward the main checkout to it: only a fast-forward, only on the default branch with no tracked changes. */
@@ -448,6 +450,13 @@ export interface RollConfig {
   readonly targets: readonly string[];
   /** Asked in order before the host lock and again under it; the first that does not pass holds the roll. */
   readonly gates: readonly RollGateConfig[];
+  /**
+   * Installs a pulled range's dependency change (package-lock.json, or package.json beyond its scripts), such as
+   * `npm ci --ignore-scripts`: run after the pull and the `dependencyCheck`, before `afterPull`. A failed install
+   * moves the main checkout back and runs again to restore its dependencies. With `dependencyGate`, a dependency
+   * change rolls only when this and `dependencyCheck` are set.
+   */
+  readonly dependencyInstall?: readonly string[];
   /** Run in order after the pull, before `command`; one that fails ends the roll before it deploys. */
   readonly afterPull: readonly (readonly string[])[];
   /** Deploys what the pull brought: exit 0 rolled (a stdout line `no-roll`: nothing needed rolling), else failed. */
