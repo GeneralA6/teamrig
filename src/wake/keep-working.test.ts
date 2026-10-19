@@ -1,0 +1,96 @@
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+import type { Task } from '../register/fold.ts';
+import { testTask } from '../testing/task.ts';
+import type { WakeRest } from './decide.ts';
+import { keepWorkingOf, keepWorkingReason, type KeepWorking } from './keep-working.ts';
+
+const NOW = Date.parse('2030-01-08T10:00:00.000Z');
+const ASK = { task: 'T1', at: '2030-01-08T09:59:00.000Z' };
+const WAITING = testTask({ id: 'T1', title: 'Pick the plan', status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }] });
+
+function tasksOf(...tasks: readonly Task[]): ReadonlyMap<string, Task> {
+  return new Map(tasks.map((task) => [task.id, task]));
+}
+
+const AWAKE: WakeRest = { quiet: false, over: false };
+
+function workOf(tasks: ReadonlyMap<string, Task>, rest = AWAKE): KeepWorking | undefined {
+  return keepWorkingOf({ tasks, session: 'alpha', ask: ASK, now: NOW, rest });
+}
+
+function idsOf(tasks: ReadonlyMap<string, Task>): readonly string[] | undefined {
+  return workOf(tasks)?.startable.map((task) => task.id);
+}
+
+describe('keepWorkingOf', () => {
+  it('sends the session to its independent tasks, most urgent first', () => {
+    const tasks = tasksOf(
+      WAITING,
+      testTask({ id: 'T2', priority: 3 }),
+      testTask({ id: 'T3', status: 'in-progress', priority: 1 }),
+      testTask({ id: 'T4', priority: 2, after: ['T9'] }),
+      testTask({ id: 'T9', status: 'done', owner: 'bravo' }),
+    );
+    assert.deepEqual(idsOf(tasks), ['T3', 'T4', 'T2']);
+    assert.equal(workOf(tasks)?.waiting, WAITING);
+  });
+
+  it('sends nobody back in quiet hours or past the daily budget', () => {
+    const tasks = tasksOf(WAITING, testTask({ id: 'T2' }));
+    assert.equal(workOf(tasks, { quiet: true, over: false }), undefined);
+    assert.equal(workOf(tasks, { quiet: false, over: true }), undefined);
+  });
+
+  it('leaves the tasks that depend on the waiting one, directly or through another unfinished task', () => {
+    const tasks = tasksOf(
+      WAITING,
+      testTask({ id: 'T2', after: ['T1'] }),
+      testTask({ id: 'T3', after: ['T2'] }),
+      testTask({ id: 'T4', after: ['T8', 'T1'] }),
+      testTask({ id: 'T5' }),
+      testTask({ id: 'T8', status: 'done' }),
+    );
+    assert.deepEqual(idsOf(tasks), ['T5']);
+  });
+
+  it('finds nothing when every other task depends on the waiting one, waits, verifies, is closed or is not the session\'s', () => {
+    const tasks = tasksOf(
+      WAITING,
+      testTask({ id: 'T2', after: ['T1'] }),
+      testTask({ id: 'T3', status: 'waiting', waits: [{ kind: 'task', id: 'T7' }] }),
+      testTask({ id: 'T4', status: 'verifying' }),
+      testTask({ id: 'T5', status: 'done' }),
+      testTask({ id: 'T6', status: 'dropped' }),
+      testTask({ id: 'T7', owner: 'bravo' }),
+    );
+    assert.equal(workOf(tasks), undefined);
+  });
+
+  it('finds nothing once the task stopped waiting, changed hands or is gone', () => {
+    const other = testTask({ id: 'T2' });
+    assert.equal(idsOf(tasksOf({ ...WAITING, status: 'in-progress', waits: [] }, other)), undefined);
+    assert.equal(idsOf(tasksOf({ ...WAITING, owner: 'bravo' }, other)), undefined);
+    assert.equal(idsOf(tasksOf(other)), undefined);
+  });
+
+  it('counts a wait of any kind: a peer task or a time holds the task as a decision does', () => {
+    const other = testTask({ id: 'T2' });
+    assert.deepEqual(idsOf(tasksOf({ ...WAITING, waits: [{ kind: 'task', id: 'T7' }] }, other, testTask({ id: 'T7', owner: 'bravo' }))), ['T2']);
+    assert.deepEqual(idsOf(tasksOf({ ...WAITING, waits: [{ kind: 'time', at: '2030-01-09 12:00' }] }, other)), ['T2']);
+  });
+});
+
+describe('keepWorkingReason', () => {
+  it('names what the task waits on, the work to do instead and how to end a turn that already does it', () => {
+    const tasks = tasksOf(WAITING, testTask({ id: 'T2', title: 'Fix the login', priority: 1 }), testTask({ id: 'T3', title: 'Tidy the docs' }));
+    const work = workOf(tasks);
+    assert.ok(work !== undefined);
+    assert.equal(
+      keepWorkingReason('alpha', work),
+      'T1 waits (decision owner), and you own work that does not come after it: T2 "Fix the login" (p1), T3 "Tidy the docs" (p2). ' +
+        'Work it now in priority order (`teamrig list --session alpha`); leave a task that is the same change as T1, and say so in one line. ' +
+        'If you already work one and wait on a background step, end the turn again.',
+    );
+  });
+});
