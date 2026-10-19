@@ -7,19 +7,21 @@ import type { HireRecord } from './log.ts';
 
 /**
  * The `check` flags on hired sessions: RETIRE-DUE when the burst it was hired for is over, or when it has
- * had no open task for `hiring.idleHours` (since its hire, or since its newest task took its closed status);
- * REVIEW-DUE when its review day has passed. Pure: it takes the hires still active, the team's tasks, the
- * bursts over and the clock's now.
+ * had no open task for `hiring.idleHours` (since its hire, or since its newest task took its closed status) and no
+ * SCALE-OUT gives it a slice; REVIEW-DUE when its review day has passed. SCALE-OUT, on an area that needs a hire, is
+ * src/hiring/scale-out.ts. Pure: it takes the hires still active, the team's tasks, the bursts over and the clock's now.
  */
 
-export const HIRE_FLAG_KINDS = ['RETIRE-DUE', 'REVIEW-DUE'] as const;
+export const HIRE_FLAG_KINDS = ['SCALE-OUT', 'RETIRE-DUE', 'REVIEW-DUE'] as const;
 export type HireFlagKind = (typeof HIRE_FLAG_KINDS)[number];
 
 export interface HireFlag {
   readonly kind: HireFlagKind;
-  /** The hired session, so a session can find its own flags. */
+  /** The hired session, or the area a SCALE-OUT is on, so a session can find its own flags. */
   readonly session: string;
   readonly detail: string;
+  /** What clears it, with the command. */
+  readonly action: string;
 }
 
 export interface HireCheckInput {
@@ -38,35 +40,45 @@ function idleSince(hire: HireRecord, owned: readonly Task[]): number {
   return owned.reduce((latest, task) => Math.max(latest, Date.parse(task.statusAt)), hire.at);
 }
 
-function retireDue(hire: HireRecord, owned: readonly Task[], input: HireCheckInput): HireFlag | undefined {
+function retireFlag(session: string, detail: string): HireFlag {
+  return { kind: 'RETIRE-DUE', session, detail, action: `retire it (${KIT_NAME} retire ${session})` };
+}
+
+function retireDue(hire: HireRecord, owned: readonly Task[], input: HireCheckInput, busy: ReadonlySet<string>): HireFlag | undefined {
   if (hire.burst !== undefined && input.burstsOver.has(hire.burst)) {
-    return { kind: 'RETIRE-DUE', session: hire.session, detail: 'the burst it was hired for is over' };
+    return retireFlag(hire.session, 'the burst it was hired for is over');
   }
-  if (owned.some((task) => ACTIVE_STATUSES.includes(task.status))) {
+  if (busy.has(hire.session) || owned.some((task) => ACTIVE_STATUSES.includes(task.status))) {
     return undefined;
   }
   const { idleHours } = input.config.hiring;
   const hours = Math.floor((input.now.getTime() - idleSince(hire, owned)) / HOUR_MS);
-  return hours < idleHours ? undefined : { kind: 'RETIRE-DUE', session: hire.session, detail: `no open task for ${hours} h, hiring.idleHours ${idleHours}` };
+  return hours < idleHours ? undefined : retireFlag(hire.session, `no open task for ${hours} h, hiring.idleHours ${idleHours}`);
 }
 
 function reviewDue(hire: HireRecord, now: Date): HireFlag | undefined {
-  return hire.reviewBy < formatUtcDay(now) ? { kind: 'REVIEW-DUE', session: hire.session, detail: `review day ${hire.reviewBy} passed` } : undefined;
+  if (hire.reviewBy >= formatUtcDay(now)) {
+    return undefined;
+  }
+  const action = `decide whether its job goes on, else retire it (${KIT_NAME} retire ${hire.session})`;
+  return { kind: 'REVIEW-DUE', session: hire.session, detail: `review day ${hire.reviewBy} passed`, action };
 }
 
-/** The flags on each hired session still on the team, in hire order, RETIRE-DUE before REVIEW-DUE. */
-export function hireFlags(input: HireCheckInput): HireFlag[] {
+/**
+ * The flags on each hired session still on the team, in hire order, RETIRE-DUE before REVIEW-DUE. `busy` holds the
+ * idle hires a SCALE-OUT gives a slice (src/hiring/scale-out.ts), which are not due to retire for being idle.
+ */
+export function hireFlags(input: HireCheckInput, busy: ReadonlySet<string> = new Set()): HireFlag[] {
   const tasks = [...input.tasks];
   return input.hires
     .filter((hire) => input.config.sessions.includes(hire.session))
     .flatMap((hire) => {
       const owned = tasks.filter((task) => task.owner === hire.session);
-      return [retireDue(hire, owned, input), reviewDue(hire, input.now)].filter((flag): flag is HireFlag => flag !== undefined);
+      return [retireDue(hire, owned, input, busy), reviewDue(hire, input.now)].filter((flag): flag is HireFlag => flag !== undefined);
     });
 }
 
-/** One flag as `check` prints it, with the command that clears it. */
+/** One flag as `check` prints it, with what clears it. */
 export function formatHireFlag(flag: HireFlag): string {
-  const action = flag.kind === 'RETIRE-DUE' ? 'retire it' : 'decide whether its job goes on, else retire it';
-  return `HIRE ${flag.kind} (${flag.detail}) ${flag.session}: ${action} (${KIT_NAME} retire ${flag.session})`;
+  return `HIRE ${flag.kind} (${flag.detail}) ${flag.session}: ${flag.action}`;
 }
