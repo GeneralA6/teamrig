@@ -1,4 +1,4 @@
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname } from 'node:path';
 import type { CoordinatorConfig, CoordinatorRepoConfig } from '../config/types.ts';
 import { claimText, coveringClaims, readClaims } from '../coordinator/claims.ts';
 import { takeWhenClear, type Readiness } from '../coordinator/clearance.ts';
@@ -17,7 +17,7 @@ import type { SecretScanner } from '../core/secrets.ts';
 import { shownLine } from '../roll/gates.ts';
 import { hookEndText, hookExitCode, succeeded, type HookRunner } from '../roll/hooks.ts';
 import { commandLine } from '../test-run/shell.ts';
-import { rangeInstallTouches } from './dependencies.ts';
+import { rangeInstallTouches, runDependencyCheck } from './dependencies.ts';
 import type { Checkout, IntegrateGit } from './git.ts';
 import { LOCKFILE } from './manifest.ts';
 
@@ -31,8 +31,6 @@ import { LOCKFILE } from './manifest.ts';
  */
 
 const MINUTE_MS = 60_000;
-/** Names, for the dependency check, the file holding the default branch's package-lock.json. */
-export const BASELINE_LOCK_ENV = 'TEAMRIG_BASELINE_LOCK';
 /** A push origin rejects because its default branch moved meanwhile is rebased and pushed again, this many times in all. */
 export const PUSH_ATTEMPTS = 3;
 /** Branch names never integrated, whatever origin's default branch is. */
@@ -182,23 +180,10 @@ async function dependencyHold(git: IntegrateGit, top: string, onto: string, repo
   );
 }
 
-/** Runs `work` with `file` written, and removes it after, however `work` ends; with no file, just `work`. */
-async function withFile<T>(files: Files, file: { readonly path: string; readonly text: string } | undefined, work: () => Promise<T>): Promise<T> {
-  if (file === undefined) {
-    return work();
-  }
-  await files.write(file.path, file.text);
-  try {
-    return await work();
-  } finally {
-    await files.remove(file.path);
-  }
-}
-
 /**
  * Under the host lock `lock`, after the rebase onto `base`: runs the repository's dependency check when the gate is on
  * and the rebased branch changes the package files, with `base`'s package-lock.json in the file
- * {@link BASELINE_LOCK_ENV} names, kept only while the check runs. Undefined lets the push go; else the refusal, the
+ * `TEAMRIG_BASELINE_LOCK` names, kept only while the check runs. Undefined lets the push go; else the refusal, the
  * check's output shown above it.
  */
 async function dependencyCheckRefusal(setup: IntegrateSetup, ports: IntegratePorts, request: IntegrateRequest, plan: Plan, lock: HostLockInfo, base: string): Promise<Landing | undefined> {
@@ -214,25 +199,23 @@ async function dependencyCheckRefusal(setup: IntegrateSetup, ports: IntegratePor
   if (touches.length === 0) {
     return undefined;
   }
-  const lockfile = ports.git.fileAt(top, base, LOCKFILE);
-  const baseline = lockfile === undefined ? undefined : { path: join(dirname(setup.places.ledger), `baseline-${ports.newId()}.${LOCKFILE}`), text: lockfile };
   const changed = `deps changed (${touches.join(', ')})`;
   ports.say(`${changed}: dependency check ${argv.join(' ')}`);
-  const end = await withFile(ports.files, baseline, () =>
-    recordHeavy(
-      ports,
-      setup.places.ledger,
-      { session: request.session, what: `integrate ${repo.name}: dependency check of ${branch}` },
-      () =>
-        ports.hooks.run({
-          argv,
-          cwd: top,
-          env: underLock({ ...gitEnvironment(ports.env), [BASELINE_LOCK_ENV]: baseline?.path }, lock),
-          timeoutMs: setup.coordinator.heavy.maxRunMinutes * MINUTE_MS,
-          onLine: (line) => ports.say(`  ${shownLine(ports.scanner, line)}`),
-        }),
-      hookExitCode,
-    ),
+  const end = await recordHeavy(
+    ports,
+    setup.places.ledger,
+    { session: request.session, what: `integrate ${repo.name}: dependency check of ${branch}` },
+    () =>
+      runDependencyCheck(ports, {
+        argv,
+        cwd: top,
+        baseline: ports.git.fileAt(top, base, LOCKFILE),
+        folder: dirname(setup.places.ledger),
+        env: underLock(gitEnvironment(ports.env), lock),
+        timeoutMs: setup.coordinator.heavy.maxRunMinutes * MINUTE_MS,
+        onLine: (line) => ports.say(`  ${shownLine(ports.scanner, line)}`),
+      }),
+    hookExitCode,
   );
   if (succeeded(end)) {
     return undefined;
