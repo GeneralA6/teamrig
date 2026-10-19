@@ -82,6 +82,15 @@ describe('teamrig deploys', () => {
     });
   });
 
+  it('names the small steps sharing the host, a stale share left out', async () => {
+    const kit = new CliHarness(PLAIN);
+    const share = { token: 'other', pid: OTHER, session: 'po', purpose: 'heavy: specs', acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z', reserveMb: 2048 };
+    await kit.files.append(`${LOCK}.shared/other.json`, JSON.stringify(share));
+    await kit.files.append(`${LOCK}.shared/gone.json`, JSON.stringify({ ...share, token: 'gone', pid: 7 }));
+    const { stdout } = await kit.run(['deploys'], { integrateGit: new FakeIntegrateGit(), sessionProcesses: otherRuns() });
+    assert.deepEqual(stdout.slice(0, 2), ['host lock: free', 'sharing the host: 1 small step: po (heavy: specs) since 2030-01-08 09:50']);
+  });
+
   it('says what it cannot tell: a lock being written, an unknown reset, unreadable claims, a refused or failed read and no roll block', async () => {
     const kit = new CliHarness({ ...PLAIN, coordinator: { ...PLAIN.coordinator, schedule: { resetBlackoutHours: 4, heavyCutoffUtc: '09:30' } } });
     await kit.files.append(LOCK, '{"tok');

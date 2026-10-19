@@ -1,5 +1,5 @@
 import { claimText, readClaims } from '../../coordinator/claims.ts';
-import { holderText, type LockState } from '../../coordinator/host-lock.ts';
+import { holderText, sharesText, type LockState } from '../../coordinator/host-lock.ts';
 import { parseLedger } from '../../coordinator/ledger.ts';
 import { coordinatorPlaces, teamPlace } from '../../coordinator/places.ts';
 import { blackoutStart, heavyCutoffReason, type ResetTime } from '../../coordinator/schedule.ts';
@@ -77,7 +77,12 @@ export async function deploys(_args: ParsedArgs, runtime: CliRuntime): Promise<E
   const { coordinator, budget } = requireConfig(kit, runtime, 'read');
   const places = coordinatorPlaces(coordinator, kit.paths);
   const say = (line: string): void => runtime.out.stdout(line);
-  say(`host lock: ${lockText(await hostLockOf(runtime, places.hostLock, coordinator.heavy).state())}`);
+  const lock = hostLockOf(runtime, places.hostLock, coordinator.heavy);
+  say(`host lock: ${lockText(await lock.state())}`);
+  const shares = await lock.shares();
+  if (shares.length > 0) {
+    say(`sharing the host: ${sharesText(shares)}`);
+  }
   say(`heavy cutoff: ${cutoffText(nowMs, coordinator.schedule.heavyCutoffUtc)}`);
   const reset = await nextResetFrom(runtime, budget, snapshotDirOf(budget, kit.paths))(nowMs);
   say(`deploy blackout: ${blackoutText(nowMs, reset, coordinator.schedule.resetBlackoutHours)}`);
