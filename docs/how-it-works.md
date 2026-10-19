@@ -583,6 +583,15 @@ redirection, command that runs code or variable a program reads. It only ever al
 Code's own check, and a guard's ask or refusal wins over its allow
 ([what it cannot see](../plugins/teamrig/skills/teamrig-guide/hooks.md#before-a-shell-command-the-read-only-allow)).
 
+## Never stuck on a question
+
+Claude Code's question picker stops a session until the person answers, so a session waiting on one task's decision
+moves none of its other tasks. With `pickerGuard.enabled`, a hook refuses the picker to every session but the lead,
+and its reason says to record the decision on its task (a waiting status with its decision card, which the lead
+brings to the owner) and go on with the next task; only with none left does the turn end on the question. The lead
+keeps the picker, and plan mode's `ExitPlanMode` stays allowed
+([the picker guard](../plugins/teamrig/skills/teamrig-guide/hooks.md#before-a-question-the-picker-guard)).
+
 ## Room for other tools
 
 Today teamrig works with Claude Code, any terminal and its own task list; other tools will come through one small

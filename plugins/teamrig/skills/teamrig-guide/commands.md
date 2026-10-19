@@ -2461,6 +2461,26 @@ teamrig hook readonly-allow < pre-tool-use.json
 Output: a JSON permission decision `allow` with the reason for a line that only reads; nothing outside a team, with
 the hook off, for any other line, or on an error. Exit 0 always.
 
+### teamrig hook picker-guard
+
+Before Claude Code's question picker (`AskUserQuestion`), with `pickerGuard.enabled` in the team config, refuses it to
+every session but the lead: the picker stops the session until the person answers. The reason gives the session's
+own `teamrig set <id> --status waiting --waits decision:owner` command with its decision card, says to go on with the
+next task, and only with none left to end the turn with the question and a `Decision needed:` line. See
+[Hooks and permissions](hooks.md#before-a-question-the-picker-guard).
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig hook picker-guard < pre-tool-use.json
+```
+
+Output: a JSON permission decision `deny` with the reason for a team session's picker; nothing for the lead, a tab
+that is no session of the team, any other tool (`ExitPlanMode` too), outside a team, with the guard off, or on an
+error. Exit 0 always.
+
 ### teamrig hook cold-send
 
 Before a SendMessage call to a team session idle `messages.coldAfterMinutes` (60 by default) or longer, holds

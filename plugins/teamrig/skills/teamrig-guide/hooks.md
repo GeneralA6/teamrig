@@ -13,6 +13,7 @@ they all stay silent, and only `hook restore-track` still records the session ([
 | `PreToolUse` on `Bash` and `PowerShell` | `hook push-guard` | Asks before a push to a protected branch; refuses a force-push or delete of one |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook package-guard` | Refuses a package runner that would fetch and run a package outside the project's lockfile, and an `npx --no <bin>` that hands the bin's flag to npm ([the package guard](#before-a-shell-command-the-package-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook readonly-allow` | With `readonlyShell.enabled`, lets a line whose every command provably only reads run without a permission prompt ([the read-only allow](#before-a-shell-command-the-read-only-allow)) |
+| `PreToolUse` on `AskUserQuestion` | `hook picker-guard` | With `pickerGuard.enabled`, refuses the question picker to every session but the lead, with the reason to record the decision on its task and go on ([the picker guard](#before-a-question-the-picker-guard)) |
 | `PreToolUse` on `SendMessage` | `hook cold-send` | Holds once a message that would wake an idle session cold; during the daily meeting, holds every message to the lead but a CRITICAL one |
 | `PostToolUse` on `SendMessage` | `hook failed-send` | After a send that was not delivered, hands the model [the inbox line to write instead](#after-a-failed-send-the-inbox-line) |
 | `PostToolUse` on reads, edits and shell calls | `hook loop-nudge` | Asks the model once to batch when a turn makes [single-step calls in a row](#after-a-tool-call-the-loop-nudge) |
@@ -260,6 +261,26 @@ the line, so it cannot see:
 - a variable only the shell's profile exports (or `set -a` does), or a profile function or alias that shadows a
   program's name;
 - what a trusted prefix's arguments make its tool do.
+
+## Before a question: the picker guard
+
+Claude Code's question picker (`AskUserQuestion`) stops the session until the person answers, so a session that
+asks the owner one task's decision moves none of its other tasks meanwhile. With `pickerGuard.enabled: true` in the
+team config, `hook picker-guard` refuses the picker to every session of the team but the lead, and its reason says
+what to do instead:
+
+1. record the decision on its task: `teamrig set <id> --status waiting --waits decision:owner` with a note and its
+   decision card (`--question`, `--options`, `--recommend`, `--default`); the lead brings it to the owner;
+2. go straight on with the next task that does not need the answer;
+3. only when no task is left, end the turn with the question in plain text and a `Decision needed:` line (the
+   decision circle with tab status on).
+
+The lead keeps the picker: it is the owner's route, and the daily meeting asks through it. `ExitPlanMode` stays
+allowed: plan mode starts only when the person chose it in that tab, and the tool is its only way out. A tab that
+is no session of the team (no `$TEAMRIG_SESSION` and no inbox read) keeps the picker too. With tab status on, a
+refused picker leaves the tab's circle as it was, since no question waits. The refusal is the hook's PreToolUse
+`deny`, not a permission rule; outside a team, with the guard off or on any error the hook prints nothing, so the
+picker opens.
 
 ## After a tool call: the loop nudge
 
@@ -529,7 +550,7 @@ each tab of the team shows a colored circle before its title for what its sessio
 | --- | --- | --- |
 | green | ready for a prompt | a session's start (not a compaction's), a slash command typed (most end with no turn), a turn's end with no helper running, a `/compact` typed |
 | yellow | working | a prompt, a tool call's end, a helper's start, an automatic compaction's end, and a turn's end while a helper or workflow it started still runs |
-| orange | waiting on you | a permission prompt, a question (`AskUserQuestion`), a plan to approve (`ExitPlanMode`), an MCP server's request (`Elicitation`) |
+| orange | waiting on you | a permission prompt, a question (`AskUserQuestion`, not one the picker guard refuses), a plan to approve (`ExitPlanMode`), an MCP server's request (`Elicitation`) |
 | blue | waiting on your decision | a turn's end whose last message has a line that starts `Decision needed:` (see below), until your next prompt |
 | red | an API error | `StopFailure` |
 | purple | compacting | `PreCompact` |
@@ -578,3 +599,5 @@ read-only allow lets a call skip the prompt, and only a shell line it proves onl
   `packageGuard.adHocRunners` is `ask` or `allow`.
 - **The read-only allow** (`readonlyShell.enabled`) lets a shell line that only reads run with no prompt in default
   mode too; it never asks or refuses, so in a mode that already allows the line it changes nothing.
+- **The picker guard** (`pickerGuard.enabled`) refuses the question picker to every session but the lead on its
+  own, whatever the mode.
