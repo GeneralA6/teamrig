@@ -2427,7 +2427,9 @@ INBOX web, new in /home/you/.teamrig/teams/shop/state/inbox/web.md (each line is
 ### teamrig hook push-guard
 
 Before a Bash or PowerShell command, asks the human about a push to a protected branch and refuses a force-push or
-deletion of one.
+deletion of one. It also refuses (or asks about, as `commitGuard.skipHooks` says) a git command run without the
+repository's hooks: `--no-verify`, `git commit -n`, `HUSKY=0`, or a `core.hooksPath` override. See
+[Hooks and permissions](hooks.md#before-a-shell-command-the-commit-guard).
 
 Flags: none.
 

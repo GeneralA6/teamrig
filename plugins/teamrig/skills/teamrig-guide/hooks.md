@@ -10,7 +10,7 @@ they all stay silent, and only `hook restore-track` still records the session ([
 | `SubagentStart` (each helper) | `hook subagent-start` | Gives the helper the team rules and whose helper it is ([A helper's start](#a-helpers-start)) |
 | `SessionStart` (`/clear`), in the background | `hook refresh-wake` | Wakes a session that `/clear` started from its context refresh, so it carries on without a prompt |
 | `UserPromptSubmit` (each prompt) | `hook inbox-reminder` | Cancels a waiting automatic restart; shows new inbox lines; binds a tab started by hand by its title; records a Claude Code rename; tells the model when it is past its daily budget |
-| `PreToolUse` on `Bash` and `PowerShell` | `hook push-guard` | Asks before a push to a protected branch; refuses a force-push or delete of one |
+| `PreToolUse` on `Bash` and `PowerShell` | `hook push-guard` | Asks before a push to a protected branch; refuses a force-push or delete of one, and a git command run without the repository's hooks ([the commit guard](#before-a-shell-command-the-commit-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook package-guard` | Refuses a package runner that would fetch and run a package outside the project's lockfile, and an `npx --no <bin>` that hands the bin's flag to npm ([the package guard](#before-a-shell-command-the-package-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook readonly-allow` | With `readonlyShell.enabled`, lets a line whose every command provably only reads run without a permission prompt ([the read-only allow](#before-a-shell-command-the-read-only-allow)) |
 | `PreToolUse` on `AskUserQuestion` | `hook picker-guard` | With `pickerGuard.enabled`, refuses the question picker to every session but the lead, with the reason to record the decision on its task and go on ([the picker guard](#before-a-question-the-picker-guard)) |
@@ -191,6 +191,35 @@ can read it. Never route around a refusal; report it to the lead. The guard read
 wrappers and git aliases, but it does not see a push inside a script or program the command runs, `gh pr merge`,
 git extensions, or pushes run outside Claude Code. It is a guard against mistakes, not a sandbox: protect the
 branch on your git host too.
+
+## Before a shell command: the commit guard
+
+A repository's git hooks are its own checks (lint, tests, a commit-size rule), so a commit or push run without them
+ships what they would have stopped. The push guard's hook also reads each line for that and refuses:
+
+- `--no-verify`, or an abbreviation git accepts such as `--no-ver`, on `git commit`, `push`, `merge`, `pull`,
+  `rebase`, `am` or `send-email`, and `-n` where it means the same: on `git commit` and `git am`, never on
+  `git push -n` (a dry run) or `git merge -n`;
+- a husky switch on any of those commands: `HUSKY=0` (or a value only known when the line runs) or a non-empty
+  `HUSKY_SKIP_HOOKS`;
+- a `core.hooksPath` override for the run: `git -c core.hooksPath=...`, `--config-env`, or a
+  `GIT_CONFIG_PARAMETERS` or `GIT_CONFIG_KEY_<n>` naming it; a `-c` whose key is only known when the line runs
+  counts too;
+- a `git config` that sets or unsets `core.hooksPath`, in either form (`git config core.hooksPath /dev/null`,
+  `git config --unset core.hooksPath`, `git config set` and `git config unset`).
+
+A switch counts when it is set for git itself, for an `env` or shell that runs git, or earlier in git's own shell;
+an `export HUSKY=0` or `$env:HUSKY = '0'` there counts whatever its value. A setting a child shell keeps to itself
+does not count, and neither does a word after `--` or an option's value, as in `git commit -m "--no-verify"`. The
+reason: "teamrig commit guard: this runs git without the repository's hooks: git commit (--no-verify). The hooks
+are the repository's own checks: let them run and fix what they report; if a hook itself is broken, tell the lead.
+[commitGuard.skipHooks]"
+
+`commitGuard.skipHooks` sets what such a line gets: `deny` (the default), `ask` the human, or `allow`; a missing or
+broken config keeps `deny`, so a config mistake never turns the guard off. It applies whatever
+`pushGuard.protectedBranches` lists, and under `ask` a push the push guard refuses stays refused. Like the push
+guard, it reads only the line: a hook skipped inside a script the line runs, or a `core.hooksPath` written into a
+config file by hand, is not seen.
 
 ## Before a shell command: the package guard
 
@@ -595,6 +624,8 @@ read-only allow lets a call skip the prompt, and only a shell line it proves onl
   `Bash(teamrig *)` worked the same. The rule is for the Bash tool, where Claude Code puts `teamrig`.
 - **The push guard** asks or refuses on its own, whatever the mode: a push to a protected branch always asks the
   human.
+- **The commit guard** refuses a git command run without the repository's hooks on its own, whatever the mode,
+  unless `commitGuard.skipHooks` is `ask` or `allow`.
 - **The package guard** refuses an ad-hoc package run on its own, whatever the mode, unless
   `packageGuard.adHocRunners` is `ask` or `allow`.
 - **The read-only allow** (`readonlyShell.enabled`) lets a shell line that only reads run with no prompt in default
