@@ -97,8 +97,14 @@ export interface TeamPaths {
   readonly inboxMarks: string;
   /** What the prompt hook showed each Claude Code session of its inbox, so each line is shown once. */
   readonly inboxShown: string;
+  /** Taken by every write of `inboxShown`, which archives its records older than a week (core/aged-log.ts). */
+  readonly inboxShownLock: string;
   /** The hints the hooks gave each Claude Code session (bind hints, missing requirements), so each is given once. */
   readonly bindHints: string;
+  /** Taken by every write of `bindHints`, which archives its records older than a week (core/aged-log.ts). */
+  readonly bindHintsLock: string;
+  /** The state archive: the register's segments and the aged logs' old records, never deleted. */
+  readonly archive: string;
   /** The SendMessage calls the cold-send hook held, so the same tab's next send to that session goes through. */
   readonly coldSends: string;
   /** The owner's latest daily meeting with the lead (src/meeting/state.ts); the cold-send hook holds messages to the lead while it is open. */
@@ -180,7 +186,10 @@ export function teamPaths(kitHome: string, team: string, userHome: string, overr
     inbox: inHome(overrides.inbox) ?? join(state, 'inbox'),
     inboxMarks: join(state, 'inbox-marks.jsonl'),
     inboxShown: join(state, 'inbox-shown.jsonl'),
+    inboxShownLock: join(state, 'inbox-shown.lock'),
     bindHints: join(state, 'bind-hints.jsonl'),
+    bindHintsLock: join(state, 'bind-hints.lock'),
+    archive: join(state, 'archive'),
     coldSends: join(state, 'cold-sends.jsonl'),
     meeting: join(state, 'meeting.json'),
     renames: join(state, 'renames.jsonl'),

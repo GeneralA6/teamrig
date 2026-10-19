@@ -1,10 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { isRecord } from '../core/guards.ts';
 import type { RequirementProblem, RequirementsCheck } from '../requirements/requirements.ts';
 import { FakePathProbe } from '../testing/fake-processes.ts';
-import { APP, CLAUDE_SESSION, CliHarness, TEAM, type CliResult } from '../testing/cli-harness.ts';
+import { APP, CLAUDE_SESSION, CliHarness, TEAM, TEAM_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
 
 const GIT_MISSING = 'git is not installed or not on PATH, and teamrig needs it: install it from git-scm.com, then restart Claude Code.';
@@ -35,6 +35,17 @@ describe('the SessionStart hook tells the user what teamrig lacks', () => {
     assert.equal(noticeOf(await run(start())), `${GIT_MISSING}\n${OLD_CLAUDE}`);
     assert.equal(noticeOf(await run(start())), undefined);
     assert.equal(noticeOf(await run(start(OTHER_SESSION))), `${GIT_MISSING}\n${OLD_CLAUDE}`);
+  });
+
+  it("moves an ended session's notice record older than a week to the archive when it records a new one (T336)", async () => {
+    const kit = new CliHarness(TEAM, null);
+    const hints = join(TEAM_HOME, 'state', 'bind-hints.jsonl');
+    const old = `${JSON.stringify({ v: 1, claudeSession: OTHER_SESSION, reason: 'git-missing', at: '2029-12-20T10:00:00.000Z' })}
+`;
+    await kit.files.write(hints, old);
+    assert.equal(noticeOf(await kit.run(['hook', 'session-start'], { stdin: start(), requirements: lacking({ kind: 'git-missing' }) })), GIT_MISSING);
+    assert.equal(await kit.files.read(join(TEAM_HOME, 'state', 'archive', 'bind-hints-20300108.jsonl')), old);
+    assert.equal((await kit.files.read(hints))?.includes(OTHER_SESSION), false);
   });
 
   it('shows it every time when the payload names no session', async () => {
