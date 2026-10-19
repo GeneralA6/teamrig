@@ -464,6 +464,20 @@
               "minimum": 0,
               "maximum": 600,
               "default": 15
+            },
+            "memoryFloorMb": {
+              "description": "A small step (heavy --small) shares the host only while it keeps this many MB free besides those held for the small steps.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1048576,
+              "default": 4096
+            },
+            "smallReserveMb": {
+              "description": "The MB held for a small step with no ledger record of its peak yet.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1048576,
+              "default": 2048
             }
           }
         },

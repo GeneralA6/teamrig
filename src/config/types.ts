@@ -407,6 +407,10 @@ export interface HeavyConfig {
    * ledger record's `peakTreeMb` and `lowFreeMb`; 0 samples nothing.
    */
   readonly memorySampleSeconds: number;
+  /** A small step (`heavy --small`) shares the host only while it keeps this many MB free besides those held for the small steps. */
+  readonly memoryFloorMb: number;
+  /** The MB held for a small step with no ledger record of its peak yet. */
+  readonly smallReserveMb: number;
 }
 
 /** How a coordinator step waits. */
