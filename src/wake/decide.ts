@@ -1,5 +1,5 @@
 import { formatPct, formatW } from '../budget/format.ts';
-import { isPastDailyBudget, quietStartOf, sessionQuietFrom, type BudgetFacts } from '../budget/warn.ts';
+import { isHeld, quietStartOf, sessionQuietFrom, type BudgetFacts } from '../budget/warn.ts';
 import { DEFAULT_MESSAGES } from '../config/defaults.ts';
 import type { QuietHours } from '../config/types.ts';
 import { KIT_NAME } from '../core/home.ts';
@@ -150,27 +150,27 @@ export function decideWake(input: WakeInput): WakeDecision {
   return { verdict: { kind: 'wake', tasks: due }, state: { tab, known, pending: undefined, lastWakeAt: now, settled } };
 }
 
-/** Whether the session should rest: past its daily budget, or in the budget's quiet hours. */
+/** Whether the session should rest: held by its budget (`isHeld`), or in the budget's quiet hours. */
 export interface WakeRest {
-  readonly over: boolean;
+  readonly held: boolean;
   readonly quiet: boolean;
 }
 
 /**
- * Where the session stands against its budget at `now`: past its daily budget (its lift's while lifted), and in
- * quiet hours unless its lift exempts it. With no facts (the week's use is not known yet) it is never past budget,
- * and quiet hours go by the clock alone.
+ * Where the session stands against its budget at `now`: held (past its daily budget, its lift's while lifted, while
+ * the team has no room today), and in quiet hours unless its lift exempts it. With no facts (the week's use is not
+ * known yet) it is never held, and quiet hours go by the clock alone.
  */
 export function wakeRestOf(facts: BudgetFacts | undefined, quietHours: QuietHours | undefined, now: number): WakeRest {
   if (facts === undefined) {
-    return { over: false, quiet: quietStartOf(quietHours, now) !== undefined };
+    return { held: false, quiet: quietStartOf(quietHours, now) !== undefined };
   }
-  return { over: isPastDailyBudget(facts), quiet: sessionQuietFrom(facts, quietHours) !== undefined };
+  return { held: isHeld(facts), quiet: sessionQuietFrom(facts, quietHours) !== undefined };
 }
 
-/** The least urgent priority that wakes the session now: p1 only while it is past its daily budget or in quiet hours. */
+/** The least urgent priority that wakes the session now: p1 only while its budget holds it or in quiet hours. */
 export function effectivePriority(configured: number, rest: WakeRest): number {
-  return rest.over || rest.quiet ? Math.min(configured, URGENT_PRIORITY) : configured;
+  return rest.held || rest.quiet ? Math.min(configured, URGENT_PRIORITY) : configured;
 }
 
 /** What a wake costs. */

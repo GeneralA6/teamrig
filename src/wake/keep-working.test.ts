@@ -13,7 +13,7 @@ function tasksOf(...tasks: readonly Task[]): ReadonlyMap<string, Task> {
   return new Map(tasks.map((task) => [task.id, task]));
 }
 
-const AWAKE: WakeRest = { quiet: false, over: false };
+const AWAKE: WakeRest = { quiet: false, held: false };
 
 function workOf(tasks: ReadonlyMap<string, Task>, rest = AWAKE): KeepWorking | undefined {
   return keepWorkingOf({ tasks, session: 'alpha', ask: ASK, now: NOW, rest });
@@ -36,10 +36,10 @@ describe('keepWorkingOf', () => {
     assert.equal(workOf(tasks)?.waiting, WAITING);
   });
 
-  it('sends nobody back in quiet hours or past the daily budget', () => {
+  it('sends nobody back in quiet hours or while the budget holds it', () => {
     const tasks = tasksOf(WAITING, testTask({ id: 'T2' }));
-    assert.equal(workOf(tasks, { quiet: true, over: false }), undefined);
-    assert.equal(workOf(tasks, { quiet: false, over: true }), undefined);
+    assert.equal(workOf(tasks, { quiet: true, held: false }), undefined);
+    assert.equal(workOf(tasks, { quiet: false, held: true }), undefined);
   });
 
   it('leaves the tasks that depend on the waiting one, directly or through another unfinished task', () => {

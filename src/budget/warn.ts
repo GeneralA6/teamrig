@@ -5,7 +5,7 @@ import type { Burst } from './burst.ts';
 import { budgetMarkOf, burstPromptLines, burstStopLines, type BurstMarks, type SurplusHint } from './burst-lines.ts';
 import { formatPct } from './format.ts';
 import { liftText, type Lift } from './lift.ts';
-import type { PaceReading } from './pace.ts';
+import { hasRoom, type PaceReading, type TeamDay } from './pace.ts';
 
 /**
  * The live budget warning, pure: from a session's use today and the team's pace, which line its
@@ -39,6 +39,8 @@ export interface BudgetFacts {
   /** The week's use, in %. */
   readonly weekUsedPct: number;
   readonly pace: PaceReading | undefined;
+  /** Everyone's use today against the team's in-day pace: below it, the team has room and no session is held. */
+  readonly teamDay: TeamDay;
   /** The session is the team's lead: it lifts budgets, so its own helpers never ask and it gets no inbox line. */
   readonly isLead: boolean;
 }
@@ -55,6 +57,8 @@ export interface WarnState extends BurstMarks {
   readonly modelLevel: number;
   /** The team was ahead of its pace line at the last turn's end. */
   readonly ahead: boolean;
+  /** The session was held (`isHeld`) at the last turn's end. */
+  readonly held: boolean;
   /** The lead got today's inbox line about this session. */
   readonly leadTold: boolean;
   /** When the quiet hours whose line was shown began, epoch ms. */
@@ -64,7 +68,7 @@ export interface WarnState extends BurstMarks {
 }
 
 export function emptyWarnState(day: string): WarnState {
-  return { day, level: 0, modelLevel: 0, ahead: false, leadTold: false, quietFrom: undefined, liftAt: undefined, burstAt: undefined, modelBurstAt: undefined, surplusShown: undefined };
+  return { day, level: 0, modelLevel: 0, ahead: false, held: false, leadTold: false, quietFrom: undefined, liftAt: undefined, burstAt: undefined, modelBurstAt: undefined, surplusShown: undefined };
 }
 
 /** The state for `now`'s day: a new day keeps only the quiet-hours, lift and burst marks, which cross midnight. */
@@ -125,7 +129,9 @@ interface Standing {
   readonly over: boolean;
   readonly level: number;
   readonly ahead: boolean;
-  /** Past budget, and (unless the team escalates on the session alone) the team is ahead of its pace line. */
+  /** Past budget while the team has no room today (`isHeld`). */
+  readonly held: boolean;
+  /** Held, and (unless the team escalates on the session alone) the team is ahead of its pace line. */
   readonly escalated: boolean;
   /** When the current quiet hours began, unless the session's lift exempts it from them. */
   readonly quietFrom: number | undefined;
@@ -136,6 +142,16 @@ export function isPastDailyBudget(facts: BudgetFacts): boolean {
   return budgetUsePct(facts) > 100;
 }
 
+/**
+ * True when the session is past its daily budget while the team has no room today (its use at or past its in-day
+ * pace, `hasRoom`): only then is it held, woken for urgent work alone and escalated as `budget.escalate` says.
+ * While the team has room, a session past its part uses room the others left, so no session waits while the week
+ * has room.
+ */
+export function isHeld(facts: BudgetFacts): boolean {
+  return isPastDailyBudget(facts) && !hasRoom(facts.teamDay);
+}
+
 /** When the quiet hours the session is in began, epoch ms; undefined outside them, or while its lift exempts it. */
 export function sessionQuietFrom(facts: BudgetFacts, quiet: QuietHours | undefined): number | undefined {
   return facts.lift?.quietHoursExempt === true ? undefined : quietStartOf(quiet, facts.now);
@@ -144,9 +160,10 @@ export function sessionQuietFrom(facts: BudgetFacts, quiet: QuietHours | undefin
 function standingOf(facts: BudgetFacts, budget: WarnBudget): Standing {
   const usePct = budgetUsePct(facts);
   const over = isPastDailyBudget(facts);
+  const held = isHeld(facts);
   const ahead = facts.pace?.state === 'ahead';
   const quietFrom = sessionQuietFrom(facts, budget.quietHours);
-  return { over, level: levelOf(usePct, budget.warnAtPct), ahead, escalated: over && (budget.escalate === 'session' || ahead), quietFrom };
+  return { over, level: levelOf(usePct, budget.warnAtPct), ahead, held, escalated: held && (budget.escalate === 'session' || ahead), quietFrom };
 }
 
 /** How strongly an action holds a helper launch back: only "ask" and "block" do. */
@@ -192,6 +209,20 @@ function aheadClause(facts: BudgetFacts): string {
   return `the team is ${(facts.pace?.gapPts ?? 0).toFixed(1)} points ahead of its pace line`;
 }
 
+/** "the team has used 3.1% of the week today, at or past its in-day pace of 3.0%" */
+function noRoomClause(facts: BudgetFacts): string {
+  return `the team has used ${formatPct(facts.teamDay.usedPct)} of the week today, at or past its in-day pace of ${formatPct(facts.teamDay.pacePct)}`;
+}
+
+/** Why a held session is held: the team has no room today, and the week's pace when it is ahead. */
+function heldClause(facts: BudgetFacts, standing: Standing): string {
+  return standing.ahead ? `${noRoomClause(facts)}, and ${aheadClause(facts)}` : noRoomClause(facts);
+}
+
+function roomText(facts: BudgetFacts): string {
+  return `The team has room today: ${formatPct(facts.teamDay.usedPct)} of the week used, below its in-day pace of ${formatPct(facts.teamDay.pacePct)}, so nothing more happens.`;
+}
+
 /** What escalation does for this session, as sentences; '' with `warn` or for the lead. */
 function escalatedText(facts: BudgetFacts, budget: WarnBudget): string {
   if (facts.isLead || budget.overAction === 'warn') {
@@ -211,10 +242,13 @@ function levelLine(facts: BudgetFacts, budget: WarnBudget, standing: Standing): 
   if (!standing.over) {
     return joined([`Budget: ${use}`, teamText(facts), MORE]);
   }
-  if (!standing.escalated) {
-    return joined([`Budget: ${use}`, teamText(facts), 'The team is not ahead of its pace line, so nothing more happens.', MORE]);
+  if (!standing.held) {
+    return joined([`Budget: ${use}`, roomText(facts), MORE]);
   }
-  return joined([`Budget: ${use}`, budget.escalate === 'session' ? teamText(facts) : `${capitalized(aheadClause(facts))}.`, escalatedText(facts, budget), MORE]);
+  if (!standing.escalated) {
+    return joined([`Budget: ${use}`, teamText(facts), `${capitalized(noRoomClause(facts))}, but the team is not ahead of its pace line, so nothing more happens.`, MORE]);
+  }
+  return joined([`Budget: ${use}`, `${capitalized(heldClause(facts, standing))}.`, escalatedText(facts, budget), MORE]);
 }
 
 function quietLine(quiet: QuietHours, facts: BudgetFacts): string {
@@ -232,18 +266,19 @@ export interface StopWarning {
   readonly state: WarnState;
 }
 
-function leadLineOf(facts: BudgetFacts): string {
+function leadLineOf(facts: BudgetFacts, standing: Standing): string {
   return (
     `${facts.name} is past its daily budget: ${formatPct(facts.usedTodayPct)} of the week today against ${formatPct(facts.budgetPct)}, ` +
-    `and ${aheadClause(facts)}. ` +
+    `and ${heldClause(facts, standing)}. ` +
     `It finishes the step in hand; lift it only with a stop %: teamrig budget lift ${facts.id} --part <pct> --stop-pct <pct> --reason "<why>".`
   );
 }
 
 /**
  * The person's lines at a turn's end: a lift or a burst starting or ending, the quiet hours starting, a new
- * warning level, or the team moving ahead of its pace line while the session is past budget. The
- * lead gets one inbox line a day per session once it escalates, unless the action is only `warn`.
+ * warning level, or the session escalating with no new level (the team's room for the day running out, or the
+ * team moving ahead of its pace line, while the session is past budget). The lead gets one inbox line a day per
+ * session once it escalates, unless the action is only `warn`.
  */
 export function stopWarning(facts: BudgetFacts, budget: WarnBudget, previous: WarnState | undefined): StopWarning {
   const state = stateFor(previous, facts.now);
@@ -259,20 +294,23 @@ export function stopWarning(facts: BudgetFacts, budget: WarnBudget, previous: Wa
   if (budget.quietHours !== undefined && standing.quietFrom !== undefined && standing.quietFrom !== state.quietFrom) {
     lines.push(quietLine(budget.quietHours, facts));
   }
+  // A state saved before `held` was kept reads as not held: a session escalated then sees this line once more.
+  const wasEscalated = state.held && (budget.escalate === 'session' || state.ahead);
   if (standing.level > state.level) {
     lines.push(levelLine(facts, budget, standing));
-  } else if (standing.escalated && standing.ahead && !state.ahead && budget.escalate === 'session-and-fleet') {
-    lines.push(joined([`Budget: ${facts.name} is past its daily budget, and ${aheadClause(facts)}.`, escalatedText(facts, budget), MORE]));
+  } else if (standing.escalated && !wasEscalated) {
+    lines.push(joined([`Budget: ${facts.name} is past its daily budget, and ${heldClause(facts, standing)}.`, escalatedText(facts, budget), MORE]));
   }
   const tellLead = standing.escalated && budget.overAction !== 'warn' && !facts.isLead && !state.leadTold;
   return {
     lines,
-    leadLine: tellLead ? leadLineOf(facts) : undefined,
+    leadLine: tellLead ? leadLineOf(facts, standing) : undefined,
     state: {
       day: state.day,
       level: Math.max(state.level, standing.level),
       modelLevel: state.modelLevel,
       ahead: standing.ahead,
+      held: standing.held,
       leadTold: state.leadTold || tellLead,
       quietFrom: standing.quietFrom ?? state.quietFrom,
       liftAt: facts.lift?.at,
@@ -294,10 +332,10 @@ function escalationLine(facts: BudgetFacts, standing: Standing, state: WarnState
   if (!standing.escalated || standing.level <= state.modelLevel) {
     return undefined;
   }
-  const team = standing.ahead ? ' and the team is ahead of its pace line' : '';
+  const team = standing.ahead ? ', and it is ahead of its pace line' : '';
   const lift = facts.isLead ? 'As the lead, lift it only with a stop %.' : 'The lead can lift it.';
   return (
-    `${BUDGET_COMMAND}: you are past today's budget${team}. Finish the step in hand and start no new work items or helpers. ` +
+    `${BUDGET_COMMAND}: you are past today's budget and the team has no room left today${team}. Finish the step in hand and start no new work items or helpers. ` +
     `Never skip a test or check to save budget. ${lift}`
   );
 }
@@ -343,7 +381,7 @@ export function helperGate(facts: BudgetFacts, budget: WarnBudget): HelperGate {
   if (standing.escalated) {
     reasons.push({
       action: budget.overAction,
-      text: `${facts.name} is past its daily budget (${formatPct(facts.usedTodayPct)} of the week today against ${formatPct(facts.budgetPct)})${standing.ahead ? ` and ${aheadClause(facts)}` : ''}.`,
+      text: `${facts.name} is past its daily budget (${formatPct(facts.usedTodayPct)} of the week today against ${formatPct(facts.budgetPct)}), and ${heldClause(facts, standing)}.`,
     });
   }
   const quiet = budget.quietHours;
