@@ -635,13 +635,18 @@ describe('parseConfig', () => {
     assert.deepEqual(paths(parseConfig({ ...ROSTER, refresh: { contextTokens: 10_000_001 } }).issues), ['refresh.contextTokens']);
   });
 
-  it('reads the hiring settings, defaulting each and refusing a bad policy, cap or daily budget', () => {
+  it('reads the hiring settings, defaulting each and refusing a bad policy, cap, daily budget or scale-out measure', () => {
     assert.deepEqual(parseConfig(ROSTER).config.hiring, DEFAULT_HIRING);
-    const chosen = { policy: 'lead', maxSessions: 4, dailyPct: 1.5, maxDailyPct: 5, idleHours: 2, reviewDays: 14, resumeMaxTokens: 120_000, resumeMaxIdleDays: 3 };
+    const scaleOut = { windowDays: 5, minDone: 2, topPriorities: 1 };
+    const chosen = { policy: 'lead', maxSessions: 4, dailyPct: 1.5, maxDailyPct: 5, idleHours: 2, reviewDays: 14, resumeMaxTokens: 120_000, resumeMaxIdleDays: 3, scaleOut };
     const set = parseConfig({ ...ROSTER, hiring: chosen });
     assert.deepEqual(set.issues, []);
     assert.deepEqual(set.config.hiring, chosen);
-    const bad = parseConfig({ ...ROSTER, hiring: { policy: 'auto', maxSessions: 0, dailyPct: 0, maxDailyPct: 101, idleHours: 169, reviewDays: 91, resumeMaxTokens: 9_999, resumeMaxIdleDays: 91 } });
+    const badScaleOut = { windowDays: 9, minDone: 0, topPriorities: 11 };
+    const bad = parseConfig({
+      ...ROSTER,
+      hiring: { policy: 'auto', maxSessions: 0, dailyPct: 0, maxDailyPct: 101, idleHours: 169, reviewDays: 91, resumeMaxTokens: 9_999, resumeMaxIdleDays: 91, scaleOut: badScaleOut },
+    });
     assert.deepEqual(paths(bad.issues).sort(), [
       'hiring.dailyPct',
       'hiring.idleHours',
@@ -651,8 +656,12 @@ describe('parseConfig', () => {
       'hiring.resumeMaxIdleDays',
       'hiring.resumeMaxTokens',
       'hiring.reviewDays',
+      'hiring.scaleOut.minDone',
+      'hiring.scaleOut.topPriorities',
+      'hiring.scaleOut.windowDays',
     ]);
     assert.deepEqual(bad.config.hiring, DEFAULT_HIRING);
+    assert.deepEqual(paths(parseConfig({ ...ROSTER, hiring: { scaleOut: 7 } }).issues), ['hiring.scaleOut']);
   });
 
   it('reads the burst settings, defaulting each and refusing a bad policy or cap', () => {

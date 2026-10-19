@@ -27,6 +27,7 @@ import {
   DEFAULT_READONLY_SHELL,
   DEFAULT_REFRESH,
   DEFAULT_REGISTER,
+  DEFAULT_SCALE_OUT,
   DEFAULT_SESSION_SHARE,
   DEFAULT_SKILLS,
   DEFAULT_STATUS_LINE,
@@ -84,6 +85,7 @@ import {
   type PushToProtected,
   type QuietHours,
   type ReadonlyShellConfig,
+  type ScaleOutConfig,
   type RefreshConfig,
   type RegisterConfig,
   type SessionBudget,
@@ -917,6 +919,18 @@ function parseHiring(read: ConfigReader, raw: JsonRecord): HiringConfig {
     reviewDays: read.integer(raw, 'reviewDays', path, defaults.reviewDays, CONFIG_LIMITS.hiringReviewDays),
     resumeMaxTokens: read.integer(raw, 'resumeMaxTokens', path, defaults.resumeMaxTokens, CONFIG_LIMITS.hiringResumeMaxTokens),
     resumeMaxIdleDays: read.integer(raw, 'resumeMaxIdleDays', path, defaults.resumeMaxIdleDays, CONFIG_LIMITS.hiringResumeMaxIdleDays),
+    scaleOut: parseScaleOut(read, read.section(raw, 'scaleOut', path)),
+  };
+}
+
+/** `hiring.scaleOut`: how `check` measures an area's pace against its dated work. */
+function parseScaleOut(read: ConfigReader, raw: JsonRecord): ScaleOutConfig {
+  const path = 'hiring.scaleOut';
+  const defaults = DEFAULT_SCALE_OUT;
+  return {
+    windowDays: read.integer(raw, 'windowDays', path, defaults.windowDays, CONFIG_LIMITS.scaleOutWindowDays),
+    minDone: read.integer(raw, 'minDone', path, defaults.minDone, CONFIG_LIMITS.scaleOutMinDone),
+    topPriorities: read.integer(raw, 'topPriorities', path, defaults.topPriorities, CONFIG_LIMITS.scaleOutTopPriorities),
   };
 }
 

@@ -533,7 +533,17 @@ export function isHiringPolicy(value: unknown): value is HiringPolicy {
   return HIRING_POLICIES.some((policy) => policy === value);
 }
 
-/** Hiring temporary sessions: who decides, and the caps every hire stays within. */
+/** How `check` measures an area against its dated work for a SCALE-OUT flag (src/hiring/scale-out.ts). */
+export interface ScaleOutConfig {
+  /** Days back over which the tasks an area finished give its pace; at most the 8 days a register keeps finished tasks. */
+  readonly windowDays: number;
+  /** The fewest tasks an area must have finished in that window for its pace to count; below it the area is not measured. */
+  readonly minDone: number;
+  /** How many of the top priorities count: their dated tasks are the work an area must finish in time. */
+  readonly topPriorities: number;
+}
+
+/** Hiring temporary sessions: who decides, the caps every hire stays within, and when an area needs one. */
 export interface HiringConfig {
   readonly policy: HiringPolicy;
   /** Hired sessions on the team at once. */
@@ -550,6 +560,7 @@ export interface HiringConfig {
   readonly resumeMaxTokens: number;
   /** The most days that session may have been idle (its transcript unwritten) for `open --resume` to resume it. */
   readonly resumeMaxIdleDays: number;
+  readonly scaleOut: ScaleOutConfig;
 }
 
 /**
