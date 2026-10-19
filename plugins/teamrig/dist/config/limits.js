@@ -65,6 +65,7 @@ export const CONFIG_LIMITS = {
     heavyLockTtlMinutes: { min: 11, max: 1440 },
     heavyMaxRunMinutes: { min: 1, max: 1430 },
     heavyWaitMinutes: { min: 0, max: 1440 },
+    heavyMemorySampleSeconds: { min: 0, max: 600 },
     coordinatorPollSeconds: { min: 1, max: 600 },
     coordinatorWaitMaxMinutes: { min: 0, max: 1440 },
     gateTimeoutSeconds: { min: 1, max: 600 },

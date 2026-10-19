@@ -32,6 +32,10 @@ function refuseAfterCutoff(runtime, cutoffUtc) {
         throw new RefusedError(reason);
     }
 }
+/** How the step's memory is watched: its own process's tree, as often as the config says; undefined when it says 0. */
+function watchOf(runtime, heavy) {
+    return heavy.memorySampleSeconds === 0 ? undefined : { memory: runtime.memory, root: runtime.pid, intervalMs: heavy.memorySampleSeconds * 1_000 };
+}
 /** The last line: DONE, FAILED or TIMED OUT, with the exit code the ledger recorded. */
 function report(runtime, end, maxRunMinutes) {
     switch (end.kind) {
@@ -92,7 +96,8 @@ async function runUnderParent(runtime, parent, what, words, maxRunMinutes) {
  * under the host lock, so the host's heavy steps run one at a time. Refused from `coordinator.schedule.heavyCutoffUtc`
  * to midnight UTC, also when the wait for the lock ran past it, and when the lock is still held after
  * `coordinator.heavy.waitMinutes`. The step is killed with every process it started after `maxRunMinutes`
- * (`--max-minutes`), and its start and end go to the coordinator's ledger. Its processes get `$TEAMRIG_HOST_LOCK`,
+ * (`--max-minutes`), and its start and end go to the coordinator's ledger, with when it began to wait and, sampled
+ * every `memorySampleSeconds`, the most its process tree held and the least free memory the host had. Its processes get `$TEAMRIG_HOST_LOCK`,
  * so a `heavy` among them (a git hook's checks) runs at once under this lock. Exit 0 when the command passed, 1 when
  * it failed or was killed, 2 refused.
  */
@@ -111,6 +116,7 @@ export async function heavy(args, runtime) {
         return runUnderParent(runtime, parent, what, words, maxRunMinutes);
     }
     refuseAfterCutoff(runtime, coordinator.schedule.heavyCutoffUtc);
+    const queuedAt = runtime.clock.now();
     const taking = await lock.acquire(session, `heavy: ${what}`, coordinator.heavy.waitMinutes * MINUTE_MS, coordinator.wait.pollSeconds * 1_000, (holder, ahead) => logLine(runtime, `waiting for the host lock: ${waitText(holder, ahead)}`));
     if (taking.kind === 'busy') {
         throw new RefusedError(`host lock still held by ${holderText(taking.holder)}`);
@@ -119,7 +125,7 @@ export async function heavy(args, runtime) {
         refuseAfterCutoff(runtime, coordinator.schedule.heavyCutoffUtc);
         logLine(runtime, `running: ${what} (killed after ${minutesText(maxRunMinutes)})`);
         const request = { command: commandLine(words, runtime.platform), cwd: runtime.cwd, env: underLock(runtime.env, taking.lock), timeoutMs: maxRunMinutes * MINUTE_MS };
-        const end = await runRecorded(runtime, places.ledger, { session, what, request });
+        const end = await runRecorded(runtime, places.ledger, { session, what, queuedAt, request }, watchOf(runtime, coordinator.heavy));
         return report(runtime, end, maxRunMinutes);
     }
     finally {

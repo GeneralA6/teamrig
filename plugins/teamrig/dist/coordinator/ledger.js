@@ -39,6 +39,20 @@ function timeField(record, key) {
     const value = stringField(record, key);
     return value !== undefined && Number.isFinite(Date.parse(value)) ? value : undefined;
 }
+/** A whole number of MB; undefined when it is missing or anything else. */
+function mbField(record, key) {
+    const value = record[key];
+    return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+}
+/** The optional fields a record carries, each left out when it is missing or bad, since they only add to it. */
+function heavyExtrasOf(record) {
+    const [queuedAt, peakTreeMb, lowFreeMb] = [timeField(record, 'queuedAt'), mbField(record, 'peakTreeMb'), mbField(record, 'lowFreeMb')];
+    return {
+        ...(queuedAt === undefined ? {} : { queuedAt }),
+        ...(peakTreeMb === undefined ? {} : { peakTreeMb }),
+        ...(lowFreeMb === undefined ? {} : { lowFreeMb }),
+    };
+}
 /** An end that may not have come yet: null, else an ISO time; undefined when it is neither. */
 function endField(record, key) {
     return record[key] === null ? null : timeField(record, key);
@@ -51,7 +65,7 @@ function heavyOf(record) {
     if (id === undefined || session === undefined || what === undefined || startedAt === undefined || endedAt === undefined || exit === undefined) {
         return undefined;
     }
-    return { type: 'heavy', id, session, what, startedAt, endedAt, exitCode: exit };
+    return { type: 'heavy', id, session, what, startedAt, endedAt, exitCode: exit, ...heavyExtrasOf(record) };
 }
 function deployOf(record) {
     const kind = record['kind'];
