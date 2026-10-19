@@ -1,6 +1,7 @@
 import type { Register, StateRef } from 'claude-code';
 import { installedPluginsFileOf } from '../dist/core/installed-plugins.js';
 import { ClearHand, liveAgentsOf, TICK_MS } from '../dist/mod/clear-hand.js';
+import { REFRESH_TIMEOUT_MS, RefreshHand, refreshCliArgv } from '../dist/mod/refresh-hand.js';
 import { CHECK_MS, RELOAD_COMMAND, ReloadHand } from '../dist/mod/reload-hand.js';
 import {
   SLASH_ARGUMENT_HINT,
@@ -14,7 +15,7 @@ import {
 import { WAKE_TICK_MS, WAKE_TIMEOUT_MS, WakeHand, wakeCliArgv } from '../dist/mod/wake-hand.js';
 
 /**
- * teamrig's mod (built into dist from `src/mod`): the `/teamrig` command in every session, and three hands in every
+ * teamrig's mod (built into dist from `src/mod`): the `/teamrig` command in every session, and four hands in every
  * interactive tab.
  *
  * `/teamrig <command> [args]` (`slash-hand.ts`): runs the plugin's CLI as `hook slash-command` with the typed text,
@@ -45,6 +46,14 @@ import { WAKE_TICK_MS, WAKE_TIMEOUT_MS, WakeHand, wakeCliArgv } from '../dist/mo
  * submits the CLI's prompt with `$.prompt.submit`, Claude Code's own call for a prompt: a turn under the plugin's
  * name, nothing typed into the terminal, the prompt box and any draft left alone. A toast shows what woke the tab
  * and the cost; a wake a prompt hook drops is logged (`hook wake-dropped`).
+ *
+ * The refresh within a turn (`refresh-hand.ts`): the Stop hook asks for the handover only at a turn's end, so a long
+ * turn reached Claude Code's compaction first. After a tool result of the main conversation, once the context Claude
+ * Code reports reached the size the CLI named, the hand asks the CLI (`hook refresh-mid`) and adds its ask after the
+ * tool's result: the model reads it, the person does not see it. Before Claude Code compacts the main conversation
+ * on its own, or computes that summary ahead, the hand asks `hook compact-check` and skips the compaction, with the
+ * line that says why, while the handover is asked for or written, up to `refresh.compactCeilingTokens`; past it, or
+ * when the CLI fails, the compaction goes. A subagent's tools and compactions are left alone.
  */
 
 /** The reload hand's last reload, kept in the session (types/index.d.ts). */
@@ -65,10 +74,16 @@ function reloadWorthLogging(result: { readonly kind: string }): boolean {
   return result.kind === 'reloaded' || result.kind === 'refused' || result.kind === 'failed';
 }
 
+/** A refresh look worth a debug line: an ask or a failure, not the quiet ones. */
+function refreshWorthLogging(result: { readonly kind: string }): boolean {
+  return result.kind === 'asked' || result.kind === 'failed';
+}
+
 export const register: Register = (on) => {
   let clearHand: ClearHand | undefined;
   let reloadHand: ReloadHand | undefined;
   let wakeHand: WakeHand | undefined;
+  let refreshHand: RefreshHand | undefined;
 
   on('session.start', async ($, e, next) => {
     const started = await next(e);
@@ -163,6 +178,18 @@ export const register: Register = (on) => {
         });
       });
     }
+    if (refreshHand === undefined) {
+      refreshHand = new RefreshHand({
+        sessionId: () => $.session.id(),
+        cwd: () => $.session.cwd(),
+        root: () => $.session.root(),
+        cli: async (command, stdin, env, cwd) => {
+          const run = await $.process.run(refreshCliArgv($.plugin.root, command), { cwd, env: { ...env }, stdin, timeoutMs: REFRESH_TIMEOUT_MS });
+          return { exitCode: run.exitCode, stdout: run.stdout };
+        },
+        now: () => Date.now(),
+      });
+    }
     return started;
   });
 
@@ -190,5 +217,43 @@ export const register: Register = (on) => {
     reloadHand?.turnEnded(e.turnId);
     wakeHand?.turnEnded(e.turnId);
     return next(e);
+  });
+
+  on('tool.call', async ($, e, next) => {
+    const result = await next(e);
+    const hand = refreshHand;
+    if (hand === undefined || e.agentId !== undefined || result.deny !== undefined) {
+      return result;
+    }
+    const usage = await $.session.usage().catch(() => undefined);
+    const tokens = usage?.context.tokens;
+    if (tokens === undefined) {
+      return result;
+    }
+    const look = await hand.afterTool(tokens);
+    if (refreshWorthLogging(look)) {
+      $.ui.log(`teamrig refresh within the turn: ${JSON.stringify(look)}`, { to: 'debug' });
+    }
+    return look.kind === 'asked' ? { ...result, context: [...(result.context ?? []), look.text] } : result;
+  });
+
+  on('session.compact', async ($, e, next) => {
+    const hand = refreshHand;
+    if (hand === undefined || e.agentId !== undefined || (e.trigger !== 'auto' && e.trigger !== 'precompute')) {
+      return next(e);
+    }
+    // The figures Claude Code compacts on: its estimate of the context, against the compaction window.
+    const usage = await $.session.usage({ breakdown: 'summary' }).catch(() => undefined);
+    const breakdown = usage?.context.breakdown;
+    const tokens = breakdown?.totalTokens ?? usage?.context.tokens;
+    const window = breakdown?.rawMaxTokens ?? usage?.context.window;
+    if (tokens === undefined || window === undefined) {
+      return next(e);
+    }
+    const verdict = await hand.beforeCompact(tokens, window);
+    if (verdict.kind === 'failed') {
+      $.ui.log(`teamrig compaction check: ${JSON.stringify(verdict)}`, { to: 'debug' });
+    }
+    return verdict.kind === 'skip' ? { skip: verdict.reason } : next(e);
   });
 };
