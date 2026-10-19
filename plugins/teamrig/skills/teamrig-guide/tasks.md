@@ -236,6 +236,8 @@ every session needs every turn; each item has one home.
 - **Upkeep**: re-verify within 30 days [skills.maxVerifiedAgeDays] and bump the date each time its steps held; at
   most 8 skills per area [skills.maxPerArea], so merge before adding. When a command, flag or path changes,
   update every skill that names it in the same change.
+- **Limits**: `teamrig check` flags each skill that breaks one of the limits above. Core rule 13 names them only
+  through this section, so the always-loaded pack stays short.
 - **A wrong step**: fix it when you find it. In another area's skill, tell its owner in one inbox line.
 - **Memory**: a memory folder the sessions share holds facts and decisions. Prefix each new file with your area,
   read before you write, never overwrite another session's file, and in a shared index edit only your own line.
