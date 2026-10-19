@@ -34,6 +34,7 @@ const WINDOW = weekWindow(RESET, 1);
 const WEEK: WeekReading = {
   reset: RESET,
   window: WINDOW,
+  periodKind: 'week',
   usedPct: 57,
   statusAt: Date.parse('2026-10-15T11:00:00Z'),
   wPerPct: 7_500_000,
@@ -49,6 +50,7 @@ const ROOM = { usedPct: 3, pacePct: (10.25 * 11) / 24 };
 const UNKNOWN: WeekReading = {
   reset: undefined,
   window: undefined,
+  periodKind: undefined,
   usedPct: undefined,
   statusAt: undefined,
   wPerPct: undefined,
@@ -95,6 +97,14 @@ describe('todayLines', () => {
       todayLines({ ...REPORT, zone: JERUSALEM })[0],
       'Week: 57.0% used at 14:00 IDT (status line); the pace line is at 20.9%: 36.1 points ahead. Resets Wed 10-21 04:00 IDT.',
     );
+  });
+
+  it('says where the use counts from after a reset inside the week, and how that start was found', () => {
+    const window = weekWindow(RESET, 1, Date.parse('2026-10-18T16:00:00Z'));
+    const fallen: WeekReading = { ...WEEK, window, periodKind: 'reset' };
+    assert.match(todayLines({ ...REPORT, week: fallen })[0] ?? '', / Resets Wed 10-21 01:00 UTC\. Counted from Sun 10-18 16:00 UTC, after a reset inside the week\.$/);
+    const inferred = todayLines({ ...REPORT, week: { ...fallen, periodKind: 'inferred' } })[0] ?? '';
+    assert.match(inferred, / Counted from Sun 10-18 16:00 UTC, after a reset inside the week \(found from the metered W\)\.$/);
   });
 
   it('gives the week, the team, each session with use, lifts, outside use and who is past budget', () => {

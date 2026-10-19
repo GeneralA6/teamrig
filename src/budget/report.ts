@@ -76,7 +76,17 @@ export function weekLine(week: WeekReading, zone: TimeZone): string {
     pace === undefined
       ? ''
       : `; the pace line is at ${formatPct(pace.linePct)}: ${pace.state === 'on pace' ? 'on pace' : `${Math.abs(pace.gapPts).toFixed(1)} points ${pace.state}`}`;
-  return `Week: ${formatPct(week.usedPct)} used${source}${paceText}. Resets ${zone.weekdayMinute(new Date(week.reset))}.`;
+  return `Week: ${formatPct(week.usedPct)} used${source}${paceText}. Resets ${zone.weekdayMinute(new Date(week.reset))}.${periodText(week, zone)}`;
+}
+
+/** Where the use counts from after a reset inside the week (budget/period.ts); nothing for a whole week. */
+function periodText(week: WeekReading, zone: TimeZone): string {
+  const { window, periodKind } = week;
+  if (window === undefined || (periodKind !== 'reset' && periodKind !== 'inferred')) {
+    return '';
+  }
+  const found = periodKind === 'inferred' ? ' (found from the metered W)' : '';
+  return ` Counted from ${zone.weekdayMinute(new Date(window.start))}, after a reset inside the week${found}.`;
 }
 
 /** "<who> used 1.1% of the week today; its daily budget is 1.0%. 7.50M W in 310 calls." */

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { DEFAULT_BUDGET } from '../config/defaults.ts';
 import type { BudgetConfig } from '../config/types.ts';
 import { emptyPatterns } from './patterns.ts';
+import type { Period } from './period.ts';
 import type { WeekUse } from './snapshot.ts';
 import type { UsageState } from './store.ts';
 import { meteredOf, readWeek, wSince } from './week.ts';
@@ -12,7 +13,7 @@ const NOW = Date.parse('2026-10-15T12:00:00Z');
 const RESET = Date.parse('2026-10-21T01:00:00Z');
 const STATUS: WeekUse = { usedPct: 57, resetsAt: RESET, at: Date.parse('2026-10-15T11:00:00Z') };
 /** The period of that week. */
-const PERIOD = { start: Date.parse('2026-10-14T01:00:00Z'), end: RESET };
+const PERIOD: Pick<Period, 'start' | 'end' | 'kind'> = { start: Date.parse('2026-10-14T01:00:00Z'), end: RESET, kind: 'week' };
 
 function state(wByDay: Readonly<Record<string, number>>): UsageState {
   const byDay = Object.fromEntries(Object.entries(wByDay).map(([day, w]) => [day, { w, calls: 1, patterns: emptyPatterns() }]));
@@ -32,6 +33,7 @@ describe('readWeek', () => {
     assert.deepEqual(week, {
       reset: undefined,
       window: undefined,
+      periodKind: undefined,
       usedPct: undefined,
       statusAt: undefined,
       wPerPct: undefined,
@@ -76,8 +78,8 @@ describe('readWeek', () => {
     const reset = Date.parse('2026-10-15T10:00:00Z');
     const status: WeekUse = { usedPct: 1, resetsAt: RESET, at: NOW };
     const hours = { ...state({ '2026-10-14': 1_000, '2026-10-15': 300 }), byHour: { '2026-10-15T09': 200, '2026-10-15T10': 100 } };
-    const week = readWeek({ budget: DEFAULT_BUDGET, now: NOW, statusUse: status, period: { start: reset, end: RESET }, states: [hours] });
-    assert.deepEqual([week.window?.start, week.todayFrom, week.todayW, week.wPerPct, week.covered], [reset, reset, 100, 100, true]);
+    const week = readWeek({ budget: DEFAULT_BUDGET, now: NOW, statusUse: status, period: { start: reset, end: RESET, kind: 'reset' }, states: [hours] });
+    assert.deepEqual([week.window?.start, week.periodKind, week.todayFrom, week.todayW, week.wPerPct, week.covered], [reset, 'reset', reset, 100, 100, true]);
     // 2 of the 134 hours from the reset to the pace end, an hour before the week's.
     assert.equal(round(week.pace?.linePct), round((99.5 * 2) / 134));
   });

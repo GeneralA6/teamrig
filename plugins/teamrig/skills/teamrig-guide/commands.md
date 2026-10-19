@@ -2074,7 +2074,7 @@ unchanged, is a reset inside the week: a new budget runs from that latest readin
 today's use start there. With no period kept yet, the week before the reset is taken, unless the W metered since its
 start (at `budget.weeklyLimitW`) is 1.5 times the status line's use and 10 points over it: the use was reset inside
 the week before any period was kept, so the period starts at the latest hour from which the metered W reaches that
-use. The team's daily
+use. After a reset inside the week, the week line says where the use counts from. The team's daily
 budget is never a fixed number: at every reading, what is left to `budget.targetPct` is spread over the active
 time to the pace end (`budget.paceEndHoursBeforeReset` before the reset; quiet hours count at
 `budget.quietHours.paceWeight`), times today's active time. What the lead's lifts leave is split among the other
