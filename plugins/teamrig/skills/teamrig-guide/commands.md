@@ -2546,6 +2546,26 @@ Output: nothing for a command that runs no package ad hoc (or with `adHocRunners
 to npm; otherwise a JSON permission decision (`deny`, or `ask` for an ad-hoc run when the team set it) with the
 reason; under `prompts.hookAsks: refuse` that `ask` is a `deny` whose reason says what to do instead.
 
+### teamrig hook secret-guard
+
+Before a Bash, PowerShell, Read or Grep call, refuses (or asks about, as `secretGuard.secretReads` says) a call that
+would print a secret into the conversation: a secret file's content (`cat .env`, the Read tool on `~/.npmrc`), the
+whole environment (`env`, `Get-ChildItem Env:`), a secret variable (`echo $GITHUB_TOKEN`) or a Kubernetes secret's
+data. Output piped or redirected away from the screen passes. See
+[Hooks and permissions](hooks.md#before-a-shell-command-or-a-read-the-secret-guard).
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig hook secret-guard < pre-tool-use.json
+```
+
+Output: nothing for a call that prints no secret (or with `secretReads` set to `allow`), outside a team's projects,
+or for input that is not a hook payload; otherwise a JSON permission decision (`deny`, or `ask` when the team set
+it) with the reason naming each secret.
+
 ### teamrig hook readonly-allow
 
 Before a Bash or PowerShell command, with `readonlyShell.enabled` in the team config, lets a line whose every
@@ -2561,7 +2581,7 @@ Example:
 teamrig hook readonly-allow < pre-tool-use.json
 ```
 
-Output: a JSON permission decision `allow` with the reason for a line that only reads; nothing outside a team, with
+Output: a JSON permission decision `allow` with the reason for a line that only reads and prints no secret; nothing outside a team, with
 the hook off, for any other line, or on an error. Exit 0 always.
 
 ### teamrig hook picker-guard
