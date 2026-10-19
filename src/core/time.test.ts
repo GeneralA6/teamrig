@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatUtcDay, formatUtcHour, formatUtcMinute, isMinuteInSpan, parseDayStart, parseDeadline, parseTypedInstant, parseUtcDay, parseUtcDeadline, parseUtcInstant, shortUtc, showStored, storedDeadline, typedDeadline, typedTimeHint, utcMinuteOf } from './time.ts';
+import { formatUtcDay, formatUtcHour, formatUtcMinute, isMinuteInSpan, parseDayStart, parseDeadline, parseTypedInstant, parseUtcDay, parseUtcDeadline, parseUtcInstant, showStored, storedDeadline, typedDeadline, typedTimeHint, utcMinuteOf } from './time.ts';
 import { TimeZone } from './zone.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 
@@ -52,13 +52,6 @@ describe('parseUtcDay', () => {
     assert.equal(parseUtcDay('2030-01-07')?.toISOString(), '2030-01-07T00:00:00.000Z');
     assert.equal(parseUtcDay('2030-01-07 10:00'), undefined);
     assert.equal(parseUtcDay('2030-02-30'), undefined);
-  });
-});
-
-describe('shortUtc', () => {
-  it('drops the year', () => {
-    assert.equal(shortUtc('2030-01-09 12:00'), '01-09 12:00');
-    assert.equal(shortUtc('2030-01-09'), '01-09');
   });
 });
 

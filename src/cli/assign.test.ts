@@ -17,7 +17,7 @@ describe('runCli: giving a task to another session posts it an inbox line', () =
     assert.equal(added.code, EXIT.ok, added.stderr.join('\n'));
     assert.match(added.stdout[0] ?? '', /^ADDED T1 /);
     assert.deepEqual(added.stderr, [TOLD]);
-    assert.deepEqual(await inboxOf(kit, 'bravo'), ['- 2030-01-08 10:00 alpha: T1 is yours (p2, due 2030-01-10): Ship the docs']);
+    assert.deepEqual(await inboxOf(kit, 'bravo'), ['- 2030-01-08 10:00 UTC alpha: T1 is yours (p2, due 2030-01-10): Ship the docs']);
 
     const kept = await kit.run(['add', '--title', 'Ship the CLI', '--description', 'what and why', '--priority', 'p1', '--session', 'alpha']);
     assert.deepEqual([kept.code, kept.stderr], [EXIT.ok, []]);

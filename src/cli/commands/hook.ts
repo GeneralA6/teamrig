@@ -221,7 +221,7 @@ export async function inboxReminder(args: ParsedArgs, runtime: CliRuntime): Prom
     await logPrompt(runtime, { config, paths: kit.paths, id: session }, payload).catch(() => undefined);
   }
   const cancelled = session === undefined ? undefined : await cancelledRestartLine(runtime, kit, session, reaskGrowth(config.refresh)).catch(() => undefined);
-  const lines = session === undefined ? undefined : await inboxLinesFor(runtime, kit, session, claudeSession);
+  const lines = session === undefined ? undefined : await inboxLinesFor(runtime, kit, session, claudeSession, teamZone(config, runtime));
   const budgetLine = session === undefined ? undefined : await promptBudgetLine(runtime, { kit, config, roster: own.roster, id: session }).catch(() => undefined);
   // An unreadable title may be one the user set, so only a title read as absent is given.
   const tabTitle = title.kind === 'read' ? tabTitleFor(own.roster, session, title.title) : undefined;

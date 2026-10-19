@@ -31,7 +31,7 @@ describe('runCli: set --ask asks a peer for work by a task', () => {
       'SET T1 waiting, p2, owner alpha, from lead | Ship the release (waiting: on T2; Land the schema change)',
     ]);
     assert.deepEqual(asked.stderr, ['NOTE bravo has an inbox line: T2 is yours (p2, due 2030-01-10): Land the schema change']);
-    assert.deepEqual(await inboxOf(kit, 'bravo'), ['- 2030-01-08 10:00 alpha: T2 is yours (p2, due 2030-01-10): Land the schema change']);
+    assert.deepEqual(await inboxOf(kit, 'bravo'), ['- 2030-01-08 10:00 UTC alpha: T2 is yours (p2, due 2030-01-10): Land the schema change']);
     const shown = await kit.run(['show', 'T2', '--session', 'bravo']);
     assert.match(shown.stdout.join('\n'), /description: Asked by alpha for T1 \(Ship the release\), which waits on this task\./);
   });
@@ -68,8 +68,8 @@ describe('runCli: a wait on the lead or the owner tells the lead', () => {
     const owner = await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'approval:lead,decision:owner', '--note', 'and the cost', ...TEST_CARD_FLAGS, '--session', 'alpha']);
     assert.deepEqual(owner.stderr, [`NOTE lead has an inbox line: T1 waits on the owner's decision: ${TEST_CARD.question}`]);
     assert.deepEqual(await inboxOf(kit, 'lead'), [
-      '- 2030-01-08 10:00 alpha: T1 waits on your approval: pick the backup window',
-      `- 2030-01-08 10:00 alpha: T1 waits on the owner's decision: ${TEST_CARD.question}`,
+      '- 2030-01-08 10:00 UTC alpha: T1 waits on your approval: pick the backup window',
+      `- 2030-01-08 10:00 UTC alpha: T1 waits on the owner's decision: ${TEST_CARD.question}`,
     ]);
 
     await kit.run(['add', '--title', 'Plan the week', '--description', 'what and why', '--priority', 'p2', '--session', 'lead']);

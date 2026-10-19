@@ -1,6 +1,7 @@
 import { errorMessage } from '../../core/guards.ts';
 import type { Roster } from '../../config/roster.ts';
 import { ENV, KIT_NAME } from '../../core/home.ts';
+import type { TimeZone } from '../../core/zone.ts';
 import { sessionTitleOf } from '../../names/title.ts';
 import { bindByProcess, bindByTitle, bindHint, hintReason, processBoundNote, refreshedIn, type BindOutcome, type TeamRoster } from '../../hooks/bind.ts';
 import { firstHint, JsonlHintLog } from '../../hooks/hint-log.ts';
@@ -98,7 +99,7 @@ export async function bindHintOnce(runtime: CliRuntime, kit: Kit, binding: TabBi
   return (await firstHint(log, claudeSession, reason, new Date(runtime.clock.now()))) ? hint : undefined;
 }
 
-/** The session's new inbox lines for this prompt (inbox/inject.ts), recorded as shown; undefined when none wait. */
-export function inboxLinesFor(runtime: CliRuntime, kit: Kit, session: string, claudeSession: string): Promise<string | undefined> {
-  return injectFor(inboxDepsOf(runtime, kit.paths), { area: session, claudeSession, now: new Date(runtime.clock.now()), command: KIT_NAME });
+/** The session's new inbox lines for this prompt (inbox/inject.ts) on the team's clock, recorded as shown; undefined when none wait. */
+export function inboxLinesFor(runtime: CliRuntime, kit: Kit, session: string, claudeSession: string, zone: TimeZone): Promise<string | undefined> {
+  return injectFor(inboxDepsOf(runtime, kit.paths), { area: session, claudeSession, now: new Date(runtime.clock.now()), zone, command: KIT_NAME });
 }

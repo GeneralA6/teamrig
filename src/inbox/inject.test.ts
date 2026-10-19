@@ -1,7 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { TimeZone } from '../core/zone.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
+import { JERUSALEM } from '../testing/zone.ts';
 import type { InboxDeps } from './inbox.ts';
 import { fitLines, injectFor, injectionOf, type InjectionInput } from './inject.ts';
 import { lineHash } from './line-hash.ts';
@@ -16,6 +18,8 @@ const TAB = '0a1b2c3d-1111-2222-3333-444455556666';
 const OTHER_TAB = '9f8e7d6c-1111-2222-3333-444455556666';
 const NOW = new Date('2030-01-08T10:00:00Z');
 const LINES = Array.from({ length: 8 }, (_, index) => `- 2030-01-07 0${index}:00 lead: item ${index + 1}`);
+/** LINES as a session on UTC is shown them. */
+const SHOWN_LINES = Array.from({ length: 8 }, (_, index) => `- 2030-01-07 0${index}:00 UTC lead: item ${index + 1}`);
 
 function markAt(lines: readonly string[], through: number, claudeSession: string | null, area = 'alpha'): InboxMark {
   const last = lines[through - 1];
@@ -23,7 +27,7 @@ function markAt(lines: readonly string[], through: number, claudeSession: string
 }
 
 function input(fields: Partial<InjectionInput> = {}): InjectionInput {
-  return { area: 'alpha', path: `${DIR}/alpha.md`, lines: LINES.slice(0, 3), read: null, shown: null, claudeSession: TAB, now: NOW, command: 'teamrig', ...fields };
+  return { area: 'alpha', path: `${DIR}/alpha.md`, lines: LINES.slice(0, 3), read: null, shown: null, claudeSession: TAB, now: NOW, zone: TimeZone.UTC, command: 'teamrig', ...fields };
 }
 
 describe('newestShownOf and unshownOf', () => {
@@ -68,7 +72,7 @@ describe('injectionOf', () => {
     const injection = injectionOf(input());
     assert.deepEqual(injection?.text.split('\n'), [
       `INBOX alpha, new in ${DIR}/alpha.md (each line is shown once; reading marks them read):`,
-      ...LINES.slice(0, 3),
+      ...SHOWN_LINES.slice(0, 3),
     ]);
     assert.deepEqual(injection?.shown, markAt(LINES, 3, TAB));
   });
@@ -76,12 +80,12 @@ describe('injectionOf', () => {
   it('shows five lines at most and says how many wait', () => {
     const injection = injectionOf(input({ lines: LINES, read: markAt(LINES, 1, null) }));
     assert.deepEqual(injection?.text.split('\n').slice(1), [
-      ...LINES.slice(1, 6),
+      ...SHOWN_LINES.slice(1, 6),
       '+2 more at your next prompt, or all now with: teamrig inbox read --session alpha',
     ]);
     assert.deepEqual(injection?.shown, markAt(LINES, 6, TAB));
     const next = injectionOf(input({ lines: LINES, read: markAt(LINES, 1, null), shown: injection?.shown ?? null }));
-    assert.deepEqual(next?.text.split('\n').slice(1), LINES.slice(6));
+    assert.deepEqual(next?.text.split('\n').slice(1), SHOWN_LINES.slice(6));
     assert.equal(injectionOf(input({ lines: LINES, read: markAt(LINES, 1, null), shown: next?.shown ?? null })), undefined);
   });
 
@@ -95,6 +99,14 @@ describe('injectionOf', () => {
     ]);
   });
 
+  it("shows each line's time on the team's clock", () => {
+    assert.deepEqual(injectionOf(input({ zone: JERUSALEM }))?.text.split('\n').slice(1), [
+      '- 2030-01-07 02:00 IST lead: item 1',
+      '- 2030-01-07 03:00 IST lead: item 2',
+      '- 2030-01-07 04:00 IST lead: item 3',
+    ]);
+  });
+
   it('shows nothing when nothing is new', () => {
     assert.equal(injectionOf(input({ read: markAt(LINES, 3, null) })), undefined);
     assert.equal(injectionOf(input({ lines: [] })), undefined);
@@ -105,7 +117,7 @@ describe('injectFor', () => {
   function deps(files: MemoryFiles | FaultyFiles): InboxDeps {
     return { inboxes: new InboxDir(files, DIR), marks: new JsonlMarkLog(files, MARKS), shown: new JsonlMarkLog(files, SHOWN) };
   }
-  const request = { area: 'alpha', claudeSession: TAB, now: NOW, command: 'teamrig' };
+  const request = { area: 'alpha', claudeSession: TAB, now: NOW, zone: TimeZone.UTC, command: 'teamrig' };
 
   it('shows each line once per Claude Code session, and never marks it read', async () => {
     const files = new MemoryFiles({ [`${DIR}/alpha.md`]: LINES.slice(0, 2).join('\n') });
@@ -115,7 +127,7 @@ describe('injectFor', () => {
     assert.equal(files.get(MARKS), undefined);
     assert.equal(files.get(SHOWN)?.trim().split('\n').length, 2);
     await deps(files).inboxes.append('alpha', LINES[2] ?? '');
-    assert.equal((await injectFor(deps(files), request))?.split('\n').slice(1).join('\n'), LINES[2]);
+    assert.equal((await injectFor(deps(files), request))?.split('\n').slice(1).join('\n'), SHOWN_LINES[2]);
   });
 
   it('shows nothing for an area with no inbox', async () => {

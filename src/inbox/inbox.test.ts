@@ -1,11 +1,14 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { SecretScanner } from '../core/secrets.ts';
+import { TimeZone } from '../core/zone.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
+import { JERUSALEM } from '../testing/zone.ts';
 import {
   formatRead,
   formatUnread,
   inboxStatus,
+  lineOnClock,
   postLine,
   readInbox,
   sessionIdOf,
@@ -100,10 +103,22 @@ describe('inboxStatus', () => {
     await readInbox(deps, { area: 'alpha', claudeSession: SESSION, now: NOW });
     await deps.inboxes.append('alpha', LINES[2] ?? '');
 
-    assert.deepEqual((await inboxStatus(deps)).map(formatUnread), [
-      'alpha 1 unread since 01-07 11:00 (read to line 2 of 3 at 01-08 10:00)',
+    assert.deepEqual((await inboxStatus(deps)).map((unread) => formatUnread(unread, TimeZone.UTC)), [
+      'alpha 1 unread since 01-07 11:00 UTC (read to line 2 of 3 at 01-08 10:00 UTC)',
       'bravo 0 unread (never marked read)',
     ]);
+    assert.deepEqual((await inboxStatus(deps, 'alpha')).map((unread) => formatUnread(unread, JERUSALEM)), [
+      'alpha 1 unread since 01-07 13:00 IST (read to line 2 of 3 at 01-08 12:00 IST)',
+    ]);
+  });
+});
+
+describe('lineOnClock', () => {
+  it("shows a dated line's time on the team's clock, and an undated line as it is", () => {
+    assert.equal(lineOnClock('- 2030-01-08 10:00 lead: ship it', TimeZone.UTC), '- 2030-01-08 10:00 UTC lead: ship it');
+    assert.equal(lineOnClock('- 2030-01-08 10:00 lead: ship it', JERUSALEM), '- 2030-01-08 12:00 IST lead: ship it');
+    assert.equal(lineOnClock('- 2030-01-08 23:30 lead: late', JERUSALEM), '- 2030-01-09 01:30 IST lead: late');
+    assert.equal(lineOnClock('written by hand at 10:00', JERUSALEM), 'written by hand at 10:00');
   });
 });
 

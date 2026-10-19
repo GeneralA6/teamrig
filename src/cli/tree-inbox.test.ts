@@ -11,7 +11,7 @@ describe('teamrig inbox add across a tree of teams', () => {
     assert.deepEqual(result, { code: EXIT.ok, stdout: ['POSTED to web/lead; web/lead is reminded at its next prompt'], stderr: [] });
     assert.equal(kit.files.get(teamInboxOf('web', 'lead')), '- 2030-01-08 10:00 app/lead: ship the login page\n');
     const read = await kit.run(['inbox', 'read', '--session', 'lead'], { env: { TEAMRIG_TEAM: 'web' } });
-    assert.equal(read.stdout[0], '- 2030-01-08 10:00 app/lead: ship the login page');
+    assert.equal(read.stdout[0], '- 2030-01-08 10:00 UTC app/lead: ship the login page');
   });
 
   it('lets a sub-team lead write up to its parent lead and down to its child lead, by id or name', async () => {

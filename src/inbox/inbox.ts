@@ -1,6 +1,7 @@
 import { isRecord, stringField } from '../core/guards.ts';
-import { formatUtcMinute, shortUtc } from '../core/time.ts';
+import { formatUtcMinute, parseUtcDeadline } from '../core/time.ts';
 import type { SecretScanner } from '../core/secrets.ts';
+import type { TimeZone } from '../core/zone.ts';
 import { SESSION_NAME } from '../register/model.ts';
 import { lineHash } from './line-hash.ts';
 import { CLAUDE_SESSION_ID, indexMarks, MARK_VERSION, type InboxMark, type MarkLogRead } from './marks.ts';
@@ -23,26 +24,42 @@ export interface MarkLog {
 }
 
 const LINE_DATE = /^- (\d{4}-\d{2}-\d{2} \d{2}:\d{2})/;
+const STAMP_END = '- YYYY-MM-DD HH:MM'.length;
 
-/** When the first unread line was posted, as its `YYYY-MM-DD HH:MM` (UTC); undefined when it is not dated. */
-export function unreadSince(unread: Unread): string | undefined {
-  return LINE_DATE.exec(unread.lines[0] ?? '')?.[1];
+/** When a stored line was posted: its leading `YYYY-MM-DD HH:MM`, in UTC; undefined when it is not dated. */
+function postedAt(line: string): Date | undefined {
+  const stamp = LINE_DATE.exec(line)?.[1];
+  return stamp === undefined ? undefined : parseUtcDeadline(stamp);
 }
 
-/** ` since 01-13 11:35`, from the first unread line when it is dated. */
-function since(unread: Unread): string {
-  const date = unreadSince(unread);
-  return date === undefined ? '' : ` since ${shortUtc(date)}`;
+/** When the first unread line was posted; undefined when it is not dated. */
+export function unreadSince(unread: Unread): Date | undefined {
+  return postedAt(unread.lines[0] ?? '');
 }
 
-/** For `inbox status`: `alpha 3 unread since 01-13 11:35 (read to line 21 of 24 at 01-13 08:57)`. */
-export function formatUnread(unread: Unread): string {
-  const head = `${unread.area} ${unread.lines.length} unread${since(unread)}`;
+/**
+ * A stored line as a session reads it, its time on the team's clock: `- 2030-01-08 10:00 lead: …` becomes
+ * `- 2030-01-08 12:00 IST lead: …`. The file keeps UTC; a line not dated stays as it is.
+ */
+export function lineOnClock(line: string, zone: TimeZone): string {
+  const at = postedAt(line);
+  return at === undefined ? line : `- ${zone.minute(at)}${line.slice(STAMP_END)}`;
+}
+
+/** ` since 01-13 13:35 IST`, from the first unread line when it is dated. */
+function since(unread: Unread, zone: TimeZone): string {
+  const posted = unreadSince(unread);
+  return posted === undefined ? '' : ` since ${zone.shortMinute(posted)}`;
+}
+
+/** For `inbox status`: `alpha 3 unread since 01-13 13:35 IST (read to line 21 of 24 at 01-13 10:57 IST)`. */
+export function formatUnread(unread: Unread, zone: TimeZone): string {
+  const head = `${unread.area} ${unread.lines.length} unread${since(unread, zone)}`;
   const { mark } = unread;
   if (mark === null) {
     return `${head} (never marked read)`;
   }
-  const at = shortUtc(formatUtcMinute(new Date(mark.at)));
+  const at = zone.shortMinute(new Date(mark.at));
   switch (unread.resume) {
     case 'rewritten':
       return `${head} (the last line read at ${at} is gone: the file was rewritten, all of it counts)`;

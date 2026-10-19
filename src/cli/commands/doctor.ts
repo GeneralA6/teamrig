@@ -8,7 +8,7 @@ import { HiringLog, retiredSessions } from '../../hiring/log.ts';
 import { inboxStatus } from '../../inbox/inbox.ts';
 import { JsonlRenameLog } from '../../names/log.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
-import { openTeamKit, projectFolder, requireConfig } from '../kit.ts';
+import { openTeamKit, projectFolder, requireConfig, teamZone } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
 import { inboxDepsOf } from './inbox.ts';
@@ -52,6 +52,7 @@ export async function doctor(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     settingsEnv: await readSettingsEnv(runtime.files, claudeSettingsFiles(claudeDir, project)),
     launches: roster.ids.map((id) => ({ id, launch: launchOf(config, id) })),
     now: new Date(runtime.clock.now()),
+    zone: teamZone(config, runtime),
     command: KIT_NAME,
   });
   runtime.out.stdout(findings.length === 0 ? `DOCTOR clean, team ${paths.team}` : `DOCTOR ${findings.length} finding(s), team ${paths.team}`);
