@@ -2,6 +2,7 @@ import { deployTargetsOf } from '../coordinator/targets.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { NAME_PATTERN, NAME_RULE } from '../core/ids.ts';
 import { isMinuteInSpan, utcMinuteOf } from '../core/time.ts';
+import { TimeZone } from '../core/zone.ts';
 import { FOLLOWUP_STATUSES, isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, SESSION_NAME, TASK_STATUSES, type TaskStatus } from '../register/model.ts';
 import { PREFIX_PATTERN } from '../readonly-shell/rules.ts';
 import { CORE_RULE_KEYS, isCoreRuleKey } from '../rules/keys.ts';
@@ -116,6 +117,8 @@ export interface ConfigParse {
 
 const isSessionName: Check<string> = (name) =>
   SESSION_NAME.test(name) ? undefined : 'expected a lowercase name: a letter, then letters, digits or -, at most 32';
+
+const isTimeZone: Check<string> = (name) => (TimeZone.of(name) === undefined ? 'expected an IANA time zone name such as Asia/Jerusalem' : undefined);
 
 const isUtcTime: Check<string> = (time) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(time) ? undefined : 'expected a UTC time as HH:MM');
 
@@ -233,6 +236,7 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
   const names = readNames(read, read.section(raw, 'names', ''), sessions);
   const launch = readLaunch(read, read.section(raw, 'launch', ''), sessions);
   const team = readTeam(read, raw);
+  const timeZone = read.optionalString(raw, 'timeZone', '', isTimeZone);
 
   const messages = read.section(raw, 'messages', '');
   const pushGuard = read.section(raw, 'pushGuard', '');
@@ -245,6 +249,7 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
   const config: KitConfig = {
     configVersion: read.integer(raw, 'configVersion', '', 1, { min: 1 }),
     ...(team === undefined ? {} : { team }),
+    ...(timeZone === undefined ? {} : { timeZone }),
     sessions,
     names,
     roles: coordinatorOwner === undefined ? { lead } : { lead, coordinatorOwner },

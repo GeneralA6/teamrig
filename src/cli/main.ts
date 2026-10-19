@@ -32,6 +32,7 @@ process.exitCode = await runCli(process.argv.slice(2), {
   pid: process.pid,
   files: nodeFiles(realSleep),
   clock: systemClock,
+  timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   sleep: realSleep,
   git: GIT_CLI,
   commitLog: GIT_COMMIT_LOG,

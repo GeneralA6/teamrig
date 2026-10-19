@@ -40,6 +40,8 @@ export interface CliRuntime {
   readonly pid: number;
   readonly files: Files;
   readonly clock: Clock;
+  /** The machine's IANA time zone, which the team config's `timeZone` overrides. */
+  readonly timeZone: string;
   readonly sleep: Sleep;
   readonly git: RepoState;
   /** The commits of a range, for the small-commits rule. */
