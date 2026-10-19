@@ -1,6 +1,6 @@
 import type { PushToProtected } from '../config/types.ts';
 import { BranchMoves, type BranchView } from './branch-moves.ts';
-import { findGitInvocations, type GitConfigReader, type GitInvocation } from './invocations.ts';
+import { findGitInvocations, type FinderContext, type GitConfigReader, type GitInvocation, type GitInvocations } from './invocations.ts';
 import type { ShellDialect, ShellWord } from './tokenizer.ts';
 
 /** `allow` emits nothing, so Claude Code's normal permission flow decides. */
@@ -429,11 +429,23 @@ class PushJudge {
  * push and a doubt are not changed by it.
  */
 export function evaluatePushes(command: string, context: GuardContext): PushVerdict {
+  if (context.protectedBranches.length === 0) {
+    return { decision: 'allow', updates: [] };
+  }
+  return judgePushes(findGitInvocations(command, finderContextOf(context)), context);
+}
+
+/** How the guard's finder reads a line for `context`. */
+export function finderContextOf(context: GuardContext): FinderContext {
+  return { cwd: context.cwd, home: context.home, dialect: context.dialect, git: context.repo };
+}
+
+/** {@link evaluatePushes} for the git commands already found in a line, so a caller that also reads them finds them once. */
+export function judgePushes(found: GitInvocations, context: GuardContext): PushVerdict {
   const protectedBranches = new Set(context.protectedBranches);
   if (protectedBranches.size === 0) {
     return { decision: 'allow', updates: [] };
   }
-  const found = findGitInvocations(command, { cwd: context.cwd, home: context.home, dialect: context.dialect, git: context.repo });
   const moves = new BranchMoves(protectedBranches);
   const judge = new PushJudge(context.repo, protectedBranches);
   let protectedPush: ProtectedPush | undefined;
