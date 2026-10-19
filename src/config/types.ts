@@ -727,6 +727,12 @@ export interface KitConfig {
    * needs Claude Code's own title off (`CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1`), else Claude Code writes over it.
    */
   readonly tabStatus: { readonly enabled: boolean };
+  /**
+   * Refuses Claude Code's question picker (AskUserQuestion) to every session but the lead, which would stop the
+   * session until the person answers; the reason says to record the decision on its task and go on
+   * (hook-picker-guard.ts). Off by default.
+   */
+  readonly pickerGuard: { readonly enabled: boolean };
   /** Lets a shell line that only reads run without a permission prompt; off by default. */
   readonly readonlyShell: ReadonlyShellConfig;
   readonly refresh: RefreshConfig;
