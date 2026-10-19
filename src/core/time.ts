@@ -61,23 +61,6 @@ export function parseUtcDay(text: string): Date | undefined {
   return end === undefined ? undefined : new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()));
 }
 
-/**
- * Parses a time a person types, in UTC: `HH:MM` today (the day of `nowMs`), `YYYY-MM-DD HH:MM`, `YYYY-MM-DD` (its
- * start) or an ISO time with its zone. Undefined for anything else, an impossible date included.
- */
-export function parseUtcInstant(text: string, nowMs: number): Date | undefined {
-  const trimmed = text.trim();
-  const clock = CLOCK.exec(trimmed);
-  if (clock !== null) {
-    return parseUtcDeadline(`${formatUtcDay(new Date(nowMs))} ${clock[1]}:${clock[2]}`);
-  }
-  if (ZONED_ISO.test(trimmed)) {
-    const ms = Date.parse(trimmed);
-    return Number.isFinite(ms) ? new Date(ms) : undefined;
-  }
-  return parseUtcDay(trimmed) ?? parseUtcDeadline(trimmed);
-}
-
 /** `YYYY-MM-DD HH:MM` in UTC. */
 export function formatUtcMinute(date: Date): string {
   return date.toISOString().slice(0, 16).replace('T', ' ');
