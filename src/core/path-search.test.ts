@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { FakePathProbe } from '../testing/fake-processes.ts';
 import type { Env } from './home.ts';
-import { envVariable, findProgram, pathList } from './path-search.ts';
+import { envKey, envVariable, findProgram, pathList } from './path-search.ts';
 
 function find(name: string, env: Env, platform: NodeJS.Platform, files: readonly string[]): Promise<string | undefined> {
   return findProgram(name, { env, platform, probe: new FakePathProbe({ files }) });
@@ -13,6 +13,15 @@ describe('envVariable', () => {
     assert.equal(envVariable({ Path: 'C:\\bin' }, 'PATH', 'win32'), 'C:\\bin');
     assert.equal(envVariable({ Path: '/bin' }, 'PATH', 'linux'), undefined);
     assert.equal(envVariable({}, 'PATH', 'win32'), undefined);
+  });
+});
+
+describe('envKey', () => {
+  it("names the variable as env spells it, ignoring case on Windows only; undefined when it is not set", () => {
+    assert.equal(envKey({ Path: 'C:\\bin' }, 'PATH', 'win32'), 'Path');
+    assert.equal(envKey({ PATH: '/bin' }, 'PATH', 'linux'), 'PATH');
+    assert.equal(envKey({ Path: '/bin' }, 'PATH', 'linux'), undefined);
+    assert.equal(envKey({}, 'PATH', 'win32'), undefined);
   });
 });
 
