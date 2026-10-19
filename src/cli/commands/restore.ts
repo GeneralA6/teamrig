@@ -234,7 +234,7 @@ export async function restoreResume(args: ParsedArgs, runtime: CliRuntime): Prom
   const effort = effortFlag(args.flags.get('effort'));
   const encoded = args.flags.get('encoded-prompt');
   const prompt = encoded === undefined ? undefined : encodedPromptFlag(encoded);
-  const env = plainSessionEnv(runtime.env, args.flags.get('home'));
+  const env = plainSessionEnv(runtime.env, args.flags.get('home'), runtime.platform);
   const { command, prefix } = await claudeProgramOf(runtime, env);
   runtime.out.stdout(`Resuming Claude Code session ${claudeSession} in ${project}${effort === undefined ? '' : ` at ${effort} effort`}`);
   const claudeArgs = [...prefix, '--resume', claudeSession, ...(effort === undefined ? [] : ['--effort', effort]), ...(prompt === undefined ? [] : [prompt])];

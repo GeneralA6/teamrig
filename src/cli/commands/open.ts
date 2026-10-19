@@ -277,7 +277,7 @@ export async function launch(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   const prompt = launchPrompt(args, team, id);
   const resume = resumeFlag(args.flags.get('resume'));
   const effort = effortFlag(args.flags.get('effort'));
-  const env = { ...sessionEnv(runtime.env, { id, team, home: args.flags.get('home') }), [ENV.launched]: id };
+  const env = { ...sessionEnv(runtime.env, { id, team, home: args.flags.get('home') }, runtime.platform), [ENV.launched]: id };
   const sessionRuntime: CliRuntime = { ...runtime, env };
   const kit = await openKit(sessionRuntime, team);
   const config = requireConfig(kit, sessionRuntime, 'read');

@@ -1,8 +1,8 @@
 /**
- * Claude Code's plugin list, `installed_plugins.json` (version 2): the folder of each plugin's install in Claude Code's
- * plugin cache, per scope. The tab's reload hand reads it to see an update (`mod/reload-hand.ts`), a teamrig launcher
- * to find the version installed now (`cli/launch-target.ts`). The mod runs inside Claude Code without Node, so this
- * file imports nothing from Node.
+ * Claude Code's plugin list, `installed_plugins.json` (version 2), and the plugin cache that holds each install, per
+ * scope. The tab's reload hand reads the list to see an update (`mod/reload-hand.ts`); a session teamrig starts leaves
+ * the cache's `bin` folders off the PATH it hands on (`open/session-env.ts`). The mod runs inside Claude Code without
+ * Node, so this file imports nothing from Node.
  */
 import { isRecord } from './guards.ts';
 
@@ -130,4 +130,17 @@ export function installedPluginsFileOf(pluginRoot: string): string | undefined {
     return undefined;
   }
   return [...parts.slice(0, count - 4), INSTALLED_PLUGINS_FILE].join('/');
+}
+
+/**
+ * Whether a folder is the `bin` folder of a plugin install in Claude Code's cache
+ * (`<config>/plugins/cache/<marketplace>/<plugin>/<version>/bin`), the folder Claude Code adds to its Bash tool's PATH
+ * while the plugin is enabled.
+ */
+export function isPluginCacheBin(folder: string): boolean {
+  const parts = folder.split(/[\\/]/);
+  while (parts.length > 0 && parts[parts.length - 1] === '') {
+    parts.pop();
+  }
+  return parts.at(-1) === 'bin' && installedPluginsFileOf(parts.slice(0, -1).join('/')) !== undefined;
 }

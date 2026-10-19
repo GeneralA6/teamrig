@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { appliesTo, installedPluginsFileOf, installsOf, samePath, type Install } from './installed-plugins.ts';
+import { appliesTo, installedPluginsFileOf, installsOf, isPluginCacheBin, samePath, type Install } from './installed-plugins.ts';
 
 const CACHE = 'C:\\Users\\me\\.claude\\plugins\\cache';
 
@@ -78,6 +78,33 @@ describe('installedPluginsFileOf', () => {
   it('finds none for a plugin run from anywhere else', () => {
     for (const root of ['D:\\src\\teamrig\\plugins\\teamrig', '/home/me/plugins/teamrig/0.41.0', 'plugins/cache/m/p/1', '']) {
       assert.equal(installedPluginsFileOf(root), undefined, root);
+    }
+  });
+});
+
+describe('isPluginCacheBin', () => {
+  it("knows a cached install's bin folder, either slash, a trailing one too, and a moved configuration folder", () => {
+    for (const folder of [
+      'C:\\Users\\me\\.claude\\plugins\\cache\\teamrig\\teamrig\\0.75.0\\bin',
+      'C:\\Users\\me\\.claude\\plugins\\cache\\teamrig\\teamrig\\0.75.0\\bin\\',
+      '/c/Users/me/.claude/plugins/cache/teamrig/teamrig/0.85.1/bin',
+      '/srv/claude-config/plugins/cache/tools/lint/1.2.0/bin',
+    ]) {
+      assert.equal(isPluginCacheBin(folder), true, folder);
+    }
+  });
+
+  it('leaves every other folder alone: a checkout, an install folder itself, another folder in it, a short path', () => {
+    for (const folder of [
+      'D:\\src\\teamrig\\plugins\\teamrig\\bin',
+      'C:\\Users\\me\\.claude\\plugins\\cache\\teamrig\\teamrig\\0.75.0',
+      'C:\\Users\\me\\.claude\\plugins\\cache\\teamrig\\teamrig\\0.75.0\\dist',
+      '/c/Users/me/.claude/plugins/cache/teamrig/teamrig/bin',
+      'plugins/cache/m/p/1/bin',
+      '/usr/bin',
+      '',
+    ]) {
+      assert.equal(isPluginCacheBin(folder), false, folder);
     }
   });
 });
