@@ -1,11 +1,14 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { dirname, join } from 'node:path';
 import type { CoordinatorConfig, CoordinatorRepoConfig, RollConfig, ScheduleConfig } from '../config/types.ts';
 import { DEFAULT_CLAIMS, DEFAULT_COORDINATOR_WAIT, DEFAULT_GATE_TIMEOUT_SECONDS, DEFAULT_HEAVY, DEFAULT_WINDOWS } from '../config/defaults.ts';
 import { HostLock } from '../coordinator/host-lock.ts';
 import type { CoordinatorPlaces } from '../coordinator/places.ts';
 import type { Env } from '../core/home.ts';
 import { SecretScanner } from '../core/secrets.ts';
+import { BASELINE_LOCK_ENV } from '../integrate/dependencies.ts';
+import { LOCKFILE } from '../integrate/manifest.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';
 import { FakeIntegrateGit, MAIN_CHECKOUT, WORKTREE } from '../testing/fake-integrate-git.ts';
@@ -112,6 +115,21 @@ function teamrigEnv(env: Env): Record<string, string | undefined> {
 
 function refused(end: RollEnd, reason: string): void {
   assert.deepEqual(end, { kind: 'refused', reason });
+}
+
+const CHECK = ['node', 'gates/deps-check.js'];
+const INSTALL = ['npm', 'ci', '--ignore-scripts'];
+const OLD_LOCK = '{"lockfileVersion":3}';
+const BASELINE = join(dirname(PLACES.ledger), 'baseline-step-1.package-lock.json');
+const DEPS_CHANGED = 'deps changed (package-lock.json)';
+
+/** A world whose pushed range changes package-lock.json, with the dependency gate, the check and the install each on unless turned off. */
+function depsWorld({ gate = true, check = true, install = true }: { readonly gate?: boolean; readonly check?: boolean; readonly install?: boolean } = {}): World {
+  const roll: RollConfig = install ? { ...ROLL, dependencyInstall: INSTALL } : ROLL;
+  const world = new World({ repos: { pipeline: { ...PIPELINE, dependencyGate: gate, roll, ...(check ? { dependencyCheck: CHECK } : {}) } } });
+  world.git.paths = ['package-lock.json', 'src/app.ts'];
+  world.git.files.set(`base:${LOCKFILE}`, OLD_LOCK);
+  return world;
 }
 
 describe('rollRepo', () => {
@@ -255,7 +273,7 @@ describe('rollRepo', () => {
     held.git.paths = ['package-lock.json', 'src/app.ts'];
     refused(
       await held.run(),
-      'deps changed (package-lock.json): coordinator.repos.pipeline.dependencyGate holds a dependency change, since pulling it changes, unreviewed, the node_modules every worktree links to; pull and install by hand',
+      'deps changed (package-lock.json): coordinator.repos.pipeline.dependencyGate holds a dependency change, since pulling it changes, unreviewed, the node_modules every worktree links to; set coordinator.repos.pipeline.dependencyCheck and coordinator.repos.pipeline.roll.dependencyInstall to roll one, or pull and install by hand',
     );
     for (const world of [offBranch, dirty, diverged, held]) {
       assert.deepEqual([world.hooks.ran.length, world.files.get(PLACES.hostLock), world.pulled()], [0, undefined, false]);
@@ -275,5 +293,109 @@ describe('rollRepo', () => {
     assert.equal(inFolder.git.heads.get(MAIN_CHECKOUT), 'c2');
     const named = new World({ repos: two });
     assert.equal((await named.run({ ...REQUEST, repo: 'pipeline' })).kind, 'done');
+  });
+});
+
+describe('rollRepo of a range that changes the dependencies', () => {
+  it('pulls, checks the change against the old package-lock.json, installs it, then runs afterPull and the roll command', async () => {
+    const world = depsWorld();
+    const atCheck: (string | undefined)[] = [];
+    world.hooks.answer(CHECK, {
+      lines: ['1 package added, no advisories'],
+      during: async (request) => {
+        atCheck.push(world.git.heads.get(MAIN_CHECKOUT), world.files.get(request.env[BASELINE_LOCK_ENV] ?? ''));
+      },
+    });
+    assert.deepEqual(await world.run(), { kind: 'done', summary: 'c1..c2 rolled' });
+    assert.deepEqual(world.hooks.commands, ['node gates/flow.js', 'node gates/flow.js', 'node gates/deps-check.js', 'npm ci --ignore-scripts', 'node scripts/build-cli.js', 'node tools/roll.js']);
+    assert.deepEqual(atCheck, ['c2', OLD_LOCK], 'the check judges what was pulled against the old HEAD’s lock');
+    const [, , check, install] = world.hooks.ran;
+    assert.deepEqual([check?.cwd, check?.timeoutMs, check?.env[BASELINE_LOCK_ENV], check?.env['TEAMRIG_HOST_LOCK']], [MAIN_CHECKOUT, HEAVY_MS, BASELINE, 'lock-1']);
+    assert.deepEqual([install?.cwd, install?.timeoutMs, install?.env[BASELINE_LOCK_ENV], install?.env['TEAMRIG_HOST_LOCK'], install?.env['TEAMRIG_ROLL_TO']], [MAIN_CHECKOUT, HEAVY_MS, undefined, 'lock-1', 'c2']);
+    assert.equal(world.files.get(BASELINE), undefined, 'the baseline copy is removed');
+    for (const line of [`${DEPS_CHANGED}: dependency check node gates/deps-check.js`, '  1 package added, no advisories', `${DEPS_CHANGED}: dependency install npm ci --ignore-scripts`, 'installed: the worktrees that link to the node_modules in /repo/app have the new dependencies now']) {
+      assert.ok(world.said.includes(line), line);
+    }
+    assert.deepEqual(world.records().slice(0, 2), world.heavy(0, '2030-01-08T10:00:00.000Z'), 'the check and the install are inside the roll’s one heavy step');
+    assert.deepEqual([world.records().length, world.lockFree()], [3, true]);
+  });
+
+  it('refuses, moving the main checkout back with nothing installed, when the dependency check fails', async () => {
+    const world = depsWorld();
+    world.hooks.answer(CHECK, { lines: ['left-pad@9.0.0 was published 2 days ago'], end: 1 });
+    refused(await world.run(), `${DEPS_CHANGED}: the dependency check \`node gates/deps-check.js\` exited 1, so /repo/app is back at base and nothing rolled; its output is above`);
+    assert.deepEqual(world.hooks.commands, ['node gates/flow.js', 'node gates/flow.js', 'node gates/deps-check.js']);
+    assert.deepEqual([world.git.heads.get(MAIN_CHECKOUT), world.git.log.includes('resetTo /repo/app base')], ['base', true]);
+    assert.deepEqual(world.records(), world.heavy(1, '2030-01-08T10:00:00.000Z'), 'no deploy is recorded');
+    assert.deepEqual([world.files.get(BASELINE), world.lockFree()], [undefined, true]);
+  });
+
+  it('fails, naming the reset to do by hand, when the main checkout cannot move back after a failed check', async () => {
+    const world = depsWorld();
+    world.hooks.answer(CHECK, { end: 1 });
+    world.git.resetFails = 'Entry src/app.ts not uptodate. Cannot merge.';
+    assert.deepEqual(await world.run(), {
+      kind: 'failed',
+      reason: `${DEPS_CHANGED}: the dependency check \`node gates/deps-check.js\` exited 1, and moving /repo/app back to base failed (Entry src/app.ts not uptodate. Cannot merge.): it is at c2 with the old dependencies, so reset it to base by hand, else a new roll finds nothing pending`,
+    });
+    assert.equal(world.git.heads.get(MAIN_CHECKOUT), 'c2');
+  });
+
+  it('moves back and installs the old dependencies again when the install fails', async () => {
+    const world = depsWorld();
+    const reinstalledAt: (string | undefined)[] = [];
+    world.hooks.answer(INSTALL, { lines: ['EBUSY: resource busy or locked'], end: 1 }, {
+      during: async () => {
+        reinstalledAt.push(world.git.heads.get(MAIN_CHECKOUT));
+      },
+    });
+    assert.deepEqual(await world.run(), {
+      kind: 'failed',
+      reason: `${DEPS_CHANGED}: the dependency install \`npm ci --ignore-scripts\` exited 1, so /repo/app is back at base with its dependencies installed again and nothing rolled; fix the install and roll again`,
+    });
+    assert.deepEqual(world.hooks.commands, ['node gates/flow.js', 'node gates/flow.js', 'node gates/deps-check.js', 'npm ci --ignore-scripts', 'npm ci --ignore-scripts']);
+    assert.deepEqual(reinstalledAt, ['base'], 'the second install runs on the old HEAD');
+    assert.ok(world.said.includes('moved /repo/app back to base; installing its dependencies again'));
+    assert.deepEqual(world.records(), world.heavy(1, '2030-01-08T10:00:00.000Z'));
+  });
+
+  it('fails loudly, naming what to run by hand, when the old dependencies cannot be restored', async () => {
+    const reinstallFails = depsWorld();
+    reinstallFails.hooks.answer(INSTALL, { end: 1 }, { end: 254 });
+    assert.deepEqual(await reinstallFails.run(), {
+      kind: 'failed',
+      reason: `${DEPS_CHANGED}: the dependency install \`npm ci --ignore-scripts\` exited 1, and installing base's dependencies again exited 254: the node_modules every worktree links to may be broken; run \`npm ci --ignore-scripts\` in /repo/app by hand`,
+    });
+    const stuck = depsWorld();
+    stuck.hooks.answer(INSTALL, { end: 1 });
+    stuck.git.resetFails = 'Entry package-lock.json not uptodate. Cannot merge.';
+    assert.deepEqual(await stuck.run(), {
+      kind: 'failed',
+      reason: `${DEPS_CHANGED}: the dependency install \`npm ci --ignore-scripts\` exited 1, and moving /repo/app back to base failed (Entry package-lock.json not uptodate. Cannot merge.): the node_modules every worktree links to may be broken; reset it to base and run \`npm ci --ignore-scripts\` in /repo/app by hand`,
+    });
+    assert.deepEqual(stuck.hooks.commands.filter((command) => command === 'npm ci --ignore-scripts'), ['npm ci --ignore-scripts'], 'no install runs on a checkout that did not move back');
+  });
+
+  it('installs unchecked with the gate off, and rolls as it is with no install set', async () => {
+    const unchecked = depsWorld({ gate: false });
+    assert.deepEqual(await unchecked.run(), { kind: 'done', summary: 'c1..c2 rolled' });
+    assert.deepEqual(unchecked.hooks.commands, ['node gates/flow.js', 'node gates/flow.js', 'npm ci --ignore-scripts', 'node scripts/build-cli.js', 'node tools/roll.js']);
+    const plain = depsWorld({ gate: false, install: false });
+    assert.deepEqual(await plain.run(), { kind: 'done', summary: 'c1..c2 rolled' });
+    assert.deepEqual(plain.hooks.commands, ['node gates/flow.js', 'node gates/flow.js', 'node scripts/build-cli.js', 'node tools/roll.js']);
+  });
+
+  it('holds the range, before any gate or lock, while the gate lacks the check or the install, or cannot read the range', async () => {
+    const hold = 'deps changed (package-lock.json): coordinator.repos.pipeline.dependencyGate holds a dependency change, since pulling it changes, unreviewed, the node_modules every worktree links to; set';
+    const noInstall = depsWorld({ install: false });
+    refused(await noInstall.run(), `${hold} coordinator.repos.pipeline.roll.dependencyInstall to roll one, or pull and install by hand`);
+    const noCheck = depsWorld({ check: false });
+    refused(await noCheck.run(), `${hold} coordinator.repos.pipeline.dependencyCheck to roll one, or pull and install by hand`);
+    const unreadable = depsWorld();
+    unreadable.git.paths = undefined;
+    refused(await unreadable.run(), 'could not read what base..c2 changes, so the roll cannot tell whether it changes the dependencies');
+    for (const world of [noInstall, noCheck, unreadable]) {
+      assert.deepEqual([world.hooks.ran.length, world.files.get(PLACES.hostLock), world.pulled()], [0, undefined, false]);
+    }
   });
 });
