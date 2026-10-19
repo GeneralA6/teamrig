@@ -171,6 +171,20 @@ export interface CommitGuardConfig {
  */
 export type SkipHooks = 'deny' | 'ask' | 'allow';
 
+/** The permission prompts teamrig's own hooks raise. */
+export interface PromptsConfig {
+  /** What a hook does with a call it would ask the human about. */
+  readonly hookAsks: HookAsks;
+}
+
+/**
+ * A call a teamrig hook would ask the human about (a push to a protected branch or one it cannot read, an ad-hoc
+ * package run, a git command without hooks, a helper over the budget, as their own keys set): `ask` raises the
+ * permission prompt; `refuse` refuses it instead, its reason telling the session to record the step as waiting for
+ * the owner's approval and take its next task, so no prompt holds a session while nobody is there to answer it.
+ */
+export type HookAsks = 'ask' | 'refuse';
+
 /**
  * The opt-in hook that lets a Bash or PowerShell line run without a permission prompt when every command in it
  * provably only reads (hook-readonly-allow.ts). It only ever allows: a line it cannot prove reads falls through to
@@ -196,6 +210,12 @@ export const SKIP_HOOKS: readonly SkipHooks[] = ['deny', 'ask', 'allow'];
 
 export function isSkipHooks(value: unknown): value is SkipHooks {
   return SKIP_HOOKS.some((choice) => choice === value);
+}
+
+export const HOOK_ASKS: readonly HookAsks[] = ['ask', 'refuse'];
+
+export function isHookAsks(value: unknown): value is HookAsks {
+  return HOOK_ASKS.some((choice) => choice === value);
 }
 
 export const COMMIT_GATES = ['off', 'warn', 'refuse'] as const;
@@ -736,6 +756,7 @@ export interface KitConfig {
   readonly pushGuard: PushGuardConfig;
   readonly packageGuard: PackageGuardConfig;
   readonly commitGuard: CommitGuardConfig;
+  readonly prompts: PromptsConfig;
   readonly commits: CommitsConfig;
   readonly coordinator: CoordinatorConfig;
   readonly budget: BudgetConfig;
