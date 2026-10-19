@@ -63,6 +63,7 @@ export class FakeIntegrateGit implements IntegrateGit {
   detachFails: string | undefined;
   checkoutFails: string | undefined;
   fastForwardFails: string | undefined;
+  resetFails: string | undefined;
 
   /** A push of ours lands: origin's branch moves, and so does its tracking ref, as git push moves both. */
   pushed(branch: string, commit: string): void {
@@ -201,5 +202,13 @@ export class FakeIntegrateGit implements IntegrateGit {
       this.heads.set(dir, to);
     }
     return failed(this.fastForwardFails);
+  }
+
+  resetTo(dir: string, to: string): GitOutcome {
+    this.log.push(`resetTo ${dir} ${to}`);
+    if (this.resetFails === undefined) {
+      this.heads.set(dir, to);
+    }
+    return failed(this.resetFails);
   }
 }
