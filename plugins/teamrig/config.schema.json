@@ -457,6 +457,13 @@
               "minimum": 0,
               "maximum": 1440,
               "default": 60
+            },
+            "memorySampleSeconds": {
+              "description": "While a heavy step runs, its process tree's memory and the host's free memory are sampled this often, for its ledger record's peakTreeMb and lowFreeMb; 0 samples nothing.",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 600,
+              "default": 15
             }
           }
         },
