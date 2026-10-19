@@ -167,7 +167,10 @@ so it never loses work to a compaction.
 
    Mid-task it says `teamrig: your context is 132k (refresh at 120k), so refresh now rather than at a task end.`
    If you go on without the fresh start (the user typed), it asks again at your next task end, or once your
-   context grew a fifth of `refresh.contextTokens` more.
+   context grew a fifth of `refresh.contextTokens` more. Within a long turn teamrig's mod asks as soon as a tool
+   result shows the context past the threshold (`so refresh within this turn: finish the step you are on and start
+   no other`, ending `and end your turn: the fresh start follows it`), and until the fresh start Claude Code's own
+   compaction waits, up to `refresh.compactCeilingTokens` (185,000).
 
 2. Write the handover at that path, with what the register lacks: the next step of each task in progress, what to
    check later and when, questions still open with the user, the scratchpad files, plan file and scheduled jobs the
@@ -180,7 +183,10 @@ so it never loses work to a compaction.
 4. End your turn and start nothing new. The user types `/clear` once done with your screen, which a `/clear`
    wipes. With `refresh.autoRestart: true` the title reads `shop-web: restarting` instead: once the tab has been
    idle 15 s (`refresh.restartDelaySeconds`), teamrig's
-   mod runs `/clear` in this tab, after asking Claude Code that no helper of yours still runs (it waits while one does); where it cannot, teamrig ends this Claude Code and starts it again, in the same
+   mod runs `/clear` in this tab, after asking Claude Code that no helper of yours still runs (it waits while one does),
+   and once the user is away: it waits while the prompt box holds a draft and for 5 minutes after their last key or
+   prompt, then counts 20 s down in a band above the prompt with `1: Refresh now` and `2: Hold 10 min`
+   (`refresh.holdAfterActivityMinutes`, `refresh.countdownSeconds`); where it cannot, teamrig ends this Claude Code and starts it again, in the same
    tab when `teamrig open` started it, else in a new tab. While a background shell runs (a background command or
    a monitor), it ends nothing and your inbox says to type `/clear`, which keeps the shell.
    If the user sends a prompt first, the restart is cancelled and you keep this context. When the restart

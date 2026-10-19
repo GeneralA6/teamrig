@@ -321,7 +321,8 @@ export function decideMidTurn(state: RefreshState | undefined, context: AskConte
 
 /**
  * A compaction Claude Code is about to run on its own (trigger `auto`) on the main conversation: skipped while the
- * session's handover is asked for or written, since the /clear at the turn's end replaces it, as long as Claude
+ * session's handover is asked for or written, since the refresh's fresh start replaces it (the /clear once the turn
+ * ended and the person at the tab let it go, or the user's), as long as Claude
  * Code's estimate of the context is under `compactCeilingTokens`. Past the ceiling it goes, so a session never runs
  * out of room: a prompt too long for the window, which compacts with the same trigger, is past it too. A ceiling
  * at or past the window would not leave that room, so it skips nothing.

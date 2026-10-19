@@ -445,6 +445,10 @@ sequenceDiagram
   A session that goes on without its fresh start (you typed, or never typed `/clear`) is asked again at its next
   task end, or once its context grew a fifth of `refresh.contextTokens` more; a compaction or a `/clear` brings
   the ask back to the threshold.
+- A session busy in one long turn is asked within it: after each tool result teamrig's mod checks the context, and
+  past the threshold it adds the ask to the result (finish the step, write the handover, end the turn). Until the
+  fresh start, Claude Code's own compaction waits, up to `refresh.compactCeilingTokens` (185,000 by default, 15k
+  under a 200k window), so the fresh start replaces it; past that it compacts, so the session never runs out of room.
 - Two rules in the team config ask for it. `refresh.contextTokens` (120,000 by default) refreshes at that size,
   well before Claude Code compacts a 200k window at about 167k. `refresh.everyTasks` (3 by default) refreshes at
   every third finished task once the context is at `refresh.everyTasksMinTokens` (80,000) or more, so a session
@@ -461,14 +465,17 @@ sequenceDiagram
   `teamrig restart` waits until the session has been idle `refresh.restartDelaySeconds` (15) with nothing running,
   then leaves an ask for its tab. teamrig's mod (`hooks/register.ts`) looks for it each second, claims it while
   the restart is still pending and runs `/clear` in the tab, so the tab and its process stay and Claude Code runs
-  its own SessionEnd and SessionStart hooks. While Claude Code lists a live agent of the session (`$.agent.list()`:
+  its own SessionEnd and SessionStart hooks. It holds the `/clear` for you first: while the prompt box holds a draft,
+  for `refresh.holdAfterActivityMinutes` (5) after your last key or prompt, and 10 minutes after you press Hold; then
+  a band above the prompt counts `refresh.countdownSeconds` (20) down with `1: Refresh now` and `2: Hold 10 min`.
+  While Claude Code lists a live agent of the session (`$.agent.list()`:
   a helper or teammate not completed, failed or killed), or will not list them, the mod holds the ask instead
   (`hook clear-claim --hold`) and runs nothing: the restart ends nothing, waits for quiet and asks again, and an
   hour after it started gives up as it does for a busy session. When no mod claims the ask within 10 s (a Claude Code that does not
   load mods), the restart ends the session's Claude Code and starts it again: in the same tab when `teamrig open`
   started it (`launch` starts it again), else in a new tab; if a turn ran meanwhile, it waits for quiet and asks
   again first. It never ends a Claude Code that still runs a background shell (a background command or a monitor),
-  since the end would take that too: the session gets an inbox line to type `/clear`, which keeps it. A prompt you send first cancels it and keeps the context; text typed but not sent is lost. When it is off or cannot start, you type `/clear`. On Windows an ended process runs no
+  since the end would take that too: the session gets an inbox line to type `/clear`, which keeps it. A prompt you send first cancels it and keeps the context; text typed but not sent holds the mod's `/clear`, and is lost only where the restart ends the process. When it is off or cannot start, you type `/clear`. On Windows an ended process runs no
   SessionEnd hooks, so `refresh.endCommand` can name a program to run in their place. A compact or a resume
   keeps the handover waiting for the next fresh start.
 - The fresh session keeps who it is and carries on by itself. The restart starts it with a prompt to read its

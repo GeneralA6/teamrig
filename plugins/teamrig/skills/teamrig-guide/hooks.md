@@ -445,14 +445,34 @@ this tab. Where no mod claims it within 10 s, the restart ends this Claude Code 
 when `teamrig open` started it, else in a new tab. It never does that while this Claude Code runs a background shell
 (a background command or a monitor), which the end would take too: your inbox then says to type `/clear`, which
 keeps it. A prompt the user sends first cancels it, and you keep this
-context until your next task end asks again, or your context grew a fifth of `refresh.contextTokens` more; text typed but not sent is lost. When the restart cannot start, the message
+context until your next task end asks again, or your context grew a fifth of `refresh.contextTokens` more; text typed but not sent holds the mod's `/clear` ([below](#the-mod-the-refreshs-clear)), and is lost only where the restart ends this Claude Code. When the restart cannot start, the message
 and the title are the `/clear` ones above. On Windows an ended Claude Code runs no SessionEnd hooks: `refresh.endCommand` names a
 program run in their place, given their input. While background work you started (subagents, background
 commands, monitors, workflows) has not reported back, all of this waits for a later turn end, so a fresh start
 never cuts it off. The hooks read that from the transcript (helpers started within the last 6 hours); the mod below
 also asks Claude Code before its `/clear`, and holds while a helper of this session still runs. A `/clear`, a new process or a compaction starts the task count over. Each finished task is judged once, so
 it never loops. Steps: [workflows.md](workflows.md#handover-at-high-context). `refresh.enabled: false` turns it
-off.
+off. A turn that runs past `refresh.contextTokens` is asked within the turn by the plugin's mod
+([below](#the-mod-the-refresh-within-a-turn)), since Claude Code would compact it before this hook ever asks.
+
+## The mod: the refresh within a turn
+
+The Stop hook asks only at a turn's end, so a session busy in one long turn would reach Claude Code's own
+compaction first. In each interactive tab the mod reads, after each tool result of the main conversation, the
+context the last reply read. Once it reached the size the CLI named, it runs `teamrig hook refresh-mid`, which asks
+as the Stop hook does, but within the turn: `teamrig: your context is 132k (refresh at 120k), so refresh within this
+turn: finish the step you are on and start no other. Write your handover to ... and end your turn: the fresh start
+follows it.` The mod adds the ask to the tool result's context, which you read and the user does not see. Only the
+size asks within a turn: the lead's request and the task count wait for a turn's end. Background work still running
+holds the ask, as at a turn's end. A turn that ends with no handover marked ready after a mid-turn ask is asked once
+more by the Stop hook.
+
+Before Claude Code compacts the main conversation on its own (its automatic compaction, or the summary it computes
+ahead), the mod runs `teamrig hook compact-check` with Claude Code's estimate of the context. While your handover
+is asked for or written and the estimate is under `refresh.compactCeilingTokens` (185,000 by default: past the
+167k where Claude Code compacts a 200k window, 15k under the window; 0 turns it off), the mod skips the compaction,
+since the fresh start replaces it. At or past the ceiling, or when the CLI cannot answer, the compaction goes, so a
+session never runs out of room. The user's `/compact`, a plugin's and a helper's compaction are left alone.
 
 ## The mod: the refresh's /clear
 
@@ -466,6 +486,17 @@ ends nothing, waits for quiet and asks again, and gives up an hour after it star
 `teamrig hook clear-claim` and, on `taken`, runs `/clear` the way you would. The `/clear` then runs the
 `SessionStart` hooks above, so `hook refresh-wake` starts your first turn at your handover. A Claude Code that does
 not load mods leaves the ask unclaimed, and the restart ends and restarts the session instead.
+
+Before it claims, the mod holds the `/clear` for the person at the tab, with `--hold`, so the restart asks again
+`refresh.restartDelaySeconds` later. It holds while the prompt box holds a draft, or Claude Code will not read it.
+It holds for `refresh.holdAfterActivityMinutes` (5) after the person's last key in the prompt box or prompt, typed or
+sent through Remote Control; a background task's prompt does not count. It holds for 10 minutes after they press
+Hold. Then a band above the prompt counts `refresh.countdownSeconds` (20) down: `teamrig: this session refreshes in
+20 s, a fresh start from its handover`, with `1: Refresh now` and `2: Hold 10 min`, which a bare digit in an empty
+prompt box presses. The `/clear` comes with the restart's first ask after the count. Refresh now has the next ask
+claimed, unless a draft or a live helper holds it. A turn, a key or Hold hides the band, and a survey Claude Code
+shows takes its place; the terminal and the desktop app draw it. With both set to 0, only a draft holds the
+`/clear`.
 
 ## The mod: the reload after an install
 
