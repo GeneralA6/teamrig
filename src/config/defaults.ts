@@ -16,6 +16,7 @@ import type {
   LoopsConfig,
   OpenConfig,
   PackageGuardConfig,
+  PromptsConfig,
   PushGuardConfig,
   ReadonlyShellConfig,
   RefreshConfig,
@@ -101,6 +102,8 @@ export const DEFAULT_PACKAGE_GUARD: PackageGuardConfig = { adHocRunners: 'deny' 
 
 /** Refused by default: the hooks are the repository's own checks, and a session that skips them ships what they would catch. */
 export const DEFAULT_COMMIT_GUARD: CommitGuardConfig = { skipHooks: 'deny' };
+
+export const DEFAULT_PROMPTS: PromptsConfig = { hookAsks: 'ask' };
 
 /** Off, and trusting no prefix, until a team opts in. */
 export const DEFAULT_READONLY_SHELL: ReadonlyShellConfig = { enabled: false, allowPrefixes: [] };

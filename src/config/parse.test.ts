@@ -573,6 +573,19 @@ describe('parseConfig', () => {
     assert.equal(bad.config.commitGuard.skipHooks, 'deny');
   });
 
+  it('reads what a hook does with a call it would ask about, defaulting to ask and refusing another word', () => {
+    assert.equal(parseConfig(ROSTER).config.prompts.hookAsks, 'ask');
+    for (const choice of ['ask', 'refuse']) {
+      const set = parseConfig({ ...ROSTER, prompts: { hookAsks: choice } });
+      assert.deepEqual(set.issues, []);
+      assert.equal(set.config.prompts.hookAsks, choice);
+    }
+    const bad = parseConfig({ ...ROSTER, prompts: { hookAsks: 'deny' } });
+    assert.deepEqual(paths(bad.issues), ['prompts.hookAsks']);
+    assert.match(bad.issues[0]?.message ?? '', /ask, refuse/);
+    assert.equal(bad.config.prompts.hookAsks, 'ask');
+  });
+
   it('reads the read-only shell hook, off and trusting no prefix by default', () => {
     assert.deepEqual(parseConfig(ROSTER).config.readonlyShell, { enabled: false, allowPrefixes: [] });
     const allowPrefixes = ['npx tsc --noEmit', 'npx jest', '@scope/tool run', 'node --test=x'];
