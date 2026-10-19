@@ -4,14 +4,16 @@ import type { JsonRecord } from '../core/guards.ts';
 import { CONFIG_MIGRATIONS, DROP_FIXED_DAILY_BUDGETS, migrateConfig, RENAME_BLOCKED_TO_WAITING, RENAME_TIERS_TO_PRIORITIES, type ConfigMigration } from './migrate.ts';
 import { CONFIG_VERSION } from './types.ts';
 
-/** v1→v2 renames `messages.maxLines` to `messages.lineLimit`; v2→v3 adds `newKey`. */
+/** v1→v2 renames `messages.maxLines` to `messages.lineLimit` (release 9.2.0); v2→v3 adds `newKey` (9.3.0). */
 const CHAIN: readonly ConfigMigration[] = [
   {
     from: 2,
+    firstRelease: '9.3.0',
     apply: (config) => ({ config: { ...config, newKey: true }, changes: ['added newKey'] }),
   },
   {
     from: 1,
+    firstRelease: '9.2.0',
     apply: (config) => {
       const messages = config['messages'];
       if (typeof messages !== 'object' || messages === null || !('maxLines' in messages)) {
@@ -54,7 +56,10 @@ describe('migrateConfig', () => {
       version: 3,
       config: { configVersion: 3, messages: { extra: 'x', lineLimit: 8 }, custom: [1, 2], newKey: true },
       changes: ['v1→v2: messages.maxLines → messages.lineLimit', 'v2→v3: added newKey'],
+      firstRelease: '9.3.0',
     });
+    const toV2 = migrateConfig({ configVersion: 1 }, 2, CHAIN);
+    assert.equal(toV2.kind === 'migrated' ? toV2.firstRelease : undefined, '9.2.0', "the release of the target version's step");
     assert.deepEqual(raw['messages'], { maxLines: 8, extra: 'x' }, 'the input is not mutated');
   });
 
@@ -81,6 +86,7 @@ describe('the shipped migrations', () => {
       version: 2,
       config: { configVersion: 2, register: { maxTitle: 99, priorities: tiers }, custom: true },
       changes: ['v1→v2: register.tiers → register.priorities'],
+      firstRelease: '0.1.1',
     });
     assert.deepEqual(raw['register'], { tiers, maxTitle: 99 }, 'the input is not mutated');
   });
@@ -100,6 +106,7 @@ describe('the shipped migrations', () => {
       version: 3,
       config: { configVersion: 3, register: { requireNoteOn: ['done', 'waiting'], maxTitle: 99 }, custom: true },
       changes: ['v2→v3: register.requireNoteOn: blocked → waiting'],
+      firstRelease: '0.10.0',
     });
     assert.deepEqual(raw['register'], { requireNoteOn: ['done', 'blocked', 'waiting'], maxTitle: 99 }, 'the input is not mutated');
   });
@@ -146,6 +153,7 @@ describe('the shipped migrations', () => {
         `v3→v4: hiring.dailyPct removed: ${hiring}`,
         `v3→v4: hiring.maxDailyPct removed: ${hiring}`,
       ],
+      firstRelease: '0.83.0',
     });
     assert.deepEqual(raw['budget'], budget, 'the input is not mutated');
     assert.deepEqual(budget['sessions'], { alpha: { dailyPct: 1 }, bravo: { share: 2, dailyPct: 3 }, charlie: { share: 1 } });
