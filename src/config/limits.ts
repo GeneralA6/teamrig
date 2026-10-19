@@ -26,6 +26,8 @@ export const CONFIG_LIMITS = {
   maxSelfMadePerDay: { min: 0, max: 200 },
   stopgapFiles: { maxItems: 20, maxLength: 260 },
   persistentFailureHours: { min: 1, max: 720 },
+  decisionBatchTimes: { maxItems: 8 },
+  decisionBatchAt: { min: 0, max: 50 },
   chainNudgeAt: { min: 0, max: 50 },
   leadOwnPaths: { maxItems: 16, maxLength: 256 },
   readonlyShellPrefixes: { maxItems: 16, maxLength: 120 },

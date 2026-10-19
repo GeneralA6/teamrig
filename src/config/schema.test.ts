@@ -51,6 +51,7 @@ const EVERY_KEY = {
   refresh: { handoverDir: 'notes' },
   readonlyShell: { enabled: true, allowPrefixes: ['npx tsc --noEmit'] },
   statusLine: { folder: false, branch: false, resume: false },
+  decisions: { batchTimesUtc: ['13:03'], batchAt: 3 },
   github: { repos: ['acme/web'], owners: { octocat: 'bravo' }, closedDays: 30, everyMinutes: 30 },
   paths: { state: '/s', inbox: '/i', skills: '/k' },
 };

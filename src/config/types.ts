@@ -617,6 +617,17 @@ export interface AlertsConfig {
   readonly persistentFailureHours: number;
 }
 
+/** When the lead asks the owner the decisions waiting on them, together in a batch (src/decisions/batch.ts). */
+export interface DecisionsConfig {
+  /**
+   * The lead's batch times, `HH:MM` UTC (its budget checkpoints, say). With none, a batch comes only at the daily
+   * meeting or by `batchAt`, and a wait due within a day is asked at once.
+   */
+  readonly batchTimesUtc: readonly string[];
+  /** A batch is due once this many waits on the owner are not yet asked; 0: never by count. */
+  readonly batchAt: number;
+}
+
 /**
  * Context refresh: at any turn end with the session's context at or over `contextTokens`, at a task end
  * (`set <id> --status done`) with `everyTasks` tasks finished since its context was last fresh, or after the lead
@@ -868,6 +879,7 @@ export interface KitConfig {
   readonly tests: TestsConfig;
   readonly github: GithubConfig;
   readonly alerts: AlertsConfig;
+  readonly decisions: DecisionsConfig;
   /**
    * A colored circle before each tab's title for what its session is doing (hook-tab-status.ts). It also
    * needs Claude Code's own title off (`CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1`), else Claude Code writes over it.

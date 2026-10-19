@@ -1014,3 +1014,20 @@ describe('parseConfig: the decision card', () => {
     assert.deepEqual([paths(issues), config.register.requireDecisionCard], [['register.requireDecisionCard'], true]);
   });
 });
+
+describe('parseConfig: the owner decision batches', () => {
+  it('reads no batch times and a batch at 5 by default', () => {
+    assert.deepEqual(parseConfig(ROSTER).config.decisions, { batchTimesUtc: [], batchAt: 5 });
+  });
+
+  it('keeps valid batch times and count', () => {
+    const { config, issues } = parseConfig({ ...ROSTER, decisions: { batchTimesUtc: ['13:03', '19:03'], batchAt: 0 } });
+    assert.deepEqual([issues, config.decisions], [[], { batchTimesUtc: ['13:03', '19:03'], batchAt: 0 }]);
+  });
+
+  it('drops a time that is no HH:MM and falls back on a count out of bounds', () => {
+    const { config, issues } = parseConfig({ ...ROSTER, decisions: { batchTimesUtc: ['13:03', '25:00'], batchAt: 51 } });
+    assert.deepEqual(paths(issues).sort(), ['decisions.batchAt', 'decisions.batchTimesUtc[1]']);
+    assert.deepEqual(config.decisions, { batchTimesUtc: ['13:03'], batchAt: 5 });
+  });
+});
