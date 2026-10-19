@@ -29,6 +29,8 @@ export interface ProgramRun {
   readonly runner: boolean;
   /** Set when the command that starts it pipes its output on: `echo "$T" | docker login --password-stdin`. */
   readonly pipe: PipeOut | undefined;
+  /** True when a PowerShell assignment takes its output: `$x = Get-Content f`. */
+  readonly captured: boolean;
 }
 
 /** Where a command's output goes when it pipes it on to the next command. */
@@ -159,6 +161,7 @@ function visitCommand(
       piped: fromPipe,
       runner: runner || launched.runner,
       pipe,
+      captured: launched.captured,
     };
     runs.programs.push(run);
     return { launched, run };

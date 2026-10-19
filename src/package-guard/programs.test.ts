@@ -113,6 +113,11 @@ describe('runsOf', () => {
     assert.deepEqual(runsOf('$env:T > out.txt', context('powershell')).bare[0]?.redirections.map((redirection) => redirection.operator), ['>']);
   });
 
+  it('marks a program whose output a PowerShell assignment takes', () => {
+    const captured = (command: string): boolean[] => runsOf(command, context('powershell')).programs.map((run) => run.captured);
+    assert.deepEqual(captured('$c = Get-Content a; $n=Get-Content b; Get-Content c'), [true, true, false]);
+  });
+
   it('gives a program the body it reads on stdin from the line, a piped one too', () => {
     const bodies = (command: string): (string | undefined)[] => runsOf(command, context('bash')).programs.map((run) => run.stdin?.text);
     assert.deepEqual(bodies("node <<'EOF'\nconsole.log(1)\nEOF"), ['console.log(1)']);
