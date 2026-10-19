@@ -5,7 +5,6 @@ import { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { errorMessage, isRecord, stringField, type JsonRecord } from '../../core/guards.ts';
 import { claudeConfigDir, claudeTempDir, KIT_NAME } from '../../core/home.ts';
-import { PlainLogFile } from '../../core/log-file.ts';
 import { resolveTeam, type TeamResolution } from '../../core/team.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
@@ -47,6 +46,7 @@ import { claudeProcessOf } from '../../refresh/restart.ts';
 import { RefreshStore } from '../../refresh/store.ts';
 import { readContextTokens } from '../../refresh/usage.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
+import { dedupLogOf } from '../dedup-logs.ts';
 import { openKit, renameDepsOf, rosterOf, rulesClockOf, teamFolders, teamZone, type Kit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
@@ -704,7 +704,7 @@ export async function sessionStart(args: ParsedArgs, runtime: CliRuntime): Promi
   const context = sessionStartContext({ team: found.team, load: kit.load, ...parts, command: KIT_NAME, platform: runtime.platform, clock: rulesClockOf(runtime) });
   const requirementsNote = await requirementsNoteOnce({
     problems: await runtime.requirements.problems(),
-    log: new JsonlHintLog(new PlainLogFile(runtime.files, kit.paths.bindHints)),
+    log: new JsonlHintLog(dedupLogOf(runtime, kit.paths, 'bind-hints')),
     claudeSession: sessionIdOf(payload),
     now: new Date(runtime.clock.now()),
     command: KIT_NAME,

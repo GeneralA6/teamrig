@@ -9,6 +9,7 @@ import { EXIT } from './runtime.ts';
 
 const MARKS_PATH = join(TEAM_HOME, 'state', 'inbox-marks.jsonl');
 const HINTS_PATH = join(TEAM_HOME, 'state', 'bind-hints.jsonl');
+const SHOWN_PATH = join(TEAM_HOME, 'state', 'inbox-shown.jsonl');
 const WEB_PROJECT = resolve('/', 'work', 'web');
 const AS_CLAUDE = { CLAUDE_CODE_SESSION_ID: CLAUDE_SESSION };
 
@@ -161,5 +162,39 @@ describe('runCli: a session hook reads the team of the folder the session starte
     await fresh.files.write(join(WEB_PROJECT, '.teamrig.json'), '{"team": "web"}');
     const unset = await fresh.run(['hook', 'inbox-reminder'], { stdin: moved, cwd: WEB_PROJECT });
     assert.match(unset.stdout[0] ?? '', /"app-alpha" names no session of team web/, 'without the start folder, the payload folder decides');
+  });
+});
+
+describe('runCli: the prompt hook archives its dedup records older than a week (T336)', () => {
+  const ENDED_TAB = '11111111-2222-3333-4444-555555555555';
+  const WEEKS_AGO = '2029-12-20T10:00:00.000Z';
+
+  function archiveOf(name: string): string {
+    return join(TEAM_HOME, 'state', 'archive', `${name}-20300108.jsonl`);
+  }
+
+  it("moves an ended tab's bind hint to the archive when it gives a new one, and frees the log's lock", async () => {
+    const kit = new CliHarness();
+    const old = `${JSON.stringify({ v: 1, claudeSession: ENDED_TAB, reason: 'untitled', at: WEEKS_AGO })}
+`;
+    await kit.files.write(HINTS_PATH, old);
+    assert.equal((await kit.run(['hook', 'inbox-reminder'], { stdin: prompt() })).stdout.length, 1);
+    assert.equal(await kit.files.read(archiveOf('bind-hints')), old);
+    const live = (await kit.files.read(HINTS_PATH)) ?? '';
+    assert.deepEqual([live.includes(ENDED_TAB), live.includes(CLAUDE_SESSION)], [false, true]);
+    assert.equal(await kit.files.read(join(TEAM_HOME, 'state', 'bind-hints.lock')), undefined);
+  });
+
+  it("moves an ended tab's shown marks to the archive when it shows new lines", async () => {
+    const kit = new CliHarness();
+    const old = `${JSON.stringify({ v: 1, area: 'alpha', line: 1, at: WEEKS_AGO, claudeSession: ENDED_TAB, lastLineHash: null })}
+`;
+    await kit.files.write(SHOWN_PATH, old);
+    await kit.run(['inbox', 'add', '--to', 'alpha', '--text', 'T7 is yours', '--session', 'lead']);
+    const shown = await kit.run(['hook', 'inbox-reminder'], { stdin: prompt({ session_title: 'alpha' }) });
+    assert.match(shown.stdout[1] ?? '', /lead: T7 is yours$/);
+    assert.equal(await kit.files.read(archiveOf('inbox-shown')), old);
+    const live = (await kit.files.read(SHOWN_PATH)) ?? '';
+    assert.deepEqual([live.includes(ENDED_TAB), live.includes(CLAUDE_SESSION)], [false, true]);
   });
 });

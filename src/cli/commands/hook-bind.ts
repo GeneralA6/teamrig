@@ -1,7 +1,6 @@
 import { errorMessage } from '../../core/guards.ts';
 import type { Roster } from '../../config/roster.ts';
 import { ENV, KIT_NAME } from '../../core/home.ts';
-import { PlainLogFile } from '../../core/log-file.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import { sessionTitleOf } from '../../names/title.ts';
 import { bindByProcess, bindByTitle, bindHint, hintReason, processBoundNote, refreshedIn, type BindOutcome, type TeamRoster } from '../../hooks/bind.ts';
@@ -10,6 +9,7 @@ import { injectFor } from '../../inbox/inject.ts';
 import { claudeProcessOf } from '../../refresh/restart.ts';
 import type { RefreshState } from '../../refresh/state.ts';
 import { RefreshStore } from '../../refresh/store.ts';
+import { dedupLogOf } from '../dedup-logs.ts';
 import type { Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
@@ -96,7 +96,7 @@ export async function bindHintOnce(runtime: CliRuntime, kit: Kit, binding: TabBi
   if (hint === undefined || reason === undefined) {
     return undefined;
   }
-  const log = new JsonlHintLog(new PlainLogFile(runtime.files, kit.paths.bindHints));
+  const log = new JsonlHintLog(dedupLogOf(runtime, kit.paths, 'bind-hints'));
   return (await firstHint(log, claudeSession, reason, new Date(runtime.clock.now()))) ? hint : undefined;
 }
 
