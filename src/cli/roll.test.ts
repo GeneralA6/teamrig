@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { CliHarness, KIT, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';
 import { FakeIntegrateGit, MAIN_CHECKOUT } from '../testing/fake-integrate-git.ts';
+import { FakeStarterWatch } from '../testing/fake-starter-watch.ts';
+import { heldBy, otherRuns } from '../testing/held-lock.ts';
 
 const LEDGER = join(TEAM_HOME, 'state', 'deploys', 'ledger.jsonl');
 const LOCK = join(KIT, 'host.lock');
@@ -101,5 +103,31 @@ describe('teamrig roll', () => {
     const result = await failing.kit.run(ROLL, { ...ELSEWHERE, integrateGit: failing.git, hooks: failing.hooks });
     assert.equal(result.code, 1);
     assert.equal(result.stdout.at(-1), `FAILED c1..c2 pulled, but the roll command exited 1: kubectl: connection refused; its owners fix forward or roll back, and ${BY_HAND}`);
+  });
+
+  it('kills the roll command once the shell that started it ended, records exit 129 and frees the lock', async () => {
+    const { kit, git, hooks } = world();
+    const starters = new FakeStarterWatch();
+    hooks.answer(COMMAND, { takesMs: 60_000, during: async () => starters.end() });
+    const result = await kit.run(ROLL, { ...ELSEWHERE, integrateGit: git, hooks, starters });
+    assert.equal(result.code, 1);
+    assert.match(result.stdout.at(-1) ?? '', /^FAILED c1..c2 pulled, but the roll command was killed when its launching shell ended/);
+    assert.ok(JSON.stringify(ledgerOf(kit)).includes('"exitCode":129'), 'the roll step is recorded as exit 129');
+    assert.deepEqual([kit.files.get(LOCK), starters.openWatches], [undefined, 0]);
+  });
+
+  it('stops waiting for the host lock once the shell that started it ended, rolling nothing and leaving the lock to its holder', async () => {
+    const { kit, git, hooks } = world();
+    await kit.files.write(LOCK, heldBy());
+    const starters = new FakeStarterWatch();
+    const sleep = async (ms: number): Promise<void> => {
+      await kit.clock.sleep(ms);
+      starters.end();
+    };
+    const result = await kit.run(ROLL, { ...ELSEWHERE, integrateGit: git, hooks, starters, sleep, sessionProcesses: otherRuns() });
+    assert.equal(result.code, 1);
+    assert.equal(result.stdout.at(-1), 'STOPPED before the host lock was free: nothing ran');
+    assert.equal(result.stdout.at(-2), '2030-01-08 10:00:02 UTC its launching shell ended (bash.exe 4100) while it waited: no one waits for it any more');
+    assert.deepEqual([hooks.ran, kit.files.get(LOCK), starters.openWatches], [[], heldBy(), 0]);
   });
 });

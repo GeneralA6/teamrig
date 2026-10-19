@@ -4,7 +4,9 @@ import { join } from 'node:path';
 import { formatSnapshot } from '../budget/snapshot.ts';
 import { APP, CliHarness, KIT, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { FakeIntegrateGit, MAIN_CHECKOUT, WORKTREE } from '../testing/fake-integrate-git.ts';
+import { FakeStarterWatch } from '../testing/fake-starter-watch.ts';
 import { FakeSteps } from '../testing/fake-steps.ts';
+import { heldBy, otherRuns } from '../testing/held-lock.ts';
 
 const LEDGER = join(TEAM_HOME, 'state', 'deploys', 'ledger.jsonl');
 const LOCK = join(KIT, 'host.lock');
@@ -88,6 +90,35 @@ describe('teamrig integrate', () => {
     assert.equal(result.code, 1);
     assert.equal(result.stdout.at(-1), "FAILED the push exited 1; origin's main is at base, not at rebased");
     assert.equal(kit.files.get(LOCK), undefined, 'the lock is released');
+  });
+
+  it('kills the push once the shell that started it ended, records exit 129, frees the lock and pushes no more', async () => {
+    const { kit, git, steps } = world();
+    const starters = new FakeStarterWatch();
+    steps.whileRunning(async () => {
+      git.pushed('main', 'moved');
+      starters.end();
+    });
+    const result = await kit.run(INTEGRATE, { ...IN_WORKTREE, integrateGit: git, steps, starters });
+    assert.deepEqual([result.code, result.stdout.at(-1)], [1, "FAILED the push was killed when its launching shell ended (exit 129); origin's main is at moved, not at rebased"]);
+    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'integrate app: push feat to main', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+    assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:00:00.000Z', exitCode: 129 }]);
+    assert.deepEqual([steps.ran.length, kit.files.get(LOCK), starters.openWatches], [1, undefined, 0]);
+  });
+
+  it('stops waiting for the host lock once the shell that started it ended, pushing nothing and leaving the lock to its holder', async () => {
+    const { kit, git, steps } = world();
+    await kit.files.write(LOCK, heldBy());
+    const starters = new FakeStarterWatch();
+    const sleep = async (ms: number): Promise<void> => {
+      await kit.clock.sleep(ms);
+      starters.end();
+    };
+    const result = await kit.run(INTEGRATE, { ...IN_WORKTREE, integrateGit: git, steps, starters, sleep, sessionProcesses: otherRuns() });
+    assert.equal(result.code, 1);
+    assert.equal(result.stdout.at(-1), 'STOPPED before the host lock was free: nothing ran');
+    assert.equal(result.stdout.at(-2), '2030-01-08 10:00:02 UTC its launching shell ended (bash.exe 4100) while it waited: no one waits for it any more');
+    assert.deepEqual([steps.ran, kit.files.get(LOCK), kit.files.get(LEDGER), starters.openWatches], [[], heldBy(), undefined, 0]);
   });
 
   it('refuses a folder outside git', async () => {
