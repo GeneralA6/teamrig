@@ -8,7 +8,8 @@ interface Advancing {
 /**
  * A step runner that runs nothing: each request is recorded, `during` (default nothing) is called while the step
  * "runs", as a test that looks at the host lock mid-step, and every run ends as set (default exit 0), moving
- * `clock` on by the time it was set to take.
+ * `clock` on by the time it was set to take. A run whose `stop` has aborted once `during` returns ends `stopped`, as
+ * the real runner kills it.
  */
 export class FakeSteps implements StepRunner {
   readonly ran: StepRequest[] = [];
@@ -48,6 +49,9 @@ export class FakeSteps implements StepRunner {
       throw this.failure;
     }
     await this.during(request);
+    if (request.stop?.aborted === true) {
+      return { kind: 'stopped' };
+    }
     this.clock?.advance(this.takesMs);
     return this.end;
   }

@@ -5,7 +5,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
-import { exitCodeOf, nodeStepRunner, nodeTreeKill, TIMED_OUT_EXIT, type TreeKill } from './steps.ts';
+import { exitCodeOf, nodeStepRunner, nodeTreeKill, STOPPED_EXIT, TIMED_OUT_EXIT, type TreeKill } from './steps.ts';
 
 /**
  * The real tree kill, held until `started` exists: under load the shell can take longer than a short limit to start
@@ -41,9 +41,10 @@ async function endsWithin(pid: number, ms: number): Promise<boolean> {
 }
 
 describe('exitCodeOf', () => {
-  it('records a step’s own exit code, 124 for one killed at its limit and 1 for one a signal stopped', () => {
+  it('records a step’s own exit code, 124 for one killed at its limit, 129 for one its stop killed and 1 for one a signal stopped', () => {
     assert.equal(exitCodeOf({ kind: 'exited', code: 3 }), 3);
     assert.equal(exitCodeOf({ kind: 'timedOut' }), TIMED_OUT_EXIT);
+    assert.equal(exitCodeOf({ kind: 'stopped' }), STOPPED_EXIT);
     assert.equal(exitCodeOf({ kind: 'signal', signal: 'SIGTERM' }), 1);
   });
 });
@@ -72,15 +73,45 @@ describe('nodeStepRunner', () => {
     assert.deepEqual(end, { kind: 'exited', code: 0 });
   });
 
+  /** A step that starts a grandchild, which writes its pid to `started` once it runs, then idles 10 s. */
+  async function stepWithGrandchild(started: string): Promise<string> {
+    await writeFile(join(dir, 'grandchild.cjs'), `require('node:fs').writeFileSync(process.argv[2], String(process.pid)); setTimeout(() => undefined, 10_000);`);
+    await writeFile(join(dir, 'child.cjs'), `require('node:child_process').spawn(process.execPath, [${JSON.stringify(join(dir, 'grandchild.cjs'))}, process.argv[2]], { stdio: 'ignore' }); setInterval(() => undefined, 1000);`);
+    return `node child.cjs "${started}"`;
+  }
+
   it('kills the step with every process it started once its time is up', async () => {
-    const started = join(dir, 'grandchild-started');
-    await writeFile(join(dir, 'grandchild.cjs'), `require('node:fs').writeFileSync(${JSON.stringify(started)}, String(process.pid)); setTimeout(() => undefined, 10_000);`);
-    await writeFile(join(dir, 'child.cjs'), `require('node:child_process').spawn(process.execPath, [${JSON.stringify(join(dir, 'grandchild.cjs'))}], { stdio: 'ignore' }); setInterval(() => undefined, 1000);`);
+    const started = join(dir, 'timed-out-grandchild-started');
     const killing = nodeStepRunner(process.platform, killOnceStarted(started, nodeTreeKill(process.platform)));
-    const end = await killing.run({ command: 'node child.cjs', cwd: dir, env: process.env, timeoutMs: 500 });
+    const end = await killing.run({ command: await stepWithGrandchild(started), cwd: dir, env: process.env, timeoutMs: 500 });
     assert.deepEqual(end, { kind: 'timedOut' });
     const grandchild = Number(await readFile(started, 'utf8'));
     assert.equal(await endsWithin(grandchild, 5_000), true, 'the grandchild was killed with its parent');
+  });
+
+  it('kills the step with every process it started once its stop aborts, well before its time is up', async () => {
+    const started = join(dir, 'stopped-grandchild-started');
+    const killing = nodeStepRunner(process.platform, killOnceStarted(started, nodeTreeKill(process.platform)));
+    const stop = new AbortController();
+    setTimeout(() => stop.abort(), 500);
+    const end = await killing.run({ command: await stepWithGrandchild(started), cwd: dir, env: process.env, timeoutMs: 60_000, stop: stop.signal });
+    assert.deepEqual(end, { kind: 'stopped' });
+    const grandchild = Number(await readFile(started, 'utf8'));
+    assert.equal(await endsWithin(grandchild, 5_000), true, 'the grandchild was killed with its parent');
+  });
+
+  it('kills a step at once whose stop aborted before it started', async () => {
+    const started = Date.now();
+    const end = await runner.run({ command: 'node -e "setTimeout(() => undefined, 30000)"', cwd: dir, env: process.env, timeoutMs: 60_000, stop: AbortSignal.abort() });
+    assert.deepEqual(end, { kind: 'stopped' });
+    assert.ok(Date.now() - started < 20_000, 'it never ran its course');
+  });
+
+  it('ends as its command did when its stop aborts only after it', async () => {
+    const stop = new AbortController();
+    const end = await runner.run({ command: 'node -e "process.exit(4)"', cwd: dir, env: process.env, timeoutMs: 30_000, stop: stop.signal });
+    stop.abort();
+    assert.deepEqual(end, { kind: 'exited', code: 4 });
   });
 
   it('rejects when the step cannot start', async () => {

@@ -232,6 +232,23 @@ describe('HostLock.acquire', () => {
     assert.deepEqual(await lineOf(files), []);
   });
 
+  it('stops waiting once its stop aborts, rejecting with its reason and leaving the lock to its holder', async () => {
+    const stop = new AbortController();
+    const { clock, files, lock } = world({ [PATH]: heldBy() }, (time) => async (ms) => {
+      await time.sleep(ms);
+      stop.abort();
+    });
+    await assert.rejects(lock.acquire('alpha', 'heavy: test', 60 * 60_000, 30_000, () => undefined, undefined, stop.signal), (error) => error === stop.signal.reason);
+    assert.deepEqual([clock.sleeps, files.get(PATH), await lineOf(files)], [[FIRST_IN_LINE_POLL_MS], heldBy(), []], 'it left the line');
+  });
+
+  it('never takes even a free lock once its stop has aborted', async () => {
+    const { files, lock } = world();
+    const stop = AbortSignal.abort();
+    await assert.rejects(lock.acquire('alpha', 'heavy: test', 60_000, 30_000, () => undefined, undefined, stop), (error) => error === stop.reason);
+    assert.deepEqual([files.get(PATH), await lineOf(files)], [undefined, []]);
+  });
+
   it('tries once when it may not wait', async () => {
     const { clock, lock } = world({ [PATH]: heldBy() });
     const taking = await lock.acquire('alpha', 'heavy: test', 0, 30_000, () => undefined);
@@ -582,6 +599,17 @@ describe('HostLock shares', () => {
     const taking = await lock.acquire('alpha', 'heavy: build', 5_000, 30_000, () => undefined);
     assert.equal(taking.kind === 'busy' ? taking.holder.kind : '', 'draining');
     assert.deepEqual([clock.sleeps, files.get(PATH), files.get(path), await lineOf(files)], [[2_000, 2_000, 1_000], undefined, text, []]);
+  });
+
+  it('releases the lock it took and rejects once its stop aborts while the shares end', async () => {
+    const [path, text] = shareFile(shareOf());
+    const stop = new AbortController();
+    const { clock, files, lock } = world({ [path]: text }, (time) => async (ms) => {
+      await time.sleep(ms);
+      stop.abort();
+    });
+    await assert.rejects(lock.acquire('alpha', 'heavy: build', 60 * 60_000, 30_000, () => undefined, undefined, stop.signal), (error) => error === stop.signal.reason);
+    assert.deepEqual([clock.sleeps, files.get(PATH), files.get(path), await lineOf(files)], [[FIRST_IN_LINE_POLL_MS], undefined, text, []]);
   });
 
   it('never holds its lock past the lock expiry while it waits for the shares', async () => {
