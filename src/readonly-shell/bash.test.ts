@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseShell } from '../push-guard/tokenizer.ts';
-import { argumentOf, bashLineReads } from './bash.ts';
+import { argumentOf, bashLineReads, boundArgumentOf } from './bash.ts';
 import { prefixWords, type ReadonlyRules } from './rules.ts';
 
 const RULES: ReadonlyRules = {
@@ -80,6 +80,62 @@ describe('bashLineReads', () => {
         'for F in a b; do cat $F; done',
       ],
       true,
+    );
+  });
+
+  it("reads a variable the line sets once, statically and always, as that value from then on", () => {
+    expectAll(
+      [
+        'pod=x; kubectl logs -n app $pod --since=2m',
+        'ns=app && kubectl get pods -n "$ns"',
+        "s='1,5p'; sed -n \"$s\" a.ts",
+        'S=C:/scratch\nsed -n 1p "$S/x.txt" | head -1',
+        'out=C:/tmp/x; kubectl get pods -n app > /dev/null; kubectl logs -n app "${out}"',
+        's=1p; for f in a b; do sed -n $s a.ts; done',
+        's=1p; x=$(sed -n $s f); echo "$x"',
+        'if true; then echo; fi; s=1p; sed -n $s f',
+        // A quoted use takes the value as it is, blanks and glob characters included.
+        "q='a b*'; kubectl get pods -l \"$q\"",
+      ],
+      true,
+    );
+  });
+
+  it('leaves a variable dynamic where its value may not hold: used first, set twice, conditionally or in a subshell', () => {
+    expectAll(
+      [
+        'sed -n $s w.txt; s=1p',
+        's=1p; s=w.txt; sed -n $s f',
+        's=1p; s+=w; sed -n $s f',
+        'for s in w; do echo; done; s=1p; sed -n $s f',
+        'false && s=1p; sed -n $s w.txt',
+        'false || s=1p; sed -n $s w.txt',
+        's=1p | cat; sed -n $s w.txt',
+        's=1p & sed -n $s w.txt',
+        '(s=1p); sed -n $s w.txt',
+        '{ s=1p; }; sed -n $s w.txt',
+        'if true; then s=1p; fi; sed -n $s w.txt',
+        'while false; do s=1p; done; sed -n $s w.txt',
+        'echo $(s=1p); sed -n $s w.txt',
+        's=1p x=$(sed -n $s w.txt)',
+      ],
+      false,
+    );
+  });
+
+  it("leaves a variable dynamic when its value is not plain text: expanded, a flag, an array or a split unquoted use", () => {
+    expectAll(
+      [
+        'pod=$(kubectl get pods -n app -o name | head -1); kubectl logs -n app $pod',
+        'p=~x; kubectl logs $p -n app',
+        's=-n; sed $s 1p f',
+        's=; sed -n "$s" f',
+        "s='1p w'; sed -n $s f",
+        "g='p*'; kubectl get pods $g",
+        'p=cat; $p f',
+        'n=app; kubectl get pods -n ${n:-x}',
+      ],
+      false,
     );
   });
 
@@ -207,8 +263,8 @@ describe('bashLineReads', () => {
       [
         // A sed script a substitution builds.
         'sed -n "$(grep -n \'constructor(\' src/a.ts | head -1 | cut -d: -f1),+14p" src/a.ts',
-        // kubectl given a variable, which could hold --server or --kubeconfig.
-        'pod=x; kubectl logs -n app $pod --since=2m',
+        // kubectl given a variable a substitution sets, which could hold --server or --kubeconfig.
+        'pod=$(grep -m1 pod f); kubectl logs -n app $pod --since=2m',
         // kubectl exec runs any program in the pod, a database shell's script included.
         "kubectl exec -n app db-0 -- psql app -c 'select count(*) from models'",
         // npx past the configured prefixes.
@@ -238,5 +294,27 @@ describe('argumentOf', () => {
     assert.deepEqual(firstArgument('echo "$x"'), { text: '$x', dynamic: true, single: true });
     assert.equal(firstArgument('echo $x').single, false);
     assert.deepEqual(firstArgument('echo *.ts'), { text: '*.ts', dynamic: true, single: false });
+  });
+});
+
+describe('boundArgumentOf', () => {
+  const VALUES: Readonly<Record<string, string>> = { out: 'C:/tmp', spaced: 'a b' };
+  const bound = (line: string) => {
+    const word = parseShell(line, 'bash').commands[0]?.words[1];
+    assert.ok(word, line);
+    return boundArgumentOf(word, (name) => VALUES[name]);
+  };
+
+  it('reads known variables as their values, static and single', () => {
+    assert.deepEqual(bound('echo "$out/a.log"'), { text: 'C:/tmp/a.log', dynamic: false, single: true });
+    assert.deepEqual(bound('echo ${out}/x'), { text: 'C:/tmp/x', dynamic: false, single: true });
+    assert.deepEqual(bound('echo "$spaced"'), { text: 'a b', dynamic: false, single: true });
+  });
+
+  it('reads a word as argumentOf does when a variable is unknown, an unquoted value would split or no variable is in it', () => {
+    assert.deepEqual(bound('echo "$other/x"'), { text: '$other/x', dynamic: true, single: true });
+    assert.equal(bound('echo $spaced').dynamic, true);
+    assert.equal(bound('echo "$out"*.ts').dynamic, true);
+    assert.deepEqual(bound('echo plain'), { text: 'plain', dynamic: false, single: true });
   });
 });
