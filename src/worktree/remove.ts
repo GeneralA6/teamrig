@@ -1,4 +1,5 @@
-import { join, relative, sep } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
+import { errorMessage } from '../core/guards.ts';
 import type { WorktreeFiles } from './files.ts';
 import type { WorktreeEntry, WorktreeGit } from './git.ts';
 
@@ -6,7 +7,8 @@ import type { WorktreeEntry, WorktreeGit } from './git.ts';
  * `teamrig worktree remove`: drop a linked git worktree without touching what its links point to. On Windows,
  * `git worktree remove` follows a directory junction (such as a `node_modules` linked in from the main checkout)
  * and deletes what is inside it, which empties the main checkout's copy. So every link in the worktree goes first,
- * by unlink, which removes the link alone, and is confirmed gone before git runs.
+ * by unlink, which removes the link alone, and is confirmed gone before git runs. A removal that stops before the
+ * worktree is gone puts each of them back, so the worktree keeps its modules.
  *
  * Every check runs before anything changes, and any doubt refuses: a path that is not a worktree's top folder, the
  * main checkout, a locked worktree, a run from inside it, a real `node_modules` folder where a link was expected,
@@ -233,24 +235,81 @@ export function describePlan(plan: RemovalPlan): string[] {
   ];
 }
 
+/** What putting back the links of a removal that failed came to. */
+interface PutBack {
+  /** The names of the links put back. */
+  readonly back: readonly string[];
+  /** Each link left gone: its name, its target and why. */
+  readonly lost: readonly string[];
+}
+
+/** Why the link cannot be put back where it was; undefined once it is back. */
+async function relinkFailure(files: WorktreeFiles, link: PlannedLink): Promise<string | undefined> {
+  if ((await files.kindOf(dirname(link.path))) !== 'folder') {
+    return 'its folder is gone';
+  }
+  if ((await files.kindOf(link.path)) !== 'missing') {
+    return 'something else is at its path';
+  }
+  try {
+    await files.makeLink(link.path, link.target);
+  } catch (error) {
+    return errorMessage(error);
+  }
+  return undefined;
+}
+
 /**
- * Carries out a plan, telling each step as it is done. A link still there after its unlink stops it before git
- * runs; a target that changed after the removal, or a git step that fails, is thrown with what was already done.
+ * Puts back each link unlinked for a removal that then failed, so the worktree keeps its `node_modules` instead of
+ * failing its next build or test run on a missing module.
+ */
+async function putBack(files: WorktreeFiles, links: readonly PlannedLink[], tell: (line: string) => void): Promise<PutBack> {
+  const back: string[] = [];
+  const lost: string[] = [];
+  for (const link of links) {
+    const failure = await relinkFailure(files, link);
+    if (failure === undefined) {
+      back.push(link.name);
+      tell(`put back ${link.name} (a link to ${link.target})`);
+    } else {
+      lost.push(`${link.name}, a link to ${link.target}: ${failure}`);
+    }
+  }
+  return { back, lost };
+}
+
+function putBackText({ back, lost }: PutBack): string {
+  const parts = [...(back.length === 0 ? [] : [`its links are back: ${back.join(', ')}`]), ...(lost.length === 0 ? [] : [`still gone: ${lost.join('; ')}`])];
+  return parts.length === 0 ? '' : ` (${parts.join('; ')})`;
+}
+
+/**
+ * Carries out a plan, telling each step as it is done. A link that fails its unlink or is still there after it stops
+ * it before git runs; that, or a git removal that fails, first puts back every link already unlinked. A target that
+ * changed after the removal, or a branch delete that fails, is thrown with what was already done.
  */
 export async function carryOut(plan: RemovalPlan, ports: WorktreePorts, tell: (line: string) => void): Promise<void> {
   const { git, files } = ports;
+  const unlinked: PlannedLink[] = [];
   for (const link of plan.links) {
-    await files.unlinkLink(link.path);
-    const left = await files.kindOf(link.path);
-    if (left !== 'missing') {
-      throw new Error(`${link.name} is still in ${plan.top} after its unlink, so git was not run; nothing else changed`);
+    try {
+      await files.unlinkLink(link.path);
+    } catch (error) {
+      const put = await putBack(files, unlinked, tell);
+      throw new Error(`cannot unlink ${link.name} in ${plan.top}, so git was not run: ${errorMessage(error)}${putBackText(put)}`, { cause: error });
     }
+    if ((await files.kindOf(link.path)) !== 'missing') {
+      const put = await putBack(files, unlinked, tell);
+      const unchanged = put.lost.length === 0 ? '; nothing else changed' : '';
+      throw new Error(`${link.name} is still in ${plan.top} after its unlink, so git was not run${putBackText(put)}${unchanged}`);
+    }
+    unlinked.push(link);
     tell(`unlinked ${link.name} (the link only, to ${link.target})`);
   }
   const removed = git.removeWorktree(plan.mainDir, plan.top);
   if (!removed.ok) {
-    const unlinked = plan.links.length === 0 ? '' : ` (its links are already gone: ${plan.links.map((link) => link.name).join(', ')})`;
-    throw new Error(`git worktree remove ${plan.top}: ${removed.reason}${unlinked}`);
+    const put = await putBack(files, unlinked, tell);
+    throw new Error(`git worktree remove ${plan.top}: ${removed.reason}${putBackText(put)}`);
   }
   tell(`removed the worktree ${plan.top}`);
   for (const link of plan.links) {

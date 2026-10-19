@@ -77,11 +77,11 @@ describe('runCli: worktree remove', () => {
     assert.equal(result.code, EXIT.ok, result.stdout.join('\n'));
   });
 
-  it('fails when git refuses the removal, naming what was done', async () => {
+  it('fails when git refuses the removal, naming the links it put back', async () => {
     const { ports } = worktrees({ removal: { ok: false, reason: 'fatal: busy' } });
     const result = await new CliHarness().run(['worktree', 'remove', '/w/t4'], { worktrees: ports });
     assert.equal(result.code, EXIT.failed);
-    assert.match(result.stderr.join('\n'), /git worktree remove \/w\/t4: fatal: busy \(its links are already gone: node_modules\)/);
+    assert.match(result.stderr.join('\n'), /git worktree remove \/w\/t4: fatal: busy \(its links are back: node_modules\)/);
   });
 
   it('needs a path, and --base only with --delete-branch', async () => {
