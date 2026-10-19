@@ -596,6 +596,17 @@ export interface RefreshConfig {
   /** How long after the turn's end the automatic restart waits, so the user can still type to keep the context. */
   readonly restartDelaySeconds: number;
   /**
+   * The plugin's mod holds the automatic /clear while the person typed in the tab's prompt (a key, a paste) or sent
+   * a prompt there this recently, and while the prompt holds a draft: a /clear never lands under the person. 0: only
+   * a draft holds it.
+   */
+  readonly holdAfterActivityMinutes: number;
+  /**
+   * Before the plugin's mod runs the automatic /clear, a band above the prompt counts down this many seconds, with
+   * "Refresh now" and "Hold 10 min"; a key in the prompt holds it too. 0: no band, the /clear runs at once.
+   */
+  readonly countdownSeconds: number;
+  /**
    * While a session's handover is asked for or written (the fresh start to come), the plugin's mod stops Claude Code's
    * own compaction (trigger `auto`) of its main conversation as long as the context, as Claude Code estimates it, is
    * under this many tokens: the /clear at the turn's end replaces the compaction. Past it a compaction goes through, so
