@@ -1,6 +1,7 @@
 import { deployTargetsOf } from '../coordinator/targets.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { NAME_PATTERN, NAME_RULE } from '../core/ids.ts';
+import { isMinuteInSpan, utcMinuteOf } from '../core/time.ts';
 import { FOLLOWUP_STATUSES, isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, SESSION_NAME, TASK_STATUSES, type TaskStatus } from '../register/model.ts';
 import { PREFIX_PATTERN } from '../readonly-shell/rules.ts';
 import { CORE_RULE_KEYS, isCoreRuleKey } from '../rules/keys.ts';
@@ -228,6 +229,7 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
   const alerts = read.section(raw, 'alerts', '');
   const lock = read.section(raw, 'lock', '');
   const tabStatus = read.section(raw, 'tabStatus', '');
+  const budget = parseBudget(read, read.section(raw, 'budget', ''), sessions);
 
   const config: KitConfig = {
     configVersion: read.integer(raw, 'configVersion', '', 1, { min: 1 }),
@@ -277,12 +279,12 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
     packageGuard: { adHocRunners: parseAdHocRunners(read, read.section(raw, 'packageGuard', '')) },
     commits: parseCommits(read, read.section(raw, 'commits', '')),
     coordinator: parseCoordinator(read, read.section(raw, 'coordinator', '')),
-    budget: parseBudget(read, read.section(raw, 'budget', ''), sessions),
+    budget,
     leadBoundary: parseLeadBoundary(read, read.section(raw, 'leadBoundary', '')),
     loops: {
       chainNudgeAt: read.integer(read.section(raw, 'loops', ''), 'chainNudgeAt', 'loops', DEFAULT_LOOPS.chainNudgeAt, CONFIG_LIMITS.chainNudgeAt),
     },
-    wake: parseWake(read, read.section(raw, 'wake', '')),
+    wake: parseWake(read, read.section(raw, 'wake', ''), budget.quietHours),
     tests: {
       maxFailureChars: read.integer(read.section(raw, 'tests', ''), 'maxFailureChars', 'tests', DEFAULT_TESTS.maxFailureChars, CONFIG_LIMITS.maxFailureChars),
     },
@@ -312,14 +314,34 @@ function parseLeadBoundary(read: ConfigReader, raw: JsonRecord): LeadBoundaryCon
   };
 }
 
-/** `wake`: a priority as the register numbers them, and both waits bounded to a day at most. */
-function parseWake(read: ConfigReader, raw: JsonRecord): WakeConfig {
-  return {
+/** True when an `HH:MM` falls in the quiet hours, which may cross midnight. */
+function isInQuietHours(time: string, quiet: QuietHours): boolean {
+  const minute = utcMinuteOf(time);
+  const start = utcMinuteOf(quiet.startUtc);
+  const end = utcMinuteOf(quiet.endUtc);
+  return minute !== undefined && start !== undefined && end !== undefined && isMinuteInSpan(minute, start, end);
+}
+
+/**
+ * `wake`: a priority as the register numbers them, both waits bounded to a day at most, and a day start outside
+ * the budget's quiet hours, where it would wake no one.
+ */
+function parseWake(read: ConfigReader, raw: JsonRecord, quietHours: QuietHours | undefined): WakeConfig {
+  const wake: WakeConfig = {
     enabled: read.boolean(raw, 'enabled', 'wake', DEFAULT_WAKE.enabled),
     priority: read.integer(raw, 'priority', 'wake', DEFAULT_WAKE.priority, CONFIG_LIMITS.wakePriority),
     batchSeconds: read.integer(raw, 'batchSeconds', 'wake', DEFAULT_WAKE.batchSeconds, CONFIG_LIMITS.wakeBatchSeconds),
     minGapMinutes: read.integer(raw, 'minGapMinutes', 'wake', DEFAULT_WAKE.minGapMinutes, CONFIG_LIMITS.wakeMinGapMinutes),
   };
+  const dayStartUtc = read.optionalString(raw, 'dayStartUtc', 'wake', isUtcTime);
+  if (dayStartUtc === undefined) {
+    return wake;
+  }
+  if (quietHours !== undefined && isInQuietHours(dayStartUtc, quietHours)) {
+    read.report('wake.dayStartUtc', `is in the budget's quiet hours (${quietHours.startUtc} to ${quietHours.endUtc} UTC), where no session wakes`);
+    return wake;
+  }
+  return { ...wake, dayStartUtc };
 }
 
 /**

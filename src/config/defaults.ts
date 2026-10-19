@@ -131,7 +131,8 @@ export const DEFAULT_LEAD_BOUNDARY: LeadBoundaryConfig = { enabled: true, ownPat
  * On, for p1 only. In one team of 12 sessions, others handed a session 3 to 6 p1 tasks a day once its register
  * settled, so even all of them waking a session cold (about 210k W each) costs about 1.3M W a day, under 0.2% of
  * a 900M W week. Two minutes gathers the tasks handed in one sitting into one wake, and 15 minutes between wakes
- * caps a session at 4 an hour however much is handed.
+ * caps a session at 4 an hour however much is handed. No day start: waking every session each morning costs up to
+ * 210k W each, so a team opts in with `wake.dayStartUtc`.
  */
 export const DEFAULT_WAKE: WakeConfig = { enabled: true, priority: 1, batchSeconds: 120, minGapMinutes: 15 };
 
