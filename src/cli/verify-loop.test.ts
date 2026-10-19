@@ -155,7 +155,11 @@ describe('runCli: a start waits for the verifying tasks it needs', () => {
     const first = await kit.run(start);
     assert.deepEqual(
       [first.code, first.stdout, first.stderr],
-      [EXIT.refused, ['REFUSED T2 needs T1, still verifying (proof: the nightly run, owner bravo); start T2 once T1 is done'], ['NOTE bravo has an inbox line: T2 waits on your verifying T1: the nightly run']],
+      [
+        EXIT.refused,
+        ['REFUSED T2 needs T1, still verifying (proof: the nightly run, owner bravo); start T2 once T1 is done, or with --met "<what shows the proof exists>"'],
+        ['NOTE bravo has an inbox line: T2 waits on your verifying T1: the nightly run'],
+      ],
     );
     const again = await kit.run(start);
     assert.deepEqual([again.code, again.stderr], [EXIT.refused, []], 'told already today');
@@ -196,5 +200,45 @@ describe('runCli: a start waits for the verifying tasks it needs', () => {
     ]);
     const inbox = await kit.run(['inbox', 'read', '--session', 'bravo']);
     assert.deepEqual(inbox.stdout.filter((line) => line.startsWith('- ')), [told]);
+  });
+
+  it('warns of no start in warn mode when the start was refused for another reason', async () => {
+    const kit = await heldStart(new CliHarness({ ...TEAM, register: { verifyGate: 'warn', secretPatterns: ['hunter2'] } }));
+    const start = await kit.run(['set', 'T2', '--status', 'in-progress', '--note', 'hunter2', '--session', 'alpha']);
+    assert.deepEqual([start.code, start.stderr], [EXIT.refused, []]);
+  });
+});
+
+describe('runCli: a start names what met the proof it waits for', () => {
+  const met = 'the nightly run of 01-08 is green';
+  const notice = `T2 started on your verifying T1, its proof met: ${met}; set T1 done if that holds, else reopen it`;
+
+  it('starts it, asks the verifying task owner to confirm or reopen, and keeps it out of the evidence', async () => {
+    const kit = await heldStart();
+    const start = await kit.run(['set', 'T2', '--status', 'in-progress', '--met', met, '--session', 'alpha']);
+    assert.equal(start.code, EXIT.ok, start.stdout.join('\n'));
+    assert.match(start.stdout[0] ?? '', /^SET T2 in-progress,/);
+    assert.deepEqual(start.stderr, [`NOTE bravo has an inbox line: ${notice}`]);
+    const inbox = await kit.run(['inbox', 'read', '--session', 'bravo']);
+    assert.deepEqual(inbox.stdout.filter((line) => line.startsWith('- ')), [`- 2030-01-08 10:00 alpha: ${notice}`]);
+    const shown = await kit.run(['show', 'T2', '--session', 'alpha']);
+    assert.match(shown.stdout.join('\n'), new RegExp(`status in-progress met="${met}"`));
+    assert.doesNotMatch(shown.stdout.join('\n'), /\nevidence:/);
+
+    const done = await kit.run(['set', 'T2', '--status', 'done', '--note', 'built', '--followups', 'none', '--skill', 'none', '--session', 'alpha']);
+    assert.deepEqual([done.code, done.stdout[0]], [EXIT.refused, 'REFUSED done needs --evidence: a commit, test count, path or number that proves it']);
+  });
+
+  it('tells the owner without the warning in warn mode', async () => {
+    const kit = await heldStart(new CliHarness({ ...TEAM, register: { verifyGate: 'warn' } }));
+    const start = await kit.run(['set', 'T2', '--status', 'in-progress', '--met', met, '--session', 'alpha']);
+    assert.deepEqual([start.code, start.stderr], [EXIT.ok, [`NOTE bravo has an inbox line: ${notice}`]]);
+  });
+
+  it('refuses --met on a start nothing holds', async () => {
+    const kit = await startedTask();
+    await kit.run(['add', '--title', 'Ship the docs', '--description', 'what and why', '--priority', 'p2', '--session', 'alpha']);
+    const start = await kit.run(['set', 'T2', '--status', 'in-progress', '--met', met, '--session', 'alpha']);
+    assert.deepEqual([start.code, start.stdout], [EXIT.refused, ['REFUSED --met goes only with a start that a verifying task it needs holds']]);
   });
 });

@@ -76,6 +76,11 @@ export interface StatusEvent extends EventBase {
   readonly card?: DecisionCard;
   /** What will prove a `verifying` task works; written only with that status, and absent on lines from before `--proof`. */
   readonly proof?: string;
+  /**
+   * On a start the verifying tasks it needs held: what shows their proof exists (`--met`). Written only with
+   * `in-progress`, apart from the evidence, which a task keeps until it is done and would then prove the wrong task.
+   */
+  readonly met?: string;
   /** The tasks the work leaves, empty for `--followups none`; absent when the change named none, and on lines from before `--followups`. */
   readonly followups?: readonly string[];
 }
@@ -144,7 +149,7 @@ export function parseEvent(line: JsonlRecord): EventParse {
       if (!isTaskStatus(status)) {
         return typeof status === 'string' && STATUS_NAME.test(status) ? { kind: 'newer' } : unreadable(`unknown status ${JSON.stringify(status)}`);
       }
-      const problem = textProblem(record, ['note', 'evidence', 'skill', 'proof']);
+      const problem = textProblem(record, ['note', 'evidence', 'skill', 'proof', 'met']);
       if (problem !== undefined) {
         return unreadable(problem);
       }
@@ -157,6 +162,7 @@ export function parseEvent(line: JsonlRecord): EventParse {
         return unreadable(card);
       }
       const proof = status === 'verifying' ? textOrNull(record, 'proof') : null;
+      const met = status === 'in-progress' ? textOrNull(record, 'met') : null;
       const followups = parseFollowups(record['followups']);
       if (typeof followups === 'string') {
         return unreadable(followups);
@@ -171,6 +177,7 @@ export function parseEvent(line: JsonlRecord): EventParse {
         ...(waits === undefined ? {} : { waits }),
         ...(card === undefined ? {} : { card }),
         ...(proof === null ? {} : { proof }),
+        ...(met === null ? {} : { met }),
         ...(followups === undefined ? {} : { followups }),
       };
       return { kind: 'event', event };

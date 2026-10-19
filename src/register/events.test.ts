@@ -94,6 +94,14 @@ describe('parseEvent', () => {
     assert.match(reason(parse({ ...BASE, type: 'status', status: 'verifying', proof: 3 }, 2)), /proof is not text/);
   });
 
+  it('reads what met a held proof on a start, and keeps it off any other status', () => {
+    const start = parse({ ...BASE, type: 'status', status: 'in-progress', met: 'the nightly run is green' }, 2);
+    assert.equal(start.kind === 'event' && start.event.type === 'status' ? start.event.met : undefined, 'the nightly run is green');
+    const done = parse({ ...BASE, type: 'status', status: 'done', met: 'the nightly run is green' }, 2);
+    assert.equal(done.kind === 'event' && done.event.type === 'status' ? done.event.met : 'no event', undefined);
+    assert.match(reason(parse({ ...BASE, type: 'status', status: 'in-progress', met: 3 }, 2)), /met is not text/);
+  });
+
   it('reads the follow-ups a status line names, none as an empty list, and refuses anything but task ids', () => {
     const followupsOf = (record: JsonRecord): readonly string[] | undefined | 'no event' => {
       const result = parse({ ...BASE, type: 'status', status: 'done', note: 'ok', ...record }, 2);

@@ -45,6 +45,11 @@ export function heldStartNotice(task: Pick<Task, 'id'>, held: Task): string {
   return `${task.id} waits on your verifying ${held.id}: ${proofText(held)}`;
 }
 
+/** The inbox line a start that named its held proof as met (`--met`) leaves the verifying task's owner. */
+export function metStartNotice(task: Pick<Task, 'id'>, held: Task, met: string): string {
+  return `${task.id} started on your verifying ${held.id}, its proof met: ${met}; set ${held.id} done if that holds, else reopen it`;
+}
+
 /** The proof as a line names it: `no proof named` for a task set verifying with neither proof nor note. */
 export function proofText(task: Pick<Task, 'proof' | 'note'>): string {
   return proofOf(task) ?? 'no proof named';

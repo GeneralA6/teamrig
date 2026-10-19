@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { testTask } from '../testing/task.ts';
-import { heldStart, heldStartNotice, proofOf, proofText, startHolds, verifyByArrived, verifyingNeeds, verifyQueue } from './verify.ts';
+import { heldStart, heldStartNotice, metStartNotice, proofOf, proofText, startHolds, verifyByArrived, verifyingNeeds, verifyQueue } from './verify.ts';
 
 describe('proofOf', () => {
   it('reads the proof a task was set verifying with', () => {
@@ -48,6 +48,10 @@ describe('verifyingNeeds and startHolds', () => {
     );
     assert.equal(heldStartNotice({ id: 'T4' }, shipped), 'T4 waits on your verifying T1: the nightly run');
     assert.equal(heldStartNotice({ id: 'T4' }, testTask({ status: 'verifying' })), 'T4 waits on your verifying T1: no proof named');
+    assert.equal(
+      metStartNotice({ id: 'T4' }, shipped, 'the nightly run is green'),
+      'T4 started on your verifying T1, its proof met: the nightly run is green; set T1 done if that holds, else reopen it',
+    );
   });
 });
 

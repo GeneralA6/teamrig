@@ -255,11 +255,29 @@ describe('RegisterPolicy.setStatus: a start waits for the verifying tasks it nee
   it('refuses the start, naming the task, its proof and its owner', () => {
     assert.equal(
       error(new RegisterPolicy(testConfig()).setStatus(planned, 'alpha', { status: 'in-progress' }, context)),
-      'T2 needs T1, still verifying (proof: the nightly run, owner bravo); start T2 once T1 is done',
+      'T2 needs T1, still verifying (proof: the nightly run, owner bravo); start T2 once T1 is done, or with --met "<what shows the proof exists>"',
     );
     const both = testTask({ id: 'T3', after: ['T1', 'T2'] });
     const twoHeld = { ...CTX, state: stateOf(shipped, { ...planned, status: 'verifying', note: 'x', proof: 'p' }, both) };
-    assert.match(error(new RegisterPolicy(testConfig()).setStatus(both, 'alpha', { status: 'in-progress' }, twoHeld)), /; start T3 once T1 and T2 are done$/);
+    assert.match(error(new RegisterPolicy(testConfig()).setStatus(both, 'alpha', { status: 'in-progress' }, twoHeld)), /; start T3 once T1 and T2 are done, or with --met /);
+  });
+
+  it('lets a start that names what met the held proof through, writing it trimmed and apart from the evidence', () => {
+    assert.deepEqual(new RegisterPolicy(testConfig()).setStatus(planned, 'alpha', { status: 'in-progress', met: ' the nightly run is green ' }, context), {
+      ok: true,
+      value: { status: 'in-progress', note: null, evidence: null, skill: null, met: 'the nightly run is green' },
+    });
+    const secrets = new RegisterPolicy(testConfig({ register: { secretPatterns: ['hunter2'] } }));
+    assert.match(error(secrets.setStatus(planned, 'alpha', { status: 'in-progress', met: 'logged in with hunter2' }, context)), /^met /);
+  });
+
+  it('refuses --met on any change but a start a verifying task holds', () => {
+    const only = '--met goes only with a start that a verifying task it needs holds';
+    const policy = new RegisterPolicy(testConfig());
+    assert.equal(error(policy.setStatus(testTask({ id: 'T5' }), 'alpha', { status: 'in-progress', met: 'x' }, context)), only, 'nothing holds it');
+    assert.equal(error(policy.setStatus(planned, 'alpha', { status: 'dropped', note: 'not needed', met: 'x' }, context)), only, 'no start');
+    const blank = error(policy.setStatus(planned, 'alpha', { status: 'in-progress', met: '  ' }, context));
+    assert.equal(blank, error(policy.setStatus(planned, 'alpha', { status: 'in-progress' }, context)), 'a blank --met is none');
   });
 
   it('lets the start through in warn mode, and any other status in either mode', () => {
