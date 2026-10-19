@@ -63,6 +63,7 @@ describe('nodeFiles', () => {
     await assert.rejects(files.readTail(folder, 10), /is not a file/);
     await assert.rejects(files.readTail(join(root, 'nul\0byte'), 10), /ERR_INVALID_ARG_VALUE|null bytes/);
     await assert.rejects(files.list(file));
+    await assert.rejects(files.stamp(join(root, 'nul\0byte')), /ERR_INVALID_ARG_VALUE|null bytes/);
   });
 
   it('reads at most the last bytes of a file, and a missing file as undefined', async () => {
@@ -79,6 +80,17 @@ describe('nodeFiles', () => {
     await files.write(join(taken, 'inside.txt'), 'x');
     await assert.rejects(quick.write(taken, 'text'));
     assert.deepEqual(await readdir(join(root, 'r')), ['taken']);
+  });
+
+  it('stamps a file with its size and change time, and gives no stamp for a missing path or a folder', async () => {
+    const folder = join(root, 's');
+    const path = join(folder, 'stamped.txt');
+    assert.equal(await files.stamp(path), undefined);
+    await files.write(path, 'four');
+    assert.match((await files.stamp(path)) ?? '', /^4:\d+(\.\d+)?$/);
+    await files.append(path, 'more');
+    assert.match((await files.stamp(path)) ?? '', /^8:\d/);
+    assert.equal(await files.stamp(folder), undefined);
   });
 
   it('removes a file, telling that it did, and ignores a missing one', async () => {
