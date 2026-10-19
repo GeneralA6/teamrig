@@ -330,7 +330,7 @@ describe('checkTasks: SELF-MADE', () => {
     testTask({ id: `T${n}`, owner: 'alpha', source: 'alpha', createdBy: 'alpha', createdAt: '2030-01-10T08:00:00.000Z', ownerSeenAt: FRESH, updatedAt: FRESH, ...overrides });
   const withMax = (maxSelfMadePerDay: number) => ({ ...CONFIG, check: { ...CONFIG.check, maxSelfMadePerDay } });
   const selfMade = (tasks: readonly Task[], config: typeof CONFIG = withMax(3)) =>
-    checkTasks(tasks, NOW, null, config).map((flag) => `${flag.kind} ${flag.task.id}: ${flag.detail}`);
+    checkTasks(tasks, NOW, TimeZone.UTC, null, config).map((flag) => `${flag.kind} ${flag.task.id}: ${flag.detail}`);
 
   it('flags the first task past the count its owner added for itself in 24 h, never with 0', () => {
     const run = [made(1), made(2), made(3), made(4), made(5)];
