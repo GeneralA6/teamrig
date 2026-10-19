@@ -2022,8 +2022,22 @@ Flags:
   compaction) with that write's W; compactions; and read after read's share of the W (goal: under 12%). A day
   metered before teamrig 0.34.0 sorted its turns is left out and named. The lead reads `budget --burn --all`
   weekly to see where the week went.
+- `--misses`: rule misses, each out of the times the rule applied (`misses/chances`), one row per session over
+  the last days; with a session, that session by day. Each is read from a command's own words, never from text
+  that only quotes one:
+  - rule 4: a work block (a turn asking for work after an idle hour, or a thread's first) whose first 10 calls
+    run no `teamrig start`; a `teamrig set` to verifying or done with `--followups none` whose note or evidence
+    names work left (follow-up, todo, not yet, left for, still to, next step);
+  - rule 16: a worktree removed with a plain `git worktree remove`;
+  - rule 8: the helpers' share of the W;
+  - a test run or build (`npm test`, `npm run build`, `node --test`, `tsc`, ...) outside `teamrig heavy` or
+    `teamrig test`, and an npx, `npm exec`, `npm create` or `pnpm dlx` that fetches the package it names.
+
+  A day metered before teamrig 0.87.0 has no misses counted: the day table leaves it out and names it, and the
+  session table's `read` column shows the calls read out of all; `--day` recounts one. The lead reads
+  `budget --misses --all` at its peer review to see which rules fail most, and whether a fix made them fail less.
 - `--day <YYYY-MM-DD>`: a past UTC day recounted from the transcripts; nothing is written.
-- `--all`: every session, idle ones too, every outside title, and with `--loops` or `--burn` all 8 days.
+- `--all`: every session, idle ones too, every outside title, and with `--loops`, `--burn` or `--misses` all 8 days.
 
 Example:
 
