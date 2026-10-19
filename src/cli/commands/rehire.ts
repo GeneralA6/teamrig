@@ -17,17 +17,41 @@ import type { CliRuntime } from '../runtime.ts';
 export async function resumeVerdictOf(runtime: CliRuntime, paths: TeamPaths, hiring: HiringConfig, id: string, project: string): Promise<ResumeVerdict> {
   try {
     const { marks } = await new JsonlMarkLog(runtime.files, paths.inboxMarks).read();
-    const claudeSession = lastClaudeSessionOf(marks, id);
-    if (claudeSession === undefined) {
-      return resumeVerdict({ claudeSession, changedAt: undefined, tokens: undefined }, hiring, runtime.clock.now());
-    }
-    const transcript = projectTranscriptPath(claudeProjectsDir(runtime.env, runtime.userHome), project, claudeSession);
-    const changedAt = await runtime.transcripts.changedAt(transcript);
-    const tokens = changedAt === undefined ? undefined : await readContextTokens(runtime.files, transcript);
-    return resumeVerdict({ claudeSession, changedAt, tokens }, hiring, runtime.clock.now());
+    return await claudeSessionVerdict(runtime, hiring, lastClaudeSessionOf(marks, id), project);
   } catch (error) {
-    return { kind: 'fresh', detail: `its last Claude Code session could not be measured: ${errorMessage(error)}` };
+    return unmeasured(error);
   }
+}
+
+/** Whether Claude Code session `claudeSession` (undefined: none on record) in `project` is small and recent enough to resume. */
+export async function claudeSessionVerdict(runtime: CliRuntime, hiring: HiringConfig, claudeSession: string | undefined, project: string): Promise<ResumeVerdict> {
+  try {
+    const last = claudeSession === undefined ? undefined : await lastSessionOf(runtime, claudeSession, project);
+    return resumeVerdict({ claudeSession, changedAt: last?.changedAt, tokens: last?.tokens }, hiring, runtime.clock.now());
+  } catch (error) {
+    return unmeasured(error);
+  }
+}
+
+function unmeasured(error: unknown): ResumeVerdict {
+  return { kind: 'fresh', detail: `its last Claude Code session could not be measured: ${errorMessage(error)}` };
+}
+
+/** A Claude Code session's transcript in a project folder, when it last changed and the context at its last turn. */
+export interface LastSession {
+  readonly transcript: string;
+  /** Epoch ms; undefined when the transcript is not there. */
+  readonly changedAt: number | undefined;
+  /** Undefined when the transcript is not there or its last turn could not be read. */
+  readonly tokens: number | undefined;
+}
+
+/** Measures Claude Code session `claudeSession` in `project`: `<projects>/<project slug>/<session>.jsonl`. It throws when a read fails. */
+export async function lastSessionOf(runtime: CliRuntime, claudeSession: string, project: string): Promise<LastSession> {
+  const transcript = projectTranscriptPath(claudeProjectsDir(runtime.env, runtime.userHome), project, claudeSession);
+  const changedAt = await runtime.transcripts.changedAt(transcript);
+  const tokens = changedAt === undefined ? undefined : await readContextTokens(runtime.files, transcript);
+  return { transcript, changedAt, tokens };
 }
 
 /** How a fresh open of a rehired session starts: on the handover its retire left, when it left one. */
