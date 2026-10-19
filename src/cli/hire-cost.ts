@@ -5,7 +5,7 @@ import { addedSessionPct, liftedParts } from '../budget/parts.ts';
 import { PeriodStore } from '../budget/period.ts';
 import { readSnapshots, weekUseOf } from '../budget/snapshot.ts';
 import { UsageStore, type UsageState } from '../budget/store.ts';
-import { readWeek } from '../budget/week.ts';
+import { meteredOf, readWeek } from '../budget/week.ts';
 import { workWeights } from '../budget/work.ts';
 import type { KitConfig } from '../config/types.ts';
 import type { TeamPaths } from '../core/home.ts';
@@ -37,7 +37,7 @@ export async function readHirePct(
   states.push((await new UsageStore(files, join(paths.usage, 'outside')).load(OUTSIDE_ID)).state);
   const snapshots = await readSnapshots(files, snapshotDirOf(budget, paths));
   const statusUse = weekUseOf(snapshots, now);
-  const period = await new PeriodStore(files, paths.period).periodAt(budget, statusUse, now);
+  const period = await new PeriodStore(files, paths.period).periodAt(budget, statusUse, now, meteredOf(budget, states, now));
   const week = readWeek({ budget, now, statusUse, period, states });
   if (week.allowancePct === undefined) {
     return undefined;
