@@ -8,6 +8,8 @@ const fixed = (text: string): ProgramArgument => ({ text, dynamic: false, single
 const quoted = (text: string): ProgramArgument => ({ text, dynamic: true, single: true });
 /** An unquoted variable or glob (`$x`, `*.ts`): any number of arguments, their text unknown. */
 const spread = (text: string): ProgramArgument => ({ text, dynamic: true, single: false });
+/** An unquoted glob of one-character brackets (`a[0]`): its text, or the one file it may match. */
+const bracketed = (text: string, bracketMatch: string): ProgramArgument => ({ text, dynamic: true, single: false, bracketMatch });
 
 const reads = (program: string, ...texts: string[]): boolean => programReads(program, texts.map(fixed));
 
@@ -264,6 +266,14 @@ describe('programReads', () => {
       assert.equal(programReads('kubectl', [quoted('$command')]), false);
       assert.equal(programReads('kubectl', [fixed('config'), quoted('$sub')]), false);
       assert.equal(programReads('kubectl', [fixed('get'), fixed('pod'), quoted('$pod')]), false);
+    });
+
+    it('takes a bracket glob as an option value only when both texts it may reach kubectl as read', () => {
+      const columns = 'custom-columns=IMG:.spec.containers[0].image';
+      assert.equal(programReads('kubectl', [fixed('get'), fixed('pods'), fixed('-o'), bracketed(columns, columns.replace('[0]', '0'))]), true);
+      assert.equal(programReads('kubectl', [fixed('get'), fixed('pods'), bracketed('x[0]', '--token=x')]), false);
+      assert.equal(programReads('kubectl', [fixed('get'), fixed('secret[0]'), bracketed('a', 'a')]), false);
+      assert.equal(programReads('kubectl', [bracketed('ge[*]', 'get'), fixed('pods')]), false);
     });
   });
 });

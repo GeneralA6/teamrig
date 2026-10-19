@@ -15,6 +15,8 @@ const ENV_PREFIXES: ReadonlySet<string> = new Set(['MSYS_NO_PATHCONV', 'MSYS2_AR
 const ASSIGNMENT = /^([A-Za-z_]\w*)(\[|\+?=)/;
 const NAME = /^[A-Za-z_]\w*$/;
 const GLOB = /[*?[]/;
+/** A bracket expression of one digit or a `*`, which matches only that character. */
+const BRACKET = /\[([\d*])\]/g;
 /** A `>&` or `<&` target that copies or closes a descriptor rather than naming a file. */
 const DESCRIPTOR = /^(?:\d+|-)$/;
 /** A value an unquoted use keeps as one word, as written: no blank splits it and no glob expands it. */
@@ -65,7 +67,27 @@ function assignmentOf(word: ShellWord): Assignment | undefined {
 /** A word as the program receives it: dynamic when a variable, a substitution or a glob decides what it becomes. */
 export function argumentOf(word: ShellWord): ProgramArgument {
   const single = word.parts !== undefined && word.parts.every((part) => part.quoted || (part.kind === 'text' && !GLOB.test(part.text)));
-  return { text: word.text, dynamic: word.dynamic || !single, single };
+  const match = single || word.dynamic ? undefined : bracketMatchOf(word.parts ?? []);
+  return { text: word.text, dynamic: word.dynamic || !single, single, ...(match === undefined ? {} : { bracketMatch: match }) };
+}
+
+/**
+ * The one file name a glob made only of one-digit or `*` brackets can match: each unquoted `[0]` or `[*]` read as its
+ * character. Undefined for a variable, any other glob, or a letter in brackets, which `nocaseglob` would match in
+ * either case.
+ */
+function bracketMatchOf(parts: readonly WordPart[]): string | undefined {
+  let match = '';
+  for (const part of parts) {
+    if (part.kind === 'variable') {
+      return undefined;
+    }
+    if (!part.quoted && GLOB.test(part.text.replace(BRACKET, ''))) {
+      return undefined;
+    }
+    match += part.quoted ? part.text : part.text.replace(BRACKET, '$1');
+  }
+  return match;
 }
 
 /** A part's text once the shell expands it: plain or quoted text, or a variable's static value that an unquoted use neither splits nor globs. */

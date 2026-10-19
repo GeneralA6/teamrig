@@ -59,6 +59,8 @@ describe('bashLineReads', () => {
         'while ! grep -q "ready" status.log 2>/dev/null; do sleep 5; done',
         'if grep -q "x" f; then echo found; else echo missing; fi',
         'MSYS_NO_PATHCONV=1 kubectl get pods -n app',
+        'kubectl get pods -n app -o custom-columns=NAME:.metadata.name,IMG:.spec.containers[0].image | grep worker',
+        'kubectl get pods -o jsonpath={.items[*].metadata.name}',
         'MSYS2_ARG_CONV_EXCL="*" git log -1',
       ],
       true,
@@ -188,6 +190,11 @@ describe('bashLineReads', () => {
         'git -c diff.external="rm -rf /" diff',
         'kubectl delete pod x -n app',
         'kubectl -n app logs pod-x',
+        // A bracket glob kubectl may get as another text: a letter (either case under nocaseglob), a wider glob, a variable.
+        'kubectl get pods -o custom-columns=IMG:.spec.containers[a].image',
+        'kubectl get pods -o jsonpath={.items[*]}*',
+        'kubectl get pods "$x"[0]',
+        'kubectl get secret[0]',
         "awk '{system(\"rm -rf /\")}' file",
       ],
       false,
@@ -294,6 +301,18 @@ describe('argumentOf', () => {
     assert.deepEqual(firstArgument('echo "$x"'), { text: '$x', dynamic: true, single: true });
     assert.equal(firstArgument('echo $x').single, false);
     assert.deepEqual(firstArgument('echo *.ts'), { text: '*.ts', dynamic: true, single: false });
+  });
+
+  it('reads the one file a glob of one-digit or * brackets can match, quoted text kept as written', () => {
+    assert.deepEqual(firstArgument('echo a[0]b'), { text: 'a[0]b', dynamic: true, single: false, bracketMatch: 'a0b' });
+    assert.equal(firstArgument('echo items[*]').bracketMatch, 'items*');
+    assert.equal(firstArgument('echo "x[*]"[0]').bracketMatch, 'x[*]0');
+  });
+
+  it('reads no match for any other glob, a letter in brackets or a variable', () => {
+    for (const line of ['echo a[0]*', 'echo a[x]', 'echo a[01]', 'echo a[[0]]', 'echo "$x"[0]', 'echo plain']) {
+      assert.equal(firstArgument(line).bracketMatch, undefined, line);
+    }
   });
 });
 

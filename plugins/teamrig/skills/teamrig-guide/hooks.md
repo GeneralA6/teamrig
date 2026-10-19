@@ -228,7 +228,9 @@ and lets it run without a prompt when every command in it, substitutions and loo
   arguments; `sed` printing lines (`sed -n 5,20p`), `awk` printing fields (`{print $1}`), `sort` with no output
   file, `test` and `[`; `git` with a reading subcommand (`status`, `log`, `diff`, `show`, `blame`, `grep`,
   `ls-files`, `rev-parse`...) and no `-c`, `--output` or `--ext-diff`; `kubectl get`, `describe`, `logs`, `top` and
-  the like, with no `--raw`, `--kubeconfig` or `--server` and no secret named. Pipes, `&&`, `||`, `;`, `for` loops
+  the like, with no `--raw`, `--kubeconfig` or `--server` and no secret named; an unquoted index such as
+  `custom-columns=IMG:.spec.containers[0].image` or `{.items[*].name}` reads, since such a glob can only match the
+  one file named by its text with the brackets dropped, and kubectl gets one of those two. Pipes, `&&`, `||`, `;`, `for` loops
   and `$(...)` join them. A redirection may only read a file, copy or close a descriptor (`2>&1`) or throw output
   away to `/dev/null`. A line may set its own variables, but no name Claude Code's environment or its newest shell
   snapshot exports (a program reads an exported one: `npm_config_prefix`), none bash or a listed program reads
