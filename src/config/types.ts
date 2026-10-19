@@ -419,9 +419,16 @@ export interface CoordinatorRepoConfig {
   readonly deploysOnPush: readonly string[];
   /**
    * Refuse a branch whose package files need a dependency install, so pulling it into the main checkout never
-   * changes, unreviewed, the node_modules its worktrees link to.
+   * changes, unreviewed, the node_modules its worktrees link to; `dependencyCheck` can clear one.
    */
   readonly dependencyGate: boolean;
+  /**
+   * With `dependencyGate`, what clears a dependency change for `teamrig integrate`: a program and its arguments, run
+   * without a shell in the branch's checkout under the host lock, after the rebase and before the push, with the
+   * default branch's package-lock.json in the file `TEAMRIG_BASELINE_LOCK` names (unset when that branch has none).
+   * Exit 0 lands the change, anything else refuses it. Unset: the gate refuses every dependency change.
+   */
+  readonly dependencyCheck?: readonly string[];
   /** After the push, fast-forward the main checkout to it: only a fast-forward, only on the default branch with no tracked changes. */
   readonly followMainCheckout: boolean;
   /** How `teamrig roll` deploys what landed on the default branch; unset: the repository is not rolled. */

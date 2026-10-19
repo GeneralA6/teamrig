@@ -508,10 +508,16 @@ function parseCoordinatorRepos(read: ConfigReader, raw: JsonRecord): Record<stri
       continue;
     }
     const roll = entry['roll'] === undefined ? undefined : parseRoll(read, entry['roll'], `${path}.roll`);
+    const dependencyGate = read.boolean(entry, 'dependencyGate', path, false);
+    const dependencyCheck = entry['dependencyCheck'] === undefined ? undefined : read.stringListItem(entry['dependencyCheck'], `${path}.dependencyCheck`, ROLL_ARGV_MAX_ITEMS);
+    if (dependencyCheck !== undefined && !dependencyGate) {
+      read.report(`${path}.dependencyCheck`, 'runs only with dependencyGate true, so it never runs');
+    }
     repos[name] = {
       mainCheckout,
       deploysOnPush: read.stringList(entry, 'deploysOnPush', path, [], isCoordinatorName),
-      dependencyGate: read.boolean(entry, 'dependencyGate', path, false),
+      dependencyGate,
+      ...(dependencyCheck === undefined ? {} : { dependencyCheck }),
       followMainCheckout: read.boolean(entry, 'followMainCheckout', path, false),
       ...(roll === undefined ? {} : { roll }),
     };
