@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { decodePrompt, defaultPrompt, encodePrompt, PROMPT_MAX, promptProblem, refreshPrompt, rehirePrompt, resumePrompt } from './prompt.ts';
+import { decodePrompt, defaultPrompt, encodePrompt, PROMPT_MAX, promptProblem, refreshPrompt, rehirePrompt, reopenPrompt, resumePrompt } from './prompt.ts';
 
 describe('defaultPrompt', () => {
   it('names the session and its team, and starts with the inbox and the task list', () => {
@@ -61,5 +61,13 @@ describe('rehirePrompt and resumePrompt', () => {
     assert.match(resumed, /^You are the api session of team shop, hired back after a retire and resumed in your last Claude Code session\. Your tasks may have moved since: run `teamrig inbox read`/);
     assert.equal(promptProblem(fresh), undefined);
     assert.equal(promptProblem(resumed), undefined);
+  });
+});
+
+describe('reopenPrompt', () => {
+  it('tells a closed session, resumed, that its tasks may have moved', () => {
+    const reopened = reopenPrompt('shop', 'api');
+    assert.match(reopened, /^You are the api session of team shop, closed while idle to free the host and resumed in your last Claude Code session\. Your tasks may have moved since: run `teamrig inbox read` and `teamrig list --session api`/);
+    assert.equal(promptProblem(reopened), undefined);
   });
 });

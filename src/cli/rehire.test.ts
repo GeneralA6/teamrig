@@ -109,7 +109,7 @@ describe('a rehire', () => {
     const kit = await retiredHelper();
     const transcripts = await lastSession(kit, 1000, 1);
     const alpha = (await open(kit, ['alpha', '--resume'], { transcripts })).result;
-    assert.deepEqual(alpha.stdout, ["REFUSED alpha was not hired back after a retire: --resume resumes only a rehired session's last Claude Code session"]);
+    assert.deepEqual(alpha.stdout, ["REFUSED alpha was neither hired back after a retire nor closed: --resume resumes only a rehired session's last Claude Code session"]);
     ok(await hire(kit, ['--yes'], { transcripts }));
     assert.equal(promptOf((await open(kit, ['helper', '--resume', '--prompt', 'Ship it'], { transcripts })).argv), 'Ship it');
     assert.equal(promptOf((await open(kit, ['helper', '--prompt', 'Ship it'])).argv), 'Ship it');

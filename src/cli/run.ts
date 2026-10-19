@@ -226,7 +226,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   open <id|name|team/id> [--prompt "<first prompt>"] [--terminal <name>] [--project <dir>] [--resume]
       a new terminal tab running Claude Code as that session (team/id: another team of the tree);
       with no terminal it prints the command; a rehired session reads the handover it left first, or,
-      with --resume, goes on in its last Claude Code session when that is small and recent enough
+      with --resume, goes on in its last Claude Code session when that is small and recent enough;
+      a session teamrig close ended goes on in its last one by those limits, else opens fresh
   restore                      what a restore would do now with each Claude Code session this machine
       recorded: RESTORE (how it comes back, at which effort), KEEP or DISCARD, and why; it only reads
   restore run [--since <time>] [--terminal <name>] [--home <dir>] [--tab]   reopens the Claude Code

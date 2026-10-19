@@ -1150,12 +1150,17 @@ It refuses any session but the lead when the host has no room for one more: its 
 (92%; Windows and Linux). A session is counted at the median running session's Claude Code process tree, else at
 `open.headroom.sessionMb` (1200 MB). [teamrig sessions](#teamrig-sessions) shows what each one holds.
 
+A session the lead closed while idle goes on in its last Claude Code session (`claude --resume`) when that is small and
+recent enough by the `--resume` limits below, with a first prompt to read its inbox and list again; else it opens
+fresh and the OPENED line says why. The reopen is logged in `state/session-log.jsonl` beside the close.
+
 Flags:
 
 - `--prompt "<first prompt>"`: a first prompt instead of the default one.
 - `--resume`: a rehired session goes on in its last Claude Code session (`claude --resume`) instead, with a first
   prompt to read its inbox and list again. It measures that session as `hire` does and refuses, with why, when
-  it is gone, over `hiring.resumeMaxTokens` or idle over `hiring.resumeMaxIdleDays`.
+  it is gone, over `hiring.resumeMaxTokens` or idle over `hiring.resumeMaxIdleDays`. A closed session needs no
+  `--resume`; with it, it refuses rather than open fresh.
 - `--terminal <name>`: `auto`, `tmux`, `windows-terminal`, `macos-terminal`, `gnome-terminal`, `konsole`,
   `x-terminal-emulator` or `print`; default the config's `open.terminal` (`auto`).
 - `--project <dir>`: the folder to open in; default the folder holding the team's `.teamrig.json`.
