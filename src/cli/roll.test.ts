@@ -44,11 +44,11 @@ describe('teamrig roll', () => {
     assert.deepEqual(await kit.run(ROLL, { ...ELSEWHERE, integrateGit: git, hooks }), {
       code: 0,
       stdout: [
-        '2030-01-08T10:00:00.000Z 2 commits pending in app (c1..c2)',
-        `2030-01-08T10:00:00.000Z clear; pulling 2 commits (c1..c2) into ${MAIN_CHECKOUT}`,
-        `2030-01-08T10:00:00.000Z pulled ${MAIN_CHECKOUT} to c2`,
-        '2030-01-08T10:00:00.000Z roll: node tools/roll.js',
-        '2030-01-08T10:00:00.000Z   rolled api on c2',
+        '2030-01-08 10:00:00 UTC 2 commits pending in app (c1..c2)',
+        `2030-01-08 10:00:00 UTC clear; pulling 2 commits (c1..c2) into ${MAIN_CHECKOUT}`,
+        `2030-01-08 10:00:00 UTC pulled ${MAIN_CHECKOUT} to c2`,
+        '2030-01-08 10:00:00 UTC roll: node tools/roll.js',
+        '2030-01-08 10:00:00 UTC   rolled api on c2',
         'DONE c1..c2 rolled: rolled api on c2',
       ],
       stderr: [],
@@ -85,7 +85,7 @@ describe('teamrig roll', () => {
     assert.deepEqual(await kit.run(claim, ELSEWHERE), { code: 0, stdout: ['CLAIMED api until 2030-01-08 10:05 UTC'], stderr: [] });
     const result = await kit.run(ROLL, { ...ELSEWHERE, integrateGit: git, hooks });
     assert.equal(result.code, 0, result.stdout.join('\n'));
-    assert.ok(result.stdout.includes('2030-01-08T10:00:00.000Z waiting: quiet claim by bravo on api until 2030-01-08 10:05 UTC (p95)'));
+    assert.ok(result.stdout.includes('2030-01-08 10:00:00 UTC waiting: quiet claim by bravo on api until 2030-01-08 10:05 UTC (p95)'));
     assert.ok(kit.clock.now() >= Date.parse('2030-01-08T10:05:00Z'), 'it rolled once the claim ended');
   });
 

@@ -57,7 +57,7 @@ describe('teamrig heavy', () => {
       lockWhileRunning = JSON.parse(kit.files.get(LOCK) ?? '{}');
     });
     const result = await kit.run(BUILD, { steps });
-    assert.deepEqual(result, { code: 0, stdout: ['2030-01-08T10:00:00.000Z running: build api (killed after 45m)', 'DONE exit 0'], stderr: [] });
+    assert.deepEqual(result, { code: 0, stdout: ['2030-01-08 10:00:00 UTC running: build api (killed after 45m)', 'DONE exit 0'], stderr: [] });
     assert.deepEqual(lockWhileRunning, {
       token: 'id-1',
       pid: 4242,
@@ -95,8 +95,8 @@ describe('teamrig heavy', () => {
     assert.deepEqual(result, {
       code: 1,
       stdout: [
-        '2030-01-08T10:00:00.000Z running: build api (killed after 45m)',
-        '2030-01-08T10:45:00.000Z timed out after 45m: killed its process tree',
+        '2030-01-08 10:00:00 UTC running: build api (killed after 45m)',
+        '2030-01-08 10:45:00 UTC timed out after 45m: killed its process tree',
         'TIMED OUT killed, recorded as exit 124',
       ],
       stderr: [],
@@ -121,7 +121,7 @@ describe('teamrig heavy', () => {
   it('kills the step after --max-minutes', async () => {
     const { kit, steps } = harness();
     const result = await kit.run(['heavy', '--session', 'alpha', '--what', 'replay', '--max-minutes', '90', '--', 'npm', 'run', 'replay'], { steps });
-    assert.equal(result.stdout[0], '2030-01-08T10:00:00.000Z running: replay (killed after 1h30m)');
+    assert.equal(result.stdout[0], '2030-01-08 10:00:00 UTC running: replay (killed after 1h30m)');
     assert.equal(steps.ran[0]?.timeoutMs, 90 * MINUTE);
   });
 
@@ -148,13 +148,20 @@ describe('teamrig heavy', () => {
     assert.deepEqual(result, { code: 2, stdout: ['REFUSED nothing heavy 11:30-02:00 IST (now 12:00 IST)'], stderr: [] });
   });
 
+  it("stamps its progress lines on the team's clock", async () => {
+    const { kit, steps } = harness();
+    steps.ends(0, MINUTE);
+    const result = await kit.run(BUILD, { steps, timeZone: 'Asia/Jerusalem' });
+    assert.deepEqual(result.stdout, ['2030-01-08 12:00:00 IST running: build api (killed after 45m)', 'DONE exit 0']);
+  });
+
   it('waits for a held lock, and refuses when the wait ran past the cutoff', async () => {
     const { kit, steps } = harness({ ...TEAM, coordinator: { schedule: { heavyCutoffUtc: '10:30' } } });
     await kit.files.write(LOCK, heldBy('2030-01-08T10:40:00.000Z'));
     const result = await kit.run(BUILD, { steps, sessionProcesses: otherRuns() });
     assert.deepEqual(result, {
       code: 2,
-      stdout: ['2030-01-08T10:00:00.000Z waiting for the host lock: po (heavy: build) since 2030-01-08 09:50 UTC', 'REFUSED nothing heavy 10:30-00:00 UTC (now 10:40 UTC)'],
+      stdout: ['2030-01-08 10:00:00 UTC waiting for the host lock: po (heavy: build) since 2030-01-08 09:50 UTC', 'REFUSED nothing heavy 10:30-00:00 UTC (now 10:40 UTC)'],
       stderr: [],
     });
     assert.deepEqual([steps.ran, kit.files.get(LOCK), kit.files.get(LEDGER)], [[], undefined, undefined]);
@@ -166,7 +173,7 @@ describe('teamrig heavy', () => {
     const result = await kit.run(BUILD, { steps, sessionProcesses: otherRuns() });
     assert.deepEqual(result, {
       code: 2,
-      stdout: ['2030-01-08T10:00:00.000Z waiting for the host lock: po (heavy: build) since 2030-01-08 09:50 UTC', 'REFUSED host lock still held by po (heavy: build) since 2030-01-08 09:50 UTC'],
+      stdout: ['2030-01-08 10:00:00 UTC waiting for the host lock: po (heavy: build) since 2030-01-08 09:50 UTC', 'REFUSED host lock still held by po (heavy: build) since 2030-01-08 09:50 UTC'],
       stderr: [],
     });
     assert.deepEqual(kit.clock.sleeps, Array.from({ length: MINUTE / FIRST_IN_LINE_POLL_MS }, () => FIRST_IN_LINE_POLL_MS), 'the first in line looks every 2 s');
@@ -234,7 +241,7 @@ describe('teamrig heavy', () => {
     });
     assert.deepEqual(result, {
       code: 0,
-      stdout: ['2030-01-08T10:00:00.000Z running: pre-commit checks under the host lock of po (heavy: build) since 2030-01-08 09:50 UTC (killed after 45m)', 'DONE exit 0'],
+      stdout: ['2030-01-08 10:00:00 UTC running: pre-commit checks under the host lock of po (heavy: build) since 2030-01-08 09:50 UTC (killed after 45m)', 'DONE exit 0'],
       stderr: [],
     });
     assert.deepEqual([steps.ran.length, steps.ran[0]?.env['TEAMRIG_HOST_LOCK'], kit.clock.sleeps], [1, 'other', []]);
@@ -260,8 +267,8 @@ describe('teamrig heavy', () => {
       }
       const result = await kit.run(BUILD, { steps, env: { TEAMRIG_HOST_LOCK: 'other' } });
       assert.deepEqual(result.stdout.slice(0, 2), [
-        '2030-01-08T10:00:00.000Z $TEAMRIG_HOST_LOCK names no live host lock: taking the lock as usual',
-        '2030-01-08T10:00:00.000Z running: build api (killed after 45m)',
+        '2030-01-08 10:00:00 UTC $TEAMRIG_HOST_LOCK names no live host lock: taking the lock as usual',
+        '2030-01-08 10:00:00 UTC running: build api (killed after 45m)',
       ]);
       assert.deepEqual([result.code, steps.ran[0]?.env['TEAMRIG_HOST_LOCK'], ledgerOf(kit).length], [0, 'id-1', 2]);
     });

@@ -11,7 +11,7 @@ import { ENV } from '../../core/home.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import { commandLine } from '../../test-run/shell.ts';
 import { requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
-import { hostLockOf, logLine } from '../coordinator-ports.ts';
+import { hostLockOf, logLineOf, type Say } from '../coordinator-ports.ts';
 import { commandWordsOf, sessionRef } from '../inputs.ts';
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
@@ -77,10 +77,10 @@ function sharingText(share: ShareRequest, taking: Extract<Taking, { kind: 'taken
 }
 
 /** The last line: DONE, FAILED or TIMED OUT, with the exit code the ledger recorded. */
-function report(runtime: CliRuntime, end: StepEnd, maxRunMinutes: number): ExitCode {
+function report(runtime: CliRuntime, say: Say, end: StepEnd, maxRunMinutes: number): ExitCode {
   switch (end.kind) {
     case 'timedOut':
-      logLine(runtime, `timed out after ${minutesText(maxRunMinutes)}: killed its process tree`);
+      say(`timed out after ${minutesText(maxRunMinutes)}: killed its process tree`);
       runtime.out.stdout(`TIMED OUT killed, recorded as exit ${TIMED_OUT_EXIT}`);
       return EXIT.failed;
     case 'signal':
@@ -96,14 +96,14 @@ function report(runtime: CliRuntime, end: StepEnd, maxRunMinutes: number): ExitC
  * The lock of the step that started this one, from `$TEAMRIG_HOST_LOCK`, while that step still holds it; undefined when
  * the variable is unset or names no live lock (a leftover in a shell), which is said, since the step then waits as usual.
  */
-async function parentLockOf(runtime: CliRuntime, lock: HostLock): Promise<HostLockInfo | undefined> {
+async function parentLockOf(runtime: CliRuntime, lock: HostLock, say: Say): Promise<HostLockInfo | undefined> {
   const token = runtime.env[ENV.hostLock]?.trim();
   if (token === undefined || token === '') {
     return undefined;
   }
   const held = await lock.heldWith(token);
   if (held === undefined) {
-    logLine(runtime, `$${ENV.hostLock} names no live host lock: taking the lock as usual`);
+    say(`$${ENV.hostLock} names no live host lock: taking the lock as usual`);
   }
   return held;
 }
@@ -130,10 +130,10 @@ async function sessionOf(args: ParsedArgs, runtime: CliRuntime, kit: Kit, roster
  * cutoff check and ledger record cover it, and waiting for the lock would wait on its own parent. `parent` is its
  * holder as `holderText` writes it.
  */
-async function runUnderParent(runtime: CliRuntime, parent: string, what: string, words: readonly string[], maxRunMinutes: number): Promise<ExitCode> {
-  logLine(runtime, `running: ${what} under the host lock of ${parent} (killed after ${minutesText(maxRunMinutes)})`);
+async function runUnderParent(runtime: CliRuntime, say: Say, parent: string, what: string, words: readonly string[], maxRunMinutes: number): Promise<ExitCode> {
+  say(`running: ${what} under the host lock of ${parent} (killed after ${minutesText(maxRunMinutes)})`);
   const end = await runtime.steps.run({ command: commandLine(words, runtime.platform), cwd: runtime.cwd, env: runtime.env, timeoutMs: maxRunMinutes * MINUTE_MS });
-  return report(runtime, end, maxRunMinutes);
+  return report(runtime, say, end, maxRunMinutes);
 }
 
 /**
@@ -155,13 +155,14 @@ export async function heavy(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const config = requireConfig(kit, runtime, 'read');
   const { coordinator } = config;
   const zone = teamZone(config, runtime);
+  const say = logLineOf(runtime, zone);
   const maxRunMinutes = maxRunMinutesOf(args, coordinator.heavy);
   const places = coordinatorPlaces(coordinator, kit.paths);
   const lock = hostLockOf(runtime, places.hostLock, coordinator.heavy);
-  const parent = await parentLockOf(runtime, lock);
+  const parent = await parentLockOf(runtime, lock, say);
   const session = await sessionOf(args, runtime, kit, await rosterOf(runtime, kit, config), parent);
   if (parent !== undefined) {
-    return runUnderParent(runtime, holderText({ kind: 'held', info: parent }, zone), what, words, maxRunMinutes);
+    return runUnderParent(runtime, say, holderText({ kind: 'held', info: parent }, zone), what, words, maxRunMinutes);
   }
   refuseAfterCutoff(runtime, coordinator.schedule.heavyCutoffUtc, zone);
   const queuedAt = runtime.clock.now();
@@ -175,7 +176,7 @@ export async function heavy(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
     `heavy: ${what}`,
     coordinator.heavy.waitMinutes * MINUTE_MS,
     coordinator.wait.pollSeconds * 1_000,
-    (holder, ahead) => logLine(runtime, `${waiting}: ${waitText(holder, ahead, zone)}`),
+    (holder, ahead) => say(`${waiting}: ${waitText(holder, ahead, zone)}`),
     share,
   );
   if (taking.kind === 'busy') {
@@ -188,13 +189,13 @@ export async function heavy(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
     refuseAfterCutoff(runtime, coordinator.schedule.heavyCutoffUtc, zone);
     const sharing = share === undefined ? undefined : sharingText(share, taking);
     if (sharing !== undefined) {
-      logLine(runtime, sharing);
+      say(sharing);
     }
-    logLine(runtime, `running: ${what} (killed after ${minutesText(maxRunMinutes)})`);
+    say(`running: ${what} (killed after ${minutesText(maxRunMinutes)})`);
     const request = { command: commandLine(words, runtime.platform), cwd: runtime.cwd, env: underLock(runtime.env, taking.lock), timeoutMs: maxRunMinutes * MINUTE_MS };
     const mark = { session, what, queuedAt, ...(taking.sharing === undefined ? {} : { shared: true as const }), request };
     const end = await runRecorded(runtime, places.ledger, mark, watchOf(runtime, coordinator.heavy));
-    return report(runtime, end, maxRunMinutes);
+    return report(runtime, say, end, maxRunMinutes);
   } finally {
     await lock.release(taking.lock);
   }

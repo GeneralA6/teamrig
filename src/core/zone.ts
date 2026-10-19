@@ -148,6 +148,12 @@ export class TimeZone {
     return this.minute(date).slice(5);
   }
 
+  /** `YYYY-MM-DD HH:MM:SS IDT`, for a log line's stamp; every zone's offset today is whole minutes, so the seconds are UTC's. */
+  second(date: Date): string {
+    const wall = this.wall(date);
+    return `${this.day(date)} ${pad(wall.hour)}:${pad(wall.minute)}:${pad(date.getUTCSeconds())} ${this.label(date)}`;
+  }
+
   /** The instant's weekday in this zone: `Mon`. */
   weekday(date: Date): string {
     const wall = this.wall(date);

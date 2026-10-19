@@ -10,6 +10,7 @@ import { burstHireOf } from '../../hiring/burst-hire.ts';
 import { activeHires, HiringLog, retiredSessions, type HireRecord, type RetireRecord } from '../../hiring/log.ts';
 import { planHire, type HireRequest } from '../../hiring/plan.ts';
 import type { ResumeVerdict } from '../../hiring/rehire.ts';
+import type { TimeZone } from '../../core/zone.ts';
 import { onePositional, requiredFlag, UsageError, type Flags, type ParsedArgs } from '../args.ts';
 import { readBursts } from '../burst-reading.ts';
 import { callerOf } from '../inputs.ts';
@@ -90,11 +91,11 @@ interface Rehire {
   readonly verdict: ResumeVerdict;
 }
 
-/** A rehire's lines: the retire it comes back from, its handover, and whether its last Claude Code session resumes. */
-function rehireLines({ from, verdict }: Rehire): string[] {
+/** A rehire's lines: the retire it comes back from (its day on the team's clock), its handover, and whether its last Claude Code session resumes. */
+function rehireLines({ from, verdict }: Rehire, zone: TimeZone): string[] {
   const left = from.handover === undefined ? `it left no handover${from.noHandover === undefined ? '' : `: ${from.noHandover}`}` : `its handover: ${from.handover}`;
   const resume = verdict.kind === 'resume' ? `its last Claude Code session can be resumed: ${verdict.detail}` : `it opens fresh (not resumed: ${verdict.detail})`;
-  return [`REHIRE ${from.session} retired ${new Date(from.at).toISOString().slice(0, 10)} (${from.reason}); ${left}`, `  ${resume}`];
+  return [`REHIRE ${from.session} retired ${zone.day(new Date(from.at))} (${from.reason}); ${left}`, `  ${resume}`];
 }
 
 /** How to open the session once hired: a rehire resumes or opens fresh, as measured. */
@@ -144,7 +145,7 @@ export async function hire(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
     // Measured before anything is written, so the preview shows it too.
     const rehire: Rehire | undefined =
       from === undefined ? undefined : { from, verdict: await resumeVerdictOf(runtime, kit.paths, config.hiring, request.id, await teamProjectOf(runtime, undefined, found.from)) };
-    const rehireText = rehire === undefined ? [] : rehireLines(rehire);
+    const rehireText = rehire === undefined ? [] : rehireLines(rehire, teamZone(config, runtime));
     if (skipped > 0) {
       runtime.out.stdout(`NOTE ${skipped} damaged or newer line(s) in ${log.path} were skipped, so the caps may count too few hires`);
     }
