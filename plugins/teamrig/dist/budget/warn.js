@@ -149,7 +149,7 @@ function quietLine(quiet, facts) {
 function leadLineOf(facts) {
     return (`${facts.name} is past its daily budget: ${formatPct(facts.usedTodayPct)} of the week today against ${formatPct(facts.budgetPct)}, ` +
         `and ${aheadClause(facts)}. ` +
-        `It finishes the step in hand; lift it only with a stop %: teamrig budget lift ${facts.id} --to <pct> --stop-pct <pct> --reason "<why>".`);
+        `It finishes the step in hand; lift it only with a stop %: teamrig budget lift ${facts.id} --part <pct> --stop-pct <pct> --reason "<why>".`);
 }
 /**
  * The person's lines at a turn's end: a lift or a burst starting or ending, the quiet hours starting, a new

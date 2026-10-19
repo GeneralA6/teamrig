@@ -1,6 +1,9 @@
 import { isRecord } from "../core/guards.js";
-/** The budget keys `budget setup` manages, in the order a preview lists them. */
-export const SETUP_KEYS = ['enabled', 'dailyPct', 'maxDailyPct', 'overAction', 'escalate', 'quietHours'];
+/**
+ * The budget keys `budget setup` manages, in the order a preview lists them. No daily number among them: the
+ * team's daily budget is the pace, recomputed at every reading.
+ */
+export const SETUP_KEYS = ['enabled', 'overAction', 'escalate', 'quietHours'];
 /** Leaves a key as the config has it. */
 const KEEP = Symbol('keep');
 /** The quiet hours a config already has, with its action, or undefined. */
@@ -55,8 +58,6 @@ export function planBudgetSetup(config, choices) {
     }
     const budget = { ...before };
     apply(budget, 'enabled', choices.enabled);
-    apply(budget, 'dailyPct', choices.daily === undefined ? KEEP : choices.daily === 'pace' ? undefined : choices.daily);
-    apply(budget, 'maxDailyPct', choices.maxDaily === undefined ? KEEP : choices.maxDaily === 'none' ? undefined : choices.maxDaily);
     apply(budget, 'overAction', choices.overAction ?? KEEP);
     apply(budget, 'escalate', choices.escalate ?? KEEP);
     apply(budget, 'quietHours', quietHours.value);

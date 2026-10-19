@@ -1,4 +1,5 @@
 import { formatUtcDay } from "../core/time.js";
+import { DailyProfile } from "./active-time.js";
 import { dailyAllowancePct, readPace, resolveReset, weekWindow } from "./pace.js";
 function sumW(states, counts) {
     let total = 0;
@@ -26,10 +27,11 @@ export function readWeek(input) {
     const estimate = statusUse !== undefined && covered && weekW > 0 && statusUse.usedPct > 0 ? weekW / statusUse.usedPct : undefined;
     const wPerPct = budget.weeklyLimitW === undefined ? estimate : budget.weeklyLimitW / 100;
     const usedPct = statusUse?.usedPct ?? (covered && wPerPct !== undefined ? weekW / wPerPct : undefined);
-    const pace = window === undefined || usedPct === undefined ? undefined : readPace(window, budget, now, usedPct);
+    const profile = DailyProfile.ofQuietHours(budget.quietHours);
+    const pace = window === undefined || usedPct === undefined ? undefined : readPace(window, budget, now, usedPct, profile);
     const allowancePct = window === undefined || usedPct === undefined || wPerPct === undefined
         ? undefined
-        : dailyAllowancePct({ window, budget, now, usedPct, todayPct: todayW / wPerPct });
+        : dailyAllowancePct({ window, budget, now, usedPct, todayPct: todayW / wPerPct, profile });
     return {
         reset,
         window,
@@ -39,7 +41,7 @@ export function readWeek(input) {
         limitEstimated: budget.weeklyLimitW === undefined && wPerPct !== undefined,
         covered,
         pace,
-        allowancePct: allowancePct ?? (budget.dailyPct === undefined ? undefined : Math.min(budget.dailyPct, budget.maxDailyPct ?? budget.dailyPct)),
+        allowancePct,
         todayW,
     };
 }
