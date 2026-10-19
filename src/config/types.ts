@@ -237,6 +237,17 @@ export interface MessagesConfig {
   readonly coldAfterMinutes: number;
 }
 
+/**
+ * Each session's prompts and replies, kept in a file the task pane shows (src/turn-log/), so a /clear or a
+ * compaction never takes away what the person was reading in the tab.
+ */
+export interface TurnLogConfig {
+  /** Off: nothing is written. */
+  readonly enabled: boolean;
+  /** How long each entry is kept, in hours; whole hours past it are removed at a session start. */
+  readonly keepHours: number;
+}
+
 /** How teamrig keeps the lead leading (T320): its own edits, tests and code searches are nudged and shown, never blocked. */
 export interface LeadBoundaryConfig {
   /** Off: the lead's own work is neither nudged nor shown. */
@@ -777,6 +788,7 @@ export interface KitConfig {
    * (hook-picker-guard.ts). Off by default.
    */
   readonly pickerGuard: { readonly enabled: boolean };
+  readonly turnLog: TurnLogConfig;
   /** Lets a shell line that only reads run without a permission prompt; off by default. */
   readonly readonlyShell: ReadonlyShellConfig;
   readonly refresh: RefreshConfig;

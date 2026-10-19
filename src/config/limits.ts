@@ -30,6 +30,7 @@ export const CONFIG_LIMITS = {
   leadOwnPaths: { maxItems: 16, maxLength: 256 },
   readonlyShellPrefixes: { maxItems: 16, maxLength: 120 },
   searchNudgeAt: { min: 0, max: 50 },
+  turnLogKeepHours: { min: 1, max: 168 },
   wakePriority: { min: 1, max: 99 },
   wakeBatchSeconds: { min: 0, max: 3600 },
   wakeMinGapMinutes: { min: 0, max: 1440 },
