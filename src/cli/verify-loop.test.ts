@@ -220,7 +220,7 @@ describe('runCli: a start names what met the proof it waits for', () => {
     assert.match(start.stdout[0] ?? '', /^SET T2 in-progress,/);
     assert.deepEqual(start.stderr, [`NOTE bravo has an inbox line: ${notice}`]);
     const inbox = await kit.run(['inbox', 'read', '--session', 'bravo']);
-    assert.deepEqual(inbox.stdout.filter((line) => line.startsWith('- ')), [`- 2030-01-08 10:00 alpha: ${notice}`]);
+    assert.deepEqual(inbox.stdout.filter((line) => line.startsWith('- ')), [`- 2030-01-08 10:00 UTC alpha: ${notice}`]);
     const shown = await kit.run(['show', 'T2', '--session', 'alpha']);
     assert.match(shown.stdout.join('\n'), new RegExp(`status in-progress met="${met}"`));
     assert.doesNotMatch(shown.stdout.join('\n'), /\nevidence:/);

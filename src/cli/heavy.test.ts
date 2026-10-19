@@ -341,7 +341,7 @@ describe('teamrig heavy --small', () => {
       whileRunning = [kit.files.get(LOCK), JSON.parse(kit.files.get(`${SHARED}/id-1.json`) ?? '{}')];
     });
     const result = await kit.run(SPECS, { steps });
-    const lines = ['2030-01-08T10:00:00.000Z sharing the host: 2048 MB held for it (8000 MB free, 0 other small steps)', '2030-01-08T10:00:00.000Z running: specs (killed after 45m)', 'DONE exit 0'];
+    const lines = ['2030-01-08 10:00:00 UTC sharing the host: 2048 MB held for it (8000 MB free, 0 other small steps)', '2030-01-08 10:00:00 UTC running: specs (killed after 45m)', 'DONE exit 0'];
     assert.deepEqual(result, { code: 0, stdout: lines, stderr: [] });
     const share = { token: 'id-1', pid: 4242, session: 'alpha', purpose: 'heavy: specs', acquiredAt: '2030-01-08T10:00:00.000Z', expiresAt: '2030-01-08T12:30:00.000Z', reserveMb: 2048 };
     assert.deepEqual(whileRunning, [undefined, share]);
@@ -356,7 +356,7 @@ describe('teamrig heavy --small', () => {
     await kit.files.append(LEDGER, `${[...runs, ranBefore('bravo', 'specs', 9000), ranBefore('alpha', 'lint', 9000)].join('\n')}\n`);
     steps.ends(0, MINUTE);
     const { stdout } = await kit.run(SPECS, { steps });
-    assert.equal(stdout[0], '2030-01-08T10:00:00.000Z sharing the host: 2375 MB held for it (8000 MB free, 0 other small steps)');
+    assert.equal(stdout[0], '2030-01-08 10:00:00 UTC sharing the host: 2375 MB held for it (8000 MB free, 0 other small steps)');
   });
 
   it('joins a small step sharing the host while the memory allows it', async () => {
@@ -364,7 +364,7 @@ describe('teamrig heavy --small', () => {
     await kit.files.append(`${SHARED}/other.json`, sharedBy());
     steps.ends(0, MINUTE);
     const { stdout } = await kit.run(SPECS, { steps, sessionProcesses: otherRuns() });
-    assert.equal(stdout[0], '2030-01-08T10:00:00.000Z sharing the host: 1000 MB held for it (8000 MB free, 1 other small step)');
+    assert.equal(stdout[0], '2030-01-08 10:00:00 UTC sharing the host: 1000 MB held for it (8000 MB free, 1 other small step)');
   });
 
   it('waits while the small steps sharing the host hold the memory it needs, then refuses', async () => {
@@ -373,8 +373,8 @@ describe('teamrig heavy --small', () => {
     const memory = new FakeHostMemory();
     memory.free = 6000;
     const result = await kit.run(SPECS, { steps, memory, sessionProcesses: otherRuns() });
-    const held = '1 small step: po (heavy: specs) since 2030-01-08 09:50; 6000 MB free, 2048 MB held for it, 6144 MB needed';
-    assert.deepEqual(result, { code: 2, stdout: [`2030-01-08T10:00:00.000Z waiting to share the host: ${held}`, `REFUSED host memory still held by ${held}`], stderr: [] });
+    const held = '1 small step: po (heavy: specs) since 2030-01-08 09:50 UTC; 6000 MB free, 2048 MB held for it, 6144 MB needed';
+    assert.deepEqual(result, { code: 2, stdout: [`2030-01-08 10:00:00 UTC waiting to share the host: ${held}`, `REFUSED host memory still held by ${held}`], stderr: [] });
     assert.deepEqual([ledgerOf(kit), kit.files.get(`${SHARED}/id-1.json`)], [[], undefined]);
   });
 
@@ -382,8 +382,8 @@ describe('teamrig heavy --small', () => {
     const { kit, steps } = harness({ ...TEAM, coordinator: { heavy: { waitMinutes: 1 }, wait: { pollSeconds: 30 } } });
     await kit.files.append(`${SHARED}/other.json`, sharedBy());
     const result = await kit.run(BUILD, { steps, sessionProcesses: otherRuns() });
-    const held = '1 small step: po (heavy: specs) since 2030-01-08 09:50';
-    assert.deepEqual(result, { code: 2, stdout: [`2030-01-08T10:00:00.000Z waiting for the host lock: ${held}`, `REFUSED host lock still held by ${held}`], stderr: [] });
+    const held = '1 small step: po (heavy: specs) since 2030-01-08 09:50 UTC';
+    assert.deepEqual(result, { code: 2, stdout: [`2030-01-08 10:00:00 UTC waiting for the host lock: ${held}`, `REFUSED host lock still held by ${held}`], stderr: [] });
     assert.equal(kit.files.get(LOCK), undefined);
   });
 });
