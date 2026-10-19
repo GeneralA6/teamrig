@@ -596,6 +596,14 @@ export interface RefreshConfig {
   /** How long after the turn's end the automatic restart waits, so the user can still type to keep the context. */
   readonly restartDelaySeconds: number;
   /**
+   * While a session's handover is asked for or written (the fresh start to come), the plugin's mod stops Claude Code's
+   * own compaction (trigger `auto`) of its main conversation as long as the context, as Claude Code estimates it, is
+   * under this many tokens: the /clear at the turn's end replaces the compaction. Past it a compaction goes through, so
+   * a session never runs out of room (a prompt too long for the window is past it too); `/compact` and a subagent's own
+   * compaction are never stopped. 0: never stopped.
+   */
+  readonly compactCeilingTokens: number;
+  /**
    * A program (its path, then its arguments) run after an automatic restart ended a session, given Claude
    * Code's SessionEnd hook input (reason `clear`) on stdin: for a SessionEnd hook the end skipped, since on
    * Windows a process is ended without running them. Empty: none.
