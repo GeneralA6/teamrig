@@ -713,6 +713,34 @@ web shop-site: no start recorded
 host: 21400 MB free; commit 85300 of 100700 MB (85%)
 ```
 
+### teamrig close
+
+Ends an idle session's Claude Code and its tab to free the host, and logs it in `state/session-log.jsonl`, so
+[teamrig open](#teamrig-open) goes on in that Claude Code session later (`teamrig close <id|name>`; the lead only).
+It refuses the lead and the coordinator owner, a session not running, one with work it can start, one its
+transcript shows quiet under `open.headroom.closeIdleMinutes` (60) or still running background work, one whose
+Claude Code runs shells the end would cut off, and one too big or idle to resume (`hiring.resumeMaxTokens`,
+`hiring.resumeMaxIdleDays`): retire that one with its handover instead. Without `--yes` it shows the close and
+ends nothing.
+
+Flags:
+
+- `--session <id|name>`: the caller, the lead.
+- `--project <dir>`: the project folder its Claude Code runs in; default the one holding the team's pointer.
+- `--yes`: close it.
+
+Example:
+
+```sh
+teamrig close api --yes --session lead
+```
+
+Output:
+
+```text
+CLOSED shop-api (session api): quiet 75 min, its Claude Code holds 1300 MB, now free; teamrig open shop-api resumes it
+```
+
 ### teamrig rename
 
 Records a session's new name (`teamrig rename <id|name> <new-name>`). Its old names keep finding it in every
@@ -1150,7 +1178,7 @@ It refuses any session but the lead when the host has no room for one more: its 
 (92%; Windows and Linux). A session is counted at the median running session's Claude Code process tree, else at
 `open.headroom.sessionMb` (1200 MB). [teamrig sessions](#teamrig-sessions) shows what each one holds.
 
-A session the lead closed while idle goes on in its last Claude Code session (`claude --resume`) when that is small and
+A session the lead closed while idle ([teamrig close](#teamrig-close)) goes on in its last Claude Code session (`claude --resume`) when that is small and
 recent enough by the `--resume` limits below, with a first prompt to read its inbox and list again; else it opens
 fresh and the OPENED line says why. The reopen is logged in `state/session-log.jsonl` beside the close.
 

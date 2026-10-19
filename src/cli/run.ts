@@ -39,6 +39,7 @@ const wakeCommands = () => import('./commands/hook-wake.ts');
 const refreshModCommands = () => import('./commands/hook-refresh-mod.ts');
 const teamCommands = () => import('./commands/team.ts');
 const sessionsCommands = () => import('./commands/sessions.ts');
+const closeCommands = () => import('./commands/close.ts');
 const commitsCommands = () => import('./commands/commits.ts');
 const doctorCommands = () => import('./commands/doctor.ts');
 const worktreeCommands = () => import('./commands/worktree.ts');
@@ -118,6 +119,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   restart: { effect: 'internal', flags: ['team', 'at', 'project'], load: async () => (await restartCommands()).restart },
   who: { effect: 'read', flags: [], load: async () => (await teamCommands()).who },
   sessions: { effect: 'read', flags: [], load: async () => (await sessionsCommands()).sessions },
+  close: { effect: 'write', flags: ['session', 'project'], switches: ['yes'], load: async () => (await closeCommands()).close },
   rename: { effect: 'write', flags: ['session'], load: async () => (await teamCommands()).rename },
   hire: {
     effect: 'write',
@@ -311,6 +313,10 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   who [<id|name|role>]         the name to message a session by (no argument: every session)
   sessions                     each session: running (and the MB its Claude Code's processes hold), closed
       or never recorded; then the host's free memory and commit charge
+  close <id|name> [--project <dir>] [--yes]   (the lead) ends an idle session's Claude Code and its tab
+      to free the host, logged, so teamrig open resumes it; it refuses the lead, the coordinator owner,
+      a session with work it can start, quiet under open.headroom.closeIdleMinutes, running background
+      work or shells, or too big or old to resume; without --yes it shows the close and ends nothing
   rename <id|name> <new-name>  records a session's new name; its old names keep finding it
       (the session itself or the lead)
   hire <id> --scope "<its job>" --reason "<why>" [--name <name>] [--model <model>] [--effort <level>]

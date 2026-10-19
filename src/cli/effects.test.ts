@@ -41,6 +41,7 @@ const EXPECTED = {
   restart: 'internal',
   who: 'read',
   sessions: 'read',
+  close: 'write',
   rename: 'write',
   heavy: 'write',
   withdraw: 'write',

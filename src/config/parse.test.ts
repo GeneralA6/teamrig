@@ -813,12 +813,12 @@ describe('parseConfig', () => {
 
   it('reads the terminal teamrig open uses and the room it needs, refusing a terminal it does not know or a bad size', () => {
     assert.deepEqual(parseConfig(ROSTER).config.open, DEFAULT_OPEN);
-    const chosen = { terminal: 'tmux', headroom: { sessionMb: 900, commitMaxPct: 95 } };
+    const chosen = { terminal: 'tmux', headroom: { sessionMb: 900, commitMaxPct: 95, closeIdleMinutes: 120 } };
     const set = parseConfig({ ...ROSTER, open: chosen });
     assert.deepEqual(set.issues, []);
     assert.deepEqual(set.config.open, chosen);
-    const bad = parseConfig({ ...ROSTER, open: { terminal: 'iterm', headroom: { sessionMb: 99, commitMaxPct: 101 } } });
-    assert.deepEqual(paths(bad.issues).sort(), ['open.headroom.commitMaxPct', 'open.headroom.sessionMb', 'open.terminal']);
+    const bad = parseConfig({ ...ROSTER, open: { terminal: 'iterm', headroom: { sessionMb: 99, commitMaxPct: 101, closeIdleMinutes: 5 } } });
+    assert.deepEqual(paths(bad.issues).sort(), ['open.headroom.closeIdleMinutes', 'open.headroom.commitMaxPct', 'open.headroom.sessionMb', 'open.terminal']);
     assert.match(bad.issues.find((issue) => issue.path === 'open.terminal')?.message ?? '', /expected one of auto, tmux, windows-terminal/);
     assert.deepEqual(bad.config.open, DEFAULT_OPEN);
     assert.deepEqual(paths(parseConfig({ ...ROSTER, open: { headroom: 5 } }).issues), ['open.headroom']);
