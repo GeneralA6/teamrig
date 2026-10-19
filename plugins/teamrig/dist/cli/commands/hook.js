@@ -47,6 +47,7 @@ import { armRestart, restartTargetOf } from "./hook-restart.js";
 import { helperContextOf } from "./hook-helper-start.js";
 import { envSession, leadOwnPaths, parseJson, sessionTeam, startSessionOf, teamSessionOf } from "./hook-input.js";
 import { tabStatusOn, tabTitleOf } from "./hook-tab-status.js";
+import { logPrompt, logReply, logStart } from "./hook-turn-log.js";
 import { keepWorkingReasonOf } from "./keep-working.js";
 import { retireAskReasonOf } from "./retire-ask.js";
 import { verifyByLinesOf, verifyNoteOf } from "./verify-queue.js";
@@ -156,11 +157,12 @@ async function cancelledRestartLine(runtime, kit, id, growth) {
     return `${KIT_NAME}: the user typed, so the automatic restart is cancelled and you keep this context; a new handover is asked at your next task end, or once your context grew ${thousands(growth)} more`;
 }
 /**
- * UserPromptSubmit: cancels a pending automatic restart, binds a hand-started tab by its title, notes a
- * Claude Code rename of the session, titles a bound tab that has no title after its session (so a /clear
- * keeps it bound), says once how to bind a tab that is not bound, shows the session's new inbox lines and, once per
- * level while it is past its daily budget and the team is ahead of its pace line, tells the model to
- * finish the step in hand; or one line when its team pointer is broken.
+ * UserPromptSubmit: logs a team session's prompt for the task pane (hook-turn-log.ts), cancels a pending
+ * automatic restart, binds a hand-started tab by its title, notes a Claude Code rename of the session, titles a
+ * bound tab that has no title after its session (so a /clear keeps it bound), says once how to bind a tab that is
+ * not bound, shows the session's new inbox lines and, once per level while it is past its daily budget and the
+ * team is ahead of its pace line, tells the model to finish the step in hand; or one line when its team pointer
+ * is broken.
  */
 export async function inboxReminder(args, runtime) {
     noPositionals(args);
@@ -192,6 +194,9 @@ export async function inboxReminder(args, runtime) {
     const hint = await bindHintOnce(runtime, kit, binding, claudeSession);
     // Found like a rename: `$TEAMRIG_SESSION` first, so a session is shown its lines before its first `inbox read`.
     const session = await teamSessionOf(runtime, kit, own.roster, claudeSession);
+    if (session !== undefined) {
+        await logPrompt(runtime, { config, paths: kit.paths, id: session }, payload).catch(() => undefined);
+    }
     const cancelled = session === undefined ? undefined : await cancelledRestartLine(runtime, kit, session, reaskGrowth(config.refresh)).catch(() => undefined);
     const lines = session === undefined ? undefined : await inboxLinesFor(runtime, kit, session, claudeSession);
     const budgetLine = session === undefined ? undefined : await promptBudgetLine(runtime, { kit, config, roster: own.roster, id: session }).catch(() => undefined);
@@ -284,7 +289,8 @@ async function helperGateOf(runtime, payload) {
  * the session is: `$TEAMRIG_SESSION`, else the area it read its inbox as or was bound to, so a tab that
  * set the team up keeps its identity across a compact or resume; after a refresh or a compaction its live
  * tasks; whether it runs on its configured model and effort; its verifying tasks; and where the team sits
- * in a tree of teams, read from every team config of the kit home.
+ * in a tree of teams, read from every team config of the kit home. It also marks a /clear or a compaction in the
+ * session's turn log and prunes the log's old hours (hook-turn-log.ts).
  */
 async function teamPartsOf(runtime, kit, config, payload) {
     const title = await readTitle(runtime, payload);
@@ -300,6 +306,9 @@ async function teamPartsOf(runtime, kit, config, payload) {
     const { tree } = await loadTree(runtime);
     const session = fromEnv ?? (await startSessionOf(runtime, kit, roster, payload));
     const id = rosterIdOf(roster, session);
+    if (id !== undefined) {
+        await logStart(runtime, { config, paths: kit.paths, id }, payload).catch(() => undefined);
+    }
     return {
         teamRules: text === undefined ? undefined : { path: kit.paths.teamRules, text },
         renames,
@@ -544,6 +553,7 @@ async function stopOutputOf(runtime, payload) {
         const none = { kind: 'none' };
         return team === undefined ? '' : stopOutput(none, [], await stopTabTitleOf(runtime, team.config, payload, none));
     }
+    await logReply(runtime, { config: scope.config, paths: scope.kit.paths, id: scope.id }, payload).catch(() => undefined);
     // Before the refresh, which records a block's state before it prints: this block leaves the rest to the next stop.
     const dropped = await droppedEditReasonOf(runtime, payload, 'main').catch(() => undefined);
     if (dropped !== undefined) {
@@ -571,6 +581,7 @@ async function stopOutputOf(runtime, payload) {
  * never in quiet hours or past its daily budget. Once per `github.everyMinutes` for the whole
  * team it starts `gh sync --auto` hidden in the background (gh-auto.ts). With tab status on, it also sets the
  * tab's title to the ready circle, or the working one while a helper runs, in any tab of the team (hook-tab-status.ts).
+ * Each team session's reply is logged for the task pane (hook-turn-log.ts).
  * A turn with nothing to say reads only small files and the transcript's tail (and, at the first stop of a UTC day,
  * the register log; with tab status on, the longer tail where helpers start), and prints nothing but the tab's title.
  * It never blocks on an error, and ignores input that is not a hook payload (which would judge a boundary without
