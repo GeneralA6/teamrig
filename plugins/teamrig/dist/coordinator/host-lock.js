@@ -9,6 +9,11 @@ const ATTEMPTS = 3;
  * longer than this for the next step.
  */
 export const FIRST_IN_LINE_POLL_MS = 2_000;
+/**
+ * How long a ticket outlives its step's wait: the last look comes at the wait's end, and no other step may remove the
+ * ticket meanwhile, so a step whose live ticket is gone knows it was withdrawn.
+ */
+export const TICKET_GRACE_MS = 10_000;
 /** Digits of a ticket's arrival time in its name: enough for any millisecond time, so names sort as times do. */
 const ARRIVAL_DIGITS = 15;
 /** A ticket's name; a writer's temporary sibling (`<name>.<pid>.<n>.tmp`) does not match. */
@@ -37,7 +42,8 @@ function isLockWaiter(value) {
         typeof value['session'] === 'string' &&
         typeof value['purpose'] === 'string' &&
         isTime(value['arrivedAt']) &&
-        isTime(value['expiresAt']));
+        isTime(value['expiresAt']) &&
+        (value['stopsOnWithdraw'] === undefined || typeof value['stopsOnWithdraw'] === 'boolean'));
 }
 function isHostShare(value) {
     return isHostLockInfo(value) && isRecord(value) && typeof value['reserveMb'] === 'number' && Number.isSafeInteger(value['reserveMb']) && value['reserveMb'] >= 0;
@@ -118,6 +124,9 @@ function tellingChanges(onWait) {
  * Waiters take it in arrival order: each joins a line of tickets in `<lock>.queue`, and only the first live one may
  * take the lock; a ticket whose process is gone or whose wait ran out is removed by the next waiter that sees it.
  * A step that does not join the line (an older kit, a team's own coordinator) may still take a free lock first.
+ * A session may withdraw its waiting steps (`withdraw`): each one's ticket is removed, and a step whose ticket is gone
+ * stops at its next look. A step that took its turn removes its own ticket to run, so of the two removals only one
+ * succeeds, and a withdrawn step never runs.
  * Small steps (`teamrig heavy --small`: a spec run, a lint) share the host instead: in its turn, while the lock is not
  * held, a small step writes its share, `<lock>.shared/<token>.json`, before it leaves the line, so the next in line
  * sees it. It is let in at once when no other small step runs, else only while the host's free memory less the MB
@@ -177,15 +186,16 @@ export class HostLock {
      * `FIRST_IN_LINE_POLL_MS` at most) for at most `maxWaitMs`, and leaves the line when done. `onWait` hears each new
      * holder or place in line once, with the number of waiters ahead. A lock taken then waits, held, for the small
      * steps sharing the host to end. With `share`, a small step shares the host in its turn instead (see the class).
-     * Busy when the wait ran out.
+     * Busy when the wait ran out; withdrawn when its ticket was withdrawn before it took its turn.
      */
     async acquire(session, purpose, maxWaitMs, pollMs, onWait, share) {
         const deadline = this.ports.clock.now() + maxWaitMs;
         const ticket = await this.joinLine(session, purpose, deadline);
         const tell = tellingChanges(onWait);
         try {
-            const result = await this.waitInLine(ticket, deadline, pollMs, tell, share);
-            return result.kind === 'taken' && result.sharing === undefined ? await this.drain(result.lock, deadline, tell) : result;
+            const waited = await this.waitInLine(ticket, deadline, pollMs, tell, share);
+            const result = waited.kind === 'taken' && waited.sharing === undefined ? await this.drain(waited.lock, ticket, deadline, tell) : waited;
+            return result.kind === 'taken' ? await this.commit(result, ticket) : result;
         }
         finally {
             await this.ports.files.remove(join(this.queue, ticket.name));
@@ -212,6 +222,33 @@ export class HostLock {
         const share = (await this.shareWith(token))?.share;
         return share === undefined || this.isStale(share) ? undefined : share;
     }
+    /** The live waiters in line, oldest first; takes and removes nothing. */
+    async line() {
+        return (await this.tickets()).map(({ waiter }) => waiter);
+    }
+    /**
+     * Withdraws the waiting steps of `session` that `chosen` picks: removes each one's ticket, so the step stops at its
+     * next look and never runs. A step that took its turn first is named running, or gone from the line; an older kit's
+     * step is kept, its ticket left, as removing it would only cost the step its place.
+     */
+    async withdraw(session, chosen) {
+        const done = [];
+        for (const { name, waiter } of await this.tickets()) {
+            if (waiter.session !== session || !chosen(waiter)) {
+                continue;
+            }
+            if (waiter.stopsOnWithdraw !== true) {
+                done.push({ kind: 'kept', waiter });
+            }
+            else if (await this.ports.files.remove(join(this.queue, name))) {
+                done.push({ kind: 'withdrawn', waiter });
+            }
+            else {
+                done.push({ kind: (await this.heldWith(waiter.token)) === undefined ? 'left' : 'running', waiter });
+            }
+        }
+        return done;
+    }
     /** The small steps sharing the host, oldest first, a stale share left out; takes and removes nothing. */
     async shares() {
         return (await this.shareFiles()).flatMap(({ share }) => (share === undefined || this.isStale(share) ? [] : [share])).sort(byAcquiredAt);
@@ -234,6 +271,9 @@ export class HostLock {
         let unknownSince;
         for (;;) {
             const ahead = await this.waitersAhead(ticket.name);
+            if (ahead === undefined) {
+                return { kind: 'withdrawn' };
+            }
             const removeUnknown = unknownSince !== undefined && clock.now() - unknownSince >= HostLock.UNREADABLE_GRACE_MS;
             const result = share === undefined ? await this.takeInTurn(ticket.waiter, ahead, removeUnknown) : await this.shareInTurn(ticket.waiter, ahead, removeUnknown, share);
             if (result.kind === 'taken') {
@@ -252,9 +292,10 @@ export class HostLock {
     /**
      * Holds a lock just taken until the small steps sharing the host end, looking every `FIRST_IN_LINE_POLL_MS`; no new
      * one is let in meanwhile, as the lock is held. Gives up, releasing the lock, at the wait's deadline or when the lock
-     * would expire, so it never goes stale while held. A lock that waited is renewed, so its step gets its whole time.
+     * would expire, so it never goes stale while held, and when its ticket was withdrawn meanwhile. A lock that waited is
+     * renewed, so its step gets its whole time.
      */
-    async drain(lock, deadline, tell) {
+    async drain(lock, ticket, deadline, tell) {
         const { clock, sleep } = this.ports;
         const until = Math.min(deadline, Date.parse(lock.expiresAt));
         let waited = false;
@@ -272,7 +313,22 @@ export class HostLock {
             }
             waited = true;
             await sleep(Math.min(FIRST_IN_LINE_POLL_MS, left));
+            if ((await this.ports.files.read(join(this.queue, ticket.name))) === undefined) {
+                await this.release(lock);
+                return { kind: 'withdrawn' };
+            }
         }
+    }
+    /**
+     * A step that took its turn removes its own ticket to run: when a withdraw removed it first, the lock or share just
+     * taken is released and the step is withdrawn.
+     */
+    async commit(taken, ticket) {
+        if (await this.ports.files.remove(join(this.queue, ticket.name))) {
+            return taken;
+        }
+        await this.release(taken.lock);
+        return { kind: 'withdrawn' };
     }
     /** The lock this step holds, its expiry moved to a whole TTL from now. */
     async renew(lock) {
@@ -373,19 +429,25 @@ export class HostLock {
             session,
             purpose,
             arrivedAt: new Date(now).toISOString(),
-            expiresAt: new Date(deadline).toISOString(),
+            expiresAt: new Date(deadline + TICKET_GRACE_MS).toISOString(),
+            stopsOnWithdraw: true,
         };
         const name = `${String(now).padStart(ARRIVAL_DIGITS, '0')}-${waiter.token}.json`;
         await this.ports.files.write(join(this.queue, name), JSON.stringify(waiter));
         return { name, waiter };
     }
     /**
-     * The live waiters whose tickets come before `ticket`, oldest first. A ticket whose process is gone, whose wait ran
-     * out or that cannot be read is removed (tickets are written whole); one gone meanwhile left the line.
+     * The live waiters whose tickets come before `ticket`, oldest first; undefined once `ticket` is gone, withdrawn. A
+     * ticket whose process is gone, whose wait ran out or that cannot be read is removed (tickets are written whole); one
+     * gone meanwhile left the line.
      */
     async waitersAhead(ticket) {
         const { files } = this.ports;
-        const earlier = (await files.list(this.queue)).filter((name) => TICKET_NAME.test(name) && name < ticket).sort();
+        const names = await files.list(this.queue);
+        if (!names.includes(ticket)) {
+            return undefined;
+        }
+        const earlier = names.filter((name) => TICKET_NAME.test(name) && name < ticket).sort();
         const ahead = [];
         for (const name of earlier) {
             const path = join(this.queue, name);
@@ -402,6 +464,19 @@ export class HostLock {
             }
         }
         return ahead;
+    }
+    /** The live tickets in line, oldest first, with their names; a stale or unreadable one is left out, and left. */
+    async tickets() {
+        const { files } = this.ports;
+        const found = [];
+        for (const name of (await files.list(this.queue)).filter((entry) => TICKET_NAME.test(entry)).sort()) {
+            const text = await files.read(join(this.queue, name));
+            const waiter = text === undefined ? undefined : parseAs(text, isLockWaiter);
+            if (waiter !== undefined && !this.isStale(waiter)) {
+                found.push({ name, waiter });
+            }
+        }
+        return found;
     }
     isStale(entry) {
         return Date.parse(entry.expiresAt) <= this.ports.clock.now() || !this.ports.alive(entry.pid);

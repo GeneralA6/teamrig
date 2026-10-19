@@ -1,4 +1,4 @@
-import { appendFile, link, mkdir, open, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { appendFile, link, mkdir, open, readdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { errorCode } from "./guards.js";
 import { retryTransient } from "./retry.js";
@@ -13,7 +13,18 @@ function temporaryOf(path) {
  * those steps are repeated for about a second (`sleep` paces them) before the error is thrown.
  */
 export function nodeFiles(sleep) {
-    const removeFile = (path) => retryTransient(() => rm(path, { force: true }), sleep);
+    const removeFile = (path) => retryTransient(async () => {
+        try {
+            await unlink(path);
+            return true;
+        }
+        catch (error) {
+            if (errorCode(error) === 'ENOENT') {
+                return false;
+            }
+            throw error;
+        }
+    }, sleep);
     return {
         async read(path) {
             try {
@@ -101,7 +112,7 @@ export function nodeFiles(sleep) {
             }
         },
         async remove(path) {
-            await removeFile(path);
+            return removeFile(path);
         },
     };
 }

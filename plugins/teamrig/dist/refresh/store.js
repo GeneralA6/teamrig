@@ -37,8 +37,8 @@ export class RefreshStore {
     setRequest(id, request) {
         return this.files.write(this.requestPath(id), formatRefreshRequest(request));
     }
-    clearRequest(id) {
-        return this.files.remove(this.requestPath(id));
+    async clearRequest(id) {
+        await this.files.remove(this.requestPath(id));
     }
     async restart(id) {
         const text = await this.files.read(this.restartPath(id));
@@ -47,8 +47,8 @@ export class RefreshStore {
     setRestart(id, request) {
         return this.files.write(this.restartPath(id), formatRestartRequest(request));
     }
-    clearRestart(id) {
-        return this.files.remove(this.restartPath(id));
+    async clearRestart(id) {
+        await this.files.remove(this.restartPath(id));
     }
     statePath(id) {
         return join(this.paths.refresh, `${id}.json`);
