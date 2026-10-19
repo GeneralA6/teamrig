@@ -37,7 +37,7 @@ or take it to the lead.
 | `REFUSED --options lists 1: a decision lists at least 2, separated by \|` | List every choice, separated by `\|`; an approval may list none. |
 | `REFUSED --recommend says "T378 option 2": give at least 3 plain words besides task ids, so it reads without the task list` (any part) | Say it in words: what the option is and what it costs. |
 | `REFUSED --question, --options, --recommend and --default go only with --status waiting on a decision or an approval` | Drop the card flags, or wait on the decision. |
-| `REFUSED T3 has not started, so it does not wait on T2: it stays open, planned after it (teamrig update T3 --after T2)` | Leave it open and plan it: `teamrig update T3 --after T2`. |
+| `REFUSED T3 has not started, so it does not wait on T2: it stays open, planned after it (teamrig update T3 --after T2)` (or `stays waiting`, for one waiting since before it started) | Leave its status and plan it: `teamrig update T3 --after T2`. |
 | `REFUSED T2 is already finished; nothing to wait on` | Go on: there is nothing to wait for. |
 | `REFUSED time 2026-10-01 has passed: name a time to come` | Give a time still to come, in UTC. |
 | `REFUSED decision lead2: lead2 is neither the lead (lead) nor owner` | Name the lead, or `owner`. |

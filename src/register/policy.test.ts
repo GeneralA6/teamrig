@@ -372,6 +372,16 @@ describe('RegisterPolicy.setStatus to waiting', () => {
     assert.equal(error(waiting(TASK, [{ kind: 'task', id: 'T3' }])), 'T3 is already finished; nothing to wait on');
   });
 
+  it('sends a waiting task that never started to a plan, which update --after then takes', () => {
+    const approval = testTask({ id: 'T5', status: 'waiting', startedAt: null, waits: [{ kind: 'approval', who: 'owner' }] });
+    const state = stateOf(TASK, OPEN, DONE, BUSY, approval);
+    assert.equal(
+      error(waiting(approval, [...approval.waits, { kind: 'task', id: 'T4' }], state)),
+      'T5 has not started, so it does not wait on T4: it stays waiting, planned after it (teamrig update T5 --after T4)',
+    );
+    assert.deepEqual(policy.update(approval, 'alpha', { after: ['T4'] }, undefined, state), { ok: true, value: { changes: { after: ['T4'] }, note: null } });
+  });
+
   it('refuses a task wait that closes a loop, naming the chain and the step to ask for as its own task', () => {
     const needing = testTask({ id: 'T5', owner: 'bravo', status: 'open', after: ['T6'] });
     const between = testTask({ id: 'T6', owner: 'bravo', status: 'waiting', startedAt: TASK.startedAt, waits: [{ kind: 'task', id: 'T1' }] });
@@ -487,6 +497,9 @@ describe('RegisterPolicy.update', () => {
       error(policy.update(first, 'alpha', { after: ['T3'] }, undefined, state)),
       '--after plans a task not started yet, and T1 is in-progress; a started task waits on another with --status waiting --waits task:T3',
     );
+    const started = testTask({ id: 'T4', status: 'waiting', startedAt: '2030-01-07T10:00:00.000Z' });
+    assert.match(error(policy.update(started, 'alpha', { after: ['T3'] }, undefined, state)), /T4 is waiting; a started task waits on another/);
+    assert.equal(error(policy.update(testTask({ id: 'T4', status: 'done' }), 'alpha', { after: ['T3'] }, undefined, state)), '--after plans a task not started yet, and T4 is done');
     assert.equal(error(policy.update(third, 'alpha', { after: ['T1', 'T1'] }, undefined, state)), '--after names T1 twice');
     assert.equal(error(policy.update(third, 'alpha', { after: ['T3'] }, undefined, state)), 'T3 cannot come after itself');
     assert.equal(error(policy.update(third, 'alpha', { after: ['T4'] }, undefined, state)), 'no task T4');
