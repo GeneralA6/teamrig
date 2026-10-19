@@ -35,7 +35,9 @@ describe('nodeProcesses', () => {
 
   it('starts a hidden program detached, with the given variables', async () => {
     const marker = join(DIR, 'hidden.txt');
-    const script = `require("node:fs").writeFileSync(${JSON.stringify(marker)}, process.env.TEAMRIG_TEAM ?? "")`;
+    const part = `${marker}.part`;
+    // Written beside the marker and renamed in, so the marker exists only once its whole content does.
+    const script = `const fs = require("node:fs"); fs.writeFileSync(${JSON.stringify(part)}, process.env.TEAMRIG_TEAM ?? ""); fs.renameSync(${JSON.stringify(part)}, ${JSON.stringify(marker)})`;
     const outcome = await processes.startHidden({ command: NODE, args: ['-e', script], cwd: TEMP, env: { ...process.env, TEAMRIG_TEAM: 'app' } });
     assert.deepEqual(outcome, { kind: 'started' });
     for (let tries = 0; tries < 100 && !existsSync(marker); tries += 1) {
