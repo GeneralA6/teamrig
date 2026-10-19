@@ -1,6 +1,17 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { nodeMemoryProbe, parseProcessRows, treeMb, watchMemory, type Every, type MemoryProbe, type ProcessRow } from './memory.ts';
+import {
+  nodeMemoryProbe,
+  parseMeminfoCommit,
+  parseProcessRows,
+  parseWindowsCommit,
+  treeMb,
+  watchMemory,
+  type CommitCharge,
+  type Every,
+  type MemoryProbe,
+  type ProcessRow,
+} from './memory.ts';
 import { treeOf } from './processes.ts';
 
 const MB = 2 ** 20;
@@ -25,6 +36,10 @@ class FakeProbe implements MemoryProbe {
 
   freeMb(): number {
     return this.free;
+  }
+
+  async commit(): Promise<CommitCharge | undefined> {
+    return undefined;
   }
 
   /** The next process list waits until `finish` is called, as a slow PowerShell does. */
@@ -81,6 +96,22 @@ describe('treeMb', () => {
     assert.equal(treeMb(5, looped), 1);
     assert.equal(treeMb(6, looped), 2);
   });
+
+  it('leave out a process listed as started before its parent: its own parent ended and the id was reused', () => {
+    const reused: ProcessRow[] = [
+      { pid: 30, parent: 1, bytes: 100 * MB, startedMs: 5_000 },
+      { pid: 31, parent: 30, bytes: 200 * MB, startedMs: 6_000 },
+      { pid: 32, parent: 30, bytes: 400 * MB, startedMs: 4_000 },
+      { pid: 33, parent: 32, bytes: 800 * MB, startedMs: 7_000 },
+      { pid: 34, parent: 30, bytes: 50 * MB },
+    ];
+    assert.deepEqual(
+      treeOf(30, reused).map((row) => row.pid),
+      [30, 31, 34],
+      'a child with no start counts, as in a ps list',
+    );
+    assert.equal(treeMb(30, reused), 350);
+  });
 });
 
 describe('parseProcessRows', () => {
@@ -89,6 +120,29 @@ describe('parseProcessRows', () => {
       { pid: 4, parent: 0, bytes: 1024 },
       { pid: 77, parent: 4, bytes: 2048 },
     ]);
+  });
+
+  it('reads a fourth number as when the process started, and leaves out a line of five', () => {
+    assert.deepEqual(parseProcessRows('4,0,1024,0\r\n77,4,2048,1760000000000\n8,4,1,2,3\n'), [
+      { pid: 4, parent: 0, bytes: 1024, startedMs: 0 },
+      { pid: 77, parent: 4, bytes: 2048, startedMs: 1_760_000_000_000 },
+    ]);
+  });
+});
+
+describe('parseWindowsCommit and parseMeminfoCommit', () => {
+  it('read the commit limit and what is used of it, in MB', () => {
+    assert.deepEqual(parseWindowsCommit('103116800,15769600\r\n'), { usedMb: 85_300, limitMb: 100_700 });
+    const meminfo = 'MemTotal:       16384000 kB\nCommitLimit:    20480000 kB\nCommitted_AS:   25600000 kB\n';
+    assert.deepEqual(parseMeminfoCommit(meminfo), { usedMb: 25_000, limitMb: 20_000 }, 'Linux may commit past its limit');
+  });
+
+  it('read nothing from damaged output', () => {
+    for (const text of ['', '100', '100,x', '100,200', '0,0', '1,2,3']) {
+      assert.equal(parseWindowsCommit(text), undefined, text);
+    }
+    assert.equal(parseMeminfoCommit('MemTotal: 16384000 kB\nCommitLimit: 20480000 kB\n'), undefined);
+    assert.equal(parseMeminfoCommit('CommitLimit: 0 kB\nCommitted_AS: 100 kB\n'), undefined);
   });
 });
 
@@ -142,5 +196,15 @@ describe('nodeMemoryProbe', () => {
       [],
       'this process has no child left in its list: the lister is left out',
     );
+  });
+
+  it('reads the commit charge on Windows and Linux, and nothing elsewhere', async () => {
+    const charge = await nodeMemoryProbe(process.platform).commit();
+    if (process.platform !== 'win32' && process.platform !== 'linux') {
+      assert.equal(charge, undefined);
+      return;
+    }
+    assert.ok(charge !== undefined, 'the host gives its commit charge');
+    assert.ok(charge.usedMb > 0 && charge.limitMb > 0, `${charge.usedMb} of ${charge.limitMb} MB`);
   });
 });
