@@ -17,7 +17,7 @@ describe('renderPlan', () => {
       testTask({ id: 'T4', week, priority: 2, status: 'dropped', note: 'merged into T1' }),
       testTask({ id: 'T5', week, priority: 2, status: 'in-progress' }),
       testTask({ id: 'T6', week: '2030-01-14' }),
-      testTask({ id: 'T7', week, priority: 2, status: 'verifying', note: 'the nightly run is green' }),
+      testTask({ id: 'T7', week, priority: 2, status: 'verifying', note: 'the nightly run is green', waits: [{ kind: 'task', id: 'T5' }] }),
       testTask({ id: 'T8', week, priority: 2, after: ['T5', 'T3'], size: 1.5 }),
     ];
     assert.equal(
@@ -37,7 +37,7 @@ describe('renderPlan', () => {
         '- [ ] **T3** Add a health check (alpha · from lead) **waiting:** decision owner · on T4 ready; waiting on disk',
         '- [ ] **T4** ~~Add a health check~~ (alpha · from lead) dropped: merged into T1',
         '- [ ] **T5** Add a health check (alpha · from lead) (in progress)',
-        '- [ ] **T7** Add a health check (alpha · from lead) verifying, proof: the nightly run is green',
+        '- [ ] **T7** Add a health check (alpha · from lead) verifying, proof: the nightly run is green; waiting: on T5',
         '- [ ] **T8** Add a health check (alpha · after T5,T3 · from lead · size 1.5%)',
       ].join('\n'),
     );

@@ -52,12 +52,14 @@ describe('foldEvents: when a task took its status and priority', () => {
 describe('foldEvents: what a waiting task waits for, and when it started', () => {
   const OWNER: readonly WaitReason[] = [{ kind: 'decision', who: 'owner' }];
 
-  it('keeps the reasons of the latest waiting status, and clears them when the task leaves waiting', () => {
+  it('keeps the reasons of the latest waiting or verifying status, and clears them on any other', () => {
     const later: readonly WaitReason[] = [{ kind: 'task', id: 'T2' }];
     assert.deepEqual(taskAfter([create(9), status(10, 'waiting', OWNER)]).waits, OWNER);
     assert.deepEqual(taskAfter([create(9), status(10, 'waiting', OWNER), status(11, 'waiting', later)]).waits, later);
     assert.deepEqual(taskAfter([create(9), status(10, 'waiting', OWNER), status(11, 'in-progress')]).waits, []);
     assert.deepEqual(taskAfter([create(9), status(10, 'waiting')]).waits, [], 'a line from before reasons has none');
+    assert.deepEqual(taskAfter([create(9), status(10, 'verifying', later)]).waits, later, 'a verifying task keeps what its proof waits for');
+    assert.deepEqual(taskAfter([create(9), status(10, 'verifying', later), status(11, 'done')]).waits, []);
   });
 
   it('starts a task at its first in-progress or verifying status, and keeps that time', () => {

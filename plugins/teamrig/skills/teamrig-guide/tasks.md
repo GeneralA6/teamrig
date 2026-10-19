@@ -74,6 +74,11 @@ A shipped change is proven by the session that shipped it, oldest first, before 
   starts it (name the tasks the work leaves in place of `none`).
   Without `--proof` it is refused [register.requireProofOnVerifying]; with that key `false`, the note names the
   proof.
+- A proof another party makes is that party's task, asked at once: `teamrig set <id> --status verifying --ask
+  <session> --text "<the run or check>"` (with the `--proof`, `--note` and `--followups` of a first set) adds it and
+  makes the verifying task wait on it. `--waits` names other proof waits: `time:<date>` for an event that comes on
+  a date, `approval:owner` (with a card) for one only the owner can try, which then reaches the meeting's
+  DECISIONS. Set verifying again without `--waits` and they stay; `check` flags the task `READY` once all cleared.
 - The queue stays in view: `teamrig verify` lists it, oldest first, and the session start context and
   `teamrig inbox read` end with one `VERIFY <n>: T1 (proof: ...)` line.
 - From a task's verify-by day (its due date, on the team's clock), the Stop hook shows the user `VERIFY T1 was to be verified by
@@ -150,10 +155,10 @@ checkpoint; a session may run it for itself.
 | `VERIFY-OVERDUE` | a `verifying` task's due time, the date to verify it by, has passed | The owner checks the proof: `done` with it as evidence, `in-progress` when it failed, or a new due date and why. |
 | `LOOP` | active tasks need each other in a circle (`T2 -> T5 -> T2`), planned after or waiting on one another, as an older teamrig could write; raised on the lowest-numbered one | None of them can finish: the owner makes the step its own task (the flag prints the command), or the lead re-plans it (`update --after`). |
 | `VERIFY-BLOCKS` | a `verifying` task another active task needs: planned after it (`--after`) or waiting on it (`--waits task:`) | The owner proves it (`done` with the proof) or reopens it (`in-progress`), so the work on it can start. |
-| `READY` | a `waiting` task whose every reason has cleared: its tasks are done or dropped, its time has passed (a decision or an approval never clears by itself) | The owner goes on: `set --status in-progress`, or the next status. |
+| `READY` | a `waiting` task whose every reason has cleared, or a `verifying` task whose proof waits all have: its tasks are done or dropped, its time has passed (a decision or an approval never clears by itself) | The owner goes on: `set --status in-progress`, or the next status; for a verifying one, checks the proof now. |
 | `NO-REASON` | a `waiting` task with no reason, as a line from an older teamrig reads | The owner sets what it waits for (`set --status waiting --waits ...`) or its next status. |
 | `NO-CARD` | a `waiting` task waits on the owner's decision or approval with no card, as one set before cards reads [register.requireDecisionCard] | The owner sets it waiting again with the card (`set --status waiting --waits ... --question ... --options ... --recommend ... --default ...`). |
-| `PEER-WAIT` | a `waiting` task waits on the decision or the approval of a session that is neither the lead nor the owner, as an older teamrig wrote | The owner waits on that work by its task instead: `set --status waiting --ask <session> --text "<the work>"`. |
+| `PEER-WAIT` | a `waiting` task (or a `verifying` task's proof) waits on the decision or the approval of a session that is neither the lead nor the owner, as an older teamrig wrote | The owner waits on that work by its task instead: `set --status waiting --ask <session> --text "<the work>"`. |
 | `NOT-PICKED-UP` | assigned over 24 h ago with no event from its owner since [register.check.notPickedUpAfterHours] | The owner is idle and reads no inbox: wake it with `teamrig open <id>` or a message, or tell the human. |
 | `STALE` | no event for 72 h [register.check.staleAfterHours] (not raised on top of NOT-PICKED-UP, nor for a `verifying` task with a due date, nor for a `waiting` task with a `time:` reason still to come) | Ask the owner what blocks it, then re-date, re-assign or drop it. |
 | `PRIORITY-SKIP` | in progress while a top-priority (`p1`) task of the same owner waits open and free to start (every task it comes after finished), for over 24 h [register.check.prioritySkipAfterHours] | The owner parks the lower task and starts the waiting one; or the lead fixes the order (`update --priority`). |

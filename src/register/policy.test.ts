@@ -328,6 +328,40 @@ describe('RegisterPolicy.setStatus to verifying', () => {
     assert.match(error(policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'x', proof: credentialUrl(), followups: [] }, CTX)), /proof looks like it holds a secret/);
   });
 
+  it('names what the proof waits for, each reason judged like a waiting one', () => {
+    const context = { ...CTX, state: stateOf(testTask({ id: 'T4', owner: 'bravo' })) };
+    const waits: WaitReason[] = [
+      { kind: 'task', id: 'T4' },
+      { kind: 'time', at: '2030-01-09 09:00' },
+    ];
+    const asked = policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'shipped', proof: 'p', waits, followups: [] }, context);
+    assert.deepEqual(asked.ok ? asked.value.waits : undefined, waits);
+    const passed = { status: 'verifying' as const, note: 'x', proof: 'p', waits: [{ kind: 'time' as const, at: '2030-01-08 09:00' }], followups: [] };
+    assert.equal(error(policy.setStatus(TASK, 'alpha', passed, CTX)), 'time 2030-01-08 09:00 has passed: name a time to come');
+    const plain = policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'shipped', proof: 'p', followups: [] }, CTX);
+    assert.equal(plain.ok && 'waits' in plain.value, false, 'a proof that waits for nothing writes no waits');
+  });
+
+  it("refuses a peer's approval of the proof, naming the ask that makes it the peer's task", () => {
+    const peer = { status: 'verifying' as const, note: 'x', proof: 'p', waits: [{ kind: 'approval' as const, who: 'bravo' }], followups: [] };
+    assert.equal(
+      error(policy.setStatus(TASK, 'alpha', peer, CTX)),
+      `approval bravo: decision and approval waits are for the lead (lead) and owner; wait on bravo's work by its task: teamrig set T1 --status verifying --ask bravo --text "<the work you need>"`,
+    );
+  });
+
+  it('keeps what the proof waits for when set verifying again without --waits, unjudged, and drops it on another status', () => {
+    const held: Task = { ...VERIFYING, waits: [{ kind: 'time', at: '2030-01-08 09:00' }] };
+    const redated = policy.setStatus(held, 'alpha', { status: 'verifying', note: 'the run moved', due: '2030-01-11', followups: [] }, CTX);
+    assert.deepEqual(redated.ok ? redated.value.waits : undefined, held.waits, 'a new verify-by date leaves the ask in place, a time now passed too');
+    const replaced = policy.setStatus(held, 'alpha', { status: 'verifying', note: 'x', waits: [{ kind: 'time', at: '2030-01-10' }], followups: [] }, CTX);
+    assert.deepEqual(replaced.ok ? replaced.value.waits : undefined, [{ kind: 'time', at: '2030-01-10' }]);
+    const reopened = policy.setStatus(held, 'alpha', { status: 'in-progress', note: 'the proof failed' }, CTX);
+    assert.equal(reopened.ok && 'waits' in reopened.value, false);
+    const fromWaiting = policy.setStatus({ ...TASK, status: 'waiting', waits: OWNER_DECISION }, 'alpha', { status: 'verifying', note: 'shipped', proof: 'p', followups: [] }, CTX);
+    assert.equal(fromWaiting.ok && 'waits' in fromWaiting.value, false, "a waiting task's reasons are not its proof's");
+  });
+
   it('asks the note for the proof when the team does not require --proof', () => {
     const relaxed = new RegisterPolicy(testConfig({ register: { requireProofOnVerifying: false } }));
     assert.equal(error(relaxed.setStatus(TASK, 'alpha', { status: 'verifying' }, CTX)), 'verifying needs --note saying what proves it');
@@ -358,9 +392,9 @@ describe('RegisterPolicy.setStatus to waiting', () => {
     assert.deepEqual(waiting(TASK, waits), { ok: true, value: { status: 'waiting', note: 'x', evidence: null, skill: null, waits, card: TEST_CARD } });
   });
 
-  it('needs a reason, and takes reasons only with waiting', () => {
+  it('needs a reason, and takes reasons only with waiting or verifying', () => {
     assert.match(error(waiting(TASK, [])), /^waiting needs --waits saying what it waits for: decision:<who>/);
-    assert.equal(error(policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'x', waits: OWNER_DECISION }, CTX)), '--waits goes only with --status waiting');
+    assert.equal(error(policy.setStatus(TASK, 'alpha', { status: 'in-progress', note: 'x', waits: OWNER_DECISION }, CTX)), '--waits goes only with --status waiting or verifying');
     assert.equal(error(waiting(TASK, [...OWNER_DECISION, ...OWNER_DECISION])), '--waits names decision:owner twice');
   });
 
@@ -458,9 +492,10 @@ describe('RegisterPolicy.ask', () => {
     assert.equal(undated.ok && undated.value.due, null, 'no --due leaves the task undated; a session may ask itself');
   });
 
-  it('asks only for its own started task, and only to wait on it', () => {
+  it('asks only for its own started task, and only to wait on it or to prove it', () => {
     assert.equal(error(asking(PLANNED, 'bravo')), 'only the owner (alpha) sets the status of T1');
-    assert.equal(error(policy.ask(PLANNED, 'alpha', ASK, { status: 'done' }, stateOf(PLANNED))), '--ask goes only with --status waiting');
+    assert.equal(error(policy.ask(PLANNED, 'alpha', ASK, { status: 'done' }, stateOf(PLANNED))), '--ask goes only with --status waiting or verifying');
+    assert.equal(policy.ask(PLANNED, 'alpha', ASK, { status: 'verifying' }, stateOf(PLANNED)).ok, true, 'a verifying task asks for its proof');
     assert.equal(
       error(asking(testTask({ status: 'open' }))),
       'T1 has not started, so it does not wait: ask with teamrig add --owner bravo --title "Land the schema change", then plan T1 after that task (teamrig update T1 --after <its id>)',
@@ -675,7 +710,7 @@ describe('RegisterPolicy.setStatus: the decision card', () => {
   });
 
   it('refuses the card flags without a wait on a decision or an approval', () => {
-    const refusal = '--question, --options, --recommend and --default go only with --status waiting on a decision or an approval';
+    const refusal = '--question, --options, --recommend and --default go only with --status waiting or verifying on a decision or an approval';
     assert.equal(error(set(TASK, { waits: [{ kind: 'time', at: '2030-01-09' }], card: TEST_CARD })), refusal);
     assert.equal(error(policy.setStatus(testTask({ id: 'T2' }), 'alpha', { status: 'in-progress', card: { question: TEST_CARD.question } }, CTX)), refusal);
   });

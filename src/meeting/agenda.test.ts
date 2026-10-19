@@ -47,12 +47,12 @@ describe('the meeting agenda', () => {
     assert.equal(agendaSince(NOW - 30 * MS_PER_DAY, NOW), NOW - DONE_WINDOW_DAYS * MS_PER_DAY);
   });
 
-  it("knows a task waiting on the owner's decision or approval, and no other wait", () => {
+  it("knows a task waiting, or a verifying task's proof waiting, on the owner's decision or approval, and no other wait", () => {
     assert.equal(waitsOnOwner(DECIDE, 'owner'), true);
     assert.equal(waitsOnOwner(testTask({ status: 'waiting', waits: [{ kind: 'approval', who: 'owner' }] }), 'owner'), true);
     assert.equal(waitsOnOwner(testTask({ status: 'waiting', waits: [{ kind: 'decision', who: 'alpha' }] }), 'owner'), false);
     assert.equal(waitsOnOwner(testTask({ status: 'waiting', waits: [{ kind: 'task', id: 'T1' }] }), 'owner'), false);
-    assert.equal(waitsOnOwner(testTask({ waits: [{ kind: 'decision', who: 'owner' }] }), 'owner'), false);
+    assert.equal(waitsOnOwner(testTask({ status: 'verifying', proof: 'the run', waits: [{ kind: 'approval', who: 'owner' }] }), 'owner'), true, "a verifying task's proof");
   });
 
   it('puts text on one line', () => {

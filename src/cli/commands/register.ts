@@ -205,8 +205,9 @@ async function tellAssigned(runtime: CliRuntime, team: Team, by: string, task: T
 }
 
 /**
- * One inbox line to the lead when a write set a task waiting on a decision or an approval of the lead's or the
- * owner's that it did not wait on before (the lead keeps the owner's decision queue); never when the lead set it.
+ * One inbox line to the lead when a write set a task waiting, or a verifying task's proof, on a decision or an
+ * approval of the lead's or the owner's that it did not wait on before (the lead keeps the owner's decision queue);
+ * never when the lead set it.
  */
 async function tellLeadOfWaits(runtime: CliRuntime, team: Team, by: string, verdict: Verdict<WriteResult>): Promise<void> {
   const { lead } = team.config.roles;
@@ -214,14 +215,14 @@ async function tellLeadOfWaits(runtime: CliRuntime, team: Team, by: string, verd
     return;
   }
   const { task, before } = verdict.value;
-  const earlier = before?.status === 'waiting' ? before.waits : [];
+  const earlier = before?.waits ?? [];
   const added = task.waits.filter(
     (reason): reason is PersonWait =>
       (reason.kind === 'decision' || reason.kind === 'approval') &&
       !isPeerWait(reason, lead, team.config.register.ownerSource) &&
       !earlier.some((other) => sameWait(reason, other)),
   );
-  if (task.status === 'waiting' && added.length > 0) {
+  if (added.length > 0) {
     await tellLine(runtime, team, by, lead, personWaitNotice(task, added, lead), `${lead} was not told that ${task.id} waits on it`);
   }
 }

@@ -118,6 +118,11 @@ describe('checkTasks', () => {
     assert.deepEqual(kinds([quiet(null)]), ['STALE T1']);
   });
 
+  it('lets a verifying task with no due date stay quiet while its proof waits for a time to come', () => {
+    const parked = testTask({ status: 'verifying', waits: [{ kind: 'time', at: '2030-01-12 09:00' }], ownerSeenAt: '2030-01-01T08:00:00.000Z', updatedAt: '2030-01-01T08:00:00.000Z' });
+    assert.deepEqual(kinds([parked]), []);
+  });
+
   it('lets a waiting task parked until a time to come stay quiet, and calls it stale once that time passed', () => {
     const parked = (at: string) =>
       testTask({ status: 'waiting', waits: [{ kind: 'time', at }], ownerSeenAt: '2030-01-01T08:00:00.000Z', updatedAt: '2030-01-01T08:00:00.000Z' });
@@ -174,15 +179,18 @@ describe('checkTasks', () => {
 });
 
 describe('peerWaitFlags', () => {
-  it("flags a waiting task on a peer's decision or approval, as an older teamrig wrote it, naming the ask to make", () => {
+  it("flags a waiting task, or a verifying task's proof, on a peer's decision or approval, as an older teamrig wrote it, naming the ask to make", () => {
     const tasks = [
       testTask({ id: 'T1', status: 'waiting', waits: [{ kind: 'task', id: 'T4' }, { kind: 'approval', who: 'bravo' }, { kind: 'decision', who: 'alpha' }] }),
       testTask({ id: 'T2', status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }, { kind: 'approval', who: 'lead' }] }),
-      testTask({ id: 'T3', status: 'in-progress', waits: [{ kind: 'approval', who: 'bravo' }] }),
+      testTask({ id: 'T3', status: 'verifying', proof: 'the run', waits: [{ kind: 'approval', who: 'bravo' }] }),
     ];
     assert.deepEqual(
       peerWaitFlags(tasks, 'lead', 'owner').map((flag) => `${flag.kind} ${flag.task.id}: ${flag.detail}`),
-      [`PEER-WAIT T1: approval:bravo is a peer's work: wait on it by its task (set T1 --status waiting --ask bravo --text "<the work>")`],
+      [
+        `PEER-WAIT T1: approval:bravo is a peer's work: wait on it by its task (set T1 --status waiting --ask bravo --text "<the work>")`,
+        `PEER-WAIT T3: approval:bravo is a peer's work: wait on it by its task (set T3 --status verifying --ask bravo --text "<the work>")`,
+      ],
     );
   });
 });
@@ -274,6 +282,18 @@ describe('checkTasks: READY', () => {
       'READY (every reason cleared; set its next status) T1 waiting, p2, owner alpha, from lead | Add a health check (waiting: on T2 ready; needs the export)',
     );
   });
+
+  it("flags a verifying task once its proof's waits cleared, and none whose proof waits for nothing", () => {
+    const tasks = [
+      testTask({ id: 'T1', status: 'verifying', proof: 'the run', waits: [{ kind: 'task', id: 'T2' }], ...seen }),
+      testTask({ id: 'T2', status: 'done', ...seen }),
+      testTask({ id: 'T3', status: 'verifying', proof: 'the run', waits: [{ kind: 'time', at: '2030-01-10 13:00' }], ...seen }),
+      testTask({ id: 'T4', status: 'verifying', proof: 'the run', ...seen }),
+    ];
+    assert.deepEqual(ready(tasks), ['T1']);
+    const flag = checkTasks(tasks, NOW, null, CONFIG).find((candidate) => candidate.kind === 'READY');
+    assert.equal(flag?.detail, 'every wait of its proof cleared; verify it now');
+  });
 });
 
 describe('checkTasks: OFF-GOAL', () => {
@@ -318,10 +338,14 @@ describe('checkTasks: NO-CARD', () => {
       testTask({ id: 'T1', status: 'waiting', waits: [{ kind: 'approval', who: 'owner' }], ...seen }),
       testTask({ id: 'T2', status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], card: TEST_CARD, ...seen }),
       testTask({ id: 'T3', status: 'waiting', waits: [{ kind: 'decision', who: 'lead' }], ...seen }),
-      testTask({ id: 'T4', status: 'in-progress', waits: [{ kind: 'decision', who: 'owner' }], ...seen }),
     ];
     assert.deepEqual(noCard(tasks), ['T1: no card for owner to decide from: set it waiting again with --question, --options, --recommend and --default']);
     assert.deepEqual(noCard(tasks, { ...CONFIG, requireDecisionCard: false }), [], 'never with the switch off');
+  });
+
+  it("flags a verifying task whose proof waits on the owner's approval with no card, naming its own status", () => {
+    const tasks = [testTask({ id: 'T1', status: 'verifying', proof: 'the run', waits: [{ kind: 'approval', who: 'owner' }], ...seen })];
+    assert.deepEqual(noCard(tasks), ['T1: no card for owner to decide from: set it verifying again with --question, --options, --recommend and --default']);
   });
 });
 

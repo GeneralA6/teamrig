@@ -36,6 +36,18 @@ describe('runCli: set --ask asks a peer for work by a task', () => {
     assert.match(shown.stdout.join('\n'), /description: Asked by alpha for T1 \(Ship the release\), which waits on this task\./);
   });
 
+  it("asks for a verifying task's proof: the proof's party gets its task, and the verifying task waits on it", async () => {
+    const kit = await startedTask();
+    const proof = ['--proof', 'the nightly run is green', '--note', 'shipped', '--followups', 'none'];
+    const asked = await kit.run(['set', 'T1', '--status', 'verifying', ...proof, '--ask', 'bravo', '--text', 'Run the night's build', '--session', 'alpha']);
+    assert.equal(asked.code, EXIT.ok, asked.stderr.join('\n'));
+    assert.deepEqual(asked.stderr, ['NOTE bravo has an inbox line: T2 is yours (p2): Run the night's build']);
+    assert.match(asked.stdout.join('\n'), /SET T1 verifying, .* \(proof: the nightly run is green; waiting: on T2\)/);
+    const owner = await kit.run(['set', 'T1', '--status', 'verifying', '--note', 'the owner tries it', '--waits', 'approval:owner', ...TEST_CARD_FLAGS, '--followups', 'none', '--session', 'alpha']);
+    assert.equal(owner.code, EXIT.ok, owner.stderr.join('\n'));
+    assert.deepEqual(owner.stderr, [`NOTE lead has an inbox line: T1 waits on the owner's approval: ${TEST_CARD.question}`]);
+  });
+
   it("refuses a peer's approval with the ask to make, and writes nothing", async () => {
     const kit = await startedTask();
     const before = kit.files.get(EVENTS_PATH);

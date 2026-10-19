@@ -7,7 +7,7 @@ import type { TimeZone } from '../core/zone.ts';
 import { CARD_FLAGS, cardProblem, cardTexts, OPTION_SEPARATOR, sameCard, type DecisionCard } from './card.ts';
 import { sizeProblem, type TaskFieldName, type TaskFields } from './events.ts';
 import { taskNumber, type RegisterState, type Task } from './fold.ts';
-import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, priorityText, SESSION_NAME, type TaskStatus } from './model.ts';
+import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, priorityText, SESSION_NAME, WAIT_STATUSES, type TaskStatus } from './model.ts';
 import { loopFix, needPath, pathText } from './tree.ts';
 import { heldStart, startHolds } from './verify.ts';
 import { isPeerWait, sameWait, waitSpelling, type PersonWait, type WaitReason } from './waits.ts';
@@ -61,7 +61,7 @@ export interface StatusInput {
   readonly note?: string;
   readonly evidence?: string;
   readonly skill?: string;
-  /** The reasons a `waiting` status waits for; at least one, and none with any other status. */
+  /** The reasons a `waiting` status waits for (at least one), or what a `verifying` one's proof waits for; none with any other status. */
   readonly waits?: readonly WaitReason[];
   /**
    * The parts of the card a wait on a decision or an approval asks (card.ts); only with such a wait. Parts left out
@@ -110,7 +110,7 @@ export interface StatusChange {
   readonly note: string | null;
   readonly evidence: string | null;
   readonly skill: string | null;
-  /** Only with `waiting`. */
+  /** Only with `waiting` or `verifying` (what its proof waits for). */
   readonly waits?: readonly WaitReason[];
   /** Only with a wait on a decision or an approval: the card given, or the one the task had while waiting. */
   readonly card?: DecisionCard;
@@ -212,18 +212,19 @@ export class RegisterPolicy {
   }
 
   /**
-   * The task `set <id> --status waiting --ask <session> --text "<the work>"` creates, which `task` then waits on:
-   * the asked session's, from the caller, at `task`'s priority and with its goals (the work serves the same plan),
-   * its description naming `task`. Only the owner asks for its task, only with `--status waiting` and only once
-   * started: one not started keeps its status, planned after the asked task. An active task of the same title is waited
-   * on instead.
+   * The task `set <id> --status waiting|verifying --ask <session> --text "<the work>"` creates, which `task` then
+   * waits on (with `verifying`, its proof does: the session that runs the proof has it on its list): the asked
+   * session's, from the caller, at `task`'s priority and with its goals (the work serves the same plan), its
+   * description naming `task`. Only the owner asks for its task, only with a status of WAIT_STATUSES and only once
+   * started: one not started keeps its status, planned after the asked task. An active task of the same title is
+   * waited on instead.
    */
   ask(task: Task, caller: string, ask: AskInput, input: StatusInput, state: RegisterState): Verdict<TaskFields> {
     if (caller !== task.owner) {
       return refuse(ownerOnly(task));
     }
-    if (input.status !== 'waiting') {
-      return refuse('--ask goes only with --status waiting');
+    if (!WAIT_STATUSES.includes(input.status)) {
+      return refuse(`--ask goes only with --status ${WAIT_STATUSES.join(' or ')}`);
     }
     if (!hasStarted(task)) {
       return refuse(
@@ -360,20 +361,27 @@ export class RegisterPolicy {
     return ok(followups);
   }
 
-  /** The reasons of a status change: at least one for `waiting`, none for any other status, each one judged. */
+  /**
+   * The reasons of a status change, each given one judged: at least one for `waiting`; for `verifying`, what its proof
+   * waits for, if anything, where a verifying task set again without `--waits` keeps the reasons it had (a new verify-by
+   * date leaves the proof's ask in place); none for any other status.
+   */
   private checkWaits(task: Task, input: StatusInput, context: StatusContext): Verdict<readonly WaitReason[]> {
-    const waits = input.waits ?? [];
-    if (input.status !== 'waiting') {
-      return waits.length === 0 ? ok([]) : refuse('--waits goes only with --status waiting');
+    if (!WAIT_STATUSES.includes(input.status)) {
+      return (input.waits ?? []).length === 0 ? ok([]) : refuse(`--waits goes only with --status ${WAIT_STATUSES.join(' or ')}`);
     }
-    if (waits.length === 0) {
+    if (input.waits === undefined && input.status === 'verifying') {
+      return ok(task.status === 'verifying' ? task.waits : []);
+    }
+    const waits = input.waits ?? [];
+    if (input.status === 'waiting' && waits.length === 0) {
       return refuse(`waiting needs --waits saying what it waits for: ${WAITS_USAGE}`);
     }
     const twice = waits.find((reason, index) => waits.findIndex((other) => sameWait(reason, other)) !== index);
     if (twice !== undefined) {
       return refuse(`--waits names ${waitSpelling(twice)} twice`);
     }
-    const problem = waits.map((reason) => this.waitProblem(task, reason, context)).find((found) => found !== undefined);
+    const problem = waits.map((reason) => this.waitProblem(task, input.status, reason, context)).find((found) => found !== undefined);
     return problem === undefined ? ok(waits) : refuse(problem);
   }
 
@@ -387,9 +395,9 @@ export class RegisterPolicy {
     const asks = waits.filter((reason): reason is PersonWait => reason.kind === 'decision' || reason.kind === 'approval');
     const given = input.card;
     if (asks.length === 0) {
-      return given === undefined ? ok(null) : refuse(`${CARD_FLAGS} go only with --status waiting on a decision or an approval`);
+      return given === undefined ? ok(null) : refuse(`${CARD_FLAGS} go only with --status ${WAIT_STATUSES.join(' or ')} on a decision or an approval`);
     }
-    const before = task.status === 'waiting' ? task.card : null;
+    const before = WAIT_STATUSES.includes(task.status) ? task.card : null;
     if (given === undefined) {
       const { ownerSource, requireDecisionCard } = this.config.register;
       const owners = asks.filter((reason) => reason.who === ownerSource);
@@ -408,11 +416,11 @@ export class RegisterPolicy {
     return problem === undefined ? ok(card) : refuse(problem);
   }
 
-  private waitProblem(task: Task, reason: WaitReason, context: StatusContext): string | undefined {
+  private waitProblem(task: Task, status: TaskStatus, reason: WaitReason, context: StatusContext): string | undefined {
     switch (reason.kind) {
       case 'decision':
       case 'approval':
-        return this.personWaitProblem(task, reason);
+        return this.personWaitProblem(task, status, reason);
       case 'task':
         return taskWaitProblem(task, reason.id, context.state);
       case 'time':
@@ -424,14 +432,14 @@ export class RegisterPolicy {
    * Decision and approval waits are for the lead and the owner: a peer's work is a task, waited on by its id, which
    * clears by itself once that task finishes, where a peer's decision would hold the task until its owner noticed.
    */
-  private personWaitProblem(task: Task, reason: PersonWait): string | undefined {
+  private personWaitProblem(task: Task, status: TaskStatus, reason: PersonWait): string | undefined {
     const { ownerSource } = this.config.register;
     const { lead } = this.config.roles;
     if (!isPeerWait(reason, lead, ownerSource)) {
       return undefined;
     }
     return this.config.sessions.includes(reason.who)
-      ? `${reason.kind} ${reason.who}: decision and approval waits are for the lead (${lead}) and ${ownerSource}; wait on ${reason.who}'s work by its task: teamrig set ${task.id} --status waiting --ask ${reason.who} --text "<the work you need>"`
+      ? `${reason.kind} ${reason.who}: decision and approval waits are for the lead (${lead}) and ${ownerSource}; wait on ${reason.who}'s work by its task: teamrig set ${task.id} --status ${status} --ask ${reason.who} --text "<the work you need>"`
       : `${reason.kind} ${reason.who}: ${reason.who} is neither the lead (${lead}) nor ${ownerSource}`;
   }
 

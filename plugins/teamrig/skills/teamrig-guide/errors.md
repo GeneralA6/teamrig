@@ -31,18 +31,18 @@ or take it to the lead.
 | `REFUSED --followups goes only with verifying, done, dropped` | Drop `--followups`. |
 | `REFUSED waiting needs --note` (also `verifying`, `done`, `dropped`) | Add `--note` saying what it waits for, what was done, or why it was dropped. |
 | `REFUSED waiting needs --waits saying what it waits for: decision:<who>, approval:<who>, task:T<id> or time:<YYYY-MM-DD HH:MM>, comma-separated` | Add `--waits` with every reason. |
-| `REFUSED --waits goes only with --status waiting` | Drop `--waits`, or set `waiting`. |
+| `REFUSED --waits goes only with --status waiting or verifying` | Drop `--waits`, or set `waiting` (or `verifying`, for what its proof waits for). |
 | `REFUSED a wait on owner's decision needs a card, so owner decides from it alone: --question ...` | Add the four card flags it prints: what is decided, the options with their numbers, your recommendation, the default. |
 | `REFUSED a card needs --question, --options, --recommend and --default (--options for a decision): ...` | A task not waiting yet has no card to build on: give every part. |
 | `REFUSED --options lists 1: a decision lists at least 2, separated by \|` | List every choice, separated by `\|`; an approval may list none. |
 | `REFUSED --recommend says "T378 option 2": give at least 3 plain words besides task ids, so it reads without the task list` (any part) | Say it in words: what the option is and what it costs. |
-| `REFUSED --question, --options, --recommend and --default go only with --status waiting on a decision or an approval` | Drop the card flags, or wait on the decision. |
+| `REFUSED --question, --options, --recommend and --default go only with --status waiting or verifying on a decision or an approval` | Drop the card flags, or wait on the decision. |
 | `REFUSED T3 has not started, so it does not wait on T2: it stays open, planned after it (teamrig update T3 --after T2)` (or `stays waiting`, for one waiting since before it started) | Leave its status and plan it: `teamrig update T3 --after T2`. |
 | `REFUSED T2 is already finished; nothing to wait on` | Go on: there is nothing to wait for. |
 | `REFUSED time 10-01 09:00 IDT has passed: name a time to come` | Give a time still to come, on the team's clock or marked UTC. |
 | `REFUSED decision lead2: lead2 is neither the lead (lead) nor owner` | Name the lead, or `owner`. |
 | `REFUSED approval api: decision and approval waits are for the lead (lead) and owner; wait on api's work by its task: teamrig set T3 --status waiting --ask api --text "<the work you need>"` | Run the command it names: a peer's work is a task, never an approval. |
-| `REFUSED --ask goes only with --status waiting` | Add `--status waiting`, or ask with `teamrig add --owner <id>`. |
+| `REFUSED --ask goes only with --status waiting or verifying` | Add `--status waiting` (or `verifying`, to ask for the proof), or ask with `teamrig add --owner <id>`. |
 | `REFUSED T3 has not started, so it does not wait: ask with teamrig add --owner api --title "<the work>", then plan T3 after that task (teamrig update T3 --after <its id>)` | Run both commands it names: T3 stays open until that task is done. |
 | `REFUSED T5 already tracks this (open, owner api): wait on it with --waits task:T5` | Wait on the task that exists: `teamrig set T3 --status waiting --waits task:T5`. |
 | `REFUSED --after plans a task not started yet, and T4 is in-progress; a started task waits on another with --status waiting --waits task:T2` | Set it waiting with `--waits task:T2` instead. |
