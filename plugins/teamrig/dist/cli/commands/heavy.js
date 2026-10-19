@@ -1,5 +1,5 @@
 import { HEAVY_TTL_MARGIN_MINUTES } from "../../config/defaults.js";
-import { holderText, underLock } from "../../coordinator/host-lock.js";
+import { holderText, underLock, waitText } from "../../coordinator/host-lock.js";
 import { coordinatorPlaces } from "../../coordinator/places.js";
 import { runRecorded } from "../../coordinator/recorded-step.js";
 import { heavyCutoffReason, minutesText } from "../../coordinator/schedule.js";
@@ -111,7 +111,7 @@ export async function heavy(args, runtime) {
         return runUnderParent(runtime, parent, what, words, maxRunMinutes);
     }
     refuseAfterCutoff(runtime, coordinator.schedule.heavyCutoffUtc);
-    const taking = await lock.acquire(session, `heavy: ${what}`, coordinator.heavy.waitMinutes * MINUTE_MS, coordinator.wait.pollSeconds * 1_000, (holder) => logLine(runtime, `waiting for the host lock: ${holderText(holder)}`));
+    const taking = await lock.acquire(session, `heavy: ${what}`, coordinator.heavy.waitMinutes * MINUTE_MS, coordinator.wait.pollSeconds * 1_000, (holder, ahead) => logLine(runtime, `waiting for the host lock: ${waitText(holder, ahead)}`));
     if (taking.kind === 'busy') {
         throw new RefusedError(`host lock still held by ${holderText(taking.holder)}`);
     }
