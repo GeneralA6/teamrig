@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import type { ShellDialect } from '../push-guard/tokenizer.ts';
-import { programsOf, runsOf } from './programs.ts';
+import { programsOf, runsOf, type BareCommand, type ProgramRun } from './programs.ts';
 
 const APP = resolve('/', 'work', 'app');
 const HOME = resolve('/', 'u');
@@ -111,6 +111,40 @@ describe('runsOf', () => {
     const [bare] = runsOf('$env:T | docker login --password-stdin > out.txt', context('powershell')).bare;
     assert.equal(bare?.pipe?.into?.name, 'docker');
     assert.deepEqual(runsOf('$env:T > out.txt', context('powershell')).bare[0]?.redirections.map((redirection) => redirection.operator), ['>']);
+  });
+
+  it('sends the output of a launched script on through the pipe of the command that launches it', () => {
+    const into = (command: string): string[] =>
+      runsOf(command, context('bash')).programs.map((run) => `${run.name}${run.pipe === undefined ? '' : ` | ${run.pipe.into?.name ?? '?'}`}`);
+    assert.deepEqual(into('bash -c "a | b; c" | wc -c'), ['a | b', 'b | wc', 'c | wc', 'wc']);
+  });
+
+  it('names the command whose value a substitution or a PowerShell group gives its output to', () => {
+    const named = (command: ProgramRun | BareCommand | undefined): string =>
+      command === undefined ? '?' : 'name' in command ? command.name : command.words.map((word) => word.text).join(' ');
+    const holders = (command: string, dialect: ShellDialect): string[] => {
+      const runs = runsOf(command, context(dialect));
+      return [...runs.programs, ...runs.bare].map((run) => `${named(run)}${run.substitution === undefined ? '' : ` in ${named(run.substitution.holder)}`}`);
+    };
+    assert.deepEqual(holders('curl -H "A: $(cat t | tr -d x)" u; X=$(cat .env)', 'bash'), ['cat in curl', 'tr in curl', 'curl', 'cat in X=$(cat .env)', 'X=$(cat .env)']);
+    assert.deepEqual(holders('echo $(echo `cat f`) | wc -c; X=$(bash -c "cat g")', 'bash'), [
+      'cat in echo',
+      'echo in echo',
+      'echo',
+      'wc',
+      'cat in X=$(bash -c "cat g")',
+      'X=$(bash -c "cat g")',
+    ]);
+    assert.deepEqual(holders('$v = (Get-Content f); Write-Output (Get-Content g); if ($env:T) { gc h }', 'powershell'), [
+      'get-content in $v =',
+      'write-output',
+      'get-content in write-output',
+      'gc',
+      '$v =',
+      'if',
+      '$env:T in if',
+    ]);
+    assert.deepEqual(holders('$X $(cat f)', 'bash'), ['cat in ?']);
   });
 
   it('marks a program whose output a PowerShell assignment takes', () => {
