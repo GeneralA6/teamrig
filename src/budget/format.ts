@@ -32,11 +32,3 @@ export function formatEndTime(at: number, zone: TimeZone): string {
   const clock = zone.clock(new Date(at));
   return at % MS_PER_DAY === 0 ? `${clock} (the end of the budget day)` : clock;
 }
-
-/** A stretch of the day on the team's clock: `01:00-09:00 IDT`, or `01:00 IDT-08:00 IST` across a change of clocks. */
-export function formatClockSpan(from: number, to: number, zone: TimeZone): string {
-  const start = zone.clock(new Date(from));
-  const end = zone.clock(new Date(to));
-  const label = zone.label(new Date(from));
-  return label === zone.label(new Date(to)) ? `${start.slice(0, -label.length - 1)}-${end}` : `${start}-${end}`;
-}

@@ -159,6 +159,14 @@ export class TimeZone {
     return `${this.weekday(date)} ${this.shortMinute(date)}`;
   }
 
+  /** A stretch of the day: `01:00-09:00 IDT`, or `01:00 IDT-08:00 IST` across a change of clocks. */
+  clockSpan(from: Date, to: Date): string {
+    const start = this.clock(from);
+    const end = this.clock(to);
+    const label = this.label(from);
+    return label === this.label(to) ? `${start.slice(0, -label.length - 1)}-${end}` : `${start}-${end}`;
+  }
+
   private sameMinute(a: WallTime, b: WallTime): boolean {
     return a.year === b.year && a.month === b.month && a.day === b.day && a.hour === b.hour && a.minute === b.minute;
   }

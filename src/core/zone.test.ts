@@ -62,6 +62,14 @@ describe('formats', () => {
     assert.equal(NEW_YORK.minute(late), '2026-10-19 18:30 EDT');
   });
 
+  it('writes a stretch of the day, with both zones across a change of clocks', () => {
+    const from = new Date('2026-10-15T22:00:00Z');
+    const to = new Date('2026-10-16T06:00:00Z');
+    assert.equal(TimeZone.UTC.clockSpan(from, to), '22:00-06:00 UTC');
+    assert.equal(JERUSALEM.clockSpan(from, to), '01:00-09:00 IDT');
+    assert.equal(JERUSALEM.clockSpan(new Date('2026-10-24T22:00:00Z'), new Date('2026-10-25T06:00:00Z')), '01:00 IDT-08:00 IST');
+  });
+
   it('reads the offset either side of a change of clocks', () => {
     assert.deepEqual(
       [JERUSALEM.offsetMs(new Date('2026-10-24T22:59:00Z')), JERUSALEM.offsetMs(new Date('2026-10-24T23:00:00Z'))],

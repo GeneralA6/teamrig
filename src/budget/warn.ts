@@ -4,7 +4,7 @@ import { formatUtcDay, isMinuteInSpan, MS_PER_DAY, MS_PER_MINUTE, utcMinuteOf } 
 import type { TimeZone } from '../core/zone.ts';
 import type { Burst } from './burst.ts';
 import { budgetMarkOf, burstPromptLines, burstStopLines, type BurstMarks, type SurplusHint } from './burst-lines.ts';
-import { formatClockSpan, formatPct } from './format.ts';
+import { formatPct } from './format.ts';
 import { liftText, type Lift } from './lift.ts';
 import { hasRoom, type PaceReading, type TeamDay } from './pace.ts';
 
@@ -267,7 +267,7 @@ function levelLine(facts: BudgetFacts, budget: WarnBudget, standing: Standing): 
 function quietLine(quiet: QuietHours, span: QuietSpan, facts: BudgetFacts): string {
   const helpers = facts.isLead ? undefined : helperClause(quiet.action);
   const what = helpers === undefined ? 'the team rests; start no new work.' : `${helpers}.`;
-  return `Quiet hours (${formatClockSpan(span.from, span.to, facts.zone)}): ${what} ${MORE}`;
+  return `Quiet hours (${facts.zone.clockSpan(new Date(span.from), new Date(span.to))}): ${what} ${MORE}`;
 }
 
 /** What the Stop hook shows and records at a turn's end. */
@@ -399,7 +399,7 @@ export function helperGate(facts: BudgetFacts, budget: WarnBudget): HelperGate {
   }
   const quiet = budget.quietHours;
   if (quiet !== undefined && standing.quiet !== undefined) {
-    reasons.push({ action: quiet.action, text: `It is quiet hours (${formatClockSpan(standing.quiet.from, standing.quiet.to, facts.zone)}).` });
+    reasons.push({ action: quiet.action, text: `It is quiet hours (${facts.zone.clockSpan(new Date(standing.quiet.from), new Date(standing.quiet.to))}).` });
   }
   const strongest = Math.max(0, ...reasons.map((reason) => gateRank(reason.action)));
   if (strongest === 0) {
