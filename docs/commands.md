@@ -175,6 +175,13 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       lint): shares the host with other small steps while it keeps coordinator.heavy.memoryFloorMb free
       besides the MB held for them (its ledger peak and a quarter, else coordinator.heavy.smallReserveMb);
       a step without --small waits for them to end
+  withdraw (--what <text> | --all) [--session <id|name>]   takes this session's steps waiting for the
+      host lock (heavy, integrate, roll) out of its line, so a re-ordered or abandoned step leaves it:
+      --what picks those whose purpose holds the text. Each stops at its next look and runs nothing;
+      RUNNING when it took its turn first, LEFT when it left the line first, KEPT when an older
+      teamrig queued it (its step runs anyway). With neither flag: lists them, REFUSED. No --session:
+      $TEAMRIG_SESSION, else the session this Claude Code tab is bound to; REFUSED for another
+      session's steps from a bound tab. Exit 0 each withdrawn or none waits, 1 any RUNNING, LEFT, KEPT
   integrate [--session <id|name>] [--keep-remote] [--no-delete-local]   lands the branch checked out
       here on origin's default branch: REFUSED for a detached HEAD, the default branch, uncommitted
       changes, nothing new or a dependency change coordinator.repos.<name>.dependencyGate holds and

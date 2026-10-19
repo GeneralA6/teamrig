@@ -53,6 +53,7 @@ const burstCommands = () => import('./commands/burst.ts');
 const statuslineCommands = () => import('./commands/statusline.ts');
 const testCommand = () => import('./commands/test.ts');
 const heavyCommand = () => import('./commands/heavy.ts');
+const withdrawCommand = () => import('./commands/withdraw.ts');
 const integrateCommand = () => import('./commands/integrate.ts');
 const rollCommand = () => import('./commands/roll.ts');
 const claimCommands = () => import('./commands/claim.ts');
@@ -155,6 +156,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'worktree remove': { effect: 'write', flags: ['base'], switches: ['delete-branch', 'dry-run'], load: async () => (await worktreeCommands()).remove },
   test: { effect: 'write', flags: ['session'], rest: true, load: async () => (await testCommand()).test },
   heavy: { effect: 'write', flags: ['session', 'what', 'max-minutes'], switches: ['small'], rest: true, load: async () => (await heavyCommand()).heavy },
+  withdraw: { effect: 'write', flags: ['session', 'what'], switches: ['all'], load: async () => (await withdrawCommand()).withdraw },
   integrate: { effect: 'write', flags: ['session'], switches: ['keep-remote', 'no-delete-local'], load: async () => (await integrateCommand()).integrate },
   roll: { effect: 'write', flags: ['session', 'repo'], load: async () => (await rollCommand()).roll },
   claim: { effect: 'write', flags: ['session', 'targets', 'metric', 'why', 'for'], load: async () => (await claimCommands()).claim },
@@ -368,6 +370,13 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       lint): shares the host with other small steps while it keeps coordinator.heavy.memoryFloorMb free
       besides the MB held for them (its ledger peak and a quarter, else coordinator.heavy.smallReserveMb);
       a step without --small waits for them to end
+  withdraw (--what <text> | --all) [--session <id|name>]   takes this session's steps waiting for the
+      host lock (heavy, integrate, roll) out of its line, so a re-ordered or abandoned step leaves it:
+      --what picks those whose purpose holds the text. Each stops at its next look and runs nothing;
+      RUNNING when it took its turn first, LEFT when it left the line first, KEPT when an older
+      teamrig queued it (its step runs anyway). With neither flag: lists them, REFUSED. No --session:
+      $TEAMRIG_SESSION, else the session this Claude Code tab is bound to; REFUSED for another
+      session's steps from a bound tab. Exit 0 each withdrawn or none waits, 1 any RUNNING, LEFT, KEPT
   integrate [--session <id|name>] [--keep-remote] [--no-delete-local]   lands the branch checked out
       here on origin's default branch: REFUSED for a detached HEAD, the default branch, uncommitted
       changes, nothing new or a dependency change coordinator.repos.<name>.dependencyGate holds and
