@@ -1,10 +1,12 @@
-import type { On, SessionCompacted, SessionContextBreakdown, SessionMessage, ToolCallResult } from 'claude-code';
-import { describe, expect, mock, test, type Engine } from 'claude-code/testing';
+import type { On, RenderPropsOf, SessionCompacted, SessionContextBreakdown, SessionMessage, ToolCallResult } from 'claude-code';
+import { describe, expect, mock, test, type Engine, type MockClock, type Mounted } from 'claude-code/testing';
 
 /**
  * The mod's refresh wiring (`register.ts`) against the engine itself: the test's hooks stand for the engine
- * beneath it, answering the plugin's CLI runs, the session's figures and the tool or compaction it wraps. The
- * hand's own rules are tested in src/mod/refresh-hand.test.ts.
+ * beneath it, answering the plugin's CLI runs, the session's figures, the tool or compaction it wraps, and the ask
+ * files and prompt box of a refresh's /clear (the engine alone raises a key in the prompt box, prompt.edit: the
+ * hand's answer to it, personActed, is tested in src/mod/clear-hand.test.ts). The hands' own rules are tested in src/mod/refresh-hand.test.ts and
+ * src/mod/clear-hand.test.ts.
  */
 
 const TAB = '0123abcd-0000-4000-8000-0000000000a1';
@@ -14,6 +16,26 @@ const PONG: ToolCallResult = { result: 'pong', text: 'pong' };
 /** The main conversation as a compaction reads it, and the summary the engine beneath compacts it to. */
 const MESSAGES: readonly SessionMessage[] = [{ role: 'user', text: 'ship T521', toolUses: [] }];
 const COMPACTED: SessionCompacted = { messages: [{ role: 'user', text: 'Summary: T521 shipped.', toolUses: [] }] };
+/** The clear hand's tick (src/mod/clear-hand.ts TICK_MS). */
+const TICK = 1_000;
+/** Where the tab's CLI says the restart runner posts its asks. */
+const ASK_DIR = '/home/me/.teamrig/teams/app/state/clear-asks';
+/** Whether the engine's fs call names this tab's ask: it hands the hooks the host's absolute path (C:\home\… on Windows). */
+function isAskFile(path: string): boolean {
+  return path.replaceAll('\\', '/').endsWith(`/clear-asks/${TAB}.ask`);
+}
+/** What the engine draws above the prompt when no plugin draws there. */
+const ENGINE_ROW = "the engine's own row";
+const REQUESTED_AT = '2030-01-08T09:59:59.000Z';
+/** The band above the prompt as a terminal with no survey up lays it out. */
+const ABOVE_PROMPT: RenderPropsOf['AbovePrompt'] = {
+  hasSurvey: false,
+  isWorking: false,
+  maxRows: 10,
+  bodyColumns: 120,
+  scroll: { offset: 0, bodyRows: 10 },
+  view: {},
+};
 
 /** What the tab's CLI answers each refresh command; a command left out exits 1. */
 interface CliAnswers {
@@ -124,5 +146,130 @@ describe('the compaction while a refresh is due', () => {
     expect(runs).toEqual([]);
     expect(await $.session.compact({ trigger: 'auto', messages: MESSAGES })).toEqual(COMPACTED);
     expect(runs.length).toBe(1);
+  });
+});
+
+/** A tab the restart runner asked to /clear: the clock its hand ticks on, what the hand ran, the ask it reads. */
+interface AskedTab {
+  readonly clock: MockClock;
+  /** Each `hook clear-claim` the hand ran, by its switches: `['--hold']` held the ask, `[]` claimed it. */
+  readonly claims: string[][];
+  /** How many times the hand ran /clear. */
+  clears: number;
+  /** The ask in the tab's file, as the runner last posted it. */
+  ask: string;
+}
+
+/** The runner's nth ask, each one new, carrying the team's default hold: a 20 s count, 5 min after a key. */
+function askOf(n: number): string {
+  const askedAt = new Date(Date.parse(REQUESTED_AT) + n * 15_000).toISOString();
+  return JSON.stringify({ team: 'app', id: 'alpha', at: REQUESTED_AT, askedAt, hold: { countdownMs: 20_000, afterActivityMs: 300_000 } });
+}
+
+/**
+ * An interactive tab the restart runner asked to /clear, its prompt box empty and no helper live: starts the
+ * session, which builds the clear hand, whose CLI holds each ask the hand holds and hands it each one it claims.
+ */
+async function askedTab($: Engine, on: On): Promise<AskedTab> {
+  const tab: AskedTab = { clock: mock.clock(on, { now: 1_000_000 }), claims: [], clears: 0, ask: askOf(1) };
+  on('session.id', () => ({ value: TAB }));
+  on('session.cwd', () => ({ value: '/work/app' }));
+  on('session.root', () => ({ value: '/work/app' }));
+  on('ui.log', () => ({ value: undefined }));
+  on('fs.exists', (_$, e) => ({ value: isAskFile(e.path) }));
+  on('fs.read', (_$, e) => {
+    if (!isAskFile(e.path)) {
+      throw new Error(`no file ${e.path}`);
+    }
+    return { value: tab.ask };
+  });
+  on('agent.list', () => ({ value: [] }));
+  on('prompt.read', () => ({ value: { text: '', cursor: 0 } }));
+  on('process.run', (_$, e) => {
+    const [command, ...switches] = e.argv.slice(3);
+    if (command === 'clear-claim') {
+      tab.claims.push(switches);
+    }
+    const answer = command === 'clear-dir' ? ASK_DIR : command === 'clear-claim' ? (switches.length === 0 ? 'taken' : 'held') : undefined;
+    return {
+      value: {
+        exitCode: answer === undefined ? 1 : 0,
+        stdout: `${answer ?? ''}\n`,
+        stderr: '',
+        isStdoutTruncated: false,
+        isStderrTruncated: false,
+      },
+    };
+  });
+  on('command.run', (_$, e) => {
+    if (e.command === 'clear') {
+      tab.clears += 1;
+    }
+    return {};
+  });
+  on('prompt.edit', (_$, e) => ({ text: `${e.text.slice(0, e.start)}${e.inputText}${e.text.slice(e.end)}`, cursor: e.start + e.inputText.length }));
+  on('prompt.submit', (_$, e) => ({ text: e.text }));
+  on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
+    const { Text } = $.ui.resolve(e);
+    return Text({ children: ENGINE_ROW });
+  });
+  on('session.start', (_$, e) => ({ cwd: e.cwd }));
+  await $.session.start({ cwd: '/work/app', surface: 'terminal', isInteractive: true });
+  return tab;
+}
+
+/** The tab's band above the prompt, once its hand read the runner's first ask and held it to count down. */
+async function countingBand($: Engine, tab: AskedTab): Promise<Mounted<'terminal', 'AbovePrompt'>> {
+  await tab.clock.advance(TICK);
+  return $.ui.mount({ plugin: 'teamrig', surface: 'terminal', component: 'AbovePrompt', props: ABOVE_PROMPT });
+}
+
+describe("the band before a refresh's /clear", () => {
+  test('counts down above the prompt, and Refresh now has the next ask claimed and /clear run', async ($, on) => {
+    const tab = await askedTab($, on);
+    const band = await countingBand($, tab);
+    expect(tab.claims).toEqual([['--hold']]);
+    expect((await band.find({ type: 'Text' }))?.text).toBe('teamrig: this session refreshes in 20 s, a fresh start from its handover');
+    expect((await band.findAll({ type: 'Button' })).map((button) => button.key)).toEqual(['refresh-now', 'hold-refresh']);
+    await band.press({ key: 'refresh-now' });
+    expect((await band.find({ type: 'Text' }))?.text).toBe('teamrig: this session is refreshing, a fresh start from its handover');
+    expect((await band.findAll({ type: 'Button' })).map((button) => button.key)).toEqual(['hold-refresh']);
+    tab.ask = askOf(2);
+    await tab.clock.advance(TICK);
+    expect(tab.claims).toEqual([['--hold'], []]);
+    expect(tab.clears).toBe(1);
+    expect(await band.find({ type: 'Button' })).toBeUndefined();
+  });
+
+  test("hides at the person's Hold, which holds the next ask", async ($, on) => {
+    const tab = await askedTab($, on);
+    const band = await countingBand($, tab);
+    await band.press({ key: 'hold-refresh' });
+    expect(await band.find({ type: 'Button' })).toBeUndefined();
+    expect(await band.drawn()).toMatchObject({ type: 'Text', children: [ENGINE_ROW] });
+    tab.ask = askOf(2);
+    await tab.clock.advance(TICK);
+    expect(tab.claims).toEqual([['--hold'], ['--hold']]);
+    expect(await band.find({ type: 'Button' })).toBeUndefined();
+    expect(tab.clears).toBe(0);
+  });
+
+  test("hides at the person's prompt, not at a background task's", async ($, on) => {
+    const tab = await askedTab($, on);
+    const band = await countingBand($, tab);
+    await $.prompt.submit({ text: 'the build finished', wait: false, origin: { kind: 'task-notification' } });
+    await tab.clock.settle();
+    expect(await band.find({ key: 'hold-refresh' })).not.toBeUndefined();
+    await $.prompt.submit({ text: 'and now?', wait: false, origin: { kind: 'composer' } });
+    await tab.clock.settle();
+    expect(await band.find({ type: 'Button' })).toBeUndefined();
+  });
+
+  test('yields to a survey', async ($, on) => {
+    const tab = await askedTab($, on);
+    await tab.clock.advance(TICK);
+    const band = await $.ui.mount({ plugin: 'teamrig', surface: 'terminal', component: 'AbovePrompt', props: { ...ABOVE_PROMPT, hasSurvey: true } });
+    expect(await band.find({ type: 'Button' })).toBeUndefined();
+    expect(await band.drawn()).toMatchObject({ type: 'Text', children: [ENGINE_ROW] });
   });
 });

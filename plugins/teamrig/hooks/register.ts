@@ -1,6 +1,8 @@
+import { atom, read, update } from 'claude-code';
 import type { Register, StateRef } from 'claude-code';
+import type { TeamrigBand } from '../types';
 import { installedPluginsFileOf } from '../dist/core/installed-plugins.js';
-import { ClearHand, liveAgentsOf, TICK_MS } from '../dist/mod/clear-hand.js';
+import { bandLine, ClearHand, liveAgentsOf, sameBand, TICK_MS } from '../dist/mod/clear-hand.js';
 import { REFRESH_TIMEOUT_MS, RefreshHand, refreshCliArgv } from '../dist/mod/refresh-hand.js';
 import { CHECK_MS, RELOAD_COMMAND, ReloadHand } from '../dist/mod/reload-hand.js';
 import {
@@ -33,6 +35,13 @@ import { WAKE_TICK_MS, WAKE_TIMEOUT_MS, WakeHand, wakeCliArgv } from '../dist/mo
  * without this mod (an older Claude Code, mods off) leaves the ask unclaimed, and the runner ends the process
  * instead, guarded only by what the transcript shows (helpers it started in the last 6 hours).
  *
+ * Before it claims, the hand holds the /clear for the person, as the ask carries the team's config: while the
+ * prompt box holds a draft; for `refresh.holdAfterActivityMinutes` after the person's last key in the prompt box or
+ * prompt (typed, or through Remote Control); for 10 minutes after the band's Hold. Then the band above the prompt
+ * counts `refresh.countdownSeconds` down, with `1: Refresh now` (the next ask is claimed, unless a draft or a live
+ * helper holds it) and `2: Hold 10 min`, which a bare digit in an empty prompt box presses. The band's value is the
+ * session's `band` (types/index.d.ts), written each time it changes, so the drawing redraws.
+ *
  * The reload after an install (`reload-hand.ts`): every 15 s the hand reads Claude Code's installed_plugins.json, and
  * once an install that applies to this tab changed and the file stood for 10 s, it runs /reload-plugins while no turn
  * runs: at most one per 5 minutes, never two for the same installs. It keeps its last reload in the session's state,
@@ -59,6 +68,13 @@ import { WAKE_TICK_MS, WAKE_TIMEOUT_MS, WakeHand, wakeCliArgv } from '../dist/mo
 /** The reload hand's last reload, kept in the session (types/index.d.ts). */
 const RELOAD_STATE: StateRef<'teamrig', 'reload'> = { plugin: 'teamrig', key: 'reload' };
 
+/** The band above the prompt while a refresh's /clear is near; null, no band (types/index.d.ts). */
+const BAND = atom({ plugin: 'teamrig', key: 'band' } as const, null);
+
+/** The band's Buttons, by the key a press names. */
+const REFRESH_NOW_KEY = 'refresh-now';
+const HOLD_KEY = 'hold-refresh';
+
 /** A tick worth a debug line: an ask acted on (cleared, held, declined, left while busy) or a failure, not the quiet ones. */
 function worthLogging(result: { readonly kind: string }): boolean {
   return result.kind !== 'no ask' && result.kind !== 'overlap';
@@ -81,6 +97,8 @@ function refreshWorthLogging(result: { readonly kind: string }): boolean {
 
 export const register: Register = (on) => {
   let clearHand: ClearHand | undefined;
+  /** Writes the band's value when the clear hand's view of it changed; set with the hand. */
+  let showBand: (() => Promise<void>) | undefined;
   let reloadHand: ReloadHand | undefined;
   let wakeHand: WakeHand | undefined;
   let refreshHand: RefreshHand | undefined;
@@ -114,11 +132,28 @@ export const register: Register = (on) => {
         now: () => Date.now(),
       });
       clearHand = active;
+      let shown: TeamrigBand | undefined;
+      const show = async (): Promise<void> => {
+        const view = active.band();
+        if (sameBand(view, shown)) {
+          return;
+        }
+        try {
+          await update($, BAND, () => view ?? null);
+          shown = view;
+        } catch (error) {
+          $.ui.log(`teamrig refresh band: ${String(error)}`, { to: 'debug' });
+        }
+      };
+      // A band the module loaded before this one left: this hand counts nothing yet.
+      await update($, BAND, () => null);
+      showBand = show;
       $.clock.every(TICK_MS, () => {
-        void active.tick().then((result) => {
+        void active.tick().then(async (result) => {
           if (worthLogging(result)) {
             $.ui.log(`teamrig refresh /clear: ${JSON.stringify(result)}`, { to: 'debug' });
           }
+          await show();
         });
       });
     }
@@ -208,6 +243,7 @@ export const register: Register = (on) => {
 
   on('turn.start', async (_$, e, next) => {
     clearHand?.turnStarted();
+    void showBand?.();
     reloadHand?.turnStarted(e.turnId);
     wakeHand?.turnStarted(e.turnId);
     return next(e);
@@ -218,6 +254,53 @@ export const register: Register = (on) => {
     reloadHand?.turnEnded(e.turnId);
     wakeHand?.turnEnded(e.turnId);
     return next(e);
+  });
+
+  // The person's keys in the prompt box and prompts hold the refresh's /clear a while, and hide its band.
+  on('prompt.edit', async (_$, e, next) => {
+    clearHand?.personActed();
+    void showBand?.();
+    return next(e);
+  });
+
+  on('prompt.submit', async (_$, e, next) => {
+    if (e.origin.kind === 'composer' || e.origin.kind === 'bridge') {
+      clearHand?.personActed();
+      void showBand?.();
+    }
+    return next(e);
+  });
+
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    const view = await read($, BAND);
+    const hand = clearHand;
+    if (e.props.hasSurvey || view === null || hand === undefined) {
+      return next(e);
+    }
+    const { Box, Button, Text } = $.ui.resolve(e);
+    const refreshNow = Button({
+      key: REFRESH_NOW_KEY,
+      hotkey: '1',
+      label: 'Refresh now',
+      plain: true,
+      onPress: () => {
+        hand.refreshNow();
+        void showBand?.();
+      },
+    });
+    const hold = Button({
+      key: HOLD_KEY,
+      hotkey: '2',
+      label: 'Hold 10 min',
+      plain: true,
+      onPress: () => {
+        hand.holdRefresh();
+        void showBand?.();
+      },
+    });
+    // Once the count ended the /clear comes with the next ask: Hold alone still stops it.
+    const buttons = view.kind === 'counting' ? [refreshNow, hold] : [hold];
+    return Box({ flexDirection: 'row', gap: 2, children: [Text({ children: bandLine(view) }), ...buttons] });
   });
 
   on('tool.call', async ($, e, next) => {

@@ -4,6 +4,7 @@ import { DEFAULT_REFRESH } from '../config/defaults.ts';
 import { personHoldOf } from '../refresh/restart.ts';
 import {
   askFileOf,
+  bandLine,
   ClearHand,
   DEFAULT_PERSON_HOLD,
   DIR_RETRY_MS,
@@ -13,6 +14,8 @@ import {
   outcomeFileOf,
   parseHandAsk,
   REFRESHING_SHOWN_MS,
+  sameBand,
+  type BandView,
   type ClearHandHost,
   type CliRun,
   type PersonHold,
@@ -423,6 +426,25 @@ describe('ClearHand: the person at the tab', () => {
     hand.refreshNow();
     host.time += REFRESHING_SHOWN_MS;
     assert.equal(hand.band(), undefined);
+  });
+});
+
+describe('the band', () => {
+  const twenty: BandView = { kind: 'counting', secondsLeft: 20 };
+  const refreshing: BandView = { kind: 'refreshing' };
+
+  it('reads the count, or that the /clear comes next', () => {
+    assert.equal(bandLine(twenty), 'teamrig: this session refreshes in 20 s, a fresh start from its handover');
+    assert.equal(bandLine(refreshing), 'teamrig: this session is refreshing, a fresh start from its handover');
+  });
+
+  it('is the same band only for the same count, both refreshing or both none', () => {
+    assert.ok(sameBand(undefined, undefined));
+    assert.ok(sameBand(twenty, { kind: 'counting', secondsLeft: 20 }));
+    assert.ok(sameBand(refreshing, { kind: 'refreshing' }));
+    for (const [a, b] of [[twenty, { kind: 'counting', secondsLeft: 19 }], [twenty, refreshing], [refreshing, twenty], [twenty, undefined], [undefined, refreshing]] as const) {
+      assert.ok(!sameBand(a, b), JSON.stringify([a, b]));
+    }
   });
 });
 
