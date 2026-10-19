@@ -1,9 +1,19 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_REGISTER } from '../config/defaults.ts';
-import { MemoryFiles } from '../testing/memory-files.ts';
+import { recordField, type JsonRecord } from '../core/guards.ts';
+import { parseObject, VERSION_FIELD } from '../core/jsonl.ts';
+import { layoutPaths } from '../register/layout.ts';
+import { RegisterPolicy } from '../register/policy.ts';
+import { Register, type SkillCatalog } from '../register/register.ts';
+import { JsonlEventLog } from '../register/store.ts';
+import { testConfig } from '../testing/config.ts';
+import { FakeClock } from '../testing/fake-clock.ts';
+import { InlineMutex } from '../testing/inline-mutex.ts';
+import { MemoryFiles, normalisePath } from '../testing/memory-files.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
-import { readWork, workWeights } from './work.ts';
+import { rotateRegister } from '../testing/rotation.ts';
+import { cachedWork, readWork, WORK_CACHE_FILE, workWeights } from './work.ts';
 
 const { priorities } = DEFAULT_REGISTER;
 
@@ -41,5 +51,174 @@ describe('readWork', () => {
   it('is empty when the register cannot be read, so the split falls back to shares', async () => {
     const files = new FaultyFiles(new MemoryFiles({ [PATH]: '' })).fail('read', PATH, systemError('EIO'));
     assert.deepEqual([...(await readWork(files, PATH, priorities))], []);
+  });
+});
+
+describe('cachedWork', () => {
+  const PATH = '/kit/teams/app/state/events.jsonl';
+  const CACHE = `/kit/teams/app/state/usage/${WORK_CACHE_FILE}`;
+  const { tail, snapshot } = layoutPaths(PATH);
+  const BOTH = [['alpha', 5], ['bravo', 3]];
+
+  class NoSkills implements SkillCatalog {
+    async exists(): Promise<boolean> {
+      return false;
+    }
+  }
+
+  /** Adds an open task to the register over `files`, each under a title of its own (the register refuses a duplicate). */
+  type AddTask = (owner: string, priority: number) => Promise<void>;
+
+  function registerOn(files: MemoryFiles): AddTask {
+    const register = new Register({
+      log: new JsonlEventLog(files, PATH),
+      mutex: new InlineMutex(),
+      clock: new FakeClock('2030-01-07T09:00:00.000Z'),
+      policy: new RegisterPolicy(testConfig({ sessions: ['lead', 'alpha', 'bravo', 'charlie'] })),
+      skills: new NoSkills(),
+      autoArchive: false,
+    });
+    let added = 0;
+    return async (owner, priority) => {
+      added += 1;
+      const verdict = await register.add('lead', { title: `Ship part ${added}`, description: 'what and why', owner, source: 'lead', priority });
+      assert.ok(verdict.ok, verdict.ok ? '' : verdict.error);
+    };
+  }
+
+  /** A register over `files` holding an open p1 task of alpha's and a p3 one of bravo's. */
+  async function team(files: MemoryFiles = new MemoryFiles()): Promise<{ readonly files: MemoryFiles; readonly add: AddTask }> {
+    const add = registerOn(files);
+    await add('alpha', 1);
+    await add('bravo', 3);
+    return { files, add };
+  }
+
+  /** The same files with every read of the register failing: only a cache hit still answers. */
+  function unreadable(files: MemoryFiles): FaultyFiles {
+    return new FaultyFiles(files).fail('read', tail, systemError('EIO')).fail('read', snapshot, systemError('EIO'));
+  }
+
+  /** The cache file as a record; it must hold one. */
+  function cacheIn(files: MemoryFiles): JsonRecord {
+    const cache = parseObject(files.get(CACHE) ?? '');
+    assert.ok(cache !== undefined, 'the cache is written');
+    return cache;
+  }
+
+  function keyIn(files: MemoryFiles): JsonRecord {
+    const key = recordField(cacheIn(files), 'key');
+    assert.ok(key !== undefined, 'the cache holds its key');
+    return key;
+  }
+
+  it('replays the register on a miss and keeps the reading with what it was read from', async () => {
+    const { files } = await team();
+    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities))], BOTH);
+    assert.deepEqual(cacheIn(files), {
+      [VERSION_FIELD]: 1,
+      key: { tail: await files.stamp(tail), snapshot: null, priorities: [1, 2, 3, 4, 5] },
+      work: { alpha: 5, bravo: 3 },
+    });
+  });
+
+  it('answers from the cache while the register and the priorities are unchanged, without reading the register', async () => {
+    const { files } = await team();
+    await cachedWork(files, PATH, CACHE, priorities);
+    assert.deepEqual([...(await cachedWork(unreadable(files), PATH, CACHE, priorities))], BOTH);
+  });
+
+  it('reads the register again after a write to it', async () => {
+    const { files, add } = await team();
+    await cachedWork(files, PATH, CACHE, priorities);
+    await add('charlie', 2);
+    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities))], [...BOTH, ['charlie', 4]]);
+  });
+
+  it('reads the register again after a rotation, which rewrites its tail and its snapshot', async () => {
+    const { files } = await team();
+    await cachedWork(files, PATH, CACHE, priorities);
+    await rotateRegister(files, PATH, { now: new Date('2030-01-08T09:00:00.000Z') });
+    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities))], BOTH);
+    const key = keyIn(files);
+    assert.deepEqual([key['tail'], key['snapshot']], [await files.stamp(tail), await files.stamp(snapshot)]);
+    assert.notEqual(key['snapshot'], null);
+  });
+
+  it('weighs the work again when the priorities change', async () => {
+    const { files } = await team();
+    await cachedWork(files, PATH, CACHE, priorities);
+    const three = [{ id: 1, name: 'high' }, { id: 2, name: 'medium' }, { id: 3, name: 'low' }];
+    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, three))], [['alpha', 3], ['bravo', 1]]);
+  });
+
+  /** The cache a call just wrote, its key matching the register, made over by `damage`. */
+  type Damage = (cache: JsonRecord, key: JsonRecord) => string;
+  const DAMAGES: readonly (readonly [string, Damage])[] = [
+    ['damaged', (cache) => JSON.stringify(cache).slice(0, -2)],
+    ['in another format', (cache) => JSON.stringify({ ...cache, [VERSION_FIELD]: 2, work: {} })],
+    ['without its key', (cache) => JSON.stringify({ ...cache, key: 'none' })],
+    ['without its work', (cache) => JSON.stringify({ ...cache, work: 'none' })],
+    ['with a weight that is not a number', (cache) => JSON.stringify({ ...cache, work: { alpha: 'five' } })],
+    ['with a tail stamp that is not text', (cache, key) => JSON.stringify({ ...cache, key: { ...key, tail: 7 } })],
+    ['with a snapshot stamp that is not text', (cache, key) => JSON.stringify({ ...cache, key: { ...key, snapshot: 7 } })],
+    ['with priorities that are not numbers', (cache, key) => JSON.stringify({ ...cache, key: { ...key, priorities: ['p1'] } })],
+  ];
+  for (const [what, damage] of DAMAGES) {
+    it(`reads the register again and rewrites a cache ${what}`, async () => {
+      const { files } = await team();
+      await cachedWork(files, PATH, CACHE, priorities);
+      await files.write(CACHE, damage(cacheIn(files), keyIn(files)));
+      assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities))], BOTH);
+      assert.deepEqual(cacheIn(files)['work'], { alpha: 5, bravo: 3 });
+    });
+  }
+
+  it('takes the stamps before it reads, so a write that lands just after the read is read on the next call', async () => {
+    /** Runs a write right after the next read of the register's tail returns. */
+    class WriteAfterRead extends MemoryFiles {
+      private pending: (() => Promise<void>) | undefined;
+
+      afterNextTailRead(write: () => Promise<void>): void {
+        this.pending = write;
+      }
+
+      override async read(path: string): Promise<string | undefined> {
+        const text = await super.read(path);
+        const write = this.pending;
+        if (write !== undefined && normalisePath(path) === normalisePath(tail)) {
+          this.pending = undefined;
+          await write();
+        }
+        return text;
+      }
+    }
+    const files = new WriteAfterRead();
+    const { add } = await team(files);
+    files.afterNextTailRead(() => add('charlie', 2));
+    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities))], BOTH);
+    assert.deepEqual([...(await cachedWork(files, PATH, CACHE, priorities))], [...BOTH, ['charlie', 4]]);
+  });
+
+  it('is empty and caches nothing when the register cannot be read', async () => {
+    const { files } = await team();
+    assert.deepEqual([...(await cachedWork(unreadable(files), PATH, CACHE, priorities))], []);
+    assert.equal(files.get(CACHE), undefined);
+  });
+
+  it('reads the register uncached when a stamp cannot be taken', async () => {
+    const { files } = await team();
+    const faulty = new FaultyFiles(files).fail('stamp', snapshot, systemError('EIO'));
+    assert.deepEqual([...(await cachedWork(faulty, PATH, CACHE, priorities))], BOTH);
+    assert.equal(files.get(CACHE), undefined);
+  });
+
+  it('takes a cache that cannot be read for a missing one, and still answers when the cache cannot be written', async () => {
+    const { files } = await team();
+    await cachedWork(files, PATH, CACHE, priorities);
+    await files.write(CACHE, JSON.stringify({ ...cacheIn(files), work: {} }));
+    const faulty = new FaultyFiles(files).fail('read', CACHE, systemError('EIO')).fail('write', CACHE, systemError('EACCES'));
+    assert.deepEqual([...(await cachedWork(faulty, PATH, CACHE, priorities))], BOTH);
+    assert.deepEqual(cacheIn(files)['work'], {});
   });
 });

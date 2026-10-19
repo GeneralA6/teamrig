@@ -1,7 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import { WORK_CACHE_FILE } from '../budget/work.ts';
 import type { JsonRecord } from '../core/guards.ts';
+import { parseObject } from '../core/jsonl.ts';
 import { ASK_REFUSED_NOTE } from '../hooks/permission.ts';
 import { helperLaunchReminder } from '../rules/helper-default.ts';
 import { APP, CliHarness, contextOf, decisionOf, reasonOf, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
@@ -258,5 +260,15 @@ describe('the budget in the hooks', () => {
     assert.deepEqual((await kit.run(['hook', 'helper-gate'], { stdin: JSON.stringify({ session_id: STRANGER_TAB, cwd: elsewhere, ...AGENT }) })).stdout, []);
     // A bound tab stays a team session in any folder; with no transcript to meter, only the reminder comes.
     remindedOnly(await kit.run(['hook', 'helper-gate'], { stdin: JSON.stringify({ session_id: ALPHA_TAB, cwd: elsewhere, ...AGENT }) }));
+  });
+
+  it("keeps the register's work in the team's usage folder, and reads the register again once it changes", async () => {
+    const { kit, hook } = await world({}, 10_000_000, 30);
+    const workCached = (): unknown => parseObject(kit.files.get(join(TEAM_HOME, 'state', 'usage', WORK_CACHE_FILE)) ?? '')?.['work'];
+    await hook('stop', ALPHA_TAB);
+    assert.deepEqual(workCached(), {});
+    ok(await kit.run(['add', '--title', 'Ship the release', '--description', 'what and why', '--priority', 'p1', '--owner', 'alpha', '--session', 'lead']));
+    await hook('stop', ALPHA_TAB);
+    assert.deepEqual(workCached(), { alpha: 5 });
   });
 });
