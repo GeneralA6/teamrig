@@ -1,6 +1,7 @@
 import { errorMessage } from "../../core/guards.js";
 import { activeHires, HiringLog } from "../../hiring/log.js";
-import { ownsOpenTask, retireAskDue, retireAskReason, RetireAskStore } from "../../hiring/retire-ask.js";
+import { SessionAskStore } from "../../core/session-asks.js";
+import { ownsOpenTask, retireAskDue, retireAskReason } from "../../hiring/retire-ask.js";
 import { JsonlEventLog } from "../../register/store.js";
 import { RefreshStore } from "../../refresh/store.js";
 /**
@@ -19,7 +20,7 @@ export async function markRetireAsk(runtime, config, paths, written) {
     try {
         const { records } = await new HiringLog(runtime.files, paths.hires).read();
         if (retireAskDue({ config, hires: activeHires(records), task, tasks: state.tasks.values() })) {
-            await new RetireAskStore(runtime.files, paths.retireAsks).set(task.owner, { task: task.id, at: new Date(runtime.clock.now()).toISOString() });
+            await new SessionAskStore(runtime.files, paths.retireAsks).set(task.owner, { task: task.id, at: new Date(runtime.clock.now()).toISOString() });
         }
     }
     catch (error) {
@@ -35,7 +36,7 @@ export async function retireAskReasonOf(runtime, config, paths, id) {
     if (config.hiring.policy !== 'automatic') {
         return undefined;
     }
-    const store = new RetireAskStore(runtime.files, paths.retireAsks);
+    const store = new SessionAskStore(runtime.files, paths.retireAsks);
     const ask = await store.get(id);
     if (ask === undefined) {
         return undefined;
