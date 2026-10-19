@@ -107,7 +107,7 @@ describe('teamrig deploys', () => {
     await kit.files.append(`${LOCK}.shared/other.json`, JSON.stringify(share));
     await kit.files.append(`${LOCK}.shared/gone.json`, JSON.stringify({ ...share, token: 'gone', pid: 7 }));
     const { stdout } = await kit.run(['deploys'], { integrateGit: new FakeIntegrateGit(), sessionProcesses: otherRuns() });
-    assert.deepEqual(stdout.slice(0, 2), ['host lock: free', 'sharing the host: 1 small step: po (heavy: specs) since 2030-01-08 09:50']);
+    assert.deepEqual(stdout.slice(0, 2), ['host lock: free', 'sharing the host: 1 small step: po (heavy: specs) since 2030-01-08 09:50 UTC']);
   });
 
   it('says what it cannot tell: a lock being written, an unknown reset, unreadable claims, a refused or failed read and no roll block', async () => {
