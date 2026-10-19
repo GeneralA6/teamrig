@@ -2022,8 +2022,8 @@ last line says how many more failures the log holds.
 
 ## Budget
 
-These commands measure and show only; the hooks warn a session past its daily budget, tell the lead and can hold
-its helper launches ([how](hooks.md#the-daily-budget-warnings-and-the-helper-gate)). W = weighted tokens (input 1, cache writes
+These commands measure and show only; the hooks warn a session past its daily budget and, once the team has no room
+left today, tell the lead and can hold its helper launches ([how](hooks.md#the-daily-budget-warnings-and-the-helper-gate)). W = weighted tokens (input 1, cache writes
 1.25 to 2, cache reads 0.1, output 5), counted from the Claude Code transcripts under `~/.claude/projects`
 (`$CLAUDE_CONFIG_DIR/projects` when set). A transcript counts for a session once its tab ran
 `teamrig inbox read --session <id>`, or when the user titled it with the session's id or name; the rest counts
@@ -2044,8 +2044,11 @@ budget is never a fixed number: at every reading, what is left to `budget.target
 time to the pace end (`budget.paceEndHoursBeforeReset` before the reset; quiet hours count at
 `budget.quietHours.paceWeight`), times today's active time. What the lead's lifts leave is split among the other
 sessions by `budget.sessions.<id>.share` times their queued work. Short by
-default: the busiest 7 sessions, then who is past the daily budget. A session id or name shows that session by
-day.
+default: the busiest 7 sessions, then who is past the daily budget. A session past its part is held only while the
+team has no room today: everyone's use today, the outside's included, at or past the in-day pace (today's budget
+times the share of today's active time gone by). While the team has room, they are named apart as not held:
+`Past their part, not held while the team has room today (3.0% of the week used, below its in-day pace of 4.7%):
+api.` A session id or name shows that session by day.
 
 Flags:
 
@@ -2110,11 +2113,12 @@ its part of that ([teamrig budget](#teamrig-budget)).
 Flags:
 
 - `--session <id|name>`: the caller; it must be the lead.
-- `--over <action>`: past a session's daily budget, `warn` shows the lines only, `ask-lead` also writes the lead an
+- `--over <action>`: for a session its budget holds (past its daily budget while the team has no room today),
+  `warn` shows the lines only, `ask-lead` also writes the lead an
   inbox line, `ask` also asks the person before a helper launch, and `block` refuses helper launches
   (`budget.overAction`).
-- `--escalate <mode>`: when that action applies: `session` as soon as the session is over its budget,
-  `session-and-fleet` only when the team is also ahead of its pace line (`budget.escalate`).
+- `--escalate <mode>`: when that action applies to a held session: `session` at once, `session-and-fleet` only
+  when the team is also ahead of its pace line (`budget.escalate`).
 - `--quiet <HH:MM-HH:MM>|off`: quiet hours, in UTC, in which the action applies on its own while nobody watches;
   `off` removes them. New quiet hours also need `--quiet-action` (`budget.quietHours`).
 - `--quiet-action <action>`: the action in quiet hours, one of the `--over` actions.
@@ -2421,8 +2425,8 @@ Output: a JSON object whose `hookSpecificOutput.additionalContext` holds the rul
 
 At each prompt, shows the inbox lines this Claude Code session has not been shown yet (at most 5 lines and 1,500
 characters, each once), binds a tab started by hand to the session its Claude Code title names, records a
-rename, and tells the model once per level when it is past its daily budget while the team is ahead of its pace
-line. See [Hooks and permissions](hooks.md#each-prompt).
+rename, and tells the model once per level when it is past its daily budget while the team has no room today and,
+by default, is ahead of its pace line. See [Hooks and permissions](hooks.md#each-prompt).
 
 Flags: none.
 
@@ -2575,7 +2579,8 @@ Output: nothing below or past the threshold, for a helper's call, or outside a t
 
 Before an Agent (or Task) call: gives the model rule 8's helper default (work in your own session; a helper's
 tokens cost `budget.subagentWeight` times yours) and, with the budget on, asks the person, or refuses, when the session is past its
-daily budget while the team is ahead of its pace line, or in quiet hours, as `budget.overAction` and
+daily budget while the team has no room today and, by default, is ahead of its pace line, or in quiet hours, as
+`budget.overAction` and
 `budget.quietHours` say. The lead's helpers and a lifted session's always go. See
 [Hooks and permissions](hooks.md#the-daily-budget-warnings-and-the-helper-gate).
 
@@ -2729,8 +2734,8 @@ Output: `taken` (the mod then runs `/clear`), `held` (with `--hold`) or `decline
 Run by the plugin's mod while its tab is idle at the prompt, when the register changed, a batch falls due or 10
 minutes passed (it looks every 15 seconds). It decides whether new work handed to the tab's session should wake
 it, and logs each wake with its cost to `<team>/state/wakes.jsonl`. A task wakes the session once, when it is the
-session's, open or in progress, at `wake.priority` or more urgent (p1 by default; p1 only while the session is
-past its daily budget or in quiet hours), with every task it comes after finished, and changed by someone else
+session's, open or in progress, at `wake.priority` or more urgent (p1 by default; p1 only while the session's
+budget holds it, past its daily budget with no room left in the team's day, or in quiet hours), with every task it comes after finished, and changed by someone else
 since the session last touched it. Tasks handed within `wake.batchSeconds` wake it once, and wakes are
 `wake.minGapMinutes` apart. The first check in a tab takes the work already there as seen. With
 `wake.dayStartUtc` set, a session with work it can start (any priority) and no turn since that time gets one wake
