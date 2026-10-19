@@ -319,11 +319,21 @@ class PushJudge {
  * push and a doubt are not changed by it.
  */
 export function evaluatePushes(command, context) {
+    if (context.protectedBranches.length === 0) {
+        return { decision: 'allow', updates: [] };
+    }
+    return judgePushes(findGitInvocations(command, finderContextOf(context)), context);
+}
+/** How the guard's finder reads a line for `context`. */
+export function finderContextOf(context) {
+    return { cwd: context.cwd, home: context.home, dialect: context.dialect, git: context.repo };
+}
+/** {@link evaluatePushes} for the git commands already found in a line, so a caller that also reads them finds them once. */
+export function judgePushes(found, context) {
     const protectedBranches = new Set(context.protectedBranches);
     if (protectedBranches.size === 0) {
         return { decision: 'allow', updates: [] };
     }
-    const found = findGitInvocations(command, { cwd: context.cwd, home: context.home, dialect: context.dialect, git: context.repo });
     const moves = new BranchMoves(protectedBranches);
     const judge = new PushJudge(context.repo, protectedBranches);
     let protectedPush;

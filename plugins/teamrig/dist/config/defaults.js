@@ -60,6 +60,8 @@ export const DEFAULT_LOCK = { ttlMs: 30_000, pollMs: 50, waitMs: 20_000 };
 export const DEFAULT_PUSH_GUARD = { protectedBranches: ['main', 'master'], pushToProtected: 'ask' };
 /** Refused by default: a helper's `npx eslint` once fetched and ran an unvetted package (T450, 10-16). */
 export const DEFAULT_PACKAGE_GUARD = { adHocRunners: 'deny' };
+/** Refused by default: the hooks are the repository's own checks, and a session that skips them ships what they would catch. */
+export const DEFAULT_COMMIT_GUARD = { skipHooks: 'deny' };
 /** Off, and trusting no prefix, until a team opts in. */
 export const DEFAULT_READONLY_SHELL = { enabled: false, allowPrefixes: [] };
 /** Tests: a test folder, `*.test.*` and `*.spec.*` files, and pytest's `test_*.py`. `warn` only adds to a push the guard already asks about. */

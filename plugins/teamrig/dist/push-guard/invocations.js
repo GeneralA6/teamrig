@@ -23,7 +23,9 @@ const GIT_VALUED_OPTIONS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--n
 /** Config sections that change which remote branch a push updates. */
 const PUSH_CONFIG = /^(?:remote|push|branch)\./i;
 /** `git config` forms that read or remove, never set. */
-const CONFIG_READS = new Set(['--get', '--get-all', '--get-regexp', '--get-urlmatch', '--list', '-l', '--unset', '--unset-all', '--remove-section', '--rename-section', '-e', '--edit']);
+const CONFIG_READS = new Set(['--get', '--get-all', '--get-regexp', '--get-urlmatch', '--list', '-l', '--remove-section', '--rename-section', '-e', '--edit']);
+/** `git config` options that unset the key they name. */
+const CONFIG_UNSETS = new Set(['--unset', '--unset-all']);
 const CONFIG_VALUED = new Set(['-f', '--file', '--blob', '--type', '--default', '--comment', '--value']);
 const CONFIG_SUBCOMMANDS = new Set(['get', 'list', 'unset', 'edit', 'rename-section', 'remove-section']);
 const FILTER_OPTIONS = new Set(['--setup', '--env-filter', '--tree-filter', '--index-filter', '--msg-filter', '--commit-filter', '--parent-filter', '--tag-name-filter']);
@@ -35,6 +37,13 @@ const DIALECT_NAMES = { bash: 'bash', powershell: 'PowerShell', cmd: 'cmd' };
 const GIT_DIR_VARIABLES = /^GIT_(?:DIR|COMMON_DIR)$/i;
 /** Variables that change the config git reads. */
 const GIT_CONFIG_VARIABLES = /^GIT_CONFIG/i;
+/** The config key that moves git's hooks folder; `-c`, `GIT_CONFIG*` and `git config` keys are matched lowercased. */
+export const HOOKS_PATH_KEY = 'core.hookspath';
+/**
+ * The variables that may turn git's hooks off: husky's switches, which its hooks read (`HUSKY=0` from husky 5 on,
+ * `HUSKY_SKIP_HOOKS` before), and those that may set `core.hooksPath`.
+ */
+const HOOKS_VARIABLES = /^(?:HUSKY|HUSKY_SKIP_HOOKS|GIT_CONFIG_PARAMETERS|GIT_CONFIG_KEY_\d+)$/i;
 /** Bash builtins that set variables for the rest of the shell, such as `export GIT_DIR=x`. */
 const BASH_SETTERS = new Set(['export', 'declare', 'typeset', 'readonly', 'local']);
 /** PowerShell commands that set an `env:` item. */
@@ -75,6 +84,70 @@ export function shellVariables(words, dialect) {
             return head.text.toLowerCase() === 'set' ? rest.flatMap(assigned) : [];
     }
 }
+/**
+ * A launcher's variable as written when it may turn git's hooks off: `HUSKY=0`, a non-empty `HUSKY_SKIP_HOOKS`, a
+ * `GIT_CONFIG_PARAMETERS` or `GIT_CONFIG_KEY_<n>` that names `core.hooksPath`, or one of them only known when it runs.
+ */
+function hooksVariable({ name, value }) {
+    if (!HOOKS_VARIABLES.test(name)) {
+        return undefined;
+    }
+    let off;
+    if (value.dynamic) {
+        off = true;
+    }
+    else if (GIT_CONFIG_VARIABLES.test(name)) {
+        off = value.text.toLowerCase().includes(HOOKS_PATH_KEY);
+    }
+    else {
+        off = name.toUpperCase() === 'HUSKY' ? value.text === '0' : value.text !== '';
+    }
+    return off ? `${name}=${value.text}` : undefined;
+}
+/** The first of `env` that may turn git's hooks off; see {@link hooksVariable}. */
+function hooksVariableOf(env) {
+    return env.map(hooksVariable).find((setting) => setting !== undefined);
+}
+/**
+ * What `git config <args>` writes, in either form (`git config [--unset] key [value]` or `git config set|unset key
+ * [value]`); undefined for a read, an edit, a section change or a line with no key.
+ */
+export function configWrite(args) {
+    const operands = [];
+    let unset = false;
+    for (let index = 0; index < args.length; index += 1) {
+        const word = args[index] ?? staticWord('');
+        const [name, attached] = splitOption(word.text);
+        if (CONFIG_READS.has(name)) {
+            return undefined;
+        }
+        if (CONFIG_UNSETS.has(name)) {
+            unset = true;
+        }
+        else if (word.text.startsWith('-')) {
+            index += CONFIG_VALUED.has(name) && attached === undefined ? 1 : 0;
+        }
+        else {
+            operands.push(word);
+        }
+    }
+    const [first, ...rest] = operands;
+    if (first?.text === 'unset') {
+        const [key] = rest;
+        return key === undefined ? undefined : { kind: 'unset', key };
+    }
+    if (first !== undefined && CONFIG_SUBCOMMANDS.has(first.text)) {
+        return undefined;
+    }
+    const [key, value] = first?.text === 'set' ? rest : operands;
+    if (key === undefined) {
+        return undefined;
+    }
+    if (unset) {
+        return { kind: 'unset', key };
+    }
+    return value === undefined ? undefined : { kind: 'set', key, value };
+}
 /** Quotes a word for a bash command line, so a git shell alias gets its arguments as typed. */
 function shellQuote(word) {
     return word.dynamic ? word.text : `'${word.text.replace(/'/g, `'\\''`)}'`;
@@ -109,6 +182,11 @@ class GitInvocationFinder {
     shellMovesRepo = false;
     /** True once the line sets a `GIT_CONFIG*` variable in its shell. */
     shellOverridesConfig = false;
+    /**
+     * What turns git's hooks off for every git run of the shell being read: a hooks variable (see `HOOKS_VARIABLES`)
+     * set in it earlier in the line, or one its launcher or parent git set, which a child shell inherits.
+     */
+    shellHooksOverride;
     context;
     constructor(context) {
         this.context = context;
@@ -165,6 +243,7 @@ class GitInvocationFinder {
         for (const name of shellVariables(words, dialect)) {
             this.shellMovesRepo ||= GIT_DIR_VARIABLES.test(name);
             this.shellOverridesConfig ||= GIT_CONFIG_VARIABLES.test(name);
+            this.shellHooksOverride ??= HOOKS_VARIABLES.test(name) ? `${name} set in its shell` : undefined;
         }
         if (location.apply(words, dialect)) {
             return undefined;
@@ -182,7 +261,7 @@ class GitInvocationFinder {
                 if (launched.script.dynamic && launched.dialect !== dialect) {
                     this.doubt(`it hands ${DIALECT_NAMES[launched.dialect]} a command line built from ${DIALECT_NAMES[dialect]} variables`, true);
                 }
-                this.visitScript(launched.script, launched.dialect, inner, depth + 1);
+                this.inheriting(hooksVariableOf(launched.env), launched.sameShell, () => this.visitScript(launched.script, launched.dialect, inner, depth + 1));
                 if (launched.sameShell) {
                     location.adopt(inner);
                 }
@@ -204,9 +283,22 @@ class GitInvocationFinder {
         return launched;
     }
     /**
+     * Runs `visit`, a read of a script whose shell inherits `hooksOverride` (from its launcher's variables or the git
+     * that runs it) on top of its parent's. A child shell's own settings end with it; one in the same shell stays.
+     */
+    inheriting(hooksOverride, sameShell, visit) {
+        const parent = this.shellHooksOverride;
+        this.shellHooksOverride ??= hooksOverride;
+        visit();
+        if (!sameShell) {
+            this.shellHooksOverride = parent;
+        }
+    }
+    /**
      * What a git run inherits from its shell and from the variables its launcher sets: `GIT_DIR` moves it,
-     * `GIT_CONFIG*` overrides config. One set in the shell earlier in the line is treated as unknown: the guard
-     * resolves an earlier literal only where a word reads it (`$NAME`), never in the environment git inherits.
+     * `GIT_CONFIG*` overrides config, a hooks variable may turn its hooks off. One set in the shell earlier in the
+     * line is treated as unknown: the guard resolves an earlier literal only where a word reads it (`$NAME`), never
+     * in the environment git inherits.
      */
     gitState(dir, env) {
         let gitDir = this.shellMovesRepo ? UNKNOWN_WORD : undefined;
@@ -217,7 +309,8 @@ class GitInvocationFinder {
             }
             overridden ||= GIT_CONFIG_VARIABLES.test(name);
         }
-        return { dir, gitDir, configOverride: overridden, aliases: new Map(), aliasesUnknown: overridden };
+        const hooksOverride = hooksVariableOf(env) ?? this.shellHooksOverride;
+        return { dir, gitDir, configOverride: overridden, aliases: new Map(), aliasesUnknown: overridden, hooksOverride };
     }
     /** The folder git runs in: its `-C` folder, moved to its git dir when it has one. */
     repoDir(state) {
@@ -229,7 +322,7 @@ class GitInvocationFinder {
     }
     /** Reads git's global options, then runs the subcommand: a builtin, or an alias to expand. */
     visitGit(words, start, depth, aliasDepth) {
-        let { dir, gitDir, configOverride, aliasesUnknown } = start;
+        let { dir, gitDir, configOverride, aliasesUnknown, hooksOverride } = start;
         const aliases = new Map(start.aliases);
         let index = 0;
         for (; index < words.length; index += 1) {
@@ -263,12 +356,14 @@ class GitInvocationFinder {
                 if (key === undefined || (value.dynamic && /[$`%]/.test(key))) {
                     configOverride = true;
                     aliasesUnknown = true;
+                    hooksOverride ??= `${name} ${value.text}`;
                 }
                 else if (key.startsWith('alias.')) {
                     aliases.set(key.slice('alias.'.length), value.dynamic || name === '--config-env' ? undefined : (setting?.[2] ?? 'true'));
                 }
                 else {
                     configOverride ||= PUSH_CONFIG.test(key);
+                    hooksOverride ??= key === HOOKS_PATH_KEY ? `${name} ${value.text}` : undefined;
                 }
             }
         }
@@ -280,10 +375,11 @@ class GitInvocationFinder {
             this.doubt('the git command it runs is only known when it runs', true);
             return;
         }
-        const state = { dir, gitDir, configOverride, aliases, aliasesUnknown };
+        const state = { dir, gitDir, configOverride, aliases, aliasesUnknown, hooksOverride };
         const args = words.slice(index + 1);
         if (BUILTINS.has(sub.text)) {
-            this.builtin({ dir: this.repoDir(state), subcommand: sub.text, args, configOverride }, depth);
+            const hooks = hooksOverride === undefined ? {} : { hooksOverride };
+            this.builtin({ dir: this.repoDir(state), subcommand: sub.text, args, configOverride, ...hooks }, depth);
         }
         else {
             this.alias(sub.text, args, state, depth, aliasDepth);
@@ -291,6 +387,10 @@ class GitInvocationFinder {
     }
     builtin(invocation, depth) {
         this.invocations.push(invocation);
+        this.inheriting(invocation.hooksOverride, false, () => this.runsCommands(invocation, depth));
+    }
+    /** Reads the commands a git builtin runs itself, and records a `git config` alias; they inherit its hooks override. */
+    runsCommands(invocation, depth) {
         const { args, dir } = invocation;
         switch (invocation.subcommand) {
             case 'config':
@@ -356,7 +456,7 @@ class GitInvocationFinder {
         this.mention(value);
         if (value.startsWith('!')) {
             const script = [value.slice(1), ...args.map(shellQuote)].join(' ');
-            this.visitScript(staticWord(script), 'bash', new Location(repoDir, this.context.home), depth + 1);
+            this.inheriting(state.hooksOverride, false, () => this.visitScript(staticWord(script), 'bash', new Location(repoDir, this.context.home), depth + 1));
             return;
         }
         const expanded = parseShell(value, 'bash').commands.flatMap((command) => command.words);
@@ -364,27 +464,9 @@ class GitInvocationFinder {
     }
     /** Records `git config [set] alias.x value`, so a later `git x` in the same line expands. */
     registerAlias(args) {
-        const operands = [];
-        for (let index = 0; index < args.length; index += 1) {
-            const word = args[index] ?? staticWord('');
-            const [name, attached] = splitOption(word.text);
-            if (CONFIG_READS.has(name)) {
-                return;
-            }
-            if (word.text.startsWith('-')) {
-                index += CONFIG_VALUED.has(name) && attached === undefined ? 1 : 0;
-            }
-            else {
-                operands.push(word);
-            }
-        }
-        const [first, ...rest] = operands;
-        if (first !== undefined && CONFIG_SUBCOMMANDS.has(first.text)) {
-            return;
-        }
-        const [key, value] = first?.text === 'set' ? rest : operands;
-        if (key !== undefined && value !== undefined && !key.dynamic && /^alias\./i.test(key.text)) {
-            this.lineAliases.set(key.text.slice('alias.'.length).toLowerCase(), value.dynamic ? undefined : value.text);
+        const write = configWrite(args);
+        if (write?.kind === 'set' && !write.key.dynamic && /^alias\./i.test(write.key.text)) {
+            this.lineAliases.set(write.key.text.slice('alias.'.length).toLowerCase(), write.value.dynamic ? undefined : write.value.text);
         }
     }
     /** `git submodule [options] foreach [--recursive] <command>`: one word is a shell command, more are a program and its arguments. */
