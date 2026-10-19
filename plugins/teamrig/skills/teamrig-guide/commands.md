@@ -2789,8 +2789,10 @@ never both cleared and ended. Stdin: `{"session_id": "<Claude Code session id>"}
 Flags:
 
 - `--hold`: hold the ask instead of claiming it, as the mod does while Claude Code lists a live agent of the
-  session (or will not list them). The request stays pending: the restart ends nothing and asks again once the
-  session is quiet.
+  session (or will not list them), and while it holds the `/clear` for the person at the tab: a draft in the
+  prompt box, their recent keys or prompts, their Hold, or the band's count
+  ([hooks.md](hooks.md#the-mod-the-refreshs-clear)). The request stays pending: the restart ends nothing and asks
+  again once the session is quiet.
 
 Example:
 
@@ -2799,6 +2801,42 @@ teamrig hook clear-claim < session.json
 ```
 
 Output: `taken` (the mod then runs `/clear`), `held` (with `--hold`) or `declined: <why>`, exit 0.
+
+### teamrig hook refresh-mid
+
+Run by the plugin's mod after a tool result of the main conversation, once the context the last reply read
+reached the size this hook last named. It asks for the handover within the turn the way the Stop hook asks at a
+turn's end, for the context's size only, and holds the ask while background work the session started still runs
+([hooks.md](hooks.md#the-mod-the-refresh-within-a-turn)). Stdin: `{"session_id", "cwd", "tokens"}`.
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig hook refresh-mid < tool-result.json
+```
+
+Output: one JSON line, exit 0: `{"kind":"ask","text":"<the ask>","nextAt":<tokens>}`, which the mod adds after the
+tool's result, or `{"kind":"wait","nextAt":<tokens>}`: the size to check again at (`null`: the refresh is off, or
+the tab is no team session).
+
+### teamrig hook compact-check
+
+Run by the plugin's mod before Claude Code compacts the main conversation on its own. It answers skip while the
+session's handover is asked for or written and Claude Code's estimate of the context is under
+`refresh.compactCeilingTokens`, else go; anything it cannot read lets the compaction go. Stdin:
+`{"session_id", "cwd", "tokens", "window"}`.
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig hook compact-check < compaction.json
+```
+
+Output: one JSON line, exit 0: `{"kind":"go"}` or `{"kind":"skip","reason":"<why>"}`.
 
 ### teamrig hook wake-check
 
