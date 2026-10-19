@@ -3,7 +3,7 @@ import { KIT_NAME } from "../../core/home.js";
 import { FileLock } from "../../core/lock.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { activeHires, HiringLog } from "../../hiring/log.js";
-import { RetireAskStore } from "../../hiring/retire-ask.js";
+import { SessionAskStore } from "../../core/session-asks.js";
 import { planRetire } from "../../hiring/retire.js";
 import { postLine } from "../../inbox/inbox.js";
 import { ACTIVE_STATUSES } from "../../register/model.js";
@@ -109,7 +109,7 @@ export async function retire(args, runtime) {
         await log.append(plan.value.retire);
         const session = plan.value.retire.session;
         // A due ask to retire is done with, and would ask the session again if it were hired back.
-        await new RetireAskStore(files, kit.paths.retireAsks).clear(session);
+        await new SessionAskStore(files, kit.paths.retireAsks).clear(session);
         runtime.out.stdout(`RETIRED ${what}; the old config is at ${backup}`);
         runtime.out.stdout(`NEXT its records stay readable by its id (${KIT_NAME} list --session ${session} --all)${by === session ? '; finish this turn and close the tab' : '; close its tab if it is open'}`);
         return EXIT.ok;

@@ -31,6 +31,7 @@ import { readHirePct } from "../hire-cost.js";
 import { snapshotDirOf } from "./budget.js";
 import { inboxDepsOf } from "./inbox.js";
 import { markBoundary } from "./refresh.js";
+import { markKeepWorkingAsk } from "./keep-working.js";
 import { markRetireAsk } from "./retire-ask.js";
 async function teamOf(runtime, kit, access) {
     const config = requireConfig(kit, runtime, access);
@@ -216,11 +217,15 @@ export async function set(args, runtime) {
     if (verdict.ok && (input.status === 'done' || input.status === 'dropped')) {
         await markRetireAsk(runtime, config, paths, verdict.value);
     }
+    if (verdict.ok && input.status === 'waiting') {
+        await markKeepWorkingAsk(runtime, paths, verdict.value);
+    }
     return exit;
 }
 /**
  * `set --ask`: the asked task and the wait on it in one write, its line printed above the `SET` line; the asked
  * session hears its task is its own (unless the caller asked itself), and the lead hears of a wait on it or the owner.
+ * The caller's task now waits, so its next stop sends it to its other work (keep-working.ts).
  */
 async function setAsking(runtime, team, by, id, ask, input) {
     const verdict = await team.register.ask(by, id, ask, input);
@@ -233,6 +238,9 @@ async function setAsking(runtime, team, by, id, ask, input) {
         await tellAssigned(runtime, team, by, verdict.value.asked);
     }
     await tellLeadOfWaits(runtime, team, by, verdict);
+    if (verdict.ok) {
+        await markKeepWorkingAsk(runtime, team.paths, verdict.value);
+    }
     return exit;
 }
 /**

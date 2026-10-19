@@ -103,6 +103,7 @@ export function teamPaths(kitHome, team, userHome, overrides = {}) {
         hires: join(state, 'hires.jsonl'),
         hiresLock: join(state, 'hires.lock'),
         retireAsks: join(state, 'retire-asks'),
+        keepWorkingAsks: join(state, 'keep-working-asks'),
         warn: join(state, 'usage', 'warn'),
         logs: join(state, 'logs'),
         githubSync: join(state, 'github-sync.json'),
