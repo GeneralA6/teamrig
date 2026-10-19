@@ -105,6 +105,8 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
   inbox add --to <id|name|team/id> --text "<one line>"
       team/id: a lead may write to its parent team's lead and its child teams' leads
   who [<id|name|role>]         the name to message a session by (no argument: every session)
+  sessions                     each session: running (and the MB its Claude Code's processes hold), closed
+      or never recorded; then the host's free memory and commit charge
   rename <id|name> <new-name>  records a session's new name; its old names keep finding it
       (the session itself or the lead)
   hire <id> --scope "<its job>" --reason "<why>" [--name <name>] [--model <model>] [--effort <level>]

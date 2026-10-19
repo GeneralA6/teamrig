@@ -95,7 +95,7 @@ export interface RunOptions {
   readonly restore?: RestorePorts;
   /** The runner `teamrig heavy` runs its step in; default one whose steps exit 0 at once. */
   readonly steps?: StepRunner;
-  /** The host memory `teamrig heavy` watches its step with; default one that measures nothing. */
+  /** The host memory (heavy's watch, `teamrig sessions`); default one that lists no process and measures nothing. */
   readonly memory?: HostMemory;
   /** The processes that started a `teamrig heavy` run; default a shell and its Claude Code, which never end. */
   readonly starters?: StarterWatch;

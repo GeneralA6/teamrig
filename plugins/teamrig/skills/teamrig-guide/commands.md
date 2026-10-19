@@ -688,6 +688,31 @@ api shop-api
 web shop-site, formerly shop-web
 ```
 
+### teamrig sessions
+
+Prints each session: running, with the memory its Claude Code's process tree holds (its helpers, shells and MCP
+servers), closed (the Claude Code it last started in has ended) or with no start recorded. The SessionStart hook
+records that process at each start (`state/sessions/<id>.json`); a process id the host gave to a later process
+does not count. Then the host's free memory and commit charge (Windows and Linux). It only reads.
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig sessions
+```
+
+Output:
+
+```text
+lead shop-lead: running in Claude Code 6900, 850 MB
+api shop-api: closed: the Claude Code it last started in has ended
+web shop-site: no start recorded
+1 running hold 850 MB; 1 closed; 1 with no start recorded
+host: 21400 MB free; commit 85300 of 100700 MB (85%)
+```
+
 ### teamrig rename
 
 Records a session's new name (`teamrig rename <id|name> <new-name>`). Its old names keep finding it in every
