@@ -758,3 +758,23 @@ describe("RegisterPolicy.setStatus: a time wait in the team's zone", () => {
     assert.deepEqual(wait({ ...late, zone: JERUSALEM }), { ok: false, error: 'time 01-08 has passed: name a time to come' }, 'Jerusalem is at 01-09 00:30');
   });
 });
+
+describe('RegisterPolicy.setStatus: new work waits for its owner\'s verify steps that are due', () => {
+  const overdue = testTask({ id: 'T1', status: 'verifying', proof: 'the nightly run', due: '2030-01-08', startedAt: '2030-01-07T10:00:00.000Z' });
+  const fresh = testTask({ id: 'T2' });
+  const context = { ...CTX, state: stateOf(overdue, fresh) };
+
+  it('refuses a first start while one is due, and lets a task already started go on', () => {
+    const policy = new RegisterPolicy(testConfig());
+    assert.match(error(policy.setStatus(fresh, 'alpha', { status: 'in-progress' }, context)), /^T2 is new work; T1 \(verify by 01-08\) is due to verify first \(teamrig verify\): /);
+    const started = testTask({ id: 'T3', startedAt: '2030-01-07T11:00:00.000Z' });
+    assert.equal(error(policy.setStatus(started, 'alpha', { status: 'in-progress' }, { ...CTX, state: stateOf(overdue, fresh, started) })), 'allowed');
+  });
+
+  it('lets the first start through once the verify step is re-dated, and in warn mode', () => {
+    const redated = { ...context, state: stateOf({ ...overdue, due: '2030-01-10' }, fresh) };
+    assert.equal(error(new RegisterPolicy(testConfig()).setStatus(fresh, 'alpha', { status: 'in-progress' }, redated)), 'allowed');
+    const warn = new RegisterPolicy(testConfig({ register: { verifyGate: 'warn' } }));
+    assert.equal(error(warn.setStatus(fresh, 'alpha', { status: 'in-progress' }, context)), 'allowed');
+  });
+});

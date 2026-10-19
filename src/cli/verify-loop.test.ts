@@ -242,3 +242,35 @@ describe('runCli: a start names what met the proof it waits for', () => {
     assert.deepEqual([start.code, start.stdout], [EXIT.refused, ['REFUSED --met goes only with a start that a verifying task it needs holds']]);
   });
 });
+
+/** A harness where alpha's T1 is verifying, to be verified by today, and alpha's T2 is new work. */
+async function dueVerify(kit = new CliHarness()): Promise<CliHarness> {
+  await kit.run(['add', '--title', 'Ship the CLI', '--description', 'what and why', '--priority', 'p2', '--session', 'alpha']);
+  await kit.run(['set', 'T1', '--status', 'in-progress', '--session', 'alpha']);
+  await kit.run(['set', 'T1', '--status', 'verifying', '--note', 'shipped', '--followups', 'none', '--proof', 'the nightly run', '--due', '2030-01-08', '--session', 'alpha']);
+  await kit.run(['add', '--title', 'Plan the next step', '--description', 'what and why', '--priority', 'p2', '--session', 'alpha']);
+  return kit;
+}
+
+describe("runCli: new work waits for its owner's verify steps that are due", () => {
+  const start = ['set', 'T2', '--status', 'in-progress', '--session', 'alpha'];
+
+  it('refuses the first start until the verify step is re-dated with a reason', async () => {
+    const kit = await dueVerify();
+    const held = await kit.run(start);
+    assert.equal(held.code, EXIT.refused);
+    assert.match(held.stdout[0] ?? '', /^REFUSED T2 is new work; T1 \(verify by 01-08\) is due to verify first \(teamrig verify\): /);
+    const redated = await kit.run(['set', 'T1', '--status', 'verifying', '--due', '2030-01-09', '--note', 'the nightly run moved to tomorrow', '--followups', 'none', '--session', 'alpha']);
+    assert.equal(redated.code, EXIT.ok, redated.stdout.join('\n'));
+    const started = await kit.run(start);
+    assert.equal(started.code, EXIT.ok, started.stdout.join('\n'));
+  });
+
+  it('starts it in warn mode, with a warning', async () => {
+    const kit = await dueVerify(new CliHarness({ ...TEAM, register: { verifyGate: 'warn' } }));
+    const started = await kit.run(start);
+    assert.equal(started.code, EXIT.ok, started.stdout.join('\n'));
+    assert.equal(started.stderr.length, 1, started.stderr.join('\n'));
+    assert.match(started.stderr[0] ?? '', /^WARN T2 is new work; T1 \(verify by 01-08\) is due to verify first .*; started anyway, as register\.verifyGate is warn$/);
+  });
+});

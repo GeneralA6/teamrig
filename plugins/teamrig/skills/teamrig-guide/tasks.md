@@ -88,6 +88,11 @@ A shipped change is proven by the session that shipped it, oldest first, before 
   Either way the verifying task's owner gets one inbox line a day about it, unless it is the one starting. Once the
   proof exists, `--met "<what shows it>"` lets the start through, and the owner's line asks it to set the task
   `done` or reopen it.
+- A session's first start of a new task is refused while one of its own verify steps is due [register.verifyGate]:
+  its proof's waits cleared, its verify-by day came, or it holds more than 5 verifying tasks (the oldest it can
+  act on) [register.maxVerifying]. Clear each: `done` with the proof, `in-progress` if it failed, verifying with
+  `--ask` or `--waits` for what the proof waits on, or a new `--due` with a `--note` saying why. A task already
+  started is never held.
 - `check` flags a verifying task that work needs (`VERIFY-BLOCKS`), one past its date (`VERIFY-OVERDUE`) and a
   session holding more than 5 of them (`PILE-UP` [register.maxVerifying], 0 turns it off).
 

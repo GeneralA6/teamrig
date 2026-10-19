@@ -182,7 +182,15 @@ NOTE api has an inbox line: T2 started on your verifying T1, its proof met: the 
 SET T2 in-progress, p2, owner web, from lead | Build the signup form
 ```
 
-With `register.verifyGate` set to `warn`, the start goes through and a `WARN` line names the same tasks (none with `--met`).
+A first start of new work also waits for the session's own verify steps that are due (its proof's waits cleared,
+its verify-by day came, or more verifying tasks than `register.maxVerifying`); a task already started goes on:
+
+```text
+REFUSED T2 is new work; T1 (verify by 10-14) is due to verify first (teamrig verify): set each done with its proof, in-progress if it failed, or verifying with --ask or --waits for what its proof waits on; a verify-by date moves with --due and a --note saying why
+```
+
+With `register.verifyGate` set to `warn`, either start goes through and a `WARN` line names the same tasks (none
+with `--met`).
 
 The status is a flag, never a word after the id: `teamrig set T1 done` is a usage error (`unexpected "done"`).
 

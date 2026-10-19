@@ -9,7 +9,7 @@ import { sizeProblem, type TaskFieldName, type TaskFields } from './events.ts';
 import { taskNumber, type RegisterState, type Task } from './fold.ts';
 import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, priorityText, SESSION_NAME, WAIT_STATUSES, type TaskStatus } from './model.ts';
 import { loopFix, needPath, pathText } from './tree.ts';
-import { heldStart, startHolds } from './verify.ts';
+import { dueStartHolds, dueVerifyHold, heldStart, startHolds } from './verify.ts';
 import { isPeerWait, sameWait, waitSpelling, type PersonWait, type WaitReason } from './waits.ts';
 
 /** Team policy, applied on WRITE only: the parser accepts any well-formed history. */
@@ -263,6 +263,11 @@ export class RegisterPolicy {
       const ids = holds.map((held) => held.id);
       const done = `${ids.join(' and ')} ${ids.length === 1 ? 'is' : 'are'} done`;
       return refuse(`${heldStart(task, holds)}; start ${task.id} once ${done}, or with --met "<what shows the proof exists>"`);
+    }
+    // New work also waits for its owner's own verify steps that are due, so shipped changes get proven, not piled up.
+    const dueVerify = dueStartHolds(task, input.status, context.state.tasks, context.now, context.zone, register.maxVerifying);
+    if (dueVerify.length > 0 && register.verifyGate === 'refuse') {
+      return refuse(dueVerifyHold(task, dueVerify));
     }
     const note = blankToNull(input.note);
     const evidence = blankToNull(input.evidence);
