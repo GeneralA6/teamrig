@@ -2,11 +2,11 @@ import type { Roster } from '../../config/roster.ts';
 import type { LockWaiter, Withdrawal } from '../../coordinator/host-lock.ts';
 import { coordinatorPlaces } from '../../coordinator/places.ts';
 import { ENV } from '../../core/home.ts';
-import { formatUtcMinute } from '../../core/time.ts';
+import type { TimeZone } from '../../core/zone.ts';
 import { UsageError, type ParsedArgs } from '../args.ts';
 import { hostLockOf } from '../coordinator-ports.ts';
 import { sessionRef } from '../inputs.ts';
-import { openTeamKit, requireConfig, rosterOf, sessionIdOf, type Kit } from '../kit.ts';
+import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { envSession, markedSessionOf } from './hook-input.ts';
 
@@ -49,22 +49,25 @@ function chosenOf(args: ParsedArgs): { readonly picks: (waiter: LockWaiter) => b
   return { picks: (waiter) => waiter.purpose.includes(what), text: what };
 }
 
-function sinceText(waiter: LockWaiter): string {
-  return `waiting since ${formatUtcMinute(new Date(waiter.arrivedAt))}`;
+function sinceText(waiter: LockWaiter, zone: TimeZone): string {
+  return `waiting since ${zone.minute(new Date(waiter.arrivedAt))}`;
 }
 
-/** The line printed for one ticket: withdrawn, or why it was not (its step went first, or an older teamrig queued it). */
-export function withdrawalText(withdrawal: Withdrawal): string {
+/**
+ * The line printed for one ticket: withdrawn, or why it was not (its step went first, or an older teamrig queued it),
+ * its wait on the zone's clock.
+ */
+export function withdrawalText(withdrawal: Withdrawal, zone: TimeZone): string {
   const { waiter } = withdrawal;
   switch (withdrawal.kind) {
     case 'withdrawn':
-      return `WITHDRAWN ${waiter.purpose}, ${sinceText(waiter)}: it stops at its next look`;
+      return `WITHDRAWN ${waiter.purpose}, ${sinceText(waiter, zone)}: it stops at its next look`;
     case 'running':
       return `RUNNING ${waiter.purpose}: it took its turn first and runs (pid ${waiter.pid})`;
     case 'left':
       return `LEFT ${waiter.purpose}: it left the line first, having run or given up`;
     case 'kept':
-      return `KEPT ${waiter.purpose}, ${sinceText(waiter)}: an older teamrig queued it and runs it anyway (pid ${waiter.pid})`;
+      return `KEPT ${waiter.purpose}, ${sinceText(waiter, zone)}: an older teamrig queued it and runs it anyway (pid ${waiter.pid})`;
   }
 }
 
@@ -79,6 +82,7 @@ export async function withdraw(args: ParsedArgs, runtime: CliRuntime): Promise<E
   const kit = await openTeamKit(runtime);
   const config = requireConfig(kit, runtime, 'read');
   const session = await ownSessionOf(args, runtime, kit, await rosterOf(runtime, kit, config));
+  const zone = teamZone(config, runtime);
   const lock = hostLockOf(runtime, coordinatorPlaces(config.coordinator, kit.paths).hostLock, config.coordinator.heavy);
   if (chosen === undefined) {
     const waiting = (await lock.line()).filter((waiter) => waiter.session === session);
@@ -87,7 +91,7 @@ export async function withdraw(args: ParsedArgs, runtime: CliRuntime): Promise<E
       return EXIT.ok;
     }
     for (const waiter of waiting) {
-      runtime.out.stdout(`WAITING ${waiter.purpose}, ${sinceText(waiter)} (pid ${waiter.pid})`);
+      runtime.out.stdout(`WAITING ${waiter.purpose}, ${sinceText(waiter, zone)} (pid ${waiter.pid})`);
     }
     throw new RefusedError('name the steps to withdraw: --what <text in their purpose> or --all');
   }
@@ -97,7 +101,7 @@ export async function withdraw(args: ParsedArgs, runtime: CliRuntime): Promise<E
     return EXIT.ok;
   }
   for (const withdrawal of done) {
-    runtime.out.stdout(withdrawalText(withdrawal));
+    runtime.out.stdout(withdrawalText(withdrawal, zone));
   }
   return done.every((withdrawal) => withdrawal.kind === 'withdrawn') ? EXIT.ok : EXIT.failed;
 }
