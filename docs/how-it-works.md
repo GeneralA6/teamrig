@@ -230,7 +230,8 @@ stateDiagram-v2
   `--proof` names that proof, and `--due` the date to verify it by. It stays active, so `list`, `check`,
   `teamrig verify`, the session's start context and `inbox read` keep it in view until the owner sets it `done`
   with the proof as evidence. Work that needs it waits for that proof: its start is refused until then
-  (`register.verifyGate`), and the owner hears of it in its inbox.
+  (`register.verifyGate`), and the owner hears of it in its inbox. A start that names what met the proof
+  (`--met`) goes through, and the owner is asked to confirm it (`done`) or reopen the task.
 - `waiting` is a started task that cannot go on, with every reason it waits for (`--waits`): a decision or an
   approval (the lead's or the owner's; a peer's work is a task, asked for with `set --ask`), another task to
   finish first, or a time. It stays waiting until all of

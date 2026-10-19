@@ -69,8 +69,10 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
   set <id> --status open|in-progress|verifying|waiting|done|dropped [--note "<what/why>"] [--evidence <proof>]
       [--skill <name>|none] [--followups T<id>,...|none] [--waits decision:<who>,approval:<who>,task:T<id>,time:<date>]
       [--question ".." --options "<a> | <b>" --recommend ".." --default ".."]
-      [--proof "<what proves it>"] [--due <date>] [--ask <session> --text "<the work>"]
+      [--proof "<what proves it>"] [--met "<what shows it>"] [--due <date>] [--ask <session> --text "<the work>"]
       verifying needs --proof: what will prove the shipped change works; --due sets the date to verify by
+      a start that a verifying task it needs holds goes through with --met: what shows that task's proof
+      exists; its owner gets an inbox line to set it done or reopen it
       verifying and done need --followups: the tasks the work leaves (a finding, a next step), or none
       (register.requireFollowupsOn); show lists them
       waiting needs --waits: the lead's or the owner's decision or approval, a task to finish first
