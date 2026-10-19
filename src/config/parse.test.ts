@@ -145,6 +145,19 @@ describe('parseConfig', () => {
     assert.deepEqual(config.wake, DEFAULT_WAKE);
   });
 
+  it('reads wake.dayStartUtc, and refuses a malformed one or one in the quiet hours', () => {
+    const quietHours = { startUtc: '22:00', endUtc: '06:00', action: 'ask' };
+    const budget = { enabled: true, quietHours };
+    assert.equal(parseConfig({ ...ROSTER, budget, wake: { dayStartUtc: '06:00' } }).config.wake.dayStartUtc, '06:00');
+    assert.equal(parseConfig({ ...ROSTER, wake: { dayStartUtc: '03:00' } }).config.wake.dayStartUtc, '03:00', 'no quiet hours, no clash');
+    const malformed = parseConfig({ ...ROSTER, wake: { dayStartUtc: '6:00' } });
+    assert.deepEqual(paths(malformed.issues), ['wake.dayStartUtc']);
+    assert.equal(malformed.config.wake.dayStartUtc, undefined);
+    const quiet = parseConfig({ ...ROSTER, budget, wake: { dayStartUtc: '05:59' } });
+    assert.deepEqual(quiet.issues, [{ path: 'wake.dayStartUtc', message: "is in the budget's quiet hours (22:00 to 06:00 UTC), where no session wakes" }]);
+    assert.deepEqual(quiet.config.wake, DEFAULT_WAKE);
+  });
+
   it('reads tests.maxFailureChars, and refuses a value under 500 or past 50,000', () => {
     assert.equal(parseConfig({ ...ROSTER, tests: { maxFailureChars: 500 } }).config.tests.maxFailureChars, 500);
     assert.equal(parseConfig({ ...ROSTER, tests: { maxFailureChars: 50_000 } }).config.tests.maxFailureChars, 50_000);
