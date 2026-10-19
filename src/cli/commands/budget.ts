@@ -27,7 +27,7 @@ import {
   type SessionToday,
 } from '../../budget/report.ts';
 import { datedSnapshot, formatSnapshot, parseSnapshot, readSnapshots, snapshotOfStatus, statusLineText, weekUseOf, type StatusLineView } from '../../budget/snapshot.ts';
-import { CURSOR_DAYS_KEPT, DAYS_KEPT, MemoryUsageStore, UsageStore, type UsageState } from '../../budget/store.ts';
+import { CURSOR_DAYS_KEPT, DAYS_KEPT, EMPTY_USAGE, MemoryUsageStore, UsageStore, type UsageState } from '../../budget/store.ts';
 import { readWeek, type WeekReading } from '../../budget/week.ts';
 import { readWork } from '../../budget/work.ts';
 import { JsonlMarkLog } from '../../inbox/store.ts';
@@ -161,9 +161,6 @@ function recountDayOf(text: string | undefined, now: number): number | undefined
   return day.getTime();
 }
 
-/** A store with nothing metered, for a session the meter has not read. */
-const NOTHING_STORED: UsageState = { byDay: {}, cursors: {}, recentKeys: [] };
-
 /** `budget [<session>] [--loops|--burn|--misses] [--day <day>] [--all]`. */
 export async function budget(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const [target, extra] = args.positionals;
@@ -190,10 +187,10 @@ export async function budget(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   const days = recountDay === undefined ? loopDays(now, all ? DAYS_KEPT : LOOP_DAYS_SHOWN) : [formatUtcDay(new Date(recountDay))];
   const source = recountDay === undefined ? 'metered' : 'recounted';
   if (misses && id === undefined) {
-    const rows = roster.ids.map((each) => ({ name: roster.nameOf(each) ?? each, usage: sumUsage(sumDays([measured.bySession.get(each) ?? NOTHING_STORED], days)) }));
+    const rows = roster.ids.map((each) => ({ name: roster.nameOf(each) ?? each, usage: sumUsage(sumDays([measured.bySession.get(each) ?? EMPTY_USAGE], days)) }));
     lines = missMatrixLines(days, rows);
   } else if (loops || burn || misses) {
-    const states: UsageState[] = id === undefined ? [...measured.bySession.values(), measured.outside] : [measured.bySession.get(id) ?? NOTHING_STORED];
+    const states: UsageState[] = id === undefined ? [...measured.bySession.values(), measured.outside] : [measured.bySession.get(id) ?? EMPTY_USAGE];
     const table = loops ? loopLines : burn ? burnLines : missLines;
     lines = table(id === undefined ? 'every session, outside the team too' : (roster.nameOf(id) ?? id), days, sumDays(states, days), source);
   } else if (id !== undefined) {

@@ -149,7 +149,7 @@ describe('runMeter', () => {
     near(day(result.state, DAY)?.w, 7);
   });
 
-  it('adds output a reply gains after midnight to the day the reply began', async () => {
+  it('adds output a reply gains after midnight to the day and hour the reply began', async () => {
     const late: FixtureReply = { id: 'y1', requestId: 'qy', at: before(23, 59), usage: { input: 1, output: 10 } };
     const meter = world(before(23, 59), { [MAIN]: transcript([replyLine(late)]) });
     await meter.run();
@@ -159,6 +159,31 @@ describe('runMeter', () => {
     near(day(result.state, DAY_BEFORE)?.w, 1 + 30 * 5);
     assert.equal(day(result.state, DAY_BEFORE)?.calls, 1);
     near(day(result.state, DAY)?.w, 2);
+    assert.deepEqual(result.state.byHour, { '2026-03-01T23': 1 + 30 * 5, '2026-03-02T00': 2 });
+  });
+
+  it('counts each call to the UTC hour it began, so the hours of a day sum to its W', async () => {
+    const meter = world(at(12), {
+      [MAIN]: transcript([replyLine(R1), replyLine(R1_MORE), replyLine({ ...R2, at: at(10, 59, 59) })]),
+      [SUB]: transcript([replyLine({ ...S1, at: at(11) })]),
+    });
+    const state = (await meter.run()).state;
+    assert.deepEqual(state.byHour, { '2026-03-02T09': R1_W, '2026-03-02T10': R2_W, '2026-03-02T11': S1_W });
+    near(day(state, DAY)?.w, R1_W + R2_W + S1_W);
+  });
+
+  it('adds the output of a call stored before hours were counted to its day alone', async () => {
+    const first: FixtureReply = { ...R1, usage: { ...R1.usage, output: 10 } };
+    const meter = world(at(12), { [MAIN]: transcript([replyLine(first)]) });
+    await meter.run(10_000_000, { main: [MAIN], subagents: [] });
+    const file = `${DIR}/${SESSION}.json`;
+    const saved = await meter.files.read(file);
+    assert.ok(saved !== undefined);
+    await meter.files.write(file, saved.replace(',"hour":"2026-03-02T09"', ''));
+    meter.bytes.append(MAIN, transcript([replyLine(R1_MORE)]));
+    const state = (await meter.run(10_000_000, { main: [MAIN], subagents: [] })).state;
+    near(day(state, DAY)?.w, R1_W);
+    assert.deepEqual(state.byHour, { '2026-03-02T09': R1_W - 40 * 5 });
   });
 
   it('reads at most the byte limit per run, catching up over the next runs', async () => {
@@ -229,6 +254,7 @@ describe('runMeter', () => {
     meter.clock.advance(9 * 86_400_000);
     const result = await meter.run(10_000_000, { main: [], subagents: [SUB] });
     assert.deepEqual(result.state.byDay, {});
+    assert.deepEqual(result.state.byHour, {});
     assert.deepEqual(result.state.cursors, {});
   });
 

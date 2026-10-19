@@ -10,10 +10,11 @@ const DIR = '/state/usage';
 const FILE = '/state/usage/alpha.json';
 
 const DAY = { w: 1_234.5, calls: 7, patterns: { ...emptyPatterns(), readChain: 2 } };
-const CALL = { key: 'msg_1|req_1', day: '2026-03-02', output: 40, context: 5_000, w: 700 };
+const CALL = { key: 'msg_1|req_1', day: '2026-03-02', hour: '2026-03-02T09', output: 40, context: 5_000, w: 700 };
 const CURSOR = { offset: 900, size: 1_000, day: '2026-03-02', call: CALL, patterns: { ...INITIAL_PATTERN_STATE, turn: 3 }, misses: { lastAt: 1_700_000_000_000, block: { day: '2026-03-02', calls: 2 } } };
 const STATE: UsageState = {
   byDay: { '2026-03-02': DAY },
+  byHour: { '2026-03-02T09': 1_000, '2026-03-02T10': 234.5 },
   cursors: { '/t/p/alpha.jsonl': CURSOR, '/t/p/alpha/subagents/agent-a.jsonl': newCursor(10, 10, '2026-03-01') },
   recentKeys: ['msg_1|req_1'],
 };
@@ -67,7 +68,7 @@ describe('MemoryUsageStore', () => {
 });
 
 describe('parseUsage', () => {
-  const stored = { v: 1, rev: 1, byDay: STATE.byDay, cursors: STATE.cursors, recentKeys: STATE.recentKeys };
+  const stored = { v: 1, rev: 1, byDay: STATE.byDay, byHour: STATE.byHour, cursors: STATE.cursors, recentKeys: STATE.recentKeys };
 
   it('round-trips a state', () => {
     assert.deepEqual(parseUsage(formatUsage(STATE, 1)), STATE);
@@ -84,6 +85,9 @@ describe('parseUsage', () => {
       { ...stored, byDay: { '2026-03-02': { ...day, w: -1 } } },
       { ...stored, byDay: { '2026-03-02': { ...day, calls: 1.5 } } },
       { ...stored, byDay: { '2026-03-02': { ...day, patterns: {} } } },
+      { ...stored, byHour: 'hours' },
+      { ...stored, byHour: { '2026-03-02': 5 } },
+      { ...stored, byHour: { '2026-03-02T09': -5 } },
       { ...stored, cursors: { '': cursor } },
       { ...stored, cursors: { a: 'cursor' } },
       { ...stored, cursors: { a: { ...cursor, offset: -1 } } },
@@ -96,6 +100,8 @@ describe('parseUsage', () => {
       { ...stored, cursors: { a: { ...cursor, call: { ...CALL, key: 5 } } } },
       { ...stored, cursors: { a: { ...cursor, call: { ...CALL, day: 3 } } } },
       { ...stored, cursors: { a: { ...cursor, call: { ...CALL, day: 'today' } } } },
+      { ...stored, cursors: { a: { ...cursor, call: { ...CALL, hour: 9 } } } },
+      { ...stored, cursors: { a: { ...cursor, call: { ...CALL, hour: '2026-03-01T09' } } } },
       { ...stored, cursors: { a: { ...cursor, call: { ...CALL, output: -2 } } } },
       { ...stored, cursors: { a: { ...cursor, call: { ...CALL, context: 0.5 } } } },
       { ...stored, cursors: { a: { ...cursor, call: { ...CALL, w: -3 } } } },
@@ -111,23 +117,33 @@ describe('parseUsage', () => {
     assert.deepEqual(parseUsage(JSON.stringify({ ...stored, cursors: { a: older } }))?.cursors['a'], { ...CURSOR, misses: INITIAL_MISS_STATE });
   });
 
+  it('reads a file and an open call stored before hours were counted as having no hours', () => {
+    const { byHour: _byHour, ...olderFile } = stored;
+    const { hour: _hour, ...olderCall } = CALL;
+    const read = parseUsage(JSON.stringify({ ...olderFile, cursors: { a: { ...CURSOR, call: olderCall } } }));
+    assert.deepEqual(read?.byHour, {});
+    assert.deepEqual(read?.cursors['a']?.call, { ...CALL, hour: null });
+  });
+
   it('keeps an unkeyed open call', () => {
-    const unkeyed = { ...STATE, cursors: { a: { ...newCursor(1, 2, '2026-03-02'), call: { key: null, day: '2026-03-02', output: 1, context: 2, w: 3 } } } };
+    const unkeyed = { ...STATE, cursors: { a: { ...newCursor(1, 2, '2026-03-02'), call: { key: null, day: '2026-03-02', hour: null, output: 1, context: 2, w: 3 } } } };
     assert.deepEqual(parseUsage(formatUsage(unkeyed, 1)), unkeyed);
   });
 });
 
 describe('pruneUsage', () => {
-  it('keeps 8 days of totals, positions that moved today or yesterday, and the latest call keys', () => {
+  it('keeps 8 days of totals and hours, positions that moved today or yesterday, and the latest call keys', () => {
     const day = DAY;
     const keys = Array.from({ length: RECENT_KEYS_KEPT + 5 }, (_, index) => `k${index}`);
     const state: UsageState = {
       byDay: { '2026-03-01': day, '2026-03-02': day, '2026-03-09': day },
+      byHour: { '2026-03-01T23': 1, '2026-03-02T00': 2, '2026-03-09T22': 3 },
       cursors: { old: newCursor(1, 1, '2026-03-07'), recent: newCursor(1, 1, '2026-03-08'), today: newCursor(1, 1, '2026-03-09') },
       recentKeys: keys,
     };
     const pruned = pruneUsage(state, Date.parse('2026-03-09T23:00:00Z'));
     assert.deepEqual(Object.keys(pruned.byDay), ['2026-03-02', '2026-03-09']);
+    assert.deepEqual(pruned.byHour, { '2026-03-02T00': 2, '2026-03-09T22': 3 });
     assert.deepEqual(Object.keys(pruned.cursors), ['recent', 'today']);
     assert.deepEqual(pruned.recentKeys, keys.slice(5));
   });

@@ -14,7 +14,7 @@ const STATUS: WeekUse = { usedPct: 57, resetsAt: RESET, at: Date.parse('2026-10-
 
 function state(wByDay: Readonly<Record<string, number>>): UsageState {
   const byDay = Object.fromEntries(Object.entries(wByDay).map(([day, w]) => [day, { w, calls: 1, patterns: emptyPatterns() }]));
-  return { byDay, cursors: {}, recentKeys: [] };
+  return { byDay, byHour: {}, cursors: {}, recentKeys: [] };
 }
 
 /** Two sessions' stores reaching back to the week's first day: 1,000 W that day, 500 W today. */
