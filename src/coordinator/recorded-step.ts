@@ -1,6 +1,7 @@
 import type { Files } from '../core/files.ts';
 import type { Clock } from '../core/lock.ts';
 import { appendRecord, type HeavyRecord } from './ledger.ts';
+import type { HostMemory } from './memory.ts';
 import { exitCodeOf, type StepEnd, type StepRequest, type StepRunner } from './steps.ts';
 
 /** The exit code recorded for a step that could not start, as a missing folder makes it. */
@@ -20,6 +21,15 @@ export interface RecordedStepPorts extends HeavyRecordPorts {
 export interface HeavyMark {
   readonly session: string;
   readonly what: string;
+  /** When the step began to wait for the host lock, in ms; recorded as `queuedAt`. */
+  readonly queuedAt?: number;
+}
+
+/** How a step's memory is watched while it runs: the host's memory, the root of its process tree, and how often. */
+export interface StepWatch {
+  readonly memory: Pick<HostMemory, 'watch'>;
+  readonly root: number;
+  readonly intervalMs: number;
 }
 
 /** One heavy step as the ledger names it, and how to run it. */
@@ -29,31 +39,38 @@ export interface RecordedStep extends HeavyMark {
 
 /**
  * Runs `work` as one heavy step, its start and its end each a ledger record, the end with the exit code `exitOf`
- * reads from its result; work that throws is recorded as exit 1 and its error rethrown.
+ * reads from its result; work that throws is recorded as exit 1 and its error rethrown. With `watch`, the end
+ * record carries the most the step's process tree held and the least free memory the host had while it ran.
  */
-export async function recordHeavy<T>(ports: HeavyRecordPorts, ledger: string, mark: HeavyMark, work: () => Promise<T>, exitOf: (result: T) => number): Promise<T> {
+export async function recordHeavy<T>(ports: HeavyRecordPorts, ledger: string, mark: HeavyMark, work: () => Promise<T>, exitOf: (result: T) => number, watch?: StepWatch): Promise<T> {
   const start: HeavyRecord = {
     type: 'heavy',
     id: ports.newId(),
     session: mark.session,
     what: mark.what,
+    ...(mark.queuedAt === undefined ? {} : { queuedAt: new Date(mark.queuedAt).toISOString() }),
     startedAt: new Date(ports.clock.now()).toISOString(),
     endedAt: null,
     exitCode: null,
   };
   await appendRecord(ports.files, ledger, start);
+  const watching = watch?.memory.watch(watch.root, watch.intervalMs);
   let exitCode = NOT_STARTED_EXIT;
   try {
     const result = await work();
     exitCode = exitOf(result);
     return result;
   } finally {
+    const peaks = (await watching?.stop()) ?? {};
     const endedAt = new Date(ports.clock.now()).toISOString();
-    await appendRecord(ports.files, ledger, { ...start, endedAt, exitCode });
+    await appendRecord(ports.files, ledger, { ...start, endedAt, exitCode, ...peaks });
   }
 }
 
-/** Runs a heavy step, its start and its end each a ledger record; a step that could not start is recorded as exit 1 and its error rethrown. */
-export async function runRecorded(ports: RecordedStepPorts, ledger: string, step: RecordedStep): Promise<StepEnd> {
-  return recordHeavy(ports, ledger, step, () => ports.steps.run(step.request), exitCodeOf);
+/**
+ * Runs a heavy step, its start and its end each a ledger record, its memory watched with `watch`; a step that could
+ * not start is recorded as exit 1 and its error rethrown.
+ */
+export async function runRecorded(ports: RecordedStepPorts, ledger: string, step: RecordedStep, watch?: StepWatch): Promise<StepEnd> {
+  return recordHeavy(ports, ledger, step, () => ports.steps.run(step.request), exitCodeOf, watch);
 }

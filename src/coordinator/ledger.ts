@@ -14,17 +14,24 @@ export const LEDGER_MD_HEADER = '# Deploy ledger: one line a deploy: rolled at (
 
 /**
  * A heavy step in the ledger, in the format a team's own coordinator writes too: once when it starts (`endedAt`
- * and `exitCode` null), and again with both when it ends, under the same `id`.
+ * and `exitCode` null), and again with both when it ends, under the same `id`. The optional fields are teamrig's
+ * own; a record without them is still read.
  */
 export interface HeavyRecord {
   readonly type: 'heavy';
   readonly id: string;
   readonly session: string;
   readonly what: string;
-  /** An ISO time. */
+  /** An ISO time: when the step began to wait for the host lock, so its wait is `startedAt` less this. */
+  readonly queuedAt?: string;
+  /** An ISO time: when it took the host lock and started. */
   readonly startedAt: string;
   readonly endedAt: string | null;
   readonly exitCode: number | null;
+  /** On the end record: the most the step's process tree held at once, in MB. */
+  readonly peakTreeMb?: number;
+  /** On the end record: the least free memory the host had while the step ran, in MB. */
+  readonly lowFreeMb?: number;
 }
 
 /**
@@ -118,6 +125,22 @@ function timeField(record: JsonRecord, key: string): string | undefined {
   return value !== undefined && Number.isFinite(Date.parse(value)) ? value : undefined;
 }
 
+/** A whole number of MB; undefined when it is missing or anything else. */
+function mbField(record: JsonRecord, key: string): number | undefined {
+  const value = record[key];
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+}
+
+/** The optional fields a record carries, each left out when it is missing or bad, since they only add to it. */
+function heavyExtrasOf(record: JsonRecord): Pick<HeavyRecord, 'queuedAt' | 'peakTreeMb' | 'lowFreeMb'> {
+  const [queuedAt, peakTreeMb, lowFreeMb] = [timeField(record, 'queuedAt'), mbField(record, 'peakTreeMb'), mbField(record, 'lowFreeMb')];
+  return {
+    ...(queuedAt === undefined ? {} : { queuedAt }),
+    ...(peakTreeMb === undefined ? {} : { peakTreeMb }),
+    ...(lowFreeMb === undefined ? {} : { lowFreeMb }),
+  };
+}
+
 /** An end that may not have come yet: null, else an ISO time; undefined when it is neither. */
 function endField(record: JsonRecord, key: string): string | null | undefined {
   return record[key] === null ? null : timeField(record, key);
@@ -131,7 +154,7 @@ function heavyOf(record: JsonRecord): HeavyRecord | undefined {
   if (id === undefined || session === undefined || what === undefined || startedAt === undefined || endedAt === undefined || exit === undefined) {
     return undefined;
   }
-  return { type: 'heavy', id, session, what, startedAt, endedAt, exitCode: exit };
+  return { type: 'heavy', id, session, what, startedAt, endedAt, exitCode: exit, ...heavyExtrasOf(record) };
 }
 
 function deployOf(record: JsonRecord): DeployRecord | undefined {
