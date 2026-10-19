@@ -167,6 +167,25 @@ describe('teamrig heavy', () => {
     assert.equal(kit.files.get(LOCK), heldBy());
   });
 
+  it('refuses, running and recording nothing, when its ticket is withdrawn while it waits, leaving the lock to its holder', async () => {
+    const { kit, steps } = harness();
+    await kit.files.write(LOCK, heldBy());
+    const queue = `${LOCK}.queue`;
+    const sleep = async (ms: number): Promise<void> => {
+      await kit.clock.sleep(ms);
+      for (const name of await kit.files.list(queue)) {
+        await kit.files.remove(join(queue, name));
+      }
+    };
+    const result = await kit.run(BUILD, { steps, sessionProcesses: otherRuns(), sleep });
+    assert.deepEqual(result, {
+      code: 2,
+      stdout: ['2030-01-08T10:00:00.000Z waiting for the host lock: po (heavy: build) since 2030-01-08 09:50', "REFUSED withdrawn from the host lock's line (teamrig withdraw): build api did not run"],
+      stderr: [],
+    });
+    assert.deepEqual([steps.ran, kit.files.get(LOCK), kit.files.get(LEDGER), await kit.files.list(queue)], [[], heldBy(), undefined, []]);
+  });
+
   it('records when the step began to wait and what its process tree and the host held while it ran', async () => {
     const { kit, steps } = harness();
     steps.ends(0, 5 * MINUTE);

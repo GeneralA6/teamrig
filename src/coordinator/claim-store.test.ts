@@ -4,7 +4,8 @@ import { SecretScanner } from '../core/secrets.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { addClaim, CLAIMS_LOCK_TTL_MS, claimRefusal, releaseClaim, renderClaimsMd, type ClaimPorts, type ClaimRequest, type ClaimRules } from './claim-store.ts';
-import { HostLock } from './host-lock.ts';
+import { withdrawnLock } from '../testing/withdrawn-lock.ts';
+import { HostLock, type HostLockInfo } from './host-lock.ts';
 
 const PLACES = { claims: '/team/deploys/claims.json', claimsMd: '/team/deploys/claims.md' };
 const LOCK = '/team/deploys/claims.lock';
@@ -97,6 +98,13 @@ describe('addClaim', () => {
     assert.equal(clock.now(), Date.parse('2030-01-08T10:00:15Z'), 'it waited the 15 s');
     assert.equal(files.get(PLACES.claims), undefined);
     assert.equal(files.get(LOCK), other, 'the other writer’s lock stays');
+  });
+
+  it('is busy, writing nothing, when its place in line for the claims was withdrawn', async () => {
+    const { files, ports } = world();
+    const released: HostLockInfo[] = [];
+    const outcome = await addClaim({ ...ports, lock: withdrawnLock(released) }, PLACES, RULES, REQUEST);
+    assert.deepEqual([outcome, released, files.get(PLACES.claims)], [{ kind: 'busy', reason: 'its place in line for the claims was withdrawn; try again' }, [], undefined]);
   });
 
   it('refuses before taking the lock when the request itself is refused', async () => {

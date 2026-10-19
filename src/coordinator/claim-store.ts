@@ -98,6 +98,9 @@ async function changeClaims<T>(ports: ClaimPorts, places: ClaimPlaces, session: 
   if (taking.kind === 'busy') {
     return { kind: 'busy', reason: `the claims are being written (${holderText(taking.holder)}); try again` };
   }
+  if (taking.kind === 'withdrawn') {
+    return { kind: 'busy', reason: 'its place in line for the claims was withdrawn; try again' };
+  }
   try {
     const read = parseClaims(await ports.files.read(places.claims));
     if (read.kind === 'unreadable') {

@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { takeWhenClear, type ClearancePhase, type ClearanceRequest, type Readiness } from './clearance.ts';
-import { HostLock } from './host-lock.ts';
+import { withdrawnLock } from '../testing/withdrawn-lock.ts';
+import { HostLock, type HostLockInfo } from './host-lock.ts';
 
 const LOCK_PATH = '/kit/host.lock';
 const ME = 4242;
@@ -97,6 +98,13 @@ describe('takeWhenClear', () => {
     assert.match(clearance.kind === 'gaveUp' ? clearance.reason : '', /^host lock still held by po/);
     assert.equal(waits.length, 1);
     assert.match(waits[0] ?? '', /^the host lock: po/);
+  });
+
+  it("refuses, holding no lock, when its place in the host lock's line was withdrawn", async () => {
+    const { clock, request } = world();
+    const released: HostLockInfo[] = [];
+    const clearance = await takeWhenClear(answers(GO), { lock: withdrawnLock(released), clock, sleep: clock.sleep }, request);
+    assert.deepEqual([clearance, released], [{ kind: 'refused', reason: "withdrawn from the host lock's line (teamrig withdraw)" }, []]);
   });
 
   it('names the phase of each ask: before the lock, then under it', async () => {
