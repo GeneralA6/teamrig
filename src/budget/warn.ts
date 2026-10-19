@@ -1,6 +1,6 @@
 import type { BudgetConfig, OverAction, QuietHours } from '../config/types.ts';
 import { KIT_NAME } from '../core/home.ts';
-import { formatUtcDay, MS_PER_DAY } from '../core/time.ts';
+import { formatUtcDay, isMinuteInSpan, MS_PER_DAY, MS_PER_MINUTE, utcMinuteOf } from '../core/time.ts';
 import type { Burst } from './burst.ts';
 import { budgetMarkOf, burstPromptLines, burstStopLines, type BurstMarks, type SurplusHint } from './burst-lines.ts';
 import { formatPct } from './format.ts';
@@ -105,33 +105,19 @@ export function levelOf(usePct: number, warnAtPct: readonly number[]): number {
   return Number.isFinite(usePct) ? last + Math.floor((usePct - last) / WARN_STEP_PCT) * WARN_STEP_PCT : last;
 }
 
-/** Minutes since 00:00 UTC of an `HH:MM`; undefined when malformed. */
-function minuteOfDay(text: string): number | undefined {
-  const match = /^(\d{2}):(\d{2})$/.exec(text);
-  if (match === null) {
-    return undefined;
-  }
-  const hours = Number(match[1]);
-  const minutes = Number(match[2]);
-  return hours < 24 && minutes < 60 ? hours * 60 + minutes : undefined;
-}
-
 /** When the quiet hours `now` falls in began, epoch ms; undefined outside them. They may cross midnight. */
 export function quietStartOf(quiet: QuietHours | undefined, now: number): number | undefined {
-  const start = quiet === undefined ? undefined : minuteOfDay(quiet.startUtc);
-  const end = quiet === undefined ? undefined : minuteOfDay(quiet.endUtc);
+  const start = quiet === undefined ? undefined : utcMinuteOf(quiet.startUtc);
+  const end = quiet === undefined ? undefined : utcMinuteOf(quiet.endUtc);
   if (start === undefined || end === undefined || start === end) {
     return undefined;
   }
   const dayStart = now - (now % MS_PER_DAY);
-  const minute = Math.floor((now - dayStart) / 60_000);
-  if (start < end) {
-    return minute >= start && minute < end ? dayStart + start * 60_000 : undefined;
+  const minute = Math.floor((now - dayStart) / MS_PER_MINUTE);
+  if (!isMinuteInSpan(minute, start, end)) {
+    return undefined;
   }
-  if (minute >= start) {
-    return dayStart + start * 60_000;
-  }
-  return minute < end ? dayStart - MS_PER_DAY + start * 60_000 : undefined;
+  return (minute >= start ? dayStart : dayStart - MS_PER_DAY) + start * MS_PER_MINUTE;
 }
 
 /** Where a session stands now. */

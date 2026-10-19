@@ -7,8 +7,25 @@ const CLOCK = /^(\d{2}):(\d{2})$/;
 /** An ISO time with its zone; one without would be read in the host's local time. */
 const ZONED_ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$/;
 
+export const MS_PER_MINUTE = 60_000;
 export const MS_PER_HOUR = 3_600_000;
 export const MS_PER_DAY = 86_400_000;
+
+/** Minutes since 00:00 UTC of an `HH:MM`; undefined when malformed. */
+export function utcMinuteOf(text: string): number | undefined {
+  const match = CLOCK.exec(text);
+  if (match === null) {
+    return undefined;
+  }
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  return hours < 24 && minutes < 60 ? hours * 60 + minutes : undefined;
+}
+
+/** True when a minute of the day is in the span from `start` (in) to `end` (out), which may cross midnight. */
+export function isMinuteInSpan(minute: number, start: number, end: number): boolean {
+  return start <= end ? minute >= start && minute < end : minute >= start || minute < end;
+}
 
 /**
  * Parses `YYYY-MM-DD` or `YYYY-MM-DD HH:MM` as UTC. A bare day means the end of that day,
