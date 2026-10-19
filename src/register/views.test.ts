@@ -99,6 +99,10 @@ describe('formatTask', () => {
       formatTask(testTask({ status: 'verifying', note: 'shipped', proof: 'the nightly run is green' }), undefined, TREE),
       'T1 verifying, p2, owner alpha, from lead | Add a health check (proof: the nightly run is green)',
     );
+    assert.equal(
+      formatTask(testTask({ status: 'verifying', proof: 'the nightly run is green', waits: [{ kind: 'task', id: 'T9' }] }), undefined, TREE),
+      'T1 verifying, p2, owner alpha, from lead | Add a health check (proof: the nightly run is green; waiting: on T9)',
+    );
     assert.equal(formatTask(testTask({ status: 'in-progress', note: 'started' }), undefined, TREE), 'T1 in-progress, p2, owner alpha, from lead | Add a health check');
   });
 });

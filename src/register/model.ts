@@ -2,8 +2,8 @@ import { ID_PATTERN } from '../core/ids.ts';
 
 /**
  * Task states. The first four are active: the task still needs its owner. `verifying` is a change that has
- * shipped and waits for what proves it (a test run, a night's flow, a number), named by its `--proof`.
- * `waiting` cannot go on until each of its typed reasons clears (waits.ts).
+ * shipped and waits for what proves it (a test run, a night's flow, a number), named by its `--proof`; it may also
+ * carry what that proof waits for, typed (waits.ts). `waiting` cannot go on until each of its typed reasons clears.
  */
 export const TASK_STATUSES = ['open', 'in-progress', 'verifying', 'waiting', 'done', 'dropped'] as const;
 
@@ -13,6 +13,13 @@ export const ACTIVE_STATUSES: readonly TaskStatus[] = ['open', 'in-progress', 'v
 
 /** The statuses a change may name the task's follow-ups with (`set --followups`): shipping, finishing or dropping it. */
 export const FOLLOWUP_STATUSES: readonly TaskStatus[] = ['verifying', 'done', 'dropped'];
+
+/**
+ * The statuses that carry typed wait reasons (waits.ts): `waiting` needs at least one; `verifying` may name what its
+ * proof waits for (the task asked of whoever runs the proof, the time it comes, the owner's approval), so the party
+ * that holds the proof has it on its own list and the owner is not asked to verify what it cannot yet.
+ */
+export const WAIT_STATUSES: readonly TaskStatus[] = ['waiting', 'verifying'];
 
 /**
  * The status `waiting` replaced in teamrig 0.10.0. A line that names it reads as `waiting` with no reasons and is

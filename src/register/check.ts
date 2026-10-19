@@ -73,7 +73,8 @@ export function currentWeekOf(snapshot: RegisterSnapshot, now: Date, zone: TimeZ
  * - VERIFY-BLOCKS: verifying, and another active task is planned after it or waits on it, so that work cannot start
  *   until the proof comes (`set` refuses its start);
  * - READY: waiting, and every reason it waits for is ready (its tasks finished, its time passed), so its owner can
- *   go on: only the owner clears a decision or an approval, by setting the next status;
+ *   go on: only the owner clears a decision or an approval, by setting the next status; or verifying, and every
+ *   reason its proof waited for is ready, so the proof should exist: its owner verifies it now;
  * - NO-REASON: waiting with no reason, as a line from an older teamrig reads: nothing says what it waits for;
  * - NO-CARD: waiting on the owner's decision or approval with no card to decide from (card.ts), as one set before
  *   cards, or while `requireDecisionCard` was off, reads; never with that switch off;
@@ -109,7 +110,7 @@ export function checkTasks(tasks: Iterable<Task>, now: Date, zone: TimeZone, wee
   const flags = active.flatMap((task) => [
     ...verifyFlags(task, tree, piles, config.maxVerifying),
     ...selfMadeFlags(task, runs, config.check.maxSelfMadePerDay),
-    ...(task.status === 'waiting' && allReady(task.waits, tree.context) ? [{ kind: 'READY' as const, task, detail: 'every reason cleared; set its next status' }] : []),
+    ...readyFlags(task, tree.context),
     ...(task.status === 'waiting' && task.waits.length === 0 ? [{ kind: 'NO-REASON' as const, task, detail: 'set what it waits for (--waits) or its next status' }] : []),
     ...noCardFlags(task, config),
     ...timeFlags(task, at, config.check, tree),
@@ -136,16 +137,16 @@ interface WeekPlan {
 }
 
 /**
- * PEER-WAIT: waiting on a decision or an approval of a peer (anyone but the lead and the owner), as a line from an
- * older teamrig reads: a peer's work is a task, waited on by its id, which clears by itself once that task finishes.
- * Apart from {@link checkTasks}, whose register config does not name the lead.
+ * PEER-WAIT: waiting (or a verifying task's proof waiting) on a decision or an approval of a peer (anyone but the
+ * lead and the owner), as a line from an older teamrig reads: a peer's work is a task, waited on by its id, which
+ * clears by itself once that task finishes. Apart from {@link checkTasks}, whose register config does not name the lead.
  */
 export function peerWaitFlags(tasks: Iterable<Task>, lead: string, ownerSource: string): Flag[] {
   return [...tasks].flatMap((task) => {
-    const peer = task.status === 'waiting' ? task.waits.find((reason) => isPeerWait(reason, lead, ownerSource)) : undefined;
+    const peer = task.waits.find((reason) => isPeerWait(reason, lead, ownerSource));
     return peer === undefined
       ? []
-      : [{ kind: 'PEER-WAIT' as const, task, detail: `${waitSpelling(peer)} is a peer's work: wait on it by its task (set ${task.id} --status waiting --ask ${peer.who} --text "<the work>")` }];
+      : [{ kind: 'PEER-WAIT' as const, task, detail: `${waitSpelling(peer)} is a peer's work: wait on it by its task (set ${task.id} --status ${task.status} --ask ${peer.who} --text "<the work>")` }];
   });
 }
 
@@ -158,14 +159,23 @@ function weekPlan(week: string | null, lengthDays: number, zone: TimeZone): Week
 function noCardFlags(task: Task, config: RegisterConfig): Flag[] {
   const { ownerSource } = config;
   const asksOwner = task.waits.some((reason) => (reason.kind === 'decision' || reason.kind === 'approval') && reason.who === ownerSource);
-  return config.requireDecisionCard && task.status === 'waiting' && task.card === null && asksOwner
-    ? [{ kind: 'NO-CARD', task, detail: `no card for ${ownerSource} to decide from: set it waiting again with ${CARD_FLAGS}` }]
+  return config.requireDecisionCard && task.card === null && asksOwner
+    ? [{ kind: 'NO-CARD', task, detail: `no card for ${ownerSource} to decide from: set it ${task.status} again with ${CARD_FLAGS}` }]
     : [];
 }
 
-/** A waiting task with a time reason still to come: parked on purpose until then, so not stale. */
+/** READY, as {@link checkTasks} describes it: a waiting task's reasons, or a verifying task's proof waits, all cleared. */
+function readyFlags(task: Task, context: WaitContext): Flag[] {
+  if (!allReady(task.waits, context)) {
+    return [];
+  }
+  const detail = task.status === 'verifying' ? 'every wait of its proof cleared; verify it now' : 'every reason cleared; set its next status';
+  return [{ kind: 'READY', task, detail }];
+}
+
+/** A task with a time reason still to come (waiting, or a verifying task's proof): parked on purpose until then, so not stale. */
 function waitsForTime(task: Task, context: WaitContext): boolean {
-  return task.status === 'waiting' && task.waits.some((reason) => reason.kind === 'time' && !isReady(reason, context));
+  return task.waits.some((reason) => reason.kind === 'time' && !isReady(reason, context));
 }
 
 /** OVERDUE or VERIFY-OVERDUE on the effective due, then NOT-PICKED-UP or else STALE. */

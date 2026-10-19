@@ -1,6 +1,6 @@
 import type { DecisionCard } from './card.ts';
 import type { RegisterEvent, TaskFields } from './events.ts';
-import type { TaskStatus } from './model.ts';
+import { WAIT_STATUSES, type TaskStatus } from './model.ts';
 import type { WaitReason } from './waits.ts';
 
 /** A task as the event log describes it after replaying every event in write order. */
@@ -11,9 +11,12 @@ export interface Task extends TaskFields {
   readonly note: string | null;
   readonly evidence: string | null;
   readonly skill: string | null;
-  /** What the task waits for while `waiting`, from its latest status change; empty in any other status. */
+  /**
+   * What the task waits for while `waiting`, or what its proof waits for while `verifying` (WAIT_STATUSES), from its
+   * latest status change; empty in any other status.
+   */
   readonly waits: readonly WaitReason[];
-  /** What a task waiting on a decision or an approval asks (card.ts), from its latest status change; null otherwise. */
+  /** What a wait on a decision or an approval asks (card.ts), from its latest status change; null otherwise. */
   readonly card: DecisionCard | null;
   /**
    * What will prove a `verifying` task works, from its latest status change; null in any other status, and on a
@@ -142,8 +145,8 @@ function withStatus(task: Task, event: Extract<RegisterEvent, { type: 'status' }
     note: event.note,
     evidence: event.evidence ?? task.evidence,
     skill: event.skill,
-    waits: event.status === 'waiting' ? (event.waits ?? []) : [],
-    card: event.status === 'waiting' ? (event.card ?? null) : null,
+    waits: WAIT_STATUSES.includes(event.status) ? (event.waits ?? []) : [],
+    card: WAIT_STATUSES.includes(event.status) ? (event.card ?? null) : null,
     proof: event.status === 'verifying' ? (event.proof ?? null) : null,
     followups: event.followups === undefined ? task.followups : [...new Set([...task.followups, ...event.followups])],
     startedAt: task.startedAt ?? (event.status === 'in-progress' || event.status === 'verifying' ? event.at : null),

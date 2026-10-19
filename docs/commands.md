@@ -77,7 +77,10 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       (register.requireFollowupsOn); show lists them
       waiting needs --waits: the lead's or the owner's decision or approval, a task to finish first
       (only once started) or a time; check flags it READY once its tasks finished and its time passed
-      --ask (with waiting): adds the work as that session's task and waits on it; --due is its due date
+      --ask (with waiting, or verifying for its proof): adds the work as that session's task and waits on it;
+      --due is then the asked task's due date
+      verifying may take --waits or --ask for what its proof waits for (a task, a time, the owner's approval);
+      set verifying again without --waits keeps them
       a wait on the owner's decision or approval needs a card the owner decides from alone
       (register.requireDecisionCard): --question "<what is decided>" --options "<a, its numbers> | <b>"
       --recommend "<which, and why>" --default "<what happens with no answer>"; each part at least 3 words

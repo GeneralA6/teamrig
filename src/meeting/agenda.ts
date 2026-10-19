@@ -29,9 +29,9 @@ export function agendaSince(previousEnd: number | undefined, now: number): numbe
   return Math.max(previousEnd ?? now - MS_PER_DAY, now - DONE_WINDOW_DAYS * MS_PER_DAY);
 }
 
-/** Whether a waiting task waits for a decision or an approval from the owner. */
+/** Whether a task waits for a decision or an approval from the owner: a waiting one, or a verifying one's proof. */
 export function waitsOnOwner(task: Task, ownerMarker: string): boolean {
-  return task.status === 'waiting' && task.waits.some((reason) => (reason.kind === 'decision' || reason.kind === 'approval') && reason.who === ownerMarker);
+  return task.waits.some((reason) => (reason.kind === 'decision' || reason.kind === 'approval') && reason.who === ownerMarker);
 }
 
 export interface AgendaInput {
