@@ -1,4 +1,5 @@
 import { coordinatorPlaces, teamPlace } from "../../coordinator/places.js";
+import { SecretScanner } from "../../core/secrets.js";
 import { integrateBranch } from "../../integrate/integrate.js";
 import { hostLockOf, logLine, nextResetFrom } from "../coordinator-ports.js";
 import { callerOf } from "../inputs.js";
@@ -22,6 +23,8 @@ export async function integrate(args, runtime) {
     const end = await integrateBranch({ coordinator, places, inTeam: (path) => teamPlace(kit.paths, path) }, {
         git: runtime.integrateGit,
         steps: runtime.steps,
+        hooks: runtime.hooks,
+        scanner: new SecretScanner(config.register.secretPatterns),
         files: runtime.files,
         clock: runtime.clock,
         sleep: runtime.sleep,
