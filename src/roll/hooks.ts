@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { NOT_STARTED_EXIT } from '../coordinator/recorded-step.ts';
-import { exitCodeOf, nodeTreeKill, type LimitedEnd, type TreeKill } from '../coordinator/steps.ts';
+import { exitCodeOf, nodeTreeKill, type StepEnd, type TreeKill } from '../coordinator/steps.ts';
 import type { Env } from '../core/home.ts';
 import { endOf } from '../test-run/shell.ts';
 
@@ -16,12 +16,14 @@ export interface HookRequest {
   readonly env: Env;
   /** Past this, the hook is killed with every process it started. */
   readonly timeoutMs: number;
+  /** Once this aborts, the hook is killed with every process it started, as at its time limit. */
+  readonly stop?: AbortSignal;
   /** Hears each line the hook prints on stdout, as it comes; its stdin is closed and its stderr is this process's. */
   readonly onLine: (line: string) => void;
 }
 
-/** How a hook ended: as a step does, or not started at all (no such program, or a missing folder). */
-export type HookEnd = LimitedEnd | { readonly kind: 'notStarted'; readonly error: string };
+/** How a hook ended: as a step does, killed by its stop too, or not started at all (no such program, or a missing folder). */
+export type HookEnd = StepEnd | { readonly kind: 'notStarted'; readonly error: string };
 
 export interface HookRunner {
   run(request: HookRequest): Promise<HookEnd>;
@@ -32,7 +34,7 @@ export function succeeded(end: HookEnd): boolean {
   return end.kind === 'exited' && end.code === 0;
 }
 
-/** The exit code a hook's end is recorded as: its own, 124 at its time limit, 1 when a signal stopped it or it did not start. */
+/** The exit code a hook's end is recorded as: its own, 124 at its time limit, 129 when its stop killed it, 1 when a signal stopped it or it did not start. */
 export function hookExitCode(end: HookEnd): number {
   return end.kind === 'notStarted' ? NOT_STARTED_EXIT : exitCodeOf(end);
 }
@@ -46,12 +48,14 @@ export function hookEndText(end: HookEnd): string {
       return `was stopped by ${end.signal}`;
     case 'timedOut':
       return 'was killed at its time limit';
+    case 'stopped':
+      return 'was killed when its launching shell ended';
     case 'notStarted':
       return `could not start (${end.error})`;
   }
 }
 
-/** The real runner: Node's `spawn` with no shell, stdout read line by line, and a timer that kills the tree. */
+/** The real runner: Node's `spawn` with no shell, stdout read line by line; its time limit or its `stop` kills the tree. */
 export function nodeHookRunner(platform: NodeJS.Platform, kill: TreeKill = nodeTreeKill(platform)): HookRunner {
   return {
     run: (request) =>
@@ -76,23 +80,37 @@ export function nodeHookRunner(platform: NodeJS.Platform, kill: TreeKill = nodeT
           windowsHide: true,
           detached: platform !== 'win32',
         });
-        let timedOut = false;
-        const timer = setTimeout(() => {
-          timedOut = true;
+        let killed: 'timedOut' | 'stopped' | undefined;
+        const killAs = (why: 'timedOut' | 'stopped'): void => {
+          if (killed !== undefined) {
+            return;
+          }
+          killed = why;
           if (child.pid !== undefined) {
             kill(child.pid);
           }
-        }, request.timeoutMs);
+        };
+        const timer = setTimeout(() => killAs('timedOut'), request.timeoutMs);
+        const onStop = (): void => killAs('stopped');
+        const ended = (): void => {
+          clearTimeout(timer);
+          request.stop?.removeEventListener('abort', onStop);
+        };
+        if (request.stop?.aborted === true) {
+          onStop();
+        } else {
+          request.stop?.addEventListener('abort', onStop, { once: true });
+        }
         const lines = createInterface({ input: child.stdout, crlfDelay: Number.POSITIVE_INFINITY });
         lines.on('line', request.onLine);
         const read = new Promise<void>((done) => lines.once('close', done));
         child.once('error', (error) => {
-          clearTimeout(timer);
+          ended();
           settle({ kind: 'notStarted', error: error.message });
         });
         child.once('close', (code, signal) => {
-          clearTimeout(timer);
-          void read.then(() => settle(timedOut ? { kind: 'timedOut' } : endOf(code, signal)));
+          ended();
+          void read.then(() => settle(killed === undefined ? endOf(code, signal) : { kind: killed }));
         });
       }),
   };
