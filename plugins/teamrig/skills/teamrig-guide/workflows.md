@@ -266,6 +266,31 @@ teamrig add --session lead --owner api --source owner --priority p2 --title "Rat
 Bring the human only what needs them: verified results, decisions taken, investigated questions (options,
 numbers and a recommendation) and incidents. Progress and plans stay in the register.
 
+## Turn a lesson into a fix
+
+A lesson is a miss that will happen again: a rule broken, tokens spent on the same pattern, an incident. Fix it
+once, where it stops coming back:
+
+1. Measure it: how often and what it costs, from a source you can run again (`teamrig budget --burn --all` for
+   where the tokens went, `--loops` for chains of single-step calls, the register, the incident's own numbers).
+   No number, no change.
+2. Sort it: would a team building any other product hit it? If not (your domain, data or stack), it is your
+   team's. If so, it is teamrig's: report it with its evidence as an
+   [issue on teamrig](https://github.com/GeneralA6/teamrig/issues) (a team that builds teamrig adds a task for
+   the session that does), and make no local fix.
+3. Pick its form, the first that fits: a mechanism that catches it by itself (a check flag, a hook, a warning);
+   else a skill, for a procedure (rule 13); else a rule line in the team's `rules.md`. A number in it is a
+   config value with a default, never one project's constant.
+4. Bridge only a real cost: while the fix is on its way, a local stopgap is for a budget, safety or incident cost
+   alone, tagged `stopgap T<id>` with the task that replaces it (rule 10); `teamrig check` flags it
+   `STOPGAP-DONE` once that task is done.
+5. Confirm: once the fix is installed
+   ([updating the plugin](https://github.com/GeneralA6/teamrig/blob/main/docs/how-it-works.md#updating-the-plugin)),
+   measure the same number the same way. If it did not fall, the lesson goes back to step 2 with the new numbers.
+
+The lead routes each lesson a session reports: it sorts it, sees that its task exists, and reads the confirming
+number at a later checkpoint.
+
 ## The owner's daily meeting
 
 Once a day the lead meets the human. The `daily-meeting` skill has the steps; in short:
