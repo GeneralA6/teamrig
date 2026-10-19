@@ -32,7 +32,6 @@ import { TRANSCRIPT_TAIL_BYTES } from '../../names/title.ts';
 import {
   decideStart,
   decideStop,
-  handoverHashOf,
   reaskGrowth,
   thousands,
   type DueFacts,
@@ -42,7 +41,6 @@ import {
 } from '../../refresh/decide.ts';
 import { carryLines, carryStartOf, readCarry } from '../../refresh/carry.ts';
 import { claudeProcessOf } from '../../refresh/restart.ts';
-import { readRunningWork } from '../../refresh/running.ts';
 import { RefreshStore } from '../../refresh/store.ts';
 import { readContextTokens } from '../../refresh/usage.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
@@ -58,6 +56,7 @@ import { droppedEditReasonOf } from './hook-dropped-edit.ts';
 import { meetingHold } from './hook-meeting.ts';
 import { armRestart, restartTargetOf } from './hook-restart.ts';
 import { helperContextOf } from './hook-helper-start.ts';
+import { dueFactsAt } from './hook-refresh-mod.ts';
 import { envSession, hookScopeOf, leadOwnPaths, parseJson, sessionScopeOf, sessionTeam, startSessionOf, teamScopeOf, teamSessionOf, type SessionScope } from './hook-input.ts';
 import { tabStatusOn, tabTitleOf } from './hook-tab-status.ts';
 import { logPrompt, logReply, logStart } from './hook-turn-log.ts';
@@ -464,16 +463,9 @@ async function stopFactsOf(runtime: CliRuntime, roster: Roster, store: RefreshSt
   };
 }
 
-/**
- * The facts a due refresh or notice reads: the handover as it is now (so `refresh --ready` can tell a new one
- * from it), and the background work still running, which a fresh start must wait for.
- */
-async function dueFactsOf(runtime: CliRuntime, store: RefreshStore, id: string, payload: JsonRecord): Promise<DueFacts> {
-  const transcript = stringField(payload, 'transcript_path');
-  return {
-    handoverHash: handoverHashOf(await store.handover(id)),
-    running: transcript === undefined ? 0 : await readRunningWork(runtime.files, transcript, runtime.clock.now()),
-  };
+/** The facts a due refresh or notice reads (`dueFactsAt`), the running work from the transcript Claude Code gave the hook. */
+function dueFactsOf(runtime: CliRuntime, store: RefreshStore, id: string, payload: JsonRecord): Promise<DueFacts> {
+  return dueFactsAt(runtime, store, id, stringField(payload, 'transcript_path'));
 }
 
 /** The owner's turn-end line when the lead did hand-off work itself (lead-boundary.ts); none for another session, with the boundary off or without a transcript. */

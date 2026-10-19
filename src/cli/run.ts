@@ -36,6 +36,7 @@ const promptRefuseCommand = () => import('./commands/hook-prompt-refuse.ts');
 const helperStartCommand = () => import('./commands/hook-helper-start.ts');
 const clearCommands = () => import('./commands/hook-clear.ts');
 const wakeCommands = () => import('./commands/hook-wake.ts');
+const refreshModCommands = () => import('./commands/hook-refresh-mod.ts');
 const teamCommands = () => import('./commands/team.ts');
 const commitsCommands = () => import('./commands/commits.ts');
 const doctorCommands = () => import('./commands/doctor.ts');
@@ -187,6 +188,8 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'hook clear-claim': { effect: 'internal', flags: [], switches: ['hold'], load: async () => (await clearCommands()).clearClaim },
   'hook wake-check': { effect: 'internal', flags: [], load: async () => (await wakeCommands()).wakeCheck },
   'hook wake-dropped': { effect: 'internal', flags: [], load: async () => (await wakeCommands()).wakeDropped },
+  'hook refresh-mid': { effect: 'internal', flags: [], load: async () => (await refreshModCommands()).refreshMid },
+  'hook compact-check': { effect: 'internal', flags: [], load: async () => (await refreshModCommands()).compactCheck },
   'hook slash-command': {
     effect: 'internal',
     flags: [],
@@ -432,6 +435,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       (run by the plugin's mod: the automatic restart's /clear in the tab)
   hook wake-check | hook wake-dropped
       (run by the plugin's mod: wakes an idle tab when unblocked urgent work is handed to its session)
+  hook refresh-mid | hook compact-check
+      (run by the plugin's mod: asks for the handover within a long turn, and holds a compaction while it is due)
   hook slash-command
       (run by the plugin's mod: /teamrig <command> typed in a Claude Code tab; /teamrig alone tells what it runs)
   launch <id> --team <team> --project <dir> [--home <dir>] [--encoded-prompt <text> | --no-prompt] [--resume <session>] [--effort <level>]
