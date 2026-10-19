@@ -5,7 +5,16 @@ import { realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
-import { claudeProjectsDir, claudeProjectSlug, discoverTranscripts, lastWriteOf, nodeTranscriptFolders, nodeTranscriptSource, projectTranscriptPath } from './discover.ts';
+import {
+  claudeProjectsDir,
+  claudeProjectSlug,
+  discoverTranscripts,
+  findTranscript,
+  lastWriteOf,
+  nodeTranscriptFolders,
+  nodeTranscriptSource,
+  projectTranscriptPath,
+} from './discover.ts';
 
 const ROOT = join('/', 'u', '.claude', 'projects');
 const A = '0123abcd-0000-4000-8000-00000000000a';
@@ -108,6 +117,29 @@ describe('nodeTranscriptFolders', () => {
     const found = await discoverTranscripts(nodeTranscriptSource, dir, SINCE);
     assert.deepEqual(found, [{ claudeSession: A, main: [join(dir, 'p1', `${A}.jsonl`)], subagents: [] }]);
     assert.equal(await nodeTranscriptSource.size(join(dir, 'p1', `${A}.jsonl`)), 3);
+  });
+});
+
+describe('findTranscript', () => {
+  const transcripts = new MemoryTranscripts();
+  transcripts.set(join(ROOT, '-srv-app', `${A}.jsonl`), '{}\n', YESTERDAY);
+  transcripts.set(join(ROOT, 'p1', `${A}.jsonl`), '{}\n', TODAY);
+  transcripts.set(join(ROOT, 'p1', `${B}.jsonl`), '{}\n', YESTERDAY);
+  transcripts.set(join(ROOT, 'p2', `${B}.jsonl`), '{}\n', TODAY);
+  transcripts.set(join(ROOT, 'p3', C, 'subagents', 'agent-1.jsonl'), '{}\n', TODAY);
+
+  it("takes the session's transcript in its project's folder, even when another folder has a newer one", async () => {
+    assert.equal(await findTranscript(transcripts, ROOT, '/srv/app', A), join(ROOT, '-srv-app', `${A}.jsonl`));
+  });
+
+  it('takes the newest of the session in any folder when its project has none, or the project is unknown', async () => {
+    assert.equal(await findTranscript(transcripts, ROOT, '/srv/app', B), join(ROOT, 'p2', `${B}.jsonl`));
+    assert.equal(await findTranscript(transcripts, ROOT, undefined, A), join(ROOT, 'p1', `${A}.jsonl`));
+  });
+
+  it("is undefined for a session with no transcript of its own, a subagent's left out", async () => {
+    assert.equal(await findTranscript(transcripts, ROOT, '/srv/app', C), undefined);
+    assert.equal(await findTranscript(new MemoryTranscripts(), ROOT, undefined, A), undefined);
   });
 });
 
