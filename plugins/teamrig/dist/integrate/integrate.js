@@ -1,4 +1,4 @@
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname } from 'node:path';
 import { claimText, coveringClaims, readClaims } from "../coordinator/claims.js";
 import { takeWhenClear } from "../coordinator/clearance.js";
 import { underLock } from "../coordinator/host-lock.js";
@@ -11,7 +11,7 @@ import { samePath } from "../core/paths.js";
 import { shownLine } from "../roll/gates.js";
 import { hookEndText, hookExitCode, succeeded } from "../roll/hooks.js";
 import { commandLine } from "../test-run/shell.js";
-import { rangeInstallTouches } from "./dependencies.js";
+import { rangeInstallTouches, runDependencyCheck } from "./dependencies.js";
 import { LOCKFILE } from "./manifest.js";
 /**
  * `teamrig integrate`: lands a finished branch on origin's default branch, one push on the host at a time. It refuses
@@ -22,8 +22,6 @@ import { LOCKFILE } from "./manifest.js";
  * main checkout. It never deploys: a push a host deploys by itself is recorded as that deploy.
  */
 const MINUTE_MS = 60_000;
-/** Names, for the dependency check, the file holding the default branch's package-lock.json. */
-export const BASELINE_LOCK_ENV = 'TEAMRIG_BASELINE_LOCK';
 /** A push origin rejects because its default branch moved meanwhile is rebased and pushed again, this many times in all. */
 export const PUSH_ATTEMPTS = 3;
 /** Branch names never integrated, whatever origin's default branch is. */
@@ -100,23 +98,10 @@ async function dependencyHold(git, top, onto, repo) {
     return (`deps changed (${touches.join(', ')}): coordinator.repos.${repo}.dependencyGate holds a dependency change, since landing it changes, unreviewed, ` +
         `the node_modules every worktree links to; set coordinator.repos.${repo}.dependencyCheck to the check that clears one, or push it and install by hand`);
 }
-/** Runs `work` with `file` written, and removes it after, however `work` ends; with no file, just `work`. */
-async function withFile(files, file, work) {
-    if (file === undefined) {
-        return work();
-    }
-    await files.write(file.path, file.text);
-    try {
-        return await work();
-    }
-    finally {
-        await files.remove(file.path);
-    }
-}
 /**
  * Under the host lock `lock`, after the rebase onto `base`: runs the repository's dependency check when the gate is on
  * and the rebased branch changes the package files, with `base`'s package-lock.json in the file
- * {@link BASELINE_LOCK_ENV} names, kept only while the check runs. Undefined lets the push go; else the refusal, the
+ * `TEAMRIG_BASELINE_LOCK` names, kept only while the check runs. Undefined lets the push go; else the refusal, the
  * check's output shown above it.
  */
 async function dependencyCheckRefusal(setup, ports, request, plan, lock, base) {
@@ -132,17 +117,17 @@ async function dependencyCheckRefusal(setup, ports, request, plan, lock, base) {
     if (touches.length === 0) {
         return undefined;
     }
-    const lockfile = ports.git.fileAt(top, base, LOCKFILE);
-    const baseline = lockfile === undefined ? undefined : { path: join(dirname(setup.places.ledger), `baseline-${ports.newId()}.${LOCKFILE}`), text: lockfile };
     const changed = `deps changed (${touches.join(', ')})`;
     ports.say(`${changed}: dependency check ${argv.join(' ')}`);
-    const end = await withFile(ports.files, baseline, () => recordHeavy(ports, setup.places.ledger, { session: request.session, what: `integrate ${repo.name}: dependency check of ${branch}` }, () => ports.hooks.run({
+    const end = await recordHeavy(ports, setup.places.ledger, { session: request.session, what: `integrate ${repo.name}: dependency check of ${branch}` }, () => runDependencyCheck(ports, {
         argv,
         cwd: top,
-        env: underLock({ ...gitEnvironment(ports.env), [BASELINE_LOCK_ENV]: baseline?.path }, lock),
+        baseline: ports.git.fileAt(top, base, LOCKFILE),
+        folder: dirname(setup.places.ledger),
+        env: underLock(gitEnvironment(ports.env), lock),
         timeoutMs: setup.coordinator.heavy.maxRunMinutes * MINUTE_MS,
         onLine: (line) => ports.say(`  ${shownLine(ports.scanner, line)}`),
-    }), hookExitCode));
+    }), hookExitCode);
     if (succeeded(end)) {
         return undefined;
     }
