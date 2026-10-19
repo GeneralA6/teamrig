@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatUtcDay, formatUtcHour, formatUtcMinute, isMinuteInSpan, parseUtcDay, parseUtcDeadline, parseUtcInstant, shortUtc, utcMinuteOf } from './time.ts';
+import { formatUtcDay, formatUtcHour, formatUtcMinute, isMinuteInSpan, parseDayStart, parseDeadline, parseTypedInstant, parseUtcDay, parseUtcDeadline, parseUtcInstant, shortUtc, showStored, storedDeadline, typedTimeHint, utcMinuteOf } from './time.ts';
+import { TimeZone } from './zone.ts';
 
 describe('utcMinuteOf', () => {
   it('reads HH:MM as minutes since midnight, and nothing else', () => {
@@ -75,5 +76,47 @@ describe('parseUtcInstant', () => {
       ['24:00', '9:05', '2030-02-30', '2030-01-07 23:60', '2030-01-07T23:45:30', 'now', ''].map((text) => parseUtcInstant(text, NOW)),
       [undefined, undefined, undefined, undefined, undefined, undefined, undefined],
     );
+  });
+});
+
+describe('in the team zone', () => {
+  const JERUSALEM = TimeZone.of('Asia/Jerusalem') ?? TimeZone.UTC;
+  const NOW = Date.parse('2026-10-19T21:30:00Z');
+
+  it("reads a stored bare day as that day of the team's zone, and a stored minute as UTC", () => {
+    assert.deepEqual(
+      [parseDayStart('2026-10-20', JERUSALEM), parseDeadline('2026-10-20', JERUSALEM), parseDeadline('2026-10-20 06:00', JERUSALEM)].map((date) => date?.toISOString()),
+      ['2026-10-19T21:00:00.000Z', '2026-10-20T20:59:59.999Z', '2026-10-20T06:00:00.000Z'],
+    );
+    assert.deepEqual([parseDeadline('2026-10-25', JERUSALEM)?.toISOString(), parseDeadline('2026-02-30', JERUSALEM), parseDayStart('2026-10-20 06:00', JERUSALEM)], ['2026-10-25T21:59:59.999Z', undefined, undefined]);
+  });
+
+  it('shows a stored day as it is and a stored minute in the zone, without the year', () => {
+    assert.deepEqual(['2026-10-22', '2026-10-20 06:00', 'soon'].map((text) => showStored(text, JERUSALEM)), ['10-22', '10-20 09:00 IDT', 'soon']);
+  });
+
+  it("reads a typed time on the zone's clock, today there, unless marked UTC", () => {
+    assert.deepEqual(
+      ['09:00', '09:00 IDT', '09:00 utc', '2026-10-25 09:00 IST', '2026-10-25T09:00', '2026-10-21', '2026-10-21T09:00+02:00'].map((text) => parseTypedInstant(text, NOW, JERUSALEM)?.toISOString()),
+      ['2026-10-20T06:00:00.000Z', '2026-10-20T06:00:00.000Z', '2026-10-20T09:00:00.000Z', '2026-10-25T07:00:00.000Z', '2026-10-25T07:00:00.000Z', '2026-10-20T21:00:00.000Z', '2026-10-21T07:00:00.000Z'],
+    );
+  });
+
+  it("refuses a mark of another zone or another season, and anything it cannot read", () => {
+    assert.deepEqual(
+      ['09:00 IST', '09:00 EST', '2026-10-25 09:00 IDT', '24:00', '2026-02-30 09:00', '9:00', 'now'].map((text) => parseTypedInstant(text, NOW, JERUSALEM)),
+      [undefined, undefined, undefined, undefined, undefined, undefined, undefined],
+    );
+  });
+
+  it('stores a typed day as it is and a typed time as its UTC minute', () => {
+    assert.deepEqual(
+      ['2026-10-22', '2026-10-22 09:00', '2026-10-22 09:00 UTC', '2026-02-30', 'Friday'].map((text) => storedDeadline(text, NOW, JERUSALEM)),
+      ['2026-10-22', '2026-10-22 06:00', '2026-10-22 09:00', undefined, undefined],
+    );
+  });
+
+  it('says how to type a time, with the zone', () => {
+    assert.equal(typedTimeHint(JERUSALEM, NOW), 'HH:MM or YYYY-MM-DD HH:MM in Asia/Jerusalem (IDT), or marked UTC');
   });
 });
