@@ -127,6 +127,64 @@ describe('runCli: context refresh', () => {
     assert.match((await kit.files.read(STATE('alpha'))) ?? '', /"phase":"refreshed"/);
   });
 
+  it('still names the jobs a /clear kept at the next refresh, and lists them to make again once a new process ends them', async () => {
+    const kit = new CliHarness();
+    const second = join(USER_HOME, '.claude', 'projects', 'app', 'second.jsonl');
+    const third = join(USER_HOME, '.claude', 'projects', 'app', 'third.jsonl');
+    const cleared = (fresh: string): string => JSON.stringify({ session_id: CLAUDE_SESSION, cwd: APP, source: 'clear', transcript_path: fresh });
+    const carried = join(TEAM_HOME, 'state', 'refresh', 'alpha.carried.json');
+    const kept = "Your old session's 1 scheduled job(s) are still scheduled, since a /clear keeps the process";
+    const remake = '- cron "3 13 * * *"';
+    /** The next refresh asked and its handover written, from the session whose transcript is `path`. */
+    const refreshFrom = async (path: string, handover: string): Promise<void> => {
+      await kit.files.write(path, transcript(300_000));
+      await finishTask(kit, 'alpha');
+      stopJson(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload(false, { transcript_path: path }) }));
+      await kit.files.write(HANDOVER('alpha'), handover);
+      assert.equal((await kit.run(['refresh', '--ready', '--session', 'alpha'])).code, EXIT.ok);
+      stopJson(await kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload(true, { transcript_path: path }) }));
+    };
+
+    await refreshFrom(TRANSCRIPT, '# first\n');
+    const cron = { cron: '3 13 * * *', prompt: 'budget check', recurring: true };
+    await kit.files.append(
+      TRANSCRIPT,
+      `${JSON.stringify({ type: 'assistant', timestamp: '2030-01-08T09:00:00.000Z', message: { content: [{ type: 'tool_use', id: 'toolu_cron', name: 'CronCreate', input: cron }] } })}\n` +
+        `${JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'toolu_cron', content: 'ok' }] }, toolUseResult: { id: 'c1', humanSchedule: cron.cron, recurring: true } })}\n`,
+    );
+    assert.ok(contextOf(await kit.run(['hook', 'session-start'], { ...AS_ALPHA, stdin: cleared(second) })).includes(kept), 'the first /clear keeps the job');
+    assert.match((await kit.files.read(carried)) ?? '', /"transcript":".*second\.jsonl"/);
+
+    await refreshFrom(second, '# second\n');
+    const again = contextOf(await kit.run(['hook', 'session-start'], { ...AS_ALPHA, stdin: cleared(third) }));
+    assert.ok(again.includes(kept), 'the second /clear still names the job its transcript never mentions');
+    assert.ok(!again.includes(remake));
+
+    await refreshFrom(third, '# third\n');
+    const restarted = contextOf(await kit.run(['hook', 'session-start'], { ...AS_ALPHA, stdin: startPayload('startup') }));
+    assert.ok(restarted.includes(remake), 'a new process lost it, so it is listed to make again');
+    assert.equal(await kit.files.read(carried), undefined, 'and nothing is left live to record');
+  });
+
+  it('moves the record on at a /clear the refresh did not ask for, and ends it at a new process', async () => {
+    const kit = new CliHarness();
+    const store = await handoverWritten(kit);
+    const second = join(USER_HOME, '.claude', 'projects', 'app', 'second.jsonl');
+    const third = join(USER_HOME, '.claude', 'projects', 'app', 'third.jsonl');
+    const job = { id: 'c1', cron: '3 13 * * *', prompt: 'budget check', recurring: true, createdAt: Date.parse('2030-01-08T09:00:00.000Z') };
+    const start = (source: string, fresh: string): string => JSON.stringify({ session_id: CLAUDE_SESSION, cwd: APP, source, transcript_path: fresh });
+    await kit.run(['hook', 'session-start'], { ...AS_ALPHA, stdin: start('clear', second) });
+    await store.setCarried('alpha', { transcript: second, crons: [job] });
+    await kit.files.write(second, transcript(1_000));
+
+    await kit.run(['hook', 'session-start'], { ...AS_ALPHA, stdin: start('clear', third) });
+    assert.deepEqual(await store.carried('alpha'), { transcript: third, crons: [job] }, 'a plain /clear moves it on');
+    await kit.run(['hook', 'session-start'], { ...AS_ALPHA, stdin: start('compact', third) });
+    assert.deepEqual(await store.carried('alpha'), { transcript: third, crons: [job] }, 'a compaction keeps it');
+    await kit.run(['hook', 'session-start'], { ...AS_ALPHA, stdin: start('startup', third) });
+    assert.equal(await store.carried('alpha'), undefined, 'a new process ends it');
+  });
+
   it('keeps the identity of a tab whose title names no session across the refresh /clear, by its Claude Code process', async () => {
     const kit = new CliHarness();
     const start = (session: string, title: string): string => JSON.stringify({ session_id: session, cwd: APP, source: 'clear', session_title: title });
