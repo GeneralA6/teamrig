@@ -23,6 +23,8 @@ export interface HeavyMark {
   readonly what: string;
   /** When the step began to wait for the host lock, in ms; recorded as `queuedAt`. */
   readonly queuedAt?: number;
+  /** Set for a small step sharing the host; recorded as `shared`. */
+  readonly shared?: true;
 }
 
 /** How a step's memory is watched while it runs: the host's memory, the root of its process tree, and how often. */
@@ -49,6 +51,7 @@ export async function recordHeavy<T>(ports: HeavyRecordPorts, ledger: string, ma
     session: mark.session,
     what: mark.what,
     ...(mark.queuedAt === undefined ? {} : { queuedAt: new Date(mark.queuedAt).toISOString() }),
+    ...(mark.shared === true ? { shared: true } : {}),
     startedAt: new Date(ports.clock.now()).toISOString(),
     endedAt: null,
     exitCode: null,
