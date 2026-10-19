@@ -1,7 +1,8 @@
 import { HEAVY_TTL_MARGIN_MINUTES } from '../../config/defaults.ts';
 import type { Roster } from '../../config/roster.ts';
 import type { HeavyConfig } from '../../config/types.ts';
-import { holderText, underLock, waitText, type HostLock, type HostLockInfo } from '../../coordinator/host-lock.ts';
+import { holderText, underLock, waitText, type HostLock, type HostLockInfo, type ShareRequest, type Taking } from '../../coordinator/host-lock.ts';
+import { parseLedger } from '../../coordinator/ledger.ts';
 import { coordinatorPlaces } from '../../coordinator/places.ts';
 import { runRecorded, type StepWatch } from '../../coordinator/recorded-step.ts';
 import { heavyCutoffReason, minutesText } from '../../coordinator/schedule.ts';
@@ -16,6 +17,12 @@ import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.t
 import { envSession, markedSessionOf } from './hook-input.ts';
 
 const MINUTE_MS = 60_000;
+
+/** A small step's reserve is read from at most this many of its latest ended runs. */
+const RESERVE_RUNS = 20;
+
+/** A small step's reserve is the most its latest runs held, with this margin. */
+const RESERVE_MARGIN = 1.25;
 
 /** `--max-minutes`: whole minutes from 1 to the lock's TTL less its margin, so the step never outlives its lock; unset, the config's. */
 function maxRunMinutesOf(args: ParsedArgs, heavy: HeavyConfig): number {
@@ -41,6 +48,31 @@ function refuseAfterCutoff(runtime: CliRuntime, cutoffUtc: string | undefined): 
 /** How the step's memory is watched: its own process's tree, as often as the config says; undefined when it says 0. */
 function watchOf(runtime: CliRuntime, heavy: HeavyConfig): StepWatch | undefined {
   return heavy.memorySampleSeconds === 0 ? undefined : { memory: runtime.memory, root: runtime.pid, intervalMs: heavy.memorySampleSeconds * 1_000 };
+}
+
+/**
+ * The MB held for a small step: the most its process tree held in its latest `RESERVE_RUNS` ended runs, under the same
+ * session and label in the ledger, with a quarter more; the config's `smallReserveMb` when none was measured.
+ */
+async function reserveMbOf(runtime: CliRuntime, ledger: string, session: string, what: string, heavy: HeavyConfig): Promise<number> {
+  const records = parseLedger((await runtime.files.read(ledger)) ?? '');
+  const peaks = records.flatMap((record) => (record.type === 'heavy' && record.session === session && record.what === what && record.peakTreeMb !== undefined ? [record.peakTreeMb] : []));
+  const latest = peaks.slice(-RESERVE_RUNS);
+  return latest.length === 0 ? heavy.smallReserveMb : Math.ceil(Math.max(...latest) * RESERVE_MARGIN);
+}
+
+/** Why a step was refused when its wait ran out: the lock's holder, or the small steps holding the memory it needs. */
+function busyText(taking: Extract<Taking, { kind: 'busy' }>): string {
+  return `${taking.holder.kind === 'memory' ? 'host memory still held by' : 'host lock still held by'} ${holderText(taking.holder)}`;
+}
+
+/** The line a small step prints when it shares the host. */
+function sharingText(share: ShareRequest, taking: Extract<Taking, { kind: 'taken' }>): string | undefined {
+  if (taking.sharing === undefined) {
+    return undefined;
+  }
+  const others = taking.sharing.others.length;
+  return `sharing the host: ${share.reserveMb} MB held for it (${taking.sharing.freeMb} MB free, ${others} other small step${others === 1 ? '' : 's'})`;
 }
 
 /** The last line: DONE, FAILED or TIMED OUT, with the exit code the ledger recorded. */
@@ -109,8 +141,10 @@ async function runUnderParent(runtime: CliRuntime, parent: HostLockInfo, what: s
  * `coordinator.heavy.waitMinutes`. The step is killed with every process it started after `maxRunMinutes`
  * (`--max-minutes`), and its start and end go to the coordinator's ledger, with when it began to wait and, sampled
  * every `memorySampleSeconds`, the most its process tree held and the least free memory the host had. Its processes get `$TEAMRIG_HOST_LOCK`,
- * so a `heavy` among them (a git hook's checks) runs at once under this lock. Exit 0 when the command passed, 1 when
- * it failed or was killed, 2 refused.
+ * so a `heavy` among them (a git hook's checks) runs at once under this lock. With `--small` (a spec run, a lint) the
+ * step shares the host with other small steps instead, while the host keeps `memoryFloorMb` free besides the MB held
+ * for them (`reserveMbOf`); a step without it waits for them to end. Exit 0 when the command passed, 1 when it failed
+ * or was killed, 2 refused.
  */
 export async function heavy(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const words = commandWordsOf(args);
@@ -128,17 +162,32 @@ export async function heavy(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   }
   refuseAfterCutoff(runtime, coordinator.schedule.heavyCutoffUtc);
   const queuedAt = runtime.clock.now();
-  const taking = await lock.acquire(session, `heavy: ${what}`, coordinator.heavy.waitMinutes * MINUTE_MS, coordinator.wait.pollSeconds * 1_000, (holder, ahead) =>
-    logLine(runtime, `waiting for the host lock: ${waitText(holder, ahead)}`),
+  const small = args.switches.has('small');
+  const share: ShareRequest | undefined = small
+    ? { reserveMb: await reserveMbOf(runtime, places.ledger, session, what, coordinator.heavy), floorMb: coordinator.heavy.memoryFloorMb, freeMb: () => runtime.memory.freeMb() }
+    : undefined;
+  const waiting = small ? 'waiting to share the host' : 'waiting for the host lock';
+  const taking = await lock.acquire(
+    session,
+    `heavy: ${what}`,
+    coordinator.heavy.waitMinutes * MINUTE_MS,
+    coordinator.wait.pollSeconds * 1_000,
+    (holder, ahead) => logLine(runtime, `${waiting}: ${waitText(holder, ahead)}`),
+    share,
   );
   if (taking.kind === 'busy') {
-    throw new RefusedError(`host lock still held by ${holderText(taking.holder)}`);
+    throw new RefusedError(busyText(taking));
   }
   try {
     refuseAfterCutoff(runtime, coordinator.schedule.heavyCutoffUtc);
+    const sharing = share === undefined ? undefined : sharingText(share, taking);
+    if (sharing !== undefined) {
+      logLine(runtime, sharing);
+    }
     logLine(runtime, `running: ${what} (killed after ${minutesText(maxRunMinutes)})`);
     const request = { command: commandLine(words, runtime.platform), cwd: runtime.cwd, env: underLock(runtime.env, taking.lock), timeoutMs: maxRunMinutes * MINUTE_MS };
-    const end = await runRecorded(runtime, places.ledger, { session, what, queuedAt, request }, watchOf(runtime, coordinator.heavy));
+    const mark = { session, what, queuedAt, ...(taking.sharing === undefined ? {} : { shared: true as const }), request };
+    const end = await runRecorded(runtime, places.ledger, mark, watchOf(runtime, coordinator.heavy));
     return report(runtime, end, maxRunMinutes);
   } finally {
     await lock.release(taking.lock);
