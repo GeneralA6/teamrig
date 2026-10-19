@@ -895,6 +895,7 @@ function parseHeadroom(read: ConfigReader, raw: JsonRecord): HeadroomConfig {
   return {
     sessionMb: read.integer(raw, 'sessionMb', path, DEFAULT_HEADROOM.sessionMb, CONFIG_LIMITS.headroomSessionMb),
     commitMaxPct: read.integer(raw, 'commitMaxPct', path, DEFAULT_HEADROOM.commitMaxPct, CONFIG_LIMITS.headroomCommitMaxPct),
+    closeIdleMinutes: read.integer(raw, 'closeIdleMinutes', path, DEFAULT_HEADROOM.closeIdleMinutes, CONFIG_LIMITS.headroomCloseIdleMinutes),
   };
 }
 

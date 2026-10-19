@@ -200,8 +200,9 @@ export const DEFAULT_REFRESH: RefreshConfig = {
 /**
  * A session is counted at 1.2 GB (on 10-19, 18 sessions held 21.9 GB with their helpers and MCP servers), and the
  * commit charge stays at most 92% with it (it reached 100% that morning, and Claude Code then killed running steps).
+ * A session quiet an hour may be closed: the owner's pick on 10-19.
  */
-export const DEFAULT_HEADROOM: HeadroomConfig = { sessionMb: 1200, commitMaxPct: 92 };
+export const DEFAULT_HEADROOM: HeadroomConfig = { sessionMb: 1200, commitMaxPct: 92, closeIdleMinutes: 60 };
 
 export const DEFAULT_OPEN: OpenConfig = { terminal: 'auto', headroom: DEFAULT_HEADROOM };
 
