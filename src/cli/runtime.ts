@@ -1,5 +1,6 @@
 import type { TranscriptSource } from '../budget/discover.ts';
 import type { ConfigFormat } from '../config/migrate.ts';
+import type { HostMemory } from '../coordinator/memory.ts';
 import type { StepRunner } from '../coordinator/steps.ts';
 import type { Files } from '../core/files.ts';
 import type { Env } from '../core/home.ts';
@@ -53,6 +54,8 @@ export interface CliRuntime {
   readonly shell: ShellRunner;
   /** The shell `teamrig heavy` runs its step in, with this process's stdio and a time limit. */
   readonly steps: StepRunner;
+  /** The host's free memory and a watch of a heavy step's process tree, for its ledger record. */
+  readonly memory: HostMemory;
   /** The GitHub CLI, for `teamrig gh sync`; it runs reads only (github/gh.ts). */
   readonly gh: GhRunner;
   /** The system's saved secrets, where `teamrig gh sync` finds each owner's read-only GitHub token; only ever read. */
