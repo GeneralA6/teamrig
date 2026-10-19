@@ -5,8 +5,8 @@ import { join, resolve } from 'node:path';
 import { TempRepo } from '../../tools/lib/temp-repo.ts';
 import { FakeWorktreeFiles, FakeWorktreeGit, type FakeGitAnswers, type FakeNode } from '../testing/fake-worktrees.ts';
 import { NODE_WORKTREE_FILES } from './files.ts';
-import { GIT_WORKTREES } from './git.ts';
-import { carryOut, describePlan, planRemoval, type RemovalDecision, type RemovalPlan, type RemovalRequest, type WorktreePorts } from './remove.ts';
+import { GIT_WORKTREES, type GitOutcome } from './git.ts';
+import { carryOut, describePlan, planRemoval, type PlannedLink, type RemovalDecision, type RemovalPlan, type RemovalRequest, type WorktreePorts } from './remove.ts';
 
 const MAIN = '/w/main';
 const TOP = '/w/t4';
@@ -241,10 +241,10 @@ describe('planRemoval and carryOut', () => {
       assert.deepEqual(git.steps, []);
     });
 
-    it('when git refuses the removal, naming the links already gone', async () => {
+    it('when git refuses the removal, naming the links it put back', async () => {
       const failing = world({ removal: { ok: false, reason: "fatal: '/w/t4' contains modified or untracked files" } });
       const plan = planOf(await planRemoval(request(), failing.ports));
-      await assert.rejects(carried(plan, failing.ports), /contains modified or untracked files \(its links are already gone: node_modules\)$/);
+      await assert.rejects(carried(plan, failing.ports), /contains modified or untracked files \(its links are back: node_modules\)$/);
       const noLinks = world({ tracked: ['node_modules/a.js'], removal: { ok: false, reason: 'fatal: busy' } }, { [LINK]: { kind: 'folder' } });
       await assert.rejects(carried(planOf(await planRemoval(request(), noLinks.ports)), noLinks.ports), /^Error: git worktree remove \/w\/t4: fatal: busy$/);
     });
@@ -261,6 +261,97 @@ describe('planRemoval and carryOut', () => {
       const plan = planOf(await planRemoval(request({ deleteBranch: true }), ports));
       await assert.rejects(carried(plan, ports), /the worktree is removed, but git branch -D t4: error: branch 't4' not found/);
     });
+  });
+});
+
+/** A git whose removal deletes part of the worktree and then fails, as a file held open on Windows can leave it. */
+class HalfwayGit extends FakeWorktreeGit {
+  private readonly partly: () => void;
+
+  constructor(partly: () => void) {
+    super({ removal: { ok: false, reason: 'error: failed to delete' } });
+    this.partly = partly;
+  }
+
+  override removeWorktree(mainDir: string, top: string): GitOutcome {
+    this.partly();
+    return super.removeWorktree(mainDir, top);
+  }
+}
+
+/** A tree whose system refuses to make a link. */
+class LinklessFiles extends FakeWorktreeFiles {
+  override async makeLink(): Promise<void> {
+    throw new Error('EPERM: operation not permitted');
+  }
+}
+
+/** The message a step failed with. */
+async function failure(work: Promise<unknown>): Promise<string> {
+  try {
+    await work;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+  return assert.fail('it did not fail');
+}
+
+describe('carryOut puts back every link it unlinked when the removal stops', () => {
+  const WEB_LINK = '/w/t4/web/node_modules';
+  const WEB_MODULES = '/w/main/web/node_modules';
+
+  /** A plan for the worktree's two links, node_modules and web/node_modules, each to its own target. */
+  function twoLinks(answers: FakeGitAnswers = {}, nodes: Readonly<Record<string, FakeNode>> = {}): World & { readonly plan: RemovalPlan } {
+    const built = world(answers, { [`${WEB_MODULES}/pkg`]: { kind: 'folder' }, [WEB_LINK]: { kind: 'link', target: WEB_MODULES }, ...nodes });
+    const links: readonly PlannedLink[] = [
+      { path: resolve(LINK), name: 'node_modules', target: resolve(MODULES), targetEntries: 2 },
+      { path: resolve(WEB_LINK), name: 'web/node_modules', target: resolve(WEB_MODULES), targetEntries: 1 },
+    ];
+    return { ...built, plan: { top: TOP, mainDir: MAIN, links, branch: undefined } };
+  }
+
+  it('when git refuses the removal, each to its own target, telling each', async () => {
+    const { files, ports, plan } = twoLinks({ removal: { ok: false, reason: 'fatal: busy' } });
+    const lines: string[] = [];
+    assert.equal(await failure(carryOut(plan, ports, (line) => lines.push(line))), 'git worktree remove /w/t4: fatal: busy (its links are back: node_modules, web/node_modules)');
+    assert.deepEqual(files.linked, [`${resolve(LINK)} -> ${resolve(MODULES)}`, `${resolve(WEB_LINK)} -> ${resolve(WEB_MODULES)}`]);
+    assert.equal(await files.linkTarget(LINK), resolve(MODULES));
+    assert.equal(await files.entryCount(WEB_LINK), 1, 'the link reaches its target again');
+    assert.deepEqual(lines.slice(-2), [`put back node_modules (a link to ${resolve(MODULES)})`, `put back web/node_modules (a link to ${resolve(WEB_MODULES)})`]);
+  });
+
+  it('when a later link is still there after its unlink: git never runs and nothing else changed', async () => {
+    const { files, git, ports, plan } = twoLinks();
+    files.stuck.add(resolve(WEB_LINK));
+    assert.equal(await failure(carried(plan, ports)), 'web/node_modules is still in /w/t4 after its unlink, so git was not run (its links are back: node_modules); nothing else changed');
+    assert.equal(await files.kindOf(LINK), 'link');
+    assert.deepEqual(git.steps, []);
+  });
+
+  it('when a later link cannot be unlinked: git never runs', async () => {
+    const { files, git, ports, plan } = twoLinks({}, { [WEB_LINK]: { kind: 'folder' } });
+    assert.equal(await failure(carried(plan, ports)), `cannot unlink web/node_modules in /w/t4, so git was not run: EPERM: not a link: ${resolve(WEB_LINK)} (its links are back: node_modules)`);
+    assert.equal(await files.kindOf(LINK), 'link');
+    assert.equal(await files.kindOf(WEB_LINK), 'folder');
+    assert.deepEqual(git.steps, []);
+  });
+
+  it('names each link it cannot put back with its target: its folder gone or something in its place', async () => {
+    const { files, plan } = twoLinks();
+    const git = new HalfwayGit(() => {
+      files.delete('/w/t4/web');
+      files.put(LINK, { kind: 'folder' });
+    });
+    const expected = `git worktree remove /w/t4: error: failed to delete (still gone: node_modules, a link to ${resolve(MODULES)}: something else is at its path; web/node_modules, a link to ${resolve(WEB_MODULES)}: its folder is gone)`;
+    assert.equal(await failure(carried(plan, { git, files })), expected);
+    assert.deepEqual(files.linked, []);
+  });
+
+  it('names a link the system refuses to make', async () => {
+    const files = new LinklessFiles({ [`${MODULES}/pkg`]: { kind: 'folder' }, [`${TOP}/src/index.ts`]: { kind: 'file' }, [LINK]: { kind: 'link', target: MODULES } });
+    const git = new FakeWorktreeGit({ removal: { ok: false, reason: 'fatal: busy' } });
+    const plan: RemovalPlan = { top: TOP, mainDir: MAIN, links: [{ path: resolve(LINK), name: 'node_modules', target: resolve(MODULES), targetEntries: 1 }], branch: undefined };
+    assert.equal(await failure(carried(plan, { git, files })), `git worktree remove /w/t4: fatal: busy (still gone: node_modules, a link to ${resolve(MODULES)}: EPERM: operation not permitted)`);
   });
 });
 
@@ -300,6 +391,20 @@ describe('removing a real worktree with a real node_modules link', () => {
       assert.equal(readFileSync(join(modules, 'pkg', 'index.js'), 'utf8'), 'module.exports = 1;\n');
       assert.equal(repo.git('branch', '--list', 'feat'), '');
       assert.equal(repo.git('worktree', 'list', '--porcelain').match(/^worktree /gm)?.length, 1);
+    } finally {
+      repo.remove();
+    }
+  });
+
+  it('puts the link back when git refuses the removal, so the worktree reaches its modules again', async () => {
+    const { repo, worktree, modules } = realWorld('wt-real-relink');
+    try {
+      const plan = planOf(await planRemoval({ path: worktree, cwd: repo.dir, deleteBranch: false, base: undefined }, REAL));
+      writeFileSync(join(worktree, 'late.txt'), 'written after the checks\n');
+      await assert.rejects(carried(plan, REAL), /contains modified or untracked files.*\(its links are back: node_modules\)$/s);
+      assert.equal(await NODE_WORKTREE_FILES.kindOf(join(worktree, 'node_modules')), 'link');
+      assert.equal(readFileSync(join(worktree, 'node_modules', 'pkg', 'index.js'), 'utf8'), 'module.exports = 1;\n');
+      assert.deepEqual(readdirSync(modules).sort(), ['keep.txt', 'pkg']);
     } finally {
       repo.remove();
     }

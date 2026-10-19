@@ -1686,8 +1686,10 @@ deleted branch t4-parser: every commit of it is on origin/main
 OK removed /home/you/app-t4
 ```
 
-A step that fails after a change says what was already done, such as `(its links are already gone: node_modules)`
-(exit 1).
+A step that fails after a change says what was already done (exit 1). One that stops before the worktree is gone (a
+link that would not go, or git refusing the removal) first puts each link it unlinked back to its target, such as
+`(its links are back: node_modules)`, so the worktree still builds; a link it cannot put back is named with its target,
+to link again by hand.
 
 ### teamrig heavy
 
