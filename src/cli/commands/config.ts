@@ -21,7 +21,7 @@ export async function validate(args: ParsedArgs, runtime: CliRuntime): Promise<E
     runtime.out.stdout(`NOTE config version ${load.newerVersion} is from a newer teamrig: only the fields this one knows are checked`);
   }
   if (load.pending !== undefined) {
-    runtime.out.stdout(`NOTE config version ${load.pending.fromVersion} is older than ${load.pending.toVersion}; run: teamrig config migrate`);
+    runtime.out.stdout(`NOTE config version ${load.pending.fromVersion} is older than ${load.pending.toVersion}, read as ${load.pending.toVersion} in memory; teamrig config migrate shows the rewrite`);
   }
   if (load.issues.length > 0) {
     runtime.out.stdout(`INVALID ${load.path}: ${load.issues.length} problem(s), each read as its default until fixed`);
@@ -32,7 +32,11 @@ export async function validate(args: ParsedArgs, runtime: CliRuntime): Promise<E
   return EXIT.ok;
 }
 
-/** `config migrate`: rewrites an older config in the current format, keeping a backup of the old file. */
+/**
+ * `config migrate`: shows an older config rewritten in the current format; `--yes` writes it, keeping a backup of the
+ * old file. Every command already reads the old file migrated in memory, and once the new version is written a tab on
+ * a teamrig before its first release refuses every write until it restarts, so the preview names that release.
+ */
 export async function migrate(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
   const kit = await openTeamKit(runtime);
@@ -45,8 +49,17 @@ export async function migrate(args: ParsedArgs, runtime: CliRuntime): Promise<Ex
     runtime.out.stdout(`UNCHANGED ${load.path} needs no migration`);
     return EXIT.ok;
   }
-  const backup = await writeMigration(runtime.files, load.path, kit.paths.backups, load.pending, runtime.clock);
-  runtime.out.stdout(`MIGRATED ${load.path} from version ${load.pending.fromVersion} to ${load.pending.toVersion}; the old file is at ${backup}`);
-  load.pending.changes.forEach((change) => runtime.out.stdout(`  ${change}`));
+  const { pending } = load;
+  if (!args.switches.has('yes')) {
+    runtime.out.stdout(`PREVIEW ${load.path} from version ${pending.fromVersion} to ${pending.toVersion}; nothing written`);
+    pending.changes.forEach((change) => runtime.out.stdout(`  ${change}`));
+    runtime.out.stdout(
+      `NOTE every command reads it as version ${pending.toVersion} already; once written, a tab on a teamrig before ${pending.firstRelease} refuses every write until it restarts. Restart those tabs, then: teamrig config migrate --yes`,
+    );
+    return EXIT.ok;
+  }
+  const backup = await writeMigration(runtime.files, load.path, kit.paths.backups, pending, runtime.clock);
+  runtime.out.stdout(`MIGRATED ${load.path} from version ${pending.fromVersion} to ${pending.toVersion}; the old file is at ${backup}`);
+  pending.changes.forEach((change) => runtime.out.stdout(`  ${change}`));
   return EXIT.ok;
 }

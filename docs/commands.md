@@ -155,7 +155,8 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
   statusline install [--yes]   makes teamrig statusline Claude Code's status line, in front of the one
       already there; without --yes it shows the change and writes nothing
   statusline uninstall [--yes] takes it back out: the status line before it returns
-  config validate | config migrate
+  config validate | config migrate [--yes]   migrate shows an older config rewritten in this format and
+      the first teamrig that reads it, as a tab on an older one refuses every write after; --yes writes it
   commits check --base <ref> [--tip <ref>]   commits in base..tip (default HEAD) over the size rule
       with no reason line; any is REFUSED, for an integrate script or CI
   worktree remove <path> [--delete-branch [--base <ref>]] [--dry-run]   removes a linked git worktree:
