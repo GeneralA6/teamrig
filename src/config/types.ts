@@ -196,8 +196,9 @@ export interface SecretGuardConfig {
   readonly paths: readonly string[];
   /**
    * The team's own patterns for environment variables whose values are secrets, regular expressions over the name
-   * (case ignored) read after the guard's defaults (`TOKEN`, `SECRET`, `PASSW`...); the last pattern that matches a
-   * name decides, so `!pattern` keeps a variable printable.
+   * (case ignored) read after the guard's defaults (`TOKEN`, `SECRET`, `PASSW`..., a store's URL by its kind: `DB_URL`,
+   * `CACHE_URL`); a store named by its product is the team's to add. The last pattern that matches a name decides, so
+   * `!pattern` keeps a variable printable.
    */
   readonly envNames: readonly string[];
 }
