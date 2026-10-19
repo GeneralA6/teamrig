@@ -694,7 +694,8 @@ lead only, within the team's `hiring` policy and `hiring.maxSessions`. Without `
 nothing. With it, the hire goes into the hire log (`state/hires.jsonl`), the old config into the backups folder, and
 the session into the config: `sessions`, `names` with `--name` and `launch` (its model and effort, the lead's own
 unless given); no daily budget, as its part of the team's follows its share and queued work. Its name is
-`<team>-<id>` unless `--name` gives one; a name another team's session has is refused, as Claude Code session names are machine-wide.
+`<team>-<id>` unless `--name` gives one; a name another team's session has is refused, as Claude Code session
+names are machine-wide.
 
 - `hiring.policy`: `off` refuses every hire; `owner` (the default) needs `--approved-by "<who>"`, after you ask
   the owner; `lead` lets the lead hire within the cap; `automatic` is `lead`, and a hired session whose last
