@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import { basename, join } from 'node:path';
 import { parsePeriod } from '../budget/period.ts';
 import { W_EXPLAINED } from '../budget/report.ts';
-import { parseSnapshot } from '../budget/snapshot.ts';
+import { parseSnapshot, SNAPSHOT_PRUNED_FILE } from '../budget/snapshot.ts';
 import type { JsonRecord } from '../core/guards.ts';
+import { MS_PER_DAY } from '../core/time.ts';
 import { APP, CliHarness, KIT, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
@@ -413,6 +414,30 @@ describe('teamrig statusline', () => {
       stderr: ['teamrig statusline: the snapshot was not saved: EACCES: simulated'],
     });
     usageError(await kit.run(['statusline', 'extra']), /unexpected "extra"/);
+  });
+
+  it("removes the folder's snapshots written more than 8 days ago, sweeping at most once an hour", async () => {
+    const kit = new CliHarness(LIMITED);
+    const writtenAgo = (session: string, ms: number): string => JSON.stringify({ ts: new Date(kit.clock.now() - ms).toISOString(), session_id: session });
+    const old = join(LIVE, `${BRAVO_TAB}.json`);
+    await kit.files.write(old, writtenAgo(BRAVO_TAB, 9 * MS_PER_DAY));
+    ok(await kit.run(['statusline'], { stdin: status(APP) }));
+    assert.equal(kit.files.get(old), undefined);
+    assert.notEqual(kit.files.get(join(LIVE, SNAPSHOT)), undefined);
+    await kit.files.write(old, writtenAgo(BRAVO_TAB, 9 * MS_PER_DAY));
+    ok(await kit.run(['statusline'], { stdin: status(APP) }));
+    assert.notEqual(kit.files.get(old), undefined);
+  });
+
+  it('tells a failed prune on stderr and still shows the status, with the snapshot saved', async () => {
+    const kit = new CliHarness(LIMITED);
+    const files = new FaultyFiles(kit.files).fail('write', join(LIVE, SNAPSHOT_PRUNED_FILE), systemError('EACCES'));
+    assert.deepEqual(await kit.run(['statusline'], { stdin: status(APP), files }), {
+      code: EXIT.ok,
+      stdout: [SHOWN],
+      stderr: ['teamrig statusline: old snapshots were not pruned: EACCES: simulated'],
+    });
+    assert.notEqual(kit.files.get(join(LIVE, SNAPSHOT)), undefined);
   });
 });
 
