@@ -489,7 +489,8 @@ for a day, for the task pane to show: one file per session and UTC hour,
 (every text it showed in the turn, not only the last) and per /clear or compaction. Secret shapes are masked as
 in the register, and an entry keeps at most 64,000 characters, the end of a longer one. Entries are only appended,
 and each session start removes the hour files wholly past `turnLog.keepHours` (24 by default, 1 to 168), so a
-busy session keeps a day's worth and no file is ever rewritten. `turnLog.enabled: false` writes nothing.
+busy session keeps a day's worth and no file is ever rewritten. `turnLog.enabled: false` writes nothing. A reader
+parses each line with teamrig's own `parseEntry` (from `src/read/index.ts`, below).
 
 ## Safe pushes
 
@@ -655,7 +656,7 @@ shaped by two real tools instead of one.
 A program that only shows the team's files, such as the [teamrig-pane](https://github.com/GeneralA6/teamrig-pane)
 task pane, reads them through `src/read/index.ts`: the same parse and replay every teamrig command uses, with no
 `node:` import anywhere behind it, so it runs where Node's built-in modules do not. It takes the text of the task
-list, an inbox, the inbox read marks and the config, and gives back the tasks, the unread lines and the counts
+list, an inbox, the inbox read marks, the config and a turn-log line, and gives back the tasks, the unread lines and the counts
 `teamrig list` warns about. A task list that was rotated keeps a snapshot of its working set beside it and its older
 lines in archive segments: the reader reads the snapshot first (`readSnapshotText`), then the task list, asks
 `workingSetPlan` which segments it still needs (none, unless the snapshot is damaged or missing) and folds them with
