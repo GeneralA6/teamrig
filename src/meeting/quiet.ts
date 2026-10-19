@@ -1,4 +1,4 @@
-import { formatWeekdayMinute } from '../budget/format.ts';
+import type { TimeZone } from '../core/zone.ts';
 import type { Meeting } from './state.ts';
 
 /**
@@ -28,6 +28,8 @@ export interface QuietFacts {
   readonly text: string;
   /** The command name the note tells the sender to run. */
   readonly command: string;
+  /** The team's clock, which the hold's times are on. */
+  readonly zone: TimeZone;
 }
 
 /** The hold's reason, or undefined to let the message go: no open meeting, another receiver, the lead's own send, an empty or CRITICAL message. */
@@ -37,7 +39,7 @@ export function quietHoldReason(facts: QuietFacts): string | undefined {
     return undefined;
   }
   return (
-    `Held: ${facts.leadName} is in the owner's daily meeting since ${formatWeekdayMinute(Date.parse(meeting.startedAt))}. ` +
+    `Held: ${facts.leadName} is in the owner's daily meeting since ${facts.zone.weekdayMinute(new Date(meeting.startedAt))}. ` +
     `Keep working and leave this as one inbox line, which ${facts.leadName} reads after the meeting: ${facts.command} inbox add --to ${facts.lead} --text "...". ` +
     `Only what needs the owner now goes as a message: start it with ${CRITICAL_WORD}: and send it again.`
   );

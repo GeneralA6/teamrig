@@ -53,6 +53,17 @@ describe('runCli: the daily meeting', () => {
     assert.match((await inboxOf(kit, 'lead'))[0] ?? '', /^READ lead: nothing new/);
   });
 
+  it("prints the meeting's times on the team's clock, in its lines and its notices", async () => {
+    const kit = await teamBeforeTheMeeting();
+    const { stdout } = await kit.run(['meeting', 'start', '--session', 'lead'], { timeZone: 'Asia/Jerusalem' });
+    assert.equal(stdout[0], 'MEETING started Tue 01-08 12:00 IST: told 2 session(s) by inbox line; messages to app-lead are held but CRITICAL ones');
+    assert.ok(stdout.includes('DONE 0 done or dropped since Mon 01-07 12:00 IST'), stdout.join('\n'));
+    const lines = await inboxOf(kit, 'alpha');
+    assert.ok(lines.some((line) => line.includes('started Tue 01-08 12:00 IST: keep working')), lines.join('\n'));
+    const ended = await kit.run(['meeting', 'end', '--session', 'lead'], { timeZone: 'Asia/Jerusalem' });
+    assert.match(ended.stdout[0] ?? '', /^MEETING ended Tue 01-08 12:00 IST after /);
+  });
+
   it('refuses every session but the lead', async () => {
     const kit = await teamBeforeTheMeeting();
     for (const command of ['start', 'agenda', 'end']) {

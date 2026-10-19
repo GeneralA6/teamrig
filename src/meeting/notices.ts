@@ -1,4 +1,4 @@
-import { formatWeekdayMinute } from '../budget/format.ts';
+import type { TimeZone } from '../core/zone.ts';
 import type { RegisterEvent, UpdateEvent } from '../register/events.ts';
 import type { Task } from '../register/fold.ts';
 import { cut } from '../register/views.ts';
@@ -17,11 +17,13 @@ export interface NoticeFacts {
   readonly leadName: string;
   readonly at: number;
   readonly command: string;
+  /** The team's clock, which the lines' times are on. */
+  readonly zone: TimeZone;
 }
 
 export function startNotice(facts: NoticeFacts): string {
   return (
-    `the owner's daily meeting with ${facts.leadName} started ${formatWeekdayMinute(facts.at)}: keep working and send no message to ${facts.leadName} until it ends; ` +
+    `the owner's daily meeting with ${facts.leadName} started ${facts.zone.weekdayMinute(new Date(facts.at))}: keep working and send no message to ${facts.leadName} until it ends; ` +
     `leave reports and asks as inbox lines (${facts.command} inbox add --to ${facts.lead} --text "..."). ` +
     `Only what needs the owner now goes as one message starting ${CRITICAL_WORD}:.`
   );
@@ -30,7 +32,7 @@ export function startNotice(facts: NoticeFacts): string {
 /** The end line, with the decisions recorded on the receiver's tasks during the meeting when there are some. */
 export function endNotice(facts: NoticeFacts, decisions: readonly string[]): string {
   const decided = decisions.length === 0 ? '' : ` Decided on your tasks: ${decisions.join('; ')}.`;
-  return `the owner's daily meeting with ${facts.leadName} ended ${formatWeekdayMinute(facts.at)}: messages to ${facts.leadName} may go again.${decided}`;
+  return `the owner's daily meeting with ${facts.leadName} ended ${facts.zone.weekdayMinute(new Date(facts.at))}: messages to ${facts.leadName} may go again.${decided}`;
 }
 
 /** One decision as the end line gives it: `T7: <note>`, and the fields the lead changed: `T7: <note> (changed priority, due)`. */

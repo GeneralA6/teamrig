@@ -4,7 +4,6 @@ import type { Roster } from '../../config/roster.ts';
 import { describeNameClash, teamNodeOf } from '../../config/tree.ts';
 import { EFFORT_LEVELS, isEffortLevel, type EffortLevel, type KitConfig } from '../../config/types.ts';
 import { activeBurst } from '../../budget/burst.ts';
-import { formatWeekdayMinute } from '../../budget/format.ts';
 import { KIT_NAME } from '../../core/home.ts';
 import { FileLock } from '../../core/lock.ts';
 import { burstHireOf } from '../../hiring/burst-hire.ts';
@@ -14,7 +13,7 @@ import type { ResumeVerdict } from '../../hiring/rehire.ts';
 import { onePositional, requiredFlag, UsageError, type Flags, type ParsedArgs } from '../args.ts';
 import { readBursts } from '../burst-reading.ts';
 import { callerOf } from '../inputs.ts';
-import { checkedNextConfig, configFileJson, findTeam, openKit, requireConfig, rosterOf, sessionIdOf, type Kit } from '../kit.ts';
+import { checkedNextConfig, configFileJson, findTeam, openKit, requireConfig, rosterOf, sessionIdOf, teamZone, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
 import { freshOpenOf, resumeVerdictOf } from './rehire.ts';
@@ -139,7 +138,7 @@ export async function hire(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
     const nextRoster = await rosterOf(runtime, kit, next);
     await refuseNameClash(runtime, kit.paths.team, request.id, next, nextRoster);
     const { hire: record, hired } = plan.value;
-    const what = `${record.session} (name ${nextRoster.nameOf(record.session) ?? record.session}) for "${record.scope}": ${describeLaunch(record)}, review by ${record.reviewBy}${record.burst === undefined ? '' : `, for the burst started ${formatWeekdayMinute(record.burst)}`}`;
+    const what = `${record.session} (name ${nextRoster.nameOf(record.session) ?? record.session}) for "${record.scope}": ${describeLaunch(record)}, review by ${record.reviewBy}${record.burst === undefined ? '' : `, for the burst started ${teamZone(config, runtime).weekdayMinute(new Date(record.burst))}`}`;
     const caps = `  hired sessions with it: ${hired} of ${config.hiring.maxSessions}`;
     const from = retiredSessions(records).find((record) => record.session === request.id);
     // Measured before anything is written, so the preview shows it too.

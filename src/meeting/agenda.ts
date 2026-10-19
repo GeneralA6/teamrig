@@ -1,4 +1,3 @@
-import { formatWeekdayMinute } from '../budget/format.ts';
 import { MS_PER_DAY } from '../core/time.ts';
 import { cardLines, cardTexts, namedTaskIds } from '../register/card.ts';
 import type { Task } from '../register/fold.ts';
@@ -127,7 +126,7 @@ function lateLines(input: AgendaInput): string[] {
 function doneLines(input: AgendaInput): string[] {
   const done = input.tree.inPlanOrder(input.tasks.filter((task) => (task.status === 'done' || task.status === 'dropped') && Date.parse(task.statusAt) >= input.since));
   return listed(
-    `DONE ${done.length} done or dropped since ${formatWeekdayMinute(input.since)}`,
+    `DONE ${done.length} done or dropped since ${input.tree.zone.weekdayMinute(new Date(input.since))}`,
     done.map((task) => rowOf(task, input.tree)),
     `${input.command} list --status done,dropped`,
   );

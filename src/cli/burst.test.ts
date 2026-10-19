@@ -177,8 +177,8 @@ describe('hire --burst', () => {
     ok(await lead(kit, 'burst', 'start', 'surplus', '--reason', 'surplus', ...OWNER_OK, '--hires', '1', '--yes'));
     assert.match(refusal(await lead(kit, 'hire', 'helper', ...job, '--model', 'haiku')), /a burst hire runs on the lead's model \(opus\), never another/);
     assert.match(refusal(await lead(kit, 'hire', 'helper', ...job, '--effort', 'medium')), /--effort medium is below the lead's high: a burst never lowers effort/);
-    const hired = ok(await lead(kit, 'hire', 'helper', ...job, '--effort', 'xhigh', '--yes'));
-    assert.match(hired.stdout[0] ?? '', /^HIRED helper .*, for the burst started Tue 01-08 10:00 UTC; the old config is at/);
+    const hired = ok(await kit.run(['hire', 'helper', ...job, '--effort', 'xhigh', '--yes', '--session', 'lead'], { timeZone: 'Asia/Jerusalem' }));
+    assert.match(hired.stdout[0] ?? '', /^HIRED helper .*, for the burst started Tue 01-08 12:00 IST; the old config is at/, "on the team's clock");
     const record: unknown = JSON.parse(kit.files.get(HIRES) ?? '');
     assert.ok(typeof record === 'object' && record !== null && 'burst' in record && 'approvedBy' in record);
     assert.deepEqual([record.burst, record.approvedBy], ['2030-01-08T10:00:00.000Z', 'the owner']);

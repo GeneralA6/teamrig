@@ -27,6 +27,7 @@ describe('runCli: start prints the start of a work block in one call', () => {
     assert.equal(started.code, EXIT.ok, started.stdout.join('\n'));
     const { stdout } = started;
     assert.equal(stdout[0], 'START alpha, Thu 01-10 10:00 UTC');
+    assert.equal((await kit.run(['start', '--session', 'alpha'], { timeZone: 'Asia/Jerusalem' })).stdout[0], 'START alpha, Thu 01-10 12:00 IST', "on the team's clock");
     assert.match(stdout[1] ?? '', /bravo: the docs moved to the wiki$/);
     assert.match(stdout[2] ?? '', /^READ alpha: 1 new line, shown above/);
     assert.match(stdout[3] ?? '', /^LIST 1 task\(s\)/);
