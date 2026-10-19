@@ -252,7 +252,7 @@ describe('parseConfig', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,
       roles: { lead: 'alpha', coordinatorOwner: 'bravo' },
-      register: { priorities: [{ id: 1, name: 'now' }], goalPattern: '^G\\d+$', requireNoteOn: ['waiting'], check: { prioritySkipAfterHours: 12 } },
+      register: { priorities: [{ id: 1, name: 'now' }], goalPattern: '^G\\d+$', requireNoteOn: ['waiting'], check: { prioritySkipAfterHours: 12, maxSelfMadePerDay: 0 } },
       coordinator: { schedule: { heavyCutoffUtc: '22:30' } },
       budget: { enabled: true, targetPct: 95 },
       paths: { inbox: '/srv/team/inbox' },
@@ -262,7 +262,14 @@ describe('parseConfig', () => {
     assert.deepEqual(config.register.priorities, [{ id: 1, name: 'now' }]);
     assert.equal(config.register.goalPattern, '^G\\d+$');
     assert.deepEqual(config.register.requireNoteOn, ['waiting']);
-    assert.deepEqual(config.register.check, { staleAfterHours: 72, notPickedUpAfterHours: 24, prioritySkipAfterHours: 12, weekLengthDays: 7, stopgapFiles: ['CLAUDE.md', '.claude/rules'] });
+    assert.deepEqual(config.register.check, {
+      staleAfterHours: 72,
+      notPickedUpAfterHours: 24,
+      prioritySkipAfterHours: 12,
+      maxSelfMadePerDay: 0,
+      weekLengthDays: 7,
+      stopgapFiles: ['CLAUDE.md', '.claude/rules'],
+    });
     assert.deepEqual(config.coordinator.schedule, { heavyCutoffUtc: '22:30' });
     assert.deepEqual(config.budget, { ...DEFAULT_BUDGET, enabled: true, targetPct: 95 });
     assert.deepEqual(config.paths, { inbox: '/srv/team/inbox' });
@@ -505,6 +512,12 @@ describe('parseConfig', () => {
     assert.deepEqual(paths(issues).sort(), ['register.maxVerifying', 'register.requireProofOnVerifying', 'register.verifyGate']);
     assert.match(issues.find((issue) => issue.path === 'register.verifyGate')?.message ?? '', /refuse, warn/);
     assert.deepEqual([config.register.requireProofOnVerifying, config.register.verifyGate, config.register.maxVerifying], [true, 'refuse', 5]);
+  });
+
+  it('falls back to the default count of self-made tasks past its limit', () => {
+    const { config, issues } = parseConfig({ ...ROSTER, register: { check: { maxSelfMadePerDay: 201 } } });
+    assert.deepEqual(paths(issues), ['register.check.maxSelfMadePerDay']);
+    assert.equal(config.register.check.maxSelfMadePerDay, 10);
   });
 
   it('reads the commits rule, refusing a bad gate, trailer key, bound or pattern', () => {

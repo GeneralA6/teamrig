@@ -103,6 +103,7 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   requireNoteOn: 'register.requireNoteOn',
   requireFollowupsOn: 'register.requireFollowupsOn',
   maxVerifying: 'register.maxVerifying',
+  maxSelfMadePerDay: 'register.check.maxSelfMadePerDay',
   stopgapFiles: 'register.check.stopgapFiles',
   persistentFailureHours: 'alerts.persistentFailureHours',
   chainNudgeAt: 'loops.chainNudgeAt',

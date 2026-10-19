@@ -766,6 +766,7 @@ function parseRegister(read: ConfigReader, raw: JsonRecord): RegisterConfig {
       staleAfterHours: read.integer(check, 'staleAfterHours', `${path}.check`, defaults.check.staleAfterHours, { min: 1 }),
       notPickedUpAfterHours: read.integer(check, 'notPickedUpAfterHours', `${path}.check`, defaults.check.notPickedUpAfterHours, { min: 1 }),
       prioritySkipAfterHours: read.integer(check, 'prioritySkipAfterHours', `${path}.check`, defaults.check.prioritySkipAfterHours, { min: 1 }),
+      maxSelfMadePerDay: read.integer(check, 'maxSelfMadePerDay', `${path}.check`, defaults.check.maxSelfMadePerDay, CONFIG_LIMITS.maxSelfMadePerDay),
       weekLengthDays: read.integer(check, 'weekLengthDays', `${path}.check`, defaults.check.weekLengthDays, { min: 1, max: 31 }),
       stopgapFiles: read.stringList(
         check,
