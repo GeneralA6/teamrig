@@ -2,7 +2,7 @@ import { join } from 'node:path';
 import { stringField } from "../core/guards.js";
 import { ID_PATTERN } from "../core/ids.js";
 import { parseObject } from "../core/jsonl.js";
-import { askFileOf, CLAIM_HELD, CLAIM_TAKEN, CLAIM_WITHDRAWN, outcomeFileOf } from "../mod/clear-hand.js";
+import { askFileOf, CLAIM_HELD, CLAIM_TAKEN, CLAIM_WITHDRAWN, holdWhyFileOf, outcomeFileOf } from "../mod/clear-hand.js";
 /**
  * The asks folder, under the kit home and not a team's: the mod knows only its Claude Code session, so
  * an ask is found by that id alone and names its team itself.
@@ -29,12 +29,19 @@ const OUTCOMES = [CLAIM_TAKEN, CLAIM_HELD, CLAIM_WITHDRAWN];
 function outcomeOf(text) {
     return OUTCOMES.find((outcome) => outcome === text.trim());
 }
+/** The most of a hold's reason kept: one line, enough for any reason the mod gives. */
+export const HOLD_WHY_MAX_CHARS = 200;
+/** A hold's reason as one line of at most HOLD_WHY_MAX_CHARS; empty when it says nothing. */
+function holdWhyLine(why) {
+    return why.replace(/\s+/g, ' ').trim().slice(0, HOLD_WHY_MAX_CHARS);
+}
 /**
  * Each Claude Code session's ask and its outcome (`<session>.ask`, `<session>.outcome`). The outcome is
- * created once (`createExclusive`): the mod's claim writes `taken`, its hold (a helper still runs) `held`,
- * the restart's withdraw `withdrawn`, and whichever comes later learns that it lost, so a tab is never both
- * cleared and ended, nor ended while it held the ask. Callers check the session id with `isClaudeSessionId`
- * first; an unsafe one throws.
+ * created once (`createExclusive`): the mod's claim writes `taken`, its hold (a helper, a draft, the person
+ * or the band's count) `held`, the restart's withdraw `withdrawn`, and whichever comes later learns that it
+ * lost, so a tab is never both cleared and ended, nor ended while it held the ask. A hold's reason goes in
+ * `<session>.held` first, so the restart reads it once it sees `held`. Callers check the session id with
+ * `isClaudeSessionId` first; an unsafe one throws.
  */
 export class ClearAsks {
     files;
@@ -43,9 +50,10 @@ export class ClearAsks {
         this.files = files;
         this.dir = dir;
     }
-    /** Posts a new ask, first removing an outcome a run that stopped before its close left, so the ask starts unclaimed. */
+    /** Posts a new ask, first removing an outcome (and hold reason) a run that stopped before its close left, so the ask starts unclaimed. */
     async post(claudeSession, ask) {
         await this.files.remove(this.outcomePath(claudeSession));
+        await this.files.remove(this.holdWhyPath(claudeSession));
         await this.files.write(this.askPath(claudeSession), `${JSON.stringify(ask)}\n`);
     }
     /** The session's ask; undefined when there is none or it is damaged. */
@@ -57,9 +65,22 @@ export class ClearAsks {
     async claim(claudeSession) {
         return this.files.createExclusive(this.outcomePath(claudeSession), CLAIM_TAKEN);
     }
-    /** True when this hold won the ask, so the restart neither clears nor ends the session; false when it was answered first. */
-    async hold(claudeSession) {
+    /**
+     * True when this hold won the ask, so the restart neither clears nor ends the session; false when it was
+     * answered first. `why`, the mod's reason, is written before the outcome, so it is there when the restart
+     * sees `held`.
+     */
+    async hold(claudeSession, why) {
+        const line = why === undefined ? '' : holdWhyLine(why);
+        if (line !== '') {
+            await this.files.write(this.holdWhyPath(claudeSession), `${line}\n`);
+        }
         return this.files.createExclusive(this.outcomePath(claudeSession), CLAIM_HELD);
+    }
+    /** Why the tab held the ask; undefined when it gave no reason (a mod older than the reason) or did not hold it. */
+    async heldWhy(claudeSession) {
+        const line = holdWhyLine((await this.files.read(this.holdWhyPath(claudeSession))) ?? '');
+        return line === '' ? undefined : line;
     }
     /** True when the ask was taken back unanswered; false when a tab claimed or held it first. */
     async withdraw(claudeSession) {
@@ -70,16 +91,20 @@ export class ClearAsks {
         const text = await this.files.read(this.outcomePath(claudeSession));
         return text === undefined ? undefined : outcomeOf(text);
     }
-    /** Removes the ask, then its outcome, so a tab looking meanwhile finds no ask before the outcome goes. */
+    /** Removes the ask, then its outcome and hold reason, so a tab looking meanwhile finds no ask before the outcome goes. */
     async close(claudeSession) {
         await this.files.remove(this.askPath(claudeSession));
         await this.files.remove(this.outcomePath(claudeSession));
+        await this.files.remove(this.holdWhyPath(claudeSession));
     }
     askPath(claudeSession) {
         return this.checked(askFileOf(this.dir, claudeSession), claudeSession);
     }
     outcomePath(claudeSession) {
         return this.checked(outcomeFileOf(this.dir, claudeSession), claudeSession);
+    }
+    holdWhyPath(claudeSession) {
+        return this.checked(holdWhyFileOf(this.dir, claudeSession), claudeSession);
     }
     checked(path, claudeSession) {
         if (path === undefined) {

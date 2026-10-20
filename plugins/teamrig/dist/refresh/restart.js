@@ -70,13 +70,19 @@ async function idleAt(deps, transcript) {
     const tail = await deps.files.readTail(transcript, TURN_TAIL_BYTES);
     return !turnRunning(tail ?? '') && (await readRunningWork(deps.files, transcript, deps.clock.now())) === 0;
 }
-/** GIVE_UP_MS after the run `started`, the session keeps its context and is told to type /clear; undefined before. */
-async function gaveUp(deps, plan, started) {
+/** What a held answer's give-up says when the tab's mod gave no reason: one older than the reason. */
+export const NO_HOLD_REASON = 'its mod gave no reason';
+/**
+ * GIVE_UP_MS after the run `started`, the session keeps its context and is told to type /clear; undefined
+ * before. `held`: why the tab's mod held the last ask, when that is what kept the session busy at this look.
+ */
+async function gaveUp(deps, plan, started, held) {
     if (deps.clock.now() - started < GIVE_UP_MS) {
         return undefined;
     }
     await deps.store.clearRestart(plan.id);
-    return { kind: 'failed', why: `it stayed busy for ${GIVE_UP_MS / 60_000} minutes` };
+    const busy = `it stayed busy for ${GIVE_UP_MS / 60_000} minutes`;
+    return { kind: 'failed', why: held === undefined ? busy : `${busy} (its tab last held the /clear: ${held})` };
 }
 /**
  * The session is quiet when its transcript gained nothing over one whole delay, its last turn has ended
@@ -101,7 +107,8 @@ async function waitForQuiet(deps, plan, transcript, started) {
         if (after === before && (await idleAt(deps, transcript))) {
             return request;
         }
-        const given = await gaveUp(deps, plan, started);
+        // Busy at work, not held: a reason an earlier round's hold gave no longer says why.
+        const given = await gaveUp(deps, plan, started, undefined);
         if (given !== undefined) {
             return given;
         }
@@ -109,17 +116,17 @@ async function waitForQuiet(deps, plan, transcript, started) {
         wait = plan.delayMs;
     }
 }
-/** How the tab's mod answered the ask: `held` while the session still runs a helper, else it claimed it (`cleared`). */
-function tabAnswerOf(outcome) {
-    return outcome === CLAIM_HELD ? 'held' : 'cleared';
+/** How the tab's mod answered the ask: `held`, with its reason, while something holds the /clear, else it claimed it (`cleared`). */
+async function tabAnswerOf(deps, claudeSession, outcome) {
+    return outcome === CLAIM_HELD ? { kind: 'held', why: (await deps.asks.heldWhy(claudeSession)) ?? NO_HOLD_REASON } : { kind: 'cleared' };
 }
 /**
  * Asks the tab's mod to run /clear (`mod/clear-hand.ts`) and waits up to CLAIM_WAIT_MS for its answer.
- * `cleared` when the mod claimed it and ran /clear; `held` when the mod held it because Claude Code still
- * runs a helper of the session (or would not list them), which neither a /clear nor an end may cut off;
- * `unclaimed` when no mod answered: the tab has none (an older Claude Code, mods off) or a turn ran. The
- * ask and its outcome are gone when this returns, so the next round asks afresh; an earlier run's outcome
- * is removed with the new ask's posting.
+ * `cleared` when the mod claimed it and ran /clear; `held` when the mod held it: Claude Code still runs a
+ * helper of the session (or would not list them), which neither a /clear nor an end may cut off, or a draft,
+ * the person or the band's count holds the /clear; `unclaimed` when no mod answered: the tab has none (an
+ * older Claude Code, mods off) or a turn ran. The ask, its outcome and the hold's reason are gone when this
+ * returns, so the next round asks afresh; an earlier run's are removed with the new ask's posting.
  */
 async function handToTab(deps, plan, claudeSession) {
     await deps.asks.post(claudeSession, { team: plan.team, id: plan.id, at: plan.at, askedAt: new Date(deps.clock.now()).toISOString(), hold: plan.hold });
@@ -129,15 +136,15 @@ async function handToTab(deps, plan, claudeSession) {
             await deps.sleep(POLL_MS);
             const outcome = await deps.asks.outcome(claudeSession);
             if (outcome === CLAIM_TAKEN || outcome === CLAIM_HELD) {
-                return tabAnswerOf(outcome);
+                return await tabAnswerOf(deps, claudeSession, outcome);
             }
             const pending = (await pendingOf(deps, plan)) !== undefined;
             if (!pending || deps.clock.now() >= deadline) {
                 // The tab's answer may land between the look and here: whoever creates the outcome first wins.
                 if (!(await deps.asks.withdraw(claudeSession))) {
-                    return tabAnswerOf(await deps.asks.outcome(claudeSession));
+                    return await tabAnswerOf(deps, claudeSession, await deps.asks.outcome(claudeSession));
                 }
-                return pending ? 'unclaimed' : 'cancelled';
+                return { kind: pending ? 'unclaimed' : 'cancelled' };
             }
         }
     }
@@ -188,7 +195,8 @@ async function endSession(deps, plan, request, claude) {
  * - first asks the tab's mod to run /clear (`handToTab`). The /clear keeps the tab and its process, and
  *   Claude Code runs its own SessionEnd and SessionStart `clear` hooks, so no end command is needed;
  * - when the mod holds the ask (Claude Code says a helper of the session is still live, or would not list
- *   them), counts the session as busy: it ends nothing, waits for quiet and asks again, until GIVE_UP_MS;
+ *   them; or a draft, the person or the band's count holds the /clear), counts the session as busy: it ends
+ *   nothing, waits for quiet and asks again, until GIVE_UP_MS, whose why then names the mod's last reason;
  * - when no mod claims the ask and the session is still idle, ends the process, unless it still runs a
  *   background shell, which the end would take too: then the session is told to type /clear. Under `teamrig launch`
  *   (supervised) it marks the request `ending`, and launch starts Claude Code again in the same tab once
@@ -230,7 +238,8 @@ export async function runRestart(deps, plan) {
         if (!isClaudeSessionId(request.claudeSession)) {
             return endSession(deps, plan, request, claude);
         }
-        switch (await handToTab(deps, plan, request.claudeSession)) {
+        const answer = await handToTab(deps, plan, request.claudeSession);
+        switch (answer.kind) {
             case 'cleared':
                 // The claim clears the request; this clears it only when the claim stopped before that.
                 if ((await pendingOf(deps, plan)) !== undefined) {
@@ -240,8 +249,8 @@ export async function runRestart(deps, plan) {
             case 'cancelled':
                 return CANCELLED;
             case 'held': {
-                // A helper still runs, which the transcript may not show: busy, never ended, however idle the transcript looks.
-                const given = await gaveUp(deps, plan, started);
+                // A helper may still run, which the transcript may not show: busy, never ended, however idle the transcript looks.
+                const given = await gaveUp(deps, plan, started, answer.why);
                 if (given !== undefined) {
                     return given;
                 }

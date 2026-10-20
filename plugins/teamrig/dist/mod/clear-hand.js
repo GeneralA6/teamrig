@@ -5,9 +5,10 @@
  * that ask each tick. While a turn runs it leaves the ask (`busy`). Otherwise it asks Claude Code for the
  * session's agents (`$.agent.list()`): while one is live (any status but completed, failed or killed, an
  * idle teammate included), or when the list fails, it answers `held` through the CLI (`hook clear-claim
- * --hold`) and runs no /clear, so the runner waits and asks again instead of ending the process, which
- * would take the helper with it. Else it claims the ask through the CLI (`hook clear-claim`; both check
- * that the restart is still pending) and on a claim runs /clear the way the person would. Claude Code then
+ * --hold --why <reason>`) and runs no /clear, so the runner waits and asks again instead of ending the
+ * process, which would take the helper with it; the runner names the last reason if it gives up. Else it
+ * claims the ask through the CLI (`hook clear-claim`; both check that the restart is still pending) and on
+ * a claim runs /clear the way the person would. Claude Code then
  * runs the SessionStart `clear` hooks that read the handover and wake the session.
  *
  * The hand also holds the /clear for the person (the ask's `PersonHold`, from the team's config): while the
@@ -27,12 +28,14 @@ export const TICK_MS = 1_000;
 export const DIR_RETRY_MS = 60_000;
 /** What `hook clear-claim` prints when this tab took the ask; anything else is a reason it did not. */
 export const CLAIM_TAKEN = 'taken';
-/** What `hook clear-claim --hold` prints when this tab held the ask: the session still runs a helper. */
+/** What `hook clear-claim --hold` prints when this tab held the ask: a helper, a draft, the person or the band's count holds the /clear. */
 export const CLAIM_HELD = 'held';
 /** What the runner writes when it takes its ask back unclaimed. */
 export const CLAIM_WITHDRAWN = 'withdrawn';
 /** The switch that makes `hook clear-claim` hold the ask instead of claiming it. */
 export const HOLD_SWITCH = 'hold';
+/** The flag that gives a hold the hand's reason, which the restart names when it gives up. */
+export const WHY_FLAG = 'why';
 /** The hold of an ask that carries none (a restart older than the hold): the config's defaults, 20 s and 5 min. */
 export const DEFAULT_PERSON_HOLD = { countdownMs: 20_000, afterActivityMs: 5 * 60_000 };
 /** How long the band's "Hold" button holds the /clear. */
@@ -58,11 +61,15 @@ export function sameBand(a, b) {
 /** The statuses of an agent whose loop has ended (Claude Code's `AgentStatus`); every other one is live. */
 const ENDED_AGENT_STATUSES = new Set(['completed', 'failed', 'killed']);
 /**
- * How many of the session's agents (`$.agent.list()`) are live: pending, running, waiting, idle or any status
+ * The session's agents (`$.agent.list()`) that are live: pending, running, waiting, idle or any status
  * this file does not know, so a /clear never cuts off a helper or a teammate that may yet act.
  */
 export function liveAgentsOf(agents) {
-    return agents.filter((agent) => !ENDED_AGENT_STATUSES.has(agent.status)).length;
+    return agents.filter((agent) => !ENDED_AGENT_STATUSES.has(agent.status));
+}
+/** A live agent as a hold's reason names it: its type, its status and its task, so a stale one shows which it is. */
+function agentLineOf(agent) {
+    return `${agent.type} ${agent.status} "${agent.description}"`;
 }
 /** A Claude Code session id as it may appear in a file name: letters, digits and dashes only. */
 const CLAUDE_SESSION_ID = /^[A-Za-z0-9-]{1,64}$/;
@@ -76,6 +83,13 @@ export function askFileOf(dir, claudeSession) {
 /** How the ask was answered, `taken`, `held` or `withdrawn`, created once: the first writer wins and the other learns it lost. */
 export function outcomeFileOf(dir, claudeSession) {
     return isClaudeSessionId(claudeSession) ? `${dir}/${claudeSession}.outcome` : undefined;
+}
+/**
+ * Why the tab held the ask, written before its `held` outcome: the outcome stays the one word a restart
+ * started under an older teamrig reads.
+ */
+export function holdWhyFileOf(dir, claudeSession) {
+    return isClaudeSessionId(claudeSession) ? `${dir}/${claudeSession}.held` : undefined;
 }
 function isRecord(value) {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -210,7 +224,7 @@ export class ClearHand {
         const stdin = JSON.stringify({ session_id: claudeSession });
         const held = await this.heldBy(parseHandAsk(text));
         if (held !== undefined) {
-            const hold = await this.host.cli(['hook', 'clear-claim', `--${HOLD_SWITCH}`], stdin);
+            const hold = await this.host.cli(['hook', 'clear-claim', `--${HOLD_SWITCH}`, `--${WHY_FLAG}`, held], stdin);
             if (answered(hold, CLAIM_HELD)) {
                 return { kind: 'held', why: held };
             }
@@ -251,7 +265,10 @@ export class ClearHand {
     async helperHold() {
         try {
             const live = await this.host.liveAgents();
-            return live === 0 ? undefined : `${live} ${live === 1 ? 'agent' : 'agents'} of this session still live`;
+            if (live.length === 0) {
+                return undefined;
+            }
+            return `${live.length} ${live.length === 1 ? 'agent' : 'agents'} of this session still live: ${live.map(agentLineOf).join('; ')}`;
         }
         catch (error) {
             return `Claude Code would not list this session's agents: ${messageOf(error)}`;
