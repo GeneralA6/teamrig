@@ -7,26 +7,12 @@ import { readFileSync } from 'node:fs';
  */
 export type Gate = 'ci' | 'local';
 
-/** One local check: a command run from the repo dir (or `cwd` under it); exit 0 is a pass. */
-export interface LocalCheck {
-  name: string;
-  /**
-   * The command and its arguments, spawned without a shell. A leading `node` is this node with
-   * ExperimentalWarning off; `{skill}` in any argument is this skill's folder.
-   */
-  run: readonly string[];
-  /** A folder under the repo dir to run it in; the repo dir itself when null. */
-  cwd: string | null;
-}
-
 export interface LocalChecks {
   /**
-   * The repo's own local CI runner, relative to the repo dir. A tree that holds it runs it alone, in
-   * place of `fallback`, and the runner writes the pass record itself.
+   * The repo's own local CI runner, relative to the repo dir: it runs every check the repo's CI runs that
+   * can run here, and writes the pass record itself. Null when repos.json names none, so nothing proves a tree.
    */
   runner: string | null;
-  /** What a tree without the runner runs, in order: every check the repo's CI runs that can run here. */
-  fallback: readonly LocalCheck[];
 }
 
 export interface RepoProfile {
@@ -50,25 +36,11 @@ const isNameList = (value: unknown): value is string[] => Array.isArray(value) &
 const isGate = (value: unknown): value is Gate => value === 'ci' || value === 'local';
 const isText = (value: unknown): value is string => typeof value === 'string' && value.trim() !== '';
 
-function parseLocalCheck(slug: string, entry: unknown, index: number): LocalCheck {
-  const where = `repos.json: ${slug} local check ${index}`;
-  const name = isRecord(entry) ? entry['name'] : undefined;
-  if (!isRecord(entry) || !isText(name)) throw new Error(`${where} needs a "name"`);
-  const [run, cwd] = [entry['run'], entry['cwd']];
-  if (!isNameList(run) || run.length === 0) throw new Error(`${where} (${name}) needs a "run" list: the command, then its arguments`);
-  if (cwd !== undefined && !isText(cwd)) throw new Error(`${where} (${name}) has a "cwd" that is not a folder`);
-  return { name, run, cwd: cwd ?? null };
-}
-
 function parseLocalChecks(slug: string, value: unknown): LocalChecks {
-  if (value === undefined) return { runner: null, fallback: [] };
-  const fallback = isRecord(value) ? value['fallback'] : undefined;
-  if (!isRecord(value) || !Array.isArray(fallback)) throw new Error(`repos.json: ${slug} "local" needs a "fallback" list (and may name a "runner")`);
-  const runner = value['runner'];
-  if (runner !== undefined && !isText(runner)) throw new Error(`repos.json: ${slug} has a local "runner" that is not a path`);
-  const checks = fallback.map((entry, index) => parseLocalCheck(slug, entry, index));
-  if (new Set(checks.map(check => check.name)).size !== checks.length) throw new Error(`repos.json: ${slug} names a local check twice`);
-  return { runner: runner ?? null, fallback: checks };
+  if (value === undefined) return { runner: null };
+  const runner = isRecord(value) ? value['runner'] : undefined;
+  if (!isText(runner)) throw new Error(`repos.json: ${slug} "local" needs a "runner": the path of the repo's local CI runner`);
+  return { runner };
 }
 
 export function parseProfiles(json: string): Map<string, RepoProfile> {
@@ -89,7 +61,7 @@ export function profileFor(profiles: ReadonlyMap<string, RepoProfile>, slug: str
   const profile = profiles.get(slug.toLowerCase());
   if (profile === undefined) throw new Error(`no check list for ${slug}: add it to repos.json (a repo without one cannot merge)`);
   if (profile.gate === 'ci' && profile.checks.length === 0) throw new Error(`${slug} lists no checks in repos.json: nothing would prove the change, so it cannot merge`);
-  if (profile.gate === 'local' && profile.local.fallback.length === 0) throw new Error(`${slug} lists no local checks in repos.json: nothing would prove the change, so it cannot merge`);
+  if (profile.gate === 'local' && profile.local.runner === null) throw new Error(`${slug} names no local runner in repos.json: nothing would prove the change, so it cannot merge`);
   return profile;
 }
 
