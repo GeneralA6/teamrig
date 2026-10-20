@@ -7,7 +7,7 @@ import { resolveKitHome, type TeamPaths } from '../../core/home.ts';
 import type { Clock } from '../../core/lock.ts';
 import { resolveTeam } from '../../core/team.ts';
 import { formatUtcDay, MS_PER_DAY, parseUtcDay, typedDeadline, typedTimeHint } from '../../core/time.ts';
-import { activeBurst, withBurst, type BurstRecord } from '../../budget/burst.ts';
+import { activeBurst, burstFloorOf, withBurst, type BurstRecord, type InBurst } from '../../budget/burst.ts';
 import { BurstLog } from '../../budget/burst-log.ts';
 import { claudeProjectsDir, type TranscriptSource } from '../../budget/discover.ts';
 import { activeLift, decideLift, LiftLog, liftText, type Lift } from '../../budget/lift.ts';
@@ -134,28 +134,37 @@ async function readBudget(runtime: CliRuntime, kit: Kit, config: KitConfig, rost
   return { now, measured, week, lifts, bursts };
 }
 
-/** The week now, measured up to now as `budget` measures it, for `burst`. */
-export async function weekReadingOf(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster): Promise<WeekReading> {
-  return (await readBudget(runtime, kit, config, roster, { recountDay: undefined })).week;
+/** The week now and each team session's usage, measured up to now as `budget` measures them. */
+export interface UsageReading {
+  readonly week: WeekReading;
+  readonly bySession: ReadonlyMap<string, UsageState>;
+}
+
+/** The week and the team's usage now, for `burst`: its floor reads its sessions' use today. */
+export async function usageReadingOf(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster): Promise<UsageReading> {
+  const { week, measured } = await readBudget(runtime, kit, config, roster, { recountDay: undefined });
+  return { week, bySession: measured.bySession };
 }
 
 /** The week's use line, measured up to now as `budget` measures it, for `start`. */
 export async function weekLineOf(runtime: CliRuntime, kit: Kit, config: KitConfig, roster: Roster): Promise<string> {
-  return weekLine(await weekReadingOf(runtime, kit, config, roster), teamZone(config, runtime));
+  return weekLine((await usageReadingOf(runtime, kit, config, roster)).week, teamZone(config, runtime));
 }
 
 /** Each session today: its use, and its part of the team's daily budget by its queued work (`work`), its lift and the burst. */
 function sessionsToday(reading: Reading, roster: Roster, budget: BudgetConfig, work: ReadonlyMap<string, number>): SessionToday[] {
   const today = formatUtcDay(new Date(reading.now));
   const inForce = activeBurst(reading.bursts, reading.now, reading.week.usedPct);
+  const burstNow: InBurst | undefined =
+    inForce === undefined ? undefined : { burst: inForce, floorPct: burstFloorOf(inForce, reading.week, reading.measured.bySession, budget, reading.now) };
   const split: BudgetSplit = { ids: roster.ids, sessions: budget.sessions, work, lifted: liftedParts(reading.lifts, roster.ids, reading.now, reading.week.usedPct) };
   return roster.ids.map((id) => {
     const state = reading.measured.bySession.get(id);
     const w = state === undefined ? 0 : wSince([state], reading.week.todayFrom, reading.now);
     const lift = activeLift(reading.lifts, id, reading.now, reading.week.usedPct);
-    const burst = inForce !== undefined && inForce.sessions.includes(id) ? inForce : undefined;
-    const budgetPct = withBurst(dailyBudgetOf(reading.week.allowancePct, id, split), burst, id);
-    return { id, name: roster.nameOf(id) ?? id, w, calls: state?.byDay[today]?.calls ?? 0, budgetPct, lift, burst };
+    const inBurst = burstNow !== undefined && burstNow.burst.sessions.includes(id) ? burstNow : undefined;
+    const budgetPct = withBurst(dailyBudgetOf(reading.week.allowancePct, id, split), inBurst?.floorPct);
+    return { id, name: roster.nameOf(id) ?? id, w, calls: state?.byDay[today]?.calls ?? 0, budgetPct, lift, inBurst };
   });
 }
 

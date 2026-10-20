@@ -2,7 +2,7 @@ import { basename, dirname, join } from 'node:path';
 import type { Roster } from '../../config/roster.ts';
 import type { BudgetConfig, KitConfig } from '../../config/types.ts';
 import { SecretScanner } from '../../core/secrets.ts';
-import { activeBurst, withBurst } from '../../budget/burst.ts';
+import { activeBurst, burstFloorOf, withBurst } from '../../budget/burst.ts';
 import { surplusHintOf } from '../../budget/burst-lines.ts';
 import { BurstLog } from '../../budget/burst-log.ts';
 import type { TranscriptFolders } from '../../budget/discover.ts';
@@ -103,7 +103,7 @@ export async function budgetFactsOf(runtime: CliRuntime, scope: BudgetScope, tra
   const shared = dailyBudgetOf(week.allowancePct, id, { ids: roster.ids, sessions: budget.sessions, work, lifted });
   const inForce = activeBurst((await new BurstLog(files, kit.paths.bursts).read()).records, now, week.usedPct);
   const burst = inForce !== undefined && inForce.sessions.includes(id) ? inForce : undefined;
-  const budgetPct = withBurst(shared, burst, id);
+  const budgetPct = withBurst(shared, burst === undefined ? undefined : burstFloorOf(burst, week, byId, budget, now));
   if (budgetPct === undefined) {
     return undefined;
   }

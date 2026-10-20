@@ -1,8 +1,11 @@
-import type { BurstConfig } from '../config/types.ts';
-import { MS_PER_DAY, MS_PER_HOUR } from '../core/time.ts';
+import type { BudgetConfig, BurstConfig } from '../config/types.ts';
+import { MS_PER_HOUR } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
+import { DailyProfile, type ActivityProfile } from './active-time.ts';
 import { formatPct } from './format.ts';
-import type { WeekWindow } from './pace.ts';
+import { spanAllowancePct, type WeekWindow } from './pace.ts';
+import type { UsageState } from './store.ts';
+import { wSince, type WeekReading } from './week.ts';
 
 /**
  * A burst: the lead's time-boxed scale-out of named sessions onto helpers and hired sessions, for one of
@@ -24,13 +27,16 @@ export function isBurstKind(value: unknown): value is BurstKind {
 
 export interface Burst {
   readonly kind: BurstKind;
-  /** The sessions in it: each gets at least `dailyPct` a day and the burst's line. */
+  /** The sessions in it: each gets at least its floor (`burstFloorOf`) a day and the burst's line. */
   readonly sessions: readonly string[];
   /** The most helpers each of its sessions runs at once. */
   readonly helpers: number;
   /** The most sessions it may hire (`hire --burst`). */
   readonly hires: number;
-  /** Each of its sessions' daily budget while it lasts, at least, in % of the week. */
+  /**
+   * Each of its sessions' daily budget floor at its start, in % of the week: the start reading its lines print.
+   * The floor in force is recomputed at every reading (`burstFloorOf`); an older teamrig reads this one.
+   */
   readonly dailyPct: number;
   /** The week's use, in %, at which it ends. */
   readonly stopPct: number;
@@ -135,6 +141,13 @@ export interface BurstContext {
   readonly active: Burst | undefined;
   /** The team's zone, which a refusal prints its times in. */
   readonly zone: TimeZone;
+  /** The active time the pace counts, which a burst's floor is spread over. */
+  readonly profile: ActivityProfile;
+  /**
+   * The requested sessions' use today inside the week, in % of the week; undefined while the week's limit is
+   * unknown, when the start reading counts none, which lowers only the ceiling of a burst ending today.
+   */
+  readonly sessionsTodayPct: number | undefined;
 }
 
 export type BurstDecision = { readonly kind: 'burst'; readonly burst: Burst } | { readonly kind: 'refused'; readonly reason: string };
@@ -200,10 +213,66 @@ function endOf(request: BurstRequest, context: BurstContext, window: WeekWindow,
   return { endsAt: Math.min(request.deadline, window.reset) };
 }
 
-/** Each burst session's daily budget: what is left to the stop %, shared by its sessions over its days (one at least). */
-export function burstDailyPct(stopPct: number, usedPct: number, sessions: number, ms: number): number {
-  const days = Math.max(1, ms / MS_PER_DAY);
-  return Math.round(((stopPct - usedPct) / Math.max(1, sessions) / days) * 100) / 100;
+/** The week as a burst's floor reads it now. */
+export interface BurstPace {
+  readonly window: WeekWindow;
+  readonly now: number;
+  /** The week's use now, in %. */
+  readonly usedPct: number;
+  /** The burst sessions' use today inside the week, in % of the week. */
+  readonly todayPct: number;
+  /** The active time the pace counts. */
+  readonly profile: ActivityProfile;
+}
+
+/**
+ * Each burst session's daily budget floor now, in % of the week, never a fixed number: the team's pace rule
+ * (`spanAllowancePct`) over the burst, from what is left to its stop % spread over the active time to its end,
+ * shared evenly by its sessions. Their spending ahead lowers it and spending less raises it, so a deadline burst
+ * spends to its deadline, neither early nor short.
+ */
+export function burstFloorPct(burst: Pick<Burst, 'sessions' | 'stopPct' | 'endsAt'>, pace: BurstPace): number {
+  const { window, ...reading } = pace;
+  return spanAllowancePct({ ...reading, start: window.start, end: burst.endsAt, stopPct: burst.stopPct }) / Math.max(1, burst.sessions.length);
+}
+
+/** The sessions' use today inside the week, in % of the week; undefined while the week's limit is unknown. */
+export function sessionsTodayPct(
+  sessions: readonly string[],
+  week: Pick<WeekReading, 'wPerPct' | 'todayFrom'>,
+  states: ReadonlyMap<string, UsageState>,
+  now: number,
+): number | undefined {
+  return week.wPerPct === undefined ? undefined : wSince(sessions.flatMap((id) => states.get(id) ?? []), week.todayFrom, now) / week.wPerPct;
+}
+
+/**
+ * The burst's floor now (`burstFloorPct`), read from the week and its sessions' usage stores; its start reading
+ * (`dailyPct`) while the week's window, use or limit is unknown, as nothing newer can be read.
+ */
+export function burstFloorOf(
+  burst: Burst,
+  week: Pick<WeekReading, 'window' | 'usedPct' | 'wPerPct' | 'todayFrom'>,
+  states: ReadonlyMap<string, UsageState>,
+  budget: Pick<BudgetConfig, 'quietHours'>,
+  now: number,
+): number {
+  const { window, usedPct } = week;
+  const todayPct = sessionsTodayPct(burst.sessions, week, states, now);
+  if (window === undefined || usedPct === undefined || todayPct === undefined) {
+    return burst.dailyPct;
+  }
+  return burstFloorPct(burst, { window, now, usedPct, todayPct, profile: DailyProfile.ofQuietHours(budget.quietHours) });
+}
+
+/** A session's place in the burst in force: the burst, and its floor now (`burstFloorOf`). */
+export interface InBurst {
+  readonly burst: Burst;
+  readonly floorPct: number;
+}
+
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
 }
 
 /** Whether the burst may start, and its record. */
@@ -251,7 +320,12 @@ export function decideBurst(request: BurstRequest, context: BurstContext): Burst
       sessions: request.sessions,
       helpers: request.helpers ?? config.maxHelpers,
       hires: request.hires ?? 0,
-      dailyPct: burstDailyPct(stopPct, usedPct, request.sessions.length, end.endsAt - request.now),
+      dailyPct: round2(
+        burstFloorPct(
+          { sessions: request.sessions, stopPct, endsAt: end.endsAt },
+          { window, now: request.now, usedPct, todayPct: context.sessionsTodayPct ?? 0, profile: context.profile },
+        ),
+      ),
       stopPct,
       endsAt: end.endsAt,
       tasks: request.kind === 'deadline' ? request.tasks : [],
@@ -288,7 +362,7 @@ export function burstsOver(records: readonly BurstRecord[], now: number, usedPct
   );
 }
 
-/** A session's daily budget with the burst: at least the burst's for a session in it, else the shared one. */
-export function withBurst(shared: number | undefined, burst: Burst | undefined, id: string): number | undefined {
-  return burst !== undefined && burst.sessions.includes(id) ? Math.max(shared ?? 0, burst.dailyPct) : shared;
+/** A session's daily budget with the burst: at least the floor (`burstFloorOf`) for a session in it, else the shared one. */
+export function withBurst(shared: number | undefined, floorPct: number | undefined): number | undefined {
+  return floorPct === undefined ? shared : Math.max(shared ?? 0, floorPct);
 }

@@ -2,7 +2,19 @@ import type { Roster } from '../../config/roster.ts';
 import type { BurstPolicy, KitConfig } from '../../config/types.ts';
 import { KIT_NAME } from '../../core/home.ts';
 import type { TimeZone } from '../../core/zone.ts';
-import { activeBurst, BURST_KINDS, decideBurst, isBurst, isBurstKind, surplusOf, type Burst, type BurstKind } from '../../budget/burst.ts';
+import { DailyProfile } from '../../budget/active-time.ts';
+import {
+  activeBurst,
+  BURST_KINDS,
+  burstFloorOf,
+  decideBurst,
+  isBurst,
+  isBurstKind,
+  sessionsTodayPct,
+  surplusOf,
+  type Burst,
+  type BurstKind,
+} from '../../budget/burst.ts';
 import { BurstLog } from '../../budget/burst-log.ts';
 import { BURST_COMMAND, burstText } from '../../budget/burst-lines.ts';
 import { formatPct } from '../../budget/format.ts';
@@ -14,7 +26,7 @@ import { readBursts } from '../burst-reading.ts';
 import { callerOf, listOf } from '../inputs.ts';
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
-import { pctFlag, timeFlag, weekReadingOf } from './budget.ts';
+import { pctFlag, timeFlag, usageReadingOf } from './budget.ts';
 import { ownRegister } from './register.ts';
 
 /**
@@ -116,7 +128,7 @@ export async function burst(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const roster = await rosterOf(runtime, kit, config);
   const now = runtime.clock.now();
   const zone = teamZone(config, runtime);
-  const week = await weekReadingOf(runtime, kit, config, roster);
+  const { week, bySession } = await usageReadingOf(runtime, kit, config, roster);
   const { records } = await new BurstLog(runtime.files, kit.paths.bursts).read();
   const inForce = activeBurst(records, now, week.usedPct);
   const lines = [`POLICY burst.policy ${config.burst.policy}: ${POLICY_TEXT[config.burst.policy]}`, weekStatusLine(week, zone)];
@@ -129,7 +141,8 @@ export async function burst(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
     lines.push(last === undefined ? 'BURST none yet' : `BURST none in force; the last, a ${last.kind} burst, started ${zone.weekdayMinute(new Date(last.at))} (${last.reason})`);
   } else {
     const approved = inForce.approvedBy === undefined ? '' : `, approved by ${inForce.approvedBy}`;
-    lines.push(`BURST in force: ${burstText(inForce, namesOf(roster, inForce.sessions), zone)}`);
+    const floorPct = burstFloorOf(inForce, week, bySession, config.budget, now);
+    lines.push(`BURST in force: ${burstText(inForce, namesOf(roster, inForce.sessions), zone, floorPct)}`);
     lines.push(`  started ${zone.weekdayMinute(new Date(inForce.at))} by ${roster.nameOf(inForce.by) ?? inForce.by}${approved}: ${inForce.reason}`);
     const hired = hiresFor(inForce, activeHires((await new HiringLog(runtime.files, kit.paths.hires).read()).records), config);
     if (hired.length > 0) {
@@ -208,18 +221,27 @@ export async function start(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const by = leadOnly(roster, caller, 'starts a burst');
   const tasks = await tasksOf(runtime, flags.get('task'));
   const sessions = sessionsOf(roster, flags, kind, tasks.owners);
-  const week = await weekReadingOf(runtime, kit, config, roster);
+  const { week, bySession } = await usageReadingOf(runtime, kit, config, roster);
   const log = new BurstLog(runtime.files, kit.paths.bursts);
   const { records } = await log.read();
   const decision = decideBurst(
     { kind, sessions, helpers, hires, stopPct, deadline, tasks: tasks.ids, reason, approvedBy: flags.get('approved-by'), by, now },
-    { usedPct: week.usedPct, window: week.window, targetPct: config.budget.targetPct, config: config.burst, active: activeBurst(records, now, week.usedPct), zone },
+    {
+      usedPct: week.usedPct,
+      window: week.window,
+      targetPct: config.budget.targetPct,
+      config: config.burst,
+      active: activeBurst(records, now, week.usedPct),
+      zone,
+      profile: DailyProfile.ofQuietHours(config.budget.quietHours),
+      sessionsTodayPct: sessionsTodayPct(sessions, week, bySession, now),
+    },
   );
   if (decision.kind === 'refused') {
     throw new RefusedError(decision.reason);
   }
   const started = decision.burst;
-  const what = burstText(started, namesOf(roster, started.sessions), zone);
+  const what = burstText(started, namesOf(roster, started.sessions), zone, started.dailyPct);
   const spend = `  the week is at ${formatPct(week.usedPct ?? 0)}; the burst may take it to ${formatPct(started.stopPct)} by ${zone.weekdayMinute(new Date(started.endsAt))} (budget.targetPct ${formatPct(config.budget.targetPct)})`;
   if (!args.switches.has('yes')) {
     runtime.out.stdout(`PREVIEW ${what} Nothing written (add --yes to write).`);

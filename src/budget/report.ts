@@ -1,6 +1,6 @@
 import type { TimeZone } from '../core/zone.ts';
 import { ruleLabel, ruleNumberOf } from '../rules/keys.ts';
-import type { Burst } from './burst.ts';
+import type { InBurst } from './burst.ts';
 import { budgetMarkOf, burstText, MORE_BURST } from './burst-lines.ts';
 import { formatCount, formatPct, formatW } from './format.ts';
 import { liftText, type Lift } from './lift.ts';
@@ -31,11 +31,11 @@ export interface SessionToday {
   readonly w: number;
   /** Its calls since 00:00 UTC: calls are counted per day only. */
   readonly calls: number;
-  /** Its daily budget in percent of the week: its part of the team's while lifted, at least its burst's while in a burst; undefined when unknown. */
+  /** Its daily budget in percent of the week: its part of the team's while lifted, at least its burst's floor while in a burst; undefined when unknown. */
   readonly budgetPct: number | undefined;
   readonly lift: Lift | undefined;
-  /** The burst in force, when the session is in it. */
-  readonly burst: Burst | undefined;
+  /** The burst in force and its floor now, when the session is in it. */
+  readonly inBurst: InBurst | undefined;
 }
 
 export interface OutsideToday {
@@ -167,17 +167,17 @@ export function todayLines(report: TodayReport): string[] {
   const lines = [
     weekLine(week, zone),
     useLine('The team', teamW, teamCalls, week.allowancePct, '', week),
-    ...sessionRows(sessions, all, 'today', (session) => useLine(session.name, session.w, session.calls, session.budgetPct, budgetMarkOf(session), week)),
+    ...sessionRows(sessions, all, 'today', (session) => useLine(session.name, session.w, session.calls, session.budgetPct, budgetMarkOf(session.lift, session.inBurst !== undefined), week)),
   ];
   for (const session of sessions) {
     if (session.lift !== undefined) {
       lines.push(`Budget: the lead lifted ${liftText(session.lift, session.name, zone)}`);
     }
   }
-  const inBurst = sessions.filter((session) => session.burst !== undefined);
-  const burst = inBurst[0]?.burst;
-  if (burst !== undefined) {
-    lines.push(`Budget: the lead started ${burstText(burst, inBurst.map((session) => session.name), zone)} ${MORE_BURST}`);
+  const inBurst = sessions.filter((session) => session.inBurst !== undefined);
+  const first = inBurst[0]?.inBurst;
+  if (first !== undefined) {
+    lines.push(`Budget: the lead started ${burstText(first.burst, inBurst.map((session) => session.name), zone, first.floorPct)} ${MORE_BURST}`);
   }
   const outsideText = outsideLine(outside, all);
   if (outsideText !== undefined) {
@@ -226,13 +226,13 @@ export function sessionLines(session: SessionToday, state: UsageState, week: Wee
     lines.push('  no use in the last 8 days');
   }
   if (session.budgetPct !== undefined) {
-    lines.push(`Its daily budget today is ${formatPct(session.budgetPct)} of the week${budgetMarkOf(session)}.`);
+    lines.push(`Its daily budget today is ${formatPct(session.budgetPct)} of the week${budgetMarkOf(session.lift, session.inBurst !== undefined)}.`);
   }
   if (session.lift !== undefined) {
     lines.push(`Budget: the lead lifted ${liftText(session.lift, session.name, zone)}`);
   }
-  if (session.burst !== undefined) {
-    lines.push(`Budget: the lead started ${burstText(session.burst, [session.name], zone)} ${MORE_BURST}`);
+  if (session.inBurst !== undefined) {
+    lines.push(`Budget: the lead started ${burstText(session.inBurst.burst, [session.name], zone, session.inBurst.floorPct)} ${MORE_BURST}`);
   }
   lines.push(W_EXPLAINED);
   return lines;

@@ -250,7 +250,7 @@ function joined(parts: readonly string[]): string {
 
 /** The line at a new warning level. */
 function levelLine(facts: BudgetFacts, budget: WarnBudget, standing: Standing): string {
-  const use = `${facts.name} has used ${formatPct(facts.usedTodayPct)} of the week today; its daily budget is ${formatPct(facts.budgetPct)}${budgetMarkOf(facts)}.`;
+  const use = `${facts.name} has used ${formatPct(facts.usedTodayPct)} of the week today; its daily budget is ${formatPct(facts.budgetPct)}${budgetMarkOf(facts.lift, facts.burst !== undefined)}.`;
   if (!standing.over) {
     return joined([`Budget: ${use}`, teamText(facts), MORE]);
   }

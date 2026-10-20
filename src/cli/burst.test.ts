@@ -114,6 +114,15 @@ describe('burst start', () => {
     assert.match(refusal(await lead(kit, 'burst', 'start', 'surplus', '--reason', 'again', ...OWNER_OK)), /a surplus burst runs until .*; end it first/);
   });
 
+  it('reads the floor in force from the week now, not from its start', async () => {
+    const kit = await team({ burst: { policy: 'lead', surplusHours: 167 } });
+    ok(await lead(kit, 'burst', 'start', 'surplus', '--reason', 'week-end surplus', '--yes'));
+    ok(await kit.run(['statusline'], { stdin: status(50) }));
+    // 49.5% left over the 134 hours to the pace end is 8.9% a day, shared by three: the start's 5.6% would overspend.
+    assert.match(ok(await kit.run(['burst'])).stdout.join('\n'), /BURST in force: a surplus burst .*: app-lead, app-alpha, app-bravo each have a daily budget of at least 3\.0%/);
+    assert.match(ok(await kit.run(['budget'])).stdout.join('\n'), /Budget: the lead started a surplus burst .* each have a daily budget of at least 3\.0%/);
+  });
+
   it("is the lead's, under burst.policy owner only with the owner's approval", async () => {
     const kit = await team();
     assert.match(refusal(await kit.run(['burst', 'start', 'surplus', '--reason', 'r', ...OWNER_OK, '--session', 'alpha'])), /only the lead \(app-lead\) starts a burst/);
