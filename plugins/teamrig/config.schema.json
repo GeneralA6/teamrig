@@ -292,6 +292,18 @@
         }
       }
     },
+    "exec": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "description": "The folders a privileged command's bare program name (teamrig exec) is looked up on, in order, and the only PATH its commands get; the session's own PATH is never searched. Each is absolute (C:/tools, /usr/bin) with no ; or : past the drive. Empty: a request names its program by absolute path.",
+          "type": "array",
+          "maxItems": 16,
+          "items": { "type": "string", "maxLength": 260, "pattern": "^(?:[A-Za-z]:[\\\\/]|/)[^;:]*$" },
+          "default": []
+        }
+      }
+    },
     "packageGuard": {
       "type": "object",
       "properties": {

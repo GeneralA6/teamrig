@@ -183,6 +183,15 @@ describe('parseConfig', () => {
     assert.equal(config.leadBoundary.searchNudgeAt, 3);
   });
 
+  it('reads exec.path as absolute folders, empty by default, and refuses one against the cwd or holding a PATH separator', () => {
+    assert.deepEqual(parseConfig(ROSTER).config.exec, { path: [] });
+    const folders = ['C:/tools', 'D:\\bin', '/usr/bin'];
+    assert.deepEqual(parseConfig({ ...ROSTER, exec: { path: folders } }).config.exec.path, folders);
+    const { config, issues } = parseConfig({ ...ROSTER, exec: { path: ['C:/tools', 'bin', 'C:tools', 'C:/a;D:/b', '/usr/bin:/tmp'] } });
+    assert.deepEqual(paths(issues), ['exec.path[1]', 'exec.path[2]', 'exec.path[3]', 'exec.path[4]']);
+    assert.deepEqual(config.exec.path, ['C:/tools']);
+  });
+
   it('reads turnLog, and refuses keeping entries under an hour or past a week', () => {
     const off = { enabled: false, keepHours: 168 };
     assert.deepEqual(parseConfig({ ...ROSTER, turnLog: off }).config.turnLog, off);

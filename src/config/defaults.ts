@@ -11,6 +11,7 @@ import type {
   DecisionsConfig,
   GithubConfig,
   HeadroomConfig,
+  ExecConfig,
   HiringConfig,
   LaunchConfig,
   LockConfig,
@@ -99,7 +100,10 @@ export const DEFAULT_CONTEXT_FILES: ContextFilesConfig = { maxClaudeMdChars: 12_
 
 export const DEFAULT_LOCK: LockConfig = { ttlMs: 30_000, pollMs: 50, waitMs: 20_000 };
 
-export const DEFAULT_PUSH_GUARD: PushGuardConfig = { protectedBranches: ['main', 'master'], pushToProtected: 'ask' };
+/** No exec PATH: a privileged command names its program by absolute path until the team lists its tool folders. */
+export const DEFAULT_EXEC: ExecConfig = { path: [] };
+
+export const DEFAULT_PUSH_GUARD: PushGuardConfig ={ protectedBranches: ['main', 'master'], pushToProtected: 'ask' };
 
 /**
  * Refused by default: a helper's `npx eslint` once fetched and ran an unvetted package (T450, 10-16), and an install

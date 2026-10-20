@@ -56,6 +56,7 @@ const EVERY_KEY = {
   decisions: { batchTimesUtc: ['13:03'], batchAt: 3 },
   github: { repos: ['acme/web'], owners: { octocat: 'bravo' }, closedDays: 30, everyMinutes: 30 },
   paths: { state: '/s', inbox: '/i', skills: '/k' },
+  exec: { path: ['C:/tools'] },
 };
 
 async function loadSchema(): Promise<JsonRecord> {
@@ -167,6 +168,7 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   assumedRollMinutes: 'coordinator.windows.assumedRollMinutes',
   windowMinMinutes: 'coordinator.windows.minMinutes',
   resetBlackoutHours: 'coordinator.schedule.resetBlackoutHours',
+  execPath: 'exec.path',
 };
 
 function isLimitName(name: string): name is keyof typeof CONFIG_LIMITS {

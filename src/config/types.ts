@@ -130,6 +130,15 @@ export interface LockConfig {
   readonly waitMs: number;
 }
 
+/** Privileged commands a reviewer approved, run by `teamrig exec` (src/exec/). */
+export interface ExecConfig {
+  /**
+   * The directories a request's bare program name is looked up on, in order, and the only PATH its commands get; the
+   * session's own PATH is never searched. Empty: a request names its program by absolute path.
+   */
+  readonly path: readonly string[];
+}
+
 export interface PushGuardConfig {
   /** Branches the push guard watches: a push to one goes as `pushToProtected` says; force-push, mirror and deletion are refused. */
   readonly protectedBranches: readonly string[];
@@ -871,6 +880,7 @@ export interface KitConfig {
   readonly skills: SkillsConfig;
   readonly contextFiles: ContextFilesConfig;
   readonly lock: LockConfig;
+  readonly exec: ExecConfig;
   readonly pushGuard: PushGuardConfig;
   readonly packageGuard: PackageGuardConfig;
   readonly commitGuard: CommitGuardConfig;
