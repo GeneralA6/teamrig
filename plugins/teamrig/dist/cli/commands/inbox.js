@@ -1,12 +1,14 @@
 import { formatAddress, splitAddress } from "../../core/address.js";
 import { ENV } from "../../core/home.js";
 import { NAME_RULE } from "../../core/ids.js";
+import { PlainLogFile } from "../../core/log-file.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { formatRead, formatUnread, inboxStatus, lineOnClock, postLine, readInbox } from "../../inbox/inbox.js";
 import { CLAUDE_SESSION_ID } from "../../inbox/marks.js";
 import { reachOf } from "../../inbox/reach.js";
 import { InboxDir, JsonlMarkLog } from "../../inbox/store.js";
 import { noPositionals, requiredFlag, UsageError } from "../args.js";
+import { dedupLogOf } from "../dedup-logs.js";
 import { callerOf, sessionRef } from "../inputs.js";
 import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
@@ -15,8 +17,8 @@ import { verifyNoteOf } from "./verify-queue.js";
 export function inboxDepsOf(runtime, paths) {
     return {
         inboxes: new InboxDir(runtime.files, paths.inbox),
-        marks: new JsonlMarkLog(runtime.files, paths.inboxMarks),
-        shown: new JsonlMarkLog(runtime.files, paths.inboxShown),
+        marks: new JsonlMarkLog(new PlainLogFile(runtime.files, paths.inboxMarks)),
+        shown: new JsonlMarkLog(dedupLogOf(runtime, paths, 'inbox-shown')),
     };
 }
 /** The Claude Code session running the command, so the reminder hook can follow it; null outside one. */

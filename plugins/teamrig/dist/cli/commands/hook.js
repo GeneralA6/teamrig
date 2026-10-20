@@ -34,6 +34,7 @@ import { claudeProcessOf } from "../../refresh/restart.js";
 import { RefreshStore } from "../../refresh/store.js";
 import { readContextTokens } from "../../refresh/usage.js";
 import { noPositionals } from "../args.js";
+import { dedupLogOf } from "../dedup-logs.js";
 import { openKit, renameDepsOf, rosterOf, rulesClockOf, teamFolders, teamZone } from "../kit.js";
 import { EXIT } from "../runtime.js";
 import { loadTree } from "../tree.js";
@@ -642,7 +643,7 @@ export async function sessionStart(args, runtime) {
     const context = sessionStartContext({ team: found.team, load: kit.load, ...parts, command: KIT_NAME, platform: runtime.platform, clock: rulesClockOf(runtime) });
     const requirementsNote = await requirementsNoteOnce({
         problems: await runtime.requirements.problems(),
-        log: new JsonlHintLog(runtime.files, kit.paths.bindHints),
+        log: new JsonlHintLog(dedupLogOf(runtime, kit.paths, 'bind-hints')),
         claudeSession: sessionIdOf(payload),
         now: new Date(runtime.clock.now()),
         command: KIT_NAME,

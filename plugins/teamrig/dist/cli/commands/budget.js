@@ -2,6 +2,7 @@ import { basename, isAbsolute, join } from 'node:path';
 import { DEFAULT_STATUS_LINE } from "../../config/defaults.js";
 import { errorMessage } from "../../core/guards.js";
 import { resolveKitHome } from "../../core/home.js";
+import { PlainLogFile } from "../../core/log-file.js";
 import { resolveTeam } from "../../core/team.js";
 import { formatUtcDay, MS_PER_DAY, parseUtcDay, typedDeadline, typedTimeHint } from "../../core/time.js";
 import { activeBurst, burstFloorOf, withBurst } from "../../budget/burst.js";
@@ -57,7 +58,7 @@ async function readBudget(runtime, kit, config, roster, options) {
     const recount = options.recountDay !== undefined;
     const now = options.recountDay === undefined ? runtime.clock.now() : options.recountDay + MS_PER_DAY - 1;
     const clock = { now: () => now };
-    const { marks } = await new JsonlMarkLog(files, kit.paths.inboxMarks).read();
+    const { marks } = await new JsonlMarkLog(new PlainLogFile(files, kit.paths.inboxMarks)).read();
     const measured = await measure({
         transcripts: runtime.transcripts,
         titleOf: (path) => titleOf(runtime.transcripts, path),

@@ -3,19 +3,17 @@ import { parseJsonl, toJsonlLine } from "../core/jsonl.js";
 export const HINT_VERSION = 1;
 /** `bind-hints.jsonl`: one `{"v":1,"claudeSession":"…","reason":"…","at":"…"}` line per hint given. */
 export class JsonlHintLog {
-    files;
-    path;
-    constructor(files, path) {
-        this.files = files;
-        this.path = path;
+    log;
+    constructor(log) {
+        this.log = log;
     }
     /** A line of any version naming the session and reason counts: a newer teamrig gave that hint too. */
     async shown(claudeSession, reason) {
-        const { records } = parseJsonl((await this.files.read(this.path)) ?? '');
+        const { records } = parseJsonl((await this.log.read()) ?? '');
         return records.some((line) => stringField(line.record, 'claudeSession') === claudeSession && stringField(line.record, 'reason') === reason);
     }
     async record(claudeSession, reason, at) {
-        await this.files.append(this.path, toJsonlLine({ v: HINT_VERSION, claudeSession, reason, at: at.toISOString() }));
+        await this.log.append(toJsonlLine({ v: HINT_VERSION, claudeSession, reason, at: at.toISOString() }));
     }
 }
 /**

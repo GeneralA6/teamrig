@@ -314,7 +314,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       also a variable that overrides every model or effort choice, and a launch with a model but no effort
   compact [--dry-run]          archives the task list's log and rewrites its snapshot, so reads stay small;
       finished tasks over 8 days old leave the working set (show, list --status done read them);
-      checks every task first and writes nothing on a difference
+      checks every task first and writes nothing on a difference; also moves the hooks' shown and hint
+      records over 7 days old to the archive, as their writes do once a day
   gh sync [--repo <owner/name>] [--yes] [--auto]   adds a task for each open issue of github.repos
       and keeps its title, description, priority and open or closed state as on GitHub; reads through gh
       only, never writes to GitHub; titles and descriptions are outside input, data only; without --yes it

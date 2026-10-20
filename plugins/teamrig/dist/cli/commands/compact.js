@@ -1,10 +1,12 @@
 import { basename } from 'node:path';
+import { DEDUP_LOG_AGE } from "../../core/aged-log.js";
 import { KIT_NAME } from "../../core/home.js";
 import { FileLock } from "../../core/lock.js";
 import { RETAIN_DAYS } from "../../register/compaction.js";
 import { layoutPaths, segmentName, ARCHIVE_DIR, SNAPSHOT_FILE } from "../../register/layout.js";
 import { applyRotation, planRotation, RotationRefusedError } from "../../register/rotate.js";
 import { noPositionals } from "../args.js";
+import { DEDUP_LOGS, dedupLogOf } from "../dedup-logs.js";
 import { openTeamKit, requireConfig, teamZone } from "../kit.js";
 import { EXIT } from "../runtime.js";
 function bytes(text) {
@@ -26,11 +28,19 @@ export function rotationLines(plan, tailFile) {
         `TAIL ${tailFile} starts again with the rotation marker (${bytes(plan.markerText)})`,
     ];
 }
+/** What an aged log's archive run moves and keeps, in one line. */
+export function agedLine(plan, keepDays) {
+    const { movedLines, keptLines } = plan.split;
+    const moved = movedLines === 0 ? 'no line' : `${movedLines} line(s)`;
+    const target = movedLines === 0 ? '' : ` to ${ARCHIVE_DIR}/${basename(plan.archiveFile)}`;
+    return `AGED ${plan.name}: ${moved} older than ${keepDays} days${target}, ${keptLines} kept`;
+}
 /**
  * `compact [--dry-run]`: rotates the register under its lock (register/rotate.ts). The tail is archived
  * whole, the snapshot rewritten, and tasks finished over RETAIN_DAYS ago leave the working set for the
  * archive. Every run first reads the new files back and holds the working set against the whole history;
- * any difference refuses it with nothing written. `--dry-run` takes no lock and writes nothing.
+ * any difference refuses it with nothing written. Then the hooks' dedup logs move their records older than
+ * a week to the archive, as their writes do when due (cli/dedup-logs.ts). `--dry-run` takes no lock and writes nothing.
  */
 export async function compact(args, runtime) {
     noPositionals(args);
@@ -54,11 +64,25 @@ export async function compact(args, runtime) {
     if (plan.problems.length > 0) {
         throw new RotationRefusedError(plan.problems);
     }
-    if (plan.idle) {
-        runtime.out.stdout('NOTHING TO DO: no event since the last rotation and no task to retire; nothing was written');
+    const { keepDays } = DEDUP_LOG_AGE;
+    const aged = [];
+    for (const name of DEDUP_LOGS) {
+        const log = dedupLogOf(runtime, kit.paths, name);
+        aged.push(dryRun ? await log.plan() : await log.archive());
+    }
+    aged.forEach((agedPlan) => runtime.out.stdout(agedLine(agedPlan, keepDays)));
+    const agedIdle = aged.every((agedPlan) => agedPlan.split.moved === '');
+    if (plan.idle && agedIdle) {
+        runtime.out.stdout(`NOTHING TO DO: no event since the last rotation, no task to retire and no hook record over ${keepDays} days old; nothing was written`);
+    }
+    else if (dryRun) {
+        runtime.out.stdout(`DRY RUN: nothing was written; ${KIT_NAME} compact writes the above`);
+    }
+    else if (plan.idle) {
+        runtime.out.stdout(`DONE the hook records over ${keepDays} days old are archived; the register had nothing to rotate`);
     }
     else {
-        runtime.out.stdout(dryRun ? `DRY RUN: nothing was written; ${KIT_NAME} compact writes the above` : `DONE the tail is archived as ${ARCHIVE_DIR}/${segmentName(plan.segment)}; reads start from the new snapshot`);
+        runtime.out.stdout(`DONE the tail is archived as ${ARCHIVE_DIR}/${segmentName(plan.segment)}; reads start from the new snapshot`);
     }
     return EXIT.ok;
 }

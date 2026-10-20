@@ -2,6 +2,7 @@ import { join, resolve } from 'node:path';
 import { claudeProjectsDir } from "../../budget/discover.js";
 import { errorMessage } from "../../core/guards.js";
 import { ENV, resolveKitHome } from "../../core/home.js";
+import { PlainLogFile } from "../../core/log-file.js";
 import { indexMarks } from "../../inbox/marks.js";
 import { JsonlMarkLog } from "../../inbox/store.js";
 import { openTab } from "../../open/open-tab.js";
@@ -36,7 +37,7 @@ async function restoreTeamsOf(runtime) {
     const { teams } = await loadTree(runtime);
     const found = [];
     for (const [team, { kit, config, roster }] of teams) {
-        const { marks } = await new JsonlMarkLog(runtime.files, kit.paths.inboxMarks).read();
+        const { marks } = await new JsonlMarkLog(new PlainLogFile(runtime.files, kit.paths.inboxMarks)).read();
         found.push({
             team,
             lead: config.roles.lead,
