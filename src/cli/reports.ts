@@ -1,3 +1,6 @@
+import { KIT_NAME } from '../core/home.ts';
+import type { DecisionBatch } from '../decisions/batch.ts';
+import { checkDecisionLines } from '../decisions/lines.ts';
 import { formatHireFlag, type HireFlag } from '../hiring/due.ts';
 import { FLAG_KINDS, formatFlag, type Flag, type FlagKind } from '../register/check.ts';
 import type { Task } from '../register/fold.ts';
@@ -49,6 +52,14 @@ export interface CheckReport {
   readonly skillsDir: string;
   /** The hire flags: SCALE-OUT on an area, then RETIRE-DUE and REVIEW-DUE on a hired session; printed only when there are some. */
   readonly hires: readonly HireFlag[];
+  /** The own team's batch of the owner's decisions, for its lead; printed only while a batch is due. */
+  readonly decisions: LeadDecisions | undefined;
+}
+
+/** The batch of the owner's decisions the lead asks next (src/decisions/batch.ts). */
+export interface LeadDecisions {
+  readonly lead: string;
+  readonly batch: DecisionBatch;
 }
 
 /**
@@ -63,6 +74,7 @@ export function ownCheck(report: CheckReport, owner: string): CheckReport {
     scope: `${owner}'s tasks and skills, ${report.scope}`,
     skills: report.skills.filter((flag) => flag.owner === owner),
     hires: report.hires.filter((flag) => flag.session === owner),
+    decisions: report.decisions?.lead === owner ? report.decisions : undefined,
   };
 }
 
@@ -161,7 +173,12 @@ function hireLines({ hires }: CheckReport, indent: string): string[] {
   return hires.length === 0 ? [] : [`HIRES ${hires.length} flag(s)`, ...hires.map((flag) => `${indent}${formatHireFlag(flag)}`)];
 }
 
-/** Each register's `CHECK` line and flags, then the hire flags, then the skill flags: every flag, every field. */
+/** The lead's `DECISIONS` line while a batch of the owner's decisions is due; nothing otherwise. */
+function decisionLines({ decisions }: CheckReport): string[] {
+  return decisions === undefined ? [] : checkDecisionLines(decisions.batch, KIT_NAME, decisions.lead);
+}
+
+/** Each register's `CHECK` line and flags, then the hire flags, the lead's due batch of decisions, then the skill flags: every flag, every field. */
 function longCheck(report: CheckReport): string[] {
   return [
     ...report.sections.flatMap(({ team, flags, tree }) => [
@@ -169,6 +186,7 @@ function longCheck(report: CheckReport): string[] {
       ...flags.map((flag) => formatFlag(flag, team, tree)),
     ]),
     ...hireLines(report, ''),
+    ...decisionLines(report),
     skillsLine(report),
     ...report.skills.map(formatSkillFlag),
   ];
@@ -187,7 +205,7 @@ function kindLines(kind: FlagKind, rows: readonly TeamFlag[], shown: number): st
 
 /**
  * The short `check`: one `CHECK` line over every register, then each kind with its count and its first flags in plan
- * order, then every hire flag (at most two per hired session), then the skill flags the same way as the kinds. Each kind shows MAX_FLAGS_PER_KIND flags, or fewer, the same number for
+ * order, then every hire flag (at most two per hired session), the lead's due batch of decisions, then the skill flags the same way as the kinds. Each kind shows MAX_FLAGS_PER_KIND flags, or fewer, the same number for
  * every kind, so the whole fits in SHORT_FORM_CHARS; at one each, lines past the budget give way to a `+N more` line.
  */
 function shortCheck(report: CheckReport): string[] {
@@ -203,6 +221,7 @@ function shortCheck(report: CheckReport): string[] {
     head,
     ...kinds.flatMap(({ kind, rows }) => kindLines(kind, rows, shown)),
     ...hireLines(report, '  '),
+    ...decisionLines(report),
     skillsLine(report),
     ...firstOf(
       report.skills.map((flag) => `  ${formatSkillFlag(flag)}`),

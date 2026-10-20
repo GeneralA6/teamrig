@@ -7,6 +7,8 @@ import { JsonlDailyLog } from '../../core/daily-log.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { burstsOver, surplusOf } from '../../budget/burst.ts';
 import { formatW } from '../../budget/format.ts';
+import { timingText, waitTiming, type WaitTiming } from '../../decisions/lines.ts';
+import { teamDecisions } from '../../decisions/team.ts';
 import { hireFlags } from '../../hiring/due.ts';
 import { activeHires, HiringLog } from '../../hiring/log.ts';
 import { scaleOutFlags } from '../../hiring/scale-out.ts';
@@ -207,7 +209,9 @@ async function tellAssigned(runtime: CliRuntime, team: Team, by: string, task: T
 /**
  * One inbox line to the lead when a write set a task waiting, or a verifying task's proof, on a decision or an
  * approval of the lead's or the owner's that it did not wait on before (the lead keeps the owner's decision queue);
- * never when the lead set it.
+ * never when the lead set it. A new wait on the owner says when the owner hears it (src/decisions/batch.ts): in the
+ * next batch, in the one due now, or at once when it is due before the next; at once, the setter is told to message
+ * the lead too, as an inbox line wakes no one.
  */
 async function tellLeadOfWaits(runtime: CliRuntime, team: Team, by: string, verdict: Verdict<WriteResult>): Promise<void> {
   const { lead } = team.config.roles;
@@ -222,9 +226,22 @@ async function tellLeadOfWaits(runtime: CliRuntime, team: Team, by: string, verd
       !isPeerWait(reason, lead, team.config.register.ownerSource) &&
       !earlier.some((other) => sameWait(reason, other)),
   );
-  if (added.length > 0) {
-    await tellLine(runtime, team, by, lead, personWaitNotice(task, added, lead), `${lead} was not told that ${task.id} waits on it`);
+  if (added.length === 0) {
+    return;
   }
+  const timing = added.some((reason) => reason.who !== lead) ? await ownerWaitTiming(runtime, team, verdict.value) : undefined;
+  const text = `${personWaitNotice(task, added, lead)}${timing === undefined ? '' : ` | ${timingText(timing)}`}`;
+  await tellLine(runtime, team, by, lead, text, `${lead} was not told that ${task.id} waits on it`);
+  if (timing?.kind === 'at-once') {
+    runtime.out.stderr(`NOTE ${task.id} is due before the owner's next batch: message ${team.roster.nameOf(lead) ?? lead} too, as an inbox line wakes no one`);
+  }
+}
+
+/** When the owner hears of a task's new wait on them, judged on the register after the write. */
+async function ownerWaitTiming(runtime: CliRuntime, team: Team, { task, state }: WriteResult): Promise<WaitTiming> {
+  const now = runtime.clock.now();
+  const { batch, tree } = await teamDecisions(runtime.files, team.paths, team.config, state.tasks, now);
+  return waitTiming(batch, task, tree, now);
 }
 
 /** Posts one inbox line, naming it on stderr, or naming `unsent` and why: a line that cannot be posted is never thrown. */
@@ -566,7 +583,8 @@ function withOverLimit(sections: readonly CheckSection[], fit: WeekFit): CheckSe
 /**
  * What `check` reports: the task flags, then the skill flags of the Claude Code skills folder. With `--tree`,
  * the task flags of the lead's team and each team under it, against the lead's week; the skills are the lead's
- * team's only, as teams on one machine share that folder, and so are the flags on hired sessions (src/hiring/due.ts).
+ * team's only, as teams on one machine share that folder, and so are the flags on hired sessions (src/hiring/due.ts)
+ * and the batch of the owner's decisions its lead asks next (src/decisions/batch.ts).
  * The `stopgap T<id>` tags in those skills and in the team's `register.check.stopgapFiles` add a STOPGAP-DONE flag
  * per finished task they name.
  */
@@ -603,7 +621,8 @@ export async function checkReport(args: ParsedArgs, runtime: CliRuntime): Promis
   const scaleOut = scaleOutFlags({ ...input, tree: new TaskTree(own.snapshot.state.tasks, now, zone), spare, hirePct });
   const hires = [...scaleOut.flags, ...hireFlags(input, scaleOut.busy)];
   const scope = week === null ? 'no week plan tagged yet, so the week checks are skipped' : `week ${week}`;
-  return { sections, scope, skills, skillsDir: own.paths.skills, hires };
+  const { batch } = await teamDecisions(runtime.files, own.paths, own.config, own.snapshot.state.tasks, now.getTime());
+  return { sections, scope, skills, skillsDir: own.paths.skills, hires, decisions: { lead: own.config.roles.lead, batch } };
 }
 
 /** `check [--tree] [--all]`: the report in the short form (src/cli/reports.ts), or with `--all` every flag in full. */

@@ -78,10 +78,10 @@ describe('runCli: a wait on the lead or the owner tells the lead', () => {
     const again = await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'approval:lead', '--note', 'the window is Sunday', '--session', 'alpha']);
     assert.deepEqual([again.code, again.stderr], [EXIT.ok, []]);
     const owner = await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'approval:lead,decision:owner', '--note', 'and the cost', ...TEST_CARD_FLAGS, '--session', 'alpha']);
-    assert.deepEqual(owner.stderr, [`NOTE lead has an inbox line: T1 waits on the owner's decision: ${TEST_CARD.question}`]);
+    assert.deepEqual(owner.stderr, [`NOTE lead has an inbox line: T1 waits on the owner's decision: ${TEST_CARD.question} | asked in the next batch at the daily meeting`]);
     assert.deepEqual(await inboxOf(kit, 'lead'), [
       '- 2030-01-08 10:00 UTC alpha: T1 waits on your approval: pick the backup window',
-      `- 2030-01-08 10:00 UTC alpha: T1 waits on the owner's decision: ${TEST_CARD.question}`,
+      `- 2030-01-08 10:00 UTC alpha: T1 waits on the owner's decision: ${TEST_CARD.question} | asked in the next batch at the daily meeting`,
     ]);
 
     await kit.run(['add', '--title', 'Plan the week', '--description', 'what and why', '--priority', 'p2', '--session', 'lead']);
@@ -94,7 +94,7 @@ describe('runCli: a wait on the lead or the owner tells the lead', () => {
     const kit = await startedTask();
     const asked = await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'decision:owner', '--ask', 'bravo', '--text', 'Land it', ...TEST_CARD_FLAGS, '--session', 'alpha']);
     assert.equal(asked.code, EXIT.ok, asked.stderr.join('\n'));
-    assert.deepEqual(asked.stderr, ['NOTE bravo has an inbox line: T2 is yours (p2): Land it', `NOTE lead has an inbox line: T1 waits on the owner's decision: ${TEST_CARD.question}`]);
+    assert.deepEqual(asked.stderr, ['NOTE bravo has an inbox line: T2 is yours (p2): Land it', `NOTE lead has an inbox line: T1 waits on the owner's decision: ${TEST_CARD.question} | asked in the next batch at the daily meeting`]);
   });
 
   it('names a line it could not post, and keeps the wait', async () => {
