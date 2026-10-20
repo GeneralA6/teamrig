@@ -350,6 +350,27 @@ describe('checkTasks: NO-CARD', () => {
   });
 });
 
+describe('checkTasks: OWNER-ORDERED', () => {
+  const seen = { ownerSeenAt: FRESH, updatedAt: FRESH };
+  const flagged = (tasks: Parameters<typeof checkTasks>[0]) =>
+    checkTasks(tasks, NOW, TimeZone.UTC, null, CONFIG)
+      .filter((flag) => flag.kind === 'OWNER-ORDERED')
+      .map((flag) => `${flag.task.id}: ${flag.detail}`);
+  const fix = (waits: string, status: string) =>
+    `owner ordered it, and an order approves its own work and proof: drop the wait on owner's ${waits}, or set it ${status} again with --why-ask "<how the order must change, what new it needs, or why only owner can see the result>"`;
+
+  it('flags an owner order that asks the owner with no card part saying why, its proof too', () => {
+    const tasks = [
+      testTask({ id: 'T1', source: 'owner', status: 'waiting', waits: [{ kind: 'approval', who: 'owner' }], card: TEST_CARD, ...seen }),
+      testTask({ id: 'T2', source: 'owner', status: 'verifying', proof: 'the run', waits: [{ kind: 'decision', who: 'owner' }, { kind: 'approval', who: 'owner' }], ...seen }),
+      testTask({ id: 'T3', source: 'owner', status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], card: { ...TEST_CARD, whyAsk: 'the ordered tier cannot ship at that price' }, ...seen }),
+      testTask({ id: 'T4', source: 'lead', status: 'waiting', waits: [{ kind: 'approval', who: 'owner' }], card: TEST_CARD, ...seen }),
+      testTask({ id: 'T5', source: 'owner', status: 'waiting', waits: [{ kind: 'approval', who: 'lead' }], ...seen }),
+    ];
+    assert.deepEqual(flagged(tasks), [`T1: ${fix('approval', 'waiting')}`, `T2: ${fix('decision and approval', 'verifying')}`]);
+  });
+});
+
 describe('checkTasks: SELF-MADE', () => {
   const made = (n: number, overrides: Partial<Task> = {}) =>
     testTask({ id: `T${n}`, owner: 'alpha', source: 'alpha', createdBy: 'alpha', createdAt: '2030-01-10T08:00:00.000Z', ownerSeenAt: FRESH, updatedAt: FRESH, ...overrides });

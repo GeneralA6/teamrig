@@ -4,7 +4,7 @@ import { topPriority } from '../config/priorities.ts';
 import type { LeadTree } from '../config/lead-tree.ts';
 import type { RegisterCheckConfig, RegisterConfig } from '../config/types.ts';
 import { approvalCleared } from './approval.ts';
-import { CARD_FLAGS } from './card.ts';
+import { CARD_FLAGS, WHY_ASK_FLAG } from './card.ts';
 import { taskNumber, type Task } from './fold.ts';
 import { ACTIVE_STATUSES, priorityText } from './model.ts';
 import type { RegisterSnapshot } from './snapshot.ts';
@@ -22,6 +22,7 @@ export const FLAG_KINDS = [
   'NO-REASON',
   'PEER-WAIT',
   'NO-CARD',
+  'OWNER-ORDERED',
   'NOT-PICKED-UP',
   'PRIORITY-SKIP',
   'SELF-MADE',
@@ -81,6 +82,10 @@ export function currentWeekOf(snapshot: RegisterSnapshot, now: Date, zone: TimeZ
  * - NO-REASON: waiting with no reason, as a line from an older teamrig reads: nothing says what it waits for;
  * - NO-CARD: waiting on the owner's decision or approval with no card to decide from (card.ts), as one set before
  *   cards, or while `requireDecisionCard` was off, reads; never with that switch off;
+ * - OWNER-ORDERED: a task the owner ordered (its source is `ownerSource`) waiting, or its proof waiting, on the
+ *   owner's decision or approval with no card saying why the owner is asked (`whyAsk`, card.ts): an owner's order
+ *   approves its own work and proof unless the order must change, the work needs something new, or only the owner
+ *   can see the result (T802);
  * - NOT-PICKED-UP: assigned longer ago than `notPickedUpAfterHours` with no event from its owner since
  *   (an idle session never reads its inbox, so it needs a direct wake);
  * - PRIORITY-SKIP: in progress below an open task of the top priority that has the same owner and is free to start
@@ -117,6 +122,7 @@ export function checkTasks(tasks: Iterable<Task>, now: Date, zone: TimeZone, wee
     ...readyFlags(task, tree.context),
     ...(task.status === 'waiting' && task.waits.length === 0 ? [{ kind: 'NO-REASON' as const, task, detail: 'set what it waits for (--waits) or its next status' }] : []),
     ...noCardFlags(task, config),
+    ...ownerOrderedFlags(task, config.ownerSource),
     ...timeFlags(task, at, config.check, tree),
     ...(top === undefined ? [] : prioritySkip(task, top, waiting, at, config.check, zone)),
     ...(plan === undefined ? [] : planFlags(task, plan, config.ownerSource, tree)),
@@ -167,6 +173,23 @@ function noCardFlags(task: Task, config: RegisterConfig): Flag[] {
   return config.requireDecisionCard && task.card === null && asksOwner
     ? [{ kind: 'NO-CARD', task, detail: `no card for ${ownerSource} to decide from: set it ${task.status} again with ${CARD_FLAGS}` }]
     : [];
+}
+
+/** OWNER-ORDERED, as {@link checkTasks} describes it. */
+function ownerOrderedFlags(task: Task, ownerSource: string): Flag[] {
+  if (task.source !== ownerSource || task.card?.whyAsk !== undefined) {
+    return [];
+  }
+  const kinds = [...new Set(task.waits.flatMap((reason) => ((reason.kind === 'decision' || reason.kind === 'approval') && reason.who === ownerSource ? [reason.kind] : [])))];
+  return kinds.length === 0
+    ? []
+    : [
+        {
+          kind: 'OWNER-ORDERED',
+          task,
+          detail: `${ownerSource} ordered it, and an order approves its own work and proof: drop the wait on ${ownerSource}'s ${kinds.join(' and ')}, or set it ${task.status} again with ${WHY_ASK_FLAG} "<how the order must change, what new it needs, or why only ${ownerSource} can see the result>"`,
+        },
+      ];
 }
 
 /**

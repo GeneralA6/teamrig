@@ -297,7 +297,7 @@ export function statusInputOf(flags: Flags, times: TypedTimes): StatusInput {
   return input;
 }
 
-/** The card parts a `set` names (`--question`, `--options`, `--recommend`, `--default`); undefined when it names none. */
+/** The card parts a `set` names (`--question`, `--options`, `--recommend`, `--default`, `--why-ask`); undefined when it names none. */
 function cardInputOf(flags: Flags): Partial<DecisionCard> | undefined {
   const card: Mutable<Partial<DecisionCard>> = {};
   const question = cardPart(flags, 'question');
@@ -315,6 +315,10 @@ function cardInputOf(flags: Flags): Partial<DecisionCard> | undefined {
   const byDefault = cardPart(flags, 'default');
   if (byDefault !== undefined) {
     card.byDefault = byDefault;
+  }
+  const whyAsk = cardPart(flags, 'why-ask');
+  if (whyAsk !== undefined) {
+    card.whyAsk = whyAsk;
   }
   return Object.keys(card).length === 0 ? undefined : card;
 }
