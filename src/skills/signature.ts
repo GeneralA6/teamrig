@@ -1,4 +1,4 @@
-import type { SkillFile } from './lint.ts';
+import type { SkillText } from './lint.ts';
 
 /**
  * A skill's signature: the procedure it holds, done by hand, as regexes over one tool call's `<tool name> <command>`
@@ -16,7 +16,7 @@ export interface SkillSignature {
 }
 
 /** The skill's `Signature:` lines, each compiled; none when it has no such line. */
-export function signatureOf(skill: SkillFile): SkillSignature {
+export function signatureOf(skill: SkillText): SkillSignature {
   const patterns: RegExp[] = [];
   const invalid: string[] = [];
   for (const match of skill.text.matchAll(SIGNATURE_LINE)) {

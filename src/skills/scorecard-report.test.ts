@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import type { SkillFile, SkillFlag } from './lint.ts';
+import type { SkillFlag, SkillText } from './lint.ts';
 import { EMPTY_SKILL_DAY, EMPTY_TALLY, type ScorecardDays } from './scorecard.ts';
 import { renderScorecard, scorecardRows, type DayRange, type ScorecardFooter, type ScorecardRow } from './scorecard-report.ts';
 import { signatureOf } from './signature.ts';
@@ -8,7 +8,7 @@ import { signatureOf } from './signature.ts';
 const WINDOW: DayRange = { from: '2030-01-02', to: '2030-01-08' };
 const BASELINE: DayRange = { from: '2029-12-26', to: '2030-01-01' };
 
-function skillFile(name: string, body: string): SkillFile {
+function skillFile(name: string, body: string): SkillText {
   return { name, text: `---\nname: ${name}\ndescription: Use when the nightly job fails.\n---\nOwner: alpha\n${body}\n` };
 }
 

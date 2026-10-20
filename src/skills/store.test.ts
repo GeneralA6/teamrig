@@ -10,16 +10,18 @@ describe('SkillDir', () => {
     [`${DIR}/bravo-deploy/SKILL.md`]: 'b',
     [`${DIR}/alpha-review/SKILL.md`]: 'a',
     [`${DIR}/alpha-review/helper.ts`]: 'x',
+    [`${DIR}/alpha-review/notes.md`]: 'not a script',
+    [`${DIR}/alpha-review/node_modules/dep/index.js`]: 'not read',
     [`${DIR}/cache/index.json`]: '{}',
     [`${DIR}/Bad_Name/SKILL.md`]: 'z',
     'home/outside/SKILL.md': 'o',
   });
   const skills = new SkillDir(files, DIR);
 
-  it('reads every folder with a SKILL.md, in name order', async () => {
+  it('reads every folder with a SKILL.md, in name order, with the scripts at its top', async () => {
     assert.deepEqual(await skills.readAll(), [
-      { name: 'alpha-review', text: 'a' },
-      { name: 'bravo-deploy', text: 'b' },
+      { name: 'alpha-review', text: 'a', scripts: [{ name: 'helper.ts', text: 'x' }] },
+      { name: 'bravo-deploy', text: 'b', scripts: [] },
     ]);
   });
 

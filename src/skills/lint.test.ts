@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { testConfig } from '../testing/config.ts';
+import type { SkillScript } from './grants.ts';
 import { areaOf, descriptionOf, formatSkillFlag, lintSkills, type SkillFile } from './lint.ts';
 
 const NOW = new Date('2030-03-01T12:00:00Z');
@@ -10,14 +11,17 @@ interface SkillParts {
   readonly front?: string;
   readonly owner?: string | null;
   readonly verified?: string | null;
+  readonly grants?: string;
+  readonly scripts?: readonly SkillScript[];
 }
 
 function skill(name: string, parts: SkillParts = {}): SkillFile {
   const front = parts.front ?? `name: ${name}\ndescription: Use when the nightly job fails.`;
   const owner = parts.owner === undefined ? 'alpha' : parts.owner;
   const verified = parts.verified === undefined ? '2030-02-20' : parts.verified;
-  const body = ['# Steps', owner === null ? '' : `Owner: ${owner}`, verified === null ? '' : `Last verified: ${verified}`];
-  return { name, text: `---\r\n${front.replaceAll('\n', '\r\n')}\r\n---\r\n${body.join('\r\n')}\r\n` };
+  const grants = parts.grants === undefined ? [] : [`Grants: ${parts.grants}`];
+  const body = ['# Steps', owner === null ? '' : `Owner: ${owner}`, verified === null ? '' : `Last verified: ${verified}`, ...grants];
+  return { name, text: `---\r\n${front.replaceAll('\n', '\r\n')}\r\n---\r\n${body.join('\r\n')}\r\n`, scripts: parts.scripts ?? [] };
 }
 
 function lint(...skills: SkillFile[]): string[] {
@@ -50,8 +54,8 @@ describe('lintSkills', () => {
 
   it('flags a note after the verified date, the line parallel runs both rewrite, and allows the sentence end', () => {
     const logged = skill('alpha-a', { verified: '2030-02-20 (T12: the build passed; T13: wrap long lines first)' });
-    const sentence = { name: 'alpha-b', text: '---\ndescription: ok\n---\nOwner: alpha. Last verified: 2030-02-20.\n' };
-    const bold = { name: 'alpha-c', text: '---\ndescription: ok\n---\nOwner: alpha\n**Last verified: 2030-02-20**\n' };
+    const sentence = { name: 'alpha-b', scripts: [], text: '---\ndescription: ok\n---\nOwner: alpha. Last verified: 2030-02-20.\n' };
+    const bold = { name: 'alpha-c', scripts: [], text: '---\ndescription: ok\n---\nOwner: alpha\n**Last verified: 2030-02-20**\n' };
     assert.deepEqual(lint(logged, sentence, bold), [
       'SKILL VERIFIED-NOTE (text after the "Last verified:" date: keep the date alone, a lesson on its own line) alpha alpha-a',
     ]);
@@ -61,14 +65,14 @@ describe('lintSkills', () => {
 
   it('flags forbidden frontmatter keys but not the same words in the body', () => {
     const front = 'name: alpha-a\ndescription: Use when needed.\nallowed-tools: Bash';
-    assert.deepEqual(lint(skill('alpha-a', { front }), { name: 'alpha-b', text: '---\ndescription: ok\n---\nallowed-tools: none\nOwner: alpha\nLast verified: 2030-02-20\n' }), [
+    assert.deepEqual(lint(skill('alpha-a', { front }), { name: 'alpha-b', scripts: [], text: '---\ndescription: ok\n---\nallowed-tools: none\nOwner: alpha\nLast verified: 2030-02-20\n' }), [
       'SKILL FORBIDDEN-KEY (allowed-tools is not allowed in a team skill: remove it) alpha alpha-a',
     ]);
   });
 
   it('flags a missing or wordy description', () => {
     const wordy = `description: ${Array.from({ length: 31 }, (_, index) => `w${index}`).join(' ')}`;
-    assert.deepEqual(lint(skill('alpha-a', { front: 'name: alpha-a' }), skill('alpha-b', { front: wordy }), { name: 'alpha-c', text: 'no frontmatter\nOwner: alpha\nLast verified: 2030-02-20' }), [
+    assert.deepEqual(lint(skill('alpha-a', { front: 'name: alpha-a' }), skill('alpha-b', { front: wordy }), { name: 'alpha-c', scripts: [], text: 'no frontmatter\nOwner: alpha\nLast verified: 2030-02-20' }), [
       'SKILL DESCRIPTION (no description) alpha alpha-a',
       'SKILL DESCRIPTION (31 words > 30) alpha alpha-b',
       'SKILL DESCRIPTION (no description) alpha alpha-c',
@@ -76,9 +80,29 @@ describe('lintSkills', () => {
   });
 
   it('flags a Signature line that is not a valid regex, and passes a valid one', () => {
-    const signed = (name: string, source: string): SkillFile => ({ name, text: `${skill(name).text}Signature: \`${source}\`\r\n` });
+    const signed = (name: string, source: string): SkillFile => ({ name, scripts: [], text: `${skill(name).text}Signature: \`${source}\`\r\n` });
     assert.deepEqual(lint(signed('alpha-a', 'teamrig (inbox read'), signed('alpha-b', 'teamrig inbox read')), [
       'SKILL SIGNATURE ("Signature: `teamrig (inbox read`" is not a valid regex, so the scorecard misses its uses) alpha alpha-a',
+    ]);
+  });
+
+  it('flags each privileged call kind a script makes that no Grants line names, and passes a granted one', () => {
+    // T746: a node script ran kubectl exec with a key from the pod env; auto mode judged only `node <script>`.
+    const flow: SkillScript = {
+      name: 'flow-list.js',
+      text: `execFileSync('kubectl', ['exec', '-n', 'apps', 'deploy/worker', '--', 'sh', '-c', \`wget --header "x-service-key: $SERVICE_KEY" '\${url}'\`]);`,
+    };
+    const tail = 'which auto mode does not see: with the owner\'s grant add';
+    assert.deepEqual(lint(skill('alpha-a', { scripts: [flow] }), skill('alpha-b', { scripts: [flow], grants: 'pod-exec, secret-read auth-header' })), [
+      `SKILL GRANT (pod-exec in flow-list.js, ${tail} "Grants: pod-exec", else drop the call) alpha alpha-a`,
+      `SKILL GRANT (secret-read in flow-list.js, ${tail} "Grants: secret-read", else drop the call) alpha alpha-a`,
+      `SKILL GRANT (auth-header in flow-list.js, ${tail} "Grants: auth-header", else drop the call) alpha alpha-a`,
+    ]);
+  });
+
+  it('flags a Grants word that names no kind', () => {
+    assert.deepEqual(lint(skill('alpha-a', { grants: 'pod-exec kubectl' })), [
+      'SKILL GRANT ("Grants: kubectl" names no grant kind: use pod-exec, secret-read, auth-header) alpha alpha-a',
     ]);
   });
 
