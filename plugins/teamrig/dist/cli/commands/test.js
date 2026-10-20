@@ -3,7 +3,7 @@ import { DEFAULT_TESTS } from "../../config/defaults.js";
 import { errorMessage } from "../../core/guards.js";
 import { ENV, resolveKitHome } from "../../core/home.js";
 import { resolveTeam } from "../../core/team.js";
-import { commandHeader, logText, pruneLogs, reserveLog } from "../../test-run/logs.js";
+import { commandHeader, logBody, pruneLogs, reserveLog } from "../../test-run/logs.js";
 import { cleanOutput, parseTestOutput } from "../../test-run/parse.js";
 import { labelOf, reportLines } from "../../test-run/report.js";
 import { commandLine } from "../../test-run/shell.js";
@@ -37,13 +37,13 @@ async function logPlace(runtime, session) {
     const known = session === null ? undefined : (await rosterOf(runtime, kit, config)).lookup(session);
     return { dir: kit.paths.logs, session: known?.ok === true ? known.id : session, maxFailureChars: config.tests.maxFailureChars };
 }
-/** Runs the command; when it cannot start, the log says why before the error goes on. */
+/** Runs the command; when it cannot start, the log (holding the command line) says why before the error goes on. */
 async function runLogged(runtime, command, log) {
     try {
         return await runtime.shell.run({ command, cwd: runtime.cwd, env: runtime.env });
     }
     catch (error) {
-        await runtime.files.write(log, `${commandHeader(command)}could not start: ${errorMessage(error)}\n`);
+        await runtime.files.append(log, `could not start: ${errorMessage(error)}\n`);
         throw error;
     }
 }
@@ -62,7 +62,7 @@ export async function test(args, runtime) {
     const result = await runLogged(runtime, command, log);
     const tookMs = runtime.clock.now() - started;
     const output = cleanOutput(result.output);
-    await runtime.files.write(log, logText(command, output, result.end));
+    await runtime.files.append(log, logBody(output, result.end));
     await pruneLogs(runtime.files, place.dir, place.session);
     const lines = reportLines({ label: labelOf(words), end: result.end, tookMs, log, output, parsed: parseTestOutput(output), maxFailureChars: place.maxFailureChars });
     for (const line of lines) {
