@@ -21,7 +21,7 @@ async function runNumbers(files, dir, prefix) {
 }
 /**
  * Creates the next log of a session (`session` null: of runs with no session), numbered one past its
- * newest, holding `firstText` until the run ends. Two runs that start together get different numbers,
+ * newest, holding `firstText`; the run's output is appended to it when the run ends. Two runs that start together get different numbers,
  * since a name already taken moves on to the next.
  */
 export async function reserveLog(files, dir, session, firstText) {
@@ -49,8 +49,12 @@ export function endLine(end) {
 export function commandHeader(command) {
     return `$ ${command}\n`;
 }
-/** A whole log: the command line, everything it printed, and how it ended. */
-export function logText(command, output, end) {
+/**
+ * What a log holds after its command line: everything the command printed and how it ended. It is
+ * appended, never written over the log: on Windows a file a reader or a virus scan holds open cannot
+ * be replaced (T696).
+ */
+export function logBody(output, end) {
     const printed = output === '' || output.endsWith('\n') ? output : `${output}\n`;
-    return `${commandHeader(command)}${printed}${endLine(end)}\n`;
+    return `${printed}${endLine(end)}\n`;
 }
