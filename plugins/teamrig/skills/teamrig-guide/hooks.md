@@ -1,8 +1,8 @@
 # Hooks and permissions
 
 The plugin's `hooks/hooks.json` registers fifteen Claude Code hooks and one mod ([the /teamrig command](#the-mod-the-teamrig-command), [the refresh's /clear](#the-mod-the-refreshs-clear), [the reload after an install](#the-mod-the-reload-after-an-install), [the wake on urgent work](#the-mod-the-wake-on-urgent-work)). Each runs
-`node <plugin>/dist/cli/main.js hook <name>` with a 15 second timeout (`hook refresh-wake` 30, `hook tab-status` 5). Outside a project tied to a team (no `$TEAMRIG_TEAM` and no `.teamrig.json`)
-they all stay silent, and only `hook restore-track` still records the session ([the restore tracker](#every-session-the-restore-tracker)).
+`node <plugin>/dist/cli/main.js hook <name>` with a 15 second timeout (`hook refresh-wake` 30, `hook tab-status` and `hook tool-end` 5). Outside a project tied to a team (no `$TEAMRIG_TEAM` and no `.teamrig.json`)
+they all stay silent, and only `hook restore-track` and `hook tool-end` still record the session ([the restore tracker](#every-session-the-restore-tracker)).
 
 | Claude Code event | teamrig hook | What it does |
 | --- | --- | --- |
@@ -24,7 +24,8 @@ they all stay silent, and only `hook restore-track` still records the session ([
 | The mod, while a tab is idle | `hook wake-check`, `hook wake-dropped` | Wakes the tab's session when unblocked urgent work is handed to it, [batched, with its cost shown](#the-mod-the-wake-on-urgent-work) |
 | `Stop` (end of each turn) | `hook stop` | Sends the session back once to [a skill edit it dropped](#end-of-a-turn-or-a-helper-a-dropped-skill-edit), and after a task is set waiting, once to [its other work](#end-of-a-turn-keep-working-while-a-task-waits); asks for a handover when a context refresh is due, then starts the automatic restart; tells the user of another effort than `launch` asks, or of a model Claude Code switched to; shows the budget lines; names a verifying task whose verify-by day has come; once per `github.everyMinutes` for the whole team, starts `gh sync --auto` hidden in the background; with tab status on, sets the tab's ready circle, or the decision circle after a turn that asks the user to decide |
 | `SessionStart`, `UserPromptSubmit`, `Stop`, `StopFailure` and `SessionEnd`, in a team or not | `hook restore-track` | Records each Claude Code session on the machine, where it started and what it was doing, for the restore after a reboot ([the restore tracker](#every-session-the-restore-tracker)) |
-| Every event but `Stop`: session start and end, each prompt, `PreToolUse` on `AskUserQuestion` and `ExitPlanMode`, `PermissionRequest`, every tool call's end, `Elicitation` and its result, a helper's start, `StopFailure`, `PreCompact`, `PostCompact` | `hook tab-status` | With `tabStatus.enabled`, puts a colored circle before the tab's title for what the session is doing ([tab status](#every-event-tab-status)) |
+| Every event but `Stop` and a tool call's end: session start and end, each prompt, `PreToolUse` on `AskUserQuestion` and `ExitPlanMode`, `PermissionRequest`, `Elicitation` and its result, a helper's start, `StopFailure`, `PreCompact`, `PostCompact` | `hook tab-status` | With `tabStatus.enabled`, puts a colored circle before the tab's title for what the session is doing ([tab status](#every-event-tab-status)) |
+| Every tool call's end (`PostToolUse`, `PostToolUseFailure`), in a team or not | `hook tool-end` | Sets the tab's circle as `hook tab-status` does, and at most every 5 minutes records in [the restore tracker](#every-session-the-restore-tracker) that the session's hooks still run |
 
 ## Session start
 
@@ -806,8 +807,11 @@ id>.json`. It holds the folder the session started in (`$CLAUDE_PROJECT_DIR`, wh
 not move), its transcript, its Claude Code's process id, how it was started (`$CLAUDE_CODE_ENTRYPOINT`,
 `$CLAUDE_CODE_SESSION_KIND`), its team and session when `teamrig launch` started it, and what it was doing at
 its last event: `working` from a prompt to the end of that turn, `ready` after it, `error` after an API error.
-A compaction's start changes nothing, since it comes mid-turn. An end the person or Claude Code chose
-(`/clear`, a resume, a logout, an exit at the prompt) removes the file; any other end stamps `endedAt`, since
+A compaction's start changes nothing, since it comes mid-turn. `hook tool-end` writes the file too at a tool call's
+end, at most every 5 minutes: a main-thread call marks the session `working`, and a helper's (which can run on past
+its turn's end) keeps the state, so the file's `updatedAt` stays within minutes of a long turn's transcript while
+the session's hooks run. An end the person or Claude Code chose (`/clear`, a resume, a logout, an exit at the
+prompt) removes the file; any other end stamps `endedAt`, since
 the shutdown may be what closed the terminal, and a Claude Code the shutdown killed leaves its last event
 as it was. The restore after a reboot reads these files. The hook prints nothing, and on any error writes
 nothing and lets the turn go on.

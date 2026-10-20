@@ -1,10 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyEvent, formatEntry, parseEntry, type RestoreEntry, type TrackFacts } from './entry.ts';
+import { applyEvent, formatEntry, parseEntry, TOOL_END_WRITE_MS, type RestoreEntry, type TrackEvent, type TrackFacts } from './entry.ts';
 
 const ID = '0123abcd-0000-4000-8000-00000000000a';
 const T0 = Date.parse('2030-01-08T09:00:00Z');
 const T1 = Date.parse('2030-01-08T10:00:00Z');
+const MAIN_TOOL: TrackEvent = { kind: 'tool', mainThread: true };
 
 function facts(overrides: Partial<TrackFacts> = {}): TrackFacts {
   return {
@@ -96,6 +97,25 @@ describe('applyEvent', () => {
     const again = written(applyEvent(ended, { kind: 'working' }, facts({ at: T1 + 1000 })));
     assert.equal(again.endedAt, undefined);
     assert.equal(again.endReason, undefined);
+  });
+
+  it("marks a main-thread tool's end working, writing only once TOOL_END_WRITE_MS passed since the last write", () => {
+    const ready: RestoreEntry = { ...ENTRY, state: 'ready', updatedAt: T1 };
+    assert.deepEqual(applyEvent(ready, MAIN_TOOL, facts({ at: T1 + TOOL_END_WRITE_MS - 1 })), { kind: 'none' });
+    const later = written(applyEvent(ready, MAIN_TOOL, facts({ at: T1 + TOOL_END_WRITE_MS })));
+    assert.deepEqual([later.state, later.updatedAt], ['working', T1 + TOOL_END_WRITE_MS]);
+  });
+
+  it("keeps the state at a helper's tool end, which can come after its session's turn ended", () => {
+    const ready: RestoreEntry = { ...ENTRY, state: 'ready', updatedAt: T1 };
+    const later = written(applyEvent(ready, { kind: 'tool', mainThread: false }, facts({ at: T1 + TOOL_END_WRITE_MS })));
+    assert.deepEqual([later.state, later.updatedAt], ['ready', T1 + TOOL_END_WRITE_MS]);
+  });
+
+  it("writes a tool's end at once for a session with no entry or an ended one", () => {
+    assert.equal(written(applyEvent(undefined, MAIN_TOOL, facts())).state, 'working');
+    const ended = written(applyEvent(ENTRY, { kind: 'end', reason: 'other' }, facts()));
+    assert.equal(written(applyEvent(ended, MAIN_TOOL, facts({ at: T1 + 1000 }))).endedAt, undefined);
   });
 });
 

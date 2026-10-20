@@ -101,6 +101,7 @@ const EXPECTED = {
   'hook subagent-stop': 'internal',
   'hook restore-track': 'internal',
   'hook tab-status': 'internal',
+  'hook tool-end': 'internal',
   'hook readonly-allow': 'internal',
   'hook picker-guard': 'internal',
   'hook prompt-refuse': 'internal',

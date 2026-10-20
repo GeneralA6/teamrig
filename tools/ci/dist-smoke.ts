@@ -142,6 +142,10 @@ const SAMPLES: Readonly<Record<string, Sample>> = {
     payload: { hook_event_name: 'UserPromptSubmit', session_id: SESSION_ID, cwd: 'smoke-project', prompt: 'hello' },
     check: (stdout) => (stdout === '' ? undefined : `expected no output, got ${JSON.stringify(stdout)}`),
   },
+  'hook tool-end': {
+    payload: { hook_event_name: 'PostToolUse', session_id: SESSION_ID, cwd: 'smoke-project', tool_name: 'Bash', tool_input: { command: 'ls' } },
+    check: (stdout) => (stdout === '' ? undefined : `expected no output, got ${JSON.stringify(stdout)}`),
+  },
   'hook readonly-allow': {
     payload: { hook_event_name: 'PreToolUse', session_id: SESSION_ID, tool_name: 'Bash', tool_input: { command: 'cat package.json' } },
     check: (stdout) => (stdout === '' ? undefined : `expected no output with the hook off, got ${JSON.stringify(stdout)}`),
