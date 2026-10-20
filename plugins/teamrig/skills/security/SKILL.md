@@ -7,8 +7,9 @@ description: Use before installing or upgrading a package, editing overrides or 
 
 The core rules hold what applies on any turn (never print a secret value; bind local services to 127.0.0.1, never
 0.0.0.0). This skill holds the steps for the moments below. The
-[package guard](../teamrig-guide/hooks.md#before-a-shell-command-the-package-guard) refuses an ad-hoc package run by
-itself.
+[package guard](../teamrig-guide/hooks.md#before-a-shell-command-the-package-guard) refuses an ad-hoc package run and
+the [secret guard](../teamrig-guide/hooks.md#before-a-shell-command-or-a-read-the-secret-guard) a call that prints a
+secret file or variable, by themselves.
 
 ## Installing or upgrading a package
 
@@ -35,7 +36,7 @@ itself.
 ## Secrets
 
 - Mask a secret wherever a command would print it: a connection string without its password, counts rather than
-  record bodies.
+  record bodies. The secret guard cannot see a script or program that prints one, so mask inside what you write.
 - Never write a secret into a file the repository tracks or the team shares.
 - A container gets each secret by its own key (Kubernetes `secretKeyRef`), never a whole secret through `envFrom`.
 
