@@ -643,7 +643,9 @@ raise (the push guard, the commit, package and secret guards under `ask`, the he
 the session to record the step as waiting for the owner's approval and take its next task, so the work queues for the
 owner instead of a session waiting on them. Refusals stay as they were. A prompt Claude Code raises on its own gets
 the same refusal from a `PermissionRequest` hook, all but the question picker and plan mode's exit, which a person
-answers.
+answers. The core pack's push rule says the same: under `refuse` a refused or blocked route waits for the owner
+instead of being reported to the lead, and its budget spec tries every `pushToProtected` and `hookAsks` pair, as
+each words the rule differently.
 
 ## Secrets kept out of the conversation
 
