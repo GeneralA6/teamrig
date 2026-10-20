@@ -60,6 +60,22 @@ function written(path: string): boolean {
   return existsSync(path) && readFileSync(path, 'utf8') !== '';
 }
 
+/**
+ * Ends a watcher a test started, which exits by itself once it wrote that its starter ended. As it exits under the
+ * coverage gate it writes its V8 coverage file, and a kill then leaves that file cut short, which fails the whole
+ * run's coverage report ("Unexpected end of JSON input"). So it gets time to exit first; only one still running after
+ * that, which never saw its starter end and so writes nothing, is killed.
+ */
+async function endWatcher(pid: number | undefined): Promise<void> {
+  if (pid === undefined) {
+    return;
+  }
+  const processes = nodeSessionProcesses();
+  if (!(await until(() => !processes.alive(pid), 5_000))) {
+    process.kill(pid);
+  }
+}
+
 describe('startersOf', () => {
   it('keeps the starters up to and with the nearest Claude Code, else every one', () => {
     assert.deepEqual(startersOf([SELF, SHELL, CLAUDE, TERMINAL]), [SHELL, CLAUDE]);
@@ -193,9 +209,7 @@ describe('starterWatch on this machine', () => {
     } finally {
       parent.kill();
       const [watcherPid] = written(ready) ? readFileSync(ready, 'utf8').split(',').map(Number) : [];
-      if (watcherPid !== undefined && nodeSessionProcesses().alive(watcherPid)) {
-        process.kill(watcherPid);
-      }
+      await endWatcher(watcherPid);
     }
   });
 
@@ -248,9 +262,7 @@ describe('starterWatch on this machine', () => {
     } finally {
       shell.kill();
       const [cliPid] = cliPids();
-      if (cliPid !== undefined && nodeSessionProcesses().alive(cliPid)) {
-        process.kill(cliPid);
-      }
+      await endWatcher(cliPid);
     }
   });
 });
