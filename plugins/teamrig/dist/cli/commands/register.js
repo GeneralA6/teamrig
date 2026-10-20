@@ -13,7 +13,7 @@ import { fitLines, leftOfWeek, overLimitFlag, weekFit } from "../../register/fit
 import { renderPlan } from "../../register/plan.js";
 import { ACTIVE_STATUSES } from "../../register/model.js";
 import { readStopgapTags, stopgapFlags, stopgapTags } from "../../register/stopgap.js";
-import { heldStart, heldStartNotice, metStartNotice, startHolds, verifyQueue } from "../../register/verify.js";
+import { dueStartHolds, dueVerifyHold, heldStart, heldStartNotice, metStartNotice, startHolds, verifyQueue } from "../../register/verify.js";
 import { TaskTree } from "../../register/tree.js";
 import { assignedNotice, formatTask, formatTaskDetail, formatTaskTree, formatVerifyRow, personWaitNotice, selectTasks } from "../../register/views.js";
 import { isPeerWait, sameWait } from "../../register/waits.js";
@@ -169,8 +169,9 @@ async function tellAssigned(runtime, team, by, task) {
     await tellLine(runtime, team, by, task.owner, assignedNotice(task, team.zone), `${task.owner} was not told of ${task.id}`);
 }
 /**
- * One inbox line to the lead when a write set a task waiting on a decision or an approval of the lead's or the
- * owner's that it did not wait on before (the lead keeps the owner's decision queue); never when the lead set it.
+ * One inbox line to the lead when a write set a task waiting, or a verifying task's proof, on a decision or an
+ * approval of the lead's or the owner's that it did not wait on before (the lead keeps the owner's decision queue);
+ * never when the lead set it.
  */
 async function tellLeadOfWaits(runtime, team, by, verdict) {
     const { lead } = team.config.roles;
@@ -178,11 +179,11 @@ async function tellLeadOfWaits(runtime, team, by, verdict) {
         return;
     }
     const { task, before } = verdict.value;
-    const earlier = before?.status === 'waiting' ? before.waits : [];
+    const earlier = before?.waits ?? [];
     const added = task.waits.filter((reason) => (reason.kind === 'decision' || reason.kind === 'approval') &&
         !isPeerWait(reason, lead, team.config.register.ownerSource) &&
         !earlier.some((other) => sameWait(reason, other)));
-    if (task.status === 'waiting' && added.length > 0) {
+    if (added.length > 0) {
         await tellLine(runtime, team, by, lead, personWaitNotice(task, added, lead), `${lead} was not told that ${task.id} waits on it`);
     }
 }
@@ -204,7 +205,7 @@ export async function set(args, runtime) {
     if (typed.ask !== null) {
         return setAsking(runtime, team, by, id, { ...typed.ask, owner: sessionIdOf(roster, typed.ask.owner) }, input);
     }
-    const held = await heldStartOf(register, by, id, input);
+    const { held, due } = await startGatesOf(register, by, id, input, new Date(runtime.clock.now()), team.zone, config.register.maxVerifying);
     const verdict = await register.setStatus(by, id, input);
     const warned = config.register.verifyGate === 'warn';
     // The start as written: one that named its held proof as met asks the verifying owners to confirm it.
@@ -216,6 +217,9 @@ export async function set(args, runtime) {
     await tellLeadOfWaits(runtime, team, by, verdict);
     if (held !== undefined && warned && verdict.ok && met === null) {
         runtime.out.stderr(`WARN ${heldStart(held.task, held.holds)}; started anyway, as register.verifyGate is warn`);
+    }
+    if (due !== undefined && warned && verdict.ok) {
+        runtime.out.stderr(`WARN ${dueVerifyHold(due.task, due.due)}; started anyway, as register.verifyGate is warn`);
     }
     if (input.status === 'done') {
         await markBoundary(runtime, config, paths, by, id);
@@ -249,18 +253,23 @@ async function setAsking(runtime, team, by, id, ask, input) {
     }
     return exit;
 }
+const OPEN_START = { held: undefined, due: undefined };
 /**
- * The verifying tasks that hold the caller's start of its own task, read before the write: the policy
- * refuses that start (or lets it through in warn mode), and their owners hear of it either way.
+ * What holds the caller's start of its own task, read before the write: the policy refuses that start (or lets
+ * it through in warn mode); the owners of the verifying tasks it needs hear of it either way.
  */
-async function heldStartOf(register, caller, id, input) {
+async function startGatesOf(register, caller, id, input, now, zone, maxVerifying) {
     if (input.status !== 'in-progress') {
-        return undefined;
+        return OPEN_START;
     }
     const { tasks } = (await register.snapshot()).state;
     const task = tasks.get(id);
-    const holds = task === undefined || task.owner !== caller ? [] : startHolds(task, input.status, tasks);
-    return task === undefined || holds.length === 0 ? undefined : { task, holds };
+    if (task === undefined || task.owner !== caller) {
+        return OPEN_START;
+    }
+    const holds = startHolds(task, input.status, tasks);
+    const due = dueStartHolds(task, input.status, tasks, now, zone, maxVerifying);
+    return { held: holds.length === 0 ? undefined : { task, holds }, due: due.length === 0 ? undefined : { task, due } };
 }
 /**
  * One inbox line to the owner of each verifying task that holds a start, once per task pair and UTC

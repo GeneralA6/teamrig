@@ -1,3 +1,4 @@
+import { WAIT_STATUSES } from "./model.js";
 /** The numeric part of a task id (`T12` → 12). */
 export function taskNumber(id) {
     return Number(id.slice(1));
@@ -85,8 +86,8 @@ function withStatus(task, event) {
         note: event.note,
         evidence: event.evidence ?? task.evidence,
         skill: event.skill,
-        waits: event.status === 'waiting' ? (event.waits ?? []) : [],
-        card: event.status === 'waiting' ? (event.card ?? null) : null,
+        waits: WAIT_STATUSES.includes(event.status) ? (event.waits ?? []) : [],
+        card: WAIT_STATUSES.includes(event.status) ? (event.card ?? null) : null,
         proof: event.status === 'verifying' ? (event.proof ?? null) : null,
         followups: event.followups === undefined ? task.followups : [...new Set([...task.followups, ...event.followups])],
         startedAt: task.startedAt ?? (event.status === 'in-progress' || event.status === 'verifying' ? event.at : null),

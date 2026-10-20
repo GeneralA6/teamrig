@@ -1,8 +1,11 @@
-import { parseDeadline } from "../core/time.js";
+import { parseDeadline, showStored } from "../core/time.js";
 import { taskNumber } from "./fold.js";
 import { needsOf } from "./tree.js";
+import { allReady, waitContext } from "./waits.js";
 /** `Proof: ...` or `Proof = ...` in a note written before `--proof` existed: what follows names the proof. */
 const NOTE_PROOF = /\bproof\s*[:=]\s*(.+)$/i;
+/** How many due verifies a held start names before it counts the rest. */
+const NAMED_DUE = 3;
 /**
  * What will prove a verifying task works: its `--proof`; for a task set verifying before `--proof` existed,
  * what its note says after `Proof:`, else the whole note. Read side only: old lines are never rewritten.
@@ -55,4 +58,45 @@ export function verifyQueue(tasks, owner) {
 export function verifyByArrived(task, now, zone) {
     const by = task.due === null ? undefined : parseDeadline(task.due, zone);
     return by !== undefined && zone.day(by) <= zone.day(now);
+}
+/**
+ * Session `owner`'s verify steps that are due, oldest first. Only a task its owner can act on is due: one whose
+ * proof waits on nothing, or on reasons all cleared; one still waiting on another party's work, a time to come or
+ * the owner is that party's to move. Such a task is due once its proof's waits cleared (the proof event happened),
+ * once its verify-by day has come, or while `owner` holds more than `max` verifying tasks (0: no limit), as one of
+ * the oldest it can act on, as many as it holds over `max`.
+ */
+export function dueVerifies(tasks, owner, context, max) {
+    const queue = verifyQueue(tasks, owner);
+    const actionable = queue.filter((task) => task.waits.length === 0 || allReady(task.waits, context));
+    const over = max > 0 ? queue.length - max : 0;
+    return actionable.flatMap((task, index) => {
+        const why = dueWhy(task, context) ?? (index < over ? `${queue.length} verifying, over ${max}` : undefined);
+        return why === undefined ? [] : [{ task, why }];
+    });
+}
+/** Why an actionable verifying task is due by itself: its proof's waits cleared, or its verify-by day came in the team's zone. */
+function dueWhy(task, context) {
+    if (task.waits.length > 0) {
+        return "proof's waits cleared";
+    }
+    return task.due !== null && verifyByArrived(task, new Date(context.now), context.zone) ? `verify by ${showStored(task.due, context.zone)}` : undefined;
+}
+/**
+ * The due verify steps that hold a task's first start: new work waits until its owner has verified, reopened,
+ * asked for or re-dated each one. Resuming a task already started is never held, nor is any other status.
+ */
+export function dueStartHolds(task, status, tasks, now, zone, max) {
+    return status === 'in-progress' && task.startedAt === null ? dueVerifies(tasks.values(), task.owner, waitContext(tasks, now, zone), max) : [];
+}
+/**
+ * `T9 is new work; T3 (verify by 01-08), T4 (proof's waits cleared) are due to verify first: ...`, naming up to
+ * three of them, then how many more, and the ways to clear each, for the refusal or the warning.
+ */
+export function dueVerifyHold(task, due) {
+    const named = due.slice(0, NAMED_DUE).map((held) => `${held.task.id} (${held.why})`);
+    const more = due.length > NAMED_DUE ? ` and ${due.length - NAMED_DUE} more` : '';
+    const verb = due.length === 1 ? 'is' : 'are';
+    return (`${task.id} is new work; ${named.join(', ')}${more} ${verb} due to verify first (teamrig verify): set each done with its proof, ` +
+        'in-progress if it failed, or verifying with --ask or --waits for what its proof waits on; a verify-by date moves with --due and a --note saying why');
 }
