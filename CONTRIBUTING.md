@@ -46,6 +46,15 @@ Never lower a floor to pass a change. A file that truly cannot reach one (for ex
 path that needs a real disk failure) gets an entry under `exceptions` in `tools/ci/coverage.json`
 with a reason the reviewer accepts; the gate reports the entry once the file no longer needs it.
 
+## Stored files
+A file teamrig keeps carries a format number (such as `USAGE_FORMAT` or `EVENT_VERSION`). A teamrig that
+rewrites a file of its own format keeps only the fields it knows, and may read one holding a value it cannot
+read as damaged. So a field added to a stored file, at any depth, or a value an older teamrig cannot read, is a
+new format: raise the number in the same change and keep reading the older formats, so an older teamrig still
+running in some tab refuses the file (`NewerDataError`) instead of dropping the field; a store without that
+check needs one first. A test pins the fields of the current format (`src/budget/store.test.ts` pins the usage
+files').
+
 ## The local gate
 CI (`.github/workflows/ci.yml`) is paused until it is turned back on, and runs only when started by hand.
 Until then the `pre-push` hook from `npm run setup` runs every check CI runs (`tools/ci/local.ts`; the list is
