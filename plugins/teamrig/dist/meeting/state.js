@@ -3,8 +3,8 @@ import { parseObject, toJsonlLine, VERSION_FIELD } from "../core/jsonl.js";
 import { MS_PER_HOUR } from "../core/time.js";
 /**
  * The owner's daily meeting with the lead (`meeting start|agenda|end`): while one is open, the cold-send hook holds
- * every message to the lead but a CRITICAL one (quiet.ts). One small file holds the latest meeting, written only by
- * the lead's own `meeting` commands.
+ * every message to the lead but a CRITICAL one (quiet.ts), and the lead's context refresh waits for its end
+ * (src/refresh/decide.ts). One small file holds the latest meeting, written only by the lead's own `meeting` commands.
  */
 /** The format of the meeting file this code reads and writes; a file in another format reads as no meeting. */
 export const MEETING_FORMAT = 1;
@@ -19,6 +19,10 @@ export function phaseOf(meeting, now) {
     }
     const lapse = Date.parse(meeting.startedAt) + MEETING_LAPSE_MS;
     return now < lapse ? { kind: 'open', meeting } : { kind: 'lapsed', meeting, until: lapse };
+}
+/** Whether `session` is in a meeting now: the meeting is open and `session` started it (the lead). */
+export function inMeeting(meeting, session, now) {
+    return meeting?.by === session && phaseOf(meeting, now).kind === 'open';
 }
 /** When the meeting a phase names stopped: its end, or its lapse; undefined for an open meeting or none. */
 export function stoppedAt(phase) {

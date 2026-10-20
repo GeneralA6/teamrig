@@ -47,7 +47,7 @@ import { droppedEditReasonOf } from "./hook-dropped-edit.js";
 import { meetingHold } from "./hook-meeting.js";
 import { armRestart, restartTargetOf } from "./hook-restart.js";
 import { helperContextOf } from "./hook-helper-start.js";
-import { dueFactsAt } from "./hook-refresh-mod.js";
+import { dueFactsAt, inMeetingNow } from "./hook-refresh-mod.js";
 import { recordSessionStart } from "./hook-session-record.js";
 import { envSession, hookScopeOf, leadOwnPaths, parseJson, sessionScopeOf, sessionTeam, startSessionOf, teamScopeOf, teamSessionOf } from "./hook-input.js";
 import { tabStatusOn, tabTitleOf } from "./hook-tab-status.js";
@@ -502,13 +502,15 @@ async function liveTasksPartOf(runtime, kit, config, id, payload, refresh) {
     const source = isRecord(payload) ? stringField(payload, 'source') : undefined;
     return id !== undefined && showsLiveTasks(source, refresh.refreshed) ? liveTasksNoteOf(runtime, kit.paths, id, teamZone(config, runtime)) : undefined;
 }
-/** The refresh facts every turn end may need: the lead's request and the context size from the transcript's tail. */
-async function stopFactsOf(runtime, roster, store, id, payload) {
+/** The refresh facts every turn end may need: the lead's request, the context size from the transcript's tail, and the open meeting. */
+async function stopFactsOf(runtime, scope, store, payload) {
+    const { roster, id } = scope;
     const request = await store.request(id);
     const transcript = stringField(payload, 'transcript_path');
     return {
         requestedBy: request === undefined ? undefined : (roster.nameOf(request.by) ?? request.by),
         tokens: transcript === undefined ? undefined : await readContextTokens(runtime.files, transcript),
+        meeting: await inMeetingNow(runtime, scope),
         due: undefined,
     };
 }
@@ -551,7 +553,7 @@ async function refreshDecisionOf(runtime, scope, payload) {
     };
     // The facts are read only as far as the decision needs them: most turn ends stop at the transcript's tail.
     const first = decideStop(state, context);
-    const facts = first.kind === 'measure' ? await stopFactsOf(runtime, roster, store, id, payload) : undefined;
+    const facts = first.kind === 'measure' ? await stopFactsOf(runtime, scope, store, payload) : undefined;
     const measured = facts === undefined ? first : decideStop(state, context, facts);
     const decided = facts !== undefined && measured.kind === 'measure' ? decideStop(state, context, { ...facts, due: await dueFactsOf(runtime, store, id, payload) }) : measured;
     const decision = decided.kind === 'notice' && decided.restart && target !== undefined ? await armRestart(runtime, store, { team: kit.paths.team, id, context, target }, decided) : decided;
