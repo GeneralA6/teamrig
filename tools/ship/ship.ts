@@ -1,7 +1,8 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { DEFAULT_COMMITS } from '../../src/config/defaults.ts';
+import { testMatcher, weighCommit } from '../../src/push-guard/commit-size.ts';
 import { buildScriptOf, buildSteps } from './build-steps.ts';
 import { checkCommand, proveTree, realGateDeps } from './local-gate.ts';
 import { mergeCommand } from './merge.ts';
@@ -67,10 +68,6 @@ async function shipCommits(argv: readonly string[]): Promise<number> {
   node(['node_modules/typescript/bin/tsc', '-p', 'tsconfig.json']);
   node(['tools/ci/coverage-cli.ts']);
   for (const chunk of chunks) commit(chunk.files, chunk.subject, chunk.body);
-
-  const src = (path: string): string => pathToFileURL(`${repo}/src/${path}`).href;
-  const { weighCommit, testMatcher } = await import(src('push-guard/commit-size.ts'));
-  const { DEFAULT_COMMITS } = await import(src('config/defaults.ts'));
 
   for (const step of buildSteps(buildScriptOf(readFileSync(join(repo, 'package.json'), 'utf8')))) node(step);
   run('git', ['add', '--', 'plugins/teamrig/dist']);
