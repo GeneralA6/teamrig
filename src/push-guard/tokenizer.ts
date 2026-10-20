@@ -20,6 +20,14 @@ export interface ShellWord {
    * is only known when it runs: a substitution, `${...}` with an operator, `$1` or `$@`, a brace list.
    */
   readonly parts?: readonly WordPart[];
+  /**
+   * bash only: the text the word keeps as written, through quotes or escapes, when that holds a command
+   * substitution (`$(` or a backtick), as `'a[$(git push)]'` does. The substitution is data here, but bash runs
+   * it if an expansion reads the text again: prompt expansion (`${NAME@P}`), an indirect `${!NAME}`, arithmetic
+   * (`$(( ))`, `let`, `[[ -eq ]]`) and a subscripted name (`read`, `printf -v`, `unset`, `declare`), in this
+   * line or a later one. See {@link parseHeldText}.
+   */
+  readonly held?: string;
 }
 
 /**
@@ -108,6 +116,14 @@ export function parseShell(command: string, dialect: ShellDialect): ShellParse {
   return new Scanner(command, dialect, { nesting: 0, subshells: [], ids: { next: 0 } }).parse();
 }
 
+/**
+ * The commands bash runs when an expansion reads a word's {@link ShellWord.held} text again: the substitutions
+ * in it, read as in an unquoted heredoc's body, where quotes are plain text and a backslash keeps a `$`.
+ */
+export function parseHeldText(held: string): ShellParse {
+  return new Scanner(held, 'bash', { nesting: 0, subshells: [], ids: { next: 0 } }).parseExpandable();
+}
+
 /** How a piece of a word was written: unquoted text, quoted or escaped text, or something only known when it runs. */
 type Piece = 'unquoted' | 'quoted' | 'dynamic';
 
@@ -120,6 +136,9 @@ const PLAIN_VARIABLE = /^\$(?:([A-Za-z_]\w*)|\{([A-Za-z_]\w*)\})$/;
  * operator after it, or `[` when another subscript follows.
  */
 const BRACED_HEAD = /^\$\{([#!]?)([A-Za-z_]\w*(?:\[(?:[@*]|\d+)\])?|\d+|[@*#?$!-])?(:[-=+?]?|[-=+?]|##?|%%?|\/[/#%]?|\^\^?|,,?|@[A-Za-z]?|\[|\})?/;
+
+/** Text that holds a bash command substitution: `$(` or a backtick. */
+const SUBSTITUTION = /\$\(|`/;
 
 /** The `${NAME@X}` transforms that never expand the value again: quoting, escapes, attributes and case. */
 const PLAIN_TRANSFORM = /^@[QEAaUuLKk]$/;
@@ -147,6 +166,8 @@ function bracedMayAssign(written: string): boolean {
 /** The word being read: its text so far, whether anything dynamic went in, its bash parts and brace-list hints. */
 class WordBuilder {
   private text = '';
+  /** The text kept as written, every piece but the dynamic ones; see {@link ShellWord.held}. */
+  private literal = '';
   private dynamic = false;
   private started = false;
   private brace = false;
@@ -170,6 +191,7 @@ class WordBuilder {
   /** Adds text; a piece read through a quote or an escape is `quoted`, as is any text outside bash. */
   add(chars: string, piece: Piece = 'quoted'): void {
     this.text += chars;
+    this.literal += piece === 'dynamic' ? '' : chars;
     this.started = true;
     this.dynamic ||= piece === 'dynamic';
     if (this.parts !== undefined) {
@@ -199,6 +221,7 @@ class WordBuilder {
   take(): ShellWord | undefined {
     const word = this.started ? this.word() : undefined;
     this.text = '';
+    this.literal = '';
     this.dynamic = false;
     this.started = false;
     this.brace = false;
@@ -209,7 +232,8 @@ class WordBuilder {
 
   /** The word read so far, even an empty one, such as a heredoc's empty body. */
   word(): ShellWord {
-    const word = { text: this.text, dynamic: this.dynamic || this.braceList };
+    const held = this.tracksParts && SUBSTITUTION.test(this.literal) ? { held: this.literal } : {};
+    const word = { text: this.text, dynamic: this.dynamic || this.braceList, ...held };
     return this.tracksParts && this.parts !== undefined && !this.braceList ? { ...word, parts: this.parts } : word;
   }
 }
@@ -287,6 +311,12 @@ class Scanner {
 
   parse(): ShellParse {
     return this.scan();
+  }
+
+  /** Reads the whole source as expandable text; the commands are those of the substitutions in it. */
+  parseExpandable(): ShellParse {
+    this.readExpandable(new WordBuilder(true), this.source.length);
+    return { commands: this.commands, complete: this.complete, unreadBodies: this.unreadBodies, bindingsUnclear: this.bindingsUnclear };
   }
 
   /** Reads the whole source; its commands stay open to the separators an enclosing scanner adds after them. */

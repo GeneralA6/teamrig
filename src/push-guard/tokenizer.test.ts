@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseShell, type ShellDialect, type ShellWord } from './tokenizer.ts';
+import { parseHeldText, parseShell, type ShellDialect, type ShellWord } from './tokenizer.ts';
 
 const show = (word: ShellWord): string => (word.dynamic ? `~${word.text}` : word.text);
 
@@ -61,6 +61,27 @@ describe('parseShell: bash', () => {
       ['echo', "~${B:-'}'}x", '~${C:-\\}}', '~${D:-{a}b}', "~${E:-'$(git push)'}"],
     ]);
     assert.deepEqual(words('cat <<EOF\n${B:-$(git push)}\nEOF'), [['git', 'push'], ['cat']]);
+  });
+
+  it('keeps a command substitution written in quotes or escapes as held text, read as commands only on demand', () => {
+    const held = (command: string, dialect: ShellDialect = 'bash'): (string | undefined)[] =>
+      parseShell(command, dialect).commands.at(-1)?.words.map((word) => word.held) ?? [];
+    assert.deepEqual(held(`echo 'a[$(git push)]' "b\\\`git fetch\\\`" c\\$\\(d $'\\x24(e)' "$(git status)" 'plain'`), [
+      undefined,
+      'a[$(git push)]',
+      'b`git fetch`',
+      'c$(d',
+      '$(e)',
+      undefined,
+      undefined,
+    ]);
+    assert.deepEqual(held("echo '$(git push)'", 'powershell'), [undefined, undefined]);
+    const run = (text: string): string[][] => parseHeldText(text).commands.map((parsed) => parsed.words.map(show));
+    assert.deepEqual(run(`a[$(git push origin "main")] \`git fetch\` \\$(no) '$(git status)'`), [
+      ['git', 'push', 'origin', 'main'],
+      ['git', 'fetch'],
+      ['git', 'status'],
+    ]);
   });
 
   it('reads a single-quoted piece of a double-quoted ${...} with confidence only when it is plain text', () => {
