@@ -62,8 +62,22 @@ const CASES: ReadonlyArray<{ readonly id: string; readonly hits: readonly string
   },
   {
     id: 'secret-assignment',
-    hits: [join('PASS', 'WORD', '=', 'abc'), join('api', '_key', ': ', 'xyz'), join('secret', ' = ', 'x')],
-    misses: ['rotate the password via the vault runbook', 'the secret is kept in the vault', 'password='],
+    hits: [
+      join('PASS', 'WORD', '=', 'abc'),
+      join('api', '_key', ': ', 'xyz'),
+      join('secret', ' = ', 'x'),
+      join('jwt.', 'secret', ': ', 'abc'),
+      join('X-Api-', 'Key', ': ', 'abc'),
+      join('https://host/reset?', 'secret', '=', 'abc'),
+      join('src/run.ts --', 'pass', 'word', '=', 'abc'),
+    ],
+    misses: [
+      'rotate the password via the vault runbook',
+      'the secret is kept in the vault',
+      'password=',
+      join('merged feat/t533-jwt-previous-', 'secret', ': pushed'),
+      join('.worktrees/t550-api-', 'key', ': removed'),
+    ],
   },
 ];
 
