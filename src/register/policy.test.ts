@@ -146,8 +146,8 @@ describe('RegisterPolicy: the description', () => {
   });
 
   it("leaves the description to the owner: the lead may not change it on another session's task", () => {
-    assert.equal(error(policy.update(TASK, 'lead', { description: 'Why it matters.' }, undefined, EMPTY)), 'the lead may change only owner, priority, due, week, after, size on a task it does not own (asked: description)');
-    assert.equal(error(policy.update(TASK, 'bravo', { description: 'Why it matters.' }, undefined, EMPTY)), 'only the owner (alpha) or the lead changes T1');
+    assert.equal(error(policy.update(TASK, 'lead', { description: 'Why it matters.' }, undefined, EMPTY)), 'a leader may change only owner, priority, due, week, after, size on a task it does not own (asked: description)');
+    assert.equal(error(policy.update(TASK, 'bravo', { description: 'Why it matters.' }, undefined, EMPTY)), 'only the owner (alpha) or the lead (lead) changes T1');
   });
 
   it('lets an older task with no description change another field', () => {
@@ -559,8 +559,26 @@ describe('RegisterPolicy.update', () => {
     assert.equal(policy.update(TASK, 'lead', { after: [] }, undefined, EMPTY).ok, true);
     assert.deepEqual(policy.update(TASK, 'lead', { size: 2.5 }, undefined, EMPTY), { ok: true, value: { changes: { size: 2.5 }, note: null } });
     assert.equal(policy.update(TASK, 'lead', { size: null }, undefined, EMPTY).ok, true);
-    assert.equal(error(policy.update(TASK, 'bravo', { size: 2 }, undefined, EMPTY)), 'only the owner (alpha) or the lead changes T1');
+    assert.equal(error(policy.update(TASK, 'bravo', { size: 2 }, undefined, EMPTY)), 'only the owner (alpha) or the lead (lead) changes T1');
     assert.match(error(policy.update(TASK, 'lead', { title: 'x', priority: 1 }, undefined, EMPTY)), /asked: title/);
+  });
+
+  it("lets a sub-lead set its group's work order and keep the work in its group, never another group's (T782)", () => {
+    const tree = new RegisterPolicy(testConfig({ sessions: ['lead', 'alpha', 'bravo', 'charlie', 'delta', 'echo'], leads: { alpha: ['bravo', 'charlie'], charlie: ['delta'] } }));
+    const deltas = testTask({ id: 'T9', owner: 'delta' });
+    assert.equal(tree.update(deltas, 'charlie', { priority: 1, due: '2030-01-10', after: [] }, undefined, EMPTY).ok, true, "delta's sub-lead orders its work");
+    assert.equal(tree.update(deltas, 'alpha', { size: 2 }, undefined, EMPTY).ok, true, "charlie's sub-lead leads delta too");
+    assert.equal(tree.update(deltas, 'alpha', { owner: 'bravo' }, undefined, EMPTY).ok, true, 'to a session in its group');
+    assert.equal(tree.update(deltas, 'charlie', { owner: 'charlie' }, undefined, EMPTY).ok, true, 'to itself');
+    assert.equal(
+      error(tree.update(deltas, 'charlie', { owner: 'bravo' }, undefined, EMPTY)),
+      'charlie hands T9 only to itself or a session it leads (delta); the lead (lead) moves work between groups',
+    );
+    assert.equal(tree.update(deltas, 'lead', { owner: 'echo' }, undefined, EMPTY).ok, true, 'the lead moves work anywhere');
+    assert.equal(error(tree.update(deltas, 'bravo', { priority: 1 }, undefined, EMPTY)), 'only the owner (delta) or a leader above delta (charlie or alpha or lead) changes T9');
+    assert.equal(error(tree.update(testTask({ owner: 'alpha' }), 'charlie', { priority: 1 }, undefined, EMPTY)), 'only the owner (alpha) or the lead (lead) changes T1', 'not its own leader');
+    assert.equal(error(tree.update(testTask({ owner: 'echo' }), 'alpha', { priority: 1 }, undefined, EMPTY)), 'only the owner (echo) or the lead (lead) changes T1', 'nor a session outside its group');
+    assert.match(error(tree.update(deltas, 'charlie', { title: 'x' }, undefined, EMPTY)), /^a leader may change only owner, .* \(asked: title\)$/);
   });
 
   it('plans an open task after others, and clears that plan on any task', () => {
@@ -610,7 +628,7 @@ describe('RegisterPolicy.update', () => {
   });
 
   it('refuses everyone else and empty changes', () => {
-    assert.match(error(policy.update(TASK, 'bravo', { priority: 1 }, undefined, EMPTY)), /only the owner \(alpha\) or the lead/);
+    assert.match(error(policy.update(TASK, 'bravo', { priority: 1 }, undefined, EMPTY)), /only the owner \(alpha\) or the lead \(lead\)/);
     assert.equal(error(policy.update(TASK, 'alpha', {}, undefined, EMPTY)), 'nothing to change: give a field or a --note');
   });
 
