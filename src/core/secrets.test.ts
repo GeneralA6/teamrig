@@ -47,4 +47,8 @@ describe('SecretScanner', () => {
     assert.equal(scanner.redact(join('key TOK', '_ABCD1234xyz ok')), 'key [redacted secret pattern from the team config] ok');
     assert.equal(scanner.redact('open flow since 23:10 UTC'), 'open flow since 23:10 UTC');
   });
+
+  it('redacts an env-style assignment from its key word, keeping the name it ends', () => {
+    assert.equal(scanner.redact(join('export DB_', 'PASSWORD', '=', 'hunter2 then retry')), 'export DB_[redacted password or key assignment] then retry');
+  });
 });
