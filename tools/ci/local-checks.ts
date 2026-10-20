@@ -8,7 +8,7 @@ export const DEFAULT_BASE = 'origin/main';
 
 /**
  * Every check CI runs on a pull request, in the order the local gate runs them (fast ones first). The
- * coverage gate runs the whole test suite, so `npm test` is not repeated; `npm run build` is its two steps.
+ * coverage gate runs the whole test suite, so `npm test` is not repeated; `npm run build` is its three steps.
  * Unlike CI, it runs on one machine and one Node: a failure only another OS or Node shows goes unseen. It also
  * runs the plugin's own tests (its mod's engine specs) in the Claude Code installed here, which CI does not.
  */
@@ -23,6 +23,7 @@ export function localChecks(base: string): readonly LocalCheck[] {
     { name: 'coverage gate', argv: ['node', 'tools/ci/coverage-cli.ts'] },
     { name: 'build: clean', argv: ['node', 'tools/build/clean.ts'] },
     { name: 'build: compile', argv: ['node', TSC, '-p', 'tsconfig.build.json'] },
+    { name: 'build: integrity', argv: ['node', 'tools/build/integrity.ts'] },
     { name: 'dist matches the source', argv: ['node', 'tools/ci/dist-fresh-cli.ts'] },
     { name: 'dist smoke', argv: ['node', 'tools/ci/dist-smoke-cli.ts'] },
     // After the build: the mod's hooks load the built dist. An empty home: no account, settings or other plugins.
