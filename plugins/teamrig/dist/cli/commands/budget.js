@@ -12,7 +12,7 @@ import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID } from 
 import { dailyBudgetOf, liftedParts } from "../../budget/parts.js";
 import { nextPeriod, PeriodStore, sightOf } from "../../budget/period.js";
 import { burnLines, loopLines, missLines, missMatrixLines, recountLines, sessionLines, sumDays, sumUsage, todayLines, weekLine, } from "../../budget/report.js";
-import { datedSnapshot, formatSnapshot, parseSnapshot, readSnapshots, snapshotOfStatus, statusLineText, weekUseOf } from "../../budget/snapshot.js";
+import { datedSnapshot, formatSnapshot, parseSnapshot, pruneSnapshots, readSnapshots, snapshotOfStatus, statusLineText, weekUseOf, } from "../../budget/snapshot.js";
 import { CURSOR_DAYS_KEPT, DAYS_KEPT, EMPTY_USAGE, MemoryUsageStore, UsageStore } from "../../budget/store.js";
 import { meteredOf, readWeek, wSince } from "../../budget/week.js";
 import { readWork } from "../../budget/work.js";
@@ -263,10 +263,20 @@ function statusLineView(git, dir, show) {
         resume: show.resume,
     };
 }
+/** Prunes the snapshot folder's old snapshots (`pruneSnapshots`); a failure is told on stderr, never breaking the status bar. */
+async function pruneQuietly(runtime, dir) {
+    try {
+        await pruneSnapshots(runtime.files, dir, runtime.clock.now());
+    }
+    catch (error) {
+        runtime.out.stderr(`teamrig statusline: old snapshots were not pruned: ${errorMessage(error)}`);
+    }
+}
 /**
  * `statusline`: Claude Code's status line. It saves the status input's reading (the plan's use of the
  * week and its reset) as a snapshot for `budget`, dated by the session's previous snapshot (when the
- * session began to show it, and when it last showed another), and prints a short status: the model, the session's
+ * session began to show it, and when it last showed another), removes the folder's snapshots written more
+ * than 8 days ago (at most one sweep an hour), and prints a short status: the model, the session's
  * folder and branch, the plan's use and the command that resumes the session, as the team's `statusLine`
  * config shows them. It always exits 0, so a bad input or a full disk never breaks the status bar; what
  * went wrong goes to stderr. With --pass it prints the status input again instead of its own status, for
@@ -293,6 +303,7 @@ export async function statusline(args, runtime) {
         const path = join(setup.snapshotDir, `${snapshot.sessionId}.json`);
         const previous = await runtime.files.read(path);
         await runtime.files.write(path, formatSnapshot(datedSnapshot(snapshot, previous === undefined ? undefined : parseSnapshot(previous))));
+        await pruneQuietly(runtime, setup.snapshotDir);
     }
     catch (error) {
         runtime.out.stderr(`teamrig statusline: the snapshot was not saved: ${errorMessage(error)}`);
