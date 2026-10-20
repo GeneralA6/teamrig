@@ -4,6 +4,7 @@
     "gate": "local",
     "checks": [
       "scrub and DCO gates",
+      "commit size rule",
       "coverage gate",
       "plugin version gate",
       "test (ubuntu-latest, node 22)",
