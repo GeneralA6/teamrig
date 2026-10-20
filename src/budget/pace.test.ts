@@ -198,8 +198,8 @@ describe('spanAllowancePct', () => {
 describe('dayPacePct and hasRoom', () => {
   const window = weekWindow(RESET, 1);
 
-  function pace(iso: string, profile = EVEN, inWindow = window): number {
-    return dayPacePct({ window: inWindow, now: at(iso), allowancePct: 12, profile });
+  function pace(iso: string, profile = EVEN, inWindow = window, idlePct = 0): number {
+    return dayPacePct({ window: inWindow, now: at(iso), allowancePct: 12, idlePct, profile });
   }
 
   it("is the allowance times the part of today's active time gone by", () => {
@@ -207,6 +207,12 @@ describe('dayPacePct and hasRoom', () => {
     assert.equal(round(pace('2026-10-15T06:00:00Z', NIGHTS)), 0);
     assert.equal(round(pace('2026-10-15T14:00:00Z', NIGHTS)), 6);
     assert.equal(round(pace('2026-10-15T23:00:00Z', NIGHTS)), 12);
+  });
+
+  it("starts from today's use in inactive time, so a night worked through quiet hours is not past the pace by morning", () => {
+    assert.equal(round(pace('2026-10-15T06:00:00Z', NIGHTS, window, 4)), 4);
+    assert.equal(round(pace('2026-10-15T14:00:00Z', NIGHTS, window, 4)), 10);
+    assert.equal(hasRoom({ usedPct: 4.1, pacePct: pace('2026-10-15T06:30:00Z', NIGHTS, window, 4) }), true);
   });
 
   it('counts the reset day from the reset, and is the whole allowance with no active time left today', () => {
