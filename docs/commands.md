@@ -74,7 +74,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
   add --team <child team> --title .. --description .. --priority p<n> [...]   hands that team's lead a task
   set <id> --status open|in-progress|verifying|waiting|done|dropped [--note "<what/why>"] [--evidence <proof>]
       [--skill <name>|none] [--followups T<id>,...|none] [--waits decision:<who>,approval:<who>,task:T<id>,time:<date>]
-      [--question ".." --options "<a> | <b>" --recommend ".." --default ".."]
+      [--question ".." --options "<a> | <b>" --recommend ".." --default ".." --why-ask ".."]
       [--proof "<what proves it>"] [--met "<what shows it>"] [--due <date>] [--ask <session> --text "<the work>"]
       verifying needs --proof: what will prove the shipped change works; --due sets the date to verify by
       a start that a verifying task it needs holds goes through with --met: what shows that task's proof
@@ -91,6 +91,8 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       (register.requireDecisionCard): --question "<what is decided>" --options "<a, its numbers> | <b>"
       --recommend "<which, and why>" --default "<what happens with no answer>"; each part at least 3 words
       besides task ids; a later set changes one part alone
+      a task the owner ordered asks the owner only with --why-ask "<how the order must change, what new it
+      needs, or why only the owner can see the result>"; check flags it OWNER-ORDERED without one
   update <id> [--title ..] [--description ..|none] [--owner ..] [--priority ..] [--ref ..|none]
       [--due <date>|none] [--goals a,b|none] [--week <date>|none] [--after T5,T6|none] [--size <pct>|none]
       [--note ..]   the lead may change owner, priority, due, week, after and size on any task

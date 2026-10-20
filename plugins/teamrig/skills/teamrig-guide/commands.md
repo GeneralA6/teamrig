@@ -109,6 +109,11 @@ Flags:
   decision, none or as many for an approval.
 - `--recommend "<which, and why>"`: the card's recommendation.
 - `--default "<what happens with no answer>"`: what happens with no answer by the due date.
+- `--why-ask "<why the owner is asked>"`: allowed only on a task the owner ordered that waits on the owner: how
+  the order must change, what new it needs, or why only the owner can see the result. An owner's order approves
+  its own work and proof, so while cards are required (`register.requireDecisionCard`) such a wait is refused
+  without one, and `check` flags one an older row holds (`OWNER-ORDERED`); once no wait is on the owner, the part
+  is dropped.
 - `--ask <id|name>`: allowed only with `waiting`, and needs `--text`: adds the work you need as that session's task
   (from you, at your task's priority and goals, its description naming your task), tells that session, and sets
   your task waiting on it, in one write. `--note` defaults to the text, and other `--waits` reasons come first.

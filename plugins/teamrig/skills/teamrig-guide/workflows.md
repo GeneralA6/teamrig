@@ -257,6 +257,8 @@ With sub-teams, run `teamrig check --tree --session lead` too. Then act on each 
 - `READY`: a waiting task can go on: one inbox line to its owner, if it has not set the next status.
 - `NO-CARD`: a task waits on the owner with no card: one inbox line to its owner to set it waiting again with the
   card, before the meeting reads it.
+- `OWNER-ORDERED`: a task the owner ordered asks the owner with no why: never read it to the owner; one inbox line
+  to its owner to drop the wait, or to set it again with `--why-ask`.
 - `DECISIONS batch due`: ask the human the batch `teamrig decisions --session lead` prints, together, each card as it
   stands; record each answer (`update --note "owner decided: ..."`), then `teamrig decisions asked --session lead`.
 - `PEER-WAIT`: a task waits on a peer's approval or decision: one inbox line to its owner to wait on that work by
