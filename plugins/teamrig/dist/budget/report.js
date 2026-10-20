@@ -109,17 +109,17 @@ export function todayLines(report) {
     const lines = [
         weekLine(week, zone),
         useLine('The team', teamW, teamCalls, week.allowancePct, '', week),
-        ...sessionRows(sessions, all, 'today', (session) => useLine(session.name, session.w, session.calls, session.budgetPct, budgetMarkOf(session), week)),
+        ...sessionRows(sessions, all, 'today', (session) => useLine(session.name, session.w, session.calls, session.budgetPct, budgetMarkOf(session.lift, session.inBurst !== undefined), week)),
     ];
     for (const session of sessions) {
         if (session.lift !== undefined) {
             lines.push(`Budget: the lead lifted ${liftText(session.lift, session.name, zone)}`);
         }
     }
-    const inBurst = sessions.filter((session) => session.burst !== undefined);
-    const burst = inBurst[0]?.burst;
-    if (burst !== undefined) {
-        lines.push(`Budget: the lead started ${burstText(burst, inBurst.map((session) => session.name), zone)} ${MORE_BURST}`);
+    const inBurst = sessions.filter((session) => session.inBurst !== undefined);
+    const first = inBurst[0]?.inBurst;
+    if (first !== undefined) {
+        lines.push(`Budget: the lead started ${burstText(first.burst, inBurst.map((session) => session.name), zone, first.floorPct)} ${MORE_BURST}`);
     }
     const outsideText = outsideLine(outside, all);
     if (outsideText !== undefined) {
@@ -166,13 +166,13 @@ export function sessionLines(session, state, week, zone) {
         lines.push('  no use in the last 8 days');
     }
     if (session.budgetPct !== undefined) {
-        lines.push(`Its daily budget today is ${formatPct(session.budgetPct)} of the week${budgetMarkOf(session)}.`);
+        lines.push(`Its daily budget today is ${formatPct(session.budgetPct)} of the week${budgetMarkOf(session.lift, session.inBurst !== undefined)}.`);
     }
     if (session.lift !== undefined) {
         lines.push(`Budget: the lead lifted ${liftText(session.lift, session.name, zone)}`);
     }
-    if (session.burst !== undefined) {
-        lines.push(`Budget: the lead started ${burstText(session.burst, [session.name], zone)} ${MORE_BURST}`);
+    if (session.inBurst !== undefined) {
+        lines.push(`Budget: the lead started ${burstText(session.inBurst.burst, [session.name], zone, session.inBurst.floorPct)} ${MORE_BURST}`);
     }
     lines.push(W_EXPLAINED);
     return lines;

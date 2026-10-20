@@ -40,24 +40,31 @@ export function paceLinePct(window, targetPct, at, profile) {
     return active > 0 ? (targetPct * profile.activeMs(window.start, at)) / active : (targetPct * (at - window.start)) / span;
 }
 /**
- * The team's allowance for today, in percent of the week, never a fixed number: recomputed at every reading from
- * what is left to the target, spread evenly over the active time from now to the pace end, times today's active
- * time (the UTC day inside the week and before the pace end). On pace it holds all day; using less raises it and
- * using more lowers it, so the team never waits while the week has room, and an idle evening does not shrink it.
- * Never above today's use plus what is left, which is all it is past the pace end or with no active time left
- * before it.
+ * A span's allowance for today, in percent of the week, never a fixed number: recomputed at every reading from what
+ * is left to its stop %, spread evenly over the active time from now to its end, times today's active time (the UTC
+ * day inside the week and before the end). On pace it holds all day; using less raises it and using more lowers it,
+ * and an idle evening does not shrink it. Never above today's use plus what is left, which is all it is past the end
+ * or with no active time left before it.
  */
-export function dailyAllowancePct(input) {
-    const { window, budget, now, profile } = input;
-    const leftPct = Math.max(0, budget.targetPct - input.usedPct);
-    const ceiling = input.todayPct + leftPct;
-    const remaining = profile.activeMs(now, window.paceEnd);
+export function spanAllowancePct(span) {
+    const { now, profile } = span;
+    const leftPct = Math.max(0, span.stopPct - span.usedPct);
+    const ceiling = span.todayPct + leftPct;
+    const remaining = profile.activeMs(now, span.end);
     if (remaining <= 0) {
         return ceiling;
     }
     const dayStart = now - (now % MS_PER_DAY);
-    const today = profile.activeMs(Math.max(dayStart, window.start), Math.min(dayStart + MS_PER_DAY, window.paceEnd));
+    const today = profile.activeMs(Math.max(dayStart, span.start), Math.min(dayStart + MS_PER_DAY, span.end));
     return Math.min((leftPct * today) / remaining, ceiling);
+}
+/**
+ * The team's allowance for today, in percent of the week: `spanAllowancePct` over the week to its pace end, up to
+ * the target, so the team never waits while the week has room.
+ */
+export function dailyAllowancePct(input) {
+    const { window, budget, ...reading } = input;
+    return spanAllowancePct({ ...reading, start: window.start, end: window.paceEnd, stopPct: budget.targetPct });
 }
 /**
  * The team's in-day pace, in percent of the week: its allowance times the part of today's active time gone by,
