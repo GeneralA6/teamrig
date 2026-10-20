@@ -1,3 +1,4 @@
+import { fileOperands } from "./operands.js";
 import { wordPath } from "./paths.js";
 /** Programs that print the content of the files they name, or of what they read on stdin. */
 const PRINTERS = new Set([
@@ -78,10 +79,13 @@ const ENVIRON = /^\/proc\/[^/]+\/environ$/;
 export function isPrinter(name) {
     return PRINTERS.has(name);
 }
-/** The secret files the program prints: the words it reads as files, and the file a `<` feeds it. */
+/**
+ * The secret files the program prints: the words it reads as files (not the script or pattern it takes first, see
+ * {@link fileOperands}), and the file a `<` feeds it.
+ */
 export function fileFindings(run, rules) {
     const place = { dialect: run.dialect, dir: run.dir, home: rules.home };
-    const named = run.name === 'git' ? gitNamed(run.args) : isPrinter(run.name) ? [...run.args.flatMap(fileWords), ...stdinFiles(run)] : [];
+    const named = run.name === 'git' ? gitNamed(run.args) : isPrinter(run.name) ? [...fileOperands(run.name, run.args).flatMap(fileWords), ...stdinFiles(run)] : [];
     return named.flatMap((text) => {
         const path = wordPath(text, place);
         if (ENVIRON.test(text)) {
