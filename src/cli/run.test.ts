@@ -649,6 +649,28 @@ describe('runCli: hook push-guard', () => {
   });
 });
 
+describe('runCli: hook exec-guard', () => {
+  const guard = (kit: CliHarness, command: string, env: Record<string, string> = {}) => kit.run(['hook', 'exec-guard'], { stdin: bash(command), env });
+
+  it("lets a bound tab review as itself and refuses it as another session, the owner or no one named (T755)", async () => {
+    const kit = new CliHarness();
+    const alpha = { TEAMRIG_SESSION: 'alpha' };
+    const own = await guard(kit, 'teamrig exec approve R1 --session alpha', alpha);
+    assert.deepEqual(own, { code: EXIT.ok, stdout: [], stderr: [] });
+    assert.match(reasonOf(await guard(kit, 'teamrig exec approve R1 --session lead', alpha)) ?? '', /names --session lead, but this tab is alpha's/);
+    assert.match(reasonOf(await guard(kit, 'teamrig exec refuse R1 --session owner', alpha)) ?? '', /names the owner \(--session owner\); the owner reviews in their own terminal/);
+    assert.match(reasonOf(await guard(kit, 'teamrig exec escalate R1', alpha)) ?? '', /names no --session; name this tab's own \(--session alpha\)/);
+    assert.equal(decisionOf(await guard(kit, 'node /kit/dist/cli/main.js exec approve R1 --session lead', alpha)), 'deny', 'the CLI run through node');
+  });
+
+  it('refuses every review from an unbound tab and lets the other exec commands through to the normal permission flow', async () => {
+    const kit = new CliHarness();
+    assert.match(reasonOf(await guard(kit, 'teamrig exec approve R1 --session alpha')) ?? '', /this tab is not bound to a session of the team, so the guard cannot tell who reviews/);
+    assert.deepEqual((await guard(kit, 'teamrig exec status R1')).stdout, []);
+    assert.deepEqual((await guard(kit, 'git status')).stdout, []);
+  });
+});
+
 describe('runCli: hook secret-guard', () => {
   const read = (file_path: string): string => JSON.stringify({ tool_name: 'Read', tool_input: { file_path }, cwd: APP });
 
