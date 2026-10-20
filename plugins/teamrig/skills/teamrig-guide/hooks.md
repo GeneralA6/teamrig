@@ -11,7 +11,7 @@ they all stay silent, and only `hook restore-track` still records the session ([
 | `SessionStart` (`/clear`), in the background | `hook refresh-wake` | Wakes a session that `/clear` started from its context refresh, so it carries on without a prompt |
 | `UserPromptSubmit` (each prompt) | `hook inbox-reminder` | Cancels a waiting automatic restart; shows new inbox lines; binds a tab started by hand by its title; records a Claude Code rename; tells the model when its budget holds it |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook push-guard` | Asks before a push to a protected branch; refuses a force-push or delete of one, and a git command run without the repository's hooks ([the commit guard](#before-a-shell-command-the-commit-guard)) |
-| `PreToolUse` on `Bash` and `PowerShell` | `hook package-guard` | Refuses a package runner that would fetch and run a package outside the project's lockfile, and an `npx --no <bin>` that hands the bin's flag to npm ([the package guard](#before-a-shell-command-the-package-guard)) |
+| `PreToolUse` on `Bash` and `PowerShell` | `hook package-guard` | Refuses a package runner that would fetch and run a package outside the project's lockfile, an install of a version the registry does not vouch for, and an `npx --no <bin>` that hands the bin's flag to npm ([the package guard](#before-a-shell-command-the-package-guard)) |
 | `PreToolUse` on `Bash`, `PowerShell`, `Read` and `Grep` | `hook secret-guard` | Refuses a call that would print a secret file, a secret variable, the whole environment or a Kubernetes secret's data into the conversation ([the secret guard](#before-a-shell-command-or-a-read-the-secret-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook readonly-allow` | With `readonlyShell.enabled`, lets a line whose every command provably only reads run without a permission prompt ([the read-only allow](#before-a-shell-command-the-read-only-allow)) |
 | `PreToolUse` on `AskUserQuestion` | `hook picker-guard` | With `pickerGuard.enabled`, refuses the question picker to every session but the lead, with the reason to record the decision on its task and go on ([the picker guard](#before-a-question-the-picker-guard)) |
@@ -247,8 +247,22 @@ command, and a flag right after the bin goes to npm. `npx --no tsc --version` pr
 whatever `packageGuard.adHocRunners` says, as it cannot run what it names: "teamrig package guard: `npx --no tsc
 --version` runs npm with --version, not tsc (run `npx --no -- tsc --version`). ..."
 
-`packageGuard.adHocRunners` sets what an ad-hoc line gets: `deny` (the default), `ask` the human, or `allow`. A missing
-or broken config keeps `deny`, so a config mistake never turns the guard off. Like the push guard, it reads only the
+An install is vetted too. When `npm install` (`i`, `add`), `pnpm add`, `yarn add`, `bun add` or an update form of
+them names a package, it must name an exact version (`lodash@4.17.21`) or a dist-tag (`typescript`, `zod@next`), and
+the guard asks the npm registry about the version that resolves to: one published less than `packageGuard.cooldownDays`
+days ago (14 by default, 0 to 365) or with a known advisory is refused. What it cannot vet is refused as well: a range
+(`chalk@^5`), a git, URL or GitHub source, a package only known when the line runs, `--before`, and an update with no
+exact version. `npm ci`, an install with no names, and a local folder or tarball install what the lockfile or the
+project holds, so they run as usual. The guard asks the public registry (`registry.npmjs.org`) within 10 s, every
+request together, inside the hook's 15 s; a registry it cannot ask in time vouches for nothing, so the install is
+refused. The reason: "teamrig package guard: this install is not vetted: typescript@5.9.3: published 2 days ago
+(2026-10-18), inside the 14-day cooldown. Install an exact version published at least 14 days ago with no known
+advisory (`npm view <name> time` lists when each version was published). [packageGuard.installs]"
+
+`packageGuard.adHocRunners` sets what an ad-hoc line gets, and `packageGuard.installs` what an unvetted install gets:
+`deny` (the default), `ask` the human, or `allow`. A team on a private registry sets `installs` to `ask` or `allow`, as
+the guard asks only the public one. A missing or broken config keeps `deny`, so a config mistake never turns the
+guard off. One refusal in a line refuses the whole line, naming every reason. Like the push guard, it reads only the
 line Claude runs, not a script or program that line starts.
 
 ## Asks off: a refusal instead of a prompt
@@ -775,8 +789,8 @@ read-only allow lets a call skip the prompt, and only a shell line it proves onl
   human, or is refused under `prompts.hookAsks: refuse`.
 - **The commit guard** refuses a git command run without the repository's hooks on its own, whatever the mode,
   unless `commitGuard.skipHooks` is `ask` or `allow`.
-- **The package guard** refuses an ad-hoc package run on its own, whatever the mode, unless
-  `packageGuard.adHocRunners` is `ask` or `allow`.
+- **The package guard** refuses an ad-hoc package run or an unvetted install on its own, whatever the mode, unless
+  `packageGuard.adHocRunners` or `packageGuard.installs` is `ask` or `allow`.
 - **The secret guard** refuses a call that would print a secret on its own, whatever the mode, unless
   `secretGuard.secretReads` is `ask` or `allow`.
 - **The read-only allow** (`readonlyShell.enabled`) lets a shell line that only reads run with no prompt in default

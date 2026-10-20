@@ -2542,7 +2542,9 @@ Output: nothing for a command that pushes no protected branch; otherwise a JSON 
 
 Before a Bash or PowerShell command, refuses (or asks about, as `packageGuard.adHocRunners` says) a package runner
 that would fetch and run a package outside the project's lockfile: `npx`, `npm exec`, `pnpx` or `bunx` of a tool
-not in `node_modules/.bin`, `npm create`, `npm init <initializer>`, `pnpm dlx`, `yarn dlx` and the like; and
+not in `node_modules/.bin`, `npm create`, `npm init <initializer>`, `pnpm dlx`, `yarn dlx` and the like; refuses (or
+asks about, as `packageGuard.installs` says) an install that names a version the npm registry does not vouch for:
+published inside `packageGuard.cooldownDays`, with a known advisory, or not an exact version or dist-tag; and
 refuses `npx --no <bin> -<flag>`, which hands the flag to npm (`npx --no -- <bin> -<flag>` keeps it). See
 [Hooks and permissions](hooks.md#before-a-shell-command-the-package-guard).
 
@@ -2554,9 +2556,11 @@ Example:
 teamrig hook package-guard < pre-tool-use.json
 ```
 
-Output: nothing for a command that runs no package ad hoc (or with `adHocRunners` set to `allow`) and hands no flag
-to npm; otherwise a JSON permission decision (`deny`, or `ask` for an ad-hoc run when the team set it) with the
-reason; under `prompts.hookAsks: refuse` that `ask` is a `deny` whose reason says what to do instead.
+Output: nothing for a command that runs no package ad hoc (or with `adHocRunners` set to `allow`), installs only
+vetted versions (or with `installs` set to `allow`) and hands no flag to npm; otherwise a JSON permission decision
+(`deny`, or `ask` for an ad-hoc run or an unvetted install when the team set it, `deny` when any part of the line is
+refused) with every reason; under `prompts.hookAsks: refuse` that `ask` is a `deny` whose reason says what to do
+instead.
 
 ### teamrig hook secret-guard
 

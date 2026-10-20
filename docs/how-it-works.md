@@ -616,6 +616,13 @@ missing or broken config keeps `deny`, so a config mistake never turns the guard
 key says, `npx --no <bin> --flag`: npx takes the bin as `--no`'s value, so the flag goes to npm (`npx --no tsc
 --version` prints npm's version, and a check run that way once ran nothing and passed); `npx --no -- <bin>` keeps it.
 
+An install opens the same door: `npm i typescript` takes whatever was published a minute ago, and a hijacked
+maintainer account publishes with valid provenance. So the guard reads each package an install names, asks the npm
+registry for the version it resolves to, and refuses one published inside `packageGuard.cooldownDays` (14 days by
+default) or with a known advisory, and any install it cannot vet: a range, a git or URL source, an update with no
+exact version. A registry it cannot ask within 10 s vouches for nothing. `packageGuard.installs` (`deny` by default,
+`ask` or `allow`) sets what such a line gets; a team on a private registry sets `ask` or `allow`.
+
 ## No prompt while nobody answers
 
 A permission prompt holds a session until a human answers it; overnight that is hours of a session doing nothing.
