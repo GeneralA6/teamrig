@@ -48,7 +48,7 @@ function file(path: string, lines: number, branches = 100, functions = 100): Fil
   return { path, lines: { found: 100, hit: lines }, branches: { found: 100, hit: branches }, functions: { found: 100, hit: functions } };
 }
 
-const PASSED: TestSummary = { tests: 3, fail: 0, cancelled: 0, skipped: 0, todo: 0 };
+const PASSED: TestSummary = { tests: 3, fail: 0, cancelled: 0, skipped: 0, todo: 0, notOk: [] };
 
 /** A run of the listed files; by default every test passed and the runner exited 0. */
 function run(report: readonly FileCoverage[], listing: readonly string[], outcome: Partial<Pick<CoverageRun, 'summary' | 'status'>> = {}): CoverageRun {
@@ -200,12 +200,31 @@ describe('parseLcov', () => {
 describe('parseTapSummary', () => {
   it('reads the totals the run prints last', () => {
     const tap = ['TAP version 13', '# Subtest: a', 'ok 1 - a', '1..1', '# tests 12', '# suites 2', '# pass 9', '# fail 1', '# cancelled 0', '# skipped 1', '# todo 1', '# duration_ms 40'].join('\n');
-    assert.deepEqual(parseTapSummary(tap), { tests: 12, fail: 1, cancelled: 0, skipped: 1, todo: 1 });
+    assert.deepEqual(parseTapSummary(tap), { tests: 12, fail: 1, cancelled: 0, skipped: 1, todo: 1, notOk: [] });
   });
 
   it('defaults absent counts to zero and returns nothing without a test count', () => {
-    assert.deepEqual(parseTapSummary('# tests 2\n'), { tests: 2, fail: 0, cancelled: 0, skipped: 0, todo: 0 });
+    assert.deepEqual(parseTapSummary('# tests 2\n'), { tests: 2, fail: 0, cancelled: 0, skipped: 0, todo: 0, notOk: [] });
     assert.equal(parseTapSummary('TAP version 13\n'), undefined);
+  });
+
+  it("names each `not ok` line once at any depth, CRLF or not, and leaves a todo test's out", () => {
+    const tap = [
+      '# Subtest: outer',
+      '    # Subtest: breaks',
+      '    not ok 1 - breaks',
+      '    # Subtest: later',
+      '    not ok 2 - later # TODO not yet',
+      '    # Subtest: a \\# in its name',
+      '    not ok 3 - a \\# in its name',
+      'not ok 1 - outer',
+      '# Subtest: thrown while built',
+      'not ok 2 - thrown while built\r',
+      'not ok 3 - outer',
+      '# tests 3',
+      '# fail 2',
+    ].join('\n');
+    assert.deepEqual(parseTapSummary(tap)?.notOk, ['breaks', 'a \\# in its name', 'outer', 'thrown while built']);
   });
 });
 
@@ -216,7 +235,7 @@ describe('coverageRun', () => {
     assert.deepEqual(run, {
       report: [{ path: 'src/a.ts', lines: { found: 4, hit: 3 }, branches: { found: 0, hit: 0 }, functions: { found: 0, hit: 0 } }],
       listing: ['src/a.ts'],
-      summary: { tests: 2, fail: 0, cancelled: 0, skipped: 0, todo: 0 },
+      summary: { tests: 2, fail: 0, cancelled: 0, skipped: 0, todo: 0, notOk: [] },
       status: 0,
     });
   });
@@ -313,6 +332,17 @@ describe('coverageFindings', () => {
     ]);
     assert.deepEqual(coverageFindings(run(report, ['src/a.ts'], { summary: { ...PASSED, tests: 0 } }), POLICY), ['the test run found no tests']);
     assert.deepEqual(coverageFindings(run(report, ['src/a.ts'], { status: 1 }), POLICY), ['the test run exited with status 1 with no failing test']);
+  });
+
+  it('fails a suite that failed outside any test though the run counted no failure and exited 0', () => {
+    const report = [file('src/a.ts', 100)];
+    assert.deepEqual(coverageFindings(run(report, ['src/a.ts'], { summary: { ...PASSED, notOk: ['limits', 'keys'] } }), POLICY), [
+      '2 suite(s) failed outside any test, which the run counted as no failure (the error is above): limits; keys',
+    ]);
+    // Counted failures say so first; their suites' `not ok` lines add no second finding.
+    assert.deepEqual(coverageFindings(run(report, ['src/a.ts'], { summary: { ...PASSED, fail: 1, notOk: ['breaks', 'outer'] }, status: 1 }), POLICY), [
+      '1 failing and 0 cancelled test(s)',
+    ]);
   });
 
   it('fails a test file `npm test` would never run', () => {
