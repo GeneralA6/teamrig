@@ -174,14 +174,14 @@ export function renderCorePack(config: KitConfig, command: string, platform: Nod
       ' Wait on a peer by its task.' +
       ` A shipped change is verifying until its proof exists (\`${command} verify\`).`,
     'task-order':
-      `Work your own task list in priority order (\`${command} list --session <you>\`); self-made work is a task too, recorded with \`${command} add\` before you start it,` +
+      `Work your own task list in priority order (\`${command} list --session <you>\`); self-made work is a task too, added with \`${command} add\` before you start it,` +
       ' and started only for a goal, a parent task or the week plan, never ahead of your top task that is not waiting (one-commit fixes exempt).' +
       " A loop, cron or scheduled wake-up needs the lead's OK and a written stop. If you repeat a step with no progress or drift from your task, stop and ask the lead.",
     'owner-gates':
       `Silence is consent only within the sender's authority, never for owner gates: ${list(config.ownerGates)} [ownerGates].` +
-      " An owner's go relayed by the lead approves finished, tested work.",
+      " An owner's order, relayed or not, approves its work and proof unless only the owner sees the result; ask again only if it must change or needs something new.",
     deploy:
-      "Deploy ASAP: as soon as a change can be verified (tests, then a check it runs). State each fix's evidence and when it will exist; build nothing on it before then." +
+      "Deploy ASAP: once a change can be verified (tests, then a check it runs). State each fix's evidence and when it will exist; build nothing on it before then." +
       heavySteps(config.coordinator, command, cutoffSpan),
     'lean-calls':
       'Lean calls: every tool call re-reads the whole context, so batch related shell steps into one call.' +
@@ -196,18 +196,18 @@ export function renderCorePack(config: KitConfig, command: string, platform: Nod
         ? ` Owner questions stand alone, no bare task ids: options, numbers, your pick, a \`${DECISION_MARKER}\` line; one with one right answer is yours.`
         : ' Owner questions stand alone, no bare task ids: options, numbers and a recommendation; one with a single correct answer is yours to decide.'),
     resources:
-      'Rising resource use (memory, CPU, storage, tokens) needs its root cause; a raised limit is only an owner-approved bridge with a dated root-cause task. Tag a stopgap with the task that replaces it: `stopgap T<id>`.',
+      'Rising resource use (memory, CPU, storage, tokens) needs its root cause; a raised limit is only an owner-approved bridge with a dated root-cause task. Tag a stopgap with its replacement task: `stopgap T<id>`.',
     data:
       "A hand-run change or delete of stored data needs the owner's OK after counts or a preview. Code that writes data ships a read-only dry run (inserted, unchanged, changed counts)." +
       ' Deleting derived data needs a verified regenerate tool and a parity run explaining each differing row; archive history and audit data before any TTL.' +
       ' Never print secret values; bind local services to 127.0.0.1, never 0.0.0.0.',
     contracts:
-      `Tell the other side before changing a contract it reads (an API parameter, shared table or file). The same external failure for ${config.alerts.persistentFailureHours} h must page a human [alerts.persistentFailureHours].`,
+      `Tell the other side before changing a contract it reads (API, table or file). The same external failure for ${config.alerts.persistentFailureHours} h must page a human [alerts.persistentFailureHours].`,
     skills:
       // The skill limits (description words, Owner and Last verified lines, per-area count, forbidden keys) live in
       // the guide alone: lintSkills (skills/lint.ts) flags each breach in `check`, so the pack names only the pointer.
-      `A procedure you had to investigate and will run again becomes a skill in the same turn: \`<area>-<name>/SKILL.md\`, shared ones \`${skills.sharedPrefix}-<name>\` [skills.sharedPrefix],` +
-      ` within the guide's skill limits (\`${command} check\` flags a breach). Memory holds facts, skills how-tos, CLAUDE.md every-turn rules.`,
+      `A procedure you investigated and will run again becomes a skill in the same turn: \`<area>-<name>/SKILL.md\`, shared ones \`${skills.sharedPrefix}-<name>\` [skills.sharedPrefix],` +
+      ` within the guide's skill limits. Memory holds facts, skills how-tos, CLAUDE.md every-turn rules.`,
     commits:
       'One logical change per commit (a fix with its tests, a refactor apart from what it enables, a mechanical change alone), committed as each step passes.' +
       ` Over ${config.commits.maxLines} changed non-test lines or ${config.commits.maxFiles} non-test files [commits.maxLines, commits.maxFiles], a commit needs a \`${config.commits.largeCommitTrailer}: <reason>\` line [commits.largeCommitTrailer]` +
@@ -217,7 +217,7 @@ export function renderCorePack(config: KitConfig, command: string, platform: Nod
     worktrees:
       'Edit in your own worktree and branch in every git repo, never a main checkout.' +
       (platform === 'win32' ? ` Remove a worktree with \`${command} worktree remove <path>\`; a plain \`git worktree remove\` empties the main node_modules.` : '') +
-      " Update comments in their code's commit, deleting one you cannot make true; verify a load-bearing comment or recorded number at its source before use;" +
+      " Update comments in their code's commit, deleting one you cannot make true; verify a load-bearing comment or recorded number at its source;" +
       ' fix a stale comment, doc or proven-dead code you find in its own commit and tell its area.',
   };
   const kept = renderKeptRules(config.ruleConflicts, command);
@@ -277,9 +277,9 @@ export function renderLeadRules(config: KitConfig, command: string): string {
   return [
     'As the lead, also:',
     '- Bring the owner only verified results, your decisions, investigated questions and incidents.',
-    `- Relay each owner order as a task in the same turn: \`${command} add --owner <id> --source ${config.register.ownerSource}\` [register.ownerSource].`,
+    `- Relay each owner order as an approved task in the same turn: \`${command} add --owner <id> --source ${config.register.ownerSource}\` [register.ownerSource].`,
     `- Plan the week from \`${command} plan\` and run \`${command} check\` at each checkpoint, never from memory.`,
-    `- Answer each approval wait on you with \`${command} approve\` after the \`approvals\` skill's checklist; owner-gated content goes to the owner.`,
+    `- Answer each approval wait on you with \`${command} approve\` per the \`approvals\` skill; owner-gated content goes to the owner.`,
     '- Fix a team rule proven wrong and say so; a loosening goes to the owner.',
     "- HIRE flags: give a SCALE-OUT's slice to a hire within the owner's caps, else bring the owner a card; retire on a RETIRE-DUE.",
   ].join('\n');
