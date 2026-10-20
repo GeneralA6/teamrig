@@ -96,7 +96,7 @@ export function formatShortTask(task, titleChars, team, tree) {
 }
 /** {@link formatShortTask} without what needs the task: a node of the tree and the start of a waiting-on-you row. */
 function shortRow(task, titleChars, team, tree) {
-    const waits = task.status === 'waiting' && task.waits.length > 0 ? ` (waiting: ${waitsText(task.waits, tree.zone, tree.context)})` : '';
+    const waits = task.waits.length > 0 ? ` (waiting: ${waitsText(task.waits, tree.zone, tree.context)})` : '';
     const issue = issueOf(task);
     const head = issue === undefined ? rowHead(task, team, tree) : [...rowHead(task, team, tree), `from ${issue}`];
     return `${head.join(', ')} | ${cut(task.title, titleChars)}${waits}`;
@@ -140,7 +140,8 @@ export function formatTask(task, team, tree) {
 }
 /**
  * What a row adds for a status that waits on something: a waiting task's reasons, then its note
- * (`(waiting: decision owner · on T5; the schema first)`), or what will prove a verifying one.
+ * (`(waiting: decision owner · on T5; the schema first)`), or what will prove a verifying one, then what that
+ * proof waits for (`(proof: the night's flow; waiting: on T7)`).
  */
 function statusNote(task, tree) {
     if (task.status === 'waiting') {
@@ -148,7 +149,8 @@ function statusNote(task, tree) {
         return parts.length === 0 ? '' : ` (waiting: ${parts.join('; ')})`;
     }
     const proof = task.status === 'verifying' ? proofOf(task) : null;
-    return proof === null ? '' : ` (proof: ${proof})`;
+    const waits = task.waits.length > 0 ? `; waiting: ${waitsText(task.waits, tree.zone, tree.context)}` : '';
+    return proof === null ? '' : ` (proof: ${proof}${waits})`;
 }
 /** How much of a description an update line in `show`'s history quotes. */
 const HISTORY_DESCRIPTION_CHARS = 80;
