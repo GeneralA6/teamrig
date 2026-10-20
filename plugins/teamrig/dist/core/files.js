@@ -1,4 +1,4 @@
-import { appendFile, link, mkdir, open, readdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
+import { appendFile, link, mkdir, open, readdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { errorCode } from "./guards.js";
 import { retryTransient } from "./retry.js";
@@ -113,6 +113,18 @@ export function nodeFiles(sleep) {
         },
         async remove(path) {
             return removeFile(path);
+        },
+        async stamp(path) {
+            try {
+                const stats = await stat(path);
+                return stats.isFile() ? `${stats.size}:${stats.mtimeMs}` : undefined;
+            }
+            catch (error) {
+                if (errorCode(error) === 'ENOENT') {
+                    return undefined;
+                }
+                throw error;
+            }
         },
     };
 }

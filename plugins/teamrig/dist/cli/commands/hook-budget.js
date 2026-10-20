@@ -13,7 +13,7 @@ import { UsageStore } from "../../budget/store.js";
 import { helperGate, promptWarning, stopWarning } from "../../budget/warn.js";
 import { WarnStore } from "../../budget/warn-store.js";
 import { meteredOf, readWeek, wSince } from "../../budget/week.js";
-import { readWork } from "../../budget/work.js";
+import { cachedWork, WORK_CACHE_FILE } from "../../budget/work.js";
 import { postLine } from "../../inbox/inbox.js";
 import { holdBack } from "../../hooks/permission.js";
 import { helperLaunchReminder } from "../../rules/helper-default.js";
@@ -38,8 +38,9 @@ async function meterTab(runtime, store, id, transcript, budget) {
 /**
  * The session's budget now, after metering the tab whose transcript is given; undefined with the
  * budget off, before the week's use, W per % and reset are known, or without a daily budget for the session.
- * Its part of the team's daily budget is weighed by its queued work in the register, or set by a lift; a burst
- * the session is in raises it to at least the burst's. Everyone's use today against the team's in-day pace
+ * Its part of the team's daily budget is weighed by its queued work in the register, replayed only when the register
+ * changed since the last reading (`cachedWork`), or set by a lift; a burst the session is in raises it to at least
+ * the burst's. Everyone's use today against the team's in-day pace
  * (`teamDay`) says whether a session past its part is held. The lead,
  * with no burst in force, also gets the week's surplus when it is worth one.
  */
@@ -71,7 +72,7 @@ export async function budgetFactsOf(runtime, scope, transcript) {
     }
     const { lifts } = await new LiftLog(files, kit.paths.lifts).read();
     const lift = activeLift(lifts, id, now, week.usedPct);
-    const work = await readWork(files, kit.paths.events, config.register.priorities);
+    const work = await cachedWork(files, kit.paths.events, join(kit.paths.usage, WORK_CACHE_FILE), config.register.priorities);
     const lifted = liftedParts(lifts, roster.ids, now, week.usedPct);
     const shared = dailyBudgetOf(week.allowancePct, id, { ids: roster.ids, sessions: budget.sessions, work, lifted });
     const inForce = activeBurst((await new BurstLog(files, kit.paths.bursts).read()).records, now, week.usedPct);
