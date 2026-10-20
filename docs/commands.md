@@ -90,6 +90,9 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       [--due <date>|none] [--goals a,b|none] [--week <date>|none] [--after T5,T6|none] [--size <pct>|none]
       [--note ..]   the lead may change owner, priority, due, week, after and size on any task
       a --note from the task's owner also replaces the note show and the waiting text print
+  approve <id> --note "<what you checked, or why not>" [--decline]   the lead only: answers a task waiting on
+      its approval (approval:<lead>); its owner gets an inbox line to push or merge (or to fix the note's
+      point and ask again), and check flags the approved task READY
   list [--session <owner>] [--status a,b|all] [--source <s>] [--priority p1,p2] [--due-before <date>]
       [--week <date>|none] [--goal <tag>] [--tree] [--all]
       short rows within 3,000 characters; --all: every field of every task. A task takes the earlier due
