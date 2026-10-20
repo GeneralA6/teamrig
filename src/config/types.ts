@@ -301,8 +301,8 @@ export interface LeadBoundaryConfig {
   /** Off: the lead's own work is neither nudged nor shown. */
   readonly enabled: boolean;
   /**
-   * The lead's own files and folders beyond the team's teamrig folder and Claude Code's memory folders, which
-   * always count: editing or searching them is its job. `~` is the user's home, `*` one folder name.
+   * The lead's own files and folders beyond the team's teamrig folder and Claude Code's memory folders and session
+   * scratchpads, which always count: editing or searching them is its job. `~` is the user's home, `*` one folder name.
    */
   readonly ownPaths: readonly string[];
   /** The turn's code search that brings the lead one nudge, and from which the owner's turn-end line counts searches; 0 never. */
