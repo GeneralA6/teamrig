@@ -1,5 +1,6 @@
 import type { Files } from '../core/files.ts';
 import type { Clock } from '../core/lock.ts';
+import { KIT_VERSION } from '../core/version.ts';
 import { appendRecord, type HeavyRecord } from './ledger.ts';
 import type { HostMemory } from './memory.ts';
 import { exitCodeOf, type StepEnd, type StepRequest, type StepRunner } from './steps.ts';
@@ -34,15 +35,29 @@ export interface StepWatch {
   readonly intervalMs: number;
 }
 
+/**
+ * Marks for the heavy steps one taking of the host lock runs, in order: only the first carries `queuedAt`, when the
+ * taking began to wait, since a later step's wait would count the steps before it.
+ */
+export function marksOfTaking(session: string, queuedAt: number): (what: string) => HeavyMark {
+  let waited: number | undefined = queuedAt;
+  return (what) => {
+    const mark: HeavyMark = waited === undefined ? { session, what } : { session, what, queuedAt: waited };
+    waited = undefined;
+    return mark;
+  };
+}
+
 /** One heavy step as the ledger names it, and how to run it. */
 export interface RecordedStep extends HeavyMark {
   readonly request: StepRequest;
 }
 
 /**
- * Runs `work` as one heavy step, its start and its end each a ledger record, the end with the exit code `exitOf`
- * reads from its result; work that throws is recorded as exit 1 and its error rethrown. With `watch`, the end
- * record carries the most the step's process tree held and the least free memory the host had while it ran.
+ * Runs `work` as one heavy step, its start and its end each a ledger record naming this teamrig's version, the end
+ * with the exit code `exitOf` reads from its result; work that throws is recorded as exit 1 and its error rethrown.
+ * With `watch`, the end record carries the most the step's process tree held and the least free memory the host had
+ * while it ran.
  */
 export async function recordHeavy<T>(ports: HeavyRecordPorts, ledger: string, mark: HeavyMark, work: () => Promise<T>, exitOf: (result: T) => number, watch?: StepWatch): Promise<T> {
   const start: HeavyRecord = {
@@ -50,6 +65,7 @@ export async function recordHeavy<T>(ports: HeavyRecordPorts, ledger: string, ma
     id: ports.newId(),
     session: mark.session,
     what: mark.what,
+    kit: KIT_VERSION,
     ...(mark.queuedAt === undefined ? {} : { queuedAt: new Date(mark.queuedAt).toISOString() }),
     ...(mark.shared === true ? { shared: true } : {}),
     startedAt: new Date(ports.clock.now()).toISOString(),

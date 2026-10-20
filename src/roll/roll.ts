@@ -353,6 +353,7 @@ export async function rollRepo(setup: RollSetup, ports: RollPorts, request: Roll
   ports.say(`${plural(early.pending.commits.length, 'commit')} pending in ${repo.name} (${early.pending.range})`);
   const view: LockedView = { read: undefined, tag: undefined, range: early.pending };
   const { wait } = setup.coordinator;
+  const queuedAt = ports.clock.now();
   const clearance = await takeWhenClear(readinessOf(setup, ports, request, repo, view), ports, {
     session: request.session,
     purpose: `roll ${repo.name}`,
@@ -376,7 +377,7 @@ export async function rollRepo(setup: RollSetup, ports: RollPorts, request: Roll
     const { tag } = view;
     const startedAt = new Date(ports.clock.now()).toISOString();
     ports.say(`clear; pulling ${plural(pending.commits.length, 'commit')} (${pending.range}) into ${repo.main}`);
-    const run = await recordHeavy(ports, setup.places.ledger, { session: request.session, what: `roll ${repo.name} ${pending.range}` }, () => pullAndRoll(setup, ports, request, repo, pending, tag, clearance.lock), runExitCode);
+    const run = await recordHeavy(ports, setup.places.ledger, { session: request.session, what: `roll ${repo.name} ${pending.range}`, queuedAt }, () => pullAndRoll(setup, ports, request, repo, pending, tag, clearance.lock), runExitCode);
     return await settle(setup, ports, request, repo, pending, tag, startedAt, run);
   } finally {
     await ports.lock.release(clearance.lock);

@@ -6,6 +6,7 @@ import { DEFAULT_CLAIMS, DEFAULT_COORDINATOR_WAIT, DEFAULT_GATE_TIMEOUT_SECONDS,
 import { HostLock } from '../coordinator/host-lock.ts';
 import type { CoordinatorPlaces } from '../coordinator/places.ts';
 import type { ResetTime } from '../coordinator/schedule.ts';
+import { KIT_VERSION } from '../core/version.ts';
 import { TimeZone } from '../core/zone.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';
@@ -250,6 +251,9 @@ describe('integrate runs the dependency check, where one is set, on what the reb
     assert.equal(world.steps.ran.length, 1);
     const checks = world.records(PLACES.ledger).filter((record) => JSON.stringify(record).includes('dependency check of feat'));
     assert.equal(checks.length, 2);
+    const pushes = world.records(PLACES.ledger).filter((record) => JSON.stringify(record).includes('push feat to main'));
+    const waited = (records: unknown[]): boolean[] => records.map((record) => JSON.stringify(record).includes('"queuedAt":"2030-01-08T10:00:00.000Z"'));
+    assert.deepEqual([waited(checks), waited(pushes)], [[true, true], [false, false]], 'the wait is on the first step under the lock only');
   });
 
   it('refuses a change the check fails, shows its output redacted, pushes nothing and removes the lockfile copy', async () => {
@@ -329,7 +333,7 @@ describe('integrate lands a branch', () => {
       `deleteBranch ${WORKTREE} feat`,
       `updateLocalBranch ${WORKTREE} main`,
     ]);
-    const start = { type: 'heavy', id: 'step-1', session: 'api', what: 'integrate app: push feat to main', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+    const start = { type: 'heavy', id: 'step-1', session: 'api', what: 'integrate app: push feat to main', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(world.records(PLACES.ledger), [start, { ...start, endedAt: '2030-01-08T10:01:30.000Z', exitCode: 0 }]);
     assert.equal(world.files.get(PLACES.ledgerMd), undefined);
     assert.ok(world.lockFree());
@@ -490,6 +494,8 @@ describe('integrate waits for what may hold a deploy, and refuses what forbids o
     assert.ok(world.said.includes('waiting: quiet claim by po on cloud-api until 2030-01-08 10:05 UTC (p95 latency)'));
     assert.equal(world.steps.ran.length, 1);
     assert.ok(world.clock.now() >= Date.parse('2030-01-08T10:05:00Z'));
+    const [start] = world.records(PLACES.ledger);
+    assert.match(JSON.stringify(start), /"queuedAt":"2030-01-08T10:00:00\.000Z","startedAt":"2030-01-08T10:0[5-9]:/, 'its record shows the wait from its first look');
   });
 
   it('ignores a claim on other targets, and claims at all for a repository that deploys nothing', async () => {

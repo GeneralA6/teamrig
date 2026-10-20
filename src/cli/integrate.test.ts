@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { formatSnapshot } from '../budget/snapshot.ts';
+import { KIT_VERSION } from '../core/version.ts';
 import { APP, CliHarness, KIT, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { FakeIntegrateGit, MAIN_CHECKOUT, WORKTREE } from '../testing/fake-integrate-git.ts';
 import { FakeStarterWatch } from '../testing/fake-starter-watch.ts';
@@ -57,7 +58,7 @@ describe('teamrig integrate', () => {
     });
     assert.equal(steps.ran[0]?.cwd, WORKTREE);
     assert.equal(kit.files.get(LOCK), undefined, 'the lock is released');
-    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'integrate app: push feat to main', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'integrate app: push feat to main', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(ledgerOf(kit), [
       start,
       { ...start, endedAt: '2030-01-08T10:02:00.000Z', exitCode: 0 },
@@ -101,7 +102,7 @@ describe('teamrig integrate', () => {
     });
     const result = await kit.run(INTEGRATE, { ...IN_WORKTREE, integrateGit: git, steps, starters });
     assert.deepEqual([result.code, result.stdout.at(-1)], [1, "FAILED the push was killed when its launching shell ended (exit 129); origin's main is at moved, not at rebased"]);
-    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'integrate app: push feat to main', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'integrate app: push feat to main', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:00:00.000Z', exitCode: 129 }]);
     assert.deepEqual([steps.ran.length, kit.files.get(LOCK), starters.openWatches], [1, undefined, 0]);
   });
