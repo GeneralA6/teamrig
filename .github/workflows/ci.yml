@@ -32,6 +32,21 @@ jobs:
       - run: node tools/scrub/cli.ts --github
       - run: node tools/dco/cli.ts --github
 
+  size-rule:
+    name: commit size rule
+    # Fails a commit over 400 changed non-test lines or 15 non-test files whose message has no
+    # Large-commit: <reason> line, the push guard's rule (see CONTRIBUTING.md).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+      - run: node tools/ci/size-rule-cli.ts --github
+
   coverage:
     name: coverage gate
     # Fails on a failing, skipped or todo test, a source file no test loads, or a file or total

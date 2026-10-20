@@ -18,6 +18,7 @@ export function localChecks(base: string): readonly LocalCheck[] {
     { name: 'scrub: tree', argv: ['node', 'tools/scrub/cli.ts', '--tree'] },
     { name: 'scrub: commits', argv: ['node', 'tools/scrub/cli.ts', '--range', range] },
     { name: 'DCO', argv: ['node', 'tools/dco/cli.ts', '--range', range] },
+    { name: 'size rule', argv: ['node', 'tools/ci/size-rule-cli.ts', '--base', base] },
     { name: 'plugin version gate', argv: ['node', 'tools/ci/plugin-version-cli.ts', '--base', base] },
     { name: 'typecheck', argv: ['node', TSC, '-p', 'tsconfig.json'] },
     { name: 'coverage gate', argv: ['node', 'tools/ci/coverage-cli.ts'] },
