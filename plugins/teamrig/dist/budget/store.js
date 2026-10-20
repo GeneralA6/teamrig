@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { isNonNegativeInteger, isRecord, isStringArray } from "../core/guards.js";
 import { ID_PATTERN, ID_RULE } from "../core/ids.js";
-import { NewerDataError, parseObject, recordVersion, VERSION_FIELD } from "../core/jsonl.js";
+import { parseObject, recordVersion, VERSION_FIELD, writableObject } from "../core/jsonl.js";
 import { formatUtcDay, MS_PER_DAY } from "../core/time.js";
 import { INITIAL_MISS_STATE, parseMissState } from "./misses.js";
 import { INITIAL_PATTERN_STATE, parsePatternCounts, parsePatternState } from "./patterns.js";
@@ -102,12 +102,7 @@ function mapFrom(value, keyValid, parse) {
  * it 1. A file in a newer format is refused, so an old version never replaces what a newer one wrote.
  */
 function revOf(path, text) {
-    const record = text === undefined ? undefined : parseObject(text.trim());
-    const version = record === undefined ? undefined : recordVersion(record);
-    if (version !== undefined && version > USAGE_FORMAT) {
-        throw new NewerDataError(path, version, USAGE_FORMAT);
-    }
-    const rev = record?.['rev'];
+    const rev = writableObject(path, text, USAGE_FORMAT)?.['rev'];
     return isNonNegativeInteger(rev) ? rev : 0;
 }
 /** A usage file's content; undefined when it is damaged or in a format this code does not read, which the meter treats as a fresh start. */
