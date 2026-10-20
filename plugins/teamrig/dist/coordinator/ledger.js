@@ -46,8 +46,10 @@ function mbField(record, key) {
 }
 /** The optional fields a record carries, each left out when it is missing or bad, since they only add to it. */
 function heavyExtrasOf(record) {
-    const [queuedAt, peakTreeMb, lowFreeMb] = [timeField(record, 'queuedAt'), mbField(record, 'peakTreeMb'), mbField(record, 'lowFreeMb')];
+    const [kit, queuedAt] = [stringField(record, 'kit'), timeField(record, 'queuedAt')];
+    const [peakTreeMb, lowFreeMb] = [mbField(record, 'peakTreeMb'), mbField(record, 'lowFreeMb')];
     return {
+        ...(kit === undefined ? {} : { kit }),
         ...(queuedAt === undefined ? {} : { queuedAt }),
         ...(record['shared'] === true ? { shared: true } : {}),
         ...(peakTreeMb === undefined ? {} : { peakTreeMb }),
