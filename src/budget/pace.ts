@@ -75,25 +75,50 @@ export interface AllowanceInput {
   readonly profile: ActivityProfile;
 }
 
+/** A part of the week that spends what is left to a stop % by an end: the week to its pace end, or a burst. */
+export interface SpendSpan {
+  /** The week's start: today's active time counts from it at the earliest. */
+  readonly start: number;
+  /** When what is left is spent by. */
+  readonly end: number;
+  /** The week's use, in percent, it spends up to. */
+  readonly stopPct: number;
+  readonly now: number;
+  /** The week's use now, in percent. */
+  readonly usedPct: number;
+  /** Its spenders' use today inside the week, in percent of the week. */
+  readonly todayPct: number;
+  /** The active time the pace counts. */
+  readonly profile: ActivityProfile;
+}
+
 /**
- * The team's allowance for today, in percent of the week, never a fixed number: recomputed at every reading from
- * what is left to the target, spread evenly over the active time from now to the pace end, times today's active
- * time (the UTC day inside the week and before the pace end). On pace it holds all day; using less raises it and
- * using more lowers it, so the team never waits while the week has room, and an idle evening does not shrink it.
- * Never above today's use plus what is left, which is all it is past the pace end or with no active time left
- * before it.
+ * A span's allowance for today, in percent of the week, never a fixed number: recomputed at every reading from what
+ * is left to its stop %, spread evenly over the active time from now to its end, times today's active time (the UTC
+ * day inside the week and before the end). On pace it holds all day; using less raises it and using more lowers it,
+ * and an idle evening does not shrink it. Never above today's use plus what is left, which is all it is past the end
+ * or with no active time left before it.
  */
-export function dailyAllowancePct(input: AllowanceInput): number {
-  const { window, budget, now, profile } = input;
-  const leftPct = Math.max(0, budget.targetPct - input.usedPct);
-  const ceiling = input.todayPct + leftPct;
-  const remaining = profile.activeMs(now, window.paceEnd);
+export function spanAllowancePct(span: SpendSpan): number {
+  const { now, profile } = span;
+  const leftPct = Math.max(0, span.stopPct - span.usedPct);
+  const ceiling = span.todayPct + leftPct;
+  const remaining = profile.activeMs(now, span.end);
   if (remaining <= 0) {
     return ceiling;
   }
   const dayStart = now - (now % MS_PER_DAY);
-  const today = profile.activeMs(Math.max(dayStart, window.start), Math.min(dayStart + MS_PER_DAY, window.paceEnd));
+  const today = profile.activeMs(Math.max(dayStart, span.start), Math.min(dayStart + MS_PER_DAY, span.end));
   return Math.min((leftPct * today) / remaining, ceiling);
+}
+
+/**
+ * The team's allowance for today, in percent of the week: `spanAllowancePct` over the week to its pace end, up to
+ * the target, so the team never waits while the week has room.
+ */
+export function dailyAllowancePct(input: AllowanceInput): number {
+  const { window, budget, ...reading } = input;
+  return spanAllowancePct({ ...reading, start: window.start, end: window.paceEnd, stopPct: budget.targetPct });
 }
 
 /** The team's use today against its in-day pace, both in percent of the week. */

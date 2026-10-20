@@ -11,6 +11,7 @@ import {
   paceLinePct,
   readPace,
   resolveReset,
+  spanAllowancePct,
   weekWindow,
   type PaceBudget,
 } from './pace.ts';
@@ -159,6 +160,38 @@ describe('dailyAllowancePct', () => {
     const next = weekWindow(at('2026-10-28T01:00:00Z'), 1);
     const resetDay = dailyAllowancePct({ window: next, budget: BUDGET, now: at('2026-10-21T05:00:00Z'), usedPct: 2, todayPct: 3.5, profile: EVEN });
     assert.equal(round(resetDay), round((97.5 * 23) / (6 * 24 + 19)));
+  });
+});
+
+describe('spanAllowancePct', () => {
+  const window = weekWindow(RESET, 1);
+  const thursday = at('2026-10-15T08:10:00Z');
+
+  function span(end: string, usedPct: number, todayPct: number): number {
+    return spanAllowancePct({ start: window.start, end: at(end), stopPct: 60, now: thursday, usedPct, todayPct, profile: EVEN });
+  }
+
+  it('spreads what is left to its stop % over the time to its end, a day of it', () => {
+    // Thursday 08:10 to Friday 08:10 is a day: all of the 17.5 left is today's.
+    assert.equal(round(span('2026-10-16T08:10:00Z', 42.5, 3)), 17.5);
+    assert.equal(round(span('2026-10-17T08:10:00Z', 42.5, 3)), 8.75);
+  });
+
+  it("is never above today's use plus what is left when it ends today", () => {
+    // Ten hours left to 18:10, but eighteen of today's: at that rate a day would be 31.8.
+    assert.equal(round(span('2026-10-15T18:10:00Z', 42.5, 3)), 20.5);
+  });
+
+  it('gives nothing past its stop % beyond what today used', () => {
+    assert.equal(span('2026-10-16T08:10:00Z', 61, 3), 0);
+  });
+
+  it("is the team's allowance over the week to its pace end, up to the target", () => {
+    const reading = { now: thursday, usedPct: 42.5, todayPct: 3, profile: NIGHTS };
+    assert.equal(
+      spanAllowancePct({ ...reading, start: window.start, end: window.paceEnd, stopPct: BUDGET.targetPct }),
+      dailyAllowancePct({ ...reading, window, budget: BUDGET }),
+    );
   });
 });
 
