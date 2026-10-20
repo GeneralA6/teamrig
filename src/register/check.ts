@@ -31,6 +31,7 @@ export const FLAG_KINDS = [
   'OWNER-UNPLANNED',
   'DUE-UNPLANNED',
   'OFF-GOAL',
+  'NO-PROGRESS',
   'STOPGAP-DONE',
   'STALE',
 ] as const;
