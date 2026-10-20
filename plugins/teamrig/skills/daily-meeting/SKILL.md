@@ -30,6 +30,9 @@ that has not read the line yet is held too. Then it prints the agenda:
 Tell the human the meeting started in one line. `teamrig meeting agenda --session lead` prints the agenda again,
 during the meeting or to prepare the next one.
 
+Your context refresh waits for the meeting: no handover ask and no restart until it ends, unless your context
+reaches `refresh.compactCeilingTokens` (185,000 by default), past which it goes on so you never run out of room.
+
 ## 2. Bring each decision as a card
 
 Lead with what got done and what is late, in a few lines. Then one card per decision, each readable alone:
@@ -63,4 +66,6 @@ teamrig meeting end --session lead
 Every other session gets one inbox line: the meeting ended, messages to you may go again, and the decisions on its
 tasks. It lists what you recorded. `RECORDED nothing` means no task's owner hears of a decision: record each answer
 with `update` before you end, and send one you forgot to its task's owner as an inbox line. A meeting you forget to
-end stops holding messages 4 hours after it started; end it anyway, so the sessions are told.
+end stops holding messages 4 hours after it started; end it anyway, so the sessions are told. With your context
+past `refresh.contextTokens`, the end of the turn that ends the meeting asks for your handover: the refresh the
+meeting held comes at once.
