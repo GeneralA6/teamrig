@@ -51,9 +51,11 @@ A file teamrig keeps carries a format number (such as `USAGE_FORMAT` or `EVENT_V
 rewrites a file of its own format keeps only the fields it knows, and may read one holding a value it cannot
 read as damaged. So a field added to a stored file, at any depth, or a value an older teamrig cannot read, is a
 new format: raise the number in the same change and keep reading the older formats, so an older teamrig still
-running in some tab refuses the file (`NewerDataError`) instead of dropping the field; a store without that
-check needs one first. A test pins the fields of the current format (`src/budget/store.test.ts` pins the usage
-files').
+running in some tab refuses the file (`NewerDataError`) instead of dropping the field. A store that overwrites
+a file refuses a newer format before it writes (`writableObject` for a one-object file, `assertWritable` for a
+log, both in `src/core/jsonl.ts`); a store without that check needs one first. A test pins the fields of the
+current format with `fieldPaths` (`src/testing/field-paths.ts`), as `src/budget/store.test.ts` does for the
+usage files.
 
 ## The local gate
 CI (`.github/workflows/ci.yml`) is paused until it is turned back on, and runs only when started by hand.
