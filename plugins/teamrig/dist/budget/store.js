@@ -5,8 +5,17 @@ import { NewerDataError, parseObject, recordVersion, VERSION_FIELD } from "../co
 import { formatUtcDay, MS_PER_DAY } from "../core/time.js";
 import { INITIAL_MISS_STATE, parseMissState } from "./misses.js";
 import { INITIAL_PATTERN_STATE, parsePatternCounts, parsePatternState } from "./patterns.js";
-/** The format of the usage files this code reads and writes; an older or damaged file reads as empty, a newer one is refused. */
-export const USAGE_FORMAT = 1;
+/**
+ * The format of the usage files this code writes; a damaged file or one older than `OLDEST_READ_FORMAT`
+ * reads as empty, a newer one is refused. A teamrig rewrites a file of its own format without the fields it
+ * does not know, so a field added to the file is a new format, which an older teamrig refuses
+ * (store.test.ts pins the fields of each). 2 holds what 1 held by 0.111.2: format 1 grew day counters,
+ * hours, an open call's hour and a cursor's misses, which a teamrig before each dropped from every file it
+ * rewrote.
+ */
+export const USAGE_FORMAT = 2;
+/** The oldest format this code reads: format 1, whose hours, open-call hours and misses may be missing. */
+const OLDEST_READ_FORMAT = 1;
 /** Days of totals a usage file keeps: today and the 7 before it. */
 export const DAYS_KEPT = 8;
 /**
@@ -101,15 +110,16 @@ function revOf(path, text) {
     const rev = record?.['rev'];
     return isNonNegativeInteger(rev) ? rev : 0;
 }
-/** A usage file's content; undefined when it is damaged or in another format, which the meter treats as a fresh start. */
+/** A usage file's content; undefined when it is damaged or in a format this code does not read, which the meter treats as a fresh start. */
 export function parseUsage(text) {
     const record = parseObject(text.trim());
-    if (record === undefined || record[VERSION_FIELD] !== USAGE_FORMAT) {
+    const version = record === undefined ? undefined : recordVersion(record);
+    if (record === undefined || version === undefined || version < OLDEST_READ_FORMAT || version > USAGE_FORMAT) {
         return undefined;
     }
     const byDay = mapFrom(record['byDay'], (key) => DAY.test(key), dayUsageFrom);
     const rawHours = record['byHour'];
-    // A file from before hours were counted has none.
+    // A format-1 file from before hours were counted has none.
     const byHour = rawHours === undefined ? {} : mapFrom(rawHours, (key) => HOUR.test(key), (w) => (finiteNonNegative(w) ? w : undefined));
     const cursors = mapFrom(record['cursors'], (key) => key !== '', cursorFrom);
     const recentKeys = record['recentKeys'];
