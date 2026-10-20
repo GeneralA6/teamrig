@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { assertWritable, NewerDataError, parseJsonl, recordVersion, toJsonlLine } from './jsonl.ts';
+import { assertWritable, NewerDataError, parseJsonl, recordVersion, toJsonlLine, writableObject } from './jsonl.ts';
 
 describe('parseJsonl', () => {
   it('reads objects with their line numbers and versions, skipping blank lines', () => {
@@ -51,6 +51,22 @@ describe('assertWritable', () => {
     assert.throws(
       () => assertWritable('log', parseJsonl('{"v":2}\n'), 1),
       (error: unknown) => error instanceof NewerDataError && error.found === 2 && error.known === 1,
+    );
+  });
+});
+
+describe('writableObject', () => {
+  it('returns the record of an older or equal format, and nothing for a missing or damaged file', () => {
+    assert.deepEqual(writableObject('file', '{"v":1,"a":2}\n', 1), { v: 1, a: 2 });
+    assert.deepEqual(writableObject('file', '{"a":2}', 1), { a: 2 });
+    assert.equal(writableObject('file', undefined, 1), undefined);
+    assert.equal(writableObject('file', '{"torn', 1), undefined);
+  });
+
+  it('refuses a file in a newer format', () => {
+    assert.throws(
+      () => writableObject('file', '{"v":2}', 1),
+      (error: unknown) => error instanceof NewerDataError && error.file === 'file' && error.found === 2 && error.known === 1,
     );
   });
 });

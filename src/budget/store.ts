@@ -2,7 +2,7 @@ import { join } from 'node:path';
 import type { Files } from '../core/files.ts';
 import { isNonNegativeInteger, isRecord, isStringArray } from '../core/guards.ts';
 import { ID_PATTERN, ID_RULE } from '../core/ids.ts';
-import { NewerDataError, parseObject, recordVersion, VERSION_FIELD } from '../core/jsonl.ts';
+import { parseObject, recordVersion, VERSION_FIELD, writableObject } from '../core/jsonl.ts';
 import { formatUtcDay, MS_PER_DAY } from '../core/time.ts';
 import { INITIAL_MISS_STATE, parseMissState, type MissState } from './misses.ts';
 import { INITIAL_PATTERN_STATE, parsePatternCounts, parsePatternState, type PatternCounts, type PatternState } from './patterns.ts';
@@ -175,12 +175,7 @@ function mapFrom<T>(value: unknown, keyValid: (key: string) => boolean, parse: (
  * it 1. A file in a newer format is refused, so an old version never replaces what a newer one wrote.
  */
 function revOf(path: string, text: string | undefined): number {
-  const record = text === undefined ? undefined : parseObject(text.trim());
-  const version = record === undefined ? undefined : recordVersion(record);
-  if (version !== undefined && version > USAGE_FORMAT) {
-    throw new NewerDataError(path, version, USAGE_FORMAT);
-  }
-  const rev = record?.['rev'];
+  const rev = writableObject(path, text, USAGE_FORMAT)?.['rev'];
   return isNonNegativeInteger(rev) ? rev : 0;
 }
 
