@@ -473,8 +473,9 @@ the lead's tab (`roles.lead`), the same hook counts the turn's calls that are wo
 - a test run or a build;
 - a code search: a `Read` of a source file, a `Grep` or `Glob`, a shell `grep`, `rg` or `find`.
 
-Its own files are the team's teamrig folder, Claude Code's memory folders and `leadBoundary.ownPaths` (`~` is your
-home, `*` one folder name), so its board, notes and agenda never count, nor does reading results, boards and docs.
+Its own files are the team's teamrig folder, Claude Code's memory folders and session scratchpads, and
+`leadBoundary.ownPaths` (`~` is your home, `*` one folder name), so its board, notes, agenda and scratch files never
+count, nor does reading results, boards and docs.
 At the turn's first edit, its first test or build and its `leadBoundary.searchNudgeAt`-th code search (3 by default;
 0 never), the lead's model gets one line:
 
