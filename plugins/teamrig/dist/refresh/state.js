@@ -45,7 +45,11 @@ export function parseRefreshState(text) {
         case 'asked': {
             const tokens = tokensOf(record);
             const handoverHash = hashOf(record);
-            return tokens === undefined || handoverHash === undefined ? undefined : { phase: 'asked', task, at, tokens, handoverHash };
+            // A file from before the mod asked within a turn was always the Stop hook's.
+            const midTurn = record['midTurn'] ?? false;
+            return tokens === undefined || handoverHash === undefined || typeof midTurn !== 'boolean'
+                ? undefined
+                : { phase: 'asked', task, at, tokens, handoverHash, midTurn };
         }
         case 'ready': {
             const noticed = record['noticed'];

@@ -57,6 +57,30 @@ export function claudeProjectsDir(env, userHome) {
 export function projectTranscriptPath(projectsDir, project, claudeSession) {
     return join(projectsDir, claudeProjectSlug(project), `${claudeSession}${TRANSCRIPT}`);
 }
+/**
+ * A Claude Code session's own transcript: in its project's folder when it has one there, else the newest of that
+ * session in any project folder (a session Claude Code filed under another folder); undefined when it has none.
+ */
+export async function findTranscript(folders, projectsDir, project, claudeSession) {
+    if (project !== undefined) {
+        const own = projectTranscriptPath(projectsDir, project, claudeSession);
+        if ((await folders.changedAt(own)) !== undefined) {
+            return own;
+        }
+    }
+    let newest;
+    for (const entry of await folders.entries(projectsDir)) {
+        if (!entry.folder) {
+            continue;
+        }
+        const path = join(projectsDir, entry.name, `${claudeSession}${TRANSCRIPT}`);
+        const changedAt = await folders.changedAt(path);
+        if (changedAt !== undefined && (newest === undefined || changedAt > newest.changedAt)) {
+            newest = { path, changedAt };
+        }
+    }
+    return newest?.path;
+}
 const TRANSCRIPT = '.jsonl';
 const SUBAGENTS = 'subagents';
 function jsonlChangedSince(entry, since) {
