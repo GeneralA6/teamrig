@@ -568,9 +568,13 @@ shows takes its place; the terminal and the desktop app draw it. With both set t
 each interactive tab the mod reads Claude Code's `installed_plugins.json` (in the `plugins` folder that holds the
 cache it runs from) when it loads and every 15 s after. Once an install that applies to the tab changed (a user-scope
 one, or a project- or local-scope one for the tab's project: added, removed, or another folder, version or commit),
-the file has read the same for 10 s and no turn runs (a subagent's included), it runs `/reload-plugins` the way you
-would. It runs at most one per 5 minutes and never two for the same installs, and keeps the last one in the
-session's state (`teamrig.reload`, typed in `types/index.d.ts`), so the mod the reload loads keeps both. A refused
+the file has read the same for 10 s, no turn runs (a subagent's included) and nothing in the plugin store changed
+for 10 s, it runs `/reload-plugins` the way you would. The store is the plugin list, `known_marketplaces.json`, and
+each install's plugin folder and folders: `claude plugin update` copies a version in over about 1.4 s and names it in
+the list before the copy ends, and a reload during the copy loads only part of the plugin (T561: a tab ran without
+teamrig's hooks for 15 h). A hold for it goes to Claude Code's debug log as `installing`. It runs at most one per 5
+minutes and never two for the same installs, and keeps the last one in the session's state (`teamrig.reload`, typed
+in `types/index.d.ts`), so the mod the reload loads keeps both. A refused
 reload goes to Claude Code's debug log and is tried again 5 minutes later. A plugin loaded from a folder
 (`--plugin-dir`) has no `installed_plugins.json` beside its cache and gets no reload; a Claude Code that does not
 load mods leaves `/reload-plugins` to you.

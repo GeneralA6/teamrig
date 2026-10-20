@@ -4,23 +4,30 @@
  * pending plugin changes in the current session"). The plugin's mod (`hooks/register.ts`) runs a `ReloadHand` in
  * every interactive tab. When the mod loads, the hand takes the fingerprint of the installs that apply to the tab;
  * it reads the file again every CHECK_MS, and once an install changed (teamrig's, the pane's or any other plugin's),
- * the file has read the same for SETTLE_MS and no turn runs, it runs /reload-plugins the way the person would. It
- * runs at most one reload per RELOAD_GAP_MS, waits as long after a refused one, and never runs two for the same
- * installs.
+ * the file has read the same for SETTLE_MS, no turn runs and nothing in the plugin store changed for SETTLE_MS
+ * either (an install still being copied), it runs /reload-plugins the way the person would. It runs at most one
+ * reload per RELOAD_GAP_MS, waits as long after a refused one, and never runs two for the same installs.
  *
  * The mod runs inside Claude Code without Node, so this file imports nothing from Node, only the plugin list's reader
  * (`core/installed-plugins.ts`), which imports none either: they compile to modules the mod imports as they are.
  */
-import { appliesTo, installsOf } from '../core/installed-plugins.ts';
+import { appliesTo, INSTALLED_PLUGINS_FILE, installsOf, type ListedInstall } from '../core/installed-plugins.ts';
 
 /** How often the hand reads installed_plugins.json. */
 export const CHECK_MS = 15_000;
-/** How long the file must read the same before a reload, so updating several plugins in a row is one reload. */
+/**
+ * How long the file, and the plugin store, must stand still before a reload, so updating several plugins in a row is
+ * one reload and an install's copy into the cache (about 1.4 s for teamrig) is over.
+ */
 export const SETTLE_MS = 10_000;
 /** The least time between two reloads in one tab, and the wait after a refused one. */
 export const RELOAD_GAP_MS = 5 * 60_000;
 /** The command the hand runs: Claude Code's own `/reload-plugins`. */
 export const RELOAD_COMMAND = 'reload-plugins';
+/** The marketplace list, beside installed_plugins.json, which a marketplace update rewrites as it ends. */
+export const KNOWN_MARKETPLACES_FILE = 'known_marketplaces.json';
+/** The most folders of the installs one look at the store reads, so a large install keeps the look bounded. */
+export const STORE_FOLDERS_MAX = 500;
 
 /** What the hand keeps in the session about its last reload, so the mod a reload loads still keeps the gap. */
 export interface ReloadRecord {
@@ -32,8 +39,17 @@ export interface ReloadRecord {
 
 /** What the mod gives the hand: Claude Code's own calls, so the hand itself is plain code. */
 export interface ReloadHandHost {
+  /** Claude Code's `plugins` folder, which holds installed_plugins.json, known_marketplaces.json and the cache. */
+  readonly pluginsFolder: string;
   /** The text of installed_plugins.json; rejects when it is missing or unreadable. */
   readInstalled(): Promise<string>;
+  /**
+   * When a file or folder last changed, in milliseconds since the epoch (a folder changes as an entry is added to it,
+   * removed from it or renamed in it); undefined when it is missing.
+   */
+  changedAt(path: string): Promise<number | undefined>;
+  /** The paths of the folders directly in a folder, links left out; none when it is missing. */
+  foldersIn(path: string): Promise<readonly string[]>;
   /** The session's project root now, which project- and local-scope installs are for. */
   projectRoot(): Promise<string>;
   /** Runs /reload-plugins in the tab as if the person typed it, resolving to what it printed. */
@@ -57,6 +73,8 @@ export type CheckResult =
   | { readonly kind: 'settling' }
   /** A turn runs, so the reload waits for it to end. */
   | { readonly kind: 'busy' }
+  /** Something in the plugin store changed less than SETTLE_MS ago, at `changedAt`: an install is still written. */
+  | { readonly kind: 'installing'; readonly changedAt: number }
   /** The last reload, or a refused one, was less than RELOAD_GAP_MS ago: the next waits until `until`. */
   | { readonly kind: 'held'; readonly until: number }
   /** /reload-plugins ran and printed `text`; `kept` says whether the session kept its record. */
@@ -79,21 +97,50 @@ export function isReloadRecord(value: unknown): value is ReloadRecord {
 
 /**
  * The installs that apply to a tab whose project root is `projectRoot`: every user-scope install and the project- and
- * local-scope ones for that project, each as its plugin, folder, version and commit, sorted. Undefined for a text
- * that is not installed_plugins.json's shape, so a file mid-write or of another version reads as no change.
+ * local-scope ones for that project. Undefined for a text that is not installed_plugins.json's shape.
  */
-export function installedFingerprint(text: string, projectRoot: string): string | undefined {
-  const installs = installsOf(text);
-  if (installs === undefined) {
-    return undefined;
-  }
+function applyingInstalls(text: string, projectRoot: string): readonly ListedInstall[] | undefined {
+  return installsOf(text)?.filter(({ install }) => appliesTo(install, projectRoot));
+}
+
+function fingerprintOf(installs: readonly ListedInstall[]): string {
   return installs
-    .filter(({ install }) => appliesTo(install, projectRoot))
     .map(({ key, install }) => JSON.stringify([key, install.installPath, install.version, install.gitCommitSha]))
     .sort()
     .join('\n');
 }
 
+/**
+ * The installs that apply to a tab whose project root is `projectRoot`, each as its plugin, folder, version and
+ * commit, sorted. Undefined for a text that is not installed_plugins.json's shape, so a file mid-write or of another
+ * version reads as no change.
+ */
+export function installedFingerprint(text: string, projectRoot: string): string | undefined {
+  const installs = applyingInstalls(text, projectRoot);
+  return installs === undefined ? undefined : fingerprintOf(installs);
+}
+
+/** The folder that holds a path: what comes before its last `/` or `\`. */
+export function parentOf(path: string): string {
+  const trimmed = path.replace(/[\\/]+$/, '');
+  const cut = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'));
+  return cut <= 0 ? trimmed : trimmed.slice(0, cut);
+}
+
+/** What one read of installed_plugins.json found: the installs that apply to the tab and their fingerprint. */
+interface Look {
+  readonly fingerprint: string;
+  readonly installs: readonly ListedInstall[];
+}
+
+/**
+ * The newest of `times` less than SETTLE_MS from `now` either way: a time a little ahead of the clock is a change
+ * now, while one far ahead (the clock set back since) never holds reloads for good. Undefined when none is.
+ */
+export function newestNear(times: readonly number[], now: number): number | undefined {
+  const near = times.filter((time) => Math.abs(now - time) < SETTLE_MS);
+  return near.length === 0 ? undefined : Math.max(...near);
+}
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -133,7 +180,7 @@ export class ReloadHand {
       this.reloadedFor.add(record.fingerprint);
       this.heldFrom = record.at;
     }
-    this.loaded = await this.look(this.host.now()).catch(() => undefined);
+    this.loaded = (await this.look(this.host.now()).catch(() => undefined))?.fingerprint;
   }
 
   async check(): Promise<CheckResult> {
@@ -152,10 +199,11 @@ export class ReloadHand {
 
   private async step(): Promise<CheckResult> {
     const now = this.host.now();
-    const fingerprint = await this.look(now);
-    if (fingerprint === undefined) {
+    const look = await this.look(now);
+    if (look === undefined) {
       return { kind: 'no file' };
     }
+    const { fingerprint } = look;
     if (this.loaded === undefined) {
       this.loaded = fingerprint;
       return { kind: 'no change' };
@@ -175,7 +223,37 @@ export class ReloadHand {
     if (this.heldFrom !== undefined && now < this.heldFrom + RELOAD_GAP_MS) {
       return { kind: 'held', until: this.heldFrom + RELOAD_GAP_MS };
     }
+    const changedAt = newestNear(await this.storeTimes(look.installs), now);
+    if (changedAt !== undefined) {
+      return { kind: 'installing', changedAt };
+    }
     return this.reloadFor(fingerprint, now);
+  }
+
+  /**
+   * When each part of the store an install writes last changed, in milliseconds since the epoch: the plugin list,
+   * the marketplace list, and for each install that applies to the tab its plugin's folder (a version added or
+   * removed) and every folder of the install, breadth first, up to STORE_FOLDERS_MAX; a missing one is left out (its
+   * plugin's folder dates a removal). `claude plugin update` creates the new version's folder, copies the plugin into
+   * it and names it in the plugin list before the copy ends, and a copied file keeps its source's time, so only the
+   * folders date the copy. A reload while it runs loads part of the plugin: on 10-19 one ran 0.4 s into teamrig's
+   * copy and left a tab without teamrig's hooks for 15 hours (T561). Read only when a reload is otherwise due.
+   */
+  private async storeTimes(installs: readonly ListedInstall[]): Promise<readonly number[]> {
+    const { pluginsFolder } = this.host;
+    const files = [`${pluginsFolder}/${INSTALLED_PLUGINS_FILE}`, `${pluginsFolder}/${KNOWN_MARKETPLACES_FILE}`];
+    const folders = installs.map(({ install }) => parentOf(install.installPath));
+    let level: readonly string[] = installs.map(({ install }) => install.installPath);
+    let budget = STORE_FOLDERS_MAX;
+    while (level.length > 0 && budget > 0) {
+      const taken = level.slice(0, budget);
+      budget -= taken.length;
+      folders.push(...taken);
+      level = budget > 0 ? (await Promise.all(taken.map((folder) => this.host.foldersIn(folder)))).flat() : [];
+    }
+    const paths = [...new Set([...files, ...folders])];
+    const times = await Promise.all(paths.map((path) => this.host.changedAt(path)));
+    return times.filter((time): time is number => time !== undefined);
   }
 
   /**
@@ -198,12 +276,12 @@ export class ReloadHand {
       this.heldFrom = this.host.now();
       return { kind: 'refused', error: messageOf(error) };
     }
-    this.loaded = (await this.look(this.host.now()).catch(() => undefined)) ?? fingerprint;
+    this.loaded = (await this.look(this.host.now()).catch(() => undefined))?.fingerprint ?? fingerprint;
     return { kind: 'reloaded', text, kept };
   }
 
-  /** Reads the file, notes since when its text has stood, and returns the fingerprint of the installs for this tab. */
-  private async look(now: number): Promise<string | undefined> {
+  /** Reads the file, notes since when its text has stood, and returns the installs for this tab with their fingerprint. */
+  private async look(now: number): Promise<Look | undefined> {
     let text: string;
     try {
       text = await this.host.readInstalled();
@@ -214,6 +292,7 @@ export class ReloadHand {
       this.lastText = text;
       this.sameSince = now;
     }
-    return installedFingerprint(text, await this.host.projectRoot());
+    const installs = applyingInstalls(text, await this.host.projectRoot());
+    return installs === undefined ? undefined : { fingerprint: fingerprintOf(installs), installs };
   }
 }
