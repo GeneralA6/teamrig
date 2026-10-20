@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { BudgetConfig } from '../config/types.ts';
+import { NewerDataError } from '../core/jsonl.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import {
   formatPeriod,
@@ -8,6 +9,7 @@ import {
   LATE_START_RATIO,
   nextPeriod,
   parsePeriod,
+  PERIOD_FORMAT,
   PeriodStore,
   RESET_DROP_PTS,
   sightOf,
@@ -164,6 +166,14 @@ describe('the period file', () => {
     assert.equal(await store.periodAt(UNSET, undefined, NOW), undefined);
     assert.equal(await files.read(path), 'damaged');
     assert.deepEqual(await store.periodAt(UNSET, use(55, NOW), NOW), { start: START, end: END, kind: 'assumed', lastPct: 55, lastAt: NOW });
+  });
+
+  it('refuses to move on a file a newer teamrig wrote, leaving it as it was', async () => {
+    const newer = '{"v":2,"start":1,"end":2,"kind":"week","lastPct":0,"lastAt":1}';
+    const files = new MemoryFiles({ [path]: newer });
+    const store = new PeriodStore(files, path);
+    await assert.rejects(store.periodAt(UNSET, use(55, NOW), NOW), (error: unknown) => error instanceof NewerDataError && error.found === 2 && error.known === PERIOD_FORMAT);
+    assert.equal(await files.read(path), newer);
   });
 
   it('infers the start from the metered W it is given, and stores it', async () => {

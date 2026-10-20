@@ -1,9 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import { NewerDataError } from '../core/jsonl.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { emptyWarnState, type WarnState } from './warn.ts';
-import { formatWarnState, parseWarnState, WarnStore } from './warn-store.ts';
+import { formatWarnState, parseWarnState, WARN_FORMAT, WarnStore } from './warn-store.ts';
 
 const FOLDER = join('team', 'state', 'usage', 'warn');
 const STATE: WarnState = {
@@ -33,10 +34,22 @@ describe('WarnStore', () => {
     assert.equal(await files.read(join(FOLDER, 'bravo.json')), formatWarnState(emptyWarnState('2026-10-15')));
   });
 
-  it('reads a damaged file as nothing shown', async () => {
+  it('reads a damaged file as nothing shown, and writes over it', async () => {
     const files = new MemoryFiles();
     await files.write(join(FOLDER, 'alpha.json'), '{"v":1,"day":"2026-10-15"');
-    assert.equal(await new WarnStore(files, FOLDER).read('alpha'), undefined);
+    const store = new WarnStore(files, FOLDER);
+    assert.equal(await store.read('alpha'), undefined);
+    await store.write('alpha', STATE);
+    assert.deepEqual(await store.read('alpha'), STATE);
+  });
+
+  it('reads a file a newer teamrig wrote as nothing shown, and refuses to write over it', async () => {
+    const newer = '{"v":2,"day":"2026-10-15"}';
+    const files = new MemoryFiles({ [join(FOLDER, 'alpha.json')]: newer });
+    const store = new WarnStore(files, FOLDER);
+    assert.equal(await store.read('alpha'), undefined);
+    await assert.rejects(store.write('alpha', STATE), (error: unknown) => error instanceof NewerDataError && error.found === 2 && error.known === WARN_FORMAT);
+    assert.equal(await files.read(join(FOLDER, 'alpha.json')), newer);
   });
 });
 

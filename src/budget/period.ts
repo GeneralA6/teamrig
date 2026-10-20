@@ -1,12 +1,15 @@
 import type { BudgetConfig } from '../config/types.ts';
 import type { Files } from '../core/files.ts';
 import type { JsonRecord } from '../core/guards.ts';
-import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
+import { parseObject, toJsonlLine, VERSION_FIELD, writableObject } from '../core/jsonl.ts';
 import { MS_PER_HOUR, MS_PER_WEEK } from '../core/time.ts';
 import { resolveReset } from './pace.ts';
 import type { WeekUse } from './snapshot.ts';
 
-/** The format of the period file this code reads and writes; a file in another format or damaged reads as none. */
+/**
+ * The format of the period file this code reads and writes; a file in another format or damaged reads as none,
+ * and one in a newer format refuses a write.
+ */
 export const PERIOD_FORMAT = 1;
 /**
  * A drop in the week's use this large, its reset time unchanged, is a reset of the use inside the week: use only
@@ -194,9 +197,11 @@ export class PeriodStore {
     return text === undefined ? undefined : parsePeriod(text);
   }
 
-  /** The period after `sight`, written when it changed. */
+  /** The period after `sight`, written when it changed. A file a newer teamrig wrote is refused (`NewerDataError`), never overwritten. */
   async advance(sight: PeriodSight): Promise<Period> {
-    const stored = await this.read();
+    const text = await this.files.read(this.path);
+    writableObject(this.path, text, PERIOD_FORMAT);
+    const stored = text === undefined ? undefined : parsePeriod(text);
     const next = nextPeriod(stored, sight);
     if (!samePeriod(stored, next)) {
       await this.files.write(this.path, formatPeriod(next));
