@@ -29,7 +29,7 @@ export function dueMoments(now, dayStartUtc, burst, settled) {
     }
     return due;
 }
-/** The session's work it can start now, of any priority, most urgent first. */
+/** The session's work it can go on with now (`canGoOn`), of any priority, most urgent first. */
 export function startableTasks(tasks, session, now, zone) {
     const context = waitContext(tasks, new Date(now), zone);
     return [...tasks.values()].filter((task) => isWakeWorthy(task, session, Number.POSITIVE_INFINITY, context)).sort(byUrgency);

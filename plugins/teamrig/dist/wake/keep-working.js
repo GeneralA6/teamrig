@@ -12,7 +12,7 @@ export function keepWorkingOf(input) {
     if (rest.quiet || rest.held || waiting?.owner !== session || waiting.status !== 'waiting') {
         return undefined;
     }
-    const startable = startableTasks(tasks, session, now, zone);
+    const startable = startableTasks(tasks, session, now, zone).filter((task) => task.id !== waiting.id);
     return startable.length === 0 ? undefined : { waiting, startable };
 }
 /** The Stop hook's block reason: work the tasks that do not come after the waiting one, most urgent first. */
