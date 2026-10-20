@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { APP, CliHarness } from '../testing/cli-harness.ts';
+import { APP, CliHarness, TEAM } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
 
 const WEEK = '2030-01-07';
@@ -74,5 +74,25 @@ describe('the week fit to the weekly limit', () => {
     const ahead = await kit.run(['plan', '--week', '2030-01-14', '--session', 'alpha']);
     assert.equal(ahead.code, EXIT.ok);
     assert.doesNotMatch(ahead.stdout.join('\n'), /fits:|does not fit/);
+  });
+});
+
+describe("show a task's size", () => {
+  async function sizedTask(kit: CliHarness): Promise<string[]> {
+    const added = await kit.run(['add', '--title', 'Ship the CLI', '--description', 'what and why', '--priority', 'p1', '--size', '1.5', '--session', 'alpha']);
+    assert.equal(added.code, EXIT.ok, added.stdout.join('\n'));
+    const shown = await kit.run(['show', 'T1']);
+    assert.equal(shown.code, EXIT.ok, shown.stderr.join('\n'));
+    return shown.stdout.join('\n').split('\n');
+  }
+
+  it('in W too, at the week W per percent of budget.weeklyLimitW', async () => {
+    const lines = await sizedTask(new CliHarness({ ...TEAM, budget: { weeklyLimitW: 650_000_000 } }));
+    assert.ok(lines.includes('size: 1.5% of the weekly limit, about 9.75M W'), lines.join('\n'));
+  });
+
+  it('in percent alone while the W per percent is unknown', async () => {
+    const lines = await sizedTask(new CliHarness());
+    assert.ok(lines.includes('size: 1.5% of the weekly limit'), lines.join('\n'));
   });
 });

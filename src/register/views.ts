@@ -252,11 +252,15 @@ export function formatEvent(event: RegisterEvent, zone: TimeZone): string {
   }
 }
 
+/** What a size, in percent of the weekly limit, costs in other words (such as `about 9.75M W`); undefined when unknown. */
+export type SizeCost = (pct: number) => string | undefined;
+
 /**
  * `show`: the task line, its description (what and why, its later lines indented two spaces), its status details,
- * then its history; `tree` reads the task line as {@link formatTask} does.
+ * then its history; `tree` reads the task line as {@link formatTask} does, and `sizeCost` words its size's cost
+ * beside the percent.
  */
-export function formatTaskDetail(task: Task, events: readonly RegisterEvent[], tree: TaskTree): string {
+export function formatTaskDetail(task: Task, events: readonly RegisterEvent[], tree: TaskTree, sizeCost: SizeCost = () => undefined): string {
   const lines = [formatTask(task, undefined, tree)];
   if (task.description !== null) {
     const [first = '', ...rest] = task.description.split('\n');
@@ -266,7 +270,8 @@ export function formatTaskDetail(task: Task, events: readonly RegisterEvent[], t
     lines.push(`ref: ${task.ref}`);
   }
   if (task.size !== null) {
-    lines.push(`size: ${sizeText(task.size)} of the weekly limit`);
+    const cost = sizeCost(task.size);
+    lines.push(`size: ${sizeText(task.size)} of the weekly limit${cost === undefined ? '' : `, ${cost}`}`);
   }
   if (task.note !== null) {
     lines.push(`note: ${task.note}`);

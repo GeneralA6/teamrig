@@ -6,6 +6,7 @@ import type { TimeZone } from '../../core/zone.ts';
 import { JsonlDailyLog } from '../../core/daily-log.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { burstsOver, surplusOf } from '../../budget/burst.ts';
+import { formatW } from '../../budget/format.ts';
 import { hireFlags } from '../../hiring/due.ts';
 import { activeHires, HiringLog } from '../../hiring/log.ts';
 import { scaleOutFlags } from '../../hiring/scale-out.ts';
@@ -37,6 +38,7 @@ import { loadTree } from '../tree.ts';
 import { teamRegister } from '../team-register.ts';
 import { readBursts } from '../burst-reading.ts';
 import { readHirePct } from '../hire-cost.ts';
+import { readWPerPct } from '../stored-week.ts';
 import { snapshotDirOf } from './budget.ts';
 import { inboxDepsOf } from './inbox.ts';
 import { markBoundary } from './refresh.ts';
@@ -449,7 +451,9 @@ export async function show(args: ParsedArgs, runtime: CliRuntime): Promise<ExitC
     [formatTask(task, undefined, tree), ...formatTaskTree(task, tree, SHORT_TITLE_CHARS)].forEach((line) => runtime.out.stdout(line));
     return EXIT.ok;
   }
-  runtime.out.stdout(formatTaskDetail(task, snapshot.read.events.filter((event) => event.id === id), tree));
+  const events = snapshot.read.events.filter((event) => event.id === id);
+  const wPerPct = task.size === null ? undefined : await readWPerPct(runtime, own.paths, own.config, runtime.clock.now());
+  runtime.out.stdout(formatTaskDetail(task, events, tree, (pct) => (wPerPct === undefined ? undefined : `about ${formatW(pct * wPerPct)} W`)));
   return EXIT.ok;
 }
 
