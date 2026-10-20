@@ -11,6 +11,7 @@ import {
   dueMoments,
   nextDayStartAt,
   startableTasks,
+  teamDayStartAt,
   type DayMoment,
   type DayStartInput,
 } from './day-start.ts';
@@ -72,6 +73,13 @@ describe('the day start', () => {
     assert.equal(nextDayStartAt('06:00', SIX - 1), SIX);
     assert.equal(dayStartAt('6:00', SIX), undefined);
     assert.equal(nextDayStartAt('24:00', SIX), undefined);
+  });
+
+  it("is the team's day start when it sets one, else midnight UTC, also for a malformed time", () => {
+    const midnight = Date.parse('2030-01-08T00:00:00.000Z');
+    assert.equal(teamDayStartAt('06:00', SIX - 1), SIX - DAY);
+    assert.equal(teamDayStartAt(undefined, SIX - 1), midnight);
+    assert.equal(teamDayStartAt('6:00', NOW), midnight);
   });
 });
 
