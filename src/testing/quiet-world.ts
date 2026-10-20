@@ -2,6 +2,7 @@ import type { CliRuntime } from '../cli/runtime.ts';
 import { FakeCheckout } from './fake-checkout.ts';
 import { FakeCredentials } from './fake-credentials.ts';
 import { FakeExecSpawner } from './fake-exec-spawner.ts';
+import { FakeWebhook } from './fake-webhook.ts';
 import { FakeGh } from './fake-gh.ts';
 import { FakeHostMemory } from './fake-host-memory.ts';
 import { FakeHooks } from './fake-hooks.ts';
@@ -49,7 +50,7 @@ export function quietWorld(branch: string = 'dev', stdin: string = ''): OutsideW
     trees: { checked: () => ({ kind: 'none' }) },
     hooks: new FakeHooks(),
     packageRegistry: new FakePackageRegistry(),
-    exec: { spawner: new FakeExecSpawner(), checkout: new FakeCheckout() },
+    exec: { spawner: new FakeExecSpawner(), checkout: new FakeCheckout(), webhook: new FakeWebhook() },
     steps: new FakeSteps(),
     memory: new FakeHostMemory(),
     starters: new FakeStarterWatch(),

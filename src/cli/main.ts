@@ -13,6 +13,7 @@ import { NODE_PATH_PROBE } from '../core/path-probe.ts';
 import { nodeProgramRunner, systemCredentials } from '../github/credentials.ts';
 import { GIT_CHECKOUT } from '../exec/binding.ts';
 import { nodeExecSpawner } from '../exec/runner.ts';
+import { httpWebhook } from '../exec/webhook.ts';
 import { nodeGhRunner } from '../github/gh.ts';
 import { GIT_INTEGRATE } from '../integrate/git.ts';
 import { nodeProcesses } from '../open/processes.ts';
@@ -70,7 +71,7 @@ process.exitCode = await runCli(process.argv.slice(2), {
   trees: GIT_TREES,
   hooks: nodeHookRunner(process.platform),
   packageRegistry: httpPackageRegistry(),
-  exec: { spawner: nodeExecSpawner(process.platform), checkout: GIT_CHECKOUT },
+  exec: { spawner: nodeExecSpawner(process.platform), checkout: GIT_CHECKOUT, webhook: httpWebhook() },
   readStdin: () => text(process.stdin),
   newId: () => randomUUID(),
 });
