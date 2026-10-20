@@ -74,7 +74,8 @@ export function currentWeekOf(snapshot: RegisterSnapshot, now: Date, zone: TimeZ
  * - VERIFY-BLOCKS: verifying, and another active task is planned after it or waits on it, so that work cannot start
  *   until the proof comes (`set` refuses its start);
  * - READY: waiting, and every reason it waits for is ready (its tasks finished, its time passed), so its owner can
- *   go on: only the owner clears a decision or an approval, by setting the next status; or verifying, and every
+ *   go on: only the owner clears a decision or an approval, by setting the next status, though the lead's yes to an
+ *   approval wait (`approve`) counts as ready, so its owner pushes or merges it; or verifying, and every
  *   reason its proof waited for is ready, so the proof should exist: its owner verifies it now;
  * - NO-REASON: waiting with no reason, as a line from an older teamrig reads: nothing says what it waits for;
  * - NO-CARD: waiting on the owner's decision or approval with no card to decide from (card.ts), as one set before
@@ -98,22 +99,6 @@ export function currentWeekOf(snapshot: RegisterSnapshot, now: Date, zone: TimeZ
  *   for it. The register has no parent tasks: a goal tag or the week plan is what ties a task to the plan.
  * The three week flags need a week; null skips them, and each task gets at most one of them.
  */
-/**
- * READY: a waiting task whose every reason cleared, its tasks finished and its time passed, or whose approval wait the
- * one it waits on answered yes (`approve`, T684): its owner pushes or merges, then sets its next status.
- */
-function readyFlags(task: Task, context: WaitContext): Flag[] {
-  if (task.status !== 'waiting') {
-    return [];
-  }
-  if (allReady(task.waits, context)) {
-    return [{ kind: 'READY', task, detail: 'every reason cleared; set its next status' }];
-  }
-  if (task.waits.length > 0 && task.waits.every((reason) => isReady(reason, context) || approvalCleared(task, reason))) {
-    return [{ kind: 'READY', task, detail: `${task.answer?.by ?? 'the lead'} approved it; push or merge it, then set its next status` }];
-  }
-  return [];
-}
 
 export function checkTasks(tasks: Iterable<Task>, now: Date, zone: TimeZone, week: string | null, config: RegisterConfig): Flag[] {
   const at = now.getTime();
@@ -182,13 +167,19 @@ function noCardFlags(task: Task, config: RegisterConfig): Flag[] {
     : [];
 }
 
-/** READY, as {@link checkTasks} describes it: a waiting task's reasons, or a verifying task's proof waits, all cleared. */
+/**
+ * READY, as {@link checkTasks} describes it: a waiting task's reasons, or a verifying task's proof waits, all cleared;
+ * or a waiting task whose approval wait the one it waits on answered yes (`approve`, T684).
+ */
 function readyFlags(task: Task, context: WaitContext): Flag[] {
-  if (!allReady(task.waits, context)) {
-    return [];
+  if (allReady(task.waits, context)) {
+    const detail = task.status === 'verifying' ? 'every wait of its proof cleared; verify it now' : 'every reason cleared; set its next status';
+    return [{ kind: 'READY', task, detail }];
   }
-  const detail = task.status === 'verifying' ? 'every wait of its proof cleared; verify it now' : 'every reason cleared; set its next status';
-  return [{ kind: 'READY', task, detail }];
+  if (task.status === 'waiting' && task.waits.length > 0 && task.waits.every((reason) => isReady(reason, context) || approvalCleared(task, reason))) {
+    return [{ kind: 'READY', task, detail: `${task.answer?.by ?? 'the lead'} approved it; push or merge it, then set its next status` }];
+  }
+  return [];
 }
 
 /** A task with a time reason still to come (waiting, or a verifying task's proof): parked on purpose until then, so not stale. */
