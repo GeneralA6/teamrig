@@ -7,21 +7,19 @@ import { formatSnapshot, parseSnapshot } from '../../src/budget/snapshot.ts';
 import { HELP_FLAGS } from '../../src/cli/args.ts';
 import { COMMAND_FLAGS, COMMAND_SWITCHES, HELP, VERSION } from '../../src/cli/run.ts';
 import { DEFAULT_LEAD_LAUNCH } from '../../src/config/defaults.ts';
-import { descriptionOf } from '../../src/skills/lint.ts';
-import { checkDocs, headingAnchors, type DocFile } from './doc-check.ts';
+import { headingAnchors, type DocFile } from './doc-check.ts';
 
 /**
  * The LLM guide (the plugin's teamrig-guide skill) and the root llms.txt, held to the code: each CLI command has
  * exactly one section and each section a command, with the command's flags and no others; every teamrig command
- * line the guide shows is one the CLI reads; every link resolves; the requirements match package.json and CI; and
- * the lead's default model and effort, wherever the docs name them, match the code.
+ * line the guide shows is one the CLI reads; every GitHub link into this repository resolves; the requirements match
+ * package.json and CI; and the lead's default model and effort, wherever the docs name them, match the code. Its
+ * frontmatter and relative links are held with the other plugin skills' in plugin-skills.test.ts.
  */
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const GUIDE = 'plugins/teamrig/skills/teamrig-guide';
-const SKILL_NAME = 'teamrig-guide';
 const BLOB = 'https://github.com/GeneralA6/teamrig/blob/main/';
-const MAX_DESCRIPTION_WORDS = 30;
 /** `teamrig help` and `teamrig version` are words `runCli` answers before the command table. */
 const HELP_COMMAND = 'help';
 const VERSION_COMMAND = 'version';
@@ -213,22 +211,6 @@ describe('the LLM guide documents the CLI', () => {
 
 describe('the LLM guide skill', () => {
   const skill = guideText('SKILL.md');
-  const front = /^---\r?\n([\s\S]*?)\r?\n---/.exec(skill)?.[1] ?? '';
-
-  it('is named after its folder', () => {
-    assert.equal(/^name:\s*(\S+)\s*$/m.exec(front)?.[1], SKILL_NAME);
-    assert.ok(GUIDE.endsWith(`/${SKILL_NAME}`));
-  });
-
-  it(`has a description of at most ${MAX_DESCRIPTION_WORDS} words`, () => {
-    const description = descriptionOf(front);
-    assert.ok(description !== null, 'SKILL.md has a description');
-    assert.ok(description.split(/\s+/).length <= MAX_DESCRIPTION_WORDS, `${description.split(/\s+/).length} words`);
-  });
-
-  it('keeps the description a plain YAML value, with no ": " in it', () => {
-    assert.doesNotMatch(descriptionOf(front) ?? '', /:\s/);
-  });
 
   it('links each of its reference files', () => {
     const files = guide.map((doc) => doc.path.slice(GUIDE.length + 1)).filter((name) => name !== 'SKILL.md');
@@ -243,12 +225,6 @@ describe('the LLM guide skill', () => {
       [...guide, llms].filter((doc) => NO_EMOJI.test(doc.text)).map((doc) => doc.path),
       [],
     );
-  });
-
-  it('has relative links and anchors that resolve', () => {
-    const report = checkDocs(guide, (path) => existsSync(join(ROOT, path)));
-    assert.deepEqual(report.problems, []);
-    assert.ok(report.links > 0);
   });
 
   it('has links into this repository that resolve, anchors included', () => {
