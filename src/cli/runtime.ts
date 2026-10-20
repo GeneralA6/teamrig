@@ -6,6 +6,7 @@ import type { StarterWatch } from '../coordinator/starter-watch.ts';
 import type { StepRunner } from '../coordinator/steps.ts';
 import type { Files } from '../core/files.ts';
 import type { Env } from '../core/home.ts';
+import type { ExecPorts } from '../exec/ports.ts';
 import type { Clock, Sleep } from '../core/lock.ts';
 import type { PathProbe } from '../core/path-probe.ts';
 import type { CredentialStore } from '../github/credentials.ts';
@@ -86,6 +87,8 @@ export interface CliRuntime {
   readonly hooks: HookRunner;
   /** The registry the package guard asks about the versions an install names: their publish times and advisories. */
   readonly packageRegistry: PackageRegistry;
+  /** The process `teamrig exec` runs a reviewed command in, and the git checkout its binding check reads. */
+  readonly exec: ExecPorts;
   /** The config format the run reads and migrates to; default the shipped one (tests give a newer release's). */
   readonly configFormat?: ConfigFormat;
   /** All of stdin, for hooks, which Claude Code feeds one JSON object. */

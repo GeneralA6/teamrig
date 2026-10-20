@@ -27,6 +27,7 @@ import type { HookRunner } from '../roll/hooks.ts';
 import type { IntegrateGit } from '../integrate/git.ts';
 import type { TreeState } from '../coordinator/push-pass.ts';
 import type { PackageRegistry } from '../package-guard/registry.ts';
+import type { ExecPorts } from '../exec/ports.ts';
 import { FakeClock } from './fake-clock.ts';
 import { MemoryFiles } from './memory-files.ts';
 import { quietWorld } from './quiet-world.ts';
@@ -108,6 +109,8 @@ export interface RunOptions {
   readonly hooks?: HookRunner;
   /** The registry the package guard asks about an install; default one that holds no package. */
   readonly packageRegistry?: PackageRegistry;
+  /** The process `teamrig exec` runs a command in and the checkout it binds to; default a spawner whose command exits 0 and a clean checkout of the fixture request's repository. */
+  readonly exec?: ExecPorts;
 }
 
 /**
@@ -163,6 +166,7 @@ export class CliHarness {
       ...(options.trees === undefined ? {} : { trees: options.trees }),
       ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
       ...(options.packageRegistry === undefined ? {} : { packageRegistry: options.packageRegistry }),
+      ...(options.exec === undefined ? {} : { exec: options.exec }),
       out: { stdout: (line) => stdout.push(line), stderr: (line) => stderr.push(line) },
       ...(options.configFormat === undefined ? {} : { configFormat: options.configFormat }),
     });

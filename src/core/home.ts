@@ -160,6 +160,12 @@ export interface TeamPaths {
   readonly sessions: string;
   /** Each session `teamrig close` ended and `teamrig open` started again, an append-only log (src/sessions/log.ts). */
   readonly sessionLog: string;
+  /** Every privileged command's request, review and run, a hash-chained append-only log (src/exec/audit.ts); kept in the team folder, out of reach of a state override. */
+  readonly execAudit: string;
+  /** Held while a command appends to the exec audit log. */
+  readonly execAuditLock: string;
+  /** Each privileged command's redacted output, `R<n>-dry.log` for its dry run and `R<n>-run.log` for its run (src/exec/runner.ts). */
+  readonly execOut: string;
 }
 
 /** The team's folder. The id is checked here too, since it becomes part of a path. */
@@ -220,5 +226,8 @@ export function teamPaths(kitHome: string, team: string, userHome: string, overr
     turnLog: join(state, 'turn-log'),
     sessions: join(state, 'sessions'),
     sessionLog: join(state, 'session-log.jsonl'),
+    execAudit: join(home, 'exec', 'audit.jsonl'),
+    execAuditLock: join(home, 'exec', 'audit.lock'),
+    execOut: join(home, 'exec', 'out'),
   };
 }
