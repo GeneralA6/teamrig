@@ -66,7 +66,7 @@ import { armRestart, restartTargetOf } from './hook-restart.ts';
 import { helperContextOf } from './hook-helper-start.ts';
 import { dueFactsAt, inMeetingNow } from './hook-refresh-mod.ts';
 import { recordSessionStart } from './hook-session-record.ts';
-import { envSession, hookScopeOf, leadOwnPaths, parseJson, sessionScopeOf, sessionTeam, startSessionOf, teamScopeOf, teamSessionOf, type SessionScope } from './hook-input.ts';
+import { envSession, hookScopeOf, leadPathsOf, parseJson, sessionScopeOf, sessionTeam, startSessionOf, teamScopeOf, teamSessionOf, type SessionScope } from './hook-input.ts';
 import { tabStatusOn, tabTitleOf } from './hook-tab-status.ts';
 import { logPrompt, logReply, logStart } from './hook-turn-log.ts';
 import { keepWorkingReasonOf } from './keep-working.ts';
@@ -675,7 +675,7 @@ async function leadStopLines(runtime: CliRuntime, scope: SessionScope, transcrip
     return [];
   }
   const turn = turnToolsOf(text, Buffer.byteLength(text, 'utf8') >= TRANSCRIPT_TAIL_BYTES, undefined);
-  const line = leadStopLine(leadTallyOf(turn, leadOwnPaths(runtime, kit, config)), config.leadBoundary.searchNudgeAt);
+  const line = leadStopLine(leadTallyOf(turn, leadPathsOf(runtime, kit, config)), config.leadBoundary.searchNudgeAt);
   return line === undefined ? [] : [line];
 }
 

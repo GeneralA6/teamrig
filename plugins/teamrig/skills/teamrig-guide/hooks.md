@@ -523,22 +523,34 @@ the lead's tab (`roles.lead`), the same hook counts the turn's calls that are wo
 - an edit outside its own files, or a git step that changes a repository (`commit`, `push`, `merge`, `rebase` and
   the like);
 - a test run or a build;
+- research: a `WebFetch` or `WebSearch`, or a search (a `Grep` or `Glob`, a shell `grep`, `rg` or `find`) of another
+  session's place in the team's teamrig folder (`notes/<session>`, `handover/<session>.md`) or of a shared folder
+  there, such as all the notes;
 - a code search: a `Read` of a source file, a `Grep` or `Glob`, a shell `grep`, `rg` or `find`.
 
 Its own files are the team's teamrig folder, Claude Code's memory folders and session scratchpads, and
 `leadBoundary.ownPaths` (`~` is your home, `*` one folder name), so its board, notes, agenda and scratch files never
-count, nor does reading results, boards and docs.
-At the turn's first edit, its first test or build and its `leadBoundary.searchNudgeAt`-th code search (3 by default;
-0 never), the lead's model gets one line:
+count, nor does reading results, boards and docs. In the teamrig folder only a search of the config, the rules, the
+register's state or a place named for the lead is the lead's own; another search there looks for an answer another
+session owns.
+At the turn's first edit, its first test or build, its first research and its `leadBoundary.searchNudgeAt`-th code
+search (3 by default; 0 never), the lead's model gets one line:
 
 ```text
 teamrig: the lead edited hook.ts itself. The lead hands such work to the owning session (a register task), a helper or a temporary session, and keeps to deciding and briefing [leadBoundary].
 ```
 
+The research line names whom to ask: the session whose place the search looked through, else the owners of the
+tasks the turn's prompt names (`T123`, read from the register), else the session that owns the question:
+
+```text
+teamrig: the lead did research itself (vendor.example). Send the question to symbols as a register task with a deadline and relay its answer [leadBoundary].
+```
+
 At the turn's end you see what the lead did itself:
 
 ```text
-Lead boundary: this turn the lead did 2 edits (CLAUDE.md, hook.ts), 1 test or build itself; it delegates such work [leadBoundary].
+Lead boundary: this turn the lead did 2 edits (CLAUDE.md, hook.ts), 1 test or build, 3 research lookups (vendor.example, a web search, notes) itself; it delegates such work [leadBoundary].
 ```
 
 It never blocks. `leadBoundary.enabled: false` turns both off. A helper's calls are not counted: handing work to one
