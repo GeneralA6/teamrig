@@ -64,8 +64,10 @@ export const GENERIC_RULES: readonly ScrubRule[] = [
   {
     id: 'assigned-secret',
     description: 'literal value assigned to a secret-like name',
+    // The key word may end a longer name (`DB_PASSWORD`, `clientSecret`, `GITHUB_TOKEN`): no word boundary comes
+    // before it, since an underscore is a word character.
     pattern:
-      /\b(?:password|passwd|secret|token|api[_-]?key|access[_-]?key)\b["']?\s*[:=]\s*["']([^"'\s]{12,})["']/gi,
+      /(?:password|passwd|secret|token|api[_-]?key|access[_-]?key)\b["']?\s*[:=]\s*["']([^"'\s]{12,})["']/gi,
     isAllowed: (match) => /^[$<%{]/.test(match[1] ?? ''),
     revealMatch: false,
   },

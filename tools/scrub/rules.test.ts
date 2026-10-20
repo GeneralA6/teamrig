@@ -74,6 +74,9 @@ describe('generic scrub rules', () => {
       ['stripe-key', join('sk', '_live_', 'j5'.repeat(12))],
       ['jwt', join('eyJ', 'f'.repeat(10), '.eyJ', 'g'.repeat(10), '.', 'h'.repeat(10))],
       ['assigned-secret', join('password', ': "', 'i'.repeat(16), '"')],
+      ['assigned-secret', join('DB_', 'PASSWORD', ' = "', 'k'.repeat(16), '"')],
+      ['assigned-secret', join('client', 'Secret', ": '", 'm'.repeat(16), "'")],
+      ['assigned-secret', join('GITHUB_', 'TOKEN', '="', 'n'.repeat(16), '"')],
     ];
     for (const [rule, text] of cases) {
       assert.deepEqual(ruleIds(text), [rule], rule);
@@ -90,6 +93,10 @@ describe('generic scrub rules', () => {
 
   it('accepts a secret-like name bound to a placeholder', () => {
     assert.deepEqual(ruleIds(join('token', ': "', '${user_config.TOKEN}', '"')), []);
+  });
+
+  it('accepts a secret-like name bound to words with spaces, as no credential has', () => {
+    assert.deepEqual(ruleIds(join('API_', 'TOKEN', ': "', 'commit push deploy secret value', '"')), []);
   });
 
   it('fails closed on a match without its captured part: no allow check accepts it', () => {

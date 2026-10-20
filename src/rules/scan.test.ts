@@ -19,7 +19,7 @@ const AT: RulePlaceLocations = {
 
 const SETTINGS = [
   '{',
-  '  "env": { "API_TOKEN": "commit-push-deploy-secret-value" },',
+  '  "env": { "API_TOKEN": "commit push deploy secret value" },',
   '  "autoMode": {',
   '    "soft_deny": [',
   '      "$defaults",',
