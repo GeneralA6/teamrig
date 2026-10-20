@@ -25,6 +25,7 @@ import type { StarterWatch } from '../coordinator/starter-watch.ts';
 import type { StepRunner } from '../coordinator/steps.ts';
 import type { HookRunner } from '../roll/hooks.ts';
 import type { IntegrateGit } from '../integrate/git.ts';
+import type { PackageRegistry } from '../package-guard/registry.ts';
 import { FakeClock } from './fake-clock.ts';
 import { MemoryFiles } from './memory-files.ts';
 import { quietWorld } from './quiet-world.ts';
@@ -102,6 +103,8 @@ export interface RunOptions {
   readonly integrateGit?: IntegrateGit;
   /** The runner `teamrig roll` runs its gates, afterPull hooks and roll command in; default one whose programs print nothing and exit 0. */
   readonly hooks?: HookRunner;
+  /** The registry the package guard asks about an install; default one that holds no package. */
+  readonly packageRegistry?: PackageRegistry;
 }
 
 /**
@@ -155,6 +158,7 @@ export class CliHarness {
       ...(options.starters === undefined ? {} : { starters: options.starters }),
       ...(options.integrateGit === undefined ? {} : { integrateGit: options.integrateGit }),
       ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
+      ...(options.packageRegistry === undefined ? {} : { packageRegistry: options.packageRegistry }),
       out: { stdout: (line) => stdout.push(line), stderr: (line) => stderr.push(line) },
       ...(options.configFormat === undefined ? {} : { configFormat: options.configFormat }),
     });

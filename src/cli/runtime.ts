@@ -12,6 +12,7 @@ import type { GhRunner } from '../github/gh.ts';
 import type { IntegrateGit } from '../integrate/git.ts';
 import type { RequirementsCheck } from '../requirements/requirements.ts';
 import type { HookRunner } from '../roll/hooks.ts';
+import type { PackageRegistry } from '../package-guard/registry.ts';
 import type { WorktreePorts } from '../worktree/remove.ts';
 import type { RestorePorts } from '../restore/ports.ts';
 import type { Processes } from '../open/processes.ts';
@@ -80,6 +81,8 @@ export interface CliRuntime {
   readonly integrateGit: IntegrateGit;
   /** The programs `teamrig roll` runs, its gates, afterPull hooks and roll command: no shell, each with a time limit. */
   readonly hooks: HookRunner;
+  /** The registry the package guard asks about the versions an install names: their publish times and advisories. */
+  readonly packageRegistry: PackageRegistry;
   /** The config format the run reads and migrates to; default the shipped one (tests give a newer release's). */
   readonly configFormat?: ConfigFormat;
   /** All of stdin, for hooks, which Claude Code feeds one JSON object. */
