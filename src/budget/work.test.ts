@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { DEFAULT_REGISTER } from '../config/defaults.ts';
 import { recordField, type JsonRecord } from '../core/guards.ts';
 import { parseObject, VERSION_FIELD } from '../core/jsonl.ts';
+import { TimeZone } from '../core/zone.ts';
 import { layoutPaths } from '../register/layout.ts';
 import { RegisterPolicy } from '../register/policy.ts';
 import { Register, type SkillCatalog } from '../register/register.ts';
@@ -76,6 +77,7 @@ describe('cachedWork', () => {
       clock: new FakeClock('2030-01-07T09:00:00.000Z'),
       policy: new RegisterPolicy(testConfig({ sessions: ['lead', 'alpha', 'bravo', 'charlie'] })),
       skills: new NoSkills(),
+      zone: TimeZone.UTC,
       autoArchive: false,
     });
     let added = 0;
