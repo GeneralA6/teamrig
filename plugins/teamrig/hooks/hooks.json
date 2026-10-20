@@ -69,7 +69,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Read|Grep|Glob|Bash|PowerShell|Edit|Write|MultiEdit|NotebookEdit",
+        "matcher": "Read|Grep|Glob|Bash|PowerShell|Edit|Write|MultiEdit|NotebookEdit|WebFetch|WebSearch",
         "hooks": [
           { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "loop-nudge"], "timeout": 15 }
         ]

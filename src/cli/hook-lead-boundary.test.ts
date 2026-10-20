@@ -10,11 +10,11 @@ const TRANSCRIPT = join(USER_HOME, '.claude', 'projects', 'work-app', `${CLAUDE_
 const EDIT: FixtureTool = { id: 'last', name: 'Edit', path: join(APP, 'src', 'a.ts') };
 const AS_LEAD = { TEAMRIG_SESSION: 'lead' };
 
-/** A team whose transcript holds one turn ending with `last`. */
-async function teamWith(last: FixtureTool, config: JsonRecord = TEAM): Promise<CliHarness> {
+/** A team whose transcript holds one turn, started by `prompt`, ending with `last`. */
+async function teamWith(last: FixtureTool, config: JsonRecord = TEAM, prompt = 'go'): Promise<CliHarness> {
   const kit = new CliHarness(config);
   const reply = replyLine({ id: 'm1', requestId: 'r1', at: AT, usage: { cacheRead: 100_000 }, tools: [last] });
-  await kit.files.write(TRANSCRIPT, transcript([promptLine(AT), reply, resultsLine(AT, [{ id: last.id, text: 'ok' }])]));
+  await kit.files.write(TRANSCRIPT, transcript([promptLine(AT, prompt), reply, resultsLine(AT, [{ id: last.id, text: 'ok' }])]));
   return kit;
 }
 
@@ -25,7 +25,7 @@ function afterTool(kit: CliHarness, tool: FixtureTool, env: Readonly<Record<stri
     transcript_path: TRANSCRIPT,
     tool_name: tool.name,
     tool_use_id: tool.id,
-    tool_input: tool.path === undefined ? {} : { file_path: tool.path },
+    tool_input: { ...(tool.path === undefined ? {} : { file_path: tool.path }), ...(tool.url === undefined ? {} : { url: tool.url }) },
   });
   return kit.run(['hook', 'loop-nudge'], { stdin, env });
 }
@@ -49,6 +49,19 @@ describe('the lead boundary hooks', () => {
     assert.match((await afterTool(await teamWith(beside), beside, inTemp)).stdout.join(''), /the lead edited lead-tasks\.tsv itself/);
     const off = await teamWith(EDIT, { ...TEAM, leadBoundary: { enabled: false } });
     assert.deepEqual((await afterTool(off, EDIT, AS_LEAD)).stdout, []);
+  });
+
+  it('hand the lead one line at its first web lookup, naming the owner of the task its prompt asks about (T736)', async () => {
+    const fetch: FixtureTool = { id: 'last', name: 'WebFetch', url: 'https://vendor.example/terms' };
+    const kit = await teamWith(fetch, TEAM, 'The owner asks about T1: what do the vendor terms allow?');
+    await kit.run(['add', '--title', 'Vendor terms', '--description', 'what and why', '--priority', 'p2', '--owner', 'alpha', '--session', 'lead']);
+    assert.match(
+      (await afterTool(kit, fetch, AS_LEAD)).stdout.join(''),
+      /teamrig: the lead did research itself \(vendor\.example\)\. Send the question to alpha as a register task with a deadline and relay its answer \[leadBoundary\]\./,
+    );
+    assert.deepEqual((await afterTool(kit, fetch, { TEAMRIG_SESSION: 'alpha' })).stdout, []);
+    const unnamed = await teamWith(fetch);
+    assert.match((await afterTool(unnamed, fetch, AS_LEAD)).stdout.join(''), /research itself \(vendor\.example\)\. Send the question to the session that owns it/);
   });
 
   it('show the owner the lead own work at the turn end, on the lead tab only', async () => {

@@ -5,7 +5,7 @@ import type { KitConfig } from '../../config/types.ts';
 import { isRecord, stringField, type JsonRecord } from '../../core/guards.ts';
 import { claudeConfigDir, claudeTempDir, ENV } from '../../core/home.ts';
 import { resolveTeam, type TeamResolution } from '../../core/team.ts';
-import { OwnPaths } from '../../hooks/lead-boundary.ts';
+import { OwnPaths, TeamFolders, type LeadPaths } from '../../hooks/lead-boundary.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
 import { indexMarks } from '../../inbox/marks.ts';
 import { openKit, rosterOf, teamFolders, type Kit } from '../kit.ts';
@@ -113,11 +113,17 @@ export async function hookScopeOf(runtime: CliRuntime, payload: JsonRecord): Pro
 }
 
 /**
- * The lead's own paths in this team: its teamrig folder, Claude Code's memory folders, its session scratchpads
- * (notes and command input it keeps for itself, never work to hand off) and `leadBoundary.ownPaths`.
+ * Where the lead's calls land in this team. Its own paths: its teamrig folder, Claude Code's memory folders, its
+ * session scratchpads (notes and command input it keeps for itself, never work to hand off) and
+ * `leadBoundary.ownPaths`. In the teamrig folder, a search outside the config, the rules, the register's state and
+ * the places named for the lead is research (T736).
  */
-export function leadOwnPaths(runtime: CliRuntime, kit: Kit, config: KitConfig): OwnPaths {
+export function leadPathsOf(runtime: CliRuntime, kit: Kit, config: KitConfig): LeadPaths {
   const memory = join(claudeConfigDir(runtime.env, runtime.userHome), 'projects', '*', 'memory');
   const scratchpads = join(claudeTempDir(runtime.env, tmpdir()), 'claude', '*', '*', 'scratchpad');
-  return new OwnPaths([kit.paths.home, memory, scratchpads, ...config.leadBoundary.ownPaths], runtime.userHome);
+  const { home, config: configFile, teamRules, state } = kit.paths;
+  return {
+    own: new OwnPaths([home, memory, scratchpads, ...config.leadBoundary.ownPaths], runtime.userHome),
+    team: new TeamFolders({ home, own: [configFile, teamRules, state], lead: config.roles.lead, sessions: config.sessions }, runtime.userHome),
+  };
 }
