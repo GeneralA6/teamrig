@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { LockWaiter } from '../coordinator/host-lock.ts';
+import { KIT_VERSION } from '../core/version.ts';
 import { CliHarness, KIT, TEAM } from '../testing/cli-harness.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
@@ -26,9 +27,9 @@ function olderWaiterOf(arrivedAt: string, overrides: Partial<LockWaiter> = {}): 
   return { token: `w${Date.parse(arrivedAt)}`, pid: OTHER, session: 'alpha', purpose: 'heavy: build api', arrivedAt, expiresAt: '2030-01-08T11:00:10.000Z', ...overrides };
 }
 
-/** {@link olderWaiterOf} as this teamrig queues it: it stops once its ticket is withdrawn. */
+/** {@link olderWaiterOf} as this teamrig queues it: it names its kit and stops once its ticket is withdrawn. */
 function waiterOf(arrivedAt: string, overrides: Partial<LockWaiter> = {}): LockWaiter {
-  return { ...olderWaiterOf(arrivedAt, overrides), stopsOnWithdraw: true };
+  return { ...olderWaiterOf(arrivedAt, overrides), kit: KIT_VERSION, stopsOnWithdraw: true };
 }
 
 function nameOf(waiter: LockWaiter): string {
@@ -127,7 +128,7 @@ describe('teamrig withdraw', () => {
   it('stops a heavy step waiting for the lock, which then runs and records nothing', async () => {
     const kit = new CliHarness(TEAM);
     const steps = new FakeSteps(kit.clock);
-    const held = JSON.stringify({ token: 'other', pid: OTHER, session: 'bravo', purpose: 'heavy: build web', acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z' });
+    const held = JSON.stringify({ token: 'other', pid: OTHER, session: 'bravo', purpose: 'heavy: build web', kit: KIT_VERSION, acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z' });
     await kit.files.write(LOCK, held);
     let withdrew: readonly string[] = [];
     const sleep = async (ms: number): Promise<void> => {

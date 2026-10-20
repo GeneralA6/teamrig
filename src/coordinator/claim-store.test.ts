@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { SecretScanner } from '../core/secrets.ts';
+import { KIT_VERSION } from '../core/version.ts';
 import { TimeZone } from '../core/zone.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
@@ -92,7 +93,7 @@ describe('addClaim', () => {
   });
 
   it('is busy, writing nothing, while another writer holds the claims past the wait', async () => {
-    const other = JSON.stringify({ token: 'dc', pid: 9, session: 'claims', purpose: 'claims write', acquiredAt: '2030-01-08T09:59:50.000Z', expiresAt: '2030-01-08T10:00:50.000Z' });
+    const other = JSON.stringify({ token: 'dc', pid: 9, session: 'claims', purpose: 'claims write', kit: KIT_VERSION, acquiredAt: '2030-01-08T09:59:50.000Z', expiresAt: '2030-01-08T10:00:50.000Z' });
     const { files, clock, ports } = world({ [LOCK]: other });
     const outcome = await addClaim(ports, PLACES, RULES, REQUEST);
     assert.deepEqual(outcome, { kind: 'busy', reason: 'the claims are being written (claims (claims write) since 2030-01-08 09:59 UTC); try again' });
