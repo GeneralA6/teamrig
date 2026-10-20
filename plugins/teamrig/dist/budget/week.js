@@ -1,6 +1,6 @@
 import { formatUtcDay, formatUtcHour, MS_PER_DAY } from "../core/time.js";
 import { DailyProfile } from "./active-time.js";
-import { dailyAllowancePct, dayPacePct, readPace, resolveReset, weekWindow } from "./pace.js";
+import { dailyAllowancePct, dayPacePct, readPace, weekWindow } from "./pace.js";
 /**
  * Everyone's W from the hour of `from` to `now`: the whole days after `from`'s UTC day and, on that day,
  * its W less its hours before `from`'s hour, which counts whole. A store whose hours were lost (an older
@@ -22,14 +22,19 @@ export function wSince(states, from, now) {
     }
     return total;
 }
+/** The usage stores' W for the period's inference (budget/period.ts); undefined without `budget.weeklyLimitW`. */
+export function meteredOf(budget, states, now) {
+    const limit = budget.weeklyLimitW;
+    return limit === undefined ? undefined : { wPerPct: limit / 100, wFrom: (from) => wSince(states, from, now) };
+}
 function earliestDay(states) {
     const days = states.flatMap((state) => Object.keys(state.byDay)).sort();
     return days[0];
 }
 export function readWeek(input) {
-    const { budget, now, statusUse, states } = input;
-    const reset = resolveReset(now, statusUse?.resetsAt, budget.reset);
-    const window = reset === undefined ? undefined : weekWindow(reset, budget.paceEndHoursBeforeReset);
+    const { budget, now, statusUse, states, period } = input;
+    const reset = period?.end;
+    const window = period === undefined ? undefined : weekWindow(period.end, budget.paceEndHoursBeforeReset, period.start);
     const dayStart = now - (now % MS_PER_DAY);
     const todayFrom = window === undefined ? dayStart : Math.max(dayStart, window.start);
     const todayW = wSince(states, todayFrom, now);
@@ -51,6 +56,7 @@ export function readWeek(input) {
     return {
         reset,
         window,
+        periodKind: period?.kind,
         usedPct,
         statusAt: statusUse?.at,
         wPerPct,

@@ -2,9 +2,10 @@ import { join } from 'node:path';
 import { LiftLog } from "../budget/lift.js";
 import { OUTSIDE_ID } from "../budget/measure.js";
 import { addedSessionPct, liftedParts } from "../budget/parts.js";
+import { PeriodStore } from "../budget/period.js";
 import { readSnapshots, weekUseOf } from "../budget/snapshot.js";
 import { UsageStore } from "../budget/store.js";
-import { readWeek } from "../budget/week.js";
+import { meteredOf, readWeek } from "../budget/week.js";
 import { workWeights } from "../budget/work.js";
 import { snapshotDirOf } from "./commands/budget.js";
 /**
@@ -24,7 +25,9 @@ export async function readHirePct(runtime, paths, config, tasks, now) {
     }
     states.push((await new UsageStore(files, join(paths.usage, 'outside')).load(OUTSIDE_ID)).state);
     const snapshots = await readSnapshots(files, snapshotDirOf(budget, paths));
-    const week = readWeek({ budget, now, statusUse: weekUseOf(snapshots, now), states });
+    const statusUse = weekUseOf(snapshots, now);
+    const period = await new PeriodStore(files, paths.period).periodAt(budget, statusUse, now, meteredOf(budget, states, now));
+    const week = readWeek({ budget, now, statusUse, period, states });
     if (week.allowancePct === undefined) {
         return undefined;
     }

@@ -1,11 +1,5 @@
 import { WEEKDAYS } from "../config/types.js";
-import { MS_PER_DAY, MS_PER_HOUR } from "../core/time.js";
-/**
- * The pace math of the weekly budget, pure so every edge of the week is tested with plain numbers.
- * All instants are epoch milliseconds; all shares are percent of the week's limit.
- */
-const MS_PER_WEEK = 7 * MS_PER_DAY;
-const MS_PER_MINUTE = 60_000;
+import { MS_PER_DAY, MS_PER_HOUR, MS_PER_MINUTE, MS_PER_WEEK } from "../core/time.js";
 /** The first reset strictly after `now` on the config's weekday and UTC time. */
 export function nextConfiguredReset(now, reset) {
     const [hours = 0, minutes = 0] = reset.timeUtc.split(':').map(Number);
@@ -25,9 +19,8 @@ export function resolveReset(now, fromStatus, configured) {
     }
     return configured === undefined ? undefined : nextConfiguredReset(now, configured);
 }
-/** The week ending at `reset`, its pace line ending `paceEndHoursBeforeReset` hours before. */
-export function weekWindow(reset, paceEndHoursBeforeReset) {
-    const start = reset - MS_PER_WEEK;
+/** The span from `start` (by default the week before) to `reset`, its pace line ending `paceEndHoursBeforeReset` hours before the reset. */
+export function weekWindow(reset, paceEndHoursBeforeReset, start = reset - MS_PER_WEEK) {
     return { start, reset, paceEnd: Math.max(start, reset - paceEndHoursBeforeReset * MS_PER_HOUR) };
 }
 /**
