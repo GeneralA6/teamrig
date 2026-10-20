@@ -209,12 +209,16 @@ function tailLines(tail: string): string[] {
   return tail.split('\n').filter((line, index, lines) => line !== '' || index < lines.length - 1);
 }
 
-/** Prints a dry run's or a run's end and its output's tail; a refusal throws, and an unclean end fails. */
-function printOutcome(runtime: CliRuntime, head: string, result: ExecResult, next: string | undefined): ExitCode {
+/** The outcome of a dry run or a run that started; a refusal throws. */
+function startedOutcome(result: ExecResult): RunOutcome {
   if (!result.ok) {
     throw new RefusedError(result.refusal);
   }
-  const { outcome } = result;
+  return result.outcome;
+}
+
+/** Prints a dry run's or a run's end and its output's tail; an unclean end fails. */
+function printOutcome(runtime: CliRuntime, head: string, outcome: RunOutcome, next: string | undefined): ExitCode {
   const clean = outcome.exitCode === 0 && !outcome.timedOut;
   const then = clean && next !== undefined ? `; next: ${next}` : '';
   runtime.out.stdout(`${head}: ${endOf(outcome)}; output ${outcome.outputFile} (SHA-256 ${outcome.outputSha256})${then}`);
@@ -226,22 +230,61 @@ function printOutcome(runtime: CliRuntime, head: string, result: ExecResult, nex
 export async function dryRun(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const id = requestIdOf(onePositional(args, 'id'));
   const team = await openExec(runtime, 'write');
-  const result = await onSoundLog(() => executorOf(team, runtime).dryRun(id));
-  return printOutcome(runtime, `DRY RUN ${id}`, result, `the reviewer reads it (teamrig exec status ${id}), then approves, refuses or escalates it`);
+  const outcome = startedOutcome(await onSoundLog(() => executorOf(team, runtime).dryRun(id)));
+  return printOutcome(runtime, `DRY RUN ${id}`, outcome, `the reviewer reads it (teamrig exec status ${id}), then approves, refuses or escalates it`);
 }
 
 /** `exec run R<n>`: runs an approved request once (spec §8); the logged start burns the approval. */
 export async function run(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const id = requestIdOf(onePositional(args, 'id'));
   const team = await openExec(runtime, 'write');
-  const result = await onSoundLog(() => executorOf(team, runtime).run(id));
-  return printOutcome(runtime, `RAN ${id}`, result, undefined);
+  const outcome = startedOutcome(await onSoundLog(() => executorOf(team, runtime).run(id)));
+  const code = printOutcome(runtime, `RAN ${id}`, outcome, undefined);
+  await announce(runtime, team, id, `RAN ${id}: ${endOf(outcome)}; output SHA-256 ${outcome.outputSha256}`);
+  return code;
 }
 
-function reviewLine(review: Review, owner: string): string {
+/**
+ * Posts a review or a run to the security channel (spec §10), where security reconciles it against its own reviews,
+ * so the line also names the team and the request's kind, target, task and requester. Only when exec.webhookEnv is
+ * set; a line that cannot be posted warns, as the event stands logged and the command keeps its exit code.
+ */
+async function announce(runtime: CliRuntime, team: ExecTeam, id: string, head: string): Promise<void> {
+  const variable = team.config.exec.webhookEnv;
+  if (variable === undefined) {
+    return;
+  }
+  const url = runtime.env[variable];
+  if (url === undefined || url === '') {
+    runtime.out.stderr(`WARN exec.webhookEnv names ${variable}, which is not set: nothing posted`);
+    return;
+  }
+  try {
+    const problem = await postProblem(runtime, team, url, id, head);
+    if (problem !== undefined) {
+      runtime.out.stderr(`WARN ${id} is logged, but not posted: ${problem}`);
+    }
+  } catch (error) {
+    runtime.out.stderr(`WARN ${id} is logged, but not posted: ${errorMessage(error)}`);
+  }
+}
+
+/** Posts `head` with its request's summary to `url`; undefined once posted, else why not. */
+async function postProblem(runtime: CliRuntime, team: ExecTeam, url: string, id: string, head: string): Promise<string | undefined> {
+  const record = (await stateOf(team)).records.get(id);
+  if (record === undefined) {
+    return `no request ${id} in the exec audit log`;
+  }
+  const { kind, target, task, requester } = record.request;
+  const content = `teamrig exec ${team.kit.paths.team}: ${head} [${kind} on ${target} for ${task}, asked by ${requester}]`;
+  return team.scanner.refusal('the post', content) ?? (await runtime.exec.webhook.post(url, content));
+}
+
+/** A review in words, without its next step: the line the security channel gets. */
+function reviewHead(review: Review, owner: string): string {
   switch (review.decision) {
     case 'approved':
-      return `APPROVED ${review.id} by ${review.reviewer} until ${review.expiresAt ?? 'unset'}; next: teamrig exec run ${review.id}`;
+      return `APPROVED ${review.id} by ${review.reviewer} until ${review.expiresAt ?? 'unset'}`;
     case 'refused':
       return `DECLINED ${review.id} by ${review.reviewer}: ${review.note}`;
     case 'escalated':
@@ -262,7 +305,10 @@ async function review(args: ParsedArgs, runtime: CliRuntime, decision: ReviewDec
   const owner = team.config.register.ownerSource;
   const kit: ReviewKit = { reviewers: { owner, security: team.config.roles.securityReviewer }, signer: new UnsignedReviews(), nonces: RANDOM_NONCES };
   const line = await appendOrRefuse(team.audit, (state) => decideReview(state, ask, runtime.clock.now(), kit));
-  runtime.out.stdout(reviewLine(appendedEvent(line, 'review').review, owner));
+  const settled = appendedEvent(line, 'review').review;
+  const head = reviewHead(settled, owner);
+  runtime.out.stdout(settled.decision === 'approved' ? `${head}; next: teamrig exec run ${id}` : head);
+  await announce(runtime, team, id, head);
   return EXIT.ok;
 }
 
