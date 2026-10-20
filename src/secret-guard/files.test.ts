@@ -37,6 +37,16 @@ describe('fileFindings', () => {
     assert.deepEqual(printed('Get-Content *', 'powershell'), ['the content of *']);
   });
 
+  it('reads the script or pattern a printer takes first as no file, unless an option gives it', () => {
+    assert.deepEqual(printed("grep -E \"^diff --git\" w.patch | sed 's/^diff --git a\\///; s/ b\\/.*//' | tr '\\n' ' '"), []);
+    assert.deepEqual(printed("grep -n .env README.md; rg '\\.env' src; awk '/.env/' a.txt; jq '.env' package.json; sed -n '/.env/p' a.txt"), []);
+    assert.deepEqual(printed("Select-String '.*' README.md", 'powershell'), []);
+    assert.deepEqual(
+      printed("sed -n 1,5p .env; grep -e x .env; grep x .env -e y; grep -A 3 x .env; awk -v a=1 '{print}' .env; jq -r . .env; grep -- -x .env"),
+      Array.from({ length: 7 }, () => 'the content of .env'),
+    );
+  });
+
   it("reads a process's environ file as the environment", () => {
     assert.deepEqual(printed('cat /proc/self/environ; tr "\\0" "\\n" < /proc/1/environ'), ['the whole environment', 'the whole environment']);
   });
