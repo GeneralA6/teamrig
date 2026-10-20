@@ -291,7 +291,7 @@ describe('checkTasks: READY', () => {
       testTask({ id: 'T4', status: 'verifying', proof: 'the run', ...seen }),
     ];
     assert.deepEqual(ready(tasks), ['T1']);
-    const flag = checkTasks(tasks, NOW, null, CONFIG).find((candidate) => candidate.kind === 'READY');
+    const flag = checkTasks(tasks, NOW, TimeZone.UTC, null, CONFIG).find((candidate) => candidate.kind === 'READY');
     assert.equal(flag?.detail, 'every wait of its proof cleared; verify it now');
   });
 });
