@@ -1,5 +1,6 @@
-import { execFile, spawn } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { endOf } from "../test-run/shell.js";
+import { nodeTreeKill } from "./tree-kill.js";
 /** The exit code recorded for a step killed at its time limit, as `timeout(1)` reports one. */
 export const TIMED_OUT_EXIT = 124;
 /** The exit code recorded for a step killed by its `stop`, as a shell reports a command a closed terminal hung up (128 + SIGHUP). */
@@ -18,25 +19,9 @@ export function exitCodeOf(end) {
     }
 }
 /**
- * On Windows `taskkill /T` ends the tree: killing only the shell would leave the command it started running. On
- * POSIX the step runs as its own process group, and the group is killed.
+ * The real runner: Node's `spawn` in the platform's shell, with inherited stdio; its time limit or its `stop` kills
+ * the tree. A killed step is reported once the kill is done, so the next holder never shares the host with it.
  */
-export function nodeTreeKill(platform) {
-    if (platform === 'win32') {
-        return (pid) => {
-            execFile('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true }, () => undefined);
-        };
-    }
-    return (pid) => {
-        try {
-            process.kill(-pid, 'SIGKILL');
-        }
-        catch {
-            // The group ended on its own between the timer and the kill.
-        }
-    };
-}
-/** The real runner: Node's `spawn` in the platform's shell, with inherited stdio; its time limit or its `stop` kills the tree. */
 export function nodeStepRunner(platform, kill = nodeTreeKill(platform)) {
     return {
         run: (request) => new Promise((resolve, reject) => {
@@ -53,10 +38,7 @@ export function nodeStepRunner(platform, kill = nodeTreeKill(platform)) {
                 if (killed !== undefined) {
                     return;
                 }
-                killed = why;
-                if (child.pid !== undefined) {
-                    kill(child.pid);
-                }
+                killed = { why, done: child.pid === undefined ? Promise.resolve() : kill(child.pid) };
             };
             const timer = setTimeout(() => killAs('timedOut'), request.timeoutMs);
             const onStop = () => killAs('stopped');
@@ -76,7 +58,13 @@ export function nodeStepRunner(platform, kill = nodeTreeKill(platform)) {
             });
             child.once('close', (code, signal) => {
                 settled();
-                resolve(killed === undefined ? endOf(code, signal) : { kind: killed });
+                if (killed === undefined) {
+                    resolve(endOf(code, signal));
+                }
+                else {
+                    const { why, done } = killed;
+                    void done.then(() => resolve({ kind: why }));
+                }
             });
         }),
     };
