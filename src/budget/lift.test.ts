@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { DEFAULT_BUDGET } from '../config/defaults.ts';
 import { NewerDataError } from '../core/jsonl.ts';
 import { TimeZone } from '../core/zone.ts';
+import { fieldPaths } from '../testing/field-paths.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { activeLift, decideLift, LIFT_FORMAT, LiftLog, liftText, parseLift, type Lift, type LiftContext, type LiftDecision, type LiftRequest } from './lift.ts';
@@ -154,5 +155,14 @@ describe('LiftLog', () => {
     const newer = new LiftLog(new MemoryFiles({ [PATH]: `{"v":${LIFT_FORMAT + 1},"session":"alpha"}\n` }), PATH);
     assert.deepEqual(await newer.read(), { lifts: [], skipped: 1 });
     await assert.rejects(newer.append(lift()), NewerDataError);
+  });
+
+  it('writes the pinned fields of its format: a field added to a lift raises LIFT_FORMAT', async () => {
+    const written: Readonly<Record<number, readonly string[]>> = {
+      2: ['at', 'by', 'endsAt', 'partPct', 'quietHoursExempt', 'reason', 'reserve', 'session', 'stopPct', 'v'],
+    };
+    const files = new MemoryFiles();
+    await new LiftLog(files, PATH).append(lift());
+    assert.deepEqual(fieldPaths(JSON.parse(files.get(PATH) ?? '')), written[LIFT_FORMAT]);
   });
 });

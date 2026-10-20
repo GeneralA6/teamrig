@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { NewerDataError } from '../core/jsonl.ts';
+import { fieldPaths } from '../testing/field-paths.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { emptyWarnState, type WarnState } from './warn.ts';
 import { formatWarnState, parseWarnState, WARN_FORMAT, WarnStore } from './warn-store.ts';
@@ -54,6 +55,14 @@ describe('WarnStore', () => {
 });
 
 describe('parseWarnState', () => {
+  it('writes the pinned fields of its format: a field added to the file raises WARN_FORMAT', () => {
+    // Format 1 gained `held` without a raise, so an older teamrig rewrites a file without it; the next field raises the format.
+    const written: Readonly<Record<number, readonly string[]>> = {
+      1: ['ahead', 'burstAt', 'day', 'held', 'leadTold', 'level', 'liftAt', 'modelBurstAt', 'modelLevel', 'quietFrom', 'surplusShown', 'v'],
+    };
+    assert.deepEqual(fieldPaths(JSON.parse(formatWarnState(STATE))), written[WARN_FORMAT]);
+  });
+
   it('round-trips, leaving the optional times out when unset', () => {
     assert.deepEqual(parseWarnState(formatWarnState(STATE)), STATE);
     const empty = emptyWarnState('2026-10-15');
