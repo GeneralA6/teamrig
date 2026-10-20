@@ -27,6 +27,7 @@ const EXPECTED = {
   'skills scorecard': 'read',
   'rules keep': 'write',
   'rules forget': 'write',
+  'rules clear': 'write',
   start: 'write',
   'meeting start': 'write',
   'meeting agenda': 'write',
