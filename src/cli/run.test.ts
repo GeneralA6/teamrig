@@ -609,6 +609,23 @@ describe('runCli: hook push-guard', () => {
     }
   });
 
+  it("under pushToProtected lead, lets the lead push and another session only once the lead approved its waiting task (T684)", async () => {
+    const kit = new CliHarness({ ...TEAM, pushGuard: { pushToProtected: 'lead' } });
+    const push = (env: Record<string, string> = {}) => kit.run(['hook', 'push-guard'], { stdin: bash('git push origin main'), env });
+    // A cleared push prints only a note, no permission decision, so the normal permission flow decides.
+    assert.match((await push({ TEAMRIG_SESSION: 'lead' })).stdout[0] ?? '', /^\{"systemMessage":"teamrig let this push .* the lead \(lead\) pushes unasked/);
+    assert.match(reasonOf(await push()) ?? '', /needs the lead's approval, not the human's: this tab is not bound to a session of the team/);
+    assert.match(reasonOf(await push({ TEAMRIG_SESSION: 'alpha' })) ?? '', /: lead has approved no waiting task of alpha's\. Ask on the register/);
+
+    await kit.run(['add', '--title', 'Ship the CLI', '--description', 'what and why', '--priority', 'p1', '--session', 'alpha']);
+    await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'approval:lead', '--note', 'branch t1', '--session', 'alpha']);
+    assert.equal(decisionOf(await push({ TEAMRIG_SESSION: 'alpha' })), 'deny', 'asked, not yet approved');
+    const approved = await kit.run(['approve', 'T1', '--note', 'tests green', '--session', 'lead']);
+    assert.equal(approved.code, EXIT.ok, approved.stderr.join('\n'));
+    assert.match((await push({ TEAMRIG_SESSION: 'alpha' })).stdout[0] ?? '', /^\{"systemMessage":"teamrig let this push .* lead approved T1; set its next status once pushed/);
+    assert.equal(decisionOf(await push({ TEAMRIG_SESSION: 'bravo' })), 'deny', "alpha's approval is not bravo's");
+  });
+
   it('refuses a commit that skips the hooks, or asks or lets it run as the team config says, refusing on a broken config', async () => {
     const commit = bash('git commit --no-verify -m fix');
     assert.equal(decisionOf(await new CliHarness().run(['hook', 'push-guard'], { stdin: commit })), 'deny');

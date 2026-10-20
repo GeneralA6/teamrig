@@ -61,11 +61,14 @@ function pushRule(pushGuard: PushGuardConfig, hookAsks: HookAsks): string {
   if (branches === '') {
     return 'No branch is protected, so the push guard stops no push [pushGuard.protectedBranches].';
   }
-  return pushGuard.pushToProtected === 'allow'
-    ? `Pushes to ${branches} go unasked; force-pushing or deleting them is refused ${keys}.`
-    : hookAsks === 'refuse'
-      ? `Every push to ${branches} is refused [pushGuard, prompts.hookAsks].`
-      : `Pushes to ${branches} ask the human; force-pushing or deleting them is refused ${keys}.`;
+  // Under `lead` the guard's refusal says how to ask the lead (src/hooks/push-guard.ts), so the rule stays short.
+  return pushGuard.pushToProtected === 'lead'
+    ? `Pushes to ${branches} ask the lead; force-pushing or deleting them is refused ${keys}.`
+    : pushGuard.pushToProtected === 'allow'
+      ? `Pushes to ${branches} go unasked; force-pushing or deleting them is refused ${keys}.`
+      : hookAsks === 'refuse'
+        ? `Every push to ${branches} is refused [pushGuard, prompts.hookAsks].`
+        : `Pushes to ${branches} ask the human; force-pushing or deleting them is refused ${keys}.`;
 }
 
 /**

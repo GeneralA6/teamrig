@@ -83,8 +83,7 @@ describe('renderLeadRules', () => {
     const lines = renderLeadRules(testConfig({ register: { ownerSource: 'boss' } }), COMMAND);
     assert.match(lines, /^As the lead, also:\n- Bring the owner only verified results,/);
     assert.match(lines, /`teamrig add --owner <id> --source boss` \[register\.ownerSource\]/);
-    assert.match(lines, /`teamrig plan` and run `teamrig check` at each checkpoint, never from memory\.\n/);
-    assert.match(lines, /\n- Clear each HIRE flag by its action: a SCALE-OUT gives its slice to a hire .*; a RETIRE-DUE retires\.$/);
+    assert.match(lines, /`teamrig plan` and run `teamrig check` at each checkpoint, never from memory\.\n/);    assert.match(lines, /\n- Clear each HIRE flag by its action: a SCALE-OUT gives its slice to a hire .*; a RETIRE-DUE retires\.$/);
   });
 });
 
@@ -179,6 +178,14 @@ describe('renderCorePack', () => {
     );
     assert.match(pack({ protectedBranches: [], pushToProtected: 'allow' }), new RegExp(String.raw`^15\. No branch is protected, so the push guard stops no push \[pushGuard\.protectedBranches\]\.${routed}$`, 'm'));
   });
+
+  it('says a push to a protected branch needs the lead under pushToProtected lead, whatever hookAsks says (T684)', () => {
+    for (const hookAsks of ['ask', 'refuse']) {
+      const pack = renderCorePack(testConfig({ pushGuard: { pushToProtected: 'lead' }, prompts: { hookAsks } }), COMMAND, 'win32', RULES_CLOCK);
+      assert.match(pack, /^15\. Pushes to main, master ask the lead; force-pushing or deleting them is refused \[pushGuard\]\. /m, hookAsks);
+    }
+  });
+
 
   it('tells the session to record a refused route for the owner, not report it to the lead, when hook asks are off', () => {
     const pack = (pushGuard: Record<string, unknown>) => renderCorePack(testConfig({ pushGuard, prompts: { hookAsks: 'refuse' } }), COMMAND, 'win32', RULES_CLOCK);

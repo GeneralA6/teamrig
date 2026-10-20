@@ -34,7 +34,19 @@ export interface PushGuardEnv {
   readonly skipHooks: SkipHooks;
   /** Whether a push the guard would ask about raises the prompt or is refused with what to do instead. */
   readonly hookAsks: HookAsks;
+  /** Under `pushToProtected: lead`, what lets this session's normal push to a protected branch through; read only for such a push. */
+  readonly clearance: () => Promise<PushClearance>;
 }
+
+/**
+ * What lets a normal push to a protected branch through under `pushToProtected: lead` (T684): the lead's own push,
+ * since the owner gave the lead the push approvals, or a waiting task of the session's that the lead approved on the
+ * register (`teamrig approve`). `none` says why neither holds.
+ */
+export type PushClearance =
+  | { readonly kind: 'lead'; readonly lead: string }
+  | { readonly kind: 'approved'; readonly lead: string; readonly task: string }
+  | { readonly kind: 'none'; readonly lead: string; readonly why: string };
 
 /**
  * The branches to guard. A missing or unreadable config keeps the defaults, so a broken
@@ -84,16 +96,42 @@ function largeCommitsIn(updates: readonly ProtectedUpdate[], env: PushGuardEnv):
 }
 
 /** Ends the question about a normal push to a protected branch, naming the switch that stops it. */
-export const PUSH_TO_PROTECTED_HINT = "To stop asking about normal pushes, set pushGuard.pushToProtected to allow in the team's config.json.";
+export const PUSH_TO_PROTECTED_HINT =
+  "To stop asking about normal pushes, set pushGuard.pushToProtected in the team's config.json to allow, or to lead to have the lead approve them.";
 
 /** The note shown when `pushToProtected: allow` lets a normal push to a protected branch through. */
 export function allowedPushNote(protectedBranches: readonly string[]): string {
   return `teamrig did not ask about this push to a protected branch (${protectedBranches.join(', ')}): pushGuard.pushToProtected is allow.`;
 }
 
+/** The note shown when `pushToProtected: lead` lets a normal push to a protected branch through. */
+export function clearedPushNote(clearance: Exclude<PushClearance, { readonly kind: 'none' }>, protectedBranches: readonly string[]): string {
+  const why =
+    clearance.kind === 'lead'
+      ? `the lead (${clearance.lead}) pushes unasked`
+      : `${clearance.lead} approved ${clearance.task}; set its next status once pushed, as the approval covers this push only`;
+  return `teamrig let this push to a protected branch (${protectedBranches.join(', ')}) through: ${why} [pushGuard.pushToProtected: lead].`;
+}
+
+/** Why `pushToProtected: lead` refuses a normal push to a protected branch, and how to ask the lead for it, never the human. */
+export function unclearedPushReason(clearance: Extract<PushClearance, { readonly kind: 'none' }>, protectedBranches: readonly string[]): string {
+  return (
+    `This push to a protected branch (${protectedBranches.join(', ')}) needs the lead's approval, not the human's: ${clearance.why}. ` +
+    `Ask on the register: \`teamrig set <task> --status waiting --waits approval:${clearance.lead} --note "<branch, what it lands, its tests>"\`, ` +
+    `take your next task, and push once ${clearance.lead} approves it (\`teamrig approve\`). [pushGuard.pushToProtected]`
+  );
+}
+
+/** Under `pushToProtected: lead`: the note when the push is cleared, else a refusal saying how to ask, whatever `hookAsks` says. */
+function leadPushOutput(clearance: PushClearance, listing: string, env: PushGuardEnv): string {
+  return clearance.kind === 'none'
+    ? holdBackOutput('deny', `${unclearedPushReason(clearance, env.protectedBranches)}${listing}`, env.hookAsks)
+    : JSON.stringify({ systemMessage: `${clearedPushNote(clearance, env.protectedBranches)}${listing}` });
+}
+
 /**
  * Why the guard stops the line. Only the question about a normal push names the switch: a leased push and a line the
- * guard cannot read still ask under `allow`, since either may rewrite or delete the branch.
+ * guard cannot read still ask under `allow` and `lead`, since either may rewrite or delete the branch.
  */
 function stopReason(verdict: PushVerdict, decision: Exclude<PushDecision, 'allow'>, protectedBranches: readonly string[]): string {
   if (verdict.doubt !== undefined) {
@@ -106,7 +144,8 @@ function stopReason(verdict: PushVerdict, decision: Exclude<PushDecision, 'allow
  * The PreToolUse hook's stdout for one Bash or PowerShell call: a permission decision when the
  * command pushes to a protected branch, else nothing, so the normal permission flow decides.
  * Under `pushToProtected: allow` a normal push to a protected branch gets a note (`systemMessage`)
- * instead of a question, and the normal permission flow still decides. Under the commits gate, an
+ * instead of a question, and the normal permission flow still decides; under `lead` it gets that note only when
+ * cleared (`PushClearance`), else a refusal saying how to ask the lead. Under the commits gate, an
  * asked or allowed push also lists the large commits it sends (`warn`) or is refused for them
  * (`refuse`). A command the guard cannot read with confidence is asked about, with a reason that
  * says what it could not read. A line that runs git without the repository's hooks (see `hookSkips`) is refused or
@@ -146,7 +185,9 @@ export async function pushGuardOutput(payload: unknown, env: PushGuardEnv): Prom
     return holdBackOutput('deny', `This push to a protected branch (${env.protectedBranches.join(', ')}) is refused: ${describeLargeCommits(large, env.commits)}`, env.hookAsks);
   }
   if (verdict.decision === 'allow') {
-    return JSON.stringify({ systemMessage: `${allowedPushNote(env.protectedBranches)}${listing}` });
+    return env.pushToProtected === 'lead'
+      ? leadPushOutput(await env.clearance(), listing, env)
+      : JSON.stringify({ systemMessage: `${allowedPushNote(env.protectedBranches)}${listing}` });
   }
   const asked = verdict.decision === 'ask' && verdict.protectedPush === 'normal' && env.hookAsks === 'ask';
   const hint = asked ? ` ${PUSH_TO_PROTECTED_HINT}` : '';
