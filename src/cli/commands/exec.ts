@@ -255,6 +255,10 @@ async function review(args: ParsedArgs, runtime: CliRuntime, decision: ReviewDec
   const team = await openExec(runtime, 'write');
   const reviewer = await actorOf(args, runtime, team);
   const ask = { id, decision, reviewer, note: args.flags.get('note') ?? '' };
+  const leak = team.scanner.refusal('the note', ask.note);
+  if (leak !== undefined) {
+    throw new RefusedError(leak);
+  }
   const owner = team.config.register.ownerSource;
   const kit: ReviewKit = { reviewers: { owner, security: team.config.roles.securityReviewer }, signer: new UnsignedReviews(), nonces: RANDOM_NONCES };
   const line = await appendOrRefuse(team.audit, (state) => decideReview(state, ask, runtime.clock.now(), kit));
