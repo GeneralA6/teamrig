@@ -30,12 +30,13 @@ they all stay silent, and only `hook restore-track` still records the session ([
 The injected context holds:
 
 1. **The core rules**: numbered rules starting `# Team rules (teamrig core)`, with the team's own values in
-   them and the config key behind each value in `[brackets]`. A protected-branch or forbidden-frontmatter list
-   longer than 120 characters prints its first items and "and N more"; the push guard and `check` still use the
-   whole list. `teamrig rules --session <id>` prints the same text. The lead alone gets three more lines after
-   them, starting `As the lead, also:`: bring the owner only verified results, decisions, investigated questions
-   and incidents; enter each owner order it relays as a task in the same turn; plan from `plan` and `check`, never
-   from memory. No other session pays for them.
+   them and the config key behind each value in `[brackets]`. A protected-branch list longer than 120 characters
+   prints its first items and "and N more"; the push guard still uses the whole list. `teamrig rules --session <id>`
+   prints the same text. The lead alone gets its own lines after them, starting `As the lead, also:`: bring the
+   owner only verified results, decisions, investigated questions and incidents; enter each owner order it relays
+   as a task in the same turn; plan from `plan` and `check`, never from memory; answer each approval wait on it
+   with `approve` after the `approvals` skill's checklist; fix a team rule proven wrong, while a loosening goes to
+   the owner; clear each HIRE flag by its action. No other session pays for them.
 2. **Who you are**. A known session, found from its last `inbox read` or its tab title rather than
    `$TEAMRIG_SESSION`:
 
