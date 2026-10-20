@@ -230,7 +230,7 @@ async function tellLeadOfWaits(runtime: CliRuntime, team: Team, by: string, verd
     return;
   }
   const timing = added.some((reason) => reason.who !== lead) ? await ownerWaitTiming(runtime, team, verdict.value) : undefined;
-  const text = `${personWaitNotice(task, added, lead)}${timing === undefined ? '' : ` | ${timingText(timing)}`}`;
+  const text = `${personWaitNotice(task, added, lead)}${timing === undefined ? '' : ` | ${timingText(timing, team.zone)}`}`;
   await tellLine(runtime, team, by, lead, text, `${lead} was not told that ${task.id} waits on it`);
   if (timing?.kind === 'at-once') {
     runtime.out.stderr(`NOTE ${task.id} is due before the owner's next batch: message ${team.roster.nameOf(lead) ?? lead} too, as an inbox line wakes no one`);
@@ -240,7 +240,7 @@ async function tellLeadOfWaits(runtime: CliRuntime, team: Team, by: string, verd
 /** When the owner hears of a task's new wait on them, judged on the register after the write. */
 async function ownerWaitTiming(runtime: CliRuntime, team: Team, { task, state }: WriteResult): Promise<WaitTiming> {
   const now = runtime.clock.now();
-  const { batch, tree } = await teamDecisions(runtime.files, team.paths, team.config, state.tasks, now);
+  const { batch, tree } = await teamDecisions(runtime.files, team.paths, team.config, state.tasks, now, team.zone);
   return waitTiming(batch, task, tree, now);
 }
 
@@ -621,8 +621,8 @@ export async function checkReport(args: ParsedArgs, runtime: CliRuntime): Promis
   const scaleOut = scaleOutFlags({ ...input, tree: new TaskTree(own.snapshot.state.tasks, now, zone), spare, hirePct });
   const hires = [...scaleOut.flags, ...hireFlags(input, scaleOut.busy)];
   const scope = week === null ? 'no week plan tagged yet, so the week checks are skipped' : `week ${week}`;
-  const { batch } = await teamDecisions(runtime.files, own.paths, own.config, own.snapshot.state.tasks, now.getTime());
-  return { sections, scope, skills, skillsDir: own.paths.skills, hires, decisions: { lead: own.config.roles.lead, batch } };
+  const { batch } = await teamDecisions(runtime.files, own.paths, own.config, own.snapshot.state.tasks, now.getTime(), zone);
+  return { sections, scope, skills, skillsDir: own.paths.skills, hires, decisions: { lead: own.config.roles.lead, batch, zone } };
 }
 
 /** `check [--tree] [--all]`: the report in the short form (src/cli/reports.ts), or with `--all` every flag in full. */

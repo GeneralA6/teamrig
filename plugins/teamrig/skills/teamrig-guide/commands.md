@@ -1214,9 +1214,10 @@ the next is. A batch is due when:
 
 The lead's `start` and `check` print one `DECISIONS batch due (<why>)` line while a batch is due, and nothing
 otherwise; other sessions get no line. A new owner wait's inbox line to the lead ends with when the owner hears of
-it: `AT ONCE, due <date> before the next batch`, `BATCH DUE: <why>` or `asked in the next batch <date>`. On an
-`AT ONCE` one, the session setting it is told to message the lead too, as an inbox line wakes no one. Anyone may
-run it; it changes nothing.
+it: `AT ONCE, due <date> before the next batch`, `BATCH DUE: <why>` or `asked in the next batch <date>`. Its times,
+and a typed due date, are on the team's clock (`timeZone`); `batchTimesUtc` stays in UTC. On an `AT ONCE` one, the
+session setting it is told to message the lead too, as an inbox line wakes no one. Anyone may run it; it changes
+nothing.
 
 Flags:
 
