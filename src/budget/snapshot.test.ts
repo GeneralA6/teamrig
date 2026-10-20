@@ -219,6 +219,15 @@ describe('weekUseOf', () => {
     assert.deepEqual(use, { usedPct: 57, resetsAt, at: Date.parse('2026-10-15T11:00:00.000Z') });
   });
 
+  it('dates a reading by when its session began to show it, so a redraw that rewrote its file after now keeps it', () => {
+    const redrawn = reading('2026-10-15T12:00:51.000Z', 58, '2026-10-15T11:35:00.000Z', '2026-10-15T11:34:55.000Z');
+    const older = reading('2026-10-15T12:00:00.000Z', 57, '2026-10-15T11:00:00.000Z');
+    const expected = { usedPct: 58, resetsAt, at: Date.parse('2026-10-15T11:35:00.000Z') };
+    assert.deepEqual(weekUseOf([redrawn, older], NOW), expected);
+    const takenAfter = reading('2026-10-15T12:00:52.000Z', 59, '2026-10-15T12:00:51.000Z', '2026-10-15T12:00:45.000Z');
+    assert.deepEqual(weekUseOf([redrawn, older, takenAfter], NOW), expected, 'a reading its session began to show after now is not counted');
+  });
+
   it('prefers a later week, and skips readings from the future, past weeks and sessions without one', () => {
     const lastWeek = resetsAt - 7 * 86_400_000;
     const use = weekUseOf(
