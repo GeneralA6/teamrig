@@ -46,7 +46,7 @@ function skillFlag(skill: string): SkillFlag {
 }
 
 function report(overrides: Partial<CheckReport>): CheckReport {
-  return { sections: [], scope: 'week 2030-01-07', skills: [], skillsDir: 'skills-dir', hires: [], ...overrides };
+  return { sections: [], scope: 'week 2030-01-07', skills: [], skillsDir: 'skills-dir', hires: [], decisions: undefined, ...overrides };
 }
 
 /** `count` tasks numbered from T1, each with a long title, cycling through three owners. */

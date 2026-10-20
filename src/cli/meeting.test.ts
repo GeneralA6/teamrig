@@ -41,7 +41,7 @@ describe('runCli: the daily meeting', () => {
     assert.match(stdout[late + 1] ?? '', /^ {2}T2 open, p2, owner bravo, due 01-07 \| Ship the docs/);
     assert.ok(stdout.includes('DONE 0 done or dropped since Mon 01-07 10:00 UTC'), stdout.join('\n'));
     assert.ok(stdout.some((line) => line.endsWith('alpha: the build is green')), stdout.join('\n'));
-    assert.ok(stdout.some((line) => line.endsWith(`alpha: T1 waits on the owner's decision: ${TEST_CARD.question}`)), stdout.join('\n'));
+    assert.ok(stdout.some((line) => line.endsWith(`alpha: T1 waits on the owner's decision: ${TEST_CARD.question} | asked in the next batch at the daily meeting`)), stdout.join('\n'));
     assert.ok(stdout.some((line) => line.startsWith('READ lead: 2 new lines')), stdout.join('\n'));
     assert.ok(stdout.some((line) => line.startsWith('Week: ')), stdout.join('\n'));
     assert.equal(stdout.at(-1), 'END teamrig meeting end --session lead: tells every session, with the decisions recorded on its tasks');
