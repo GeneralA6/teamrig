@@ -90,12 +90,26 @@ export type ClaimOutcome = typeof CLAIM_TAKEN | typeof CLAIM_HELD | typeof CLAIM
 /** The statuses of an agent whose loop has ended (Claude Code's `AgentStatus`); every other one is live. */
 const ENDED_AGENT_STATUSES: ReadonlySet<string> = new Set(['completed', 'failed', 'killed']);
 
+/** What the hand reads of one of the session's agents (Claude Code's `AgentInfo`): enough to name it in a hold's reason. */
+export interface ListedAgent {
+  /** The agent type it was spawned as (`code-reader`, `Explore`, ...), `teammate` for a teammate. */
+  readonly type: string;
+  readonly status: string;
+  /** The Agent call's few words on its task. */
+  readonly description: string;
+}
+
 /**
- * How many of the session's agents (`$.agent.list()`) are live: pending, running, waiting, idle or any status
+ * The session's agents (`$.agent.list()`) that are live: pending, running, waiting, idle or any status
  * this file does not know, so a /clear never cuts off a helper or a teammate that may yet act.
  */
-export function liveAgentsOf(agents: readonly { readonly status: string }[]): number {
-  return agents.filter((agent) => !ENDED_AGENT_STATUSES.has(agent.status)).length;
+export function liveAgentsOf(agents: readonly ListedAgent[]): readonly ListedAgent[] {
+  return agents.filter((agent) => !ENDED_AGENT_STATUSES.has(agent.status));
+}
+
+/** A live agent as a hold's reason names it: its type, its status and its task, so a stale one shows which it is. */
+function agentLineOf(agent: ListedAgent): string {
+  return `${agent.type} ${agent.status} "${agent.description}"`;
 }
 
 /** A Claude Code session id as it may appear in a file name: letters, digits and dashes only. */
@@ -168,8 +182,8 @@ export interface ClearHandHost {
   read(path: string): Promise<string>;
   /** Runs the teamrig CLI with these arguments and this standard input. */
   cli(args: readonly string[], stdin: string): Promise<CliRun>;
-  /** How many of the session's agents (subagents, teammates) are live (`liveAgentsOf`); rejects when Claude Code would not tell. */
-  liveAgents(): Promise<number>;
+  /** The session's agents (subagents, teammates) that are live (`liveAgentsOf`); rejects when Claude Code would not tell. */
+  liveAgents(): Promise<readonly ListedAgent[]>;
   /** The text in the tab's prompt box: the person's unsent draft, which a /clear must not land under; rejects when Claude Code would not tell. */
   draft(): Promise<string>;
   /** Runs /clear in the tab, as if the person typed it. */
@@ -355,7 +369,10 @@ export class ClearHand {
   private async helperHold(): Promise<string | undefined> {
     try {
       const live = await this.host.liveAgents();
-      return live === 0 ? undefined : `${live} ${live === 1 ? 'agent' : 'agents'} of this session still live`;
+      if (live.length === 0) {
+        return undefined;
+      }
+      return `${live.length} ${live.length === 1 ? 'agent' : 'agents'} of this session still live: ${live.map(agentLineOf).join('; ')}`;
     } catch (error) {
       return `Claude Code would not list this session's agents: ${messageOf(error)}`;
     }

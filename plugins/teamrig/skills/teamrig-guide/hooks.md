@@ -549,7 +549,8 @@ for the session's agents (`$.agent.list()`). While one is live (not completed, f
 counts), or Claude Code will not list them, it runs `teamrig hook clear-claim --hold --why <reason>` and no
 `/clear`: the restart ends nothing, waits for quiet and asks again, and gives up an hour after it started, naming
 the last hold's reason in its log row and your inbox line (`it stayed busy for 60 minutes (its tab last held the
-/clear: 1 agent of this session still live)`). Else it runs
+/clear: 1 agent of this session still live: code-reader idle "Map the market-data pages")`: each live agent's type,
+status and task, so one Claude Code still lists after it handed its report back shows which it is). Else it runs
 `teamrig hook clear-claim` and, on `taken`, runs `/clear` the way you would. The `/clear` then runs the
 `SessionStart` hooks above, so `hook refresh-wake` starts your first turn at your handover. A Claude Code that does
 not load mods leaves the ask unclaimed, and the restart ends and restarts the session instead.
