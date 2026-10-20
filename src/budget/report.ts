@@ -2,7 +2,7 @@ import type { TimeZone } from '../core/zone.ts';
 import { ruleLabel, ruleNumberOf } from '../rules/keys.ts';
 import type { InBurst } from './burst.ts';
 import { budgetMarkOf, burstText, MORE_BURST } from './burst-lines.ts';
-import { formatCount, formatPct, formatW, noRoomText } from './format.ts';
+import { formatCount, formatPct, formatW, isBudgetDayEnd, noRoomText } from './format.ts';
 import { liftText, type Lift } from './lift.ts';
 import { TURN_TRIGGERS } from './line.ts';
 import { hasRoom } from './pace.ts';
@@ -105,22 +105,75 @@ function isPast(w: number, budgetPct: number | undefined, week: WeekReading): bo
   return used !== undefined && budgetPct !== undefined && used > budgetPct;
 }
 
+/** The rows of the sessions shown, and the lines that name the ones left out. */
+interface SessionRows<Row> {
+  readonly rows: Row[];
+  readonly notes: string[];
+}
+
 /**
  * The rows of the sessions with use, busiest first: the first seven, then a count of the rest; with
  * `--all` every one, then the idle ones by name.
  */
-function sessionRows(sessions: readonly SessionToday[], all: boolean, when: string, row: (session: SessionToday) => string): string[] {
+function sessionRows<Row>(sessions: readonly SessionToday[], all: boolean, when: string, row: (session: SessionToday) => Row): SessionRows<Row> {
   const used = [...sessions].filter((session) => session.w > 0).sort((a, b) => b.w - a.w);
   const shown = all ? used : used.slice(0, SESSION_ROWS_SHOWN);
-  const lines = shown.map(row);
+  const notes: string[] = [];
   if (shown.length < used.length) {
-    lines.push(`+${used.length - shown.length} more sessions with use ${when} (--all lists them).`);
+    notes.push(`+${used.length - shown.length} more sessions with use ${when} (--all lists them).`);
   }
   const idle = sessions.filter((session) => session.w === 0).map((session) => session.name);
   if (all && idle.length > 0) {
-    lines.push(`No use ${when}: ${idle.join(', ')}.`);
+    notes.push(`No use ${when}: ${idle.join(', ')}.`);
   }
-  return lines;
+  return { rows: shown.map(row), notes };
+}
+
+/** A table's indent under its heading. */
+const TABLE_INDENT = '  ';
+
+function indented(lines: readonly string[]): string[] {
+  return lines.map((line) => `${TABLE_INDENT}${line}`);
+}
+
+/**
+ * Today's use as a table: the team, then each session, with its use and daily budget in % of the week, its
+ * mark (lifted, burst), its W and calls; W and calls alone while the week's W is unknown.
+ */
+function todayTable(report: TodayReport, teamW: number, teamCalls: number): string[] {
+  const { week, sessions, all } = report;
+  const row = (who: string, w: number, calls: number, budgetPct: number | undefined, mark: string): string[] => {
+    const use = [formatW(w), formatCount(calls)];
+    const used = pctOf(w, week);
+    return used === undefined ? [who, ...use] : [who, formatPct(used), budgetPct === undefined ? '-' : formatPct(budgetPct), mark.trim(), ...use];
+  };
+  const { rows, notes } = sessionRows(sessions, all, 'today', (session) => row(session.name, session.w, session.calls, session.budgetPct, budgetMarkOf(session.lift, session.inBurst !== undefined)));
+  const team = row('the team', teamW, teamCalls, week.allowancePct, '');
+  if (week.wPerPct === undefined) {
+    return ['Today (UTC day):', ...indented([...aligned([['session', 'W', 'calls'], team, ...rows]), ...notes])];
+  }
+  const table = aligned([['session', 'used', 'budget', '', 'W', 'calls'], team, ...rows], ['left', 'right', 'right', 'left', 'right', 'right']);
+  return ['Today (UTC day), used and daily budget in % of the week:', ...indented([...table, ...notes])];
+}
+
+/**
+ * The lifts in force as one block: the terms every lift shares once in its heading, then a row each with its
+ * part of the team's daily budget, its end time and its stop; a lift that lasts the day ends at its UTC midnight.
+ */
+function liftLines(sessions: readonly SessionToday[], zone: TimeZone): string[] {
+  const lifts = sessions.flatMap((session) => (session.lift === undefined ? [] : [{ name: session.name, lift: session.lift }]));
+  if (lifts.length === 0) {
+    return [];
+  }
+  const rows = lifts.map(({ name, lift }) => [name, `${formatPct(lift.partPct)}${lift.reserve ? ' (reserve)' : ''}`, zone.clock(new Date(lift.endsAt)), formatPct(lift.stopPct)]);
+  const table = aligned([['session', 'part', 'until', 'stop at'], ...rows]);
+  const dayEnd = lifts.find(({ lift }) => isBudgetDayEnd(lift.endsAt));
+  const notes = dayEnd === undefined ? [] : [`${zone.clock(new Date(dayEnd.lift.endsAt))} is the end of the budget day.`];
+  return [
+    "Lifts by the lead, today only: a part of the team's daily budget until its time or its stop % of the week, " +
+      'whichever comes first; quiet hours do not apply to them.',
+    ...indented([...table, ...notes]),
+  ];
 }
 
 /** "N Claude Code sessions (titled a, b, +2 more)": the first five titles, or every one with `--all`. */
@@ -168,16 +221,7 @@ export function todayLines(report: TodayReport): string[] {
   const { week, sessions, outside, all, zone } = report;
   const teamW = sessions.reduce((sum, session) => sum + session.w, 0);
   const teamCalls = sessions.reduce((sum, session) => sum + session.calls, 0);
-  const lines = [
-    weekLine(week, zone),
-    useLine('The team', teamW, teamCalls, week.allowancePct, '', week),
-    ...sessionRows(sessions, all, 'today', (session) => useLine(session.name, session.w, session.calls, session.budgetPct, budgetMarkOf(session.lift, session.inBurst !== undefined), week)),
-  ];
-  for (const session of sessions) {
-    if (session.lift !== undefined) {
-      lines.push(`Budget: the lead lifted ${liftText(session.lift, session.name, zone)}`);
-    }
-  }
+  const lines = [weekLine(week, zone), ...todayTable(report, teamW, teamCalls), ...liftLines(sessions, zone)];
   const inBurst = sessions.filter((session) => session.inBurst !== undefined);
   const first = inBurst[0]?.inBurst;
   if (first !== undefined) {
@@ -225,11 +269,8 @@ export function recountLines(day: string, report: Pick<TodayReport, 'sessions' |
   const { sessions, outside, all, week } = report;
   const teamW = sessions.reduce((sum, session) => sum + session.w, 0);
   const teamCalls = sessions.reduce((sum, session) => sum + session.calls, 0);
-  const lines = [
-    `${day} (UTC), recounted from the transcripts; nothing was written.`,
-    useLine('The team', teamW, teamCalls, undefined, '', week, 'that day'),
-    ...sessionRows(sessions, all, 'that day', (session) => useLine(session.name, session.w, session.calls, undefined, '', week, 'that day')),
-  ];
+  const { rows, notes } = sessionRows(sessions, all, 'that day', (session) => useLine(session.name, session.w, session.calls, undefined, '', week, 'that day'));
+  const lines = [`${day} (UTC), recounted from the transcripts; nothing was written.`, useLine('The team', teamW, teamCalls, undefined, '', week, 'that day'), ...rows, ...notes];
   if (outside.sessions > 0 || outside.w > 0) {
     lines.push(`Not on the team: ${outsideSessionsText(outside, all)}, ${useText(outside.w, outside.calls)}.`);
   }
@@ -369,13 +410,23 @@ function dayTable(header: string, rows: readonly DayRow[], days: readonly string
   return [header, ...aligned(table), ...notes];
 }
 
-/** A table's rows as lines: the first column padded on the right, the others on the left. */
-function aligned(table: readonly (readonly string[])[]): string[] {
+/** How a table column lines up: text on the left, numbers on the right. */
+type Align = 'left' | 'right';
+
+/**
+ * A table's rows as lines, each column lined up by its `align`: by default the first on the left, the others on
+ * the right. A column empty in every row, its head too, is left out.
+ */
+function aligned(table: readonly (readonly string[])[], align: readonly Align[] = []): string[] {
   const columns = Math.max(...table.map((row) => row.length));
   const widths = Array.from({ length: columns }, (_, index) => Math.max(...table.map((row) => (row[index] ?? '').length)));
+  const alignOf = (index: number): Align => align[index] ?? (index === 0 ? 'left' : 'right');
   return table.map((row) =>
     row
-      .map((text, index) => (index === 0 ? text.padEnd(widths[0] ?? 0) : text.padStart(widths[index] ?? 0)))
+      .flatMap((text, index) => {
+        const width = widths[index] ?? 0;
+        return width === 0 ? [] : [alignOf(index) === 'left' ? text.padEnd(width) : text.padStart(width)];
+      })
       .join('  ')
       .trimEnd(),
   );

@@ -78,6 +78,10 @@ const LIFT: Lift = {
   by: 'lead',
   at: Date.parse('2026-10-15T09:00:00Z'),
 };
+const LIFT_HEADING =
+  "Lifts by the lead, today only: a part of the team's daily budget until its time or its stop % of the week, whichever comes first; quiet hours do not apply to them.";
+/** bravo's lift, which lasts the budget day, as `todayLines` gives it on UTC. */
+const LIFT_BLOCK = [LIFT_HEADING, '  session   part      until  stop at', '  bravo    40.0%  00:00 UTC    97.0%', '  00:00 UTC is the end of the budget day.'];
 
 function session(id: string, w: number, calls: number, budgetPct: number | undefined = 10.25 / 3, lift: Lift | undefined = undefined): SessionToday {
   return { id, name: id === 'lead' ? 'team-lead' : id, w, calls, budgetPct, lift, inBurst: undefined };
@@ -115,10 +119,12 @@ describe('todayLines', () => {
   it('gives the week, the team, each session with use, lifts, outside use and who is past budget', () => {
     assert.deepEqual(todayLines({ ...REPORT, behind: ['bravo'] }), [
       'Week: 57.0% used at 11:00 UTC (status line); the pace line is at 20.9%: 36.1 points ahead. Resets Wed 10-21 01:00 UTC.',
-      'The team used 5.0% of the week today; its daily budget is 10.3%. 37.50M W in 1,310 calls.',
-      'alpha used 4.0% of the week today; its daily budget is 3.4%. 30.00M W in 1,000 calls.',
-      'team-lead used 1.0% of the week today; its daily budget is 3.4%. 7.50M W in 310 calls.',
-      "Budget: the lead lifted bravo to 40.0% of the team's daily budget today until 00:00 UTC (the end of the budget day) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.",
+      'Today (UTC day), used and daily budget in % of the week:',
+      '  session    used  budget       W  calls',
+      '  the team   5.0%   10.3%  37.50M  1,310',
+      '  alpha      4.0%    3.4%  30.00M  1,000',
+      '  team-lead  1.0%    3.4%   7.50M    310',
+      ...LIFT_BLOCK,
       'Not on the team: 2 Claude Code sessions (titled release checks, Docs), 1.20M W today. ' +
         'A tab counts for a session once it runs teamrig inbox read --session <id> or is named after it.',
       'Still reading: bravo; run teamrig budget again for the rest.',
@@ -147,7 +153,8 @@ describe('todayLines', () => {
 
   it('marks the budgets a burst raised and names the burst once, with its sessions', () => {
     const lines = todayLines({ week: WEEK, sessions: [session('lead', 0, 0), inBurst('alpha', 15_000_000), inBurst('bravo', 0)], outside: NOBODY_OUTSIDE, behind: [], all: true, zone: TimeZone.UTC });
-    assert.equal(lines[2], 'alpha used 2.0% of the week today; its daily budget is 9.5% (burst). 15.00M W in 100 calls.');
+    assert.match(lines[4] ?? '', /^ {2}alpha +2\.0% +9\.5% +\(burst\) +15\.00M +100$/);
+    assert.equal(lines[5], '  No use today: team-lead, bravo.');
     const burstLines = lines.filter((line) => line.startsWith('Budget: the lead started'));
     assert.equal(burstLines.length, 1, lines.join('\n'));
     assert.match(burstLines[0] ?? '', /: alpha, bravo each have a daily budget of at least 9\.5%, up to 3 helpers at once\. More: teamrig burst$/);
@@ -157,38 +164,46 @@ describe('todayLines', () => {
   it('marks a lifted budget and names the idle sessions with --all', () => {
     const lifted = [session('lead', 0, 0), session('alpha', 15_000_000, 500, 2, { ...LIFT, session: 'alpha' })];
     const lines = todayLines({ week: WEEK, sessions: lifted, outside: { ...NOBODY_OUTSIDE, sessions: 1 }, behind: [], all: true, zone: TimeZone.UTC });
-    assert.deepEqual(lines.slice(2, 5), [
-      'alpha used 2.0% of the week today; its daily budget is 2.0% (lifted). 15.00M W in 500 calls.',
-      'No use today: team-lead.',
-      "Budget: the lead lifted alpha to 40.0% of the team's daily budget today until 00:00 UTC (the end of the budget day) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.",
-    ]);
-    assert.equal(lines[5], 'Not on the team: 1 Claude Code session, 0 W today. A tab counts for a session once it runs teamrig inbox read --session <id> or is named after it.');
+    assert.match(lines[4] ?? '', /^ {2}alpha +2\.0% +2\.0% +\(lifted\) +15\.00M +500$/);
+    assert.deepEqual(lines.slice(5, 7), ['  No use today: team-lead.', LIFT_HEADING]);
+    assert.match(lines[8] ?? '', /^ {2}alpha +40\.0% +00:00 UTC +97\.0%$/);
+    assert.equal(lines[10], 'Not on the team: 1 Claude Code session, 0 W today. A tab counts for a session once it runs teamrig inbox read --session <id> or is named after it.');
   });
 
   it('lists the busiest seven sessions and counts the rest, or all of them and every outside title with --all', () => {
     const many = Array.from({ length: 9 }, (_, index) => session(`s${index}`, (index + 1) * 1_000_000, 10));
     const titles = ['a', 'b', 'c', 'd', 'e', 'f'];
     const short = todayLines({ ...REPORT, sessions: many, outside: { ...OUTSIDE, sessions: 6, titles } });
-    assert.deepEqual(short.slice(2, 4), [
-      's8 used 1.2% of the week today; its daily budget is 3.4%. 9.00M W in 10 calls.',
-      's7 used 1.1% of the week today; its daily budget is 3.4%. 8.00M W in 10 calls.',
-    ]);
-    assert.equal(short[9], '+2 more sessions with use today (--all lists them).');
-    assert.match(short[10] ?? '', /\(titled a, b, c, d, e, \+1 more\)/);
+    const rows = (lines: readonly string[]): string[] => lines.filter((line) => /^ {2}s\d /.test(line));
+    assert.equal(rows(short).length, 7);
+    assert.match(short[4] ?? '', /^ {2}s8 +1\.2% +3\.4% +9\.00M +10$/);
+    assert.match(short[5] ?? '', /^ {2}s7 +1\.1% +3\.4% +8\.00M +10$/);
+    assert.equal(short[11], '  +2 more sessions with use today (--all lists them).');
+    assert.match(short[12] ?? '', /\(titled a, b, c, d, e, \+1 more\)/);
     const all = todayLines({ ...REPORT, sessions: many, outside: { ...OUTSIDE, sessions: 6, titles }, all: true });
-    assert.equal(all.filter((line) => /^s\d used/.test(line)).length, 9);
+    assert.equal(rows(all).length, 9);
     assert.match(all.find((line) => line.startsWith('Not on the team')) ?? '', /\(titled a, b, c, d, e, f\)/);
   });
 
   it('shows plain W when the week is unknown', () => {
     assert.deepEqual(todayLines({ week: UNKNOWN, sessions: SESSIONS, outside: NOBODY_OUTSIDE, behind: [], all: false, zone: TimeZone.UTC }), [
       'Week: its use is unknown: no status line reading (run teamrig statusline install) and no budget.weeklyLimitW.',
-      'The team used 37.50M W in 1,310 calls today.',
-      'alpha used 30.00M W in 1,000 calls today.',
-      'team-lead used 7.50M W in 310 calls today.',
-      "Budget: the lead lifted bravo to 40.0% of the team's daily budget today until 00:00 UTC (the end of the budget day) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.",
+      'Today (UTC day):',
+      '  session         W  calls',
+      '  the team   37.50M  1,310',
+      '  alpha      30.00M  1,000',
+      '  team-lead   7.50M    310',
+      ...LIFT_BLOCK,
       W_EXPLAINED,
     ]);
+  });
+
+  it("marks a reserve lift in its part, and names the budget day's end only for a lift that lasts it", () => {
+    const reserve: Lift = { ...LIFT, reserve: true, endsAt: Date.parse('2026-10-15T23:45:00Z') };
+    const lines = todayLines({ ...REPORT, sessions: [session('alpha', 1_000, 1), session('bravo', 0, 0, 2, reserve)] });
+    const block = lines.slice(lines.indexOf(LIFT_HEADING), lines.indexOf(LIFT_HEADING) + 3);
+    assert.deepEqual(block, [LIFT_HEADING, '  session             part      until  stop at', '  bravo    40.0% (reserve)  23:45 UTC    97.0%']);
+    assert.ok(!lines.some((line) => line.includes('end of the budget day')), lines.join('\n'));
   });
 
   it('says how to get daily budgets when only the use is known, and marks a metered week and the team past budget', () => {
