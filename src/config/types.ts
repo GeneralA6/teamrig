@@ -481,7 +481,7 @@ export interface HeavyConfig {
   readonly lockTtlMinutes: number;
   /** A heavy step still running after this many minutes is killed with every process it started. */
   readonly maxRunMinutes: number;
-  /** A heavy step waits this many minutes at most for the host lock, then is refused. */
+  /** A heavy step is refused once its line for the host lock has not moved for this many minutes: no step ahead of it, holding the lock or sharing the host ended meanwhile. */
   readonly waitMinutes: number;
   /**
    * While a heavy step runs, its process tree's memory and the host's free memory are sampled this often, for its
@@ -498,7 +498,7 @@ export interface HeavyConfig {
 export interface CoordinatorWaitConfig {
   /** A waiting step looks again after this many seconds; the first in line for the host lock every 2 at most. */
   readonly pollSeconds: number;
-  /** A deploy step (`teamrig integrate`) waits this many minutes at most for quiet claims and the host lock, then is refused. */
+  /** A deploy step (`teamrig integrate`, `roll`) waits this many minutes at most for quiet claims and the host lock, then is refused; a wait in a line for the lock that keeps moving goes on past them. */
   readonly maxMinutes: number;
 }
 

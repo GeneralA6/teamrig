@@ -70,13 +70,13 @@ async function lineOf(files: MemoryFiles): Promise<string[]> {
   return files.list(QUEUE);
 }
 
-/** The host lock over \`files\`, as process \`pid\` sees it, with this process and \`OTHER\` running. */
-function lockOver(files: Files, clock: FakeClock, pid: number = ME): HostLock {
+/** The host lock over \`files\`, as process \`pid\` sees it, with this process and \`OTHER\` running; \`sleep\` default the clock's. */
+function lockOver(files: Files, clock: FakeClock, pid: number = ME, sleep: Sleep = clock.sleep): HostLock {
   let ids = 0;
   return new HostLock(PATH, TTL_MS, {
     files,
     clock,
-    sleep: clock.sleep,
+    sleep,
     pid,
     alive: (running) => running === ME || running === OTHER,
     newId: () => {
@@ -124,6 +124,25 @@ class Interleaved extends MemoryFiles {
       this.other = undefined;
       await other(this);
     }
+  }
+}
+
+/** Files in memory where the first removal of `path` comes while its waiter renews it: it finds no file, and the file is back at once. */
+class Renewing extends MemoryFiles {
+  private readonly path: string;
+  private renewing = true;
+
+  constructor(initial: Readonly<Record<string, string>>, path: string) {
+    super(initial);
+    this.path = path;
+  }
+
+  override async remove(path: string): Promise<boolean> {
+    if (path === this.path && this.renewing) {
+      this.renewing = false;
+      return false;
+    }
+    return super.remove(path);
   }
 }
 
@@ -369,6 +388,78 @@ describe('HostLock.acquire in arrival order', () => {
     assert.equal(holderText(queued, JERUSALEM), 'bravo (heavy: lint), first in line since 2030-01-08 11:59 IST');
     assert.equal(waitText(queued, 2, TimeZone.UTC), 'bravo (heavy: lint), first in line since 2030-01-08 09:59 UTC; 2 ahead in line');
     assert.equal(waitText({ kind: 'unknown' }, 0, TimeZone.UTC), 'a writer that has not finished writing');
+  });
+});
+
+describe('HostLock.acquire in a moving line', () => {
+  it('waits on while its line moves, giving up once it has not moved for its whole wait, its ticket lasting as long', async () => {
+    const [early, text] = ticket(waiterOf('2030-01-08T09:58:00.000Z', { token: 'early' }));
+    const expiries: string[] = [];
+    let sleeps = 0;
+    const { clock, files, lock } = world({ [PATH]: heldBy(), [early]: text }, (time, store) => async (ms) => {
+      const [mine] = (await store.list(QUEUE)).filter((name) => name.endsWith('-t1.json'));
+      const expiresAt = String(JSON.parse(store.get(`${QUEUE}/${mine}`) ?? '{}').expiresAt);
+      if (expiries.at(-1) !== expiresAt) {
+        expiries.push(expiresAt);
+      }
+      await time.sleep(ms);
+      sleeps += 1;
+      if (sleeps === 1) {
+        await store.remove(early);
+      }
+    });
+    const taking = await lock.acquire('alpha', 'heavy: test', 60_000, 30_000, () => undefined);
+    assert.equal(taking.kind === 'busy' && taking.holder.kind === 'held' ? taking.holder.info.session : '', 'po');
+    assert.equal(clock.sleeps.reduce((total, ms) => total + ms, 0), 90_000, 'the line moved at 10:00:30, so its wait ran out a minute later');
+    assert.deepEqual(expiries, [new Date(Date.parse('2030-01-08T10:01:00.000Z') + TICKET_GRACE_MS).toISOString(), new Date(Date.parse('2030-01-08T10:01:30.000Z') + TICKET_GRACE_MS).toISOString()]);
+    assert.deepEqual(await lineOf(files), []);
+  });
+
+  for (const [label, initial, change] of [
+    ['a new holder of the lock', { [PATH]: heldBy() }, (store: MemoryFiles) => store.write(PATH, heldBy({ token: 'third', session: 'bravo' }))],
+    [
+      'a small step that ended while it held the lock for them',
+      Object.fromEntries([shareFile(shareOf()), shareFile(shareOf({ token: 'second' }))]),
+      async (store: MemoryFiles) => {
+        await store.remove(shareFile(shareOf())[0]);
+      },
+    ],
+  ] as const) {
+    it(`counts ${label} as the line moving`, async () => {
+      let sleeps = 0;
+      const { clock, lock } = world(initial, (time, store) => async (ms) => {
+        await time.sleep(ms);
+        sleeps += 1;
+        if (sleeps === 1) {
+          await change(store);
+        }
+      });
+      const taking = await lock.acquire('alpha', 'heavy: build', 5_000, 30_000, () => undefined);
+      assert.deepEqual([taking.kind, clock.sleeps], ['busy', [2_000, 2_000, 2_000, 1_000]], 'moved at 10:00:02, its wait ran out 5 s later');
+    });
+  }
+
+  it('stops, never writing its ticket back, when the ticket was withdrawn as the line moved', async () => {
+    const clock = new FakeClock('2030-01-08T10:00:00Z');
+    let reads = 0;
+    let done: Withdrawal[] = [];
+    const files = new Interleaved({ [PATH]: heldBy() }, 'read', (path) => path === PATH && ++reads === 2, async (store) => {
+      done = await lockOver(store, clock, 77).withdraw('alpha', () => true);
+    });
+    const sleep: Sleep = async (ms) => {
+      await clock.sleep(ms);
+      await files.write(PATH, heldBy({ token: 'third', session: 'bravo' }));
+    };
+    const taking = await lockOver(files, clock, ME, sleep).acquire('alpha', 'heavy: test', 60_000, 30_000, () => undefined);
+    assert.deepEqual([taking, done.map((withdrawal) => withdrawal.kind), await lineOf(files)], [{ kind: 'withdrawn' }, ['withdrawn'], []]);
+  });
+
+  it('withdraws a ticket its waiter was renewing once it is back in line', async () => {
+    const waiter = waiterOf('2030-01-08T09:59:00.000Z', { session: 'alpha', stopsOnWithdraw: true });
+    const [path, text] = ticket(waiter);
+    const files = new Renewing({ [path]: text }, path);
+    assert.deepEqual(await lockOver(files, new FakeClock('2030-01-08T10:00:00Z'), 77).withdraw('alpha', () => true), [{ kind: 'withdrawn', waiter }]);
+    assert.deepEqual(await lineOf(files), []);
   });
 });
 
