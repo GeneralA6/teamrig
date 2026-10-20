@@ -109,7 +109,7 @@ export async function pushGuard(args: ParsedArgs, runtime: CliRuntime): Promise<
     return EXIT.ok;
   }
   const { load } = guard;
-  const output = pushGuardOutput(payload, {
+  const output = await pushGuardOutput(payload, {
     cwd: runtime.cwd,
     home: runtime.userHome,
     repo: runtime.git,

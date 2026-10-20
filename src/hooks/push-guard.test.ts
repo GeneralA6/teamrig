@@ -71,99 +71,99 @@ function noteOf(output: string): string {
 }
 
 describe('pushGuardOutput', () => {
-  it('asks before a push to a protected branch, naming the switch, and denies a force-push without it', () => {
-    const asked = hookOutput(pushGuardOutput(payload('git push origin main'), env()));
+  it('asks before a push to a protected branch, naming the switch, and denies a force-push without it', async () => {
+    const asked = hookOutput(await pushGuardOutput(payload('git push origin main'), env()));
     assert.equal(asked.decision, 'ask');
     assert.match(asked.reason, /^This push updates a protected branch \(main\)/);
     assert.ok(asked.reason.endsWith(` ${PUSH_TO_PROTECTED_HINT}`), asked.reason);
     assert.equal(PUSH_TO_PROTECTED_HINT, "To stop asking about normal pushes, set pushGuard.pushToProtected to allow in the team's config.json.");
-    const denied = pushGuardOutput(payload('git push -f origin main'), env());
+    const denied = await pushGuardOutput(payload('git push -f origin main'), env());
     assert.equal(decisionOf(denied), 'deny');
     assert.doesNotMatch(denied, /pushToProtected/);
   });
 
-  it('emits nothing for a branch push, a heredoc note or a payload without a command', () => {
-    assert.equal(pushGuardOutput(payload('git push origin feature'), env()), '');
-    assert.equal(pushGuardOutput(payload("cat > n.md <<'EOF'\ngit push origin main\nEOF"), env()), '');
-    assert.equal(pushGuardOutput({ tool_name: 'Read', tool_input: { file_path: 'x' } }, env()), '');
-    assert.equal(pushGuardOutput('not an object', env()), '');
+  it('emits nothing for a branch push, a heredoc note or a payload without a command', async () => {
+    assert.equal(await pushGuardOutput(payload('git push origin feature'), env()), '');
+    assert.equal(await pushGuardOutput(payload("cat > n.md <<'EOF'\ngit push origin main\nEOF"), env()), '');
+    assert.equal(await pushGuardOutput({ tool_name: 'Read', tool_input: { file_path: 'x' } }, env()), '');
+    assert.equal(await pushGuardOutput('not an object', env()), '');
   });
 
-  it('reads PowerShell commands with the PowerShell escape rules', () => {
+  it('reads PowerShell commands with the PowerShell escape rules', async () => {
     const command = "git commit -m @'\ngit push origin main\n'@";
-    assert.equal(pushGuardOutput(payload(command, { tool_name: 'PowerShell' }), env()), '');
-    assert.equal(decisionOf(pushGuardOutput(payload('git push origin main; Write-Host ok', { tool_name: 'PowerShell' }), env())), 'ask');
+    assert.equal(await pushGuardOutput(payload(command, { tool_name: 'PowerShell' }), env()), '');
+    assert.equal(decisionOf(await pushGuardOutput(payload('git push origin main; Write-Host ok', { tool_name: 'PowerShell' }), env())), 'ask');
   });
 
-  it("resolves a bare push in the payload's folder, else the hook's own", () => {
+  it("resolves a bare push in the payload's folder, else the hook's own", async () => {
     const withCwd = env('main');
-    pushGuardOutput(payload('git push'), withCwd);
+    await pushGuardOutput(payload('git push'), withCwd);
     assert.equal(withCwd.repo.branch.mock.calls[0]?.arguments[0], resolve('/work/app'));
 
     const without = env('main');
-    pushGuardOutput({ tool_name: 'Bash', tool_input: { command: 'git -C sub push' } }, without);
+    await pushGuardOutput({ tool_name: 'Bash', tool_input: { command: 'git -C sub push' } }, without);
     assert.equal(without.repo.branch.mock.calls[0]?.arguments[0], resolve('/fallback', 'sub'));
   });
 
-  it('asks, saying what it cannot read, about a push it cannot read with confidence', () => {
+  it('asks, saying what it cannot read, about a push it cannot read with confidence', async () => {
     for (const command of ['git -C "$REPO" push', 'cd "$REPO" && git push', "bash -c 'git push origin feature", 'git push $ARGS']) {
-      const output = pushGuardOutput(payload(command), env());
+      const output = await pushGuardOutput(payload(command), env());
       assert.equal(decisionOf(output), 'ask', command);
       assert.match(output, /The guard cannot tell whether this command pushes to a protected branch \(main\): .+\. Confirm, or write the push out plainly\./, command);
       assert.doesNotMatch(output, /pushToProtected/, command);
     }
   });
 
-  it('emits nothing when no branch is protected, even for a mirror, a force-push or a line it cannot read', () => {
+  it('emits nothing when no branch is protected, even for a mirror, a force-push or a line it cannot read', async () => {
     for (const command of ['git push --mirror origin', 'git push -f origin main', 'git push $ARGS', 'git push origin main']) {
-      assert.equal(pushGuardOutput(payload(command), { ...env(), protectedBranches: [] }), '', command);
+      assert.equal(await pushGuardOutput(payload(command), { ...env(), protectedBranches: [] }), '', command);
     }
   });
 
-  it('runs a PowerShell call operator and a cmd /c line through the same rules', () => {
-    assert.equal(decisionOf(pushGuardOutput(payload("& 'C:\\Program Files\\Git\\cmd\\git.exe' push origin main", { tool_name: 'PowerShell' }), env())), 'ask');
-    assert.equal(decisionOf(pushGuardOutput(payload('cmd /c "git push -f origin main"', { tool_name: 'PowerShell' }), env())), 'deny');
+  it('runs a PowerShell call operator and a cmd /c line through the same rules', async () => {
+    assert.equal(decisionOf(await pushGuardOutput(payload("& 'C:\\Program Files\\Git\\cmd\\git.exe' push origin main", { tool_name: 'PowerShell' }), env())), 'ask');
+    assert.equal(decisionOf(await pushGuardOutput(payload('cmd /c "git push -f origin main"', { tool_name: 'PowerShell' }), env())), 'deny');
   });
 });
 
 describe('pushGuardOutput: pushToProtected', () => {
   const allow = (): PushGuardEnv => ({ ...env(), pushToProtected: 'allow' });
 
-  it('allow: lets a normal push to a protected branch through with a one-line note', () => {
+  it('allow: lets a normal push to a protected branch through with a one-line note', async () => {
     for (const command of ['git push origin main', 'git push origin HEAD:main', 'git push --all origin', 'git push origin :']) {
-      assert.equal(noteOf(pushGuardOutput(payload(command), allow())), 'teamrig did not ask about this push to a protected branch (main): pushGuard.pushToProtected is allow.', command);
+      assert.equal(noteOf(await pushGuardOutput(payload(command), allow())), 'teamrig did not ask about this push to a protected branch (main): pushGuard.pushToProtected is allow.', command);
     }
     assert.equal(allowedPushNote(['main', 'master']), 'teamrig did not ask about this push to a protected branch (main, master): pushGuard.pushToProtected is allow.');
-    assert.equal(pushGuardOutput(payload('git push origin feature'), allow()), '');
+    assert.equal(await pushGuardOutput(payload('git push origin feature'), allow()), '');
   });
 
-  it('allow: still refuses a force-push, mirror or delete, without naming the switch', () => {
+  it('allow: still refuses a force-push, mirror or delete, without naming the switch', async () => {
     for (const command of ['git push -f origin main', 'git push --mirror origin', 'git push origin --delete main', 'git push origin :main']) {
-      const output = pushGuardOutput(payload(command), allow());
+      const output = await pushGuardOutput(payload(command), allow());
       assert.equal(decisionOf(output), 'deny', command);
       assert.doesNotMatch(output, /pushToProtected/, command);
     }
   });
 
-  it('allow: still asks about a line it cannot read, without naming the switch', () => {
+  it('allow: still asks about a line it cannot read, without naming the switch', async () => {
     for (const command of ['git push $ARGS', 'git push origin main; git push $ARGS']) {
-      const { decision, reason } = hookOutput(pushGuardOutput(payload(command), allow()));
+      const { decision, reason } = hookOutput(await pushGuardOutput(payload(command), allow()));
       assert.equal(decision, 'ask', command);
       assert.match(reason, /^The guard cannot tell whether this command pushes to a protected branch \(main\)/, command);
       assert.doesNotMatch(reason, /pushToProtected/, command);
     }
   });
 
-  it('asks about a --force-with-lease push under either choice, without naming the switch', () => {
+  it('asks about a --force-with-lease push under either choice, without naming the switch', async () => {
     for (const choice of CHOICES) {
-      const { decision, reason } = hookOutput(pushGuardOutput(payload('git push --force-with-lease origin main'), { ...env(), pushToProtected: choice }));
+      const { decision, reason } = hookOutput(await pushGuardOutput(payload('git push --force-with-lease origin main'), { ...env(), pushToProtected: choice }));
       assert.deepEqual([decision, reason], ['ask', leasedReason(['main'])], choice);
     }
   });
 });
 
 describe('pushToProtectedOf', () => {
-  it("uses the team's choice when the config loads, else asks", () => {
+  it("uses the team's choice when the config loads, else asks", async () => {
     const config = testConfig({ pushGuard: { pushToProtected: 'allow' } });
     assert.equal(pushToProtectedOf({ status: 'loaded', path: 'c.json', config, issues: [] }), 'allow');
     assert.equal(pushToProtectedOf({ status: 'loaded', path: 'c.json', config: testConfig(), issues: [] }), 'ask');
@@ -174,7 +174,7 @@ describe('pushToProtectedOf', () => {
 });
 
 describe('protectedBranchesOf', () => {
-  it("uses the team's branches when the config loads, else the defaults", () => {
+  it("uses the team's branches when the config loads, else the defaults", async () => {
     const config = testConfig({ pushGuard: { protectedBranches: ['trunk'] } });
     assert.deepEqual(protectedBranchesOf({ status: 'loaded', path: 'c.json', config, issues: [] }), ['trunk']);
     assert.deepEqual(protectedBranchesOf({ status: 'missing', path: 'c.json' }), ['main', 'master']);
@@ -192,9 +192,9 @@ describe('pushGuardOutput: the commits gate', () => {
     return { env: { ...env(), commits: { ...DEFAULT_COMMITS, gate }, commitLog: { between } } satisfies PushGuardEnv, between };
   }
 
-  it('warn: asks, and lists each large commit once across the updates, before naming the switch', () => {
+  it('warn: asks, and lists each large commit once across the updates, before naming the switch', async () => {
     const { env: warn, between } = gated('warn');
-    const { decision, reason } = hookOutput(pushGuardOutput(payload('git push origin HEAD:main feature:main'), warn));
+    const { decision, reason } = hookOutput(await pushGuardOutput(payload('git push origin HEAD:main feature:main'), warn));
     assert.equal(decision, 'ask');
     assert.match(reason, /^This push updates a protected branch \(main\)/);
     assert.match(reason, /1 commit\(s\) go over 400 changed non-test lines .*bbbbbbb "Rewrite the store" \(900 line\(s\), 1 file\(s\)\)\..* To stop asking/);
@@ -208,50 +208,50 @@ describe('pushGuardOutput: the commits gate', () => {
     );
   });
 
-  it('refuse: refuses a push that sends a large commit, and only asks without one', () => {
-    const { decision, reason } = hookOutput(pushGuardOutput(payload('git push origin HEAD:main'), gated('refuse').env));
+  it('refuse: refuses a push that sends a large commit, and only asks without one', async () => {
+    const { decision, reason } = hookOutput(await pushGuardOutput(payload('git push origin HEAD:main'), gated('refuse').env));
     assert.equal(decision, 'deny');
     assert.match(reason, /^This push to a protected branch \(main\) is refused: 1 commit\(s\) go over/);
-    assert.equal(hookOutput(pushGuardOutput(payload('git push origin HEAD:main'), gated('refuse', [small]).env)).decision, 'ask');
+    assert.equal(hookOutput(await pushGuardOutput(payload('git push origin HEAD:main'), gated('refuse', [small]).env)).decision, 'ask');
   });
 
-  it('allow: refuses a push that sends a large commit under refuse, and lists them in the note under warn', () => {
-    const refused = hookOutput(pushGuardOutput(payload('git push origin HEAD:main'), { ...gated('refuse').env, pushToProtected: 'allow' }));
+  it('allow: refuses a push that sends a large commit under refuse, and lists them in the note under warn', async () => {
+    const refused = hookOutput(await pushGuardOutput(payload('git push origin HEAD:main'), { ...gated('refuse').env, pushToProtected: 'allow' }));
     assert.equal(refused.decision, 'deny');
     assert.match(refused.reason, /^This push to a protected branch \(main\) is refused: 1 commit\(s\) go over/);
-    const warned = noteOf(pushGuardOutput(payload('git push origin HEAD:main'), { ...gated('warn').env, pushToProtected: 'allow' }));
+    const warned = noteOf(await pushGuardOutput(payload('git push origin HEAD:main'), { ...gated('warn').env, pushToProtected: 'allow' }));
     assert.match(warned, /^teamrig did not ask about this push to a protected branch \(main\): pushGuard\.pushToProtected is allow\. 1 commit\(s\) go over/);
-    const quiet = noteOf(pushGuardOutput(payload('git push origin HEAD:main'), { ...gated('refuse', [small]).env, pushToProtected: 'allow' }));
+    const quiet = noteOf(await pushGuardOutput(payload('git push origin HEAD:main'), { ...gated('refuse', [small]).env, pushToProtected: 'allow' }));
     assert.equal(quiet, allowedPushNote(['main']));
   });
 
-  it('allow: lists the large commits in the doubt question of a line it partly cannot read', () => {
-    const { decision, reason } = hookOutput(pushGuardOutput(payload('git push origin HEAD:main; git push $ARGS'), { ...gated('warn').env, pushToProtected: 'allow' }));
+  it('allow: lists the large commits in the doubt question of a line it partly cannot read', async () => {
+    const { decision, reason } = hookOutput(await pushGuardOutput(payload('git push origin HEAD:main; git push $ARGS'), { ...gated('warn').env, pushToProtected: 'allow' }));
     assert.equal(decision, 'ask');
     assert.match(reason, /^The guard cannot tell .* 1 commit\(s\) go over/);
   });
 
-  it('never reads the log when the gate is off, the push is refused anyway, or nothing is protected', () => {
+  it('never reads the log when the gate is off, the push is refused anyway, or nothing is protected', async () => {
     for (const [gate, command] of [
       ['off', 'git push origin HEAD:main'],
       ['refuse', 'git push -f origin main'],
       ['refuse', 'git push origin feature'],
     ] as const) {
       const { env: gatedEnv, between } = gated(gate);
-      pushGuardOutput(payload(command), gatedEnv);
+      await pushGuardOutput(payload(command), gatedEnv);
       assert.equal(between.mock.callCount(), 0, `${gate}: ${command}`);
     }
   });
 
-  it('asks as usual when git cannot list the commits', () => {
-    const { decision, reason } = hookOutput(pushGuardOutput(payload('git push origin HEAD:main'), gated('refuse', 'unknown').env));
+  it('asks as usual when git cannot list the commits', async () => {
+    const { decision, reason } = hookOutput(await pushGuardOutput(payload('git push origin HEAD:main'), gated('refuse', 'unknown').env));
     assert.equal(decision, 'ask');
     assert.doesNotMatch(reason, /commit\(s\) go over/);
   });
 });
 
 describe('commitsOf', () => {
-  it("uses the team's rule when the config loads, else the defaults", () => {
+  it("uses the team's rule when the config loads, else the defaults", async () => {
     const config = testConfig({ commits: { gate: 'refuse' } });
     assert.equal(commitsOf({ status: 'loaded', path: 'c.json', config, issues: [] }).gate, 'refuse');
     assert.deepEqual(commitsOf({ status: 'missing', path: 'c.json' }), DEFAULT_COMMITS);
@@ -261,8 +261,8 @@ describe('commitsOf', () => {
 describe('pushGuardOutput: skipped hooks', () => {
   const skipping = (skipHooks: SkipHooks): PushGuardEnv => ({ ...env(), skipHooks });
 
-  it('refuses a git command run without the hooks under deny, naming each skip and the switch', () => {
-    const { decision, reason } = hookOutput(pushGuardOutput(payload('git add -A && git commit --no-verify -m fix && HUSKY=0 git push origin feature'), skipping('deny')));
+  it('refuses a git command run without the hooks under deny, naming each skip and the switch', async () => {
+    const { decision, reason } = hookOutput(await pushGuardOutput(payload('git add -A && git commit --no-verify -m fix && HUSKY=0 git push origin feature'), skipping('deny')));
     assert.equal(decision, 'deny');
     assert.equal(reason, skipHooksReason([
       { dir: resolve('/work/app'), subcommand: 'commit', by: '--no-verify' },
@@ -275,21 +275,21 @@ describe('pushGuardOutput: skipped hooks', () => {
     );
   });
 
-  it('asks under ask, keeps refusing a force-push to a protected branch, and emits nothing under allow', () => {
-    assert.deepEqual(hookOutput(pushGuardOutput(payload('git commit -n -m fix'), skipping('ask'))).decision, 'ask');
-    const forced = hookOutput(pushGuardOutput(payload('git push --no-verify -f origin main'), skipping('ask')));
+  it('asks under ask, keeps refusing a force-push to a protected branch, and emits nothing under allow', async () => {
+    assert.deepEqual(hookOutput(await pushGuardOutput(payload('git commit -n -m fix'), skipping('ask'))).decision, 'ask');
+    const forced = hookOutput(await pushGuardOutput(payload('git push --no-verify -f origin main'), skipping('ask')));
     assert.equal(forced.decision, 'deny');
     assert.match(forced.reason, /^Force-pushing, mirroring or deleting a protected branch \(main\)/);
-    assert.equal(pushGuardOutput(payload('git commit --no-verify -m fix'), skipping('allow')), '');
-    assert.equal(decisionOf(pushGuardOutput(payload('git push --no-verify origin main'), skipping('allow'))), 'ask', 'allow leaves the push question');
+    assert.equal(await pushGuardOutput(payload('git commit --no-verify -m fix'), skipping('allow')), '');
+    assert.equal(decisionOf(await pushGuardOutput(payload('git push --no-verify origin main'), skipping('allow'))), 'ask', 'allow leaves the push question');
   });
 
-  it('refuses one even when no branch is protected, in PowerShell too, and leaves a line whose hooks run', () => {
+  it('refuses one even when no branch is protected, in PowerShell too, and leaves a line whose hooks run', async () => {
     const unguarded: PushGuardEnv = { ...env(), protectedBranches: [] };
-    assert.equal(hookOutput(pushGuardOutput(payload('git commit -nm fix'), unguarded)).decision, 'deny');
-    assert.equal(hookOutput(pushGuardOutput(payload('git -c core.hooksPath=NUL commit -m fix', { tool_name: 'PowerShell' }), env())).decision, 'deny');
+    assert.equal(hookOutput(await pushGuardOutput(payload('git commit -nm fix'), unguarded)).decision, 'deny');
+    assert.equal(hookOutput(await pushGuardOutput(payload('git -c core.hooksPath=NUL commit -m fix', { tool_name: 'PowerShell' }), env())).decision, 'deny');
     for (const command of ['git commit -m "skip --no-verify next time"', 'git push -n origin feature', 'git config --get core.hooksPath']) {
-      assert.equal(pushGuardOutput(payload(command), env()), '', command);
+      assert.equal(await pushGuardOutput(payload(command), env()), '', command);
     }
   });
 });
@@ -297,38 +297,38 @@ describe('pushGuardOutput: skipped hooks', () => {
 describe('pushGuardOutput: hookAsks refuse', () => {
   const refusing = (overrides: Partial<PushGuardEnv> = {}): PushGuardEnv => ({ ...env(), hookAsks: 'refuse', ...overrides });
 
-  it('refuses a normal push to a protected branch, saying what to do instead and leaving out the switch hint', () => {
-    const refused = hookOutput(pushGuardOutput(payload('git push origin main'), refusing()));
+  it('refuses a normal push to a protected branch, saying what to do instead and leaving out the switch hint', async () => {
+    const refused = hookOutput(await pushGuardOutput(payload('git push origin main'), refusing()));
     assert.equal(refused.decision, 'deny');
     assert.match(refused.reason, /^This push updates a protected branch \(main\)/);
     assert.ok(refused.reason.endsWith(` ${ASK_REFUSED_NOTE}`), refused.reason);
     assert.ok(!refused.reason.includes(PUSH_TO_PROTECTED_HINT), refused.reason);
   });
 
-  it('refuses a push it cannot read, a leased push and a git command without hooks under ask, each with the note', () => {
+  it('refuses a push it cannot read, a leased push and a git command without hooks under ask, each with the note', async () => {
     const cases: readonly (readonly [string, PushGuardEnv])[] = [
       ['git push $ARGS', refusing()],
       ['git push --force-with-lease origin main', refusing({ pushToProtected: 'allow' })],
       ['git commit -n -m fix', refusing({ skipHooks: 'ask' })],
     ];
     for (const [command, judged] of cases) {
-      const { decision, reason } = hookOutput(pushGuardOutput(payload(command), judged));
+      const { decision, reason } = hookOutput(await pushGuardOutput(payload(command), judged));
       assert.equal(decision, 'deny', command);
       assert.ok(reason.endsWith(` ${ASK_REFUSED_NOTE}`), command);
     }
   });
 
-  it('keeps a refusal as it was and lets an allowed push through with its note', () => {
-    const forced = hookOutput(pushGuardOutput(payload('git push -f origin main'), refusing()));
+  it('keeps a refusal as it was and lets an allowed push through with its note', async () => {
+    const forced = hookOutput(await pushGuardOutput(payload('git push -f origin main'), refusing()));
     assert.equal(forced.decision, 'deny');
     assert.ok(!forced.reason.includes(ASK_REFUSED_NOTE), forced.reason);
-    const allowed: unknown = JSON.parse(pushGuardOutput(payload('git push origin main'), refusing({ pushToProtected: 'allow' })));
+    const allowed: unknown = JSON.parse(await pushGuardOutput(payload('git push origin main'), refusing({ pushToProtected: 'allow' })));
     assert.deepEqual(allowed, { systemMessage: allowedPushNote(['main']) });
   });
 });
 
 describe('skipHooksOf', () => {
-  it("uses the team's choice when the config loads, else refuses", () => {
+  it("uses the team's choice when the config loads, else refuses", async () => {
     const config = testConfig({ commitGuard: { skipHooks: 'ask' } });
     assert.equal(skipHooksOf({ status: 'loaded', path: 'c.json', config, issues: [] }), 'ask');
     assert.equal(skipHooksOf({ status: 'loaded', path: 'c.json', config: testConfig(), issues: [] }), 'deny');
