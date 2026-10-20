@@ -1,5 +1,6 @@
 import { claudeProjectsDir, projectTranscriptPath } from "../../budget/discover.js";
 import { errorMessage } from "../../core/guards.js";
+import { PlainLogFile } from "../../core/log-file.js";
 import { lastClaudeSessionOf } from "../../inbox/marks.js";
 import { JsonlMarkLog } from "../../inbox/store.js";
 import { resumeVerdict } from "../../hiring/rehire.js";
@@ -11,7 +12,7 @@ import { readContextTokens } from "../../refresh/usage.js";
  */
 export async function resumeVerdictOf(runtime, paths, hiring, id, project) {
     try {
-        const { marks } = await new JsonlMarkLog(runtime.files, paths.inboxMarks).read();
+        const { marks } = await new JsonlMarkLog(new PlainLogFile(runtime.files, paths.inboxMarks)).read();
         return await claudeSessionVerdict(runtime, hiring, lastClaudeSessionOf(marks, id), project);
     }
     catch (error) {

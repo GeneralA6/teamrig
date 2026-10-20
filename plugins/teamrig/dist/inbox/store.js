@@ -39,17 +39,16 @@ export class InboxDir {
         return join(this.dir, `${area}${SUFFIX}`).replaceAll('\\', '/');
     }
 }
+/** Marks as one JSONL line each, in the log they are given: `inbox-marks.jsonl` or `inbox-shown.jsonl`. */
 export class JsonlMarkLog {
-    files;
-    path;
-    constructor(files, path) {
-        this.files = files;
-        this.path = path;
+    log;
+    constructor(log) {
+        this.log = log;
     }
     async read() {
-        return readMarks((await this.files.read(this.path)) ?? '');
+        return readMarks((await this.log.read()) ?? '');
     }
     async append(mark) {
-        await this.files.append(this.path, toJsonlLine({ ...mark }));
+        await this.log.append(toJsonlLine({ ...mark }));
     }
 }
