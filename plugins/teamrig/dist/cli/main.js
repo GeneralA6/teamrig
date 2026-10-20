@@ -4,6 +4,7 @@ import { text } from 'node:stream/consumers';
 import { fileURLToPath } from 'node:url';
 import { nodeTranscriptSource } from "../budget/discover.js";
 import { nodeFiles } from "../core/files.js";
+import { GIT_TREES } from "../coordinator/git-tree.js";
 import { nodeHostMemory } from "../coordinator/memory.js";
 import { launchingShellOf, nodeEvery, starterWatch } from "../coordinator/starter-watch.js";
 import { nodeStepRunner } from "../coordinator/steps.js";
@@ -62,6 +63,7 @@ process.exitCode = await runCli(process.argv.slice(2), {
         logon: systemLogonEntry(process.platform, process.env['SystemRoot'], nodeProgramRunner(LOGON_QUERY_TIMEOUT_MS)),
     },
     integrateGit: GIT_INTEGRATE,
+    trees: GIT_TREES,
     hooks: nodeHookRunner(process.platform),
     packageRegistry: httpPackageRegistry(),
     readStdin: () => text(process.stdin),
