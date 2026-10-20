@@ -55,6 +55,12 @@ export interface BindingDeps {
 /** Which of a request's commands is about to start: the read-only dry run, or the approved run. */
 export type ExecStage = 'dry-run' | 'run';
 
+/** The command a stage starts: its program as the request stored it, resolved, and its argv; undefined for a dry run the request has none of. */
+export function stageCommand(request: ExecRequest, stage: ExecStage): { readonly program: string; readonly argv: readonly string[] } | undefined {
+  if (stage === 'run') return { program: request.program, argv: request.argv };
+  return request.dryRunArgv === null || request.dryRunProgram === null ? undefined : { program: request.dryRunProgram, argv: request.dryRunArgv };
+}
+
 /** The file `argv0` starts: an absolute path that is a file, or a name found on the exec PATH; undefined when neither. */
 export async function resolveProgram(argv0: string, search: PathSearchDeps): Promise<string | undefined> {
   const lookup = programLookup(argv0);
@@ -98,11 +104,11 @@ export async function bindingProblems(request: ExecRequest, stage: ExecStage, de
   if (!('repo' in binding)) {
     return [`${request.id} binds an image, whose digest cannot be checked yet: a pod exec is run by hand with the owner`];
   }
-  const argv = stage === 'run' ? request.argv : request.dryRunArgv;
-  const stored = stage === 'run' ? request.program : request.dryRunProgram;
-  if (argv === null || stored === null) {
+  const command = stageCommand(request, stage);
+  if (command === undefined) {
     return [`${request.id} has no dry run`];
   }
+  const { program: stored, argv } = command;
   const { checkout, search } = deps;
   const [topLevel, head, changes, program] = await Promise.all([checkout.topLevel(request.cwd), checkout.head(binding.repo), checkout.changes(binding.repo), resolveProgram(argv[0] ?? '', search)]);
   const problems: string[] = [];
