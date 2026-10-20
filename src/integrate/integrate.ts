@@ -5,7 +5,7 @@ import { takeWhenClear, type Readiness } from '../coordinator/clearance.ts';
 import { underLock, type HostLock, type HostLockInfo } from '../coordinator/host-lock.ts';
 import { appendDeploy, rangeText } from '../coordinator/ledger.ts';
 import type { CoordinatorPlaces } from '../coordinator/places.ts';
-import { recordHeavy, runRecorded } from '../coordinator/recorded-step.ts';
+import { marksOfTaking, recordHeavy, runRecorded, type HeavyMark } from '../coordinator/recorded-step.ts';
 import { heavyCutoffReason, resetBlackoutReason, type ResetTime } from '../coordinator/schedule.ts';
 import { exitCodeOf, type StepEnd, type StepRunner } from '../coordinator/steps.ts';
 import type { Files } from '../core/files.ts';
@@ -185,13 +185,19 @@ async function dependencyHold(git: IntegrateGit, top: string, onto: string, repo
   );
 }
 
+/** The host lock an integrate took, and the ledger marks of the steps it runs under it (see {@link marksOfTaking}). */
+interface Taking {
+  readonly lock: HostLockInfo;
+  readonly markOf: (what: string) => HeavyMark;
+}
+
 /**
- * Under the host lock `lock`, after the rebase onto `base`: runs the repository's dependency check when the gate is on
- * and the rebased branch changes the package files, with `base`'s package-lock.json in the file
+ * Under the host lock `taking` holds, after the rebase onto `base`: runs the repository's dependency check when the
+ * gate is on and the rebased branch changes the package files, with `base`'s package-lock.json in the file
  * `TEAMRIG_BASELINE_LOCK` names, kept only while the check runs. Undefined lets the push go; else the refusal, the
  * check's output shown above it.
  */
-async function dependencyCheckRefusal(setup: IntegrateSetup, ports: IntegratePorts, request: IntegrateRequest, plan: Plan, lock: HostLockInfo, base: string): Promise<Landing | undefined> {
+async function dependencyCheckRefusal(setup: IntegrateSetup, ports: IntegratePorts, plan: Plan, taking: Taking, base: string): Promise<Landing | undefined> {
   const { top, branch, defaultBranch, repo } = plan;
   const argv = repo.config.dependencyCheck;
   if (!repo.config.dependencyGate || argv === undefined) {
@@ -209,14 +215,14 @@ async function dependencyCheckRefusal(setup: IntegrateSetup, ports: IntegratePor
   const end = await recordHeavy(
     ports,
     setup.places.ledger,
-    { session: request.session, what: `integrate ${repo.name}: dependency check of ${branch}` },
+    taking.markOf(`integrate ${repo.name}: dependency check of ${branch}`),
     () =>
       runDependencyCheck(ports, {
         argv,
         cwd: top,
         baseline: ports.git.fileAt(top, base, LOCKFILE),
         folder: dirname(setup.places.ledger),
-        env: underLock(gitEnvironment(ports.env), lock),
+        env: underLock(gitEnvironment(ports.env), taking.lock),
         timeoutMs: setup.coordinator.heavy.maxRunMinutes * MINUTE_MS,
         onLine: (line) => ports.say(`  ${shownLine(ports.scanner, line)}`),
       }),
@@ -254,12 +260,12 @@ function readinessOf(setup: IntegrateSetup, ports: IntegratePorts, repo: RepoMat
 }
 
 /**
- * Under the host lock `lock`: rebases onto the fresh default branch, runs the dependency check on what the rebase made
- * (see {@link dependencyCheckRefusal}) and pushes, again from the rebase when origin moved meanwhile, unless the push
- * was killed as its launching shell ended (no one waits for it any more). The check and the
+ * Under the host lock `taking` holds: rebases onto the fresh default branch, runs the dependency check on what the
+ * rebase made (see {@link dependencyCheckRefusal}) and pushes, again from the rebase when origin moved meanwhile, unless
+ * the push was killed as its launching shell ended (no one waits for it any more). The check and the
  * push get the lock's token, so a pre-push hook that wraps its checks in `teamrig heavy` runs them under this lock.
  */
-async function land(setup: IntegrateSetup, ports: IntegratePorts, request: IntegrateRequest, plan: Plan, lock: HostLockInfo): Promise<Landing> {
+async function land(setup: IntegrateSetup, ports: IntegratePorts, plan: Plan, taking: Taking): Promise<Landing> {
   const { git } = ports;
   const { top, branch, defaultBranch, repo } = plan;
   const onto = `origin/${defaultBranch}`;
@@ -280,19 +286,18 @@ async function land(setup: IntegrateSetup, ports: IntegratePorts, request: Integ
     if (head === undefined) {
       return { kind: 'failed', reason: `HEAD names no commit in ${top} after the rebase` };
     }
-    const refused = await dependencyCheckRefusal(setup, ports, request, plan, lock, before);
+    const refused = await dependencyCheckRefusal(setup, ports, plan, taking, before);
     if (refused !== undefined) {
       return refused;
     }
     const startedAt = new Date(ports.clock.now()).toISOString();
     ports.say(`pushing ${branch} (${short(head)}) to ${defaultBranch}; the pre-push hook runs now`);
     const end = await runRecorded(ports, setup.places.ledger, {
-      session: request.session,
-      what: `integrate ${repo.name}: push ${branch} to ${defaultBranch}`,
+      ...taking.markOf(`integrate ${repo.name}: push ${branch} to ${defaultBranch}`),
       request: {
         command: commandLine(['git', 'push', 'origin', `HEAD:refs/heads/${defaultBranch}`], ports.platform),
         cwd: top,
-        env: underLock(gitEnvironment(ports.env), lock),
+        env: underLock(gitEnvironment(ports.env), taking.lock),
         timeoutMs: setup.coordinator.heavy.maxRunMinutes * MINUTE_MS,
       },
     });
@@ -406,6 +411,7 @@ export async function integrateBranch(setup: IntegrateSetup, ports: IntegratePor
     ports.say(`NOTE ${repo.name} is not in coordinator.repos: no deploy targets, no dependency gate, no main checkout to follow`);
   }
   const { wait } = setup.coordinator;
+  const queuedAt = ports.clock.now();
   const clearance = await takeWhenClear(readinessOf(setup, ports, repo), ports, {
     session: request.session,
     purpose: `integrate ${repo.name}`,
@@ -419,7 +425,7 @@ export async function integrateBranch(setup: IntegrateSetup, ports: IntegratePor
   }
   let landing: Landing;
   try {
-    landing = await land(setup, ports, request, plan, clearance.lock);
+    landing = await land(setup, ports, plan, { lock: clearance.lock, markOf: marksOfTaking(request.session, queuedAt) });
     if (landing.kind === 'landed' && repo.config.deploysOnPush.length > 0) {
       await appendDeploy(ports.files, setup.places, {
         type: 'deploy',

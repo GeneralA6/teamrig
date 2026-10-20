@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { FIRST_IN_LINE_POLL_MS } from '../coordinator/host-lock.ts';
+import { KIT_VERSION } from '../core/version.ts';
 import { APP, CliHarness, KIT, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakeStarterWatch, SHELL } from '../testing/fake-starter-watch.ts';
@@ -57,7 +58,7 @@ describe('teamrig heavy', () => {
       expiresAt: '2030-01-08T12:30:00.000Z',
     });
     assert.equal(kit.files.get(LOCK), undefined, 'the lock is released');
-    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:05:00.000Z', exitCode: 0 }]);
   });
 
@@ -91,7 +92,7 @@ describe('teamrig heavy', () => {
       ],
       stderr: [],
     });
-    assert.deepEqual(ledgerOf(kit)[1], { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: '2030-01-08T10:45:00.000Z', exitCode: 124 });
+    assert.deepEqual(ledgerOf(kit)[1], { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: '2030-01-08T10:45:00.000Z', exitCode: 124 });
   });
 
   it('prints FAILED for a step a signal stopped, recorded as exit 1', async () => {
@@ -196,7 +197,7 @@ describe('teamrig heavy', () => {
     await kit.files.write(LOCK, heldBy('2030-01-08T10:03:00.000Z'));
     assert.equal((await kit.run(BUILD, { steps, memory, sessionProcesses: otherRuns() })).code, 0);
     assert.deepEqual(memory.watches, [{ root: 4242, intervalMs: 15_000, stopped: true }], "its own process's tree, every 15 s");
-    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:03:00.000Z', endedAt: null, exitCode: null };
+    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:03:00.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:08:00.000Z', exitCode: 0, peakTreeMb: 1900, lowFreeMb: 6400 }]);
   });
 
@@ -244,7 +245,7 @@ describe('teamrig heavy', () => {
       stderr: [],
     });
     assert.equal(steps.ran[0]?.stop?.aborted, true);
-    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'build api', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:00:00.000Z', exitCode: 129 }]);
     assert.deepEqual([kit.files.get(LOCK), starters.openWatches], [undefined, 0]);
   });
@@ -400,7 +401,7 @@ describe('teamrig heavy --small', () => {
     const share = { token: 'id-1', pid: 4242, session: 'alpha', purpose: 'heavy: specs', acquiredAt: '2030-01-08T10:00:00.000Z', expiresAt: '2030-01-08T12:30:00.000Z', reserveMb: 2048 };
     assert.deepEqual(whileRunning, [undefined, share]);
     assert.equal(kit.files.get(`${SHARED}/id-1.json`), undefined, 'the share is released');
-    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'specs', queuedAt: '2030-01-08T10:00:00.000Z', shared: true, startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+    const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'specs', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', shared: true, startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:05:00.000Z', exitCode: 0 }]);
   });
 

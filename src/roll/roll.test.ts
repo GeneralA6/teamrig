@@ -7,6 +7,7 @@ import { HostLock } from '../coordinator/host-lock.ts';
 import type { CoordinatorPlaces } from '../coordinator/places.ts';
 import type { Env } from '../core/home.ts';
 import { SecretScanner } from '../core/secrets.ts';
+import { KIT_VERSION } from '../core/version.ts';
 import { TimeZone } from '../core/zone.ts';
 import { BASELINE_LOCK_ENV } from '../integrate/dependencies.ts';
 import { LOCKFILE } from '../integrate/manifest.ts';
@@ -97,7 +98,7 @@ class World {
 
   /** The heavy step's two records, its end with `exitCode`. */
   heavy(exitCode: number, endedAt: string, what = 'roll pipeline c1..c2'): unknown[] {
-    const start = { type: 'heavy', id: 'step-1', session: 'po', what, startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+    const start = { type: 'heavy', id: 'step-1', session: 'po', what, kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
     return [start, { ...start, endedAt, exitCode }];
   }
 
@@ -180,6 +181,8 @@ describe('rollRepo', () => {
     assert.deepEqual(await world.run(), { kind: 'done', summary: 'c1..c3 rolled' });
     assert.ok(world.said.includes('waiting: gate flow holds the roll: batch run open since 23:10 UTC'));
     assert.equal(world.clock.now(), Date.parse('2030-01-08T10:00:00Z') + DEFAULT_COORDINATOR_WAIT.pollSeconds * 1_000);
+    const start = { type: 'heavy', id: 'step-1', session: 'po', what: 'roll pipeline c1..c3', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt: new Date(world.clock.now()).toISOString(), endedAt: null, exitCode: null };
+    assert.deepEqual(world.records()[0], start, 'its record shows the wait from its first look');
     assert.equal(teamrigEnv(world.hooks.ran[2]?.env ?? {})['TEAMRIG_PENDING_RANGE'], 'base..c3', 'the locked gate judges the range pulled');
     assert.equal(world.git.heads.get(MAIN_CHECKOUT), 'c3');
   });

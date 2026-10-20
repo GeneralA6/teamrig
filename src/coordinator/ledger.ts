@@ -22,6 +22,8 @@ export interface HeavyRecord {
   readonly id: string;
   readonly session: string;
   readonly what: string;
+  /** The teamrig version that ran the step; an older teamrig or a team's own coordinator leaves it out. */
+  readonly kit?: string;
   /** An ISO time: when the step began to wait for the host lock, so its wait is `startedAt` less this. */
   readonly queuedAt?: string;
   /** Set when the step was a small one sharing the host (`heavy --small`), not holding the host lock. */
@@ -134,9 +136,11 @@ function mbField(record: JsonRecord, key: string): number | undefined {
 }
 
 /** The optional fields a record carries, each left out when it is missing or bad, since they only add to it. */
-function heavyExtrasOf(record: JsonRecord): Pick<HeavyRecord, 'queuedAt' | 'shared' | 'peakTreeMb' | 'lowFreeMb'> {
-  const [queuedAt, peakTreeMb, lowFreeMb] = [timeField(record, 'queuedAt'), mbField(record, 'peakTreeMb'), mbField(record, 'lowFreeMb')];
+function heavyExtrasOf(record: JsonRecord): Pick<HeavyRecord, 'kit' | 'queuedAt' | 'shared' | 'peakTreeMb' | 'lowFreeMb'> {
+  const [kit, queuedAt] = [stringField(record, 'kit'), timeField(record, 'queuedAt')];
+  const [peakTreeMb, lowFreeMb] = [mbField(record, 'peakTreeMb'), mbField(record, 'lowFreeMb')];
   return {
+    ...(kit === undefined ? {} : { kit }),
     ...(queuedAt === undefined ? {} : { queuedAt }),
     ...(record['shared'] === true ? { shared: true } : {}),
     ...(peakTreeMb === undefined ? {} : { peakTreeMb }),

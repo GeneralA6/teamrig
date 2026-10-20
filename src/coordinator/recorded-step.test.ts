@@ -1,10 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { KIT_VERSION } from '../core/version.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
 import { FakeSteps } from '../testing/fake-steps.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { NOT_STARTED_EXIT, recordHeavy, runRecorded, type RecordedStep } from './recorded-step.ts';
+import { marksOfTaking, NOT_STARTED_EXIT, recordHeavy, runRecorded, type RecordedStep } from './recorded-step.ts';
 
 const LEDGER = '/kit/deploys/ledger.jsonl';
 const STEP: RecordedStep = { session: 'po', what: 'build', request: { command: 'npm run build', cwd: '/app', env: {}, timeoutMs: 60_000 } };
@@ -26,7 +27,7 @@ describe('runRecorded', () => {
     steps.ends(3, 90_000);
     assert.deepEqual(await runRecorded(ports, LEDGER, STEP), { kind: 'exited', code: 3 });
     assert.deepEqual(steps.ran, [STEP.request]);
-    const start = { type: 'heavy', id: 'step-1', session: 'po', what: 'build', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+    const start = { type: 'heavy', id: 'step-1', session: 'po', what: 'build', kit: KIT_VERSION, startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(records(files), [start, { ...start, endedAt: '2030-01-08T10:01:30.000Z', exitCode: 3 }]);
   });
 
@@ -35,7 +36,7 @@ describe('runRecorded', () => {
     steps.failsWith(new Error('no such folder'));
     await assert.rejects(runRecorded(ports, LEDGER, STEP), /no such folder/);
     assert.equal(records(files).length, 2);
-    assert.deepEqual(records(files)[1], { type: 'heavy', id: 'step-1', session: 'po', what: 'build', startedAt: '2030-01-08T10:00:00.000Z', endedAt: '2030-01-08T10:00:00.000Z', exitCode: NOT_STARTED_EXIT });
+    assert.deepEqual(records(files)[1], { type: 'heavy', id: 'step-1', session: 'po', what: 'build', kit: KIT_VERSION, startedAt: '2030-01-08T10:00:00.000Z', endedAt: '2030-01-08T10:00:00.000Z', exitCode: NOT_STARTED_EXIT });
   });
 
   it('records when the step began to wait, and its memory on the end record, from a watch of its tree', async () => {
@@ -45,7 +46,7 @@ describe('runRecorded', () => {
     const queued = { ...STEP, queuedAt: Date.parse('2030-01-08T09:58:00Z') };
     await runRecorded(ports, LEDGER, queued, { memory, root: 4242, intervalMs: 15_000 });
     assert.deepEqual(memory.watches, [{ root: 4242, intervalMs: 15_000, stopped: true }]);
-    const start = { type: 'heavy', id: 'step-1', session: 'po', what: 'build', queuedAt: '2030-01-08T09:58:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+    const start = { type: 'heavy', id: 'step-1', session: 'po', what: 'build', kit: KIT_VERSION, queuedAt: '2030-01-08T09:58:00.000Z', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(records(files), [start, { ...start, endedAt: '2030-01-08T10:01:00.000Z', exitCode: 0, peakTreeMb: 2400, lowFreeMb: 6100 }]);
   });
 
@@ -55,7 +56,7 @@ describe('runRecorded', () => {
     const memory = new FakeHostMemory().measures({ lowFreeMb: 7000 });
     await assert.rejects(runRecorded(ports, LEDGER, STEP, { memory, root: 4242, intervalMs: 15_000 }), /no such folder/);
     assert.equal(memory.watches[0]?.stopped, true);
-    assert.deepEqual(records(files)[1], { type: 'heavy', id: 'step-1', session: 'po', what: 'build', startedAt: '2030-01-08T10:00:00.000Z', endedAt: '2030-01-08T10:00:00.000Z', exitCode: NOT_STARTED_EXIT, lowFreeMb: 7000 });
+    assert.deepEqual(records(files)[1], { type: 'heavy', id: 'step-1', session: 'po', what: 'build', kit: KIT_VERSION, startedAt: '2030-01-08T10:00:00.000Z', endedAt: '2030-01-08T10:00:00.000Z', exitCode: NOT_STARTED_EXIT, lowFreeMb: 7000 });
   });
 });
 
@@ -67,7 +68,18 @@ describe('recordHeavy', () => {
       return { failedAt: 'pull' };
     };
     assert.deepEqual(await recordHeavy(ports, LEDGER, { session: 'po', what: 'roll app' }, work, () => 4), { failedAt: 'pull' });
-    const start = { type: 'heavy', id: 'step-1', session: 'po', what: 'roll app', startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
+    const start = { type: 'heavy', id: 'step-1', session: 'po', what: 'roll app', kit: KIT_VERSION, startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(records(files), [start, { ...start, endedAt: '2030-01-08T10:00:30.000Z', exitCode: 4 }]);
+  });
+});
+
+describe('marksOfTaking', () => {
+  it('puts the wait on the first step a taking of the lock runs, never on the steps after it', () => {
+    const markOf = marksOfTaking('api', Date.parse('2030-01-08T09:58:00Z'));
+    assert.deepEqual([markOf('check'), markOf('push'), markOf('push again')], [
+      { session: 'api', what: 'check', queuedAt: Date.parse('2030-01-08T09:58:00Z') },
+      { session: 'api', what: 'push' },
+      { session: 'api', what: 'push again' },
+    ]);
   });
 });
