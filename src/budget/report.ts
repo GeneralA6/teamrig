@@ -7,7 +7,8 @@ import { liftText, type Lift } from './lift.ts';
 import { TURN_TRIGGERS } from './line.ts';
 import { hasRoom } from './pace.ts';
 import { emptyPatterns, PATTERN_FIELDS, type PatternField } from './patterns.ts';
-import type { DayUsage, UsageState } from './store.ts';
+import { DAYS_KEPT, type DayUsage, type UsageState } from './store.ts';
+import type { TaskUse } from './task-use.ts';
 import type { WeekReading } from './week.ts';
 
 /** The lines of `teamrig budget`: short by default, the key numbers and anything past its budget. */
@@ -481,4 +482,42 @@ export function missMatrixLines(days: readonly string[], sessions: readonly Sess
   const table = [['', ...MISS_ROWS.map((row) => row.short), 'read'], ...active.map(({ name, usage }) => [name, ...MISS_ROWS.map((row) => row.cell(usage)), readCell(usage)])];
   const legend = MISS_ROWS.map((row) => `${row.short} = ${row.label}`).join('; ');
   return [header, ...aligned(table), `${legend}; read = calls read for misses. One session by day: teamrig budget <session> --misses.`];
+}
+
+/** What `teamrig budget --task` reads besides the task's use. */
+export interface TaskReading {
+  readonly week: WeekReading;
+  /** A session's name in the lines, from its id. */
+  nameOf(session: string): string;
+  /** Today's (UTC) W of every session, and of it what turns that named a task spent. */
+  readonly today: { readonly w: number; readonly attributed: number };
+}
+
+/**
+ * `teamrig budget --task T<n>` (T734): the W each session's turns spent on a task per UTC day, the most first,
+ * then how much of today's W went to some task.
+ */
+export function taskLines(use: TaskUse, reading: TaskReading): string[] {
+  const { week, today } = reading;
+  const window = `the ${DAYS_KEPT} UTC days the meter keeps`;
+  const lines: string[] = [];
+  if (use.sessions.length === 0) {
+    lines.push(`${use.task}: no W in ${window}; a turn counts for it when a call names it: ${use.task} in a command, t${use.task.slice(1)}- in a branch or path.`);
+  } else {
+    const pct = pctOf(use.w, week);
+    const share = pct === undefined ? '' : `, ${formatPct(pct)} of the week`;
+    lines.push(`${use.task}: ${formatW(use.w)} W${share}, in ${window}, open turns' share included:`);
+    const rows = use.sessions.map(({ session, byDay, w }) => {
+      const sessionPct = pctOf(w, week);
+      const days = Object.entries(byDay)
+        .map(([day, dayW]) => `${day.slice(5)} ${formatW(dayW)}`)
+        .join(', ');
+      return [`  ${reading.nameOf(session)}`, `${formatW(w)} W`, ...(sessionPct === undefined ? [] : [formatPct(sessionPct)]), days];
+    });
+    lines.push(...aligned(rows));
+  }
+  if (today.w > 0) {
+    lines.push(`Today turns that named a task spent ${formatPct((today.attributed / today.w) * 100)} of all metered W; the rest went to turns that named none and to helpers.`);
+  }
+  return [...lines, W_EXPLAINED];
 }

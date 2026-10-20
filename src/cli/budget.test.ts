@@ -9,7 +9,7 @@ import { MS_PER_DAY } from '../core/time.ts';
 import { APP, CliHarness, KIT, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
-import { replyLine, transcript } from '../testing/transcript-lines.ts';
+import { promptLine, replyLine, transcript, type FixtureTool } from '../testing/transcript-lines.ts';
 import type { RepoState } from '../push-guard/push.ts';
 import { defaultSnapshotDir, snapshotDirOf } from './commands/budget.ts';
 import { EXIT } from './runtime.ts';
@@ -166,6 +166,37 @@ describe('teamrig budget', () => {
     const { kit, source, run } = await world({ ...TEAM, budget: { weeklyLimitW: 1_000_000_000, subagentWeight: 3 } });
     source.set(join(PROJECT, BRAVO_TAB, 'subagents', 'agent-1.jsonl'), transcript([reply('s1', 1_000_000)]), kit.clock.now());
     assert.ok(ok(await run(['budget'])).includes('app-bravo used 0.80% of the week today; its daily budget is 4.1%. 8.00M W in 2 calls.'));
+  });
+
+  it("shows each session's W on a task, an open turn's share included, and today's share any task got", async () => {
+    const { kit, source, run } = await world();
+    const bash = (id: string, command: string): FixtureTool => ({ id, name: 'Bash', command });
+    source.append(
+      join(PROJECT, `${ALPHA_TAB}.jsonl`),
+      transcript([
+        promptLine('2030-01-08T09:30:00.000Z'),
+        replyLine({ id: 'a3', requestId: 'q-a3', at: '2030-01-08T09:30:00.000Z', usage: { input: 4_000_000 }, tools: [bash('b1', 'teamrig set T7 && git -C .worktrees/t8-x log')] }),
+        promptLine('2030-01-08T09:40:00.000Z'),
+        replyLine({ id: 'a4', requestId: 'q-a4', at: '2030-01-08T09:40:00.000Z', usage: { input: 1_000_000 }, tools: [bash('b2', 'teamrig show T7')] }),
+      ]),
+      kit.clock.now(),
+    );
+    // a3's 4M splits over T7 and T8 at the next prompt; a4's 1M is held for T7 alone. 5M of today's 31M named a task.
+    const today = 'Today turns that named a task spent 16.1% of all metered W; the rest went to turns that named none and to helpers.';
+    assert.deepEqual(ok(await run(['budget', '--task', 'T7'])), [
+      "T7: 3.00M W, 0.30% of the week, in the 8 UTC days the meter keeps, open turns' share included:",
+      '  app-alpha  3.00M W  0.30%  01-08 3.00M',
+      today,
+      W_EXPLAINED,
+    ]);
+    assert.deepEqual(ok(await run(['budget', '--task', 'T9'])), [
+      'T9: no W in the 8 UTC days the meter keeps; a turn counts for it when a call names it: T9 in a command, t9- in a branch or path.',
+      today,
+      W_EXPLAINED,
+    ]);
+    usageError(await run(['budget', 'alpha', '--task', 'T7']), /--task reads alone/);
+    usageError(await run(['budget', '--task', 'T7', '--loops']), /--task reads alone/);
+    usageError(await run(['budget', '--task', '734']), /--task "734" is not a task id such as T734/);
   });
 
   it('recounts a past day from the transcripts, writing nothing', async () => {

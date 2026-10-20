@@ -24,6 +24,7 @@ import {
   sessionLines,
   sumDays,
   sumUsage,
+  taskLines,
   todayLines,
   weekLine,
   type SessionToday,
@@ -40,12 +41,14 @@ import {
   type StatusLineView,
 } from '../../budget/snapshot.ts';
 import { CURSOR_DAYS_KEPT, DAYS_KEPT, EMPTY_USAGE, MemoryUsageStore, UsageStore, type UsageState } from '../../budget/store.ts';
+import { attributedW, taskUseOf } from '../../budget/task-use.ts';
 import { meteredOf, readWeek, wSince, type WeekReading } from '../../budget/week.ts';
 import { readWork } from '../../budget/work.ts';
 import { JsonlMarkLog } from '../../inbox/store.ts';
 import { indexMarks } from '../../inbox/marks.ts';
 import type { RepoState } from '../../push-guard/push.ts';
 import { customTitleOf, TRANSCRIPT_TAIL_BYTES } from '../../names/title.ts';
+import { TASK_ID } from '../../register/model.ts';
 import { UsageError, onePositional, requiredFlag, type Flags, type ParsedArgs } from '../args.ts';
 import { callerOf, type TypedTimes } from '../inputs.ts';
 import { openKit, openTeamKit, requireConfig, rosterOf, sessionIdOf, teamFolders, teamZone, type Kit } from '../kit.ts';
@@ -53,7 +56,8 @@ import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.t
 
 /**
  * The weekly budget from the command line: `budget` measures every session's use from the Claude Code
- * transcripts and shows it against the week's pace; `budget lift` is the lead's lift of one session's
+ * transcripts and shows it against the week's pace, or with `--task` what each session spent on one task;
+ * `budget lift` is the lead's lift of one session's
  * daily budget; `statusline` is a status line that saves the plan's own reading for `budget`. Measuring
  * and showing only: nothing here blocks or stops a session.
  */
@@ -194,7 +198,24 @@ function recountDayOf(text: string | undefined, now: number): number | undefined
   return day.getTime();
 }
 
-/** `budget [<session>] [--loops|--burn|--misses] [--day <day>] [--all]`. */
+function sum(values: readonly number[]): number {
+  return values.reduce((total, value) => total + value, 0);
+}
+
+/** `budget --task <id>`: each session's W on the task by UTC day, outside the team too, and today's share of W any task got. */
+function taskReadingLines(reading: Reading, roster: Roster, task: string): string[] {
+  const { measured, week, now } = reading;
+  const states = new Map<string, UsageState>([...measured.bySession, [OUTSIDE_ID, measured.outside]]);
+  const today = formatUtcDay(new Date(now));
+  const usages = [...states.values()];
+  return taskLines(taskUseOf(states, task), {
+    week,
+    nameOf: (session) => (session === OUTSIDE_ID ? 'outside the team' : (roster.nameOf(session) ?? session)),
+    today: { w: sum(usages.map((state) => state.byDay[today]?.w ?? 0)), attributed: sum(usages.map((state) => attributedW(state, today))) },
+  });
+}
+
+/** `budget [<session>] [--loops|--burn|--misses] [--day <day>] [--all]`, or `budget --task <id>` alone. */
 export async function budget(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const [target, extra] = args.positionals;
   if (extra !== undefined) {
@@ -208,11 +229,26 @@ export async function budget(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   if ([loops, burn, misses].filter(Boolean).length > 1) {
     throw new UsageError('--loops, --burn and --misses are three tables: give one');
   }
+  const task = args.flags.get('task');
+  if (task !== undefined) {
+    if (target !== undefined || recountDay !== undefined || all || loops || burn || misses) {
+      throw new UsageError('--task reads alone: give no session, table, --day or --all with it');
+    }
+    if (!TASK_ID.test(task)) {
+      throw new UsageError(`--task "${task}" is not a task id such as T734`);
+    }
+  }
   const kit = await openTeamKit(runtime);
   const config = requireConfig(kit, runtime, 'read');
   const roster = await rosterOf(runtime, kit, config);
   const id = target === undefined ? undefined : sessionIdOf(roster, target);
   const reading = await readBudget(runtime, kit, config, roster, { recountDay });
+  if (task !== undefined) {
+    for (const line of taskReadingLines(reading, roster, task)) {
+      runtime.out.stdout(line);
+    }
+    return EXIT.ok;
+  }
   const work = recountDay === undefined ? await readWork(runtime.files, kit.paths.events, config.register.priorities) : new Map<string, number>();
   const sessions = sessionsToday(reading, roster, config.budget, work);
   const { measured, week, now } = reading;
