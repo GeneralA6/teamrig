@@ -1383,6 +1383,7 @@ DECISIONS 1 waiting on owner (decision or approval)
     with no answer: Basic ships on 10-16
     waiting since 10-14 16:20 IDT: the numbers are in the card
   Read each card to owner as it stands, each figure explained; where one says no card yet, ask its owner for it (check flags it NO-CARD). Never point to a doc; `teamrig show <id>` prints a task whole.
+  A question a card does not answer is its task owner's to find: teamrig add --owner <id> --due <date> --session lead, then relay the answer; never look it up yourself.
   Record each answer in the same turn: teamrig update <id> --note "owner decided: <decision>" --session lead; meeting end tells each task's owner.
 LATE 1 past their due date
   T4 open, p2, owner api, due 10-14 | Retry the signup call
@@ -3152,9 +3153,10 @@ Output: nothing after a delivered message or outside a team; otherwise the line 
 
 ### teamrig hook loop-nudge
 
-After a read, edit or shell call, once the turn's run of single-step calls reaches `loops.chainNudgeAt` (6 by
+After a read, edit, shell call or web lookup, once the turn's run of single-step calls reaches `loops.chainNudgeAt` (6 by
 default; 0 turns it off), hands the model one line asking it to batch, priced in context re-reads. On the lead's tab it also nudges the lead
-at the turn's first edit, first test or build and `leadBoundary.searchNudgeAt`-th code search, and the Stop hook shows
+at the turn's first edit, first test or build, first research (a web lookup, or a search of another session's notes,
+naming whom to ask) and `leadBoundary.searchNudgeAt`-th code search, and the Stop hook shows
 you what the lead did itself. See [Hooks and permissions](hooks.md#after-a-tool-call-the-loop-nudge) and
 [the lead boundary](hooks.md#after-a-tool-call-the-lead-boundary).
 

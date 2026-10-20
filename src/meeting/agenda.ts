@@ -107,6 +107,7 @@ function decisionLines(input: AgendaInput): string[] {
     head,
     ...waiting.flatMap((task) => cardFacts(task, input.tree, new Map(input.tasks.map((other) => [other.id, other])))),
     `  Read each card to ${input.ownerMarker} as it stands, each figure explained; where one says no card yet, ask its owner for it (check flags it NO-CARD). Never point to a doc; \`${input.command} show <id>\` prints a task whole.`,
+    `  A question a card does not answer is its task owner's to find: ${input.command} add --owner <id> --due <date> --session ${input.lead}, then relay the answer; never look it up yourself.`,
     `  Record each answer in the same turn: ${input.command} update <id> --note "${input.ownerMarker} decided: <decision>" --session ${input.lead}; meeting end tells each task's owner.`,
   ];
 }
