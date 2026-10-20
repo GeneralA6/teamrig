@@ -580,11 +580,14 @@ push wherever it sits in the line:
 
 When it cannot read part of a line with confidence, it asks and says why: a quote that never closes, a git
 command, alias, folder, remote or refspec only known when the line runs, an alias git cannot read, scripts nested
-too deep. Some of these, such as `eval "$X"`, `bash -c "$CMD"` or an unclosed quote, ask only when the line, or a
-script or alias it runs, names a push: a word, or a piece of one between blanks, quotes, operators and path
-separators, that is `push`, `--push` or `git-push`. A folder such as `src/push-guard`, a file `x-push.log`, a
-comment, a redirection target or a heredoc a plain `cat` stores in a file does not count. Each command Claude
-runs starts in a fresh shell, so a push the line never spells out would have to be built on purpose.
+too deep, a push held in quoted text as a command substitution (`x='a[$(git push origin main)]'`), which bash runs
+if an expansion reads the text again (`${x@P}`, `${!x}`, `$((x))`, `let`, `[[ -eq ]]`, or `read`, `printf -v`,
+`unset` or `declare` given it as a name), in this line or a later one. Some of these, such as `eval "$X"`,
+`bash -c "$CMD"` or an unclosed quote, ask only when the line, or a script or alias it runs, names a push: a
+word, or a piece of one between blanks, quotes, operators and path separators, that is `push`, `--push` or
+`git-push`. A folder such as `src/push-guard`, a file `x-push.log`, a comment, a redirection target or a heredoc a
+plain `cat` stores in a file does not count. Each command Claude runs starts in a fresh shell, so a push the line
+never spells out would have to be built on purpose.
 
 It is a guard against mistakes, not a sandbox; protect the branch on your git host too. It does not see:
 

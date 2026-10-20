@@ -184,7 +184,8 @@ Before Claude runs a Bash or PowerShell command, the guard reads it and decides:
   "Force-pushing, mirroring or deleting a protected branch (main, master) is refused: it can overwrite other
   sessions' commits. Push your own branch, or use --force-with-lease if you truly mean it."
 - **Asks, in doubt**: when it cannot read part of the line (an unclosed quote, a branch or alias only known when
-  the line runs; a bash variable counts as known when the line set it earlier to text and other known variables,
+  the line runs, a push held in quoted text such as `x='$(git push)'`, which bash runs if `${x@P}` or `$((x))`
+  reads it again; a bash variable counts as known when the line set it earlier to text and other known variables,
   as in `B=feat; git push -u origin $B` or `G="git -C /w"; $G push`, and never set it otherwise; `$HOME` and a
   value's leading `~` count as your home folder in the line's own shell, as in `T=~/bin/teamrig; $T list`): "The guard
   cannot tell whether this command pushes to a protected branch (...): <why>. Confirm, or write the push out
