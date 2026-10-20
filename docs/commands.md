@@ -151,6 +151,9 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       <id|name>: that session by day; --loops: the loop patterns by day; --burn: what started the
       turns, cold calls and compactions by day; --misses: rule misses out of their chances, per
       session, or by day for one; --day: a past day recounted
+  budget --task <T<n>>
+      each session's W on that task by UTC day; a turn's W splits equally over the task ids its calls
+      name: T<n> in a command, t<n>- in a branch or path
   budget lift <id|name> --part <pct> --stop-pct <pct> --reason "<why>" [--until <HH:MM|date>] [--reserve]
       (the lead only) that session's part of the team's daily budget, in %, today, until --until, the day's end
       or the week reaching --stop-pct; --reserve: above budget.lift.maxStopPct, in the last hour before the reset

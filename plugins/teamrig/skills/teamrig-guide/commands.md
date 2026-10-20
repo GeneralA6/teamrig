@@ -2340,6 +2340,11 @@ Flags:
   session table's `read` column shows the calls read out of all; `--day` recounts one. The lead reads
   `budget --misses --all` at its peer review to see which rules fail most, and whether a fix made them fail less.
 - `--day <YYYY-MM-DD>`: a past UTC day recounted from the transcripts; nothing is written.
+- `--task <T<n>>`: each session's W on that task by UTC day over the 8 days kept, the outside's too, then the
+  share of today's W that went to some task. A turn's W goes to the task ids its calls name (`T734` in a command,
+  `t734-` in a branch, worktree or file path, never what a call's output printed), split equally over them when
+  the next prompt ends the turn; a turn still open counts its share at once. Helpers' W goes to no task. Reads
+  alone: no session, table, `--day` or `--all` with it.
 - `--all`: every session, idle ones too, every outside title, and with `--loops`, `--burn` or `--misses` all 8 days.
 
 Example:
