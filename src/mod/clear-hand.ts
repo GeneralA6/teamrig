@@ -28,7 +28,7 @@ export const TICK_MS = 1_000;
 export const DIR_RETRY_MS = 60_000;
 /** What `hook clear-claim` prints when this tab took the ask; anything else is a reason it did not. */
 export const CLAIM_TAKEN = 'taken';
-/** What `hook clear-claim --hold` prints when this tab held the ask: the session still runs a helper. */
+/** What `hook clear-claim --hold` prints when this tab held the ask: a helper, a draft, the person or the band's count holds the /clear. */
 export const CLAIM_HELD = 'held';
 /** What the runner writes when it takes its ask back unclaimed. */
 export const CLAIM_WITHDRAWN = 'withdrawn';
