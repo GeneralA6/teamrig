@@ -10,7 +10,7 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
-    "build": "node tools/build/clean.ts && tsc -p tsconfig.build.json",
+    "build": "node tools/build/clean.ts && tsc -p tsconfig.build.json && node tools/build/integrity.ts",
     "test": "node --test \"tools/**/*.test.ts\" \"src/**/*.test.ts\"",
     "verify": "npm run typecheck && npm test",
     "scrub": "node tools/scrub/cli.ts --tree",
