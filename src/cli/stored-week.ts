@@ -3,7 +3,7 @@ import { OUTSIDE_ID } from '../budget/measure.ts';
 import { PeriodStore } from '../budget/period.ts';
 import { readSnapshots, weekUseOf } from '../budget/snapshot.ts';
 import { UsageStore, type UsageState } from '../budget/store.ts';
-import { meteredOf, readWeek, type WeekReading } from '../budget/week.ts';
+import { limitWPerPct, meteredOf, readWeek, type WeekReading } from '../budget/week.ts';
 import type { KitConfig } from '../config/types.ts';
 import type { TeamPaths } from '../core/home.ts';
 import { snapshotDirOf } from './commands/budget.ts';
@@ -35,3 +35,15 @@ export async function readStoredWeek(
   return readWeek({ budget, now, statusUse, period, states });
 }
 
+/**
+ * The week's W per percent as `teamrig budget` reads it: from `budget.weeklyLimitW`, which reads no file, else the
+ * stored week's estimate; undefined while neither is known.
+ */
+export async function readWPerPct(
+  runtime: CliRuntime,
+  paths: StoredWeekPaths,
+  config: Pick<KitConfig, 'sessions' | 'budget'>,
+  now: number,
+): Promise<number | undefined> {
+  return limitWPerPct(config.budget) ?? (await readStoredWeek(runtime, paths, config, now)).wPerPct;
+}

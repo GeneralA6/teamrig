@@ -46,7 +46,8 @@ Flags:
   `check` does not count it as a waiting p1 (`PRIORITY-SKIP`) until they are done or dropped. Each of them
   takes this task's due date when it is earlier (its effective due: `due 10-17 (from T9)`).
 - `--size <pct>`: what the task still costs, in percent of the weekly usage limit (`1.5` or `1.5%`, above 0 and
-  at most 100). `plan` sums the week's sizes against what is left of the limit; `show` prints it.
+  at most 100). `plan` sums the week's sizes against what is left of the limit; `show` prints it, and its
+  weighted tokens at the week's W per percent (`budget.weeklyLimitW`, else the status line's estimate) once known.
 - `--team <child team>`: only for a lead with sub-teams: hands that team's lead the task. It takes no
   `--owner` or `--source`.
 
