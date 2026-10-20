@@ -45,7 +45,7 @@ describe('runCli: set --ask asks a peer for work by a task', () => {
     assert.match(asked.stdout.join('\n'), /SET T1 verifying, .* \(proof: the nightly run is green; waiting: on T2\)/);
     const owner = await kit.run(['set', 'T1', '--status', 'verifying', '--note', 'the owner tries it', '--waits', 'approval:owner', ...TEST_CARD_FLAGS, '--followups', 'none', '--session', 'alpha']);
     assert.equal(owner.code, EXIT.ok, owner.stderr.join('\n'));
-    assert.deepEqual(owner.stderr, [`NOTE lead has an inbox line: T1 waits on the owner's approval: ${TEST_CARD.question}`]);
+    assert.deepEqual(owner.stderr, [`NOTE lead has an inbox line: T1 waits on the owner's approval: ${TEST_CARD.question} | asked in the next batch at the daily meeting`]);
   });
 
   it("refuses a peer's approval with the ask to make, and writes nothing", async () => {
