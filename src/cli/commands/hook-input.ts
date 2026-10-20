@@ -1,8 +1,9 @@
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { isRecord, stringField, type JsonRecord } from '../../core/guards.ts';
-import { claudeConfigDir, ENV } from '../../core/home.ts';
+import { claudeConfigDir, claudeTempDir, ENV } from '../../core/home.ts';
 import { resolveTeam, type TeamResolution } from '../../core/team.ts';
 import { OwnPaths } from '../../hooks/lead-boundary.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
@@ -111,8 +112,12 @@ export async function hookScopeOf(runtime: CliRuntime, payload: JsonRecord): Pro
   return team === undefined ? undefined : sessionScopeOf(runtime, team, payload);
 }
 
-/** The lead's own paths in this team: its teamrig folder, Claude Code's memory folders and `leadBoundary.ownPaths`. */
+/**
+ * The lead's own paths in this team: its teamrig folder, Claude Code's memory folders, its session scratchpads
+ * (notes and command input it keeps for itself, never work to hand off) and `leadBoundary.ownPaths`.
+ */
 export function leadOwnPaths(runtime: CliRuntime, kit: Kit, config: KitConfig): OwnPaths {
   const memory = join(claudeConfigDir(runtime.env, runtime.userHome), 'projects', '*', 'memory');
-  return new OwnPaths([kit.paths.home, memory, ...config.leadBoundary.ownPaths], runtime.userHome);
+  const scratchpads = join(claudeTempDir(runtime.env, tmpdir()), 'claude', '*', '*', 'scratchpad');
+  return new OwnPaths([kit.paths.home, memory, scratchpads, ...config.leadBoundary.ownPaths], runtime.userHome);
 }

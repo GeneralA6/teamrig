@@ -41,6 +41,12 @@ describe('the lead boundary hooks', () => {
     const own: FixtureTool = { id: 'last', name: 'Write', path: join(USER_HOME, 'ops', 'lead', 'agenda.md') };
     const config = { ...TEAM, leadBoundary: { ownPaths: ['~/ops/lead'] } };
     assert.deepEqual((await afterTool(await teamWith(own, config), own, AS_LEAD)).stdout, []);
+    const temp = join(USER_HOME, 'temp');
+    const scratch: FixtureTool = { id: 'last', name: 'Write', path: join(temp, 'claude', 'work-app', 'old-session', 'scratchpad', 'lead-tasks.tsv') };
+    const inTemp = { ...AS_LEAD, CLAUDE_CODE_TMPDIR: temp };
+    assert.deepEqual((await afterTool(await teamWith(scratch), scratch, inTemp)).stdout, [], 'a session scratchpad is the lead own');
+    const beside: FixtureTool = { ...scratch, path: join(temp, 'claude', 'work-app', 'lead-tasks.tsv') };
+    assert.match((await afterTool(await teamWith(beside), beside, inTemp)).stdout.join(''), /the lead edited lead-tasks\.tsv itself/);
     const off = await teamWith(EDIT, { ...TEAM, leadBoundary: { enabled: false } });
     assert.deepEqual((await afterTool(off, EDIT, AS_LEAD)).stdout, []);
   });
