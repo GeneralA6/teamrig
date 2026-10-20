@@ -1220,12 +1220,17 @@ keep`), numbered for `rules forget`; a kept line that is no longer there prints 
 holds a secret prints as withheld. Not scanned: files a CLAUDE.md pulls in with `@path`, plugin skills and hooks,
 and managed settings.
 
+A line `rules clear` recorded as not conflicting is left out while its text and the core rules it touches stay the
+same; the counts say how many (`more cleared before`). The last line names the `rules clear` command, with a digest
+of the lines listed.
+
 Over 150 candidate lines it prints only the counts: list them a kind at a time with `--kind`.
 
 Flags:
 
 - `--kind <kind>`: one kind of place: `claude-md`, `rules`, `skill`, `memory`, `team-rules`, `hook` or
   `settings`.
+- `--all`: list the cleared lines too, to judge every line again.
 
 Example:
 
@@ -1236,10 +1241,12 @@ teamrig rules scan --kind claude-md
 Output:
 
 ```text
-SCANNED claude-md: 2 place(s), 2 candidate line(s)
+SCANNED claude-md: 2 place(s), 2 candidate line(s), 5 more cleared before (--all lists them)
 RECORDED 1 ~/.claude/CLAUDE.md:12 "- Push to main once the tests pass." wins over rule 15 push (a solo repo)
 CANDIDATE ~/work/shop/CLAUDE.md:4 [14 commits, 16 worktrees] - Squash every branch into one commit before review.
+CANDIDATE ~/work/shop/CLAUDE.md:9 [16 worktrees] - Name each branch after its task.
 NEXT judge each candidate against the core rule it names; a line that tells a session to do otherwise conflicts. Show the user each conflict with what its rule asks in plain words, never the rule number alone. Record a line the user keeps with `teamrig rules keep <path>:<line> --rule <n> --wins local|teamrig --yes`
+NEXT then record the lines that do not conflict, so a rescan lists only new or changed ones: `teamrig rules clear --kind claude-md --seen 3f9a0c2e7b1d4a65 [--except <path>:<line>,...] --yes`, --except naming each line still to settle
 ```
 
 ### teamrig rules keep
@@ -1295,6 +1302,40 @@ Output:
 
 ```text
 FORGOT 1 ~/.claude/CLAUDE.md "- Push to main once the tests pass." (rule 15 push); the old config is at ~/.teamrig/teams/shop/backups/config.rules.json
+```
+
+### teamrig rules clear
+
+Records the candidate lines a `rules scan` listed as not conflicting, so the next scan lists only new or changed
+lines for the model to judge (`state/rule-verdicts.json` in the team home). The lead only. Run it once the lines are
+judged, with the same `--kind` and `--all` as that scan and the digest its last line printed: when the lines changed
+since, it refuses, so only judged lines are cleared. `--except` names each line that conflicts or is still to settle;
+it stays listed. A line withheld as a secret is never cleared.
+
+A cleared line comes back when its text changes or a core rule it touches does (a line that names no rule, such as
+"our CLAUDE.md wins", touches them all). The same text in another place is cleared too. Without `--yes` it shows
+what it clears and writes nothing.
+
+Flags:
+
+- `--session <id|name>`: the caller, the lead.
+- `--seen <digest>`: the digest the scan printed.
+- `--except <path>:<line>,...`: the lines to leave listed.
+- `--kind <kind>`: the kind the scan listed, when it was run with one.
+- `--all`: when the scan was run with it, so its cleared lines count too.
+- `--yes`: write it.
+
+Example:
+
+```sh
+teamrig rules clear --kind claude-md --seen 3f9a0c2e7b1d4a65 --except ~/work/shop/CLAUDE.md:4 --session lead --yes
+```
+
+Output:
+
+```text
+CLEARED 6 line(s) as not conflicting, 1 left listed
+NEXT `teamrig rules scan` leaves them out until a line or a core rule it touches changes (--all lists them again)
 ```
 
 ### teamrig skills scorecard

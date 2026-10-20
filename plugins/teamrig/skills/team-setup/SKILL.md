@@ -98,7 +98,10 @@ it the other way, so settle each one with the user now, and again whenever they 
      conflicting lines, each with its path:line, the rule and how they differ.
 2. Judge each candidate against the core rule it names. It conflicts when it tells a session to do otherwise: a
    push or deploy route the rule forbids, skipping the register, its own precedence ("our CLAUDE.md wins"). A line
-   that adds detail or agrees is no conflict: leave it out.
+   that adds detail or agrees is no conflict: leave it out. Then, before editing any file, record the rest as no
+   conflict with the command the scan's last line names, `--except` listing each conflict:
+   `teamrig rules clear --seen <digest> --except <path>:<line>,... --session lead --yes` (with the scan's
+   `--kind`). The next scan then lists only new or changed lines.
 3. Show the user the conflicts, each as `<path>:<line>`, its text, what the core rule asks and how they differ. The
    user has not read teamrig's rules, so say what each one asks in plain words, from the core rules in your context
    (`teamrig rules` prints them): never name a rule by its number alone. None: say so in one line and go on.
