@@ -59,7 +59,7 @@ describe('the meeting agenda', () => {
     assert.equal(oneLine(' a\n  b\tc '), 'a b c');
   });
 
-  it("gives each owner's decision its card facts, then how to card and record it", () => {
+  it("gives each owner's decision its card facts, then how to card, ask about and record it", () => {
     const lines = section(agendaLines(inputOf([DECIDE, testTask({ id: 'T5', status: 'waiting', waits: [{ kind: 'approval', who: 'owner' }] })])), 'DECISIONS');
     assert.deepEqual(lines.slice(0, 10), [
       'DECISIONS 2 waiting on owner (decision or approval)',
@@ -79,8 +79,13 @@ describe('the meeting agenda', () => {
       '    waiting since 01-07 09:00 UTC',
     ]);
     assert.match(lines[13] ?? '', /^ {2}Read each card to owner as it stands, .*Never point to a doc; `teamrig show <id>` prints a task whole\.$/);
-    assert.equal(lines[14], '  Record each answer in the same turn: teamrig update <id> --note "owner decided: <decision>" --session lead; meeting end tells each task\'s owner.');
-    assert.equal(lines.length, 15);
+    // T737: the owner's follow-up question goes to the task's owner, not to the lead's own research.
+    assert.equal(
+      lines[14],
+      "  A question a card does not answer is its task owner's to find: teamrig add --owner <id> --due <date> --session lead, then relay the answer; never look it up yourself.",
+    );
+    assert.equal(lines[15], '  Record each answer in the same turn: teamrig update <id> --note "owner decided: <decision>" --session lead; meeting end tells each task\'s owner.');
+    assert.equal(lines.length, 16);
   });
 
   it('cuts a long description', () => {

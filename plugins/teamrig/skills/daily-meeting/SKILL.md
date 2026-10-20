@@ -45,12 +45,27 @@ Lead with what got done and what is late, in a few lines. Then one card per deci
 Ask for the choices with Claude Code's question picker (AskUserQuestion), at most 4 questions a call: each card's
 options as its choices, your recommendation first, the card text above it.
 
-Never point to a doc instead of a card: `teamrig show <id>` prints a task whole when the facts are thin, and a
-helper on your own model can gather more. Keep decisions apart from FYIs and from hands-on asks. An owner gate
-(destructive data operations, product and design, permissions, budget, resource changes) stays the human's:
+Never point to a doc instead of a card: `teamrig show <id>` prints a task whole when the facts are thin; a fact the
+task does not hold is its owner's to find (step 3). Keep decisions apart from FYIs and from hands-on asks. An owner
+gate (destructive data operations, product and design, permissions, budget, resource changes) stays the human's:
 a session's recommendation is not their approval.
 
-## 3. Record each answer in the same turn
+## 3. Send a follow-up question to the task's owner
+
+When the human asks something about a card that its facts do not answer (a vendor's terms, a figure, how some code
+behaves), finding the answer is work of the session that owns the task. Do not look it up yourself, by web or by
+its notes, nor through a helper: add the question as that session's task with a deadline, in the same turn.
+
+```sh
+teamrig add --session lead --owner <id> --source owner --priority p1 --due <date> --title "Owner asks on T7: <the question>" --description "<what the human needs, and for which decision>"
+```
+
+The `add` tells the owner by inbox line; when the human waits for the answer in this meeting, also send the owner
+one message with the deadline. Tell the human when the answer will come and go on to the next card. Relay the
+answer as soon as it arrives, or bring it at the next meeting. On your tab, the lead boundary hook flags a web lookup
+or a search of another session's notes, naming whom to ask.
+
+## 4. Record each answer in the same turn
 
 ```sh
 teamrig update T7 --note "owner decided: the middle tier ships first" --priority p1 --session lead
@@ -60,7 +75,7 @@ The note is what `meeting end` tells the task's owner, with any priority, due da
 of the human's that creates work is a new task: `teamrig add --session lead --owner <id> --source owner ...`. When a
 decision changes what a session works on right now, send it one CRITICAL message; anything else waits for the end.
 
-## 4. End
+## 5. End
 
 ```sh
 teamrig meeting end --session lead
