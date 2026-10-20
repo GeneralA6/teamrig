@@ -1,4 +1,4 @@
-import { formatUtcDay, formatUtcHour, MS_PER_DAY } from "../core/time.js";
+import { formatUtcDay, formatUtcHour, MS_PER_DAY, MS_PER_HOUR } from "../core/time.js";
 import { DailyProfile } from "./active-time.js";
 import { dailyAllowancePct, dayPacePct, readPace, weekWindow } from "./pace.js";
 /**
@@ -18,6 +18,25 @@ export function wSince(states, from, now) {
         }
         for (const [day, usage] of Object.entries(state.byDay)) {
             total += day === fromDay ? Math.max(0, usage.w - before) : day > fromDay && day <= today ? usage.w : 0;
+        }
+    }
+    return total;
+}
+/**
+ * Everyone's W from the hour of `from` to `now` that fell in inactive time: each hour's W times the part of that hour
+ * the profile does not count as active, so a quiet hour's whole W at the default `paceWeight` of 0. It counts `from`'s
+ * hour whole, as `wSince` does. A store whose hours were lost adds nothing, so the in-day pace errs low.
+ */
+export function idleWSince(states, from, now, profile) {
+    let total = 0;
+    for (let hour = from - (from % MS_PER_HOUR); hour <= now; hour += MS_PER_HOUR) {
+        const idleShare = 1 - profile.activeMs(hour, hour + MS_PER_HOUR) / MS_PER_HOUR;
+        if (idleShare <= 0) {
+            continue;
+        }
+        const key = formatUtcHour(new Date(hour));
+        for (const state of states) {
+            total += (state.byHour[key] ?? 0) * idleShare;
         }
     }
     return total;
@@ -56,7 +75,7 @@ export function readWeek(input) {
         : dailyAllowancePct({ window, budget, now, usedPct, todayPct: todayW / wPerPct, profile });
     const teamDay = window === undefined || wPerPct === undefined || allowancePct === undefined
         ? undefined
-        : { usedPct: todayW / wPerPct, pacePct: dayPacePct({ window, now, allowancePct, profile }) };
+        : { usedPct: todayW / wPerPct, pacePct: dayPacePct({ window, now, allowancePct, idlePct: idleWSince(states, todayFrom, now, profile) / wPerPct, profile }) };
     return {
         reset,
         window,
