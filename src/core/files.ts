@@ -1,3 +1,4 @@
+import type { Stats } from 'node:fs';
 import { appendFile, link, mkdir, open, readdir, readFile, rename, stat, unlink, writeFile, type FileHandle } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { errorCode } from './guards.ts';
@@ -10,6 +11,27 @@ let temporaries = 0;
 function temporaryOf(path: string): string {
   temporaries += 1;
   return `${path}.${process.pid}.${temporaries}.tmp`;
+}
+
+/** `temporaryOf`'s names, and `<name>.<pid>.tmp` as an older teamrig named them, before a write had its own counter. */
+const TEMPORARY_NAME = /^.+\.\d+(?:\.\d+)?\.tmp$/;
+
+/** Whether a file name is a write's temporary sibling, which only a write stopped before its rename leaves behind. */
+export function isTemporaryName(name: string): boolean {
+  return TEMPORARY_NAME.test(name);
+}
+
+/** The path's stats when a file is there; undefined for a missing path or a folder. */
+async function fileStatsOf(path: string): Promise<Stats | undefined> {
+  try {
+    const stats = await stat(path);
+    return stats.isFile() ? stats : undefined;
+  } catch (error) {
+    if (errorCode(error) === 'ENOENT') {
+      return undefined;
+    }
+    throw error;
+  }
 }
 
 /** The file operations the kit needs, behind one interface so every module can be tested in memory. */
@@ -39,6 +61,8 @@ export interface Files {
    * reader can tell that a file changed since it last read it without reading it again.
    */
   stamp(path: string): Promise<string | undefined>;
+  /** When the file last changed, in epoch milliseconds, or undefined when there is no file there. */
+  modifiedAt(path: string): Promise<number | undefined>;
 }
 
 /**
@@ -141,15 +165,11 @@ export function nodeFiles(sleep: Sleep): Files {
       return removeFile(path);
     },
     async stamp(path) {
-      try {
-        const stats = await stat(path);
-        return stats.isFile() ? `${stats.size}:${stats.mtimeMs}` : undefined;
-      } catch (error) {
-        if (errorCode(error) === 'ENOENT') {
-          return undefined;
-        }
-        throw error;
-      }
+      const stats = await fileStatsOf(path);
+      return stats === undefined ? undefined : `${stats.size}:${stats.mtimeMs}`;
+    },
+    async modifiedAt(path) {
+      return (await fileStatsOf(path))?.mtimeMs;
     },
   };
 }

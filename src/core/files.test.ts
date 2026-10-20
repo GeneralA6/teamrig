@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { nodeFiles } from './files.ts';
+import { isTemporaryName, nodeFiles } from './files.ts';
 import { realSleep } from './lock.ts';
 
 describe('nodeFiles', () => {
@@ -93,10 +93,28 @@ describe('nodeFiles', () => {
     assert.equal(await files.stamp(folder), undefined);
   });
 
+  it('tells when a file last changed, and nothing for a missing path or a folder', async () => {
+    const folder = join(root, 'm');
+    const path = join(folder, 'changed.txt');
+    assert.equal(await files.modifiedAt(path), undefined);
+    const before = Date.now();
+    await files.write(path, 'x');
+    const changedAt = (await files.modifiedAt(path)) ?? Number.NaN;
+    assert.ok(Math.abs(changedAt - before) < 60_000, `${changedAt} vs ${before}`);
+    assert.equal(await files.modifiedAt(folder), undefined);
+  });
+
   it('removes a file, telling that it did, and ignores a missing one', async () => {
     const path = join(root, 'gone.txt');
     await files.write(path, 'x');
     assert.deepEqual([await files.remove(path), await files.remove(path)], [true, false]);
     assert.equal(await files.read(path), undefined);
+  });
+});
+
+describe('isTemporaryName', () => {
+  it("knows a write's temporary sibling, as a write names it now and as an older teamrig did", () => {
+    assert.deepEqual(['a.json.4242.7.tmp', 'a.json.4242.tmp', '.pruned.4242.8.tmp'].map(isTemporaryName), [true, true, true]);
+    assert.deepEqual(['a.json', '.pruned', 'notes.tmp', 'a.json.x.tmp', '.4242.tmp'].map(isTemporaryName), [false, false, false, false, false]);
   });
 });

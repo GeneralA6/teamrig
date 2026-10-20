@@ -1,17 +1,22 @@
 import { posix } from 'node:path';
 import type { Files } from '../core/files.ts';
+import type { Clock } from '../core/lock.ts';
 import type { PathKind, PathProbe } from '../core/path-probe.ts';
 
 /**
  * In-memory `Files` for tests. Paths are compared after normalising separators to `/`. A file's stamp is its
- * size in bytes and the number of the change that last set it, counted over every file.
+ * size in bytes and the number of the change that last set it, counted over every file; it was modified at the
+ * clock's time of that change (the epoch, without a clock).
  */
 export class MemoryFiles implements Files {
   private readonly contents = new Map<string, string>();
   private readonly changedBy = new Map<string, number>();
+  private readonly changedAt = new Map<string, number>();
+  private readonly clock: Clock;
   private changes = 0;
 
-  constructor(initial: Readonly<Record<string, string>> = {}) {
+  constructor(initial: Readonly<Record<string, string>> = {}, clock: Clock = EPOCH) {
+    this.clock = clock;
     for (const [path, text] of Object.entries(initial)) {
       this.put(normalisePath(path), text);
     }
@@ -74,6 +79,7 @@ export class MemoryFiles implements Files {
   async remove(path: string): Promise<boolean> {
     const key = normalisePath(path);
     this.changedBy.delete(key);
+    this.changedAt.delete(key);
     return this.contents.delete(key);
   }
 
@@ -83,12 +89,20 @@ export class MemoryFiles implements Files {
     return text === undefined ? undefined : `${Buffer.byteLength(text, 'utf8')}:${this.changedBy.get(key) ?? 0}`;
   }
 
+  async modifiedAt(path: string): Promise<number | undefined> {
+    return this.changedAt.get(normalisePath(path));
+  }
+
   private put(key: string, text: string): void {
     this.changes += 1;
     this.contents.set(key, text);
     this.changedBy.set(key, this.changes);
+    this.changedAt.set(key, this.clock.now());
   }
 }
+
+/** A clock that stays at the epoch, for files whose change times no test reads. */
+const EPOCH: Clock = { now: () => 0 };
 
 /** A `PathProbe` over a `MemoryFiles`: a path that holds text is a file, a path with files below it is a folder. */
 export class MemoryPathProbe implements PathProbe {
