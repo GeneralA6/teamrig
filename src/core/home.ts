@@ -111,6 +111,8 @@ export interface TeamPaths {
   readonly meeting: string;
   /** The last batch of the owner's decisions the lead asked (src/decisions/store.ts). */
   readonly decisionsAsked: string;
+  /** The candidate lines `rules clear` recorded as not conflicting with a core rule (src/rules/verdicts.ts). */
+  readonly ruleVerdicts: string;
   /** The append-only log of session renames, so every name a session has had still finds it. */
   readonly renames: string;
   readonly renamesLock: string;
@@ -215,6 +217,7 @@ export function teamPaths(kitHome: string, team: string, userHome: string, overr
     coldSends: join(state, 'cold-sends.jsonl'),
     meeting: join(state, 'meeting.json'),
     decisionsAsked: join(state, 'decisions-asked.json'),
+    ruleVerdicts: join(state, 'rule-verdicts.json'),
     renames: join(state, 'renames.jsonl'),
     renamesLock: join(state, 'renames.lock'),
     skills: inHome(overrides.skills) ?? join(userHome, '.claude', 'skills'),
