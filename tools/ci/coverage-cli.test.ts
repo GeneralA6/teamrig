@@ -77,6 +77,14 @@ describe('coverage-cli', () => {
     assert.match(skipped.output, /1 skipped and 0 todo test\(s\)/);
   });
 
+  it('fails a suite whose body throws before any of its tests runs, which node counts as no failure', () => {
+    const thrown = gate({
+      'src/sign.test.ts': `${FULL_TEST}import { describe } from 'node:test';\ndescribe('built wrong', () => {\n  throw new Error('a constant moved');\n});\n`,
+    });
+    assert.equal(thrown.status, 1, thrown.output);
+    assert.match(thrown.output, /1 suite\(s\) failed outside any test, which the run counted as no failure \(the error is above\): built wrong/);
+  });
+
   it('names a coverage file cut short as the cause of a run with no report, with no line per file', () => {
     // A child process killed while it writes its coverage file at its exit leaves one cut short, which Node cannot read.
     const cut = [

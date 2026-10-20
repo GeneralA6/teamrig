@@ -51,6 +51,8 @@ export interface TestSummary {
   readonly cancelled: number;
   readonly skipped: number;
   readonly todo: number;
+  /** The names on the run's `not ok` lines: a failing test, the suites holding it, and a suite failed outside any test. */
+  readonly notOk: readonly string[];
 }
 
 type Parsed<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly problem: string };
@@ -257,7 +259,7 @@ export function parseLcov(text: string, toRepoPath: (absolute: string) => string
   return files;
 }
 
-/** The run's totals from TAP output: the top-level `# <name> <n>` lines. */
+/** The run's totals from TAP output: the top-level `# <name> <n>` lines, and the names its `not ok` lines carry. */
 export function parseTapSummary(text: string): TestSummary | undefined {
   const counts = new Map<string, number>();
   for (const [, name, count] of text.matchAll(/^# (tests|fail|cancelled|skipped|todo) (\d+)$/gm)) {
@@ -268,7 +270,23 @@ export function parseTapSummary(text: string): TestSummary | undefined {
   const tests = counts.get('tests');
   return tests === undefined
     ? undefined
-    : { tests, fail: counts.get('fail') ?? 0, cancelled: counts.get('cancelled') ?? 0, skipped: counts.get('skipped') ?? 0, todo: counts.get('todo') ?? 0 };
+    : {
+        tests,
+        fail: counts.get('fail') ?? 0,
+        cancelled: counts.get('cancelled') ?? 0,
+        skipped: counts.get('skipped') ?? 0,
+        todo: counts.get('todo') ?? 0,
+        notOk: notOkNames(text),
+      };
+}
+
+/**
+ * The names on the TAP's `not ok` lines at any depth, each once, a todo test's left out (node writes its directive as
+ * ` # TODO` and escapes a `#` inside a name).
+ */
+function notOkNames(text: string): string[] {
+  const names = [...text.matchAll(/^[ \t]*not ok \d+ - (.*?)\r?$/gm)].flatMap(([, name]) => (name === undefined || / # TODO\b/.test(name) ? [] : [name]));
+  return [...new Set(names)];
 }
 
 export function percent(counts: Counts): number {
@@ -304,6 +322,9 @@ function runFindings(summary: TestSummary | undefined, status: number | null): s
   }
   if (summary.fail > 0 || summary.cancelled > 0) {
     findings.push(`${summary.fail} failing and ${summary.cancelled} cancelled test(s)`);
+  } else if (summary.notOk.length > 0) {
+    // node 22 counts a suite whose body throws before any test runs as no failure and exits 0: only its `not ok` shows it.
+    findings.push(`${summary.notOk.length} suite(s) failed outside any test, which the run counted as no failure (the error is above): ${summary.notOk.join('; ')}`);
   } else if (status !== 0) {
     findings.push(`the test run exited with status ${String(status)} with no failing test`);
   }
