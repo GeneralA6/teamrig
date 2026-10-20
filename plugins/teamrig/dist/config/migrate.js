@@ -4,6 +4,7 @@ import { CONFIG_VERSION } from "./types.js";
 /** v1 to v2: the priority levels moved from `register.tiers` to `register.priorities`, same entries. */
 export const RENAME_TIERS_TO_PRIORITIES = {
     from: 1,
+    firstRelease: '0.1.1',
     apply: (config) => {
         const register = config['register'];
         if (!isRecord(register) || !('tiers' in register)) {
@@ -19,6 +20,7 @@ export const RENAME_TIERS_TO_PRIORITIES = {
  */
 export const RENAME_BLOCKED_TO_WAITING = {
     from: 2,
+    firstRelease: '0.10.0',
     apply: (config) => {
         const register = config['register'];
         const statuses = isRecord(register) ? register['requireNoteOn'] : undefined;
@@ -74,6 +76,7 @@ function withoutSessionDailyPct(budget) {
  */
 export const DROP_FIXED_DAILY_BUDGETS = {
     from: 3,
+    firstRelease: '0.83.0',
     apply: (config) => {
         let next = config;
         const changes = [];
@@ -109,6 +112,7 @@ export function migrateConfig(raw, target = CONFIG_VERSION, migrations = CONFIG_
         return { kind: 'newer', version };
     }
     let config = raw;
+    let firstRelease;
     const changes = [];
     for (let from = version; from < target; from += 1) {
         const step = migrations.find((migration) => migration.from === from);
@@ -118,8 +122,9 @@ export function migrateConfig(raw, target = CONFIG_VERSION, migrations = CONFIG_
         const result = step.apply(config);
         config = { ...result.config, configVersion: from + 1 };
         changes.push(...result.changes.map((change) => `v${from}→v${from + 1}: ${change}`));
+        firstRelease = step.firstRelease;
     }
-    return version === target
+    return firstRelease === undefined
         ? { kind: 'current', config, version }
-        : { kind: 'migrated', config, fromVersion: version, version: target, changes };
+        : { kind: 'migrated', config, fromVersion: version, version: target, changes, firstRelease };
 }

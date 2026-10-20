@@ -28,7 +28,13 @@ export function parseConfigText(text, migrations = CONFIG_MIGRATIONS, target = C
         }
         case 'migrated': {
             const { config, issues } = parseConfig(migration.config);
-            const pending = { fromVersion: migration.fromVersion, toVersion: migration.version, changes: migration.changes, migrated: migration.config };
+            const pending = {
+                fromVersion: migration.fromVersion,
+                toVersion: migration.version,
+                changes: migration.changes,
+                firstRelease: migration.firstRelease,
+                migrated: migration.config,
+            };
             return { status: 'loaded', config, issues, pending };
         }
     }
