@@ -2,13 +2,14 @@ import { MS_PER_DAY, MS_PER_HOUR, parseDayStart, showStored } from '../core/time
 import type { TimeZone } from '../core/zone.ts';
 import { topPriority } from '../config/priorities.ts';
 import type { RegisterCheckConfig, RegisterConfig } from '../config/types.ts';
+import { approvalCleared } from './approval.ts';
 import { CARD_FLAGS } from './card.ts';
 import { taskNumber, type Task } from './fold.ts';
 import { ACTIVE_STATUSES, priorityText } from './model.ts';
 import type { RegisterSnapshot } from './snapshot.ts';
 import { loopFix, pathText, TaskTree } from './tree.ts';
 import { formatTask } from './views.ts';
-import { allReady, isPeerWait, isReady, unfinishedAfter, waitSpelling, type WaitContext, type WaitReason } from './waits.ts';
+import { allReady, isPeerWait, isReady, unfinishedAfter, waitSpelling, type WaitContext } from './waits.ts';
 
 /** In report order: the most urgent first. */
 export const FLAG_KINDS = [
@@ -105,13 +106,11 @@ function readyFlags(task: Task, context: WaitContext): Flag[] {
   if (task.status !== 'waiting') {
     return [];
   }
-  const { answer } = task;
-  const approved = (reason: WaitReason): boolean => reason.kind === 'approval' && answer?.verdict === 'approved' && answer.by === reason.who;
   if (allReady(task.waits, context)) {
     return [{ kind: 'READY', task, detail: 'every reason cleared; set its next status' }];
   }
-  if (task.waits.length > 0 && task.waits.every((reason) => isReady(reason, context) || approved(reason))) {
-    return [{ kind: 'READY', task, detail: `${answer?.by ?? 'the lead'} approved it; push or merge it, then set its next status` }];
+  if (task.waits.length > 0 && task.waits.every((reason) => isReady(reason, context) || approvalCleared(task, reason))) {
+    return [{ kind: 'READY', task, detail: `${task.answer?.by ?? 'the lead'} approved it; push or merge it, then set its next status` }];
   }
   return [];
 }
