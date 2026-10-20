@@ -54,7 +54,7 @@ To update an installed teamrig, follow
   may ask for a handover when your context is large.
 - **Tree of teams**: a team may have a parent team. Sub-team leads report to their parent lead, and the root
   lead is the only one the human talks to. At most 3 levels and 8 child teams under one team. Within one team,
-  the lead may make a session a sub-lead over others (`teamrig promote`): it answers their waits and approvals.
+  the lead may make a session a sub-lead over others (`teamrig promote`): it answers their waits and approvals and sets their work order.
 
 ## Which session you are
 
