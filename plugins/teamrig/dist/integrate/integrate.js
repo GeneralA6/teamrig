@@ -46,6 +46,8 @@ function endText(end) {
             return `was stopped by ${end.signal}`;
         case 'timedOut':
             return `was killed at its time limit (exit ${exitCodeOf(end)})`;
+        case 'stopped':
+            return `was killed when its launching shell ended (exit ${exitCodeOf(end)})`;
     }
 }
 /** The checks that need no lock: what to land, and whether it may land at all. */
@@ -158,7 +160,8 @@ function readinessOf(setup, ports, repo) {
 }
 /**
  * Under the host lock `lock`: rebases onto the fresh default branch, runs the dependency check on what the rebase made
- * (see {@link dependencyCheckRefusal}) and pushes, again from the rebase when origin moved meanwhile. The check and the
+ * (see {@link dependencyCheckRefusal}) and pushes, again from the rebase when origin moved meanwhile, unless the push
+ * was killed as its launching shell ended (no one waits for it any more). The check and the
  * push get the lock's token, so a pre-push hook that wraps its checks in `teamrig heavy` runs them under this lock.
  */
 async function land(setup, ports, request, plan, lock) {
@@ -207,7 +210,7 @@ async function land(setup, ports, request, plan, lock) {
             return { kind: 'landed', range: rangeText(git.commits(top, before, after), after), after, startedAt, endedAt };
         }
         const moved = after !== undefined && after !== before;
-        if (moved && attempt < PUSH_ATTEMPTS) {
+        if (moved && attempt < PUSH_ATTEMPTS && end.kind !== 'stopped') {
             ports.say(`origin's ${defaultBranch} moved to ${short(after)} meanwhile: rebasing and pushing again (attempt ${attempt + 1} of ${PUSH_ATTEMPTS})`);
             continue;
         }
