@@ -337,7 +337,7 @@ describe('RegisterPolicy.setStatus to verifying', () => {
     const asked = policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'shipped', proof: 'p', waits, followups: [] }, context);
     assert.deepEqual(asked.ok ? asked.value.waits : undefined, waits);
     const passed = { status: 'verifying' as const, note: 'x', proof: 'p', waits: [{ kind: 'time' as const, at: '2030-01-08 09:00' }], followups: [] };
-    assert.equal(error(policy.setStatus(TASK, 'alpha', passed, CTX)), 'time 2030-01-08 09:00 has passed: name a time to come');
+    assert.equal(error(policy.setStatus(TASK, 'alpha', passed, CTX)), 'time 01-08 09:00 UTC has passed: name a time to come');
     const plain = policy.setStatus(TASK, 'alpha', { status: 'verifying', note: 'shipped', proof: 'p', followups: [] }, CTX);
     assert.equal(plain.ok && 'waits' in plain.value, false, 'a proof that waits for nothing writes no waits');
   });
