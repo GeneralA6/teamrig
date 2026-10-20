@@ -14,6 +14,8 @@ export interface FixtureTool {
   readonly command?: string;
   /** Written as the input's `file_path`. */
   readonly path?: string;
+  /** Written as the input's `url`, as a `WebFetch` call has it. */
+  readonly url?: string;
   /** Written as the input's `skill`, as a `Skill` call has it. */
   readonly skill?: string;
   /** Written as the input's `run_in_background`. */
@@ -59,7 +61,7 @@ export function replyLine(reply: FixtureReply): string {
     type: 'tool_use',
     id: tool.id,
     name: tool.name,
-    input: definedEntries({ command: tool.command, file_path: tool.path, skill: tool.skill, run_in_background: tool.background }),
+    input: definedEntries({ command: tool.command, file_path: tool.path, url: tool.url, skill: tool.skill, run_in_background: tool.background }),
   }));
   return JSON.stringify(
     definedEntries({
