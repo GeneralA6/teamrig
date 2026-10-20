@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
 import { freemem } from 'node:os';
-import { treeOf, wholeNumberTriples } from "./processes.js";
+import { treeOf, wholeNumberLines } from "./processes.js";
 const MB = 2 ** 20;
 /** Bytes a process list may print: a host with thousands of processes stays far under it. */
 const LIST_MAX_BUFFER = 16 * MB;
@@ -47,21 +48,69 @@ export function watchMemory(probe, root, intervalMs, every) {
         },
     };
 }
-/** Rows of `<pid>,<parent>,<bytes>` lines; a line that is not three whole numbers is left out. */
+/** Rows of `<pid>,<parent>,<bytes>[,<started ms>]` lines; a line that is not three or four whole numbers is left out. */
 export function parseProcessRows(text) {
-    return wholeNumberTriples(text).map(([pid, parent, bytes]) => ({ pid, parent, bytes }));
+    return wholeNumberLines(text, [3, 4]).flatMap(([pid, parent, bytes, startedMs]) => {
+        if (pid === undefined || parent === undefined || bytes === undefined) {
+            return [];
+        }
+        return [startedMs === undefined ? { pid, parent, bytes } : { pid, parent, bytes, startedMs }];
+    });
 }
-/** Win32_Process lists every process with its parent and working set; `ps` prints the resident set in KB. */
+/** Win32_OperatingSystem's `<total>,<free>` virtual memory in KB: the commit limit, and what is left of it. */
+export function parseWindowsCommit(text) {
+    const cells = text.trim().split(',').map(Number);
+    const [limitKb, freeKb] = cells;
+    if (cells.length !== 2 || limitKb === undefined || freeKb === undefined || !cells.every(Number.isSafeInteger) || limitKb === 0 || freeKb > limitKb) {
+        return undefined;
+    }
+    return { usedMb: Math.round((limitKb - freeKb) / 1024), limitMb: Math.round(limitKb / 1024) };
+}
+/** `/proc/meminfo`'s Committed_AS (used) and CommitLimit, in kB; undefined unless both are there and the limit is not 0. */
+export function parseMeminfoCommit(text) {
+    const kbOf = (key) => {
+        const match = new RegExp(`^${key}:\\s+(\\d+) kB$`, 'm').exec(text);
+        return match?.[1] === undefined ? undefined : Number(match[1]);
+    };
+    const usedKb = kbOf('Committed_AS');
+    const limitKb = kbOf('CommitLimit');
+    return usedKb === undefined || limitKb === undefined || limitKb === 0 ? undefined : { usedMb: Math.round(usedKb / 1024), limitMb: Math.round(limitKb / 1024) };
+}
+/** Win32_Process lists every process with its parent, working set and start; `ps` prints the resident set in KB. */
 function listCommand(platform) {
     if (platform === 'win32') {
-        const script = "Get-CimInstance Win32_Process | ForEach-Object { '{0},{1},{2}' -f $_.ProcessId,$_.ParentProcessId,$_.WorkingSetSize }";
+        const started = '$(if ($_.CreationDate) { ([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds() } else { 0 })';
+        const script = `Get-CimInstance Win32_Process | ForEach-Object { '{0},{1},{2},{3}' -f $_.ProcessId,$_.ParentProcessId,$_.WorkingSetSize,${started} }`;
         return { file: 'powershell.exe', args: ['-NoProfile', '-NonInteractive', '-Command', script], bytesPerUnit: 1 };
     }
     return { file: 'ps', args: ['-A', '-o', 'pid=,ppid=,rss='], bytesPerUnit: 1024 };
 }
+/** What `file` printed, or undefined when it failed. */
+function outputOf(file, args) {
+    return new Promise((resolve) => {
+        execFile(file, args, { windowsHide: true, maxBuffer: LIST_MAX_BUFFER }, (error, stdout) => resolve(error === null ? stdout : undefined));
+    });
+}
+/** The commit charge: Win32_OperatingSystem on Windows, `/proc/meminfo` on Linux, nothing elsewhere. */
+async function commitOf(platform) {
+    if (platform === 'win32') {
+        const script = "Get-CimInstance Win32_OperatingSystem | ForEach-Object { '{0},{1}' -f $_.TotalVirtualMemorySize,$_.FreeVirtualMemory }";
+        const text = await outputOf('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script]);
+        return text === undefined ? undefined : parseWindowsCommit(text);
+    }
+    if (platform !== 'linux') {
+        return undefined;
+    }
+    try {
+        return parseMeminfoCommit(await readFile('/proc/meminfo', 'utf8'));
+    }
+    catch {
+        return undefined;
+    }
+}
 /**
- * The real probe: Node's free memory, and the host's process list from PowerShell on Windows or `ps` elsewhere. The
- * lister and every process it started are left out, so a watch does not count its own sampling.
+ * The real probe: Node's free memory, the host's process list from PowerShell on Windows or `ps` elsewhere, and its
+ * commit charge. The lister and every process it started are left out, so a watch does not count its own sampling.
  */
 export function nodeMemoryProbe(platform) {
     const { file, args, bytesPerUnit } = listCommand(platform);
@@ -78,10 +127,11 @@ export function nodeMemoryProbe(platform) {
                 resolve(rows.filter((row) => !own.has(row.pid)));
             });
         }),
+        commit: () => commitOf(platform),
     };
 }
 /** The real host memory: the node probe, its watches timed by `nodeEvery`. */
 export function nodeHostMemory(platform) {
     const probe = nodeMemoryProbe(platform);
-    return { freeMb: () => probe.freeMb(), watch: (root, intervalMs) => watchMemory(probe, root, intervalMs, nodeEvery) };
+    return { ...probe, watch: (root, intervalMs) => watchMemory(probe, root, intervalMs, nodeEvery) };
 }

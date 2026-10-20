@@ -19,6 +19,10 @@ export function refreshPrompt(team, id, handoverPath) {
 export function rehirePrompt(team, id, handoverPath) {
     return `You are the ${id} session of team ${team}, hired back after a retire. Read the handover your last run left, ${handoverPath}, first, then run \`${KIT_NAME} inbox read\` and \`${KIT_NAME} list --session ${id}\`, and start your first open task.`;
 }
+/** The first prompt of a session `teamrig close` ended, resumed in its last Claude Code session: its tasks may have moved. */
+export function reopenPrompt(team, id) {
+    return `You are the ${id} session of team ${team}, closed while idle to free the host and resumed in your last Claude Code session. Your tasks may have moved since: run \`${KIT_NAME} inbox read\` and \`${KIT_NAME} list --session ${id}\`, and start your first open task.`;
+}
 /** The first prompt of a rehired session resumed in its last Claude Code session: it knows its work, but its tasks may have moved. */
 export function resumePrompt(team, id) {
     return `You are the ${id} session of team ${team}, hired back after a retire and resumed in your last Claude Code session. Your tasks may have moved since: run \`${KIT_NAME} inbox read\` and \`${KIT_NAME} list --session ${id}\`, and start your first open task.`;

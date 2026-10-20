@@ -1,4 +1,5 @@
 import { CLAIM_HELD, CLAIM_TAKEN, isClaudeSessionId } from "../mod/clear-hand.js";
+import { endAndWait, tabProcessOf, workCutOffBy } from "../open/end-tab.js";
 import { isClaudeProcess } from "../open/session-processes.js";
 import { readRunningWork } from "./running.js";
 import { TURN_TAIL_BYTES, turnRunning } from "./turn.js";
@@ -10,20 +11,9 @@ export function personHoldOf(refresh) {
 export const SETTLE_MS = 3_000;
 /** A session busy this long since its restart started (held by a helper included) keeps its context, and is told to type /clear. */
 export const GIVE_UP_MS = 60 * 60_000;
-/** How long an ended process may take to go. */
-export const END_WAIT_MS = 10_000;
 const POLL_MS = 500;
 /** Enough of the transcript to see that a line was added. */
 const QUIET_TAIL_BYTES = 4_096;
-/** A shell a tab runs Claude Code in, as a tab reopened by `powershell -NoExit -Command claude --resume ...`. */
-const TAB_SHELL = /^(powershell|pwsh|cmd)(\.exe)?$/i;
-/**
- * A shell Claude Code runs a command in (Bash, PowerShell, a Monitor's); a login shell's name starts with a dash.
- * Not cmd: an MCP server started through `cmd /c` runs as long as the session and ends with it anyway.
- */
-const COMMAND_SHELL = /^-?(bash|sh|dash|zsh|fish|ksh|powershell|pwsh)(\.exe)?$/i;
-/** A shell under Claude Code counts only when it is still there this much later: a status line command runs for moments. */
-export const SHELL_RECHECK_MS = 2_000;
 /** The user typed (the prompt hook cleared the request) or a later notice replaced it. */
 const CANCELLED = { kind: 'cancelled', why: 'the restart was cancelled or replaced' };
 /** How long the tab's mod has to claim the ask before the session is ended instead: it looks every second. */
@@ -49,41 +39,6 @@ export async function claudeProcessOf(processes, pid) {
 async function pendingOf(deps, plan) {
     const request = await deps.store.restart(plan.id);
     return request?.phase === 'pending' && request.at === plan.at ? request : undefined;
-}
-/** Whether `pid` is gone within `ms`, looking every `POLL_MS`. */
-async function goneWithin(deps, pid, ms) {
-    const deadline = deps.clock.now() + ms;
-    while (deps.processes.alive(pid)) {
-        if (deps.clock.now() >= deadline) {
-            return false;
-        }
-        await deps.sleep(POLL_MS);
-    }
-    return true;
-}
-/** Ends `target`, then forces it if `watched` outlives the wait; why it failed, or undefined once `watched` is gone. */
-async function endAndWait(deps, target, watched) {
-    for (const how of ['ask', 'force']) {
-        const ended = await deps.processes.end(target, how);
-        if (ended.kind === 'failed') {
-            return `could not end process ${target}: ${ended.error}`;
-        }
-        if (await goneWithin(deps, watched, END_WAIT_MS)) {
-            return undefined;
-        }
-    }
-    return `process ${watched} still runs after it was ended`;
-}
-/**
- * The process to end so the old tab closes: on Windows, the shell the tab runs Claude Code in (ending it
- * ends Claude Code too); otherwise Claude Code itself, and its tab stays open at a prompt.
- */
-async function tabProcessOf(deps, claude) {
-    if (deps.platform !== 'win32') {
-        return claude.pid;
-    }
-    const parent = await deps.processes.describe(claude.parentPid);
-    return parent !== undefined && TAB_SHELL.test(parent.name) && /claude/i.test(parent.commandLine) ? parent.pid : claude.pid;
 }
 /** `refresh.endCommand` with Claude Code's SessionEnd hook input, for the hooks the end skipped. */
 async function runEndCommand(deps, plan, request) {
@@ -189,34 +144,6 @@ async function handToTab(deps, plan, claudeSession) {
     finally {
         await deps.asks.close(claudeSession);
     }
-}
-/** The command shells `pid` runs; undefined when the system would not tell. */
-async function shellsUnder(deps, pid) {
-    return (await deps.processes.children(pid))?.filter((info) => COMMAND_SHELL.test(info.name));
-}
-/**
- * Why ending `claude` would cut off work it runs, or undefined when it would not. An end takes every process
- * it started, so a shell still there on two looks `SHELL_RECHECK_MS` apart (a background command, a Monitor)
- * would die with it, as would one the transcript's running work (`running.ts`) no longer shows: that reads
- * only the transcript's end and the last hours. A process list the system would not give counts as unsafe.
- * A /clear needs no such look: it keeps the background shells.
- */
-async function workCutOffBy(deps, claude) {
-    const unknown = `teamrig could not list what its Claude Code (${claude.pid}) runs`;
-    const seen = await shellsUnder(deps, claude.pid);
-    if (seen === undefined) {
-        return unknown;
-    }
-    if (seen.length === 0) {
-        return undefined;
-    }
-    await deps.sleep(SHELL_RECHECK_MS);
-    const again = await shellsUnder(deps, claude.pid);
-    if (again === undefined) {
-        return unknown;
-    }
-    const lasting = again.filter((shell) => seen.some((first) => first.pid === shell.pid));
-    return lasting.length === 0 ? undefined : `ending its Claude Code would also end the background shells it runs (pid ${lasting.map((shell) => shell.pid).join(', ')})`;
 }
 /**
  * Ends the session's process: in its own tab under `teamrig launch`, else after a new tab opened. Never while it
