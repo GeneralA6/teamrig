@@ -59,10 +59,11 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       check flags it acts on (the lead: all) and the week's use; --all: the tasks and flags in full, and
       every task waiting on it
   meeting start | meeting agenda | meeting end [--session <id|name>]   the lead's daily meeting with
-      the owner: start tells every session by inbox line that messages to the lead wait until its end
-      (one starting CRITICAL goes) and prints the agenda: the owner's decisions as card facts, the late
-      tasks, what finished since the last meeting, the lead's inbox and the week's use and fit; agenda
-      prints it again; end tells every session, with the decisions recorded on its tasks (update --note)
+      the owner: start holds messages to the lead until its end (one starting CRITICAL goes; the hook
+      tells each sender, so no session is told) and prints the agenda: the owner's decisions as card
+      facts, the late tasks, what finished since the last meeting, the lead's inbox and the week's use
+      and fit; agenda prints it again; end tells each session the decisions recorded on its tasks
+      (update --note) by one inbox line, and no other session
   decisions | decisions asked [--session <id|name>]   the owner's decisions the lead asks in batches:
       decisions prints the waits on the owner not yet asked and the asked ones past due, as card facts,
       and whether a batch is due (a wait due before the next batch, decisions.batchAt not yet asked, or a

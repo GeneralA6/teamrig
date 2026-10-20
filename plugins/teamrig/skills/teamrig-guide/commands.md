@@ -1461,9 +1461,9 @@ A lead with sub-teams runs `teamrig check --tree --session lead` too: `start` re
 
 ### teamrig meeting start
 
-The lead opens the owner's daily meeting and gets its agenda in one call. Every other session gets one inbox line
-(no message, so no idle session wakes): keep working, and leave the lead inbox lines until the meeting ends. Until
-then the `cold-send` hook holds every message to the lead but one starting `CRITICAL`. The agenda:
+The lead opens the owner's daily meeting and gets its agenda in one call. Until the meeting ends, the `cold-send`
+hook holds every message to the lead but one starting `CRITICAL`, and tells the sender to keep working and leave it
+as an inbox line. So no session is told the meeting started, and none is woken. The agenda:
 
 - `DECISIONS`: each task waiting on the owner's decision or approval, with its card facts (what and why, since when
   it waits and its newest note, where it was asked), then the card form and how to record each answer;
@@ -1474,9 +1474,9 @@ then the `cold-send` hook holds every message to the lead but one starting `CRIT
 - the week's use and, under it, the planned week's fit to the weekly limit, as `plan` gives it.
 
 Each list shows 10 rows at most, then the command that lists them all. A meeting left open stops holding messages
-4 hours after it started. Started again while open, it tells no one again and prints the agenda. Only the lead runs
-it. A start counts as asking the owner the decisions it lists: `teamrig decisions` then holds only the waits set
-since and the asked ones past due (since 0.126.0).
+4 hours after it started. Started again while open, it keeps the meeting as it is and prints the agenda. Only the
+lead runs it. A start counts as asking the owner the decisions it lists: `teamrig decisions` then holds only the
+waits set since and the asked ones past due (since 0.126.0).
 
 Flags:
 
@@ -1491,7 +1491,7 @@ teamrig meeting start --session lead
 Output:
 
 ```text
-MEETING started Thu 10-15 11:00 IDT: told 2 session(s) by inbox line; messages to shop-lead are held but CRITICAL ones
+MEETING started Thu 10-15 11:00 IDT: messages to shop-lead are held but CRITICAL ones (the hook tells each sender)
 DECISIONS 1 waiting on owner (decision or approval)
   T7 waiting, p1, owner web | Pick the pricing tier (waiting: decision owner)
     what and why: Two tiers are built; the launch page needs one.
@@ -1513,10 +1513,8 @@ DONE 2 done or dropped since Wed 10-14 11:30 IDT
 READ lead: 1 new line, shown above; new ones are shown at your next prompt
 Week: 31.0% used at 11:00 IDT (status line); the pace line is at 28.6%: 2.4 points ahead. Resets Wed 10-21 04:00 IDT.
   fits: p1 40% · p2 22% (left 68.5% of the week)
-END teamrig meeting end --session lead: tells every session, with the decisions recorded on its tasks
+END teamrig meeting end --session lead: tells each session the decisions recorded on its tasks
 ```
-
-A line the inbox refuses (a team secret pattern matched it) prints `NOT TOLD <id>: <why>` first; the rest go on.
 
 ### teamrig meeting agenda
 
@@ -1539,10 +1537,10 @@ opens it)`, then the agenda.
 
 ### teamrig meeting end
 
-Closes the meeting, or one left open past 4 hours, and tells every other session it ended, in one inbox line each.
-A session's line lists the decisions the lead recorded on its tasks during the meeting: each `update` by the lead
-with its note and the fields it changed. Messages to the lead go again. Only the lead runs it; with no meeting open
-it is refused.
+Closes the meeting, or one left open past 4 hours, and tells each other session the lead recorded a decision for,
+in one inbox line: the decisions on its tasks during the meeting, each `update` by the lead with its note and the
+fields it changed. A session with none gets no line. Messages to the lead go again. Only the lead runs it; with no
+meeting open it is refused.
 
 Flags:
 
@@ -1557,12 +1555,13 @@ teamrig meeting end --session lead
 Output:
 
 ```text
-MEETING ended Thu 10-15 11:25 IDT after 25 min: told 2 session(s) messages to shop-lead may go again
+MEETING ended Thu 10-15 11:25 IDT after 25 min: messages to shop-lead go again; told 1 session(s) the decisions on their tasks
 RECORDED 1 decision(s), each told to its task's owner
   web T7: owner decided: the middle tier ships first (changed priority)
 ```
 
-With nothing recorded it says so: a decision the register lacks reaches no one.
+With nothing recorded it says so: a decision the register lacks reaches no one. A line the inbox refuses (a team
+secret pattern matched it) prints `NOT TOLD <id>: <why>` first; the rest go on.
 
 ### teamrig decisions
 

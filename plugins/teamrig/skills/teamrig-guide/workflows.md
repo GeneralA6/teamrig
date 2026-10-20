@@ -330,7 +330,7 @@ Once a day the lead meets the human. The `daily-meeting` skill has the steps; in
 teamrig meeting start --session lead
 ```
 
-It tells every session to hold its messages to the lead (a CRITICAL one still goes) and prints the agenda. Until
+It holds every message to the lead (a CRITICAL one still goes) and prints the agenda; no session is told. Until
 the meeting ends, the lead's own context refresh waits (no handover ask, no restart) unless its context reaches
 `refresh.compactCeilingTokens`; the turn that ends the meeting asks at once. Bring
 each decision as a card the human can decide from alone, record each answer in the same turn with
