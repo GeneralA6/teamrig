@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { isRecord } from "../core/guards.js";
 import { ENV } from "../core/home.js";
+import { KIT_VERSION } from "../core/version.js";
 /** Tries per taking: a stale lock removed may be retaken by another step first. */
 const ATTEMPTS = 3;
 /**
@@ -29,12 +30,24 @@ function byAcquiredAt(a, b) {
 function isTime(value) {
     return typeof value === 'string' && !Number.isNaN(Date.parse(value));
 }
+/** A record's `kit`: a version, or left out by a writer that does not name one. */
+function isKit(value) {
+    return value === undefined || typeof value === 'string';
+}
+/**
+ * `value` without a `kit` that is not a version: a team's own coordinator may write a field of that name for its own
+ * use, and a field another writer adds is ignored, never a reason to read its lock as damaged and remove it.
+ */
+function withoutForeignKit(value) {
+    return isRecord(value) && !isKit(value['kit']) ? Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'kit')) : value;
+}
 function isHostLockInfo(value) {
     return (isRecord(value) &&
         typeof value['token'] === 'string' &&
         typeof value['pid'] === 'number' &&
         typeof value['session'] === 'string' &&
         typeof value['purpose'] === 'string' &&
+        isKit(value['kit']) &&
         isTime(value['acquiredAt']) &&
         isTime(value['expiresAt']));
 }
@@ -44,6 +57,7 @@ function isLockWaiter(value) {
         typeof value['pid'] === 'number' &&
         typeof value['session'] === 'string' &&
         typeof value['purpose'] === 'string' &&
+        isKit(value['kit']) &&
         isTime(value['arrivedAt']) &&
         isTime(value['expiresAt']) &&
         (value['stopsOnWithdraw'] === undefined || typeof value['stopsOnWithdraw'] === 'boolean'));
@@ -53,7 +67,7 @@ function isHostShare(value) {
 }
 function parseAs(text, is) {
     try {
-        const value = JSON.parse(text);
+        const value = withoutForeignKit(JSON.parse(text));
         return is(value) ? value : undefined;
     }
     catch {
@@ -70,11 +84,14 @@ function parseLock(text) {
 export function underLock(env, lock) {
     return { ...env, [ENV.hostLock]: lock.token };
 }
-/** What a waiter waits on as a session reads it: `<session> (<purpose>) since <minute on zone's clock>` for a holder. */
+/**
+ * What a waiter waits on as a session reads it: `<session> (<purpose>) since <minute on zone's clock>` for a holder,
+ * then its teamrig when another one took the lock (see {@link kitText}).
+ */
 export function holderText(holder, zone) {
     switch (holder.kind) {
         case 'held':
-            return `${holder.info.session} (${holder.info.purpose}) since ${zone.minute(new Date(holder.info.acquiredAt))}`;
+            return `${holder.info.session} (${holder.info.purpose}) since ${zone.minute(new Date(holder.info.acquiredAt))}${kitText(holder.info.kit)}`;
         case 'queued':
             return `${holder.first.session} (${holder.first.purpose}), first in line since ${zone.minute(new Date(holder.first.arrivedAt))}`;
         case 'unknown':
@@ -84,6 +101,16 @@ export function holderText(holder, zone) {
         case 'memory':
             return `${sharesText(holder.shares, zone)}; ${holder.freeMb} MB free, ${holder.heldMb} MB held for ${holder.shares.length === 1 ? 'it' : 'them'}, ${holder.needMb} MB needed`;
     }
+}
+/**
+ * Nothing for a holder this teamrig took the lock with, else which one did: a version, or none named by a teamrig
+ * older than the `kit` field or a team's own coordinator, which may take a free lock without joining the line.
+ */
+function kitText(kit) {
+    if (kit === KIT_VERSION) {
+        return '';
+    }
+    return kit === undefined ? ', on an older teamrig or another coordinator' : `, on teamrig ${kit}`;
 }
 /** The small steps sharing the host: `2 small steps: <session> (<purpose>) since <minute on zone's clock>, ...`. */
 export function sharesText(shares, zone) {
@@ -521,6 +548,7 @@ export class HostLock {
             pid: this.ports.pid,
             session,
             purpose,
+            kit: KIT_VERSION,
             arrivedAt: new Date(now).toISOString(),
             expiresAt: ticketExpiry(deadline),
             stopsOnWithdraw: true,
@@ -581,6 +609,7 @@ export class HostLock {
             pid: this.ports.pid,
             session,
             purpose,
+            kit: KIT_VERSION,
             acquiredAt: new Date(now).toISOString(),
             expiresAt: new Date(now + this.ttlMs).toISOString(),
         };
