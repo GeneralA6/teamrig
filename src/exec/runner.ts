@@ -22,7 +22,8 @@ export interface SpawnAsk {
   /**
    * The environment the process gets. None of the executor's own is inherited, except that on Windows Node's process
    * start (libuv) copies the user and folder names it lacks: HOMEDRIVE, HOMEPATH, LOGONSERVER, SYSTEMDRIVE, USERDOMAIN,
-   * USERNAME, USERPROFILE and WINDIR, none of them a secret.
+   * USERNAME, USERPROFILE and WINDIR, none of them a secret. On every platform Node's spawn also passes on the
+   * executor's NODE_V8_COVERAGE, a coverage folder set only when the executor itself runs under coverage.
    */
   readonly env: Readonly<Record<string, string>>;
   readonly timeoutMs: number;
