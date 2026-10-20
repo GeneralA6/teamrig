@@ -204,6 +204,7 @@ A session's own `start` shows the flags on itself.
 | `FORBIDDEN-KEY` | `allowed-tools is not allowed in a team skill: remove it` | Remove that frontmatter key. |
 | `DESCRIPTION` | `no description`, or `N words > 30` | Write or shorten the description. |
 | `SIGNATURE` | `"Signature: <regex>" is not a valid regex, so the scorecard misses its uses` | Fix the pattern: `teamrig skills scorecard` counts the skill's missed uses with it. |
+| `GRANT` | `pod-exec in a.js, which auto mode does not see: with the owner's grant add "Grants: pod-exec", else drop the call`, or `"Grants: x" names no grant kind` | A script at the top of the skill's folder makes that call: get the owner's grant and name its kind on a `Grants:` line, or drop the call from the script. |
 | `AREA-OVER-LIMIT` | `N skills > 8: merge before adding` | Merge that area's skills. |
 
 The owner column says who fixes it; the lead tells that session in one inbox line.
@@ -237,6 +238,10 @@ every session needs every turn; each item has one home.
   `Owner: <session>` (for a shared skill, the session that owns the tool it runs) and `Last verified: YYYY-MM-DD`. Add a ``Signature: `<regex>` `` line for each tool call that
   shows the procedure run by hand (matched against the tool's name and command, such as `teamrig inbox read`):
   `teamrig skills scorecard` then counts each such run with no load of the skill as a missed use.
+- **Grants**: auto mode judges a script call by its own command (`node flow.js`), never by what the script runs,
+  so a script beside the SKILL.md can make a privileged call unseen. Name each kind its scripts make on a
+  `Grants: pod-exec, secret-read, auth-header` line (kubectl exec; a cluster secret or a credential env variable;
+  a credential header), each one the owner granted; without the grant, write the call inline or drop it.
 - **Upkeep**: re-verify within 30 days [skills.maxVerifiedAgeDays] and bump the date each time its steps held; at
   most 8 skills per area [skills.maxPerArea], so merge before adding. When a command, flag or path changes,
   update every skill that names it in the same change.

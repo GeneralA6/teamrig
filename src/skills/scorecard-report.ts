@@ -1,4 +1,4 @@
-import { descriptionOf, LAST_VERIFIED, splitFrontmatter, type SkillFile, type SkillFlag } from './lint.ts';
+import { descriptionOf, LAST_VERIFIED, splitFrontmatter, type SkillFlag, type SkillText } from './lint.ts';
 import { EMPTY_SKILL_DAY, LOAD_WINDOW_CALLS, type RunTally, type ScorecardDays, type SkillDay } from './scorecard.ts';
 import type { SkillSignature } from './signature.ts';
 
@@ -30,7 +30,7 @@ export interface ScorecardRow {
 export interface ScorecardSources {
   readonly days: ScorecardDays;
   /** The installed skills, with each one's signature (same order) and the lint flags `teamrig check` shows. */
-  readonly skills: readonly SkillFile[];
+  readonly skills: readonly SkillText[];
   readonly signatures: readonly SkillSignature[];
   readonly lint: readonly SkillFlag[];
 }

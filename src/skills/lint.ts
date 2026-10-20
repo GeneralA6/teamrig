@@ -1,14 +1,19 @@
 import type { KitConfig } from '../config/types.ts';
 import { parseUtcDay } from '../core/time.ts';
+import { grantGaps, type SkillScript } from './grants.ts';
 import { signatureOf } from './signature.ts';
 
-/** One `<skills>/<name>/SKILL.md`. */
+/** One `<skills>/<name>/SKILL.md` and the scripts beside it. */
 export interface SkillFile {
   readonly name: string;
   readonly text: string;
+  readonly scripts: readonly SkillScript[];
 }
 
-export const SKILL_FLAG_KINDS = ['OWNER', 'UNVERIFIED', 'VERIFIED-NOTE', 'FORBIDDEN-KEY', 'DESCRIPTION', 'SIGNATURE', 'AREA-OVER-LIMIT'] as const;
+/** A skill's name and SKILL.md text, for a reader that needs no scripts. */
+export type SkillText = Pick<SkillFile, 'name' | 'text'>;
+
+export const SKILL_FLAG_KINDS = ['OWNER', 'UNVERIFIED', 'VERIFIED-NOTE', 'FORBIDDEN-KEY', 'DESCRIPTION', 'SIGNATURE', 'GRANT', 'AREA-OVER-LIMIT'] as const;
 export type SkillFlagKind = (typeof SKILL_FLAG_KINDS)[number];
 
 export interface SkillFlag {
@@ -122,6 +127,10 @@ export function lintSkills(skills: readonly SkillFile[], now: Date, team: SkillT
 
     for (const source of signatureOf(skill).invalid) {
       flag('SIGNATURE', `"Signature: \`${source}\`" is not a valid regex, so the scorecard misses its uses`);
+    }
+
+    for (const gap of grantGaps(body, skill.scripts)) {
+      flag('GRANT', gap);
     }
 
     const area = areaOf(skill.name, areas);
