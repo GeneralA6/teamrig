@@ -1,9 +1,10 @@
 import { holderText, waitText } from "./host-lock.js";
 /**
  * Takes the host lock once nothing holds the step back. A refusal ends the wait at once; a reason to wait and a busy
- * lock are waited out, for at most `maxWaitMs` in all. Readiness is asked again under the lock, since a claim may
- * start while the step waited for the lock: then the lock is released and the wait goes on. Each ask names its phase,
- * so a check that costs or changes something can run only under the lock.
+ * lock are waited out, for at most `maxWaitMs` in all, the lock longer while its line moves (see `HostLock.acquire`).
+ * Readiness is asked again under the lock, since a claim may start while the step waited for the lock: then the lock
+ * is released and the wait goes on. Each ask names its phase, so a check that costs or changes something can run
+ * only under the lock.
  */
 export async function takeWhenClear(readiness, ports, request) {
     const { lock, clock, sleep } = ports;
