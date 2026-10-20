@@ -8,25 +8,38 @@ import { FakeCheckout, probeOf } from '../testing/fake-checkout.ts';
 import { FakeExecSpawner } from '../testing/fake-exec-spawner.ts';
 import { FakeWebhook } from '../testing/fake-webhook.ts';
 import type { JsonRecord } from '../core/guards.ts';
+import type { Env } from '../core/home.ts';
 import { EXIT } from './runtime.ts';
 
 const EXEC_TEAM: JsonRecord = { ...TEAM, roles: { lead: 'lead', securityReviewer: 'bravo' }, exec: { path: ['C:/nodejs'] } };
+/** EXEC_TEAM posting to the security channel whose URL EXEC_WEBHOOK_URL holds. */
+const POSTING_TEAM: JsonRecord = { ...EXEC_TEAM, exec: { path: ['C:/nodejs'], webhookEnv: 'EXEC_WEBHOOK_URL' } };
+const WEBHOOK_URL = 'https://chat.example/hook';
+const WEBHOOK_ENV: Env = { EXEC_WEBHOOK_URL: WEBHOOK_URL };
 const REQUEST_FILE = join(APP, 'r1.json');
 const AUDIT = join(TEAM_HOME, 'exec', 'audit.jsonl');
 
-/** A team whose exec PATH holds node, run on Windows with both database variables set, over one fake spawner. */
+interface ExecTeamOptions {
+  /** Variables on top of both database ones. */
+  readonly env?: Env;
+  readonly webhook?: FakeWebhook;
+}
+
+/** A team whose exec PATH holds node, run on Windows with both database variables set, over one fake spawner and webhook. */
 class ExecTeam {
   readonly kit: CliHarness;
   readonly spawner = new FakeExecSpawner();
+  readonly webhook: FakeWebhook;
   private readonly options: RunOptions;
 
-  constructor(config: JsonRecord = EXEC_TEAM) {
+  constructor(config: JsonRecord = EXEC_TEAM, { env = {}, webhook = new FakeWebhook() }: ExecTeamOptions = {}) {
     this.kit = new CliHarness(config);
+    this.webhook = webhook;
     this.options = {
       platform: 'win32',
       probe: probeOf('C:/nodejs/node.exe'),
-      exec: { spawner: this.spawner, checkout: new FakeCheckout(), webhook: new FakeWebhook() },
-      env: { DB_READ_URI: 'db://read', DB_WRITE_URI: 'db://write' },
+      exec: { spawner: this.spawner, checkout: new FakeCheckout(), webhook },
+      env: { DB_READ_URI: 'db://read', DB_WRITE_URI: 'db://write', ...env },
     };
   }
 
@@ -54,9 +67,8 @@ function assertRefused(result: CliResult, reason: RegExp): void {
   assert.match(outputOf(result), reason);
 }
 
-/** A team with alpha's R1 requested and dry-run. */
-async function dryRun(draft: RequestDraft = execDraft()): Promise<ExecTeam> {
-  const team = new ExecTeam();
+/** `team` with alpha's R1 requested and dry-run. */
+async function dryRun(draft: RequestDraft = execDraft(), team: ExecTeam = new ExecTeam()): Promise<ExecTeam> {
   assertOk(await team.request(draft));
   assertOk(await team.run('dry-run', 'R1'));
   return team;
@@ -209,6 +221,79 @@ describe('runCli: exec approve, refuse and escalate (T755)', () => {
     const approved = await team.run('approve', 'R1', '--session', 'owner');
     assertOk(approved);
     assert.match(approved.stdout[0] ?? '', /^APPROVED R1 by owner until /);
+  });
+});
+
+describe('runCli: exec posts reviews and runs to the security channel (T755)', () => {
+  const summary = ' [db-write on local app.items for T755, asked by alpha]';
+
+  function postsOf(team: ExecTeam): string[] {
+    return team.webhook.posts.map(({ url, content }) => {
+      assert.equal(url, WEBHOOK_URL);
+      return content;
+    });
+  }
+
+  it('posts an approval and its run with the request they settle, and nothing for a request or a dry run', async () => {
+    const team = await dryRun(execDraft(), new ExecTeam(POSTING_TEAM, { env: WEBHOOK_ENV }));
+    assert.deepEqual(postsOf(team), []);
+    const approved = await team.run('approve', 'R1', '--session', 'bravo');
+    assertOk(approved);
+    assert.deepEqual(approved.stdout, ['APPROVED R1 by bravo until 2030-01-08T10:30:00.000Z; next: teamrig exec run R1']);
+    assert.deepEqual(approved.stderr, []);
+    team.spawner.end = { exitCode: 3, timedOut: false, output: 'boom\n' };
+    const ran = await team.run('run', 'R1');
+    assert.equal(ran.code, EXIT.failed, outputOf(ran));
+    const [approval, run] = postsOf(team);
+    assert.equal(approval, `teamrig exec app: APPROVED R1 by bravo until 2030-01-08T10:30:00.000Z${summary}`);
+    assert.match(run ?? '', /^teamrig exec app: RAN R1: exit 3; output SHA-256 [0-9a-f]{64} \[/);
+    assert.ok(run?.endsWith(summary), run);
+    assert.doesNotMatch(run ?? '', /boom/);
+    assertRefused(await team.run('run', 'R1'), /R1 already ran/);
+    assert.equal(postsOf(team).length, 2);
+  });
+
+  it('posts a refusal and an escalation with their notes', async () => {
+    const team = await dryRun(execDraft({ ownerGated: true }), new ExecTeam(POSTING_TEAM, { env: WEBHOOK_ENV }));
+    assertOk(await team.run('escalate', 'R1', '--session', 'bravo', '--note', 'deletes rows'));
+    assertOk(await team.run('refuse', 'R1', '--session', 'owner', '--note', 'use the read tool'));
+    assert.deepEqual(postsOf(team), [
+      `teamrig exec app: ESCALATED R1 by bravo to the owner (owner): deletes rows${summary}`,
+      `teamrig exec app: DECLINED R1 by owner: use the read tool${summary}`,
+    ]);
+  });
+
+  it('posts nothing when exec.webhookEnv is unset, and warns when the variable it names is not set', async () => {
+    const quiet = await dryRun(execDraft(), new ExecTeam(EXEC_TEAM, { env: WEBHOOK_ENV }));
+    const approved = await quiet.run('approve', 'R1', '--session', 'bravo');
+    assertOk(approved);
+    assert.deepEqual(approved.stderr, []);
+    assert.deepEqual(postsOf(quiet), []);
+    for (const env of [{}, { EXEC_WEBHOOK_URL: '' }]) {
+      const unset = await dryRun(execDraft(), new ExecTeam(POSTING_TEAM, { env }));
+      const warned = await unset.run('approve', 'R1', '--session', 'bravo');
+      assertOk(warned);
+      assert.deepEqual(warned.stderr, ['WARN exec.webhookEnv names EXEC_WEBHOOK_URL, which is not set: nothing posted']);
+      assert.deepEqual(postsOf(unset), []);
+    }
+  });
+
+  it('warns when a post fails, and keeps the exit code', async () => {
+    const team = await dryRun(execDraft(), new ExecTeam(POSTING_TEAM, { env: WEBHOOK_ENV, webhook: new FakeWebhook('the webhook answered 500') }));
+    const approved = await team.run('approve', 'R1', '--session', 'bravo');
+    assertOk(approved);
+    assert.deepEqual(approved.stderr, ['WARN R1 is logged, but not posted: the webhook answered 500']);
+    const ran = await team.run('run', 'R1');
+    assertOk(ran);
+    assert.deepEqual(ran.stderr, ['WARN R1 is logged, but not posted: the webhook answered 500']);
+  });
+
+  it('posts nothing that looks like a secret', async () => {
+    const team = await dryRun(execDraft(), new ExecTeam({ ...POSTING_TEAM, register: { secretPatterns: ['asked by alpha\\]'] } }, { env: WEBHOOK_ENV }));
+    const approved = await team.run('approve', 'R1', '--session', 'bravo');
+    assertOk(approved);
+    assert.match(approved.stderr.join('\n'), /^WARN R1 is logged, but not posted: the post looks like it holds a secret/);
+    assert.deepEqual(postsOf(team), []);
   });
 });
 
