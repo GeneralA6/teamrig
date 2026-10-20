@@ -3,49 +3,14 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { win32 } from 'node:path';
 import { TempRepo } from '../../tools/lib/temp-repo.ts';
-import type { PathKind, PathProbe } from '../core/path-probe.ts';
 import type { PathSearchDeps } from '../core/path-search.ts';
 import { execRequest } from '../testing/exec-request.ts';
+import { FakeCheckout, searchOf } from '../testing/fake-checkout.ts';
 import { bindingProblems, GIT_CHECKOUT, resolveProgram, type BindingDeps, type CheckoutProbe } from './binding.ts';
 
 const REPO = 'C:/work/app';
-const COMMIT = 'a'.repeat(40);
 const LOCK_SHA = 'b'.repeat(64);
 const NODE = 'C:/nodejs/node.exe';
-
-/** A checkout that answers from fields a test sets: by default the fixture request's bound, clean repository. */
-class FakeCheckout implements CheckoutProbe {
-  top: string | undefined = REPO;
-  commit: string | undefined = COMMIT;
-  changed: readonly string[] | undefined = [];
-  readonly files = new Map<string, string>([[win32.join(REPO, 'package-lock.json'), LOCK_SHA]]);
-
-  async topLevel(): Promise<string | undefined> {
-    return this.top;
-  }
-
-  async head(): Promise<string | undefined> {
-    return this.commit;
-  }
-
-  async changes(): Promise<readonly string[] | undefined> {
-    return this.changed;
-  }
-
-  async fileSha256(path: string): Promise<string | undefined> {
-    return this.files.get(path);
-  }
-}
-
-/** A filesystem that holds only the given files. */
-function probeOf(...files: string[]): PathProbe {
-  const held = new Set(files.map((file) => win32.normalize(file)));
-  return { kind: async (path): Promise<PathKind> => (held.has(win32.normalize(path)) ? 'file' : 'none') };
-}
-
-function searchOf(path: string, ...files: string[]): PathSearchDeps {
-  return { env: { PATH: path }, platform: 'win32', probe: probeOf(...files) };
-}
 
 function deps(checkout: CheckoutProbe = new FakeCheckout(), search: PathSearchDeps = searchOf('C:/nodejs', NODE)): BindingDeps {
   return { checkout, search };
