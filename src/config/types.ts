@@ -40,6 +40,11 @@ export interface RegisterCheckConfig {
    * SELF-MADE; 0 turns the flag off.
    */
   readonly maxSelfMadePerDay: number;
+  /**
+   * The whole days (the team's day: `wake.dayStartUtc`, else UTC) that may end with no goal or week-plan task moved
+   * while the week has usage left, before NO-PROGRESS; 0 turns the flag off.
+   */
+  readonly goalProgressDays: number;
   readonly weekLengthDays: number;
   /**
    * The files `check` scans for `stopgap T<id>` tags besides every skill: paths relative to the team's project

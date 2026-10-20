@@ -354,7 +354,7 @@ describe('parseConfig', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,
       roles: { lead: 'alpha', coordinatorOwner: 'bravo', securityReviewer: 'bravo' },
-      register: { priorities: [{ id: 1, name: 'now' }], goalPattern: '^G\\d+$', requireNoteOn: ['waiting'], check: { prioritySkipAfterHours: 12, maxSelfMadePerDay: 0 } },
+      register: { priorities: [{ id: 1, name: 'now' }], goalPattern: '^G\\d+$', requireNoteOn: ['waiting'], check: { prioritySkipAfterHours: 12, maxSelfMadePerDay: 0, goalProgressDays: 2 } },
       coordinator: { schedule: { heavyCutoffUtc: '22:30' } },
       budget: { enabled: true, targetPct: 95 },
       paths: { inbox: '/srv/team/inbox' },
@@ -369,6 +369,7 @@ describe('parseConfig', () => {
       notPickedUpAfterHours: 24,
       prioritySkipAfterHours: 12,
       maxSelfMadePerDay: 0,
+      goalProgressDays: 2,
       weekLengthDays: 7,
       stopgapFiles: ['CLAUDE.md', '.claude/rules'],
     });
@@ -560,6 +561,15 @@ describe('parseConfig', () => {
       windows: { settleMinutes: 30, targetSettleMinutes: {}, assumedRollMinutes: 20, minMinutes: 15 },
       repos: {},
     });
+  });
+
+  it("reads the no-progress span in days, and falls back to the default past a compaction's retention, below 0 or for a fraction", () => {
+    for (const goalProgressDays of [8, -1, 1.5]) {
+      const { config, issues } = parseConfig({ ...ROSTER, register: { check: { goalProgressDays } } });
+      assert.deepEqual(paths(issues), ['register.check.goalProgressDays'], String(goalProgressDays));
+      assert.equal(config.register.check.goalProgressDays, 1);
+    }
+    assert.equal(parseConfig({ ...ROSTER, register: { check: { goalProgressDays: 0 } } }).config.register.check.goalProgressDays, 0);
   });
 
   it('drops bad priorities and keeps the defaults when none is left', () => {

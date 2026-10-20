@@ -25,6 +25,8 @@ export const CONFIG_LIMITS = {
   requireFollowupsOn: { maxItems: 3 },
   maxVerifying: { min: 0, max: 100 },
   maxSelfMadePerDay: { min: 0, max: 200 },
+  /** Its span (these days and today) stays inside compaction's RETAIN_DAYS, so every task moved in it is still read. */
+  goalProgressDays: { min: 0, max: 7 },
   stopgapFiles: { maxItems: 20, maxLength: 260 },
   persistentFailureHours: { min: 1, max: 720 },
   decisionBatchTimes: { maxItems: 8 },
