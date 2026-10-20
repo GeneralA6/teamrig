@@ -4,16 +4,22 @@ import {
   CHECK_MS,
   installedFingerprint,
   isReloadRecord,
+  newestNear,
+  parentOf,
   RELOAD_GAP_MS,
   ReloadHand,
   SETTLE_MS,
+  STORE_FOLDERS_MAX,
   type CheckResult,
   type ReloadHandHost,
   type ReloadRecord,
 } from './reload-hand.ts';
 
 const ROOT = 'D:\\work\\shop';
+const PLUGINS = 'C:/Users/me/.claude/plugins';
 const CACHE = 'C:\\Users\\me\\.claude\\plugins\\cache';
+const TEAMRIG_FOLDER = `${CACHE}\\teamrig\\teamrig`;
+const PANE_FOLDER = `${CACHE}\\teamrig-pane\\teamrig-pane`;
 const TEAMRIG = 'teamrig@teamrig';
 const PANE = 'teamrig-pane@teamrig-pane';
 
@@ -53,10 +59,21 @@ function fingerprintOf(text: string): string {
   return fingerprint;
 }
 
-/** Claude Code as the mod sees it: the installs file, the session's project root and state, and /reload-plugins. */
+/**
+ * Claude Code as the mod sees it: the installs file, the plugin store's change times, the session's project root and
+ * state, and /reload-plugins.
+ */
 class FakeHost implements ReloadHandHost {
+  readonly pluginsFolder = PLUGINS;
   time = 0;
   root = ROOT;
+  /** When each path of the plugin store last changed; a path not here is missing. */
+  readonly changed = new Map<string, number>();
+  /** The folders directly in each folder of the store. */
+  readonly folders = new Map<string, readonly string[]>();
+  /** Each path whose change time the hand read, and each folder it listed, in order. */
+  readonly dated: string[] = [];
+  readonly listed: string[] = [];
   /** installed_plugins.json's text, or the error reading it rejects with. */
   file: string | Error = AT_41;
   /** What the session kept of the last reload. */
@@ -79,6 +96,16 @@ class FakeHost implements ReloadHandHost {
       throw this.file;
     }
     return this.file;
+  }
+
+  async changedAt(path: string): Promise<number | undefined> {
+    this.dated.push(path);
+    return this.changed.get(path);
+  }
+
+  async foldersIn(path: string): Promise<readonly string[]> {
+    this.listed.push(path);
+    return this.folders.get(path) ?? [];
   }
 
   async projectRoot(): Promise<string> {
@@ -364,6 +391,88 @@ describe('ReloadHand', () => {
     assert.deepEqual(await checkAfter(third, rootless, CHECK_MS), { kind: 'no change' });
   });
 
+  it("holds a reload due for one plugin while another's next version is copied in, as on 10-19 (T561), reading the store only then", async () => {
+    const host = new FakeHost();
+    const hand = await started(host);
+    host.file = installed({ [TEAMRIG]: [teamrig('0.41.0', 'aaa')], [PANE]: [pane('0.8.0')] });
+    assert.deepEqual(await checkAfter(hand, host, CHECK_MS), { kind: 'settling' });
+    assert.deepEqual([host.dated, host.listed], [[], []], 'no store read while no reload is due');
+    host.time += CHECK_MS;
+    const copyStarted = host.time - 400;
+    host.changed.set(TEAMRIG_FOLDER, copyStarted);
+    const made = "teamrig's 0.42.0 folder made while the list still names 0.41.0";
+    assert.deepEqual(await hand.check(), { kind: 'installing', changedAt: copyStarted }, made);
+    host.time = copyStarted + SETTLE_MS - 1;
+    assert.deepEqual(await hand.check(), { kind: 'installing', changedAt: copyStarted }, made);
+    host.file = AT_42_PANE_8;
+    assert.deepEqual(await checkAfter(hand, host, 1), { kind: 'settling' }, 'the list names 0.42.0 before the copy ends');
+    assert.deepEqual(await checkAfter(hand, host, SETTLE_MS), RELOADED);
+    assert.deepEqual(host.records.map((record) => record.fingerprint), [fingerprintOf(AT_42_PANE_8)]);
+    assert.equal(host.reloads, 1);
+  });
+
+  it("dates the plugin list, the marketplace list, each install's plugin folder and every folder of the install", async () => {
+    const teamrigAt = `${TEAMRIG_FOLDER}\\0.42.0`;
+    const tree: ReadonlyMap<string, readonly string[]> = new Map([
+      [teamrigAt, [`${teamrigAt}\\hooks`, `${teamrigAt}\\skills`]],
+      [`${teamrigAt}\\skills`, [`${teamrigAt}\\skills\\guide`]],
+    ]);
+    const dated = [
+      `${PLUGINS}/installed_plugins.json`,
+      `${PLUGINS}/known_marketplaces.json`,
+      TEAMRIG_FOLDER,
+      PANE_FOLDER,
+      teamrigAt,
+      `${PANE_FOLDER}\\0.7.0`,
+      `${teamrigAt}\\hooks`,
+      `${teamrigAt}\\skills`,
+      `${teamrigAt}\\skills\\guide`,
+    ];
+    for (const path of dated) {
+      const host = new FakeHost();
+      for (const [folder, inside] of tree) {
+        host.folders.set(folder, inside);
+      }
+      const hand = await started(host);
+      host.file = AT_42;
+      await checkAfter(hand, host, CHECK_MS);
+      host.time += CHECK_MS;
+      host.changed.set(path, host.time - SETTLE_MS + 1);
+      assert.deepEqual(await hand.check(), { kind: 'installing', changedAt: host.time - SETTLE_MS + 1 }, path);
+      assert.deepEqual(host.dated, dated);
+    }
+  });
+
+  it('reloads past a store that changed SETTLE_MS ago or more, far ahead of the clock, or not at all', async () => {
+    for (const changedAt of [undefined, -SETTLE_MS, -RELOAD_GAP_MS, SETTLE_MS, RELOAD_GAP_MS]) {
+      const host = new FakeHost();
+      const hand = await started(host);
+      host.file = AT_42;
+      await checkAfter(hand, host, CHECK_MS);
+      host.time += CHECK_MS;
+      if (changedAt !== undefined) {
+        host.changed.set(TEAMRIG_FOLDER, host.time + changedAt);
+      }
+      assert.deepEqual(await hand.check(), RELOADED, String(changedAt));
+    }
+  });
+
+  it('dates at most STORE_FOLDERS_MAX folders of the installs and lists none past them', async () => {
+    const host = new FakeHost();
+    const install = `${TEAMRIG_FOLDER}\\0.42.0`;
+    const wide = Array.from({ length: STORE_FOLDERS_MAX }, (_, index) => `${install}\\f${index}`);
+    host.folders.set(install, wide);
+    const hand = await started(host);
+    host.file = AT_42;
+    await checkAfter(hand, host, CHECK_MS);
+    host.time += CHECK_MS;
+    host.changed.set(wide[STORE_FOLDERS_MAX - 1] ?? '', host.time);
+    assert.deepEqual(await hand.check(), RELOADED, 'a change past the bound is not seen');
+    const inInstalls = host.dated.filter((path) => path.startsWith(`${TEAMRIG_FOLDER}\\`) || path.startsWith(`${PANE_FOLDER}\\`));
+    assert.equal(inInstalls.length, STORE_FOLDERS_MAX);
+    assert.deepEqual(host.listed, [install, `${PANE_FOLDER}\\0.7.0`], 'the installs alone: their folders fill the bound');
+  });
+
   it('skips a check while the one before still runs', async () => {
     const host = new FakeHost();
     const hand = await started(host);
@@ -404,6 +513,30 @@ describe('installedFingerprint', () => {
       AT_42,
     ]) {
       assert.notEqual(fingerprintOf(changed), base);
+    }
+  });
+});
+
+describe('newestNear', () => {
+  it('takes the newest time less than SETTLE_MS from now either way', () => {
+    const now = 1_000_000;
+    assert.equal(newestNear([now - SETTLE_MS, now - 1, now + 5, now + SETTLE_MS], now), now + 5);
+    assert.equal(newestNear([now - SETTLE_MS + 1, now + RELOAD_GAP_MS], now), now - SETTLE_MS + 1, 'one far ahead of the clock left out');
+    assert.equal(newestNear([now - SETTLE_MS, now + SETTLE_MS], now), undefined);
+    assert.equal(newestNear([], now), undefined);
+  });
+});
+
+describe('parentOf', () => {
+  it('cuts the last part of a path at either slash, a trailing one first', () => {
+    assert.equal(parentOf(`${TEAMRIG_FOLDER}\\0.42.0`), TEAMRIG_FOLDER);
+    assert.equal(parentOf('/home/me/.claude/plugins/cache/m/p/1.0.0/'), '/home/me/.claude/plugins/cache/m/p');
+    assert.equal(parentOf('C:/Users/me\\plugins'), 'C:/Users/me');
+  });
+
+  it('keeps a path with no folder above it as it is', () => {
+    for (const path of ['plugins', '/plugins', '']) {
+      assert.equal(parentOf(path), path, path);
     }
   });
 });

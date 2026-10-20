@@ -201,8 +201,9 @@ claude plugin update teamrig@teamrig
 ```
 
 Each open tab then takes the new version by itself: teamrig's mod (`hooks/register.ts`) reads Claude Code's
-`installed_plugins.json` every 15 s, and once an install changed (any plugin's that applies to the tab) and the file
-has read the same for 10 s, it runs `/reload-plugins` in the tab while no turn runs. It runs at most one reload per 5
+`installed_plugins.json` every 15 s, and once an install changed (any plugin's that applies to the tab), the file
+has read the same for 10 s and nothing in the plugin store changed for 10 s (an install still copied into the
+cache), it runs `/reload-plugins` in the tab while no turn runs. It runs at most one reload per 5
 minutes in a tab and never two for the same installs; a refused one goes to Claude Code's debug log and is tried again
 5 minutes later. A tab that does not load mods (an older Claude Code, mods off) or a plugin loaded with `--plugin-dir`
 still needs `/reload-plugins` typed, or a restart. Claude Code does not check this marketplace for updates by itself

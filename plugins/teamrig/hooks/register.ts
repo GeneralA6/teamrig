@@ -43,8 +43,8 @@ import { WAKE_TICK_MS, WAKE_TIMEOUT_MS, WakeHand, wakeCliArgv } from '../dist/mo
  * session's `band` (types/index.d.ts), written each time it changes, so the drawing redraws.
  *
  * The reload after an install (`reload-hand.ts`): every 15 s the hand reads Claude Code's installed_plugins.json, and
- * once an install that applies to this tab changed and the file stood for 10 s, it runs /reload-plugins while no turn
- * runs: at most one per 5 minutes, never two for the same installs. It keeps its last reload in the session's state,
+ * once an install that applies to this tab changed, the file stood for 10 s and nothing in the plugin store changed for
+ * 10 s (an install still copied), it runs /reload-plugins while no turn runs: at most one per 5 minutes, never two for the same installs. It keeps its last reload in the session's state,
  * so the module the reload loads keeps both. A plugin run from outside Claude Code's cache (`--plugin-dir`) has no
  * installed_plugins.json beside it and gets no reload hand; a tab without this mod still needs /reload-plugins.
  *
@@ -85,9 +85,9 @@ function wakeWorthLogging(result: { readonly kind: string }): boolean {
   return result.kind === 'woke' || result.kind === 'dropped' || result.kind === 'failed';
 }
 
-/** A check worth a debug line: a reload run, refused or failed. */
+/** A check worth a debug line: a reload run, refused, failed or held for an install still written. */
 function reloadWorthLogging(result: { readonly kind: string }): boolean {
-  return result.kind === 'reloaded' || result.kind === 'refused' || result.kind === 'failed';
+  return result.kind === 'reloaded' || result.kind === 'refused' || result.kind === 'failed' || result.kind === 'installing';
 }
 
 /** A refresh look worth a debug line: an ask or a failure, not the quiet ones. */
@@ -160,7 +160,16 @@ export const register: Register = (on) => {
     const pluginsFolder = pluginsFolderOf($.plugin.root);
     if (reloadHand === undefined && pluginsFolder !== undefined) {
       const active = new ReloadHand({
+        pluginsFolder,
         readInstalled: () => $.fs.read(`${pluginsFolder}/${INSTALLED_PLUGINS_FILE}`),
+        changedAt: (path) => $.fs.stat(path).then(
+          (found) => found.mtimeMs,
+          () => undefined,
+        ),
+        foldersIn: (path) => $.fs.list(path).then(
+          (entries) => entries.filter((entry) => entry.kind === 'dir').map((entry) => `${path}/${entry.name}`),
+          () => [],
+        ),
         projectRoot: () => $.session.root(),
         reload: async () => {
           const ran = await $.command.run({ command: RELOAD_COMMAND });
