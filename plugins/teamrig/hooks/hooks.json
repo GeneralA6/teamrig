@@ -82,14 +82,14 @@
       },
       {
         "hooks": [
-          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "tab-status"], "timeout": 5 }
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "tool-end"], "timeout": 5 }
         ]
       }
     ],
     "PostToolUseFailure": [
       {
         "hooks": [
-          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "tab-status"], "timeout": 5 }
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/cli/main.js", "hook", "tool-end"], "timeout": 5 }
         ]
       }
     ],

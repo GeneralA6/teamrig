@@ -1,12 +1,14 @@
 import { isNonNegativeInteger, stringField, type JsonRecord } from '../core/guards.ts';
 import { ID_PATTERN } from '../core/ids.ts';
 import { parseObject } from '../core/jsonl.ts';
+import { MS_PER_MINUTE } from '../core/time.ts';
 import { CLAUDE_SESSION_ID } from '../inbox/marks.ts';
 
 /**
  * A Claude Code session as the restore after a reboot sees it: where it runs and what it was doing at its
- * last hook event. `hook restore-track` writes one on each start, prompt, turn end, API error and end, so a
- * session the shutdown killed is one whose last event left it open, or ended it with no reason of its own.
+ * last hook event. `hook restore-track` writes one on each start, prompt, turn end, API error and end, and
+ * `hook tool-end` at a tool's end every few minutes, so a session the shutdown killed is one whose last event left
+ * it open, or ended it with no reason of its own.
  */
 
 /** What the session was doing at its last event: waiting for a prompt, in a turn, or stopped by an API error. */
@@ -46,10 +48,18 @@ export interface RestoreEntry {
   readonly endReason: string | undefined;
 }
 
-/** A hook event, as the tracker reads it. */
+/**
+ * The least time between two writes a tool's end makes: often enough that a session's entry stays within minutes
+ * of its transcript through a long turn (the fleet check reads a larger gap as a tab running without its hooks),
+ * rare enough that most tool ends only read the entry.
+ */
+export const TOOL_END_WRITE_MS = 5 * MS_PER_MINUTE;
+
+/** A hook event, as the tracker reads it. A tool's end (`tool`) in the main thread says the session is in a turn; a helper's says only that its hooks run. */
 export type TrackEvent =
   | { readonly kind: 'start' }
   | { readonly kind: 'working' }
+  | { readonly kind: 'tool'; readonly mainThread: boolean }
   | { readonly kind: 'ready' }
   | { readonly kind: 'error' }
   | { readonly kind: 'end'; readonly reason: string | undefined };
@@ -72,11 +82,16 @@ export type TrackChange = { readonly kind: 'write'; readonly entry: RestoreEntry
 /**
  * How an event changes a session's entry. An end the person or Claude Code chose removes it: nothing is
  * left to restore. A start begins it afresh (ready, no restore pending). A first event that names no folder
- * writes nothing, since a tab cannot be reopened nowhere.
+ * writes nothing, since a tab cannot be reopened nowhere. A tool's end in the main thread marks it working (a
+ * helper's runs on past its turn's end, and keeps the state), and either writes only once
+ * `TOOL_END_WRITE_MS` passed since the entry's last write.
  */
 export function applyEvent(existing: RestoreEntry | undefined, event: TrackEvent, facts: TrackFacts): TrackChange {
   if (event.kind === 'end' && event.reason !== undefined && INTENTIONAL_END_REASONS.has(event.reason)) {
     return { kind: 'remove' };
+  }
+  if (event.kind === 'tool' && existing !== undefined && existing.endedAt === undefined && facts.at - existing.updatedAt < TOOL_END_WRITE_MS) {
+    return { kind: 'none' };
   }
   const projectDir = existing?.projectDir ?? facts.projectDir;
   if (projectDir === undefined) {
@@ -104,6 +119,8 @@ export function applyEvent(existing: RestoreEntry | undefined, event: TrackEvent
       return { kind: 'write', entry: { ...base, endedAt: facts.at, endReason: event.reason ?? OTHER_END } };
     case 'start':
       return { kind: 'write', entry: { ...base, state: 'ready', restoreAttempts: 0, restoredAt: undefined } };
+    case 'tool':
+      return { kind: 'write', entry: event.mainThread ? { ...base, state: 'working' } : base };
     case 'working':
     case 'ready':
     case 'error':

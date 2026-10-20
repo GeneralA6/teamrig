@@ -3342,6 +3342,23 @@ teamrig hook tab-status < prompt.json
 Output: a JSON object whose `terminalSequence` sets the title; nothing outside a team, with tab status off, for an
 event that changes nothing, or on an error. Exit 0 always.
 
+### teamrig hook tool-end
+
+Run by Claude Code at every tool call's end (`PostToolUse`, `PostToolUseFailure`), in a team or not: sets the tab's
+title as `hook tab-status` does, and records the session in `<home>/restore/sessions/<session id>.json` as
+`hook restore-track` does, at most every 5 minutes, marking it working unless a helper made the call. Both come
+from one process, since a tool's end is the most frequent hook event.
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig hook tool-end < post-tool-use.json
+```
+
+Output: the title's `terminalSequence` as `hook tab-status` prints it, or nothing. Exit 0 always.
+
 ### teamrig hook restore-track
 
 Run by Claude Code at each session start, prompt, turn end, API error and session end, in a team or not:
