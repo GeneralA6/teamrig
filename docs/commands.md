@@ -133,6 +133,11 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       (the lead, or a hired session itself under hiring.policy automatic once its tasks are closed) takes a
       session off the team; its open tasks go to --to, and it needs its handover unless --no-handover; its
       tasks and inbox stay readable; without --yes it shows the retire and writes nothing
+  promote <id|name> --members <a,b> [--yes]
+      (the lead or a sub-lead) makes one of the sessions it leads directly the sub-lead of others it leads
+      directly: their decision and approval waits may go to it, and it approves them; without --yes it shows
+      the change and writes nothing
+  demote <id|name> [--yes]     (its own leader) takes a sub-lead's members back; without --yes it shows it
   refresh <id|name>            the lead asks a session to write its handover when it next sets a task done
   refresh --ready              the handover is written; the user's /clear starts it fresh (autoRestart: once idle)
   doctor                       names, rename log, inboxes, rules.md, context size and the tree of teams that need a fix;

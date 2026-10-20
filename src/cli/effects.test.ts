@@ -58,6 +58,8 @@ const EXPECTED = {
   deploys: 'read',
   hire: 'write',
   retire: 'write',
+  promote: 'write',
+  demote: 'write',
   refresh: 'write',
   doctor: 'read',
   compact: 'write',
