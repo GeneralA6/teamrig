@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code';
 import type { Register, StateRef } from 'claude-code';
 import type { TeamrigBand } from '../types';
-import { installedPluginsFileOf } from '../dist/core/installed-plugins.js';
+import { INSTALLED_PLUGINS_FILE, pluginsFolderOf } from '../dist/core/installed-plugins.js';
 import { bandLine, ClearHand, liveAgentsOf, sameBand, TICK_MS } from '../dist/mod/clear-hand.js';
 import { REFRESH_TIMEOUT_MS, RefreshHand, refreshCliArgv } from '../dist/mod/refresh-hand.js';
 import { CHECK_MS, RELOAD_COMMAND, ReloadHand } from '../dist/mod/reload-hand.js';
@@ -157,10 +157,10 @@ export const register: Register = (on) => {
         });
       });
     }
-    const installedFile = installedPluginsFileOf($.plugin.root);
-    if (reloadHand === undefined && installedFile !== undefined) {
+    const pluginsFolder = pluginsFolderOf($.plugin.root);
+    if (reloadHand === undefined && pluginsFolder !== undefined) {
       const active = new ReloadHand({
-        readInstalled: () => $.fs.read(installedFile),
+        readInstalled: () => $.fs.read(`${pluginsFolder}/${INSTALLED_PLUGINS_FILE}`),
         projectRoot: () => $.session.root(),
         reload: async () => {
           const ran = await $.command.run({ command: RELOAD_COMMAND });
