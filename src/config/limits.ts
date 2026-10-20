@@ -31,6 +31,7 @@ export const CONFIG_LIMITS = {
   readonlyShellPrefixes: { maxItems: 16, maxLength: 120 },
   secretPaths: { maxItems: 32, maxLength: 200 },
   secretEnvNames: { maxItems: 16, maxLength: 120 },
+  packageCooldownDays: { min: 0, max: 365 },
   searchNudgeAt: { min: 0, max: 50 },
   turnLogKeepHours: { min: 1, max: 168 },
   wakePriority: { min: 1, max: 99 },

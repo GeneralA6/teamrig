@@ -47,11 +47,13 @@ import { CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from './limits.ts';
 import { ConfigReader, describe, isValidRegex, shortLine, type Check, type ConfigIssue } from './reader.ts';
 import {
   AD_HOC_RUNNERS,
+  PACKAGE_INSTALLS,
   BURST_POLICIES,
   CONFLICT_WINNERS,
   ESCALATIONS,
   HIRING_POLICIES,
   isAdHocRunners,
+  isPackageInstalls,
   isBurstPolicy,
   isCommitGate,
   isConflictWinner,
@@ -75,7 +77,7 @@ import {
   type ContextFilesConfig,
   VERIFY_GATES,
   WEEKDAYS,
-  type AdHocRunners,
+  type PackageGuardConfig,
   type BudgetConfig,
   type BudgetLiftConfig,
   type BudgetReset,
@@ -296,7 +298,7 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
       ),
       pushToProtected: parsePushToProtected(read, pushGuard),
     },
-    packageGuard: { adHocRunners: parseAdHocRunners(read, read.section(raw, 'packageGuard', '')) },
+    packageGuard: parsePackageGuard(read, read.section(raw, 'packageGuard', '')),
     commitGuard: { skipHooks: parseSkipHooks(read, read.section(raw, 'commitGuard', '')) },
     prompts: { hookAsks: parseHookAsks(read, read.section(raw, 'prompts', '')) },
     secretGuard: parseSecretGuard(read, read.section(raw, 'secretGuard', '')),
@@ -900,10 +902,16 @@ function parsePushToProtected(read: ConfigReader, raw: JsonRecord): PushToProtec
   return isPushToProtected(value) ? value : fallback;
 }
 
-function parseAdHocRunners(read: ConfigReader, raw: JsonRecord): AdHocRunners {
-  const fallback = DEFAULT_PACKAGE_GUARD.adHocRunners;
-  const value = read.string(raw, 'adHocRunners', 'packageGuard', fallback, oneOf(AD_HOC_RUNNERS));
-  return isAdHocRunners(value) ? value : fallback;
+function parsePackageGuard(read: ConfigReader, raw: JsonRecord): PackageGuardConfig {
+  const path = 'packageGuard';
+  const defaults = DEFAULT_PACKAGE_GUARD;
+  const adHocRunners = read.string(raw, 'adHocRunners', path, defaults.adHocRunners, oneOf(AD_HOC_RUNNERS));
+  const installs = read.string(raw, 'installs', path, defaults.installs, oneOf(PACKAGE_INSTALLS));
+  return {
+    adHocRunners: isAdHocRunners(adHocRunners) ? adHocRunners : defaults.adHocRunners,
+    installs: isPackageInstalls(installs) ? installs : defaults.installs,
+    cooldownDays: read.integer(raw, 'cooldownDays', path, defaults.cooldownDays, CONFIG_LIMITS.packageCooldownDays),
+  };
 }
 
 function parseSkipHooks(read: ConfigReader, raw: JsonRecord): SkipHooks {

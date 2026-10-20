@@ -150,7 +150,18 @@ export function isPushToProtected(value: unknown): value is PushToProtected {
 export interface PackageGuardConfig {
   /** What a Bash or PowerShell call that runs a package ad hoc does. */
   readonly adHocRunners: AdHocRunners;
+  /** What a Bash or PowerShell call that installs a package version the guard cannot vet does. */
+  readonly installs: PackageInstalls;
+  /** A version published fewer days ago than this is not vetted: a fresh release is unproven. */
+  readonly cooldownDays: number;
 }
+
+/**
+ * An install the guard cannot vet (`npm install`, `pnpm add`, `yarn add`, `bun add` and their updates): a range or a
+ * bare update rather than an exact version or tag, a git or URL source, or a version published fewer than
+ * `cooldownDays` ago or with a known advisory: `deny` refuses it, `ask` asks the human, `allow` lets it run.
+ */
+export type PackageInstalls = 'deny' | 'ask' | 'allow';
 
 /**
  * An ad-hoc package run, one that fetches a package outside the project's lockfile and runs it at once (`npx` of a
@@ -179,9 +190,8 @@ export interface PromptsConfig {
 
 /**
  * A call a teamrig hook would ask the human about (a push to a protected branch or one it cannot read, an ad-hoc
- * package run, a git command without hooks, a call that would print a secret, a helper over the budget, as their own
- * keys set): `ask` raises the
- * permission prompt; `refuse` refuses it instead, its reason telling the session to record the step as waiting for
+ * package run, an install it cannot vet, a git command without hooks, a call that would print a secret, a helper over
+ * the budget, as their own keys set): `ask` raises the permission prompt; `refuse` refuses it instead, its reason telling the session to record the step as waiting for
  * the owner's approval and take its next task, so no prompt holds a session while nobody is there to answer it.
  */
 export type HookAsks = 'ask' | 'refuse';
@@ -230,6 +240,12 @@ export const AD_HOC_RUNNERS: readonly AdHocRunners[] = ['deny', 'ask', 'allow'];
 
 export function isAdHocRunners(value: unknown): value is AdHocRunners {
   return AD_HOC_RUNNERS.some((choice) => choice === value);
+}
+
+export const PACKAGE_INSTALLS: readonly PackageInstalls[] = ['deny', 'ask', 'allow'];
+
+export function isPackageInstalls(value: unknown): value is PackageInstalls {
+  return PACKAGE_INSTALLS.some((choice) => choice === value);
 }
 
 export const SKIP_HOOKS: readonly SkipHooks[] = ['deny', 'ask', 'allow'];

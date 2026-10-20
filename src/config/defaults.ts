@@ -99,8 +99,12 @@ export const DEFAULT_LOCK: LockConfig = { ttlMs: 30_000, pollMs: 50, waitMs: 20_
 
 export const DEFAULT_PUSH_GUARD: PushGuardConfig = { protectedBranches: ['main', 'master'], pushToProtected: 'ask' };
 
-/** Refused by default: a helper's `npx eslint` once fetched and ran an unvetted package (T450, 10-16). */
-export const DEFAULT_PACKAGE_GUARD: PackageGuardConfig = { adHocRunners: 'deny' };
+/**
+ * Refused by default: a helper's `npx eslint` once fetched and ran an unvetted package (T450, 10-16), and an install
+ * lands a version as unvetted unless its exact version is old enough and has no advisory (T681). Two weeks is the
+ * window in which a compromised release is usually found and pulled.
+ */
+export const DEFAULT_PACKAGE_GUARD: PackageGuardConfig = { adHocRunners: 'deny', installs: 'deny', cooldownDays: 14 };
 
 /** Refused by default: the hooks are the repository's own checks, and a session that skips them ships what they would catch. */
 export const DEFAULT_COMMIT_GUARD: CommitGuardConfig = { skipHooks: 'deny' };
