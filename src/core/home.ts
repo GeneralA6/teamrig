@@ -109,6 +109,8 @@ export interface TeamPaths {
   readonly coldSends: string;
   /** The owner's latest daily meeting with the lead (src/meeting/state.ts); the cold-send hook holds messages to the lead while it is open. */
   readonly meeting: string;
+  /** The last batch of the owner's decisions the lead asked (src/decisions/store.ts). */
+  readonly decisionsAsked: string;
   /** The append-only log of session renames, so every name a session has had still finds it. */
   readonly renames: string;
   readonly renamesLock: string;
@@ -192,6 +194,7 @@ export function teamPaths(kitHome: string, team: string, userHome: string, overr
     archive: join(state, 'archive'),
     coldSends: join(state, 'cold-sends.jsonl'),
     meeting: join(state, 'meeting.json'),
+    decisionsAsked: join(state, 'decisions-asked.json'),
     renames: join(state, 'renames.jsonl'),
     renamesLock: join(state, 'renames.lock'),
     skills: inHome(overrides.skills) ?? join(userHome, '.claude', 'skills'),
