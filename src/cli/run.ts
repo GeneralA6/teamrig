@@ -370,11 +370,11 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       every commit of it is on --base (default the branch origin/HEAD names); --dry-run: prints the steps
   heavy --what <label> [--session <id|name>] [--max-minutes <n>] [--small] -- <command ...>   runs one heavy step
       (a build, a test run, a database script) under the host lock, so the host runs one at a time:
-      waits up to coordinator.heavy.waitMinutes for the lock, kills the step and every process it
-      started after coordinator.heavy.maxRunMinutes (--max-minutes) and records its start and end in
-      the coordinator's ledger; once the shell that started it ends, it stops waiting for the lock or
-      kills the step (exit 129); REFUSED from coordinator.schedule.heavyCutoffUtc to midnight UTC and
-      when the lock is still held; exit 0 when the command passed, 1 when it failed or was killed. Its
+      waits in line for the lock, kills the step and every process it started after
+      coordinator.heavy.maxRunMinutes (--max-minutes) and records its start and end in the coordinator's
+      ledger; once the shell that started it ends, it stops waiting for the lock or kills the step (exit
+      129); REFUSED from coordinator.schedule.heavyCutoffUtc to midnight UTC and once its line has not
+      moved for coordinator.heavy.waitMinutes; exit 0 when the command passed, 1 when it failed or was killed. Its
       processes get $TEAMRIG_HOST_LOCK: a heavy step started under a live lock (a git hook's checks
       under heavy, integrate or roll) runs at once under it. No --session: $TEAMRIG_SESSION, the
       parent step's session, else the session this Claude Code tab is bound to. --small (a spec run, a
@@ -393,7 +393,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       changes, nothing new or a dependency change coordinator.repos.<name>.dependencyGate holds and
       no dependencyCheck may clear, from coordinator.schedule.heavyCutoffUtc to midnight UTC and in the
       resetBlackoutHours before the weekly token reset; waits up to coordinator.wait.maxMinutes for
-      quiet claims on its deploysOnPush targets and for the host lock, rebases, runs the
+      quiet claims on its deploysOnPush targets and for the host lock (longer while its line moves), rebases, runs the
       dependencyCheck on a dependency change (REFUSED unless it exits 0) and pushes (each a heavy step
       in the ledger; again when origin moved meanwhile), records the push as a deploy of deploysOnPush, deletes the branch on origin
       and here (--keep-remote, --no-delete-local keep them) and, where followMainCheckout, fast-forwards
@@ -408,7 +408,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       dependency change dependencyGate holds or a gate that refuses, from
       coordinator.schedule.heavyCutoffUtc to midnight UTC and in the resetBlackoutHours before the
       weekly token reset; waits up to coordinator.wait.maxMinutes for quiet claims on its targets,
-      its gates and the host lock; nothing pending is DONE with nothing run. A failed check or
+      its gates and the host lock (longer while its line moves); nothing pending is DONE with nothing run. A failed check or
       install moves the main checkout back; a failed afterPull hook or roll command leaves nothing
       pending, so its roll command is then run by hand; once the shell that started it ends, it
       stops waiting, or kills its hook and frees the lock (exit 129); exit 0 rolled, 1 failed or stopped
