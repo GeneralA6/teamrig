@@ -50,6 +50,74 @@ function readNames(read, raw, sessions) {
     }
     return names;
 }
+/** Why a member cannot be listed under `subLead`, or undefined; `leaderOf` holds the members listed so far. */
+function memberProblem(member, subLead, sessions, lead, leaderOf) {
+    if (!sessions.includes(member)) {
+        return `${describe(member)} is not one of the sessions`;
+    }
+    if (member === lead) {
+        return `${describe(member)} is the lead, which no one leads`;
+    }
+    if (member === subLead) {
+        return `${describe(member)} is the sub-lead itself`;
+    }
+    const leader = leaderOf.get(member);
+    return leader === undefined ? undefined : `${describe(member)} is already led by ${leader}; a session has one leader`;
+}
+/** The sub-lead's leaders upward through `leaderOf`, stopping at the first repeat; it is a cycle when that is `subLead`. */
+function leadsItself(subLead, leaderOf) {
+    const seen = new Set();
+    for (let leader = leaderOf.get(subLead); leader !== undefined && !seen.has(leader); leader = leaderOf.get(leader)) {
+        if (leader === subLead) {
+            return true;
+        }
+        seen.add(leader);
+    }
+    return false;
+}
+/**
+ * `leads`: each sub-lead's members (T781). The tree stays whole: a sub-lead and its members are sessions, the lead is
+ * neither, a session is listed once, and no sub-lead leads itself, even through others. A wrong member is reported and
+ * left out, and so is a sub-lead left with none or caught in a cycle, so those sessions stay with the leader above.
+ */
+function readLeads(read, raw, sessions, lead) {
+    const leads = new Map();
+    const leaderOf = new Map();
+    for (const subLead of Object.keys(raw)) {
+        const path = `leads.${subLead}`;
+        const listed = read.list(raw, subLead, 'leads', [], (value, itemPath) => read.stringItem(value, itemPath, isSessionName));
+        if (!sessions.includes(subLead) || subLead === lead) {
+            read.report(path, subLead === lead ? 'is the lead, which leads every session no sub-lead lists; list sub-leads only' : 'is not one of the sessions');
+            continue;
+        }
+        const members = [];
+        for (const member of listed) {
+            const problem = memberProblem(member, subLead, sessions, lead, leaderOf);
+            if (problem === undefined) {
+                members.push(member);
+                leaderOf.set(member, subLead);
+            }
+            else {
+                read.report(path, problem);
+            }
+        }
+        if (members.length === 0) {
+            read.report(path, 'lists no member; a sub-lead leads at least one session');
+            continue;
+        }
+        leads.set(subLead, members);
+    }
+    for (const [subLead, members] of [...leads]) {
+        if (leadsItself(subLead, leaderOf)) {
+            read.report(`leads.${subLead}`, 'leads itself through its members; a sub-lead cannot be under its own group');
+            for (const member of members) {
+                leaderOf.delete(member);
+            }
+            leads.delete(subLead);
+        }
+    }
+    return Object.fromEntries(leads);
+}
 /**
  * `launch`: a model and an effort for sessions on the team. A wrong field is reported and left out,
  * so the session starts on Claude Code's own choice (or, for the lead, the lead's default) for it.
@@ -115,6 +183,7 @@ export function parseConfig(raw) {
         read.report('sessions', 'lists a session more than once');
     }
     const names = readNames(read, read.section(raw, 'names', ''), sessions);
+    const leads = readLeads(read, read.section(raw, 'leads', ''), sessions, lead);
     const launch = readLaunch(read, read.section(raw, 'launch', ''), sessions);
     const team = readTeam(read, raw);
     const timeZone = read.optionalString(raw, 'timeZone', '', isTimeZone);
@@ -133,6 +202,7 @@ export function parseConfig(raw) {
         sessions,
         names,
         roles: coordinatorOwner === undefined ? { lead } : { lead, coordinatorOwner },
+        leads,
         ownerGates: read.stringList(raw, 'ownerGates', '', DEFAULT_OWNER_GATES, shortLine(CONFIG_LIMITS.ownerGates.maxLength), CONFIG_LIMITS.ownerGates.maxItems),
         ruleConflicts: read.list(raw, 'ruleConflicts', '', [], (value, itemPath) => parseRuleConflict(read, value, itemPath), CONFIG_LIMITS.ruleConflicts.maxItems),
         messages: {

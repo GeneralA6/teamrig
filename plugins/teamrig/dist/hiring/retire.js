@@ -1,3 +1,4 @@
+import { leadsAfterRetire } from "../config/lead-edits.js";
 import { isRecord } from "../core/guards.js";
 /**
  * The plan behind `retire`: a session taken off the team config, its open tasks to an heir. Pure: it takes
@@ -20,6 +21,16 @@ function withoutEntry(record, key, id) {
 function withoutBudget(file, id) {
     const budget = file['budget'];
     return isRecord(budget) ? { ...file, budget: withoutEntry(budget, 'sessions', id) } : file;
+}
+/** The file with the session out of `leads` and its members given to its leader, dropping `leads` once empty (T781). */
+function withoutLeader(file, config, id) {
+    const after = leadsAfterRetire(config, id);
+    if (after === undefined) {
+        return { file, regrouped: { members: [], to: config.roles.lead } };
+    }
+    const { members, to, leads } = after;
+    const next = Object.keys(leads).length === 0 ? Object.fromEntries(Object.entries(file).filter(([key]) => key !== 'leads')) : { ...file, leads };
+    return { file: next, regrouped: { members, to } };
 }
 /** The refusal for who asked, or undefined: the lead, or a hired session itself under `automatic` once its tasks are closed. */
 function callerProblem(config, request, hired) {
@@ -77,7 +88,7 @@ function reasonOf(request) {
     const given = request.reason?.trim();
     return given === undefined || given === '' ? RETIRE_REASON : given;
 }
-/** The session taken out of `sessions`, `names`, `launch` and `budget.sessions`, and its retire record; or why not. */
+/** The session taken out of `sessions`, `names`, `launch`, `budget.sessions` and `leads`, and its retire record; or why not. */
 export function planRetire(file, config, active, request) {
     const { id } = request;
     if (!config.sessions.includes(id)) {
@@ -93,7 +104,7 @@ export function planRetire(file, config, active, request) {
         return { ok: false, problem };
     }
     const off = { ...file, sessions: sessions.filter((session) => session !== id) };
-    const next = withoutBudget(withoutEntry(withoutEntry(off, 'names', id), 'launch', id), id);
+    const { file: next, regrouped } = withoutLeader(withoutBudget(withoutEntry(withoutEntry(off, 'names', id), 'launch', id), id), config, id);
     const handOver = request.heir === undefined ? [] : request.openTasks;
     const retire = {
         kind: 'retire',
@@ -105,5 +116,5 @@ export function planRetire(file, config, active, request) {
         by: request.by,
         at: request.now,
     };
-    return { ok: true, value: { config: next, retire, handOver, hired } };
+    return { ok: true, value: { config: next, retire, handOver, hired, regrouped } };
 }

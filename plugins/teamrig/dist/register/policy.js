@@ -1,4 +1,5 @@
 import { MAX_DESCRIPTION } from "../config/defaults.js";
+import { LeadTree } from "../config/lead-tree.js";
 import { ADDRESS_PATTERN } from "../core/address.js";
 import { SecretScanner } from "../core/secrets.js";
 import { parseDeadline, parseUtcDay, parseUtcDeadline, showStored } from "../core/time.js";
@@ -34,9 +35,16 @@ const importSource = (source) => (source === GITHUB_SOURCE ? undefined : `source
 export class RegisterPolicy {
     config;
     secrets;
+    tree;
     constructor(config) {
         this.config = config;
         this.secrets = new SecretScanner(config.register.secretPatterns);
+        this.tree = new LeadTree(config);
+    }
+    /** The approvers of the owner's task in words: the lead alone, or its leaders up the tree, nearest first (T781). */
+    approversText(owner) {
+        const approvers = this.tree.approversOf(owner);
+        return approvers.length === 1 ? `the lead (${this.config.roles.lead})` : `a leader above ${owner} (${approvers.join(' or ')})`;
     }
     /** The caller must be on the roster before writing anything. */
     checkCaller(session) {
@@ -298,31 +306,33 @@ export class RegisterPolicy {
         }
     }
     /**
-     * Decision and approval waits are for the lead and the owner: a peer's work is a task, waited on by its id, which
-     * clears by itself once that task finishes, where a peer's decision would hold the task until its owner noticed.
+     * Decision and approval waits are for the task owner's leaders (the lead, and any sub-lead above it) and the owner: a
+     * peer's work is a task, waited on by its id, which clears by itself once that task finishes, where a peer's decision
+     * would hold the task until its owner noticed.
      */
     personWaitProblem(task, status, reason) {
         const { ownerSource } = this.config.register;
-        const { lead } = this.config.roles;
-        if (!isPeerWait(reason, lead, ownerSource)) {
+        if (!isPeerWait(reason, this.tree.approversOf(task.owner), ownerSource)) {
             return undefined;
         }
+        const leaders = this.approversText(task.owner);
         return this.config.sessions.includes(reason.who)
-            ? `${reason.kind} ${reason.who}: decision and approval waits are for the lead (${lead}) and ${ownerSource}; wait on ${reason.who}'s work by its task: teamrig set ${task.id} --status ${status} --ask ${reason.who} --text "<the work you need>"`
-            : `${reason.kind} ${reason.who}: ${reason.who} is neither the lead (${lead}) nor ${ownerSource}`;
+            ? `${reason.kind} ${reason.who}: decision and approval waits are for ${leaders} and ${ownerSource}; wait on ${reason.who}'s work by its task: teamrig set ${task.id} --status ${status} --ask ${reason.who} --text "<the work you need>"`
+            : `${reason.kind} ${reason.who}: ${reason.who} is neither ${leaders} nor ${ownerSource}`;
     }
     /**
-     * The lead's answer to a task's approval wait (T684): only the lead answers, only a task waiting on its approval, and
-     * always with a note, which the task's owner reads: what it checked, or why it declines. An approval of the owner's
-     * stays the owner's: the lead never answers it.
+     * A lead's answer to a task's approval wait (T684): only a leader above the task's owner answers (the lead, or a
+     * sub-lead, T781), only a task waiting on its own approval, and always with a note, which the task's owner reads: what
+     * it checked, or why it declines. An approval of the owner's stays the owner's: no lead answers it.
      */
     approve(task, caller, verdict, note) {
         const { lead } = this.config.roles;
-        if (caller !== lead) {
-            return refuse(`only the lead (${lead}) answers an approval`);
+        if (!this.tree.approversOf(task.owner).includes(caller)) {
+            return refuse(`only ${this.approversText(task.owner)} answers an approval of ${task.owner}'s`);
         }
-        if (task.status !== 'waiting' || !task.waits.some((reason) => reason.kind === 'approval' && reason.who === lead)) {
-            return refuse(`${task.id} does not wait on the lead's approval (approval:${lead}); its owner asks with teamrig set ${task.id} --status waiting --waits approval:${lead}`);
+        if (task.status !== 'waiting' || !task.waits.some((reason) => reason.kind === 'approval' && reason.who === caller)) {
+            const whose = caller === lead ? "the lead's" : `${caller}'s`;
+            return refuse(`${task.id} does not wait on ${whose} approval (approval:${caller}); its owner asks with teamrig set ${task.id} --status waiting --waits approval:${caller}`);
         }
         const text = blankToNull(note);
         if (text === null) {
