@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { MS_PER_HOUR } from '../core/time.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { formatMeeting, MEETING_LAPSE_MS, MeetingStore, parseMeeting, phaseOf, stoppedAt, type Meeting } from './state.ts';
+import { formatMeeting, inMeeting, MEETING_LAPSE_MS, MeetingStore, parseMeeting, phaseOf, stoppedAt, type Meeting } from './state.ts';
 
 const STARTED = '2030-01-08T09:00:00.000Z';
 const START = Date.parse(STARTED);
@@ -26,6 +26,15 @@ describe('the meeting phase', () => {
     assert.equal(stoppedAt({ kind: 'open', meeting: OPEN }), undefined);
     assert.equal(stoppedAt({ kind: 'lapsed', meeting: OPEN, until: 7 }), 7);
     assert.equal(stoppedAt({ kind: 'closed', meeting: OPEN, until: 9 }), 9);
+  });
+
+  it('has only the session that started it in it, and only while it is open', () => {
+    const later = START + MS_PER_HOUR;
+    assert.equal(inMeeting(OPEN, 'lead', later), true);
+    assert.equal(inMeeting(OPEN, 'alpha', later), false, 'another session works on');
+    assert.equal(inMeeting(undefined, 'lead', later), false);
+    assert.equal(inMeeting({ ...OPEN, endedAt: '2030-01-08T09:40:00.000Z' }, 'lead', later), false, 'ended');
+    assert.equal(inMeeting(OPEN, 'lead', START + MEETING_LAPSE_MS), false, 'lapsed');
   });
 });
 
