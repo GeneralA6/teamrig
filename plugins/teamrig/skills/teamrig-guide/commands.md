@@ -1619,11 +1619,13 @@ A step that fails after a change says what was already done, such as `(its links
 ### teamrig heavy
 
 Runs one heavy step (a build, a test run, a database script) under the host lock, so the host's heavy steps run one
-at a time instead of competing for its CPU and memory. It waits for the lock up to `coordinator.heavy.waitMinutes`
-(60 by default). Waiters take it in arrival order: each joins a line of tickets in `<lock>.queue` and only the
+at a time instead of competing for its CPU and memory. It waits for the lock until its line has not moved
+for `coordinator.heavy.waitMinutes` (60 by default). Waiters take it in arrival order: each joins a line of tickets in `<lock>.queue` and only the
 first live one may take the lock, looking every 2 s; the rest look every `coordinator.wait.pollSeconds` (30). It
 prints a line for each new holder or place in line (`...; 2 ahead in line`). A ticket whose process is gone or whose
-wait ran out is removed by the next waiter. A step that does not join the line (an older kit, a team's own
+wait ran out is removed by the next waiter. The line moved when a step it stood behind (a waiter ahead, the lock's
+holder, a small step sharing the host) ended or left, so a step far back in a line that keeps moving is not refused;
+each time, its ticket's expiry moves on with its wait. A step that does not join the line (an older kit, a team's own
 coordinator) may still take a free lock first.
 
 With `--small` (a spec run, a lint) the step shares the host with other small steps instead of taking the lock.
@@ -1636,7 +1638,7 @@ is `coordinator.heavy.smallReserveMb` (2048).
 
 A step without `--small` that takes the lock holds it while it waits for the small steps to end. So builds,
 integrates, rolls and full suites still run alone, and no new small step is let in meanwhile. It gives up, releasing
-the lock, when its wait runs out, and its lock is renewed if it had to wait. A share whose process is gone, or that
+the lock, when no small step ended for `waitMinutes`, and its lock is renewed if it had to wait. A share whose process is gone, or that
 expired, is removed by the next step that looks. An older kit does not know shares and may take a free lock while
 small steps run.
 
@@ -1756,7 +1758,7 @@ The repository is the entry of `coordinator.repos` whose `mainCheckout` is this 
   the default branch with no uncommitted changes; a NOTE says when it was left as it is, or needs `npm ci`.
 
 A repository not listed gets a NOTE and none of these. Then integrate waits up to `coordinator.wait.maxMinutes` (60),
-looking every `coordinator.wait.pollSeconds` (30), for the claims and the host lock (see `teamrig heavy`), fetches,
+looking every `coordinator.wait.pollSeconds` (30), for the claims and the host lock (see `teamrig heavy`; longer while its line moves), fetches,
 rebases onto origin's default branch, runs the `dependencyCheck` on a dependency change and pushes there, the push a heavy step in the ledger that runs the pre-push
 hook. It landed when origin's default branch is at the rebased commit, whatever the push's exit code. When origin
 moved meanwhile, it rebases and pushes again, 3 times in all. After a landing it deletes the branch on origin and
@@ -1818,7 +1820,7 @@ commits origin lacks, and for a range with a dependency change `dependencyGate` 
 or no `roll.dependencyInstall` set, or a range roll cannot read. Also from
 `coordinator.schedule.heavyCutoffUtc` to midnight UTC, in the `resetBlackoutHours` before the weekly token reset,
 and when a gate refuses. With nothing pending it is DONE and runs nothing. Otherwise it waits up to
-`coordinator.wait.maxMinutes` for the claims, the gates and the host lock, reads origin again under the lock and asks
+`coordinator.wait.maxMinutes` for the claims, the gates and the host lock (longer while its line moves), reads origin again under the lock and asks
 the gates again, then pulls fast-forward to the sha they judged and runs the dependency steps, the afterPull hooks
 and the command, each killed after `coordinator.heavy.maxRunMinutes`, all one heavy step in the ledger. Their lines
 show as they come.
