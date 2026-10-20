@@ -50,12 +50,12 @@ export function sameWait(a: WaitReason, b: WaitReason): boolean {
 }
 
 /**
- * A decision or an approval asked of a peer: anyone but the lead and the owner. A peer's work is a task to wait on
- * (`task:T<id>`, which clears by itself once that task finishes), so a write refuses such a wait; one an older
- * teamrig wrote still reads, and `check` flags it PEER-WAIT.
+ * A decision or an approval asked of a peer: anyone but the task owner's `approvers` (its leaders, `LeadTree`) and the
+ * owner. A peer's work is a task to wait on (`task:T<id>`, which clears by itself once that task finishes), so a write
+ * refuses such a wait; one an older teamrig wrote still reads, and `check` flags it PEER-WAIT.
  */
-export function isPeerWait(reason: WaitReason, lead: string, ownerSource: string): reason is PersonWait {
-  return (reason.kind === 'decision' || reason.kind === 'approval') && reason.who !== lead && reason.who !== ownerSource;
+export function isPeerWait(reason: WaitReason, approvers: readonly string[], ownerSource: string): reason is PersonWait {
+  return (reason.kind === 'decision' || reason.kind === 'approval') && !approvers.includes(reason.who) && reason.who !== ownerSource;
 }
 
 export function isWaitKind(value: unknown): value is WaitKind {

@@ -414,6 +414,19 @@ describe('RegisterPolicy.setStatus to waiting', () => {
     assert.equal(led.setStatus(TASK, 'alpha', { status: 'waiting', note: 'x', waits: [{ kind: 'approval', who: 'bravo' }] }, CTX).ok, true, 'the lead is whoever roles.lead names');
   });
 
+  it("takes a wait on a leader above the owner, refusing another group's sub-lead (T781)", () => {
+    const tree = new RegisterPolicy(testConfig({ sessions: ['lead', 'alpha', 'bravo', 'charlie', 'delta'], leads: { alpha: ['bravo'], charlie: ['delta'] } }));
+    const bravos = testTask({ id: 'T9', owner: 'bravo', status: 'in-progress' });
+    const wait = (who: string) =>
+      tree.setStatus(bravos, 'bravo', { status: 'waiting', note: 'x', waits: [{ kind: 'approval', who }], card: TEST_CARD }, { ...CTX, state: stateOf(bravos) });
+    assert.equal(wait('alpha').ok, true, "bravo's sub-lead approves");
+    assert.equal(wait('lead').ok, true, 'the lead above the sub-lead still does');
+    assert.equal(
+      error(wait('charlie')),
+      `approval charlie: decision and approval waits are for a leader above bravo (alpha or lead) and owner; wait on charlie's work by its task: teamrig set T9 --status waiting --ask charlie --text "<the work you need>"`,
+    );
+  });
+
   it('waits on a task only once started, and only on another live task', () => {
     assert.equal(
       error(waiting(OPEN, [{ kind: 'task', id: 'T4' }])),
@@ -812,6 +825,18 @@ describe('RegisterPolicy.approve (T684)', () => {
     assert.match(error(policy.approve(TASK, 'lead', 'approved', 'ok')), /T1 does not wait on the lead's approval \(approval:lead\)/);
     const owners = testTask({ status: 'waiting', waits: [{ kind: 'approval', who: 'owner' }] });
     assert.match(error(policy.approve(owners, 'lead', 'approved', 'ok')), /does not wait on the lead's approval/);
+  });
+
+  it("lets a sub-lead above the owner answer its own approval wait, never another group's sub-lead nor its own task's (T781)", () => {
+    const tree = new RegisterPolicy(testConfig({ sessions: ['lead', 'alpha', 'bravo', 'charlie', 'delta'], leads: { alpha: ['bravo'], charlie: ['delta'] } }));
+    const bravos = (who: string) => testTask({ owner: 'bravo', status: 'waiting', waits: [{ kind: 'approval', who }] });
+    assert.equal(tree.approve(bravos('alpha'), 'alpha', 'approved', 'ok').ok, true);
+    assert.equal(tree.approve(bravos('lead'), 'lead', 'approved', 'ok').ok, true);
+    assert.equal(error(tree.approve(bravos('alpha'), 'charlie', 'approved', 'ok')), "only a leader above bravo (alpha or lead) answers an approval of bravo's");
+    assert.match(error(tree.approve(bravos('alpha'), 'lead', 'approved', 'ok')), /T1 does not wait on the lead's approval \(approval:lead\)/);
+    assert.match(error(tree.approve(bravos('lead'), 'alpha', 'approved', 'ok')), /T1 does not wait on alpha's approval \(approval:alpha\)/);
+    const alphas = testTask({ status: 'waiting', waits: [{ kind: 'approval', who: 'alpha' }] });
+    assert.equal(error(tree.approve(alphas, 'alpha', 'approved', 'ok')), "only the lead (lead) answers an approval of alpha's");
   });
 
   it('needs a note, checked like any other', () => {

@@ -39,6 +39,15 @@ export class LeadTree {
     return chain;
   }
 
+  /**
+   * Whose decision or approval a session's task may wait on, besides the human owner: its leaders, nearest first, so
+   * the lead always; the lead's own task waits on the lead.
+   */
+  approversOf(id: string): string[] {
+    const chain = this.chainOf(id);
+    return chain.length === 0 ? [this.lead] : chain;
+  }
+
   /** The sessions the leader leads directly, in config order: for the lead, every session no sub-lead lists. */
   membersOf(leader: string): string[] {
     return this.sessions.filter((id) => this.leaderOf(id) === leader);

@@ -1,5 +1,6 @@
 import { tmpdir } from 'node:os';
 import { launchOf } from '../../config/launch.ts';
+import { LeadTree } from '../../config/lead-tree.ts';
 import type { ConfigLoad } from '../../config/load.ts';
 import { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
@@ -45,7 +46,7 @@ import { carryLines, carryStartOf, readCarry, type CarriedCron, type Carry, type
 import { claudeProcessOf } from '../../refresh/restart.ts';
 import { RefreshStore } from '../../refresh/store.ts';
 import { readContextTokens } from '../../refresh/usage.ts';
-import { leadApprovedTask } from '../../register/approval.ts';
+import { approvedTaskOf } from '../../register/approval.ts';
 import { JsonlEventLog } from '../../register/store.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { dedupLogOf } from '../dedup-logs.ts';
@@ -101,30 +102,34 @@ async function guardLoadOf(
 
 /**
  * Under `pushToProtected: lead`, what lets this tab's normal push to a protected branch through (T684): the lead's own
- * push, else a waiting task of its session's that the lead approved, read lock-free from the register. It never throws:
+ * push, else a waiting task of its session's that a leader above it approved (T781), read lock-free from the register. It never throws:
  * a register it cannot read clears nothing, so the push is refused, saying why.
  */
 async function pushClearanceOf(runtime: CliRuntime, kit: Kit | undefined, payload: unknown): Promise<PushClearance> {
   if (kit === undefined || kit.load.status !== 'loaded') {
     // Not reached: without a loaded config the guard asks (pushToProtectedOf), so it never reads the clearance.
-    return { kind: 'none', lead: 'the lead', why: 'the team config did not load' };
+    return { kind: 'none', approver: 'the lead', why: 'the team config did not load' };
   }
   const { config } = kit.load;
   const lead = config.roles.lead;
+  const tree = new LeadTree(config);
   try {
     const roster = await rosterOf(runtime, kit, config);
     const session = await teamSessionOf(runtime, kit, roster, sessionIdOf(payload));
     if (session === undefined) {
-      return { kind: 'none', lead, why: 'this tab is not bound to a session of the team, so the guard cannot tell whose push it is' };
+      return { kind: 'none', approver: lead, why: 'this tab is not bound to a session of the team, so the guard cannot tell whose push it is' };
     }
     if (session === lead) {
       return { kind: 'lead', lead };
     }
     const { state } = await new JsonlEventLog(runtime.files, kit.paths.events).read();
-    const task = leadApprovedTask(state.tasks.values(), session, lead);
-    return task === undefined ? { kind: 'none', lead, why: `${lead} has approved no waiting task of ${session}'s` } : { kind: 'approved', lead, task: task.id };
+    const approvers = tree.chainOf(session);
+    const approved = approvedTaskOf(state.tasks.values(), session, approvers);
+    return approved === undefined
+      ? { kind: 'none', approver: approvers[0] ?? lead, why: approvers.length > 1 ? `neither ${approvers.join(' nor ')} has approved a waiting task of ${session}'s` : `${lead} has approved no waiting task of ${session}'s` }
+      : { kind: 'approved', by: approved.by, task: approved.task.id };
   } catch (error) {
-    return { kind: 'none', lead, why: `the guard could not read the register (${errorMessage(error)})` };
+    return { kind: 'none', approver: lead, why: `the guard could not read the register (${errorMessage(error)})` };
   }
 }
 

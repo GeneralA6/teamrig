@@ -49,3 +49,18 @@ describe("runCli: approve, the lead's answer to an approval wait (T684)", () => 
     assert.deepEqual(await inboxOf(kit, 'alpha'), []);
   });
 });
+
+describe('runCli: approve by a sub-lead (T781)', () => {
+  it("lets a sub-lead answer its member's approval wait, telling the member, where the lead it does not wait on is refused", async () => {
+    const kit = new CliHarness({ sessions: ['lead', 'alpha', 'bravo'], roles: { lead: 'lead' }, leads: { alpha: ['bravo'] } });
+    await kit.run(['add', '--title', 'Ship the CLI', '--description', 'what and why', '--priority', 'p1', '--session', 'bravo']);
+    const set = await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'approval:alpha', '--note', 'branch t1, the CLI fix', '--session', 'bravo']);
+    assert.equal(set.code, EXIT.ok, set.stderr.join('\n'));
+    const byLead = await kit.run(['approve', 'T1', '--note', 'ok', '--session', 'lead']);
+    assert.notEqual(byLead.code, EXIT.ok);
+    assert.match([...byLead.stdout, ...byLead.stderr].join('\n'), /T1 does not wait on the lead's approval \(approval:lead\)/);
+    const approved = await kit.run(['approve', 'T1', '--note', 'tests green', '--session', 'alpha']);
+    assert.equal(approved.code, EXIT.ok, approved.stderr.join('\n'));
+    assert.deepEqual(await inboxOf(kit, 'bravo'), ['- 2030-01-08 10:00 UTC alpha: alpha approved T1: tests green; push or merge it now, then set its next status']);
+  });
+});

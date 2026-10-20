@@ -97,6 +97,17 @@ describe('runCli: a wait on the lead or the owner tells the lead', () => {
     assert.deepEqual(asked.stderr, ['NOTE bravo has an inbox line: T2 is yours (p2): Land it', `NOTE lead has an inbox line: T1 waits on the owner's decision: ${TEST_CARD.question} | asked in the next batch at the daily meeting`]);
   });
 
+  it("tells a sub-lead of a wait on its approval, and the lead of one on the owner (T781)", async () => {
+    const kit = new CliHarness({ sessions: ['lead', 'alpha', 'bravo'], roles: { lead: 'lead' }, leads: { alpha: ['bravo'] } });
+    await kit.run(['add', '--title', 'Ship the release', '--description', 'what and why', '--priority', 'p2', '--session', 'bravo']);
+    await kit.run(['set', 'T1', '--status', 'in-progress', '--session', 'bravo']);
+    const sub = await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'approval:alpha', '--note', 'branch t1', '--session', 'bravo']);
+    assert.equal(sub.code, EXIT.ok, sub.stderr.join('\n'));
+    assert.deepEqual(sub.stderr, ['NOTE alpha has an inbox line: T1 waits on your approval: branch t1']);
+    const owner = await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'approval:alpha,decision:owner', '--note', 'and the cost', ...TEST_CARD_FLAGS, '--session', 'bravo']);
+    assert.deepEqual(owner.stderr, [`NOTE lead has an inbox line: T1 waits on the owner's decision: ${TEST_CARD.question} | asked in the next batch at the daily meeting`]);
+  });
+
   it('names a line it could not post, and keeps the wait', async () => {
     const kit = new CliHarness({ sessions: ['lead', 'alpha', 'bravo'], roles: { lead: 'lead' }, register: { secretPatterns: ['waits on your'] } });
     await kit.run(['add', '--title', 'Ship the release', '--description', 'what and why', '--priority', 'p2', '--session', 'alpha']);

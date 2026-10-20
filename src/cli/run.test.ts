@@ -614,7 +614,7 @@ describe('runCli: hook push-guard', () => {
     const push = (env: Record<string, string> = {}) => kit.run(['hook', 'push-guard'], { stdin: bash('git push origin main'), env });
     // A cleared push prints only a note, no permission decision, so the normal permission flow decides.
     assert.match((await push({ TEAMRIG_SESSION: 'lead' })).stdout[0] ?? '', /^\{"systemMessage":"teamrig let this push .* the lead \(lead\) pushes unasked/);
-    assert.match(reasonOf(await push()) ?? '', /needs the lead's approval, not the human's: this tab is not bound to a session of the team/);
+    assert.match(reasonOf(await push()) ?? '', /needs a lead's approval, not the human's: this tab is not bound to a session of the team/);
     assert.match(reasonOf(await push({ TEAMRIG_SESSION: 'alpha' })) ?? '', /: lead has approved no waiting task of alpha's\. Ask on the register/);
 
     await kit.run(['add', '--title', 'Ship the CLI', '--description', 'what and why', '--priority', 'p1', '--session', 'alpha']);
@@ -624,6 +624,18 @@ describe('runCli: hook push-guard', () => {
     assert.equal(approved.code, EXIT.ok, approved.stderr.join('\n'));
     assert.match((await push({ TEAMRIG_SESSION: 'alpha' })).stdout[0] ?? '', /^\{"systemMessage":"teamrig let this push .* lead approved T1; set its next status once pushed/);
     assert.equal(decisionOf(await push({ TEAMRIG_SESSION: 'bravo' })), 'deny', "alpha's approval is not bravo's");
+  });
+
+  it("under pushToProtected lead, lets a sub-lead's approval clear its member's push (T781)", async () => {
+    const kit = new CliHarness({ ...TEAM, leads: { alpha: ['bravo'] }, pushGuard: { pushToProtected: 'lead' } });
+    const push = () => kit.run(['hook', 'push-guard'], { stdin: bash('git push origin main'), env: { TEAMRIG_SESSION: 'bravo' } });
+    assert.match(reasonOf(await push()) ?? '', /: neither alpha nor lead has approved a waiting task of bravo's\. Ask on the register: `teamrig set <task> --status waiting --waits approval:alpha /);
+    await kit.run(['add', '--title', 'Ship the CLI', '--description', 'what and why', '--priority', 'p1', '--session', 'bravo']);
+    await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'approval:alpha', '--note', 'branch t1', '--session', 'bravo']);
+    assert.equal(decisionOf(await push()), 'deny', 'asked, not yet approved');
+    const approved = await kit.run(['approve', 'T1', '--note', 'tests green', '--session', 'alpha']);
+    assert.equal(approved.code, EXIT.ok, approved.stderr.join('\n'));
+    assert.match((await push()).stdout[0] ?? '', /alpha approved T1; set its next status once pushed/);
   });
 
   it('refuses a commit that skips the hooks, or asks or lets it run as the team config says, refusing on a broken config', async () => {
