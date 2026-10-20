@@ -1,0 +1,251 @@
+{
+  "GeneralA6/teamrig": {
+    "main": "main",
+    "gate": "local",
+    "checks": [
+      "scrub and DCO gates",
+      "coverage gate",
+      "plugin version gate",
+      "test (ubuntu-latest, node 22)",
+      "test (ubuntu-latest, node 24)",
+      "test (windows-latest, node 22)",
+      "test (windows-latest, node 24)",
+      "test (macos-latest, node 22)",
+      "test (macos-latest, node 24)"
+    ],
+    "local": {
+      "runner": "tools/ci/local.ts",
+      "fallback": [
+        {
+          "name": "plugin version gate",
+          "run": [
+            "node",
+            "tools/ci/plugin-version-cli.ts"
+          ]
+        },
+        {
+          "name": "scrub: tree",
+          "run": [
+            "node",
+            "tools/scrub/cli.ts",
+            "--tree"
+          ]
+        },
+        {
+          "name": "scrub: commits",
+          "run": [
+            "node",
+            "tools/scrub/cli.ts",
+            "--range",
+            "origin/main..HEAD"
+          ]
+        },
+        {
+          "name": "DCO",
+          "run": [
+            "node",
+            "tools/dco/cli.ts",
+            "--range",
+            "origin/main..HEAD"
+          ]
+        },
+        {
+          "name": "size rule",
+          "run": [
+            "node",
+            "{skill}/size-rule.ts",
+            "--teamrig",
+            ".",
+            "--base",
+            "origin/main"
+          ]
+        },
+        {
+          "name": "typecheck",
+          "run": [
+            "node",
+            "node_modules/typescript/bin/tsc",
+            "-p",
+            "tsconfig.json"
+          ]
+        },
+        {
+          "name": "coverage gate",
+          "run": [
+            "node",
+            "tools/ci/coverage-cli.ts"
+          ]
+        },
+        {
+          "name": "build: clean",
+          "run": [
+            "node",
+            "tools/build/clean.ts"
+          ]
+        },
+        {
+          "name": "build: compile",
+          "run": [
+            "node",
+            "node_modules/typescript/bin/tsc",
+            "-p",
+            "tsconfig.build.json"
+          ]
+        },
+        {
+          "name": "dist matches the source",
+          "run": [
+            "node",
+            "tools/ci/dist-fresh-cli.ts"
+          ]
+        },
+        {
+          "name": "dist smoke",
+          "run": [
+            "node",
+            "tools/ci/dist-smoke-cli.ts"
+          ]
+        },
+        {
+          "name": "doc pictures",
+          "run": [
+            "node",
+            "tools/docs/images-cli.ts",
+            "--check"
+          ]
+        },
+        {
+          "name": "doc links",
+          "run": [
+            "node",
+            "tools/docs/doc-check-cli.ts"
+          ]
+        }
+      ]
+    }
+  },
+  "GeneralA6/teamrig-pane": {
+    "main": "main",
+    "gate": "local",
+    "checks": [
+      "scrub and DCO gates",
+      "coverage gate",
+      "plugin version gate",
+      "hooks/core matches the teamrig pin",
+      "test (ubuntu-latest, node 22)",
+      "test (ubuntu-latest, node 24)",
+      "test (windows-latest, node 22)",
+      "test (windows-latest, node 24)",
+      "test (macos-latest, node 22)",
+      "test (macos-latest, node 24)"
+    ],
+    "local": {
+      "runner": "tools/ci/local.ts",
+      "fallback": [
+        {
+          "name": "plugin version gate",
+          "run": [
+            "node",
+            "tools/ci/plugin-version-cli.ts"
+          ]
+        },
+        {
+          "name": "scrub: tree",
+          "run": [
+            "node",
+            "tools/scrub/cli.ts",
+            "--tree"
+          ]
+        },
+        {
+          "name": "scrub: commits",
+          "run": [
+            "node",
+            "tools/scrub/cli.ts",
+            "--range",
+            "origin/main..HEAD"
+          ]
+        },
+        {
+          "name": "DCO",
+          "run": [
+            "node",
+            "tools/dco/cli.ts",
+            "--range",
+            "origin/main..HEAD"
+          ]
+        },
+        {
+          "name": "size rule",
+          "run": [
+            "node",
+            "{skill}/size-rule.ts",
+            "--teamrig",
+            "{skill}/../..",
+            "--base",
+            "origin/main"
+          ]
+        },
+        {
+          "name": "plugin tests: none skipped",
+          "run": [
+            "node",
+            "tools/ci/plugin-tests-cli.ts"
+          ]
+        },
+        {
+          "name": "doc pictures",
+          "run": [
+            "node",
+            "tools/docs/images-cli.ts",
+            "--check"
+          ]
+        },
+        {
+          "name": "typecheck",
+          "run": [
+            "node",
+            "node_modules/typescript/bin/tsc",
+            "-p",
+            "tsconfig.json"
+          ]
+        },
+        {
+          "name": "typecheck: pane",
+          "run": [
+            "node",
+            "node_modules/typescript/bin/tsc",
+            "-p",
+            "tsconfig.pane.json"
+          ]
+        },
+        {
+          "name": "coverage gate",
+          "run": [
+            "node",
+            "tools/ci/coverage-cli.ts"
+          ]
+        },
+        {
+          "name": "hooks/core matches the teamrig pin",
+          "run": [
+            "node",
+            "scripts/sync-core.ts",
+            "--teamrig",
+            "{skill}/../..",
+            "--check"
+          ],
+          "cwd": "plugins/teamrig-pane"
+        },
+        {
+          "name": "plugin tests",
+          "run": [
+            "node",
+            "{skill}/plugin-test.ts",
+            "plugins/teamrig-pane"
+          ]
+        }
+      ]
+    }
+  }
+}
