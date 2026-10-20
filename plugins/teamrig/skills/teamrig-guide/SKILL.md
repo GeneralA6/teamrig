@@ -14,7 +14,7 @@ This page is the model and the daily loop. The detail lives beside it:
 | File | What it holds |
 | --- | --- |
 | [commands.md](commands.md) | Every command: its flags, an example and what it prints |
-| [tasks.md](tasks.md) | Task statuses and what each needs, inbox lines and messages, check flags, week plans, skills |
+| [tasks.md](tasks.md) | Task statuses and what each needs, when work is its own task or a step of one, inbox lines and messages, check flags, week plans, skills |
 | [workflows.md](workflows.md) | Step by step: a work block, handing work over, shipping a change, closing a task, a handover, a helper, a lead checkpoint, a lesson turned into a fix, the owner's daily meeting |
 | [hooks.md](hooks.md) | Each hook and mod, what it injects or blocks, and permissions |
 | [errors.md](errors.md) | Every common refusal and usage error, with its fix, and the traps outside teamrig |

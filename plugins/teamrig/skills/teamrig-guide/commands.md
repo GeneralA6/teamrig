@@ -21,7 +21,8 @@ Rules for every command line:
 
 ### teamrig add
 
-Adds a task to the register. Every ask that creates work is a task, added by whoever asks, in the same turn.
+Adds a task to the register. Every ask that creates work is a task, added by whoever asks, in the same turn; a
+step of a task already there is not ([tasks.md](tasks.md#a-task-or-a-step)).
 
 Flags:
 
