@@ -8,6 +8,8 @@ import { FakePackageRegistry } from '../testing/fake-package-registry.ts';
 import { teamInboxOf } from '../testing/team-tree.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { ENV } from '../core/home.ts';
+import { CLIENT_MANIFEST, clientFileHash, clientManifestText, clientRootOf } from '../exec/client-integrity.ts';
+import { quietWorld } from '../testing/quiet-world.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import { ASK_REFUSED_NOTE } from '../hooks/permission.ts';
 import { APP, bash, CLAUDE_SESSION, CliHarness, CONFIG_PATH, contextOf, decisionOf, EVENTS_PATH, KIT, POINTER, reasonOf, SKILLS_DIR, TEAM, type CliResult } from '../testing/cli-harness.ts';
@@ -651,9 +653,30 @@ describe('runCli: hook push-guard', () => {
 
 describe('runCli: hook exec-guard', () => {
   const guard = (kit: CliHarness, command: string, env: Record<string, string> = {}) => kit.run(['hook', 'exec-guard'], { stdin: bash(command), env });
+  /** The plugin root the harness CLI runs from, the one its entry script sits in. */
+  const PLUGIN = clientRootOf(quietWorld().self.script);
+  const LAUNCHER = 'bin/teamrig';
+  const BUILT = '#!/bin/sh\nexec node main.js\n';
+  /** A harness whose plugin install holds a launcher with `launcher` as its text and the list its build wrote for `BUILT`. */
+  const installed = async (launcher: string = BUILT): Promise<CliHarness> => {
+    const kit = new CliHarness();
+    await kit.files.write(join(PLUGIN, CLIENT_MANIFEST), clientManifestText(new Map([[LAUNCHER, clientFileHash(BUILT)]])));
+    await kit.files.write(join(PLUGIN, LAUNCHER), launcher);
+    return kit;
+  };
+
+  it('refuses every exec call while the installed client differs from its build or has no list, and lets other lines be', async () => {
+    const patched = await installed('#!/bin/sh\nexec node patched.js\n');
+    for (const line of ['teamrig exec status R1', 'teamrig exec approve R1 --session alpha']) {
+      assert.match(reasonOf(await guard(patched, line, { TEAMRIG_SESSION: 'alpha' })) ?? '', /the teamrig client was changed after its build \(bin\/teamrig\); reinstall the teamrig plugin or ask security\./, line);
+    }
+    const bare = new CliHarness();
+    assert.match(reasonOf(await guard(bare, 'teamrig exec run R1 --session alpha')) ?? '', /cannot be checked against its build \(dist\/integrity\.json is missing\)/);
+    assert.deepEqual((await guard(bare, 'teamrig list')).stdout, []);
+  });
 
   it("lets a bound tab review as itself and refuses it as another session, the owner or no one named (T755)", async () => {
-    const kit = new CliHarness();
+    const kit = await installed();
     const alpha = { TEAMRIG_SESSION: 'alpha' };
     const own = await guard(kit, 'teamrig exec approve R1 --session alpha', alpha);
     assert.deepEqual(own, { code: EXIT.ok, stdout: [], stderr: [] });
@@ -664,7 +687,7 @@ describe('runCli: hook exec-guard', () => {
   });
 
   it('refuses every review from an unbound tab and lets the other exec commands through to the normal permission flow', async () => {
-    const kit = new CliHarness();
+    const kit = await installed();
     assert.match(reasonOf(await guard(kit, 'teamrig exec approve R1 --session alpha')) ?? '', /this tab is not bound to a session of the team, so the guard cannot tell who reviews/);
     assert.deepEqual((await guard(kit, 'teamrig exec status R1')).stdout, []);
     assert.deepEqual((await guard(kit, 'git status')).stdout, []);

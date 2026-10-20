@@ -14,6 +14,7 @@ import { modelCheckLine, payloadEffortOf } from '../../hooks/model-check.ts';
 import { ModelNoticeStore } from '../../hooks/model-notices.ts';
 import { sendTargetOf } from '../../hooks/cold-send.ts';
 import { failedSendLine, failedSendOf, failedSendOutput } from '../../hooks/failed-send.ts';
+import { checkClient, clientRootOf } from '../../exec/client-integrity.ts';
 import { execGuardOutput, type TabIdentity } from '../../hooks/exec-guard.ts';
 import { packageGuardOf, packageGuardOutput } from '../../hooks/package-guard.ts';
 import { hookAsksOf } from '../../hooks/permission.ts';
@@ -233,7 +234,10 @@ async function tabIdentityOf(runtime: CliRuntime, kit: Kit | undefined, payload:
   }
 }
 
-/** PreToolUse on Bash and PowerShell: refuses a `teamrig exec` review (approve, refuse, escalate) run as anyone but the tab's own session. */
+/**
+ * PreToolUse on Bash and PowerShell: refuses a `teamrig exec` review (approve, refuse, escalate) run as anyone but the
+ * tab's own session, and any `teamrig exec` call while this hook's own install differs from its build.
+ */
 export async function execGuard(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
   const payload = parseJson(await runtime.readStdin());
@@ -246,6 +250,7 @@ export async function execGuard(args: ParsedArgs, runtime: CliRuntime): Promise<
     home: runtime.userHome,
     hookAsks: hookAsksOf(guard.load),
     identity: () => tabIdentityOf(runtime, guard.kit, payload),
+    client: () => checkClient(clientRootOf(runtime.self.script), runtime.files),
   });
   if (output !== '') {
     runtime.out.stdout(output);
