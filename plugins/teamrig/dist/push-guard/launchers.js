@@ -124,6 +124,8 @@ class LaunchReader {
     called = false;
     /** True once a teamrig runner is read: what it starts runs under the host lock. */
     runner = false;
+    /** True once a PowerShell assignment is read: its right side's output goes into a variable. */
+    captured = false;
     constructor(dialect, stdin) {
         this.dialect = dialect;
         this.stdin = stdin;
@@ -192,10 +194,12 @@ class LaunchReader {
         const text = head.text.replace(/^(?:\[[^\]]+\])+/, '');
         const operator = /^([-+*/%]|\?\?)?=$/;
         if (/^\$[\w:{}?]+$/.test(text) && operator.test(words[1]?.text ?? '')) {
+            this.captured = true;
             return { kind: 'next', words: words.slice(2) };
         }
         const assigned = /^\$[\w:{}?]+([-+*/%]|\?\?)?=(.*)$/s.exec(text);
         if (assigned !== null) {
+            this.captured = true;
             const right = assigned[2] ?? '';
             return { kind: 'next', words: right === '' ? words.slice(1) : [{ text: right, dynamic: /[$@]/.test(right) }, ...words.slice(1)] };
         }
@@ -232,10 +236,10 @@ class LaunchReader {
         if (name === 'teamrig') {
             return this.teamrig(args, head);
         }
-        return { kind: 'program', program: head, args, env: this.env, chdirs: this.chdirs, stdinArgs: this.stdinArgs, runner: this.runner };
+        return { kind: 'program', program: head, args, env: this.env, chdirs: this.chdirs, stdinArgs: this.stdinArgs, runner: this.runner, captured: this.captured };
     }
     script(script, dialect, sameShell) {
-        return { kind: 'script', script, dialect, sameShell, env: this.env, chdirs: this.chdirs, runner: this.runner };
+        return { kind: 'script', script, dialect, sameShell, env: this.env, chdirs: this.chdirs, runner: this.runner, captured: this.captured };
     }
     /**
      * A shell that reads its commands from stdin runs the heredoc or here-string the line gives it, in a shell
@@ -477,7 +481,7 @@ class LaunchReader {
         }
         const end = args.findIndex((arg) => !arg.dynamic && arg.text === '--');
         if (subcommand === undefined || !TEAMRIG_RUNNERS.has(subcommand.text) || end === -1) {
-            return { kind: 'program', program: head, args, env: this.env, chdirs: this.chdirs, stdinArgs: this.stdinArgs, runner: this.runner };
+            return { kind: 'program', program: head, args, env: this.env, chdirs: this.chdirs, stdinArgs: this.stdinArgs, runner: this.runner, captured: this.captured };
         }
         const words = args.slice(end + 1);
         const [only] = words;
