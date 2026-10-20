@@ -11,7 +11,7 @@ import { SessionRecordStore, type SessionRecord } from '../../sessions/record.ts
 import { startableTasks } from '../../wake/day-start.ts';
 import { onePositional, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
-import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf, type Kit } from '../kit.ts';
+import { findTeam, openKit, requireConfig, rosterOf, sessionIdOf, teamZone, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { teamRegister } from '../team-register.ts';
 import { lastSessionOf } from './rehire.ts';
@@ -57,7 +57,8 @@ async function closableOf(runtime: CliRuntime, kit: Kit, config: KitConfig, rost
   }
   const { record, claude, heldMb } = await runningOf(runtime, kit, roster, id, label);
   const now = runtime.clock.now();
-  const startable = startableTasks((await teamRegister(runtime, kit.paths, config).snapshot()).state.tasks, id, now);
+  const tasks = (await teamRegister(runtime, kit.paths, config).snapshot()).state.tasks;
+  const startable = startableTasks(tasks, id, now, teamZone(config, runtime));
   if (startable.length > 0) {
     throw new RefusedError(`${label} has work it can start (${startable.map((task) => task.id).join(', ')}): close only a session with none`);
   }
