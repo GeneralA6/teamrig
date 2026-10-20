@@ -7,7 +7,7 @@ import { MemoryFiles } from '../testing/memory-files.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 import {
   formatRead,
-  formatUnread,
+  formatStatus,
   inboxStatus,
   lineOnClock,
   postLine,
@@ -65,7 +65,7 @@ describe('readInbox', () => {
     assert.equal(formatRead(empty), 'READ alpha: nothing new; new ones are shown at your next prompt');
 
     await deps.inboxes.append('alpha', LINES[0] ?? '');
-    assert.deepEqual((await inboxStatus(deps, 'alpha')).map((unread) => unread.lines), [[LINES[0]]]);
+    assert.deepEqual((await inboxStatus(deps, 'alpha')).map((status) => status.unread.lines), [[LINES[0]]]);
   });
 
   it('marks read, without printing again, the lines the prompt hook showed this Claude Code session', async () => {
@@ -104,13 +104,27 @@ describe('inboxStatus', () => {
     await readInbox(deps, { area: 'alpha', claudeSession: SESSION, now: NOW });
     await deps.inboxes.append('alpha', LINES[2] ?? '');
 
-    assert.deepEqual((await inboxStatus(deps)).map((unread) => formatUnread(unread, TimeZone.UTC)), [
+    assert.deepEqual((await inboxStatus(deps)).map((status) => formatStatus(status, TimeZone.UTC)), [
       'alpha 1 unread since 01-07 11:00 UTC (read to line 2 of 3 at 01-08 10:00 UTC)',
       'bravo 0 unread (never marked read)',
     ]);
-    assert.deepEqual((await inboxStatus(deps, 'alpha')).map((unread) => formatUnread(unread, JERUSALEM)), [
+    assert.deepEqual((await inboxStatus(deps, 'alpha')).map((status) => formatStatus(status, JERUSALEM)), [
       'alpha 1 unread since 01-07 13:00 IST (read to line 2 of 3 at 01-08 12:00 IST)',
     ]);
+  });
+
+  it('counts the unread lines the prompt hook showed any session of the area, which stay unread', async () => {
+    const shownTwo = shownLine('alpha', LINES[1] ?? '', 2, OTHER_SESSION);
+    const { deps } = setup({ [`${DIR}/alpha.md`]: LINES.join('\n'), [SHOWN]: `${shownLine('alpha', LINES[0] ?? '', 1, SESSION)}${shownTwo}` });
+    const [alpha] = await inboxStatus(deps, 'alpha');
+    assert.equal(alpha?.shown, 2, 'the newest mark of any session counts');
+    assert.equal(
+      formatStatus(alpha ?? assert.fail('no status'), TimeZone.UTC),
+      'alpha 3 unread since 01-07 09:00 UTC, 2 of them shown at a prompt (never marked read)',
+    );
+
+    await readInbox(deps, { area: 'alpha', claudeSession: SESSION, now: NOW });
+    assert.deepEqual((await inboxStatus(deps, 'alpha')).map((status) => [status.unread.lines.length, status.shown]), [[0, 0]]);
   });
 });
 

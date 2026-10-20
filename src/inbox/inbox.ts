@@ -5,7 +5,7 @@ import type { TimeZone } from '../core/zone.ts';
 import { SESSION_NAME } from '../register/model.ts';
 import { lineHash } from './line-hash.ts';
 import { CLAUDE_SESSION_ID, indexMarks, MARK_VERSION, type InboxMark, type MarkLogRead } from './marks.ts';
-import { cutWhenShown, newestShownOf, unshownOf } from './shown.ts';
+import { cutWhenShown, lastShownOf, newestShownOf, unshownOf } from './shown.ts';
 import { unreadOf, type Unread } from './unread.ts';
 
 /** The inbox files: one per area, one dated line per item. */
@@ -52,9 +52,28 @@ function since(unread: Unread, zone: TimeZone): string {
   return posted === undefined ? '' : ` since ${zone.shortMinute(posted)}`;
 }
 
-/** For `inbox status`: `alpha 3 unread since 01-13 13:35 IST (read to line 21 of 24 at 01-13 10:57 IST)`. */
-export function formatUnread(unread: Unread, zone: TimeZone): string {
-  const head = `${unread.area} ${unread.lines.length} unread${since(unread, zone)}`;
+/** An area's unread lines, and how many of them the prompt hook already showed its session. */
+export interface InboxStatus {
+  readonly unread: Unread;
+  /**
+   * Unread lines the prompt hook showed a Claude Code session of the area: the session saw them, but showing marks
+   * nothing read, so only `inbox read` takes them off the unread count.
+   */
+  readonly shown: number;
+}
+
+/** `, 2 of them shown at a prompt`, when the prompt hook showed some of the unread lines. */
+function shownText(status: InboxStatus): string {
+  return status.shown === 0 ? '' : `, ${status.shown} of them shown at a prompt`;
+}
+
+/**
+ * For `inbox status`: `alpha 3 unread since 01-13 13:35 IST, 2 of them shown at a prompt (read to line 21 of 24 at
+ * 01-13 10:57 IST)`.
+ */
+export function formatStatus(status: InboxStatus, zone: TimeZone): string {
+  const { unread } = status;
+  const head = `${unread.area} ${unread.lines.length} unread${since(unread, zone)}${shownText(status)}`;
   const { mark } = unread;
   if (mark === null) {
     return `${head} (never marked read)`;
@@ -132,15 +151,19 @@ export function formatRead(result: ReadResult): string {
   return `READ ${mark.area}: ${what}${before}${redo}; ${next}`;
 }
 
-/** Unread lines per area: every area, or one. */
-export async function inboxStatus(deps: InboxDeps, area?: string): Promise<Unread[]> {
+/** Unread lines per area, and how many of them the prompt hook showed: every area, or one. */
+export async function inboxStatus(deps: InboxDeps, area?: string): Promise<InboxStatus[]> {
   const { byArea } = indexMarks((await deps.marks.read()).marks);
+  const shownMarks = (await deps.shown.read()).marks;
   const areas = area === undefined ? await deps.inboxes.areas() : [area];
-  const result: Unread[] = [];
+  const result: InboxStatus[] = [];
   for (const name of areas) {
     const lines = await deps.inboxes.lines(name);
     if (lines !== undefined) {
-      result.push(unreadOf(name, lines, byArea.get(name) ?? null, lineHash));
+      const read = byArea.get(name) ?? null;
+      const unread = unreadOf(name, lines, read, lineHash);
+      const unshown = unshownOf(name, lines, read, lastShownOf(shownMarks, name), lineHash);
+      result.push({ unread, shown: unread.lines.length - unshown.length });
     }
   }
   return result;
