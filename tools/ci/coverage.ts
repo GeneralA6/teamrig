@@ -355,12 +355,24 @@ function fileFindings(path: string, file: FileCoverage | undefined, policy: Cove
     : [];
 }
 
+/**
+ * The finding for a run that reported no coverage at all. Node writes no report when it cannot read a V8 coverage file
+ * the run left ("Could not report code coverage"), such as one a child process was killed while writing as it exited.
+ */
+export const NO_COVERAGE_REPORT =
+  'the test run reported no coverage, so no file is judged: look above for "Could not report code coverage" ' +
+  '(a coverage file cut short, such as by a child process killed while it exited), fix its cause and run again';
+
 /** Everything that fails the gate; empty when the run passes. */
 export function coverageFindings(run: CoverageRun, policy: CoveragePolicy): string[] {
   const sources = sourceFiles(run.listing, policy);
   const sourceSet = new Set(sources);
   const byPath = new Map(run.report.filter((file) => sourceSet.has(file.path)).map((file) => [file.path, file]));
   const findings = [...runFindings(run.summary, run.status), ...strayTests(run.listing)];
+  if (run.report.length === 0 && sources.length > 0) {
+    // Every source file would read as one no test loads: one line names the cause instead.
+    return [...findings, NO_COVERAGE_REPORT];
+  }
   findings.push(...sources.flatMap((path) => fileFindings(path, byPath.get(path), policy)));
   for (const path of [...policy.exceptions.keys(), ...policy.typeOnly.keys()]) {
     if (!sourceSet.has(path)) {

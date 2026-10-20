@@ -5,6 +5,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { NO_COVERAGE_REPORT } from './coverage.ts';
 
 const CLI = fileURLToPath(new URL('./coverage-cli.ts', import.meta.url));
 
@@ -23,7 +24,7 @@ function testFile(body: string): string {
 const FULL_TEST = testFile("it('signs', () => {\n  assert.equal(sign(-1), 'negative');\n  assert.equal(sign(1), 'positive');\n});");
 
 /** A throwaway repo with one source file and its test, plus the given overrides (`null` leaves a file out). */
-function gate(files: Readonly<Record<string, string | null>>): { readonly status: number | null; readonly output: string } {
+function gate(files: Readonly<Record<string, string | null>>, env: NodeJS.ProcessEnv = process.env): { readonly status: number | null; readonly output: string } {
   const repo = mkdtempSync(join(tmpdir(), 'teamrig-coverage-gate-'));
   try {
     const all: Record<string, string | null> = {
@@ -41,7 +42,7 @@ function gate(files: Readonly<Record<string, string | null>>): { readonly status
     }
     const init = spawnSync('git', ['init', '-q'], { cwd: repo, encoding: 'utf8' });
     assert.equal(init.status, 0, init.stderr);
-    const result = spawnSync(process.execPath, [CLI], { cwd: repo, encoding: 'utf8', env: process.env });
+    const result = spawnSync(process.execPath, [CLI], { cwd: repo, encoding: 'utf8', env });
     return { status: result.status, output: `${result.stdout}${result.stderr}` };
   } finally {
     rmSync(repo, { recursive: true, force: true });
@@ -74,6 +75,29 @@ describe('coverage-cli', () => {
     const skipped = gate({ 'src/sign.test.ts': `${FULL_TEST}it.skip('later', () => {});\n` });
     assert.equal(skipped.status, 1, skipped.output);
     assert.match(skipped.output, /1 skipped and 0 todo test\(s\)/);
+  });
+
+  it('names a coverage file cut short as the cause of a run with no report, with no line per file', () => {
+    // A child process killed while it writes its coverage file at its exit leaves one cut short, which Node cannot read.
+    const cut = [
+      "import { writeFileSync } from 'node:fs';",
+      "import { join } from 'node:path';",
+      "writeFileSync(join(process.env.NODE_V8_COVERAGE ?? '', 'coverage-1-1700000000000-1.json'), '{\"result\":[');",
+      '',
+    ].join('\n');
+    // The inner run gets a coverage folder of its own: it copies its files to the one it was given as it ends, the cut
+    // one too, which in this run's folder would fail this run. Leaving the variable out is not enough, since Node gives
+    // a child its parent's NODE_V8_COVERAGE whenever the env passed to it does not name one.
+    const coverage = mkdtempSync(join(tmpdir(), 'teamrig-coverage-cut-'));
+    try {
+      const { status, output } = gate({ 'src/sign.test.ts': `${FULL_TEST}${cut}` }, { ...process.env, NODE_V8_COVERAGE: coverage });
+      assert.equal(status, 1, output);
+      assert.match(output, /Could not report code coverage/);
+      assert.ok(output.includes(NO_COVERAGE_REPORT), output);
+      assert.doesNotMatch(output, /no test loads it/);
+    } finally {
+      rmSync(coverage, { recursive: true, force: true });
+    }
   });
 
   it('exits 2 on an invalid or missing policy', () => {

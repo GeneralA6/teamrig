@@ -4,6 +4,7 @@ import {
   coverageFindings,
   coverageRun,
   coverageTotals,
+  NO_COVERAGE_REPORT,
   parseLcov,
   parsePolicy,
   parseTapSummary,
@@ -225,8 +226,14 @@ describe('coverageRun', () => {
     assert.deepEqual(run, { report: [], listing: ['src/a.ts'], summary: undefined, status: null });
     assert.deepEqual(coverageFindings(run, POLICY), [
       'the test run wrote no TAP summary (exit status null); it crashed or found no test files',
-      `src/a.ts: no test loads it; add a test that imports or runs it (a file with only types goes under typeOnly in ${POLICY_FILE})`,
+      NO_COVERAGE_REPORT,
     ]);
+  });
+
+  it('fails a run whose tests all passed but that reported no coverage with one line, not one per untested file', () => {
+    // As Node ends a run when it cannot read a coverage file: every test passed, exit status 1, an empty lcov report.
+    const run = coverageRun({ lcov: '', tap: '# tests 3\n# pass 3\n', status: 1 }, ['src/a.ts', 'src/b.ts', 'tools/c.ts'], (absolute) => absolute);
+    assert.deepEqual(coverageFindings(run, POLICY), ['the test run exited with status 1 with no failing test', NO_COVERAGE_REPORT]);
   });
 });
 
