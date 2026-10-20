@@ -397,3 +397,29 @@ describe("currentWeek in the team's zone", () => {
     assert.equal(currentWeek(tasks, sunday, TimeZone.UTC), null, 'UTC is at Sun 01-13 22:30');
   });
 });
+
+describe('checkTasks: READY once the lead approved (T684)', () => {
+  const seen = { ownerSeenAt: FRESH, updatedAt: FRESH };
+  const asking = { status: 'waiting' as const, waits: [{ kind: 'approval' as const, who: 'lead' }], ...seen };
+  const answer = (verdict: 'approved' | 'declined') => ({ verdict, by: 'lead', at: FRESH, note: 'checked' });
+  const readyOf = (tasks: Task[]) =>
+    checkTasks(tasks, NOW, TimeZone.UTC, null, CONFIG)
+      .filter((flag) => flag.kind === 'READY')
+      .map((flag) => `${flag.task.id}: ${flag.detail}`);
+
+  it('flags a task whose approval wait its giver approved, and sends its owner to push or merge', () => {
+    assert.deepEqual(readyOf([testTask({ ...asking, answer: answer('approved') })]), ['T1: lead approved it; push or merge it, then set its next status']);
+  });
+
+  it('flags none on a decline, an unanswered wait, an answer from another, or a reason still open', () => {
+    const busy = testTask({ id: 'T9', status: 'in-progress', ...seen });
+    const tasks = [
+      testTask({ id: 'T1', ...asking, answer: answer('declined') }),
+      testTask({ id: 'T2', ...asking }),
+      testTask({ id: 'T3', ...asking, waits: [{ kind: 'approval', who: 'owner' }], answer: answer('approved') }),
+      testTask({ id: 'T4', ...asking, waits: [...asking.waits, { kind: 'task', id: 'T9' }], answer: answer('approved') }),
+      busy,
+    ];
+    assert.deepEqual(readyOf(tasks), []);
+  });
+});

@@ -1,7 +1,16 @@
 import type { DecisionCard } from './card.ts';
-import type { RegisterEvent, TaskFields } from './events.ts';
+import type { ApprovalVerdict, RegisterEvent, TaskFields, UpdateEvent } from './events.ts';
 import { WAIT_STATUSES, type TaskStatus } from './model.ts';
 import type { WaitReason } from './waits.ts';
+
+/** The lead's answer to a task's approval wait (T684), as `approve` wrote it. */
+export interface ApprovalAnswer {
+  readonly verdict: ApprovalVerdict;
+  readonly by: string;
+  readonly at: string;
+  /** What the lead checked, or why it declined. */
+  readonly note: string | null;
+}
 
 /** A task as the event log describes it after replaying every event in write order. */
 export interface Task extends TaskFields {
@@ -18,6 +27,11 @@ export interface Task extends TaskFields {
   readonly waits: readonly WaitReason[];
   /** What a wait on a decision or an approval asks (card.ts), from its latest status change; null otherwise. */
   readonly card: DecisionCard | null;
+  /**
+   * The lead's latest answer to the approval the task waits on, since its latest status change; null otherwise. A new
+   * status clears it with the waits, so an approval covers the push or merge asked for and nothing after it.
+   */
+  readonly answer: ApprovalAnswer | null;
   /**
    * What will prove a `verifying` task works, from its latest status change; null in any other status, and on a
    * task set verifying before `--proof` existed, whose note says it (`proofOf` in verify.ts reads both).
@@ -91,7 +105,7 @@ export class RegisterFold {
     if (current === undefined) {
       return this.orphan();
     }
-    this.tasks.set(event.id, event.type === 'status' ? withStatus(current, event) : withChanges(current, event.changes, event.note, event.at, event.by));
+    this.tasks.set(event.id, event.type === 'status' ? withStatus(current, event) : withChanges(current, event));
     return true;
   }
 
@@ -123,6 +137,7 @@ function created(id: string, fields: TaskFields, at: string, by: string): Task {
     skill: null,
     waits: [],
     card: null,
+    answer: null,
     proof: null,
     followups: [],
     startedAt: null,
@@ -147,6 +162,7 @@ function withStatus(task: Task, event: Extract<RegisterEvent, { type: 'status' }
     skill: event.skill,
     waits: WAIT_STATUSES.includes(event.status) ? (event.waits ?? []) : [],
     card: WAIT_STATUSES.includes(event.status) ? (event.card ?? null) : null,
+    answer: null,
     proof: event.status === 'verifying' ? (event.proof ?? null) : null,
     followups: event.followups === undefined ? task.followups : [...new Set([...task.followups, ...event.followups])],
     startedAt: task.startedAt ?? (event.status === 'in-progress' || event.status === 'verifying' ? event.at : null),
@@ -159,12 +175,14 @@ function withStatus(task: Task, event: Extract<RegisterEvent, { type: 'status' }
 /**
  * An update's note from the task's owner is its note from then on, as a restated one on `set` is, so show and the
  * waiting text print it at once; a note from any other session adds context to the history only, since the note a
- * task shows is its owner's (T630).
+ * task shows is its owner's (T630). An update with a `verdict` is the lead's answer to the task's approval wait, its
+ * note what the lead checked (T684).
  */
-function withChanges(task: Task, changes: Partial<TaskFields>, note: string | null, at: string, by: string): Task {
+function withChanges(task: Task, { changes, note, at, by, verdict }: UpdateEvent): Task {
   const priorityAt = changes.priority === undefined || changes.priority === task.priority ? task.priorityAt : at;
   const shown = note !== null && by === task.owner ? note : task.note;
-  const next: Task = { ...task, ...changes, note: shown, updatedAt: at, updatedBy: by, priorityAt };
+  const answer = verdict === undefined ? task.answer : { verdict, by, at, note };
+  const next: Task = { ...task, ...changes, note: shown, answer, updatedAt: at, updatedBy: by, priorityAt };
   if (next.owner !== task.owner) {
     return { ...next, assignedAt: at, ownerSeenAt: by === next.owner ? at : null };
   }

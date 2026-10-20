@@ -794,3 +794,29 @@ describe('RegisterPolicy.setStatus: new work waits for its owner\'s verify steps
     assert.equal(error(warn.setStatus(fresh, 'alpha', { status: 'in-progress' }, context)), 'allowed');
   });
 });
+
+describe('RegisterPolicy.approve (T684)', () => {
+  const policy = new RegisterPolicy(testConfig());
+  const asking = testTask({ status: 'waiting', waits: [{ kind: 'approval', who: 'lead' }] });
+
+  it('lets the lead answer a task waiting on its approval, the note trimmed', () => {
+    assert.deepEqual(policy.approve(asking, 'lead', 'approved', ' tests green '), { ok: true, value: { changes: {}, note: 'tests green', verdict: 'approved' } });
+    assert.deepEqual(policy.approve(asking, 'lead', 'declined', 'no tests added'), { ok: true, value: { changes: {}, note: 'no tests added', verdict: 'declined' } });
+  });
+
+  it("refuses any other session, the task's owner too", () => {
+    assert.match(error(policy.approve(asking, 'alpha', 'approved', 'mine')), /only the lead \(lead\) answers an approval/);
+  });
+
+  it("refuses a task that does not wait on the lead's approval: the owner's approval stays the owner's", () => {
+    assert.match(error(policy.approve(TASK, 'lead', 'approved', 'ok')), /T1 does not wait on the lead's approval \(approval:lead\)/);
+    const owners = testTask({ status: 'waiting', waits: [{ kind: 'approval', who: 'owner' }] });
+    assert.match(error(policy.approve(owners, 'lead', 'approved', 'ok')), /does not wait on the lead's approval/);
+  });
+
+  it('needs a note, checked like any other', () => {
+    assert.match(error(policy.approve(asking, 'lead', 'approved', undefined)), /an answer needs --note/);
+    assert.match(error(policy.approve(asking, 'lead', 'declined', '   ')), /an answer needs --note/);
+    assert.notEqual(error(policy.approve(asking, 'lead', 'approved', credentialUrl())), 'allowed');
+  });
+});

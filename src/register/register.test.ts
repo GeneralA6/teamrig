@@ -305,3 +305,28 @@ describe('Register, the GitHub import', () => {
     assert.equal(readEvents(files.get(LOG) ?? '').events.length, 1);
   });
 });
+
+describe('Register.approve (T684)', () => {
+  async function asking() {
+    const kit = setup();
+    written(await kit.register.add('lead', { title: 'Ship it', description: 'what and why', owner: 'alpha', source: 'owner', priority: 1 }));
+    written(await kit.register.setStatus('alpha', 'T1', { status: 'waiting', waits: [{ kind: 'approval', who: 'lead' }], note: 'branch t1, lands the fix' }));
+    return kit;
+  }
+
+  it("writes the lead's answer as one update line that changes no field", async () => {
+    const { files, register } = await asking();
+    const appended = files.get(LOG)?.length ?? 0;
+    const { task, event } = written(await register.approve('lead', 'T1', 'approved', 'tests green, small commits'));
+    assert.deepEqual(readEvents((files.get(LOG) ?? '').slice(appended)).events, [event]);
+    assert.deepEqual(event, { v: EVENT_VERSION, type: 'update', id: 'T1', at: START, by: 'lead', changes: {}, note: 'tests green, small commits', verdict: 'approved' });
+    assert.deepEqual([task.status, task.note, task.answer?.verdict], ['waiting', 'branch t1, lands the fix', 'approved']);
+  });
+
+  it('writes nothing when the policy refuses it', async () => {
+    const { files, register } = await asking();
+    const before = files.get(LOG);
+    assert.match(errorOf(await register.approve('alpha', 'T1', 'approved', 'mine')), /only the lead/);
+    assert.equal(files.get(LOG), before);
+  });
+});

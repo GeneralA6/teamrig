@@ -79,6 +79,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   add: { effect: 'write', flags: ['session', 'source', 'team', ...TASK_FIELDS], load: async () => (await registerCommands()).add },
   set: { effect: 'write', flags: ['session', 'status', 'note', 'evidence', 'skill', 'followups', 'waits', 'question', 'options', 'recommend', 'default', 'proof', 'met', 'due', 'ask', 'text'], load: async () => (await registerCommands()).set },
   update: { effect: 'write', flags: ['session', 'note', ...TASK_FIELDS], load: async () => (await registerCommands()).update },
+  approve: { effect: 'write', flags: ['session', 'note'], switches: ['decline'], load: async () => (await registerCommands()).approve },
   list: {
     effect: 'read',
     flags: ['session', 'status', 'source', 'priority', 'due-before', 'week', 'goal'],
@@ -295,6 +296,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       [--due <date>|none] [--goals a,b|none] [--week <date>|none] [--after T5,T6|none] [--size <pct>|none]
       [--note ..]   the lead may change owner, priority, due, week, after and size on any task
       a --note from the task's owner also replaces the note show and the waiting text print
+  approve <id> --note "<what you checked, or why not>" [--decline]   the lead only: answers a task waiting on
+      its approval (approval:<lead>); its owner gets an inbox line to push or merge (or to fix the note's
+      point and ask again), and check flags the approved task READY
   list [--session <owner>] [--status a,b|all] [--source <s>] [--priority p1,p2] [--due-before <date>]
       [--week <date>|none] [--goal <tag>] [--tree] [--all]
       short rows within 3,000 characters; --all: every field of every task. A task takes the earlier due

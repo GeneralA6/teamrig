@@ -2,7 +2,7 @@ import { errorMessage } from '../core/guards.ts';
 import { NewerDataError } from '../core/jsonl.ts';
 import type { Clock, Mutex } from '../core/lock.ts';
 import type { TimeZone } from '../core/zone.ts';
-import { EVENT_VERSION, type CreateEvent, type RegisterEvent, type StatusEvent, type TaskFields, type UpdateEvent } from './events.ts';
+import { EVENT_VERSION, type ApprovalVerdict, type CreateEvent, type RegisterEvent, type StatusEvent, type TaskFields, type UpdateEvent } from './events.ts';
 import { foldEvents, taskNumber, type RegisterState, type Task } from './fold.ts';
 import { GITHUB_ACTOR, NO_SKILL, type AddInput, type AskInput, type ImportChanges, type ImportInput, type RegisterPolicy, type StatusContext, type StatusInput, type Verdict } from './policy.ts';
 import { isWritable, type RegisterSnapshot } from './snapshot.ts';
@@ -160,6 +160,20 @@ export class Register {
     return this.commit(caller, (snapshot) =>
       onTask(snapshot, id, (task) => {
         const change = this.deps.policy.update(task, caller, changes, note, snapshot.state);
+        if (!change.ok) {
+          return change;
+        }
+        const event: UpdateEvent = { ...this.base(id, caller), type: 'update', ...change.value };
+        return { ok: true, value: [event] };
+      }),
+    );
+  }
+
+  /** `approve`: the lead's answer to a task's approval wait, an update that changes no field (T684). */
+  approve(caller: string, id: string, verdict: ApprovalVerdict, note: string | undefined): Promise<Verdict<WriteResult>> {
+    return this.commit(caller, (snapshot) =>
+      onTask(snapshot, id, (task) => {
+        const change = this.deps.policy.approve(task, caller, verdict, note);
         if (!change.ok) {
           return change;
         }
