@@ -44,6 +44,18 @@
       },
       "default": {}
     },
+    "leads": {
+      "description": "Each sub-lead's members, by id: a sub-lead leads the sessions it lists, and roles.lead every session no sub-lead lists; a sub-lead may list sub-leads, at any depth. A session has one leader, roles.lead is never a member, and no sub-lead leads itself. Written by teamrig promote and demote.",
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/sessionName" },
+      "additionalProperties": {
+        "type": "array",
+        "items": { "$ref": "#/$defs/sessionName" },
+        "minItems": 1,
+        "uniqueItems": true
+      },
+      "default": {}
+    },
     "roles": {
       "description": "Each role's session, by id.",
       "type": "object",
