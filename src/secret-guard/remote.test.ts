@@ -41,7 +41,9 @@ describe('remoteFindings', () => {
 
   it('reads the command a container runs as a quoted bash line', () => {
     assert.deepEqual(remote(`kubectl exec -n prod deploy/api -c app -- sh -c 'cat .env'`).lines, ["bash: 'sh' '-c' 'cat .env'"]);
-    assert.deepEqual(remote('docker exec -it -e X=1 api cat "$HOME/.env"').lines, ['bash: \'cat\' "$HOME/.env"']);
+    assert.deepEqual(remote('docker exec -it -e X=1 api cat "$APP/.env"').lines, ['bash: \'cat\' "$APP/.env"']);
+    // The calling shell fills $HOME before docker runs, so the container is handed the caller's home.
+    assert.deepEqual(remote('docker exec api cat "$HOME/.env"').lines, ["bash: 'cat' 'C:/u/.env'"]);
     assert.deepEqual(remote("docker compose exec web printenv; podman container exec c env; docker exec c echo \"it's\"").lines, [
       "bash: 'printenv'",
       "bash: 'env'",
