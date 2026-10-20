@@ -231,6 +231,36 @@ Output:
 UPDATED T2 waiting, p2, owner web, due 10-16, week 10-12, from lead | Fix the broken login form (waiting: on T7; needs the api error codes)
 ```
 
+### teamrig approve
+
+The lead's answer to a task waiting on its approval (`--waits approval:<lead>`), say before a push or a merge to
+main: the lead checks the request (the `approvals` skill has the checklist) and approves it, or declines it with
+what to fix. The task's owner gets one inbox line with the answer and the note: push or merge, then set the task's
+next status; or set it in progress, fix the note's point and ask again. An approved task shows `· lead approved`
+in its waiting text and `check` flags it `READY` until its owner sets the next status, which clears the answer.
+Only the lead answers, only a task waiting on its approval, always with a note; an approval of the owner's stays
+the owner's.
+Under `pushGuard.pushToProtected: lead` the push guard lets the owner's push to a protected branch through while
+the approval stands ([hooks](hooks.md#before-a-shell-command-the-push-guard)).
+
+Flags:
+
+- `--session <id|name>`: the caller, the lead.
+- `--note "<text>"`: what you checked, or why you decline; required.
+- `--decline`: decline instead of approving.
+
+Example:
+
+```sh
+teamrig approve T1 --session lead --note "tests green, small commits"
+```
+
+Output:
+
+```text
+APPROVED T1 waiting, p1, owner web, from web | Fix the broken login form (waiting: approval lead · lead approved; branch web-login, tests green)
+```
+
 ### teamrig list
 
 Lists tasks, most urgent first: by priority, then effective due date (undated last), then id. By default only
