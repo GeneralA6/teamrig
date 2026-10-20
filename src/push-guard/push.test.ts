@@ -251,6 +251,15 @@ describe('evaluatePushes: the decision', () => {
 });
 
 describe('evaluatePushes: where a push hides', () => {
+  it('asks about a push held in quoted text, which bash runs if an expansion reads the text again', () => {
+    expectRows([
+      ["x='$(git push origin main)'; echo ${x@P}", 'ask', 'doubt'],
+      ["x='a[$(git push -f origin main)]'; echo $((x))", 'ask', 'doubt'],
+      ["git commit -m 'run $(git log -1) first'", 'allow'],
+      ["bash -c 'echo $(git push origin feature)'", 'allow'],
+    ]);
+  });
+
   it("reads git's global options", () => {
     expectRows([
       ['git -C ../other push origin main', 'ask'],
