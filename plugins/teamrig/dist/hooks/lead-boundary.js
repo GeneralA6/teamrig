@@ -1,35 +1,7 @@
 import { basename } from 'node:path';
 import { kindOf } from "../budget/patterns.js";
+import { runWorkOf, SHELL_DIALECTS } from "../budget/run-work.js";
 import { programsOf } from "../package-guard/programs.js";
-import { EXEC_VALUED, NPM_VALUED } from "../package-guard/runners.js";
-import { programName } from "../push-guard/launchers.js";
-const SHELLS = new Map([
-    ['Bash', 'bash'],
-    ['PowerShell', 'powershell'],
-]);
-/** git subcommands that change a repository. */
-const GIT_WRITES = new Set(['commit', 'push', 'merge', 'rebase', 'cherry-pick', 'revert', 'reset', 'apply', 'am']);
-/** git's options before its subcommand that take the next word as their value. */
-const GIT_VALUED = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace']);
-/** npm's own test command and its aliases. */
-const NPM_TESTS = new Set(['test', 't', 'tst']);
-const NPM_RUN = new Set(['run', 'run-script', 'rum', 'urn']);
-/** An npm script that runs tests or a build, such as `test:unit` or `build:dist`. */
-const CHECK_SCRIPT = /^(?:test|verify|check|coverage|build|typecheck|lint)(?::[\w:-]+)?$/;
-/** Programs that are a test run or a build wherever they start, `npx` included. */
-const CHECK_PROGRAMS = new Set(['jest', 'vitest', 'tsc']);
-/** node's options whose value is a script it runs. */
-const NODE_EVAL = new Set(['-e', '--eval', '-p', '--print']);
-/** PowerShell cmdlets that write a file. */
-const WRITE_CMDLETS = new Set(['set-content', 'out-file']);
-/** An in-place option of sed or perl: `-i`, `-i.bak`, `-pi`, `--in-place`. */
-const IN_PLACE = /^-[A-Za-z]*i|^--in-place\b/;
-/** A redirection that writes stdout to a file: `>`, `>>`, `>|`, `1>`, `&>`. */
-const FILE_WRITE = /^[1&]?>[>|]?$/;
-/** A redirection target that is no file: a device such as `/dev/null`, or cmd's `NUL`. */
-const DEVICE = /^\/dev\/|^nul$/i;
-/** Programs that search files; one that reads a pipe filters output instead. */
-const SEARCHES = new Set(['grep', 'rg', 'find', 'select-string']);
 /** A source file: reading one is research. */
 const CODE_FILE = /\.(?:[cm]?[jt]sx?|py|go|rs|java|kt|cs|rb|php|sh|ps1|sql)$/i;
 const SEARCH_TOOLS = new Set(['Grep', 'Glob']);
@@ -71,101 +43,27 @@ export class OwnPaths {
         return this.mentioned.some((pattern) => pattern.test(text));
     }
 }
-/** The first word that is not an option, skipping the value of each option in `valued`, with its index. */
-function firstOperand(args, valued) {
-    let value = false;
-    for (const [index, word] of args.entries()) {
-        if (!value && (word.dynamic || !word.text.startsWith('-'))) {
-            return { word, index };
-        }
-        value = !value && valued.has(word.text);
-    }
-    return undefined;
-}
-/** The first operand's text; undefined when there is none or it is only known when the line runs. */
-function operandText(args, valued) {
-    const operand = firstOperand(args, valued)?.word;
-    return operand === undefined || operand.dynamic ? undefined : operand.text;
-}
-/** npm: `npm test` (`t`, `tst`), or `npm run` of a test or build script. */
-function npmWork(args) {
-    const found = firstOperand(args, NPM_VALUED);
-    if (found === undefined || found.word.dynamic) {
-        return undefined;
-    }
-    if (NPM_TESTS.has(found.word.text)) {
-        return 'check';
-    }
-    const script = NPM_RUN.has(found.word.text) ? operandText(args.slice(found.index + 1), NPM_VALUED) : undefined;
-    return script !== undefined && CHECK_SCRIPT.test(script) ? 'check' : undefined;
-}
-/** node: `--test` among its options runs tests; an inline script (`-e`, `-p`) that calls `writeFileSync` edits. */
-function nodeWork(args) {
-    let work;
-    let script = false;
-    for (const { text } of args) {
-        if (script) {
-            if (text.includes('writeFileSync')) {
-                return 'edit';
-            }
-            script = false;
-            continue;
-        }
-        if (!text.startsWith('-')) {
-            break;
-        }
-        const equals = text.indexOf('=');
-        const option = equals === -1 ? text : text.slice(0, equals);
-        if (NODE_EVAL.has(option) && equals !== -1 && text.includes('writeFileSync', equals)) {
-            return 'edit';
-        }
-        script = NODE_EVAL.has(option) && equals === -1;
-        work = option === '--test' ? 'check' : work;
-    }
-    return work;
-}
-/** The run's stdout goes to a file (one only known when the line runs counts), not to a device. */
-function writesFile(run) {
-    return run.redirections.some((redirection) => FILE_WRITE.test(redirection.operator) && redirection.target !== undefined && (redirection.target.dynamic || !DEVICE.test(redirection.target.text)));
-}
 /** What one program a shell call starts does that the lead hands off; undefined for anything else. */
-function runWorkOf(run) {
-    switch (run.name) {
-        case 'git': {
-            const subcommand = operandText(run.args, GIT_VALUED);
-            if (subcommand !== undefined && GIT_WRITES.has(subcommand)) {
-                return 'git';
-            }
-            return subcommand === 'grep' && !run.piped ? 'search' : undefined;
-        }
-        case 'cat':
-            return writesFile(run) ? 'edit' : undefined;
-        case 'sed':
-        case 'perl':
-            return run.args.some((arg) => !arg.dynamic && IN_PLACE.test(arg.text)) ? 'edit' : undefined;
-        case 'patch':
+function leadRunWorkOf(run) {
+    switch (runWorkOf(run)) {
+        case 'edit':
             return 'edit';
-        case 'npm':
-            return npmWork(run.args);
-        case 'npx': {
-            const bin = operandText(run.args, EXEC_VALUED);
-            return bin !== undefined && CHECK_PROGRAMS.has(programName(bin)) ? 'check' : undefined;
-        }
-        case 'node':
-            return nodeWork(run.args);
+        case 'gitPatch':
+        case 'gitWrite':
+            return 'git';
+        case 'testFull':
+        case 'testTargeted':
+        case 'build':
+            return 'check';
+        case 'search':
+            return 'search';
         default:
-            if (WRITE_CMDLETS.has(run.name)) {
-                return 'edit';
-            }
-            if (CHECK_PROGRAMS.has(run.name)) {
-                return 'check';
-            }
-            return SEARCHES.has(run.name) && run.args.length > 0 && !run.piped ? 'search' : undefined;
+            return undefined;
     }
 }
 /** A shell call by the programs it starts: an edit before a test or build before a search; a line naming the lead's own files is its job. */
 function shellWorkOf(command, dialect, own) {
-    const works = new Set(programsOf(command, { cwd: undefined, home: own.home, dialect }).map(runWorkOf));
+    const works = new Set(programsOf(command, { cwd: undefined, home: own.home, dialect }).map(leadRunWorkOf));
     if (works.has('git') || works.has('edit')) {
         return own.named(command) ? undefined : { work: 'edit', name: works.has('git') ? 'git' : 'shell' };
     }
@@ -175,7 +73,7 @@ function shellWorkOf(command, dialect, own) {
     return works.has('search') && !own.named(command) ? { work: 'search', name: 'shell' } : undefined;
 }
 function callWorkOf(tool, own) {
-    const dialect = SHELLS.get(tool.name);
+    const dialect = SHELL_DIALECTS.get(tool.name);
     if (dialect !== undefined) {
         return shellWorkOf(tool.command ?? '', dialect, own);
     }

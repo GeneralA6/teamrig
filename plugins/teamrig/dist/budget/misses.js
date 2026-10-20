@@ -1,7 +1,7 @@
 import { isNonNegativeInteger, isRecord } from "../core/guards.js";
 import { parseUtcDay } from "../core/time.js";
-import { programsOf } from "../package-guard/programs.js";
 import { EXEC_VALUED, NPM_VALUED, runnerCallOf } from "../package-guard/runners.js";
+import { GIT_VALUED, shellRunsOf } from "./run-work.js";
 /**
  * The rule misses a transcript shows, counted per day next to the loop patterns (`MISS_FIELDS`). Each one
  * is a command's own words, read with the guards' shell parser, so text that only quotes a command (a
@@ -19,14 +19,6 @@ export const START_WITHIN_CALLS = 10;
  * or the resume of a compacted session goes on with the work already in hand.
  */
 const BLOCK_TRIGGERS = new Set(['owner', 'peer', 'scheduled', 'other']);
-const SHELL_DIALECTS = new Map([
-    ['Bash', 'bash'],
-    ['PowerShell', 'powershell'],
-]);
-/** The meter reads a command long after it ran, in no known folder: no signature here depends on one. */
-const NO_FOLDER = { cwd: undefined, home: '/' };
-/** git's options before its subcommand that take the next word as their value. */
-const GIT_VALUED = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env']);
 /** The task statuses whose `teamrig set` takes `--followups`. */
 const FOLLOWUP_STATUSES = new Set(['verifying', 'done']);
 /** Words saying a task leaves work behind, which `--followups none` denies. */
@@ -96,14 +88,9 @@ function isHeavyStep(run) {
     const named = command === 'run' || command === 'run-script' ? script : command;
     return HEAVY_SCRIPT.test(named ?? '');
 }
-/** The programs a shell tool call starts; none for any other tool. */
-function runsOf(tool) {
-    const dialect = SHELL_DIALECTS.get(tool.name);
-    return dialect === undefined || tool.command === undefined ? [] : programsOf(tool.command, { ...NO_FOLDER, dialect });
-}
 /** The miss counters one tool call adds to, each at most once, and whether it runs `teamrig start`. */
 export function toolMissesOf(tool) {
-    const runs = runsOf(tool);
+    const runs = shellRunsOf(tool);
     const counts = [];
     const plainRemove = runs.some(isGitWorktreeRemove);
     if (plainRemove || runs.some((run) => isTeamrig(run, 'worktree', 'remove'))) {
