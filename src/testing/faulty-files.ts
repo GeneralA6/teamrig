@@ -66,6 +66,11 @@ export class FaultyFiles implements Files {
     return this.inner.stamp(path);
   }
 
+  async modifiedAt(path: string): Promise<number | undefined> {
+    this.check('modifiedAt', path);
+    return this.inner.modifiedAt(path);
+  }
+
   private check(operation: FileOperation, path: string): void {
     const error = this.faults.get(keyOf(operation, path));
     if (error !== undefined) {

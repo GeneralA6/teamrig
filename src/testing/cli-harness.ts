@@ -112,10 +112,13 @@ export class CliHarness {
   /** `null` leaves out the team config or the project's team pointer; `undefined` takes the default. */
   constructor(config: JsonRecord | string | null = TEAM, pointer: string | null = '{"team": "app"}') {
     const text = config === null || typeof config === 'string' ? config : formatConfig(config);
-    this.files = new MemoryFiles({
-      ...(text === null ? {} : { [CONFIG_PATH]: text }),
-      ...(pointer === null ? {} : { [POINTER]: pointer }),
-    });
+    this.files = new MemoryFiles(
+      {
+        ...(text === null ? {} : { [CONFIG_PATH]: text }),
+        ...(pointer === null ? {} : { [POINTER]: pointer }),
+      },
+      this.clock,
+    );
   }
 
   async run(argv: readonly string[], options: RunOptions = {}): Promise<CliResult> {
