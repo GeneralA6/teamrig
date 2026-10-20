@@ -38,12 +38,12 @@ describe('the SessionStart hook tells the user what teamrig lacks', () => {
   });
 
   it("moves an ended session's notice record older than a week to the archive when it records a new one (T336)", async () => {
-    const kit = new CliHarness(TEAM, null);
+    const kit = new CliHarness(TEAM);
     const hints = join(TEAM_HOME, 'state', 'bind-hints.jsonl');
-    const old = `${JSON.stringify({ v: 1, claudeSession: OTHER_SESSION, reason: 'git-missing', at: '2029-12-20T10:00:00.000Z' })}
-`;
+    const old = `${JSON.stringify({ v: 1, claudeSession: OTHER_SESSION, reason: 'git-missing', at: '2029-12-20T10:00:00.000Z' })}\n`;
     await kit.files.write(hints, old);
-    assert.equal(noticeOf(await kit.run(['hook', 'session-start'], { stdin: start(), requirements: lacking({ kind: 'git-missing' }) })), GIT_MISSING);
+    const result = await kit.run(['hook', 'session-start'], { stdin: start(), env: { TEAMRIG_SESSION: 'lead' }, requirements: lacking({ kind: 'git-missing' }) });
+    assert.equal(noticeOf(result), GIT_MISSING);
     assert.equal(await kit.files.read(join(TEAM_HOME, 'state', 'archive', 'bind-hints-20300108.jsonl')), old);
     assert.equal((await kit.files.read(hints))?.includes(OTHER_SESSION), false);
   });
