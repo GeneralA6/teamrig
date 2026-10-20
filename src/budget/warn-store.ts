@@ -1,10 +1,13 @@
 import { join } from 'node:path';
 import type { Files } from '../core/files.ts';
 import { stringField, type JsonRecord } from '../core/guards.ts';
-import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
+import { parseObject, toJsonlLine, VERSION_FIELD, writableObject } from '../core/jsonl.ts';
 import type { WarnState } from './warn.ts';
 
-/** The format of the warning files this code reads and writes; a file in another format reads as nothing shown. */
+/**
+ * The format of the warning files this code reads and writes; a file in another format reads as nothing shown,
+ * and one in a newer format refuses a write.
+ */
 export const WARN_FORMAT = 1;
 
 function finiteField(record: JsonRecord, key: string): number | undefined {
@@ -101,8 +104,11 @@ export class WarnStore {
     return text === undefined ? undefined : parseWarnState(text);
   }
 
+  /** Saves what the session was shown. A file a newer teamrig wrote is refused (`NewerDataError`), never overwritten. */
   async write(id: string, state: WarnState): Promise<void> {
-    await this.files.write(this.pathOf(id), formatWarnState(state));
+    const path = this.pathOf(id);
+    writableObject(path, await this.files.read(path), WARN_FORMAT);
+    await this.files.write(path, formatWarnState(state));
   }
 
   private pathOf(id: string): string {
