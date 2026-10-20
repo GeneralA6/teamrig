@@ -139,17 +139,22 @@ export function datedSnapshot(snapshot, previous) {
     }
     return { ...snapshot, rateLimitsAfter: Date.parse(previous.ts) < Date.parse(snapshot.ts) ? previous.ts : null };
 }
-/** The snapshot's reading of the week current at `now` (written by `now`, resetting after it), if it has one. */
+/**
+ * The snapshot's reading of the week current at `now` (taken by `now`, resetting after it), if it has one. It is
+ * dated by when its session began to show it, not by the file's `ts`: a redraw rewrites the file with the same
+ * reading, so a reader whose own tab redraws while it reads would otherwise skip that tab's newest reading.
+ */
 function currentReadingOf(snapshot, now) {
     const week = snapshot.rateLimits?.sevenDay ?? null;
-    if (week === null || Date.parse(snapshot.ts) > now || week.resetsAt <= now) {
+    const since = Date.parse(snapshot.rateLimitsSince ?? snapshot.ts);
+    if (week === null || since > now || week.resetsAt <= now) {
         return undefined;
     }
     return {
         usedPct: week.usedPct,
         resetsAt: week.resetsAt,
         after: snapshot.rateLimitsAfter === null ? undefined : Date.parse(snapshot.rateLimitsAfter),
-        since: Date.parse(snapshot.rateLimitsSince ?? snapshot.ts),
+        since,
     };
 }
 /**
