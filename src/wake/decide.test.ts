@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { BudgetFacts } from '../budget/warn.ts';
 import type { Task } from '../register/fold.ts';
-import { waitContext } from '../register/waits.ts';
+import { waitContext, type WaitReason } from '../register/waits.ts';
 import { testTask } from '../testing/task.ts';
+import { JERUSALEM } from '../testing/zone.ts';
 import {
   COLD_WAKE_W,
   costText,
@@ -53,7 +54,7 @@ describe('isWakeWorthy', () => {
     assert.equal(isWakeWorthy(testTask({ priority: 2 }), 'alpha', 2, context), true);
   });
 
-  it('refuses a task of another session, a less urgent one, and one waiting, verifying or finished', () => {
+  it('refuses a task of another session, a less urgent one, one finished, and one waiting or verifying with no wait cleared', () => {
     assert.equal(isWakeWorthy(p1({ owner: 'bravo' }), 'alpha', 1, context), false);
     assert.equal(isWakeWorthy(testTask({ priority: 2 }), 'alpha', 1, context), false);
     for (const status of ['waiting', 'verifying', 'done', 'dropped'] as const) {
@@ -65,24 +66,73 @@ describe('isWakeWorthy', () => {
     assert.equal(isWakeWorthy(p1({ after: ['T5', 'T6'] }), 'alpha', 1, context), false);
     assert.equal(isWakeWorthy(p1({ after: ['T5', 'T99'] }), 'alpha', 1, context), true);
   });
+
+  it('takes a started task past what it comes after: `after` gates only the start', () => {
+    const startedAt = '2030-01-08T08:00:00.000Z';
+    assert.equal(isWakeWorthy(p1({ status: 'in-progress', after: ['T6'], startedAt }), 'alpha', 1, context), true);
+    assert.equal(isWakeWorthy(p1({ status: 'open', after: ['T6'], startedAt }), 'alpha', 1, context), true);
+    assert.equal(isWakeWorthy(p1({ status: 'in-progress', after: ['T6'] }), 'alpha', 1, context), false);
+  });
+
+  it('takes a waiting or verifying task once every wait cleared, and refuses it while one holds', () => {
+    const cleared: readonly WaitReason[] = [
+      { kind: 'task', id: 'T5' },
+      { kind: 'time', at: '2030-01-08 09:00' },
+    ];
+    for (const status of ['waiting', 'verifying'] as const) {
+      assert.equal(isWakeWorthy(p1({ status, waits: cleared }), 'alpha', 1, context), true, status);
+      assert.equal(isWakeWorthy(p1({ status, waits: [...cleared, { kind: 'task', id: 'T6' }] }), 'alpha', 1, context), false, status);
+    }
+    assert.equal(isWakeWorthy(p1({ status: 'waiting', waits: [{ kind: 'time', at: '2030-01-08' }] }), 'alpha', 1, context), false);
+    assert.equal(isWakeWorthy(p1({ status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }] }), 'alpha', 1, context), false);
+  });
+
+  it('refuses a waiting task never started that comes after one not finished, though its waits cleared', () => {
+    const waiting = p1({ status: 'waiting', waits: [{ kind: 'task', id: 'T5' }], after: ['T6'] });
+    assert.equal(isWakeWorthy(waiting, 'alpha', 1, context), false);
+    assert.equal(isWakeWorthy({ ...waiting, startedAt: '2030-01-08T08:00:00.000Z' }, 'alpha', 1, context), true);
+  });
 });
 
 describe('isNews', () => {
+  const seen = '2030-01-08T09:00:00.000Z';
+
   it('is news when another handed it over, raised it or set its status after the owner last touched it', () => {
-    assert.equal(isNews(p1(), 'alpha', tasksOf()), true);
-    const seen = '2030-01-08T09:00:00.000Z';
-    assert.equal(isNews(p1({ ownerSeenAt: seen }), 'alpha', tasksOf()), false);
-    assert.equal(isNews(p1({ ownerSeenAt: seen, priorityAt: '2030-01-08T09:30:00.000Z' }), 'alpha', tasksOf()), true);
-    assert.equal(isNews(p1({ ownerSeenAt: seen, statusAt: '2030-01-08T09:30:00.000Z' }), 'alpha', tasksOf()), true);
-    assert.equal(isNews(p1({ ownerSeenAt: seen, assignedAt: '2030-01-08T09:30:00.000Z' }), 'alpha', tasksOf()), true);
+    assert.equal(isNews(p1(), 'alpha', tasksOf(), TimeZone.UTC), true);
+    assert.equal(isNews(p1({ ownerSeenAt: seen }), 'alpha', tasksOf(), TimeZone.UTC), false);
+    assert.equal(isNews(p1({ ownerSeenAt: seen, priorityAt: '2030-01-08T09:30:00.000Z' }), 'alpha', tasksOf(), TimeZone.UTC), true);
+    assert.equal(isNews(p1({ ownerSeenAt: seen, statusAt: '2030-01-08T09:30:00.000Z' }), 'alpha', tasksOf(), TimeZone.UTC), true);
+    assert.equal(isNews(p1({ ownerSeenAt: seen, assignedAt: '2030-01-08T09:30:00.000Z' }), 'alpha', tasksOf(), TimeZone.UTC), true);
   });
 
+  const finishedBy = (by: string) => testTask({ id: 'T5', status: 'done', updatedBy: by, statusAt: '2030-01-08T09:30:00.000Z' });
+
   it('is news when another finished a task it comes after, never when the owner did or the task is retired', () => {
-    const task = p1({ after: ['T5', 'T7'], ownerSeenAt: '2030-01-08T09:00:00.000Z' });
-    const finishedBy = (by: string) => testTask({ id: 'T5', status: 'done', updatedBy: by, statusAt: '2030-01-08T09:30:00.000Z' });
-    assert.equal(isNews(task, 'alpha', tasksOf(finishedBy('bravo'))), true);
-    assert.equal(isNews(task, 'alpha', tasksOf(finishedBy('alpha'))), false);
-    assert.equal(isNews(task, 'alpha', tasksOf(testTask({ id: 'T5', status: 'done', updatedBy: 'bravo' }))), false);
+    const task = p1({ after: ['T5', 'T7'], ownerSeenAt: seen });
+    assert.equal(isNews(task, 'alpha', tasksOf(finishedBy('bravo')), TimeZone.UTC), true);
+    assert.equal(isNews(task, 'alpha', tasksOf(finishedBy('alpha')), TimeZone.UTC), false);
+    assert.equal(isNews(task, 'alpha', tasksOf(testTask({ id: 'T5', status: 'done', updatedBy: 'bravo' })), TimeZone.UTC), false);
+  });
+
+  it('is news when another finished a task it waits on, never when the owner did', () => {
+    const task = p1({ status: 'waiting', waits: [{ kind: 'task', id: 'T5' }], ownerSeenAt: seen });
+    assert.equal(isNews(task, 'alpha', tasksOf(finishedBy('bravo')), TimeZone.UTC), true);
+    assert.equal(isNews(task, 'alpha', tasksOf(finishedBy('alpha')), TimeZone.UTC), false);
+  });
+
+  it('is news when a time it waits for falls after the owner last touched it, a bare day ending in the team zone', () => {
+    const until = (at: string, ownerSeenAt = seen) => p1({ status: 'waiting', waits: [{ kind: 'time', at }], ownerSeenAt });
+    assert.equal(isNews(until('2030-01-08 09:30'), 'alpha', tasksOf(), TimeZone.UTC), true);
+    assert.equal(isNews(until('2030-01-08 08:30'), 'alpha', tasksOf(), TimeZone.UTC), false);
+    assert.equal(isNews(until('2030-01-08 09:30'), 'alpha', tasksOf(), JERUSALEM), true, 'a stored minute is UTC in any zone');
+    const late = '2030-01-08T23:00:00.000Z';
+    assert.equal(isNews(until('2030-01-08', late), 'alpha', tasksOf(), TimeZone.UTC), true, 'the day ends 23:59 UTC');
+    assert.equal(isNews(until('2030-01-08', late), 'alpha', tasksOf(), JERUSALEM), false, 'the day ended 21:59 UTC there');
+  });
+
+  it('is never news for a wait on a decision or an approval', () => {
+    const task = p1({ status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }, { kind: 'approval', who: 'lead' }], ownerSeenAt: seen });
+    assert.equal(isNews(task, 'alpha', tasksOf(), TimeZone.UTC), false);
   });
 });
 
@@ -115,6 +165,14 @@ describe('decideWake', () => {
     assert.equal(woke.verdict.kind, 'wake');
     const again = decideWake(input(tasksOf(p1()), woke.state, { now: NOW + 60 * MINUTE, batchMs: 0 }));
     assert.deepEqual(again.verdict, { kind: 'none' });
+  });
+
+  it('wakes the owner of a waiting task once its last wait clears, not before', () => {
+    const waiting = p1({ status: 'waiting', waits: [{ kind: 'time', at: '2030-01-08 10:30' }], ownerSeenAt: '2030-01-08T09:00:00.000Z' });
+    const before = decideWake(input(tasksOf(waiting), QUIET, { batchMs: 0 }));
+    assert.deepEqual(before.verdict, { kind: 'none' });
+    const cleared = decideWake(input(tasksOf(waiting), before.state, { now: NOW + 60 * MINUTE, batchMs: 0 }));
+    assert.deepEqual(cleared.verdict.kind === 'wake' ? cleared.verdict.tasks.map((task) => task.id) : [], ['T1']);
   });
 
   it('waits out the least gap since the last wake', () => {
@@ -207,6 +265,11 @@ describe('wake text', () => {
     assert.match(taskListText(many), /T5 "Fix T5" \(p1\) and 2 more$/);
     const long = taskListText([p1({ title: 'x'.repeat(WAKE_TITLE_MAX + 5) })]);
     assert.equal(long, `T1 "${'x'.repeat(WAKE_TITLE_MAX - 3)}..." (p1)`);
+  });
+
+  it('says a waiting or verifying task woke for its cleared waits', () => {
+    assert.equal(taskListText([p1({ status: 'waiting', title: 'Fix it' })]), 'T1 "Fix it" (p1, waiting: every wait cleared)');
+    assert.equal(taskListText([p1({ status: 'verifying', title: 'Fix it' })]), 'T1 "Fix it" (p1, verifying: every wait cleared)');
   });
 
   it('asks the session to start a work block and states the cost; the toast names the tasks', () => {

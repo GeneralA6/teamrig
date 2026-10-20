@@ -812,7 +812,7 @@
       }
     },
     "wake": {
-      "description": "Waking a session idle at its prompt when work is handed to it, instead of at its next prompt. Only open or started work that waits on nothing it comes after wakes, tasks handed together wake once, and each wake says what it costs.",
+      "description": "Waking a session idle at its prompt when work is handed to it, instead of at its next prompt. Only work the session can go on with wakes (open or started past every task it comes after, or waiting with every wait cleared), tasks handed together wake once, and each wake says what it costs.",
       "type": "object",
       "properties": {
         "enabled": {

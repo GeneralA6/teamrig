@@ -80,6 +80,12 @@ describe('keepWorkingOf', () => {
     assert.deepEqual(idsOf(tasksOf({ ...WAITING, waits: [{ kind: 'task', id: 'T7' }] }, other, testTask({ id: 'T7', owner: 'bravo' }))), ['T2']);
     assert.deepEqual(idsOf(tasksOf({ ...WAITING, waits: [{ kind: 'time', at: '2030-01-09 12:00' }] }, other)), ['T2']);
   });
+
+  it('never sends the session to the waiting task itself, even once its waits cleared', () => {
+    const cleared: Task = { ...WAITING, waits: [{ kind: 'time', at: '2030-01-08 09:00' }] };
+    assert.deepEqual(idsOf(tasksOf(cleared, testTask({ id: 'T2' }))), ['T2']);
+    assert.equal(idsOf(tasksOf(cleared)), undefined);
+  });
 });
 
 describe('keepWorkingReason', () => {
