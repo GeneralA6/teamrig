@@ -2,7 +2,7 @@ import { describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { DEFAULT_COMMITS } from '../config/defaults.ts';
-import type { CommitGate, PushToProtected, SkipHooks } from '../config/types.ts';
+import type { CommitGate, HookAsks, PushToProtected, SkipHooks } from '../config/types.ts';
 import { isRecord } from '../core/guards.ts';
 import type { CommitStat } from '../push-guard/commit-size.ts';
 import type { ConfigValue } from '../push-guard/invocations.ts';
@@ -11,6 +11,7 @@ import { ASK_REFUSED_NOTE } from './permission.ts';
 import { testConfig } from '../testing/config.ts';
 import {
   allowedPushNote,
+  clearedPushNote,
   commitsOf,
   PUSH_TO_PROTECTED_HINT,
   protectedBranchesOf,
@@ -18,6 +19,8 @@ import {
   pushToProtectedOf,
   skipHooksOf,
   skipHooksReason,
+  unclearedPushReason,
+  type PushClearance,
   type PushGuardEnv,
 } from './push-guard.ts';
 
@@ -41,10 +44,11 @@ function env(branch = 'feature') {
     commitLog: { between: () => [] },
     skipHooks: 'deny',
     hookAsks: 'ask',
+    clearance: async () => assert.fail('read the clearance outside pushToProtected: lead'),
   } satisfies PushGuardEnv;
 }
 
-const CHOICES: readonly PushToProtected[] = ['ask', 'allow'];
+const CHOICES: readonly PushToProtected[] = ['ask', 'allow', 'lead'];
 
 const payload = (command: string, extra: Record<string, unknown> = {}) => ({ tool_name: 'Bash', cwd: '/work/app', tool_input: { command }, ...extra });
 
@@ -76,7 +80,10 @@ describe('pushGuardOutput', () => {
     assert.equal(asked.decision, 'ask');
     assert.match(asked.reason, /^This push updates a protected branch \(main\)/);
     assert.ok(asked.reason.endsWith(` ${PUSH_TO_PROTECTED_HINT}`), asked.reason);
-    assert.equal(PUSH_TO_PROTECTED_HINT, "To stop asking about normal pushes, set pushGuard.pushToProtected to allow in the team's config.json.");
+    assert.equal(
+      PUSH_TO_PROTECTED_HINT,
+      "To stop asking about normal pushes, set pushGuard.pushToProtected in the team's config.json to allow, or to lead to have the lead approve them.",
+    );
     const denied = await pushGuardOutput(payload('git push -f origin main'), env());
     assert.equal(decisionOf(denied), 'deny');
     assert.doesNotMatch(denied, /pushToProtected/);
@@ -159,6 +166,59 @@ describe('pushGuardOutput: pushToProtected', () => {
       const { decision, reason } = hookOutput(await pushGuardOutput(payload('git push --force-with-lease origin main'), { ...env(), pushToProtected: choice }));
       assert.deepEqual([decision, reason], ['ask', leasedReason(['main'])], choice);
     }
+  });
+});
+
+describe('pushGuardOutput: pushToProtected lead (T684)', () => {
+  const lead = (clearance: PushClearance) => ({ ...env(), pushToProtected: 'lead', clearance: mock.fn(async (): Promise<PushClearance> => clearance) }) satisfies PushGuardEnv;
+  const NONE: PushClearance = { kind: 'none', lead: 'boss', why: "boss has approved no waiting task of alpha's" };
+
+  it("lets the lead's own normal push through with a note", async () => {
+    const guarded = lead({ kind: 'lead', lead: 'boss' });
+    const note = noteOf(await pushGuardOutput(payload('git push origin main'), guarded));
+    assert.equal(note, 'teamrig let this push to a protected branch (main) through: the lead (boss) pushes unasked [pushGuard.pushToProtected: lead].');
+    assert.equal(guarded.clearance.mock.callCount(), 1);
+  });
+
+  it("lets another session's push through once the lead approved its waiting task, naming the task", async () => {
+    const note = noteOf(await pushGuardOutput(payload('git push origin HEAD:main'), lead({ kind: 'approved', lead: 'boss', task: 'T7' })));
+    assert.equal(
+      note,
+      'teamrig let this push to a protected branch (main) through: boss approved T7; set its next status once pushed, as the approval covers this push only [pushGuard.pushToProtected: lead].',
+    );
+    assert.match(clearedPushNote({ kind: 'lead', lead: 'boss' }, ['main', 'master']), /^teamrig let this push to a protected branch \(main, master\) through:/);
+  });
+
+  it('refuses an unapproved push, saying how to ask the lead, and never asks the human, whatever hookAsks says', async () => {
+    const asks: readonly HookAsks[] = ['ask', 'refuse'];
+    for (const hookAsks of asks) {
+      const { decision, reason } = hookOutput(await pushGuardOutput(payload('git push origin main'), { ...lead(NONE), hookAsks }));
+      assert.deepEqual([decision, reason], ['deny', unclearedPushReason(NONE, ['main'])], hookAsks);
+    }
+    assert.equal(
+      unclearedPushReason(NONE, ['main', 'master']),
+      "This push to a protected branch (main, master) needs the lead's approval, not the human's: boss has approved no waiting task of alpha's. " +
+        'Ask on the register: `teamrig set <task> --status waiting --waits approval:boss --note "<branch, what it lands, its tests>"`, ' +
+        'take your next task, and push once boss approves it (`teamrig approve`). [pushGuard.pushToProtected]',
+    );
+  });
+
+  it('reads no clearance for a branch push, a force-push, a leased push or a line it cannot read, which keep their verdicts', async () => {
+    const guarded = lead({ kind: 'lead', lead: 'boss' });
+    assert.equal(await pushGuardOutput(payload('git push origin feature'), guarded), '');
+    assert.equal(decisionOf(await pushGuardOutput(payload('git push -f origin main'), guarded)), 'deny');
+    assert.deepEqual(hookOutput(await pushGuardOutput(payload('git push --force-with-lease origin main'), guarded)), { decision: 'ask', reason: leasedReason(['main']) });
+    assert.equal(hookOutput(await pushGuardOutput(payload('git push $ARGS'), guarded)).decision, 'ask');
+    assert.equal(guarded.clearance.mock.callCount(), 0);
+  });
+
+  it('lists large commits in the note under the warn gate, and refuses them under refuse before reading the clearance', async () => {
+    const big = { sha: 'b'.repeat(40), subject: 'Rewrite the store', body: '', files: [{ path: 'src/store.ts', added: 900, deleted: 0 }] };
+    const sending = (gate: CommitGate) => ({ ...lead({ kind: 'lead', lead: 'boss' }), commits: { ...DEFAULT_COMMITS, gate }, commitLog: { between: () => [big] } });
+    assert.match(noteOf(await pushGuardOutput(payload('git push origin HEAD:main'), sending('warn'))), /pushes unasked \[pushGuard\.pushToProtected: lead\]\. 1 commit\(s\) go over/);
+    const refusing = sending('refuse');
+    assert.match(hookOutput(await pushGuardOutput(payload('git push origin HEAD:main'), refusing)).reason, /^This push to a protected branch \(main\) is refused: 1 commit\(s\) go over/);
+    assert.equal(refusing.clearance.mock.callCount(), 0);
   });
 });
 

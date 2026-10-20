@@ -553,14 +553,14 @@ describe('parseConfig', () => {
 
   it('reads what a normal push to a protected branch does, defaulting to ask and refusing another word', () => {
     assert.equal(parseConfig(ROSTER).config.pushGuard.pushToProtected, 'ask');
-    for (const choice of ['ask', 'allow']) {
+    for (const choice of ['ask', 'allow', 'lead']) {
       const set = parseConfig({ ...ROSTER, pushGuard: { pushToProtected: choice } });
       assert.deepEqual(set.issues, []);
       assert.equal(set.config.pushGuard.pushToProtected, choice);
     }
     const bad = parseConfig({ ...ROSTER, pushGuard: { protectedBranches: ['release'], pushToProtected: 'always' } });
     assert.deepEqual(paths(bad.issues), ['pushGuard.pushToProtected']);
-    assert.match(bad.issues[0]?.message ?? '', /ask, allow/);
+    assert.match(bad.issues[0]?.message ?? '', /ask, allow, lead/);
     assert.deepEqual(bad.config.pushGuard, { protectedBranches: ['release'], pushToProtected: 'ask' });
   });
 

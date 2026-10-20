@@ -171,7 +171,7 @@ Before Claude runs a Bash or PowerShell command, the guard reads it and decides:
 - **Asks the human**: a push that updates a protected branch. The reason:
   "This push updates a protected branch (main, master) while other sessions may be working. Confirm, or push your
   own branch and rebase it onto the current one. To stop asking about normal pushes, set pushGuard.pushToProtected
-  to allow in the team's config.json." Commits over the size rule (400 changed non-test lines or 15
+  in the team's config.json to allow, or to lead to have the lead approve them." Commits over the size rule (400 changed non-test lines or 15
   files without a `Large-commit:` line) are listed with it; with `commits.gate: refuse` they turn the ask into a
   refusal. A `--force-with-lease` push is asked with its own reason, which does not name the switch. Under
   `prompts.hookAsks: refuse` each question here is a refusal instead, without the switch hint (see
@@ -180,6 +180,15 @@ Before Claude runs a Bash or PowerShell command, the guard reads it and decides:
   "teamrig did not ask about this push to a protected branch (main, master): pushGuard.pushToProtected is allow."
   and any large commits listed; Claude Code's own permissions still decide. `--force-with-lease` and doubts still
   ask, refusals stay, and `commits.gate: refuse` still refuses large commits.
+- **The lead decides**, when `pushGuard.pushToProtected` is `lead` (T684): a normal push to a protected branch runs
+  with a note when the lead pushes ("... through: the lead (lead) pushes unasked") or when the lead approved one of
+  the session's waiting tasks with `teamrig approve` ("... through: lead approved T1; set its next status once
+  pushed, as the approval covers this push only"). Otherwise it is refused, never asked: "This push to a protected
+  branch (main, master) needs the lead's approval, not the human's: lead has approved no waiting task of web's.
+  Ask on the register: `teamrig set <task> --status waiting --waits approval:lead --note "<branch, what it lands,
+  its tests>"`, take your next task, and push once lead approves it (`teamrig approve`)." A tab not bound to a
+  team session, or a register the guard cannot read, is refused the same way with that reason. `--force-with-lease`
+  and doubts still ask, and refusals and `commits.gate: refuse` stay.
 - **Refuses**: a force-push (`--force`, a `+` refspec), a delete or `--mirror` of a protected branch:
   "Force-pushing, mirroring or deleting a protected branch (main, master) is refused: it can overwrite other
   sessions' commits. Push your own branch, or use --force-with-lease if you truly mean it."

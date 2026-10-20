@@ -136,12 +136,14 @@ export interface PushGuardConfig {
 }
 
 /**
- * A normal push to a protected branch: `ask` the human, or `allow` it with a note. Neither changes a refusal, a
- * `--force-with-lease` push, or a command the guard cannot read, which still asks.
+ * A normal push to a protected branch: `ask` the human, `allow` it with a note, or `lead`: the lead's own goes through
+ * with a note, another session's only once the lead approved one of its waiting tasks (`teamrig approve`, T684), else
+ * it is refused with how to ask, never asked of the human. None changes a refusal, a `--force-with-lease` push, or a
+ * command the guard cannot read, which still asks.
  */
-export type PushToProtected = 'ask' | 'allow';
+export type PushToProtected = 'ask' | 'allow' | 'lead';
 
-export const PUSH_TO_PROTECTED: readonly PushToProtected[] = ['ask', 'allow'];
+export const PUSH_TO_PROTECTED: readonly PushToProtected[] = ['ask', 'allow', 'lead'];
 
 export function isPushToProtected(value: unknown): value is PushToProtected {
   return PUSH_TO_PROTECTED.some((choice) => choice === value);

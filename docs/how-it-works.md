@@ -539,11 +539,18 @@ flowchart TD
   branch -- yes --> mode{"pushGuard.pushToProtected"}
   mode -- ask --> ask
   mode -- allow --> note["Runs, with a note and any large commits listed"]
+  mode -- lead --> cleared{"The lead's own push, or the lead approved one of the session's waiting tasks?"}
+  cleared -- yes --> note
+  cleared -- no --> deny
 ```
 
 - `pushGuard.pushToProtected` (since 0.11.0) is `ask` by default; set to `allow`, a normal push to a protected branch
   runs with a one-line note instead of a question, and Claude Code's own permissions still decide. Each question
   about a normal push ends by naming this switch.
+- Set to `lead` (since 0.107.0), the lead approves pushes instead of the human: the lead's own runs with a note; a
+  session's runs with a note while the lead's `teamrig approve` stands on one of its tasks waiting `approval:<lead>`
+  (until the task's next status), and is refused otherwise, with how to ask on the register. The human is never
+  asked about a normal push, and the refusal holds whatever `prompts.hookAsks` says.
 - `--force-with-lease` is asked, not refused, under either setting. `commits.gate` set to `refuse` turns the ask (or
   the allowed push) into a refusal when a commit is over the size rule (400 changed lines or 15 files, tests not
   counted) with no `Large-commit:` reason.

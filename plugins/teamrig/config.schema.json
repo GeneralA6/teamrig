@@ -269,9 +269,9 @@
           "default": ["main", "master"]
         },
         "pushToProtected": {
-          "description": "A normal push to a protected branch: ask asks the human, allow lets it through with a note. Force-push, mirror and deletion stay refused; a --force-with-lease push and a command the guard cannot read still ask.",
+          "description": "A normal push to a protected branch: ask asks the human, allow lets it through with a note, lead lets the lead's own through and another session's once the lead approved its waiting task (teamrig approve), else refuses it with how to ask, never asking the human. Force-push, mirror and deletion stay refused; a --force-with-lease push and a command the guard cannot read still ask.",
           "type": "string",
-          "enum": ["ask", "allow"],
+          "enum": ["ask", "allow", "lead"],
           "default": "ask"
         }
       }
