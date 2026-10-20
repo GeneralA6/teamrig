@@ -112,6 +112,7 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   requireFollowupsOn: 'register.requireFollowupsOn',
   maxVerifying: 'register.maxVerifying',
   maxSelfMadePerDay: 'register.check.maxSelfMadePerDay',
+  goalProgressDays: 'register.check.goalProgressDays',
   stopgapFiles: 'register.check.stopgapFiles',
   persistentFailureHours: 'alerts.persistentFailureHours',
   decisionBatchTimes: 'decisions.batchTimesUtc',
