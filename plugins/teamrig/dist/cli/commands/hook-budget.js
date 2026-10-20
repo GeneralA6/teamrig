@@ -1,6 +1,6 @@
 import { basename, dirname, join } from 'node:path';
 import { SecretScanner } from "../../core/secrets.js";
-import { activeBurst, withBurst } from "../../budget/burst.js";
+import { activeBurst, burstFloorOf, withBurst } from "../../budget/burst.js";
 import { surplusHintOf } from "../../budget/burst-lines.js";
 import { BurstLog } from "../../budget/burst-log.js";
 import { activeLift, LiftLog } from "../../budget/lift.js";
@@ -77,7 +77,7 @@ export async function budgetFactsOf(runtime, scope, transcript) {
     const shared = dailyBudgetOf(week.allowancePct, id, { ids: roster.ids, sessions: budget.sessions, work, lifted });
     const inForce = activeBurst((await new BurstLog(files, kit.paths.bursts).read()).records, now, week.usedPct);
     const burst = inForce !== undefined && inForce.sessions.includes(id) ? inForce : undefined;
-    const budgetPct = withBurst(shared, burst, id);
+    const budgetPct = withBurst(shared, burst === undefined ? undefined : burstFloorOf(burst, week, byId, budget, now));
     if (budgetPct === undefined) {
         return undefined;
     }

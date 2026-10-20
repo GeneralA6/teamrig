@@ -1,5 +1,8 @@
-import { MS_PER_DAY, MS_PER_HOUR } from "../core/time.js";
+import { MS_PER_HOUR } from "../core/time.js";
+import { DailyProfile } from "./active-time.js";
 import { formatPct } from "./format.js";
+import { spanAllowancePct } from "./pace.js";
+import { wSince } from "./week.js";
 /**
  * A burst: the lead's time-boxed scale-out of named sessions onto helpers and hired sessions, for one of
  * two reasons. `surplus`: the week would end with budget unused, measured as the share of the week
@@ -90,10 +93,34 @@ function endOf(request, context, window, usedPct) {
     }
     return { endsAt: Math.min(request.deadline, window.reset) };
 }
-/** Each burst session's daily budget: what is left to the stop %, shared by its sessions over its days (one at least). */
-export function burstDailyPct(stopPct, usedPct, sessions, ms) {
-    const days = Math.max(1, ms / MS_PER_DAY);
-    return Math.round(((stopPct - usedPct) / Math.max(1, sessions) / days) * 100) / 100;
+/**
+ * Each burst session's daily budget floor now, in % of the week, never a fixed number: the team's pace rule
+ * (`spanAllowancePct`) over the burst, from what is left to its stop % spread over the active time to its end,
+ * shared evenly by its sessions. Their spending ahead lowers it and spending less raises it, so a deadline burst
+ * spends to its deadline, neither early nor short.
+ */
+export function burstFloorPct(burst, pace) {
+    const { window, ...reading } = pace;
+    return spanAllowancePct({ ...reading, start: window.start, end: burst.endsAt, stopPct: burst.stopPct }) / Math.max(1, burst.sessions.length);
+}
+/** The sessions' use today inside the week, in % of the week; undefined while the week's limit is unknown. */
+export function sessionsTodayPct(sessions, week, states, now) {
+    return week.wPerPct === undefined ? undefined : wSince(sessions.flatMap((id) => states.get(id) ?? []), week.todayFrom, now) / week.wPerPct;
+}
+/**
+ * The burst's floor now (`burstFloorPct`), read from the week and its sessions' usage stores; its start reading
+ * (`dailyPct`) while the week's window, use or limit is unknown, as nothing newer can be read.
+ */
+export function burstFloorOf(burst, week, states, budget, now) {
+    const { window, usedPct } = week;
+    const todayPct = sessionsTodayPct(burst.sessions, week, states, now);
+    if (window === undefined || usedPct === undefined || todayPct === undefined) {
+        return burst.dailyPct;
+    }
+    return burstFloorPct(burst, { window, now, usedPct, todayPct, profile: DailyProfile.ofQuietHours(budget.quietHours) });
+}
+function round2(value) {
+    return Math.round(value * 100) / 100;
 }
 /** Whether the burst may start, and its record. */
 export function decideBurst(request, context) {
@@ -140,7 +167,7 @@ export function decideBurst(request, context) {
             sessions: request.sessions,
             helpers: request.helpers ?? config.maxHelpers,
             hires: request.hires ?? 0,
-            dailyPct: burstDailyPct(stopPct, usedPct, request.sessions.length, end.endsAt - request.now),
+            dailyPct: round2(burstFloorPct({ sessions: request.sessions, stopPct, endsAt: end.endsAt }, { window, now: request.now, usedPct, todayPct: context.sessionsTodayPct ?? 0, profile: context.profile })),
             stopPct,
             endsAt: end.endsAt,
             tasks: request.kind === 'deadline' ? request.tasks : [],
@@ -171,7 +198,7 @@ export function burstsOver(records, now, usedPct) {
         .filter((burst) => isBurstOver(burst, records, now, usedPct))
         .map((burst) => burst.at));
 }
-/** A session's daily budget with the burst: at least the burst's for a session in it, else the shared one. */
-export function withBurst(shared, burst, id) {
-    return burst !== undefined && burst.sessions.includes(id) ? Math.max(shared ?? 0, burst.dailyPct) : shared;
+/** A session's daily budget with the burst: at least the floor (`burstFloorOf`) for a session in it, else the shared one. */
+export function withBurst(shared, floorPct) {
+    return floorPct === undefined ? shared : Math.max(shared ?? 0, floorPct);
 }

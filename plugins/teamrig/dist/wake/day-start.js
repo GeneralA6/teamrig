@@ -59,7 +59,7 @@ export function decideDayStart(input) {
 function momentLine(moment, name, zone) {
     return moment.kind === 'day-start'
         ? `The day started at ${zone.clock(new Date(moment.at))} and this tab has had no turn since.`
-        : `The lead started ${burstText(moment.burst, [name], zone)}`;
+        : `The lead started ${burstText(moment.burst, [name], zone, moment.burst.dailyPct)}`;
 }
 /** The prompt the session reads, under the plugin's name; `name` is the session's name in the burst's line. */
 export function dayStartPrompt(session, name, moments, tasks, cost, zone) {
