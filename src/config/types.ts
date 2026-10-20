@@ -137,6 +137,11 @@ export interface ExecConfig {
    * session's own PATH is never searched. Empty: a request names its program by absolute path.
    */
   readonly path: readonly string[];
+  /**
+   * The name of the environment variable that holds the webhook URL every approval, refusal and run is posted to
+   * (spec §10), never the URL itself, which is a secret. Absent: nothing is posted.
+   */
+  readonly webhookEnv?: string;
 }
 
 export interface PushGuardConfig {

@@ -192,6 +192,16 @@ describe('parseConfig', () => {
     assert.deepEqual(config.exec.path, ['C:/tools']);
   });
 
+  it('reads exec.webhookEnv as a variable name, absent by default, and refuses a URL or a name with a space', () => {
+    assert.equal(parseConfig(ROSTER).config.exec.webhookEnv, undefined);
+    assert.equal(parseConfig({ ...ROSTER, exec: { webhookEnv: 'EXEC_WEBHOOK_URL' } }).config.exec.webhookEnv, 'EXEC_WEBHOOK_URL');
+    for (const value of ['https://chat.example/api/webhooks/1/x', 'EXEC WEBHOOK', '1ST_URL', 'A'.repeat(65)]) {
+      const { config, issues } = parseConfig({ ...ROSTER, exec: { webhookEnv: value } });
+      assert.deepEqual(paths(issues), ['exec.webhookEnv'], value);
+      assert.equal(config.exec.webhookEnv, undefined);
+    }
+  });
+
   it('reads turnLog, and refuses keeping entries under an hour or past a week', () => {
     const off = { enabled: false, keepHours: 168 };
     assert.deepEqual(parseConfig({ ...ROSTER, turnLog: off }).config.turnLog, off);

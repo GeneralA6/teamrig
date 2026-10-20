@@ -78,6 +78,7 @@ import {
   SKIP_HOOKS,
   TERMINALS,
   type ContextFilesConfig,
+  type ExecConfig,
   VERIFY_GATES,
   WEEKDAYS,
   type PackageGuardConfig,
@@ -151,6 +152,10 @@ const EXEC_DIRECTORY: Check<string> = (folder) => {
   }
   return /^(?:[A-Za-z]:)?[^;:]*$/.test(folder) ? undefined : 'expected no ; or : past the drive';
 };
+
+/** An environment variable's name, such as `EXEC_WEBHOOK_URL`: what a config key names in place of a secret value. */
+const ENV_VARIABLE: Check<string> = (name) =>
+  /^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(name) ? undefined : 'expected a variable name: a letter or _, then at most 63 letters, digits or _';
 
 /** The key shape the skills lint recognises in frontmatter. */
 const isFrontmatterKey: Check<string> = (key) => (/^[A-Za-z0-9_-]+$/.test(key) ? undefined : 'expected a frontmatter key: letters, digits, _ or -');
@@ -381,16 +386,7 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
       pollMs: read.integer(lock, 'pollMs', 'lock', DEFAULT_LOCK.pollMs, { min: 10 }),
       waitMs: read.integer(lock, 'waitMs', 'lock', DEFAULT_LOCK.waitMs, { min: 0 }),
     },
-    exec: {
-      path: read.stringList(
-        read.section(raw, 'exec', ''),
-        'path',
-        'exec',
-        DEFAULT_EXEC.path,
-        shortLine(CONFIG_LIMITS.execPath.maxLength, EXEC_DIRECTORY),
-        CONFIG_LIMITS.execPath.maxItems,
-      ),
-    },
+    exec: parseExec(read, read.section(raw, 'exec', '')),
     pushGuard: {
       protectedBranches: read.stringList(
         pushGuard,
@@ -957,6 +953,15 @@ function parseFollowupStatus(read: ConfigReader, value: unknown, path: string): 
   }
   read.report(path, `expected one of ${FOLLOWUP_STATUSES.join(', ')}, got ${describe(value)}`);
   return undefined;
+}
+
+function parseExec(read: ConfigReader, raw: JsonRecord): ExecConfig {
+  const path = 'exec';
+  const webhookEnv = read.optionalString(raw, 'webhookEnv', path, ENV_VARIABLE);
+  return {
+    path: read.stringList(raw, 'path', path, DEFAULT_EXEC.path, shortLine(CONFIG_LIMITS.execPath.maxLength, EXEC_DIRECTORY), CONFIG_LIMITS.execPath.maxItems),
+    ...(webhookEnv === undefined ? {} : { webhookEnv }),
+  };
 }
 
 function parseContextFiles(read: ConfigReader, raw: JsonRecord): ContextFilesConfig {
