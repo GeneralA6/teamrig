@@ -1,6 +1,7 @@
 import type { ProgramRun } from '../package-guard/programs.ts';
 import type { ShellWord } from '../push-guard/tokenizer.ts';
 import type { SecretFinding } from './findings.ts';
+import { fileOperands } from './operands.ts';
 import { wordPath, type WordPlace } from './paths.ts';
 import type { SecretRules } from './rules.ts';
 
@@ -87,10 +88,14 @@ export function isPrinter(name: string): boolean {
   return PRINTERS.has(name);
 }
 
-/** The secret files the program prints: the words it reads as files, and the file a `<` feeds it. */
+/**
+ * The secret files the program prints: the words it reads as files (not the script or pattern it takes first, see
+ * {@link fileOperands}), and the file a `<` feeds it.
+ */
 export function fileFindings(run: ProgramRun, rules: SecretRules): SecretFinding[] {
   const place: WordPlace = { dialect: run.dialect, dir: run.dir, home: rules.home };
-  const named = run.name === 'git' ? gitNamed(run.args) : isPrinter(run.name) ? [...run.args.flatMap(fileWords), ...stdinFiles(run)] : [];
+  const named =
+    run.name === 'git' ? gitNamed(run.args) : isPrinter(run.name) ? [...fileOperands(run.name, run.args).flatMap(fileWords), ...stdinFiles(run)] : [];
   return named.flatMap((text): SecretFinding[] => {
     const path = wordPath(text, place);
     if (ENVIRON.test(text)) {
