@@ -97,6 +97,13 @@ describe('teamPaths', () => {
     assert.equal(paths.handover, '/hand');
   });
 
+  it("keeps the exec audit log and run outputs in the team's folder, whatever the state override", () => {
+    const paths = teamPaths(KIT, 'app', USER_HOME, { state: '/data' });
+    assert.equal(paths.execAudit, join(TEAM_HOME, 'exec', 'audit.jsonl'));
+    assert.equal(paths.execAuditLock, join(TEAM_HOME, 'exec', 'audit.lock'));
+    assert.equal(paths.execOut, join(TEAM_HOME, 'exec', 'out'));
+  });
+
   it("resolves relative overrides against the team's folder, not the working folder", () => {
     const paths = teamPaths(KIT, 'app', USER_HOME, { state: 'data', inbox: join('notes', 'in'), skills: '../skills', handover: 'hand' });
     assert.equal(paths.events, join(TEAM_HOME, 'data', 'events.jsonl'));
