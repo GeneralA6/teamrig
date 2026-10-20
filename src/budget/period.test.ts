@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { BudgetConfig } from '../config/types.ts';
 import { NewerDataError } from '../core/jsonl.ts';
+import { fieldPaths } from '../testing/field-paths.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import {
   formatPeriod,
@@ -132,6 +133,11 @@ describe('sightOf', () => {
 
 describe('the period file', () => {
   const path = '/kit/usage/period.json';
+
+  it('writes the pinned fields of its format: a field added to the file raises PERIOD_FORMAT', () => {
+    const written: Readonly<Record<number, readonly string[]>> = { 1: ['end', 'kind', 'lastAt', 'lastPct', 'start', 'v'] };
+    assert.deepEqual(fieldPaths(JSON.parse(formatPeriod(STORED))), written[PERIOD_FORMAT]);
+  });
 
   it('reads back what it wrote, and reads a damaged or other-format file as none', () => {
     assert.deepEqual(parsePeriod(formatPeriod(STORED)), STORED);

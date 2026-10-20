@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { NewerDataError } from '../core/jsonl.ts';
+import { fieldPaths } from '../testing/field-paths.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { BURST_FORMAT, BurstLog, burstRecordOf, parseBurstRecord } from './burst-log.ts';
 import type { Burst, BurstEnd } from './burst.ts';
@@ -39,6 +40,17 @@ const DEADLINE: Burst = {
 const END: BurstEnd = { kind: 'end', burstAt: NOW, reason: 'done early', by: 'lead', at: NOW + 2 };
 
 describe('burst records', () => {
+  it('write the pinned fields of their format: a field added to a burst or an end raises BURST_FORMAT', () => {
+    const written: Readonly<Record<number, { readonly burst: readonly string[]; readonly end: readonly string[] }>> = {
+      1: {
+        burst: ['approvedBy', 'at', 'by', 'dailyPct', 'deadline', 'endsAt', 'helpers', 'hires', 'kind', 'reason', 'sessions[]', 'stopPct', 'tasks[]', 'v'],
+        end: ['at', 'burstAt', 'by', 'kind', 'reason', 'v'],
+      },
+    };
+    const full: Burst = { ...DEADLINE, approvedBy: 'owner' };
+    assert.deepEqual({ burst: fieldPaths(burstRecordOf(full)), end: fieldPaths(burstRecordOf(END)) }, written[BURST_FORMAT]);
+  });
+
   it('round-trips a surplus burst, a deadline burst and an end, with instants as ISO strings', () => {
     for (const record of [SURPLUS, DEADLINE, END]) {
       assert.deepEqual(parseBurstRecord(burstRecordOf(record)), record);
