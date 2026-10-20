@@ -566,8 +566,11 @@ push wherever it sits in the line:
   through `;`, `&&`, a newline, a `for`, `while` or `until` loop, an `if` or a `{ }` group, in the same shell or
   in a subshell started after it (`( )`, `$( )`), and the line must never give the name another value. The
   value may hold quoted text, blanks and variables set the same way before it; used unquoted, it splits into
-  words as bash splits it, so `G="git -C /w"; $G push origin main` still asks. A value with a substitution, a
-  tilde or a file name pattern, a prefix (`B=x git push origin $B`), an assignment in a subshell, a loop, an
+  words as bash splits it, so `G="git -C /w"; $G push origin main` still asks. `$HOME`, and a value's leading
+  `~` or `~/`, read as your home folder in the line's own shell, while the line gives HOME no value of its own;
+  a script the line starts, such as `bash -c '...'`, may be handed another HOME, so there it stays unknown. A
+  value with a substitution, any other tilde (`~bob`, `a:~/x`) or a file name pattern, a prefix
+  (`B=x git push origin $B`), an assignment in a subshell, a loop, an
   `if` or a `{ }` group, a `for` loop's own variable, or anything else on the line that can set a variable unseen
   (a `${...}` that assigns or runs arithmetic, such as `${B:=x}` or `${B:1}`, or reads a name indirectly,
   `${!R}`; `case`, `select`, `[[ ]]`, functions, `read`, `source`, `eval`, `declare`, arithmetic, arrays, a
