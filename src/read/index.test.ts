@@ -84,6 +84,16 @@ describe('the read entry', () => {
     assert.deepEqual(roster.ids, ['lead', 'alpha']);
   });
 
+  it("finds a session's leader and a leader's group from the config's lead tree", () => {
+    const config = read.parseConfigText(
+      JSON.stringify({ configVersion: read.CONFIG_VERSION, sessions: ['lead', 'sub', 'alpha', 'beta'], roles: { lead: 'lead' }, leads: { sub: ['alpha'] } }),
+    );
+    assert.ok(config.status === 'loaded');
+    const tree = new read.LeadTree(config.config);
+    assert.deepEqual(['alpha', 'beta', 'sub', 'lead'].map((id) => tree.leaderOf(id)), ['sub', 'lead', 'lead', undefined]);
+    assert.deepEqual([tree.membersOf('sub'), tree.membersOf('lead'), tree.groupOf('lead')], [['alpha'], ['sub', 'beta'], ['sub', 'alpha', 'beta']]);
+  });
+
   it('finds the unread inbox lines with the line hash the reader hands in', () => {
     const hash: read.LineHash = (line) => `fake:${line}`;
     const lines = read.inboxLines('- 2030-01-07 09:00 lead: first\r\n- 2030-01-07 10:00 lead: second\r\n');
