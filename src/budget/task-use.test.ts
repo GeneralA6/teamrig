@@ -1,0 +1,54 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { EMPTY_USAGE, newCursor, type UsageState } from './store.ts';
+import { attributedW, taskUseOf } from './task-use.ts';
+import type { OpenTurn } from './tasks.ts';
+
+const DAY = '2030-01-08';
+const NEXT_DAY = '2030-01-09';
+
+/** A session's usage with W per day per task and the open turns its transcripts ended in. */
+function usage(byTask: UsageState['byTask'], turns: readonly OpenTurn[] = []): UsageState {
+  const cursors = Object.fromEntries(turns.map((turn, index) => [`t${index}.jsonl`, { ...newCursor(0, 0, DAY), turn }]));
+  return { ...EMPTY_USAGE, byTask, cursors };
+}
+
+describe('taskUseOf', () => {
+  it('sums stored W and the open turns share of each session, the most first', () => {
+    const bySession = new Map<string, UsageState>([
+      ['alpha', usage({ [DAY]: { T7: 1_000_000 } })],
+      ['beta', usage({ [NEXT_DAY]: { T7: 500_000 }, [DAY]: { T7: 250_000, T8: 9_000_000 } }, [{ tasks: ['T7', 'T8'], held: { [NEXT_DAY]: 4_000_000 } }])],
+      ['gamma', usage({ [DAY]: { T8: 2_000_000 } })],
+    ]);
+
+    assert.deepEqual(taskUseOf(bySession, 'T7'), {
+      task: 'T7',
+      sessions: [
+        { session: 'beta', byDay: { [DAY]: 250_000, [NEXT_DAY]: 2_500_000 }, w: 2_750_000 },
+        { session: 'alpha', byDay: { [DAY]: 1_000_000 }, w: 1_000_000 },
+      ],
+      w: 3_750_000,
+    });
+  });
+
+  it('leaves out an open turn that did not name the task', () => {
+    const bySession = new Map<string, UsageState>([['alpha', usage({}, [{ tasks: ['T8'], held: { [DAY]: 3_000_000 } }])]]);
+
+    assert.deepEqual(taskUseOf(bySession, 'T7'), { task: 'T7', sessions: [], w: 0 });
+  });
+});
+
+describe('attributedW', () => {
+  it('counts a day of stored task W and the held W of open turns that named a task', () => {
+    const state = usage({ [DAY]: { T7: 1_000_000, T8: 500_000 }, [NEXT_DAY]: { T7: 7_000_000 } }, [
+      { tasks: ['T9'], held: { [DAY]: 2_000_000, [NEXT_DAY]: 1_000_000 } },
+      { tasks: [], held: { [DAY]: 8_000_000 } },
+    ]);
+
+    assert.equal(attributedW(state, DAY), 3_500_000);
+  });
+
+  it('is 0 on a day with no task W', () => {
+    assert.equal(attributedW(usage({}), DAY), 0);
+  });
+});
