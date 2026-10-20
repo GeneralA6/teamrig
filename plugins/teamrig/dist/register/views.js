@@ -213,9 +213,10 @@ export function formatEvent(event, zone) {
 }
 /**
  * `show`: the task line, its description (what and why, its later lines indented two spaces), its status details,
- * then its history; `tree` reads the task line as {@link formatTask} does.
+ * then its history; `tree` reads the task line as {@link formatTask} does, and `sizeCost` words its size's cost
+ * beside the percent.
  */
-export function formatTaskDetail(task, events, tree) {
+export function formatTaskDetail(task, events, tree, sizeCost = () => undefined) {
     const lines = [formatTask(task, undefined, tree)];
     if (task.description !== null) {
         const [first = '', ...rest] = task.description.split('\n');
@@ -225,7 +226,8 @@ export function formatTaskDetail(task, events, tree) {
         lines.push(`ref: ${task.ref}`);
     }
     if (task.size !== null) {
-        lines.push(`size: ${sizeText(task.size)} of the weekly limit`);
+        const cost = sizeCost(task.size);
+        lines.push(`size: ${sizeText(task.size)} of the weekly limit${cost === undefined ? '' : `, ${cost}`}`);
     }
     if (task.note !== null) {
         lines.push(`note: ${task.note}`);

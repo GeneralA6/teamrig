@@ -2,6 +2,7 @@ import { formatAddress } from "../../core/address.js";
 import { JsonlDailyLog } from "../../core/daily-log.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { burstsOver, surplusOf } from "../../budget/burst.js";
+import { formatW } from "../../budget/format.js";
 import { hireFlags } from "../../hiring/due.js";
 import { activeHires, HiringLog } from "../../hiring/log.js";
 import { scaleOutFlags } from "../../hiring/scale-out.js";
@@ -28,6 +29,7 @@ import { loadTree } from "../tree.js";
 import { teamRegister } from "../team-register.js";
 import { readBursts } from "../burst-reading.js";
 import { readHirePct } from "../hire-cost.js";
+import { readWPerPct } from "../stored-week.js";
 import { snapshotDirOf } from "./budget.js";
 import { inboxDepsOf } from "./inbox.js";
 import { markBoundary } from "./refresh.js";
@@ -382,7 +384,9 @@ export async function show(args, runtime) {
         [formatTask(task, undefined, tree), ...formatTaskTree(task, tree, SHORT_TITLE_CHARS)].forEach((line) => runtime.out.stdout(line));
         return EXIT.ok;
     }
-    runtime.out.stdout(formatTaskDetail(task, snapshot.read.events.filter((event) => event.id === id), tree));
+    const events = snapshot.read.events.filter((event) => event.id === id);
+    const wPerPct = task.size === null ? undefined : await readWPerPct(runtime, own.paths, own.config, runtime.clock.now());
+    runtime.out.stdout(formatTaskDetail(task, events, tree, (pct) => (wPerPct === undefined ? undefined : `about ${formatW(pct * wPerPct)} W`)));
     return EXIT.ok;
 }
 /**
