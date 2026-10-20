@@ -628,6 +628,8 @@ describe('runCli: hook secret-guard', () => {
 
   it("asks or lets it run as the team config says, adds the team's own files, and refuses when the config is missing or unreadable", async () => {
     assert.equal(decisionOf(await new CliHarness({ ...TEAM, secretGuard: { secretReads: 'ask' } }).run(['hook', 'secret-guard'], { stdin: bash('cat .env') })), 'ask');
+    const asksOff = new CliHarness({ ...TEAM, secretGuard: { secretReads: 'ask' }, prompts: { hookAsks: 'refuse' } });
+    assert.equal(decisionOf(await asksOff.run(['hook', 'secret-guard'], { stdin: bash('cat .env') })), 'deny');
     const allows = new CliHarness({ ...TEAM, secretGuard: { secretReads: 'allow' } });
     assert.deepEqual((await allows.run(['hook', 'secret-guard'], { stdin: bash('cat .env') })).stdout, []);
     const own = new CliHarness({ ...TEAM, secretGuard: { paths: ['vault/*.json'] } });

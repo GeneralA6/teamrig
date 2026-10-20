@@ -158,6 +158,7 @@ export async function secretGuard(args: ParsedArgs, runtime: CliRuntime): Promis
     cwd: runtime.cwd,
     rules: secretRulesOf(config, runtime.userHome, runtime.platform),
     secretReads: config.secretReads,
+    hookAsks: hookAsksOf(guard.load),
   });
   if (output !== '') {
     runtime.out.stdout(output);

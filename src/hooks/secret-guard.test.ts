@@ -9,7 +9,7 @@ import { secretFindingsOf, secretGuardOf, secretGuardOutput, secretReason, type 
 const RULES = secretRulesOf(DEFAULT_SECRET_GUARD, 'C:/u', 'win32');
 
 function env(overrides: Partial<SecretGuardEnv> = {}): SecretGuardEnv {
-  return { cwd: 'C:/w', rules: RULES, secretReads: 'deny', ...overrides };
+  return { cwd: 'C:/w', rules: RULES, secretReads: 'deny', hookAsks: 'ask', ...overrides };
 }
 
 function call(tool_name: string, tool_input: JsonRecord, extra: JsonRecord = {}): JsonRecord {
@@ -83,6 +83,16 @@ describe('secretGuardOutput', () => {
     const read = call('Read', { file_path: 'C:/w/.env' });
     assert.equal(verdictOf(secretGuardOutput(read, env({ secretReads: 'ask' })))?.decision, 'ask');
     assert.equal(secretGuardOutput(read, env({ secretReads: 'allow' })), '');
+  });
+
+  it('refuses with the note on what to do instead of asking when asks are off, and keeps a refusal as it was', () => {
+    const read = call('Read', { file_path: 'C:/w/.env' });
+    const refused = verdictOf(secretGuardOutput(read, env({ secretReads: 'ask', hookAsks: 'refuse' })));
+    assert.equal(refused?.decision, 'deny');
+    assert.match(refused?.reason ?? '', /would print the content of \.env .*Asks are off \[prompts\.hookAsks\]/);
+    const denied = verdictOf(secretGuardOutput(read, env({ hookAsks: 'refuse' })));
+    assert.equal(denied?.decision, 'deny');
+    assert.doesNotMatch(denied?.reason ?? '', /Asks are off/);
   });
 
   it('prints nothing for a call that prints no secret, or input that is not a payload', () => {

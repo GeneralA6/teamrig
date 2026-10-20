@@ -2564,7 +2564,8 @@ teamrig hook secret-guard < pre-tool-use.json
 
 Output: nothing for a call that prints no secret (or with `secretReads` set to `allow`), outside a team's projects,
 or for input that is not a hook payload; otherwise a JSON permission decision (`deny`, or `ask` when the team set
-it) with the reason naming each secret.
+it) with the reason naming each secret; under `prompts.hookAsks: refuse` that `ask` is a `deny` whose reason says
+what to do instead.
 
 ### teamrig hook readonly-allow
 
