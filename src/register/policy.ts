@@ -216,8 +216,8 @@ export class RegisterPolicy {
    * waits on (with `verifying`, its proof does: the session that runs the proof has it on its list): the asked
    * session's, from the caller, at `task`'s priority and with its goals (the work serves the same plan), its
    * description naming `task`. Only the owner asks for its task, only with a status of WAIT_STATUSES and only once
-   * started: one not started keeps its status, planned after the asked task. An active task of the same title is
-   * waited on instead.
+   * started (a verifying task has: its proof may need the ask): one not started keeps its status, planned after the
+   * asked task. An active task of the same title is waited on instead.
    */
   ask(task: Task, caller: string, ask: AskInput, input: StatusInput, state: RegisterState): Verdict<TaskFields> {
     if (caller !== task.owner) {
@@ -648,9 +648,9 @@ function sameWaits(a: readonly WaitReason[], b: readonly WaitReason[]): boolean 
 }
 
 /**
- * A task reason is for a task already started (in progress, or waiting after it started) that found another
- * task must finish first: one not started stays open with a plan dependency instead, and a finished one reopens
- * first. It never closes a loop.
+ * A task reason is for a task already started (see {@link hasStarted}) that found another task must finish first,
+ * a verifying one for its proof: one not started stays open with a plan dependency instead, and a finished one
+ * reopens first. It never closes a loop.
  */
 function taskWaitProblem(task: Task, id: string, state: RegisterState): string | undefined {
   if (id === task.id) {
@@ -672,9 +672,12 @@ function taskWaitProblem(task: Task, id: string, state: RegisterState): string |
   return loopProblem(task.id, id, state, true);
 }
 
-/** In progress, or waiting after it started: a task that can wait on another. */
+/**
+ * In progress, verifying (its work shipped, whatever an older register's row says of its start) or waiting after it
+ * started: a task that can wait on another.
+ */
 function hasStarted(task: Task): boolean {
-  return task.status === 'in-progress' || (task.status === 'waiting' && task.startedAt !== null);
+  return task.status === 'in-progress' || task.status === 'verifying' || (task.status === 'waiting' && task.startedAt !== null);
 }
 
 /** Open, or waiting without ever starting (on an approval, or a row an older register migrated): a task a plan fits. */
@@ -698,7 +701,8 @@ function activeDuplicate(title: string, state: RegisterState): Task | undefined 
 function afterChangeProblem(task: Task, after: readonly string[], state: RegisterState): string | undefined {
   const first = after[0];
   if (first !== undefined && !notStarted(task)) {
-    const instead = hasStarted(task) ? `; a started task waits on another with --status waiting --waits task:${first}` : '';
+    const keeps = task.status === 'verifying' ? 'verifying' : 'waiting';
+    const instead = hasStarted(task) ? `; a started task waits on another with --status ${keeps} --waits task:${first}` : '';
     return `--after plans a task not started yet, and ${task.id} is ${task.status}${instead}`;
   }
   return afterProblem(task.id, after, state);

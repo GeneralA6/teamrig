@@ -428,6 +428,9 @@ describe('RegisterPolicy.setStatus to waiting', () => {
     const dropped = testTask({ id: 'T5', status: 'dropped', startedAt: '2030-01-07T10:00:00.000Z' });
     assert.match(error(waiting(dropped, [{ kind: 'task', id: 'T4' }], stateOf(TASK, OPEN, DONE, BUSY, dropped))), /^T5 is dropped, so it waits on nothing: reopen it/);
     assert.equal(waiting(testTask({ status: 'waiting', startedAt: '2030-01-07T10:00:00.000Z' }), [{ kind: 'task', id: 'T4' }]).ok, true);
+    const shipped = testTask({ status: 'verifying', startedAt: null, note: 'shipped', proof: 'the nightly run' });
+    const proofWait = policy.setStatus(shipped, 'alpha', { status: 'verifying', note: 'x', waits: [{ kind: 'task', id: 'T4' }], followups: [] }, { ...CTX, state: STATE });
+    assert.deepEqual(proofWait.ok ? proofWait.value.waits : undefined, [{ kind: 'task', id: 'T4' }], 'a verifying task has started, whatever its row says, and its proof waits on T4');
     assert.equal(error(waiting(TASK, [{ kind: 'task', id: 'T1' }])), 'T1 cannot wait on itself');
     assert.equal(error(waiting(TASK, [{ kind: 'task', id: 'T9' }])), 'no task T9');
     assert.equal(error(waiting(TASK, [{ kind: 'task', id: 'T3' }])), 'T3 is already finished; nothing to wait on');
@@ -503,6 +506,8 @@ describe('RegisterPolicy.ask', () => {
     assert.equal(error(asking(PLANNED, 'bravo')), 'only the owner (alpha) sets the status of T1');
     assert.equal(error(policy.ask(PLANNED, 'alpha', ASK, { status: 'done' }, stateOf(PLANNED))), '--ask goes only with --status waiting or verifying');
     assert.equal(policy.ask(PLANNED, 'alpha', ASK, { status: 'verifying' }, stateOf(PLANNED)).ok, true, 'a verifying task asks for its proof');
+    const shipped = testTask({ status: 'verifying', startedAt: null, proof: 'the nightly run' });
+    assert.equal(policy.ask(shipped, 'alpha', ASK, { status: 'verifying' }, stateOf(shipped)).ok, true, 'one already verifying asks for its proof too');
     assert.equal(
       error(asking(testTask({ status: 'open' }))),
       'T1 has not started, so it does not wait: ask with teamrig add --owner bravo --title "Land the schema change", then plan T1 after that task (teamrig update T1 --after <its id>)',
@@ -558,6 +563,10 @@ describe('RegisterPolicy.update', () => {
     assert.equal(
       error(policy.update(first, 'alpha', { after: ['T3'] }, undefined, state)),
       '--after plans a task not started yet, and T1 is in-progress; a started task waits on another with --status waiting --waits task:T3',
+    );
+    assert.equal(
+      error(policy.update({ ...first, status: 'verifying' }, 'alpha', { after: ['T3'] }, undefined, state)),
+      '--after plans a task not started yet, and T1 is verifying; a started task waits on another with --status verifying --waits task:T3',
     );
     const started = testTask({ id: 'T4', status: 'waiting', startedAt: '2030-01-07T10:00:00.000Z' });
     assert.match(error(policy.update(started, 'alpha', { after: ['T3'] }, undefined, state)), /T4 is waiting; a started task waits on another/);
