@@ -659,7 +659,8 @@ export interface RefreshConfig {
    * own compaction (trigger `auto`) of its main conversation as long as the context, as Claude Code estimates it, is
    * under this many tokens: the /clear at the turn's end replaces the compaction. Past it a compaction goes through, so
    * a session never runs out of room (a prompt too long for the window is past it too); `/compact` and a subagent's own
-   * compaction are never stopped. 0: never stopped.
+   * compaction are never stopped. 0: never stopped. It also bounds the owner's open daily meeting, which holds the
+   * lead's refresh only under it (src/refresh/decide.ts `meetingHolds`); 0 holds it until the meeting ends.
    */
   readonly compactCeilingTokens: number;
   /**

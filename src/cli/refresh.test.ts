@@ -331,6 +331,44 @@ describe('runCli: context refresh', () => {
     assert.ok(fresh.includes(`You were refreshed mid-task; read your handover first: ${HANDOVER('alpha')}. Then carry on with its next steps.`), fresh);
   });
 
+  it("holds the lead's refresh while the owner's meeting is open, up to the room ceiling, and asks at the turn end after meeting end", async () => {
+    const meetingKit = async (): Promise<{ readonly kit: CliHarness; readonly stop: (tokens: number) => Promise<CliResult> }> => {
+      const kit = new CliHarness({ ...TEAM, roles: { lead: 'alpha' }, refresh: { tabTitle: false } });
+      assert.equal((await kit.run(['meeting', 'start', '--session', 'alpha'])).code, EXIT.ok);
+      const stop = async (tokens: number): Promise<CliResult> => {
+        await kit.files.write(TRANSCRIPT, transcript(tokens));
+        return kit.run(['hook', 'stop'], { ...AS_ALPHA, stdin: stopPayload() });
+      };
+      return { kit, stop };
+    };
+    const { kit, stop } = await meetingKit();
+    const mid = await kit.run(['hook', 'refresh-mid'], { ...AS_ALPHA, stdin: JSON.stringify({ session_id: CLAUDE_SESSION, cwd: APP, tokens: 150_000 }) });
+    assert.deepEqual(stopJson(mid), { kind: 'wait', nextAt: 120_000 }, 'no ask at a tool result; the mod looks again later');
+    assert.deepEqual(await stop(150_000), SILENT, 'no ask at the turn end');
+    assert.equal(await kit.files.read(STATE('alpha')), undefined);
+    assert.equal((await kit.run(['meeting', 'end', '--session', 'alpha'])).code, EXIT.ok);
+    assert.match(JSON.stringify(stopJson(await stop(150_000))), /"decision":"block","reason":"teamrig: your context is 150k \(refresh at 120k\)/, 'asked at once after it');
+
+    const ceiling = await meetingKit();
+    assert.match(JSON.stringify(stopJson(await ceiling.stop(185_000))), /"decision":"block","reason":"teamrig: your context is 185k/, 'at the ceiling it goes on');
+  });
+
+  it('holds the notice of a handover written in the meeting, and so its restart, until the meeting ends', async () => {
+    const kit = new CliHarness({ ...AUTO_RESTART_TEAM, roles: { lead: 'alpha' } });
+    const store = await handoverWritten(kit);
+    const processes = new FakeProcesses();
+    const env = { TEAMRIG_SESSION: 'alpha', CLAUDE_PROJECT_DIR: APP, TEAMRIG_LAUNCHED: 'alpha' };
+    const stop = (): Promise<CliResult> => kit.run(['hook', 'stop'], { env, stdin: stopPayload(true), sessionProcesses: UNDER_CLAUDE(), processes });
+    assert.equal((await kit.run(['meeting', 'start', '--session', 'alpha'])).code, EXIT.ok);
+    await kit.files.write(TRANSCRIPT, transcript(150_000));
+    assert.deepEqual(await stop(), SILENT);
+    assert.deepEqual([await store.restart('alpha'), processes.hidden.length], [undefined, 0], 'nothing armed');
+
+    assert.equal((await kit.run(['meeting', 'end', '--session', 'alpha'])).code, EXIT.ok);
+    assert.match(JSON.stringify(stopJson(await stop())), /starts it fresh once it has been idle 15 s/);
+    assert.equal((await store.restart('alpha'))?.phase, 'pending');
+  });
+
   it('records a boundary under the threshold and says nothing, and refuses --ready when nothing was asked', async () => {
     const kit = new CliHarness();
     await kit.files.write(TRANSCRIPT, transcript(100_000));

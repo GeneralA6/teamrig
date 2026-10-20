@@ -40,6 +40,8 @@ export interface StopFacts {
   readonly requestedBy: string | undefined;
   /** The context size; undefined when the transcript does not tell, which never asks for a refresh. */
   readonly tokens: number | undefined;
+  /** The session is in the owner's open daily meeting (src/meeting/state.ts `inMeeting`), which holds its refresh (`meetingHolds`). */
+  readonly meeting: boolean;
   /** Read only once a refresh, or the notice that its handover is written, is due; undefined before. */
   readonly due: DueFacts | undefined;
 }
@@ -68,6 +70,8 @@ export type NoticeDecision = Extract<StopDecision, { readonly kind: 'notice' }>;
 /** What the plugin's mod gives at a tool result of the main conversation, the context Claude Code last reported, and the due facts once a refresh is due. */
 export interface MidTurnFacts {
   readonly tokens: number;
+  /** The session is in the owner's open daily meeting, as at a turn end. */
+  readonly meeting: boolean;
   readonly due: DueFacts | undefined;
 }
 
@@ -97,6 +101,20 @@ const GO: CompactDecision = { kind: 'go' };
  * task end: never at every turn end.
  */
 export const REASK_SHARE = 0.2;
+
+/**
+ * The owner's open daily meeting holds the refresh of the session in it, the lead: no ask, no notice and so no
+ * restart, which would cut the meeting off, until the turn end after `meeting end` (or the meeting's lapse), which
+ * asks at once when the context is past the threshold. Up to `compactCeilingTokens` only: past it the refresh goes
+ * on even in the meeting, as Claude Code's own compaction does (`decideCompact`), so the session never runs out of
+ * room in it. Under it, only a handover asked for or written stops that compaction, so a session the meeting kept
+ * from being asked still compacts when Claude Code needs room. 0, which never stops a compaction, sets no ceiling;
+ * a size the transcript does not tell is held.
+ */
+export function meetingHolds(settings: Pick<RefreshSettings, 'compactCeilingTokens'>, meeting: boolean, tokens: number | undefined): boolean {
+  const ceiling = settings.compactCeilingTokens;
+  return meeting && (ceiling === 0 || tokens === undefined || tokens < ceiling);
+}
 
 /** How far a context grows past a refresh it went on from before it is asked again. */
 export function reaskGrowth(settings: Pick<RefreshSettings, 'contextTokens'>): number {
@@ -226,7 +244,8 @@ function handoverAsk(moment: AskMoment, cause: Cause, context: AskContext): stri
  * /clear) is asked again only once its context grew `reaskGrowth` past that ask, or at its next task end. Once
  * the handover is written it tells the user, once, that the session restarts by itself when it can, else that
  * it waits for /clear. While background work the session started still runs, a due refresh and the notice wait
- * for a later stop, since a fresh start would cut that work off. A stop that ends a turn a Stop hook continued
+ * for a later stop, since a fresh start would cut that work off; so do they while the owner's daily meeting the
+ * session is in is open (`meetingHolds`). A stop that ends a turn a Stop hook continued
  * never asks, so the kit never loops; the notice that the handover is written does show there, since that is
  * the turn that runs `refresh --ready`. A turn that ends after a tool result asked within it (`decideMidTurn`),
  * with no handover marked ready, is asked once more, as a due refresh. The facts are read cheapest first: the
@@ -237,12 +256,18 @@ export function decideStop(state: RefreshState | undefined, context: StopContext
     return NONE;
   }
   if (state?.phase === 'ready' && !state.noticed) {
-    const due = facts?.due;
-    if (due === undefined) {
+    if (facts === undefined) {
+      return MEASURE;
+    }
+    // A fresh start now would cut the open meeting off: the notice, and so the restart, waits for its end.
+    if (meetingHolds(context.settings, facts.meeting, facts.tokens)) {
+      return NONE;
+    }
+    if (facts.due === undefined) {
       return MEASURE;
     }
     // A fresh start now would cut the running work off: the notice waits for a stop after it ends.
-    return due.running > 0 ? NONE : noticeOf(state, context, context.canRestart);
+    return facts.due.running > 0 ? NONE : noticeOf(state, context, context.canRestart);
   }
   if (context.stopHookActive) {
     return NONE;
@@ -250,13 +275,18 @@ export function decideStop(state: RefreshState | undefined, context: StopContext
   if (facts === undefined) {
     return MEASURE;
   }
+  const held = meetingHolds(context.settings, facts.meeting, facts.tokens);
   if (state?.phase === 'asked' && state.midTurn) {
-    return pendingAsk(state, context, facts.due);
+    return held ? NONE : pendingAsk(state, context, facts.due);
   }
   const tokens = facts.tokens ?? null;
   const cause = causeOf(state, facts, context.settings);
   if (cause === undefined) {
     return state?.phase === 'boundary' ? { kind: 'write', state: { phase: 'idle', task: state.task, at: context.now, tokens, finished: state.finished } } : NONE;
+  }
+  // The open meeting holds the ask: a boundary stays unjudged, so the turn end after the meeting asks.
+  if (held) {
+    return NONE;
   }
   if (facts.due === undefined) {
     return MEASURE;
@@ -297,7 +327,8 @@ function pendingAsk(state: Extract<RefreshState, { readonly phase: 'asked' }>, c
  * `askAt` (the threshold, or well past an ask the session went on from), it asks for the handover within the
  * turn, so a long busy turn refreshes before Claude Code compacts it rather than after. Only the size asks here:
  * the lead's request and the task count stay with the turn's end. Background work still running holds the ask,
- * as at a turn end. `nextAt` tells the mod the context to look again at, so it calls the CLI only then.
+ * as at a turn end, and so does the open meeting the session is in (`meetingHolds`). `nextAt` tells the mod the
+ * context to look again at, so it calls the CLI only then; a held ask it looks at again a while later.
  */
 export function decideMidTurn(state: RefreshState | undefined, context: AskContext, facts: MidTurnFacts): MidTurnDecision {
   const { settings } = context;
@@ -305,7 +336,7 @@ export function decideMidTurn(state: RefreshState | undefined, context: AskConte
     return { kind: 'none', nextAt: null };
   }
   const nextAt = askAt(state, settings);
-  if (facts.tokens < nextAt) {
+  if (facts.tokens < nextAt || meetingHolds(settings, facts.meeting, facts.tokens)) {
     return { kind: 'none', nextAt };
   }
   if (facts.due === undefined) {
