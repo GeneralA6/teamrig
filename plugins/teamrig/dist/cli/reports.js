@@ -22,14 +22,17 @@ export const MAX_WAITING_ROWS = 5;
 const SUMMARY_STATUSES = ['in-progress', 'verifying', 'waiting', 'open', 'done', 'dropped'];
 /**
  * A report narrowed to what one session acts on, for `start`: the flags of the tasks it owns, of the skills
- * it fixes (only a task's owner sets its status), on itself as a hired session and a SCALE-OUT on its area. The
- * scope names the session, so the CHECK line says whose flags these are.
+ * it fixes (only a task's owner sets its status), on itself as a hired session and a SCALE-OUT on its area. A sub-lead
+ * also gets the flags of its group's tasks (`group`, empty for a session that leads no one), since it sets their work
+ * order (T782). The scope names the session and its group, so the CHECK line says whose flags these are.
  */
-export function ownCheck(report, owner) {
+export function ownCheck(report, owner, group) {
+    const owners = new Set([owner, ...group]);
+    const groupScope = group.length === 0 ? '' : `its group's tasks (${group.join(', ')}), `;
     return {
         ...report,
-        sections: report.sections.map((section) => ({ ...section, flags: section.flags.filter((flag) => flag.task.owner === owner) })),
-        scope: `${owner}'s tasks and skills, ${report.scope}`,
+        sections: report.sections.map((section) => ({ ...section, flags: section.flags.filter((flag) => owners.has(flag.task.owner)) })),
+        scope: `${owner}'s tasks and skills, ${groupScope}${report.scope}`,
         skills: report.skills.filter((flag) => flag.owner === owner),
         hires: report.hires.filter((flag) => flag.session === owner),
         decisions: report.decisions?.lead === owner ? report.decisions : undefined,
