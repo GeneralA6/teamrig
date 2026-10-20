@@ -11,6 +11,8 @@ export interface ToolUse {
   readonly path?: string;
   /** The skill a `Skill` call loads. */
   readonly skill?: string;
+  /** The address a `WebFetch` call reads. */
+  readonly url?: string;
   /** True for a call run in the background (`run_in_background`), whose end a task notification reports. */
   readonly background?: boolean;
 }
@@ -62,6 +64,8 @@ export interface PromptLine {
   readonly commands: readonly string[];
   /** For a task notification, the id of the background tool call it reports on (its `<tool-use-id>`), when it names one. */
   readonly answers?: string;
+  /** The task ids the prompt names (`T123`), each once in order; absent when it names none. */
+  readonly tasks?: readonly string[];
 }
 
 /** Claude Code compacted the session's context here. */
@@ -96,24 +100,35 @@ function toolUseOf(block: JsonRecord): ToolUse | undefined {
 export function toolUseFrom(id: string, name: string, input: JsonRecord | undefined): ToolUse {
   const path = input === undefined ? undefined : toolPathOf(input);
   const skill = name === SKILL_TOOL && input !== undefined ? stringField(input, 'skill') : undefined;
+  const url = name === WEB_FETCH_TOOL && input !== undefined ? stringField(input, 'url') : undefined;
   return {
     id,
     name,
     command: input === undefined ? undefined : stringField(input, 'command'),
     ...(path === undefined ? {} : { path }),
     ...(skill === undefined ? {} : { skill }),
+    ...(url === undefined ? {} : { url }),
     ...(input?.['run_in_background'] === true ? { background: true } : {}),
   };
 }
 
 /** The tool that loads a skill: its input's `skill` names it. */
 export const SKILL_TOOL = 'Skill';
+/** The tool that reads a web page: its input's `url` names it. */
+export const WEB_FETCH_TOOL = 'WebFetch';
 
 const COMMAND_NAME = /<command-name>\/?([^<\s]+)<\/command-name>/g;
+/** A register task id as a word: `T` and a number with no leading zero. */
+const TASK_MENTION = /\bT[1-9]\d*\b/g;
 
 /** The slash commands a prompt's text runs, without the slash, in order. */
 export function commandsIn(text: string): string[] {
   return Array.from(text.matchAll(COMMAND_NAME), (match) => match[1] ?? '').filter((name) => name !== '');
+}
+
+/** The task ids a prompt's text names, each once, in order. */
+export function tasksIn(text: string): string[] {
+  return [...new Set(text.match(TASK_MENTION) ?? [])];
 }
 
 /** The file or folder a tool's input names: `file_path`, `notebook_path` or a search's `path`. */
@@ -215,7 +230,8 @@ function promptOf(entry: JsonRecord, message: JsonRecord, at: number | undefined
   const text = promptText(message);
   const trigger = triggerOf(entry, message);
   const answers = trigger === 'notification' ? TOOL_USE_ID.exec(text)?.[1] : undefined;
-  return { kind: 'prompt', at, trigger, commands: commandsIn(text), ...(answers === undefined ? {} : { answers }) };
+  const tasks = tasksIn(text);
+  return { kind: 'prompt', at, trigger, commands: commandsIn(text), ...(answers === undefined ? {} : { answers }), ...(tasks.length === 0 ? {} : { tasks }) };
 }
 
 /** A compaction's boundary line; undefined for any other entry. */

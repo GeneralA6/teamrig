@@ -37,14 +37,21 @@ function isTestKind(kind: ToolKind): boolean {
   return kind === 'testFull' || kind === 'testTargeted' || kind === 'editTest';
 }
 
-/** The main-thread calls since the last prompt, joined by reply. */
-function turnCalls(text: string, cut: boolean): TurnCall[] {
+/** The current turn: its main-thread calls since the last prompt, joined by reply, and the task ids that prompt names. */
+interface Turn {
+  readonly calls: TurnCall[];
+  readonly tasks: readonly string[];
+}
+
+function turnOf(text: string, cut: boolean): Turn {
   const lines = text.split('\n');
   let calls: TurnCall[] = [];
+  let tasks: readonly string[] = [];
   for (const raw of cut ? lines.slice(1) : lines) {
     const line = parseTranscriptLine(raw);
     if (line?.kind === 'prompt') {
       calls = [];
+      tasks = line.tasks ?? [];
     } else if (line?.kind === 'call' && line.mainThread) {
       const last = calls.at(-1);
       if (last !== undefined && line.key !== undefined && last.key === line.key) {
@@ -54,12 +61,12 @@ function turnCalls(text: string, cut: boolean): TurnCall[] {
       }
     }
   }
-  return calls;
+  return { calls, tasks };
 }
 
 /** The turn's calls, with `current` as the last one when the transcript has not got it yet. */
 function callsWith(text: string, cut: boolean, current: ToolUse | undefined): TurnCall[] {
-  const calls = turnCalls(text, cut);
+  const { calls } = turnOf(text, cut);
   const written = current === undefined || calls.some((call) => call.tools.some((tool) => tool.id === current.id));
   if (!written) {
     calls.push({ key: undefined, tools: [current], context: calls.at(-1)?.context ?? 0 });
@@ -70,6 +77,11 @@ function callsWith(text: string, cut: boolean, current: ToolUse | undefined): Tu
 /** The main thread's tool calls since the last prompt, `current` included. */
 export function turnToolsOf(text: string, cut: boolean, current: ToolUse | undefined): ToolUse[] {
   return callsWith(text, cut, current).flatMap((call) => call.tools);
+}
+
+/** The task ids the current turn's prompt names; none when the text starts inside the turn, past its prompt. */
+export function turnTasksOf(text: string, cut: boolean): readonly string[] {
+  return turnOf(text, cut).tasks;
 }
 
 /**

@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseObject } from '../core/jsonl.ts';
 import { compactLine, promptLine, replyLine, resultsLine, systemLine } from '../testing/transcript-lines.ts';
-import { callOf, parseTranscriptLine } from './line.ts';
+import { callOf, parseTranscriptLine, tasksIn } from './line.ts';
 
 const AT = '2026-03-02T10:00:00.000Z';
 
@@ -122,6 +122,27 @@ describe('parseTranscriptLine', () => {
     assert.deepEqual(call?.kind === 'call' ? call.tools.map((tool) => tool.background) : undefined, [undefined, true, undefined]);
     const prompt = parseTranscriptLine(promptLine(AT, '<command-message>x</command-message>\n<command-name>/alpha-check</command-name> <command-name>clear</command-name>'));
     assert.deepEqual(prompt?.kind === 'prompt' ? prompt.commands : undefined, ['alpha-check', 'clear']);
+  });
+
+  it('keeps the address a WebFetch call reads, and the task ids a prompt names (T736)', () => {
+    const reply = JSON.stringify({
+      isSidechain: false,
+      type: 'assistant',
+      timestamp: AT,
+      message: {
+        id: 'm',
+        usage: { input_tokens: 1, output_tokens: 1 },
+        content: [
+          { type: 'tool_use', id: 'w', name: 'WebFetch', input: { url: 'https://vendor.example/terms', prompt: 'x' } },
+          { type: 'tool_use', id: 'b', name: 'Bash', input: { command: 'ls', url: 'https://not.read/' } },
+        ],
+      },
+    });
+    const call = parseTranscriptLine(reply);
+    assert.deepEqual(call?.kind === 'call' ? call.tools.map((tool) => tool.url) : undefined, ['https://vendor.example/terms', undefined]);
+    const prompt = parseTranscriptLine(promptLine(AT, 'T12 and T7, then T12 again; not T0, T05 or AT5'));
+    assert.deepEqual(prompt?.kind === 'prompt' ? prompt.tasks : undefined, ['T12', 'T7']);
+    assert.equal(tasksIn('no task here').length, 0);
   });
 
   it('names the background call a task notification reports on, and none for a prompt that quotes one', () => {
