@@ -31,6 +31,8 @@ const EXPECTED = {
   'meeting start': 'write',
   'meeting agenda': 'write',
   'meeting end': 'write',
+  decisions: 'read',
+  'decisions asked': 'write',
   open: 'write',
   launch: 'internal',
   restore: 'read',
