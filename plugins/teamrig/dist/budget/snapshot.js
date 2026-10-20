@@ -1,6 +1,7 @@
 import { basename, join } from 'node:path';
 import { isRecord, recordField, stringField } from "../core/guards.js";
 import { parseObject } from "../core/jsonl.js";
+import { isTemporaryName } from "../core/files.js";
 import { MS_PER_DAY, MS_PER_HOUR } from "../core/time.js";
 import { CLAUDE_SESSION_ID } from "../inbox/marks.js";
 const MS_PER_SECOND = 1000;
@@ -233,18 +234,23 @@ export const SNAPSHOT_DAYS_KEPT = 8;
 export const SNAPSHOT_PRUNE_EVERY_MS = MS_PER_HOUR;
 /** The file in a snapshot folder that holds when it was last swept, ISO 8601 UTC; not a `.json` name, so no reader takes it for a snapshot. */
 export const SNAPSHOT_PRUNED_FILE = '.pruned';
+/**
+ * How long a write's temporary sibling stays in the folder: a write holds one for milliseconds, so one an hour old
+ * was left by a write stopped before its rename, and no write will rename it.
+ */
+export const SNAPSHOT_TEMPORARY_KEPT_MS = MS_PER_HOUR;
 /** Whether the folder was last swept within the hour before `now`, as its marker says; a missing, damaged or future time is not. */
 function sweptRecently(marker, now) {
     const at = marker === undefined ? Number.NaN : Date.parse(marker.trim());
     return at <= now && now - at < SNAPSHOT_PRUNE_EVERY_MS;
 }
 /**
- * Removes the folder's snapshots written more than `SNAPSHOT_DAYS_KEPT` days before `now`, so the folder
- * holds the sessions of the last 8 days, not every session ever run, and every reader's walk of it
- * stays bounded. It sweeps at most once an hour per folder, claimed by stamping the marker file first
- * (two status lines that sweep together remove the same files, which is harmless); in between it reads
- * only the marker. Files that are not snapshots, damaged ones among them, are left alone. Returns how
- * many snapshots it removed: 0 when no sweep was due.
+ * Removes the folder's snapshots written more than `SNAPSHOT_DAYS_KEPT` days before `now` and the temporary
+ * siblings its writes left (`SNAPSHOT_TEMPORARY_KEPT_MS`), so the folder holds the sessions of the last 8 days,
+ * not every session ever run, and every reader's walk of it stays bounded. It sweeps at most once an hour per
+ * folder, claimed by stamping the marker file first (two status lines that sweep together remove the same files,
+ * which is harmless); in between it reads only the marker. Other files, damaged snapshots among them, are left
+ * alone. Returns how many files it removed: 0 when no sweep was due.
  */
 export async function pruneSnapshots(files, dir, now) {
     const marker = join(dir, SNAPSHOT_PRUNED_FILE);
@@ -252,10 +258,26 @@ export async function pruneSnapshots(files, dir, now) {
         return 0;
     }
     await files.write(marker, new Date(now).toISOString());
+    return (await removeOldSnapshots(files, dir, now)) + (await removeLeftTemporaries(files, dir, now));
+}
+/** Removes the folder's snapshots written more than `SNAPSHOT_DAYS_KEPT` days before `now`; returns how many. */
+async function removeOldSnapshots(files, dir, now) {
     const oldest = now - SNAPSHOT_DAYS_KEPT * MS_PER_DAY;
     let removed = 0;
     for (const { path, snapshot } of await readSnapshotFiles(files, dir)) {
         if (Date.parse(snapshot.ts) < oldest && (await files.remove(path))) {
+            removed += 1;
+        }
+    }
+    return removed;
+}
+/** Removes the folder's temporary siblings last changed more than `SNAPSHOT_TEMPORARY_KEPT_MS` before `now`; returns how many. */
+async function removeLeftTemporaries(files, dir, now) {
+    let removed = 0;
+    for (const name of (await files.list(dir)).filter(isTemporaryName)) {
+        const path = join(dir, name);
+        const changedAt = await files.modifiedAt(path);
+        if (changedAt !== undefined && now - changedAt > SNAPSHOT_TEMPORARY_KEPT_MS && (await files.remove(path))) {
             removed += 1;
         }
     }
