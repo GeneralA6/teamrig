@@ -498,11 +498,15 @@ function sameWaits(a, b) {
 }
 /**
  * A task reason is for a task already started (in progress, or waiting after it started) that found another
- * task must finish first: one not started stays open with a plan dependency instead. It never closes a loop.
+ * task must finish first: one not started stays open with a plan dependency instead, and a finished one reopens
+ * first. It never closes a loop.
  */
 function taskWaitProblem(task, id, state) {
     if (id === task.id) {
         return `${task.id} cannot wait on itself`;
+    }
+    if (task.status === 'done' || task.status === 'dropped') {
+        return `${task.id} is ${task.status}, so it waits on nothing: reopen it (teamrig set ${task.id} --status in-progress), then set it waiting on ${id}`;
     }
     if (!hasStarted(task)) {
         return `${task.id} has not started, so it does not wait on ${id}: it stays ${task.status}, planned after it (teamrig update ${task.id} --after ${id})`;
