@@ -1,6 +1,6 @@
 import { isRecord } from "../core/guards.js";
 import { parseUtcDeadline } from "../core/time.js";
-import { isTaskStatus, LEGACY_WAITING_STATUS, TASK_ID } from "./model.js";
+import { isTaskStatus, LEGACY_WAITING_STATUS, TASK_ID, WAIT_STATUSES } from "./model.js";
 import { parseCard } from "./card.js";
 import { parseWaits } from "./waits.js";
 /**
@@ -11,7 +11,8 @@ import { parseWaits } from "./waits.js";
  * `waits`, which replaced `blocked`: an older reader ignores the new fields and skips a `waiting` line as
  * a newer teamrig's, and a `blocked` line reads here as `waiting` with no reasons. It also gained a
  * `verifying` status's `proof`, a task's `description` (0.44.0) and its `size` (0.47.0), and a `waiting` status's
- * decision `card` (0.79.0), which an older reader ignores: each reads there as none, and an older teamrig's
+ * decision `card` (0.79.0), and the same `waits` and `card` on a `verifying` line for what its proof waits for
+ * (0.109.0), which an older reader ignores: each reads there as none, and an older teamrig's
  * `compact` drops it from the snapshot it rewrites (the archive keeps the lines as written).
  * Parsing checks the FORMAT only (any positive priority, any goal string): team policy is applied
  * on write, so changing the config never erases history.
@@ -65,11 +66,11 @@ export function parseEvent(line) {
             if (problem !== undefined) {
                 return unreadable(problem);
             }
-            const waits = status === 'waiting' && record['waits'] !== undefined ? parseWaits(record['waits']) : undefined;
+            const waits = WAIT_STATUSES.includes(status) && record['waits'] !== undefined ? parseWaits(record['waits']) : undefined;
             if (typeof waits === 'string') {
                 return unreadable(waits);
             }
-            const card = status === 'waiting' ? parseCard(record['card']) : undefined;
+            const card = WAIT_STATUSES.includes(status) ? parseCard(record['card']) : undefined;
             if (typeof card === 'string') {
                 return unreadable(card);
             }
