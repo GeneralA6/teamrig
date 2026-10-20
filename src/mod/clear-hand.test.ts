@@ -172,7 +172,7 @@ describe('ClearHand', () => {
     host.live = 2;
     host.ask();
     assert.deepEqual(await hand.tick(), { kind: 'held', why: '2 agents of this session still live' });
-    assert.deepEqual(host.claims(), [{ args: ['hook', 'clear-claim', '--hold'], stdin: JSON.stringify({ session_id: SESSION }) }]);
+    assert.deepEqual(host.claims(), [{ args: ['hook', 'clear-claim', '--hold', '--why', '2 agents of this session still live'], stdin: JSON.stringify({ session_id: SESSION }) }]);
     assert.equal(host.clears, 0);
     assert.deepEqual(await hand.tick(), { kind: 'no ask' }, 'the held ask is not held twice');
     host.live = 1;
@@ -184,8 +184,8 @@ describe('ClearHand', () => {
     assert.deepEqual(
       host.claims().map((call) => call.args),
       [
-        ['hook', 'clear-claim', '--hold'],
-        ['hook', 'clear-claim', '--hold'],
+        ['hook', 'clear-claim', '--hold', '--why', '2 agents of this session still live'],
+        ['hook', 'clear-claim', '--hold', '--why', '1 agent of this session still live'],
         ['hook', 'clear-claim'],
       ],
     );
@@ -202,7 +202,14 @@ describe('ClearHand', () => {
     host.ask(NEXT_ASK);
     assert.deepEqual(await hand.tick(), { kind: 'held', why: "Claude Code would not list this session's agents: timed out" });
     assert.equal(host.clears, 0);
-    assert.equal(host.claims().every((call) => call.args.includes('--hold')), true);
+    assert.deepEqual(
+      host.claims().map((call) => call.args.slice(2)),
+      [
+        ['--hold', '--why', "Claude Code would not list this session's agents: agent.list is not a function"],
+        ['--hold', '--why', "Claude Code would not list this session's agents: timed out"],
+      ],
+      'each hold names its reason, which the restart names if it gives up',
+    );
   });
 
   it('runs no /clear when the hold is declined, and passes on why', async () => {
@@ -305,7 +312,7 @@ describe('ClearHand: the person at the tab', () => {
     assert.equal(hand.band(), undefined);
     assert.deepEqual(
       host.claims().map((call) => call.args.slice(2)),
-      [['--hold'], ['--hold'], []],
+      [['--hold', '--why', 'the band counts down: 20 s left'], ['--hold', '--why', 'the band counts down: 5 s left'], []],
       'each ask answered at once: the runner ends a tab that leaves one',
     );
   });

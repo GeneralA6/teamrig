@@ -546,13 +546,15 @@ Claude Code's own command API. In each interactive tab it asks `teamrig hook cle
 then looks each second for an ask for its tab's Claude Code session. It tracks turns, and leaves an ask that comes
 while one runs: the restart takes that one back and asks again once the session is quiet. Otherwise it asks Claude Code
 for the session's agents (`$.agent.list()`). While one is live (not completed, failed or killed; an idle teammate
-counts), or Claude Code will not list them, it runs `teamrig hook clear-claim --hold` and no `/clear`: the restart
-ends nothing, waits for quiet and asks again, and gives up an hour after it started. Else it runs
+counts), or Claude Code will not list them, it runs `teamrig hook clear-claim --hold --why <reason>` and no
+`/clear`: the restart ends nothing, waits for quiet and asks again, and gives up an hour after it started, naming
+the last hold's reason in its log row and your inbox line (`it stayed busy for 60 minutes (its tab last held the
+/clear: 1 agent of this session still live)`). Else it runs
 `teamrig hook clear-claim` and, on `taken`, runs `/clear` the way you would. The `/clear` then runs the
 `SessionStart` hooks above, so `hook refresh-wake` starts your first turn at your handover. A Claude Code that does
 not load mods leaves the ask unclaimed, and the restart ends and restarts the session instead.
 
-Before it claims, the mod holds the `/clear` for the person at the tab, with `--hold`, so the restart asks again
+Before it claims, the mod holds the `/clear` for the person at the tab, with `--hold` and its reason, so the restart asks again
 `refresh.restartDelaySeconds` later. It holds while the prompt box holds a draft, or Claude Code will not read it.
 It holds for `refresh.holdAfterActivityMinutes` (5) after the person's last key in the prompt box or prompt, typed or
 sent through Remote Control; a background task's prompt does not count. It holds for 10 minutes after they press

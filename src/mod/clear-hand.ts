@@ -5,9 +5,10 @@
  * that ask each tick. While a turn runs it leaves the ask (`busy`). Otherwise it asks Claude Code for the
  * session's agents (`$.agent.list()`): while one is live (any status but completed, failed or killed, an
  * idle teammate included), or when the list fails, it answers `held` through the CLI (`hook clear-claim
- * --hold`) and runs no /clear, so the runner waits and asks again instead of ending the process, which
- * would take the helper with it. Else it claims the ask through the CLI (`hook clear-claim`; both check
- * that the restart is still pending) and on a claim runs /clear the way the person would. Claude Code then
+ * --hold --why <reason>`) and runs no /clear, so the runner waits and asks again instead of ending the
+ * process, which would take the helper with it; the runner names the last reason if it gives up. Else it
+ * claims the ask through the CLI (`hook clear-claim`; both check that the restart is still pending) and on
+ * a claim runs /clear the way the person would. Claude Code then
  * runs the SessionStart `clear` hooks that read the handover and wake the session.
  *
  * The hand also holds the /clear for the person (the ask's `PersonHold`, from the team's config): while the
@@ -311,7 +312,7 @@ export class ClearHand {
     const stdin = JSON.stringify({ session_id: claudeSession });
     const held = await this.heldBy(parseHandAsk(text));
     if (held !== undefined) {
-      const hold = await this.host.cli(['hook', 'clear-claim', `--${HOLD_SWITCH}`], stdin);
+      const hold = await this.host.cli(['hook', 'clear-claim', `--${HOLD_SWITCH}`, `--${WHY_FLAG}`, held], stdin);
       if (answered(hold, CLAIM_HELD)) {
         return { kind: 'held', why: held };
       }
