@@ -601,7 +601,7 @@ While you have `verifying` tasks, a last line names them, oldest first, with the
 ### teamrig inbox status
 
 Prints how many unread lines each inbox has, without marking anything read. Lines the prompt hook already showed
-the session stay unread until `inbox read`; since 0.112.0 the line says how many of them it showed.
+the session stay unread until `inbox read`; since 0.126.0 the line says how many of them it showed.
 
 Flags:
 
@@ -1112,7 +1112,7 @@ then the `cold-send` hook holds every message to the lead but one starting `CRIT
 Each list shows 10 rows at most, then the command that lists them all. A meeting left open stops holding messages
 4 hours after it started. Started again while open, it tells no one again and prints the agenda. Only the lead runs
 it. A start counts as asking the owner the decisions it lists: `teamrig decisions` then holds only the waits set
-since and the asked ones past due (since 0.112.0).
+since and the asked ones past due (since 0.126.0).
 
 Flags:
 
@@ -1201,7 +1201,7 @@ With nothing recorded it says so: a decision the register lacks reaches no one.
 
 ### teamrig decisions
 
-The owner's decisions the lead asks in batches (since 0.112.0), so the owner is not interrupted once per wait: the
+The owner's decisions the lead asks in batches (since 0.126.0), so the owner is not interrupted once per wait: the
 tasks waiting on the owner's decision or approval not yet asked, then the asked ones past their due date, each
 with its card facts as the meeting agenda prints them. A wait counts as asked once the lead runs `decisions asked`
 or starts the daily meeting after it was set. The head line says whether a batch is due now and why, else when
