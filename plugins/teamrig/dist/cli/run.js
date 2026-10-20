@@ -134,7 +134,7 @@ const COMMANDS = {
     'statusline install': { effect: 'write', flags: [], switches: ['yes'], load: async () => (await statuslineCommands()).install },
     'statusline uninstall': { effect: 'write', flags: [], switches: ['yes'], load: async () => (await statuslineCommands()).uninstall },
     'config validate': { effect: 'read', flags: [], load: async () => (await configCommands()).validate },
-    'config migrate': { effect: 'write', flags: [], load: async () => (await configCommands()).migrate },
+    'config migrate': { effect: 'write', flags: [], switches: ['yes'], load: async () => (await configCommands()).migrate },
     'commits check': { effect: 'read', flags: ['base', 'tip'], load: async () => (await commitsCommands()).check },
     'worktree remove': { effect: 'write', flags: ['base'], switches: ['delete-branch', 'dry-run'], load: async () => (await worktreeCommands()).remove },
     test: { effect: 'write', flags: ['session'], rest: true, load: async () => (await testCommand()).test },
@@ -331,7 +331,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   statusline install [--yes]   makes teamrig statusline Claude Code's status line, in front of the one
       already there; without --yes it shows the change and writes nothing
   statusline uninstall [--yes] takes it back out: the status line before it returns
-  config validate | config migrate
+  config validate | config migrate [--yes]   migrate shows an older config rewritten in this format and
+      the first teamrig that reads it, as a tab on an older one refuses every write after; --yes writes it
   commits check --base <ref> [--tip <ref>]   commits in base..tip (default HEAD) over the size rule
       with no reason line; any is REFUSED, for an integrate script or CI
   worktree remove <path> [--delete-branch [--base <ref>]] [--dry-run]   removes a linked git worktree:
