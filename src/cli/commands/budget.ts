@@ -340,7 +340,7 @@ function statusLineView(git: Pick<RepoState, 'branch' | 'head'>, dir: string, sh
   };
 }
 
-/** Prunes the snapshot folder's old snapshots (`pruneSnapshots`); a failure is told on stderr, never breaking the status bar. */
+/** Prunes the snapshot folder's old snapshots and left temporaries (`pruneSnapshots`); a failure is told on stderr, never breaking the status bar. */
 async function pruneQuietly(runtime: CliRuntime, dir: string): Promise<void> {
   try {
     await pruneSnapshots(runtime.files, dir, runtime.clock.now());

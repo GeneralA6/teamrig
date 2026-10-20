@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Files } from '../core/files.ts';
 import { MS_PER_DAY } from '../core/time.ts';
+import { FakeClock } from '../testing/fake-clock.ts';
 import { MemoryFiles, normalisePath } from '../testing/memory-files.ts';
 import {
   datedSnapshot,
@@ -12,6 +13,7 @@ import {
   SNAPSHOT_DAYS_KEPT,
   SNAPSHOT_PRUNE_EVERY_MS,
   SNAPSHOT_PRUNED_FILE,
+  SNAPSHOT_TEMPORARY_KEPT_MS,
   snapshotOfStatus,
   statusLineText,
   weekUseOf,
@@ -264,7 +266,7 @@ describe('readSnapshots', () => {
   });
 });
 
-type SweptFiles = Pick<Files, 'list' | 'read' | 'write' | 'remove'>;
+type SweptFiles = Pick<Files, 'list' | 'read' | 'write' | 'remove' | 'modifiedAt'>;
 
 /** A folder whose lists and reads are counted, to see what a sweep walks. */
 class CountedFiles implements SweptFiles {
@@ -292,6 +294,10 @@ class CountedFiles implements SweptFiles {
 
   async remove(path: string): Promise<boolean> {
     return this.inner.remove(path);
+  }
+
+  async modifiedAt(path: string): Promise<number | undefined> {
+    return this.inner.modifiedAt(path);
   }
 }
 
@@ -351,6 +357,18 @@ describe('pruneSnapshots', () => {
     assert.equal(files.get(MARKER), new Date(NOW).toISOString());
   });
 
+  it("removes a write's temporary siblings left over an hour, and keeps a newer one, which may be a write in flight", async () => {
+    const clock = new FakeClock(NOW - SNAPSHOT_TEMPORARY_KEPT_MS - 1);
+    const files = new MemoryFiles(
+      { [`/live/${OTHER}.json.4242.tmp`]: '', [`/live/${THIRD}.json.4242.7.tmp`]: '{"ts":', [`${MARKER}.4242.8.tmp`]: '', '/live/notes.tmp': 'kept' },
+      clock,
+    );
+    clock.advance(1);
+    await files.write(`/live/${SID}.json.5151.1.tmp`, '');
+    assert.equal(await pruneSnapshots(files, '/live', NOW), 3);
+    assert.deepEqual(files.paths(), [MARKER, '/live/notes.tmp', `/live/${SID}.json.5151.1.tmp`].sort());
+  });
+
   it('sweeps when the marker is damaged or dated after now, as after a clock set back', async () => {
     for (const marker of ['not a time', new Date(NOW + 1).toISOString()]) {
       const files = folder();
@@ -366,6 +384,7 @@ describe('pruneSnapshots', () => {
       read: (path) => files.read(path),
       write: (path, text) => files.write(path, text),
       remove: async (path) => (await files.remove(path)) && files.remove(path),
+      modifiedAt: (path) => files.modifiedAt(path),
     };
     assert.equal(await pruneSnapshots(raced, '/live', NOW), 0);
     assert.equal(files.get(`/live/${THIRD}.json`), undefined);
