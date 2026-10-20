@@ -13,6 +13,7 @@ they all stay silent, and only `hook restore-track` still records the session ([
 | `PreToolUse` on `Bash` and `PowerShell` | `hook push-guard` | Asks before a push to a protected branch; refuses a force-push or delete of one, and a git command run without the repository's hooks ([the commit guard](#before-a-shell-command-the-commit-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook package-guard` | Refuses a package runner that would fetch and run a package outside the project's lockfile, an install of a version the registry does not vouch for, and an `npx --no <bin>` that hands the bin's flag to npm ([the package guard](#before-a-shell-command-the-package-guard)) |
 | `PreToolUse` on `Bash`, `PowerShell`, `Read` and `Grep` | `hook secret-guard` | Refuses a call that would print a secret file, a secret variable, the whole environment or a Kubernetes secret's data into the conversation ([the secret guard](#before-a-shell-command-or-a-read-the-secret-guard)) |
+| `PreToolUse` on `Bash` and `PowerShell` | `hook exec-guard` | Refuses a privileged command's review run as another session or the owner, and any `exec` call through a client changed after its build ([the exec guard](#before-a-shell-command-the-exec-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook readonly-allow` | With `readonlyShell.enabled`, lets a line whose every command provably only reads run without a permission prompt ([the read-only allow](#before-a-shell-command-the-read-only-allow)) |
 | `PreToolUse` on `AskUserQuestion` | `hook picker-guard` | With `pickerGuard.enabled`, refuses the question picker to every session and helper, and to the lead outside the owner's daily meeting, with the reason to decide it if it is the session's own, else record it on its task and go on ([the picker guard](#before-a-question-the-picker-guard)) |
 | `PermissionRequest` | `hook prompt-refuse` | With `prompts.hookAsks: refuse`, refuses each permission prompt Claude Code is about to raise but the question picker's and plan mode's exit, with the reason to record the step for the owner and go on ([asks off](#asks-off-a-refusal-instead-of-a-prompt)) |
@@ -344,6 +345,34 @@ defaults name a store's URL by its kind, never by its product: a team adds its o
   (`cat $(ls .env*)`, `Get-Content (Join-Path ~ .npmrc)`);
 - a secret file inside a folder a search walks (`grep -r x .`, a Grep over a folder with no glob);
 - a script or program the line starts (`node print-env.js`), `docker inspect`, or `docker run -e`.
+
+## Before a shell command: the exec guard
+
+A [privileged command](commands.md#privileged-commands) runs only after a reviewer approves it, and the CLI takes
+the reviewer from `--session` as given, while one allow rule lets every `teamrig` command run unasked. Before Claude
+runs a Bash or PowerShell call, `hook exec-guard` reads it (a shell line as the push guard does) and finds each
+`exec` command, run as `teamrig` or as `node <plugin>/dist/cli/main.js`. It refuses:
+
+- **a review as another**: `exec approve`, `refuse` or `escalate` that names no `--session`, names it twice, names
+  a session the team does not have, or one that is not the tab's own. `--session` wins over `$TEAMRIG_SESSION` in
+  the CLI, so a variable set on the line changes nothing, and a tab bound to no session of the team reviews nothing.
+- **a review as the owner** (`register.ownerSource`): the owner reviews in their own terminal, or types
+  `/teamrig exec approve R<n> --session owner` in a tab, which [the mod](#the-mod-the-teamrig-command) runs with no
+  tool call.
+- **a word known only when the line runs**: a variable or a substitution as the command word of a `teamrig` call,
+  or anywhere in a review, since the guard cannot tell what it runs, or as whom.
+- **a changed client**: any `exec` command while the installed plugin's files (`bin`, `dist`, `hooks`)
+  differ from the SHA-256 list its build wrote (`dist/integrity.json`), or that list is missing, since an approved
+  command runs inside that client. The reason names up to five changed files; reinstall the plugin.
+
+It always refuses and never asks; no config key turns it off. The guard reads only the call, so it cannot see:
+
+- a line that starts teamrig through a variable or a script (`$T exec approve ...`): no allow rule matches such a
+  line, so Claude Code's own permission flow (its prompt, or auto mode's classifier) decides;
+- which client a line starts: it checks its own install, not another `teamrig` on the PATH or a checkout's
+  `node src/cli/main.ts exec run`;
+- a change made to the list too: the list sits beside the code, so the check stops a slip that edits the installed
+  files, not a session set on rewriting both.
 
 ## Before a shell command: the read-only allow
 
@@ -832,6 +861,10 @@ read-only allow lets a call skip the prompt, and only a shell line it proves onl
   `packageGuard.adHocRunners` or `packageGuard.installs` is `ask` or `allow`.
 - **The secret guard** refuses a call that would print a secret on its own, whatever the mode, unless
   `secretGuard.secretReads` is `ask` or `allow`.
+- **The exec guard** refuses a privileged command's review run as another session or the owner, and any
+  `exec` call through a changed client, on its own, whatever the mode, so `Bash(teamrig:*)` stays safe for
+  `exec` too. A team that wants each review asked as well allows the rest by name (`Bash(teamrig exec request:*)`,
+  `dry-run`, `status`, `run`) instead of the one rule.
 - **The read-only allow** (`readonlyShell.enabled`) lets a shell line that only reads run with no prompt in default
   mode too; it never asks or refuses, so in a mode that already allows the line it changes nothing.
 - **The picker guard** (`pickerGuard.enabled`) refuses the question picker to every session and helper, and to the
