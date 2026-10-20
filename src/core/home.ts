@@ -158,6 +158,10 @@ export interface TeamPaths {
   readonly githubSync: string;
   /** Held while a hook claims the next automatic sync or a sync records its finish. */
   readonly githubSyncLock: string;
+  /** The hookless-tab check's last run and the tabs it named (restore/hookless.ts). */
+  readonly hookless: string;
+  /** Held while a hook runs the hookless-tab check. */
+  readonly hooklessLock: string;
   /** What the wake check kept for each session (src/wake/), `<id>.json` each, and its lock, `<id>.lock`. */
   readonly wake: string;
   /** Every wake and every wake Claude Code dropped, with its cost, an append-only log. */
@@ -235,6 +239,8 @@ export function teamPaths(kitHome: string, team: string, userHome: string, overr
     logs: join(state, 'logs'),
     githubSync: join(state, 'github-sync.json'),
     githubSyncLock: join(state, 'github-sync.lock'),
+    hookless: join(state, 'hookless.json'),
+    hooklessLock: join(state, 'hookless.lock'),
     wake: join(state, 'wake'),
     wakeLog: join(state, 'wakes.jsonl'),
     promptAnswers: join(state, 'prompt-answers.jsonl'),

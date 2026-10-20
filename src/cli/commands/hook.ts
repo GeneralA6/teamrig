@@ -64,6 +64,7 @@ import { droppedEditReasonOf } from './hook-dropped-edit.ts';
 import { meetingHold } from './hook-meeting.ts';
 import { armRestart, restartTargetOf } from './hook-restart.ts';
 import { helperContextOf } from './hook-helper-start.ts';
+import { checkHooklessTabs } from './hook-hookless.ts';
 import { dueFactsAt, inMeetingNow } from './hook-refresh-mod.ts';
 import { recordSessionStart } from './hook-session-record.ts';
 import { envSession, hookScopeOf, leadPathsOf, parseJson, sessionScopeOf, sessionTeam, startSessionOf, teamScopeOf, teamSessionOf, type SessionScope } from './hook-input.ts';
@@ -787,8 +788,9 @@ async function stopOutputOf(runtime: CliRuntime, payload: JsonRecord): Promise<s
   const budget = await stopBudgetLines(runtime, scope, stringField(payload, 'transcript_path')).catch((): readonly string[] => []);
   const verify = await verifyByLinesOf(runtime, scope.kit.paths, scope.id, teamZone(scope.config, runtime)).catch((): readonly string[] => []);
   await startAutoSync(runtime, scope.kit, scope.config).catch(() => undefined);
+  const hookless = await checkHooklessTabs(runtime, scope.kit, scope.config).catch((): readonly string[] => []);
   const lead = await leadStopLines(runtime, scope, stringField(payload, 'transcript_path')).catch((): readonly string[] => []);
-  const lines = [...notices, ...budget, ...verify, ...lead];
+  const lines = [...notices, ...budget, ...verify, ...lead, ...hookless];
   const ask = await askBlockOf(runtime, scope, payload, decision).catch((): string | undefined => undefined);
   return ask === undefined ? stopOutput(decision, lines, await stopTabTitleOf(runtime, scope.config, payload, decision)) : blockOutput(ask, lines);
 }
@@ -803,7 +805,8 @@ async function stopOutputOf(runtime: CliRuntime, payload: JsonRecord): Promise<s
  * hired session whose last open task closed, once, to write its handover and retire; after a `set` to waiting it sends the
  * session, once, to its work it can start that does not come after the waiting task (keep-working.ts),
  * never in quiet hours or past its daily budget. Once per `github.everyMinutes` for the whole
- * team it starts `gh sync --auto` hidden in the background (gh-auto.ts). With tab status on, it also sets the
+ * team it starts `gh sync --auto` hidden in the background (gh-auto.ts), and every 10 minutes it tells the lead of
+ * a team tab that runs without its hooks (hook-hookless.ts). With tab status on, it also sets the
  * tab's title to the ready circle, or the working one while a helper runs, in any tab of the team (hook-tab-status.ts).
  * Each team session's reply is logged for the task pane (hook-turn-log.ts).
  * A turn with nothing to say reads only small files and the transcript's tail (and, at the first stop of a UTC day,

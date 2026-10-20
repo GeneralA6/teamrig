@@ -22,7 +22,7 @@ they all stay silent, and only `hook restore-track` and `hook tool-end` still re
 | `PostToolUse` on reads, edits and shell calls | `hook loop-nudge` | Asks the model once to batch when a turn makes [single-step calls in a row](#after-a-tool-call-the-loop-nudge) |
 | `PreToolUse` on `Agent` and `Task` | `hook helper-gate` | Restates rule 8's helper default at each helper launch; asks before or refuses one while its budget holds it or in quiet hours, [as the team set](#the-daily-budget-warnings-and-the-helper-gate) |
 | The mod, while a tab is idle | `hook wake-check`, `hook wake-dropped` | Wakes the tab's session when unblocked urgent work is handed to it, [batched, with its cost shown](#the-mod-the-wake-on-urgent-work) |
-| `Stop` (end of each turn) | `hook stop` | Sends the session back once to [a skill edit it dropped](#end-of-a-turn-or-a-helper-a-dropped-skill-edit), and after a task is set waiting, once to [its other work](#end-of-a-turn-keep-working-while-a-task-waits); asks for a handover when a context refresh is due, then starts the automatic restart; tells the user of another effort than `launch` asks, or of a model Claude Code switched to; shows the budget lines; names a verifying task whose verify-by day has come; once per `github.everyMinutes` for the whole team, starts `gh sync --auto` hidden in the background; with tab status on, sets the tab's ready circle, or the decision circle after a turn that asks the user to decide |
+| `Stop` (end of each turn) | `hook stop` | Sends the session back once to [a skill edit it dropped](#end-of-a-turn-or-a-helper-a-dropped-skill-edit), and after a task is set waiting, once to [its other work](#end-of-a-turn-keep-working-while-a-task-waits); asks for a handover when a context refresh is due, then starts the automatic restart; tells the user of another effort than `launch` asks, or of a model Claude Code switched to; shows the budget lines; names a verifying task whose verify-by day has come; once per `github.everyMinutes` for the whole team, starts `gh sync --auto` hidden in the background; every 10 minutes for the whole team, tells the lead of [a tab that runs without its hooks](#end-of-a-turn-hookless-tabs); with tab status on, sets the tab's ready circle, or the decision circle after a turn that asks the user to decide |
 | `SessionStart`, `UserPromptSubmit`, `Stop`, `StopFailure` and `SessionEnd`, in a team or not | `hook restore-track` | Records each Claude Code session on the machine, where it started and what it was doing, for the restore after a reboot ([the restore tracker](#every-session-the-restore-tracker)) |
 | Every event but `Stop` and a tool call's end: session start and end, each prompt, `PreToolUse` on `AskUserQuestion` and `ExitPlanMode`, `PermissionRequest`, `Elicitation` and its result, a helper's start, `StopFailure`, `PreCompact`, `PostCompact` | `hook tab-status` | With `tabStatus.enabled`, puts a colored circle before the tab's title for what the session is doing ([tab status](#every-event-tab-status)) |
 | Every tool call's end (`PostToolUse`, `PostToolUseFailure`), in a team or not | `hook tool-end` | Sets the tab's circle as `hook tab-status` does, and at most every 5 minutes records in [the restore tracker](#every-session-the-restore-tracker) that the session's hooks still run |
@@ -735,6 +735,21 @@ day until it is `done` or back `in-progress`, and a date moved to today after th
 A failed read leaves the line out. Which tasks were named today is kept in `state/verify-notices.jsonl`, which
 holds only the current day.
 
+## End of a turn: hookless tabs
+
+A tab that runs without teamrig's hooks, as one that never reloaded after a plugin update, gets no inbox, no
+guards and no tab status, and nothing in it says so. Every 10 minutes for the whole team, the Stop hook of any
+team session reads the team's [restore files](#every-session-the-restore-tracker) whose hooks last wrote over 30
+minutes ago and checks their transcripts: one that changed in the last 30 minutes, and over 30 minutes after that
+last write, is a tab working without its hooks. Each such tab gets one inbox line from teamrig to the lead, or to
+the coordinator's owner (`roles.coordinatorOwner`) when it is the lead's own tab: `HOOKLESS alpha: its tab (Claude
+session 0123abcd) worked 59 min past its last teamrig hook (hook 09:00 IDT, transcript 09:59 IDT), so it gets no
+inbox, guards or tab status: type /reload-plugins in that tab`. A tab is named again only after it had its hooks
+back. A tab on a teamrig older than `hook tool-end` reads the same way during a turn of over 30 minutes, and the
+same reload fixes it. The check cannot see a tab that had no teamrig hook since it started (it has no restore
+file), nor any tab while no tab of the team runs its hooks. `state/hookless.json` keeps the last check's time and
+the tabs it named; a hook that finds the check running skips it.
+
 ## The daily budget: warnings and the helper gate
 
 At each helper launch of a team session, with the budget on or off, the model gets rule 8's helper default. Claude
@@ -810,8 +825,8 @@ its last event: `working` from a prompt to the end of that turn, `ready` after i
 A compaction's start changes nothing, since it comes mid-turn. `hook tool-end` writes the file too at a tool call's
 end, at most every 5 minutes: a main-thread call marks the session `working`, and a helper's (which can run on past
 its turn's end) keeps the state, so the file's `updatedAt` stays within minutes of a long turn's transcript while
-the session's hooks run. An end the person or Claude Code chose (`/clear`, a resume, a logout, an exit at the
-prompt) removes the file; any other end stamps `endedAt`, since
+the session's hooks run ([the hookless-tab check](#end-of-a-turn-hookless-tabs) reads that). An end the person or
+Claude Code chose (`/clear`, a resume, a logout, an exit at the prompt) removes the file; any other end stamps `endedAt`, since
 the shutdown may be what closed the terminal, and a Claude Code the shutdown killed leaves its last event
 as it was. The restore after a reboot reads these files. The hook prints nothing, and on any error writes
 nothing and lets the turn go on.
