@@ -8,6 +8,25 @@ function temporaryOf(path) {
     temporaries += 1;
     return `${path}.${process.pid}.${temporaries}.tmp`;
 }
+/** `temporaryOf`'s names, and `<name>.<pid>.tmp` as an older teamrig named them, before a write had its own counter. */
+const TEMPORARY_NAME = /^.+\.\d+(?:\.\d+)?\.tmp$/;
+/** Whether a file name is a write's temporary sibling, which only a write stopped before its rename leaves behind. */
+export function isTemporaryName(name) {
+    return TEMPORARY_NAME.test(name);
+}
+/** The path's stats when a file is there; undefined for a missing path or a folder. */
+async function fileStatsOf(path) {
+    try {
+        const stats = await stat(path);
+        return stats.isFile() ? stats : undefined;
+    }
+    catch (error) {
+        if (errorCode(error) === 'ENOENT') {
+            return undefined;
+        }
+        throw error;
+    }
+}
 /**
  * The real filesystem. Windows refuses to rename or remove a file another process holds open, so
  * those steps are repeated for about a second (`sleep` paces them) before the error is thrown.
@@ -115,16 +134,11 @@ export function nodeFiles(sleep) {
             return removeFile(path);
         },
         async stamp(path) {
-            try {
-                const stats = await stat(path);
-                return stats.isFile() ? `${stats.size}:${stats.mtimeMs}` : undefined;
-            }
-            catch (error) {
-                if (errorCode(error) === 'ENOENT') {
-                    return undefined;
-                }
-                throw error;
-            }
+            const stats = await fileStatsOf(path);
+            return stats === undefined ? undefined : `${stats.size}:${stats.mtimeMs}`;
+        },
+        async modifiedAt(path) {
+            return (await fileStatsOf(path))?.mtimeMs;
         },
     };
 }
