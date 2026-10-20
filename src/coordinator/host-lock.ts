@@ -138,6 +138,11 @@ export const FIRST_IN_LINE_POLL_MS = 2_000;
  */
 export const TICKET_GRACE_MS = 10_000;
 
+/** A ticket's `expiresAt` for a wait that runs out at `deadline`. */
+function ticketExpiry(deadline: number): string {
+  return new Date(deadline + TICKET_GRACE_MS).toISOString();
+}
+
 /** Digits of a ticket's arrival time in its name: enough for any millisecond time, so names sort as times do. */
 const ARRIVAL_DIGITS = 15;
 
@@ -259,6 +264,58 @@ function tellingChanges(onWait: Tell): Tell {
   };
 }
 
+/** The tokens of the steps a waiter stands behind at one look: the waiters ahead, the lock's holder, the small steps sharing the host. */
+function standingBehind(ahead: readonly LockWaiter[], holder: LockWait): Set<string> {
+  const tokens = new Set(ahead.map((waiter) => waiter.token));
+  switch (holder.kind) {
+    case 'held':
+      tokens.add(holder.info.token);
+      break;
+    case 'queued':
+      tokens.add(holder.first.token);
+      break;
+    case 'draining':
+    case 'memory':
+      for (const share of holder.shares) {
+        tokens.add(share.token);
+      }
+      break;
+    case 'unknown':
+      break;
+  }
+  return tokens;
+}
+
+/**
+ * When a wait runs out: `maxWaitMs` after its line last moved, so a step far back in a line that keeps moving waits on
+ * while the oldest work goes first. The line moved when a step this one stood behind at its last look (a waiter ahead,
+ * the lock's holder, a small step sharing the host) is gone at this one.
+ */
+class Patience {
+  private readonly maxWaitMs: number;
+  private movedAt: number;
+  private behind: ReadonlySet<string> = new Set();
+
+  constructor(start: number, maxWaitMs: number) {
+    this.movedAt = start;
+    this.maxWaitMs = maxWaitMs;
+  }
+
+  get deadline(): number {
+    return this.movedAt + this.maxWaitMs;
+  }
+
+  /** Takes in one look at `now`, the steps this one stands behind then; true when the line moved since the last look. */
+  look(behind: ReadonlySet<string>, now: number): boolean {
+    const moved = [...this.behind].some((token) => !behind.has(token));
+    this.behind = behind;
+    if (moved) {
+      this.movedAt = now;
+    }
+    return moved;
+  }
+}
+
 /**
  * One lock for the host's heavy steps (builds, test runs, database scripts), held across the whole step. A step
  * takes it by creating the file; the file appears whole or not at all. A lock is stale once it expires or its
@@ -266,6 +323,8 @@ function tellingChanges(onWait: Tell): Tell {
  * seen it so for `UNREADABLE_GRACE_MS`, since a writer that creates it in two steps may not have finished.
  * Waiters take it in arrival order: each joins a line of tickets in `<lock>.queue`, and only the first live one may
  * take the lock; a ticket whose process is gone or whose wait ran out is removed by the next waiter that sees it.
+ * A wait runs out only once the line has not moved for its whole length (see `Patience`), so a step far back in a line
+ * that keeps moving is not refused; its ticket's expiry moves on with its wait each time the line moves.
  * A step that does not join the line (an older kit, a team's own coordinator) may still take a free lock first.
  * A session may withdraw its waiting steps (`withdraw`): each one's ticket is removed, and a step whose ticket is gone
  * stops at its next look. A step that took its turn removes its own ticket to run, so of the two removals only one
@@ -330,20 +389,20 @@ export class HostLock {
 
   /**
    * Takes the lock in its turn: joins the line, then looks again every `pollMs` (the first in line every
-   * `FIRST_IN_LINE_POLL_MS` at most) for at most `maxWaitMs`, and leaves the line when done. `onWait` hears each new
-   * holder or place in line once, with the number of waiters ahead. A lock taken then waits, held, for the small
-   * steps sharing the host to end. With `share`, a small step shares the host in its turn instead (see the class).
-   * Busy when the wait ran out; withdrawn when its ticket was withdrawn before it took its turn. Once `stop` aborts,
-   * the wait rejects with its reason before its next look, as `fetch` does, leaving the line and releasing a lock it
-   * held while the small steps ended, so a step no one waits for any more never takes the lock.
+   * `FIRST_IN_LINE_POLL_MS` at most) until its line has not moved for `maxWaitMs`, and leaves the line when done.
+   * `onWait` hears each new holder or place in line once, with the number of waiters ahead. A lock taken then waits,
+   * held, for the small steps sharing the host to end. With `share`, a small step shares the host in its turn instead
+   * (see the class). Busy when the wait ran out; withdrawn when its ticket was withdrawn before it took its turn. Once
+   * `stop` aborts, the wait rejects with its reason before its next look, as `fetch` does, leaving the line and
+   * releasing a lock it held while the small steps ended, so a step no one waits for any more never takes the lock.
    */
   async acquire(session: string, purpose: string, maxWaitMs: number, pollMs: number, onWait: Tell, share?: ShareRequest, stop?: AbortSignal): Promise<Taking> {
-    const deadline = this.ports.clock.now() + maxWaitMs;
-    const ticket = await this.joinLine(session, purpose, deadline);
+    const patience = new Patience(this.ports.clock.now(), maxWaitMs);
+    const ticket = await this.joinLine(session, purpose, patience.deadline);
     const tell = tellingChanges(onWait);
     try {
-      const waited = await this.waitInLine(ticket, deadline, pollMs, tell, share, stop);
-      const result = waited.kind === 'taken' && waited.sharing === undefined ? await this.drain(waited.lock, ticket, deadline, tell, stop) : waited;
+      const waited = await this.waitInLine(ticket, patience, pollMs, tell, share, stop);
+      const result = waited.kind === 'taken' && waited.sharing === undefined ? await this.drain(waited.lock, ticket, patience, tell, stop) : waited;
       return result.kind === 'taken' ? await this.commit(result, ticket) : result;
     } finally {
       await this.ports.files.remove(join(this.queue, ticket.name));
@@ -391,7 +450,7 @@ export class HostLock {
       }
       if (waiter.stopsOnWithdraw !== true) {
         done.push({ kind: 'kept', waiter });
-      } else if (await this.ports.files.remove(join(this.queue, name))) {
+      } else if (await this.removeTicket(name)) {
         done.push({ kind: 'withdrawn', waiter });
       } else {
         done.push({ kind: (await this.heldWith(waiter.token)) === undefined ? 'left' : 'running', waiter });
@@ -419,7 +478,7 @@ export class HostLock {
   }
 
   /** Looks in line until this step takes the lock, or a share with `share`, in its turn, or its wait runs out; rejects once `stop` aborts. */
-  private async waitInLine(ticket: Ticket, deadline: number, pollMs: number, tell: Tell, share: ShareRequest | undefined, stop: AbortSignal | undefined): Promise<Taking> {
+  private async waitInLine(ticket: Ticket, patience: Patience, pollMs: number, tell: Tell, share: ShareRequest | undefined, stop: AbortSignal | undefined): Promise<Taking> {
     const { clock, sleep } = this.ports;
     let unknownSince: number | undefined;
     for (;;) {
@@ -436,7 +495,10 @@ export class HostLock {
       const { holder } = result;
       unknownSince = holder.kind === 'unknown' ? (unknownSince ?? clock.now()) : undefined;
       tell(holder, ahead.length);
-      const left = deadline - clock.now();
+      if (!(await this.waitOn(ticket, patience, standingBehind(ahead, holder)))) {
+        return { kind: 'withdrawn' };
+      }
+      const left = patience.deadline - clock.now();
       if (left <= 0) {
         return result;
       }
@@ -446,13 +508,14 @@ export class HostLock {
 
   /**
    * Holds a lock just taken until the small steps sharing the host end, looking every `FIRST_IN_LINE_POLL_MS`; no new
-   * one is let in meanwhile, as the lock is held. Gives up, releasing the lock, at the wait's deadline or when the lock
-   * would expire, so it never goes stale while held, and when its ticket was withdrawn meanwhile. A lock that waited is
-   * renewed, so its step gets its whole time. Once `stop` aborts it releases the lock and rejects with the stop's reason.
+   * one is let in meanwhile, as the lock is held. Gives up, releasing the lock, when its wait runs out (no small step
+   * ended for its whole length) or the lock would expire, so it never goes stale while held, and when its ticket was
+   * withdrawn meanwhile. A lock that waited is renewed, so its step gets its whole time. Once `stop` aborts it releases
+   * the lock and rejects with the stop's reason.
    */
-  private async drain(lock: HostLockInfo, ticket: Ticket, deadline: number, tell: Tell, stop: AbortSignal | undefined): Promise<Taking> {
+  private async drain(lock: HostLockInfo, ticket: Ticket, patience: Patience, tell: Tell, stop: AbortSignal | undefined): Promise<Taking> {
     const { clock, sleep } = this.ports;
-    const until = Math.min(deadline, Date.parse(lock.expiresAt));
+    const expiry = Date.parse(lock.expiresAt);
     let waited = false;
     for (;;) {
       if (stop?.aborted === true) {
@@ -465,7 +528,11 @@ export class HostLock {
       }
       const holder: LockWait = { kind: 'draining', shares };
       tell(holder, 0);
-      const left = until - clock.now();
+      if (!(await this.waitOn(ticket, patience, standingBehind([], holder)))) {
+        await this.release(lock);
+        return { kind: 'withdrawn' };
+      }
+      const left = Math.min(patience.deadline, expiry) - clock.now();
       if (left <= 0) {
         await this.release(lock);
         return { kind: 'busy', holder };
@@ -489,6 +556,35 @@ export class HostLock {
     }
     await this.release(taken.lock);
     return { kind: 'withdrawn' };
+  }
+
+  /**
+   * Takes in a look that found this step behind the steps `behind`: when the line moved, its wait runs out later and
+   * its ticket says so, so no waiter removes it as stale meanwhile. False when its ticket was withdrawn.
+   */
+  private async waitOn(ticket: Ticket, patience: Patience, behind: ReadonlySet<string>): Promise<boolean> {
+    return !patience.look(behind, this.ports.clock.now()) || (await this.extend(ticket, patience.deadline));
+  }
+
+  /**
+   * Moves this step's ticket's expiry to `deadline` plus the grace, keeping its place. The ticket is removed and written
+   * again: the removal fails when a withdraw removed it first, so a withdrawn ticket never comes back (false then).
+   * Meanwhile, for a moment, the line misses it.
+   */
+  private async extend(ticket: Ticket, deadline: number): Promise<boolean> {
+    const path = join(this.queue, ticket.name);
+    if (!(await this.ports.files.remove(path))) {
+      return false;
+    }
+    await this.ports.files.write(path, JSON.stringify({ ...ticket.waiter, expiresAt: ticketExpiry(deadline) }));
+    return true;
+  }
+
+  /** Removes a ticket: true when this call removed it. One being renewed (`extend`) is away for a moment, so a ticket back in line is tried once more. */
+  private async removeTicket(name: string): Promise<boolean> {
+    const path = join(this.queue, name);
+    const { files } = this.ports;
+    return (await files.remove(path)) || ((await files.list(this.queue)).includes(name) && (await files.remove(path)));
   }
 
   /** The lock this step holds, its expiry moved to a whole TTL from now. */
@@ -595,7 +691,7 @@ export class HostLock {
       session,
       purpose,
       arrivedAt: new Date(now).toISOString(),
-      expiresAt: new Date(deadline + TICKET_GRACE_MS).toISOString(),
+      expiresAt: ticketExpiry(deadline),
       stopsOnWithdraw: true,
     };
     const name = `${String(now).padStart(ARRIVAL_DIGITS, '0')}-${waiter.token}.json`;

@@ -154,7 +154,7 @@ interface Step {
 /**
  * `teamrig heavy --what <label> -- <command ...>`: runs one heavy step (a build, a test run, a database script)
  * under the host lock, so the host's heavy steps run one at a time. Refused from `coordinator.schedule.heavyCutoffUtc`
- * to midnight UTC, also when the wait for the lock ran past it, and when the lock is still held after
+ * to midnight UTC, also when the wait for the lock ran past it, and once its line for the lock has not moved for
  * `coordinator.heavy.waitMinutes`. The step is killed with every process it started after `maxRunMinutes`
  * (`--max-minutes`), and its start and end go to the coordinator's ledger, with when it began to wait and, sampled
  * every `memorySampleSeconds`, the most its process tree held and the least free memory the host had. Its processes get `$TEAMRIG_HOST_LOCK`,
