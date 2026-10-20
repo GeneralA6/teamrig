@@ -1,0 +1,120 @@
+/** kubectl options that take the next word as their value, unless written `--name=value`. */
+const KUBECTL_VALUED = new Set([
+    '-n',
+    '--namespace',
+    '--context',
+    '--cluster',
+    '--kubeconfig',
+    '--user',
+    '-s',
+    '--server',
+    '--token',
+    '--as',
+    '--as-group',
+    '--request-timeout',
+    '-l',
+    '--selector',
+    '--field-selector',
+    '-c',
+    '--container',
+    '-o',
+    '--output',
+    '--template',
+    '-f',
+    '--filename',
+    '-L',
+    '--label-columns',
+    '--sort-by',
+    '--pod-running-timeout',
+]);
+/** A resource word that names secrets: `secret`, `secrets/app`, `cm,secret`. */
+const SECRET_RESOURCE = /^(?:[\w.-]+,)*secrets?(?:\.v1)?(?:[/,].*)?$/i;
+/** An output format that prints a resource's data, not only its name and age. */
+const DATA_FORMAT = /^(?:ya?ml|json|jsonpath.*|go-template.*|template.*|custom-columns.*)$/i;
+/** docker and podman options of `exec` that take the next word as their value. */
+const EXEC_VALUED = new Set(['-e', '--env', '--env-file', '-u', '--user', '-w', '--workdir', '--detach-keys', '--index']);
+const CONTAINER_TOOLS = new Set(['docker', 'podman', 'nerdctl']);
+/** ssh options that take the next word as their value. */
+const SSH_VALUED = new Set('BbcDEeFIiJLlmOoPpQRSWw'.split('').map((letter) => `-${letter}`));
+/**
+ * What a call prints from somewhere else: a Kubernetes secret's data (`kubectl get secret -o yaml`), or what the
+ * command it runs in a container or on a remote host prints (`kubectl exec`, `docker exec`, `ssh host cmd`), read by
+ * `inner`. A container's command runs with no shell, so its words are quoted back into a line; ssh joins them, and
+ * the remote shell reads the line.
+ */
+export function remoteFindings(run, inner) {
+    if (run.name === 'kubectl' || run.name === 'oc') {
+        return kubectlFindings(run.args, inner);
+    }
+    if (CONTAINER_TOOLS.has(run.name)) {
+        const command = containerCommand(run.args.map((arg) => arg.text));
+        return command === undefined ? [] : inner(quoteWords(run.args.slice(run.args.length - command)), 'bash');
+    }
+    if (run.name === 'ssh') {
+        const texts = run.args.map((arg) => arg.text);
+        const host = skipOptions(texts, 0, SSH_VALUED);
+        return host + 1 < texts.length ? inner(texts.slice(host + 1).join(' '), 'bash') : [];
+    }
+    return [];
+}
+/** The index of the first word after `start` that is no option, skipping the value of each option in `valued`. */
+function skipOptions(texts, start, valued) {
+    let index = start;
+    while (index < texts.length && (texts[index] ?? '').startsWith('-')) {
+        if (texts[index] === '--') {
+            return index + 1;
+        }
+        index += valued.has(texts[index] ?? '') ? 2 : 1;
+    }
+    return index;
+}
+function kubectlFindings(args, inner) {
+    const texts = args.map((arg) => arg.text);
+    const verbAt = skipOptions(texts, 0, KUBECTL_VALUED);
+    const verb = texts[verbAt];
+    const rest = texts.slice(verbAt + 1);
+    switch (verb) {
+        case 'exec': {
+            const dashes = rest.indexOf('--');
+            return dashes === -1 ? [] : inner(quoteWords(args.slice(verbAt + 2 + dashes)), 'bash');
+        }
+        case 'view-secret':
+            return [{ kind: 'kube-secret' }];
+        case 'get':
+        case 'edit':
+            return rest.some((text) => SECRET_RESOURCE.test(text)) && (verb === 'edit' || printsData(rest)) ? [{ kind: 'kube-secret' }] : [];
+        case 'create':
+            return rest[0] === 'secret' && printsData(rest) ? [{ kind: 'kube-secret' }] : [];
+        default:
+            return [];
+    }
+}
+/** True when the words ask for an output format that prints the data: `-o yaml`, `-ojson`, `--output=jsonpath=...`. */
+function printsData(texts) {
+    return texts.some((text, index) => {
+        if (text === '-o' || text === '--output') {
+            return DATA_FORMAT.test(texts[index + 1] ?? '');
+        }
+        const joined = /^(?:-o=?|--output=)(.+)$/.exec(text);
+        return (joined !== null && DATA_FORMAT.test(joined[1] ?? '')) || text === '--template' || text.startsWith('--template=');
+    });
+}
+/**
+ * How many words at the end of a container tool's call make the command it runs in the container: those after the
+ * container of `exec`, `container exec` or `compose exec`; undefined when the call runs no command in a container.
+ */
+function containerCommand(texts) {
+    const subcommand = texts[0] === 'container' || texts[0] === 'compose' ? 1 : 0;
+    if (texts[subcommand] !== 'exec') {
+        return undefined;
+    }
+    const container = skipOptions(texts, subcommand + 1, EXEC_VALUED);
+    const count = texts.length - container - 1;
+    return count > 0 ? count : undefined;
+}
+/** Words quoted back into a bash line: a word only known when it runs keeps its variables in double quotes. */
+function quoteWords(words) {
+    return words
+        .map((word) => (word.dynamic ? `"${word.text.replace(/["\\`]/g, '\\$&')}"` : `'${word.text.replace(/'/g, `'\\''`)}'`))
+        .join(' ');
+}
