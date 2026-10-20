@@ -202,7 +202,7 @@ describe('Register.ask', () => {
 
   it('keeps the reasons and note given, the asked task last', async () => {
     const { register } = await started();
-    const verdict = await register.ask('alpha', 'T1', ASK, { status: 'waiting', note: 'needs the new column', waits: [{ kind: 'decision', who: 'owner' }], card: TEST_CARD });
+    const verdict = await register.ask('alpha', 'T1', ASK, { status: 'waiting', note: 'needs the new column', waits: [{ kind: 'decision', who: 'owner' }], card: { ...TEST_CARD, whyAsk: 'the ordered column breaks the export' } });
     assert.ok(verdict.ok, verdict.ok ? '' : verdict.error);
     assert.deepEqual(verdict.value.task.waits, [{ kind: 'decision', who: 'owner' }, { kind: 'task', id: 'T2' }]);
     assert.equal(verdict.value.task.note, 'needs the new column');

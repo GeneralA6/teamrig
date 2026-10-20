@@ -4,7 +4,7 @@ import { topPriority } from '../config/priorities.ts';
 import type { LeadTree } from '../config/lead-tree.ts';
 import type { RegisterCheckConfig, RegisterConfig } from '../config/types.ts';
 import { approvalCleared } from './approval.ts';
-import { CARD_FLAGS, WHY_ASK_FLAG } from './card.ts';
+import { CARD_FLAGS, whyAskUsage } from './card.ts';
 import { taskNumber, type Task } from './fold.ts';
 import { ACTIVE_STATUSES, priorityText } from './model.ts';
 import type { RegisterSnapshot } from './snapshot.ts';
@@ -187,7 +187,7 @@ function ownerOrderedFlags(task: Task, ownerSource: string): Flag[] {
         {
           kind: 'OWNER-ORDERED',
           task,
-          detail: `${ownerSource} ordered it, and an order approves its own work and proof: drop the wait on ${ownerSource}'s ${kinds.join(' and ')}, or set it ${task.status} again with ${WHY_ASK_FLAG} "<how the order must change, what new it needs, or why only ${ownerSource} can see the result>"`,
+          detail: `${ownerSource} ordered it, and an order approves its own work and proof: drop the wait on ${ownerSource}'s ${kinds.join(' and ')}, or set it ${task.status} again with ${whyAskUsage(ownerSource)}`,
         },
       ];
 }

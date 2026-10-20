@@ -796,6 +796,18 @@ describe('RegisterPolicy.setStatus: the decision card', () => {
     assert.deepEqual(toLead.ok ? toLead.value.card : undefined, TEST_CARD, "a wait moved to the lead's decision drops it");
   });
 
+  it("refuses an owner order waiting on the owner with no --why-ask while cards are required (T802)", () => {
+    const ordered: Task = { ...TASK, source: 'owner' };
+    const refusal = `owner ordered ${TASK.id}, and an order approves its own work and proof: drop the wait on owner's decision, or give --why-ask "<how the order must change, what new it needs, or why only owner can see the result>"`;
+    assert.equal(error(set(ordered, { waits: OWNER_DECISION, card: TEST_CARD })), refusal, 'a new card');
+    assert.equal(error(set({ ...ordered, status: 'waiting', waits: OWNER_DECISION, card: TEST_CARD }, { waits: OWNER_DECISION, note: 'asked again' })), refusal, 'a card kept from an older row');
+    assert.equal(error(set(ordered, { waits: OWNER_DECISION })), `${refusal} with ${CARD_USAGE}`, 'no card');
+    const lead: WaitReason[] = [{ kind: 'approval', who: 'lead' }];
+    assert.equal(set(ordered, { waits: lead }).ok, true, "a wait on the lead's approval asks no owner");
+    const relaxed = new RegisterPolicy(testConfig({ register: { requireDecisionCard: false } }));
+    assert.equal(set(ordered, { waits: OWNER_DECISION }, relaxed).ok, true, 'requireDecisionCard off');
+  });
+
   it('takes the same card again only with a new note', () => {
     const relaxed = new RegisterPolicy(testConfig({ register: { requireNoteOn: [] } }));
     const again = (card: Partial<DecisionCard>) => relaxed.setStatus(ASKED, 'alpha', { status: 'waiting', waits: OWNER_DECISION, card }, CTX);

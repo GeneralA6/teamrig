@@ -28,6 +28,11 @@ export const CARD_FLAGS = '--question, --options, --recommend and --default';
 /** The CLI flag that writes a card's `whyAsk`. */
 export const WHY_ASK_FLAG = '--why-ask';
 
+/** How to say why the owner (`ownerSource`) is asked about what the owner ordered (T802). */
+export function whyAskUsage(ownerSource: string): string {
+  return `${WHY_ASK_FLAG} "<how the order must change, what new it needs, or why only ${ownerSource} can see the result>"`;
+}
+
 /** How `--options` separates the choices: a comma or a semicolon is common inside one. */
 export const OPTION_SEPARATOR = '|';
 
