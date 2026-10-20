@@ -4,15 +4,33 @@ import { join, resolve } from 'node:path';
 import { DEFAULT_PACKAGE_GUARD } from '../config/defaults.ts';
 import { isRecord, stringField } from '../core/guards.ts';
 import { testConfig } from '../testing/config.ts';
+import { FakeClock } from '../testing/fake-clock.ts';
+import { FakePackageRegistry } from '../testing/fake-package-registry.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { adHocReason, adHocRunnersOf, lostFlagReason, packageGuardOutput, type PackageGuardEnv } from './package-guard.ts';
+import { adHocReason, installReason, lostFlagReason, packageGuardOf, packageGuardOutput, type PackageGuardEnv } from './package-guard.ts';
 import { ASK_REFUSED_NOTE } from './permission.ts';
 
 const APP = resolve('/', 'work', 'app');
 const OTHER = resolve('/', 'work', 'other');
 
+const PACKAGES = {
+  lodash: { distTags: { latest: '4.17.21' }, published: { '4.17.21': '2021-02-20T15:42:16Z' } },
+  typescript: { distTags: { latest: '5.9.3' }, published: { '5.9.2': '2025-08-01T00:00:00Z', '5.9.3': '2026-10-18T09:00:00Z' } },
+};
+
+const YOUNG_TYPESCRIPT = 'typescript@5.9.3: published 2 days ago (2026-10-18), inside the 14-day cooldown';
+
 function env(overrides: Partial<PackageGuardEnv> = {}): PackageGuardEnv {
-  return { cwd: APP, home: resolve('/', 'u'), files: new MemoryFiles(), adHocRunners: 'deny', hookAsks: 'ask', ...overrides };
+  return {
+    ...DEFAULT_PACKAGE_GUARD,
+    cwd: APP,
+    home: resolve('/', 'u'),
+    files: new MemoryFiles(),
+    registry: new FakePackageRegistry(PACKAGES),
+    clock: new FakeClock('2026-10-20T12:00:00Z'),
+    hookAsks: 'ask',
+    ...overrides,
+  };
 }
 
 function payload(command: string, extra: Readonly<Record<string, string>> = {}): unknown {
@@ -73,10 +91,57 @@ describe('packageGuardOutput', () => {
     assert.equal(verdict?.reason, `${lostFlagReason([{ bin: 'tsc', flag: '--version' }])} ${adHocReason(['npx eslint'])}`);
   });
 
-  it('stays quiet for a line with no ad-hoc run, and for input that is not a shell call', async () => {
-    for (const input of [payload('npm ci && npm test'), 'not a payload', { tool_name: 'Bash', tool_input: {} }]) {
+  it('stays quiet for a line with no ad-hoc run or named install, and for input that is not a shell call', async () => {
+    for (const input of [payload('npm ci && npm install && npm test'), 'not a payload', { tool_name: 'Bash', tool_input: {} }]) {
       assert.equal(await packageGuardOutput(input, env()), '');
     }
+  });
+
+  it('refuses an install of a version inside the cooldown and lets exact versions old enough with no advisory through', async () => {
+    const verdict = verdictOf(await packageGuardOutput(payload('npm i typescript'), env()));
+    assert.deepEqual(verdict, { decision: 'deny', reason: installReason([YOUNG_TYPESCRIPT], 14) });
+    assert.equal(await packageGuardOutput(payload('npm i -D typescript@5.9.2 lodash@4.17.21'), env()), '');
+  });
+
+  it('refuses a range without asking the registry, and a version with a known advisory', async () => {
+    const registry = new FakePackageRegistry(PACKAGES, [{ name: 'lodash', title: 'Prototype pollution', severity: 'high', url: '' }]);
+    const range = verdictOf(await packageGuardOutput(payload('pnpm add chalk@^5'), env({ registry })));
+    assert.deepEqual(range, { decision: 'deny', reason: installReason(['chalk@^5: a range, not an exact version'], 14) });
+    assert.deepEqual(registry.docsAsked, []);
+    const advised = verdictOf(await packageGuardOutput(payload('pnpm add lodash@4.17.21'), env({ registry })));
+    assert.equal(advised?.reason, installReason(['lodash@4.17.21: a high advisory, Prototype pollution'], 14));
+  });
+
+  it('refuses an install the registry could not be asked about', async () => {
+    const registry = new FakePackageRegistry(PACKAGES, [], new Error('network down'));
+    const verdict = verdictOf(await packageGuardOutput(payload('npm i lodash@4.17.21'), env({ registry })));
+    assert.deepEqual(verdict, { decision: 'deny', reason: installReason(['lodash: the registry could not be asked (network down), so nothing vouches for it'], 14) });
+  });
+
+  it('asks about an unvetted install when the team set ask, and lets it through without asking the registry when it set allow', async () => {
+    assert.equal(verdictOf(await packageGuardOutput(payload('npm i typescript'), env({ installs: 'ask' })))?.decision, 'ask');
+    const registry = new FakePackageRegistry(PACKAGES);
+    assert.equal(await packageGuardOutput(payload('npm i typescript'), env({ installs: 'allow', registry })), '');
+    assert.deepEqual(registry.docsAsked, []);
+  });
+
+  it('refuses a line when any part of it is refused, naming every reason, and asks when every part is asked about', async () => {
+    const line = payload('npx eslint . && npm i typescript');
+    const denied = verdictOf(await packageGuardOutput(line, env({ adHocRunners: 'ask' })));
+    assert.deepEqual(denied, { decision: 'deny', reason: `${adHocReason(['npx eslint'])} ${installReason([YOUNG_TYPESCRIPT], 14)}` });
+    assert.equal(verdictOf(await packageGuardOutput(line, env({ adHocRunners: 'ask', installs: 'ask' })))?.decision, 'ask');
+  });
+});
+
+describe('installReason', () => {
+  it('names each package and the cooldown, and leaves the age out under a cooldown of 0 days', () => {
+    assert.equal(
+      installReason(['a@1.0.0: too young'], 14),
+      'teamrig package guard: this install is not vetted: a@1.0.0: too young. Install an exact version published at least 14 days ago with no ' +
+        'known advisory (`npm view <name> time` lists when each version was published). [packageGuard.installs]',
+    );
+    assert.match(installReason(['a', 'b'], 0), /not vetted: a; b\. Install an exact version with no known advisory/);
+    assert.match(installReason(['a'], 1), /published at least 1 day ago/);
   });
 });
 
@@ -101,12 +166,12 @@ describe('lostFlagReason', () => {
   });
 });
 
-describe('adHocRunnersOf', () => {
-  it("takes a loaded config's choice and keeps the default for a missing or broken one", () => {
-    const config = testConfig({ packageGuard: { adHocRunners: 'ask' } });
-    assert.equal(adHocRunnersOf({ status: 'loaded', path: 'c.json', config, issues: [] }), 'ask');
+describe('packageGuardOf', () => {
+  it("takes a loaded config's choices and keeps the defaults for a missing or broken one", () => {
+    const config = testConfig({ packageGuard: { adHocRunners: 'ask', installs: 'allow', cooldownDays: 3 } });
+    assert.deepEqual(packageGuardOf({ status: 'loaded', path: 'c.json', config, issues: [] }), { adHocRunners: 'ask', installs: 'allow', cooldownDays: 3 });
     for (const load of [undefined, { status: 'missing', path: 'c.json' } as const, { status: 'unreadable', path: 'c.json', issue: { path: '', message: 'bad' } } as const]) {
-      assert.equal(adHocRunnersOf(load), DEFAULT_PACKAGE_GUARD.adHocRunners);
+      assert.deepEqual(packageGuardOf(load), DEFAULT_PACKAGE_GUARD);
     }
   });
 });
