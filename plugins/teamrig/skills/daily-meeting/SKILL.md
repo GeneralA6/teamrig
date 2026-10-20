@@ -16,9 +16,9 @@ At the human's first message of the day, or when they ask, in one Bash call:
 teamrig meeting start --session lead
 ```
 
-It tells every other session by inbox line, which wakes no one: keep working, and send the lead no message until
-the meeting ends, but one starting `CRITICAL`. The `cold-send` hook holds any other message to you, so a session
-that has not read the line yet is held too. Then it prints the agenda:
+Until the meeting ends, the `cold-send` hook holds every message to you but one starting `CRITICAL`, and tells the
+sender to keep working and leave it as an inbox line. So no session is told the meeting started, and none is woken.
+Then it prints the agenda:
 
 - `DECISIONS`: each task waiting on the human's decision or approval, with its card facts;
 - `LATE`: the active tasks past their due date, their own or the earlier one of a task that needs them
@@ -81,9 +81,9 @@ decision changes what a session works on right now, send it one CRITICAL message
 teamrig meeting end --session lead
 ```
 
-Every other session gets one inbox line: the meeting ended, messages to you may go again, and the decisions on its
-tasks. It lists what you recorded. `RECORDED nothing` means no task's owner hears of a decision: record each answer
-with `update` before you end, and send one you forgot to its task's owner as an inbox line. A meeting you forget to
-end stops holding messages 4 hours after it started; end it anyway, so the sessions are told. With your context
-past `refresh.contextTokens`, the end of the turn that ends the meeting asks for your handover: the refresh the
-meeting held comes at once.
+Each session you recorded a decision for gets one inbox line with the decisions on its tasks; the others get none,
+as the hold just ends. It lists what you recorded. `RECORDED nothing` means no task's owner hears of a decision:
+record each answer with `update` before you end, and send one you forgot to its task's owner as an inbox line. A
+meeting you forget to end stops holding messages 4 hours after it started; end it anyway, so the decisions go out.
+With your context past `refresh.contextTokens`, the end of the turn that ends the meeting asks for your handover: the
+refresh the meeting held comes at once.
