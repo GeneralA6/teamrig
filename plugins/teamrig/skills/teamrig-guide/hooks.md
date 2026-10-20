@@ -96,8 +96,8 @@ The injected context holds:
    such as `MODEL shop-web runs model claude-sonnet-5; the team config asks for model opus at xhigh effort: type
    /model opus`. It is also shown to the user, who alone can change it. It never blocks. Claude Code gives a hook
    the effort only at the end of a turn, so the effort is checked there ([model notices](#end-of-a-turn-model-notices)).
-9. **The verify queue**: while the session has `verifying` tasks, one line naming them, oldest first:
-   `VERIFY 2: T1 (proof: the nightly run), T4 (proof: ...)`. `teamrig verify` lists them in full.
+9. **The verify queue**: while the session has `verifying` tasks, a `VERIFY 2, oldest first:` heading and a row
+   each, `  T1 (proof: the nightly run)`, the first 5 and a `+N more` line. `teamrig verify` lists them in full.
 10. **What teamrig lacks**: shown to the user only, once per Claude Code session, when git is not on the PATH or
    Claude Code or Node.js is too old ([the requirements check](requirements.md#the-requirements-check)).
 

@@ -603,8 +603,9 @@ With nothing unread: `READ web: nothing new; new ones are shown at your next pro
 two lines: `READ web: 1 new line, shown above, and 2 the prompt hook showed this session, now marked read too; new
 ones are shown at your next prompt`.
 
-While you have `verifying` tasks, a last line names them, oldest first, with their proofs:
-`VERIFY 1: T1 (proof: the signup smoke test passes on staging)`. `teamrig verify` lists them in full.
+While you have `verifying` tasks, a last block names them, oldest first, with their proofs: a `VERIFY 1, oldest
+first:` heading, then a row each, `  T1 (proof: the signup smoke test passes on staging)`, the first 5 and a
+`+N more` line. `teamrig verify` lists them in full.
 
 ### teamrig inbox status
 

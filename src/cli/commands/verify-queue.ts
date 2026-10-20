@@ -1,5 +1,5 @@
 import { JsonlDailyLog } from '../../core/daily-log.ts';
-import type { TeamPaths } from '../../core/home.ts';
+import { KIT_NAME, type TeamPaths } from '../../core/home.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import type { Task } from '../../register/fold.ts';
 import { JsonlEventLog } from '../../register/store.ts';
@@ -17,15 +17,16 @@ async function queueOf(runtime: CliRuntime, paths: TeamPaths, id: string): Promi
 }
 
 /**
- * `VERIFY <n>: T1 (proof: ...), ...` for a session with verifying tasks, for its start context and
- * `inbox read`; undefined for none, and when the register cannot be read, so its caller never fails on it.
+ * `VERIFY <n>, oldest first:` and a row per verifying task (formatVerifySummary) for a session that holds some, for
+ * its start context and `inbox read`; undefined for none, and when the register cannot be read, so its caller never
+ * fails on it.
  */
 export async function verifyNoteOf(runtime: CliRuntime, paths: TeamPaths, id: string | undefined): Promise<string | undefined> {
   if (id === undefined) {
     return undefined;
   }
   try {
-    return formatVerifySummary(await queueOf(runtime, paths, id));
+    return formatVerifySummary(await queueOf(runtime, paths, id), id, KIT_NAME);
   } catch {
     return undefined;
   }

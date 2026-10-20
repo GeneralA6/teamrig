@@ -22,6 +22,7 @@ import {
   personWaitNotice,
   selectTasks,
   sizeText,
+  SUMMARY_VERIFY_ROWS,
 } from './views.ts';
 import type { Task } from './fold.ts';
 import { TaskTree } from './tree.ts';
@@ -277,11 +278,22 @@ describe('the verify queue lines', () => {
   const shipped = testTask({ status: 'verifying', proof: 'the nightly run', due: '2030-01-09', statusAt: '2030-01-07T10:30:00.000Z' });
   const long = testTask({ id: 'T2', status: 'verifying', proof: `the nightly run ${'and more '.repeat(10)}` });
 
-  it('sums up a queue in one line, each proof cut short, and nothing for an empty one', () => {
-    assert.equal(formatVerifySummary([]), undefined);
-    const summary = formatVerifySummary([shipped, long]) ?? '';
-    assert.match(summary, /^VERIFY 2: T1 \(proof: the nightly run\), T2 \(proof: the nightly run and more .*…\)$/);
-    assert.ok(summary.length < 120);
+  it('sums up a queue as a heading and a row per task, each proof cut short, and nothing for an empty one', () => {
+    assert.equal(formatVerifySummary([], 'alpha', 'kit'), undefined);
+    const lines = (formatVerifySummary([shipped, long], 'alpha', 'kit') ?? '').split('\n');
+    assert.equal(lines.length, 3);
+    assert.equal(lines[0], 'VERIFY 2, oldest first:');
+    assert.equal(lines[1], '  T1 (proof: the nightly run)');
+    assert.match(lines[2] ?? '', /^ {2}T2 \(proof: the nightly run and more .*…\)$/);
+    assert.ok(lines.every((line) => line.length < 80), lines.join('\n'));
+  });
+
+  it(`names the first ${SUMMARY_VERIFY_ROWS} tasks of a longer queue and the command that lists the rest`, () => {
+    const queue = Array.from({ length: SUMMARY_VERIFY_ROWS + 2 }, (_, index) => testTask({ id: `T${index + 1}`, status: 'verifying', proof: 'the nightly run' }));
+    const lines = (formatVerifySummary(queue, 'alpha', 'kit') ?? '').split('\n');
+    assert.equal(lines[0], `VERIFY ${SUMMARY_VERIFY_ROWS + 2}, oldest first:`);
+    assert.deepEqual(lines.slice(1, -1), queue.slice(0, SUMMARY_VERIFY_ROWS).map((task) => `  ${task.id} (proof: the nightly run)`));
+    assert.equal(lines.at(-1), '  +2 more: `kit verify --session alpha`');
   });
 
   it('prints a row with when it started verifying and the date to verify by', () => {

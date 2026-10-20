@@ -62,7 +62,7 @@ describe('runCli: verify lists the verifying tasks of a session', () => {
 });
 
 describe('the verify queue reaches its session', () => {
-  const queue = 'VERIFY 1: T1 (proof: the nightly run)';
+  const queue = 'VERIFY 1, oldest first:\n  T1 (proof: the nightly run)';
   const start = JSON.stringify({ session_id: CLAUDE_SESSION, cwd: APP, source: 'startup' });
 
   async function verifying(): Promise<CliHarness> {
