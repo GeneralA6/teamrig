@@ -9,6 +9,8 @@ export interface RolesConfig {
   readonly lead: string;
   /** Owns deploy coordination and fleet health, when the team has that role. */
   readonly coordinatorOwner?: string;
+  /** Reviews the privileged commands sessions ask to run (`exec`), when the team has that role; the owner always may too. */
+  readonly securityReviewer?: string;
 }
 
 /** One priority level; tasks print it as `p<id>`, and p1 is the most urgent. */

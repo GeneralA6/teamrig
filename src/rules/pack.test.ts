@@ -258,7 +258,7 @@ describe('renderCorePack', () => {
     assert.match(pack, /--followups <tasks it leaves>\|none on verifying, done \[register\.requireFollowupsOn\]\. Wait on a peer by its task\./);
     assert.match(pack, /A shipped change is verifying until its proof exists \(`teamrig verify`\)\.$/m);
     assert.match(pack, /`teamrig start --session <you>`/);
-    assert.doesNotMatch(pack, /coordinatorOwner|heavyCutoffUtc|teamrig heavy|coordinator\.repos|Pace the week|\[budget\]/);
+    assert.doesNotMatch(pack, /coordinatorOwner|securityReviewer|heavyCutoffUtc|teamrig heavy|coordinator\.repos|Pace the week|\[budget\]/);
   });
 
   it('gives a team with a coordinator repository the heavy, test, integrate and roll commands, all in the background', () => {
@@ -284,10 +284,10 @@ describe('renderCorePack', () => {
     assert.doesNotMatch(pack, /teamrig roll|heavyCutoffUtc/);
   });
 
-  it('adds the coordinator owner, heavy cutoff and budget pacing only when configured', () => {
+  it('adds the coordinator owner, security reviewer, heavy cutoff and budget pacing only when configured', () => {
     const pack = renderCorePack(
       testConfig({
-        roles: { lead: 'lead', coordinatorOwner: 'bravo' },
+        roles: { lead: 'lead', coordinatorOwner: 'bravo', securityReviewer: 'alpha' },
         coordinator: { schedule: { heavyCutoffUtc: '22:30' } },
         budget: { enabled: true },
       }),
@@ -295,7 +295,7 @@ describe('renderCorePack', () => {
       'win32',
       RULES_CLOCK,
     );
-    assert.match(pack, /bravo owns deploy coordination and fleet health \[roles\.coordinatorOwner\]/);
+    assert.match(pack, /bravo owns deploy coordination and fleet health \[roles\.coordinatorOwner\]\. alpha reviews privileged commands \(`teamrig exec`\) \[roles\.securityReviewer\]\. Every other session/);
     assert.match(pack, /No heavy step \(builds, test runs, data scripts\) starts 22:30-00:00 UTC \[coordinator\.schedule\.heavyCutoffUtc\]\./);
     const cutoff = { coordinator: { schedule: { heavyCutoffUtc: '22:30' } } };
     const inIsrael = renderCorePack(testConfig(cutoff), COMMAND, 'win32', { ...RULES_CLOCK, machineZone: 'Asia/Jerusalem' });

@@ -22,7 +22,7 @@ const EVERY_KEY = {
   names: { alpha: 'team-lead' },
   ruleConflicts: [{ file: '~/CLAUDE.md', text: 'Commit straight to main.', rule: 'worktrees', wins: 'local', reason: 'solo repo' }],
   launch: { alpha: { model: 'best', effort: 'xhigh' } },
-  roles: { lead: 'alpha', coordinatorOwner: 'bravo' },
+  roles: { lead: 'alpha', coordinatorOwner: 'bravo', securityReviewer: 'bravo' },
   register: { goalPattern: '^G\\d+$' },
   coordinator: {
     dir: 'data/deploys',

@@ -2,7 +2,7 @@ import type { Rename } from '../names/rename.ts';
 import type { KitConfig, RolesConfig } from './types.ts';
 
 /** The roles a config can assign, by their key under `roles`. */
-export const ROLES = ['lead', 'coordinatorOwner'] as const satisfies readonly (keyof RolesConfig)[];
+export const ROLES = ['lead', 'coordinatorOwner', 'securityReviewer'] as const satisfies readonly (keyof RolesConfig)[];
 
 export type Role = (typeof ROLES)[number];
 

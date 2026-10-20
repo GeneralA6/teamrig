@@ -877,7 +877,7 @@ the hire log (`state/hires.jsonl`). Its tasks, inbox and records stay where they
 - It refuses while the session owns open tasks, unless `--to <heir>` hands them over.
 - It refuses without the session's handover (`<handover>/<id>.md`, the file a refresh writes: open work, next
   steps, branches, traps), unless `--no-handover "<why>"` says why there is none.
-- It refuses while a role (`roles.lead`, `roles.coordinatorOwner`), `github.owners` or `github.sessions` names
+- It refuses while a role (`roles.lead`, `roles.coordinatorOwner`, `roles.securityReviewer`), `github.owners` or `github.sessions` names
   the session: point those at another session first.
 - `check` flags each hired session to retire (RETIRE-DUE) and each one past its review day (REVIEW-DUE); a hire a
   SCALE-OUT names to take a slice is not flagged idle meanwhile.
