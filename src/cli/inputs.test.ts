@@ -243,6 +243,7 @@ describe('statusInputOf: the decision card', () => {
     const full = flags({ status: 'waiting', waits: 'decision:owner', question: ' Which tier ', options: 'Basic | Pro at 29 ', recommend: 'Basic', default: 'Basic ships' });
     assert.deepEqual(statusInputOf(full, TIMES).card, { question: 'Which tier', options: ['Basic', 'Pro at 29'], recommend: 'Basic', byDefault: 'Basic ships' });
     assert.deepEqual(statusInputOf(flags({ status: 'waiting', waits: 'decision:owner', recommend: 'Pro now' }), TIMES).card, { recommend: 'Pro now' });
+    assert.deepEqual(statusInputOf(flags({ status: 'waiting', waits: 'approval:owner', 'why-ask': ' only the owner sees it ' }), TIMES).card, { whyAsk: 'only the owner sees it' });
     assert.equal('card' in statusInputOf(flags({ status: 'waiting', waits: 'decision:owner' }), TIMES), false);
   });
 

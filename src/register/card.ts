@@ -15,10 +15,18 @@ export interface DecisionCard {
   readonly recommend: string;
   /** What happens when no answer comes by the task's due date. */
   readonly byDefault: string;
+  /**
+   * Only on a task the owner ordered (T802): why the owner is asked at all, since an owner's order approves its own
+   * work and proof unless the order must change, the work needs something new, or only the owner can see the result.
+   */
+  readonly whyAsk?: string;
 }
 
 /** The CLI flags that write a card's parts, for the refusals that name them. */
 export const CARD_FLAGS = '--question, --options, --recommend and --default';
+
+/** The CLI flag that writes a card's `whyAsk`. */
+export const WHY_ASK_FLAG = '--why-ask';
 
 /** How `--options` separates the choices: a comma or a semicolon is common inside one. */
 export const OPTION_SEPARATOR = '|';
@@ -34,7 +42,12 @@ const TASK_WORD = /\bT[1-9]\d*\b/g;
 
 /** The card's parts as one list of texts, in the order a card prints them. */
 export function cardTexts(card: DecisionCard): string[] {
-  return [card.question, ...card.options, card.recommend, card.byDefault];
+  return [card.question, ...(card.whyAsk === undefined ? [] : [card.whyAsk]), ...card.options, card.recommend, card.byDefault];
+}
+
+/** The card without its `whyAsk`: what it keeps once its task waits on no owner's decision or approval. */
+export function withoutWhyAsk(card: DecisionCard): DecisionCard {
+  return { question: card.question, options: card.options, recommend: card.recommend, byDefault: card.byDefault };
 }
 
 /** How many words a text says besides task ids: letters and digits in runs, so `30 days: 4 GB` is four. */
@@ -58,6 +71,7 @@ export function namedTaskIds(texts: readonly string[]): string[] {
 export function cardProblem(card: DecisionCard, decision: boolean): string | undefined {
   const parts: readonly [string, string][] = [
     ['--question', card.question],
+    ...(card.whyAsk === undefined ? [] : [[WHY_ASK_FLAG, card.whyAsk] satisfies [string, string]]),
     ...card.options.map((option, index): [string, string] => [`--options choice ${index + 1}`, option]),
     ['--recommend', card.recommend],
     ['--default', card.byDefault],
@@ -81,6 +95,7 @@ export function sameCard(a: DecisionCard | null, b: DecisionCard | null): boolea
     a.question === b.question &&
     a.recommend === b.recommend &&
     a.byDefault === b.byDefault &&
+    a.whyAsk === b.whyAsk &&
     a.options.length === b.options.length &&
     a.options.every((option, index) => option === b.options[index])
   );
@@ -97,20 +112,27 @@ export function parseCard(value: unknown): DecisionCard | undefined | string {
   if (!isRecord(value)) {
     return 'card is not an object';
   }
-  const { question, options, recommend, byDefault } = value;
+  const { question, options, recommend, byDefault, whyAsk } = value;
   if (typeof question !== 'string' || typeof recommend !== 'string' || typeof byDefault !== 'string') {
     return 'card needs question, recommend and byDefault as text';
   }
   if (!Array.isArray(options) || !options.every((option): option is string => typeof option === 'string')) {
     return 'card options is not a list of texts';
   }
-  return { question, options, recommend, byDefault };
+  if (whyAsk !== undefined && typeof whyAsk !== 'string') {
+    return 'card whyAsk is not text';
+  }
+  return { question, options, recommend, byDefault, ...(whyAsk === undefined ? {} : { whyAsk }) };
 }
 
-/** A card as printed under its task: the question, each option numbered, the recommendation and the default, each line led by `indent`. */
+/**
+ * A card as printed under its task: the question, why the owner is asked (when the card says), each option
+ * numbered, the recommendation and the default, each line led by `indent`.
+ */
 export function cardLines(card: DecisionCard, indent: string): string[] {
   return [
     `${indent}decide: ${card.question}`,
+    ...(card.whyAsk === undefined ? [] : [`${indent}why asked: ${card.whyAsk}`]),
     ...card.options.map((option, index) => `${indent}  ${index + 1}. ${option}`),
     `${indent}recommended: ${card.recommend}`,
     `${indent}with no answer: ${card.byDefault}`,

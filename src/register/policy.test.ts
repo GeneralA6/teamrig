@@ -781,6 +781,21 @@ describe('RegisterPolicy.setStatus: the decision card', () => {
     assert.match(error(set(resumed, { waits: OWNER_DECISION, card: { recommend: later } })), /^a card needs/, 'only a waiting task has a card to build on');
   });
 
+  it('takes --why-ask only on an owner order waiting on the owner, and keeps it only while it does (T802)', () => {
+    const whyAsk = 'the ordered tier cannot ship at that price';
+    const ordered: Task = { ...TASK, source: 'owner' };
+    const asked = set(ordered, { waits: OWNER_DECISION, card: { ...TEST_CARD, whyAsk } });
+    assert.deepEqual(asked.ok ? asked.value.card : undefined, { ...TEST_CARD, whyAsk });
+    const refusal = "--why-ask says why owner is asked about what owner ordered: it goes only with a wait on owner's decision or approval of a task from owner";
+    assert.equal(error(set(TASK, { waits: OWNER_DECISION, card: { ...TEST_CARD, whyAsk } })), refusal, 'a task the lead made');
+    assert.equal(error(set(ordered, { waits: [{ kind: 'approval', who: 'lead' }], card: { ...TEST_CARD, options: [], whyAsk } })), refusal, "a wait on the lead's approval");
+    const waiting: Task = { ...ordered, status: 'waiting', waits: OWNER_DECISION, card: { ...TEST_CARD, whyAsk } };
+    const again = set(waiting, { waits: OWNER_DECISION, note: 'asked again' });
+    assert.deepEqual(again.ok ? again.value.card : undefined, { ...TEST_CARD, whyAsk });
+    const toLead = set(waiting, { waits: [{ kind: 'decision', who: 'lead' }] });
+    assert.deepEqual(toLead.ok ? toLead.value.card : undefined, TEST_CARD, "a wait moved to the lead's decision drops it");
+  });
+
   it('takes the same card again only with a new note', () => {
     const relaxed = new RegisterPolicy(testConfig({ register: { requireNoteOn: [] } }));
     const again = (card: Partial<DecisionCard>) => relaxed.setStatus(ASKED, 'alpha', { status: 'waiting', waits: OWNER_DECISION, card }, CTX);

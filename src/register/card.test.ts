@@ -1,7 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { TEST_CARD } from '../testing/card.ts';
-import { cardLines, cardProblem, cardTexts, namedTaskIds, parseCard, plainWords, sameCard } from './card.ts';
+import { cardLines, cardProblem, cardTexts, namedTaskIds, parseCard, plainWords, sameCard, withoutWhyAsk } from './card.ts';
+
+const WHY_ASK = 'the ordered tier cannot ship at that price';
 
 describe('the decision card', () => {
   it('counts the plain words a text says, task ids apart', () => {
@@ -27,6 +29,8 @@ describe('the decision card', () => {
       '--options choice 2 says "T378 option B": give at least 3 plain words besides task ids, so it reads without the task list',
     );
     assert.match(cardProblem({ ...TEST_CARD, byDefault: 'T5' }, true) ?? '', /^--default says "T5"/);
+    assert.match(cardProblem({ ...TEST_CARD, whyAsk: 'see T5' }, true) ?? '', /^--why-ask says "see T5"/);
+    assert.equal(cardProblem({ ...TEST_CARD, whyAsk: WHY_ASK }, true), undefined);
   });
 
   it('asks a decision for two options at least, and never takes one alone', () => {
@@ -42,6 +46,8 @@ describe('the decision card', () => {
     assert.equal(sameCard(TEST_CARD, { ...TEST_CARD, options: [...TEST_CARD.options].reverse() }), false);
     assert.equal(sameCard(TEST_CARD, { ...TEST_CARD, options: TEST_CARD.options.slice(1) }), false);
     assert.equal(sameCard(TEST_CARD, { ...TEST_CARD, recommend: 'Pro, since it pays more' }), false);
+    assert.equal(sameCard(TEST_CARD, { ...TEST_CARD, whyAsk: WHY_ASK }), false);
+    assert.equal(sameCard({ ...TEST_CARD, whyAsk: WHY_ASK }, { ...TEST_CARD, whyAsk: WHY_ASK }), true);
     assert.equal(sameCard(null, null), true);
     assert.equal(sameCard(TEST_CARD, null), false);
   });
@@ -54,6 +60,8 @@ describe('the decision card', () => {
     assert.equal(parseCard({ ...TEST_CARD, byDefault: 3 }), 'card needs question, recommend and byDefault as text');
     assert.equal(parseCard({ ...TEST_CARD, options: 'Basic | Pro' }), 'card options is not a list of texts');
     assert.equal(parseCard({ ...TEST_CARD, options: ['Basic', 2] }), 'card options is not a list of texts');
+    assert.deepEqual(parseCard({ ...TEST_CARD, whyAsk: WHY_ASK }), { ...TEST_CARD, whyAsk: WHY_ASK });
+    assert.equal(parseCard({ ...TEST_CARD, whyAsk: 7 }), 'card whyAsk is not text');
   });
 
   it('prints the question, each option numbered, the recommendation and the default', () => {
@@ -65,5 +73,12 @@ describe('the decision card', () => {
       '  recommended: Basic, the cheaper launch',
       '  with no answer: Basic ships on the due date',
     ]);
+  });
+
+  it('prints why the owner is asked under the question, and drops it on request', () => {
+    const asked = { ...TEST_CARD, whyAsk: WHY_ASK };
+    assert.deepEqual(cardTexts(asked), [TEST_CARD.question, WHY_ASK, ...TEST_CARD.options, TEST_CARD.recommend, TEST_CARD.byDefault]);
+    assert.deepEqual(cardLines(asked, '  ').slice(0, 2), ['  decide: Which pricing tier ships first', `  why asked: ${WHY_ASK}`]);
+    assert.deepEqual(withoutWhyAsk(asked), TEST_CARD);
   });
 });
