@@ -62,3 +62,15 @@ export function assertWritable(file, parse, knownVersion) {
         throw new NewerDataError(file, newest, knownVersion);
     }
 }
+/**
+ * A one-object file's record before it is rewritten; undefined for a missing or damaged file, which the write
+ * may replace. A file in a newer format is refused, so an old binary never overwrites what a newer one wrote.
+ */
+export function writableObject(file, text, knownVersion) {
+    const record = text === undefined ? undefined : parseObject(text.trim());
+    const version = record === undefined ? undefined : recordVersion(record);
+    if (version !== undefined && version > knownVersion) {
+        throw new NewerDataError(file, version, knownVersion);
+    }
+    return record;
+}

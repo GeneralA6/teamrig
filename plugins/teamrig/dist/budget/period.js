@@ -1,7 +1,10 @@
-import { parseObject, toJsonlLine, VERSION_FIELD } from "../core/jsonl.js";
+import { parseObject, toJsonlLine, VERSION_FIELD, writableObject } from "../core/jsonl.js";
 import { MS_PER_HOUR, MS_PER_WEEK } from "../core/time.js";
 import { resolveReset } from "./pace.js";
-/** The format of the period file this code reads and writes; a file in another format or damaged reads as none. */
+/**
+ * The format of the period file this code reads and writes; a file in another format or damaged reads as none,
+ * and one in a newer format refuses a write.
+ */
 export const PERIOD_FORMAT = 1;
 /**
  * A drop in the week's use this large, its reset time unchanged, is a reset of the use inside the week: use only
@@ -136,9 +139,11 @@ export class PeriodStore {
         const text = await this.files.read(this.path);
         return text === undefined ? undefined : parsePeriod(text);
     }
-    /** The period after `sight`, written when it changed. */
+    /** The period after `sight`, written when it changed. A file a newer teamrig wrote is refused (`NewerDataError`), never overwritten. */
     async advance(sight) {
-        const stored = await this.read();
+        const text = await this.files.read(this.path);
+        writableObject(this.path, text, PERIOD_FORMAT);
+        const stored = text === undefined ? undefined : parsePeriod(text);
         const next = nextPeriod(stored, sight);
         if (!samePeriod(stored, next)) {
             await this.files.write(this.path, formatPeriod(next));
