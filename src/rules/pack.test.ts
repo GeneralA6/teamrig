@@ -5,9 +5,11 @@ import { HOOK_ASKS, PUSH_TO_PROTECTED, type HookAsks, type PushToProtected } fro
 import { FOLLOWUP_STATUSES, TASK_STATUSES } from '../register/model.ts';
 import { testConfig } from '../testing/config.ts';
 import { RULES_CLOCK } from '../testing/zone.ts';
+import { CORE_RULE_KEYS } from './keys.ts';
 import {
   CONTEXT_MAX_CHARS,
   CORE_PACK_MAX_CHARS,
+  coreRuleTexts,
   KEPT_RULES_MAX_CHARS,
   LEAD_RULES_MAX_CHARS,
   LIST_MAX_CHARS,
@@ -95,6 +97,13 @@ describe('renderLeadRules', () => {
 });
 
 describe('renderCorePack', () => {
+  it('numbers each core rule text in key order', () => {
+    const config = testConfig();
+    const texts = coreRuleTexts(config, COMMAND, 'win32', RULES_CLOCK);
+    const lines = renderCorePack(config, COMMAND, 'win32', RULES_CLOCK).split('\n');
+    CORE_RULE_KEYS.forEach((key, index) => assert.ok(lines.includes(`${index + 1}. ${texts[key]}`), key));
+  });
+
   it('fits its budget with every printed value at its worst case, in every push rule wording, and the kept rules at their size cap', () => {
     const over: string[] = [];
     for (const pushToProtected of PUSH_TO_PROTECTED) {
