@@ -25,6 +25,7 @@ import type { StarterWatch } from '../coordinator/starter-watch.ts';
 import type { StepRunner } from '../coordinator/steps.ts';
 import type { HookRunner } from '../roll/hooks.ts';
 import type { IntegrateGit } from '../integrate/git.ts';
+import type { TreeState } from '../coordinator/push-pass.ts';
 import type { PackageRegistry } from '../package-guard/registry.ts';
 import { FakeClock } from './fake-clock.ts';
 import { MemoryFiles } from './memory-files.ts';
@@ -101,6 +102,8 @@ export interface RunOptions {
   readonly starters?: StarterWatch;
   /** The git `teamrig integrate` drives; default the fake repository at /w/feat (testing/fake-integrate-git.ts). */
   readonly integrateGit?: IntegrateGit;
+  /** The working tree `teamrig heavy --pre-push` reads; default no repository. */
+  readonly trees?: TreeState;
   /** The runner `teamrig roll` runs its gates, afterPull hooks and roll command in; default one whose programs print nothing and exit 0. */
   readonly hooks?: HookRunner;
   /** The registry the package guard asks about an install; default one that holds no package. */
@@ -157,6 +160,7 @@ export class CliHarness {
       ...(options.memory === undefined ? {} : { memory: options.memory }),
       ...(options.starters === undefined ? {} : { starters: options.starters }),
       ...(options.integrateGit === undefined ? {} : { integrateGit: options.integrateGit }),
+      ...(options.trees === undefined ? {} : { trees: options.trees }),
       ...(options.hooks === undefined ? {} : { hooks: options.hooks }),
       ...(options.packageRegistry === undefined ? {} : { packageRegistry: options.packageRegistry }),
       out: { stdout: (line) => stdout.push(line), stderr: (line) => stderr.push(line) },
