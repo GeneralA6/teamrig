@@ -145,17 +145,17 @@ export interface RulesClock {
 }
 
 /**
- * The always-loaded core rules, filled from the team's config. Each rule names the config key
+ * Each core rule's text, filled from the team's config. Each rule names the config key
  * behind any value it prints, so a team changes a number without forking the text. A step only one
  * platform needs, like removing a worktree without following its node_modules junction on Windows, prints on that platform alone.
  * The heavy cutoff is named on the team's clock, for the day `clock.now` falls on.
  */
-export function renderCorePack(config: KitConfig, command: string, platform: NodeJS.Platform, clock: RulesClock): string {
+export function coreRuleTexts(config: KitConfig, command: string, platform: NodeJS.Platform, clock: RulesClock): Readonly<Record<CoreRuleKey, string>> {
   const { roles, skills, budget } = config;
   const cutoff = heavyCutoffSpan(clock.now.getTime(), config.coordinator.schedule.heavyCutoffUtc);
   const zone = TimeZone.resolve(config.timeZone, clock.machineZone);
   const cutoffSpan = cutoff === undefined ? undefined : zone.clockSpan(new Date(cutoff.from), new Date(cutoff.to));
-  const rules: Readonly<Record<CoreRuleKey, string>> = {
+  return {
     roles:
       `Roles, by session id: ${roles.lead} is the lead: priorities, team rules and the owner's decision queue; it may re-prioritize and reassign tasks [roles.lead].` +
       (roles.coordinatorOwner === undefined ? '' : ` ${roles.coordinatorOwner} owns deploy coordination and fleet health [roles.coordinatorOwner].`) +
@@ -220,6 +220,11 @@ export function renderCorePack(config: KitConfig, command: string, platform: Nod
       " Update comments in their code's commit, deleting one you cannot make true; verify a load-bearing comment or recorded number at its source;" +
       ' fix a stale comment, doc or proven-dead code you find in its own commit and tell its area.',
   };
+}
+
+/** The always-loaded core rules (`coreRuleTexts`), numbered, with the kept local rules under them. */
+export function renderCorePack(config: KitConfig, command: string, platform: NodeJS.Platform, clock: RulesClock): string {
+  const rules = coreRuleTexts(config, command, platform, clock);
   const kept = renderKeptRules(config.ruleConflicts, command);
   const except = kept === '' ? '' : ', except the kept local rules below [ruleConflicts]';
   return [
