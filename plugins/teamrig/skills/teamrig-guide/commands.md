@@ -648,6 +648,185 @@ POSTED to web; web is reminded at its next prompt
 
 The line is stored as `- 2026-10-15 08:58 lead: api error codes are in docs/errors.md`.
 
+## Privileged commands
+
+A command that writes a database, calls a writing route, writes the cluster or an outside service runs only through
+a request a reviewer approved: the session asks (`exec request`), the read-only dry run runs (`exec dry-run`), the
+security reviewer (`roles.securityReviewer`) or the owner reads it and approves, refuses or escalates it, and then
+the approved command runs once (`exec run`). Each step is one line of the team's exec audit log, and with
+`exec.webhookEnv` set, each review and run is posted to the security channel too. The examples have `api` asking and
+`lead` as the security reviewer. The guard that keeps a tab reviewing only as itself is
+[`hook exec-guard`](#teamrig-hook-exec-guard).
+
+### teamrig exec request
+
+Checks a request file and logs it as the next `R<n>`; nothing runs yet. The file is one JSON object:
+
+- `kind`: `db-write`, `route`, `pod-exec`, `cluster-write` or `external-write`.
+- `task`: the register task it serves (`T12`); `target`: what it changes, in words (`local app.items`).
+- `argv`: the command as a list, started with no shell; `argv[0]` is a program name on the exec PATH (`exec.path`)
+  or an absolute path. No inline code (`node -e`, `python -c`): a write runs a committed script.
+- `cwd`: an absolute path. `binding`: `{repo, commit, lockSha256}`, the repository's absolute path, the full commit
+  sha and the lockfile's SHA-256; a `pod-exec` binds `{image}`, an image pinned by digest.
+- `envNames`: the variables the run gets, by name; `readEnvNames`: the read-only ones the dry run gets. A
+  credential reaches the run only this way: a value that looks like a secret anywhere in the file is refused.
+- `maxRuntimeSec`: whole seconds, at most 4 h; `rerunSafe`: whether a second run is safe.
+- `purpose`, `expected` (inserted, unchanged, changed counts, or the ids) and `rollback` (the undo command or the
+  backup path).
+- `dryRunArgv`: the read-only form, required for a `db-write`; a command with none gives `preview` instead (the GET
+  the change will alter).
+- `window`: `null`, or `{runAfter, expiresBy}`, two instants. `ownerGated`: `true` when the owner must decide.
+
+Flags:
+
+- `--session <id|name>`: the caller, who asks.
+- `--file <path>`: the request file.
+
+Example:
+
+```sh
+teamrig exec request --session api --file requests/fix-orders.json
+```
+
+Output:
+
+```text
+REQUESTED R4: db-write on local app.orders for T12; next: teamrig exec dry-run R4
+```
+
+The reviewer gets an inbox line. A file with problems is refused with every problem at once.
+
+### teamrig exec dry-run
+
+Runs the request's read-only dry run with its read variables only, and logs its exit, output file and output
+SHA-256 for the reviewer. A request with no dry run (a preview instead) has none to run; a reviewed one is refused.
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig exec dry-run R4
+```
+
+Output:
+
+```text
+DRY RUN R4: exit 0; output /home/you/.teamrig/teams/shop/exec/out/R4-dry.log (SHA-256 5be1…); next: the reviewer reads it (teamrig exec status R4), then approves, refuses or escalates it
+  inserted 0, unchanged 812, changed 3
+```
+
+### teamrig exec status
+
+Without an id, each request and its stage (waits for its dry run, waits for review, approved until when, ran, refused).
+With `R<n>`, the whole request as the reviewer reads it: the command, its binding, variables, case, dry run and
+reviews.
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig exec status
+```
+
+Output:
+
+```text
+R4 db-write for T12 by api on local app.orders: dry run exit 0: waits for review
+```
+
+### teamrig exec approve
+
+The reviewer approves one run. The security reviewer settles another session's request that is not owner-gated; the
+owner settles any, and alone settles an owner-gated or escalated one, or the security reviewer's own. An approval
+lasts 30 minutes, or with a window until it closes, at most 4 h. Run it in a tab as that tab's own session: the
+[exec guard](#teamrig-hook-exec-guard) refuses a tool call that names another, and the owner approves in their own
+terminal or by typing `/teamrig exec approve R<n> --session owner`.
+
+Flags:
+
+- `--session <id|name>`: the caller, the reviewer.
+- `--note "<text>"`: what was checked; optional. A note that looks like a secret is refused.
+
+Example:
+
+```sh
+teamrig exec approve R4 --session lead --note "dry run matches expected: 3 changed"
+```
+
+Output:
+
+```text
+APPROVED R4 by lead until 2026-10-20T16:40:00.000Z; next: teamrig exec run R4
+```
+
+### teamrig exec refuse
+
+The reviewer refuses the request; the note says why and names the safe alternative. Who may refuse is who may
+approve.
+
+Flags:
+
+- `--session <id|name>`: the caller, the reviewer.
+- `--note "<text>"`: the reason and the safe alternative; required.
+
+Example:
+
+```sh
+teamrig exec refuse R4 --session lead --note "writes every row: bound it by the ids in expected"
+```
+
+Output:
+
+```text
+DECLINED R4 by lead: writes every row: bound it by the ids in expected
+```
+
+### teamrig exec escalate
+
+The security reviewer hands a request to the owner: an owner-gated one always, or one the reviewer judges the
+owner's. Only the owner settles it then.
+
+Flags:
+
+- `--session <id|name>`: the caller, the security reviewer.
+- `--note "<text>"`: why the owner must decide; required.
+
+Example:
+
+```sh
+teamrig exec escalate R4 --session lead --note "deletes derived rows: owner gate"
+```
+
+Output:
+
+```text
+ESCALATED R4 by lead to the owner (owner): deletes derived rows: owner gate
+```
+
+### teamrig exec run
+
+Runs an approved request once, before its approval expires. It checks the binding (commit, lockfile) and the
+variables again first, so nothing runs that the reviewer did not see; the logged start uses up the approval, so a
+second run is refused. The output is redacted, written whole to a file (`exec/out/R<n>-run.log` in the team's
+folder) and logged with its SHA-256.
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig exec run R4
+```
+
+Output:
+
+```text
+RAN R4: exit 0; output /home/you/.teamrig/teams/shop/exec/out/R4-run.log (SHA-256 9c1d…)
+  inserted 0, unchanged 812, changed 3
+```
+
 ## Team
 
 ### teamrig team create
@@ -2841,6 +3020,24 @@ Output: nothing for a call that prints no secret (or with `secretReads` set to `
 or for input that is not a hook payload; otherwise a JSON permission decision (`deny`, or `ask` when the team set
 it) with the reason naming each secret; under `prompts.hookAsks: refuse` that `ask` is a `deny` whose reason says
 what to do instead.
+
+### teamrig hook exec-guard
+
+Before a Bash or PowerShell call, refuses a `teamrig exec approve`, `refuse` or `escalate` run as anyone but the
+tab's own session, and any `exec` call while the installed teamrig client differs from what its build
+hashed. See [Hooks and permissions](hooks.md#before-a-shell-command-the-exec-guard).
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig hook exec-guard < pre-tool-use.json
+```
+
+Output: nothing for a line that runs no `exec` command, a review as the tab's own session through an
+unchanged client, outside a team's projects, or for input that is not a hook payload; otherwise a JSON `deny` with
+each reason.
 
 ### teamrig hook readonly-allow
 
