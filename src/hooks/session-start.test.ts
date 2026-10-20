@@ -108,10 +108,11 @@ MODEL app-alpha runs model claude-haiku-5-5.`));
   });
 
   it('says the verify queue after the model line', () => {
-    const text = context({ modelNote: 'MODEL line.', verifyNote: 'VERIFY 1: T1 (proof: the nightly run)' });
+    const text = context({ modelNote: 'MODEL line.', verifyNote: 'VERIFY 1, oldest first:\n  T1 (proof: the nightly run)' });
     assert.ok(text.endsWith(`${NAMES}
 MODEL line.
-VERIFY 1: T1 (proof: the nightly run)`));
+VERIFY 1, oldest first:
+  T1 (proof: the nightly run)`));
   });
 
   it("appends the team's rules", () => {

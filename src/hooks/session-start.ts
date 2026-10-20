@@ -24,7 +24,7 @@ export interface SessionStartInput {
   readonly liveTasksNote: string | undefined;
   /** When the session runs on another model or effort than the team config asks: the line that says so. */
   readonly modelNote: string | undefined;
-  /** When the session holds verifying tasks: `VERIFY <n>: T1 (proof: ...), ...`, oldest first, so it proves them. */
+  /** When the session holds verifying tasks: `VERIFY <n>, oldest first:` and a row each (the first few), so it proves them. */
   readonly verifyNote: string | undefined;
   /**
    * Who the session is: an id or any name it has had, from `$TEAMRIG_SESSION`, a `--session` flag, or

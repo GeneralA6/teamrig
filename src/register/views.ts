@@ -89,13 +89,24 @@ function rowHead(task: Task, team: string | undefined, tree: TaskTree): string[]
   return parts;
 }
 
-/** How long a proof runs in the one-line verify queue before it is cut. */
+/** How long a proof runs in the verify queue's rows before it is cut. */
 const SUMMARY_PROOF_CHARS = 60;
+/** The most verifying tasks the verify queue names; a `+N more` line names the command that lists them all. */
+export const SUMMARY_VERIFY_ROWS = 5;
 
-/** `VERIFY 2: T1 (proof: ...), T3 (proof: ...)`: a verify queue in one line, each proof cut short; undefined when empty. */
-export function formatVerifySummary(queue: readonly Task[]): string | undefined {
-  const named = queue.map((task) => `${task.id} (proof: ${cut(proofText(task), SUMMARY_PROOF_CHARS)})`);
-  return queue.length === 0 ? undefined : `VERIFY ${queue.length}: ${named.join(', ')}`;
+/**
+ * `VERIFY 2, oldest first:` and a row each, `  T1 (proof: ...)`, each proof cut short, at most SUMMARY_VERIFY_ROWS
+ * rows and a `+N more` line naming `<command> verify --session <owner>`, which lists the whole queue; undefined when
+ * empty.
+ */
+export function formatVerifySummary(queue: readonly Task[], owner: string, command: string): string | undefined {
+  if (queue.length === 0) {
+    return undefined;
+  }
+  const rows = queue.slice(0, SUMMARY_VERIFY_ROWS).map((task) => `  ${task.id} (proof: ${cut(proofText(task), SUMMARY_PROOF_CHARS)})`);
+  const left = queue.length - rows.length;
+  const more = left > 0 ? [`  +${left} more: \`${command} verify --session ${owner}\``] : [];
+  return [`VERIFY ${queue.length}, oldest first:`, ...rows, ...more].join('\n');
 }
 
 /** A row of `verify`, times in the team's `zone`: `T1 since 01-07 12:00 IST, verify by 01-09 | <title> (proof: ...)`. */
