@@ -6,6 +6,7 @@ import { APP, CliHarness, TEAM, TEAM_HOME, type CliResult, type RunOptions } fro
 import { execDraft } from '../testing/exec-request.ts';
 import { FakeCheckout, probeOf } from '../testing/fake-checkout.ts';
 import { FakeExecSpawner } from '../testing/fake-exec-spawner.ts';
+import { FakeWebhook } from '../testing/fake-webhook.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { EXIT } from './runtime.ts';
 
@@ -24,7 +25,7 @@ class ExecTeam {
     this.options = {
       platform: 'win32',
       probe: probeOf('C:/nodejs/node.exe'),
-      exec: { spawner: this.spawner, checkout: new FakeCheckout() },
+      exec: { spawner: this.spawner, checkout: new FakeCheckout(), webhook: new FakeWebhook() },
       env: { DB_READ_URI: 'db://read', DB_WRITE_URI: 'db://write' },
     };
   }
