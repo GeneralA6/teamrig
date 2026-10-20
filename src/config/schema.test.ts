@@ -56,7 +56,7 @@ const EVERY_KEY = {
   decisions: { batchTimesUtc: ['13:03'], batchAt: 3 },
   github: { repos: ['acme/web'], owners: { octocat: 'bravo' }, closedDays: 30, everyMinutes: 30 },
   paths: { state: '/s', inbox: '/i', skills: '/k' },
-  exec: { path: ['C:/tools'] },
+  exec: { path: ['C:/tools'], webhookEnv: 'EXEC_WEBHOOK_URL' },
 };
 
 async function loadSchema(): Promise<JsonRecord> {
