@@ -3,7 +3,7 @@ import { ENV } from "../../core/home.js";
 import { NAME_RULE } from "../../core/ids.js";
 import { PlainLogFile } from "../../core/log-file.js";
 import { SecretScanner } from "../../core/secrets.js";
-import { formatRead, formatUnread, inboxStatus, lineOnClock, postLine, readInbox } from "../../inbox/inbox.js";
+import { formatRead, formatStatus, inboxStatus, lineOnClock, postLine, readInbox } from "../../inbox/inbox.js";
 import { CLAUDE_SESSION_ID } from "../../inbox/marks.js";
 import { reachOf } from "../../inbox/reach.js";
 import { InboxDir, JsonlMarkLog } from "../../inbox/store.js";
@@ -56,12 +56,12 @@ export async function status(args, runtime) {
     const config = requireConfig(kit, runtime, 'read');
     const roster = await rosterOf(runtime, kit, config);
     const area = ref === undefined ? undefined : pastOrPresentIdOf(roster, ref);
-    const unread = await inboxStatus(inboxDepsOf(runtime, kit.paths), area);
-    if (unread.length === 0) {
+    const statuses = await inboxStatus(inboxDepsOf(runtime, kit.paths), area);
+    if (statuses.length === 0) {
         runtime.out.stdout(`INBOX no inbox ${area === undefined ? 'files' : `for ${area}`} in ${kit.paths.inbox}`);
     }
     const zone = teamZone(config, runtime);
-    unread.forEach((item) => runtime.out.stdout(formatUnread(item, zone)));
+    statuses.forEach((item) => runtime.out.stdout(formatStatus(item, zone)));
     return EXIT.ok;
 }
 function ownTeamRecipient(paths, config, id) {

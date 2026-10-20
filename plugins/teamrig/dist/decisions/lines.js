@@ -1,0 +1,54 @@
+import { cardFacts } from "../meeting/agenda.js";
+import { dueBeforeNextBatch, nextBatchText, triggerText } from "./batch.js";
+/** `DECISIONS 2 to ask owner, 1 asked and past due; BATCH DUE: <why>`, or `...; the next batch Tue 01-08 13:03 UTC`. */
+export function batchHead(batch, ownerMarker, zone) {
+    const when = batch.trigger === undefined ? nextBatchText(batch, zone) : `BATCH DUE: ${triggerText(batch.trigger, zone)}`;
+    return `DECISIONS ${batch.pending.length} to ask ${ownerMarker}, ${batch.overdue.length} asked and past due; ${when}`;
+}
+/**
+ * `decisions`: the head, then each wait's card facts, the ones not yet asked before the ones asked and past due, then
+ * how to ask them and record the batch and each answer.
+ */
+export function batchLines(view) {
+    const { batch, tree, byId, ownerMarker, command, lead, zone } = view;
+    const head = batchHead(batch, ownerMarker, zone);
+    if (batch.pending.length + batch.overdue.length === 0) {
+        return [head];
+    }
+    const facts = (tasks) => tasks.flatMap((task) => cardFacts(task, tree, byId));
+    return [
+        head,
+        ...(batch.pending.length === 0 ? [] : ['NOT YET ASKED', ...facts(batch.pending)]),
+        ...(batch.overdue.length === 0 ? [] : ['PAST DUE, asked before: ask again', ...facts(batch.overdue)]),
+        `  Ask ${ownerMarker} these together, each card as it stands, each figure explained; then ${command} decisions asked --session ${lead} records the batch asked.`,
+        `  Record each answer in the same turn: ${command} update <id> --note "${ownerMarker} decided: <decision>" --session ${lead}.`,
+    ];
+}
+/** The lead's `check` line while a batch is due, its times on `zone`'s clock; none while it waits for the next. */
+export function checkDecisionLines(batch, command, lead, zone) {
+    if (batch.trigger === undefined) {
+        return [];
+    }
+    return [`DECISIONS batch due (${triggerText(batch.trigger, zone)}): ${batch.pending.length} to ask, ${batch.overdue.length} past due; ${command} decisions --session ${lead}`];
+}
+export function waitTiming(batch, task, tree, now) {
+    const due = dueBeforeNextBatch(task, tree, now, batch.nextAt);
+    if (due !== undefined) {
+        return { kind: 'at-once', due };
+    }
+    return batch.trigger === undefined ? { kind: 'next', nextAt: batch.nextAt } : { kind: 'batch-due', trigger: batch.trigger };
+}
+/**
+ * The end of the lead's inbox line of a new wait on the owner, its times on `zone`'s clock: `AT ONCE, due ... before
+ * the next batch`, `BATCH DUE: <why>` or `asked in the next batch ...`.
+ */
+export function timingText(timing, zone) {
+    switch (timing.kind) {
+        case 'at-once':
+            return `AT ONCE, due ${zone.weekdayMinute(new Date(timing.due))} before the next batch`;
+        case 'batch-due':
+            return `BATCH DUE: ${triggerText(timing.trigger, zone)}`;
+        case 'next':
+            return `asked in ${nextBatchText(timing, zone)}`;
+    }
+}

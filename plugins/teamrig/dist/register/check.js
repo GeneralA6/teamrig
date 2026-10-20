@@ -1,5 +1,6 @@
 import { MS_PER_DAY, MS_PER_HOUR, parseDayStart, showStored } from "../core/time.js";
 import { topPriority } from "../config/priorities.js";
+import { approvalCleared } from "./approval.js";
 import { CARD_FLAGS } from "./card.js";
 import { taskNumber } from "./fold.js";
 import { ACTIVE_STATUSES, priorityText } from "./model.js";
@@ -58,7 +59,8 @@ export function currentWeekOf(snapshot, now, zone) {
  * - VERIFY-BLOCKS: verifying, and another active task is planned after it or waits on it, so that work cannot start
  *   until the proof comes (`set` refuses its start);
  * - READY: waiting, and every reason it waits for is ready (its tasks finished, its time passed), so its owner can
- *   go on: only the owner clears a decision or an approval, by setting the next status; or verifying, and every
+ *   go on: only the owner clears a decision or an approval, by setting the next status, though the lead's yes to an
+ *   approval wait (`approve`) counts as ready, so its owner pushes or merges it; or verifying, and every
  *   reason its proof waited for is ready, so the proof should exist: its owner verifies it now;
  * - NO-REASON: waiting with no reason, as a line from an older teamrig reads: nothing says what it waits for;
  * - NO-CARD: waiting on the owner's decision or approval with no card to decide from (card.ts), as one set before
@@ -137,13 +139,19 @@ function noCardFlags(task, config) {
         ? [{ kind: 'NO-CARD', task, detail: `no card for ${ownerSource} to decide from: set it ${task.status} again with ${CARD_FLAGS}` }]
         : [];
 }
-/** READY, as {@link checkTasks} describes it: a waiting task's reasons, or a verifying task's proof waits, all cleared. */
+/**
+ * READY, as {@link checkTasks} describes it: a waiting task's reasons, or a verifying task's proof waits, all cleared;
+ * or a waiting task whose approval wait the one it waits on answered yes (`approve`, T684).
+ */
 function readyFlags(task, context) {
-    if (!allReady(task.waits, context)) {
-        return [];
+    if (allReady(task.waits, context)) {
+        const detail = task.status === 'verifying' ? 'every wait of its proof cleared; verify it now' : 'every reason cleared; set its next status';
+        return [{ kind: 'READY', task, detail }];
     }
-    const detail = task.status === 'verifying' ? 'every wait of its proof cleared; verify it now' : 'every reason cleared; set its next status';
-    return [{ kind: 'READY', task, detail }];
+    if (task.status === 'waiting' && task.waits.length > 0 && task.waits.every((reason) => isReady(reason, context) || approvalCleared(task, reason))) {
+        return [{ kind: 'READY', task, detail: `${task.answer?.by ?? 'the lead'} approved it; push or merge it, then set its next status` }];
+    }
+    return [];
 }
 /** A task with a time reason still to come (waiting, or a verifying task's proof): parked on purpose until then, so not stale. */
 function waitsForTime(task, context) {

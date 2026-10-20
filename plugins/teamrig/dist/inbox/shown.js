@@ -5,6 +5,13 @@ export function newestShownOf(marks, area, claudeSession) {
     return claudeSession === null ? null : (marks.findLast((mark) => mark.area === area && mark.claudeSession === claudeSession) ?? null);
 }
 /**
+ * The newest mark the hook left on `area` for any Claude Code session: how far the area's session saw its inbox at a
+ * prompt, whichever incarnation of it (`inbox status` reads it, as no prompt is its own).
+ */
+export function lastShownOf(marks, area) {
+    return marks.findLast((mark) => mark.area === area) ?? null;
+}
+/**
  * The unread lines the hook has not shown this Claude Code session: those after the read mark, or
  * after the shown mark when it is the later one. Both are tails of the same lines, so the shorter tail
  * starts later. A shown mark whose last line is gone (the file was rewritten) counts for nothing.

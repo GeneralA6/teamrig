@@ -37,7 +37,7 @@ export class RegisterFold {
         if (current === undefined) {
             return this.orphan();
         }
-        this.tasks.set(event.id, event.type === 'status' ? withStatus(current, event) : withChanges(current, event.changes, event.at, event.by));
+        this.tasks.set(event.id, event.type === 'status' ? withStatus(current, event) : withChanges(current, event));
         return true;
     }
     /** The state so far. Its task map is a copy, so later events never change a state already handed out. */
@@ -65,6 +65,7 @@ function created(id, fields, at, by) {
         skill: null,
         waits: [],
         card: null,
+        answer: null,
         proof: null,
         followups: [],
         startedAt: null,
@@ -88,6 +89,7 @@ function withStatus(task, event) {
         skill: event.skill,
         waits: WAIT_STATUSES.includes(event.status) ? (event.waits ?? []) : [],
         card: WAIT_STATUSES.includes(event.status) ? (event.card ?? null) : null,
+        answer: null,
         proof: event.status === 'verifying' ? (event.proof ?? null) : null,
         followups: event.followups === undefined ? task.followups : [...new Set([...task.followups, ...event.followups])],
         startedAt: task.startedAt ?? (event.status === 'in-progress' || event.status === 'verifying' ? event.at : null),
@@ -96,9 +98,17 @@ function withStatus(task, event) {
         ownerSeenAt: event.by === task.owner ? event.at : task.ownerSeenAt,
     };
 }
-function withChanges(task, changes, at, by) {
+/**
+ * An update's note from the task's owner is its note from then on, as a restated one on `set` is, so show and the
+ * waiting text print it at once; a note from any other session adds context to the history only, since the note a
+ * task shows is its owner's (T630). An update with a `verdict` is the lead's answer to the task's approval wait, its
+ * note what the lead checked (T684).
+ */
+function withChanges(task, { changes, note, at, by, verdict }) {
     const priorityAt = changes.priority === undefined || changes.priority === task.priority ? task.priorityAt : at;
-    const next = { ...task, ...changes, updatedAt: at, updatedBy: by, priorityAt };
+    const shown = note !== null && by === task.owner ? note : task.note;
+    const answer = verdict === undefined ? task.answer : { verdict, by, at, note };
+    const next = { ...task, ...changes, note: shown, answer, updatedAt: at, updatedBy: by, priorityAt };
     if (next.owner !== task.owner) {
         return { ...next, assignedAt: at, ownerSeenAt: by === next.owner ? at : null };
     }

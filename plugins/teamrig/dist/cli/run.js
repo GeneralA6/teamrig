@@ -51,6 +51,7 @@ const deploysCommand = () => import("./commands/deploys.js");
 const ghCommands = () => import("./commands/gh.js");
 const startCommands = () => import("./commands/start.js");
 const meetingCommands = () => import("./commands/meeting.js");
+const decisionsCommands = () => import("./commands/decisions.js");
 const hireCommands = () => import("./commands/hire.js");
 const retireCommands = () => import("./commands/retire.js");
 const slashCommands = () => import("./commands/slash.js");
@@ -61,6 +62,7 @@ const COMMANDS = {
     add: { effect: 'write', flags: ['session', 'source', 'team', ...TASK_FIELDS], load: async () => (await registerCommands()).add },
     set: { effect: 'write', flags: ['session', 'status', 'note', 'evidence', 'skill', 'followups', 'waits', 'question', 'options', 'recommend', 'default', 'proof', 'met', 'due', 'ask', 'text'], load: async () => (await registerCommands()).set },
     update: { effect: 'write', flags: ['session', 'note', ...TASK_FIELDS], load: async () => (await registerCommands()).update },
+    approve: { effect: 'write', flags: ['session', 'note'], switches: ['decline'], load: async () => (await registerCommands()).approve },
     list: {
         effect: 'read',
         flags: ['session', 'status', 'source', 'priority', 'due-before', 'week', 'goal'],
@@ -90,6 +92,8 @@ const COMMANDS = {
     'meeting start': { effect: 'write', flags: ['session'], load: async () => (await meetingCommands()).meetingStart },
     'meeting agenda': { effect: 'write', flags: ['session'], load: async () => (await meetingCommands()).meetingAgenda },
     'meeting end': { effect: 'write', flags: ['session'], load: async () => (await meetingCommands()).meetingEnd },
+    decisions: { effect: 'read', flags: ['session'], load: async () => (await decisionsCommands()).decisions },
+    'decisions asked': { effect: 'write', flags: ['session'], load: async () => (await decisionsCommands()).decisionsAsked },
     open: { effect: 'write', flags: ['prompt', 'terminal', 'project'], switches: ['resume'], load: async () => (await openCommands()).open },
     launch: { effect: 'internal', flags: ['team', 'project', 'home', 'encoded-prompt', 'resume', 'effort'], switches: ['no-prompt'], load: async () => (await openCommands()).launch },
     restore: { effect: 'read', flags: [], load: async () => (await restoreCommands()).restorePreview },
@@ -242,6 +246,11 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       (one starting CRITICAL goes) and prints the agenda: the owner's decisions as card facts, the late
       tasks, what finished since the last meeting, the lead's inbox and the week's use and fit; agenda
       prints it again; end tells every session, with the decisions recorded on its tasks (update --note)
+  decisions | decisions asked [--session <id|name>]   the owner's decisions the lead asks in batches:
+      decisions prints the waits on the owner not yet asked and the asked ones past due, as card facts,
+      and whether a batch is due (a wait due before the next batch, decisions.batchAt not yet asked, or a
+      decisions.batchTimesUtc time passed) or when the next is; decisions asked (the lead's) records the
+      batch asked, as a meeting start does
   add --title "<one line>" --description "<what and why>" --priority p<n> [--ref <where it was asked>]
       [--owner <session>] [--source <session>|<owner source>] [--due <date>] [--goals a,b] [--week <date>]
       [--after T5,T6] [--size <pct>]
@@ -273,6 +282,10 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   update <id> [--title ..] [--description ..|none] [--owner ..] [--priority ..] [--ref ..|none]
       [--due <date>|none] [--goals a,b|none] [--week <date>|none] [--after T5,T6|none] [--size <pct>|none]
       [--note ..]   the lead may change owner, priority, due, week, after and size on any task
+      a --note from the task's owner also replaces the note show and the waiting text print
+  approve <id> --note "<what you checked, or why not>" [--decline]   the lead only: answers a task waiting on
+      its approval (approval:<lead>); its owner gets an inbox line to push or merge (or to fix the note's
+      point and ask again), and check flags the approved task READY
   list [--session <owner>] [--status a,b|all] [--source <s>] [--priority p1,p2] [--due-before <date>]
       [--week <date>|none] [--goal <tag>] [--tree] [--all]
       short rows within 3,000 characters; --all: every field of every task. A task takes the earlier due

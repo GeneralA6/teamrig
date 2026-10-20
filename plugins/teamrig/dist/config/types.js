@@ -8,7 +8,7 @@ export const CONFLICT_WINNERS = ['local', 'teamrig'];
 export function isConflictWinner(value) {
     return CONFLICT_WINNERS.some((winner) => winner === value);
 }
-export const PUSH_TO_PROTECTED = ['ask', 'allow'];
+export const PUSH_TO_PROTECTED = ['ask', 'allow', 'lead'];
 export function isPushToProtected(value) {
     return PUSH_TO_PROTECTED.some((choice) => choice === value);
 }

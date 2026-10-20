@@ -96,6 +96,17 @@ export class Register {
             return { ok: true, value: [event] };
         }));
     }
+    /** `approve`: the lead's answer to a task's approval wait, an update that changes no field (T684). */
+    approve(caller, id, verdict, note) {
+        return this.commit(caller, (snapshot) => onTask(snapshot, id, (task) => {
+            const change = this.deps.policy.approve(task, caller, verdict, note);
+            if (!change.ok) {
+                return change;
+            }
+            const event = { ...this.base(id, caller), type: 'update', ...change.value };
+            return { ok: true, value: [event] };
+        }));
+    }
     /** Whether the skill a status change cites exists; true when it cites none. */
     async skillExists(input) {
         const skill = input.skill?.trim();

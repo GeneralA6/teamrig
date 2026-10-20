@@ -11,9 +11,10 @@ import { parseWaits } from "./waits.js";
  * `waits`, which replaced `blocked`: an older reader ignores the new fields and skips a `waiting` line as
  * a newer teamrig's, and a `blocked` line reads here as `waiting` with no reasons. It also gained a
  * `verifying` status's `proof`, a task's `description` (0.44.0) and its `size` (0.47.0), and a `waiting` status's
- * decision `card` (0.79.0), and the same `waits` and `card` on a `verifying` line for what its proof waits for
- * (0.109.0), which an older reader ignores: each reads there as none, and an older teamrig's
- * `compact` drops it from the snapshot it rewrites (the archive keeps the lines as written).
+ * decision `card` (0.79.0), the same `waits` and `card` on a `verifying` line for what its proof waits for
+ * (0.109.0), and an update's approval `verdict` (0.126.0), which an older reader ignores: each reads there as none
+ * (an answered update as a note alone), and an older teamrig's `compact` drops it from the snapshot it rewrites (the
+ * archive keeps the lines as written).
  * Parsing checks the FORMAT only (any positive priority, any goal string): team policy is applied
  * on write, so changing the config never erases history.
  */
@@ -21,6 +22,11 @@ export const EVENT_VERSION = 2;
 /** The name lines before version 2 gave the `priority` field; still read, never written. */
 export const LEGACY_PRIORITY_FIELD = 'tier';
 export const TASK_FIELD_NAMES = ['title', 'description', 'owner', 'source', 'ref', 'priority', 'due', 'goals', 'week', 'after', 'size'];
+/** The lead's answer to the approval a waiting task asks of it (T684): given, or declined with the note saying why. */
+export const APPROVAL_VERDICTS = ['approved', 'declined'];
+export function isApprovalVerdict(value) {
+    return APPROVAL_VERDICTS.some((verdict) => verdict === value);
+}
 const WEEK = /^\d{4}-\d{2}-\d{2}$/;
 /** The largest size a task can have: the whole weekly limit. */
 export const MAX_SIZE_PCT = 100;
@@ -104,7 +110,11 @@ export function parseEvent(line) {
             if (problem !== undefined) {
                 return unreadable(problem);
             }
-            return { kind: 'event', event: { ...base, type: 'update', changes, note: textOrNull(record, 'note') } };
+            const verdict = record['verdict'];
+            if (verdict !== undefined && !isApprovalVerdict(verdict)) {
+                return unreadable(`unknown approval verdict ${JSON.stringify(verdict)}`);
+            }
+            return { kind: 'event', event: { ...base, type: 'update', changes, note: textOrNull(record, 'note'), ...(verdict === undefined ? {} : { verdict }) } };
         }
         default:
             return unreadable(`unknown event type ${JSON.stringify(record['type'])}`);
