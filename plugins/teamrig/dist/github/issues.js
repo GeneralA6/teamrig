@@ -2,7 +2,7 @@ import { errorCode, errorMessage, isRecord, stringField } from "../core/guards.j
 import { exitText } from "../open/processes.js";
 import { GH_TIMEOUT_MS } from "./gh.js";
 /** The issue fields read, and nothing more; the body becomes the task's description. */
-export const ISSUE_FIELDS = ['number', 'title', 'body', 'state', 'stateReason', 'labels', 'assignees', 'url'];
+export const ISSUE_FIELDS = ['number', 'title', 'body', 'state', 'stateReason', 'labels', 'assignees', 'url', 'updatedAt'];
 /** The most issues one list returns; a list this long may have left some out, and the sync says so. */
 export const ISSUE_LIMIT = 500;
 /** gh's exit code when it has no login to use. */
@@ -108,7 +108,13 @@ function issueOf(item, repo) {
         labels: namesOf(item['labels'], 'name'),
         assignees: namesOf(item['assignees'], 'login'),
         url,
+        updatedAt: timeField(item, 'updatedAt'),
     };
+}
+/** A time gh prints (`2030-01-07T09:00:00Z`); undefined when missing or not a time. */
+function timeField(item, key) {
+    const text = stringField(item, key);
+    return text !== undefined && Number.isFinite(Date.parse(text)) ? text : undefined;
 }
 /** The `key` of each object in a list, such as each label's name; anything else is left out. */
 function namesOf(value, key) {

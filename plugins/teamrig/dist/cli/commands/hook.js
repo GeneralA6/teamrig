@@ -33,6 +33,8 @@ import { carryLines, carryStartOf, readCarry } from "../../refresh/carry.js";
 import { claudeProcessOf } from "../../refresh/restart.js";
 import { RefreshStore } from "../../refresh/store.js";
 import { readContextTokens } from "../../refresh/usage.js";
+import { leadApprovedTask } from "../../register/approval.js";
+import { JsonlEventLog } from "../../register/store.js";
 import { noPositionals } from "../args.js";
 import { dedupLogOf } from "../dedup-logs.js";
 import { openKit, renameDepsOf, rosterOf, rulesClockOf, teamFolders, teamZone } from "../kit.js";
@@ -75,10 +77,37 @@ async function guardLoadOf(payload, runtime) {
     if (found.kind === 'none') {
         return undefined;
     }
-    const load = found.kind === 'team'
-        ? await openKit(runtime, found.team).then((kit) => kit.load, () => undefined)
-        : undefined;
-    return { load };
+    const kit = found.kind === 'team' ? await openKit(runtime, found.team).catch(() => undefined) : undefined;
+    return { kit, load: kit?.load };
+}
+/**
+ * Under `pushToProtected: lead`, what lets this tab's normal push to a protected branch through (T684): the lead's own
+ * push, else a waiting task of its session's that the lead approved, read lock-free from the register. It never throws:
+ * a register it cannot read clears nothing, so the push is refused, saying why.
+ */
+async function pushClearanceOf(runtime, kit, payload) {
+    if (kit === undefined || kit.load.status !== 'loaded') {
+        // Not reached: without a loaded config the guard asks (pushToProtectedOf), so it never reads the clearance.
+        return { kind: 'none', lead: 'the lead', why: 'the team config did not load' };
+    }
+    const { config } = kit.load;
+    const lead = config.roles.lead;
+    try {
+        const roster = await rosterOf(runtime, kit, config);
+        const session = await teamSessionOf(runtime, kit, roster, sessionIdOf(payload));
+        if (session === undefined) {
+            return { kind: 'none', lead, why: 'this tab is not bound to a session of the team, so the guard cannot tell whose push it is' };
+        }
+        if (session === lead) {
+            return { kind: 'lead', lead };
+        }
+        const { state } = await new JsonlEventLog(runtime.files, kit.paths.events).read();
+        const task = leadApprovedTask(state.tasks.values(), session, lead);
+        return task === undefined ? { kind: 'none', lead, why: `${lead} has approved no waiting task of ${session}'s` } : { kind: 'approved', lead, task: task.id };
+    }
+    catch (error) {
+        return { kind: 'none', lead, why: `the guard could not read the register (${errorMessage(error)})` };
+    }
 }
 /** PreToolUse on Bash and PowerShell: asks before a push to a protected branch, refuses a force-push of one. */
 export async function pushGuard(args, runtime) {
@@ -88,8 +117,8 @@ export async function pushGuard(args, runtime) {
     if (guard === undefined) {
         return EXIT.ok;
     }
-    const { load } = guard;
-    const output = pushGuardOutput(payload, {
+    const { kit, load } = guard;
+    const output = await pushGuardOutput(payload, {
         cwd: runtime.cwd,
         home: runtime.userHome,
         repo: runtime.git,
@@ -99,6 +128,7 @@ export async function pushGuard(args, runtime) {
         commitLog: runtime.commitLog,
         skipHooks: skipHooksOf(load),
         hookAsks: hookAsksOf(load),
+        clearance: () => pushClearanceOf(runtime, kit, payload),
     });
     if (output !== '') {
         runtime.out.stdout(output);

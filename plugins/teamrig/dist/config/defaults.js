@@ -101,6 +101,7 @@ export const DEFAULT_BUDGET = {
 /** The share of a session the budget's `sessions` map leaves out, or lists without one. */
 export const DEFAULT_SESSION_SHARE = 1;
 export const DEFAULT_ALERTS = { persistentFailureHours: 24 };
+export const DEFAULT_DECISIONS = { batchTimesUtc: [], batchAt: 5 };
 export const DEFAULT_LOOPS = { chainNudgeAt: 6 };
 export const DEFAULT_LEAD_BOUNDARY = { enabled: true, ownPaths: [], searchNudgeAt: 3 };
 /** On, for a day: what a tab showed stays readable through a night of refreshes. */

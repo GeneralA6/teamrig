@@ -1,4 +1,4 @@
-import { lstat, readdir, readlink, unlink } from 'node:fs/promises';
+import { lstat, readdir, readlink, symlink, unlink } from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { errorCode } from "../core/guards.js";
@@ -58,6 +58,10 @@ export const NODE_WORKTREE_FILES = {
     async unlinkLink(path) {
         // unlink, never rm or rmdir: it removes a symlink or a junction itself and fails on a real folder.
         await unlink(path);
+    },
+    async makeLink(path, target) {
+        // A junction on Windows, which needs no privilege; elsewhere Node ignores the type and makes a symlink.
+        await symlink(target, path, 'junction');
     },
     async canonical(path) {
         try {

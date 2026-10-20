@@ -1,3 +1,5 @@
+import { KIT_NAME } from "../core/home.js";
+import { checkDecisionLines } from "../decisions/lines.js";
 import { formatHireFlag } from "../hiring/due.js";
 import { FLAG_KINDS, formatFlag } from "../register/check.js";
 import { planOrder } from "../register/tree.js";
@@ -30,6 +32,7 @@ export function ownCheck(report, owner) {
         scope: `${owner}'s tasks and skills, ${report.scope}`,
         skills: report.skills.filter((flag) => flag.owner === owner),
         hires: report.hires.filter((flag) => flag.session === owner),
+        decisions: report.decisions?.lead === owner ? report.decisions : undefined,
     };
 }
 /** Plan order on effective dues across registers: each task placed by its own register's tree. */
@@ -105,7 +108,11 @@ function skillsLine({ skills, skillsDir }) {
 function hireLines({ hires }, indent) {
     return hires.length === 0 ? [] : [`HIRES ${hires.length} flag(s)`, ...hires.map((flag) => `${indent}${formatHireFlag(flag)}`)];
 }
-/** Each register's `CHECK` line and flags, then the hire flags, then the skill flags: every flag, every field. */
+/** The lead's `DECISIONS` line while a batch of the owner's decisions is due; nothing otherwise. */
+function decisionLines({ decisions }) {
+    return decisions === undefined ? [] : checkDecisionLines(decisions.batch, KIT_NAME, decisions.lead, decisions.zone);
+}
+/** Each register's `CHECK` line and flags, then the hire flags, the lead's due batch of decisions, then the skill flags: every flag, every field. */
 function longCheck(report) {
     return [
         ...report.sections.flatMap(({ team, flags, tree }) => [
@@ -113,6 +120,7 @@ function longCheck(report) {
             ...flags.map((flag) => formatFlag(flag, team, tree)),
         ]),
         ...hireLines(report, ''),
+        ...decisionLines(report),
         skillsLine(report),
         ...report.skills.map(formatSkillFlag),
     ];
@@ -129,7 +137,7 @@ function kindLines(kind, rows, shown) {
 }
 /**
  * The short `check`: one `CHECK` line over every register, then each kind with its count and its first flags in plan
- * order, then every hire flag (at most two per hired session), then the skill flags the same way as the kinds. Each kind shows MAX_FLAGS_PER_KIND flags, or fewer, the same number for
+ * order, then every hire flag (at most two per hired session), the lead's due batch of decisions, then the skill flags the same way as the kinds. Each kind shows MAX_FLAGS_PER_KIND flags, or fewer, the same number for
  * every kind, so the whole fits in SHORT_FORM_CHARS; at one each, lines past the budget give way to a `+N more` line.
  */
 function shortCheck(report) {
@@ -145,6 +153,7 @@ function shortCheck(report) {
         head,
         ...kinds.flatMap(({ kind, rows }) => kindLines(kind, rows, shown)),
         ...hireLines(report, '  '),
+        ...decisionLines(report),
         skillsLine(report),
         ...firstOf(report.skills.map((flag) => `  ${formatSkillFlag(flag)}`), shown),
     ];

@@ -39,7 +39,7 @@ export async function doctor(args, runtime) {
         roster,
         configNames: config.names,
         renameLog: { ...renameLog, path: paths.renames },
-        inboxes: await inboxStatus(inboxDepsOf(runtime, paths)),
+        inboxes: (await inboxStatus(inboxDepsOf(runtime, paths))).map((status) => status.unread),
         retired: new Set(retiredSessions(records).map((record) => record.session)),
         teamRules: rules === undefined ? undefined : { path: paths.teamRules, chars: rules.trim().length },
         contextFiles: {

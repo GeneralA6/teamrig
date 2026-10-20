@@ -3,7 +3,7 @@ import { formatUtcMinute, parseUtcDeadline } from "../core/time.js";
 import { SESSION_NAME } from "../register/model.js";
 import { lineHash } from "./line-hash.js";
 import { CLAUDE_SESSION_ID, indexMarks, MARK_VERSION } from "./marks.js";
-import { cutWhenShown, newestShownOf, unshownOf } from "./shown.js";
+import { cutWhenShown, lastShownOf, newestShownOf, unshownOf } from "./shown.js";
 import { unreadOf } from "./unread.js";
 const LINE_DATE = /^- (\d{4}-\d{2}-\d{2} \d{2}:\d{2})/;
 const STAMP_END = '- YYYY-MM-DD HH:MM'.length;
@@ -29,9 +29,17 @@ function since(unread, zone) {
     const posted = unreadSince(unread);
     return posted === undefined ? '' : ` since ${zone.shortMinute(posted)}`;
 }
-/** For `inbox status`: `alpha 3 unread since 01-13 13:35 IST (read to line 21 of 24 at 01-13 10:57 IST)`. */
-export function formatUnread(unread, zone) {
-    const head = `${unread.area} ${unread.lines.length} unread${since(unread, zone)}`;
+/** `, 2 of them shown at a prompt`, when the prompt hook showed some of the unread lines. */
+function shownText(status) {
+    return status.shown === 0 ? '' : `, ${status.shown} of them shown at a prompt`;
+}
+/**
+ * For `inbox status`: `alpha 3 unread since 01-13 13:35 IST, 2 of them shown at a prompt (read to line 21 of 24 at
+ * 01-13 10:57 IST)`.
+ */
+export function formatStatus(status, zone) {
+    const { unread } = status;
+    const head = `${unread.area} ${unread.lines.length} unread${since(unread, zone)}${shownText(status)}`;
     const { mark } = unread;
     if (mark === null) {
         return `${head} (never marked read)`;
@@ -85,15 +93,19 @@ export function formatRead(result) {
         : 'new ones are shown at your next prompt';
     return `READ ${mark.area}: ${what}${before}${redo}; ${next}`;
 }
-/** Unread lines per area: every area, or one. */
+/** Unread lines per area, and how many of them the prompt hook showed: every area, or one. */
 export async function inboxStatus(deps, area) {
     const { byArea } = indexMarks((await deps.marks.read()).marks);
+    const shownMarks = (await deps.shown.read()).marks;
     const areas = area === undefined ? await deps.inboxes.areas() : [area];
     const result = [];
     for (const name of areas) {
         const lines = await deps.inboxes.lines(name);
         if (lines !== undefined) {
-            result.push(unreadOf(name, lines, byArea.get(name) ?? null, lineHash));
+            const read = byArea.get(name) ?? null;
+            const unread = unreadOf(name, lines, read, lineHash);
+            const unshown = unshownOf(name, lines, read, lastShownOf(shownMarks, name), lineHash);
+            result.push({ unread, shown: unread.lines.length - unshown.length });
         }
     }
     return result;

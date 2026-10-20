@@ -311,6 +311,26 @@ export class RegisterPolicy {
             ? `${reason.kind} ${reason.who}: decision and approval waits are for the lead (${lead}) and ${ownerSource}; wait on ${reason.who}'s work by its task: teamrig set ${task.id} --status ${status} --ask ${reason.who} --text "<the work you need>"`
             : `${reason.kind} ${reason.who}: ${reason.who} is neither the lead (${lead}) nor ${ownerSource}`;
     }
+    /**
+     * The lead's answer to a task's approval wait (T684): only the lead answers, only a task waiting on its approval, and
+     * always with a note, which the task's owner reads: what it checked, or why it declines. An approval of the owner's
+     * stays the owner's: the lead never answers it.
+     */
+    approve(task, caller, verdict, note) {
+        const { lead } = this.config.roles;
+        if (caller !== lead) {
+            return refuse(`only the lead (${lead}) answers an approval`);
+        }
+        if (task.status !== 'waiting' || !task.waits.some((reason) => reason.kind === 'approval' && reason.who === lead)) {
+            return refuse(`${task.id} does not wait on the lead's approval (approval:${lead}); its owner asks with teamrig set ${task.id} --status waiting --waits approval:${lead}`);
+        }
+        const text = blankToNull(note);
+        if (text === null) {
+            return refuse(`an answer needs --note: what you checked, or why you decline`);
+        }
+        const problem = this.checkText('note', text);
+        return problem === undefined ? ok({ changes: {}, note: text, verdict }) : refuse(problem);
+    }
     update(task, caller, asked, note, state) {
         const changes = trimDescription(asked);
         const names = Object.keys(changes).filter((name) => name in changes);

@@ -20,7 +20,7 @@ export const CONTEXT_MAX_CHARS = 10_000;
  * The lead's own lines fit in this many characters with worst-case config values (a CI test holds it). They come on
  * top of the core pack for the lead alone, so a team rules file near its limit may reach the lead as a pointer.
  */
-export const LEAD_RULES_MAX_CHARS = 600;
+export const LEAD_RULES_MAX_CHARS = 700;
 /** A list the pack names only to inform (a hook or check enforces it) prints in full up to this many characters. */
 export const LIST_MAX_CHARS = 120;
 function list(items) {
@@ -50,11 +50,14 @@ function pushRule(pushGuard, hookAsks) {
     if (branches === '') {
         return 'No branch is protected, so the push guard stops no push [pushGuard.protectedBranches].';
     }
-    return pushGuard.pushToProtected === 'allow'
-        ? `Pushes to ${branches} go unasked; force-pushing or deleting them is refused ${keys}.`
-        : hookAsks === 'refuse'
-            ? `Every push to ${branches} is refused [pushGuard, prompts.hookAsks].`
-            : `Pushes to ${branches} ask the human; force-pushing or deleting them is refused ${keys}.`;
+    // Under `lead` the guard's refusal says how to ask the lead (src/hooks/push-guard.ts), so the rule stays short.
+    return pushGuard.pushToProtected === 'lead'
+        ? `Pushes to ${branches} ask the lead; force-pushing or deleting them is refused ${keys}.`
+        : pushGuard.pushToProtected === 'allow'
+            ? `Pushes to ${branches} go unasked; force-pushing or deleting them is refused ${keys}.`
+            : hookAsks === 'refuse'
+                ? `Every push to ${branches} is refused [pushGuard, prompts.hookAsks].`
+                : `Pushes to ${branches} ask the human; force-pushing or deleting them is refused ${keys}.`;
 }
 /**
  * What a session does with a refused or blocked route. With hook asks off nobody answers a prompt, so the route waits
@@ -206,6 +209,7 @@ export function renderLeadRules(config, command) {
         '- Bring the owner only verified results, decisions you made, investigated questions (options, numbers, a recommendation) and incidents.',
         `- Each owner order you relay is a task in the same turn: \`${command} add --owner <id> --source ${config.register.ownerSource}\` [register.ownerSource].`,
         `- Plan the week from \`${command} plan\` and run \`${command} check\` at each checkpoint, never from memory.`,
+        `- Answer each approval wait on you with \`${command} approve\` after the \`approvals\` skill's checklist; owner-gated content goes to the owner.`,
         "- Clear each HIRE flag by its action: a SCALE-OUT gives its slice to a hire within the owner's caps, else brings the owner a card; a RETIRE-DUE retires.",
     ].join('\n');
 }

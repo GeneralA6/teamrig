@@ -1,0 +1,83 @@
+import { MS_PER_DAY } from "../core/time.js";
+import { waitsOnOwner } from "../meeting/agenda.js";
+/**
+ * The owner's decisions, asked in batches: a session that needs one sets its task waiting on the owner's decision or
+ * approval, with its card, and goes on with other work; the lead asks the owner the waiting ones together, at its
+ * batch times (`decisions.batchTimesUtc`), at the daily meeting, or once `decisions.batchAt` of them wait unasked,
+ * and at once only for one due before the next batch. A wait counts as asked when it was set at or before the last
+ * batch the lead asked (`decisions asked`, or a meeting's start): a task's `statusAt` stays put while it stays
+ * waiting, so setting it waiting again with a new card does not ask it again.
+ */
+/** Milliseconds after midnight UTC of a valid `HH:MM`. */
+function offsetOf(time) {
+    const [hours = 0, minutes = 0] = time.split(':').map(Number);
+    return (hours * 60 + minutes) * 60_000;
+}
+/** Each batch time on the UTC day of `now` and the days either side of it, in time order. */
+function timesAround(now, times) {
+    const midnight = Math.floor(now / MS_PER_DAY) * MS_PER_DAY;
+    return [midnight - MS_PER_DAY, midnight, midnight + MS_PER_DAY].flatMap((day) => times.map((time) => day + offsetOf(time))).sort((a, b) => a - b);
+}
+/** The latest batch time at or before `now`; undefined with no batch times. */
+export function lastBatchTime(now, times) {
+    return timesAround(now, times).findLast((at) => at <= now);
+}
+/** The first batch time after `now`; undefined with no batch times. */
+export function nextBatchTime(now, times) {
+    return timesAround(now, times).find((at) => at > now);
+}
+/** The batch the lead asks the owner next, and whether it is due now. */
+export function decisionBatch(input) {
+    const { tree, now, askedAt } = input;
+    const waiting = tree.inPlanOrder([...input.tasks].filter((task) => waitsOnOwner(task, input.ownerMarker)));
+    const asked = (task) => askedAt !== undefined && Date.parse(task.statusAt) <= askedAt;
+    const pending = waiting.filter((task) => !asked(task));
+    const overdue = waiting.filter((task) => asked(task) && (tree.dueTime(task) ?? Number.POSITIVE_INFINITY) < now);
+    const nextAt = nextBatchTime(now, input.config.batchTimesUtc);
+    return { pending, overdue, trigger: triggerOf(input, pending, overdue, nextAt), nextAt };
+}
+/**
+ * A task's effective due time when it falls before the next batch (a day on when no batch time is set: the next
+ * meeting), so the owner must hear it at once; undefined otherwise.
+ */
+export function dueBeforeNextBatch(task, tree, now, nextAt) {
+    const due = tree.dueTime(task);
+    return due !== undefined && due < (nextAt ?? now + MS_PER_DAY) ? due : undefined;
+}
+/**
+ * The first reason the batch is due: a pending wait due before the next batch, else `batchAt` pending, else a batch
+ * time passed over a wait already pending then or over an overdue one not asked since.
+ */
+function triggerOf(input, pending, overdue, nextAt) {
+    for (const task of pending) {
+        const due = dueBeforeNextBatch(task, input.tree, input.now, nextAt);
+        if (due !== undefined) {
+            return { kind: 'deadline', task, due };
+        }
+    }
+    const { batchAt } = input.config;
+    if (batchAt > 0 && pending.length >= batchAt) {
+        return { kind: 'count', pending: pending.length, batchAt };
+    }
+    const last = lastBatchTime(input.now, input.config.batchTimesUtc);
+    if (last === undefined) {
+        return undefined;
+    }
+    const missed = pending.some((task) => Date.parse(task.statusAt) <= last) || (overdue.length > 0 && (input.askedAt ?? Number.NEGATIVE_INFINITY) < last);
+    return missed ? { kind: 'time', at: last } : undefined;
+}
+/** Why the batch is due, for one line, its times on `zone`'s clock: `T5 is due Tue 01-08 23:59 UTC, before the next batch`. */
+export function triggerText(trigger, zone) {
+    switch (trigger.kind) {
+        case 'deadline':
+            return `${trigger.task.id} is due ${zone.weekdayMinute(new Date(trigger.due))}, before the next batch`;
+        case 'count':
+            return `${trigger.pending} not yet asked, decisions.batchAt is ${trigger.batchAt}`;
+        case 'time':
+            return `the ${zone.weekdayMinute(new Date(trigger.at))} batch time passed`;
+    }
+}
+/** When the next batch is, on `zone`'s clock: `the next batch Tue 01-08 13:03 UTC`, or the daily meeting with no batch time set. */
+export function nextBatchText(batch, zone) {
+    return batch.nextAt === undefined ? 'the next batch at the daily meeting' : `the next batch ${zone.weekdayMinute(new Date(batch.nextAt))}`;
+}
