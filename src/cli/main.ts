@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { nodeTranscriptSource } from '../budget/discover.ts';
 import { nodeFiles } from '../core/files.ts';
 import { nodeHostMemory } from '../coordinator/memory.ts';
-import { nodeEvery, starterWatch } from '../coordinator/starter-watch.ts';
+import { launchingShellOf, nodeEvery, starterWatch } from '../coordinator/starter-watch.ts';
 import { nodeStepRunner } from '../coordinator/steps.ts';
 import { realSleep, systemClock } from '../core/lock.ts';
 import { NODE_PATH_PROBE } from '../core/path-probe.ts';
@@ -46,7 +46,7 @@ process.exitCode = await runCli(process.argv.slice(2), {
   platform: process.platform,
   processes: nodeProcesses(),
   sessionProcesses,
-  starters: starterWatch(sessionProcesses, process.pid, nodeEvery),
+  starters: starterWatch(sessionProcesses, { pid: process.pid, shell: launchingShellOf(process.env, process.ppid) }, nodeEvery),
   shell: nodeShellRunner(),
   steps: nodeStepRunner(process.platform),
   memory: nodeHostMemory(process.platform),
