@@ -48,10 +48,33 @@ describe('kindOf', () => {
     ['Bash', 'cat src/a.ts', 'read'],
     ['Bash', 'grep -n x src/a.ts', 'read'],
     ['Bash', 'echo hi', 'other'],
+    ['Bash', "node - <<'EOF'\nrequire('fs').writeFileSync('a', 'b')\nEOF", 'edit'],
+    ['Bash', 'teamrig heavy --session a --what t -- teamrig test --session a -- node --test src/a.test.ts', 'testTargeted'],
+    ['Bash', 'teamrig heavy --what t -- npm run build:dist', 'build'],
+    ['Bash', 'node node_modules/typescript/bin/tsc -p tsconfig.json', 'build'],
+    ['Bash', 'teamrig.cmd doctor', 'teamrigCli'],
+    ['Bash', 'cd /repo; git status', 'git'],
+    ['Bash', 'ls src | grep x', 'read'],
+    ['PowerShell', 'Get-Content a.log | Select-String x', 'other'],
   ];
   for (const [name, command, kind] of cases) {
     it(`reads ${name} ${command ?? ''} as ${kind}`, () => {
       assert.equal(kindOf({ name, command }), kind);
+    });
+  }
+
+  // T551: words inside an argument, a note or a heredoc's body run nothing.
+  const quoted: readonly (readonly [string, ToolKind])[] = [
+    ['teamrig add --description "npm ci, jest and build"', 'teamrigCli'],
+    ['teamrig set T1 --status done --note "ran npm test and tsc, then git apply fix.patch"', 'teamrigCli'],
+    ['git commit -m "sed -i the specs, then node --test src/a.test.ts"', 'git'],
+    ['echo "npm test && tsc" | grep test', 'other'],
+    ["cat > notes.md <<'EOF'\nnpm test, then npm run build\nEOF", 'edit'],
+    ['grep -rn "writeFileSync" src', 'read'],
+  ];
+  for (const [command, kind] of quoted) {
+    it(`reads ${command} as ${kind}, by the programs it runs`, () => {
+      assert.equal(kindOf({ name: 'Bash', command }), kind);
     });
   }
 });
