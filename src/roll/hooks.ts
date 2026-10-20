@@ -1,7 +1,8 @@
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { NOT_STARTED_EXIT } from '../coordinator/recorded-step.ts';
-import { exitCodeOf, nodeTreeKill, type StepEnd, type TreeKill } from '../coordinator/steps.ts';
+import { exitCodeOf, type StepEnd } from '../coordinator/steps.ts';
+import { nodeTreeKill, type RunKill, type TreeKill } from '../coordinator/tree-kill.ts';
 import type { Env } from '../core/home.ts';
 import { endOf } from '../test-run/shell.ts';
 
@@ -55,7 +56,10 @@ export function hookEndText(end: HookEnd): string {
   }
 }
 
-/** The real runner: Node's `spawn` with no shell, stdout read line by line; its time limit or its `stop` kills the tree. */
+/**
+ * The real runner: Node's `spawn` with no shell, stdout read line by line; its time limit or its `stop` kills the
+ * tree. A killed hook is reported once the kill is done.
+ */
 export function nodeHookRunner(platform: NodeJS.Platform, kill: TreeKill = nodeTreeKill(platform)): HookRunner {
   return {
     run: (request) =>
@@ -80,15 +84,12 @@ export function nodeHookRunner(platform: NodeJS.Platform, kill: TreeKill = nodeT
           windowsHide: true,
           detached: platform !== 'win32',
         });
-        let killed: 'timedOut' | 'stopped' | undefined;
-        const killAs = (why: 'timedOut' | 'stopped'): void => {
+        let killed: RunKill | undefined;
+        const killAs = (why: RunKill['why']): void => {
           if (killed !== undefined) {
             return;
           }
-          killed = why;
-          if (child.pid !== undefined) {
-            kill(child.pid);
-          }
+          killed = { why, done: child.pid === undefined ? Promise.resolve() : kill(child.pid) };
         };
         const timer = setTimeout(() => killAs('timedOut'), request.timeoutMs);
         const onStop = (): void => killAs('stopped');
@@ -110,7 +111,8 @@ export function nodeHookRunner(platform: NodeJS.Platform, kill: TreeKill = nodeT
         });
         child.once('close', (code, signal) => {
           ended();
-          void read.then(() => settle(killed === undefined ? endOf(code, signal) : { kind: killed }));
+          const stopping = killed;
+          void Promise.all([read, stopping?.done]).then(() => settle(stopping === undefined ? endOf(code, signal) : { kind: stopping.why }));
         });
       }),
   };
