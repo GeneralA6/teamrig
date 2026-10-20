@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { KIT_VERSION } from '../core/version.ts';
 import { TimeZone } from '../core/zone.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
@@ -18,6 +19,7 @@ const OTHERS_LOCK = JSON.stringify({
   pid: OTHER,
   session: 'po',
   purpose: 'heavy: build',
+  kit: KIT_VERSION,
   acquiredAt: '2030-01-08T09:50:00.000Z',
   expiresAt: '2030-01-08T12:20:00.000Z',
 });

@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Sleep } from '../core/lock.ts';
+import { KIT_VERSION } from '../core/version.ts';
 import { TimeZone } from '../core/zone.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
@@ -22,6 +23,7 @@ function heldBy(overrides: Partial<HostLockInfo> = {}): string {
     pid: OTHER,
     session: 'po',
     purpose: 'heavy: build',
+    kit: KIT_VERSION,
     acquiredAt: '2030-01-08T09:50:00.000Z',
     expiresAt: '2030-01-08T12:20:00.000Z',
     ...overrides,
@@ -57,7 +59,7 @@ function world(initial: Readonly<Record<string, string>> = {}, sleep?: (clock: F
 
 /** A waiter in the line: bravo, run by `OTHER`, its wait lasting to 11:00. */
 function waiterOf(arrivedAt: string, overrides: Partial<LockWaiter> = {}): LockWaiter {
-  return { token: 'bravo', pid: OTHER, session: 'bravo', purpose: 'heavy: lint', arrivedAt, expiresAt: '2030-01-08T11:00:00.000Z', ...overrides };
+  return { token: 'bravo', pid: OTHER, session: 'bravo', purpose: 'heavy: lint', kit: KIT_VERSION, arrivedAt, expiresAt: '2030-01-08T11:00:00.000Z', ...overrides };
 }
 
 /** A waiter's ticket in the line, `[path, text]`. */
@@ -155,7 +157,7 @@ describe('HostLock.tryTake', () => {
   it('takes a free lock, writing the file a team coordinator writes too', async () => {
     const { files, lock } = world();
     const taking = await lock.tryTake('alpha', 'heavy: build api');
-    const expected = { token: 't1', pid: ME, session: 'alpha', purpose: 'heavy: build api', acquiredAt: '2030-01-08T10:00:00.000Z', expiresAt: '2030-01-08T12:30:00.000Z' };
+    const expected = { token: 't1', pid: ME, session: 'alpha', purpose: 'heavy: build api', kit: KIT_VERSION, acquiredAt: '2030-01-08T10:00:00.000Z', expiresAt: '2030-01-08T12:30:00.000Z' };
     assert.deepEqual(taking, { kind: 'taken', lock: expected });
     assert.deepEqual(fileOf(files), expected);
   });
@@ -167,6 +169,21 @@ describe('HostLock.tryTake', () => {
     assert.equal(taking.kind === 'busy' ? holderText(taking.holder, TimeZone.UTC) : '', 'po (heavy: build) since 2030-01-08 09:50 UTC');
     assert.equal(taking.kind === 'busy' ? holderText(taking.holder, JERUSALEM) : '', 'po (heavy: build) since 2030-01-08 11:50 IST');
     assert.equal(files.get(PATH), heldBy());
+  });
+
+  it('names the teamrig a holder took the lock with when another one did, and ignores a kit field another writer uses', async () => {
+    const said = async (file: string): Promise<string> => {
+      const taking = await world({ [PATH]: file }).lock.tryTake('alpha', 'heavy: test');
+      return taking.kind === 'busy' ? holderText(taking.holder, TimeZone.UTC) : '';
+    };
+    const older = { token: 'other', pid: OTHER, session: 'po', purpose: 'heavy: build', acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z' };
+    const unnamed = 'po (heavy: build) since 2030-01-08 09:50 UTC, on an older teamrig or another coordinator';
+    assert.deepEqual(await Promise.all([heldBy(), heldBy({ kit: '0.85.0' }), JSON.stringify(older), JSON.stringify({ ...older, kit: { build: 7 } })].map(said)), [
+      'po (heavy: build) since 2030-01-08 09:50 UTC',
+      'po (heavy: build) since 2030-01-08 09:50 UTC, on teamrig 0.85.0',
+      unnamed,
+      unnamed,
+    ]);
   });
 
   it('takes over a lock that has expired', async () => {
@@ -348,7 +365,7 @@ describe('HostLock.acquire in arrival order', () => {
     ]);
     assert.deepEqual(clock.sleeps, [30_000, 30_000, FIRST_IN_LINE_POLL_MS], 'behind a waiter it looks every poll, first in line every 2 s');
     assert.deepEqual([fileOf(files), taking.kind === 'taken' ? taking.lock.token : ''], [
-      { token: 't1', pid: ME, session: 'alpha', purpose: 'heavy: test', acquiredAt: '2030-01-08T10:01:02.000Z', expiresAt: '2030-01-08T12:31:02.000Z' },
+      { token: 't1', pid: ME, session: 'alpha', purpose: 'heavy: test', kit: KIT_VERSION, acquiredAt: '2030-01-08T10:01:02.000Z', expiresAt: '2030-01-08T12:31:02.000Z' },
       't1',
     ], "the lock carries its ticket's token: one step, one token, from joining the line to releasing");
     assert.deepEqual(await lineOf(files), []);
@@ -562,7 +579,7 @@ describe('HostLock.release', () => {
 });
 
 describe('HostLock.state', () => {
-  const OTHERS: HostLockInfo = { token: 'other', pid: OTHER, session: 'po', purpose: 'heavy: build', acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z' };
+  const OTHERS: HostLockInfo = { token: 'other', pid: OTHER, session: 'po', purpose: 'heavy: build', kit: KIT_VERSION, acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z' };
 
   it('reads a free, held or unreadable lock without taking it', async () => {
     assert.deepEqual(await world().lock.state(), { kind: 'free' });
@@ -586,7 +603,7 @@ describe('HostLock.state', () => {
 
 /** A small step sharing the host: po's spec run since 09:50, lasting to 12:20, by `OTHER`, 2048 MB held for it. */
 function shareOf(overrides: Partial<HostShare> = {}): HostShare {
-  return { token: 'other', pid: OTHER, session: 'po', purpose: 'heavy: specs', acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z', reserveMb: 2048, ...overrides };
+  return { token: 'other', pid: OTHER, session: 'po', purpose: 'heavy: specs', kit: KIT_VERSION, acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z', reserveMb: 2048, ...overrides };
 }
 
 /** A share's file, `[path, text]`. */
@@ -603,7 +620,7 @@ describe('HostLock shares', () => {
   it('lets a small step share a free host at once, alone whatever the free memory, leaving the lock and the line', async () => {
     const { files, lock } = world();
     const taking = await lock.acquire('alpha', 'heavy: specs', 60_000, 30_000, () => undefined, small(1000));
-    const share = { token: 't1', pid: ME, session: 'alpha', purpose: 'heavy: specs', acquiredAt: '2030-01-08T10:00:00.000Z', expiresAt: '2030-01-08T12:30:00.000Z', reserveMb: 2048 };
+    const share = { token: 't1', pid: ME, session: 'alpha', purpose: 'heavy: specs', kit: KIT_VERSION, acquiredAt: '2030-01-08T10:00:00.000Z', expiresAt: '2030-01-08T12:30:00.000Z', reserveMb: 2048 };
     assert.deepEqual(taking, { kind: 'taken', lock: share, sharing: { freeMb: 1000, others: [] } });
     assert.deepEqual([files.get(PATH), files.get(`${SHARED}/t1.json`), await lineOf(files)], [undefined, JSON.stringify(share), []]);
   });
@@ -680,7 +697,7 @@ describe('HostLock shares', () => {
     const taking = await lock.acquire('alpha', 'heavy: build', 60 * 60_000, 30_000, (holder) => told.push(holderText(holder, TimeZone.UTC)));
     assert.deepEqual(told, ['1 small step: po (heavy: specs) since 2030-01-08 09:50 UTC']);
     assert.deepEqual([clock.sleeps, holders], [[FIRST_IN_LINE_POLL_MS, FIRST_IN_LINE_POLL_MS], ['alpha', 'alpha']], 'it holds the lock while it waits');
-    const renewed = { token: 't1', pid: ME, session: 'alpha', purpose: 'heavy: build', acquiredAt: '2030-01-08T10:00:00.000Z', expiresAt: '2030-01-08T12:30:04.000Z' };
+    const renewed = { token: 't1', pid: ME, session: 'alpha', purpose: 'heavy: build', kit: KIT_VERSION, acquiredAt: '2030-01-08T10:00:00.000Z', expiresAt: '2030-01-08T12:30:04.000Z' };
     assert.deepEqual([taking, fileOf(files)], [{ kind: 'taken', lock: renewed }, renewed]);
   });
 
@@ -733,7 +750,7 @@ describe('HostLock shares', () => {
   });
 
   it('names the small steps, and the memory they leave, as a waiter reads them', () => {
-    const shares = [shareOf(), shareOf({ token: 'b', session: 'web', purpose: 'heavy: lint', acquiredAt: '2030-01-08T09:55:00.000Z' })];
+    const shares = [shareOf(), shareOf({ token: 'b', session: 'web', purpose: 'heavy: lint', kit: KIT_VERSION, acquiredAt: '2030-01-08T09:55:00.000Z' })];
     const steps = '2 small steps: po (heavy: specs) since 2030-01-08 09:50 UTC, web (heavy: lint) since 2030-01-08 09:55 UTC';
     assert.equal(holderText({ kind: 'draining', shares }, TimeZone.UTC), steps);
     assert.equal(holderText({ kind: 'memory', freeMb: 7000, heldMb: 4096, needMb: 6144, shares }, TimeZone.UTC), `${steps}; 7000 MB free, 4096 MB held for them, 6144 MB needed`);

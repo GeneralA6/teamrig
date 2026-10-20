@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import { KIT_VERSION } from '../core/version.ts';
 import { CliHarness, KIT, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { FakeIntegrateGit, MAIN_CHECKOUT } from '../testing/fake-integrate-git.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
@@ -22,7 +23,7 @@ const PLAIN = { ...TEAM, coordinator: { repos: { app: { mainCheckout: MAIN_CHECK
 
 /** A lock po's build took at 09:50, lasting to `expiresAt`. */
 function heldBy(expiresAt: string = '2030-01-08T12:20:00.000Z'): string {
-  return JSON.stringify({ token: 'other', pid: OTHER, session: 'po', purpose: 'heavy: build', acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt });
+  return JSON.stringify({ token: 'other', pid: OTHER, session: 'po', purpose: 'heavy: build', kit: KIT_VERSION, acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt });
 }
 
 function otherRuns(): FakeSessionProcesses {
@@ -103,7 +104,7 @@ describe('teamrig deploys', () => {
 
   it('names the small steps sharing the host, a stale share left out', async () => {
     const kit = new CliHarness(PLAIN);
-    const share = { token: 'other', pid: OTHER, session: 'po', purpose: 'heavy: specs', acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z', reserveMb: 2048 };
+    const share = { token: 'other', pid: OTHER, session: 'po', purpose: 'heavy: specs', kit: KIT_VERSION, acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z', reserveMb: 2048 };
     await kit.files.append(`${LOCK}.shared/other.json`, JSON.stringify(share));
     await kit.files.append(`${LOCK}.shared/gone.json`, JSON.stringify({ ...share, token: 'gone', pid: 7 }));
     const { stdout } = await kit.run(['deploys'], { integrateGit: new FakeIntegrateGit(), sessionProcesses: otherRuns() });

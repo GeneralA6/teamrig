@@ -32,7 +32,7 @@ const SPECS = ['heavy', '--session', 'alpha', '--what', 'specs', '--small', '--'
 
 /** A small step sharing the host: po's spec run, taken at 09:50 by `OTHER`, 2048 MB held for it. */
 function sharedBy(): string {
-  return JSON.stringify({ token: 'other', pid: OTHER, session: 'po', purpose: 'heavy: specs', acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z', reserveMb: 2048 });
+  return JSON.stringify({ token: 'other', pid: OTHER, session: 'po', purpose: 'heavy: specs', kit: KIT_VERSION, acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z', reserveMb: 2048 });
 }
 
 /** An ended run of `what` by `session` the day before, whose process tree held `peakTreeMb` at most. */
@@ -54,6 +54,7 @@ describe('teamrig heavy', () => {
       pid: 4242,
       session: 'alpha',
       purpose: 'heavy: build api',
+      kit: KIT_VERSION,
       acquiredAt: '2030-01-08T10:00:00.000Z',
       expiresAt: '2030-01-08T12:30:00.000Z',
     });
@@ -398,7 +399,7 @@ describe('teamrig heavy --small', () => {
     const result = await kit.run(SPECS, { steps });
     const lines = ['2030-01-08 10:00:00 UTC sharing the host: 2048 MB held for it (8000 MB free, 0 other small steps)', '2030-01-08 10:00:00 UTC running: specs (killed after 45m)', 'DONE exit 0'];
     assert.deepEqual(result, { code: 0, stdout: lines, stderr: [] });
-    const share = { token: 'id-1', pid: 4242, session: 'alpha', purpose: 'heavy: specs', acquiredAt: '2030-01-08T10:00:00.000Z', expiresAt: '2030-01-08T12:30:00.000Z', reserveMb: 2048 };
+    const share = { token: 'id-1', pid: 4242, session: 'alpha', purpose: 'heavy: specs', kit: KIT_VERSION, acquiredAt: '2030-01-08T10:00:00.000Z', expiresAt: '2030-01-08T12:30:00.000Z', reserveMb: 2048 };
     assert.deepEqual(whileRunning, [undefined, share]);
     assert.equal(kit.files.get(`${SHARED}/id-1.json`), undefined, 'the share is released');
     const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'specs', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', shared: true, startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };

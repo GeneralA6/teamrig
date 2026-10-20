@@ -2,13 +2,14 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { HostLock, HostLockInfo, Taking } from '../coordinator/host-lock.ts';
 import type { StepRequest } from '../coordinator/steps.ts';
+import { KIT_VERSION } from '../core/version.ts';
 import type { HookRequest } from '../roll/hooks.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';
 import { FakeStarterWatch } from '../testing/fake-starter-watch.ts';
 import { FakeSteps } from '../testing/fake-steps.ts';
 import { stoppableHooks, stoppableLock, stoppableSleep, stoppableSteps, unlessStopped, watchStarters } from './stoppable.ts';
 
-const HELD: HostLockInfo = { token: 't1', pid: 4242, session: 'alpha', purpose: 'integrate app', acquiredAt: '2030-01-08T10:00:00.000Z', expiresAt: '2030-01-08T12:30:00.000Z' };
+const HELD: HostLockInfo = { token: 't1', pid: 4242, session: 'alpha', purpose: 'integrate app', kit: KIT_VERSION, acquiredAt: '2030-01-08T10:00:00.000Z', expiresAt: '2030-01-08T12:30:00.000Z' };
 const STEP: StepRequest = { command: 'npm test', cwd: '/repo', env: {}, timeoutMs: 60_000 };
 const HOOK: HookRequest = { argv: ['node', 'roll.js'], cwd: '/repo', env: {}, timeoutMs: 60_000, onLine: () => undefined };
 

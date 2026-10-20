@@ -3,6 +3,7 @@ import { isRecord } from '../core/guards.ts';
 import type { Files } from '../core/files.ts';
 import { ENV, type Env } from '../core/home.ts';
 import type { Clock, Sleep } from '../core/lock.ts';
+import { KIT_VERSION } from '../core/version.ts';
 import type { TimeZone } from '../core/zone.ts';
 
 /**
@@ -16,6 +17,8 @@ export interface HostLockInfo {
   readonly pid: number;
   readonly session: string;
   readonly purpose: string;
+  /** The teamrig version that took it; an older teamrig or a team's own coordinator leaves it out. */
+  readonly kit?: string;
   /** An ISO time. */
   readonly acquiredAt: string;
   /** An ISO time; from it on, the lock is stale. */
@@ -35,6 +38,8 @@ export interface LockWaiter {
   readonly pid: number;
   readonly session: string;
   readonly purpose: string;
+  /** The teamrig version that wrote the ticket; an older teamrig leaves it out. */
+  readonly kit?: string;
   /** An ISO time: when it joined the line. */
   readonly arrivedAt: string;
   /** An ISO time: when its wait runs out, plus `TICKET_GRACE_MS` for its last look; from it on, the ticket is stale. */
@@ -160,6 +165,19 @@ function isTime(value: unknown): value is string {
   return typeof value === 'string' && !Number.isNaN(Date.parse(value));
 }
 
+/** A record's `kit`: a version, or left out by a writer that does not name one. */
+function isKit(value: unknown): value is string | undefined {
+  return value === undefined || typeof value === 'string';
+}
+
+/**
+ * `value` without a `kit` that is not a version: a team's own coordinator may write a field of that name for its own
+ * use, and a field another writer adds is ignored, never a reason to read its lock as damaged and remove it.
+ */
+function withoutForeignKit(value: unknown): unknown {
+  return isRecord(value) && !isKit(value['kit']) ? Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'kit')) : value;
+}
+
 function isHostLockInfo(value: unknown): value is HostLockInfo {
   return (
     isRecord(value) &&
@@ -167,6 +185,7 @@ function isHostLockInfo(value: unknown): value is HostLockInfo {
     typeof value['pid'] === 'number' &&
     typeof value['session'] === 'string' &&
     typeof value['purpose'] === 'string' &&
+    isKit(value['kit']) &&
     isTime(value['acquiredAt']) &&
     isTime(value['expiresAt'])
   );
@@ -179,6 +198,7 @@ function isLockWaiter(value: unknown): value is LockWaiter {
     typeof value['pid'] === 'number' &&
     typeof value['session'] === 'string' &&
     typeof value['purpose'] === 'string' &&
+    isKit(value['kit']) &&
     isTime(value['arrivedAt']) &&
     isTime(value['expiresAt']) &&
     (value['stopsOnWithdraw'] === undefined || typeof value['stopsOnWithdraw'] === 'boolean')
@@ -191,7 +211,7 @@ function isHostShare(value: unknown): value is HostShare {
 
 function parseAs<T>(text: string, is: (value: unknown) => value is T): T | undefined {
   try {
-    const value: unknown = JSON.parse(text);
+    const value = withoutForeignKit(JSON.parse(text));
     return is(value) ? value : undefined;
   } catch {
     return undefined;
@@ -210,11 +230,14 @@ export function underLock(env: Env, lock: HostLockInfo): Env {
   return { ...env, [ENV.hostLock]: lock.token };
 }
 
-/** What a waiter waits on as a session reads it: `<session> (<purpose>) since <minute on zone's clock>` for a holder. */
+/**
+ * What a waiter waits on as a session reads it: `<session> (<purpose>) since <minute on zone's clock>` for a holder,
+ * then its teamrig when another one took the lock (see {@link kitText}).
+ */
 export function holderText(holder: LockWait, zone: TimeZone): string {
   switch (holder.kind) {
     case 'held':
-      return `${holder.info.session} (${holder.info.purpose}) since ${zone.minute(new Date(holder.info.acquiredAt))}`;
+      return `${holder.info.session} (${holder.info.purpose}) since ${zone.minute(new Date(holder.info.acquiredAt))}${kitText(holder.info.kit)}`;
     case 'queued':
       return `${holder.first.session} (${holder.first.purpose}), first in line since ${zone.minute(new Date(holder.first.arrivedAt))}`;
     case 'unknown':
@@ -224,6 +247,17 @@ export function holderText(holder: LockWait, zone: TimeZone): string {
     case 'memory':
       return `${sharesText(holder.shares, zone)}; ${holder.freeMb} MB free, ${holder.heldMb} MB held for ${holder.shares.length === 1 ? 'it' : 'them'}, ${holder.needMb} MB needed`;
   }
+}
+
+/**
+ * Nothing for a holder this teamrig took the lock with, else which one did: a version, or none named by a teamrig
+ * older than the `kit` field or a team's own coordinator, which may take a free lock without joining the line.
+ */
+function kitText(kit: string | undefined): string {
+  if (kit === KIT_VERSION) {
+    return '';
+  }
+  return kit === undefined ? ', on an older teamrig or another coordinator' : `, on teamrig ${kit}`;
 }
 
 /** The small steps sharing the host: `2 small steps: <session> (<purpose>) since <minute on zone's clock>, ...`. */
@@ -690,6 +724,7 @@ export class HostLock {
       pid: this.ports.pid,
       session,
       purpose,
+      kit: KIT_VERSION,
       arrivedAt: new Date(now).toISOString(),
       expiresAt: ticketExpiry(deadline),
       stopsOnWithdraw: true,
@@ -753,6 +788,7 @@ export class HostLock {
       pid: this.ports.pid,
       session,
       purpose,
+      kit: KIT_VERSION,
       acquiredAt: new Date(now).toISOString(),
       expiresAt: new Date(now + this.ttlMs).toISOString(),
     };
