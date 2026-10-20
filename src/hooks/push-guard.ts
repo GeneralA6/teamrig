@@ -113,7 +113,7 @@ function stopReason(verdict: PushVerdict, decision: Exclude<PushDecision, 'allow
  * asked about first, as `skipHooks` says; a refused push stays refused under `ask`. Under `hookAsks: refuse`
  * every such question is a refusal instead, its reason saying what to do (see `holdBack`).
  */
-export function pushGuardOutput(payload: unknown, env: PushGuardEnv): string {
+export async function pushGuardOutput(payload: unknown, env: PushGuardEnv): Promise<string> {
   if (!isRecord(payload)) {
     return '';
   }
