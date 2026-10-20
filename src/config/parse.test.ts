@@ -577,6 +577,19 @@ describe('parseConfig', () => {
     assert.equal(bad.config.packageGuard.adHocRunners, 'deny');
   });
 
+  it('reads what an unvetted install does and the cooldown, defaulting to deny and 14 days', () => {
+    assert.deepEqual(parseConfig(ROSTER).config.packageGuard, { adHocRunners: 'deny', installs: 'deny', cooldownDays: 14 });
+    for (const choice of ['deny', 'ask', 'allow']) {
+      const set = parseConfig({ ...ROSTER, packageGuard: { installs: choice, cooldownDays: 0 } });
+      assert.deepEqual(set.issues, []);
+      assert.deepEqual(set.config.packageGuard, { adHocRunners: 'deny', installs: choice, cooldownDays: 0 });
+    }
+    const bad = parseConfig({ ...ROSTER, packageGuard: { installs: 'never', cooldownDays: 400 } });
+    assert.deepEqual(paths(bad.issues), ['packageGuard.installs', 'packageGuard.cooldownDays']);
+    assert.match(bad.issues[0]?.message ?? '', /deny, ask, allow/);
+    assert.deepEqual(bad.config.packageGuard, { adHocRunners: 'deny', installs: 'deny', cooldownDays: 14 });
+  });
+
   it('reads what a git command that skips the hooks does, defaulting to deny and refusing another word', () => {
     assert.equal(parseConfig(ROSTER).config.commitGuard.skipHooks, 'deny');
     for (const choice of ['deny', 'ask', 'allow']) {

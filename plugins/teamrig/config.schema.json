@@ -284,6 +284,19 @@
           "type": "string",
           "enum": ["deny", "ask", "allow"],
           "default": "deny"
+        },
+        "installs": {
+          "description": "A Bash or PowerShell call that installs a package version the guard cannot vet (npm install, pnpm add, yarn add, bun add and their updates): a range or a bare update rather than an exact version or tag, a git or URL source, or a version published fewer than cooldownDays ago or with a known advisory. deny refuses it, ask asks the human, allow lets it run.",
+          "type": "string",
+          "enum": ["deny", "ask", "allow"],
+          "default": "deny"
+        },
+        "cooldownDays": {
+          "description": "A version published fewer days ago than this is not vetted: a fresh release is unproven. 0 vets any age.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 365,
+          "default": 14
         }
       }
     },
