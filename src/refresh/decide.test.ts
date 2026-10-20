@@ -35,6 +35,8 @@ const READY: RefreshState = { phase: 'ready', task: 'T12', at: BEFORE, tokens: n
 /** The size rule alone at 250k, so each size test reads apart from the task count. */
 const SIZE_ONLY: RefreshSettings = { ...DEFAULT_REFRESH, contextTokens: 250_000, everyTasks: 0 };
 const COUNTED: RefreshSettings = { ...SIZE_ONLY, everyTasks: 3, everyTasksMinTokens: 80_000 };
+/** The size rule at 250k with room to 300k, the ceiling an open meeting holds a refresh up to. */
+const ROOMY: RefreshSettings = { ...SIZE_ONLY, compactCeilingTokens: 300_000 };
 
 function stopContext(overrides: Partial<StopContext> = {}): StopContext {
   return {
@@ -55,8 +57,8 @@ type FlatFacts = Omit<StopFacts, 'due'> & DueFacts;
 
 /** Every fact read, the due ones too. */
 function facts(overrides: Partial<FlatFacts> = {}): StopFacts {
-  const flat: FlatFacts = { requestedBy: undefined, tokens: 120_000, handoverHash: null, running: 0, ...overrides };
-  return { requestedBy: flat.requestedBy, tokens: flat.tokens, due: { handoverHash: flat.handoverHash, running: flat.running } };
+  const flat: FlatFacts = { requestedBy: undefined, tokens: 120_000, meeting: false, handoverHash: null, running: 0, ...overrides };
+  return { requestedBy: flat.requestedBy, tokens: flat.tokens, meeting: flat.meeting, due: { handoverHash: flat.handoverHash, running: flat.running } };
 }
 
 /** The facts every turn end reads, before the due ones. */
@@ -278,6 +280,42 @@ describe('decideStop', () => {
     assert.deepEqual(decideStop(answered, stopContext(), facts({ tokens: 249_999 })), { kind: 'none' });
     assert.equal(decideStop(answered, stopContext(), facts({ tokens: 250_000 })).kind, 'block');
   });
+
+  describe('in an open meeting', () => {
+    const roomy = stopContext({ settings: ROOMY, canRestart: true });
+
+    it('never asks, without reading the running work, and asks at the first turn end after the meeting', () => {
+      for (const state of [undefined, BOUNDARY]) {
+        assert.deepEqual(decideStop(state, roomy, cheap({ tokens: 260_000, meeting: true })), { kind: 'none' }, state?.phase);
+        assert.equal(decideStop(state, roomy, facts({ tokens: 260_000 })).kind, 'block', state?.phase);
+      }
+      assert.deepEqual(decideStop(undefined, roomy, cheap({ requestedBy: 'team-lead', meeting: true })), { kind: 'none' }, "the lead's request waits too");
+    });
+
+    it('still closes a finished task with no refresh due', () => {
+      assert.equal(decideStop(BOUNDARY, roomy, cheap({ tokens: 100_000, meeting: true })).kind, 'write');
+    });
+
+    it('holds the second ask of a turn a tool result asked in', () => {
+      assert.deepEqual(decideStop(MID_TURN, roomy, cheap({ tokens: 260_000, meeting: true })), { kind: 'none' });
+      assert.equal(decideStop(MID_TURN, roomy, facts({ tokens: 260_000 })).kind, 'block');
+    });
+
+    it('holds the notice of a written handover, and so its restart, until the meeting ends', () => {
+      assert.deepEqual(decideStop(READY, roomy), { kind: 'measure' });
+      assert.deepEqual(decideStop(READY, roomy, cheap({ tokens: 260_000, meeting: true })), { kind: 'none' });
+      assert.deepEqual(decideStop(READY, roomy, cheap({ tokens: undefined, meeting: true })), { kind: 'none' }, 'an untold size is held');
+      const after = decideStop(READY, roomy, facts({ tokens: 260_000 }));
+      assert.equal(after.kind === 'notice' ? after.restart : undefined, true);
+    });
+
+    it('lets the refresh go at the ceiling, so the session never runs out of room', () => {
+      assert.equal(decideStop(undefined, roomy, facts({ tokens: 300_000, meeting: true })).kind, 'block');
+      assert.equal(decideStop(READY, roomy, facts({ tokens: 300_000, meeting: true })).kind, 'notice');
+      const noCeiling = stopContext({ settings: { ...ROOMY, compactCeilingTokens: 0 } });
+      assert.deepEqual(decideStop(undefined, noCeiling, cheap({ tokens: 900_000, meeting: true })), { kind: 'none' }, '0 sets no ceiling');
+    });
+  });
 });
 
 function askContext(settings: RefreshSettings = SIZE_ONLY): AskContext {
@@ -286,12 +324,12 @@ function askContext(settings: RefreshSettings = SIZE_ONLY): AskContext {
 
 /** The context at a tool result, its due facts read too. */
 function midTurnFacts(tokens: number, due: Partial<DueFacts> = {}): MidTurnFacts {
-  return { tokens, due: { handoverHash: null, running: 0, ...due } };
+  return { tokens, meeting: false, due: { handoverHash: null, running: 0, ...due } };
 }
 
-/** The context at a tool result, before the due facts are read. */
-function sizeOnly(tokens: number): MidTurnFacts {
-  return { tokens, due: undefined };
+/** The context at a tool result, before the due facts are read; `meeting` when the session is in an open meeting. */
+function sizeOnly(tokens: number, meeting = false): MidTurnFacts {
+  return { tokens, meeting, due: undefined };
 }
 
 describe('decideMidTurn', () => {
@@ -329,6 +367,12 @@ describe('decideMidTurn', () => {
 
   it('asks a session that went on from an ask again only once its context grew well past it', () => {
     assert.equal(decideMidTurn(ASKED, askContext(), midTurnFacts(312_144)).kind, 'ask');
+  });
+
+  it('holds the ask in an open meeting up to the ceiling, naming the size it is due at so the mod looks again', () => {
+    assert.deepEqual(decideMidTurn(undefined, askContext(ROOMY), sizeOnly(260_000, true)), { kind: 'none', nextAt: 250_000 });
+    assert.deepEqual(decideMidTurn(undefined, askContext(ROOMY), sizeOnly(300_000, true)), { kind: 'measure' });
+    assert.deepEqual(decideMidTurn(undefined, askContext(ROOMY), sizeOnly(260_000)), { kind: 'measure' });
   });
 });
 

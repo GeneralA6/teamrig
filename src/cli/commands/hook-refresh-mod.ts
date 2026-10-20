@@ -2,6 +2,7 @@ import { claudeProjectsDir, findTranscript } from '../../budget/discover.ts';
 import { isNonNegativeInteger, isRecord, stringField, type JsonRecord } from '../../core/guards.ts';
 import { ENV, KIT_NAME } from '../../core/home.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
+import { inMeeting, MeetingStore } from '../../meeting/state.ts';
 import { decideCompact, decideMidTurn, handoverHashOf, type AskContext, type CompactDecision, type DueFacts } from '../../refresh/decide.ts';
 import { readRunningWork } from '../../refresh/running.ts';
 import { RefreshStore } from '../../refresh/store.ts';
@@ -39,6 +40,11 @@ export async function dueFactsAt(runtime: CliRuntime, store: RefreshStore, id: s
     handoverHash: handoverHashOf(await store.handover(id)),
     running: transcript === undefined ? 0 : await readRunningWork(runtime.files, transcript, runtime.clock.now()),
   };
+}
+
+/** Whether the session is in the owner's open daily meeting, which holds its refresh (`meetingHolds`): one small file. */
+export async function inMeetingNow(runtime: CliRuntime, scope: Pick<SessionScope, 'kit' | 'id'>): Promise<boolean> {
+  return inMeeting(await new MeetingStore(runtime.files, scope.kit.paths.meeting).read(), scope.id, runtime.clock.now());
 }
 
 /** The tab's own transcript: the mod knows its Claude Code session and project, not where Claude Code keeps it. */
@@ -84,9 +90,12 @@ export async function refreshMid(args: ParsedArgs, runtime: CliRuntime): Promise
   const store = new RefreshStore(runtime.files, scope.kit.paths);
   const state = await store.state(scope.id);
   const context = askContextOf(runtime, scope, store);
-  const first = decideMidTurn(state, context, { tokens, due: undefined });
+  const meeting = await inMeetingNow(runtime, scope);
+  const first = decideMidTurn(state, context, { tokens, meeting, due: undefined });
   const decision =
-    first.kind === 'measure' ? decideMidTurn(state, context, { tokens, due: await dueFactsAt(runtime, store, scope.id, await transcriptOf(runtime, payload)) }) : first;
+    first.kind === 'measure'
+      ? decideMidTurn(state, context, { tokens, meeting, due: await dueFactsAt(runtime, store, scope.id, await transcriptOf(runtime, payload)) })
+      : first;
   switch (decision.kind) {
     case 'ask':
       // Written before it is answered: an ask whose state is not recorded would be asked again at every tool.
