@@ -2,6 +2,7 @@ import { claudeProjectsDir, findTranscript } from "../../budget/discover.js";
 import { isNonNegativeInteger, isRecord, stringField } from "../../core/guards.js";
 import { ENV, KIT_NAME } from "../../core/home.js";
 import { sessionIdOf } from "../../inbox/inbox.js";
+import { inMeeting, MeetingStore } from "../../meeting/state.js";
 import { decideCompact, decideMidTurn, handoverHashOf } from "../../refresh/decide.js";
 import { readRunningWork } from "../../refresh/running.js";
 import { RefreshStore } from "../../refresh/store.js";
@@ -27,6 +28,10 @@ export async function dueFactsAt(runtime, store, id, transcript) {
         handoverHash: handoverHashOf(await store.handover(id)),
         running: transcript === undefined ? 0 : await readRunningWork(runtime.files, transcript, runtime.clock.now()),
     };
+}
+/** Whether the session is in the owner's open daily meeting, which holds its refresh (`meetingHolds`): one small file. */
+export async function inMeetingNow(runtime, scope) {
+    return inMeeting(await new MeetingStore(runtime.files, scope.kit.paths.meeting).read(), scope.id, runtime.clock.now());
 }
 /** The tab's own transcript: the mod knows its Claude Code session and project, not where Claude Code keeps it. */
 async function transcriptOf(runtime, payload) {
@@ -69,8 +74,11 @@ export async function refreshMid(args, runtime) {
     const store = new RefreshStore(runtime.files, scope.kit.paths);
     const state = await store.state(scope.id);
     const context = askContextOf(runtime, scope, store);
-    const first = decideMidTurn(state, context, { tokens, due: undefined });
-    const decision = first.kind === 'measure' ? decideMidTurn(state, context, { tokens, due: await dueFactsAt(runtime, store, scope.id, await transcriptOf(runtime, payload)) }) : first;
+    const meeting = await inMeetingNow(runtime, scope);
+    const first = decideMidTurn(state, context, { tokens, meeting, due: undefined });
+    const decision = first.kind === 'measure'
+        ? decideMidTurn(state, context, { tokens, meeting, due: await dueFactsAt(runtime, store, scope.id, await transcriptOf(runtime, payload)) })
+        : first;
     switch (decision.kind) {
         case 'ask':
             // Written before it is answered: an ask whose state is not recorded would be asked again at every tool.
