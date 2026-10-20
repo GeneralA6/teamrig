@@ -34,6 +34,8 @@ describe('the lead boundary', () => {
     assert.equal(leadWorkOf(tool('Bash', { command: `node -e "require('fs').writeFileSync('a.ts', '')"` }), OWN), 'edit');
     assert.equal(leadWorkOf(tool('Bash', { command: `node --eval="require('fs').writeFileSync('a.ts', '')"` }), OWN), 'edit');
     assert.equal(leadWorkOf(tool('Bash', { command: `node -p "require('fs').readFileSync('a.ts', 'utf8')" a.ts` }), OWN), undefined);
+    assert.equal(leadWorkOf(tool('Bash', { command: "node - <<'EOF'\nrequire('fs').writeFileSync('a.ts', '')\nEOF" }), OWN), 'edit');
+    assert.equal(leadWorkOf(tool('Bash', { command: "node a.js <<'EOF'\nwriteFileSync\nEOF" }), OWN), undefined);
     assert.equal(leadWorkOf(tool('Bash', { command: 'git diff | patch -p1' }), OWN), 'edit');
     assert.equal(leadWorkOf(tool('PowerShell', { command: 'Out-File -FilePath C:\\app\\a.ts' }), OWN), 'edit');
     assert.equal(leadWorkOf(tool('Bash', { command: 'teamrig add --description "use sed -i or cat > a.ts, then perl -pi"' }), OWN), undefined);
@@ -60,6 +62,8 @@ describe('the lead boundary', () => {
     assert.equal(leadWorkOf(tool('Bash', { command: 'npx tsc --noEmit -p .' }), OWN), 'check');
     assert.equal(leadWorkOf(tool('Bash', { command: 'npx vitest run' }), OWN), 'check');
     assert.equal(leadWorkOf(tool('Bash', { command: 'node --disable-warning=X --test src/a.test.ts' }), OWN), 'check');
+    assert.equal(leadWorkOf(tool('Bash', { command: 'node node_modules/typescript/bin/tsc -p tsconfig.json' }), OWN), 'check');
+    assert.equal(leadWorkOf(tool('Bash', { command: 'teamrig list --session lead && node dist/cli/main.js show T1' }), OWN), undefined);
     assert.equal(leadWorkOf(tool('Bash', { command: 'teamrig heavy --what t -- teamrig test -- npm test' }), OWN), 'check');
     assert.equal(leadWorkOf(tool('Bash', { command: 'npm ci && npm run dev' }), OWN), undefined);
     assert.equal(leadWorkOf(tool('Bash', { command: 'node cli.js --test-mode' }), OWN), undefined);

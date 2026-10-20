@@ -1,10 +1,10 @@
 import { isNonNegativeInteger, isRecord } from '../core/guards.ts';
 import { parseUtcDay } from '../core/time.ts';
-import { programsOf, type ProgramRun, type ProgramsContext } from '../package-guard/programs.ts';
+import type { ProgramRun } from '../package-guard/programs.ts';
 import { EXEC_VALUED, NPM_VALUED, runnerCallOf } from '../package-guard/runners.ts';
-import type { ShellDialect } from '../push-guard/tokenizer.ts';
 import type { ToolUse, TurnTrigger } from './line.ts';
 import type { Count, MissField } from './patterns.ts';
+import { GIT_VALUED, shellRunsOf } from './run-work.ts';
 
 /**
  * The rule misses a transcript shows, counted per day next to the loop patterns (`MISS_FIELDS`). Each one
@@ -25,15 +25,6 @@ export const START_WITHIN_CALLS = 10;
  */
 const BLOCK_TRIGGERS: ReadonlySet<TurnTrigger | 'continuation'> = new Set(['owner', 'peer', 'scheduled', 'other']);
 
-const SHELL_DIALECTS: ReadonlyMap<string, ShellDialect> = new Map([
-  ['Bash', 'bash'],
-  ['PowerShell', 'powershell'],
-]);
-/** The meter reads a command long after it ran, in no known folder: no signature here depends on one. */
-const NO_FOLDER: Omit<ProgramsContext, 'dialect'> = { cwd: undefined, home: '/' };
-
-/** git's options before its subcommand that take the next word as their value. */
-const GIT_VALUED: ReadonlySet<string> = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env']);
 /** The task statuses whose `teamrig set` takes `--followups`. */
 const FOLLOWUP_STATUSES: ReadonlySet<string> = new Set(['verifying', 'done']);
 /** Words saying a task leaves work behind, which `--followups none` denies. */
@@ -117,15 +108,9 @@ function isHeavyStep(run: ProgramRun): boolean {
   return HEAVY_SCRIPT.test(named ?? '');
 }
 
-/** The programs a shell tool call starts; none for any other tool. */
-function runsOf(tool: Pick<ToolUse, 'name' | 'command'>): readonly ProgramRun[] {
-  const dialect = SHELL_DIALECTS.get(tool.name);
-  return dialect === undefined || tool.command === undefined ? [] : programsOf(tool.command, { ...NO_FOLDER, dialect });
-}
-
 /** The miss counters one tool call adds to, each at most once, and whether it runs `teamrig start`. */
 export function toolMissesOf(tool: Pick<ToolUse, 'name' | 'command'>): ToolMisses {
-  const runs = runsOf(tool);
+  const runs = shellRunsOf(tool);
   const counts: MissField[] = [];
   const plainRemove = runs.some(isGitWorktreeRemove);
   if (plainRemove || runs.some((run) => isTeamrig(run, 'worktree', 'remove'))) {

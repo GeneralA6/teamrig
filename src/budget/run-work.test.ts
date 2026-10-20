@@ -1,0 +1,78 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { runWorkOf, shellRunsOf, type RunWork } from './run-work.ts';
+
+/** What each program a Bash line starts does, in order; `-` for a program that does none of it. */
+function worksOf(command: string, name = 'Bash'): readonly (RunWork | '-')[] {
+  return shellRunsOf({ name, command }).map((run) => runWorkOf(run) ?? '-');
+}
+
+describe('shellRunsOf', () => {
+  it('reads the programs of a Bash or PowerShell call, and none of any other tool or a call without a command', () => {
+    assert.deepEqual(
+      shellRunsOf({ name: 'Bash', command: 'cd /repo && git status | grep x' }).map((run) => run.name),
+      ['git', 'grep'],
+    );
+    assert.deepEqual(
+      shellRunsOf({ name: 'PowerShell', command: 'Set-Location C:\\repo; npx.cmd tsc' }).map((run) => run.name),
+      ['npx'],
+    );
+    assert.deepEqual(shellRunsOf({ name: 'Read', command: 'git status' }), []);
+    assert.deepEqual(shellRunsOf({ name: 'Bash', command: undefined }), []);
+  });
+});
+
+describe('runWorkOf', () => {
+  it('reads git: apply patches the files, other writes change the repository, grep over files searches', () => {
+    assert.deepEqual(worksOf('git apply fix.patch; git -C /repo -c a=b commit -m x; git --config-env a=B push'), ['gitPatch', 'gitWrite', 'gitWrite']);
+    assert.deepEqual(worksOf('git grep -n foo; git log | git grep x; git status; git $SUB'), ['search', '-', '-', '-', '-']);
+  });
+
+  it('reads an edit by the program that writes: a cat into a file, sed or perl in place, patch, a PowerShell write', () => {
+    assert.deepEqual(worksOf('cat > a.ts <<EOF\nx\nEOF'), ['edit']);
+    assert.deepEqual(worksOf('cat a.ts > /dev/null; cat a.ts > NUL; cat a.ts >> "$OUT"'), ['-', '-', 'edit']);
+    assert.deepEqual(worksOf("sed -i 's/a/b/' a.ts; sed -n 1,5p a.ts; perl -pi -e 's/a/b/' a.ts; patch -p1 < fix.patch"), ['edit', '-', 'edit', 'edit']);
+    assert.deepEqual(worksOf('Set-Content -Path a.txt -Value b; Out-File b.txt; Get-Content a.txt', 'PowerShell'), ['edit', 'edit', '-']);
+  });
+
+  it('reads npm: its test command and test scripts run the suite, build scripts build, others neither', () => {
+    assert.deepEqual(worksOf('npm test; npm t; npm --prefix app tst'), ['testFull', 'testFull', 'testFull']);
+    assert.deepEqual(worksOf('npm run test:unit; npm run-script verify; npm run coverage; npm run check'), ['testFull', 'testFull', 'testFull', 'testFull']);
+    assert.deepEqual(worksOf('npm run build; npm run typecheck; npm run lint:fix; npm run build:dist'), ['build', 'build', 'build', 'build']);
+    assert.deepEqual(worksOf('npm ci; npm run dev; npm run; npm run $SCRIPT; npm $CMD; npm'), ['-', '-', '-', '-', '-', '-']);
+  });
+
+  it('reads jest, vitest and tsc wherever they start: on the path, through npx, or as the script node runs', () => {
+    assert.deepEqual(worksOf('jest; vitest run; tsc -p .'), ['testFull', 'testFull', 'build']);
+    assert.deepEqual(worksOf('npx --package typescript tsc --noEmit; npx jest; npx eslint .; npx'), ['build', 'testFull', '-', '-']);
+    assert.deepEqual(worksOf('node node_modules/typescript/bin/tsc -p .; node C:/app/node_modules/vitest/vitest.mjs run'), ['build', 'testFull']);
+  });
+
+  it('reads node --test: the full suite with no files or over a whole source folder, else the files it names', () => {
+    assert.deepEqual(worksOf('node --test; node --test "src/**/*.test.ts"; node --test ./tools/**/*.test.ts'), ['testFull', 'testFull', 'testFull']);
+    assert.deepEqual(worksOf('node --disable-warning=ExperimentalWarning --test src/a.test.ts src/b.test.ts'), ['testTargeted']);
+    assert.deepEqual(worksOf('node cli.js --test; node --test-reporter=spec cli.js'), ['-', '-']);
+  });
+
+  it('reads a node script given on the line or on stdin that calls writeFileSync as an edit, and a script file by what it is', () => {
+    assert.deepEqual(worksOf(`node -e "require('fs').writeFileSync('a', 'b')"; node --print="fs.writeFileSync('a', '')"`), ['edit', 'edit']);
+    assert.deepEqual(worksOf(`node -e "console.log(1)"; node -p "readFileSync" a.ts; node -e x b.js`), ['-', '-', '-']);
+    assert.deepEqual(worksOf("node - <<'EOF'\nfs.writeFileSync('a', '')\nEOF"), ['edit']);
+    assert.deepEqual(worksOf("cat <<'EOF' | node\nfs.writeFileSync('a', '')\nEOF"), ['-', 'edit']);
+    assert.deepEqual(worksOf("node - <<'EOF'\nconsole.log(1)\nEOF"), ['-']);
+    assert.deepEqual(worksOf("node a.js <<'EOF'\nwriteFileSync\nEOF"), ['-']);
+    assert.deepEqual(worksOf('node; node "$SCRIPT"; node dist/cli/main.js list; node "C:\\kit\\dist\\cli\\main.js" show T1'), ['-', '-', 'teamrig', 'teamrig']);
+  });
+
+  it('reads a teamrig command on the register, not the words it quotes, nor its other commands', () => {
+    assert.deepEqual(worksOf('teamrig add --description "npm ci, jest and build"; teamrig.cmd set T1 --note "git commit"'), ['teamrig', 'teamrig']);
+    assert.deepEqual(worksOf('teamrig start --session a; teamrig'), ['-', '-']);
+    assert.deepEqual(worksOf('teamrig heavy --what t -- teamrig test -- npm test'), ['testFull']);
+  });
+
+  it('reads a search over files, but not one that filters a pipe or has nothing to search', () => {
+    assert.deepEqual(worksOf('grep -rn foo src; rg foo; find . -name x'), ['search', 'search', 'search']);
+    assert.deepEqual(worksOf('ls | grep x; grep'), ['-', '-', '-']);
+    assert.deepEqual(worksOf('Select-String -Path a.ts -Pattern x; Get-Content a.log | Select-String x', 'PowerShell'), ['search', '-', '-']);
+  });
+});
