@@ -1,7 +1,8 @@
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { NOT_STARTED_EXIT } from "../coordinator/recorded-step.js";
-import { exitCodeOf, nodeTreeKill } from "../coordinator/steps.js";
+import { exitCodeOf } from "../coordinator/steps.js";
+import { nodeTreeKill } from "../coordinator/tree-kill.js";
 import { endOf } from "../test-run/shell.js";
 /** True when the hook exited 0. */
 export function succeeded(end) {
@@ -26,7 +27,10 @@ export function hookEndText(end) {
             return `could not start (${end.error})`;
     }
 }
-/** The real runner: Node's `spawn` with no shell, stdout read line by line; its time limit or its `stop` kills the tree. */
+/**
+ * The real runner: Node's `spawn` with no shell, stdout read line by line; its time limit or its `stop` kills the
+ * tree. A killed hook is reported once the kill is done.
+ */
 export function nodeHookRunner(platform, kill = nodeTreeKill(platform)) {
     return {
         run: (request) => new Promise((resolve) => {
@@ -55,10 +59,7 @@ export function nodeHookRunner(platform, kill = nodeTreeKill(platform)) {
                 if (killed !== undefined) {
                     return;
                 }
-                killed = why;
-                if (child.pid !== undefined) {
-                    kill(child.pid);
-                }
+                killed = { why, done: child.pid === undefined ? Promise.resolve() : kill(child.pid) };
             };
             const timer = setTimeout(() => killAs('timedOut'), request.timeoutMs);
             const onStop = () => killAs('stopped');
@@ -81,7 +82,8 @@ export function nodeHookRunner(platform, kill = nodeTreeKill(platform)) {
             });
             child.once('close', (code, signal) => {
                 ended();
-                void read.then(() => settle(killed === undefined ? endOf(code, signal) : { kind: killed }));
+                const stopping = killed;
+                void Promise.all([read, stopping?.done]).then(() => settle(stopping === undefined ? endOf(code, signal) : { kind: stopping.why }));
             });
         }),
     };

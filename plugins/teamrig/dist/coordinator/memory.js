@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { freemem } from 'node:os';
+import { treeOf, wholeNumberTriples } from "./processes.js";
 const MB = 2 ** 20;
 /** Bytes a process list may print: a host with thousands of processes stays far under it. */
 const LIST_MAX_BUFFER = 16 * MB;
@@ -9,26 +10,6 @@ export const nodeEvery = (ms, tick) => {
     timer.unref();
     return () => clearInterval(timer);
 };
-/** The process `root` and every descendant still running, by parent links; empty when `root` is not listed. */
-export function treeOf(root, rows) {
-    const children = new Map();
-    for (const row of rows) {
-        if (row.pid !== row.parent) {
-            children.set(row.parent, [...(children.get(row.parent) ?? []), row]);
-        }
-    }
-    const tree = rows.filter((row) => row.pid === root);
-    const seen = new Set(tree.map((row) => row.pid));
-    for (let index = 0; index < tree.length; index += 1) {
-        for (const child of children.get(tree[index]?.pid ?? -1) ?? []) {
-            if (!seen.has(child.pid)) {
-                seen.add(child.pid);
-                tree.push(child);
-            }
-        }
-    }
-    return tree;
-}
 /** The MB the tree of `root` holds; 0 when `root` is not listed. */
 export function treeMb(root, rows) {
     return Math.round(treeOf(root, rows).reduce((total, row) => total + row.bytes, 0) / MB);
@@ -68,11 +49,7 @@ export function watchMemory(probe, root, intervalMs, every) {
 }
 /** Rows of `<pid>,<parent>,<bytes>` lines; a line that is not three whole numbers is left out. */
 export function parseProcessRows(text) {
-    return text.split(/\r?\n/).flatMap((line) => {
-        const cells = line.trim().split(/[,\s]+/).map(Number);
-        const [pid, parent, bytes] = cells;
-        return cells.length === 3 && pid !== undefined && parent !== undefined && bytes !== undefined && cells.every(Number.isSafeInteger) ? [{ pid, parent, bytes }] : [];
-    });
+    return wholeNumberTriples(text).map(([pid, parent, bytes]) => ({ pid, parent, bytes }));
 }
 /** Win32_Process lists every process with its parent and working set; `ps` prints the resident set in KB. */
 function listCommand(platform) {
