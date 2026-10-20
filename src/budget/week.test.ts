@@ -18,7 +18,7 @@ const PERIOD: Pick<Period, 'start' | 'end' | 'kind'> = { start: Date.parse('2026
 
 function state(wByDay: Readonly<Record<string, number>>): UsageState {
   const byDay = Object.fromEntries(Object.entries(wByDay).map(([day, w]) => [day, { w, calls: 1, patterns: emptyPatterns() }]));
-  return { byDay, byHour: {}, cursors: {}, recentKeys: [] };
+  return { byDay, byHour: {}, byTask: {}, cursors: {}, recentKeys: [] };
 }
 
 /** Two sessions' stores reaching back to the week's first day: 1,000 W that day, 500 W today. */

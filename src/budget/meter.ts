@@ -15,6 +15,7 @@ import {
   type UsageState,
   type UsageStorage,
 } from './store.ts';
+import { NO_TURN, TurnTasks } from './tasks.ts';
 import { contextTokens, WEIGHTS, weightOf } from './weights.ts';
 
 /** What the meter reads with and where it keeps its totals. */
@@ -52,12 +53,13 @@ interface DayTotals {
 }
 
 /**
- * Totals while a run counts: per-day sums, W per hour, and the latest call keys across all the session's
- * transcripts, so a call two files both logged counts once.
+ * Totals while a run counts: per-day sums, W per hour and per task, and the latest call keys across all the
+ * session's transcripts, so a call two files both logged counts once.
  */
 class Tally {
   private readonly days = new Map<string, DayTotals>();
   private readonly hours: Map<string, number>;
+  private readonly tasks: Map<string, Map<string, number>>;
   private readonly keys: string[];
   private readonly keySet: Set<string>;
 
@@ -66,6 +68,7 @@ class Tally {
       this.days.set(day, { w: usage.w, calls: usage.calls, patterns: { ...usage.patterns } });
     }
     this.hours = new Map(Object.entries(state.byHour));
+    this.tasks = new Map(Object.entries(state.byTask).map(([day, tasks]) => [day, new Map(Object.entries(tasks))]));
     this.keys = [...state.recentKeys];
     this.keySet = new Set(this.keys);
   }
@@ -85,6 +88,13 @@ class Tally {
     if (hour !== null) {
       this.hours.set(hour, (this.hours.get(hour) ?? 0) + w);
     }
+  }
+
+  /** Adds `w` of `day` to a task. */
+  chargeTask(day: string, task: string, w: number): void {
+    const tasks = this.tasks.get(day) ?? new Map<string, number>();
+    tasks.set(task, (tasks.get(task) ?? 0) + w);
+    this.tasks.set(day, tasks);
   }
 
   counter(day: string | undefined): Count {
@@ -121,9 +131,20 @@ class Tally {
     return Object.fromEntries(this.hours);
   }
 
+  byTask(): Record<string, Record<string, number>> {
+    return Object.fromEntries([...this.tasks].map(([day, tasks]) => [day, Object.fromEntries(tasks)]));
+  }
+
   recentKeys(): readonly string[] {
     return [...this.keys];
   }
+}
+
+/** A transcript a run reads: its W counts `weight` times, and only the session's own turns name tasks. */
+interface WeightedTranscript {
+  readonly path: string;
+  readonly weight: number;
+  readonly own: boolean;
 }
 
 function dayOf(at: number): string {
@@ -136,21 +157,24 @@ function dayOf(at: number): string {
  * output it adds. A call whose key was seen in the last few hundred calls was logged twice and is
  * skipped; a call without a timestamp is skipped, as no day can take it. Every W is multiplied by the
  * transcript's weight, so a subagent's counts in W of a main session. The rule misses of each call's
- * shell commands are counted alongside (`MissTracker`), on the same days.
+ * shell commands are counted alongside (`MissTracker`), on the same days. In the session's own transcripts
+ * each turn's W goes to the tasks its calls name (`TurnTasks`); a subagent's W goes to no task.
  */
 class TranscriptFold {
   private call: OpenCall | null;
   private readonly tracker: PatternTracker;
   private readonly misses: MissTracker;
+  private readonly turn: TurnTasks | undefined;
   private readonly tally: Tally;
   private readonly weight: number;
 
-  constructor(cursor: TranscriptCursor, tally: Tally, weight: number) {
+  constructor(cursor: TranscriptCursor, tally: Tally, transcript: WeightedTranscript) {
     this.call = cursor.call;
-    this.tracker = new PatternTracker(cursor.patterns, weight);
+    this.tracker = new PatternTracker(cursor.patterns, transcript.weight);
     this.misses = new MissTracker(cursor.misses, (day) => tally.counter(day));
+    this.turn = transcript.own ? new TurnTasks(cursor.turn, (day, task, w) => tally.chargeTask(day, task, w)) : undefined;
     this.tally = tally;
-    this.weight = weight;
+    this.weight = transcript.weight;
   }
 
   line(raw: string): void {
@@ -161,6 +185,7 @@ class TranscriptFold {
     const lineDay = line.at === undefined ? undefined : dayOf(line.at);
     if (line.kind === 'prompt') {
       this.close();
+      this.turn?.prompt();
       this.tracker.prompt(line.trigger, this.tally.counter(lineDay));
       this.misses.prompt(line.trigger, line.at, lineDay);
     } else if (line.kind === 'compact') {
@@ -174,13 +199,15 @@ class TranscriptFold {
   }
 
   cursor(offset: number, size: number, day: string): TranscriptCursor {
-    return { offset, size, day, call: this.call, patterns: this.tracker.state(), misses: this.misses.state() };
+    return { offset, size, day, call: this.call, patterns: this.tracker.state(), misses: this.misses.state(), turn: this.turn?.state() ?? NO_TURN };
   }
 
   private reply(line: CallLine): void {
     const open = this.call;
     if (open !== null && line.key !== undefined && line.key === open.key) {
       const added = Math.max(0, line.usage.output - open.output) * WEIGHTS.output * this.weight;
+      this.turn?.named(line.tools);
+      this.turn?.charged(open.day, added);
       this.tally.day(open.day).w += added;
       this.tally.addHour(open.hour, added);
       this.tracker.charged(added, this.tally.counter(open.day));
@@ -201,6 +228,8 @@ class TranscriptFold {
     totals.w += w;
     totals.calls += 1;
     this.tally.addHour(hour, w);
+    this.turn?.named(line.tools);
+    this.turn?.charged(day, w);
     this.tracker.charged(w, this.tally.counter(day));
     this.tracker.callStarted(line.usage, line.tools, this.tally.counter(day));
     this.misses.callStarted(line.tools, line.at, day);
@@ -220,7 +249,7 @@ class TranscriptFold {
 
 /**
  * Counts a session's API use from its transcripts since the last run, as weighted tokens per UTC day and
- * hour, calls, loop patterns and rule misses, and saves the totals with each transcript's read position. A transcript
+ * hour and per task, calls, loop patterns and rule misses, and saves the totals with each transcript's read position. A transcript
  * seen for the first time (or that shrank, so it was replaced) is read from today's first line, found
  * by a binary search. One run reads at most `maxBytes`; the rest waits for the next run. A subagent's W
  * is multiplied by `subagentWeight`.
@@ -235,11 +264,12 @@ export async function runMeter(deps: MeterDeps, run: MeterRun): Promise<MeterRes
   let budget = run.maxBytes;
   let bytesRead = 0;
   let catchingUp = false;
-  const weighted = [
-    ...run.transcripts.main.map((path) => ({ path, weight: 1 })),
-    ...run.transcripts.subagents.map((path) => ({ path, weight: run.subagentWeight })),
+  const weighted: readonly WeightedTranscript[] = [
+    ...run.transcripts.main.map((path) => ({ path, weight: 1, own: true })),
+    ...run.transcripts.subagents.map((path) => ({ path, weight: run.subagentWeight, own: false })),
   ];
-  for (const { path, weight } of weighted) {
+  for (const transcript of weighted) {
+    const { path } = transcript;
     const size = await deps.bytes.size(path);
     if (size === undefined) {
       continue;
@@ -260,13 +290,13 @@ export async function runMeter(deps: MeterDeps, run: MeterRun): Promise<MeterRes
     budget -= batch.bytes;
     bytesRead += batch.bytes;
     catchingUp ||= batch.capped;
-    const fold = new TranscriptFold(cursor, tally, weight);
+    const fold = new TranscriptFold(cursor, tally, transcript);
     for (const line of batch.lines) {
       fold.line(line);
     }
     cursors[path] = fold.cursor(batch.end, size, batch.end > cursor.offset ? today : cursor.day);
   }
-  const next = pruneUsage({ byDay: tally.byDay(), byHour: tally.byHour(), cursors, recentKeys: tally.recentKeys() }, now);
+  const next = pruneUsage({ byDay: tally.byDay(), byHour: tally.byHour(), byTask: tally.byTask(), cursors, recentKeys: tally.recentKeys() }, now);
   const saved = await deps.store.save(run.session, next, rev);
   return { state: next, saved, catchingUp, bytesRead };
 }

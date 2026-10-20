@@ -223,7 +223,7 @@ function usage(w: number, calls: number, patterns: Partial<Record<PatternField, 
 }
 
 function state(byDay: Readonly<Record<string, DayUsage>>): UsageState {
-  return { byDay, byHour: {}, cursors: {}, recentKeys: [] };
+  return { byDay, byHour: {}, byTask: {}, cursors: {}, recentKeys: [] };
 }
 
 describe('sessionLines', () => {

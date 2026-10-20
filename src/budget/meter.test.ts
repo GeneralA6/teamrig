@@ -17,6 +17,7 @@ import type { TranscriptSet } from './discover.ts';
 import { runMeter, type MeterResult } from './meter.ts';
 import { PATTERN_FIELDS } from './patterns.ts';
 import { RECENT_KEYS_KEPT, UsageStore, type DayUsage, type UsageState } from './store.ts';
+import { NO_TURN } from './tasks.ts';
 
 const MAIN = '/t/p/alpha.jsonl';
 const SUB = '/t/p/alpha/subagents/agent-a1.jsonl';
@@ -102,6 +103,40 @@ describe('runMeter', () => {
     near(day(state, DAY)?.w, R1_W + R2_W + subagentW);
     near(day(state, DAY)?.patterns.otherW, R1_W + R2_W, 'main thread W');
     near(day(state, DAY)?.patterns.subagentW, subagentW, 'subagent W');
+  });
+
+  it("splits a turn's W equally over the tasks its calls name once the next prompt ends it; a turn naming none stays unattributed", async () => {
+    const naming: FixtureReply = { ...R2, tools: [{ id: 'b1', name: 'Bash', command: 'teamrig set T5 && git -C .worktrees/t6-meter log' }] };
+    const meter = world(at(12), {
+      [MAIN]: transcript([promptLine(at(9)), replyLine(R1), replyLine(R1_MORE), replyLine(naming), promptLine(at(9, 5)), replyLine({ id: 'm3', requestId: 'q3', at: at(9, 6), usage: { input: 7 } }), promptLine(at(9, 7))]),
+    });
+    const state = (await meter.run(10_000_000, { main: [MAIN], subagents: [] })).state;
+    assert.deepEqual(Object.keys(state.byTask[DAY] ?? {}), ['T5', 'T6']);
+    near(state.byTask[DAY]?.['T5'], (R1_W + R2_W) / 2, 'T5');
+    near(state.byTask[DAY]?.['T6'], (R1_W + R2_W) / 2, 'T6');
+    near(day(state, DAY)?.w, R1_W + R2_W + 7);
+  });
+
+  it("holds an open turn's W in its transcript's position across runs, out of byTask until the next prompt", async () => {
+    const meter = world(at(12), { [MAIN]: transcript([promptLine(at(9)), replyLine(R1)]) });
+    const mainOnly: TranscriptSet = { main: [MAIN], subagents: [] };
+    const first = (await meter.run(10_000_000, mainOnly)).state;
+    assert.deepEqual(first.byTask, {});
+    assert.deepEqual(first.cursors[MAIN]?.turn.tasks, []);
+    near(first.cursors[MAIN]?.turn.held[DAY], R1_W - 40 * 5, 'held');
+    meter.bytes.append(MAIN, transcript([replyLine(R1_MORE), replyLine({ ...R2, tools: [{ id: 'b1', name: 'Bash', command: 'teamrig show T5' }] }), promptLine(at(9, 5))]));
+    const second = (await meter.run(10_000_000, mainOnly)).state;
+    near(second.byTask[DAY]?.['T5'], R1_W + R2_W, 'T5');
+    assert.deepEqual(second.cursors[MAIN]?.turn, NO_TURN);
+  });
+
+  it("charges no task with a subagent's W, whatever its calls name", async () => {
+    const meter = world(at(12), {
+      [SUB]: transcript([promptLine(at(9, 2), 'task', true), replyLine({ ...S1, tools: [{ id: 'b2', name: 'Bash', command: 'teamrig show T7' }] }), promptLine(at(9, 4), 'next', true)]),
+    });
+    const state = (await meter.run()).state;
+    near(day(state, DAY)?.w, S1_W);
+    assert.deepEqual(state.byTask, {});
   });
 
   it('skips a reply logged twice, in another file or later in the same one, and a reply without a time', async () => {
@@ -258,7 +293,7 @@ describe('runMeter', () => {
     assert.deepEqual(result.state.cursors, {});
   });
 
-  it('counts the same totals and patterns read in many small runs as in one', async () => {
+  it('counts the same totals, patterns and task W read in many small runs as in one', async () => {
     const main = loopTranscript('m', 0);
     const sub = loopTranscript('s', 30, true);
     const whole = world(at(23), { [MAIN]: main, [SUB]: sub });
@@ -283,6 +318,13 @@ describe('runMeter', () => {
     for (const field of [...counted, 'missCalls', 'workBlocks', 'missNoStart', 'heavySteps', 'missHeavyOutside'] as const) {
       assert.ok((patterns?.[field] ?? 0) > 0, `${field} never counted`);
     }
+    const tasks = once.state.byTask[DAY] ?? {};
+    assert.deepEqual(Object.keys(tasks).sort(), ['T1', 'T2', 'T3', 'T9']);
+    for (const [task, w] of Object.entries(tasks)) {
+      near(result.state.byTask[DAY]?.[task], w, task);
+    }
+    assert.deepEqual(result.state.cursors[MAIN]?.turn.tasks, ['T4', 'T9']);
+    near(result.state.cursors[MAIN]?.turn.held[DAY], once.state.cursors[MAIN]?.turn.held[DAY] ?? -1, 'open turn');
   });
 
   it('counts rule misses on the day: a work block with no teamrig start in its first calls, a plain git worktree remove', async () => {
@@ -374,6 +416,7 @@ function loopTranscript(prefix: string, startMinute: number, sidechain = false):
     lines.push(compactLine(stamp()));
     context = 8_000;
     reply([{ id: `${prefix}${turn}k`, name: 'Read' }]);
+    reply([{ id: `${prefix}${turn}l`, name: 'Bash', command: `teamrig show T${turn + 1} T9` }]);
   }
   return transcript(lines);
 }
