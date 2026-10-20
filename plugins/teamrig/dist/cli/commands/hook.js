@@ -383,20 +383,82 @@ function rosterIdOf(roster, session) {
     const found = session === undefined ? undefined : roster.lookup(session);
     return found?.ok === true ? found.id : undefined;
 }
+function carryPlaces(runtime) {
+    return { tempDir: claudeTempDir(runtime.env, tmpdir()), claudeDir: claudeConfigDir(runtime.env, runtime.userHome) };
+}
+/** The fresh session's transcript, from the SessionStart payload. */
+function startTranscriptOf(payload) {
+    return isRecord(payload) ? stringField(payload, 'transcript_path') : undefined;
+}
+function carryRecordFailed(error) {
+    return `${KIT_NAME} could not keep its record of the jobs your /clear kept (${errorMessage(error)}); after a new process, check CronList against your handover.`;
+}
+async function carryFrom(runtime, store, id, transcript, now) {
+    const record = await store.carried(id);
+    const inherited = record?.transcript === transcript ? record.crons : [];
+    return { carry: await readCarry(runtime.files, transcript, now, carryPlaces(runtime), inherited), inherited };
+}
+/**
+ * Records the jobs a /clear leaves live in the process for the fresh session's transcript, which never names them,
+ * so the next refresh counts them (T657); a new process ends them, so it keeps none.
+ */
+async function keepCarried(store, id, crons, start, fresh) {
+    if (start === 'same-process' && fresh !== undefined && crons.length > 0) {
+        await store.setCarried(id, { transcript: fresh, crons });
+    }
+    else {
+        await store.clearCarried(id);
+    }
+}
 /**
  * What the session that wrote the handover leaves for this fresh one: its scheduled jobs (kept by a /clear,
- * lost with a new process) and wake-up, and its scratchpad and plan file. A transcript it cannot read is
- * said, never thrown: the note itself must still reach the session.
+ * lost with a new process), counted from those an earlier /clear left live in its process, and wake-up, and its
+ * scratchpad and plan file; a /clear records its jobs for the next refresh. A transcript it cannot read, or a
+ * record it cannot write, is said, never thrown: the note itself must still reach the session.
  */
-async function carriedLinesOf(runtime, transcript, source, zone) {
+async function carriedLinesOf(runtime, store, id, transcript, payload, zone) {
     const now = runtime.clock.now();
+    const start = carryStartOf(isRecord(payload) ? stringField(payload, 'source') : undefined);
+    let read;
     try {
-        const places = { tempDir: claudeTempDir(runtime.env, tmpdir()), claudeDir: claudeConfigDir(runtime.env, runtime.userHome) };
-        const carry = await readCarry(runtime.files, transcript, now, places);
-        return carry === undefined ? [] : carryLines(carry, now, carryStartOf(source), zone);
+        read = await carryFrom(runtime, store, id, transcript, now);
     }
     catch (error) {
         return [`${KIT_NAME} could not read what your old session left in ${transcript} (${errorMessage(error)}); check CronList against your handover.`];
+    }
+    const lines = read.carry === undefined ? [] : carryLines(read.carry, now, start, zone);
+    try {
+        await keepCarried(store, id, read.carry?.crons ?? read.inherited, start, startTranscriptOf(payload));
+        return lines;
+    }
+    catch (error) {
+        return [...lines, carryRecordFailed(error)];
+    }
+}
+/**
+ * Keeps the record of the jobs live in the session's process at a start the refresh did not carry: a /clear moves
+ * it on to the fresh transcript with the jobs the cleared session made, a compaction keeps the transcript and the
+ * record, and a new process ends them all. Says, never throws, when it cannot.
+ */
+async function carryRecordAt(runtime, store, id, payload) {
+    const source = isRecord(payload) ? stringField(payload, 'source') : undefined;
+    if (source === undefined || source === 'compact') {
+        return undefined;
+    }
+    try {
+        if (carryStartOf(source) === 'new-process') {
+            await store.clearCarried(id);
+            return undefined;
+        }
+        const record = await store.carried(id);
+        if (record !== undefined) {
+            const carry = await readCarry(runtime.files, record.transcript, runtime.clock.now(), carryPlaces(runtime), record.crons);
+            await keepCarried(store, id, carry?.crons ?? record.crons, 'same-process', startTranscriptOf(payload));
+        }
+        return undefined;
+    }
+    catch (error) {
+        return carryRecordFailed(error);
     }
 }
 const NO_REFRESH = { note: undefined, refreshed: false };
@@ -417,15 +479,18 @@ async function refreshStartOf(runtime, kit, config, roster, payload) {
         const now = new Date(runtime.clock.now()).toISOString();
         const state = await store.state(id);
         const decision = decideStart(state, source, config.refresh, store.handoverPath(id), now);
-        if (decision.kind === 'none') {
-            return NO_REFRESH;
+        if (decision.kind !== 'inject') {
+            if (decision.kind === 'reset') {
+                await store.setState(id, decision.state);
+            }
+            const recordNote = config.refresh.enabled ? await carryRecordAt(runtime, store, id, payload) : undefined;
+            return recordNote === undefined ? NO_REFRESH : { note: recordNote, refreshed: false };
         }
         await store.setState(id, decision.state);
-        if (decision.kind === 'reset') {
-            return NO_REFRESH;
-        }
         await store.clearRequest(id);
-        const carried = state?.phase === 'ready' && state.transcript !== null ? await carriedLinesOf(runtime, state.transcript, source, teamZone(config, runtime)) : [];
+        const carried = state?.phase === 'ready' && state.transcript !== null
+            ? await carriedLinesOf(runtime, store, id, state.transcript, payload, teamZone(config, runtime))
+            : [await carryRecordAt(runtime, store, id, payload)].filter((line) => line !== undefined);
         return { note: [decision.note, ...carried].join('\n'), refreshed: true };
     }
     catch (error) {
