@@ -3,6 +3,7 @@ import { isRecord, stringField } from '../core/guards.ts';
 import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
 import { lineHash } from '../inbox/line-hash.ts';
 import { CORE_RULE_KEYS, isCoreRuleKey, type CoreRuleKey } from './keys.ts';
+import type { RulesClock } from './pack.ts';
 import type { Candidate } from './scan.ts';
 
 /**
@@ -17,6 +18,12 @@ export const VERDICTS_FORMAT = 1;
 
 /** Each core rule's text hash (`lineHash` of its `coreRuleTexts` text). */
 export type RuleHashes = ReadonlyMap<CoreRuleKey, string>;
+
+/**
+ * The clock the core rule texts are hashed at: one fixed instant on a fixed machine zone, so the zone label, offset
+ * and cutoff span the rules print, which a daylight-saving change moves, never read as a reworded rule.
+ */
+export const RULE_HASH_CLOCK: RulesClock = { now: new Date(0), machineZone: 'UTC' };
 
 /** A candidate line judged not to conflict with the core rules it touches. */
 export interface ClearedLine {

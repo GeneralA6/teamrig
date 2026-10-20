@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { formatConfig } from '../config/load.ts';
 import { CONFIG_LIMITS } from '../config/limits.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
+import { MS_PER_DAY } from '../core/time.ts';
 import { APP, CliHarness, CONFIG_PATH, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { MemoryPathProbe } from '../testing/memory-files.ts';
 import { SCAN_LIST_MAX } from './commands/rule-conflicts.ts';
@@ -52,6 +53,26 @@ function ok(result: CliResult): readonly string[] {
   return result.stdout;
 }
 
+function clear(kit: CliHarness, ...argv: string[]): Promise<CliResult> {
+  return run(kit, 'clear', ...argv, '--session', 'lead');
+}
+
+/** The digest a scan printed for `rules clear --seen`. */
+function seenOf(lines: readonly string[]): string {
+  const seen = /--seen ([0-9a-f]{16}) /.exec(lines.at(-1) ?? '')?.[1];
+  assert.ok(seen !== undefined, lines.join('\n'));
+  return seen;
+}
+
+/** The scan's last line, naming `rules clear` with the scan's flags and the digest it printed. */
+function clearNext(lines: readonly string[], flags = ''): string {
+  return `NEXT then record the lines that do not conflict, so a rescan lists only new or changed ones: \`teamrig rules clear${flags} --seen ${seenOf(lines)} [--except <path>:<line>,...] --yes\`, --except naming each line still to settle`;
+}
+
+const VERDICTS = join(TEAM_HOME, 'state', 'rule-verdicts.json');
+const WITHHELD = 'CANDIDATE ~/.claude/CLAUDE.md:3 [15 push, 16 worktrees] (withheld: looks like it holds a secret (AWS access key id))';
+const SKIPPED = 'SKIPPED ~/.claude/CLAUDE.md:3: it looks like it holds a secret, so it was withheld and stays to settle by hand';
+
 describe('rules scan', () => {
   it('counts the places of each kind and lists the candidate lines, a secret-shaped one withheld', async () => {
     const kit = await world();
@@ -65,21 +86,25 @@ describe('rules scan', () => {
       'SCANNED hook: 0 place(s), 0 candidate line(s)',
       'SCANNED settings: 1 place(s), 1 candidate line(s)',
       'CANDIDATE ~/.claude/CLAUDE.md:2 [14 commits, 16 worktrees] - Commit straight to main when the change is small.',
-      'CANDIDATE ~/.claude/CLAUDE.md:3 [15 push, 16 worktrees] (withheld: looks like it holds a secret (AWS access key id))',
+      WITHHELD,
       `CANDIDATE ${PROJECT_CLAUDE_MD}:2 [16 worktrees] Tests run on every branch before review.`,
       'CANDIDATE ~/.claude/settings.json:5 [15 push, 16 worktrees] Pushes to main of the web repo are fine.',
       'NEXT judge each candidate against the core rule it names; a line that tells a session to do otherwise conflicts. Show the user each conflict with what its rule asks in plain words, never the rule number alone. Record a line the user keeps with `teamrig rules keep <path>:<line> --rule <n> --wins local|teamrig --yes`',
+      clearNext(lines),
     ]);
     assert.ok(!lines.join('\n').includes(TOKEN));
   });
 
   it('lists one kind with --kind, and says when no line touches a core rule', async () => {
     const kit = await world();
-    assert.deepEqual(ok(await run(kit, 'scan', '--kind', 'settings')), [
+    const settings = ok(await run(kit, 'scan', '--kind', 'settings'));
+    assert.deepEqual(settings, [
       'SCANNED settings: 1 place(s), 1 candidate line(s)',
       'CANDIDATE ~/.claude/settings.json:5 [15 push, 16 worktrees] Pushes to main of the web repo are fine.',
       'NEXT judge each candidate against the core rule it names; a line that tells a session to do otherwise conflicts. Show the user each conflict with what its rule asks in plain words, never the rule number alone. Record a line the user keeps with `teamrig rules keep <path>:<line> --rule <n> --wins local|teamrig --yes`',
+      clearNext(settings, ' --kind settings'),
     ]);
+    assert.notEqual(seenOf(settings), seenOf(ok(await run(kit, 'scan'))));
     assert.deepEqual(ok(await run(kit, 'scan', '--kind', 'memory')), ['SCANNED memory: 0 place(s), 0 candidate line(s)', 'NONE no line here touches a core rule']);
   });
 
@@ -107,6 +132,98 @@ describe('rules scan', () => {
     const result = await run(await world(), 'scan', '--kind', 'wiki');
     assert.equal(result.code, EXIT.usage);
     assert.match(result.stderr.join('\n'), /--kind "wiki" is not one of claude-md, rules, skill, memory, team-rules, hook, settings/);
+  });
+});
+
+describe('rules clear', () => {
+  it('previews, then clears the listed lines but the excepted and the withheld one, which a rescan alone lists', async () => {
+    const kit = await world();
+    const seen = seenOf(ok(await run(kit, 'scan')));
+    const except = `${PROJECT_CLAUDE_MD}:2`;
+    assert.deepEqual(ok(await clear(kit, '--seen', seen, '--except', except)), [
+      SKIPPED,
+      'PREVIEW clear 2 line(s) as not conflicting, 1 left listed; nothing written (add --yes to write)',
+    ]);
+    assert.equal(kit.files.get(VERDICTS), undefined);
+    assert.deepEqual(ok(await clear(kit, '--seen', seen, '--except', except, '--yes')), [
+      SKIPPED,
+      'CLEARED 2 line(s) as not conflicting, 1 left listed',
+      'NEXT `teamrig rules scan` leaves them out until a line or a core rule it touches changes (--all lists them again)',
+    ]);
+    const rescan = ok(await run(kit, 'scan'));
+    assert.deepEqual(
+      rescan.filter((line) => /^SCANNED (claude-md|settings)|^CANDIDATE/.test(line)),
+      [
+        'SCANNED claude-md: 2 place(s), 2 candidate line(s), 1 more cleared before (--all lists them)',
+        'SCANNED settings: 1 place(s), 0 candidate line(s), 1 more cleared before (--all lists them)',
+        WITHHELD,
+        `CANDIDATE ${PROJECT_CLAUDE_MD}:2 [16 worktrees] Tests run on every branch before review.`,
+      ],
+    );
+    const all = ok(await run(kit, 'scan', '--all'));
+    assert.equal(all.filter((line) => line.startsWith('CANDIDATE')).length, 4);
+    assert.equal(all.at(-1), clearNext(all, ' --all'));
+  });
+
+  it('lists a cleared line again once its text or a core rule it touches changes, and keeps other kinds cleared', async () => {
+    const kit = await world();
+    const cleared = ['SCANNED settings: 1 place(s), 0 candidate line(s), 1 more cleared before (--all lists them)', 'NONE no other line here touches a core rule'];
+    ok(await clear(kit, '--kind', 'settings', '--seen', seenOf(ok(await run(kit, 'scan', '--kind', 'settings'))), '--yes'));
+    assert.deepEqual(ok(await run(kit, 'scan', '--kind', 'settings')), cleared);
+    const claudeMd = ok(await clear(kit, '--kind', 'claude-md', '--seen', seenOf(ok(await run(kit, 'scan', '--kind', 'claude-md'))), '--yes'));
+    assert.deepEqual(claudeMd.slice(0, 2), [SKIPPED, 'CLEARED 2 line(s) as not conflicting']);
+    assert.deepEqual(ok(await run(kit, 'scan', '--kind', 'settings')), cleared);
+    await kit.files.write(CONFIG_PATH, formatConfig({ ...TEAM, pushGuard: { pushToProtected: 'allow' } }));
+    assert.equal(ok(await run(kit, 'scan', '--kind', 'settings'))[0], 'SCANNED settings: 1 place(s), 1 candidate line(s)');
+    await kit.files.write(CONFIG_PATH, formatConfig(TEAM));
+    await kit.files.write(PROJECT_CLAUDE_MD, '# Project\nTests run on every branch before a review.');
+    assert.equal(ok(await run(kit, 'scan', '--kind', 'claude-md'))[0], 'SCANNED claude-md: 2 place(s), 2 candidate line(s), 1 more cleared before (--all lists them)');
+  });
+
+  it('keeps a line cleared across a daylight-saving change of the times the rules print', async () => {
+    const kit = await world({ ...TEAM, timeZone: 'Asia/Jerusalem', coordinator: { schedule: { heavyCutoffUtc: '22:30' } } });
+    await kit.files.write(PROJECT_CLAUDE_MD, '# Project\nDeploy once the nightly build is green.');
+    const scan = (): Promise<CliResult> => run(kit, 'scan', '--kind', 'claude-md');
+    ok(await clear(kit, '--kind', 'claude-md', '--seen', seenOf(ok(await scan())), '--yes'));
+    const cleared = 'SCANNED claude-md: 2 place(s), 1 candidate line(s), 2 more cleared before (--all lists them)';
+    assert.equal(ok(await scan())[0], cleared, 'January, on IST');
+    kit.clock.advance(181 * MS_PER_DAY);
+    assert.equal(ok(await scan())[0], cleared, 'July, on IDT: rule 7 names another cutoff span, still the same rule');
+  });
+
+  it('says when no listed line is left to clear', async () => {
+    const kit = await world();
+    ok(await clear(kit, '--seen', seenOf(ok(await run(kit, 'scan'))), '--yes'));
+    assert.deepEqual(ok(await clear(kit, '--seen', seenOf(ok(await run(kit, 'scan'))), '--yes')), [SKIPPED, 'NONE no listed line is left to clear']);
+  });
+
+  it('refuses lines changed since the scan, a line the scan does not list, a missing digest and a session other than the lead', async () => {
+    const kit = await world();
+    const seen = seenOf(ok(await run(kit, 'scan')));
+    const alpha = await run(kit, 'clear', '--seen', seen, '--session', 'alpha');
+    assert.equal(alpha.code, EXIT.refused);
+    assert.match(alpha.stdout[0] ?? '', /^REFUSED only the lead [(]app-lead[)] records the rule lines that do not conflict$/);
+    const notListed = await clear(kit, '--seen', seen, '--except', '~/.claude/CLAUDE.md:4');
+    assert.equal(notListed.code, EXIT.usage);
+    assert.match(notListed.stderr.join('\n'), /--except ~[/][.]claude[/]CLAUDE[.]md:4 is not a candidate line this scan lists/);
+    assert.equal((await clear(kit, '--except', '~/.claude/CLAUDE.md:2')).code, EXIT.usage);
+    await kit.files.write(PROJECT_CLAUDE_MD, '# Project\nTests run on every branch before a review.');
+    const stale = await clear(kit, '--seen', seen, '--yes');
+    assert.equal(stale.code, EXIT.refused);
+    assert.match(stale.stdout[0] ?? '', /^REFUSED the candidate lines changed since that scan, so not all were judged: run `teamrig rules scan` again$/);
+    assert.equal(kit.files.get(VERDICTS), undefined);
+  });
+
+  it(`refuses over ${SCAN_LIST_MAX} candidates without --kind, and clears them a kind at a time`, async () => {
+    const kit = await world();
+    const many = Array.from({ length: SCAN_LIST_MAX }, (_, index) => `- Rule ${index}: every commit goes through review.`).join('\n');
+    await kit.files.write(join(TEAM_HOME, 'rules.md'), many);
+    const capped = await clear(kit, '--seen', '0000000000000000');
+    assert.equal(capped.code, EXIT.refused);
+    assert.match(capped.stdout[0] ?? '', new RegExp(`^REFUSED ${SCAN_LIST_MAX + 4} candidate lines are more than one read judges`));
+    const seen = seenOf(ok(await run(kit, 'scan', '--kind', 'team-rules')));
+    assert.equal(ok(await clear(kit, '--kind', 'team-rules', '--seen', seen, '--yes'))[0], `CLEARED ${SCAN_LIST_MAX} line(s) as not conflicting`);
+    assert.ok(ok(await run(kit, 'scan')).some((line) => line.startsWith('CANDIDATE')));
   });
 });
 
