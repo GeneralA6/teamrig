@@ -79,13 +79,14 @@ describe('renderLeadRules', () => {
     assert.ok(lines.length <= LEAD_RULES_MAX_CHARS, `${lines.length} > ${LEAD_RULES_MAX_CHARS}`);
   });
 
-  it("names what reaches the owner, the owner's orders as tasks, plans from the register and the hire flags", () => {
+  it("names what reaches the owner, the owner's orders as tasks, plans from the register, approvals, rule fixes and the hire flags", () => {
     const lines = renderLeadRules(testConfig({ register: { ownerSource: 'boss' } }), COMMAND);
-    assert.match(lines, /^As the lead, also:\n- Bring the owner only verified results,/);
-    assert.match(lines, /`teamrig add --owner <id> --source boss` \[register\.ownerSource\]/);
+    assert.match(lines, /^As the lead, also:\n- Bring the owner only verified results, your decisions, investigated questions and incidents\.\n/);
+    assert.match(lines, /\n- Relay each owner order as a task in the same turn: `teamrig add --owner <id> --source boss` \[register\.ownerSource\]/);
     assert.match(lines, /`teamrig plan` and run `teamrig check` at each checkpoint, never from memory\.\n/);
     assert.match(lines, /\n- Answer each approval wait on you with `teamrig approve` after the `approvals` skill's checklist; owner-gated content goes to the owner\.\n/);
-    assert.match(lines, /\n- Clear each HIRE flag by its action: a SCALE-OUT gives its slice to a hire .*; a RETIRE-DUE retires\.$/);
+    assert.match(lines, /\n- Fix a team rule proven wrong and say so; a loosening goes to the owner\.\n/);
+    assert.match(lines, /\n- HIRE flags: give a SCALE-OUT's slice to a hire within the owner's caps, else bring the owner a card; retire on a RETIRE-DUE\.$/);
   });
 });
 
@@ -157,7 +158,8 @@ describe('renderCorePack', () => {
   it('gates each hand-run data change on the owner, never prints secrets and binds local services to loopback', () => {
     const pack = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK);
     assert.match(pack, /^11\. A hand-run change or delete of stored data needs the owner's OK after counts or a preview\. Code that writes data/m);
-    assert.match(pack, /a parity run first\. Never print secret values; bind local services to 127\.0\.0\.1, never 0\.0\.0\.0\.$/m);
+    assert.match(pack, /a parity run that explains each differing row; archive history and audit data before any TTL\. Never print secret values;/);
+    assert.match(pack, /Never print secret values; bind local services to 127\.0\.0\.1, never 0\.0\.0\.0\.$/m);
   });
 
   it('states the small-commits rule and its gate', () => {
@@ -216,7 +218,7 @@ describe('renderCorePack', () => {
   it('names the safe worktree removal on Windows alone', () => {
     assert.match(renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK), /never a main checkout\. Remove a worktree with /);
     const pack = renderCorePack(testConfig(), COMMAND, 'linux', RULES_CLOCK);
-    assert.match(pack, /never a main checkout\. Update comments with their code/);
+    assert.match(pack, /never a main checkout\. Update comments in their code's commit/);
     assert.doesNotMatch(pack, /node_modules|worktree remove/);
   });
 
@@ -225,11 +227,10 @@ describe('renderCorePack', () => {
     assert.match(pack, /^10\. .*a dated root-cause task\. Tag a stopgap with the task that replaces it: `stopgap T<id>`\.$/m);
   });
 
-  it('keeps comments true to their code', () => {
-    assert.match(
-      renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK),
-      /Update comments with their code, verify a load-bearing one before acting on it, and fix a stale comment, doc or dead code you find in its own commit\.$/m,
-    );
+  it('keeps comments true to their code, checks a recorded number at its source, and proves dead code unread', () => {
+    const pack = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK);
+    assert.match(pack, /Update comments in their code's commit, deleting one you cannot make true; verify a load-bearing comment or recorded number at its source before use;/);
+    assert.match(pack, / fix a stale comment, doc or dead code \(proven unread\) you find in its own small commit and tell its area\.$/m);
   });
 
   it('ranks a skill below the rules once, in the header', () => {
@@ -247,6 +248,8 @@ describe('renderCorePack', () => {
   it('fills values from the config and names their keys', () => {
     const pack = renderCorePack(testConfig({ messages: { maxLines: 7 }, ownerGates: ['money', 'deletes'] }), COMMAND, 'win32', RULES_CLOCK);
     assert.match(pack, /^1\. Roles, by session id: lead is the lead/m);
+    assert.match(pack, / Every other session owns its area; cross-area issues and clashes go to the lead\.$/m);
+    assert.match(pack, /\[ownerGates\]\. A timing go the lead relays from the owner approves finished, tested work\.$/m);
     assert.match(pack, /At most 7 lines \[messages\.maxLines\]/);
     assert.match(pack, /never for owner gates: money; deletes \[ownerGates\]/);
     assert.match(pack, /with a note \(only what changed\) on waiting, verifying, done, dropped \[register\.requireNoteOn\]/);

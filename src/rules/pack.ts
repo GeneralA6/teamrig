@@ -137,7 +137,7 @@ export function renderCorePack(config: KitConfig, command: string, platform: Nod
     roles:
       `Roles, by session id: ${roles.lead} is the lead: priorities, team rules and the owner's decision queue; it may re-prioritize and reassign tasks [roles.lead].` +
       (roles.coordinatorOwner === undefined ? '' : ` ${roles.coordinatorOwner} owns deploy coordination and fleet health [roles.coordinatorOwner].`) +
-      ' Every other session owns its area.',
+      ' Every other session owns its area; cross-area issues and clashes go to the lead.',
     'own-change':
       "Own your change end to end: only the session that made it integrates, deploys (when it must run), verifies and fixes or rolls it back; another session's change goes to its owner.",
     messages:
@@ -155,7 +155,8 @@ export function renderCorePack(config: KitConfig, command: string, platform: Nod
       ' and started only for a goal, a parent task or the week plan, never ahead of your top task that is not waiting (one-commit fixes exempt).' +
       " A loop, cron or scheduled wake-up needs the lead's OK and a written stop. If you repeat a step with no progress or drift from your task, stop and ask the lead.",
     'owner-gates':
-      `Silence is consent only within the sender's authority, never for owner gates: ${list(config.ownerGates)} [ownerGates].`,
+      `Silence is consent only within the sender's authority, never for owner gates: ${list(config.ownerGates)} [ownerGates].` +
+      ' A timing go the lead relays from the owner approves finished, tested work.',
     deploy:
       "Deploy ASAP: as soon as a change can be verified (tests, then a check it runs). State each fix's evidence and when it will exist; build nothing on it before then." +
       (cutoff === undefined ? '' : ` No heavy step (builds, test runs, data scripts) starts ${zone.clockSpan(new Date(cutoff.from), new Date(cutoff.to))} [coordinator.schedule.heavyCutoffUtc].`),
@@ -175,7 +176,8 @@ export function renderCorePack(config: KitConfig, command: string, platform: Nod
       'Rising resource use (memory, CPU, storage, tokens) needs its root cause; a raised limit is only an owner-approved bridge with a dated root-cause task. Tag a stopgap with the task that replaces it: `stopgap T<id>`.',
     data:
       "A hand-run change or delete of stored data needs the owner's OK after counts or a preview. Code that writes data ships a read-only dry run (inserted, unchanged, changed counts)." +
-      ' Deleting derived data needs a verified regenerate tool and a parity run first. Never print secret values; bind local services to 127.0.0.1, never 0.0.0.0.',
+      ' Deleting derived data needs a verified regenerate tool and a parity run that explains each differing row; archive history and audit data before any TTL.' +
+      ' Never print secret values; bind local services to 127.0.0.1, never 0.0.0.0.',
     contracts:
       `Tell the other side before changing a contract it reads (an API parameter, shared table or file). The same external failure for ${config.alerts.persistentFailureHours} h must page a human [alerts.persistentFailureHours].`,
     skills:
@@ -192,7 +194,8 @@ export function renderCorePack(config: KitConfig, command: string, platform: Nod
     worktrees:
       'Edit in your own worktree and branch in every git repo, never a main checkout.' +
       (platform === 'win32' ? ` Remove a worktree with \`${command} worktree remove <path>\`; a plain \`git worktree remove\` empties the main node_modules.` : '') +
-      ' Update comments with their code, verify a load-bearing one before acting on it, and fix a stale comment, doc or dead code you find in its own commit.',
+      " Update comments in their code's commit, deleting one you cannot make true; verify a load-bearing comment or recorded number at its source before use;" +
+      ' fix a stale comment, doc or dead code (proven unread) you find in its own small commit and tell its area.',
   };
   const kept = renderKeptRules(config.ruleConflicts, command);
   const except = kept === '' ? '' : ', except the kept local rules below [ruleConflicts]';
@@ -243,17 +246,19 @@ export function renderKeptRules(conflicts: readonly RuleConflict[], command: str
 
 /**
  * What only the lead does every turn, shown to the lead alone so no other session pays for it: what it brings the
- * owner, the owner's orders it relays as tasks, plans read from the register, never from memory, and the hire flags
+ * owner, the owner's orders it relays as tasks, plans read from the register, never from memory, the approval waits
+ * it answers, a team rule proven wrong that it fixes itself while a loosening stays the owner's, and the hire flags
  * (src/hiring/scale-out.ts, src/hiring/due.ts) it clears: when an area gets a hire, and when the hire goes.
  */
 export function renderLeadRules(config: KitConfig, command: string): string {
   return [
     'As the lead, also:',
-    '- Bring the owner only verified results, decisions you made, investigated questions (options, numbers, a recommendation) and incidents.',
-    `- Each owner order you relay is a task in the same turn: \`${command} add --owner <id> --source ${config.register.ownerSource}\` [register.ownerSource].`,
+    '- Bring the owner only verified results, your decisions, investigated questions and incidents.',
+    `- Relay each owner order as a task in the same turn: \`${command} add --owner <id> --source ${config.register.ownerSource}\` [register.ownerSource].`,
     `- Plan the week from \`${command} plan\` and run \`${command} check\` at each checkpoint, never from memory.`,
     `- Answer each approval wait on you with \`${command} approve\` after the \`approvals\` skill's checklist; owner-gated content goes to the owner.`,
-    "- Clear each HIRE flag by its action: a SCALE-OUT gives its slice to a hire within the owner's caps, else brings the owner a card; a RETIRE-DUE retires.",
+    '- Fix a team rule proven wrong and say so; a loosening goes to the owner.',
+    "- HIRE flags: give a SCALE-OUT's slice to a hire within the owner's caps, else bring the owner a card; retire on a RETIRE-DUE.",
   ].join('\n');
 }
 
