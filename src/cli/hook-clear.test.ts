@@ -92,8 +92,18 @@ describe('teamrig hook clear-claim --hold', () => {
     const { store, asks } = await asked(kit);
     assert.deepEqual(await kit.run(HOLD, FROM_TAB), { code: EXIT.ok, stdout: ['held'], stderr: [] });
     assert.equal(await asks.outcome(CLAUDE_SESSION), 'held');
+    assert.equal(await asks.heldWhy(CLAUDE_SESSION), undefined, 'a hold with no --why, as an older mod gives');
     assert.equal((await store.restart('alpha'))?.phase, 'pending');
     assert.equal(await asks.withdraw(CLAUDE_SESSION), false, 'the restart learns the tab answered first');
+  });
+
+  it('keeps the reason --why gives, which the restart names if it gives up', async () => {
+    const kit = new CliHarness();
+    const { asks } = await asked(kit);
+    const why = 'the prompt box holds a draft';
+    assert.deepEqual(await kit.run([...HOLD, '--why', why], FROM_TAB), { code: EXIT.ok, stdout: ['held'], stderr: [] });
+    assert.equal(await asks.outcome(CLAUDE_SESSION), 'held');
+    assert.equal(await asks.heldWhy(CLAUDE_SESSION), why);
   });
 
   it('declines once the runner took its ask back', async () => {

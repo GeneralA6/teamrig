@@ -2911,6 +2911,8 @@ Flags:
   prompt box, their recent keys or prompts, their Hold, or the band's count
   ([hooks.md](hooks.md#the-mod-the-refreshs-clear)). The request stays pending: the restart ends nothing and asks
   again once the session is quiet.
+- `--why <reason>`: with `--hold`, why the mod holds the ask (one line, up to 200 characters). The restart names
+  the last one when it gives up after an hour, in its log row and the session's inbox line.
 
 Example:
 

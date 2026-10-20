@@ -34,6 +34,8 @@ export const CLAIM_HELD = 'held';
 export const CLAIM_WITHDRAWN = 'withdrawn';
 /** The switch that makes `hook clear-claim` hold the ask instead of claiming it. */
 export const HOLD_SWITCH = 'hold';
+/** The flag that gives a hold the hand's reason, which the restart names when it gives up. */
+export const WHY_FLAG = 'why';
 
 /**
  * How the tab's hand keeps a /clear from landing under the person, from the team's config: the restart's ask
@@ -110,6 +112,14 @@ export function askFileOf(dir: string, claudeSession: string): string | undefine
 /** How the ask was answered, `taken`, `held` or `withdrawn`, created once: the first writer wins and the other learns it lost. */
 export function outcomeFileOf(dir: string, claudeSession: string): string | undefined {
   return isClaudeSessionId(claudeSession) ? `${dir}/${claudeSession}.outcome` : undefined;
+}
+
+/**
+ * Why the tab held the ask, written before its `held` outcome: the outcome stays the one word a restart
+ * started under an older teamrig reads.
+ */
+export function holdWhyFileOf(dir: string, claudeSession: string): string | undefined {
+  return isClaudeSessionId(claudeSession) ? `${dir}/${claudeSession}.held` : undefined;
 }
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
