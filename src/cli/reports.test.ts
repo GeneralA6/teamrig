@@ -257,7 +257,7 @@ describe('ownCheck', () => {
   it('keeps the flags of the tasks and skills one session owns, and names it in the scope', () => {
     const flags = [flag('OVERDUE', { id: 'T1', owner: 'alpha' }), flag('OVERDUE', { id: 'T2', owner: 'bravo' })];
     const skills = [skillFlag('alpha-deploy'), { ...skillFlag('bravo-sync'), owner: 'bravo' }, { ...skillFlag('team-x'), owner: null }];
-    const narrowed = ownCheck(report({ sections: [{ team: undefined, flags, tree: TREE }], skills }), 'alpha');
+    const narrowed = ownCheck(report({ sections: [{ team: undefined, flags, tree: TREE }], skills }), 'alpha', []);
     assert.deepEqual(
       narrowed.sections.map((section) => section.flags.map((each) => each.task.id)),
       [['T1']],
@@ -267,9 +267,23 @@ describe('ownCheck', () => {
       { kind: 'REVIEW-DUE', session: 'alpha', detail: 'review day 2030-01-07 passed', action: 'decide' },
       { kind: 'RETIRE-DUE', session: 'bravo', detail: 'no open task for 5 h, hiring.idleHours 4', action: 'retire it' },
     ];
-    assert.deepEqual(ownCheck(report({ hires }), 'alpha').hires.map((each) => each.session), ['alpha']);
+    assert.deepEqual(ownCheck(report({ hires }), 'alpha', []).hires.map((each) => each.session), ['alpha']);
     assert.equal(narrowed.scope, "alpha's tasks and skills, week 2030-01-07");
     assert.match(checkLines(narrowed, false)[0] ?? '', /^CHECK 1 flag\(s\), alpha's tasks and skills, week 2030-01-07 /);
+  });
+
+  it("adds a sub-lead's group's task flags, not their skills or hires, and names the group in the scope (T782)", () => {
+    const flags = [flag('OVERDUE', { id: 'T1', owner: 'alpha' }), flag('OVERDUE', { id: 'T2', owner: 'bravo' }), flag('OVERDUE', { id: 'T3', owner: 'charlie' })];
+    const skills = [skillFlag('alpha-deploy'), { ...skillFlag('bravo-sync'), owner: 'bravo' }];
+    const hires: readonly HireFlag[] = [{ kind: 'RETIRE-DUE', session: 'bravo', detail: 'no open task for 5 h, hiring.idleHours 4', action: 'retire it' }];
+    const narrowed = ownCheck(report({ sections: [{ team: undefined, flags, tree: TREE }], skills, hires }), 'alpha', ['bravo']);
+    assert.deepEqual(
+      narrowed.sections.map((section) => section.flags.map((each) => each.task.id)),
+      [['T1', 'T2']],
+    );
+    assert.deepEqual(narrowed.skills.map((each) => each.skill), ['alpha-deploy']);
+    assert.deepEqual(narrowed.hires, []);
+    assert.equal(narrowed.scope, "alpha's tasks and skills, its group's tasks (bravo), week 2030-01-07");
   });
 });
 

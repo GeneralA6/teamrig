@@ -59,6 +59,19 @@ describe('runCli: start prints the start of a work block in one call', () => {
     assert.ok(check.some((line) => /\bT1\b/.test(line)) && check.some((line) => /\bT2\b/.test(line)), check.join('\n'));
   });
 
+  it("gives a sub-lead its group's task flags, and lets it reorder that work but not hand it out of the group (T782)", async () => {
+    const kit = await overdueTeam();
+    assert.equal((await kit.run(['promote', 'alpha', '--members', 'bravo', '--session', 'lead', '--yes'])).code, EXIT.ok);
+    const check = checkPart((await kit.run(['start', '--session', 'alpha'])).stdout);
+    assert.match(check[0] ?? '', /^CHECK [1-9]\d* flag\(s\), alpha's tasks and skills, its group's tasks \(bravo\), /);
+    assert.ok(check.some((line) => /\bT1\b/.test(line)) && check.some((line) => /\bT2\b/.test(line)), check.join('\n'));
+    const reordered = await kit.run(['update', 'T2', '--priority', 'p1', '--due', '2030-01-12', '--session', 'alpha']);
+    assert.equal(reordered.code, EXIT.ok, reordered.stderr.join('\n'));
+    const handed = await kit.run(['update', 'T2', '--owner', 'lead', '--session', 'alpha']);
+    assert.notEqual(handed.code, EXIT.ok);
+    assert.match([...handed.stdout, ...handed.stderr].join('\n'), /REFUSED alpha hands T2 only to itself or a session it leads \(bravo\)/);
+  });
+
   it('needs to know the caller', async () => {
     const kit = new CliHarness();
     const bare = await kit.run(['start']);
