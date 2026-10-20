@@ -36,7 +36,8 @@ export const SECRET_TOKEN_PATTERNS: readonly SecretPattern[] = [
  * Only shared-file writes use these; the scrub has its own stricter assignment rule, as documentation shows
  * placeholders such as `password: ${VAULT}`.
  * An assignment's key word may end a longer name, as env vars and code write it (`DB_PASSWORD`, `clientSecret`):
- * no word boundary comes before it, since an underscore is a word character.
+ * no word boundary comes before it, since an underscore is a word character. A quoted key, as JSON and YAML write
+ * it (`"password": `), counts too.
  * An assignment's key never ends a name with a `/` in it (a branch such as `feat/jwt-previous-secret`, a path):
  * a note naming one ahead of a colon names it, it does not assign it. A dotted key (`jwt.secret`), a header
  * (`X-Api-Key`) and a URL's query still count. That check follows the key word, so it runs only where one matched,
@@ -44,5 +45,5 @@ export const SECRET_TOKEN_PATTERNS: readonly SecretPattern[] = [
  */
 export const SECRET_TEXT_PATTERNS: readonly SecretPattern[] = [
   { id: 'url-credentials', description: 'credentials in a URL', pattern: /\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]+:[^\s/@]+@/i },
-  { id: 'secret-assignment', description: 'password or key assignment', pattern: /(?:password|passwd|secret|api[_-]?key)(?<!\/[\w.-]*)\s*[=:]\s*\S/i },
+  { id: 'secret-assignment', description: 'password or key assignment', pattern: /(?:password|passwd|secret|api[_-]?key)(?<!\/[\w.-]*)["']?\s*[=:]\s*\S/i },
 ];
