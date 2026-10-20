@@ -246,6 +246,8 @@ With sub-teams, run `teamrig check --tree --session lead` too. Then act on each 
   no goal, parent task or week plan.
 - `OFF-GOAL`: if it belongs this week, `teamrig update T<n> --session lead --week <week>`; else ask the owner in
   one inbox line to tag its goal or park it.
+- `NO-PROGRESS`: one inbox line to the owner of the named task to move it; when something holds the plan, fix the
+  order or the plan, or tell the human.
 - `STOPGAP-DONE`: one inbox line to the owner of each listed file to remove the stopgap (or, for a dropped task, to
   open a new task or keep it by a decision).
 - `NOT-PICKED-UP`: the owner is idle and reads no inbox: wake it with `teamrig open <id>`, or tell the human.
