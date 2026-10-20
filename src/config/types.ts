@@ -855,6 +855,11 @@ export interface KitConfig {
   readonly names: Readonly<Record<string, string>>;
   /** Each role's session, by id. */
   readonly roles: RolesConfig;
+  /**
+   * Each sub-lead's members, by id (T781, `promote`): a sub-lead leads the sessions it lists, and the lead every
+   * session no sub-lead lists; a sub-lead may list sub-leads, at any depth. Read through `LeadTree`.
+   */
+  readonly leads: Readonly<Record<string, readonly string[]>>;
   /** Decision areas only the human owner can approve; silence never counts as consent for them. */
   readonly ownerGates: readonly string[];
   /** The local rules kept although they conflict with a core rule, each with the side that wins (`rules keep`). */

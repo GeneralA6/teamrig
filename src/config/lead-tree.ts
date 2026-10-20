@@ -1,0 +1,61 @@
+import type { KitConfig } from './types.ts';
+
+/**
+ * The team's lead tree (T781): `roles.lead` at the top, and each sub-lead in `leads` over the sessions it lists. A
+ * session's leader is the sub-lead that lists it, else the lead; the lead has none. The parser keeps the tree whole (one
+ * leader per session, the lead never a member, no cycles), so every walk here ends at the lead.
+ */
+export class LeadTree {
+  readonly lead: string;
+  private readonly sessions: readonly string[];
+  /** Each listed member to the sub-lead that leads it. */
+  private readonly listedLeader: ReadonlyMap<string, string>;
+  private readonly subLeads: ReadonlySet<string>;
+
+  constructor(config: Pick<KitConfig, 'sessions' | 'roles' | 'leads'>) {
+    this.lead = config.roles.lead;
+    this.sessions = config.sessions;
+    this.subLeads = new Set(Object.keys(config.leads));
+    this.listedLeader = new Map(Object.entries(config.leads).flatMap(([subLead, members]) => members.map((member) => [member, subLead] as const)));
+  }
+
+  /** The session's direct leader: its sub-lead, else the lead; undefined for the lead and for an id not on the team. */
+  leaderOf(id: string): string | undefined {
+    if (id === this.lead || !this.sessions.includes(id)) {
+      return undefined;
+    }
+    return this.listedLeader.get(id) ?? this.lead;
+  }
+
+  /** The leaders above the session, nearest first, ending at the lead; empty for the lead itself. */
+  chainOf(id: string): string[] {
+    const chain: string[] = [];
+    // The parser refuses cycles; the seen set only keeps a hand-built config from looping.
+    const seen = new Set([id]);
+    for (let leader = this.leaderOf(id); leader !== undefined && !seen.has(leader); leader = this.leaderOf(leader)) {
+      chain.push(leader);
+      seen.add(leader);
+    }
+    return chain;
+  }
+
+  /** The sessions the leader leads directly, in config order: for the lead, every session no sub-lead lists. */
+  membersOf(leader: string): string[] {
+    return this.sessions.filter((id) => this.leaderOf(id) === leader);
+  }
+
+  /** Every session under the leader, at any depth, in config order. */
+  groupOf(leader: string): string[] {
+    return this.sessions.filter((id) => this.chainOf(id).includes(leader));
+  }
+
+  /** Whether the session leads anyone: the lead, or a sub-lead. */
+  isLeader(id: string): boolean {
+    return id === this.lead || this.subLeads.has(id);
+  }
+
+  /** Whether `leader` is above `id` in the tree, at any depth. */
+  leads(leader: string, id: string): boolean {
+    return this.chainOf(id).includes(leader);
+  }
+}

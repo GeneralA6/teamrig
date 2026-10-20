@@ -16,6 +16,8 @@ const ROSTER_KEYS = new Set(['sessions', 'roles']);
 /** Sets every optional key, so walking it visits every key the parser reads. */
 const EVERY_KEY = {
   ...ROSTER,
+  sessions: ['alpha', 'bravo', 'charlie'],
+  leads: { bravo: ['charlie'] },
   team: { id: 'web', parent: 'app' },
   names: { alpha: 'team-lead' },
   ruleConflicts: [{ file: '~/CLAUDE.md', text: 'Commit straight to main.', rule: 'worktrees', wins: 'local', reason: 'solo repo' }],
