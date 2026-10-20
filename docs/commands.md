@@ -39,13 +39,17 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       value naming a launcher in the kit home); without --yes it shows the change and writes nothing
   restore uninstall [--yes]    stops it: removes the logon entry, then the launcher
   rules [--session <id|name>]  the team rules and who the session is, as a session start gives them
-  rules scan [--kind <kind>]   every place a local rule can override a core rule (CLAUDE.md files, rules
-      files, skills, memory, rules.md, hook scripts, settings autoMode lines), the kept rules, and the lines
-      that touch a core rule for the model to judge; it only reads; over 150 lines, one kind at a time
+  rules scan [--kind <kind>] [--all]   every place a local rule can override a core rule (CLAUDE.md files,
+      rules files, skills, memory, rules.md, hook scripts, settings autoMode lines), the kept rules, and the
+      lines that touch a core rule for the model to judge, but those cleared before while they and the rules
+      they touch are unchanged (--all lists them too); it only reads; over 150 lines, one kind at a time
   rules keep <path>:<line> --rule <n|key> --wins local|teamrig [--reason "<why>"] [--yes]
       (the lead only) keeps a local rule that conflicts with a core rule: local wins as a named exception,
       or teamrig wins and the line stays; without --yes it shows the record and writes nothing
   rules forget <n> [--yes]     (the lead only) drops kept rule n, as rules scan numbers them
+  rules clear [--kind <kind>] [--all] --seen <digest> [--except <path>:<line>,...] [--yes]
+      (the lead only) records the lines that scan listed, but --except's, as not conflicting, so a rescan
+      lists only new or changed ones; --seen is the digest the scan printed; without --yes writes nothing
   skills scorecard [--from <day>] [--to <day>] [--baseline-from <day>] [--baseline-to <day>]   per skill:
       loads, missed uses (a call matching its "Signature: `<regex>`" line with no load before it), calls
       and errors per run, against a baseline (default: the last 7 UTC days, and the 7 before); each run
