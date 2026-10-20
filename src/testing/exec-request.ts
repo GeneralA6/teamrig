@@ -1,9 +1,8 @@
-import type { ExecRequest } from '../exec/request.ts';
+import type { ExecRequest, RequestDraft } from '../exec/request.ts';
 
-/** A complete stored db-write request, R1 unless `overrides` says otherwise; each override replaces a whole field. */
-export function execRequest(overrides: Partial<ExecRequest> = {}): ExecRequest {
+/** A complete db-write request file's draft, as a requester writes it; each override replaces a whole field. */
+export function execDraft(overrides: Partial<RequestDraft> = {}): RequestDraft {
   return {
-    id: 'R1',
     kind: 'db-write',
     task: 'T755',
     target: 'local app.items',
@@ -21,6 +20,15 @@ export function execRequest(overrides: Partial<ExecRequest> = {}): ExecRequest {
     rollback: 'tools/fix-models.ts --undo <run id>',
     window: null,
     ownerGated: false,
+    ...overrides,
+  };
+}
+
+/** A complete stored db-write request, R1 unless `overrides` says otherwise; each override replaces a whole field. */
+export function execRequest(overrides: Partial<ExecRequest> = {}): ExecRequest {
+  return {
+    ...execDraft(),
+    id: 'R1',
     requester: 'alpha',
     createdAt: '2030-01-07T10:00:00.000Z',
     program: 'C:/nodejs/node.exe',
