@@ -82,11 +82,12 @@ class FakeHost implements SlashHandHost {
 }
 
 describe('SlashHand.answer', () => {
-  it('runs the CLI with the tab session, folder, root, the typed text and its origin, and shows the output fenced', async () => {
+  it('runs the CLI with the tab session, folder, root, the typed text and its origin, and shows the typed line, then the output fenced under it', async () => {
     const host = new FakeHost();
     host.runs = [ran('line one\nline two\n')];
     const answer = await new SlashHand(host).answer('budget', 'composer');
-    assert.deepEqual(answer, { text: '```text\nline one\nline two\n```', exitCode: 0 });
+    // T801: the tab shows the answer after a `teamrig: ` prefix; a fence opening the text would sit mid-line there.
+    assert.deepEqual(answer, { text: 'teamrig budget\n```text\nline one\nline two\n```', exitCode: 0 });
     assert.deepEqual(host.calls, [
       { stdin: { session_id: SESSION, cwd: CWD, args: 'budget', origin: 'composer' }, env: { CLAUDE_CODE_SESSION_ID: SESSION, CLAUDE_PROJECT_DIR: ROOT }, cwd: CWD },
     ]);
@@ -99,7 +100,7 @@ describe('SlashHand.answer', () => {
     host.runs = [ran('', 2, 'REFUSED no\n')];
     const answer = await new SlashHand(host).answer('set T1 --status done', 'sdk');
     assert.equal(answer.exitCode, 2);
-    assert.equal(answer.text, '```text\nREFUSED no\n```\nteamrig set T1 --status done ended with exit code 2.');
+    assert.equal(answer.text, 'teamrig set T1 --status done\n```text\nREFUSED no\n```\nteamrig set T1 --status done ended with exit code 2.');
   });
 
   it('asks the person before a line the CLI printed to agree to, then runs that line', async () => {
@@ -114,7 +115,7 @@ describe('SlashHand.answer', () => {
         { session_id: SESSION, cwd: CWD, args: 'inbox read', origin: 'composer', agreed: 'teamrig inbox read --session alpha' },
       ],
     );
-    assert.deepEqual(answer, { text: "```text\n--session alpha (this tab's session)\nhello\n```", exitCode: 0 });
+    assert.deepEqual(answer, { text: "teamrig inbox read\n```text\n--session alpha (this tab's session)\nhello\n```", exitCode: 0 });
     assert.deepEqual(host.statuses, ['teamrig inbox read: running', undefined, 'teamrig inbox read: running', undefined]);
   });
 
@@ -156,7 +157,7 @@ describe('resultText', () => {
   });
 
   it('fences with more backticks than any run in the output', () => {
-    assert.equal(resultText('show T1', ran('a ```` b')), '`````text\na ```` b\n`````');
+    assert.equal(resultText('show T1', ran('a ```` b')), 'teamrig show T1\n`````text\na ```` b\n`````');
   });
 
   it('counts the lines left out and points to a terminal', () => {
@@ -172,7 +173,7 @@ describe('resultText', () => {
     const stderr = Array.from({ length: MAX_ERROR_LINES + 1 }, () => 'err').join('\n');
     assert.ok(resultText('x', ran('', 1, stderr)).includes('More error output not shown.'));
     assert.ok(resultText('x', { ...ran('', 1, 'e'), isStderrTruncated: true }).includes('More error output not shown.'));
-    assert.equal(resultText('x', ran('out', 0, 'warning')), '```text\nout\n```');
+    assert.equal(resultText('x', ran('out', 0, 'warning')), 'teamrig x\n```text\nout\n```');
   });
 });
 
