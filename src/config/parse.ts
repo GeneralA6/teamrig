@@ -19,6 +19,7 @@ import {
   DEFAULT_GITHUB,
   DEFAULT_HEAVY,
   DEFAULT_HIRING,
+  DEFAULT_EXEC,
   DEFAULT_LOCK,
   DEFAULT_LEAD_BOUNDARY,
   DEFAULT_TURN_LOG,
@@ -139,6 +140,17 @@ const isRepoName: Check<string> = (repo) =>
 const GITHUB_LOGIN = /^[a-z0-9][a-z0-9-]{0,38}$/i;
 
 const BRANCH_NAME: Check<string> = (name) => (/^[^\s~^:?*[\\]+$/.test(name) ? undefined : 'not a valid branch name');
+
+/**
+ * An `exec.path` folder: absolute from a drive or the root (`C:/tools`, `/usr/bin`), never against the cwd, and with no
+ * `;` or `:` past the drive, so joining the list into one PATH cannot split a folder or add one.
+ */
+const EXEC_DIRECTORY: Check<string> = (folder) => {
+  if (!/^(?:[A-Za-z]:[\\/]|\/)/.test(folder)) {
+    return 'expected an absolute folder, such as C:/tools or /usr/bin';
+  }
+  return /^(?:[A-Za-z]:)?[^;:]*$/.test(folder) ? undefined : 'expected no ; or : past the drive';
+};
 
 /** The key shape the skills lint recognises in frontmatter. */
 const isFrontmatterKey: Check<string> = (key) => (/^[A-Za-z0-9_-]+$/.test(key) ? undefined : 'expected a frontmatter key: letters, digits, _ or -');
@@ -368,6 +380,16 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
       ttlMs: read.integer(lock, 'ttlMs', 'lock', DEFAULT_LOCK.ttlMs, { min: 1_000 }),
       pollMs: read.integer(lock, 'pollMs', 'lock', DEFAULT_LOCK.pollMs, { min: 10 }),
       waitMs: read.integer(lock, 'waitMs', 'lock', DEFAULT_LOCK.waitMs, { min: 0 }),
+    },
+    exec: {
+      path: read.stringList(
+        read.section(raw, 'exec', ''),
+        'path',
+        'exec',
+        DEFAULT_EXEC.path,
+        shortLine(CONFIG_LIMITS.execPath.maxLength, EXEC_DIRECTORY),
+        CONFIG_LIMITS.execPath.maxItems,
+      ),
     },
     pushGuard: {
       protectedBranches: read.stringList(
