@@ -73,6 +73,28 @@ describe('runCli: exec request, a privileged command asked for review (T755)', (
     assert.deepEqual(team.spawner.asks, []);
   });
 
+  it('posts the security reviewer one inbox line, also for an owner-gated request', async () => {
+    const team = new ExecTeam();
+    const requested = await team.request(execDraft({ ownerGated: true }));
+    assertOk(requested);
+    const line = 'R1 asks to run a db-write on local app.items for T755: review it (teamrig exec status R1)';
+    assert.deepEqual(requested.stderr, [`NOTE bravo has an inbox line: ${line}`]);
+    const read = await team.kit.run(['inbox', 'read', '--session', 'bravo']);
+    assert.deepEqual(read.stdout.filter((text) => text.startsWith('- ')), [`- 2030-01-08 10:00 UTC alpha: ${line}`]);
+  });
+
+  it("posts the owner the security reviewer's own request, and every request when no security reviewer is set", async () => {
+    const team = new ExecTeam();
+    await team.kit.files.write(REQUEST_FILE, JSON.stringify(execDraft()));
+    const own = await team.run('request', '--file', 'r1.json', '--session', 'bravo');
+    assertOk(own);
+    assert.match(own.stderr.join('\n'), /^NOTE owner has an inbox line: R1 asks to run /);
+    const unset = new ExecTeam({ ...EXEC_TEAM, roles: { lead: 'lead' } });
+    const requested = await unset.request();
+    assertOk(requested);
+    assert.match(requested.stderr.join('\n'), /^NOTE owner has an inbox line: R1 asks to run /);
+  });
+
   it('refuses a missing file, a file that is not JSON, and a draft with problems', async () => {
     const team = new ExecTeam();
     assertRefused(await team.run('request', '--file', 'r1.json', '--session', 'alpha'), /no request file .*r1\.json/);
