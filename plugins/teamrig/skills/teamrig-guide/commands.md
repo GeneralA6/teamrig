@@ -2684,10 +2684,12 @@ the hook off, for any other line, or on an error. Exit 0 always.
 
 ### teamrig hook picker-guard
 
-Before Claude Code's question picker (`AskUserQuestion`), with `pickerGuard.enabled` in the team config, refuses it to
-every session but the lead: the picker stops the session until the person answers. The reason gives the session's
-own `teamrig set <id> --status waiting --waits decision:owner` command with its decision card, says to go on with the
-next task, and only with none left to end the turn with the question and a `Decision needed:` line. See
+Before Claude Code's question picker (`AskUserQuestion`), with `pickerGuard.enabled` in the team config, refuses it in
+every session and helper of the team, and in the lead's own thread unless the owner's daily meeting is open: the
+picker stops the session until the person answers. The reason says to decide it when it is the session's own, else
+gives the session's own `teamrig set <id> --status waiting --waits decision:owner` command with its decision card,
+`--default` included, says to go on with the next task, and only with none left to end the turn with the question and
+a `Decision needed:` line. A helper's reason says to end its report with the decision instead. See
 [Hooks and permissions](hooks.md#before-a-question-the-picker-guard).
 
 Flags: none.
@@ -2698,9 +2700,9 @@ Example:
 teamrig hook picker-guard < pre-tool-use.json
 ```
 
-Output: a JSON permission decision `deny` with the reason for a team session's picker; nothing for the lead, a tab
-that is no session of the team, any other tool (`ExitPlanMode` too), outside a team, with the guard off, or on an
-error. Exit 0 always.
+Output: a JSON permission decision `deny` with the reason for a team session's or helper's picker, and the lead's
+outside a meeting; nothing for the lead's own thread while the meeting is open, a tab that is no session of the team,
+any other tool (`ExitPlanMode` too), outside a team, with the guard off, or on an error. Exit 0 always.
 
 ### teamrig hook prompt-refuse
 
