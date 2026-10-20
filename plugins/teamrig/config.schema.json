@@ -924,7 +924,7 @@
       }
     },
     "decisions": {
-      "description": "When the lead asks the owner the decisions waiting on them (tasks waiting on the owner's decision or approval), together in one batch instead of one at a time. A batch holds the waits not yet asked and the asked ones now past their due date; `teamrig decisions` prints it and `--asked` records it asked, as a meeting's start does. The lead's check says when one is due.",
+      "description": "When the lead asks the owner the decisions waiting on them (tasks waiting on the owner's decision or approval), together in one batch instead of one at a time. A batch holds the waits not yet asked and the asked ones now past their due date; `teamrig decisions` prints it and `teamrig decisions asked` records it asked, as a meeting's start does. The lead's check says when one is due.",
       "type": "object",
       "properties": {
         "batchTimesUtc": {
