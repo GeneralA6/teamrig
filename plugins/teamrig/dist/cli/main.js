@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { nodeTranscriptSource } from "../budget/discover.js";
 import { nodeFiles } from "../core/files.js";
 import { nodeHostMemory } from "../coordinator/memory.js";
+import { nodeEvery, starterWatch } from "../coordinator/starter-watch.js";
 import { nodeStepRunner } from "../coordinator/steps.js";
 import { realSleep, systemClock } from "../core/lock.js";
 import { NODE_PATH_PROBE } from "../core/path-probe.js";
@@ -23,6 +24,7 @@ import { stdioCountdownTerminal, terminalCountdown } from "../restore/countdown.
 import { LOGON_QUERY_TIMEOUT_MS, systemLogonEntry } from "../restore/logon.js";
 import { SHUTDOWN_QUERY_TIMEOUT_MS, systemShutdownLog } from "../restore/shutdowns.js";
 import { runCli } from "./run.js";
+const sessionProcesses = nodeSessionProcesses();
 /** The process adapter: real files, clock, git, child processes and stdio around the testable runner. */
 process.exitCode = await runCli(process.argv.slice(2), {
     env: process.env,
@@ -41,7 +43,8 @@ process.exitCode = await runCli(process.argv.slice(2), {
     },
     platform: process.platform,
     processes: nodeProcesses(),
-    sessionProcesses: nodeSessionProcesses(),
+    sessionProcesses,
+    starters: starterWatch(sessionProcesses, process.pid, nodeEvery),
     shell: nodeShellRunner(),
     steps: nodeStepRunner(process.platform),
     memory: nodeHostMemory(process.platform),

@@ -185,15 +185,17 @@ export class HostLock {
      * `FIRST_IN_LINE_POLL_MS` at most) for at most `maxWaitMs`, and leaves the line when done. `onWait` hears each new
      * holder or place in line once, with the number of waiters ahead. A lock taken then waits, held, for the small
      * steps sharing the host to end. With `share`, a small step shares the host in its turn instead (see the class).
-     * Busy when the wait ran out; withdrawn when its ticket was withdrawn before it took its turn.
+     * Busy when the wait ran out; withdrawn when its ticket was withdrawn before it took its turn. Once `stop` aborts,
+     * the wait rejects with its reason before its next look, as `fetch` does, leaving the line and releasing a lock it
+     * held while the small steps ended, so a step no one waits for any more never takes the lock.
      */
-    async acquire(session, purpose, maxWaitMs, pollMs, onWait, share) {
+    async acquire(session, purpose, maxWaitMs, pollMs, onWait, share, stop) {
         const deadline = this.ports.clock.now() + maxWaitMs;
         const ticket = await this.joinLine(session, purpose, deadline);
         const tell = tellingChanges(onWait);
         try {
-            const waited = await this.waitInLine(ticket, deadline, pollMs, tell, share);
-            const result = waited.kind === 'taken' && waited.sharing === undefined ? await this.drain(waited.lock, ticket, deadline, tell) : waited;
+            const waited = await this.waitInLine(ticket, deadline, pollMs, tell, share, stop);
+            const result = waited.kind === 'taken' && waited.sharing === undefined ? await this.drain(waited.lock, ticket, deadline, tell, stop) : waited;
             return result.kind === 'taken' ? await this.commit(result, ticket) : result;
         }
         finally {
@@ -264,11 +266,12 @@ export class HostLock {
                 return this.isStale(seen.info) ? { kind: 'stale', info: seen.info } : seen;
         }
     }
-    /** Looks in line until this step takes the lock, or a share with `share`, in its turn, or its wait runs out. */
-    async waitInLine(ticket, deadline, pollMs, tell, share) {
+    /** Looks in line until this step takes the lock, or a share with `share`, in its turn, or its wait runs out; rejects once `stop` aborts. */
+    async waitInLine(ticket, deadline, pollMs, tell, share, stop) {
         const { clock, sleep } = this.ports;
         let unknownSince;
         for (;;) {
+            stop?.throwIfAborted();
             const ahead = await this.waitersAhead(ticket.name);
             if (ahead === undefined) {
                 return { kind: 'withdrawn' };
@@ -292,13 +295,17 @@ export class HostLock {
      * Holds a lock just taken until the small steps sharing the host end, looking every `FIRST_IN_LINE_POLL_MS`; no new
      * one is let in meanwhile, as the lock is held. Gives up, releasing the lock, at the wait's deadline or when the lock
      * would expire, so it never goes stale while held, and when its ticket was withdrawn meanwhile. A lock that waited is
-     * renewed, so its step gets its whole time.
+     * renewed, so its step gets its whole time. Once `stop` aborts it releases the lock and rejects with the stop's reason.
      */
-    async drain(lock, ticket, deadline, tell) {
+    async drain(lock, ticket, deadline, tell, stop) {
         const { clock, sleep } = this.ports;
         const until = Math.min(deadline, Date.parse(lock.expiresAt));
         let waited = false;
         for (;;) {
+            if (stop?.aborted === true) {
+                await this.release(lock);
+                stop.throwIfAborted();
+            }
             const shares = await this.liveShares();
             if (shares.length === 0) {
                 return { kind: 'taken', lock: waited ? await this.renew(lock) : lock };

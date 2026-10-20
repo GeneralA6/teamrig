@@ -16,6 +16,8 @@ export const LOOKUP_TIMEOUT_MS = 20_000;
 export const FEED_TIMEOUT_MS = 60_000;
 /** taskkill's exit code when no process has the id. */
 const TASKKILL_NOT_FOUND = 128;
+/** `ps`'s arguments for every process: its id, its starter's and its command line. */
+const POSIX_LISTING = ['-A', '-o', 'pid=', '-o', 'ppid=', '-o', 'args='];
 /** A real process id; anything else never reaches a command line. */
 function isPid(pid) {
     return Number.isSafeInteger(pid) && pid > 0;
@@ -28,6 +30,12 @@ function windowsLookup(pid) {
 function windowsChildren(pid) {
     const script = `$c = @(Get-CimInstance Win32_Process -Filter 'ParentProcessId=${pid}' | Select-Object ProcessId,ParentProcessId,Name,CommandLine); ` +
         'ConvertTo-Json -Compress -InputObject $c';
+    return ['-NoProfile', '-NonInteractive', '-Command', script];
+}
+/** Every process, with when it started in milliseconds since 1970 (0 where Windows does not say, as for its own). */
+function windowsListing() {
+    const started = "@{n='Started';e={if ($_.CreationDate) { ([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds() } else { 0 }}}";
+    const script = `$a = @(Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,CommandLine,${started}); ConvertTo-Json -Compress -InputObject $a`;
     return ['-NoProfile', '-NonInteractive', '-Command', script];
 }
 /** One process of PowerShell's JSON; undefined for another shape. */
@@ -84,16 +92,61 @@ export function parsePosixProcess(pid, stdout) {
     const [, parent = '', commandLine = ''] = match;
     return { pid, parentPid: Number(parent), name: programOf(commandLine), commandLine: commandLine.trim() };
 }
-/** The processes `pid` started, from `ps -A -o pid= -o ppid= -o args=`'s lines. */
-export function parsePosixChildren(pid, stdout) {
+/** Every process, from `ps -A -o pid= -o ppid= -o args=`'s lines. */
+export function parsePosixListing(stdout) {
     return stdout.split(/\r?\n/).flatMap((line) => {
         const match = /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line);
         if (match === null) {
             return [];
         }
-        const [, child = '', parent = '', commandLine = ''] = match;
-        return Number(parent) === pid ? [{ pid: Number(child), parentPid: pid, name: programOf(commandLine), commandLine: commandLine.trim() }] : [];
+        const [, pid = '', parent = '', commandLine = ''] = match;
+        return [{ pid: Number(pid), parentPid: Number(parent), name: programOf(commandLine), commandLine: commandLine.trim() }];
     });
+}
+/** The processes `pid` started, from `ps -A -o pid= -o ppid= -o args=`'s lines. */
+export function parsePosixChildren(pid, stdout) {
+    return parsePosixListing(stdout).filter((info) => info.parentPid === pid);
+}
+/** PowerShell's JSON array of every process with its start; undefined for other output, and an entry of another shape is left out. */
+export function parseWindowsListing(stdout) {
+    let parsed;
+    try {
+        parsed = JSON.parse(stdout.trim());
+    }
+    catch {
+        return undefined;
+    }
+    if (!Array.isArray(parsed)) {
+        return undefined;
+    }
+    const entries = parsed;
+    return entries.flatMap((entry) => {
+        const info = isRecord(entry) ? processOfRecord(entry) : undefined;
+        const started = isRecord(entry) ? entry['Started'] : undefined;
+        return info === undefined || !isNonNegativeInteger(started) ? [] : [{ info, startedMs: started }];
+    });
+}
+/**
+ * `pid` and its starters, from a listing of every process: it stops at a starter that is not listed (it ended), at
+ * one that started after the process it would have started (an ended starter's reused id), and at a loop or id 0
+ * (Windows lists its idle process as its own starter).
+ */
+export function lineageOf(pid, listed) {
+    const byPid = new Map(listed.map((entry) => [entry.info.pid, entry]));
+    const chain = [];
+    const seen = new Set();
+    let current = byPid.get(pid);
+    while (current !== undefined && !seen.has(current.info.pid)) {
+        seen.add(current.info.pid);
+        chain.push(current.info);
+        const starter = isPid(current.info.parentPid) ? byPid.get(current.info.parentPid) : undefined;
+        current = starter !== undefined && startedFirst(starter, current) ? starter : undefined;
+    }
+    return chain;
+}
+/** Whether `starter` started no later than `child`; true where either start is unknown, as in a `ps` listing. */
+function startedFirst(starter, child) {
+    return starter.startedMs === undefined || child.startedMs === undefined || starter.startedMs <= child.startedMs;
 }
 function feedProgram(request, timeoutMs) {
     return new Promise((resolve) => {
@@ -162,8 +215,26 @@ export function nodeSessionProcesses(options = {}) {
                     const result = await run({ program: 'powershell.exe', args: windowsChildren(pid) });
                     return result.end.kind === 'exited' && result.end.code === 0 ? parseWindowsProcesses(result.stdout) : undefined;
                 }
-                const result = await run({ program: 'ps', args: ['-A', '-o', 'pid=', '-o', 'ppid=', '-o', 'args='] });
+                const result = await run({ program: 'ps', args: POSIX_LISTING });
                 return result.end.kind === 'exited' && result.end.code === 0 ? parsePosixChildren(pid, result.stdout) : undefined;
+            }
+            catch {
+                return undefined;
+            }
+        },
+        async lineage(pid) {
+            if (!isPid(pid)) {
+                return undefined;
+            }
+            try {
+                if (platform === 'win32') {
+                    const result = await run({ program: 'powershell.exe', args: windowsListing() });
+                    const listed = result.end.kind === 'exited' && result.end.code === 0 ? parseWindowsListing(result.stdout) : undefined;
+                    return listed === undefined ? undefined : lineageOf(pid, listed);
+                }
+                // A process whose starter ends is adopted (its parent id changes), so no id in this listing is an ended starter's.
+                const result = await run({ program: 'ps', args: POSIX_LISTING });
+                return result.end.kind === 'exited' && result.end.code === 0 ? lineageOf(pid, parsePosixListing(result.stdout).map((info) => ({ info }))) : undefined;
             }
             catch {
                 return undefined;

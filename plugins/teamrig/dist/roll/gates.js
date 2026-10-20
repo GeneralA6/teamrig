@@ -54,6 +54,8 @@ export function gateReadiness(name, end, reason, timeoutSeconds) {
             return { kind: 'wait', reason: `gate ${name} was stopped by ${end.signal}, so the roll waits` };
         case 'notStarted':
             return { kind: 'wait', reason: `gate ${name} could not start (${end.error}), so the roll waits` };
+        case 'stopped':
+            return { kind: 'wait', reason: `gate ${name} was killed when its launching shell ended, so the roll waits` };
     }
 }
 /**
