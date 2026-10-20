@@ -287,7 +287,7 @@ export function isCommitGate(value: unknown): value is CommitGate {
   return COMMIT_GATES.some((gate) => gate === value);
 }
 
-/** The small-commits rule: one logical change per commit, and a reason line on any commit over the bounds. */
+/** How long a message between sessions may be, and when a send to an idle session is held as a cold wake. */
 export interface MessagesConfig {
   /** The longest message one session may send another. */
   readonly maxLines: number;
@@ -376,6 +376,7 @@ export interface GithubConfig {
   readonly everyMinutes: number;
 }
 
+/** The small-commits rule: one logical change per commit, and a reason line on any commit over the bounds. */
 export interface CommitsConfig {
   /** Changed non-test lines (added + deleted) a commit may carry without a reason line. */
   readonly maxLines: number;
