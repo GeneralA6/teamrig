@@ -196,8 +196,10 @@ The status is a flag, never a word after the id: `teamrig set T1 done` is a usag
 
 ### teamrig update
 
-Changes a task's fields. The owner may change any of them; the lead may change only the owner, priority, due
-date, week, plan order (`--after`) and size of a task it does not own. A `--note` alone adds context to any task's history, from any session; one from the task's owner also becomes the note `show` and the waiting text print, as a note on `set` does, so a restated note shows at once.
+Changes a task's fields. The owner may change any of them; a leader above the owner (the lead on any task, a
+sub-lead on its group's) may change only the owner, priority, due date, week, plan order (`--after`) and size of
+a task it does not own. A sub-lead hands a task only to itself or a session it leads; the lead moves work between
+groups. A `--note` alone adds context to any task's history, from any session; one from the task's owner also becomes the note `show` and the waiting text print, as a note on `set` does, so a restated note shows at once.
 The status never changes here: use `set`.
 
 Flags:
@@ -214,7 +216,7 @@ Flags:
 - `--week <date>|none`: plan it into a week, or `none` to take it out.
 - `--after T5,T6|none`: plan it after these tasks, or `none` to clear it; only while it has not started: open, or
   waiting without ever starting, say on the owner's approval (a started task waits with
-  `set --status waiting --waits task:T5`). The owner or the lead changes it. A plan that would close a
+  `set --status waiting --waits task:T5`). The owner or a leader above it changes it. A plan that would close a
   loop (`T5 -> T3 -> T5`: T3 already needs T5) is refused with the fix ([errors](errors.md)).
 - `--size <pct>|none`: a new size, in percent of the weekly usage limit, or `none` to clear it.
 - `--note "<text>"`: records a note with the change.
@@ -909,7 +911,8 @@ Makes a session a sub-lead (`teamrig promote <id|name> --members <a,b>`): the le
 the sessions it leads directly and puts others it leads directly under it. The team's `leads` config lists each
 sub-lead's members; the lead leads every session no list names, and a sub-lead may list sub-leads, at any depth.
 A member's decision and approval waits may then name its sub-lead, who answers them with `teamrig approve`; the
-lead above still may. Without `--yes` it shows the change and writes nothing. With it, the old config goes into
+lead above still may. The sub-lead also sets its group's work order (`teamrig update`: owner within the group,
+priority, due, week, `--after`, size) and sees their tasks' flags at `teamrig start`. Without `--yes` it shows the change and writes nothing. With it, the old config goes into
 the backups folder, `leads` is rewritten, and the sub-lead gets one inbox line.
 
 - It refuses unless the caller leads the sub-lead and every member directly.
@@ -1118,7 +1121,7 @@ as `inbox read` does, which also ties this Claude Code session to your area), yo
 act on and the week's use. Between the list and the flags, `WAITING ON YOU` lists the active tasks of other
 sessions that need one of your unfinished tasks or wait on your decision or approval (at most 5, then `+N more`),
 when some do. The lead gets every flag, as `teamrig check` prints them; any other session gets the
-flags of the tasks and skills it owns. Run it at the start of every work block and after every `/clear`.
+flags of the tasks and skills it owns, and a sub-lead also those of its group's tasks. Run it at the start of every work block and after every `/clear`.
 
 Flags:
 

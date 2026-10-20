@@ -86,7 +86,7 @@ The rest is Claude Code, which you run anyway.
 
 Start small: one lead and a few members. When one team isn't enough, it becomes teams of teams, each with its own
 lead. You still talk to just one. Inside a team, the lead can make a member a sub-lead over a few others
-(`teamrig promote`): it answers their approvals, and the lead still may.
+(`teamrig promote`): it answers their approvals and orders their work, and the lead still may.
 
 When a job needs one more pair of hands, your lead hires a temporary member for it (`teamrig hire`), within the
 caps you set: how many at once, how much of the week they may use a day, and whether you approve each hire.
