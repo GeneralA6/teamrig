@@ -52,6 +52,7 @@ function driveOf(path) {
  */
 export class Location {
     frames;
+    /** The folder `~` names. */
     home;
     constructor(dir, home) {
         this.frames = [{ id: undefined, dir: dir === undefined ? undefined : absoluteDir(dir), previous: undefined, stack: [] }];
