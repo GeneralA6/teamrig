@@ -66,7 +66,7 @@ function pushRule(pushGuard, hookAsks) {
 function refusedRouteRule(hookAsks) {
     return hookAsks === 'refuse'
         ? 'A refused or blocked route waits on approval:owner; take your next task, never route around it or hand it off.'
-        : 'A refused or blocked route is reported to the lead, never routed around or handed to another session.';
+        : 'A route refused, blocked or prompting unexpectedly is reported to the lead, never routed around or handed to another session.';
 }
 /** At most two decimals, so float noise (0.30000000000000004) or a tiny value (1e-7) prints short. */
 function percent(value) {
@@ -113,7 +113,7 @@ export function renderCorePack(config, command, platform, clock) {
     const rules = {
         roles: `Roles, by session id: ${roles.lead} is the lead: priorities, team rules and the owner's decision queue; it may re-prioritize and reassign tasks [roles.lead].` +
             (roles.coordinatorOwner === undefined ? '' : ` ${roles.coordinatorOwner} owns deploy coordination and fleet health [roles.coordinatorOwner].`) +
-            ' Every other session owns its area.',
+            ' Every other session owns its area; cross-area issues and clashes go to the lead.',
         'own-change': "Own your change end to end: only the session that made it integrates, deploys (when it must run), verifies and fixes or rolls it back; another session's change goes to its owner.",
         messages: 'A message wakes its receiver, so send one only for a result it acts on now, a decision, a blocker, a same-area conflict or an incident.' +
             ` At most ${config.messages.maxLines} lines [messages.maxLines]: what happened, evidence (numbers, ids, paths), the exact ask and deadline, your default, then "No reply needed" or "Reply needed: <one question>".` +
@@ -126,7 +126,8 @@ export function renderCorePack(config, command, platform, clock) {
         'task-order': `Work your own task list in priority order (\`${command} list --session <you>\`); self-made work is a task too, recorded with \`${command} add\` before you start it,` +
             ' and started only for a goal, a parent task or the week plan, never ahead of your top task that is not waiting (one-commit fixes exempt).' +
             " A loop, cron or scheduled wake-up needs the lead's OK and a written stop. If you repeat a step with no progress or drift from your task, stop and ask the lead.",
-        'owner-gates': `Silence is consent only within the sender's authority, never for owner gates: ${list(config.ownerGates)} [ownerGates].`,
+        'owner-gates': `Silence is consent only within the sender's authority, never for owner gates: ${list(config.ownerGates)} [ownerGates].` +
+            " An owner's go relayed by the lead approves finished, tested work.",
         deploy: "Deploy ASAP: as soon as a change can be verified (tests, then a check it runs). State each fix's evidence and when it will exist; build nothing on it before then." +
             (cutoff === undefined ? '' : ` No heavy step (builds, test runs, data scripts) starts ${zone.clockSpan(new Date(cutoff.from), new Date(cutoff.to))} [coordinator.schedule.heavyCutoffUtc].`),
         'lean-calls': 'Lean calls: every tool call re-reads the whole context, so batch related shell steps into one call.' +
@@ -141,20 +142,22 @@ export function renderCorePack(config, command, platform, clock) {
                 : ' Owner questions stand alone, no bare task ids: options, numbers and a recommendation; one with a single correct answer is yours to decide.'),
         resources: 'Rising resource use (memory, CPU, storage, tokens) needs its root cause; a raised limit is only an owner-approved bridge with a dated root-cause task. Tag a stopgap with the task that replaces it: `stopgap T<id>`.',
         data: "A hand-run change or delete of stored data needs the owner's OK after counts or a preview. Code that writes data ships a read-only dry run (inserted, unchanged, changed counts)." +
-            ' Deleting derived data needs a verified regenerate tool and a parity run first. Never print secret values; bind local services to 127.0.0.1, never 0.0.0.0.',
+            ' Deleting derived data needs a verified regenerate tool and a parity run explaining each differing row; archive history and audit data before any TTL.' +
+            ' Never print secret values; bind local services to 127.0.0.1, never 0.0.0.0.',
         contracts: `Tell the other side before changing a contract it reads (an API parameter, shared table or file). The same external failure for ${config.alerts.persistentFailureHours} h must page a human [alerts.persistentFailureHours].`,
-        skills: `A procedure you had to investigate and will run again becomes a skill in the same turn: \`<area>-<name>/SKILL.md\`, shared ones \`${skills.sharedPrefix}-<name>\` [skills.sharedPrefix].` +
-            ` Its description has at most ${skills.maxDescriptionWords} words [skills.maxDescriptionWords]; its body has \`Owner:\` and \`Last verified:\` lines, re-verified every ${skills.maxVerifiedAgeDays} days [skills.maxVerifiedAgeDays];` +
-            ` at most ${skills.maxPerArea} per area [skills.maxPerArea]` +
-            (skills.forbidFrontmatter.length === 0 ? '' : `; never ${shortList(skills.forbidFrontmatter)} [skills.forbidFrontmatter]`) +
-            '. Memory holds facts, skills how-tos, CLAUDE.md every-turn rules.',
+        skills: 
+        // The skill limits (description words, Owner and Last verified lines, per-area count, forbidden keys) live in
+        // the guide alone: lintSkills (skills/lint.ts) flags each breach in `check`, so the pack names only the pointer.
+        `A procedure you had to investigate and will run again becomes a skill in the same turn: \`<area>-<name>/SKILL.md\`, shared ones \`${skills.sharedPrefix}-<name>\` [skills.sharedPrefix],` +
+            ` within the guide's skill limits (\`${command} check\` flags a breach). Memory holds facts, skills how-tos, CLAUDE.md every-turn rules.`,
         commits: 'One logical change per commit (a fix with its tests, a refactor apart from what it enables, a mechanical change alone), committed as each step passes.' +
             ` Over ${config.commits.maxLines} changed non-test lines or ${config.commits.maxFiles} non-test files [commits.maxLines, commits.maxFiles], a commit needs a \`${config.commits.largeCommitTrailer}: <reason>\` line [commits.largeCommitTrailer]` +
             { off: '.', warn: '; a push to a protected branch lists those without one [commits.gate].', refuse: '; a push to a protected branch that sends one is refused [commits.gate].' }[config.commits.gate],
         push: `${pushRule(config.pushGuard, config.prompts.hookAsks)} ${refusedRouteRule(config.prompts.hookAsks)}`,
         worktrees: 'Edit in your own worktree and branch in every git repo, never a main checkout.' +
             (platform === 'win32' ? ` Remove a worktree with \`${command} worktree remove <path>\`; a plain \`git worktree remove\` empties the main node_modules.` : '') +
-            ' Update comments with their code, verify a load-bearing one before acting on it, and fix a stale comment, doc or dead code you find in its own commit.',
+            " Update comments in their code's commit, deleting one you cannot make true; verify a load-bearing comment or recorded number at its source before use;" +
+            ' fix a stale comment, doc or proven-dead code you find in its own commit and tell its area.',
     };
     const kept = renderKeptRules(config.ruleConflicts, command);
     const except = kept === '' ? '' : ', except the kept local rules below [ruleConflicts]';
@@ -200,17 +203,19 @@ export function renderKeptRules(conflicts, command) {
 }
 /**
  * What only the lead does every turn, shown to the lead alone so no other session pays for it: what it brings the
- * owner, the owner's orders it relays as tasks, plans read from the register, never from memory, and the hire flags
+ * owner, the owner's orders it relays as tasks, plans read from the register, never from memory, the approval waits
+ * it answers, a team rule proven wrong that it fixes itself while a loosening stays the owner's, and the hire flags
  * (src/hiring/scale-out.ts, src/hiring/due.ts) it clears: when an area gets a hire, and when the hire goes.
  */
 export function renderLeadRules(config, command) {
     return [
         'As the lead, also:',
-        '- Bring the owner only verified results, decisions you made, investigated questions (options, numbers, a recommendation) and incidents.',
-        `- Each owner order you relay is a task in the same turn: \`${command} add --owner <id> --source ${config.register.ownerSource}\` [register.ownerSource].`,
+        '- Bring the owner only verified results, your decisions, investigated questions and incidents.',
+        `- Relay each owner order as a task in the same turn: \`${command} add --owner <id> --source ${config.register.ownerSource}\` [register.ownerSource].`,
         `- Plan the week from \`${command} plan\` and run \`${command} check\` at each checkpoint, never from memory.`,
         `- Answer each approval wait on you with \`${command} approve\` after the \`approvals\` skill's checklist; owner-gated content goes to the owner.`,
-        "- Clear each HIRE flag by its action: a SCALE-OUT gives its slice to a hire within the owner's caps, else brings the owner a card; a RETIRE-DUE retires.",
+        '- Fix a team rule proven wrong and say so; a loosening goes to the owner.',
+        "- HIRE flags: give a SCALE-OUT's slice to a hire within the owner's caps, else bring the owner a card; retire on a RETIRE-DUE.",
     ].join('\n');
 }
 /** The SessionStart context: the core pack, then the team's rules in full when they fit, else a pointer. */
