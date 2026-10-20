@@ -5,20 +5,19 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
-import { exitCodeOf, nodeStepRunner, nodeTreeKill, STOPPED_EXIT, TIMED_OUT_EXIT, type TreeKill } from './steps.ts';
+import { exitCodeOf, nodeStepRunner, STOPPED_EXIT, TIMED_OUT_EXIT } from './steps.ts';
+import { nodeTreeKill, type TreeKill } from './tree-kill.ts';
 
 /**
- * The real tree kill, held until `started` exists: under load the shell can take longer than a short limit to start
- * the step's grandchild, and a kill that lands while it is being started can miss it (T645). Waits at most 10 s.
+ * The real tree kill, held until `started` exists, so the spec kills a grandchild that runs, not a step whose shell
+ * had yet to start it under load (T645). Waits at most 10 s; settles once the kill is done.
  */
 function killOnceStarted(started: string, kill: TreeKill): TreeKill {
-  return (pid) => {
-    void (async () => {
-      for (let tries = 0; tries < 200 && !existsSync(started); tries += 1) {
-        await wait(50);
-      }
-      kill(pid);
-    })();
+  return async (pid) => {
+    for (let tries = 0; tries < 200 && !existsSync(started); tries += 1) {
+      await wait(50);
+    }
+    await kill(pid);
   };
 }
 
@@ -80,13 +79,37 @@ describe('nodeStepRunner', () => {
     return `node child.cjs "${started}"`;
   }
 
-  it('kills the step with every process it started once its time is up', async () => {
-    const started = join(dir, 'timed-out-grandchild-started');
-    const killing = nodeStepRunner(process.platform, killOnceStarted(started, nodeTreeKill(process.platform)));
-    const end = await killing.run({ command: await stepWithGrandchild(started), cwd: dir, env: process.env, timeoutMs: 500 });
+  it('kills the step with every process it started once its time is up, before it reports the end', async () => {
+    const pidFile = join(dir, 'timed-out-grandchild-started');
+    const end = await runner.run({ command: await stepWithGrandchild(pidFile), cwd: dir, env: process.env, timeoutMs: 1_000 });
     assert.deepEqual(end, { kind: 'timedOut' });
-    const grandchild = Number(await readFile(started, 'utf8'));
-    assert.equal(await endsWithin(grandchild, 5_000), true, 'the grandchild was killed with its parent');
+    const grandchild = async (): Promise<number | undefined> => (existsSync(pidFile) ? Number(await readFile(pidFile, 'utf8')) : undefined);
+    const atEnd = await grandchild();
+    // A grandchild still starting when the kill ran would write its id late and run on.
+    await wait(1_000);
+    const late = await grandchild();
+    try {
+      assert.equal(atEnd !== undefined && isRunning(atEnd), false, 'the grandchild had ended when the step was reported');
+      assert.equal(late !== undefined && isRunning(late), false, 'no grandchild runs on after its step');
+    } finally {
+      if (late !== undefined && isRunning(late)) {
+        process.kill(late);
+      }
+    }
+  });
+
+  it('reports a step killed at its limit only once its kill is done', async () => {
+    const events: string[] = [];
+    const treeKill = nodeTreeKill(process.platform);
+    const slowKill: TreeKill = async (pid) => {
+      await treeKill(pid);
+      await wait(200);
+      events.push('kill done');
+    };
+    const end = await nodeStepRunner(process.platform, slowKill).run({ command: 'node -e "setInterval(() => undefined, 1000)"', cwd: dir, env: process.env, timeoutMs: 300 });
+    events.push('reported');
+    assert.deepEqual(end, { kind: 'timedOut' });
+    assert.deepEqual(events, ['kill done', 'reported']);
   });
 
   it('kills the step with every process it started once its stop aborts, well before its time is up', async () => {
