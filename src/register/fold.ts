@@ -91,7 +91,7 @@ export class RegisterFold {
     if (current === undefined) {
       return this.orphan();
     }
-    this.tasks.set(event.id, event.type === 'status' ? withStatus(current, event) : withChanges(current, event.changes, event.at, event.by));
+    this.tasks.set(event.id, event.type === 'status' ? withStatus(current, event) : withChanges(current, event.changes, event.note, event.at, event.by));
     return true;
   }
 
@@ -156,9 +156,15 @@ function withStatus(task: Task, event: Extract<RegisterEvent, { type: 'status' }
   };
 }
 
-function withChanges(task: Task, changes: Partial<TaskFields>, at: string, by: string): Task {
+/**
+ * An update's note from the task's owner is its note from then on, as a restated one on `set` is, so show and the
+ * waiting text print it at once; a note from any other session adds context to the history only, since the note a
+ * task shows is its owner's (T630).
+ */
+function withChanges(task: Task, changes: Partial<TaskFields>, note: string | null, at: string, by: string): Task {
   const priorityAt = changes.priority === undefined || changes.priority === task.priority ? task.priorityAt : at;
-  const next: Task = { ...task, ...changes, updatedAt: at, updatedBy: by, priorityAt };
+  const shown = note !== null && by === task.owner ? note : task.note;
+  const next: Task = { ...task, ...changes, note: shown, updatedAt: at, updatedBy: by, priorityAt };
   if (next.owner !== task.owner) {
     return { ...next, assignedAt: at, ownerSeenAt: by === next.owner ? at : null };
   }
