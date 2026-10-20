@@ -54,6 +54,8 @@ describe('Roster', () => {
     assert.deepEqual([roster.holderOf('lead'), roster.holderOf('coordinatorOwner')], ['lead', 'alpha']);
     assert.deepEqual([roster.rolesOf('alpha'), roster.rolesOf('bravo')], [['coordinatorOwner'], []]);
     assert.equal(new Roster({ ...CONFIG, roles: { lead: 'lead' } }, 'app').holderOf('coordinatorOwner'), undefined);
+    const reviewed = new Roster({ ...CONFIG, roles: { ...CONFIG.roles, securityReviewer: 'bravo' } }, 'app');
+    assert.deepEqual([reviewed.holderOf('securityReviewer'), reviewed.rolesOf('bravo')], ['bravo', ['securityReviewer']]);
   });
 
   it('ignores inherited keys of the names object', () => {
@@ -109,6 +111,6 @@ describe('Roster with renames', () => {
 
 describe('isRole', () => {
   it('accepts only the role keys', () => {
-    assert.deepEqual(['lead', 'coordinatorOwner', 'owner', 'toString'].map(isRole), [true, true, false, false]);
+    assert.deepEqual(['lead', 'coordinatorOwner', 'securityReviewer', 'owner', 'toString'].map(isRole), [true, true, true, false, false]);
   });
 });

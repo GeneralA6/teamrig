@@ -301,9 +301,11 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
   const rolesRaw = read.section(raw, 'roles', '');
   const lead = read.requiredString(rolesRaw, 'lead', 'roles', isSessionName);
   const coordinatorOwner = read.optionalString(rolesRaw, 'coordinatorOwner', 'roles', isSessionName);
+  const securityReviewer = read.optionalString(rolesRaw, 'securityReviewer', 'roles', isSessionName);
   for (const [key, name] of [
     ['lead', lead],
     ['coordinatorOwner', coordinatorOwner],
+    ['securityReviewer', securityReviewer],
   ] as const) {
     if (name !== undefined && name !== '' && sessions.length > 0 && !sessions.includes(name)) {
       read.report(`roles.${key}`, `${describe(name)} is not one of the sessions`);
@@ -333,7 +335,11 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
     ...(timeZone === undefined ? {} : { timeZone }),
     sessions,
     names,
-    roles: coordinatorOwner === undefined ? { lead } : { lead, coordinatorOwner },
+    roles: {
+      lead,
+      ...(coordinatorOwner === undefined ? {} : { coordinatorOwner }),
+      ...(securityReviewer === undefined ? {} : { securityReviewer }),
+    },
     leads,
     ownerGates: read.stringList(
       raw,

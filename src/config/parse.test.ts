@@ -46,10 +46,17 @@ describe('parseConfig', () => {
     assert.deepEqual(paths(issues), ['sessions', 'roles.lead']);
   });
 
-  it('requires the lead and coordinator owner to be sessions on the team', () => {
-    const { config, issues } = parseConfig({ sessions: ['alpha'], roles: { lead: 'bravo', coordinatorOwner: 'charlie' } });
-    assert.deepEqual(paths(issues), ['roles.lead', 'roles.coordinatorOwner']);
+  it('requires every role holder to be a session on the team', () => {
+    const { config, issues } = parseConfig({ sessions: ['alpha'], roles: { lead: 'bravo', coordinatorOwner: 'charlie', securityReviewer: 'delta' } });
+    assert.deepEqual(paths(issues), ['roles.lead', 'roles.coordinatorOwner', 'roles.securityReviewer']);
     assert.equal(config.roles.coordinatorOwner, 'charlie');
+    assert.equal(config.roles.securityReviewer, 'delta');
+  });
+
+  it('leaves the optional roles out when the config does not assign them', () => {
+    const { config, issues } = parseConfig({ sessions: ['alpha'], roles: { lead: 'alpha' } });
+    assert.deepEqual(issues, []);
+    assert.deepEqual(config.roles, { lead: 'alpha' });
   });
 
   it('rejects malformed and duplicate session names', () => {
@@ -314,14 +321,14 @@ describe('parseConfig', () => {
   it('keeps valid overrides', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,
-      roles: { lead: 'alpha', coordinatorOwner: 'bravo' },
+      roles: { lead: 'alpha', coordinatorOwner: 'bravo', securityReviewer: 'bravo' },
       register: { priorities: [{ id: 1, name: 'now' }], goalPattern: '^G\\d+$', requireNoteOn: ['waiting'], check: { prioritySkipAfterHours: 12, maxSelfMadePerDay: 0 } },
       coordinator: { schedule: { heavyCutoffUtc: '22:30' } },
       budget: { enabled: true, targetPct: 95 },
       paths: { inbox: '/srv/team/inbox' },
     });
     assert.deepEqual(issues, []);
-    assert.deepEqual(config.roles, { lead: 'alpha', coordinatorOwner: 'bravo' });
+    assert.deepEqual(config.roles, { lead: 'alpha', coordinatorOwner: 'bravo', securityReviewer: 'bravo' });
     assert.deepEqual(config.register.priorities, [{ id: 1, name: 'now' }]);
     assert.equal(config.register.goalPattern, '^G\\d+$');
     assert.deepEqual(config.register.requireNoteOn, ['waiting']);

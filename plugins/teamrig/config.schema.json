@@ -68,6 +68,10 @@
         "coordinatorOwner": {
           "description": "Owns deploy coordination and fleet health, when the team has that role.",
           "$ref": "#/$defs/sessionName"
+        },
+        "securityReviewer": {
+          "description": "Reviews the privileged commands sessions ask to run (exec), when the team has that role; the owner always may too.",
+          "$ref": "#/$defs/sessionName"
         }
       }
     },
