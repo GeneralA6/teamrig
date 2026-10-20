@@ -498,12 +498,9 @@ export class RegisterPolicy {
       return problem === undefined ? ok({ changes, note: text }) : refuse(problem);
     }
     if (caller !== task.owner) {
-      if (caller !== this.config.roles.lead) {
-        return refuse(`only the owner (${task.owner}) or the lead changes ${task.id}`);
-      }
-      const notLead = names.filter((name) => !LEAD_FIELDS.includes(name));
-      if (notLead.length > 0) {
-        return refuse(`the lead may change only ${LEAD_FIELDS.join(', ')} on a task it does not own (asked: ${notLead.join(', ')})`);
+      const problem = this.leaderUpdateProblem(task, caller, names, changes.owner);
+      if (problem !== undefined) {
+        return refuse(problem);
       }
     }
     if (changes.description === null && this.config.register.requireDescription) {
@@ -515,6 +512,27 @@ export class RegisterPolicy {
     const after = changes.after === undefined ? undefined : afterChangeProblem(task, changes.after, state);
     const problem = after ?? this.checkFields(merged, sourceRule) ?? this.checkText('note', text);
     return problem === undefined ? ok({ changes, note: text }) : refuse(problem);
+  }
+
+  /**
+   * Why a session may not change the work order of a task it does not own, or undefined when it may (T782): the lead
+   * on any task, a sub-lead on the tasks of its group; only the LEAD_FIELDS, and a sub-lead hands a task only to itself
+   * or a session it leads, so work never leaves its group by a sub-lead's hand.
+   */
+  private leaderUpdateProblem(task: Task, caller: string, names: readonly TaskFieldName[], owner: string | undefined): string | undefined {
+    const isLead = caller === this.tree.lead;
+    if (!isLead && !this.tree.leads(caller, task.owner)) {
+      return `only the owner (${task.owner}) or ${this.approversText(task.owner)} changes ${task.id}`;
+    }
+    const notLead = names.filter((name) => !LEAD_FIELDS.includes(name));
+    if (notLead.length > 0) {
+      return `a leader may change only ${LEAD_FIELDS.join(', ')} on a task it does not own (asked: ${notLead.join(', ')})`;
+    }
+    const group = this.tree.groupOf(caller);
+    if (!isLead && owner !== undefined && owner !== caller && !group.includes(owner)) {
+      return `${caller} hands ${task.id} only to itself or a session it leads (${group.join(', ')}); the lead (${this.tree.lead}) moves work between groups`;
+    }
+    return undefined;
   }
 
   /**
