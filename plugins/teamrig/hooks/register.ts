@@ -29,8 +29,8 @@ import { WAKE_TICK_MS, WAKE_TIMEOUT_MS, WakeHand, wakeCliArgv } from '../dist/mo
  * The refresh's /clear (`clear-hand.ts`): once a session wrote its handover and stayed quiet, the hidden restart
  * runner asks its tab to run /clear. The hand looks for that ask each second. While Claude Code still lists a live
  * agent of the session (`$.agent.list()`: a helper or a teammate not completed, failed or killed), or will not list
- * them, it holds the ask through the teamrig CLI (`hook clear-claim --hold`) and runs nothing: the runner then ends
- * nothing and asks again once the session is quiet. Else it claims the ask (`hook clear-claim`; both check the
+ * them, it holds the ask through the teamrig CLI (`hook clear-claim --hold --why <reason>`) and runs nothing: the
+ * runner then ends nothing and asks again once the session is quiet. Else it claims the ask (`hook clear-claim`; both check the
  * restart is still pending) and runs /clear the way the person would, so the tab and its process stay. A tab
  * without this mod (an older Claude Code, mods off) leaves the ask unclaimed, and the runner ends the process
  * instead, guarded only by what the transcript shows (helpers it started in the last 6 hours).

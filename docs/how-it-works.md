@@ -482,8 +482,10 @@ sequenceDiagram
   a band above the prompt counts `refresh.countdownSeconds` (20) down with `1: Refresh now` and `2: Hold 10 min`.
   While Claude Code lists a live agent of the session (`$.agent.list()`:
   a helper or teammate not completed, failed or killed), or will not list them, the mod holds the ask instead
-  (`hook clear-claim --hold`) and runs nothing: the restart ends nothing, waits for quiet and asks again, and an
-  hour after it started gives up as it does for a busy session. When no mod claims the ask within 10 s (a Claude Code that does not
+  (`hook clear-claim --hold --why <reason>`) and runs nothing: the restart ends nothing, waits for quiet and asks
+  again, and an hour after it started gives up as it does for a busy session. Each hold's reason goes in
+  `<session>.held` beside the ask's outcome, which stays the one word `held` that an older restart reads, and the
+  give-up's why names the last one. When no mod claims the ask within 10 s (a Claude Code that does not
   load mods), the restart ends the session's Claude Code and starts it again: in the same tab when `teamrig open`
   started it (`launch` starts it again), else in a new tab; if a turn ran meanwhile, it waits for quiet and asks
   again first. It never ends a Claude Code that still runs a background shell (a background command or a monitor),

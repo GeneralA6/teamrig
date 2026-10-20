@@ -152,7 +152,7 @@ describe('the compaction while a refresh is due', () => {
 /** A tab the restart runner asked to /clear: the clock its hand ticks on, what the hand ran, the ask it reads. */
 interface AskedTab {
   readonly clock: MockClock;
-  /** Each `hook clear-claim` the hand ran, by its switches: `['--hold']` held the ask, `[]` claimed it. */
+  /** Each `hook clear-claim` the hand ran, by its flags: `['--hold', '--why', <reason>]` held the ask, `[]` claimed it. */
   readonly claims: string[][];
   /** How many times the hand ran /clear. */
   clears: number;
@@ -186,11 +186,11 @@ async function askedTab($: Engine, on: On): Promise<AskedTab> {
   on('agent.list', () => ({ value: [] }));
   on('prompt.read', () => ({ value: { text: '', cursor: 0 } }));
   on('process.run', (_$, e) => {
-    const [command, ...switches] = e.argv.slice(3);
+    const [command, ...flags] = e.argv.slice(3);
     if (command === 'clear-claim') {
-      tab.claims.push(switches);
+      tab.claims.push(flags);
     }
-    const answer = command === 'clear-dir' ? ASK_DIR : command === 'clear-claim' ? (switches.length === 0 ? 'taken' : 'held') : undefined;
+    const answer = command === 'clear-dir' ? ASK_DIR : command === 'clear-claim' ? (flags.length === 0 ? 'taken' : 'held') : undefined;
     return {
       value: {
         exitCode: answer === undefined ? 1 : 0,
@@ -218,6 +218,9 @@ async function askedTab($: Engine, on: On): Promise<AskedTab> {
   return tab;
 }
 
+/** The hand's hold of the first ask while the band counts down, with the reason a give-up names. */
+const COUNTING = ['--hold', '--why', 'the band counts down: 20 s left'];
+
 /** The tab's band above the prompt, once its hand read the runner's first ask and held it to count down. */
 async function countingBand($: Engine, tab: AskedTab): Promise<Mounted<'terminal', 'AbovePrompt'>> {
   await tab.clock.advance(TICK);
@@ -228,7 +231,7 @@ describe("the band before a refresh's /clear", () => {
   test('counts down above the prompt, and Refresh now has the next ask claimed and /clear run', async ($, on) => {
     const tab = await askedTab($, on);
     const band = await countingBand($, tab);
-    expect(tab.claims).toEqual([['--hold']]);
+    expect(tab.claims).toEqual([COUNTING]);
     expect((await band.find({ type: 'Text' }))?.text).toBe('teamrig: this session refreshes in 20 s, a fresh start from its handover');
     expect((await band.findAll({ type: 'Button' })).map((button) => button.key)).toEqual(['refresh-now', 'hold-refresh']);
     await band.press({ key: 'refresh-now' });
@@ -236,7 +239,7 @@ describe("the band before a refresh's /clear", () => {
     expect((await band.findAll({ type: 'Button' })).map((button) => button.key)).toEqual(['hold-refresh']);
     tab.ask = askOf(2);
     await tab.clock.advance(TICK);
-    expect(tab.claims).toEqual([['--hold'], []]);
+    expect(tab.claims).toEqual([COUNTING, []]);
     expect(tab.clears).toBe(1);
     expect(await band.find({ type: 'Button' })).toBeUndefined();
   });
@@ -249,7 +252,7 @@ describe("the band before a refresh's /clear", () => {
     expect(await band.drawn()).toMatchObject({ type: 'Text', children: [ENGINE_ROW] });
     tab.ask = askOf(2);
     await tab.clock.advance(TICK);
-    expect(tab.claims).toEqual([['--hold'], ['--hold']]);
+    expect(tab.claims).toEqual([COUNTING, ['--hold', '--why', 'the person pressed Hold: 10 min left']]);
     expect(await band.find({ type: 'Button' })).toBeUndefined();
     expect(tab.clears).toBe(0);
   });
