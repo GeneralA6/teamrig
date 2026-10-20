@@ -66,6 +66,10 @@ export { CONFIG_VERSION, type KitConfig, type PriorityConfig } from '../config/t
 export { Roster, type SessionLookup } from '../config/roster.ts';
 export { readRenames, RENAME_VERSION, type Rename, type RenameLogRead } from '../names/rename.ts';
 
+// The lead tree: `roles.lead` over the sub-leads the config's `leads` names, so a reader shows a session's leader
+// and a leader's group as teamrig's approvals and lists find them.
+export { LeadTree } from '../config/lead-tree.ts';
+
 // Each session's turn log (`turn-log/<session id>/<UTC hour>.jsonl`): its prompts, replies and clears, one parsed
 // JSON line at a time.
 export { parseEntry, TURN_LOG_VERSION, type TurnLogEntry, type TurnLogKind } from '../turn-log/entry.ts';
