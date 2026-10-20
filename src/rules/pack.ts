@@ -22,7 +22,7 @@ export const CONTEXT_MAX_CHARS = 10_000;
  * The lead's own lines fit in this many characters with worst-case config values (a CI test holds it). They come on
  * top of the core pack for the lead alone, so a team rules file near its limit may reach the lead as a pointer.
  */
-export const LEAD_RULES_MAX_CHARS = 600;
+export const LEAD_RULES_MAX_CHARS = 700;
 
 export interface TeamRules {
   readonly path: string;
@@ -253,6 +253,7 @@ export function renderLeadRules(config: KitConfig, command: string): string {
     '- Bring the owner only verified results, decisions you made, investigated questions (options, numbers, a recommendation) and incidents.',
     `- Each owner order you relay is a task in the same turn: \`${command} add --owner <id> --source ${config.register.ownerSource}\` [register.ownerSource].`,
     `- Plan the week from \`${command} plan\` and run \`${command} check\` at each checkpoint, never from memory.`,
+    `- Answer each approval wait on you with \`${command} approve\` after the \`approvals\` skill's checklist; owner-gated content goes to the owner.`,
     "- Clear each HIRE flag by its action: a SCALE-OUT gives its slice to a hire within the owner's caps, else brings the owner a card; a RETIRE-DUE retires.",
   ].join('\n');
 }

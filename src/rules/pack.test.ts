@@ -83,7 +83,9 @@ describe('renderLeadRules', () => {
     const lines = renderLeadRules(testConfig({ register: { ownerSource: 'boss' } }), COMMAND);
     assert.match(lines, /^As the lead, also:\n- Bring the owner only verified results,/);
     assert.match(lines, /`teamrig add --owner <id> --source boss` \[register\.ownerSource\]/);
-    assert.match(lines, /`teamrig plan` and run `teamrig check` at each checkpoint, never from memory\.\n/);    assert.match(lines, /\n- Clear each HIRE flag by its action: a SCALE-OUT gives its slice to a hire .*; a RETIRE-DUE retires\.$/);
+    assert.match(lines, /`teamrig plan` and run `teamrig check` at each checkpoint, never from memory\.\n/);
+    assert.match(lines, /\n- Answer each approval wait on you with `teamrig approve` after the `approvals` skill's checklist; owner-gated content goes to the owner\.\n/);
+    assert.match(lines, /\n- Clear each HIRE flag by its action: a SCALE-OUT gives its slice to a hire .*; a RETIRE-DUE retires\.$/);
   });
 });
 
