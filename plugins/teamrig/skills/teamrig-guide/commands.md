@@ -2268,8 +2268,9 @@ Starts a burst, the lead only. Without `--yes` it shows the burst and writes not
 - `deadline`: for work due by a time. The owners of its `--task` tasks (or `--sessions`), until `--by`, at the
   latest the reset; it needs `--stop-pct`. Its tasks must still be open: open, in progress, verifying or waiting.
 
-Each session in it gets a daily budget of at least its share of what is left to the stop %, over the burst's days
-(one day at least), and may run up to `--helpers` at once (`burst.maxHelpers`, 3). The lead may hire up to
+Each session in it gets a daily budget of at least an even share of today's part of what is left to the stop %,
+recomputed at every reading over the active time to the burst's end, as the week's daily budget is; the preview
+and the start show it at the start. It may run up to `--helpers` at once (`burst.maxHelpers`, 3). The lead may hire up to
 `--hires` sessions for it (`burst.maxHires`, 2; none unless set) with `teamrig hire --burst`. The stop % is at
 most `budget.targetPct`, so a burst never spends the incident reserve; it ends at its time, when the week reaches
 the stop %, or by `teamrig burst end`. Quiet hours still apply; a lift wins over it for its session. Each of its

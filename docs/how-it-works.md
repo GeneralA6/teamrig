@@ -316,8 +316,11 @@ turns this off: `register.autoArchive: false` in the team's `config.json`, after
 ## Bursts
 
 A burst is a time-boxed scale-out for when the week will end with tokens unspent, or work must land by a time.
-For its time, each session in it gets a daily budget of at least its share of what is left to the burst's stop %
-and may run more helpers at once; the lead may also hire sessions for it. The same gates hold as on any other day.
+For its time, each session in it gets a daily budget of at least the burst's floor and may run more helpers at
+once; the lead may also hire sessions for it. The same gates hold as on any other day. Like the team's daily
+budget, the floor is never fixed: at every reading, what is left to the burst's stop % is spread over the active
+time to the burst's end by the same pace rule, and its sessions share today's part evenly, so a burst that spends
+fast gives less a day and one that spends slowly gives more. The floor at its start is kept in its record.
 
 - Who starts one: a person, by command, never a hook. `teamrig burst` shows the week, its projected surplus and
   what to run; `teamrig burst start surplus|deadline --reason "<why>"` previews the burst, and `--yes` starts it.
