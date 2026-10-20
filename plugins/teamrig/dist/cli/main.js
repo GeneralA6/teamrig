@@ -14,6 +14,7 @@ import { nodeGhRunner } from "../github/gh.js";
 import { GIT_INTEGRATE } from "../integrate/git.js";
 import { nodeProcesses } from "../open/processes.js";
 import { nodeSessionProcesses } from "../open/session-processes.js";
+import { httpPackageRegistry } from "../package-guard/registry.js";
 import { GIT_CLI, GIT_COMMIT_LOG } from "../push-guard/git.js";
 import { requirementsCheck } from "../requirements/requirements.js";
 import { nodeHookRunner } from "../roll/hooks.js";
@@ -62,6 +63,7 @@ process.exitCode = await runCli(process.argv.slice(2), {
     },
     integrateGit: GIT_INTEGRATE,
     hooks: nodeHookRunner(process.platform),
+    packageRegistry: httpPackageRegistry(),
     readStdin: () => text(process.stdin),
     newId: () => randomUUID(),
 });

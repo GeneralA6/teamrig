@@ -58,8 +58,12 @@ export const DEFAULT_SKILLS = {
 export const DEFAULT_CONTEXT_FILES = { maxClaudeMdChars: 12_000, maxMemoryIndexChars: 6_000, maxSkillListingChars: 4_000 };
 export const DEFAULT_LOCK = { ttlMs: 30_000, pollMs: 50, waitMs: 20_000 };
 export const DEFAULT_PUSH_GUARD = { protectedBranches: ['main', 'master'], pushToProtected: 'ask' };
-/** Refused by default: a helper's `npx eslint` once fetched and ran an unvetted package (T450, 10-16). */
-export const DEFAULT_PACKAGE_GUARD = { adHocRunners: 'deny' };
+/**
+ * Refused by default: a helper's `npx eslint` once fetched and ran an unvetted package (T450, 10-16), and an install
+ * lands a version as unvetted unless its exact version is old enough and has no advisory (T681). Two weeks is the
+ * window in which a compromised release is usually found and pulled.
+ */
+export const DEFAULT_PACKAGE_GUARD = { adHocRunners: 'deny', installs: 'deny', cooldownDays: 14 };
 /** Refused by default: the hooks are the repository's own checks, and a session that skips them ships what they would catch. */
 export const DEFAULT_COMMIT_GUARD = { skipHooks: 'deny' };
 export const DEFAULT_PROMPTS = { hookAsks: 'ask' };

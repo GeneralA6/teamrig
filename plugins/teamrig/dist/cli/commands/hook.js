@@ -10,7 +10,7 @@ import { modelCheckLine, payloadEffortOf } from "../../hooks/model-check.js";
 import { ModelNoticeStore } from "../../hooks/model-notices.js";
 import { sendTargetOf } from "../../hooks/cold-send.js";
 import { failedSendLine, failedSendOf, failedSendOutput } from "../../hooks/failed-send.js";
-import { adHocRunnersOf, packageGuardOutput } from "../../hooks/package-guard.js";
+import { packageGuardOf, packageGuardOutput } from "../../hooks/package-guard.js";
 import { hookAsksOf } from "../../hooks/permission.js";
 import { secretGuardOf, secretGuardOutput } from "../../hooks/secret-guard.js";
 import { secretRulesOf } from "../../secret-guard/rules.js";
@@ -103,7 +103,10 @@ export async function pushGuard(args, runtime) {
     }
     return EXIT.ok;
 }
-/** PreToolUse on Bash and PowerShell: refuses, or asks about, a package runner that would fetch and run a package ad hoc. */
+/**
+ * PreToolUse on Bash and PowerShell: refuses, or asks about, a package runner that would fetch and run a package ad hoc,
+ * and an install of a version the registry does not vouch for (too young, with an advisory, or not exact).
+ */
 export async function packageGuard(args, runtime) {
     noPositionals(args);
     const payload = parseJson(await runtime.readStdin());
@@ -112,10 +115,12 @@ export async function packageGuard(args, runtime) {
         return EXIT.ok;
     }
     const output = await packageGuardOutput(payload, {
+        ...packageGuardOf(guard.load),
         cwd: runtime.cwd,
         home: runtime.userHome,
         files: runtime.files,
-        adHocRunners: adHocRunnersOf(guard.load),
+        registry: runtime.packageRegistry,
+        clock: runtime.clock,
         hookAsks: hookAsksOf(guard.load),
     });
     if (output !== '') {
