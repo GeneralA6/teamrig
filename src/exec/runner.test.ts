@@ -9,6 +9,7 @@ import { SecretScanner } from '../core/secrets.ts';
 import { MS_PER_MINUTE } from '../core/time.ts';
 import { execRequest } from '../testing/exec-request.ts';
 import { FakeCheckout, searchOf } from '../testing/fake-checkout.ts';
+import { FakeExecSpawner } from '../testing/fake-exec-spawner.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { InlineMutex } from '../testing/inline-mutex.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
@@ -16,7 +17,7 @@ import { AuditLog, type RequestRecord, type RunOutcome } from './audit.ts';
 import { sha256Hex } from './digest.ts';
 import type { ExecRequest } from './request.ts';
 import { decideReview, RANDOM_NONCES, UnsignedReviews, type ReviewAsk, type ReviewKit, type ReviewVerifier } from './review.ts';
-import { baseEnvironment, environmentCredentials, Executor, nodeExecSpawner, type CredentialSource, type ExecResult, type ExecSpawner, type SpawnAsk, type SpawnEnd } from './runner.ts';
+import { baseEnvironment, environmentCredentials, Executor, nodeExecSpawner, type CredentialSource, type ExecResult, type SpawnAsk } from './runner.ts';
 
 const PATH = 'C:/team/exec/audit.jsonl';
 const OUT = 'C:/team/exec/out';
@@ -28,19 +29,7 @@ const WRITE_VALUE = 'db://writer@host-a/app';
 const CREDENTIALS = { DB_READ_URI: READ_VALUE, DB_WRITE_URI: WRITE_VALUE };
 /** What libuv's process start on Windows copies from the parent when the given environment lacks it (`required_vars` in src/win/process.c). */
 const WINDOWS_ADDED = new Set(['HOMEDRIVE', 'HOMEPATH', 'LOGONSERVER', 'PATH', 'SYSTEMDRIVE', 'SYSTEMROOT', 'TEMP', 'USERDOMAIN', 'USERNAME', 'USERPROFILE', 'WINDIR']);
-const KIT: ReviewKit ={ reviewers: { owner: 'owner', security: 'security' }, signer: new UnsignedReviews(), nonces: RANDOM_NONCES };
-
-/** A spawner that records what it was asked to start and ends as a test sets: `end`, or a throw when it is an Error. */
-class FakeSpawner implements ExecSpawner {
-  readonly asks: SpawnAsk[] = [];
-  end: SpawnEnd | Error = { exitCode: 0, timedOut: false, output: 'inserted 12\n' };
-
-  async run(ask: SpawnAsk): Promise<SpawnEnd> {
-    this.asks.push(ask);
-    if (this.end instanceof Error) throw this.end;
-    return this.end;
-  }
-}
+const KIT: ReviewKit = { reviewers: { owner: 'owner', security: 'security' }, signer: new UnsignedReviews(), nonces: RANDOM_NONCES };
 
 function credentialsOf(values: Readonly<Record<string, string>>): CredentialSource {
   const held = new Map(Object.entries(values));
@@ -55,7 +44,7 @@ interface WorldOptions {
 
 interface World {
   readonly executor: Executor;
-  readonly spawner: FakeSpawner;
+  readonly spawner: FakeExecSpawner;
   readonly checkout: FakeCheckout;
   readonly clock: FakeClock;
   readonly files: MemoryFiles;
@@ -71,7 +60,7 @@ async function world({ request = execRequest(), credentials = CREDENTIALS, verif
   const audit = new AuditLog(PATH, files, new InlineMutex(), clock);
   const logged = await audit.append(() => ({ type: 'request', request }));
   assert.ok(logged.ok, logged.ok ? '' : logged.refusal);
-  const spawner = new FakeSpawner();
+  const spawner = new FakeExecSpawner();
   const checkout = new FakeCheckout();
   const executor = new Executor({
     audit,
