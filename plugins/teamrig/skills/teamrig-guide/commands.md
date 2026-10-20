@@ -1711,8 +1711,8 @@ Then it runs the command in the shell, its output streaming as it comes, and kil
 after `coordinator.heavy.maxRunMinutes` (45). The step ends, and frees the lock, only once that kill is done; on
 Windows the kill lists the host's processes again after each round and ends any process the step started while it was
 being killed. The step's start and end go to the coordinator's ledger,
-`ledger.jsonl` in `coordinator.dir` (default `deploys` in the team's state folder), with when it began to wait
-(`queuedAt`) and, sampled every `coordinator.heavy.memorySampleSeconds` (15; 0 samples nothing), the most memory its
+`ledger.jsonl` in `coordinator.dir` (default `deploys` in the team's state folder), with the teamrig version that ran
+it (`kit`), when it began to wait (`queuedAt`) and, sampled every `coordinator.heavy.memorySampleSeconds` (15; 0 samples nothing), the most memory its
 process tree held at once (`peakTreeMb`) and the least free memory the host had (`lowFreeMb`), and `shared: true` for
 a small step. Exit 0 when the command passed, 1 when it failed or was killed. REFUSED (exit 2) from
 `coordinator.schedule.heavyCutoffUtc` to midnight UTC, also when the wait for the lock ran past it, and when the lock
@@ -1720,7 +1720,11 @@ a small step. Exit 0 when the command passed, 1 when it failed or was killed. RE
 
 The lock is `host.lock` in the kit home, one for every team on the host, unless `coordinator.heavy.lockPath` names
 another. It lasts `coordinator.heavy.lockTtlMinutes` (150); a lock past that, or one whose process is gone, is
-taken over. Only the step that took it releases it.
+taken over. Only the step that took it releases it. The lock, each share and each ticket name the teamrig version
+that wrote them (`kit`, since 0.119.0). A wait line names a holder on another version (`..., on teamrig
+0.85.0`), or on none (`..., on an older teamrig or another coordinator`): such a step may take a free lock
+without joining the line, or while small steps share the host. A `kit` that is not a version, written by a team's own
+coordinator for its own use, is read as none.
 
 It checks the processes that started it, up to the tab's Claude Code, every 5 seconds: Claude Code may end a Bash
 tool's shell alone (its low-memory reaper does), and on Windows what that shell started runs on. Once one of them
