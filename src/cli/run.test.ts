@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import { CONFIG_MIGRATIONS, type ConfigFormat } from '../config/migrate.ts';
 import { CONFIG_VERSION } from '../config/types.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
+import { FakePackageRegistry } from '../testing/fake-package-registry.ts';
 import { teamInboxOf } from '../testing/team-tree.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { ENV } from '../core/home.ts';
@@ -673,6 +674,16 @@ describe('runCli: hook package-guard', () => {
     const locked = new CliHarness({ ...TEAM, packageGuard: { adHocRunners: 'allow' } });
     const files = new FaultyFiles(locked.files).fail('read', CONFIG_PATH, systemError('EACCES'));
     assert.equal(decisionOf(await locked.run(['hook', 'package-guard'], { stdin: bash('pnpm dlx x'), files })), 'deny');
+  });
+
+  it('refuses an install the registry does not vouch for, under the cooldown the team set, and lets a vetted exact version through', async () => {
+    const packageRegistry = new FakePackageRegistry({ lodash: { published: { '4.17.21': '2021-02-20T15:42:16Z', '4.17.22': '2030-01-07T00:00:00Z' } } });
+    const kit = new CliHarness();
+    assert.deepEqual((await kit.run(['hook', 'package-guard'], { stdin: bash('npm i lodash@4.17.21'), packageRegistry })).stdout, []);
+    assert.match(reasonOf(await kit.run(['hook', 'package-guard'], { stdin: bash('npm i lodash@4.17.22'), packageRegistry })) ?? '', /published 1 day ago .* 14-day cooldown/);
+    assert.match(reasonOf(await kit.run(['hook', 'package-guard'], { stdin: bash('npm i lodash@4.17.21') })) ?? '', /lodash@4\.17\.21: not on the registry/);
+    const noCooldown = new CliHarness({ ...TEAM, packageGuard: { cooldownDays: 0 } });
+    assert.deepEqual((await noCooldown.run(['hook', 'package-guard'], { stdin: bash('npm i lodash@4.17.22'), packageRegistry })).stdout, []);
   });
 
   it("prints nothing outside a team's projects or for input that is not a hook payload", async () => {

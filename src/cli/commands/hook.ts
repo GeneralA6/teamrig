@@ -13,7 +13,7 @@ import { modelCheckLine, payloadEffortOf } from '../../hooks/model-check.ts';
 import { ModelNoticeStore } from '../../hooks/model-notices.ts';
 import { sendTargetOf } from '../../hooks/cold-send.ts';
 import { failedSendLine, failedSendOf, failedSendOutput } from '../../hooks/failed-send.ts';
-import { adHocRunnersOf, packageGuardOutput } from '../../hooks/package-guard.ts';
+import { packageGuardOf, packageGuardOutput } from '../../hooks/package-guard.ts';
 import { hookAsksOf } from '../../hooks/permission.ts';
 import { secretGuardOf, secretGuardOutput } from '../../hooks/secret-guard.ts';
 import { secretRulesOf } from '../../secret-guard/rules.ts';
@@ -124,7 +124,10 @@ export async function pushGuard(args: ParsedArgs, runtime: CliRuntime): Promise<
   return EXIT.ok;
 }
 
-/** PreToolUse on Bash and PowerShell: refuses, or asks about, a package runner that would fetch and run a package ad hoc. */
+/**
+ * PreToolUse on Bash and PowerShell: refuses, or asks about, a package runner that would fetch and run a package ad hoc,
+ * and an install of a version the registry does not vouch for (too young, with an advisory, or not exact).
+ */
 export async function packageGuard(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
   const payload = parseJson(await runtime.readStdin());
@@ -133,10 +136,12 @@ export async function packageGuard(args: ParsedArgs, runtime: CliRuntime): Promi
     return EXIT.ok;
   }
   const output = await packageGuardOutput(payload, {
+    ...packageGuardOf(guard.load),
     cwd: runtime.cwd,
     home: runtime.userHome,
     files: runtime.files,
-    adHocRunners: adHocRunnersOf(guard.load),
+    registry: runtime.packageRegistry,
+    clock: runtime.clock,
     hookAsks: hookAsksOf(guard.load),
   });
   if (output !== '') {
