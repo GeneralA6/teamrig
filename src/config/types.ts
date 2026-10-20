@@ -872,9 +872,9 @@ export interface KitConfig {
    */
   readonly tabStatus: { readonly enabled: boolean };
   /**
-   * Refuses Claude Code's question picker (AskUserQuestion) to every session but the lead, which would stop the
-   * session until the person answers; the reason says to record the decision on its task and go on
-   * (hook-picker-guard.ts). Off by default.
+   * Refuses Claude Code's question picker (AskUserQuestion), which would stop the session until the person answers,
+   * to every session and helper, and to the lead outside the owner's daily meeting; the reason says to decide it if it
+   * is the session's own, else record it on its task and go on (hook-picker-guard.ts). Off by default.
    */
   readonly pickerGuard: { readonly enabled: boolean };
   readonly turnLog: TurnLogConfig;
