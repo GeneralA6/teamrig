@@ -517,7 +517,10 @@ and the title are the `/clear` ones above. On Windows an ended Claude Code runs 
 program run in their place, given their input. While background work you started (subagents, background
 commands, monitors, workflows) has not reported back, all of this waits for a later turn end, so a fresh start
 never cuts it off. The hooks read that from the transcript (helpers started within the last 6 hours); the mod below
-also asks Claude Code before its `/clear`, and holds while a helper of this session still runs. A `/clear`, a new process or a compaction starts the task count over. Each finished task is judged once, so
+also asks Claude Code before its `/clear`, and holds while a helper of this session still runs. While the owner's
+daily meeting is open (`teamrig meeting start` to `meeting end`, or its lapse 4 hours on), the lead is neither asked
+nor told its handover is written, so no restart cuts the meeting off; the end of the turn that ends the meeting asks
+at once. Past `refresh.compactCeilingTokens` the refresh goes on even then, so the lead never runs out of room. A `/clear`, a new process or a compaction starts the task count over. Each finished task is judged once, so
 it never loops. Steps: [workflows.md](workflows.md#handover-at-high-context). `refresh.enabled: false` turns it
 off. A turn that runs past `refresh.contextTokens` is asked within the turn by the plugin's mod
 ([below](#the-mod-the-refresh-within-a-turn)), since Claude Code would compact it before this hook ever asks.
@@ -531,7 +534,7 @@ as the Stop hook does, but within the turn: `teamrig: your context is 132k (refr
 turn: finish the step you are on and start no other. Write your handover to ... and end your turn: the fresh start
 follows it.` The mod adds the ask to the tool result's context, which you read and the user does not see. Only the
 size asks within a turn: the lead's request and the task count wait for a turn's end. Background work still running
-holds the ask, as at a turn's end. A turn that ends with no handover marked ready after a mid-turn ask is asked once
+holds the ask, as at a turn's end, and so does the owner's open daily meeting, for the lead. A turn that ends with no handover marked ready after a mid-turn ask is asked once
 more by the Stop hook.
 
 Before Claude Code compacts the main conversation on its own (its automatic compaction, or the summary it computes
