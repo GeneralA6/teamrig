@@ -1,15 +1,19 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
+import type { ClientCheck } from '../exec/client-integrity.ts';
 import { execGuardOutput, type ExecGuardEnv, type TabIdentity } from './exec-guard.ts';
 
 const SESSIONS: Readonly<Record<string, string>> = { alpha: 'alpha', 'app-alpha': 'alpha', bravo: 'bravo', lead: 'lead' };
 
 const ALPHA: TabIdentity = { kind: 'bound', session: 'alpha', owner: 'owner', idOf: (name) => SESSIONS[name] };
 
-/** An env whose identity reads count, so a test can show the guard reads the tab only for a review. */
-function env(identity: TabIdentity = ALPHA): ExecGuardEnv & { readonly reads: () => number } {
+const INTACT: ClientCheck = { kind: 'intact' };
+
+/** An env whose identity and client reads count, so a test can show the guard reads each only for a line that needs it. */
+function env(identity: TabIdentity = ALPHA, client: ClientCheck = INTACT): ExecGuardEnv & { readonly reads: () => number; readonly checks: () => number } {
   let reads = 0;
+  let checks = 0;
   return {
     cwd: 'C:/w',
     home: 'C:/u',
@@ -18,7 +22,12 @@ function env(identity: TabIdentity = ALPHA): ExecGuardEnv & { readonly reads: ()
       reads += 1;
       return Promise.resolve(identity);
     },
+    client: () => {
+      checks += 1;
+      return Promise.resolve(client);
+    },
     reads: () => reads,
+    checks: () => checks,
   };
 }
 
@@ -111,5 +120,33 @@ describe('execGuardOutput', () => {
     assert.equal(quiet.reads(), 0);
     assert.equal(await execGuardOutput({ tool_name: 'Read', tool_input: { file_path: 'x' } }, quiet), '');
     assert.equal(await execGuardOutput('not a payload', quiet), '');
+  });
+
+  it('refuses every exec call, whatever its command, while the client differs from its build, naming at most five files', async () => {
+    const paths = ['bin/teamrig', 'dist/cli/main.js', 'dist/exec/exec.js', 'dist/exec/run.js', 'dist/hooks/exec-guard.js', 'hooks/hooks.json', 'dist/core/files.js'];
+    const patched = env(ALPHA, { kind: 'changed', paths });
+    for (const line of ['teamrig exec status R1', 'teamrig exec run R1 --session alpha', 'teamrig exec', 'teamrig exec approve R1 --session alpha']) {
+      const found = await verdict(bash(line), patched);
+      assert.equal(found?.decision, 'deny', line);
+      assert.match(found?.reason ?? '', /the teamrig client was changed after its build \(bin\/teamrig, dist\/cli\/main\.js, dist\/exec\/exec\.js, dist\/exec\/run\.js, dist\/hooks\/exec-guard\.js and 2 more\); reinstall the teamrig plugin or ask security\./, line);
+    }
+    const unlisted = await verdict(bash('teamrig exec request --session alpha --file r.json'), env(ALPHA, { kind: 'no-manifest', why: 'dist/integrity.json is missing' }));
+    assert.match(unlisted?.reason ?? '', /the teamrig client cannot be checked against its build \(dist\/integrity\.json is missing\), so it may have been changed/);
+  });
+
+  it('gives both reasons when a changed client runs a review as another session, and checks the client once per line', async () => {
+    const patched = env(ALPHA, { kind: 'changed', paths: ['bin/teamrig'] });
+    const found = await verdict(bash('teamrig exec status R1 && teamrig exec approve R1 --session bravo'), patched);
+    assert.match(found?.reason ?? '', /changed after its build \(bin\/teamrig\);.* names --session bravo, but this tab is alpha's/);
+    assert.equal(patched.checks(), 1);
+  });
+
+  it('checks the client only for a line that runs teamrig exec', async () => {
+    const quiet = env(ALPHA, { kind: 'changed', paths: ['bin/teamrig'] });
+    for (const line of ['git status', 'teamrig list', 'teamrig start --session alpha']) {
+      assert.equal(await verdict(bash(line), quiet), undefined, line);
+    }
+    assert.match((await verdict(bash('teamrig exec "$ACTION" R1'), quiet))?.reason ?? '', /cannot tell whether it reviews a request/);
+    assert.equal(quiet.checks(), 0);
   });
 });

@@ -1,4 +1,4 @@
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import type { Files } from '../core/files.ts';
 import { isRecord, recordField } from '../core/guards.ts';
 import { sha256Hex } from './digest.ts';
@@ -61,6 +61,11 @@ export function parseClientManifest(text: string): ClientManifest | undefined {
     manifest.set(path, hash);
   }
   return manifest;
+}
+
+/** The plugin root of the client whose entry script this is: `<root>/dist/cli/main.js`. */
+export function clientRootOf(script: string): string {
+  return dirname(dirname(dirname(script)));
 }
 
 /** Checks the client installed at `pluginRoot` against the list the build wrote there. It never throws. */

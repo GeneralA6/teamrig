@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { CLIENT_MANIFEST, checkClient, clientFileHash, clientManifestText, parseClientManifest } from './client-integrity.ts';
+import { CLIENT_MANIFEST, checkClient, clientFileHash, clientManifestText, clientRootOf, parseClientManifest } from './client-integrity.ts';
 
 const ROOT = resolve('/', 'plugin');
 const MAIN = 'dist/cli/main.js';
@@ -38,6 +38,12 @@ describe('checkClient', () => {
     assert.deepEqual(await checkClient(ROOT, broken), { kind: 'no-manifest', why: `${CLIENT_MANIFEST} is not a list of file hashes` });
     const faulty = new FaultyFiles(install(BUILT)).fail('read', join(ROOT, MAIN), systemError('EACCES'));
     assert.deepEqual(await checkClient(ROOT, faulty), { kind: 'changed', paths: [MAIN] });
+  });
+});
+
+describe('clientRootOf', () => {
+  it('finds the plugin root three folders above the CLI entry script', () => {
+    assert.equal(clientRootOf(join(ROOT, MAIN)), ROOT);
   });
 });
 
