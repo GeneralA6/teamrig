@@ -4,30 +4,25 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { type CheckCommandDeps, type CheckRun, type GateDeps, SHIP_RAN_BEFORE, SKILL_DIR, checkCommand, checksFor, commandOf, parseRecord, proveTree, realGateDeps, recordPath } from './local-gate.ts';
+import { type CheckCommandDeps, type CheckRun, type GateDeps, checkCommand, commandOf, parseRecord, proveTree, realGateDeps, recordPath, runnerCheck } from './local-gate.ts';
 import { type LocalChecks, parseProfiles } from './repos.ts';
 
 const DIR = 'C:/repo';
 const TREE = 'tree000aaa';
 const COMMIT = 'commit0bbb';
 const RECORD = join('C:/repo/.git', 'local-ci', `${TREE}.json`);
-const CHECKS: LocalChecks = {
-  runner: 'tools/ci/local.ts',
-  fallback: [
-    { name: 'lint', run: ['node', 'lint.ts'], cwd: null },
-    { name: 'typecheck', run: ['node', 'tsc.js'], cwd: null },
-    { name: 'sync', run: ['node', 'sync.ts'], cwd: 'plugins/x' },
-  ],
-};
+const CHECKS: LocalChecks = { runner: 'tools/ci/local.ts' };
+const RUNNER = 'runner tools/ci/local.ts';
 const VALID = (tree = TREE): string => JSON.stringify({ tree, commit: COMMIT, checks: ['lint'], passedAt: '2026-10-15T09:00:00.000Z', node: 'v22.19.0' });
 
 interface GateFixture {
-  /** `git status --porcelain` before the checks, then after them. */
+  /** `git status --porcelain` before the runner, then after it. */
   status?: readonly [string, string];
-  /** The tree HEAD holds before the checks, then after them. */
+  /** The tree HEAD holds before the runner, then after it. */
   trees?: readonly [string, string];
-  /** What the record file holds before the checks, then after them (a runner writes its own). */
+  /** What the record file holds before the runner, then after it (a runner writes its own). */
   records?: readonly [string | null, string | null];
+  /** Whether the tree holds the runner; it does unless false. */
   runner?: boolean;
   /** Exit codes by check name; 0 when not listed. */
   exits?: Readonly<Record<string, number | null>>;
@@ -48,7 +43,7 @@ function fakeGate(fixture: GateFixture = {}): { deps: GateDeps; runs: string[]; 
       if (key === 'rev-parse --git-common-dir') return 'C:/repo/.git';
       throw new Error(`unexpected git ${key}`);
     },
-    exists: path => fixture.runner === true && path === join(DIR, 'tools/ci/local.ts'),
+    exists: path => fixture.runner !== false && path === join(DIR, 'tools/ci/local.ts'),
     readText: path => (path === RECORD ? pick(fixture.records ?? [null, null], 'record') : null),
     writeText: (path, text) => written.push([path, text]),
     run: (check): CheckRun => {
@@ -63,20 +58,27 @@ function fakeGate(fixture: GateFixture = {}): { deps: GateDeps; runs: string[]; 
   return { deps, runs, written, log };
 }
 
-test('runs every check in order, then writes a pass record for the tree in the shared git folder', () => {
+test('runs the repo runner, then writes a pass record for the tree in the shared git folder when the runner wrote none', () => {
   const { deps, runs, written, log } = fakeGate();
   assert.deepEqual(proveTree(DIR, CHECKS, deps), { passed: true, tree: TREE, record: RECORD, reused: false });
-  assert.deepEqual(runs, ['lint', 'typecheck', 'sync']);
-  assert.deepEqual(log.slice(0, 3), ['pass: lint (2s)', 'pass: typecheck (2s)', 'pass: sync (2s)']);
-  assert.equal(log.at(-1), `local checks: 3 passed on tree tree000, recorded in ${RECORD}`);
+  assert.deepEqual(runs, [RUNNER]);
+  assert.deepEqual(log, [`pass: ${RUNNER} (2s)`, `local checks: 1 passed on tree tree000, recorded in ${RECORD}`]);
   assert.equal(written.length, 1);
   const [path, text] = written[0] ?? ['', ''];
   assert.equal(path, RECORD);
-  assert.deepEqual(JSON.parse(text), { tree: TREE, commit: COMMIT, checks: ['lint', 'typecheck', 'sync'], passedAt: '2026-10-15T10:00:00.000Z', node: process.version });
-  assert.deepEqual(parseRecord(text, TREE)?.checks, ['lint', 'typecheck', 'sync']);
+  assert.deepEqual(JSON.parse(text), { tree: TREE, commit: COMMIT, checks: [RUNNER], passedAt: '2026-10-15T10:00:00.000Z', node: process.version });
+  assert.deepEqual(parseRecord(text, TREE)?.checks, [RUNNER]);
 });
 
-test('a pass record for the tree skips every check', () => {
+test('keeps the record the runner wrote itself', () => {
+  const { deps, runs, written, log } = fakeGate({ records: [null, VALID()] });
+  assert.equal(proveTree(DIR, CHECKS, deps).passed, true);
+  assert.deepEqual(runs, [RUNNER]);
+  assert.deepEqual(written, []);
+  assert.equal(log.at(-1), `local checks: 1 passed on tree tree000, recorded in ${RECORD}`);
+});
+
+test('a pass record for the tree skips the runner', () => {
   const { deps, runs, written, log } = fakeGate({ records: [VALID(), VALID()] });
   assert.deepEqual(proveTree(DIR, CHECKS, deps), { passed: true, tree: TREE, record: RECORD, reused: true });
   assert.deepEqual(runs, []);
@@ -91,18 +93,18 @@ test('refuses uncommitted changes before running anything, naming the first few'
   assert.deepEqual(runs, []);
 });
 
-test('stops at the first failed check, logs its full output, and records nothing', () => {
-  const { deps, runs, written, log } = fakeGate({ exits: { typecheck: 2 } });
-  assert.deepEqual(proveTree(DIR, CHECKS, deps), { passed: false, reason: 'typecheck failed on tree tree000' });
-  assert.deepEqual(runs, ['lint', 'typecheck']);
-  assert.deepEqual(log.slice(1), ['FAIL: typecheck (exit 2, 2s)', 'typecheck says hi']);
+test('a failed runner logs its full output and records nothing', () => {
+  const { deps, runs, written, log } = fakeGate({ exits: { [RUNNER]: 2 } });
+  assert.deepEqual(proveTree(DIR, CHECKS, deps), { passed: false, reason: `${RUNNER} failed on tree tree000` });
+  assert.deepEqual(runs, [RUNNER]);
+  assert.deepEqual(log, [`FAIL: ${RUNNER} (exit 2, 2s)`, `${RUNNER} says hi`]);
   assert.deepEqual(written, []);
-  const killed = fakeGate({ exits: { lint: null } });
+  const killed = fakeGate({ exits: { [RUNNER]: null } });
   proveTree(DIR, CHECKS, killed.deps);
-  assert.equal(killed.log[0], 'FAIL: lint (exit none: it did not start or was killed, 2s)');
+  assert.equal(killed.log[0], `FAIL: ${RUNNER} (exit none: it did not start or was killed, 2s)`);
 });
 
-test('refuses a tree the checks changed, so a stale generated file never passes', () => {
+test('refuses a tree the runner changed, so a stale generated file never passes', () => {
   const dirty = fakeGate({ status: ['', ' M dist/a.js'] });
   assert.deepEqual(proveTree(DIR, CHECKS, dirty.deps), { passed: false, reason: 'the checks left C:/repo changed ( M dist/a.js): a generated file differs from the committed one' });
   assert.deepEqual(dirty.written, []);
@@ -110,28 +112,21 @@ test('refuses a tree the checks changed, so a stale generated file never passes'
   assert.deepEqual(proveTree(DIR, CHECKS, moved.deps), { passed: false, reason: 'the checks left C:/repo changed (HEAD now holds tree tree999): a generated file differs from the committed one' });
 });
 
-test('skips the checks named as already run on this content, and ship names its own', () => {
-  const { deps, runs, log, written } = fakeGate();
-  assert.equal(proveTree(DIR, CHECKS, deps, ['typecheck']).passed, true);
-  assert.deepEqual(runs, ['lint', 'sync']);
-  assert.equal(log[1], 'pass: typecheck (before the commits, on this content)');
-  assert.deepEqual(JSON.parse(written[0]?.[1] ?? '{}').checks, ['lint', 'typecheck', 'sync']);
-  assert.deepEqual(SHIP_RAN_BEFORE, ['typecheck', 'coverage gate', 'build: clean', 'build: compile']);
+test('the runner check is the runner repos.json names, only when the tree holds it', () => {
+  const exists = (path: string): boolean => path === join(DIR, 'tools/ci/local.ts');
+  assert.deepEqual(runnerCheck(DIR, CHECKS, exists), { name: RUNNER, run: ['node', 'tools/ci/local.ts'] });
+  assert.equal(runnerCheck(DIR, { runner: null }, exists), null);
+  assert.equal(runnerCheck(DIR, CHECKS, () => false), null);
 });
 
-test('a tree that holds the repo runner runs it alone, and keeps the record the runner wrote', () => {
-  const { deps, runs, written, log } = fakeGate({ runner: true, records: [null, VALID()] });
-  assert.equal(proveTree(DIR, CHECKS, deps).passed, true);
-  assert.deepEqual(runs, ['runner tools/ci/local.ts']);
-  assert.deepEqual(written, []);
-  assert.equal(log.at(-1), `local checks: 1 passed on tree tree000, recorded in ${RECORD}`);
-  assert.deepEqual(checksFor(DIR, CHECKS, () => true), [{ name: 'runner tools/ci/local.ts', run: ['node', 'tools/ci/local.ts'], cwd: null }]);
-  assert.equal(checksFor(DIR, { runner: null, fallback: CHECKS.fallback }, () => true), CHECKS.fallback);
-});
-
-test('refuses to prove a tree with no checks to run', () => {
-  const { deps } = fakeGate();
-  assert.deepEqual(proveTree(DIR, { runner: null, fallback: [] }, deps), { passed: false, reason: 'no local checks are listed for this repo in repos.json: nothing would prove the tree' });
+test('refuses a repo that names no runner, or a tree that does not hold it, before running anything', () => {
+  const none = fakeGate();
+  assert.deepEqual(proveTree(DIR, { runner: null }, none.deps), { passed: false, reason: 'repos.json names no local runner for this repo: nothing would prove the tree' });
+  assert.deepEqual(none.runs, []);
+  const missing = fakeGate({ runner: false });
+  assert.deepEqual(proveTree(DIR, CHECKS, missing.deps), { passed: false, reason: "C:/repo holds no tools/ci/local.ts, the repo's local CI runner: rebase the branch on its main" });
+  assert.deepEqual(missing.runs, []);
+  assert.deepEqual(missing.written, []);
 });
 
 test('reads a record only when it is one, for this tree', () => {
@@ -149,19 +144,19 @@ test('puts the record in the git folder every worktree shares, whether git names
   assert.equal(recordPath(DIR, '.git', TREE), join(DIR, '.git', 'local-ci', `${TREE}.json`));
 });
 
-test('spawns a leading node as this node without the experimental warning, and fills in the skill folder', () => {
-  assert.deepEqual(commandOf(['node', '{skill}/size-rule.ts', '--base', 'origin/main'], 'C:/skill', 'C:/node.exe'), { file: 'C:/node.exe', args: ['--disable-warning=ExperimentalWarning', 'C:/skill/size-rule.ts', '--base', 'origin/main'] });
-  assert.deepEqual(commandOf(['git', 'status'], 'C:/skill', 'C:/node.exe'), { file: 'git', args: ['status'] });
-  assert.equal(commandOf(['node', '{skill}']).args[1], SKILL_DIR);
+test('spawns a leading node as this node without the experimental warning', () => {
+  assert.deepEqual(commandOf(['node', 'tools/ci/local.ts', '--all'], 'C:/node.exe'), { file: 'C:/node.exe', args: ['--disable-warning=ExperimentalWarning', 'tools/ci/local.ts', '--all'] });
+  assert.deepEqual(commandOf(['git', 'status'], 'C:/node.exe'), { file: 'git', args: ['status'] });
+  assert.equal(commandOf(['node', 'x.ts']).file, process.execPath);
 });
 
 function checkFixture(answers: Readonly<Record<string, string>>, exit = 0): { deps: CheckCommandDeps; err: string[]; log: string[] } {
-  const gate = fakeGate({ exits: { lint: exit } });
+  const gate = fakeGate({ exits: { [RUNNER]: exit } });
   const err: string[] = [];
   const git = gate.deps.git;
   return {
     deps: {
-      profiles: parseProfiles('{"Owner/repo":{"main":"main","gate":"ci","checks":["a"],"local":{"fallback":[{"name":"lint","run":["node","lint.ts"]}]}}}'),
+      profiles: parseProfiles('{"Owner/repo":{"main":"main","gate":"ci","checks":["a"],"local":{"runner":"tools/ci/local.ts"}}}'),
       gate: { ...gate.deps, git: (...args) => answers[args.join(' ')] ?? git(...args) },
       err: line => err.push(line),
     },
@@ -170,15 +165,15 @@ function checkFixture(answers: Readonly<Record<string, string>>, exit = 0): { de
   };
 }
 
-test('ship.ts check proves the dir with its repo\'s local checks, whatever its merge gate', t => {
+test('ship.ts check proves the dir with its repo\'s runner, whatever its merge gate', t => {
   const origin = { 'remote get-url origin': 'git@github.com:Owner/repo.git' };
   const passed = checkFixture(origin);
   assert.equal(checkCommand([DIR], dir => (dir === DIR ? passed.deps : checkFixture({}).deps)), 0);
-  assert.equal(passed.log[0], 'pass: lint (2s)');
+  assert.equal(passed.log[0], `pass: ${RUNNER} (2s)`);
 
   const failed = checkFixture(origin, 1);
   assert.equal(checkCommand([DIR], () => failed.deps), 1);
-  assert.deepEqual(failed.err, ['REFUSED lint failed on tree tree000']);
+  assert.deepEqual(failed.err, [`REFUSED ${RUNNER} failed on tree tree000`]);
 
   const unknown = checkFixture({ 'remote get-url origin': 'git@github.com:Owner/other.git' });
   assert.equal(checkCommand([DIR], () => unknown.deps), 1);
@@ -189,27 +184,28 @@ test('ship.ts check proves the dir with its repo\'s local checks, whatever its m
   assert.deepEqual(consoleError.mock.calls.map(call => call.arguments[0]), Array(3).fill('usage: ship.ts check <repo dir>'));
 });
 
-test('the real gate proves a committed tree in a git repo once, then reuses its record', t => {
+test('the real gate proves a committed tree in a git repo with its runner once, then reuses its record', t => {
   const dir = mkdtempSync(join(tmpdir(), 'local-gate-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const git = (...args: string[]): string => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8' }).trim();
   git('init', '-q');
   writeFileSync(join(dir, 'a.txt'), 'a\n');
-  git('add', 'a.txt');
+  writeFileSync(join(dir, 'runner.mjs'), "import { readFileSync } from 'node:fs';\nprocess.exit(readFileSync('a.txt', 'utf8') === 'a\\n' ? 0 : 5);\n");
+  git('add', 'a.txt', 'runner.mjs');
   git('-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', 'commit', '-q', '-m', 'a');
   const log: string[] = [];
   const deps = realGateDeps(dir, line => log.push(line));
-  const checks: LocalChecks = { runner: 'missing-runner.ts', fallback: [{ name: 'reads a', run: ['node', '-e', "process.exit(require('node:fs').readFileSync('a.txt', 'utf8') === 'a\\n' ? 0 : 5)"], cwd: null }] };
+  const checks: LocalChecks = { runner: 'runner.mjs' };
   const first = proveTree(dir, checks, deps);
   assert.equal(first.passed, true, log.join('\n'));
   const record = first.passed ? first.record : '';
   assert.equal(JSON.parse(readFileSync(record, 'utf8')).tree, git('rev-parse', 'HEAD^{tree}'));
   assert.deepEqual(proveTree(dir, checks, deps), { passed: true, tree: git('rev-parse', 'HEAD^{tree}'), record, reused: true });
 
-  const failing = deps.run({ name: 'fails', run: ['node', '-e', "console.log('out'); console.error('err'); process.exit(3)"], cwd: null });
+  const failing = deps.run({ name: 'fails', run: ['node', '-e', "console.log('out'); console.error('err'); process.exit(3)"] });
   assert.equal(failing.status, 3);
   assert.equal(failing.output, 'out\n\nerr\n');
-  const missing = deps.run({ name: 'missing', run: ['no-such-command-here'], cwd: null });
+  const missing = deps.run({ name: 'missing', run: ['no-such-command-here'] });
   assert.equal(missing.status, null);
   assert.match(missing.output, /ENOENT/);
 });

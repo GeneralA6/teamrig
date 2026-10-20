@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { buildScriptOf, buildSteps } from './build-steps.ts';
-import { SHIP_RAN_BEFORE, checkCommand, proveTree, realGateDeps } from './local-gate.ts';
+import { checkCommand, proveTree, realGateDeps } from './local-gate.ts';
 import { mergeCommand } from './merge.ts';
 import { pushOwnBranch } from './push.ts';
 import { profileFor, readProfiles, slugOf } from './repos.ts';
@@ -89,7 +89,7 @@ async function shipCommits(argv: readonly string[]): Promise<number> {
   }
 
   console.log('\nlocal checks:');
-  const verdict = proveTree(repo, profile.local, realGateDeps(repo, (line) => console.log(line)), SHIP_RAN_BEFORE);
+  const verdict = proveTree(repo, profile.local, realGateDeps(repo, (line) => console.log(line)));
   console.log(git(['log', '--oneline', `${args.base}..HEAD`]));
   if (!verdict.passed) throw new Error(`REFUSED ${verdict.reason}`);
   if (!args.merge) return 0;

@@ -1,19 +1,23 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { isRecord } from './json.ts';
-import { type LocalCheck, type LocalChecks, type RepoProfile, profileFor, readProfiles, slugOf } from './repos.ts';
+import { type LocalChecks, type RepoProfile, profileFor, readProfiles, slugOf } from './repos.ts';
 
 /**
- * The local gate: proves that the tree checked out in a repo dir passed every local check, once per tree.
- * The proof is a pass record at `<git common dir>/local-ci/<tree sha>.json`, so every worktree of the repo
- * shares it, written only when every check passed on a clean checkout and the checks left it as they found it:
+ * The local gate: proves that the tree checked out in a repo dir passed the repo's own local CI runner, once
+ * per tree. The proof is a pass record at `<git common dir>/local-ci/<tree sha>.json`, so every worktree of
+ * the repo shares it, written only when the runner passed on a clean checkout and left it as it found it:
  *   { "tree": "<sha>", "commit": "<sha>", "checks": ["<name>", ...], "passedAt": "<ISO time>", "node": "<version>" }
  * ship (after its commits), merge (a repo whose gate is local) and the repos' pre-push hook read it first,
- * so a tree is checked once, not at each step. A repo's own runner, once its tree holds one, writes the
- * same record itself.
+ * so a tree is checked once, not at each step. The runner writes the same record itself, naming each check.
  */
+
+/** One local check: a command spawned without a shell from the repo dir, where a leading `node` is this node; exit 0 is a pass. */
+export interface LocalCheck {
+  name: string;
+  run: readonly string[];
+}
 
 export interface PassRecord {
   tree: string;
@@ -48,13 +52,6 @@ export interface GateDeps {
 
 export type GateVerdict = { passed: true; tree: string; record: string; reused: boolean } | { passed: false; reason: string };
 
-/**
- * The checks ship already ran on the content it committed, by their names in repos.json: typecheck and the
- * coverage gate on the working tree before its commits (the gate's clean-tree rule means nothing was left
- * out of them), and the build that made its dist commit.
- */
-export const SHIP_RAN_BEFORE: readonly string[] = ['typecheck', 'coverage gate', 'build: clean', 'build: compile'];
-
 const short = (sha: string): string => sha.slice(0, 7);
 const seconds = (ms: number): string => `${Math.round(ms / 1000)}s`;
 const isStringList = (value: unknown): value is string[] => Array.isArray(value) && value.every(item => typeof item === 'string');
@@ -78,11 +75,16 @@ export function parseRecord(text: string | null, tree: string): PassRecord | nul
   return { tree, commit, checks, passedAt, node };
 }
 
-/** The checks a tree runs: its own runner when it holds one, else the fallback list. */
-export function checksFor(dir: string, checks: LocalChecks, exists: GateDeps['exists']): readonly LocalCheck[] {
-  if (checks.runner !== null && exists(join(dir, checks.runner))) return [{ name: `runner ${checks.runner}`, run: ['node', checks.runner], cwd: null }];
-  return checks.fallback;
+/** The check that proves a tree: the repo's own runner, when repos.json names one and the tree holds it. */
+export function runnerCheck(dir: string, checks: LocalChecks, exists: GateDeps['exists']): LocalCheck | null {
+  if (checks.runner === null || !exists(join(dir, checks.runner))) return null;
+  return { name: `runner ${checks.runner}`, run: ['node', checks.runner] };
 }
+
+const noRunner = (dir: string, runner: string | null): string =>
+  runner === null
+    ? 'repos.json names no local runner for this repo: nothing would prove the tree'
+    : `${dir} holds no ${runner}, the repo's local CI runner: rebase the branch on its main`;
 
 const firstLines = (status: string): string => {
   const lines = status.split('\n');
@@ -90,11 +92,10 @@ const firstLines = (status: string): string => {
 };
 
 /**
- * Proves the repo dir's checked-out tree: its pass record when one exists, else every check run in order
- * (stopping at the first failure, whose full output is logged), then a record. `ranBefore` names checks
- * that already passed on this very content (ship's, before its commits).
+ * Proves the repo dir's checked-out tree: its pass record when one exists, else a run of the repo's runner
+ * (whose full output is logged when it fails), then a record when the runner wrote none.
  */
-export function proveTree(dir: string, checks: LocalChecks, deps: GateDeps, ranBefore: readonly string[] = []): GateVerdict {
+export function proveTree(dir: string, checks: LocalChecks, deps: GateDeps): GateVerdict {
   const status = deps.git('status', '--porcelain');
   if (status !== '') return { passed: false, reason: `${dir} has uncommitted changes (${firstLines(status)}): commit or stash them, the checks prove only a committed tree` };
   const tree = deps.git('rev-parse', 'HEAD^{tree}');
@@ -106,22 +107,15 @@ export function proveTree(dir: string, checks: LocalChecks, deps: GateDeps, ranB
     return { passed: true, tree, record: path, reused: true };
   }
 
-  const list = checksFor(dir, checks, deps.exists);
-  if (list.length === 0) return { passed: false, reason: 'no local checks are listed for this repo in repos.json: nothing would prove the tree' };
-  const before = new Set(ranBefore);
-  for (const check of list) {
-    if (before.has(check.name)) {
-      deps.log(`pass: ${check.name} (before the commits, on this content)`);
-      continue;
-    }
-    const result = deps.run(check);
-    if (result.status !== 0) {
-      deps.log(`FAIL: ${check.name} (exit ${result.status ?? 'none: it did not start or was killed'}, ${seconds(result.ms)})`);
-      deps.log(result.output.trimEnd());
-      return { passed: false, reason: `${check.name} failed on tree ${short(tree)}` };
-    }
-    deps.log(`pass: ${check.name} (${seconds(result.ms)})`);
+  const check = runnerCheck(dir, checks, deps.exists);
+  if (check === null) return { passed: false, reason: noRunner(dir, checks.runner) };
+  const result = deps.run(check);
+  if (result.status !== 0) {
+    deps.log(`FAIL: ${check.name} (exit ${result.status ?? 'none: it did not start or was killed'}, ${seconds(result.ms)})`);
+    deps.log(result.output.trimEnd());
+    return { passed: false, reason: `${check.name} failed on tree ${short(tree)}` };
   }
+  deps.log(`pass: ${check.name} (${seconds(result.ms)})`);
 
   const statusAfter = deps.git('status', '--porcelain');
   const treeAfter = deps.git('rev-parse', 'HEAD^{tree}');
@@ -130,18 +124,16 @@ export function proveTree(dir: string, checks: LocalChecks, deps: GateDeps, ranB
     return { passed: false, reason: `the checks left ${dir} changed (${what}): a generated file differs from the committed one` };
   }
   if (parseRecord(deps.readText(path), tree) === null) {
-    const record: PassRecord = { tree, commit, checks: list.map(check => check.name), passedAt: deps.now().toISOString(), node: process.version };
+    const record: PassRecord = { tree, commit, checks: [check.name], passedAt: deps.now().toISOString(), node: process.version };
     deps.writeText(path, `${JSON.stringify(record, null, 2)}\n`);
   }
-  deps.log(`local checks: ${list.length} passed on tree ${short(tree)}, recorded in ${path}`);
+  deps.log(`local checks: 1 passed on tree ${short(tree)}, recorded in ${path}`);
   return { passed: true, tree, record: path, reused: false };
 }
 
-export const SKILL_DIR = dirname(fileURLToPath(import.meta.url));
-
-/** The file and arguments a check spawns: a leading `node` is this node, `{skill}` this skill's folder. */
-export function commandOf(run: readonly string[], skillDir: string = SKILL_DIR, nodePath: string = process.execPath): { file: string; args: string[] } {
-  const [first = '', ...rest] = run.map(arg => arg.replaceAll('{skill}', skillDir));
+/** The file and arguments a check spawns: a leading `node` is this node, with the experimental warning off. */
+export function commandOf(run: readonly string[], nodePath: string = process.execPath): { file: string; args: string[] } {
+  const [first = '', ...rest] = run;
   return first === 'node' ? { file: nodePath, args: ['--disable-warning=ExperimentalWarning', ...rest] } : { file: first, args: rest };
 }
 
@@ -158,7 +150,7 @@ export function realGateDeps(dir: string, log: (line: string) => void): GateDeps
     run: check => {
       const { file, args } = commandOf(check.run);
       const started = Date.now();
-      const result = spawnSync(file, args, { cwd: join(dir, check.cwd ?? '.'), encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, windowsHide: true });
+      const result = spawnSync(file, args, { cwd: dir, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, windowsHide: true });
       const output = [result.stdout ?? '', result.stderr ?? '', result.error === undefined ? '' : result.error.message].filter(part => part !== '').join('\n');
       return { status: result.status, output, ms: Date.now() - started };
     },

@@ -257,7 +257,8 @@ interface RunFixture {
 }
 
 const RECORD_PATH = 'C:/repo/.git/local-ci/tree-checked.json';
-const LOCAL_PROFILE = '"local":{"fallback":[{"name":"lint","run":["node","lint.ts"]}]}';
+const LOCAL_PROFILE = '"local":{"runner":"tools/ci/local.ts"}';
+const RUNNER = 'runner tools/ci/local.ts';
 
 interface FakeGate {
   gate: GateDeps;
@@ -280,7 +281,7 @@ function fakeGate(local: NonNullable<RunFixture['local']>, log: (line: string) =
       if (answer === undefined) throw new Error(`unexpected gate git ${args.join(' ')}`);
       return answer;
     },
-    exists: () => false,
+    exists: path => path.replaceAll('\\', '/') === 'C:/repo/tools/ci/local.ts',
     readText: path => (path.replaceAll('\\', '/') === RECORD_PATH ? (local.record ?? null) : null),
     writeText: (path, text) => written.push(`${path.replaceAll('\\', '/')} ${text}`),
     run: check => {
@@ -430,15 +431,15 @@ test('a merge GitHub refuses for a rule set on the repo says that changing the r
   assert.match(refused.kind === 'refused' ? refused.reason : '', /is expected\. \(a rule set on the repo, not the change: changing it is the repo owner's call, so report it and stop\)$/);
 });
 
-test('on the local gate it runs the local checks on the checked-out head, records the pass, then merges', async () => {
+test('on the local gate it runs the repo runner on the checked-out head, records the pass, then merges', async () => {
   const { deps, out, err, local } = runFixture({ local: {} });
   assert.equal(await runMerge(ARGS, deps), 0);
   assert.deepEqual(err, []);
-  assert.deepEqual(local.runs, ['lint']);
-  assert.ok(out.includes('pass: lint (2s)'));
+  assert.deepEqual(local.runs, [RUNNER]);
+  assert.ok(out.includes(`pass: ${RUNNER} (2s)`));
   assert.ok(!out.some(line => line.startsWith('check ')), 'no GitHub check is read');
   assert.equal(local.written.length, 1);
-  assert.match(local.written[0] ?? '', /^C:\/repo\/\.git\/local-ci\/tree-checked\.json \{\n {2}"tree": "tree-checked",\n {2}"commit": "abc1234def",\n {2}"checks": \[\n {4}"lint"\n {2}\],\n {2}"passedAt": "2026-10-15T10:00:00\.000Z"/);
+  assert.match(local.written[0] ?? '', /^C:\/repo\/\.git\/local-ci\/tree-checked\.json \{\n {2}"tree": "tree-checked",\n {2}"commit": "abc1234def",\n {2}"checks": \[\n {4}"runner tools\/ci\/local\.ts"\n {2}\],\n {2}"passedAt": "2026-10-15T10:00:00\.000Z"/);
   assert.equal(out.at(-1), 'MERGED #3 into main, now at main999');
 });
 
@@ -465,11 +466,11 @@ test('on the local gate it refuses another checked-out commit or uncommitted cha
   }
 });
 
-test('on the local gate a failed check refuses the merge with its output and records nothing', async () => {
+test('on the local gate a failed runner refuses the merge with its output and records nothing', async () => {
   const { deps, out, err, local, ghWrites } = runFixture({ local: { exit: 1 } });
   assert.equal(await runMerge(ARGS, deps), 1);
-  assert.deepEqual(err, ['REFUSED lint failed on tree tree-ch']);
-  assert.ok(out.includes('FAIL: lint (exit 1, 2s)'));
+  assert.deepEqual(err, [`REFUSED ${RUNNER} failed on tree tree-ch`]);
+  assert.ok(out.includes(`FAIL: ${RUNNER} (exit 1, 2s)`));
   assert.ok(out.includes('lint: 1 problem'));
   assert.deepEqual(local.written, []);
   assert.ok(!ghWrites.some(args => args[1]?.endsWith('/merge')));
