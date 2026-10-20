@@ -53,7 +53,8 @@ To update an installed teamrig, follow
   at each helper launch it restates when a helper pays; at the end of a turn it
   may ask for a handover when your context is large.
 - **Tree of teams**: a team may have a parent team. Sub-team leads report to their parent lead, and the root
-  lead is the only one the human talks to. At most 3 levels and 8 child teams under one team.
+  lead is the only one the human talks to. At most 3 levels and 8 child teams under one team. Within one team,
+  the lead may make a session a sub-lead over others (`teamrig promote`): it answers their waits and approvals.
 
 ## Which session you are
 
