@@ -22,6 +22,8 @@ const clearCommands = () => import("./commands/hook-clear.js");
 const wakeCommands = () => import("./commands/hook-wake.js");
 const refreshModCommands = () => import("./commands/hook-refresh-mod.js");
 const teamCommands = () => import("./commands/team.js");
+const sessionsCommands = () => import("./commands/sessions.js");
+const closeCommands = () => import("./commands/close.js");
 const commitsCommands = () => import("./commands/commits.js");
 const doctorCommands = () => import("./commands/doctor.js");
 const worktreeCommands = () => import("./commands/worktree.js");
@@ -98,6 +100,8 @@ const COMMANDS = {
     'restore resume': { effect: 'internal', flags: ['project', 'home', 'effort', 'encoded-prompt'], load: async () => (await restoreCommands()).restoreResume },
     restart: { effect: 'internal', flags: ['team', 'at', 'project'], load: async () => (await restartCommands()).restart },
     who: { effect: 'read', flags: [], load: async () => (await teamCommands()).who },
+    sessions: { effect: 'read', flags: [], load: async () => (await sessionsCommands()).sessions },
+    close: { effect: 'write', flags: ['session', 'project'], switches: ['yes'], load: async () => (await closeCommands()).close },
     rename: { effect: 'write', flags: ['session'], load: async () => (await teamCommands()).rename },
     hire: {
         effect: 'write',
@@ -203,7 +207,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   open <id|name|team/id> [--prompt "<first prompt>"] [--terminal <name>] [--project <dir>] [--resume]
       a new terminal tab running Claude Code as that session (team/id: another team of the tree);
       with no terminal it prints the command; a rehired session reads the handover it left first, or,
-      with --resume, goes on in its last Claude Code session when that is small and recent enough
+      with --resume, goes on in its last Claude Code session when that is small and recent enough;
+      a session teamrig close ended goes on in its last one by those limits, else opens fresh
   restore                      what a restore would do now with each Claude Code session this machine
       recorded: RESTORE (how it comes back, at which effort), KEEP or DISCARD, and why; it only reads
   restore run [--since <time>] [--terminal <name>] [--home <dir>] [--tab]   reopens the Claude Code
@@ -285,6 +290,12 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   inbox add --to <id|name|team/id> --text "<one line>"
       team/id: a lead may write to its parent team's lead and its child teams' leads
   who [<id|name|role>]         the name to message a session by (no argument: every session)
+  sessions                     each session: running (and the MB its Claude Code's processes hold), closed
+      or never recorded; then the host's free memory and commit charge
+  close <id|name> [--project <dir>] [--yes]   (the lead) ends an idle session's Claude Code and its tab
+      to free the host, logged, so teamrig open resumes it; it refuses the lead, the coordinator owner,
+      a session with work it can start, quiet under open.headroom.closeIdleMinutes, running background
+      work or shells, or too big or old to resume; without --yes it shows the close and ends nothing
   rename <id|name> <new-name>  records a session's new name; its old names keep finding it
       (the session itself or the lead)
   hire <id> --scope "<its job>" --reason "<why>" [--name <name>] [--model <model>] [--effort <level>]

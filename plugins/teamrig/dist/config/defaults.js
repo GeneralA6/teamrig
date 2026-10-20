@@ -141,7 +141,13 @@ export const DEFAULT_REFRESH = {
     compactCeilingTokens: 185_000,
     endCommand: [],
 };
-export const DEFAULT_OPEN = { terminal: 'auto' };
+/**
+ * A session is counted at 1.2 GB (on 10-19, 18 sessions held 21.9 GB with their helpers and MCP servers), and the
+ * commit charge stays at most 92% with it (it reached 100% that morning, and Claude Code then killed running steps).
+ * A session quiet an hour may be closed: the owner's pick on 10-19.
+ */
+export const DEFAULT_HEADROOM = { sessionMb: 1200, commitMaxPct: 92, closeIdleMinutes: 60 };
+export const DEFAULT_OPEN = { terminal: 'auto', headroom: DEFAULT_HEADROOM };
 /** The status line shows the session's folder, its branch and the command that resumes it, unless the team turns them off. */
 export const DEFAULT_STATUS_LINE = { folder: true, branch: true, resume: true };
 /**

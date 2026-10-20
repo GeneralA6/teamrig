@@ -47,6 +47,7 @@ import { meetingHold } from "./hook-meeting.js";
 import { armRestart, restartTargetOf } from "./hook-restart.js";
 import { helperContextOf } from "./hook-helper-start.js";
 import { dueFactsAt } from "./hook-refresh-mod.js";
+import { recordSessionStart } from "./hook-session-record.js";
 import { envSession, hookScopeOf, leadOwnPaths, parseJson, sessionScopeOf, sessionTeam, startSessionOf, teamScopeOf, teamSessionOf } from "./hook-input.js";
 import { tabStatusOn, tabTitleOf } from "./hook-tab-status.js";
 import { logPrompt, logReply, logStart } from "./hook-turn-log.js";
@@ -316,8 +317,8 @@ async function helperGateOf(runtime, payload) {
  * the session is: `$TEAMRIG_SESSION`, else the area it read its inbox as or was bound to, so a tab that
  * set the team up keeps its identity across a compact or resume; after a refresh or a compaction its live
  * tasks; whether it runs on its configured model and effort; its verifying tasks; and where the team sits
- * in a tree of teams, read from every team config of the kit home. It also marks a /clear or a compaction in the
- * session's turn log and prunes the log's old hours (hook-turn-log.ts).
+ * in a tree of teams, read from every team config of the kit home. It records the Claude Code process the session
+ * started in, marks a /clear or a compaction in the session's turn log and prunes the log's old hours (hook-turn-log.ts).
  */
 async function teamPartsOf(runtime, kit, config, payload) {
     const title = await readTitle(runtime, payload);
@@ -337,6 +338,7 @@ async function teamPartsOf(runtime, kit, config, payload) {
         await logStart(runtime, { config, paths: kit.paths, id }, payload).catch(() => undefined);
     }
     return {
+        recordNote: id === undefined || claudeSession === null ? undefined : await recordSessionStart(runtime, kit, id, claudeSession),
         teamRules: text === undefined ? undefined : { path: kit.paths.teamRules, text },
         renames,
         titleNote,
@@ -625,6 +627,7 @@ export async function sessionStart(args, runtime) {
     const parts = kit.load.status === 'loaded'
         ? await teamPartsOf(runtime, kit, kit.load.config, payload)
         : {
+            recordNote: undefined,
             teamRules: undefined,
             renames: [],
             titleNote: undefined,
@@ -644,6 +647,6 @@ export async function sessionStart(args, runtime) {
         now: new Date(runtime.clock.now()),
         command: KIT_NAME,
     });
-    runtime.out.stdout(sessionStartOutput(context, [parts.modelNote, requirementsNote]));
+    runtime.out.stdout(sessionStartOutput(context, [parts.modelNote, parts.recordNote, requirementsNote]));
     return EXIT.ok;
 }
