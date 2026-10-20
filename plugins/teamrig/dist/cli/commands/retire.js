@@ -50,11 +50,12 @@ async function requestOf(args, runtime, kit, roster, register, by) {
 }
 /** One line on what the retire does. */
 function describeRetire(plan, roster) {
-    const { retire, handOver, hired } = plan;
+    const { retire, handOver, hired, regrouped } = plan;
     const tasks = handOver.length === 0 ? '' : `; its open task(s) ${handOver.join(', ')} go to ${retire.heir ?? ''}`;
+    const members = regrouped.members.length === 0 ? '' : `; the session(s) it led, ${regrouped.members.join(', ')}, are now led by ${regrouped.to}`;
     const handover = retire.handover === undefined ? `no handover: ${retire.noHandover ?? ''}` : `handover ${retire.handover}`;
     const member = hired ? 'hired' : 'set up with the team';
-    return `${retire.session} (name ${roster.nameOf(retire.session) ?? retire.session}, ${member}): ${retire.reason}${tasks}; ${handover}`;
+    return `${retire.session} (name ${roster.nameOf(retire.session) ?? retire.session}, ${member}): ${retire.reason}${tasks}${members}; ${handover}`;
 }
 /** Hands the open tasks to the heir and tells it in one inbox line; a line that cannot be posted is named, never thrown. */
 async function handOver(runtime, kit, register, plan, secrets) {

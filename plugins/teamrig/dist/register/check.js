@@ -119,9 +119,10 @@ export function formatFlag(flag, team, tree) {
  * lead and the owner), as a line from an older teamrig reads: a peer's work is a task, waited on by its id, which
  * clears by itself once that task finishes. Apart from {@link checkTasks}, whose register config does not name the lead.
  */
-export function peerWaitFlags(tasks, lead, ownerSource) {
+export function peerWaitFlags(tasks, tree, ownerSource) {
     return [...tasks].flatMap((task) => {
-        const peer = task.waits.find((reason) => isPeerWait(reason, lead, ownerSource));
+        const approvers = tree.approversOf(task.owner);
+        const peer = task.waits.find((reason) => isPeerWait(reason, approvers, ownerSource));
         return peer === undefined
             ? []
             : [{ kind: 'PEER-WAIT', task, detail: `${waitSpelling(peer)} is a peer's work: wait on it by its task (set ${task.id} --status ${task.status} --ask ${peer.who} --text "<the work>")` }];

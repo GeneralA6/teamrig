@@ -54,14 +54,14 @@ export function allowedPushNote(protectedBranches) {
 export function clearedPushNote(clearance, protectedBranches) {
     const why = clearance.kind === 'lead'
         ? `the lead (${clearance.lead}) pushes unasked`
-        : `${clearance.lead} approved ${clearance.task}; set its next status once pushed, as the approval covers this push only`;
+        : `${clearance.by} approved ${clearance.task}; set its next status once pushed, as the approval covers this push only`;
     return `teamrig let this push to a protected branch (${protectedBranches.join(', ')}) through: ${why} [pushGuard.pushToProtected: lead].`;
 }
 /** Why `pushToProtected: lead` refuses a normal push to a protected branch, and how to ask the lead for it, never the human. */
 export function unclearedPushReason(clearance, protectedBranches) {
-    return (`This push to a protected branch (${protectedBranches.join(', ')}) needs the lead's approval, not the human's: ${clearance.why}. ` +
-        `Ask on the register: \`teamrig set <task> --status waiting --waits approval:${clearance.lead} --note "<branch, what it lands, its tests>"\`, ` +
-        `take your next task, and push once ${clearance.lead} approves it (\`teamrig approve\`). [pushGuard.pushToProtected]`);
+    return (`This push to a protected branch (${protectedBranches.join(', ')}) needs a lead's approval, not the human's: ${clearance.why}. ` +
+        `Ask on the register: \`teamrig set <task> --status waiting --waits approval:${clearance.approver} --note "<branch, what it lands, its tests>"\`, ` +
+        `take your next task, and push once ${clearance.approver} approves it (\`teamrig approve\`). [pushGuard.pushToProtected]`);
 }
 /** Under `pushToProtected: lead`: the note when the push is cleared, else a refusal saying how to ask, whatever `hookAsks` says. */
 function leadPushOutput(clearance, listing, env) {
