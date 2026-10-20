@@ -28,7 +28,8 @@ function visitScript(script, dialect, location, depth, runner, runs, outlet) {
         return;
     }
     const parsed = parseShell(script.text, dialect);
-    const commands = dialect === 'bash' ? resolveLiteralVariables(parsed) : parsed.commands;
+    // The line's own shell has the user's HOME; a script it starts may be handed another (`HOME=x bash -c`).
+    const commands = dialect === 'bash' ? resolveLiteralVariables(parsed, depth === 0 ? location.home : undefined) : parsed.commands;
     let piped;
     /** Per nesting depth: the pipe the last command read at that depth sends its output into, if it pipes. */
     const pipes = new Map();
