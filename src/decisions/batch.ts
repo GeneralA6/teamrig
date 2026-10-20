@@ -1,6 +1,6 @@
-import { formatWeekdayMinute } from '../budget/format.ts';
 import type { DecisionsConfig } from '../config/types.ts';
 import { MS_PER_DAY } from '../core/time.ts';
+import type { TimeZone } from '../core/zone.ts';
 import { waitsOnOwner } from '../meeting/agenda.ts';
 import type { Task } from '../register/fold.ts';
 import type { TaskTree } from '../register/tree.ts';
@@ -108,19 +108,19 @@ function triggerOf(input: BatchInput, pending: readonly Task[], overdue: readonl
   return missed ? { kind: 'time', at: last } : undefined;
 }
 
-/** Why the batch is due, for one line: `T5 is due Tue 01-08 23:59 UTC, before the next batch`. */
-export function triggerText(trigger: BatchTrigger): string {
+/** Why the batch is due, for one line, its times on `zone`'s clock: `T5 is due Tue 01-08 23:59 UTC, before the next batch`. */
+export function triggerText(trigger: BatchTrigger, zone: TimeZone): string {
   switch (trigger.kind) {
     case 'deadline':
-      return `${trigger.task.id} is due ${formatWeekdayMinute(trigger.due)}, before the next batch`;
+      return `${trigger.task.id} is due ${zone.weekdayMinute(new Date(trigger.due))}, before the next batch`;
     case 'count':
       return `${trigger.pending} not yet asked, decisions.batchAt is ${trigger.batchAt}`;
     case 'time':
-      return `the ${formatWeekdayMinute(trigger.at)} batch time passed`;
+      return `the ${zone.weekdayMinute(new Date(trigger.at))} batch time passed`;
   }
 }
 
-/** When the next batch is: `the next batch Tue 01-08 13:03 UTC`, or the daily meeting with no batch time set. */
-export function nextBatchText(batch: Pick<DecisionBatch, 'nextAt'>): string {
-  return batch.nextAt === undefined ? 'the next batch at the daily meeting' : `the next batch ${formatWeekdayMinute(batch.nextAt)}`;
+/** When the next batch is, on `zone`'s clock: `the next batch Tue 01-08 13:03 UTC`, or the daily meeting with no batch time set. */
+export function nextBatchText(batch: Pick<DecisionBatch, 'nextAt'>, zone: TimeZone): string {
+  return batch.nextAt === undefined ? 'the next batch at the daily meeting' : `the next batch ${zone.weekdayMinute(new Date(batch.nextAt))}`;
 }

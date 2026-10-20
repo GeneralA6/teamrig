@@ -1,4 +1,5 @@
 import { KIT_NAME } from '../core/home.ts';
+import type { TimeZone } from '../core/zone.ts';
 import type { DecisionBatch } from '../decisions/batch.ts';
 import { checkDecisionLines } from '../decisions/lines.ts';
 import { formatHireFlag, type HireFlag } from '../hiring/due.ts';
@@ -60,6 +61,8 @@ export interface CheckReport {
 export interface LeadDecisions {
   readonly lead: string;
   readonly batch: DecisionBatch;
+  /** The team's clock, which the batch times print on. */
+  readonly zone: TimeZone;
 }
 
 /**
@@ -175,7 +178,7 @@ function hireLines({ hires }: CheckReport, indent: string): string[] {
 
 /** The lead's `DECISIONS` line while a batch of the owner's decisions is due; nothing otherwise. */
 function decisionLines({ decisions }: CheckReport): string[] {
-  return decisions === undefined ? [] : checkDecisionLines(decisions.batch, KIT_NAME, decisions.lead);
+  return decisions === undefined ? [] : checkDecisionLines(decisions.batch, KIT_NAME, decisions.lead, decisions.zone);
 }
 
 /** Each register's `CHECK` line and flags, then the hire flags, the lead's due batch of decisions, then the skill flags: every flag, every field. */

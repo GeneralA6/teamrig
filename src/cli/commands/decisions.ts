@@ -1,7 +1,7 @@
-import { formatWeekdayMinute } from '../../budget/format.ts';
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { KIT_NAME } from '../../core/home.ts';
+import type { TimeZone } from '../../core/zone.ts';
 import { nextBatchText } from '../../decisions/batch.ts';
 import { batchLines } from '../../decisions/lines.ts';
 import { AskedStore } from '../../decisions/store.ts';
@@ -9,7 +9,7 @@ import { teamDecisions, type TeamDecisions } from '../../decisions/team.ts';
 import type { Task } from '../../register/fold.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
-import { openTeamKit, requireConfig, rosterOf, sessionIdOf, type Access, type Kit } from '../kit.ts';
+import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone, type Access, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { ownRegister } from './register.ts';
 
@@ -27,6 +27,8 @@ interface DecisionsKit extends TeamDecisions {
   readonly lead: string;
   readonly tasks: ReadonlyMap<string, Task>;
   readonly now: number;
+  /** The team's clock, which the batch times print on. */
+  readonly zone: TimeZone;
 }
 
 /** The caller's team and its batch now, judged on the team's own register. */
@@ -39,14 +41,15 @@ async function decisionsKit(args: ParsedArgs, runtime: CliRuntime, access: Acces
   const { snapshot } = (await ownRegister(runtime)).own;
   const tasks = snapshot.state.tasks;
   const now = runtime.clock.now();
-  const decided = await teamDecisions(runtime.files, kit.paths, config, tasks, now);
-  return { kit, config, roster, lead, tasks, now, ...decided };
+  const zone = teamZone(config, runtime);
+  const decided = await teamDecisions(runtime.files, kit.paths, config, tasks, now, zone);
+  return { kit, config, roster, lead, tasks, now, zone, ...decided };
 }
 
 /** `decisions`: the batch the lead asks the owner next, and whether it is due now. */
 export async function decisions(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const dk = await decisionsKit(args, runtime, 'read');
-  const lines = batchLines({ batch: dk.batch, tree: dk.tree, byId: dk.tasks, ownerMarker: dk.config.register.ownerSource, command: KIT_NAME, lead: dk.lead });
+  const lines = batchLines({ batch: dk.batch, tree: dk.tree, byId: dk.tasks, ownerMarker: dk.config.register.ownerSource, command: KIT_NAME, lead: dk.lead, zone: dk.zone });
   lines.forEach((line) => runtime.out.stdout(line));
   return EXIT.ok;
 }
@@ -64,6 +67,6 @@ export async function decisionsAsked(args: ParsedArgs, runtime: CliRuntime): Pro
     return EXIT.ok;
   }
   await new AskedStore(runtime.files, dk.kit.paths.decisionsAsked).write({ askedAt: new Date(dk.now).toISOString(), by: dk.lead, ids });
-  runtime.out.stdout(`ASKED ${ids.length} decision(s) ${formatWeekdayMinute(dk.now)}: ${ids.join(', ')}; ${nextBatchText(dk.batch)} holds the waits set since and the ones past due`);
+  runtime.out.stdout(`ASKED ${ids.length} decision(s) ${dk.zone.weekdayMinute(new Date(dk.now))}: ${ids.join(', ')}; ${nextBatchText(dk.batch, dk.zone)} holds the waits set since and the ones past due`);
   return EXIT.ok;
 }

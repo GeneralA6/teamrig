@@ -63,6 +63,18 @@ describe('runCli: the owner decisions the lead asks in batches', () => {
     assert.deepEqual(await decisionLines(kit, 'lead'), ['DECISIONS batch due (T1 is due Tue 01-08 12:00 UTC, before the next batch): 1 to ask, 0 past due; teamrig decisions --session lead']);
   });
 
+  it("reads and prints every time on the team's clock", async () => {
+    const kit = new CliHarness({ ...BATCHED, timeZone: 'Asia/Jerusalem' });
+    assert.deepEqual(await ownerWait(kit, 'Pick the pricing tier', '--due', '2030-01-08 14:00'), [
+      `${WAIT_LINE} | AT ONCE, due Tue 01-08 14:00 IST before the next batch`,
+      "NOTE T1 is due before the owner's next batch: message app-lead too, as an inbox line wakes no one",
+    ]);
+    assert.deepEqual(await decisionLines(kit, 'lead'), ['DECISIONS batch due (T1 is due Tue 01-08 14:00 IST, before the next batch): 1 to ask, 0 past due; teamrig decisions --session lead']);
+    assert.deepEqual((await kit.run(['decisions', 'asked', '--session', 'lead'])).stdout, [
+      'ASKED 1 decision(s) Tue 01-08 12:00 IST: T1; the next batch Tue 01-08 15:03 IST holds the waits set since and the ones past due',
+    ]);
+  });
+
   it('counts a meeting start as a batch asked, and records nothing with no wait to ask', async () => {
     const kit = new CliHarness(BATCHED);
     await ownerWait(kit, 'Pick the pricing tier');
