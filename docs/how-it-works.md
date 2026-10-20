@@ -255,6 +255,12 @@ stateDiagram-v2
   the owner sets the next status. A task not started that needs another first is not waiting: it stays `open`,
   planned after it (`teamrig update T3 --after T2`), and its line shows `after T2`. A `blocked` written by an
   older teamrig reads as `waiting` with no reasons.
+- A wait on the owner reaches the owner through the lead, in batches, so the owner is not interrupted once per
+  wait. A wait counts as asked once the lead records a batch asked (`teamrig decisions asked`, kept in
+  `state/decisions-asked.json`) or starts the daily meeting after it was set. A batch is due when a wait not yet
+  asked is due before the next batch time (asked at once), `decisions.batchAt` waits are not yet asked, or a
+  `decisions.batchTimesUtc` time passed; the lead's `start` and `check` say so in one line, and `teamrig
+  decisions` prints the batch.
 - A task's effective due is the earliest of its own due date and the effective dues of the active tasks that need
   it (planned after it or waiting on it), so the work a dated task needs inherits its date: a row shows it as
   `due 10-17 (from T9)`, and lists, `plan`, the meeting's late tasks and `check`'s date flags go by it. A row
@@ -373,8 +379,9 @@ sequenceDiagram
 
 - The inbox file is never edited: `inbox read` adds a mark to `state/inbox-marks.jsonl`.
 - The prompt hook shows at most 5 new lines and 1,500 characters at a time, cuts a longer line, and says how many
-  wait. It records what it showed each Claude Code session in `state/inbox-shown.jsonl`; that is not a read. Its
-  records over 7 days old, and those of the hooks' hints in `state/bind-hints.jsonl`, move to `state/archive/`.
+  wait. It records what it showed each Claude Code session in `state/inbox-shown.jsonl`; that is not a read, so
+  `inbox status` counts those lines unread and says how many of them a prompt showed. Its records over 7 days old, and
+  those of the hooks' hints in `state/bind-hints.jsonl`, move to `state/archive/`.
 - You may trim an inbox file by hand; the read mark notices, and if the last line read is gone, the whole file
   counts as unread.
 - A note is one line; an empty line, several lines or a line that looks like a secret is refused. A secret here is

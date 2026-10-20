@@ -136,7 +136,8 @@ refused to every session and helper, and to the lead outside the owner's daily m
 waiting until every reason has cleared; `check` flags it `READY` once its tasks are done and its time has passed,
 and a decision or an approval clears when you set the next status (`set --status in-progress`). A new decision or
 approval wait posts the lead one inbox line; a decision for the human goes to the lead with the options, numbers
-and your recommendation. A budget hold is a time (`time:<date>`), never an approval.
+and your recommendation. The lead asks the human in batches; when the line says `AT ONCE` (due before the next
+batch), message the lead too. A budget hold is a time (`time:<date>`), never an approval.
 
 Work you need from another session is a task, never its approval. Ask for it and wait on it in one step:
 
@@ -250,6 +251,8 @@ With sub-teams, run `teamrig check --tree --session lead` too. Then act on each 
 - `READY`: a waiting task can go on: one inbox line to its owner, if it has not set the next status.
 - `NO-CARD`: a task waits on the owner with no card: one inbox line to its owner to set it waiting again with the
   card, before the meeting reads it.
+- `DECISIONS batch due`: ask the human the batch `teamrig decisions --session lead` prints, together, each card as it
+  stands; record each answer (`update --note "owner decided: ..."`), then `teamrig decisions asked --session lead`.
 - `PEER-WAIT`: a task waits on a peer's approval or decision: one inbox line to its owner to wait on that work by
   its task (`set --status waiting --ask <session> --text "<the work>"`).
 - `VERIFY-OVERDUE`: ask the owner whether the proof came: `done` with it, `in-progress` if it failed, or a new date.
@@ -320,7 +323,9 @@ each decision as a card the human can decide from alone, record each answer in t
 teamrig meeting end --session lead
 ```
 
-Each session gets one inbox line saying the meeting ended, with the decisions on its tasks.
+Each session gets one inbox line saying the meeting ended, with the decisions on its tasks. The start counts as
+asking the human the decisions it lists: `teamrig decisions` then holds only the waits set since and the asked ones
+past due.
 
 ## Create a team and start its sessions
 

@@ -600,7 +600,8 @@ While you have `verifying` tasks, a last line names them, oldest first, with the
 
 ### teamrig inbox status
 
-Prints how many unread lines each inbox has, without marking anything read.
+Prints how many unread lines each inbox has, without marking anything read. Lines the prompt hook already showed
+the session stay unread until `inbox read`; since 0.112.0 the line says how many of them it showed.
 
 Flags:
 
@@ -616,6 +617,7 @@ Output:
 
 ```text
 web 1 unread since 10-15 08:58 (never marked read)
+api 3 unread since 10-15 07:40, 2 of them shown at a prompt (read to line 21 of 24 at 10-15 07:10)
 ```
 
 ### teamrig inbox add
@@ -1109,7 +1111,8 @@ then the `cold-send` hook holds every message to the lead but one starting `CRIT
 
 Each list shows 10 rows at most, then the command that lists them all. A meeting left open stops holding messages
 4 hours after it started. Started again while open, it tells no one again and prints the agenda. Only the lead runs
-it.
+it. A start counts as asking the owner the decisions it lists: `teamrig decisions` then holds only the waits set
+since and the asked ones past due (since 0.112.0).
 
 Flags:
 
@@ -1195,6 +1198,74 @@ RECORDED 1 decision(s), each told to its task's owner
 ```
 
 With nothing recorded it says so: a decision the register lacks reaches no one.
+
+### teamrig decisions
+
+The owner's decisions the lead asks in batches (since 0.112.0), so the owner is not interrupted once per wait: the
+tasks waiting on the owner's decision or approval not yet asked, then the asked ones past their due date, each
+with its card facts as the meeting agenda prints them. A wait counts as asked once the lead runs `decisions asked`
+or starts the daily meeting after it was set. The head line says whether a batch is due now and why, else when
+the next is. A batch is due when:
+
+- a wait not yet asked is due before the next batch time (or within a day, with none set): ask it at once;
+- `decisions.batchAt` waits (5) are not yet asked (`0` turns the count off);
+- a time in `decisions.batchTimesUtc` passed with a wait set before it not yet asked, or one asked before it past
+  due. None are set by default: the daily meeting is the batch.
+
+The lead's `start` and `check` print one `DECISIONS batch due (<why>)` line while a batch is due, and nothing
+otherwise; other sessions get no line. A new owner wait's inbox line to the lead ends with when the owner hears of
+it: `AT ONCE, due <date> before the next batch`, `BATCH DUE: <why>` or `asked in the next batch <date>`. On an
+`AT ONCE` one, the session setting it is told to message the lead too, as an inbox line wakes no one. Anyone may
+run it; it changes nothing.
+
+Flags:
+
+- `--session <area>`: who you are.
+
+Example:
+
+```sh
+teamrig decisions --session lead
+```
+
+Output:
+
+```text
+DECISIONS 1 to ask owner, 0 asked and past due; BATCH DUE: the Mon 10-19 13:03 UTC batch time passed
+NOT YET ASKED
+  T7 waiting, p1, owner web | Pick the pricing tier (waiting: decision owner)
+    what and why: Two tiers are built; the launch page needs one.
+    decide: Which tier the launch page shows
+      1. Basic at 9 dollars a month, 40 sign-ups in the trial
+      2. Pro at 29 dollars a month, 12 sign-ups
+    recommended: Basic, three times the sign-ups
+    with no answer: Basic ships on 10-21
+    waiting since 10-19 11:20: the numbers are in the card
+  Ask owner these together, each card as it stands, each figure explained; then teamrig decisions asked --session lead records the batch asked.
+  Record each answer in the same turn: teamrig update <id> --note "owner decided: <decision>" --session lead.
+```
+
+### teamrig decisions asked
+
+The lead records that it asked the owner the batch `decisions` prints: its waits not yet asked and its asked ones
+past due. The next batch then holds the waits set since and the ones past due. Ask first, then record; with
+nothing to ask it records nothing. Only the lead runs it.
+
+Flags:
+
+- `--session <area>`: who you are: the lead.
+
+Example:
+
+```sh
+teamrig decisions asked --session lead
+```
+
+Output:
+
+```text
+ASKED 1 decision(s) Mon 10-19 14:10 UTC: T7; the next batch Mon 10-19 19:03 UTC holds the waits set since and the ones past due
+```
 
 ### teamrig open
 

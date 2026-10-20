@@ -41,7 +41,8 @@ No more twelve-hour days steering agents by hand. With teamrig, your part takes 
 2. **The team works.** Each member works its own task list in priority order, and an idle member wakes by itself when
    urgent work is handed to it, and once each morning at the day start you set. Whatever is late or stuck goes to the
    lead, not to you.
-3. **Drop in when you like.** A few decisions may be waiting. Answer them and go: the team keeps working.
+3. **Drop in when you like.** A few decisions may be waiting: the lead brings them in batches, not one interruption
+   each, and one that cannot wait at once. Answer them and go: the team keeps working.
 
 ## Why it's different
 

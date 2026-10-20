@@ -58,6 +58,11 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       (one starting CRITICAL goes) and prints the agenda: the owner's decisions as card facts, the late
       tasks, what finished since the last meeting, the lead's inbox and the week's use and fit; agenda
       prints it again; end tells every session, with the decisions recorded on its tasks (update --note)
+  decisions | decisions asked [--session <id|name>]   the owner's decisions the lead asks in batches:
+      decisions prints the waits on the owner not yet asked and the asked ones past due, as card facts,
+      and whether a batch is due (a wait due before the next batch, decisions.batchAt not yet asked, or a
+      decisions.batchTimesUtc time passed) or when the next is; decisions asked (the lead's) records the
+      batch asked, as a meeting start does
   add --title "<one line>" --description "<what and why>" --priority p<n> [--ref <where it was asked>]
       [--owner <session>] [--source <session>|<owner source>] [--due <date>] [--goals a,b] [--week <date>]
       [--after T5,T6] [--size <pct>]

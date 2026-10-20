@@ -48,7 +48,9 @@ A peer's work is never a decision or an approval, so `approval:api` is refused: 
 and goals, its description naming T3), tells api, and sets T3 waiting on it, in one write; `--due` is then the
 asked task's due date. A budget hold is a time (`time:<date>`), never an approval. A new decision or approval wait
 posts the lead one inbox line (`T3 waits on your approval: <the card's question, else the note>`; an owner wait too,
-since the lead keeps the owner's decision queue), unless the lead set it.
+since the lead keeps the owner's decision queue), unless the lead set it. The lead asks the owner in batches
+(`teamrig decisions`), so an owner wait's line ends with when the owner hears of it: `AT ONCE` when it is due
+before the next batch (message the lead too: an inbox line wakes no one), else in the batch due now or the next.
 
 A wait on the owner's decision or approval needs a card, so the owner decides from it alone, never from a bare
 task number [register.requireDecisionCard]: `--question` (what is decided), `--options` (the choices with their
