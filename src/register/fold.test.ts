@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { TEST_CARD } from '../testing/card.ts';
 import type { DecisionCard } from './card.ts';
-import { EVENT_VERSION, type RegisterEvent, type TaskFields } from './events.ts';
+import { EVENT_VERSION, type ApprovalVerdict, type RegisterEvent, type TaskFields } from './events.ts';
 import { foldEvents, RegisterFold, type Task } from './fold.ts';
 import type { TaskStatus } from './model.ts';
 import type { WaitReason } from './waits.ts';
@@ -189,5 +189,30 @@ describe('foldEvents: the decision card', () => {
     assert.deepEqual(taskAfter([create(9), carded(10, TEST_CARD), carded(11, later)]).card, later);
     assert.equal(taskAfter([create(9), carded(10, TEST_CARD), status(11, 'in-progress')]).card, null);
     assert.equal(taskAfter([create(9), status(10, 'waiting', OWNER)]).card, null, 'a line from before cards has none');
+  });
+});
+
+function answered(hour: number, verdict: ApprovalVerdict, note = 'tests green'): RegisterEvent {
+  return { v: EVENT_VERSION, type: 'update', id: 'T1', at: at(hour), by: 'lead', changes: {}, note, verdict };
+}
+
+describe("foldEvents: the lead's answer to an approval (T684)", () => {
+  const asked = [create(9), status(10, 'waiting', [{ kind: 'approval', who: 'lead' }])];
+
+  it('holds the answer with who gave it, when and its note, and keeps the note the task shows', () => {
+    const task = taskAfter([...asked, answered(11, 'approved')]);
+    assert.deepEqual(task.answer, { verdict: 'approved', by: 'lead', at: at(11), note: 'tests green' });
+    assert.equal(task.note, 'n');
+  });
+
+  it('takes the latest answer and keeps it through an update without one', () => {
+    const task = taskAfter([...asked, answered(11, 'declined', 'no tests'), answered(12, 'approved'), update(13, { priority: 1 })]);
+    assert.deepEqual([task.answer?.verdict, task.answer?.at], ['approved', at(12)]);
+  });
+
+  it('clears it on the next status change, so an approval covers only what was asked', () => {
+    assert.equal(taskAfter([create(9)]).answer, null);
+    assert.equal(taskAfter([...asked, answered(11, 'approved'), status(12, 'verifying')]).answer, null);
+    assert.equal(taskAfter([...asked, answered(11, 'approved'), status(12, 'waiting', [{ kind: 'approval', who: 'lead' }])]).answer, null);
   });
 });

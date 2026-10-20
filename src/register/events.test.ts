@@ -202,3 +202,21 @@ describe('parseEvent', () => {
     }
   });
 });
+
+describe('parseEvent: the answer to an approval (T684)', () => {
+  it("reads an update's verdict, and an update without one as it was", () => {
+    const answered = parse({ ...BASE, type: 'update', changes: {}, note: 'tests green', verdict: 'approved' }, 2);
+    assert.deepEqual(answered, { kind: 'event', event: { ...BASE, v: 2, type: 'update', changes: {}, note: 'tests green', verdict: 'approved' } });
+    const plain = parse({ ...BASE, type: 'update', changes: {}, note: 'context' }, 2);
+    assert.ok(plain.kind === 'event' && !('verdict' in plain.event));
+  });
+
+  it('cannot read a verdict it does not know', () => {
+    assert.match(reason(parse({ ...BASE, type: 'update', changes: {}, note: 'n', verdict: 'maybe' }, 2)), /unknown approval verdict "maybe"/);
+  });
+
+  it('writes the verdict as it is', () => {
+    const event: RegisterEvent = { ...BASE, v: 2, type: 'update', changes: {}, note: 'n', verdict: 'declined' };
+    assert.deepEqual(eventRecord(event), event);
+  });
+});

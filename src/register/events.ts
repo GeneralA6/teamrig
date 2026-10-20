@@ -13,9 +13,10 @@ import { parseWaits, type WaitReason } from './waits.ts';
  * `waits`, which replaced `blocked`: an older reader ignores the new fields and skips a `waiting` line as
  * a newer teamrig's, and a `blocked` line reads here as `waiting` with no reasons. It also gained a
  * `verifying` status's `proof`, a task's `description` (0.44.0) and its `size` (0.47.0), and a `waiting` status's
- * decision `card` (0.79.0), and the same `waits` and `card` on a `verifying` line for what its proof waits for
- * (0.109.0), which an older reader ignores: each reads there as none, and an older teamrig's
- * `compact` drops it from the snapshot it rewrites (the archive keeps the lines as written).
+ * decision `card` (0.79.0), the same `waits` and `card` on a `verifying` line for what its proof waits for
+ * (0.109.0), and an update's approval `verdict` (0.112.0), which an older reader ignores: each reads there as none
+ * (an answered update as a note alone), and an older teamrig's `compact` drops it from the snapshot it rewrites (the
+ * archive keeps the lines as written).
  * Parsing checks the FORMAT only (any positive priority, any goal string): team policy is applied
  * on write, so changing the config never erases history.
  */
@@ -89,10 +90,21 @@ export interface StatusEvent extends EventBase {
   readonly followups?: readonly string[];
 }
 
+/** The lead's answer to the approval a waiting task asks of it (T684): given, or declined with the note saying why. */
+export const APPROVAL_VERDICTS = ['approved', 'declined'] as const;
+
+export type ApprovalVerdict = (typeof APPROVAL_VERDICTS)[number];
+
+export function isApprovalVerdict(value: unknown): value is ApprovalVerdict {
+  return APPROVAL_VERDICTS.some((verdict) => verdict === value);
+}
+
 export interface UpdateEvent extends EventBase {
   readonly type: 'update';
   readonly changes: Partial<TaskFields>;
   readonly note: string | null;
+  /** The lead's answer to the task's approval wait, its note saying what it checked or why not; only `approve` writes it. */
+  readonly verdict?: ApprovalVerdict;
 }
 
 export type RegisterEvent = CreateEvent | StatusEvent | UpdateEvent;
@@ -195,7 +207,11 @@ export function parseEvent(line: JsonlRecord): EventParse {
       if (problem !== undefined) {
         return unreadable(problem);
       }
-      return { kind: 'event', event: { ...base, type: 'update', changes, note: textOrNull(record, 'note') } };
+      const verdict = record['verdict'];
+      if (verdict !== undefined && !isApprovalVerdict(verdict)) {
+        return unreadable(`unknown approval verdict ${JSON.stringify(verdict)}`);
+      }
+      return { kind: 'event', event: { ...base, type: 'update', changes, note: textOrNull(record, 'note'), ...(verdict === undefined ? {} : { verdict }) } };
     }
     default:
       return unreadable(`unknown event type ${JSON.stringify(record['type'])}`);

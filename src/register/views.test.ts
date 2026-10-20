@@ -4,6 +4,7 @@ import { TEST_CARD } from '../testing/card.ts';
 import { testTask } from '../testing/task.ts';
 import type { RegisterEvent } from './events.ts';
 import {
+  approvalNotice,
   assignedNotice,
   byPlanOrder,
   dueTime,
@@ -462,5 +463,29 @@ describe("the views in the team's zone", () => {
   it('prints an event minute there, zone-marked', () => {
     const event: RegisterEvent = { v: 1, type: 'update', id: 'T1', at: AT, by: 'bravo', changes: {}, note: 'context' };
     assert.match(formatEvent(event, JERUSALEM), /^2030-01-07 11:00 IST bravo update /);
+  });
+});
+
+describe('the answer to an approval (T684)', () => {
+  const answer = { verdict: 'approved' as const, by: 'lead', at: '2030-01-07T14:00:00.000Z', note: 'tests green, small commits' };
+
+  it("tells the task's owner to push or merge on an approval, and to fix and ask again on a decline, each on one line", () => {
+    assert.equal(
+      approvalNotice(testTask({ id: 'T2' }), { ...answer, note: 'tests  green,\nsmall commits' }),
+      'lead approved T2: tests green, small commits; push or merge it now, then set its next status',
+    );
+    assert.equal(
+      approvalNotice(testTask({ id: 'T2' }), { ...answer, verdict: 'declined', note: 'no tests' }),
+      'lead declined T2: no tests; set it in-progress, fix that, then ask again (--status waiting --waits approval:lead)',
+    );
+  });
+
+  it('shows the answer on the waiting row and in show, and the verdict in the history', () => {
+    const task = testTask({ status: 'waiting', waits: [{ kind: 'approval', who: 'lead' }], note: 'branch t1', answer });
+    assert.match(formatTask(task, undefined, TREE), /\(waiting: approval lead · lead approved; branch t1\)/);
+    const event: RegisterEvent = { v: 2, type: 'update', id: 'T1', at: answer.at, by: 'lead', changes: {}, note: 'tests green', verdict: 'approved' };
+    const detail = formatTaskDetail(task, [event], TREE);
+    assert.match(detail, /^answer: lead approved at 2030-01-07 14:00 UTC: tests green, small commits$/m);
+    assert.match(detail, / lead update verdict=approved note="tests green"$/m);
   });
 });

@@ -2,7 +2,7 @@ import { parseDeadline, showStored, storedText } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { cardLines } from './card.ts';
 import type { RegisterEvent } from './events.ts';
-import type { Task } from './fold.ts';
+import type { ApprovalAnswer, Task } from './fold.ts';
 import { ACTIVE_STATUSES, GITHUB_SOURCE, priorityText, type TaskStatus } from './model.ts';
 import { planOrder, type TaskTree, type WaitingOnYou } from './tree.ts';
 import { waitsText, weekdayText, type PersonWait } from './waits.ts';
@@ -129,7 +129,7 @@ export function formatShortTask(task: Task, titleChars: number, team: string | u
 
 /** {@link formatShortTask} without what needs the task: a node of the tree and the start of a waiting-on-you row. */
 function shortRow(task: Task, titleChars: number, team: string | undefined, tree: TaskTree): string {
-  const waits = task.waits.length > 0 ? ` (waiting: ${waitsText(task.waits, tree.zone, tree.context)})` : '';
+  const waits = task.waits.length > 0 ? ` (waiting: ${waitingText(task, tree)})` : '';
   const issue = issueOf(task);
   const head = issue === undefined ? rowHead(task, team, tree) : [...rowHead(task, team, tree), `from ${issue}`];
   return `${head.join(', ')} | ${cut(task.title, titleChars)}${waits}`;
@@ -182,12 +182,18 @@ export function formatTask(task: Task, team: string | undefined, tree: TaskTree)
  */
 function statusNote(task: Task, tree: TaskTree): string {
   if (task.status === 'waiting') {
-    const parts = [task.waits.length > 0 ? waitsText(task.waits, tree.zone, tree.context) : null, task.note].filter((part) => part !== null);
+    const parts = [task.waits.length > 0 ? waitingText(task, tree) : null, task.note].filter((part) => part !== null);
     return parts.length === 0 ? '' : ` (waiting: ${parts.join('; ')})`;
   }
   const proof = task.status === 'verifying' ? proofOf(task) : null;
   const waits = task.waits.length > 0 ? `; waiting: ${waitsText(task.waits, tree.zone, tree.context)}` : '';
   return proof === null ? '' : ` (proof: ${proof}${waits})`;
+}
+
+/** A waiting task's reasons, then the lead's answer to its approval once given (`approval lead · lead approved`), so no one asks twice. */
+function waitingText(task: Task, tree: TaskTree): string {
+  const reasons = waitsText(task.waits, tree.zone, tree.context);
+  return task.answer === null ? reasons : `${reasons} · ${task.answer.by} ${task.answer.verdict}`;
 }
 
 /** How much of a description an update line in `show`'s history quotes. */
@@ -249,7 +255,8 @@ export function formatEvent(event: RegisterEvent, zone: TimeZone): string {
         .join(' ');
     case 'update': {
       const fields = Object.entries(event.changes).map(([name, value]) => `${name}=${changeText(name, value, zone)}`);
-      return `${[head, ...fields].join(' ')}${note}`;
+      const verdict = event.verdict === undefined ? [] : [`verdict=${event.verdict}`];
+      return `${[head, ...fields, ...verdict].join(' ')}${note}`;
     }
   }
 }
@@ -280,6 +287,9 @@ export function formatTaskDetail(task: Task, events: readonly RegisterEvent[], t
   }
   if (task.card !== null) {
     lines.push('card:', ...cardLines(task.card, '  '));
+  }
+  if (task.answer !== null) {
+    lines.push(`answer: ${task.answer.by} ${task.answer.verdict} at ${tree.zone.minute(new Date(task.answer.at))}${task.answer.note === null ? '' : `: ${task.answer.note}`}`);
   }
   if (task.proof !== null) {
     lines.push(`proof: ${task.proof}`);
@@ -376,6 +386,17 @@ export function formatWaitingOnYou(entry: WaitingOnYou, titleChars: number, tree
 export function assignedNotice(task: Pick<Task, 'id' | 'priority' | 'due' | 'title'>, zone: TimeZone): string {
   const due = task.due === null ? '' : `, due ${storedText(task.due, zone)}`;
   return `${task.id} is yours (${priorityText(task.priority)}${due}): ${task.title}`;
+}
+
+/**
+ * The inbox line telling a task's owner the lead's answer to its approval wait (T684): an approval sends it to push or
+ * merge what it asked for; a decline sends it back to work, the note saying why, and it asks again when that is fixed.
+ */
+export function approvalNotice(task: Pick<Task, 'id'>, answer: ApprovalAnswer): string {
+  const note = answer.note === null ? '' : `: ${answer.note.replace(/\s+/g, ' ')}`;
+  return answer.verdict === 'approved'
+    ? `${answer.by} approved ${task.id}${note}; push or merge it now, then set its next status`
+    : `${answer.by} declined ${task.id}${note}; set it in-progress, fix that, then ask again (--status waiting --waits approval:${answer.by})`;
 }
 
 /**

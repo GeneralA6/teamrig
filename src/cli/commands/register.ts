@@ -13,7 +13,7 @@ import { scaleOutFlags } from '../../hiring/scale-out.ts';
 import { postLine } from '../../inbox/inbox.ts';
 import { readSnapshots, weekUseOf } from '../../budget/snapshot.ts';
 import { byFlagKind, checkTasks, currentWeekOf, peerWaitFlags } from '../../register/check.ts';
-import type { TaskFields } from '../../register/events.ts';
+import type { ApprovalVerdict, TaskFields } from '../../register/events.ts';
 import { fitLines, leftOfWeek, overLimitFlag, weekFit, type WeekFit } from '../../register/fit.ts';
 import type { Task } from '../../register/fold.ts';
 import { renderPlan } from '../../register/plan.ts';
@@ -24,7 +24,7 @@ import type { RegisterSnapshot, RetiredTasks } from '../../register/snapshot.ts'
 import { readStopgapTags, stopgapFlags, stopgapTags } from '../../register/stopgap.ts';
 import { dueStartHolds, dueVerifyHold, heldStart, heldStartNotice, metStartNotice, startHolds, verifyQueue, type DueVerify } from '../../register/verify.ts';
 import { TaskTree } from '../../register/tree.ts';
-import { assignedNotice, formatTask, formatTaskDetail, formatTaskTree, formatVerifyRow, personWaitNotice, selectTasks, type ListFilter } from '../../register/views.ts';
+import { approvalNotice, assignedNotice, formatTask, formatTaskDetail, formatTaskTree, formatVerifyRow, personWaitNotice, selectTasks, type ListFilter } from '../../register/views.ts';
 import { isPeerWait, sameWait, type PersonWait } from '../../register/waits.ts';
 import { lintSkills } from '../../skills/lint.ts';
 import { SKILL_FILE, SkillDir } from '../../skills/store.ts';
@@ -369,6 +369,27 @@ export async function update(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   const verdict = await team.register.update(by, id, changeIds(team.roster, changes), args.flags.get('note'));
   const code = report(runtime, verdict, 'UPDATED', team);
   await tellNewOwner(runtime, team, by, verdict);
+  return code;
+}
+
+/**
+ * `approve <id> --note ".." [--decline]`: the lead's answer to a task waiting on its approval (T684); the task's owner
+ * gets one inbox line with the answer and the note, and pushes or merges (or fixes what the note names) at once.
+ */
+export async function approve(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+  const id = taskIdOf(onePositional(args, 'id'));
+  const caller = callerOf(args.flags, runtime.env);
+  const team = await openTeam(runtime, 'write');
+  const by = sessionIdOf(team.roster, caller);
+  const verdict: ApprovalVerdict = args.switches.has('decline') ? 'declined' : 'approved';
+  const written = await team.register.approve(by, id, verdict, args.flags.get('note'));
+  const code = report(runtime, written, verdict.toUpperCase(), team);
+  if (written.ok) {
+    const { task } = written.value;
+    if (task.answer !== null && task.owner !== by) {
+      await tellLine(runtime, team, by, task.owner, approvalNotice(task, task.answer), `${task.owner} was not told of the answer on ${task.id}`);
+    }
+  }
   return code;
 }
 

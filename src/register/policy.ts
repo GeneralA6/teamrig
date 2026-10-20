@@ -5,7 +5,7 @@ import { SecretScanner } from '../core/secrets.ts';
 import { parseDeadline, parseUtcDay, parseUtcDeadline, showStored } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { CARD_FLAGS, cardProblem, cardTexts, OPTION_SEPARATOR, sameCard, type DecisionCard } from './card.ts';
-import { sizeProblem, type TaskFieldName, type TaskFields } from './events.ts';
+import { sizeProblem, type ApprovalVerdict, type TaskFieldName, type TaskFields } from './events.ts';
 import { taskNumber, type RegisterState, type Task } from './fold.ts';
 import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, priorityText, SESSION_NAME, WAIT_STATUSES, type TaskStatus } from './model.ts';
 import { loopFix, needPath, pathText } from './tree.ts';
@@ -136,6 +136,11 @@ export const WAITS_USAGE = 'decision:<who>, approval:<who>, task:T<id> or time:<
 export interface UpdateChange {
   readonly changes: Partial<TaskFields>;
   readonly note: string | null;
+}
+
+/** An answer to an approval wait: an update that changes no field, with the lead's verdict and its note. */
+export interface ApprovalChange extends UpdateChange {
+  readonly verdict: ApprovalVerdict;
 }
 
 function ok<T>(value: T): Verdict<T> {
@@ -446,6 +451,27 @@ export class RegisterPolicy {
     return this.config.sessions.includes(reason.who)
       ? `${reason.kind} ${reason.who}: decision and approval waits are for the lead (${lead}) and ${ownerSource}; wait on ${reason.who}'s work by its task: teamrig set ${task.id} --status ${status} --ask ${reason.who} --text "<the work you need>"`
       : `${reason.kind} ${reason.who}: ${reason.who} is neither the lead (${lead}) nor ${ownerSource}`;
+  }
+
+  /**
+   * The lead's answer to a task's approval wait (T684): only the lead answers, only a task waiting on its approval, and
+   * always with a note, which the task's owner reads: what it checked, or why it declines. An approval of the owner's
+   * stays the owner's: the lead never answers it.
+   */
+  approve(task: Task, caller: string, verdict: ApprovalVerdict, note: string | undefined): Verdict<ApprovalChange> {
+    const { lead } = this.config.roles;
+    if (caller !== lead) {
+      return refuse(`only the lead (${lead}) answers an approval`);
+    }
+    if (task.status !== 'waiting' || !task.waits.some((reason) => reason.kind === 'approval' && reason.who === lead)) {
+      return refuse(`${task.id} does not wait on the lead's approval (approval:${lead}); its owner asks with teamrig set ${task.id} --status waiting --waits approval:${lead}`);
+    }
+    const text = blankToNull(note);
+    if (text === null) {
+      return refuse(`an answer needs --note: what you checked, or why you decline`);
+    }
+    const problem = this.checkText('note', text);
+    return problem === undefined ? ok({ changes: {}, note: text, verdict }) : refuse(problem);
   }
 
   update(task: Task, caller: string, asked: Partial<TaskFields>, note: string | undefined, state: RegisterState): Verdict<UpdateChange> {
