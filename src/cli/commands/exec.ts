@@ -20,13 +20,15 @@ import {
   type Stamped,
 } from '../../exec/audit.ts';
 import { resolveProgram } from '../../exec/binding.ts';
-import { parseDraft, type CodeBinding } from '../../exec/request.ts';
+import { parseDraft, type CodeBinding, type ExecRequest } from '../../exec/request.ts';
 import { decideReview, RANDOM_NONCES, UnsignedReviews, type ReviewKit } from '../../exec/review.ts';
 import { baseEnvironment, environmentCredentials, Executor, type ExecResult } from '../../exec/runner.ts';
+import { postLine } from '../../inbox/inbox.ts';
 import { noPositionals, onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
 import { openTeamKit, requireConfig, rosterOf, sessionIdOf, type Access, type Kit } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
+import { inboxDepsOf } from './inbox.ts';
 
 /** What every exec command works on: the team's kit and config, its exec audit log, and the exec PATH. */
 interface ExecTeam {
@@ -162,7 +164,23 @@ export async function request(args: ParsedArgs, runtime: CliRuntime): Promise<Ex
   const { request: stored } = appendedEvent(line, 'request');
   const next = stored.dryRunArgv === null ? `a reviewer reads its preview (teamrig exec status ${stored.id})` : `teamrig exec dry-run ${stored.id}`;
   runtime.out.stdout(`REQUESTED ${stored.id}: ${stored.kind} on ${stored.target} for ${stored.task}; next: ${next}`);
+  await tellReviewer(runtime, team, stored);
   return EXIT.ok;
+}
+
+/** Who reviews a new request first (spec §7): the security reviewer, or the owner for security's own request or when none is set. */
+function firstReviewerOf(config: KitConfig, requester: string): string {
+  const security = config.roles.securityReviewer;
+  return security === undefined || security === requester ? config.register.ownerSource : security;
+}
+
+/** Posts the first reviewer one inbox line for a logged request; a line that cannot be posted warns, as the request stands. */
+async function tellReviewer(runtime: CliRuntime, team: ExecTeam, stored: ExecRequest): Promise<void> {
+  const reviewer = firstReviewerOf(team.config, stored.requester);
+  const text = `${stored.id} asks to run a ${stored.kind} on ${stored.target} for ${stored.task}: review it (teamrig exec status ${stored.id})`;
+  const { inboxes } = inboxDepsOf(runtime, team.kit.paths);
+  const problem = await postLine(inboxes, team.scanner, { to: reviewer, from: stored.requester, text, now: new Date(runtime.clock.now()) });
+  runtime.out.stderr(problem === undefined ? `NOTE ${reviewer} has an inbox line: ${text}` : `WARN ${stored.id} is logged, but ${reviewer} was not told: ${problem}`);
 }
 
 function executorOf(team: ExecTeam, runtime: CliRuntime): Executor {
