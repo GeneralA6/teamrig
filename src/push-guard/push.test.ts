@@ -483,6 +483,18 @@ describe('evaluatePushes: where a push hides', () => {
     ]);
   });
 
+  it("reads $HOME and a value's leading ~ as the home folder in the line's own shell, not in a script it starts", () => {
+    expectRows([
+      ['TR=~/x/bin/teamrig; $TR set T1 --note "push later"', 'allow'],
+      ['G=~/bin/git; $G push origin feat', 'allow'],
+      ['G=~/bin/git; $G push origin main', 'ask'],
+      ['$HOME/bin/git push -f origin main', 'deny'],
+      ['HOME=/h; $HOME/bin/git push origin main', 'ask'],
+      ["bash -c '$HOME/bin/git push origin feat'", 'ask', 'doubt'],
+      ["HOME=/h bash -c 'G=~/git; $G push origin feat'", 'ask', 'doubt'],
+    ]);
+  });
+
   it('keeps quoted text and heredoc bodies from hiding a binding', () => {
     expectRows([
       ["B=feat; echo '((x<<2))' \"<<EOF\"; git push origin $B", 'allow'],
