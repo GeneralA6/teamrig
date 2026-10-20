@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { nodeTranscriptSource } from "../budget/discover.js";
 import { nodeFiles } from "../core/files.js";
 import { nodeHostMemory } from "../coordinator/memory.js";
-import { nodeEvery, starterWatch } from "../coordinator/starter-watch.js";
+import { launchingShellOf, nodeEvery, starterWatch } from "../coordinator/starter-watch.js";
 import { nodeStepRunner } from "../coordinator/steps.js";
 import { realSleep, systemClock } from "../core/lock.js";
 import { NODE_PATH_PROBE } from "../core/path-probe.js";
@@ -44,7 +44,7 @@ process.exitCode = await runCli(process.argv.slice(2), {
     platform: process.platform,
     processes: nodeProcesses(),
     sessionProcesses,
-    starters: starterWatch(sessionProcesses, process.pid, nodeEvery),
+    starters: starterWatch(sessionProcesses, { pid: process.pid, shell: launchingShellOf(process.env, process.ppid) }, nodeEvery),
     shell: nodeShellRunner(),
     steps: nodeStepRunner(process.platform),
     memory: nodeHostMemory(process.platform),
