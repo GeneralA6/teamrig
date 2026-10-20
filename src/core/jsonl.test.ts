@@ -69,4 +69,11 @@ describe('writableObject', () => {
       (error: unknown) => error instanceof NewerDataError && error.file === 'file' && error.found === 2 && error.known === 1,
     );
   });
+
+  it('names /reload-plugins, since a newer install than the tab loaded wrote the file (T789)', () => {
+    assert.equal(
+      new NewerDataError('file', 2, 1).message,
+      'file holds format v2 records; this version writes v1. A newer teamrig wrote them: in a Claude Code tab, /reload-plugins loads the installed one; elsewhere, update teamrig before writing.',
+    );
+  });
 });
