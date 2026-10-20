@@ -2,7 +2,17 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { SecretScanner } from '../core/secrets.ts';
 import { canonicalJson, sha256Hex } from './digest.ts';
-import { argvSha256, inlineCodeOption, parseDraft, programLookup, requestSha256, type DraftParse, type ExecRequest, type RequestDraft } from './request.ts';
+import {
+  argvSha256,
+  inlineCodeOption,
+  parseDraft,
+  programLookup,
+  readStoredRequest,
+  requestSha256,
+  type DraftParse,
+  type ExecRequest,
+  type RequestDraft,
+} from './request.ts';
 
 const COMMIT = 'a'.repeat(40);
 const LOCK = 'b'.repeat(64);
@@ -126,6 +136,28 @@ describe('parseDraft (T755)', () => {
       ),
     );
     assert.equal(problems.length, 7, problems.join('; '));
+  });
+});
+
+describe('readStoredRequest (T755)', () => {
+  it('reads a stored request back unchanged, so its hash still matches', () => {
+    const stored = request(draftOf(parseDraft(dbWrite({ window: { runAfter: '2030-01-07T09:00:00.000Z', expiresBy: '2030-01-07T11:00:00.000Z' } }), scanner)));
+    const back = readStoredRequest(JSON.parse(JSON.stringify(stored)));
+    assert.deepEqual(back, stored);
+    assert.equal(back === undefined ? '' : requestSha256(back), requestSha256(stored));
+  });
+
+  it("checks the shape only, not today's rules", () => {
+    const accepted = { ...request(draftOf(parseDraft(dbWrite(), scanner))), dryRunArgv: null, dryRunProgram: null, preview: null };
+    assert.deepEqual(readStoredRequest(accepted), accepted);
+  });
+
+  it('gives undefined for a malformed record', () => {
+    const stored = request(draftOf(parseDraft(dbWrite(), scanner)));
+    assert.equal(readStoredRequest([]), undefined);
+    assert.equal(readStoredRequest({ ...stored, id: '' }), undefined);
+    assert.equal(readStoredRequest({ ...stored, argv: 'node x.ts' }), undefined);
+    assert.equal(readStoredRequest(Object.fromEntries(Object.entries(stored).filter(([key]) => key !== 'program'))), undefined);
   });
 });
 

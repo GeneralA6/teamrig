@@ -278,8 +278,15 @@ export function parseDraft(raw: unknown, scanner: SecretScanner): DraftParse {
     return { ok: false, problems: ['the request file is one JSON object'] };
   }
   const read = new DraftReader(raw);
+  const draft = readDraft(read);
+  const problems = [...read.problems, ...ruleProblems(draft, scanner)];
+  return problems.length === 0 ? { ok: true, draft } : { ok: false, problems };
+}
+
+/** Every draft field, read in order; problems collect on `read`. */
+function readDraft(read: DraftReader): RequestDraft {
   const kind = read.kind();
-  const draft: RequestDraft = {
+  return {
     kind,
     task: read.text('task'),
     target: read.text('target'),
@@ -298,8 +305,24 @@ export function parseDraft(raw: unknown, scanner: SecretScanner): DraftParse {
     window: read.window(),
     ownerGated: read.flag('ownerGated'),
   };
-  const problems = [...read.problems, ...ruleProblems(draft, scanner)];
-  return problems.length === 0 ? { ok: true, draft } : { ok: false, problems };
+}
+
+/**
+ * A request read back from the audit log: its shape only, not today's rules or secret shapes, which may have changed
+ * since it was accepted (the hash chain proves the line unaltered). Undefined for a malformed record.
+ */
+export function readStoredRequest(raw: unknown): ExecRequest | undefined {
+  if (!isRecord(raw)) {
+    return undefined;
+  }
+  const read = new DraftReader(raw);
+  const draft = readDraft(read);
+  const id = read.text('id');
+  const requester = read.text('requester');
+  const createdAt = read.text('createdAt');
+  const program = read.text('program');
+  const dryRunProgram = read.optionalText('dryRunProgram');
+  return read.problems.length === 0 ? { ...draft, id, requester, createdAt, program, dryRunProgram } : undefined;
 }
 
 /** The SHA-256 of the command the executor starts: the resolved program, then argv's arguments. */
