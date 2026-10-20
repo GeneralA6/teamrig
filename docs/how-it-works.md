@@ -317,9 +317,10 @@ turns this off: `register.autoArchive: false` in the team's `config.json`, after
   up), else from `budget.weeklyLimitW`. A subagent's W is multiplied by `budget.subagentWeight` (default 1), what
   one W of a helper costs in W of a main session, so all W share one price. A session past its part is held (only
   p1 work wakes it, and it escalates as `budget.escalate` says) only while the team has no room today: everyone's
-  use today, the use outside the team included, at or past the in-day pace, today's allowance times the share of
-  today's active time gone by. So no session waits while the week has room. The hooks warn
-  a session as it passes its daily budget, tell the lead, and can hold its helper launches (`budget.overAction`,
+  use today, the use outside the team included, at or past the in-day pace: today's use in quiet hours, plus today's
+  allowance times the share of today's active time gone by (the quiet-hour use already lowered the allowance, so a
+  night a lift worked through does not read as a morning past the pace). So no session waits while the week has
+  room. The hooks warn a session as it passes its daily budget, tell the lead, and can hold its helper launches (`budget.overAction`,
   `budget.quietHours`). The lead sets that policy with `teamrig budget setup`, which shows the change before it
   writes it.
 

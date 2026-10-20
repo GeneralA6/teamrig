@@ -2194,9 +2194,9 @@ time to the pace end (`budget.paceEndHoursBeforeReset` before the reset; quiet h
 `budget.quietHours.paceWeight`), times today's active time. What the lead's lifts leave is split among the other
 sessions by `budget.sessions.<id>.share` times their queued work. Short by
 default: the busiest 7 sessions, then who is past the daily budget. A session past its part is held only while the
-team has no room today: everyone's use today, the outside's included, at or past the in-day pace (today's budget
-times the share of today's active time gone by). While the team has room, they are named apart as not held:
-`Past their part, not held while the team has room today (3.0% of the week used, below its in-day pace of 4.7%):
+team has no room today: everyone's use today, the outside's included, at or past the in-day pace (today's use in
+quiet hours, plus today's budget times the share of today's active time gone by). While the team has room, they
+are named apart as not held: `Past their part, not held while the team has room today (3.0% of the week used, below its in-day pace of 4.7%):
 api.` A session id or name shows that session by day.
 
 Flags:

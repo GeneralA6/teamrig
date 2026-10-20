@@ -679,8 +679,11 @@ and reads every other session's use as last stored. Each line comes once, so mos
 
 A session's daily budget is its part of the team's, and no session waits while the team has room. The team has
 room today while everyone's use today (its sessions' and the use outside the team, which shares the weekly limit)
-is below its in-day pace: today's allowance times the share of today's active time gone by (quiet hours count at
-`budget.quietHours.paceWeight`; on the day the week starts or the pace ends, only the part inside the week counts).
+is below its in-day pace: today's use in quiet hours, plus today's allowance times the share of today's active time
+gone by (quiet hours count at `budget.quietHours.paceWeight`, and the use in them at the rest of each hour; on the day
+the week starts or the pace ends, only the part inside the week counts). The quiet-hour use has already lowered the
+allowance, which is recomputed from what is left, so a night a lift worked through does not read as a morning past
+the pace.
 Past its part while the team has room, a session is not held, and its line says so: `The team has room today: 2.0%
 of the week used, below its in-day pace of 4.0%, so nothing more happens.` Past its part once the team has no room,
 it is held: only p1 work wakes it, and it is escalated when `budget.escalate` is `session`, or, with
