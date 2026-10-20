@@ -84,9 +84,9 @@ describe('renderLeadRules', () => {
   it("names what reaches the owner, the owner's orders as tasks, plans from the register, approvals, rule fixes and the hire flags", () => {
     const lines = renderLeadRules(testConfig({ register: { ownerSource: 'boss' } }), COMMAND);
     assert.match(lines, /^As the lead, also:\n- Bring the owner only verified results, your decisions, investigated questions and incidents\.\n/);
-    assert.match(lines, /\n- Relay each owner order as a task in the same turn: `teamrig add --owner <id> --source boss` \[register\.ownerSource\]/);
+    assert.match(lines, /\n- Relay each owner order as an approved task in the same turn: `teamrig add --owner <id> --source boss` \[register\.ownerSource\]/);
     assert.match(lines, /`teamrig plan` and run `teamrig check` at each checkpoint, never from memory\.\n/);
-    assert.match(lines, /\n- Answer each approval wait on you with `teamrig approve` after the `approvals` skill's checklist; owner-gated content goes to the owner\.\n/);
+    assert.match(lines, /\n- Answer each approval wait on you with `teamrig approve` per the `approvals` skill; owner-gated content goes to the owner\.\n/);
     assert.match(lines, /\n- Fix a team rule proven wrong and say so; a loosening goes to the owner\.\n/);
     assert.match(lines, /\n- HIRE flags: give a SCALE-OUT's slice to a hire within the owner's caps, else bring the owner a card; retire on a RETIRE-DUE\.$/);
   });
@@ -127,7 +127,7 @@ describe('renderCorePack', () => {
 
   it('has each session work its list in order, gate self-made work and repeating runs, and stop when it loops or drifts', () => {
     const pack = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK);
-    assert.match(pack, /^5\. Work your own task list in priority order \(`teamrig list --session <you>`\); self-made work is a task too, recorded with `teamrig add` before you start it,/m);
+    assert.match(pack, /^5\. Work your own task list in priority order \(`teamrig list --session <you>`\); self-made work is a task too, added with `teamrig add` before you start it,/m);
     assert.match(pack, /and started only for a goal, a parent task or the week plan, never ahead of your top task that is not waiting \(one-commit fixes exempt\)\./);
     assert.match(pack, /A loop, cron or scheduled wake-up needs the lead's OK and a written stop\./);
     assert.match(pack, /If you repeat a step with no progress or drift from your task, stop and ask the lead\.$/m);
@@ -226,12 +226,12 @@ describe('renderCorePack', () => {
 
   it('tags a stopgap with the task that replaces it, in the form check reads', () => {
     const pack = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK);
-    assert.match(pack, /^10\. .*a dated root-cause task\. Tag a stopgap with the task that replaces it: `stopgap T<id>`\.$/m);
+    assert.match(pack, /^10\. .*a dated root-cause task\. Tag a stopgap with its replacement task: `stopgap T<id>`\.$/m);
   });
 
   it('keeps comments true to their code, checks a recorded number at its source, and proves dead code unread', () => {
     const pack = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK);
-    assert.match(pack, /Update comments in their code's commit, deleting one you cannot make true; verify a load-bearing comment or recorded number at its source before use;/);
+    assert.match(pack, /Update comments in their code's commit, deleting one you cannot make true; verify a load-bearing comment or recorded number at its source;/);
     assert.match(pack, / fix a stale comment, doc or proven-dead code you find in its own commit and tell its area\.$/m);
   });
 
@@ -242,8 +242,8 @@ describe('renderCorePack', () => {
 
   it("points a new skill to the guide's limits, which check enforces, instead of printing each one", () => {
     const pack = renderCorePack(testConfig({ skills: { sharedPrefix: 'crew', forbidFrontmatter: ['allowed-tools'] } }), COMMAND, 'win32', RULES_CLOCK);
-    assert.match(pack, /^13\. A procedure you had to investigate and will run again becomes a skill in the same turn: `<area>-<name>\/SKILL\.md`, shared ones `crew-<name>` \[skills\.sharedPrefix\],/m);
-    assert.match(pack, / within the guide's skill limits \(`teamrig check` flags a breach\)\. Memory holds facts, skills how-tos, CLAUDE\.md every-turn rules\.$/m);
+    assert.match(pack, /^13\. A procedure you investigated and will run again becomes a skill in the same turn: `<area>-<name>\/SKILL\.md`, shared ones `crew-<name>` \[skills\.sharedPrefix\],/m);
+    assert.match(pack, / within the guide's skill limits\. Memory holds facts, skills how-tos, CLAUDE\.md every-turn rules\.$/m);
     assert.doesNotMatch(pack, /maxDescriptionWords|maxVerifiedAgeDays|maxPerArea|forbidFrontmatter|allowed-tools/);
   });
 
@@ -251,7 +251,7 @@ describe('renderCorePack', () => {
     const pack = renderCorePack(testConfig({ messages: { maxLines: 7 }, ownerGates: ['money', 'deletes'] }), COMMAND, 'win32', RULES_CLOCK);
     assert.match(pack, /^1\. Roles, by session id: lead is the lead/m);
     assert.match(pack, / Every other session owns its area; cross-area issues and clashes go to the lead\.$/m);
-    assert.match(pack, /\[ownerGates\]\. An owner's go relayed by the lead approves finished, tested work\.$/m);
+    assert.match(pack, /\[ownerGates\]\. An owner's order, relayed or not, approves its work and proof unless only the owner sees the result; ask again only if it must change or needs something new\.$/m);
     assert.match(pack, /At most 7 lines \[messages\.maxLines\]/);
     assert.match(pack, /never for owner gates: money; deletes \[ownerGates\]/);
     assert.match(pack, /with a note \(only what changed\) on waiting, verifying, done, dropped \[register\.requireNoteOn\]/);
