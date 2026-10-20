@@ -195,7 +195,7 @@ describe('doctorFindings of model and effort overrides', () => {
   });
 
   it('flags CLAUDE_CODE_EFFORT_LEVEL set in the environment doctor runs in, with its value and what it beats', () => {
-    assert.deepEqual(lines(input({ env: { CLAUDE_CODE_EFFORT_LEVEL: 'high', ANTHROPIC_API_KEY: 'secret-value' } })), [EFFORT_FROM('the environment doctor runs in')]);
+    assert.deepEqual(lines(input({ env: { CLAUDE_CODE_EFFORT_LEVEL: 'high', ANTHROPIC_API_KEY: 'not a real key' } })), [EFFORT_FROM('the environment doctor runs in')]);
   });
 
   it('flags CLAUDE_CODE_EFFORT_LEVEL set in a settings env block only, naming the file', () => {

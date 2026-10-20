@@ -16,7 +16,7 @@ function kinds(stdout: readonly string[]): string[] {
 describe('teamrig doctor: what overrides a model or effort choice', () => {
   it("reads the routing variables from its environment and the user's and the project's settings, and a launch with no effort", async () => {
     const kit = new CliHarness({ ...TEAM, launch: { alpha: { model: 'sonnet' }, bravo: { model: 'opus', effort: 'high' } } });
-    await kit.files.write(USER_SETTINGS, JSON.stringify({ env: { CLAUDE_CODE_SUBAGENT_MODEL_FORCE: '1', ANTHROPIC_API_KEY: 'secret-value' } }));
+    await kit.files.write(USER_SETTINGS, JSON.stringify({ env: { CLAUDE_CODE_SUBAGENT_MODEL_FORCE: '1', ANTHROPIC_API_KEY: 'not a real key' } }));
     await kit.files.write(PROJECT_SETTINGS, '{ not json');
     await kit.files.write(LOCAL_SETTINGS, JSON.stringify({ env: { CLAUDE_CODE_EFFORT_LEVEL: 'medium' } }));
     const result = await kit.run(['doctor'], { env: { CLAUDE_CODE_EFFORT_LEVEL: 'low' } });
@@ -28,7 +28,7 @@ describe('teamrig doctor: what overrides a model or effort choice', () => {
     assert.ok(text.includes(`CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1 is set in the env block of ${USER_SETTINGS}: `));
     assert.ok(text.includes(`WARN settings-json ${PROJECT_SETTINGS} is not a JSON object`));
     assert.ok(text.includes('WARN launch-effort app-alpha (session alpha) launches on model sonnet with no effort'));
-    assert.doesNotMatch(text, /secret-value|ANTHROPIC_API_KEY/);
+    assert.doesNotMatch(text, /not a real key|ANTHROPIC_API_KEY/);
   });
 
   it('stays clean with the variables unset, valid settings and every named model given an effort', async () => {
