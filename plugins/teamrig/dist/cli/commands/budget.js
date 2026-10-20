@@ -10,10 +10,11 @@ import { claudeProjectsDir } from "../../budget/discover.js";
 import { activeLift, decideLift, LiftLog, liftText } from "../../budget/lift.js";
 import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID } from "../../budget/measure.js";
 import { dailyBudgetOf, liftedParts } from "../../budget/parts.js";
+import { nextPeriod, PeriodStore, sightOf } from "../../budget/period.js";
 import { burnLines, loopLines, missLines, missMatrixLines, recountLines, sessionLines, sumDays, sumUsage, todayLines, weekLine, } from "../../budget/report.js";
 import { datedSnapshot, formatSnapshot, parseSnapshot, readSnapshots, snapshotOfStatus, statusLineText, weekUseOf } from "../../budget/snapshot.js";
 import { CURSOR_DAYS_KEPT, DAYS_KEPT, EMPTY_USAGE, MemoryUsageStore, UsageStore } from "../../budget/store.js";
-import { readWeek, wSince } from "../../budget/week.js";
+import { meteredOf, readWeek, wSince } from "../../budget/week.js";
 import { readWork } from "../../budget/work.js";
 import { JsonlMarkLog } from "../../inbox/store.js";
 import { indexMarks } from "../../inbox/marks.js";
@@ -73,7 +74,12 @@ async function readBudget(runtime, kit, config, roster, options) {
         maxRuns: MAX_RUNS_PER_SESSION,
     });
     const snapshots = recount ? [] : await readSnapshots(files, snapshotDirOf(config.budget, kit.paths));
-    const week = readWeek({ budget: config.budget, now, statusUse: weekUseOf(snapshots, now), states: [...measured.bySession.values(), measured.outside] });
+    const statusUse = weekUseOf(snapshots, now);
+    const states = [...measured.bySession.values(), measured.outside];
+    const period = recount
+        ? recountPeriodOf(config.budget, now)
+        : await new PeriodStore(files, kit.paths.period).periodAt(config.budget, statusUse, now, meteredOf(config.budget, states, now));
+    const week = readWeek({ budget: config.budget, now, statusUse, period, states });
     const lifts = recount ? [] : (await new LiftLog(files, kit.paths.lifts).read()).lifts;
     const bursts = recount ? [] : (await new BurstLog(files, kit.paths.bursts).read()).records;
     return { now, measured, week, lifts, bursts };
@@ -103,6 +109,11 @@ function sessionsToday(reading, roster, budget, work) {
 /** The days a loop table shows, oldest first, ending at `now`'s day. */
 function loopDays(now, count) {
     return Array.from({ length: count }, (_, index) => formatUtcDay(new Date(now - (count - 1 - index) * MS_PER_DAY)));
+}
+/** A recount's period: it reads no stored state, so the week before the configured reset, a guess. */
+function recountPeriodOf(budget, now) {
+    const sight = sightOf(budget, undefined, now);
+    return sight === undefined ? undefined : nextPeriod(undefined, sight);
 }
 function recountDayOf(text, now) {
     if (text === undefined) {

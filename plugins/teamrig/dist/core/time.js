@@ -10,6 +10,7 @@ const ZONED_ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\
 export const MS_PER_MINUTE = 60_000;
 export const MS_PER_HOUR = 3_600_000;
 export const MS_PER_DAY = 86_400_000;
+export const MS_PER_WEEK = 7 * MS_PER_DAY;
 /** Minutes since 00:00 UTC of an `HH:MM`; undefined when malformed. */
 export function utcMinuteOf(text) {
     const match = CLOCK.exec(text);
