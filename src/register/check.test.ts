@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { LeadTree } from '../config/lead-tree.ts';
 import { TEST_CARD } from '../testing/card.ts';
 import { testConfig } from '../testing/config.ts';
 import { testTask } from '../testing/task.ts';
@@ -186,7 +187,7 @@ describe('peerWaitFlags', () => {
       testTask({ id: 'T3', status: 'verifying', proof: 'the run', waits: [{ kind: 'approval', who: 'bravo' }] }),
     ];
     assert.deepEqual(
-      peerWaitFlags(tasks, 'lead', 'owner').map((flag) => `${flag.kind} ${flag.task.id}: ${flag.detail}`),
+      peerWaitFlags(tasks, new LeadTree(testConfig()), 'owner').map((flag) => `${flag.kind} ${flag.task.id}: ${flag.detail}`),
       [
         `PEER-WAIT T1: approval:bravo is a peer's work: wait on it by its task (set T1 --status waiting --ask bravo --text "<the work>")`,
         `PEER-WAIT T3: approval:bravo is a peer's work: wait on it by its task (set T3 --status verifying --ask bravo --text "<the work>")`,

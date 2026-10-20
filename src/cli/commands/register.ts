@@ -1,3 +1,4 @@
+import { LeadTree } from '../../config/lead-tree.ts';
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { formatAddress } from '../../core/address.ts';
@@ -207,33 +208,38 @@ async function tellAssigned(runtime: CliRuntime, team: Team, by: string, task: T
 }
 
 /**
- * One inbox line to the lead when a write set a task waiting, or a verifying task's proof, on a decision or an
- * approval of the lead's or the owner's that it did not wait on before (the lead keeps the owner's decision queue);
- * never when the lead set it. A new wait on the owner says when the owner hears it (src/decisions/batch.ts): in the
- * next batch, in the one due now, or at once when it is due before the next; at once, the setter is told to message
- * the lead too, as an inbox line wakes no one.
+ * One inbox line to each leader that a write set a task waiting on, or a verifying task's proof, for a decision or an
+ * approval it did not wait on before: a wait on one of the task owner's leaders (the lead, or a sub-lead, T781) goes
+ * to that leader, a wait on the owner to the lead, who keeps the owner's decision queue; never to the leader who set
+ * it. A new wait on the owner says when the owner hears it (src/decisions/batch.ts): in the next batch, in the one due
+ * now, or at once when it is due before the next; at once, the setter is told to message the lead too, as an inbox
+ * line wakes no one.
  */
-async function tellLeadOfWaits(runtime: CliRuntime, team: Team, by: string, verdict: Verdict<WriteResult>): Promise<void> {
-  const { lead } = team.config.roles;
-  if (!verdict.ok || by === lead) {
+async function tellLeadersOfWaits(runtime: CliRuntime, team: Team, by: string, verdict: Verdict<WriteResult>): Promise<void> {
+  if (!verdict.ok) {
     return;
   }
+  const { lead } = team.config.roles;
+  const { ownerSource } = team.config.register;
   const { task, before } = verdict.value;
   const earlier = before?.waits ?? [];
+  const approvers = new LeadTree(team.config).approversOf(task.owner);
   const added = task.waits.filter(
     (reason): reason is PersonWait =>
-      (reason.kind === 'decision' || reason.kind === 'approval') &&
-      !isPeerWait(reason, lead, team.config.register.ownerSource) &&
-      !earlier.some((other) => sameWait(reason, other)),
+      (reason.kind === 'decision' || reason.kind === 'approval') && !isPeerWait(reason, approvers, ownerSource) && !earlier.some((other) => sameWait(reason, other)),
   );
-  if (added.length === 0) {
-    return;
-  }
-  const timing = added.some((reason) => reason.who !== lead) ? await ownerWaitTiming(runtime, team, verdict.value) : undefined;
-  const text = `${personWaitNotice(task, added, lead)}${timing === undefined ? '' : ` | ${timingText(timing, team.zone)}`}`;
-  await tellLine(runtime, team, by, lead, text, `${lead} was not told that ${task.id} waits on it`);
-  if (timing?.kind === 'at-once') {
-    runtime.out.stderr(`NOTE ${task.id} is due before the owner's next batch: message ${team.roster.nameOf(lead) ?? lead} too, as an inbox line wakes no one`);
+  const receiverOf = (reason: PersonWait) => (reason.who === ownerSource ? lead : reason.who);
+  for (const receiver of new Set(added.map(receiverOf))) {
+    if (receiver === by) {
+      continue;
+    }
+    const waits = added.filter((reason) => receiverOf(reason) === receiver);
+    const timing = waits.some((reason) => reason.who === ownerSource) ? await ownerWaitTiming(runtime, team, verdict.value) : undefined;
+    const text = `${personWaitNotice(task, waits, receiver)}${timing === undefined ? '' : ` | ${timingText(timing, team.zone)}`}`;
+    await tellLine(runtime, team, by, receiver, text, `${receiver} was not told that ${task.id} waits on it`);
+    if (timing?.kind === 'at-once') {
+      runtime.out.stderr(`NOTE ${task.id} is due before the owner's next batch: message ${team.roster.nameOf(lead) ?? lead} too, as an inbox line wakes no one`);
+    }
   }
 }
 
@@ -272,7 +278,7 @@ export async function set(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
     await tellVerifiers(runtime, team, by, held, met);
   }
   const exit = report(runtime, verdict, 'SET', team);
-  await tellLeadOfWaits(runtime, team, by, verdict);
+  await tellLeadersOfWaits(runtime, team, by, verdict);
   if (held !== undefined && warned && verdict.ok && met === null) {
     runtime.out.stderr(`WARN ${heldStart(held.task, held.holds)}; started anyway, as register.verifyGate is warn`);
   }
@@ -306,7 +312,7 @@ async function setAsking(runtime: CliRuntime, team: Team, by: string, id: string
   if (verdict.ok && verdict.value.asked.owner !== by) {
     await tellAssigned(runtime, team, by, verdict.value.asked);
   }
-  await tellLeadOfWaits(runtime, team, by, verdict);
+  await tellLeadersOfWaits(runtime, team, by, verdict);
   if (verdict.ok) {
     await markKeepWorkingAsk(runtime, team.paths, verdict.value);
   }
@@ -551,7 +557,7 @@ function weekFor(args: ParsedArgs, snapshot: RegisterSnapshot, now: Date, zone: 
  */
 function checkRegister(snapshot: RegisterSnapshot, config: KitConfig, now: Date, zone: TimeZone, week: string | null, team?: string): CheckSection {
   const tasks = [...snapshot.state.tasks.values()];
-  const flags = [...checkTasks(tasks, now, zone, week, config.register), ...peerWaitFlags(tasks, config.roles.lead, config.register.ownerSource)];
+  const flags = [...checkTasks(tasks, now, zone, week, config.register), ...peerWaitFlags(tasks, new LeadTree(config), config.register.ownerSource)];
   return { team, flags: flags.sort(byFlagKind), tree: new TaskTree(snapshot.state.tasks, now, zone) };
 }
 

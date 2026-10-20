@@ -171,7 +171,7 @@ describe('pushGuardOutput: pushToProtected', () => {
 
 describe('pushGuardOutput: pushToProtected lead (T684)', () => {
   const lead = (clearance: PushClearance) => ({ ...env(), pushToProtected: 'lead', clearance: mock.fn(async (): Promise<PushClearance> => clearance) }) satisfies PushGuardEnv;
-  const NONE: PushClearance = { kind: 'none', lead: 'boss', why: "boss has approved no waiting task of alpha's" };
+  const NONE: Extract<PushClearance, { readonly kind: 'none' }> = { kind: 'none', approver: 'boss', why: "boss has approved no waiting task of alpha's" };
 
   it("lets the lead's own normal push through with a note", async () => {
     const guarded = lead({ kind: 'lead', lead: 'boss' });
@@ -181,7 +181,7 @@ describe('pushGuardOutput: pushToProtected lead (T684)', () => {
   });
 
   it("lets another session's push through once the lead approved its waiting task, naming the task", async () => {
-    const note = noteOf(await pushGuardOutput(payload('git push origin HEAD:main'), lead({ kind: 'approved', lead: 'boss', task: 'T7' })));
+    const note = noteOf(await pushGuardOutput(payload('git push origin HEAD:main'), lead({ kind: 'approved', by: 'boss', task: 'T7' })));
     assert.equal(
       note,
       'teamrig let this push to a protected branch (main) through: boss approved T7; set its next status once pushed, as the approval covers this push only [pushGuard.pushToProtected: lead].',
@@ -197,7 +197,7 @@ describe('pushGuardOutput: pushToProtected lead (T684)', () => {
     }
     assert.equal(
       unclearedPushReason(NONE, ['main', 'master']),
-      "This push to a protected branch (main, master) needs the lead's approval, not the human's: boss has approved no waiting task of alpha's. " +
+      "This push to a protected branch (main, master) needs a lead's approval, not the human's: boss has approved no waiting task of alpha's. " +
         'Ask on the register: `teamrig set <task> --status waiting --waits approval:boss --note "<branch, what it lands, its tests>"`, ' +
         'take your next task, and push once boss approves it (`teamrig approve`). [pushGuard.pushToProtected]',
     );

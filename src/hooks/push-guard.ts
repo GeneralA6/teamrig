@@ -40,13 +40,14 @@ export interface PushGuardEnv {
 
 /**
  * What lets a normal push to a protected branch through under `pushToProtected: lead` (T684): the lead's own push,
- * since the owner gave the lead the push approvals, or a waiting task of the session's that the lead approved on the
- * register (`teamrig approve`). `none` says why neither holds.
+ * since the owner gave the lead the push approvals, or a waiting task of the session's that a leader above it (`by`:
+ * the lead or a sub-lead, T781) approved on the register (`teamrig approve`). `none` says why neither holds and whose
+ * approval to ask: the session's direct leader.
  */
 export type PushClearance =
   | { readonly kind: 'lead'; readonly lead: string }
-  | { readonly kind: 'approved'; readonly lead: string; readonly task: string }
-  | { readonly kind: 'none'; readonly lead: string; readonly why: string };
+  | { readonly kind: 'approved'; readonly by: string; readonly task: string }
+  | { readonly kind: 'none'; readonly approver: string; readonly why: string };
 
 /**
  * The branches to guard. A missing or unreadable config keeps the defaults, so a broken
@@ -109,16 +110,16 @@ export function clearedPushNote(clearance: Exclude<PushClearance, { readonly kin
   const why =
     clearance.kind === 'lead'
       ? `the lead (${clearance.lead}) pushes unasked`
-      : `${clearance.lead} approved ${clearance.task}; set its next status once pushed, as the approval covers this push only`;
+      : `${clearance.by} approved ${clearance.task}; set its next status once pushed, as the approval covers this push only`;
   return `teamrig let this push to a protected branch (${protectedBranches.join(', ')}) through: ${why} [pushGuard.pushToProtected: lead].`;
 }
 
 /** Why `pushToProtected: lead` refuses a normal push to a protected branch, and how to ask the lead for it, never the human. */
 export function unclearedPushReason(clearance: Extract<PushClearance, { readonly kind: 'none' }>, protectedBranches: readonly string[]): string {
   return (
-    `This push to a protected branch (${protectedBranches.join(', ')}) needs the lead's approval, not the human's: ${clearance.why}. ` +
-    `Ask on the register: \`teamrig set <task> --status waiting --waits approval:${clearance.lead} --note "<branch, what it lands, its tests>"\`, ` +
-    `take your next task, and push once ${clearance.lead} approves it (\`teamrig approve\`). [pushGuard.pushToProtected]`
+    `This push to a protected branch (${protectedBranches.join(', ')}) needs a lead's approval, not the human's: ${clearance.why}. ` +
+    `Ask on the register: \`teamrig set <task> --status waiting --waits approval:${clearance.approver} --note "<branch, what it lands, its tests>"\`, ` +
+    `take your next task, and push once ${clearance.approver} approves it (\`teamrig approve\`). [pushGuard.pushToProtected]`
   );
 }
 
