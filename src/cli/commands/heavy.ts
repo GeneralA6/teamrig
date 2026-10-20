@@ -4,6 +4,7 @@ import type { HeavyConfig } from '../../config/types.ts';
 import { holderText, underLock, waitText, type HostLock, type HostLockInfo, type ShareRequest, type Taking } from '../../coordinator/host-lock.ts';
 import { parseLedger } from '../../coordinator/ledger.ts';
 import { coordinatorPlaces } from '../../coordinator/places.ts';
+import { passOf, PRE_PUSH_MAX_WAIT_MS, recordPass, type CheckedTree, type CleanTree } from '../../coordinator/push-pass.ts';
 import { runRecorded, type StepWatch } from '../../coordinator/recorded-step.ts';
 import { heavyCutoffReason, minutesText } from '../../coordinator/schedule.ts';
 import { endedText, type StarterWatching } from '../../coordinator/starter-watch.ts';
@@ -143,6 +144,63 @@ async function runUnderParent(runtime: CliRuntime, say: Say, parent: string, ste
   return report(runtime, say, end, maxRunMinutes, watching);
 }
 
+/** `--pre-push`: the checks' command line and the tree they start on, so their pass is reused or recorded. */
+interface PrePush {
+  readonly command: string;
+  readonly before: CheckedTree;
+}
+
+/**
+ * True, having said so and printed DONE, when these checks already passed on this clean tree, so a push declined after
+ * a long wait for the lock goes at once the next time: even from the heavy cutoff on, since nothing heavy runs.
+ */
+async function reusedPass(runtime: CliRuntime, say: Say, prePush: PrePush, zone: TimeZone): Promise<boolean> {
+  if (prePush.before.kind !== 'clean') {
+    return false;
+  }
+  const pass = await passOf(runtime.files, prePush.before, prePush.command, runtime.clock.now());
+  if (pass === undefined) {
+    return false;
+  }
+  say(`${pass.what} passed on this tree (${pass.commit.slice(0, 7)}) at ${zone.minute(new Date(pass.passedAt))}: not run again`);
+  runtime.out.stdout('DONE exit 0');
+  return true;
+}
+
+/** The tree a pass is recorded for: clean before and after the checks, and the same; undefined otherwise. */
+function passedTree(before: CheckedTree, after: CheckedTree): CleanTree | undefined {
+  return before.kind === 'clean' && after.kind === 'clean' && after.tree === before.tree ? after : undefined;
+}
+
+/** Why checks that passed got no pass recorded. */
+function noPassText(before: CheckedTree, after: CheckedTree): string {
+  if (before.kind === 'none' || after.kind === 'none') {
+    return 'this folder has no git commit to record it for';
+  }
+  return before.kind === 'changed' || after.kind === 'changed' ? 'the tree has uncommitted changes' : 'the tree changed while they ran';
+}
+
+/**
+ * After a pre-push hook's checks: records their pass when they passed on a tree that stayed clean and the same, then
+ * declines the push when they waited for the lock past PRE_PUSH_MAX_WAIT_MS, as its connection may have closed by now;
+ * the next push of the tree reuses the pass.
+ */
+async function afterPrePush(runtime: CliRuntime, prePush: PrePush, what: string, code: ExitCode, waitedMs: number): Promise<ExitCode> {
+  if (code !== EXIT.ok) {
+    return code;
+  }
+  const after = runtime.trees.checked(runtime.cwd);
+  const passed = passedTree(prePush.before, after);
+  if (passed !== undefined) {
+    await recordPass(runtime.files, passed, prePush.command, what, runtime.clock.now());
+  }
+  if (waitedMs <= PRE_PUSH_MAX_WAIT_MS) {
+    return code;
+  }
+  const next = passed === undefined ? `no pass was recorded, as ${noPassText(prePush.before, after)}: commit, then push again` : 'push again: it reuses this pass';
+  throw new RefusedError(`push declined: its checks waited ${minutesText(Math.round(waitedMs / MINUTE_MS))} for the host lock, long enough for its connection to close; ${next}`);
+}
+
 /** One heavy step as asked: its label, its command's words, its time limit and the watch on the shell that started it. */
 interface Step {
   readonly what: string;
@@ -162,7 +220,9 @@ interface Step {
  * step shares the host with other small steps instead, while the host keeps `memoryFloorMb` free besides the MB held
  * for them (`reserveMbOf`); a step without it waits for them to end. Once the shell that started it ends (Claude Code's
  * reaper ends a Bash tool's shell alone), it stops waiting for the lock, or kills its step and records exit 129, and
- * frees the lock. Exit 0 when the command passed, 1 when it failed, was killed or was stopped, 2 refused.
+ * frees the lock. With `--pre-push` (a git pre-push hook's checks) it reuses their fresh pass on a clean tree, records
+ * one when they pass, and declines a push whose checks waited past PRE_PUSH_MAX_WAIT_MS for the lock (push-pass.ts).
+ * Exit 0 when the command passed, 1 when it failed, was killed or was stopped, 2 refused.
  */
 export async function heavy(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const words = commandWordsOf(args);
@@ -180,8 +240,13 @@ export async function heavy(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const watching = await watchStarters(runtime, say);
   try {
     const step: Step = { what, words, maxRunMinutes, watching };
+    const prePush: PrePush | undefined = args.switches.has('pre-push') ? { command: commandLine(words, runtime.platform), before: runtime.trees.checked(runtime.cwd) } : undefined;
+    if (prePush !== undefined && (await reusedPass(runtime, say, prePush, zone))) {
+      return EXIT.ok;
+    }
     if (parent !== undefined) {
-      return await runUnderParent(runtime, say, holderText({ kind: 'held', info: parent }, zone), step);
+      const code = await runUnderParent(runtime, say, holderText({ kind: 'held', info: parent }, zone), step);
+      return prePush === undefined ? code : await afterPrePush(runtime, prePush, what, code, 0);
     }
     refuseAfterCutoff(runtime, coordinator.schedule.heavyCutoffUtc, zone);
     const queuedAt = runtime.clock.now();
@@ -211,6 +276,7 @@ export async function heavy(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
     if (taking.kind === 'withdrawn') {
       throw new RefusedError(`withdrawn from the host lock's line (teamrig withdraw): ${what} did not run`);
     }
+    const waitedMs = runtime.clock.now() - queuedAt;
     try {
       refuseAfterCutoff(runtime, coordinator.schedule.heavyCutoffUtc, zone);
       const sharing = share === undefined ? undefined : sharingText(share, taking);
@@ -221,7 +287,8 @@ export async function heavy(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
       const request = { command: commandLine(words, runtime.platform), cwd: runtime.cwd, env: underLock(runtime.env, taking.lock), timeoutMs: maxRunMinutes * MINUTE_MS, stop: watching.stop };
       const mark = { session, what, queuedAt, ...(taking.sharing === undefined ? {} : { shared: true as const }), request };
       const end = await runRecorded(runtime, places.ledger, mark, watchOf(runtime, coordinator.heavy));
-      return report(runtime, say, end, maxRunMinutes, watching);
+      const code = report(runtime, say, end, maxRunMinutes, watching);
+      return prePush === undefined ? code : await afterPrePush(runtime, prePush, what, code, waitedMs);
     } finally {
       await lock.release(taking.lock);
     }

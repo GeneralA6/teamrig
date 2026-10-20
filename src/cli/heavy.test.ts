@@ -2,9 +2,11 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { FIRST_IN_LINE_POLL_MS } from '../coordinator/host-lock.ts';
+import { recordPass } from '../coordinator/push-pass.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import { APP, CliHarness, KIT, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { FakeHostMemory } from '../testing/fake-host-memory.ts';
+import { cleanTree, FakeTrees, GIT_DIR } from '../testing/fake-trees.ts';
 import { FakeStarterWatch, SHELL } from '../testing/fake-starter-watch.ts';
 import { FakeSteps } from '../testing/fake-steps.ts';
 import { heldBy, OTHER, otherRuns } from '../testing/held-lock.ts';
@@ -444,3 +446,110 @@ describe('teamrig heavy --small', () => {
   });
 });
 
+
+describe('teamrig heavy --pre-push', () => {
+  const PRE_PUSH = ['heavy', '--session', 'alpha', '--what', 'pre-push checks', '--pre-push', '--', 'npm', 'test'];
+  const PASSES = join(GIT_DIR, 'teamrig', 'pre-push');
+  const DECLINED = 'REFUSED push declined: its checks waited 3m for the host lock, long enough for its connection to close;';
+
+  it('records the pass of checks run on a clean tree, which the next push of the tree reuses without the lock', async () => {
+    const { kit, steps } = harness();
+    const trees = new FakeTrees(cleanTree());
+    steps.ends(0, MINUTE);
+    assert.deepEqual(await kit.run(PRE_PUSH, { steps, trees }), { code: 0, stdout: ['2030-01-08 10:00:00 UTC running: pre-push checks (killed after 45m)', 'DONE exit 0'], stderr: [] });
+    assert.equal((await kit.files.list(PASSES)).length, 1);
+    await kit.files.write(LOCK, heldBy());
+    assert.deepEqual(await kit.run(PRE_PUSH, { steps, trees, sessionProcesses: otherRuns() }), {
+      code: 0,
+      stdout: ['2030-01-08 10:01:00 UTC pre-push checks passed on this tree (c0ffee1) at 2030-01-08 10:01 UTC: not run again', 'DONE exit 0'],
+      stderr: [],
+    });
+    assert.deepEqual([steps.ran.length, ledgerOf(kit).length, kit.files.get(LOCK)], [1, 2, heldBy()], 'nothing ran or was recorded, and the lock stayed with its holder');
+    assert.deepEqual(trees.looks, [APP, APP, APP], 'the tree before and after the checks, then before the next push');
+  });
+
+  it('reuses a pass from the heavy cutoff on, since nothing heavy runs', async () => {
+    const { kit, steps } = harness({ ...TEAM, coordinator: { schedule: { heavyCutoffUtc: '09:30' } } });
+    await recordPass(kit.files, cleanTree(), 'npm test', 'pre-push checks', Date.parse('2030-01-08T09:00:00Z'));
+    const result = await kit.run(PRE_PUSH, { steps, trees: new FakeTrees(cleanTree()) });
+    assert.deepEqual([result.code, result.stdout.at(-1), steps.ran], [0, 'DONE exit 0', []]);
+  });
+
+  it('runs checks with another command line again on the same tree', async () => {
+    const { kit, steps } = harness();
+    await recordPass(kit.files, cleanTree(), 'npm test', 'pre-push checks', Date.parse('2030-01-08T09:00:00Z'));
+    const result = await kit.run([...PRE_PUSH.slice(0, -1), 'run', 'lint'], { steps, trees: new FakeTrees(cleanTree()) });
+    assert.deepEqual([result.code, steps.ran.map((request) => request.command)], [0, ['npm run lint']]);
+  });
+
+  it('declines the push when its checks waited over a minute for the lock, and records their pass for the next push', async () => {
+    const { kit, steps } = harness();
+    const trees = new FakeTrees(cleanTree());
+    steps.ends(0, MINUTE);
+    await kit.files.write(LOCK, heldBy('2030-01-08T10:03:00.000Z'));
+    const result = await kit.run(PRE_PUSH, { steps, trees, sessionProcesses: otherRuns() });
+    assert.deepEqual(result, {
+      code: 2,
+      stdout: [
+        '2030-01-08 10:00:00 UTC waiting for the host lock: po (heavy: build) since 2030-01-08 09:50 UTC',
+        '2030-01-08 10:03:00 UTC running: pre-push checks (killed after 45m)',
+        'DONE exit 0',
+        `${DECLINED} push again: it reuses this pass`,
+      ],
+      stderr: [],
+    });
+    assert.equal(kit.files.get(LOCK), undefined, 'the lock is released');
+    const again = await kit.run(PRE_PUSH, { steps, trees });
+    assert.deepEqual([again.code, again.stdout.at(-1), steps.ran.length], [0, 'DONE exit 0', 1]);
+  });
+
+  it('lets the push go after a wait of a minute', async () => {
+    const { kit, steps } = harness();
+    await kit.files.write(LOCK, heldBy('2030-01-08T10:01:00.000Z'));
+    const result = await kit.run(PRE_PUSH, { steps, trees: new FakeTrees(cleanTree()), sessionProcesses: otherRuns() });
+    assert.deepEqual([result.code, result.stdout.at(-1)], [0, 'DONE exit 0']);
+  });
+
+  for (const { label, trees, during, reason } of [
+    { label: 'a tree with uncommitted changes', trees: new FakeTrees({ kind: 'changed' }), during: undefined, reason: 'the tree has uncommitted changes' },
+    { label: 'a folder with no git commit', trees: new FakeTrees(), during: undefined, reason: 'this folder has no git commit to record it for' },
+    { label: 'a tree that changed while the checks ran', trees: new FakeTrees(cleanTree()), during: cleanTree('ffff0000'), reason: 'the tree changed while they ran' },
+  ]) {
+    it(`records no pass for ${label}, and says so when it declines the push`, async () => {
+      const { kit, steps } = harness();
+      steps.whileRunning(async () => {
+        trees.state = during ?? trees.state;
+      });
+      await kit.files.write(LOCK, heldBy('2030-01-08T10:03:00.000Z'));
+      const result = await kit.run(PRE_PUSH, { steps, trees, sessionProcesses: otherRuns() });
+      assert.deepEqual([result.code, result.stdout.at(-1)], [2, `${DECLINED} no pass was recorded, as ${reason}: commit, then push again`]);
+      assert.deepEqual(await kit.files.list(PASSES), []);
+    });
+  }
+
+  it('records no pass for checks that failed, which run again on the next push', async () => {
+    const { kit, steps } = harness();
+    const trees = new FakeTrees(cleanTree());
+    steps.ends(1);
+    await kit.files.write(LOCK, heldBy('2030-01-08T10:03:00.000Z'));
+    const result = await kit.run(PRE_PUSH, { steps, trees, sessionProcesses: otherRuns() });
+    assert.deepEqual([result.code, result.stdout.at(-1)], [1, 'FAILED exit 1']);
+    assert.deepEqual(await kit.files.list(PASSES), []);
+    await kit.run(PRE_PUSH, { steps, trees });
+    assert.equal(steps.ran.length, 2);
+  });
+
+  it("records the pass of checks run under a parent's lock", async () => {
+    const { kit, steps } = harness();
+    await kit.files.write(LOCK, heldBy());
+    const result = await kit.run(PRE_PUSH, { steps, trees: new FakeTrees(cleanTree()), sessionProcesses: otherRuns(), env: { TEAMRIG_HOST_LOCK: 'other' } });
+    assert.deepEqual([result.code, (await kit.files.list(PASSES)).length], [0, 1]);
+  });
+
+  it('reads no tree and records no pass without --pre-push', async () => {
+    const { kit, steps } = harness();
+    const trees = new FakeTrees(cleanTree());
+    assert.equal((await kit.run(BUILD, { steps, trees })).code, 0);
+    assert.deepEqual([trees.looks, await kit.files.list(PASSES)], [[], []]);
+  });
+});

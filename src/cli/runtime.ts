@@ -1,6 +1,7 @@
 import type { TranscriptSource } from '../budget/discover.ts';
 import type { ConfigFormat } from '../config/migrate.ts';
 import type { HostMemory } from '../coordinator/memory.ts';
+import type { TreeState } from '../coordinator/push-pass.ts';
 import type { StarterWatch } from '../coordinator/starter-watch.ts';
 import type { StepRunner } from '../coordinator/steps.ts';
 import type { Files } from '../core/files.ts';
@@ -77,6 +78,8 @@ export interface CliRuntime {
   readonly worktrees: WorktreePorts;
   /** The shutdown log and the countdown of the restore after a reboot. */
   readonly restore: RestorePorts;
+  /** The working tree `teamrig heavy --pre-push` checks: clean or changed, and HEAD's tree. */
+  readonly trees: TreeState;
   /** The git steps `teamrig integrate` takes. */
   readonly integrateGit: IntegrateGit;
   /** The programs `teamrig roll` runs, its gates, afterPull hooks and roll command: no shell, each with a time limit. */

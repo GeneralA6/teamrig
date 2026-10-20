@@ -165,7 +165,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'commits check': { effect: 'read', flags: ['base', 'tip'], load: async () => (await commitsCommands()).check },
   'worktree remove': { effect: 'write', flags: ['base'], switches: ['delete-branch', 'dry-run'], load: async () => (await worktreeCommands()).remove },
   test: { effect: 'write', flags: ['session'], rest: true, load: async () => (await testCommand()).test },
-  heavy: { effect: 'write', flags: ['session', 'what', 'max-minutes'], switches: ['small'], rest: true, load: async () => (await heavyCommand()).heavy },
+  heavy: { effect: 'write', flags: ['session', 'what', 'max-minutes'], switches: ['small', 'pre-push'], rest: true, load: async () => (await heavyCommand()).heavy },
   withdraw: { effect: 'write', flags: ['session', 'what'], switches: ['all'], load: async () => (await withdrawCommand()).withdraw },
   integrate: { effect: 'write', flags: ['session'], switches: ['keep-remote', 'no-delete-local'], load: async () => (await integrateCommand()).integrate },
   roll: { effect: 'write', flags: ['session', 'repo'], load: async () => (await rollCommand()).roll },
@@ -393,7 +393,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       one and empty its target, then runs git worktree remove; REFUSED before any change for the main
       checkout, a dirty tree or a real node_modules folder. --delete-branch: deletes its branch too, once
       every commit of it is on --base (default the branch origin/HEAD names); --dry-run: prints the steps
-  heavy --what <label> [--session <id|name>] [--max-minutes <n>] [--small] -- <command ...>   runs one heavy step
+  heavy --what <label> [--session <id|name>] [--max-minutes <n>] [--small] [--pre-push] -- <command ...>   runs one heavy step
       (a build, a test run, a database script) under the host lock, so the host runs one at a time:
       waits in line for the lock, kills the step and every process it started after
       coordinator.heavy.maxRunMinutes (--max-minutes) and records its start and end in the coordinator's
@@ -405,7 +405,10 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       parent step's session, else the session this Claude Code tab is bound to. --small (a spec run, a
       lint): shares the host with other small steps while it keeps coordinator.heavy.memoryFloorMb free
       besides the MB held for them (its ledger peak and a quarter, else coordinator.heavy.smallReserveMb);
-      a step without --small waits for them to end
+      a step without --small waits for them to end. --pre-push (a git pre-push hook's checks): on a clean tree
+      it reuses their pass of the last 24 hours (DONE at once, even from the cutoff on) and records one
+      when they pass; when they waited over a minute for the lock it declines the push (REFUSED), whose
+      connection may have closed meanwhile: push again, it reuses the pass
   withdraw (--what <text> | --all) [--session <id|name>]   takes this session's steps waiting for the
       host lock (heavy, integrate, roll) out of its line, so a re-ordered or abandoned step leaves it:
       --what picks those whose purpose holds the text. Each stops at its next look and runs nothing;
