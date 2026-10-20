@@ -554,7 +554,7 @@ flowchart TD
 - `pushGuard.pushToProtected` (since 0.11.0) is `ask` by default; set to `allow`, a normal push to a protected branch
   runs with a one-line note instead of a question, and Claude Code's own permissions still decide. Each question
   about a normal push ends by naming this switch.
-- Set to `lead` (since 0.112.0), the lead approves pushes instead of the human: the lead's own runs with a note; a
+- Set to `lead` (since 0.126.0), the lead approves pushes instead of the human: the lead's own runs with a note; a
   session's runs with a note while the lead's `teamrig approve` stands on one of its tasks waiting `approval:<lead>`
   (until the task's next status), and is refused otherwise, with how to ask on the register. The human is never
   asked about a normal push, and the refusal holds whatever `prompts.hookAsks` says.
