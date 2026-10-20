@@ -10,7 +10,7 @@ import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT
 import { isEffort, isModel } from "./launch.js";
 import { CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from "./limits.js";
 import { ConfigReader, describe, isValidRegex, shortLine } from "./reader.js";
-import { AD_HOC_RUNNERS, BURST_POLICIES, CONFLICT_WINNERS, ESCALATIONS, HIRING_POLICIES, isAdHocRunners, isBurstPolicy, isCommitGate, isConflictWinner, isEffortLevel, isEscalation, isHiringPolicy, isOverAction, isHookAsks, isPushToProtected, isSecretReads, isSkipHooks, isTerminalChoice, isVerifyGate, isWeekday, HOOK_ASKS, OVER_ACTIONS, PUSH_TO_PROTECTED, SECRET_READS, SKIP_HOOKS, TERMINALS, VERIFY_GATES, WEEKDAYS, } from "./types.js";
+import { AD_HOC_RUNNERS, PACKAGE_INSTALLS, BURST_POLICIES, CONFLICT_WINNERS, ESCALATIONS, HIRING_POLICIES, isAdHocRunners, isPackageInstalls, isBurstPolicy, isCommitGate, isConflictWinner, isEffortLevel, isEscalation, isHiringPolicy, isOverAction, isHookAsks, isPushToProtected, isSecretReads, isSkipHooks, isTerminalChoice, isVerifyGate, isWeekday, HOOK_ASKS, OVER_ACTIONS, PUSH_TO_PROTECTED, SECRET_READS, SKIP_HOOKS, TERMINALS, VERIFY_GATES, WEEKDAYS, } from "./types.js";
 const isSessionName = (name) => SESSION_NAME.test(name) ? undefined : 'expected a lowercase name: a letter, then letters, digits or -, at most 32';
 const isTimeZone = (name) => (TimeZone.of(name) === undefined ? 'expected an IANA time zone name such as Asia/Jerusalem' : undefined);
 const isUtcTime = (time) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(time) ? undefined : 'expected a UTC time as HH:MM');
@@ -150,7 +150,7 @@ export function parseConfig(raw) {
             protectedBranches: read.stringList(pushGuard, 'protectedBranches', 'pushGuard', DEFAULT_PUSH_GUARD.protectedBranches, shortLine(CONFIG_LIMITS.protectedBranches.maxLength, BRANCH_NAME), CONFIG_LIMITS.protectedBranches.maxItems),
             pushToProtected: parsePushToProtected(read, pushGuard),
         },
-        packageGuard: { adHocRunners: parseAdHocRunners(read, read.section(raw, 'packageGuard', '')) },
+        packageGuard: parsePackageGuard(read, read.section(raw, 'packageGuard', '')),
         commitGuard: { skipHooks: parseSkipHooks(read, read.section(raw, 'commitGuard', '')) },
         prompts: { hookAsks: parseHookAsks(read, read.section(raw, 'prompts', '')) },
         secretGuard: parseSecretGuard(read, read.section(raw, 'secretGuard', '')),
@@ -685,10 +685,16 @@ function parsePushToProtected(read, raw) {
     const value = read.string(raw, 'pushToProtected', 'pushGuard', fallback, oneOf(PUSH_TO_PROTECTED));
     return isPushToProtected(value) ? value : fallback;
 }
-function parseAdHocRunners(read, raw) {
-    const fallback = DEFAULT_PACKAGE_GUARD.adHocRunners;
-    const value = read.string(raw, 'adHocRunners', 'packageGuard', fallback, oneOf(AD_HOC_RUNNERS));
-    return isAdHocRunners(value) ? value : fallback;
+function parsePackageGuard(read, raw) {
+    const path = 'packageGuard';
+    const defaults = DEFAULT_PACKAGE_GUARD;
+    const adHocRunners = read.string(raw, 'adHocRunners', path, defaults.adHocRunners, oneOf(AD_HOC_RUNNERS));
+    const installs = read.string(raw, 'installs', path, defaults.installs, oneOf(PACKAGE_INSTALLS));
+    return {
+        adHocRunners: isAdHocRunners(adHocRunners) ? adHocRunners : defaults.adHocRunners,
+        installs: isPackageInstalls(installs) ? installs : defaults.installs,
+        cooldownDays: read.integer(raw, 'cooldownDays', path, defaults.cooldownDays, CONFIG_LIMITS.packageCooldownDays),
+    };
 }
 function parseSkipHooks(read, raw) {
     const fallback = DEFAULT_COMMIT_GUARD.skipHooks;

@@ -11,13 +11,13 @@ const NPX_NO_FETCH = new Set(['--no', '--no-install']);
 export const NPM_VALUED = new Set(['--prefix', '-w', '--workspace', '--registry', '--cache', '--userconfig', '--loglevel']);
 /** npm init's options that take a value, so the word after one is not the initializer. */
 const NPM_INIT_VALUED = new Set([...NPM_VALUED, '--scope', '--init-author-name', '--init-author-email', '--init-author-url', '--init-license', '--init-version', '--init-module']);
-const PNPM_VALUED = new Set(['-C', '--dir', '-F', '--filter']);
+export const PNPM_VALUED = new Set(['-C', '--dir', '-F', '--filter']);
 /** The options of pnpm dlx and yarn dlx that take a value. */
 const DLX_VALUED = new Set(['-p', '--package', '--allow-build']);
-const YARN_VALUED = new Set(['--cwd']);
-const BUN_VALUED = new Set(['--cwd', '-c', '--config']);
+export const YARN_VALUED = new Set(['--cwd']);
+export const BUN_VALUED = new Set(['--cwd', '-c', '--config']);
 /** A command word that names a file to run, not a package: `./tool.js`, `../x`, `/opt/x`, `~/x`, `C:\x`. */
-const FILE_PATH = /^(?:\.{1,2}(?:[\\/]|$)|[\\/~]|[A-Za-z]:[\\/])/;
+export const FILE_PATH = /^(?:\.{1,2}(?:[\\/]|$)|[\\/~]|[A-Za-z]:[\\/])/;
 /** A package spec other than a bare name: `name@1.2.3`, `@scope/name`, `github:user/repo`, `user/repo`. */
 const PACKAGE_SPEC = /[@:/\\]/;
 /** Reads leading options; `--` ends them, and a word only known when the line runs is the first that is not one. */
@@ -105,7 +105,7 @@ function fetchCall(runner, args, valued) {
     return target === undefined ? NONE : { kind: 'fetch', call: callText(runner, target) };
 }
 /** A runner's subcommand, after its leading options, with the words after it. */
-function subcommandOf(args, valued) {
+export function subcommandOf(args, valued) {
     const options = readOptions(args, valued);
     const [head, ...rest] = options.rest;
     return { name: head === undefined || head.dynamic ? undefined : head.text, rest, options };

@@ -16,6 +16,10 @@ export const AD_HOC_RUNNERS = ['deny', 'ask', 'allow'];
 export function isAdHocRunners(value) {
     return AD_HOC_RUNNERS.some((choice) => choice === value);
 }
+export const PACKAGE_INSTALLS = ['deny', 'ask', 'allow'];
+export function isPackageInstalls(value) {
+    return PACKAGE_INSTALLS.some((choice) => choice === value);
+}
 export const SKIP_HOOKS = ['deny', 'ask', 'allow'];
 export function isSkipHooks(value) {
     return SKIP_HOOKS.some((choice) => choice === value);
