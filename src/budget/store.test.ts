@@ -1,10 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { isRecord } from '../core/guards.ts';
 import { NewerDataError } from '../core/jsonl.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { INITIAL_MISS_STATE } from './misses.ts';
 import { emptyPatterns, INITIAL_PATTERN_STATE } from './patterns.ts';
-import { EMPTY_USAGE, formatUsage, MemoryUsageStore, newCursor, parseUsage, pruneUsage, RECENT_KEYS_KEPT, UsageStore, type UsageState } from './store.ts';
+import { EMPTY_USAGE, formatUsage, MemoryUsageStore, newCursor, parseUsage, pruneUsage, RECENT_KEYS_KEPT, USAGE_FORMAT, UsageStore, type UsageState } from './store.ts';
 
 const DIR = '/state/usage';
 const FILE = '/state/usage/alpha.json';
@@ -45,9 +46,18 @@ describe('UsageStore', () => {
   });
 
   it('refuses a file a newer version wrote', async () => {
-    const store = new UsageStore(new MemoryFiles({ [FILE]: '{"v":2,"rev":1}' }), DIR);
+    const store = new UsageStore(new MemoryFiles({ [FILE]: JSON.stringify({ v: USAGE_FORMAT + 1, rev: 1 }) }), DIR);
     await assert.rejects(store.load('alpha'), NewerDataError);
     await assert.rejects(store.save('alpha', STATE, 1), NewerDataError);
+  });
+
+  it('reads a format-1 file whole and writes it back as format 2, which a teamrig of format 1 refuses', async () => {
+    const files = new MemoryFiles({ [FILE]: JSON.stringify({ v: 1, rev: 5, ...STATE }) });
+    const store = new UsageStore(files, DIR);
+    assert.deepEqual(await store.load('alpha'), { rev: 5, state: STATE });
+    assert.equal(await store.save('alpha', STATE, 5), true);
+    assert.equal(files.get(FILE), formatUsage(STATE, 6));
+    assert.match(files.get(FILE) ?? '', /^\{"v":2,"rev":6,/);
   });
 
   it('refuses a session id that is not safe in a file name', async () => {
@@ -128,6 +138,128 @@ describe('parseUsage', () => {
   it('keeps an unkeyed open call', () => {
     const unkeyed = { ...STATE, cursors: { a: { ...newCursor(1, 2, '2026-03-02'), call: { key: null, day: '2026-03-02', hour: null, output: 1, context: 2, w: 3 } } } };
     assert.deepEqual(parseUsage(formatUsage(unkeyed, 1)), unkeyed);
+  });
+});
+
+describe('usage format', () => {
+  /** The maps of a usage file, keyed by day, hour and transcript rather than by field. */
+  const MAPS: ReadonlySet<string> = new Set(['byDay', 'byHour', 'cursors']);
+
+  /** Every field path in a written usage file, sorted: a map's key reads as `*`, an array's entries as `[]`. */
+  function fieldPaths(value: unknown, path = ''): readonly string[] {
+    if (Array.isArray(value)) {
+      return [...new Set(value.flatMap((entry: unknown) => fieldPaths(entry, `${path}[]`)))].sort();
+    }
+    if (!isRecord(value)) {
+      return [path];
+    }
+    return [...new Set(Object.entries(value).flatMap(([key, entry]) => fieldPaths(entry, path === '' ? key : `${path}.${MAPS.has(path) ? '*' : key}`)))].sort();
+  }
+
+  /**
+   * The fields each format writes. A teamrig rewrites a file of its own format without a field it does not
+   * know, so a field added to the file is a new format: raise USAGE_FORMAT, which an older teamrig refuses,
+   * and pin its fields here. Format 1 grew some of these fields by version, so it has no single list.
+   */
+  const DAY_COUNTERS_2 = [
+    'coldCalls',
+    'coldW',
+    'compactions',
+    'editChain',
+    'editChainSavedW',
+    'editTestJoined',
+    'editThenTest',
+    'editThenTestSavedW',
+    'followupsNone',
+    'heavySteps',
+    'missAdHocFetch',
+    'missCalls',
+    'missFollowupWords',
+    'missGitWorktreeRemove',
+    'missHeavyOutside',
+    'missNoStart',
+    'notificationTurns',
+    'notificationW',
+    'otherTurns',
+    'otherW',
+    'ownerTurns',
+    'ownerW',
+    'passRentW',
+    'passRuns',
+    'passTokens',
+    'peerTurns',
+    'peerW',
+    'readChain',
+    'readChainW',
+    'rerunAfterPass',
+    'rerunAfterPassW',
+    'rerunFailedFull',
+    'rerunFailedFullW',
+    'rerunFailedPiped',
+    'rerunFailedPipedW',
+    'scheduledTurns',
+    'scheduledW',
+    'subagentTurns',
+    'subagentW',
+    'workBlocks',
+    'worktreeRemoves',
+  ];
+  const WRITTEN: Readonly<Record<number, readonly string[]>> = {
+    2: [
+      'byDay.*.calls',
+      ...DAY_COUNTERS_2.map((counter) => `byDay.*.patterns.${counter}`),
+      'byDay.*.w',
+      'byHour.*',
+      ...['context', 'day', 'hour', 'key', 'output', 'w'].map((field) => `cursors.*.call.${field}`),
+      'cursors.*.day',
+      'cursors.*.misses.block.calls',
+      'cursors.*.misses.block.day',
+      'cursors.*.misses.lastAt',
+      'cursors.*.offset',
+      'cursors.*.patterns.lastContext',
+      ...['failed', 'id', 'kind', 'piped'].map((field) => `cursors.*.patterns.open[].${field}`),
+      'cursors.*.patterns.prev.single',
+      'cursors.*.patterns.prev.turn',
+      'cursors.*.patterns.rentTokens',
+      'cursors.*.patterns.trigger',
+      'cursors.*.patterns.turn',
+      ...['failed', 'id', 'kind', 'piped'].map((field) => `cursors.*.patterns.turnTest.${field}`),
+      'cursors.*.size',
+      'recentKeys[]',
+      'rev',
+      'v',
+    ],
+  };
+
+  /** A state with every field set, none null, so each nested field shows in its file. */
+  const FULL: UsageState = {
+    ...STATE,
+    cursors: {
+      '/t/p/alpha.jsonl': {
+        ...CURSOR,
+        patterns: {
+          turn: 3,
+          prev: { turn: 2, single: 'read' },
+          open: [{ id: 'toolu_1', kind: 'git', piped: true, failed: null }],
+          turnTest: { id: 'toolu_2', kind: 'testTargeted', piped: false, failed: true },
+          rentTokens: 120,
+          lastContext: 40_000,
+          trigger: 'other',
+        },
+      },
+    },
+  };
+
+  it('writes the pinned fields of its format: a field added to the file raises USAGE_FORMAT', () => {
+    assert.deepEqual(fieldPaths(JSON.parse(formatUsage(FULL, 1))), WRITTEN[USAGE_FORMAT]);
+    assert.deepEqual(parseUsage(formatUsage(FULL, 1)), FULL);
+  });
+
+  it('reads every format from 1 and refuses a newer one', () => {
+    for (let format = 1; format <= USAGE_FORMAT; format += 1) {
+      assert.deepEqual(parseUsage(JSON.stringify({ v: format, rev: 1, ...FULL })), FULL, `format ${format}`);
+    }
+    assert.equal(parseUsage(JSON.stringify({ v: USAGE_FORMAT + 1, rev: 1, ...FULL })), undefined);
   });
 });
 
