@@ -114,6 +114,15 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
   inbox status [--session <area>]   unread lines per area
   inbox add --to <id|name|team/id> --text "<one line>"
       team/id: a lead may write to its parent team's lead and its child teams' leads
+  exec request --file <request.json>   asks to run a privileged command: the JSON names the command, its
+      code binding, variables, dry run or preview, purpose, expected effect and rollback; logged as R<n>
+  exec dry-run R<n>    runs the request's read-only dry run, logged for the reviewer
+  exec status [R<n>]   each request's stage; with R<n>, the whole request as the reviewer reads it
+  exec approve R<n> [--note "<why>"]   the security reviewer (roles.securityReviewer) or the owner approves
+      one run; an owner-gated request only the owner
+  exec refuse R<n> --note "<why>"      refuses the request; the note names the safe alternative
+  exec escalate R<n> --note "<why>"    the security reviewer hands an owner-gated request to the owner
+  exec run R<n>        runs an approved request once, before its approval expires
   who [<id|name|role>]         the name to message a session by (no argument: every session)
   sessions                     each session: running (and the MB its Claude Code's processes hold), closed
       or never recorded; then the host's free memory and commit charge
@@ -263,7 +272,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
   test [--session <id|name>] -- <command ...>   runs a test command in the shell, writes all it printed
       to a log (each session keeps its newest 20) and prints one PASS or FAIL line, then each failing
       test within tests.maxFailureChars; exit 0 when the command passed, 1 otherwise
-  hook push-guard | hook package-guard | hook secret-guard | hook cold-send | hook failed-send | hook loop-nudge | hook helper-gate | hook inbox-reminder | hook session-start | hook stop | hook subagent-start | hook subagent-stop | hook refresh-wake | hook restore-track | hook tab-status | hook readonly-allow | hook picker-guard | hook prompt-refuse
+  hook push-guard | hook package-guard | hook secret-guard | hook exec-guard | hook cold-send | hook failed-send | hook loop-nudge | hook helper-gate | hook inbox-reminder | hook session-start | hook stop | hook subagent-start | hook subagent-stop | hook refresh-wake | hook restore-track | hook tab-status | hook readonly-allow | hook picker-guard | hook prompt-refuse
       (run by Claude Code, hook JSON on stdin)
   hook clear-dir | hook clear-claim [--hold [--why <reason>]]
       (run by the plugin's mod: the automatic restart's /clear in the tab)
