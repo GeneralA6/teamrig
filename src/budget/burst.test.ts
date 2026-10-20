@@ -1,12 +1,14 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_BURST } from '../config/defaults.ts';
+import { DEFAULT_BUDGET, DEFAULT_BURST } from '../config/defaults.ts';
 import { TimeZone } from '../core/zone.ts';
 import { JERUSALEM } from '../testing/zone.ts';
-import type { BurstConfig } from '../config/types.ts';
+import type { BudgetConfig, BurstConfig } from '../config/types.ts';
+import { DailyProfile } from './active-time.ts';
 import {
   activeBurst,
-  burstDailyPct,
+  burstFloorOf,
+  burstFloorPct,
   burstsOver,
   decideBurst,
   isBurst,
@@ -18,9 +20,12 @@ import {
   type BurstContext,
   type BurstDecision,
   type BurstEnd,
+  type BurstPace,
   type BurstRequest,
 } from './burst.ts';
-import { weekWindow } from './pace.ts';
+import { dailyAllowancePct, weekWindow } from './pace.ts';
+import { emptyPatterns } from './patterns.ts';
+import type { UsageState } from './store.ts';
 
 const HOUR = 3_600_000;
 /** The week's reset, Wednesday 01:00 UTC; its pace line ends an hour before, at midnight. */
@@ -44,7 +49,17 @@ const REQUEST: BurstRequest = {
   by: 'lead',
   now: NOW,
 };
-const CONTEXT: BurstContext = { usedPct: 60, window: WINDOW, targetPct: 99.5, config: OWNER, active: undefined, zone: TimeZone.UTC };
+const EVEN = DailyProfile.even();
+const CONTEXT: BurstContext = {
+  usedPct: 60,
+  window: WINDOW,
+  targetPct: 99.5,
+  config: OWNER,
+  active: undefined,
+  zone: TimeZone.UTC,
+  profile: EVEN,
+  sessionsTodayPct: 0,
+};
 const DUE = Date.parse('2030-01-08T20:00:00Z');
 const DEADLINE: BurstRequest = { ...REQUEST, kind: 'deadline', stopPct: 80, deadline: DUE, tasks: ['T1', 'T2'] };
 
@@ -199,12 +214,72 @@ describe('decideBurst', () => {
   });
 });
 
-describe('burstDailyPct', () => {
-  it("shares what is left to the stop % among the burst's sessions over its days, one day at least", () => {
-    assert.equal(burstDailyPct(99.5, 60, 2, 14 * HOUR), 19.75);
-    assert.equal(burstDailyPct(90, 60, 3, 48 * HOUR), 5);
-    assert.equal(burstDailyPct(70, 60, 0, 24 * HOUR), 10);
-    assert.equal(burstDailyPct(70, 60, 3, 24 * HOUR), 3.33);
+describe('burstFloorPct', () => {
+  /** A deadline burst from Thursday 10:00 to Saturday 10:00 UTC, to 80% of the week, for two sessions. */
+  const THURSDAY = Date.parse('2030-01-03T10:00:00Z');
+  const LONG = burst({ kind: 'deadline', stopPct: 80, endsAt: THURSDAY + 48 * HOUR });
+  const NIGHTS = DailyProfile.ofQuietHours({ startUtc: '22:00', endUtc: '06:00', action: 'ask' });
+
+  function floor(now: number, usedPct: number, todayPct: number, profile = EVEN, of = LONG): number {
+    const pace: BurstPace = { window: WINDOW, now, usedPct, todayPct, profile };
+    return Math.round(burstFloorPct(of, pace) * 100) / 100;
+  }
+
+  it("shares what is left to the stop % among the burst's sessions, a day of the active time to its end", () => {
+    assert.equal(floor(THURSDAY, 60, 0), 5);
+    // Quiet 22:00-06:00: a day has 16 active hours, and 32 are left to Saturday 10:00.
+    assert.equal(floor(THURSDAY, 60, 0, NIGHTS), 5);
+    assert.equal(floor(THURSDAY, 60, 0, EVEN, burst({ ...LONG, sessions: [] })), 10);
+  });
+
+  it('is recomputed at every reading: spending ahead lowers it and spending less raises it', () => {
+    const friday = THURSDAY + 24 * HOUR;
+    assert.equal(floor(friday, 70, 0.5), 5);
+    assert.equal(floor(friday, 75, 0.5), 2.5);
+    assert.equal(floor(friday, 62, 0.5), 9);
+    assert.equal(floor(friday, 80, 0.5), 0);
+  });
+
+  it("is never above its sessions' use today plus what is left, on the day it ends", () => {
+    // Saturday 06:00, four hours to the end of ten today: at that rate today is 5%, above the 1% used plus the 2% left.
+    assert.equal(floor(THURSDAY + 44 * HOUR, 78, 1), 1.5);
+  });
+
+  it("is the team's allowance shared by its sessions when it runs to the pace end, to the target", () => {
+    const team = dailyAllowancePct({ window: WINDOW, budget: { ...DEFAULT_BUDGET, targetPct: 99.5 }, now: THURSDAY, usedPct: 60, todayPct: 0, profile: NIGHTS });
+    assert.equal(floor(THURSDAY, 60, 0, NIGHTS, burst()), Math.round((team / 2) * 100) / 100);
+    assert.equal(floor(NOW, 60, 0, EVEN, burst()), 19.75);
+  });
+});
+
+describe('burstFloorOf', () => {
+  const DAY = '2030-01-08';
+  /** No quiet hours: every hour is active. */
+  const AWAKE: Pick<BudgetConfig, 'quietHours'> = {};
+  /** 1% of the week is 1,000 W. */
+  const WEEK = { window: WINDOW, usedPct: 60, wPerPct: 1_000, todayFrom: Date.parse('2030-01-08T00:00:00Z') };
+
+  function used(w: number): UsageState {
+    return { byDay: { [DAY]: { w, calls: 1, patterns: emptyPatterns() } }, byHour: {}, cursors: {}, recentKeys: [] };
+  }
+
+  it("reads its sessions' use today, not the others', into the floor", () => {
+    const states = new Map([
+      ['alpha', used(2_000)],
+      ['bravo', used(1_000)],
+      ['carol', used(30_000)],
+    ]);
+    const due = burst({ kind: 'deadline', stopPct: 62, endsAt: NOW + 4 * HOUR });
+    // 2% left in four of today's fourteen hours is 7% today, above the 3% used today plus the 2% left.
+    assert.equal(burstFloorOf(due, WEEK, states, AWAKE, NOW), 2.5);
+    assert.equal(burstFloorOf(due, WEEK, new Map(), AWAKE, NOW), 1);
+  });
+
+  it('keeps its start reading while the week cannot be read', () => {
+    const started = burst({ dailyPct: 7 });
+    assert.equal(burstFloorOf(started, { ...WEEK, wPerPct: undefined }, new Map(), AWAKE, NOW), 7);
+    assert.equal(burstFloorOf(started, { ...WEEK, usedPct: undefined }, new Map(), AWAKE, NOW), 7);
+    assert.equal(burstFloorOf(started, { ...WEEK, window: undefined }, new Map(), AWAKE, NOW), 7);
   });
 });
 
@@ -240,12 +315,11 @@ describe('activeBurst and burstsOver', () => {
 });
 
 describe('withBurst', () => {
-  it("gives a burst's session at least the burst's daily budget, and leaves the others alone", () => {
-    const active = burst({ dailyPct: 6 });
-    assert.equal(withBurst(4, active, 'alpha'), 6);
-    assert.equal(withBurst(8, active, 'alpha'), 8);
-    assert.equal(withBurst(undefined, active, 'alpha'), 6);
-    assert.equal(withBurst(4, active, 'carol'), 4);
-    assert.equal(withBurst(undefined, undefined, 'alpha'), undefined);
+  it("gives a burst's session at least the burst's floor, and leaves a session out of it alone", () => {
+    assert.equal(withBurst(4, 6), 6);
+    assert.equal(withBurst(8, 6), 8);
+    assert.equal(withBurst(undefined, 6), 6);
+    assert.equal(withBurst(4, undefined), 4);
+    assert.equal(withBurst(undefined, undefined), undefined);
   });
 });

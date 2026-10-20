@@ -43,28 +43,28 @@ function facts(extra: Partial<BurstFacts> = {}): BurstFacts {
 }
 
 describe('burstText', () => {
-  it("names the kind, its tasks and deadline, its end, the session's budget and the caps", () => {
+  it("names the kind, its tasks and deadline, its end, the floor it is given and the caps", () => {
     assert.equal(
-      burstText(SURPLUS_BURST, ['alpha'], TimeZone.UTC),
-      "a surplus burst until Wed 01-09 00:00 UTC or 99.5% of the week: alpha's daily budget is at least 19.8%, up to 3 helpers at once.",
+      burstText(SURPLUS_BURST, ['alpha'], TimeZone.UTC, 6),
+      "a surplus burst until Wed 01-09 00:00 UTC or 99.5% of the week: alpha's daily budget is at least 6.0%, up to 3 helpers at once.",
     );
     assert.equal(
-      burstText(DEADLINE_BURST, ['alpha'], TimeZone.UTC),
+      burstText(DEADLINE_BURST, ['alpha'], TimeZone.UTC, DEADLINE_BURST.dailyPct),
       "a deadline burst for T1, T2 (due Tue 01-08 20:00 UTC) until Tue 01-08 20:00 UTC or 80.0% of the week: alpha's daily budget is at least 19.8%, up to 1 helper at once, 1 hire for the team.",
     );
     const { deadline: _deadline, ...undated } = DEADLINE_BURST;
-    assert.match(burstText({ ...undated, hires: 2 }, ['alpha'], TimeZone.UTC), /^a deadline burst for T1, T2 until .*, 2 hires for the team\.$/);
+    assert.match(burstText({ ...undated, hires: 2 }, ['alpha'], TimeZone.UTC, 6), /^a deadline burst for T1, T2 until .*, 2 hires for the team\.$/);
   });
 
   it("prints its deadline and end on the team's clock", () => {
-    assert.match(burstText(DEADLINE_BURST, ['alpha'], JERUSALEM), /^a deadline burst for T1, T2 \(due Tue 01-08 22:00 IST\) until Tue 01-08 22:00 IST or 80\.0% of the week: /);
+    assert.match(burstText(DEADLINE_BURST, ['alpha'], JERUSALEM, 6), /^a deadline burst for T1, T2 \(due Tue 01-08 22:00 IST\) until Tue 01-08 22:00 IST or 80\.0% of the week: /);
   });
 });
 
 describe('burstStopLines', () => {
-  it("shows the person a burst's start once and its end once", () => {
+  it("shows the person a burst's start once, with the session's budget now, and its end once", () => {
     const start = burstStopLines(facts({ burst: SURPLUS_BURST }), NONE);
-    assert.deepEqual(start.lines, [`Budget: the lead started ${burstText(SURPLUS_BURST, ['alpha'], TimeZone.UTC)} More: teamrig burst`]);
+    assert.deepEqual(start.lines, [`Budget: the lead started ${burstText(SURPLUS_BURST, ['alpha'], TimeZone.UTC, 2)} More: teamrig burst`]);
     assert.equal(start.burstAt, NOW);
     const again = burstStopLines(facts({ burst: SURPLUS_BURST }), { ...NONE, burstAt: NOW });
     assert.deepEqual(again, { lines: [], burstAt: NOW });

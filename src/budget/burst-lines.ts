@@ -90,27 +90,28 @@ function tasksText(burst: Burst, zone: TimeZone): string {
 
 /**
  * A burst as the person reads it, for the sessions named: "a surplus burst until ...: alpha's daily
- * budget is at least ...", or "alpha, bravo each have a daily budget of at least ..." for several.
+ * budget is at least ...", or "alpha, bravo each have a daily budget of at least ..." for several, with
+ * `floorPct`: the floor now (`burstFloorOf`), or its start reading (`dailyPct`) in a line about its start.
  */
-export function burstText(burst: Burst, names: readonly string[], zone: TimeZone): string {
+export function burstText(burst: Burst, names: readonly string[], zone: TimeZone, floorPct: number): string {
   const hires = burst.hires === 0 ? '' : `, ${plural(burst.hires, 'hire')} for the team`;
   const whose = names.length === 1 ? `${names.join('')}'s daily budget is at least` : `${names.join(', ')} each have a daily budget of at least`;
-  return `a ${burst.kind} burst${tasksText(burst, zone)} ${endText(burst, zone)}: ${whose} ${formatPct(burst.dailyPct)}, up to ${plural(burst.helpers, 'helper')} at once${hires}.`;
+  return `a ${burst.kind} burst${tasksText(burst, zone)} ${endText(burst, zone)}: ${whose} ${formatPct(floorPct)}, up to ${plural(burst.helpers, 'helper')} at once${hires}.`;
 }
 
 /** Why a session's daily budget is not the shared one: " (lifted)" (a lift sets its part), " (burst)", or ''. */
-export function budgetMarkOf(session: { readonly lift: Lift | undefined; readonly burst: Burst | undefined }): string {
-  if (session.lift !== undefined) {
+export function budgetMarkOf(lift: Lift | undefined, inBurst: boolean): string {
+  if (lift !== undefined) {
     return ' (lifted)';
   }
-  return session.burst === undefined ? '' : ' (burst)';
+  return inBurst ? ' (burst)' : '';
 }
 
 /** The person's line at a turn's end when the session's burst starts or ends, and the mark to keep. */
 export function burstStopLines(facts: BurstFacts, marks: BurstMarks): { readonly lines: readonly string[]; readonly burstAt: number | undefined } {
   const { burst } = facts;
   if (burst !== undefined) {
-    return burst.at === marks.burstAt ? { lines: [], burstAt: burst.at } : { lines: [`Budget: the lead started ${burstText(burst, [facts.name], facts.zone)} ${MORE_BURST}`], burstAt: burst.at };
+    return burst.at === marks.burstAt ? { lines: [], burstAt: burst.at } : { lines: [`Budget: the lead started ${burstText(burst, [facts.name], facts.zone, facts.budgetPct)} ${MORE_BURST}`], burstAt: burst.at };
   }
   if (marks.burstAt !== undefined) {
     return { lines: [`Budget: ${facts.name}'s burst has ended; its daily budget is ${formatPct(facts.budgetPct)} again.`], burstAt: undefined };
