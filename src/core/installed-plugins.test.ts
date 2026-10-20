@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { appliesTo, installedPluginsFileOf, installsOf, isPluginCacheBin, samePath, type Install } from './installed-plugins.ts';
+import { appliesTo, pluginsFolderOf, installsOf, isPluginCacheBin, samePath, type Install } from './installed-plugins.ts';
 
 const CACHE = 'C:\\Users\\me\\.claude\\plugins\\cache';
 
@@ -66,18 +66,15 @@ describe('samePath', () => {
   });
 });
 
-describe('installedPluginsFileOf', () => {
-  it('finds installed_plugins.json beside the cache a plugin runs from', () => {
-    assert.equal(installedPluginsFileOf(`${CACHE}\\teamrig\\teamrig\\0.41.0`), 'C:/Users/me/.claude/plugins/installed_plugins.json');
-    assert.equal(
-      installedPluginsFileOf('/home/me/.config/claude/plugins/cache/teamrig/teamrig/0.41.0/'),
-      '/home/me/.config/claude/plugins/installed_plugins.json',
-    );
+describe('pluginsFolderOf', () => {
+  it('finds the plugins folder that holds the cache a plugin runs from', () => {
+    assert.equal(pluginsFolderOf(`${CACHE}\\teamrig\\teamrig\\0.41.0`), 'C:/Users/me/.claude/plugins');
+    assert.equal(pluginsFolderOf('/home/me/.config/claude/plugins/cache/teamrig/teamrig/0.41.0/'), '/home/me/.config/claude/plugins');
   });
 
   it('finds none for a plugin run from anywhere else', () => {
     for (const root of ['D:\\src\\teamrig\\plugins\\teamrig', '/home/me/plugins/teamrig/0.41.0', 'plugins/cache/m/p/1', '']) {
-      assert.equal(installedPluginsFileOf(root), undefined, root);
+      assert.equal(pluginsFolderOf(root), undefined, root);
     }
   });
 });
