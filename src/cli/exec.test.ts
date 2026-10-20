@@ -189,6 +189,15 @@ describe('runCli: exec approve, refuse and escalate (T755)', () => {
     assert.match(outputOf(await team.run('status')), /R1 .*: refused by bravo/);
   });
 
+  it('refuses a note that looks like a secret, and logs nothing', async () => {
+    const team = new ExecTeam({ ...EXEC_TEAM, register: { secretPatterns: ['hunter2'] } });
+    assertOk(await team.request());
+    assertOk(await team.run('dry-run', 'R1'));
+    assertRefused(await team.run('refuse', 'R1', '--session', 'bravo', '--note', 'the key is hunter2'), /the note looks like it holds a secret/);
+    assert.doesNotMatch((await team.kit.files.read(AUDIT)) ?? '', /hunter2/);
+    assert.match(outputOf(await team.run('status')), /R1 .*: dry run exit 0: waits for review/);
+  });
+
   it('hands an owner-gated request to the owner, who approves it', async () => {
     const team = await dryRun(execDraft({ ownerGated: true }));
     assertRefused(await team.run('approve', 'R1', '--session', 'bravo'), /R1 is owner-gated: the owner \(owner\) approves or refuses it; escalate it with your review note/);
