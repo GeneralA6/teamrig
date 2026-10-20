@@ -18,6 +18,7 @@ import {
   type BandView,
   type ClearHandHost,
   type CliRun,
+  type ListedAgent,
   type PersonHold,
 } from './clear-hand.ts';
 
@@ -37,6 +38,12 @@ function askOf(n: number, hold: PersonHold = NO_HOLD, at: string = AT): string {
 const ASK = askOf(1);
 const NEXT_ASK = askOf(2);
 
+/** A helper that handed its report back yet is still listed, and one at work. */
+const READER: ListedAgent = { type: 'code-reader', status: 'idle', description: 'Map the market-data pages' };
+const EXPLORER: ListedAgent = { type: 'Explore', status: 'running', description: 'Find the band' };
+/** What a hold for READER alone says. */
+const READER_HOLD = '1 agent of this session still live: code-reader idle "Map the market-data pages"';
+
 interface CliCall {
   readonly args: readonly string[];
   readonly stdin: string;
@@ -53,7 +60,7 @@ class FakeHost implements ClearHandHost {
   claimRun: CliRun = { exitCode: 0, stdout: 'taken\n' };
   holdRun: CliRun = { exitCode: 0, stdout: 'held\n' };
   /** The session's live agents as Claude Code lists them, or why the list failed. */
-  live: number | Error = 0;
+  live: readonly ListedAgent[] | Error = [];
   agentLists = 0;
   /** Thrown by `read`, as a file the mod cannot read. */
   readFailure: unknown;
@@ -88,7 +95,7 @@ class FakeHost implements ClearHandHost {
     return this.dirRun;
   }
 
-  async liveAgents(): Promise<number> {
+  async liveAgents(): Promise<readonly ListedAgent[]> {
     this.agentLists += 1;
     if (this.live instanceof Error) {
       throw this.live;
@@ -166,26 +173,27 @@ describe('ClearHand', () => {
     assert.equal(host.clears, 0);
   });
 
-  it('holds the ask while Claude Code lists a live agent of the session, running no /clear, and claims once none is', async () => {
+  it('holds the ask while Claude Code lists a live agent of the session, naming each, running no /clear, and claims once none is', async () => {
     const host = new FakeHost();
     const hand = new ClearHand(host);
-    host.live = 2;
+    const both = '2 agents of this session still live: code-reader idle "Map the market-data pages"; Explore running "Find the band"';
+    host.live = [READER, EXPLORER];
     host.ask();
-    assert.deepEqual(await hand.tick(), { kind: 'held', why: '2 agents of this session still live' });
-    assert.deepEqual(host.claims(), [{ args: ['hook', 'clear-claim', '--hold', '--why', '2 agents of this session still live'], stdin: JSON.stringify({ session_id: SESSION }) }]);
+    assert.deepEqual(await hand.tick(), { kind: 'held', why: both });
+    assert.deepEqual(host.claims(), [{ args: ['hook', 'clear-claim', '--hold', '--why', both], stdin: JSON.stringify({ session_id: SESSION }) }]);
     assert.equal(host.clears, 0);
     assert.deepEqual(await hand.tick(), { kind: 'no ask' }, 'the held ask is not held twice');
-    host.live = 1;
+    host.live = [READER];
     host.ask(NEXT_ASK);
-    assert.deepEqual(await hand.tick(), { kind: 'held', why: '1 agent of this session still live' });
-    host.live = 0;
+    assert.deepEqual(await hand.tick(), { kind: 'held', why: READER_HOLD }, 'a listed helper is named, so a stale one shows which it is');
+    host.live = [];
     host.ask(ASK);
     assert.deepEqual(await hand.tick(), { kind: 'cleared' });
     assert.deepEqual(
       host.claims().map((call) => call.args),
       [
-        ['hook', 'clear-claim', '--hold', '--why', '2 agents of this session still live'],
-        ['hook', 'clear-claim', '--hold', '--why', '1 agent of this session still live'],
+        ['hook', 'clear-claim', '--hold', '--why', both],
+        ['hook', 'clear-claim', '--hold', '--why', READER_HOLD],
         ['hook', 'clear-claim'],
       ],
     );
@@ -215,7 +223,7 @@ describe('ClearHand', () => {
   it('runs no /clear when the hold is declined, and passes on why', async () => {
     const host = new FakeHost();
     const hand = new ClearHand(host);
-    host.live = 1;
+    host.live = [READER];
     host.holdRun = { exitCode: 0, stdout: 'declined: the restart took its ask back\n' };
     host.ask();
     assert.deepEqual(await hand.tick(), { kind: 'declined', why: 'declined: the restart took its ask back' });
@@ -228,7 +236,7 @@ describe('ClearHand', () => {
   it('leaves an ask that comes during a turn without asking for the agents', async () => {
     const host = new FakeHost();
     const hand = new ClearHand(host);
-    host.live = 3;
+    host.live = [READER, EXPLORER, READER];
     host.ask();
     hand.turnStarted();
     assert.deepEqual(await hand.tick(), { kind: 'busy' });
@@ -406,10 +414,10 @@ describe('ClearHand: the person at the tab', () => {
     assert.equal(hand.band(), undefined);
     host.prompt = '';
     hand.refreshNow();
-    host.live = 1;
+    host.live = [READER];
     host.ask(askOf(2, HOLD));
-    assert.deepEqual(await hand.tick(), { kind: 'held', why: '1 agent of this session still live' });
-    host.live = 0;
+    assert.deepEqual(await hand.tick(), { kind: 'held', why: READER_HOLD });
+    host.live = [];
     host.ask(askOf(3, HOLD));
     assert.deepEqual(await hand.tick(), { kind: 'held', why: 'the band counts down: 20 s left' }, 'a count, not the forgotten Refresh now');
   });
@@ -473,16 +481,20 @@ describe('parseHandAsk', () => {
 });
 
 describe('liveAgentsOf', () => {
-  it('counts every agent whose loop has not ended: an idle teammate and a waiting helper are live', () => {
-    const statuses = ['pending', 'running', 'waiting', 'idle', 'completed', 'failed', 'killed'];
-    assert.equal(liveAgentsOf(statuses.map((status) => ({ status }))), 4);
-    assert.equal(liveAgentsOf([{ status: 'idle' }]), 1);
-    assert.equal(liveAgentsOf([{ status: 'completed' }, { status: 'failed' }, { status: 'killed' }]), 0);
-    assert.equal(liveAgentsOf([]), 0);
+  /** The statuses of the live agents among READER copies with these statuses. */
+  function liveStatusesOf(statuses: readonly string[]): readonly string[] {
+    return liveAgentsOf(statuses.map((status) => ({ ...READER, status }))).map((agent) => agent.status);
+  }
+
+  it('keeps every agent whose loop has not ended: an idle teammate and a waiting helper are live', () => {
+    assert.deepEqual(liveStatusesOf(['pending', 'running', 'waiting', 'idle', 'completed', 'failed', 'killed']), ['pending', 'running', 'waiting', 'idle']);
+    assert.deepEqual(liveAgentsOf([READER]), [READER]);
+    assert.deepEqual(liveStatusesOf(['completed', 'failed', 'killed']), []);
+    assert.deepEqual(liveAgentsOf([]), []);
   });
 
-  it('counts a status it does not know as live, so a new one never lets a /clear through', () => {
-    assert.equal(liveAgentsOf([{ status: 'paused' }]), 1);
+  it('keeps a status it does not know as live, so a new one never lets a /clear through', () => {
+    assert.deepEqual(liveStatusesOf(['paused']), ['paused']);
   });
 });
 
