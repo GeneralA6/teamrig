@@ -55,6 +55,11 @@ async function until(check: () => boolean, ms = 15_000): Promise<boolean> {
   return true;
 }
 
+/** Whether another process has written the file: writeFileSync creates it before it writes its text. */
+function written(path: string): boolean {
+  return existsSync(path) && readFileSync(path, 'utf8') !== '';
+}
+
 describe('startersOf', () => {
   it('keeps the starters up to and with the nearest Claude Code, else every one', () => {
     assert.deepEqual(startersOf([SELF, SHELL, CLAUDE, TERMINAL]), [SHELL, CLAUDE]);
@@ -179,15 +184,15 @@ describe('starterWatch on this machine', () => {
     const parent = spawn(process.execPath, ['-e', launcher], { stdio: 'ignore' });
     const parentPid = parent.pid ?? 0;
     try {
-      assert.equal(await until(() => existsSync(ready)), true, 'the watcher listed its starters');
+      assert.equal(await until(() => written(ready)), true, 'the watcher listed its starters');
       const [, firstStarter] = readFileSync(ready, 'utf8').split(',').map(Number);
       assert.equal(firstStarter, parentPid);
       parent.kill();
-      assert.equal(await until(() => existsSync(ended)), true, 'the watcher found its starter ended');
+      assert.equal(await until(() => written(ended)), true, 'the watcher found its starter ended');
       assert.equal(readFileSync(ended, 'utf8'), String(parentPid));
     } finally {
       parent.kill();
-      const [watcherPid] = existsSync(ready) ? readFileSync(ready, 'utf8').split(',').map(Number) : [];
+      const [watcherPid] = written(ready) ? readFileSync(ready, 'utf8').split(',').map(Number) : [];
       if (watcherPid !== undefined && nodeSessionProcesses().alive(watcherPid)) {
         process.kill(watcherPid);
       }
@@ -228,9 +233,9 @@ describe('starterWatch on this machine', () => {
     // As the Bash tool runs a command: in a forked copy of the shell, since more follows it. Under Git Bash that copy
     // ends once the launcher starts, so only the launcher's record links the CLI to this shell.
     const shell = spawn('sh', ['-c', '"$0"; exit $?', launcher.replaceAll('\\', '/')], { stdio: 'ignore', windowsHide: true });
-    const cliPids = (): readonly number[] => (existsSync(ready) ? readFileSync(ready, 'utf8').split(',').map(Number) : []);
+    const cliPids = (): readonly number[] => (written(ready) ? readFileSync(ready, 'utf8').split(',').map(Number) : []);
     try {
-      assert.equal(await until(() => existsSync(ready)), true, 'the CLI listed its starters');
+      assert.equal(await until(() => written(ready)), true, 'the CLI listed its starters');
       const [, recorded = 0, ...starters] = cliPids();
       // On Windows `sh` may be Git's bin\sh.exe, which runs the real shell as its child: the shell to end is the one
       // the launcher recorded. Elsewhere nothing is recorded and the CLI's own line reaches the shell.
@@ -238,7 +243,7 @@ describe('starterWatch on this machine', () => {
       const target = recorded > 0 ? recorded : (shell.pid ?? 0);
       assert.ok(starters.includes(target), `the shell ${target} is among the starters ${starters.join(',')}`);
       process.kill(target);
-      assert.equal(await until(() => existsSync(ended)), true, 'the CLI found its shell ended');
+      assert.equal(await until(() => written(ended)), true, 'the CLI found its shell ended');
       assert.equal(readFileSync(ended, 'utf8'), String(target));
     } finally {
       shell.kill();
