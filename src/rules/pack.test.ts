@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from '../config/limits.ts';
+import { HOOK_ASKS, PUSH_TO_PROTECTED, type HookAsks, type PushToProtected } from '../config/types.ts';
 import { FOLLOWUP_STATUSES, TASK_STATUSES } from '../register/model.ts';
 import { testConfig } from '../testing/config.ts';
 import { RULES_CLOCK } from '../testing/zone.ts';
@@ -23,8 +24,14 @@ const longest = (letter: string, length: number) => letter.repeat(length);
 const filled = (limit: { readonly maxItems: number; readonly maxLength: number }, letter: string) =>
   Array.from({ length: limit.maxItems }, () => longest(letter, limit.maxLength));
 
+/** How the push rule is worded: the budget spec tries every pair, as which is longest changes with the wording. */
+interface PushWording {
+  readonly pushToProtected: PushToProtected;
+  readonly hookAsks: HookAsks;
+}
+
 /** Every printed value at its longest: names, lists, numbers and the optional rules all on. */
-function worstCaseConfig() {
+function worstCaseConfig(wording: PushWording = { pushToProtected: 'ask', hookAsks: 'refuse' }) {
   const lead = longest('l', 32);
   const coordinator = longest('c', 32);
   return testConfig({
@@ -48,7 +55,8 @@ function worstCaseConfig() {
       maxVerifiedAgeDays: CONFIG_LIMITS.maxVerifiedAgeDays.max,
       forbidFrontmatter: filled(CONFIG_LIMITS.forbidFrontmatter, 'k'),
     },
-    pushGuard: { protectedBranches: filled(CONFIG_LIMITS.protectedBranches, 'b'), pushToProtected: 'allow' },
+    pushGuard: { protectedBranches: filled(CONFIG_LIMITS.protectedBranches, 'b'), pushToProtected: wording.pushToProtected },
+    prompts: { hookAsks: wording.hookAsks },
     commits: { maxLines: CONFIG_LIMITS.commitMaxLines.max, maxFiles: CONFIG_LIMITS.commitMaxFiles.max, largeCommitTrailer: 'T'.repeat(40), gate: 'refuse' },
     coordinator: { schedule: { heavyCutoffUtc: '22:30' } },
     // Both round to their longest two-decimal form (two digits before the point), and together stay within 100%.
@@ -81,13 +89,21 @@ describe('renderLeadRules', () => {
 });
 
 describe('renderCorePack', () => {
-  it('fits its budget with every printed value at its worst case and the kept rules at their size cap', () => {
-    const config = worstCaseConfig();
-    const pack = renderCorePack(config, COMMAND, 'win32', RULES_CLOCK);
-    const kept = renderKeptRules(config.ruleConflicts, COMMAND);
-    assert.ok(pack.endsWith(kept));
-    const bound = pack.length - kept.length + KEPT_RULES_MAX_CHARS;
-    assert.ok(bound <= CORE_PACK_MAX_CHARS, `${bound} > ${CORE_PACK_MAX_CHARS}`);
+  it('fits its budget with every printed value at its worst case, in every push rule wording, and the kept rules at their size cap', () => {
+    const over: string[] = [];
+    for (const pushToProtected of PUSH_TO_PROTECTED) {
+      for (const hookAsks of HOOK_ASKS) {
+        const config = worstCaseConfig({ pushToProtected, hookAsks });
+        const pack = renderCorePack(config, COMMAND, 'win32', RULES_CLOCK);
+        const kept = renderKeptRules(config.ruleConflicts, COMMAND);
+        assert.ok(pack.endsWith(kept));
+        const bound = pack.length - kept.length + KEPT_RULES_MAX_CHARS;
+        if (bound > CORE_PACK_MAX_CHARS) {
+          over.push(`pushToProtected ${pushToProtected}, hookAsks ${hookAsks}: ${bound}`);
+        }
+      }
+    }
+    assert.deepEqual(over, [], `every wording fits ${CORE_PACK_MAX_CHARS}`);
   });
 
   it('pulls status from the register, and has the asker, else the receiver, enter every ask', () => {
@@ -159,18 +175,17 @@ describe('renderCorePack', () => {
     assert.match(pack({}), new RegExp(String.raw`^15\. Pushes to main, master ask the human; force-pushing or deleting them is refused ${keys}\.${routed}$`, 'm'));
     assert.match(
       pack({ protectedBranches: ['release'], pushToProtected: 'allow' }),
-      new RegExp(String.raw`^15\. Pushes to release go through unasked; force-pushing or deleting them is refused ${keys}\.${routed}$`, 'm'),
+      new RegExp(String.raw`^15\. Pushes to release go unasked; force-pushing or deleting them is refused ${keys}\.${routed}$`, 'm'),
     );
     assert.match(pack({ protectedBranches: [], pushToProtected: 'allow' }), new RegExp(String.raw`^15\. No branch is protected, so the push guard stops no push \[pushGuard\.protectedBranches\]\.${routed}$`, 'm'));
   });
 
-  it('tells the session to record a push to a protected branch for the owner when hook asks are off', () => {
+  it('tells the session to record a refused route for the owner, not report it to the lead, when hook asks are off', () => {
     const pack = (pushGuard: Record<string, unknown>) => renderCorePack(testConfig({ pushGuard, prompts: { hookAsks: 'refuse' } }), COMMAND, 'win32', RULES_CLOCK);
-    assert.match(
-      pack({}),
-      /^15\. Pushes to main, master are refused, not asked \[prompts\.hookAsks\]: record the step as waiting approval:owner and take your next task; force-pushing or deleting them is refused \[pushGuard\]\. /m,
-    );
-    assert.match(pack({ pushToProtected: 'allow' }), /^15\. Pushes to main, master go through unasked;/m);
+    const waits = ' A refused or blocked route waits on approval:owner; take your next task, never route around it or hand it off.';
+    assert.match(pack({}), new RegExp(String.raw`^15\. Every push to main, master is refused \[pushGuard, prompts\.hookAsks\]\.${waits}$`, 'm'));
+    assert.match(pack({ pushToProtected: 'allow' }), new RegExp(String.raw`^15\. Pushes to main, master go unasked; force-pushing or deleting them is refused \[pushGuard\]\.${waits}$`, 'm'));
+    assert.doesNotMatch(pack({}), /reported to the lead/);
   });
 
   it(`prints a branch or frontmatter list in full up to ${LIST_MAX_CHARS} characters, past it its first items and how many more`, () => {
