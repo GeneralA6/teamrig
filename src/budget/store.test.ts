@@ -5,6 +5,7 @@ import { fieldPaths } from '../testing/field-paths.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { INITIAL_MISS_STATE } from './misses.ts';
 import { emptyPatterns, INITIAL_PATTERN_STATE } from './patterns.ts';
+import { NO_TURN } from './tasks.ts';
 import { EMPTY_USAGE, formatUsage, MemoryUsageStore, newCursor, parseUsage, pruneUsage, RECENT_KEYS_KEPT, USAGE_FORMAT, UsageStore, type UsageState } from './store.ts';
 
 const DIR = '/state/usage';
@@ -12,10 +13,20 @@ const FILE = '/state/usage/alpha.json';
 
 const DAY = { w: 1_234.5, calls: 7, patterns: { ...emptyPatterns(), readChain: 2 } };
 const CALL = { key: 'msg_1|req_1', day: '2026-03-02', hour: '2026-03-02T09', output: 40, context: 5_000, w: 700 };
-const CURSOR = { offset: 900, size: 1_000, day: '2026-03-02', call: CALL, patterns: { ...INITIAL_PATTERN_STATE, turn: 3 }, misses: { lastAt: 1_700_000_000_000, block: { day: '2026-03-02', calls: 2 } } };
+const TURN = { tasks: ['T7', 'T12'], held: { '2026-03-02': 30 } };
+const CURSOR = {
+  offset: 900,
+  size: 1_000,
+  day: '2026-03-02',
+  call: CALL,
+  patterns: { ...INITIAL_PATTERN_STATE, turn: 3 },
+  misses: { lastAt: 1_700_000_000_000, block: { day: '2026-03-02', calls: 2 } },
+  turn: TURN,
+};
 const STATE: UsageState = {
   byDay: { '2026-03-02': DAY },
   byHour: { '2026-03-02T09': 1_000, '2026-03-02T10': 234.5 },
+  byTask: { '2026-03-02': { T7: 600, T12: 400.5 } },
   cursors: { '/t/p/alpha.jsonl': CURSOR, '/t/p/alpha/subagents/agent-a.jsonl': newCursor(10, 10, '2026-03-01') },
   recentKeys: ['msg_1|req_1'],
 };
@@ -51,13 +62,13 @@ describe('UsageStore', () => {
     await assert.rejects(store.save('alpha', STATE, 1), NewerDataError);
   });
 
-  it('reads a format-1 file whole and writes it back as format 2, which a teamrig of format 1 refuses', async () => {
+  it('reads an older-format file whole and writes it back in its own format, which an older teamrig refuses', async () => {
     const files = new MemoryFiles({ [FILE]: JSON.stringify({ v: 1, rev: 5, ...STATE }) });
     const store = new UsageStore(files, DIR);
     assert.deepEqual(await store.load('alpha'), { rev: 5, state: STATE });
     assert.equal(await store.save('alpha', STATE, 5), true);
     assert.equal(files.get(FILE), formatUsage(STATE, 6));
-    assert.match(files.get(FILE) ?? '', /^\{"v":2,"rev":6,/);
+    assert.ok((files.get(FILE) ?? '').startsWith(`{"v":${USAGE_FORMAT},"rev":6,`));
   });
 
   it('refuses a session id that is not safe in a file name', async () => {
@@ -78,7 +89,7 @@ describe('MemoryUsageStore', () => {
 });
 
 describe('parseUsage', () => {
-  const stored = { v: 1, rev: 1, byDay: STATE.byDay, byHour: STATE.byHour, cursors: STATE.cursors, recentKeys: STATE.recentKeys };
+  const stored = { v: 1, rev: 1, byDay: STATE.byDay, byHour: STATE.byHour, byTask: STATE.byTask, cursors: STATE.cursors, recentKeys: STATE.recentKeys };
 
   it('round-trips a state', () => {
     assert.deepEqual(parseUsage(formatUsage(STATE, 1)), STATE);
@@ -98,6 +109,11 @@ describe('parseUsage', () => {
       { ...stored, byHour: 'hours' },
       { ...stored, byHour: { '2026-03-02': 5 } },
       { ...stored, byHour: { '2026-03-02T09': -5 } },
+      { ...stored, byTask: 'tasks' },
+      { ...stored, byTask: { today: { T7: 1 } } },
+      { ...stored, byTask: { '2026-03-02': { t7: 1 } } },
+      { ...stored, byTask: { '2026-03-02': { T7: -1 } } },
+      { ...stored, cursors: { a: { ...cursor, turn: { tasks: ['x'], held: {} } } } },
       { ...stored, cursors: { '': cursor } },
       { ...stored, cursors: { a: 'cursor' } },
       { ...stored, cursors: { a: { ...cursor, offset: -1 } } },
@@ -135,6 +151,14 @@ describe('parseUsage', () => {
     assert.deepEqual(read?.cursors['a']?.call, { ...CALL, hour: null });
   });
 
+  it('reads a file and a cursor stored before tasks were counted as having no tasks and no open turn', () => {
+    const { byTask: _byTask, ...olderFile } = stored;
+    const { turn: _turn, ...olderCursor } = CURSOR;
+    const read = parseUsage(JSON.stringify({ ...olderFile, v: 2, cursors: { a: olderCursor } }));
+    assert.deepEqual(read?.byTask, {});
+    assert.deepEqual(read?.cursors['a']?.turn, NO_TURN);
+  });
+
   it('keeps an unkeyed open call', () => {
     const unkeyed = { ...STATE, cursors: { a: { ...newCursor(1, 2, '2026-03-02'), call: { key: null, day: '2026-03-02', hour: null, output: 1, context: 2, w: 3 } } } };
     assert.deepEqual(parseUsage(formatUsage(unkeyed, 1)), unkeyed);
@@ -143,7 +167,7 @@ describe('parseUsage', () => {
 
 describe('usage format', () => {
   /** The maps of a usage file, keyed by day, hour and transcript rather than by field. */
-  const MAPS: ReadonlySet<string> = new Set(['byDay', 'byHour', 'cursors']);
+  const MAPS: ReadonlySet<string> = new Set(['byDay', 'byHour', 'byTask', 'byTask.*', 'cursors', 'cursors.*.turn.held']);
 
   /**
    * The fields each format writes. A teamrig rewrites a file of its own format without a field it does not
@@ -193,31 +217,33 @@ describe('usage format', () => {
     'workBlocks',
     'worktreeRemoves',
   ];
+  const WRITTEN_2 = [
+    'byDay.*.calls',
+    ...DAY_COUNTERS_2.map((counter) => `byDay.*.patterns.${counter}`),
+    'byDay.*.w',
+    'byHour.*',
+    ...['context', 'day', 'hour', 'key', 'output', 'w'].map((field) => `cursors.*.call.${field}`),
+    'cursors.*.day',
+    'cursors.*.misses.block.calls',
+    'cursors.*.misses.block.day',
+    'cursors.*.misses.lastAt',
+    'cursors.*.offset',
+    'cursors.*.patterns.lastContext',
+    ...['failed', 'id', 'kind', 'piped'].map((field) => `cursors.*.patterns.open[].${field}`),
+    'cursors.*.patterns.prev.single',
+    'cursors.*.patterns.prev.turn',
+    'cursors.*.patterns.rentTokens',
+    'cursors.*.patterns.trigger',
+    'cursors.*.patterns.turn',
+    ...['failed', 'id', 'kind', 'piped'].map((field) => `cursors.*.patterns.turnTest.${field}`),
+    'cursors.*.size',
+    'recentKeys[]',
+    'rev',
+    'v',
+  ];
   const WRITTEN: Readonly<Record<number, readonly string[]>> = {
-    2: [
-      'byDay.*.calls',
-      ...DAY_COUNTERS_2.map((counter) => `byDay.*.patterns.${counter}`),
-      'byDay.*.w',
-      'byHour.*',
-      ...['context', 'day', 'hour', 'key', 'output', 'w'].map((field) => `cursors.*.call.${field}`),
-      'cursors.*.day',
-      'cursors.*.misses.block.calls',
-      'cursors.*.misses.block.day',
-      'cursors.*.misses.lastAt',
-      'cursors.*.offset',
-      'cursors.*.patterns.lastContext',
-      ...['failed', 'id', 'kind', 'piped'].map((field) => `cursors.*.patterns.open[].${field}`),
-      'cursors.*.patterns.prev.single',
-      'cursors.*.patterns.prev.turn',
-      'cursors.*.patterns.rentTokens',
-      'cursors.*.patterns.trigger',
-      'cursors.*.patterns.turn',
-      ...['failed', 'id', 'kind', 'piped'].map((field) => `cursors.*.patterns.turnTest.${field}`),
-      'cursors.*.size',
-      'recentKeys[]',
-      'rev',
-      'v',
-    ],
+    2: WRITTEN_2,
+    3: [...WRITTEN_2, 'byTask.*.*', 'cursors.*.turn.held.*', 'cursors.*.turn.tasks[]'].sort(),
   };
 
   /** A state with every field set, none null, so each nested field shows in its file. */
@@ -259,12 +285,14 @@ describe('pruneUsage', () => {
     const state: UsageState = {
       byDay: { '2026-03-01': day, '2026-03-02': day, '2026-03-09': day },
       byHour: { '2026-03-01T23': 1, '2026-03-02T00': 2, '2026-03-09T22': 3 },
+      byTask: { '2026-03-01': { T1: 1 }, '2026-03-09': { T1: 2 } },
       cursors: { old: newCursor(1, 1, '2026-03-07'), recent: newCursor(1, 1, '2026-03-08'), today: newCursor(1, 1, '2026-03-09') },
       recentKeys: keys,
     };
     const pruned = pruneUsage(state, Date.parse('2026-03-09T23:00:00Z'));
     assert.deepEqual(Object.keys(pruned.byDay), ['2026-03-02', '2026-03-09']);
     assert.deepEqual(pruned.byHour, { '2026-03-02T00': 2, '2026-03-09T22': 3 });
+    assert.deepEqual(pruned.byTask, { '2026-03-09': { T1: 2 } });
     assert.deepEqual(Object.keys(pruned.cursors), ['recent', 'today']);
     assert.deepEqual(pruned.recentKeys, keys.slice(5));
   });

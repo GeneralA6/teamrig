@@ -101,7 +101,7 @@ describe('measure', () => {
 
   it('only loads a session with no transcripts, and the outside store when no one is outside', async () => {
     const { deps, input, outside } = world({ areaBySession: new Map([[MARKED_BRAVO, 'bravo'], [STRANGER, 'lead']]) });
-    const stored: UsageState = { byDay: { [DAY]: { w: 9, calls: 1, patterns: emptyPatterns() } }, byHour: {}, cursors: {}, recentKeys: [] };
+    const stored: UsageState = { byDay: { [DAY]: { w: 9, calls: 1, patterns: emptyPatterns() } }, byHour: {}, byTask: {}, cursors: {}, recentKeys: [] };
     assert.equal(await outside.save(OUTSIDE_ID, stored, 0), true);
     const measured = await measure(deps, { ...input, roster: new Roster({ sessions: ['lead', 'alpha', 'bravo', 'charlie'], names: {}, roles: { lead: 'lead' } }, 'app') });
     assert.equal(wOn(measured.bySession.get('lead')), 7);

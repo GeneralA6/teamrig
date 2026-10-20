@@ -260,7 +260,7 @@ describe('burstFloorOf', () => {
   const WEEK = { window: WINDOW, usedPct: 60, wPerPct: 1_000, todayFrom: Date.parse('2030-01-08T00:00:00Z') };
 
   function used(w: number): UsageState {
-    return { byDay: { [DAY]: { w, calls: 1, patterns: emptyPatterns() } }, byHour: {}, cursors: {}, recentKeys: [] };
+    return { byDay: { [DAY]: { w, calls: 1, patterns: emptyPatterns() } }, byHour: {}, byTask: {}, cursors: {}, recentKeys: [] };
   }
 
   it("reads its sessions' use today, not the others', into the floor", () => {
