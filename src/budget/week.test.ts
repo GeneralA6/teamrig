@@ -6,7 +6,7 @@ import { emptyPatterns } from './patterns.ts';
 import type { Period } from './period.ts';
 import type { WeekUse } from './snapshot.ts';
 import type { UsageState } from './store.ts';
-import { meteredOf, readWeek, wSince } from './week.ts';
+import { limitWPerPct, meteredOf, readWeek, wSince } from './week.ts';
 
 /** Thursday 2026-10-15 12:00 UTC; the week runs from Wednesday 10-14 01:00 to Wednesday 10-21 01:00. */
 const NOW = Date.parse('2026-10-15T12:00:00Z');
@@ -141,5 +141,11 @@ describe('meteredOf', () => {
     assert.equal(metered?.wPerPct, 1_000);
     assert.equal(metered?.wFrom(PERIOD.start), wSince(COVERED, PERIOD.start, NOW));
     assert.equal(meteredOf({}, COVERED, NOW), undefined);
+  });
+});
+
+describe('limitWPerPct', () => {
+  it('reads the configured limit as W per percent, and nothing without one', () => {
+    assert.deepEqual([limitWPerPct({ weeklyLimitW: 650_000_000 }), limitWPerPct({})], [6_500_000, undefined]);
   });
 });
