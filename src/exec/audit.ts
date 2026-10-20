@@ -12,7 +12,8 @@ export const AUDIT_VERSION = 1;
 export const GENESIS_HASH = '0'.repeat(64);
 
 const SHA256 = /^[0-9a-f]{64}$/u;
-const REQUEST_ID = /^R[1-9]\d*$/u;
+/** A request's id: R1, R2, ... in the order the log holds them. */
+export const REQUEST_ID = /^R[1-9]\d*$/u;
 
 /** How a process the executor started ended: the dry run, or the approved run. */
 export interface RunOutcome {

@@ -5,7 +5,7 @@ import type { CheckoutProbe } from '../exec/binding.ts';
 import { execRequest } from './exec-request.ts';
 
 /** A Windows filesystem that holds only the given files. */
-function probeOf(...files: string[]): PathProbe {
+export function probeOf(...files: string[]): PathProbe {
   const held = new Set(files.map((file) => win32.normalize(file)));
   return { kind: async (path): Promise<PathKind> => (held.has(win32.normalize(path)) ? 'file' : 'none') };
 }

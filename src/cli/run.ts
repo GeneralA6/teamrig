@@ -74,6 +74,7 @@ const promoteCommands = () => import('./commands/promote.ts');
 const slashCommands = () => import('./commands/slash.ts');
 const restoreCommands = () => import('./commands/restore.ts');
 const restoreInstallCommands = () => import('./commands/restore-install.ts');
+const execCommands = () => import('./commands/exec.ts');
 
 const TASK_FIELDS = ['title', 'description', 'owner', 'ref', 'priority', 'due', 'goals', 'week', 'after', 'size'];
 
@@ -96,6 +97,13 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'inbox read': { effect: 'write', flags: ['session'], load: async () => (await inboxCommands()).read },
   'inbox status': { effect: 'read', flags: ['session'], load: async () => (await inboxCommands()).status },
   'inbox add': { effect: 'write', flags: ['session', 'to', 'text'], load: async () => (await inboxCommands()).add },
+  'exec request': { effect: 'write', flags: ['session', 'file'], load: async () => (await execCommands()).request },
+  'exec dry-run': { effect: 'write', flags: [], load: async () => (await execCommands()).dryRun },
+  'exec approve': { effect: 'write', flags: ['session', 'note'], load: async () => (await execCommands()).approve },
+  'exec refuse': { effect: 'write', flags: ['session', 'note'], load: async () => (await execCommands()).refuse },
+  'exec escalate': { effect: 'write', flags: ['session', 'note'], load: async () => (await execCommands()).escalate },
+  'exec run': { effect: 'write', flags: [], load: async () => (await execCommands()).run },
+  'exec status': { effect: 'read', flags: [], load: async () => (await execCommands()).status },
   'team create': { effect: 'write', flags: ['sessions', 'lead', 'parent', 'project'], switches: ['dry-run'], load: async () => (await setupCommands()).teamCreate },
   'team tree': { effect: 'read', flags: [], load: async () => (await teamCommands()).teamTree },
   rules: { effect: 'read', flags: ['session'], load: async () => (await rulesCommands()).rules },
@@ -326,6 +334,15 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   inbox status [--session <area>]   unread lines per area
   inbox add --to <id|name|team/id> --text "<one line>"
       team/id: a lead may write to its parent team's lead and its child teams' leads
+  exec request --file <request.json>   asks to run a privileged command: the JSON names the command, its
+      code binding, variables, dry run or preview, purpose, expected effect and rollback; logged as R<n>
+  exec dry-run R<n>    runs the request's read-only dry run, logged for the reviewer
+  exec status [R<n>]   each request's stage; with R<n>, the whole request as the reviewer reads it
+  exec approve R<n> [--note "<why>"]   the security reviewer (roles.securityReviewer) or the owner approves
+      one run; an owner-gated request only the owner
+  exec refuse R<n> --note "<why>"      refuses the request; the note names the safe alternative
+  exec escalate R<n> --note "<why>"    the security reviewer hands an owner-gated request to the owner
+  exec run R<n>        runs an approved request once, before its approval expires
   who [<id|name|role>]         the name to message a session by (no argument: every session)
   sessions                     each session: running (and the MB its Claude Code's processes hold), closed
       or never recorded; then the host's free memory and commit charge
