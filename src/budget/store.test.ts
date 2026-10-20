@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { isRecord } from '../core/guards.ts';
 import { NewerDataError } from '../core/jsonl.ts';
+import { fieldPaths } from '../testing/field-paths.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { INITIAL_MISS_STATE } from './misses.ts';
 import { emptyPatterns, INITIAL_PATTERN_STATE } from './patterns.ts';
@@ -145,17 +145,6 @@ describe('usage format', () => {
   /** The maps of a usage file, keyed by day, hour and transcript rather than by field. */
   const MAPS: ReadonlySet<string> = new Set(['byDay', 'byHour', 'cursors']);
 
-  /** Every field path in a written usage file, sorted: a map's key reads as `*`, an array's entries as `[]`. */
-  function fieldPaths(value: unknown, path = ''): readonly string[] {
-    if (Array.isArray(value)) {
-      return [...new Set(value.flatMap((entry: unknown) => fieldPaths(entry, `${path}[]`)))].sort();
-    }
-    if (!isRecord(value)) {
-      return [path];
-    }
-    return [...new Set(Object.entries(value).flatMap(([key, entry]) => fieldPaths(entry, path === '' ? key : `${path}.${MAPS.has(path) ? '*' : key}`)))].sort();
-  }
-
   /**
    * The fields each format writes. A teamrig rewrites a file of its own format without a field it does not
    * know, so a field added to the file is a new format: raise USAGE_FORMAT, which an older teamrig refuses,
@@ -251,7 +240,7 @@ describe('usage format', () => {
   };
 
   it('writes the pinned fields of its format: a field added to the file raises USAGE_FORMAT', () => {
-    assert.deepEqual(fieldPaths(JSON.parse(formatUsage(FULL, 1))), WRITTEN[USAGE_FORMAT]);
+    assert.deepEqual(fieldPaths(JSON.parse(formatUsage(FULL, 1)), MAPS), WRITTEN[USAGE_FORMAT]);
     assert.deepEqual(parseUsage(formatUsage(FULL, 1)), FULL);
   });
 
