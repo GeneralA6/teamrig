@@ -70,6 +70,7 @@ const meetingCommands = () => import('./commands/meeting.ts');
 const decisionsCommands = () => import('./commands/decisions.ts');
 const hireCommands = () => import('./commands/hire.ts');
 const retireCommands = () => import('./commands/retire.ts');
+const promoteCommands = () => import('./commands/promote.ts');
 const slashCommands = () => import('./commands/slash.ts');
 const restoreCommands = () => import('./commands/restore.ts');
 const restoreInstallCommands = () => import('./commands/restore-install.ts');
@@ -132,6 +133,8 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
     load: async () => (await hireCommands()).hire,
   },
   retire: { effect: 'write', flags: ['session', 'to', 'no-handover', 'reason'], switches: ['yes'], load: async () => (await retireCommands()).retire },
+  promote: { effect: 'write', flags: ['session', 'members'], switches: ['yes'], load: async () => (await promoteCommands()).promote },
+  demote: { effect: 'write', flags: ['session'], switches: ['yes'], load: async () => (await promoteCommands()).demote },
   refresh: { effect: 'write', flags: ['session'], switches: ['ready'], load: async () => (await refreshCommands()).refresh },
   doctor: { effect: 'read', flags: [], load: async () => (await doctorCommands()).doctor },
   compact: { effect: 'write', flags: [], switches: ['dry-run'], load: async () => (await compactCommands()).compact },
@@ -342,6 +345,11 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       (the lead, or a hired session itself under hiring.policy automatic once its tasks are closed) takes a
       session off the team; its open tasks go to --to, and it needs its handover unless --no-handover; its
       tasks and inbox stay readable; without --yes it shows the retire and writes nothing
+  promote <id|name> --members <a,b> [--yes]
+      (the lead or a sub-lead) makes one of the sessions it leads directly the sub-lead of others it leads
+      directly: their decision and approval waits may go to it, and it approves them; without --yes it shows
+      the change and writes nothing
+  demote <id|name> [--yes]     (its own leader) takes a sub-lead's members back; without --yes it shows it
   refresh <id|name>            the lead asks a session to write its handover when it next sets a task done
   refresh --ready              the handover is written; the user's /clear starts it fresh (autoRestart: once idle)
   doctor                       names, rename log, inboxes, rules.md, context size and the tree of teams that need a fix;
