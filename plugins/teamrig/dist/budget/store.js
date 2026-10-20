@@ -3,17 +3,19 @@ import { isNonNegativeInteger, isRecord, isStringArray } from "../core/guards.js
 import { ID_PATTERN, ID_RULE } from "../core/ids.js";
 import { parseObject, recordVersion, VERSION_FIELD, writableObject } from "../core/jsonl.js";
 import { formatUtcDay, MS_PER_DAY } from "../core/time.js";
+import { TASK_ID } from "../register/model.js";
 import { INITIAL_MISS_STATE, parseMissState } from "./misses.js";
 import { INITIAL_PATTERN_STATE, parsePatternCounts, parsePatternState } from "./patterns.js";
+import { NO_TURN, parseOpenTurn } from "./tasks.js";
 /**
  * The format of the usage files this code writes; a damaged file or one older than `OLDEST_READ_FORMAT`
  * reads as empty, a newer one is refused. A teamrig rewrites a file of its own format without the fields it
  * does not know, so a field added to the file is a new format, which an older teamrig refuses
  * (store.test.ts pins the fields of each). 2 holds what 1 held by 0.111.2: format 1 grew day counters,
  * hours, an open call's hour and a cursor's misses, which a teamrig before each dropped from every file it
- * rewrote.
+ * rewrote. 3 adds W per task and a cursor's open turn (T734).
  */
-export const USAGE_FORMAT = 2;
+export const USAGE_FORMAT = 3;
 /** The oldest format this code reads: format 1, whose hours, open-call hours and misses may be missing. */
 const OLDEST_READ_FORMAT = 1;
 /** Days of totals a usage file keeps: today and the 7 before it. */
@@ -26,11 +28,14 @@ export const DAYS_KEPT = 8;
 export const CURSOR_DAYS_KEPT = 2;
 /** How many recent call keys a usage file keeps to skip a call logged twice. */
 export const RECENT_KEYS_KEPT = 200;
-export const EMPTY_USAGE = { byDay: {}, byHour: {}, cursors: {}, recentKeys: [] };
+export const EMPTY_USAGE = { byDay: {}, byHour: {}, byTask: {}, cursors: {}, recentKeys: [] };
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const HOUR = /^\d{4}-\d{2}-\d{2}T\d{2}$/;
 function finiteNonNegative(value) {
     return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+function wFrom(value) {
+    return finiteNonNegative(value) ? value : undefined;
 }
 function dayUsageFrom(value) {
     if (!isRecord(value)) {
@@ -71,16 +76,20 @@ function cursorFrom(value) {
     const rawMisses = value['misses'];
     // A cursor stored before 0.87.0 has no miss state: its transcript goes on as if read from its start.
     const misses = rawMisses === undefined ? INITIAL_MISS_STATE : parseMissState(rawMisses);
+    const rawTurn = value['turn'];
+    // A cursor stored before format 3 has no turn: its next prompt starts one.
+    const turn = rawTurn === undefined ? NO_TURN : parseOpenTurn(rawTurn);
     if (!isNonNegativeInteger(offset) ||
         !isNonNegativeInteger(size) ||
         typeof day !== 'string' ||
         !DAY.test(day) ||
         call === undefined ||
         patterns === undefined ||
-        misses === undefined) {
+        misses === undefined ||
+        turn === undefined) {
         return undefined;
     }
-    return { offset, size, day, call, patterns, misses };
+    return { offset, size, day, call, patterns, misses, turn };
 }
 /** Every entry of a stored map through `parse`; undefined when the map or any entry is damaged. */
 function mapFrom(value, keyValid, parse) {
@@ -115,20 +124,23 @@ export function parseUsage(text) {
     const byDay = mapFrom(record['byDay'], (key) => DAY.test(key), dayUsageFrom);
     const rawHours = record['byHour'];
     // A format-1 file from before hours were counted has none.
-    const byHour = rawHours === undefined ? {} : mapFrom(rawHours, (key) => HOUR.test(key), (w) => (finiteNonNegative(w) ? w : undefined));
+    const byHour = rawHours === undefined ? {} : mapFrom(rawHours, (key) => HOUR.test(key), wFrom);
+    const rawTasks = record['byTask'];
+    // A file before format 3 counted no tasks.
+    const byTask = rawTasks === undefined ? {} : mapFrom(rawTasks, (key) => DAY.test(key), (tasks) => mapFrom(tasks, (key) => TASK_ID.test(key), wFrom));
     const cursors = mapFrom(record['cursors'], (key) => key !== '', cursorFrom);
     const recentKeys = record['recentKeys'];
-    if (byDay === undefined || byHour === undefined || cursors === undefined || !isStringArray(recentKeys)) {
+    if (byDay === undefined || byHour === undefined || byTask === undefined || cursors === undefined || !isStringArray(recentKeys)) {
         return undefined;
     }
-    return { byDay, byHour, cursors, recentKeys };
+    return { byDay, byHour, byTask, cursors, recentKeys };
 }
 export function formatUsage(state, rev) {
-    const { byDay, byHour, cursors, recentKeys } = state;
-    return `${JSON.stringify({ [VERSION_FIELD]: USAGE_FORMAT, rev, byDay, byHour, cursors, recentKeys })}\n`;
+    const { byDay, byHour, byTask, cursors, recentKeys } = state;
+    return `${JSON.stringify({ [VERSION_FIELD]: USAGE_FORMAT, rev, byDay, byHour, byTask, cursors, recentKeys })}\n`;
 }
 /**
- * Drops what a usage file no longer needs at `now`: days and their hours older than the kept window,
+ * Drops what a usage file no longer needs at `now`: days, their hours and their tasks older than the kept window,
  * transcript positions that have not moved since before yesterday, and all but the latest call keys.
  */
 export function pruneUsage(state, now) {
@@ -138,13 +150,14 @@ export function pruneUsage(state, now) {
         byDay: Object.fromEntries(Object.entries(state.byDay).filter(([day]) => day >= oldestDay)),
         // An hour key starts with its day, and a longer key sorts after its prefix.
         byHour: Object.fromEntries(Object.entries(state.byHour).filter(([hour]) => hour >= oldestDay)),
+        byTask: Object.fromEntries(Object.entries(state.byTask).filter(([day]) => day >= oldestDay)),
         cursors: Object.fromEntries(Object.entries(state.cursors).filter(([, cursor]) => cursor.day >= oldestCursor)),
         recentKeys: state.recentKeys.slice(-RECENT_KEYS_KEPT),
     };
 }
-/** A transcript's position before its first read: no call open and no pattern or miss seen. */
+/** A transcript's position before its first read: no call or turn open and no pattern or miss seen. */
 export function newCursor(offset, size, day) {
-    return { offset, size, day, call: null, patterns: INITIAL_PATTERN_STATE, misses: INITIAL_MISS_STATE };
+    return { offset, size, day, call: null, patterns: INITIAL_PATTERN_STATE, misses: INITIAL_MISS_STATE, turn: NO_TURN };
 }
 /** Usage kept in memory, for a recount of a past day that must not move the usage files. */
 export class MemoryUsageStore {

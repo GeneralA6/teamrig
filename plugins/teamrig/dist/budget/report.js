@@ -5,6 +5,7 @@ import { liftText } from "./lift.js";
 import { TURN_TRIGGERS } from "./line.js";
 import { hasRoom } from "./pace.js";
 import { emptyPatterns, PATTERN_FIELDS } from "./patterns.js";
+import { DAYS_KEPT } from "./store.js";
 /** The lines of `teamrig budget`: short by default, the key numbers and anything past its budget. */
 /** Sessions listed by default; `--all` lists every one. */
 export const SESSION_ROWS_SHOWN = 7;
@@ -376,4 +377,33 @@ export function missMatrixLines(days, sessions) {
     const table = [['', ...MISS_ROWS.map((row) => row.short), 'read'], ...active.map(({ name, usage }) => [name, ...MISS_ROWS.map((row) => row.cell(usage)), readCell(usage)])];
     const legend = MISS_ROWS.map((row) => `${row.short} = ${row.label}`).join('; ');
     return [header, ...aligned(table), `${legend}; read = calls read for misses. One session by day: teamrig budget <session> --misses.`];
+}
+/**
+ * `teamrig budget --task T<n>` (T734): the W each session's turns spent on a task per UTC day, the most first,
+ * then how much of today's W went to some task.
+ */
+export function taskLines(use, reading) {
+    const { week, today } = reading;
+    const window = `the ${DAYS_KEPT} UTC days the meter keeps`;
+    const lines = [];
+    if (use.sessions.length === 0) {
+        lines.push(`${use.task}: no W in ${window}; a turn counts for it when a call names it: ${use.task} in a command, t${use.task.slice(1)}- in a branch or path.`);
+    }
+    else {
+        const pct = pctOf(use.w, week);
+        const share = pct === undefined ? '' : `, ${formatPct(pct)} of the week`;
+        lines.push(`${use.task}: ${formatW(use.w)} W${share}, in ${window}, open turns' share included:`);
+        const rows = use.sessions.map(({ session, byDay, w }) => {
+            const sessionPct = pctOf(w, week);
+            const days = Object.entries(byDay)
+                .map(([day, dayW]) => `${day.slice(5)} ${formatW(dayW)}`)
+                .join(', ');
+            return [`  ${reading.nameOf(session)}`, `${formatW(w)} W`, ...(sessionPct === undefined ? [] : [formatPct(sessionPct)]), days];
+        });
+        lines.push(...aligned(rows));
+    }
+    if (today.w > 0) {
+        lines.push(`Today turns that named a task spent ${formatPct((today.attributed / today.w) * 100)} of all metered W; the rest went to turns that named none and to helpers.`);
+    }
+    return [...lines, W_EXPLAINED];
 }
