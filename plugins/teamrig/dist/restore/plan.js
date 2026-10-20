@@ -77,7 +77,7 @@ export function diedAt(entry, shutdownStart) {
 }
 /** The work the transcript shows still live at `at`; `cut` when the text is the tail of a longer file. */
 export function lostWorkOf(text, cut, at) {
-    const carry = carryOf(text, at);
+    const carry = carryOf(text, at, []);
     return { background: runningWorkOf(text, cut, at), crons: carry.crons.length, wake: carry.wake !== undefined };
 }
 function counted(count, one) {
