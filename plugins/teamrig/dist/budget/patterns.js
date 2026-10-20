@@ -1,22 +1,13 @@
 import { isNonNegativeInteger, isRecord, stringField } from "../core/guards.js";
 import { TURN_TRIGGERS } from "./line.js";
+import { runWorkOf, SHELL_DIALECTS, shellRunsOf } from "./run-work.js";
 import { CHARS_PER_TOKEN, contextTokens, WEIGHTS } from "./weights.js";
 /** What one tool call did, as far as the loop patterns care. */
 export const TOOL_KINDS = ['edit', 'editTest', 'testFull', 'testTargeted', 'build', 'teamrigCli', 'git', 'read', 'other'];
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 const READ_TOOLS = new Set(['Read', 'Grep', 'Glob']);
-const SHELL_TOOLS = new Set(['Bash', 'PowerShell']);
-/** A shell command that changes a file: a redirect into it, an in-place edit, a script that writes, a patch. */
-const SHELL_EDIT = /\bcat\s*>{1,2}\s*\S|\bcat\s+<<[^>\n]*>{1,2}\s*\S|\bsed\s+-i|\bperl\s+-p?i\b|\bwriteFileSync\b|\bSet-Content\b|\bOut-File\b|\bgit\s+apply\b|\bpatch\s+-p/;
-/** A whole test suite or a check that runs one. */
-const TEST_FULL = /\bnpm\s+(?:run\s+)?(?:test|verify|check|coverage)\b|\bnpm\s+run\s+test:\w+|\bnpx\s+(?:jest|vitest)\b|\bjest\b|\bvitest\b/;
-/** node's own test runner; with a glob over a whole source folder it is the full suite, else targeted. */
-const NODE_TEST = /\bnode\s+(?:--[\w-]+(?:=\S+)?\s+)*--test\b/;
-const NODE_TEST_ALL = /--test\s+["']?(?:src|tools)\/\*\*/;
-const BUILD = /\bnpm\s+run\s+(?:build|typecheck|lint)\b|\btsc\b/;
-const TEAMRIG_CLI = /\bteamrig(?:\.cmd)?\s+(?:list|show|check|inbox|add|set|who|plan|doctor|refresh|open|status|config|history)\b|dist\/cli\/main\.js/;
-const GIT = /^\s*(?:cd\s+\S+\s*(?:&&|;)\s*)?git\s/;
-const SHELL_READ = /^\s*(?:cd\s+\S+\s*(?:&&|;)\s*)?(?:cat|sed|head|tail|grep|rg|ls|find|wc|awk|cut)\b/;
+/** A shell call whose first program is one of these, and that does nothing the other kinds count, only reads. */
+const SHELL_READS = new Set(['cat', 'sed', 'head', 'tail', 'grep', 'rg', 'ls', 'find', 'wc', 'awk', 'cut']);
 /** Output cut by a pipe: a failure can fall outside what the pipe keeps. */
 const PIPED = /\|\s*(?:tail|head|grep|Select-Object|findstr)\b/;
 /** A failing run in the common reporters: node's spec and TAP counts, a failure mark, Jest and Vitest summaries. */
@@ -32,31 +23,36 @@ const COMPACTED_BELOW = 0.65;
  */
 const COLD_MIN_TOKENS = 20_000;
 const COLD_MIN_SHARE = 0.5;
-function shellKind(command) {
-    const edits = SHELL_EDIT.test(command);
-    const nodeTest = NODE_TEST.test(command);
-    const tests = TEST_FULL.test(command) || nodeTest;
-    if (edits) {
+/**
+ * A shell call's kind, by the programs it starts and what each does (`runWorkOf`), not by words its arguments
+ * quote: an edit (with a test, `editTest`) before a full suite, a targeted test, a build and a teamrig command;
+ * else `git` or `read` by its first program.
+ */
+function shellKind(runs) {
+    const works = new Set(runs.map(runWorkOf));
+    const tests = works.has('testFull') || works.has('testTargeted');
+    if (works.has('edit') || works.has('gitPatch')) {
         return tests ? 'editTest' : 'edit';
     }
-    if (TEST_FULL.test(command)) {
+    if (works.has('testFull')) {
         return 'testFull';
     }
-    if (nodeTest) {
-        return NODE_TEST_ALL.test(command) ? 'testFull' : 'testTargeted';
+    if (tests) {
+        return 'testTargeted';
     }
-    if (BUILD.test(command)) {
+    if (works.has('build')) {
         return 'build';
     }
-    if (TEAMRIG_CLI.test(command)) {
+    if (works.has('teamrig')) {
         return 'teamrigCli';
     }
-    if (GIT.test(command)) {
+    const first = runs[0]?.name;
+    if (first === 'git') {
         return 'git';
     }
-    return SHELL_READ.test(command) ? 'read' : 'other';
+    return first !== undefined && SHELL_READS.has(first) ? 'read' : 'other';
 }
-/** What a tool call did, from its tool name and, for a shell, its command line. */
+/** What a tool call did, from its tool name and, for a shell, the programs its command line starts. */
 export function kindOf(tool) {
     if (EDIT_TOOLS.has(tool.name)) {
         return 'edit';
@@ -64,7 +60,7 @@ export function kindOf(tool) {
     if (READ_TOOLS.has(tool.name)) {
         return 'read';
     }
-    return SHELL_TOOLS.has(tool.name) ? shellKind(tool.command ?? '') : 'other';
+    return SHELL_DIALECTS.has(tool.name) ? shellKind(shellRunsOf(tool)) : 'other';
 }
 function isEdit(kind) {
     return kind === 'edit' || kind === 'editTest';
