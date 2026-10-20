@@ -244,7 +244,7 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       test within tests.maxFailureChars; exit 0 when the command passed, 1 otherwise
   hook push-guard | hook package-guard | hook secret-guard | hook cold-send | hook failed-send | hook loop-nudge | hook helper-gate | hook inbox-reminder | hook session-start | hook stop | hook subagent-start | hook subagent-stop | hook refresh-wake | hook restore-track | hook tab-status | hook readonly-allow | hook picker-guard | hook prompt-refuse
       (run by Claude Code, hook JSON on stdin)
-  hook clear-dir | hook clear-claim [--hold]
+  hook clear-dir | hook clear-claim [--hold [--why <reason>]]
       (run by the plugin's mod: the automatic restart's /clear in the tab)
   hook wake-check | hook wake-dropped
       (run by the plugin's mod: wakes an idle tab when unblocked urgent work is handed to its session)

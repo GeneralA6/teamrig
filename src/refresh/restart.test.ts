@@ -7,9 +7,10 @@ import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeSessionProcesses } from '../testing/fake-session-processes.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { RestoreRegistry, restoreSessionsDir } from '../restore/registry.ts';
-import { askFileOf, outcomeFileOf } from '../mod/clear-hand.ts';
+import type { Files } from '../core/files.ts';
+import { askFileOf, holdWhyFileOf, outcomeFileOf } from '../mod/clear-hand.ts';
 import { ClearAsks, type ClearAsk, type PostedClearAsk } from './clear-asks.ts';
-import { CLAIM_WAIT_MS, claudeProcessOf, GIVE_UP_MS, personHoldOf, runRestart, type RestartDeps, type RestartPlan, type TabOpening } from './restart.ts';
+import { CLAIM_WAIT_MS, claudeProcessOf, GIVE_UP_MS, NO_HOLD_REASON, personHoldOf, runRestart, type RestartDeps, type RestartPlan, type TabOpening } from './restart.ts';
 import type { RestoreEntry } from '../restore/entry.ts';
 import type { RestartRequest } from './state.ts';
 import { RefreshStore } from './store.ts';
@@ -23,6 +24,10 @@ const DELAY_MS = 15_000;
 const CLAUDE: ProcessInfo = { pid: 4100, parentPid: 4000, name: 'claude.exe', commandLine: `claude --resume ${SESSION}` };
 const TAB_SHELL: ProcessInfo = { pid: 4000, parentPid: 1, name: 'powershell.exe', commandLine: `powershell -NoExit -Command claude --resume ${SESSION}` };
 const ASK_DIR = '/kit/clear-asks';
+/** Why the tab's mod holds an ask while its session runs a helper. */
+const LIVE_HELPER = '1 agent of this session still live';
+/** What a give-up says of a session that stayed busy. */
+const BUSY_HOUR = 'it stayed busy for 60 minutes';
 const PLAN: RestartPlan = { team: 'app', id: 'alpha', at: AT, delayMs: DELAY_MS, endCommand: ['node', 'tracker.cjs', 'end'], fallbackCwd: '/project', hold: { countdownMs: 20_000, afterActivityMs: 300_000 } };
 
 /** What Claude Code writes once a turn has ended. */
@@ -131,12 +136,12 @@ class World {
   /** The tab's mod while Claude Code lists a live helper: holds the posted ask, as `hook clear-claim --hold` does. */
   async holdAsk(): Promise<void> {
     assert.ok(await this.asks.ask(SESSION), 'an ask is posted');
-    assert.equal(await this.asks.hold(SESSION), true);
+    assert.equal(await this.asks.hold(SESSION, LIVE_HELPER), true);
   }
 
-  /** The ask and its outcome are gone once the runner is done. */
+  /** The ask, its outcome and a hold's reason are gone once the runner is done. */
   asksClosed(): boolean {
-    return this.files.get(askFileOf(ASK_DIR, SESSION) ?? '') === undefined && this.files.get(outcomeFileOf(ASK_DIR, SESSION) ?? '') === undefined;
+    return [askFileOf, outcomeFileOf, holdWhyFileOf].every((fileOf) => this.files.get(fileOf(ASK_DIR, SESSION) ?? '') === undefined);
   }
 
   /** Runs `action` during the `n`th wait (1: the settle, 2: the first quiet window, 3 on: the waits for the tab's claim). */
@@ -442,11 +447,18 @@ ${TURN_END}
   });
 });
 
-/** Asks the tab's mod holds as soon as they are posted: its session runs a helper the whole time. */
+/** Asks the tab's mod holds as soon as they are posted, for `why` (undefined: an older mod's hold, with none). */
 class HeldByTab extends ClearAsks {
+  private readonly why: string | undefined;
+
+  constructor(files: Files, dir: string, why: string | undefined) {
+    super(files, dir);
+    this.why = why;
+  }
+
   override async post(claudeSession: string, ask: PostedClearAsk): Promise<void> {
     await super.post(claudeSession, ask);
-    await this.hold(claudeSession);
+    await this.hold(claudeSession, this.why);
   }
 }
 
@@ -457,7 +469,7 @@ class HeldAtFirstWithdraw extends ClearAsks {
   override async withdraw(claudeSession: string): Promise<boolean> {
     this.withdraws += 1;
     if (this.withdraws === 1) {
-      await this.hold(claudeSession);
+      await this.hold(claudeSession, LIVE_HELPER);
     }
     return super.withdraw(claudeSession);
   }
@@ -494,8 +506,8 @@ describe('runRestart while the tab holds its ask (a helper still runs)', () => {
 
   it('gives up after an hour of held asks the way it does for a busy session: nothing ended, the context kept', async () => {
     const world = await new World().arm({ supervised: false });
-    const asks = new HeldByTab(world.files, ASK_DIR);
-    assert.deepEqual(await runRestart({ ...world.deps, asks }, PLAN), { kind: 'failed', why: 'it stayed busy for 60 minutes' });
+    const asks = new HeldByTab(world.files, ASK_DIR, LIVE_HELPER);
+    assert.deepEqual(await runRestart({ ...world.deps, asks }, PLAN), { kind: 'failed', why: `${BUSY_HOUR} (its tab last held the /clear: ${LIVE_HELPER})` });
     const ran = world.clock.now() - START;
     assert.ok(ran >= GIVE_UP_MS && ran < GIVE_UP_MS + DELAY_MS + CLAIM_WAIT_MS, `gave up at ${ran} ms`);
     assert.deepEqual([world.processes.ends, world.opened, world.processes.fed], [[], [], []]);
@@ -503,9 +515,16 @@ describe('runRestart while the tab holds its ask (a helper still runs)', () => {
     assert.ok(world.asksClosed());
   });
 
+  it("names the hold of a mod that gave no reason (an older one's) when it gives up", async () => {
+    const world = await new World().arm({ supervised: false });
+    const asks = new HeldByTab(world.files, ASK_DIR, undefined);
+    assert.deepEqual(await runRestart({ ...world.deps, asks }, PLAN), { kind: 'failed', why: `${BUSY_HOUR} (its tab last held the /clear: ${NO_HOLD_REASON})` });
+    assert.deepEqual(world.processes.ends, []);
+  });
+
   it('counts the hour from the run\'s start across held rounds, not from each round', async () => {
     const world = await new World().arm();
-    const asks = new HeldByTab(world.files, ASK_DIR);
+    const asks = new HeldByTab(world.files, ASK_DIR, LIVE_HELPER);
     // Held for 50 minutes, then busy: still gives up at the hour.
     let held = true;
     const busyAfter = START + 50 * 60_000;
@@ -520,7 +539,7 @@ describe('runRestart while the tab holds its ask (a helper still runs)', () => {
         await world.deps.sleep(ms);
       },
     };
-    assert.deepEqual(await runRestart(deps, PLAN), { kind: 'failed', why: 'it stayed busy for 60 minutes' });
+    assert.deepEqual(await runRestart(deps, PLAN), { kind: 'failed', why: BUSY_HOUR }, 'busy at the hour, not held: no hold reason');
     assert.ok(world.clock.now() - START < GIVE_UP_MS + 2 * DELAY_MS);
     assert.deepEqual(world.processes.ends, []);
   });
