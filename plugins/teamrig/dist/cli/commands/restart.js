@@ -4,7 +4,7 @@ import { SecretScanner } from "../../core/secrets.js";
 import { postLine } from "../../inbox/inbox.js";
 import { refreshPrompt } from "../../open/prompt.js";
 import { ClearAsks, clearAskDir } from "../../refresh/clear-asks.js";
-import { runRestart } from "../../refresh/restart.js";
+import { personHoldOf, runRestart } from "../../refresh/restart.js";
 import { RestartLog } from "../../refresh/restart-log.js";
 import { RefreshStore } from "../../refresh/store.js";
 import { RestoreRegistry, restoreSessionsDir } from "../../restore/registry.js";
@@ -88,7 +88,7 @@ export async function restart(args, runtime) {
             const { outcome } = await openSessionTab(runtime, tab);
             return outcome.kind === 'opened' ? { kind: 'opened' } : outcome;
         },
-    }, { team, id, at, delayMs: config.refresh.restartDelaySeconds * 1000, endCommand: config.refresh.endCommand, fallbackCwd: project });
+    }, { team, id, at, delayMs: config.refresh.restartDelaySeconds * 1000, endCommand: config.refresh.endCommand, fallbackCwd: project, hold: personHoldOf(config.refresh) });
     const line = inboxLineOf(result);
     if (line !== undefined) {
         const secrets = new SecretScanner(config.register.secretPatterns);

@@ -5,7 +5,7 @@ import { resolveTeam } from "../../core/team.js";
 import { OwnPaths } from "../../hooks/lead-boundary.js";
 import { sessionIdOf } from "../../inbox/inbox.js";
 import { indexMarks } from "../../inbox/marks.js";
-import { teamFolders } from "../kit.js";
+import { openKit, rosterOf, teamFolders } from "../kit.js";
 import { inboxDepsOf } from "./inbox.js";
 /** A hook's stdin as JSON; undefined when it is not JSON, which every hook treats as nothing to do. */
 export function parseJson(text) {
@@ -67,6 +67,26 @@ export async function startSessionOf(runtime, kit, roster, payload) {
     catch {
         return undefined;
     }
+}
+/** The hook payload's team; undefined outside a team or without a loaded config. */
+export async function teamScopeOf(runtime, payload) {
+    const found = await sessionTeam(payload, runtime);
+    if (found.kind !== 'team') {
+        return undefined;
+    }
+    const kit = await openKit(runtime, found.team);
+    return kit.load.status === 'loaded' ? { kit, config: kit.load.config } : undefined;
+}
+/** The team session of a payload in `team`; undefined when the tab is no session of it. */
+export async function sessionScopeOf(runtime, team, payload) {
+    const roster = await rosterOf(runtime, team.kit, team.config);
+    const id = await teamSessionOf(runtime, team.kit, roster, sessionIdOf(payload));
+    return id === undefined ? undefined : { ...team, roster, id };
+}
+/** The hook payload's team session (Stop, helper gate, the mod's refresh checks); undefined outside a team, without a loaded config or without a session. */
+export async function hookScopeOf(runtime, payload) {
+    const team = await teamScopeOf(runtime, payload);
+    return team === undefined ? undefined : sessionScopeOf(runtime, team, payload);
 }
 /** The lead's own paths in this team: its teamrig folder, Claude Code's memory folders and `leadBoundary.ownPaths`. */
 export function leadOwnPaths(runtime, kit, config) {

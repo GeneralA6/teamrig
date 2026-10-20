@@ -725,6 +725,12 @@ const REFRESH_TOKENS = { min: 10_000, max: 10_000_000 };
 const REFRESH_TASKS = { min: 0, max: 100 };
 /** Long enough to read the notice and type, short enough that the fresh start is not missed. */
 const RESTART_DELAY_SECONDS = { min: 5, max: 600 };
+/** 0: only a draft holds the /clear; an hour at most, since the restart gives up after one. */
+const HOLD_AFTER_ACTIVITY_MINUTES = { min: 0, max: 60 };
+/** 0: no band; long enough to read and press, short of the restart's give-up. */
+const COUNTDOWN_SECONDS = { min: 0, max: 120 };
+/** 0 turns the stop of Claude Code's compaction off. */
+const COMPACT_CEILING_TOKENS = { min: 0, max: 10_000_000 };
 /** A program and its arguments. */
 const END_COMMAND_MAX_ITEMS = 16;
 function parseRefresh(read, raw) {
@@ -739,6 +745,9 @@ function parseRefresh(read, raw) {
         tabTitle: read.boolean(raw, 'tabTitle', path, defaults.tabTitle),
         autoRestart: read.boolean(raw, 'autoRestart', path, defaults.autoRestart),
         restartDelaySeconds: read.integer(raw, 'restartDelaySeconds', path, defaults.restartDelaySeconds, RESTART_DELAY_SECONDS),
+        holdAfterActivityMinutes: read.integer(raw, 'holdAfterActivityMinutes', path, defaults.holdAfterActivityMinutes, HOLD_AFTER_ACTIVITY_MINUTES),
+        countdownSeconds: read.integer(raw, 'countdownSeconds', path, defaults.countdownSeconds, COUNTDOWN_SECONDS),
+        compactCeilingTokens: read.integer(raw, 'compactCeilingTokens', path, defaults.compactCeilingTokens, COMPACT_CEILING_TOKENS),
         endCommand: read.stringList(raw, 'endCommand', path, defaults.endCommand, undefined, END_COMMAND_MAX_ITEMS),
         ...(handoverDir === undefined ? {} : { handoverDir }),
     };

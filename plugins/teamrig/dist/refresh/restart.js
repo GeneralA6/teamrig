@@ -2,6 +2,10 @@ import { CLAIM_HELD, CLAIM_TAKEN, isClaudeSessionId } from "../mod/clear-hand.js
 import { isClaudeProcess } from "../open/session-processes.js";
 import { readRunningWork } from "./running.js";
 import { TURN_TAIL_BYTES, turnRunning } from "./turn.js";
+/** The team's `refresh.countdownSeconds` and `refresh.holdAfterActivityMinutes` as the hold an ask carries, in ms. */
+export function personHoldOf(refresh) {
+    return { countdownMs: refresh.countdownSeconds * 1000, afterActivityMs: refresh.holdAfterActivityMinutes * 60_000 };
+}
 /** Lets Claude Code finish writing the turn's end before the first look at the transcript. */
 export const SETTLE_MS = 3_000;
 /** A session busy this long since its restart started (held by a helper included) keeps its context, and is told to type /clear. */
@@ -163,7 +167,7 @@ function tabAnswerOf(outcome) {
  * is removed with the new ask's posting.
  */
 async function handToTab(deps, plan, claudeSession) {
-    await deps.asks.post(claudeSession, { team: plan.team, id: plan.id, at: plan.at, askedAt: new Date(deps.clock.now()).toISOString() });
+    await deps.asks.post(claudeSession, { team: plan.team, id: plan.id, at: plan.at, askedAt: new Date(deps.clock.now()).toISOString(), hold: plan.hold });
     try {
         const deadline = deps.clock.now() + CLAIM_WAIT_MS;
         for (;;) {

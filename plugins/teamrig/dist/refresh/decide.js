@@ -1,6 +1,7 @@
 import { lineHash } from "../inbox/line-hash.js";
 const NONE = { kind: 'none' };
 const MEASURE = { kind: 'measure' };
+const GO = { kind: 'go' };
 /**
  * A session that goes on without the fresh start a refresh asked for (the user typed, or never typed /clear) is
  * asked again once its context grew this share of `contextTokens` past the size it was asked at, or at its next
@@ -42,7 +43,7 @@ function finishedSoFar(state) {
 export function boundaryOf(previous, task, at) {
     return { phase: 'boundary', task, at, finished: finishedSoFar(previous) + 1 };
 }
-/** The context size a turn end asks at: the threshold, or after a refresh the session went on from, well past that ask. */
+/** The context size a turn end, or a tool result within a turn, asks at: the threshold, or after a refresh the session went on from, well past that ask. */
 function askAt(state, settings) {
     const asked = state?.phase === 'asked' || state?.phase === 'ready' ? state.tokens : null;
     return asked === null ? settings.contextTokens : Math.max(settings.contextTokens, asked + reaskGrowth(settings));
@@ -78,20 +79,28 @@ function whyOf(cause, settings) {
             return `your context is ${thousands(cause.tokens)} after ${cause.finished} tasks (refresh every ${settings.everyTasks} tasks)`;
         case 'asked':
             return `${cause.by} asked for a refresh${cause.tokens === null ? '' : ` (your context is ${thousands(cause.tokens)})`}`;
+        case 'pending':
+            return `the refresh asked within this turn${cause.tokens === null ? '' : ` at ${thousands(cause.tokens)}`} is still due`;
     }
 }
+function whenOf(moment) {
+    if (moment.kind === 'midTurn') {
+        return ', so refresh within this turn: finish the step you are on and start no other';
+    }
+    return moment.task === null ? ', so refresh now rather than at a task end' : ` and you just finished ${moment.task}`;
+}
 /**
- * The ask to write the handover: after `task` at its end, or with null at another turn end. It asks only for what the
- * register lacks: the fresh start lists the session's tasks live from the register (hooks/live-tasks.ts), so a status
- * restated here could only go stale.
+ * The ask to write the handover. It asks only for what the register lacks: the fresh start lists the session's
+ * tasks live from the register (hooks/live-tasks.ts), so a status restated here could only go stale. Within a turn
+ * it ends the turn after `refresh --ready`, since the fresh start comes only once the turn has ended.
  */
-function handoverAsk(task, cause, context) {
+function handoverAsk(moment, cause, context) {
     const why = whyOf(cause, context.settings);
-    const when = task === null ? ', so refresh now rather than at a task end' : ` and you just finished ${task}`;
-    return (`${context.command}: ${why}${when}. Write your handover to ${context.handoverPath}: what the register lacks ` +
+    const after = moment.kind === 'midTurn' ? ' and end your turn: the fresh start follows it.' : '. Do not start new work.';
+    return (`${context.command}: ${why}${whenOf(moment)}. Write your handover to ${context.handoverPath}: what the register lacks ` +
         '(the next step of each task in progress; what to check later, and when; questions still open with the user; ' +
         'the scratchpad files, plan file and scheduled jobs the next session still needs; where things are), not task statuses, ' +
-        `which your fresh start reads live from the register. Then run \`${readyCommand(context.command, context.session.id)}\`. Do not start new work.`);
+        `which your fresh start reads live from the register. Then run \`${readyCommand(context.command, context.session.id)}\`${after}`);
 }
 /**
  * The Stop hook, at the end of every turn. A turn end with the context at the threshold, or after the lead
@@ -103,8 +112,9 @@ function handoverAsk(task, cause, context) {
  * it waits for /clear. While background work the session started still runs, a due refresh and the notice wait
  * for a later stop, since a fresh start would cut that work off. A stop that ends a turn a Stop hook continued
  * never asks, so the kit never loops; the notice that the handover is written does show there, since that is
- * the turn that runs `refresh --ready`. The facts are read cheapest first: the running work, which takes the
- * transcript's last 8 MiB, only once a refresh or the notice is due.
+ * the turn that runs `refresh --ready`. A turn that ends after a tool result asked within it (`decideMidTurn`),
+ * with no handover marked ready, is asked once more, as a due refresh. The facts are read cheapest first: the
+ * running work, which takes the transcript's last 8 MiB, only once a refresh or the notice is due.
  */
 export function decideStop(state, context, facts) {
     if (!context.settings.enabled) {
@@ -124,6 +134,9 @@ export function decideStop(state, context, facts) {
     if (facts === undefined) {
         return MEASURE;
     }
+    if (state?.phase === 'asked' && state.midTurn) {
+        return pendingAsk(state, context, facts.due);
+    }
     const tokens = facts.tokens ?? null;
     const cause = causeOf(state, facts, context.settings);
     if (cause === undefined) {
@@ -139,8 +152,72 @@ export function decideStop(state, context, facts) {
     const task = state?.phase === 'boundary' ? state.task : null;
     return {
         kind: 'block',
-        state: { phase: 'asked', task, at: context.now, tokens, handoverHash: facts.due.handoverHash },
-        reason: handoverAsk(task, cause, context),
+        state: { phase: 'asked', task, at: context.now, tokens, handoverHash: facts.due.handoverHash, midTurn: false },
+        reason: handoverAsk({ kind: 'turnEnd', task }, cause, context),
+    };
+}
+/**
+ * The turn end after a tool result asked within the turn, the handover not marked ready: asked once more, as the
+ * Stop hook's own ask. It keeps the first ask's fingerprint, so a handover written since still counts as new; it
+ * waits while background work runs, as any due refresh does.
+ */
+function pendingAsk(state, context, due) {
+    if (due === undefined) {
+        return MEASURE;
+    }
+    if (due.running > 0) {
+        return NONE;
+    }
+    return {
+        kind: 'block',
+        state: { ...state, midTurn: false },
+        reason: handoverAsk({ kind: 'turnEnd', task: state.task }, { kind: 'pending', tokens: state.tokens }, context),
+    };
+}
+/**
+ * The plugin's mod, at a tool result of the main conversation: once the context Claude Code reported reaches
+ * `askAt` (the threshold, or well past an ask the session went on from), it asks for the handover within the
+ * turn, so a long busy turn refreshes before Claude Code compacts it rather than after. Only the size asks here:
+ * the lead's request and the task count stay with the turn's end. Background work still running holds the ask,
+ * as at a turn end. `nextAt` tells the mod the context to look again at, so it calls the CLI only then.
+ */
+export function decideMidTurn(state, context, facts) {
+    const { settings } = context;
+    if (!settings.enabled) {
+        return { kind: 'none', nextAt: null };
+    }
+    const nextAt = askAt(state, settings);
+    if (facts.tokens < nextAt) {
+        return { kind: 'none', nextAt };
+    }
+    if (facts.due === undefined) {
+        return { kind: 'measure' };
+    }
+    if (facts.due.running > 0) {
+        return { kind: 'none', nextAt };
+    }
+    const task = state?.phase === 'boundary' ? state.task : null;
+    const asked = { phase: 'asked', task, at: context.now, tokens: facts.tokens, handoverHash: facts.due.handoverHash, midTurn: true };
+    return { kind: 'ask', state: asked, reason: handoverAsk({ kind: 'midTurn' }, { kind: 'size', tokens: facts.tokens }, context), nextAt: askAt(asked, settings) };
+}
+/**
+ * A compaction Claude Code is about to run on its own (trigger `auto`) on the main conversation: skipped while the
+ * session's handover is asked for or written, since the refresh's fresh start replaces it (the /clear once the turn
+ * ended and the person at the tab let it go, or the user's), as long as Claude
+ * Code's estimate of the context is under `compactCeilingTokens`. Past the ceiling it goes, so a session never runs
+ * out of room: a prompt too long for the window, which compacts with the same trigger, is past it too. A ceiling
+ * at or past the window would not leave that room, so it skips nothing.
+ */
+export function decideCompact(state, context, facts) {
+    const { enabled, compactCeilingTokens: ceiling } = context.settings;
+    const pending = state?.phase === 'asked' || state?.phase === 'ready';
+    if (!enabled || !pending || ceiling === 0 || ceiling >= facts.window || facts.tokens >= ceiling) {
+        return GO;
+    }
+    const handover = state.phase === 'asked' ? 'asked for' : 'written';
+    return {
+        kind: 'skip',
+        reason: `${context.command}: the handover is ${handover} and the fresh start follows this turn, so compaction waits until ${thousands(ceiling)} (now ${thousands(facts.tokens)})`,
     };
 }
 /** The fingerprint `decideStop` and `decideReady` compare; null for no handover. */

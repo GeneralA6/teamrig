@@ -10,6 +10,14 @@
  * that the restart is still pending) and on a claim runs /clear the way the person would. Claude Code then
  * runs the SessionStart `clear` hooks that read the handover and wake the session.
  *
+ * The hand also holds the /clear for the person (the ask's `PersonHold`, from the team's config): while the
+ * prompt holds an unsent draft, within `afterActivityMs` of the person's last key or prompt in the tab, and
+ * for HOLD_BUTTON_MS after they press "Hold" on the band above the prompt. Then it counts down
+ * `countdownMs` on that band, holding each ask until the count ends, so the person sees the /clear coming;
+ * "Refresh now" ends the count and every hold of theirs but a draft. The hand answers each ask at once: the
+ * runner ends a tab that leaves an ask unanswered, so a hold is an answer, and the runner asks again after
+ * its quiet delay.
+ *
  * The mod runs inside Claude Code without Node, so this file imports nothing at run time: it compiles to
  * a module the mod imports as it is, and the CLI shares its file names from here.
  */
@@ -25,6 +33,28 @@ export const CLAIM_HELD = 'held';
 export const CLAIM_WITHDRAWN = 'withdrawn';
 /** The switch that makes `hook clear-claim` hold the ask instead of claiming it. */
 export const HOLD_SWITCH = 'hold';
+/** The hold of an ask that carries none (a restart older than the hold): the config's defaults, 20 s and 5 min. */
+export const DEFAULT_PERSON_HOLD = { countdownMs: 20_000, afterActivityMs: 5 * 60_000 };
+/** How long the band's "Hold" button holds the /clear. */
+export const HOLD_BUTTON_MS = 10 * 60_000;
+/**
+ * How long the band reads "refreshing" once the count ended or the person pressed "Refresh now": the next ask
+ * comes one quiet delay later; a restart that ended meanwhile sends none, and the band must not stay.
+ */
+export const REFRESHING_SHOWN_MS = 60_000;
+/** The band's line above the prompt for what it shows. */
+export function bandLine(view) {
+    return view.kind === 'counting'
+        ? `teamrig: this session refreshes in ${view.secondsLeft} s, a fresh start from its handover`
+        : 'teamrig: this session is refreshing, a fresh start from its handover';
+}
+/** Whether two views draw the same band (undefined: none), so the mod writes the band's value only when it changes. */
+export function sameBand(a, b) {
+    if (a === undefined || b === undefined) {
+        return a === b;
+    }
+    return a.kind === 'counting' ? b.kind === 'counting' && a.secondsLeft === b.secondsLeft : b.kind === 'refreshing';
+}
 /** The statuses of an agent whose loop has ended (Claude Code's `AgentStatus`); every other one is live. */
 const ENDED_AGENT_STATUSES = new Set(['completed', 'failed', 'killed']);
 /**
@@ -47,6 +77,34 @@ export function askFileOf(dir, claudeSession) {
 export function outcomeFileOf(dir, claudeSession) {
     return isClaudeSessionId(claudeSession) ? `${dir}/${claudeSession}.outcome` : undefined;
 }
+function isRecord(value) {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+function isDuration(value) {
+    return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+function holdOf(value) {
+    if (!isRecord(value)) {
+        return DEFAULT_PERSON_HOLD;
+    }
+    const { countdownMs, afterActivityMs } = value;
+    return isDuration(countdownMs) && isDuration(afterActivityMs) ? { countdownMs, afterActivityMs } : DEFAULT_PERSON_HOLD;
+}
+/** The ask file's request and hold; DEFAULT_PERSON_HOLD when it carries none or a damaged one. */
+export function parseHandAsk(text) {
+    let value;
+    try {
+        value = JSON.parse(text);
+    }
+    catch {
+        return { request: undefined, hold: DEFAULT_PERSON_HOLD };
+    }
+    if (!isRecord(value)) {
+        return { request: undefined, hold: DEFAULT_PERSON_HOLD };
+    }
+    const { at, hold } = value;
+    return { request: typeof at === 'string' ? at : undefined, hold: holdOf(hold) };
+}
 function messageOf(error) {
     return error instanceof Error ? error.message : String(error);
 }
@@ -68,14 +126,53 @@ export class ClearHand {
     /** A turn runs: from turn.start to turn.complete. */
     busy = false;
     ticking = false;
+    /** When the person last typed in the prompt box or sent a prompt. */
+    lastActivity;
+    /** Until when the band's "Hold" button holds the /clear. */
+    holdUntil;
+    /** When the person pressed "Refresh now": the next ask is claimed unless a draft or a helper holds it. */
+    nowAskedAt;
+    /** The band's count for one restart request, which ends at `endsAt`. */
+    countdown;
     constructor(host) {
         this.host = host;
     }
+    /** A turn starts: the ask that comes after it starts a new count. */
     turnStarted() {
         this.busy = true;
+        this.endCount();
     }
     turnEnded() {
         this.busy = false;
+    }
+    /** The person typed in the prompt box or sent a prompt: the /clear waits `afterActivityMs` from now, and the band hides. */
+    personActed() {
+        this.lastActivity = this.host.now();
+        this.countdown = undefined;
+    }
+    /** The band's "Refresh now": the next ask is claimed, through every hold of the person's but a draft. */
+    refreshNow() {
+        this.nowAskedAt = this.host.now();
+        this.holdUntil = undefined;
+    }
+    /** The band's "Hold": no /clear for HOLD_BUTTON_MS, and the band hides. */
+    holdRefresh() {
+        this.holdUntil = this.host.now() + HOLD_BUTTON_MS;
+        this.endCount();
+    }
+    /** What the band above the prompt shows now; undefined: no band. */
+    band() {
+        const now = this.host.now();
+        const { countdown, nowAskedAt } = this;
+        if (nowAskedAt === undefined && countdown !== undefined && now < countdown.endsAt) {
+            return { kind: 'counting', secondsLeft: Math.ceil((countdown.endsAt - now) / 1000) };
+        }
+        const since = nowAskedAt ?? countdown?.endsAt;
+        return since !== undefined && now - since < REFRESHING_SHOWN_MS ? { kind: 'refreshing' } : undefined;
+    }
+    endCount() {
+        this.countdown = undefined;
+        this.nowAskedAt = undefined;
     }
     async tick() {
         if (this.ticking) {
@@ -111,20 +208,47 @@ export class ClearHand {
             return { kind: 'busy' };
         }
         const stdin = JSON.stringify({ session_id: claudeSession });
-        const held = await this.heldBy();
+        const held = await this.heldBy(parseHandAsk(text));
         if (held !== undefined) {
             const hold = await this.host.cli(['hook', 'clear-claim', `--${HOLD_SWITCH}`], stdin);
-            return answered(hold, CLAIM_HELD) ? { kind: 'held', why: held } : declined(hold);
+            if (answered(hold, CLAIM_HELD)) {
+                return { kind: 'held', why: held };
+            }
+            // The restart is no longer pending: no /clear follows this count.
+            this.endCount();
+            return declined(hold);
         }
         const claim = await this.host.cli(['hook', 'clear-claim'], stdin);
+        // Cleared, or the restart is no longer pending: either way the count is over.
+        this.endCount();
         if (!answered(claim, CLAIM_TAKEN)) {
             return declined(claim);
         }
         await this.host.clear();
         return { kind: 'cleared' };
     }
+    /**
+     * Why the hand holds this ask, in order: a live helper; an unsent draft; then, unless the person pressed
+     * "Refresh now", their "Hold", their activity in the tab and the band's count. Undefined: claim it.
+     */
+    async heldBy(ask) {
+        const helper = (await this.helperHold()) ?? (await this.draftHold());
+        if (helper !== undefined) {
+            this.endCount();
+            return helper;
+        }
+        if (this.nowAskedAt !== undefined) {
+            return undefined;
+        }
+        const person = this.personHold(ask.hold);
+        if (person !== undefined) {
+            this.countdown = undefined;
+            return person;
+        }
+        return this.countHold(ask);
+    }
     /** Why a /clear would cut off a helper now, or undefined when the session runs none: a list that fails counts as one. */
-    async heldBy() {
+    async helperHold() {
         try {
             const live = await this.host.liveAgents();
             return live === 0 ? undefined : `${live} ${live === 1 ? 'agent' : 'agents'} of this session still live`;
@@ -132,6 +256,38 @@ export class ClearHand {
         catch (error) {
             return `Claude Code would not list this session's agents: ${messageOf(error)}`;
         }
+    }
+    /** Why a /clear would land under the person's draft, or undefined when the prompt box is empty: a read that fails counts as one. */
+    async draftHold() {
+        try {
+            return (await this.host.draft()).trim() === '' ? undefined : 'the prompt box holds an unsent draft';
+        }
+        catch (error) {
+            return `Claude Code would not read the prompt box: ${messageOf(error)}`;
+        }
+    }
+    /** Why the person holds the /clear now: their "Hold", or their last key or prompt within `afterActivityMs`. */
+    personHold(hold) {
+        const now = this.host.now();
+        if (this.holdUntil !== undefined && now < this.holdUntil) {
+            return `the person pressed Hold: ${Math.ceil((this.holdUntil - now) / 60_000)} min left`;
+        }
+        if (this.lastActivity !== undefined && now - this.lastActivity < hold.afterActivityMs) {
+            return `the person was active in this tab ${Math.floor((now - this.lastActivity) / 1000)} s ago`;
+        }
+        return undefined;
+    }
+    /** Starts the band's count at a request's first ask that passed every other hold, and holds until it ends. */
+    countHold(ask) {
+        if (ask.hold.countdownMs === 0) {
+            return undefined;
+        }
+        const now = this.host.now();
+        if (this.countdown === undefined || this.countdown.request !== ask.request) {
+            this.countdown = { request: ask.request, endsAt: now + ask.hold.countdownMs };
+        }
+        const left = this.countdown.endsAt - now;
+        return left > 0 ? `the band counts down: ${Math.ceil(left / 1000)} s left` : undefined;
     }
     /** The ask folder, asked of the CLI once (`hook clear-dir`), and again only DIR_RETRY_MS after a failure. */
     async askDir() {

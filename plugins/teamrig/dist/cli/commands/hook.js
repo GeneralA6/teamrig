@@ -26,10 +26,9 @@ import { blockOutput, stopOutput } from "../../hooks/stop.js";
 import { adoptTitle, promptNote, sessionStartNote } from "../../names/detect.js";
 import { JsonlRenameLog } from "../../names/log.js";
 import { TRANSCRIPT_TAIL_BYTES } from "../../names/title.js";
-import { decideStart, decideStop, handoverHashOf, reaskGrowth, thousands, } from "../../refresh/decide.js";
+import { decideStart, decideStop, reaskGrowth, thousands, } from "../../refresh/decide.js";
 import { carryLines, carryStartOf, readCarry } from "../../refresh/carry.js";
 import { claudeProcessOf } from "../../refresh/restart.js";
-import { readRunningWork } from "../../refresh/running.js";
 import { RefreshStore } from "../../refresh/store.js";
 import { readContextTokens } from "../../refresh/usage.js";
 import { noPositionals } from "../args.js";
@@ -45,7 +44,8 @@ import { droppedEditReasonOf } from "./hook-dropped-edit.js";
 import { meetingHold } from "./hook-meeting.js";
 import { armRestart, restartTargetOf } from "./hook-restart.js";
 import { helperContextOf } from "./hook-helper-start.js";
-import { envSession, leadOwnPaths, parseJson, sessionTeam, startSessionOf, teamSessionOf } from "./hook-input.js";
+import { dueFactsAt } from "./hook-refresh-mod.js";
+import { envSession, hookScopeOf, leadOwnPaths, parseJson, sessionScopeOf, sessionTeam, startSessionOf, teamScopeOf, teamSessionOf } from "./hook-input.js";
 import { tabStatusOn, tabTitleOf } from "./hook-tab-status.js";
 import { logPrompt, logReply, logStart } from "./hook-turn-log.js";
 import { keepWorkingReasonOf } from "./keep-working.js";
@@ -280,7 +280,7 @@ export async function helperGateHook(args, runtime) {
     return EXIT.ok;
 }
 async function helperGateOf(runtime, payload) {
-    const scope = await stopScopeOf(runtime, payload);
+    const scope = await hookScopeOf(runtime, payload);
     return scope === undefined ? undefined : helperGateOutput(runtime, scope, stringField(payload, 'transcript_path'));
 }
 /**
@@ -417,36 +417,9 @@ async function stopFactsOf(runtime, roster, store, id, payload) {
         due: undefined,
     };
 }
-/**
- * The facts a due refresh or notice reads: the handover as it is now (so `refresh --ready` can tell a new one
- * from it), and the background work still running, which a fresh start must wait for.
- */
-async function dueFactsOf(runtime, store, id, payload) {
-    const transcript = stringField(payload, 'transcript_path');
-    return {
-        handoverHash: handoverHashOf(await store.handover(id)),
-        running: transcript === undefined ? 0 : await readRunningWork(runtime.files, transcript, runtime.clock.now()),
-    };
-}
-/** The hook payload's team; undefined outside a team or without a loaded config. */
-async function teamScopeOf(runtime, payload) {
-    const found = await sessionTeam(payload, runtime);
-    if (found.kind !== 'team') {
-        return undefined;
-    }
-    const kit = await openKit(runtime, found.team);
-    return kit.load.status === 'loaded' ? { kit, config: kit.load.config } : undefined;
-}
-/** The team session of a payload in `team`; undefined when the tab is no session of it. */
-async function sessionScopeOf(runtime, team, payload) {
-    const roster = await rosterOf(runtime, team.kit, team.config);
-    const id = await teamSessionOf(runtime, team.kit, roster, sessionIdOf(payload));
-    return id === undefined ? undefined : { ...team, roster, id };
-}
-/** The hook payload's team session (Stop, helper gate); undefined outside a team, without a loaded config or without a session. */
-async function stopScopeOf(runtime, payload) {
-    const team = await teamScopeOf(runtime, payload);
-    return team === undefined ? undefined : sessionScopeOf(runtime, team, payload);
+/** The facts a due refresh or notice reads (`dueFactsAt`), the running work from the transcript Claude Code gave the hook. */
+function dueFactsOf(runtime, store, id, payload) {
+    return dueFactsAt(runtime, store, id, stringField(payload, 'transcript_path'));
 }
 /** The owner's turn-end line when the lead did hand-off work itself (lead-boundary.ts); none for another session, with the boundary off or without a transcript. */
 async function leadStopLines(runtime, scope, transcript) {
