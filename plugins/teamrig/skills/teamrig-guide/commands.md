@@ -868,9 +868,9 @@ a resumed session re-reads its whole old context on every call.
 Takes a session off the team once its job is done (`teamrig retire <id|name>`): the lead, or a hired session
 itself under `hiring.policy` `automatic` once its tasks are all closed. Without `--yes` it shows the retire and
 writes nothing. With it, the session's open tasks go to the heir (`--to`), who gets one inbox line; the old
-config goes into the backups folder; the session leaves `sessions`, `names`, `launch` and `budget.sessions`;
-and the retire goes into the hire log (`state/hires.jsonl`). Its tasks, inbox and records stay where they are,
-readable by its id.
+config goes into the backups folder; the session leaves `sessions`, `names`, `launch`, `budget.sessions` and
+`leads`, a retired sub-lead's members going to its own leader (the preview names them); and the retire goes into
+the hire log (`state/hires.jsonl`). Its tasks, inbox and records stay where they are, readable by its id.
 
 - It refuses while the session owns open tasks, unless `--to <heir>` hands them over.
 - It refuses without the session's handover (`<handover>/<id>.md`, the file a refresh writes: open work, next
@@ -901,6 +901,63 @@ Output:
 ```text
 RETIRED importer (name shop-importer, hired): its job is done; its open task(s) T12 go to backend; handover ~/.teamrig/teams/shop/handover/importer.md; the old config is at ~/.teamrig/teams/shop/backups/config.retire.json
 NEXT its records stay readable by its id (teamrig list --session importer --all); close its tab if it is open
+```
+
+### teamrig promote
+
+Makes a session a sub-lead (`teamrig promote <id|name> --members <a,b>`): the lead, or a sub-lead, picks one of
+the sessions it leads directly and puts others it leads directly under it. The team's `leads` config lists each
+sub-lead's members; the lead leads every session no list names, and a sub-lead may list sub-leads, at any depth.
+A member's decision and approval waits may then name its sub-lead, who answers them with `teamrig approve`; the
+lead above still may. Without `--yes` it shows the change and writes nothing. With it, the old config goes into
+the backups folder, `leads` is rewritten, and the sub-lead gets one inbox line.
+
+- It refuses unless the caller leads the sub-lead and every member directly.
+- It refuses a member listed twice, or the sub-lead among its own members.
+- A sub-lead promoted again keeps its members and adds the new ones; a member that leads others brings its
+  group along.
+
+Flags:
+
+- `--session <id|name>`: the caller, the lead or a sub-lead.
+- `--members <a,b>`: the sessions the sub-lead will lead.
+- `--yes`: write it.
+
+Example:
+
+```sh
+teamrig promote backend --members importer,search --session lead --yes
+```
+
+Output:
+
+```text
+PROMOTED backend leads importer, search, under lead; the old config is at ~/.teamrig/teams/shop/backups/config.promote.json
+NOTE backend has an inbox line: lead made you a sub-lead over importer, search: their decision and approval waits may come to you, answered with teamrig approve
+```
+
+### teamrig demote
+
+Takes a sub-lead's whole group back (`teamrig demote <id|name>`): only its own leader may. Its members become the
+caller's (the lead lists no one, so they simply leave `leads`). Without `--yes` it shows the change; with it, the
+old config goes into the backups folder and the sub-lead gets one inbox line.
+
+Flags:
+
+- `--session <id|name>`: the sub-lead's own leader.
+- `--yes`: write it.
+
+Example:
+
+```sh
+teamrig demote backend --session lead --yes
+```
+
+Output:
+
+```text
+DEMOTED backend leads no one; importer, search go back to lead; the old config is at ~/.teamrig/teams/shop/backups/config.demote.json
+NOTE backend has an inbox line: lead took back the sessions you led (importer, search); you lead no one now
 ```
 
 ### teamrig rules
