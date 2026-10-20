@@ -114,6 +114,60 @@ A shipped change is proven by the session that shipped it, oldest first, before 
   in the child's register, owned by the child's lead (who plans it in) and sourced `<parent team>/<lead id>`; the
   parent's own register is not touched. Each lead sees the teams under it with `list`, `check` and `plan --tree`.
 
+## A task or a step
+
+A task is one piece of work that one owner ships and proves. A step is work inside a task: it lands in the task's
+change and the task's proof proves it, so it needs no row of its own. For each piece of work, the first line that
+holds decides:
+
+1. **Another session does it**: its own task (`add --owner <id>`, or `set <yours> --status waiting --ask <id>`
+   when yours cannot go on without it).
+2. **It waits on what the rest does not, or needs another priority or an earlier due date**: its own task, so its
+   wait or date shows on its own row and does not hold up the rest. A wait is on a task (a goal is waited on by
+   its tasks), a time, or an owner decision or approval; a later owner call (a delete after a swap) is a wait the
+   work before it does not have. A wait that holds the whole task is the task's own: set it `waiting`. "Before
+   it grows" is a reason, not a date.
+3. **It is more than one commit and has a proof of its own** (the run, number or live check that shows it works,
+   not its specs): its own task, so it reaches `verifying` and `done` when it is ready. A fix you cannot yet name
+   as one commit counts as more.
+4. **Else it is a step**: list it in the task's description (`update --description`) when it is known at the
+   start, else add a context line when it turns up (`update <id> --note "step: ..."`). A one-commit fix you make
+   in the block you find it needs no entry at all (rule 5).
+
+Two sizes need a second look. Too coarse: a task that, once started, will not reach `verifying` or `done` within
+72 h [register.check.staleAfterHours] splits at its proof points, so each part reports when it is ready. Too
+fine: one-commit leftovers of one owner that wait on nothing share one task (`Follow-ups of T12`), a step each,
+not a row each; a step that grows past a commit or gains a wait moves out, by the list above.
+
+When a task splits, its row keeps the steps that stay (retitle it with `update --title` when they change what it
+is), and each part that moves out gets a new row with the task's source (`add --source`), priority and goals, and
+its week while that week is current (`set --ask` copies the priority and goals): `check` reads each task's own
+tags, so a part without them is flagged `OFF-GOAL` or `DUE-UNPLANNED`. A row left with no step is dropped, its
+`--followups` naming the new rows.
+
+A part ties to the work it serves by plan order, since the register has no parent field: the whole is planned
+after its parts (`teamrig update T9 --after T10,T11`), so each part takes the whole's due (`due 10-17 (from T9)`),
+its row names the whole (`needed by T9`), and `teamrig show T9 --tree` prints both. That whole is the parent task
+rule 5 names. Keep a whole only when it has a proof beyond its parts (a live check across them); when it is just
+their sum, a goal tag ties the parts together, and the old row stays only for the steps left in it.
+
+Three shapes, split by the list:
+
+- **A bundle of unrelated follow-ups** ("Review follow-ups": say why a cache is kept and what it costs, which
+  another task may make moot; fix two stale comments; the nightly export overruns its slot past 13 customers).
+  The cache question waits on the other task: its own task, planned after it (line 2). The export fix has no date
+  but is more than a commit, proven by a night past 13 customers: its own task (line 3). The comments are one
+  commit (line 4): fix them now and drop the row, its followups naming the two new tasks; else the row is
+  retitled for them.
+- **One fix in several steps** ("Timing audit defects 3-9": seven gaps, one owner, one priority, one proof, a
+  night whose timings add up): one task, a step each in its description (line 4). A defect that turns out to
+  need the owner's call moves out (line 2).
+- **A step of a plan that has its own wait** ("Migration step 3: swap in the cleaned table", after step 2's
+  parity run and the owner's OK, then retire the old table on the owner's call): its own task, planned after
+  step 2 and set `waiting` on the OK (line 2); the dry-run count for the owner is a step of it (line 4); retiring
+  the old table waits on a later owner call, so it is a task planned after the swap (line 2). The plan's goal tag
+  ties its steps together, with no task for the whole.
+
 ## Fields and limits
 
 - **Priority** [register.priorities]: `p1` keep the lights on, `p2` correctness, `p3` scale, `p4` this week's

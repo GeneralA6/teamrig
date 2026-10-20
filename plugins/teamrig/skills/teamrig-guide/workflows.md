@@ -21,8 +21,9 @@ It prints the time, your unread inbox lines, your task list, the other sessions'
    what it unblocks, the week plan, size, then id; a task that a dated task needs takes that earlier due,
    `due 10-17 (from T9)`), and each row's `· ahead:` names the key that put it ahead of the next.
 3. Mark it started: `teamrig set T4 --session api --status in-progress`.
-4. Before you start any work that is not on the list, add it: self-made work is a task too. Start it only for a
-   goal, a parent task or the week plan, never ahead of your top task that is not waiting; a one-commit fix is
+4. Before you start any work that is not on the list, add it: self-made work is a task too, unless it is a step
+   of a task you hold ([tasks.md](tasks.md#a-task-or-a-step)). Start it only for a goal, a parent task (one
+   planned after it) or the week plan, never ahead of your top task that is not waiting; a one-commit fix is
    exempt. A loop, cron or scheduled wake-up needs the lead's OK and a written stop (a time or a usage %).
 
 If the session-start context said no session is set, ask the user which session you are (`teamrig who` lists
