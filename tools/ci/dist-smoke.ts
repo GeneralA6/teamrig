@@ -66,7 +66,7 @@ const SESSION_ID = '0123abcd-0000-4000-8000-00000000000a';
 /**
  * One payload per hook the plugin runs, by its command (one event can run several), run inside team
  * `smoke`, which has no config: session start and a helper's start say so, the push guard still refuses a force-push of
- * main, the package guard refuses an npx of a tool not installed, the cold-send hook lets a message go, the failed-send hook stays quiet, the loop nudge and the reminder stay quiet, the Stop and
+ * main, the package guard refuses an npx of a tool not installed, the secret guard refuses a read of .env, the cold-send hook lets a message go, the failed-send hook stays quiet, the loop nudge and the reminder stay quiet, the Stop and
  * SubagentStop hooks print nothing (any output there would block the turn), the refresh wake wakes nothing, and the
  * restore tracker prints nothing, and so do tab status, the read-only allow and the picker guard, all off without a config.
  */
@@ -82,6 +82,10 @@ const SAMPLES: Readonly<Record<string, Sample>> = {
   'hook package-guard': {
     payload: { hook_event_name: 'PreToolUse', session_id: SESSION_ID, tool_name: 'Bash', tool_input: { command: 'npx teamrig-smoke-not-installed' } },
     check: (stdout) => (outputField(stdout, 'permissionDecision') === 'deny' ? undefined : 'expected a deny for an npx of a tool not installed'),
+  },
+  'hook secret-guard': {
+    payload: { hook_event_name: 'PreToolUse', session_id: SESSION_ID, tool_name: 'Bash', tool_input: { command: 'cat .env' } },
+    check: (stdout) => (outputField(stdout, 'permissionDecision') === 'deny' ? undefined : 'expected a deny for a read of .env'),
   },
   'hook cold-send': {
     payload: { hook_event_name: 'PreToolUse', session_id: SESSION_ID, tool_name: 'SendMessage', tool_input: { to: 'lead', message: 'hello' } },

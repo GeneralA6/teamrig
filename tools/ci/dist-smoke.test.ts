@@ -54,6 +54,7 @@ class FakeRunner {
         return { ...OK, stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: 'SubagentStart', additionalContext: 'rules' } }) };
       case 'push-guard':
       case 'package-guard':
+      case 'secret-guard':
         return { ...OK, stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny' } }) };
       default:
         return OK;
