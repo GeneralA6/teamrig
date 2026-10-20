@@ -4,6 +4,13 @@ const MAX_NESTING = 16;
 export function parseShell(command, dialect) {
     return new Scanner(command, dialect, { nesting: 0, subshells: [], ids: { next: 0 } }).parse();
 }
+/**
+ * The commands bash runs when an expansion reads a word's {@link ShellWord.held} text again: the substitutions
+ * in it, read as in an unquoted heredoc's body, where quotes are plain text and a backslash keeps a `$`.
+ */
+export function parseHeldText(held) {
+    return new Scanner(held, 'bash', { nesting: 0, subshells: [], ids: { next: 0 } }).parseExpandable();
+}
 /** A bash variable reference with nothing else in it: `$NAME` or `${NAME}`. */
 const PLAIN_VARIABLE = /^\$(?:([A-Za-z_]\w*)|\{([A-Za-z_]\w*)\})$/;
 /**
@@ -12,6 +19,8 @@ const PLAIN_VARIABLE = /^\$(?:([A-Za-z_]\w*)|\{([A-Za-z_]\w*)\})$/;
  * operator after it, or `[` when another subscript follows.
  */
 const BRACED_HEAD = /^\$\{([#!]?)([A-Za-z_]\w*(?:\[(?:[@*]|\d+)\])?|\d+|[@*#?$!-])?(:[-=+?]?|[-=+?]|##?|%%?|\/[/#%]?|\^\^?|,,?|@[A-Za-z]?|\[|\})?/;
+/** Text that holds a bash command substitution: `$(` or a backtick. */
+const SUBSTITUTION = /\$\(|`/;
 /** The `${NAME@X}` transforms that never expand the value again: quoting, escapes, attributes and case. */
 const PLAIN_TRANSFORM = /^@[QEAaUuLKk]$/;
 /**
@@ -36,6 +45,8 @@ function bracedMayAssign(written) {
 /** The word being read: its text so far, whether anything dynamic went in, its bash parts and brace-list hints. */
 class WordBuilder {
     text = '';
+    /** The text kept as written, every piece but the dynamic ones; see {@link ShellWord.held}. */
+    literal = '';
     dynamic = false;
     started = false;
     brace = false;
@@ -55,6 +66,7 @@ class WordBuilder {
     /** Adds text; a piece read through a quote or an escape is `quoted`, as is any text outside bash. */
     add(chars, piece = 'quoted') {
         this.text += chars;
+        this.literal += piece === 'dynamic' ? '' : chars;
         this.started = true;
         this.dynamic ||= piece === 'dynamic';
         if (this.parts !== undefined) {
@@ -82,6 +94,7 @@ class WordBuilder {
     take() {
         const word = this.started ? this.word() : undefined;
         this.text = '';
+        this.literal = '';
         this.dynamic = false;
         this.started = false;
         this.brace = false;
@@ -91,7 +104,8 @@ class WordBuilder {
     }
     /** The word read so far, even an empty one, such as a heredoc's empty body. */
     word() {
-        const word = { text: this.text, dynamic: this.dynamic || this.braceList };
+        const held = this.tracksParts && SUBSTITUTION.test(this.literal) ? { held: this.literal } : {};
+        const word = { text: this.text, dynamic: this.dynamic || this.braceList, ...held };
         return this.tracksParts && this.parts !== undefined && !this.braceList ? { ...word, parts: this.parts } : word;
     }
 }
@@ -156,6 +170,11 @@ class Scanner {
     }
     parse() {
         return this.scan();
+    }
+    /** Reads the whole source as expandable text; the commands are those of the substitutions in it. */
+    parseExpandable() {
+        this.readExpandable(new WordBuilder(true), this.source.length);
+        return { commands: this.commands, complete: this.complete, unreadBodies: this.unreadBodies, bindingsUnclear: this.bindingsUnclear };
     }
     /** Reads the whole source; its commands stay open to the separators an enclosing scanner adds after them. */
     scan() {

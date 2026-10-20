@@ -1,7 +1,7 @@
 import { isAssignment, launch, programName, staticWord } from "./launchers.js";
 import { Location, resolveDir } from "./location.js";
 import { redirectsInput, stdinUse } from "./stdin.js";
-import { parseShell } from "./tokenizer.js";
+import { parseHeldText, parseShell } from "./tokenizer.js";
 import { resolveLiteralVariables } from "./variables.js";
 /** Git's own commands; an alias never overrides one. */
 const BUILTINS = new Set(('add am annotate apply archive backfill bisect blame branch bugreport bundle cat-file check-attr check-ignore check-mailmap ' +
@@ -206,14 +206,17 @@ class GitInvocationFinder {
      * `cat` hands its stdin down a pipe to the next command, so `cat <<EOF | bash` runs the body as commands.
      */
     visitScript(script, dialect, location, depth) {
+        this.visitParsed(parseShell(script.text, dialect), script.text, dialect, location, depth);
+    }
+    /** Visits the commands parsed from `source` in order; see {@link visitScript}. */
+    visitParsed(parsed, source, dialect, location, depth) {
         if (depth > MAX_SCRIPT_DEPTH) {
             this.doubt('scripts nest too deep to read', false);
             return;
         }
-        const parsed = parseShell(script.text, dialect);
         if (!parsed.complete) {
             this.doubt('part of it cannot be read, as a quote, bracket or substitution never closes', true);
-            this.mention(script.text);
+            this.mention(source);
         }
         parsed.unreadBodies.forEach((body) => this.mention(body.text));
         // bash reads $NAME set to a literal earlier in the line; other dialects keep every variable unknown. The
@@ -230,12 +233,34 @@ class GitInvocationFinder {
             }
             location.enter(command.subshells);
             const launched = this.visitCommand(command.words, dialect, location, depth, stdin);
+            // A shell that runs a word as a script reads its substitutions as commands already.
+            if (launched?.kind !== 'script') {
+                this.visitHeld(command.words, location, depth);
+            }
             if (stdin !== undefined) {
                 const use = launched === undefined ? 'read' : stdinUse(command, launched);
                 if (use !== 'stored') {
                     this.mention(stdin.text);
                 }
                 piped = use === 'passed' ? { body: stdin, nesting: command.nesting } : undefined;
+            }
+        }
+    }
+    /**
+     * Reads the command substitutions words hold as text (see `ShellWord.held`), which bash runs when an expansion
+     * reads the text again, in this line or a later one the guard never sees. One that pushes, or that the guard
+     * cannot read, is a doubt: the push is not judged as written, as nothing on the line says when it runs.
+     */
+    visitHeld(words, location, depth) {
+        for (const word of words) {
+            if (word.held === undefined) {
+                continue;
+            }
+            const held = new GitInvocationFinder(this.context);
+            held.visitParsed(parseHeldText(word.held), word.held, 'bash', location.child(), depth + 1);
+            this.doubts.push(...held.doubts);
+            if (held.invocations.some((invocation) => invocation.subcommand === 'push')) {
+                this.doubt('it holds a quoted command substitution that pushes, which bash runs if an expansion reads it again', true);
             }
         }
     }
