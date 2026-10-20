@@ -1,6 +1,6 @@
 import type { BudgetConfig } from '../config/types.ts';
-import { formatUtcDay, formatUtcHour, MS_PER_DAY } from '../core/time.ts';
-import { DailyProfile } from './active-time.ts';
+import { formatUtcDay, formatUtcHour, MS_PER_DAY, MS_PER_HOUR } from '../core/time.ts';
+import { DailyProfile, type ActivityProfile } from './active-time.ts';
 import { dailyAllowancePct, dayPacePct, readPace, weekWindow, type PaceReading, type TeamDay, type WeekWindow } from './pace.ts';
 import type { Metered, Period, PeriodKind } from './period.ts';
 import type { WeekUse } from './snapshot.ts';
@@ -72,6 +72,26 @@ export function wSince(states: readonly UsageState[], from: number, now: number)
   return total;
 }
 
+/**
+ * Everyone's W from the hour of `from` to `now` that fell in inactive time: each hour's W times the part of that hour
+ * the profile does not count as active, so a quiet hour's whole W at the default `paceWeight` of 0. It counts `from`'s
+ * hour whole, as `wSince` does. A store whose hours were lost adds nothing, so the in-day pace errs low.
+ */
+export function idleWSince(states: readonly UsageState[], from: number, now: number, profile: ActivityProfile): number {
+  let total = 0;
+  for (let hour = from - (from % MS_PER_HOUR); hour <= now; hour += MS_PER_HOUR) {
+    const idleShare = 1 - profile.activeMs(hour, hour + MS_PER_HOUR) / MS_PER_HOUR;
+    if (idleShare <= 0) {
+      continue;
+    }
+    const key = formatUtcHour(new Date(hour));
+    for (const state of states) {
+      total += (state.byHour[key] ?? 0) * idleShare;
+    }
+  }
+  return total;
+}
+
 /** W per percent of the week from `budget.weeklyLimitW`; undefined without it. */
 export function limitWPerPct(budget: Pick<BudgetConfig, 'weeklyLimitW'>): number | undefined {
   return budget.weeklyLimitW === undefined ? undefined : budget.weeklyLimitW / 100;
@@ -111,7 +131,7 @@ export function readWeek(input: WeekInput): WeekReading {
   const teamDay =
     window === undefined || wPerPct === undefined || allowancePct === undefined
       ? undefined
-      : { usedPct: todayW / wPerPct, pacePct: dayPacePct({ window, now, allowancePct, profile }) };
+      : { usedPct: todayW / wPerPct, pacePct: dayPacePct({ window, now, allowancePct, idlePct: idleWSince(states, todayFrom, now, profile) / wPerPct, profile }) };
   return {
     reset,
     window,

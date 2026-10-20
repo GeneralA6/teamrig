@@ -134,21 +134,25 @@ export interface DayPaceInput {
   readonly now: number;
   /** The team's allowance for today (`dailyAllowancePct`), in percent of the week. */
   readonly allowancePct: number;
+  /** Everyone's use today in inactive time, such as a quiet hour (`idleWSince`), in percent of the week. */
+  readonly idlePct: number;
   readonly profile: ActivityProfile;
 }
 
 /**
- * The team's in-day pace, in percent of the week: its allowance times the part of today's active time gone by,
- * today being the UTC day inside the week and before the pace end, as the allowance counts it. With no active time
- * today, the whole allowance.
+ * The team's in-day pace, in percent of the week: today's use in inactive time, plus its allowance times the part of
+ * today's active time gone by, today being the UTC day inside the week and before the pace end, as the allowance
+ * counts it. With no active time today, the whole allowance. The idle use is paced as it is spent: the allowance is
+ * recomputed from what is left, so that use has already lowered it, and holding it against the day too would read a
+ * night that sessions worked through quiet hours (a lift exempts them) as a day past its pace until the afternoon.
  */
 export function dayPacePct(input: DayPaceInput): number {
-  const { window, now, allowancePct, profile } = input;
+  const { window, now, allowancePct, idlePct, profile } = input;
   const dayStart = now - (now % MS_PER_DAY);
   const from = Math.max(dayStart, window.start);
   const to = Math.min(dayStart + MS_PER_DAY, window.paceEnd);
   const today = profile.activeMs(from, to);
-  return today > 0 ? (allowancePct * profile.activeMs(from, Math.min(now, to))) / today : allowancePct;
+  return idlePct + (today > 0 ? (allowancePct * profile.activeMs(from, Math.min(now, to))) / today : allowancePct);
 }
 
 /**

@@ -2,11 +2,12 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_BUDGET } from '../config/defaults.ts';
 import type { BudgetConfig } from '../config/types.ts';
+import { DailyProfile } from './active-time.ts';
 import { emptyPatterns } from './patterns.ts';
 import type { Period } from './period.ts';
 import type { WeekUse } from './snapshot.ts';
 import type { UsageState } from './store.ts';
-import { limitWPerPct, meteredOf, readWeek, wSince } from './week.ts';
+import { idleWSince, limitWPerPct, meteredOf, readWeek, wSince } from './week.ts';
 
 /** Thursday 2026-10-15 12:00 UTC; the week runs from Wednesday 10-14 01:00 to Wednesday 10-21 01:00. */
 const NOW = Date.parse('2026-10-15T12:00:00Z');
@@ -109,6 +110,15 @@ describe('readWeek', () => {
     assert.equal(round(week.teamDay?.usedPct), round((500 * 57) / 1_500));
   });
 
+  it("paces today's use in quiet hours as spent: the in-day pace starts from it", () => {
+    const budget: BudgetConfig = { ...DEFAULT_BUDGET, quietHours: { startUtc: '22:00', endUtc: '06:00', action: 'ask' } };
+    const night = { ...state({ '2026-10-14': 1_000, '2026-10-15': 500 }), byHour: { '2026-10-15T02': 300, '2026-10-15T09': 200 } };
+    const week = readWeek({ budget, now: NOW, statusUse: STATUS, period: PERIOD, states: [night] });
+    // The 300 W of 02:00 are 300 / (1,500 / 57) % of the week; the 200 W of 09:00 are paced by the active time.
+    assert.equal(round(week.teamDay?.pacePct), round((300 * 57) / 1_500 + (((42.5 * 16) / 90) * 6) / 16));
+    assert.equal(round(week.teamDay?.usedPct), round((500 * 57) / 1_500));
+  });
+
   it("has no allowance while the week's use cannot be read: no fixed number stands in for it", () => {
     const unknown = readWeek({ budget: DEFAULT_BUDGET, now: NOW, statusUse: undefined, period: PERIOD, states: [] });
     assert.deepEqual([unknown.allowancePct, unknown.teamDay], [undefined, undefined]);
@@ -132,6 +142,32 @@ describe('wSince', () => {
   it('counts a day whose hours sum past its W as none, never below zero', () => {
     const damaged = { ...state({ '2026-10-14': 100 }), byHour: { '2026-10-14T00': 600 } };
     assert.equal(wSince([damaged], Date.parse('2026-10-14T03:00:00Z'), NOW), 0);
+  });
+});
+
+describe('idleWSince', () => {
+  const nights = DailyProfile.ofQuietHours({ startUtc: '22:00', endUtc: '06:00', action: 'ask' });
+  const hours = { ...state({ '2026-10-14': 999, '2026-10-15': 650 }), byHour: { '2026-10-14T23': 999, '2026-10-15T02': 300, '2026-10-15T05': 100, '2026-10-15T06': 50, '2026-10-15T09': 200 } };
+  const midnight = Date.parse('2026-10-15T00:00:00Z');
+
+  it('counts only the W of hours the profile does not count as active, from the instant to now', () => {
+    assert.equal(idleWSince([hours], midnight, NOW, nights), 300 + 100);
+    assert.equal(idleWSince([hours], midnight, Date.parse('2026-10-15T03:00:00Z'), nights), 300);
+  });
+
+  it("counts the instant's hour whole, as wSince does", () => {
+    assert.equal(idleWSince([hours], Date.parse('2026-10-15T05:30:00Z'), NOW, nights), 100);
+  });
+
+  it("weighs a quiet hour by the part of it its paceWeight leaves idle, and sums every store", () => {
+    const half = DailyProfile.ofQuietHours({ startUtc: '22:00', endUtc: '06:00', action: 'ask', paceWeight: 0.5 });
+    const other = { ...state({ '2026-10-15': 40 }), byHour: { '2026-10-15T04': 40 } };
+    assert.equal(idleWSince([hours, other], midnight, NOW, half), (300 + 100 + 40) / 2);
+  });
+
+  it('is none with no quiet hours, or for a store whose hours were lost', () => {
+    assert.equal(idleWSince([hours], midnight, NOW, DailyProfile.even()), 0);
+    assert.equal(idleWSince([state({ '2026-10-15': 650 })], midnight, NOW, nights), 0);
   });
 });
 
