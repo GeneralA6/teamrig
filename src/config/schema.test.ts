@@ -107,6 +107,8 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   maxSelfMadePerDay: 'register.check.maxSelfMadePerDay',
   stopgapFiles: 'register.check.stopgapFiles',
   persistentFailureHours: 'alerts.persistentFailureHours',
+  decisionBatchTimes: 'decisions.batchTimesUtc',
+  decisionBatchAt: 'decisions.batchAt',
   chainNudgeAt: 'loops.chainNudgeAt',
   leadOwnPaths: 'leadBoundary.ownPaths',
   readonlyShellPrefixes: 'readonlyShell.allowPrefixes',
