@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { parseProfiles, profileFor, readProfiles, slugOf } from './repos.ts';
 
@@ -48,10 +49,14 @@ test('finds the GitHub slug in an SSH or HTTPS remote', () => {
 test('the shipped repos.json still lists every job a teamrig pull request runs, for when its CI is back', () => {
   const teamrig = profileFor(readProfiles(), 'GeneralA6/teamrig');
   assert.equal(teamrig.main, 'main');
-  assert.equal(teamrig.checks.length, 9);
+  const workflow = readFileSync(new URL('../../.github/workflows/ci.yml', import.meta.url), 'utf8');
+  const jobs = [...workflow.matchAll(/^ {4}name: (.+)$/gm)].map(match => match[1] ?? '').filter(name => !name.includes('${{'));
+  assert.ok(jobs.includes('commit size rule'), jobs.join(', '));
+  for (const job of jobs) assert.ok(teamrig.checks.includes(job), `ci.yml job "${job}" is missing from repos.json, so a CI merge would not wait for it`);
   for (const os of ['ubuntu-latest', 'windows-latest', 'macos-latest']) {
     for (const node of [22, 24]) assert.ok(teamrig.checks.includes(`test (${os}, node ${node})`));
   }
+  assert.equal(teamrig.checks.length, jobs.length + 6);
 });
 
 test('both plugin repos wait for the plugin version gate, so a plugin change cannot merge without a version raise', () => {
