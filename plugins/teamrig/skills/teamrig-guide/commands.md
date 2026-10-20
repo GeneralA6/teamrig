@@ -1856,6 +1856,14 @@ needed): a plain `git commit` then takes the host lock for its hook, and a commi
 Code's worktree guard refuses in a worktree session. A token naming no live lock (a leftover exported in a
 shell) is said and ignored.
 
+A pre-push hook needs one more thing: git opens the push's connection before the hook runs, so checks waiting in the
+lock's line keep it idle, and a host such as GitHub drops it; the push then fails after its checks passed. Give such
+a hook's `heavy` `--pre-push`. On a clean tree (nothing uncommitted or untracked) it records the checks' pass in the
+repository's git folder (`teamrig/pre-push/`, shared by its worktrees, kept 24 hours), and a push of the same tree
+with the same command line reuses it: DONE at once, with no lock, even from the cutoff on. When the checks waited
+more than a minute for the lock, it declines the push once they pass (REFUSED, exit 2), since its connection may
+have closed: push again, and it reuses their pass. A tree with uncommitted changes gets no pass, so commit first.
+
 Flags:
 
 - `--what <label>`: what the step is, as the lock, the ledger and a waiting session name it; required.
@@ -1864,6 +1872,8 @@ Flags:
 - `--max-minutes <n>`: kill the step after this many minutes instead of `coordinator.heavy.maxRunMinutes`; a
   whole number from 1 to `lockTtlMinutes` less 10, so the step never outlives its lock.
 - `--small`: share the host with other small steps while memory allows, instead of taking the lock (see above).
+- `--pre-push`: a git pre-push hook's checks: reuse or record their pass on this clean tree, and decline a push
+  whose checks waited over a minute for the lock (see above).
 
 Example:
 
