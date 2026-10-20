@@ -307,8 +307,9 @@ class GitInvocationFinder {
       this.mention(script.text);
     }
     parsed.unreadBodies.forEach((body) => this.mention(body.text));
-    // bash reads $NAME set to a literal earlier in the line; other dialects keep every variable unknown.
-    const commands = dialect === 'bash' ? resolveLiteralVariables(parsed) : parsed.commands;
+    // bash reads $NAME set to a literal earlier in the line; other dialects keep every variable unknown. The
+    // line's own shell has the user's HOME; a script it starts may be handed another (`HOME=x bash -c`).
+    const commands = dialect === 'bash' ? resolveLiteralVariables(parsed, depth === 0 ? location.home : undefined) : parsed.commands;
     let piped: { readonly body: ShellWord; readonly nesting: number } | undefined;
     for (const command of commands) {
       command.words.forEach((word) => this.mention(word.text));

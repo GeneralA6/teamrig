@@ -3,16 +3,19 @@ import assert from 'node:assert/strict';
 import { parseShell, type ShellWord } from './tokenizer.ts';
 import { resolveLiteralVariables } from './variables.ts';
 
-/** The words of the line's last command that mentions a push, after resolving; a word left dynamic is marked with a leading `~`. */
-function pushCommand(line: string): string {
-  return pushWords(line)
+/**
+ * The words of the line's last command that mentions a push, after resolving with HOME at `home` when given;
+ * a word left dynamic is marked with a leading `~`.
+ */
+function pushCommand(line: string, home?: string): string {
+  return pushWords(line, home)
     .map((word) => (word.dynamic ? `~${word.text}` : word.text))
     .join(' ');
 }
 
 /** The resolved words of the line's last command that mentions a push. */
-function pushWords(line: string): readonly ShellWord[] {
-  const commands = resolveLiteralVariables(parseShell(line, 'bash'));
+function pushWords(line: string, home?: string): readonly ShellWord[] {
+  const commands = resolveLiteralVariables(parseShell(line, 'bash'), home);
   return commands.findLast((command) => command.words.some((word) => word.text.includes('push')))?.words ?? [];
 }
 
@@ -133,7 +136,7 @@ describe('resolveLiteralVariables: what resolves', () => {
     const rows: readonly (readonly [line: string, expected: string])[] = [
       ['B="feat$C"; git push origin $B', 'git push origin ~feat${C}'],
       ['H="node --flag $C heavy --session s"\n$H --what "x" -- git push -u origin topic', 'node --flag ~${C} heavy --session s --what x -- git push -u origin topic'],
-      ['C=~/cli.ts; H="node $C heavy"; $H -- git push', 'node ~${C} heavy -- git push'],
+      ['C=~/cli.ts; H="node $C heavy"; $H -- git push', 'node ~${HOME}/cli.ts heavy -- git push'],
       ['false && C=x; H="git $C"; $H push', 'git ~${C} push'],
       ['B="x$B"; git push origin $B', 'git push origin ~x${B}'],
     ];
@@ -179,6 +182,68 @@ describe('resolveLiteralVariables: what resolves', () => {
     for (const line of ['P="node probe.ts"; B=feat; $P "$l"; git push origin $B', 'P=true; B=feat; $P; git push origin $B']) {
       assert.equal(pushCommand(line), 'git push origin feat', line);
     }
+  });
+});
+
+describe('resolveLiteralVariables: the home folder', () => {
+  const HOME = 'C:\\Users\\me';
+
+  it('reads $HOME and a value that starts with ~ as the home folder, with forward slashes', () => {
+    const rows: readonly (readonly [line: string, expected: string])[] = [
+      ['G=~/bin/git; $G push origin main', 'C:/Users/me/bin/git push origin main'],
+      ['export G=~/bin/git; "$G" push origin main', 'C:/Users/me/bin/git push origin main'],
+      ['$HOME/bin/git push origin main', 'C:/Users/me/bin/git push origin main'],
+      ['"${HOME}/bin/git" push origin main', 'C:/Users/me/bin/git push origin main'],
+      ['D=~; git -C $D/repo push origin main', 'git -C C:/Users/me/repo push origin main'],
+      ['P=~/bin/; ${P}git push origin main', 'C:/Users/me/bin/git push origin main'],
+      ['HOME=/h; G=~/git; $G push origin main', '/h/git push origin main'],
+    ];
+    for (const [line, expected] of rows) {
+      assert.equal(pushCommand(line, HOME), expected, line);
+    }
+  });
+
+  it('splits an unquoted $HOME at its blanks, as bash does, and keeps a quoted one whole', () => {
+    assert.deepEqual(
+      pushWords('$HOME/git push', 'D:\\work\\a b').map((word) => word.text),
+      ['D:/work/a', 'b/git', 'push'],
+    );
+    assert.deepEqual(
+      pushWords('"$HOME/git" push', 'D:\\work\\a b').map((word) => word.text),
+      ['D:/work/a b/git', 'push'],
+    );
+  });
+
+  it('keeps a ~ bash does not expand to HOME as written, or leaves the binding unresolved', () => {
+    const rows: readonly (readonly [line: string, expected: string])[] = [
+      ['G="~/bin/git"; $G push', '~/bin/git push'],
+      ["G='~'; $G push", '~ push'],
+      ['G=~bob/git; $G push', '~$G push'],
+      ['G=~+/git; $G push', '~$G push'],
+      ['G=~"/git"; $G push', '~$G push'],
+      ['G=~$B; $G push', '~$G push'],
+      ['G=a:~/git; $G push', '~$G push'],
+      ['G=~/a~b; $G push', '~$G push'],
+    ];
+    for (const [line, expected] of rows) {
+      assert.equal(pushCommand(line, HOME), expected, line);
+    }
+  });
+
+  it('keeps HOME unknown when the line assigns it in a way it does not follow, or the caller does not know it', () => {
+    for (const line of [
+      'HOME=/h true; $HOME/git push',
+      'HOME=/a; HOME=/b; $HOME/git push',
+      'HOME+=/x; $HOME/git push',
+      'for HOME in /a; do :; done; $HOME/git push',
+      '(HOME=/h); G=~/git; $G push',
+    ]) {
+      assert.match(pushCommand(line, HOME), /^~/, line);
+    }
+    // A program with an unknown piece stays the variable, as for `G=$C/git`; elsewhere the piece shows as HOME.
+    assert.equal(pushCommand('G=~/git; $G push'), '~$G push');
+    assert.equal(pushCommand('G=~/r; git -C $G push'), 'git -C ~${HOME}/r push');
+    assert.equal(pushCommand('$HOME/git push'), '~$HOME/git push');
   });
 });
 

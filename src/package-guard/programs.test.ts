@@ -77,6 +77,11 @@ describe('programsOf', () => {
     assert.deepEqual(runs('teamrig $SUB -- npx x'), []);
   });
 
+  it('names a program under the home folder that $HOME or a leading ~ in a value names', () => {
+    assert.deepEqual(runs('N=~/bin/npx; $N eslint'), [`npx eslint @ ${APP}`]);
+    assert.deepEqual(runs('$HOME/bin/npx eslint'), [`npx eslint @ ${APP}`]);
+  });
+
   it('names no program only known when the line runs, and stops at a script nested too deep', () => {
     assert.deepEqual(runs('$RUNNER eslint'), []);
     const nested = Array.from({ length: 10 }).reduce<string>((line) => `bash -c ${JSON.stringify(line)}`, 'npx deep');

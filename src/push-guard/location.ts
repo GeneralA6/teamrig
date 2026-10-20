@@ -70,7 +70,8 @@ function driveOf(path: string | undefined): string | undefined {
  */
 export class Location {
   private frames: Frame[];
-  private readonly home: string;
+  /** The folder `~` names. */
+  readonly home: string;
 
   constructor(dir: string | undefined, home: string) {
     this.frames = [{ id: undefined, dir: dir === undefined ? undefined : absoluteDir(dir), previous: undefined, stack: [] }];

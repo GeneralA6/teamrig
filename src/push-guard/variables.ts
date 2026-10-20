@@ -69,9 +69,13 @@ interface Deferred {
   readonly words: readonly ShellWord[];
 }
 
-/** What a line binds: each bound name, and the commands whose program a variable names, checked once those resolve. */
+/**
+ * What a line binds: each bound name, every name it assigns in any form, and the commands whose program a
+ * variable names, checked once those resolve.
+ */
 interface LineBindings {
   readonly bound: ReadonlyMap<string, Bound>;
+  readonly assigned: ReadonlySet<string>;
   readonly deferred: readonly Deferred[];
 }
 
@@ -79,41 +83,49 @@ interface LineBindings {
  * Replaces each plain `$NAME` or `${NAME}` in a parsed bash line's commands with the value an earlier binding
  * statement of the same line provably gave it (see {@link LiteralBindings}), split into words where bash splits
  * it. A word with a variable left unresolved stays as it was; a resolved word has no parts, and is dynamic only
- * where the value holds a variable only known when it runs.
+ * where the value holds a variable only known when it runs. `home` is the folder HOME names when the line
+ * starts, given where the caller knows it: then `$HOME`, and a value's leading `~`, which bash expands to it,
+ * resolve too while the line assigns HOME nowhere.
  */
-export function resolveLiteralVariables(parsed: ShellParse): readonly ShellCommand[] {
-  const bindings = LiteralBindings.read(parsed);
+export function resolveLiteralVariables(parsed: ShellParse, home?: string): readonly ShellCommand[] {
+  const bindings = LiteralBindings.read(parsed, home);
   return parsed.commands.map((command, index) => ({ ...command, words: bindings.resolveWords(command.words, index) }));
 }
 
 /**
  * The values a bash line gives its variables, and where they surely hold. It trusts only a binding statement
  * (a command of nothing but `NAME=value` words, or `export` with such words and bare names), with no
- * redirection, whose value is unquoted text bash keeps as written, quoted text and plain variables (in quotes,
- * for `export`), and only for a name the line sets nowhere else, or always to the same text. A name also
- * assigned in any other form (`NAME=x cmd`, `NAME+=`, `{NAME}>`, a value with a substitution or a tilde, a
- * `for` loop's variable, a binding inside a compound command or after `!`) is not resolved; anything that can
- * set variables unseen (see {@link UNSAFE_PROGRAMS}, a program a variable names that is not known or is one of
- * those, array elements, IFS, and what {@link ShellParse.bindingsUnclear} flags) leaves the whole line
- * unresolved. A value holds at a later command only when that command surely runs after the statement, in the
- * same shell or in a subshell started after it; a variable in a value gives what it held when the statement ran.
+ * redirection, whose value is unquoted text bash keeps as written, a leading `~` or `~/`, quoted text and plain
+ * variables (in quotes, for `export`), and only for a name the line sets nowhere else, or always to the same
+ * text. A name also assigned in any other form (`NAME=x cmd`, `NAME+=`, `{NAME}>`, a value with a substitution
+ * or any other tilde, a `for` loop's variable, a binding inside a compound command or after `!`) is not
+ * resolved; anything that can set variables unseen (see {@link UNSAFE_PROGRAMS}, a program a variable names that
+ * is not known or is one of those, array elements, IFS, and what {@link ShellParse.bindingsUnclear} flags)
+ * leaves the whole line unresolved. A value holds at a later command only when that command surely runs after
+ * the statement, in the same shell or in a subshell started after it; a variable in a value gives what it held
+ * when the statement ran, and HOME, which the line never assigns, what the shell started with.
  */
 class LiteralBindings {
   private readonly commands: readonly ShellCommand[];
   private readonly bound: ReadonlyMap<string, Bound>;
+  /** The values names the line never assigns hold from its start: HOME, when the caller knows it. */
+  private readonly inherited: ReadonlyMap<string, string>;
 
-  private constructor(commands: readonly ShellCommand[], bound: ReadonlyMap<string, Bound>) {
+  private constructor(commands: readonly ShellCommand[], bound: ReadonlyMap<string, Bound>, inherited: ReadonlyMap<string, string>) {
     this.commands = commands;
     this.bound = bound;
+    this.inherited = inherited;
   }
 
-  static read(parsed: ShellParse): LiteralBindings {
-    const none = new LiteralBindings(parsed.commands, new Map());
+  static read(parsed: ShellParse, home: string | undefined): LiteralBindings {
+    const none = new LiteralBindings(parsed.commands, new Map(), new Map());
     const line = parsed.bindingsUnclear ? undefined : boundNames(parsed.commands);
     if (line === undefined) {
       return none;
     }
-    const bindings = new LiteralBindings(parsed.commands, line.bound);
+    // A Windows home goes to bash with forward slashes, which keep an unquoted `$HOME` from reading as a pattern.
+    const inherited = home === undefined || line.assigned.has('HOME') ? new Map<string, string>() : new Map([['HOME', home.replaceAll('\\', '/')]]);
+    const bindings = new LiteralBindings(parsed.commands, line.bound, inherited);
     const unseen = line.deferred.some(({ index, words }) => expandedSetsVariablesUnseen(bindings.resolveWords(words, index)));
     return unseen ? none : bindings;
   }
@@ -143,6 +155,10 @@ class LiteralBindings {
 
   /** The value `name` holds at command `index`; a variable in it gives what it held when its statement ran. */
   private valueAt(name: string, index: number): readonly ValuePiece[] | undefined {
+    const inherited = this.inherited.get(name);
+    if (inherited !== undefined) {
+      return [{ kind: 'text', text: inherited }];
+    }
     const bound = this.bound.get(name);
     const at = bound?.at.find((statement) => statement < index && this.reaches(statement, index));
     if (bound === undefined || at === undefined) {
@@ -347,7 +363,7 @@ function boundNames(commands: readonly ShellCommand[]): LineBindings | undefined
       bound.set(name, { value, at: list.map((statement) => statement.at) });
     }
   }
-  return { bound, deferred };
+  return { bound, assigned: new Set([...statements.keys(), ...tainted]), deferred };
 }
 
 /**
@@ -596,16 +612,22 @@ function exportedBinding(word: ShellWord): Binding | undefined {
 
 /**
  * The binding of `name` when the rest of the word is a value this module follows: unquoted text bash keeps as
- * written (no tilde), quoted text, and plain variables, quoted where `quotedVariables` asks. Undefined for any
- * other value, or a name bash sets itself.
+ * written (no tilde past {@link startsAtHome}'s), quoted text, and plain variables, quoted where
+ * `quotedVariables` asks. Undefined for any other value, or a name bash sets itself.
  */
 function valueBinding(word: ShellWord, name: string, quotedVariables: boolean): Binding | undefined {
   const parts = word.parts === undefined ? undefined : dropText(word.parts, name.length + 1);
   if (parts === undefined || SHELL_NAMES.has(name) || SHELL_PREFIXES.test(name)) {
     return undefined;
   }
-  const value: ValuePart[] = [];
-  for (const part of parts) {
+  // bash expands the `~` to what HOME holds, which it never splits, as it never splits a value.
+  const home = startsAtHome(parts);
+  const rest = home ? dropText(parts, 1) : parts;
+  if (rest === undefined) {
+    return undefined;
+  }
+  const value: ValuePart[] = home ? [{ kind: 'variable', name: 'HOME' }] : [];
+  for (const part of rest) {
     if (part.kind === 'variable' && (part.quoted || !quotedVariables)) {
       value.push({ kind: 'variable', name: part.name });
     } else if (part.kind === 'text' && (part.quoted || UNQUOTED_VALUE.test(part.text))) {
@@ -615,6 +637,15 @@ function valueBinding(word: ShellWord, name: string, quotedVariables: boolean): 
     }
   }
   return { name, value };
+}
+
+/**
+ * True when a value starts with the `~` bash expands to HOME: unquoted, and alone or before a `/`. A `~` before
+ * anything else names a user's home (`~bob`) or a folder (`~+`, `~-`), which this module does not follow.
+ */
+function startsAtHome(parts: readonly WordPart[]): boolean {
+  const [first] = parts;
+  return first?.kind === 'text' && !first.quoted && (first.text.startsWith('~/') || (first.text === '~' && parts.length === 1));
 }
 
 /** `parts` without their first `count` characters of text; undefined when a variable comes first. */
