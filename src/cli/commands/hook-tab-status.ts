@@ -9,7 +9,7 @@ import { noPositionals, type ParsedArgs } from '../args.ts';
 import { openKit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { parseJson, sessionTeam } from './hook-input.ts';
-import { refusedPickerSession } from './hook-picker-guard.ts';
+import { refusedPickerAsker } from './hook-picker-guard.ts';
 
 /** The values Claude Code reads as on for a switch such as `CLAUDE_CODE_DISABLE_TERMINAL_TITLE`. */
 const ON_VALUES: ReadonlySet<string> = new Set(['1', 'true', 'yes', 'on']);
@@ -69,7 +69,7 @@ async function tabStatusOutputOf(runtime: CliRuntime, payload: JsonRecord): Prom
   if (kit?.load.status !== 'loaded' || !kit.load.config.tabStatus.enabled) {
     return '';
   }
-  if ((await refusedPickerSession(runtime, kit, kit.load.config, payload)) !== undefined) {
+  if ((await refusedPickerAsker(runtime, kit, kit.load.config, payload)) !== undefined) {
     return '';
   }
   const title = await tabTitleOf(runtime, payload);
