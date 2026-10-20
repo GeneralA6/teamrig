@@ -6,9 +6,9 @@ import { TimeZone } from '../core/zone.ts';
 import { testTask } from '../testing/task.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 import { NOTE_CHARS } from './agenda.ts';
-import { decisionsByOwner, decisionText, endNotice, startNotice, type NoticeFacts } from './notices.ts';
+import { decisionsByOwner, decisionText, endNotice, type NoticeFacts } from './notices.ts';
 
-const FACTS: NoticeFacts = { lead: 'lead', leadName: 'team-lead', at: Date.parse('2030-01-08T09:00:00Z'), command: 'teamrig', zone: TimeZone.UTC };
+const FACTS: NoticeFacts = { leadName: 'team-lead', at: Date.parse('2030-01-08T09:00:00Z'), zone: TimeZone.UTC };
 const SINCE = Date.parse('2030-01-08T09:00:00Z');
 
 function update(id: string, at: string, overrides: Partial<UpdateEvent> = {}): UpdateEvent {
@@ -16,23 +16,12 @@ function update(id: string, at: string, overrides: Partial<UpdateEvent> = {}): U
 }
 
 describe('the meeting notices', () => {
-  it('tells a session the meeting started, to keep working and hold messages to the lead but a CRITICAL one', () => {
-    assert.equal(
-      startNotice(FACTS),
-      "the owner's daily meeting with team-lead started Tue 01-08 09:00 UTC: keep working and send no message to team-lead until it ends; " +
-        'leave reports and asks as inbox lines (teamrig inbox add --to lead --text "..."). Only what needs the owner now goes as one message starting CRITICAL:.',
-    );
+  it('tells a session the meeting ended with the decisions on its tasks', () => {
+    assert.equal(endNotice(FACTS, ['T1: go', 'T2: wait']), "the owner's daily meeting with team-lead ended Tue 01-08 09:00 UTC. Decided on your tasks: T1: go; T2: wait.");
   });
 
-  it('tells a session the meeting ended, with the decisions on its tasks when there are some', () => {
-    assert.equal(endNotice(FACTS, []), "the owner's daily meeting with team-lead ended Tue 01-08 09:00 UTC: messages to team-lead may go again.");
-    assert.match(endNotice(FACTS, ['T1: go', 'T2: wait']), /may go again\. Decided on your tasks: T1: go; T2: wait\.$/);
-  });
-
-  it("gives the meeting's times on the team's clock", () => {
-    const local = { ...FACTS, zone: JERUSALEM };
-    assert.match(startNotice(local), /^the owner's daily meeting with team-lead started Tue 01-08 11:00 IST: keep working/);
-    assert.match(endNotice(local, []), /ended Tue 01-08 11:00 IST: messages to team-lead may go again\.$/);
+  it("gives the meeting's end on the team's clock", () => {
+    assert.match(endNotice({ ...FACTS, zone: JERUSALEM }, ['T1: go']), /ended Tue 01-08 11:00 IST\. Decided on your tasks: T1: go\.$/);
   });
 
   it('gives a decision as its task, its note on one line cut short, and the fields changed', () => {

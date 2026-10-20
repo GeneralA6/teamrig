@@ -3,36 +3,25 @@ import type { RegisterEvent, UpdateEvent } from '../register/events.ts';
 import type { Task } from '../register/fold.ts';
 import { cut } from '../register/views.ts';
 import { NOTE_CHARS, oneLine } from './agenda.ts';
-import { CRITICAL_WORD } from './quiet.ts';
 
 /**
- * What the meeting tells the other sessions, one inbox line each: an inbox line wakes no one, where a message would
- * wake every idle session cold. The cold-send hook holds a message to the lead all the same (quiet.ts), so a
- * session that has not read the start line yet is held too.
+ * What the meeting tells the other sessions: at its end, one inbox line to each session with a decision recorded on
+ * its tasks, and nothing to the rest. An inbox line wakes no one, where a message would wake an idle session cold.
+ * The start tells no one: the cold-send hook holds a message to the lead when it is sent, and its reason says what
+ * to do instead (quiet.ts).
  */
 
 export interface NoticeFacts {
-  /** The lead's session id and the name it is messaged by. */
-  readonly lead: string;
+  /** The name the lead is messaged by, and when the meeting ended. */
   readonly leadName: string;
   readonly at: number;
-  readonly command: string;
   /** The team's clock, which the lines' times are on. */
   readonly zone: TimeZone;
 }
 
-export function startNotice(facts: NoticeFacts): string {
-  return (
-    `the owner's daily meeting with ${facts.leadName} started ${facts.zone.weekdayMinute(new Date(facts.at))}: keep working and send no message to ${facts.leadName} until it ends; ` +
-    `leave reports and asks as inbox lines (${facts.command} inbox add --to ${facts.lead} --text "..."). ` +
-    `Only what needs the owner now goes as one message starting ${CRITICAL_WORD}:.`
-  );
-}
-
-/** The end line, with the decisions recorded on the receiver's tasks during the meeting when there are some. */
+/** The end line to a session with decisions recorded on its tasks during the meeting. */
 export function endNotice(facts: NoticeFacts, decisions: readonly string[]): string {
-  const decided = decisions.length === 0 ? '' : ` Decided on your tasks: ${decisions.join('; ')}.`;
-  return `the owner's daily meeting with ${facts.leadName} ended ${facts.zone.weekdayMinute(new Date(facts.at))}: messages to ${facts.leadName} may go again.${decided}`;
+  return `the owner's daily meeting with ${facts.leadName} ended ${facts.zone.weekdayMinute(new Date(facts.at))}. Decided on your tasks: ${decisions.join('; ')}.`;
 }
 
 /** One decision as the end line gives it: `T7: <note>`, and the fields the lead changed: `T7: <note> (changed priority, due)`. */
