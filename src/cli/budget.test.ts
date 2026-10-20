@@ -96,13 +96,15 @@ describe('teamrig budget', () => {
     const { run } = await world();
     assert.deepEqual(ok(await run(['budget'])), [
       'Week: 30.0% used at 10:00 UTC (status line); the pace line is at 19.7%: 10.3 points ahead. Resets Mon 01-14 01:00 UTC.',
-      'The team used 2.5% of the week today; its daily budget is 12.4%. 25.00M W in 3 calls.',
-      'app-alpha used 2.0% of the week today; its daily budget is 4.1%. 20.00M W in 2 calls.',
-      'app-bravo used 0.50% of the week today; its daily budget is 4.1%. 5.00M W in 1 call.',
+      'Today (UTC day), used and daily budget in % of the week:',
+      '  session     used  budget       W  calls',
+      '  the team    2.5%   12.4%  25.00M      3',
+      '  app-alpha   2.0%    4.1%  20.00M      2',
+      '  app-bravo  0.50%    4.1%   5.00M      1',
       OUTSIDE_LINE,
       W_EXPLAINED,
     ]);
-    assert.deepEqual(ok(await run(['budget', '--all'])).slice(4, 5), ['No use today: app-lead.']);
+    assert.deepEqual(ok(await run(['budget', '--all'])).slice(6, 7), ['  No use today: app-lead.']);
   });
 
   it('keeps what it measured, so a second run reads only what is new', async () => {
@@ -165,7 +167,7 @@ describe('teamrig budget', () => {
   it("meters a subagent's W at budget.subagentWeight", async () => {
     const { kit, source, run } = await world({ ...TEAM, budget: { weeklyLimitW: 1_000_000_000, subagentWeight: 3 } });
     source.set(join(PROJECT, BRAVO_TAB, 'subagents', 'agent-1.jsonl'), transcript([reply('s1', 1_000_000)]), kit.clock.now());
-    assert.ok(ok(await run(['budget'])).includes('app-bravo used 0.80% of the week today; its daily budget is 4.1%. 8.00M W in 2 calls.'));
+    assert.ok(ok(await run(['budget'])).some((line) => /^ {2}app-bravo +0\.80% +4\.1% +8\.00M +2$/.test(line)));
   });
 
   it("shows each session's W on a task, an open turn's share included, and today's share any task got", async () => {
@@ -221,7 +223,7 @@ describe('teamrig budget', () => {
     const { run } = await world(TEAM, false);
     const lines = ok(await run(['budget']));
     assert.equal(lines[0], 'Week: its use is unknown: no status line reading (run teamrig statusline install) and no budget.weeklyLimitW.');
-    assert.equal(lines[1], 'The team used 25.00M W in 3 calls today.');
+    assert.deepEqual(lines.slice(1, 4), ['Today (UTC day):', '  session         W  calls', '  the team   25.00M      3']);
   });
 });
 
@@ -236,12 +238,11 @@ describe('teamrig budget lift', () => {
     assert.equal((kit.files.get(join(TEAM_HOME, 'state', 'usage', 'lifts.jsonl')) ?? '').split('\n').filter((line) => line !== '').length, 1);
     const lines = ok(await run(['budget']));
     // Half the team's 12.4% to alpha; the other half split between lead and bravo.
-    assert.equal(lines[2], 'app-alpha used 2.0% of the week today; its daily budget is 6.2% (lifted). 20.00M W in 2 calls.');
-    assert.equal(lines[3], 'app-bravo used 0.50% of the week today; its daily budget is 3.1%. 5.00M W in 1 call.');
-    assert.equal(
-      lines[4],
-      "Budget: the lead lifted app-alpha to 50.0% of the team's daily budget today until 00:00 UTC (the end of the budget day) or 97.0% of the week, whichever comes first; quiet hours do not apply to it.",
-    );
+    assert.match(lines[4] ?? '', /^ {2}app-alpha +2\.0% +6\.2% +\(lifted\) +20\.00M +2$/);
+    assert.match(lines[5] ?? '', /^ {2}app-bravo +0\.50% +3\.1% +5\.00M +1$/);
+    assert.match(lines[6] ?? '', /^Lifts by the lead, today only: /);
+    assert.match(lines[8] ?? '', /^ {2}app-alpha +50\.0% +00:00 UTC +97\.0%$/);
+    assert.equal(lines[9], '  00:00 UTC is the end of the budget day.');
     assert.deepEqual(ok(await run([...LIFT, '--until', '18:00', '--session', 'lead'])), [
       "LIFTED app-alpha to 50.0% of the team's daily budget today until 18:00 UTC or 97.0% of the week, whichever comes first; quiet hours do not apply to it.",
     ]);
@@ -262,8 +263,8 @@ describe('teamrig budget lift', () => {
     assert.equal(added.code, EXIT.ok, added.stderr.join('\n'));
     const lines = ok(await run(['budget']));
     // alpha's p1 task weighs 5, lead and bravo with none 1 each: 12.4% × 5/7 and × 1/7.
-    assert.equal(lines[2], 'app-alpha used 2.0% of the week today; its daily budget is 8.9%. 20.00M W in 2 calls.');
-    assert.equal(lines[3], 'app-bravo used 0.50% of the week today; its daily budget is 1.8%. 5.00M W in 1 call.');
+    assert.match(lines[4] ?? '', /^ {2}app-alpha +2\.0% +8\.9% +20\.00M +2$/);
+    assert.match(lines[5] ?? '', /^ {2}app-bravo +0\.50% +1\.8% +5\.00M +1$/);
   });
 
   it("reads --until on the team's clock, and prints the lift's end and the week on it", async () => {
@@ -274,7 +275,8 @@ describe('teamrig budget lift', () => {
     ]);
     const lines = ok(await run(['budget'], JERUSALEM));
     assert.match(lines[0] ?? '', / Resets \w{3} \d{2}-\d{2} \d{2}:\d{2} IST\.$/);
-    assert.match(lines[4] ?? '', /lifted app-alpha to 50\.0% of the team's daily budget today until 14:00 IST or /);
+    assert.match(lines[8] ?? '', /^ {2}app-alpha +50\.0% +14:00 IST +97\.0%$/);
+    assert.ok(!lines.some((line) => line.includes('end of the budget day')), lines.join('\n'));
     const passed = await run([...LIFT, '--until', '11:00', '--session', 'lead'], JERUSALEM);
     assert.equal(passed.code, EXIT.refused);
     assert.match(passed.stdout.join('\n'), /--until 2030-01-08 11:00 IST has passed/);
@@ -367,7 +369,7 @@ describe('teamrig statusline', () => {
     assert.match(lines[0] ?? '', /^Week: 0\.50% used at 11:00 UTC \(status line\); the pace line is at 0\.74%/);
     assert.match(lines[0] ?? '', / Counted from \w{3} 01-08 10:00 UTC, after a reset inside the week\.$/);
     // Today's use counts from 10:00 too: the team's 09:00 calls were the last budget's.
-    assert.match(lines[1] ?? '', /^The team used 0[.0]*% of the week today/);
+    assert.match(lines[3] ?? '', /^ {2}the team +0[.0]*% /);
     const period = parsePeriod(kit.files.get(join(TEAM_HOME, 'state', 'usage', 'period.json')) ?? '');
     assert.deepEqual([period?.kind, period?.start], ['reset', Date.parse('2030-01-08T10:00:00Z')]);
   });

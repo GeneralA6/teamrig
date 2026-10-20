@@ -2612,15 +2612,22 @@ Output:
 
 ```text
 Week: 57.0% used at 14:00 IDT (status line); the pace line is at 20.9%: 36.1 points ahead. Resets Wed 10-21 04:00 IDT.
-The team used 5.0% of the week today; its daily budget is 10.3%. 37.50M W in 1,310 calls.
-api used 4.0% of the week today; its daily budget is 3.4%. 30.00M W in 1,000 calls.
-lead used 1.0% of the week today; its daily budget is 3.4%. 7.50M W in 310 calls.
+Today (UTC day), used and daily budget in % of the week:
+  session   used  budget       W  calls
+  the team  5.0%   10.3%  37.50M  1,310
+  api       4.0%    3.4%  30.00M  1,000
+  lead      1.0%    3.4%   7.50M    310
+Lifts by the lead, today only: a part of the team's daily budget until its time or its stop % of the week, whichever comes first; quiet hours do not apply to them.
+  session   part      until  stop at
+  web      40.0%  03:00 IDT    97.0%
+  03:00 IDT is the end of the budget day.
 Past the daily budget: api (the team has used 5.2% of the week today, at or past its in-day pace of 4.7%). Finish the step in hand and start no new work items or helpers. Never skip a test or check to save budget. The lead can lift it.
 W = weighted tokens: input 1, cache writes 1.25 to 2, cache reads 0.1, output 5. 1% of the week is about 7.50M W, estimated from the status line.
 ```
 
-With no status line snapshot and no `budget.weeklyLimitW`, the week line says its use is unknown and the rows
-give W only. `Not on the team: N Claude Code sessions (titled ...)` counts the tabs not tied to a session.
+A session's row marks a budget a lift or a burst raised: `(lifted)`, `(burst)`; a lift's part says `(reserve)` for the
+reserve release (`--reserve`). With no status line snapshot and no `budget.weeklyLimitW`, the week line says its use is
+unknown and the table gives W and calls only. `Not on the team: N Claude Code sessions (titled ...)` counts the tabs not tied to a session.
 `Still reading: <sessions>` means a long transcript is read in steps: run it again for the rest.
 
 ### teamrig budget setup

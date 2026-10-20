@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { TimeZone } from '../core/zone.ts';
 import { JERUSALEM } from '../testing/zone.ts';
-import { formatCount, formatEndTime, formatPct, formatW, noRoomText } from './format.ts';
+import { formatCount, formatEndTime, formatPct, formatW, isBudgetDayEnd, noRoomText } from './format.ts';
 
 describe('budget number formats', () => {
   it('writes shares with two decimals below 1% and one above', () => {
@@ -26,5 +26,10 @@ describe('budget number formats', () => {
     assert.equal(formatEndTime(Date.parse('2030-01-09T00:00:00Z'), TimeZone.UTC), '00:00 UTC (the end of the budget day)');
     assert.equal(formatEndTime(Date.parse('2030-01-08T18:05:00Z'), JERUSALEM), '20:05 IST');
     assert.equal(formatEndTime(Date.parse('2030-01-09T00:00:00Z'), JERUSALEM), '02:00 IST (the end of the budget day)');
+  });
+
+  it('ends a budget day at a UTC midnight only', () => {
+    assert.equal(isBudgetDayEnd(Date.parse('2030-01-09T00:00:00Z')), true);
+    assert.equal(isBudgetDayEnd(Date.parse('2030-01-08T18:05:00Z')), false);
   });
 });
