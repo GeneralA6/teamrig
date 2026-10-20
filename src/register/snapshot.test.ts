@@ -19,6 +19,16 @@ describe('readRegister', () => {
     assert.equal(snapshot.state.nextId, 'T10', 'the orphan id stays reserved');
   });
 
+  it("keeps a verifying task's proof waits through a re-read of the log, as the line was written", () => {
+    const waits = [
+      { kind: 'time', at: '2030-01-08 22:10' },
+      { kind: 'task', id: 'T9' },
+    ];
+    const verifying = `{"v":2,"type":"status","id":"T1","at":"2030-01-07T10:00:00.000Z","by":"alpha","status":"verifying","note":"shipped","evidence":null,"skill":null,"proof":"the nightly run is green","waits":${JSON.stringify(waits)}}`;
+    const task = readRegister([CREATE_T1, verifying].join('\n')).state.tasks.get('T1');
+    assert.deepEqual([task?.status, task?.waits], ['verifying', waits]);
+  });
+
   it('survives a status a newer teamrig added: skipped and counted, its task kept at its last status, writes still allowed', () => {
     const future = DONE_T1.replace('"done"', '"paused"').replace('"T1"', '"T2"').replace('10:00', '12:00');
     const createT2 = CREATE_T1.replace('"T1"', '"T2"').replace('09:00', '11:00');

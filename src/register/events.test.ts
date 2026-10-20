@@ -115,7 +115,7 @@ describe('parseEvent', () => {
     assert.match(reason(parse({ ...BASE, type: 'status', status: 'done', followups: 'T4' }, 2)), /followups is not a list of task ids/);
   });
 
-  it('reads the reasons of a waiting line, and keeps them off any other status', () => {
+  it("reads the reasons of a waiting line and a verifying line's proof waits, and keeps them off any other status", () => {
     const waits = [
       { kind: 'decision', who: 'owner' },
       { kind: 'task', id: 'T5' },
@@ -125,10 +125,14 @@ describe('parseEvent', () => {
     assert.deepEqual(waiting.kind === 'event' && waiting.event.type === 'status' ? waiting.event.waits : undefined, waits);
     const done = parse({ ...BASE, type: 'status', status: 'done', waits }, 2);
     assert.equal(done.kind === 'event' && done.event.type === 'status' ? done.event.waits : 'no event', undefined);
-    const carded = parse({ ...BASE, type: 'status', status: 'waiting', waits, card: TEST_CARD }, 2);
-    assert.deepEqual(carded.kind === 'event' && carded.event.type === 'status' ? carded.event.card : undefined, TEST_CARD);
+    const verifying = parse({ ...BASE, type: 'status', status: 'verifying', proof: 'the nightly run is green', waits }, 2);
+    assert.deepEqual(verifying.kind === 'event' && verifying.event.type === 'status' ? verifying.event.waits : undefined, waits);
+    for (const status of ['waiting', 'verifying']) {
+      const carded = parse({ ...BASE, type: 'status', status, waits, card: TEST_CARD }, 2);
+      assert.deepEqual(carded.kind === 'event' && carded.event.type === 'status' ? carded.event.card : undefined, TEST_CARD, status);
+    }
     const closed = parse({ ...BASE, type: 'status', status: 'done', card: TEST_CARD }, 2);
-    assert.equal(closed.kind === 'event' && closed.event.type === 'status' ? closed.event.card : 'no event', undefined, 'a card goes only with waiting');
+    assert.equal(closed.kind === 'event' && closed.event.type === 'status' ? closed.event.card : 'no event', undefined, 'a card goes only with a wait status');
   });
 
   it('reads the tasks a task is planned after, on its create line and an update', () => {
