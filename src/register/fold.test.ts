@@ -24,11 +24,32 @@ function update(hour: number, changes: Partial<TaskFields>): RegisterEvent {
   return { v: EVENT_VERSION, type: 'update', id: 'T1', at: at(hour), by: 'lead', changes, note: null };
 }
 
+function noted(hour: number, by: string, note: string, changes: Partial<TaskFields> = {}): RegisterEvent {
+  return { v: EVENT_VERSION, type: 'update', id: 'T1', at: at(hour), by, changes, note };
+}
+
 function taskAfter(events: readonly RegisterEvent[]): Task {
   const task = foldEvents(events).tasks.get('T1');
   assert.ok(task !== undefined);
   return task;
 }
+
+describe('foldEvents: the note a task shows', () => {
+  it("takes an update's note from the task's owner, as a restated set note", () => {
+    assert.equal(taskAfter([create(9), status(10, 'waiting'), noted(11, 'alpha', 'restated')]).note, 'restated');
+  });
+
+  it('keeps it on a note from another session, and on an update with no note', () => {
+    assert.equal(taskAfter([create(9), status(10, 'waiting'), noted(11, 'lead', 'owner decided: yes')]).note, 'n');
+    assert.equal(taskAfter([create(9), status(10, 'waiting'), noted(11, 'bravo', 'context')]).note, 'n');
+    assert.equal(taskAfter([create(9), status(10, 'waiting'), update(11, { priority: 1 })]).note, 'n');
+  });
+
+  it('takes the note of an owner who hands the task over in the same update', () => {
+    const task = taskAfter([create(9), status(10, 'in-progress'), noted(11, 'alpha', 'bravo takes the docs', { owner: 'bravo' })]);
+    assert.deepEqual([task.owner, task.note], ['bravo', 'bravo takes the docs']);
+  });
+});
 
 describe('foldEvents: when a task took its status and priority', () => {
   it('starts both at the creation', () => {
