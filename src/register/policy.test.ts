@@ -420,6 +420,13 @@ describe('RegisterPolicy.setStatus to waiting', () => {
       'T2 has not started, so it does not wait on T4: it stays open, planned after it (teamrig update T2 --after T4)',
     );
     assert.match(error(waiting(testTask({ id: 'T5', status: 'waiting', startedAt: null }), [{ kind: 'task', id: 'T4' }])), /T5 has not started/);
+    assert.equal(
+      error(waiting(DONE, [{ kind: 'task', id: 'T4' }])),
+      'T3 is done, so it waits on nothing: reopen it (teamrig set T3 --status in-progress), then set it waiting on T4',
+      'a finished task is named as finished, not as one that never started',
+    );
+    const dropped = testTask({ id: 'T5', status: 'dropped', startedAt: '2030-01-07T10:00:00.000Z' });
+    assert.match(error(waiting(dropped, [{ kind: 'task', id: 'T4' }], stateOf(TASK, OPEN, DONE, BUSY, dropped))), /^T5 is dropped, so it waits on nothing: reopen it/);
     assert.equal(waiting(testTask({ status: 'waiting', startedAt: '2030-01-07T10:00:00.000Z' }), [{ kind: 'task', id: 'T4' }]).ok, true);
     assert.equal(error(waiting(TASK, [{ kind: 'task', id: 'T1' }])), 'T1 cannot wait on itself');
     assert.equal(error(waiting(TASK, [{ kind: 'task', id: 'T9' }])), 'no task T9');
