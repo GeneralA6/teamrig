@@ -1,3 +1,4 @@
+import { leadsAfterRetire } from '../config/lead-edits.ts';
 import type { KitConfig } from '../config/types.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import type { Checked } from '../setup/team-create.ts';
@@ -40,6 +41,8 @@ export interface RetirePlan {
   readonly handOver: readonly string[];
   /** Whether it was a hired session, rather than one the team was set up with. */
   readonly hired: boolean;
+  /** The sessions it led, now led by its own leader (T781); empty when it led no one. */
+  readonly regrouped: { readonly members: readonly string[]; readonly to: string };
 }
 
 /** The record with the id's entry gone from its section at `key`, when that section has one. */
@@ -55,6 +58,17 @@ function withoutEntry(record: JsonRecord, key: string, id: string): JsonRecord {
 function withoutBudget(file: JsonRecord, id: string): JsonRecord {
   const budget = file['budget'];
   return isRecord(budget) ? { ...file, budget: withoutEntry(budget, 'sessions', id) } : file;
+}
+
+/** The file with the session out of `leads` and its members given to its leader, dropping `leads` once empty (T781). */
+function withoutLeader(file: JsonRecord, config: KitConfig, id: string): { readonly file: JsonRecord; readonly regrouped: RetirePlan['regrouped'] } {
+  const after = leadsAfterRetire(config, id);
+  if (after === undefined) {
+    return { file, regrouped: { members: [], to: config.roles.lead } };
+  }
+  const { members, to, leads } = after;
+  const next = Object.keys(leads).length === 0 ? Object.fromEntries(Object.entries(file).filter(([key]) => key !== 'leads')) : { ...file, leads };
+  return { file: next, regrouped: { members, to } };
 }
 
 /** The refusal for who asked, or undefined: the lead, or a hired session itself under `automatic` once its tasks are closed. */
@@ -118,7 +132,7 @@ function reasonOf(request: RetireRequest): string {
   return given === undefined || given === '' ? RETIRE_REASON : given;
 }
 
-/** The session taken out of `sessions`, `names`, `launch` and `budget.sessions`, and its retire record; or why not. */
+/** The session taken out of `sessions`, `names`, `launch`, `budget.sessions` and `leads`, and its retire record; or why not. */
 export function planRetire(file: JsonRecord, config: KitConfig, active: readonly HireRecord[], request: RetireRequest): Checked<RetirePlan> {
   const { id } = request;
   if (!config.sessions.includes(id)) {
@@ -134,7 +148,7 @@ export function planRetire(file: JsonRecord, config: KitConfig, active: readonly
     return { ok: false, problem };
   }
   const off = { ...file, sessions: sessions.filter((session) => session !== id) };
-  const next = withoutBudget(withoutEntry(withoutEntry(off, 'names', id), 'launch', id), id);
+  const { file: next, regrouped } = withoutLeader(withoutBudget(withoutEntry(withoutEntry(off, 'names', id), 'launch', id), id), config, id);
   const handOver = request.heir === undefined ? [] : request.openTasks;
   const retire: RetireRecord = {
     kind: 'retire',
@@ -146,5 +160,5 @@ export function planRetire(file: JsonRecord, config: KitConfig, active: readonly
     by: request.by,
     at: request.now,
   };
-  return { ok: true, value: { config: next, retire, handOver, hired } };
+  return { ok: true, value: { config: next, retire, handOver, hired, regrouped } };
 }
