@@ -7,13 +7,14 @@ import { helperDefaultClause } from "./helper-default.js";
 /**
  * The rendered core pack fits in this many characters with worst-case config values and the kept local rules at
  * KEPT_RULES_MAX_CHARS (a CI test holds it). With a team rules file at TEAM_RULES_MAX_CHARS beside it, the two still
- * fit CONTEXT_MAX_CHARS, with 3 characters to spare: a longer rule needs shorter words elsewhere, not a higher cap.
+ * fit CONTEXT_MAX_CHARS, with 3 characters to spare: a longer rule needs shorter words elsewhere, not a higher cap,
+ * unless it takes over text a team's rules file carried, when the cap moves over from TEAM_RULES_MAX_CHARS with it.
  */
-export const CORE_PACK_MAX_CHARS = 6_980;
+export const CORE_PACK_MAX_CHARS = 7_225;
 /** The kept local rules the core pack lists [ruleConflicts] fit in this many characters (see `renderKeptRules`). */
 export const KEPT_RULES_MAX_CHARS = 420;
 /** The team's own rules file is shown in full only up to this size; a longer one gets a pointer. */
-export const TEAM_RULES_MAX_CHARS = 2_995;
+export const TEAM_RULES_MAX_CHARS = 2_750;
 /** Claude Code caps a SessionStart hook's `additionalContext` at this size. */
 export const CONTEXT_MAX_CHARS = 10_000;
 /**
@@ -101,6 +102,23 @@ function timesClause(zone, now) {
     return ` Write times on the team's clock, zone-marked (\`04:00 ${label}\`, ${zone.utcOffset(now)} now); UTC only when UTC is the subject [timeZone].`;
 }
 /**
+ * Rule 7's heavy-step sentence, `cutoff` the span no heavy step starts in, on the team's clock. A team that names a
+ * repository for the coordinator [coordinator.repos] lands and runs its changes through it, so it gets the commands
+ * too; a cutoff alone gets only its own sentence.
+ */
+function heavySteps(coordinator, command, cutoff) {
+    const repos = Object.values(coordinator.repos);
+    if (repos.length === 0) {
+        return cutoff === undefined ? '' : ` No heavy step (builds, test runs, data scripts) starts ${cutoff} [coordinator.schedule.heavyCutoffUtc].`;
+    }
+    const roll = repos.some((repo) => repo.roll !== undefined) ? ` and run it with \`${command} roll\`` : '';
+    return (` Run heavy steps (builds, test runs, data scripts) in the background through \`${command} heavy\`, a test run inside \`${command} test\`` +
+        (cutoff === undefined ? '' : `, none starting ${cutoff} [coordinator.schedule.heavyCutoffUtc]`) +
+        // Never `heavy -- git commit`: a repository's hooks take the lock themselves, and Claude Code's worktree guard
+        // refuses that form in a worktree session (the guide's `teamrig heavy` section).
+        `; a commit stays a plain \`git commit\`. Land a tested branch with \`${command} integrate\`${roll}, also in the background [coordinator.repos].`);
+}
+/**
  * The always-loaded core rules, filled from the team's config. Each rule names the config key
  * behind any value it prints, so a team changes a number without forking the text. A step only one
  * platform needs, like removing a worktree without following its node_modules junction on Windows, prints on that platform alone.
@@ -110,6 +128,7 @@ export function renderCorePack(config, command, platform, clock) {
     const { roles, skills, budget } = config;
     const cutoff = heavyCutoffSpan(clock.now.getTime(), config.coordinator.schedule.heavyCutoffUtc);
     const zone = TimeZone.resolve(config.timeZone, clock.machineZone);
+    const cutoffSpan = cutoff === undefined ? undefined : zone.clockSpan(new Date(cutoff.from), new Date(cutoff.to));
     const rules = {
         roles: `Roles, by session id: ${roles.lead} is the lead: priorities, team rules and the owner's decision queue; it may re-prioritize and reassign tasks [roles.lead].` +
             (roles.coordinatorOwner === undefined ? '' : ` ${roles.coordinatorOwner} owns deploy coordination and fleet health [roles.coordinatorOwner].`) +
@@ -129,7 +148,7 @@ export function renderCorePack(config, command, platform, clock) {
         'owner-gates': `Silence is consent only within the sender's authority, never for owner gates: ${list(config.ownerGates)} [ownerGates].` +
             " An owner's go relayed by the lead approves finished, tested work.",
         deploy: "Deploy ASAP: as soon as a change can be verified (tests, then a check it runs). State each fix's evidence and when it will exist; build nothing on it before then." +
-            (cutoff === undefined ? '' : ` No heavy step (builds, test runs, data scripts) starts ${zone.clockSpan(new Date(cutoff.from), new Date(cutoff.to))} [coordinator.schedule.heavyCutoffUtc].`),
+            heavySteps(config.coordinator, command, cutoffSpan),
         'lean-calls': 'Lean calls: every tool call re-reads the whole context, so batch related shell steps into one call.' +
             ` Work in your own session: ${helperDefaultClause(budget.subagentWeight)}; run helpers on your own model and effort.` +
             (budget.enabled ? ` Pace the week to ${percent(budget.targetPct)} of the weekly limit and keep ${percent(budget.reservePct)} for incidents [budget].` : ''),
