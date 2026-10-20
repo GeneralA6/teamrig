@@ -454,9 +454,10 @@ it sends the session back once:
 T1 waits (decision owner), and you own work that does not come after it: T2 "Fix the login" (p1). Work it now in priority order (`teamrig list --session web`); leave a task that is the same change as T1, and say so in one line. If you already work one and wait on a background step, end the turn again.
 ```
 
-A task it can start is its own open or started task whose every `after` task is finished, most urgent first. A
-task that comes after the waiting one, directly or through another unfinished task, stays untouched, and so do its
-waiting, verifying and closed tasks. It asks at one stop only, never on a stop already sent back or while a context
+A task it can start is its own task it can go on with, other than the waiting one, most urgent first: open or
+in-progress, or waiting or verifying with every wait cleared, and, when never started, past every `after` task. A
+task not started that comes after the waiting one, directly or through another unfinished task, stays untouched,
+and so do its closed tasks and those still waiting or verifying on a reason not cleared. It asks at one stop only, never on a stop already sent back or while a context
 refresh is under way (the ask then waits for a later stop), and never in the budget's quiet hours or while its
 budget holds it (the day-start wake brings it back to its work). With nothing it can start, the turn ends as
 it would, and a turn that asks the user to decide shows [the decision circle](#every-event-tab-status). A hired
@@ -579,8 +580,10 @@ load mods leaves `/reload-plugins` to you.
 An idle session sees new work only at its next prompt. In each interactive tab, every 15 s while no turn runs (a
 subagent's included), the mod runs [`teamrig hook wake-check`](commands.md#teamrig-hook-wake-check) once the task
 log changed, a batch fell due or 10 minutes passed. It wakes the tab's session for a task it owns that another
-session handed to it, raised, reopened or freed (its own changes are not news), open or started, not waiting, with
-every task it comes `--after` finished, at `wake.priority` or more urgent (p1 by default). Held by its budget (past
+session handed to it, raised, reopened or freed, or whose waited-for time came (its own changes are not news), that
+it can go on with: open or in-progress, or waiting (a verifying task's proof waits) with every wait cleared, and,
+when never started, with every task it comes `--after` finished; at `wake.priority` or more urgent (p1 by default).
+The wake names a cleared task as `(p2, waiting: every wait cleared)`, so the session sets its next status. Held by its budget (past
 its daily budget while the team has no room today), or in the budget's quiet hours unless its lift exempts it, only
 p1 wakes it. While the owner's daily meeting is open
 the lead is not woken; the work waits for the first check after it.

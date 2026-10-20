@@ -407,8 +407,10 @@ sequenceDiagram
 ```
 
 - What wakes a session: a task it owns that another session handed to it, raised, reopened or freed by finishing a
-  task it comes after (its own changes are not news), open or started, not waiting, with every task it comes
-  `--after` finished, at `wake.priority` or more urgent (p1 by default). Held by its budget (past its daily budget
+  task it comes after or waits on, or whose waited-for time came (its own changes are not news), that it can go on
+  with: open or in-progress, or waiting (a verifying task's proof waits) with every wait cleared, as `teamrig check`
+  flags READY; a task never started also has every task it comes `--after` finished. At `wake.priority` or more
+  urgent (p1 by default). Held by its budget (past its daily budget
   while the team has no room today), or in the budget's quiet hours unless the lead's lift exempts it, only p1 wakes it, whatever `wake.priority` says. While the owner's
   daily meeting is open the lead is not woken; the work waits for the first check after the meeting.
 - How often: each task wakes a session once. The first new task starts a batch of `wake.batchSeconds` (120 s), and
@@ -416,7 +418,7 @@ sequenceDiagram
   Work that was there when the tab started, or before a `/clear`, is seen at its first prompt, as before.
 - The day start: a session idle since the night is not woken by work already on its list, so with
   `wake.dayStartUtc` set (an `HH:MM` UTC outside the budget's quiet hours; unset by default) each session with work
-  it can start (its own, open or started, of any priority, every task it comes after finished) and no turn since
+  it can go on with (its own, of any priority, as above) and no turn since
   that time gets one wake that day, and so does each session in a burst once the lead starts it. A session that had
   a turn since is not woken; one in quiet hours or held by its budget, or with nothing it can start, is woken
   once that changes. The wake log marks these wakes with `moments` (`day-start`, `burst`).

@@ -11,7 +11,7 @@ import { taskListText, type WakeRest } from './decide.ts';
  * for the task's owner (a `SessionAsk` in `paths.keepWorkingAsks`); the session's next stop takes it and, while the
  * task still waits and the session owns work it can start, blocks once to send it to that work, never in the budget's
  * quiet hours or while its budget holds it (the day-start wake brings it back to its work). Work it can start
- * is its own open or started task whose every `after` task is finished (`startableTasks`), so a task that comes
+ * is its own task it can go on with besides the waiting one (`startableTasks`), so a task not started yet that comes
  * after the waiting one, directly or through another unfinished task, stays untouched. With nothing it can start,
  * the turn ends as it would.
  */
@@ -43,7 +43,7 @@ export function keepWorkingOf(input: KeepWorkingInput): KeepWorking | undefined 
   if (rest.quiet || rest.held || waiting?.owner !== session || waiting.status !== 'waiting') {
     return undefined;
   }
-  const startable = startableTasks(tasks, session, now, zone);
+  const startable = startableTasks(tasks, session, now, zone).filter((task) => task.id !== waiting.id);
   return startable.length === 0 ? undefined : { waiting, startable };
 }
 

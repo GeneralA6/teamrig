@@ -10,9 +10,10 @@ import { byUrgency, costText, idsText, isWakeWorthy, taskListText, type SettledM
 /**
  * The day's moments, pure. A wake for handed work (decide.ts) never starts a session's day: a session idle since the
  * night stays idle while its list waits. So the day's start (`wake.dayStartUtc`) gives each session one turn, and so
- * does a burst the session is in, once it starts. A moment wakes a session once, only with work it can start (its own
- * task, open or started, every task it comes after finished, any priority), never in quiet hours or while its budget
- * holds it (`isHeld`; it wakes once those end), and not at all when the session had a turn after the moment.
+ * does a burst the session is in, once it starts. A moment wakes a session once, only with work it can go on with (its
+ * own task of any priority that `canGoOn`: open or in-progress, or waiting with every wait cleared, and past every task
+ * it comes after unless already started), never in quiet hours or while its budget holds it (`isHeld`; it wakes once
+ * those end), and not at all when the session had a turn after the moment.
  */
 
 export type DayMomentKind = 'day-start' | 'burst';
@@ -49,7 +50,7 @@ export function dueMoments(now: number, dayStartUtc: string | undefined, burst: 
   return due;
 }
 
-/** The session's work it can start now, of any priority, most urgent first. */
+/** The session's work it can go on with now (`canGoOn`), of any priority, most urgent first. */
 export function startableTasks(tasks: ReadonlyMap<string, Task>, session: string, now: number, zone: TimeZone): readonly Task[] {
   const context = waitContext(tasks, new Date(now), zone);
   return [...tasks.values()].filter((task) => isWakeWorthy(task, session, Number.POSITIVE_INFINITY, context)).sort(byUrgency);

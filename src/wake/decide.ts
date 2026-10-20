@@ -3,19 +3,20 @@ import { isHeld, quietSpanOf, sessionQuietSpan, type BudgetFacts } from '../budg
 import { DEFAULT_MESSAGES } from '../config/defaults.ts';
 import type { QuietHours } from '../config/types.ts';
 import { KIT_NAME } from '../core/home.ts';
+import { parseDeadline } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { isCold } from '../hooks/cold-send.ts';
 import { taskNumber, type Task } from '../register/fold.ts';
 import type { TaskStatus } from '../register/model.ts';
-import { unfinishedAfter, waitContext, type WaitContext } from '../register/waits.ts';
+import { allReady, unfinishedAfter, waitContext, type WaitContext } from '../register/waits.ts';
 
 /**
  * Waking a session idle at its prompt when work is handed to it, pure. A wake is a model turn, so only work the
- * session can start now and has not seen wakes it: its own task, open or started (not waiting, verifying or
- * finished), at `wake.priority` or more urgent, with every task it comes after finished, and changed by someone
- * else since the session last touched it (handed to it, raised, reopened, or freed by another's finish). Each task
- * wakes a session once, tasks handed together wake it once (`wake.batchSeconds`), and wakes of one session are
- * `wake.minGapMinutes` apart. The plugin's mod asks `hook wake-check` while no turn runs and submits the prompt.
+ * session can go on with now ({@link canGoOn}) and has not seen wakes it: its own task at `wake.priority` or more
+ * urgent, changed by someone else or by the clock since the session last touched it (handed to it, raised,
+ * reopened, freed by another's finish, or its waits cleared). Each task wakes a session once, tasks handed together
+ * wake it once (`wake.batchSeconds`), and wakes of one session are `wake.minGapMinutes` apart. The plugin's mod asks
+ * `hook wake-check` while no turn runs and submits the prompt.
  */
 
 /**
@@ -30,38 +31,68 @@ export const WAKE_LIST_MAX = 5;
 /** The most characters of a task's title a wake shows. */
 export const WAKE_TITLE_MAX = 80;
 
-/** The statuses whose work can start now: a waiting, verifying or finished task never wakes. */
-const WAKE_STATUSES: readonly TaskStatus[] = ['open', 'in-progress'];
-
 /** The most urgent priority: what a session past its budget or in quiet hours still wakes for. */
 export const URGENT_PRIORITY = 1;
 
-/** True when the task is the session's, can start now, and is urgent enough to wake it. */
+/** True for a status whose task names reasons to wait for: it goes on once they all cleared (`check`'s READY). */
+function goesOnByWaits(status: TaskStatus): boolean {
+  return status === 'waiting' || status === 'verifying';
+}
+
+/**
+ * True when the task's owner can go on with it now: an open or in-progress task, or a waiting task (a verifying
+ * task's proof waits) whose every reason cleared, as `check` flags READY. A task never started also waits for every
+ * task it comes after to finish: `after` gates its start, so a task already started is past it. A finished task, or
+ * one waiting on a decision or an approval, never.
+ */
+export function canGoOn(task: Task, context: WaitContext): boolean {
+  if (task.status === 'done' || task.status === 'dropped') {
+    return false;
+  }
+  if (goesOnByWaits(task.status) && !allReady(task.waits, context)) {
+    return false;
+  }
+  return task.startedAt !== null || unfinishedAfter(task.after, context).length === 0;
+}
+
+/** True when the task is the session's, it can go on with it now, and it is urgent enough to wake it. */
 export function isWakeWorthy(task: Task, session: string, maxPriority: number, context: WaitContext): boolean {
-  return (
-    task.owner === session &&
-    WAKE_STATUSES.includes(task.status) &&
-    task.priority <= maxPriority &&
-    unfinishedAfter(task.after, context).length === 0
-  );
+  return task.owner === session && task.priority <= maxPriority && canGoOn(task, context);
 }
 
 function timeOf(at: string | null): number {
   return at === null ? Number.NEGATIVE_INFINITY : Date.parse(at);
 }
 
+/** True when a session other than `session` finished the task after `seen`, epoch ms. */
+function finishedByAnotherSince(id: string, session: string, tasks: ReadonlyMap<string, Task>, seen: number): boolean {
+  const task = tasks.get(id);
+  return task !== undefined && task.updatedBy !== session && timeOf(task.statusAt) > seen;
+}
+
 /**
  * True when someone else changed the task since its owner last touched it: handed it over, raised its priority,
- * set its status, or finished a task it comes after. The owner's own changes are never news to it.
+ * set its status, or finished a task it comes after or waits on; or when a time it waits for falls after that touch
+ * (the caller asks only once the task can go on, so that time has come). The owner's own changes are never news to it.
  */
-export function isNews(task: Task, session: string, tasks: ReadonlyMap<string, Task>): boolean {
+export function isNews(task: Task, session: string, tasks: ReadonlyMap<string, Task>, zone: TimeZone): boolean {
   const seen = timeOf(task.ownerSeenAt);
   if (Math.max(timeOf(task.assignedAt), timeOf(task.priorityAt), timeOf(task.statusAt)) > seen) {
     return true;
   }
-  return task.after.some((id) => {
-    const before = tasks.get(id);
-    return before !== undefined && before.updatedBy !== session && timeOf(before.statusAt) > seen;
+  if (task.after.some((id) => finishedByAnotherSince(id, session, tasks, seen))) {
+    return true;
+  }
+  return task.waits.some((reason) => {
+    switch (reason.kind) {
+      case 'task':
+        return finishedByAnotherSince(reason.id, session, tasks, seen);
+      case 'time':
+        return (parseDeadline(reason.at, zone)?.getTime() ?? Number.NEGATIVE_INFINITY) > seen;
+      case 'decision':
+      case 'approval':
+        return false;
+    }
   });
 }
 
@@ -137,8 +168,8 @@ export function decideWake(input: WakeInput): WakeDecision {
   }
   const wasKnown = new Set(previous.known);
   const pendingIds = new Set(previous.pending?.ids ?? []);
-  const kept = worthy.filter((task) => pendingIds.has(task.id) && isNews(task, session, tasks));
-  const fresh = worthy.filter((task) => !wasKnown.has(task.id) && isNews(task, session, tasks));
+  const kept = worthy.filter((task) => pendingIds.has(task.id) && isNews(task, session, tasks, input.zone));
+  const fresh = worthy.filter((task) => !wasKnown.has(task.id) && isNews(task, session, tasks, input.zone));
   const due = [...kept, ...fresh].sort(byUrgency);
   if (due.length === 0) {
     return { verdict: none, state: { tab, known, pending: undefined, lastWakeAt: previous.lastWakeAt, settled } };
@@ -212,9 +243,14 @@ function shortTitle(title: string): string {
 
 /** `T12 "Fix the login" (p1), T13 "..." (p1) and 2 more`. */
 export function taskListText(tasks: readonly Task[]): string {
-  const named = tasks.slice(0, WAKE_LIST_MAX).map((task) => `${task.id} "${shortTitle(task.title)}" (p${task.priority})`);
+  const named = tasks.slice(0, WAKE_LIST_MAX).map((task) => `${task.id} "${shortTitle(task.title)}" (${taskTag(task)})`);
   const more = tasks.length - named.length;
   return more > 0 ? `${named.join(', ')} and ${more} more` : named.join(', ');
+}
+
+/** `p2`, or `p2, waiting: every wait cleared` for a task that goes on by its waits, so the session sets its next status. */
+function taskTag(task: Task): string {
+  return goesOnByWaits(task.status) ? `p${task.priority}, ${task.status}: every wait cleared` : `p${task.priority}`;
 }
 
 /** The prompt the session reads, under the plugin's name. */

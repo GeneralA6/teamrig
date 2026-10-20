@@ -105,6 +105,19 @@ describe('startableTasks', () => {
     );
     assert.deepEqual(startableTasks(tasks, 'charlie', NOW, TimeZone.UTC), []);
   });
+
+  it('takes a waiting task once every wait cleared, and a started task past what it comes after', () => {
+    const tasks = tasksOf(
+      testTask({ id: 'T1', status: 'waiting', waits: [{ kind: 'time', at: '2030-01-08 07:00' }] }),
+      testTask({ id: 'T2', status: 'waiting', waits: [{ kind: 'time', at: '2030-01-08' }] }),
+      testTask({ id: 'T3', status: 'in-progress', after: ['T4'], startedAt: '2030-01-07T12:00:00.000Z' }),
+      testTask({ id: 'T4', owner: 'bravo' }),
+    );
+    assert.deepEqual(
+      startableTasks(tasks, 'alpha', NOW, TimeZone.UTC).map((task) => task.id),
+      ['T1', 'T3'],
+    );
+  });
 });
 
 describe('decideDayStart', () => {
