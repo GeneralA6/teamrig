@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import { USAGE_FORMAT } from '../budget/store.ts';
 import { WORK_CACHE_FILE } from '../budget/work.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { parseObject } from '../core/jsonl.ts';
@@ -241,7 +242,7 @@ describe('the budget in the hooks', () => {
 
   it('stays silent on the budget and never fails a hook when a newer teamrig wrote the usage files', async () => {
     const { kit, hook } = await world({ overAction: 'block' }, 10_000_000, 30);
-    await kit.files.write(join(TEAM_HOME, 'state', 'usage', 'alpha.json'), '{"v":2,"rev":1}');
+    await kit.files.write(join(TEAM_HOME, 'state', 'usage', 'alpha.json'), JSON.stringify({ v: USAGE_FORMAT + 1, rev: 1 }));
     const stop = await hook('stop', ALPHA_TAB);
     assert.equal(stop.code, EXIT.ok);
     assert.deepEqual(stop.stdout, []);
