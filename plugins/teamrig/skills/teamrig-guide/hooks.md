@@ -267,6 +267,10 @@ the guard asks only the public one. A missing or broken config keeps `deny`, so 
 guard off. One refusal in a line refuses the whole line, naming every reason. Like the push guard, it reads only the
 line Claude runs, not a script or program that line starts.
 
+The guard does not read installs yet: `npm install <pkg>`, `pnpm add` and `yarn add` run unchecked. The plugin's
+[security skill](../security/SKILL.md) has the steps for vetting the version an install resolves and for pinning one
+with overrides.
+
 ## Asks off: a refusal instead of a prompt
 
 A permission prompt holds the session until a human answers it, for hours when nobody is there. With
