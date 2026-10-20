@@ -256,7 +256,7 @@ line Claude runs, not a script or program that line starts.
 A permission prompt holds the session until a human answers it, for hours when nobody is there. With
 `prompts.hookAsks` set to `refuse` in the team config, every question a teamrig hook would raise is a refusal
 instead: the push guard's (a push to a protected branch, a `--force-with-lease` push, a line it cannot read), the
-commit guard's and the package guard's under their `ask` choice, and the helper gate's. The hook's own reason
+commit guard's, the package guard's and the secret guard's under their `ask` choice, and the helper gate's. The hook's own reason
 comes first, then:
 "Asks are off [prompts.hookAsks], so teamrig refuses this instead of asking; do not retry it or route around it.
 Record the step as waiting for the owner (`teamrig set <task> --status waiting --waits approval:owner --note "<the

@@ -1,17 +1,19 @@
 import { DEFAULT_SECRET_GUARD } from '../config/defaults.ts';
 import type { ConfigLoad } from '../config/load.ts';
-import type { SecretGuardConfig, SecretReads } from '../config/types.ts';
+import type { HookAsks, SecretGuardConfig, SecretReads } from '../config/types.ts';
 import { isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import { resolveDir } from '../push-guard/location.ts';
 import { describeFinding, type SecretFinding } from '../secret-guard/findings.ts';
 import type { SecretRules } from '../secret-guard/rules.ts';
 import { shellFindings } from '../secret-guard/shell.ts';
+import { holdBackOutput } from './permission.ts';
 
 export interface SecretGuardEnv {
   /** The folder to judge from when the payload names none. */
   readonly cwd: string;
   readonly rules: SecretRules;
   readonly secretReads: SecretReads;
+  readonly hookAsks: HookAsks;
 }
 
 /** The secret guard's config. A missing or unreadable config keeps the default, so a broken config never switches the guard off. */
@@ -79,17 +81,17 @@ export function secretReason(findings: readonly SecretFinding[]): string {
 /**
  * The PreToolUse output for a Bash, PowerShell, Read or Grep call: a refusal (or a question, as
  * `secretGuard.secretReads` says) when the call would print a secret into the conversation; else nothing, so the
- * normal permission flow decides.
+ * normal permission flow decides. Under `hookAsks: refuse` the question is a refusal instead, its reason saying what
+ * to do (see `holdBack`).
  */
 export function secretGuardOutput(payload: unknown, env: SecretGuardEnv): string {
-  if (env.secretReads === 'allow' || !isRecord(payload)) {
+  const reads = env.secretReads;
+  if (reads === 'allow' || !isRecord(payload)) {
     return '';
   }
   const findings = secretFindingsOf(payload, env.cwd, env.rules);
   if (findings.length === 0) {
     return '';
   }
-  return JSON.stringify({
-    hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: env.secretReads, permissionDecisionReason: secretReason(findings) },
-  });
+  return holdBackOutput(reads, secretReason(findings), env.hookAsks);
 }

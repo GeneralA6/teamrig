@@ -618,7 +618,7 @@ key says, `npx --no <bin> --flag`: npx takes the bin as `--no`'s value, so the f
 
 A permission prompt holds a session until a human answers it; overnight that is hours of a session doing nothing.
 `prompts.hookAsks` (since 0.98.0, `ask` by default) set to `refuse` turns every question a teamrig hook would
-raise (the push guard, the commit and package guards under `ask`, the helper gate) into a refusal whose reason tells
+raise (the push guard, the commit, package and secret guards under `ask`, the helper gate) into a refusal whose reason tells
 the session to record the step as waiting for the owner's approval and take its next task, so the work queues for the
 owner instead of a session waiting on them. Refusals stay as they were. A prompt Claude Code raises on its own gets
 the same refusal from a `PermissionRequest` hook, all but the question picker and plan mode's exit, which a person

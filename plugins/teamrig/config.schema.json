@@ -303,7 +303,7 @@
       "type": "object",
       "properties": {
         "hookAsks": {
-          "description": "A call a teamrig hook would ask the human about (a push to a protected branch or one it cannot read, an ad-hoc package run, a git command without hooks, a helper over the budget, as their own keys set): ask raises the permission prompt; refuse refuses it instead, its reason telling the session to record the step as waiting for the owner's approval and take its next task, so no prompt holds a session while nobody is there to answer it.",
+          "description": "A call a teamrig hook would ask the human about (a push to a protected branch or one it cannot read, an ad-hoc package run, a git command without hooks, a call that would print a secret, a helper over the budget, as their own keys set): ask raises the permission prompt; refuse refuses it instead, its reason telling the session to record the step as waiting for the owner's approval and take its next task, so no prompt holds a session while nobody is there to answer it.",
           "type": "string",
           "enum": ["ask", "refuse"],
           "default": "ask"
