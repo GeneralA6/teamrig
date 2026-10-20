@@ -63,6 +63,16 @@ describe('planRetire', () => {
     assert.deepEqual(planned({ ...bare, budget: { weeklyLimitW: 5000000 } }, {}, []).config['budget'], { weeklyLimitW: 5000000 });
   });
 
+  it("keeps the lead tree whole: a member leaves its sub-lead's list, a sub-lead's members go to its leader (T781)", () => {
+    const tree = { sessions: ['lead', 'alpha', 'bravo', 'helper'], roles: { lead: 'lead' } };
+    assert.deepEqual(planned(FILE).regrouped, { members: [], to: 'lead' }, 'a session the tree does not name moves no one');
+    const member = planned({ ...tree, leads: { alpha: ['helper'] } });
+    assert.equal(Object.hasOwn(member.config, 'leads'), false, 'a list left empty goes, and leads with it');
+    const subLead = planned({ ...tree, leads: { alpha: ['helper'], helper: ['bravo'] } });
+    assert.deepEqual(subLead.config['leads'], { alpha: ['bravo'] });
+    assert.deepEqual(subLead.regrouped, { members: ['bravo'], to: 'alpha' });
+  });
+
   it('hands its open tasks to the heir, and records the heir, the reason and why there is no handover', () => {
     const result = planned(FILE, { openTasks: ['T1', 'T2'], heir: 'alpha', hasHandover: false, noHandover: ' nothing to hand over ' });
     assert.deepEqual(result.handOver, ['T1', 'T2']);
