@@ -89,7 +89,7 @@ describe('secretGuardOutput', () => {
     const read = call('Read', { file_path: 'C:/w/.env' });
     const refused = verdictOf(secretGuardOutput(read, env({ secretReads: 'ask', hookAsks: 'refuse' })));
     assert.equal(refused?.decision, 'deny');
-    assert.match(refused?.reason ?? '', /would print the content of \.env .*Asks are off \[prompts\.hookAsks\]/);
+    assert.match(refused?.reason ?? '', /would print the content of C:\/w\/\.env .*Asks are off \[prompts\.hookAsks\]/);
     const denied = verdictOf(secretGuardOutput(read, env({ hookAsks: 'refuse' })));
     assert.equal(denied?.decision, 'deny');
     assert.doesNotMatch(denied?.reason ?? '', /Asks are off/);
