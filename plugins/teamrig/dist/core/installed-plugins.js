@@ -90,12 +90,12 @@ export function appliesTo(install, projectRoot) {
     return forAProject && install.projectPath !== undefined && samePath(install.projectPath, projectRoot);
 }
 /**
- * installed_plugins.json for a plugin Claude Code runs from its cache
- * (`<config>/plugins/cache/<marketplace>/<plugin>/<version>`): the file sits in that `plugins` folder, so the path follows the configuration folder this Claude Code really uses
- * (`CLAUDE_CONFIG_DIR` too) with no environment read. Undefined for a plugin run from anywhere else (`--plugin-dir`,
- * a marketplace that is a local folder).
+ * Claude Code's `plugins` folder, which holds installed_plugins.json, for a plugin it runs from its cache
+ * (`<config>/plugins/cache/<marketplace>/<plugin>/<version>`), so the path follows the configuration folder this
+ * Claude Code really uses (`CLAUDE_CONFIG_DIR` too) with no environment read. Undefined for a plugin run from anywhere
+ * else (`--plugin-dir`, a marketplace that is a local folder).
  */
-export function installedPluginsFileOf(pluginRoot) {
+export function pluginsFolderOf(pluginRoot) {
     const parts = pluginRoot.split(/[\\/]/);
     while (parts.length > 0 && parts[parts.length - 1] === '') {
         parts.pop();
@@ -104,7 +104,7 @@ export function installedPluginsFileOf(pluginRoot) {
     if (count < 6 || parts[count - 5] !== 'plugins' || parts[count - 4] !== 'cache') {
         return undefined;
     }
-    return [...parts.slice(0, count - 4), INSTALLED_PLUGINS_FILE].join('/');
+    return parts.slice(0, count - 4).join('/');
 }
 /**
  * Whether a folder is the `bin` folder of a plugin install in Claude Code's cache
@@ -116,5 +116,5 @@ export function isPluginCacheBin(folder) {
     while (parts.length > 0 && parts[parts.length - 1] === '') {
         parts.pop();
     }
-    return parts.at(-1) === 'bin' && installedPluginsFileOf(parts.slice(0, -1).join('/')) !== undefined;
+    return parts.at(-1) === 'bin' && pluginsFolderOf(parts.slice(0, -1).join('/')) !== undefined;
 }
