@@ -72,10 +72,15 @@ export function wSince(states: readonly UsageState[], from: number, now: number)
   return total;
 }
 
+/** W per percent of the week from `budget.weeklyLimitW`; undefined without it. */
+export function limitWPerPct(budget: Pick<BudgetConfig, 'weeklyLimitW'>): number | undefined {
+  return budget.weeklyLimitW === undefined ? undefined : budget.weeklyLimitW / 100;
+}
+
 /** The usage stores' W for the period's inference (budget/period.ts); undefined without `budget.weeklyLimitW`. */
 export function meteredOf(budget: Pick<BudgetConfig, 'weeklyLimitW'>, states: readonly UsageState[], now: number): Metered | undefined {
-  const limit = budget.weeklyLimitW;
-  return limit === undefined ? undefined : { wPerPct: limit / 100, wFrom: (from) => wSince(states, from, now) };
+  const wPerPct = limitWPerPct(budget);
+  return wPerPct === undefined ? undefined : { wPerPct, wFrom: (from) => wSince(states, from, now) };
 }
 
 function earliestDay(states: readonly UsageState[]): string | undefined {
@@ -95,7 +100,7 @@ export function readWeek(input: WeekInput): WeekReading {
   const covered = startDay !== undefined && first !== undefined && first <= startDay;
   const weekW = window === undefined ? 0 : wSince(states, window.start, now);
   const estimate = statusUse !== undefined && covered && weekW > 0 && statusUse.usedPct > 0 ? weekW / statusUse.usedPct : undefined;
-  const wPerPct = budget.weeklyLimitW === undefined ? estimate : budget.weeklyLimitW / 100;
+  const wPerPct = limitWPerPct(budget) ?? estimate;
   const usedPct = statusUse?.usedPct ?? (covered && wPerPct !== undefined ? weekW / wPerPct : undefined);
   const profile = DailyProfile.ofQuietHours(budget.quietHours);
   const pace = window === undefined || usedPct === undefined ? undefined : readPace(window, budget, now, usedPct, profile);
