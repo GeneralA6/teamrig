@@ -1,2 +1,2 @@
 /** The plugin version; a test keeps it equal to `version` in the plugin manifest. */
-export const KIT_VERSION = '0.143.0';
+export const KIT_VERSION = '0.144.0';
