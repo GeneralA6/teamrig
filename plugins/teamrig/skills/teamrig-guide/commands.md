@@ -301,9 +301,9 @@ next status; or set it in progress, fix the note's point and ask again. An appro
 in its waiting text and `check` flags it `READY` until its owner sets the next status, which clears the answer.
 Only the lead answers (or a sub-lead above the task's owner, or the security reviewer, `roles.securityReviewer`, on
 a task not its own), only a task waiting on its approval, always with a note; an approval of the owner's stays the
-owner's. The same answer clears a review hold that `teamrig merge` made on the task's branch (see
-[merge](#teamrig-merge)).
-Under `pushGuard.pushToProtected: lead` the push guard lets the owner's push to a protected branch through while
+owner's. The same answer clears a review hold or a gate hold that `teamrig merge` made on the task's branch
+(see [merge](#teamrig-merge)).
+Under `pushGuard.pushToProtected: lead` or `gated` the push guard lets the owner's push to a protected branch through while
 a leader's approval stands (the security reviewer's does not count there) ([hooks](hooks.md#before-a-shell-command-the-push-guard)).
 
 In a tree of teams, a child team's lead answers to the lead of the team just above it: it asks with
@@ -1768,6 +1768,8 @@ as an inbox line. So no session is told the meeting started, and none is woken. 
 - `LATE`: the active tasks past their due date, their own or the earlier one of a task that needs them
   (`due 10-14 (from T9)`);
 - `DONE`: what finished since the last meeting ended (a day back for the first, 7 days at most);
+- `MERGES`: under `pushGuard.pushToProtected: gated`, the branches merged with no approval since then (from
+  `merges.jsonl` in `coordinator.dir`), check-clean ones first, marked `CHECK-CLEAN` for security's weekly sample;
 - `MEETINGS`: today's scheduled meetings and the missed ones, as `meeting list` shows them, and how the owner starts
   one or a missed one is moved;
 - the lead's unread inbox lines, marked read;
@@ -1826,6 +1828,8 @@ LATE 1 past their due date
 DONE 2 done or dropped since Wed 10-14 11:30 IDT
   T2 done, p1, owner api | Rate-limit the signup endpoint
   T3 done, p2, owner web | Add the error codes page
+MERGES 1 merged with no approval since Wed 10-14 11:30 IDT, 0 CHECK-CLEAN (security samples those weekly)
+  Thu 10-15 09:12 IDT api app t4-retry 4f1c2a9e..9a0b1c2d: 3 files, 58 lines, checks lint, test
 MEETINGS 1 today or missed
   M3 scheduled, Thu 10-15 14:00 IDT, 30 min, web with api, tasks T7 | the pricing tiers
   The owner starts one with teamrig meeting start <id>; a missed one is moved (teamrig meeting move <id> --at <time>) or dropped.
@@ -3293,7 +3297,8 @@ The repository is the entry of `coordinator.repos` whose `mainCheckout` is this 
   default branch's `package-lock.json` (unset when that branch has none), removed after. Exit 0 lets the change through;
   any other end, or a range it cannot read, is REFUSED and nothing is pushed.
 - `reviewGate`: hold a change whose paths hit a review entry until its reviewer approves it (see Review holds
-  below). Off by default: each repository opts in.
+  below). Off by default: each repository opts in. Under `pushGuard.pushToProtected: gated` a repository with it
+  off, or not listed, misses the self-merge review gate, so each change it merges waits on a leader.
 - `reviewCheck`: with `reviewGate`, the check a `check` entry's hit runs, such as `["node", "tools/review.ts"]`: a
   program and its arguments, run with no shell in the branch's checkout under the host lock after the rebase, with
   the base commit in `TEAMRIG_REVIEW_BASE`, a heavy step in the ledger, its lines redacted. Exit 0 clears the
@@ -3322,8 +3327,8 @@ The repository is the entry of `coordinator.repos` whose `mainCheckout` is this 
 
 A repository not listed gets a NOTE and none of these. Then `teamrig merge` waits up to `coordinator.wait.maxMinutes` (60),
 looking every `coordinator.wait.pollSeconds` (30), for the claims and the host lock (see `teamrig heavy`; longer while its line moves), fetches,
-rebases onto origin's default branch, runs the `dependencyCheck` on a dependency change and the review gate, and
-pushes there (or runs the
+rebases onto origin's default branch, runs the `dependencyCheck` on a dependency change, the review gate and, under
+`pushGuard.pushToProtected: gated`, the self-merge gates (see Gate holds below), and pushes there (or runs the
 `merge` command), the push a heavy step in the ledger that runs the pre-push
 hook. It merged when origin's default branch is at the rebased commit, whatever the push's exit code. When origin
 moved meanwhile, it rebases and pushes again, 3 times in all. After a merge it deletes the branch on origin and
@@ -3331,8 +3336,8 @@ here, moves the local default branch to origin's and prints the `teamrig worktre
 Like `teamrig heavy`, it watches the processes that started it. Once its launching shell ends it stops waiting
 (`STOPPED before the host lock was free: nothing ran`), or kills the push it runs, records exit 129, frees the lock
 and pushes no more (FAILED).
-Exit 0 merged, 1 failed (FAILED and the reason; the branch is kept), 2 when the dependency check or the review gate
-refused it, 75 when the merge command waits.
+Exit 0 merged, 1 failed (FAILED and the reason; the branch is kept), 2 when the dependency check, the review gate
+or a self-merge gate refused it, 75 when the merge command waits.
 
 Review holds (`reviewGate`): after the rebase, `teamrig merge` lists the paths the change touches (a rename at both its
 paths, a deletion at its path) and matches them against the review entries: teamrig's own, which every gated repo
@@ -3359,6 +3364,27 @@ lead's own change goes to security, and with no other reviewer it is REFUSED wit
 with `teamrig approve <task>`; `teamrig merge` again merges the change. A hold binds the base, the head and the tree
 they make: an approval given before the hold, or a branch that changed since (a new commit, or a rebase onto a moved
 default branch), makes a new hold. A decline names the change to make before the next hold.
+
+Gate holds (`pushGuard.pushToProtected: gated`): after the review gate, `teamrig merge` checks the self-merge gates
+in order. task: the branch names a live task of the session (`t<n>-…`). pass: a pass record proves the rebased
+tree; only the repo's own local runner writes one, so run its checks on the rebased branch first. size: no commit is
+over the size rule without a `Large-commit:` line. tests: a change of source (`commits.sourcePatterns`) changes a
+test too. review: the repository sets `reviewGate`. A change that holds every gate merges with no approval. A task
+miss is refused with no hold, since a hold waits on the approval of the branch's task. Any other miss is REFUSED
+with a gate hold for the session's nearest leader (the lead's own change goes to security), kept in `gate-holds/`
+in `coordinator.dir`:
+
+```text
+REFUSED gate hold G3f2a9c0d1e7b keeps t12-retry (4f1c2a9e..9a0b1c2d) off the default branch: tests: it changes
+source (src/retry.ts) and no test: add or change the tests that cover it. lead answers it: teamrig set T12 --status
+waiting --waits approval:lead --note "gate hold G3f2a9c0d1e7b of t12-retry 4f1c2a9e..9a0b1c2d" --session api;
+merge again once it is approved
+```
+
+The leader answers with `teamrig approve <task>`; `teamrig merge` again merges the change. Like a review hold, a
+gate hold binds the base, the head and the tree, and an approval counts only for the gates its hold named. Each
+change merged under `gated` is one line in `merges.jsonl` in `coordinator.dir`: route `self`, or `approved` with the
+gates it missed and who approved them. A merge the `merge` command finishes on a later run writes no line yet.
 
 Flags:
 
@@ -4300,8 +4326,8 @@ INBOX web, new in /home/you/.teamrig/teams/shop/state/inbox/web.md (each line is
 
 ### teamrig hook push-guard
 
-Before a Bash or PowerShell command, asks the human about a push to a protected branch and refuses a force-push or
-deletion of one. It also refuses (or asks about, as `commitGuard.skipHooks` says) a git command run without the
+Before a Bash or PowerShell command, asks the human about a push to a protected branch (or, under
+`pushGuard.pushToProtected` `lead` or `gated`, clears or refuses it) and refuses a force-push or deletion of one. It also refuses (or asks about, as `commitGuard.skipHooks` says) a git command run without the
 repository's hooks: `--no-verify`, `git commit -n`, `HUSKY=0`, or a `core.hooksPath` override. See
 [Hooks and permissions](hooks.md#before-a-shell-command-the-commit-guard).
 
