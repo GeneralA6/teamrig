@@ -4,7 +4,8 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
-import { type CheckCommandDeps, type CheckRun, type GateDeps, checkCommand, commandOf, parseRecord, proveTree, realGateDeps, recordPath, runnerCheck } from './local-gate.ts';
+import { parsePassRecord } from '../../src/push-guard/pass-record.ts';
+import { type CheckCommandDeps, type CheckRun, type GateDeps, checkCommand, commandOf, proveTree, realGateDeps, runnerCheck } from './local-gate.ts';
 import { type LocalChecks, parseProfiles } from './repos.ts';
 
 /** Absolute on every OS: a 'C:/repo' is relative on POSIX, where resolve() puts the working folder in front of it. */
@@ -68,7 +69,7 @@ test('runs the repo runner, then writes a pass record for the tree in the shared
   const [path, text] = written[0] ?? ['', ''];
   assert.equal(path, RECORD);
   assert.deepEqual(JSON.parse(text), { tree: TREE, commit: COMMIT, checks: [RUNNER], passedAt: '2026-10-15T10:00:00.000Z', node: process.version });
-  assert.deepEqual(parseRecord(text, TREE)?.checks, [RUNNER]);
+  assert.deepEqual(parsePassRecord(text, TREE)?.checks, [RUNNER]);
 });
 
 test('keeps the record the runner wrote itself', () => {
@@ -128,22 +129,6 @@ test('refuses a repo that names no runner, or a tree that does not hold it, befo
   assert.deepEqual(proveTree(DIR, CHECKS, missing.deps), { passed: false, reason: `${DIR} holds no tools/ci/local.ts, the repo's local CI runner: rebase the branch on its main` });
   assert.deepEqual(missing.runs, []);
   assert.deepEqual(missing.written, []);
-});
-
-test('reads a record only when it is one, for this tree', () => {
-  assert.equal(parseRecord(null, TREE), null);
-  assert.equal(parseRecord('not json', TREE), null);
-  assert.equal(parseRecord('[]', TREE), null);
-  assert.equal(parseRecord(VALID('other'), TREE), null);
-  assert.equal(parseRecord(JSON.stringify({ tree: TREE, commit: COMMIT, checks: [1], passedAt: 'x', node: 'v' }), TREE), null);
-  assert.equal(parseRecord(JSON.stringify({ tree: TREE, commit: COMMIT, checks: [], passedAt: 'x' }), TREE), null);
-  assert.deepEqual(parseRecord(VALID(), TREE), { tree: TREE, commit: COMMIT, checks: ['lint'], passedAt: '2026-10-15T09:00:00.000Z', node: 'v22.19.0' });
-});
-
-test('puts the record in the git folder every worktree shares, whether git names it absolute or relative', () => {
-  const shared = resolve('/work/r/.git');
-  assert.equal(recordPath(DIR, shared, TREE), join(shared, 'local-ci', `${TREE}.json`));
-  assert.equal(recordPath(DIR, '.git', TREE), join(DIR, '.git', 'local-ci', `${TREE}.json`));
 });
 
 test('spawns a leading node as this node without the experimental warning', () => {

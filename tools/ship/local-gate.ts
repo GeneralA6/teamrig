@@ -1,30 +1,21 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { isRecord } from './json.ts';
+import { dirname, join } from 'node:path';
+import { parsePassRecord, passRecordPath, type PassRecord } from '../../src/push-guard/pass-record.ts';
 import { type LocalChecks, type RepoProfile, profileFor, readProfiles, slugOf } from './repos.ts';
 
 /**
  * The local gate: proves that the tree checked out in a repo dir passed the repo's own local CI runner, once
- * per tree. The proof is a pass record at `<git common dir>/local-ci/<tree sha>.json`, so every worktree of
- * the repo shares it, written only when the runner passed on a clean checkout and left it as it found it:
- *   { "tree": "<sha>", "commit": "<sha>", "checks": ["<name>", ...], "passedAt": "<ISO time>", "node": "<version>" }
- * ship (after its commits), merge (a repo whose gate is local) and the repos' pre-push hook read it first,
- * so a tree is checked once, not at each step. The runner writes the same record itself, naming each check.
+ * per tree. The proof is the tree's pass record (src/push-guard/pass-record.ts), written only when the runner
+ * passed on a clean checkout and left it as it found it. ship (after its commits), merge (a repo whose gate is
+ * local) and the repos' pre-push hook read it first, so a tree is checked once, not at each step. The runner
+ * writes the same record itself, naming each check.
  */
 
 /** One local check: a command spawned without a shell from the repo dir, where a leading `node` is this node; exit 0 is a pass. */
 export interface LocalCheck {
   name: string;
   run: readonly string[];
-}
-
-export interface PassRecord {
-  tree: string;
-  commit: string;
-  checks: string[];
-  passedAt: string;
-  node: string;
 }
 
 export interface CheckRun {
@@ -54,26 +45,8 @@ export type GateVerdict = { passed: true; tree: string; record: string; reused: 
 
 const short = (sha: string): string => sha.slice(0, 7);
 const seconds = (ms: number): string => `${Math.round(ms / 1000)}s`;
-const isStringList = (value: unknown): value is string[] => Array.isArray(value) && value.every(item => typeof item === 'string');
-
-export function recordPath(dir: string, gitCommonDir: string, tree: string): string {
-  return join(resolve(dir, gitCommonDir), 'local-ci', `${tree}.json`);
-}
-
-/** The record a file holds for `tree`; null when there is none, it is not a record, or it is another tree's. */
-export function parseRecord(text: string | null, tree: string): PassRecord | null {
-  if (text === null) return null;
-  let body: unknown;
-  try {
-    body = JSON.parse(text);
-  } catch {
-    return null;
-  }
-  if (!isRecord(body)) return null;
-  const { tree: recorded, commit, checks, passedAt, node } = body;
-  if (recorded !== tree || typeof commit !== 'string' || !isStringList(checks) || typeof passedAt !== 'string' || typeof node !== 'string') return null;
-  return { tree, commit, checks, passedAt, node };
-}
+/** The record the file at `path` holds for `tree`, or undefined. */
+const recordAt = (deps: GateDeps, path: string, tree: string): PassRecord | undefined => parsePassRecord(deps.readText(path) ?? undefined, tree);
 
 /** The check that proves a tree: the repo's own runner, when repos.json names one and the tree holds it. */
 export function runnerCheck(dir: string, checks: LocalChecks, exists: GateDeps['exists']): LocalCheck | null {
@@ -100,9 +73,9 @@ export function proveTree(dir: string, checks: LocalChecks, deps: GateDeps): Gat
   if (status !== '') return { passed: false, reason: `${dir} has uncommitted changes (${firstLines(status)}): commit or stash them, the checks prove only a committed tree` };
   const tree = deps.git('rev-parse', 'HEAD^{tree}');
   const commit = deps.git('rev-parse', 'HEAD');
-  const path = recordPath(dir, deps.git('rev-parse', '--git-common-dir'), tree);
-  const earlier = parseRecord(deps.readText(path), tree);
-  if (earlier !== null) {
+  const path = passRecordPath(dir, deps.git('rev-parse', '--git-common-dir'), tree);
+  const earlier = recordAt(deps, path, tree);
+  if (earlier !== undefined) {
     deps.log(`local checks: passed earlier on tree ${short(tree)} (commit ${short(earlier.commit)}, ${earlier.passedAt}, ${earlier.checks.length} check(s)), skipped`);
     return { passed: true, tree, record: path, reused: true };
   }
@@ -123,7 +96,7 @@ export function proveTree(dir: string, checks: LocalChecks, deps: GateDeps): Gat
     const what = statusAfter !== '' ? firstLines(statusAfter) : `HEAD now holds tree ${short(treeAfter)}`;
     return { passed: false, reason: `the checks left ${dir} changed (${what}): a generated file differs from the committed one` };
   }
-  if (parseRecord(deps.readText(path), tree) === null) {
+  if (recordAt(deps, path, tree) === undefined) {
     const record: PassRecord = { tree, commit, checks: [check.name], passedAt: deps.now().toISOString(), node: process.version };
     deps.writeText(path, `${JSON.stringify(record, null, 2)}\n`);
   }
