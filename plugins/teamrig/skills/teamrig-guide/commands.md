@@ -301,7 +301,8 @@ next status; or set it in progress, fix the note's point and ask again. An appro
 in its waiting text and `check` flags it `READY` until its owner sets the next status, which clears the answer.
 Only the lead answers (or a sub-lead above the task's owner, or the security reviewer, `roles.securityReviewer`, on
 a task not its own), only a task waiting on its approval, always with a note; an approval of the owner's stays the
-owner's.
+owner's. The same answer clears a review hold that `teamrig merge` made on the task's branch (see
+[merge](#teamrig-merge)).
 Under `pushGuard.pushToProtected: lead` the push guard lets the owner's push to a protected branch through while
 a leader's approval stands (the security reviewer's does not count there) ([hooks](hooks.md#before-a-shell-command-the-push-guard)).
 
@@ -3288,6 +3289,13 @@ The repository is the entry of `coordinator.repos` whose `mainCheckout` is this 
   `coordinator.heavy.maxRunMinutes`, a heavy step in the ledger. It gets `TEAMRIG_BASELINE_LOCK`, a file holding the
   default branch's `package-lock.json` (unset when that branch has none), removed after. Exit 0 lets the change through;
   any other end, or a range it cannot read, is REFUSED and nothing is pushed.
+- `reviewGate`: hold a change whose paths hit a review entry until its reviewer approves it (see Review holds
+  below). Off by default: each repository opts in.
+- `reviewCheck`: with `reviewGate`, the check a `check` entry's hit runs, such as `["node", "tools/review.ts"]`: a
+  program and its arguments, run with no shell in the branch's checkout under the host lock after the rebase, with
+  the base commit in `TEAMRIG_REVIEW_BASE`, a heavy step in the ledger, its lines redacted. Exit 0 clears the
+  change, 3 holds it for the entry's reviewer with the findings it prints, anything else holds it for the session's
+  leader, since a broken check is no pass. Unset: a `check` hit is held like an `always` one.
 - `worktreeFolder`: the folder `teamrig worktree add` makes each new worktree in, default `.claude/worktrees`; a
   relative folder is in the main checkout.
 - `worktreeSetup`: what `teamrig worktree add` runs in each new worktree, such as
@@ -3296,7 +3304,8 @@ The repository is the entry of `coordinator.repos` whose `mainCheckout` is this 
 - `followMainCheckout`: after a merge from a linked worktree, fast-forward the main checkout too, when it is on
   the default branch with no uncommitted changes; a NOTE says when it was left as it is, or needs `npm ci`.
 - `merge`: a merge command run in place of the push, such as `{ "command": ["node", "tools/merge.ts"] }` for a
-  repository that merges through pull requests (a sketch below). It runs like the `dependencyCheck`, after it, with
+  repository that merges through pull requests (a sketch below). It runs like the `dependencyCheck`, after it and the
+  review gate, with
   `TEAMRIG_MERGE_BRANCH`, `TEAMRIG_MERGE_BASE` (the default branch), `TEAMRIG_MERGE_HEAD` (the rebased commit) and
   `TEAMRIG_SESSION` set; its last line is the reason shown. Exit 0: it merged, and `teamrig merge` fetches to confirm it: a
   commit on origin's default branch must hold every file the branch changed as at its head (a rebase, a squash and a
@@ -3310,7 +3319,8 @@ The repository is the entry of `coordinator.repos` whose `mainCheckout` is this 
 
 A repository not listed gets a NOTE and none of these. Then `teamrig merge` waits up to `coordinator.wait.maxMinutes` (60),
 looking every `coordinator.wait.pollSeconds` (30), for the claims and the host lock (see `teamrig heavy`; longer while its line moves), fetches,
-rebases onto origin's default branch, runs the `dependencyCheck` on a dependency change and pushes there (or runs the
+rebases onto origin's default branch, runs the `dependencyCheck` on a dependency change and the review gate, and
+pushes there (or runs the
 `merge` command), the push a heavy step in the ledger that runs the pre-push
 hook. It merged when origin's default branch is at the rebased commit, whatever the push's exit code. When origin
 moved meanwhile, it rebases and pushes again, 3 times in all. After a merge it deletes the branch on origin and
@@ -3318,8 +3328,34 @@ here, moves the local default branch to origin's and prints the `teamrig worktre
 Like `teamrig heavy`, it watches the processes that started it. Once its launching shell ends it stops waiting
 (`STOPPED before the host lock was free: nothing ran`), or kills the push it runs, records exit 129, frees the lock
 and pushes no more (FAILED).
-Exit 0 merged, 1 failed (FAILED and the reason; the branch is kept), 2 when the dependency check refused it, 75 when
-the merge command waits.
+Exit 0 merged, 1 failed (FAILED and the reason; the branch is kept), 2 when the dependency check or the review gate
+refused it, 75 when the merge command waits.
+
+Review holds (`reviewGate`): after the rebase, `teamrig merge` lists the paths the change touches (a rename at both its
+paths, a deletion at its path) and matches them against the review entries: teamrig's own, which every gated repo
+holds for security (lockfiles, `.npmrc` and the other package-manager files, git hooks, `.claude/hooks/**`,
+`.claude/settings*.json`, `hooks.json`, `.github/workflows/**`, Dockerfiles, `.gitmodules`, `.gitattributes`), then
+the team's `pushGuard.reviewPaths`. Each entry is `{ "glob": "<path>", "mode": "always" | "check", "class":
+"security" | "leader" }`: a glob with no slash names a file at any depth, one with a slash is read from the repo
+root, and case is ignored. A team entry adds to teamrig's list; none removes one of it. An `always` hit holds the
+change for its class; a `check` hit runs `reviewCheck` first and holds it only when the check flags it or breaks. A
+change with hits of both classes waits on security.
+
+The branch names its task as `t<n>-…`, a task of the session that merges it. A held change is REFUSED with the
+hold's id, what it changes and the command that asks its reviewer:
+
+```text
+REFUSED review hold H3f2a9c0d1e7b keeps t12-ci (4f1c2a9e..9a0b1c2d) off the default branch: it changes .github/workflows/ci.yml.
+security answers it, and lead too from 10:30 IST: teamrig set T12 --status waiting --waits approval:security
+--note "review hold H3f2a9c0d1e7b of t12-ci 4f1c2a9e..9a0b1c2d" --session web; merge again once it is approved
+```
+
+A security hold goes to `roles.securityReviewer`, with the session's nearest leader (its sub-lead, else the lead)
+answering it too from 30 minutes on; a leader hold goes to that leader. Neither is ever the session itself, so the
+lead's own change goes to security, and with no other reviewer it is REFUSED with what to set. The reviewer answers
+with `teamrig approve <task>`; `teamrig merge` again merges the change. A hold binds the base, the head and the tree
+they make: an approval given before the hold, or a branch that changed since (a new commit, or a rebase onto a moved
+default branch), makes a new hold. A decline names the change to make before the next hold.
 
 Flags:
 
