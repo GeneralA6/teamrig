@@ -1,3 +1,4 @@
+import { numberField } from "../core/guards.js";
 import { parseObject, toJsonlLine, VERSION_FIELD, writableObject } from "../core/jsonl.js";
 import { MS_PER_HOUR, MS_PER_WEEK } from "../core/time.js";
 import { resolveReset } from "./pace.js";
@@ -97,10 +98,6 @@ const KINDS = ['assumed', 'week', 'reset', 'inferred'];
 function isKind(value) {
     return KINDS.some((kind) => kind === value);
 }
-function numberField(record, key) {
-    const value = record[key];
-    return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
-}
 /** A period file's content; undefined when it is damaged or in another format, which starts the period over. */
 export function parsePeriod(text) {
     const record = parseObject(text.trim());
@@ -141,6 +138,10 @@ export class PeriodStore {
     }
     /** The period after `sight`, written when it changed. A file a newer teamrig wrote is refused (`NewerDataError`), never overwritten. */
     async advance(sight) {
+        return (await this.move(sight)).period;
+    }
+    /** `advance`, with the stored period it moved on from. */
+    async move(sight) {
         const text = await this.files.read(this.path);
         writableObject(this.path, text, PERIOD_FORMAT);
         const stored = text === undefined ? undefined : parsePeriod(text);
@@ -148,14 +149,18 @@ export class PeriodStore {
         if (!samePeriod(stored, next)) {
             await this.files.write(this.path, formatPeriod(next));
         }
-        return next;
+        return { before: stored, period: next };
     }
     /**
      * The period at `now` after the status line's `use` and the `metered` W (`sightOf`), written when it changed;
      * undefined while no reset is known.
      */
     async periodAt(budget, use, now, metered) {
+        return (await this.moveAt(budget, use, now, metered))?.period;
+    }
+    /** `periodAt`, with the stored period it moved on from, whose latest use shows a percent passed since (budget/calibration.ts). */
+    async moveAt(budget, use, now, metered) {
         const sight = sightOf(budget, use, now, metered);
-        return sight === undefined ? undefined : this.advance(sight);
+        return sight === undefined ? undefined : this.move(sight);
     }
 }

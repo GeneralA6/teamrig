@@ -1,21 +1,17 @@
 import { join } from 'node:path';
-import { stringField } from "../core/guards.js";
+import { numberField, stringField } from "../core/guards.js";
 import { parseObject, toJsonlLine, VERSION_FIELD, writableObject } from "../core/jsonl.js";
 /**
  * The format of the warning files this code reads and writes; a file in another format reads as nothing shown,
  * and one in a newer format refuses a write.
  */
 export const WARN_FORMAT = 1;
-function finiteField(record, key) {
-    const value = record[key];
-    return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
-}
 /** An optional epoch-ms field: absent is undefined, anything but a finite number is damage. */
 function optionalTime(record, key) {
     if (!(key in record)) {
         return { ok: true, value: undefined };
     }
-    const value = finiteField(record, key);
+    const value = numberField(record, key);
     return { ok: value !== undefined, value };
 }
 /** A warning file's content; undefined when it is damaged or from another format. */
@@ -25,8 +21,8 @@ export function parseWarnState(text) {
         return undefined;
     }
     const day = stringField(record, 'day');
-    const level = finiteField(record, 'level');
-    const modelLevel = finiteField(record, 'modelLevel');
+    const level = numberField(record, 'level');
+    const modelLevel = numberField(record, 'modelLevel');
     const ahead = record['ahead'];
     // Absent in a file saved before teamrig kept it: not held.
     const held = record['held'] ?? false;

@@ -6,7 +6,8 @@ import { readStoredWeek } from "./stored-week.js";
  * What a new hire would spend a day, as `check`'s SCALE-OUT prices a slice (src/hiring/scale-out.ts): its part of the
  * team's daily budget today (src/budget/parts.ts `addedSessionPct`), beside each session's share, queued work
  * (`tasks`) and lift in force. The week is read as a hook reads it (`readStoredWeek`). Undefined while the team's daily budget is unknown: no reading of the
- * week's use, or no W per percent (no `budget.weeklyLimitW`, and a meter that does not reach back to the week's start).
+ * week's use, or no W per percent (none learned from the meter log, no `budget.weeklyLimitW`, and a meter that does not reach
+ * back to the week's start).
  */
 export async function readHirePct(runtime, paths, config, tasks, now) {
     const { budget, sessions } = config;

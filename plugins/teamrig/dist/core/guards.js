@@ -11,6 +11,11 @@ export function stringField(record, key) {
     const value = record[key];
     return typeof value === 'string' ? value : undefined;
 }
+/** The field as a finite number; undefined when it is absent, not a number, NaN or infinite. */
+export function numberField(record, key) {
+    const value = record[key];
+    return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
 export function recordField(record, key) {
     const value = record[key];
     return isRecord(value) ? value : undefined;
