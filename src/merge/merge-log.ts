@@ -1,6 +1,7 @@
 import type { Files } from '../core/files.ts';
 import { isNonNegativeInteger, isStringArray, stringField, type JsonRecord } from '../core/guards.ts';
 import { assertWritable, parseJsonl, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
+import { isReviewClearance, type ReviewClearance } from './review-gate-step.ts';
 import { isSelfMergeGate, type SelfMergeGate } from './self-merge.ts';
 
 /**
@@ -29,6 +30,8 @@ interface LandedChange {
   readonly lines: number;
   /** The checks the tree's pass record lists; empty when none proved it. */
   readonly checks: readonly string[];
+  /** How the review gate let it go; `checked` is a change only the review check looked at, which security samples. */
+  readonly review: ReviewClearance;
 }
 
 /** Every gate held, so the change landed with no click. */
@@ -47,8 +50,8 @@ export type MergeRecord = SelfMerge | ApprovedMerge;
 
 /** One landed change as the log's JSON record. */
 export function mergeRecordOf(record: MergeRecord): JsonRecord {
-  const { at, session, repo, branch, task, base, head, tree, files, lines, checks } = record;
-  const landed = { [VERSION_FIELD]: MERGE_FORMAT, at, session, repo, branch, task: task ?? null, base, head, tree, files, lines, checks, route: record.route };
+  const { at, session, repo, branch, task, base, head, tree, files, lines, checks, review } = record;
+  const landed = { [VERSION_FIELD]: MERGE_FORMAT, at, session, repo, branch, task: task ?? null, base, head, tree, files, lines, checks, review, route: record.route };
   return record.route === 'self' ? landed : { ...landed, missed: record.missed, approvedBy: record.approvedBy };
 }
 
@@ -59,7 +62,7 @@ const TEXT_FIELDS = ['at', 'session', 'repo', 'branch', 'base', 'head', 'tree'] 
 /** One record as a landed change; undefined when it is damaged. */
 export function parseMergeRecord(record: JsonRecord): MergeRecord | undefined {
   const [at, session, repo, branch, base, head, tree] = TEXT_FIELDS.map((key) => stringField(record, key));
-  const { task, files, lines, checks, route, missed } = record;
+  const { task, files, lines, checks, review, route, missed } = record;
   const approvedBy = stringField(record, 'approvedBy');
   if (
     at === undefined ||
@@ -73,11 +76,12 @@ export function parseMergeRecord(record: JsonRecord): MergeRecord | undefined {
     (task !== null && typeof task !== 'string') ||
     !isNonNegativeInteger(files) ||
     !isNonNegativeInteger(lines) ||
-    !isStringArray(checks)
+    !isStringArray(checks) ||
+    !isReviewClearance(review)
   ) {
     return undefined;
   }
-  const landed: LandedChange = { at, session, repo, branch, task: task ?? undefined, base, head, tree, files, lines, checks };
+  const landed: LandedChange = { at, session, repo, branch, task: task ?? undefined, base, head, tree, files, lines, checks, review };
   if (route === 'self') {
     return { ...landed, route };
   }

@@ -17,6 +17,7 @@ const SELF: SelfMerge = {
   files: 2,
   lines: 40,
   checks: ['unit', 'lint'],
+  review: 'checked',
   route: 'self',
 };
 const APPROVED: ApprovedMerge = { ...SELF, branch: 'fix-store', task: undefined, route: 'approved', missed: ['task', 'tests'], approvedBy: 'lead' };
@@ -40,6 +41,8 @@ describe('mergeRecordOf and parseMergeRecord', () => {
       { ...self, files: -1 },
       { ...self, lines: 1.5 },
       { ...self, checks: 'unit' },
+      { ...self, review: 'clean' },
+      { ...self, review: null },
       { ...self, route: 'forced' },
       { ...approved, missed: [] },
       { ...approved, missed: ['task', 'luck'] },
