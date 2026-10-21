@@ -12,8 +12,14 @@ import { ACTIVE_STATUSES } from '../register/model.ts';
  * own steps; a miss here sends the change to a leader's approval instead.
  */
 
-/** A gate a change can miss: its task, its pass record, its commit sizes, its tests. */
-export type SelfMergeGate = 'task' | 'pass' | 'size' | 'tests';
+/** The gates a change can miss, in the order they are read: its task, its pass record, its commit sizes, its tests. */
+export const SELF_MERGE_GATES = ['task', 'pass', 'size', 'tests'] as const;
+
+export type SelfMergeGate = (typeof SELF_MERGE_GATES)[number];
+
+export function isSelfMergeGate(value: unknown): value is SelfMergeGate {
+  return SELF_MERGE_GATES.some((gate) => gate === value);
+}
 
 export interface GateMiss {
   readonly gate: SelfMergeGate;
