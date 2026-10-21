@@ -1,7 +1,7 @@
 import { MS_PER_DAY, MS_PER_HOUR, parseDayStart, showStored } from "../core/time.js";
 import { topPriority } from "../config/priorities.js";
 import { approvalCleared } from "./approval.js";
-import { CARD_FLAGS } from "./card.js";
+import { CARD_FLAGS, whyAskUsage } from "./card.js";
 import { taskNumber } from "./fold.js";
 import { ACTIVE_STATUSES, priorityText } from "./model.js";
 import { loopFix, pathText, TaskTree } from "./tree.js";
@@ -17,6 +17,7 @@ export const FLAG_KINDS = [
     'NO-REASON',
     'PEER-WAIT',
     'NO-CARD',
+    'OWNER-ORDERED',
     'NOT-PICKED-UP',
     'PRIORITY-SKIP',
     'SELF-MADE',
@@ -65,6 +66,10 @@ export function currentWeekOf(snapshot, now, zone) {
  * - NO-REASON: waiting with no reason, as a line from an older teamrig reads: nothing says what it waits for;
  * - NO-CARD: waiting on the owner's decision or approval with no card to decide from (card.ts), as one set before
  *   cards, or while `requireDecisionCard` was off, reads; never with that switch off;
+ * - OWNER-ORDERED: a task the owner ordered (its source is `ownerSource`) waiting, or its proof waiting, on the
+ *   owner's decision or approval with no card saying why the owner is asked (`whyAsk`, card.ts): an owner's order
+ *   approves its own work and proof unless the order must change, the work needs something new, or only the owner
+ *   can see the result (T802);
  * - NOT-PICKED-UP: assigned longer ago than `notPickedUpAfterHours` with no event from its owner since
  *   (an idle session never reads its inbox, so it needs a direct wake);
  * - PRIORITY-SKIP: in progress below an open task of the top priority that has the same owner and is free to start
@@ -100,6 +105,7 @@ export function checkTasks(tasks, now, zone, week, config) {
         ...readyFlags(task, tree.context),
         ...(task.status === 'waiting' && task.waits.length === 0 ? [{ kind: 'NO-REASON', task, detail: 'set what it waits for (--waits) or its next status' }] : []),
         ...noCardFlags(task, config),
+        ...ownerOrderedFlags(task, config.ownerSource),
         ...timeFlags(task, at, config.check, tree),
         ...(top === undefined ? [] : prioritySkip(task, top, waiting, at, config.check, zone)),
         ...(plan === undefined ? [] : planFlags(task, plan, config.ownerSource, tree)),
@@ -139,6 +145,22 @@ function noCardFlags(task, config) {
     return config.requireDecisionCard && task.card === null && asksOwner
         ? [{ kind: 'NO-CARD', task, detail: `no card for ${ownerSource} to decide from: set it ${task.status} again with ${CARD_FLAGS}` }]
         : [];
+}
+/** OWNER-ORDERED, as {@link checkTasks} describes it. */
+function ownerOrderedFlags(task, ownerSource) {
+    if (task.source !== ownerSource || task.card?.whyAsk !== undefined) {
+        return [];
+    }
+    const kinds = [...new Set(task.waits.flatMap((reason) => ((reason.kind === 'decision' || reason.kind === 'approval') && reason.who === ownerSource ? [reason.kind] : [])))];
+    return kinds.length === 0
+        ? []
+        : [
+            {
+                kind: 'OWNER-ORDERED',
+                task,
+                detail: `${ownerSource} ordered it, and an order approves its own work and proof: drop the wait on ${ownerSource}'s ${kinds.join(' and ')}, or set it ${task.status} again with ${whyAskUsage(ownerSource)}`,
+            },
+        ];
 }
 /**
  * READY, as {@link checkTasks} describes it: a waiting task's reasons, or a verifying task's proof waits, all cleared;

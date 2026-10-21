@@ -3,7 +3,7 @@ import { LeadTree } from "../config/lead-tree.js";
 import { ADDRESS_PATTERN } from "../core/address.js";
 import { SecretScanner } from "../core/secrets.js";
 import { parseDeadline, parseUtcDay, parseUtcDeadline, showStored } from "../core/time.js";
-import { CARD_FLAGS, cardProblem, cardTexts, OPTION_SEPARATOR, sameCard } from "./card.js";
+import { CARD_FLAGS, cardProblem, cardTexts, OPTION_SEPARATOR, sameCard, WHY_ASK_FLAG, whyAskUsage, withoutWhyAsk } from "./card.js";
 import { sizeProblem } from "./events.js";
 import { taskNumber } from "./fold.js";
 import { ACTIVE_STATUSES, FOLLOWUP_STATUSES, GITHUB_SOURCE, priorityText, SESSION_NAME, WAIT_STATUSES } from "./model.js";
@@ -268,7 +268,9 @@ export class RegisterPolicy {
      * The card a status change writes (card.ts): none without a wait on a decision or an approval, where the card
      * flags are refused; the parts given over the card the task had while waiting, so one part can change alone; or,
      * with none given, that card. A wait on the owner's decision or approval needs a card while
-     * `register.requireDecisionCard` is on, so the owner decides from it alone (T514).
+     * `register.requireDecisionCard` is on, so the owner decides from it alone (T514). `--why-ask` goes only on a
+     * task the owner ordered that waits on the owner, and a card keeps it only while that holds (T802); while cards
+     * are required, such a task asks the owner only with it (ownerOrderCard).
      */
     cardChange(task, input, waits) {
         const asks = waits.filter((reason) => reason.kind === 'decision' || reason.kind === 'approval');
@@ -276,12 +278,17 @@ export class RegisterPolicy {
         if (asks.length === 0) {
             return given === undefined ? ok(null) : refuse(`${CARD_FLAGS} go only with --status ${WAIT_STATUSES.join(' or ')} on a decision or an approval`);
         }
-        const before = WAIT_STATUSES.includes(task.status) ? task.card : null;
+        const { ownerSource, requireDecisionCard } = this.config.register;
+        const owners = asks.filter((reason) => reason.who === ownerSource);
+        const ordered = task.source === ownerSource && owners.length > 0;
+        if (given?.whyAsk !== undefined && !ordered) {
+            return refuse(`${WHY_ASK_FLAG} says why ${ownerSource} is asked about what ${ownerSource} ordered: it goes only with a wait on ${ownerSource}'s decision or approval of a task from ${ownerSource}`);
+        }
+        const kept = WAIT_STATUSES.includes(task.status) ? task.card : null;
+        const before = kept === null || ordered ? kept : withoutWhyAsk(kept);
         if (given === undefined) {
-            const { ownerSource, requireDecisionCard } = this.config.register;
-            const owners = asks.filter((reason) => reason.who === ownerSource);
-            if (before !== null || owners.length === 0 || !requireDecisionCard) {
-                return ok(before);
+            if (before !== null || owners.length === 0 || !requireDecisionCard || ordered) {
+                return this.ownerOrderCard(task, owners, before);
             }
             const kinds = owners.map((reason) => reason.kind).join(' and ');
             return refuse(`a wait on ${ownerSource}'s ${kinds} needs a card, so ${ownerSource} decides from it alone: ${CARD_USAGE}`);
@@ -290,9 +297,28 @@ export class RegisterPolicy {
         if (parts.question === undefined || parts.recommend === undefined || parts.byDefault === undefined) {
             return refuse(`a card needs ${CARD_FLAGS} (--options for a decision): ${CARD_USAGE}`);
         }
-        const card = { question: parts.question, options: parts.options ?? [], recommend: parts.recommend, byDefault: parts.byDefault };
+        const card = {
+            question: parts.question,
+            options: parts.options ?? [],
+            recommend: parts.recommend,
+            byDefault: parts.byDefault,
+            ...(parts.whyAsk === undefined ? {} : { whyAsk: parts.whyAsk }),
+        };
         const problem = cardProblem(card, asks.some((reason) => reason.kind === 'decision'));
-        return problem === undefined ? ok(card) : refuse(problem);
+        return problem === undefined ? this.ownerOrderCard(task, owners, card) : refuse(problem);
+    }
+    /**
+     * An owner's order approves its own work and proof (rule 6), so while `register.requireDecisionCard` is on, a task
+     * the owner ordered waits on the owner (`owners`) only with a card that says why (`whyAsk`, T802); check flags rows
+     * written before or with the switch off (OWNER-ORDERED).
+     */
+    ownerOrderCard(task, owners, card) {
+        const { ownerSource, requireDecisionCard } = this.config.register;
+        if (task.source !== ownerSource || owners.length === 0 || !requireDecisionCard || card?.whyAsk !== undefined) {
+            return ok(card);
+        }
+        const kinds = owners.map((reason) => reason.kind).join(' and ');
+        return refuse(`${ownerSource} ordered ${task.id}, and an order approves its own work and proof: drop the wait on ${ownerSource}'s ${kinds}, or give ${whyAskUsage(ownerSource)}${card === null ? ` with ${CARD_USAGE}` : ''}`);
     }
     waitProblem(task, status, reason, context) {
         switch (reason.kind) {

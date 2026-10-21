@@ -48,7 +48,7 @@ export class NewerDataError extends Error {
     found;
     known;
     constructor(file, found, known) {
-        super(`${file} holds format v${found} records; this version writes v${known}. Update teamrig before writing.`);
+        super(`${file} holds format v${found} records; this version writes v${known}. A newer teamrig wrote them: in a Claude Code tab, /reload-plugins loads the installed one; elsewhere, update teamrig before writing.`);
         this.name = 'NewerDataError';
         this.file = file;
         this.found = found;
