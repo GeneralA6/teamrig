@@ -227,7 +227,10 @@ function sizeFinding(what: string, chars: number, budget: number, key: keyof Con
   return [{ kind: 'context-size', detail }];
 }
 
-function contextFindings({ contextFiles: { read, budgets } }: DoctorInput): Finding[] {
+/** What the context findings weigh: the files every call re-reads, and the lists the newest session's context holds. */
+export type ContextInput = Pick<DoctorInput, 'contextFiles' | 'sessionLists'>;
+
+function contextFindings({ contextFiles: { read, budgets } }: ContextInput): Finding[] {
   const claudeMdChars = read.claudeMd.reduce((sum, file) => sum + file.chars, 0);
   const claudeMd = read.claudeMd.map((file) => `${file.path} ${count(file.chars)}`).join(', ');
   const memory = read.memoryIndex;
@@ -259,7 +262,7 @@ function describeSessionList(list: SessionList): string {
   return `${SESSION_LIST_LABELS[list.kind]} ${list.count}, ${count(list.chars)}${breakdown}`;
 }
 
-function sessionListsFinding({ sessionLists, contextFiles: { budgets } }: DoctorInput): Finding[] {
+function sessionListsFinding({ sessionLists, contextFiles: { budgets } }: ContextInput): Finding[] {
   if (sessionLists === undefined) {
     return [];
   }
@@ -274,6 +277,14 @@ function sessionListsFinding({ sessionLists, contextFiles: { budgets } }: Doctor
     `over its budget of ${count(budget)} [contextFiles.maxSessionListsChars]: ${lists.map(describeSessionList).join('; ')}; ` +
     'every call re-reads this text, so turn off unused claude.ai connectors and skills in claude.ai settings, and unused plugins with /plugin';
   return [{ kind: 'context-lists', detail }];
+}
+
+/**
+ * The `context-size` and `context-lists` findings: text every call of a session on this machine re-reads, over its
+ * `contextFiles` budget. `check` prints them too (T393), so every session sees them at `start`, not only in `doctor`.
+ */
+export function contextSizeFindings(input: ContextInput): Finding[] {
+  return [...contextFindings(input), ...sessionListsFinding(input)];
 }
 
 function treeFindings({ tree, command }: DoctorInput): Finding[] {
@@ -353,8 +364,7 @@ export function doctorFindings(input: DoctorInput): Finding[] {
     ...renameLogFindings(input),
     ...inboxFindings(input),
     ...rulesFindings(input),
-    ...contextFindings(input),
-    ...sessionListsFinding(input),
+    ...contextSizeFindings(input),
     ...treeFindings(input),
     ...routingEnvFindings(input),
     ...launchFindings(input),

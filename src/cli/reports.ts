@@ -2,6 +2,7 @@ import { KIT_NAME } from '../core/home.ts';
 import type { TimeZone } from '../core/zone.ts';
 import type { DecisionBatch } from '../decisions/batch.ts';
 import { checkDecisionLines } from '../decisions/lines.ts';
+import { formatFinding, type Finding } from '../doctor/doctor.ts';
 import { formatHireFlag, type HireFlag } from '../hiring/due.ts';
 import { FLAG_KINDS, formatFlag, type Flag, type FlagKind } from '../register/check.ts';
 import type { Task } from '../register/fold.ts';
@@ -53,6 +54,8 @@ export interface CheckReport {
   readonly skillsDir: string;
   /** The hire flags: SCALE-OUT on an area, then RETIRE-DUE and REVIEW-DUE on a hired session; printed only when there are some. */
   readonly hires: readonly HireFlag[];
+  /** Doctor's context-size and context-lists findings: text every call of a session on this machine re-reads, over its budget; printed only when there are some. */
+  readonly context: readonly Finding[];
   /** The own team's batch of the owner's decisions, for its lead; printed only while a batch is due. */
   readonly decisions: LeadDecisions | undefined;
 }
@@ -69,7 +72,8 @@ export interface LeadDecisions {
  * A report narrowed to what one session acts on, for `start`: the flags of the tasks it owns, of the skills
  * it fixes (only a task's owner sets its status), on itself as a hired session and a SCALE-OUT on its area. A sub-lead
  * also gets the flags of its group's tasks (`group`, empty for a session that leads no one), since it sets their work
- * order (T782). The scope names the session and its group, so the CHECK line says whose flags these are.
+ * order (T782). The scope names the session and its group, so the CHECK line says whose flags these are. The context
+ * flags stay whole: the text they weigh is every session's on the machine, not one owner's.
  */
 export function ownCheck(report: CheckReport, owner: string, group: readonly string[]): CheckReport {
   const owners = new Set([owner, ...group]);
@@ -179,12 +183,17 @@ function hireLines({ hires }: CheckReport, indent: string): string[] {
   return hires.length === 0 ? [] : [`HIRES ${hires.length} flag(s)`, ...hires.map((flag) => `${indent}${formatHireFlag(flag)}`)];
 }
 
+/** The context findings' `CONTEXT` line and each finding; nothing while the context text is within its budgets. */
+function contextLines({ context }: CheckReport, indent: string): string[] {
+  return context.length === 0 ? [] : [`CONTEXT ${context.length} flag(s)`, ...context.map((finding) => `${indent}${formatFinding(finding)}`)];
+}
+
 /** The lead's `DECISIONS` line while a batch of the owner's decisions is due; nothing otherwise. */
 function decisionLines({ decisions }: CheckReport): string[] {
   return decisions === undefined ? [] : checkDecisionLines(decisions.batch, KIT_NAME, decisions.lead, decisions.zone);
 }
 
-/** Each register's `CHECK` line and flags, then the hire flags, the lead's due batch of decisions, then the skill flags: every flag, every field. */
+/** Each register's `CHECK` line and flags, then the hire flags, the context flags, the lead's due batch of decisions, then the skill flags: every flag, every field. */
 function longCheck(report: CheckReport): string[] {
   return [
     ...report.sections.flatMap(({ team, flags, tree }) => [
@@ -192,6 +201,7 @@ function longCheck(report: CheckReport): string[] {
       ...flags.map((flag) => formatFlag(flag, team, tree)),
     ]),
     ...hireLines(report, ''),
+    ...contextLines(report, ''),
     ...decisionLines(report),
     skillsLine(report),
     ...report.skills.map(formatSkillFlag),
@@ -211,7 +221,7 @@ function kindLines(kind: FlagKind, rows: readonly TeamFlag[], shown: number): st
 
 /**
  * The short `check`: one `CHECK` line over every register, then each kind with its count and its first flags in plan
- * order, then every hire flag (at most two per hired session), the lead's due batch of decisions, then the skill flags the same way as the kinds. Each kind shows MAX_FLAGS_PER_KIND flags, or fewer, the same number for
+ * order, then every hire flag (at most two per hired session), every context flag (at most one per budget), the lead's due batch of decisions, then the skill flags the same way as the kinds. Each kind shows MAX_FLAGS_PER_KIND flags, or fewer, the same number for
  * every kind, so the whole fits in SHORT_FORM_CHARS; at one each, lines past the budget give way to a `+N more` line.
  */
 function shortCheck(report: CheckReport): string[] {
@@ -221,12 +231,13 @@ function shortCheck(report: CheckReport): string[] {
     rows: flags.filter(({ flag }) => flag.kind === kind).sort((x, y) => planOrder(x.tree.placeOf(x.flag.task), y.tree.placeOf(y.flag.task))),
   })).filter(({ rows }) => rows.length > 0);
   const teams = report.sections.length > 1 ? ` in ${report.sections.length} team(s)` : '';
-  const hint = flags.length + report.skills.length + report.hires.length > 0 ? ' (short form; --all for every flag in full)' : '';
+  const hint = flags.length + report.skills.length + report.hires.length + report.context.length > 0 ? ' (short form; --all for every flag in full)' : '';
   const head = `CHECK ${flags.length} flag(s)${teams}, ${report.scope}${hint}`;
   const linesShowing = (shown: number): string[] => [
     head,
     ...kinds.flatMap(({ kind, rows }) => kindLines(kind, rows, shown)),
     ...hireLines(report, '  '),
+    ...contextLines(report, '  '),
     ...decisionLines(report),
     skillsLine(report),
     ...firstOf(

@@ -1,9 +1,10 @@
 import { claudeProjectsDir } from '../../budget/discover.ts';
 import { launchOf } from '../../config/launch.ts';
 import { Roster } from '../../config/roster.ts';
+import type { ContextFilesConfig } from '../../config/types.ts';
 import { claudeConfigDir, KIT_NAME } from '../../core/home.ts';
 import { readContextFiles } from '../../doctor/context-files.ts';
-import { doctorFindings, formatFinding } from '../../doctor/doctor.ts';
+import { doctorFindings, formatFinding, type ContextInput } from '../../doctor/doctor.ts';
 import { readSessionLists } from '../../doctor/session-lists.ts';
 import { claudeSettingsFiles, readSettingsEnv } from '../../doctor/settings-env.ts';
 import { HiringLog, retiredSessions } from '../../hiring/log.ts';
@@ -16,6 +17,19 @@ import { loadTree } from '../tree.ts';
 import { inboxDepsOf } from './inbox.ts';
 
 /**
+ * What the context findings weigh (`ContextInput`): the CLAUDE.md files, memory index and skill listing of `project`,
+ * the user's Claude Code folder and the `skills` folder against `budgets`, and the lists of the project's newest
+ * session, its transcript read in chunks. `doctor` and `check` read it.
+ */
+export async function readContextInput(runtime: CliRuntime, project: string, skills: string, budgets: ContextFilesConfig): Promise<ContextInput> {
+  const claudeDir = claudeConfigDir(runtime.env, runtime.userHome);
+  return {
+    contextFiles: { read: await readContextFiles(runtime.files, { claudeDir, project, skills }), budgets },
+    sessionLists: await readSessionLists(runtime.transcripts, claudeProjectsDir(runtime.env, runtime.userHome), project),
+  };
+}
+
+/**
  * `doctor`: what teamrig lacks on this machine (git, Claude Code, Node.js), then the team's health checks
  * (names, the rename log, inboxes, rules.md, its tree of teams and session names shared with other teams,
  * read from every team config of the kit home), and the text every call of a session in the project re-reads
@@ -24,7 +38,7 @@ import { inboxDepsOf } from './inbox.ts';
  * silently overrides the model or effort a session or helper is given: `CLAUDE_CODE_EFFORT_LEVEL` or
  * `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` in doctor's own environment or in the `env` block of the user's or the
  * project's Claude Code settings, and a session whose `launch` names a model but no effort. It reads only and
- * exits 0 like `check`: a finding is advice, and each line says the fix.
+ * exits 0 like `check`: a finding is advice, and each line says the fix. `check` prints the context findings too.
  */
 export async function doctor(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
@@ -46,11 +60,7 @@ export async function doctor(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     inboxes: (await inboxStatus(inboxDepsOf(runtime, paths))).map((status) => status.unread),
     retired: new Set(retiredSessions(records).map((record) => record.session)),
     teamRules: rules === undefined ? undefined : { path: paths.teamRules, chars: rules.trim().length },
-    contextFiles: {
-      read: await readContextFiles(runtime.files, { claudeDir, project, skills: paths.skills }),
-      budgets: config.contextFiles,
-    },
-    sessionLists: await readSessionLists(runtime.transcripts, claudeProjectsDir(runtime.env, runtime.userHome), project),
+    ...(await readContextInput(runtime, project, paths.skills, config.contextFiles)),
     tree: { problems: tree.problemsOf(paths.team), clashes: tree.nameClashesOf(paths.team) },
     env: runtime.env,
     settingsEnv: await readSettingsEnv(runtime.files, claudeSettingsFiles(claudeDir, project)),
