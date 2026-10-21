@@ -221,12 +221,14 @@ export interface PushGuardConfig {
 /**
  * A normal push to a protected branch: `ask` the human, `allow` it with a note, or `lead`: the lead's own goes through
  * with a note, another session's only once the lead approved one of its waiting tasks (`teamrig approve`, T684), else
- * it is refused with how to ask, never asked of the human. None changes a refusal, a `--force-with-lease` push, or a
- * command the guard cannot read, which still asks.
+ * it is refused with how to ask, never asked of the human. `gated` (T800 §2.1, T858) clears a hand push as `lead` does,
+ * and `teamrig integrate` lands a change that holds the self-merge gates with no approval, logging it, and holds one
+ * that misses a gate for its session's leader. None changes a refusal, a `--force-with-lease` push, or a command the
+ * guard cannot read, which still asks.
  */
-export type PushToProtected = 'ask' | 'allow' | 'lead';
+export type PushToProtected = 'ask' | 'allow' | 'lead' | 'gated';
 
-export const PUSH_TO_PROTECTED: readonly PushToProtected[] = ['ask', 'allow', 'lead'];
+export const PUSH_TO_PROTECTED: readonly PushToProtected[] = ['ask', 'allow', 'lead', 'gated'];
 
 export function isPushToProtected(value: unknown): value is PushToProtected {
   return PUSH_TO_PROTECTED.some((choice) => choice === value);
