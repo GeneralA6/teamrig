@@ -215,7 +215,7 @@ function* walkDefaults(schema: JsonRecord, config: JsonRecord | undefined, path:
 }
 
 /**
- * Every key the schema lists, with its dotted path, also inside array items (`[]`) and map values (`<key>`).
+ * Every key the schema lists, with its dotted path, also inside array items (`[]`) and map values (`*`, as nodeAt takes them).
  * The item or value object itself is not a key: the array or map that holds it describes it.
  */
 function* walkKeys(schema: JsonRecord, path: string): Generator<[string, JsonRecord]> {
@@ -233,7 +233,7 @@ function* walkKeys(schema: JsonRecord, path: string): Generator<[string, JsonRec
   }
   const value = anyProperty(schema);
   if (value !== undefined) {
-    yield* walkKeys(value, `${path}.<key>`);
+    yield* walkKeys(value, `${path}.*`);
   }
 }
 
@@ -264,7 +264,7 @@ describe('config.schema.json', () => {
     assert.deepEqual([...walkKeys(schema, '')].filter(([, node]) => !hasDescription(node)).map(([path]) => path), ['list[].id']);
     assert.deepEqual(
       [...walkKeys(schema, '')].map(([path]) => path),
-      ['list', 'list[].id', 'map', 'map.<key>.share'],
+      ['list', 'list[].id', 'map', 'map.*.share'],
     );
   });
 
