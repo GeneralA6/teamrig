@@ -7,6 +7,8 @@ import { LEDGER_FILE, LEDGER_MD_FILE } from './ledger.ts';
 
 /** The host lock's file name in the kit home, where every team on the host shares it. */
 export const HOST_LOCK_FILE = 'host.lock';
+/** The review holds' folder in `coordinator.dir`. */
+export const REVIEW_HOLDS_DIR = 'review-holds';
 
 /** The files the coordinator keeps. */
 export interface CoordinatorPlaces {
@@ -18,6 +20,8 @@ export interface CoordinatorPlaces {
   readonly hostLock: string;
   /** The folder of the branches whose merge command waits, one file each (src/merge/pending-merges.ts). */
   readonly pendingMerges: string;
+  /** The review gate's holds, one file per branch in flight (`ReviewHolds`). */
+  readonly reviewHolds: string;
 }
 
 /** A configured path as a place: a relative one is in the team's folder. */
@@ -31,8 +35,9 @@ export function coordinatorDirOf(config: Pick<CoordinatorConfig, 'dir'>, paths: 
 }
 
 /**
- * Where the coordinator's files are: the ledgers, the quiet claims and their lock, and the pending merges in `coordinator.dir` (default `<state>/deploys`), the host lock at
- * `coordinator.heavy.lockPath` (default the kit home's, one for the host). A relative path is in the team's folder.
+ * Where the coordinator's files are: the ledgers, the quiet claims and their lock, the pending merges and the review
+ * holds in `coordinator.dir` (default `<state>/deploys`); the host lock at `coordinator.heavy.lockPath` (default the
+ * kit home's, one for the host). A relative path is in the team's folder.
  */
 export function coordinatorPlaces(config: CoordinatorConfig, paths: TeamPaths): CoordinatorPlaces {
   const inTeam = (path: string): string => teamPlace(paths, path);
@@ -45,5 +50,6 @@ export function coordinatorPlaces(config: CoordinatorConfig, paths: TeamPaths): 
     claimsLock: join(dir, CLAIMS_LOCK_FILE),
     hostLock: config.heavy.lockPath === undefined ? join(paths.kitHome, HOST_LOCK_FILE) : inTeam(config.heavy.lockPath),
     pendingMerges: join(dir, 'pending-merges'),
+    reviewHolds: join(dir, REVIEW_HOLDS_DIR),
   };
 }
