@@ -53,6 +53,8 @@ export class FakeMergeGit implements MergeGit {
   readonly ancestry = new Set<string>(['base>mine', 'base>rebased']);
   /** File texts by `<commit>:<path>`. */
   readonly files = new Map<string, string>();
+  /** Trees by commit, where a test needs two commits to make one tree. */
+  readonly trees = new Map<string, string>();
   defaultName = 'main';
   mergeBaseIs: string | undefined = 'base';
   paths: readonly string[] | undefined = ['src/app.ts'];
@@ -133,6 +135,12 @@ export class FakeMergeGit implements MergeGit {
 
   sha(dir: string, ref: string): string | undefined {
     return this.commitOf(dir, ref);
+  }
+
+  /** A commit's tree is `tree-<commit>`, unless `trees` names another. */
+  treeOf(dir: string, ref: string): string | undefined {
+    const commit = this.commitOf(dir, ref);
+    return commit === undefined ? undefined : (this.trees.get(commit) ?? `tree-${commit}`);
   }
 
   remoteHead(_dir: string, remote: string, branch: string): string | undefined {

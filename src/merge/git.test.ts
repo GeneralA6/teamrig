@@ -159,6 +159,20 @@ describe('GIT_MERGE reading origin and a range', () => {
       repo.remove();
     }
   });
+
+  it('reads the tree a commit makes, the same for two commits of the same files', () => {
+    const { repo } = repoWithOrigin('integrate-tree');
+    try {
+      const tree = git.treeOf(repo.dir, 'HEAD');
+      assert.equal(tree, repo.git('rev-parse', 'HEAD^{tree}').trim());
+      repo.git('commit', '-q', '--allow-empty', '-m', 'empty');
+      assert.equal(git.treeOf(repo.dir, 'HEAD'), tree);
+      assert.notEqual(git.sha(repo.dir, 'HEAD'), git.sha(repo.dir, 'HEAD~1'));
+      assert.equal(git.treeOf(repo.dir, 'no-such-ref'), undefined);
+    } finally {
+      repo.remove();
+    }
+  });
 });
 
 describe('GIT_MERGE rebase', () => {
