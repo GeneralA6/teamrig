@@ -66,6 +66,8 @@ describe('teamPaths', () => {
     assert.equal(paths.handover, join(TEAM_HOME, 'handover'));
     assert.equal(paths.verifyNotices, join(TEAM_HOME, 'state', 'verify-notices.jsonl'));
     assert.equal(paths.modelNotices, join(TEAM_HOME, 'state', 'model-notices'));
+    assert.equal(paths.unownedNotices, join(TEAM_HOME, 'state', 'unowned-notices.json'));
+    assert.equal(paths.unownedNoticesLock, join(TEAM_HOME, 'state', 'unowned-notices.lock'));
     assert.equal(paths.usage, join(TEAM_HOME, 'state', 'usage'));
     assert.equal(paths.lifts, join(TEAM_HOME, 'state', 'usage', 'lifts.jsonl'));
     assert.equal(paths.hires, join(TEAM_HOME, 'state', 'hires.jsonl'));

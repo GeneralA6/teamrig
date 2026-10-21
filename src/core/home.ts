@@ -124,6 +124,10 @@ export interface TeamPaths {
   readonly verifyNotices: string;
   /** The model notices each session's Stop hook already showed, `<id>.json` each. */
   readonly modelNotices: string;
+  /** The warnings no session owns the lead was told of, so each is told once while it stands (T951). */
+  readonly unownedNotices: string;
+  /** Held while a start tells the lead of those warnings, so two starts never tell one twice. */
+  readonly unownedNoticesLock: string;
   /** Each session's metered use, `<id>.json` each, and `outside/` for use outside the team. */
   readonly usage: string;
   /** The skills scorecard's per-day counts and transcript positions (`teamrig skills scorecard`). */
@@ -210,6 +214,8 @@ export function teamPaths(kitHome: string, team: string, userHome: string, overr
     handover: inHome(overrides.handover) ?? join(home, 'handover'),
     verifyNotices: join(state, 'verify-notices.jsonl'),
     modelNotices: join(state, 'model-notices'),
+    unownedNotices: join(state, 'unowned-notices.json'),
+    unownedNoticesLock: join(state, 'unowned-notices.lock'),
     usage: join(state, 'usage'),
     skillsScorecard: join(state, 'skills-scorecard.json'),
     period: join(state, 'usage', 'period.json'),

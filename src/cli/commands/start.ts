@@ -1,12 +1,22 @@
 import { LeadTree } from '../../config/lead-tree.ts';
+import type { KitConfig } from '../../config/types.ts';
+import { KIT_NAME } from '../../core/home.ts';
+import { FileLock, LockBusyError } from '../../core/lock.ts';
+import { SecretScanner } from '../../core/secrets.ts';
+import { postLine } from '../../inbox/inbox.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { callerOf } from '../inputs.ts';
-import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone } from '../kit.ts';
-import { checkLines, ownCheck } from '../reports.ts';
+import { openTeamKit, requireConfig, rosterOf, sessionIdOf, teamZone, type Kit } from '../kit.ts';
+import { checkLines, ownCheck, type CheckReport } from '../reports.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
+import { UnownedNotices } from '../unowned-notices.ts';
+import { unownedNotice } from '../unowned.ts';
 import { weekLineOf } from './budget.ts';
-import { read } from './inbox.ts';
+import { inboxDepsOf, read } from './inbox.ts';
 import { checkReport, list, waitingReport } from './register.ts';
+
+/** The most inbox lines one start posts the lead on warnings no session owns; the rest wait for the next start. */
+export const MAX_UNOWNED_NOTICES = 5;
 
 /**
  * `start [--session <id|name>] [--all]`: what a session reads at the start of a work block, in one call: the time on
@@ -15,7 +25,8 @@ import { checkReport, list, waitingReport } from './register.ts';
  * acts on (the lead's: every flag, as `check`; any other session's: those of the tasks and skills it owns, a sub-lead's
  * also those of its group's tasks) and the
  * week's use (the first line of `budget`). `--all` prints the list and the flags in their long form, as `list
- * --all` and `check --all` do, and every task waiting on it.
+ * --all` and `check --all` do, and every task waiting on it. Any session's start also posts the lead one inbox line on
+ * each warning no session owns that the lead was not told of yet (T951), at most MAX_UNOWNED_NOTICES per start.
  */
 export async function start(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
@@ -29,8 +40,35 @@ export async function start(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   await list(own, runtime);
   (await waitingReport(own, runtime)).forEach((line) => runtime.out.stdout(line));
   const report = await checkReport(own, runtime);
+  await tellLead(runtime, kit, config, report);
   const tree = new LeadTree(config);
   checkLines(id === tree.lead ? report : ownCheck(report, id, tree.groupOf(id)), args.switches.has('all')).forEach((line) => runtime.out.stdout(line));
   runtime.out.stdout(await weekLineOf(runtime, kit, config, roster));
   return EXIT.ok;
+}
+
+/**
+ * Posts the lead one inbox line on each warning no session owns that it was not told of yet, so a warning reaches the
+ * lead even when the lead does not start. A refused line or a busy lock is a stderr line; the next start tries again.
+ */
+async function tellLead(runtime: CliRuntime, kit: Kit, config: KitConfig, report: CheckReport): Promise<void> {
+  const { files, clock, sleep, pid } = runtime;
+  const notices = new UnownedNotices(files, kit.paths.unownedNotices, new FileLock(kit.paths.unownedNoticesLock, config.lock, { files, clock, sleep, pid }));
+  const { inboxes } = inboxDepsOf(runtime, kit.paths);
+  const secrets = new SecretScanner(config.register.secretPatterns);
+  const now = new Date(clock.now());
+  try {
+    const told = await notices.tell(report.unowned, MAX_UNOWNED_NOTICES, (warning) =>
+      postLine(inboxes, secrets, { to: report.lead, from: KIT_NAME, text: unownedNotice(warning), now }),
+    );
+    told.failed.forEach(({ warning, problem }) => runtime.out.stderr(`WARN ${report.lead} was not told of a warning no session owns (${warning.key}): ${problem}`));
+    if (told.posted.length > 0) {
+      runtime.out.stderr(`NOTE ${report.lead} has ${told.posted.length} new inbox line(s) on warnings no session owns`);
+    }
+  } catch (error) {
+    if (!(error instanceof LockBusyError)) {
+      throw error;
+    }
+    runtime.out.stderr(`WARN ${report.lead} was not told of the warnings no session owns: ${error.message}`);
+  }
 }

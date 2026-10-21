@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { APP, CliHarness, SKILLS_DIR, TEAM, type RunOptions } from '../testing/cli-harness.ts';
+import { APP, CliHarness, SKILLS_DIR, TEAM, TEAM_HOME, type RunOptions } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
 
 const AS_ALPHA = { env: { TEAMRIG_SESSION: 'alpha' } };
@@ -54,4 +54,55 @@ describe('the warnings no session owns go to the lead (T951)', () => {
     assert.equal(lead.stdout.includes(`SKILLS 0 flag(s) in ${SKILLS_DIR}`), true, lead.stdout.join('\n'));
     assert.equal(lead.stdout.includes(`from the skill check of ${SKILLS_DIR}: SKILL OWNER (owner ghost is not a session on the team) ghost orphan`), true, lead.stdout.join('\n'));
   });
+
+  it("posts the lead one inbox line per warning from any session's start, once while it stands", async () => {
+    const kit = new CliHarness({ ...TEAM, contextFiles: { maxClaudeMdChars: BUDGET } });
+    await kit.files.write(join(APP, 'CLAUDE.md'), 'x'.repeat(BUDGET + 1));
+    const first = await kit.run(['start'], AS_ALPHA);
+    assert.equal(first.code, EXIT.ok, first.stderr.join('\n'));
+    assert.equal(first.stderr.includes('NOTE lead has 1 new inbox line(s) on warnings no session owns'), true, first.stderr.join('\n'));
+    assert.equal((await kit.run(['start'], AS_ALPHA)).code, EXIT.ok);
+    const lines = await leadNotices(kit);
+    assert.equal(lines.length, 1, lines.join('\n'));
+    assert.match(
+      lines[0] ?? '',
+      /^- \S+ \S+ teamrig: the context check \[contextFiles\.maxClaudeMdChars\] raised a warning no session owns, so it is yours as lead: WARN context-size .*; fix it, hand it on \(teamrig add --owner <session>\) or settle the check/,
+    );
+
+    await kit.files.write(join(APP, 'CLAUDE.md'), 'x');
+    assert.equal((await kit.run(['start'], AS_ALPHA)).code, EXIT.ok);
+    await kit.files.write(join(APP, 'CLAUDE.md'), 'x'.repeat(BUDGET + 1));
+    assert.equal((await kit.run(['start'], AS_ALPHA)).code, EXIT.ok);
+    assert.equal((await leadNotices(kit)).length, 2, 'a warning that cleared and returned is told again');
+  });
+
+  it('posts at most five lines per start, and the rest at the next', async () => {
+    const kit = new CliHarness(TEAM);
+    for (const name of ['o1', 'o2', 'o3', 'o4', 'o5', 'o6', 'o7']) {
+      await kit.files.write(join(SKILLS_DIR, name, 'SKILL.md'), `---\nname: ${name}\ndescription: A skill with an owner who left.\n---\nOwner: ghost\nLast verified: 2030-01-01\n`);
+    }
+    assert.equal((await kit.run(['start'], AS_ALPHA)).code, EXIT.ok);
+    assert.equal((await leadNotices(kit)).length, 5);
+    assert.equal((await kit.run(['start'], AS_ALPHA)).code, EXIT.ok);
+    assert.equal((await leadNotices(kit)).length, 7);
+  });
+
+  it('warns and goes on when another start holds the lock, so the next start tells the lead', async () => {
+    const kit = new CliHarness({ ...TEAM, contextFiles: { maxClaudeMdChars: BUDGET } });
+    await kit.files.write(join(APP, 'CLAUDE.md'), 'x'.repeat(BUDGET + 1));
+    await kit.files.write(join(TEAM_HOME, 'state', 'unowned-notices.lock'), JSON.stringify({ pid: 99, at: kit.clock.now() }));
+    const held = await kit.run(['start'], AS_ALPHA);
+    assert.equal(held.code, EXIT.ok, held.stderr.join('\n'));
+    assert.match(held.stderr.join('\n'), /^WARN lead was not told of the warnings no session owns: .*unowned-notices\.lock is held by another process/m);
+    assert.equal((await leadNotices(kit)).length, 0);
+    await kit.files.remove(join(TEAM_HOME, 'state', 'unowned-notices.lock'));
+    assert.equal((await kit.run(['start'], AS_ALPHA)).code, EXIT.ok);
+    assert.equal((await leadNotices(kit)).length, 1);
+  });
 });
+
+/** The lead's inbox lines on warnings no session owns. */
+async function leadNotices(kit: CliHarness): Promise<string[]> {
+  const text = (await kit.files.read(join(TEAM_HOME, 'state', 'inbox', 'lead.md'))) ?? '';
+  return text.split('\n').filter((line) => line.includes('raised a warning no session owns'));
+}
