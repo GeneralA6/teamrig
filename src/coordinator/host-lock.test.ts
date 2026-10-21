@@ -441,6 +441,13 @@ describe('HostLock.acquire in a moving line', () => {
         await store.remove(shareFile(shareOf())[0]);
       },
     ],
+    [
+      'a small step that ended while the holder waited for it',
+      Object.fromEntries([[PATH, heldBy()], shareFile(shareOf({ token: 's1' })), shareFile(shareOf({ token: 's2' }))]),
+      async (store: MemoryFiles) => {
+        await store.remove(shareFile(shareOf({ token: 's1' }))[0]);
+      },
+    ],
   ] as const) {
     it(`counts ${label} as the line moving`, async () => {
       let sleeps = 0;
@@ -754,5 +761,33 @@ describe('HostLock shares', () => {
     const steps = '2 small steps: po (heavy: specs) since 2030-01-08 09:50 UTC, web (heavy: lint) since 2030-01-08 09:55 UTC';
     assert.equal(holderText({ kind: 'draining', shares }, TimeZone.UTC), steps);
     assert.equal(holderText({ kind: 'memory', freeMb: 7000, heldMb: 4096, needMb: 6144, shares }, TimeZone.UTC), `${steps}; 7000 MB free, 4096 MB held for them, 6144 MB needed`);
+    const holder = shareOf({ token: 'h', purpose: 'heavy: build', kit: '0.1.0' });
+    assert.equal(holderText({ kind: 'held', info: holder, waitsFor: shares }, TimeZone.UTC), `po (heavy: build) since 2030-01-08 09:50 UTC, on teamrig 0.1.0, waiting for ${steps}`);
+  });
+
+  it('names the small steps a holder still waits for, to a step and to a small step waiting behind it', async () => {
+    const info: HostLockInfo = { token: 'other', pid: OTHER, session: 'po', purpose: 'heavy: build', kit: KIT_VERSION, acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z' };
+    const web = shareOf({ token: 's1', session: 'web', acquiredAt: '2030-01-08T09:55:00.000Z' });
+    const initial = Object.fromEntries([[PATH, JSON.stringify(info)], shareFile(web), shareFile(shareOf({ token: 'gone', pid: 7 }))]);
+    const told: string[] = [];
+    const step = await world(initial).lock.acquire('alpha', 'heavy: build', 0, 30_000, (holder) => told.push(holderText(holder, TimeZone.UTC)));
+    const smallStep = await world(initial).lock.acquire('alpha', 'heavy: specs', 0, 30_000, () => undefined, small(64_000));
+    const busy = { kind: 'busy', holder: { kind: 'held', info, waitsFor: [web] } };
+    assert.deepEqual([step, smallStep], [busy, busy], 'a stale share is no step it waits for');
+    assert.deepEqual(told, ['po (heavy: build) since 2030-01-08 09:50 UTC, waiting for 1 small step: web (heavy: specs) since 2030-01-08 09:55 UTC']);
+  });
+
+  it('names no small step for a holder without a kit, which runs beside them, nor for one with none sharing the host', async () => {
+    const older: HostLockInfo = { token: 'other', pid: OTHER, session: 'po', purpose: 'heavy: build', acquiredAt: '2030-01-08T09:50:00.000Z', expiresAt: '2030-01-08T12:20:00.000Z' };
+    const kitless = world(Object.fromEntries([[PATH, JSON.stringify(older)], shareFile(shareOf({ token: 's1' }))]));
+    const alone = world({ [PATH]: heldBy() });
+    const takings = [await kitless.lock.acquire('alpha', 'heavy: build', 0, 30_000, () => undefined), await alone.lock.acquire('alpha', 'heavy: build', 0, 30_000, () => undefined)];
+    assert.deepEqual(
+      takings.map((taking) => (taking.kind === 'busy' && taking.holder.kind === 'held' ? Object.keys(taking.holder) : [])),
+      [
+        ['kind', 'info'],
+        ['kind', 'info'],
+      ],
+    );
   });
 });
