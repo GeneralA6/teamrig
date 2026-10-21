@@ -13,14 +13,15 @@ function isEditKind(kind) {
 function isTestKind(kind) {
     return kind === 'testFull' || kind === 'testTargeted' || kind === 'editTest';
 }
-/** The main-thread calls since the last prompt, joined by reply. */
-function turnCalls(text, cut) {
+function turnOf(text, cut) {
     const lines = text.split('\n');
     let calls = [];
+    let tasks = [];
     for (const raw of cut ? lines.slice(1) : lines) {
         const line = parseTranscriptLine(raw);
         if (line?.kind === 'prompt') {
             calls = [];
+            tasks = line.tasks ?? [];
         }
         else if (line?.kind === 'call' && line.mainThread) {
             const last = calls.at(-1);
@@ -32,11 +33,11 @@ function turnCalls(text, cut) {
             }
         }
     }
-    return calls;
+    return { calls, tasks };
 }
 /** The turn's calls, with `current` as the last one when the transcript has not got it yet. */
 function callsWith(text, cut, current) {
-    const calls = turnCalls(text, cut);
+    const { calls } = turnOf(text, cut);
     const written = current === undefined || calls.some((call) => call.tools.some((tool) => tool.id === current.id));
     if (!written) {
         calls.push({ key: undefined, tools: [current], context: calls.at(-1)?.context ?? 0 });
@@ -46,6 +47,10 @@ function callsWith(text, cut, current) {
 /** The main thread's tool calls since the last prompt, `current` included. */
 export function turnToolsOf(text, cut, current) {
     return callsWith(text, cut, current).flatMap((call) => call.tools);
+}
+/** The task ids the current turn's prompt names; none when the text starts inside the turn, past its prompt. */
+export function turnTasksOf(text, cut) {
+    return turnOf(text, cut).tasks;
 }
 /**
  * The run of single-step calls ending the current turn, from transcript text (`cut`: a tail that may

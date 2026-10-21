@@ -1,11 +1,13 @@
 import { basename } from 'node:path';
+import { WEB_FETCH_TOOL } from "../budget/line.js";
 import { kindOf } from "../budget/patterns.js";
 import { runWorkOf, SHELL_DIALECTS } from "../budget/run-work.js";
 import { programsOf } from "../package-guard/programs.js";
 /** A source file: reading one is research. */
 const CODE_FILE = /\.(?:[cm]?[jt]sx?|py|go|rs|java|kt|cs|rb|php|sh|ps1|sql)$/i;
 const SEARCH_TOOLS = new Set(['Grep', 'Glob']);
-/** The turn-end line names this many edited files, then counts the rest. */
+const WEB_SEARCH_TOOL = 'WebSearch';
+/** The turn-end line names this many edited files or research lookups, then counts the rest; a research nudge names this many owners. */
 const MAX_NAMES = 3;
 const HAND_OFF = 'The lead hands such work to the owning session (a register task), a helper or a temporary session, and keeps to deciding and briefing [leadBoundary].';
 /** A path or command with forward slashes, the home spellings (`~`, `$HOME`, `$env:USERPROFILE`) and Git Bash drives (`/c/`) written out, in lower case. */
@@ -43,6 +45,57 @@ export class OwnPaths {
         return this.mentioned.some((pattern) => pattern.test(text));
     }
 }
+const PATH_END = `(?=/|$|[\\s"';|&)])`;
+/**
+ * The team's teamrig folder as the lead boundary reads a search of it (T736). The lead's own places there are its
+ * config, its rules, the register's state and anything named for the lead; a search anywhere else there (another
+ * session's notes or handover, or a shared folder such as all the notes) is research, which the session that owns
+ * the question does.
+ */
+export class TeamFolders {
+    root;
+    own;
+    lead;
+    others;
+    home;
+    mentioned;
+    constructor(places, userHome) {
+        this.home = userHome.replace(/\\+/g, '/').replace(/\/+$/, '');
+        this.root = this.placeOf(places.home);
+        this.own = places.own.map((place) => this.placeOf(place));
+        this.lead = places.lead.toLowerCase();
+        this.others = new Set(places.sessions.map((id) => id.toLowerCase()).filter((id) => id !== this.lead));
+        const escaped = this.root.replace(/[.+?^${}()|[\]\\*]/g, '\\$&');
+        this.mentioned = new RegExp(`${escaped}${PATH_END}(?:/[^\\s"';|&)]*)?`, 'g');
+    }
+    placeOf(path) {
+        return normalized(path.trim(), this.home).replace(/\/+$/, '');
+    }
+    /** The research a search of `path` is; undefined outside the team's folder and in the lead's own places. */
+    researchOf(path) {
+        const target = this.placeOf(path);
+        const inside = target === this.root || target.startsWith(`${this.root}/`);
+        if (!inside || this.own.some((place) => target === place || target.startsWith(`${place}/`))) {
+            return undefined;
+        }
+        const segments = target === this.root ? [] : target.slice(this.root.length + 1).split('/');
+        const named = segments.map((segment) => segment.replace(/\.md$/, ''));
+        if (named.includes(this.lead)) {
+            return undefined;
+        }
+        return { name: segments.slice(0, 2).join('/') || 'the team folder', owner: named.find((segment) => this.others.has(segment)) };
+    }
+    /** The research a shell search is, from the first team-folder path it names that is research. */
+    researchNamed(command) {
+        for (const match of normalized(command, this.home).matchAll(this.mentioned)) {
+            const research = this.researchOf(match[0]);
+            if (research !== undefined) {
+                return research;
+            }
+        }
+        return undefined;
+    }
+}
 /** What one program a shell call starts does that the lead hands off; undefined for anything else. */
 function leadRunWorkOf(run) {
     switch (runWorkOf(run)) {
@@ -61,8 +114,15 @@ function leadRunWorkOf(run) {
             return undefined;
     }
 }
-/** A shell call by the programs it starts: an edit before a test or build before a search; a line naming the lead's own files is its job. */
-function shellWorkOf(command, dialect, own) {
+function researchWork(research) {
+    return { work: 'research', name: research.name, ...(research.owner === undefined ? {} : { owner: research.owner }) };
+}
+/**
+ * A shell call by the programs it starts: an edit before a test or build before research before a search; a line
+ * naming the lead's own files is its job, and a search naming another session's place in the team's folder research.
+ */
+function shellWorkOf(command, dialect, paths) {
+    const { own, team } = paths;
     const works = new Set(programsOf(command, { cwd: undefined, home: own.home, dialect }).map(leadRunWorkOf));
     if (works.has('git') || works.has('edit')) {
         return own.named(command) ? undefined : { work: 'edit', name: works.has('git') ? 'git' : 'shell' };
@@ -70,15 +130,32 @@ function shellWorkOf(command, dialect, own) {
     if (works.has('check')) {
         return { work: 'check', name: 'shell' };
     }
-    return works.has('search') && !own.named(command) ? { work: 'search', name: 'shell' } : undefined;
+    if (!works.has('search')) {
+        return undefined;
+    }
+    const research = team.researchNamed(command);
+    if (research !== undefined) {
+        return researchWork(research);
+    }
+    return own.named(command) ? undefined : { work: 'search', name: 'shell' };
 }
-function callWorkOf(tool, own) {
+/** A web address's host, the name its research has; `a web page` for one that does not parse. */
+function hostOf(url) {
+    return url !== undefined && URL.canParse(url) ? new URL(url).host : 'a web page';
+}
+function callWorkOf(tool, paths) {
+    if (tool.name === WEB_FETCH_TOOL) {
+        return { work: 'research', name: hostOf(tool.url) };
+    }
+    if (tool.name === WEB_SEARCH_TOOL) {
+        return { work: 'research', name: 'a web search' };
+    }
     const dialect = SHELL_DIALECTS.get(tool.name);
     if (dialect !== undefined) {
-        return shellWorkOf(tool.command ?? '', dialect, own);
+        return shellWorkOf(tool.command ?? '', dialect, paths);
     }
     const path = tool.path;
-    const mine = path !== undefined && own.owns(path);
+    const mine = path !== undefined && paths.own.owns(path);
     const name = path === undefined ? 'shell' : basename(path.replace(/\\/g, '/'));
     if (kindOf(tool) === 'edit') {
         return mine ? undefined : { work: 'edit', name };
@@ -86,47 +163,84 @@ function callWorkOf(tool, own) {
     if (tool.name === 'Read') {
         return path !== undefined && CODE_FILE.test(path) && !mine ? { work: 'search', name } : undefined;
     }
-    return SEARCH_TOOLS.has(tool.name) && !mine ? { work: 'search', name } : undefined;
+    if (!SEARCH_TOOLS.has(tool.name)) {
+        return undefined;
+    }
+    const research = path === undefined ? undefined : paths.team.researchOf(path);
+    if (research !== undefined) {
+        return researchWork(research);
+    }
+    return mine ? undefined : { work: 'search', name };
 }
 /** What one of the lead's calls did that it hands off; undefined for its own job. */
-export function leadWorkOf(tool, own) {
-    return callWorkOf(tool, own)?.work;
+export function leadWorkOf(tool, paths) {
+    return callWorkOf(tool, paths)?.work;
+}
+function addOnce(names, name) {
+    if (!names.includes(name)) {
+        names.push(name);
+    }
 }
 /** The hand-off work among a turn's calls. */
-export function leadTallyOf(turn, own) {
+export function leadTallyOf(turn, paths) {
     let edits = 0;
     let checks = 0;
     let searches = 0;
+    let research = 0;
     const edited = [];
+    const researched = [];
     for (const tool of turn) {
-        const call = callWorkOf(tool, own);
+        const call = callWorkOf(tool, paths);
         switch (call?.work) {
-            case 'edit': {
+            case 'edit':
                 edits += 1;
-                if (!edited.includes(call.name)) {
-                    edited.push(call.name);
-                }
+                addOnce(edited, call.name);
                 break;
-            }
             case 'check':
                 checks += 1;
                 break;
             case 'search':
                 searches += 1;
                 break;
+            case 'research':
+                research += 1;
+                addOnce(researched, call.name);
+                break;
             case undefined:
                 break;
         }
     }
-    return { edits, edited, checks, searches };
+    return { edits, edited, checks, searches, research, researched };
+}
+/**
+ * The sessions that own the tasks a turn's prompt names, other than the lead: whom the lead's research belongs to.
+ * Each once, in the prompt's order, at most `MAX_NAMES`; a task the register does not hold is skipped.
+ */
+export function taskOwnersOf(ids, tasks, lead) {
+    const owners = [];
+    for (const id of ids) {
+        const owner = tasks.get(id)?.owner;
+        if (owner !== undefined && owner !== lead) {
+            addOnce(owners, owner);
+        }
+    }
+    return owners.slice(0, MAX_NAMES);
+}
+/** The research nudge: the owner a team-folder search names, else the owners of the prompt's tasks, else the generic owner. */
+function researchLine(call, askOwners) {
+    const owners = call.owner === undefined ? askOwners : [call.owner];
+    const to = owners.length === 0 ? 'the session that owns it' : owners.join(' or ');
+    return `teamrig: the lead did research itself (${call.name}). Send the question to ${to} as a register task with a deadline and relay its answer [leadBoundary].`;
 }
 /**
  * The line for the lead's model after `current`, once a turn per kind: at its first edit, its first
- * test or build, and its `searchNudgeAt`-th code search (0: never for searches). `turn` includes `current`.
+ * test or build, its first research and its `searchNudgeAt`-th code search (0: never for searches).
+ * `turn` includes `current`; `askOwners` are the sessions a research nudge names when the call names none
+ * (`taskOwnersOf` the turn's prompt).
  */
-export function leadNudgeLine(turn, current, own, searchNudgeAt) {
-    const tally = leadTallyOf(turn, own);
-    const call = callWorkOf(current, own);
+export function leadNudgeLine(turn, current, paths, searchNudgeAt, askOwners = []) {
+    const tally = leadTallyOf(turn, paths);
+    const call = callWorkOf(current, paths);
     switch (call?.work) {
         case 'edit':
             return tally.edits === 1 ? `teamrig: the lead edited ${call.name} itself. ${HAND_OFF}` : undefined;
@@ -134,6 +248,8 @@ export function leadNudgeLine(turn, current, own, searchNudgeAt) {
             return tally.checks === 1 ? `teamrig: the lead ran a test or a build itself. ${HAND_OFF}` : undefined;
         case 'search':
             return searchNudgeAt > 0 && tally.searches === searchNudgeAt ? `teamrig: the lead made ${searchNudgeAt} code searches itself this turn. ${HAND_OFF}` : undefined;
+        case 'research':
+            return tally.research === 1 ? researchLine(call, askOwners) : undefined;
         case undefined:
             return undefined;
     }
@@ -141,13 +257,17 @@ export function leadNudgeLine(turn, current, own, searchNudgeAt) {
 function counted(count, one, many) {
     return `${count} ${count === 1 ? one : many}`;
 }
+/** Up to `MAX_NAMES` names, then how many more. */
+function namesOf(names) {
+    const more = names.length - MAX_NAMES;
+    return names.slice(0, MAX_NAMES).join(', ') + (more > 0 ? ` +${more} more` : '');
+}
 /** The owner's turn-end line when the lead did hand-off work itself; searches count from `searchNudgeAt` (0: never). */
 export function leadStopLine(tally, searchNudgeAt) {
-    const more = tally.edited.length - MAX_NAMES;
-    const names = tally.edited.slice(0, MAX_NAMES).join(', ') + (more > 0 ? ` +${more} more` : '');
     const parts = [
-        ...(tally.edits === 0 ? [] : [`${counted(tally.edits, 'edit', 'edits')} (${names})`]),
+        ...(tally.edits === 0 ? [] : [`${counted(tally.edits, 'edit', 'edits')} (${namesOf(tally.edited)})`]),
         ...(tally.checks === 0 ? [] : [counted(tally.checks, 'test or build', 'tests or builds')]),
+        ...(tally.research === 0 ? [] : [`${counted(tally.research, 'research lookup', 'research lookups')} (${namesOf(tally.researched)})`]),
         ...(searchNudgeAt > 0 && tally.searches >= searchNudgeAt ? [counted(tally.searches, 'code search', 'code searches')] : []),
     ];
     return parts.length === 0 ? undefined : `Lead boundary: this turn the lead did ${parts.join(', ')} itself; it delegates such work [leadBoundary].`;
