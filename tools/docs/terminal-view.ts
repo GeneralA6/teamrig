@@ -80,37 +80,63 @@ export const PANE_RIGHT = 944;
 /** The size of the terminal's text. */
 export const MONO_SIZE = 13.5;
 
-const STRIP_HEIGHT = 44;
-const TAB_WIDTH = 92;
-const TAB_GAP = 4;
-const ROW_TOP = 124;
-const ROW_STEP = 46;
+/** The tab strip's height, and each tab's width and the gap after it. */
+export const STRIP_HEIGHT = 44;
+export const TAB_WIDTH = 92;
+export const TAB_GAP = 4;
+/** The baseline of the pane's first task row, and the step to the next row. */
+export const ROW_TOP = 124;
+export const ROW_STEP = 46;
+
+/** The window's stylesheet lines after the theme's: fonts, text colours, the frame, and one class per status mark. */
+export const WINDOW_STYLE: readonly string[] = [
+  `.mono{font-family:${MONO_FONTS};font-size:${MONO_SIZE}px}.muted{fill:var(--muted)}.accent{fill:var(--purple)}.strong{font-weight:700}`,
+  '.key{font-size:13.5px;fill:var(--muted)}',
+  '.window{fill:var(--bg);stroke:var(--line)}.strip{fill:var(--tile)}.tab{fill:var(--bg);stroke:var(--line)}',
+  '.rule,.box{fill:none;stroke:var(--line)}.bullet{fill:var(--muted)}',
+  '.working{fill:var(--green)}.needs{fill:var(--amber)}.open{fill:none;stroke:var(--muted);stroke-width:1.5}',
+  '.done{fill:none;stroke:var(--muted);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}',
+];
+
+/** The left edge of the tab at `index`, counted from 0. */
+export const tabX = (index: number): number => 12 + index * (TAB_WIDTH + TAB_GAP);
+
+/** The outline of the tab in view, whose left edge is at x. */
+export const tabOutline = (x: number): string =>
+  `<path d="M${x + 0.5} ${STRIP_HEIGHT + 1.5}V16a8 8 0 0 1 8-8h${TAB_WIDTH - 17}a8 8 0 0 1 8 8V${STRIP_HEIGHT + 1.5}" class="tab"/>`;
 
 /** The mark for a status, centred on (cx, cy). */
-function mark(status: Status, cx: number, cy: number): string {
+export function mark(status: Status, cx: number, cy: number): string {
   if (status === 'working') return `<circle cx="${cx}" cy="${cy}" r="4.5" class="working"/>`;
   if (status === 'needs-you') return `<rect x="${cx - 4.5}" y="${cy - 4.5}" width="9" height="9" rx="1.5" class="needs"/>`;
   if (status === 'not-started') return `<circle cx="${cx}" cy="${cy}" r="4" class="open"/>`;
   return `<path d="M${cx - 4.5} ${cy}l3 3 6-6.5" class="done"/>`;
 }
 
-function text(x: number, y: number, words: string, classes: string, anchor: 'start' | 'end' = 'start'): string {
+/** A line of text at (x, y) with the given classes, its words escaped. */
+export function text(x: number, y: number, words: string, classes: string, anchor: 'start' | 'end' = 'start'): string {
   const anchorAttribute = anchor === 'end' ? ' text-anchor="end"' : '';
   return `<text x="${x}" y="${y}"${anchorAttribute} class="${classes}">${escapeXml(words)}</text>`;
+}
+
+/** The empty window: its body, its tab strip, and the lines under the strip and between the conversation and the pane. */
+export function windowFrame(): string[] {
+  return [
+    `<rect x="0.5" y="0.5" width="${WIDTH - 1}" height="${WINDOW_HEIGHT - 1}" rx="12" class="window"/>`,
+    `<path d="M1 ${STRIP_HEIGHT}V12.5A11.5 11.5 0 0 1 12.5 1H${WIDTH - 12.5}A11.5 11.5 0 0 1 ${WIDTH - 1} 12.5V${STRIP_HEIGHT}z" class="strip"/>`,
+    `<path d="M1 ${STRIP_HEIGHT + 0.5}H${WIDTH - 1}M${DIVIDER_X + 0.5} ${STRIP_HEIGHT + 1}V${WINDOW_HEIGHT - 1}" class="rule"/>`,
+  ];
 }
 
 /** The window, its tab strip and the tabs, the first one in view. */
 function frame(): string[] {
   const tabs = TABS.flatMap((tab, i) => {
-    const x = 12 + i * (TAB_WIDTH + TAB_GAP);
+    const x = tabX(i);
     const inView = i === 0;
-    const outline = `<path d="M${x + 0.5} ${STRIP_HEIGHT + 1.5}V16a8 8 0 0 1 8-8h${TAB_WIDTH - 17}a8 8 0 0 1 8 8V${STRIP_HEIGHT + 1.5}" class="tab"/>`;
-    return [...(inView ? [outline] : []), mark(tab.status, x + 18, 27.5), text(x + 31, 32, tab.name, inView ? 'mono strong' : 'mono muted')];
+    return [...(inView ? [tabOutline(x)] : []), mark(tab.status, x + 18, 27.5), text(x + 31, 32, tab.name, inView ? 'mono strong' : 'mono muted')];
   });
   return [
-    `<rect x="0.5" y="0.5" width="${WIDTH - 1}" height="${WINDOW_HEIGHT - 1}" rx="12" class="window"/>`,
-    `<path d="M1 ${STRIP_HEIGHT}V12.5A11.5 11.5 0 0 1 12.5 1H${WIDTH - 12.5}A11.5 11.5 0 0 1 ${WIDTH - 1} 12.5V${STRIP_HEIGHT}z" class="strip"/>`,
-    `<path d="M1 ${STRIP_HEIGHT + 0.5}H${WIDTH - 1}M${DIVIDER_X + 0.5} ${STRIP_HEIGHT + 1}V${WINDOW_HEIGHT - 1}" class="rule"/>`,
+    ...windowFrame(),
     ...tabs,
   ];
 }
@@ -162,7 +188,7 @@ function pane(): string[] {
 }
 
 /** The key under the window: each status's mark and its name. */
-function key(): string[] {
+export function statusKey(): string[] {
   return KEY_ORDER.flatMap((status, i) => {
     const x = 24 + i * 132;
     return [mark(status, x, VIEW_HEIGHT - 20.5), text(x + 14, VIEW_HEIGHT - 16, KEY[status], 'key')];
@@ -183,15 +209,7 @@ export function renderTerminalView(): string {
       `teamrig in your terminal: one window, one tab per session (${TABS.map((tab) => tab.name).join(', ')}). ` +
       `In the lead's tab you ask: ${ASK} The lead answers: ${OPENING} ${decisions} ${CLOSING} You reply: ${ANSWER}. ` +
       `Beside the conversation, teamrig-pane lists the team's tasks: ${TASKS.map(spokenTask).join(' ')}`,
-    style: [
-      ...themeStyle(),
-      `.mono{font-family:${MONO_FONTS};font-size:${MONO_SIZE}px}.muted{fill:var(--muted)}.accent{fill:var(--purple)}.strong{font-weight:700}`,
-      '.key{font-size:13.5px;fill:var(--muted)}',
-      '.window{fill:var(--bg);stroke:var(--line)}.strip{fill:var(--tile)}.tab{fill:var(--bg);stroke:var(--line)}',
-      '.rule,.box{fill:none;stroke:var(--line)}.bullet{fill:var(--muted)}',
-      '.working{fill:var(--green)}.needs{fill:var(--amber)}.open{fill:none;stroke:var(--muted);stroke-width:1.5}',
-      '.done{fill:none;stroke:var(--muted);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}',
-    ],
-    body: [...frame(), ...conversation(), ...pane(), ...key()],
+    style: [...themeStyle(), ...WINDOW_STYLE],
+    body: [...frame(), ...conversation(), ...pane(), ...statusKey()],
   });
 }
