@@ -4338,6 +4338,24 @@ Output: nothing for a line that runs no `exec` command, a review as the tab's ow
 unchanged client, outside a team's projects, or for input that is not a hook payload; otherwise a JSON `deny` with
 each reason.
 
+### teamrig hook pass-record-guard
+
+Before a Write, Edit, MultiEdit, NotebookEdit, Bash or PowerShell call, refuses one that would write a tree's pass
+record: a file tool naming a path in a `local-ci` folder, or a shell line naming `local-ci` as a word of its own. The
+Read and Grep tools stay open. See
+[Hooks and permissions](hooks.md#before-a-write-or-a-shell-command-the-pass-record-guard).
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig hook pass-record-guard < pre-tool-use.json
+```
+
+Output: nothing for a call that does not reach the records, outside a team's projects, or for input that is not a
+hook payload; otherwise a JSON permission decision `deny` with the reason naming the file or the line.
+
 ### teamrig hook readonly-allow
 
 Before a Bash or PowerShell command, with `readonlyShell.enabled` in the team config, lets a line whose every

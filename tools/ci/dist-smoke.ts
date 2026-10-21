@@ -109,6 +109,10 @@ const SAMPLES: Readonly<Record<string, Sample>> = {
     payload: { hook_event_name: 'PreToolUse', session_id: SESSION_ID, tool_name: 'Bash', tool_input: { command: 'teamrig exec approve R1' } },
     check: denies('a review that names no --session'),
   },
+  'hook pass-record-guard': {
+    payload: { hook_event_name: 'PreToolUse', session_id: SESSION_ID, tool_name: 'Write', tool_input: { file_path: '.git/local-ci/abc.json', content: '{}' } },
+    check: (stdout) => (outputField(stdout, 'permissionDecision') === 'deny' ? undefined : 'expected a deny for a write of a pass record'),
+  },
   'hook cold-send': {
     payload: { hook_event_name: 'PreToolUse', session_id: SESSION_ID, tool_name: 'SendMessage', tool_input: { to: 'lead', message: 'hello' } },
     check: quiet(),

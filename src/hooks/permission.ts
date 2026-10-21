@@ -33,6 +33,11 @@ export function holdBack(decision: HoldBack, reason: string, asks: HookAsks): Pe
     : { permissionDecision: decision, permissionDecisionReason: reason };
 }
 
+/** The PreToolUse output of a call a hook refuses whatever `prompts.hookAsks` says. */
+export function refusalOutput(reason: string): string {
+  return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } });
+}
+
 /** The PreToolUse output of a call a hook holds back (see `holdBack`). */
 export function holdBackOutput(decision: HoldBack, reason: string, asks: HookAsks): string {
   return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', ...holdBack(decision, reason, asks) } });
