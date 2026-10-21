@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { promptLine, replyLine, resultsLine, transcript, type FixtureTool } from '../testing/transcript-lines.ts';
-import { chainOf, nudgeLine, nudgeOutput, type Chain } from './loop-nudge.ts';
+import { chainOf, nudgeLine, type Chain } from './loop-nudge.ts';
 
 const AT = '2026-10-15T10:00:00.000Z';
 const CONTEXT = 100_000;
@@ -101,11 +101,5 @@ describe('nudgeLine', () => {
 
   it('never speaks when the threshold is 0', () => {
     assert.equal(nudgeLine({ ...run, length: 0 }, 0), undefined);
-  });
-});
-
-describe('nudgeOutput', () => {
-  it('hands the line to the model as PostToolUse context', () => {
-    assert.deepEqual(JSON.parse(nudgeOutput('x')), { hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: 'x' } });
   });
 });

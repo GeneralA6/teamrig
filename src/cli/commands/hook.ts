@@ -13,7 +13,8 @@ import { boundPromptNote, boundStartNote, tabTitleFor } from '../../hooks/bind.t
 import { modelCheckLine, payloadEffortOf } from '../../hooks/model-check.ts';
 import { ModelNoticeStore } from '../../hooks/model-notices.ts';
 import { sendTargetOf } from '../../hooks/cold-send.ts';
-import { failedSendLine, failedSendOf, failedSendOutput } from '../../hooks/failed-send.ts';
+import { failedSendLine, failedSendOf } from '../../hooks/failed-send.ts';
+import { postToolUseContext } from '../../hooks/post-tool-use.ts';
 import { checkClient, clientRootOf } from '../../exec/client-integrity.ts';
 import { ClientInstalls, ShellPathSearch } from '../../exec/client-launch.ts';
 import { execGuardOutput, type TabIdentity } from '../../hooks/exec-guard.ts';
@@ -409,7 +410,7 @@ export async function failedSend(args: ParsedArgs, runtime: CliRuntime): Promise
     return EXIT.ok;
   }
   const receiver = (await rosterOf(runtime, kit, kit.load.config)).lookup(failed.to);
-  runtime.out.stdout(failedSendOutput(failedSendLine(failed, receiver.ok ? receiver.id : undefined, KIT_NAME)));
+  runtime.out.stdout(postToolUseContext(failedSendLine(failed, receiver.ok ? receiver.id : undefined, KIT_NAME)));
   return EXIT.ok;
 }
 
