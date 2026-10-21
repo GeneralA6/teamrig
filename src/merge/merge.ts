@@ -22,15 +22,18 @@ import { rangeInstallTouches, runDependencyCheck } from './dependencies.ts';
 import { ORIGIN, type Checkout, type MergeGit } from './git.ts';
 import { LOCKFILE } from './manifest.ts';
 import { readPendingMerge, removePendingMerge, writePendingMerge, type PendingMerge } from './pending-merges.ts';
+import { checkExitCode, runReviewCheck } from './review-check.ts';
+import { reviewGateRefusal, type GatedChange, type GateTask, type ReviewGatePorts, type ReviewGateSetup } from './review-gate-step.ts';
+import type { ReviewHolds } from './review-holds.ts';
 
 /**
  * `teamrig merge`: merges a finished branch into origin's default branch, one push on the host at a time. It refuses
  * a branch it must not merge (detached, the default branch, uncommitted changes, nothing new, a dependency change the
  * gate holds and no dependency check clears), waits out quiet claims on what the push deploys, takes the host lock,
- * rebases onto the fresh default branch, runs the dependency check when the branch changes the package files, and
- * pushes (the pre-push hook runs as a heavy step), then tidies the branch away and, when configured, fast-forwards the
- * main checkout. It never deploys: a push a host deploys by itself is recorded as that deploy. A repository with a
- * merge command (`coordinator.repos.<name>.merge`, say one that merges through a pull request) runs it in place of the
+ * rebases onto the fresh default branch, runs the dependency check when the branch changes the package files and the
+ * review gate when the repo has one (a change of a review path waits for its reviewer), and pushes (the pre-push hook
+ * runs as a heavy step), then tidies the branch away and, when configured, fast-forwards the main checkout. It never
+ * deploys: a push a host deploys by itself is recorded as that deploy. A repository with a merge command (`coordinator.repos.<name>.merge`, say one that merges through a pull request) runs it in place of the
  * push: exit 0 merged, once its remote shows it; 75 waits, and the next `teamrig merge` finishes it once it merged; else
  * failed. That remote is origin unless `merge.remote` names another, say the upstream a fork's pull request merges
  * into: the branch is rebased onto its default branch, and the local default branch follows it.
@@ -61,16 +64,22 @@ export interface MergeSetup {
   readonly zone: TimeZone;
   /** A configured path as a place: a relative one is in the team's folder. */
   inTeam(path: string): string;
+  /** What the review gate holds and who reviews it, for a repo with `reviewGate` on. */
+  readonly review: ReviewGateSetup;
 }
 
 export interface MergePorts {
   readonly git: MergeGit;
   readonly steps: StepRunner;
-  /** Runs the dependency check, without a shell. */
+  /** Runs the dependency and review checks, without a shell. */
   readonly hooks: HookRunner;
-  /** Redacts the dependency check's lines before they show. */
+  /** Redacts the checks' lines before they show. */
   readonly scanner: Pick<SecretScanner, 'redact'>;
   readonly files: Files;
+  /** The review gate's holds (`CoordinatorPlaces.reviewHolds`). */
+  readonly reviewHolds: Pick<ReviewHolds, 'read' | 'write' | 'remove'>;
+  /** The register's task by id, for the review gate; undefined when it has none. */
+  taskOf(id: string): Promise<GateTask | undefined>;
   readonly clock: Clock;
   readonly sleep: Sleep;
   readonly lock: Pick<HostLock, 'acquire' | 'release'>;
@@ -108,6 +117,8 @@ export function repoOf(checkout: Checkout, setup: MergeSetup, platform: NodeJS.P
 
 /** What `teamrig merge` merges: a branch of a checkout, into its remote's default branch. */
 interface Plan {
+  /** The session landing it. */
+  readonly session: string;
   readonly top: string;
   readonly branch: string;
   readonly linked: boolean;
@@ -188,7 +199,7 @@ async function planOf(setup: MergeSetup, ports: MergePorts, request: MergeReques
   if (held !== undefined) {
     return { kind: 'refused', reason: held };
   }
-  return { kind: 'ready', plan: { top, branch, linked: checkout.linked, mainCheckout: checkout.mainCheckout, remote, defaultBranch, repo, pending } };
+  return { kind: 'ready', plan: { session: request.session, top, branch, linked: checkout.linked, mainCheckout: checkout.mainCheckout, remote, defaultBranch, repo, pending } };
 }
 
 /** The merge the branch's last run left waiting, when its repository merges by command and the branch is still at the commit that run gave the command. */
@@ -266,6 +277,51 @@ async function dependencyCheckRefusal(setup: MergeSetup, ports: MergePorts, plan
   return { kind: 'refused', reason: `${changed}: the dependency check \`${argv.join(' ')}\` ${hookEndText(end)}, so ${branch} stays off ${defaultBranch}; its output is above` };
 }
 
+/** The review gate's ports: its check runs under the lock `taking` holds, recorded as a heavy step, its lines redacted. */
+function reviewGatePorts(setup: MergeSetup, ports: MergePorts, plan: Plan, taking: Taking): ReviewGatePorts {
+  const { top, branch, repo } = plan;
+  return {
+    git: ports.git,
+    holds: ports.reviewHolds,
+    clock: ports.clock,
+    taskOf: (id) => ports.taskOf(id),
+    say: (text) => ports.say(text),
+    runCheck: (argv, base) =>
+      recordHeavy(
+        ports,
+        setup.places.ledger,
+        taking.markOf(`merge ${repo.name}: review check of ${branch}`),
+        () =>
+          runReviewCheck(ports.hooks, {
+            argv,
+            cwd: top,
+            base,
+            env: underLock(gitEnvironment(ports.env), taking.lock),
+            timeoutMs: setup.coordinator.heavy.maxRunMinutes * MINUTE_MS,
+            redact: (line) => shownLine(ports.scanner, line),
+            onLine: (line) => ports.say(`  ${line}`),
+          }),
+        checkExitCode,
+      ),
+  };
+}
+
+/**
+ * The checks on what the rebase made from `base` to `head`, under the lock `taking` holds: the dependency check (see
+ * {@link dependencyCheckRefusal}), then the review gate (see {@link reviewGateRefusal}). Undefined lets the merge go;
+ * else the refusal.
+ */
+async function checksRefusal(setup: MergeSetup, ports: MergePorts, plan: Plan, taking: Taking, base: string, head: string): Promise<MergeOutcome | undefined> {
+  const refused = await dependencyCheckRefusal(setup, ports, plan, taking, base);
+  if (refused !== undefined) {
+    return refused;
+  }
+  const { top, branch, repo } = plan;
+  const change: GatedChange = { session: plan.session, repo: repo.name, config: repo.config, top, branch, base, head };
+  const held = await reviewGateRefusal(setup.review, setup.zone, reviewGatePorts(setup, ports, plan, taking), change);
+  return held === undefined ? undefined : { kind: 'refused', reason: held };
+}
+
 /** Whether the push may start now: the heavy cutoff and the reset blackout refuse it, a quiet claim on what it deploys holds it. */
 function readinessOf(setup: MergeSetup, ports: MergePorts, repo: RepoMatch): () => Promise<Readiness> {
   const { schedule } = setup.coordinator;
@@ -292,10 +348,10 @@ function readinessOf(setup: MergeSetup, ports: MergePorts, repo: RepoMatch): () 
 }
 
 /**
- * Under the host lock `taking` holds: rebases onto the fresh default branch, runs the dependency check on what the
- * rebase made (see {@link dependencyCheckRefusal}) and pushes, again from the rebase when origin moved meanwhile, unless
- * the push was killed as its launching shell ended (no one waits for it any more). The check and the
- * push get the lock's token, so a pre-push hook that wraps its checks in `teamrig heavy` runs them under this lock.
+ * Under the host lock `taking` holds: rebases onto the fresh default branch, runs the checks on what the rebase made
+ * (see {@link checksRefusal}) and pushes, again from the rebase when origin moved meanwhile, unless the push was killed
+ * as its launching shell ended (no one waits for it any more). The checks and the push get the lock's token, so a
+ * pre-push hook that wraps its checks in `teamrig heavy` runs them under this lock.
  */
 async function mergeByPush(setup: MergeSetup, ports: MergePorts, plan: Plan, taking: Taking): Promise<MergeOutcome> {
   const { git } = ports;
@@ -318,7 +374,7 @@ async function mergeByPush(setup: MergeSetup, ports: MergePorts, plan: Plan, tak
     if (head === undefined) {
       return { kind: 'failed', reason: `HEAD names no commit in ${top} after the rebase` };
     }
-    const refused = await dependencyCheckRefusal(setup, ports, plan, taking, before);
+    const refused = await checksRefusal(setup, ports, plan, taking, before, head);
     if (refused !== undefined) {
       return refused;
     }
@@ -377,7 +433,7 @@ function mergedAt(git: MergeGit, top: string, onto: string, base: string, head: 
 /**
  * Under the host lock `taking` holds, for a repository with a merge command: a merge an earlier run left waiting
  * is done once the merge remote's default branch holds it (see {@link mergedAt}); else rebases onto the fresh default
- * branch, runs the dependency check and then the command (its contract: `MergeConfig`). Exit 0 must show on that
+ * branch, runs the checks (see {@link checksRefusal}) and then the command (its contract: `MergeConfig`). Exit 0 must show on that
  * remote, 75 leaves a pending merge for the next run, anything else fails. The command's lines show redacted; its
  * last one is the reason given.
  */
@@ -407,7 +463,7 @@ async function mergeByCommand(setup: MergeSetup, ports: MergePorts, plan: Plan, 
   if (head === undefined) {
     return { kind: 'failed', reason: `HEAD names no commit in ${top} after the rebase` };
   }
-  const refused = await dependencyCheckRefusal(setup, ports, plan, taking, before);
+  const refused = await checksRefusal(setup, ports, plan, taking, before, head);
   if (refused !== undefined) {
     return refused;
   }
@@ -586,6 +642,9 @@ export async function mergeBranch(setup: MergeSetup, ports: MergePorts, request:
   }
   if (outcome.kind !== 'merged') {
     return outcome;
+  }
+  if (repo.config.reviewGate) {
+    await ports.reviewHolds.remove(repo.name, plan.branch);
   }
   tidy(ports, request, plan);
   await followMainCheckout(ports, plan, outcome.after);

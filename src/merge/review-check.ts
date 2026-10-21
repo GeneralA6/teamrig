@@ -57,3 +57,15 @@ export async function runReviewCheck(hooks: HookRunner, check: ReviewCheck): Pro
   }
   return { kind: 'broken', detail: hookEndText(end), exitCode: hookExitCode(end) };
 }
+
+/** The exit code the ledger records for the check: 0 clean, {@link REVIEW_CHECK_FLAGGED} flagged, else how it broke. */
+export function checkExitCode(outcome: CheckOutcome): number {
+  switch (outcome.kind) {
+    case 'clean':
+      return 0;
+    case 'flagged':
+      return REVIEW_CHECK_FLAGGED;
+    case 'broken':
+      return outcome.exitCode;
+  }
+}
