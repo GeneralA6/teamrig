@@ -1,4 +1,5 @@
 import { join, resolve } from 'node:path';
+import type { Files } from '../core/files.ts';
 import { isRecord } from '../core/guards.ts';
 
 /**
@@ -40,4 +41,9 @@ export function parsePassRecord(text: string | undefined, tree: string): PassRec
   const { commit, checks, passedAt, node } = value;
   if (value['tree'] !== tree || typeof commit !== 'string' || !isStringList(checks) || typeof passedAt !== 'string' || typeof node !== 'string') return undefined;
   return { tree, commit, checks, passedAt, node };
+}
+
+/** The pass record of `tree` in its file (see {@link passRecordPath}); undefined when none proves it. */
+export async function readPassRecord(files: Pick<Files, 'read'>, root: string, gitCommonDir: string, tree: string): Promise<PassRecord | undefined> {
+  return parsePassRecord(await files.read(passRecordPath(root, gitCommonDir, tree)), tree);
 }
