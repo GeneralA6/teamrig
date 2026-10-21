@@ -18,6 +18,12 @@ export function stringField(record: JsonRecord, key: string): string | undefined
   return typeof value === 'string' ? value : undefined;
 }
 
+/** The field as a finite number; undefined when it is absent, not a number, NaN or infinite. */
+export function numberField(record: JsonRecord, key: string): number | undefined {
+  const value = record[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
 export function recordField(record: JsonRecord, key: string): JsonRecord | undefined {
   const value = record[key];
   return isRecord(value) ? value : undefined;
