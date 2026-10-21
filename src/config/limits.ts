@@ -17,6 +17,7 @@ export const CONFIG_LIMITS = {
   ownerGates: { maxItems: 8, maxLength: 60 },
   ruleConflicts: { maxItems: 40 },
   protectedBranches: { maxItems: 8, maxLength: 64 },
+  reviewPaths: { maxItems: 128 },
   commitMaxLines: { min: 50, max: 5000 },
   commitMaxFiles: { min: 2, max: 500 },
   testPatterns: { maxItems: 8, maxLength: 100 },
@@ -110,6 +111,11 @@ export const RULE_CONFLICT_LIMITS = {
 
 /** The longest `budget.account` name, on one line. */
 export const BUDGET_ACCOUNT_MAX_LENGTH = 100;
+
+/** Bounds on the fields of one review gate entry (`pushGuard.reviewPaths`). */
+export const REVIEW_PATH_LIMITS = {
+  globMaxLength: 200,
+} as const;
 
 /**
  * Bounds on a tree of teams, which `team create` and `doctor` enforce. A lead's `--tree` roll-up reads

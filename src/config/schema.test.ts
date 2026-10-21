@@ -4,12 +4,12 @@ import { readFile } from 'node:fs/promises';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { NAME_PATTERN, RESERVED_NAMES } from '../core/ids.ts';
 import { MODEL_ALIASES, MODEL_ID_MAX_LENGTH, MODEL_ID_PATTERN } from './launch.ts';
-import { BUDGET_ACCOUNT_MAX_LENGTH, CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from './limits.ts';
+import { BUDGET_ACCOUNT_MAX_LENGTH, CONFIG_LIMITS, REVIEW_PATH_LIMITS, RULE_CONFLICT_LIMITS } from './limits.ts';
 import { parseConfig } from './parse.ts';
 import { KEEP_RULE_PATTERN } from '../permissions/allow-rules.ts';
 import { PREFIX_PATTERN } from '../readonly-shell/rules.ts';
 import { CORE_RULE_KEYS } from '../rules/keys.ts';
-import { AD_HOC_RUNNERS, COMMIT_GATES, CONFLICT_WINNERS, EFFORT_LEVELS, HOOK_ASKS, PACKAGE_INSTALLS, PUSH_TO_PROTECTED, VERIFY_GATES } from './types.ts';
+import { AD_HOC_RUNNERS, COMMIT_GATES, CONFLICT_WINNERS, EFFORT_LEVELS, HOOK_ASKS, PACKAGE_INSTALLS, PUSH_TO_PROTECTED, REVIEW_CLASSES, REVIEW_PATH_MODES, VERIFY_GATES } from './types.ts';
 
 /** The roster has no default; everything else in the schema must state the code's default. */
 const ROSTER = { sessions: ['alpha', 'bravo'], roles: { lead: 'alpha' } };
@@ -39,6 +39,8 @@ const EVERY_KEY = {
         mainCheckout: 'C:/src/api',
         deploysOnPush: ['cloud-api'],
         dependencyGate: true,
+        reviewGate: true,
+        reviewCheck: ['node', 'review.js'],
         followMainCheckout: true,
         deploy: { targets: ['cloud-api'], checks: [{ name: 'flow', command: ['node', 'checks/flow.js'] }], afterPull: [['node', 'pulled.js']], command: ['node', 'deploy.js'] },
       },
@@ -106,6 +108,7 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   ownerGates: 'ownerGates',
   ruleConflicts: 'ruleConflicts',
   protectedBranches: 'pushGuard.protectedBranches',
+  reviewPaths: 'pushGuard.reviewPaths',
   commitMaxLines: 'commits.maxLines',
   commitMaxFiles: 'commits.maxFiles',
   testPatterns: 'commits.testPatterns',
@@ -395,6 +398,17 @@ describe('config.schema.json', () => {
     assert.deepEqual(rule['enum'], [...CORE_RULE_KEYS]);
     assert.deepEqual(wins['enum'], [...CONFLICT_WINNERS]);
     assert.deepEqual(items['required'], ['file', 'text', 'rule', 'wins']);
+  });
+
+  it('takes the review paths the parser takes', async () => {
+    const items = nodeAt(await loadSchema(), 'pushGuard.reviewPaths')['items'];
+    assert.ok(isRecord(items));
+    const { glob, mode, class: reviewer } = properties(items);
+    assert.ok(isRecord(glob) && isRecord(mode) && isRecord(reviewer));
+    assert.equal(glob['maxLength'], REVIEW_PATH_LIMITS.globMaxLength);
+    assert.deepEqual(mode['enum'], [...REVIEW_PATH_MODES]);
+    assert.deepEqual(reviewer['enum'], [...REVIEW_CLASSES]);
+    assert.deepEqual(items['required'], ['glob']);
   });
 
   it('requires exactly the roster', async () => {

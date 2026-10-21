@@ -28,7 +28,7 @@ const PLACES: CoordinatorPlaces = {
   pendingMerges: '/team/deploys/pending-merges',
 };
 const REQUEST: MergeRequest = { session: 'api', dir: WORKTREE, keepRemote: false, keepLocal: false };
-const PLAIN: CoordinatorRepoConfig = { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], dependencyGate: false, followMainCheckout: false };
+const PLAIN: CoordinatorRepoConfig = { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], dependencyGate: false, reviewGate: false, followMainCheckout: false };
 
 interface Options {
   readonly repos?: Readonly<Record<string, CoordinatorRepoConfig>>;

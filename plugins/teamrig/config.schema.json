@@ -359,6 +359,21 @@
           "type": "string",
           "enum": ["ask", "allow", "lead"],
           "default": "ask"
+        },
+        "reviewPaths": {
+          "description": "The team's review gate entries, read on top of teamrig's generic security list (lockfiles, package manager config, git and agent hooks, CI, container files, git attributes), which none removes. A glob with no slash names a file at any depth, one with a slash is read from the repo root; case is ignored. always holds a change touching the path for its class's reviewer; check runs the repo's reviewCheck first. A bad mode or class reads as always and security.",
+          "type": "array",
+          "maxItems": 128,
+          "items": {
+            "type": "object",
+            "properties": {
+              "glob": { "description": "The paths the entry covers: with no slash a file name at any depth, with one a path from the repo root; case is ignored.", "type": "string", "minLength": 1, "maxLength": 200 },
+              "mode": { "description": "always holds a change touching the paths for the class's reviewer; check runs the repo's reviewCheck first, which clears the change or holds it.", "type": "string", "enum": ["always", "check"], "default": "always" },
+              "class": { "description": "Who reviews a held change: security (roles.securityReviewer), or leader (the session's lead or sub-lead).", "type": "string", "enum": ["security", "leader"], "default": "security" }
+            },
+            "required": ["glob"]
+          },
+          "default": []
         }
       }
     },
@@ -527,6 +542,17 @@
               },
               "dependencyCheck": {
                 "description": "With dependencyGate, what clears a dependency change: a program and its arguments, run without a shell under the host lock with the base package-lock.json in the file TEAMRIG_BASELINE_LOCK names (unset when the base has none). teamrig merge runs it in the branch checkout after the rebase and before the push, the default branch its base; teamrig deploy in the main checkout after the pull, its old HEAD the base. Exit 0 lets the change go, anything else refuses it.",
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 64,
+                "items": { "type": "string", "minLength": 1 }
+              },
+              "reviewGate": {
+                "description": "Hold a branch (integrate) whose changed paths hit a review entry (teamrig's generic list and pushGuard.reviewPaths) until its reviewer approves it, or reviewCheck clears its check hits.",
+                "type": "boolean"
+              },
+              "reviewCheck": {
+                "description": "With reviewGate, what a check hit runs: a program and its arguments, run without a shell under the host lock in the branch checkout after the rebase, with the base commit in TEAMRIG_REVIEW_BASE. Exit 0 clears the change, 3 holds it for security with the findings it prints, anything else for the session's leader. Unset: a check hit is held like an always one.",
                 "type": "array",
                 "minItems": 1,
                 "maxItems": 64,

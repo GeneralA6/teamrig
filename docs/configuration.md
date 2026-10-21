@@ -199,6 +199,17 @@ The push guard: what a git push to a protected branch does.
 | --- | --- | --- | --- |
 | `protectedBranches` | array (at most 8 items) of string (at most 64 characters, matching `^[^\s~^:?*[\\]+$`) | `["main","master"]` | The branches the push guard watches: a push to one goes as pushToProtected says; force-push, mirror and deletion are refused. An empty list guards nothing. |
 | `pushToProtected` | one of `"ask"`, `"allow"`, `"lead"` | `"ask"` | A normal push to a protected branch: ask asks the human, allow lets it through with a note, lead lets the lead's own through and another session's once the lead approved its waiting task (teamrig approve), else refuses it with how to ask, never asking the human. Force-push, mirror and deletion stay refused; a --force-with-lease push and a command the guard cannot read still ask. |
+| `reviewPaths` | array (at most 128 items) of [object](#pushguardreviewpaths) | `[]` | The team's review gate entries, read on top of teamrig's generic security list (lockfiles, package manager config, git and agent hooks, CI, container files, git attributes), which none removes. A glob with no slash names a file at any depth, one with a slash is read from the repo root; case is ignored. always holds a change touching the path for its class's reviewer; check runs the repo's reviewCheck first. A bad mode or class reads as always and security. |
+
+## `pushGuard.reviewPaths[]`
+
+The team's review gate entries, read on top of teamrig's generic security list (lockfiles, package manager config, git and agent hooks, CI, container files, git attributes), which none removes. A glob with no slash names a file at any depth, one with a slash is read from the repo root; case is ignored. always holds a change touching the path for its class's reviewer; check runs the repo's reviewCheck first. A bad mode or class reads as always and security.
+
+| Key | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `glob` (required) | string (1 to 200 characters) |  | The paths the entry covers: with no slash a file name at any depth, with one a path from the repo root; case is ignored. |
+| `mode` | one of `"always"`, `"check"` | `"always"` | always holds a change touching the paths for the class's reviewer; check runs the repo's reviewCheck first, which clears the change or holds it. |
+| `class` | one of `"security"`, `"leader"` | `"security"` | Who reviews a held change: security (roles.securityReviewer), or leader (the session's lead or sub-lead). |
 
 ## `exec`
 
@@ -282,6 +293,8 @@ The repositories whose branches teamrig merge merges into their default branch, 
 | `deploysOnPush` | array of string (matching `^[a-z0-9][a-z0-9._-]*$`) |  | The deploy targets a push to the default branch deploys by itself (a host that builds on push): quiet claims on them hold the merge, and the push is recorded as their deploy. |
 | `dependencyGate` | boolean |  | Refuse a branch (merge) or a pushed range (deploy) whose package files need a dependency install, so the main checkout node\_modules, which its worktrees link to, never changes unreviewed; dependencyCheck clears one for merge, and with deploy.dependencyInstall for a deploy. |
 | `dependencyCheck` | array (1 to 64 items) of string (at least 1 character) |  | With dependencyGate, what clears a dependency change: a program and its arguments, run without a shell under the host lock with the base package-lock.json in the file TEAMRIG\_BASELINE\_LOCK names (unset when the base has none). teamrig merge runs it in the branch checkout after the rebase and before the push, the default branch its base; teamrig deploy in the main checkout after the pull, its old HEAD the base. Exit 0 lets the change go, anything else refuses it. |
+| `reviewGate` | boolean |  | Hold a branch (integrate) whose changed paths hit a review entry (teamrig's generic list and pushGuard.reviewPaths) until its reviewer approves it, or reviewCheck clears its check hits. |
+| `reviewCheck` | array (1 to 64 items) of string (at least 1 character) |  | With reviewGate, what a check hit runs: a program and its arguments, run without a shell under the host lock in the branch checkout after the rebase, with the base commit in TEAMRIG\_REVIEW\_BASE. Exit 0 clears the change, 3 holds it for security with the findings it prints, anything else for the session's leader. Unset: a check hit is held like an always one. |
 | `followMainCheckout` | boolean |  | After the push, fast-forward the main checkout to it: only a fast-forward, only on the default branch with no tracked changes. |
 | `worktreeFolder` | string (at least 1 character) | `".claude/worktrees"` | The folder teamrig worktree add makes each new worktree in, one folder per branch named after it with each / as -. A relative path is in the main checkout. |
 | `worktreeSetup` | array (1 to 64 items) of string (at least 1 character) |  | What teamrig worktree add runs in a new worktree, such as a link to the main checkout node\_modules: a program and its arguments, run without a shell, with the main checkout folder in TEAMRIG\_MAIN\_CHECKOUT. Anything but exit 0 leaves the worktree in place and fails the add. Unset: nothing runs. |
