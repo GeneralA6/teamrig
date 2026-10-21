@@ -100,6 +100,8 @@ export function teamPaths(kitHome, team, userHome, overrides = {}) {
         handover: inHome(overrides.handover) ?? join(home, 'handover'),
         verifyNotices: join(state, 'verify-notices.jsonl'),
         modelNotices: join(state, 'model-notices'),
+        unownedNotices: join(state, 'unowned-notices.json'),
+        unownedNoticesLock: join(state, 'unowned-notices.lock'),
         usage: join(state, 'usage'),
         skillsScorecard: join(state, 'skills-scorecard.json'),
         period: join(state, 'usage', 'period.json'),

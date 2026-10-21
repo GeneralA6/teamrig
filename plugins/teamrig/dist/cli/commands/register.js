@@ -28,6 +28,7 @@ import { addInputOf, callerOf, changesOf, listFilterOf, setInputOf, taskIdOf, we
 import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, projectFolder, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { checkLines, listLines, SHORT_TITLE_CHARS, waitingOnLines } from "../reports.js";
 import { rollUp } from "../roll-up.js";
+import { splitUnowned } from "../unowned.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { loadTree } from "../tree.js";
 import { teamRegister } from "../team-register.js";
@@ -504,7 +505,8 @@ function withOverLimit(sections, fit) {
  * and the batch of the owner's decisions its lead asks next (src/decisions/batch.ts).
  * The `stopgap T<id>` tags in those skills and in the team's `register.check.stopgapFiles` add a STOPGAP-DONE flag
  * per finished task they name. Last, doctor's context-size and context-lists findings against the own team's
- * `contextFiles` budgets: the text every call of a session on this machine re-reads, so every `start` shows them (T393).
+ * `contextFiles` budgets: the text every call of a session on this machine re-reads (T393). Those findings and the
+ * skill flags no session on the team owns are the unowned warnings, which go to the lead (src/cli/unowned.ts, T951).
  */
 export async function checkReport(args, runtime) {
     const now = new Date(runtime.clock.now());
@@ -528,7 +530,6 @@ export async function checkReport(args, runtime) {
         return { ...section, flags: [...section.flags, ...stopgaps].sort(byFlagKind) };
     });
     const sections = week === null || week !== currentWeekOf(own.snapshot, now, zone) ? checked : withOverLimit(checked, await weekFitOf(runtime, { own, teams }, week, tree));
-    const skills = lintSkills(skillFiles, now, own.config);
     const { records } = await new HiringLog(runtime.files, own.paths.hires).read();
     const bursts = await readBursts(runtime, own.paths, own.config.budget, now.getTime());
     const over = burstsOver(bursts.records, now.getTime(), bursts.usedPct);
@@ -542,7 +543,9 @@ export async function checkReport(args, runtime) {
     const scope = week === null ? 'no week plan tagged yet, so the week checks are skipped' : `week ${week}`;
     const { batch } = await teamDecisions(runtime.files, own.paths, own.config, own.snapshot.state.tasks, now.getTime(), zone);
     const context = contextSizeFindings(await readContextInput(runtime, project, own.paths.skills, own.config.contextFiles));
-    return { sections, scope, skills, skillsDir: own.paths.skills, hires, context, decisions: { lead: own.config.roles.lead, batch, zone } };
+    const { skills, unowned } = splitUnowned(context, lintSkills(skillFiles, now, own.config), new Set(own.config.sessions), own.paths.skills);
+    const lead = own.config.roles.lead;
+    return { sections, scope, skills, skillsDir: own.paths.skills, hires, unowned, lead, decisions: { lead, batch, zone } };
 }
 /** `check [--tree] [--all]`: the report in the short form (src/cli/reports.ts), or with `--all` every flag in full. */
 export async function check(args, runtime) {

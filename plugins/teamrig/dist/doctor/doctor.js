@@ -121,7 +121,7 @@ function sizeFinding(what, chars, budget, key, fix) {
         return [];
     }
     const detail = `${what}: ${count(chars)} characters (${tokensOf(chars)}), over its budget of ${count(budget)} [contextFiles.${key}]; every call re-reads this text, so ${fix}`;
-    return [{ kind: 'context-size', detail }];
+    return [{ kind: 'context-size', detail, budget: key }];
 }
 function contextFindings({ contextFiles: { read, budgets } }) {
     const claudeMdChars = read.claudeMd.reduce((sum, file) => sum + file.chars, 0);
@@ -164,11 +164,12 @@ function sessionListsFinding({ sessionLists, contextFiles: { budgets } }) {
     const detail = `lists in the context of the newest session (${sessionLists.transcript}): ${count(chars)} characters (${tokensOf(chars)}), ` +
         `over its budget of ${count(budget)} [contextFiles.maxSessionListsChars]: ${lists.map(describeSessionList).join('; ')}; ` +
         'every call re-reads this text, so turn off unused claude.ai connectors and skills in claude.ai settings, and unused plugins with /plugin';
-    return [{ kind: 'context-lists', detail }];
+    return [{ kind: 'context-lists', detail, budget: 'maxSessionListsChars' }];
 }
 /**
  * The `context-size` and `context-lists` findings: text every call of a session on this machine re-reads, over its
- * `contextFiles` budget. `check` prints them too (T393), so every session sees them at `start`, not only in `doctor`.
+ * `contextFiles` budget. That text is no one area's, so `check` prints them as warnings no session owns, which go to
+ * the lead (src/cli/unowned.ts, T951), not only in `doctor`.
  */
 export function contextSizeFindings(input) {
     return [...contextFindings(input), ...sessionListsFinding(input)];
