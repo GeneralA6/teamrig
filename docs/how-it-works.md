@@ -320,7 +320,9 @@ turns this off: `register.autoArchive: false` in the team's `config.json`, after
   over the active time to the pace end (quiet hours count at `budget.quietHours.paceWeight`), and each session's
   part of today's is its share times its queued work, after the lead's lifts.
   The week's use in percent comes from status line snapshots (`teamrig statusline install` sets the status line
-  up), else from `budget.weeklyLimitW`. A subagent's W is multiplied by `budget.subagentWeight` (default 1), what
+  up), else from the metered W at the week's W per percent: learned from `state/usage/meter-log.jsonl` (a line
+  each time the status line passes a whole percent, fitted once 8 weeks of lines span 10 points), else
+  `budget.weeklyLimitW`. A subagent's W is multiplied by `budget.subagentWeight` (default 1), what
   one W of a helper costs in W of a main session, so all W share one price. A session past its part is held (only
   p1 work wakes it, and it escalates as `budget.escalate` says) only while the team has no room today: everyone's
   use today, the use outside the team included, at or past the in-day pace: today's use in quiet hours, plus today's
