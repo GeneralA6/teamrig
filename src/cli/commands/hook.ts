@@ -22,6 +22,7 @@ import { checkClient, clientRootOf } from '../../exec/client-integrity.ts';
 import { ClientInstalls, ShellPathSearch } from '../../exec/client-launch.ts';
 import { execGuardOutput, type TabIdentity } from '../../hooks/exec-guard.ts';
 import { packageGuardOf, packageGuardOutput } from '../../hooks/package-guard.ts';
+import { passRecordGuardOutput } from '../../hooks/pass-record-guard.ts';
 import { hookAsksOf } from '../../hooks/permission.ts';
 import { secretGuardOf, secretGuardOutput } from '../../hooks/secret-guard.ts';
 import { secretRulesOf } from '../../secret-guard/rules.ts';
@@ -236,6 +237,20 @@ export async function secretGuard(args: ParsedArgs, runtime: CliRuntime): Promis
     secretReads: config.secretReads,
     hookAsks: hookAsksOf(guard.load),
   });
+  if (output !== '') {
+    runtime.out.stdout(output);
+  }
+  return EXIT.ok;
+}
+
+/** PreToolUse on Bash, PowerShell and the file-writing tools: refuses a session's own write of a tree's pass record. */
+export async function passRecordGuard(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
+  noPositionals(args);
+  const payload = parseJson(await runtime.readStdin());
+  if ((await hookTeam(payload, runtime)).kind === 'none') {
+    return EXIT.ok;
+  }
+  const output = passRecordGuardOutput(payload);
   if (output !== '') {
     runtime.out.stdout(output);
   }

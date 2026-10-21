@@ -99,7 +99,8 @@ runs (`tools/ci/local.ts`; the list is `tools/ci/local-checks.ts`) on the commit
 - It proves a committed tree: it refuses uncommitted changes, and a pushed commit that is not checked out.
 - It stops at the first failing check and prints its output.
 - A pass is recorded in the clone's git folder (`local-ci/<tree>.json`, shared by its worktrees), so a tree is
-  checked once; a new commit is checked again.
+  checked once; a new commit is checked again. Only the runner writes a record: the pass-record guard refuses a
+  session's own write of one (`hook pass-record-guard`).
 - It cannot be skipped: never push with `--no-verify`.
 
 It runs on one machine and one Node, so a failure that only another OS or Node version shows goes unseen until

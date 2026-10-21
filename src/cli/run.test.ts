@@ -763,6 +763,26 @@ describe('runCli: hook secret-guard', () => {
   });
 });
 
+describe('runCli: hook pass-record-guard', () => {
+  const write = (file_path: string): string => JSON.stringify({ tool_name: 'Write', tool_input: { file_path, content: '{}' }, cwd: APP });
+  const record = join(APP, '.git', 'local-ci', 'abc.json');
+
+  it('refuses a write of a pass record and a line naming their folder, on a broken config too, and lets other calls run', async () => {
+    for (const kit of [new CliHarness(), new CliHarness(null), new CliHarness('{ not json')]) {
+      assert.equal(decisionOf(await kit.run(['hook', 'pass-record-guard'], { stdin: write(record) })), 'deny');
+      assert.equal(decisionOf(await kit.run(['hook', 'pass-record-guard'], { stdin: bash('rm .git/local-ci/abc.json') })), 'deny');
+    }
+    const kit = new CliHarness();
+    assert.deepEqual(await kit.run(['hook', 'pass-record-guard'], { stdin: write(join(APP, 'notes.md')) }), { code: EXIT.ok, stdout: [], stderr: [] });
+    assert.deepEqual(await kit.run(['hook', 'pass-record-guard'], { stdin: bash('git push origin topic') }), { code: EXIT.ok, stdout: [], stderr: [] });
+  });
+
+  it("prints nothing outside a team's projects or for input that is not a hook payload", async () => {
+    assert.deepEqual(await new CliHarness(null, null).run(['hook', 'pass-record-guard'], { stdin: write(record) }), { code: EXIT.ok, stdout: [], stderr: [] });
+    assert.deepEqual(await new CliHarness().run(['hook', 'pass-record-guard'], { stdin: 'not json' }), { code: EXIT.ok, stdout: [], stderr: [] });
+  });
+});
+
 describe('runCli: hook package-guard', () => {
   it('refuses an npx of a tool not installed and lets one in node_modules/.bin run', async () => {
     const kit = new CliHarness();

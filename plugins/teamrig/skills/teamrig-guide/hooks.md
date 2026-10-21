@@ -14,6 +14,7 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | `PreToolUse` on `Bash` and `PowerShell` | `hook package-guard` | Refuses a package runner that would fetch and run a package outside the project's lockfile, an install of a version the registry does not vouch for, and an `npx --no <bin>` that hands the bin's flag to npm ([the package guard](#before-a-shell-command-the-package-guard)) |
 | `PreToolUse` on `Bash`, `PowerShell`, `Read` and `Grep` | `hook secret-guard` | Refuses a call that would print a secret file, a secret variable, the whole environment or a Kubernetes secret's data into the conversation ([the secret guard](#before-a-shell-command-or-a-read-the-secret-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook exec-guard` | Refuses a privileged command's review run as another session or the owner, and any `exec` call through a client that is no install of the plugin, or one changed after its build ([the exec guard](#before-a-shell-command-the-exec-guard)) |
+| `PreToolUse` on `Bash`, `PowerShell`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` | `hook pass-record-guard` | Refuses a session's own write of a tree's pass record, the proof that lets a push or a merge skip the checks the tree passed ([the pass-record guard](#before-a-write-or-a-shell-command-the-pass-record-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook readonly-allow` | With `readonlyShell.enabled`, lets a line whose every command provably only reads run without a permission prompt ([the read-only allow](#before-a-shell-command-the-read-only-allow)) |
 | `PreToolUse` on `AskUserQuestion` | `hook picker-guard` | With `pickerGuard.enabled`, refuses the question picker to every session and helper, to the lead outside the owner's daily meeting and in it unless the team asks with the picker (`decisions.askWith`), and to a sub-team's lead always, with the reason to decide it if it is the session's own, else record it on its task and go on ([the picker guard](#before-a-question-the-picker-guard)) |
 | `PermissionRequest` | `hook prompt-refuse` | With `prompts.hookAsks: refuse`, answers each permission prompt Claude Code is about to raise but the question picker's and plan mode's exit, per case: a line that provably only reads runs, a line with a rerun form is refused quoting it, anything else is refused with the reason to record the step for the owner and go on ([asks off](#asks-off-a-refusal-instead-of-a-prompt)) |
@@ -430,6 +431,20 @@ It always refuses and never asks; no config key turns it off. The guard reads on
 - a change made to the list too: the list sits beside the code, so the check stops a slip that edits the installed
   files, not a session set on rewriting both.
 
+## Before a write or a shell command: the pass-record guard
+
+A tree's pass record (`<git common dir>/local-ci/<tree sha>.json`) says every local check passed on that tree, so a
+push or a merge of the same tree skips them. Only the repo's local runner writes one, from its pre-push hook or
+`ship.ts check`. Before Claude runs a Write, Edit, MultiEdit or NotebookEdit call, `hook pass-record-guard` refuses
+one whose file sits in a `local-ci` folder; before a Bash or PowerShell call, one whose line names `local-ci` as a
+word of its own (`.git/local-ci/x.json`, `'local-ci'` in inline code, not `my-local-ci`), its reads too, since a
+shell line's writes cannot be told from its reads. The Read and Grep tools stay open for reading a record and
+searching code. The reason: "teamrig pass-record guard: this Write writes .git/local-ci/x.json, in the folder of the trees' pass records. Only the repo's local runner writes a record, after every check passed on the tree (its pre-push hook, `ship.ts check`); one a session writes, moves or deletes would let a push or a merge skip the tree's tests. Run the repo's local checks instead; read a record with the Read tool and search code with the Grep tool. Do not retry this or route around it: a record that looks wrong goes to the lead."
+
+It has no setting, and a missing or broken config keeps it on. It reads only the call, so it cannot see a script the
+line starts (`node write-record.js`), a path built when the line runs, or a write by a program that is not a Claude
+tool: while sessions and the runner share one account, it stops a slip, not a determined session.
+
 ## Before a shell command: the read-only allow
 
 Claude Code asks before a shell line its settings do not allow, reads included, and a settings rule matches only a
@@ -464,7 +479,7 @@ and lets it run without a prompt when every command in it, substitutions and loo
 It only ever allows: a line it cannot prove reads prints nothing, and Claude Code's own permission check decides,
 as without the hook; so it does outside a team, with a missing or broken config, or on any error. Claude Code ranks
 one hook's `deny` over another's `ask` over an `allow`, and its settings' deny and ask rules still apply under an
-allow, so the push guard's question and the package and secret guards' refusals always win. It never allows a line
+allow, so the push guard's question and the package, secret and pass-record guards' refusals always win. It never allows a line
 that prints a secret ([the secret guard](#before-a-shell-command-or-a-read-the-secret-guard)), even when
 `secretGuard.secretReads` is `allow`. The hook reads the session's team
 (`$TEAMRIG_TEAM`, else the project's), never the team of a folder the line moves into. Like the guards, it reads only
