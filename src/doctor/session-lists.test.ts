@@ -166,4 +166,41 @@ describe('readSessionLists', () => {
   it('is undefined for a project with no session transcript', async () => {
     assert.equal(await readSessionLists(new MemoryTranscripts(), ROOT, PROJECT), undefined);
   });
+
+  it('reads a transcript in parts of at most chunkBytes and folds it as the whole text', async () => {
+    const lines = [
+      skillListingLine([{ name: 'a', description: 'x'.repeat(10) }]),
+      resultsLine('2026-10-21T10:00:00Z', [{ id: 't1', text: 'tool output '.repeat(5) }]),
+      deferredToolsLine({ added: ['Monitor', 'mcp__docs__read'], surfaced: [] }),
+      compactLine('2026-10-21T10:05:00Z'),
+      skillListingLine([{ name: 'b', description: 'y'.repeat(20) }]),
+      mcpInstructionsLine([{ name: 'docs', description: 'i'.repeat(40) }]),
+    ];
+    const chunkBytes = Math.max(...lines.map((line) => Buffer.byteLength(line) + 1));
+    const transcripts = new ReadLengths();
+    transcripts.set(join(dir, `${NEWER}.jsonl`), transcript(lines), 1);
+    const read = await readSessionLists(transcripts, ROOT, PROJECT, chunkBytes);
+    assert.deepEqual(read?.lists, foldSessionLists(transcript(lines)));
+    assert.ok(transcripts.lengths.length > 1);
+    assert.ok(transcripts.lengths.every((length) => length <= chunkBytes));
+  });
+
+  it('leaves out a last line Claude Code is still writing', async () => {
+    const transcripts = new MemoryTranscripts();
+    const path = join(dir, `${NEWER}.jsonl`);
+    transcripts.set(path, transcript([skillListingLine([{ name: 'a', description: 'x' }])]), 1);
+    transcripts.append(path, skillListingLine([{ name: 'b', description: 'x' }]).slice(0, -5));
+    const read = await readSessionLists(transcripts, ROOT, PROJECT);
+    assert.equal(read === undefined ? undefined : listOf(read.lists, 'skills')?.count, 1);
+  });
 });
+
+/** Records the length of each read, to show a transcript is read in parts. */
+class ReadLengths extends MemoryTranscripts {
+  readonly lengths: number[] = [];
+
+  override async read(path: string, offset: number, length: number): Promise<Buffer> {
+    this.lengths.push(length);
+    return super.read(path, offset, length);
+  }
+}
