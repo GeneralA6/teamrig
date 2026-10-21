@@ -132,7 +132,7 @@ projected unused at the week's end, and `teamrig burst start` gives the team big
 at once until then, or until a task's deadline. Only a person starts one, with your approval by default; it never
 goes past your 99.5% line, and its helpers and temporary sessions keep the same model and effort.
 
-*Coming: moving that task to next week on its own, and holding deploys before the reset.*
+*Coming: moving that task to next week on its own.*
 
 ![Your lead plans the week from the tokens you have left. The tasks fill the days, most important first, until the plan reaches 99.5% of your weekly limit. The last 0.5% is kept for incidents, and the task that doesn't fit moves to next week.](docs/images/plan.svg)
 
