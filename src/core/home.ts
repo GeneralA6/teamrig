@@ -130,6 +130,8 @@ export interface TeamPaths {
   readonly skillsScorecard: string;
   /** The week's period: its start, its end and the latest use read in it (budget/period.ts). */
   readonly period: string;
+  /** Each percent of the week the status line passed and the W metered for it, an append-only log (budget/calibration.ts). */
+  readonly meterLog: string;
   /** The lead's budget lifts, an append-only log. */
   readonly lifts: string;
   /** The lead's bursts and their ends, an append-only log. */
@@ -211,6 +213,7 @@ export function teamPaths(kitHome: string, team: string, userHome: string, overr
     usage: join(state, 'usage'),
     skillsScorecard: join(state, 'skills-scorecard.json'),
     period: join(state, 'usage', 'period.json'),
+    meterLog: join(state, 'usage', 'meter-log.jsonl'),
     lifts: join(state, 'usage', 'lifts.jsonl'),
     bursts: join(state, 'usage', 'bursts.jsonl'),
     hires: join(state, 'hires.jsonl'),

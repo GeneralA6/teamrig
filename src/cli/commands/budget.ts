@@ -10,11 +10,12 @@ import { resolveTeam } from '../../core/team.ts';
 import { formatUtcDay, MS_PER_DAY, parseUtcDay, typedDeadline, typedTimeHint } from '../../core/time.ts';
 import { activeBurst, burstFloorOf, withBurst, type BurstRecord, type InBurst } from '../../budget/burst.ts';
 import { BurstLog } from '../../budget/burst-log.ts';
+import { calibrationOf } from '../../budget/calibration.ts';
 import { claudeProjectsDir, type TranscriptSource } from '../../budget/discover.ts';
 import { activeLift, decideLift, LiftLog, liftText, type Lift } from '../../budget/lift.ts';
 import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID, type Measured } from '../../budget/measure.ts';
 import { dailyBudgetOf, liftedParts, type BudgetSplit } from '../../budget/parts.ts';
-import { nextPeriod, PeriodStore, sightOf, type Period } from '../../budget/period.ts';
+import { nextPeriod, sightOf, type Period } from '../../budget/period.ts';
 import {
   burnLines,
   loopLines,
@@ -42,7 +43,8 @@ import {
 } from '../../budget/snapshot.ts';
 import { CURSOR_DAYS_KEPT, DAYS_KEPT, EMPTY_USAGE, MemoryUsageStore, UsageStore, type UsageState } from '../../budget/store.ts';
 import { attributedW, taskUseOf } from '../../budget/task-use.ts';
-import { meteredOf, readWeek, wSince, type WeekReading } from '../../budget/week.ts';
+import { teamWeekOf } from '../../budget/team-week.ts';
+import { readWeek, wSince, type WeekReading } from '../../budget/week.ts';
 import { readWork } from '../../budget/work.ts';
 import { JsonlMarkLog } from '../../inbox/store.ts';
 import { indexMarks } from '../../inbox/marks.ts';
@@ -130,10 +132,11 @@ async function readBudget(runtime: CliRuntime, kit: Kit, config: KitConfig, rost
   const snapshots = recount ? [] : await readSnapshots(files, snapshotDirOf(config.budget, kit.paths));
   const statusUse = weekUseOf(snapshots, now);
   const states = [...measured.bySession.values(), measured.outside];
-  const period = recount
-    ? recountPeriodOf(config.budget, now)
-    : await new PeriodStore(files, kit.paths.period).periodAt(config.budget, statusUse, now, meteredOf(config.budget, states, now));
-  const week = readWeek({ budget: config.budget, now, statusUse, period, states });
+  const input = { budget: config.budget, now, statusUse, states };
+  // A recount reads no team state, the meter log included: its rate is the configured one.
+  const week = recount
+    ? readWeek({ ...input, period: recountPeriodOf(config.budget, now), calibration: calibrationOf([]) })
+    : await teamWeekOf(files, kit.paths, input);
   const lifts = recount ? [] : (await new LiftLog(files, kit.paths.lifts).read()).lifts;
   const bursts = recount ? [] : (await new BurstLog(files, kit.paths.bursts).read()).records;
   return { now, measured, week, lifts, bursts };

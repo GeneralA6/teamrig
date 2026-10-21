@@ -1,6 +1,6 @@
 import type { BudgetConfig } from '../config/types.ts';
 import type { Files } from '../core/files.ts';
-import type { JsonRecord } from '../core/guards.ts';
+import { numberField } from '../core/guards.ts';
 import { parseObject, toJsonlLine, VERSION_FIELD, writableObject } from '../core/jsonl.ts';
 import { MS_PER_HOUR, MS_PER_WEEK } from '../core/time.ts';
 import { resolveReset } from './pace.ts';
@@ -50,9 +50,15 @@ export interface Period {
   readonly lastAt: number;
 }
 
+/** The stored period before a read moved it on, and the period after (`PeriodStore.move`). */
+export interface PeriodMove {
+  readonly before: Period | undefined;
+  readonly period: Period;
+}
+
 /** The W a reader metered, which finds a reset that no stored period saw (`nextPeriod`). */
 export interface Metered {
-  /** W per percent of the week, from `budget.weeklyLimitW`. */
+  /** W per percent of the week: learned from the meter log, else `budget.weeklyLimitW` (`rateOf`, budget/week.ts). */
   readonly wPerPct: number;
   /** Everyone's W from the hour of `from` to now (`wSince`, budget/week.ts); it never grows as `from` moves later. */
   readonly wFrom: (from: number) => number;
@@ -148,11 +154,6 @@ function isKind(value: unknown): value is PeriodKind {
   return KINDS.some((kind) => kind === value);
 }
 
-function numberField(record: JsonRecord, key: string): number | undefined {
-  const value = record[key];
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
-}
-
 /** A period file's content; undefined when it is damaged or in another format, which starts the period over. */
 export function parsePeriod(text: string): Period | undefined {
   const record = parseObject(text.trim());
@@ -199,6 +200,11 @@ export class PeriodStore {
 
   /** The period after `sight`, written when it changed. A file a newer teamrig wrote is refused (`NewerDataError`), never overwritten. */
   async advance(sight: PeriodSight): Promise<Period> {
+    return (await this.move(sight)).period;
+  }
+
+  /** `advance`, with the stored period it moved on from. */
+  async move(sight: PeriodSight): Promise<PeriodMove> {
     const text = await this.files.read(this.path);
     writableObject(this.path, text, PERIOD_FORMAT);
     const stored = text === undefined ? undefined : parsePeriod(text);
@@ -206,7 +212,7 @@ export class PeriodStore {
     if (!samePeriod(stored, next)) {
       await this.files.write(this.path, formatPeriod(next));
     }
-    return next;
+    return { before: stored, period: next };
   }
 
   /**
@@ -214,7 +220,12 @@ export class PeriodStore {
    * undefined while no reset is known.
    */
   async periodAt(budget: Pick<BudgetConfig, 'reset'>, use: WeekUse | undefined, now: number, metered?: Metered): Promise<Period | undefined> {
+    return (await this.moveAt(budget, use, now, metered))?.period;
+  }
+
+  /** `periodAt`, with the stored period it moved on from, whose latest use shows a percent passed since (budget/calibration.ts). */
+  async moveAt(budget: Pick<BudgetConfig, 'reset'>, use: WeekUse | undefined, now: number, metered?: Metered): Promise<PeriodMove | undefined> {
     const sight = sightOf(budget, use, now, metered);
-    return sight === undefined ? undefined : this.advance(sight);
+    return sight === undefined ? undefined : this.move(sight);
   }
 }

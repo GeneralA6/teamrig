@@ -1,15 +1,24 @@
 import type { BudgetConfig } from '../config/types.ts';
 import { formatUtcDay, formatUtcHour, MS_PER_DAY, MS_PER_HOUR } from '../core/time.ts';
 import { DailyProfile, type ActivityProfile } from './active-time.ts';
+import type { Calibration } from './calibration.ts';
 import { dailyAllowancePct, dayPacePct, readPace, weekWindow, type PaceReading, type TeamDay, type WeekWindow } from './pace.ts';
 import type { Metered, Period, PeriodKind } from './period.ts';
 import type { WeekUse } from './snapshot.ts';
 import type { UsageState } from './store.ts';
 
 /**
+ * Where the week's W per percent comes from: `learned` from the meter log's fit (budget/calibration.ts), the
+ * configured `limit` (`budget.weeklyLimitW`) until there is one, else an `estimate` from the period's status line
+ * reading and W alone.
+ */
+export type RateSource = 'learned' | 'limit' | 'estimate';
+
+/**
  * Where the week stands: its use in percent, from the status line (the plan's own count) or, with a
- * known limit, from the metered W; the limit in W per percent, from `weeklyLimitW` or estimated from
- * the status line once the meter has counted the whole week; the pace and today's team allowance.
+ * known limit, from the metered W; the limit in W per percent, learned from the meter log, else from
+ * `weeklyLimitW`, else estimated from the status line once the meter has counted the whole week; the pace
+ * and today's team allowance.
  */
 export interface WeekReading {
   readonly reset: number | undefined;
@@ -21,8 +30,10 @@ export interface WeekReading {
   readonly statusAt: number | undefined;
   /** W per percent of the week. */
   readonly wPerPct: number | undefined;
-  /** The limit is an estimate from the status line, not `budget.weeklyLimitW`. */
-  readonly limitEstimated: boolean;
+  /** Where `wPerPct` comes from; undefined with it. */
+  readonly rateFrom: RateSource | undefined;
+  /** The meter log's fit and its forecasts' error in each period. */
+  readonly calibration: Calibration;
   /** The meter's counts reach back to the week's start, so the week's W is whole. */
   readonly covered: boolean;
   readonly pace: PaceReading | undefined;
@@ -48,6 +59,8 @@ export interface WeekInput {
   readonly period: Pick<Period, 'start' | 'end' | 'kind'> | undefined;
   /** Every usage store: each team session's and the outside one. */
   readonly states: readonly UsageState[];
+  /** The meter log's fit and forecasts (budget/calibration.ts); the fit, once there is one, sets the rate. */
+  readonly calibration: Calibration;
 }
 
 /**
@@ -97,10 +110,25 @@ export function limitWPerPct(budget: Pick<BudgetConfig, 'weeklyLimitW'>): number
   return budget.weeklyLimitW === undefined ? undefined : budget.weeklyLimitW / 100;
 }
 
-/** The usage stores' W for the period's inference (budget/period.ts); undefined without `budget.weeklyLimitW`. */
-export function meteredOf(budget: Pick<BudgetConfig, 'weeklyLimitW'>, states: readonly UsageState[], now: number): Metered | undefined {
-  const wPerPct = limitWPerPct(budget);
+/** The usage stores' W for the period's inference (budget/period.ts) at `wPerPct`; undefined without it. */
+export function meteredOf(wPerPct: number | undefined, states: readonly UsageState[], now: number): Metered | undefined {
   return wPerPct === undefined ? undefined : { wPerPct, wFrom: (from) => wSince(states, from, now) };
+}
+
+/** The week's W per percent and where it comes from (`RateSource`), first that is known; undefined while none is. */
+export function rateOf(
+  calibration: Calibration,
+  budget: Pick<BudgetConfig, 'weeklyLimitW'>,
+  estimate: number | undefined,
+): { readonly wPerPct: number; readonly from: RateSource } | undefined {
+  if (calibration.fit !== undefined) {
+    return { wPerPct: calibration.fit.wPerPct, from: 'learned' };
+  }
+  const limit = limitWPerPct(budget);
+  if (limit !== undefined) {
+    return { wPerPct: limit, from: 'limit' };
+  }
+  return estimate === undefined ? undefined : { wPerPct: estimate, from: 'estimate' };
 }
 
 function earliestDay(states: readonly UsageState[]): string | undefined {
@@ -109,7 +137,7 @@ function earliestDay(states: readonly UsageState[]): string | undefined {
 }
 
 export function readWeek(input: WeekInput): WeekReading {
-  const { budget, now, statusUse, states, period } = input;
+  const { budget, now, statusUse, states, period, calibration } = input;
   const reset = period?.end;
   const window = period === undefined ? undefined : weekWindow(period.end, budget.paceEndHoursBeforeReset, period.start);
   const dayStart = now - (now % MS_PER_DAY);
@@ -120,7 +148,8 @@ export function readWeek(input: WeekInput): WeekReading {
   const covered = startDay !== undefined && first !== undefined && first <= startDay;
   const weekW = window === undefined ? 0 : wSince(states, window.start, now);
   const estimate = statusUse !== undefined && covered && weekW > 0 && statusUse.usedPct > 0 ? weekW / statusUse.usedPct : undefined;
-  const wPerPct = limitWPerPct(budget) ?? estimate;
+  const rate = rateOf(calibration, budget, estimate);
+  const wPerPct = rate?.wPerPct;
   const usedPct = statusUse?.usedPct ?? (covered && wPerPct !== undefined ? weekW / wPerPct : undefined);
   const profile = DailyProfile.ofQuietHours(budget.quietHours);
   const pace = window === undefined || usedPct === undefined ? undefined : readPace(window, budget, now, usedPct, profile);
@@ -139,7 +168,8 @@ export function readWeek(input: WeekInput): WeekReading {
     usedPct,
     statusAt: statusUse?.at,
     wPerPct,
-    limitEstimated: budget.weeklyLimitW === undefined && wPerPct !== undefined,
+    rateFrom: rate?.from,
+    calibration,
     covered,
     pace,
     allowancePct,
