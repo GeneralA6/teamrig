@@ -1,35 +1,62 @@
-# <img src="docs/images/wordmark.svg" alt="teamrig" height="42">
+<h1 align="center"><img src="docs/images/wordmark.svg" alt="teamrig" height="48"></h1>
 
-**Tell your team lead what you want. Your team builds it.**
+<p align="center"><b>Tell your team lead what you want. Your team builds it.</b></p>
 
-You create a team lead and tell it what you want. It hires a team, gives each member a job, and they build it
-together. The team learns as it goes.
+<p align="center">teamrig turns the Claude Code sessions in your terminal into a team: a lead, its members and one task
+list, planned to your token budget, safe while you're away, and better each week.</p>
+
+<p align="center">
+  <a href="#get-started">Get started</a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#why-its-different">Why it's different</a> ·
+  <a href="docs/features.md">Everything it does</a> ·
+  <a href="docs/commands.md">Commands</a>
+</p>
 
 ![In the lead tab, the user types: Build a signup flow: an API, a web form and tests. The lead offers to hire a team of three and the user says yes. Three tabs open and their tasks go to work. web stops on a question and the lead brings it to the user: Should the form also offer Google sign-in? The user answers: Email only for now. web goes back to work, all three tasks reach done, and the lead reports the work is ready for review.](docs/images/hero.svg)
+
+Each session is a tab in the terminal you already have (PowerShell, bash or zsh), and your lead is one of them. No
+IDE, no desktop app, no server and no account: in our test, Windows Terminal with twelve session tabs used about
+250 MB of memory.
 
 > **Pre-release.** Nothing is stable yet and there is no release; the repository is private until the first one.
 
 ## Get started
 
+Install teamrig, and teamrig-pane to keep your tasks beside the conversation:
+
 ```sh
 claude plugin marketplace add GeneralA6/teamrig
 claude plugin install teamrig@teamrig
+
+claude plugin marketplace add GeneralA6/teamrig-pane
+claude plugin install teamrig-pane@teamrig-pane
 ```
 
-Open Claude Code in your project, ask for a team, and tell your lead what you want built. No config files, no server,
-no account. To update later, see [Updating the plugin](docs/how-it-works.md#updating-the-plugin); open tabs then reload it by themselves once idle.
+Open Claude Code in your project, ask for a team, and tell your lead what you want built. No config files to write.
 
-To keep your tasks in view, add [teamrig-pane](https://github.com/GeneralA6/teamrig-pane) and run `/teamrig-pane`: it
-shows your session's tasks beside the conversation, and makes no model calls, so it costs no tokens.
-
-To run a command yourself, type it after `/teamrig` in a Claude Code tab, such as `/teamrig budget`: it runs on
-your machine and shows what it printed, also with no model call.
+- **Your tasks in view:** install [teamrig-pane](https://github.com/GeneralA6/teamrig-pane) and run `/teamrig-pane`
+  in a tab. It shows the session's tasks beside the conversation and makes no model calls, so it costs no tokens.
+- **A command by hand:** type it after `/teamrig`, such as `/teamrig budget`. It runs on your machine and shows what
+  it printed, also with no model call.
+- **Updates:** see [Updating the plugin](docs/how-it-works.md#updating-the-plugin). Open tabs reload it by themselves
+  once idle.
 
 ### Requirements
 
 Claude Code 2.1.139 or later and Node.js 22.18 or later. teamrig checks for anything else when you set up a team and
 when a session starts, and tells you in plain words what is missing and how to fix it. Auto mode runs `teamrig` as is;
 in default mode, allow `Bash(teamrig:*)` ([permissions](plugins/teamrig/skills/teamrig-guide/hooks.md#permissions)).
+
+## How it works
+
+1. **Tell the lead what you want**, in plain words.
+2. **It hires a team** and gives each member a job: tasks on one list, one owner each.
+3. **The team builds it together**, each member in its own tab, working its tasks in priority order. Whatever is late
+   or stuck goes to the lead, not to you.
+4. **You get the result.** The lead calls you back, and brings any decision in a batch.
+
+![Tell the lead what you want, in plain words. It hires a team and gives each member a job. The team builds it together, each in its own tab. You get the result: the lead calls you back.](docs/images/how-it-works.svg)
 
 ## Your day: two hours, not twelve
 
@@ -46,99 +73,111 @@ No more twelve-hour days steering agents by hand. With teamrig, your part takes 
 
 ## Why it's different
 
+Each of these is something a single Claude Code tab can't do on its own.
+
 ![A built-in project manager: one task list for the whole team, with owner, priority, due date and proof. Your week, planned: scheduled from your token budget, and it flags what's late, stuck or off-plan. Your day back: one meeting in the morning, each decision with a recommendation. Improves itself: what one session works out becomes a skill, and each lesson a team rule. Survives a crash or reboot: sessions reopen where they left off, and tasks and notes are safe on disk. Just your terminal: Claude Code in the terminal you have, with no IDE, no desktop app and no server.](docs/images/why.svg)
 
-*Coming: moving the work that doesn't fit your token budget to next week, and reopening sessions at logon on macOS and
-Linux, as `teamrig restore install` sets up on Windows.*
+### A project manager built in
 
-And the basics, done right: every task says what it is and why in plain words, and has one owner, who gets an inbox line the moment it is given the task, so nothing is done twice. Work that has shipped but is not
-verified yet is marked verifying, with a date to verify it by, so it stays in view until it is, and work built on it waits for the proof. Closing a task names the follow-up tasks it leaves, or none, so a finding is never left in a notes file. A task that
-cannot go on is marked waiting, with what it waits for, and `check` tells you when it can; work it needs from a teammate becomes that teammate's task in the same step, so no ask is lost. Work another task needs takes that task's deadline and names who needs it, and each member sees what waits on it. A push to main asks you first,
-and a force-push to it is refused. A package runner that would fetch and run an unvetted package (`npx` of a tool not installed, `pnpm dlx`) is refused too, and so is an install of a version published in the last two weeks or with a known advisory. Turn on `readonlyShell` and a shell line that only reads (`grep`, `git log`, `kubectl get`) runs without asking you, while any other line gets Claude Code's usual check. Turn on `pickerGuard` and a session that needs your decision makes it when it is its own, else records it on its task and goes on, instead of stopping at the question picker until you answer; the lead asks through the picker only in your daily meeting. The team rules win over a CLAUDE.md, skill or memory line that says otherwise: setup finds
-each such line and asks you whether to remove it, keep it as an exception, or rewrite it. Each helper a member starts gets the same rules and knows whose helper it is. A message that would wake an idle member at full price is held once, so a
-cheap inbox line can take its place. When a member's context runs long, it writes a handover; your `/clear` starts it fresh once you have read its screen, and it carries on from there by itself, its tasks read fresh from the register. Big
-commits are flagged before they land, `teamrig worktree remove` clears a finished worktree without emptying the main
-checkout's `node_modules`, and everything runs on your machine, with no account and no cloud bill. When two members
-edit one skill at once and Claude Code refuses the later edit, that member or helper is sent back to redo it before it
-reports done, so no lesson is lost quietly.
-
-Your GitHub issues can join the task list too, one way only: `teamrig gh sync` adds a task for each open issue of the
-repositories you list and keeps its title, description (the issue's body), priority and open or closed state as on GitHub. It only ever reads GitHub,
-so the tasks your team adds stay on your machine. Once set up it runs on its own every 15 minutes, and each
-session's inbox names its new issues. [GitHub sync](docs/github-sync.md) shows how to set it up, with a read-only
-token for each GitHub owner.
-
-## Just your terminal
-
-teamrig is Claude Code in the terminal you already have: PowerShell, bash or zsh. Each session is a tab, your lead is
-one of them, and teamrig-pane keeps the task list beside the conversation. A tab you open yourself joins a session
-when you name it after one (`/rename web`), and a tab that joined one without a name gets the session's name, so it
-stays that session after `/clear`. Turn on `tabStatus` and each tab's title starts with a colored circle for what its
-session is doing: ready, working, waiting on you, waiting on your decision, hit an API error or compacting. No IDE, no desktop app, no browser
-dashboard, no server to run.
+One task list for the whole team. Every task says what it is and why in plain words, and has one owner, a priority
+and a due date; the owner gets an inbox line the moment it is given the task, so nothing is done twice. Work that has
+shipped stays *verifying* until its proof exists, and work that can't go on is *waiting*, naming what it waits for, so
+nothing closes unproven and no ask is lost. The lead's checks flag what's late, stuck, piling up or off the week's
+goals.
 
 ![teamrig in your terminal: one window, with a tab for each session: lead, api, web, data, docs and tests. In the lead's tab you ask what needs you, and the lead brings two decisions, each with its pick: keep logs 30 days or 90, and whether to offer Google sign-in on the form. You answer both in one line. Beside the conversation, teamrig-pane lists the team's tasks, each with its id, owner, priority and due date, and marks which are working, which need you, which have not started and which are done.](docs/images/terminal-view.svg)
 
-The window itself stays light: in our test, Windows Terminal with twelve session tabs used about 250 MB of memory.
-The rest is Claude Code, which you run anyway.
+### Your day back
 
-## Grows with your project
+Decisions come to you as short cards with the options, the numbers and the lead's pick, batched into your morning
+meeting instead of one interruption each. With `pickerGuard`, a member that needs a decision makes it when it is its
+own, else records it on its task and goes on with its next one, so no tab sits at a question while you're away. An
+idle member wakes by itself when urgent work is handed to it.
 
-Start small: one lead and a few members. When one team isn't enough, it becomes teams of teams, each with its own
-lead. You still talk to just one. Inside a team, the lead can make a member a sub-lead over a few others
-(`teamrig promote`): it answers their approvals and orders their work, and the lead still may.
+### Never runs out mid-task
 
-When a job needs one more pair of hands, your lead hires a temporary member for it (`teamrig hire`), within the
-caps you set: how many at once, how much of the week they may use a day, and whether you approve each hire.
-The lead's checks say when: a member with more work due than its pace can finish in time, while the week has budget
-to spare, and which of its tasks to hand over.
-When the job is done, the lead retires it (`teamrig retire`): its open tasks go to a member you name, it leaves a
-handover note, and its tasks and notes stay readable. The lead's checks flag a hired member left with no work.
+Your lead plans the week from the tokens you have left: it sizes each task, fills the week by priority until the plan
+reaches 99.5% of your weekly limit, keeps the last 0.5% for incidents and moves what doesn't fit to next week.
+`teamrig budget` shows each member's use against the week's pace line, and deploys hold in the last hours before the
+reset, so nothing ships half-done. When the week would end with tokens unused, a burst spends them, with your
+approval.
 
-If you let the lead decide (the `automatic` policy), a hired member whose last task closes is asked to write its
-handover note and retire itself. Hiring a retired member back picks up where it left off: from its handover note,
-or in its last Claude Code session when that is recent and small enough.
-
-![A camera pulls back from your lead as time passes. Day 1: the lead hires a team of three. Week 2: new members join and one whose job is done moves on. Month 2: one team becomes teams of teams, each with its own lead. Month 6: eight teams and 33 members, with members coming and going, and you still talk to one lead.](docs/images/growth.svg)
-
-## How it works
-
-![Tell the lead what you want, in plain words. It hires a team and gives each member a job. The team builds it together, each in its own tab. You get the result: the lead calls you back.](docs/images/how-it-works.svg)
-
-## Never runs out mid-task
-
-Your lead plans the week from the tokens you have left. It sizes each task in tokens, fills the week in order of
-priority until the plan reaches 99.5% of your limit, keeps the last 0.5% for incidents and moves what doesn't fit
-to next week. The team works to the plan, so every task finishes before your weekly reset without hitting the
-wall, and deploys hold in the last hours, so nothing ships half-done.
-
-Today, `teamrig budget` shows each member's use against the week's pace line and its share of the day, read from
-Claude Code's own records, so you see who runs ahead of plan. Your lead turns it on when the team starts, asking you how to pace the days
-and what happens past the line (`teamrig budget setup`). A member past its share of the day is told, and is held back only once the whole team has used the day's pace so far, so no one waits while the week has room: then your lead is told, and its new
-helpers can ask you first. Your lead is reminded to hand edits, tests and code searches to the owning session, a helper or a temporary session, and you see at a turn's end what it did itself. Each helper launch reminds the session that work stays in its own session by default, since a helper's tokens cost more (`budget.subagentWeight`; one team measured about 2.2 times). A session that makes six single-step calls in a row is asked once to put them in one message, and
-`teamrig test -- <command>` sums up a test run in one PASS or FAIL line and its failing tests, keeping the rest in a log. `teamrig heavy --what <label> -- <command>` runs a build or test run under one lock for the whole host, so heavy steps never pile up, and kills one that runs too long; with `--small`, small steps such as spec runs share the host side by side while its free memory allows, and with `--pre-push` a pre-push hook's checks reuse their pass on the same clean tree for a day and decline a push whose connection waited too long for the lock. `teamrig integrate` lands a finished branch on main the same way for every session: it waits for quiet deploy claims and the host lock, rebases, pushes and records the push in the ledger. `teamrig roll` then brings what was pushed to the running system: it waits for quiet claims (`teamrig claim`), the team's own gates and the host lock, pulls the main checkout and runs the team's roll command as one recorded heavy step. `teamrig windows --targets <a,b> --since <time>` lists the clean measurement windows no deploy or heavy step touched, each naming the background loads sessions declared with `teamrig load`. `teamrig deploys` shows the deploy state in one read: the host lock's holder, the cutoff and blackout, the open claims and loads, and what each repository has pushed but not rolled. `teamrig doctor` weighs what every call re-reads (your CLAUDE.md files, memory index and skill
-listing) and names the cheapest cut when one runs over its budget. It also warns of a setting that quietly overrides the model or effort a session or helper is given, and of a session set to start on a model with no effort. `teamrig budget --burn` shows where each day went: the turns you,
-a peer, a notification or a scheduled wake started, the calls that re-wrote a cold cache, and the compactions. A helper's tokens can be priced apart from a session's own
-(`budget.subagentWeight`) when your week's meter counts them differently. The week's use comes from Claude Code's status line:
-`teamrig statusline install` sets it up (it also shows the session's folder, branch and the command that resumes it)
-and keeps one you already have, or have yours write the
-[same snapshot](plugins/teamrig/skills/teamrig-guide/commands.md#teamrig-statusline).
-
-With a size on each task (`--size`, its share of the weekly limit), `teamrig plan` shows how much of the week fits
-the limit left and `teamrig check` flags the first task that doesn't, for your lead to move to next week.
-
-When the week would end with tokens unused, your lead can spend them in a burst: `teamrig burst` shows the share
-projected unused at the week's end, and `teamrig burst start` gives the team bigger daily budgets and more helpers
-at once until then, or until a task's deadline. Only a person starts one, with your approval by default; it never
-goes past your 99.5% line, and its helpers and temporary sessions keep the same model and effort.
-
-*Coming: moving that task to next week on its own.*
+*Coming: moving the task that doesn't fit to next week on its own.*
 
 ![Your lead plans the week from the tokens you have left. The tasks fill the days, most important first, until the plan reaches 99.5% of your weekly limit. The last 0.5% is kept for incidents, and the task that doesn't fit moves to next week.](docs/images/plan.svg)
 
-[How it works in detail](docs/how-it-works.md) · [Every command](docs/commands.md) · [Contributing](CONTRIBUTING.md)
+### Improves itself
 
-Using an AI assistant? Point it at [llms.txt](llms.txt): teamrig explained for language models.
+A procedure a member works out and will run again becomes a skill in the same turn, and a lesson becomes a team rule.
+The team rules win over a CLAUDE.md, skill or memory line that says otherwise: setup finds each such line
+(`teamrig rules scan`) and asks you whether to remove it, keep it as an exception or rewrite it.
+`teamrig skills scorecard` shows whether each skill earns its place: its loads, the times its procedure was run by
+hand instead, and the calls each run takes. When two members edit one skill at once and Claude Code refuses the later
+edit, that member is sent back to redo it, so no lesson is lost quietly.
+
+### Survives a crash, a reboot and a full context
+
+Tasks, notes and inboxes live on disk, so nothing is lost with a tab. After a reboot, `teamrig restore run` reopens
+each session the shutdown killed, in its folder and at its last effort, and prompts the ones that were mid-turn to
+carry on; `teamrig restore install` runs it at each logon on Windows. When a member's context runs long, it writes a
+handover; once it is idle and you're away, teamrig restarts it after a 20-second countdown you can hold, and it carries
+on from the handover by itself.
+
+*Coming: reopening sessions at logon on macOS and Linux.*
+
+### Grows with your project
+
+Start with one lead and a few members. When a job needs one more pair of hands, the lead hires a temporary member
+(`teamrig hire`) within the caps you set: how many at once, how much of the week they may use a day, and whether you
+approve each hire. The lead's checks say when. Once the job is done, `teamrig retire` hands its open tasks to a member
+you name and leaves a handover note, and hiring it back picks up where it left off. When one team isn't enough, it
+becomes teams of teams, each with its own lead, and a member can become a sub-lead over a few others
+(`teamrig promote`). You still talk to one lead.
+
+![A camera pulls back from your lead as time passes. Day 1: the lead hires a team of three. Week 2: new members join and one whose job is done moves on. Month 2: one team becomes teams of teams, each with its own lead. Month 6: eight teams and 33 members, with members coming and going, and you still talk to one lead.](docs/images/growth.svg)
+
+### Safe while you're away
+
+A push to main asks you first, and a force-push to it is refused. A package runner that would fetch and run an
+unvetted package (`npx` of a tool not installed, `pnpm dlx`) is refused, and so is an install of a version published
+in the last two weeks or with a known advisory. A call that would print a secret file, the whole environment or a
+Kubernetes secret is refused before it runs. Each helper a member starts gets the same team rules and knows whose
+helper it is. Everything runs on your machine, with no account and no cloud bill.
+
+## Also in the box
+
+- **Notes between sessions:** `teamrig inbox add` leaves a line the receiver reads at its next prompt. A message that
+  would wake an idle member at full price is held once, so a cheap note can take its place.
+- **Tab status:** with `tabStatus`, each tab's title starts with a colored circle: ready, working, waiting on you,
+  waiting on your decision, an API error or compacting. A tab named after a session (`/rename web`) joins it.
+- **Turn log:** each session's prompts and replies for the last day, secrets masked, so a refresh never takes away
+  what you were reading.
+- **Token savers:** `teamrig doctor` weighs what every call re-reads and names the cheapest cut, and `teamrig test`
+  sums up a test run in one line.
+- **Status line:** `teamrig statusline install` shows the week's use, the folder, the branch and the command that
+  resumes the session.
+- **A model per session:** each session starts on its own model and effort, and you're told when one runs on another.
+- **GitHub issues in the task list:** `teamrig gh sync` reads your repositories' open issues every 15 minutes, one way
+  only ([GitHub sync](docs/github-sync.md)).
+- **Shipping from many sessions:** `teamrig heavy` runs builds and test runs under one host lock, `teamrig integrate`
+  lands a finished branch, `teamrig roll` brings it to the running system, and `teamrig deploys` shows it all in one
+  read.
+- **Reads without a prompt:** with `readonlyShell`, a shell line that only reads (`grep`, `git log`, `kubectl get`)
+  runs without asking.
+- **Tidy history:** big commits are flagged before they land, and `teamrig worktree remove` clears a finished worktree
+  without emptying the main checkout's `node_modules`.
+
+## Learn more
+
+| Page | What's in it |
+| --- | --- |
+| [How it works in detail](docs/how-it-works.md) | The design, the files, safe pushes and [updating the plugin](docs/how-it-works.md#updating-the-plugin) |
+| [Everything teamrig does](docs/features.md) | Every feature, and whether it works today |
+| [Every command](docs/commands.md) | Each command with its flags, as `teamrig help` prints it |
+| [Set up a team by hand](docs/setup-by-hand.md) | The two small files a team needs, if you'd rather not ask the lead |
+| [GitHub sync](docs/github-sync.md) | GitHub issues in the task list: repositories, tokens and each failure's fix |
+| [llms.txt](llms.txt) | teamrig explained for language models: point your AI assistant at it |
+| [Contributing](CONTRIBUTING.md) | How teamrig is built: tests, sign-off and the local gate |
 
 ## Licence
 
