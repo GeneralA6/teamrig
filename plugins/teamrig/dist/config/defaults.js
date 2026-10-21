@@ -54,8 +54,16 @@ export const DEFAULT_SKILLS = {
     maxVerifiedAgeDays: 30,
     forbidFrontmatter: ['allowed-tools'],
 };
-/** Measured on a working team (10-15): 23k of CLAUDE.md, 15k of memory index and 4.6k of skill listing were re-read every call. */
-export const DEFAULT_CONTEXT_FILES = { maxClaudeMdChars: 12_000, maxMemoryIndexChars: 6_000, maxSkillListingChars: 4_000 };
+/**
+ * Measured on a working team (10-15): 23k of CLAUDE.md, 15k of memory index and 4.6k of skill listing were re-read every call.
+ * Its session lists measured 38k on 10-21; a bare Claude Code setup holds about 10k.
+ */
+export const DEFAULT_CONTEXT_FILES = {
+    maxClaudeMdChars: 12_000,
+    maxMemoryIndexChars: 6_000,
+    maxSkillListingChars: 4_000,
+    maxSessionListsChars: 16_000,
+};
 export const DEFAULT_LOCK = { ttlMs: 30_000, pollMs: 50, waitMs: 20_000 };
 /** No exec PATH: a privileged command names its program by absolute path until the team lists its tool folders. */
 export const DEFAULT_EXEC = { path: [] };

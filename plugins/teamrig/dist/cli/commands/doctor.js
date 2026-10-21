@@ -1,8 +1,10 @@
+import { claudeProjectsDir } from "../../budget/discover.js";
 import { launchOf } from "../../config/launch.js";
 import { Roster } from "../../config/roster.js";
 import { claudeConfigDir, KIT_NAME } from "../../core/home.js";
 import { readContextFiles } from "../../doctor/context-files.js";
 import { doctorFindings, formatFinding } from "../../doctor/doctor.js";
+import { readSessionLists } from "../../doctor/session-lists.js";
 import { claudeSettingsFiles, readSettingsEnv } from "../../doctor/settings-env.js";
 import { HiringLog, retiredSessions } from "../../hiring/log.js";
 import { inboxStatus } from "../../inbox/inbox.js";
@@ -16,7 +18,8 @@ import { inboxDepsOf } from "./inbox.js";
  * `doctor`: what teamrig lacks on this machine (git, Claude Code, Node.js), then the team's health checks
  * (names, the rename log, inboxes, rules.md, its tree of teams and session names shared with other teams,
  * read from every team config of the kit home), and the text every call of a session in the project re-reads
- * (CLAUDE.md files, the memory index, the skill listing) against the team's `contextFiles` budgets. Last, what
+ * (CLAUDE.md files, the memory index, the skill listing, and the lists of skills, deferred tools, agent types and
+ * MCP server instructions the project's newest session transcript announced) against the team's `contextFiles` budgets. Last, what
  * silently overrides the model or effort a session or helper is given: `CLAUDE_CODE_EFFORT_LEVEL` or
  * `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` in doctor's own environment or in the `env` block of the user's or the
  * project's Claude Code settings, and a session whose `launch` names a model but no effort. It reads only and
@@ -46,6 +49,7 @@ export async function doctor(args, runtime) {
             read: await readContextFiles(runtime.files, { claudeDir, project, skills: paths.skills }),
             budgets: config.contextFiles,
         },
+        sessionLists: await readSessionLists(runtime.transcripts, claudeProjectsDir(runtime.env, runtime.userHome), project),
         tree: { problems: tree.problemsOf(paths.team), clashes: tree.nameClashesOf(paths.team) },
         env: runtime.env,
         settingsEnv: await readSettingsEnv(runtime.files, claudeSettingsFiles(claudeDir, project)),

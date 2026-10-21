@@ -136,6 +136,36 @@ function contextFindings({ contextFiles: { read, budgets } }) {
         ...sizeFinding(skills, read.skills.chars, budgets.maxSkillListingChars, 'maxSkillListingChars', 'shorten descriptions or merge skills'),
     ];
 }
+const SESSION_LIST_LABELS = {
+    skills: 'skills',
+    tools: 'deferred tools',
+    agents: 'agent types',
+    instructions: 'MCP instructions',
+};
+/** The largest sources a list names; the rest are counted. */
+const SESSION_LIST_TOP_SOURCES = 3;
+function describeSessionList(list) {
+    const top = list.sources.slice(0, SESSION_LIST_TOP_SOURCES).map((source) => `${source.name} ${count(source.chars)}`);
+    const rest = list.sources.length - top.length;
+    const sources = rest > 0 ? [...top, `+${rest} more`] : top;
+    const breakdown = sources.length === 0 ? '' : ` (${sources.join(', ')})`;
+    return `${SESSION_LIST_LABELS[list.kind]} ${list.count}, ${count(list.chars)}${breakdown}`;
+}
+function sessionListsFinding({ sessionLists, contextFiles: { budgets } }) {
+    if (sessionLists === undefined) {
+        return [];
+    }
+    const lists = sessionLists.lists.filter((list) => list.count > 0);
+    const chars = lists.reduce((sum, list) => sum + list.chars, 0);
+    const budget = budgets.maxSessionListsChars;
+    if (chars <= budget) {
+        return [];
+    }
+    const detail = `lists in the context of the newest session (${sessionLists.transcript}): ${count(chars)} characters (${tokensOf(chars)}), ` +
+        `over its budget of ${count(budget)} [contextFiles.maxSessionListsChars]: ${lists.map(describeSessionList).join('; ')}; ` +
+        'every call re-reads this text, so turn off unused claude.ai connectors and skills in claude.ai settings, and unused plugins with /plugin';
+    return [{ kind: 'context-lists', detail }];
+}
 function treeFindings({ tree, command }) {
     return [
         ...tree.problems.map((problem) => ({ kind: problem.kind, detail: describeTreeProblem(problem, command) })),
@@ -185,8 +215,9 @@ function launchFindings({ launches, roster }) {
 }
 /**
  * The team's health checks: names that find the wrong session or none, a damaged rename log,
- * inboxes nobody reads, rules too long to show, text every call re-reads over its budget, a broken tree of teams or a session name two
- * teams use, a variable that overrides every model or effort choice, and a launch with a model but no effort.
+ * inboxes nobody reads, rules too long to show, text every call re-reads over its budget (files, and the lists the newest
+ * session holds), a broken tree of teams or a session name two teams use, a variable that overrides every model or effort
+ * choice, and a launch with a model but no effort.
  * It reads only; every fix is the user's.
  */
 export function doctorFindings(input) {
@@ -198,6 +229,7 @@ export function doctorFindings(input) {
         ...inboxFindings(input),
         ...rulesFindings(input),
         ...contextFindings(input),
+        ...sessionListsFinding(input),
         ...treeFindings(input),
         ...routingEnvFindings(input),
         ...launchFindings(input),

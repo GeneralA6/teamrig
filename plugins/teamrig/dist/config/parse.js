@@ -766,6 +766,7 @@ function parseContextFiles(read, raw) {
         maxClaudeMdChars: read.integer(raw, 'maxClaudeMdChars', path, defaults.maxClaudeMdChars, CONFIG_LIMITS.claudeMdChars),
         maxMemoryIndexChars: read.integer(raw, 'maxMemoryIndexChars', path, defaults.maxMemoryIndexChars, CONFIG_LIMITS.memoryIndexChars),
         maxSkillListingChars: read.integer(raw, 'maxSkillListingChars', path, defaults.maxSkillListingChars, CONFIG_LIMITS.skillListingChars),
+        maxSessionListsChars: read.integer(raw, 'maxSessionListsChars', path, defaults.maxSessionListsChars, CONFIG_LIMITS.sessionListsChars),
     };
 }
 function parseSkills(read, raw) {

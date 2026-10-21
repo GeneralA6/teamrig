@@ -13,6 +13,7 @@ export const CONFIG_LIMITS = {
     claudeMdChars: { min: 500, max: 500_000 },
     memoryIndexChars: { min: 500, max: 500_000 },
     skillListingChars: { min: 500, max: 500_000 },
+    sessionListsChars: { min: 500, max: 500_000 },
     ownerGates: { maxItems: 8, maxLength: 60 },
     ruleConflicts: { maxItems: 40 },
     protectedBranches: { maxItems: 8, maxLength: 64 },
