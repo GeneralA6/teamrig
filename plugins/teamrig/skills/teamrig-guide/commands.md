@@ -2599,7 +2599,7 @@ Week: 57.0% used at 14:00 IDT (status line); the pace line is at 20.9%: 36.1 poi
 The team used 5.0% of the week today; its daily budget is 10.3%. 37.50M W in 1,310 calls.
 api used 4.0% of the week today; its daily budget is 3.4%. 30.00M W in 1,000 calls.
 lead used 1.0% of the week today; its daily budget is 3.4%. 7.50M W in 310 calls.
-Past the daily budget: api. Finish the step in hand and start no new work items or helpers. Never skip a test or check to save budget. The lead can lift it.
+Past the daily budget: api (the team has used 5.2% of the week today, at or past its in-day pace of 4.7%). Finish the step in hand and start no new work items or helpers. Never skip a test or check to save budget. The lead can lift it.
 W = weighted tokens: input 1, cache writes 1.25 to 2, cache reads 0.1, output 5. 1% of the week is about 7.50M W, estimated from the status line.
 ```
 
