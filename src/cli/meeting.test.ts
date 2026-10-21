@@ -1,8 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { join } from 'node:path';
 import { MEETING_LAPSE_MS } from '../meeting/state.ts';
+import { MergeLog, type SelfMerge } from '../merge/merge-log.ts';
 import { TEST_CARD, TEST_GATE, TEST_OWNER_CARD_FLAGS } from '../testing/card.ts';
-import { APP, CliHarness, TEAM } from '../testing/cli-harness.ts';
+import { APP, CliHarness, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
 
 const MINUTE = 60_000;
@@ -240,5 +242,34 @@ describe('runCli: the daily meeting', () => {
     const { stdout } = await kit.run(['meeting', 'agenda', '--session', 'lead']);
     const week = stdout.findIndex((line) => line.startsWith('Week: '));
     assert.equal(stdout[week + 1], '  fits: p2 20% (left 69.5% of the week)', stdout.join('\n'));
+  });
+
+  it("lists integrate's self-merges since the meeting before under pushToProtected gated, check-clean ones marked", async () => {
+    const landed: SelfMerge = {
+      at: '2030-01-08T09:00:00.000Z',
+      session: 'alpha',
+      repo: 'app',
+      branch: 't1-auth',
+      task: 'T1',
+      base: 'b'.repeat(40),
+      head: 'h'.repeat(40),
+      tree: 'e'.repeat(40),
+      files: 1,
+      lines: 6,
+      checks: ['unit'],
+      review: 'checked',
+      route: 'self',
+    };
+    const gated = await teamBeforeTheMeeting({ ...TEAM, pushGuard: { pushToProtected: 'gated' } });
+    await new MergeLog(gated.files, join(TEAM_HOME, 'state', 'deploys', 'merges.jsonl')).append(landed);
+    const { stdout } = await gated.run(['meeting', 'agenda', '--session', 'lead']);
+    const merges = stdout.findIndex((line) => line.startsWith('MERGES '));
+    assert.deepEqual(stdout.slice(merges, merges + 2), [
+      'MERGES 1 landed with no approval since Mon 01-07 10:00 UTC, 1 CHECK-CLEAN (security samples those weekly)',
+      '  Tue 01-08 09:00 UTC alpha app t1-auth bbbbbbbb..hhhhhhhh: 1 files, 6 lines, checks unit, CHECK-CLEAN',
+    ]);
+    assert.ok(stdout.indexOf('DONE 0 done or dropped since Mon 01-07 10:00 UTC') < merges, stdout.join('\n'));
+    const plain = await teamBeforeTheMeeting();
+    assert.ok(!(await plain.run(['meeting', 'agenda', '--session', 'lead'])).stdout.some((line) => line.startsWith('MERGES ')));
   });
 });
