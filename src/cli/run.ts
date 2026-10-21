@@ -437,7 +437,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       lint): shares the host with other small steps while it keeps coordinator.heavy.memoryFloorMb free
       besides the MB held for them (its ledger peak and a quarter, else coordinator.heavy.smallReserveMb)
       and is killed after coordinator.heavy.smallMaxRunMinutes (--max-minutes up to it); a step without
-      --small waits for them to end. --pre-push (a git pre-push hook's checks): on a clean tree
+      --small waits for them to end, and a step waiting behind it is told which. --pre-push (a git
+      pre-push hook's checks): on a clean tree
       it reuses their pass of the last 24 hours (DONE at once, even from the cutoff on) and records one
       when they pass; when they waited over a minute for the lock it declines the push (REFUSED), whose
       connection may have closed meanwhile: push again, it reuses the pass

@@ -25,8 +25,11 @@ export interface HostLockInfo {
   readonly expiresAt: string;
 }
 
-/** Who holds the lock: a step, or no one that can be named (a file still being written, or a damaged one). */
-export type LockHolder = { readonly kind: 'held'; readonly info: HostLockInfo } | { readonly kind: 'unknown' };
+/**
+ * Who holds the lock: a step, with `waitsFor` the small steps still sharing the host, which it waits to end before its
+ * own runs, when any are; or no one that can be named (a file still being written, or a damaged one).
+ */
+export type LockHolder = { readonly kind: 'held'; readonly info: HostLockInfo; readonly waitsFor?: readonly HostShare[] } | { readonly kind: 'unknown' };
 
 /**
  * A step waiting for the lock, as its ticket in the line says: the file `<lock>.queue/<arrival ms>-<token>.json`, the
@@ -232,12 +235,15 @@ export function underLock(env: Env, lock: HostLockInfo): Env {
 
 /**
  * What a waiter waits on as a session reads it: `<session> (<purpose>) since <minute on zone's clock>` for a holder,
- * then its teamrig when another one took the lock (see {@link kitText}).
+ * then its teamrig when another one took the lock (see {@link kitText}), then the small steps it still waits for
+ * (`, waiting for 1 small step: <session> (<purpose>) since <minute>`).
  */
 export function holderText(holder: LockWait, zone: TimeZone): string {
   switch (holder.kind) {
-    case 'held':
-      return `${holder.info.session} (${holder.info.purpose}) since ${zone.minute(new Date(holder.info.acquiredAt))}${kitText(holder.info.kit)}`;
+    case 'held': {
+      const waiting = holder.waitsFor === undefined ? '' : `, waiting for ${sharesText(holder.waitsFor, zone)}`;
+      return `${holder.info.session} (${holder.info.purpose}) since ${zone.minute(new Date(holder.info.acquiredAt))}${kitText(holder.info.kit)}${waiting}`;
+    }
     case 'queued':
       return `${holder.first.session} (${holder.first.purpose}), first in line since ${zone.minute(new Date(holder.first.arrivedAt))}`;
     case 'unknown':
@@ -271,18 +277,23 @@ export function waitText(holder: LockWait, ahead: number, zone: TimeZone): strin
   return ahead === 0 ? holderText(holder, zone) : `${holderText(holder, zone)}; ${ahead} ahead in line`;
 }
 
-/** Tells one report apart from the last: a new holder, or a new place in line. */
+/** The tokens of `shares`, joined. */
+function tokensOf(shares: readonly HostShare[]): string {
+  return shares.map((share) => share.token).join(',');
+}
+
+/** Tells one report apart from the last: a new holder, a small step its holder waits for ending, or a new place in line. */
 function waitKey(holder: LockWait, ahead: number): string {
   switch (holder.kind) {
     case 'held':
-      return `held ${holder.info.token} ${ahead}`;
+      return `held ${holder.info.token} ${tokensOf(holder.waitsFor ?? [])} ${ahead}`;
     case 'queued':
       return `queued ${holder.first.token} ${ahead}`;
     case 'unknown':
       return `unknown ${ahead}`;
     case 'draining':
     case 'memory':
-      return `${holder.kind} ${holder.shares.map((share) => share.token).join(',')} ${ahead}`;
+      return `${holder.kind} ${tokensOf(holder.shares)} ${ahead}`;
   }
 }
 
@@ -298,12 +309,18 @@ function tellingChanges(onWait: Tell): Tell {
   };
 }
 
-/** The tokens of the steps a waiter stands behind at one look: the waiters ahead, the lock's holder, the small steps sharing the host. */
+/**
+ * The tokens of the steps a waiter stands behind at one look: the waiters ahead, the lock's holder and the small steps
+ * it waits for, the small steps sharing the host.
+ */
 function standingBehind(ahead: readonly LockWaiter[], holder: LockWait): Set<string> {
   const tokens = new Set(ahead.map((waiter) => waiter.token));
   switch (holder.kind) {
     case 'held':
       tokens.add(holder.info.token);
+      for (const share of holder.waitsFor ?? []) {
+        tokens.add(share.token);
+      }
       break;
     case 'queued':
       tokens.add(holder.first.token);
@@ -412,13 +429,25 @@ export class HostLock {
         await this.removeIf((text) => text === seen.text);
       } else if (seen.kind === 'held') {
         if (!this.isStale(seen.info)) {
-          return { kind: 'busy', holder: seen };
+          return { kind: 'busy', holder: await this.heldBy(seen.info) };
         }
         await this.removeIf((text) => parseLock(text)?.token === seen.info.token);
       }
     }
     const last = await this.read();
-    return { kind: 'busy', holder: last.kind === 'held' ? last : { kind: 'unknown' } };
+    return { kind: 'busy', holder: last.kind === 'held' ? await this.heldBy(last.info) : { kind: 'unknown' } };
+  }
+
+  /**
+   * The holder `info` names, with the small steps sharing the host, which a holder that names its teamrig waits to end
+   * before its step runs (`drain`); one without a `kit` (an older teamrig or a team's own coordinator) runs beside them.
+   */
+  private async heldBy(info: HostLockInfo): Promise<LockHolder> {
+    if (info.kit === undefined) {
+      return { kind: 'held', info };
+    }
+    const waitsFor = await this.shares();
+    return waitsFor.length === 0 ? { kind: 'held', info } : { kind: 'held', info, waitsFor };
   }
 
   /**
@@ -636,7 +665,7 @@ export class HostLock {
   private async shareInTurn(waiter: LockWaiter, ahead: readonly LockWaiter[], removeUnknown: boolean, request: ShareRequest): Promise<Look> {
     const seen = await this.read();
     if (seen.kind === 'held' && !this.isStale(seen.info)) {
-      return { kind: 'busy', holder: seen };
+      return { kind: 'busy', holder: await this.heldBy(seen.info) };
     }
     const [first] = ahead;
     if (first !== undefined) {
@@ -707,7 +736,7 @@ export class HostLock {
   private async takeInTurn(waiter: LockWaiter, ahead: readonly LockWaiter[], removeUnknown: boolean): Promise<Look> {
     const seen = await this.read();
     if (seen.kind === 'held' && !this.isStale(seen.info)) {
-      return { kind: 'busy', holder: seen };
+      return { kind: 'busy', holder: await this.heldBy(seen.info) };
     }
     const [first] = ahead;
     if (first === undefined) {
