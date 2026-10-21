@@ -14,8 +14,15 @@ export interface SkillScript {
   readonly text: string;
 }
 
-/** The files a skill's folder holds that the lint reads as scripts. */
-export const SCRIPT_FILE = /\.(?:[cm]?[jt]s|sh|ps1|py)$/;
+const SCRIPT_FILE = /\.(?:[cm]?[jt]s|sh|ps1|py)$/;
+
+/** A script's spec (`a.test.ts`, `a.spec.mjs`, `test_a.py`, `a_test.py`): the test runner runs it, never the skill. */
+const SPEC_FILE = /\.(?:test|spec)\.[cm]?[jt]s$|^test_[^/]*\.py$|_test\.py$/;
+
+/** A file in a skill's folder that the lint reads as a script the skill runs: a script kind, not its spec. */
+export function isSkillScript(file: string): boolean {
+  return SCRIPT_FILE.test(file) && !SPEC_FILE.test(file);
+}
 
 const GRANTS_LINE = /^Grants:[ \t]*(.*)$/gm;
 

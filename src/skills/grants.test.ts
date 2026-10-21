@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { grantGaps, grantsMadeBy, grantsOf, SCRIPT_FILE } from './grants.ts';
+import { grantGaps, grantsMadeBy, grantsOf, isSkillScript } from './grants.ts';
 
 function made(text: string): string[] {
   return grantsMadeBy({ name: 'run.ts', text });
@@ -61,9 +61,14 @@ describe('grantGaps', () => {
   });
 });
 
-describe('SCRIPT_FILE', () => {
+describe('isSkillScript', () => {
   it('matches the script kinds a skill folder holds, not its docs or data', () => {
     const names = ['a.ts', 'a.mts', 'a.cjs', 'a.js', 'a.sh', 'a.ps1', 'a.py', 'SKILL.md', 'a.json', 'node_modules'];
-    assert.deepEqual(names.filter((name) => SCRIPT_FILE.test(name)), ['a.ts', 'a.mts', 'a.cjs', 'a.js', 'a.sh', 'a.ps1', 'a.py']);
+    assert.deepEqual(names.filter(isSkillScript), ['a.ts', 'a.mts', 'a.cjs', 'a.js', 'a.sh', 'a.ps1', 'a.py']);
+  });
+
+  it('leaves out a script spec, which the test runner runs and the skill never does', () => {
+    const names = ['token-check.test.ts', 'a.spec.mjs', 'a.test.cjs', 'test_a.py', 'a_test.py', 'testing.ts', 'latest.py', 'contest.js'];
+    assert.deepEqual(names.filter(isSkillScript), ['testing.ts', 'latest.py', 'contest.js']);
   });
 });
