@@ -17,6 +17,7 @@ import {
   waitsText,
   waitText,
   weekdayText,
+  type WaitAnswerers,
   type WaitReason,
 } from './waits.ts';
 import { TimeZone } from '../core/zone.ts';
@@ -72,19 +73,30 @@ describe('isPeerWait', () => {
       { kind: 'time', at: '2030-01-11' },
     ];
     assert.deepEqual(
-      reasons.map((reason) => isPeerWait(reason, ['lead'], 'owner')),
+      reasons.map((reason) => isPeerWait(reason, leadersOnly(['lead']), 'owner')),
       [false, false, true, true, false, false],
     );
-    assert.equal(isPeerWait(APPROVAL, ['alpha'], 'owner'), true, 'the lead is whoever the team config names');
+    assert.equal(isPeerWait(APPROVAL, leadersOnly(['alpha']), 'owner'), true, 'the lead is whoever the team config names');
   });
 
   it("is no peer's when the one asked is a sub-lead above the task's owner (T781)", () => {
-    const approvers = ['alpha', 'lead'];
-    assert.equal(isPeerWait({ kind: 'approval', who: 'alpha' }, approvers, 'owner'), false);
-    assert.equal(isPeerWait({ kind: 'decision', who: 'alpha' }, approvers, 'owner'), false);
-    assert.equal(isPeerWait({ kind: 'approval', who: 'bravo' }, approvers, 'owner'), true, 'a session outside the chain is a peer');
+    const answerers = leadersOnly(['alpha', 'lead']);
+    assert.equal(isPeerWait({ kind: 'approval', who: 'alpha' }, answerers, 'owner'), false);
+    assert.equal(isPeerWait({ kind: 'decision', who: 'alpha' }, answerers, 'owner'), false);
+    assert.equal(isPeerWait({ kind: 'approval', who: 'bravo' }, answerers, 'owner'), true, 'a session outside the chain is a peer');
+  });
+
+  it("reads each kind's own answerers: the security reviewer answers an approval, not a decision (T828)", () => {
+    const answerers: WaitAnswerers = { decision: ['lead'], approval: ['lead', 'security'] };
+    assert.equal(isPeerWait({ kind: 'approval', who: 'security' }, answerers, 'owner'), false);
+    assert.equal(isPeerWait({ kind: 'decision', who: 'security' }, answerers, 'owner'), true);
   });
 });
+
+/** The answerers of a team with no security reviewer: the same leaders for both kinds. */
+function leadersOnly(leaders: readonly string[]): WaitAnswerers {
+  return { decision: leaders, approval: leaders };
+}
 
 describe('waitOf', () => {
   it('reads each kind, a bare day for a time', () => {

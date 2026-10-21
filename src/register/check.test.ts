@@ -201,11 +201,23 @@ describe('peerWaitFlags', () => {
       testTask({ id: 'T3', status: 'verifying', proof: 'the run', waits: [{ kind: 'approval', who: 'bravo' }] }),
     ];
     assert.deepEqual(
-      peerWaitFlags(tasks, new LeadTree(testConfig()), 'owner').map((flag) => `${flag.kind} ${flag.task.id}: ${flag.detail}`),
+      peerWaitFlags(tasks, new LeadTree(testConfig()), {}, 'owner').map((flag) => `${flag.kind} ${flag.task.id}: ${flag.detail}`),
       [
         `PEER-WAIT T1: approval:bravo is a peer's work: wait on it by its task (set T1 --status waiting --ask bravo --text "<the work>")`,
         `PEER-WAIT T3: approval:bravo is a peer's work: wait on it by its task (set T3 --status waiting --ask bravo --text "<the work>")`,
       ],
+    );
+  });
+
+  it("takes an approval of the security reviewer's on another's task, never on its own or as a decision (T828)", () => {
+    const tasks = [
+      testTask({ id: 'T1', status: 'waiting', waits: [{ kind: 'approval', who: 'bravo' }] }),
+      testTask({ id: 'T2', status: 'waiting', waits: [{ kind: 'decision', who: 'bravo' }] }),
+      testTask({ id: 'T3', owner: 'bravo', status: 'waiting', waits: [{ kind: 'approval', who: 'bravo' }] }),
+    ];
+    assert.deepEqual(
+      peerWaitFlags(tasks, new LeadTree(testConfig()), { securityReviewer: 'bravo' }, 'owner').map((flag) => flag.task.id),
+      ['T2', 'T3'],
     );
   });
 });
