@@ -252,8 +252,8 @@ describe('wake cost', () => {
 
   it('reads as W, warmth and the share of the week', () => {
     assert.equal(costText(wakeCost(MINUTE, 60, undefined)), 'about 27k W, warm cache');
-    assert.equal(costText(wakeCost(MINUTE, 60, 900_000_000)), 'about 27k W, warm cache, under 0.01% of the week');
-    assert.equal(costText(wakeCost(undefined, 60, 900_000_000)), 'about 210k W, cold, 0.02% of the week');
+    assert.equal(costText(wakeCost(MINUTE, 60, 9_000_000)), 'about 27k W, warm cache, under 0.01% of the week');
+    assert.equal(costText(wakeCost(undefined, 60, 9_000_000)), 'about 210k W, cold, 0.02% of the week');
   });
 });
 

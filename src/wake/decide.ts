@@ -211,20 +211,20 @@ export function effectivePriority(configured: number, rest: WakeRest): number {
 export interface WakeCost {
   readonly w: number;
   readonly cold: boolean;
-  /** In % of the weekly limit; undefined without `budget.weeklyLimitW`. */
+  /** In % of the week, at its W per percent; undefined while that is unknown. */
   readonly weekPct: number | undefined;
 }
 
 /**
  * The cost of waking a session idle `idleMs` (undefined: unknown, counted cold). It is cold past
  * `messages.coldAfterMinutes`; a team that set that to 0 (no held sends) still has a cache that expires, so the
- * default applies then.
+ * default applies then. `wPerPct` is the week's W per percent (`readWPerPct`, cli/stored-week.ts), undefined while unknown.
  */
-export function wakeCost(idleMs: number | undefined, coldAfterMinutes: number, weeklyLimitW: number | undefined): WakeCost {
+export function wakeCost(idleMs: number | undefined, coldAfterMinutes: number, wPerPct: number | undefined): WakeCost {
   const after = coldAfterMinutes > 0 ? coldAfterMinutes : DEFAULT_MESSAGES.coldAfterMinutes;
   const cold = idleMs === undefined || isCold(idleMs, after);
   const w = cold ? COLD_WAKE_W : WARM_WAKE_W;
-  return { w, cold, weekPct: weeklyLimitW === undefined || weeklyLimitW <= 0 ? undefined : (w / weeklyLimitW) * 100 };
+  return { w, cold, weekPct: wPerPct === undefined || wPerPct <= 0 ? undefined : w / wPerPct };
 }
 
 /** The smallest share of the week `formatPct` shows as more than 0.00%. */
