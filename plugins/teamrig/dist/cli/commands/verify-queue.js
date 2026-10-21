@@ -1,4 +1,5 @@
 import { JsonlDailyLog } from "../../core/daily-log.js";
+import { KIT_NAME } from "../../core/home.js";
 import { JsonlEventLog } from "../../register/store.js";
 import { verifyByArrived, verifyQueue } from "../../register/verify.js";
 import { formatVerifyByLine, formatVerifySummary } from "../../register/views.js";
@@ -11,15 +12,16 @@ async function queueOf(runtime, paths, id) {
     return verifyQueue(snapshot.state.tasks.values(), id);
 }
 /**
- * `VERIFY <n>: T1 (proof: ...), ...` for a session with verifying tasks, for its start context and
- * `inbox read`; undefined for none, and when the register cannot be read, so its caller never fails on it.
+ * `VERIFY <n>, oldest first:` and a row per verifying task (formatVerifySummary) for a session that holds some, for
+ * its start context and `inbox read`; undefined for none, and when the register cannot be read, so its caller never
+ * fails on it.
  */
 export async function verifyNoteOf(runtime, paths, id) {
     if (id === undefined) {
         return undefined;
     }
     try {
-        return formatVerifySummary(await queueOf(runtime, paths, id));
+        return formatVerifySummary(await queueOf(runtime, paths, id), id, KIT_NAME);
     }
     catch {
         return undefined;
