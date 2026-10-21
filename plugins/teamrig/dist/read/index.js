@@ -32,6 +32,9 @@ export { CONFIG_VERSION } from "../config/types.js";
 // by its id, its name or a name it had before, as every teamrig command does.
 export { Roster } from "../config/roster.js";
 export { readRenames, RENAME_VERSION } from "../names/rename.js";
+// The lead tree: `roles.lead` over the sub-leads the config's `leads` names, so a reader shows a session's leader
+// and a leader's group as teamrig's approvals and lists find them.
+export { LeadTree } from "../config/lead-tree.js";
 // Each session's turn log (`turn-log/<session id>/<UTC hour>.jsonl`): its prompts, replies and clears, one parsed
 // JSON line at a time.
 export { parseEntry, TURN_LOG_VERSION } from "../turn-log/entry.js";
