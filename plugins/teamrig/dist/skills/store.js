@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { SCRIPT_FILE } from "./grants.js";
+import { isSkillScript } from "./grants.js";
 export const SKILL_FILE = 'SKILL.md';
 /** A skill folder name; anything else (a path, `..`) is never looked up. */
 export const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -24,11 +24,11 @@ export class SkillDir {
         }
         return skills;
     }
-    /** The script files at the top of the skill's folder, in name order; a subfolder (node_modules) is not read. */
+    /** The script files at the top of the skill's folder, in name order, without their specs; a subfolder (node_modules) is not read. */
     async scriptsOf(name) {
         const folder = join(this.dir, name).replaceAll('\\', '/');
         const scripts = [];
-        for (const file of (await this.files.list(folder)).filter((entry) => SCRIPT_FILE.test(entry)).sort()) {
+        for (const file of (await this.files.list(folder)).filter(isSkillScript).sort()) {
             const text = await this.files.read(`${folder}/${file}`);
             if (text !== undefined) {
                 scripts.push({ name: file, text });
