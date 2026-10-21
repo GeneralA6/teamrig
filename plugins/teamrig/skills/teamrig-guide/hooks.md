@@ -310,7 +310,8 @@ nested shells, `cd`, pipes and substitutions) and refuses a call that would prin
   `Select-String`...) or `git show`, `diff` or `blame` naming one (the script or pattern a `sed`, `grep`, `awk` or
   `jq` takes first is not a file, so `grep -n .env README.md` passes), a `<` feeding one, inline code that prints one
   (`python -c "print(open('.env').read())"`), the Read tool on one, or a Grep that shows content (`output_mode:
-  content`) of one by its path or glob. The defaults: `**/.env`, `**/.env.*`, `~/.npmrc`, `~/.ssh/**`,
+  content`) of one by its path or glob (each glob of the input apart, as ripgrep gets them; a `!glob` skips files,
+  so it names none). The defaults: `**/.env`, `**/.env.*`, `~/.npmrc`, `~/.ssh/**`,
   `~/.aws/credentials`, `~/.kube/config`, `~/.docker/config.json`, `~/.git-credentials`, `~/.config/gh/hosts.yml`,
   `**/*.pem` and `**/*.key`; `.env.example`, `.env.sample` and `~/.ssh/*.pub` stay readable. A word with
   wildcards counts when a secret name fits them (`cat .env*`).
@@ -343,7 +344,8 @@ defaults name a store's URL by its kind, never by its product: a team adds its o
 
 - a value kept in a variable and printed later (`t=$(cat .env); echo "$t"`), or a path built when the line runs
   (`cat $(ls .env*)`, `Get-Content (Join-Path ~ .npmrc)`);
-- a secret file inside a folder a search walks (`grep -r x .`, a Grep over a folder with no glob);
+- a secret file inside a folder a search walks (`grep -r x .`, a Grep over a folder with no glob or only
+  `!globs`), or one a Grep glob picks through `{a,b}` alternatives (`*.{ts,pem}`);
 - a script or program the line starts (`node print-env.js`), `docker inspect`, or `docker run -e`.
 
 ## Before a shell command: the exec guard
