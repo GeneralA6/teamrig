@@ -62,9 +62,11 @@ function trimEnd(text) {
     return text.replace(/\s+$/, '');
 }
 /**
- * What the tab shows for a finished run: the output in a code fence, at most MAX_LINES lines and MAX_CHARS
- * characters, then the count of lines left out. A failed run adds its error output, at most MAX_ERROR_LINES
- * lines, and its exit code. Output Claude Code itself cut at 4 MiB is said to be cut.
+ * What the tab shows for a finished run: the typed line, then the output in a code fence on the lines under it, at
+ * most MAX_LINES lines and MAX_CHARS characters, then the count of lines left out. A failed run adds its error
+ * output, at most MAX_ERROR_LINES lines, and its exit code. Output Claude Code itself cut at 4 MiB is said to be cut.
+ * The fence never opens the text: the tab shows the answer after a `teamrig: ` prefix, and a fence that does not
+ * start its line is read as one inline code span, every line break lost (T801).
  */
 export function resultText(args, run) {
     const typed = typedLine(args);
@@ -82,7 +84,7 @@ export function resultText(args, run) {
     if (failed) {
         notes.push(`${typed} ended with exit code ${run.exitCode}.`);
     }
-    const body = shown === '' ? (failed ? '' : `${typed}: done, nothing printed.`) : fenced(shown);
+    const body = shown === '' ? (failed ? '' : `${typed}: done, nothing printed.`) : `${typed}\n${fenced(shown)}`;
     return [body, ...notes].filter((part) => part !== '').join('\n');
 }
 /** What the tab shows when the command could not run or did not finish. */

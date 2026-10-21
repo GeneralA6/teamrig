@@ -31,5 +31,9 @@ export function formatCount(value) {
  */
 export function formatEndTime(at, zone) {
     const clock = zone.clock(new Date(at));
-    return at % MS_PER_DAY === 0 ? `${clock} (the end of the budget day)` : clock;
+    return isBudgetDayEnd(at) ? `${clock} (the end of the budget day)` : clock;
+}
+/** Whether `at` is a UTC midnight, where a budget day ends. */
+export function isBudgetDayEnd(at) {
+    return at % MS_PER_DAY === 0;
 }
