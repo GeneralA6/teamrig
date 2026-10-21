@@ -107,6 +107,82 @@ export function compactLine(at: string): string {
   return JSON.stringify({ type: 'system', subtype: 'compact_boundary', content: 'Conversation compacted', timestamp: at });
 }
 
+/** A skill, agent type or tool as a listing names it, and its description. */
+export interface FixtureListing {
+  readonly name: string;
+  readonly description: string;
+}
+
+/** The line a listing shows an entry by. */
+function listingText(entry: FixtureListing): string {
+  return `- ${entry.name}: ${entry.description}`;
+}
+
+function attachmentLine(attachment: Readonly<Record<string, unknown>>): string {
+  return JSON.stringify({ parentUuid: null, isSidechain: false, attachment, type: 'attachment' });
+}
+
+/** Claude Code's skill listing: every skill when `initial`, else only the skills added. */
+export function skillListingLine(skills: readonly FixtureListing[], initial = true): string {
+  return attachmentLine({
+    type: 'skill_listing',
+    content: skills.map(listingText).join('\n'),
+    skillCount: skills.length,
+    isInitial: initial,
+    names: skills.map((skill) => skill.name),
+  });
+}
+
+export interface FixtureToolsDelta {
+  readonly added?: readonly string[];
+  readonly removed?: readonly string[];
+  /** Tools shown with their whole definition, here only a name and a description. */
+  readonly surfaced?: readonly FixtureListing[];
+}
+
+/** The deferred tools Claude Code adds and removes; it lists a tool by its name. */
+export function deferredToolsLine(delta: FixtureToolsDelta): string {
+  const surfaced = delta.surfaced ?? [];
+  return attachmentLine({
+    type: 'deferred_tools_delta',
+    addedNames: delta.added ?? [],
+    addedLines: delta.added ?? [],
+    removedNames: delta.removed ?? [],
+    surfacedNames: surfaced.map((tool) => tool.name),
+    surfacedDefinitions: surfaced.map((tool) => ({ name: tool.name, listing: tool.name, definition: { name: tool.name, description: tool.description } })),
+  });
+}
+
+export interface FixtureAgentsDelta {
+  readonly added?: readonly FixtureListing[];
+  readonly builtIn?: readonly string[];
+  readonly removed?: readonly string[];
+  readonly initial?: boolean;
+}
+
+/** The agent types Claude Code lists for the Agent tool: every type when `initial`, else the changes. */
+export function agentListingLine(delta: FixtureAgentsDelta): string {
+  const added = delta.added ?? [];
+  return attachmentLine({
+    type: 'agent_listing_delta',
+    addedTypes: added.map((agent) => agent.name),
+    addedLines: added.map(listingText),
+    builtInTypes: delta.builtIn ?? [],
+    removedTypes: delta.removed ?? [],
+    isInitial: delta.initial ?? true,
+  });
+}
+
+/** MCP servers' instructions, one block per server added, and the servers removed. */
+export function mcpInstructionsLine(added: readonly FixtureListing[], removed: readonly string[] = []): string {
+  return attachmentLine({
+    type: 'mcp_instructions_delta',
+    addedNames: added.map((server) => server.name),
+    addedBlocks: added.map((server) => server.description),
+    removedNames: removed,
+  });
+}
+
 /** Lines as a transcript file's text: each line ends in a line end. */
 export function transcript(lines: readonly string[]): string {
   return lines.map((line) => `${line}\n`).join('');
