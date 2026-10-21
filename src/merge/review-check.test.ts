@@ -1,5 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { NOT_STARTED_EXIT } from '../coordinator/recorded-step.ts';
+import { TIMED_OUT_EXIT } from '../coordinator/steps.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';
 import { REVIEW_BASE_ENV, REVIEW_FINDINGS_LIMITS, runReviewCheck, type ReviewCheck } from './review-check.ts';
 
@@ -48,14 +50,16 @@ describe('runReviewCheck', () => {
   });
 
   it('reads any other end as broken, saying how it ended', async () => {
-    assert.deepEqual(await runReviewCheck(new FakeHooks().answer(ARGV, { end: 1 }), check([])), { kind: 'broken', detail: 'exited 1' });
+    assert.deepEqual(await runReviewCheck(new FakeHooks().answer(ARGV, { end: 1 }), check([])), { kind: 'broken', detail: 'exited 1', exitCode: 1 });
     assert.deepEqual(await runReviewCheck(new FakeHooks().answer(ARGV, { end: { kind: 'timedOut' } }), check([])), {
       kind: 'broken',
       detail: 'was killed at its time limit',
+      exitCode: TIMED_OUT_EXIT,
     });
     assert.deepEqual(await runReviewCheck(new FakeHooks().answer(ARGV, { end: { kind: 'notStarted', error: 'ENOENT' } }), check([])), {
       kind: 'broken',
       detail: 'could not start (ENOENT)',
+      exitCode: NOT_STARTED_EXIT,
     });
   });
 });

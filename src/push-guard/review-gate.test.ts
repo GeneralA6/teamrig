@@ -16,7 +16,7 @@ const AUTH = hit('src/auth.ts', 'always', 'leader');
 const CHECKED = hit('src/api.ts', 'check', 'security');
 const CLEAN: CheckOutcome = { kind: 'clean' };
 const FLAGGED: CheckOutcome = { kind: 'flagged', findings: '[{"rule":"token"}]' };
-const BROKEN: CheckOutcome = { kind: 'broken', detail: 'exit 1' };
+const BROKEN: CheckOutcome = { kind: 'broken', detail: 'exited 1', exitCode: 1 };
 
 describe('needsCheck', () => {
   it('runs the check for a check hit, unless an always security hit holds the change anyway', () => {

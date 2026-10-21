@@ -1,6 +1,6 @@
 import type { Env } from '../core/home.ts';
 import { REVIEW_CHECK_FLAGGED, type CheckOutcome } from '../push-guard/review-gate.ts';
-import { hookEndText, type HookRunner } from '../deploy/hooks.ts';
+import { hookEndText, hookExitCode, type HookRunner } from '../deploy/hooks.ts';
 
 /** Names, for the review check, the commit the change is reviewed against: it reviews `$TEAMRIG_REVIEW_BASE..HEAD`. */
 export const REVIEW_BASE_ENV = 'TEAMRIG_REVIEW_BASE';
@@ -55,5 +55,5 @@ export async function runReviewCheck(hooks: HookRunner, check: ReviewCheck): Pro
     const left = printed - kept.length;
     return { kind: 'flagged', findings: [...kept, ...(left > 0 ? [`… ${left} more line(s) in the merge output`] : [])].join('\n') };
   }
-  return { kind: 'broken', detail: hookEndText(end) };
+  return { kind: 'broken', detail: hookEndText(end), exitCode: hookExitCode(end) };
 }

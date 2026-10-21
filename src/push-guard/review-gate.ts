@@ -9,11 +9,11 @@ import type { ReviewHit } from './review-paths.ts';
  * the change; and whether an approval answers the hold. Pure: the caller runs the check and keeps the hold.
  */
 
-/** What the repo's review check said: exit 0 clean, exit 3 flagged with its findings, anything else broken. */
+/** What the repo's review check said: exit 0 clean, exit 3 flagged with its findings, anything else broken, with the exit code the ledger records. */
 export type CheckOutcome =
   | { readonly kind: 'clean' }
   | { readonly kind: 'flagged'; readonly findings: string }
-  | { readonly kind: 'broken'; readonly detail: string };
+  | { readonly kind: 'broken'; readonly detail: string; readonly exitCode: number };
 
 /** The exit code a review check flags a change with; what it prints is the findings. */
 export const REVIEW_CHECK_FLAGGED = 3;
