@@ -136,8 +136,28 @@ export function todayLines(report) {
     if (week.usedPct !== undefined && week.wPerPct === undefined) {
         lines.push('Daily budgets need the week in W: set budget.weeklyLimitW, or let teamrig meter a whole week to estimate it.');
     }
-    lines.push(week.limitEstimated && week.wPerPct !== undefined ? `${W_EXPLAINED} 1% of the week is about ${formatW(week.wPerPct)} W, estimated from the status line.` : W_EXPLAINED);
+    lines.push(rateLine(week, zone));
     return lines;
+}
+/** The latest periods whose forecast misses the rate line names. */
+const FORECAST_PERIODS_SHOWN = 3;
+/** What a W is and, when the week's W per percent is not the configured one, where it comes from and how far it errs. */
+function rateLine(week, zone) {
+    const { wPerPct, rateFrom } = week;
+    const { fit, periods } = week.calibration;
+    if (wPerPct === undefined || rateFrom === undefined || rateFrom === 'limit') {
+        return W_EXPLAINED;
+    }
+    if (rateFrom === 'estimate' || fit === undefined) {
+        return `${W_EXPLAINED} 1% of the week is about ${formatW(wPerPct)} W, estimated from the status line.`;
+    }
+    const learned = `${W_EXPLAINED} 1% of the week is about ${formatW(wPerPct)} W, learned from ${formatCount(fit.readings)} meter readings, which it misses by ${fit.errorPts.toFixed(1)} points.`;
+    const shown = periods.slice(-FORECAST_PERIODS_SHOWN);
+    if (shown.length === 0) {
+        return learned;
+    }
+    const misses = shown.map((period) => `${period.errorPts.toFixed(1)} points in the period from ${zone.day(new Date(period.start)).slice(5)}`);
+    return `${learned} Its forecasts missed the status line by ${misses.join(', ')}.`;
 }
 /** `teamrig budget --day <day>`: that day recounted from the transcripts, with nothing written. */
 export function recountLines(day, report) {

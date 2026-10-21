@@ -45,17 +45,27 @@ export function idleWSince(states, from, now, profile) {
 export function limitWPerPct(budget) {
     return budget.weeklyLimitW === undefined ? undefined : budget.weeklyLimitW / 100;
 }
-/** The usage stores' W for the period's inference (budget/period.ts); undefined without `budget.weeklyLimitW`. */
-export function meteredOf(budget, states, now) {
-    const wPerPct = limitWPerPct(budget);
+/** The usage stores' W for the period's inference (budget/period.ts) at `wPerPct`; undefined without it. */
+export function meteredOf(wPerPct, states, now) {
     return wPerPct === undefined ? undefined : { wPerPct, wFrom: (from) => wSince(states, from, now) };
+}
+/** The week's W per percent and where it comes from (`RateSource`), first that is known; undefined while none is. */
+export function rateOf(calibration, budget, estimate) {
+    if (calibration.fit !== undefined) {
+        return { wPerPct: calibration.fit.wPerPct, from: 'learned' };
+    }
+    const limit = limitWPerPct(budget);
+    if (limit !== undefined) {
+        return { wPerPct: limit, from: 'limit' };
+    }
+    return estimate === undefined ? undefined : { wPerPct: estimate, from: 'estimate' };
 }
 function earliestDay(states) {
     const days = states.flatMap((state) => Object.keys(state.byDay)).sort();
     return days[0];
 }
 export function readWeek(input) {
-    const { budget, now, statusUse, states, period } = input;
+    const { budget, now, statusUse, states, period, calibration } = input;
     const reset = period?.end;
     const window = period === undefined ? undefined : weekWindow(period.end, budget.paceEndHoursBeforeReset, period.start);
     const dayStart = now - (now % MS_PER_DAY);
@@ -66,7 +76,8 @@ export function readWeek(input) {
     const covered = startDay !== undefined && first !== undefined && first <= startDay;
     const weekW = window === undefined ? 0 : wSince(states, window.start, now);
     const estimate = statusUse !== undefined && covered && weekW > 0 && statusUse.usedPct > 0 ? weekW / statusUse.usedPct : undefined;
-    const wPerPct = limitWPerPct(budget) ?? estimate;
+    const rate = rateOf(calibration, budget, estimate);
+    const wPerPct = rate?.wPerPct;
     const usedPct = statusUse?.usedPct ?? (covered && wPerPct !== undefined ? weekW / wPerPct : undefined);
     const profile = DailyProfile.ofQuietHours(budget.quietHours);
     const pace = window === undefined || usedPct === undefined ? undefined : readPace(window, budget, now, usedPct, profile);
@@ -83,7 +94,8 @@ export function readWeek(input) {
         usedPct,
         statusAt: statusUse?.at,
         wPerPct,
-        limitEstimated: budget.weeklyLimitW === undefined && wPerPct !== undefined,
+        rateFrom: rate?.from,
+        calibration,
         covered,
         pace,
         allowancePct,

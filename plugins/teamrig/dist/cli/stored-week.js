@@ -1,9 +1,10 @@
 import { join } from 'node:path';
 import { OUTSIDE_ID } from "../budget/measure.js";
-import { PeriodStore } from "../budget/period.js";
 import { readSnapshots, weekUseOf } from "../budget/snapshot.js";
 import { UsageStore } from "../budget/store.js";
-import { limitWPerPct, meteredOf, readWeek } from "../budget/week.js";
+import { calibrationOf, MeterLog } from "../budget/calibration.js";
+import { teamWeekOf } from "../budget/team-week.js";
+import { rateOf } from "../budget/week.js";
 import { snapshotDirOf } from "./commands/budget.js";
 /**
  * The week as a hook reads it: each session's use as last stored, the use outside the team and the newest
@@ -19,13 +20,13 @@ export async function readStoredWeek(runtime, paths, config, now) {
     }
     states.push((await new UsageStore(files, join(paths.usage, 'outside')).load(OUTSIDE_ID)).state);
     const statusUse = weekUseOf(await readSnapshots(files, snapshotDirOf(budget, paths)), now);
-    const period = await new PeriodStore(files, paths.period).periodAt(budget, statusUse, now, meteredOf(budget, states, now));
-    return readWeek({ budget, now, statusUse, period, states });
+    return teamWeekOf(files, paths, { budget, now, statusUse, states });
 }
 /**
- * The week's W per percent as `teamrig budget` reads it: from `budget.weeklyLimitW`, which reads no file, else the
- * stored week's estimate; undefined while neither is known.
+ * The week's W per percent as `teamrig budget` reads it: learned from the meter log, else from
+ * `budget.weeklyLimitW`, which read no usage store, else the stored week's estimate; undefined while none is known.
  */
 export async function readWPerPct(runtime, paths, config, now) {
-    return limitWPerPct(config.budget) ?? (await readStoredWeek(runtime, paths, config, now)).wPerPct;
+    const calibration = calibrationOf(await new MeterLog(runtime.files, paths.meterLog).read(now));
+    return rateOf(calibration, config.budget, undefined)?.wPerPct ?? (await readStoredWeek(runtime, paths, config, now)).wPerPct;
 }
