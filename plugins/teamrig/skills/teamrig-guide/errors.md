@@ -48,7 +48,7 @@ or take it to the lead.
 | `REFUSED T2 is already finished; nothing to wait on` | Go on: there is nothing to wait for. |
 | `REFUSED time 10-01 09:00 IDT has passed: name a time to come` | Give a time still to come, on the team's clock or marked UTC. |
 | `REFUSED decision lead2: lead2 is neither the lead (lead) nor owner` | Name the lead, or `owner`. |
-| `REFUSED approval api: decision and approval waits are for the lead (lead) and owner; wait on api's work by its task: teamrig set T3 --status waiting --ask api --text "<the work you need>"` | Run the command it names: a peer's work is a task, never an approval. |
+| `REFUSED approval api: approval waits are for the lead (lead) and owner; wait on api's work by its task: teamrig set T3 --status waiting --ask api --text "<the work you need>"` | Run the command it names: a peer's work is a task, never an approval. |
 | `REFUSED --ask goes only with --status waiting` | Add `--status waiting`, or ask with `teamrig add --owner <id>`. |
 | `REFUSED --ask goes only with --status waiting: the asked task starts open, and a proof waits only on a task in progress or verifying, so T1 waits on it until it starts (teamrig set T1 --status waiting --ask api --text "<the run>")` | Run the command it names; once the asked task has started, set T1 `verifying` with `--waits task:<its id>`. |
 | `REFUSED T3 has not started, so it does not wait: ask with teamrig add --owner api --title "<the work>", then plan T3 after that task (teamrig update T3 --after <its id>)` | Run both commands it names: T3 stays open until that task is done. |

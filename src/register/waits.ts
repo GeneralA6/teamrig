@@ -54,13 +54,17 @@ export function sameWaits(a: readonly WaitReason[], b: readonly WaitReason[]): b
   return a.length === b.length && a.every((reason) => b.some((other) => sameWait(reason, other)));
 }
 
+/** Who answers each kind of person wait on a task of one owner's, besides the owner (`waitAnswerersOf`). */
+export type WaitAnswerers = Readonly<Record<PersonWaitKind, readonly string[]>>;
+
 /**
- * A decision or an approval asked of a peer: anyone but the task owner's `approvers` (its leaders, `LeadTree`) and the
- * owner. A peer's work is a task to wait on (`task:T<id>`, which clears by itself once that task finishes), so a write
- * refuses such a wait; one an older teamrig wrote still reads, and `check` flags it PEER-WAIT.
+ * A decision or an approval asked of a peer: anyone but its kind's `answerers` (the task owner's leaders, and for an
+ * approval the security reviewer) and the owner. A peer's work is a task to wait on (`task:T<id>`, which clears by
+ * itself once that task finishes), so a write refuses such a wait; one an older teamrig wrote still reads, and `check`
+ * flags it PEER-WAIT.
  */
-export function isPeerWait(reason: WaitReason, approvers: readonly string[], ownerSource: string): reason is PersonWait {
-  return (reason.kind === 'decision' || reason.kind === 'approval') && !approvers.includes(reason.who) && reason.who !== ownerSource;
+export function isPeerWait(reason: WaitReason, answerers: WaitAnswerers, ownerSource: string): reason is PersonWait {
+  return (reason.kind === 'decision' || reason.kind === 'approval') && !answerers[reason.kind].includes(reason.who) && reason.who !== ownerSource;
 }
 
 export function isWaitKind(value: unknown): value is WaitKind {

@@ -123,7 +123,8 @@ Flags:
 - `--missed-log "<text>"`: as `--missed-test`, for the log line that should have caught it.
 - `--waits <reason>,<reason>`: required for `waiting`, and allowed only with it: what the task waits for, one or
   more of `decision:<who>` and `approval:<who>` (the lead, or `owner` for the human; a child team's lead asks its
-  parent team's lead, `app/lead`; a peer's work is a task, asked for with `--ask`), `task:T<id>` (a task to finish first; only for a task already started) and
+  parent team's lead, `app/lead`; an approval may also name the security reviewer, `roles.securityReviewer`, on a
+  task not its own; a peer's work is a task, asked for with `--ask`), `task:T<id>` (a task to finish first; only for a task already started) and
   `time:<YYYY-MM-DD HH:MM>` (on the team's clock unless marked UTC; a bare day lasts to its end; a budget hold is a time, never an approval). It
   stays waiting until every reason has cleared. A new decision or approval wait posts the lead one inbox line
   (`T1 waits on your approval: <the card's question, else the note>`; an owner wait too, since the lead keeps the
@@ -298,10 +299,11 @@ main: the lead checks the request (the `approvals` skill has the checklist) and 
 what to fix. The task's owner gets one inbox line with the answer and the note: push or merge, then set the task's
 next status; or set it in progress, fix the note's point and ask again. An approved task shows `· lead approved`
 in its waiting text and `check` flags it `READY` until its owner sets the next status, which clears the answer.
-Only the lead answers, only a task waiting on its approval, always with a note; an approval of the owner's stays
-the owner's.
+Only the lead answers (or a sub-lead above the task's owner, or the security reviewer, `roles.securityReviewer`, on
+a task not its own), only a task waiting on its approval, always with a note; an approval of the owner's stays the
+owner's.
 Under `pushGuard.pushToProtected: lead` the push guard lets the owner's push to a protected branch through while
-the approval stands ([hooks](hooks.md#before-a-shell-command-the-push-guard)).
+a leader's approval stands (the security reviewer's does not count there) ([hooks](hooks.md#before-a-shell-command-the-push-guard)).
 
 In a tree of teams, a child team's lead answers to the lead of the team just above it: it asks with
 `--waits approval:app/lead`, and that lead gets an inbox line naming the task as `web/T3`. The parent team's lead

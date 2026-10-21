@@ -1,7 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { LeadTree } from '../config/lead-tree.ts';
+import { testConfig } from '../testing/config.ts';
 import { testTask } from '../testing/task.ts';
-import { answerTo, approvalCleared, approvedTaskOf } from './approval.ts';
+import { answerTo, approvalCleared, approvedTaskOf, waitAnswerersOf } from './approval.ts';
 import type { ApprovalAnswer } from './fold.ts';
 import type { WaitReason } from './waits.ts';
 
@@ -16,6 +18,20 @@ describe('answerTo (T996)', () => {
     assert.equal(answerTo(testTask({ answer: APPROVED }), { kind: 'approval', who: 'owner' }), undefined, "the lead's answer is not the owner's");
     assert.equal(answerTo(testTask({ answer: APPROVED }), { kind: 'decision', who: 'lead' }), undefined, 'a decision is not an approval');
     assert.equal(answerTo(testTask(), LEAD), undefined, 'unanswered');
+  });
+});
+
+describe('waitAnswerersOf (T828)', () => {
+  const tree = new LeadTree(testConfig({ leads: { alpha: ['bravo'] } }));
+
+  it("adds the security reviewer to an approval's answerers, never to a decision's", () => {
+    assert.deepEqual(waitAnswerersOf(tree, { securityReviewer: 'security' }, 'bravo'), { decision: ['alpha', 'lead'], approval: ['alpha', 'lead', 'security'] });
+  });
+
+  it("leaves the leaders alone with no reviewer, on the reviewer's own task, or when the reviewer is a leader already", () => {
+    assert.deepEqual(waitAnswerersOf(tree, {}, 'bravo'), { decision: ['alpha', 'lead'], approval: ['alpha', 'lead'] });
+    assert.deepEqual(waitAnswerersOf(tree, { securityReviewer: 'security' }, 'security'), { decision: ['lead'], approval: ['lead'] });
+    assert.deepEqual(waitAnswerersOf(tree, { securityReviewer: 'alpha' }, 'bravo'), { decision: ['alpha', 'lead'], approval: ['alpha', 'lead'] });
   });
 });
 

@@ -20,6 +20,7 @@ import { postLine } from '../../inbox/inbox.ts';
 import { formatTaskLines, taskLinesOf } from '../../inbox/task-lines.ts';
 import { WakeAsks } from '../../wake/asks.ts';
 import { teamDayStartAt } from '../../wake/day-start.ts';
+import { waitAnswerersOf } from '../../register/approval.ts';
 import { byFlagKind, checkTasks, peerWaitFlags } from '../../register/check.ts';
 import { currentWeekOf } from '../../register/week.ts';
 import type { ApprovalVerdict, TaskFields } from '../../register/events.ts';
@@ -313,10 +314,10 @@ async function tellLeadersOfWaits(runtime: CliRuntime, team: Team, by: string, v
   const { task, before } = verdict.value;
   const earlier = before?.waits ?? [];
   const leaders = new LeadTree(team.config, team.above);
-  const approvers = leaders.approversOf(task.owner);
+  const answerers = waitAnswerersOf(leaders, team.config.roles, task.owner);
   const added = task.waits.filter(
     (reason): reason is PersonWait =>
-      (reason.kind === 'decision' || reason.kind === 'approval') && !isPeerWait(reason, approvers, ownerSource) && !earlier.some((other) => sameWait(reason, other)),
+      (reason.kind === 'decision' || reason.kind === 'approval') && !isPeerWait(reason, answerers, ownerSource) && !earlier.some((other) => sameWait(reason, other)),
   );
   const ownLeader = leaders.leaderOf(task.owner) ?? leaders.above ?? lead;
   const receiverOf = (reason: PersonWait) => (reason.who === ownerSource ? ownLeader : reason.who);
@@ -958,7 +959,7 @@ function checkRegister(
   const tree = new TaskTree(snapshot.state.tasks, now, zone, week, elsewhere);
   const dayStart = teamDayStartAt(config.wake.dayStartUtc, now.getTime());
   const progress = noProgressFlag({ tasks, tree, dayStart, days: config.register.check.goalProgressDays, leftPct });
-  const flags = [...checkTasks(tasks, now, zone, week, config.register, elsewhere), ...peerWaitFlags(tasks, new LeadTree(config, above), config.register.ownerSource), ...(progress === undefined ? [] : [progress])];
+  const flags = [...checkTasks(tasks, now, zone, week, config.register, elsewhere), ...peerWaitFlags(tasks, new LeadTree(config, above), config.roles, config.register.ownerSource), ...(progress === undefined ? [] : [progress])];
   return { team, flags: flags.sort(byFlagKind), tree };
 }
 

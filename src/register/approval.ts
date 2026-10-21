@@ -1,5 +1,20 @@
+import type { LeadTree } from '../config/lead-tree.ts';
+import type { RolesConfig } from '../config/types.ts';
 import type { ApprovalAnswer, Task } from './fold.ts';
-import type { PersonWait, WaitReason } from './waits.ts';
+import type { PersonWait, WaitAnswerers, WaitReason } from './waits.ts';
+
+/**
+ * Who answers a wait on a task of `owner`'s: its leaders (`LeadTree.approversOf`) a decision or an approval, and the
+ * team's security reviewer (`roles.securityReviewer`) an approval too, which is how the review gate holds a change
+ * for it (T828), but never one on its own task. A push to a protected branch still reads only the leaders' approvals
+ * (`approvedTaskOf`).
+ */
+export function waitAnswerersOf(tree: Pick<LeadTree, 'approversOf'>, roles: Pick<RolesConfig, 'securityReviewer'>, owner: string): WaitAnswerers {
+  const leaders = tree.approversOf(owner);
+  const reviewer = roles.securityReviewer;
+  const reviews = reviewer !== undefined && reviewer !== owner && !leaders.includes(reviewer);
+  return { decision: leaders, approval: reviews ? [...leaders, reviewer] : leaders };
+}
 
 /**
  * The task's answer to `reason` when it is an approval wait its giver answered, either way (`approve`, T684);

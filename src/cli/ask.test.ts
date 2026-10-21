@@ -68,7 +68,7 @@ describe('runCli: set --ask asks a peer for work by a task', () => {
     assert.equal(peer.code, EXIT.refused);
     assert.match(
       [...peer.stdout, ...peer.stderr].join('\n'),
-      /REFUSED approval bravo: decision and approval waits are for the lead \(lead\) and owner; wait on bravo's work by its task: teamrig set T1 --status waiting --ask bravo --text "<the work you need>"/,
+      /REFUSED approval bravo: approval waits are for the lead \(lead\) and owner; wait on bravo's work by its task: teamrig set T1 --status waiting --ask bravo --text "<the work you need>"/,
     );
     assert.equal(kit.files.get(EVENTS_PATH), before);
 

@@ -2,8 +2,8 @@ import { MS_PER_DAY, MS_PER_HOUR, parseDayStart, showStored } from '../core/time
 import type { TimeZone } from '../core/zone.ts';
 import { NOW_PRIORITY, topPriority } from '../config/priorities.ts';
 import type { LeadTree } from '../config/lead-tree.ts';
-import type { RegisterCheckConfig, RegisterConfig } from '../config/types.ts';
-import { approvalCleared } from './approval.ts';
+import type { RegisterCheckConfig, RegisterConfig, RolesConfig } from '../config/types.ts';
+import { approvalCleared, waitAnswerersOf } from './approval.ts';
 import { CARD_FLAGS, GATE_FLAG, whyAskUsage } from './card.ts';
 import { taskNumber, type Task } from './fold.ts';
 import { ACTIVE_STATUSES, priorityText, type TaskStatus } from './model.ts';
@@ -176,10 +176,10 @@ interface WeekPlan {
  * task owner's leaders and the owner), as a line from an older teamrig reads: a peer's work is a task, waited on by its id, which
  * clears by itself once that task finishes. Apart from {@link checkTasks}, whose register config does not name the lead.
  */
-export function peerWaitFlags(tasks: Iterable<Task>, tree: LeadTree, ownerSource: string): Flag[] {
+export function peerWaitFlags(tasks: Iterable<Task>, tree: LeadTree, roles: Pick<RolesConfig, 'securityReviewer'>, ownerSource: string): Flag[] {
   return [...tasks].flatMap((task) => {
-    const approvers = tree.approversOf(task.owner);
-    const peer = task.waits.find((reason) => isPeerWait(reason, approvers, ownerSource));
+    const answerers = waitAnswerersOf(tree, roles, task.owner);
+    const peer = task.waits.find((reason) => isPeerWait(reason, answerers, ownerSource));
     return peer === undefined
       ? []
       : [{ kind: 'PEER-WAIT' as const, task, detail: `${waitSpelling(peer)} is a peer's work: wait on it by its task (set ${task.id} --status waiting --ask ${peer.who} --text "<the work>")` }];

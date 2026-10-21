@@ -64,3 +64,29 @@ describe('runCli: approve by a sub-lead (T781)', () => {
     assert.deepEqual(await inboxOf(kit, 'bravo'), ['- 2030-01-08 10:00 UTC alpha: alpha approved T1: tests green; push or merge it now, then set its next status']);
   });
 });
+
+describe('runCli: approve by the security reviewer (T828)', () => {
+  const team = { sessions: ['lead', 'alpha', 'security'], roles: { lead: 'lead', securityReviewer: 'security' } };
+
+  it("lets the security reviewer answer an approval wait on another's task, telling the owner", async () => {
+    const kit = new CliHarness(team);
+    await kit.run(['add', '--title', 'Ship the gate', '--description', 'what and why', '--priority', 'p1', '--session', 'alpha']);
+    const set = await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'approval:security', '--note', 'review hold r1', '--session', 'alpha']);
+    assert.equal(set.code, EXIT.ok, set.stderr.join('\n'));
+    const approved = await kit.run(['approve', 'T1', '--note', 'no secrets in the diff', '--session', 'security']);
+    assert.equal(approved.code, EXIT.ok, approved.stderr.join('\n'));
+    assert.deepEqual(await inboxOf(kit, 'alpha'), ['- 2030-01-08 10:00 UTC security: security approved T1: no secrets in the diff; push or merge it now, then set its next status']);
+  });
+
+  it('refuses the reviewer a decision wait and an approval of its own task', async () => {
+    const kit = new CliHarness(team);
+    await kit.run(['add', '--title', 'Ship the gate', '--description', 'what and why', '--priority', 'p1', '--session', 'alpha']);
+    await kit.run(['add', '--title', 'Ship the audit', '--description', 'what and why', '--priority', 'p1', '--session', 'security']);
+    const decision = await kit.run(['set', 'T1', '--status', 'waiting', '--waits', 'decision:security', '--note', 'which way', '--session', 'alpha']);
+    assert.notEqual(decision.code, EXIT.ok);
+    assert.match([...decision.stdout, ...decision.stderr].join('\n'), /decision security: decision waits are for the lead \(lead\) and owner/);
+    const own = await kit.run(['set', 'T2', '--status', 'waiting', '--waits', 'approval:security', '--note', 'review hold r2', '--session', 'security']);
+    assert.notEqual(own.code, EXIT.ok);
+    assert.match([...own.stdout, ...own.stderr].join('\n'), /approval security: approval waits are for the lead \(lead\) and owner/);
+  });
+});

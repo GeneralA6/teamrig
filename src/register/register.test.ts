@@ -316,7 +316,7 @@ describe('Register.ask', () => {
     const log = files.get(LOG);
     assert.match(errorOf(await register.ask('alpha', 'T7', ASK, { status: 'waiting' })), /no task T7/);
     assert.equal(errorOf(await register.ask('bravo', 'T1', ASK, { status: 'waiting' })), 'only the owner (alpha) sets the status of T1');
-    assert.match(errorOf(await register.ask('alpha', 'T1', ASK, { status: 'waiting', waits: [{ kind: 'approval', who: 'bravo' }] })), /^approval bravo: decision and approval waits/);
+    assert.match(errorOf(await register.ask('alpha', 'T1', ASK, { status: 'waiting', waits: [{ kind: 'approval', who: 'bravo' }] })), /^approval bravo: approval waits/);
     assert.match(errorOf(await register.ask('alpha', 'T1', ASK, { status: 'waiting', skill: 'web-deploy' })), /--skill goes only with done/);
     assert.equal(files.get(LOG), log);
   });

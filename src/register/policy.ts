@@ -6,6 +6,7 @@ import { ADDRESS_PATTERN, type SessionAddress } from '../core/address.ts';
 import { SecretScanner } from '../core/secrets.ts';
 import { parseDeadline, parseUtcDay, parseUtcDeadline, showStored } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
+import { waitAnswerersOf } from './approval.ts';
 import { CARD_FLAGS, cardProblem, cardTexts, GATE_FLAG, gateOf, gateUsage, keptCard, OPTION_SEPARATOR, sameCard, WHY_ASK_FLAG, whyAskUsage, type DecisionCard } from './card.ts';
 import { ITEM_TYPES, sizeProblem, type ApprovalVerdict, type ItemType, type TaskFieldName, type TaskFields } from './events.ts';
 import { isRepark, taskNumber, type RegisterState, type Task } from './fold.ts';
@@ -15,7 +16,7 @@ import { waitsOnOwner } from './owner-waits.ts';
 import { asksReview, missedTaskIds, reviewGap, reviewGapText, reviewProblem, reviewTexts, type ProblemReview } from './review.ts';
 import { loopFix, needPath, NO_TASKS_ELSEWHERE, pathText, type TasksElsewhere } from './tree.ts';
 import { dueStartHolds, dueVerifyHold, heldStart, startHolds, WATCH_USAGE } from './verify.ts';
-import { isPeerWait, isReady, sameWait, sameWaits, waitContext, waitSpelling, type PersonWait, type WaitReason } from './waits.ts';
+import { isPeerWait, isReady, sameWait, sameWaits, waitContext, waitSpelling, type PersonWait, type PersonWaitKind, type WaitReason } from './waits.ts';
 
 /** Team policy, applied on WRITE only: the parser accepts any well-formed history. */
 export type Verdict<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: string };
@@ -216,6 +217,14 @@ export class RegisterPolicy {
     }
     const [only] = approvers;
     return only !== undefined && only === this.tree.above ? `the parent team's lead (${only})` : `the lead (${this.config.roles.lead})`;
+  }
+
+  /** Who answers a `kind` wait on the owner's task in words: its approvers, and the security reviewer too when it answers one. */
+  private answerersText(owner: string, kind: PersonWaitKind): string {
+    const leaders = this.tree.approversOf(owner);
+    const reviewer = waitAnswerersOf(this.tree, this.config.roles, owner)[kind].find((who) => !leaders.includes(who));
+    const approvers = this.approversText(owner);
+    return reviewer === undefined ? approvers : `${approvers} or the security reviewer (${reviewer})`;
   }
 
   /** The caller must be on the roster before writing anything. */
@@ -620,30 +629,31 @@ export class RegisterPolicy {
 
   /**
    * Decision and approval waits are for the task owner's leaders (the lead, and any sub-lead above it; for a child
-   * team's lead, the parent team's lead) and the owner: a peer's work is a task, waited on by its id, which clears by
-   * itself once that task finishes, where a peer's decision would hold the task until its owner noticed.
+   * team's lead, the parent team's lead) and the owner, an approval wait also for the security reviewer, on another's
+   * task (`waitAnswerersOf`): a peer's work is a task, waited on by its id, which clears by itself once that task
+   * finishes, where a peer's decision would hold the task until its owner noticed.
    */
   private personWaitProblem(task: Task, reason: PersonWait): string | undefined {
     const { ownerSource } = this.config.register;
-    if (!isPeerWait(reason, this.tree.approversOf(task.owner), ownerSource)) {
+    if (!isPeerWait(reason, waitAnswerersOf(this.tree, this.config.roles, task.owner), ownerSource)) {
       return undefined;
     }
-    const leaders = this.approversText(task.owner);
+    const answerers = this.answerersText(task.owner, reason.kind);
     return this.config.sessions.includes(reason.who)
-      ? `${reason.kind} ${reason.who}: decision and approval waits are for ${leaders} and ${ownerSource}; wait on ${reason.who}'s work by its task: teamrig set ${task.id} --status waiting --ask ${reason.who} --text "<the work you need>"`
-      : `${reason.kind} ${reason.who}: ${reason.who} is neither ${leaders} nor ${ownerSource}`;
+      ? `${reason.kind} ${reason.who}: ${reason.kind} waits are for ${answerers} and ${ownerSource}; wait on ${reason.who}'s work by its task: teamrig set ${task.id} --status waiting --ask ${reason.who} --text "<the work you need>"`
+      : `${reason.kind} ${reason.who}: ${reason.who} is neither ${answerers} nor ${ownerSource}`;
   }
 
   /**
-   * A lead's answer to a task's approval wait (T684): only a leader above the task's owner answers (the lead, or a
-   * sub-lead, T781; on a child team's lead's task, the parent team's lead, as `<team>/<id>`, T1140), only a task waiting
-   * on its own approval, and always with a note, which the task's owner reads: what it checked, or why it declines. An
-   * approval of the owner's stays the owner's: no lead answers it.
+   * An answer to a task's approval wait (T684): only a leader above the task's owner answers (the lead, or a sub-lead,
+   * T781; on a child team's lead's task, the parent team's lead, as `<team>/<id>`, T1140), or the security reviewer on
+   * another's task (T828), only a task waiting on its own approval, and always with a note, which the task's owner
+   * reads: what it checked, or why it declines. An approval of the owner's stays the owner's: no lead answers it.
    */
   approve(task: Task, caller: string, verdict: ApprovalVerdict, note: string | undefined): Verdict<ApprovalChange> {
     const { lead } = this.config.roles;
-    if (!this.tree.approversOf(task.owner).includes(caller)) {
-      return refuse(`only ${this.approversText(task.owner)} answers an approval of ${task.owner}'s`);
+    if (!waitAnswerersOf(this.tree, this.config.roles, task.owner).approval.includes(caller)) {
+      return refuse(`only ${this.answerersText(task.owner, 'approval')} answers an approval of ${task.owner}'s`);
     }
     if (task.status !== 'waiting' || !task.waits.some((reason) => reason.kind === 'approval' && reason.who === caller)) {
       const whose = caller === lead ? "the lead's" : `${caller}'s`;

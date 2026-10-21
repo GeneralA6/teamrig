@@ -536,7 +536,7 @@ describe('RegisterPolicy.setStatus to verifying', () => {
     const peer = { status: 'verifying' as const, note: 'x', proof: 'p', waits: [{ kind: 'approval' as const, who: 'bravo' }], followups: [] };
     assert.equal(
       error(policy.setStatus(TASK, 'alpha', peer, CTX)),
-      `approval bravo: decision and approval waits are for the lead (lead) and owner; wait on bravo's work by its task: teamrig set T1 --status waiting --ask bravo --text "<the work you need>"`,
+      `approval bravo: approval waits are for the lead (lead) and owner; wait on bravo's work by its task: teamrig set T1 --status waiting --ask bravo --text "<the work you need>"`,
     );
   });
 
@@ -631,9 +631,9 @@ describe('RegisterPolicy.setStatus to waiting', () => {
   it("refuses a peer's decision or approval, naming the task to wait on instead", () => {
     assert.equal(
       error(waiting(TASK, [{ kind: 'approval', who: 'bravo' }])),
-      `approval bravo: decision and approval waits are for the lead (lead) and owner; wait on bravo's work by its task: teamrig set T1 --status waiting --ask bravo --text "<the work you need>"`,
+      `approval bravo: approval waits are for the lead (lead) and owner; wait on bravo's work by its task: teamrig set T1 --status waiting --ask bravo --text "<the work you need>"`,
     );
-    assert.match(error(waiting(TASK, [{ kind: 'task', id: 'T4' }, { kind: 'decision', who: 'alpha' }])), /^decision alpha: decision and approval waits are for the lead/);
+    assert.match(error(waiting(TASK, [{ kind: 'task', id: 'T4' }, { kind: 'decision', who: 'alpha' }])), /^decision alpha: decision waits are for the lead/);
     const led = new RegisterPolicy(testConfig({ roles: { lead: 'bravo' } }));
     assert.equal(led.setStatus(TASK, 'alpha', { status: 'waiting', note: 'x', waits: [{ kind: 'approval', who: 'bravo' }] }, CTX).ok, true, 'the lead is whoever roles.lead names');
   });
@@ -647,7 +647,7 @@ describe('RegisterPolicy.setStatus to waiting', () => {
     assert.equal(wait('lead').ok, true, 'the lead above the sub-lead still does');
     assert.equal(
       error(wait('charlie')),
-      `approval charlie: decision and approval waits are for a leader above bravo (alpha or lead) and owner; wait on charlie's work by its task: teamrig set T9 --status waiting --ask charlie --text "<the work you need>"`,
+      `approval charlie: approval waits are for a leader above bravo (alpha or lead) and owner; wait on charlie's work by its task: teamrig set T9 --status waiting --ask charlie --text "<the work you need>"`,
     );
   });
 
@@ -657,7 +657,7 @@ describe('RegisterPolicy.setStatus to waiting', () => {
     const wait = (on: RegisterPolicy, task: Task, who: string) =>
       on.setStatus(task, task.owner, { status: 'waiting', note: 'x', waits: [{ kind: 'approval', who }], card: TEST_CARD }, { ...CTX, state: stateOf(task) });
     assert.equal(wait(child, leads, 'app/boss').ok, true, "the parent team's lead approves the child lead's work");
-    assert.equal(error(wait(child, leads, 'lead')), "approval lead: decision and approval waits are for the parent team's lead (app/boss) and owner; wait on lead's work by its task: teamrig set T1 --status waiting --ask lead --text \"<the work you need>\"");
+    assert.equal(error(wait(child, leads, 'lead')), "approval lead: approval waits are for the parent team's lead (app/boss) and owner; wait on lead's work by its task: teamrig set T1 --status waiting --ask lead --text \"<the work you need>\"");
     assert.equal(error(wait(policy, leads, 'app/boss')), 'approval app/boss: app/boss is neither the lead (lead) nor owner', 'a root team has no lead above');
     assert.equal(error(wait(child, TASK, 'app/boss')), 'approval app/boss: app/boss is neither the lead (lead) nor owner', 'a member waits on its own leaders');
     assert.equal(wait(child, TASK, 'lead').ok, true);
