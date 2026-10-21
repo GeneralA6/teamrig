@@ -15,6 +15,8 @@ const commit = (files: readonly FileChange[], body = '', sha = 'a'.repeat(40)): 
 function change(over: Partial<SelfMergeChange> = {}): SelfMergeChange {
   return {
     session: 'alpha',
+    repo: 'app',
+    reviewGate: true,
     branch: 't7-store',
     taskId: 'T7',
     task: { owner: 'alpha', status: 'in-progress' },
@@ -104,9 +106,15 @@ describe('selfMergeMisses', () => {
     });
   });
 
+  it("needs the repo's review gate on", () => {
+    assert.deepEqual(selfMergeMisses(change({ reviewGate: false }), RULE), [
+      { gate: 'review', why: 'coordinator.repos.app.reviewGate is off, so no review gate looked at its paths' },
+    ]);
+  });
+
   it('lists every miss in gate order', () => {
-    const missing = change({ task: undefined, pass: undefined, commits: [commit([file('src/a.ts', 500)])] });
-    assert.deepEqual(gatesOf(missing), ['task', 'pass', 'size', 'tests']);
+    const missing = change({ task: undefined, pass: undefined, commits: [commit([file('src/a.ts', 500)])], reviewGate: false });
+    assert.deepEqual(gatesOf(missing), ['task', 'pass', 'size', 'tests', 'review']);
   });
 });
 

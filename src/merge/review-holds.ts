@@ -41,10 +41,15 @@ export interface ReviewHold extends HeldChange {
   readonly createdAt: string;
 }
 
+/** 12 hex digits of the change's hash: the same change always gets the same ones. */
+export function changeHash(change: HeldChange): string {
+  const { repo, branch, base, head, tree } = change;
+  return createHash('sha256').update([repo, branch, base, head, tree].join('\0')).digest('hex').slice(0, 12);
+}
+
 /** The hold's id: the same change always gets the same one. */
 export function holdId(change: HeldChange): string {
-  const { repo, branch, base, head, tree } = change;
-  return `H${createHash('sha256').update([repo, branch, base, head, tree].join('\0')).digest('hex').slice(0, 12)}`;
+  return `H${changeHash(change)}`;
 }
 
 /** Whether the hold binds this very change: the same commits on the same branch, making the same tree. */
