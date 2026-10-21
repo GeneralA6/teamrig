@@ -11,6 +11,7 @@ import {
   discoverTranscripts,
   findTranscript,
   lastWriteOf,
+  newestProjectTranscript,
   nodeTranscriptFolders,
   nodeTranscriptSource,
   projectTranscriptPath,
@@ -140,6 +141,23 @@ describe('findTranscript', () => {
   it("is undefined for a session with no transcript of its own, a subagent's left out", async () => {
     assert.equal(await findTranscript(transcripts, ROOT, '/srv/app', C), undefined);
     assert.equal(await findTranscript(new MemoryTranscripts(), ROOT, undefined, A), undefined);
+  });
+});
+
+describe('newestProjectTranscript', () => {
+  it("takes the project's newest session transcript, leaving out subagents, other files and other projects", async () => {
+    const transcripts = new MemoryTranscripts();
+    transcripts.set(join(ROOT, '-srv-app', `${A}.jsonl`), '{}\n', YESTERDAY);
+    transcripts.set(join(ROOT, '-srv-app', `${B}.jsonl`), '{}\n', SINCE);
+    transcripts.set(join(ROOT, '-srv-app', B, 'subagents', 'agent-1.jsonl'), '{}\n', TODAY);
+    transcripts.set(join(ROOT, '-srv-app', 'notes.jsonl'), '{}\n', TODAY);
+    transcripts.set(join(ROOT, '-srv-other', `${C}.jsonl`), '{}\n', TODAY);
+    assert.equal(await newestProjectTranscript(transcripts, ROOT, '/srv/app'), join(ROOT, '-srv-app', `${B}.jsonl`));
+  });
+
+  it('is undefined for a project with no session transcript', async () => {
+    const transcripts = new MemoryTranscripts({ [join(ROOT, '-srv-other', `${C}.jsonl`)]: '{}\n' });
+    assert.equal(await newestProjectTranscript(transcripts, ROOT, '/srv/app'), undefined);
   });
 });
 
