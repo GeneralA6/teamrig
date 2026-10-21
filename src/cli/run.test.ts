@@ -298,7 +298,8 @@ describe('runCli: the task register', () => {
   it('checks the week plan and the skills, and skips the week checks before any plan', async () => {
     const kit = new CliHarness();
     await kit.run(['add', '--title', 'Ship the CLI', '--description', 'what and why', '--priority', 'p2', '--due', '2030-01-10', '--session', 'alpha']);
-    await kit.files.write(join(SKILLS_DIR, 'alpha-demo', 'SKILL.md'), 'no frontmatter\n');
+    // Owned by a session on the team, so its flag stays under SKILLS; an ownerless skill's go to the lead (context-check.test.ts).
+    await kit.files.write(join(SKILLS_DIR, 'alpha-demo', 'SKILL.md'), '---\nname: alpha-demo\ndescription: A demo skill never verified.\n---\nOwner: alpha\n');
 
     const bare = await kit.run(['check', '--session', 'alpha', '--all']);
     assert.equal(bare.code, EXIT.ok);
@@ -310,7 +311,7 @@ describe('runCli: the task register', () => {
     assert.match(weekly.stdout[1] ?? '', /^DUE-UNPLANNED \(due inside week 2030-01-07, not in its plan\) T1 open, p2, owner alpha, due 01-10, from alpha \| Ship the CLI$/);
     const skills = weekly.stdout.findIndex((line) => line.startsWith('SKILLS '));
     assert.match(weekly.stdout[skills] ?? '', /^SKILLS [1-9]\d* flag\(s\) in /);
-    assert.match(weekly.stdout[skills + 1] ?? '', /^SKILL \S+ \(.*\) - alpha-demo$/);
+    assert.match(weekly.stdout[skills + 1] ?? '', /^SKILL \S+ \(.*\) alpha alpha-demo$/);
 
     const short = await kit.run(['check', '--week', '2030-01-07', '--session', 'alpha']);
     assert.equal(short.code, EXIT.ok);
@@ -320,7 +321,7 @@ describe('runCli: the task register', () => {
       '  T1 open, p2, owner alpha, due 01-10 | Ship the CLI',
     ]);
     assert.match(short.stdout[3] ?? '', /^SKILLS [1-9]\d* flag\(s\) in /);
-    assert.match(short.stdout[4] ?? '', /^ {2}SKILL \S+ \(.*\) - alpha-demo$/);
+    assert.match(short.stdout[4] ?? '', /^ {2}SKILL \S+ \(.*\) alpha alpha-demo$/);
     const nothing = await new CliHarness().run(['check', '--session', 'alpha']);
     assert.deepEqual(nothing.stdout[0], 'CHECK 0 flag(s), no week plan tagged yet, so the week checks are skipped');
   });
