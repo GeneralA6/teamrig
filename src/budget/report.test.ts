@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { TimeZone } from '../core/zone.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 import type { Burst } from './burst.ts';
+import { calibrationOf } from './calibration.ts';
 import type { Lift } from './lift.ts';
 import { weekWindow } from './pace.ts';
 import { emptyPatterns, type PatternField } from './patterns.ts';
@@ -25,6 +26,8 @@ import {
 import type { DayUsage, UsageState } from './store.ts';
 import type { WeekReading } from './week.ts';
 
+/** An empty meter log. */
+const NOTHING_LEARNED = calibrationOf([]);
 const RESET = Date.parse('2026-10-21T01:00:00Z');
 const WINDOW = weekWindow(RESET, 1);
 /**
@@ -38,7 +41,8 @@ const WEEK: WeekReading = {
   usedPct: 57,
   statusAt: Date.parse('2026-10-15T11:00:00Z'),
   wPerPct: 7_500_000,
-  limitEstimated: true,
+  rateFrom: 'estimate',
+  calibration: NOTHING_LEARNED,
   covered: true,
   pace: { window: WINDOW, linePct: 20.853, gapPts: 36.147, state: 'ahead' },
   allowancePct: 10.25,
@@ -54,7 +58,8 @@ const UNKNOWN: WeekReading = {
   usedPct: undefined,
   statusAt: undefined,
   wPerPct: undefined,
-  limitEstimated: false,
+  rateFrom: undefined,
+  calibration: NOTHING_LEARNED,
   covered: false,
   pace: undefined,
   allowancePct: undefined,
@@ -187,14 +192,27 @@ describe('todayLines', () => {
   });
 
   it('says how to get daily budgets when only the use is known, and marks a metered week and the team past budget', () => {
-    const noLimit = todayLines({ ...REPORT, week: { ...WEEK, wPerPct: undefined, limitEstimated: false, pace: { window: WINDOW, linePct: 57.2, gapPts: -0.2, state: 'on pace' } } });
+    const noLimit = todayLines({ ...REPORT, week: { ...WEEK, wPerPct: undefined, rateFrom: undefined, pace: { window: WINDOW, linePct: 57.2, gapPts: -0.2, state: 'on pace' } } });
     assert.match(noLimit[0] ?? '', /the pace line is at 57\.2%: on pace\./);
     assert.equal(noLimit.at(-2), 'Daily budgets need the week in W: set budget.weeklyLimitW, or let teamrig meter a whole week to estimate it.');
     assert.equal(noLimit.at(-1), W_EXPLAINED);
-    const metered = todayLines({ ...REPORT, week: { ...WEEK, statusAt: undefined, limitEstimated: false, allowancePct: 1 } });
+    const metered = todayLines({ ...REPORT, week: { ...WEEK, statusAt: undefined, rateFrom: 'limit', allowancePct: 1 } });
     assert.match(metered[0] ?? '', /^Week: 57\.0% used \(metered\); /);
     assert.match(metered.find((line) => line.startsWith('Past the daily budget')) ?? '', /^Past the daily budget: the team, alpha\. /);
     assert.equal(metered.at(-1), W_EXPLAINED);
+  });
+
+  it("says a learned rate's readings, its misses and its latest periods' forecast misses", () => {
+    const fit = { wPerPct: 9_100_000, errorPts: 0.42, readings: 57 };
+    const periods = ['2026-09-23', '2026-09-30', '2026-10-07', '2026-10-14'].map((day, at) => ({ start: Date.parse(`${day}T01:00:00Z`), errorPts: at / 4, readings: 20 }));
+    const learned = todayLines({ ...REPORT, week: { ...WEEK, wPerPct: fit.wPerPct, rateFrom: 'learned', calibration: { fit, periods } } });
+    assert.equal(
+      learned.at(-1),
+      `${W_EXPLAINED} 1% of the week is about 9.10M W, learned from 57 meter readings, which it misses by 0.4 points. ` +
+        'Its forecasts missed the status line by 0.3 points in the period from 09-30, 0.5 points in the period from 10-07, 0.8 points in the period from 10-14.',
+    );
+    const first = todayLines({ ...REPORT, week: { ...WEEK, wPerPct: fit.wPerPct, rateFrom: 'learned', calibration: { fit, periods: [] } } });
+    assert.equal(first.at(-1), `${W_EXPLAINED} 1% of the week is about 9.10M W, learned from 57 meter readings, which it misses by 0.4 points.`);
   });
 });
 

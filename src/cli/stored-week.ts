@@ -1,16 +1,17 @@
 import { join } from 'node:path';
 import { OUTSIDE_ID } from '../budget/measure.ts';
-import { PeriodStore } from '../budget/period.ts';
 import { readSnapshots, weekUseOf } from '../budget/snapshot.ts';
 import { UsageStore, type UsageState } from '../budget/store.ts';
-import { limitWPerPct, meteredOf, readWeek, type WeekReading } from '../budget/week.ts';
+import { calibrationOf, MeterLog } from '../budget/calibration.ts';
+import { teamWeekOf } from '../budget/team-week.ts';
+import { rateOf, type WeekReading } from '../budget/week.ts';
 import type { KitConfig } from '../config/types.ts';
 import type { TeamPaths } from '../core/home.ts';
 import { snapshotDirOf } from './commands/budget.ts';
 import type { CliRuntime } from './runtime.ts';
 
 /** The team paths a stored reading of the week reads. */
-export type StoredWeekPaths = Pick<TeamPaths, 'usage' | 'period' | 'home' | 'kitHome'>;
+export type StoredWeekPaths = Pick<TeamPaths, 'usage' | 'period' | 'meterLog' | 'home' | 'kitHome'>;
 
 /**
  * The week as a hook reads it: each session's use as last stored, the use outside the team and the newest
@@ -31,13 +32,12 @@ export async function readStoredWeek(
   }
   states.push((await new UsageStore(files, join(paths.usage, 'outside')).load(OUTSIDE_ID)).state);
   const statusUse = weekUseOf(await readSnapshots(files, snapshotDirOf(budget, paths)), now);
-  const period = await new PeriodStore(files, paths.period).periodAt(budget, statusUse, now, meteredOf(budget, states, now));
-  return readWeek({ budget, now, statusUse, period, states });
+  return teamWeekOf(files, paths, { budget, now, statusUse, states });
 }
 
 /**
- * The week's W per percent as `teamrig budget` reads it: from `budget.weeklyLimitW`, which reads no file, else the
- * stored week's estimate; undefined while neither is known.
+ * The week's W per percent as `teamrig budget` reads it: learned from the meter log, else from
+ * `budget.weeklyLimitW`, which read no usage store, else the stored week's estimate; undefined while none is known.
  */
 export async function readWPerPct(
   runtime: CliRuntime,
@@ -45,5 +45,6 @@ export async function readWPerPct(
   config: Pick<KitConfig, 'sessions' | 'budget'>,
   now: number,
 ): Promise<number | undefined> {
-  return limitWPerPct(config.budget) ?? (await readStoredWeek(runtime, paths, config, now)).wPerPct;
+  const calibration = calibrationOf(await new MeterLog(runtime.files, paths.meterLog).read(now));
+  return rateOf(calibration, config.budget, undefined)?.wPerPct ?? (await readStoredWeek(runtime, paths, config, now)).wPerPct;
 }

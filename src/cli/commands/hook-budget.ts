@@ -10,12 +10,12 @@ import { activeLift, LiftLog } from '../../budget/lift.ts';
 import { OUTSIDE_ID } from '../../budget/measure.ts';
 import { runMeter } from '../../budget/meter.ts';
 import { dailyBudgetOf, liftedParts } from '../../budget/parts.ts';
-import { PeriodStore } from '../../budget/period.ts';
 import { readSnapshots, weekUseOf } from '../../budget/snapshot.ts';
 import { UsageStore, type UsageState } from '../../budget/store.ts';
+import { teamWeekOf } from '../../budget/team-week.ts';
 import { helperGate, promptWarning, stopWarning, type BudgetFacts, type HelperGate } from '../../budget/warn.ts';
 import { WarnStore } from '../../budget/warn-store.ts';
-import { meteredOf, readWeek, wSince } from '../../budget/week.ts';
+import { wSince } from '../../budget/week.ts';
 import { cachedWork, WORK_CACHE_FILE } from '../../budget/work.ts';
 import { postLine } from '../../inbox/inbox.ts';
 import { holdBack } from '../../hooks/permission.ts';
@@ -90,8 +90,7 @@ export async function budgetFactsOf(runtime: CliRuntime, scope: BudgetScope, tra
   const snapshots = await readSnapshots(files, snapshotDirOf(budget, kit.paths));
   const statusUse = weekUseOf(snapshots, now);
   const states = [...byId.values(), outside];
-  const period = await new PeriodStore(files, kit.paths.period).periodAt(budget, statusUse, now, meteredOf(budget, states, now));
-  const week = readWeek({ budget, now, statusUse, period, states });
+  const week = await teamWeekOf(files, kit.paths, { budget, now, statusUse, states });
   const { teamDay } = week;
   if (week.usedPct === undefined || week.wPerPct === undefined || teamDay === undefined) {
     return undefined;

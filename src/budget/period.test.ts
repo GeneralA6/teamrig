@@ -187,4 +187,13 @@ describe('the period file', () => {
     assert.deepEqual(await store.periodAt(UNSET, use(55, NOW), NOW, SINCE_WEDNESDAY), INFERRED);
     assert.deepEqual(await store.read(), INFERRED);
   });
+
+  it('gives the stored period it moved on from beside the period after', async () => {
+    const store = new PeriodStore(new MemoryFiles(), path);
+    assert.equal(await store.moveAt(UNSET, undefined, NOW), undefined);
+    const first = await store.moveAt(UNSET, use(55, NOW - HOUR), NOW);
+    assert.deepEqual(first, { before: undefined, period: { start: START, end: END, kind: 'assumed', lastPct: 55, lastAt: NOW - HOUR } });
+    const next = await store.moveAt(UNSET, use(57, NOW), NOW);
+    assert.deepEqual(next, { before: first?.period, period: { start: START, end: END, kind: 'assumed', lastPct: 57, lastAt: NOW } });
+  });
 });
