@@ -104,6 +104,12 @@ export class FakeMergeGit implements MergeGit {
     return this.checkouts.get(dir);
   }
 
+  /** The `.git` folder of the checkout's main checkout. */
+  commonDir(dir: string): string | undefined {
+    const checkout = this.checkouts.get(dir);
+    return checkout === undefined ? undefined : `${checkout.mainCheckout ?? checkout.top}/.git`;
+  }
+
   changes(dir: string, untracked: boolean): readonly string[] | undefined {
     if (this.statusFails.has(dir)) {
       return undefined;

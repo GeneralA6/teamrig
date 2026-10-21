@@ -25,6 +25,8 @@ const PLACES: CoordinatorPlaces = {
   hostLock: '/kit/host.lock',
   pendingMerges: '/team/deploys/pending-merges',
   reviewHolds: '/team/deploys/review-holds',
+  gateHolds: '/team/deploys/gate-holds',
+  merges: '/team/deploys/merges.jsonl',
 };
 const FLOW = { name: 'flow', command: ['node', 'checks/flow.js'] };
 const DEPLOY_COMMAND = ['node', 'tools/deploy.js'];

@@ -3,12 +3,14 @@ import assert from 'node:assert/strict';
 import { dirname, join } from 'node:path';
 import { LeadTree } from '../config/lead-tree.ts';
 import type { CoordinatorConfig, CoordinatorRepoConfig, ScheduleConfig } from '../config/types.ts';
-import { DEFAULT_CLAIMS, DEFAULT_COORDINATOR_WAIT, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_HEAVY, DEFAULT_WINDOWS } from '../config/defaults.ts';
+import { DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_CLAIMS, DEFAULT_COMMITS, DEFAULT_COORDINATOR_WAIT, DEFAULT_HEAVY, DEFAULT_WINDOWS } from '../config/defaults.ts';
 import { HostLock } from '../coordinator/host-lock.ts';
 import type { CoordinatorPlaces } from '../coordinator/places.ts';
 import type { ResetTime } from '../coordinator/schedule.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import { TimeZone } from '../core/zone.ts';
+import type { CommitStat } from '../push-guard/commit-size.ts';
+import { passRecordPath, type PassRecord } from '../push-guard/pass-record.ts';
 import { testConfig } from '../testing/config.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';
@@ -17,10 +19,13 @@ import { FakeSteps } from '../testing/fake-steps.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { commandLine } from '../test-run/shell.ts';
 import { BASELINE_LOCK_ENV } from './dependencies.ts';
+import { GateHolds } from './gate-holds.ts';
+import type { GatedSetup, GatedTask } from './gated-step.ts';
 import { mergeBranch, PUSH_ATTEMPTS, repoOf, type MergeEnd, type MergeRequest, type MergeSetup } from './merge.ts';
+import { MergeLog } from './merge-log.ts';
 import { parsePendingMerge, type PendingMerge } from './pending-merges.ts';
 import { REVIEW_BASE_ENV } from './review-check.ts';
-import type { GateTask, ReviewGateSetup } from './review-gate-step.ts';
+import type { ReviewGateSetup } from './review-gate-step.ts';
 import { ReviewHolds } from './review-holds.ts';
 
 const PLACES: CoordinatorPlaces = {
@@ -32,11 +37,14 @@ const PLACES: CoordinatorPlaces = {
   hostLock: '/kit/host.lock',
   pendingMerges: '/team/deploys/pending-merges',
   reviewHolds: '/team/deploys/review-holds',
+  gateHolds: '/team/deploys/gate-holds',
   merges: '/team/deploys/merges.jsonl',
 };
 const REQUEST: MergeRequest = { session: 'api', dir: WORKTREE, keepRemote: false, keepLocal: false };
 const NO_REVIEW: ReviewGateSetup = { reviewPaths: [], tree: new LeadTree(testConfig()), roles: {} };
 const PLAIN: CoordinatorRepoConfig = { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], dependencyGate: false, reviewGate: false, followMainCheckout: false };
+/** A commit of a source file with its test, under the size limits. */
+const COMMIT: CommitStat = { sha: 'rebased', subject: 'Add the feature', body: '', files: [{ path: 'src/app.ts', added: 10, deleted: 2 }, { path: 'src/app.test.ts', added: 20, deleted: 0 }] };
 
 interface Options {
   readonly repos?: Readonly<Record<string, CoordinatorRepoConfig>>;
@@ -47,6 +55,7 @@ interface Options {
   /** The quiet claims file's text. */
   readonly claims?: string;
   readonly review?: ReviewGateSetup;
+  readonly gated?: GatedSetup;
 }
 
 class World {
@@ -57,9 +66,13 @@ class World {
   readonly hooks: FakeHooks;
   readonly lock: HostLock;
   readonly said: string[] = [];
-  /** The register's tasks, as the review gate reads them. */
-  readonly tasks = new Map<string, GateTask>();
+  /** The register's tasks, as the review gate and the self-merge gates read them. */
+  readonly tasks = new Map<string, GatedTask>();
   readonly reviewHolds: ReviewHolds;
+  readonly gateHolds: GateHolds;
+  readonly merges: MergeLog;
+  /** The commits the change lands, as the self-merge gates weigh them; undefined where git cannot read them. */
+  commits: readonly CommitStat[] | undefined = [COMMIT];
   /** How often the next reset was read. */
   resetReads = 0;
   readonly setup: MergeSetup;
@@ -73,6 +86,8 @@ class World {
     this.lock = new HostLock(PLACES.hostLock, 150 * 60_000, { files: this.files, clock: this.clock, sleep: this.clock.sleep, pid: 7, alive: () => true, newId: () => 'lock-1' });
     this.reset = options.reset;
     this.reviewHolds = new ReviewHolds(this.files, PLACES.reviewHolds);
+    this.gateHolds = new GateHolds(this.files, PLACES.gateHolds);
+    this.merges = new MergeLog(this.files, PLACES.merges);
     const coordinator: CoordinatorConfig = {
       schedule: options.schedule ?? {},
       heavy: DEFAULT_HEAVY,
@@ -82,7 +97,14 @@ class World {
       windows: DEFAULT_WINDOWS,
       repos: options.repos ?? {},
     };
-    this.setup = { coordinator, places: PLACES, zone: TimeZone.UTC, inTeam: (path) => (path.startsWith('/') ? path : `/repo/${path}`), review: options.review ?? NO_REVIEW };
+    this.setup = {
+      coordinator,
+      places: PLACES,
+      zone: TimeZone.UTC,
+      inTeam: (path) => (path.startsWith('/') ? path : `/repo/${path}`),
+      review: options.review ?? NO_REVIEW,
+      gated: options.gated,
+    };
     this.pushLands();
   }
 
@@ -104,6 +126,9 @@ class World {
       scanner: { redact: (text) => text.replaceAll('s3cret', '[redacted]') },
       files: this.files,
       reviewHolds: this.reviewHolds,
+      gateHolds: this.gateHolds,
+      merges: this.merges,
+      commitLog: { between: () => this.commits },
       taskOf: async (id) => this.tasks.get(id),
       clock: this.clock,
       sleep: this.clock.sleep,
@@ -930,7 +955,7 @@ describe('mergeBranch with the review gate', () => {
   function gatedWorld(config: Partial<CoordinatorRepoConfig> = {}): World {
     const world = new World({ repos: { app: { ...PLAIN, reviewGate: true, ...config } }, review: REVIEW });
     world.git.checkouts.set(WORKTREE, { top: WORKTREE, branch: 't9-feat', mainCheckout: MAIN_CHECKOUT, linked: true });
-    world.tasks.set('T9', { owner: 'alpha', answer: null });
+    world.tasks.set('T9', { owner: 'alpha', status: 'in-progress', answer: null });
     return world;
   }
 
@@ -945,7 +970,7 @@ describe('mergeBranch with the review gate', () => {
     assert.deepEqual(world.steps.ran, []);
     assert.ok(world.lockFree());
     world.clock.advance(60_000);
-    world.tasks.set('T9', { owner: 'alpha', answer: { verdict: 'approved', by: 'bravo', at: new Date(world.clock.now()).toISOString(), note: null } });
+    world.tasks.set('T9', { owner: 'alpha', status: 'waiting', answer: { verdict: 'approved', by: 'bravo', at: new Date(world.clock.now()).toISOString(), note: null } });
     world.clock.advance(60_000);
     assert.equal((await world.run(ALPHA)).kind, 'done');
     assert.equal(world.steps.ran.length, 1);
@@ -982,5 +1007,86 @@ describe('mergeBranch with the review gate', () => {
     refused(await world.run(ALPHA), /^review hold H\w+ keeps t9-feat \(base\.\.rebased\) off the default branch: .* --waits approval:bravo /);
     assert.deepEqual(world.hooks.ran, []);
     assert.ok(world.lockFree());
+  });
+});
+
+describe('mergeBranch under pushToProtected: gated', () => {
+  const GATED: GatedSetup = { tree: new LeadTree(testConfig()), roles: {}, commits: DEFAULT_COMMITS };
+  const ALPHA: MergeRequest = { ...REQUEST, session: 'alpha' };
+  /** The pass record of the tree the rebase makes, as the repo's local checks write it in the main checkout's git dir. */
+  const PASS: PassRecord = { tree: 'tree-rebased', commit: 'rebased', checks: ['unit', 'lint'], passedAt: '2030-01-08T09:30:00.000Z', node: 'v24.0.0' };
+  /** What every merges row of the change keeps, but when it landed and how. */
+  const LANDED = { session: 'alpha', repo: 'app', branch: 't9-feat', task: 'T9', base: 'base', head: 'rebased', tree: 'tree-rebased', files: 2, lines: 32 };
+
+  /** T9 is alpha's and in progress; its branch lands in a repo whose review gate is on, under `gated`. */
+  function gatedWorld(config: Partial<CoordinatorRepoConfig> = {}): World {
+    const world = new World({ repos: { app: { ...PLAIN, reviewGate: true, ...config } }, gated: GATED });
+    world.git.checkouts.set(WORKTREE, { top: WORKTREE, branch: 't9-feat', mainCheckout: MAIN_CHECKOUT, linked: true });
+    world.tasks.set('T9', { owner: 'alpha', status: 'in-progress', answer: null });
+    return world;
+  }
+
+  function passed(world: World): Promise<void> {
+    return world.files.write(passRecordPath(WORKTREE, `${MAIN_CHECKOUT}/.git`, PASS.tree), JSON.stringify(PASS));
+  }
+
+  async function mergeRows(world: World): Promise<readonly unknown[]> {
+    return (await world.merges.read()).records.map(({ at, ...row }) => {
+      assert.match(at, /^\d{4}-\d\d-\d\dT/);
+      return row;
+    });
+  }
+
+  it('lands a change that holds every gate with no approval, and logs it as a self-merge', async () => {
+    const world = gatedWorld();
+    await passed(world);
+    assert.equal((await world.run(ALPHA)).kind, 'done');
+    assert.equal(world.steps.ran.length, 1);
+    assert.ok(world.said.includes('self-merge gates of t9-feat: every gate holds, so it lands with no approval'), world.said.join('\n'));
+    assert.deepEqual(await mergeRows(world), [{ ...LANDED, checks: ['unit', 'lint'], route: 'self' }]);
+    assert.equal(await world.gateHolds.read('app', 't9-feat'), undefined);
+  });
+
+  it("holds a change with no pass record for alpha's leader, pushing nothing and freeing the lock", async () => {
+    const world = gatedWorld();
+    refused(await world.run(ALPHA), /^gate hold G\w+ keeps t9-feat \(base\.\.rebased\) off the default branch: pass: no pass record proves the rebased tree /);
+    assert.equal((await world.gateHolds.read('app', 't9-feat'))?.reviewer, 'lead');
+    assert.deepEqual(world.steps.ran, []);
+    assert.ok(world.lockFree());
+    assert.deepEqual(await mergeRows(world), []);
+  });
+
+  it('lands the held change once the leader approved it, logging the gates it missed, and drops the hold', async () => {
+    const world = gatedWorld();
+    refused(await world.run(ALPHA), /^gate hold /);
+    world.clock.advance(60_000);
+    world.tasks.set('T9', { owner: 'alpha', status: 'waiting', answer: { verdict: 'approved', by: 'lead', at: new Date(world.clock.now()).toISOString(), note: null } });
+    world.clock.advance(60_000);
+    assert.equal((await world.run(ALPHA)).kind, 'done');
+    assert.equal(world.steps.ran.length, 1);
+    assert.deepEqual(await mergeRows(world), [{ ...LANDED, checks: [], route: 'approved', missed: ['pass'], approvedBy: 'lead' }]);
+    assert.equal(await world.gateHolds.read('app', 't9-feat'), undefined);
+  });
+
+  it('counts a repo with its review gate off as a missed review', async () => {
+    const world = gatedWorld({ reviewGate: false });
+    await passed(world);
+    refused(await world.run(ALPHA), /off the default branch: review: coordinator\.repos\.app\.reviewGate is off/);
+    assert.deepEqual(world.steps.ran, []);
+  });
+
+  it('holds a change whose commits git cannot read', async () => {
+    const world = gatedWorld();
+    await passed(world);
+    world.commits = undefined;
+    refused(await world.run(ALPHA), /^could not read the commits of t9-feat against base/);
+    assert.deepEqual(world.steps.ran, []);
+  });
+
+  it('weighs nothing and logs nothing when the push guard is not gated', async () => {
+    const world = new World({ repos: { app: PLAIN } });
+    assert.equal((await world.run(ALPHA)).kind, 'done');
+    assert.equal(world.files.get(PLACES.merges), undefined);
+    assert.ok(!world.files.paths().some((path) => path.includes('gate-holds')), world.files.paths().join('\n'));
   });
 });

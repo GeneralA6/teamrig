@@ -9,6 +9,8 @@ import { LEDGER_FILE, LEDGER_MD_FILE } from './ledger.ts';
 export const HOST_LOCK_FILE = 'host.lock';
 /** The review holds' folder in `coordinator.dir`. */
 export const REVIEW_HOLDS_DIR = 'review-holds';
+/** The gate holds' folder in `coordinator.dir`. */
+export const GATE_HOLDS_DIR = 'gate-holds';
 /** The merges log's file name in `coordinator.dir`. */
 export const MERGES_FILE = 'merges.jsonl';
 
@@ -24,6 +26,8 @@ export interface CoordinatorPlaces {
   readonly pendingMerges: string;
   /** The review gate's holds, one file per branch in flight (`ReviewHolds`). */
   readonly reviewHolds: string;
+  /** The self-merge gates' holds under `pushToProtected: gated`, one file per branch in flight (`GateHolds`). */
+  readonly gateHolds: string;
   /** What integrate landed under `pushToProtected: gated` (`MergeLog`). */
   readonly merges: string;
 }
@@ -39,9 +43,9 @@ export function coordinatorDirOf(config: Pick<CoordinatorConfig, 'dir'>, paths: 
 }
 
 /**
- * Where the coordinator's files are: the ledgers, the quiet claims and their lock, the pending merges, the review holds
- * and the merges log in `coordinator.dir` (default `<state>/deploys`); the host lock at `coordinator.heavy.lockPath`
- * (default the kit home's, one for the host). A relative path is in the team's folder.
+ * Where the coordinator's files are: the ledgers, the quiet claims and their lock, the pending merges, the review and
+ * gate holds and the merges log in `coordinator.dir` (default `<state>/deploys`); the host lock at
+ * `coordinator.heavy.lockPath` (default the kit home's, one for the host). A relative path is in the team's folder.
  */
 export function coordinatorPlaces(config: CoordinatorConfig, paths: TeamPaths): CoordinatorPlaces {
   const inTeam = (path: string): string => teamPlace(paths, path);
@@ -55,6 +59,7 @@ export function coordinatorPlaces(config: CoordinatorConfig, paths: TeamPaths): 
     hostLock: config.heavy.lockPath === undefined ? join(paths.kitHome, HOST_LOCK_FILE) : inTeam(config.heavy.lockPath),
     pendingMerges: join(dir, 'pending-merges'),
     reviewHolds: join(dir, REVIEW_HOLDS_DIR),
+    gateHolds: join(dir, GATE_HOLDS_DIR),
     merges: join(dir, MERGES_FILE),
   };
 }
