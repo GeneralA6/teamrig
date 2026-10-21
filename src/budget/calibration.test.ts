@@ -1,0 +1,191 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { NewerDataError, toJsonlLine } from '../core/jsonl.ts';
+import { MS_PER_HOUR, MS_PER_MINUTE, MS_PER_WEEK } from '../core/time.ts';
+import { MemoryFiles } from '../testing/memory-files.ts';
+import {
+  calibrationOf,
+  crossingOf,
+  FIT_SPREAD_PTS,
+  fitRate,
+  FRESH_READING_MS,
+  METER_LOG_FORMAT,
+  MeterLog,
+  meterRecordOf,
+  parseMeterRecord,
+  periodForecasts,
+  READINGS_KEPT_MS,
+  type MeterReading,
+  type RateFit,
+  type ReadingSight,
+} from './calibration.ts';
+import type { Period, PeriodKind } from './period.ts';
+
+const LOG = '/team/state/usage/meter-log.jsonl';
+/** The week from Wednesday 10-21 01:00 to Wednesday 10-28 01:00, read on Thursday 10-22 at 12:00 UTC. */
+const START = Date.parse('2026-10-21T01:00:00Z');
+const END = Date.parse('2026-10-28T01:00:00Z');
+const NOW = Date.parse('2026-10-22T12:00:00Z');
+const PERIOD: Period = { start: START, end: END, kind: 'week', lastPct: 12, lastAt: NOW - 5 * MS_PER_MINUTE };
+/** The status line read 13% a minute ago, with 120M W metered since the week's start. */
+const SIGHT: ReadingSight = {
+  before: PERIOD,
+  period: { ...PERIOD, lastPct: 13, lastAt: NOW - MS_PER_MINUTE },
+  use: { usedPct: 13, resetsAt: END, at: NOW - MS_PER_MINUTE },
+  covered: true,
+  w: 120_000_000,
+  now: NOW,
+};
+const FIT: RateFit = { wPerPct: 10_000_000, errorPts: 0.5, readings: 20 };
+
+function reading(usedPct: number, w: number, overrides: Partial<MeterReading> = {}): MeterReading {
+  return { at: NOW, usedPct, start: START, end: END, w, forecastPct: undefined, ...overrides };
+}
+
+describe('crossingOf', () => {
+  it('logs the use the moment it passes a whole percent, with the W metered and the fit forecast for it', () => {
+    assert.deepEqual(crossingOf(SIGHT, FIT), { at: NOW - MS_PER_MINUTE, usedPct: 13, start: START, end: END, w: 120_000_000, forecastPct: 12 });
+    assert.equal(crossingOf(SIGHT, undefined)?.forecastPct, undefined);
+  });
+
+  it('logs nothing for the first reading of a period: its use may sit anywhere within its percent', () => {
+    const opened: Period = { ...PERIOD, start: START + MS_PER_HOUR };
+    assert.equal(crossingOf({ ...SIGHT, period: { ...opened, lastPct: 13 } }, FIT), undefined);
+    assert.equal(crossingOf({ ...SIGHT, before: undefined }, FIT), undefined);
+  });
+
+  it('logs nothing while the use stays within its percent, or for a reading older than the last', () => {
+    assert.equal(crossingOf({ ...SIGHT, before: { ...PERIOD, lastPct: 13 } }, FIT), undefined);
+    assert.equal(crossingOf({ ...SIGHT, before: { ...PERIOD, lastPct: 12.2 }, use: { usedPct: 12.9, resetsAt: END, at: NOW - MS_PER_MINUTE } }, FIT), undefined);
+    assert.equal(crossingOf({ ...SIGHT, before: { ...PERIOD, lastAt: NOW } }, FIT), undefined);
+  });
+
+  it('logs nothing in a period with a guessed start, which would teach the fit its own guess', () => {
+    const guessed: readonly PeriodKind[] = ['assumed', 'inferred'];
+    for (const kind of guessed) {
+      assert.equal(crossingOf({ ...SIGHT, before: { ...PERIOD, kind }, period: { ...PERIOD, kind, lastPct: 13 } }, FIT), undefined);
+    }
+    const reset: Period = { ...PERIOD, kind: 'reset' };
+    assert.equal(crossingOf({ ...SIGHT, before: reset, period: { ...reset, lastPct: 13 } }, FIT)?.usedPct, 13);
+  });
+
+  it('logs nothing for a stale reading, one over 100%, one with no use, or before the stores reach the start', () => {
+    const at = NOW - FRESH_READING_MS - 1;
+    assert.equal(crossingOf({ ...SIGHT, before: { ...PERIOD, lastAt: at - MS_PER_MINUTE }, use: { usedPct: 13, resetsAt: END, at } }, FIT), undefined);
+    assert.equal(crossingOf({ ...SIGHT, before: { ...PERIOD, lastPct: 100 }, use: { usedPct: 101, resetsAt: END, at: NOW } }, FIT), undefined);
+    assert.equal(crossingOf({ ...SIGHT, use: undefined }, FIT), undefined);
+    assert.equal(crossingOf({ ...SIGHT, period: undefined }, FIT), undefined);
+    assert.equal(crossingOf({ ...SIGHT, covered: false }, FIT), undefined);
+  });
+});
+
+describe('fitRate', () => {
+  it('finds the W per percent of readings that sit on it, with no error', () => {
+    const readings = [1, 5, 11].map((pct) => reading(pct, pct * 9_000_000));
+    assert.deepEqual(fitRate(readings), { wPerPct: 9_000_000, errorPts: 0, readings: 3 });
+  });
+
+  it('fits through 0 by least squares and gives the misses in points', () => {
+    // W on the use: (10*100 + 20*300) / (10^2 + 20^2) = 14 W per percent; the misses are 100/14 - 10 and 300/14 - 20.
+    const fit = fitRate([reading(10, 100), reading(20, 300)]);
+    assert.equal(fit?.wPerPct, 14);
+    assert.equal(fit?.readings, 2);
+    assert.equal(Math.round((fit?.errorPts ?? 0) * 1000) / 1000, Math.round(Math.sqrt(((100 / 14 - 10) ** 2 + (300 / 14 - 20) ** 2) / 2) * 1000) / 1000);
+  });
+
+  it(`fits nothing until the readings span ${FIT_SPREAD_PTS} points, or with no W`, () => {
+    assert.equal(fitRate([]), undefined);
+    assert.equal(fitRate([reading(1, 10), reading(1 + FIT_SPREAD_PTS - 1, 100)]), undefined);
+    assert.notEqual(fitRate([reading(1, 10), reading(1 + FIT_SPREAD_PTS, 110)]), undefined);
+    assert.equal(fitRate([reading(1, 0), reading(20, 0)]), undefined);
+  });
+});
+
+describe('periodForecasts', () => {
+  it("gives each period's forecast misses, oldest first, leaving out readings no fit forecast", () => {
+    const earlier = START - MS_PER_WEEK;
+    const forecasts = periodForecasts([
+      reading(13, 1, { forecastPct: 12 }),
+      reading(14, 1, { forecastPct: 15 }),
+      reading(30, 1, { start: earlier, end: START, forecastPct: 33 }),
+      reading(31, 1),
+    ]);
+    assert.deepEqual(forecasts, [
+      { start: earlier, errorPts: 3, readings: 1 },
+      { start: START, errorPts: 1, readings: 2 },
+    ]);
+  });
+
+  it('pairs the fit with the forecasts', () => {
+    const readings = [reading(1, 10, { forecastPct: 2 }), reading(11, 110)];
+    assert.deepEqual(calibrationOf(readings), { fit: fitRate(readings), periods: periodForecasts(readings) });
+  });
+});
+
+describe('meter log records', () => {
+  it('round-trips a reading, with and without a forecast', () => {
+    for (const each of [reading(13, 120_000_000, { forecastPct: 12.5 }), reading(13, 120_000_000)]) {
+      assert.deepEqual(parseMeterRecord(meterRecordOf(each)), each);
+    }
+    assert.deepEqual(meterRecordOf(reading(13, 5)), { v: METER_LOG_FORMAT, at: '2026-10-22T12:00:00.000Z', usedPct: 13, start: '2026-10-21T01:00:00.000Z', end: '2026-10-28T01:00:00.000Z', w: 5 });
+  });
+
+  it('reads a damaged record as nothing', () => {
+    const good = meterRecordOf(reading(13, 5));
+    for (const damage of [{ at: 'soon' }, { usedPct: 0 }, { usedPct: '13' }, { w: -1 }, { end: '2026-10-20T01:00:00.000Z' }, { start: 7 }, { forecastPct: 'x' }]) {
+      assert.equal(parseMeterRecord({ ...good, ...damage }), undefined, JSON.stringify(damage));
+    }
+  });
+});
+
+describe('MeterLog', () => {
+  it('appends readings and reads them back, oldest first', async () => {
+    const log = new MeterLog(new MemoryFiles(), LOG);
+    await log.append(reading(13, 5), NOW);
+    await log.append(reading(14, 6, { forecastPct: 14.2 }), NOW);
+    assert.deepEqual(await log.read(NOW), [reading(13, 5), reading(14, 6, { forecastPct: 14.2 })]);
+  });
+
+  it('reads one line per percent of a period, the first, when two readers logged at once', async () => {
+    const log = new MeterLog(new MemoryFiles(), LOG);
+    await log.append(reading(13, 5), NOW);
+    await log.append(reading(13.4, 7), NOW);
+    await log.append(reading(13, 9, { start: START - MS_PER_WEEK, end: START }), NOW);
+    assert.deepEqual(await log.read(NOW), [reading(13, 5), reading(13, 9, { start: START - MS_PER_WEEK, end: START })]);
+  });
+
+  it(`counts only the readings of the last ${READINGS_KEPT_MS / MS_PER_WEEK} weeks, and skips damaged lines and newer formats`, async () => {
+    const files = new MemoryFiles();
+    const old = reading(40, 1, { at: NOW - READINGS_KEPT_MS - 1 });
+    await files.write(LOG, `${toJsonlLine(meterRecordOf(old))}not json\n${toJsonlLine({ ...meterRecordOf(reading(50, 1)), v: METER_LOG_FORMAT + 1 })}`);
+    assert.deepEqual(await new MeterLog(files, LOG).read(NOW), []);
+  });
+
+  it('refuses to append beside a line from a newer teamrig', async () => {
+    const files = new MemoryFiles();
+    await files.write(LOG, toJsonlLine({ ...meterRecordOf(reading(50, 1)), v: METER_LOG_FORMAT + 1 }));
+    await assert.rejects(new MeterLog(files, LOG).append(reading(13, 5), NOW), NewerDataError);
+  });
+
+  it('ends a torn last line before appending', async () => {
+    const files = new MemoryFiles();
+    await files.write(LOG, toJsonlLine(meterRecordOf(reading(12, 4))).trimEnd());
+    const log = new MeterLog(files, LOG);
+    await log.append(reading(13, 5), NOW);
+    assert.deepEqual(await log.read(NOW), [reading(12, 4), reading(13, 5)]);
+  });
+
+  it('drops the lines no longer kept once one is a week past them, keeping the rest as written', async () => {
+    const files = new MemoryFiles();
+    const kept = toJsonlLine(meterRecordOf(reading(30, 3, { at: NOW - READINGS_KEPT_MS + MS_PER_HOUR })));
+    const lapsed = toJsonlLine(meterRecordOf(reading(20, 2, { at: NOW - READINGS_KEPT_MS - MS_PER_HOUR })));
+    const gone = toJsonlLine(meterRecordOf(reading(10, 1, { at: NOW - READINGS_KEPT_MS - MS_PER_WEEK - MS_PER_HOUR })));
+    await files.write(LOG, `${lapsed}${kept}`);
+    await new MeterLog(files, LOG).append(reading(13, 5), NOW);
+    // No line is a week past the kept span yet: the lapsed one stays until one is.
+    assert.equal(await files.read(LOG), `${lapsed}${kept}${toJsonlLine(meterRecordOf(reading(13, 5)))}`);
+    await files.write(LOG, `${gone}${lapsed}${kept}`);
+    await new MeterLog(files, LOG).append(reading(13, 5), NOW);
+    assert.equal(await files.read(LOG), `${kept}${toJsonlLine(meterRecordOf(reading(13, 5)))}`);
+  });
+});
