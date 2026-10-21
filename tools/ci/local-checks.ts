@@ -29,6 +29,7 @@ export function localChecks(base: string): readonly LocalCheck[] {
     // After the build: the mod's hooks load the built dist. An empty home: no account, settings or other plugins.
     { name: 'plugin tests', argv: ['claude', 'plugin', 'test', 'plugins/teamrig'], isolatedHome: true },
     { name: 'doc pictures', argv: ['node', 'tools/docs/images-cli.ts', '--check'] },
+    { name: 'doc config reference', argv: ['node', 'tools/docs/configuration-cli.ts', '--check'] },
     { name: 'doc links', argv: ['node', 'tools/docs/doc-check-cli.ts'] },
   ];
 }

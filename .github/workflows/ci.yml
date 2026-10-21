@@ -90,5 +90,7 @@ jobs:
       - run: node tools/ci/dist-smoke-cli.ts
       # The docs' pictures are drawn in code, the commands screen from the CLI's real output; they must match on every OS.
       - run: node tools/docs/images-cli.ts --check
+      # The configuration reference is drawn from the config schema; it must match the committed page.
+      - run: node tools/docs/configuration-cli.ts --check
       # Every link, anchor and Mermaid block in the Markdown must resolve on every OS.
       - run: node tools/docs/doc-check-cli.ts
