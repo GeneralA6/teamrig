@@ -159,10 +159,10 @@ export const DEFAULT_STATUS_LINE = { folder: true, branch: true, resume: true };
  */
 export const HEAVY_TTL_MARGIN_MINUTES = 10;
 /**
- * A host lock lasts 150 minutes and a heavy step at most 45 of them; a step waits up to an hour for the lock, and its
- * memory is sampled every 15 seconds while it runs.
+ * A host lock lasts 150 minutes and a heavy step at most 45 of them, a small step at most 10; a step waits up to an hour
+ * for the lock, and its memory is sampled every 15 seconds while it runs.
  */
-export const DEFAULT_HEAVY = { lockTtlMinutes: 150, maxRunMinutes: 45, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048 };
+export const DEFAULT_HEAVY = { lockTtlMinutes: 150, maxRunMinutes: 45, smallMaxRunMinutes: 10, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048 };
 /** A waiting coordinator step looks again every 30 seconds; a deploy step waits up to an hour for claims and the host lock. */
 export const DEFAULT_COORDINATOR_WAIT = { pollSeconds: 30, maxMinutes: 60 };
 /** A roll's gate answers within 20 seconds, else the roll waits. */

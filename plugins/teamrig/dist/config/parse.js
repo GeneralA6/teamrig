@@ -526,7 +526,10 @@ function parseRollGate(read, value, path) {
     const command = read.stringListItem(entry['command'], `${path}.command`, ROLL_ARGV_MAX_ITEMS);
     return name === undefined || command === undefined ? undefined : { name, command };
 }
-/** The host lock and a heavy step's limits; a step longer than the lock less its margin is cut to fit, so it never outlives its lock. */
+/**
+ * The host lock and a heavy step's limits; a step longer than the lock less its margin is cut to fit, so it never
+ * outlives its lock, and a small step's limit longer than a step's is cut to it.
+ */
 function parseHeavy(read, raw) {
     const path = 'coordinator.heavy';
     const lockPath = read.optionalString(raw, 'lockPath', path, isPathText);
@@ -536,10 +539,16 @@ function parseHeavy(read, raw) {
     if (maxRunMinutes > longest) {
         read.report(`${path}.maxRunMinutes`, `must be at most lockTtlMinutes less ${HEAVY_TTL_MARGIN_MINUTES} (${longest})`);
     }
+    const longestRun = Math.min(maxRunMinutes, longest);
+    const smallMaxRunMinutes = read.integer(raw, 'smallMaxRunMinutes', path, Math.min(DEFAULT_HEAVY.smallMaxRunMinutes, longestRun), CONFIG_LIMITS.heavySmallMaxRunMinutes);
+    if (smallMaxRunMinutes > longestRun) {
+        read.report(`${path}.smallMaxRunMinutes`, `must be at most maxRunMinutes (${longestRun})`);
+    }
     return {
         ...(lockPath === undefined ? {} : { lockPath }),
         lockTtlMinutes,
-        maxRunMinutes: Math.min(maxRunMinutes, longest),
+        maxRunMinutes: longestRun,
+        smallMaxRunMinutes: Math.min(smallMaxRunMinutes, longestRun),
         waitMinutes: read.integer(raw, 'waitMinutes', path, DEFAULT_HEAVY.waitMinutes, CONFIG_LIMITS.heavyWaitMinutes),
         memorySampleSeconds: read.integer(raw, 'memorySampleSeconds', path, DEFAULT_HEAVY.memorySampleSeconds, CONFIG_LIMITS.heavyMemorySampleSeconds),
         memoryFloorMb: read.integer(raw, 'memoryFloorMb', path, DEFAULT_HEAVY.memoryFloorMb, CONFIG_LIMITS.heavyMemoryFloorMb),

@@ -70,6 +70,7 @@ export const CONFIG_LIMITS = {
     burstMaxHires: { min: 0, max: 20 },
     heavyLockTtlMinutes: { min: 11, max: 1440 },
     heavyMaxRunMinutes: { min: 1, max: 1430 },
+    heavySmallMaxRunMinutes: { min: 1, max: 1430 },
     heavyWaitMinutes: { min: 0, max: 1440 },
     heavyMemorySampleSeconds: { min: 0, max: 600 },
     heavyMemoryFloorMb: { min: 0, max: 1_048_576 },
