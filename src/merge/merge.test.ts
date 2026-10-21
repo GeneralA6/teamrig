@@ -32,6 +32,7 @@ const PLACES: CoordinatorPlaces = {
   hostLock: '/kit/host.lock',
   pendingMerges: '/team/deploys/pending-merges',
   reviewHolds: '/team/deploys/review-holds',
+  merges: '/team/deploys/merges.jsonl',
 };
 const REQUEST: MergeRequest = { session: 'api', dir: WORKTREE, keepRemote: false, keepLocal: false };
 const NO_REVIEW: ReviewGateSetup = { reviewPaths: [], tree: new LeadTree(testConfig()), roles: {} };
