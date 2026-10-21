@@ -11,7 +11,7 @@ import { renderWhy } from './why.ts';
 import { renderWordmark } from './wordmark.ts';
 
 /**
- * The docs' pictures, all drawn in code: the README's wordmark, hero, why, terminal view, growth, how-it-works and plan
+ * The docs' pictures, all drawn in code: the README's wordmark, hero, how-it-works, why, terminal view, plan and growth
  * pictures, in the README's order, and the commands doc's terminal screen, drawn from a demo run of the real CLI (demo.ts). A change to a drawing, or to what the CLI
  * prints, changes a picture, and `images-cli.ts --check` fails until it is redrawn.
  */
@@ -28,11 +28,11 @@ export async function drawPictures(): Promise<Picture[]> {
   return [
     { file: 'wordmark.svg', svg: renderWordmark() },
     { file: 'hero.svg', svg: renderHero() },
+    { file: 'how-it-works.svg', svg: renderHowItWorks() },
     { file: 'why.svg', svg: renderWhy() },
     { file: 'terminal-view.svg', svg: renderTerminalView() },
-    { file: 'growth.svg', svg: renderGrowth() },
-    { file: 'how-it-works.svg', svg: renderHowItWorks() },
     { file: 'plan.svg', svg: renderPlan() },
+    { file: 'growth.svg', svg: renderGrowth() },
     { file: 'commands.svg', svg: renderTerminal(await commandsScreen(), COMMANDS_COLUMNS) },
   ];
 }

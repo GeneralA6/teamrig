@@ -4,12 +4,12 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TempRepo } from '../lib/temp-repo.ts';
-import { IMAGES_DIR } from './images.ts';
+import { drawPictures, IMAGES_DIR } from './images.ts';
 
 const CLI = fileURLToPath(new URL('./images-cli.ts', import.meta.url));
-const WORDMARK = `${IMAGES_DIR}/wordmark.svg`;
 const HERO = `${IMAGES_DIR}/hero.svg`;
-const ALL = [WORDMARK, HERO, ...['why', 'terminal-view', 'growth', 'how-it-works', 'plan', 'commands'].map((name) => `${IMAGES_DIR}/${name}.svg`)];
+/** Every picture the CLI draws, in drawPictures' order (images.test.ts pins that order). */
+const ALL = (await drawPictures()).map((picture) => `${IMAGES_DIR}/${picture.file}`);
 
 describe('images-cli', () => {
   let repo: TempRepo;
