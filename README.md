@@ -167,7 +167,8 @@ helper it is. Everything runs on your machine, with no account and no cloud bill
 - **A model per session:** each session starts on its own model and effort, and you're told when one runs on another.
 - **GitHub issues in the task list:** `teamrig gh sync` reads your repositories' open issues every 15 minutes, one way
   only ([GitHub sync](docs/github-sync.md)).
-- **Shipping from many sessions:** `teamrig heavy` runs builds and test runs under one host lock, `teamrig integrate`
+- **Shipping from many sessions:** `teamrig heavy` runs builds and test runs under one host lock (one started outside it is
+  refused, with the `teamrig heavy` call to run instead), `teamrig integrate`
   lands a finished branch, `teamrig roll` brings it to the running system (or, with `--targets`, restarts some services onto new config with
   nothing pulled), and `teamrig deploys` shows it all in one read.
 - **Reads without a prompt:** with `readonlyShell`, a shell line that only reads (`grep`, `git log`, `kubectl get`)
