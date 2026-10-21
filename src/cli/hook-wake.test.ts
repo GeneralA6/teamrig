@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import type { Burst } from '../budget/burst.ts';
 import { BurstLog } from '../budget/burst-log.ts';
+import { MeterLog } from '../budget/calibration.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { EXIT } from './runtime.ts';
 import { APP, CliHarness, EVENTS_PATH, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
@@ -86,6 +87,23 @@ describe('hook wake-check', () => {
     assert.equal(woke.toast, 'teamrig woke this tab for T2 (about 210k W, cold, 0.02% of the week)');
     assert.deepEqual(await logLines(kit), [
       { v: 1, at: new Date(kit.clock.now()).toISOString(), kind: 'wake', session: 'alpha', tab: ALPHA_TAB, ids: ['T2'], w: 210_000, cold: true, weekPct: 0.021 },
+    ]);
+  });
+
+  it('costs the wake at the W per percent learned from the meter log, ahead of budget.weeklyLimitW', async () => {
+    const kit = await teamWithAlphaTab({ ...TEAM, wake: { priority: 2, batchSeconds: 0 }, budget: { weeklyLimitW: 1_000_000_000 } });
+    const now = kit.clock.now();
+    const log = new MeterLog(kit.files, join(TEAM_HOME, 'state', 'usage', 'meter-log.jsonl'));
+    const period = { start: now - 24 * 60 * MINUTE, end: now + 6 * 24 * 60 * MINUTE, forecastPct: undefined };
+    await log.append({ ...period, at: now - 120 * MINUTE, usedPct: 5, w: 100_000_000 }, now);
+    await log.append({ ...period, at: now - 60 * MINUTE, usedPct: 15, w: 300_000_000 }, now);
+    await check(kit);
+    await hand(kit, 'Ship the page', 'p2');
+    const woke = answerOf(await check(kit));
+    assert.ok(typeof woke === 'object' && woke !== null && 'toast' in woke);
+    assert.equal(woke.toast, 'teamrig woke this tab for T1 (about 210k W, cold, 0.01% of the week)');
+    assert.deepEqual(await logLines(kit), [
+      { v: 1, at: new Date(kit.clock.now()).toISOString(), kind: 'wake', session: 'alpha', tab: ALPHA_TAB, ids: ['T1'], w: 210_000, cold: true, weekPct: 0.0105 },
     ]);
   });
 
