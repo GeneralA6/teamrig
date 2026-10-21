@@ -47,9 +47,13 @@ export function holdClassOf(hits: readonly ReviewHit[], check: CheckOutcome | un
 }
 
 /** Who answers a hold: one reviewer, and for a security hold the leader who may answer it after the fallback time. */
-export type ReviewRoute =
-  | { readonly kind: 'route'; readonly who: string; readonly fallback: string | undefined }
-  | { readonly kind: 'none'; readonly reason: string };
+export interface Reviewer {
+  readonly who: string;
+  readonly fallback: string | undefined;
+}
+
+/** The reviewer of a held change, or why it has none. */
+export type ReviewRoute = ({ readonly kind: 'route' } & Reviewer) | { readonly kind: 'none'; readonly reason: string };
 
 /**
  * The reviewer of the session's held change, never the session itself (self-review is refused): a security hold goes
@@ -75,7 +79,7 @@ export function reviewRoute(
 }
 
 /** Whether a leader may answer the hold yet: a security hold, once `REVIEW_FALLBACK_MS` passed since it was made. */
-export function fallbackOpen(route: Extract<ReviewRoute, { kind: 'route' }>, createdAt: number, now: number): boolean {
+export function fallbackOpen(route: Reviewer, createdAt: number, now: number): boolean {
   return route.fallback !== undefined && now >= createdAt + REVIEW_FALLBACK_MS;
 }
 
@@ -83,7 +87,7 @@ export function fallbackOpen(route: Extract<ReviewRoute, { kind: 'route' }>, cre
  * Whether the task's answer approves the hold: approved after the hold was made, by its reviewer, or by its fallback
  * leader once the fallback time had passed. An answer from before the hold approved an earlier change.
  */
-export function holdApproved(route: Extract<ReviewRoute, { kind: 'route' }>, createdAt: number, answer: ApprovalAnswer | undefined): boolean {
+export function holdApproved(route: Reviewer, createdAt: number, answer: ApprovalAnswer | undefined): boolean {
   if (answer?.verdict !== 'approved') {
     return false;
   }
