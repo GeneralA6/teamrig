@@ -54,6 +54,7 @@ class FakeRunner {
         return { ...OK, stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: 'SubagentStart', additionalContext: 'rules' } }) };
       case 'push-guard':
       case 'package-guard':
+      case 'heavy-guard':
       case 'secret-guard':
       case 'exec-guard':
         return { ...OK, stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny' } }) };
@@ -155,6 +156,13 @@ describe('smokeDist', () => {
       `PreToolUse (hook readonly-allow): expected no output with the hook off, got ${JSON.stringify(deny)}`,
       `PreToolUse (hook picker-guard): expected no output with the guard off, got ${JSON.stringify(deny)}`,
     ]);
+    assert.deepEqual(smokeDist(input({ manifest }), new FakeRunner().run), []);
+  });
+
+  it('reports a heavy guard that lets a test run outside the host lock through', () => {
+    const manifest = manifestOf({ PreToolUse: [execHook('heavy-guard')] });
+    const runner = new FakeRunner({ 'heavy-guard': { ...OK, stdout: '' } });
+    assert.deepEqual(smokeDist(input({ manifest }), runner.run), ['PreToolUse (hook heavy-guard): expected a deny for a test run outside the host lock']);
     assert.deepEqual(smokeDist(input({ manifest }), new FakeRunner().run), []);
   });
 

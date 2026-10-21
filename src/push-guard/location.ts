@@ -53,7 +53,7 @@ function pathRules(...paths: readonly (string | undefined)[]): nodePath.Platform
 }
 
 /** `dir` resolved and normalised, so a folder the line never leaves compares equal to one it returns to. */
-function absoluteDir(dir: string): string {
+export function absoluteDir(dir: string): string {
   return pathRules(dir).resolve(dir);
 }
 
