@@ -1,6 +1,6 @@
 import { ruleLabel, ruleNumberOf } from "../rules/keys.js";
 import { budgetMarkOf, burstText, MORE_BURST } from "./burst-lines.js";
-import { formatCount, formatPct, formatW } from "./format.js";
+import { formatCount, formatPct, formatW, noRoomText } from "./format.js";
 import { liftText } from "./lift.js";
 import { TURN_TRIGGERS } from "./line.js";
 import { hasRoom } from "./pace.js";
@@ -88,7 +88,8 @@ function outsideLine(outside, all) {
 /**
  * Who is past the daily budget, and what that means: a session past its part is held (finishes the step in hand)
  * only while the team has no room today (`hasRoom`); while it has room, the sessions past their parts are named
- * apart, not held. The team past its own allowance has no room: its in-day pace never passes the allowance.
+ * apart, not held. The team past its own allowance has no room. A hold for want of room gives the team's use today
+ * against its in-day pace, so it never reads as a fixed cap next to the team's daily budget.
  */
 function pastLines(report, teamPast) {
     const { week, sessions } = report;
@@ -100,7 +101,9 @@ function pastLines(report, teamPast) {
         return pastSessions.length > 0 ? [room] : [];
     }
     const past = [...(teamPast ? ['the team'] : []), ...pastSessions];
-    return past.length > 0 ? [`Past the daily budget: ${past.join(', ')}. ${OVER_BUDGET_ADVICE}`] : [];
+    // Held for want of room, unless the team is past its own allowance, which its row already shows.
+    const why = teamPast || teamDay === undefined ? '' : ` (${noRoomText(teamDay)})`;
+    return past.length > 0 ? [`Past the daily budget: ${past.join(', ')}${why}. ${OVER_BUDGET_ADVICE}`] : [];
 }
 /** `teamrig budget`: the week, the team and each session today, lifts, use outside the team, and who is past budget. */
 export function todayLines(report) {
