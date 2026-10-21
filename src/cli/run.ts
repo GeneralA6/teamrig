@@ -612,13 +612,15 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       no dependencyCheck may clear, from coordinator.schedule.heavyCutoffUtc to midnight UTC and in the
       resetBlackoutHours before the weekly token reset; waits up to coordinator.wait.maxMinutes for
       quiet claims on its deploysOnPush targets and for the host lock (longer while its line moves), rebases, runs the
-      dependencyCheck on a dependency change (REFUSED unless it exits 0) and pushes (each a heavy step
+      dependencyCheck on a dependency change (REFUSED unless it exits 0), where reviewGate holds a
+      change of a review path until its reviewer approves the branch's t<n> task (REFUSED with the
+      set command that asks; reviewCheck clears a check path) and pushes (each a heavy step
       in the ledger; again when origin moved meanwhile), or, where coordinator.repos.<name>.merge is
       set, runs its command in place of the push (0 merged, once origin holds it; 75 WAITING, say on a
       pull request's checks: run merge again once it merged), records the merge as a deploy of deploysOnPush, deletes the branch on origin
       and here (--keep-remote, --no-delete-local keep them) and, where followMainCheckout, fast-forwards
       the main checkout; once the shell that started it ends, it stops waiting, or kills the push
-      and frees the lock (exit 129); exit 0 merged, 1 failed or stopped, 75 the merge waits
+      and frees the lock (exit 129); exit 0 merged, 1 failed or stopped, 2 refused, 75 the merge waits
   deploy [--repo <name>] [--session <id|name>]   brings what was pushed to a repository's default
       branch to the running system: pulls its main checkout fast-forward to origin, runs its
       coordinator.repos.<name>.deploy dependencyInstall for a dependency change (after its
