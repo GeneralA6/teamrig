@@ -841,6 +841,8 @@ export interface ContextFilesConfig {
   readonly maxMemoryIndexChars: number;
   /** The skill listing: one `name: description` line per skill. */
   readonly maxSkillListingChars: number;
+  /** The lists the newest session's context holds: skills, deferred tools, agent types and MCP server instructions. */
+  readonly maxSessionListsChars: number;
 }
 
 export interface PathsConfig {

@@ -1855,9 +1855,9 @@ DOCTOR clean, team shop
 
 Otherwise `DOCTOR N finding(s)` and one `WARN <kind> <detail and fix>` line each. Kinds: `requirement` (git,
 Claude Code or Node.js, [the check](requirements.md#the-requirements-check)), `name-gone`,
-`name-shared`, `name-config`, `rename-log`, `inbox-orphan`, `inbox-unread`, `rules-long`, `context-size`, `tree-id`,
-`tree-parent`, `tree-loop`, `tree-depth`, `tree-children`, `name-two-teams`, `effort-env`, `model-env`, `settings-json`,
-`launch-effort`.
+`name-shared`, `name-config`, `rename-log`, `inbox-orphan`, `inbox-unread`, `rules-long`, `context-size`,
+`context-lists`, `tree-id`, `tree-parent`, `tree-loop`, `tree-depth`, `tree-children`, `name-two-teams`, `effort-env`,
+`model-env`, `settings-json`, `launch-effort`.
 
 `context-size` weighs, in characters (about 4 per token), the user's CLAUDE.md with the project folder's and each
 parent's (`CLAUDE.md`, `CLAUDE.local.md`, `.claude/CLAUDE.md`), the project's memory index (`MEMORY.md`) and the
@@ -1865,6 +1865,13 @@ skill listing of the team's and the project's skills folders, against [contextFi
 [contextFiles.maxMemoryIndexChars] (6,000) and [contextFiles.maxSkillListingChars] (4,000). The cheapest cuts: move
 how-tos from CLAUDE.md into skills and facts into memory files, keep one short index line per memory, shorten skill
 descriptions or merge skills.
+
+`context-lists` reads the project's newest session transcript and folds the lists Claude Code announced in it: every
+skill (plugins' and claude.ai's too), the deferred tools, the agent types and the MCP servers' instructions. It flags
+their sum over [contextFiles.maxSessionListsChars] (16,000; a bare Claude Code setup holds about 10,000), naming each
+list's count, size and three largest sources (a plugin, an MCP server, the skills folders). The team's skills folders
+count in both findings: `context-size` weighs them alone, `context-lists` with everything else. The cheapest cuts:
+turn off claude.ai connectors and skills nobody uses in claude.ai settings, and unused plugins with `/plugin`.
 
 `effort-env` and `model-env` name a variable set in doctor's own environment or in the `env` block of the user's
 Claude Code settings (`settings.json` in Claude Code's folder) or the project's (`.claude/settings.json`,

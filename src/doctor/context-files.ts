@@ -70,7 +70,8 @@ function listingLine(name: string, text: string): string {
 /**
  * Measures what Claude Code puts in every call of a session in `at.project`: the CLAUDE.md files, the
  * project's memory index (`<claudeDir>/projects/<slug>/memory/MEMORY.md`) and the skill listing of the
- * team's and the project's skills folders. Plugin skills and connector tools are not counted. It only reads.
+ * team's and the project's skills folders. It only reads. `readSessionLists` (session-lists.ts) measures the
+ * whole lists a session holds, plugin skills and connector tools too.
  */
 export async function readContextFiles(files: Files, at: ContextFileLocations): Promise<ContextFiles> {
   const paths = claudeMdPaths(at.claudeDir, at.project);
