@@ -63,6 +63,7 @@ class FakeRunner {
       case 'package-guard':
       case 'secret-guard':
       case 'exec-guard':
+      case 'pass-record-guard':
         return { ...OK, stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny' } }) };
       default:
         return OK;
