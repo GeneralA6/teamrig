@@ -74,6 +74,7 @@ import {
   isSecretReads,
   isSkipHooks,
   isTerminalChoice,
+  isUnwrappedHeavySteps,
   isVerifyGate,
   isWeekday,
   HOOK_ASKS,
@@ -84,6 +85,7 @@ import {
   SECRET_READS,
   SKIP_HOOKS,
   TERMINALS,
+  UNWRAPPED_HEAVY_STEPS,
   type ContextFilesConfig,
   type ExecConfig,
   type OtherAreaListing,
@@ -752,6 +754,7 @@ function parseHeavy(read: ConfigReader, raw: JsonRecord): HeavyConfig {
   if (smallMaxRunMinutes > longestRun) {
     read.report(`${path}.smallMaxRunMinutes`, `must be at most maxRunMinutes (${longestRun})`);
   }
+  const unwrapped = read.string(raw, 'unwrapped', path, DEFAULT_HEAVY.unwrapped, oneOf(UNWRAPPED_HEAVY_STEPS));
   return {
     ...(lockPath === undefined ? {} : { lockPath }),
     lockTtlMinutes,
@@ -761,6 +764,7 @@ function parseHeavy(read: ConfigReader, raw: JsonRecord): HeavyConfig {
     memorySampleSeconds: read.integer(raw, 'memorySampleSeconds', path, DEFAULT_HEAVY.memorySampleSeconds, CONFIG_LIMITS.heavyMemorySampleSeconds),
     memoryFloorMb: read.integer(raw, 'memoryFloorMb', path, DEFAULT_HEAVY.memoryFloorMb, CONFIG_LIMITS.heavyMemoryFloorMb),
     smallReserveMb: read.integer(raw, 'smallReserveMb', path, DEFAULT_HEAVY.smallReserveMb, CONFIG_LIMITS.heavySmallReserveMb),
+    unwrapped: isUnwrappedHeavySteps(unwrapped) ? unwrapped : DEFAULT_HEAVY.unwrapped,
   };
 }
 

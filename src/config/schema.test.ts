@@ -9,7 +9,17 @@ import { parseConfig } from './parse.ts';
 import { KEEP_RULE_PATTERN } from '../permissions/allow-rules.ts';
 import { PREFIX_PATTERN } from '../readonly-shell/rules.ts';
 import { CORE_RULE_KEYS } from '../rules/keys.ts';
-import { AD_HOC_RUNNERS, COMMIT_GATES, CONFLICT_WINNERS, EFFORT_LEVELS, HOOK_ASKS, PACKAGE_INSTALLS, PUSH_TO_PROTECTED, VERIFY_GATES } from './types.ts';
+import {
+  AD_HOC_RUNNERS,
+  COMMIT_GATES,
+  CONFLICT_WINNERS,
+  EFFORT_LEVELS,
+  HOOK_ASKS,
+  PACKAGE_INSTALLS,
+  PUSH_TO_PROTECTED,
+  UNWRAPPED_HEAVY_STEPS,
+  VERIFY_GATES,
+} from './types.ts';
 
 /** The roster has no default; everything else in the schema must state the code's default. */
 const ROSTER = { sessions: ['alpha', 'bravo'], roles: { lead: 'alpha' } };
@@ -336,6 +346,7 @@ describe('config.schema.json', () => {
     assert.deepEqual(nodeAt(schema, 'packageGuard.installs')['enum'], [...PACKAGE_INSTALLS]);
     assert.deepEqual(nodeAt(schema, 'commits.gate')['enum'], [...COMMIT_GATES]);
     assert.deepEqual(nodeAt(schema, 'prompts.hookAsks')['enum'], [...HOOK_ASKS]);
+    assert.deepEqual(nodeAt(schema, 'coordinator.heavy.unwrapped')['enum'], [...UNWRAPPED_HEAVY_STEPS]);
   });
 
   it('takes the read-only shell prefixes the parser takes', async () => {
