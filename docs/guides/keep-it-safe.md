@@ -36,9 +36,10 @@ flowchart TD
   branch -- yes --> mode{"pushGuard.pushToProtected"}
   mode -- ask --> ask
   mode -- allow --> note["Runs, with a note and any large commits listed"]
-  mode -- lead --> cleared{"The lead's own push, or the lead approved one of the session's waiting tasks?"}
+  mode -- "lead or gated" --> cleared{"The lead's own push, or a leader approved one of the session's waiting tasks?"}
   cleared -- yes --> note
-  cleared -- no --> deny
+  cleared -- "no, under lead" --> deny
+  cleared -- "no, under gated" --> merge["Refused: merge the branch with teamrig merge"]
 ```
 
 - `pushGuard.pushToProtected` (since 0.11.0) is `ask` by default; set to `allow`, a normal push to a protected branch
@@ -49,7 +50,10 @@ flowchart TD
   session's runs with a note while the lead's `teamrig approve` stands on one of its tasks waiting `approval:<lead>`
   (until the task's next status), and is refused otherwise, with how to ask on the register. The human is never
   asked about a normal push, and the refusal holds whatever `prompts.hookAsks` says.
-- `--force-with-lease` is asked, not refused, under either setting. `commits.gate` set to `refuse` turns the ask (or
+- Set to `gated` (since 0.218.0), a hand push is cleared as under `lead`, and refused otherwise with how to merge
+  it: `teamrig merge`, which merges a change that holds the self-merge gates with no approval and holds one that
+  misses a gate for a leader ([the self-merge gates](ship-from-many-sessions.md#the-self-merge-gates)).
+- `--force-with-lease` is asked, not refused, under any setting. `commits.gate` set to `refuse` turns the ask (or
   the allowed push) into a refusal when a commit is over the size rule (400 changed lines or 15 files, tests not
   counted) with no `Large-commit:` reason.
 - `--all` is asked, and refused with `--force` or `--prune`; large commits are those not yet on the last-fetched

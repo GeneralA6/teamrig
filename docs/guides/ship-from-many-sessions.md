@@ -137,6 +137,38 @@ of these:
   [commands](../../plugins/teamrig/skills/teamrig-guide/commands.md#teamrig-merge) has a sketch of one for
   GitHub pull requests.
 
+## The self-merge gates
+
+Under `pushGuard.pushToProtected: gated`, `teamrig merge` checks five self-merge gates after the rebase, in order:
+
+- task: the branch is named `t<n>-…` after a live task (open, in progress, verifying or waiting) of the session
+  that merges it;
+- pass: the repo's own local runner wrote a pass record for the rebased tree (`<git common dir>/local-ci/<tree>.json`),
+  so run the checks on the rebased branch first; `teamrig heavy --pre-push` keeps its passes elsewhere and does not
+  count;
+- size: no commit is over the size rule without a `Large-commit:` line;
+- tests: a change of source (`commits.sourcePatterns`) changes a test too;
+- review: the repo's `coordinator.repos` entry sets `reviewGate` (a repo not listed there always misses it).
+
+A change that holds every gate merges with no approval. A task miss is refused and writes no hold: name the branch
+after your task first. Any other miss writes a gate hold (`gate-holds/` in `coordinator.dir`) for the session's
+nearest leader, or for `roles.securityReviewer` on the lead's own change, and is refused with the `teamrig set`
+command that asks. The reviewer answers with `teamrig approve`, and `teamrig merge` again merges it, but only for the
+gates the hold named. A hold binds the base, the head and the tree, so a new commit or any rebase onto a moved
+default branch, the push's own retry included, needs a new hold. Each merge, with an approval or not, is a line in
+`merges.jsonl` in `coordinator.dir`, and the meeting agenda lists those merged with no approval (`MERGES`).
+
+```mermaid
+flowchart TD
+  m["teamrig merge, rebased"] --> t{"Does the branch name a live task of the session?"}
+  t -- no --> r1["Refused: name the branch after your task"]
+  t -- yes --> g{"Do the pass, size, tests and review gates hold?"}
+  g -- yes --> merged["Merged, logged in merges.jsonl"]
+  g -- no --> h{"Did the hold's reviewer approve this base, head and tree?"}
+  h -- yes --> merged
+  h -- no --> r2["Refused: a gate hold for the session's leader, with the teamrig set that asks"]
+```
+
 ## Deploying it
 
 `teamrig deploy` brings what was pushed to a repository's default branch to the running system, one deploy on the host
