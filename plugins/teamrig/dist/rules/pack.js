@@ -21,7 +21,7 @@ export const CONTEXT_MAX_CHARS = 10_000;
  * The lead's own lines fit in this many characters with worst-case config values (a CI test holds it). They come on
  * top of the core pack for the lead alone, so a team rules file near its limit may reach the lead as a pointer.
  */
-export const LEAD_RULES_MAX_CHARS = 700;
+export const LEAD_RULES_MAX_CHARS = 810;
 /** A list the pack names only to inform (a hook or check enforces it) prints in full up to this many characters. */
 export const LIST_MAX_CHARS = 120;
 function list(items) {
@@ -236,6 +236,7 @@ export function renderLeadRules(config, command) {
         `- Answer each approval wait on you with \`${command} approve\` per the \`approvals\` skill; owner-gated content goes to the owner.`,
         '- Fix a team rule proven wrong and say so; a loosening goes to the owner.',
         "- HIRE flags: give a SCALE-OUT's slice to a hire within the owner's caps, else bring the owner a card; retire on a RETIRE-DUE.",
+        "- Send another session's task work (research, code, checks, an answer) to it with a deadline; relay its answer.",
     ].join('\n');
 }
 /** The SessionStart context: the core pack, then the team's rules in full when they fit, else a pointer. */
