@@ -17,26 +17,34 @@ import type { SecretScanner } from '../core/secrets.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { shownLine } from '../deploy/checks.ts';
 import { HOOK_WAIT_EXIT, hookEndText, hookExitCode, succeeded, type HookRunner } from '../deploy/hooks.ts';
+import type { CommitLog } from '../push-guard/commit-size.ts';
+import { readPassRecord } from '../push-guard/pass-record.ts';
 import { commandLine } from '../test-run/shell.ts';
 import { rangeInstallTouches, runDependencyCheck } from './dependencies.ts';
+import type { GateHolds } from './gate-holds.ts';
+import { gatedVerdict, type GatedSetup, type GatedTask, type GatedVerdict } from './gated-step.ts';
 import { ORIGIN, type Checkout, type MergeGit } from './git.ts';
 import { LOCKFILE } from './manifest.ts';
+import type { MergeLog, MergeRecord } from './merge-log.ts';
 import { readPendingMerge, removePendingMerge, writePendingMerge, type PendingMerge } from './pending-merges.ts';
 import { checkExitCode, runReviewCheck } from './review-check.ts';
-import { reviewGateRefusal, type GatedChange, type GateTask, type ReviewGatePorts, type ReviewGateSetup } from './review-gate-step.ts';
+import { reviewGateRefusal, type GatedChange, type ReviewGatePorts, type ReviewGateSetup } from './review-gate-step.ts';
 import type { ReviewHolds } from './review-holds.ts';
 
 /**
  * `teamrig merge`: merges a finished branch into origin's default branch, one push on the host at a time. It refuses
  * a branch it must not merge (detached, the default branch, uncommitted changes, nothing new, a dependency change the
  * gate holds and no dependency check clears), waits out quiet claims on what the push deploys, takes the host lock,
- * rebases onto the fresh default branch, runs the dependency check when the branch changes the package files and the
- * review gate when the repo has one (a change of a review path waits for its reviewer), and pushes (the pre-push hook
- * runs as a heavy step), then tidies the branch away and, when configured, fast-forwards the main checkout. It never
- * deploys: a push a host deploys by itself is recorded as that deploy. A repository with a merge command (`coordinator.repos.<name>.merge`, say one that merges through a pull request) runs it in place of the
- * push: exit 0 merged, once its remote shows it; 75 waits, and the next `teamrig merge` finishes it once it merged; else
- * failed. That remote is origin unless `merge.remote` names another, say the upstream a fork's pull request merges
- * into: the branch is rebased onto its default branch, and the local default branch follows it.
+ * rebases onto the fresh default branch, runs the dependency check when the branch changes the package files, the
+ * review gate when the repo has one (a change of a review path waits for its reviewer) and, under
+ * `pushGuard.pushToProtected: gated`, the self-merge gates (a change that misses one waits for a leader's approval), and
+ * pushes (the pre-push hook runs as a heavy step), then logs what the self-merge gates let merge, tidies the branch away
+ * and, when configured, fast-forwards the main checkout. It never deploys: a push a host deploys by itself is recorded
+ * as that deploy. A repository with a merge command (`coordinator.repos.<name>.merge`, say one that merges through a
+ * pull request) runs it in place of the push: exit 0 merged, once its remote shows it; 75 waits, and the next `teamrig
+ * merge` finishes it once it merged; else failed. That remote is origin unless `merge.remote` names another, say the
+ * upstream a fork's pull request merges into: the branch is rebased onto its default branch, and the local default
+ * branch follows it.
  */
 
 const MINUTE_MS = 60_000;
@@ -66,6 +74,8 @@ export interface MergeSetup {
   inTeam(path: string): string;
   /** What the review gate holds and who reviews it, for a repo with `reviewGate` on. */
   readonly review: ReviewGateSetup;
+  /** The self-merge gates under `pushGuard.pushToProtected: gated`; undefined under any other choice, where what the review gate lets through lands. */
+  readonly gated: GatedSetup | undefined;
 }
 
 export interface MergePorts {
@@ -78,8 +88,14 @@ export interface MergePorts {
   readonly files: Files;
   /** The review gate's holds (`CoordinatorPlaces.reviewHolds`). */
   readonly reviewHolds: Pick<ReviewHolds, 'read' | 'write' | 'remove'>;
-  /** The register's task by id, for the review gate; undefined when it has none. */
-  taskOf(id: string): Promise<GateTask | undefined>;
+  /** The self-merge gates' holds (`CoordinatorPlaces.gateHolds`). */
+  readonly gateHolds: Pick<GateHolds, 'read' | 'write' | 'remove'>;
+  /** The log of what the self-merge gates let land (`CoordinatorPlaces.merges`). */
+  readonly merges: Pick<MergeLog, 'append'>;
+  /** The commits a change lands with their files, which the self-merge gates weigh. */
+  readonly commitLog: CommitLog;
+  /** The register's task by id, for the review gate and the self-merge gates; undefined when it has none. */
+  taskOf(id: string): Promise<GatedTask | undefined>;
   readonly clock: Clock;
   readonly sleep: Sleep;
   readonly lock: Pick<HostLock, 'acquire' | 'release'>;
@@ -135,14 +151,26 @@ interface Plan {
 type Planned = { readonly kind: 'ready'; readonly plan: Plan } | Exclude<MergeEnd, { kind: 'done' | 'waiting' }>;
 
 /**
- * How the merge went: merged by the push or the merge command (the commits it merged, as `rangeText` names them, and
- * when), waiting on the merge command, refused by the dependency check, or failed.
+ * How the merge went: merged by the push or the merge command (the commits it merged, as `rangeText` names them, when,
+ * and its merges row when the self-merge gates let it merge), waiting on the merge command, refused by a check or a
+ * gate, or failed.
  */
 type MergeOutcome =
-  | { readonly kind: 'merged'; readonly via: 'push' | 'command'; readonly range: string; readonly after: string; readonly startedAt: string; readonly endedAt: string }
+  | {
+      readonly kind: 'merged';
+      readonly via: 'push' | 'command';
+      readonly range: string;
+      readonly after: string;
+      readonly startedAt: string;
+      readonly endedAt: string;
+      readonly merge: MergeRecord | undefined;
+    }
   | { readonly kind: 'waiting'; readonly reason: string }
   | { readonly kind: 'refused'; readonly reason: string }
   | { readonly kind: 'failed'; readonly reason: string };
+
+/** What the checks let merge: the self-merge gates' verdict under `gated`, undefined under any other choice. */
+type Cleared = { readonly kind: 'cleared'; readonly gated: Exclude<GatedVerdict, { kind: 'held' }> | undefined };
 
 function short(sha: string): string {
   return sha.slice(0, 8);
@@ -240,7 +268,7 @@ interface Taking {
  * `TEAMRIG_BASELINE_LOCK` names, kept only while the check runs. Undefined lets the push go; else the refusal, the
  * check's output shown above it.
  */
-async function dependencyCheckRefusal(setup: MergeSetup, ports: MergePorts, plan: Plan, taking: Taking, base: string): Promise<MergeOutcome | undefined> {
+async function dependencyCheckRefusal(setup: MergeSetup, ports: MergePorts, plan: Plan, taking: Taking, base: string): Promise<Extract<MergeOutcome, { kind: 'refused' }> | undefined> {
   const { top, branch, defaultBranch, repo } = plan;
   const argv = repo.config.dependencyCheck;
   if (!repo.config.dependencyGate || argv === undefined) {
@@ -308,10 +336,11 @@ function reviewGatePorts(setup: MergeSetup, ports: MergePorts, plan: Plan, takin
 
 /**
  * The checks on what the rebase made from `base` to `head`, under the lock `taking` holds: the dependency check (see
- * {@link dependencyCheckRefusal}), then the review gate (see {@link reviewGateRefusal}). Undefined lets the merge go;
- * else the refusal.
+ * {@link dependencyCheckRefusal}), the review gate (see {@link reviewGateRefusal}) and, under `gated`, the self-merge
+ * step (see {@link gatedStep}). A new rebase makes a new change, so an approved gate hold binds it no more. Cleared lets
+ * the merge go; else the refusal.
  */
-async function checksRefusal(setup: MergeSetup, ports: MergePorts, plan: Plan, taking: Taking, base: string, head: string): Promise<MergeOutcome | undefined> {
+async function checksOf(setup: MergeSetup, ports: MergePorts, plan: Plan, taking: Taking, base: string, head: string): Promise<Cleared | Extract<MergeOutcome, { kind: 'refused' }>> {
   const refused = await dependencyCheckRefusal(setup, ports, plan, taking, base);
   if (refused !== undefined) {
     return refused;
@@ -319,7 +348,40 @@ async function checksRefusal(setup: MergeSetup, ports: MergePorts, plan: Plan, t
   const { top, branch, repo } = plan;
   const change: GatedChange = { session: plan.session, repo: repo.name, config: repo.config, top, branch, base, head };
   const held = await reviewGateRefusal(setup.review, setup.zone, reviewGatePorts(setup, ports, plan, taking), change);
-  return held === undefined ? undefined : { kind: 'refused', reason: held };
+  if (held !== undefined) {
+    return { kind: 'refused', reason: held };
+  }
+  const gated = setup.gated === undefined ? undefined : await gatedStep(setup.gated, ports, plan, base, head);
+  return gated?.kind === 'held' ? { kind: 'refused', reason: gated.reason } : { kind: 'cleared', gated };
+}
+
+/** The self-merge step (see {@link gatedVerdict}) on the rebased `base..head`, reading the checkout's commits and the pass records its worktrees share. */
+function gatedStep(gated: GatedSetup, ports: MergePorts, plan: Plan, base: string, head: string): Promise<GatedVerdict> {
+  const { session, top, branch, repo } = plan;
+  const commonDir = ports.git.commonDir(top);
+  return gatedVerdict(
+    gated,
+    {
+      holds: ports.gateHolds,
+      clock: ports.clock,
+      taskOf: (id) => ports.taskOf(id),
+      treeOf: (commit) => ports.git.treeOf(top, commit),
+      commitsOf: (from, to) => ports.commitLog.between(top, from, to),
+      passOf: async (tree) => (commonDir === undefined ? undefined : readPassRecord(ports.files, top, commonDir, tree)),
+      say: (text) => ports.say(text),
+    },
+    { session, repo: repo.name, reviewGate: repo.config.reviewGate, branch, base, head },
+  );
+}
+
+/** The merges row of a change the checks cleared, when the self-merge step weighed it: `base..head`, merged at `at`. */
+function mergeOf(cleared: Cleared, plan: Plan, at: string, base: string, head: string): MergeRecord | undefined {
+  const verdict = cleared.gated;
+  if (verdict === undefined) {
+    return undefined;
+  }
+  const merged = { at, session: plan.session, repo: plan.repo.name, branch: plan.branch, base, head, ...verdict.facts };
+  return verdict.kind === 'self' ? { ...merged, route: 'self' } : { ...merged, route: 'approved', missed: verdict.missed, approvedBy: verdict.approvedBy };
 }
 
 /** Whether the push may start now: the heavy cutoff and the reset blackout refuse it, a quiet claim on what it deploys holds it. */
@@ -349,8 +411,8 @@ function readinessOf(setup: MergeSetup, ports: MergePorts, repo: RepoMatch): () 
 
 /**
  * Under the host lock `taking` holds: rebases onto the fresh default branch, runs the checks on what the rebase made
- * (see {@link checksRefusal}) and pushes, again from the rebase when origin moved meanwhile, unless the push was killed
- * as its launching shell ended (no one waits for it any more). The checks and the push get the lock's token, so a
+ * (see {@link checksOf}) and pushes, again from the rebase when origin moved meanwhile, unless the push was killed as
+ * its launching shell ended (no one waits for it any more). The checks and the push get the lock's token, so a
  * pre-push hook that wraps its checks in `teamrig heavy` runs them under this lock.
  */
 async function mergeByPush(setup: MergeSetup, ports: MergePorts, plan: Plan, taking: Taking): Promise<MergeOutcome> {
@@ -374,9 +436,9 @@ async function mergeByPush(setup: MergeSetup, ports: MergePorts, plan: Plan, tak
     if (head === undefined) {
       return { kind: 'failed', reason: `HEAD names no commit in ${top} after the rebase` };
     }
-    const refused = await checksRefusal(setup, ports, plan, taking, before, head);
-    if (refused !== undefined) {
-      return refused;
+    const checked = await checksOf(setup, ports, plan, taking, before, head);
+    if (checked.kind === 'refused') {
+      return checked;
     }
     const startedAt = new Date(ports.clock.now()).toISOString();
     ports.say(`pushing ${branch} (${short(head)}) to ${defaultBranch}; the pre-push hook runs now`);
@@ -395,7 +457,7 @@ async function mergeByPush(setup: MergeSetup, ports: MergePorts, plan: Plan, tak
       if (end.kind !== 'exited' || end.code !== 0) {
         ports.say(`the push ${endText(end)}, but origin's ${defaultBranch} is at ${short(head)}: it merged`);
       }
-      return { kind: 'merged', via: 'push', range: rangeText(git.commits(top, before, after), after), after, startedAt, endedAt };
+      return { kind: 'merged', via: 'push', range: rangeText(git.commits(top, before, after), after), after, startedAt, endedAt, merge: mergeOf(checked, plan, endedAt, before, head) };
     }
     const moved = after !== undefined && after !== before;
     if (moved && attempt < PUSH_ATTEMPTS && end.kind !== 'stopped') {
@@ -449,7 +511,9 @@ async function mergeByCommand(setup: MergeSetup, ports: MergePorts, plan: Plan, 
   const merged = pending === undefined ? undefined : mergedAt(git, top, onto, pending.base, pending.head);
   if (pending !== undefined && merged !== undefined) {
     ports.say(`${branch} (${short(pending.head)}) is merged into ${defaultBranch}: ${onto} at ${short(merged)} holds it`);
-    return { kind: 'merged', via: 'command', range: rangeText(git.commits(top, pending.base, merged), merged), after: merged, startedAt: pending.since, endedAt: startedAt };
+    // The run that gave the command the change ran the self-merge gates; a pending merge does not keep their verdict,
+    // so a merge finished here writes no merges row (T1513).
+    return { kind: 'merged', via: 'command', range: rangeText(git.commits(top, pending.base, merged), merged), after: merged, startedAt: pending.since, endedAt: startedAt, merge: undefined };
   }
   const before = git.sha(top, onto);
   if (before === undefined) {
@@ -463,9 +527,9 @@ async function mergeByCommand(setup: MergeSetup, ports: MergePorts, plan: Plan, 
   if (head === undefined) {
     return { kind: 'failed', reason: `HEAD names no commit in ${top} after the rebase` };
   }
-  const refused = await checksRefusal(setup, ports, plan, taking, before, head);
-  if (refused !== undefined) {
-    return refused;
+  const checked = await checksOf(setup, ports, plan, taking, before, head);
+  if (checked.kind === 'refused') {
+    return checked;
   }
   const command = argv.join(' ');
   ports.say(`merging ${branch} (${short(head)}) into ${defaultBranch} through the merge command ${command}`);
@@ -501,7 +565,8 @@ async function mergeByCommand(setup: MergeSetup, ports: MergePorts, plan: Plan, 
     const why = refetched.ok ? `no commit on ${onto} since ${short(before)} holds its files at ${short(head)}` : `git fetch failed: ${refetched.reason}`;
     return { kind: 'failed', reason: `the merge command said ${branch} merged, but ${why}` };
   }
-  return { kind: 'merged', via: 'command', range: rangeText(git.commits(top, before, after), after), after, startedAt: pending?.since ?? startedAt, endedAt: new Date(ports.clock.now()).toISOString() };
+  const endedAt = new Date(ports.clock.now()).toISOString();
+  return { kind: 'merged', via: 'command', range: rangeText(git.commits(top, before, after), after), after, startedAt: pending?.since ?? startedAt, endedAt, merge: mergeOf(checked, plan, endedAt, before, head) };
 }
 
 /** Merges the branch: through the repository's merge command when it has one, else by the push. */
@@ -633,6 +698,9 @@ export async function mergeBranch(setup: MergeSetup, ports: MergePorts, request:
         rolledAt: outcome.endedAt,
       });
     }
+    if (outcome.kind === 'merged' && outcome.merge !== undefined) {
+      await ports.merges.append(outcome.merge);
+    }
   } finally {
     await ports.lock.release(clearance.lock);
   }
@@ -645,6 +713,9 @@ export async function mergeBranch(setup: MergeSetup, ports: MergePorts, request:
   }
   if (repo.config.reviewGate) {
     await ports.reviewHolds.remove(repo.name, plan.branch);
+  }
+  if (setup.gated !== undefined) {
+    await ports.gateHolds.remove(repo.name, plan.branch);
   }
   tidy(ports, request, plan);
   await followMainCheckout(ports, plan, outcome.after);

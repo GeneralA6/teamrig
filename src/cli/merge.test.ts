@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { formatSnapshot } from '../budget/snapshot.ts';
 import { KIT_VERSION } from '../core/version.ts';
+import type { CommitStat } from '../push-guard/commit-size.ts';
+import { passRecordPath } from '../push-guard/pass-record.ts';
 import { APP, CliHarness, KIT, TEAM, TEAM_HOME } from '../testing/cli-harness.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';
 import { FakeMergeGit, MAIN_CHECKOUT, WORKTREE } from '../testing/fake-merge-git.ts';
@@ -211,5 +213,40 @@ describe('teamrig merge with the review gate', () => {
     const merged = await kit.run(MERGE_RUN, { ...IN_WORKTREE, mergeGit: git, steps });
     assert.equal(merged.code, EXIT.ok, merged.stdout.join('\n'));
     assert.equal(steps.ran.length, 1);
+  });
+});
+
+describe('teamrig merge under pushToProtected gated (T858)', () => {
+  const GATED = { ...TEAM, pushGuard: { pushToProtected: 'gated' }, coordinator: { repos: { app: { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], reviewGate: true } } } };
+  const DEPLOYS = join(TEAM_HOME, 'state', 'deploys');
+  const COMMITS: readonly CommitStat[] = [{ sha: 'rebased', subject: 'Add the feature', body: '', files: [{ path: 'src/app.ts', added: 4, deleted: 1 }, { path: 'src/app.test.ts', added: 9, deleted: 0 }] }];
+
+  /** alpha's task T1, whose branch t1-feat is checked out in the worktree. */
+  async function gatedWorld(): Promise<World> {
+    const made = world(GATED);
+    made.git.checkouts.set(WORKTREE, { top: WORKTREE, branch: 't1-feat', mainCheckout: MAIN_CHECKOUT, linked: true });
+    await made.kit.run(['add', '--title', 'Ship the feature', '--description', 'what and why', '--priority', 'p1', '--session', 'alpha']);
+    return made;
+  }
+
+  it('lands a change that holds every gate with no approval and logs it in merges.jsonl', async () => {
+    const { kit, git, steps } = await gatedWorld();
+    const pass = { tree: 'tree-rebased', commit: 'rebased', checks: ['unit'], passedAt: '2030-01-08T09:30:00.000Z', node: 'v24.0.0' };
+    await kit.files.write(passRecordPath(WORKTREE, `${MAIN_CHECKOUT}/.git`, pass.tree), JSON.stringify(pass));
+    const result = await kit.run(MERGE_RUN, { ...IN_WORKTREE, mergeGit: git, steps, commitLog: { between: () => COMMITS } });
+    assert.equal(result.code, 0, result.stdout.join('\n'));
+    assert.ok(result.stdout.includes('2030-01-08 10:00:00 UTC self-merge gates of t1-feat: every gate holds, so it lands with no approval'), result.stdout.join('\n'));
+    const [row, ...more] = (kit.files.get(join(DEPLOYS, 'merges.jsonl')) ?? '').split('\n').filter((line) => line !== '');
+    assert.deepEqual(more, []);
+    assert.match(row ?? '', /"session":"alpha","repo":"app","branch":"t1-feat","task":"T1","base":"base","head":"rebased","tree":"tree-rebased","files":2,"lines":14,"checks":\["unit"\],"route":"self"\}$/);
+  });
+
+  it('holds a change with no pass record for the lead and pushes nothing', async () => {
+    const { kit, git, steps } = await gatedWorld();
+    const result = await kit.run(MERGE_RUN, { ...IN_WORKTREE, mergeGit: git, steps, commitLog: { between: () => COMMITS } });
+    assert.equal(result.code, 2);
+    assert.match(result.stdout.at(-1) ?? '', /^REFUSED gate hold G\w+ keeps t1-feat \(base\.\.rebased\) off the default branch: pass: .* --waits approval:lead /);
+    assert.match(kit.files.get(join(DEPLOYS, 'gate-holds', 'app~t1-feat.json')) ?? '', /"task":\s*"T1",\s*"session":\s*"alpha",\s*"reviewer":\s*"lead"/);
+    assert.deepEqual([steps.ran, kit.files.get(join(DEPLOYS, 'merges.jsonl'))], [[], undefined]);
   });
 });

@@ -25,6 +25,8 @@ export const ORIGIN = 'origin';
  */
 export interface MergeGit {
   checkoutOf(dir: string): Checkout | undefined;
+  /** The repository's git common dir, absolute, which every worktree of it shares; undefined when git could not tell. */
+  commonDir(dir: string): string | undefined;
   /** `git status --porcelain` lines; untracked files only when `untracked`; undefined when git could not tell. */
   changes(dir: string, untracked: boolean): readonly string[] | undefined;
   /** `git fetch --prune <remote>`. */
@@ -111,6 +113,7 @@ export const GIT_MERGE: MergeGit = {
       linked: !samePlace(gitDir, commonDir),
     };
   },
+  commonDir: (dir) => queryLine(dir, ['rev-parse', '--path-format=absolute', '--git-common-dir']),
   changes(dir, untracked) {
     const text = query(dir, ['status', '--porcelain', `--untracked-files=${untracked ? 'normal' : 'no'}`]);
     return text === undefined ? undefined : lines(text);
