@@ -214,8 +214,9 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       under heavy, integrate or roll) runs at once under it. No --session: $TEAMRIG_SESSION, the
       parent step's session, else the session this Claude Code tab is bound to. --small (a spec run, a
       lint): shares the host with other small steps while it keeps coordinator.heavy.memoryFloorMb free
-      besides the MB held for them (its ledger peak and a quarter, else coordinator.heavy.smallReserveMb);
-      a step without --small waits for them to end. --pre-push (a git pre-push hook's checks): on a clean tree
+      besides the MB held for them (its ledger peak and a quarter, else coordinator.heavy.smallReserveMb)
+      and is killed after coordinator.heavy.smallMaxRunMinutes (--max-minutes up to it); a step without
+      --small waits for them to end. --pre-push (a git pre-push hook's checks): on a clean tree
       it reuses their pass of the last 24 hours (DONE at once, even from the cutoff on) and records one
       when they pass; when they waited over a minute for the lock it declines the push (REFUSED), whose
       connection may have closed meanwhile: push again, it reuses the pass

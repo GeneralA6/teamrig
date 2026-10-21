@@ -516,6 +516,12 @@ export interface HeavyConfig {
   readonly lockTtlMinutes: number;
   /** A heavy step still running after this many minutes is killed with every process it started. */
   readonly maxRunMinutes: number;
+  /**
+   * A small step (`heavy --small`) still running after this many minutes is killed the same way; at most
+   * maxRunMinutes. A small step shares the host beside others and holds back any step waiting for the lock, so a hung
+   * one is cut short; a longer step runs without --small.
+   */
+  readonly smallMaxRunMinutes: number;
   /** A heavy step is refused once its line for the host lock has not moved for this many minutes: no step ahead of it, holding the lock or sharing the host ended meanwhile. */
   readonly waitMinutes: number;
   /**

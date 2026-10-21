@@ -546,6 +546,13 @@
               "maximum": 1430,
               "default": 45
             },
+            "smallMaxRunMinutes": {
+              "description": "A small step (heavy --small) still running after this many minutes is killed the same way, so a hung one does not hold back the steps waiting for the lock; a longer step runs without --small. At most maxRunMinutes.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1430,
+              "default": 10
+            },
             "waitMinutes": {
               "description": "A heavy step is refused once its line for the host lock has not moved for this many minutes: no step ahead of it, holding the lock or sharing the host ended meanwhile.",
               "type": "integer",

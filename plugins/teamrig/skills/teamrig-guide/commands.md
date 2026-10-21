@@ -2067,7 +2067,8 @@ expired, is removed by the next step that looks. An older kit does not know shar
 small steps run.
 
 Then it runs the command in the shell, its output streaming as it comes, and kills it with every process it started
-after `coordinator.heavy.maxRunMinutes` (45). The step ends, and frees the lock, only once that kill is done; on
+after `coordinator.heavy.maxRunMinutes` (45), a `--small` step after `coordinator.heavy.smallMaxRunMinutes` (10): a
+step that shares the host holds back every step waiting for the lock, so a hung one is cut short. The step ends, and frees the lock, only once that kill is done; on
 Windows the kill lists the host's processes again after each round and ends any process the step started while it was
 being killed. The step's start and end go to the coordinator's ledger,
 `ledger.jsonl` in `coordinator.dir` (default `deploys` in the team's state folder), with the teamrig version that ran
@@ -2117,7 +2118,8 @@ Flags:
 - `--session <id|name>`: the session running it; default `$TEAMRIG_SESSION`, else the parent step's session, else
   the session this Claude Code tab is bound to (`$CLAUDE_CODE_SESSION_ID`).
 - `--max-minutes <n>`: kill the step after this many minutes instead of `coordinator.heavy.maxRunMinutes`; a
-  whole number from 1 to `lockTtlMinutes` less 10, so the step never outlives its lock.
+  whole number from 1 to `lockTtlMinutes` less 10, so the step never outlives its lock; with `--small`, from 1 to
+  `smallMaxRunMinutes` (a longer step runs without `--small`).
 - `--small`: share the host with other small steps while memory allows, instead of taking the lock (see above).
 - `--pre-push`: a git pre-push hook's checks: reuse or record their pass on this clean tree, and decline a push
   whose checks waited over a minute for the lock (see above).
