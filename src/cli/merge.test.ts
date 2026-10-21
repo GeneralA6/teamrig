@@ -238,7 +238,7 @@ describe('teamrig merge under pushToProtected gated (T858)', () => {
     assert.ok(result.stdout.includes('2030-01-08 10:00:00 UTC self-merge gates of t1-feat: every gate holds, so it lands with no approval'), result.stdout.join('\n'));
     const [row, ...more] = (kit.files.get(join(DEPLOYS, 'merges.jsonl')) ?? '').split('\n').filter((line) => line !== '');
     assert.deepEqual(more, []);
-    assert.match(row ?? '', /"session":"alpha","repo":"app","branch":"t1-feat","task":"T1","base":"base","head":"rebased","tree":"tree-rebased","files":2,"lines":14,"checks":\["unit"\],"route":"self"\}$/);
+    assert.match(row ?? '', /"session":"alpha","repo":"app","branch":"t1-feat","task":"T1","base":"base","head":"rebased","tree":"tree-rebased","files":2,"lines":14,"checks":\["unit"\],"review":"untouched","route":"self"\}$/);
   });
 
   it('holds a change with no pass record for the lead and pushes nothing', async () => {

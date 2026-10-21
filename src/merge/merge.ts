@@ -28,7 +28,7 @@ import { LOCKFILE } from './manifest.ts';
 import type { MergeLog, MergeRecord } from './merge-log.ts';
 import { readPendingMerge, removePendingMerge, writePendingMerge, type PendingMerge } from './pending-merges.ts';
 import { checkExitCode, runReviewCheck } from './review-check.ts';
-import { reviewGateVerdict, type GatedChange, type ReviewGatePorts, type ReviewGateSetup } from './review-gate-step.ts';
+import { reviewGateVerdict, type GatedChange, type ReviewClearance, type ReviewGatePorts, type ReviewGateSetup } from './review-gate-step.ts';
 import type { ReviewHolds } from './review-holds.ts';
 
 /**
@@ -169,8 +169,8 @@ type MergeOutcome =
   | { readonly kind: 'refused'; readonly reason: string }
   | { readonly kind: 'failed'; readonly reason: string };
 
-/** What the checks let merge: the self-merge gates' verdict under `gated`, undefined under any other choice. */
-type Cleared = { readonly kind: 'cleared'; readonly gated: Exclude<GatedVerdict, { kind: 'held' }> | undefined };
+/** What the checks let merge: how the review gate cleared it, and the self-merge gates' verdict under `gated` (undefined under any other choice). */
+type Cleared = { readonly kind: 'cleared'; readonly review: ReviewClearance; readonly gated: Exclude<GatedVerdict, { kind: 'held' }> | undefined };
 
 function short(sha: string): string {
   return sha.slice(0, 8);
@@ -352,7 +352,7 @@ async function checksOf(setup: MergeSetup, ports: MergePorts, plan: Plan, taking
     return { kind: 'refused', reason: review.reason };
   }
   const gated = setup.gated === undefined ? undefined : await gatedStep(setup.gated, ports, plan, base, head);
-  return gated?.kind === 'held' ? { kind: 'refused', reason: gated.reason } : { kind: 'cleared', gated };
+  return gated?.kind === 'held' ? { kind: 'refused', reason: gated.reason } : { kind: 'cleared', review: review.review, gated };
 }
 
 /** The self-merge step (see {@link gatedVerdict}) on the rebased `base..head`, reading the checkout's commits and the pass records its worktrees share. */
@@ -374,13 +374,16 @@ function gatedStep(gated: GatedSetup, ports: MergePorts, plan: Plan, base: strin
   );
 }
 
-/** The merges row of a change the checks cleared, when the self-merge step weighed it: `base..head`, merged at `at`. */
+/**
+ * The merges row of a change the checks cleared, when the self-merge step weighed it: `base..head`, cleared by the
+ * review gate as `cleared.review`, merged at `at`.
+ */
 function mergeOf(cleared: Cleared, plan: Plan, at: string, base: string, head: string): MergeRecord | undefined {
-  const verdict = cleared.gated;
+  const { gated: verdict, review } = cleared;
   if (verdict === undefined) {
     return undefined;
   }
-  const merged = { at, session: plan.session, repo: plan.repo.name, branch: plan.branch, base, head, ...verdict.facts };
+  const merged = { at, session: plan.session, repo: plan.repo.name, branch: plan.branch, base, head, ...verdict.facts, review };
   return verdict.kind === 'self' ? { ...merged, route: 'self' } : { ...merged, route: 'approved', missed: verdict.missed, approvedBy: verdict.approvedBy };
 }
 

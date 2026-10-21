@@ -1019,8 +1019,8 @@ describe('mergeBranch under pushToProtected: gated', () => {
   const LANDED = { session: 'alpha', repo: 'app', branch: 't9-feat', task: 'T9', base: 'base', head: 'rebased', tree: 'tree-rebased', files: 2, lines: 32 };
 
   /** T9 is alpha's and in progress; its branch lands in a repo whose review gate is on, under `gated`. */
-  function gatedWorld(config: Partial<CoordinatorRepoConfig> = {}): World {
-    const world = new World({ repos: { app: { ...PLAIN, reviewGate: true, ...config } }, gated: GATED });
+  function gatedWorld(config: Partial<CoordinatorRepoConfig> = {}, review: ReviewGateSetup = NO_REVIEW): World {
+    const world = new World({ repos: { app: { ...PLAIN, reviewGate: true, ...config } }, review, gated: GATED });
     world.git.checkouts.set(WORKTREE, { top: WORKTREE, branch: 't9-feat', mainCheckout: MAIN_CHECKOUT, linked: true });
     world.tasks.set('T9', { owner: 'alpha', status: 'in-progress', answer: null });
     return world;
@@ -1043,8 +1043,19 @@ describe('mergeBranch under pushToProtected: gated', () => {
     assert.equal((await world.run(ALPHA)).kind, 'done');
     assert.equal(world.steps.ran.length, 1);
     assert.ok(world.said.includes('self-merge gates of t9-feat: every gate holds, so it lands with no approval'), world.said.join('\n'));
-    assert.deepEqual(await mergeRows(world), [{ ...LANDED, checks: ['unit', 'lint'], route: 'self' }]);
+    assert.deepEqual(await mergeRows(world), [{ ...LANDED, checks: ['unit', 'lint'], review: 'untouched', route: 'self' }]);
     assert.equal(await world.gateHolds.read('app', 't9-feat'), undefined);
+  });
+
+  it('logs a change only the review check cleared as checked, the self-merges security samples', async () => {
+    const check = ['node', 'review.js'];
+    const review: ReviewGateSetup = { reviewPaths: [{ glob: 'src/**', mode: 'check', class: 'security' }], tree: GATED.tree, roles: { securityReviewer: 'bravo' } };
+    const world = gatedWorld({ reviewCheck: check }, review);
+    world.git.paths = ['src/app.ts'];
+    world.hooks.answer(check, { lines: [] });
+    await passed(world);
+    assert.equal((await world.run(ALPHA)).kind, 'done');
+    assert.deepEqual(await mergeRows(world), [{ ...LANDED, checks: ['unit', 'lint'], review: 'checked', route: 'self' }]);
   });
 
   it("holds a change with no pass record for alpha's leader, pushing nothing and freeing the lock", async () => {
@@ -1064,7 +1075,7 @@ describe('mergeBranch under pushToProtected: gated', () => {
     world.clock.advance(60_000);
     assert.equal((await world.run(ALPHA)).kind, 'done');
     assert.equal(world.steps.ran.length, 1);
-    assert.deepEqual(await mergeRows(world), [{ ...LANDED, checks: [], route: 'approved', missed: ['pass'], approvedBy: 'lead' }]);
+    assert.deepEqual(await mergeRows(world), [{ ...LANDED, checks: [], review: 'untouched', route: 'approved', missed: ['pass'], approvedBy: 'lead' }]);
     assert.equal(await world.gateHolds.read('app', 't9-feat'), undefined);
   });
 
