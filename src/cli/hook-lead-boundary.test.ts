@@ -1,8 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import type { Files } from '../core/files.ts';
 import type { JsonRecord } from '../core/guards.ts';
-import { APP, CLAUDE_SESSION, CliHarness, TEAM, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
+import { APP, CLAUDE_SESSION, CliHarness, EVENTS_PATH, TEAM, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
+import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { promptLine, replyLine, resultsLine, transcript, type FixtureTool } from '../testing/transcript-lines.ts';
 
 const AT = '2030-01-08T10:00:00.000Z';
@@ -18,7 +20,8 @@ async function teamWith(last: FixtureTool, config: JsonRecord = TEAM, prompt = '
   return kit;
 }
 
-function afterTool(kit: CliHarness, tool: FixtureTool, env: Readonly<Record<string, string>>): Promise<CliResult> {
+/** The loop-nudge hook after `tool`, over `files` when given (such as a `FaultyFiles` over the kit's). */
+function afterTool(kit: CliHarness, tool: FixtureTool, env: Readonly<Record<string, string>>, files?: Files): Promise<CliResult> {
   const stdin = JSON.stringify({
     session_id: CLAUDE_SESSION,
     cwd: APP,
@@ -27,7 +30,7 @@ function afterTool(kit: CliHarness, tool: FixtureTool, env: Readonly<Record<stri
     tool_use_id: tool.id,
     tool_input: { ...(tool.path === undefined ? {} : { file_path: tool.path }), ...(tool.url === undefined ? {} : { url: tool.url }) },
   });
-  return kit.run(['hook', 'loop-nudge'], { stdin, env });
+  return kit.run(['hook', 'loop-nudge'], { stdin, env, ...(files === undefined ? {} : { files }) });
 }
 
 describe('the lead boundary hooks', () => {
@@ -62,6 +65,16 @@ describe('the lead boundary hooks', () => {
     assert.deepEqual((await afterTool(kit, fetch, { TEAMRIG_SESSION: 'alpha' })).stdout, []);
     const unnamed = await teamWith(fetch);
     assert.match((await afterTool(unnamed, fetch, AS_LEAD)).stdout.join(''), /research itself \(vendor\.example\)\. Send the question to the session that owns it/);
+  });
+
+  it('keep the research line generic when the register cannot be read (T736)', async () => {
+    const fetch: FixtureTool = { id: 'last', name: 'WebFetch', url: 'https://vendor.example/terms' };
+    const kit = await teamWith(fetch, TEAM, 'The owner asks about T1: what do the vendor terms allow?');
+    await kit.run(['add', '--title', 'Vendor terms', '--description', 'what and why', '--priority', 'p2', '--owner', 'alpha', '--session', 'lead']);
+    const unreadable = new FaultyFiles(kit.files).fail('read', EVENTS_PATH, systemError('EACCES', 'EACCES: permission denied'));
+    const out = (await afterTool(kit, fetch, AS_LEAD, unreadable)).stdout.join('');
+    assert.match(out, /research itself \(vendor\.example\)\. Send the question to the session that owns it/);
+    assert.doesNotMatch(out, /alpha/);
   });
 
   it('show the owner the lead own work at the turn end, on the lead tab only', async () => {
