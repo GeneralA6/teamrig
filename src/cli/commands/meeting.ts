@@ -1,14 +1,17 @@
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
+import { coordinatorPlaces } from '../../coordinator/places.ts';
 import { formatAddress } from '../../core/address.ts';
 import { KIT_NAME } from '../../core/home.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import type { TimeZone } from '../../core/zone.ts';
 import { postLine } from '../../inbox/inbox.ts';
 import { agendaLines, agendaSince } from '../../meeting/agenda.ts';
+import { mergeDigestLines, type MergeDigestInput } from '../../meeting/merges.ts';
 import { decisionsByOwner, endNotice, type NoticeFacts } from '../../meeting/notices.ts';
 import { MeetingSchedule } from '../../meeting/schedule.ts';
 import { MeetingStore, phaseOf, stoppedAt, type Meeting, type MeetingPhase } from '../../meeting/state.ts';
+import { MergeLog } from '../../merge/merge-log.ts';
 import { currentWeekOf } from '../../register/week.ts';
 import { fitLines } from '../../register/fit.ts';
 import { noPositionals, UsageError, type ParsedArgs } from '../args.ts';
@@ -140,19 +143,27 @@ function phaseLine(phase: MeetingPhase, mk: MeetingKit): string {
   }
 }
 
+/** The self-merges digest's input: the team's merges log, read once, from the agenda's start. */
+async function mergeDigestOf(runtime: CliRuntime, mk: MeetingKit, since: number): Promise<MergeDigestInput> {
+  const { merges } = coordinatorPlaces(mk.config.coordinator, mk.kit.paths);
+  const gated = mk.config.pushGuard.pushToProtected === 'gated';
+  return { log: await new MergeLog(runtime.files, merges).read(), since, zone: mk.zone, gated, path: merges };
+}
+
 /**
  * The agenda: the register's part (decisions, with those of every team under the lead's, then late and done), today's
- * scheduled meetings and the missed ones, the lead's inbox marked read, then the week's use and, under it, the planned
- * week's fit (as `plan` gives it).
+ * scheduled meetings and the missed ones, the self-merges since the meeting before, the lead's inbox marked read, then
+ * the week's use and, under it, the planned week's fit (as `plan` gives it).
  */
 async function printAgenda(args: ParsedArgs, runtime: CliRuntime, mk: MeetingKit, phase: MeetingPhase): Promise<void> {
   const { own, teams } = await meetingRegisters(runtime, mk);
   const { snapshot } = own;
+  const since = agendaSince(previousEnd(phase), mk.now);
   const lines = agendaLines({
     tasks: [...snapshot.state.tasks.values()],
     tree: taskTreeOf(own, runtime),
     now: mk.now,
-    since: agendaSince(previousEnd(phase), mk.now),
+    since,
     ownerMarker: mk.config.register.ownerSource,
     requireGate: mk.config.register.requireDecisionCard,
     below: teams
@@ -171,6 +182,7 @@ async function printAgenda(args: ParsedArgs, runtime: CliRuntime, mk: MeetingKit
   lines.forEach((line) => runtime.out.stdout(line));
   const scheduled = await new MeetingSchedule(runtime.files, mk.kit.paths.meetings).read();
   agendaMeetingLines(scheduled.meetings, mk.zone, mk.now).forEach((line) => runtime.out.stdout(line));
+  mergeDigestLines(await mergeDigestOf(runtime, mk, since)).forEach((line) => runtime.out.stdout(line));
   await read({ ...args, flags: new Map([['session', mk.lead]]) }, runtime);
   runtime.out.stdout(await weekLineOf(runtime, mk.kit, mk.config, mk.roster));
   const week = currentWeekOf(snapshot, new Date(mk.now), mk.zone);

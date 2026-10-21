@@ -70,7 +70,7 @@ function rowOf(task: Task, tree: TaskTree, team?: string): string {
 }
 
 /** A list's heading, its first AGENDA_ROWS rows and a `+N more` line naming the command that lists them all. */
-function listed(head: string, rows: readonly string[], all: string): string[] {
+export function listed(head: string, rows: readonly string[], all: string): string[] {
   const more = rows.length > AGENDA_ROWS ? [`  +${rows.length - AGENDA_ROWS} more: ${all}`] : [];
   return [head, ...rows.slice(0, AGENDA_ROWS), ...more];
 }
