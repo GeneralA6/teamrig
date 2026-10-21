@@ -86,12 +86,15 @@ export function underLock(env, lock) {
 }
 /**
  * What a waiter waits on as a session reads it: `<session> (<purpose>) since <minute on zone's clock>` for a holder,
- * then its teamrig when another one took the lock (see {@link kitText}).
+ * then its teamrig when another one took the lock (see {@link kitText}), then the small steps it still waits for
+ * (`, waiting for 1 small step: <session> (<purpose>) since <minute>`).
  */
 export function holderText(holder, zone) {
     switch (holder.kind) {
-        case 'held':
-            return `${holder.info.session} (${holder.info.purpose}) since ${zone.minute(new Date(holder.info.acquiredAt))}${kitText(holder.info.kit)}`;
+        case 'held': {
+            const waiting = holder.waitsFor === undefined ? '' : `, waiting for ${sharesText(holder.waitsFor, zone)}`;
+            return `${holder.info.session} (${holder.info.purpose}) since ${zone.minute(new Date(holder.info.acquiredAt))}${kitText(holder.info.kit)}${waiting}`;
+        }
         case 'queued':
             return `${holder.first.session} (${holder.first.purpose}), first in line since ${zone.minute(new Date(holder.first.arrivedAt))}`;
         case 'unknown':
@@ -121,18 +124,22 @@ export function sharesText(shares, zone) {
 export function waitText(holder, ahead, zone) {
     return ahead === 0 ? holderText(holder, zone) : `${holderText(holder, zone)}; ${ahead} ahead in line`;
 }
-/** Tells one report apart from the last: a new holder, or a new place in line. */
+/** The tokens of `shares`, joined. */
+function tokensOf(shares) {
+    return shares.map((share) => share.token).join(',');
+}
+/** Tells one report apart from the last: a new holder, a small step its holder waits for ending, or a new place in line. */
 function waitKey(holder, ahead) {
     switch (holder.kind) {
         case 'held':
-            return `held ${holder.info.token} ${ahead}`;
+            return `held ${holder.info.token} ${tokensOf(holder.waitsFor ?? [])} ${ahead}`;
         case 'queued':
             return `queued ${holder.first.token} ${ahead}`;
         case 'unknown':
             return `unknown ${ahead}`;
         case 'draining':
         case 'memory':
-            return `${holder.kind} ${holder.shares.map((share) => share.token).join(',')} ${ahead}`;
+            return `${holder.kind} ${tokensOf(holder.shares)} ${ahead}`;
     }
 }
 /** `onWait`, told only of a new holder or a new place in line. */
@@ -146,12 +153,18 @@ function tellingChanges(onWait) {
         }
     };
 }
-/** The tokens of the steps a waiter stands behind at one look: the waiters ahead, the lock's holder, the small steps sharing the host. */
+/**
+ * The tokens of the steps a waiter stands behind at one look: the waiters ahead, the lock's holder and the small steps
+ * it waits for, the small steps sharing the host.
+ */
 function standingBehind(ahead, holder) {
     const tokens = new Set(ahead.map((waiter) => waiter.token));
     switch (holder.kind) {
         case 'held':
             tokens.add(holder.info.token);
+            for (const share of holder.waitsFor ?? []) {
+                tokens.add(share.token);
+            }
             break;
         case 'queued':
             tokens.add(holder.first.token);
@@ -252,13 +265,24 @@ export class HostLock {
             }
             else if (seen.kind === 'held') {
                 if (!this.isStale(seen.info)) {
-                    return { kind: 'busy', holder: seen };
+                    return { kind: 'busy', holder: await this.heldBy(seen.info) };
                 }
                 await this.removeIf((text) => parseLock(text)?.token === seen.info.token);
             }
         }
         const last = await this.read();
-        return { kind: 'busy', holder: last.kind === 'held' ? last : { kind: 'unknown' } };
+        return { kind: 'busy', holder: last.kind === 'held' ? await this.heldBy(last.info) : { kind: 'unknown' } };
+    }
+    /**
+     * The holder `info` names, with the small steps sharing the host, which a holder that names its teamrig waits to end
+     * before its step runs (`drain`); one without a `kit` (an older teamrig or a team's own coordinator) runs beside them.
+     */
+    async heldBy(info) {
+        if (info.kit === undefined) {
+            return { kind: 'held', info };
+        }
+        const waitsFor = await this.shares();
+        return waitsFor.length === 0 ? { kind: 'held', info } : { kind: 'held', info, waitsFor };
     }
     /**
      * Takes the lock in its turn: joins the line, then looks again every `pollMs` (the first in line every
@@ -464,7 +488,7 @@ export class HostLock {
     async shareInTurn(waiter, ahead, removeUnknown, request) {
         const seen = await this.read();
         if (seen.kind === 'held' && !this.isStale(seen.info)) {
-            return { kind: 'busy', holder: seen };
+            return { kind: 'busy', holder: await this.heldBy(seen.info) };
         }
         const [first] = ahead;
         if (first !== undefined) {
@@ -532,7 +556,7 @@ export class HostLock {
     async takeInTurn(waiter, ahead, removeUnknown) {
         const seen = await this.read();
         if (seen.kind === 'held' && !this.isStale(seen.info)) {
-            return { kind: 'busy', holder: seen };
+            return { kind: 'busy', holder: await this.heldBy(seen.info) };
         }
         const [first] = ahead;
         if (first === undefined) {
