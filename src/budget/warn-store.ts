@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import type { Files } from '../core/files.ts';
-import { stringField, type JsonRecord } from '../core/guards.ts';
+import { numberField, stringField, type JsonRecord } from '../core/guards.ts';
 import { parseObject, toJsonlLine, VERSION_FIELD, writableObject } from '../core/jsonl.ts';
 import type { WarnState } from './warn.ts';
 
@@ -10,17 +10,12 @@ import type { WarnState } from './warn.ts';
  */
 export const WARN_FORMAT = 1;
 
-function finiteField(record: JsonRecord, key: string): number | undefined {
-  const value = record[key];
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
-}
-
 /** An optional epoch-ms field: absent is undefined, anything but a finite number is damage. */
 function optionalTime(record: JsonRecord, key: string): { readonly ok: boolean; readonly value: number | undefined } {
   if (!(key in record)) {
     return { ok: true, value: undefined };
   }
-  const value = finiteField(record, key);
+  const value = numberField(record, key);
   return { ok: value !== undefined, value };
 }
 
@@ -31,8 +26,8 @@ export function parseWarnState(text: string): WarnState | undefined {
     return undefined;
   }
   const day = stringField(record, 'day');
-  const level = finiteField(record, 'level');
-  const modelLevel = finiteField(record, 'modelLevel');
+  const level = numberField(record, 'level');
+  const modelLevel = numberField(record, 'modelLevel');
   const ahead = record['ahead'];
   // Absent in a file saved before teamrig kept it: not held.
   const held = record['held'] ?? false;
