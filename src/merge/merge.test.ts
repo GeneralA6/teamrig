@@ -26,6 +26,7 @@ const PLACES: CoordinatorPlaces = {
   claimsLock: '/team/deploys/claims.lock',
   hostLock: '/kit/host.lock',
   pendingMerges: '/team/deploys/pending-merges',
+  reviewHolds: '/team/deploys/review-holds',
 };
 const REQUEST: MergeRequest = { session: 'api', dir: WORKTREE, keepRemote: false, keepLocal: false };
 const PLAIN: CoordinatorRepoConfig = { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], dependencyGate: false, reviewGate: false, followMainCheckout: false };
