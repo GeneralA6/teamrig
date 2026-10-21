@@ -59,6 +59,18 @@ describe('secretFindingsOf', () => {
     assert.deepEqual(findings(call('Grep', { pattern: 'x', path: 'src', glob: '*.ts', output_mode: 'content' })), []);
   });
 
+  it("reads a Grep's glob input as ripgrep gets it: each glob apart, a !glob skipping files and naming none", () => {
+    const grep = (glob: string): string[] => findings(call('Grep', { pattern: 'pushToProtected', path: 'C:/w/t', glob, output_mode: 'content' }));
+    assert.deepEqual(grep('!{dist,node_modules}/**'), []);
+    assert.deepEqual(grep('*.ts !.env'), []);
+    assert.deepEqual(grep('!.env,*.md'), []);
+    assert.deepEqual(grep('!dist/**  .env*'), ['.env*']);
+    assert.deepEqual(grep('*.ts,*.pem,'), ['*.pem']);
+    assert.deepEqual(grep('*.{ts,md} .env'), ['.env']);
+    assert.deepEqual(grep('.env,{a}'), []);
+    assert.deepEqual(grep(' '), []);
+  });
+
   it('reads no other tool', () => {
     assert.deepEqual(findings(call('Glob', { pattern: '**/.env' })), []);
     assert.deepEqual(findings(call('Write', { file_path: '.env', content: 'A=1' })), []);
