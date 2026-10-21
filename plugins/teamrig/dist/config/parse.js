@@ -6,7 +6,7 @@ import { TimeZone } from "../core/zone.js";
 import { FOLLOWUP_STATUSES, isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, SESSION_NAME, TASK_STATUSES } from "../register/model.js";
 import { PREFIX_PATTERN } from "../readonly-shell/rules.js";
 import { CORE_RULE_KEYS, isCoreRuleKey } from "../rules/keys.js";
-import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT_CONTEXT_FILES, DEFAULT_CLAIMS, DEFAULT_DECISIONS, DEFAULT_COORDINATOR_WAIT, DEFAULT_GATE_TIMEOUT_SECONDS, DEFAULT_GITHUB, DEFAULT_HEAVY, DEFAULT_HIRING, DEFAULT_LOCK, DEFAULT_LEAD_BOUNDARY, DEFAULT_TURN_LOG, DEFAULT_LOOPS, DEFAULT_MESSAGES, DEFAULT_HEADROOM, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_COMMIT_GUARD, DEFAULT_SECRET_GUARD, DEFAULT_PACKAGE_GUARD, DEFAULT_PROMPTS, DEFAULT_PUSH_GUARD, DEFAULT_READONLY_SHELL, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SCALE_OUT, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, DEFAULT_STATUS_LINE, DEFAULT_TESTS, DEFAULT_WAKE, DEFAULT_WINDOWS, HEAVY_TTL_MARGIN_MINUTES, } from "./defaults.js";
+import { DEFAULT_ALERTS, DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT_CONTEXT_FILES, DEFAULT_CLAIMS, DEFAULT_DECISIONS, DEFAULT_COORDINATOR_WAIT, DEFAULT_GATE_TIMEOUT_SECONDS, DEFAULT_GITHUB, DEFAULT_HEAVY, DEFAULT_HIRING, DEFAULT_EXEC, DEFAULT_LOCK, DEFAULT_LEAD_BOUNDARY, DEFAULT_TURN_LOG, DEFAULT_LOOPS, DEFAULT_MESSAGES, DEFAULT_HEADROOM, DEFAULT_OPEN, DEFAULT_OWNER_GATES, DEFAULT_COMMIT_GUARD, DEFAULT_SECRET_GUARD, DEFAULT_PACKAGE_GUARD, DEFAULT_PROMPTS, DEFAULT_PUSH_GUARD, DEFAULT_READONLY_SHELL, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_SCALE_OUT, DEFAULT_SESSION_SHARE, DEFAULT_SKILLS, DEFAULT_STATUS_LINE, DEFAULT_TESTS, DEFAULT_WAKE, DEFAULT_WINDOWS, HEAVY_TTL_MARGIN_MINUTES, } from "./defaults.js";
 import { isEffort, isModel } from "./launch.js";
 import { CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from "./limits.js";
 import { ConfigReader, describe, isValidRegex, shortLine } from "./reader.js";
@@ -19,6 +19,18 @@ const isRepoName = (repo) => /^[a-z0-9][a-z0-9-]{0,38}\/[a-z0-9._-]{1,100}$/i.te
 /** A GitHub login: letters, digits or -, starting with a letter or digit, at most 39 characters. */
 const GITHUB_LOGIN = /^[a-z0-9][a-z0-9-]{0,38}$/i;
 const BRANCH_NAME = (name) => (/^[^\s~^:?*[\\]+$/.test(name) ? undefined : 'not a valid branch name');
+/**
+ * An `exec.path` folder: absolute from a drive or the root (`C:/tools`, `/usr/bin`), never against the cwd, and with no
+ * `;` or `:` past the drive, so joining the list into one PATH cannot split a folder or add one.
+ */
+const EXEC_DIRECTORY = (folder) => {
+    if (!/^(?:[A-Za-z]:[\\/]|\/)/.test(folder)) {
+        return 'expected an absolute folder, such as C:/tools or /usr/bin';
+    }
+    return /^(?:[A-Za-z]:)?[^;:]*$/.test(folder) ? undefined : 'expected no ; or : past the drive';
+};
+/** An environment variable's name, such as `EXEC_WEBHOOK_URL`: what a config key names in place of a secret value. */
+const ENV_VARIABLE = (name) => /^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(name) ? undefined : 'expected a variable name: a letter or _, then at most 63 letters, digits or _';
 /** The key shape the skills lint recognises in frontmatter. */
 const isFrontmatterKey = (key) => (/^[A-Za-z0-9_-]+$/.test(key) ? undefined : 'expected a frontmatter key: letters, digits, _ or -');
 /** A git trailer key, such as `Large-commit`. */
@@ -171,9 +183,11 @@ export function parseConfig(raw) {
     const rolesRaw = read.section(raw, 'roles', '');
     const lead = read.requiredString(rolesRaw, 'lead', 'roles', isSessionName);
     const coordinatorOwner = read.optionalString(rolesRaw, 'coordinatorOwner', 'roles', isSessionName);
+    const securityReviewer = read.optionalString(rolesRaw, 'securityReviewer', 'roles', isSessionName);
     for (const [key, name] of [
         ['lead', lead],
         ['coordinatorOwner', coordinatorOwner],
+        ['securityReviewer', securityReviewer],
     ]) {
         if (name !== undefined && name !== '' && sessions.length > 0 && !sessions.includes(name)) {
             read.report(`roles.${key}`, `${describe(name)} is not one of the sessions`);
@@ -201,7 +215,11 @@ export function parseConfig(raw) {
         ...(timeZone === undefined ? {} : { timeZone }),
         sessions,
         names,
-        roles: coordinatorOwner === undefined ? { lead } : { lead, coordinatorOwner },
+        roles: {
+            lead,
+            ...(coordinatorOwner === undefined ? {} : { coordinatorOwner }),
+            ...(securityReviewer === undefined ? {} : { securityReviewer }),
+        },
         leads,
         ownerGates: read.stringList(raw, 'ownerGates', '', DEFAULT_OWNER_GATES, shortLine(CONFIG_LIMITS.ownerGates.maxLength), CONFIG_LIMITS.ownerGates.maxItems),
         ruleConflicts: read.list(raw, 'ruleConflicts', '', [], (value, itemPath) => parseRuleConflict(read, value, itemPath), CONFIG_LIMITS.ruleConflicts.maxItems),
@@ -217,6 +235,7 @@ export function parseConfig(raw) {
             pollMs: read.integer(lock, 'pollMs', 'lock', DEFAULT_LOCK.pollMs, { min: 10 }),
             waitMs: read.integer(lock, 'waitMs', 'lock', DEFAULT_LOCK.waitMs, { min: 0 }),
         },
+        exec: parseExec(read, read.section(raw, 'exec', '')),
         pushGuard: {
             protectedBranches: read.stringList(pushGuard, 'protectedBranches', 'pushGuard', DEFAULT_PUSH_GUARD.protectedBranches, shortLine(CONFIG_LIMITS.protectedBranches.maxLength, BRANCH_NAME), CONFIG_LIMITS.protectedBranches.maxItems),
             pushToProtected: parsePushToProtected(read, pushGuard),
@@ -722,6 +741,14 @@ function parseFollowupStatus(read, value, path) {
     }
     read.report(path, `expected one of ${FOLLOWUP_STATUSES.join(', ')}, got ${describe(value)}`);
     return undefined;
+}
+function parseExec(read, raw) {
+    const path = 'exec';
+    const webhookEnv = read.optionalString(raw, 'webhookEnv', path, ENV_VARIABLE);
+    return {
+        path: read.stringList(raw, 'path', path, DEFAULT_EXEC.path, shortLine(CONFIG_LIMITS.execPath.maxLength, EXEC_DIRECTORY), CONFIG_LIMITS.execPath.maxItems),
+        ...(webhookEnv === undefined ? {} : { webhookEnv }),
+    };
 }
 function parseContextFiles(read, raw) {
     const path = 'contextFiles';

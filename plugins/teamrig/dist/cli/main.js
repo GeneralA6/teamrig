@@ -11,6 +11,9 @@ import { nodeStepRunner } from "../coordinator/steps.js";
 import { realSleep, systemClock } from "../core/lock.js";
 import { NODE_PATH_PROBE } from "../core/path-probe.js";
 import { nodeProgramRunner, systemCredentials } from "../github/credentials.js";
+import { GIT_CHECKOUT } from "../exec/binding.js";
+import { nodeExecSpawner } from "../exec/runner.js";
+import { httpWebhook } from "../exec/webhook.js";
 import { nodeGhRunner } from "../github/gh.js";
 import { GIT_INTEGRATE } from "../integrate/git.js";
 import { nodeProcesses } from "../open/processes.js";
@@ -66,6 +69,7 @@ process.exitCode = await runCli(process.argv.slice(2), {
     trees: GIT_TREES,
     hooks: nodeHookRunner(process.platform),
     packageRegistry: httpPackageRegistry(),
+    exec: { spawner: nodeExecSpawner(process.platform), checkout: GIT_CHECKOUT, webhook: httpWebhook() },
     readStdin: () => text(process.stdin),
     newId: () => randomUUID(),
 });

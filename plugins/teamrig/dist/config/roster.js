@@ -1,5 +1,5 @@
 /** The roles a config can assign, by their key under `roles`. */
-export const ROLES = ['lead', 'coordinatorOwner'];
+export const ROLES = ['lead', 'coordinatorOwner', 'securityReviewer'];
 export function isRole(text) {
     return ROLES.some((role) => role === text);
 }
