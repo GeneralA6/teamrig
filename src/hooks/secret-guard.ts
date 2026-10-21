@@ -24,7 +24,7 @@ export function secretGuardOf(load: ConfigLoad | undefined): SecretGuardConfig {
 /**
  * The secrets a tool call would print into the conversation: what a Bash or PowerShell line prints, the file a Read
  * opens, and the file or glob a Grep shows matching lines of. A Grep that lists file names or counts prints no
- * content; one over a folder with no glob may still show a secret file's lines: a gap.
+ * content; one over a folder with no glob, or only `!globs`, may still show a secret file's lines: a gap.
  */
 export function secretFindingsOf(payload: JsonRecord, cwd: string, rules: SecretRules): SecretFinding[] {
   const input = recordField(payload, 'tool_input') ?? {};
@@ -47,7 +47,7 @@ export function secretFindingsOf(payload: JsonRecord, cwd: string, rules: Secret
   }
 }
 
-/** The secret file a Grep that shows content searches, named by its path or its glob. */
+/** The secret file a Grep that shows content searches, named by its path or by a glob that picks the files it reads. */
 function grepFindings(input: JsonRecord, dir: string, rules: SecretRules): SecretFinding[] {
   if (stringField(input, 'output_mode') !== 'content') {
     return [];
@@ -57,8 +57,20 @@ function grepFindings(input: JsonRecord, dir: string, rules: SecretRules): Secre
   if (path !== undefined && rules.paths.listed(target)) {
     return [{ kind: 'file', path }];
   }
-  const glob = stringField(input, 'glob');
-  return glob !== undefined && rules.paths.mayName(`${target}/${glob}`, true) ? [{ kind: 'file', path: glob }] : [];
+  return grepIncludes(stringField(input, 'glob') ?? '')
+    .filter((glob) => rules.paths.mayName(`${target}/${glob}`, true))
+    .map((glob): SecretFinding => ({ kind: 'file', path: glob }));
+}
+
+/**
+ * The globs of a Grep's `glob` input that pick the files it reads. Claude Code splits the input at whitespace, then
+ * at commas in a part with no `{...}`, and hands ripgrep each as a `--glob`; a `!glob` names files the search skips.
+ */
+function grepIncludes(text: string): string[] {
+  return text
+    .split(/\s+/)
+    .flatMap((part) => (part.includes('{') && part.includes('}') ? [part] : part.split(',')))
+    .filter((glob) => glob !== '' && !glob.startsWith('!'));
 }
 
 /** The absolute path a tool's path input names: a relative one starts in the call's folder, a drive path is Windows' on every host. */
