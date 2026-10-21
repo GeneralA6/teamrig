@@ -1,5 +1,12 @@
 import { MS_PER_DAY } from "../core/time.js";
 /** How `teamrig budget` writes its numbers: short, and the same everywhere. */
+/**
+ * Why a session past its part is held, the same in the hook line and in `teamrig budget`:
+ * "the team has used 3.1% of the week today, at or past its in-day pace of 3.0%".
+ */
+export function noRoomText(day) {
+    return `the team has used ${formatPct(day.usedPct)} of the week today, at or past its in-day pace of ${formatPct(day.pacePct)}`;
+}
 /** A share of the week: two decimals below 1%, else one, such as `0.25%` or `10.0%`. */
 export function formatPct(value) {
     return `${value.toFixed(Math.abs(value) < 1 && value !== 0 ? 2 : 1)}%`;
