@@ -114,10 +114,10 @@ async function guardLoadOf(
 }
 
 /**
- * Under `pushToProtected: lead`, what lets this tab's normal push to a protected branch through (T684): the lead's own
- * push, else a waiting task of its session's that a leader above it approved (T781), read lock-free from the register.
- * A child team's lead is no lead of the whole tree: its push needs the parent team's lead's approval (T1140). It never
- * throws: a register or tree it cannot read clears nothing, so the push is refused, saying why.
+ * Under `pushToProtected: lead` or `gated`, what lets this tab's normal push to a protected branch through (T684): the
+ * lead's own push, else a waiting task of its session's that a leader above it approved (T781), read lock-free from the
+ * register. A child team's lead is no lead of the whole tree: its push needs the parent team's lead's approval (T1140).
+ * It never throws: a register or tree it cannot read clears nothing, so the push is refused, saying why.
  */
 async function pushClearanceOf(runtime: CliRuntime, kit: Kit | undefined, payload: unknown): Promise<PushClearance> {
   if (kit === undefined || kit.load.status !== 'loaded') {

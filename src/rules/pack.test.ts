@@ -253,6 +253,13 @@ describe('renderCorePack', () => {
     }
   });
 
+  it('says changes land through teamrig merge under pushToProtected gated, whatever hookAsks says (T858)', () => {
+    for (const hookAsks of ['ask', 'refuse']) {
+      const pack = renderCorePack(testConfig({ pushGuard: { pushToProtected: 'gated' }, prompts: { hookAsks } }), COMMAND, 'win32', RULES_CLOCK);
+      assert.match(pack, /^15\. Pushes to main, master land via merge; force-pushing or deleting them is refused \[pushGuard\]\. /m, hookAsks);
+    }
+  });
+
 
   it('tells the session to record a refused route for the owner, not report it to the lead, when hook asks are off', () => {
     const pack = (pushGuard: Record<string, unknown>) => renderCorePack(testConfig({ pushGuard, prompts: { hookAsks: 'refuse' } }), COMMAND, 'win32', RULES_CLOCK);
