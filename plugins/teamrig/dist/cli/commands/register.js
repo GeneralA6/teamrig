@@ -6,6 +6,7 @@ import { burstsOver, surplusOf } from "../../budget/burst.js";
 import { formatW } from "../../budget/format.js";
 import { timingText, waitTiming } from "../../decisions/lines.js";
 import { teamDecisions } from "../../decisions/team.js";
+import { contextSizeFindings } from "../../doctor/doctor.js";
 import { hireFlags } from "../../hiring/due.js";
 import { activeHires, HiringLog } from "../../hiring/log.js";
 import { scaleOutFlags } from "../../hiring/scale-out.js";
@@ -34,6 +35,7 @@ import { readBursts } from "../burst-reading.js";
 import { readHirePct } from "../hire-cost.js";
 import { readWPerPct } from "../stored-week.js";
 import { snapshotDirOf } from "./budget.js";
+import { readContextInput } from "./doctor.js";
 import { inboxDepsOf } from "./inbox.js";
 import { markBoundary } from "./refresh.js";
 import { markKeepWorkingAsk } from "./keep-working.js";
@@ -501,15 +503,17 @@ function withOverLimit(sections, fit) {
  * team's only, as teams on one machine share that folder, and so are the flags on hired sessions (src/hiring/due.ts)
  * and the batch of the owner's decisions its lead asks next (src/decisions/batch.ts).
  * The `stopgap T<id>` tags in those skills and in the team's `register.check.stopgapFiles` add a STOPGAP-DONE flag
- * per finished task they name.
+ * per finished task they name. Last, doctor's context-size and context-lists findings against the own team's
+ * `contextFiles` budgets: the text every call of a session on this machine re-reads, so every `start` shows them (T393).
  */
 export async function checkReport(args, runtime) {
     const now = new Date(runtime.clock.now());
     const tree = args.switches.has('tree');
     const read = await readRegisters(args, runtime);
     const skillFiles = await new SkillDir(runtime.files, read.own.paths.skills).readAll();
+    const project = await projectFolder(runtime);
     const tags = [
-        ...(await readStopgapTags(runtime.files, await projectFolder(runtime), read.own.config.register.check.stopgapFiles)),
+        ...(await readStopgapTags(runtime.files, project, read.own.config.register.check.stopgapFiles)),
         ...skillFiles.flatMap((skill) => stopgapTags(`${skill.name}/${SKILL_FILE}`, skill.text)),
     ];
     // The task flags are on active tasks, which a compaction never retires; a stopgap tag may name a finished task
@@ -537,7 +541,8 @@ export async function checkReport(args, runtime) {
     const hires = [...scaleOut.flags, ...hireFlags(input, scaleOut.busy)];
     const scope = week === null ? 'no week plan tagged yet, so the week checks are skipped' : `week ${week}`;
     const { batch } = await teamDecisions(runtime.files, own.paths, own.config, own.snapshot.state.tasks, now.getTime(), zone);
-    return { sections, scope, skills, skillsDir: own.paths.skills, hires, decisions: { lead: own.config.roles.lead, batch, zone } };
+    const context = contextSizeFindings(await readContextInput(runtime, project, own.paths.skills, own.config.contextFiles));
+    return { sections, scope, skills, skillsDir: own.paths.skills, hires, context, decisions: { lead: own.config.roles.lead, batch, zone } };
 }
 /** `check [--tree] [--all]`: the report in the short form (src/cli/reports.ts), or with `--all` every flag in full. */
 export async function check(args, runtime) {

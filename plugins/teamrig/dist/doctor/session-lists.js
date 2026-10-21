@@ -1,3 +1,4 @@
+import { readLines } from "../budget/cursor.js";
 import { newestProjectTranscript } from "../budget/discover.js";
 import { isRecord, isStringArray, recordField, stringField } from "../core/guards.js";
 import { parseObject } from "../core/jsonl.js";
@@ -130,22 +131,22 @@ function listOf(kind, entries) {
     };
 }
 /**
- * The lists a session's context holds, folded over its whole transcript: the skill listing, the deferred tools, the
- * agent types and the MCP servers' instructions. Claude Code announces each list's changes as an attachment line and
- * re-announces the lists after a compaction; entries are kept by name, so a re-announcement replaces, never adds.
+ * The lists a session's context holds, folded over its transcript one line at a time: the skill listing, the deferred
+ * tools, the agent types and the MCP servers' instructions. Claude Code announces each list's changes as an attachment
+ * line and re-announces the lists after a compaction; entries are kept by name, so a re-announcement replaces, never adds.
  */
-export function foldSessionLists(text) {
-    const lists = new Map(SESSION_LIST_KINDS.map((kind) => [kind, new Map()]));
-    for (const line of text.split('\n')) {
+class SessionListsFold {
+    lists = new Map(SESSION_LIST_KINDS.map((kind) => [kind, new Map()]));
+    add(line) {
         if (!KIND_MARKERS.some((marker) => line.includes(marker))) {
-            continue;
+            return;
         }
         const record = parseObject(line);
         const attachment = record === undefined ? undefined : recordField(record, 'attachment');
         const kind = attachment === undefined ? undefined : ATTACHMENT_KINDS.get(stringField(attachment, 'type') ?? '');
-        const entries = kind === undefined ? undefined : lists.get(kind);
+        const entries = kind === undefined ? undefined : this.lists.get(kind);
         if (attachment === undefined || kind === undefined || entries === undefined) {
-            continue;
+            return;
         }
         const delta = deltaOf(kind, attachment);
         if (delta.replaces) {
@@ -154,18 +155,37 @@ export function foldSessionLists(text) {
         delta.removed.forEach((name) => entries.delete(name));
         delta.added.forEach(([name, entry]) => entries.set(name, entry));
     }
-    return SESSION_LIST_KINDS.map((kind) => listOf(kind, lists.get(kind) ?? new Map()));
+    result() {
+        return SESSION_LIST_KINDS.map((kind) => listOf(kind, this.lists.get(kind) ?? new Map()));
+    }
 }
+/** The lists a whole transcript's text announces (`SessionListsFold`). */
+export function foldSessionLists(text) {
+    const fold = new SessionListsFold();
+    text.split('\n').forEach((line) => fold.add(line));
+    return fold.result();
+}
+/** The bytes `readSessionLists` reads at a time: a transcript runs to hundreds of MB, and is never held whole. */
+export const SESSION_LISTS_CHUNK_BYTES = 8 * 1024 * 1024;
 /**
  * The lists in the context of the newest session in `project`: the one running there now, when there is one. Reads
- * its whole transcript and nothing else; undefined when the project has no session transcript.
+ * its whole transcript, `chunkBytes` at a time, and nothing else; a last line Claude Code is still writing is left
+ * out. Undefined when the project has no session transcript.
  */
-export async function readSessionLists(source, projectsDir, project) {
+export async function readSessionLists(source, projectsDir, project, chunkBytes = SESSION_LISTS_CHUNK_BYTES) {
     const transcript = await newestProjectTranscript(source, projectsDir, project);
     if (transcript === undefined) {
         return undefined;
     }
     const size = (await source.size(transcript)) ?? 0;
-    const text = size === 0 ? '' : (await source.read(transcript, 0, size)).toString('utf8');
-    return { transcript, lists: foldSessionLists(text) };
+    const fold = new SessionListsFold();
+    for (let offset = 0; offset < size;) {
+        const batch = await readLines(source, transcript, offset, size, chunkBytes);
+        batch.lines.forEach((line) => fold.add(line));
+        if (batch.end === offset) {
+            break;
+        }
+        offset = batch.end;
+    }
+    return { transcript, lists: fold.result() };
 }

@@ -166,6 +166,13 @@ function sessionListsFinding({ sessionLists, contextFiles: { budgets } }) {
         'every call re-reads this text, so turn off unused claude.ai connectors and skills in claude.ai settings, and unused plugins with /plugin';
     return [{ kind: 'context-lists', detail }];
 }
+/**
+ * The `context-size` and `context-lists` findings: text every call of a session on this machine re-reads, over its
+ * `contextFiles` budget. `check` prints them too (T393), so every session sees them at `start`, not only in `doctor`.
+ */
+export function contextSizeFindings(input) {
+    return [...contextFindings(input), ...sessionListsFinding(input)];
+}
 function treeFindings({ tree, command }) {
     return [
         ...tree.problems.map((problem) => ({ kind: problem.kind, detail: describeTreeProblem(problem, command) })),
@@ -228,8 +235,7 @@ export function doctorFindings(input) {
         ...renameLogFindings(input),
         ...inboxFindings(input),
         ...rulesFindings(input),
-        ...contextFindings(input),
-        ...sessionListsFinding(input),
+        ...contextSizeFindings(input),
         ...treeFindings(input),
         ...routingEnvFindings(input),
         ...launchFindings(input),
