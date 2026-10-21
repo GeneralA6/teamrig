@@ -97,6 +97,7 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   claudeMdChars: 'contextFiles.maxClaudeMdChars',
   memoryIndexChars: 'contextFiles.maxMemoryIndexChars',
   skillListingChars: 'contextFiles.maxSkillListingChars',
+  sessionListsChars: 'contextFiles.maxSessionListsChars',
   ownerGates: 'ownerGates',
   ruleConflicts: 'ruleConflicts',
   protectedBranches: 'pushGuard.protectedBranches',

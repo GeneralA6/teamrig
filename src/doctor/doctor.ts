@@ -11,6 +11,7 @@ import type { RenameLogRead } from '../names/rename.ts';
 import { describeRequirement, type RequirementProblem } from '../requirements/requirements.ts';
 import { TEAM_RULES_MAX_CHARS } from '../rules/pack.ts';
 import type { ContextFiles } from './context-files.ts';
+import type { SessionList, SessionListKind, SessionLists } from './session-lists.ts';
 import type { SettingsEnv } from './settings-env.ts';
 
 /**
@@ -29,6 +30,8 @@ export const UNREAD_INBOX_DAYS = 7;
  * - `inbox-unread`: unread lines and no read for over `UNREAD_INBOX_DAYS` days;
  * - `rules-long`: a rules.md longer than a session is shown at start;
  * - `context-size`: CLAUDE.md files, a memory index or a skill listing over its `contextFiles` budget, re-read every call;
+ * - `context-lists`: the lists the newest session's context holds (skills, deferred tools, agent types, MCP server
+ *   instructions) over their `contextFiles` budget, re-read every call;
  * - `tree-id`, `tree-parent`, `tree-loop`, `tree-depth`, `tree-children`: a broken link in the
  *   team's tree of teams (see `TreeProblem`);
  * - `name-two-teams`: a session name this team shares with another team, though names are machine-wide;
@@ -47,6 +50,7 @@ export type FindingKind =
   | 'inbox-unread'
   | 'rules-long'
   | 'context-size'
+  | 'context-lists'
   | TreeProblem['kind']
   | 'name-two-teams'
   | 'effort-env'
@@ -84,6 +88,8 @@ export interface DoctorInput {
   readonly teamRules: { readonly path: string; readonly chars: number } | undefined;
   /** What every call of a session in the project re-reads, and the team's budgets for it. */
   readonly contextFiles: { readonly read: ContextFiles; readonly budgets: ContextFilesConfig };
+  /** The lists the newest session in the project holds in its context (`readSessionLists`); undefined with no transcript. */
+  readonly sessionLists: SessionLists | undefined;
   /** The problems of the team's tree of teams, and the session names it shares with other teams. */
   readonly tree: { readonly problems: readonly TreeProblem[]; readonly clashes: readonly NameClash[] };
   /** The environment doctor runs in; only the variables that override a model or effort choice are read. */
@@ -235,6 +241,41 @@ function contextFindings({ contextFiles: { read, budgets } }: DoctorInput): Find
   ];
 }
 
+const SESSION_LIST_LABELS: Readonly<Record<SessionListKind, string>> = {
+  skills: 'skills',
+  tools: 'deferred tools',
+  agents: 'agent types',
+  instructions: 'MCP instructions',
+};
+
+/** The largest sources a list names; the rest are counted. */
+const SESSION_LIST_TOP_SOURCES = 3;
+
+function describeSessionList(list: SessionList): string {
+  const top = list.sources.slice(0, SESSION_LIST_TOP_SOURCES).map((source) => `${source.name} ${count(source.chars)}`);
+  const rest = list.sources.length - top.length;
+  const sources = rest > 0 ? [...top, `+${rest} more`] : top;
+  const breakdown = sources.length === 0 ? '' : ` (${sources.join(', ')})`;
+  return `${SESSION_LIST_LABELS[list.kind]} ${list.count}, ${count(list.chars)}${breakdown}`;
+}
+
+function sessionListsFinding({ sessionLists, contextFiles: { budgets } }: DoctorInput): Finding[] {
+  if (sessionLists === undefined) {
+    return [];
+  }
+  const lists = sessionLists.lists.filter((list) => list.count > 0);
+  const chars = lists.reduce((sum, list) => sum + list.chars, 0);
+  const budget = budgets.maxSessionListsChars;
+  if (chars <= budget) {
+    return [];
+  }
+  const detail =
+    `lists in the context of the newest session (${sessionLists.transcript}): ${count(chars)} characters (${tokensOf(chars)}), ` +
+    `over its budget of ${count(budget)} [contextFiles.maxSessionListsChars]: ${lists.map(describeSessionList).join('; ')}; ` +
+    'every call re-reads this text, so turn off unused claude.ai connectors and skills in claude.ai settings, and unused plugins with /plugin';
+  return [{ kind: 'context-lists', detail }];
+}
+
 function treeFindings({ tree, command }: DoctorInput): Finding[] {
   return [
     ...tree.problems.map((problem): Finding => ({ kind: problem.kind, detail: describeTreeProblem(problem, command) })),
@@ -299,8 +340,9 @@ function launchFindings({ launches, roster }: DoctorInput): Finding[] {
 
 /**
  * The team's health checks: names that find the wrong session or none, a damaged rename log,
- * inboxes nobody reads, rules too long to show, text every call re-reads over its budget, a broken tree of teams or a session name two
- * teams use, a variable that overrides every model or effort choice, and a launch with a model but no effort.
+ * inboxes nobody reads, rules too long to show, text every call re-reads over its budget (files, and the lists the newest
+ * session holds), a broken tree of teams or a session name two teams use, a variable that overrides every model or effort
+ * choice, and a launch with a model but no effort.
  * It reads only; every fix is the user's.
  */
 export function doctorFindings(input: DoctorInput): Finding[] {
@@ -312,6 +354,7 @@ export function doctorFindings(input: DoctorInput): Finding[] {
     ...inboxFindings(input),
     ...rulesFindings(input),
     ...contextFindings(input),
+    ...sessionListsFinding(input),
     ...treeFindings(input),
     ...routingEnvFindings(input),
     ...launchFindings(input),

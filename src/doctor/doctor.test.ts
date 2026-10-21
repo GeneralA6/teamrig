@@ -14,6 +14,7 @@ import { testConfig } from '../testing/config.ts';
 import { renameOf } from '../testing/rename.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 import { doctorFindings, formatFinding, UNREAD_INBOX_DAYS, type DoctorInput } from './doctor.ts';
+import type { SessionListSource } from './session-lists.ts';
 import type { SettingsEnv } from './settings-env.ts';
 
 const NOW = new Date('2030-01-20T10:00:00Z');
@@ -31,6 +32,7 @@ function input(overrides: Partial<DoctorInput> & { readonly names?: Record<strin
     retired: new Set(),
     teamRules: undefined,
     contextFiles: { read: { claudeMd: [], memoryIndex: undefined, skills: { folders: [], count: 0, chars: 0 } }, budgets: DEFAULT_CONTEXT_FILES },
+    sessionLists: undefined,
     tree: { problems: [], clashes: [] },
     env: {},
     settingsEnv: [],
@@ -53,7 +55,7 @@ function lines(input: DoctorInput): string[] {
 
 describe('doctorFindings', () => {
   it('flags the CLAUDE.md files, memory index and skill listing over their budgets, and is quiet at them', () => {
-    const budgets = { maxClaudeMdChars: 1_000, maxMemoryIndexChars: 500, maxSkillListingChars: 800 };
+    const budgets = { ...DEFAULT_CONTEXT_FILES, maxClaudeMdChars: 1_000, maxMemoryIndexChars: 500, maxSkillListingChars: 800 };
     const at = (claudeMd: number, memory: number | undefined, skills: number): DoctorInput =>
       input({
         contextFiles: {
@@ -74,6 +76,33 @@ describe('doctorFindings', () => {
       'WARN context-size CLAUDE.md files (/u/.claude/CLAUDE.md 200, /w/CLAUDE.md 801): 1,001 characters (~300 tokens), over its budget of 1,000 [contextFiles.maxClaudeMdChars]; every call re-reads this text, so move how-tos into skills and facts into memory files',
       'WARN context-size memory index /u/.claude/projects/-w/memory/MEMORY.md: 2,000 characters (~500 tokens), over its budget of 500 [contextFiles.maxMemoryIndexChars]; every call re-reads this text, so keep one short line per memory and its detail in the memory file',
       'WARN context-size skill listing (3 skills in /u/.claude/skills): 801 characters (~200 tokens), over its budget of 800 [contextFiles.maxSkillListingChars]; every call re-reads this text, so shorten descriptions or merge skills',
+    ]);
+  });
+
+  it("flags the newest session's lists over their budget, naming each list's largest sources, and is quiet at it", () => {
+    const budgets = { ...DEFAULT_CONTEXT_FILES, maxSessionListsChars: 1_000 };
+    const source = (name: string, chars: number): SessionListSource => ({ name, count: 1, chars });
+    const at = (skills: number): DoctorInput =>
+      input({
+        contextFiles: { read: { claudeMd: [], memoryIndex: undefined, skills: { folders: [], count: 0, chars: 0 } }, budgets },
+        sessionLists: {
+          transcript: '/u/.claude/projects/-w/s1.jsonl',
+          lists: [
+            {
+              kind: 'skills',
+              count: 5,
+              chars: skills,
+              sources: [source('skills folders and built-in', skills - 400), source('docs', 200), source('dev', 100), source('ops', 60), source('ui', 40)],
+            },
+            { kind: 'tools', count: 2, chars: 300, sources: [source('built-in', 300)] },
+            { kind: 'agents', count: 0, chars: 0, sources: [] },
+            { kind: 'instructions', count: 1, chars: 100, sources: [] },
+          ],
+        },
+      });
+    assert.deepEqual(lines(at(600)), []);
+    assert.deepEqual(lines(at(601)), [
+      'WARN context-lists lists in the context of the newest session (/u/.claude/projects/-w/s1.jsonl): 1,001 characters (~300 tokens), over its budget of 1,000 [contextFiles.maxSessionListsChars]: skills 5, 601 (skills folders and built-in 201, docs 200, dev 100, +2 more); deferred tools 2, 300 (built-in 300); MCP instructions 1, 100; every call re-reads this text, so turn off unused claude.ai connectors and skills in claude.ai settings, and unused plugins with /plugin',
     ]);
   });
 

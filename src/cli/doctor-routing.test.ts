@@ -1,7 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import { claudeProjectSlug } from '../budget/discover.ts';
 import { APP, CliHarness, TEAM, USER_HOME } from '../testing/cli-harness.ts';
+import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
+import { skillListingLine, transcript, type FixtureListing } from '../testing/transcript-lines.ts';
 import { EXIT } from './runtime.ts';
 
 const USER_SETTINGS = join(USER_HOME, '.claude', 'settings.json');
@@ -35,5 +38,23 @@ describe('teamrig doctor: what overrides a model or effort choice', () => {
     const kit = new CliHarness({ ...TEAM, launch: { lead: { model: 'sonnet' }, alpha: { model: 'opus', effort: 'xhigh' } } });
     await kit.files.write(USER_SETTINGS, JSON.stringify({ env: { DISABLE_TELEMETRY: '1' } }));
     assert.deepEqual((await kit.run(['doctor'])).stdout, ['DOCTOR clean, team app']);
+  });
+});
+
+describe('teamrig doctor: the lists a session holds in its context', () => {
+  const session = join(USER_HOME, '.claude', 'projects', claudeProjectSlug(APP), '0b9c8d2e-1f3a-4b5c-8d6e-7f8091a2b3c4.jsonl');
+  const skills = (count: number): FixtureListing[] => Array.from({ length: count }, (_, i) => ({ name: `skill-${i}`, description: 'd'.repeat(990) }));
+
+  it("flags the project's newest session whose lists are over their budget", async () => {
+    const transcripts = new MemoryTranscripts({ [session]: transcript([skillListingLine(skills(20))]) });
+    const result = await new CliHarness(TEAM).run(['doctor'], { transcripts });
+    assert.deepEqual(kinds(result.stdout), ['DOCTOR 1', 'WARN context-lists']);
+    assert.ok(result.stdout[1]?.includes(`(${session}): `));
+    assert.ok(result.stdout[1]?.includes('[contextFiles.maxSessionListsChars]: skills 20, '));
+  });
+
+  it('stays clean with the lists under their budget', async () => {
+    const transcripts = new MemoryTranscripts({ [session]: transcript([skillListingLine(skills(2))]) });
+    assert.deepEqual((await new CliHarness(TEAM).run(['doctor'], { transcripts })).stdout, ['DOCTOR clean, team app']);
   });
 });
