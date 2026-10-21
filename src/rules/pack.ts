@@ -81,7 +81,7 @@ function pushRule(pushGuard: PushGuardConfig, hookAsks: HookAsks): string {
   // short.
   switch (pushGuard.pushToProtected) {
     case 'gated':
-      return `Pushes to ${branches} land via merge; force-pushing or deleting them is refused ${keys}.`;
+      return `Pushes to ${branches} use teamrig merge; force-pushing or deleting them is refused ${keys}.`;
     case 'lead':
       return `Pushes to ${branches} ask your leader; force-pushing or deleting them is refused ${keys}.`;
     case 'allow':

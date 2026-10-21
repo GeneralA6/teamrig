@@ -253,10 +253,10 @@ describe('renderCorePack', () => {
     }
   });
 
-  it('says changes land through teamrig merge under pushToProtected gated, whatever hookAsks says (T858)', () => {
+  it('says changes go through teamrig merge under pushToProtected gated, whatever hookAsks says (T858)', () => {
     for (const hookAsks of ['ask', 'refuse']) {
       const pack = renderCorePack(testConfig({ pushGuard: { pushToProtected: 'gated' }, prompts: { hookAsks } }), COMMAND, 'win32', RULES_CLOCK);
-      assert.match(pack, /^15\. Pushes to main, master land via merge; force-pushing or deleting them is refused \[pushGuard\]\. /m, hookAsks);
+      assert.match(pack, /^15\. Pushes to main, master use teamrig merge; force-pushing or deleting them is refused \[pushGuard\]\. /m, hookAsks);
     }
   });
 
