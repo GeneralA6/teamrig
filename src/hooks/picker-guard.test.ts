@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { ASK_WITH } from '../config/types.ts';
 import { asksDecision } from '../tabs/status.ts';
-import { askerOf, guardsPicker, pickerGuardOutput, pickerReason, refusesAsker, type LeadMeeting } from './picker-guard.ts';
+import { askerOf, guardsPicker, pickerReason, refusesAsker, type LeadMeeting } from './picker-guard.ts';
 
 const PICKER = { hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion' };
 /** No meeting open, and the team asks in plain text: the default. */
@@ -109,13 +109,5 @@ describe('pickerReason', () => {
     assert.match(reason, /Decide it yourself if it is within your brief\. Else finish the rest of your brief and end your report with the decision/);
     assert.match(reason, /the session that started you records it\.$/);
     assert.doesNotMatch(reason, /teamrig set|Decision needed/);
-  });
-});
-
-describe('pickerGuardOutput', () => {
-  it('prints a PreToolUse deny with the reason', () => {
-    assert.deepEqual(JSON.parse(pickerGuardOutput('why')), {
-      hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'why' },
-    });
   });
 });

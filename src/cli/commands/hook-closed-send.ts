@@ -1,7 +1,8 @@
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { KIT_NAME } from '../../core/home.ts';
-import { holdOutput, sendTargetOf, sendTextOf } from '../../hooks/cold-send.ts';
+import { sendTargetOf, sendTextOf } from '../../hooks/cold-send.ts';
+import { refusalOutput } from '../../hooks/permission.ts';
 import { indexMarks, RECEIVER_TABS, tabsOf } from '../../inbox/marks.ts';
 import { closedOf, SessionLog } from '../../sessions/log.ts';
 import { SessionRecordStore } from '../../sessions/record.ts';
@@ -46,7 +47,7 @@ export async function closedSendHold(runtime: CliRuntime, kit: Kit, config: KitC
   const why = `${roster.nameOf(receiver.id) ?? receiver.id} is closed (${closed.by} closed it at ${teamZone(config, runtime).clock(new Date(closed.at))}), so this message cannot reach it`;
   const unposted = await postUrgentLine(runtime, kit, config, { to: receiver.id, from, text });
   const line = `${KIT_NAME} inbox add --to ${receiver.id} --text "..."${config.wake.enabled ? ' --wake now' : ''}`;
-  return holdOutput(
+  return refusalOutput(
     unposted === undefined
       ? `${why}; ${KIT_NAME} posted it as an urgent line in its inbox, and the idle pass reopens it within about a minute with the line quoted in its first prompt. Do not send it again.` +
           (config.wake.enabled ? ` Next time post it yourself: ${line}.` : '')

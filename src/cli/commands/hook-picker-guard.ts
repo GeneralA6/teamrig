@@ -2,7 +2,8 @@ import type { KitConfig } from '../../config/types.ts';
 import { isRecord, type JsonRecord } from '../../core/guards.ts';
 import { KIT_NAME } from '../../core/home.ts';
 import { helperOf } from '../../hooks/helper-start.ts';
-import { askerOf, guardsPicker, pickerGuardOutput, pickerReason, refusesAsker, type LeadMeeting, type ParentLead } from '../../hooks/picker-guard.ts';
+import { refusalOutput } from '../../hooks/permission.ts';
+import { askerOf, guardsPicker, pickerReason, refusesAsker, type LeadMeeting, type ParentLead } from '../../hooks/picker-guard.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
 import { MeetingStore, phaseOf } from '../../meeting/state.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
@@ -56,7 +57,7 @@ async function pickerGuardOutputOf(runtime: CliRuntime, payload: JsonRecord): Pr
     return '';
   }
   const reason = await pickerRefusal(runtime, kit, kit.load.config, payload);
-  return reason === undefined ? '' : pickerGuardOutput(reason);
+  return reason === undefined ? '' : refusalOutput(reason);
 }
 
 /**
