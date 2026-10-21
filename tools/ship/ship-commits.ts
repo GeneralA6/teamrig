@@ -1,5 +1,5 @@
 import { DEFAULT_COMMITS } from '../../src/config/defaults.ts';
-import { testMatcher, weighCommit, type CommitWeight, type FileChange } from '../../src/push-guard/commit-size.ts';
+import { pathMatcher, weighCommit, type CommitWeight, type FileChange } from '../../src/push-guard/commit-size.ts';
 import type { BuildStep } from './build-steps.ts';
 import type { GateVerdict } from './local-gate.ts';
 import { withPlanVersion, type Chunk, type ShipArgs } from './ship-plan.ts';
@@ -49,7 +49,7 @@ export function parseNumstat(text: string): FileChange[] {
 
 /** The staged dist's weight under the default commit size rule. */
 export function weighDist(files: readonly FileChange[]): DistWeight {
-  const weight = weighCommit({ sha: '', subject: '', body: '', files }, testMatcher(DEFAULT_COMMITS.testPatterns));
+  const weight = weighCommit({ sha: '', subject: '', body: '', files }, pathMatcher(DEFAULT_COMMITS.testPatterns));
   return { ...weight, large: weight.lines > DEFAULT_COMMITS.maxLines || weight.files > DEFAULT_COMMITS.maxFiles };
 }
 

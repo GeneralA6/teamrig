@@ -7,7 +7,7 @@ import {
   largeCommits,
   parseCommitLog,
   renamedPath,
-  testMatcher,
+  pathMatcher,
   weighCommit,
   type CommitStat,
   type FileChange,
@@ -19,9 +19,9 @@ const commit = (files: readonly FileChange[], body = '', sha = 'a'.repeat(40)): 
 /** `count` non-test files of `lines` added lines each. */
 const spread = (count: number, lines: number): FileChange[] => Array.from({ length: count }, (_, index) => file(`src/f${index}.ts`, lines));
 
-describe('testMatcher', () => {
+describe('pathMatcher', () => {
   it('reads the default test paths as tests, and nothing else', () => {
-    const isTest = testMatcher(RULE.testPatterns);
+    const isTest = pathMatcher(RULE.testPatterns);
     for (const path of ['src/a.test.ts', 'src/a.spec.js', 'test/x.ts', 'pkg/tests/x.py', 'src/__tests__/x.tsx', 'spec/x.rb', 'app/test_x.py', 'C:\\r\\src\\a.test.ts']) {
       assert.equal(isTest(path), true, path);
     }
@@ -31,7 +31,7 @@ describe('testMatcher', () => {
   });
 
   it('judges a renamed file by where it ends', () => {
-    const isTest = testMatcher(RULE.testPatterns);
+    const isTest = pathMatcher(RULE.testPatterns);
     assert.equal(isTest('src/{store.ts => store.test.ts}'), true);
     assert.equal(isTest('test/old.ts => src/new.ts'), false);
   });
@@ -49,7 +49,7 @@ describe('renamedPath', () => {
 
 describe('weighCommit', () => {
   it('counts added and deleted non-test lines, and a binary file as a file with no lines', () => {
-    const isTest = testMatcher(RULE.testPatterns);
+    const isTest = pathMatcher(RULE.testPatterns);
     const weight = weighCommit(commit([file('src/a.ts', 300, 50), file('src/a.test.ts', 900), file('img.png', null, null)]), isTest);
     assert.deepEqual(weight, { lines: 350, files: 2 });
   });
