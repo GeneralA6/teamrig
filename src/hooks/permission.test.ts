@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_PROMPTS } from '../config/defaults.ts';
 import { testConfig } from '../testing/config.ts';
-import { ASK_REFUSED_NOTE, holdBack, holdBackOutput, hookAsksOf } from './permission.ts';
+import { ASK_REFUSED_NOTE, holdBack, holdBackOutput, hookAsksOf, refusalOutput } from './permission.ts';
 
 describe('holdBack', () => {
   it('keeps a question under ask and a refusal under either choice', () => {
@@ -21,6 +21,14 @@ describe('holdBackOutput', () => {
   it('wraps the fields in the PreToolUse output', () => {
     assert.deepEqual(JSON.parse(holdBackOutput('ask', 'Why.', 'refuse')), {
       hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: `Why. ${ASK_REFUSED_NOTE}` },
+    });
+  });
+});
+
+describe('refusalOutput', () => {
+  it('is a PreToolUse refusal carrying the reason as given', () => {
+    assert.deepEqual(JSON.parse(refusalOutput('Why.')), {
+      hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'Why.' },
     });
   });
 });

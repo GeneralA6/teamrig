@@ -7,7 +7,6 @@ import {
   COLD_SEND_TAIL_BYTES,
   coldSendReason,
   decideColdSend,
-  holdOutput,
   isCold,
   JsonlColdSendLog,
   RESEND_WINDOW_MS,
@@ -116,11 +115,5 @@ describe('the hold note', () => {
     assert.ok(reason.includes('write one inbox line instead: teamrig inbox add --to alpha --text "...". '));
     assert.ok(reason.endsWith('put every ask you have for app-alpha in this one message and send it again: a send to it within 15 min goes through.'));
     assert.doesNotMatch(reason, /--wake/);
-  });
-
-  it('is a PreToolUse refusal carrying the note', () => {
-    assert.deepEqual(JSON.parse(holdOutput('why')), {
-      hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'why' },
-    });
   });
 });

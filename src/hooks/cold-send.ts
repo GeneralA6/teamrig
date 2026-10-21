@@ -133,8 +133,3 @@ export async function decideColdSend(log: ColdSendLog, facts: ColdSendFacts): Pr
   }
   return { kind: 'hold', reason: coldSendReason(facts) };
 }
-
-/** The hook's stdout for a hold: a PreToolUse refusal the sending model reads as the reason. */
-export function holdOutput(reason: string): string {
-  return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } });
-}

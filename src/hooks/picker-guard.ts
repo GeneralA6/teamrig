@@ -126,8 +126,3 @@ function parentRoute(command: string, session: string, parentLead: ParentLead): 
     " The user talks only to the root team's lead, so the picker never opens for a sub-team's lead, and its tab never asks the owner: with no task left, end your turn."
   );
 }
-
-/** The hook's stdout for a refusal: a PreToolUse deny with the reason. */
-export function pickerGuardOutput(reason: string): string {
-  return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } });
-}

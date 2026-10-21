@@ -1,7 +1,8 @@
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { KIT_NAME } from '../../core/home.ts';
-import { holdOutput, sendTargetOf, sendTextOf } from '../../hooks/cold-send.ts';
+import { sendTargetOf, sendTextOf } from '../../hooks/cold-send.ts';
+import { refusalOutput } from '../../hooks/permission.ts';
 import { quietHoldReason } from '../../meeting/quiet.ts';
 import { MeetingStore, phaseOf } from '../../meeting/state.ts';
 import { teamZone, type Kit } from '../kit.ts';
@@ -34,5 +35,5 @@ export async function meetingHold(runtime: CliRuntime, kit: Kit, config: KitConf
     command: KIT_NAME,
     zone: teamZone(config, runtime),
   });
-  return reason === undefined ? undefined : holdOutput(reason);
+  return reason === undefined ? undefined : refusalOutput(reason);
 }

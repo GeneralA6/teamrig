@@ -2,7 +2,8 @@ import { claudeProjectsDir, lastWriteOf } from '../../budget/discover.ts';
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { KIT_NAME } from '../../core/home.ts';
-import { decideColdSend, holdOutput, JsonlColdSendLog, sendTargetOf } from '../../hooks/cold-send.ts';
+import { decideColdSend, JsonlColdSendLog, sendTargetOf } from '../../hooks/cold-send.ts';
+import { refusalOutput } from '../../hooks/permission.ts';
 import { RECEIVER_TABS, tabsOf } from '../../inbox/marks.ts';
 import type { Kit } from '../kit.ts';
 import type { CliRuntime } from '../runtime.ts';
@@ -45,5 +46,5 @@ export async function coldSendHold(runtime: CliRuntime, kit: Kit, config: KitCon
     command: KIT_NAME,
     wakeNow: config.wake.enabled,
   });
-  return verdict.kind === 'hold' ? holdOutput(verdict.reason) : undefined;
+  return verdict.kind === 'hold' ? refusalOutput(verdict.reason) : undefined;
 }
