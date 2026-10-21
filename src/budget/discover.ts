@@ -103,6 +103,22 @@ export async function findTranscript(folders: TranscriptFolders, projectsDir: st
   return newest?.path;
 }
 
+/**
+ * The newest session transcript in a project's folder, `<projects>/<project slug>/<session>.jsonl` (a subagent's
+ * left out): the one a session running there now writes. Undefined when the project has none.
+ */
+export async function newestProjectTranscript(folders: TranscriptFolders, projectsDir: string, project: string): Promise<string | undefined> {
+  const dir = join(projectsDir, claudeProjectSlug(project));
+  let newest: FolderEntry | undefined;
+  for (const entry of await folders.entries(dir)) {
+    const own = !entry.folder && entry.name.endsWith(TRANSCRIPT) && CLAUDE_SESSION_ID.test(entry.name.slice(0, -TRANSCRIPT.length));
+    if (own && (newest === undefined || entry.changedAt > newest.changedAt)) {
+      newest = entry;
+    }
+  }
+  return newest === undefined ? undefined : join(dir, newest.name);
+}
+
 /** Transcripts by kind: Claude Code sessions' own, and their subagents'. */
 export interface TranscriptSet {
   /** The sessions' own transcripts, one per project folder each ran in. */
