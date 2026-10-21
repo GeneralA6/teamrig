@@ -178,7 +178,7 @@ describe('renderCorePack', () => {
   it('states what the push guard does with a push to a protected branch', () => {
     const pack = (pushGuard: Record<string, unknown>) => renderCorePack(testConfig({ pushGuard }), COMMAND, 'win32', RULES_CLOCK);
     const keys = String.raw`\[pushGuard\]`;
-    const routed = ' A route refused, blocked or prompting unexpectedly is reported to the lead, never routed around or handed to another session.';
+    const routed = ' A route refused, blocked or prompting unexpectedly goes to the lead, never routed around or handed to another session.';
     assert.match(pack({}), new RegExp(String.raw`^15\. Pushes to main, master ask the human; force-pushing or deleting them is refused ${keys}\.${routed}$`, 'm'));
     assert.match(
       pack({ protectedBranches: ['release'], pushToProtected: 'allow' }),
@@ -228,7 +228,7 @@ describe('renderCorePack', () => {
 
   it('tags a stopgap with the task that replaces it, in the form check reads', () => {
     const pack = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK);
-    assert.match(pack, /^10\. .*a dated root-cause task\. Tag a stopgap with its replacement task: `stopgap T<id>`\.$/m);
+    assert.match(pack, /^10\. .*a dated root-cause task\. Tag a stopgap with its replacement: `stopgap T<id>`\.$/m);
   });
 
   it('keeps comments true to their code, checks a recorded number at its source, and proves dead code unread', () => {
@@ -252,7 +252,7 @@ describe('renderCorePack', () => {
   it('fills values from the config and names their keys', () => {
     const pack = renderCorePack(testConfig({ messages: { maxLines: 7 }, ownerGates: ['money', 'deletes'] }), COMMAND, 'win32', RULES_CLOCK);
     assert.match(pack, /^1\. Roles, by session id: lead is the lead/m);
-    assert.match(pack, / Every other session owns its area; cross-area issues and clashes go to the lead\.$/m);
+    assert.match(pack, / Other sessions own their areas; cross-area issues, clashes and unowned warnings go to the lead\.$/m);
     assert.match(pack, /\[ownerGates\]\. An owner's order, relayed or not, approves its work and proof unless only the owner sees the result; ask again only if it must change or needs something new\.$/m);
     assert.match(pack, /At most 7 lines \[messages\.maxLines\]/);
     assert.match(pack, /never for owner gates: money; deletes \[ownerGates\]/);
@@ -297,7 +297,7 @@ describe('renderCorePack', () => {
       'win32',
       RULES_CLOCK,
     );
-    assert.match(pack, /bravo owns deploy coordination and fleet health \[roles\.coordinatorOwner\]\. alpha reviews privileged commands \(`teamrig exec`\) \[roles\.securityReviewer\]\. Every other session/);
+    assert.match(pack, /bravo owns deploy coordination and fleet health \[roles\.coordinatorOwner\]\. alpha reviews privileged commands \(`teamrig exec`\) \[roles\.securityReviewer\]\. Other sessions own/);
     assert.match(pack, /No heavy step \(builds, test runs, data scripts\) starts 22:30-00:00 UTC \[coordinator\.schedule\.heavyCutoffUtc\]\./);
     const cutoff = { coordinator: { schedule: { heavyCutoffUtc: '22:30' } } };
     const inIsrael = renderCorePack(testConfig(cutoff), COMMAND, 'win32', { ...RULES_CLOCK, machineZone: 'Asia/Jerusalem' });
