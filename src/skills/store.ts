@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import type { Files } from '../core/files.ts';
 import type { SkillCatalog } from '../register/register.ts';
-import { SCRIPT_FILE, type SkillScript } from './grants.ts';
+import { isSkillScript, type SkillScript } from './grants.ts';
 import type { SkillFile } from './lint.ts';
 
 export const SKILL_FILE = 'SKILL.md';
@@ -34,11 +34,11 @@ export class SkillDir implements SkillCatalog {
     return skills;
   }
 
-  /** The script files at the top of the skill's folder, in name order; a subfolder (node_modules) is not read. */
+  /** The script files at the top of the skill's folder, in name order, without their specs; a subfolder (node_modules) is not read. */
   private async scriptsOf(name: string): Promise<SkillScript[]> {
     const folder = join(this.dir, name).replaceAll('\\', '/');
     const scripts: SkillScript[] = [];
-    for (const file of (await this.files.list(folder)).filter((entry) => SCRIPT_FILE.test(entry)).sort()) {
+    for (const file of (await this.files.list(folder)).filter(isSkillScript).sort()) {
       const text = await this.files.read(`${folder}/${file}`);
       if (text !== undefined) {
         scripts.push({ name: file, text });
