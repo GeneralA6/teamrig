@@ -119,6 +119,14 @@ export function text(x: number, y: number, words: string, classes: string, ancho
   return `<text x="${x}" y="${y}"${anchorAttribute} class="${classes}">${escapeXml(words)}</text>`;
 }
 
+/** The bullet before a line the lead says, for a line whose baseline is at y. */
+export const bullet = (y: number): string => `<circle cx="28.5" cy="${y - 4.5}" r="3.5" class="bullet"/>`;
+
+/** teamrig-pane's heading: its title, its name, and the rule under them. */
+export function paneHeading(): string[] {
+  return [text(PANE_LEFT, 86, 'Tasks', 'mono strong'), text(PANE_RIGHT, 86, 'teamrig-pane', 'mono muted', 'end'), `<path d="M${PANE_LEFT} 98.5H${PANE_RIGHT}" class="rule"/>`];
+}
+
 /** The empty window: its body, its tab strip, and the lines under the strip and between the conversation and the pane. */
 export function windowFrame(): string[] {
   return [
@@ -157,10 +165,10 @@ function conversation(): string[] {
   return [
     text(24, 86, '>', 'mono accent'),
     text(42, 86, ASK, 'mono'),
-    '<circle cx="28.5" cy="117.5" r="3.5" class="bullet"/>',
+    bullet(122),
     text(42, 122, OPENING, 'mono'),
     ...decisions,
-    `<circle cx="28.5" cy="${closingY - 4.5}" r="3.5" class="bullet"/>`,
+    bullet(closingY),
     text(42, closingY, CLOSING, 'mono'),
     `<rect x="16.5" y="${WINDOW_HEIGHT - 70.5}" width="${DIVIDER_X - 32}" height="44" rx="8" class="box"/>`,
     text(32, promptY, '>', 'mono accent'),
@@ -179,12 +187,7 @@ function pane(): string[] {
       text(PANE_LEFT + 64, y + 19, `${task.owner} · ${task.priority} · ${task.due}`, 'mono muted'),
     ];
   });
-  return [
-    text(PANE_LEFT, 86, 'Tasks', 'mono strong'),
-    text(PANE_RIGHT, 86, 'teamrig-pane', 'mono muted', 'end'),
-    `<path d="M${PANE_LEFT} 98.5H${PANE_RIGHT}" class="rule"/>`,
-    ...rows,
-  ];
+  return [...paneHeading(), ...rows];
 }
 
 /** The key under the window: each status's mark and its name. */
