@@ -47,7 +47,8 @@ Flags:
   takes this task's due date when it is earlier (its effective due: `due 10-17 (from T9)`).
 - `--size <pct>`: what the task still costs, in percent of the weekly usage limit (`1.5` or `1.5%`, above 0 and
   at most 100). `plan` sums the week's sizes against what is left of the limit; `show` prints it, and its
-  weighted tokens at the week's W per percent (`budget.weeklyLimitW`, else the status line's estimate) once known.
+  weighted tokens at the week's W per percent (learned from the meter log, else `budget.weeklyLimitW`, else the
+  status line's estimate; see [teamrig budget](#teamrig-budget)) once known.
 - `--team <child team>`: only for a lead with sub-teams: hands that team's lead the task. It takes no
   `--owner` or `--source`.
 
@@ -2545,9 +2546,18 @@ the period kept in the team's `state/usage/period.json`: from the last reset to 
 last one ended, and a moved reset keeping its start. A reading 2 points or more below the latest one, its reset
 unchanged, is a reset inside the week: a new budget runs from that latest reading to the reset, and the pace line and
 today's use start there. With no period kept yet, the week before the reset is taken, unless the W metered since its
-start (at `budget.weeklyLimitW`) is 1.5 times the status line's use and 10 points over it: the use was reset inside
+start (at the week's W per percent) is 1.5 times the status line's use and 10 points over it: the use was reset inside
 the week before any period was kept, so the period starts at the latest hour from which the metered W reaches that
-use. After a reset inside the week, the week line says where the use counts from. The team's daily
+use. After a reset inside the week, the week line says where the use counts from.
+
+The week's W per percent is learned from the meter (since 0.136.0). Each time the status line passes a whole
+percent in a period whose start was seen (a weekly reset or a reset inside the week), within 10 minutes of the
+reading and with the usage stores reaching back to that start, the team's `state/usage/meter-log.jsonl` gets one
+line: the use, the period and the W metered since its start. Once the last 8 weeks' readings span 10 points, a fit
+of W per percent through 0 over them sets the rate, ahead of `budget.weeklyLimitW` (a starting guess until then),
+ahead of the status line's own estimate (the week's W over its use, once the meter counted the whole week). The
+last line says which rate counts, how far the fit misses its readings and, for the latest 3 periods, how far the
+use it forecast missed the status line. The team's daily
 budget is never a fixed number: at every reading, what is left to `budget.targetPct` is spread over the active
 time to the pace end (`budget.paceEndHoursBeforeReset` before the reset; quiet hours count at
 `budget.quietHours.paceWeight`), times today's active time. What the lead's lifts leave is split among the other
