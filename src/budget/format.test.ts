@@ -2,11 +2,15 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { TimeZone } from '../core/zone.ts';
 import { JERUSALEM } from '../testing/zone.ts';
-import { formatCount, formatEndTime, formatPct, formatW } from './format.ts';
+import { formatCount, formatEndTime, formatPct, formatW, noRoomText } from './format.ts';
 
 describe('budget number formats', () => {
   it('writes shares with two decimals below 1% and one above', () => {
     assert.deepEqual([0, 0.254, 0.5, 1, 9.63, 57, 99.95, -0.4].map(formatPct), ['0.0%', '0.25%', '0.50%', '1.0%', '9.6%', '57.0%', '100.0%', '-0.40%']);
+  });
+
+  it("writes why a session past its part is held: the team's use today against its in-day pace", () => {
+    assert.equal(noRoomText({ usedPct: 1.4, pacePct: 0.81 }), 'the team has used 1.4% of the week today, at or past its in-day pace of 0.81%');
   });
 
   it('writes weighted tokens as plain, k, M or B', () => {

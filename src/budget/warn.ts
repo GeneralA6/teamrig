@@ -4,7 +4,7 @@ import { formatUtcDay, isMinuteInSpan, MS_PER_DAY, MS_PER_MINUTE, utcMinuteOf } 
 import type { TimeZone } from '../core/zone.ts';
 import type { Burst } from './burst.ts';
 import { budgetMarkOf, burstPromptLines, burstStopLines, type BurstMarks, type SurplusHint } from './burst-lines.ts';
-import { formatPct } from './format.ts';
+import { formatPct, noRoomText } from './format.ts';
 import { liftText, type Lift } from './lift.ts';
 import { hasRoom, type PaceReading, type TeamDay } from './pace.ts';
 
@@ -221,14 +221,10 @@ function aheadClause(facts: BudgetFacts): string {
   return `the team is ${(facts.pace?.gapPts ?? 0).toFixed(1)} points ahead of its pace line`;
 }
 
-/** "the team has used 3.1% of the week today, at or past its in-day pace of 3.0%" */
-function noRoomClause(facts: BudgetFacts): string {
-  return `the team has used ${formatPct(facts.teamDay.usedPct)} of the week today, at or past its in-day pace of ${formatPct(facts.teamDay.pacePct)}`;
-}
-
 /** Why a held session is held: the team has no room today, and the week's pace when it is ahead. */
 function heldClause(facts: BudgetFacts, standing: Standing): string {
-  return standing.ahead ? `${noRoomClause(facts)}, and ${aheadClause(facts)}` : noRoomClause(facts);
+  const noRoom = noRoomText(facts.teamDay);
+  return standing.ahead ? `${noRoom}, and ${aheadClause(facts)}` : noRoom;
 }
 
 function roomText(facts: BudgetFacts): string {
@@ -258,7 +254,7 @@ function levelLine(facts: BudgetFacts, budget: WarnBudget, standing: Standing): 
     return joined([`Budget: ${use}`, roomText(facts), MORE]);
   }
   if (!standing.escalated) {
-    return joined([`Budget: ${use}`, teamText(facts), `${capitalized(noRoomClause(facts))}, but the team is not ahead of its pace line, so nothing more happens.`, MORE]);
+    return joined([`Budget: ${use}`, teamText(facts), `${capitalized(noRoomText(facts.teamDay))}, but the team is not ahead of its pace line, so nothing more happens.`, MORE]);
   }
   return joined([`Budget: ${use}`, `${capitalized(heldClause(facts, standing))}.`, escalatedText(facts, budget), MORE]);
 }

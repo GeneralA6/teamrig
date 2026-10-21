@@ -117,15 +117,21 @@ describe('todayLines', () => {
       'Not on the team: 2 Claude Code sessions (titled release checks, Docs), 1.20M W today. ' +
         'A tab counts for a session once it runs teamrig inbox read --session <id> or is named after it.',
       'Still reading: bravo; run teamrig budget again for the rest.',
-      `Past the daily budget: alpha. ${OVER_BUDGET_ADVICE}`,
+      `Past the daily budget: alpha (the team has used 5.2% of the week today, at or past its in-day pace of 4.7%). ${OVER_BUDGET_ADVICE}`,
       `${W_EXPLAINED} 1% of the week is about 7.50M W, estimated from the status line.`,
     ]);
+  });
+
+  it('gives a hold no in-day pace when the team has none', () => {
+    const lines = todayLines({ ...REPORT, week: { ...WEEK, teamDay: undefined } });
+    assert.equal(lines.find((line) => line.startsWith('Past')), `Past the daily budget: alpha. ${OVER_BUDGET_ADVICE}`);
   });
 
   it('never holds a session past its part while the team has room today', () => {
     const lines = todayLines({ ...REPORT, week: { ...WEEK, teamDay: ROOM } });
     assert.equal(lines.find((line) => line.startsWith('Past')), 'Past their part, not held while the team has room today (3.0% of the week used, below its in-day pace of 4.7%): alpha.');
     const teamPast = todayLines({ ...REPORT, week: { ...WEEK, allowancePct: 1, teamDay: ROOM } });
+    // Past its own allowance, the team is held though its use is below its in-day pace: no pace clause.
     assert.match(teamPast.find((line) => line.startsWith('Past')) ?? '', /^Past the daily budget: the team, alpha\. /);
   });
 
