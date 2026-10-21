@@ -198,7 +198,7 @@ A session's own `start` shows the flags on itself.
 
 | Skill flag | Detail | Fix |
 | --- | --- | --- |
-| `OWNER` | `no "Owner: <session>" line`, or `owner x is not a session on the team` | Add or correct the `Owner:` line. |
+| `OWNER` | `no "Owner: <session>" line`, or `owner x is not a session on the team` | Add or correct the `Owner:` line. Until then this flag and the skill's other flags print under UNOWNED and go to the lead. |
 | `UNVERIFIED` | `no "Last verified: YYYY-MM-DD"`, or `last verified D, N d ago > 30` | Run the skill again; if its steps held, bump the date; if not, fix it or retire it. |
 | `VERIFIED-NOTE` | `text after the "Last verified:" date: keep the date alone, a lesson on its own line` | Cut the line to `Last verified: YYYY-MM-DD`. A lasting lesson goes on its own line (a trap bullet); a run's details go in its task's evidence. Every run then changes only the date, so two sessions verifying the skill at once never edit the same text. |
 | `FORBIDDEN-KEY` | `allowed-tools is not allowed in a team skill: remove it` | Remove that frontmatter key. |
