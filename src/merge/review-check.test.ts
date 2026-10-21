@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { NOT_STARTED_EXIT } from '../coordinator/recorded-step.ts';
 import { TIMED_OUT_EXIT } from '../coordinator/steps.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';
-import { REVIEW_BASE_ENV, REVIEW_FINDINGS_LIMITS, runReviewCheck, type ReviewCheck } from './review-check.ts';
+import { REVIEW_CHECK_FLAGGED } from '../push-guard/review-gate.ts';
+import { checkExitCode, REVIEW_BASE_ENV, REVIEW_FINDINGS_LIMITS, runReviewCheck, type ReviewCheck } from './review-check.ts';
 
 const ARGV = ['node', 'review.js'];
 
@@ -61,5 +62,13 @@ describe('runReviewCheck', () => {
       detail: 'could not start (ENOENT)',
       exitCode: NOT_STARTED_EXIT,
     });
+  });
+});
+
+describe('checkExitCode', () => {
+  it('records 0 for a clean check, the flag code for a flagged one, and how a broken one ended', () => {
+    assert.equal(checkExitCode({ kind: 'clean' }), 0);
+    assert.equal(checkExitCode({ kind: 'flagged', findings: 'x' }), REVIEW_CHECK_FLAGGED);
+    assert.equal(checkExitCode({ kind: 'broken', detail: 'was killed at its time limit', exitCode: TIMED_OUT_EXIT }), TIMED_OUT_EXIT);
   });
 });

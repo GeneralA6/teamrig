@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { dirname, join } from 'node:path';
+import { LeadTree } from '../config/lead-tree.ts';
 import type { CoordinatorConfig, CoordinatorRepoConfig, ScheduleConfig } from '../config/types.ts';
 import { DEFAULT_CLAIMS, DEFAULT_COORDINATOR_WAIT, DEFAULT_CHECK_TIMEOUT_SECONDS, DEFAULT_HEAVY, DEFAULT_WINDOWS } from '../config/defaults.ts';
 import { HostLock } from '../coordinator/host-lock.ts';
@@ -8,6 +9,7 @@ import type { CoordinatorPlaces } from '../coordinator/places.ts';
 import type { ResetTime } from '../coordinator/schedule.ts';
 import { KIT_VERSION } from '../core/version.ts';
 import { TimeZone } from '../core/zone.ts';
+import { testConfig } from '../testing/config.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeHooks } from '../testing/fake-hooks.ts';
 import { FakeMergeGit, MAIN_CHECKOUT, WORKTREE } from '../testing/fake-merge-git.ts';
@@ -17,6 +19,9 @@ import { commandLine } from '../test-run/shell.ts';
 import { BASELINE_LOCK_ENV } from './dependencies.ts';
 import { mergeBranch, PUSH_ATTEMPTS, repoOf, type MergeEnd, type MergeRequest, type MergeSetup } from './merge.ts';
 import { parsePendingMerge, type PendingMerge } from './pending-merges.ts';
+import { REVIEW_BASE_ENV } from './review-check.ts';
+import type { GateTask, ReviewGateSetup } from './review-gate-step.ts';
+import { ReviewHolds } from './review-holds.ts';
 
 const PLACES: CoordinatorPlaces = {
   ledger: '/team/deploys/ledger.jsonl',
@@ -29,6 +34,7 @@ const PLACES: CoordinatorPlaces = {
   reviewHolds: '/team/deploys/review-holds',
 };
 const REQUEST: MergeRequest = { session: 'api', dir: WORKTREE, keepRemote: false, keepLocal: false };
+const NO_REVIEW: ReviewGateSetup = { reviewPaths: [], tree: new LeadTree(testConfig()), roles: {} };
 const PLAIN: CoordinatorRepoConfig = { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], dependencyGate: false, reviewGate: false, followMainCheckout: false };
 
 interface Options {
@@ -39,6 +45,7 @@ interface Options {
   readonly reset?: ResetTime;
   /** The quiet claims file's text. */
   readonly claims?: string;
+  readonly review?: ReviewGateSetup;
 }
 
 class World {
@@ -49,6 +56,9 @@ class World {
   readonly hooks: FakeHooks;
   readonly lock: HostLock;
   readonly said: string[] = [];
+  /** The register's tasks, as the review gate reads them. */
+  readonly tasks = new Map<string, GateTask>();
+  readonly reviewHolds: ReviewHolds;
   /** How often the next reset was read. */
   resetReads = 0;
   readonly setup: MergeSetup;
@@ -61,6 +71,7 @@ class World {
     this.hooks = new FakeHooks(this.clock);
     this.lock = new HostLock(PLACES.hostLock, 150 * 60_000, { files: this.files, clock: this.clock, sleep: this.clock.sleep, pid: 7, alive: () => true, newId: () => 'lock-1' });
     this.reset = options.reset;
+    this.reviewHolds = new ReviewHolds(this.files, PLACES.reviewHolds);
     const coordinator: CoordinatorConfig = {
       schedule: options.schedule ?? {},
       heavy: DEFAULT_HEAVY,
@@ -70,7 +81,7 @@ class World {
       windows: DEFAULT_WINDOWS,
       repos: options.repos ?? {},
     };
-    this.setup = { coordinator, places: PLACES, zone: TimeZone.UTC, inTeam: (path) => (path.startsWith('/') ? path : `/repo/${path}`) };
+    this.setup = { coordinator, places: PLACES, zone: TimeZone.UTC, inTeam: (path) => (path.startsWith('/') ? path : `/repo/${path}`), review: options.review ?? NO_REVIEW };
     this.pushLands();
   }
 
@@ -91,6 +102,8 @@ class World {
       hooks: this.hooks,
       scanner: { redact: (text) => text.replaceAll('s3cret', '[redacted]') },
       files: this.files,
+      reviewHolds: this.reviewHolds,
+      taskOf: async (id) => this.tasks.get(id),
       clock: this.clock,
       sleep: this.clock.sleep,
       lock: this.lock,
@@ -905,5 +918,68 @@ describe('merge follows the main checkout where the repository asks for it', () 
     world.git.heads.set('/repo/app', 'mine');
     assert.equal((await world.run({ ...REQUEST, dir: '/repo/app' })).kind, 'done');
     assert.ok(!world.git.log.some((line) => line.startsWith('fastForward')));
+  });
+});
+
+describe('mergeBranch with the review gate', () => {
+  const REVIEW_CHECK = ['node', 'review.js'];
+  const REVIEW: ReviewGateSetup = { reviewPaths: [{ glob: 'src/**', mode: 'check', class: 'security' }], tree: new LeadTree(testConfig()), roles: { securityReviewer: 'bravo' } };
+  const ALPHA: MergeRequest = { ...REQUEST, session: 'alpha' };
+
+  function gatedWorld(config: Partial<CoordinatorRepoConfig> = {}): World {
+    const world = new World({ repos: { app: { ...PLAIN, reviewGate: true, ...config } }, review: REVIEW });
+    world.git.checkouts.set(WORKTREE, { top: WORKTREE, branch: 't9-feat', mainCheckout: MAIN_CHECKOUT, linked: true });
+    world.tasks.set('T9', { owner: 'alpha', answer: null });
+    return world;
+  }
+
+  function reviewChecks(world: World): string[] {
+    return world.records(PLACES.ledger).map((record) => JSON.stringify(record)).filter((text) => text.includes('review check of t9-feat'));
+  }
+
+  it('holds a lockfile change for its reviewer, pushing nothing, then lands it once approved and drops the hold', async () => {
+    const world = gatedWorld();
+    world.git.paths = ['package-lock.json'];
+    refused(await world.run(ALPHA), /^review hold H\w+ keeps t9-feat \(base\.\.rebased\) off the default branch: .* --waits approval:bravo /);
+    assert.deepEqual(world.steps.ran, []);
+    assert.ok(world.lockFree());
+    world.clock.advance(60_000);
+    world.tasks.set('T9', { owner: 'alpha', answer: { verdict: 'approved', by: 'bravo', at: new Date(world.clock.now()).toISOString(), note: null } });
+    world.clock.advance(60_000);
+    assert.equal((await world.run(ALPHA)).kind, 'done');
+    assert.equal(world.steps.ran.length, 1);
+    assert.equal(await world.reviewHolds.read('app', 't9-feat'), undefined);
+  });
+
+  it('runs the review check as a heavy step under the host lock, against the base it rebased onto, its lines redacted', async () => {
+    const world = gatedWorld({ reviewCheck: REVIEW_CHECK });
+    world.git.paths = ['src/app.ts'];
+    world.hooks.answer(REVIEW_CHECK, { lines: ['token s3cret looks fine'] });
+    assert.equal((await world.run(ALPHA)).kind, 'done');
+    const [run] = world.hooks.ran;
+    assert.deepEqual([run?.argv, run?.cwd, run?.env[REVIEW_BASE_ENV], run?.env['TEAMRIG_HOST_LOCK']], [REVIEW_CHECK, WORKTREE, 'base', 'lock-1']);
+    assert.ok(world.said.includes('  token [redacted] looks fine'));
+    const checks = reviewChecks(world);
+    assert.equal(checks.length, 2);
+    assert.match(checks[1] ?? '', /"exitCode":0/);
+  });
+
+  it('records a flagging check with its exit code and holds the change with its findings', async () => {
+    const world = gatedWorld({ reviewCheck: REVIEW_CHECK });
+    world.git.paths = ['src/app.ts'];
+    world.hooks.answer(REVIEW_CHECK, { lines: ['token in src/app.ts'], end: 3 });
+    refused(await world.run(ALPHA), /the review check flagged it/);
+    assert.equal((await world.reviewHolds.read('app', 't9-feat'))?.findings, 'token in src/app.ts');
+    assert.match(reviewChecks(world)[1] ?? '', /"exitCode":3/);
+    assert.deepEqual(world.steps.ran, []);
+  });
+
+  it('holds a change of a repository with a merge command before the command runs', async () => {
+    const MERGE = ['node', 'merge.ts'];
+    const world = gatedWorld({ merge: { command: MERGE, remote: 'origin' } });
+    world.git.paths = ['package-lock.json'];
+    refused(await world.run(ALPHA), /^review hold H\w+ keeps t9-feat \(base\.\.rebased\) off the default branch: .* --waits approval:bravo /);
+    assert.deepEqual(world.hooks.ran, []);
+    assert.ok(world.lockFree());
   });
 });
