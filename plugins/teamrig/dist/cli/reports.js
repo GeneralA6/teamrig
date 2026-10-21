@@ -1,11 +1,11 @@
 import { KIT_NAME } from "../core/home.js";
 import { checkDecisionLines } from "../decisions/lines.js";
-import { formatFinding } from "../doctor/doctor.js";
 import { formatHireFlag } from "../hiring/due.js";
 import { FLAG_KINDS, formatFlag } from "../register/check.js";
 import { planOrder } from "../register/tree.js";
 import { formatShortTask, formatTask, formatWaitingOnYou } from "../register/views.js";
 import { formatSkillFlag } from "../skills/lint.js";
+import { unownedHeading, unownedRow } from "./unowned.js";
 /**
  * What `list` and `check` print. A session's reads stay in its context and are re-read on every later call, so by
  * default both print a short form of at most SHORT_FORM_CHARS characters; `--all` prints the long form, every field
@@ -25,8 +25,8 @@ const SUMMARY_STATUSES = ['in-progress', 'verifying', 'waiting', 'open', 'done',
  * A report narrowed to what one session acts on, for `start`: the flags of the tasks it owns, of the skills
  * it fixes (only a task's owner sets its status), on itself as a hired session and a SCALE-OUT on its area. A sub-lead
  * also gets the flags of its group's tasks (`group`, empty for a session that leads no one), since it sets their work
- * order (T782). The scope names the session and its group, so the CHECK line says whose flags these are. The context
- * flags stay whole: the text they weigh is every session's on the machine, not one owner's.
+ * order (T782). The scope names the session and its group, so the CHECK line says whose flags these are. The warnings
+ * no session owns go to the lead, so a narrowed report has none (T951).
  */
 export function ownCheck(report, owner, group) {
     const owners = new Set([owner, ...group]);
@@ -37,6 +37,7 @@ export function ownCheck(report, owner, group) {
         scope: `${owner}'s tasks and skills, ${groupScope}${report.scope}`,
         skills: report.skills.filter((flag) => flag.owner === owner),
         hires: report.hires.filter((flag) => flag.session === owner),
+        unowned: [],
         decisions: report.decisions?.lead === owner ? report.decisions : undefined,
     };
 }
@@ -113,15 +114,15 @@ function skillsLine({ skills, skillsDir }) {
 function hireLines({ hires }, indent) {
     return hires.length === 0 ? [] : [`HIRES ${hires.length} flag(s)`, ...hires.map((flag) => `${indent}${formatHireFlag(flag)}`)];
 }
-/** The context findings' `CONTEXT` line and each finding; nothing while the context text is within its budgets. */
-function contextLines({ context }, indent) {
-    return context.length === 0 ? [] : [`CONTEXT ${context.length} flag(s)`, ...context.map((finding) => `${indent}${formatFinding(finding)}`)];
+/** The `UNOWNED` heading, naming the lead they go to, then the first `shown` warnings, each with its source; nothing while no warning is unowned. */
+function unownedLines({ unowned, lead }, indent, shown) {
+    return unowned.length === 0 ? [] : [unownedHeading(unowned.length, lead), ...firstOf(unowned.map((warning) => `${indent}${unownedRow(warning)}`), shown)];
 }
 /** The lead's `DECISIONS` line while a batch of the owner's decisions is due; nothing otherwise. */
 function decisionLines({ decisions }) {
     return decisions === undefined ? [] : checkDecisionLines(decisions.batch, KIT_NAME, decisions.lead, decisions.zone);
 }
-/** Each register's `CHECK` line and flags, then the hire flags, the context flags, the lead's due batch of decisions, then the skill flags: every flag, every field. */
+/** Each register's `CHECK` line and flags, then the hire flags, the unowned warnings, the lead's due batch of decisions, then the skill flags: every flag, every field. */
 function longCheck(report) {
     return [
         ...report.sections.flatMap(({ team, flags, tree }) => [
@@ -129,7 +130,7 @@ function longCheck(report) {
             ...flags.map((flag) => formatFlag(flag, team, tree)),
         ]),
         ...hireLines(report, ''),
-        ...contextLines(report, ''),
+        ...unownedLines(report, '', report.unowned.length),
         ...decisionLines(report),
         skillsLine(report),
         ...report.skills.map(formatSkillFlag),
@@ -147,7 +148,7 @@ function kindLines(kind, rows, shown) {
 }
 /**
  * The short `check`: one `CHECK` line over every register, then each kind with its count and its first flags in plan
- * order, then every hire flag (at most two per hired session), every context flag (at most one per budget), the lead's due batch of decisions, then the skill flags the same way as the kinds. Each kind shows MAX_FLAGS_PER_KIND flags, or fewer, the same number for
+ * order, then every hire flag (at most two per hired session), the unowned warnings and the skill flags the same way as the kinds, with the lead's due batch of decisions between them. Each kind shows MAX_FLAGS_PER_KIND flags, or fewer, the same number for
  * every kind, so the whole fits in SHORT_FORM_CHARS; at one each, lines past the budget give way to a `+N more` line.
  */
 function shortCheck(report) {
@@ -157,13 +158,13 @@ function shortCheck(report) {
         rows: flags.filter(({ flag }) => flag.kind === kind).sort((x, y) => planOrder(x.tree.placeOf(x.flag.task), y.tree.placeOf(y.flag.task))),
     })).filter(({ rows }) => rows.length > 0);
     const teams = report.sections.length > 1 ? ` in ${report.sections.length} team(s)` : '';
-    const hint = flags.length + report.skills.length + report.hires.length + report.context.length > 0 ? ' (short form; --all for every flag in full)' : '';
+    const hint = flags.length + report.skills.length + report.hires.length + report.unowned.length > 0 ? ' (short form; --all for every flag in full)' : '';
     const head = `CHECK ${flags.length} flag(s)${teams}, ${report.scope}${hint}`;
     const linesShowing = (shown) => [
         head,
         ...kinds.flatMap(({ kind, rows }) => kindLines(kind, rows, shown)),
         ...hireLines(report, '  '),
-        ...contextLines(report, '  '),
+        ...unownedLines(report, '  ', shown),
         ...decisionLines(report),
         skillsLine(report),
         ...firstOf(report.skills.map((flag) => `  ${formatSkillFlag(flag)}`), shown),

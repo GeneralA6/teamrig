@@ -67,7 +67,7 @@ function pushRule(pushGuard, hookAsks) {
 function refusedRouteRule(hookAsks) {
     return hookAsks === 'refuse'
         ? 'A refused or blocked route waits on approval:owner; take your next task, never route around it or hand it off.'
-        : 'A route refused, blocked or prompting unexpectedly is reported to the lead, never routed around or handed to another session.';
+        : 'A route refused, blocked or prompting unexpectedly goes to the lead, never routed around or handed to another session.';
 }
 /** At most two decimals, so float noise (0.30000000000000004) or a tiny value (1e-7) prints short. */
 function percent(value) {
@@ -133,7 +133,7 @@ export function renderCorePack(config, command, platform, clock) {
         roles: `Roles, by session id: ${roles.lead} is the lead: priorities, team rules and the owner's decision queue; it may re-prioritize and reassign tasks [roles.lead].` +
             (roles.coordinatorOwner === undefined ? '' : ` ${roles.coordinatorOwner} owns deploy coordination and fleet health [roles.coordinatorOwner].`) +
             (roles.securityReviewer === undefined ? '' : ` ${roles.securityReviewer} reviews privileged commands (\`${command} exec\`) [roles.securityReviewer].`) +
-            ' Every other session owns its area; cross-area issues and clashes go to the lead.',
+            ' Other sessions own their areas; cross-area issues, clashes and unowned warnings go to the lead.',
         'own-change': "Own your change end to end: only the session that made it integrates, deploys (when it must run), verifies and fixes or rolls it back; another session's change goes to its owner.",
         messages: 'A message wakes its receiver, so send one only for a result it acts on now, a decision, a blocker, a same-area conflict or an incident.' +
             ` At most ${config.messages.maxLines} lines [messages.maxLines]: what happened, evidence (numbers, ids, paths), the exact ask and deadline, your default, then "No reply needed" or "Reply needed: <one question>".` +
@@ -160,7 +160,7 @@ export function renderCorePack(config, command, platform, clock) {
             (config.tabStatus.enabled
                 ? ` Owner questions stand alone, no bare task ids: options, numbers, your pick, a \`${DECISION_MARKER}\` line; one with one right answer is yours.`
                 : ' Owner questions stand alone, no bare task ids: options, numbers and a recommendation; one with a single correct answer is yours to decide.'),
-        resources: 'Rising resource use (memory, CPU, storage, tokens) needs its root cause; a raised limit is only an owner-approved bridge with a dated root-cause task. Tag a stopgap with its replacement task: `stopgap T<id>`.',
+        resources: 'Rising resource use (memory, CPU, storage, tokens) needs its root cause; a raised limit is only an owner-approved bridge with a dated root-cause task. Tag a stopgap with its replacement: `stopgap T<id>`.',
         data: "A hand-run change or delete of stored data needs the owner's OK after counts or a preview. Code that writes data ships a read-only dry run (inserted, unchanged, changed counts)." +
             ' Deleting derived data needs a verified regenerate tool and a parity run explaining each differing row; archive history and audit data before any TTL.' +
             ' Never print secret values; bind local services to 127.0.0.1, never 0.0.0.0.',
