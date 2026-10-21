@@ -1,7 +1,8 @@
 import { isNonNegativeInteger, isRecord } from '../core/guards.ts';
 import { parseUtcDay } from '../core/time.ts';
-import type { ProgramRun } from '../package-guard/programs.ts';
-import { EXEC_VALUED, NPM_VALUED, runnerCallOf } from '../package-guard/runners.ts';
+import { heavyStepOf } from '../package-guard/heavy-steps.ts';
+import { afterOptions, wordsOf, type ProgramRun } from '../package-guard/programs.ts';
+import { runnerCallOf } from '../package-guard/runners.ts';
 import type { ToolUse, TurnTrigger } from './line.ts';
 import type { Count, MissField } from './patterns.ts';
 import { GIT_VALUED, shellRunsOf } from './run-work.ts';
@@ -29,29 +30,11 @@ const BLOCK_TRIGGERS: ReadonlySet<TurnTrigger | 'continuation'> = new Set(['owne
 const FOLLOWUP_STATUSES: ReadonlySet<string> = new Set(['verifying', 'done']);
 /** Words saying a task leaves work behind, which `--followups none` denies. */
 const WORK_LEFT = /\b(?:follow[- ]?ups?|to-?do|not (?:yet|built|done|fixed|covered|shipped)|left (?:for|to)|still (?:to|needs?)|next steps?)\b/i;
-/** Programs that run a test suite or a build themselves. */
-const HEAVY_PROGRAMS: ReadonlySet<string> = new Set(['tsc', 'jest', 'vitest']);
-/** Package scripts that run a test suite or a build: `npm test`, `npm run build`, `pnpm typecheck`, `npm run test:cli`. */
-const HEAVY_SCRIPT = /^(?:test|t|tst|verify|check|coverage|build|typecheck|lint)(?::\S*)?$/;
-const PACKAGE_MANAGERS: ReadonlySet<string> = new Set(['npm', 'pnpm', 'yarn']);
 
 /** What one tool call shows: whether it runs `teamrig start`, and the miss counters it adds to. */
 export interface ToolMisses {
   readonly starts: boolean;
   readonly counts: readonly MissField[];
-}
-
-function wordsOf(run: ProgramRun): readonly string[] {
-  return run.args.map((word) => word.text);
-}
-
-/** The words from the first that is not an option, skipping the value of each option in `valued`. */
-function afterOptions(words: readonly string[], valued: ReadonlySet<string>): readonly string[] {
-  let index = 0;
-  while (index < words.length && (words[index] ?? '').startsWith('-')) {
-    index += valued.has(words[index] ?? '') ? 2 : 1;
-  }
-  return words.slice(index);
 }
 
 function isTeamrig(run: ProgramRun, ...subcommand: readonly string[]): boolean {
@@ -88,26 +71,6 @@ function followupsNoneOf(run: ProgramRun): 'none' | 'left' | undefined {
   return WORK_LEFT.test(said) ? 'left' : 'none';
 }
 
-/** A test suite or a build: `npm test`, `npm run build`, `node --test`, `tsc`, `npx vitest run`. */
-function isHeavyStep(run: ProgramRun): boolean {
-  const words = wordsOf(run);
-  if (HEAVY_PROGRAMS.has(run.name)) {
-    return true;
-  }
-  if (run.name === 'node') {
-    return words.includes('--test');
-  }
-  if (run.name === 'npx') {
-    return HEAVY_PROGRAMS.has(afterOptions(words, EXEC_VALUED)[0] ?? '');
-  }
-  if (!PACKAGE_MANAGERS.has(run.name)) {
-    return false;
-  }
-  const [command, script] = afterOptions(words, NPM_VALUED);
-  const named = command === 'run' || command === 'run-script' ? script : command;
-  return HEAVY_SCRIPT.test(named ?? '');
-}
-
 /** The miss counters one tool call adds to, each at most once, and whether it runs `teamrig start`. */
 export function toolMissesOf(tool: Pick<ToolUse, 'name' | 'command'>): ToolMisses {
   const runs = shellRunsOf(tool);
@@ -129,7 +92,7 @@ export function toolMissesOf(tool: Pick<ToolUse, 'name' | 'command'>): ToolMisse
   if (runs.some((run) => runnerCallOf(run).kind === 'fetch')) {
     counts.push('missAdHocFetch');
   }
-  const heavy = runs.filter(isHeavyStep);
+  const heavy = runs.filter((run) => heavyStepOf(run) !== undefined);
   if (heavy.length > 0) {
     counts.push('heavySteps');
     if (heavy.some((run) => !run.runner)) {

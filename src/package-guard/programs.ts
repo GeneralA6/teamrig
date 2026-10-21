@@ -123,6 +123,20 @@ export function programsOf(command: string, context: ProgramsContext): ProgramRu
   return runsOf(command, context).programs;
 }
 
+/** A run's arguments as their texts. */
+export function wordsOf(run: ProgramRun): readonly string[] {
+  return run.args.map((word) => word.text);
+}
+
+/** The words from the first that is not an option, skipping the value of each option in `valued`. */
+export function afterOptions(words: readonly string[], valued: ReadonlySet<string>): readonly string[] {
+  let index = 0;
+  while (index < words.length && (words[index] ?? '').startsWith('-')) {
+    index += valued.has(words[index] ?? '') ? 2 : 1;
+  }
+  return words.slice(index);
+}
+
 /**
  * Visits each command of a script; a plain `cat` hands its stdin down a pipe, so `cat <<EOF | bash` runs the body.
  * `runner` is true when a teamrig runner started the script; `outlet` takes the output of its commands that send it nowhere else.
