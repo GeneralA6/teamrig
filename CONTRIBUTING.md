@@ -18,6 +18,26 @@ team, and [the configuration reference](docs/configuration.md) from each key's `
 they are redrawn. To change a key's text, edit its `description` and run `npm run docs:config`. The sections below give
 the test and sign-off rules.
 
+## How we work
+Every contributor, and every Claude Code session opened in this repo, works the same way. [CLAUDE.md](CLAUDE.md) holds
+the rules that apply on every turn, and the project skills in `.claude/skills/` the steps of each repeated job:
+
+| Skill | Use it for |
+| --- | --- |
+| [`dev-add-command`](.claude/skills/dev-add-command/SKILL.md) | a new CLI command, or a flag on one |
+| [`dev-add-config-key`](.claude/skills/dev-add-config-key/SKILL.md) | a new key in the team config |
+| [`dev-update-docs`](.claude/skills/dev-update-docs/SKILL.md) | the docs a change must update, and the checks that hold them to the code |
+| [`dev-ship-change`](.claude/skills/dev-ship-change/SKILL.md) | from the last commit to the merge: dist, version raise, checks, push, pull request |
+
+- **One branch per change**, cut from the newest `origin/main` (see [Branches and releases](#branches-and-releases)).
+- **One logical change per commit**: a fix with its tests, a refactor apart from what it enables, a mechanical change
+  alone, each committed once its step passes, so a reviewer reads one idea at a time and a bad step reverts alone. A
+  commit past 400 changed non-test lines or 15 non-test files carries a `Large-commit: <reason>` line saying why it
+  cannot be split; these are the limits teamrig itself applies to a team's pushes.
+- **Docs in the same pull request** as the change they describe, so `main` never documents what it does not do.
+- **Typed code with no casts**: no `any`, no `as unknown as`; narrow `unknown` with a type guard.
+- When a step in a skill turns out wrong, fix the skill in the same pull request.
+
 ## Sign-off (DCO)
 Every commit must carry a `Signed-off-by:` line that matches the commit author, certifying the
 [Developer Certificate of Origin 1.1](https://developercertificate.org/). Add it with:
