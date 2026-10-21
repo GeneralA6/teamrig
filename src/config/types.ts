@@ -230,6 +230,22 @@ export function isPushToProtected(value: unknown): value is PushToProtected {
   return PUSH_TO_PROTECTED.some((choice) => choice === value);
 }
 
+/**
+ * How the review gate treats a path a change touches (T800 §2.2): `always` waits on the entry's reviewer; `check` runs
+ * the repo's review check, which clears the change or sends it to a reviewer.
+ */
+export type ReviewMode = 'always' | 'check';
+
+/** Who reviews a held change: security, or the session's leader (the lead or a sub-lead, T781). */
+export type ReviewClass = 'security' | 'leader';
+
+/** One review gate entry: the paths it covers (see `reviewPathMatcher`), how they are reviewed, and by whom. */
+export interface ReviewPath {
+  readonly glob: string;
+  readonly mode: ReviewMode;
+  readonly class: ReviewClass;
+}
+
 export interface PackageGuardConfig {
   /** What a Bash or PowerShell call that runs a package ad hoc does. */
   readonly adHocRunners: AdHocRunners;
