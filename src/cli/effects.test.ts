@@ -94,6 +94,7 @@ const EXPECTED = {
   test: 'write',
   'hook push-guard': 'internal',
   'hook package-guard': 'internal',
+  'hook heavy-guard': 'internal',
   'hook secret-guard': 'internal',
   'hook exec-guard': 'internal',
   'hook cold-send': 'internal',

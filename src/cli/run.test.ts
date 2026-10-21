@@ -770,6 +770,33 @@ describe('runCli: hook package-guard', () => {
   });
 });
 
+describe('runCli: hook heavy-guard', () => {
+  it("refuses a test run outside teamrig heavy, naming the call with the tab's session, and lets the wrapped call run", async () => {
+    const kit = new CliHarness();
+    const refused = await kit.run(['hook', 'heavy-guard'], { stdin: bash('npm test'), env: { TEAMRIG_SESSION: 'alpha' } });
+    assert.equal(decisionOf(refused), 'deny');
+    assert.match(reasonOf(refused) ?? '', /`teamrig heavy --session alpha --what 'npm test' -- teamrig test --session alpha -- npm test`/);
+    const wrapped = "teamrig heavy --session alpha --what 'npm test' -- teamrig test --session alpha -- npm test";
+    assert.deepEqual((await kit.run(['hook', 'heavy-guard'], { stdin: bash(wrapped) })).stdout, []);
+  });
+
+  it('names the <you> placeholder for a tab bound to no session, and keeps refusing when the config is missing or unreadable', async () => {
+    assert.match(reasonOf(await new CliHarness().run(['hook', 'heavy-guard'], { stdin: bash('tsc') })) ?? '', /--session <you> --what tsc -- tsc`/);
+    for (const kit of [new CliHarness(null), new CliHarness('{ not json'), new CliHarness(TEAM, '{ not json')]) {
+      const result = await kit.run(['hook', 'heavy-guard'], { stdin: bash('tsc'), env: { TEAMRIG_SESSION: 'alpha' } });
+      assert.equal(result.code, EXIT.ok);
+      assert.equal(decisionOf(result), 'deny');
+    }
+  });
+
+  it('lets an unwrapped step run when the team allows it, and prints nothing outside a team or for input that is not a hook payload', async () => {
+    const allows = new CliHarness({ ...TEAM, coordinator: { heavy: { unwrapped: 'allow' } } });
+    assert.deepEqual((await allows.run(['hook', 'heavy-guard'], { stdin: bash('npm test') })).stdout, []);
+    assert.deepEqual(await new CliHarness(null, null).run(['hook', 'heavy-guard'], { stdin: bash('npm test') }), { code: EXIT.ok, stdout: [], stderr: [] });
+    assert.deepEqual(await new CliHarness().run(['hook', 'heavy-guard'], { stdin: 'not json' }), { code: EXIT.ok, stdout: [], stderr: [] });
+  });
+});
+
 describe('runCli: hook session-start', () => {
   it("loads the core rules, the session's identity and the team's rules", async () => {
     const kit = new CliHarness({ ...TEAM, names: { lead: 'captain' } });
