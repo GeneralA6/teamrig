@@ -1,6 +1,7 @@
-import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
+import { isRecord, stringField } from '../core/guards.ts';
 import { isReservedName, RESERVED_RULE } from '../core/ids.ts';
 import { sendTargetOf } from './cold-send.ts';
+import { toolResponseOf } from './post-tool-use.ts';
 
 /**
  * The failed-send hook, PostToolUse on SendMessage. A send to a name no live session answers to (a
@@ -21,25 +22,12 @@ export function failedSendOf(payload: unknown): FailedSend | undefined {
   if (to === undefined || !isRecord(payload)) {
     return undefined;
   }
-  const response = responseOf(payload['tool_response']);
+  const response = toolResponseOf(payload['tool_response']);
   if (response === undefined || response['success'] !== false) {
     return undefined;
   }
   const reason = stringField(response, 'message')?.split('\n')[0]?.trim();
   return { to, reason: reason === undefined || reason === '' ? 'not delivered' : reason };
-}
-
-/** The tool's result as a record: Claude Code may hand it over as the object or as its JSON text. */
-function responseOf(value: unknown): JsonRecord | undefined {
-  if (typeof value !== 'string') {
-    return isRecord(value) ? value : undefined;
-  }
-  try {
-    const parsed: unknown = JSON.parse(value);
-    return isRecord(parsed) ? parsed : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 /**
@@ -54,9 +42,4 @@ export function failedSendLine(failed: FailedSend, id: string | undefined, comma
       : `leave it as an inbox line, shown at ${id}'s next prompt: \`${command} inbox add --to ${id} --text "..."\`.`;
   const never = isReservedName(failed.to) ? ` ${failed.to} ${RESERVED_RULE}.` : '';
   return `${command}: the message to ${failed.to} was not sent (${failed.reason}); ${next}${never}`;
-}
-
-/** The hook's stdout: the line as context for the model after the tool's result. */
-export function failedSendOutput(line: string): string {
-  return JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: line } });
 }

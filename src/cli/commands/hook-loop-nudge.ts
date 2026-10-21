@@ -2,7 +2,8 @@ import { toolUseFrom, type ToolUse } from '../../budget/line.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { isRecord, recordField, stringField, type JsonRecord } from '../../core/guards.ts';
 import { leadNudgeLine, leadWorkOf, taskOwnersOf } from '../../hooks/lead-boundary.ts';
-import { chainOf, nudgeLine, nudgeOutput, turnTasksOf, turnToolsOf } from '../../hooks/loop-nudge.ts';
+import { chainOf, nudgeLine, turnTasksOf, turnToolsOf } from '../../hooks/loop-nudge.ts';
+import { postToolUseContext } from '../../hooks/post-tool-use.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
 import { TRANSCRIPT_TAIL_BYTES } from '../../names/title.ts';
 import { JsonlEventLog } from '../../register/store.ts';
@@ -89,7 +90,7 @@ export async function loopNudge(args: ParsedArgs, runtime: CliRuntime): Promise<
   noPositionals(args);
   const lines = await loopNudgeLines(parseJson(await runtime.readStdin()), runtime).catch((): readonly string[] => []);
   if (lines.length > 0) {
-    runtime.out.stdout(nudgeOutput(lines.join('\n')));
+    runtime.out.stdout(postToolUseContext(lines.join('\n')));
   }
   return EXIT.ok;
 }

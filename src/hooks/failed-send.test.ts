@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { failedSendLine, failedSendOf, failedSendOutput } from './failed-send.ts';
+import { failedSendLine, failedSendOf } from './failed-send.ts';
 
 function result(toolResponse: unknown, to = 'team-lead', toolName = 'SendMessage'): unknown {
   return { hook_event_name: 'PostToolUse', tool_name: toolName, tool_input: { to, message: 'the ask' }, tool_response: toolResponse };
@@ -48,9 +48,5 @@ describe('failedSendLine', () => {
 
   it('points a name that is no team session to who', () => {
     assert.match(failedSendLine({ to: 'uds:old-pipe', reason: 'not delivered' }, undefined, 'teamrig'), /uds:old-pipe is no team session name \(`teamrig who` prints them\); for a team session, leave it as an inbox line: `teamrig inbox add --to <area>/);
-  });
-
-  it('hands the line to the model as PostToolUse context', () => {
-    assert.deepEqual(JSON.parse(failedSendOutput('the line')), { hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: 'the line' } });
   });
 });
