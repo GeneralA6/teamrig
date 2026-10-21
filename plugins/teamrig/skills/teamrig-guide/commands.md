@@ -387,6 +387,9 @@ each flag means and what to do about it: [tasks.md](tasks.md#check-flags). It al
 your skills and in `CLAUDE.md` and `.claude/rules` [register.check.stopgapFiles], and flags STOPGAP-DONE for each
 done or dropped task they still name, flags an area that cannot finish its dated work in time when the week's spare
 pays for help (SCALE-OUT), and flags hired sessions to retire (RETIRE-DUE) or to review (REVIEW-DUE).
+It also prints doctor's context-size and context-lists findings (CONTEXT) while the CLAUDE.md files, memory index,
+skill listing or the newest session's lists run over their `contextFiles` budgets; `start` shows them to every
+session, since every session on the machine re-reads that text.
 By default it prints a short form
 within 3,000 characters: each kind with its count (and its detail when every flag of it shares one), at most 5
 of its tasks as short rows, then `+N more`; the same for skill flags. `--all` prints every flag in full.

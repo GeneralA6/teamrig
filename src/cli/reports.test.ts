@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import type { Finding } from '../doctor/doctor.ts';
 import type { HireFlag } from '../hiring/due.ts';
 import { FLAG_KINDS, formatFlag, type Flag, type FlagKind } from '../register/check.ts';
 import type { Task } from '../register/fold.ts';
@@ -46,7 +47,7 @@ function skillFlag(skill: string): SkillFlag {
 }
 
 function report(overrides: Partial<CheckReport>): CheckReport {
-  return { sections: [], scope: 'week 2030-01-07', skills: [], skillsDir: 'skills-dir', hires: [], decisions: undefined, ...overrides };
+  return { sections: [], scope: 'week 2030-01-07', skills: [], skillsDir: 'skills-dir', hires: [], context: [], decisions: undefined, ...overrides };
 }
 
 /** `count` tasks numbered from T1, each with a long title, cycling through three owners. */
@@ -169,6 +170,19 @@ describe('checkLines', () => {
     ]);
   });
 
+  it('prints the context flags after the hire flags, in both forms, and counts them toward the hint (T393)', () => {
+    const context: readonly Finding[] = [{ kind: 'context-size', detail: 'CLAUDE.md files (CLAUDE.md 13,000): over its budget' }];
+    const flagged = report({ sections: [{ team: undefined, tree: TREE, flags: [] }], context });
+    const line = 'WARN context-size CLAUDE.md files (CLAUDE.md 13,000): over its budget';
+    assert.deepEqual(checkLines(flagged, true), ['CHECK 0 flag(s), week 2030-01-07', 'CONTEXT 1 flag(s)', line, 'SKILLS 0 flag(s) in skills-dir']);
+    assert.deepEqual(checkLines(flagged, false), [
+      'CHECK 0 flag(s), week 2030-01-07 (short form; --all for every flag in full)',
+      'CONTEXT 1 flag(s)',
+      `  ${line}`,
+      'SKILLS 0 flag(s) in skills-dir',
+    ]);
+  });
+
   it('prints one count over every team, each kind with its shared detail, and no hint when nothing is flagged', () => {
     assert.deepEqual(checkLines(report({ sections }), false), [
       'CHECK 2 flag(s) in 2 team(s), week 2030-01-07 (short form; --all for every flag in full)',
@@ -268,6 +282,8 @@ describe('ownCheck', () => {
       { kind: 'RETIRE-DUE', session: 'bravo', detail: 'no open task for 5 h, hiring.idleHours 4', action: 'retire it' },
     ];
     assert.deepEqual(ownCheck(report({ hires }), 'alpha', []).hires.map((each) => each.session), ['alpha']);
+    const context: readonly Finding[] = [{ kind: 'context-lists', detail: 'lists over their budget' }];
+    assert.deepEqual(ownCheck(report({ context }), 'alpha', []).context, context, "the machine's context flags reach every session");
     assert.equal(narrowed.scope, "alpha's tasks and skills, week 2030-01-07");
     assert.match(checkLines(narrowed, false)[0] ?? '', /^CHECK 1 flag\(s\), alpha's tasks and skills, week 2030-01-07 /);
   });

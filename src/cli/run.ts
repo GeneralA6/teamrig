@@ -327,8 +327,8 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       of a task that needs it ("due 01-12 (from T9)"), and a row names another session's task needing it
   show <id> [--tree]   every field and the history; --tree: what it needs and what needs it, each with
       owner, status and due, then the next move (who acts first, on which task)
-  check [--week <date>] [--tree] [--all]   tasks and skills that break a team rule,
-      in a short form within 3,000 characters; --all: every flag in full
+  check [--week <date>] [--tree] [--all]   tasks and skills that break a team rule and context
+      text over budget, in a short form within 3,000 characters; --all: every flag in full
   plan [--week <date>] [--tree]    the week plan (default: the newest week that has started)
       --tree (the lead only): also every team under it, read-only, ids as <team>/T<n>
   verify [--session <id|name>]   the session's verifying tasks, oldest first, each with its proof and
