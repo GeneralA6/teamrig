@@ -20,6 +20,9 @@ project's `.claude/settings.json` ([what was tested](../plugins/teamrig/skills/t
 
 ## Configuration
 
+This table says where each setting lives; [every config key](configuration.md) lists each key of the team config with
+its type, default and meaning.
+
 | Setting | Where | Default |
 | --- | --- | --- |
 | Kit home (teams and their state) | `$TEAMRIG_HOME` | `~/.teamrig` |

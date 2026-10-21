@@ -40,9 +40,9 @@ describe('README.md', () => {
     });
   });
 
-  it('links the details: how it works, updating, every command, contributing and the guide for language models', () => {
+  it('links the details: how it works, updating, every command, every config key, contributing and the guide for language models', () => {
     const links = targets('link');
-    for (const path of ['docs/how-it-works.md', 'docs/how-it-works.md#updating-the-plugin', 'docs/commands.md', 'CONTRIBUTING.md', 'llms.txt']) {
+    for (const path of ['docs/how-it-works.md', 'docs/how-it-works.md#updating-the-plugin', 'docs/commands.md', 'docs/configuration.md', 'CONTRIBUTING.md', 'llms.txt']) {
       assert.ok(links.includes(path), path);
     }
   });
