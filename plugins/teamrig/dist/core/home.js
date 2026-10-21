@@ -118,5 +118,8 @@ export function teamPaths(kitHome, team, userHome, overrides = {}) {
         turnLog: join(state, 'turn-log'),
         sessions: join(state, 'sessions'),
         sessionLog: join(state, 'session-log.jsonl'),
+        execAudit: join(home, 'exec', 'audit.jsonl'),
+        execAuditLock: join(home, 'exec', 'audit.lock'),
+        execOut: join(home, 'exec', 'out'),
     };
 }

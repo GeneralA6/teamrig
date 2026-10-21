@@ -57,6 +57,8 @@ export const DEFAULT_SKILLS = {
 /** Measured on a working team (10-15): 23k of CLAUDE.md, 15k of memory index and 4.6k of skill listing were re-read every call. */
 export const DEFAULT_CONTEXT_FILES = { maxClaudeMdChars: 12_000, maxMemoryIndexChars: 6_000, maxSkillListingChars: 4_000 };
 export const DEFAULT_LOCK = { ttlMs: 30_000, pollMs: 50, waitMs: 20_000 };
+/** No exec PATH: a privileged command names its program by absolute path until the team lists its tool folders. */
+export const DEFAULT_EXEC = { path: [] };
 export const DEFAULT_PUSH_GUARD = { protectedBranches: ['main', 'master'], pushToProtected: 'ask' };
 /**
  * Refused by default: a helper's `npx eslint` once fetched and ran an unvetted package (T450, 10-16), and an install

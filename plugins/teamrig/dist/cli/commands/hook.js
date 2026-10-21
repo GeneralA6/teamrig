@@ -11,6 +11,8 @@ import { modelCheckLine, payloadEffortOf } from "../../hooks/model-check.js";
 import { ModelNoticeStore } from "../../hooks/model-notices.js";
 import { sendTargetOf } from "../../hooks/cold-send.js";
 import { failedSendLine, failedSendOf, failedSendOutput } from "../../hooks/failed-send.js";
+import { checkClient, clientRootOf } from "../../exec/client-integrity.js";
+import { execGuardOutput } from "../../hooks/exec-guard.js";
 import { packageGuardOf, packageGuardOutput } from "../../hooks/package-guard.js";
 import { hookAsksOf } from "../../hooks/permission.js";
 import { secretGuardOf, secretGuardOutput } from "../../hooks/secret-guard.js";
@@ -179,6 +181,54 @@ export async function secretGuard(args, runtime) {
         rules: secretRulesOf(config, runtime.userHome, runtime.platform),
         secretReads: config.secretReads,
         hookAsks: hookAsksOf(guard.load),
+    });
+    if (output !== '') {
+        runtime.out.stdout(output);
+    }
+    return EXIT.ok;
+}
+/**
+ * Who this tab runs as, for the exec guard: its team session and the roster to read a `--session` word with. It never
+ * throws: a config or roster it cannot read leaves the tab unbound, so every review from it is refused, saying why.
+ */
+async function tabIdentityOf(runtime, kit, payload) {
+    if (kit === undefined || kit.load.status !== 'loaded') {
+        return { kind: 'unbound', why: 'the team config did not load' };
+    }
+    const { config } = kit.load;
+    try {
+        const roster = await rosterOf(runtime, kit, config);
+        const session = await teamSessionOf(runtime, kit, roster, sessionIdOf(payload));
+        if (session === undefined) {
+            return { kind: 'unbound', why: 'this tab is not bound to a session of the team' };
+        }
+        const idOf = (name) => {
+            const found = roster.lookup(name);
+            return found.ok ? found.id : undefined;
+        };
+        return { kind: 'bound', session, owner: config.register.ownerSource, idOf };
+    }
+    catch (error) {
+        return { kind: 'unbound', why: `the guard could not read the roster (${errorMessage(error)})` };
+    }
+}
+/**
+ * PreToolUse on Bash and PowerShell: refuses a `teamrig exec` review (approve, refuse, escalate) run as anyone but the
+ * tab's own session, and any `teamrig exec` call while this hook's own install differs from its build.
+ */
+export async function execGuard(args, runtime) {
+    noPositionals(args);
+    const payload = parseJson(await runtime.readStdin());
+    const guard = await guardLoadOf(payload, runtime);
+    if (guard === undefined) {
+        return EXIT.ok;
+    }
+    const output = await execGuardOutput(payload, {
+        cwd: runtime.cwd,
+        home: runtime.userHome,
+        hookAsks: hookAsksOf(guard.load),
+        identity: () => tabIdentityOf(runtime, guard.kit, payload),
+        client: () => checkClient(clientRootOf(runtime.self.script), runtime.files),
     });
     if (output !== '') {
         runtime.out.stdout(output);

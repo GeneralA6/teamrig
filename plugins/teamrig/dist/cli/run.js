@@ -58,6 +58,7 @@ const promoteCommands = () => import("./commands/promote.js");
 const slashCommands = () => import("./commands/slash.js");
 const restoreCommands = () => import("./commands/restore.js");
 const restoreInstallCommands = () => import("./commands/restore-install.js");
+const execCommands = () => import("./commands/exec.js");
 const TASK_FIELDS = ['title', 'description', 'owner', 'ref', 'priority', 'due', 'goals', 'week', 'after', 'size'];
 const COMMANDS = {
     add: { effect: 'write', flags: ['session', 'source', 'team', ...TASK_FIELDS], load: async () => (await registerCommands()).add },
@@ -78,6 +79,13 @@ const COMMANDS = {
     'inbox read': { effect: 'write', flags: ['session'], load: async () => (await inboxCommands()).read },
     'inbox status': { effect: 'read', flags: ['session'], load: async () => (await inboxCommands()).status },
     'inbox add': { effect: 'write', flags: ['session', 'to', 'text'], load: async () => (await inboxCommands()).add },
+    'exec request': { effect: 'write', flags: ['session', 'file'], load: async () => (await execCommands()).request },
+    'exec dry-run': { effect: 'write', flags: [], load: async () => (await execCommands()).dryRun },
+    'exec approve': { effect: 'write', flags: ['session', 'note'], load: async () => (await execCommands()).approve },
+    'exec refuse': { effect: 'write', flags: ['session', 'note'], load: async () => (await execCommands()).refuse },
+    'exec escalate': { effect: 'write', flags: ['session', 'note'], load: async () => (await execCommands()).escalate },
+    'exec run': { effect: 'write', flags: [], load: async () => (await execCommands()).run },
+    'exec status': { effect: 'read', flags: [], load: async () => (await execCommands()).status },
     'team create': { effect: 'write', flags: ['sessions', 'lead', 'parent', 'project'], switches: ['dry-run'], load: async () => (await setupCommands()).teamCreate },
     'team tree': { effect: 'read', flags: [], load: async () => (await teamCommands()).teamTree },
     rules: { effect: 'read', flags: ['session'], load: async () => (await rulesCommands()).rules },
@@ -163,6 +171,7 @@ const COMMANDS = {
     'hook push-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).pushGuard },
     'hook package-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).packageGuard },
     'hook secret-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).secretGuard },
+    'hook exec-guard': { effect: 'internal', flags: [], load: async () => (await hookCommands()).execGuard },
     'hook cold-send': { effect: 'internal', flags: [], load: async () => (await hookCommands()).coldSend },
     'hook failed-send': { effect: 'internal', flags: [], load: async () => (await hookCommands()).failedSend },
     'hook loop-nudge': { effect: 'internal', flags: [], load: async () => (await loopNudgeCommand()).loopNudge },
@@ -305,6 +314,15 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   inbox status [--session <area>]   unread lines per area
   inbox add --to <id|name|team/id> --text "<one line>"
       team/id: a lead may write to its parent team's lead and its child teams' leads
+  exec request --file <request.json>   asks to run a privileged command: the JSON names the command, its
+      code binding, variables, dry run or preview, purpose, expected effect and rollback; logged as R<n>
+  exec dry-run R<n>    runs the request's read-only dry run, logged for the reviewer
+  exec status [R<n>]   each request's stage; with R<n>, the whole request as the reviewer reads it
+  exec approve R<n> [--note "<why>"]   the security reviewer (roles.securityReviewer) or the owner approves
+      one run; an owner-gated request only the owner
+  exec refuse R<n> --note "<why>"      refuses the request; the note names the safe alternative
+  exec escalate R<n> --note "<why>"    the security reviewer hands an owner-gated request to the owner
+  exec run R<n>        runs an approved request once, before its approval expires
   who [<id|name|role>]         the name to message a session by (no argument: every session)
   sessions                     each session: running (and the MB its Claude Code's processes hold), closed
       or never recorded; then the host's free memory and commit charge
@@ -454,7 +472,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   test [--session <id|name>] -- <command ...>   runs a test command in the shell, writes all it printed
       to a log (each session keeps its newest 20) and prints one PASS or FAIL line, then each failing
       test within tests.maxFailureChars; exit 0 when the command passed, 1 otherwise
-  hook push-guard | hook package-guard | hook secret-guard | hook cold-send | hook failed-send | hook loop-nudge | hook helper-gate | hook inbox-reminder | hook session-start | hook stop | hook subagent-start | hook subagent-stop | hook refresh-wake | hook restore-track | hook tab-status | hook readonly-allow | hook picker-guard | hook prompt-refuse
+  hook push-guard | hook package-guard | hook secret-guard | hook exec-guard | hook cold-send | hook failed-send | hook loop-nudge | hook helper-gate | hook inbox-reminder | hook session-start | hook stop | hook subagent-start | hook subagent-stop | hook refresh-wake | hook restore-track | hook tab-status | hook readonly-allow | hook picker-guard | hook prompt-refuse
       (run by Claude Code, hook JSON on stdin)
   hook clear-dir | hook clear-claim [--hold [--why <reason>]]
       (run by the plugin's mod: the automatic restart's /clear in the tab)

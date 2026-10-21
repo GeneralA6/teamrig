@@ -85,6 +85,7 @@ export const CONFIG_LIMITS = {
     assumedRollMinutes: { min: 0, max: 1440 },
     windowMinMinutes: { min: 1, max: 1440 },
     resetBlackoutHours: { min: 1, max: 48 },
+    execPath: { maxItems: 16, maxLength: 260 },
 };
 /**
  * Bounds on the fields of one recorded rule conflict (`ruleConflicts`). A line longer than `textMaxLength` is
