@@ -812,10 +812,10 @@ describe('parseConfig', () => {
   it('reads the commits rule, refusing a bad gate, trailer key, bound or pattern', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,
-      commits: { maxLines: 10, maxFiles: 20, largeCommitTrailer: 'Large commit', testPatterns: ['^fixtures/', '(('], gate: 'block' },
+      commits: { maxLines: 10, maxFiles: 20, largeCommitTrailer: 'Large commit', testPatterns: ['^fixtures/', '(('], sourcePatterns: ['^lib/', '['], gate: 'block' },
     });
-    assert.deepEqual(paths(issues).sort(), ['commits.gate', 'commits.largeCommitTrailer', 'commits.maxLines', 'commits.testPatterns[1]']);
-    assert.deepEqual(config.commits, { ...DEFAULT_COMMITS, maxFiles: 20, testPatterns: ['^fixtures/'] });
+    assert.deepEqual(paths(issues).sort(), ['commits.gate', 'commits.largeCommitTrailer', 'commits.maxLines', 'commits.sourcePatterns[1]', 'commits.testPatterns[1]']);
+    assert.deepEqual(config.commits, { ...DEFAULT_COMMITS, maxFiles: 20, testPatterns: ['^fixtures/'], sourcePatterns: ['^lib/'] });
     const refuse = parseConfig({ ...ROSTER, commits: { gate: 'refuse', largeCommitTrailer: 'Big-change' } }).config.commits;
     assert.deepEqual([refuse.gate, refuse.largeCommitTrailer], ['refuse', 'Big-change']);
   });

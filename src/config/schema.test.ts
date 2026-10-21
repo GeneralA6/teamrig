@@ -112,6 +112,7 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   commitMaxLines: 'commits.maxLines',
   commitMaxFiles: 'commits.maxFiles',
   testPatterns: 'commits.testPatterns',
+  sourcePatterns: 'commits.sourcePatterns',
   forbidFrontmatter: 'skills.forbidFrontmatter',
   requireNoteOn: 'register.requireNoteOn',
   requireFollowupsOn: 'register.requireFollowupsOn',

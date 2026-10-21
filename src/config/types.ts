@@ -502,6 +502,11 @@ export interface CommitsConfig {
   readonly largeCommitTrailer: string;
   /** Regular expressions over `/`-separated paths; a file that matches one is a test and never counts. */
   readonly testPatterns: readonly string[];
+  /**
+   * Regular expressions over `/`-separated paths; a non-test file that matches one is source. A change of source with
+   * no test changed misses the self-merge gate (`pushToProtected: gated`, T858).
+   */
+  readonly sourcePatterns: readonly string[];
   readonly gate: CommitGate;
 }
 

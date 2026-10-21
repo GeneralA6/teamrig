@@ -1304,6 +1304,14 @@ function parseCommits(read: ConfigReader, raw: JsonRecord): CommitsConfig {
       shortLine(CONFIG_LIMITS.testPatterns.maxLength, isValidRegex),
       CONFIG_LIMITS.testPatterns.maxItems,
     ),
+    sourcePatterns: read.stringList(
+      raw,
+      'sourcePatterns',
+      path,
+      defaults.sourcePatterns,
+      shortLine(CONFIG_LIMITS.sourcePatterns.maxLength, isValidRegex),
+      CONFIG_LIMITS.sourcePatterns.maxItems,
+    ),
     gate: isCommitGate(gate) ? gate : defaults.gate,
   };
 }

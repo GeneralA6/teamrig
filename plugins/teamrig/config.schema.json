@@ -501,6 +501,13 @@
           "items": { "type": "string", "maxLength": 100 },
           "default": ["(^|/)(tests?|__tests__|spec)/", "\\.(test|spec)\\.[^/]+$", "(^|/)test_[^/]+\\.py$"]
         },
+        "sourcePatterns": {
+          "description": "Regular expressions over /-separated paths; a non-test file that matches one is source. A change of source with no test changed misses the self-merge gate (pushGuard.pushToProtected gated).",
+          "type": "array",
+          "maxItems": 8,
+          "items": { "type": "string", "maxLength": 100 },
+          "default": ["\\.([cm]?[jt]sx?|py|go|rs|java|kt|cs|c|cc|cpp|h|hpp|rb|swift|vue|svelte|sh|ps1)$"]
+        },
         "gate": {
           "description": "A push to a protected branch: off ignores large commits, warn lists them when it asks the human, refuse refuses the push.",
           "type": "string",
