@@ -5,15 +5,18 @@
 ```sh
 npm ci
 npm run setup         # points git at .githooks (scrub + DCO sign-off checks, and the local gate before each push)
-npm run check         # CI's gates on your tree: typecheck, tests with the coverage gate, build, dist checks, pictures, doc links, scrub
+npm run check         # CI's gates on your tree: typecheck, tests with the coverage gate, build, dist checks, pictures, config reference, doc links, scrub
 npm run docs:images   # redraws the pictures in docs/images
+npm run docs:config   # redraws docs/configuration.md from the config schema
 npm run docs:check    # checks relative links, anchors and Mermaid diagram types in the top-level and docs/ Markdown
 node tools/ci/local.ts # the local gate: every CI check on the committed tree, once per tree (the pre-push hook runs it)
 ```
 
-The pictures in the docs are drawn in code (`tools/docs/`), and the commands screen by running the real CLI for a
-made-up team, so none can drift from the code or from what the CLI prints: the checks fail until they are redrawn. The
-sections below give the test and sign-off rules.
+The pictures in the docs are drawn in code (`tools/docs/`), the commands screen by running the real CLI for a made-up
+team, and [the configuration reference](docs/configuration.md) from each key's `description` in
+`plugins/teamrig/config.schema.json`, so none can drift from the code or from what the CLI prints: the checks fail until
+they are redrawn. To change a key's text, edit its `description` and run `npm run docs:config`. The sections below give
+the test and sign-off rules.
 
 ## Sign-off (DCO)
 Every commit must carry a `Signed-off-by:` line that matches the commit author, certifying the
