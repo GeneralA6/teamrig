@@ -1,7 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
-import { parsePassRecord, passRecordPath } from './pass-record.ts';
+import { MemoryFiles } from '../testing/memory-files.ts';
+import { parsePassRecord, passRecordPath, readPassRecord } from './pass-record.ts';
 
 const TREE = 'a'.repeat(40);
 const OTHER_TREE = 'd'.repeat(40);
@@ -40,5 +41,18 @@ describe('passRecordPath', () => {
   it('keeps an absolute git common dir, as a worktree reports it', () => {
     const common = resolve('elsewhere', '.git');
     assert.equal(passRecordPath(ROOT, common, TREE), join(common, 'local-ci', `${TREE}.json`));
+  });
+});
+
+describe('readPassRecord', () => {
+  it('reads the record of the tree from its file in the git common dir', async () => {
+    const files = new MemoryFiles({ [passRecordPath(ROOT, '.git', TREE)]: JSON.stringify(FIELDS) });
+    assert.deepEqual(await readPassRecord(files, ROOT, '.git', TREE), FIELDS);
+  });
+
+  it('finds none for a tree with no file, or a file that proves another tree', async () => {
+    const files = new MemoryFiles({ [passRecordPath(ROOT, '.git', OTHER_TREE)]: JSON.stringify(FIELDS) });
+    assert.equal(await readPassRecord(files, ROOT, '.git', TREE), undefined);
+    assert.equal(await readPassRecord(files, ROOT, '.git', OTHER_TREE), undefined);
   });
 });
