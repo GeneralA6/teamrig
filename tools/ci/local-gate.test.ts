@@ -14,21 +14,20 @@ import {
   isolatedEnv,
   machineDeps,
   parsePushUpdates,
-  parseRecord,
   proveHead,
   provePush,
-  recordPath,
   spawnChecks,
   writeTextFile,
 } from './local-gate.ts';
+import { parsePassRecord, passRecordPath } from '../../src/push-guard/pass-record.ts';
 
 const TREE = 'a'.repeat(40);
 const HEAD = 'b'.repeat(40);
 const OTHER = 'c'.repeat(40);
 const OTHER_TREE = 'd'.repeat(40);
 const ROOT = resolve('work', 'repo');
-const PATH = recordPath(ROOT, '.git', TREE);
-const OTHER_PATH = recordPath(ROOT, '.git', OTHER_TREE);
+const PATH = passRecordPath(ROOT, '.git', TREE);
+const OTHER_PATH = passRecordPath(ROOT, '.git', OTHER_TREE);
 const CHECKS: readonly LocalCheck[] = [
   { name: 'lint', argv: ['node', 'lint.ts'] },
   { name: 'test', argv: ['node', 'test.ts'] },
@@ -148,31 +147,6 @@ describe('proveHead', () => {
 
   it('refuses an empty list of checks', async () => {
     assert.deepEqual(await proveHead([], fixture().deps), { passed: false, reason: 'no checks are listed: nothing would prove the tree' });
-  });
-});
-
-describe('parseRecord', () => {
-  it('reads a record for the tree and ignores a missing, broken or foreign one', () => {
-    assert.deepEqual(parseRecord(record(TREE), TREE), { tree: TREE, commit: HEAD, checks: ['lint', 'test'], passedAt: NOW.toISOString(), node: 'v22.0.0' });
-    const fields = { tree: TREE, commit: HEAD, checks: ['lint'], passedAt: 'x', node: 'v22' };
-    for (const text of [
-      undefined,
-      '{',
-      '[]',
-      record(OTHER_TREE),
-      JSON.stringify({ ...fields, commit: 1 }),
-      JSON.stringify({ ...fields, passedAt: null }),
-      JSON.stringify({ ...fields, node: undefined }),
-      JSON.stringify({ ...fields, checks: 'lint' }),
-      JSON.stringify({ ...fields, checks: ['lint', 2] }),
-    ]) {
-      assert.equal(parseRecord(text, TREE), undefined, String(text));
-    }
-  });
-
-  it('keeps an absolute git common dir, as a worktree reports it', () => {
-    const common = resolve('elsewhere', '.git');
-    assert.equal(recordPath(ROOT, common, TREE), join(common, 'local-ci', `${TREE}.json`));
   });
 });
 
@@ -313,7 +287,7 @@ describe('machineDeps', () => {
       const check: LocalCheck = { name: 'ok', argv: ['node', '-e', ''] };
       assert.deepEqual(await proveHead([check], deps), { passed: true });
       const path = join(repo.dir, '.git', 'local-ci', `${tree}.json`);
-      assert.deepEqual(parseRecord(deps.readText(path), tree)?.checks, ['ok']);
+      assert.deepEqual(parsePassRecord(deps.readText(path), tree)?.checks, ['ok']);
       assert.deepEqual(await proveHead([check], deps), { passed: true });
       assert.match(out.at(-1) ?? '', /^local checks: passed earlier on tree /);
     } finally {

@@ -1,19 +1,18 @@
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join } from 'node:path';
 import { readTextIfPresent } from '../lib/files.ts';
 import { createGit, type Git } from '../lib/git.ts';
-import { isRecord } from '../lib/guards.ts';
+import { parsePassRecord, passRecordPath, type PassRecord } from '../../src/push-guard/pass-record.ts';
 import { protectedPushRefusal } from './protected-refs.ts';
 
 /**
  * The local gate: runs every check CI runs on a committed tree, on this machine, and records the pass so a
- * tree is checked once. The record lives at `<git common dir>/local-ci/<tree sha>.json`, so every worktree of
- * the clone shares it, and is written only when every check passed on a clean checkout the checks left as
- * they found it:
- *   { "tree": "<sha>", "commit": "<sha>", "checks": ["<name>", ...], "passedAt": "<ISO time>", "node": "<version>" }
- * The pre-push hook and `tools/ci/local.ts` read it first; any tool that proves a tree the same way may write it.
+ * tree is checked once. The record (src/push-guard/pass-record.ts) lives at `<git common dir>/local-ci/<tree sha>.json`,
+ * so every worktree of the clone shares it, and is written only when every check passed on a clean checkout the
+ * checks left as they found it. The pre-push hook and `tools/ci/local.ts` read it first; any tool that proves a tree
+ * the same way may write it.
  */
 
 /** One check: a CI job or step, as a command run from the repo root. */
@@ -34,14 +33,6 @@ export interface CheckRun {
   /** Its stdout, then its stderr. */
   readonly output: string;
   readonly ms: number;
-}
-
-export interface PassRecord {
-  readonly tree: string;
-  readonly commit: string;
-  readonly checks: readonly string[];
-  readonly passedAt: string;
-  readonly node: string;
 }
 
 export interface GateDeps {
@@ -72,29 +63,8 @@ async function gitLine(git: Git, args: readonly string[]): Promise<string> {
   return (await git.text(args)).trim();
 }
 
-/** Where the pass record of a tree lives: `<git common dir>/local-ci/<tree>.json`. */
-export function recordPath(root: string, gitCommonDir: string, tree: string): string {
-  return join(resolve(root, gitCommonDir), 'local-ci', `${tree}.json`);
-}
-
-/** The record in a file's text, or undefined when there is none, it does not parse, or it proves another tree. */
-export function parseRecord(text: string | undefined, tree: string): PassRecord | undefined {
-  if (text === undefined) return undefined;
-  let value: unknown;
-  try {
-    value = JSON.parse(text);
-  } catch {
-    return undefined;
-  }
-  if (!isRecord(value)) return undefined;
-  const { commit, checks, passedAt, node } = value;
-  if (value['tree'] !== tree || typeof commit !== 'string' || typeof passedAt !== 'string' || typeof node !== 'string') return undefined;
-  if (!Array.isArray(checks) || !checks.every((name): name is string => typeof name === 'string')) return undefined;
-  return { tree, commit, checks, passedAt, node };
-}
-
 async function recordFile(deps: GateDeps, tree: string): Promise<string> {
-  return recordPath(deps.root, await gitLine(deps.git, ['rev-parse', '--git-common-dir']), tree);
+  return passRecordPath(deps.root, await gitLine(deps.git, ['rev-parse', '--git-common-dir']), tree);
 }
 
 /**
@@ -108,7 +78,7 @@ export async function proveHead(checks: readonly LocalCheck[], deps: GateDeps): 
   const tree = await gitLine(deps.git, ['rev-parse', 'HEAD^{tree}']);
   const commit = await gitLine(deps.git, ['rev-parse', 'HEAD']);
   const path = await recordFile(deps, tree);
-  const earlier = parseRecord(deps.readText(path), tree);
+  const earlier = parsePassRecord(deps.readText(path), tree);
   if (earlier !== undefined) {
     deps.out(`local checks: passed earlier on tree ${short(tree)} (commit ${short(earlier.commit)}, ${earlier.passedAt}, ${earlier.checks.length} check(s))`);
     return PASSED;
@@ -179,7 +149,7 @@ export async function provePush(updates: readonly PushUpdate[], checks: readonly
       continue;
     }
     const tree = await gitLine(deps.git, ['rev-parse', `${update.localSha}^{tree}`]);
-    const earlier = parseRecord(deps.readText(await recordFile(deps, tree)), tree);
+    const earlier = parsePassRecord(deps.readText(await recordFile(deps, tree)), tree);
     if (earlier !== undefined) {
       deps.out(`local checks: ${update.localRef} (tree ${short(tree)}) passed earlier (${earlier.passedAt}, ${earlier.checks.length} check(s))`);
       continue;
