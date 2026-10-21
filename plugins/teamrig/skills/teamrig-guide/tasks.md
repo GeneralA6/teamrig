@@ -242,6 +242,8 @@ every session needs every turn; each item has one home.
   so a script beside the SKILL.md can make a privileged call unseen. Name each kind its scripts make on a
   `Grants: pod-exec, secret-read, auth-header` line (kubectl exec; a cluster secret or a credential env variable;
   a credential header), each one the owner granted; without the grant, write the call inline or drop it.
+  `teamrig check` reads the scripts beside the SKILL.md, not their specs (`a.test.ts`, `a.spec.mjs`, `test_a.py`,
+  `a_test.py`): the test runner runs a spec, never the skill.
 - **Upkeep**: re-verify within 30 days [skills.maxVerifiedAgeDays] and bump the date each time its steps held; at
   most 8 skills per area [skills.maxPerArea], so merge before adding. When a command, flag or path changes,
   update every skill that names it in the same change.
