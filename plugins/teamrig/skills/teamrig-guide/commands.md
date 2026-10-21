@@ -387,9 +387,13 @@ each flag means and what to do about it: [tasks.md](tasks.md#check-flags). It al
 your skills and in `CLAUDE.md` and `.claude/rules` [register.check.stopgapFiles], and flags STOPGAP-DONE for each
 done or dropped task they still name, flags an area that cannot finish its dated work in time when the week's spare
 pays for help (SCALE-OUT), and flags hired sessions to retire (RETIRE-DUE) or to review (REVIEW-DUE).
-It also prints doctor's context-size and context-lists findings (CONTEXT) while the CLAUDE.md files, memory index,
-skill listing or the newest session's lists run over their `contextFiles` budgets; `start` shows them to every
-session, since every session on the machine re-reads that text.
+Warnings no session owns print under UNOWNED, addressed to the lead: doctor's context-size and context-lists
+findings while the CLAUDE.md files, memory index, skill listing or the newest session's lists run over their
+`contextFiles` budgets (every session on the machine re-reads that text, so it is no one area's), and the flags of a
+skill whose `Owner:` line is missing or names no session on the team. Each row names the check it came from; the
+lead fixes it, hands it on (`teamrig add --owner <session>`) or settles the check. The lead's `start` shows them
+too, and any session's `start` posts the lead one inbox line per warning it was not told of yet, at most 5 per
+start; `state/unowned-notices.json` remembers which, so a warning is told again only after it clears and comes back.
 By default it prints a short form
 within 3,000 characters: each kind with its count (and its detail when every flag of it shares one), at most 5
 of its tasks as short rows, then `+N more`; the same for skill flags. `--all` prints every flag in full.
