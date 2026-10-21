@@ -99,6 +99,18 @@ describe('the warnings no session owns go to the lead (T951)', () => {
     assert.equal((await kit.run(['start'], AS_ALPHA)).code, EXIT.ok);
     assert.equal((await leadNotices(kit)).length, 1);
   });
+
+  it("warns when the lead's line is refused, tells nothing, and tries again at the next start", async () => {
+    const kit = new CliHarness({ ...TEAM, register: { secretPatterns: ['hush-[0-9]+'] } });
+    await kit.files.write(join(SKILLS_DIR, 'orphan', 'SKILL.md'), '---\nname: orphan\ndescription: A skill whose owner line holds a secret.\n---\nOwner: hush-1234\nLast verified: 2030-01-01\n');
+    const refused = /^WARN lead was not told of a warning no session owns \(skill OWNER orphan\): the line looks like it holds a secret/m;
+    const first = await kit.run(['start'], AS_ALPHA);
+    assert.equal(first.code, EXIT.ok, first.stderr.join('\n'));
+    assert.match(first.stderr.join('\n'), refused);
+    assert.equal(first.stderr.some((line) => line.startsWith('NOTE ')), false, first.stderr.join('\n'));
+    assert.equal((await leadNotices(kit)).length, 0);
+    assert.match((await kit.run(['start'], AS_ALPHA)).stderr.join('\n'), refused);
+  });
 });
 
 /** The lead's inbox lines on warnings no session owns. */
