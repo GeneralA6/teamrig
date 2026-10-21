@@ -2063,6 +2063,10 @@ the lock, when no small step ended for `waitMinutes`, and its lock is renewed if
 expired, is removed by the next step that looks. An older kit does not know shares and may take a free lock while
 small steps run.
 
+A test run or a build a session starts outside it and outside `teamrig test` is refused by the
+[heavy guard](hooks.md#before-a-shell-command-the-heavy-guard), which names this call to run instead
+(`coordinator.heavy.unwrapped`, `deny` by default).
+
 Then it runs the command in the shell, its output streaming as it comes, and kills it with every process it started
 after `coordinator.heavy.maxRunMinutes` (45). The step ends, and frees the lock, only once that kill is done; on
 Windows the kill lists the host's processes again after each round and ends any process the step started while it was
@@ -3004,6 +3008,25 @@ vetted versions (or with `installs` set to `allow`) and hands no flag to npm; ot
 (`deny`, or `ask` for an ad-hoc run or an unvetted install when the team set it, `deny` when any part of the line is
 refused) with every reason; under `prompts.hookAsks: refuse` that `ask` is a `deny` whose reason says what to do
 instead.
+
+### teamrig hook heavy-guard
+
+Before a Bash or PowerShell command, refuses a test run or a build that neither `teamrig heavy` nor `teamrig test`
+starts: a package script named `test`, `t`, `tst`, `verify`, `check`, `coverage`, `build`, `typecheck` or `lint`
+(also with a suffix, as `test:unit`) run by npm, pnpm or yarn, and `tsc`, `jest`, `vitest` or `node --test`, also
+through `npx`. The reason names the `teamrig heavy` call that runs the same words under the host lock, a test inside
+`teamrig test` too, with the tab's session. See [Hooks and permissions](hooks.md#before-a-shell-command-the-heavy-guard).
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig hook heavy-guard < pre-tool-use.json
+```
+
+Output: nothing for a command that runs no test or build outside `teamrig heavy` and `teamrig test` (or with
+`coordinator.heavy.unwrapped` set to `allow`); otherwise a JSON `deny` naming the call to run instead.
 
 ### teamrig hook secret-guard
 

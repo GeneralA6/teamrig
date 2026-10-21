@@ -659,6 +659,16 @@ default) or with a known advisory, and any install it cannot vet: a range, a git
 exact version. A registry it cannot ask within 10 s vouches for nothing. `packageGuard.installs` (`deny` by default,
 `ask` or `allow`) sets what such a line gets; a team on a private registry sets `ask` or `allow`.
 
+## Tests and builds outside the host lock
+
+`teamrig heavy` runs the host's heavy steps one at a time, but only the steps started through it: a session that runs
+`npm test` straight competes with every other session's build for CPU and memory. Before each Bash or PowerShell
+command, the heavy guard reads the line with the push guard's parser and refuses a test run or a build (a `test`,
+`build`, `typecheck` or `lint` script and the like, `tsc`, `jest`, `vitest`, `node --test`) that neither `teamrig
+heavy` nor `teamrig test` starts, handing back the `teamrig heavy` call that runs the same words with the tab's
+session. `coordinator.heavy.unwrapped` (`deny` by default, or `allow`) sets what such a line gets; a missing or broken
+config keeps `deny`. A rule in a team's instructions can be missed; the guard holds it on every line.
+
 ## No prompt while nobody answers
 
 A permission prompt holds a session until a human answers it; overnight that is hours of a session doing nothing.

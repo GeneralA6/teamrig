@@ -12,6 +12,7 @@ they all stay silent, and only `hook restore-track` still records the session ([
 | `UserPromptSubmit` (each prompt) | `hook inbox-reminder` | Cancels a waiting automatic restart; shows new inbox lines; binds a tab started by hand by its title; records a Claude Code rename; tells the model when its budget holds it |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook push-guard` | Asks before a push to a protected branch; refuses a force-push or delete of one, and a git command run without the repository's hooks ([the commit guard](#before-a-shell-command-the-commit-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook package-guard` | Refuses a package runner that would fetch and run a package outside the project's lockfile, an install of a version the registry does not vouch for, and an `npx --no <bin>` that hands the bin's flag to npm ([the package guard](#before-a-shell-command-the-package-guard)) |
+| `PreToolUse` on `Bash` and `PowerShell` | `hook heavy-guard` | Refuses a test run or a build started outside `teamrig heavy` and `teamrig test`, naming the call that runs it under the host lock ([the heavy guard](#before-a-shell-command-the-heavy-guard)) |
 | `PreToolUse` on `Bash`, `PowerShell`, `Read` and `Grep` | `hook secret-guard` | Refuses a call that would print a secret file, a secret variable, the whole environment or a Kubernetes secret's data into the conversation ([the secret guard](#before-a-shell-command-or-a-read-the-secret-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook exec-guard` | Refuses a privileged command's review run as another session or the owner, and any `exec` call through a client changed after its build ([the exec guard](#before-a-shell-command-the-exec-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook readonly-allow` | With `readonlyShell.enabled`, lets a line whose every command provably only reads run without a permission prompt ([the read-only allow](#before-a-shell-command-the-read-only-allow)) |
@@ -278,9 +279,31 @@ the guard asks only the public one. A missing or broken config keeps `deny`, so 
 guard off. One refusal in a line refuses the whole line, naming every reason. Like the push guard, it reads only the
 line Claude runs, not a script or program that line starts.
 
-The guard does not read installs yet: `npm install <pkg>`, `pnpm add` and `yarn add` run unchecked. The plugin's
-[security skill](../security/SKILL.md) has the steps for vetting the version an install resolves and for pinning one
+The plugin's [security skill](../security/SKILL.md) has the steps for vetting a version by hand and for pinning one
 with overrides.
+
+## Before a shell command: the heavy guard
+
+A test run or a build started outside `teamrig heavy` runs outside the host lock, so it competes with every other
+session's heavy step for the host's CPU and memory. Before Claude runs a Bash or PowerShell command, the guard reads it
+as the push guard does and refuses each step that neither `teamrig heavy` nor `teamrig test` starts:
+
+- a package script run by npm, pnpm or yarn (`npm test`, `npm run build`, `pnpm run typecheck`) named `test`, `t`,
+  `tst`, `verify`, `check`, `coverage`, `build`, `typecheck` or `lint`, also with a suffix (`test:unit`);
+- `tsc`, `jest` and `vitest`, also through `npx`, and `node --test`.
+
+The reason names the call that runs the same words under the host lock, a test inside `teamrig test` too, with the
+tab's session (`<you>` when the tab is bound to none): "teamrig heavy guard: this line runs a test or a build outside
+the host lock, which keeps parallel sessions from starving the host. Run it as `teamrig heavy --session alpha --what
+'npm test' -- teamrig test --session alpha -- npm test`, in the background. ... [coordinator.heavy.unwrapped]". A
+step the line runs in another folder says where (`(from /work/app/sub)`), and as the call is written for a POSIX
+shell, a PowerShell line is told to run it in the Bash tool. A line that only names a step, in a commit message or a
+heredoc, runs as usual, and so does a line of several commands passed as one quoted word after `teamrig heavy ... --`.
+
+`coordinator.heavy.unwrapped` (`deny` by default, or `allow`) sets what such a line gets; a missing or broken config
+keeps `deny`. `teamrig test` alone counts as wrapped, as it does in the budget's count of heavy steps run outside the
+lock (`teamrig budget --misses`). Like the push guard, it reads only the line Claude runs, not a script that line
+starts.
 
 ## Asks off: a refusal instead of a prompt
 
