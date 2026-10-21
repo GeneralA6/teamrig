@@ -8,7 +8,7 @@ import { testConfig } from '../testing/config.ts';
 import { FakeClock } from '../testing/fake-clock.ts';
 import { FakeMergeGit, WORKTREE } from '../testing/fake-merge-git.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { reviewGateRefusal, taskOfBranch, type GatedChange, type GateTask, type ReviewGateSetup } from './review-gate-step.ts';
+import { isReviewClearance, REVIEW_CLEARANCES, reviewGateVerdict, taskOfBranch, type GatedChange, type GateTask, type ReviewGateSetup, type ReviewVerdict } from './review-gate-step.ts';
 import { ReviewHolds, type ReviewHold } from './review-holds.ts';
 
 const MINUTE_MS = 60_000;
@@ -38,8 +38,14 @@ class Gate {
     this.git.paths = paths;
   }
 
-  run(change: Partial<GatedChange> = {}, setup: ReviewGateSetup = SETUP): Promise<string | undefined> {
-    return reviewGateRefusal(
+  /** Why the gate holds the change; undefined when it lets it go. */
+  async run(change: Partial<GatedChange> = {}, setup: ReviewGateSetup = SETUP): Promise<string | undefined> {
+    const verdict = await this.verdict(change, setup);
+    return verdict.kind === 'held' ? verdict.reason : undefined;
+  }
+
+  verdict(change: Partial<GatedChange> = {}, setup: ReviewGateSetup = SETUP): Promise<ReviewVerdict> {
+    return reviewGateVerdict(
       setup,
       TimeZone.UTC,
       {
@@ -79,14 +85,23 @@ describe('taskOfBranch', () => {
   });
 });
 
-describe('reviewGateRefusal: what it holds', () => {
+describe('isReviewClearance', () => {
+  it('knows each way the gate lets a change go, and nothing else', () => {
+    assert.ok(REVIEW_CLEARANCES.every(isReviewClearance));
+    for (const value of ['clean', 'Approved', '', null, undefined, 1]) {
+      assert.equal(isReviewClearance(value), false, String(value));
+    }
+  });
+});
+
+describe('reviewGateVerdict: what it holds', () => {
   it('lets every change go where the repo has no review gate, reading nothing', async () => {
-    assert.equal(await new Gate(undefined).run({ config: { reviewGate: false } }), undefined);
+    assert.deepEqual(await new Gate(undefined).verdict({ config: { reviewGate: false } }), { kind: 'clear', review: 'off' });
   });
 
   it('lets a change go that hits no review path, holding nothing', async () => {
     const gate = new Gate(['src/app.ts', 'docsy.md']);
-    assert.equal(await gate.run(), undefined);
+    assert.deepEqual(await gate.verdict(), { kind: 'clear', review: 'untouched' });
     assert.equal(await gate.holds.read(CHANGE.repo, CHANGE.branch), undefined);
   });
 
@@ -134,12 +149,12 @@ describe('reviewGateRefusal: what it holds', () => {
   });
 });
 
-describe('reviewGateRefusal: the review check', () => {
+describe('reviewGateVerdict: the review check', () => {
   const checked = { config: { reviewGate: true, reviewCheck: CHECK } };
 
   it("clears a check path the review check passes, running it against the change's base", async () => {
     const gate = new Gate(['src/auth/login.ts']);
-    assert.equal(await gate.run(checked), undefined);
+    assert.deepEqual(await gate.verdict(checked), { kind: 'clear', review: 'checked' });
     assert.deepEqual(gate.checks, ['node review.js @ base']);
     assert.equal(await gate.holds.read(CHANGE.repo, CHANGE.branch), undefined);
     assert.ok(gate.said.includes('review check of t9-gate: clean'));
@@ -171,7 +186,7 @@ describe('reviewGateRefusal: the review check', () => {
   });
 });
 
-describe('reviewGateRefusal: answering a hold', () => {
+describe('reviewGateVerdict: answering a hold', () => {
   it('lands the same change once its reviewer approves it after the hold, not on an approval from before', async () => {
     const gate = new Gate(['package-lock.json']);
     gate.answer('approved', 'bravo');
@@ -180,7 +195,7 @@ describe('reviewGateRefusal: answering a hold', () => {
     assert.match((await gate.run()) ?? '', /^review hold H\w+ keeps t9-gate/);
     gate.clock.advance(5 * MINUTE_MS);
     gate.answer('approved', 'bravo');
-    assert.equal(await gate.run(), undefined);
+    assert.deepEqual(await gate.verdict(), { kind: 'clear', review: 'approved' });
     assert.ok(gate.said.some((line) => /^review hold H\w+ of t9-gate: bravo approved it$/.test(line)));
   });
 
@@ -219,7 +234,7 @@ describe('reviewGateRefusal: answering a hold', () => {
   });
 });
 
-describe('reviewGateRefusal: what it refuses outright', () => {
+describe('reviewGateVerdict: what it refuses outright', () => {
   it('refuses a branch that names no task of the session, and holds nothing', async () => {
     const gate = new Gate(['package-lock.json']);
     gate.tasks.set('T11', { owner: 'bravo', answer: null });

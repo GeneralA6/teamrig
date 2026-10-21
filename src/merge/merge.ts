@@ -28,7 +28,7 @@ import { LOCKFILE } from './manifest.ts';
 import type { MergeLog, MergeRecord } from './merge-log.ts';
 import { readPendingMerge, removePendingMerge, writePendingMerge, type PendingMerge } from './pending-merges.ts';
 import { checkExitCode, runReviewCheck } from './review-check.ts';
-import { reviewGateRefusal, type GatedChange, type ReviewGatePorts, type ReviewGateSetup } from './review-gate-step.ts';
+import { reviewGateVerdict, type GatedChange, type ReviewGatePorts, type ReviewGateSetup } from './review-gate-step.ts';
 import type { ReviewHolds } from './review-holds.ts';
 
 /**
@@ -336,7 +336,7 @@ function reviewGatePorts(setup: MergeSetup, ports: MergePorts, plan: Plan, takin
 
 /**
  * The checks on what the rebase made from `base` to `head`, under the lock `taking` holds: the dependency check (see
- * {@link dependencyCheckRefusal}), the review gate (see {@link reviewGateRefusal}) and, under `gated`, the self-merge
+ * {@link dependencyCheckRefusal}), the review gate (see {@link reviewGateVerdict}) and, under `gated`, the self-merge
  * step (see {@link gatedStep}). A new rebase makes a new change, so an approved gate hold binds it no more. Cleared lets
  * the merge go; else the refusal.
  */
@@ -347,9 +347,9 @@ async function checksOf(setup: MergeSetup, ports: MergePorts, plan: Plan, taking
   }
   const { top, branch, repo } = plan;
   const change: GatedChange = { session: plan.session, repo: repo.name, config: repo.config, top, branch, base, head };
-  const held = await reviewGateRefusal(setup.review, setup.zone, reviewGatePorts(setup, ports, plan, taking), change);
-  if (held !== undefined) {
-    return { kind: 'refused', reason: held };
+  const review = await reviewGateVerdict(setup.review, setup.zone, reviewGatePorts(setup, ports, plan, taking), change);
+  if (review.kind === 'held') {
+    return { kind: 'refused', reason: review.reason };
   }
   const gated = setup.gated === undefined ? undefined : await gatedStep(setup.gated, ports, plan, base, head);
   return gated?.kind === 'held' ? { kind: 'refused', reason: gated.reason } : { kind: 'cleared', gated };

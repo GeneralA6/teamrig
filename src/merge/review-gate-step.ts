@@ -14,7 +14,7 @@ import { holdBinds, holdId, type HeldChange, type HoldHit, type ReviewHold, type
  * `pushGuard.reviewPaths`) until its reviewer approves the branch's task; a `check` hit runs the repo's review check
  * first, and a clean check lets it go. A hold binds `base..head` and the tree they make: the same change lands once
  * its reviewer approved it after the hold was made (or its fallback leader did, from 30 minutes on); any other
- * change of the branch gets a new hold.
+ * change of the branch gets a new hold. A change it lets go says how it cleared, which the merges log keeps.
  */
 
 export interface ReviewGateSetup {
@@ -47,6 +47,28 @@ export interface GatedChange {
   readonly branch: string;
   readonly base: string;
   readonly head: string;
+}
+
+/**
+ * How the gate let a change go: the repo has no review gate (`off`), its paths hit no review entry (`untouched`), the
+ * review check cleared its check paths with no one looking (`checked`), or its reviewer approved its hold (`approved`).
+ */
+export const REVIEW_CLEARANCES = ['off', 'untouched', 'checked', 'approved'] as const;
+export type ReviewClearance = (typeof REVIEW_CLEARANCES)[number];
+
+export function isReviewClearance(value: unknown): value is ReviewClearance {
+  return REVIEW_CLEARANCES.some((clearance) => clearance === value);
+}
+
+/** The gate's word on one change: it goes, and how it cleared, or why it stays off the default branch. */
+export type ReviewVerdict = { readonly kind: 'clear'; readonly review: ReviewClearance } | { readonly kind: 'held'; readonly reason: string };
+
+function clear(review: ReviewClearance): ReviewVerdict {
+  return { kind: 'clear', review };
+}
+
+function held(reason: string): ReviewVerdict {
+  return { kind: 'held', reason };
 }
 
 /** A branch names its task as `t<n>-…`, after any folder part. */
@@ -100,34 +122,34 @@ function holdRefusal(hold: ReviewHold, zone: TimeZone, now: number, cause: strin
   );
 }
 
-/** Whether the change's existing hold is answered: undefined lets it land; else why it is still held. */
-async function answeredRefusal(zone: TimeZone, ports: ReviewGatePorts, hold: ReviewHold): Promise<string | undefined> {
+/** Whether the change's existing hold is answered: an approval lets it land; else why it is still held. */
+async function answeredVerdict(zone: TimeZone, ports: ReviewGatePorts, hold: ReviewHold): Promise<ReviewVerdict> {
   const createdAt = Date.parse(hold.createdAt);
   const answer = (await ports.taskOf(hold.task))?.answer ?? undefined;
   if (answer !== undefined && holdApproved(hold.reviewer, createdAt, answer)) {
     ports.say(`review hold ${hold.id} of ${hold.branch}: ${answer.by} approved it`);
-    return undefined;
+    return clear('approved');
   }
   const now = ports.clock.now();
   if (answer?.verdict === 'declined' && Date.parse(answer.at) > createdAt) {
     const note = answer.note === null ? '' : ` (${answer.note.replace(/\s+/g, ' ')})`;
-    return `review hold ${hold.id}: ${answer.by} declined ${hold.task}${note}; change ${hold.branch}, then merge again for a new hold`;
+    return held(`review hold ${hold.id}: ${answer.by} declined ${hold.task}${note}; change ${hold.branch}, then merge again for a new hold`);
   }
-  return holdRefusal(hold, zone, now, `it changes ${hitsText(hold.hits)}`);
+  return held(holdRefusal(hold, zone, now, `it changes ${hitsText(hold.hits)}`));
 }
 
 /** Holds a change no hold binds yet, or lets it go when its check paths came out clean. */
-async function newHoldRefusal(setup: ReviewGateSetup, zone: TimeZone, ports: ReviewGatePorts, change: GatedChange, held: HeldChange, hits: readonly ReviewHit[]): Promise<string | undefined> {
+async function newHoldVerdict(setup: ReviewGateSetup, zone: TimeZone, ports: ReviewGatePorts, change: GatedChange, bound: HeldChange, hits: readonly ReviewHit[]): Promise<ReviewVerdict> {
   const { session, repo, branch, base } = change;
   const holdHits = hits.map(({ path, entry }) => ({ path, glob: entry.glob }));
   const task = taskOfBranch(branch);
   if (task === undefined) {
-    return `${branch} changes ${hitsText(holdHits)}, which the review gate holds for a review of its task, but the branch names none: name it t<n>-… after your task`;
+    return held(`${branch} changes ${hitsText(holdHits)}, which the review gate holds for a review of its task, but the branch names none: name it t<n>-… after your task`);
   }
   const owner = (await ports.taskOf(task))?.owner;
   if (owner !== session) {
     const whose = owner === undefined ? 'is not in the register' : `is ${owner}'s`;
-    return `${branch} changes review paths, so its reviewer approves its task ${task}, which ${whose}: merge a branch named after a task of ${session}`;
+    return held(`${branch} changes review paths, so its reviewer approves its task ${task}, which ${whose}: merge a branch named after a task of ${session}`);
   }
   const checks = needsCheck(hits);
   const argv = checks ? change.config.reviewCheck : undefined;
@@ -139,16 +161,16 @@ async function newHoldRefusal(setup: ReviewGateSetup, zone: TimeZone, ports: Rev
   const holdClass = holdClassOf(hits, check);
   if (holdClass === undefined) {
     ports.say(`review check of ${branch}: clean`);
-    return undefined;
+    return clear('checked');
   }
   const route = reviewRoute(holdClass, session, setup.tree, setup.roles);
   if (route.kind === 'none') {
-    return `${branch} changes ${hitsText(holdHits)}, which the review gate holds, but ${route.reason}`;
+    return held(`${branch} changes ${hitsText(holdHits)}, which the review gate holds, but ${route.reason}`);
   }
   const now = ports.clock.now();
   const hold: ReviewHold = {
-    ...held,
-    id: holdId(held),
+    ...bound,
+    id: holdId(bound),
     task,
     session,
     holdClass,
@@ -159,34 +181,34 @@ async function newHoldRefusal(setup: ReviewGateSetup, zone: TimeZone, ports: Rev
   };
   await ports.holds.write(hold);
   ports.say(`review hold ${hold.id} of ${repo} ${branch}: waits on ${route.who} (${holdClass})`);
-  return holdRefusal(hold, zone, now, causeOf(holdHits, check, checks && argv === undefined));
+  return held(holdRefusal(hold, zone, now, causeOf(holdHits, check, checks && argv === undefined)));
 }
 
 /**
- * The gate on one change (see the module comment): undefined lets the push go; else why it stays off the default
- * branch, with the command that asks its reviewer.
+ * The gate on one change (see the module comment): it lets the push go and says how it cleared; else it says why the
+ * change stays off the default branch, with the command that asks its reviewer.
  */
-export async function reviewGateRefusal(setup: ReviewGateSetup, zone: TimeZone, ports: ReviewGatePorts, change: GatedChange): Promise<string | undefined> {
+export async function reviewGateVerdict(setup: ReviewGateSetup, zone: TimeZone, ports: ReviewGatePorts, change: GatedChange): Promise<ReviewVerdict> {
   const { top, repo, branch, base, head } = change;
   if (!change.config.reviewGate) {
-    return undefined;
+    return clear('off');
   }
   const paths = ports.git.changedPaths(top, base, head);
   if (paths === undefined) {
-    return `could not read what ${branch} changes against ${short(base)}, so the review gate cannot clear it`;
+    return held(`could not read what ${branch} changes against ${short(base)}, so the review gate cannot clear it`);
   }
   const hits = reviewHits(paths, [...GENERIC_REVIEW_PATHS, ...setup.reviewPaths]);
   if (hits.length === 0) {
-    return undefined;
+    return clear('untouched');
   }
   const tree = ports.git.treeOf(top, head);
   if (tree === undefined) {
-    return `could not read the tree ${short(head)} makes, so the review gate cannot bind a hold to it`;
+    return held(`could not read the tree ${short(head)} makes, so the review gate cannot bind a hold to it`);
   }
-  const held: HeldChange = { repo, branch, base, head, tree };
+  const bound: HeldChange = { repo, branch, base, head, tree };
   const hold = await ports.holds.read(repo, branch);
-  if (hold !== undefined && holdBinds(hold, held)) {
-    return answeredRefusal(zone, ports, hold);
+  if (hold !== undefined && holdBinds(hold, bound)) {
+    return answeredVerdict(zone, ports, hold);
   }
-  return newHoldRefusal(setup, zone, ports, change, held, hits);
+  return newHoldVerdict(setup, zone, ports, change, bound, hits);
 }
