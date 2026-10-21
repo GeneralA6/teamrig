@@ -527,6 +527,20 @@ export interface HeavyConfig {
   readonly memoryFloorMb: number;
   /** The MB held for a small step with no ledger record of its peak yet. */
   readonly smallReserveMb: number;
+  /** What a Bash or PowerShell call that runs a test suite or a build outside `teamrig heavy` and `teamrig test` does. */
+  readonly unwrapped: UnwrappedHeavySteps;
+}
+
+/**
+ * A test suite or a build run outside the host lock (`npm test`, `npm run build`, `tsc`, `node --test`): `deny`
+ * refuses it and hands back the `teamrig heavy` call that runs it, `allow` lets it run.
+ */
+export type UnwrappedHeavySteps = 'deny' | 'allow';
+
+export const UNWRAPPED_HEAVY_STEPS: readonly UnwrappedHeavySteps[] = ['deny', 'allow'];
+
+export function isUnwrappedHeavySteps(value: unknown): value is UnwrappedHeavySteps {
+  return UNWRAPPED_HEAVY_STEPS.some((choice) => choice === value);
 }
 
 /** How a coordinator step waits. */

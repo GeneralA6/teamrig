@@ -573,6 +573,12 @@
               "minimum": 0,
               "maximum": 1048576,
               "default": 2048
+            },
+            "unwrapped": {
+              "description": "A Bash or PowerShell call that runs a test suite or a build (npm test, npm run build, tsc, node --test, npx vitest) outside teamrig heavy and teamrig test, so outside the host lock: deny refuses it and hands back the teamrig heavy call that runs it, allow lets it run.",
+              "type": "string",
+              "enum": ["deny", "allow"],
+              "default": "deny"
             }
           }
         },

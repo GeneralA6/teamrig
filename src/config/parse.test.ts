@@ -29,7 +29,7 @@ describe('parseConfig', () => {
     assert.deepEqual(config.budget, DEFAULT_BUDGET);
     assert.deepEqual(config.coordinator, {
       schedule: {},
-      heavy: { lockTtlMinutes: 150, maxRunMinutes: 45, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048 },
+      heavy: { lockTtlMinutes: 150, maxRunMinutes: 45, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048, unwrapped: 'deny' },
       wait: { pollSeconds: 30, maxMinutes: 60 },
       gateTimeoutSeconds: 20,
       claims: { maxMinutes: 120 },
@@ -367,7 +367,16 @@ describe('parseConfig', () => {
   it('keeps the coordinator folder, host lock and heavy step limits', () => {
     const coordinator = {
       dir: 'data/deploys',
-      heavy: { lockPath: 'data/deploys/host.lock', lockTtlMinutes: 90, maxRunMinutes: 80, waitMinutes: 0, memorySampleSeconds: 0, memoryFloorMb: 0, smallReserveMb: 512 },
+      heavy: {
+        lockPath: 'data/deploys/host.lock',
+        lockTtlMinutes: 90,
+        maxRunMinutes: 80,
+        waitMinutes: 0,
+        memorySampleSeconds: 0,
+        memoryFloorMb: 0,
+        smallReserveMb: 512,
+        unwrapped: 'allow',
+      },
       wait: { pollSeconds: 5, maxMinutes: 0 },
       gateTimeoutSeconds: 45,
       claims: { maxMinutes: 90 },
@@ -514,7 +523,11 @@ describe('parseConfig', () => {
   it('reports an empty coordinator folder or lock path and limits out of range', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,
-      coordinator: { dir: ' ', heavy: { lockPath: '', lockTtlMinutes: 5, waitMinutes: -1, memorySampleSeconds: 601, memoryFloorMb: -1, smallReserveMb: 1_048_577 }, wait: { pollSeconds: 0 } },
+      coordinator: {
+        dir: ' ',
+        heavy: { lockPath: '', lockTtlMinutes: 5, waitMinutes: -1, memorySampleSeconds: 601, memoryFloorMb: -1, smallReserveMb: 1_048_577, unwrapped: 'ask' },
+        wait: { pollSeconds: 0 },
+      },
     });
     assert.deepEqual(paths(issues).sort(), [
       'coordinator.dir',
@@ -523,12 +536,13 @@ describe('parseConfig', () => {
       'coordinator.heavy.memoryFloorMb',
       'coordinator.heavy.memorySampleSeconds',
       'coordinator.heavy.smallReserveMb',
+      'coordinator.heavy.unwrapped',
       'coordinator.heavy.waitMinutes',
       'coordinator.wait.pollSeconds',
     ]);
     assert.deepEqual(config.coordinator, {
       schedule: {},
-      heavy: { lockTtlMinutes: 150, maxRunMinutes: 45, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048 },
+      heavy: { lockTtlMinutes: 150, maxRunMinutes: 45, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048, unwrapped: 'deny' },
       wait: { pollSeconds: 30, maxMinutes: 60 },
       gateTimeoutSeconds: 20,
       claims: { maxMinutes: 120 },
