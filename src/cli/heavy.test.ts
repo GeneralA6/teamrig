@@ -399,13 +399,30 @@ describe('teamrig heavy --small', () => {
       whileRunning = [kit.files.get(LOCK), JSON.parse(kit.files.get(`${SHARED}/id-1.json`) ?? '{}')];
     });
     const result = await kit.run(SPECS, { steps });
-    const lines = ['2030-01-08 10:00:00 UTC sharing the host: 2048 MB held for it (8000 MB free, 0 other small steps)', '2030-01-08 10:00:00 UTC running: specs (killed after 45m)', 'DONE exit 0'];
+    const lines = ['2030-01-08 10:00:00 UTC sharing the host: 2048 MB held for it (8000 MB free, 0 other small steps)', '2030-01-08 10:00:00 UTC running: specs (killed after 10m)', 'DONE exit 0'];
     assert.deepEqual(result, { code: 0, stdout: lines, stderr: [] });
     const share = { token: 'id-1', pid: 4242, session: 'alpha', purpose: 'heavy: specs', kit: KIT_VERSION, acquiredAt: '2030-01-08T10:00:00.000Z', expiresAt: '2030-01-08T12:30:00.000Z', reserveMb: 2048 };
     assert.deepEqual(whileRunning, [undefined, share]);
     assert.equal(kit.files.get(`${SHARED}/id-1.json`), undefined, 'the share is released');
     const start = { type: 'heavy', id: 'id-2', session: 'alpha', what: 'specs', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', shared: true, startedAt: '2030-01-08T10:00:00.000Z', endedAt: null, exitCode: null };
     assert.deepEqual(ledgerOf(kit), [start, { ...start, endedAt: '2030-01-08T10:05:00.000Z', exitCode: 0 }]);
+  });
+
+  it('kills it after coordinator.heavy.smallMaxRunMinutes, or a shorter --max-minutes', async () => {
+    const { kit, steps } = harness({ ...TEAM, coordinator: { heavy: { smallMaxRunMinutes: 12 } } });
+    assert.equal((await kit.run(SPECS, { steps })).stdout[1], '2030-01-08 10:00:00 UTC running: specs (killed after 12m)');
+    const shorter = ['heavy', '--session', 'alpha', '--what', 'specs', '--small', '--max-minutes', '5', '--', 'npm', 'test'];
+    assert.equal((await kit.run(shorter, { steps })).stdout[1], '2030-01-08 10:00:00 UTC running: specs (killed after 5m)');
+    assert.deepEqual(steps.ran.map((request) => request.timeoutMs), [12 * MINUTE, 5 * MINUTE]);
+  });
+
+  it('refuses a --max-minutes past coordinator.heavy.smallMaxRunMinutes before sharing the host', async () => {
+    const { kit, steps } = harness();
+    const longer = ['heavy', '--session', 'alpha', '--what', 'specs', '--small', '--max-minutes', '11', '--', 'npm', 'test'];
+    const result = await kit.run(longer, { steps });
+    assert.equal(result.code, 64);
+    assert.match(result.stderr.join('\n'), /--max-minutes with --small is a whole number from 1 to 10 \(coordinator\.heavy\.smallMaxRunMinutes\): a longer step runs without --small/);
+    assert.deepEqual([steps.ran, kit.files.get(`${SHARED}/id-1.json`), kit.files.get(LOCK)], [[], undefined, undefined]);
   });
 
   it('holds for it the most its latest 20 runs under the same session and label held, with a quarter more', async () => {

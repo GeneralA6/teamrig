@@ -29,7 +29,7 @@ describe('parseConfig', () => {
     assert.deepEqual(config.budget, DEFAULT_BUDGET);
     assert.deepEqual(config.coordinator, {
       schedule: {},
-      heavy: { lockTtlMinutes: 150, maxRunMinutes: 45, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048 },
+      heavy: { lockTtlMinutes: 150, maxRunMinutes: 45, smallMaxRunMinutes: 10, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048 },
       wait: { pollSeconds: 30, maxMinutes: 60 },
       gateTimeoutSeconds: 20,
       claims: { maxMinutes: 120 },
@@ -367,7 +367,7 @@ describe('parseConfig', () => {
   it('keeps the coordinator folder, host lock and heavy step limits', () => {
     const coordinator = {
       dir: 'data/deploys',
-      heavy: { lockPath: 'data/deploys/host.lock', lockTtlMinutes: 90, maxRunMinutes: 80, waitMinutes: 0, memorySampleSeconds: 0, memoryFloorMb: 0, smallReserveMb: 512 },
+      heavy: { lockPath: 'data/deploys/host.lock', lockTtlMinutes: 90, maxRunMinutes: 80, smallMaxRunMinutes: 80, waitMinutes: 0, memorySampleSeconds: 0, memoryFloorMb: 0, smallReserveMb: 512 },
       wait: { pollSeconds: 5, maxMinutes: 0 },
       gateTimeoutSeconds: 45,
       claims: { maxMinutes: 90 },
@@ -388,6 +388,18 @@ describe('parseConfig', () => {
     const { config, issues } = parseConfig({ ...ROSTER, coordinator: { heavy: { lockTtlMinutes: 30 } } });
     assert.deepEqual(issues, []);
     assert.equal(config.coordinator.heavy.maxRunMinutes, 20);
+  });
+
+  it('cuts a small step limit longer than a step to it, and says so', () => {
+    const { config, issues } = parseConfig({ ...ROSTER, coordinator: { heavy: { maxRunMinutes: 30, smallMaxRunMinutes: 40 } } });
+    assert.deepEqual(paths(issues), ['coordinator.heavy.smallMaxRunMinutes']);
+    assert.equal(config.coordinator.heavy.smallMaxRunMinutes, 30);
+  });
+
+  it('fits the default small step limit to a short step limit without an issue', () => {
+    const { config, issues } = parseConfig({ ...ROSTER, coordinator: { heavy: { maxRunMinutes: 5 } } });
+    assert.deepEqual(issues, []);
+    assert.equal(config.coordinator.heavy.smallMaxRunMinutes, 5);
   });
 
   it('reads the reset blackout and the repositories integrate lands, each repository from its defaults', () => {
@@ -528,7 +540,7 @@ describe('parseConfig', () => {
     ]);
     assert.deepEqual(config.coordinator, {
       schedule: {},
-      heavy: { lockTtlMinutes: 150, maxRunMinutes: 45, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048 },
+      heavy: { lockTtlMinutes: 150, maxRunMinutes: 45, smallMaxRunMinutes: 10, waitMinutes: 60, memorySampleSeconds: 15, memoryFloorMb: 4096, smallReserveMb: 2048 },
       wait: { pollSeconds: 30, maxMinutes: 60 },
       gateTimeoutSeconds: 20,
       claims: { maxMinutes: 120 },

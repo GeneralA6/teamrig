@@ -28,14 +28,23 @@ const RESERVE_RUNS = 20;
 /** A small step's reserve is the most its latest runs held, with this margin. */
 const RESERVE_MARGIN = 1.25;
 
-/** `--max-minutes`: whole minutes from 1 to the lock's TTL less its margin, so the step never outlives its lock; unset, the config's. */
-function maxRunMinutesOf(args: ParsedArgs, heavy: HeavyConfig): number {
+/**
+ * `--max-minutes`: whole minutes from 1 to the lock's TTL less its margin, so the step never outlives its lock, and for
+ * a small step to `smallMaxRunMinutes`, so a step that shares the host stays short; unset, the config's.
+ */
+function maxRunMinutesOf(args: ParsedArgs, heavy: HeavyConfig, small: boolean): number {
   const text = args.flags.get('max-minutes');
   if (text === undefined) {
-    return heavy.maxRunMinutes;
+    return small ? heavy.smallMaxRunMinutes : heavy.maxRunMinutes;
+  }
+  const minutes = /^\d+$/.test(text) ? Number(text) : Number.NaN;
+  if (small) {
+    if (!(minutes >= 1 && minutes <= heavy.smallMaxRunMinutes)) {
+      throw new UsageError(`--max-minutes with --small is a whole number from 1 to ${heavy.smallMaxRunMinutes} (coordinator.heavy.smallMaxRunMinutes): a longer step runs without --small`);
+    }
+    return minutes;
   }
   const longest = heavy.lockTtlMinutes - HEAVY_TTL_MARGIN_MINUTES;
-  const minutes = /^\d+$/.test(text) ? Number(text) : Number.NaN;
   if (!(minutes >= 1 && minutes <= longest)) {
     throw new UsageError(`--max-minutes is a whole number from 1 to ${longest} (coordinator.heavy.lockTtlMinutes less ${HEAVY_TTL_MARGIN_MINUTES})`);
   }
@@ -218,7 +227,8 @@ interface Step {
  * every `memorySampleSeconds`, the most its process tree held and the least free memory the host had. Its processes get `$TEAMRIG_HOST_LOCK`,
  * so a `heavy` among them (a git hook's checks) runs at once under this lock. With `--small` (a spec run, a lint) the
  * step shares the host with other small steps instead, while the host keeps `memoryFloorMb` free besides the MB held
- * for them (`reserveMbOf`); a step without it waits for them to end. Once the shell that started it ends (Claude Code's
+ * for them (`reserveMbOf`); a step without it waits for them to end. A small step is killed after `smallMaxRunMinutes`
+ * instead, and its `--max-minutes` goes no higher. Once the shell that started it ends (Claude Code's
  * reaper ends a Bash tool's shell alone), it stops waiting for the lock, or kills its step and records exit 129, and
  * frees the lock. With `--pre-push` (a git pre-push hook's checks) it reuses their fresh pass on a clean tree, records
  * one when they pass, and declines a push whose checks waited past PRE_PUSH_MAX_WAIT_MS for the lock (push-pass.ts).
@@ -232,7 +242,8 @@ export async function heavy(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
   const { coordinator } = config;
   const zone = teamZone(config, runtime);
   const say = logLineOf(runtime, zone);
-  const maxRunMinutes = maxRunMinutesOf(args, coordinator.heavy);
+  const small = args.switches.has('small');
+  const maxRunMinutes = maxRunMinutesOf(args, coordinator.heavy, small);
   const places = coordinatorPlaces(coordinator, kit.paths);
   const lock = hostLockOf(runtime, places.hostLock, coordinator.heavy);
   const parent = await parentLockOf(runtime, lock, say);
@@ -250,7 +261,6 @@ export async function heavy(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
     }
     refuseAfterCutoff(runtime, coordinator.schedule.heavyCutoffUtc, zone);
     const queuedAt = runtime.clock.now();
-    const small = args.switches.has('small');
     const share: ShareRequest | undefined = small
       ? { reserveMb: await reserveMbOf(runtime, places.ledger, session, what, coordinator.heavy), floorMb: coordinator.heavy.memoryFloorMb, freeMb: () => runtime.memory.freeMb() }
       : undefined;
