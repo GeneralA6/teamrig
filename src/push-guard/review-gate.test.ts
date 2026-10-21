@@ -4,7 +4,7 @@ import { LeadTree } from '../config/lead-tree.ts';
 import type { ReviewPath } from '../config/types.ts';
 import type { ApprovalAnswer } from '../register/fold.ts';
 import { testConfig } from '../testing/config.ts';
-import { fallbackOpen, holdApproved, holdClassOf, needsCheck, REVIEW_FALLBACK_MS, reviewRoute, type CheckOutcome } from './review-gate.ts';
+import { fallbackOpen, holdApproved, holdClassOf, needsCheck, REVIEW_FALLBACK_MS, reviewRoute, type CheckOutcome, type Reviewer } from './review-gate.ts';
 import type { ReviewHit } from './review-paths.ts';
 
 function hit(path: string, mode: ReviewPath['mode'], cls: ReviewPath['class']): ReviewHit {
@@ -79,7 +79,7 @@ describe('reviewRoute', () => {
 
 describe('holdApproved and fallbackOpen', () => {
   const created = Date.parse('2030-01-08T10:00:00.000Z');
-  const route = { kind: 'route', who: 'security', fallback: 'alpha' } as const;
+  const route: Reviewer = { who: 'security', fallback: 'alpha' };
   const answer = (by: string, minutes: number, verdict: ApprovalAnswer['verdict'] = 'approved'): ApprovalAnswer => ({
     verdict,
     by,
