@@ -206,7 +206,8 @@ Before Claude runs a Bash or PowerShell command, the guard reads it and decides:
 - **Asks the human**: a push that updates a protected branch. The reason:
   "This push updates a protected branch (main, master) while other sessions may be working. Confirm, or push your
   own branch and rebase it onto the current one. To stop asking about normal pushes, set pushGuard.pushToProtected
-  in the team's config.json to allow, or to lead to have the lead approve them." Commits over the size rule (400 changed non-test lines or 15
+  in the team's config.json to allow, to lead to have the lead approve them, or to gated to let teamrig merge take
+  the changes that hold its gates." Commits over the size rule (400 changed non-test lines or 15
   files without a `Large-commit:` line) are listed with it; with `commits.gate: refuse` they turn the ask into a
   refusal. A `--force-with-lease` push is asked with its own reason, which does not name the switch. Under
   `prompts.hookAsks: refuse` each question here is a refusal instead, without the switch hint (see
@@ -216,16 +217,24 @@ Before Claude runs a Bash or PowerShell command, the guard reads it and decides:
   and any large commits listed; Claude Code's own permissions still decide. `--force-with-lease` and doubts still
   ask, refusals stay, and `commits.gate: refuse` still refuses large commits.
 - **The lead decides**, when `pushGuard.pushToProtected` is `lead` (T684): a normal push to a protected branch runs
-  with a note when the lead pushes ("... through: the lead (lead) pushes unasked") or when the lead approved one of
-  the session's waiting tasks with `teamrig approve` ("... through: lead approved T1; set its next status once
-  pushed, as the approval covers this push only"). Otherwise it is refused, never asked: "This push to a protected
-  branch (main, master) needs a lead's approval, not the human's: lead has approved no waiting task of web's.
-  Ask on the register: `teamrig set <task> --status waiting --waits approval:lead --note "<branch, what it lands,
-  its tests>"`, take your next task, and push once lead approves it (`teamrig approve`)." A child team's lead is
+  with a note when the lead pushes ("... through: the lead (lead) pushes unasked [pushGuard.pushToProtected:
+  lead].") or when the lead approved one of the session's waiting tasks with `teamrig approve` ("... through: lead
+  approved T1; set its next status once pushed, as the approval covers this push only [pushGuard.pushToProtected:
+  lead]."). Otherwise it is refused, never asked: "This push to a protected branch (main, master) needs a lead's
+  approval, not the human's: lead has approved no waiting task of web's. Ask on the register: `teamrig set <task>
+  --status waiting --waits approval:lead --note "<branch, what it lands, its tests>"`, take your next task, and push
+  once lead approves it (`teamrig approve`). [pushGuard.pushToProtected]" A child team's lead is
   no exception: its own push runs only while the parent team's lead's approval stands on one of its tasks
   (`approval:app/lead`, answered with `teamrig approve web/T3`), and a parent team with no config here refuses it,
   saying so. A tab not bound to a team session, or a register the guard cannot read, is refused the same way with
   that reason. `--force-with-lease` and doubts still ask, and refusals and `commits.gate: refuse` stay.
+- **`teamrig merge` takes it**, when `pushGuard.pushToProtected` is `gated` (T858): a hand push is cleared as under
+  `lead`, its note ending `[pushGuard.pushToProtected: gated]`. Otherwise it is refused, never asked: "This push to
+  a protected branch (main, master) needs a lead's approval, not the human's: <why>. Merge the branch with `teamrig
+  merge` instead: a change that holds the self-merge gates merges with no approval, and one that misses a gate is
+  held for a leader's, saying how to ask. [pushGuard.pushToProtected: gated]" (see
+  [merge](commands.md#teamrig-merge), Gate holds). `--force-with-lease` and doubts still ask, and refusals and
+  `commits.gate: refuse` stay.
 - **Refuses**: a force-push (`--force`, a `+` refspec), a delete or `--mirror` of a protected branch:
   "Force-pushing, mirroring or deleting a protected branch (main, master) is refused: it can overwrite other
   sessions' commits. Push your own branch, or use --force-with-lease if you truly mean it."
@@ -446,7 +455,8 @@ It always refuses and never asks; no config key turns it off. The guard reads on
 
 A tree's pass record (`<git common dir>/local-ci/<tree sha>.json`) says every local check passed on that tree, so a
 push or a merge of the same tree skips them. Only the repo's local runner writes one, from its pre-push hook or
-`ship.ts check`. Before Claude runs a Write, Edit, MultiEdit or NotebookEdit call, `hook pass-record-guard` refuses
+`ship.ts check`. Under `pushGuard.pushToProtected: gated`, the pass gate of `teamrig merge` reads the record of the
+rebased tree. Before Claude runs a Write, Edit, MultiEdit or NotebookEdit call, `hook pass-record-guard` refuses
 one whose file sits in a `local-ci` folder; before a Bash or PowerShell call, one whose line names `local-ci` as a
 word of its own (`.git/local-ci/x.json`, `'local-ci'` in inline code, not `my-local-ci`), its reads too, since a
 shell line's writes cannot be told from its reads. The Read and Grep tools stay open for reading a record and

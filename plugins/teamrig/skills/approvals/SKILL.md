@@ -10,7 +10,9 @@ you: `teamrig set T<n> --status waiting --waits approval:<lead> --note "<branch,
 get one inbox line naming the task and its note. Answer it from the register the same day; it goes to the human
 only when it holds owner-gated content (step 3). Under `pushGuard.pushToProtected: lead` your approval is what
 lets the session's push to a protected branch through, and your own pushes go through unasked: hold them to the
-same checklist.
+same checklist. Under `gated`, a change that misses a self-merge gate waits on you with a gate hold: its note names
+the hold, and the hold's refusal names the gates it missed. Check those gates against the checklist; your approval
+lets `teamrig merge` take that base, head and tree only.
 
 ## 1. Read the request
 
