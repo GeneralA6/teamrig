@@ -214,6 +214,8 @@ export interface PushGuardConfig {
   readonly protectedBranches: readonly string[];
   /** What a normal push to a protected branch does. */
   readonly pushToProtected: PushToProtected;
+  /** The team's review gate entries, read on top of teamrig's generic list: adding one narrows, none removes a generic one. */
+  readonly reviewPaths: readonly ReviewPath[];
 }
 
 /**
@@ -234,15 +236,27 @@ export function isPushToProtected(value: unknown): value is PushToProtected {
  * How the review gate treats a path a change touches (T800 §2.2): `always` waits on the entry's reviewer; `check` runs
  * the repo's review check, which clears the change or sends it to a reviewer.
  */
-export type ReviewMode = 'always' | 'check';
+export type ReviewPathMode = 'always' | 'check';
+
+export const REVIEW_PATH_MODES: readonly ReviewPathMode[] = ['always', 'check'];
+
+export function isReviewPathMode(value: unknown): value is ReviewPathMode {
+  return REVIEW_PATH_MODES.some((mode) => mode === value);
+}
 
 /** Who reviews a held change: security, or the session's leader (the lead or a sub-lead, T781). */
 export type ReviewClass = 'security' | 'leader';
 
+export const REVIEW_CLASSES: readonly ReviewClass[] = ['security', 'leader'];
+
+export function isReviewClass(value: unknown): value is ReviewClass {
+  return REVIEW_CLASSES.some((reviewer) => reviewer === value);
+}
+
 /** One review gate entry: the paths it covers (see `reviewPathMatcher`), how they are reviewed, and by whom. */
 export interface ReviewPath {
   readonly glob: string;
-  readonly mode: ReviewMode;
+  readonly mode: ReviewPathMode;
   readonly class: ReviewClass;
 }
 
@@ -673,6 +687,18 @@ export interface CoordinatorRepoConfig {
    * change go, anything else refuses it. Unset: the gate refuses every dependency change.
    */
   readonly dependencyCheck?: readonly string[];
+  /**
+   * Hold a branch (integrate) whose changed paths hit a review entry (teamrig's generic list and
+   * `pushGuard.reviewPaths`) until its reviewer approves it, or `reviewCheck` clears its `check` hits (T800 §2.2).
+   */
+  readonly reviewGate: boolean;
+  /**
+   * With `reviewGate`, what a `check` hit runs: a program and its arguments, run without a shell under the host lock in
+   * the branch's checkout after the rebase, with the base commit in `TEAMRIG_REVIEW_BASE`. Exit 0 clears the change, 3
+   * holds it for security with the findings it prints, anything else for the session's leader, as a broken check is
+   * no pass. Unset: a `check` hit is held like an `always` one.
+   */
+  readonly reviewCheck?: readonly string[];
   /** After the push, fast-forward the main checkout to it: only a fast-forward, only on the default branch with no tracked changes. */
   readonly followMainCheckout: boolean;
   /**

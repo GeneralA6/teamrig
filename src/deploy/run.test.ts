@@ -30,7 +30,7 @@ const FLOW = { name: 'flow', command: ['node', 'checks/flow.js'] };
 const AFTER_PULL = ['node', 'scripts/build-cli.js'];
 const COMMAND = ['node', 'tools/deploy.js'];
 const DEPLOY: DeployConfig = { targets: ['api', 'workers'], checks: [FLOW], afterPull: [AFTER_PULL], command: COMMAND };
-const PIPELINE: CoordinatorRepoConfig = { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], dependencyGate: false, followMainCheckout: false, deploy: DEPLOY };
+const PIPELINE: CoordinatorRepoConfig = { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], dependencyGate: false, reviewGate: false, followMainCheckout: false, deploy: DEPLOY };
 const REQUEST: DeployRequest = { session: 'po', repo: undefined, dir: '/elsewhere' };
 const HEAVY_MS = DEFAULT_HEAVY.maxRunMinutes * 60_000;
 const SECRET = ['db password', '=', 'hunter2'].join('');
@@ -298,7 +298,7 @@ describe('deployRepo', () => {
 
   it('deploys the repository named, else the one the folder is in, else the only one with a deploy block', async () => {
     const CONSOLE: CoordinatorRepoConfig = { ...PIPELINE, mainCheckout: '/repo/console' };
-    const SITE: CoordinatorRepoConfig = { mainCheckout: '/repo/site', deploysOnPush: ['cloud-web'], dependencyGate: false, followMainCheckout: false };
+    const SITE: CoordinatorRepoConfig = { mainCheckout: '/repo/site', deploysOnPush: ['cloud-web'], dependencyGate: false, reviewGate: false, followMainCheckout: false };
     const two = { pipeline: PIPELINE, console: CONSOLE, site: SITE };
     refused(await new World({ repos: two }).run({ ...REQUEST, repo: 'nope' }), 'nope is not in coordinator.repos (with a deploy block: pipeline, console)');
     refused(await new World({ repos: two }).run({ ...REQUEST, repo: 'site' }), 'coordinator.repos.site has no deploy block, so there is nothing to deploy it with (with a deploy block: pipeline, console)');

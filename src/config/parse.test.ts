@@ -455,8 +455,8 @@ describe('parseConfig', () => {
     assert.deepEqual(issues, []);
     assert.deepEqual(config.coordinator.schedule, coordinator.schedule);
     assert.deepEqual(config.coordinator.repos, {
-      api: { mainCheckout: 'C:/src/api', deploysOnPush: ['cloud-api'], dependencyGate: false, followMainCheckout: true },
-      web: { mainCheckout: 'repos/web', deploysOnPush: [], dependencyGate: true, followMainCheckout: false },
+      api: { mainCheckout: 'C:/src/api', deploysOnPush: ['cloud-api'], dependencyGate: false, reviewGate: false, followMainCheckout: true },
+      web: { mainCheckout: 'repos/web', deploysOnPush: [], dependencyGate: true, reviewGate: false, followMainCheckout: false },
     });
   });
 
@@ -470,8 +470,23 @@ describe('parseConfig', () => {
     const { config, issues } = parseConfig({ ...ROSTER, coordinator: { repos } });
     assert.deepEqual(paths(issues).sort(), ['coordinator.repos.bad.dependencyCheck', 'coordinator.repos.open.dependencyCheck']);
     assert.match(issues.find((issue) => issue.path === 'coordinator.repos.open.dependencyCheck')?.message ?? '', /runs only with dependencyGate true/);
-    assert.deepEqual(config.coordinator.repos['gated'], { mainCheckout: 'repos/gated', deploysOnPush: [], dependencyGate: true, dependencyCheck: check, followMainCheckout: false });
+    assert.deepEqual(config.coordinator.repos['gated'], { mainCheckout: 'repos/gated', deploysOnPush: [], dependencyGate: true, dependencyCheck: check, reviewGate: false, followMainCheckout: false });
     assert.equal(config.coordinator.repos['bad']?.dependencyCheck, undefined);
+  });
+
+  it('reads the review check a gated repository runs, and reports one that never runs or is no program', () => {
+    const check = ['node', 'tools/review-change.ts'];
+    const repos = {
+      gated: { mainCheckout: 'repos/gated', reviewGate: true, reviewCheck: check },
+      open: { mainCheckout: 'repos/open', reviewCheck: check },
+      bad: { mainCheckout: 'repos/bad', reviewGate: true, reviewCheck: 'node review.ts' },
+    };
+    const { config, issues } = parseConfig({ ...ROSTER, coordinator: { repos } });
+    assert.deepEqual(paths(issues).sort(), ['coordinator.repos.bad.reviewCheck', 'coordinator.repos.open.reviewCheck']);
+    assert.match(issues.find((issue) => issue.path === 'coordinator.repos.open.reviewCheck')?.message ?? '', /runs only with reviewGate true/);
+    assert.deepEqual(config.coordinator.repos['gated'], { mainCheckout: 'repos/gated', deploysOnPush: [], dependencyGate: false, reviewGate: true, reviewCheck: check, followMainCheckout: false });
+    assert.equal(config.coordinator.repos['bad']?.reviewGate, true);
+    assert.equal(config.coordinator.repos['bad']?.reviewCheck, undefined);
   });
 
   it('reads where a repository’s new worktrees go and their setup, and reports a blank folder or a setup that is no program (T1305)', () => {
@@ -484,8 +499,8 @@ describe('parseConfig', () => {
     };
     const { config, issues } = parseConfig({ ...ROSTER, coordinator: { repos } });
     assert.deepEqual(paths(issues).sort(), ['coordinator.repos.bad.worktreeFolder', 'coordinator.repos.bad.worktreeSetup', 'coordinator.repos.empty.worktreeSetup']);
-    assert.deepEqual(config.coordinator.repos['set'], { mainCheckout: 'repos/set', deploysOnPush: [], dependencyGate: false, followMainCheckout: false, worktreeFolder: '../worktrees', worktreeSetup: setup });
-    assert.deepEqual(config.coordinator.repos['unset'], { mainCheckout: 'repos/unset', deploysOnPush: [], dependencyGate: false, followMainCheckout: false });
+    assert.deepEqual(config.coordinator.repos['set'], { mainCheckout: 'repos/set', deploysOnPush: [], dependencyGate: false, reviewGate: false, followMainCheckout: false, worktreeFolder: '../worktrees', worktreeSetup: setup });
+    assert.deepEqual(config.coordinator.repos['unset'], { mainCheckout: 'repos/unset', deploysOnPush: [], dependencyGate: false, reviewGate: false, followMainCheckout: false });
     assert.equal(config.coordinator.repos['bad']?.worktreeFolder, undefined);
     assert.equal(config.coordinator.repos['bad']?.worktreeSetup, undefined);
   });
@@ -501,7 +516,7 @@ describe('parseConfig', () => {
     };
     const { config, issues } = parseConfig({ ...ROSTER, coordinator: { repos } });
     assert.deepEqual(paths(issues).sort(), ['coordinator.repos.bare.merge', 'coordinator.repos.empty.merge.command', 'coordinator.repos.text.merge.command']);
-    assert.deepEqual(config.coordinator.repos['forge'], { mainCheckout: 'repos/forge', deploysOnPush: [], dependencyGate: false, followMainCheckout: false, merge: { command, remote: 'origin' } });
+    assert.deepEqual(config.coordinator.repos['forge'], { mainCheckout: 'repos/forge', deploysOnPush: [], dependencyGate: false, reviewGate: false, followMainCheckout: false, merge: { command, remote: 'origin' } });
     assert.equal(config.coordinator.repos['push']?.merge, undefined);
     assert.equal(config.coordinator.repos['text']?.merge, undefined);
     assert.equal(config.coordinator.repos['empty']?.merge, undefined);
@@ -610,7 +625,7 @@ describe('parseConfig', () => {
       'coordinator.schedule.resetBlackoutHours',
       'coordinator.wait.maxMinutes',
     ]);
-    assert.deepEqual(config.coordinator.repos, { ok: { mainCheckout: '/src/ok', deploysOnPush: [], dependencyGate: false, followMainCheckout: false } });
+    assert.deepEqual(config.coordinator.repos, { ok: { mainCheckout: '/src/ok', deploysOnPush: [], dependencyGate: false, reviewGate: false, followMainCheckout: false } });
     assert.deepEqual(config.coordinator.schedule, {});
     assert.equal(config.coordinator.wait.maxMinutes, 60);
   });
@@ -815,7 +830,46 @@ describe('parseConfig', () => {
     const bad = parseConfig({ ...ROSTER, pushGuard: { protectedBranches: ['release'], pushToProtected: 'always' } });
     assert.deepEqual(paths(bad.issues), ['pushGuard.pushToProtected']);
     assert.match(bad.issues[0]?.message ?? '', /ask, allow, lead/);
-    assert.deepEqual(bad.config.pushGuard, { protectedBranches: ['release'], pushToProtected: 'ask' });
+    assert.deepEqual(bad.config.pushGuard, { protectedBranches: ['release'], pushToProtected: 'ask', reviewPaths: [] });
+  });
+
+  it('reads the review paths, defaulting mode and class and leaving out an entry with no glob', () => {
+    assert.deepEqual(parseConfig(ROSTER).config.pushGuard.reviewPaths, []);
+    const { config, issues } = parseConfig({
+      ...ROSTER,
+      pushGuard: {
+        reviewPaths: [
+          { glob: 'k8s/**', mode: 'check', class: 'leader' },
+          { glob: 'src/auth/**' },
+          { glob: 'Makefile', mode: 'sometimes', class: 'owner' },
+          { mode: 'check' },
+          { glob: '' },
+          { glob: 'g'.repeat(201) },
+          { glob: 'two\nlines' },
+          'Makefile',
+        ],
+      },
+    });
+    assert.deepEqual(paths(issues), [
+      'pushGuard.reviewPaths[2].mode',
+      'pushGuard.reviewPaths[2].class',
+      'pushGuard.reviewPaths[3].glob',
+      'pushGuard.reviewPaths[4].glob',
+      'pushGuard.reviewPaths[5].glob',
+      'pushGuard.reviewPaths[6].glob',
+      'pushGuard.reviewPaths[7]',
+    ]);
+    assert.match(issues[0]?.message ?? '', /always, check/);
+    assert.match(issues[1]?.message ?? '', /security, leader/);
+    assert.equal(issues[2]?.message, 'is required');
+    assert.deepEqual(config.pushGuard.reviewPaths, [
+      { glob: 'k8s/**', mode: 'check', class: 'leader' },
+      { glob: 'src/auth/**', mode: 'always', class: 'security' },
+      { glob: 'Makefile', mode: 'always', class: 'security' },
+    ]);
+    const many = parseConfig({ ...ROSTER, pushGuard: { reviewPaths: Array.from({ length: 129 }, (_, index) => ({ glob: `dir-${index}/**` })) } });
+    assert.deepEqual(paths(many.issues), ['pushGuard.reviewPaths']);
+    assert.deepEqual(many.config.pushGuard.reviewPaths, []);
   });
 
   it('reads what an ad-hoc package run does, defaulting to deny and refusing another word', () => {
