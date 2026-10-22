@@ -23,12 +23,13 @@ import type { ApprovalVerdict, TaskFields } from '../../register/events.ts';
 import { fitLines, leftOfWeek, overLimitFlag, weekFit, type WeekFit } from '../../register/fit.ts';
 import type { Task } from '../../register/fold.ts';
 import { problemHint } from '../../register/kind.ts';
+import { reviewGap, reviewGapText } from '../../register/review.ts';
 import { renderPlan } from '../../register/plan.ts';
 import { noProgressFlag } from '../../register/progress.ts';
 import { overSizeFlags } from '../../register/over-size.ts';
 import type { AddInput, AskInput, StatusInput, Verdict } from '../../register/policy.ts';
 import type { Register, WriteResult } from '../../register/register.ts';
-import { ACTIVE_STATUSES } from '../../register/model.ts';
+import { ACTIVE_STATUSES, type TaskStatus } from '../../register/model.ts';
 import type { RegisterSnapshot, RetiredTasks } from '../../register/snapshot.ts';
 import { readStopgapTags, stopgapFlags, stopgapTags } from '../../register/stopgap.ts';
 import { dueStartHolds, dueVerifyHold, heldStart, heldStartNotice, metStartNotice, startHolds, verifyQueue, type DueVerify } from '../../register/verify.ts';
@@ -215,6 +216,18 @@ function noteProblemHint(runtime: CliRuntime, team: Team, task: Task): void {
 }
 
 /**
+ * A WARN naming the review parts a problem task reached `status` without, while `register.review.mode` is `warn`
+ * (refuse never writes it, and off asks nothing); judged on the task as written, so its review holds every part given.
+ */
+function warnReviewGap(runtime: CliRuntime, team: Team, task: Task, status: TaskStatus): void {
+  const { review } = team.config.register;
+  const missing = review.mode === 'warn' ? reviewGap(task, status, {}, review) : [];
+  if (missing.length > 0) {
+    runtime.out.stderr(`WARN ${reviewGapText(task, status, missing)}; set anyway, as register.review.mode is warn`);
+  }
+}
+
+/**
  * One inbox line to the task's owner when this write gave it the task (`add --owner`, `update --owner`), so asking
  * for work is one command; never to the caller, who gave it. A line that cannot be posted is named, never thrown:
  * the task is written either way.
@@ -359,6 +372,9 @@ export async function set(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
   }
   if (due !== undefined && warned && verdict.ok) {
     runtime.out.stderr(`WARN ${dueVerifyHold(due.task, due.due)}; started anyway, as register.verifyGate is warn`);
+  }
+  if (verdict.ok) {
+    warnReviewGap(runtime, team, verdict.value.task, input.status);
   }
   if (input.status === 'done') {
     await markBoundary(runtime, config, paths, by, id);

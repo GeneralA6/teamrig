@@ -99,6 +99,19 @@ Flags:
   only with `verifying`, `done` and `dropped`: the tasks the work leaves (a finding, a next step), each already on
   the task list (`teamrig add` it first), or `none`. A finding written only in a notes file then cannot close
   unseen. `show` lists every follow-up the task's changes named.
+- `--cause "<text>"`: the root cause, at its source, of a task marked a problem (`--problem`); allowed only on
+  one, at any status. It and the review parts below each say at least 3 words besides task ids, are kept across
+  sets (a later one replaces it), and are all needed for `verifying` and `done` (`register.review.requireOn`);
+  with `register.review.mode` `warn` the set goes through with a WARN naming what is missing, and `off` asks
+  nothing. `show` prints the review.
+- `--how "<text>"`: the problem's review: the change or assumption that let it in.
+- `--prevent "<text>"`: the problem's review: what now stops it coming back.
+- `--harden "<text>"`: the review of a critical problem (`--problem critical`, or one owned by a session in
+  `register.review.criticalOwners`), and needed only there: hardening past the direct guard.
+- `--missed-test "<text>"`: the problem's review: a follow-up task that adds the test that should have caught
+  it, or why none can. The tasks a missed part names must be on the task list, and join the follow-ups.
+- `--missed-monitor "<text>"`: as `--missed-test`, for the monitor that should have caught it.
+- `--missed-log "<text>"`: as `--missed-test`, for the log line that should have caught it.
 - `--waits <reason>,<reason>`: required for `waiting`, and allowed only with it: what the task waits for, one or
   more of `decision:<who>` and `approval:<who>` (the lead, or `owner` for the human; a peer's work is a task, asked
   for with `--ask`), `task:T<id>` (a task to finish first; only for a task already started) and

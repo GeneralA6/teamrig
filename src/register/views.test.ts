@@ -474,6 +474,16 @@ describe('formatEvent and formatTaskDetail', () => {
     assert.ok(!formatTaskDetail(testTask(), [], TREE).includes('followups'), 'a task with none prints no line');
   });
 
+  it("prints a problem's review in show, a line per part given, and the parts a status line gave in the history", () => {
+    const review = { cause: 'the parser skipped blank rows', missedLog: 'the skip logged nothing at all' };
+    const reviewed: RegisterEvent = { v: 2, type: 'status', id: 'T3', at: '2030-01-07T14:00:00.000Z', by: 'alpha', status: 'in-progress', note: null, evidence: null, skill: null, review };
+    assert.match(formatEvent(reviewed, TimeZone.UTC), / status in-progress review=cause,missed-log$/);
+    const lines = formatTaskDetail(testTask({ id: 'T3', kind: 'problem', review }), [], TREE).split('\n');
+    const at = lines.indexOf('review:');
+    assert.deepEqual(lines.slice(at, at + 3), ['review:', '  cause: the parser skipped blank rows', '  missed by log: the skip logged nothing at all']);
+    assert.ok(!formatTaskDetail(testTask({ kind: 'problem' }), [], TREE).includes('review:'), 'an unreviewed problem prints no review');
+  });
+
   it('shows the description under the task line, its later lines indented and a blank one kept blank', () => {
     const task = testTask({ ref: 'inbox:3', description: 'Users lose saved carts.\n\nKeep them:\n- a week' });
     const detail = formatTaskDetail(task, [], TREE).split('\n');
