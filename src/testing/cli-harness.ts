@@ -28,6 +28,7 @@ import type { IntegrateGit } from '../integrate/git.ts';
 import type { TreeState } from '../coordinator/push-pass.ts';
 import type { PackageRegistry } from '../package-guard/registry.ts';
 import type { ExecPorts } from '../exec/ports.ts';
+import type { PointerGit } from '../setup/pointer-ignore.ts';
 import { FakeClock } from './fake-clock.ts';
 import { MemoryFiles } from './memory-files.ts';
 import { quietWorld } from './quiet-world.ts';
@@ -62,6 +63,8 @@ export interface RunOptions {
   readonly branch?: string;
   /** The repository git reads, such as one on a detached HEAD; default one on `branch` with no push target or config. */
   readonly git?: RepoState;
+  /** Where git puts the team pointer `team create` writes; default outside any repository. */
+  readonly pointerGit?: PointerGit;
   readonly cwd?: string;
   /** The files the CLI sees for this run, such as a `FaultyFiles` over `files`; default `files`. */
   readonly files?: Files;
@@ -147,6 +150,7 @@ export class CliHarness {
       sleep: options.sleep ?? this.clock.sleep,
       ...quietWorld(options.branch, options.stdin),
       ...(options.git === undefined ? {} : { git: options.git }),
+      ...(options.pointerGit === undefined ? {} : { pointerGit: options.pointerGit }),
       ...(options.commitLog === undefined ? {} : { commitLog: options.commitLog }),
       ...(options.platform === undefined ? {} : { platform: options.platform }),
       ...(options.processes === undefined ? {} : { processes: options.processes }),

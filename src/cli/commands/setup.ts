@@ -3,6 +3,7 @@ import { SHIPPED_CONFIG_FORMAT } from '../../config/migrate.ts';
 import { ENV, KIT_NAME, resolveKitHome, teamPaths } from '../../core/home.ts';
 import { ENV_SOURCE } from '../../core/team.ts';
 import { describeRequirement } from '../../requirements/requirements.ts';
+import { applyIgnore, ignoreLines, ignoreStep, type IgnoreStep } from '../../setup/pointer-ignore.ts';
 import { applyTeamSetup, planTeamSetup, teamSpecOf, type FileStep, type SetupPlan } from '../../setup/team-create.ts';
 import { onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
@@ -42,10 +43,10 @@ function nextLine(team: string, lead: string, parent: string | undefined): strin
   return `Next: ${parent}'s lead runs ${KIT_NAME} add --team ${team} --priority p<n> --title "<first task>" --description "<what and why>", then ${KIT_NAME} open ${team}/${lead}: ${team}'s lead hands its sessions their parts and opens them.`;
 }
 
-function summaryLines(plan: SetupPlan, dryRun: boolean): string[] {
+function summaryLines(plan: SetupPlan, ignore: IgnoreStep, dryRun: boolean): string[] {
   const { team, lead, sessions, parent } = plan.spec;
   const workers = sessions.filter((id) => id !== lead);
-  const lines = [...stepLines(plan.config, dryRun), ...stepLines(plan.pointer, dryRun)];
+  const lines = [...stepLines(plan.config, dryRun), ...stepLines(plan.pointer, dryRun), ...ignoreLines(ignore, dryRun)];
   if (dryRun) {
     return ['DRY RUN nothing is written', ...lines];
   }
@@ -55,9 +56,10 @@ function summaryLines(plan: SetupPlan, dryRun: boolean): string[] {
 
 /**
  * `team create <team> --sessions a,b [--lead <id>] [--parent <team>] [--project <dir>] [--dry-run]`:
- * writes the team's config in the kit home and the project's pointer to it. It refuses a different
+ * writes the team's config in the kit home and the project's pointer to it, kept out of git in this clone
+ * (pointer-ignore.ts) whether it is new or was already there. It refuses a different
  * team of the same id, a place in a tree its limits forbid, a session name another team uses, and a
- * project tied to a team outside the new team's tree; a repeat with the same team writes nothing. It
+ * project tied to a team outside the new team's tree; a repeat with the same team writes nothing but a missing exclude line. It
  * first says what teamrig lacks on this machine (a `WARN` line each), so a refusal still shows it.
  */
 export async function teamCreate(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
@@ -75,11 +77,15 @@ export async function teamCreate(args: ParsedArgs, runtime: CliRuntime): Promise
   if (!planned.ok) {
     throw new RefusedError(planned.problem);
   }
+  const ignore = ignoreStep(runtime.pointerGit, planned.value.pointer.path);
   const dryRun = args.switches.has('dry-run');
   const done = dryRun ? planned : await applyTeamSetup(runtime.files, planned.value);
   if (!done.ok) {
     throw new RefusedError(done.problem);
   }
-  summaryLines(done.value, dryRun).forEach((line) => runtime.out.stdout(line));
+  if (!dryRun) {
+    await applyIgnore(runtime.files, ignore);
+  }
+  summaryLines(done.value, ignore, dryRun).forEach((line) => runtime.out.stdout(line));
   return EXIT.ok;
 }

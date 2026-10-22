@@ -5,11 +5,14 @@ import { FakePathProbe } from '../testing/fake-processes.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { APP, CliHarness, KIT, POINTER, TEAM, type CliResult } from '../testing/cli-harness.ts';
 import { CONFIG_VERSION } from '../config/types.ts';
+import type { PointerGit, PointerInGit } from '../setup/pointer-ignore.ts';
 import { EXIT } from './runtime.ts';
 
 const SHOP = resolve('/', 'w', 'shop');
 const SHOP_CONFIG = join(KIT, 'teams', 'shop', 'config.json');
 const SHOP_POINTER = join(SHOP, '.teamrig.json');
+const SHOP_EXCLUDE = join(SHOP, '.git', 'info', 'exclude');
+const ADDED = `.teamrig.json to ${SHOP_EXCLUDE}: git ignores it in this clone only, as the team it names exists on this machine only`;
 const FOLDERS = new FakePathProbe({ folders: [SHOP, APP] });
 const CREATE = ['team', 'create', 'shop', '--sessions', 'api,web', '--project', SHOP];
 const NEXT = 'Next: teamrig add --session lead --owner <id> --priority p<n> --title "<first task>" --description "<what and why>" for each session, then teamrig open <id> for each.';
@@ -22,6 +25,11 @@ class PointerRace extends MemoryFiles {
     }
     return super.createExclusive(path, text);
   }
+}
+
+/** Git that gives every pointer the same answer. */
+function pointerGit(answer: PointerInGit): PointerGit {
+  return { state: () => answer };
 }
 
 function create(kit: CliHarness, argv: readonly string[] = CREATE, env: Record<string, string> = {}, cwd?: string): Promise<CliResult> {
@@ -89,6 +97,37 @@ describe('teamrig team create', () => {
     ]);
     assert.equal(await kit.files.read(SHOP_CONFIG), undefined);
     assert.equal(await kit.files.read(SHOP_POINTER), undefined);
+  });
+
+  it('keeps the new pointer out of git in this clone, and says so', async () => {
+    const kit = new CliHarness(null, null);
+    const result = await kit.run(CREATE, { probe: FOLDERS, pointerGit: pointerGit({ kind: 'open', exclude: SHOP_EXCLUDE }) });
+    assert.equal(result.code, EXIT.ok);
+    assert.deepEqual(result.stdout.slice(0, 3), [`CREATED ${SHOP_CONFIG}`, `CREATED ${SHOP_POINTER}`, `ADDED ${ADDED}`]);
+    assert.equal(await kit.files.read(SHOP_EXCLUDE), '.teamrig.json\n');
+  });
+
+  it('says on a dry run what it would add to the exclude file, and adds nothing', async () => {
+    const kit = new CliHarness(null, null);
+    const result = await kit.run([...CREATE, '--dry-run'], { probe: FOLDERS, pointerGit: pointerGit({ kind: 'open', exclude: SHOP_EXCLUDE }) });
+    assert.equal(result.stdout.at(-1), `WOULD ADD ${ADDED}`);
+    assert.equal(await kit.files.read(SHOP_EXCLUDE), undefined);
+  });
+
+  it("keeps an earlier run's pointer out of git on a repeat, and leaves a committed or ignored one as it is", async () => {
+    const kit = new CliHarness(null, null);
+    await create(kit);
+    const open = await kit.run(CREATE, { probe: FOLDERS, pointerGit: pointerGit({ kind: 'open', exclude: SHOP_EXCLUDE }) });
+    assert.deepEqual(open.stdout.slice(1, 3), [`UNCHANGED ${SHOP_POINTER}: the project is already tied to team shop`, `ADDED ${ADDED}`]);
+    assert.equal(await kit.files.read(SHOP_EXCLUDE), '.teamrig.json\n');
+    const ignored = await kit.run(CREATE, { probe: FOLDERS, pointerGit: pointerGit({ kind: 'ignored' }) });
+    assert.equal(ignored.stdout[2], `UNCHANGED ${SHOP_POINTER} in git: git already ignores it`);
+    const tracked = await kit.run(CREATE, { probe: FOLDERS, pointerGit: pointerGit({ kind: 'tracked' }) });
+    assert.equal(
+      tracked.stdout[2],
+      `UNCHANGED ${SHOP_POINTER} in git: it is committed, so every clone gets it; to keep it on this machine only, run git rm --cached .teamrig.json and commit`,
+    );
+    assert.equal(await kit.files.read(SHOP_EXCLUDE), '.teamrig.json\n', 'a kept pointer adds no second line');
   });
 
   it('takes the folder Claude Code started in, else the current folder', async () => {
