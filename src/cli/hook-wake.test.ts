@@ -6,6 +6,10 @@ import { BurstLog } from '../budget/burst-log.ts';
 import { MeterLog } from '../budget/calibration.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { EXIT } from './runtime.ts';
+import { RESTART_RECHECK_MS } from './commands/hook-wake.ts';
+import { GIVE_UP_MS } from '../refresh/restart.ts';
+import type { RestartRequest } from '../refresh/state.ts';
+import { RefreshStore } from '../refresh/store.ts';
 import { APP, CliHarness, EVENTS_PATH, TEAM, TEAM_HOME, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
@@ -140,6 +144,30 @@ describe('hook wake-check', () => {
     assert.deepEqual(answerOf(await leadCheck()), { kind: 'wait', watch: EVENTS_PATH, recheckAt: start + 120 * SECOND });
     kit.clock.advance(120 * SECOND);
     assert.equal((await leadCheck()).stdout[0]?.includes('"kind":"wake","ids":["T1"]'), true);
+  });
+
+  it('never wakes a session while its automatic restart may act, whose prompt would cancel it, and wakes it for the work after (T980)', async () => {
+    const kit = await teamWithAlphaTab({ ...TEAM, wake: { batchSeconds: 0 } });
+    const store = new RefreshStore(kit.files, { refresh: join(TEAM_HOME, 'state', 'refresh'), handover: join(TEAM_HOME, 'handover') });
+    const request: RestartRequest = { phase: 'pending', at: new Date(kit.clock.now()).toISOString(), pid: 4100, claudeSession: ALPHA_TAB, transcript: null, cwd: null, supervised: false };
+    await check(kit);
+    await store.setRestart('alpha', request);
+    await hand(kit, 'Fix the login', 'p1');
+    assert.deepEqual(answerOf(await check(kit)), { kind: 'wait', watch: EVENTS_PATH, recheckAt: kit.clock.now() + RESTART_RECHECK_MS });
+    await store.setRestart('alpha', { ...request, phase: 'ending' });
+    assert.deepEqual(answerOf(await check(kit)), { kind: 'wait', watch: EVENTS_PATH, recheckAt: kit.clock.now() + RESTART_RECHECK_MS }, 'ending too');
+    await store.clearRestart('alpha');
+    assert.equal((await check(kit)).stdout[0]?.includes('"kind":"wake","ids":["T1"]'), true);
+  });
+
+  it('wakes a session whose restart request is older than any restart that could act on it', async () => {
+    const kit = await teamWithAlphaTab({ ...TEAM, wake: { batchSeconds: 0 } });
+    const store = new RefreshStore(kit.files, { refresh: join(TEAM_HOME, 'state', 'refresh'), handover: join(TEAM_HOME, 'handover') });
+    await check(kit);
+    const left = new Date(kit.clock.now() - 2 * GIVE_UP_MS).toISOString();
+    await store.setRestart('alpha', { phase: 'pending', at: left, pid: 4100, claudeSession: ALPHA_TAB, transcript: null, cwd: null, supervised: false });
+    await hand(kit, 'Fix the login', 'p1');
+    assert.equal((await check(kit)).stdout[0]?.includes('"kind":"wake","ids":["T1"]'), true);
   });
 
   it('answers a recheck now while another tab of the session holds its lock', async () => {

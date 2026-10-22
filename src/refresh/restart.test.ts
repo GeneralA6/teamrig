@@ -10,7 +10,7 @@ import { RestoreRegistry, restoreSessionsDir } from '../restore/registry.ts';
 import type { Files } from '../core/files.ts';
 import { askFileOf, holdWhyFileOf, outcomeFileOf } from '../mod/clear-hand.ts';
 import { ClearAsks, type ClearAsk, type PostedClearAsk } from './clear-asks.ts';
-import { CLAIM_WAIT_MS, claudeProcessOf, GIVE_UP_MS, LOOKUP_FAILED, NO_HOLD_REASON, personHoldOf, runRestart, type RestartDeps, type RestartPlan, type TabOpening } from './restart.ts';
+import { CLAIM_WAIT_MS, claudeProcessOf, GIVE_UP_MS, LOOKUP_FAILED, NO_HOLD_REASON, personHoldOf, restartMayAct, runRestart, type RestartDeps, type RestartPlan, type TabOpening } from './restart.ts';
 import type { RestoreEntry } from '../restore/entry.ts';
 import type { RestartRequest } from './state.ts';
 import { RefreshStore } from './store.ts';
@@ -181,6 +181,18 @@ class TypedWhileLooking extends FakeSessionProcesses {
     return super.describe(pid);
   }
 }
+
+describe('restartMayAct', () => {
+  const request: RestartRequest = { phase: 'pending', at: AT, pid: CLAUDE.pid, claudeSession: SESSION, transcript: TRANSCRIPT, cwd: null, supervised: false };
+  const asked = Date.parse(AT);
+
+  it('holds for a request through the give-up and its last round, never for none or an older one', () => {
+    assert.equal(restartMayAct(request, asked + GIVE_UP_MS), true);
+    assert.equal(restartMayAct({ ...request, phase: 'ending' }, asked), true);
+    assert.equal(restartMayAct(request, asked + GIVE_UP_MS + 10 * 60_000), false);
+    assert.equal(restartMayAct(undefined, asked), false);
+  });
+});
 
 describe('personHoldOf', () => {
   it("turns the team's countdown seconds and activity minutes into the ask's ms", () => {

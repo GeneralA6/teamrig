@@ -3558,7 +3558,9 @@ since the session last touched it. Tasks handed within `wake.batchSeconds` wake 
 `wake.minGapMinutes` apart. The first check in a tab takes the work already there as seen. With
 `wake.dayStartUtc` set, a session with work it can start (any priority) and no turn since that time gets one wake
 that day, and a burst it is in wakes it once when it starts; quiet hours or a spent daily budget only delay these.
-They are logged with `moments`.
+They are logged with `moments`. No session is woken while its automatic restart may still act (`refresh.autoRestart`),
+since the wake's prompt would cancel it as a typed one does: the check looks again each minute, and the work handed
+meanwhile wakes the fresh session.
 Stdin: `{"session_id", "cwd"}`.
 
 Flags: none.

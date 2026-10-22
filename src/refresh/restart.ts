@@ -57,7 +57,18 @@ export type RestartResult =
 export const SETTLE_MS = 3_000;
 /** A session busy this long since its restart started (held by a helper included) keeps its context, and is told to type /clear. */
 export const GIVE_UP_MS = 60 * 60_000;
+/** How long past GIVE_UP_MS a restart may still act on its request: its last round's quiet window, ask and end. */
+const LAST_ROUND_SLACK_MS = 10 * 60_000;
 const POLL_MS = 500;
+
+/**
+ * The restart started for `request` may still act on it: one is pending or ending, asked less than GIVE_UP_MS and
+ * its last round's slack ago. An older request was left by a restart that never finished (the machine went down
+ * under it), and no restart will act on it.
+ */
+export function restartMayAct(request: RestartRequest | undefined, now: number): boolean {
+  return request !== undefined && now - Date.parse(request.at) < GIVE_UP_MS + LAST_ROUND_SLACK_MS;
+}
 /** Enough of the transcript to see that a line was added. */
 const QUIET_TAIL_BYTES = 4_096;
 /** The user typed (the prompt hook cleared the request) or a later notice replaced it. */
