@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { TimeZone } from '../core/zone.ts';
 import { JERUSALEM } from '../testing/zone.ts';
+import type { PastLimit } from './extra.ts';
 import { formatCount, formatEndTime, formatPct, formatUsd, formatW, isBudgetDayEnd, noRoomText } from './format.ts';
 
 describe('budget number formats', () => {
@@ -11,6 +12,18 @@ describe('budget number formats', () => {
 
   it("writes why a session past its part is held: the team's use today against its in-day pace", () => {
     assert.equal(noRoomText({ usedPct: 1.4, pacePct: 0.81 }), 'the team has used 1.4% of the week today, at or past its in-day pace of 0.81%');
+  });
+
+  it('names the extra-usage pool past the weekly limit, or why nothing gives the team room there', () => {
+    const limits: readonly PastLimit[] = ['pool', 'unpriced', 'empty'];
+    assert.deepEqual(
+      limits.map((pastLimit) => noRoomText({ usedPct: 1.4, pacePct: 0.81, pastLimit })),
+      [
+        "the team has used 1.4% of the week today, at or past the extra-usage pool's in-day pace of 0.81%",
+        'the week is at its weekly limit and the extra-usage pool has no W per dollar yet, which two spent readings past 100% or budget.extraWPerUsd give',
+        'the week is at its weekly limit with no extra usage left, which the lead adds with teamrig budget extra --add <usd>',
+      ],
+    );
   });
 
   it('writes weighted tokens as plain, k, M or B', () => {

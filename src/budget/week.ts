@@ -2,7 +2,7 @@ import type { BudgetConfig } from '../config/types.ts';
 import { formatUtcDay, formatUtcHour, MS_PER_DAY, MS_PER_HOUR } from '../core/time.ts';
 import { DailyProfile, type ActivityProfile } from './active-time.ts';
 import type { Calibration } from './calibration.ts';
-import { FULL_PCT, poolOf, type ExtraEntry, type ExtraPool } from './extra.ts';
+import { pastLimitOf, poolOf, type ExtraEntry, type ExtraPool } from './extra.ts';
 import {
   dailyAllowancePct,
   dayPacePct,
@@ -164,8 +164,8 @@ function earliestDay(states: readonly UsageState[]): string | undefined {
  * reset instead of going in a day. Recomputed at every reading as the pool is spent; none with the pool empty.
  */
 function teamAllowancePct(input: AllowanceInput, pool: ExtraPool | undefined, wPerPct: number): number {
-  const leftW = pool?.leftW;
-  if (input.usedPct < FULL_PCT || leftW === undefined || leftW <= 0) {
+  const leftW = pastLimitOf(input.usedPct, pool) === 'pool' ? pool?.leftW : undefined;
+  if (leftW === undefined) {
     return dailyAllowancePct(input);
   }
   const { window, now, usedPct, todayPct, profile } = input;
@@ -197,10 +197,15 @@ export function readWeek(input: WeekInput): WeekReading {
     window === undefined || usedPct === undefined || wPerPct === undefined
       ? undefined
       : teamAllowancePct({ window, budget, now, usedPct, todayPct: todayW / wPerPct, profile }, pool, wPerPct);
+  const pastLimit = usedPct === undefined ? undefined : pastLimitOf(usedPct, pool);
   const teamDay =
     window === undefined || wPerPct === undefined || allowancePct === undefined
       ? undefined
-      : { usedPct: todayW / wPerPct, pacePct: dayPacePct({ window, now, allowancePct, idlePct: idleWSince(states, todayFrom, now, profile) / wPerPct, profile }) };
+      : {
+          usedPct: todayW / wPerPct,
+          pacePct: dayPacePct({ window, now, allowancePct, idlePct: idleWSince(states, todayFrom, now, profile) / wPerPct, profile }),
+          ...(pastLimit === undefined ? {} : { pastLimit }),
+        };
   return {
     reset,
     window,
