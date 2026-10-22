@@ -589,7 +589,7 @@ idle 15 s (type anything to keep this context)` instead, the title reads `shop-w
 this tab. Where no mod claims it within 10 s, the restart ends this Claude Code and starts it again: in the same tab
 when `teamrig open` started it, else in a new tab. It never does that while this Claude Code runs a background shell
 (a background command or a monitor), which the end would take too: your inbox then says to type `/clear`, which
-keeps it. A prompt the user sends first cancels it, and you keep this
+keeps it. teamrig's own wake for work handed meanwhile waits for it, and wakes the fresh session. A prompt the user sends first cancels it, and you keep this
 context until your next task end asks again, or your context grew a fifth of `refresh.contextTokens` more; text typed but not sent holds the mod's `/clear` ([below](#the-mod-the-refreshs-clear)), and is lost only where the restart ends this Claude Code. When the restart cannot start, the message
 and the title are the `/clear` ones above. On Windows an ended Claude Code runs no SessionEnd hooks: `refresh.endCommand` names a
 program run in their place, given their input. While background work you started (subagents, background

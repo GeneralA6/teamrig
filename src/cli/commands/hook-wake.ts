@@ -6,6 +6,8 @@ import type { KitConfig } from '../../config/types.ts';
 import { isRecord, stringField } from '../../core/guards.ts';
 import { FileLock, LockBusyError } from '../../core/lock.ts';
 import { MeetingStore, phaseOf } from '../../meeting/state.ts';
+import { restartMayAct } from '../../refresh/restart.ts';
+import { RefreshStore } from '../../refresh/store.ts';
 import { sessionIdOf } from '../../inbox/inbox.ts';
 import type { Task } from '../../register/fold.ts';
 import { dayStartPrompt, dayStartToast, decideDayStart, dueMoments, nextDayStartAt, startableTasks, type DayMoment, type DayStartVerdict } from '../../wake/day-start.ts';
@@ -90,6 +92,19 @@ async function meetingHoldsWake(runtime: CliRuntime, scope: Extract<Scope, { kin
   }
   const meeting = await new MeetingStore(runtime.files, scope.kit.paths.meeting).read();
   return phaseOf(meeting, runtime.clock.now()).kind === 'open';
+}
+
+/** How soon a check that a pending restart held looks again: the restart may end meanwhile without a register change. */
+export const RESTART_RECHECK_MS = MINUTE_MS;
+
+/**
+ * While the session's automatic restart may still act (src/refresh/restart.ts), it is not woken: the wake's prompt
+ * would cancel the restart as a typed one does (`hook prompt`), leaving the session with its handover written and no
+ * fresh start. The work handed meanwhile stays new, so it wakes the fresh session.
+ */
+async function restartHoldsWake(runtime: CliRuntime, scope: Extract<Scope, { kind: 'found' }>): Promise<boolean> {
+  const request = await new RefreshStore(runtime.files, scope.kit.paths).restart(scope.id);
+  return restartMayAct(request, runtime.clock.now());
 }
 
 /**
@@ -187,7 +202,8 @@ async function decide(runtime: CliRuntime, scope: Extract<Scope, { kind: 'found'
  * Run by the plugin's mod while its tab is idle at the prompt: whether new work handed to the tab's session should
  * wake it now (src/wake/decide.ts), else whether the day's start or a burst should (src/wake/day-start.ts). On a
  * wake it logs the wake and its cost to the team's wake log and answers the prompt to submit; a busy lock (another
- * tab of the session checking) answers a recheck now. The lead is not woken while the owner's daily meeting is open.
+ * tab of the session checking) answers a recheck now. The lead is not woken while the owner's daily meeting is open,
+ * nor any session while its automatic restart may still act.
  */
 export async function wakeCheck(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
@@ -198,6 +214,9 @@ export async function wakeCheck(args: ParsedArgs, runtime: CliRuntime): Promise<
   const { kit, config, id, tab } = scope;
   if (await meetingHoldsWake(runtime, scope)) {
     return answer(runtime, { kind: 'wait', watch: kit.paths.events, recheckAt: null });
+  }
+  if (await restartHoldsWake(runtime, scope)) {
+    return answer(runtime, { kind: 'wait', watch: kit.paths.events, recheckAt: runtime.clock.now() + RESTART_RECHECK_MS });
   }
   const store = new WakeStore(runtime.files, kit.paths.wake);
   let verdict: CheckVerdict;
