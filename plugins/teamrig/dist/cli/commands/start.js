@@ -23,7 +23,8 @@ export const MAX_UNOWNED_NOTICES = 5;
  * also those of its group's tasks) and the
  * week's use (the first line of `budget`). `--all` prints the list and the flags in their long form, as `list
  * --all` and `check --all` do, and every task waiting on it. Any session's start also posts the lead one inbox line on
- * each warning no session owns that the lead was not told of yet (T951), at most MAX_UNOWNED_NOTICES per start.
+ * each warning no session owns that the lead was not told of yet (T951), at most MAX_UNOWNED_NOTICES per start; a told
+ * warning is told again only after no start saw it for a day.
  */
 export async function start(args, runtime) {
     noPositionals(args);
@@ -54,7 +55,7 @@ async function tellLead(runtime, kit, config, report) {
     const secrets = new SecretScanner(config.register.secretPatterns);
     const now = new Date(clock.now());
     try {
-        const told = await notices.tell(report.unowned, MAX_UNOWNED_NOTICES, (warning) => postLine(inboxes, secrets, { to: report.lead, from: KIT_NAME, text: unownedNotice(warning), now }));
+        const told = await notices.tell(report.unowned, MAX_UNOWNED_NOTICES, (warning) => postLine(inboxes, secrets, { to: report.lead, from: KIT_NAME, text: unownedNotice(warning), now }), now.getTime());
         told.failed.forEach(({ warning, problem }) => runtime.out.stderr(`WARN ${report.lead} was not told of a warning no session owns (${warning.key}): ${problem}`));
         if (told.posted.length > 0) {
             runtime.out.stderr(`NOTE ${report.lead} has ${told.posted.length} new inbox line(s) on warnings no session owns`);
