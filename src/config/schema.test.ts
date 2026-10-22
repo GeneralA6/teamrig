@@ -45,6 +45,7 @@ const EVERY_KEY = {
   budget: {
     weeklyLimitW: 680_000_000,
     subagentWeight: 2,
+    extraWPerUsd: 120_000,
     reset: { weekday: 'wed', timeUtc: '01:00' },
     sessions: { alpha: { share: 2 } },
     quietHours: { startUtc: '22:00', endUtc: '06:00', action: 'ask' },
@@ -132,6 +133,7 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   budgetReservePct: 'budget.reservePct',
   weeklyLimitW: 'budget.weeklyLimitW',
   subagentWeight: 'budget.subagentWeight',
+  extraWPerUsd: 'budget.extraWPerUsd',
   paceEndHoursBeforeReset: 'budget.paceEndHoursBeforeReset',
   sessionShare: 'budget.sessions.*.share',
   warnAtPct: 'budget.warnAtPct',

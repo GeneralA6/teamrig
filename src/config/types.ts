@@ -483,6 +483,11 @@ export interface BudgetConfig {
    * multiplies each subagent call's W by it, so every W (and `weeklyLimitW`) is in main-session W. 1: alike.
    */
   readonly subagentWeight: number;
+  /**
+   * W per US dollar of extra usage, standing in until two spent readings past 100% of the week teach the rate
+   * (src/budget/extra.ts). Unset: the extra-usage pool shows in dollars only until then, with no allowance.
+   */
+  readonly extraWPerUsd?: number;
   /** Unset: the reset time the status line reports. */
   readonly reset?: BudgetReset;
   /** Use the week up to this share of the weekly limit. */
