@@ -3,7 +3,7 @@ import { NAME_PATTERN, NAME_RULE } from '../core/ids.ts';
 import { parseTypedInstant, parseUtcDay, storedDeadline, typedDeadline, typedTimeHint } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { OPTION_SEPARATOR, type DecisionCard } from '../register/card.ts';
-import { MAX_SIZE_PCT, sizeProblem, type TaskFields } from '../register/events.ts';
+import { MAX_SIZE_PCT, sizeProblem, type TaskFields, type TaskKind } from '../register/events.ts';
 import { isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, priorityText, TASK_ID, TASK_STATUSES, type TaskStatus } from '../register/model.ts';
 import { WAITS_USAGE, type AddInput, type AskInput, type StatusInput } from '../register/policy.ts';
 import { isWaitKind, waitOf, type WaitReason } from '../register/waits.ts';
@@ -126,6 +126,17 @@ export function sizeOf(text: string): number {
   return value;
 }
 
+/** `--problem problem|critical|none`: whether the task is a problem, or a critical one; `none` marks it work, no problem. */
+export function kindOf(text: string): TaskKind {
+  if (text === NONE) {
+    return 'work';
+  }
+  if (text !== 'problem' && text !== 'critical') {
+    throw new UsageError(`--problem "${text}" is not problem|critical|${NONE}`);
+  }
+  return text;
+}
+
 /** `--week`: a day, checked here because `check` and `plan` read it without the policy. */
 export function weekOf(text: string): string {
   if (parseUtcDay(text) === undefined) {
@@ -169,6 +180,10 @@ export function addInputOf(flags: Flags, caller: string, times: TypedTimes): Add
   if (size !== undefined) {
     input.size = sizeOf(size);
   }
+  const problem = flags.get('problem');
+  if (problem !== undefined) {
+    input.kind = kindOf(problem);
+  }
   return input;
 }
 
@@ -197,7 +212,10 @@ export function waitsOf(text: string, times: TypedTimes): WaitReason[] {
   });
 }
 
-/** The fields `update` changes; `none` clears the description, ref, due date, goals, week, plan dependency or size. */
+/**
+ * The fields `update` changes; `none` clears the description, ref, due date, goals, week, plan dependency or size, and
+ * `--problem none` marks the task work, no problem.
+ */
 export function changesOf(flags: Flags, times: TypedTimes): Partial<TaskFields> {
   const changes: Partial<Mutable<TaskFields>> = {};
   const title = flags.get('title');
@@ -239,6 +257,10 @@ export function changesOf(flags: Flags, times: TypedTimes): Partial<TaskFields> 
   const size = flags.get('size');
   if (size !== undefined) {
     changes.size = size === NONE ? null : sizeOf(size);
+  }
+  const problem = flags.get('problem');
+  if (problem !== undefined) {
+    changes.kind = kindOf(problem);
   }
   return changes;
 }

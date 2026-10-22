@@ -55,7 +55,7 @@ or take it to the lead.
 | `REFUSED T2 needs T1, still verifying (proof: ..., owner api); start T2 once T1 is done, or with --met "..."` | T1's owner got an inbox line: work on something else until it proves T1 (`done`) or reopens it. If the proof already exists, start T2 with `--met "<what shows it>"`; T1's owner is asked to confirm it. |
 | `REFUSED --met goes only with a start that a verifying task it needs holds` | `--met` names what met a held proof: drop it, since nothing verifying holds this change. |
 | `REFUSED T1 is already done; add --note to record why you set it again` | Add a `--note`, or leave the status as it is. |
-| `REFUSED a leader may change only owner, priority, due, week, after, size on a task it does not own (asked: title)` | Ask the owner to change that field. |
+| `REFUSED a leader may change only owner, priority, due, week, after, size, kind on a task it does not own (asked: title)` | Ask the owner to change that field. |
 | `REFUSED only the owner (web) or the lead (lead) changes T2` | Ask the owner or a leader it names (a sub-lead's member: `a leader above web (backend or lead)`). |
 | `REFUSED backend hands T2 only to itself or a session it leads (importer, search); the lead (lead) moves work between groups` | Hand it within your group, or ask the lead to move it to another. |
 | `REFUSED nothing to change: give a field or a --note` | `update` needs a field flag, or a `--note` to add alone. |
