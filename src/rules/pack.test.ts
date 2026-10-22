@@ -128,12 +128,31 @@ describe('renderCorePack', () => {
     assert.doesNotMatch(pack, /board/);
   });
 
-  it('has a new task carry a plain-words description, naming the key only while add demands one', () => {
-    const on = renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK);
-    assert.match(on, /else by the receiver, with a plain-words description of what and why \[register\.requireDescription\]; only the owning session/);
-    const off = renderCorePack(testConfig({ register: { requireDescription: false } }), COMMAND, 'win32', RULES_CLOCK);
-    assert.match(off, /else by the receiver, with a plain-words description of what and why; only the owning session/);
-    assert.doesNotMatch(off, /requireDescription/);
+  it('has a new task carry a plain-words description, naming the register keys once while any demand is on', () => {
+    const on = renderCorePack(testConfig({ register: { requireNoteOn: [], requireEvidenceOnDone: false, requireSkillOnDone: false, requireFollowupsOn: [] } }), COMMAND, 'win32', RULES_CLOCK);
+    assert.match(on, /else by the receiver, with a plain-words description of what and why; only the owning session sets its status \(`teamrig set`\) \[register\]\. /);
+    const off = renderCorePack(
+      testConfig({ register: { requireDescription: false, requireNoteOn: [], requireEvidenceOnDone: false, requireSkillOnDone: false, requireFollowupsOn: [] } }),
+      COMMAND,
+      'win32',
+      RULES_CLOCK,
+    );
+    assert.match(off, /else by the receiver, with a plain-words description of what and why; only the owning session sets its status \(`teamrig set`\)\. /);
+    assert.doesNotMatch(off, /\[register/);
+  });
+
+  it('lists each status demand the register enforces, under one [register] key', () => {
+    const pack = renderCorePack(
+      testConfig({ register: { requireDescription: false, requireNoteOn: ['waiting', 'done'], requireEvidenceOnDone: true, requireSkillOnDone: true, requireFollowupsOn: ['done'] } }),
+      COMMAND,
+      'win32',
+      RULES_CLOCK,
+    );
+    assert.match(
+      pack,
+      /only the owning session sets its status \(`teamrig set`\), with a note \(only what changed\) on waiting, done, evidence on done, --skill <name>\|none on done, --followups <tasks it leaves>\|none on done \[register\]\. /,
+    );
+    assert.doesNotMatch(pack, /register\.require/);
   });
 
   it('has each session work its list in order, gate self-made work and repeating runs, and stop when it loops or drifts', () => {

@@ -87,23 +87,21 @@ function percent(value: number): string {
   return `${Math.round(value * 100) / 100}%`;
 }
 
-/** What a new task carries: a description for a person to read, which `add` demands while the key is on. */
-function descriptionDemand(config: KitConfig): string {
-  return `a plain-words description of what and why${config.register.requireDescription ? ' [register.requireDescription]' : ''}`;
-}
-
-/** The note (only what changed), evidence, skill and follow-ups a status change needs, as the register enforces them. */
+/**
+ * The note (only what changed), evidence, skill and follow-ups a status change needs, as the register enforces them.
+ * One `[register]` names the keys behind them and behind the description `add` demands, so each costs no bracket of
+ * its own in the size-capped pack.
+ */
 function statusDemands(config: KitConfig, command: string): string {
   const { register } = config;
   const demands = [
-    register.requireNoteOn.length === 0 ? '' : `a note (only what changed) on ${[...new Set(register.requireNoteOn)].join(', ')} [register.requireNoteOn]`,
-    register.requireEvidenceOnDone ? 'evidence on done [register.requireEvidenceOnDone]' : '',
-    register.requireSkillOnDone ? '--skill <name>|none on done [register.requireSkillOnDone]' : '',
-    register.requireFollowupsOn.length === 0
-      ? ''
-      : `--followups <tasks it leaves>|none on ${[...new Set(register.requireFollowupsOn)].join(', ')} [register.requireFollowupsOn]`,
+    register.requireNoteOn.length === 0 ? '' : `a note (only what changed) on ${[...new Set(register.requireNoteOn)].join(', ')}`,
+    register.requireEvidenceOnDone ? 'evidence on done' : '',
+    register.requireSkillOnDone ? '--skill <name>|none on done' : '',
+    register.requireFollowupsOn.length === 0 ? '' : `--followups <tasks it leaves>|none on ${[...new Set(register.requireFollowupsOn)].join(', ')}`,
   ].filter((demand) => demand !== '');
-  return `only the owning session sets its status (\`${command} set\`)${demands.length === 0 ? '' : `, with ${demands.join(', ')}`}.`;
+  const key = register.requireDescription || demands.length > 0 ? ' [register]' : '';
+  return `only the owning session sets its status (\`${command} set\`)${demands.length === 0 ? '' : `, with ${demands.join(', ')}`}${key}.`;
 }
 
 /**
@@ -170,7 +168,7 @@ export function coreRuleTexts(config: KitConfig, command: string, platform: Node
       timesClause(zone, clock.now),
     register:
       `Status is pulled from the register, never asked. Start each work block with \`${command} start --session <you>\`.` +
-      ` Every ask that creates work is a register entry, added in the same turn by the asker (\`${command} add --owner <session>\` tells the owner), else by the receiver, with ${descriptionDemand(config)}; ${statusDemands(config, command)}` +
+      ` Every ask that creates work is a register entry, added in the same turn by the asker (\`${command} add --owner <session>\` tells the owner), else by the receiver, with a plain-words description of what and why; ${statusDemands(config, command)}` +
       ' Wait on a peer by its task.' +
       ` A shipped change is verifying until its proof exists (\`${command} verify\`).`,
     'task-order':
