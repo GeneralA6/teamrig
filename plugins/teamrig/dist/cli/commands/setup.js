@@ -4,10 +4,13 @@ import { claudeConfigDir, ENV, KIT_NAME, resolveKitHome, teamPaths } from "../..
 import { ENV_SOURCE } from "../../core/team.js";
 import { describeRequirement } from "../../requirements/requirements.js";
 import { applyIgnore, ignoreLines, ignoreStep } from "../../setup/pointer-ignore.js";
+import { applySetupTask, setupTaskDryLines, setupTaskLines, setupTaskStep } from "../../setup/setup-task.js";
 import { tabStatusLine } from "../../setup/tab-status-note.js";
 import { applyTeamSetup, planTeamSetup, teamSpecOf } from "../../setup/team-create.js";
 import { onePositional, requiredFlag, UsageError } from "../args.js";
+import { openKit, requireConfig } from "../kit.js";
 import { EXIT, RefusedError } from "../runtime.js";
+import { teamRegister } from "../team-register.js";
 import { loadTree } from "../tree.js";
 import { titleLeftToHooks } from "./hook-tab-status.js";
 /** The session that leads a team created without `--lead`. */
@@ -39,10 +42,10 @@ function nextLine(team, lead, parent) {
     }
     return `Next: ${parent}'s lead runs ${KIT_NAME} add --team ${team} --priority p<n> --title "<first task>" --description "<what and why>", then ${KIT_NAME} open ${team}/${lead}: ${team}'s lead hands its sessions their parts and opens them.`;
 }
-function summaryLines(plan, ignore, tabStatus, dryRun) {
+function summaryLines(plan, ignore, tabStatus, setupTask, dryRun) {
     const { team, lead, sessions, parent } = plan.spec;
     const workers = sessions.filter((id) => id !== lead);
-    const lines = [...stepLines(plan.config, dryRun), ...stepLines(plan.pointer, dryRun), ...ignoreLines(ignore, dryRun), tabStatus];
+    const lines = [...stepLines(plan.config, dryRun), ...stepLines(plan.pointer, dryRun), ...ignoreLines(ignore, dryRun), tabStatus, ...setupTask];
     if (dryRun) {
         return ['DRY RUN nothing is written', ...lines];
     }
@@ -50,9 +53,35 @@ function summaryLines(plan, ignore, tabStatus, dryRun) {
     return [...lines, `Team ${team}${under}: lead ${lead}, sessions ${workers.join(', ')}.`, nextLine(team, lead, parent)];
 }
 /**
+ * A root team's setup task, the lead's first (setup-task.ts): added and started on a team with no tasks yet, kept on
+ * a repeat. A sub-team's lead gets its first task from its parent's lead instead. A dry run only reads.
+ */
+async function setupTaskOf(runtime, spec, dryRun) {
+    if (spec.parent !== undefined) {
+        return [];
+    }
+    const kit = await openKit(runtime, spec.team);
+    if (dryRun && kit.load.status === 'missing') {
+        return setupTaskDryLines({ kind: 'add' }, spec.lead);
+    }
+    const config = requireConfig(kit, runtime, 'read');
+    const register = teamRegister(runtime, kit.paths, config);
+    const step = setupTaskStep(await register.snapshot(), spec.lead);
+    if (dryRun || step.kind !== 'add') {
+        return setupTaskDryLines(step, spec.lead);
+    }
+    requireConfig(kit, runtime, 'write');
+    const outcome = await applySetupTask(register, spec.lead, config.register.ownerSource);
+    if (!outcome.ok) {
+        throw new RefusedError(`team ${spec.team} is set up, but its setup task was not written (${outcome.problem}); run the command again`);
+    }
+    return setupTaskLines(outcome.value, spec.lead);
+}
+/**
  * `team create <team> --sessions a,b [--lead <id>] [--parent <team>] [--project <dir>] [--dry-run]`:
  * writes the team's config in the kit home, tab status on, and the project's pointer to it, kept out of git
- * in this clone (pointer-ignore.ts) whether it is new or was already there. It says whether the team's tabs
+ * in this clone (pointer-ignore.ts) whether it is new or was already there, and gives a root team's lead its
+ * first task, setting the team up, in progress (setup-task.ts). It says whether the team's tabs
  * will show their status circle, and what the user does if not (tab-status-note.ts). It refuses a different
  * team of the same id, a place in a tree its limits forbid, a session name another team uses, and a
  * project tied to a team outside the new team's tree; a repeat with the same team writes nothing but a missing exclude line. It
@@ -89,6 +118,7 @@ export async function teamCreate(args, runtime) {
         titleLeft: titleLeftToHooks(runtime.env),
         settingsPath: join(claudeConfigDir(runtime.env, runtime.userHome), 'settings.json'),
     });
-    summaryLines(done.value, ignore, tabStatus, dryRun).forEach((line) => runtime.out.stdout(line));
+    const setupTask = await setupTaskOf(runtime, spec.value, dryRun);
+    summaryLines(done.value, ignore, tabStatus, setupTask, dryRun).forEach((line) => runtime.out.stdout(line));
     return EXIT.ok;
 }
