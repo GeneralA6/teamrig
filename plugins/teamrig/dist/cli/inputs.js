@@ -102,6 +102,16 @@ export function sizeOf(text) {
     }
     return value;
 }
+/** `--problem problem|critical|none`: whether the task is a problem, or a critical one; `none` marks it work, no problem. */
+export function kindOf(text) {
+    if (text === NONE) {
+        return 'work';
+    }
+    if (text !== 'problem' && text !== 'critical') {
+        throw new UsageError(`--problem "${text}" is not problem|critical|${NONE}`);
+    }
+    return text;
+}
 /** `--week`: a day, checked here because `check` and `plan` read it without the policy. */
 export function weekOf(text) {
     if (parseUtcDay(text) === undefined) {
@@ -144,6 +154,10 @@ export function addInputOf(flags, caller, times) {
     if (size !== undefined) {
         input.size = sizeOf(size);
     }
+    const problem = flags.get('problem');
+    if (problem !== undefined) {
+        input.kind = kindOf(problem);
+    }
     return input;
 }
 /** `--after T5,T6`: the tasks to finish before this one starts. */
@@ -169,7 +183,10 @@ export function waitsOf(text, times) {
         return reason;
     });
 }
-/** The fields `update` changes; `none` clears the description, ref, due date, goals, week, plan dependency or size. */
+/**
+ * The fields `update` changes; `none` clears the description, ref, due date, goals, week, plan dependency or size, and
+ * `--problem none` marks the task work, no problem.
+ */
 export function changesOf(flags, times) {
     const changes = {};
     const title = flags.get('title');
@@ -211,6 +228,10 @@ export function changesOf(flags, times) {
     const size = flags.get('size');
     if (size !== undefined) {
         changes.size = size === NONE ? null : sizeOf(size);
+    }
+    const problem = flags.get('problem');
+    if (problem !== undefined) {
+        changes.kind = kindOf(problem);
     }
     return changes;
 }

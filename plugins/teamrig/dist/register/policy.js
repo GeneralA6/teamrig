@@ -16,8 +16,11 @@ export const NO_SKILL = 'none';
 export const GITHUB_ACTOR = 'github';
 /** The statuses the import sets on its own tasks: an issue's open state, or how it was closed. */
 export const GITHUB_STATUSES = ['open', 'done', 'dropped'];
-/** Fields the lead may change on a task someone else owns: who does it, how urgent, when, in what order and its size (the lead plans the week). */
-export const LEAD_FIELDS = ['owner', 'priority', 'due', 'week', 'after', 'size'];
+/**
+ * Fields the lead may change on a task someone else owns: who does it, how urgent, when, in what order and its size
+ * (the lead plans the week), and its kind, so the lead can mark another session's fix a problem.
+ */
+export const LEAD_FIELDS = ['owner', 'priority', 'due', 'week', 'after', 'size', 'kind'];
 /** The refusal of an `add` with no description while `register.requireDescription` is on. */
 export const DESCRIPTION_NEEDED = 'add needs --description "<what and why, in plain words>"';
 /** How a card is typed, for the refusals that ask for one. */
@@ -79,6 +82,7 @@ export class RegisterPolicy {
             week: input.week ?? null,
             after: input.after ?? [],
             size: input.size ?? null,
+            kind: input.kind ?? null,
         };
         if (fields.description === null && this.config.register.requireDescription) {
             return refuse(DESCRIPTION_NEEDED);
@@ -421,7 +425,7 @@ export class RegisterPolicy {
      * the duplicate-title rule does not apply.
      */
     importAdd(input, state) {
-        const fields = { ...input, source: GITHUB_SOURCE, due: null, goals: [], week: null, after: [], size: null };
+        const fields = { ...input, source: GITHUB_SOURCE, due: null, goals: [], week: null, after: [], size: null, kind: null };
         const holder = [...state.tasks.values()].find((task) => task.source === GITHUB_SOURCE && task.ref === input.ref);
         if (holder !== undefined) {
             return refuse(`${holder.id} already has ref ${input.ref}`);
@@ -537,8 +541,8 @@ export class RegisterPolicy {
 /** The texts whose length is judged against their own limit, not `maxText`. */
 const OWN_LIMITS = ['title', 'description'];
 function pickFields(task) {
-    const { title, description, owner, source, ref, priority, due, goals, week, after, size } = task;
-    return { title, description, owner, source, ref, priority, due, goals, week, after, size };
+    const { title, description, owner, source, ref, priority, due, goals, week, after, size, kind } = task;
+    return { title, description, owner, source, ref, priority, due, goals, week, after, size, kind };
 }
 /** An update's description trimmed at both ends, its newlines kept; a blank one clears it, as `none` does. */
 function trimDescription(changes) {
