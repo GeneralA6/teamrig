@@ -7,7 +7,8 @@ Two small files, one minute.
    ```json
    { "configVersion": 4, "sessions": ["lead", "api", "web", "data"], "roles": { "lead": "lead" } }
    ```
-3. Tie your project to the team: put `{"team": "<team>"}` in a `.teamrig.json` at the project's root.
+3. Tie your project to the team: put `{"team": "<team>"}` in a `.teamrig.json` at the project's root. It names a team
+   on your machine only, so keep it out of git: add the line `.teamrig.json` to the repository's `.git/info/exclude`.
 4. Start one Claude Code tab per session, telling each its name, for example `TEAMRIG_SESSION=web claude`
    (PowerShell: `$env:TEAMRIG_SESSION='web'; claude`).
 

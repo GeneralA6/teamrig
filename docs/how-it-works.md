@@ -160,8 +160,9 @@ sequenceDiagram
 ```
 
 - `teamrig team create signup --sessions api,web,tests` writes the team's `config.json` and ties the project folder
-  to it with `.teamrig.json`. It refuses another team with the same id and a project tied to another team, a repeat
-  changes nothing, and `--dry-run` prints what it would write. `--parent your-team` hangs the new team under that
+  to it with `.teamrig.json`, which it keeps out of git in that clone (`.git/info/exclude`). It refuses another team
+  with the same id and a project tied to another team, a repeat changes nothing once both are in place, and
+  `--dry-run` prints what it would write. `--parent your-team` hangs the new team under that
   team's lead; it refuses a parent with no config, a tree deeper than 3 levels, a team's 9th child team and a
   session name another team uses.
 - The tab that ran the setup becomes the lead without a restart. `teamrig inbox read --session lead` ties its Claude
