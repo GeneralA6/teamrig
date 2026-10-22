@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { TimeZone } from '../core/zone.ts';
 import { JERUSALEM } from '../testing/zone.ts';
-import { formatCount, formatEndTime, formatPct, formatW, isBudgetDayEnd, noRoomText } from './format.ts';
+import { formatCount, formatEndTime, formatPct, formatUsd, formatW, isBudgetDayEnd, noRoomText } from './format.ts';
 
 describe('budget number formats', () => {
   it('writes shares with two decimals below 1% and one above', () => {
@@ -19,6 +19,10 @@ describe('budget number formats', () => {
 
   it('writes counts with thousands separators', () => {
     assert.deepEqual([0, 49, 2_634, 12_372.4].map(formatCount), ['0', '49', '2,634', '12,372']);
+  });
+
+  it('writes dollars with two decimals', () => {
+    assert.deepEqual([0, 8, 12.5, 1_234.567].map(formatUsd), ['$0.00', '$8.00', '$12.50', '$1234.57']);
   });
 
   it("writes an end time on the team's clock, and a UTC midnight as the budget day's end", () => {
