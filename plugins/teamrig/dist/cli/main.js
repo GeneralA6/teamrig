@@ -20,6 +20,7 @@ import { nodeProcesses } from "../open/processes.js";
 import { nodeSessionProcesses } from "../open/session-processes.js";
 import { httpPackageRegistry } from "../package-guard/registry.js";
 import { GIT_CLI, GIT_COMMIT_LOG } from "../push-guard/git.js";
+import { GIT_POINTER } from "../setup/pointer-git.js";
 import { requirementsCheck } from "../requirements/requirements.js";
 import { nodeHookRunner } from "../roll/hooks.js";
 import { nodeShellRunner } from "../test-run/shell.js";
@@ -41,6 +42,7 @@ process.exitCode = await runCli(process.argv.slice(2), {
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     sleep: realSleep,
     git: GIT_CLI,
+    pointerGit: GIT_POINTER,
     commitLog: GIT_COMMIT_LOG,
     out: {
         stdout: (line) => process.stdout.write(`${line}\n`),
