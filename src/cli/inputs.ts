@@ -330,7 +330,7 @@ export function statusInputOf(flags: Flags, times: TypedTimes): StatusInput {
 /** The card parts a `set` names (`--question`, `--options`, `--recommend`, `--default`, `--why-ask`, `--gate`); undefined when it names none. */
 function cardInputOf(flags: Flags): Partial<DecisionCard> | undefined {
   const card: Mutable<Partial<DecisionCard>> = {};
-  const question = cardPart(flags, 'question');
+  const question = flagText(flags, 'question');
   if (question !== undefined) {
     card.question = question;
   }
@@ -338,27 +338,27 @@ function cardInputOf(flags: Flags): Partial<DecisionCard> | undefined {
   if (options !== undefined) {
     card.options = optionsOf(options);
   }
-  const recommend = cardPart(flags, 'recommend');
+  const recommend = flagText(flags, 'recommend');
   if (recommend !== undefined) {
     card.recommend = recommend;
   }
-  const byDefault = cardPart(flags, 'default');
+  const byDefault = flagText(flags, 'default');
   if (byDefault !== undefined) {
     card.byDefault = byDefault;
   }
-  const whyAsk = cardPart(flags, 'why-ask');
+  const whyAsk = flagText(flags, 'why-ask');
   if (whyAsk !== undefined) {
     card.whyAsk = whyAsk;
   }
-  const gate = cardPart(flags, 'gate');
+  const gate = flagText(flags, 'gate');
   if (gate !== undefined) {
     card.gate = gate;
   }
   return Object.keys(card).length === 0 ? undefined : card;
 }
 
-/** A card part as typed, trimmed; a blank one is a usage error. */
-function cardPart(flags: Flags, name: string): string | undefined {
+/** A text flag as typed, trimmed, such as a card part; a blank one is a usage error. */
+function flagText(flags: Flags, name: string): string | undefined {
   const text = flags.get(name)?.trim();
   if (text === '') {
     throw new UsageError(`--${name} needs text`);
