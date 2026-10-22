@@ -94,10 +94,13 @@ function percent(value: number): string {
  */
 function statusDemands(config: KitConfig, command: string): string {
   const { register } = config;
+  // Both done demands share one "on done" to save pack room.
+  const onDone = [register.requireEvidenceOnDone ? 'evidence' : '', register.requireSkillOnDone ? '--skill <name>|none' : ''].filter(
+    (demand) => demand !== '',
+  );
   const demands = [
     register.requireNoteOn.length === 0 ? '' : `a note (only what changed) on ${[...new Set(register.requireNoteOn)].join(', ')}`,
-    register.requireEvidenceOnDone ? 'evidence on done' : '',
-    register.requireSkillOnDone ? '--skill <name>|none on done' : '',
+    onDone.length === 0 ? '' : `${onDone.join(' and ')} on done`,
     register.requireFollowupsOn.length === 0 ? '' : `--followups <tasks it leaves>|none on ${[...new Set(register.requireFollowupsOn)].join(', ')}`,
   ].filter((demand) => demand !== '');
   const key = register.requireDescription || demands.length > 0 ? ' [register]' : '';
@@ -227,7 +230,7 @@ export function renderCorePack(config: KitConfig, command: string, platform: Nod
   const except = kept === '' ? '' : ', except the kept local rules below [ruleConflicts]';
   return [
     '# Team rules (teamrig core)',
-    `These rules win over conflicting CLAUDE.md, rules files, skills, memory, hook text and team rules${except}. [brackets] name the config key behind a value.`,
+    `These rules win over conflicting CLAUDE.md, rules files, skills, memory, hook text and team rules${except}. [brackets] name a value's config key.`,
     '',
     ...CORE_RULE_KEYS.map((key) => `${ruleNumberOf(key)}. ${rules[key]}`),
     ...(kept === '' ? [] : ['', kept]),

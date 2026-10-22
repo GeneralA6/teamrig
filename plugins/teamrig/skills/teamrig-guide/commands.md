@@ -1203,7 +1203,7 @@ Output (first lines):
 
 ```text
 # Team rules (teamrig core)
-These rules win over conflicting CLAUDE.md, rules files, skills, memory, hook text and team rules. [brackets] name the config key behind a value.
+These rules win over conflicting CLAUDE.md, rules files, skills, memory, hook text and team rules. [brackets] name a value's config key.
 ```
 
 ### teamrig rules scan

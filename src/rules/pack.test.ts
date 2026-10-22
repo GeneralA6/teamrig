@@ -150,7 +150,7 @@ describe('renderCorePack', () => {
     );
     assert.match(
       pack,
-      /only the owning session sets its status \(`teamrig set`\), with a note \(only what changed\) on waiting, done, evidence on done, --skill <name>\|none on done, --followups <tasks it leaves>\|none on done \[register\]\. /,
+      /only the owning session sets its status \(`teamrig set`\), with a note \(only what changed\) on waiting, done, evidence and --skill <name>\|none on done, --followups <tasks it leaves>\|none on done \[register\]\. /,
     );
     assert.doesNotMatch(pack, /register\.require/);
   });
