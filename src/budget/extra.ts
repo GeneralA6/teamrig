@@ -1,6 +1,7 @@
 import type { Files } from '../core/files.ts';
 import { numberField, stringField, type JsonRecord } from '../core/guards.ts';
 import { assertWritable, parseJsonl, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
+import type { MeterReading } from './calibration.ts';
 
 /**
  * The extra-usage pool (T531 case c): dollars the user adds once the week reads 100%, a pool apart from the week,
@@ -123,6 +124,14 @@ export function poolOf(entries: readonly ExtraEntry[], sight: PoolSight): ExtraP
   const spentUsd = (last?.usd ?? 0) + (wPerUsd === undefined ? 0 : sinceW / wPerUsd);
   const leftUsd = Math.max(0, addedUsd - spentUsd);
   return { addedUsd, spentUsd, leftUsd, wPerUsd, learned: rate !== undefined, leftW: wPerUsd === undefined ? undefined : leftUsd * wPerUsd };
+}
+
+/**
+ * The W metered to the period's 100% crossing: the first meter log line of the period starting at `start` at or past
+ * 100% of the week (`PoolSight.wAtFull`); undefined before the week reached it.
+ */
+export function wAtFullOf(readings: readonly MeterReading[], start: number): number | undefined {
+  return readings.find((reading) => reading.start === start && reading.usedPct >= FULL_PCT)?.w;
 }
 
 function iso(at: number): string {

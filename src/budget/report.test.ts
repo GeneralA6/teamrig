@@ -49,6 +49,7 @@ const WEEK: WeekReading = {
   todayFrom: Date.parse('2026-10-15T00:00:00Z'),
   todayW: 38_700_000,
   teamDay: { usedPct: 5.16, pacePct: (10.25 * 11) / 24 },
+  pool: undefined,
 };
 const ROOM = { usedPct: 3, pacePct: (10.25 * 11) / 24 };
 const UNKNOWN: WeekReading = {
@@ -66,6 +67,7 @@ const UNKNOWN: WeekReading = {
   todayFrom: Date.parse('2026-10-15T00:00:00Z'),
   todayW: 0,
   teamDay: undefined,
+  pool: undefined,
 };
 const LIFT: Lift = {
   session: 'bravo',

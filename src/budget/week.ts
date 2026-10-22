@@ -2,7 +2,18 @@ import type { BudgetConfig } from '../config/types.ts';
 import { formatUtcDay, formatUtcHour, MS_PER_DAY, MS_PER_HOUR } from '../core/time.ts';
 import { DailyProfile, type ActivityProfile } from './active-time.ts';
 import type { Calibration } from './calibration.ts';
-import { dailyAllowancePct, dayPacePct, readPace, weekWindow, type PaceReading, type TeamDay, type WeekWindow } from './pace.ts';
+import { FULL_PCT, poolOf, type ExtraEntry, type ExtraPool } from './extra.ts';
+import {
+  dailyAllowancePct,
+  dayPacePct,
+  readPace,
+  spanAllowancePct,
+  weekWindow,
+  type AllowanceInput,
+  type PaceReading,
+  type TeamDay,
+  type WeekWindow,
+} from './pace.ts';
 import type { Metered, Period, PeriodKind } from './period.ts';
 import type { WeekUse } from './snapshot.ts';
 import type { UsageState } from './store.ts';
@@ -48,6 +59,15 @@ export interface WeekReading {
   readonly todayW: number;
   /** Everyone's use today against the team's in-day pace (`hasRoom`); undefined with the allowance. */
   readonly teamDay: TeamDay | undefined;
+  /** The extra-usage pool (budget/extra.ts); undefined while nothing was added or the week's use is unknown. */
+  readonly pool: ExtraPool | undefined;
+}
+
+/** The extra-usage log's entries and where the period reached 100% of the week, for the pool past the weekly limit. */
+export interface ExtraInput {
+  readonly entries: readonly ExtraEntry[];
+  /** The W the meter log's line at 100% of this period carries (`wAtFullOf`); undefined before the week reached it. */
+  readonly wAtFull: number | undefined;
 }
 
 export interface WeekInput {
@@ -61,6 +81,8 @@ export interface WeekInput {
   readonly states: readonly UsageState[];
   /** The meter log's fit and forecasts (budget/calibration.ts); the fit, once there is one, sets the rate. */
   readonly calibration: Calibration;
+  /** The extra-usage log; unset, the week ends at its weekly limit with no pool past it. */
+  readonly extra?: ExtraInput;
 }
 
 /**
@@ -136,8 +158,22 @@ function earliestDay(states: readonly UsageState[]): string | undefined {
   return days[0];
 }
 
+/**
+ * The team's allowance today: the week's, to its target (`dailyAllowancePct`); at or past 100% of the week, the W the
+ * extra-usage pool still holds, spread over the active time to the pace end like the week's, so the pool lasts to the
+ * reset instead of going in a day. Recomputed at every reading as the pool is spent; none with the pool empty.
+ */
+function teamAllowancePct(input: AllowanceInput, pool: ExtraPool | undefined, wPerPct: number): number {
+  const leftW = pool?.leftW;
+  if (input.usedPct < FULL_PCT || leftW === undefined || leftW <= 0) {
+    return dailyAllowancePct(input);
+  }
+  const { window, now, usedPct, todayPct, profile } = input;
+  return spanAllowancePct({ start: window.start, end: window.paceEnd, stopPct: usedPct + leftW / wPerPct, now, usedPct, todayPct, profile });
+}
+
 export function readWeek(input: WeekInput): WeekReading {
-  const { budget, now, statusUse, states, period, calibration } = input;
+  const { budget, now, statusUse, states, period, calibration, extra } = input;
   const reset = period?.end;
   const window = period === undefined ? undefined : weekWindow(period.end, budget.paceEndHoursBeforeReset, period.start);
   const dayStart = now - (now % MS_PER_DAY);
@@ -153,10 +189,14 @@ export function readWeek(input: WeekInput): WeekReading {
   const usedPct = statusUse?.usedPct ?? (covered && wPerPct !== undefined ? weekW / wPerPct : undefined);
   const profile = DailyProfile.ofQuietHours(budget.quietHours);
   const pace = window === undefined || usedPct === undefined ? undefined : readPace(window, budget, now, usedPct, profile);
+  const pool =
+    extra === undefined || window === undefined || usedPct === undefined
+      ? undefined
+      : poolOf(extra.entries, { start: window.start, w: weekW, usedPct, wAtFull: extra.wAtFull, configuredWPerUsd: budget.extraWPerUsd });
   const allowancePct =
     window === undefined || usedPct === undefined || wPerPct === undefined
       ? undefined
-      : dailyAllowancePct({ window, budget, now, usedPct, todayPct: todayW / wPerPct, profile });
+      : teamAllowancePct({ window, budget, now, usedPct, todayPct: todayW / wPerPct, profile }, pool, wPerPct);
   const teamDay =
     window === undefined || wPerPct === undefined || allowancePct === undefined
       ? undefined
@@ -176,5 +216,6 @@ export function readWeek(input: WeekInput): WeekReading {
     todayFrom,
     todayW,
     teamDay,
+    pool,
   };
 }

@@ -8,6 +8,7 @@ import type { Period } from './period.ts';
 import type { WeekUse } from './snapshot.ts';
 import type { UsageState } from './store.ts';
 import { calibrationOf, type Calibration } from './calibration.ts';
+import type { ExtraEntry } from './extra.ts';
 import { idleWSince, limitWPerPct, meteredOf, rateOf, readWeek, wSince } from './week.ts';
 
 /** Thursday 2026-10-15 12:00 UTC; the week runs from Wednesday 10-14 01:00 to Wednesday 10-21 01:00. */
@@ -20,6 +21,10 @@ const PERIOD: Pick<Period, 'start' | 'end' | 'kind'> = { start: Date.parse('2026
 const NONE: Calibration = calibrationOf([]);
 /** A meter log whose fit puts 1% of the week at 20 W. */
 const LEARNED: Calibration = { fit: { wPerPct: 20, errorPts: 0.4, readings: 12 }, periods: [] };
+/** The status line at 100% of the week. */
+const FULL: WeekUse = { ...STATUS, usedPct: 100 };
+/** $10 added to the extra-usage pool at 10:00, the week at 100% and 1,400 W metered. */
+const ADDED: ExtraEntry = { at: Date.parse('2026-10-15T10:00:00Z'), kind: 'add', usd: 10, weekPct: 100, start: PERIOD.start, end: RESET, w: 1_400 };
 
 function state(wByDay: Readonly<Record<string, number>>): UsageState {
   const byDay = Object.fromEntries(Object.entries(wByDay).map(([day, w]) => [day, { w, calls: 1, patterns: emptyPatterns() }]));
@@ -51,6 +56,7 @@ describe('readWeek', () => {
       todayFrom: Date.parse('2026-10-15T00:00:00Z'),
       todayW: 500,
       teamDay: undefined,
+      pool: undefined,
     });
   });
 
@@ -137,6 +143,34 @@ describe('readWeek', () => {
   it("has no allowance while the week's use cannot be read: no fixed number stands in for it", () => {
     const unknown = readWeek({ calibration: NONE, budget: DEFAULT_BUDGET, now: NOW, statusUse: undefined, period: PERIOD, states: [] });
     assert.deepEqual([unknown.allowancePct, unknown.teamDay], [undefined, undefined]);
+  });
+
+  it('spreads the W left in the extra-usage pool past 100% of the week over the time to the pace end', () => {
+    const budget: BudgetConfig = { ...DEFAULT_BUDGET, extraWPerUsd: 100 };
+    const week = readWeek({ calibration: LEARNED, budget, now: NOW, statusUse: FULL, period: PERIOD, states: COVERED, extra: { entries: [ADDED], wAtFull: 1_400 } });
+    // 100 W metered past the 100% line at 100 W per dollar: $1 of the $10 spent, 900 W left, 45% of the week at 20 W per percent.
+    assert.deepEqual(week.pool, { addedUsd: 10, spentUsd: 1, leftUsd: 9, wPerUsd: 100, learned: false, leftW: 900 });
+    // The 45% over the 132 hours to the pace end, a 24-hour day of it; Thursday 12:00 is half the day.
+    assert.equal(round(week.allowancePct), round((45 * 24) / 132));
+    assert.equal(round(week.teamDay?.pacePct), round((45 * 12) / 132));
+  });
+
+  it('has no room past 100% while the pool is unset, spent or known in dollars only', () => {
+    const extra = { entries: [ADDED], wAtFull: 1_400 };
+    const none = readWeek({ calibration: LEARNED, budget: DEFAULT_BUDGET, now: NOW, statusUse: FULL, period: PERIOD, states: COVERED });
+    const dollarsOnly = readWeek({ calibration: LEARNED, budget: DEFAULT_BUDGET, now: NOW, statusUse: FULL, period: PERIOD, states: COVERED, extra });
+    // 100 W past the 100% line at 10 W per dollar spend the whole $10.
+    const spent = readWeek({ calibration: LEARNED, budget: { ...DEFAULT_BUDGET, extraWPerUsd: 10 }, now: NOW, statusUse: FULL, period: PERIOD, states: COVERED, extra });
+    assert.deepEqual([none.pool, none.allowancePct, dollarsOnly.allowancePct, spent.allowancePct, spent.pool?.leftW], [undefined, 0, 0, 0, 0]);
+    assert.deepEqual(dollarsOnly.pool, { addedUsd: 10, spentUsd: 0, leftUsd: 10, wPerUsd: undefined, learned: false, leftW: undefined });
+  });
+
+  it("keeps the week's allowance below 100%: the pool waits, untouched", () => {
+    const budget: BudgetConfig = { ...DEFAULT_BUDGET, extraWPerUsd: 100 };
+    const early = { ...ADDED, weekPct: 57 };
+    const week = readWeek({ calibration: NONE, budget, now: NOW, statusUse: STATUS, period: PERIOD, states: COVERED, extra: { entries: [early], wAtFull: undefined } });
+    assert.deepEqual(week.pool, { addedUsd: 10, spentUsd: 0, leftUsd: 10, wPerUsd: 100, learned: false, leftW: 1_000 });
+    assert.equal(round(week.allowancePct), round((42.5 * 24) / 132));
   });
 });
 

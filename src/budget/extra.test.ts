@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { NewerDataError, toJsonlLine } from '../core/jsonl.ts';
 import { MS_PER_HOUR, MS_PER_WEEK } from '../core/time.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
+import type { MeterReading } from './calibration.ts';
 import {
   EXTRA_LOG_FORMAT,
   ExtraLog,
@@ -12,6 +13,7 @@ import {
   parseExtraRecord,
   poolOf,
   type ExtraEntry,
+  wAtFullOf,
   type PoolSight,
 } from './extra.ts';
 
@@ -89,6 +91,21 @@ describe('poolOf', () => {
 
   it('never leaves less than nothing in the pool', () => {
     assert.equal(poolOf([ADD, spent(0, 0, 0), spent(60, 1, 120_000_000)], SIGHT)?.leftUsd, 0);
+  });
+});
+
+describe('wAtFullOf', () => {
+  function line(start: number, usedPct: number, w: number): MeterReading {
+    return { at: FULL_AT, usedPct, start, end: start + MS_PER_WEEK, w, forecastPct: undefined };
+  }
+
+  it("takes the W of the period's first meter line at 100% of the week", () => {
+    const readings = [line(START - MS_PER_WEEK, FULL_PCT, 800_000_000), line(START, 99, 890_000_000), line(START, FULL_PCT, W_AT_FULL)];
+    assert.equal(wAtFullOf(readings, START), W_AT_FULL);
+  });
+
+  it('is unknown before the period reached 100%, whatever an earlier period reached', () => {
+    assert.equal(wAtFullOf([line(START - MS_PER_WEEK, FULL_PCT, 800_000_000), line(START, 99, 890_000_000)], START), undefined);
   });
 });
 
