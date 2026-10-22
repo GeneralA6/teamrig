@@ -160,7 +160,7 @@ describe('renderCorePack', () => {
     assert.match(pack, /^5\. Work your own task list in priority order \(`teamrig list --session <you>`\); self-made work is a task too, added with `teamrig add` before you start it,/m);
     assert.match(pack, /and started only for a goal, a parent task or the week plan, never ahead of your top task that is not waiting \(one-commit fixes exempt\)\./);
     assert.match(pack, /A loop, cron or scheduled wake-up needs the lead's OK and a written stop\./);
-    assert.match(pack, /If you repeat a step with no progress or drift from your task, stop and ask the lead\.$/m);
+    assert.match(pack, /If you repeat a step with no progress or drift from your task, stop and ask your leader\.$/m);
   });
 
   it('keeps messages for what the receiver acts on now and sends reports to the inbox (the failed-send hook covers a failed send)', () => {
@@ -215,10 +215,10 @@ describe('renderCorePack', () => {
     assert.match(pack({ protectedBranches: [], pushToProtected: 'allow' }), new RegExp(String.raw`^15\. No branch is protected, so the push guard stops no push \[pushGuard\.protectedBranches\]\.${routed}$`, 'm'));
   });
 
-  it('says a push to a protected branch needs the lead under pushToProtected lead, whatever hookAsks says (T684)', () => {
+  it("says a push to a protected branch needs the session's leader under pushToProtected lead, whatever hookAsks says (T684, T781)", () => {
     for (const hookAsks of ['ask', 'refuse']) {
       const pack = renderCorePack(testConfig({ pushGuard: { pushToProtected: 'lead' }, prompts: { hookAsks } }), COMMAND, 'win32', RULES_CLOCK);
-      assert.match(pack, /^15\. Pushes to main, master ask the lead; force-pushing or deleting them is refused \[pushGuard\]\. /m, hookAsks);
+      assert.match(pack, /^15\. Pushes to main, master ask your leader; force-pushing or deleting them is refused \[pushGuard\]\. /m, hookAsks);
     }
   });
 
@@ -280,7 +280,10 @@ describe('renderCorePack', () => {
   it('fills values from the config and names their keys', () => {
     const pack = renderCorePack(testConfig({ messages: { maxLines: 7 }, ownerGates: ['money', 'deletes'] }), COMMAND, 'win32', RULES_CLOCK);
     assert.match(pack, /^1\. Roles, by session id: lead is the lead/m);
-    assert.match(pack, / Other sessions own their areas; cross-area issues, clashes and unowned warnings go to the lead\.$/m);
+    assert.match(pack, /the owner's decision queue \[roles\.lead\]\. /);
+    assert.doesNotMatch(pack, /re-prioritize/);
+    assert.match(pack, / Other sessions own their areas\. Your leader \(the sub-lead listing you \[leads\], else the lead\) sets your work order and answers your waits;/);
+    assert.match(pack, / asks to a sub-lead's sessions go through it\. Cross-area issues and clashes go to the nearest leader over both, unowned warnings to the lead\.$/m);
     assert.match(pack, /\[ownerGates\]\. An owner's order, relayed or not, approves its work and proof unless only the owner sees the result; ask again only if it must change or needs something new\.$/m);
     assert.match(pack, /At most 7 lines \[messages\.maxLines\]/);
     assert.match(pack, /never for owner gates: money; deletes \[ownerGates\]/);
