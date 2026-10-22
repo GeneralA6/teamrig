@@ -4,7 +4,7 @@ import { TimeZone } from '../core/zone.ts';
 import { TASK_STATUSES } from '../register/model.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 import { UsageError } from './args.ts';
-import { addInputOf, callerOf, changesOf, deadlineOf, instantOf, listFilterOf, priorityOf, sessionRef, setInputOf, sizeOf, statusInputOf, taskIdOf, waitsOf, weekOf, type TypedTimes } from './inputs.ts';
+import { addInputOf, callerOf, changesOf, deadlineOf, instantOf, kindOf, listFilterOf, priorityOf, sessionRef, setInputOf, sizeOf, statusInputOf, taskIdOf, waitsOf, weekOf, type TypedTimes } from './inputs.ts';
 
 const flags = (entries: Readonly<Record<string, string>>): ReadonlyMap<string, string> => new Map(Object.entries(entries));
 
@@ -118,6 +118,30 @@ describe('changesOf', () => {
   it('sizes a task, or clears its size with none', () => {
     assert.deepEqual(changesOf(flags({ size: '1.5%' }), TIMES), { size: 1.5 });
     assert.deepEqual(changesOf(flags({ size: 'none' }), TIMES), { size: null });
+  });
+
+  it('marks a task a problem, or work with none, which the problem hint reads as marked', () => {
+    assert.deepEqual(changesOf(flags({ problem: 'critical' }), TIMES), { kind: 'critical' });
+    assert.deepEqual(changesOf(flags({ problem: 'none' }), TIMES), { kind: 'work' });
+  });
+});
+
+describe('kindOf', () => {
+  it('reads problem and critical as themselves and none as work', () => {
+    assert.equal(kindOf('problem'), 'problem');
+    assert.equal(kindOf('critical'), 'critical');
+    assert.equal(kindOf('none'), 'work');
+  });
+
+  it('refuses any other text, the stored work spelling too', () => {
+    for (const text of ['work', 'Problem', 'bug', '']) {
+      assert.throws(() => kindOf(text), { name: 'UsageError', message: `--problem "${text}" is not problem|critical|none` }, text);
+    }
+  });
+
+  it('reaches add, which leaves it out when not given', () => {
+    assert.equal(addInputOf(flags({ title: 'x', priority: 'p2', problem: 'problem' }), 'alpha', TIMES).kind, 'problem');
+    assert.equal(addInputOf(flags({ title: 'x', priority: 'p2' }), 'alpha', TIMES).kind, undefined);
   });
 });
 

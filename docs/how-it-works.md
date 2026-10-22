@@ -268,9 +268,10 @@ stateDiagram-v2
   prints what the task needs and what needs it, then the next move (who acts first, on which task); `start` and
   the live task list name the other sessions' tasks waiting on the session (`WAITING ON YOU`). A plan (`--after`)
   or a wait (`--waits task:`, `--ask`) that would close a loop is refused: no task in a loop can finish.
-- `teamrig update` changes a task's title, owner, priority, ref, due date, goals, week or the tasks it comes after
-  (`none` clears the last five), never the status; on a task it does not own, the lead may change the owner, priority, due date, week or plan order, and
-  any session may add a `--note` alone as context.
+- `teamrig update` changes a task's title, owner, priority, ref, due date, goals, week, the tasks it comes after, its
+  size or its problem mark (`--problem`; `none` clears the ref, due date, goals, week, plan or size, and marks it no
+  problem), never the status; on a task it does not own, the lead may change the owner, priority, due date, week,
+  plan order, size or problem mark, and any session may add a `--note` alone as context.
 - `teamrig check` reports tasks past their effective due, not picked up 24 hours after they were handed out, untouched for 72 hours,
   or due this week but left out of the week's plan, and owner orders left out of it. A verifying task past its due
   date is `VERIFY-OVERDUE`: it was not verified by then. One with a due date is not called stale while it waits. A verifying task another task needs is `VERIFY-BLOCKS`, and a session holding more than 5 (`register.maxVerifying`) gets a `PILE-UP` on its oldest. Tasks that need each other in a circle (rows an older teamrig could write) are a `LOOP`, flagged on the lowest-numbered one. The first sized task of the week that no longer fits the weekly usage limit left is `OVER-LIMIT` (`plan` prints that line). A waiting task whose every reason has cleared is `READY`, one waiting on a peer's decision or approval, as an older teamrig wrote it, is `PEER-WAIT`, one waiting on the owner with no decision card is `NO-CARD`, and one the owner ordered that asks the owner with no `--why-ask` is `OWNER-ORDERED` (an order approves its own work and proof). It also reports a session that

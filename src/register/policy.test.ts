@@ -42,8 +42,13 @@ describe('RegisterPolicy.add', () => {
     const verdict = policy.add({ ...INPUT, title: '  Add a health check ' }, EMPTY);
     assert.deepEqual(verdict, {
       ok: true,
-      value: { title: 'Add a health check', description: 'what and why', owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], week: null, after: [], size: null },
+      value: { title: 'Add a health check', description: 'what and why', owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], week: null, after: [], size: null, kind: null },
     });
+  });
+
+  it('keeps the kind it is given', () => {
+    const verdict = policy.add({ ...INPUT, kind: 'problem' }, EMPTY);
+    assert.equal(verdict.ok ? verdict.value.kind : undefined, 'problem');
   });
 
   it('applies the team policy', () => {
@@ -83,7 +88,7 @@ describe('RegisterPolicy.add', () => {
 
   it('refuses an active task with the same title, but not a closed one', () => {
     const open = foldEvents([
-      { v: 1, type: 'create', id: 'T4', at: TASK.createdAt, by: 'lead', task: { ...INPUT, description: null, ref: null, due: null, goals: [], week: null, after: [], size: null } },
+      { v: 1, type: 'create', id: 'T4', at: TASK.createdAt, by: 'lead', task: { ...INPUT, description: null, ref: null, due: null, goals: [], week: null, after: [], size: null, kind: null } },
     ]);
     assert.match(error(policy.add({ ...INPUT, title: 'add a  HEALTH check' }, open)), /T4 already tracks this \(open, owner alpha\)/);
     const closed = foldEvents([
@@ -146,7 +151,7 @@ describe('RegisterPolicy: the description', () => {
   });
 
   it("leaves the description to the owner: the lead may not change it on another session's task", () => {
-    assert.equal(error(policy.update(TASK, 'lead', { description: 'Why it matters.' }, undefined, EMPTY)), 'a leader may change only owner, priority, due, week, after, size on a task it does not own (asked: description)');
+    assert.equal(error(policy.update(TASK, 'lead', { description: 'Why it matters.' }, undefined, EMPTY)), 'a leader may change only owner, priority, due, week, after, size, kind on a task it does not own (asked: description)');
     assert.equal(error(policy.update(TASK, 'bravo', { description: 'Why it matters.' }, undefined, EMPTY)), 'only the owner (alpha) or the lead (lead) changes T1');
   });
 
@@ -509,6 +514,7 @@ describe('RegisterPolicy.ask', () => {
         week: null,
         after: [],
         size: null,
+        kind: null,
       },
     });
     const undated = asking(PLANNED, 'alpha', { owner: 'alpha', title: 'Write the migration' });
@@ -554,12 +560,14 @@ describe('RegisterPolicy.update', () => {
     assert.match(error(policy.update(TASK, 'alpha', { priority: 7 }, undefined, EMPTY)), /priority p7 is not one of/);
   });
 
-  it('lets the lead change only owner, priority, due, week, after and size', () => {
+  it('lets the lead change only owner, priority, due, week, after, size and kind', () => {
     assert.equal(policy.update(TASK, 'lead', { owner: 'bravo', due: '2030-01-10' }, undefined, EMPTY).ok, true);
     assert.equal(policy.update(TASK, 'lead', { after: [] }, undefined, EMPTY).ok, true);
     assert.deepEqual(policy.update(TASK, 'lead', { size: 2.5 }, undefined, EMPTY), { ok: true, value: { changes: { size: 2.5 }, note: null } });
     assert.equal(policy.update(TASK, 'lead', { size: null }, undefined, EMPTY).ok, true);
+    assert.deepEqual(policy.update(TASK, 'lead', { kind: 'critical' }, undefined, EMPTY), { ok: true, value: { changes: { kind: 'critical' }, note: null } });
     assert.equal(error(policy.update(TASK, 'bravo', { size: 2 }, undefined, EMPTY)), 'only the owner (alpha) or the lead (lead) changes T1');
+    assert.equal(error(policy.update(TASK, 'bravo', { kind: 'problem' }, undefined, EMPTY)), 'only the owner (alpha) or the lead (lead) changes T1');
     assert.match(error(policy.update(TASK, 'lead', { title: 'x', priority: 1 }, undefined, EMPTY)), /asked: title/);
   });
 
@@ -673,7 +681,7 @@ describe('RegisterPolicy, the GitHub import', () => {
     const team = testTask({ title: 'Fix login', ref: 'gh:acme/web#7' });
     assert.deepEqual(policy.importAdd(ISSUE, stateOf(team)), {
       ok: true,
-      value: { title: 'Fix login', description: null, owner: 'bravo', source: 'github', ref: 'gh:acme/web#7', priority: 1, due: null, goals: [], week: null, after: [], size: null },
+      value: { title: 'Fix login', description: null, owner: 'bravo', source: 'github', ref: 'gh:acme/web#7', priority: 1, due: null, goals: [], week: null, after: [], size: null, kind: null },
     });
     assert.equal(error(policy.importAdd(ISSUE, stateOf(team, IMPORTED))), 'T2 already has ref gh:acme/web#7');
     assert.equal(error(policy.importAdd({ ...ISSUE, owner: 'octocat' }, EMPTY)), 'owner octocat is not a session on this team');

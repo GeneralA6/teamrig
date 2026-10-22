@@ -14,8 +14,8 @@ import { parseWaits, type WaitReason } from './waits.ts';
  * a newer teamrig's, and a `blocked` line reads here as `waiting` with no reasons. It also gained a
  * `verifying` status's `proof`, a task's `description` (0.44.0) and its `size` (0.47.0), and a `waiting` status's
  * decision `card` (0.79.0), the same `waits` and `card` on a `verifying` line for what its proof waits for
- * (0.109.0), and an update's approval `verdict` (0.126.0), which an older reader ignores: each reads there as none
- * (an answered update as a note alone). An older teamrig re-serialized the events of the snapshot a rotation or
+ * (0.109.0), an update's approval `verdict` (0.126.0) and a task's `kind` (0.147.0), which an older reader ignores:
+ * each reads there as none (an answered update as a note alone). An older teamrig re-serialized the events of the snapshot a rotation or
  * `compact` rewrites, so it dropped such a field there (the archive keeps the lines as written); this one copies
  * each kept line as written (compaction.ts).
  * Parsing checks the FORMAT only (any positive priority, any goal string): team policy is applied
@@ -46,9 +46,26 @@ export interface TaskFields {
   readonly after: readonly string[];
   /** What the task still costs, in percent of the weekly usage limit (above 0, at most 100). Absent on older lines: not sized. */
   readonly size: number | null;
+  /** Whether the task is a problem (TASK_KINDS); null when no one marked it, read as work. Absent on older lines: not marked. */
+  readonly kind: TaskKind | null;
 }
 
-export const TASK_FIELD_NAMES = ['title', 'description', 'owner', 'source', 'ref', 'priority', 'due', 'goals', 'week', 'after', 'size'] as const;
+/**
+ * What a task was marked (`--problem`): `work`, marked as no problem; a `problem`, such as a fix, an incident, the
+ * investigation of a failure, a problem's design or the decision about one; or `critical`, a problem in a critical area.
+ */
+export const TASK_KINDS = ['work', 'problem', 'critical'] as const;
+
+export type TaskKind = (typeof TASK_KINDS)[number];
+
+export function isTaskKind(value: unknown): value is TaskKind {
+  return TASK_KINDS.some((kind) => kind === value);
+}
+
+/** The kinds that mark a problem, which its review covers. */
+export const PROBLEM_KINDS: readonly TaskKind[] = ['problem', 'critical'];
+
+export const TASK_FIELD_NAMES = ['title', 'description', 'owner', 'source', 'ref', 'priority', 'due', 'goals', 'week', 'after', 'size', 'kind'] as const;
 
 export type TaskFieldName = (typeof TASK_FIELD_NAMES)[number];
 
@@ -134,15 +151,19 @@ export function sizeProblem(value: number): string | undefined {
 const STATUS_NAME = /^[a-z]+(?:-[a-z]+)*$/;
 
 /**
- * The record an event is written as. A create line leaves out an empty `after`, a null `description` and a null
- * `size`, which read back as none, so a task without them costs no bytes and its line is the one an older teamrig wrote.
+ * The record an event is written as. A create line leaves out an empty `after` and a null `description`, `size` or
+ * `kind`, which read back as none, so a task without them costs no bytes and its line is the one an older teamrig wrote.
  */
 export function eventRecord(event: RegisterEvent): JsonRecord {
   if (event.type !== 'create') {
     return { ...event };
   }
   const { task } = event;
-  const left = (name: string): boolean => (name === 'after' && task.after.length === 0) || (name === 'description' && task.description === null) || (name === 'size' && task.size === null);
+  const left = (name: string): boolean =>
+    (name === 'after' && task.after.length === 0) ||
+    (name === 'description' && task.description === null) ||
+    (name === 'size' && task.size === null) ||
+    (name === 'kind' && task.kind === null);
   return { ...event, task: Object.fromEntries(Object.entries(task).filter(([name]) => !left(name))) };
 }
 
@@ -350,6 +371,12 @@ function readField(fields: { -readonly [K in TaskFieldName]?: TaskFields[K] }, n
         return `bad size ${JSON.stringify(value)}`;
       }
       fields.size = value;
+      return undefined;
+    case 'kind':
+      if (value !== undefined && value !== null && !isTaskKind(value)) {
+        return `bad kind ${JSON.stringify(value)}`;
+      }
+      fields.kind = isTaskKind(value) ? value : null;
       return undefined;
   }
 }

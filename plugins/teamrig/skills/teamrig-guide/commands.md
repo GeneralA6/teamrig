@@ -49,6 +49,10 @@ Flags:
   at most 100). `plan` sums the week's sizes against what is left of the limit; `show` prints it, and its
   weighted tokens at the week's W per percent (learned from the meter log, else `budget.weeklyLimitW`, else the
   status line's estimate; see [teamrig budget](#teamrig-budget)) once known.
+- `--problem problem|critical|none`: marks the task a problem (a fix, an incident, a failure's investigation, a
+  problem's design or the decision on one), `critical` for one in a critical area, or `none` for no problem; its
+  line shows `problem` or `critical`. A task no one marked whose title or description matches
+  `register.review.hintPattern` prints a `NOTE` asking to mark it, when it is added and when it starts.
 - `--team <child team>`: only for a lead with sub-teams: hands that team's lead the task. It takes no
   `--owner` or `--source`.
 
@@ -225,6 +229,8 @@ Flags:
   `set --status waiting --waits task:T5`). The owner or a leader above it changes it. A plan that would close a
   loop (`T5 -> T3 -> T5`: T3 already needs T5) is refused with the fix ([errors](errors.md)).
 - `--size <pct>|none`: a new size, in percent of the weekly usage limit, or `none` to clear it.
+- `--problem problem|critical|none`: marks the task a problem, a critical one, or no problem (`none`, which also
+  quiets the hint); the lead may mark any task.
 - `--note "<text>"`: records a note with the change.
 
 Example:

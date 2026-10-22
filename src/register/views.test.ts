@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { TEST_CARD } from '../testing/card.ts';
 import { testTask } from '../testing/task.ts';
-import type { RegisterEvent } from './events.ts';
+import type { RegisterEvent, TaskKind } from './events.ts';
 import {
   approvalNotice,
   assignedNotice,
@@ -314,9 +314,9 @@ describe('formatEvent and formatTaskDetail', () => {
       id: 'T1',
       at: AT,
       by: 'lead',
-      task: { title: 'x', description: 'Why x.', owner: 'alpha', source: 'owner', ref: 'inbox:3', priority: 1, due: '2030-01-08', goals: ['G1'], week: null, after: [], size: null },
+      task: { title: 'x', description: 'Why x.', owner: 'alpha', source: 'owner', ref: 'inbox:3', priority: 1, due: '2030-01-08', goals: ['G1'], week: null, after: [], size: null, kind: null },
     },
-    { v: 1, type: 'create', id: 'T2', at: AT, by: 'lead', task: { title: 'y', description: null, owner: 'bravo', source: 'lead', ref: null, priority: 2, due: null, goals: [], week: null, after: ['T1'], size: null } },
+    { v: 1, type: 'create', id: 'T2', at: AT, by: 'lead', task: { title: 'y', description: null, owner: 'bravo', source: 'lead', ref: null, priority: 2, due: null, goals: [], week: null, after: ['T1'], size: null, kind: null } },
     { v: 1, type: 'update', id: 'T1', at: '2030-01-07T10:00:00.000Z', by: 'lead', changes: { due: '2030-01-09', goals: ['G1', 'G2'] }, note: 'later' },
     { v: 1, type: 'status', id: 'T1', at: '2030-01-07T11:00:00.000Z', by: 'alpha', status: 'done', note: 'ok', evidence: 'abc1234', skill: 'none' },
     {
@@ -425,6 +425,21 @@ describe('formatEvent and formatTaskDetail', () => {
     assert.ok(formatTaskDetail(sized, [], TREE, () => undefined).split('\n').includes('size: 1.25% of the weekly limit'));
     assert.ok(!formatTaskDetail(testTask(), [], TREE).includes('size'), 'a task with none prints no line');
     assert.deepEqual([sizeText(2), sizeText(0.125), sizeText(33.333)], ['2%', '0.13%', '33.33%']);
+  });
+
+  it('names a problem or critical task on its row after the priority, never work or an unmarked task, and prints the kind in the history', () => {
+    assert.equal(formatTask(testTask({ kind: 'critical' }), undefined, TREE), 'T1 open, p2, critical, owner alpha, from lead | Add a health check');
+    assert.equal(formatTask(testTask({ kind: 'problem' }), undefined, TREE), 'T1 open, p2, problem, owner alpha, from lead | Add a health check');
+    const quiet: (TaskKind | null)[] = ['work', null];
+    for (const kind of quiet) {
+      assert.equal(formatTask(testTask({ kind }), undefined, TREE), 'T1 open, p2, owner alpha, from lead | Add a health check', String(kind));
+    }
+    const created: RegisterEvent = { v: 2, type: 'create', id: 'T1', at: AT, by: 'alpha', task: testTask({ id: 'T1', kind: 'problem' }) };
+    assert.match(formatEvent(created, TimeZone.UTC), / kind=problem$/);
+    const unmarked: RegisterEvent = { v: 2, type: 'create', id: 'T1', at: AT, by: 'alpha', task: testTask({ id: 'T1' }) };
+    assert.doesNotMatch(formatEvent(unmarked, TimeZone.UTC), /kind=/);
+    const remarked: RegisterEvent = { v: 2, type: 'update', id: 'T1', at: AT, by: 'lead', changes: { kind: 'work' }, note: null };
+    assert.equal(formatEvent(remarked, TimeZone.UTC), '2030-01-07 09:00 UTC lead update kind=work');
   });
 });
 

@@ -34,6 +34,7 @@ describe('golden register logs', () => {
       week: '2030-01-07',
       after: [],
       size: null,
+      kind: null,
       status: 'done',
       note: 'health check live',
       evidence: 'commit abc1234; 12 tests',
