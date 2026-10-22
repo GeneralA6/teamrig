@@ -854,7 +854,9 @@ RAN R4: exit 0; output /home/you/.teamrig/teams/shop/exec/out/R4-run.log (SHA-25
 ### teamrig team create
 
 Creates a team: writes its config in the kit home and `.teamrig.json` in the project folder. The lead session
-is added for you.
+is added for you. In a git repository it adds `.teamrig.json` to the repository's `.git/info/exclude`, which git never
+commits: the team it names exists on this machine only. It leaves a pointer git already ignores or tracks as it is,
+and a repeat adds the line for a pointer an earlier version left in git's view.
 
 Flags:
 
@@ -875,6 +877,7 @@ Output:
 ```text
 CREATED /home/you/.teamrig/teams/shop/config.json
 CREATED /home/you/shop/.teamrig.json
+ADDED .teamrig.json to /home/you/shop/.git/info/exclude: git ignores it in this clone only, as the team it names exists on this machine only
 Team shop: lead lead, sessions api, web.
 Next: teamrig add --session lead --owner <id> --priority p<n> --title "<first task>" --description "<what and why>" for each session, then teamrig open <id> for each.
 ```
