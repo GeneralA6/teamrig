@@ -84,10 +84,12 @@ const execCommands = () => import('./commands/exec.ts');
 const setupBackupCommands = () => import('./commands/setup-backup.ts');
 
 const TASK_FIELDS = ['title', 'description', 'owner', 'ref', 'priority', 'due', 'goals', 'week', 'after', 'size', 'problem'];
+/** The parts of a problem task's review `set` gives (register/review.ts REVIEW_FLAGS). */
+const REVIEW_FLAGS = ['cause', 'how', 'prevent', 'harden', 'missed-test', 'missed-monitor', 'missed-log'];
 
 const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   add: { effect: 'write', flags: ['session', 'source', 'team', ...TASK_FIELDS], load: async () => (await registerCommands()).add },
-  set: { effect: 'write', flags: ['session', 'status', 'note', 'evidence', 'skill', 'followups', 'waits', 'question', 'options', 'recommend', 'default', 'why-ask', 'gate', 'proof', 'met', 'due', 'ask', 'text'], load: async () => (await registerCommands()).set },
+  set: { effect: 'write', flags: ['session', 'status', 'note', 'evidence', 'skill', 'followups', 'waits', 'question', 'options', 'recommend', 'default', 'why-ask', 'gate', 'proof', 'met', 'due', 'ask', 'text', ...REVIEW_FLAGS], load: async () => (await registerCommands()).set },
   update: { effect: 'write', flags: ['session', 'note', ...TASK_FIELDS], switches: ['pin', 'unpin'], load: async () => (await registerCommands()).update },
   approve: { effect: 'write', flags: ['session', 'note'], switches: ['decline'], load: async () => (await registerCommands()).approve },
   list: {
@@ -325,6 +327,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       [--skill <name>|none] [--followups T<id>,...|none] [--waits decision:<who>,approval:<who>,task:T<id>,time:<date>]
       [--question ".." --options "<a> | <b>" --recommend ".." --default ".." --why-ask ".." --gate ".."]
       [--proof "<what proves it>"] [--met "<what shows it>"] [--due <date>] [--ask <session> --text "<the work>"]
+      [--cause ".." --how ".." --prevent ".." --harden ".." --missed-test ".." --missed-monitor ".." --missed-log ".."]
       verifying needs --proof: what will prove the shipped change works; --due sets the date to verify by
       a start that a verifying task it needs holds goes through with --met: what shows that task's proof
       exists; its owner gets an inbox line to set it done or reopen it
@@ -345,6 +348,12 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       a wait on the owner's decision names what makes it the owner's: --gate "<an owner gate (ownerGates)
       or business>"; any other question is yours or your leader's: decide it, or wait on your leader;
       check flags it UNGATED without one
+      a task marked --problem gives its review (register.review): --cause "<the root cause, at its source>"
+      --how "<the change or assumption that let it in>" --prevent "<what stops it coming back>", and
+      --missed-test, --missed-monitor and --missed-log "<a follow-up task that adds it, or why none can catch it>";
+      a critical one (--problem critical, or an owner in criticalOwners) --harden "<past the direct guard>" too;
+      each part at least 3 words besides task ids, kept across sets; tasks a missed part names join
+      --followups; verifying and done need every part (requireOn; mode refuse, warn or off)
   update <id> [--title ..] [--description ..|none] [--owner ..] [--priority ..] [--ref ..|none]
       [--due <date>|none] [--goals a,b|none] [--week <date>|none] [--after T5,T6|none] [--size <pct>|none]
       [--problem problem|critical|none] [--pin|--unpin] [--note ..]   the lead may change owner, priority, due,

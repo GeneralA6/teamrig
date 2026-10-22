@@ -100,6 +100,7 @@ describe('runCli: help, version and usage errors', () => {
       '      [--skill <name>|none] [--followups T<id>,...|none] [--waits decision:<who>,approval:<who>,task:T<id>,time:<date>]',
       '      [--question ".." --options "<a> | <b>" --recommend ".." --default ".." --why-ask ".." --gate ".."]',
       '      [--proof "<what proves it>"] [--met "<what shows it>"] [--due <date>] [--ask <session> --text "<the work>"]',
+      '      [--cause ".." --how ".." --prevent ".." --harden ".." --missed-test ".." --missed-monitor ".." --missed-log ".."]',
       '      verifying needs --proof: what will prove the shipped change works; --due sets the date to verify by',
       "      a start that a verifying task it needs holds goes through with --met: what shows that task's proof",
       '      exists; its owner gets an inbox line to set it done or reopen it',
@@ -120,6 +121,12 @@ describe('runCli: help, version and usage errors', () => {
       "      a wait on the owner's decision names what makes it the owner's: --gate \"<an owner gate (ownerGates)",
       "      or business>\"; any other question is yours or your leader's: decide it, or wait on your leader;",
       '      check flags it UNGATED without one',
+      '      a task marked --problem gives its review (register.review): --cause "<the root cause, at its source>"',
+      '      --how "<the change or assumption that let it in>" --prevent "<what stops it coming back>", and',
+      '      --missed-test, --missed-monitor and --missed-log "<a follow-up task that adds it, or why none can catch it>";',
+      '      a critical one (--problem critical, or an owner in criticalOwners) --harden "<past the direct guard>" too;',
+      '      each part at least 3 words besides task ids, kept across sets; tasks a missed part names join',
+      '      --followups; verifying and done need every part (requireOn; mode refuse, warn or off)',
     ];
     assert.deepEqual([done.code, done.stderr], [EXIT.usage, [['unexpected "done"', '', head, ...setLines, FULL_HELP_POINTER].join('\n')]]);
     assert.equal((done.stderr[0] ?? '').length < USAGE.length / 5, true, 'a fifth of the full help at most');

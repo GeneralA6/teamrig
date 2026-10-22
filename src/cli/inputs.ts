@@ -6,6 +6,7 @@ import { OPTION_SEPARATOR, type DecisionCard } from '../register/card.ts';
 import { MAX_SIZE_PCT, sizeProblem, type TaskFields, type TaskKind } from '../register/events.ts';
 import { isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, priorityText, TASK_ID, TASK_STATUSES, type TaskStatus } from '../register/model.ts';
 import { WAITS_USAGE, type AddInput, type AskInput, type StatusInput } from '../register/policy.ts';
+import { REVIEW_FLAGS, REVIEW_ORDER, type ProblemReview } from '../register/review.ts';
 import { isWaitKind, waitOf, type WaitReason } from '../register/waits.ts';
 import type { ListFilter } from '../register/views.ts';
 import { requiredFlag, UsageError, type Flags, type ParsedArgs } from './args.ts';
@@ -324,7 +325,23 @@ export function statusInputOf(flags: Flags, times: TypedTimes): StatusInput {
   if (followups !== undefined) {
     input.followups = followups === NONE ? [] : listOf('--followups', followups).map(taskIdOf);
   }
+  const review = reviewInputOf(flags);
+  if (review !== undefined) {
+    input.review = review;
+  }
   return input;
+}
+
+/** The review parts a `set` gives (`--cause`, `--how`, `--prevent`, `--harden`, `--missed-*`); undefined when it gives none. */
+function reviewInputOf(flags: Flags): ProblemReview | undefined {
+  const review: Mutable<ProblemReview> = {};
+  for (const part of REVIEW_ORDER) {
+    const text = flagText(flags, REVIEW_FLAGS[part].slice(2));
+    if (text !== undefined) {
+      review[part] = text;
+    }
+  }
+  return Object.keys(review).length === 0 ? undefined : review;
 }
 
 /** The card parts a `set` names (`--question`, `--options`, `--recommend`, `--default`, `--why-ask`, `--gate`); undefined when it names none. */
@@ -357,7 +374,7 @@ function cardInputOf(flags: Flags): Partial<DecisionCard> | undefined {
   return Object.keys(card).length === 0 ? undefined : card;
 }
 
-/** A text flag as typed, trimmed, such as a card part; a blank one is a usage error. */
+/** A text flag as typed, trimmed, such as a card or review part; a blank one is a usage error. */
 function flagText(flags: Flags, name: string): string | undefined {
   const text = flags.get(name)?.trim();
   if (text === '') {

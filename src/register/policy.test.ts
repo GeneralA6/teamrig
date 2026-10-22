@@ -8,6 +8,7 @@ import { testTask } from '../testing/task.ts';
 import { foldEvents, type RegisterState, type Task } from './fold.ts';
 import type { DecisionCard } from './card.ts';
 import { CARD_USAGE, DESCRIPTION_NEEDED, GITHUB_ACTOR, normaliseTitle, RegisterPolicy, type AddInput, type AskInput, type ImportInput, type StatusContext, type StatusInput, type Verdict } from './policy.ts';
+import type { ProblemReview } from './review.ts';
 import { NO_TASKS_ELSEWHERE, type TasksElsewhere } from './tree.ts';
 import type { WaitReason } from './waits.ts';
 import { JERUSALEM } from '../testing/zone.ts';
@@ -257,6 +258,96 @@ describe('RegisterPolicy.setStatus: the follow-ups a closing change names', () =
     assert.equal(error(strict.setStatus(TASK, 'alpha', DONE, context)), 'allowed');
     const off = new RegisterPolicy(testConfig({ register: { requireFollowupsOn: [] } }));
     assert.equal(error(off.setStatus(TASK, 'alpha', { status: 'verifying', note: 'shipped', proof: 'p' }, context)), 'allowed');
+  });
+});
+
+describe("RegisterPolicy.setStatus: a problem task's review", () => {
+  const policy = new RegisterPolicy(testConfig());
+  const PROBLEM = testTask({ status: 'in-progress', kind: 'problem' });
+  const LEFT = testTask({ id: 'T2', title: 'Add a blank-row spec' });
+  const context: StatusContext = { ...CTX, state: stateOf(PROBLEM, LEFT) };
+  const REVIEW = {
+    cause: 'the parser skipped blank rows',
+    how: 'a refactor dropped the guard',
+    prevent: 'the reader now refuses blank rows',
+    missedTest: 'T2 adds a spec feeding blank rows',
+    missedMonitor: 'no monitor can see a skipped row',
+    missedLog: 'the skip now logs a warning line',
+  } satisfies ProblemReview;
+  const VERIFYING: StatusInput = { status: 'verifying', note: 'shipped', proof: 'the nightly run', followups: [] };
+  const DONE: StatusInput = { status: 'done', note: 'ok', evidence: 'abc1234', skill: 'none', followups: [] };
+
+  it('refuses verifying and done until every part is given, naming only the missing flags', () => {
+    assert.equal(
+      error(policy.setStatus(PROBLEM, 'alpha', { ...VERIFYING, review: { cause: REVIEW.cause, how: REVIEW.how } }, context)),
+      'T1 is a problem: verifying needs its review, --prevent, --missed-test, --missed-monitor and --missed-log (how it happened, what stops it and how it was missed; teamrig help set)',
+    );
+    assert.match(error(policy.setStatus(PROBLEM, 'alpha', DONE, context)), /^T1 is a problem: done needs its review, --cause, --how, --prevent/);
+  });
+
+  it('lets a problem through with every part, given now or kept from an earlier set, and writes the parts given', () => {
+    const given = policy.setStatus(PROBLEM, 'alpha', { ...VERIFYING, review: REVIEW }, context);
+    assert.deepEqual(given.ok ? given.value.review : undefined, REVIEW);
+    const kept = testTask({ ...PROBLEM, review: { ...REVIEW, prevent: 'an older guard text' } });
+    const keptContext: StatusContext = { ...context, state: stateOf(kept, LEFT) };
+    const later = policy.setStatus(kept, 'alpha', { ...DONE, review: { prevent: REVIEW.prevent } }, keptContext);
+    assert.deepEqual(later.ok ? later.value.review : undefined, { prevent: REVIEW.prevent });
+    assert.equal(error(policy.setStatus(kept, 'alpha', DONE, keptContext)), 'allowed');
+  });
+
+  it('asks --harden of a critical problem, marked so or owned by a critical owner', () => {
+    const critical = testTask({ ...PROBLEM, kind: 'critical' });
+    assert.match(error(policy.setStatus(critical, 'alpha', { ...VERIFYING, review: REVIEW }, context)), /verifying needs its review, --harden \(/);
+    const owned = new RegisterPolicy(testConfig({ register: { review: { criticalOwners: ['alpha'] } } }));
+    assert.match(error(owned.setStatus(PROBLEM, 'alpha', { ...VERIFYING, review: REVIEW }, context)), /--harden \(/);
+    assert.equal(error(owned.setStatus(PROBLEM, 'alpha', { ...VERIFYING, review: { ...REVIEW, harden: 'every reader refuses blank rows' } }, context)), 'allowed');
+  });
+
+  it('asks nothing of work, of a dropped problem, of a status the team leaves out, or with the review off or warning', () => {
+    assert.equal(error(policy.setStatus(TASK, 'alpha', DONE, context)), 'allowed');
+    assert.equal(error(policy.setStatus(PROBLEM, 'alpha', { status: 'dropped', note: 'not a problem after all' }, context)), 'allowed');
+    const doneOnly = new RegisterPolicy(testConfig({ register: { review: { requireOn: ['done'] } } }));
+    assert.equal(error(doneOnly.setStatus(PROBLEM, 'alpha', VERIFYING, context)), 'allowed');
+    for (const mode of ['off', 'warn']) {
+      const lenient = new RegisterPolicy(testConfig({ register: { review: { mode } } }));
+      assert.equal(error(lenient.setStatus(PROBLEM, 'alpha', DONE, context)), 'allowed', mode);
+    }
+  });
+
+  it('takes review parts on a problem at any status, as a change of their own', () => {
+    const started = policy.setStatus(PROBLEM, 'alpha', { status: 'in-progress', review: { cause: REVIEW.cause } }, context);
+    assert.deepEqual(started.ok ? started.value.review : undefined, { cause: REVIEW.cause });
+    assert.match(error(policy.setStatus(PROBLEM, 'alpha', { status: 'in-progress' }, context)), /already in-progress/);
+  });
+
+  it('refuses review parts on a task no one marked a problem, naming how to mark it', () => {
+    assert.equal(
+      error(policy.setStatus(TASK, 'alpha', { status: 'in-progress', review: { how: REVIEW.how } }, context)),
+      '--how goes only with a problem: mark it first, teamrig update T1 --problem problem|critical',
+    );
+  });
+
+  it('refuses a part that says too little, or that names a task not on the list', () => {
+    assert.match(error(policy.setStatus(PROBLEM, 'alpha', { status: 'in-progress', review: { missedTest: 'T2' } }, context)), /^--missed-test says "T2": give at least 3 plain words/);
+    assert.equal(
+      error(policy.setStatus(PROBLEM, 'alpha', { status: 'in-progress', review: { missedLog: 'T9 adds the skip log line' } }, context)),
+      'a missed part names T9, which is not on the task list: add it first (teamrig add)',
+    );
+  });
+
+  it('adds the tasks the missed parts name to the follow-ups, once, never the task itself', () => {
+    const closed = policy.setStatus(PROBLEM, 'alpha', { ...DONE, followups: ['T2'], review: { ...REVIEW, missedLog: 'T1 itself logs the skip now' } }, context);
+    assert.deepEqual(closed.ok ? closed.value.followups : undefined, ['T2']);
+    const started = policy.setStatus(PROBLEM, 'alpha', { status: 'in-progress', review: { missedTest: REVIEW.missedTest } }, context);
+    assert.deepEqual(started.ok ? started.value.followups : undefined, ['T2']);
+  });
+
+  it('holds every part to the length limit and refuses a secret in one', () => {
+    assert.equal(
+      error(policy.setStatus(PROBLEM, 'alpha', { status: 'in-progress', review: { cause: `the cause is ${'x'.repeat(300)}` } }, context)),
+      'cause has 313 characters; the limit is 300',
+    );
+    assert.match(error(policy.setStatus(PROBLEM, 'alpha', { status: 'in-progress', review: { how: `it leaked at ${credentialUrl()} today` } }, context)), /^how looks like it holds a secret/);
   });
 });
 

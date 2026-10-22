@@ -4,6 +4,7 @@ import { cardLines } from './card.ts';
 import { PROBLEM_KINDS, type RegisterEvent } from './events.ts';
 import type { ApprovalAnswer, Task } from './fold.ts';
 import { ACTIVE_STATUSES, GITHUB_SOURCE, priorityText, type TaskStatus } from './model.ts';
+import { reviewLines, reviewPartNames } from './review.ts';
 import { decidingKey, planOrder, type TaskTree, type Unblocks, type WaitingOnYou } from './tree.ts';
 import { waitsText, weekdayText, type PersonWait } from './waits.ts';
 import { proofOf, proofText } from './verify.ts';
@@ -309,6 +310,7 @@ export function formatEvent(event: RegisterEvent, zone: TimeZone): string {
         event.evidence === null ? undefined : `evidence=${event.evidence}`,
         event.skill === null ? undefined : `skill=${event.skill}`,
         event.followups === undefined ? undefined : `followups=${event.followups.length === 0 ? 'none' : event.followups.join(',')}`,
+        event.review === undefined ? undefined : `review=${reviewPartNames(event.review)}`,
       ]
         .filter((part) => part !== undefined)
         .join(' ');
@@ -364,6 +366,10 @@ export function formatTaskDetail(task: Task, events: readonly RegisterEvent[], t
   }
   if (task.followups.length > 0) {
     lines.push(`followups: ${task.followups.join(', ')}`);
+  }
+  const review = reviewLines(task.review, '  ');
+  if (review.length > 0) {
+    lines.push('review:', ...review);
   }
   lines.push('history:', ...events.filter((event) => event.id === task.id).map((event) => `  ${formatEvent(event, tree.zone)}`));
   return lines.join('\n');
