@@ -977,6 +977,7 @@ describe('parseConfig budget', () => {
         enabled: true,
         weeklyLimitW: 680_000_000,
         subagentWeight: 2.15,
+        extraWPerUsd: 120_000,
         reset: { weekday: 'wed', timeUtc: '01:00' },
         targetPct: 99,
         reservePct: 1,
@@ -997,6 +998,7 @@ describe('parseConfig budget', () => {
       enabled: true,
       weeklyLimitW: 680_000_000,
       subagentWeight: 2.15,
+      extraWPerUsd: 120_000,
       reset: { weekday: 'wed', timeUtc: '01:00' },
       targetPct: 99,
       reservePct: 1,
@@ -1044,6 +1046,7 @@ describe('parseConfig budget', () => {
       budget: {
         weeklyLimitW: 12.5,
         subagentWeight: 11,
+        extraWPerUsd: 999,
         reset: { weekday: 'someday', timeUtc: '1am' },
         targetPct: 0,
         reservePct: 60,
@@ -1061,6 +1064,7 @@ describe('parseConfig budget', () => {
     });
     assert.deepEqual(paths(issues).sort(), [
       'budget.escalate',
+      'budget.extraWPerUsd',
       'budget.lift.maxStopPct',
       'budget.lift.reserveStopPct',
       'budget.maxBytesPerHook',

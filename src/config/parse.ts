@@ -738,6 +738,7 @@ function parseBudget(read: ConfigReader, raw: JsonRecord, sessions: readonly str
     read.report(`${path}.reservePct`, `with targetPct it passes 100% of the week (${targetPct} + ${reservePct})`);
   }
   const weeklyLimitW = read.optionalInteger(raw, 'weeklyLimitW', path, CONFIG_LIMITS.weeklyLimitW);
+  const extraWPerUsd = read.optionalInteger(raw, 'extraWPerUsd', path, CONFIG_LIMITS.extraWPerUsd);
   const reset = parseBudgetReset(read, raw);
   const why = "the team's daily budget is the pace, recomputed at every reading from what is left of the week";
   read.dropped(raw, 'dailyPct', path, why);
@@ -750,6 +751,7 @@ function parseBudget(read: ConfigReader, raw: JsonRecord, sessions: readonly str
     enabled: read.boolean(raw, 'enabled', path, defaults.enabled),
     ...(weeklyLimitW === undefined ? {} : { weeklyLimitW }),
     subagentWeight: read.number(raw, 'subagentWeight', path, defaults.subagentWeight, CONFIG_LIMITS.subagentWeight),
+    ...(extraWPerUsd === undefined ? {} : { extraWPerUsd }),
     ...(reset === undefined ? {} : { reset }),
     targetPct,
     reservePct,
