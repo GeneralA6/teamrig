@@ -60,12 +60,19 @@ describe('teamSpecOf', () => {
 });
 
 describe('configRecordOf', () => {
-  it('writes the smallest config, which reads back with no problems', () => {
+  it('writes the smallest config, tab status on, which reads back with no problems', () => {
     const record = configRecordOf(SPEC);
-    assert.deepEqual(record, { configVersion: CONFIG_VERSION, team: { id: 'shop' }, sessions: ['lead', 'api', 'web'], roles: { lead: 'lead' } });
+    assert.deepEqual(record, {
+      configVersion: CONFIG_VERSION,
+      team: { id: 'shop' },
+      sessions: ['lead', 'api', 'web'],
+      roles: { lead: 'lead' },
+      tabStatus: { enabled: true },
+    });
     const parsed = parseConfig(record);
     assert.deepEqual(parsed.issues, []);
     assert.deepEqual(parsed.config.sessions, SPEC.sessions);
+    assert.equal(parsed.config.tabStatus.enabled, true);
     assert.deepEqual(configRecordOf({ ...SPEC, parent: 'app' })['team'], { id: 'shop', parent: 'app' });
   });
 
@@ -81,6 +88,7 @@ describe('planTeamSetup and applyTeamSetup', () => {
     assert.deepEqual(files.paths(), [], 'planning writes nothing');
     assert.deepEqual(planned.config, { kind: 'create', path: CONFIG, text: formatConfig(configRecordOf(SPEC)) });
     assert.deepEqual(planned.pointer, { kind: 'create', path: POINTER, text: '{\n  "team": "shop"\n}\n' });
+    assert.equal(planned.tabStatus, true, 'a new team shows tab status');
     valueOf(await applyTeamSetup(files, planned));
     assert.equal(files.get(CONFIG), formatConfig(configRecordOf(SPEC)));
     assert.equal(files.get(POINTER), '{\n  "team": "shop"\n}\n');
@@ -92,6 +100,7 @@ describe('planTeamSetup and applyTeamSetup', () => {
     const again = valueOf(await plan(files, { ...SPEC, sessions: ['lead', 'web', 'api'] }));
     assert.deepEqual(again.config, { kind: 'keep', path: CONFIG, why: 'team shop already has these sessions' });
     assert.deepEqual(again.pointer, { kind: 'keep', path: POINTER, why: 'the project is already tied to team shop' });
+    assert.equal(again.tabStatus, true);
     valueOf(await applyTeamSetup(files, again));
   });
 
@@ -114,7 +123,8 @@ describe('planTeamSetup and applyTeamSetup', () => {
 
   it('keeps a config written before team trees, and refuses one with another parent', async () => {
     const older = formatConfig({ configVersion: 1, sessions: ['lead', 'api', 'web'], roles: { lead: 'lead' } });
-    assert.equal(valueOf(await plan(new MemoryFiles({ [CONFIG]: older }))).config.kind, 'keep');
+    const kept = valueOf(await plan(new MemoryFiles({ [CONFIG]: older })));
+    assert.deepEqual([kept.config.kind, kept.tabStatus], ['keep', false], 'a kept config keeps its own tab status, off by default');
     assert.match(problemOf(await plan(new MemoryFiles({ [CONFIG]: older }), { ...SPEC, parent: 'app' })), /\(lead lead, no parent\)/);
     const child = formatConfig({ configVersion: 1, team: { id: 'shop', parent: 'ops' }, sessions: ['lead', 'api', 'web'], roles: { lead: 'lead' } });
     assert.match(problemOf(await plan(new MemoryFiles({ [CONFIG]: child }))), /\(lead lead, parent ops\)/);

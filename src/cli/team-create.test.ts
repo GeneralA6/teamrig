@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { FakePathProbe } from '../testing/fake-processes.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
-import { APP, CliHarness, KIT, POINTER, TEAM, type CliResult } from '../testing/cli-harness.ts';
+import { APP, CliHarness, KIT, POINTER, TEAM, USER_HOME, type CliResult } from '../testing/cli-harness.ts';
 import { CONFIG_VERSION } from '../config/types.ts';
 import type { PointerGit, PointerInGit } from '../setup/pointer-ignore.ts';
 import { EXIT } from './runtime.ts';
@@ -16,6 +16,13 @@ const ADDED = `.teamrig.json to ${SHOP_EXCLUDE}: git ignores it in this clone on
 const FOLDERS = new FakePathProbe({ folders: [SHOP, APP] });
 const CREATE = ['team', 'create', 'shop', '--sessions', 'api,web', '--project', SHOP];
 const NEXT = 'Next: teamrig add --session lead --owner <id> --priority p<n> --title "<first task>" --description "<what and why>" for each session, then teamrig open <id> for each.';
+const SETTINGS = join(USER_HOME, '.claude', 'settings.json');
+const TITLE_SWITCH = `add "CLAUDE_CODE_DISABLE_TERMINAL_TITLE": "1" to "env" in ${SETTINGS} and restart Claude Code, so it stops writing its own title over the circle (tabs of projects outside teamrig then keep the terminal's title)`;
+
+/** What team create says of `team`'s tab status where Claude Code still writes the tab title, as the harness's empty env has it. */
+function tabNote(team: string): string {
+  return `NOTE each tab of team ${team} shows a colored circle before its title for what its session is doing once you ${TITLE_SWITCH}`;
+}
 
 /** Files where another process writes the shop pointer just before this run does. */
 class PointerRace extends MemoryFiles {
@@ -42,7 +49,7 @@ describe('teamrig team create', () => {
     const result = await create(kit);
     assert.deepEqual(result, {
       code: EXIT.ok,
-      stdout: [`CREATED ${SHOP_CONFIG}`, `CREATED ${SHOP_POINTER}`, 'Team shop: lead lead, sessions api, web.', NEXT],
+      stdout: [`CREATED ${SHOP_CONFIG}`, `CREATED ${SHOP_POINTER}`, tabNote('shop'), 'Team shop: lead lead, sessions api, web.', NEXT],
       stderr: [],
     });
     assert.deepEqual(JSON.parse((await kit.files.read(SHOP_CONFIG)) ?? ''), {
@@ -50,6 +57,7 @@ describe('teamrig team create', () => {
       team: { id: 'shop' },
       sessions: ['lead', 'api', 'web'],
       roles: { lead: 'lead' },
+      tabStatus: { enabled: true },
     });
     assert.deepEqual(JSON.parse((await kit.files.read(SHOP_POINTER)) ?? ''), { team: 'shop' });
     const who = await kit.run(['who'], { cwd: join(SHOP, 'src') });
@@ -63,6 +71,7 @@ describe('teamrig team create', () => {
     assert.deepEqual(again.stdout, [
       `UNCHANGED ${SHOP_CONFIG}: team shop already has these sessions`,
       `UNCHANGED ${SHOP_POINTER}: the project is already tied to team shop`,
+      tabNote('shop'),
       'Team shop: lead lead, sessions web, api.',
       NEXT,
     ]);
@@ -88,12 +97,16 @@ describe('teamrig team create', () => {
       '  ],',
       '  "roles": {',
       '    "lead": "boss"',
+      '  },',
+      '  "tabStatus": {',
+      '    "enabled": true',
       '  }',
       '}',
       `WOULD CREATE ${SHOP_POINTER}:`,
       '{',
       '  "team": "shop"',
       '}',
+      tabNote('shop'),
     ]);
     assert.equal(await kit.files.read(SHOP_CONFIG), undefined);
     assert.equal(await kit.files.read(SHOP_POINTER), undefined);
@@ -110,7 +123,7 @@ describe('teamrig team create', () => {
   it('says on a dry run what it would add to the exclude file, and adds nothing', async () => {
     const kit = new CliHarness(null, null);
     const result = await kit.run([...CREATE, '--dry-run'], { probe: FOLDERS, pointerGit: pointerGit({ kind: 'open', exclude: SHOP_EXCLUDE }) });
-    assert.equal(result.stdout.at(-1), `WOULD ADD ${ADDED}`);
+    assert.deepEqual(result.stdout.slice(-2), [`WOULD ADD ${ADDED}`, tabNote('shop')]);
     assert.equal(await kit.files.read(SHOP_EXCLUDE), undefined);
   });
 
@@ -128,6 +141,23 @@ describe('teamrig team create', () => {
       `UNCHANGED ${SHOP_POINTER} in git: it is committed, so every clone gets it; to keep it on this machine only, run git rm --cached .teamrig.json and commit`,
     );
     assert.equal(await kit.files.read(SHOP_EXCLUDE), '.teamrig.json\n', 'a kept pointer adds no second line');
+  });
+
+  it('says tab status is on where Claude Code leaves the tab title to hooks, and names what a kept config lacks', async () => {
+    const kit = new CliHarness(null, null);
+    const titleOff = { CLAUDE_CODE_DISABLE_TERMINAL_TITLE: '1' };
+    const created = await create(kit, CREATE, titleOff);
+    assert.equal(
+      created.stdout[2],
+      'TAB STATUS on: each tab of team shop shows a colored circle before its title for what its session is doing: green ready, yellow working, orange waiting on you',
+    );
+    await kit.files.write(SHOP_CONFIG, JSON.stringify({ configVersion: CONFIG_VERSION, team: { id: 'shop' }, sessions: ['lead', 'api', 'web'], roles: { lead: 'lead' } }));
+    const kept = await create(kit, CREATE, titleOff);
+    assert.equal(
+      kept.stdout[2],
+      `NOTE each tab of team shop shows a colored circle before its title for what its session is doing once you set "tabStatus": { "enabled": true } in ${SHOP_CONFIG}`,
+    );
+    assert.equal(JSON.parse((await kit.files.read(SHOP_CONFIG)) ?? '')['tabStatus'], undefined, 'a repeat leaves a kept config as it is');
   });
 
   it('takes the folder Claude Code started in, else the current folder', async () => {
@@ -161,6 +191,7 @@ describe('teamrig team create', () => {
       stdout: [
         `CREATED ${web}`,
         `UNCHANGED ${POINTER}: the project stays tied to team app, in the same tree as web; open web's sessions with teamrig open web/<id>`,
+        tabNote('web'),
         'Team web, under team app: lead lead, sessions front, back.',
         "Next: app's lead runs teamrig add --team web --priority p<n> --title \"<first task>\" --description \"<what and why>\", then teamrig open web/lead: web's lead hands its sessions their parts and opens them.",
       ],
