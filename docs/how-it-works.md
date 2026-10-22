@@ -329,7 +329,9 @@ turns this off: `register.autoArchive: false` in the team's `config.json`, after
   The week's use in percent comes from status line snapshots (`teamrig statusline install` sets the status line
   up), else from the metered W at the week's W per percent: learned from `state/usage/meter-log.jsonl` (a line
   each time the status line passes a whole percent, fitted once 8 weeks of lines span 10 points), else
-  `budget.weeklyLimitW`. A subagent's W is multiplied by `budget.subagentWeight` (default 1), what
+  `budget.weeklyLimitW`. Past 100% of the week, what is left is the extra-usage pool the lead enters with
+  `teamrig budget extra` (its W per dollar learned from two spent readings, else `budget.extraWPerUsd`), spread the
+  same way. A subagent's W is multiplied by `budget.subagentWeight` (default 1), what
   one W of a helper costs in W of a main session, so all W share one price. A session past its part is held (only
   p1 work wakes it, and it escalates as `budget.escalate` says) only while the team has no room today: everyone's
   use today, the use outside the team included, at or past the in-day pace: today's use in quiet hours, plus today's

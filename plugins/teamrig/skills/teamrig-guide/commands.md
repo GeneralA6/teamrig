@@ -2597,8 +2597,9 @@ last line says which rate counts, how far the fit misses its readings and, for t
 use it forecast missed the status line. The team's daily
 budget is never a fixed number: at every reading, what is left to `budget.targetPct` is spread over the active
 time to the pace end (`budget.paceEndHoursBeforeReset` before the reset; quiet hours count at
-`budget.quietHours.paceWeight`), times today's active time. What the lead's lifts leave is split among the other
-sessions by `budget.sessions.<id>.share` times their queued work. Short by
+`budget.quietHours.paceWeight`), times today's active time. Past 100% of the week, what is left in the extra-usage
+pool takes the place of that remainder (see [teamrig budget extra](#teamrig-budget-extra)). What the lead's lifts
+leave is split among the other sessions by `budget.sessions.<id>.share` times their queued work. Short by
 default: the busiest 7 sessions, then who is past the daily budget. A session past its part is held only while the
 team has no room today: everyone's use today, the outside's included, at or past the in-day pace (today's use in
 quiet hours, plus today's budget times the share of today's active time gone by). While the team has room, they
@@ -2750,6 +2751,45 @@ LIFTED api to 50.0% of the team's daily budget today until 03:00 IDT (the end of
 
 A caller who is not the lead, a missing stop %, a stop % above the bounds, a part that with the other lifts in
 force would give more than the whole team budget, a week already at the stop % or an unknown week (no status line and no `budget.weeklyLimitW`) is `REFUSED` (exit 2).
+
+### teamrig budget extra
+
+Past 100% of the week, claude.ai can go on with extra usage: dollars the person puts in a pool apart from the
+week. The status line never shows it (its weekly % stops at 100), so the lead enters it (since 0.146.0): `--add`
+the dollars put in the pool, `--spent` the dollars claude.ai shows spent from it so far. Each entry goes to the
+team's `state/usage/extra-log.jsonl` with the week's use on the status line and the W metered since the period's
+start. Two successive spent readings in one period, the week at 100% or more at both, teach the pool's W per dollar
+(a fit through 0 over every such pair, like the meter's W per percent); until then `budget.extraWPerUsd` stands in,
+else the pool is known in dollars only. What is left is the dollars added, less the last spent reading, less the W
+metered past 100% since that reading at the pool's rate; it outlives the week. While the week reads 100% or more
+and the pool holds W, the team's daily budget comes from the pool: its W, in percent of the week, spread over the
+active time to the pace end like the week's own remainder; the pace line and the reset do not move. Without a pool,
+the week at 100% leaves no room, as before. The week line of `teamrig budget` and `teamrig start` names the pool;
+with no flag, this command prints that line. The reason a session past its part is held names it too: the pool's
+in-day pace, else `the week is at its weekly limit with no extra usage left, which the lead adds with teamrig budget
+extra --add <usd>`, or that the pool has no W per dollar yet.
+
+Flags:
+
+- `--session <id|name>`: the caller; with `--add` or `--spent` it must be the lead.
+- `--add <usd>`: dollars put in the pool (above 0).
+- `--spent <usd>`: the dollars claude.ai shows spent from the pool so far (0 or more).
+
+Example:
+
+```sh
+teamrig budget extra --session lead --add 20
+```
+
+Output:
+
+```text
+EXTRA added $20.00 to the pool.
+Week: 100.0% used at 14:05 IDT (status line); the pace line is at 81.2%: 18.8 points ahead. Resets Wed 10-28 03:00 IST. Extra usage: $20.00 of $20.00 left, in dollars only until two spent readings past 100% (teamrig budget extra --spent <usd>) or budget.extraWPerUsd give its W per dollar.
+```
+
+A caller who is not the lead, or an unknown week (no status line and no `budget.weeklyLimitW`), is `REFUSED`
+(exit 2).
 
 ### teamrig burst
 

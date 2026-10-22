@@ -100,7 +100,8 @@ Your lead plans the week from the tokens you have left: it sizes each task, fill
 reaches 99.5% of your weekly limit, keeps the last 0.5% for incidents and moves what doesn't fit to next week.
 `teamrig budget` shows each member's use against the week's pace line, and deploys hold in the last hours before the
 reset, so nothing ships half-done. When the week would end with tokens unused, a burst spends them, with your
-approval.
+approval. Past your weekly limit, the extra usage you put in (`teamrig budget extra`) is spread over the days left
+the same way.
 
 *Coming: moving the task that doesn't fit to next week on its own.*
 
