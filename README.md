@@ -33,7 +33,7 @@ claude plugin marketplace add GeneralA6/teamrig-pane
 claude plugin install teamrig-pane@teamrig-pane
 ```
 
-Open Claude Code in your project, ask for a team, and tell your lead what you want built. No config files to write.
+Open Claude Code in your project, ask for a team, and tell your lead what you want done. No config files to write.
 
 - **Your tasks in view:** install [teamrig-pane](https://github.com/GeneralA6/teamrig-pane) and run `/teamrig-pane`
   in a tab. It shows the session's tasks beside the conversation and makes no model calls, so it costs no tokens.

@@ -137,8 +137,10 @@ goes on in it. Else `teamrig open <id>` starts it fresh, its first prompt sendin
 
 ## Setting up a team
 
-You tell Claude in any tab what you want built, for example "Build the signup flow: one session on the API, one on
-the web form, one on tests." The plugin's `team-setup` skill proposes a team in a few lines, and on your yes:
+You tell Claude in any tab what you want the team to do: building, research, writing or any other work, for example
+"Price our new plan: one session gathers competitors' prices, one models price points, one drafts the
+recommendation." If you ask for a team without saying what for, it asks you first. The plugin's `team-setup` skill
+proposes a team in a few lines, and on your yes:
 
 ```mermaid
 sequenceDiagram
@@ -146,7 +148,7 @@ sequenceDiagram
   participant lead as This tab, the lead
   participant cli as teamrig
   participant tab as A new tab
-  you->>lead: what you want built
+  you->>lead: what you want done
   lead->>you: the team it proposes
   you->>lead: yes
   lead->>cli: team create, inbox read, rules

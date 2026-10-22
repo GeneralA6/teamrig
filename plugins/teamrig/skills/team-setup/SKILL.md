@@ -5,15 +5,17 @@ description: Use to split work across parallel Claude Code sessions or a sub-tea
 
 # Team setup
 
-The user says what they want built; you turn it into a running team. This tab becomes the team's lead and stays open.
+The user says what they want the team to do, and you turn it into a running team. It can be any work, not only building software: research, writing, analysis, a migration, an audit, running operations. This tab becomes the team's lead and stays open.
 
-## 1. Read the request
+## 1. Ask what they want to do, then read the request
+
+If the user asked for a team without saying what it is for, ask first, in one question, and wait for the answer: "What do you want the team to do?" Never assume they want something built.
 
 From what the user wrote, work out:
 
-- the sessions: one per part of the work that can go ahead on its own, usually 2 to 5. Each gets a short id of lowercase letters, digits and `-`, such as `api`, `web`, `tests`.
+- the sessions: one per part of the work that can go ahead on its own, usually 2 to 5. Each gets a short id of lowercase letters, digits and `-` named after its part, such as `research`, `api`, `writeup`.
 - each session's first task, in one line.
-- the team id: a short id from the goal or the project, such as `signup`.
+- the team id: a short id from the goal or the project, such as `pricing`.
 - the project: the folder this session started in, as an absolute path.
 
 Ask only for what you cannot work out, in one question. If `teamrig who` lists sessions here, a team already exists: say so and offer `teamrig open <id>` for its sessions instead.
@@ -23,10 +25,10 @@ Ask only for what you cannot work out, in one question. If `teamrig who` lists s
 Show the plan in a few lines, then ask one yes or no question:
 
 ```
-Team signup, with this tab as the lead:
-- api: build the signup endpoint
-- web: build the signup form
-- tests: write end-to-end tests for signup
+Team pricing, with this tab as the lead:
+- research: gather competitors' plans and prices
+- analysis: model three price points against last year's sales
+- writeup: draft the recommendation, with the numbers behind it
 Create it and open the three sessions?
 ```
 
@@ -188,7 +190,7 @@ With sub-teams, run `teamrig check --tree --session lead` too. Act on each flag:
 - A skill flag: tell the skill's owner in one inbox line.
 
 A lesson a session reports (a miss that will happen again) is routed by its numbers: measure it, sort it
-(would a team building any other product hit it?), and see that its task names a form, the first that fits of a
+(would a team doing any other work hit it?), and see that its task names a form, the first that fits of a
 mechanism, a skill or a rule line, with its numbers as config defaults. Steps:
 [Turn a lesson into a fix](../teamrig-guide/workflows.md#turn-a-lesson-into-a-fix).
 
