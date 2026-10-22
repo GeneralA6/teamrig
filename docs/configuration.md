@@ -482,7 +482,7 @@ A colored circle before each terminal tab's title for what its session is doing:
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
-| `enabled` | boolean | `false` | Shows the circle in every tab of the team. It also needs CLAUDE\_CODE\_DISABLE\_TERMINAL\_TITLE=1 in Claude Code's environment, else Claude Code writes its own title over it. |
+| `enabled` | boolean | `false` | Shows the circle in every tab of the team; team create turns it on in a new team's config. It also needs CLAUDE\_CODE\_DISABLE\_TERMINAL\_TITLE=1 in Claude Code's environment, else Claude Code writes its own title over it. |
 
 ## `pickerGuard`
 
