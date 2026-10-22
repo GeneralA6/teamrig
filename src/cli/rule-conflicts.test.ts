@@ -68,7 +68,7 @@ describe('rules scan', () => {
       'CANDIDATE ~/.claude/CLAUDE.md:3 [15 push, 16 worktrees] (withheld: looks like it holds a secret (AWS access key id))',
       `CANDIDATE ${PROJECT_CLAUDE_MD}:2 [16 worktrees] Tests run on every branch before review.`,
       'CANDIDATE ~/.claude/settings.json:5 [15 push, 16 worktrees] Pushes to main of the web repo are fine.',
-      'NEXT judge each candidate against the core rule it names; a line that tells a session to do otherwise conflicts. Record a line the user keeps with `teamrig rules keep <path>:<line> --rule <n> --wins local|teamrig --yes`',
+      'NEXT judge each candidate against the core rule it names; a line that tells a session to do otherwise conflicts. Show the user each conflict with what its rule asks in plain words, never the rule number alone. Record a line the user keeps with `teamrig rules keep <path>:<line> --rule <n> --wins local|teamrig --yes`',
     ]);
     assert.ok(!lines.join('\n').includes(TOKEN));
   });
@@ -78,7 +78,7 @@ describe('rules scan', () => {
     assert.deepEqual(ok(await run(kit, 'scan', '--kind', 'settings')), [
       'SCANNED settings: 1 place(s), 1 candidate line(s)',
       'CANDIDATE ~/.claude/settings.json:5 [15 push, 16 worktrees] Pushes to main of the web repo are fine.',
-      'NEXT judge each candidate against the core rule it names; a line that tells a session to do otherwise conflicts. Record a line the user keeps with `teamrig rules keep <path>:<line> --rule <n> --wins local|teamrig --yes`',
+      'NEXT judge each candidate against the core rule it names; a line that tells a session to do otherwise conflicts. Show the user each conflict with what its rule asks in plain words, never the rule number alone. Record a line the user keeps with `teamrig rules keep <path>:<line> --rule <n> --wins local|teamrig --yes`',
     ]);
     assert.deepEqual(ok(await run(kit, 'scan', '--kind', 'memory')), ['SCANNED memory: 0 place(s), 0 candidate line(s)', 'NONE no line here touches a core rule']);
   });
