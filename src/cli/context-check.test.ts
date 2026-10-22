@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { APP, CliHarness, SKILLS_DIR, TEAM, TEAM_HOME, type RunOptions } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
+import { UNOWNED_FORGET_AFTER_MS } from './unowned-notices.ts';
 
 const AS_ALPHA = { env: { TEAMRIG_SESSION: 'alpha' } };
 const AS_LEAD = { env: { TEAMRIG_SESSION: 'lead' } };
@@ -73,7 +74,14 @@ describe('the warnings no session owns go to the lead (T951)', () => {
     assert.equal((await kit.run(['start'], AS_ALPHA)).code, EXIT.ok);
     await kit.files.write(join(APP, 'CLAUDE.md'), 'x'.repeat(BUDGET + 1));
     assert.equal((await kit.run(['start'], AS_ALPHA)).code, EXIT.ok);
-    assert.equal((await leadNotices(kit)).length, 2, 'a warning that cleared and returned is told again');
+    assert.equal((await leadNotices(kit)).length, 1, 'a start that did not see the warning keeps it told');
+
+    await kit.files.write(join(APP, 'CLAUDE.md'), 'x');
+    kit.clock.advance(UNOWNED_FORGET_AFTER_MS);
+    assert.equal((await kit.run(['start'], AS_ALPHA)).code, EXIT.ok);
+    await kit.files.write(join(APP, 'CLAUDE.md'), 'x'.repeat(BUDGET + 1));
+    assert.equal((await kit.run(['start'], AS_ALPHA)).code, EXIT.ok);
+    assert.equal((await leadNotices(kit)).length, 2, 'a warning no start saw for a day is told again when it returns');
   });
 
   it('posts at most five lines per start, and the rest at the next', async () => {
