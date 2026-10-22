@@ -12,9 +12,9 @@ import { renderWhy } from './why.ts';
 import { renderWordmark } from './wordmark.ts';
 
 /**
- * The docs' pictures, all drawn in code: the README's wordmark, hero, how-it-works, why, terminal view, plan and growth
- * pictures, in the README's order, the task-flow picture (not in the README yet) after how-it-works, and the commands
- * doc's terminal screen, drawn from a demo run of the real CLI (demo.ts). A change to a drawing, or to what the CLI
+ * The docs' pictures, all drawn in code: the README's wordmark, hero, how-it-works, task-flow, why, terminal view, plan
+ * and growth pictures, in the README's order, and the commands doc's terminal screen, drawn from a demo run of the real
+ * CLI (demo.ts). A change to a drawing, or to what the CLI
  * prints, changes a picture, and `images-cli.ts --check` fails until it is redrawn.
  */
 

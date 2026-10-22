@@ -58,6 +58,10 @@ in default mode, allow `Bash(teamrig:*)` ([permissions](plugins/teamrig/skills/t
 
 ![Tell the lead what you want, in plain words. It hires a team and gives each member a job. The team builds it together, each in its own tab. You get the result: the lead calls you back.](docs/images/how-it-works.svg)
 
+One task's trip, as you see it in your terminal:
+
+![In the lead's tab you type: Users need a password reset. The lead adds T17 Password reset for api, p1, due today, and it appears in teamrig-pane's list. In api's tab, api starts it, edits and tests, then lands it with teamrig integrate: it waits in line while web holds the lock, then rebases on main and pushes. web's task and then T17 turn done in the pane.](docs/images/task-flow.svg)
+
 ## Your day: two hours, not twelve
 
 No more twelve-hour days steering agents by hand. With teamrig, your part takes about two hours:

@@ -23,8 +23,8 @@ function section(heading: string): string {
 }
 
 describe('README.md', () => {
-  it('shows its pictures in order: hero, how it works, why it is different, your terminal, the plan, growth', () => {
-    assert.deepEqual(targets('image'), ['hero', 'how-it-works', 'why', 'terminal-view', 'plan', 'growth'].map((name) => `docs/images/${name}.svg`));
+  it("shows its pictures in order: hero, how it works, a task's trip, why it is different, your terminal, the plan, growth", () => {
+    assert.deepEqual(targets('image'), ['hero', 'how-it-works', 'task-flow', 'why', 'terminal-view', 'plan', 'growth'].map((name) => `docs/images/${name}.svg`));
   });
 
   it('gives every picture a text alternative', () => {
