@@ -1016,7 +1016,7 @@
       "type": "object",
       "properties": {
         "enabled": {
-          "description": "Shows the circle in every tab of the team. It also needs CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 in Claude Code's environment, else Claude Code writes its own title over it.",
+          "description": "Shows the circle in every tab of the team; team create turns it on in a new team's config. It also needs CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 in Claude Code's environment, else Claude Code writes its own title over it.",
           "type": "boolean",
           "default": false
         }

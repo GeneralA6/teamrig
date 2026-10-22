@@ -797,7 +797,7 @@ nothing and lets the turn go on.
 
 ## Every event: tab status
 
-With `tabStatus.enabled: true` in the team config and `CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1` in Claude Code's
+With `tabStatus.enabled: true` in the team config (`team create` writes it for a new team) and `CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1` in Claude Code's
 environment (in `env` of `~/.claude/settings.json`; without it Claude Code writes its own title over the circle),
 each tab of the team shows a colored circle before its title for what its session is doing:
 
