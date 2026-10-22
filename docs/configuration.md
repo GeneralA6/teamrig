@@ -151,6 +151,9 @@ How teamrig asks for a problem task's review.
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
+| `mode` | one of `"refuse"`, `"warn"`, `"off"` | `"refuse"` | A task marked --problem reaching a requireOn status with review parts missing (--cause, --how, --prevent, --missed-test, --missed-monitor, --missed-log, and --harden when critical): refuse the change and name the missing flags, warn (make it and print them), or off (ask nothing). |
+| `requireOn` | array (at most 2 items) of one of `"verifying"`, `"done"` | `["verifying","done"]` | The statuses a task marked --problem cannot reach with review parts missing. A dropped task is never asked: its note says why. |
+| `criticalOwners` | array (at most 32 items) of [session name](#shared-types) | `[]` | Sessions whose every problem task counts as critical, and so is asked --harden too: a team's security or data areas. |
 | `hintPattern` | string (at least 1 character) | `"\\b(fix\|bug\|broken?\|regress\\w*\|incident\|fail\\w*\|crash\\w*\|leak\\w*\|wrong\|missed)\\b"` | A regular expression, matched case-insensitively against the title and description of a task no one marked with --problem: a match prints a NOTE line asking to mark it --problem problem\|critical, or --problem none, when the task is added and when it starts. |
 
 ## `skills`

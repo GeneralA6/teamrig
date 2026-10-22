@@ -14,6 +14,9 @@ export const ACTIVE_STATUSES: readonly TaskStatus[] = ['open', 'in-progress', 'v
 /** The statuses a change may name the task's follow-ups with (`set --followups`): shipping, finishing or dropping it. */
 export const FOLLOWUP_STATUSES: readonly TaskStatus[] = ['verifying', 'done', 'dropped'];
 
+/** The statuses a problem task's review may be asked at (`register.review.requireOn`): never dropped, whose note says why. */
+export const REVIEW_STATUSES: readonly TaskStatus[] = ['verifying', 'done'];
+
 /**
  * The statuses that carry typed wait reasons (waits.ts): `waiting` needs at least one; `verifying` may name what its
  * proof waits for (the task asked of whoever runs the proof, the time it comes, the owner's approval), so the party

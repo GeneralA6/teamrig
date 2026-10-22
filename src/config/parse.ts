@@ -3,7 +3,7 @@ import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { isReservedName, NAME_PATTERN, NAME_RULE, RESERVED_NAMES } from '../core/ids.ts';
 import { isMinuteInSpan, utcMinuteOf } from '../core/time.ts';
 import { TimeZone } from '../core/zone.ts';
-import { FOLLOWUP_STATUSES, isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, SESSION_NAME, TASK_STATUSES, type TaskStatus } from '../register/model.ts';
+import { FOLLOWUP_STATUSES, isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, REVIEW_STATUSES, SESSION_NAME, TASK_STATUSES, type TaskStatus } from '../register/model.ts';
 import { KEEP_RULE_PATTERN } from '../permissions/allow-rules.ts';
 import { PREFIX_PATTERN } from '../readonly-shell/rules.ts';
 import { CORE_RULE_KEYS, isCoreRuleKey } from '../rules/keys.ts';
@@ -74,6 +74,7 @@ import {
   isSecretReads,
   isSkipHooks,
   isTerminalChoice,
+  isReviewMode,
   isVerifyGate,
   isWeekday,
   HOOK_ASKS,
@@ -87,6 +88,7 @@ import {
   type ContextFilesConfig,
   type ExecConfig,
   type OtherAreaListing,
+  REVIEW_MODES,
   VERIFY_GATES,
   WEEKDAYS,
   type PackageGuardConfig,
@@ -923,6 +925,7 @@ function parseRegister(read: ConfigReader, raw: JsonRecord): RegisterConfig {
   }
   const goalPattern = read.optionalString(raw, 'goalPattern', path, isValidRegex);
   const verifyGate = read.string(raw, 'verifyGate', path, defaults.verifyGate, oneOf(VERIFY_GATES));
+  const reviewMode = read.string(review, 'mode', `${path}.review`, defaults.review.mode, oneOf(REVIEW_MODES));
   const register: RegisterConfig = {
     ownerSource: read.string(raw, 'ownerSource', path, defaults.ownerSource, isSessionName),
     priorities: priorities.length === 0 ? defaults.priorities : priorities,
@@ -971,6 +974,16 @@ function parseRegister(read: ConfigReader, raw: JsonRecord): RegisterConfig {
       ),
     },
     review: {
+      mode: isReviewMode(reviewMode) ? reviewMode : defaults.review.mode,
+      requireOn: read.list(
+        review,
+        'requireOn',
+        `${path}.review`,
+        defaults.review.requireOn,
+        (value, itemPath) => parseStatusAmong(read, value, itemPath, REVIEW_STATUSES),
+        CONFIG_LIMITS.reviewRequireOn.maxItems,
+      ),
+      criticalOwners: read.stringList(review, 'criticalOwners', `${path}.review`, defaults.review.criticalOwners, isSessionName, CONFIG_LIMITS.criticalOwners.maxItems),
       hintPattern: read.string(review, 'hintPattern', `${path}.review`, defaults.review.hintPattern, isValidRegex),
     },
   };

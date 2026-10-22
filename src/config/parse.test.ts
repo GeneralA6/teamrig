@@ -643,6 +643,29 @@ describe('parseConfig', () => {
     assert.equal(bad.config.register.review.hintPattern, DEFAULT_REGISTER.review.hintPattern);
   });
 
+  it('asks a problem review on verifying and done by default, refusing, with no critical owners', () => {
+    const { config, issues } = parseConfig(ROSTER);
+    assert.deepEqual(issues, []);
+    assert.deepEqual(config.register.review, { ...DEFAULT_REGISTER.review, mode: 'refuse', requireOn: ['verifying', 'done'], criticalOwners: [] });
+  });
+
+  it("keeps a team's review mode, statuses and critical owners", () => {
+    const { config, issues } = parseConfig({ ...ROSTER, register: { review: { mode: 'warn', requireOn: ['done'], criticalOwners: ['security', 'data'] } } });
+    assert.deepEqual(issues, []);
+    assert.equal(config.register.review.mode, 'warn');
+    assert.deepEqual(config.register.review.requireOn, ['done']);
+    assert.deepEqual(config.register.review.criticalOwners, ['security', 'data']);
+  });
+
+  it('reports a bad review mode, a status a review is never asked at and a bad session name, keeping the rest', () => {
+    const { config, issues } = parseConfig({ ...ROSTER, register: { review: { mode: 'strict', requireOn: ['verifying', 'dropped'], criticalOwners: ['security', 'Data Team'] } } });
+    assert.deepEqual(paths(issues).sort(), ['register.review.criticalOwners[1]', 'register.review.mode', 'register.review.requireOn[1]']);
+    assert.equal(issues.find((issue) => issue.path === 'register.review.requireOn[1]')?.message, 'expected one of verifying, done, got "dropped"');
+    assert.equal(config.register.review.mode, 'refuse');
+    assert.deepEqual(config.register.review.requireOn, ['verifying']);
+    assert.deepEqual(config.register.review.criticalOwners, ['security']);
+  });
+
   it('reads register.autoArchive, on by default, and refuses a value that is not true or false', () => {
     assert.equal(parseConfig(ROSTER).config.register.autoArchive, true);
     const off = parseConfig({ ...ROSTER, register: { autoArchive: false } });

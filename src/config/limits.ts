@@ -23,6 +23,8 @@ export const CONFIG_LIMITS = {
   forbidFrontmatter: { maxItems: 8, maxLength: 32 },
   requireNoteOn: { maxItems: 5 },
   requireFollowupsOn: { maxItems: 3 },
+  reviewRequireOn: { maxItems: 2 },
+  criticalOwners: { maxItems: 32 },
   maxVerifying: { min: 0, max: 100 },
   maxSelfMadePerDay: { min: 0, max: 200 },
   /** Its span (these days and today) stays inside compaction's RETAIN_DAYS, so every task moved in it is still read. */
