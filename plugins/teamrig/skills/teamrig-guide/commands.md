@@ -393,7 +393,9 @@ findings while the CLAUDE.md files, memory index, skill listing or the newest se
 skill whose `Owner:` line is missing or names no session on the team. Each row names the check it came from; the
 lead fixes it, hands it on (`teamrig add --owner <session>`) or settles the check. The lead's `start` shows them
 too, and any session's `start` posts the lead one inbox line per warning it was not told of yet, at most 5 per
-start; `state/unowned-notices.json` remembers which, so a warning is told again only after it clears and comes back.
+start; `state/unowned-notices.json` remembers which and when a start last saw each, so a warning is told again only
+after no start saw it for a day and it comes back (whether a start sees one depends on its project folder and newest
+transcript).
 By default it prints a short form
 within 3,000 characters: each kind with its count (and its detail when every flag of it shares one), at most 5
 of its tasks as short rows, then `+N more`; the same for skill flags. `--all` prints every flag in full.

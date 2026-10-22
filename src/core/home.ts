@@ -124,7 +124,7 @@ export interface TeamPaths {
   readonly verifyNotices: string;
   /** The model notices each session's Stop hook already showed, `<id>.json` each. */
   readonly modelNotices: string;
-  /** The warnings no session owns the lead was told of, so each is told once while it stands (T951). */
+  /** The warnings no session owns the lead was told of, with when a start last saw each, so each is told once while it stands (T951). */
   readonly unownedNotices: string;
   /** Held while a start tells the lead of those warnings, so two starts never tell one twice. */
   readonly unownedNoticesLock: string;
