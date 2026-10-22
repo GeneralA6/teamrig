@@ -945,7 +945,7 @@ function parseRegister(read: ConfigReader, raw: JsonRecord): RegisterConfig {
       'requireFollowupsOn',
       path,
       defaults.requireFollowupsOn,
-      (value, itemPath) => parseFollowupStatus(read, value, itemPath),
+      (value, itemPath) => parseStatusAmong(read, value, itemPath, FOLLOWUP_STATUSES),
       CONFIG_LIMITS.requireFollowupsOn.maxItems,
     ),
     autoArchive: read.boolean(raw, 'autoArchive', path, defaults.autoArchive),
@@ -1000,12 +1000,12 @@ function parseStatus(read: ConfigReader, value: unknown, path: string): TaskStat
   return undefined;
 }
 
-/** A status that may need `--followups`: one of FOLLOWUP_STATUSES. */
-function parseFollowupStatus(read: ConfigReader, value: unknown, path: string): TaskStatus | undefined {
-  if (typeof value === 'string' && FOLLOWUP_STATUSES.some((status) => status === value)) {
+/** A status a key accepts only some of, such as the statuses `--followups` may be given with. */
+function parseStatusAmong(read: ConfigReader, value: unknown, path: string, allowed: readonly TaskStatus[]): TaskStatus | undefined {
+  if (typeof value === 'string' && allowed.some((status) => status === value)) {
     return parseStatus(read, value, path);
   }
-  read.report(path, `expected one of ${FOLLOWUP_STATUSES.join(', ')}, got ${describe(value)}`);
+  read.report(path, `expected one of ${allowed.join(', ')}, got ${describe(value)}`);
   return undefined;
 }
 
