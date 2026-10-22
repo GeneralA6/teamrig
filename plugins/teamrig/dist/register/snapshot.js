@@ -6,6 +6,7 @@ import { TASK_ID } from "./model.js";
 export function readEvents(text) {
     const parse = parseJsonl(text);
     const events = [];
+    const lines = [];
     const seenIds = [];
     let unreadable = parse.unreadable;
     let newer = 0;
@@ -24,6 +25,7 @@ export function readEvents(text) {
         const result = marker.kind === 'none' ? parseEvent(line) : marker;
         if (result.kind === 'event') {
             events.push(result.event);
+            lines.push(line.raw);
             continue;
         }
         if (result.kind === 'newer') {
@@ -37,7 +39,7 @@ export function readEvents(text) {
             seenIds.push(id);
         }
     }
-    return { events, seenIds, unreadable, newer, newestVersion, rotatedAfter: rotatedAfter ?? 0 };
+    return { events, lines, seenIds, unreadable, newer, newestVersion, rotatedAfter: rotatedAfter ?? 0 };
 }
 /** True when this code may append: no line is in a format newer than the one it writes. */
 export function isWritable(read) {
