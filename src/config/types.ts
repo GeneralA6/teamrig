@@ -21,6 +21,12 @@ export interface PriorityConfig {
 
 /** How a problem task's review is asked (T916). */
 export interface RegisterReviewConfig {
+  /** What `set` does when a problem task reaches a `requireOn` status with review parts missing. */
+  readonly mode: ReviewMode;
+  /** The statuses (of verifying and done) a problem task cannot reach with review parts missing. */
+  readonly requireOn: readonly TaskStatus[];
+  /** Sessions whose every problem task counts as critical and so is asked `--harden` too: a team's security or data areas. */
+  readonly criticalOwners: readonly string[];
   /**
    * A regular expression, matched case-insensitively against an unmarked task's title and description: a match prints
    * a hint to mark the task `--problem` (or `--problem none`) when it is added and when it starts.
@@ -109,6 +115,17 @@ export type VerifyGate = (typeof VERIFY_GATES)[number];
 
 export function isVerifyGate(value: unknown): value is VerifyGate {
   return VERIFY_GATES.some((gate) => gate === value);
+}
+
+export const REVIEW_MODES = ['refuse', 'warn', 'off'] as const;
+/**
+ * A problem task reaching a `register.review.requireOn` status with review parts missing: `refuse` the change and
+ * name the missing flags, `warn` (make it and print them), or `off` (ask nothing).
+ */
+export type ReviewMode = (typeof REVIEW_MODES)[number];
+
+export function isReviewMode(value: unknown): value is ReviewMode {
+  return REVIEW_MODES.some((mode) => mode === value);
 }
 
 export const CONFLICT_WINNERS = ['local', 'teamrig'] as const;

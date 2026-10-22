@@ -92,6 +92,9 @@ export const DEFAULT_REGISTER: RegisterConfig = {
     stopgapFiles: ['CLAUDE.md', '.claude/rules'],
   },
   review: {
+    mode: 'refuse',
+    requireOn: ['verifying', 'done'],
+    criticalOwners: [],
     hintPattern: String.raw`\b(fix|bug|broken?|regress\w*|incident|fail\w*|crash\w*|leak\w*|wrong|missed)\b`,
   },
 };

@@ -112,6 +112,8 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   forbidFrontmatter: 'skills.forbidFrontmatter',
   requireNoteOn: 'register.requireNoteOn',
   requireFollowupsOn: 'register.requireFollowupsOn',
+  reviewRequireOn: 'register.review.requireOn',
+  criticalOwners: 'register.review.criticalOwners',
   maxVerifying: 'register.maxVerifying',
   maxSelfMadePerDay: 'register.check.maxSelfMadePerDay',
   goalProgressDays: 'register.check.goalProgressDays',
