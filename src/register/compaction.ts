@@ -2,10 +2,9 @@ import { toJsonlLine } from '../core/jsonl.ts';
 import { MS_PER_DAY } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
 import { currentWeekOf } from './check.ts';
-import { eventRecord, type RegisterEvent } from './events.ts';
 import { RegisterFold, taskNumber, type Task } from './fold.ts';
 import { snapshotHeaderRecord, type SnapshotHeader } from './layout.ts';
-import type { RegisterSnapshot } from './snapshot.ts';
+import type { EventLogRead, RegisterSnapshot } from './snapshot.ts';
 
 /**
  * How long a finished task stays in the working set: a week plan, its review and a day more. The pane
@@ -50,13 +49,23 @@ function newestWeek(weeks: readonly (string | null)[]): string | null {
   return weeks.reduce<string | null>((best, week) => (week !== null && (best === null || week > best) ? week : best), null);
 }
 
+/** The line event `index` of `read` was read from: a read holds one for each event. */
+function lineOf(read: EventLogRead, index: number): string {
+  const line = read.lines[index];
+  if (line === undefined) {
+    throw new Error(`event ${index + 1} of ${read.events.length} has no line: the read holds ${read.lines.length}`);
+  }
+  return line;
+}
+
 /**
  * The snapshot of a register's working set after a compaction: the header, then, in write order, every
- * event but those of the tasks it retires, so `show` lists the same events for every task it keeps. The
- * orphans among the events left out are counted in the header.
+ * event but those of the tasks it retires, so `show` lists the same events for every task it keeps. Each
+ * is its line as written, never re-serialized, so a field this code does not parse is kept. The orphans
+ * among the events left out are counted in the header.
  * `source` must hold in `read.events` exactly the events its state folds from (a working-set or a
- * history read), and hold no line from a newer teamrig: the snapshot would drop it, so such a log is
- * never compacted (rotate.ts).
+ * history read), and hold no line from a newer teamrig's format or status: those are no events, so the
+ * snapshot would drop them, and such a log is never compacted (rotate.ts).
  */
 export function compactRegister(source: RegisterSnapshot, options: CompactionOptions): Compaction {
   const now = options.now.getTime();
@@ -65,12 +74,12 @@ export function compactRegister(source: RegisterSnapshot, options: CompactionOpt
   const retiring = [...source.state.tasks.values()].filter((task) => !options.keep.has(task.id) && isRetirable(task, now, retainMs, floor));
   const retiredIds = new Set(retiring.map((task) => task.id));
   const fold = new RegisterFold();
-  const kept: RegisterEvent[] = [];
+  const kept: string[] = [];
   let keptOrphans = 0;
-  for (const event of source.read.events) {
+  for (const [index, event] of source.read.events.entries()) {
     const applied = fold.apply(event);
     if (!retiredIds.has(event.id)) {
-      kept.push(event);
+      kept.push(lineOf(source.read, index));
       keptOrphans += applied ? 0 : 1;
     }
   }
@@ -86,7 +95,7 @@ export function compactRegister(source: RegisterSnapshot, options: CompactionOpt
     retiredLastWeek: newestWeek([source.retired?.lastWeek ?? null, ...retiring.map((task) => task.week)]),
     at: options.now.toISOString(),
   };
-  const text = [snapshotHeaderRecord(header), ...kept.map(eventRecord)].map(toJsonlLine).join('');
+  const text = [toJsonlLine(snapshotHeaderRecord(header)), ...kept.map((line) => `${line}\n`)].join('');
   const retiredNow = retiring.map((task) => task.id).sort((a, b) => taskNumber(a) - taskNumber(b));
   return { header, text, kept: source.state.tasks.size - retiring.length, retiredNow };
 }

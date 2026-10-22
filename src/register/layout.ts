@@ -14,7 +14,7 @@ import { readEvents, type EventLogRead, type RegisterSnapshot } from './snapshot
  *   whole and starts a new tail whose first line names it (marker.ts). A segment is never rewritten or
  *   deleted: the archive and the tail hold every line ever written, in order.
  * - `snapshot.jsonl`, the working set as of a segment: a header, then, in write order, every event but
- *   those of the tasks a compaction retired (finished long ago). A task's state depends on its own events
+ *   those of the tasks a compaction retired (finished long ago), each the line as written. A task's state depends on its own events
  *   only, so these fold to exactly the tasks it kept; retired tasks stay in the segments.
  * A working-set read folds the snapshot, the segments it does not cover and the tail, so its cost follows
  * the recent events. A history read folds every segment and the tail.
@@ -204,6 +204,7 @@ export function assemble(plan: ReadPlan, segments: readonly EventLogRead[], tail
   const skippedDamaged = plan.skipped !== undefined && skippedNewer === 0 ? 1 : 0;
   const read: EventLogRead = {
     events: parts.flatMap((part) => part.events),
+    lines: parts.flatMap((part) => part.lines),
     seenIds: parts.flatMap((part) => part.seenIds),
     unreadable: parts.reduce((sum, part) => sum + part.unreadable, (header?.unreadable ?? 0) + skippedDamaged),
     newer: parts.reduce((sum, part) => sum + part.newer, (header?.newer ?? 0) + skippedNewer),

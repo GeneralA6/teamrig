@@ -112,6 +112,19 @@ describe('planRotation and applyRotation', () => {
     }
   });
 
+  it('keep a field this code does not parse in the snapshot, rotation after rotation', async () => {
+    const waits = [{ kind: 'approval', who: 'lead' }];
+    const verifying = toJsonlLine({ v: EVENT_VERSION, type: 'status', id: 'T2', at: at(3), by: 'alpha', status: 'verifying', note: 'n', evidence: null, skill: null, proof: 'p', waits, kind: 'x' });
+    const files = new MemoryFiles({ [LOG]: TEXT + verifying });
+    await rotate(files, 4);
+    await files.append(LOG, create('T3', 5));
+    await rotate(files, 6);
+    const snapshot = files.get(PATHS.snapshot) ?? '';
+    assert.ok(snapshot.includes(verifying), snapshot);
+    const working = await readWorkingSet(files, PATHS);
+    assert.deepEqual(working.state.tasks.get('T2')?.waits, waits);
+  });
+
   it('skip a damaged snapshot for the whole history, and write a good one in its place', async () => {
     const files = new MemoryFiles({ [LOG]: TEXT });
     await rotate(files, 4);

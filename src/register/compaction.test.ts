@@ -210,4 +210,24 @@ describe('compactRegister', () => {
     const none = compactRegister(readRegister(''), { covered: 1, now, zone: TimeZone.UTC, retainDays: 8, keep: new Set() });
     assert.deepEqual([none.header.retired, none.header.retiredLastWeek, none.kept], [0, null, 0]);
   });
+
+  it('copies each kept line as written, so a field this code does not parse is kept', () => {
+    const task = { title: 'T5', owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], week: null, colour: 'blue' };
+    const created = toJsonlLine({ v: EVENT_VERSION, type: 'create', id: 'T5', at: day(20), by: 'lead', kind: 'x', task });
+    const waits = [{ kind: 'task', id: 'T3' }, { kind: 'approval', who: 'lead', since: day(21) }];
+    const verifying = toJsonlLine({ v: EVENT_VERSION, type: 'status', id: 'T5', at: day(21), by: 'alpha', status: 'verifying', note: 'n', evidence: null, skill: null, proof: 'p', waits, later: { any: [1] } });
+    const plain = create('T6', 22, null);
+    const crlf = `${plain.slice(0, -1)}\r\n`;
+    const compaction = compactRegister(readRegister(log.join('') + created + verifying + crlf), { covered: 4, now, zone: TimeZone.UTC, retainDays: 8, keep: new Set() });
+    assert.ok(compaction.text.endsWith(created + verifying + plain), compaction.text);
+    const read = readSnapshotText(compaction.text);
+    assert.ok(read.kind === 'usable');
+    assert.deepEqual(read.read.lines.slice(-3), [created, verifying, plain].map((line) => line.slice(0, -1)));
+  });
+
+  it('refuses a read that holds no line for an event it keeps', () => {
+    // The first kept event is the orphan T40, the sixth of the nine events (the torn line is none).
+    const lineless: RegisterSnapshot = { ...source, read: { ...source.read, lines: source.read.lines.slice(0, 1) } };
+    assert.throws(() => compactRegister(lineless, { covered: 4, now, zone: TimeZone.UTC, retainDays: 8, keep: new Set() }), /^Error: event 6 of 9 has no line: the read holds 1$/);
+  });
 });
