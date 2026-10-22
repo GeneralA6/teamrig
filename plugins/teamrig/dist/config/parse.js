@@ -683,6 +683,7 @@ function parseRegister(read, raw) {
     const path = 'register';
     const defaults = DEFAULT_REGISTER;
     const check = read.section(raw, 'check', path);
+    const review = read.section(raw, 'review', path);
     if (raw[RENAMED_PRIORITIES_KEY] !== undefined) {
         read.report(`${path}.${RENAMED_PRIORITIES_KEY}`, `was renamed: use ${path}.priorities`);
     }
@@ -718,6 +719,9 @@ function parseRegister(read, raw) {
             maxSelfMadePerDay: read.integer(check, 'maxSelfMadePerDay', `${path}.check`, defaults.check.maxSelfMadePerDay, CONFIG_LIMITS.maxSelfMadePerDay),
             weekLengthDays: read.integer(check, 'weekLengthDays', `${path}.check`, defaults.check.weekLengthDays, { min: 1, max: 31 }),
             stopgapFiles: read.stringList(check, 'stopgapFiles', `${path}.check`, defaults.check.stopgapFiles, shortLine(CONFIG_LIMITS.stopgapFiles.maxLength, (value) => (value.trim() === '' ? 'expected a path' : undefined)), CONFIG_LIMITS.stopgapFiles.maxItems),
+        },
+        review: {
+            hintPattern: read.string(review, 'hintPattern', `${path}.review`, defaults.review.hintPattern, isValidRegex),
         },
     };
     return goalPattern === undefined ? register : { ...register, goalPattern };

@@ -1,5 +1,6 @@
 import { parseDeadline, showStored, storedText } from "../core/time.js";
 import { cardLines } from "./card.js";
+import { PROBLEM_KINDS } from "./events.js";
 import { ACTIVE_STATUSES, GITHUB_SOURCE, priorityText } from "./model.js";
 import { planOrder } from "./tree.js";
 import { waitsText, weekdayText } from "./waits.js";
@@ -44,12 +45,13 @@ export function taskLabel(task, team) {
     return team === undefined ? task.id : `${team}/${task.id}`;
 }
 /**
- * The fields every task row starts with: `T12 in-progress`, `p2`, `owner alpha`, then `due 01-15` and
- * `after T5,T6` (its plan dependency) when it has them. The due is the effective one of `tree`, in its zone: an
- * earlier due of a task that needs it names that task (`due 01-10 (from T194)`).
+ * The fields every task row starts with: `T12 in-progress`, `p2`, `problem` or `critical` for a problem task,
+ * `owner alpha`, then `due 01-15` and `after T5,T6` (its plan dependency) when it has them. The due is the effective
+ * one of `tree`, in its zone: an earlier due of a task that needs it names that task (`due 01-10 (from T194)`).
  */
 function rowHead(task, team, tree) {
-    const parts = [`${taskLabel(task, team)} ${task.status}`, priorityText(task.priority), `owner ${task.owner}`];
+    const kind = task.kind !== null && PROBLEM_KINDS.includes(task.kind) ? [task.kind] : [];
+    const parts = [`${taskLabel(task, team)} ${task.status}`, priorityText(task.priority), ...kind, `owner ${task.owner}`];
     const inherited = tree.effectiveDue(task.id);
     if (inherited !== undefined && inherited.from !== null) {
         parts.push(`due ${showStored(inherited.due, tree.zone)} (from ${inherited.from})`);
@@ -208,6 +210,7 @@ export function formatEvent(event, zone) {
                 task.goals.length === 0 ? undefined : `goals=${task.goals.join(',')}`,
                 task.after.length === 0 ? undefined : `after=${task.after.join(',')}`,
                 task.size === null ? undefined : `size=${sizeText(task.size)}`,
+                task.kind === null ? undefined : `kind=${task.kind}`,
             ]
                 .filter((part) => part !== undefined)
                 .join(' ');
