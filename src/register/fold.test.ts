@@ -5,6 +5,7 @@ import type { DecisionCard } from './card.ts';
 import { EVENT_VERSION, type ApprovalVerdict, type RegisterEvent, type TaskFields } from './events.ts';
 import { foldEvents, RegisterFold, type Task } from './fold.ts';
 import type { TaskStatus } from './model.ts';
+import type { ProblemReview } from './review.ts';
 import type { WaitReason } from './waits.ts';
 
 const FIELDS: TaskFields = { title: 'Ship it', description: null, owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], week: null, after: [], size: null, kind: null, pin: null };
@@ -113,6 +114,33 @@ describe('foldEvents: what a waiting task waits for, and when it started', () =>
     assert.deepEqual(taskAfter(reopened).followups, ['T4', 'T5']);
     assert.deepEqual(taskAfter([create(9), closing(10, 'done', [])]).followups, []);
     assert.deepEqual(taskAfter([create(9), status(10, 'done')]).followups, [], 'a line from before --followups names none');
+  });
+
+  it("keeps every review part a problem's status changes gave, a later one replacing it", () => {
+    const reviewing = (hour: number, value: TaskStatus, review: ProblemReview): RegisterEvent => ({
+      v: EVENT_VERSION,
+      type: 'status',
+      id: 'T1',
+      at: at(hour),
+      by: 'alpha',
+      status: value,
+      note: 'n',
+      evidence: null,
+      skill: null,
+      review,
+    });
+    const events = [
+      create(9),
+      reviewing(10, 'in-progress', { cause: 'the parser skipped blank rows', how: 'a refactor dropped the guard' }),
+      status(11, 'waiting'),
+      reviewing(12, 'verifying', { cause: 'the reader skipped blank rows', prevent: 'a spec feeds a blank row' }),
+    ];
+    assert.deepEqual(taskAfter(events).review, {
+      cause: 'the reader skipped blank rows',
+      how: 'a refactor dropped the guard',
+      prevent: 'a spec feeds a blank row',
+    });
+    assert.deepEqual(taskAfter([create(9), status(10, 'done')]).review, {}, 'a line from before reviews gives none');
   });
 
   it('keeps the tasks a task is planned after', () => {

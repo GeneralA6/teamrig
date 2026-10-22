@@ -117,6 +117,18 @@ describe('parseEvent', () => {
     assert.match(reason(parse({ ...BASE, type: 'status', status: 'done', followups: 'T4' }, 2)), /followups is not a list of task ids/);
   });
 
+  it("reads the review parts a status line gives, none when absent, and refuses one that is not texts", () => {
+    const reviewOf = (record: JsonRecord): object | undefined | 'no event' => {
+      const result = parse({ ...BASE, type: 'status', status: 'verifying', note: 'ok', ...record }, 2);
+      return result.kind === 'event' && result.event.type === 'status' ? result.event.review : 'no event';
+    };
+    assert.deepEqual(reviewOf({ review: { cause: 'the parser skipped blank rows' } }), { cause: 'the parser skipped blank rows' });
+    assert.equal(reviewOf({}), undefined, 'a line from before reviews gives none');
+    assert.equal(reviewOf({ review: null }), undefined);
+    assert.match(reason(parse({ ...BASE, type: 'status', status: 'done', review: 'a cause' }, 2)), /review is not an object/);
+    assert.match(reason(parse({ ...BASE, type: 'status', status: 'done', review: { how: 3 } }, 2)), /review how is not text/);
+  });
+
   it("reads the reasons of a waiting line and a verifying line's proof waits, and keeps them off any other status", () => {
     const waits = [
       { kind: 'decision', who: 'owner' },
