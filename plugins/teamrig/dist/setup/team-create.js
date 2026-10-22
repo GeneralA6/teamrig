@@ -7,6 +7,8 @@ import { CONFIG_VERSION } from "../config/types.js";
 import { KIT_NAME } from "../core/home.js";
 import { ID_PATTERN, ID_RULE } from "../core/ids.js";
 import { resolveTeam, TEAM_POINTER } from "../core/team.js";
+/** A new team's tab status: on, as it shows only where Claude Code leaves the tab title to hooks. */
+const NEW_TEAM_TAB_STATUS = { enabled: true };
 function ok(value) {
     return { ok: true, value };
 }
@@ -43,10 +45,16 @@ export function teamSpecOf(team, sessionList, lead, parent) {
     }
     return ok({ team, lead, sessions: [lead, ...workers], parent });
 }
-/** The smallest config that runs a team, with its place in a tree: every other setting takes its default. */
+/** The smallest config that runs a team, with its place in a tree and tab status on: every other setting takes its default. */
 export function configRecordOf(spec) {
     const team = spec.parent === undefined ? { id: spec.team } : { id: spec.team, parent: spec.parent };
-    const record = { configVersion: CONFIG_VERSION, team, sessions: [...spec.sessions], roles: { lead: spec.lead } };
+    const record = {
+        configVersion: CONFIG_VERSION,
+        team,
+        sessions: [...spec.sessions],
+        roles: { lead: spec.lead },
+        tabStatus: { ...NEW_TEAM_TAB_STATUS },
+    };
     const [issue] = parseConfig(record).issues;
     if (issue !== undefined) {
         throw new Error(`the new team config breaks its own schema at ${issue.path}: ${issue.message}`);
@@ -68,15 +76,15 @@ async function configStep(files, format, spec, path) {
     const load = await loadConfig(files, path, format.migrations, format.version);
     switch (load.status) {
         case 'missing':
-            return ok({ kind: 'create', path, text: formatConfig(configRecordOf(spec)) });
+            return ok({ file: { kind: 'create', path, text: formatConfig(configRecordOf(spec)) }, tabStatus: NEW_TEAM_TAB_STATUS.enabled });
         case 'unreadable':
             return fail(`team ${spec.team} already has a config at ${path}, and it cannot be read (${load.issue.message}); choose another team name`);
         case 'loaded':
             break;
     }
-    const { sessions, roles, team } = load.config;
+    const { sessions, roles, team, tabStatus } = load.config;
     if (sameTeam(spec, sessions, roles.lead, team?.parent)) {
-        return ok({ kind: 'keep', path, why: `team ${spec.team} already has these sessions` });
+        return ok({ file: { kind: 'keep', path, why: `team ${spec.team} already has these sessions` }, tabStatus: tabStatus.enabled });
     }
     return fail(`team ${spec.team} already exists at ${path} with sessions ${sessions.join(', ')} (lead ${roles.lead}, ${parentText(team?.parent)}); choose another team name, or change that config by hand`);
 }
@@ -142,7 +150,7 @@ export async function planTeamSetup(files, format, spec, configPath, project, tr
         return config;
     }
     // A kept config is in the tree already as it is; only a new one can break the tree.
-    const placed = config.value.kind === 'create' ? treeStep(tree, spec) : ok(teamNodeOfSpec(spec));
+    const placed = config.value.file.kind === 'create' ? treeStep(tree, spec) : ok(teamNodeOfSpec(spec));
     if (!placed.ok) {
         return placed;
     }
@@ -150,7 +158,7 @@ export async function planTeamSetup(files, format, spec, configPath, project, tr
     if (!pointer.ok) {
         return pointer;
     }
-    return ok({ spec, config: config.value, pointer: pointer.value });
+    return ok({ spec, config: config.value.file, pointer: pointer.value, tabStatus: config.value.tabStatus });
 }
 /**
  * Writes the plan's new files, the config first, each only if it is still absent. A failure after the
