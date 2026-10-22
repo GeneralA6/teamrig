@@ -28,6 +28,11 @@ export function formatW(value: number): string {
   return value >= 1e3 ? `${Math.round(value / 1e3)}k` : `${Math.round(value)}`;
 }
 
+/** US dollars, such as `$12.50`. */
+export function formatUsd(value: number): string {
+  return `$${value.toFixed(2)}`;
+}
+
 /** A count with thousands separators, such as `2,634`. */
 export function formatCount(value: number): string {
   return Math.round(value).toLocaleString('en-US');

@@ -2,7 +2,8 @@ import type { TimeZone } from '../core/zone.ts';
 import { ruleLabel, ruleNumberOf } from '../rules/keys.ts';
 import type { InBurst } from './burst.ts';
 import { budgetMarkOf, burstText, MORE_BURST } from './burst-lines.ts';
-import { formatCount, formatPct, formatW, isBudgetDayEnd, noRoomText } from './format.ts';
+import type { ExtraPool } from './extra.ts';
+import { formatCount, formatPct, formatUsd, formatW, isBudgetDayEnd, noRoomText } from './format.ts';
 import { liftText, type Lift } from './lift.ts';
 import { TURN_TRIGGERS } from './line.ts';
 import { hasRoom } from './pace.ts';
@@ -66,7 +67,7 @@ function useText(w: number, calls: number): string {
   return `${formatW(w)} W in ${formatCount(calls)} call${calls === 1 ? '' : 's'}`;
 }
 
-/** The week's use and its pace, on the team's clock: the first line of `budget`, and the last of `start`. */
+/** The week's use and its pace, on the team's clock, and the extra-usage pool: the first line of `budget`, and the last of `start`. */
 export function weekLine(week: WeekReading, zone: TimeZone): string {
   if (week.usedPct === undefined || week.reset === undefined) {
     return "Week: its use is unknown: no status line reading (run teamrig statusline install) and no budget.weeklyLimitW.";
@@ -77,7 +78,23 @@ export function weekLine(week: WeekReading, zone: TimeZone): string {
     pace === undefined
       ? ''
       : `; the pace line is at ${formatPct(pace.linePct)}: ${pace.state === 'on pace' ? 'on pace' : `${Math.abs(pace.gapPts).toFixed(1)} points ${pace.state}`}`;
-  return `Week: ${formatPct(week.usedPct)} used${source}${paceText}. Resets ${zone.weekdayMinute(new Date(week.reset))}.${periodText(week, zone)}`;
+  return `Week: ${formatPct(week.usedPct)} used${source}${paceText}. Resets ${zone.weekdayMinute(new Date(week.reset))}.${periodText(week, zone)}${poolText(week.pool)}`;
+}
+
+/**
+ * The extra-usage pool (budget/extra.ts) once dollars were added: what is left in dollars and, with its W per dollar,
+ * in W, which past 100% of the week sets the team's allowance; nothing without a pool.
+ */
+function poolText(pool: ExtraPool | undefined): string {
+  if (pool === undefined) {
+    return '';
+  }
+  const left = ` Extra usage: ${formatUsd(pool.leftUsd)} of ${formatUsd(pool.addedUsd)} left`;
+  if (pool.wPerUsd === undefined || pool.leftW === undefined) {
+    return `${left}, in dollars only until two spent readings past 100% (teamrig budget extra --spent <usd>) or budget.extraWPerUsd give its W per dollar.`;
+  }
+  const from = pool.learned ? 'learned from spent readings' : 'budget.extraWPerUsd';
+  return `${left}, about ${formatW(pool.leftW)} W at ${formatW(pool.wPerUsd)} W per dollar (${from}).`;
 }
 
 /** Where the use counts from after a reset inside the week (budget/period.ts); nothing for a whole week. */

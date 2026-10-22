@@ -4,6 +4,7 @@ import { TimeZone } from '../core/zone.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 import type { Burst } from './burst.ts';
 import { calibrationOf } from './calibration.ts';
+import type { ExtraPool } from './extra.ts';
 import type { Lift } from './lift.ts';
 import { weekWindow } from './pace.ts';
 import { emptyPatterns, type PatternField } from './patterns.ts';
@@ -116,6 +117,18 @@ describe('todayLines', () => {
     assert.match(todayLines({ ...REPORT, week: fallen })[0] ?? '', / Resets Wed 10-21 01:00 UTC\. Counted from Sun 10-18 16:00 UTC, after a reset inside the week\.$/);
     const inferred = todayLines({ ...REPORT, week: { ...fallen, periodKind: 'inferred' } })[0] ?? '';
     assert.match(inferred, / Counted from Sun 10-18 16:00 UTC, after a reset inside the week \(found from the metered W\)\.$/);
+  });
+
+  it('names the extra-usage pool after the week: what is left in dollars and, with its W per dollar, in W', () => {
+    const pool: ExtraPool = { addedUsd: 10, spentUsd: 2, leftUsd: 8, wPerUsd: 2_000_000, learned: true, leftW: 16_000_000 };
+    const first = (week: WeekReading): string => todayLines({ ...REPORT, week })[0] ?? '';
+    assert.match(first({ ...WEEK, pool }), / Resets Wed 10-21 01:00 UTC\. Extra usage: \$8\.00 of \$10\.00 left, about 16\.00M W at 2\.00M W per dollar \(learned from spent readings\)\.$/);
+    assert.match(first({ ...WEEK, pool: { ...pool, learned: false } }), / at 2\.00M W per dollar \(budget\.extraWPerUsd\)\.$/);
+    const dollarsOnly: ExtraPool = { ...pool, wPerUsd: undefined, learned: false, leftW: undefined };
+    assert.match(
+      first({ ...WEEK, pool: dollarsOnly }),
+      / Extra usage: \$8\.00 of \$10\.00 left, in dollars only until two spent readings past 100% \(teamrig budget extra --spent <usd>\) or budget\.extraWPerUsd give its W per dollar\.$/,
+    );
   });
 
   it('gives the week, the team, each session with use, lifts, outside use and who is past budget', () => {
