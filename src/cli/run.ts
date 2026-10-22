@@ -154,6 +154,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
     switches: ['reserve'],
     load: async () => (await budgetCommands()).lift,
   },
+  'budget extra': { effect: 'write', flags: ['session', 'add', 'spent'], load: async () => (await budgetCommands()).extra },
   'budget setup': {
     effect: 'write',
     flags: ['session', 'over', 'escalate', 'quiet', 'quiet-action'],
@@ -399,6 +400,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   budget lift <id|name> --part <pct> --stop-pct <pct> --reason "<why>" [--until <HH:MM|date>] [--reserve]
       (the lead only) that session's part of the team's daily budget, in %, today, until --until, the day's end
       or the week reaching --stop-pct; --reserve: above budget.lift.maxStopPct, in the last hour before the reset
+  budget extra [--add <usd>] [--spent <usd>]
+      the extra-usage pool past 100% of the week: what is left, in dollars and W; (the lead only) --add: dollars
+      put in it, --spent: the dollars claude.ai shows spent from it so far, which teach its W per dollar
   budget setup [--over <action>] [--escalate <mode>] [--quiet <HH:MM-HH:MM>|off]
       [--quiet-action <action>] [--off] [--yes]
       (the lead only) writes the team's budget policy into its config and turns the budget on (--off:

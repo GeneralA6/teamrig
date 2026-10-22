@@ -310,6 +310,63 @@ describe('teamrig budget lift', () => {
   });
 });
 
+describe('teamrig budget extra', () => {
+  const EXTRA_LOG = join(TEAM_HOME, 'state', 'usage', 'extra-log.jsonl');
+  /** The week 30% used on the status line, and $1 of extra usage worth 1M W until spent readings teach a rate. */
+  const PRICED: JsonRecord = { ...TEAM, budget: { weeklyLimitW: 1_000_000_000, extraWPerUsd: 1_000_000 } };
+
+  function logged(kit: CliHarness): unknown[] {
+    return (kit.files.get(EXTRA_LOG) ?? '')
+      .split('\n')
+      .filter((line) => line !== '')
+      .map((line): unknown => JSON.parse(line));
+  }
+
+  it("logs the lead's add and spent readings with the week's use and the W since the period's start, then names the pool", async () => {
+    const { kit, run } = await world(PRICED);
+    const added = ok(await run(['budget', 'extra', '--add', '10', '--session', 'lead']));
+    assert.equal(added[0], 'EXTRA added $10.00 to the pool.');
+    assert.match(added[1] ?? '', /^Week: 30\.0% used .* Extra usage: \$10\.00 of \$10\.00 left, about 10\.00M W at 1\.00M W per dollar \(budget\.extraWPerUsd\)\.$/);
+    assert.equal(added.length, 2);
+    const spent = ok(await run(['budget', 'extra', '--spent', '2', '--session', 'lead']));
+    assert.equal(spent[0], 'EXTRA $2.00 spent from it so far.');
+    assert.match(spent[1] ?? '', / Extra usage: \$8\.00 of \$10\.00 left, about 8\.00M W at 1\.00M W per dollar \(budget\.extraWPerUsd\)\.$/);
+    const entry = { at: '2030-01-08T10:00:00.000Z', weekPct: 30, start: '2030-01-07T01:00:00.000Z', end: '2030-01-14T01:00:00.000Z', w: 26_000_000 };
+    assert.deepEqual(logged(kit), [
+      { v: 1, ...entry, kind: 'add', usd: 10 },
+      { v: 1, ...entry, kind: 'spent', usd: 2 },
+    ]);
+  });
+
+  it('takes an add and a spent reading at once, and with no flag shows the pool, or that there is none', async () => {
+    const { run } = await world();
+    const none = ok(await run(['budget', 'extra']));
+    assert.match(none[0] ?? '', /^Week: 30\.0% used .* Resets Mon 01-14 01:00 UTC\.$/);
+    assert.equal(none[1], 'Extra usage: none in the pool (the lead adds the dollars put in it: teamrig budget extra --add <usd>).');
+    assert.equal(ok(await run(['budget', 'extra', '--add', '5', '--spent', '1', '--session', 'lead']))[0], 'EXTRA added $5.00 to the pool; $1.00 spent from it so far.');
+    const shown = ok(await run(['budget', 'extra']));
+    assert.equal(shown.length, 1);
+    assert.match(shown[0] ?? '', / Extra usage: \$4\.00 of \$5\.00 left, in dollars only until two spent readings past 100% /);
+  });
+
+  it('is the lead only, writing nothing for anyone else', async () => {
+    const { kit, run } = await world();
+    const refused = await run(['budget', 'extra', '--add', '10', '--session', 'bravo']);
+    assert.equal(refused.code, EXIT.refused);
+    assert.deepEqual(refused.stdout, ['REFUSED only the lead (app-lead) enters the extra-usage pool']);
+    assert.equal(kit.files.get(EXTRA_LOG), undefined);
+  });
+
+  it('checks its flags', async () => {
+    const { run } = await world();
+    const as = ['--session', 'lead'];
+    usageError(await run(['budget', 'extra', '--add', '0', ...as]), /--add "0" is not a dollar amount above 0/);
+    usageError(await run(['budget', 'extra', '--add', 'ten', ...as]), /--add "ten" is not a dollar amount above 0/);
+    usageError(await run(['budget', 'extra', '--spent', ' ', ...as]), /--spent " " is not a dollar amount of 0 or more/);
+    usageError(await run(['budget', 'extra', 'alpha']), /unexpected "alpha"/);
+  });
+});
+
 describe('teamrig statusline', () => {
   const SNAPSHOT = `${ALPHA_TAB}.json`;
   /** The status `status(APP)` prints by default: on the harness's branch `dev`. */
