@@ -238,8 +238,9 @@ export const COMMAND_TABLE: CommandTable = { flags: COMMAND_FLAGS, switches: COM
 
 export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|name>, else $${ENV.session})
   team create <team> --sessions <id,id> [--lead <id>] [--project <dir>] [--parent <team>] [--dry-run]
-      writes the team config and ties the project folder to the team (the lead defaults to lead);
-      --parent hangs it under that team's lead in a tree of teams
+      writes the team config, ties the project folder to the team (the lead defaults to lead) and
+      starts a root team's lead on its first task, setting the team up; --parent hangs it under
+      that team's lead in a tree of teams
   team tree                    the tree of teams this team is in, with each team's lead and sessions
   open <id|name|team/id> [--prompt "<first prompt>"] [--terminal <name>] [--project <dir>] [--resume]
       a new terminal tab running Claude Code as that session (team/id: another team of the tree);

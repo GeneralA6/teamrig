@@ -41,6 +41,7 @@ teamrig team create <team> --sessions <id>,<id> --project "<project>" && teamrig
 ```
 
 - `team create` writes the team config in the kit home and `.teamrig.json` in the project, and keeps `.teamrig.json` out of git in this clone (its `ADDED` line names the repository's `.git/info/exclude`, which git never commits). The file names a team that exists on this machine only, and sessions find the team without it in git, so never offer to commit it. An `UNCHANGED … in git: it is committed` line means the repository already has it: tell the user what that line says. A `REFUSED` line says why it stopped (another team has that id, or the project belongs to another team): tell the user and stop.
+- Your first task: `team create` adds `Set up the team` to the task list, owned by you and in progress, so the setup shows in the task pane and the register like any work. Its `ADDED T<n>` line gives the id; an `UNCHANGED T<n> Set up the team` line means an earlier run added it. You close it in step 7. No such line: the team already had tasks, so there is none to close.
 - Tab status: `team create` turns on the colored circle before each tab's title for what its session is doing. A `TAB STATUS on` line means the tabs show it. A `NOTE` line names what is missing: show the user the exact `env` line, the settings file it goes in and that Claude Code needs a restart, as the line says. That switch changes every Claude Code tab, also outside this team, so never edit the settings yourself unless the user asks.
 - `inbox read --session lead` ties this Claude Code session to the lead, so the team's hooks know this tab as the lead from now on.
 - `rules --session lead` prints the team rules this tab did not get when it started. Follow them from now on.
@@ -119,7 +120,13 @@ it the other way, so settle each one with the user now, and again whenever they 
 6. Run `teamrig rules scan` again: no conflict should be left outside the `RECORDED` lines. A `GONE` line, whose
    text is no longer there: `teamrig rules forget <n> --session lead --yes`.
 
-## 7. Tell the user, in three short lines
+## 7. Close the setup task, then tell the user, in three short lines
+
+Every session now runs its first task, so the setup is done. Close it with the id from step 3 and the first tasks of step 4:
+
+```
+teamrig set T<n> --session lead --status done --note "team set up: <ids> working" --evidence "<first task ids> open in their tabs" --skill none --followups <first task ids, comma-separated>
+```
 
 ```
 Team <team> is up: <id>, <id> and <id> are working in their own tabs.
