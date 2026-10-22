@@ -19,6 +19,9 @@ const NEXT = 'Next: teamrig add --session lead --owner <id> --priority p<n> --ti
 const SETTINGS = join(USER_HOME, '.claude', 'settings.json');
 const TITLE_SWITCH = `add "CLAUDE_CODE_DISABLE_TERMINAL_TITLE": "1" to "env" in ${SETTINGS} and restart Claude Code, so it stops writing its own title over the circle (tabs of projects outside teamrig then keep the terminal's title)`;
 
+const SETUP_ADDED = 'ADDED T1 Set up the team, in progress, owner lead: close it with teamrig set T1 --status done once every session runs its first task';
+const SETUP_KEPT = "UNCHANGED T1 Set up the team (in-progress, owner lead): the task list already has the team's setup";
+
 /** What team create says of `team`'s tab status where Claude Code still writes the tab title, as the harness's empty env has it. */
 function tabNote(team: string): string {
   return `NOTE each tab of team ${team} shows a colored circle before its title for what its session is doing once you ${TITLE_SWITCH}`;
@@ -49,7 +52,7 @@ describe('teamrig team create', () => {
     const result = await create(kit);
     assert.deepEqual(result, {
       code: EXIT.ok,
-      stdout: [`CREATED ${SHOP_CONFIG}`, `CREATED ${SHOP_POINTER}`, tabNote('shop'), 'Team shop: lead lead, sessions api, web.', NEXT],
+      stdout: [`CREATED ${SHOP_CONFIG}`, `CREATED ${SHOP_POINTER}`, tabNote('shop'), SETUP_ADDED, 'Team shop: lead lead, sessions api, web.', NEXT],
       stderr: [],
     });
     assert.deepEqual(JSON.parse((await kit.files.read(SHOP_CONFIG)) ?? ''), {
@@ -62,6 +65,9 @@ describe('teamrig team create', () => {
     assert.deepEqual(JSON.parse((await kit.files.read(SHOP_POINTER)) ?? ''), { team: 'shop' });
     const who = await kit.run(['who'], { cwd: join(SHOP, 'src') });
     assert.deepEqual(who.stdout, ['lead shop-lead (lead)', 'api shop-api', 'web shop-web']);
+    const tasks = await kit.run(['list', '--session', 'lead'], { cwd: SHOP });
+    assert.deepEqual(tasks.stdout.filter((line) => line.startsWith('T')).length, 1);
+    assert.match(tasks.stdout.find((line) => line.startsWith('T1 ')) ?? '', /in-progress.*Set up the team/);
   });
 
   it('writes nothing and succeeds when run again with the same team', async () => {
@@ -72,6 +78,7 @@ describe('teamrig team create', () => {
       `UNCHANGED ${SHOP_CONFIG}: team shop already has these sessions`,
       `UNCHANGED ${SHOP_POINTER}: the project is already tied to team shop`,
       tabNote('shop'),
+      SETUP_KEPT,
       'Team shop: lead lead, sessions web, api.',
       NEXT,
     ]);
@@ -107,6 +114,7 @@ describe('teamrig team create', () => {
       '  "team": "shop"',
       '}',
       tabNote('shop'),
+      'WOULD ADD Set up the team, in progress, owner boss',
     ]);
     assert.equal(await kit.files.read(SHOP_CONFIG), undefined);
     assert.equal(await kit.files.read(SHOP_POINTER), undefined);
@@ -123,7 +131,7 @@ describe('teamrig team create', () => {
   it('says on a dry run what it would add to the exclude file, and adds nothing', async () => {
     const kit = new CliHarness(null, null);
     const result = await kit.run([...CREATE, '--dry-run'], { probe: FOLDERS, pointerGit: pointerGit({ kind: 'open', exclude: SHOP_EXCLUDE }) });
-    assert.deepEqual(result.stdout.slice(-2), [`WOULD ADD ${ADDED}`, tabNote('shop')]);
+    assert.deepEqual(result.stdout.slice(-3, -1), [`WOULD ADD ${ADDED}`, tabNote('shop')]);
     assert.equal(await kit.files.read(SHOP_EXCLUDE), undefined);
   });
 
@@ -158,6 +166,23 @@ describe('teamrig team create', () => {
       `NOTE each tab of team shop shows a colored circle before its title for what its session is doing once you set "tabStatus": { "enabled": true } in ${SHOP_CONFIG}`,
     );
     assert.equal(JSON.parse((await kit.files.read(SHOP_CONFIG)) ?? '')['tabStatus'], undefined, 'a repeat leaves a kept config as it is');
+  });
+
+  it("says on a repeat's dry run what it keeps, and gives a team already at work no setup task", async () => {
+    const kit = new CliHarness(null, null);
+    await create(kit);
+    const dry = await create(kit, [...CREATE, '--dry-run']);
+    assert.equal(dry.stdout.at(-1), SETUP_KEPT);
+    const working = new CliHarness(null, null);
+    await working.files.write(SHOP_CONFIG, JSON.stringify({ configVersion: CONFIG_VERSION, team: { id: 'shop' }, sessions: ['lead', 'api', 'web'], roles: { lead: 'lead' } }));
+    await working.files.write(SHOP_POINTER, '{"team": "shop"}');
+    const asLead = { probe: FOLDERS, cwd: SHOP, env: { TEAMRIG_SESSION: 'lead' } };
+    const first = await working.run(['add', '--owner', 'api', '--priority', 'p2', '--title', 'Ship the form', '--description', 'the signup form'], asLead);
+    assert.equal(first.code, EXIT.ok, first.stdout.join(' | '));
+    const again = await create(working);
+    assert.equal(again.stdout.some((line) => line.includes('Set up the team')), false);
+    const tasks = await working.run(['list', '--status', 'all'], asLead);
+    assert.deepEqual(tasks.stdout.filter((line) => /^T\d+ /.test(line)).length, 1);
   });
 
   it('takes the folder Claude Code started in, else the current folder', async () => {

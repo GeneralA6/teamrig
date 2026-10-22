@@ -4,10 +4,13 @@ import { claudeConfigDir, ENV, KIT_NAME, resolveKitHome, teamPaths } from '../..
 import { ENV_SOURCE } from '../../core/team.ts';
 import { describeRequirement } from '../../requirements/requirements.ts';
 import { applyIgnore, ignoreLines, ignoreStep, type IgnoreStep } from '../../setup/pointer-ignore.ts';
+import { applySetupTask, setupTaskDryLines, setupTaskLines, setupTaskStep } from '../../setup/setup-task.ts';
 import { tabStatusLine } from '../../setup/tab-status-note.ts';
-import { applyTeamSetup, planTeamSetup, teamSpecOf, type FileStep, type SetupPlan } from '../../setup/team-create.ts';
+import { applyTeamSetup, planTeamSetup, teamSpecOf, type FileStep, type SetupPlan, type TeamSpec } from '../../setup/team-create.ts';
 import { onePositional, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
+import { openKit, requireConfig } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
+import { teamRegister } from '../team-register.ts';
 import { loadTree } from '../tree.ts';
 import { titleLeftToHooks } from './hook-tab-status.ts';
 
@@ -45,10 +48,10 @@ function nextLine(team: string, lead: string, parent: string | undefined): strin
   return `Next: ${parent}'s lead runs ${KIT_NAME} add --team ${team} --priority p<n> --title "<first task>" --description "<what and why>", then ${KIT_NAME} open ${team}/${lead}: ${team}'s lead hands its sessions their parts and opens them.`;
 }
 
-function summaryLines(plan: SetupPlan, ignore: IgnoreStep, tabStatus: string, dryRun: boolean): string[] {
+function summaryLines(plan: SetupPlan, ignore: IgnoreStep, tabStatus: string, setupTask: readonly string[], dryRun: boolean): string[] {
   const { team, lead, sessions, parent } = plan.spec;
   const workers = sessions.filter((id) => id !== lead);
-  const lines = [...stepLines(plan.config, dryRun), ...stepLines(plan.pointer, dryRun), ...ignoreLines(ignore, dryRun), tabStatus];
+  const lines = [...stepLines(plan.config, dryRun), ...stepLines(plan.pointer, dryRun), ...ignoreLines(ignore, dryRun), tabStatus, ...setupTask];
   if (dryRun) {
     return ['DRY RUN nothing is written', ...lines];
   }
@@ -57,9 +60,36 @@ function summaryLines(plan: SetupPlan, ignore: IgnoreStep, tabStatus: string, dr
 }
 
 /**
+ * A root team's setup task, the lead's first (setup-task.ts): added and started on a team with no tasks yet, kept on
+ * a repeat. A sub-team's lead gets its first task from its parent's lead instead. A dry run only reads.
+ */
+async function setupTaskOf(runtime: CliRuntime, spec: TeamSpec, dryRun: boolean): Promise<string[]> {
+  if (spec.parent !== undefined) {
+    return [];
+  }
+  const kit = await openKit(runtime, spec.team);
+  if (dryRun && kit.load.status === 'missing') {
+    return setupTaskDryLines({ kind: 'add' }, spec.lead);
+  }
+  const config = requireConfig(kit, runtime, 'read');
+  const register = teamRegister(runtime, kit.paths, config);
+  const step = setupTaskStep(await register.snapshot(), spec.lead);
+  if (dryRun || step.kind !== 'add') {
+    return setupTaskDryLines(step, spec.lead);
+  }
+  requireConfig(kit, runtime, 'write');
+  const outcome = await applySetupTask(register, spec.lead, config.register.ownerSource);
+  if (!outcome.ok) {
+    throw new RefusedError(`team ${spec.team} is set up, but its setup task was not written (${outcome.problem}); run the command again`);
+  }
+  return setupTaskLines(outcome.value, spec.lead);
+}
+
+/**
  * `team create <team> --sessions a,b [--lead <id>] [--parent <team>] [--project <dir>] [--dry-run]`:
  * writes the team's config in the kit home, tab status on, and the project's pointer to it, kept out of git
- * in this clone (pointer-ignore.ts) whether it is new or was already there. It says whether the team's tabs
+ * in this clone (pointer-ignore.ts) whether it is new or was already there, and gives a root team's lead its
+ * first task, setting the team up, in progress (setup-task.ts). It says whether the team's tabs
  * will show their status circle, and what the user does if not (tab-status-note.ts). It refuses a different
  * team of the same id, a place in a tree its limits forbid, a session name another team uses, and a
  * project tied to a team outside the new team's tree; a repeat with the same team writes nothing but a missing exclude line. It
@@ -96,6 +126,7 @@ export async function teamCreate(args: ParsedArgs, runtime: CliRuntime): Promise
     titleLeft: titleLeftToHooks(runtime.env),
     settingsPath: join(claudeConfigDir(runtime.env, runtime.userHome), 'settings.json'),
   });
-  summaryLines(done.value, ignore, tabStatus, dryRun).forEach((line) => runtime.out.stdout(line));
+  const setupTask = await setupTaskOf(runtime, spec.value, dryRun);
+  summaryLines(done.value, ignore, tabStatus, setupTask, dryRun).forEach((line) => runtime.out.stdout(line));
   return EXIT.ok;
 }
