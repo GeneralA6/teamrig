@@ -36,6 +36,8 @@ To update an installed teamrig, follow
   tasks. It is the session the human talks to.
 - **Owner**: the human. Some decisions are owner gates (destructive data operations, product and design,
   permissions, budget, resource changes): only the human approves them, and silence never counts as a yes.
+- **Core rules**: the numbered rules teamrig gives every session at its start (`teamrig rules` prints them). The
+  human has not read them: when you tell the user about one, say what it asks in plain words, never its number alone.
 - **Task register**: an append-only log of task events. Every ask that creates work is a task with an id like
   `T12`, an owner session, a priority `p1` (most urgent) to `p5`, and a status. Only the task's owner sets its
   status, except on a task `teamrig gh sync` imported from a GitHub issue (source `github`): it opens, finishes or

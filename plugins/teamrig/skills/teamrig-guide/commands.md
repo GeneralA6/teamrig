@@ -1219,7 +1219,7 @@ Output:
 SCANNED claude-md: 2 place(s), 2 candidate line(s)
 RECORDED 1 ~/.claude/CLAUDE.md:12 "- Push to main once the tests pass." wins over rule 15 push (a solo repo)
 CANDIDATE ~/work/shop/CLAUDE.md:4 [14 commits, 16 worktrees] - Squash every branch into one commit before review.
-NEXT judge each candidate against the core rule it names; a line that tells a session to do otherwise conflicts. Record a line the user keeps with `teamrig rules keep <path>:<line> --rule <n> --wins local|teamrig --yes`
+NEXT judge each candidate against the core rule it names; a line that tells a session to do otherwise conflicts. Show the user each conflict with what its rule asks in plain words, never the rule number alone. Record a line the user keeps with `teamrig rules keep <path>:<line> --rule <n> --wins local|teamrig --yes`
 ```
 
 ### teamrig rules keep

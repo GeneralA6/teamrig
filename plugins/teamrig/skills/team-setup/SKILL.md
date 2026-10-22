@@ -95,9 +95,13 @@ it the other way, so settle each one with the user now, and again whenever they 
 2. Judge each candidate against the core rule it names. It conflicts when it tells a session to do otherwise: a
    push or deploy route the rule forbids, skipping the register, its own precedence ("our CLAUDE.md wins"). A line
    that adds detail or agrees is no conflict: leave it out.
-3. Show the user the conflicts, each as `<path>:<line>`, its text, the core rule and how they differ. None: say so
-   in one line and go on.
-4. Ask about each in AskUserQuestion (up to 4 per call), with these choices, the recommended one first:
+3. Show the user the conflicts, each as `<path>:<line>`, its text, what the core rule asks and how they differ. The
+   user has not read teamrig's rules, so say what each one asks in plain words, from the core rules in your context
+   (`teamrig rules` prints them): never name a rule by its number alone. None: say so in one line and go on.
+4. Ask about each in AskUserQuestion (up to 4 per call). The question says what the line asks and what teamrig asks
+   instead, in plain words: "CLAUDE.md:12 says to push straight to main. teamrig has each session edit in its own
+   worktree and branch, and asks you before each push to main. Which should apply?". The choices, the recommended
+   one first:
    - Remove it, and teamrig's rule applies (recommended).
    - Keep it, and it wins over the rule: the core rules then name it as an exception.
    - Keep the text, but teamrig's rule wins. Warn the user that the line still sits in every session's context
