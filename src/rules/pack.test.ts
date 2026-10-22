@@ -376,14 +376,15 @@ describe('renderCorePack', () => {
 
   it('prints a status the team listed twice once, and the skill and follow-up demands in one flag each', () => {
     const pack = renderCorePack(
-      testConfig({ register: { requireNoteOn: ['done', 'waiting', 'done'], requireSkillOnDone: true, requireFollowupsOn: ['dropped', 'done', 'dropped'] } }),
+      testConfig({
+        register: { requireNoteOn: ['done', 'waiting', 'done'], requireEvidenceOnDone: false, requireSkillOnDone: true, requireFollowupsOn: ['dropped', 'done', 'dropped'] },
+      }),
       COMMAND,
       'win32',
       RULES_CLOCK,
     );
-    assert.match(pack, /with a note \(only what changed\) on done, waiting \[register\.requireNoteOn\]/);
-    assert.match(pack, /--skill <name>\|none on done \[register\.requireSkillOnDone\]/);
-    assert.match(pack, /--followups <tasks it leaves>\|none on dropped, done \[register\.requireFollowupsOn\]\./);
+    assert.match(pack, /with a note \(only what changed\) on done, waiting, --skill <name>\|none on done, /);
+    assert.match(pack, /--followups <tasks it leaves>\|none on dropped, done \[register\]\./);
   });
 });
 
