@@ -62,9 +62,10 @@ function pushRule(pushGuard: PushGuardConfig, hookAsks: HookAsks): string {
   if (branches === '') {
     return 'No branch is protected, so the push guard stops no push [pushGuard.protectedBranches].';
   }
-  // Under `lead` the guard's refusal says how to ask the lead (src/hooks/push-guard.ts), so the rule stays short.
+  // Under `lead` the guard's refusal names the session's direct leader to ask (src/hooks/push-guard.ts, T781), so the
+  // rule stays short.
   return pushGuard.pushToProtected === 'lead'
-    ? `Pushes to ${branches} ask the lead; force-pushing or deleting them is refused ${keys}.`
+    ? `Pushes to ${branches} ask your leader; force-pushing or deleting them is refused ${keys}.`
     : pushGuard.pushToProtected === 'allow'
       ? `Pushes to ${branches} go unasked; force-pushing or deleting them is refused ${keys}.`
       : hookAsks === 'refuse'
@@ -158,10 +159,14 @@ export function coreRuleTexts(config: KitConfig, command: string, platform: Node
   const cutoffSpan = cutoff === undefined ? undefined : zone.clockSpan(new Date(cutoff.from), new Date(cutoff.to));
   return {
     roles:
-      `Roles, by session id: ${roles.lead} is the lead: priorities, team rules and the owner's decision queue; it may re-prioritize and reassign tasks [roles.lead].` +
+      `Roles, by session id: ${roles.lead} is the lead: priorities, team rules and the owner's decision queue [roles.lead].` +
       (roles.coordinatorOwner === undefined ? '' : ` ${roles.coordinatorOwner} owns deploy coordination and fleet health [roles.coordinatorOwner].`) +
       (roles.securityReviewer === undefined ? '' : ` ${roles.securityReviewer} reviews privileged commands (\`${command} exec\`) [roles.securityReviewer].`) +
-      ' Other sessions own their areas; cross-area issues, clashes and unowned warnings go to the lead.',
+      // The lead tree (config/lead-tree.ts, T781): a member's waits, approvals and pushes go to its leaders, nearest
+      // first, and a leader sets the work order of the sessions under it (T782). No member list prints here: `leads`
+      // has no size limit, so the pack names the key alone.
+      ' Other sessions own their areas. Your leader (the sub-lead listing you [leads], else the lead) sets your work order and answers your waits;' +
+      " asks to a sub-lead's sessions go through it. Cross-area issues and clashes go to the nearest leader over both, unowned warnings to the lead.",
     'own-change':
       "Own your change end to end: only the session that made it integrates, deploys (when it must run), verifies and fixes or rolls it back; another session's change goes to its owner.",
     messages:
@@ -177,7 +182,7 @@ export function coreRuleTexts(config: KitConfig, command: string, platform: Node
     'task-order':
       `Work your own task list in priority order (\`${command} list --session <you>\`); self-made work is a task too, added with \`${command} add\` before you start it,` +
       ' and started only for a goal, a parent task or the week plan, never ahead of your top task that is not waiting (one-commit fixes exempt).' +
-      " A loop, cron or scheduled wake-up needs the lead's OK and a written stop. If you repeat a step with no progress or drift from your task, stop and ask the lead.",
+      " A loop, cron or scheduled wake-up needs the lead's OK and a written stop. If you repeat a step with no progress or drift from your task, stop and ask your leader.",
     'owner-gates':
       `Silence is consent only within the sender's authority, never for owner gates: ${list(config.ownerGates)} [ownerGates].` +
       " An owner's order, relayed or not, approves its work and proof unless only the owner sees the result; ask again only if it must change or needs something new.",
