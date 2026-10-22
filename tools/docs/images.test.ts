@@ -7,10 +7,10 @@ import { drawPictures, IMAGES_DIR, stalePictures, writePictures } from './images
 import { parseXml } from './xml.ts';
 
 describe('drawPictures', () => {
-  it("draws the README's pictures in its order, then the commands screen", async () => {
+  it("draws the README's pictures in its order, the task flow after how it works, then the commands screen", async () => {
     assert.deepEqual(
       (await drawPictures()).map((picture) => picture.file),
-      ['wordmark.svg', 'hero.svg', 'how-it-works.svg', 'why.svg', 'terminal-view.svg', 'plan.svg', 'growth.svg', 'commands.svg'],
+      ['wordmark.svg', 'hero.svg', 'how-it-works.svg', 'task-flow.svg', 'why.svg', 'terminal-view.svg', 'plan.svg', 'growth.svg', 'commands.svg'],
     );
   });
 
