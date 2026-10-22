@@ -111,7 +111,7 @@ export async function scan(args, runtime) {
         runtime.out.stdout(found.recorded.length === 0 ? 'NONE no line here touches a core rule' : 'NONE no other line here touches a core rule');
     }
     else {
-        runtime.out.stdout(`NEXT judge each candidate against the core rule it names; a line that tells a session to do otherwise conflicts. Record a line the user keeps with \`${KIT_NAME} rules keep <path>:<line> --rule <n> --wins local|teamrig --yes\``);
+        runtime.out.stdout(`NEXT judge each candidate against the core rule it names; a line that tells a session to do otherwise conflicts. Show the user each conflict with what its rule asks in plain words, never the rule number alone. Record a line the user keeps with \`${KIT_NAME} rules keep <path>:<line> --rule <n> --wins local|teamrig --yes\``);
     }
     return EXIT.ok;
 }
