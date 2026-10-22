@@ -20,6 +20,7 @@ import { byFlagKind, checkTasks, currentWeekOf, peerWaitFlags } from '../../regi
 import type { ApprovalVerdict, TaskFields } from '../../register/events.ts';
 import { fitLines, leftOfWeek, overLimitFlag, weekFit, type WeekFit } from '../../register/fit.ts';
 import type { Task } from '../../register/fold.ts';
+import { problemHint } from '../../register/kind.ts';
 import { renderPlan } from '../../register/plan.ts';
 import type { AddInput, AskInput, StatusInput, Verdict } from '../../register/policy.ts';
 import type { Register, WriteResult } from '../../register/register.ts';
@@ -185,8 +186,19 @@ export async function add(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
   const by = sessionIdOf(team.roster, caller);
   const verdict = await team.register.add(by, addInputIds(team, input));
   const code = report(runtime, verdict, 'ADDED', team);
+  if (verdict.ok) {
+    noteProblemHint(runtime, team, verdict.value.task);
+  }
   await tellNewOwner(runtime, team, by, verdict);
   return code;
+}
+
+/** A NOTE asking to mark the task a problem when its text reads like one and no one marked it (register/kind.ts). */
+function noteProblemHint(runtime: CliRuntime, team: Team, task: Task): void {
+  const hint = problemHint(task, team.config.register.review.hintPattern);
+  if (hint !== undefined) {
+    runtime.out.stderr(`NOTE ${hint}`);
+  }
 }
 
 /**
@@ -281,6 +293,9 @@ export async function set(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
     await tellVerifiers(runtime, team, by, held, met);
   }
   const exit = report(runtime, verdict, 'SET', team);
+  if (verdict.ok && input.status === 'in-progress' && verdict.value.before?.status !== 'in-progress') {
+    noteProblemHint(runtime, team, verdict.value.task);
+  }
   await tellLeadersOfWaits(runtime, team, by, verdict);
   if (held !== undefined && warned && verdict.ok && met === null) {
     runtime.out.stderr(`WARN ${heldStart(held.task, held.holds)}; started anyway, as register.verifyGate is warn`);

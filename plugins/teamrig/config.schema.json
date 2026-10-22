@@ -238,6 +238,18 @@
               "default": ["CLAUDE.md", ".claude/rules"]
             }
           }
+        },
+        "review": {
+          "description": "How teamrig asks for a problem task's review.",
+          "type": "object",
+          "properties": {
+            "hintPattern": {
+              "description": "A regular expression, matched case-insensitively against the title and description of a task no one marked with --problem: a match prints a NOTE line asking to mark it --problem problem|critical, or --problem none, when the task is added and when it starts.",
+              "type": "string",
+              "minLength": 1,
+              "default": "\\b(fix|bug|broken?|regress\\w*|incident|fail\\w*|crash\\w*|leak\\w*|wrong|missed)\\b"
+            }
+          }
         }
       }
     },

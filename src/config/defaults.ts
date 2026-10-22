@@ -85,6 +85,9 @@ export const DEFAULT_REGISTER: RegisterConfig = {
     weekLengthDays: 7,
     stopgapFiles: ['CLAUDE.md', '.claude/rules'],
   },
+  review: {
+    hintPattern: String.raw`\b(fix|bug|broken?|regress\w*|incident|fail\w*|crash\w*|leak\w*|wrong|missed)\b`,
+  },
 };
 
 export const DEFAULT_SKILLS: SkillsConfig = {

@@ -598,6 +598,15 @@ describe('parseConfig', () => {
     assert.deepEqual(config.register.requireNoteOn, ['dropped']);
   });
 
+  it('keeps a problem hint pattern, and reports a bad one and keeps the default', () => {
+    const kept = parseConfig({ ...ROSTER, register: { review: { hintPattern: '\\boutage\\b' } } });
+    assert.deepEqual(kept.issues, []);
+    assert.equal(kept.config.register.review.hintPattern, '\\boutage\\b');
+    const bad = parseConfig({ ...ROSTER, register: { review: { hintPattern: '(fix' } } });
+    assert.deepEqual(paths(bad.issues), ['register.review.hintPattern']);
+    assert.equal(bad.config.register.review.hintPattern, DEFAULT_REGISTER.review.hintPattern);
+  });
+
   it('reads register.autoArchive, on by default, and refuses a value that is not true or false', () => {
     assert.equal(parseConfig(ROSTER).config.register.autoArchive, true);
     const off = parseConfig({ ...ROSTER, register: { autoArchive: false } });

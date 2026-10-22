@@ -117,6 +117,7 @@ The task list (the register): its priority levels, what each status change needs
 | `verifyGate` | one of `"refuse"`, `"warn"` | `"refuse"` | teamrig set --status in-progress while a task it needs (--after, or --waits task:) is verifying: refuse it, or warn and start it. Either way the verifying task's owner gets one inbox line a day about it. |
 | `maxVerifying` | integer (0 to 100) | `5` | A session holding more verifying tasks than this is a PILE-UP in teamrig check; 0 turns the flag off. |
 | `check` | [object](#registercheck) |  | The thresholds of the flags teamrig check raises on tasks. |
+| `review` | [object](#registerreview) |  | How teamrig asks for a problem task's review. |
 
 ## `register.priorities[]`
 
@@ -139,6 +140,14 @@ The thresholds of the flags teamrig check raises on tasks.
 | `maxSelfMadePerDay` | integer (0 to 200) | `10` | A session that added more tasks for itself (created by it, asked by no one else) in the last 24 hours than this is a SELF-MADE in teamrig check; 0 turns the flag off. |
 | `weekLengthDays` | integer (1 to 31) | `7` | The length, in days, of the week plan teamrig check measures the week's tasks against. |
 | `stopgapFiles` | array (at most 20 items) of string (1 to 260 characters) | `["CLAUDE.md",".claude/rules"]` | The files teamrig check scans for stopgap T\<id> tags besides every skill, a STOPGAP-DONE flag for each tag that names a finished task: paths relative to the team's project folder, or absolute; a path ending in .md is one file, any other a folder whose .md files are read. |
+
+## `register.review`
+
+How teamrig asks for a problem task's review.
+
+| Key | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `hintPattern` | string (at least 1 character) | `"\\b(fix\|bug\|broken?\|regress\\w*\|incident\|fail\\w*\|crash\\w*\|leak\\w*\|wrong\|missed)\\b"` | A regular expression, matched case-insensitively against the title and description of a task no one marked with --problem: a match prints a NOTE line asking to mark it --problem problem\|critical, or --problem none, when the task is added and when it starts. |
 
 ## `skills`
 

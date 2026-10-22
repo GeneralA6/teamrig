@@ -19,6 +19,15 @@ export interface PriorityConfig {
   readonly name: string;
 }
 
+/** How a problem task's review is asked (T916). */
+export interface RegisterReviewConfig {
+  /**
+   * A regular expression, matched case-insensitively against an unmarked task's title and description: a match prints
+   * a hint to mark the task `--problem` (or `--problem none`) when it is added and when it starts.
+   */
+  readonly hintPattern: string;
+}
+
 export interface RegisterCheckConfig {
   /** An active task untouched this long is STALE. */
   readonly staleAfterHours: number;
@@ -78,6 +87,7 @@ export interface RegisterConfig {
   /** A session holding more verifying tasks than this is a PILE-UP in `check`, and its oldest are due to verify before new work starts; 0 turns both off. */
   readonly maxVerifying: number;
   readonly check: RegisterCheckConfig;
+  readonly review: RegisterReviewConfig;
 }
 
 export const VERIFY_GATES = ['refuse', 'warn'] as const;
