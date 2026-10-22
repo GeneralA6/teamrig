@@ -11,7 +11,7 @@ import { snapshotDirOf } from './commands/budget.ts';
 import type { CliRuntime } from './runtime.ts';
 
 /** The team paths a stored reading of the week reads. */
-export type StoredWeekPaths = Pick<TeamPaths, 'usage' | 'period' | 'meterLog' | 'home' | 'kitHome'>;
+export type StoredWeekPaths = Pick<TeamPaths, 'usage' | 'period' | 'meterLog' | 'extraLog' | 'home' | 'kitHome'>;
 
 /**
  * The week as a hook reads it: each session's use as last stored, the use outside the team and the newest

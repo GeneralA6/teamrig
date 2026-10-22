@@ -4,6 +4,7 @@ import { DEFAULT_BUDGET } from '../config/defaults.ts';
 import { MS_PER_DAY, MS_PER_HOUR, MS_PER_WEEK } from '../core/time.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { calibrationOf, MeterLog, type MeterReading } from './calibration.ts';
+import { ExtraLog, type ExtraEntry } from './extra.ts';
 import { emptyPatterns } from './patterns.ts';
 import { formatPeriod, parsePeriod, type Period } from './period.ts';
 import type { WeekUse } from './snapshot.ts';
@@ -11,7 +12,7 @@ import type { UsageState } from './store.ts';
 import { teamWeekOf } from './team-week.ts';
 import { readWeek } from './week.ts';
 
-const PATHS = { period: '/team/state/usage/period.json', meterLog: '/team/state/usage/meter-log.jsonl' };
+const PATHS = { period: '/team/state/usage/period.json', meterLog: '/team/state/usage/meter-log.jsonl', extraLog: '/team/state/usage/extra-log.jsonl' };
 /** Thursday 2026-10-15 12:00 UTC; the week runs from Wednesday 10-14 01:00 to Wednesday 10-21 01:00. */
 const NOW = Date.parse('2026-10-15T12:00:00Z');
 const END = Date.parse('2026-10-21T01:00:00Z');
@@ -72,5 +73,22 @@ describe('teamWeekOf', () => {
     const week = await teamWeekOf(files, PATHS, { budget: DEFAULT_BUDGET, now: NOW, statusUse: undefined, states: STATES });
     assert.deepEqual([await files.read(PATHS.period), await files.read(PATHS.meterLog)], [undefined, undefined]);
     assert.deepEqual(week, readWeek({ budget: DEFAULT_BUDGET, now: NOW, statusUse: undefined, period: undefined, states: STATES, calibration: NOTHING_LEARNED }));
+  });
+
+  it("reads the extra-usage pool past 100% from the extra log and the meter log's 100% line", async () => {
+    const files = new MemoryFiles();
+    const full: MeterReading = { at: NOW - 2 * MS_PER_HOUR, usedPct: 100, start: START, end: END, w: 900, forecastPct: undefined };
+    await new MeterLog(files, PATHS.meterLog).append(full, NOW);
+    const added: ExtraEntry = { at: NOW - MS_PER_HOUR, kind: 'add', usd: 10, weekPct: 100, start: START, end: END, w: 950 };
+    await new ExtraLog(files, PATHS.extraLog).append(added);
+    const stored = await storedAt(files, 100);
+    const budget = { ...DEFAULT_BUDGET, extraWPerUsd: 50 };
+    const status: WeekUse = { ...STATUS, usedPct: 100 };
+    const week = await teamWeekOf(files, PATHS, { budget, now: NOW, statusUse: status, states: STATES });
+    // 1,000 W metered, 100 W past the 100% line at 50 W per dollar: $2 of the $10 spent, 400 W left.
+    assert.deepEqual(week.pool, { addedUsd: 10, spentUsd: 2, leftUsd: 8, wPerUsd: 50, learned: false, leftW: 400 });
+    assert.deepEqual(week, readWeek({ budget, now: NOW, statusUse: status, period: stored, states: STATES, calibration: calibrationOf([full]), extra: { entries: [added], wAtFull: 900 } }));
+    // 10 W per percent from the status line: the pool's 40% over the 132 hours to the pace end, a 24-hour day of it.
+    assert.equal(week.allowancePct?.toFixed(6), ((40 * 24) / 132).toFixed(6));
   });
 });
