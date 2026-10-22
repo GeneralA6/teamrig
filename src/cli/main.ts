@@ -20,6 +20,7 @@ import { nodeProcesses } from '../open/processes.ts';
 import { nodeSessionProcesses } from '../open/session-processes.ts';
 import { httpPackageRegistry } from '../package-guard/registry.ts';
 import { GIT_CLI, GIT_COMMIT_LOG } from '../push-guard/git.ts';
+import { GIT_POINTER } from '../setup/pointer-git.ts';
 import { requirementsCheck } from '../requirements/requirements.ts';
 import { nodeHookRunner } from '../roll/hooks.ts';
 import { nodeShellRunner } from '../test-run/shell.ts';
@@ -43,6 +44,7 @@ process.exitCode = await runCli(process.argv.slice(2), {
   timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   sleep: realSleep,
   git: GIT_CLI,
+  pointerGit: GIT_POINTER,
   commitLog: GIT_COMMIT_LOG,
   out: {
     stdout: (line) => process.stdout.write(`${line}\n`),
