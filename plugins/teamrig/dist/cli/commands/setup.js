@@ -1,13 +1,15 @@
-import { dirname, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { SHIPPED_CONFIG_FORMAT } from "../../config/migrate.js";
-import { ENV, KIT_NAME, resolveKitHome, teamPaths } from "../../core/home.js";
+import { claudeConfigDir, ENV, KIT_NAME, resolveKitHome, teamPaths } from "../../core/home.js";
 import { ENV_SOURCE } from "../../core/team.js";
 import { describeRequirement } from "../../requirements/requirements.js";
 import { applyIgnore, ignoreLines, ignoreStep } from "../../setup/pointer-ignore.js";
+import { tabStatusLine } from "../../setup/tab-status-note.js";
 import { applyTeamSetup, planTeamSetup, teamSpecOf } from "../../setup/team-create.js";
 import { onePositional, requiredFlag, UsageError } from "../args.js";
 import { EXIT, RefusedError } from "../runtime.js";
 import { loadTree } from "../tree.js";
+import { titleLeftToHooks } from "./hook-tab-status.js";
 /** The session that leads a team created without `--lead`. */
 export const DEFAULT_LEAD = 'lead';
 /** The project a command sets up: `--project`, else the folder Claude Code started in, else the current folder. */
@@ -37,10 +39,10 @@ function nextLine(team, lead, parent) {
     }
     return `Next: ${parent}'s lead runs ${KIT_NAME} add --team ${team} --priority p<n> --title "<first task>" --description "<what and why>", then ${KIT_NAME} open ${team}/${lead}: ${team}'s lead hands its sessions their parts and opens them.`;
 }
-function summaryLines(plan, ignore, dryRun) {
+function summaryLines(plan, ignore, tabStatus, dryRun) {
     const { team, lead, sessions, parent } = plan.spec;
     const workers = sessions.filter((id) => id !== lead);
-    const lines = [...stepLines(plan.config, dryRun), ...stepLines(plan.pointer, dryRun), ...ignoreLines(ignore, dryRun)];
+    const lines = [...stepLines(plan.config, dryRun), ...stepLines(plan.pointer, dryRun), ...ignoreLines(ignore, dryRun), tabStatus];
     if (dryRun) {
         return ['DRY RUN nothing is written', ...lines];
     }
@@ -49,8 +51,9 @@ function summaryLines(plan, ignore, dryRun) {
 }
 /**
  * `team create <team> --sessions a,b [--lead <id>] [--parent <team>] [--project <dir>] [--dry-run]`:
- * writes the team's config in the kit home and the project's pointer to it, kept out of git in this clone
- * (pointer-ignore.ts) whether it is new or was already there. It refuses a different
+ * writes the team's config in the kit home, tab status on, and the project's pointer to it, kept out of git
+ * in this clone (pointer-ignore.ts) whether it is new or was already there. It says whether the team's tabs
+ * will show their status circle, and what the user does if not (tab-status-note.ts). It refuses a different
  * team of the same id, a place in a tree its limits forbid, a session name another team uses, and a
  * project tied to a team outside the new team's tree; a repeat with the same team writes nothing but a missing exclude line. It
  * first says what teamrig lacks on this machine (a `WARN` line each), so a refusal still shows it.
@@ -79,6 +82,13 @@ export async function teamCreate(args, runtime) {
     if (!dryRun) {
         await applyIgnore(runtime.files, ignore);
     }
-    summaryLines(done.value, ignore, dryRun).forEach((line) => runtime.out.stdout(line));
+    const tabStatus = tabStatusLine({
+        team,
+        configOn: done.value.tabStatus,
+        configPath,
+        titleLeft: titleLeftToHooks(runtime.env),
+        settingsPath: join(claudeConfigDir(runtime.env, runtime.userHome), 'settings.json'),
+    });
+    summaryLines(done.value, ignore, tabStatus, dryRun).forEach((line) => runtime.out.stdout(line));
     return EXIT.ok;
 }
