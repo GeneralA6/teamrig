@@ -11,8 +11,10 @@ import {
   fitWPerUsd,
   FULL_PCT,
   parseExtraRecord,
+  pastLimitOf,
   poolOf,
   type ExtraEntry,
+  type ExtraPool,
   wAtFullOf,
   type PoolSight,
 } from './extra.ts';
@@ -91,6 +93,25 @@ describe('poolOf', () => {
 
   it('never leaves less than nothing in the pool', () => {
     assert.equal(poolOf([ADD, spent(0, 0, 0), spent(60, 1, 120_000_000)], SIGHT)?.leftUsd, 0);
+  });
+});
+
+describe('pastLimitOf', () => {
+  /** $35 of $50 left at 2M W per dollar. */
+  const POOL: ExtraPool = { addedUsd: 50, spentUsd: 15, leftUsd: 35, wPerUsd: W_PER_USD, learned: false, leftW: 70_000_000 };
+
+  it("is unset below 100% of the week, where the week's remainder sets the allowance", () => {
+    assert.equal(pastLimitOf(99.9, POOL), undefined);
+  });
+
+  it('names the pool while it holds W, else why nothing sets the allowance past 100%', () => {
+    const dollarsOnly: ExtraPool = { ...POOL, wPerUsd: undefined, leftW: undefined };
+    const spentOut: ExtraPool = { ...POOL, spentUsd: 50, leftUsd: 0, leftW: 0 };
+    const pools = [POOL, dollarsOnly, spentOut, { ...dollarsOnly, spentUsd: 50, leftUsd: 0 }, undefined];
+    assert.deepEqual(
+      pools.map((pool) => pastLimitOf(FULL_PCT, pool)),
+      ['pool', 'unpriced', 'empty', 'empty', 'empty'],
+    );
   });
 });
 

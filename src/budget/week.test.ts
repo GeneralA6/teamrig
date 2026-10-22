@@ -153,6 +153,7 @@ describe('readWeek', () => {
     // The 45% over the 132 hours to the pace end, a 24-hour day of it; Thursday 12:00 is half the day.
     assert.equal(round(week.allowancePct), round((45 * 24) / 132));
     assert.equal(round(week.teamDay?.pacePct), round((45 * 12) / 132));
+    assert.equal(week.teamDay?.pastLimit, 'pool');
   });
 
   it('has no room past 100% while the pool is unset, spent or known in dollars only', () => {
@@ -163,6 +164,7 @@ describe('readWeek', () => {
     const spent = readWeek({ calibration: LEARNED, budget: { ...DEFAULT_BUDGET, extraWPerUsd: 10 }, now: NOW, statusUse: FULL, period: PERIOD, states: COVERED, extra });
     assert.deepEqual([none.pool, none.allowancePct, dollarsOnly.allowancePct, spent.allowancePct, spent.pool?.leftW], [undefined, 0, 0, 0, 0]);
     assert.deepEqual(dollarsOnly.pool, { addedUsd: 10, spentUsd: 0, leftUsd: 10, wPerUsd: undefined, learned: false, leftW: undefined });
+    assert.deepEqual([none, dollarsOnly, spent].map((week) => week.teamDay?.pastLimit), ['empty', 'unpriced', 'empty']);
   });
 
   it("keeps the week's allowance below 100%: the pool waits, untouched", () => {
@@ -171,6 +173,7 @@ describe('readWeek', () => {
     const week = readWeek({ calibration: NONE, budget, now: NOW, statusUse: STATUS, period: PERIOD, states: COVERED, extra: { entries: [early], wAtFull: undefined } });
     assert.deepEqual(week.pool, { addedUsd: 10, spentUsd: 0, leftUsd: 10, wPerUsd: 100, learned: false, leftW: 1_000 });
     assert.equal(round(week.allowancePct), round((42.5 * 24) / 132));
+    assert.deepEqual(Object.keys(week.teamDay ?? {}), ['usedPct', 'pacePct']);
   });
 });
 

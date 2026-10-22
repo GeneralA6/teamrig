@@ -68,6 +68,25 @@ export interface ExtraPool {
   readonly leftW: number | undefined;
 }
 
+/**
+ * At or past 100% of the week, what sets the team's allowance today (week.ts `teamAllowancePct`): the W the pool still
+ * holds (`pool`), else nothing: dollars left with no W per dollar known yet (`unpriced`), or no dollars left or none
+ * added (`empty`).
+ */
+export type PastLimit = 'pool' | 'unpriced' | 'empty';
+
+/** What sets the team's allowance past the weekly limit; undefined below 100%, where the week's remainder sets it. */
+export function pastLimitOf(usedPct: number, pool: ExtraPool | undefined): PastLimit | undefined {
+  if (usedPct < FULL_PCT) {
+    return undefined;
+  }
+  const leftW = pool?.leftW;
+  if (leftW !== undefined && leftW > 0) {
+    return 'pool';
+  }
+  return pool !== undefined && pool.leftUsd > 0 && pool.wPerUsd === undefined ? 'unpriced' : 'empty';
+}
+
 function isKind(text: string | undefined): text is ExtraKind {
   return KINDS.some((kind) => kind === text);
 }

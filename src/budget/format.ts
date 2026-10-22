@@ -6,10 +6,23 @@ import type { TeamDay } from './pace.ts';
 
 /**
  * Why a session past its part is held, the same in the hook line and in `teamrig budget`:
- * "the team has used 3.1% of the week today, at or past its in-day pace of 3.0%".
+ * "the team has used 3.1% of the week today, at or past its in-day pace of 3.0%"; past the weekly limit, the
+ * extra-usage pool's in-day pace, or why nothing gives the team room there.
  */
 export function noRoomText(day: TeamDay): string {
-  return `the team has used ${formatPct(day.usedPct)} of the week today, at or past its in-day pace of ${formatPct(day.pacePct)}`;
+  const used = `the team has used ${formatPct(day.usedPct)} of the week today`;
+  const { pastLimit } = day;
+  if (pastLimit === undefined) {
+    return `${used}, at or past its in-day pace of ${formatPct(day.pacePct)}`;
+  }
+  switch (pastLimit) {
+    case 'pool':
+      return `${used}, at or past the extra-usage pool's in-day pace of ${formatPct(day.pacePct)}`;
+    case 'unpriced':
+      return 'the week is at its weekly limit and the extra-usage pool has no W per dollar yet, which two spent readings past 100% or budget.extraWPerUsd give';
+    case 'empty':
+      return 'the week is at its weekly limit with no extra usage left, which the lead adds with teamrig budget extra --add <usd>';
+  }
 }
 
 /** A share of the week: two decimals below 1%, else one, such as `0.25%` or `10.0%`. */

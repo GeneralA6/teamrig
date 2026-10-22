@@ -1,6 +1,7 @@
 import { WEEKDAYS, type BudgetConfig, type BudgetReset } from '../config/types.ts';
 import { MS_PER_DAY, MS_PER_HOUR, MS_PER_MINUTE, MS_PER_WEEK } from '../core/time.ts';
 import type { ActivityProfile } from './active-time.ts';
+import type { PastLimit } from './extra.ts';
 
 /**
  * The pace math of the weekly budget, pure so every edge of the week is tested with plain numbers.
@@ -127,6 +128,8 @@ export interface TeamDay {
   readonly usedPct: number;
   /** Its in-day pace (`dayPacePct`). */
   readonly pacePct: number;
+  /** At or past 100% of the week, what sets the allowance behind that pace (`pastLimitOf`); unset below it. */
+  readonly pastLimit?: PastLimit;
 }
 
 export interface DayPaceInput {
