@@ -15,6 +15,7 @@ export class FakeSessionProcesses implements SessionProcesses {
   private readonly feedOutcomes = new Map<string, FeedOutcome>();
   private childrenHidden = false;
   private lineageHidden = false;
+  private failingLookups = 0;
   /** Called after each end that ended something, as the operating system would tell a waiting parent. */
   private onEnded: (pid: number) => void = () => undefined;
 
@@ -58,6 +59,12 @@ export class FakeSessionProcesses implements SessionProcesses {
     return this;
   }
 
+  /** The next `count` looks at a process fail, as a lookup that timed out: `describe` gives undefined while it runs. */
+  failLookups(count: number): this {
+    this.failingLookups = count;
+    return this;
+  }
+
   /** From now on, feeding `command` gives `outcome`. */
   onFeed(command: string, outcome: FeedOutcome): this {
     this.feedOutcomes.set(command, outcome);
@@ -75,6 +82,10 @@ export class FakeSessionProcesses implements SessionProcesses {
   }
 
   async describe(pid: number): Promise<ProcessInfo | undefined> {
+    if (this.failingLookups > 0) {
+      this.failingLookups -= 1;
+      return undefined;
+    }
     return this.running.get(pid);
   }
 

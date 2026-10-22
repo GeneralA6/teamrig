@@ -10,7 +10,7 @@ import { RestoreRegistry, restoreSessionsDir } from '../restore/registry.ts';
 import type { Files } from '../core/files.ts';
 import { askFileOf, holdWhyFileOf, outcomeFileOf } from '../mod/clear-hand.ts';
 import { ClearAsks, type ClearAsk, type PostedClearAsk } from './clear-asks.ts';
-import { CLAIM_WAIT_MS, claudeProcessOf, GIVE_UP_MS, NO_HOLD_REASON, personHoldOf, runRestart, type RestartDeps, type RestartPlan, type TabOpening } from './restart.ts';
+import { CLAIM_WAIT_MS, claudeProcessOf, GIVE_UP_MS, LOOKUP_FAILED, NO_HOLD_REASON, personHoldOf, runRestart, type RestartDeps, type RestartPlan, type TabOpening } from './restart.ts';
 import type { RestoreEntry } from '../restore/entry.ts';
 import type { RestartRequest } from './state.ts';
 import { RefreshStore } from './store.ts';
@@ -339,6 +339,24 @@ describe('runRestart', () => {
   it('cancels when its Claude Code has already ended', async () => {
     const world = await new World({ running: [] }).arm();
     assert.deepEqual(await runRestart(world.deps, PLAN), { kind: 'cancelled', why: 'its Claude Code has already ended' });
+    assert.equal(await world.store.restart('alpha'), undefined);
+  });
+
+  it('looks again after the next quiet window when the system would not describe its running Claude Code (T980)', async () => {
+    const world = await new World().arm();
+    world.processes.failLookups(1);
+    assert.deepEqual(await runRestart(world.deps, PLAN), { kind: 'restarted', where: 'same tab', endCommand: { kind: 'done' } });
+    assert.equal(world.clock.now() - START, 2 * DELAY_MS + CLAIM_WAIT_MS, 'one more quiet window before the second look');
+    assert.deepEqual(world.processes.ends, [{ pid: CLAUDE.pid, how: 'ask' }]);
+  });
+
+  it('gives up at the hour, ending nothing, when every look at its running Claude Code fails', async () => {
+    const world = await new World().arm();
+    world.processes.failLookups(Number.POSITIVE_INFINITY);
+    assert.deepEqual(await runRestart(world.deps, PLAN), { kind: 'failed', why: `${BUSY_HOUR} (${LOOKUP_FAILED} ${CLAUDE.pid})` });
+    const ran = world.clock.now() - START;
+    assert.ok(ran >= GIVE_UP_MS && ran < GIVE_UP_MS + DELAY_MS, `gave up at ${ran} ms`);
+    assert.deepEqual([world.processes.ends, world.opened], [[], []]);
     assert.equal(await world.store.restart('alpha'), undefined);
   });
 
