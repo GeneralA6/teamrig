@@ -15,8 +15,9 @@ import { parseWaits, type WaitReason } from './waits.ts';
  * `verifying` status's `proof`, a task's `description` (0.44.0) and its `size` (0.47.0), and a `waiting` status's
  * decision `card` (0.79.0), the same `waits` and `card` on a `verifying` line for what its proof waits for
  * (0.109.0), and an update's approval `verdict` (0.126.0), which an older reader ignores: each reads there as none
- * (an answered update as a note alone), and an older teamrig's `compact` drops it from the snapshot it rewrites (the
- * archive keeps the lines as written).
+ * (an answered update as a note alone). An older teamrig re-serialized the events of the snapshot a rotation or
+ * `compact` rewrites, so it dropped such a field there (the archive keeps the lines as written); this one copies
+ * each kept line as written (compaction.ts).
  * Parsing checks the FORMAT only (any positive priority, any goal string): team policy is applied
  * on write, so changing the config never erases history.
  */
