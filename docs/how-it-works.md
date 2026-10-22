@@ -152,17 +152,20 @@ sequenceDiagram
   lead->>you: the team it proposes
   you->>lead: yes
   lead->>cli: team create, inbox read, rules
-  cli-->>lead: config.json and .teamrig.json written, the team rules
+  cli-->>lead: config.json and .teamrig.json written, the setup task started, the team rules
   loop each session
     lead->>cli: add its first task, open
     cli->>tab: a terminal tab running teamrig launch
     tab->>tab: Claude Code as the session, with its first prompt
   end
+  lead->>cli: setup task done
   lead->>you: the team is up
 ```
 
 - `teamrig team create signup --sessions api,web,tests` writes the team's `config.json` and ties the project folder
-  to it with `.teamrig.json`, which it keeps out of git in that clone (`.git/info/exclude`). It refuses another team
+  to it with `.teamrig.json`, which it keeps out of git in that clone (`.git/info/exclude`). The lead's first task,
+  `Set up the team`, goes in the task list in progress, so the setup shows in the task pane like any work, and the
+  lead closes it once every session runs its first task. It refuses another team
   with the same id and a project tied to another team, a repeat changes nothing once both are in place, and
   `--dry-run` prints what it would write. `--parent your-team` hangs the new team under that
   team's lead; it refuses a parent with no config, a tree deeper than 3 levels, a team's 9th child team and a

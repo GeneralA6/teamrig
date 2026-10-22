@@ -859,7 +859,10 @@ commits: the team it names exists on this machine only. It leaves a pointer git 
 and a repeat adds the line for a pointer an earlier version left in git's view. A new team's config turns tab status
 on, and a `TAB STATUS on` line says the team's tabs show it; a `NOTE` line instead names what is missing: the
 `CLAUDE_CODE_DISABLE_TERMINAL_TITLE` switch in Claude Code's settings, which teamrig never writes, as it changes every
-tab of Claude Code, or `tabStatus.enabled` in a kept config, which a repeat leaves as it is.
+tab of Claude Code, or `tabStatus.enabled` in a kept config, which a repeat leaves as it is. A root team's lead gets
+its first task, `Set up the team`, in progress, so the setup shows in the task pane and the register like any work;
+the lead closes it once every session runs its first task. A repeat keeps it, and a team that already has tasks
+gets none; a sub-team's lead gets its first task from its parent's lead.
 
 Flags:
 
@@ -882,6 +885,7 @@ CREATED /home/you/.teamrig/teams/shop/config.json
 CREATED /home/you/shop/.teamrig.json
 ADDED .teamrig.json to /home/you/shop/.git/info/exclude: git ignores it in this clone only, as the team it names exists on this machine only
 NOTE each tab of team shop shows a colored circle before its title for what its session is doing once you add "CLAUDE_CODE_DISABLE_TERMINAL_TITLE": "1" to "env" in /home/you/.claude/settings.json and restart Claude Code, so it stops writing its own title over the circle (tabs of projects outside teamrig then keep the terminal's title)
+ADDED T1 Set up the team, in progress, owner lead: close it with teamrig set T1 --status done once every session runs its first task
 Team shop: lead lead, sessions api, web.
 Next: teamrig add --session lead --owner <id> --priority p<n> --title "<first task>" --description "<what and why>" for each session, then teamrig open <id> for each.
 ```
