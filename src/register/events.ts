@@ -3,6 +3,7 @@ import type { JsonlRecord } from '../core/jsonl.ts';
 import { parseUtcDeadline } from '../core/time.ts';
 import { isTaskStatus, LEGACY_WAITING_STATUS, TASK_ID, WAIT_STATUSES, type TaskStatus } from './model.ts';
 import { parseCard, type DecisionCard } from './card.ts';
+import { parseReview, type ProblemReview } from './review.ts';
 import { parseWaits, type WaitReason } from './waits.ts';
 
 /**
@@ -14,7 +15,8 @@ import { parseWaits, type WaitReason } from './waits.ts';
  * a newer teamrig's, and a `blocked` line reads here as `waiting` with no reasons. It also gained a
  * `verifying` status's `proof`, a task's `description` (0.44.0) and its `size` (0.47.0), and a `waiting` status's
  * decision `card` (0.79.0), the same `waits` and `card` on a `verifying` line for what its proof waits for
- * (0.109.0), an update's approval `verdict` (0.126.0), a task's `kind` (0.147.0) and its `pin` (T637), which an older reader ignores:
+ * (0.109.0), an update's approval `verdict` (0.126.0), a task's `kind` (0.147.0), its `pin` (T637) and a status line's
+ * `review` (T916), which an older reader ignores:
  * each reads there as none (an answered update as a note alone). An older teamrig re-serialized the events of the snapshot a rotation or
  * `compact` rewrites, so it dropped such a field there (the archive keeps the lines as written); this one copies
  * each kept line as written (compaction.ts).
@@ -108,6 +110,8 @@ export interface StatusEvent extends EventBase {
   readonly met?: string;
   /** The tasks the work leaves, empty for `--followups none`; absent when the change named none, and on lines from before `--followups`. */
   readonly followups?: readonly string[];
+  /** The parts of a problem task's review this change gave (review.ts); absent when it gave none. */
+  readonly review?: ProblemReview;
 }
 
 /** The lead's answer to the approval a waiting task asks of it (T684): given, or declined with the note saying why. */
@@ -208,6 +212,10 @@ export function parseEvent(line: JsonlRecord): EventParse {
       if (typeof followups === 'string') {
         return unreadable(followups);
       }
+      const review = parseReview(record['review']);
+      if (typeof review === 'string') {
+        return unreadable(review);
+      }
       const event: StatusEvent = {
         ...base,
         type: 'status',
@@ -220,6 +228,7 @@ export function parseEvent(line: JsonlRecord): EventParse {
         ...(proof === null ? {} : { proof }),
         ...(met === null ? {} : { met }),
         ...(followups === undefined ? {} : { followups }),
+        ...(review === undefined ? {} : { review }),
       };
       return { kind: 'event', event };
     }

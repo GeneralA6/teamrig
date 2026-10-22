@@ -1,4 +1,5 @@
 import type { DecisionCard } from './card.ts';
+import type { ProblemReview } from './review.ts';
 import type { ApprovalVerdict, RegisterEvent, TaskFields, UpdateEvent } from './events.ts';
 import { WAIT_STATUSES, type TaskStatus } from './model.ts';
 import type { WaitReason } from './waits.ts';
@@ -39,6 +40,8 @@ export interface Task extends TaskFields {
   readonly proof: string | null;
   /** Every task its status changes named as left by the work (`--followups`), in the order first named. */
   readonly followups: readonly string[];
+  /** A problem task's review (review.ts): every part its status changes gave, a later one replacing it; empty when none. */
+  readonly review: ProblemReview;
   /** When the task first went in progress (or verifying): only a started task can wait on another task. */
   readonly startedAt: string | null;
   readonly createdAt: string;
@@ -140,6 +143,7 @@ function created(id: string, fields: TaskFields, at: string, by: string): Task {
     answer: null,
     proof: null,
     followups: [],
+    review: {},
     startedAt: null,
     createdAt: at,
     createdBy: by,
@@ -165,6 +169,7 @@ function withStatus(task: Task, event: Extract<RegisterEvent, { type: 'status' }
     answer: null,
     proof: event.status === 'verifying' ? (event.proof ?? null) : null,
     followups: event.followups === undefined ? task.followups : [...new Set([...task.followups, ...event.followups])],
+    review: event.review === undefined ? task.review : { ...task.review, ...event.review },
     startedAt: task.startedAt ?? (event.status === 'in-progress' || event.status === 'verifying' ? event.at : null),
     updatedAt: event.at,
     updatedBy: event.by,
