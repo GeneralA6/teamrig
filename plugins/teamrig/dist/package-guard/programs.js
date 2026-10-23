@@ -11,7 +11,7 @@ const MAX_SCRIPT_DEPTH = 8;
 const PIPE_END = /(?:^|[^|])\|&?\n*$/;
 /** What `command` runs, each in the order it runs. */
 export function runsOf(command, context) {
-    const runs = { programs: [], bare: [] };
+    const runs = { programs: [], bare: [], opaque: [] };
     visitScript(staticWord(command), context.dialect, new Location(context.cwd, context.home), 0, false, runs, SCREEN);
     return runs;
 }
@@ -101,6 +101,7 @@ function visitCommand(command, fromPipe, outlet, dialect, location, depth, stdin
         launched.chdirs.forEach((chdir) => inner.moveTo(chdir));
         const run = {
             name: programName(launched.program.text),
+            program: launched.program,
             args: launched.args,
             dialect,
             dir: inner.dir,
@@ -114,6 +115,9 @@ function visitCommand(command, fromPipe, outlet, dialect, location, depth, stdin
         };
         runs.programs.push(run);
         return { launched, run, bare: undefined };
+    }
+    else if (launched.kind === 'opaque' && launched.command !== undefined) {
+        runs.opaque.push({ ...launched.command, dialect });
     }
     else if (launched.kind === 'nothing' && command.words.length > 0) {
         const bare = { words: command.words, dialect, redirections: command.redirections, pipe: outlet.pipe, substitution: outlet.substitution };
