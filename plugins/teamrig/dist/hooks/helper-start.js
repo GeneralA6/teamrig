@@ -2,7 +2,7 @@ import { Roster } from "../config/roster.js";
 import { isRecord, stringField } from "../core/guards.js";
 import { ENV } from "../core/home.js";
 import { renderCorePack, renderSessionContext } from "../rules/pack.js";
-import { shellNote, unloadedContext } from "./session-start.js";
+import { unloadedContext } from "./session-start.js";
 /** An agent type safe to print in the context: a name such as `general-purpose` or `plugin:reviewer`. */
 const AGENT_TYPE = /^[\w.:-]{1,80}$/;
 /**
@@ -34,7 +34,7 @@ function helperLine(roster, input) {
     const name = known === undefined ? '' : ` (name \`${roster.nameOf(known) ?? known}\`)`;
     const duty = `The rules above bind you as they bind it, but your brief is your task: leave \`${command} start\`, task statuses, register entries, inbox lines and messages to it unless your brief asks for them, and return what it needs.`;
     const pass = known === undefined || input.sessionInEnv ? '' : ` $${ENV.session} is not set here, so pass --session ${known} to any \`${command}\` command your brief asks for.`;
-    return `You are ${kind} of ${parent} of team \`${input.team}\`${name}. ${duty}${pass}${shellNote(input)}`;
+    return `You are ${kind} of ${parent} of team \`${input.team}\`${name}. ${duty}${pass}`;
 }
 /**
  * The context a helper starts with (a SubagentStart, or a compaction inside the helper): the team's core
