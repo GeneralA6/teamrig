@@ -232,10 +232,10 @@ async function tellAssigned(runtime: CliRuntime, team: Team, by: string, task: T
 /**
  * One inbox line to each leader that a write set a task waiting on, or a verifying task's proof, for a decision or an
  * approval it did not wait on before: a wait on one of the task owner's leaders (the lead, or a sub-lead, T781) goes
- * to that leader, a wait on the owner to the lead, who keeps the owner's decision queue; never to the leader who set
- * it. A new wait on the owner says when the owner hears it (src/decisions/batch.ts): in the next batch, in the one due
- * now, or at once when it is due before the next; at once, the setter is told to message the lead too, as an inbox
- * line wakes no one.
+ * to that leader, a wait on the owner to the task owner's own leader, which passes it up (the lead keeps the owner's
+ * decision queue and asks it in its batch); never to the leader who set it. A new wait on the owner says when the owner
+ * hears it (src/decisions/batch.ts): in the next batch, in the one due now, or at once when it is due before the next;
+ * at once, the setter is told to message the lead too, as an inbox line wakes no one.
  */
 async function tellLeadersOfWaits(runtime: CliRuntime, team: Team, by: string, verdict: Verdict<WriteResult>): Promise<void> {
   if (!verdict.ok) {
@@ -245,12 +245,14 @@ async function tellLeadersOfWaits(runtime: CliRuntime, team: Team, by: string, v
   const { ownerSource } = team.config.register;
   const { task, before } = verdict.value;
   const earlier = before?.waits ?? [];
-  const approvers = new LeadTree(team.config).approversOf(task.owner);
+  const leaders = new LeadTree(team.config);
+  const approvers = leaders.approversOf(task.owner);
   const added = task.waits.filter(
     (reason): reason is PersonWait =>
       (reason.kind === 'decision' || reason.kind === 'approval') && !isPeerWait(reason, approvers, ownerSource) && !earlier.some((other) => sameWait(reason, other)),
   );
-  const receiverOf = (reason: PersonWait) => (reason.who === ownerSource ? lead : reason.who);
+  const ownLeader = leaders.leaderOf(task.owner) ?? lead;
+  const receiverOf = (reason: PersonWait) => (reason.who === ownerSource ? ownLeader : reason.who);
   for (const receiver of new Set(added.map(receiverOf))) {
     if (receiver === by) {
       continue;
@@ -260,7 +262,9 @@ async function tellLeadersOfWaits(runtime: CliRuntime, team: Team, by: string, v
     const text = `${personWaitNotice(task, waits, receiver)}${timing === undefined ? '' : ` | ${timingText(timing, team.zone)}`}`;
     await tellLine(runtime, team, by, receiver, text, `${receiver} was not told that ${task.id} waits on it`);
     if (timing?.kind === 'at-once') {
-      runtime.out.stderr(`NOTE ${task.id} is due before the owner's next batch: message ${team.roster.nameOf(lead) ?? lead} too, as an inbox line wakes no one`);
+      const leadName = team.roster.nameOf(lead) ?? lead;
+      const how = receiver === lead ? ' too, as an inbox line wakes no one' : `, who asks the owner: the inbox line went to ${receiver}, and a line wakes no one`;
+      runtime.out.stderr(`NOTE ${task.id} is due before the owner's next batch: message ${leadName}${how}`);
     }
   }
 }
