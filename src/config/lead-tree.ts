@@ -67,4 +67,14 @@ export class LeadTree {
   leads(leader: string, id: string): boolean {
     return this.chainOf(id).includes(leader);
   }
+
+  /**
+   * The sub-lead a message from `sender` to `receiver` skips: the one right below the sender on the receiver's chain.
+   * Undefined when the sender is the receiver's direct leader, or not above the receiver at all.
+   */
+  routeVia(sender: string, receiver: string): string | undefined {
+    const chain = this.chainOf(receiver);
+    const at = chain.indexOf(sender);
+    return at > 0 ? chain[at - 1] : undefined;
+  }
 }

@@ -41,6 +41,20 @@ describe('LeadTree', () => {
     assert.equal(TREE.leads('echo', 'delta'), false);
   });
 
+  it('names the sub-lead right below the sender that a message down the tree skips', () => {
+    assert.equal(TREE.routeVia('lead', 'charlie'), 'bravo');
+    assert.equal(TREE.routeVia('lead', 'delta'), 'bravo');
+    assert.equal(TREE.routeVia('bravo', 'delta'), 'charlie');
+  });
+
+  it('names none for a direct leader, a message up or across, or an id off the team', () => {
+    assert.equal(TREE.routeVia('charlie', 'delta'), undefined);
+    assert.equal(TREE.routeVia('lead', 'echo'), undefined);
+    assert.equal(TREE.routeVia('delta', 'lead'), undefined);
+    assert.equal(TREE.routeVia('echo', 'delta'), undefined);
+    assert.equal(TREE.routeVia('lead', 'zulu'), undefined);
+  });
+
   it('stops a hand-built cycle instead of looping', () => {
     const cycle = new LeadTree({ sessions: ['lead', 'a', 'b'], roles: { lead: 'lead' }, leads: { a: ['b'], b: ['a'] } });
     assert.deepEqual(cycle.chainOf('a'), ['b']);
