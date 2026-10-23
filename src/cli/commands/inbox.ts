@@ -12,7 +12,7 @@ import { CLAUDE_SESSION_ID } from '../../inbox/marks.ts';
 import { reachOf } from '../../inbox/reach.ts';
 import { InboxDir, JsonlMarkLog } from '../../inbox/store.ts';
 import { noPositionals, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
-import { dedupLogOf } from '../dedup-logs.ts';
+import { hookLogOf } from '../hook-logs.ts';
 import { callerOf, sessionRef } from '../inputs.ts';
 import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, requireConfig, rosterOf, sessionIdOf, teamZone } from '../kit.ts';
 import { EXIT, RefusedError, type CliRuntime, type ExitCode } from '../runtime.ts';
@@ -23,7 +23,7 @@ export function inboxDepsOf(runtime: CliRuntime, paths: TeamPaths): InboxDeps {
   return {
     inboxes: new InboxDir(runtime.files, paths.inbox),
     marks: new JsonlMarkLog(new PlainLogFile(runtime.files, paths.inboxMarks)),
-    shown: new JsonlMarkLog(dedupLogOf(runtime, paths, 'inbox-shown')),
+    shown: new JsonlMarkLog(hookLogOf(runtime, paths, 'inbox-shown')),
   };
 }
 
