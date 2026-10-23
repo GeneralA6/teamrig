@@ -49,6 +49,8 @@ export interface OutsideToday {
 
 export interface TodayReport {
   readonly week: WeekReading;
+  /** The team's part of the account's daily budget (src/budget/parts.ts `teamPartOf`): the whole day while no other team is on its account. */
+  readonly teamPct: number | undefined;
   /** Every team session, in roster order. */
   readonly sessions: readonly SessionToday[];
   readonly outside: OutsideToday;
@@ -165,7 +167,7 @@ function todayTable(report: TodayReport, teamW: number, teamCalls: number): stri
     return used === undefined ? [who, ...use] : [who, formatPct(used), budgetPct === undefined ? '-' : formatPct(budgetPct), mark.trim(), ...use];
   };
   const { rows, notes } = sessionRows(sessions, all, 'today', (session) => row(session.name, session.w, session.calls, session.budgetPct, budgetMarkOf(session.lift, session.inBurst !== undefined)));
-  const team = row('the team', teamW, teamCalls, week.allowancePct, '');
+  const team = row('the team', teamW, teamCalls, report.teamPct, '');
   if (week.wPerPct === undefined) {
     return ['Today (UTC day):', ...indented([...aligned([['session', 'W', 'calls'], team, ...rows]), ...notes])];
   }
@@ -214,7 +216,7 @@ function outsideLine(outside: OutsideToday, all: boolean): string | undefined {
 /**
  * Who is past the daily budget, and what that means: a session past its part is held (finishes the step in hand)
  * only while the team has no room today (`hasRoom`); while it has room, the sessions past their parts are named
- * apart, not held. The team past its own allowance has no room. A hold for want of room gives the team's use today
+ * apart, not held. The team past its part of the account's day has no room. A hold for want of room gives the team's use today
  * against its in-day pace, so it never reads as a fixed cap next to the team's daily budget.
  */
 function pastLines(report: TodayReport, teamPast: boolean): string[] {
@@ -228,7 +230,7 @@ function pastLines(report: TodayReport, teamPast: boolean): string[] {
     return pastSessions.length > 0 ? [room] : [];
   }
   const past = [...(teamPast ? ['the team'] : []), ...pastSessions];
-  // Held for want of room, unless the team is past its own allowance, which its row already shows.
+  // Held for want of room, unless the team is past its part of the account's day, which its row already shows.
   const why = teamPast || teamDay === undefined ? '' : ` (${noRoomText(teamDay)})`;
   return past.length > 0 ? [`Past the daily budget: ${past.join(', ')}${why}. ${OVER_BUDGET_ADVICE}`] : [];
 }
@@ -251,7 +253,7 @@ export function todayLines(report: TodayReport): string[] {
   if (report.behind.length > 0) {
     lines.push(`Still reading: ${report.behind.join(', ')}; run teamrig budget again for the rest.`);
   }
-  lines.push(...pastLines(report, isPast(teamW, week.allowancePct, week)));
+  lines.push(...pastLines(report, isPast(teamW, report.teamPct, week)));
   if (week.usedPct !== undefined && week.wPerPct === undefined) {
     lines.push('Daily budgets need the week in W: set budget.weeklyLimitW, or let teamrig meter a whole week to estimate it.');
   }

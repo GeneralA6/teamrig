@@ -87,12 +87,34 @@ export function sessionNodesOf(split: BudgetSplit): SplitLeaf[] {
   }));
 }
 
+/** The team as a split-tree node: its sessions (`sessionNodesOf`) under its id, its weight theirs summed. */
+function teamGroupOf(split: BudgetSplit): SplitGroup {
+  return { id: split.team, liftedPct: undefined, nodes: sessionNodesOf(split) };
+}
+
 /**
- * The session's daily budget now, in percent of the week: its part (`partOf`) of the team's (`allowancePct`).
- * Undefined while the team's is unknown, or for a session the split does not hold.
+ * The team's part of the account's daily budget (`allowancePct`, in percent of the week), split among the teams on
+ * the account (the team's `split` and the `others`, `accountTeamsOf`) by their sessions' summed weights: the whole
+ * day while no other team is on the account. Undefined while the account's is unknown.
  */
-export function dailyBudgetOf(allowancePct: number | undefined, session: string, split: BudgetSplit): number | undefined {
-  return allowancePct === undefined ? undefined : partOf(allowancePct, sessionNodesOf(split), [session]);
+export function teamPartOf(allowancePct: number | undefined, split: BudgetSplit, others: readonly BudgetSplit[] = []): number | undefined {
+  if (allowancePct === undefined || others.length === 0) {
+    return allowancePct;
+  }
+  return partOf(allowancePct, [split, ...others].map(teamGroupOf), [split.team]);
+}
+
+/**
+ * The session's daily budget now, in percent of the week: its part (`partOf`) of its team's part (`teamPartOf`) of
+ * the account's (`allowancePct`); a lift is its part of its team's. Undefined while the account's is unknown, or for
+ * a session the split does not hold.
+ */
+export function dailyBudgetOf(allowancePct: number | undefined, session: string, split: BudgetSplit, others: readonly BudgetSplit[] = []): number | undefined {
+  if (allowancePct === undefined) {
+    return undefined;
+  }
+  // With no other team the session's path skips the team level: an exact split of the day, not one an ulp off it.
+  return others.length === 0 ? partOf(allowancePct, sessionNodesOf(split), [session]) : partOf(allowancePct, [split, ...others].map(teamGroupOf), [split.team, session]);
 }
 
 /** The lifts in force at `now` (`activeLift`), as each lifted session's part of the team's budget. */
@@ -111,9 +133,10 @@ export function liftedParts(lifts: readonly Lift[], ids: readonly string[], now:
 const ADDED_SESSION = '+added';
 
 /**
- * The part of the team's daily budget (`allowancePct`, in percent of the week) one more session would get: added at
- * the default share with no queued work, it takes its part out of the other sessions', as a new hire does.
+ * The part of the account's daily budget (`allowancePct`, in percent of the week) one more session of the team would
+ * get: added at the default share with no queued work, it takes its part out of the other sessions' on the account
+ * (`others` being its other teams), as a new hire does.
  */
-export function addedSessionPct(allowancePct: number, split: BudgetSplit): number {
-  return dailyBudgetOf(allowancePct, ADDED_SESSION, { ...split, ids: [...split.ids, ADDED_SESSION] }) ?? 0;
+export function addedSessionPct(allowancePct: number, split: BudgetSplit, others: readonly BudgetSplit[] = []): number {
+  return dailyBudgetOf(allowancePct, ADDED_SESSION, { ...split, ids: [...split.ids, ADDED_SESSION] }, others) ?? 0;
 }
