@@ -1,5 +1,6 @@
 import { isRecord, recordField, stringField } from "../core/guards.js";
-import { programsOf } from "../package-guard/programs.js";
+import { placeProgram, placeScript } from "../exec/client-launch.js";
+import { runsOf } from "../package-guard/programs.js";
 import { holdBackOutput } from "./permission.js";
 /**
  * The exec guard (T755, spec §7): an agent tab may run a `teamrig exec` review (approve, refuse, escalate) only as
@@ -8,23 +9,41 @@ import { holdBackOutput } from "./permission.js";
  * security reviewer or the owner. The owner never reviews through a tool call: they review in their own terminal, or
  * type `/teamrig exec approve R<n> --session <owner>` in a tab, which the mod runs without a PreToolUse hook.
  *
- * It also pins the client (spec §2.2, phase 1): every `teamrig exec` call, whatever its command, runs only while the
- * installed plugin's files are the ones its build hashed, as phase 1 runs an approved request inside that client.
+ * It also pins the client (spec §2.2, phase 1): every `teamrig exec` call, whatever its command, runs only through an
+ * install of this plugin whose files are the ones its build hashed, as phase 1 runs an approved request inside that
+ * client. The guard places the file a call starts as its shell would (T803): a path the line writes, or the first
+ * `teamrig` the shell's PATH search finds, where a `~/bin/teamrig` wins over the plugin bin the Bash tool appends
+ * last; a call through a program only known when it runs (`$T exec ...`) is refused, as no file can be checked.
  */
 /** The `teamrig exec` commands that decide a request. */
 export const REVIEW_ACTIONS = new Set(['approve', 'refuse', 'escalate']);
+/** Every `teamrig exec` command, by which a call through an unknown program reads as a teamrig call, not as `docker exec`. */
+export const EXEC_COMMANDS = new Set(['request', 'dry-run', ...REVIEW_ACTIONS, 'run', 'status']);
 /** teamrig's own entry point when a line runs it through node: `node <plugin>/dist/cli/main.js exec ...`. */
 const CLI_ENTRY = /[\\/]cli[\\/]main\.[jt]s$/i;
-/** The words a run hands the teamrig CLI, or undefined when it does not run teamrig. */
-function teamrigWordsOf(run) {
+/** True when the words a program only known when it runs takes read as a teamrig exec command: `exec approve`, `exec "$CMD"`. */
+function startsExec(words) {
+    const [group, command] = words;
+    return group !== undefined && !group.dynamic && group.text === 'exec' && command !== undefined && (command.dynamic || EXEC_COMMANDS.has(command.text));
+}
+/** How a run starts the teamrig CLI, or undefined when it does not: by name, by node and teamrig's entry, or by node and a script only known when it runs. */
+function teamrigLaunchOf(run) {
     if (run.name === 'teamrig' || run.name === 'teamrig.ps1') {
-        return run.args;
+        return { client: { kind: 'program', word: run.program }, words: run.args };
     }
     if (run.name !== 'node') {
         return undefined;
     }
     const entry = run.args.findIndex((word) => CLI_ENTRY.test(word.text));
-    return entry === -1 ? undefined : run.args.slice(entry + 1);
+    const script = entry === -1 ? run.args.find((word) => !word.text.startsWith('-')) : run.args[entry];
+    if (script === undefined) {
+        return undefined;
+    }
+    const words = run.args.slice(run.args.indexOf(script) + 1);
+    if (!script.dynamic) {
+        return entry === -1 ? undefined : { client: { kind: 'script', word: script }, words };
+    }
+    return entry !== -1 || startsExec(words) ? { client: { kind: 'opaque', word: script }, words } : undefined;
 }
 /**
  * The exec call the words run, read as the CLI reads them (src/cli/args.ts): the first two words are the command, and
@@ -71,17 +90,54 @@ function execCallOf(words) {
 const UNREADABLE = 'a teamrig call here has a word only known when it runs (a variable or a substitution), so the guard cannot tell whether it reviews a request, or as whom; write the words out.';
 /** At most this many changed files are named in a refusal; the rest are counted. */
 const NAMED_FILES = 5;
-/** Why the guard refuses an exec call through this client, or undefined when its files are the ones the build hashed. */
-function clientRefusalOf(check) {
-    const fix = 'reinstall the teamrig plugin or ask security.';
+/** Where the plugin's own client is, for a refusal to name: `<install>/bin/teamrig`. */
+function ownClientOf(installs) {
+    return `${installs.install}/bin/teamrig`;
+}
+/** Why the guard refuses an exec call through the install at `root`, or undefined when its files are the ones the build hashed. */
+function clientRefusalOf(check, root, installs) {
+    const own = installs.isOwn(root);
+    const client = own ? 'the teamrig client' : `the teamrig client at ${root}`;
+    const fix = own ? 'reinstall the teamrig plugin or ask security.' : `run the plugin's own (${ownClientOf(installs)}), or ask security.`;
     switch (check.kind) {
         case 'intact':
             return undefined;
         case 'no-manifest':
-            return `the teamrig client cannot be checked against its build (${check.why}), so it may have been changed; ${fix}`;
+            return `${client} cannot be checked against its build (${check.why}), so it may have been changed; ${fix}`;
         case 'changed': {
             const more = check.paths.length > NAMED_FILES ? ` and ${check.paths.length - NAMED_FILES} more` : '';
-            return `the teamrig client was changed after its build (${check.paths.slice(0, NAMED_FILES).join(', ')}${more}); ${fix}`;
+            return `${client} was changed after its build (${check.paths.slice(0, NAMED_FILES).join(', ')}${more}); ${fix}`;
+        }
+    }
+}
+/** Why the guard refuses a client file that is no install of this plugin. */
+function foreignRefusalOf(file, installs) {
+    const own = ownClientOf(installs);
+    return file.by === 'found'
+        ? `the \`teamrig\` this line's shell finds on PATH is ${file.path}, no install of the teamrig plugin; remove it from PATH, or run the plugin's own (${own}).`
+        : `\`teamrig exec\` here starts ${file.path}, no install of the teamrig plugin; run the plugin's own (${own}).`;
+}
+/** Why the guard refuses a call through a program only known when it runs. */
+function opaqueRefusalOf(word) {
+    return `\`teamrig exec\` here starts a program only known when it runs (${word.text}), so the guard cannot tell which client runs it; write it out: \`teamrig\`, or its full path.`;
+}
+/** The install a call's client word starts, placed as the line's shell places it. */
+async function clientRootOf(client, at, env) {
+    if (client.kind === 'opaque') {
+        return { kind: 'refused', why: opaqueRefusalOf(client.word) };
+    }
+    const file = client.kind === 'program' ? await placeProgram(client.word.text, at, env.search) : placeScript(client.word.text, at);
+    switch (file.kind) {
+        case 'appended':
+            return { kind: 'root', root: env.installs.install };
+        case 'unplaced':
+            return {
+                kind: 'refused',
+                why: `a teamrig call here starts its client by a relative path (${client.word.text}) from a folder only known when the line runs; write its full path.`,
+            };
+        case 'file': {
+            const root = env.installs.rootOf(file.path);
+            return root === undefined ? { kind: 'refused', why: foreignRefusalOf(file, env.installs) } : { kind: 'root', root };
         }
     }
 }
@@ -113,8 +169,9 @@ function reviewRefusalOf(call, identity) {
  * The PreToolUse output for a Bash or PowerShell call: a refusal when the line runs a `teamrig exec` review as anyone
  * but the tab's own session, named by `--session` (the flag wins over `$TEAMRIG_SESSION` in the CLI, so a variable
  * set on the line changes nothing), when the guard cannot read who it reviews as, or when it runs any `teamrig exec`
- * command while the client differs from its build; else nothing, so the normal permission flow decides. It checks the
- * client only for a line that runs `teamrig exec`, and reads the tab's session only for a line that holds a review.
+ * command through a client that is no install of this plugin, one only known when it runs, or one whose files differ
+ * from its build; else nothing, so the normal permission flow decides. It checks each install a line's `teamrig exec`
+ * calls start once, and reads the tab's session only for a line that holds a review.
  */
 export async function execGuardOutput(payload, env) {
     if (!isRecord(payload)) {
@@ -129,22 +186,38 @@ export async function execGuardOutput(payload, env) {
         home: env.home,
         dialect: stringField(payload, 'tool_name') === 'PowerShell' ? 'powershell' : 'bash',
     };
-    const calls = programsOf(command, context)
-        .map(teamrigWordsOf)
-        .filter((words) => words !== undefined)
-        .map(execCallOf)
-        .filter((call) => call !== undefined);
-    if (calls.length === 0) {
+    const runs = runsOf(command, context);
+    const calls = runs.programs.flatMap((run) => {
+        const launch = teamrigLaunchOf(run);
+        const call = launch === undefined ? undefined : execCallOf(launch.words);
+        const at = { dialect: run.dialect, dir: run.dir, home: env.home };
+        return launch === undefined || call === undefined ? [] : [{ call, client: launch.client, at }];
+    });
+    const opaque = runs.opaque.filter((run) => startsExec(run.args));
+    if (calls.length === 0 && opaque.length === 0) {
         return '';
     }
-    const reasons = calls.some((call) => call.kind === 'unreadable') ? [UNREADABLE] : [];
-    if (calls.some((call) => call.kind !== 'unreadable')) {
-        const client = clientRefusalOf(await env.client());
-        if (client !== undefined) {
-            reasons.push(client);
+    const reasons = calls.some(({ call }) => call.kind === 'unreadable') ? [UNREADABLE] : [];
+    reasons.push(...opaque.map((run) => opaqueRefusalOf(run.program)));
+    const roots = new Set();
+    for (const { call, client, at } of calls) {
+        if (call.kind !== 'unreadable') {
+            const placed = await clientRootOf(client, at, env);
+            if (placed.kind === 'refused') {
+                reasons.push(placed.why);
+            }
+            else {
+                roots.add(placed.root);
+            }
         }
     }
-    const reviews = calls.filter((call) => call.kind === 'review');
+    for (const root of roots) {
+        const refusal = clientRefusalOf(await env.checkClient(root), root, env.installs);
+        if (refusal !== undefined) {
+            reasons.push(refusal);
+        }
+    }
+    const reviews = calls.map(({ call }) => call).filter((call) => call.kind === 'review');
     if (reviews.length > 0) {
         const identity = await env.identity();
         reasons.push(...reviews.map((call) => reviewRefusalOf(call, identity)).filter((reason) => reason !== undefined));

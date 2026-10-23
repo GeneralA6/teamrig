@@ -189,7 +189,7 @@ class LaunchReader {
      */
     dynamicHead(words, head) {
         if (this.dialect !== 'powershell' || this.called) {
-            return { kind: 'opaque', reason: 'the program it runs is only known when it runs', gated: true };
+            return { kind: 'opaque', reason: 'the program it runs is only known when it runs', gated: true, command: { program: head, args: words.slice(1) } };
         }
         const text = head.text.replace(/^(?:\[[^\]]+\])+/, '');
         const operator = /^([-+*/%]|\?\?)?=$/;

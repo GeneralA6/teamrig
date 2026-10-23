@@ -12,6 +12,7 @@ import { ModelNoticeStore } from "../../hooks/model-notices.js";
 import { sendTargetOf } from "../../hooks/cold-send.js";
 import { failedSendLine, failedSendOf, failedSendOutput } from "../../hooks/failed-send.js";
 import { checkClient, clientRootOf } from "../../exec/client-integrity.js";
+import { ClientInstalls, ShellPathSearch } from "../../exec/client-launch.js";
 import { execGuardOutput } from "../../hooks/exec-guard.js";
 import { packageGuardOf, packageGuardOutput } from "../../hooks/package-guard.js";
 import { hookAsksOf } from "../../hooks/permission.js";
@@ -215,7 +216,8 @@ async function tabIdentityOf(runtime, kit, payload) {
 }
 /**
  * PreToolUse on Bash and PowerShell: refuses a `teamrig exec` review (approve, refuse, escalate) run as anyone but the
- * tab's own session, and any `teamrig exec` call while this hook's own install differs from its build.
+ * tab's own session, and any `teamrig exec` call through a client that is no install of this plugin, or one whose files
+ * differ from its build.
  */
 export async function execGuard(args, runtime) {
     noPositionals(args);
@@ -229,7 +231,9 @@ export async function execGuard(args, runtime) {
         home: runtime.userHome,
         hookAsks: hookAsksOf(guard.load),
         identity: () => tabIdentityOf(runtime, guard.kit, payload),
-        client: () => checkClient(clientRootOf(runtime.self.script), runtime.files),
+        installs: new ClientInstalls(clientRootOf(runtime.self.script), runtime.platform),
+        search: new ShellPathSearch({ env: runtime.env, platform: runtime.platform, probe: runtime.probe }),
+        checkClient: (root) => checkClient(root, runtime.files),
     });
     if (output !== '') {
         runtime.out.stdout(output);
