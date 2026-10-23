@@ -4,13 +4,14 @@ import type { TeamTree } from '../config/tree.ts';
 /**
  * Who may leave a line in whose inbox across a tree of teams. A member reaches its own team only; a
  * lead also reaches its parent team's lead and its child teams' leads. Anything further goes one
- * lead at a time, so each lead sees what crosses its team's border.
+ * lead at a time, so each lead sees what crosses its team's border. A member's refusal names `leader`, its own leader
+ * on its team (LeadTree.leaderOf: the sub-lead that lists it, else the team's lead), as its way up.
  */
 export type Reach = { readonly ok: true } | { readonly ok: false; readonly problem: string };
 
 const REACHES: Reach = { ok: true };
 
-export function reachOf(tree: TeamTree, from: SessionAddress, to: SessionAddress): Reach {
+export function reachOf(tree: TeamTree, from: SessionAddress, to: SessionAddress, leader: string | undefined): Reach {
   if (from.team === to.team) {
     return REACHES;
   }
@@ -22,8 +23,7 @@ export function reachOf(tree: TeamTree, from: SessionAddress, to: SessionAddress
   const sender = formatAddress(from);
   const target = formatAddress(to);
   if (!leadsFrom) {
-    const lead = tree.leadOf(from.team);
-    const via = lead === undefined ? '' : ` (${formatAddress({ team: from.team, id: lead })})`;
+    const via = leader === undefined ? '' : ` (${formatAddress({ team: from.team, id: leader })})`;
     return { ok: false, problem: `${sender} may write to its own team only, and ${target} is not on it: escalate through your lead${via}` };
   }
   return {

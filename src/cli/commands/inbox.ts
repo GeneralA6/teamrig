@@ -1,3 +1,4 @@
+import { LeadTree } from '../../config/lead-tree.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { formatAddress, splitAddress, type SessionAddress } from '../../core/address.ts';
 import { ENV, type Env, type TeamPaths } from '../../core/home.ts';
@@ -94,7 +95,8 @@ async function recipientInTree(runtime: CliRuntime, from: SessionAddress, team: 
     throw new RefusedError(`no team ${team} with a config in this kit home`);
   }
   const to = { team, id: sessionIdOf(target.roster, session) };
-  const reach = reachOf(tree, from, to);
+  const own = teams.get(from.team);
+  const reach = reachOf(tree, from, to, own === undefined ? undefined : new LeadTree(own.config).leaderOf(from.id));
   if (!reach.ok) {
     throw new RefusedError(reach.problem);
   }

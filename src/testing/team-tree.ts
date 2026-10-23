@@ -30,9 +30,9 @@ export const SUB_TEAMS: Readonly<Record<string, JsonRecord>> = {
   ui: { configVersion: 1, team: { id: 'ui', parent: 'web' }, sessions: ['lead', 'pixel'], roles: { lead: 'lead' } },
 };
 
-/** The harness with `app` as the root of the tree `SUB_TEAMS` hangs under it. */
-export async function treeHarness(): Promise<CliHarness> {
-  const kit = new CliHarness({ ...TEAM, team: { id: 'app' } });
+/** The harness with `app` as the root of the tree `SUB_TEAMS` hangs under it; `root` adds to app's config. */
+export async function treeHarness(root: JsonRecord = {}): Promise<CliHarness> {
+  const kit = new CliHarness({ ...TEAM, team: { id: 'app' }, ...root });
   for (const [team, config] of Object.entries(SUB_TEAMS)) {
     await kit.files.write(teamConfigOf(team), formatConfig(config));
   }

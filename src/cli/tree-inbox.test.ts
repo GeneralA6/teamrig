@@ -32,6 +32,15 @@ describe('teamrig inbox add across a tree of teams', () => {
     assert.equal(kit.files.get(teamInboxOf('app', 'bravo')), '- 2030-01-08 10:00 alpha: one\n- 2030-01-08 10:00 alpha: two\n');
   });
 
+  it("points a sub-lead's member at its own leader, not the team's lead", async () => {
+    const kit = await treeHarness({ leads: { bravo: ['alpha'] } });
+    const member = await kit.run(['inbox', 'add', '--to', 'web/lead', '--text', 'hi', '--session', 'alpha']);
+    assert.deepEqual([member.code, member.stdout], [
+      EXIT.refused,
+      ['REFUSED app/alpha may write to its own team only, and web/lead is not on it: escalate through your lead (app/bravo)'],
+    ]);
+  });
+
   it('refuses a member writing outside its team, and a lead skipping a level, writing nothing', async () => {
     const kit = await treeHarness();
     const member = await kit.run(['inbox', 'add', '--to', 'web/lead', '--text', 'hi', '--session', 'alpha']);
