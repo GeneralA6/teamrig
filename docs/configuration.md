@@ -361,6 +361,7 @@ The weekly token budget: the pace line the team is measured against and each ses
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `enabled` | boolean | `false` | Turns on the live warning and the core rules' pacing sentence; teamrig budget shows usage either way. |
+| `account` | string (1 to 100 characters, matching `^[^\r\n]+$`) |  | The Claude account the team's week is on: teams with the same account share one week and split its daily budget. Unset: the Claude config dir, since one config dir signs in one account. |
 | `weeklyLimitW` | integer (1000000 to 1000000000000) |  | The weekly limit in weighted tokens. Unset: derived from the status line's weekly %. |
 | `subagentWeight` | number (0.1 to 10) | `1` | What one W of a subagent's transcript costs against the weekly limit, in W of a main session. The meter multiplies each subagent call's W by it, so weeklyLimitW is in main-session W. 1: both cost alike. |
 | `extraWPerUsd` | integer (1000 to 1000000000) |  | W per US dollar of extra usage, standing in until two spent readings past 100% of the week teach the rate. Unset: the extra-usage pool shows in dollars only until then, with no allowance. |

@@ -1077,6 +1077,7 @@ describe('parseConfig budget', () => {
       ...ROSTER,
       budget: {
         enabled: true,
+        account: 'work',
         weeklyLimitW: 680_000_000,
         subagentWeight: 2.15,
         extraWPerUsd: 120_000,
@@ -1098,6 +1099,7 @@ describe('parseConfig budget', () => {
     assert.deepEqual(issues, []);
     assert.deepEqual(config.budget, {
       enabled: true,
+      account: 'work',
       weeklyLimitW: 680_000_000,
       subagentWeight: 2.15,
       extraWPerUsd: 120_000,
@@ -1146,6 +1148,7 @@ describe('parseConfig budget', () => {
     const { config, issues } = parseConfig({
       ...ROSTER,
       budget: {
+        account: 'work\nhome',
         weeklyLimitW: 12.5,
         subagentWeight: 11,
         extraWPerUsd: 999,
@@ -1165,6 +1168,7 @@ describe('parseConfig budget', () => {
       },
     });
     assert.deepEqual(paths(issues).sort(), [
+      'budget.account',
       'budget.escalate',
       'budget.extraWPerUsd',
       'budget.lift.maxStopPct',

@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { NAME_PATTERN, RESERVED_NAMES } from '../core/ids.ts';
 import { MODEL_ALIASES, MODEL_ID_MAX_LENGTH, MODEL_ID_PATTERN } from './launch.ts';
-import { CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from './limits.ts';
+import { BUDGET_ACCOUNT_MAX_LENGTH, CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from './limits.ts';
 import { parseConfig } from './parse.ts';
 import { KEEP_RULE_PATTERN } from '../permissions/allow-rules.ts';
 import { PREFIX_PATTERN } from '../readonly-shell/rules.ts';
@@ -45,6 +45,7 @@ const EVERY_KEY = {
     },
   },
   budget: {
+    account: 'shared',
     weeklyLimitW: 680_000_000,
     subagentWeight: 2,
     extraWPerUsd: 120_000,
@@ -353,6 +354,11 @@ describe('config.schema.json', () => {
     const names = nodeAt(await loadSchema(), 'names');
     assert.equal(nodeAt(names, '*')['pattern'], NAME_PATTERN.source);
     assert.ok(String(names['description']).includes(`(${RESERVED_NAMES.join(', ')})`));
+  });
+
+  it('takes the budget account names the parser takes', async () => {
+    const account = nodeAt(await loadSchema(), 'budget.account');
+    assert.deepEqual([account['maxLength'], account['pattern']], [BUDGET_ACCOUNT_MAX_LENGTH, '^[^\\r\\n]+$']);
   });
 
   it('takes the verify gate choices the parser takes', async () => {

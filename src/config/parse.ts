@@ -49,7 +49,7 @@ import {
   HEAVY_TTL_MARGIN_MINUTES,
 } from './defaults.ts';
 import { isEffort, isModel } from './launch.ts';
-import { CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from './limits.ts';
+import { BUDGET_ACCOUNT_MAX_LENGTH, CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from './limits.ts';
 import { ConfigReader, describe, isValidRegex, shortLine, type Check, type ConfigIssue } from './reader.ts';
 import {
   AD_HOC_RUNNERS,
@@ -772,6 +772,7 @@ function parseBudget(read: ConfigReader, raw: JsonRecord, sessions: readonly str
   if (targetPct + reservePct > 100) {
     read.report(`${path}.reservePct`, `with targetPct it passes 100% of the week (${targetPct} + ${reservePct})`);
   }
+  const account = read.optionalString(raw, 'account', path, shortLine(BUDGET_ACCOUNT_MAX_LENGTH));
   const weeklyLimitW = read.optionalInteger(raw, 'weeklyLimitW', path, CONFIG_LIMITS.weeklyLimitW);
   const extraWPerUsd = read.optionalInteger(raw, 'extraWPerUsd', path, CONFIG_LIMITS.extraWPerUsd);
   const reset = parseBudgetReset(read, raw);
@@ -784,6 +785,7 @@ function parseBudget(read: ConfigReader, raw: JsonRecord, sessions: readonly str
   const statusSnapshotDir = read.optionalString(raw, 'statusSnapshotDir', path);
   return {
     enabled: read.boolean(raw, 'enabled', path, defaults.enabled),
+    ...(account === undefined ? {} : { account }),
     ...(weeklyLimitW === undefined ? {} : { weeklyLimitW }),
     subagentWeight: read.number(raw, 'subagentWeight', path, defaults.subagentWeight, CONFIG_LIMITS.subagentWeight),
     ...(extraWPerUsd === undefined ? {} : { extraWPerUsd }),
