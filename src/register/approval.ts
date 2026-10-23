@@ -1,12 +1,18 @@
-import type { Task } from './fold.ts';
+import type { ApprovalAnswer, Task } from './fold.ts';
 import type { PersonWait, WaitReason } from './waits.ts';
 
 /**
- * Whether the task's answer clears `reason`: an approval wait whose giver approved it (`approve`, T684). A new status
- * clears the answer with the waits (fold.ts), so an approval covers only the step its task asked about.
+ * The task's answer to `reason` when it is an approval wait its giver answered, either way (`approve`, T684);
+ * undefined otherwise. A new status clears the answer with the waits (fold.ts), so an answer covers only the step its
+ * task asked about.
  */
+export function answerTo(task: Pick<Task, 'answer'>, reason: WaitReason): ApprovalAnswer | undefined {
+  return reason.kind === 'approval' && task.answer !== null && task.answer.by === reason.who ? task.answer : undefined;
+}
+
+/** Whether the task's answer clears `reason`: an approval wait whose giver approved it. */
 export function approvalCleared(task: Pick<Task, 'answer'>, reason: WaitReason): boolean {
-  return reason.kind === 'approval' && task.answer?.verdict === 'approved' && task.answer.by === reason.who;
+  return answerTo(task, reason)?.verdict === 'approved';
 }
 
 /** A task of the owner's that one of its approvers approved, with who did. */
