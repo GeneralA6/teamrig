@@ -2119,10 +2119,11 @@ run, a write that leaves the log over 512 KiB archives it again and prints
 `register.autoArchive: false` in the team's `config.json`. With it off, only `teamrig compact` archives. Every
 session must run teamrig 0.3.1 or later before the first run.
 
-It also moves the hooks' records over 7 days old, from `state/inbox-shown.jsonl` and `state/bind-hints.jsonl`, to
-`state/archive/inbox-shown-YYYYMMDD.jsonl` and `state/archive/bind-hints-YYYYMMDD.jsonl` (the run's UTC day), never
-deleted. Those logs' own writes do the same once their oldest record is over 8 days old, so a run by hand is rarely
-needed. Only the oldest lines move, up to the first record of the last 7 days.
+It also moves the hooks' records over 7 days old, from `state/inbox-shown.jsonl`, `state/bind-hints.jsonl` and
+`state/prompt-answers.jsonl`, to `state/archive/inbox-shown-YYYYMMDD.jsonl`, `state/archive/bind-hints-YYYYMMDD.jsonl`
+and `state/archive/prompt-answers-YYYYMMDD.jsonl` (the run's UTC day), never deleted. Those logs' own writes do the
+same once their oldest record is over 8 days old, so a run by hand is rarely needed. Only the oldest lines move, up to
+the first record of the last 7 days.
 
 Flags:
 
@@ -2151,6 +2152,7 @@ HISTORY 2 task(s) from 3 event(s): the working set holds every active one as the
 TAIL events.jsonl starts again with the rotation marker (67 B)
 AGED inbox-shown: 120 line(s) older than 7 days to archive/inbox-shown-20301020.jsonl, 283 kept
 AGED bind-hints: no line older than 7 days, 7 kept
+AGED prompt-answers: 12 line(s) older than 7 days to archive/prompt-answers-20301020.jsonl, 40 kept
 DRY RUN: nothing was written; teamrig compact writes the above
 ```
 
@@ -3584,8 +3586,9 @@ team config, answers it for its case: nobody may be there to answer, and the pro
 does. A line that provably only reads runs; a Bash line teamrig's rules give a rerun form (after a leading `cd D &&`,
 or a plain `git worktree remove`) is refused quoting the line to run instead; anything else is refused with the
 tool's name and the note to record the step as waiting for the owner and take the next task. Each answer is a line in
-`state/prompt-answers.jsonl`. The question picker (`AskUserQuestion`) and plan mode's exit (`ExitPlanMode`) still
-open. See [Hooks and permissions](hooks.md#asks-off-a-refusal-instead-of-a-prompt).
+`state/prompt-answers.jsonl`, its command redacted; lines over 7 days old move to the archive (see
+[teamrig compact](#teamrig-compact)). The question picker (`AskUserQuestion`) and plan mode's exit (`ExitPlanMode`)
+still open. See [Hooks and permissions](hooks.md#asks-off-a-refusal-instead-of-a-prompt).
 
 Flags: none.
 
