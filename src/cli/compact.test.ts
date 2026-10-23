@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { DEDUP_LOG_AGE } from '../core/aged-log.ts';
-import type { JsonRecord } from '../core/guards.ts';
+import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { toJsonlLine } from '../core/jsonl.ts';
 import { MS_PER_DAY } from '../core/time.ts';
 import { RETAIN_DAYS } from '../register/compaction.ts';
@@ -33,6 +33,15 @@ async function twoTasks(config: JsonRecord = TEAM): Promise<CliHarness> {
 /** Every file's text, to show a run wrote nothing. */
 function contents(kit: CliHarness): Record<string, string | undefined> {
   return Object.fromEntries(kit.files.paths().map((path) => [path, kit.files.get(path)]));
+}
+
+/** A snapshot line as a teamrig that did not parse `evidence` wrote it back: T1's status without it; any other line as it was. */
+function withoutEvidence(line: string): string {
+  const record: unknown = line === '' ? undefined : JSON.parse(line);
+  if (!isRecord(record) || record['id'] !== 'T1' || record['type'] !== 'status') {
+    return line;
+  }
+  return JSON.stringify(Object.fromEntries(Object.entries(record).filter(([key]) => key !== 'evidence')));
 }
 
 /** The task ids of the rows `list` printed. */
@@ -99,6 +108,33 @@ describe('teamrig compact', () => {
     ]);
     assert.equal(refused.stdout[0], 'ARCHIVE events.jsonl (3 event(s), 621 B) as archive/events-000001.jsonl, replacing what a stopped rotation left there');
     assert.deepEqual(contents(kit), before);
+  });
+
+  it('rebuilds a snapshot that lost fields from the history with --from-history, where a plain run refuses it and points there', async () => {
+    const kit = await twoTasks();
+    assert.equal((await kit.run(['compact'], AS_ALPHA)).code, EXIT.ok);
+    await kit.files.write(PATHS.snapshot, (kit.files.get(PATHS.snapshot) ?? '').split('\n').map(withoutEvidence).join('\n'));
+    const difference = 'T1 folds otherwise in the working set than in the history';
+    const refused = await kit.run(['compact', '--dry-run'], AS_ALPHA);
+    assert.deepEqual(
+      [refused.code, refused.stdout.at(-1), refused.stderr],
+      [
+        EXIT.failed,
+        'HINT the archive holds the whole history: teamrig compact --from-history --dry-run shows a snapshot rebuilt from it',
+        [`FAILED the rotation is refused, nothing was written: ${difference}`],
+      ],
+    );
+    const before = contents(kit);
+    const dry = await kit.run(['compact', '--from-history', '--dry-run'], AS_ALPHA);
+    assert.equal(dry.code, EXIT.ok, dry.stderr.join('\n'));
+    assert.deepEqual(dry.stdout.slice(2, 4), [
+      'REBUILD from the history in place of the old snapshot: 1 line(s) read again from the archive, 1 difference(s) from the old working set repaired',
+      `REPAIR ${difference}`,
+    ]);
+    assert.deepEqual(contents(kit), before);
+    assert.equal((await kit.run(['compact', '--from-history'], AS_ALPHA)).code, EXIT.ok);
+    const plain = await kit.run(['compact', '--dry-run'], AS_ALPHA);
+    assert.deepEqual([plain.code, plain.stderr], [EXIT.ok, []]);
   });
 
   it('names the retain days its help gives', () => {
