@@ -1,7 +1,7 @@
 import { toJsonlLine } from '../core/jsonl.ts';
 import { MS_PER_DAY } from '../core/time.ts';
 import type { TimeZone } from '../core/zone.ts';
-import { currentWeekOf } from './check.ts';
+import { currentWeekOf } from './week.ts';
 import { RegisterFold, taskNumber, type Task } from './fold.ts';
 import { snapshotHeaderRecord, type SnapshotHeader } from './layout.ts';
 import type { EventLogRead, RegisterSnapshot } from './snapshot.ts';

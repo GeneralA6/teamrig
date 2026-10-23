@@ -6,7 +6,7 @@ import { MS_PER_DAY } from '../core/time.ts';
 import { MemoryFiles } from '../testing/memory-files.ts';
 import { rotateRegister } from '../testing/rotation.ts';
 import { testTask } from '../testing/task.ts';
-import { currentWeekOf } from './check.ts';
+import { currentWeekOf } from './week.ts';
 import { compactRegister, isRetirable, RETAIN_DAYS } from './compaction.ts';
 import { EVENT_VERSION } from './events.ts';
 import { layoutPaths, readHistory, readSnapshotText, readWorkingSet } from './layout.ts';

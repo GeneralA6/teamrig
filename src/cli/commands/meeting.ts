@@ -7,7 +7,7 @@ import { postLine } from '../../inbox/inbox.ts';
 import { agendaLines, agendaSince } from '../../meeting/agenda.ts';
 import { decisionsByOwner, endNotice, startNotice, type NoticeFacts } from '../../meeting/notices.ts';
 import { MeetingStore, phaseOf, stoppedAt, type Meeting, type MeetingPhase } from '../../meeting/state.ts';
-import { currentWeekOf } from '../../register/check.ts';
+import { currentWeekOf } from '../../register/week.ts';
 import { fitLines } from '../../register/fit.ts';
 import { TaskTree } from '../../register/tree.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
