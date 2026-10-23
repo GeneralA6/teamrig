@@ -270,6 +270,9 @@ With sub-teams, run `teamrig check --tree --session lead` too. Then act on each 
   the step its own task (the flag prints the command), or re-plan it yourself (`update --after`).
 - `PILE-UP`: a session ships faster than it proves: one inbox line asking it to work its queue (`teamrig verify`)
   before new work.
+- `OVER-PACE`: a session holds more p1 work than it finished in the last 7 days, so p1 no longer says what comes
+  first: lower the p1s past the flagged one that its pace will not reach (`update --priority`), hand some to another
+  session, or tell the human what is held.
 - `OVER-LIMIT`: the week's sized work passes the weekly limit left at this task: move it and the tasks after it to
   next week (`update --week`), or tell the human what it would cut.
 - `OWNER-UNPLANNED` or `DUE-UNPLANNED`: plan it in with `--week`, or tell the human what it would push out.
