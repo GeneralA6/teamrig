@@ -37,6 +37,15 @@ function context(overrides: Partial<SessionStartInput> = {}): string {
 }
 
 describe('sessionStartContext', () => {
+  it("tells a sub-lead's member to message its own leader, and the sub-lead the lead", () => {
+    const load = loaded({ config: testConfig({ names: { lead: 'team-lead', bravo: 'app-bravo' }, leads: { bravo: ['alpha'] } }) });
+    const member = context({ load });
+    assert.match(member, /Message your leader as `app-bravo`, who takes to the lead what it cannot settle\.\n/);
+    assert.ok(!member.includes('Message the lead as'), member);
+    assert.match(context({ load, session: 'bravo' }), /Message the lead as `team-lead`\.\n/);
+    assert.ok(!context({ load, session: 'lead' }).includes('Message '), 'the lead messages no leader');
+  });
+
   it('gives the core rules, then who the session is and how to reach the lead', () => {
     const text = context();
     assert.ok(text.startsWith(renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK)));
