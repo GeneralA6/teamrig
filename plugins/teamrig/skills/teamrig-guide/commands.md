@@ -1932,6 +1932,13 @@ needed. Only the oldest lines move, up to the first record of the last 7 days.
 Flags:
 
 - `--dry-run`: print what it would archive and write, and write nothing.
+- `--from-history`: fold the new snapshot from every archive file and the log, never from the old snapshot. It
+  repairs a snapshot that lost what its lines held (a teamrig before 0.145.1 wrote the lines it archived back
+  with only the fields it read), which a plain run refuses, printing
+  `HINT the archive holds the whole history: teamrig compact --from-history --dry-run shows a snapshot rebuilt from it`.
+  It adds `REBUILD from the history in place of the old snapshot: N line(s) read again from the archive, M difference(s) from the old working set repaired`
+  and a `REPAIR <difference>` line for each. It rewrites the team's stored task data, so its dry run's counts go
+  to the owner before the run.
 
 Example:
 
