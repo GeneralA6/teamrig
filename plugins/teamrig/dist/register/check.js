@@ -29,27 +29,6 @@ export const FLAG_KINDS = [
     'STOPGAP-DONE',
     'STALE',
 ];
-/** The week plan in force: the newest week tag that starts on or before now, a week tag being a day of the team's `zone`. */
-export function currentWeek(tasks, now, zone) {
-    let best = null;
-    for (const task of tasks) {
-        const start = task.week === null ? undefined : parseDayStart(task.week, zone);
-        if (task.week !== null && start !== undefined && start.getTime() <= now.getTime() && (best === null || task.week > best)) {
-            best = task.week;
-        }
-    }
-    return best;
-}
-/**
- * The week plan in force over a register as read: `currentWeek` of its tasks, or the newest week of
- * the tasks a compaction retired when that is newer, as a replay of the whole history would find it.
- */
-export function currentWeekOf(snapshot, now, zone) {
-    const live = currentWeek(snapshot.state.tasks.values(), now, zone);
-    const retired = snapshot.retired?.lastWeek ?? null;
-    const started = retired === null ? undefined : parseDayStart(retired, zone);
-    return retired !== null && started !== undefined && started.getTime() <= now.getTime() && (live === null || retired > live) ? retired : live;
-}
 /**
  * The daily flags over active tasks:
  * - OVERDUE: past its effective deadline (its own due, or an earlier one of a task that needs it, named in the detail
@@ -92,7 +71,7 @@ export function currentWeekOf(snapshot, now, zone) {
 export function checkTasks(tasks, now, zone, week, config) {
     const at = now.getTime();
     const all = [...tasks];
-    const tree = new TaskTree(new Map(all.map((task) => [task.id, task])), now, zone);
+    const tree = new TaskTree(new Map(all.map((task) => [task.id, task])), now, zone, week);
     const active = tree.inPlanOrder(all.filter((candidate) => ACTIVE_STATUSES.includes(candidate.status)));
     const plan = weekPlan(week, config.check.weekLengthDays, zone);
     const top = topPriority(config.priorities);
