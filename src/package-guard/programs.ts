@@ -14,6 +14,8 @@ import { resolveLiteralVariables } from '../push-guard/variables.ts';
 export interface ProgramRun {
   /** The program as the guards compare it (`programName`): `npx` for `C:\nodejs\npx.cmd`. */
   readonly name: string;
+  /** The program word as the line writes it, after its literal variables: `C:\nodejs\npx.cmd`, or `npx` for a PATH lookup. */
+  readonly program: ShellWord;
   readonly args: readonly ShellWord[];
   /** The dialect of the script that starts it: a `pwsh -Command` inside a Bash line starts PowerShell programs. */
   readonly dialect: ShellDialect;
@@ -90,10 +92,18 @@ interface Group {
   readonly held: boolean;
 }
 
-/** What a command line runs: the programs it starts, and the commands of it that start none. */
+/** A command whose program word is only known when it runs: `$T exec approve R1`, with `T` set outside the line. */
+export interface OpaqueRun {
+  readonly program: ShellWord;
+  readonly args: readonly ShellWord[];
+  readonly dialect: ShellDialect;
+}
+
+/** What a command line runs: the programs it starts, the commands of it that start none, and those whose program it cannot name. */
 export interface LineRuns {
   readonly programs: ProgramRun[];
   readonly bare: BareCommand[];
+  readonly opaque: OpaqueRun[];
 }
 
 export interface ProgramsContext {
@@ -113,7 +123,7 @@ const PIPE_END = /(?:^|[^|])\|&?\n*$/;
 
 /** What `command` runs, each in the order it runs. */
 export function runsOf(command: string, context: ProgramsContext): LineRuns {
-  const runs: LineRuns = { programs: [], bare: [] };
+  const runs: LineRuns = { programs: [], bare: [], opaque: [] };
   visitScript(staticWord(command), context.dialect, new Location(context.cwd, context.home), 0, false, runs, SCREEN);
   return runs;
 }
@@ -214,6 +224,7 @@ function visitCommand(
     launched.chdirs.forEach((chdir) => inner.moveTo(chdir));
     const run: Draft<ProgramRun> = {
       name: programName(launched.program.text),
+      program: launched.program,
       args: launched.args,
       dialect,
       dir: inner.dir,
@@ -227,6 +238,8 @@ function visitCommand(
     };
     runs.programs.push(run);
     return { launched, run, bare: undefined };
+  } else if (launched.kind === 'opaque' && launched.command !== undefined) {
+    runs.opaque.push({ ...launched.command, dialect });
   } else if (launched.kind === 'nothing' && command.words.length > 0) {
     const bare: Draft<BareCommand> = { words: command.words, dialect, redirections: command.redirections, pipe: outlet.pipe, substitution: outlet.substitution };
     runs.bare.push(bare);

@@ -44,6 +44,8 @@ export interface OpaqueLaunch {
   readonly reason: string;
   /** True when the doubt matters only on a command line that mentions a push. */
   readonly gated: boolean;
+  /** The command from its program word on, when that word is what is only known when it runs (`$T exec approve R1`). */
+  readonly command?: { readonly program: ShellWord; readonly args: readonly ShellWord[] };
 }
 
 /** What one simple command starts: nothing (a keyword line, an expression, a script file), a program, a script, or something unreadable. */
@@ -277,7 +279,7 @@ class LaunchReader {
    */
   private dynamicHead(words: readonly ShellWord[], head: ShellWord): Step {
     if (this.dialect !== 'powershell' || this.called) {
-      return { kind: 'opaque', reason: 'the program it runs is only known when it runs', gated: true };
+      return { kind: 'opaque', reason: 'the program it runs is only known when it runs', gated: true, command: { program: head, args: words.slice(1) } };
     }
     const text = head.text.replace(/^(?:\[[^\]]+\])+/, '');
     const operator = /^([-+*/%]|\?\?)?=$/;

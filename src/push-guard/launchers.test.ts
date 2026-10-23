@@ -126,6 +126,15 @@ describe('launch: programs and wrappers', () => {
     assert.equal(of('$GIT push'), UNKNOWN_PROGRAM);
     assert.equal(of('& $git push', 'powershell'), UNKNOWN_PROGRAM);
   });
+
+  it('keeps the command from a program word only known when it runs, so a guard can still read its arguments', () => {
+    const launched = launch(parseShell('$T exec approve R1', 'bash').commands[0]?.words ?? [], 'bash');
+    assert.ok(launched.kind === 'opaque' && launched.command !== undefined);
+    assert.equal(launched.command.program.dynamic, true);
+    assert.deepEqual(launched.command.args.map(show), ['exec', 'approve', 'R1']);
+    const deep = launch(parseShell(`${'nohup '.repeat(16)}git push`, 'bash').commands[0]?.words ?? [], 'bash');
+    assert.equal(deep.kind === 'opaque' ? deep.command : 'not opaque', undefined);
+  });
 });
 
 describe('launch: keywords', () => {

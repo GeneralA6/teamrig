@@ -101,6 +101,21 @@ describe('runsOf', () => {
     assert.deepEqual(bare('cd sub && git status'), []);
   });
 
+  it('keeps each program word as the line writes it, after its literal variables', () => {
+    const words = (command: string): string[] => runsOf(command, context('bash')).programs.map((run) => `${run.name}: ${run.program.text}`);
+    assert.deepEqual(words('C:/nodejs/npx.cmd tsc && teamrig list'), ['npx: C:/nodejs/npx.cmd', 'teamrig: teamrig']);
+    assert.deepEqual(words('T=/opt/kit/bin/teamrig; $T exec status R1'), ['teamrig: /opt/kit/bin/teamrig']);
+  });
+
+  it('keeps each command whose program is only known when it runs, with its arguments and dialect, and no other', () => {
+    const opaque = (command: string, dialect: ShellDialect = 'bash'): string[] =>
+      runsOf(command, context(dialect)).opaque.map((run) => `${run.dialect}: ${[run.program.text, ...run.args.map((arg) => arg.text)].join(' ')}`);
+    assert.deepEqual(opaque('$T exec approve R1 && git status'), ['bash: $T exec approve R1']);
+    assert.deepEqual(opaque('bash -c "$RUNNER eslint ."'), ['bash: $RUNNER eslint .']);
+    assert.deepEqual(opaque('T=/opt/kit/bin/teamrig; $T exec status R1'), []);
+    assert.deepEqual(opaque('teamrig exec status R1'), []);
+  });
+
   it('gives each program the dialect of the script that starts it', () => {
     const dialects = runsOf('cat a; pwsh -Command "Get-Content b"', context('bash')).programs.map((run) => `${run.name} ${run.dialect}`);
     assert.deepEqual(dialects, ['cat bash', 'get-content powershell']);
