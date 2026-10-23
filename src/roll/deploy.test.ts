@@ -1,0 +1,221 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import type { CoordinatorConfig, CoordinatorRepoConfig, RollConfig, ScheduleConfig } from '../config/types.ts';
+import { DEFAULT_CLAIMS, DEFAULT_COORDINATOR_WAIT, DEFAULT_GATE_TIMEOUT_SECONDS, DEFAULT_HEAVY, DEFAULT_WINDOWS } from '../config/defaults.ts';
+import { HostLock } from '../coordinator/host-lock.ts';
+import type { CoordinatorPlaces } from '../coordinator/places.ts';
+import type { ResetTime } from '../coordinator/schedule.ts';
+import type { Env } from '../core/home.ts';
+import { SecretScanner } from '../core/secrets.ts';
+import { KIT_VERSION } from '../core/version.ts';
+import { TimeZone } from '../core/zone.ts';
+import { FakeClock } from '../testing/fake-clock.ts';
+import { FakeHooks } from '../testing/fake-hooks.ts';
+import { FakeIntegrateGit, MAIN_CHECKOUT } from '../testing/fake-integrate-git.ts';
+import { MemoryFiles } from '../testing/memory-files.ts';
+import { deployTargets, type DeployRequest } from './deploy.ts';
+import type { RollEnd } from './roll.ts';
+
+const PLACES: CoordinatorPlaces = {
+  ledger: '/team/deploys/ledger.jsonl',
+  ledgerMd: '/team/deploys/ledger.md',
+  claims: '/team/deploys/claims.json',
+  claimsMd: '/team/deploys/claims.md',
+  claimsLock: '/team/deploys/claims.lock',
+  hostLock: '/kit/host.lock',
+};
+const FLOW = { name: 'flow', command: ['node', 'gates/flow.js'] };
+const ROLL_COMMAND = ['node', 'tools/roll.js'];
+const ROLL: RollConfig = { targets: ['api', 'workers', 'live'], gates: [FLOW], afterPull: [['node', 'scripts/build-cli.js']], command: ROLL_COMMAND };
+const PIPELINE: CoordinatorRepoConfig = { mainCheckout: MAIN_CHECKOUT, deploysOnPush: [], dependencyGate: false, followMainCheckout: false, roll: ROLL };
+const RESTART = ['node', 'tools/restart.js', 'api', 'live'];
+const REQUEST: DeployRequest = { session: 'sec', repo: 'pipeline', dir: '/runner', targets: ['api', 'live'], why: 'rotate the db credential', argv: RESTART };
+const SECRET = ['db password', '=', 'hunter2'].join('');
+const REDACTED = 'db [redacted password or key assignment]';
+
+interface Options {
+  readonly schedule?: ScheduleConfig;
+  readonly claims?: string;
+  readonly reset?: ResetTime;
+}
+
+class World {
+  readonly git = new FakeIntegrateGit();
+  readonly files: MemoryFiles;
+  readonly clock = new FakeClock('2030-01-08T10:00:00Z');
+  readonly hooks = new FakeHooks(this.clock);
+  readonly lock: HostLock;
+  readonly said: string[] = [];
+  private readonly coordinator: CoordinatorConfig;
+  private readonly reset: ResetTime | undefined;
+
+  constructor(options: Options = {}) {
+    this.files = new MemoryFiles(options.claims === undefined ? {} : { [PLACES.claims]: options.claims });
+    this.lock = new HostLock(PLACES.hostLock, 150 * 60_000, { files: this.files, clock: this.clock, sleep: this.clock.sleep, pid: 7, alive: () => true, newId: () => 'lock-1' });
+    this.reset = options.reset;
+    this.coordinator = {
+      schedule: options.schedule ?? {},
+      heavy: DEFAULT_HEAVY,
+      wait: DEFAULT_COORDINATOR_WAIT,
+      gateTimeoutSeconds: DEFAULT_GATE_TIMEOUT_SECONDS,
+      claims: DEFAULT_CLAIMS,
+      windows: DEFAULT_WINDOWS,
+      repos: { pipeline: PIPELINE },
+    };
+  }
+
+  run(request: DeployRequest = REQUEST): Promise<RollEnd> {
+    const setup = { team: 'app', coordinator: this.coordinator, places: PLACES, zone: TimeZone.UTC, inTeam: (path: string) => path };
+    return deployTargets(setup, {
+      git: this.git,
+      hooks: this.hooks,
+      files: this.files,
+      clock: this.clock,
+      sleep: this.clock.sleep,
+      lock: this.lock,
+      env: { PATH: '/bin' },
+      platform: 'linux',
+      scanner: new SecretScanner(),
+      nextReset: async () => this.reset,
+      newId: () => 'step-1',
+      say: (text) => this.said.push(text),
+    }, request);
+  }
+
+  records(): unknown[] {
+    return (this.files.get(PLACES.ledger) ?? '').split('\n').filter((line) => line !== '').map((line): unknown => JSON.parse(line));
+  }
+
+  /** The heavy step's two records, its end with `exitCode`. */
+  heavy(exitCode: number, startedAt: string, endedAt: string): unknown[] {
+    const start = { type: 'heavy', id: 'step-1', session: 'sec', what: 'deploy api,live of pipeline', kit: KIT_VERSION, queuedAt: '2030-01-08T10:00:00.000Z', startedAt, endedAt: null, exitCode: null };
+    return [start, { ...start, endedAt, exitCode }];
+  }
+
+  lockFree(): boolean {
+    return this.files.get(PLACES.hostLock) === undefined;
+  }
+}
+
+function teamrigEnv(env: Env): Record<string, string | undefined> {
+  return Object.fromEntries(Object.entries(env).filter(([name]) => name.startsWith('TEAMRIG_')));
+}
+
+function claim(targets: readonly string[]): object {
+  return { session: 'ops', targets, metric: 'p95', why: 'latency probe', from: '2030-01-08T09:50:00.000Z', until: '2030-01-08T10:05:00.000Z' };
+}
+
+describe('deployTargets', () => {
+  it('asks the gates before and under the lock, runs the command with the lock, and records one heavy step and a deploy of its targets', async () => {
+    const world = new World();
+    world.hooks.answer(RESTART, { lines: ['restarting api, live', 'restarted 2 deployments'], takesMs: 90_000 });
+    assert.deepEqual(await world.run(), { kind: 'done', summary: 'deployed api, live of pipeline: restarted 2 deployments' });
+    assert.deepEqual(world.hooks.commands, ['node gates/flow.js', 'node gates/flow.js', RESTART.join(' ')], 'nothing is pulled, built or rolled');
+    const base = { TEAMRIG_TEAM: 'app', TEAMRIG_SESSION: 'sec', TEAMRIG_VERB: 'deploy', TEAMRIG_REPO: 'pipeline', TEAMRIG_DEPLOY_TARGETS: 'api,live' };
+    const [before, locked, command] = world.hooks.ran;
+    assert.deepEqual(teamrigEnv(before?.env ?? {}), { ...base, TEAMRIG_GATE_NAME: 'flow', TEAMRIG_GATE_PHASE: 'before' });
+    assert.deepEqual(teamrigEnv(locked?.env ?? {}), { ...base, TEAMRIG_GATE_NAME: 'flow', TEAMRIG_GATE_PHASE: 'locked' });
+    assert.deepEqual(teamrigEnv(command?.env ?? {}), { ...base, TEAMRIG_HOST_LOCK: 'lock-1' });
+    assert.deepEqual([before?.cwd, command?.cwd, command?.timeoutMs, command?.env['PATH']], [MAIN_CHECKOUT, '/runner', DEFAULT_HEAVY.maxRunMinutes * 60_000, '/bin']);
+    assert.deepEqual(world.records(), [
+      ...world.heavy(0, '2030-01-08T10:00:00.000Z', '2030-01-08T10:01:30.000Z'),
+      {
+        type: 'deploy',
+        kind: 'deploy',
+        session: 'sec',
+        repo: 'pipeline',
+        range: 'at base',
+        what: 'deploy api, live',
+        note: 'rotate the db credential; restarted 2 deployments',
+        startedAt: '2030-01-08T10:00:00.000Z',
+        rolledAt: '2030-01-08T10:01:30.000Z',
+        targets: ['api', 'live'],
+      },
+    ]);
+    assert.ok(world.said.includes('  restarting api, live'), 'the command’s lines are shown as they come');
+    assert.equal(world.git.heads.get(MAIN_CHECKOUT), 'base');
+    assert.ok(world.lockFree());
+  });
+
+  it('refuses targets its repository does not deploy, or none, before any gate or lock', async () => {
+    const world = new World();
+    const listed = 'coordinator.repos.pipeline.roll.targets (api, workers, live)';
+    assert.deepEqual(await world.run({ ...REQUEST, targets: ['api', 'apii', 'cron'] }), { kind: 'refused', reason: `apii, cron are not in ${listed}: a deploy names only targets the quiet claims and windows know` });
+    assert.deepEqual(await world.run({ ...REQUEST, targets: ['apii'] }), { kind: 'refused', reason: `apii is not in ${listed}: a deploy names only targets the quiet claims and windows know` });
+    assert.deepEqual(await world.run({ ...REQUEST, targets: [] }), { kind: 'refused', reason: `name the targets the command restarts, from ${listed}` });
+    assert.deepEqual(await world.run({ ...REQUEST, repo: 'site' }), { kind: 'refused', reason: 'site is not in coordinator.repos (with a roll block: pipeline)' });
+    assert.deepEqual([world.hooks.ran.length, world.records().length, world.lockFree()], [0, 0, true]);
+  });
+
+  it('refuses a main checkout with no commit at HEAD, before any gate or lock', async () => {
+    const world = new World();
+    world.git.heads.delete(MAIN_CHECKOUT);
+    assert.deepEqual(await world.run(), { kind: 'refused', reason: `${MAIN_CHECKOUT} (coordinator.repos.pipeline.mainCheckout) names no commit at HEAD, so the deploy could not record what it ran on` });
+    assert.equal(world.hooks.ran.length, 0);
+  });
+
+  it('waits out a quiet claim on a target it names, and not one on a target it leaves alone', async () => {
+    const held = new World({ claims: JSON.stringify([claim(['live'])]) });
+    assert.equal((await held.run()).kind, 'done');
+    assert.ok(held.said.includes('waiting: quiet claim by ops on live until 2030-01-08 10:05 UTC (p95)'));
+    assert.ok(held.clock.now() >= Date.parse('2030-01-08T10:05:00Z'));
+    const free = new World({ claims: JSON.stringify([claim(['workers'])]) });
+    assert.equal((await free.run()).kind, 'done');
+    assert.ok(!free.said.some((line) => line.startsWith('waiting:')), 'a claim on workers does not hold a restart of api and live');
+  });
+
+  it('is refused at the heavy cutoff and in the blackout before the token reset, running nothing', async () => {
+    const late = new World({ schedule: { heavyCutoffUtc: '09:00' } });
+    assert.deepEqual(await late.run(), { kind: 'refused', reason: 'nothing heavy 09:00-00:00 UTC (now 10:00 UTC)' });
+    const blackout = new World({ schedule: { resetBlackoutHours: 2 }, reset: { at: Date.parse('2030-01-08T11:00:00Z'), source: 'usage snapshot' } });
+    const end = await blackout.run();
+    assert.equal(end.kind, 'refused');
+    assert.match(end.kind === 'refused' ? end.reason : '', /^deploy blackout before the weekly token reset: no deploy from .* \(reset from the usage snapshot\)$/);
+    assert.deepEqual([late.hooks.ran.length, blackout.hooks.ran.length, late.records().length, blackout.records().length], [0, 0, 0, 0]);
+  });
+
+  it('waits while a gate holds it and is refused when a gate refuses, running nothing', async () => {
+    const held = new World();
+    held.hooks.answer(FLOW.command, { lines: ['batch run open since 23:10 UTC'], end: 75 }, {});
+    assert.equal((await held.run()).kind, 'done');
+    assert.ok(held.said.includes('waiting: gate flow holds the roll: batch run open since 23:10 UTC'));
+    const frozen = new World();
+    frozen.hooks.answer(FLOW.command, { lines: ['frozen for the release'], end: 2 });
+    assert.deepEqual(await frozen.run(), { kind: 'refused', reason: 'gate flow refuses the roll: frozen for the release' });
+    assert.deepEqual([frozen.hooks.commands, frozen.records().length, frozen.lockFree()], [['node gates/flow.js'], 0, true]);
+  });
+
+  it('records the deploy and fails when the command fails, its lines and reason redacted', async () => {
+    const world = new World();
+    world.hooks.answer(RESTART, { lines: ['restarting api', `refused: ${SECRET}`], end: 3 });
+    assert.deepEqual(await world.run({ ...REQUEST, why: `rotate ${SECRET}` }), {
+      kind: 'failed',
+      reason: `the command exited 3: refused: ${REDACTED}, so api, live may be partly restarted; its owners fix forward or roll back`,
+    });
+    const [, , deploy] = world.records();
+    assert.deepEqual(deploy, {
+      type: 'deploy',
+      kind: 'deploy',
+      session: 'sec',
+      repo: 'pipeline',
+      range: 'at base',
+      what: 'deploy api, live',
+      note: `rotate ${REDACTED}; the command exited 3: refused: ${REDACTED}`,
+      startedAt: '2030-01-08T10:00:00.000Z',
+      rolledAt: '2030-01-08T10:00:00.000Z',
+      targets: ['api', 'live'],
+    });
+    assert.deepEqual(world.records().slice(0, 2), world.heavy(3, '2030-01-08T10:00:00.000Z', '2030-01-08T10:00:00.000Z'));
+    assert.ok(world.lockFree());
+  });
+
+  it('fails with no deploy recorded when the command cannot start', async () => {
+    const world = new World();
+    world.hooks.answer(RESTART, { end: { kind: 'notStarted', error: 'ENOENT' } });
+    const end = await world.run();
+    assert.equal(end.kind, 'failed');
+    assert.match(end.kind === 'failed' ? end.reason : '', /^the command could not start \(ENOENT\), so nothing was deployed$/);
+    assert.deepEqual(world.records().map((record) => (typeof record === 'object' && record !== null && 'type' in record ? record.type : undefined)), ['heavy', 'heavy']);
+    assert.ok(world.lockFree());
+  });
+});
