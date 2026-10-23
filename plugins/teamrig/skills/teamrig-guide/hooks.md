@@ -452,7 +452,8 @@ nested shells, `cd`, pipes and substitutions) and refuses a call that would prin
   (`python -c "print(open('.env').read())"`; a wildcard in its strings counts only where the code can expand it, by
   a glob call or by starting a program, so `'*'` as a fallback or `'.*'` in a regex passes), the Read tool on one, or
   a Grep that shows content (`output_mode: content`) of one by its path or glob (each glob of the input apart, as
-  ripgrep gets them; a `!glob` skips files, so it names none).
+  ripgrep gets them, and each of its `{a,b}` alternatives, so `*.{ts,pem}` names `*.pem`; a glob with over 64
+  alternatives counts as naming one; a `!glob` skips files, so it names none).
   The defaults: `**/.env`, `**/.env.*`, `~/.npmrc`, `~/.ssh/**`,
   `~/.aws/credentials`, `**/.kube/config`, `~/.docker/config.json`, `**/.git-credentials`, `~/.config/gh/hosts.yml`,
   `~/.claude/.credentials.json`, `~/.claude/history.jsonl` (the prompt history), `**/.claude/settings.local.json`
@@ -523,7 +524,7 @@ reads only the call, so it cannot see the cases below; what such a call prints g
 - a value kept in a variable and printed later (`t=$(cat .env); echo "$t"`), or a path built when the line runs
   (`cat $(ls .env*)`, `Get-Content (Join-Path ~ .npmrc)`);
 - a secret file inside a folder a search walks (`grep -r x .`, a Grep over a folder with no glob or only
-  `!globs`), or one a Grep glob picks through `{a,b}` alternatives (`*.{ts,pem}`);
+  `!globs`);
 - a script or program the line starts (`node print-env.js`), `docker inspect`, or `docker run -e`;
 - a secret written with no shape or frame it knows (`mysql -p<the password>`, `--password <the value>`).
 
