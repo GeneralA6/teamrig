@@ -150,7 +150,10 @@ describe('the Stop hook checks for tabs that run without their hooks', () => {
     const other = new CliHarness(ROLES_TEAM);
     await writeTab(other, 'alpha', 2 * HOOKLESS_MS, 'web');
     await stop(other, tabTranscript(other, [reply(other, 0)]));
-    for (const kit of [idle, fresh, other]) {
+    const retired = new CliHarness(ROLES_TEAM);
+    await writeTab(retired, 'charlie', 2 * HOOKLESS_MS);
+    await stop(retired, tabTranscript(retired, [reply(retired, 0)]));
+    for (const kit of [idle, fresh, other, retired]) {
       assert.deepEqual(hooklessLines(kit, 'lead'), []);
     }
 

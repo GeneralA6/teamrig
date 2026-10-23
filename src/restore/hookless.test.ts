@@ -76,7 +76,7 @@ describe('the hookless state file', () => {
 });
 
 describe('staleEntries', () => {
-  it("keeps only a live, named session of the team with a transcript, whose hooks last wrote over HOOKLESS_MS ago", () => {
+  it("keeps only a live session on the team with a transcript, whose hooks last wrote over HOOKLESS_MS ago", () => {
     const stale = entry();
     const kept = staleEntries(
       [
@@ -84,11 +84,13 @@ describe('staleEntries', () => {
         entry({ team: 'other' }),
         entry({ team: undefined }),
         entry({ session: undefined }),
+        entry({ session: 'retired' }),
         entry({ endedAt: NOW - HOOKLESS_MS }),
         entry({ transcriptPath: undefined }),
         entry({ updatedAt: NOW - HOOKLESS_MS }),
       ],
       'app',
+      ['lead', 'alpha'],
       NOW,
     );
     assert.deepEqual(kept, [stale]);
