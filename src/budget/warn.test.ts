@@ -8,7 +8,7 @@ import type { SurplusHint } from './burst-lines.ts';
 import type { Lift } from './lift.ts';
 import { DailyProfile } from './active-time.ts';
 import { readPace, weekWindow, type PaceBudget, type TeamDay } from './pace.ts';
-import { emptyWarnState, helperGate, isHeld, isPastDailyBudget, levelOf, promptWarning, quietSpanOf, sessionQuietSpan, stopWarning, type BudgetFacts, type WarnBudget, type WarnState } from './warn.ts';
+import { emptyWarnState, helperGate, isHeld, isPastDailyBudget, levelOf, promptWarning, quietSpanOf, sessionQuietSpan, stopWarning, type BudgetFacts, type BudgetLeader, type WarnBudget, type WarnState } from './warn.ts';
 
 const RESET = Date.parse('2026-10-21T01:00:00Z');
 const WINDOW = weekWindow(RESET, 1);
@@ -25,6 +25,10 @@ const BUDGET: WarnBudget = { ...DAYTIME, quietHours: QUIET };
 const NO_ROOM: TeamDay = { usedPct: 5, pacePct: 5 };
 const ROOM: TeamDay = { usedPct: 2, pacePct: 5 };
 
+/** The team's lead as a session's leader, and a sub-lead that leads alpha. */
+const LEAD: BudgetLeader = { id: 'lead', name: 'lead', isLead: true };
+const SUB_LEAD: BudgetLeader = { id: 'bravo', name: 'app-bravo', isLead: false };
+
 /** A session at `usedTodayPct` of a 1% daily budget, with the week `weekUsedPct` used at `now` and no room today. */
 function facts(usedTodayPct: number, weekUsedPct: number, now = DAY, extra: Partial<BudgetFacts> = {}): BudgetFacts {
   return {
@@ -40,6 +44,7 @@ function facts(usedTodayPct: number, weekUsedPct: number, now = DAY, extra: Part
     pace: readPace(WINDOW, PACE, now, weekUsedPct, DailyProfile.even()),
     teamDay: NO_ROOM,
     isLead: false,
+    leader: LEAD,
     zone: TimeZone.UTC,
     ...extra,
   };
@@ -217,6 +222,13 @@ describe('stopWarning', () => {
     const later = stopWarning(facts(1.6, AHEAD), BUDGET, first.state);
     assert.equal(later.leadLine, undefined);
     assert.equal(later.lines.length, 1);
+  });
+
+  it("names a sub-lead's member's own leader, and its line asks the lead to lift", () => {
+    const result = stopWarning(facts(1.1, AHEAD, DAY, { leader: SUB_LEAD }), BUDGET, undefined);
+    assert.match(result.lines[0] ?? '', /Its leader app-bravo has an inbox line\./);
+    assert.ok(!(result.lines[0] ?? '').includes('the lead has'), result.lines[0]);
+    assert.match(result.leadLine ?? '', /It finishes the step in hand; only the lead lifts it, with a stop %, so ask the lead when it should: teamrig budget lift alpha --part <pct>/);
   });
 
   it('never tells the lead about itself', () => {

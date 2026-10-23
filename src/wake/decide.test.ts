@@ -246,6 +246,7 @@ describe('wakeRestOf', () => {
     // The team at its in-day pace: no room, so a session past its part is held.
     teamDay: { usedPct: 5, pacePct: 5 },
     isLead: false,
+    leader: { id: 'lead', name: 'lead', isLead: true },
     zone: TimeZone.UTC,
     ...overrides,
   });

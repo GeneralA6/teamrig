@@ -17,6 +17,7 @@ import { EXIT } from './runtime.ts';
 const RESET = Date.parse('2030-01-14T01:00:00Z');
 const PROJECT = join(USER_HOME, '.claude', 'projects', 'app');
 const ALPHA_TAB = '0000000a-0000-4000-8000-000000000001';
+const BRAVO_TAB = '0000000b-0000-4000-8000-000000000002';
 const LEAD_TAB = '0000000d-0000-4000-8000-000000000004';
 /** A tab no team session read its inbox in. */
 const STRANGER_TAB = '0000000f-0000-4000-8000-000000000009';
@@ -108,6 +109,16 @@ describe('the budget in the hooks', () => {
     );
     assert.match(await leadInbox(kit), /alpha: app-alpha is past its daily budget: 1\.1% of the week today against 0\.59%,/);
     assert.deepEqual((await hook('stop', ALPHA_TAB)).stdout, []);
+    assert.doesNotMatch(await leadInbox(kit), /past its daily budget/);
+  });
+
+  it("tells a sub-lead's member's own leader, not the lead, and the line asks the lead to lift", async () => {
+    const team = await world({}, 10_000_000, 30, { leads: { bravo: ['alpha'] } });
+    const { kit, hook } = team;
+    await meterLead(team);
+    assert.match(messageOf(await hook('stop', ALPHA_TAB)), /Its leader app-bravo has an inbox line\./);
+    const bravo = (await kit.run(['inbox', 'read', '--session', 'bravo'], { env: { CLAUDE_CODE_SESSION_ID: BRAVO_TAB } })).stdout.join('\n');
+    assert.match(bravo, /alpha: app-alpha is past its daily budget: 1\.1% of the week today against 0\.59%,.* only the lead lifts it/);
     assert.doesNotMatch(await leadInbox(kit), /past its daily budget/);
   });
 
