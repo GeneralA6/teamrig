@@ -11,7 +11,17 @@ export function personHoldOf(refresh) {
 export const SETTLE_MS = 3_000;
 /** A session busy this long since its restart started (held by a helper included) keeps its context, and is told to type /clear. */
 export const GIVE_UP_MS = 60 * 60_000;
+/** How long past GIVE_UP_MS a restart may still act on its request: its last round's quiet window, ask and end. */
+const LAST_ROUND_SLACK_MS = 10 * 60_000;
 const POLL_MS = 500;
+/**
+ * The restart started for `request` may still act on it: one is pending or ending, asked less than GIVE_UP_MS and
+ * its last round's slack ago. An older request was left by a restart that never finished (the machine went down
+ * under it), and no restart will act on it.
+ */
+export function restartMayAct(request, now) {
+    return request !== undefined && now - Date.parse(request.at) < GIVE_UP_MS + LAST_ROUND_SLACK_MS;
+}
 /** Enough of the transcript to see that a line was added. */
 const QUIET_TAIL_BYTES = 4_096;
 /** The user typed (the prompt hook cleared the request) or a later notice replaced it. */
@@ -72,17 +82,20 @@ async function idleAt(deps, transcript) {
 }
 /** What a held answer's give-up says when the tab's mod gave no reason: one older than the reason. */
 export const NO_HOLD_REASON = 'its mod gave no reason';
+/** What a give-up says, before the pid, when the last look at the session's running process failed. */
+export const LOOKUP_FAILED = 'the system would not describe its process';
 /**
  * GIVE_UP_MS after the run `started`, the session keeps its context and is told to type /clear; undefined
- * before. `held`: why the tab's mod held the last ask, when that is what kept the session busy at this look.
+ * before. `last`: what kept the session from its restart at this look when it was not plain work, the tab's
+ * hold of the last ask or a look at its process the system failed.
  */
-async function gaveUp(deps, plan, started, held) {
+async function gaveUp(deps, plan, started, last) {
     if (deps.clock.now() - started < GIVE_UP_MS) {
         return undefined;
     }
     await deps.store.clearRestart(plan.id);
     const busy = `it stayed busy for ${GIVE_UP_MS / 60_000} minutes`;
-    return { kind: 'failed', why: held === undefined ? busy : `${busy} (its tab last held the /clear: ${held})` };
+    return { kind: 'failed', why: last === undefined ? busy : `${busy} (${last})` };
 }
 /**
  * The session is quiet when its transcript gained nothing over one whole delay, its last turn has ended
@@ -191,7 +204,8 @@ async function endSession(deps, plan, request, claude) {
  * The automatic context refresh's restart, started hidden by the Stop hook once the session's handover is
  * written (`refresh.autoRestart`). It waits until the session has been quiet for the whole delay, with its
  * last turn ended and no background work, and acts only while its request is still pending (a prompt the user types cancels it)
- * and the session still waits for a fresh start. Then it checks the process is Claude Code and:
+ * and the session still waits for a fresh start. Then it checks the process is Claude Code (a process that
+ * still runs but which the system would not describe is looked at again after the next quiet window) and:
  * - first asks the tab's mod to run /clear (`handToTab`). The /clear keeps the tab and its process, and
  *   Claude Code runs its own SessionEnd and SessionStart `clear` hooks, so no end command is needed;
  * - when the mod holds the ask (Claude Code says a helper of the session is still live, or would not list
@@ -224,8 +238,16 @@ export async function runRestart(deps, plan) {
         const request = quiet;
         const claude = await deps.processes.describe(request.pid);
         if (claude === undefined) {
-            await deps.store.clearRestart(plan.id);
-            return { kind: 'cancelled', why: 'its Claude Code has already ended' };
+            if (!deps.processes.alive(request.pid)) {
+                await deps.store.clearRestart(plan.id);
+                return { kind: 'cancelled', why: 'its Claude Code has already ended' };
+            }
+            // It runs, but the system would not describe it (a lookup that failed or timed out): look again after the next quiet window.
+            const given = await gaveUp(deps, plan, started, `${LOOKUP_FAILED} ${request.pid}`);
+            if (given !== undefined) {
+                return given;
+            }
+            continue;
         }
         if (!isClaudeProcess(claude)) {
             await deps.store.clearRestart(plan.id);
@@ -250,7 +272,7 @@ export async function runRestart(deps, plan) {
                 return CANCELLED;
             case 'held': {
                 // A helper may still run, which the transcript may not show: busy, never ended, however idle the transcript looks.
-                const given = await gaveUp(deps, plan, started, answer.why);
+                const given = await gaveUp(deps, plan, started, `its tab last held the /clear: ${answer.why}`);
                 if (given !== undefined) {
                     return given;
                 }
