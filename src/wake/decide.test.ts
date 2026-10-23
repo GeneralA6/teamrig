@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { BudgetFacts } from '../budget/warn.ts';
-import type { Task } from '../register/fold.ts';
+import type { ApprovalAnswer, Task } from '../register/fold.ts';
 import { waitContext, type WaitReason } from '../register/waits.ts';
 import { testTask } from '../testing/task.ts';
 import { JERUSALEM } from '../testing/zone.ts';
@@ -45,6 +45,10 @@ function input(tasks: ReadonlyMap<string, Task>, previous: WakeState | undefined
 
 const QUIET: WakeState = { tab: TAB, known: [], pending: undefined, lastWakeAt: undefined, settled: NO_SETTLED_MOMENTS };
 
+const ON_LEAD: WaitReason = { kind: 'approval', who: 'lead' };
+const APPROVED: ApprovalAnswer = { verdict: 'approved', by: 'lead', at: '2030-01-08T09:30:00.000Z', note: 'tests green' };
+const DECLINED: ApprovalAnswer = { ...APPROVED, verdict: 'declined', note: 'add the test' };
+
 describe('isWakeWorthy', () => {
   const context = waitContext(tasksOf(testTask({ id: 'T5', status: 'done' }), testTask({ id: 'T6' })), new Date(NOW), TimeZone.UTC);
 
@@ -85,6 +89,16 @@ describe('isWakeWorthy', () => {
     }
     assert.equal(isWakeWorthy(p1({ status: 'waiting', waits: [{ kind: 'time', at: '2030-01-08' }] }), 'alpha', 1, context), false);
     assert.equal(isWakeWorthy(p1({ status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }] }), 'alpha', 1, context), false);
+  });
+
+  it('takes a waiting task whose approval its giver answered, either way, and refuses one unanswered, answered by another, or still held (T996)', () => {
+    for (const answer of [APPROVED, DECLINED]) {
+      assert.equal(isWakeWorthy(p1({ status: 'waiting', waits: [ON_LEAD], answer }), 'alpha', 1, context), true, answer.verdict);
+    }
+    assert.equal(isWakeWorthy(p1({ status: 'waiting', waits: [ON_LEAD] }), 'alpha', 1, context), false, 'unanswered');
+    assert.equal(isWakeWorthy(p1({ status: 'waiting', waits: [{ kind: 'approval', who: 'owner' }], answer: APPROVED }), 'alpha', 1, context), false, 'another giver');
+    const held = p1({ status: 'waiting', waits: [ON_LEAD, { kind: 'task', id: 'T6' }], answer: APPROVED });
+    assert.equal(isWakeWorthy(held, 'alpha', 1, context), false, 'a task it waits on is not finished');
   });
 
   it('refuses a waiting task never started that comes after one not finished, though its waits cleared', () => {
@@ -130,9 +144,18 @@ describe('isNews', () => {
     assert.equal(isNews(until('2030-01-08', late), 'alpha', tasksOf(), JERUSALEM), false, 'the day ended 21:59 UTC there');
   });
 
-  it('is never news for a wait on a decision or an approval', () => {
-    const task = p1({ status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }, { kind: 'approval', who: 'lead' }], ownerSeenAt: seen });
+  it('is never news for a wait on a decision or an approval not yet answered', () => {
+    const task = p1({ status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }, ON_LEAD], ownerSeenAt: seen });
     assert.equal(isNews(task, 'alpha', tasksOf(), TimeZone.UTC), false);
+  });
+
+  it("is news when the giver answered an approval it waits on after the owner's touch, never before or by the owner (T996)", () => {
+    const waiting = (answer: ApprovalAnswer) => p1({ status: 'waiting', waits: [ON_LEAD], ownerSeenAt: seen, answer });
+    assert.equal(isNews(waiting(APPROVED), 'alpha', tasksOf(), TimeZone.UTC), true);
+    assert.equal(isNews(waiting(DECLINED), 'alpha', tasksOf(), TimeZone.UTC), true);
+    assert.equal(isNews(waiting({ ...APPROVED, at: '2030-01-08T08:30:00.000Z' }), 'alpha', tasksOf(), TimeZone.UTC), false, 'seen since');
+    const own = p1({ status: 'waiting', waits: [{ kind: 'approval', who: 'alpha' }], ownerSeenAt: seen, answer: { ...APPROVED, by: 'alpha' } });
+    assert.equal(isNews(own, 'alpha', tasksOf(), TimeZone.UTC), false, "the owner's own answer");
   });
 });
 
@@ -173,6 +196,17 @@ describe('decideWake', () => {
     assert.deepEqual(before.verdict, { kind: 'none' });
     const cleared = decideWake(input(tasksOf(waiting), before.state, { now: NOW + 60 * MINUTE, batchMs: 0 }));
     assert.deepEqual(cleared.verdict.kind === 'wake' ? cleared.verdict.tasks.map((task) => task.id) : [], ['T1']);
+  });
+
+  it('wakes the owner of a task waiting on approval once the lead answers it, not before (T996)', () => {
+    const waiting = p1({ status: 'waiting', waits: [ON_LEAD], ownerSeenAt: '2030-01-08T09:00:00.000Z' });
+    const before = decideWake(input(tasksOf(waiting), QUIET, { batchMs: 0 }));
+    assert.deepEqual(before.verdict, { kind: 'none' });
+    const answered = { ...waiting, answer: { ...APPROVED, at: '2030-01-08T10:30:00.000Z' } };
+    const woke = decideWake(input(tasksOf(answered), before.state, { now: NOW + 60 * MINUTE, batchMs: 0 }));
+    assert.deepEqual(woke.verdict.kind === 'wake' ? woke.verdict.tasks.map((task) => task.id) : [], ['T1']);
+    const again = decideWake(input(tasksOf(answered), woke.state, { now: NOW + 120 * MINUTE, batchMs: 0 }));
+    assert.deepEqual(again.verdict, { kind: 'none' }, 'one answer wakes it once');
   });
 
   it('waits out the least gap since the last wake', () => {
@@ -270,6 +304,11 @@ describe('wake text', () => {
   it('says a waiting or verifying task woke for its cleared waits', () => {
     assert.equal(taskListText([p1({ status: 'waiting', title: 'Fix it' })]), 'T1 "Fix it" (p1, waiting: every wait cleared)');
     assert.equal(taskListText([p1({ status: 'verifying', title: 'Fix it' })]), 'T1 "Fix it" (p1, verifying: every wait cleared)');
+  });
+
+  it("says a waiting task woke for its approval's answer, approved or declined (T996)", () => {
+    assert.equal(taskListText([p1({ status: 'waiting', title: 'Fix it', waits: [ON_LEAD], answer: APPROVED })]), 'T1 "Fix it" (p1, waiting: lead approved it)');
+    assert.equal(taskListText([p1({ status: 'waiting', title: 'Fix it', waits: [ON_LEAD], answer: DECLINED })]), 'T1 "Fix it" (p1, waiting: lead declined it)');
   });
 
   it('asks the session to start a work block and states the cost; the toast names the tasks', () => {
