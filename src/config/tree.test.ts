@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { testConfig } from '../testing/config.ts';
 import { Roster } from './roster.ts';
-import { describeNameClash, describeTreeProblem, TeamTree, teamNodeOf } from './tree.ts';
+import { describeNameClash, describeTreeProblem, ownerAsk, TeamTree, teamNodeOf } from './tree.ts';
 import type { TeamNode, TreeProblem } from './tree.ts';
 
 /** A team led by `lead` with one member `dev`, named `<team>-<id>`, under `parent` when given. */
@@ -121,6 +121,17 @@ describe('TeamTree', () => {
         ],
       },
     ]);
+  });
+});
+
+describe('ownerAsk', () => {
+  it('names the owner in a root team', () => {
+    assert.equal(ownerAsk(testConfig({ team: { id: 'app' } })), 'the owner');
+    assert.equal(ownerAsk(testConfig()), 'the owner');
+  });
+
+  it("names the parent team's lead in a child team, never the owner directly", () => {
+    assert.equal(ownerAsk(testConfig({ team: { id: 'web', parent: 'app' } })), 'the lead of team app, who takes it to the owner');
   });
 });
 

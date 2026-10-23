@@ -1,4 +1,5 @@
 import { isDefaultModel, isModel, launchOf } from '../config/launch.ts';
+import { ownerAsk } from '../config/tree.ts';
 import type { EffortLevel, HiringConfig, KitConfig } from '../config/types.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { ID_PATTERN } from '../core/ids.ts';
@@ -73,15 +74,6 @@ function reviewDayOf(request: HireRequest, config: KitConfig): Checked<string> {
     return { ok: false, problem: `the review day ${request.reviewBy} has passed` };
   }
   return { ok: true, value: formatUtcDay(day) };
-}
-
-/**
- * Whom a team's lead asks for what the owner approves: the owner in a root team. A child team's lead asks its parent
- * team's lead, who takes it up to the owner; it never goes to the owner directly.
- */
-export function ownerAsk(config: Pick<KitConfig, 'team'>): string {
-  const parent = config.team?.parent;
-  return parent === undefined ? 'the owner' : `the lead of team ${parent}, who takes it to the owner`;
 }
 
 /** The refusal under `hiring.policy`, or undefined when it allows this hire. */

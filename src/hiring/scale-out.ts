@@ -8,7 +8,8 @@ import type { Task } from '../register/fold.ts';
 import { ACTIVE_STATUSES, type TaskStatus } from '../register/model.ts';
 import type { TaskTree } from '../register/tree.ts';
 import type { HireCheckInput, HireFlag } from './due.ts';
-import { hireCapProblem, hiresOnTeam, ownerAsk } from './plan.ts';
+import { ownerAsk } from '../config/tree.ts';
+import { hireCapProblem, hiresOnTeam } from './plan.ts';
 
 /**
  * SCALE-OUT, the `check` flag on an area that cannot finish its dated work in time. Its pace is the tasks it finished

@@ -38,6 +38,15 @@ export function teamNodeOf(team: string, config: Pick<KitConfig, 'team' | 'roles
 }
 
 /**
+ * Whom a team's lead asks for what the owner approves: the owner in a root team. A child team's lead asks its parent
+ * team's lead, who takes it up to the owner; it never goes to the owner directly.
+ */
+export function ownerAsk(config: Pick<KitConfig, 'team'>): string {
+  const parent = config.team?.parent;
+  return parent === undefined ? 'the owner' : `the lead of team ${parent}, who takes it to the owner`;
+}
+
+/**
  * - `tree-id`: a config whose `team.id` is not its folder name;
  * - `tree-parent`: a parent with no team config;
  * - `tree-loop`: teams whose parent links go round in a loop, so none reaches a root;
