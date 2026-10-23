@@ -8,7 +8,7 @@ import type { Task } from '../register/fold.ts';
 import { ACTIVE_STATUSES, type TaskStatus } from '../register/model.ts';
 import type { TaskTree } from '../register/tree.ts';
 import type { HireCheckInput, HireFlag } from './due.ts';
-import { hireCapProblem, hiresOnTeam } from './plan.ts';
+import { hireCapProblem, hiresOnTeam, ownerAsk } from './plan.ts';
 
 /**
  * SCALE-OUT, the `check` flag on an area that cannot finish its dated work in time. Its pace is the tasks it finished
@@ -27,7 +27,7 @@ import { hireCapProblem, hiresOnTeam } from './plan.ts';
 
 export interface ScaleOutInput extends HireCheckInput {
   readonly tree: TaskTree;
-  readonly config: Pick<KitConfig, 'sessions' | 'roles' | 'hiring' | 'register'>;
+  readonly config: Pick<KitConfig, 'sessions' | 'roles' | 'hiring' | 'register' | 'team'>;
   /** The week's projected surplus (src/budget/burst.ts `surplusOf`); undefined with no reading of the week. */
   readonly spare: Pick<Surplus, 'sparePct' | 'paceEnd'> | undefined;
   /**
@@ -190,7 +190,14 @@ function moveAction(to: string): string {
 function hireAction(config: ScaleOutInput['config']): string {
   const owner = config.hiring.policy === 'owner';
   const hire = `${KIT_NAME} hire <new id> --scope "<the slice>" --reason "SCALE-OUT"${owner ? ' --approved-by "<who>"' : ''}`;
-  return `the lead ${owner ? 'asks the owner, then ' : ''}hires for it (${hire}), then ${KIT_NAME} update <id> --owner <new id>, for each`;
+  return `the lead ${owner ? `asks ${ownerAsk(config)}, then ` : ''}hires for it (${hire}), then ${KIT_NAME} update <id> --owner <new id>, for each`;
+}
+
+/** What the lead does when `hiring.maxSessions` blocks a hire: a card for the owner, through the parent team's lead in a child team. */
+function capAction(config: ScaleOutInput['config'], capProblem: string): string {
+  const parent = config.team?.parent;
+  const card = parent === undefined ? 'brings the owner a card' : `asks the lead of team ${parent} to bring the owner a card`;
+  return `${capProblem}: the lead ${card} to raise the cap, or moves the slice to another area`;
 }
 
 /** SCALE-OUT on each area that needs one, within the spare and the cap, and the idle hires given a slice. */
@@ -230,7 +237,7 @@ export function scaleOutFlags(input: ScaleOutInput): ScaleOutResult {
     }
     const capProblem = hireCapProblem(config.hiring, hired);
     if (capProblem !== undefined) {
-      flags.push({ kind: 'SCALE-OUT', session: need.area, detail, action: `${capProblem}: the lead brings the owner a card to raise the cap, or moves the slice to another area` });
+      flags.push({ kind: 'SCALE-OUT', session: need.area, detail, action: capAction(config, capProblem) });
       continue;
     }
     hired += 1;

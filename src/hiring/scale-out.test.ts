@@ -146,6 +146,18 @@ describe('scaleOutFlags: the budget and who takes the slice', () => {
     assert.equal(scaleOut(ALPHA_BEHIND, { config: config({ policy: 'owner' }) }).flags[0]?.action, action);
   });
 
+  it("sends a child team's lead to its parent team's lead, never the owner, for the owner's approval and for a card", () => {
+    const child = (hiring: JsonRecord, sessions: readonly string[] = ['lead', 'alpha', 'bravo']): KitConfig =>
+      testConfig({ sessions: [...sessions], team: { id: 'ui', parent: 'web' }, hiring: { policy: 'lead', ...hiring } });
+    const asked = scaleOut(ALPHA_BEHIND, { config: child({ policy: 'owner' }) }).flags[0]?.action ?? '';
+    assert.match(asked, /^the lead asks the lead of team web, who takes it to the owner, then hires for it \(teamrig hire <new id> /);
+    const capped = scaleOut([...ALPHA_BEHIND, testTask({ id: 'T50', owner: 'helper' })], { config: child({ maxSessions: 1 }, ['lead', 'alpha', 'helper']), hires: [hire('helper')] });
+    assert.equal(
+      capped.flags[0]?.action,
+      'the team already has 1 hired session(s), the most hiring.maxSessions allows: the lead asks the lead of team web to bring the owner a card to raise the cap, or moves the slice to another area',
+    );
+  });
+
   it('brings the owner a card when hiring.maxSessions blocks, counting the hires flagged before it', () => {
     const card = ': the lead brings the owner a card to raise the cap, or moves the slice to another area';
     const team = config({}, ['lead', 'alpha', 'bravo', 'helper']);

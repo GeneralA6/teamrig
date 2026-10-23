@@ -74,6 +74,9 @@ describe('planHire', () => {
     assert.match(problem({ ...FILE, hiring: { policy: 'owner' } }), /--approved-by/);
     assert.match(problem({ ...FILE, hiring: { policy: 'owner' } }, { approvedBy: ' ' }), /--approved-by/);
     assert.match(problem({ sessions: ['lead'], roles: { lead: 'lead' } }), /hiring\.policy is owner/);
+    assert.match(problem({ ...FILE, hiring: { policy: 'owner' } }), /the owner approves each hire; ask the owner, then pass --approved-by/);
+    const child = { ...FILE, team: { id: 'ui', parent: 'web' }, hiring: { policy: 'owner' } };
+    assert.match(problem(child), /the owner approves each hire; ask the lead of team web, who takes it to the owner, then pass --approved-by/);
     assert.equal(planned({ ...FILE, hiring: { policy: 'automatic' } }).hire.session, 'helper');
   });
 
