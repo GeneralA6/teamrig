@@ -462,6 +462,15 @@ export function approvalNotice(task: Pick<Task, 'id'>, answer: ApprovalAnswer): 
 }
 
 /**
+ * The inbox line a parent team's lead gets when a task it handed `team` ends (T509), the task named `<team>/<id>`: a
+ * done one with its evidence, a dropped one with its note, `web/T1 done: Ship login | evidence: PR #12 merged`.
+ */
+export function endedNotice(task: Pick<Task, 'id' | 'status' | 'title' | 'note' | 'evidence'>, team: string): string {
+  const [label, why] = task.status === 'done' ? ['evidence', task.evidence] : ['note', task.note];
+  return `${team}/${task.id} ${task.status}: ${task.title}${why === null ? '' : ` | ${label}: ${why.replace(/\s+/g, ' ')}`}`;
+}
+
+/**
  * The inbox line telling a leader (the lead, or a sub-lead, T781) that a task now waits on it, or, for the lead, on
  * the owner, whose decision queue the lead keeps: `T2 waits on your approval and the owner's decision: <note>`, the
  * note (else the title) on one line.

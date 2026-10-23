@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readEvents } from '../register/snapshot.ts';
 import { EVENTS_PATH } from '../testing/cli-harness.ts';
-import { teamEventsOf, teamInboxOf, treeHarness } from '../testing/team-tree.ts';
+import { teamConfigOf, teamEventsOf, teamInboxOf, treeHarness } from '../testing/team-tree.ts';
 import type { CliHarness } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
 
@@ -168,5 +168,66 @@ describe('teamrig list|check|plan --tree', () => {
     assert.ok(byFlag.stdout.some((line) => line.startsWith('web/T1 ')));
     const own = await kit.run(['list', '--session', 'lead']);
     assert.ok(own.stdout.every((line) => !line.startsWith('web/')));
+  });
+});
+
+describe('teamrig set: a task from the parent team ends (T509)', () => {
+  const done = (evidence: string, note = 'shipped', session = 'lead'): string[] =>
+    ['set', 'T1', '--status', 'done', '--note', note, '--evidence', evidence, '--skill', 'none', '--followups', 'none', '--session', session];
+
+  it("tells the parent's lead in its own inbox, under the child team's name, once", async () => {
+    const kit = await seeded();
+    const result = await kit.run(done('PR #12 merged'), { env: WEB });
+    assert.equal(result.code, EXIT.ok);
+    assert.ok(result.stderr.includes('NOTE app/lead has an inbox line: web/T1 done: Ship login | evidence: PR #12 merged'), result.stderr.join('\n'));
+    const told = '- 2030-01-08 10:00 web/lead: web/T1 done: Ship login | evidence: PR #12 merged\n';
+    assert.equal(kit.files.get(teamInboxOf('app', 'lead')), told);
+    const again = await kit.run(done('PR #12 merged', 'merged twice'), { env: WEB });
+    assert.equal(again.code, EXIT.ok);
+    assert.equal(kit.files.get(teamInboxOf('app', 'lead')), told);
+  });
+
+  it('names a dropped task with its note', async () => {
+    const kit = await seeded();
+    const result = await kit.run(['set', 'T1', '--status', 'dropped', '--note', 'not needed', '--session', 'lead'], { env: WEB });
+    assert.equal(result.code, EXIT.ok);
+    assert.equal(kit.files.get(teamInboxOf('app', 'lead')), '- 2030-01-08 10:00 web/lead: web/T1 dropped: Ship login | note: not needed\n');
+  });
+
+  it("tells a sub-team's lead of its child team's task, and no team above it", async () => {
+    const kit = await treeHarness();
+    await kit.run(['add', '--team', 'ui', '--title', 'New icons', '--description', 'what and why', '--priority', 'p1', '--session', 'lead'], { env: WEB });
+    const result = await kit.run(done('icons in the build'), { env: { TEAMRIG_TEAM: 'ui' } });
+    assert.equal(result.code, EXIT.ok);
+    assert.equal(kit.files.get(teamInboxOf('web', 'lead')), '- 2030-01-08 10:00 ui/lead: ui/T1 done: New icons | evidence: icons in the build\n');
+    assert.equal(kit.files.get(teamInboxOf('app', 'lead')), undefined);
+  });
+
+  it("tells no one when a team's own task ends, on a child team or the root", async () => {
+    const kit = await seeded();
+    const before = [kit.files.get(teamInboxOf('web', 'lead')), kit.files.get(teamInboxOf('app', 'lead'))];
+    const child = await kit.run(done('icons drawn', 'shipped', 'pixel'), { env: { TEAMRIG_TEAM: 'ui' } });
+    const root = await kit.run(done('root shipped', 'shipped', 'alpha'));
+    assert.deepEqual([child.code, root.code], [EXIT.ok, EXIT.ok]);
+    assert.deepEqual([kit.files.get(teamInboxOf('web', 'lead')), kit.files.get(teamInboxOf('app', 'lead'))], before);
+  });
+
+  it("scans the line with the parent team's secret patterns too, and keeps the task when it cannot go", async () => {
+    const kit = await treeHarness({ register: { secretPatterns: ['hush-[0-9]+'] } });
+    await kit.run(['add', '--team', 'web', '--title', 'Ship login', '--description', 'what and why', '--priority', 'p2', '--session', 'lead']);
+    const result = await kit.run(done('rotated hush-1234'), { env: WEB });
+    assert.equal(result.code, EXIT.ok);
+    assert.match(result.stdout[0] ?? '', /^SET T1 done/);
+    assert.deepEqual(result.stderr.filter((line) => line.startsWith('WARN')).map((line) => line.split(':')[0]), ['WARN app/lead was not told that web/T1 ended']);
+    assert.equal(kit.files.get(teamInboxOf('app', 'lead')), undefined);
+  });
+
+  it('names a parent with no config instead of throwing, the task set either way', async () => {
+    const kit = await treeHarness();
+    await kit.run(['add', '--team', 'ui', '--title', 'New icons', '--description', 'what and why', '--priority', 'p1', '--session', 'lead'], { env: WEB });
+    assert.equal(await kit.files.remove(teamConfigOf('web')), true);
+    const result = await kit.run(done('icons in the build'), { env: { TEAMRIG_TEAM: 'ui' } });
+    assert.equal(result.code, EXIT.ok);
+    assert.ok(result.stderr.includes("WARN web's lead was not told that ui/T1 ended: team web has no config in this kit home"), result.stderr.join('\n'));
   });
 });

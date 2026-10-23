@@ -11,6 +11,7 @@ import {
   byPlanOrder,
   dueTime,
   cut,
+  endedNotice,
   formatEvent,
   formatNextMove,
   formatShortTask,
@@ -547,8 +548,20 @@ describe("the views in the team's zone", () => {
   });
 });
 
+describe("the line a parent team's lead gets when its task ends (T509)", () => {
+  it('names the task <team>/<id>, a done one with its evidence and a dropped one with its note, each on one line', () => {
+    const task = testTask({ id: 'T4', title: 'Ship login', evidence: 'PR #12\nmerged', note: 'shipped' });
+    assert.equal(endedNotice({ ...task, status: 'done' }, 'web'), 'web/T4 done: Ship login | evidence: PR #12 merged');
+    assert.equal(endedNotice({ ...task, status: 'dropped', note: 'not  needed' }, 'web'), 'web/T4 dropped: Ship login | note: not needed');
+  });
+
+  it('ends at the title when the team asks no evidence on done', () => {
+    assert.equal(endedNotice(testTask({ id: 'T4', title: 'Ship login', status: 'done', evidence: null }), 'web'), 'web/T4 done: Ship login');
+  });
+});
+
 describe('the answer to an approval (T684)', () => {
-  const answer = { verdict: 'approved' as const, by: 'lead', at: '2030-01-07T14:00:00.000Z', note: 'tests green, small commits' };
+  const answer ={ verdict: 'approved' as const, by: 'lead', at: '2030-01-07T14:00:00.000Z', note: 'tests green, small commits' };
 
   it("tells the task's owner to push or merge on an approval, and to fix and ask again on a decline, each on one line", () => {
     assert.equal(

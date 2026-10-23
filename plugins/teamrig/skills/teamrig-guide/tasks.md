@@ -112,7 +112,8 @@ A shipped change is proven by the session that shipped it, oldest first, before 
   adds a line to its history, so an asker can attach the evidence or a wording the owner should take up.
 - **Child teams**: only a parent team's lead hands a child team work, with `add --team <child>`. The task lands
   in the child's register, owned by the child's lead (who plans it in) and sourced `<parent team>/<lead id>`; the
-  parent's own register is not touched. Each lead sees the teams under it with `list`, `check` and `plan --tree`.
+  parent's own register is not touched; once the task is done or dropped, the parent's lead gets one inbox line
+  (`web/T1 done: <title> | evidence: ...`). Each lead sees the teams under it with `list`, `check` and `plan --tree`.
 
 ## A task or a step
 
