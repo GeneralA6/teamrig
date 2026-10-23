@@ -44,8 +44,18 @@ export interface BudgetFacts {
   readonly teamDay: TeamDay;
   /** The session is the team's lead: it lifts budgets, so its own helpers never ask and it gets no inbox line. */
   readonly isLead: boolean;
+  /** Who gets the session's inbox line when it escalates: its own leader; undefined for the lead, which gets none. */
+  readonly leader: BudgetLeader | undefined;
   /** The team's zone, which the lines print their times in. */
   readonly zone: TimeZone;
+}
+
+/** A session's own leader in the team's lead tree (the sub-lead that lists it, else the lead), by id and name. */
+export interface BudgetLeader {
+  readonly id: string;
+  readonly name: string;
+  /** The leader is the team's lead, who lifts budgets; a sub-lead passes the ask up to the lead. */
+  readonly isLead: boolean;
 }
 
 export type WarnBudget = Pick<BudgetConfig, 'warnAtPct' | 'overAction' | 'escalate' | 'quietHours'>;
@@ -62,7 +72,7 @@ export interface WarnState extends BurstMarks {
   readonly ahead: boolean;
   /** The session was held (`isHeld`) at the last turn's end. */
   readonly held: boolean;
-  /** The lead got today's inbox line about this session. */
+  /** The session's leader got today's inbox line about it (the lead's, before sub-leads, hence the name). */
   readonly leadTold: boolean;
   /** When the quiet hours whose line was shown began, epoch ms. */
   readonly quietFrom: number | undefined;
@@ -237,7 +247,13 @@ function escalatedText(facts: BudgetFacts, budget: WarnBudget): string {
     return '';
   }
   const helpers = helperClause(budget.overAction);
-  return helpers === undefined ? 'The lead has an inbox line.' : `${capitalized(helpers)}; the lead has an inbox line.`;
+  const told = toldText(facts.leader);
+  return helpers === undefined ? `${capitalized(told)}.` : `${capitalized(helpers)}; ${told}.`;
+}
+
+/** `the lead has an inbox line`, or for a sub-lead's member `its leader <name> has an inbox line`. */
+function toldText(leader: BudgetLeader | undefined): string {
+  return leader === undefined || leader.isLead ? 'the lead has an inbox line' : `its leader ${leader.name} has an inbox line`;
 }
 
 function joined(parts: readonly string[]): string {
@@ -270,16 +286,19 @@ function quietLine(quiet: QuietHours, span: QuietSpan, facts: BudgetFacts): stri
 export interface StopWarning {
   /** Lines for the person, oldest concern first. */
   readonly lines: readonly string[];
-  /** The lead's inbox line, when this turn escalated the session and the lead was not told today. */
+  /** Its leader's inbox line ({@link BudgetFacts.leader}), when this turn escalated the session and the leader was not told today. */
   readonly leadLine: string | undefined;
   readonly state: WarnState;
 }
 
+/** The leader's line: the lead lifts the budget itself; a sub-lead, which cannot, asks the lead when it should. */
 function leadLineOf(facts: BudgetFacts, standing: Standing): string {
+  const command = `teamrig budget lift ${facts.id} --part <pct> --stop-pct <pct> --reason "<why>"`;
+  const lift = facts.leader === undefined || facts.leader.isLead ? `lift it only with a stop %: ${command}` : `only the lead lifts it, with a stop %, so ask the lead when it should: ${command}`;
   return (
     `${facts.name} is past its daily budget: ${formatPct(facts.usedTodayPct)} of the week today against ${formatPct(facts.budgetPct)}, ` +
     `and ${heldClause(facts, standing)}. ` +
-    `It finishes the step in hand; lift it only with a stop %: teamrig budget lift ${facts.id} --part <pct> --stop-pct <pct> --reason "<why>".`
+    `It finishes the step in hand; ${lift}.`
   );
 }
 
