@@ -27,8 +27,8 @@ export interface SurplusHint {
   readonly paceEnd: number;
   /** The reset that names the week, so the line shows once a week. */
   readonly reset: number;
-  /** `burst.policy` is `owner`: the owner approves each burst. */
-  readonly ownerApproves: boolean;
+  /** Whom the lead asks first under `burst.policy` owner; undefined when the lead decides. */
+  readonly ownerAsk: string | undefined;
 }
 
 export interface SurplusHintInput {
@@ -39,6 +39,8 @@ export interface SurplusHintInput {
   readonly targetPct: number;
   /** The team and the other teams on its account, which split the spare (`surplusOf`). */
   readonly teams: TeamsOnAccount;
+  /** Whom the lead asks to approve a burst under `burst.policy` owner: the owner, or a child team's parent lead. */
+  readonly ownerAsk: string;
 }
 
 /** The surplus worth a burst now, for the lead's line; undefined with `burst.policy` off, an unknown week or too little spare. */
@@ -50,7 +52,13 @@ export function surplusHintOf(input: SurplusHintInput): SurplusHint | undefined 
   const surplus = surplusOf({ window, now: input.now, usedPct: input.usedPct, targetPct: input.targetPct, config, teams: input.teams });
   return surplus === undefined || !surplus.worth
     ? undefined
-    : { sparePct: surplus.sparePct, accountSparePct: surplus.accountSparePct, paceEnd: surplus.paceEnd, reset: surplus.reset, ownerApproves: config.policy === 'owner' };
+    : {
+        sparePct: surplus.sparePct,
+        accountSparePct: surplus.accountSparePct,
+        paceEnd: surplus.paceEnd,
+        reset: surplus.reset,
+        ownerAsk: config.policy === 'owner' ? input.ownerAsk : undefined,
+      };
 }
 
 /** What the burst lines read of a session's budget now. */
@@ -140,7 +148,7 @@ const BURST_END_LINE =
   `the burst's hires are due to retire (${KIT_NAME} check lists them). ${MORE_BURST}`;
 
 function surplusLine(surplus: SurplusHint, zone: TimeZone): string {
-  const approval = surplus.ownerApproves ? ' burst.policy is owner, so ask the owner first and add --approved-by "<who>".' : '';
+  const approval = surplus.ownerAsk === undefined ? '' : ` burst.policy is owner, so first ask ${surplus.ownerAsk}, then add --approved-by "<who>".`;
   return (
     `${BURST_COMMAND}: about ${formatPct(surplus.sparePct)} of the week${spareShareNote(surplus)} is projected unused at the pace end (${zone.weekdayMinute(new Date(surplus.paceEnd))}). ` +
     `A surplus burst can spend it on independent tasks; preview one: ${BURST_COMMAND} start surplus --reason "<why>".${approval} ${MORE_BURST}`

@@ -371,7 +371,7 @@ fast gives less a day and one that spends slowly gives more. The floor at its st
 - Who starts one: a person, by command, never a hook. `teamrig burst` shows the week, its projected surplus and
   what to run; `teamrig burst start surplus|deadline --reason "<why>"` previews the burst, and `--yes` starts it.
   `burst.policy` is `owner` by default (each burst names its approver with `--approved-by`, since spending more of
-  the week is a budget call), `lead`, or `off`. No value starts a burst by itself; the lead's hook only suggests
+  the week is a budget call; a child team's lead asks its parent team's lead, who takes it to the owner), `lead`, or `off`. No value starts a burst by itself; the lead's hook only suggests
   one, once a week, when the surplus is worth it.
 - A surplus burst covers the whole team (or `--sessions`) from `burst.surplusHours` (48) before the reset until the
   pace end, once the team's part of the week projected unused is at least `burst.minSparePct` (5%). The account's

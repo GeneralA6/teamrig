@@ -36,7 +36,7 @@ const DEADLINE_BURST: Burst = {
   deadline: Date.parse('2030-01-08T20:00:00Z'),
   tasks: ['T1', 'T2'],
 };
-const HINT: SurplusHint = { sparePct: 34, accountSparePct: undefined, paceEnd: PACE_END, reset: RESET, ownerApproves: true };
+const HINT: SurplusHint = { sparePct: 34, accountSparePct: undefined, paceEnd: PACE_END, reset: RESET, ownerAsk: 'the owner' };
 
 /** A team of `ids` at the default share, with no queued work or lift. */
 function plainTeam(team: string, ids: readonly string[]): BudgetSplit {
@@ -124,13 +124,15 @@ describe('burstPromptLines', () => {
     assert.deepEqual(first.lines, [
       'teamrig burst: about 34.0% of the week is projected unused at the pace end (Wed 01-09 00:00 UTC). ' +
         'A surplus burst can spend it on independent tasks; preview one: teamrig burst start surplus --reason "<why>". ' +
-        'burst.policy is owner, so ask the owner first and add --approved-by "<who>". More: teamrig burst',
+        'burst.policy is owner, so first ask the owner, then add --approved-by "<who>". More: teamrig burst',
     ]);
     assert.equal(first.surplusShown, RESET);
     assert.deepEqual(burstPromptLines(facts({ surplus: HINT }), { ...NONE, surplusShown: RESET }).lines, []);
     assert.equal(burstPromptLines(facts({ surplus: { ...HINT, reset: RESET + 7 * 24 * HOUR } }), { ...NONE, surplusShown: RESET }).lines.length, 1);
-    const [byLead] = burstPromptLines(facts({ surplus: { ...HINT, ownerApproves: false } }), NONE).lines;
+    const [byLead] = burstPromptLines(facts({ surplus: { ...HINT, ownerAsk: undefined } }), NONE).lines;
     assert.ok(byLead !== undefined && !byLead.includes('--approved-by'));
+    const [child] = burstPromptLines(facts({ surplus: { ...HINT, ownerAsk: 'the lead of team app, who takes it to the owner' } }), NONE).lines;
+    assert.ok(child?.includes(' so first ask the lead of team app, who takes it to the owner, then add --approved-by "<who>".'), child);
     assert.equal(burstPromptLines(facts({ surplus: HINT, burst: SURPLUS_BURST }), { ...NONE, modelBurstAt: NOW }).surplusShown, undefined);
   });
 
@@ -141,16 +143,18 @@ describe('burstPromptLines', () => {
 });
 
 describe('surplusHintOf', () => {
-  const input = { config: DEFAULT_BURST, window: weekWindow(RESET, 1), now: NOW, usedPct: 60, targetPct: 99.5, teams: ALONE };
+  const input = { config: DEFAULT_BURST, window: weekWindow(RESET, 1), now: NOW, usedPct: 60, targetPct: 99.5, teams: ALONE, ownerAsk: 'the owner' };
 
-  it('reads a surplus worth a burst, and whether the owner approves it', () => {
+  it('reads a surplus worth a burst, and whom to ask when the owner approves it', () => {
     const hint = surplusHintOf(input);
     assert.ok(hint !== undefined);
     assert.equal(hint.reset, RESET);
     assert.equal(hint.paceEnd, PACE_END);
-    assert.equal(hint.ownerApproves, true);
+    assert.equal(hint.ownerAsk, 'the owner');
     assert.ok(hint.sparePct > 30);
-    assert.equal(surplusHintOf({ ...input, config: { ...DEFAULT_BURST, policy: 'lead' } })?.ownerApproves, false);
+    const byLead = surplusHintOf({ ...input, config: { ...DEFAULT_BURST, policy: 'lead' } });
+    assert.ok(byLead !== undefined);
+    assert.equal(byLead.ownerAsk, undefined);
   });
 
   it('is undefined with burst.policy off, an unknown week, too little spare or outside the window', () => {

@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import type { Roster } from '../../config/roster.ts';
+import { ownerAsk } from '../../config/tree.ts';
 import type { BurstPolicy, KitConfig } from '../../config/types.ts';
 import { KIT_NAME } from '../../core/home.ts';
 import type { TimeZone } from '../../core/zone.ts';
@@ -251,6 +252,7 @@ export async function start(args: ParsedArgs, runtime: CliRuntime): Promise<Exit
       profile: DailyProfile.ofQuietHours(config.budget.quietHours),
       sessionsTodayPct: sessionsTodayPct(sessions, week, bySession, now),
       teams: await teamsOf(runtime, kit, config, roster, now, week.usedPct),
+      ownerAsk: ownerAsk(config),
     },
   );
   if (decision.kind === 'refused') {

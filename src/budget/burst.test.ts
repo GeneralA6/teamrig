@@ -70,6 +70,7 @@ const CONTEXT: BurstContext = {
   profile: EVEN,
   sessionsTodayPct: 0,
   teams: ALONE,
+  ownerAsk: 'the owner',
 };
 const DUE = Date.parse('2030-01-08T20:00:00Z');
 const DEADLINE: BurstRequest = { ...REQUEST, kind: 'deadline', stopPct: 80, deadline: DUE, tasks: ['T1', 'T2'] };
@@ -198,6 +199,9 @@ describe('decideBurst', () => {
     assert.match(refusal(decideBurst(REQUEST, { ...CONTEXT, config: { ...OWNER, policy: 'off' } })), /burst\.policy is off/);
     assert.match(refusal(decideBurst({ ...REQUEST, approvedBy: undefined }, CONTEXT)), /burst\.policy is owner: .*--approved-by/);
     assert.match(refusal(decideBurst({ ...REQUEST, approvedBy: ' ' }, CONTEXT)), /burst\.policy is owner/);
+    assert.match(refusal(decideBurst({ ...REQUEST, approvedBy: undefined }, CONTEXT)), /approves each one; ask the owner, then pass --approved-by/);
+    const child = { ...CONTEXT, ownerAsk: 'the lead of team app, who takes it to the owner' };
+    assert.match(refusal(decideBurst({ ...REQUEST, approvedBy: undefined }, child)), /approves each one; ask the lead of team app, who takes it to the owner, then pass --approved-by/);
     const byLead = given(decideBurst({ ...REQUEST, approvedBy: undefined }, { ...CONTEXT, config: { ...OWNER, policy: 'lead' } }));
     assert.equal(byLead.approvedBy, undefined);
     assert.equal('approvedBy' in byLead, false);
