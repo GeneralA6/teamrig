@@ -171,6 +171,11 @@ describe('smokeDist', () => {
     assert.deepEqual(smokeDist(input({ manifest }), new FakeRunner().run), []);
   });
 
+  it('reports a start hook that ran but added no context', () => {
+    const runner = new FakeRunner({ 'session-start': OK });
+    assert.deepEqual(smokeDist(input(), runner.run), ['SessionStart (hook session-start): expected SessionStart additionalContext']);
+  });
+
   it('asks for a sample when the manifest adds an event the smoke test does not know', () => {
     const runner = new FakeRunner();
     const findings = smokeDist(input({ manifest: manifestOf({ PreCompact: [execHook('pre-compact')] }) }), runner.run);
