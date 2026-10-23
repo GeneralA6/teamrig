@@ -13,38 +13,84 @@ export interface BudgetSplit {
   readonly lifted: ReadonlyMap<string, number>;
 }
 
-/** A session's weight in the split: its `share` times its queued work, at least 1 so a session with none still gets a part. */
-function weightOf(split: BudgetSplit, id: string): number {
-  return (split.sessions[id]?.share ?? DEFAULT_SESSION_SHARE) * Math.max(1, split.work.get(id) ?? 0);
+/** A session in the split tree. */
+export interface SplitLeaf {
+  readonly id: string;
+  /** Its lift in force, as its part of its parent's budget in percent; undefined when not lifted. */
+  readonly liftedPct: number | undefined;
+  /** Its `share` times its queued work, at least 1 so a session with none still gets a part. */
+  readonly weight: number;
+}
+
+/** A node that splits its part among its nodes (a team, a group of its sessions); its weight is theirs summed. */
+export interface SplitGroup {
+  readonly id: string;
+  readonly liftedPct: number | undefined;
+  readonly nodes: readonly SplitNode[];
+}
+
+export type SplitNode = SplitLeaf | SplitGroup;
+
+function weightOf(node: SplitNode): number {
+  return 'nodes' in node ? node.nodes.reduce((sum, each) => sum + weightOf(each), 0) : node.weight;
 }
 
 /**
- * The session's part of the team's daily budget (`allowancePct`, in percent of the week): a lifted session's is
- * its lift's part of it; what the lifts leave is split among the other sessions by weight. Recomputed with the
- * budget, so no session waits while the week has room and the parts never add up to more than the team's budget.
+ * A node's part of its parent's budget (`parentPct`, in percent of the week): a lifted node's is its lift's part of
+ * it; what the lifts among `siblings` (the node among them) leave is split among the unlifted ones by weight.
  */
-export function sessionBudgetPct(allowancePct: number, session: string, split: BudgetSplit): number {
-  const liftedPart = split.lifted.get(session);
-  if (liftedPart !== undefined) {
-    return (allowancePct * liftedPart) / 100;
+function partAmong(parentPct: number, node: SplitNode, siblings: readonly SplitNode[]): number {
+  if (node.liftedPct !== undefined) {
+    return (parentPct * node.liftedPct) / 100;
   }
   let liftedPct = 0;
   let weights = 0;
-  for (const id of split.ids) {
-    const part = split.lifted.get(id);
-    if (part === undefined) {
-      weights += weightOf(split, id);
+  for (const each of siblings) {
+    if (each.liftedPct === undefined) {
+      weights += weightOf(each);
     } else {
-      liftedPct += part;
+      liftedPct += each.liftedPct;
     }
   }
-  const rest = (allowancePct * Math.max(0, 100 - liftedPct)) / 100;
-  return weights > 0 ? (rest * weightOf(split, session)) / weights : 0;
+  const rest = (parentPct * Math.max(0, 100 - liftedPct)) / 100;
+  return weights > 0 ? (rest * weightOf(node)) / weights : 0;
 }
 
-/** The session's daily budget now, in percent of the week (`sessionBudgetPct`); undefined while the team's is unknown. */
+/**
+ * The part of a budget (`budgetPct`, in percent of the week) that the node at `path` gets, `path` being its ids from
+ * the top `nodes` down, split level by level (`partAmong`). Recomputed with the budget, so no node waits while the
+ * week has room and the parts never add up to more than the budget. Undefined when no node is at `path`.
+ */
+export function partOf(budgetPct: number, nodes: readonly SplitNode[], path: readonly string[]): number | undefined {
+  let pct = budgetPct;
+  let level = nodes;
+  let node: SplitNode | undefined;
+  for (const id of path) {
+    node = level.find((each) => each.id === id);
+    if (node === undefined) {
+      return undefined;
+    }
+    pct = partAmong(pct, node, level);
+    level = 'nodes' in node ? node.nodes : [];
+  }
+  return node === undefined ? undefined : pct;
+}
+
+/** The team's sessions as split-tree nodes, each weighed by its `share` and queued work, with its lift in force. */
+export function sessionNodesOf(split: BudgetSplit): SplitLeaf[] {
+  return split.ids.map((id) => ({
+    id,
+    liftedPct: split.lifted.get(id),
+    weight: (split.sessions[id]?.share ?? DEFAULT_SESSION_SHARE) * Math.max(1, split.work.get(id) ?? 0),
+  }));
+}
+
+/**
+ * The session's daily budget now, in percent of the week: its part (`partOf`) of the team's (`allowancePct`).
+ * Undefined while the team's is unknown, or for a session the split does not hold.
+ */
 export function dailyBudgetOf(allowancePct: number | undefined, session: string, split: BudgetSplit): number | undefined {
-  return allowancePct === undefined ? undefined : sessionBudgetPct(allowancePct, session, split);
+  return allowancePct === undefined ? undefined : partOf(allowancePct, sessionNodesOf(split), [session]);
 }
 
 /** The lifts in force at `now` (`activeLift`), as each lifted session's part of the team's budget. */
@@ -67,5 +113,5 @@ const ADDED_SESSION = '+added';
  * the default share with no queued work, it takes its part out of the other sessions', as a new hire does.
  */
 export function addedSessionPct(allowancePct: number, split: BudgetSplit): number {
-  return sessionBudgetPct(allowancePct, ADDED_SESSION, { ...split, ids: [...split.ids, ADDED_SESSION] });
+  return dailyBudgetOf(allowancePct, ADDED_SESSION, { ...split, ids: [...split.ids, ADDED_SESSION] }) ?? 0;
 }
