@@ -73,6 +73,7 @@ const EXPECTED = {
   'gh sync': 'write',
   budget: 'read',
   'budget lift': 'write',
+  'budget extra': 'write',
   'budget setup': 'write',
   burst: 'read',
   'burst start': 'write',
