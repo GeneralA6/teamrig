@@ -308,6 +308,8 @@ recent lines instead of the whole history. Tasks done or dropped over 8 days ago
 one on, leave the snapshot: `show`, `list --status done` and the plan of a past week still read them from the
 archive, and a task that left cannot be changed. `compact --dry-run` prints what it would archive and write, and writes nothing; a real run first
 reads the new files back and holds every task against the whole history, and writes nothing on any difference.
+`compact --from-history` folds the new snapshot from the archive alone, not the old snapshot: the repair for a
+snapshot that lost fields an older teamrig did not read.
 After that first `compact`, a write that leaves the log over 512 KiB archives it again and says so in a NOTE line,
 or keeps the write and warns when archiving fails (the next write tries again). Both lines name the switch that
 turns this off: `register.autoArchive: false` in the team's `config.json`, after which only `compact` archives. Every session must run teamrig
