@@ -102,7 +102,8 @@ function withStatus(task, event) {
  * An update's note from the task's owner is its note from then on, as a restated one on `set` is, so show and the
  * waiting text print it at once; a note from any other session adds context to the history only, since the note a
  * task shows is its owner's (T630). An update with a `verdict` is the lead's answer to the task's approval wait, its
- * note what the lead checked (T684).
+ * note what the lead checked (T684). A pin holds for the owner it was set for: handing the task on clears it, unless
+ * the same update pins it (T637).
  */
 function withChanges(task, { changes, note, at, by, verdict }) {
     const priorityAt = changes.priority === undefined || changes.priority === task.priority ? task.priorityAt : at;
@@ -110,7 +111,7 @@ function withChanges(task, { changes, note, at, by, verdict }) {
     const answer = verdict === undefined ? task.answer : { verdict, by, at, note };
     const next = { ...task, ...changes, note: shown, answer, updatedAt: at, updatedBy: by, priorityAt };
     if (next.owner !== task.owner) {
-        return { ...next, assignedAt: at, ownerSeenAt: by === next.owner ? at : null };
+        return { ...next, pin: changes.pin ?? null, assignedAt: at, ownerSeenAt: by === next.owner ? at : null };
     }
     return { ...next, ownerSeenAt: by === next.owner ? at : task.ownerSeenAt };
 }

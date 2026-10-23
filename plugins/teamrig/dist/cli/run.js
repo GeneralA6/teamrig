@@ -65,7 +65,7 @@ const TASK_FIELDS = ['title', 'description', 'owner', 'ref', 'priority', 'due', 
 const COMMANDS = {
     add: { effect: 'write', flags: ['session', 'source', 'team', ...TASK_FIELDS], load: async () => (await registerCommands()).add },
     set: { effect: 'write', flags: ['session', 'status', 'note', 'evidence', 'skill', 'followups', 'waits', 'question', 'options', 'recommend', 'default', 'why-ask', 'proof', 'met', 'due', 'ask', 'text'], load: async () => (await registerCommands()).set },
-    update: { effect: 'write', flags: ['session', 'note', ...TASK_FIELDS], load: async () => (await registerCommands()).update },
+    update: { effect: 'write', flags: ['session', 'note', ...TASK_FIELDS], switches: ['pin', 'unpin'], load: async () => (await registerCommands()).update },
     approve: { effect: 'write', flags: ['session', 'note'], switches: ['decline'], load: async () => (await registerCommands()).approve },
     list: {
         effect: 'read',
@@ -305,8 +305,10 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       needs, or why only the owner can see the result>"; check flags it OWNER-ORDERED without one
   update <id> [--title ..] [--description ..|none] [--owner ..] [--priority ..] [--ref ..|none]
       [--due <date>|none] [--goals a,b|none] [--week <date>|none] [--after T5,T6|none] [--size <pct>|none]
-      [--problem problem|critical|none] [--note ..]   the lead may change owner, priority, due, week, after,
-      size and problem on any task
+      [--problem problem|critical|none] [--pin|--unpin] [--note ..]   the lead may change owner, priority, due,
+      week, after, size, problem and pin on any task
+      --pin: puts the task above every other task on its owner's list, set by the owner's leaders (the lead
+      on its own tasks too); it moves the owner's earlier pin, and handing the task on clears it
       a --note from the task's owner also replaces the note show and the waiting text print
   approve <id> --note "<what you checked, or why not>" [--decline]   the lead only: answers a task waiting on
       its approval (approval:<lead>); its owner gets an inbox line to push or merge (or to fix the note's

@@ -20,7 +20,7 @@ export const GITHUB_STATUSES = ['open', 'done', 'dropped'];
  * Fields the lead may change on a task someone else owns: who does it, how urgent, when, in what order and its size
  * (the lead plans the week), and its kind, so the lead can mark another session's fix a problem.
  */
-export const LEAD_FIELDS = ['owner', 'priority', 'due', 'week', 'after', 'size', 'kind'];
+export const LEAD_FIELDS = ['owner', 'priority', 'due', 'week', 'after', 'size', 'kind', 'pin'];
 /** The refusal of an `add` with no description while `register.requireDescription` is on. */
 export const DESCRIPTION_NEEDED = 'add needs --description "<what and why, in plain words>"';
 /** How a card is typed, for the refusals that ask for one. */
@@ -83,6 +83,7 @@ export class RegisterPolicy {
             after: input.after ?? [],
             size: input.size ?? null,
             kind: input.kind ?? null,
+            pin: null,
         };
         if (fields.description === null && this.config.register.requireDescription) {
             return refuse(DESCRIPTION_NEEDED);
@@ -383,6 +384,10 @@ export class RegisterPolicy {
             const problem = this.checkText('note', text);
             return problem === undefined ? ok({ changes, note: text }) : refuse(problem);
         }
+        const pinned = changes.pin === undefined ? undefined : this.pinProblem(task.id, changes.owner ?? task.owner, caller, changes.pin);
+        if (pinned !== undefined) {
+            return refuse(pinned);
+        }
         if (caller !== task.owner) {
             const problem = this.leaderUpdateProblem(task, caller, names, changes.owner);
             if (problem !== undefined) {
@@ -398,6 +403,17 @@ export class RegisterPolicy {
         const after = changes.after === undefined ? undefined : afterChangeProblem(task, changes.after, state);
         const problem = after ?? this.checkFields(merged, sourceRule) ?? this.checkText('note', text);
         return problem === undefined ? ok({ changes, note: text }) : refuse(problem);
+    }
+    /**
+     * Why `caller` may not set the pin of task `id` (`pin`: the session that pins, null to unpin), or undefined when it
+     * may: a pin puts the task above its `owner`'s computed order (the owner it has after the change), so the owner's
+     * leaders set it, the lead on its own tasks too, and never the owner itself; a pin names the session that set it (T637).
+     */
+    pinProblem(id, owner, caller, pin) {
+        if (caller === owner && caller !== this.tree.lead) {
+            return `${owner} does not pin its own ${id}: ${this.approversText(owner)} pins a task above its owner's order`;
+        }
+        return pin === null || pin === caller ? undefined : `a pin names the session that sets it (${caller}), not ${pin}`;
     }
     /**
      * Why a session may not change the work order of a task it does not own, or undefined when it may (T782): the lead
@@ -425,7 +441,7 @@ export class RegisterPolicy {
      * the duplicate-title rule does not apply.
      */
     importAdd(input, state) {
-        const fields = { ...input, source: GITHUB_SOURCE, due: null, goals: [], week: null, after: [], size: null, kind: null };
+        const fields = { ...input, source: GITHUB_SOURCE, due: null, goals: [], week: null, after: [], size: null, kind: null, pin: null };
         const holder = [...state.tasks.values()].find((task) => task.source === GITHUB_SOURCE && task.ref === input.ref);
         if (holder !== undefined) {
             return refuse(`${holder.id} already has ref ${input.ref}`);
@@ -541,8 +557,8 @@ export class RegisterPolicy {
 /** The texts whose length is judged against their own limit, not `maxText`. */
 const OWN_LIMITS = ['title', 'description'];
 function pickFields(task) {
-    const { title, description, owner, source, ref, priority, due, goals, week, after, size, kind } = task;
-    return { title, description, owner, source, ref, priority, due, goals, week, after, size, kind };
+    const { title, description, owner, source, ref, priority, due, goals, week, after, size, kind, pin } = task;
+    return { title, description, owner, source, ref, priority, due, goals, week, after, size, kind, pin };
 }
 /** An update's description trimmed at both ends, its newlines kept; a blank one clears it, as `none` does. */
 function trimDescription(changes) {
