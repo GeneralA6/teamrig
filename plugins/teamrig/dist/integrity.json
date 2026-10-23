@@ -184,7 +184,7 @@
     "dist/core/session-asks.js": "34b82336c57b3bd4fd4f01af1768a406da7d1de59e322f4c63cddbb146582f50",
     "dist/core/team.js": "dff229e8506e3adbc5e4fab8191aaa1b3aff266a1f3053bc6c4254fd0fc0dd26",
     "dist/core/time.js": "8493972a5c368a09bc715e6c647a8eec846474dd980425ee76310bee9c161742",
-    "dist/core/version.js": "89e235197d90c2295079fdef85e67e3f6f29d8326e1c5d30b709f0dfc5e4776b",
+    "dist/core/version.js": "c34d5d390267684b864056c14161ad30c85b6e9148d1429cf5eadb6b553c5d5b",
     "dist/core/zone.js": "083678f2f96d0004e522d04351f67f6c5420b2b6bff81f7930aadae8c841679e",
     "dist/decisions/batch.js": "83865c4d4e9d557bff25a8486cbbde202633f045cf01ff86a0c7ef16f9c3c54b",
     "dist/decisions/lines.js": "43575a6aab917082259804c051527b93a0300a345e3cb43ab911926446de0de8",
