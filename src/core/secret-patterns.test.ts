@@ -61,6 +61,24 @@ const CASES: ReadonlyArray<{ readonly id: string; readonly hits: readonly string
     misses: ['https://example.test/path?a=1', 'mail me at someone@example.com', 'ssh://git@github.com/o/r'],
   },
   {
+    id: 'auth-header',
+    hits: [
+      join('curl -H "Authorization: ', 'Bearer ', 'q7Wd'.repeat(5), '" https://x'),
+      join('{"authorization": "', 'basic ', 'dXNlcjpwYXNz', '"}'),
+      join('AUTHORIZATION=', 'Token ', 'k2'.repeat(10)),
+      join("headers: { Authorization: '", 'Digest ', 'u'.repeat(12), "' }"),
+    ],
+    misses: [
+      'curl -H "Authorization: Bearer $TOKEN" https://x',
+      'Authorization: Bearer ${TOKEN}',
+      'Authorization: Bearer <token>',
+      'Authorization: Bearer %TOKEN%',
+      'Authorization: Bearer ...',
+      'send the Authorization: Bearer header',
+      'bearer tokens expire after an hour',
+    ],
+  },
+  {
     id: 'secret-assignment',
     hits: [
       join('PASS', 'WORD', '=', 'abc'),
