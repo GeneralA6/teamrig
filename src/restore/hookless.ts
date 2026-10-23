@@ -1,6 +1,7 @@
 import { parseTranscriptLine } from '../budget/line.ts';
 import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
 import { MS_PER_MINUTE } from '../core/time.ts';
+import type { TimeZone } from '../core/zone.ts';
 import type { RestoreEntry } from './entry.ts';
 
 /**
@@ -157,14 +158,21 @@ export function hooklessReader(tab: HooklessTab, lead: string, coordinatorOwner:
 }
 
 /**
- * The inbox line naming a hookless tab, its times as `clock` writes them (`14:20 IDT`). It asks for a restart in
- * the tab's folder, never a reload: a /reload-plugins does not bring a tab's hooks back (T1055).
+ * The inbox line naming a hookless tab, written at `now`, its times on `zone`'s clock: `14:20 IDT` on the line's
+ * day, else with their date (`10-20 16:37 IDT`), so a tab hookless for days does not read as hours (T1069). It
+ * asks for a restart in the tab's folder, never a reload: a /reload-plugins does not bring a tab's hooks back
+ * (T1055).
  */
-export function hooklessLine(tab: HooklessTab, clock: (at: Date) => string): string {
+export function hooklessLine(tab: HooklessTab, zone: TimeZone, now: number): string {
+  const today = zone.day(new Date(now));
+  const time = (at: number): string => {
+    const date = new Date(at);
+    return zone.day(date) === today ? zone.clock(date) : zone.shortMinute(date);
+  };
   const minutes = Math.round((tab.turnAt - tab.hookAt) / MS_PER_MINUTE);
   return (
     `HOOKLESS ${tab.session}: its tab (Claude session ${tab.claudeSession.slice(0, 8)}) worked ${minutes} min past its last teamrig hook ` +
-    `(hook ${clock(new Date(tab.hookAt))}, last reply ${clock(new Date(tab.turnAt))}), so it gets no inbox, guards or tab status: ` +
+    `(hook ${time(tab.hookAt)}, last reply ${time(tab.turnAt)}), so it gets no inbox, guards or tab status: ` +
     `/exit that tab and run claude --resume ${tab.claudeSession} in ${tab.projectDir}`
   );
 }

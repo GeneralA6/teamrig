@@ -92,7 +92,7 @@ export async function checkHooklessTabs(runtime: CliRuntime, kit: Kit, config: K
   const refused: string[] = [];
   for (const tab of news) {
     const to = hooklessReader(tab, config.roles.lead, config.roles.coordinatorOwner);
-    const problem = await postLine(inboxes, secrets, { to, from: KIT_NAME, text: hooklessLine(tab, (at) => zone.clock(at)), now: new Date(now) });
+    const problem = await postLine(inboxes, secrets, { to, from: KIT_NAME, text: hooklessLine(tab, zone, now), now: new Date(now) });
     if (problem !== undefined) {
       refused.push(`INBOX ${to}: not posted: ${problem}`);
     }
