@@ -44,6 +44,15 @@ function tab(): FakeSessionProcesses {
   return new FakeSessionProcesses().add(TERMINAL).add(CLAUDE).add(SHELL).add(SELF);
 }
 
+/**
+ * How long a spec waits on a real chain of processes (a shell, the launcher, a node CLI listing the host's processes)
+ * to write its file. A pass takes up to about 10 s on a busy Windows host and went past 15 s at full CPU (10-23), so
+ * this wait catches a hang, never a slow host.
+ */
+const REAL_WAIT_MS = 60_000;
+/** A real watcher quits on its own after this, once the spec has stopped waiting on both of its files. */
+const REAL_QUIT_MS = 2 * REAL_WAIT_MS + 30_000;
+
 async function until(check: () => boolean, ms = 15_000): Promise<boolean> {
   const end = Date.now() + ms;
   while (!check()) {
@@ -185,7 +194,7 @@ describe('starterWatch on this machine', () => {
         "import { writeFileSync } from 'node:fs';",
         `import { nodeEvery, starterWatch } from ${JSON.stringify(new URL('./starter-watch.ts', import.meta.url).href)};`,
         `import { nodeSessionProcesses } from ${JSON.stringify(new URL('../open/session-processes.ts', import.meta.url).href)};`,
-        'const quit = setTimeout(() => process.exit(3), 30_000);',
+        `const quit = setTimeout(() => process.exit(3), ${REAL_QUIT_MS});`,
         'const watching = await starterWatch(nodeSessionProcesses(), { pid: process.pid, shell: undefined }, nodeEvery, 200).watch();',
         "watching.stop.addEventListener('abort', () => {",
         `  writeFileSync(${JSON.stringify(ended)}, String(watching.ended()?.pid));`,
@@ -200,11 +209,11 @@ describe('starterWatch on this machine', () => {
     const parent = spawn(process.execPath, ['-e', launcher], { stdio: 'ignore' });
     const parentPid = parent.pid ?? 0;
     try {
-      assert.equal(await until(() => written(ready)), true, 'the watcher listed its starters');
+      assert.equal(await until(() => written(ready), REAL_WAIT_MS), true, 'the watcher listed its starters');
       const [, firstStarter] = readFileSync(ready, 'utf8').split(',').map(Number);
       assert.equal(firstStarter, parentPid);
       parent.kill();
-      assert.equal(await until(() => written(ended)), true, 'the watcher found its starter ended');
+      assert.equal(await until(() => written(ended), REAL_WAIT_MS), true, 'the watcher found its starter ended');
       assert.equal(readFileSync(ended, 'utf8'), String(parentPid));
     } finally {
       parent.kill();
@@ -234,7 +243,7 @@ describe('starterWatch on this machine', () => {
         "import { writeFileSync } from 'node:fs';",
         `import { launchingShellOf, nodeEvery, starterWatch } from ${JSON.stringify(new URL('./starter-watch.ts', import.meta.url).href)};`,
         `import { nodeSessionProcesses } from ${JSON.stringify(new URL('../open/session-processes.ts', import.meta.url).href)};`,
-        'const quit = setTimeout(() => process.exit(3), 30_000);',
+        `const quit = setTimeout(() => process.exit(3), ${REAL_QUIT_MS});`,
         'const shell = launchingShellOf(process.env, process.ppid);',
         'const watching = await starterWatch(nodeSessionProcesses(), { pid: process.pid, shell }, nodeEvery, 200).watch();',
         "watching.stop.addEventListener('abort', () => {",
@@ -249,7 +258,7 @@ describe('starterWatch on this machine', () => {
     const shell = spawn('sh', ['-c', '"$0"; exit $?', launcher.replaceAll('\\', '/')], { stdio: 'ignore', windowsHide: true });
     const cliPids = (): readonly number[] => (written(ready) ? readFileSync(ready, 'utf8').split(',').map(Number) : []);
     try {
-      assert.equal(await until(() => written(ready)), true, 'the CLI listed its starters');
+      assert.equal(await until(() => written(ready), REAL_WAIT_MS), true, 'the CLI listed its starters');
       const [, recorded = 0, ...starters] = cliPids();
       // On Windows `sh` may be Git's bin\sh.exe, which runs the real shell as its child: the shell to end is the one
       // the launcher recorded. Elsewhere nothing is recorded and the CLI's own line reaches the shell.
@@ -257,7 +266,7 @@ describe('starterWatch on this machine', () => {
       const target = recorded > 0 ? recorded : (shell.pid ?? 0);
       assert.ok(starters.includes(target), `the shell ${target} is among the starters ${starters.join(',')}`);
       process.kill(target);
-      assert.equal(await until(() => written(ended)), true, 'the CLI found its shell ended');
+      assert.equal(await until(() => written(ended), REAL_WAIT_MS), true, 'the CLI found its shell ended');
       assert.equal(readFileSync(ended, 'utf8'), String(target));
     } finally {
       shell.kill();
