@@ -3828,6 +3828,24 @@ teamrig hook missing-cli < post-tool-use.json
 
 Output: nothing after any other call; otherwise the line as JSON `additionalContext`, in a team or not.
 
+### teamrig hook route-reminder
+
+After a SendMessage call that was delivered to a session under a sub-lead below the sender (the message skipped that
+sub-lead in the lead tree), hands the model one line: route such work via the sub-lead next time. A message that
+starts with CRITICAL, an urgent incident, stays direct and gets no line. `teamrig inbox add` prints the same reminder
+for each session it names, never for a group.
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig hook route-reminder < post-tool-use.json
+```
+
+Output: nothing after a failed send, a message that skips no sub-lead, a CRITICAL one or outside a team; otherwise the
+line as JSON `additionalContext`.
+
 ### teamrig hook loop-nudge
 
 After a read, edit, shell call or web lookup, once the turn's run of single-step calls reaches `loops.chainNudgeAt` (6 by
