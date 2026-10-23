@@ -13,7 +13,7 @@ they all stay silent, and only `hook restore-track` and `hook tool-end` still re
 | `PreToolUse` on `Bash` and `PowerShell` | `hook push-guard` | Asks before a push to a protected branch; refuses a force-push or delete of one, and a git command run without the repository's hooks ([the commit guard](#before-a-shell-command-the-commit-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook package-guard` | Refuses a package runner that would fetch and run a package outside the project's lockfile, an install of a version the registry does not vouch for, and an `npx --no <bin>` that hands the bin's flag to npm ([the package guard](#before-a-shell-command-the-package-guard)) |
 | `PreToolUse` on `Bash`, `PowerShell`, `Read` and `Grep` | `hook secret-guard` | Refuses a call that would print a secret file, a secret variable, the whole environment or a Kubernetes secret's data into the conversation ([the secret guard](#before-a-shell-command-or-a-read-the-secret-guard)) |
-| `PreToolUse` on `Bash` and `PowerShell` | `hook exec-guard` | Refuses a privileged command's review run as another session or the owner, and any `exec` call through a client changed after its build ([the exec guard](#before-a-shell-command-the-exec-guard)) |
+| `PreToolUse` on `Bash` and `PowerShell` | `hook exec-guard` | Refuses a privileged command's review run as another session or the owner, and any `exec` call through a client that is no install of the plugin, or one changed after its build ([the exec guard](#before-a-shell-command-the-exec-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook readonly-allow` | With `readonlyShell.enabled`, lets a line whose every command provably only reads run without a permission prompt ([the read-only allow](#before-a-shell-command-the-read-only-allow)) |
 | `PreToolUse` on `AskUserQuestion` | `hook picker-guard` | With `pickerGuard.enabled`, refuses the question picker to every session and helper, and to the lead outside the owner's daily meeting, with the reason to decide it if it is the session's own, else record it on its task and go on ([the picker guard](#before-a-question-the-picker-guard)) |
 | `PermissionRequest` | `hook prompt-refuse` | With `prompts.hookAsks: refuse`, answers each permission prompt Claude Code is about to raise but the question picker's and plan mode's exit, per case: a line that provably only reads runs, a line with a rerun form is refused quoting it, anything else is refused with the reason to record the step for the owner and go on ([asks off](#asks-off-a-refusal-instead-of-a-prompt)) |
@@ -379,16 +379,28 @@ runs a Bash or PowerShell call, `hook exec-guard` reads it (a shell line as the 
   tool call.
 - **a word known only when the line runs**: a variable or a substitution as the command word of a `teamrig` call,
   or anywhere in a review, since the guard cannot tell what it runs, or as whom.
-- **a changed client**: any `exec` command while the installed plugin's files (`bin`, `dist`, `hooks`)
+- **a client that is no install of the plugin**: an `exec` command must start `bin/teamrig`, `bin/teamrig.cmd` or
+  `dist/cli/main.js` of the hook's own install, or of another version beside it in the plugin cache (a tab keeps on
+  PATH the version it started with). The guard places the file as the line's shell would: a path the line writes
+  (Git Bash's `/c/x` too, and a relative one from the folder the line has moved to), else the first `teamrig` the
+  shell's PATH search finds (Bash: `~/bin` first; cmd: its folder first; PowerShell: `.ps1` and the `PATHEXT`
+  names). A bare `teamrig` it finds nowhere is the plugin bin the Bash tool appends to PATH last. The reason names
+  the file and the plugin's own client; a `teamrig` found on PATH is to be taken off it.
+- **a program known only when it runs**: `$T exec approve ...`, `node "$SCRIPT" exec run ...` or a relative client
+  path from a folder only known when the line runs, whenever the words after it are an `exec` command, as no
+  file can be checked; write the program out. `$DOCKER exec ctr ls` is not one.
+- **a changed client**: any `exec` command while the files (`bin`, `dist`, `hooks`) of the install it starts
   differ from the SHA-256 list its build wrote (`dist/integrity.json`), or that list is missing, since an approved
-  command runs inside that client. The reason names up to five changed files; reinstall the plugin.
+  command runs inside that client. Each install a line starts is checked once; the reason names up to five changed
+  files, and the install when it is not the hook's own; reinstall the plugin.
 
 It always refuses and never asks; no config key turns it off. The guard reads only the call, so it cannot see:
 
-- a line that starts teamrig through a variable or a script (`$T exec approve ...`): no allow rule matches such a
-  line, so Claude Code's own permission flow (its prompt, or auto mode's classifier) decides;
-- which client a line starts: it checks its own install, not another `teamrig` on the PATH or a checkout's
-  `node src/cli/main.ts exec run`;
+- an older version left intact in the plugin cache: a line may start it, and it runs as that version was built;
+- the PATH a tab really has: it searches the hook's own, with `~/bin` before it for Bash, not the other folders Git
+  Bash puts first (`/mingw64/bin`, `/usr/bin`, inside the Git install), and takes a bare `teamrig` it finds
+  nowhere as the plugin bin;
+- code node runs before the client: a preload option (`-r`, `--import`) or `NODE_OPTIONS`;
 - a change made to the list too: the list sits beside the code, so the check stops a slip that edits the installed
   files, not a session set on rewriting both.
 
@@ -912,7 +924,7 @@ read-only allow lets a call skip the prompt, and only a shell line it proves onl
 - **The secret guard** refuses a call that would print a secret on its own, whatever the mode, unless
   `secretGuard.secretReads` is `ask` or `allow`.
 - **The exec guard** refuses a privileged command's review run as another session or the owner, and any
-  `exec` call through a changed client, on its own, whatever the mode, so `Bash(teamrig:*)` stays safe for
+  `exec` call through a client that is no install of the plugin or was changed, on its own, whatever the mode, so `Bash(teamrig:*)` stays safe for
   `exec` too. A team that wants each review asked as well allows the rest by name (`Bash(teamrig exec request:*)`,
   `dry-run`, `status`, `run`) instead of the one rule.
 - **The read-only allow** (`readonlyShell.enabled`) lets a shell line that only reads run with no prompt in default
