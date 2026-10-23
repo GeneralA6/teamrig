@@ -10,10 +10,11 @@ function team(id: string, parent?: string): TeamNode {
 /** `app` is the root; `web` and `ops` are its children; `ui` is under `web`. */
 const TREE = new TeamTree([team('app'), team('web', 'app'), team('ops', 'app'), team('ui', 'web')]);
 
-function reach(from: string, to: string): Reach {
+/** The sender's own leader is its team's lead unless `leader` names a sub-lead. */
+function reach(from: string, to: string, leader?: string): Reach {
   const [fromTeam = '', fromId = ''] = from.split('/');
   const [toTeam = '', toId = ''] = to.split('/');
-  return reachOf(TREE, { team: fromTeam, id: fromId }, { team: toTeam, id: toId });
+  return reachOf(TREE, { team: fromTeam, id: fromId }, { team: toTeam, id: toId }, leader ?? TREE.leadOf(fromTeam));
 }
 
 function problemOf(verdict: Reach): string {
@@ -39,6 +40,10 @@ describe('reachOf', () => {
   it('keeps a member to its own team, pointing at its lead', () => {
     assert.equal(problemOf(reach('web/dev', 'app/lead')), 'web/dev may write to its own team only, and app/lead is not on it: escalate through your lead (web/lead)');
     assert.match(problemOf(reach('web/dev', 'ui/lead')), /escalate through your lead \(web\/lead\)$/);
+  });
+
+  it("points a sub-lead's member at its own leader", () => {
+    assert.equal(problemOf(reach('web/dev', 'app/lead', 'tech')), 'web/dev may write to its own team only, and app/lead is not on it: escalate through your lead (web/tech)');
   });
 
   it('refuses a sender whose team is not in the tree, without naming a lead', () => {
