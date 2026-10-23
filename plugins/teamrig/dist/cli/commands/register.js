@@ -116,7 +116,8 @@ function warnDamage(runtime, snapshot, path) {
 /**
  * `add --team <child>`: a parent team's lead hands a child team a task. It lands in the child's
  * register as an event by `<parent team>/<lead id>`, which is also its source, owned by the child's
- * lead, who plans it in. Only the child's parent lead may; the parent's register is not touched.
+ * lead, who plans it in and gets an inbox line from that address. Only the child's parent lead may; the
+ * parent's register is not touched.
  */
 async function addToChild(args, runtime, caller, child) {
     if (args.flags.has('owner') || args.flags.has('source')) {
@@ -140,7 +141,12 @@ async function addToChild(args, runtime, caller, child) {
     }
     const target = await teamOf(runtime, await openKit(runtime, child), 'write');
     const input = { ...addInputOf(args.flags, caller, typedTimes(runtime, teamZone(config, runtime))), owner: childLead, source: formatAddress(from) };
-    return report(runtime, await target.register.addFromParent(formatAddress(from), input), 'ADDED', target, child);
+    const verdict = await target.register.addFromParent(formatAddress(from), input);
+    const code = report(runtime, verdict, 'ADDED', target, child);
+    if (verdict.ok) {
+        await tellAssigned(runtime, target, formatAddress(from), verdict.value.task, formatAddress({ team: child, id: childLead }));
+    }
+    return code;
 }
 export async function add(args, runtime) {
     noPositionals(args);
@@ -182,17 +188,17 @@ async function tellNewOwner(runtime, team, by, verdict) {
     }
     await tellAssigned(runtime, team, by, task);
 }
-/** One inbox line telling a task's owner the task is its own. */
-async function tellAssigned(runtime, team, by, task) {
-    await tellLine(runtime, team, by, task.owner, assignedNotice(task, team.zone), `${task.owner} was not told of ${task.id}`);
+/** One inbox line telling a task's owner the task is its own; `shown` names the owner in the NOTE (another team's by address). */
+async function tellAssigned(runtime, team, by, task, shown = task.owner) {
+    await tellLine(runtime, team, by, task.owner, assignedNotice(task, team.zone), `${shown} was not told of ${task.id}`, shown);
 }
 /**
  * One inbox line to each leader that a write set a task waiting on, or a verifying task's proof, for a decision or an
  * approval it did not wait on before: a wait on one of the task owner's leaders (the lead, or a sub-lead, T781) goes
- * to that leader, a wait on the owner to the lead, who keeps the owner's decision queue; never to the leader who set
- * it. A new wait on the owner says when the owner hears it (src/decisions/batch.ts): in the next batch, in the one due
- * now, or at once when it is due before the next; at once, the setter is told to message the lead too, as an inbox
- * line wakes no one.
+ * to that leader, a wait on the owner to the task owner's own leader, which passes it up (the lead keeps the owner's
+ * decision queue and asks it in its batch); never to the leader who set it. A new wait on the owner says when the owner
+ * hears it (src/decisions/batch.ts): in the next batch, in the one due now, or at once when it is due before the next;
+ * at once, the setter is told to message the lead too, as an inbox line wakes no one.
  */
 async function tellLeadersOfWaits(runtime, team, by, verdict) {
     if (!verdict.ok) {
@@ -202,9 +208,11 @@ async function tellLeadersOfWaits(runtime, team, by, verdict) {
     const { ownerSource } = team.config.register;
     const { task, before } = verdict.value;
     const earlier = before?.waits ?? [];
-    const approvers = new LeadTree(team.config).approversOf(task.owner);
+    const leaders = new LeadTree(team.config);
+    const approvers = leaders.approversOf(task.owner);
     const added = task.waits.filter((reason) => (reason.kind === 'decision' || reason.kind === 'approval') && !isPeerWait(reason, approvers, ownerSource) && !earlier.some((other) => sameWait(reason, other)));
-    const receiverOf = (reason) => (reason.who === ownerSource ? lead : reason.who);
+    const ownLeader = leaders.leaderOf(task.owner) ?? lead;
+    const receiverOf = (reason) => (reason.who === ownerSource ? ownLeader : reason.who);
     for (const receiver of new Set(added.map(receiverOf))) {
         if (receiver === by) {
             continue;
@@ -214,7 +222,9 @@ async function tellLeadersOfWaits(runtime, team, by, verdict) {
         const text = `${personWaitNotice(task, waits, receiver)}${timing === undefined ? '' : ` | ${timingText(timing, team.zone)}`}`;
         await tellLine(runtime, team, by, receiver, text, `${receiver} was not told that ${task.id} waits on it`);
         if (timing?.kind === 'at-once') {
-            runtime.out.stderr(`NOTE ${task.id} is due before the owner's next batch: message ${team.roster.nameOf(lead) ?? lead} too, as an inbox line wakes no one`);
+            const leadName = team.roster.nameOf(lead) ?? lead;
+            const how = receiver === lead ? ' too, as an inbox line wakes no one' : `, who asks the owner: the inbox line went to ${receiver}, and a line wakes no one`;
+            runtime.out.stderr(`NOTE ${task.id} is due before the owner's next batch: message ${leadName}${how}`);
         }
     }
 }
@@ -225,11 +235,11 @@ async function ownerWaitTiming(runtime, team, { task, state }) {
     return waitTiming(batch, task, tree, now);
 }
 /** Posts one inbox line, naming it on stderr, or naming `unsent` and why: a line that cannot be posted is never thrown. */
-async function tellLine(runtime, team, by, to, text, unsent) {
+async function tellLine(runtime, team, by, to, text, unsent, shown = to) {
     const { inboxes } = inboxDepsOf(runtime, team.paths);
     const secrets = new SecretScanner(team.config.register.secretPatterns);
     const problem = await postLine(inboxes, secrets, { to, from: by, text, now: new Date(runtime.clock.now()) });
-    runtime.out.stderr(problem === undefined ? `NOTE ${to} has an inbox line: ${text}` : `WARN ${unsent}: ${problem}`);
+    runtime.out.stderr(problem === undefined ? `NOTE ${shown} has an inbox line: ${text}` : `WARN ${unsent}: ${problem}`);
 }
 export async function set(args, runtime) {
     const id = taskIdOf(onePositional(args, 'id'));

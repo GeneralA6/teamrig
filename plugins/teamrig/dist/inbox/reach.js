@@ -1,6 +1,6 @@
 import { formatAddress } from "../core/address.js";
 const REACHES = { ok: true };
-export function reachOf(tree, from, to) {
+export function reachOf(tree, from, to, leader) {
     if (from.team === to.team) {
         return REACHES;
     }
@@ -12,8 +12,7 @@ export function reachOf(tree, from, to) {
     const sender = formatAddress(from);
     const target = formatAddress(to);
     if (!leadsFrom) {
-        const lead = tree.leadOf(from.team);
-        const via = lead === undefined ? '' : ` (${formatAddress({ team: from.team, id: lead })})`;
+        const via = leader === undefined ? '' : ` (${formatAddress({ team: from.team, id: leader })})`;
         return { ok: false, problem: `${sender} may write to its own team only, and ${target} is not on it: escalate through your lead${via}` };
     }
     return {
