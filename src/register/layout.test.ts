@@ -18,7 +18,7 @@ import {
   type SnapshotHeader,
   type SnapshotRead,
 } from './layout.ts';
-import { LAYOUT_VERSION, markerRecord } from './marker.ts';
+import { FIRST_LAYOUT_VERSION, markerRecord, NEWEST_LAYOUT_VERSION } from './marker.ts';
 import { readEvents, readRegister } from './snapshot.ts';
 
 const LOG = 'team/state/events.jsonl';
@@ -106,9 +106,15 @@ describe('readSnapshotText', () => {
     assert.match(reason(readSnapshotText(create('T1', 7))), /no snapshot header/);
   });
 
+  it('reads a header of every layout from the first to the newest, so a snapshot a later teamrig wrote still reads', () => {
+    for (const v of [FIRST_LAYOUT_VERSION, NEWEST_LAYOUT_VERSION]) {
+      assert.deepEqual(usable(readSnapshotText(snapshotText({ v, events: 0 }))).header, { ...HEADER, events: 0 }, `v${v}`);
+    }
+  });
+
   it('refuses a header from a newer teamrig, naming its version', () => {
-    const read = readSnapshotText(snapshotText({ v: LAYOUT_VERSION + 1 }));
-    assert.deepEqual(read, { kind: 'unusable', reason: `a newer teamrig wrote it (layout v${LAYOUT_VERSION + 1})`, newerVersion: LAYOUT_VERSION + 1 });
+    const read = readSnapshotText(snapshotText({ v: NEWEST_LAYOUT_VERSION + 1 }));
+    assert.deepEqual(read, { kind: 'unusable', reason: `a newer teamrig wrote it (layout v${NEWEST_LAYOUT_VERSION + 1})`, newerVersion: NEWEST_LAYOUT_VERSION + 1 });
     assert.match(reason(readSnapshotText(snapshotText({ v: 2 }))), /layout v2 is no snapshot layout/);
   });
 
