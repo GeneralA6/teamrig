@@ -4,7 +4,8 @@ import { LeadTree } from '../config/lead-tree.ts';
 import { TEST_CARD } from '../testing/card.ts';
 import { testConfig } from '../testing/config.ts';
 import { testTask } from '../testing/task.ts';
-import { checkTasks, formatFlag, peerWaitFlags } from './check.ts';
+import { checkTasks, formatFlag, PACE_DAYS, peerWaitFlags } from './check.ts';
+import { RETAIN_DAYS } from './compaction.ts';
 import type { Task } from './fold.ts';
 import { TaskTree } from './tree.ts';
 import { TimeZone } from '../core/zone.ts';
@@ -404,5 +405,58 @@ describe('checkTasks: READY once the lead approved (T684)', () => {
       busy,
     ];
     assert.deepEqual(readyOf(tasks), []);
+  });
+});
+
+describe('checkTasks: OVER-PACE (T637)', () => {
+  const OLD = '2030-01-01T09:00:00.000Z';
+  const RECENT = '2030-01-08T09:00:00.000Z';
+  const p1 = (n: number, overrides: Partial<Task> = {}) =>
+    testTask({ id: `T${n}`, priority: 1, assignedAt: OLD, statusAt: OLD, priorityAt: OLD, ownerSeenAt: FRESH, updatedAt: FRESH, ...overrides });
+  const finished = (n: number, overrides: Partial<Task> = {}) => p1(n, { status: 'done', statusAt: RECENT, ...overrides });
+  const paces = (tasks: readonly Task[], config: typeof CONFIG = CONFIG) =>
+    checkTasks(tasks, NOW, TimeZone.UTC, null, config)
+      .filter((flag) => flag.kind === 'OVER-PACE')
+      .map((flag) => `${flag.task.id}: ${flag.detail}`);
+
+  it('flags the first held p1 past the count its owner finished in 7 days, in plan order', () => {
+    const held = [p1(1), p1(2), p1(3, { status: 'in-progress' })];
+    assert.deepEqual(paces([...held, finished(4)]), ['T1: alpha holds 3 unfinished p1 tasks, more than the 1 p1 it finished in 7 days; this is the first past that pace']);
+    assert.deepEqual(paces([p1(1), finished(4)]), [], 'at the pace');
+    assert.deepEqual(paces([p1(1)]), ['T1: alpha holds 1 unfinished p1 task, more than the 0 p1 it finished in 7 days; this is the first past that pace']);
+  });
+
+  it('counts a verifying p1 as finished, not held, and a waiting p1 as held', () => {
+    const shipped = p1(4, { status: 'verifying', statusAt: RECENT, proof: 'a night flow' });
+    assert.deepEqual(paces([p1(1), shipped]), []);
+    const waiting = p1(2, { status: 'waiting', waits: [{ kind: 'decision', who: 'owner' }], card: TEST_CARD });
+    assert.match(paces([p1(1), waiting, shipped])[0] ?? '', /^T2: alpha holds 2 unfinished p1 tasks, more than the 1 p1 /);
+  });
+
+  it('leaves out finishes older than 7 days, dropped tasks and finishes below p1', () => {
+    const held = [p1(1), p1(2)];
+    assert.equal(paces([...held, finished(4)]).length, 1);
+    assert.match(paces([...held, finished(4, { statusAt: '2030-01-03T11:59:00.000Z' })])[0] ?? '', /^T1: .* more than the 0 p1 /);
+    assert.match(paces([...held, finished(4, { status: 'dropped' })])[0] ?? '', /^T1: .* more than the 0 p1 /);
+    assert.match(paces([...held, finished(4, { priority: 2 })])[0] ?? '', /^T1: .* more than the 0 p1 /);
+    assert.deepEqual(paces([p1(1), p1(2, { priority: 2 }), finished(4)]), [], 'a held p2 is not held p1 work');
+    assert.match(paces([...held, finished(4), finished(5, { statusAt: '2030-01-10T13:00:00.000Z' })])[0] ?? '', /^T2: .* more than the 1 p1 /, 'a finish after now is not counted');
+  });
+
+  it('waits until the owner has held tasks for 7 days', () => {
+    const fresh = { assignedAt: '2030-01-03T12:01:00.000Z' };
+    assert.deepEqual(paces([p1(1, fresh), p1(2, fresh)]), []);
+    assert.equal(paces([p1(1, fresh), p1(2, fresh), finished(4, { status: 'dropped', assignedAt: '2030-01-03T12:00:00.000Z' })]).length, 1, 'a finished task counts for the history');
+  });
+
+  it('reads each owner apart, and skips the flag when the config names no priority', () => {
+    const bravo = (n: number, overrides: Partial<Task> = {}) => p1(n, { owner: 'bravo', ...overrides });
+    const tasks = [p1(1), finished(2), bravo(3), bravo(4), bravo(5, { status: 'done', statusAt: RECENT })];
+    assert.deepEqual(paces(tasks), ['T4: bravo holds 2 unfinished p1 tasks, more than the 1 p1 it finished in 7 days; this is the first past that pace']);
+    assert.deepEqual(paces(tasks, { ...CONFIG, priorities: [] }), []);
+  });
+
+  it('counts over no more days than a compaction keeps finished tasks in the working set', () => {
+    assert.ok(PACE_DAYS <= RETAIN_DAYS);
   });
 });
