@@ -10,6 +10,7 @@ import { claudeSettingsFiles, readSettingsEnv } from '../../doctor/settings-env.
 import { HiringLog, retiredSessions } from '../../hiring/log.ts';
 import { inboxStatus } from '../../inbox/inbox.ts';
 import { JsonlRenameLog } from '../../names/log.ts';
+import { readWideAllow } from '../allow-scope.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
 import { openTeamKit, projectFolder, requireConfig, teamZone } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
@@ -37,8 +38,9 @@ export async function readContextInput(runtime: CliRuntime, project: string, ski
  * MCP server instructions the project's newest session transcript announced) against the team's `contextFiles` budgets. Last, what
  * silently overrides the model or effort a session or helper is given: `CLAUDE_CODE_EFFORT_LEVEL` or
  * `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` in doctor's own environment or in the `env` block of the user's or the
- * project's Claude Code settings, and a session whose `launch` names a model but no effort. It reads only and
- * exits 0 like `check`: a finding is advice, and each line says the fix. `check` prints the context findings too.
+ * project's Claude Code settings, and a session whose `launch` names a model but no effort; and the local allow rules
+ * off `permissions.keepAllow` that approve a whole tool or program (src/cli/allow-scope.ts). It reads only and
+ * exits 0 like `check`: a finding is advice, and each line says the fix. `check` prints the context and allow findings too.
  */
 export async function doctor(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
@@ -64,6 +66,7 @@ export async function doctor(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     tree: { problems: tree.problemsOf(paths.team), clashes: tree.nameClashesOf(paths.team) },
     env: runtime.env,
     settingsEnv: await readSettingsEnv(runtime.files, claudeSettingsFiles(claudeDir, project)),
+    wideAllow: await readWideAllow(runtime, { paths, config, project }),
     launches: roster.ids.map((id) => ({ id, launch: launchOf(config, id) })),
     now: new Date(runtime.clock.now()),
     zone: teamZone(config, runtime),
