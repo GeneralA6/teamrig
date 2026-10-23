@@ -17,6 +17,105 @@ const SET = /\[([^\]/]+)\]/g;
 /** A character a regular expression's set reads as syntax. */
 const SET_SYNTAX = /[\\\]^-]/;
 
+/** A `{...}` group of a glob: where it opens and closes, and the alternatives it holds, split at its own commas. */
+interface BraceGroup {
+  readonly open: number;
+  readonly close: number;
+  readonly choices: readonly string[];
+}
+
+/**
+ * The globs a glob with `{a,b}` alternatives stands for, as ripgrep reads them: `*.{ts,pem}` gives `*.ts` and
+ * `*.pem`, and a group inside an alternative is spelled out too. A brace inside a `[...]` set, or one that never
+ * closes, is a plain character. Undefined past `limit` globs, so the caller can count such a glob as naming anything.
+ */
+export function braceAlternatives(glob: string, limit: number): string[] | undefined {
+  const spelled: string[] = [];
+  let pending = [glob];
+  while (pending.length > 0) {
+    const next: string[] = [];
+    for (const item of pending) {
+      const group = firstGroup(item);
+      if (group === undefined) {
+        spelled.push(item);
+      } else {
+        next.push(...group.choices.map((choice) => `${item.slice(0, group.open)}${choice}${item.slice(group.close + 1)}`));
+      }
+      if (spelled.length + next.length > limit) {
+        return undefined;
+      }
+    }
+    pending = next;
+  }
+  return spelled;
+}
+
+/** The first `{...}` group of `glob` that closes, outside any `[...]` set. */
+function firstGroup(glob: string): BraceGroup | undefined {
+  for (let open = nextBrace(glob, 0); open !== -1; open = nextBrace(glob, open + 1)) {
+    const group = groupAt(glob, open);
+    if (group !== undefined) {
+      return group;
+    }
+  }
+  return undefined;
+}
+
+/** The index of the first `{` at or after `from` outside a `[...]` set, or -1. */
+function nextBrace(glob: string, from: number): number {
+  let index = from;
+  while (index < glob.length) {
+    const set = setEnd(glob, index);
+    if (set !== undefined) {
+      index = set;
+    } else if (glob[index] === '{') {
+      return index;
+    } else {
+      index += 1;
+    }
+  }
+  return -1;
+}
+
+/** The group that opens at `open`, its inner groups left in its choices; undefined when it never closes. */
+function groupAt(glob: string, open: number): BraceGroup | undefined {
+  const choices: string[] = [];
+  let depth = 0;
+  let start = open + 1;
+  let index = open + 1;
+  while (index < glob.length) {
+    const set = setEnd(glob, index);
+    if (set !== undefined) {
+      index = set;
+      continue;
+    }
+    const char = glob[index];
+    if (char === '}' && depth === 0) {
+      choices.push(glob.slice(start, index));
+      return { open, close: index, choices };
+    }
+    if (char === '{') {
+      depth += 1;
+    } else if (char === '}') {
+      depth -= 1;
+    } else if (char === ',' && depth === 0) {
+      choices.push(glob.slice(start, index));
+      start = index + 1;
+    }
+    index += 1;
+  }
+  return undefined;
+}
+
+/** The index after a `[...]` set that starts at `index`, read as {@link globPart} reads one; undefined for no set. */
+function setEnd(glob: string, index: number): number | undefined {
+  if (glob[index] !== '[') {
+    return undefined;
+  }
+  const close = glob.indexOf(']', index + 2);
+  return close !== -1 && !glob.slice(index + 1, close).includes('/') ? close + 1 : undefined;
+}
+
 /**
  * True when `text` holds a wildcard a shell or the guard expands: `*`, `?` or a `[...]` set. One set no character fits
  * (`[z-a]`) means none: the word can match no file, so bash keeps all of it as typed, and it names that literal path.

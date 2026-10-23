@@ -5,10 +5,14 @@ import { toolCommandReadings } from '../core/bash-tool-readings.ts';
 import { isRecord, recordField, stringField, type JsonRecord } from '../core/guards.ts';
 import { resolveDir } from '../push-guard/location.ts';
 import { describeFinding, uniqueFindings, type SecretFinding } from '../secret-guard/findings.ts';
+import { braceAlternatives } from '../secret-guard/glob.ts';
 import { literalFindings, writtenFindings } from '../secret-guard/literals.ts';
 import type { SecretRules } from '../secret-guard/rules.ts';
 import { shellFindings } from '../secret-guard/shell.ts';
 import { holdBackOutput } from './permission.ts';
+
+/** The most `{a,b}` alternatives the guard spells out of one Grep glob; one with more counts as naming a secret file. */
+const MAX_GREP_ALTERNATIVES = 64;
 
 export interface SecretGuardEnv {
   /** The folder to judge from when the payload names none. */
@@ -104,8 +108,14 @@ function grepFindings(input: JsonRecord, dir: string, rules: SecretRules): Secre
     return [{ kind: 'file', path }];
   }
   return grepIncludes(stringField(input, 'glob') ?? '')
-    .filter((glob) => rules.paths.mayName(`${target}/${glob}`, true))
+    .filter((glob) => mayPick(rules, target, glob))
     .map((glob): SecretFinding => ({ kind: 'file', path: glob }));
+}
+
+/** True when a Grep `glob` may pick a secret file in `target`: one of its `{a,b}` alternatives may, or it has too many to read. */
+function mayPick(rules: SecretRules, target: string, glob: string): boolean {
+  const globs = braceAlternatives(glob, MAX_GREP_ALTERNATIVES);
+  return globs === undefined || globs.some((one) => rules.paths.mayName(`${target}/${one}`, true));
 }
 
 /**

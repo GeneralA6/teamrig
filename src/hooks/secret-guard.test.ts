@@ -96,6 +96,15 @@ describe('secretFindingsOf', () => {
     assert.deepEqual(grep(' '), []);
   });
 
+  it("reads each {a,b} alternative of a Grep glob, and counts one with too many as naming a secret", () => {
+    const grep = (glob: string): string[] => findings(call('Grep', { pattern: 'x', path: 'C:/w/t', glob, output_mode: 'content' }));
+    assert.deepEqual(grep('*.{ts,pem}'), ['*.{ts,pem}']);
+    assert.deepEqual(grep('*.{ts,{md,key}}'), ['*.{ts,{md,key}}']);
+    assert.deepEqual(grep('{src,.env*}'), ['{src,.env*}']);
+    assert.deepEqual(grep('*.{ts,md,json}'), []);
+    assert.deepEqual(grep('{a,b}{c,d}{e,f}{g,h}{i,j}{k,l}{m,n}'), ['{a,b}{c,d}{e,f}{g,h}{i,j}{k,l}{m,n}']);
+  });
+
   it('reads no other tool', () => {
     assert.deepEqual(findings(call('Glob', { pattern: '**/.env' })), []);
   });
