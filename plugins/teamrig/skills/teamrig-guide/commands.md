@@ -709,6 +709,10 @@ POSTED to 2 sessions (web, ops); each is reminded at its next prompt
 
 The line is stored as `- 2026-10-15 08:58 lead: api error codes are in docs/errors.md`.
 
+A line to a session under a sub-lead below the sender (`leads` in the config) is posted all the same, then a second
+line names the sub-lead to route such work via next time; a line that starts with CRITICAL gets none. See
+[the route reminder](hooks.md#after-a-send-past-a-sub-lead-the-route-reminder).
+
 ## Privileged commands
 
 A command that writes a database, calls a writing route, writes the cluster or an outside service runs only through
