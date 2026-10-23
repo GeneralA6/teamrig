@@ -85,6 +85,13 @@ function historyProblems(working, history) {
     }
     return problems;
 }
+/** What a snapshot folded from the history changes against the working set it replaces. */
+function rebuildOf(replaced, history, compaction) {
+    const held = new Set(replaced.read.lines);
+    // The new snapshot's lines after its header, each as the archive holds it.
+    const lines = compaction.text.split('\n').slice(1).filter((line) => line !== '');
+    return { differences: historyProblems(replaced, history), restoredLines: lines.filter((line) => !held.has(line)).length };
+}
 /**
  * Lines from a newer teamrig refuse a rotation: the new snapshot holds only the events this code reads, so
  * it would drop them from the working set, and the next reader would fold their tasks to an older status.
@@ -115,8 +122,10 @@ export async function planRotation(files, paths, options, tailText) {
     const text = tailText ?? (await files.read(paths.tail)) ?? '';
     const tail = readEvents(text);
     const working = workingSetPlan(snapshotRead, tail);
-    const readPlanUsed = working.skipped === undefined ? working : historyPlan(tail);
+    const replacing = options.fromHistory && working.base !== undefined;
+    const readPlanUsed = working.skipped === undefined && !replacing ? working : historyPlan(tail);
     const source = await readPlan(files, paths, readPlanUsed, tail);
+    const replaced = replacing ? await readPlan(files, paths, working, tail) : null;
     const segment = tail.rotatedAfter + 1;
     const compaction = compactRegister(source, { covered: segment, now: options.now, zone: options.zone, retainDays: options.retainDays, keep: options.keep });
     const markerText = toJsonlLine(markerRecord(segment, options.now.toISOString()));
@@ -124,12 +133,8 @@ export async function planRotation(files, paths, options, tailText) {
     const existing = await segmentProblem(files, paths.segment(segment), text);
     const fromHistory = readPlanUsed.base === undefined;
     const history = options.checkHistory && !fromHistory ? await readPlan(files, paths, historyPlan(tail), tail) : null;
-    const problems = [
-        ...newerProblems(source.read),
-        ...(existing.problem === null ? [] : [existing.problem]),
-        ...back.problems,
-        ...(history === null ? [] : historyProblems(source, history)),
-    ];
+    const differences = history === null ? [] : historyProblems(source, history);
+    const problems = [...newerProblems(source.read), ...(existing.problem === null ? [] : [existing.problem]), ...back.problems, ...differences];
     const checked = history ?? (options.checkHistory ? source : null);
     return {
         segment,
@@ -143,6 +148,8 @@ export async function planRotation(files, paths, options, tailText) {
         unchanged: back.unchanged,
         leftover: existing.leftover,
         history: checked === null ? null : { tasks: checked.state.tasks.size, events: checked.read.events.length },
+        historyDiffers: differences.length > 0,
+        rebuild: replaced === null ? null : rebuildOf(replaced, source, compaction),
         idle: tail.events.length === 0 && compaction.retiredNow.length === 0 && (!fromHistory || source.read.events.length === 0),
         problems,
     };
