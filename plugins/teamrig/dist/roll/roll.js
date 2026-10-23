@@ -35,7 +35,7 @@ function runExitCode(run) {
     }
 }
 /** The repository to roll: the one named, else the one the folder is in, else the only one with a roll block. */
-function chosenRepo(setup, ports, request) {
+export function chosenRepo(setup, ports, request) {
     const repos = Object.entries(setup.coordinator.repos);
     const rolled = rollRepos(setup.coordinator, (path) => setup.inTeam(path));
     const names = rolled.length === 0 ? 'none has a roll block' : `with a roll block: ${rolled.map((repo) => repo.name).join(', ')}`;
@@ -70,31 +70,47 @@ function hookEnv(setup, ports, request, repo, pending, extra = {}) {
     };
 }
 /**
- * Whether the roll may start: the heavy cutoff and the reset blackout refuse it, a quiet claim on its targets and a
- * gate that does not pass hold it. Under the lock the pending range is read again, so the gates judge what is pulled;
- * a range with nothing left, refused or unreadable is not the gates' to judge, so the check passes and the roll ends
- * under the lock.
+ * What stops any change to `targets` before its gates are asked: the heavy cutoff and the reset blackout refuse it, a
+ * quiet claim on one of them holds it; undefined when none does.
+ */
+export async function scheduleReadiness(setup, ports, targets) {
+    const { schedule } = setup.coordinator;
+    const now = ports.clock.now();
+    const hours = schedule.resetBlackoutHours;
+    const refusal = heavyCutoffReason(now, schedule.heavyCutoffUtc, setup.zone) ??
+        (hours === undefined ? undefined : resetBlackoutReason(now, await ports.nextReset(now), hours, setup.zone));
+    if (refusal !== undefined) {
+        return { kind: 'refuse', reason: refusal };
+    }
+    if (targets.length === 0) {
+        return undefined;
+    }
+    const read = await readClaims(ports.files, setup.places.claims);
+    if (read.kind === 'unreadable') {
+        return { kind: 'wait', reason: `the quiet claims in ${setup.places.claims} are unreadable (${read.reason})` };
+    }
+    const covering = coveringClaims(read.claims, targets, now);
+    return covering.length === 0 ? undefined : { kind: 'wait', reason: covering.map((claim) => claimText(claim, setup.zone)).join('; ') };
+}
+/** A hook's line as it is shown and recorded: redacted, and said as it comes. */
+export function shownBy(ports) {
+    return (line) => {
+        const shown = shownLine(ports.scanner, line);
+        ports.say(`  ${shown}`);
+        return shown;
+    };
+}
+/**
+ * Whether the roll may start: {@link scheduleReadiness} for its targets, then its gates. Under the lock the pending
+ * range is read again, so the gates judge what is pulled; a range with nothing left, refused or unreadable is not the
+ * gates' to judge, so the check passes and the roll ends under the lock.
  */
 function readinessOf(setup, ports, request, repo, view) {
-    const { schedule } = setup.coordinator;
     const { targets, gates } = repo.roll;
     return async (phase) => {
-        const now = ports.clock.now();
-        const hours = schedule.resetBlackoutHours;
-        const refusal = heavyCutoffReason(now, schedule.heavyCutoffUtc, setup.zone) ??
-            (hours === undefined ? undefined : resetBlackoutReason(now, await ports.nextReset(now), hours, setup.zone));
-        if (refusal !== undefined) {
-            return { kind: 'refuse', reason: refusal };
-        }
-        if (targets.length > 0) {
-            const read = await readClaims(ports.files, setup.places.claims);
-            if (read.kind === 'unreadable') {
-                return { kind: 'wait', reason: `the quiet claims in ${setup.places.claims} are unreadable (${read.reason})` };
-            }
-            const covering = coveringClaims(read.claims, targets, now);
-            if (covering.length > 0) {
-                return { kind: 'wait', reason: covering.map((claim) => claimText(claim, setup.zone)).join('; ') };
-            }
+        const stopped = await scheduleReadiness(setup, ports, targets);
+        if (stopped !== undefined) {
+            return stopped;
         }
         if (phase === 'locked') {
             view.read = await readPending(ports.git, repo);
@@ -162,11 +178,7 @@ async function pullAndRoll(setup, ports, request, repo, pending, tag, lock) {
     ports.say(`pulled ${repo.main} to ${short(pending.target)}`);
     const env = underLock(hookEnv(setup, ports, request, repo, pending, { TEAMRIG_ROLL_TO: pending.target, ...(tag === undefined ? {} : { TEAMRIG_ROLL_TAG: tag }) }), lock);
     const timeoutMs = setup.coordinator.heavy.maxRunMinutes * MINUTE_MS;
-    const show = (line) => {
-        const shown = shownLine(ports.scanner, line);
-        ports.say(`  ${shown}`);
-        return shown;
-    };
+    const show = shownBy(ports);
     if (pending.deps !== undefined) {
         const failed = await installDeps(setup, ports, repo, pending.head, pending.deps, env, show);
         if (failed !== undefined) {
