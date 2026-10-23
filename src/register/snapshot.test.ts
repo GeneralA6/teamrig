@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { EVENT_VERSION } from './events.ts';
+import { FIRST_LAYOUT_VERSION, NEWEST_LAYOUT_VERSION } from './marker.ts';
 import { isWritable, readEvents, readRegister, snapshotOf } from './snapshot.ts';
 
 const CREATE_T1 = `{"v":2,"type":"create","id":"T1","at":"2030-01-07T09:00:00.000Z","by":"lead","task":{"title":"First","owner":"alpha","source":"owner","ref":null,"priority":2,"due":null,"goals":[],"week":null}}`;
@@ -88,8 +89,16 @@ describe('readEvents on a rotated log', () => {
     assert.equal(read.newestVersion, EVENT_VERSION);
   });
 
+  it('reads a marker of every layout it knows as the segment the log goes on from, and still writes after it', () => {
+    for (let v = FIRST_LAYOUT_VERSION; v <= NEWEST_LAYOUT_VERSION; v += 1) {
+      const read = readEvents([marker(2, v), CREATE_T1].join('\n'));
+      assert.deepEqual([read.rotatedAfter, read.newer, read.newestVersion, isWritable(read)], [2, 0, EVENT_VERSION, true], `v${v}`);
+    }
+  });
+
   it('counts a marker from a newer layout as a newer line, which blocks writes', () => {
-    const read = readEvents([marker(1, 4), CREATE_T1].join('\n'));
-    assert.deepEqual([read.rotatedAfter, read.newer, read.newestVersion], [0, 1, 4]);
+    const newer = NEWEST_LAYOUT_VERSION + 1;
+    const read = readEvents([marker(1, newer), CREATE_T1].join('\n'));
+    assert.deepEqual([read.rotatedAfter, read.newer, read.newestVersion, isWritable(read)], [0, 1, newer, false]);
   });
 });

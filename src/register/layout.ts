@@ -1,7 +1,7 @@
 import { isNonNegativeInteger, type JsonRecord } from '../core/guards.ts';
 import { parseJsonl, type JsonlRecord } from '../core/jsonl.ts';
 import { foldEvents } from './fold.ts';
-import { LAYOUT_VERSION } from './marker.ts';
+import { LAYOUT_VERSION, NEWEST_LAYOUT_VERSION, readsLayout } from './marker.ts';
 import { TASK_ID } from './model.ts';
 import { readEvents, type EventLogRead, type RegisterSnapshot } from './snapshot.ts';
 
@@ -138,10 +138,10 @@ export function readSnapshotText(text: string | undefined): SnapshotRead {
   if (line === undefined || line.record['type'] !== SNAPSHOT_TYPE) {
     return unusable('its first line is no snapshot header');
   }
-  if (line.version > LAYOUT_VERSION) {
+  if (line.version > NEWEST_LAYOUT_VERSION) {
     return unusable(`a newer teamrig wrote it (layout v${line.version})`, line.version);
   }
-  const header = line.version === LAYOUT_VERSION ? headerOf(line) : `layout v${line.version} is no snapshot layout`;
+  const header = readsLayout(line.version) ? headerOf(line) : `layout v${line.version} is no snapshot layout`;
   if (typeof header === 'string') {
     return unusable(header);
   }
