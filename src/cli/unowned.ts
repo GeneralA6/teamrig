@@ -1,13 +1,14 @@
 import { clipEnd } from '../core/clip.ts';
 import { KIT_NAME } from '../core/home.ts';
-import { formatFinding, type ContextFinding } from '../doctor/doctor.ts';
+import { formatFinding, type AllowFinding, type ContextFinding } from '../doctor/doctor.ts';
 import { formatSkillFlag, type SkillFlag } from '../skills/lint.ts';
 
 /**
  * Warnings no session owns (T951). A context finding weighs text every session on the machine re-reads, so it is no
- * one area's; a skill flag goes to its skill's `Owner:`, which may be missing or name no session on the team. Such a
- * warning goes to the team's lead, with the check it came from, so it never reaches no one: the lead fixes it, hands
- * it on or settles the check.
+ * one area's; a wide allow rule sits in settings every session runs under, and a permissions change is the owner's
+ * gate, which the lead takes to the owner; a skill flag goes to its skill's `Owner:`, which may be missing or name no
+ * session on the team. Such a warning goes to the team's lead, with the check it came from, so it never reaches no
+ * one: the lead fixes it, hands it on or settles the check.
  */
 
 /** The most of a warning's text its inbox line carries; `check --all` prints it in full. */
@@ -29,8 +30,14 @@ export interface SplitWarnings {
   readonly unowned: readonly UnownedWarning[];
 }
 
-function contextWarning(finding: ContextFinding): UnownedWarning {
-  return { key: `context ${finding.budget}`, source: `the context check [contextFiles.${finding.budget}]`, text: formatFinding(finding) };
+/** A doctor finding no session owns: the context findings, one per budget, and the wide allow rules. */
+export type UnownedFinding = ContextFinding | AllowFinding;
+
+function findingWarning(finding: UnownedFinding): UnownedWarning {
+  const text = formatFinding(finding);
+  return finding.kind === 'allow-wide'
+    ? { key: 'permissions allow-wide', source: 'the permissions check [permissions.keepAllow]', text }
+    : { key: `context ${finding.budget}`, source: `the context check [contextFiles.${finding.budget}]`, text };
 }
 
 function skillWarning(flag: SkillFlag, skillsDir: string): UnownedWarning {
@@ -38,14 +45,14 @@ function skillWarning(flag: SkillFlag, skillsDir: string): UnownedWarning {
 }
 
 /**
- * Every context finding is unowned; a skill flag is owned when its owner is a session on the team, else it leaves
+ * Every doctor finding given is unowned; a skill flag is owned when its owner is a session on the team, else it leaves
  * the skill flags for the unowned ones.
  */
-export function splitUnowned(context: readonly ContextFinding[], skills: readonly SkillFlag[], sessions: ReadonlySet<string>, skillsDir: string): SplitWarnings {
+export function splitUnowned(findings: readonly UnownedFinding[], skills: readonly SkillFlag[], sessions: ReadonlySet<string>, skillsDir: string): SplitWarnings {
   const owned = (flag: SkillFlag): boolean => flag.owner !== null && sessions.has(flag.owner);
   return {
     skills: skills.filter(owned),
-    unowned: [...context.map(contextWarning), ...skills.filter((flag) => !owned(flag)).map((flag) => skillWarning(flag, skillsDir))],
+    unowned: [...findings.map(findingWarning), ...skills.filter((flag) => !owned(flag)).map((flag) => skillWarning(flag, skillsDir))],
   };
 }
 

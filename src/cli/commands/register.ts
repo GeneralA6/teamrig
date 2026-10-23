@@ -10,7 +10,7 @@ import { burstsOver, surplusOf } from '../../budget/burst.ts';
 import { formatW } from '../../budget/format.ts';
 import { timingText, waitTiming, type WaitTiming } from '../../decisions/lines.ts';
 import { teamDecisions } from '../../decisions/team.ts';
-import { contextSizeFindings } from '../../doctor/doctor.ts';
+import { allowFindings, contextSizeFindings } from '../../doctor/doctor.ts';
 import { hireFlags } from '../../hiring/due.ts';
 import { activeHires, HiringLog } from '../../hiring/log.ts';
 import { scaleOutFlags } from '../../hiring/scale-out.ts';
@@ -34,6 +34,7 @@ import { approvalNotice, assignedNotice, formatTask, formatTaskDetail, formatTas
 import { isPeerWait, sameWait, type PersonWait } from '../../register/waits.ts';
 import { lintSkills } from '../../skills/lint.ts';
 import { SKILL_FILE, SkillDir } from '../../skills/store.ts';
+import { readWideAllow } from '../allow-scope.ts';
 import { noPositionals, onePositional, UsageError, type ParsedArgs } from '../args.ts';
 import { addInputOf, callerOf, changesOf, listFilterOf, pinOf, setInputOf, taskIdOf, weekOf, type TypedTimes } from '../inputs.ts';
 import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, projectFolder, requireConfig, rosterOf, sessionIdOf, teamZone, type Access, type Kit } from '../kit.ts';
@@ -662,7 +663,8 @@ export async function checkReport(args: ParsedArgs, runtime: CliRuntime): Promis
   const scope = week === null ? 'no week plan tagged yet, so the week checks are skipped' : `week ${week}`;
   const { batch } = await teamDecisions(runtime.files, own.paths, own.config, own.snapshot.state.tasks, now.getTime(), zone);
   const context = contextSizeFindings(await readContextInput(runtime, project, own.paths.skills, own.config.contextFiles));
-  const { skills, unowned } = splitUnowned(context, lintSkills(skillFiles, now, own.config), new Set(own.config.sessions), own.paths.skills);
+  const allow = allowFindings(await readWideAllow(runtime, { paths: own.paths, config: own.config, project }));
+  const { skills, unowned } = splitUnowned([...context, ...allow], lintSkills(skillFiles, now, own.config), new Set(own.config.sessions), own.paths.skills);
   const lead = own.config.roles.lead;
   return { sections, scope, skills, skillsDir: own.paths.skills, hires, unowned, lead, decisions: { lead, batch, zone } };
 }

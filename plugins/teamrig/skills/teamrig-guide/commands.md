@@ -1892,7 +1892,7 @@ Otherwise `DOCTOR N finding(s)` and one `WARN <kind> <detail and fix>` line each
 Claude Code or Node.js, [the check](requirements.md#the-requirements-check)), `name-gone`,
 `name-shared`, `name-config`, `rename-log`, `inbox-orphan`, `inbox-unread`, `rules-long`, `context-size`,
 `context-lists`, `tree-id`, `tree-parent`, `tree-loop`, `tree-depth`, `tree-children`, `name-two-teams`, `effort-env`,
-`model-env`, `settings-json`, `launch-effort`.
+`model-env`, `settings-json`, `launch-effort`, `allow-wide`.
 
 `context-size` weighs, in characters (about 4 per token), the user's CLAUDE.md with the project folder's and each
 parent's (`CLAUDE.md`, `CLAUDE.local.md`, `.claude/CLAUDE.md`), the project's memory index (`MEMORY.md`) and the
@@ -1919,6 +1919,14 @@ lead's default, so the lead is not flagged.
 
 ```text
 WARN launch-effort shop-web (session web) launches on model opus with no effort, so it runs at that model's default effort (medium on Opus, Sonnet and Haiku 5.5): set launch.web.effort in the team config
+```
+
+`allow-wide` counts the allow rules off [permissions.keepAllow] that approve a whole tool or program, in every
+settings file `teamrig permissions trim` reads, by class and never by text. `check` shows it too, as a warning no
+session owns, so the lead's `start` shows it and its inbox gets one line on it.
+
+```text
+WARN allow-wide 3 local allow rule(s) in 2 settings file(s) approve a whole tool or program, so auto mode's classifier never sees those calls (Bash wide 2, Read wide 1); `teamrig permissions trim` previews their removal, and the owner runs it with --yes
 ```
 
 ### teamrig compact
@@ -2108,8 +2116,9 @@ after, and the rules it removes or keeps off the list as counts by class (the to
 rewrites, with a manifest of their sha256, into a new folder `teamrig/permissions-backups/<UTC second>/` under your
 state folder (`%LOCALAPPDATA%` on Windows, else `$XDG_STATE_HOME` or `~/.local/state`), outside the kit home every
 session reads; then it rewrites only `permissions.allow` of each file, leaves a file that changed since it was read,
-and reads each one back. It exits 1 when a file was left or failed that check. A permissions change is the owner's
-to make, so the owner runs it with `--yes`.
+and reads each one back. It exits 1 when a file was left or failed that check. `doctor` and the lead's `check` and
+`start` flag the rules it would remove by default (`allow-wide`). A permissions change is the owner's to make, so
+the owner runs it with `--yes`.
 
 Flags:
 

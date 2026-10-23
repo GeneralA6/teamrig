@@ -8,6 +8,8 @@ import type { TimeZone } from '../core/zone.ts';
 import { unreadSince } from '../inbox/inbox.ts';
 import type { Unread } from '../inbox/unread.ts';
 import type { RenameLogRead } from '../names/rename.ts';
+import { wideAllowText } from '../permissions/report.ts';
+import type { WideAllow } from '../permissions/trim.ts';
 import { describeRequirement, type RequirementProblem } from '../requirements/requirements.ts';
 import { TEAM_RULES_MAX_CHARS } from '../rules/pack.ts';
 import type { ContextFiles } from './context-files.ts';
@@ -38,7 +40,9 @@ export const UNREAD_INBOX_DAYS = 7;
  * - `effort-env`: `CLAUDE_CODE_EFFORT_LEVEL` set, which beats every `--effort`, `/effort` and per-call Agent effort;
  * - `model-env`: `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` set, which at 1 beats every per-call Agent model;
  * - `settings-json`: a Claude Code settings file that is not a JSON object, so its `env` block went unchecked;
- * - `launch-effort`: a session's `launch` names a model but no effort, so it starts at the model's default effort.
+ * - `launch-effort`: a session's `launch` names a model but no effort, so it starts at the model's default effort;
+ * - `allow-wide`: local allow rules off `permissions.keepAllow` that approve a whole tool or program, so auto mode's
+ *   classifier never sees those calls (`teamrig permissions trim` removes them, run by the owner).
  */
 export type FindingKind =
   | 'requirement'
@@ -56,11 +60,17 @@ export type FindingKind =
   | 'effort-env'
   | 'model-env'
   | 'settings-json'
-  | 'launch-effort';
+  | 'launch-effort'
+  | 'allow-wide';
 
 export interface Finding {
   readonly kind: FindingKind;
   readonly detail: string;
+}
+
+/** The wide allow rules of every settings file the team's sessions run under, as one finding. */
+export interface AllowFinding extends Finding {
+  readonly kind: 'allow-wide';
 }
 
 /** A context finding and the budget it runs over: at most one stands per budget, so the budget names it while it stands. */
@@ -100,6 +110,8 @@ export interface DoctorInput {
   readonly tree: { readonly problems: readonly TreeProblem[]; readonly clashes: readonly NameClash[] };
   /** The environment doctor runs in; only the variables that override a model or effort choice are read. */
   readonly env: Env;
+  /** The local allow rules off `permissions.keepAllow` that approve a whole tool or program (`readWideAllow`), as counts. */
+  readonly wideAllow: WideAllow;
   /** The `env` blocks of the Claude Code settings files the team's sessions read (`readSettingsEnv`). */
   readonly settingsEnv: readonly SettingsEnv[];
   /** Each session on the team and the model and effort it starts on. */
@@ -356,11 +368,17 @@ function launchFindings({ launches, roster }: DoctorInput): Finding[] {
   });
 }
 
+/** One finding while any settings file holds a wide allow rule off the keep-list, counted by class, never its text; `check` shows it the lead too. */
+export function allowFindings(wide: WideAllow): AllowFinding[] {
+  const detail = wideAllowText(wide);
+  return detail === undefined ? [] : [{ kind: 'allow-wide', detail }];
+}
+
 /**
  * The team's health checks: names that find the wrong session or none, a damaged rename log,
  * inboxes nobody reads, rules too long to show, text every call re-reads over its budget (files, and the lists the newest
  * session holds), a broken tree of teams or a session name two teams use, a variable that overrides every model or effort
- * choice, and a launch with a model but no effort.
+ * choice, a launch with a model but no effort, and local allow rules that approve a whole tool or program.
  * It reads only; every fix is the user's.
  */
 export function doctorFindings(input: DoctorInput): Finding[] {
@@ -375,6 +393,7 @@ export function doctorFindings(input: DoctorInput): Finding[] {
     ...treeFindings(input),
     ...routingEnvFindings(input),
     ...launchFindings(input),
+    ...allowFindings(input.wideAllow),
   ];
 }
 

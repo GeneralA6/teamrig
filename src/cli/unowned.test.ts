@@ -40,6 +40,17 @@ describe('splitUnowned', () => {
       ['context maxClaudeMdChars'],
     );
   });
+
+  it('makes the wide allow rules one warning from the permissions check, keyed apart from its counts', () => {
+    const { unowned } = splitUnowned([{ kind: 'allow-wide', detail: '3 local allow rule(s) in 2 settings file(s) approve a whole tool or program' }], [], SESSIONS, 'skills-dir');
+    assert.deepEqual(unowned, [
+      {
+        key: 'permissions allow-wide',
+        source: 'the permissions check [permissions.keepAllow]',
+        text: 'WARN allow-wide 3 local allow rule(s) in 2 settings file(s) approve a whole tool or program',
+      },
+    ]);
+  });
 });
 
 describe('the unowned lines', () => {

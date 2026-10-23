@@ -36,6 +36,7 @@ function input(overrides: Partial<DoctorInput> & { readonly names?: Record<strin
     tree: { problems: [], clashes: [] },
     env: {},
     settingsEnv: [],
+    wideAllow: { files: 0, counts: [] },
     launches: [],
     now: NOW,
     zone: TimeZone.UTC,
@@ -275,6 +276,13 @@ describe('doctorFindings of launch entries', () => {
     assert.deepEqual(lines(input({ launches })), []);
     assert.deepEqual(lines(input({ launches: launchesOf({}) })), []);
     assert.deepEqual(lines(input({ launches: launchesOf({ alpha: { model: 'default' } }) })), []);
+  });
+
+  it('flags the wide allow rules by class in one finding, and is quiet without any', () => {
+    assert.deepEqual(lines(input({ wideAllow: { files: 2, counts: [['Bash wide', 2]] } })), [
+      "WARN allow-wide 2 local allow rule(s) in 2 settings file(s) approve a whole tool or program, so auto mode's classifier never sees those calls (Bash wide 2); `teamrig permissions trim` previews their removal, and the owner runs it with --yes",
+    ]);
+    assert.deepEqual(lines(input()), []);
   });
 
   it("is quiet for the lead's model with no effort, since the lead's default effort fills it in", () => {
