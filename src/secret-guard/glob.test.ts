@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { globRegExp, hasWildcard } from './glob.ts';
+import { braceAlternatives, globRegExp, hasWildcard } from './glob.ts';
 
 const ANY = { ignoreCase: false, dotfiles: true };
 const BASH = { ignoreCase: false, dotfiles: false };
@@ -90,6 +90,28 @@ describe('globRegExp', () => {
   it('ignores case when told', () => {
     assert.equal(globRegExp('C:/Users/*/.npmrc', { ignoreCase: true, dotfiles: true }).test('c:/users/u/.NPMRC'), true);
     assert.equal(globRegExp('/a/.npmrc', ANY).test('/a/.NPMRC'), false);
+  });
+});
+
+describe('braceAlternatives', () => {
+  it('spells out each {a,b} group, nested and empty alternatives too', () => {
+    assert.deepEqual(braceAlternatives('*.{ts,pem}', 8), ['*.ts', '*.pem']);
+    assert.deepEqual(braceAlternatives('{a,b}/{c,d}', 8), ['a/c', 'a/d', 'b/c', 'b/d']);
+    assert.deepEqual(braceAlternatives('*.{ts,{pem,key}}', 8), ['*.ts', '*.pem', '*.key']);
+    assert.deepEqual(braceAlternatives('x{,.bak}', 8), ['x', 'x.bak']);
+    assert.deepEqual(braceAlternatives('plain.ts', 8), ['plain.ts']);
+  });
+
+  it('keeps a brace inside a [...] set, or one that never closes, as a plain character', () => {
+    assert.deepEqual(braceAlternatives('[{]a,b}', 8), ['[{]a,b}']);
+    assert.deepEqual(braceAlternatives('a{b', 8), ['a{b']);
+    assert.deepEqual(braceAlternatives('a{b{c,d}', 8), ['a{bc', 'a{bd']);
+  });
+
+  it('gives up past the limit', () => {
+    assert.deepEqual(braceAlternatives('{a,b}{c,d}', 4), ['ac', 'ad', 'bc', 'bd']);
+    assert.equal(braceAlternatives('{a,b}{c,d}{e,f}', 4), undefined);
+    assert.equal(braceAlternatives('{a,b,c,d,e}', 4), undefined);
   });
 });
 
