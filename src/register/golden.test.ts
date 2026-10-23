@@ -35,6 +35,7 @@ describe('golden register logs', () => {
       after: [],
       size: null,
       kind: null,
+      pin: null,
       status: 'done',
       note: 'health check live',
       evidence: 'commit abc1234; 12 tests',
