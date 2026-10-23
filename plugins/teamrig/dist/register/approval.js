@@ -1,9 +1,14 @@
 /**
- * Whether the task's answer clears `reason`: an approval wait whose giver approved it (`approve`, T684). A new status
- * clears the answer with the waits (fold.ts), so an approval covers only the step its task asked about.
+ * The task's answer to `reason` when it is an approval wait its giver answered, either way (`approve`, T684);
+ * undefined otherwise. A new status clears the answer with the waits (fold.ts), so an answer covers only the step its
+ * task asked about.
  */
+export function answerTo(task, reason) {
+    return reason.kind === 'approval' && task.answer !== null && task.answer.by === reason.who ? task.answer : undefined;
+}
+/** Whether the task's answer clears `reason`: an approval wait whose giver approved it. */
 export function approvalCleared(task, reason) {
-    return reason.kind === 'approval' && task.answer?.verdict === 'approved' && task.answer.by === reason.who;
+    return answerTo(task, reason)?.verdict === 'approved';
 }
 /**
  * The first task of `owner`'s, in register order, that waits on the approval of one of `approvers` (its leaders,
