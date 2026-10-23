@@ -1,0 +1,48 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { COMMAND_EFFECTS } from '../cli/run.ts';
+import { kitLines, kitTag, REGISTER_COMMANDS, type AutoModeFacts } from './lines.ts';
+
+const FACTS: AutoModeFacts = {
+  team: 'alpha',
+  home: '~/.teamrig/teams/alpha',
+  lead: 'boss',
+  pushGuard: { protectedBranches: ['main', 'release'], pushToProtected: 'ask' },
+};
+
+describe('kitTag', () => {
+  it("names the team, so one team's lines never match another's", () => {
+    assert.equal(kitTag('alpha'), '[teamrig alpha] ');
+    assert.equal(kitTag('alpha2').startsWith(kitTag('alpha')), false);
+  });
+});
+
+describe('kitLines', () => {
+  it('fills the branches, the register and the wrappers from the team', () => {
+    assert.deepEqual(kitLines(FACTS), [
+      '[teamrig alpha] Protected branches: main, release. A normal push to one asks the person. A force-push, a --mirror push or deleting one is refused, and a --force-with-lease push asks. ' +
+        "Every session edits on its own branch in its own git worktree, never in a repo's main checkout.",
+      '[teamrig alpha] The task register: every session may run teamrig start, teamrig add, teamrig set, teamrig update, teamrig verify, teamrig list, teamrig show, teamrig check, ' +
+        'teamrig plan, teamrig budget, teamrig rules, teamrig refresh, teamrig inbox read, teamrig inbox status, teamrig inbox add, teamrig who, teamrig rename for team alpha; ' +
+        'they write only under ~/.teamrig/teams/alpha/.',
+      "[teamrig alpha] `teamrig heavy ... -- <cmd>` and `teamrig test ... -- <cmd>` run the session's own build, test or script on this host (heavy waits for the host lock, " +
+        'test records the result); neither grants anything, so judge the command after `--` as if it ran alone.',
+    ]);
+  });
+
+  it('says what a normal push to a protected branch does in each mode', () => {
+    const first = (pushToProtected: AutoModeFacts['pushGuard']['pushToProtected']): string =>
+      kitLines({ ...FACTS, pushGuard: { ...FACTS.pushGuard, pushToProtected } })[0] ?? '';
+    assert.match(first('allow'), /A normal push to one goes through with a note\./);
+    assert.match(first('lead'), /goes through only for the lead \(session boss\) or for a session whose waiting task the lead approved with `teamrig approve`; any other session is refused\./);
+  });
+});
+
+describe('REGISTER_COMMANDS', () => {
+  it('names only commands the CLI has, none of them internal', () => {
+    for (const name of REGISTER_COMMANDS) {
+      assert.ok(name in COMMAND_EFFECTS, `${name} is not a teamrig command`);
+      assert.notEqual(COMMAND_EFFECTS[name], 'internal', `${name} is internal`);
+    }
+  });
+});
