@@ -318,6 +318,10 @@ allow, in a mode that asks, or a check of its own that always asks): `hook promp
 
 Each answer is a line in `state/prompt-answers.jsonl` (the time, both sessions, the tool, the answer and the first
 200 characters of the command), for the triage that turns a refused line into a fixed guard or a new rerun form. The
+command is redacted before the cut: a URL's user part and every secret shape (a token, an Authorization header's
+credential, a password assignment) become `[redacted ...]`, so no secret's start survives it. Lines over 7 days old move to
+`state/archive/prompt-answers-YYYYMMDD.jsonl` at the next answer once the oldest is over 8 days old, or at
+[teamrig compact](commands.md#teamrig-compact). The
 question picker and plan mode's exit still open: the [picker guard](#before-a-question-the-picker-guard) and the
 person decide those.
 
