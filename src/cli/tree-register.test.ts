@@ -90,7 +90,7 @@ describe('teamrig list|check|plan --tree', () => {
       code: EXIT.ok,
       stdout: [
         'app/T1 open, p1, owner alpha, due 01-07, week 01-07, from lead | Root task',
-        'web/T1 open, p2, owner lead, week 01-07, from app/lead | Ship login',
+        'web/T1 open, p2, owner lead, week 01-07, from app/lead | Ship login · ahead: in week 01-07',
         'ui/T1 open, p2, owner pixel, from lead | Icons',
       ],
       stderr: [],
@@ -108,7 +108,7 @@ describe('teamrig list|check|plan --tree', () => {
       '  ui/pixel 1: 1 open',
       '  web/lead 1: 1 open',
       'app/T1 open, p1, owner alpha, due 01-07 | Root task',
-      'web/T1 open, p2, owner lead | Ship login',
+      'web/T1 open, p2, owner lead | Ship login · ahead: in week 01-07',
       'ui/T1 open, p2, owner pixel | Icons',
     ]);
     assert.deepEqual(filesOf(kit), before);

@@ -68,7 +68,7 @@ describe('runCli: the dependency tree', () => {
     const kit = await treeTeam();
     const listed = await kit.run(['list', '--session', 'alpha']);
     assert.deepEqual(listed.stdout.slice(1), [
-      'T1 open, p2, owner alpha, due 01-12 (from T3) | Write the API · needed by T3 (bravo)',
+      'T1 open, p2, owner alpha, due 01-12 (from T3) | Write the API · needed by T3 (bravo) · ahead: due',
       'T4 open, p2, owner alpha, after T3 | Publish the guide',
     ]);
   });

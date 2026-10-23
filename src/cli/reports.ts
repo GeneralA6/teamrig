@@ -7,7 +7,7 @@ import { FLAG_KINDS, formatFlag, type Flag, type FlagKind } from '../register/ch
 import type { Task } from '../register/fold.ts';
 import type { TaskStatus } from '../register/model.ts';
 import { planOrder, type TaskTree, type WaitingOnYou } from '../register/tree.ts';
-import { formatShortTask, formatTask, formatWaitingOnYou } from '../register/views.ts';
+import { aheadText, formatShortTask, formatTask, formatWaitingOnYou, type PlacedRow } from '../register/views.ts';
 import { formatSkillFlag, type SkillFlag } from '../skills/lint.ts';
 import { unownedHeading, unownedRow, type UnownedWarning } from './unowned.ts';
 
@@ -102,7 +102,7 @@ interface TeamFlag {
 }
 
 /** Plan order on effective dues across registers: each task placed by its own register's tree. */
-function byRowPlanOrder(a: { readonly task: Task; readonly tree: TaskTree }, b: { readonly task: Task; readonly tree: TaskTree }): number {
+function byRowPlanOrder(a: PlacedRow, b: PlacedRow): number {
   return planOrder(a.tree.placeOf(a.task), b.tree.placeOf(b.task));
 }
 
@@ -134,9 +134,12 @@ function firstOf(lines: readonly string[], shown: number): string[] {
   return lines.length <= shown ? [...lines] : [...lines.slice(0, shown), `  +${lines.length - shown} more`];
 }
 
-/** `list`: every field of every row with `all`, else the short form. */
+/**
+ * `list`: every field of every row with `all`, in the given order, else the short form; each row ends with why it
+ * sorts ahead of the next one ({@link aheadText}).
+ */
 export function listLines(rows: readonly TaskRow[], all: boolean): string[] {
-  return all ? rows.map(({ task, team, tree }) => formatTask(task, team, tree)) : shortList(rows);
+  return all ? rows.map((row, index) => `${formatTask(row.task, row.team, row.tree)}${aheadText(row, rows[index + 1])}`) : shortList(rows);
 }
 
 function ownerOf({ task, team }: TaskRow): string {
@@ -154,8 +157,8 @@ function ownerLine(owner: string, rows: readonly TaskRow[]): string {
 
 /**
  * The short `list`: `LIST 12 task(s) of 3 owners (short rows; --all for every field)`; when several owners have tasks,
- * a line per owner with its status counts, the busiest first; then the short rows in plan order across every team,
- * cut to SHORT_FORM_CHARS with a `+N more` line.
+ * a line per owner with its status counts, the busiest first; then the short rows in plan order across every team, each
+ * with why it sorts ahead of the next (`· ahead: due`), cut to SHORT_FORM_CHARS with a `+N more` line.
  */
 function shortList(rows: readonly TaskRow[]): string[] {
   const owners = new Map<string, TaskRow[]>();
@@ -170,7 +173,7 @@ function shortList(rows: readonly TaskRow[]): string[] {
       : [];
   const sorted = [...rows].sort(byRowPlanOrder);
   return fitBudget(
-    [`LIST ${rows.length} task(s)${ownerCount}${hint}`, ...summary, ...sorted.map(({ task, team, tree }) => formatShortTask(task, SHORT_TITLE_CHARS, team, tree))],
+    [`LIST ${rows.length} task(s)${ownerCount}${hint}`, ...summary, ...sorted.map((row, index) => `${formatShortTask(row.task, SHORT_TITLE_CHARS, row.team, row.tree)}${aheadText(row, sorted[index + 1])}`)],
     SHORT_FORM_CHARS,
     (left) => `+${left} more (--all lists every task in full)`,
   );
