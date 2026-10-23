@@ -14,6 +14,7 @@ const refreshWakeCommand = () => import("./commands/hook-refresh-wake.js");
 const droppedEditCommand = () => import("./commands/hook-dropped-edit.js");
 const restoreTrackCommand = () => import("./commands/hook-restore-track.js");
 const tabStatusCommand = () => import("./commands/hook-tab-status.js");
+const toolEndCommand = () => import("./commands/hook-tool-end.js");
 const readonlyAllowCommand = () => import("./commands/hook-readonly-allow.js");
 const pickerGuardCommand = () => import("./commands/hook-picker-guard.js");
 const promptRefuseCommand = () => import("./commands/hook-prompt-refuse.js");
@@ -185,6 +186,7 @@ const COMMANDS = {
     'hook refresh-wake': { effect: 'internal', flags: [], load: async () => (await refreshWakeCommand()).refreshWake },
     'hook restore-track': { effect: 'internal', flags: [], load: async () => (await restoreTrackCommand()).restoreTrack },
     'hook tab-status': { effect: 'internal', flags: [], load: async () => (await tabStatusCommand()).tabStatus },
+    'hook tool-end': { effect: 'internal', flags: [], load: async () => (await toolEndCommand()).toolEnd },
     'hook readonly-allow': { effect: 'internal', flags: [], load: async () => (await readonlyAllowCommand()).readonlyAllow },
     'hook picker-guard': { effect: 'internal', flags: [], load: async () => (await pickerGuardCommand()).pickerGuard },
     'hook prompt-refuse': { effect: 'internal', flags: [], load: async () => (await promptRefuseCommand()).promptRefuse },
@@ -485,7 +487,7 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   test [--session <id|name>] -- <command ...>   runs a test command in the shell, writes all it printed
       to a log (each session keeps its newest 20) and prints one PASS or FAIL line, then each failing
       test within tests.maxFailureChars; exit 0 when the command passed, 1 otherwise
-  hook push-guard | hook package-guard | hook secret-guard | hook exec-guard | hook cold-send | hook failed-send | hook loop-nudge | hook helper-gate | hook inbox-reminder | hook session-start | hook stop | hook subagent-start | hook subagent-stop | hook refresh-wake | hook restore-track | hook tab-status | hook readonly-allow | hook picker-guard | hook prompt-refuse
+  hook push-guard | hook package-guard | hook secret-guard | hook exec-guard | hook cold-send | hook failed-send | hook loop-nudge | hook helper-gate | hook inbox-reminder | hook session-start | hook stop | hook subagent-start | hook subagent-stop | hook refresh-wake | hook restore-track | hook tab-status | hook tool-end | hook readonly-allow | hook picker-guard | hook prompt-refuse
       (run by Claude Code, hook JSON on stdin)
   hook clear-dir | hook clear-claim [--hold [--why <reason>]]
       (run by the plugin's mod: the automatic restart's /clear in the tab)

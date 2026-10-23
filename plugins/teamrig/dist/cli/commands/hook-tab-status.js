@@ -51,7 +51,7 @@ export async function tabTitleOf(runtime, payload, label) {
  * What the hook prints for this payload: the tab title as a terminal sequence, or '' with tab status off or no change.
  * A question picker the picker guard refuses leaves the title: the picker never opens, and the session goes on.
  */
-async function tabStatusOutputOf(runtime, payload) {
+export async function tabStatusOutputOf(runtime, payload) {
     // The switch first: it costs no file read, and on most machines it is off.
     if (!titleLeftToHooks(runtime.env)) {
         return '';

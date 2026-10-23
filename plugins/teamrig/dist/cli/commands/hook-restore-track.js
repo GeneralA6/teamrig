@@ -18,6 +18,10 @@ export function trackEventOf(payload) {
             return stringField(payload, 'source') === 'compact' ? undefined : { kind: 'start' };
         case 'UserPromptSubmit':
             return { kind: 'working' };
+        case 'PostToolUse':
+        case 'PostToolUseFailure':
+            // A helper's tool call carries the helper's id (`agent_id`).
+            return { kind: 'tool', mainThread: stringField(payload, 'agent_id') === undefined };
         case 'Stop':
             return { kind: 'ready' };
         case 'StopFailure':
@@ -38,7 +42,8 @@ function envId(runtime, name) {
     const value = present(runtime.env[name]);
     return value !== undefined && ID_PATTERN.test(value) ? value : undefined;
 }
-async function track(payload, runtime) {
+/** Records the event `payload` reports in its session's restore entry; a payload of no session or event it skips writes nothing. */
+export async function trackRestore(payload, runtime) {
     const claudeSession = sessionIdOf(payload);
     const event = isRecord(payload) ? trackEventOf(payload) : undefined;
     if (!isRecord(payload) || claudeSession === null || event === undefined) {
@@ -73,11 +78,11 @@ async function track(payload, runtime) {
 /**
  * SessionStart, UserPromptSubmit, Stop, StopFailure and SessionEnd: records the session in the restore
  * registry (`<kit home>/restore/sessions`), in a team or not, so the restore after a reboot knows which tabs
- * it closed and what each was doing. It prints nothing, and on any error it exits 0 having written nothing:
- * a tracker must never hold up a turn.
+ * it closed and what each was doing (a tool's end comes through `hook tool-end`). It prints nothing, and on any
+ * error it exits 0 having written nothing: a tracker must never hold up a turn.
  */
 export async function restoreTrack(args, runtime) {
     noPositionals(args);
-    await track(parseJson(await runtime.readStdin()), runtime).catch(() => undefined);
+    await trackRestore(parseJson(await runtime.readStdin()), runtime).catch(() => undefined);
     return EXIT.ok;
 }
