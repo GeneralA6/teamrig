@@ -5,6 +5,7 @@ import type { TimeZone } from '../core/zone.ts';
 import { EVENT_VERSION, type ApprovalVerdict, type CreateEvent, type RegisterEvent, type StatusEvent, type TaskFields, type UpdateEvent } from './events.ts';
 import { foldEvents, taskNumber, type RegisterState, type Task } from './fold.ts';
 import { GITHUB_ACTOR, NO_SKILL, type AddInput, type AskInput, type ImportChanges, type ImportInput, type RegisterPolicy, type StatusContext, type StatusInput, type Verdict } from './policy.ts';
+import { ACTIVE_STATUSES } from './model.ts';
 import { isWritable, type RegisterSnapshot } from './snapshot.ts';
 import type { EventLog } from './store.ts';
 import type { WaitReason } from './waits.ts';
@@ -164,9 +165,22 @@ export class Register {
           return change;
         }
         const event: UpdateEvent = { ...this.base(id, caller), type: 'update', ...change.value };
-        return { ok: true, value: [event] };
+        const { pin, owner } = change.value.changes;
+        const unpins = typeof pin === 'string' ? this.unpins(task, owner ?? task.owner, caller, snapshot.state) : [];
+        return { ok: true, value: [...unpins, event] };
       }),
     );
+  }
+
+  /**
+   * One pin per owner: the unpins of the other active pinned tasks of `owner`, the owner of `pinned` once pinned,
+   * written before the pin so that stays the write's last event. The policy let `caller` pin a task of `owner`, which
+   * is leave to move that owner's pin (T637).
+   */
+  private unpins(pinned: Task, owner: string, caller: string, state: RegisterState): UpdateEvent[] {
+    return [...state.tasks.values()]
+      .filter((task) => task.id !== pinned.id && task.owner === owner && task.pin !== null && ACTIVE_STATUSES.includes(task.status))
+      .map((task): UpdateEvent => ({ ...this.base(task.id, caller), type: 'update', changes: { pin: null }, note: `the pin moved to ${pinned.id}` }));
   }
 
   /** `approve`: the lead's answer to a task's approval wait, an update that changes no field (T684). */

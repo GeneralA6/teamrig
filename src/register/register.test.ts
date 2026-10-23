@@ -133,6 +133,31 @@ describe('Register', () => {
     assert.equal(result.task.ownerSeenAt, null);
   });
 
+  it("keeps one pin per owner: a new pin first unpins the owner's earlier one, in the same append (T637)", async () => {
+    const { files, register } = setup();
+    for (const title of ['First', 'Second', 'Third']) {
+      written(await register.add('lead', { title, description: 'what and why', owner: 'alpha', source: 'owner', priority: 2 }));
+    }
+    written(await register.add('lead', { title: 'Elsewhere', description: 'what and why', owner: 'bravo', source: 'owner', priority: 2 }));
+    written(await register.update('lead', 'T4', { pin: 'lead' }, undefined));
+    assert.equal(written(await register.update('lead', 'T1', { pin: 'lead' }, undefined)).task.pin, 'lead', "bravo's pin is no rival");
+    const appended = files.get(LOG)?.length ?? 0;
+    const moved = written(await register.update('lead', 'T2', { pin: 'lead' }, 'first now'));
+    assert.equal(moved.task.pin, 'lead');
+    const lines = readEvents((files.get(LOG) ?? '').slice(appended)).events;
+    assert.deepEqual(
+      lines.map((event) => (event.type === 'update' ? [event.id, event.changes, event.note] : [event.id])),
+      [['T1', { pin: null }, 'the pin moved to T2'], ['T2', { pin: 'lead' }, 'first now']],
+    );
+    assert.deepEqual(lines[1], moved.event);
+    const before = files.get(LOG)?.length ?? 0;
+    assert.equal(written(await register.update('lead', 'T2', { pin: null }, undefined)).task.pin, null);
+    assert.equal(readEvents((files.get(LOG) ?? '').slice(before)).events.length, 1, 'an unpin moves nothing');
+    written(await register.update('lead', 'T3', { pin: 'lead' }, undefined));
+    assert.equal(written(await register.update('lead', 'T3', { owner: 'bravo' }, undefined)).task.pin, null, 'handing it on clears it');
+    assert.match(errorOf(await register.update('alpha', 'T1', { pin: 'alpha' }, undefined)), /alpha does not pin its own T1/);
+  });
+
   it('refuses unknown callers before taking the lock, and leaves the log alone on any refusal', async () => {
     const { files, mutex, register } = setup();
     assert.match(errorOf(await register.add('charlie', { title: 'x', description: 'what and why', owner: 'alpha', source: 'owner', priority: 1 })), /charlie/);

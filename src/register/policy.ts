@@ -29,7 +29,7 @@ export const GITHUB_STATUSES: readonly TaskStatus[] = ['open', 'done', 'dropped'
  * Fields the lead may change on a task someone else owns: who does it, how urgent, when, in what order and its size
  * (the lead plans the week), and its kind, so the lead can mark another session's fix a problem.
  */
-export const LEAD_FIELDS: readonly TaskFieldName[] = ['owner', 'priority', 'due', 'week', 'after', 'size', 'kind'];
+export const LEAD_FIELDS: readonly TaskFieldName[] = ['owner', 'priority', 'due', 'week', 'after', 'size', 'kind', 'pin'];
 
 export interface AddInput {
   readonly title: string;
@@ -219,6 +219,7 @@ export class RegisterPolicy {
       after: input.after ?? [],
       size: input.size ?? null,
       kind: input.kind ?? null,
+      pin: null,
     };
     if (fields.description === null && this.config.register.requireDescription) {
       return refuse(DESCRIPTION_NEEDED);
@@ -530,6 +531,10 @@ export class RegisterPolicy {
       const problem = this.checkText('note', text);
       return problem === undefined ? ok({ changes, note: text }) : refuse(problem);
     }
+    const pinned = changes.pin === undefined ? undefined : this.pinProblem(task.id, changes.owner ?? task.owner, caller, changes.pin);
+    if (pinned !== undefined) {
+      return refuse(pinned);
+    }
     if (caller !== task.owner) {
       const problem = this.leaderUpdateProblem(task, caller, names, changes.owner);
       if (problem !== undefined) {
@@ -545,6 +550,18 @@ export class RegisterPolicy {
     const after = changes.after === undefined ? undefined : afterChangeProblem(task, changes.after, state);
     const problem = after ?? this.checkFields(merged, sourceRule) ?? this.checkText('note', text);
     return problem === undefined ? ok({ changes, note: text }) : refuse(problem);
+  }
+
+  /**
+   * Why `caller` may not set the pin of task `id` (`pin`: the session that pins, null to unpin), or undefined when it
+   * may: a pin puts the task above its `owner`'s computed order (the owner it has after the change), so the owner's
+   * leaders set it, the lead on its own tasks too, and never the owner itself; a pin names the session that set it (T637).
+   */
+  private pinProblem(id: string, owner: string, caller: string, pin: string | null): string | undefined {
+    if (caller === owner && caller !== this.tree.lead) {
+      return `${owner} does not pin its own ${id}: ${this.approversText(owner)} pins a task above its owner's order`;
+    }
+    return pin === null || pin === caller ? undefined : `a pin names the session that sets it (${caller}), not ${pin}`;
   }
 
   /**
@@ -574,7 +591,7 @@ export class RegisterPolicy {
    * the duplicate-title rule does not apply.
    */
   importAdd(input: ImportInput, state: RegisterState): Verdict<TaskFields> {
-    const fields: TaskFields = { ...input, source: GITHUB_SOURCE, due: null, goals: [], week: null, after: [], size: null, kind: null };
+    const fields: TaskFields = { ...input, source: GITHUB_SOURCE, due: null, goals: [], week: null, after: [], size: null, kind: null, pin: null };
     const holder = [...state.tasks.values()].find((task) => task.source === GITHUB_SOURCE && task.ref === input.ref);
     if (holder !== undefined) {
       return refuse(`${holder.id} already has ref ${input.ref}`);
@@ -698,8 +715,8 @@ export class RegisterPolicy {
 const OWN_LIMITS: readonly string[] = ['title', 'description'];
 
 function pickFields(task: Task): TaskFields {
-  const { title, description, owner, source, ref, priority, due, goals, week, after, size, kind } = task;
-  return { title, description, owner, source, ref, priority, due, goals, week, after, size, kind };
+  const { title, description, owner, source, ref, priority, due, goals, week, after, size, kind, pin } = task;
+  return { title, description, owner, source, ref, priority, due, goals, week, after, size, kind, pin };
 }
 
 /** An update's description trimmed at both ends, its newlines kept; a blank one clears it, as `none` does. */
