@@ -35,12 +35,13 @@ describe('holdClassOf', () => {
     assert.equal(holdClassOf([AUTH], undefined), 'leader');
   });
 
-  it("holds a check hit for its class when flagged, for a leader when broken or not run, and not when clean", () => {
+  it("holds a check hit for its class when flagged, broken or not run, and not when clean", () => {
     assert.equal(holdClassOf([CHECKED], CLEAN), undefined);
     assert.equal(holdClassOf([CHECKED], FLAGGED), 'security');
     assert.equal(holdClassOf([hit('src/api.ts', 'check', 'leader')], FLAGGED), 'leader');
-    assert.equal(holdClassOf([CHECKED], BROKEN), 'leader');
-    assert.equal(holdClassOf([CHECKED], undefined), 'leader');
+    assert.equal(holdClassOf([CHECKED], BROKEN), 'security');
+    assert.equal(holdClassOf([CHECKED], undefined), 'security');
+    assert.equal(holdClassOf([hit('src/api.ts', 'check', 'leader')], BROKEN), 'leader');
   });
 
   it('holds a change of both classes for security', () => {

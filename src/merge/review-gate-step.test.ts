@@ -145,7 +145,7 @@ describe('reviewGateRefusal: the review check', () => {
     assert.ok(gate.said.includes('review check of t9-gate: clean'));
   });
 
-  it('holds a flagged check path for its class with the findings, and a broken check for a leader', async () => {
+  it('holds a flagged check path for its class with the findings, and a broken check for that class too', async () => {
     const flagged = new Gate(['src/auth/login.ts']);
     flagged.outcome = { kind: 'flagged', findings: 'token in login.ts' };
     assert.match((await flagged.run(checked)) ?? '', /the review check flagged it \(its findings are above\)\. bravo answers it/);
@@ -153,13 +153,13 @@ describe('reviewGateRefusal: the review check', () => {
     assert.deepEqual([hold.holdClass, hold.reviewer.who, hold.findings], ['security', 'bravo', 'token in login.ts']);
     const broken = new Gate(['src/auth/login.ts']);
     broken.outcome = { kind: 'broken', detail: 'exited 1', exitCode: 1 };
-    assert.match((await broken.run(checked)) ?? '', /the review check exited 1, which is no pass\. lead answers it:/);
-    assert.deepEqual([(await broken.hold()).holdClass, (await broken.hold()).findings], ['leader', undefined]);
+    assert.match((await broken.run(checked)) ?? '', /the review check exited 1, which is no pass\. bravo answers it/);
+    assert.deepEqual([(await broken.hold()).holdClass, (await broken.hold()).findings], ['security', undefined]);
   });
 
-  it('holds a check path for a leader where the repo sets no review check, running none', async () => {
+  it('holds a check path for its class where the repo sets no review check, running none', async () => {
     const gate = new Gate(['src/auth/login.ts']);
-    assert.match((await gate.run()) ?? '', /no reviewCheck is set to clear its check paths\. lead answers it/);
+    assert.match((await gate.run()) ?? '', /no reviewCheck is set to clear its check paths\. bravo answers it/);
     assert.deepEqual(gate.checks, []);
   });
 

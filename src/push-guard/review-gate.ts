@@ -27,19 +27,15 @@ export function needsCheck(hits: readonly ReviewHit[]): boolean {
 }
 
 /**
- * The class a change waits on, undefined when it is clear: an `always` hit waits on its entry's class; a `check` hit
- * waits on its entry's class when the check flagged it, on a leader when the check broke or never ran (a broken check
- * is no pass), on no one when it came back clean. A change with hits of both classes waits on security, the stricter
+ * The class a change waits on, undefined when it is clear: an `always` hit waits on its entry's class, and so does a
+ * `check` hit unless the check came back clean. A check that broke or never ran is no pass, so its hit waits as a
+ * flagged one, on the reviewer who keeps the check. A change with hits of both classes waits on security, the stricter
  * reviewer, whose hold a leader may still answer after `REVIEW_FALLBACK_MS`.
  */
 export function holdClassOf(hits: readonly ReviewHit[], check: CheckOutcome | undefined): ReviewClass | undefined {
   const classes = new Set<ReviewClass>();
   for (const { entry } of hits) {
-    if (entry.mode === 'always') {
-      classes.add(entry.class);
-    } else if (check === undefined || check.kind === 'broken') {
-      classes.add('leader');
-    } else if (check.kind === 'flagged') {
+    if (entry.mode === 'always' || check?.kind !== 'clean') {
       classes.add(entry.class);
     }
   }
