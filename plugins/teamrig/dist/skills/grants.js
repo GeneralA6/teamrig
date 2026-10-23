@@ -1,3 +1,4 @@
+import { shellBraceReads } from "./js-shell-reads.js";
 /**
  * The privileged calls a skill's scripts make, which auto mode never sees: it judges the `node <script>` line, not
  * what the script runs (T746: a skill's script ran kubectl exec with a key read from the pod env for 13 runs, while
@@ -16,31 +17,44 @@ export function isSkillScript(file) {
 const GRANTS_LINE = /^Grants:[ \t]*(.*)$/gm;
 /** A name segment that marks an environment variable as holding a credential (`API_KEY`, `DATABASE_URI_LOCAL`). */
 const SECRET_SEGMENTS = new Set(['KEY', 'KEYS', 'TOKEN', 'SECRET', 'PASSWORD', 'PASSWD', 'PASS', 'CREDENTIAL', 'CREDENTIALS', 'URI']);
-/** Environment reads by name: `$NAME`, `${NAME}`, `$env:NAME`, `process.env.NAME`, `process.env['NAME']`, `os.environ['NAME']`. */
-const ENV_READS = [
-    /\$(?:env:)?\{?([A-Z][A-Z0-9_]*)/g,
+/** Shell reads by name: `$NAME`, `${NAME}`, `$env:NAME`. */
+const SHELL_READS = /\$(?:env:)?\{?([A-Z][A-Z0-9_]*)/g;
+/** The shell reads a JS or TS script spells as a shell does, `$NAME` and `$env:NAME`; js-shell-reads.ts reads its `${NAME}`. */
+const UNBRACED_SHELL_READS = /\$(?:env:)?([A-Z][A-Z0-9_]*)/g;
+/** Environment reads through the language: `process.env.NAME`, `process.env['NAME']`, `os.environ['NAME']`, `os.getenv('NAME')`. */
+const LANGUAGE_READS = [
     /\bprocess\.env\.([A-Za-z_][A-Za-z0-9_]*)/g,
     /\b(?:process\.env|os\.environ)\[\s*['"]([A-Za-z_][A-Za-z0-9_]*)['"]\s*\]/g,
     /\bos\.(?:environ\.get|getenv)\(\s*['"]([A-Za-z_][A-Za-z0-9_]*)['"]/g,
 ];
-function readsSecretEnv(text) {
-    return ENV_READS.some((pattern) => Array.from(text.matchAll(pattern), (match) => match[1] ?? '').some((name) => name.toUpperCase().split('_').some((segment) => SECRET_SEGMENTS.has(segment))));
+/** A JavaScript or TypeScript script, whose template literals spell `${...}` for a JS value. */
+const JS_FILE = /\.[cm]?[jt]s$/;
+function namesRead(pattern, text) {
+    return Array.from(text.matchAll(pattern), (match) => match[1] ?? '');
+}
+/** The env variables a script reads by name, through a shell it runs or through its language. */
+function envReads({ name, text }) {
+    const shell = JS_FILE.test(name) ? [...namesRead(UNBRACED_SHELL_READS, text), ...shellBraceReads(text)] : namesRead(SHELL_READS, text);
+    return [...shell, ...LANGUAGE_READS.flatMap((pattern) => namesRead(pattern, text))];
+}
+function readsSecretEnv(script) {
+    return envReads(script).some((name) => name.toUpperCase().split('_').some((segment) => SECRET_SEGMENTS.has(segment)));
 }
 /** kubectl's subcommand written inline (`kubectl -n x exec`) or as an argv item (`'kubectl', ['exec', ...]`). */
 function runsKubectl(text, subcommand) {
     return /\bkubectl\b/.test(text) && subcommand.test(text);
 }
 const DETECTORS = [
-    { kind: 'pod-exec', makes: (text) => runsKubectl(text, /\bkubectl\b[^\n]*?\sexec\b|['"`]exec['"`]/) },
+    { kind: 'pod-exec', makes: ({ text }) => runsKubectl(text, /\bkubectl\b[^\n]*?\sexec\b|['"`]exec['"`]/) },
     {
         kind: 'secret-read',
-        makes: (text) => runsKubectl(text, /\bget\s+secrets?\b|['"`]get['"`]\s*,\s*['"`]secrets?['"`]/) || readsSecretEnv(text),
+        makes: (script) => runsKubectl(script.text, /\bget\s+secrets?\b|['"`]get['"`]\s*,\s*['"`]secrets?['"`]/) || readsSecretEnv(script),
     },
-    { kind: 'auth-header', makes: (text) => /\bauthorization\s*['"`]?\s*:|\bBearer\s|\bx-[a-z0-9-]*(?:key|token|secret|auth)\s*['"`]?\s*:/i.test(text) },
+    { kind: 'auth-header', makes: ({ text }) => /\bauthorization\s*['"`]?\s*:|\bBearer\s|\bx-[a-z0-9-]*(?:key|token|secret|auth)\s*['"`]?\s*:/i.test(text) },
 ];
 /** The privileged kinds a script makes, in GRANT_KINDS order. */
 export function grantsMadeBy(script) {
-    return DETECTORS.filter((detector) => detector.makes(script.text)).map((detector) => detector.kind);
+    return DETECTORS.filter((detector) => detector.makes(script)).map((detector) => detector.kind);
 }
 function isGrantKind(word) {
     return GRANT_KINDS.some((kind) => kind === word);
