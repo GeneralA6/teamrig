@@ -78,7 +78,7 @@ describe('scaleOutFlags: when an area is behind', () => {
     assert.deepEqual(scaleOut([...finished('alpha', 7, 100), ...dated('alpha', [1, 2]), ...lower]).flags, []);
     const needer = testTask({ id: 'T9', owner: 'bravo', due: DUE, after: ['T5'] });
     const inherits = [...finished('alpha', 7, 100), ...dated('alpha', [1, 2, 3]), ...dated('alpha', [5], { due: null }), needer];
-    assert.match(scaleOut(inherits).flags[0]?.detail ?? '', /slice T3 T5,/);
+    assert.match(scaleOut(inherits).flags[0]?.detail ?? '', /^4 due by 01-10 00:00 UTC, .*; slice T2 T3,/, 'T5 counts; it unblocks T9, so it sorts first');
   });
 
   it('never measures the lead or a hired session', () => {
