@@ -4,15 +4,16 @@ import { DEFAULT_MESSAGES } from "../config/defaults.js";
 import { KIT_NAME } from "../core/home.js";
 import { parseDeadline } from "../core/time.js";
 import { isCold } from "../hooks/cold-send.js";
+import { answerTo } from "../register/approval.js";
 import { taskNumber } from "../register/fold.js";
-import { allReady, unfinishedAfter, waitContext } from "../register/waits.js";
+import { isReady, unfinishedAfter, waitContext } from "../register/waits.js";
 /**
  * Waking a session idle at its prompt when work is handed to it, pure. A wake is a model turn, so only work the
  * session can go on with now ({@link canGoOn}) and has not seen wakes it: its own task at `wake.priority` or more
  * urgent, changed by someone else or by the clock since the session last touched it (handed to it, raised,
- * reopened, freed by another's finish, or its waits cleared). Each task wakes a session once, tasks handed together
- * wake it once (`wake.batchSeconds`), and wakes of one session are `wake.minGapMinutes` apart. The plugin's mod asks
- * `hook wake-check` while no turn runs and submits the prompt.
+ * reopened, freed by another's finish, its waits cleared, or an approval it waits on answered). Each task wakes a
+ * session once, tasks handed together wake it once (`wake.batchSeconds`), and wakes of one session are
+ * `wake.minGapMinutes` apart. The plugin's mod asks `hook wake-check` while no turn runs and submits the prompt.
  */
 /**
  * What a wake costs in weighted tokens (W): its first call re-reads the session's context, from Claude Code's
@@ -31,16 +32,23 @@ function goesOnByWaits(status) {
     return status === 'waiting' || status === 'verifying';
 }
 /**
+ * True when every reason the task waits for cleared, an approval its giver answered counting either way (T996): an
+ * approval sends the owner to push or merge, a decline back to work on the note's point.
+ */
+function waitsLetGoOn(task, context) {
+    return task.waits.length > 0 && task.waits.every((reason) => isReady(reason, context) || answerTo(task, reason) !== undefined);
+}
+/**
  * True when the task's owner can go on with it now: an open or in-progress task, or a waiting task (a verifying
- * task's proof waits) whose every reason cleared, as `check` flags READY. A task never started also waits for every
- * task it comes after to finish: `after` gates its start, so a task already started is past it. A finished task, or
- * one waiting on a decision or an approval, never.
+ * task's proof waits) whose every reason cleared or was answered ({@link waitsLetGoOn}). A task never started also
+ * waits for every task it comes after to finish: `after` gates its start, so a task already started is past it. A
+ * finished task, or one waiting on a decision or an approval not yet answered, never.
  */
 export function canGoOn(task, context) {
     if (task.status === 'done' || task.status === 'dropped') {
         return false;
     }
-    if (goesOnByWaits(task.status) && !allReady(task.waits, context)) {
+    if (goesOnByWaits(task.status) && !waitsLetGoOn(task, context)) {
         return false;
     }
     return task.startedAt !== null || unfinishedAfter(task.after, context).length === 0;
@@ -59,8 +67,9 @@ function finishedByAnotherSince(id, session, tasks, seen) {
 }
 /**
  * True when someone else changed the task since its owner last touched it: handed it over, raised its priority,
- * set its status, or finished a task it comes after or waits on; or when a time it waits for falls after that touch
- * (the caller asks only once the task can go on, so that time has come). The owner's own changes are never news to it.
+ * set its status, finished a task it comes after or waits on, or answered an approval it waits on; or when a time it
+ * waits for falls after that touch (the caller asks only once the task can go on, so that time has come). The
+ * owner's own changes are never news to it.
  */
 export function isNews(task, session, tasks, zone) {
     const seen = timeOf(task.ownerSeenAt);
@@ -76,8 +85,11 @@ export function isNews(task, session, tasks, zone) {
                 return finishedByAnotherSince(reason.id, session, tasks, seen);
             case 'time':
                 return (parseDeadline(reason.at, zone)?.getTime() ?? Number.NEGATIVE_INFINITY) > seen;
+            case 'approval': {
+                const answer = answerTo(task, reason);
+                return answer !== undefined && answer.by !== session && timeOf(answer.at) > seen;
+            }
             case 'decision':
-            case 'approval':
                 return false;
         }
     });
@@ -160,9 +172,16 @@ export function taskListText(tasks) {
     const more = tasks.length - named.length;
     return more > 0 ? `${named.join(', ')} and ${more} more` : named.join(', ');
 }
-/** `p2`, or `p2, waiting: every wait cleared` for a task that goes on by its waits, so the session sets its next status. */
+/**
+ * `p2`, or for a task that goes on by its waits, so the session sets its next status: `p2, waiting: lead approved it`
+ * (or declined it) once an approval it waits on was answered, else `p2, waiting: every wait cleared`.
+ */
 function taskTag(task) {
-    return goesOnByWaits(task.status) ? `p${task.priority}, ${task.status}: every wait cleared` : `p${task.priority}`;
+    if (!goesOnByWaits(task.status)) {
+        return `p${task.priority}`;
+    }
+    const answer = task.waits.map((reason) => answerTo(task, reason)).find((found) => found !== undefined);
+    return `p${task.priority}, ${task.status}: ${answer === undefined ? 'every wait cleared' : `${answer.by} ${answer.verdict} it`}`;
 }
 /** The prompt the session reads, under the plugin's name. */
 export function wakePrompt(session, tasks, cost) {
