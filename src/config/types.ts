@@ -688,15 +688,15 @@ export interface CoordinatorRepoConfig {
    */
   readonly dependencyCheck?: readonly string[];
   /**
-   * Hold a branch (integrate) whose changed paths hit a review entry (teamrig's generic list and
+   * Hold a branch (merge) whose changed paths hit a review entry (teamrig's generic list and
    * `pushGuard.reviewPaths`) until its reviewer approves it, or `reviewCheck` clears its `check` hits (T800 §2.2).
    */
   readonly reviewGate: boolean;
   /**
    * With `reviewGate`, what a `check` hit runs: a program and its arguments, run without a shell under the host lock in
    * the branch's checkout after the rebase, with the base commit in `TEAMRIG_REVIEW_BASE`. Exit 0 clears the change, 3
-   * holds it for security with the findings it prints, anything else for the session's leader, as a broken check is
-   * no pass. Unset: a `check` hit is held like an `always` one.
+   * holds it for the entry's reviewer with the findings it prints, anything else for that reviewer too, as a broken
+   * check is no pass. Unset: a `check` hit is held like an `always` one.
    */
   readonly reviewCheck?: readonly string[];
   /** After the push, fast-forward the main checkout to it: only a fast-forward, only on the default branch with no tracked changes. */

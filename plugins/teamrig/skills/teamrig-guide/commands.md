@@ -3294,8 +3294,8 @@ The repository is the entry of `coordinator.repos` whose `mainCheckout` is this 
 - `reviewCheck`: with `reviewGate`, the check a `check` entry's hit runs, such as `["node", "tools/review.ts"]`: a
   program and its arguments, run with no shell in the branch's checkout under the host lock after the rebase, with
   the base commit in `TEAMRIG_REVIEW_BASE`, a heavy step in the ledger, its lines redacted. Exit 0 clears the
-  change, 3 holds it for the entry's reviewer with the findings it prints, anything else holds it for the session's
-  leader, since a broken check is no pass. Unset: a `check` hit is held like an `always` one.
+  change, 3 holds it for the entry's reviewer with the findings it prints, and anything else holds it for that
+  reviewer too, since a broken check is no pass. Unset: a `check` hit is held like an `always` one.
 - `worktreeFolder`: the folder `teamrig worktree add` makes each new worktree in, default `.claude/worktrees`; a
   relative folder is in the main checkout.
 - `worktreeSetup`: what `teamrig worktree add` runs in each new worktree, such as
