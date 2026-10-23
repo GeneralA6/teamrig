@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { MS_PER_MINUTE } from '../core/time.ts';
+import { TimeZone } from '../core/zone.ts';
 import { promptLine, replyLine, systemLine } from '../testing/transcript-lines.ts';
 import type { RestoreEntry } from './entry.ts';
 import {
@@ -167,11 +168,23 @@ describe('hooklessReader and hooklessLine', () => {
   });
 
   it('names the session, its Claude session, the gap, both times and a restart in its folder, never a reload', () => {
-    const clock = (at: Date): string => `${at.toISOString().slice(11, 16)} UTC`;
     assert.equal(
-      hooklessLine(TAB, clock),
+      hooklessLine(TAB, TimeZone.UTC, NOW),
       'HOOKLESS alpha: its tab (Claude session 0123abcd) worked 59 min past its last teamrig hook (hook 11:00 UTC, last reply 11:59 UTC), ' +
         `so it gets no inbox, guards or tab status: /exit that tab and run claude --resume ${ALPHA} in /work/app`,
+    );
+  });
+
+  it("dates a time off the line's day on the zone's calendar, so days do not read as hours (T1069)", () => {
+    const daysAgo = { ...TAB, hookAt: NOW - 3 * 24 * 60 * MS_PER_MINUTE - 23 * MS_PER_MINUTE };
+    assert.match(hooklessLine(daysAgo, TimeZone.UTC, NOW), /worked 4342 min past its last teamrig hook \(hook 01-05 11:37 UTC, last reply 11:59 UTC\)/);
+    const zone = TimeZone.of('Asia/Jerusalem');
+    assert.ok(zone !== undefined);
+    const pastMidnight = NOW + 630 * MS_PER_MINUTE;
+    assert.match(
+      hooklessLine({ ...TAB, turnAt: pastMidnight - 10 * MS_PER_MINUTE }, zone, pastMidnight),
+      /\(hook 01-08 13:00 IST, last reply 00:20 IST\)/,
+      "the zone's midnight, not UTC's, starts the line's day",
     );
   });
 });
