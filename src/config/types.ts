@@ -489,7 +489,7 @@ export interface QuietHours {
   readonly paceWeight?: number;
 }
 
-/** One session's weight in the split of the team's daily budget (`sessionBudgetPct`). */
+/** One session's weight in the split of the team's daily budget (src/budget/parts.ts `dailyBudgetOf`). */
 export interface SessionBudget {
   /** Times its queued work: the session gets the team's budget × that / the sum over the sessions. */
   readonly share: number;
