@@ -1,8 +1,8 @@
 # Hooks and permissions
 
-The plugin's `hooks/hooks.json` registers twenty Claude Code hooks and one mod ([the /teamrig command](#the-mod-the-teamrig-command), [the refresh's /clear](#the-mod-the-refreshs-clear), [the reload after an install](#the-mod-the-reload-after-an-install), [the wake on urgent work](#the-mod-the-wake-on-urgent-work)). Each runs
+The plugin's `hooks/hooks.json` registers twenty-one Claude Code hooks and one mod ([the /teamrig command](#the-mod-the-teamrig-command), [the refresh's /clear](#the-mod-the-refreshs-clear), [the reload after an install](#the-mod-the-reload-after-an-install), [the wake on urgent work](#the-mod-the-wake-on-urgent-work)). Each runs
 `node <plugin>/dist/cli/main.js hook <name>` with a 15 second timeout (`hook refresh-wake` 30, `hook tab-status` and `hook tool-end` 5). Outside a project tied to a team (no `$TEAMRIG_TEAM` and no `.teamrig.json`)
-they all stay silent, and only `hook restore-track` and `hook tool-end` still record the session ([the restore tracker](#every-session-the-restore-tracker)).
+they all stay silent, but `hook restore-track` and `hook tool-end` still record the session ([the restore tracker](#every-session-the-restore-tracker)) and `hook missing-cli` still answers a shell that [no longer finds the bare command](#after-a-shell-call-the-cli-by-its-path).
 
 | Claude Code event | teamrig hook | What it does |
 | --- | --- | --- |
@@ -19,6 +19,7 @@ they all stay silent, and only `hook restore-track` and `hook tool-end` still re
 | `PermissionRequest` | `hook prompt-refuse` | With `prompts.hookAsks: refuse`, answers each permission prompt Claude Code is about to raise but the question picker's and plan mode's exit, per case: a line that provably only reads runs, a line with a rerun form is refused quoting it, anything else is refused with the reason to record the step for the owner and go on ([asks off](#asks-off-a-refusal-instead-of-a-prompt)) |
 | `PreToolUse` on `SendMessage` | `hook cold-send` | Holds once a message that would wake an idle session cold; during the daily meeting, holds every message to the lead but a CRITICAL one |
 | `PostToolUse` on `SendMessage` | `hook failed-send` | After a send that was not delivered, hands the model [the inbox line to write instead](#after-a-failed-send-the-inbox-line) |
+| `PostToolUse` and `PostToolUseFailure` on `Bash` and `PowerShell`, in a team or not | `hook missing-cli` | After a shell call that did not find the bare `teamrig` command, hands the model [the CLI's path to run instead](#after-a-shell-call-the-cli-by-its-path) |
 | `PostToolUse` on reads, edits and shell calls | `hook loop-nudge` | Asks the model once to batch when a turn makes [single-step calls in a row](#after-a-tool-call-the-loop-nudge) |
 | `PreToolUse` on `Agent` and `Task` | `hook helper-gate` | Restates rule 8's helper default at each helper launch; asks before or refuses one while its budget holds it or in quiet hours, [as the team set](#the-daily-budget-warnings-and-the-helper-gate) |
 | The mod, while a tab is idle | `hook wake-check`, `hook wake-dropped` | Wakes the tab's session when unblocked urgent work is handed to it, [batched, with its cost shown](#the-mod-the-wake-on-urgent-work) |
@@ -504,6 +505,21 @@ teamrig: the message to team-lead was not sent (No agent named 'team-lead' is re
 
 For a name that is no team session, the line points to `teamrig who`, which prints the names to message by.
 Outside a team with a config it says nothing.
+
+## After a shell call: the CLI by its path
+
+Claude Code puts the plugin's `bin/` folder on the Bash tool's PATH through its shell snapshot, which it rebuilds at
+the first Bash call after a plugin reload, within 10 seconds. On a busy machine the rebuild can fail; the Bash tool
+then runs without the folder until the next reload, so the bare `teamrig` is not found. A session left there tends to
+run whatever copy it finds in the plugin cache, often an older version. After a `Bash` or `PowerShell` call whose
+output says the bare command was not found (bash, sh, zsh, fish, PowerShell or cmd), the model gets one line naming
+the copy its own hooks run:
+
+```text
+teamrig: the shell did not find the bare `teamrig` command (Claude Code's shell snapshot failed to rebuild after a plugin reload). For the rest of this session run the installed copy by its path: `node "/home/you/.claude/plugins/cache/teamrig/teamrig/1.2.0/dist/cli/main.js" <command> ...`, never another copy from the plugin cache (another version). The user's /reload-plugins brings the bare name back.
+```
+
+It answers in a team or not, and says nothing after any other call.
 
 ## End of a turn or a helper: a dropped skill edit
 

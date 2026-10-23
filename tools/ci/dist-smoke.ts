@@ -66,7 +66,7 @@ const SESSION_ID = '0123abcd-0000-4000-8000-00000000000a';
 /**
  * One payload per hook the plugin runs, by its command (one event can run several), run inside team
  * `smoke`, which has no config: session start and a helper's start say so, the push guard still refuses a force-push of
- * main, the package guard refuses an npx of a tool not installed, the secret guard refuses a read of .env, the exec guard refuses a review it cannot tie to a session, the cold-send hook lets a message go, the failed-send hook stays quiet, the loop nudge and the reminder stay quiet, the Stop and
+ * main, the package guard refuses an npx of a tool not installed, the secret guard refuses a read of .env, the exec guard refuses a review it cannot tie to a session, the cold-send hook lets a message go, the failed-send hook stays quiet, the missing-cli hook answers a shell that did not find the bare command, the loop nudge and the reminder stay quiet, the Stop and
  * SubagentStop hooks print nothing (any output there would block the turn), the refresh wake wakes nothing, and the
  * restore tracker prints nothing, and so do tab status, the read-only allow and the picker guard, all off without a config.
  */
@@ -105,6 +105,17 @@ const SAMPLES: Readonly<Record<string, Sample>> = {
       tool_response: { success: false, message: "No agent named 'lead' is reachable." },
     },
     check: (stdout) => (stdout === '' ? undefined : `expected no output, got ${JSON.stringify(stdout)}`),
+  },
+  'hook missing-cli': {
+    payload: {
+      hook_event_name: 'PostToolUseFailure',
+      session_id: SESSION_ID,
+      tool_name: 'Bash',
+      tool_use_id: 'toolu_3',
+      tool_input: { command: 'teamrig list' },
+      error: 'Exit code 127\nbash: teamrig: command not found',
+    },
+    check: (stdout) => (outputField(stdout, 'hookEventName') === 'PostToolUseFailure' ? undefined : 'expected PostToolUseFailure additionalContext'),
   },
   'hook loop-nudge': {
     payload: { hook_event_name: 'PostToolUse', session_id: SESSION_ID, tool_name: 'Read', tool_use_id: 'toolu_1', tool_input: { file_path: 'a.ts' } },

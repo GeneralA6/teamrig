@@ -94,6 +94,7 @@ const EXPECTED = {
   'hook exec-guard': 'internal',
   'hook cold-send': 'internal',
   'hook failed-send': 'internal',
+  'hook missing-cli': 'internal',
   'hook loop-nudge': 'internal',
   'hook helper-gate': 'internal',
   'hook inbox-reminder': 'internal',
