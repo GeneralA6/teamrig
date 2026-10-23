@@ -35,7 +35,7 @@ import { isPeerWait, sameWait, type PersonWait } from '../../register/waits.ts';
 import { lintSkills } from '../../skills/lint.ts';
 import { SKILL_FILE, SkillDir } from '../../skills/store.ts';
 import { noPositionals, onePositional, UsageError, type ParsedArgs } from '../args.ts';
-import { addInputOf, callerOf, changesOf, listFilterOf, setInputOf, taskIdOf, weekOf, type TypedTimes } from '../inputs.ts';
+import { addInputOf, callerOf, changesOf, listFilterOf, pinOf, setInputOf, taskIdOf, weekOf, type TypedTimes } from '../inputs.ts';
 import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, projectFolder, requireConfig, rosterOf, sessionIdOf, teamZone, type Access, type Kit } from '../kit.ts';
 import { checkLines, listLines, SHORT_TITLE_CHARS, waitingOnLines, type CheckReport, type CheckSection, type TaskRow } from '../reports.ts';
 import { rollUp, type RolledTeam, type RollUp } from '../roll-up.ts';
@@ -416,8 +416,8 @@ export async function update(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
   const id = taskIdOf(onePositional(args, 'id'));
   const caller = callerOf(args.flags, runtime.env);
   const team = await openTeam(runtime, 'write');
-  const changes = changesOf(args.flags, typedTimes(runtime, team.zone));
   const by = sessionIdOf(team.roster, caller);
+  const changes = { ...changesOf(args.flags, typedTimes(runtime, team.zone)), ...pinOf(args.switches, by) };
   const verdict = await team.register.update(by, id, changeIds(team.roster, changes), args.flags.get('note'));
   const code = report(runtime, verdict, 'UPDATED', team);
   await tellNewOwner(runtime, team, by, verdict);

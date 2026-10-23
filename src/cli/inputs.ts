@@ -126,6 +126,14 @@ export function sizeOf(text: string): number {
   return value;
 }
 
+/** `--pin` (pinned by `by`) or `--unpin` on update, as a change; none with neither (T637). */
+export function pinOf(switches: ReadonlySet<string>, by: string): Partial<TaskFields> {
+  if (switches.has('pin') && switches.has('unpin')) {
+    throw new UsageError('--pin and --unpin: give one');
+  }
+  return switches.has('pin') ? { pin: by } : switches.has('unpin') ? { pin: null } : {};
+}
+
 /** `--problem problem|critical|none`: whether the task is a problem, or a critical one; `none` marks it work, no problem. */
 export function kindOf(text: string): TaskKind {
   if (text === NONE) {

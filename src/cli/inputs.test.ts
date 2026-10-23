@@ -4,7 +4,7 @@ import { TimeZone } from '../core/zone.ts';
 import { TASK_STATUSES } from '../register/model.ts';
 import { JERUSALEM } from '../testing/zone.ts';
 import { UsageError } from './args.ts';
-import { addInputOf, callerOf, changesOf, deadlineOf, instantOf, kindOf, listFilterOf, priorityOf, sessionRef, setInputOf, sizeOf, statusInputOf, taskIdOf, waitsOf, weekOf, type TypedTimes } from './inputs.ts';
+import { addInputOf, callerOf, changesOf, deadlineOf, instantOf, kindOf, listFilterOf, pinOf, priorityOf, sessionRef, setInputOf, sizeOf, statusInputOf, taskIdOf, waitsOf, weekOf, type TypedTimes } from './inputs.ts';
 
 const flags = (entries: Readonly<Record<string, string>>): ReadonlyMap<string, string> => new Map(Object.entries(entries));
 
@@ -142,6 +142,15 @@ describe('kindOf', () => {
   it('reaches add, which leaves it out when not given', () => {
     assert.equal(addInputOf(flags({ title: 'x', priority: 'p2', problem: 'problem' }), 'alpha', TIMES).kind, 'problem');
     assert.equal(addInputOf(flags({ title: 'x', priority: 'p2' }), 'alpha', TIMES).kind, undefined);
+  });
+});
+
+describe('pinOf', () => {
+  it('pins by the caller, unpins, or changes nothing, and refuses both at once', () => {
+    assert.deepEqual(pinOf(new Set(['pin']), 'lead'), { pin: 'lead' });
+    assert.deepEqual(pinOf(new Set(['unpin']), 'lead'), { pin: null });
+    assert.deepEqual(pinOf(new Set(), 'lead'), {});
+    assert.throws(() => pinOf(new Set(['pin', 'unpin']), 'lead'), /--pin and --unpin: give one/);
   });
 });
 
