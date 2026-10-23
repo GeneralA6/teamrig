@@ -7,7 +7,6 @@ import { approvalCleared } from './approval.ts';
 import { CARD_FLAGS, whyAskUsage } from './card.ts';
 import { taskNumber, type Task } from './fold.ts';
 import { ACTIVE_STATUSES, priorityText } from './model.ts';
-import type { RegisterSnapshot } from './snapshot.ts';
 import { loopFix, pathText, TaskTree } from './tree.ts';
 import { formatTask } from './views.ts';
 import { allReady, isPeerWait, isReady, unfinishedAfter, waitSpelling, type WaitContext } from './waits.ts';
@@ -41,29 +40,6 @@ export interface Flag {
   readonly kind: FlagKind;
   readonly task: Task;
   readonly detail: string;
-}
-
-/** The week plan in force: the newest week tag that starts on or before now, a week tag being a day of the team's `zone`. */
-export function currentWeek(tasks: Iterable<Task>, now: Date, zone: TimeZone): string | null {
-  let best: string | null = null;
-  for (const task of tasks) {
-    const start = task.week === null ? undefined : parseDayStart(task.week, zone);
-    if (task.week !== null && start !== undefined && start.getTime() <= now.getTime() && (best === null || task.week > best)) {
-      best = task.week;
-    }
-  }
-  return best;
-}
-
-/**
- * The week plan in force over a register as read: `currentWeek` of its tasks, or the newest week of
- * the tasks a compaction retired when that is newer, as a replay of the whole history would find it.
- */
-export function currentWeekOf(snapshot: RegisterSnapshot, now: Date, zone: TimeZone): string | null {
-  const live = currentWeek(snapshot.state.tasks.values(), now, zone);
-  const retired = snapshot.retired?.lastWeek ?? null;
-  const started = retired === null ? undefined : parseDayStart(retired, zone);
-  return retired !== null && started !== undefined && started.getTime() <= now.getTime() && (live === null || retired > live) ? retired : live;
 }
 
 /**
