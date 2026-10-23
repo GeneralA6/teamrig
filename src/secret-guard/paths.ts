@@ -145,7 +145,12 @@ const OTHER_PARTS: Readonly<Record<ShellDialect, RegExp>> = {
  */
 export function wordPath(text: string, place: WordPlace): string {
   const expanded = text.replace(HOME_VARIABLES[place.dialect], () => place.home).replace(OTHER_PARTS[place.dialect], UNKNOWN);
-  const drive = /^[A-Za-z]:/.test(place.home) && place.dialect === 'bash' ? /^\/([A-Za-z])(\/|$)/.exec(expanded) : null;
-  const native = drive === null ? expanded : `${(drive[1] ?? '').toUpperCase()}:/${expanded.slice(drive[0].length)}`;
+  const native = place.dialect === 'bash' ? bashDrivePath(expanded, place.home) : expanded;
   return resolveDir(place.dir, native, place.home) ?? `${UNKNOWN}/${native}`;
+}
+
+/** A Bash path as Windows names it on a Windows host (whose home names a drive): Git Bash's `/c/x` is `C:/x`; any other path as it is. */
+export function bashDrivePath(path: string, home: string): string {
+  const drive = /^[A-Za-z]:/.test(home) ? /^\/([A-Za-z])(\/|$)/.exec(path) : null;
+  return drive === null ? path : `${(drive[1] ?? '').toUpperCase()}:/${path.slice(drive[0].length)}`;
 }
