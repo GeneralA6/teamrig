@@ -266,6 +266,16 @@ export interface ReadonlyShellConfig {
   readonly allowPrefixes: readonly string[];
 }
 
+/**
+ * The local allow rules a team keeps (src/permissions/allow-rules.ts). An allow rule in a Claude Code settings file
+ * approves a call before auto mode's classifier sees it; `permissions trim` removes the rules off this list, and doctor
+ * flags the ones that approve a whole tool or program.
+ */
+export interface PermissionsConfig {
+  /** Rules kept as they are (`Bash(kubectl get *)`, `WebSearch`); `:*` and ` *` read as the same, and `Tool(x *)` keeps `Tool(x)`. */
+  readonly keepAllow: readonly string[];
+}
+
 export const AD_HOC_RUNNERS: readonly AdHocRunners[] = ['deny', 'ask', 'allow'];
 
 export function isAdHocRunners(value: unknown): value is AdHocRunners {
@@ -947,6 +957,8 @@ export interface KitConfig {
   readonly turnLog: TurnLogConfig;
   /** Lets a shell line that only reads run without a permission prompt; off by default. */
   readonly readonlyShell: ReadonlyShellConfig;
+  /** Which local allow rules stay when `permissions trim` removes the rest. */
+  readonly permissions: PermissionsConfig;
   readonly refresh: RefreshConfig;
   readonly hiring: HiringConfig;
   readonly burst: BurstConfig;

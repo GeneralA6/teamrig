@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT_HIRING, DEFAULT_OPEN, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_STATUS_LINE, DEFAULT_WAKE } from './defaults.ts';
+import { DEFAULT_BUDGET, DEFAULT_BURST, DEFAULT_COMMITS, DEFAULT_HIRING, DEFAULT_OPEN, DEFAULT_PERMISSIONS, DEFAULT_REFRESH, DEFAULT_REGISTER, DEFAULT_STATUS_LINE, DEFAULT_WAKE } from './defaults.ts';
 import { parseConfig } from './parse.ts';
 import { CONFIG_VERSION } from './types.ts';
 import type { ConfigIssue } from './reader.ts';
@@ -751,6 +751,27 @@ describe('parseConfig', () => {
     const many = parseConfig({ ...ROSTER, readonlyShell: { allowPrefixes: Array.from({ length: 17 }, (_, index) => `tool${index}`) } });
     assert.deepEqual(paths(many.issues), ['readonlyShell.allowPrefixes']);
     assert.deepEqual(many.config.readonlyShell.allowPrefixes, []);
+  });
+
+  it("keeps security's read-only allow rules by default, and a team's own list instead when set", () => {
+    const seeded = parseConfig(ROSTER).config.permissions.keepAllow;
+    assert.deepEqual(seeded, DEFAULT_PERMISSIONS.keepAllow);
+    assert.ok(seeded.includes('Bash(kubectl get *)') && seeded.includes('PowerShell(Get-Date *)') && seeded.includes('WebSearch'));
+    const keepAllow = ['Bash(kubectl get *)', 'Bash(git log:*)', 'Bash(MSYS_NO_PATHCONV=1 kubectl logs *)', 'WebSearch', 'mcp__docs__read'];
+    const set = parseConfig({ ...ROSTER, permissions: { keepAllow } });
+    assert.deepEqual(set.issues, []);
+    assert.deepEqual(set.config.permissions, { keepAllow });
+  });
+
+  it('drops a kept allow rule with a * before its end, a path, a URL or a parenthesis, and refuses too many', () => {
+    const written = ['Bash(*)', 'Bash(rg * --files)', 'Read(//c/Users/me/**)', 'Bash(curl https://x)', 'Bash(dir C:\\x)', 'Bash((x))', 'Bash(a\nb)', 'Bash', 'Bash(git log *)'];
+    const bad = parseConfig({ ...ROSTER, permissions: { keepAllow: written } });
+    assert.deepEqual(paths(bad.issues), written.slice(0, 7).map((_, index) => `permissions.keepAllow[${index}]`));
+    assert.match(bad.issues[0]?.message ?? '', /no other \*, path, URL or parenthesis/);
+    assert.deepEqual(bad.config.permissions.keepAllow, ['Bash', 'Bash(git log *)']);
+    const many = parseConfig({ ...ROSTER, permissions: { keepAllow: Array.from({ length: 65 }, (_, index) => `Bash(tool${index})`) } });
+    assert.deepEqual(paths(many.issues), ['permissions.keepAllow']);
+    assert.deepEqual(many.config.permissions.keepAllow, DEFAULT_PERMISSIONS.keepAllow);
   });
 
   it('bounds the lists and texts the rule pack prints', () => {

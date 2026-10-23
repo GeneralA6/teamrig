@@ -4,6 +4,7 @@ import { NAME_PATTERN, NAME_RULE } from '../core/ids.ts';
 import { isMinuteInSpan, utcMinuteOf } from '../core/time.ts';
 import { TimeZone } from '../core/zone.ts';
 import { FOLLOWUP_STATUSES, isTaskStatus, LEGACY_WAITING_HINT, LEGACY_WAITING_STATUS, SESSION_NAME, TASK_STATUSES, type TaskStatus } from '../register/model.ts';
+import { KEEP_RULE_PATTERN } from '../permissions/allow-rules.ts';
 import { PREFIX_PATTERN } from '../readonly-shell/rules.ts';
 import { CORE_RULE_KEYS, isCoreRuleKey } from '../rules/keys.ts';
 import {
@@ -31,6 +32,7 @@ import {
   DEFAULT_COMMIT_GUARD,
   DEFAULT_SECRET_GUARD,
   DEFAULT_PACKAGE_GUARD,
+  DEFAULT_PERMISSIONS,
   DEFAULT_PROMPTS,
   DEFAULT_PUSH_GUARD,
   DEFAULT_READONLY_SHELL,
@@ -101,6 +103,7 @@ import {
   type HeadroomConfig,
   type OpenConfig,
   type PathsConfig,
+  type PermissionsConfig,
   type PushToProtected,
   type HookAsks,
   type QuietHours,
@@ -425,6 +428,7 @@ export function parseConfig(raw: JsonRecord): ConfigParse {
     pickerGuard: { enabled: read.boolean(pickerGuard, 'enabled', 'pickerGuard', false) },
     turnLog: parseTurnLog(read, read.section(raw, 'turnLog', '')),
     readonlyShell: parseReadonlyShell(read, read.section(raw, 'readonlyShell', '')),
+    permissions: parsePermissions(read, read.section(raw, 'permissions', '')),
     refresh: parseRefresh(read, read.section(raw, 'refresh', '')),
     hiring: parseHiring(read, read.section(raw, 'hiring', '')),
     burst: parseBurst(read, read.section(raw, 'burst', '')),
@@ -1095,6 +1099,14 @@ function parseReadonlyShell(read: ConfigReader, raw: JsonRecord): ReadonlyShellC
     enabled: read.boolean(raw, 'enabled', 'readonlyShell', DEFAULT_READONLY_SHELL.enabled),
     allowPrefixes: read.stringList(raw, 'allowPrefixes', 'readonlyShell', DEFAULT_READONLY_SHELL.allowPrefixes, shortLine(maxLength, isShellPrefix), maxItems),
   };
+}
+
+const isKeepRule: Check<string> = (value) =>
+  KEEP_RULE_PATTERN.test(value) ? undefined : 'expected a tool, or a tool and a command with at most a trailing " *" or ":*": no other *, path, URL or parenthesis';
+
+function parsePermissions(read: ConfigReader, raw: JsonRecord): PermissionsConfig {
+  const { maxItems, maxLength } = CONFIG_LIMITS.keepAllow;
+  return { keepAllow: read.stringList(raw, 'keepAllow', 'permissions', DEFAULT_PERMISSIONS.keepAllow, shortLine(maxLength, isKeepRule), maxItems) };
 }
 
 function parseCommits(read: ConfigReader, raw: JsonRecord): CommitsConfig {
