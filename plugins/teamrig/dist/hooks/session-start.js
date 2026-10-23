@@ -23,14 +23,13 @@ function identityLines(roster, leaders, input) {
     if (found === undefined || !found.ok) {
         const why = session === undefined ? `No session is set ($${ENV.session})` : `$${ENV.session} does not name a session on this team`;
         const toLead = leadName === undefined ? '' : ` Message the lead as \`${leadName}\`.`;
-        return [`${why}: ask the user which session you are (\`${command} who\` lists them) and pass --session <id> to every \`${command}\` task and inbox command.${shellNote(input)}${toLead}`, names, ...tree];
+        return [`${why}: ask the user which session you are (\`${command} who\` lists them) and pass --session <id> to every \`${command}\` task and inbox command.${toLead}`, names, ...tree];
     }
     const roles = roster.rolesOf(found.id);
     const held = roles.length === 0 ? '' : `, roles: ${roles.join(', ')}`;
     const you = `You are the \`${found.id}\` session of team \`${input.team}\` (name \`${roster.nameOf(found.id) ?? found.id}\`${held}).`;
     const pass = input.sessionInEnv ? '' : ` $${ENV.session} is not set here, so pass --session ${found.id} to every \`${command}\` task and inbox command.`;
-    const shell = shellNote(input);
-    return [`${you}${pass}${shell}${messageNote(roster, leaders, found.id)}`, names, ...tree];
+    return [`${you}${pass}${messageNote(roster, leaders, found.id)}`, names, ...tree];
 }
 /**
  * Whom the session messages: the lead, or for a sub-lead's member its own leader (T781), who takes up what it cannot
@@ -43,13 +42,6 @@ function messageNote(roster, leaders, id) {
         return '';
     }
     return leader === leaders.lead ? ` Message the lead as \`${name}\`.` : ` Message your leader as \`${name}\`, who takes to the lead what it cannot settle.`;
-}
-/**
- * Claude Code puts a plugin's `bin/` folder on the PATH of its Bash tool only, so on Windows, where a session
- * also has a PowerShell tool, the intro says which one runs the command.
- */
-export function shellNote({ platform, command }) {
-    return platform === 'win32' ? ` Run \`${command}\` in the Bash tool: the PowerShell tool does not have it.` : '';
 }
 /** The one line a start gets when the team config loaded no rules: why, and the command that fixes it. */
 export function unloadedContext(team, load, command) {
