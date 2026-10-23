@@ -41,7 +41,7 @@ const TEXT = create('T1', 0) + status('T1', 1, 'done') + create('T2', 2) + statu
 const LATER = status('T2', 5, 'done') + create('T3', 5);
 
 function options(day: number, changes: Partial<RotationOptions> = {}): RotationOptions {
-  return { now: new Date(START + day * MS_PER_DAY), zone: TimeZone.UTC, retainDays: RETAIN_DAYS, keep: new Set(), checkHistory: true, ...changes };
+  return { now: new Date(START + day * MS_PER_DAY), zone: TimeZone.UTC, retainDays: RETAIN_DAYS, keep: new Set(), checkHistory: true, fromHistory: false, ...changes };
 }
 
 async function rotate(files: MemoryFiles, day: number): Promise<RotationPlan> {
@@ -123,6 +123,40 @@ describe('planRotation and applyRotation', () => {
     assert.ok(snapshot.includes(verifying), snapshot);
     const working = await readWorkingSet(files, PATHS);
     assert.deepEqual(working.state.tasks.get('T2')?.waits, waits);
+  });
+
+  it('rebuild a snapshot that lost fields from the history when asked, saying what it restores; a plain rotation refuses it', async () => {
+    const waits = [{ kind: 'approval', who: 'lead' }];
+    const fields = { v: EVENT_VERSION, type: 'status', id: 'T2', at: at(3), by: 'alpha', status: 'verifying', note: 'n', evidence: null, skill: null, proof: 'p' };
+    const verifying = toJsonlLine({ ...fields, waits });
+    const files = new MemoryFiles({ [LOG]: TEXT + verifying });
+    await rotate(files, 4);
+    // An older teamrig wrote the snapshot's lines back with only the fields it parsed.
+    await files.write(PATHS.snapshot, (files.get(PATHS.snapshot) ?? '').replace(verifying, toJsonlLine(fields)));
+    const difference = 'T2 folds otherwise in the working set than in the history';
+    const plain = await planRotation(files, PATHS, options(4));
+    assert.deepEqual([plain.problems, plain.historyDiffers, plain.rebuild], [[difference], true, null]);
+    const plan = await planRotation(files, PATHS, options(4, { fromHistory: true }));
+    assert.deepEqual(
+      [plan.source, plan.skippedSnapshot, plan.sourceEvents, plan.idle, plan.historyDiffers, plan.rebuild, plan.problems],
+      ['history', null, 5, false, false, { differences: [difference], restoredLines: 1 }, []],
+    );
+    await applyRotation(files, PATHS, plan);
+    assert.ok((files.get(PATHS.snapshot) ?? '').includes(verifying));
+    assert.deepEqual((await readWorkingSet(files, PATHS)).state.tasks.get('T2')?.waits, waits);
+    await assertReadsAs(files, TEXT + verifying);
+    const again = await planRotation(files, PATHS, options(4, { fromHistory: true }));
+    assert.deepEqual([again.rebuild, again.problems], [{ differences: [], restoredLines: 0 }, []]);
+  });
+
+  it('rebuild nothing where no snapshot is there to replace: a log never rotated, or a damaged snapshot', async () => {
+    const fresh = await planRotation(new MemoryFiles({ [LOG]: TEXT }), PATHS, options(4, { fromHistory: true }));
+    assert.deepEqual([fresh.source, fresh.rebuild, fresh.problems], ['history', null, []]);
+    const files = new MemoryFiles({ [LOG]: TEXT });
+    await rotate(files, 4);
+    await files.write(PATHS.snapshot, '{"v":3,"type":"snap');
+    const damaged = await planRotation(files, PATHS, options(4, { fromHistory: true }));
+    assert.deepEqual([damaged.source, damaged.skippedSnapshot, damaged.rebuild, damaged.problems], ['history', 'its first line is no snapshot header', null, []]);
   });
 
   it('skip a damaged snapshot for the whole history, and write a good one in its place', async () => {
