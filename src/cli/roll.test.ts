@@ -116,6 +116,48 @@ describe('teamrig roll', () => {
     assert.deepEqual([kit.files.get(LOCK), starters.openWatches], [undefined, 0]);
   });
 
+  it('deploys the targets --targets names with the command after --, pulling nothing, and records a deploy of them', async () => {
+    const { kit, git, hooks } = world();
+    const restart = ['node', 'tools/restart.js', 'api'];
+    hooks.answer(restart, { lines: ['restarted api'], takesMs: 30_000 });
+    const deploy = [...ROLL, '--targets', 'api', '--what', 'rotate the db credential', '--', ...restart];
+    assert.deepEqual(await kit.run(deploy, { ...ELSEWHERE, integrateGit: git, hooks }), {
+      code: 0,
+      stdout: ['2030-01-08 10:00:00 UTC clear; deploying api of app: node tools/restart.js api', '2030-01-08 10:00:00 UTC   restarted api', 'DONE deployed api of app: restarted api'],
+      stderr: [],
+    });
+    assert.deepEqual([hooks.commands, hooks.ran[0]?.cwd, hooks.ran[0]?.env['TEAMRIG_VERB'], git.heads.get(MAIN_CHECKOUT)], [[restart.join(' ')], '/elsewhere', 'deploy', 'base']);
+    assert.deepEqual(ledgerOf(kit).at(-1), {
+      type: 'deploy',
+      kind: 'deploy',
+      session: 'alpha',
+      repo: 'app',
+      range: 'at base',
+      what: 'deploy api',
+      note: 'rotate the db credential; restarted api',
+      startedAt: '2030-01-08T10:00:00.000Z',
+      rolledAt: '2030-01-08T10:00:30.000Z',
+      targets: ['api'],
+    });
+    assert.equal(kit.files.get(LOCK), undefined, 'the host lock is released');
+  });
+
+  it('reads a deploy only with --targets, --what and a command after --, each missing one a usage error', async () => {
+    const { kit, git, hooks } = world();
+    const cases: readonly (readonly [readonly string[], string])[] = [
+      [['--targets', 'api', '--what', 'rotate'], 'no command to run after --'],
+      [['--targets', 'api', '--', 'node', 'tools/restart.js'], '--what is required'],
+      [['--', 'node', 'tools/restart.js'], '--what and a command after -- make a deploy: name the targets it restarts with --targets <a,b>'],
+      [['--what', 'rotate'], '--what and a command after -- make a deploy: name the targets it restarts with --targets <a,b>'],
+    ];
+    for (const [extra, message] of cases) {
+      const result = await kit.run([...ROLL, ...extra], { ...ELSEWHERE, integrateGit: git, hooks });
+      assert.equal(result.code, 64, extra.join(' '));
+      assert.equal(result.stderr[0]?.split('\n')[0], message, extra.join(' '));
+    }
+    assert.deepEqual([hooks.ran.length, ledgerOf(kit).length], [0, 0]);
+  });
+
   it('stops waiting for the host lock once the shell that started it ended, rolling nothing and leaving the lock to its holder', async () => {
     const { kit, git, hooks } = world();
     await kit.files.write(LOCK, heldBy());

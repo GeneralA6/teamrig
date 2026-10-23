@@ -184,7 +184,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   heavy: { effect: 'write', flags: ['session', 'what', 'max-minutes'], switches: ['small', 'pre-push'], rest: true, load: async () => (await heavyCommand()).heavy },
   withdraw: { effect: 'write', flags: ['session', 'what'], switches: ['all'], load: async () => (await withdrawCommand()).withdraw },
   integrate: { effect: 'write', flags: ['session'], switches: ['keep-remote', 'no-delete-local'], load: async () => (await integrateCommand()).integrate },
-  roll: { effect: 'write', flags: ['session', 'repo'], load: async () => (await rollCommand()).roll },
+  roll: { effect: 'write', flags: ['session', 'repo', 'targets', 'what'], rest: true, load: async () => (await rollCommand()).roll },
   claim: { effect: 'write', flags: ['session', 'targets', 'metric', 'why', 'for'], load: async () => (await claimCommands()).claim },
   release: { effect: 'write', flags: ['session'], load: async () => (await claimCommands()).release },
   windows: { effect: 'read', flags: ['targets', 'since', 'until', 'settle', 'min'], load: async () => (await windowsCommand()).windows },
@@ -492,6 +492,13 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       install moves the main checkout back; a failed afterPull hook or roll command leaves nothing
       pending, so its roll command is then run by hand; once the shell that started it ends, it
       stops waiting, or kills its hook and frees the lock (exit 129); exit 0 rolled, 1 failed or stopped
+  roll --targets <a,b> --what "<why>" [--repo <name>] [--session <id|name>] -- <command ...>   a deploy
+      that pulls nothing, such as a restart onto a rotated secret: runs the command in this folder (one
+      heavy step in the ledger) and records a deploy of those targets only. REFUSED for a target not in
+      the repository's roll.targets, when a gate refuses, from coordinator.schedule.heavyCutoffUtc to
+      midnight UTC and in the resetBlackoutHours before the weekly token reset; waits as a roll does,
+      for quiet claims on those targets only; its gates and command see TEAMRIG_VERB=deploy and
+      TEAMRIG_DEPLOY_TARGETS; exit 0 deployed, 1 failed or stopped
   claim --targets <a,b> --metric <m> --why "<why>" --for <span> [--session <id|name>]   a quiet
       claim: integrate and roll wait while it holds a target they deploy, from now for the span (45m,
       1h30m; at most coordinator.claims.maxMinutes); one per session; REFUSED for a target no
