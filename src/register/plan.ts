@@ -16,12 +16,13 @@ export interface PlanOptions {
 }
 
 /**
- * The week plan as markdown: the tasks tagged with `week`, grouped by priority, then by effective due date (its own,
- * or an earlier one of an active task that needs it, which the line names: `due 01-10 from T5`).
+ * The week plan as markdown: the tasks tagged with `week`, grouped by priority, each group in plan order (tree.ts
+ * PLAN_KEYS: started first, then the effective due, its own or an earlier one of an active task that needs it, which
+ * the line names: `due 01-10 from T5`).
  */
 export function renderPlan(tasks: Iterable<Task>, week: string, now: Date, zone: TimeZone, config: RegisterConfig, { team, fit = [] }: PlanOptions = {}): string {
   const all = [...tasks];
-  const tree = new TaskTree(new Map(all.map((task) => [task.id, task])), now, zone);
+  const tree = new TaskTree(new Map(all.map((task) => [task.id, task])), now, zone, week);
   const inWeek = tree.inPlanOrder(all.filter((task) => task.week === week));
   const done = inWeek.filter((task) => task.status === 'done').length;
   const dropped = inWeek.filter((task) => task.status === 'dropped').length;

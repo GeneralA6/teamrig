@@ -10,11 +10,11 @@ import type { RegisterSnapshot } from './snapshot.ts';
 
 /**
  * The week plan in force: the newest week tag that starts on or before now, a week tag being a day of the team's
- * `zone`.
+ * `zone`. A row without a week field (a reader's own rows may lack it) counts as untagged.
  */
-export function currentWeek(tasks: Iterable<Task>, now: Date, zone: TimeZone): string | null {
+export function currentWeek(tasks: Iterable<Partial<Pick<Task, 'week'>>>, now: Date, zone: TimeZone): string | null {
   let best: string | null = null;
-  for (const { week } of tasks) {
+  for (const { week = null } of tasks) {
     const start = week === null ? undefined : parseDayStart(week, zone);
     if (week !== null && start !== undefined && start.getTime() <= now.getTime() && (best === null || week > best)) {
       best = week;

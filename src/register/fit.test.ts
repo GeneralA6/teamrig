@@ -90,7 +90,7 @@ describe('weekFit', () => {
 
 describe('fitLines', () => {
   it('prints what fits, the first task past the line with how many follow, and the unsized count', () => {
-    const fit = weekFit(rows({ id: 'T1', priority: 1, size: 12 }, { id: 'T2', size: 8.5 }, { id: 'T3', size: 20 }, { id: 'T4', size: 1 }, { id: 'T5' }), week, 31);
+    const fit = weekFit(rows({ id: 'T1', priority: 1, size: 12 }, { id: 'T2', size: 8.5 }, { id: 'T3', size: 20 }, { id: 'T4', size: 25 }, { id: 'T5' }), week, 31);
     assert.deepEqual(fitLines(fit), [
       'fits: p1 12% · p2 8.5% (left 31% of the week)',
       'does not fit: T3 p2 alpha 20% | Add a health check, +1 after it',
@@ -115,7 +115,7 @@ describe('fitLines', () => {
 
 describe('overLimitFlag', () => {
   it('flags the first task past the line with the room left and how many follow', () => {
-    const flag = overLimitFlag(weekFit(rows({ id: 'T1', size: 3 }, { id: 'T2', size: 4 }, { id: 'T3', size: 1 }), week, 5));
+    const flag = overLimitFlag(weekFit(rows({ id: 'T1', size: 3 }, { id: 'T2', size: 4 }, { id: 'T3', size: 5 }), week, 5));
     assert.equal(flag?.kind, 'OVER-LIMIT');
     assert.equal(flag?.task.id, 'T2');
     assert.equal(flag?.detail, 'size 4%, 2% of the week left after the tasks before it (left 5%), +1 after it');

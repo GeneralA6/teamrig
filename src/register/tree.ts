@@ -3,6 +3,7 @@ import type { TimeZone } from '../core/zone.ts';
 import { taskNumber, type Task } from './fold.ts';
 import { ACTIVE_STATUSES } from './model.ts';
 import { isFinished, isReady, waitContext, type PersonWait, type PersonWaitKind, type WaitContext } from './waits.ts';
+import { currentWeek } from './week.ts';
 
 /**
  * The dependency tree of one register, from the links its tasks already have: a task needs the tasks it is planned
@@ -47,25 +48,83 @@ export function loopFix(id: string, other: string, owner: string, byWait: boolea
   return `make the step ${id} needs from ${other} its own task: ${command}`;
 }
 
-/** A task's place in plan order: its priority, its deadline in ms (undefined: none) and its id. */
+/** The best of the active tasks that need a task: the first by number of the best priority, and how many need it. */
+export interface Unblocks {
+  readonly first: string;
+  readonly priority: number;
+  readonly count: number;
+}
+
+/**
+ * A task's place in plan order: its priority, its deadline in ms (undefined: none) and its id; a tree's place
+ * ({@link TaskTree.placeOf}) adds the rest of {@link PLAN_KEYS}. A place built without a tree leaves those out, so
+ * they tie and it falls back to priority, deadline and age.
+ */
 export interface PlanPlace {
   readonly id: string;
   readonly priority: number;
   readonly at: number | undefined;
+  /** In progress. */
+  readonly started?: boolean;
+  /** The best needer; undefined when no active task needs it. */
+  readonly unblocks?: Unblocks | undefined;
+  /** Tagged with the week plan in force. */
+  readonly inWeek?: boolean;
+  /** Its size in percent of the weekly limit; null when not sized. */
+  readonly size?: number | null;
 }
 
-/** Plan order: priority, then deadline (undated last), then id. */
+/**
+ * The keys of plan order, in order: the first one on which two tasks differ puts one ahead. No hand-set score, each
+ * key a field the task has: `priority` (p1 first); `started` (an in-progress task stays on top within its
+ * priority); `due` (effective due, the earliest first, undated last); `unblocks` (the best priority among the
+ * active tasks that need it, then the most of them; none last); `week` (in the week plan in force first); `size`
+ * (the smallest first, unsized last); `age` (the lowest number first).
+ */
+export const PLAN_KEYS = ['priority', 'started', 'due', 'unblocks', 'week', 'size', 'age'] as const;
+
+/** One of {@link PLAN_KEYS}. */
+export type PlanKey = (typeof PLAN_KEYS)[number];
+
+const BY_KEY: Readonly<Record<PlanKey, (a: PlanPlace, b: PlanPlace) => number>> = {
+  priority: (a, b) => a.priority - b.priority,
+  started: (a, b) => trueFirst(a.started, b.started),
+  due: (a, b) => lowFirst(a.at, b.at),
+  unblocks: (a, b) => lowFirst(a.unblocks?.priority, b.unblocks?.priority) || (b.unblocks?.count ?? 0) - (a.unblocks?.count ?? 0),
+  week: (a, b) => trueFirst(a.inWeek, b.inWeek),
+  size: (a, b) => lowFirst(a.size ?? undefined, b.size ?? undefined),
+  age: (a, b) => taskNumber(a.id) - taskNumber(b.id),
+};
+
+/** The first of {@link PLAN_KEYS} on which the two places differ; undefined when they tie on every one. */
+export function decidingKey(a: PlanPlace, b: PlanPlace): PlanKey | undefined {
+  return PLAN_KEYS.find((key) => BY_KEY[key](a, b) !== 0);
+}
+
+/** Plan order: by the first of {@link PLAN_KEYS} on which the places differ. */
 export function planOrder(a: PlanPlace, b: PlanPlace): number {
-  const dueA = a.at ?? Number.POSITIVE_INFINITY;
-  const dueB = b.at ?? Number.POSITIVE_INFINITY;
-  return a.priority - b.priority || (dueA === dueB ? 0 : dueA < dueB ? -1 : 1) || taskNumber(a.id) - taskNumber(b.id);
+  const key = decidingKey(a, b);
+  return key === undefined ? 0 : BY_KEY[key](a, b);
+}
+
+/** The lower number first, a missing one last. */
+function lowFirst(a: number | undefined, b: number | undefined): number {
+  const x = a ?? Number.POSITIVE_INFINITY;
+  const y = b ?? Number.POSITIVE_INFINITY;
+  return x === y ? 0 : x < y ? -1 : 1;
+}
+
+/** A true flag first. */
+function trueFirst(a: boolean | undefined, b: boolean | undefined): number {
+  return Number(b === true) - Number(a === true);
 }
 
 /**
  * The fields of a task the tree reads. A reader that keeps rows of its own (a status pane) builds a tree from them as
- * from teamrig's folded tasks, and gets its own rows back from it.
+ * from teamrig's folded tasks, and gets its own rows back from it; a row without `week` or `size` counts as untagged
+ * and unsized.
  */
-export type TreeTask = Pick<Task, 'id' | 'status' | 'owner' | 'priority' | 'due' | 'after' | 'waits'>;
+export type TreeTask = Pick<Task, 'id' | 'status' | 'owner' | 'priority' | 'due' | 'after' | 'waits'> & Partial<Pick<Task, 'week' | 'size'>>;
 
 /** The date a task works to: its own due, or an earlier one of a task that needs it. */
 export interface EffectiveDue {
@@ -104,14 +163,18 @@ export class TaskTree<T extends TreeTask = Task> {
   readonly context: WaitContext;
   /** The team's zone: a stored due day is a day of it, and rows show times in it. */
   readonly zone: TimeZone;
+  /** The week plan in force, whose tasks plan order puts first after priority, due and need; null: none. */
+  readonly week: string | null;
   private readonly tasks: ReadonlyMap<string, T>;
   /** Per id, the active tasks that need it, by number. */
   private readonly needers: ReadonlyMap<string, readonly T[]>;
   private readonly dues = new Map<string, EffectiveDue | undefined>();
 
-  constructor(tasks: ReadonlyMap<string, T>, now: Date, zone: TimeZone) {
+  /** `week` defaults to the newest week tag of `tasks` started by `now`; a register read passes the one it knows. */
+  constructor(tasks: ReadonlyMap<string, T>, now: Date, zone: TimeZone, week: string | null = currentWeek(tasks.values(), now, zone)) {
     this.tasks = tasks;
     this.zone = zone;
+    this.week = week;
     this.context = waitContext(tasks, now, zone);
     const needers = new Map<string, T[]>();
     for (const task of [...tasks.values()].filter(isActive).sort((a, b) => taskNumber(a.id) - taskNumber(b.id))) {
@@ -136,6 +199,17 @@ export class TaskTree<T extends TreeTask = Task> {
   /** The active tasks that need it, by number. */
   neededBy(id: string): readonly T[] {
     return this.needers.get(id) ?? [];
+  }
+
+  /**
+   * The best of the active tasks that need an active task ({@link Unblocks}); undefined for a finished task, one the
+   * read lacks, or one nothing active needs.
+   */
+  unblocks(id: string): Unblocks | undefined {
+    const needers = this.isActiveId(id) ? this.neededBy(id) : [];
+    const best = Math.min(...needers.map((needer) => needer.priority));
+    const first = needers.find((needer) => needer.priority === best);
+    return first === undefined ? undefined : { first: first.id, priority: best, count: needers.length };
   }
 
   /**
@@ -174,19 +248,27 @@ export class TaskTree<T extends TreeTask = Task> {
   }
 
   /**
-   * The task's place in plan order on its effective due, for sorting rows of several registers together, each
-   * placed by its own register's tree ({@link planOrder}).
+   * The task's place in plan order on its effective due, what it unblocks and this tree's week, for sorting rows of
+   * several registers together, each placed by its own register's tree ({@link planOrder}).
    */
   placeOf(task: TreeTask): PlanPlace {
-    return { id: task.id, priority: task.priority, at: this.dueTime(task) };
+    return {
+      id: task.id,
+      priority: task.priority,
+      at: this.dueTime(task),
+      started: task.status === 'in-progress',
+      unblocks: this.unblocks(task.id),
+      inWeek: this.week !== null && task.week === this.week,
+      size: task.size ?? null,
+    };
   }
 
-  /** Plan order on effective dues: priority, then effective due (undated last), then id. */
+  /** Plan order ({@link PLAN_KEYS}) on effective dues, what each task unblocks and this tree's week. */
   byPlanOrder(a: TreeTask, b: TreeTask): number {
     return planOrder(this.placeOf(a), this.placeOf(b));
   }
 
-  /** The tasks in plan order on effective dues. */
+  /** The tasks in plan order ({@link byPlanOrder}). */
   inPlanOrder<U extends TreeTask>(tasks: Iterable<U>): U[] {
     return [...tasks].sort((a, b) => this.byPlanOrder(a, b));
   }
