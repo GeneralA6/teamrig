@@ -20,6 +20,7 @@ they all stay silent, but `hook restore-track` and `hook tool-end` still record 
 | `PreToolUse` on `SendMessage` | `hook cold-send` | Holds once a message that would wake an idle session cold; with `open.idle.mode` on, turns a message to a session teamrig closed into its urgent line; during the daily meeting, holds every message to the lead but a CRITICAL one |
 | `PostToolUse` on `SendMessage` | `hook failed-send` | After a send that was not delivered, hands the model [the inbox line to write instead](#after-a-failed-send-the-inbox-line) |
 | `PostToolUse` and `PostToolUseFailure` on `Bash` and `PowerShell`, in a team or not | `hook missing-cli` | After a shell call that did not find the bare `teamrig` command, hands the model [the CLI's path to run instead](#after-a-shell-call-the-cli-by-its-path) |
+| `PostToolUse` on `SendMessage` | `hook route-reminder` | After a delivered send that skipped a sub-lead below the sender, hands the model [the sub-lead to route such work via](#after-a-send-past-a-sub-lead-the-route-reminder) |
 | `PostToolUse` on reads, edits and shell calls | `hook loop-nudge` | Asks the model once to batch when a turn makes [single-step calls in a row](#after-a-tool-call-the-loop-nudge) |
 | `PreToolUse` on `Agent` and `Task` | `hook helper-gate` | Restates rule 8's helper default at each helper launch; asks before or refuses one while its budget holds it or in quiet hours, [as the team set](#the-daily-budget-warnings-and-the-helper-gate) |
 | The mod, while a tab is idle | `hook wake-check`, `hook wake-dropped` | Wakes the tab's session when unblocked urgent work is handed to it, [batched, with its cost shown](#the-mod-the-wake-on-urgent-work), and runs the team's [idle pass](#the-idle-pass) once a minute |
@@ -536,6 +537,21 @@ teamrig: the shell did not find the bare `teamrig` command (Claude Code's shell 
 ```
 
 It answers in a team or not, and says nothing after any other call.
+
+## After a send past a sub-lead: the route reminder
+
+A leader may still message a session under one of its sub-leads (`leads` in the config) directly, and the message
+goes, but such work should go through the sub-lead. After a delivered `SendMessage` to a session under a sub-lead
+below the sender, the model gets one line naming the sub-lead it skipped, the one right below the sender on the
+receiver's chain:
+
+```text
+teamrig: app-bravo works under app-alpha: route such work via app-alpha next time; an urgent incident (a message starting CRITICAL) stays direct.
+```
+
+A message that starts with CRITICAL, an urgent incident, gets no line, nor does one from the receiver's direct leader,
+or one up or across the tree. `teamrig inbox add` prints the same line, by ids, for each session it names past a
+sub-lead, never for a group (`all`, `leads`, `group:<leader>`). Outside a team with a config it says nothing.
 
 ## End of a turn or a helper: a dropped skill edit
 
