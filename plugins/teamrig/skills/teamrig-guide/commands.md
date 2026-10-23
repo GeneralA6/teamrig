@@ -3141,10 +3141,12 @@ any other tool (`ExitPlanMode` too), outside a team, with the guard off, or on a
 ### teamrig hook prompt-refuse
 
 When Claude Code is about to show a permission prompt (`PermissionRequest`), with `prompts.hookAsks: refuse` in the
-team config, refuses it: nobody may be there to answer, and the prompt holds the session until someone does. The
-reason names the tool and says to record the step as waiting for the owner and take the next task. The question
-picker (`AskUserQuestion`) and plan mode's exit (`ExitPlanMode`) still open. See
-[Hooks and permissions](hooks.md#asks-off-a-refusal-instead-of-a-prompt).
+team config, answers it for its case: nobody may be there to answer, and the prompt holds the session until someone
+does. A line that provably only reads runs; a Bash line teamrig's rules give a rerun form (after a leading `cd D &&`,
+or a plain `git worktree remove`) is refused quoting the line to run instead; anything else is refused with the
+tool's name and the note to record the step as waiting for the owner and take the next task. Each answer is a line in
+`state/prompt-answers.jsonl`. The question picker (`AskUserQuestion`) and plan mode's exit (`ExitPlanMode`) still
+open. See [Hooks and permissions](hooks.md#asks-off-a-refusal-instead-of-a-prompt).
 
 Flags: none.
 
@@ -3154,8 +3156,8 @@ Example:
 teamrig hook prompt-refuse < permission-request.json
 ```
 
-Output: a JSON `PermissionRequest` decision `deny` with the message; nothing with asks on, for the picker or plan
-mode's exit, outside a team, or on an error. Exit 0 always.
+Output: a JSON `PermissionRequest` decision, `allow` for a read-only line, else `deny` with the message; nothing with
+asks on, for the picker or plan mode's exit, outside a team, or on an error. Exit 0 always.
 
 ### teamrig hook cold-send
 
