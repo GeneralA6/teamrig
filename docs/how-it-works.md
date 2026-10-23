@@ -334,9 +334,11 @@ turns this off: `register.autoArchive: false` in the team's `config.json`, after
   (T209–T211).
 - Token use: `teamrig budget` reads each session's use from the Claude Code transcripts (only the lines added
   since its last run, kept per session and day for 8 days in `state/usage/`) and shows it against the week's pace
-  line. The team's daily budget is never a fixed number: at every reading, what is left to the target is spread
-  over the active time to the pace end (quiet hours count at `budget.quietHours.paceWeight`), and each session's
-  part of today's is its share times its queued work, after the lead's lifts.
+  line. The daily budget is never a fixed number: at every reading, what is left to the target is spread
+  over the active time to the pace end (quiet hours count at `budget.quietHours.paceWeight`). The teams of the kit
+  home on one Claude account (`budget.account`, else the Claude config dir) split each day by weight: a session's
+  weight is its share times its queued work, a team's its sessions' summed, and each session's part of its team's
+  part comes after the lead's lifts.
   The week's use in percent comes from status line snapshots (`teamrig statusline install` sets the status line
   up), else from the metered W at the week's W per percent: learned from `state/usage/meter-log.jsonl` (a line
   each time the status line passes a whole percent, fitted once 8 weeks of lines span 10 points), else

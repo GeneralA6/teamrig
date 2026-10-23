@@ -16,7 +16,7 @@ import { ExtraLog, type ExtraEntry } from '../../budget/extra.ts';
 import { formatUsd } from '../../budget/format.ts';
 import { activeLift, decideLift, LiftLog, liftText, type Lift } from '../../budget/lift.ts';
 import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID, type Measured } from '../../budget/measure.ts';
-import { dailyBudgetOf, liftedParts, type BudgetSplit } from '../../budget/parts.ts';
+import { dailyBudgetOf, liftedParts, teamPartOf, type BudgetSplit } from '../../budget/parts.ts';
 import { nextPeriod, sightOf, type Period } from '../../budget/period.ts';
 import {
   burnLines,
@@ -53,6 +53,7 @@ import { indexMarks } from '../../inbox/marks.ts';
 import type { RepoState } from '../../push-guard/push.ts';
 import { customTitleOf, TRANSCRIPT_TAIL_BYTES } from '../../names/title.ts';
 import { TASK_ID } from '../../register/model.ts';
+import { otherTeamsOnAccount } from '../account-teams.ts';
 import { UsageError, onePositional, requiredFlag, type Flags, type ParsedArgs } from '../args.ts';
 import { callerOf, type TypedTimes } from '../inputs.ts';
 import { openKit, openTeamKit, requireConfig, rosterOf, sessionIdOf, teamFolders, teamZone, type Kit } from '../kit.ts';
@@ -161,19 +162,23 @@ export async function weekLineOf(runtime: CliRuntime, kit: Kit, config: KitConfi
   return weekLine((await usageReadingOf(runtime, kit, config, roster)).week, teamZone(config, runtime));
 }
 
-/** Each session today: its use, and its part of the team's daily budget by its queued work (`work`), its lift and the burst. */
-function sessionsToday(reading: Reading, team: string, roster: Roster, budget: BudgetConfig, work: ReadonlyMap<string, number>): SessionToday[] {
+/** How the team's part of the day is split among its sessions: by their queued work (`work`) and the lifts in force. */
+function splitOf(reading: Reading, team: string, roster: Roster, budget: BudgetConfig, work: ReadonlyMap<string, number>): BudgetSplit {
+  return { team, ids: roster.ids, sessions: budget.sessions, work, lifted: liftedParts(reading.lifts, roster.ids, reading.now, reading.week.usedPct) };
+}
+
+/** Each session today: its use, and its part (`split`) of the team's part of the account's daily budget beside the `others` on it, its lift and the burst. */
+function sessionsToday(reading: Reading, roster: Roster, budget: BudgetConfig, split: BudgetSplit, others: readonly BudgetSplit[]): SessionToday[] {
   const today = formatUtcDay(new Date(reading.now));
   const inForce = activeBurst(reading.bursts, reading.now, reading.week.usedPct);
   const burstNow: InBurst | undefined =
     inForce === undefined ? undefined : { burst: inForce, floorPct: burstFloorOf(inForce, reading.week, reading.measured.bySession, budget, reading.now) };
-  const split: BudgetSplit = { team, ids: roster.ids, sessions: budget.sessions, work, lifted: liftedParts(reading.lifts, roster.ids, reading.now, reading.week.usedPct) };
   return roster.ids.map((id) => {
     const state = reading.measured.bySession.get(id);
     const w = state === undefined ? 0 : wSince([state], reading.week.todayFrom, reading.now);
     const lift = activeLift(reading.lifts, id, reading.now, reading.week.usedPct);
     const inBurst = burstNow !== undefined && burstNow.burst.sessions.includes(id) ? burstNow : undefined;
-    const budgetPct = withBurst(dailyBudgetOf(reading.week.allowancePct, id, split), inBurst?.floorPct);
+    const budgetPct = withBurst(dailyBudgetOf(reading.week.allowancePct, id, split, others), inBurst?.floorPct);
     return { id, name: roster.nameOf(id) ?? id, w, calls: state?.byDay[today]?.calls ?? 0, budgetPct, lift, inBurst };
   });
 }
@@ -255,7 +260,11 @@ export async function budget(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     return EXIT.ok;
   }
   const work = recountDay === undefined ? await readWork(runtime.files, kit.paths.events, config.register.priorities) : new Map<string, number>();
-  const sessions = sessionsToday(reading, kit.paths.team, roster, config.budget, work);
+  const split = splitOf(reading, kit.paths.team, roster, config.budget, work);
+  // A recount shows no budgets, so it reads no other team.
+  const others = recountDay === undefined ? await otherTeamsOnAccount(runtime, { team: kit.paths.team, config, usageDir: kit.paths.usage }, reading.now, reading.week.usedPct) : [];
+  const sessions = sessionsToday(reading, roster, config.budget, split, others);
+  const teamPct = teamPartOf(reading.week.allowancePct, split, others);
   const { measured, week, now } = reading;
   const zone = teamZone(config, runtime);
   let lines: string[];
@@ -277,7 +286,7 @@ export async function budget(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     const outsideToday = measured.outside.byDay[today];
     const outside = { w: wSince([measured.outside], week.todayFrom, now), calls: outsideToday?.calls ?? 0, sessions: measured.outsideSessions, titles: measured.outsideTitles };
     const behind = measured.behind.map((each) => (each === OUTSIDE_ID ? 'outside the team' : (roster.nameOf(each) ?? each)));
-    lines = recountDay === undefined ? todayLines({ week, sessions, outside, behind, all, zone }) : recountLines(today, { week, sessions, outside, all });
+    lines = recountDay === undefined ? todayLines({ week, teamPct, sessions, outside, behind, all, zone }) : recountLines(today, { week, sessions, outside, all });
   }
   for (const line of lines) {
     runtime.out.stdout(line);

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { DEFAULT_SESSION_SHARE } from '../config/defaults.ts';
 import type { SessionBudget } from '../config/types.ts';
 import type { Lift } from './lift.ts';
-import { addedSessionPct, dailyBudgetOf, liftedParts, partOf, sessionNodesOf, type BudgetSplit, type SplitNode } from './parts.ts';
+import { addedSessionPct, dailyBudgetOf, liftedParts, partOf, sessionNodesOf, teamPartOf, type BudgetSplit, type SplitNode } from './parts.ts';
 
 const IDS = ['lead', 'alpha', 'bravo'];
 const NOW = Date.parse('2030-01-08T10:00:00Z');
@@ -11,6 +11,11 @@ const MINUTE = 60_000;
 
 function split(sessions: Readonly<Record<string, SessionBudget>> = {}, extra: Partial<BudgetSplit> = {}): BudgetSplit {
   return { team: 'app', ids: IDS, sessions, work: new Map(), lifted: new Map(), ...extra };
+}
+
+/** Another team on the account, its sessions at the default share with no queued work unless `extra` says so. */
+function otherTeam(team: string, ids: readonly string[], extra: Partial<BudgetSplit> = {}): BudgetSplit {
+  return { team, ids, sessions: {}, work: new Map(), lifted: new Map(), ...extra };
 }
 
 function lift(overrides: Partial<Lift> = {}): Lift {
@@ -103,8 +108,61 @@ describe('dailyBudgetOf', () => {
       const allowancePct = next() * 20;
       for (const id of ids) {
         assert.equal(dailyBudgetOf(allowancePct, id, each), flatSplitPct(allowancePct, id, each), `round ${round}, ${id}`);
+        assert.equal(dailyBudgetOf(allowancePct, id, each, []), flatSplitPct(allowancePct, id, each), `round ${round}, ${id}, no other team`);
       }
     }
+  });
+
+  it('gives every session on the account the same part at equal weights, whichever team it is on', () => {
+    const web = otherTeam('web', ['lead', 'front']);
+    assert.equal(dailyBudgetOf(10, 'alpha', split(), [web]), 2);
+    assert.equal(dailyBudgetOf(10, 'front', web, [split()]), 2);
+  });
+
+  it("splits the team's part among its sessions by share, queued work and lifts, as it split the whole day", () => {
+    const app = split({ alpha: { share: 2 } });
+    const web = otherTeam('web', ['lead', 'front'], { work: new Map([['front', 4]]) });
+    // Team weights app 4 (lead 1, alpha 2, bravo 1) and web 5 (lead 1, front 4): parts 8 and 10 of 18.
+    assert.equal(dailyBudgetOf(18, 'alpha', app, [web]), 4);
+    assert.equal(dailyBudgetOf(18, 'bravo', app, [web]), 2);
+    assert.equal(dailyBudgetOf(18, 'front', web, [app]), 8);
+  });
+
+  it("gives a lifted session its lift's part of its team's part, not of the account's day", () => {
+    const lifted = new Map([['alpha', 50]]);
+    const web = otherTeam('web', ['lead', 'front']);
+    // App's part is 3 of 5 weights, 6; alpha's lift takes half of it and lead and bravo split the rest.
+    assert.equal(dailyBudgetOf(10, 'alpha', split({}, { lifted }), [web]), 3);
+    assert.equal(dailyBudgetOf(10, 'bravo', split({}, { lifted }), [web]), 1.5);
+    assert.equal(dailyBudgetOf(10, 'front', web, [split({}, { lifted })]), 2, 'a lift moves nothing between the teams');
+  });
+
+  it('is unknown for a session only another team holds', () => {
+    assert.equal(dailyBudgetOf(10, 'front', split(), [otherTeam('web', ['front'])]), undefined);
+  });
+});
+
+describe('teamPartOf', () => {
+  it("is the account's whole day, exactly, while no other team is on the account", () => {
+    assert.equal(teamPartOf(9.7, split({ alpha: { share: 3 } })), 9.7);
+    assert.equal(teamPartOf(9.7, split(), []), 9.7);
+    assert.equal(teamPartOf(undefined, split(), [otherTeam('web', ['lead'])]), undefined);
+  });
+
+  it("splits the account's day among its teams by their sessions' weights summed, the parts adding up to the day", () => {
+    const app = split();
+    const web = otherTeam('web', ['lead', 'front'], { sessions: { front: { share: 2 } } });
+    const ops = otherTeam('ops', ['run'], { work: new Map([['run', 4]]) });
+    // Weights app 3, web 3, ops 4.
+    assert.equal(teamPartOf(15, app, [web, ops]), 4.5);
+    assert.equal(teamPartOf(15, web, [app, ops]), 4.5);
+    assert.equal(teamPartOf(15, ops, [app, web]), 6);
+  });
+
+  it('gives a team whose sessions take no share nothing, the others the whole day', () => {
+    const idle = otherTeam('idle', ['lead'], { sessions: { lead: { share: 0 } } });
+    assert.equal(teamPartOf(9, idle, [split()]), 0);
+    assert.equal(teamPartOf(9, split(), [idle]), 9);
   });
 });
 
@@ -159,5 +217,11 @@ describe('addedSessionPct', () => {
     assert.equal(addedSessionPct(10, weighted), 10 / 7, 'weights lead 2, alpha 3, bravo 1, the added session 1');
     assert.equal(addedSessionPct(10, { ...weighted, lifted: new Map([['bravo', 30]]) }), 7 / 6, "bravo's lift takes 30% first");
     assert.equal(addedSessionPct(9, split()), 9 / 4);
+    assert.equal(addedSessionPct(9, split(), []), 9 / 4);
+  });
+
+  it("takes the added session's part out of its team's, which grows by its weight beside the other teams", () => {
+    // App with the added session weighs 4, web 2: app's part is 8 of 12, the added session's a quarter of it.
+    assert.equal(addedSessionPct(12, split(), [otherTeam('web', ['lead', 'front'])]), 2);
   });
 });

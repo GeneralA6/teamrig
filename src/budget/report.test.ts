@@ -101,7 +101,7 @@ function inBurst(id: string, w: number): SessionToday {
 const SESSIONS: readonly SessionToday[] = [session('lead', 7_500_000, 310), session('alpha', 30_000_000, 1_000), session('bravo', 0, 0, 2, LIFT)];
 const OUTSIDE: OutsideToday = { w: 1_200_000, calls: 40, sessions: 2, titles: ['release checks', 'Docs'] };
 const NOBODY_OUTSIDE: OutsideToday = { w: 0, calls: 0, sessions: 0, titles: [] };
-const REPORT: TodayReport = { week: WEEK, sessions: SESSIONS, outside: OUTSIDE, behind: [], all: false, zone: TimeZone.UTC };
+const REPORT: TodayReport = { week: WEEK, teamPct: WEEK.allowancePct, sessions: SESSIONS, outside: OUTSIDE, behind: [], all: false, zone: TimeZone.UTC };
 
 describe('todayLines', () => {
   it("gives the week's status time and reset on the team's clock", () => {
@@ -156,9 +156,13 @@ describe('todayLines', () => {
   it('never holds a session past its part while the team has room today', () => {
     const lines = todayLines({ ...REPORT, week: { ...WEEK, teamDay: ROOM } });
     assert.equal(lines.find((line) => line.startsWith('Past')), 'Past their part, not held while the team has room today (3.0% of the week used, below its in-day pace of 4.7%): alpha.');
-    const teamPast = todayLines({ ...REPORT, week: { ...WEEK, allowancePct: 1, teamDay: ROOM } });
-    // Past its own allowance, the team is held though its use is below its in-day pace: no pace clause.
+    const teamPast = todayLines({ ...REPORT, teamPct: 1, week: { ...WEEK, teamDay: ROOM } });
+    // Past its part of the account's day, the team is held though its use is below its in-day pace: no pace clause.
     assert.match(teamPast.find((line) => line.startsWith('Past')) ?? '', /^Past the daily budget: the team, alpha\. /);
+  });
+
+  it("gives the team its part of the account's daily budget, which another team on the account shrinks", () => {
+    assert.match(todayLines({ ...REPORT, teamPct: 6 })[3] ?? '', /^ {2}the team +5\.0% +6\.0% +37\.50M +1,310$/);
   });
 
   it('never tells a session past budget to skip a test', () => {
@@ -167,7 +171,7 @@ describe('todayLines', () => {
   });
 
   it('marks the budgets a burst raised and names the burst once, with its sessions', () => {
-    const lines = todayLines({ week: WEEK, sessions: [session('lead', 0, 0), inBurst('alpha', 15_000_000), inBurst('bravo', 0)], outside: NOBODY_OUTSIDE, behind: [], all: true, zone: TimeZone.UTC });
+    const lines = todayLines({ week: WEEK, teamPct: WEEK.allowancePct, sessions: [session('lead', 0, 0), inBurst('alpha', 15_000_000), inBurst('bravo', 0)], outside: NOBODY_OUTSIDE, behind: [], all: true, zone: TimeZone.UTC });
     assert.match(lines[4] ?? '', /^ {2}alpha +2\.0% +9\.5% +\(burst\) +15\.00M +100$/);
     assert.equal(lines[5], '  No use today: commander, bravo.');
     const burstLines = lines.filter((line) => line.startsWith('Budget: the lead started'));
@@ -178,7 +182,7 @@ describe('todayLines', () => {
 
   it('marks a lifted budget and names the idle sessions with --all', () => {
     const lifted = [session('lead', 0, 0), session('alpha', 15_000_000, 500, 2, { ...LIFT, session: 'alpha' })];
-    const lines = todayLines({ week: WEEK, sessions: lifted, outside: { ...NOBODY_OUTSIDE, sessions: 1 }, behind: [], all: true, zone: TimeZone.UTC });
+    const lines = todayLines({ week: WEEK, teamPct: WEEK.allowancePct, sessions: lifted, outside: { ...NOBODY_OUTSIDE, sessions: 1 }, behind: [], all: true, zone: TimeZone.UTC });
     assert.match(lines[4] ?? '', /^ {2}alpha +2\.0% +2\.0% +\(lifted\) +15\.00M +500$/);
     assert.deepEqual(lines.slice(5, 7), ['  No use today: commander.', LIFT_HEADING]);
     assert.match(lines[8] ?? '', /^ {2}alpha +40\.0% +00:00 UTC +97\.0%$/);
@@ -201,7 +205,7 @@ describe('todayLines', () => {
   });
 
   it('shows plain W when the week is unknown', () => {
-    assert.deepEqual(todayLines({ week: UNKNOWN, sessions: SESSIONS, outside: NOBODY_OUTSIDE, behind: [], all: false, zone: TimeZone.UTC }), [
+    assert.deepEqual(todayLines({ week: UNKNOWN, teamPct: UNKNOWN.allowancePct, sessions: SESSIONS, outside: NOBODY_OUTSIDE, behind: [], all: false, zone: TimeZone.UTC }), [
       'Week: its use is unknown: no status line reading (run teamrig statusline install) and no budget.weeklyLimitW.',
       'Today (UTC day):',
       '  session         W  calls',
@@ -226,7 +230,7 @@ describe('todayLines', () => {
     assert.match(noLimit[0] ?? '', /the pace line is at 57\.2%: on pace\./);
     assert.equal(noLimit.at(-2), 'Daily budgets need the week in W: set budget.weeklyLimitW, or let teamrig meter a whole week to estimate it.');
     assert.equal(noLimit.at(-1), W_EXPLAINED);
-    const metered = todayLines({ ...REPORT, week: { ...WEEK, statusAt: undefined, rateFrom: 'limit', allowancePct: 1 } });
+    const metered = todayLines({ ...REPORT, teamPct: 1, week: { ...WEEK, statusAt: undefined, rateFrom: 'limit', allowancePct: 1 } });
     assert.match(metered[0] ?? '', /^Week: 57\.0% used \(metered\); /);
     assert.match(metered.find((line) => line.startsWith('Past the daily budget')) ?? '', /^Past the daily budget: the team, alpha\. /);
     assert.equal(metered.at(-1), W_EXPLAINED);

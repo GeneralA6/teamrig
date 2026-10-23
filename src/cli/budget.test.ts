@@ -4,11 +4,13 @@ import { basename, join } from 'node:path';
 import { parsePeriod } from '../budget/period.ts';
 import { W_EXPLAINED } from '../budget/report.ts';
 import { parseSnapshot, SNAPSHOT_PRUNED_FILE } from '../budget/snapshot.ts';
+import { formatConfig } from '../config/load.ts';
 import type { JsonRecord } from '../core/guards.ts';
 import { MS_PER_DAY } from '../core/time.ts';
 import { APP, CliHarness, KIT, TEAM, TEAM_HOME, USER_HOME, type CliResult, type RunOptions } from '../testing/cli-harness.ts';
 import { FaultyFiles, systemError } from '../testing/faulty-files.ts';
 import { MemoryTranscripts } from '../testing/memory-transcripts.ts';
+import { teamConfigOf } from '../testing/team-tree.ts';
 import { promptLine, replyLine, transcript, type FixtureTool } from '../testing/transcript-lines.ts';
 import type { RepoState } from '../push-guard/push.ts';
 import { defaultSnapshotDir, snapshotDirOf } from './commands/budget.ts';
@@ -105,6 +107,26 @@ describe('teamrig budget', () => {
       W_EXPLAINED,
     ]);
     assert.deepEqual(ok(await run(['budget', '--all'])).slice(6, 7), ['  No use today: app-lead.']);
+  });
+
+  it("gives the team its part of the account's daily budget beside the other teams on the account, and its sessions theirs of it", async () => {
+    const { kit, run } = await world();
+    await kit.files.write(teamConfigOf('web'), formatConfig({ configVersion: 1, sessions: ['lead', 'front', 'back'], roles: { lead: 'lead' } }));
+    assert.deepEqual(ok(await run(['budget'])).slice(3, 6), [
+      '  the team    2.5%    6.2%  25.00M      3',
+      '  app-alpha   2.0%    2.1%  20.00M      2',
+      '  app-bravo  0.50%    2.1%   5.00M      1',
+    ]);
+  });
+
+  it('leaves a team on another Claude account out of the split', async () => {
+    const { kit, run } = await world();
+    await kit.files.write(teamConfigOf('web'), formatConfig({ configVersion: 1, sessions: ['lead', 'front', 'back'], roles: { lead: 'lead' }, budget: { account: 'work' } }));
+    assert.deepEqual(ok(await run(['budget'])).slice(3, 6), [
+      '  the team    2.5%   12.4%  25.00M      3',
+      '  app-alpha   2.0%    4.1%  20.00M      2',
+      '  app-bravo  0.50%    4.1%   5.00M      1',
+    ]);
   });
 
   it('keeps what it measured, so a second run reads only what is new', async () => {
