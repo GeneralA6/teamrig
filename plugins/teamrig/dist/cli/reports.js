@@ -3,7 +3,7 @@ import { checkDecisionLines } from "../decisions/lines.js";
 import { formatHireFlag } from "../hiring/due.js";
 import { FLAG_KINDS, formatFlag } from "../register/check.js";
 import { planOrder } from "../register/tree.js";
-import { formatShortTask, formatTask, formatWaitingOnYou } from "../register/views.js";
+import { aheadText, formatShortTask, formatTask, formatWaitingOnYou } from "../register/views.js";
 import { formatSkillFlag } from "../skills/lint.js";
 import { unownedHeading, unownedRow } from "./unowned.js";
 /**
@@ -70,9 +70,12 @@ export function fitBudget(lines, budget, more) {
 function firstOf(lines, shown) {
     return lines.length <= shown ? [...lines] : [...lines.slice(0, shown), `  +${lines.length - shown} more`];
 }
-/** `list`: every field of every row with `all`, else the short form. */
+/**
+ * `list`: every field of every row with `all`, in the given order, else the short form; each row ends with why it
+ * sorts ahead of the next one ({@link aheadText}).
+ */
 export function listLines(rows, all) {
-    return all ? rows.map(({ task, team, tree }) => formatTask(task, team, tree)) : shortList(rows);
+    return all ? rows.map((row, index) => `${formatTask(row.task, row.team, row.tree)}${aheadText(row, rows[index + 1])}`) : shortList(rows);
 }
 function ownerOf({ task, team }) {
     return team === undefined ? task.owner : `${team}/${task.owner}`;
@@ -87,8 +90,8 @@ function ownerLine(owner, rows) {
 }
 /**
  * The short `list`: `LIST 12 task(s) of 3 owners (short rows; --all for every field)`; when several owners have tasks,
- * a line per owner with its status counts, the busiest first; then the short rows in plan order across every team,
- * cut to SHORT_FORM_CHARS with a `+N more` line.
+ * a line per owner with its status counts, the busiest first; then the short rows in plan order across every team, each
+ * with why it sorts ahead of the next (`· ahead: due`), cut to SHORT_FORM_CHARS with a `+N more` line.
  */
 function shortList(rows) {
     const owners = new Map();
@@ -101,7 +104,7 @@ function shortList(rows) {
         ? [...owners].sort(([a, x], [b, y]) => y.length - x.length || a.localeCompare(b)).map(([owner, owned]) => ownerLine(owner, owned))
         : [];
     const sorted = [...rows].sort(byRowPlanOrder);
-    return fitBudget([`LIST ${rows.length} task(s)${ownerCount}${hint}`, ...summary, ...sorted.map(({ task, team, tree }) => formatShortTask(task, SHORT_TITLE_CHARS, team, tree))], SHORT_FORM_CHARS, (left) => `+${left} more (--all lists every task in full)`);
+    return fitBudget([`LIST ${rows.length} task(s)${ownerCount}${hint}`, ...summary, ...sorted.map((row, index) => `${formatShortTask(row.task, SHORT_TITLE_CHARS, row.team, row.tree)}${aheadText(row, sorted[index + 1])}`)], SHORT_FORM_CHARS, (left) => `+${left} more (--all lists every task in full)`);
 }
 /** `check`: every flag in full with `all`, else the short form. */
 export function checkLines(report, all) {

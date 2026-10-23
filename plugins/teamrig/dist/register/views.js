@@ -2,7 +2,7 @@ import { parseDeadline, showStored, storedText } from "../core/time.js";
 import { cardLines } from "./card.js";
 import { PROBLEM_KINDS } from "./events.js";
 import { ACTIVE_STATUSES, GITHUB_SOURCE, priorityText } from "./model.js";
-import { planOrder } from "./tree.js";
+import { decidingKey, planOrder } from "./tree.js";
 import { waitsText, weekdayText } from "./waits.js";
 import { proofOf, proofText } from "./verify.js";
 /** A size as printed: percent of the weekly limit, at most two decimals (`1.5%`). */
@@ -128,6 +128,42 @@ function neededByText(task, tree) {
     const shown = due !== undefined && tree.effectiveDue(task.id)?.from === (due.from ?? first.id);
     const facts = due === undefined || shown ? [first.owner] : [first.owner, `due ${showStored(due.due, tree.zone)}`];
     return ` · needed by ${first.id} (${facts.join(', ')})${rest.length > 0 ? ` +${rest.length}` : ''}`;
+}
+/**
+ * Why `row` sorts ahead of `next`, the row after it, in plan order: the first plan key on which they differ, in words:
+ * `in progress`, `due` (the row shows the date), `unblocks T566 p1 +2` (the best task that needs it, its priority
+ * and how many more), `in week 01-07`, `size 0.5%`. Undefined when the row shows it already (priority), when only the
+ * number decides (age, the older first), when they tie, or when `next` sorts ahead. Each row is placed by its own
+ * register's tree.
+ */
+export function aheadReason(row, next) {
+    const place = row.tree.placeOf(row.task);
+    const other = next.tree.placeOf(next.task);
+    const key = decidingKey(place, other);
+    if (key === undefined || key === 'priority' || key === 'age' || planOrder(place, other) > 0) {
+        return undefined;
+    }
+    switch (key) {
+        case 'started':
+            return 'in progress';
+        case 'due':
+            return 'due';
+        case 'unblocks':
+            return place.unblocks === undefined ? undefined : unblocksText(place.unblocks);
+        case 'week':
+            return row.task.week === null ? undefined : `in week ${showStored(row.task.week, row.tree.zone)}`;
+        case 'size':
+            return row.task.size === null ? undefined : `size ${sizeText(row.task.size)}`;
+    }
+}
+/** `unblocks T566 p1 +2`: the first needer of the best priority, that priority, and how many others need the task. */
+function unblocksText({ first, priority, count }) {
+    return `unblocks ${first} ${priorityText(priority)}${count > 1 ? ` +${count - 1}` : ''}`;
+}
+/** ` · ahead: in progress`: {@link aheadReason} as the tail of a row; empty for the last row or when there is none. */
+export function aheadText(row, next) {
+    const reason = next === undefined ? undefined : aheadReason(row, next);
+    return reason === undefined ? '' : ` · ahead: ${reason}`;
 }
 /** The GitHub issue a task was imported from, as its ref (`gh:acme/web#7`); undefined for any other task. */
 function issueOf(task) {

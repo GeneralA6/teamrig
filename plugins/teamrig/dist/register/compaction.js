@@ -1,6 +1,6 @@
 import { toJsonlLine } from "../core/jsonl.js";
 import { MS_PER_DAY } from "../core/time.js";
-import { currentWeekOf } from "./check.js";
+import { currentWeekOf } from "./week.js";
 import { RegisterFold, taskNumber } from "./fold.js";
 import { snapshotHeaderRecord } from "./layout.js";
 /**

@@ -12,7 +12,8 @@ import { activeHires, HiringLog } from "../../hiring/log.js";
 import { scaleOutFlags } from "../../hiring/scale-out.js";
 import { postLine } from "../../inbox/inbox.js";
 import { readSnapshots, weekUseOf } from "../../budget/snapshot.js";
-import { byFlagKind, checkTasks, currentWeekOf, peerWaitFlags } from "../../register/check.js";
+import { byFlagKind, checkTasks, peerWaitFlags } from "../../register/check.js";
+import { currentWeekOf } from "../../register/week.js";
 import { fitLines, leftOfWeek, overLimitFlag, weekFit } from "../../register/fit.js";
 import { problemHint } from "../../register/kind.js";
 import { renderPlan } from "../../register/plan.js";
@@ -393,9 +394,11 @@ async function settle(runtime, { own, teams }, needsHistory) {
     }
     return { own: settled.find((rolled) => rolled.team === own.team) ?? own, teams: settled };
 }
-/** The dependency tree of one team's register read now, in its zone: ready wait reasons, effective dues and what needs each task. */
+/** The dependency tree of one team's register read now, in its zone and week plan in force: ready wait reasons, effective dues and what needs each task. */
 function taskTreeOf({ snapshot, config }, runtime) {
-    return new TaskTree(snapshot.state.tasks, new Date(runtime.clock.now()), teamZone(config, runtime));
+    const now = new Date(runtime.clock.now());
+    const zone = teamZone(config, runtime);
+    return new TaskTree(snapshot.state.tasks, now, zone, currentWeekOf(snapshot, now, zone));
 }
 /** A filter that selects finished tasks, the only ones a compaction retires. */
 function selectsFinished(filter) {
@@ -489,7 +492,7 @@ function weekFor(args, snapshot, now, zone) {
 function checkRegister(snapshot, config, now, zone, week, team) {
     const tasks = [...snapshot.state.tasks.values()];
     const flags = [...checkTasks(tasks, now, zone, week, config.register), ...peerWaitFlags(tasks, new LeadTree(config), config.register.ownerSource)];
-    return { team, flags: flags.sort(byFlagKind), tree: new TaskTree(snapshot.state.tasks, now, zone) };
+    return { team, flags: flags.sort(byFlagKind), tree: new TaskTree(snapshot.state.tasks, now, zone, week) };
 }
 /**
  * The week's fit to the weekly limit over every team read (one account's limit covers them all): what is left of
@@ -502,7 +505,7 @@ export async function weekFitOf(runtime, { own, teams }, week, labelled) {
     const now = runtime.clock.now();
     const use = weekUseOf(await readSnapshots(runtime.files, snapshotDirOf(budget, own.paths)), now);
     const rows = teams.flatMap((rolled) => {
-        const tree = new TaskTree(rolled.snapshot.state.tasks, new Date(now), teamZone(rolled.config, runtime));
+        const tree = new TaskTree(rolled.snapshot.state.tasks, new Date(now), teamZone(rolled.config, runtime), week);
         return [...rolled.snapshot.state.tasks.values()].map((task) => (labelled ? { task, tree, team: rolled.team } : { task, tree }));
     });
     return weekFit(rows, week, use === undefined ? undefined : leftOfWeek(budget.targetPct, use.usedPct));
@@ -552,7 +555,7 @@ export async function checkReport(args, runtime) {
     const tasks = [...own.snapshot.state.tasks.values()];
     const hirePct = spare === undefined ? undefined : await readHirePct(runtime, own.paths, own.config, tasks, now.getTime());
     const input = { hires: activeHires(records), tasks, config: own.config, burstsOver: over, now };
-    const scaleOut = scaleOutFlags({ ...input, tree: new TaskTree(own.snapshot.state.tasks, now, zone), spare, hirePct });
+    const scaleOut = scaleOutFlags({ ...input, tree: new TaskTree(own.snapshot.state.tasks, now, zone, week), spare, hirePct });
     const hires = [...scaleOut.flags, ...hireFlags(input, scaleOut.busy)];
     const scope = week === null ? 'no week plan tagged yet, so the week checks are skipped' : `week ${week}`;
     const { batch } = await teamDecisions(runtime.files, own.paths, own.config, own.snapshot.state.tasks, now.getTime(), zone);
