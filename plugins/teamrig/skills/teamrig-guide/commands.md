@@ -2207,8 +2207,8 @@ nothing ran`); running, it kills the step with every process it started, records
 Everything after `--` is the command, read as `teamrig test` reads it. Run a test run as
 `teamrig heavy ... -- teamrig test -- <command>`: it then gets both the lock and the short summary.
 
-A step's processes get `$TEAMRIG_HOST_LOCK`, the lock's token, and so do `integrate`'s push and `roll`'s
-afterPull hooks and command. A `teamrig heavy` started under a lock that token still names runs at once, in the
+A step's processes get `$TEAMRIG_HOST_LOCK`, the lock's token, and so do `integrate`'s push, `roll`'s
+afterPull hooks and command, and a `roll --targets` deploy's command. A `teamrig heavy` started under a lock that token still names runs at once, in the
 parent's session, with no cutoff check or ledger record of its own: it is part of its parent, and waiting would
 wait on its own parent. So a repository's git hooks can wrap their checks in `teamrig heavy` (no `--session`
 needed): a plain `git commit` then takes the host lock for its hook, and a commit or push under `heavy`,
@@ -2393,10 +2393,28 @@ Like `teamrig heavy`, it watches the processes that started it. Once its launchi
 (`STOPPED before the host lock was free: nothing ran`), or kills the hook or roll command it runs, records exit 129
 and frees the lock (FAILED).
 
+A deploy that pulls nothing: `teamrig roll --targets <a,b> --what "<why>" -- <command ...>` restarts some of the
+repository's targets with a command of its own, such as a restart that makes them read a rotated secret on the same
+image. It keeps the repository's roll rules. It is REFUSED (exit 2) before any gate or lock for a target not in
+`roll.targets`, since a typo would slip past the quiet claims, and also at the heavy cutoff, in the reset blackout
+and when a gate refuses. It waits for quiet claims on the targets it names, not the others, then for the gates and
+the host lock, and asks the gates again under the lock. The command runs with no shell in this folder, killed after
+`coordinator.heavy.maxRunMinutes`, as one heavy step in the ledger; its lines show as they come.
+
+The gates and the command get `TEAMRIG_TEAM`, `TEAMRIG_SESSION`, `TEAMRIG_VERB=deploy`, `TEAMRIG_REPO` and
+`TEAMRIG_DEPLOY_TARGETS` (`api,live`), and no `TEAMRIG_PENDING_RANGE`: a gate that reads the range tells a deploy by
+its verb. The command also gets `$TEAMRIG_HOST_LOCK`. The deploy record names the targets (`"targets": ["api",
+"live"]`), so `teamrig windows` counts only them as disturbed. It is written even when the command fails (FAILED,
+exit 1), since a failed restart may have restarted some of them; a command that cannot start records no deploy.
+A quiet claim of your own on a target holds your deploy like anyone else's, so release it first: the host lock
+already keeps rolls and heavy steps out while the command runs.
+
 Flags:
 
 - `--repo <name>`: the repository to roll.
 - `--session <id|name>`: the session rolling, as the ledger names it; default `$TEAMRIG_SESSION`.
+- `--targets <a,b>`: a deploy of these targets that pulls nothing, by the command after `--` (see above).
+- `--what "<why>"`: with `--targets`, why the deploy runs; the deploy record's note starts with it, secrets redacted.
 
 Config:
 
@@ -2434,6 +2452,20 @@ Output:
 2030-01-08T10:01:10.000Z roll: node tools/roll.js
 2030-01-08T10:03:40.000Z   rolled api, workers on sha-9a0b1c2d
 DONE 4f1c2a9e..9a0b1c2d rolled: rolled api, workers on sha-9a0b1c2d
+```
+
+A deploy that pulls nothing:
+
+```sh
+teamrig roll --session sec --targets api,workers --what "rotate the db credential" -- node tools/restart.js api workers
+```
+
+Output:
+
+```text
+2030-01-08T10:00:00.000Z clear; deploying api, workers of pipeline: node tools/restart.js api workers
+2030-01-08T10:01:30.000Z   restarted 2 deployments
+DONE deployed api, workers of pipeline: restarted 2 deployments
 ```
 
 ### teamrig claim

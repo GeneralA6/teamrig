@@ -265,6 +265,13 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
       install moves the main checkout back; a failed afterPull hook or roll command leaves nothing
       pending, so its roll command is then run by hand; once the shell that started it ends, it
       stops waiting, or kills its hook and frees the lock (exit 129); exit 0 rolled, 1 failed or stopped
+  roll --targets <a,b> --what "<why>" [--repo <name>] [--session <id|name>] -- <command ...>   a deploy
+      that pulls nothing, such as a restart onto a rotated secret: runs the command in this folder (one
+      heavy step in the ledger) and records a deploy of those targets only. REFUSED for a target not in
+      the repository's roll.targets, when a gate refuses, from coordinator.schedule.heavyCutoffUtc to
+      midnight UTC and in the resetBlackoutHours before the weekly token reset; waits as a roll does,
+      for quiet claims on those targets only; its gates and command see TEAMRIG_VERB=deploy and
+      TEAMRIG_DEPLOY_TARGETS; exit 0 deployed, 1 failed or stopped
   claim --targets <a,b> --metric <m> --why "<why>" --for <span> [--session <id|name>]   a quiet
       claim: integrate and roll wait while it holds a target they deploy, from now for the span (45m,
       1h30m; at most coordinator.claims.maxMinutes); one per session; REFUSED for a target no
@@ -272,8 +279,9 @@ teamrig <command> ...   (the caller: --session <id|name>, else $TEAMRIG_SESSION)
   release [--session <id|name>]   ends this session's quiet claim before its time
   windows --targets <a,b> --since <time> [--until <time>] [--settle <span>] [--min <span>]   the clean
       measurement windows of each target from --since to --until (default now): the stretches no deploy
-      of a repository that deploys it touched (from its start until coordinator.windows settle minutes
-      after it rolled; --settle for every target) and no heavy step, each at least --min (default
+      of it touched (one of its repository, or a roll --targets deploy naming it; from its start until
+      coordinator.windows settle minutes after it rolled; --settle for every target) and no heavy step,
+      each at least --min (default
       coordinator.windows.minMinutes) long, each with the declared loads it overlaps. A time is HH:MM
       (today), YYYY-MM-DD HH:MM or YYYY-MM-DD on the team's clock unless marked UTC, or an ISO time with
       its zone

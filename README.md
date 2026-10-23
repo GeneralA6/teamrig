@@ -163,8 +163,8 @@ helper it is. Everything runs on your machine, with no account and no cloud bill
 - **GitHub issues in the task list:** `teamrig gh sync` reads your repositories' open issues every 15 minutes, one way
   only ([GitHub sync](docs/github-sync.md)).
 - **Shipping from many sessions:** `teamrig heavy` runs builds and test runs under one host lock, `teamrig integrate`
-  lands a finished branch, `teamrig roll` brings it to the running system, and `teamrig deploys` shows it all in one
-  read.
+  lands a finished branch, `teamrig roll` brings it to the running system (or, with `--targets`, restarts some services onto new config with
+  nothing pulled), and `teamrig deploys` shows it all in one read.
 - **Reads without a prompt:** with `readonlyShell`, a shell line that only reads (`grep`, `git log`, `kubectl get`)
   runs without asking.
 - **Tidy history:** big commits are flagged before they land, and `teamrig worktree remove` clears a finished worktree
