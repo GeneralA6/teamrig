@@ -307,7 +307,8 @@ stateDiagram-v2
   A command line teamrig cannot read prints only that command's usage lines; `teamrig <command> --help` shows them.
 - A lead hands a child team work with `teamrig add --team web --title "..." --description "..." --priority p2`: the task lands in `web`'s own
   list, owned by `web`'s lead and marked as from `your-team/lead`, and `web`'s lead splits it among its sessions
-  and opens them. Only the parent team's lead may do this.
+  and opens them. Only the parent team's lead may do this. When the task is done or dropped, the parent team's lead
+  gets one inbox line, `web/T1 done: <title> | evidence: ...`, as its own register holds no copy.
 - `teamrig list --tree`, `check --tree` and `plan --tree` give a lead its team's tasks and those of every team
   under it, with ids like `web/T4`. They only read the other teams' lists. With `--tree`, `--session` names the
   lead asking, so a tab without `$TEAMRIG_SESSION` passes `--session lead`.
