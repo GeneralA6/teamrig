@@ -422,7 +422,8 @@ sequenceDiagram
   counts as unread.
 - A note is one line; an empty line, several lines or a line that looks like a secret is refused. A secret here is
   a GitHub, AWS, Slack, Anthropic, Google or Stripe live key, an `sk-` API key, a private key block, a JSON web
-  token, credentials in a URL or a `password=`-style assignment, plus your `register.secretPatterns`. The
+  token, credentials in a URL or an Authorization header, a `password=`-style assignment, plus your
+  `register.secretPatterns`. The
   refusal names the kind, never the value. Task titles, refs, notes and evidence get the same check.
 - In a tree of teams, `--to web/lead` writes to a session of another team, within the rights in
   [Who is on the team](#who-is-on-the-team); the note names its sender as `your-team/lead`.
