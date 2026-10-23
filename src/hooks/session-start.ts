@@ -1,3 +1,4 @@
+import { LeadTree } from '../config/lead-tree.ts';
 import type { ConfigLoad } from '../config/load.ts';
 import { Roster } from '../config/roster.ts';
 import type { TreePlace } from '../config/tree.ts';
@@ -53,7 +54,7 @@ function isLeadSession(roster: Roster, session: string | undefined): boolean {
  * Who this session is and whom to message. Session names are machine-wide in Claude Code, so the
  * session learns the exact names to use; an unknown value is never echoed, so the lines stay short.
  */
-function identityLines(roster: Roster, input: SessionStartInput): string[] {
+function identityLines(roster: Roster, leaders: LeadTree, input: SessionStartInput): string[] {
   const { command, session } = input;
   const lead = roster.holderOf('lead');
   const leadName = lead === undefined ? undefined : roster.nameOf(lead);
@@ -71,7 +72,20 @@ function identityLines(roster: Roster, input: SessionStartInput): string[] {
   const you = `You are the \`${found.id}\` session of team \`${input.team}\` (name \`${roster.nameOf(found.id) ?? found.id}\`${held}).`;
   const pass = input.sessionInEnv ? '' : ` $${ENV.session} is not set here, so pass --session ${found.id} to every \`${command}\` task and inbox command.`;
   const shell = shellNote(input);
-  return [lead === found.id || leadName === undefined ? `${you}${pass}${shell}` : `${you}${pass}${shell} Message the lead as \`${leadName}\`.`, names, ...tree];
+  return [`${you}${pass}${shell}${messageNote(roster, leaders, found.id)}`, names, ...tree];
+}
+
+/**
+ * Whom the session messages: the lead, or for a sub-lead's member its own leader (T781), who takes up what it cannot
+ * settle; nothing for the lead itself.
+ */
+function messageNote(roster: Roster, leaders: LeadTree, id: string): string {
+  const leader = leaders.leaderOf(id);
+  const name = leader === undefined ? undefined : roster.nameOf(leader);
+  if (name === undefined) {
+    return '';
+  }
+  return leader === leaders.lead ? ` Message the lead as \`${name}\`.` : ` Message your leader as \`${name}\`, who takes to the lead what it cannot settle.`;
 }
 
 /**
@@ -131,7 +145,7 @@ export function sessionStartContext(input: SessionStartInput): string {
     return unloadedContext(input.team, load, command);
   }
   const roster = new Roster(load.config, input.team, input.renames);
-  const notes = identityLines(roster, input);
+  const notes = identityLines(roster, new LeadTree(load.config), input);
   // In the core part, so the size budget that may cut the team's rules.md never cuts it.
   if (input.refreshNote !== undefined) {
     notes.push(input.refreshNote);
