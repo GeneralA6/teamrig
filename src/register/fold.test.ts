@@ -7,7 +7,7 @@ import { foldEvents, RegisterFold, type Task } from './fold.ts';
 import type { TaskStatus } from './model.ts';
 import type { WaitReason } from './waits.ts';
 
-const FIELDS: TaskFields = { title: 'Ship it', description: null, owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], week: null, after: [], size: null, kind: null };
+const FIELDS: TaskFields = { title: 'Ship it', description: null, owner: 'alpha', source: 'lead', ref: null, priority: 2, due: null, goals: [], week: null, after: [], size: null, kind: null, pin: null };
 
 const at = (hour: number): string => `2030-01-07T${String(hour).padStart(2, '0')}:00:00.000Z`;
 
@@ -118,6 +118,15 @@ describe('foldEvents: what a waiting task waits for, and when it started', () =>
   it('keeps the tasks a task is planned after', () => {
     assert.deepEqual(taskAfter([create(9), update(10, { after: ['T5', 'T6'] })]).after, ['T5', 'T6']);
     assert.deepEqual(taskAfter([create(9), update(10, { after: ['T5'] }), update(11, { after: [] })]).after, []);
+  });
+});
+
+describe('foldEvents: a pin holds for the owner it was set for (T637)', () => {
+  it('clears the pin when the task is handed on, unless the same update pins it', () => {
+    assert.equal(taskAfter([create(9), update(10, { pin: 'lead' })]).pin, 'lead');
+    assert.equal(taskAfter([create(9), update(10, { pin: 'lead' }), update(11, { owner: 'bravo' })]).pin, null);
+    assert.equal(taskAfter([create(9), update(10, { pin: 'lead' }), update(11, { owner: 'bravo', pin: 'lead' })]).pin, 'lead');
+    assert.equal(taskAfter([create(9), update(10, { pin: 'lead' }), update(11, { priority: 1 })]).pin, 'lead', 'another change keeps it');
   });
 });
 

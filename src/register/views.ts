@@ -77,7 +77,8 @@ export function taskLabel(task: Task, team?: string): string {
  */
 function rowHead(task: Task, team: string | undefined, tree: TaskTree): string[] {
   const kind = task.kind !== null && PROBLEM_KINDS.includes(task.kind) ? [task.kind] : [];
-  const parts = [`${taskLabel(task, team)} ${task.status}`, priorityText(task.priority), ...kind, `owner ${task.owner}`];
+  const pinned = task.pin === null ? [] : ['pinned'];
+  const parts = [`${taskLabel(task, team)} ${task.status}`, priorityText(task.priority), ...pinned, ...kind, `owner ${task.owner}`];
   const inherited = tree.effectiveDue(task.id);
   if (inherited !== undefined && inherited.from !== null) {
     parts.push(`due ${showStored(inherited.due, tree.zone)} (from ${inherited.from})`);
@@ -180,7 +181,7 @@ export function aheadReason(row: PlacedRow, next: PlacedRow): string | undefined
   const place = row.tree.placeOf(row.task);
   const other = next.tree.placeOf(next.task);
   const key = decidingKey(place, other);
-  if (key === undefined || key === 'priority' || key === 'age' || planOrder(place, other) > 0) {
+  if (key === undefined || key === 'pinned' || key === 'priority' || key === 'age' || planOrder(place, other) > 0) {
     return undefined;
   }
   switch (key) {
@@ -335,6 +336,9 @@ export function formatTaskDetail(task: Task, events: readonly RegisterEvent[], t
   }
   if (task.ref !== null) {
     lines.push(`ref: ${task.ref}`);
+  }
+  if (task.pin !== null) {
+    lines.push(`pinned by ${task.pin}: above every other task of ${task.owner}`);
   }
   if (task.size !== null) {
     const cost = sizeCost(task.size);

@@ -68,7 +68,8 @@ describe('planOrder', () => {
 
   it('decides on the first key that differs, each in turn', () => {
     const cases: [string, [PlanPlace, PlanPlace]][] = [
-      ['priority', pair({ priority: 1, at: 900 }, { started: true })],
+      ['pinned', pair({ pinned: true, priority: 3, at: 900 }, { priority: 1, started: true })],
+      ['priority', pair({ priority: 1, at: 900 }, { started: true, pinned: false })],
       ['started', pair({ started: true, at: 900 }, { started: false })],
       ['due', pair({ at: 50 }, { unblocks: { first: 'T1', priority: 1, count: 3 } })],
       ['due', pair({}, { at: undefined })],
@@ -253,11 +254,12 @@ describe('TaskTree unblocks and placeOf', () => {
   it('places a task on every key, in the week plan in force by default', () => {
     assert.equal(tree.week, '2030-01-07', 'T2\'s week has not started');
     assert.deepEqual(tree.placeOf(testTask({ id: 'T1', status: 'in-progress', week: '2030-01-07', size: 3 })), {
-      id: 'T1', priority: 2, at: undefined, started: true, unblocks: { first: 'T6', priority: 1, count: 3 }, inWeek: true, size: 3,
+      id: 'T1', pinned: false, priority: 2, at: undefined, started: true, unblocks: { first: 'T6', priority: 1, count: 3 }, inWeek: true, size: 3,
     });
     assert.deepEqual(tree.placeOf(testTask({ id: 'T2', week: '2030-01-14' })), {
-      id: 'T2', priority: 2, at: undefined, started: false, unblocks: undefined, inWeek: false, size: null,
+      id: 'T2', pinned: false, priority: 2, at: undefined, started: false, unblocks: undefined, inWeek: false, size: null,
     });
+    assert.equal(tree.placeOf(testTask({ id: 'T2', pin: 'lead' })).pinned, true);
   });
 
   it('reads the week it is given, null for none', () => {

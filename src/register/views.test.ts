@@ -285,6 +285,7 @@ describe('aheadReason and aheadText: why a row sorts ahead of the next', () => {
 
   it('names nothing when the row shows it, the number decides, they tie or the next row sorts ahead', () => {
     assert.equal(aheadReason(placed(testTask({ id: 'T12', priority: 1 })), placed(later)), undefined);
+    assert.equal(aheadReason(placed(testTask({ id: 'T12', pin: 'lead', priority: 3 })), placed(later)), undefined, 'the row says pinned');
     assert.equal(aheadReason(placed(testTask({ id: 'T2' })), placed(later)), undefined);
     assert.equal(aheadReason(placed(later), placed(later)), undefined);
     assert.equal(aheadReason(placed(later), placed(testTask({ id: 'T12', status: 'in-progress' }))), undefined);
@@ -358,9 +359,9 @@ describe('formatEvent and formatTaskDetail', () => {
       id: 'T1',
       at: AT,
       by: 'lead',
-      task: { title: 'x', description: 'Why x.', owner: 'alpha', source: 'owner', ref: 'inbox:3', priority: 1, due: '2030-01-08', goals: ['G1'], week: null, after: [], size: null, kind: null },
+      task: { title: 'x', description: 'Why x.', owner: 'alpha', source: 'owner', ref: 'inbox:3', priority: 1, due: '2030-01-08', goals: ['G1'], week: null, after: [], size: null, kind: null, pin: null },
     },
-    { v: 1, type: 'create', id: 'T2', at: AT, by: 'lead', task: { title: 'y', description: null, owner: 'bravo', source: 'lead', ref: null, priority: 2, due: null, goals: [], week: null, after: ['T1'], size: null, kind: null } },
+    { v: 1, type: 'create', id: 'T2', at: AT, by: 'lead', task: { title: 'y', description: null, owner: 'bravo', source: 'lead', ref: null, priority: 2, due: null, goals: [], week: null, after: ['T1'], size: null, kind: null, pin: null } },
     { v: 1, type: 'update', id: 'T1', at: '2030-01-07T10:00:00.000Z', by: 'lead', changes: { due: '2030-01-09', goals: ['G1', 'G2'] }, note: 'later' },
     { v: 1, type: 'status', id: 'T1', at: '2030-01-07T11:00:00.000Z', by: 'alpha', status: 'done', note: 'ok', evidence: 'abc1234', skill: 'none' },
     {
@@ -484,6 +485,15 @@ describe('formatEvent and formatTaskDetail', () => {
     assert.doesNotMatch(formatEvent(unmarked, TimeZone.UTC), /kind=/);
     const remarked: RegisterEvent = { v: 2, type: 'update', id: 'T1', at: AT, by: 'lead', changes: { kind: 'work' }, note: null };
     assert.equal(formatEvent(remarked, TimeZone.UTC), '2030-01-07 09:00 UTC lead update kind=work');
+  });
+
+  it('names a pinned task on its row after the priority, and who pinned it in the detail and the history (T637)', () => {
+    const pinned = testTask({ kind: 'problem', pin: 'lead' });
+    assert.equal(formatTask(pinned, undefined, TREE), 'T1 open, p2, pinned, problem, owner alpha, from lead | Add a health check');
+    assert.ok(formatTaskDetail(pinned, [], TREE).split('\n').includes('pinned by lead: above every other task of alpha'));
+    assert.ok(!formatTaskDetail(testTask(), [], TREE).includes('pinned'), 'an unpinned task prints no line');
+    const pinning: RegisterEvent = { v: 2, type: 'update', id: 'T1', at: AT, by: 'lead', changes: { pin: 'lead' }, note: null };
+    assert.equal(formatEvent(pinning, TimeZone.UTC), '2030-01-07 09:00 UTC lead update pin=lead');
   });
 });
 

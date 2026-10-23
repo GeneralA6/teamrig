@@ -64,6 +64,8 @@ export interface PlanPlace {
   readonly id: string;
   readonly priority: number;
   readonly at: number | undefined;
+  /** Pinned to the top of its owner's list by one of the owner's leaders. */
+  readonly pinned?: boolean;
   /** In progress. */
   readonly started?: boolean;
   /** The best needer; undefined when no active task needs it. */
@@ -76,17 +78,18 @@ export interface PlanPlace {
 
 /**
  * The keys of plan order, in order: the first one on which two tasks differ puts one ahead. No hand-set score, each
- * key a field the task has: `priority` (p1 first); `started` (an in-progress task stays on top within its
+ * key a field the task has: `pinned` (a task the owner's leader pinned, above every other key); `priority` (p1 first); `started` (an in-progress task stays on top within its
  * priority); `due` (effective due, the earliest first, undated last); `unblocks` (the best priority among the
  * active tasks that need it, then the most of them; none last); `week` (in the week plan in force first); `size`
  * (the smallest first, unsized last); `age` (the lowest number first).
  */
-export const PLAN_KEYS = ['priority', 'started', 'due', 'unblocks', 'week', 'size', 'age'] as const;
+export const PLAN_KEYS = ['pinned', 'priority', 'started', 'due', 'unblocks', 'week', 'size', 'age'] as const;
 
 /** One of {@link PLAN_KEYS}. */
 export type PlanKey = (typeof PLAN_KEYS)[number];
 
 const BY_KEY: Readonly<Record<PlanKey, (a: PlanPlace, b: PlanPlace) => number>> = {
+  pinned: (a, b) => trueFirst(a.pinned, b.pinned),
   priority: (a, b) => a.priority - b.priority,
   started: (a, b) => trueFirst(a.started, b.started),
   due: (a, b) => lowFirst(a.at, b.at),
@@ -121,10 +124,10 @@ function trueFirst(a: boolean | undefined, b: boolean | undefined): number {
 
 /**
  * The fields of a task the tree reads. A reader that keeps rows of its own (a status pane) builds a tree from them as
- * from teamrig's folded tasks, and gets its own rows back from it; a row without `week` or `size` counts as untagged
- * and unsized.
+ * from teamrig's folded tasks, and gets its own rows back from it; a row without `week`, `size` or `pin` counts as
+ * untagged, unsized and unpinned.
  */
-export type TreeTask = Pick<Task, 'id' | 'status' | 'owner' | 'priority' | 'due' | 'after' | 'waits'> & Partial<Pick<Task, 'week' | 'size'>>;
+export type TreeTask = Pick<Task, 'id' | 'status' | 'owner' | 'priority' | 'due' | 'after' | 'waits'> & Partial<Pick<Task, 'week' | 'size' | 'pin'>>;
 
 /** The date a task works to: its own due, or an earlier one of a task that needs it. */
 export interface EffectiveDue {
@@ -254,6 +257,7 @@ export class TaskTree<T extends TreeTask = Task> {
   placeOf(task: TreeTask): PlanPlace {
     return {
       id: task.id,
+      pinned: task.pin !== undefined && task.pin !== null,
       priority: task.priority,
       at: this.dueTime(task),
       started: task.status === 'in-progress',

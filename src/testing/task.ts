@@ -16,6 +16,7 @@ export function testTask(overrides: Partial<Task> = {}): Task {
     after: [],
     size: null,
     kind: null,
+    pin: null,
     status: 'open',
     note: null,
     evidence: null,
