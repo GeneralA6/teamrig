@@ -121,7 +121,7 @@ The lead hires a temporary member for one job with `teamrig hire`, within the te
   started work needs) and its cost, a new hire's part of the team's daily budget today, a day until the slice's last
   due or the week's pace end; the areas furthest behind are paid first, out of the week's projected spare, and none
   once it cannot pay or the team's daily budget is unknown. Its action moves the slice to an idle hire, else hires
-  within `maxSessions`, else brings the owner a card to raise it. The hire retires as RETIRE-DUE once its slice is
+  within `maxSessions`, else brings the owner a card to raise it (a child team's lead asks its parent team's lead to). The hire retires as RETIRE-DUE once its slice is
   done.
 
 When its job is done, the lead retires it with `teamrig retire <id>`. It refuses while the session owns open tasks

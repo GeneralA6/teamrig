@@ -88,7 +88,7 @@ or take it to the lead.
 | `REFUSED team X already exists at <path> with sessions ...; choose another team name, or change that config by hand` | Pick another team id, or add sessions to the existing team with the user. |
 | `REFUSED the session name N is already used by ..., and Claude Code session names are machine-wide; choose another team id, or rename ... with teamrig rename` | Choose another team id. |
 | `REFUSED hiring.policy is off: the team takes no hires by command` | Ask the owner whether to allow hires; the lead then sets `hiring.policy` in the team config. |
-| `REFUSED hiring.policy is owner: the owner approves each hire; ask them, then pass --approved-by "<who>"` | Ask the owner, then run the hire again with `--approved-by`. |
+| `REFUSED hiring.policy is owner: the owner approves each hire; ask the owner, then pass --approved-by "<who>"` | Ask the owner (in a child team the refusal names the parent team's lead, who takes it to the owner), then run the hire again with `--approved-by`. |
 | `REFUSED the team already has N hired session(s), the most hiring.maxSessions allows` | Retire a hired session whose job is done (`teamrig retire`), or ask the owner to raise `hiring.maxSessions`. |
 | `REFUSED <id> owns open task(s) T1: pass --to <heir> to hand them over, or close them first` | Retire it with `--to <heir>`, or let it close its tasks first. |
 | `REFUSED no handover at <path>: write it (open work, next steps, branches, traps) or pass --no-handover "<why>"` | Ask the session to write its handover there, or retire it with `--no-handover "<why>"`. |
