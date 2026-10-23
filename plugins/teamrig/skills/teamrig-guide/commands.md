@@ -2006,6 +2006,75 @@ NOTE every command reads it as version 4 already; once written, a tab on a teamr
 
 A current config prints `UNCHANGED <path> needs no migration`, and one from a newer teamrig is refused.
 
+### teamrig automode install
+
+Writes the team's lines into Claude Code's `autoMode.environment` setting on this machine: the facts auto mode's
+classifier takes as true when it decides whether a tool call may run without asking. There are three, each starting
+with the team's tag `[teamrig <team>] `: the protected branches and what a push to one does (from the config's
+`pushGuard` and `roles.lead`), the register commands every session runs (they write only under the team's folder),
+and what `teamrig heavy` and `teamrig test` wrap (nothing is granted: the command after `--` is judged on its own). A
+plugin cannot ship these (its settings take only `agent` and `subagentStatusLine`), so this writes them into your
+own Claude Code settings (`settings.json` in `$CLAUDE_CONFIG_DIR`, else in `~/.claude`). The lines replace the
+team's tagged lines where they were, else go at the end; your own lines and other teams' tagged lines stay as they
+are. With no list yet, the new one starts with `"$defaults"`, so Claude Code's built-in entries stay on; a list you
+already have is left without it if it has none. Run it again after a config change or a teamrig upgrade: it
+rewrites only lines that differ. Without `--yes` it shows the change and writes nothing; with `--yes` it first keeps
+the old settings file in the kit's `backups` folder. It changes your settings, not a team's, so it takes no
+`--session`. Claude Code's auto mode refuses a session that edits its own settings, so type
+`! teamrig automode install --yes` in Claude Code.
+
+Flags:
+
+- `--yes`: write the change; without it, only show it.
+
+Example:
+
+```sh
+teamrig automode install --yes
+```
+
+Output:
+
+```text
+WROTE the changes below; the old settings file is at /home/me/.teamrig/backups/claude-settings.json
+  ADD /home/me/.claude/settings.json autoMode.environment: $defaults
+  ADD /home/me/.claude/settings.json autoMode.environment: [teamrig shop] Protected branches: main, master. A normal push to one asks the person. A force-push, a --mirror push or deleting one is refused, and a --force-with-lease push asks. Every session edits on its own branch in its own git worktree, never in a repo's main checkout.
+  ADD /home/me/.claude/settings.json autoMode.environment: [teamrig shop] The task register: every session may run teamrig start, teamrig add, teamrig set, teamrig update, teamrig verify, teamrig list, teamrig show, teamrig check, teamrig plan, teamrig budget, teamrig rules, teamrig refresh, teamrig inbox read, teamrig inbox status, teamrig inbox add, teamrig who, teamrig rename for team shop; they write only under ~/.teamrig/teams/shop/.
+  ADD /home/me/.claude/settings.json autoMode.environment: [teamrig shop] `teamrig heavy ... -- <cmd>` and `teamrig test ... -- <cmd>` run the session's own build, test or script on this host (heavy waits for the host lock, test records the result); neither grants anything, so judge the command after `--` as if it ran alone.
+```
+
+A line that changed shows as `REMOVE` (the old text) and `ADD` (the new). `UNCHANGED <settings>: team <team>'s lines
+are already there` when nothing would change. Settings that are not a JSON object, an `autoMode` that is not an
+object and an `autoMode.environment` that is not a list of strings are `REFUSED` (exit 2).
+
+### teamrig automode uninstall
+
+Takes the team's tagged lines back out of `autoMode.environment`, leaving every other line. A list left as only
+`"$defaults"` is dropped, and so is an `autoMode` left empty; a list left empty stays, since dropping it would turn
+Claude Code's built-in entries back on. Like `install`, it shows the change without `--yes` and keeps the old
+settings file first.
+
+Flags:
+
+- `--yes`: write the change; without it, only show it.
+
+Example:
+
+```sh
+teamrig automode uninstall
+```
+
+Output:
+
+```text
+PREVIEW nothing written (add --yes to write)
+  REMOVE /home/me/.claude/settings.json autoMode.environment: [teamrig shop] Protected branches: main, master. A normal push to one asks the person. A force-push, a --mirror push or deleting one is refused, and a --force-with-lease push asks. Every session edits on its own branch in its own git worktree, never in a repo's main checkout.
+  REMOVE /home/me/.claude/settings.json autoMode.environment: [teamrig shop] The task register: every session may run teamrig start, teamrig add, teamrig set, teamrig update, teamrig verify, teamrig list, teamrig show, teamrig check, teamrig plan, teamrig budget, teamrig rules, teamrig refresh, teamrig inbox read, teamrig inbox status, teamrig inbox add, teamrig who, teamrig rename for team shop; they write only under ~/.teamrig/teams/shop/.
+  REMOVE /home/me/.claude/settings.json autoMode.environment: [teamrig shop] `teamrig heavy ... -- <cmd>` and `teamrig test ... -- <cmd>` run the session's own build, test or script on this host (heavy waits for the host lock, test records the result); neither grants anything, so judge the command after `--` as if it ran alone.
+```
+
+`UNCHANGED <settings>: team <team> has no lines there` when it has none.
+
 ### teamrig commits check
 
 Checks the commits in `base..tip` against the small-commits rule: a commit over 400 changed non-test lines or 15

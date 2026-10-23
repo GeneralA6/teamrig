@@ -81,6 +81,8 @@ const EXPECTED = {
   statusline: 'internal',
   'statusline install': 'write',
   'statusline uninstall': 'write',
+  'automode install': 'write',
+  'automode uninstall': 'write',
   'config validate': 'read',
   'config migrate': 'write',
   'commits check': 'read',
