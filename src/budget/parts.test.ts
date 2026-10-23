@@ -10,7 +10,7 @@ const NOW = Date.parse('2030-01-08T10:00:00Z');
 const MINUTE = 60_000;
 
 function split(sessions: Readonly<Record<string, SessionBudget>> = {}, extra: Partial<BudgetSplit> = {}): BudgetSplit {
-  return { ids: IDS, sessions, work: new Map(), lifted: new Map(), ...extra };
+  return { team: 'app', ids: IDS, sessions, work: new Map(), lifted: new Map(), ...extra };
 }
 
 function lift(overrides: Partial<Lift> = {}): Lift {
@@ -99,7 +99,7 @@ describe('dailyBudgetOf', () => {
           lifted.set(id, Math.floor(next() * 70) + 5);
         }
       }
-      const each: BudgetSplit = { ids, sessions, work, lifted };
+      const each: BudgetSplit = { team: 'app', ids, sessions, work, lifted };
       const allowancePct = next() * 20;
       for (const id of ids) {
         assert.equal(dailyBudgetOf(allowancePct, id, each), flatSplitPct(allowancePct, id, each), `round ${round}, ${id}`);

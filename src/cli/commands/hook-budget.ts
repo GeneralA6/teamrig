@@ -100,7 +100,7 @@ export async function budgetFactsOf(runtime: CliRuntime, scope: BudgetScope, tra
   const lift = activeLift(lifts, id, now, week.usedPct);
   const work = await cachedWork(files, kit.paths.events, join(kit.paths.usage, WORK_CACHE_FILE), config.register.priorities);
   const lifted = liftedParts(lifts, roster.ids, now, week.usedPct);
-  const shared = dailyBudgetOf(week.allowancePct, id, { ids: roster.ids, sessions: budget.sessions, work, lifted });
+  const shared = dailyBudgetOf(week.allowancePct, id, { team: kit.paths.team, ids: roster.ids, sessions: budget.sessions, work, lifted });
   const inForce = activeBurst((await new BurstLog(files, kit.paths.bursts).read()).records, now, week.usedPct);
   const burst = inForce !== undefined && inForce.sessions.includes(id) ? inForce : undefined;
   const budgetPct = withBurst(shared, burst === undefined ? undefined : burstFloorOf(burst, week, byId, budget, now));

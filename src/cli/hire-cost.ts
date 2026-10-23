@@ -16,7 +16,7 @@ import { readStoredWeek, type StoredWeekPaths } from './stored-week.ts';
  */
 export async function readHirePct(
   runtime: CliRuntime,
-  paths: StoredWeekPaths & Pick<TeamPaths, 'lifts'>,
+  paths: StoredWeekPaths & Pick<TeamPaths, 'team' | 'lifts'>,
   config: Pick<KitConfig, 'sessions' | 'budget' | 'register'>,
   tasks: Iterable<Task>,
   now: number,
@@ -28,5 +28,5 @@ export async function readHirePct(
   }
   const { lifts } = await new LiftLog(runtime.files, paths.lifts).read();
   const lifted = liftedParts(lifts, sessions, now, week.usedPct);
-  return addedSessionPct(week.allowancePct, { ids: sessions, sessions: budget.sessions, work: workWeights(tasks, config.register.priorities), lifted });
+  return addedSessionPct(week.allowancePct, { team: paths.team, ids: sessions, sessions: budget.sessions, work: workWeights(tasks, config.register.priorities), lifted });
 }

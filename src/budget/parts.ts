@@ -4,6 +4,8 @@ import { activeLift, type Lift } from './lift.ts';
 
 /** How the team's daily budget is split among its sessions; every part moves with the budget it splits. */
 export interface BudgetSplit {
+  /** The team's id: its node when the account's daily budget is split among the teams on it. */
+  readonly team: string;
   /** The team's sessions, the whole roster. */
   readonly ids: readonly string[];
   readonly sessions: Readonly<Record<string, SessionBudget>>;
