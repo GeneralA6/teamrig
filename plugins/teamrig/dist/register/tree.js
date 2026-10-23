@@ -43,13 +43,14 @@ export function loopFix(id, other, owner, byWait) {
 }
 /**
  * The keys of plan order, in order: the first one on which two tasks differ puts one ahead. No hand-set score, each
- * key a field the task has: `priority` (p1 first); `started` (an in-progress task stays on top within its
+ * key a field the task has: `pinned` (a task the owner's leader pinned, above every other key); `priority` (p1 first); `started` (an in-progress task stays on top within its
  * priority); `due` (effective due, the earliest first, undated last); `unblocks` (the best priority among the
  * active tasks that need it, then the most of them; none last); `week` (in the week plan in force first); `size`
  * (the smallest first, unsized last); `age` (the lowest number first).
  */
-export const PLAN_KEYS = ['priority', 'started', 'due', 'unblocks', 'week', 'size', 'age'];
+export const PLAN_KEYS = ['pinned', 'priority', 'started', 'due', 'unblocks', 'week', 'size', 'age'];
 const BY_KEY = {
+    pinned: (a, b) => trueFirst(a.pinned, b.pinned),
     priority: (a, b) => a.priority - b.priority,
     started: (a, b) => trueFirst(a.started, b.started),
     due: (a, b) => lowFirst(a.at, b.at),
@@ -168,6 +169,7 @@ export class TaskTree {
     placeOf(task) {
         return {
             id: task.id,
+            pinned: task.pin !== undefined && task.pin !== null,
             priority: task.priority,
             at: this.dueTime(task),
             started: task.status === 'in-progress',

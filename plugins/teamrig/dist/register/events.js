@@ -12,7 +12,7 @@ import { parseWaits } from "./waits.js";
  * a newer teamrig's, and a `blocked` line reads here as `waiting` with no reasons. It also gained a
  * `verifying` status's `proof`, a task's `description` (0.44.0) and its `size` (0.47.0), and a `waiting` status's
  * decision `card` (0.79.0), the same `waits` and `card` on a `verifying` line for what its proof waits for
- * (0.109.0), an update's approval `verdict` (0.126.0) and a task's `kind` (0.147.0), which an older reader ignores:
+ * (0.109.0), an update's approval `verdict` (0.126.0), a task's `kind` (0.147.0) and its `pin` (T637), which an older reader ignores:
  * each reads there as none (an answered update as a note alone). An older teamrig re-serialized the events of the snapshot a rotation or
  * `compact` rewrites, so it dropped such a field there (the archive keeps the lines as written); this one copies
  * each kept line as written (compaction.ts).
@@ -32,7 +32,7 @@ export function isTaskKind(value) {
 }
 /** The kinds that mark a problem, which its review covers. */
 export const PROBLEM_KINDS = ['problem', 'critical'];
-export const TASK_FIELD_NAMES = ['title', 'description', 'owner', 'source', 'ref', 'priority', 'due', 'goals', 'week', 'after', 'size', 'kind'];
+export const TASK_FIELD_NAMES = ['title', 'description', 'owner', 'source', 'ref', 'priority', 'due', 'goals', 'week', 'after', 'size', 'kind', 'pin'];
 /** The lead's answer to the approval a waiting task asks of it (T684): given, or declined with the note saying why. */
 export const APPROVAL_VERDICTS = ['approved', 'declined'];
 export function isApprovalVerdict(value) {
@@ -48,8 +48,8 @@ export function sizeProblem(value) {
 /** How a status is spelled (`in-progress`): a well-spelled one this code does not know is a newer teamrig's. */
 const STATUS_NAME = /^[a-z]+(?:-[a-z]+)*$/;
 /**
- * The record an event is written as. A create line leaves out an empty `after` and a null `description`, `size` or
- * `kind`, which read back as none, so a task without them costs no bytes and its line is the one an older teamrig wrote.
+ * The record an event is written as. A create line leaves out an empty `after` and a null `description`, `size`,
+ * `kind` or `pin`, which read back as none, so a task without them costs no bytes and its line is the one an older teamrig wrote.
  */
 export function eventRecord(event) {
     if (event.type !== 'create') {
@@ -59,7 +59,8 @@ export function eventRecord(event) {
     const left = (name) => (name === 'after' && task.after.length === 0) ||
         (name === 'description' && task.description === null) ||
         (name === 'size' && task.size === null) ||
-        (name === 'kind' && task.kind === null);
+        (name === 'kind' && task.kind === null) ||
+        (name === 'pin' && task.pin === null);
     return { ...event, task: Object.fromEntries(Object.entries(task).filter(([name]) => !left(name))) };
 }
 /** Parses one JSONL record. Unknown extra fields are ignored so later minor additions stay readable. */
@@ -258,6 +259,12 @@ function readField(fields, name, value) {
                 return `bad kind ${JSON.stringify(value)}`;
             }
             fields.kind = isTaskKind(value) ? value : null;
+            return undefined;
+        case 'pin':
+            if (value !== undefined && value !== null && (typeof value !== 'string' || value === '')) {
+                return 'pin is not text';
+            }
+            fields.pin = typeof value === 'string' ? value : null;
             return undefined;
     }
 }

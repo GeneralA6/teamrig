@@ -26,7 +26,7 @@ import { isPeerWait, sameWait } from "../../register/waits.js";
 import { lintSkills } from "../../skills/lint.js";
 import { SKILL_FILE, SkillDir } from "../../skills/store.js";
 import { noPositionals, onePositional, UsageError } from "../args.js";
-import { addInputOf, callerOf, changesOf, listFilterOf, setInputOf, taskIdOf, weekOf } from "../inputs.js";
+import { addInputOf, callerOf, changesOf, listFilterOf, pinOf, setInputOf, taskIdOf, weekOf } from "../inputs.js";
 import { findTeam, openKit, openTeamKit, pastOrPresentIdOf, projectFolder, requireConfig, rosterOf, sessionIdOf, teamZone } from "../kit.js";
 import { checkLines, listLines, SHORT_TITLE_CHARS, waitingOnLines } from "../reports.js";
 import { rollUp } from "../roll-up.js";
@@ -351,8 +351,8 @@ export async function update(args, runtime) {
     const id = taskIdOf(onePositional(args, 'id'));
     const caller = callerOf(args.flags, runtime.env);
     const team = await openTeam(runtime, 'write');
-    const changes = changesOf(args.flags, typedTimes(runtime, team.zone));
     const by = sessionIdOf(team.roster, caller);
+    const changes = { ...changesOf(args.flags, typedTimes(runtime, team.zone)), ...pinOf(args.switches, by) };
     const verdict = await team.register.update(by, id, changeIds(team.roster, changes), args.flags.get('note'));
     const code = report(runtime, verdict, 'UPDATED', team);
     await tellNewOwner(runtime, team, by, verdict);

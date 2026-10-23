@@ -3,6 +3,7 @@ import { NewerDataError } from "../core/jsonl.js";
 import { EVENT_VERSION } from "./events.js";
 import { foldEvents, taskNumber } from "./fold.js";
 import { GITHUB_ACTOR, NO_SKILL } from "./policy.js";
+import { ACTIVE_STATUSES } from "./model.js";
 import { isWritable } from "./snapshot.js";
 /**
  * The register's write path: under the lock, read the log, replay it, apply the team policy,
@@ -93,8 +94,20 @@ export class Register {
                 return change;
             }
             const event = { ...this.base(id, caller), type: 'update', ...change.value };
-            return { ok: true, value: [event] };
+            const { pin, owner } = change.value.changes;
+            const unpins = typeof pin === 'string' ? this.unpins(task, owner ?? task.owner, caller, snapshot.state) : [];
+            return { ok: true, value: [...unpins, event] };
         }));
+    }
+    /**
+     * One pin per owner: the unpins of the other active pinned tasks of `owner`, the owner of `pinned` once pinned,
+     * written before the pin so that stays the write's last event. The policy let `caller` pin a task of `owner`, which
+     * is leave to move that owner's pin (T637).
+     */
+    unpins(pinned, owner, caller, state) {
+        return [...state.tasks.values()]
+            .filter((task) => task.id !== pinned.id && task.owner === owner && task.pin !== null && ACTIVE_STATUSES.includes(task.status))
+            .map((task) => ({ ...this.base(task.id, caller), type: 'update', changes: { pin: null }, note: `the pin moved to ${pinned.id}` }));
     }
     /** `approve`: the lead's answer to a task's approval wait, an update that changes no field (T684). */
     approve(caller, id, verdict, note) {
