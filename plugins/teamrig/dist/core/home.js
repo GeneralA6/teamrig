@@ -118,6 +118,7 @@ export function teamPaths(kitHome, team, userHome, overrides = {}) {
         githubSyncLock: join(state, 'github-sync.lock'),
         wake: join(state, 'wake'),
         wakeLog: join(state, 'wakes.jsonl'),
+        promptAnswers: join(state, 'prompt-answers.jsonl'),
         turnLog: join(state, 'turn-log'),
         sessions: join(state, 'sessions'),
         sessionLog: join(state, 'session-log.jsonl'),

@@ -16,7 +16,8 @@ export function commandLine(words, platform) {
     }
     return words.map((word) => (platform === 'win32' ? cmdWord(word) : posixWord(word))).join(' ');
 }
-function posixWord(word) {
+/** One word for a POSIX shell: as it is when the shell reads it as plain text, else single-quoted. */
+export function posixWord(word) {
     return POSIX_PLAIN.test(word) ? word : posixQuote(word);
 }
 function cmdWord(word) {
