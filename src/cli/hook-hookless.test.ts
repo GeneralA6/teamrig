@@ -84,7 +84,7 @@ describe('the Stop hook checks for tabs that run without their hooks', () => {
     await stop(kit, transcripts, 'bravo');
     assert.deepEqual(hooklessLines(kit, 'lead'), [
       `HOOKLESS alpha: its tab (Claude session 0123abcd) worked 59 min past its last teamrig hook (hook 09:00 UTC, last reply 09:59 UTC), ${NO_HOOKS}: ` +
-        'type /reload-plugins in that tab',
+        `/exit that tab and run claude --resume ${TAB} in ${APP}`,
     ]);
     assert.deepEqual(parseHooklessState(kit.files.get(STATE) ?? ''), { checkedAt: kit.clock.now(), told: [TAB] });
 
@@ -112,19 +112,13 @@ describe('the Stop hook checks for tabs that run without their hooks', () => {
     assert.deepEqual(parseHooklessState(kit.files.get(STATE) ?? ''), { checkedAt: kit.clock.now(), told: [] });
   });
 
-  it('waits for the next reply after a reload, and then asks for a restart, not another reload', async () => {
+  it('names a tab that worked past its hook even with a reload since its last reply: a reload never brings hooks back (T1055)', async () => {
     const kit = new CliHarness(ROLES_TEAM);
     await writeTab(kit, 'alpha', 2 * HOOKLESS_MS);
-    const transcripts = tabTranscript(kit, [reply(kit, 10 * MS_PER_MINUTE), reload(kit, 5 * MS_PER_MINUTE)]);
-    await stop(kit, transcripts, 'bravo');
-    assert.deepEqual(hooklessLines(kit, 'lead'), [], 'the reload may have brought the hooks back');
-
-    kit.clock.advance(HOOKLESS_CHECK_MS);
-    transcripts.append(TAB_TRANSCRIPT, transcript([reply(kit, MS_PER_MINUTE)]), kit.clock.now());
-    await stop(kit, transcripts, 'bravo');
+    await stop(kit, tabTranscript(kit, [reply(kit, 10 * MS_PER_MINUTE), reload(kit, 5 * MS_PER_MINUTE)]), 'bravo');
     assert.deepEqual(hooklessLines(kit, 'lead'), [
-      `HOOKLESS alpha: its tab (Claude session 0123abcd) worked 69 min past its last teamrig hook (hook 09:00 UTC, last reply 10:09 UTC), ${NO_HOOKS}: ` +
-        `the /reload-plugins at 09:55 UTC did not bring them back: /exit that tab and run claude --resume ${TAB} in its folder`,
+      `HOOKLESS alpha: its tab (Claude session 0123abcd) worked 50 min past its last teamrig hook (hook 09:00 UTC, last reply 09:50 UTC), ${NO_HOOKS}: ` +
+        `/exit that tab and run claude --resume ${TAB} in ${APP}`,
     ]);
   });
 

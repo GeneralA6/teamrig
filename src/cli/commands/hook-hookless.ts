@@ -13,13 +13,12 @@ import {
   hooklessReader,
   hooklessTabs,
   isCheckDue,
+  lastReplyAt,
   parseHooklessState,
   staleEntries,
-  tabActivity,
   workedPastHook,
   type HooklessState,
   type HooklessTab,
-  type TabActivity,
 } from '../../restore/hookless.ts';
 import { RestoreRegistry, restoreSessionsDir } from '../../restore/registry.ts';
 import { teamZone, type Kit } from '../kit.ts';
@@ -30,8 +29,8 @@ async function readState(runtime: CliRuntime, kit: Kit): Promise<HooklessState |
   return parseHooklessState((await runtime.files.read(kit.paths.hookless)) ?? '');
 }
 
-/** The last reply and reload in the end of a transcript (`HOOKLESS_TAIL_BYTES`); undefined when it has no file. */
-async function activityAtEnd(runtime: CliRuntime, path: string): Promise<TabActivity | undefined> {
+/** The main thread's last reply in the end of a transcript (`HOOKLESS_TAIL_BYTES`); undefined with no file or no reply there. */
+async function replyAtEnd(runtime: CliRuntime, path: string): Promise<number | undefined> {
   const size = await runtime.transcripts.size(path);
   if (size === undefined) {
     return undefined;
@@ -39,7 +38,7 @@ async function activityAtEnd(runtime: CliRuntime, path: string): Promise<TabActi
   const offset = Math.max(0, size - HOOKLESS_TAIL_BYTES);
   const { lines } = await readLines(runtime.transcripts, path, offset, size, HOOKLESS_TAIL_BYTES);
   // A read from inside the file starts mid-line.
-  return tabActivity(offset === 0 ? lines : lines.slice(1));
+  return lastReplyAt(offset === 0 ? lines : lines.slice(1));
 }
 
 /**
@@ -50,16 +49,16 @@ async function activityAtEnd(runtime: CliRuntime, path: string): Promise<TabActi
 async function findHooklessTabs(runtime: CliRuntime, kit: Kit, config: KitConfig, now: number): Promise<HooklessTab[]> {
   const registry = new RestoreRegistry(runtime.files, restoreSessionsDir(resolveKitHome(runtime.env, runtime.userHome)));
   const stale = staleEntries(await registry.list(), kit.paths.team, config.sessions, now);
-  const activity = new Map<string, TabActivity>();
+  const replies = new Map<string, number>();
   for (const entry of stale) {
     const path = entry.transcriptPath;
     const changed = path === undefined ? undefined : await runtime.transcripts.changedAt(path);
-    const found = path === undefined || changed === undefined || !workedPastHook(entry.updatedAt, changed, now) ? undefined : await activityAtEnd(runtime, path);
+    const found = path === undefined || changed === undefined || !workedPastHook(entry.updatedAt, changed, now) ? undefined : await replyAtEnd(runtime, path);
     if (found !== undefined) {
-      activity.set(entry.claudeSession, found);
+      replies.set(entry.claudeSession, found);
     }
   }
-  return hooklessTabs(stale, activity, now);
+  return hooklessTabs(stale, replies, now);
 }
 
 /**
