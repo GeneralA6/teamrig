@@ -5,6 +5,7 @@ import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { MODEL_ALIASES, MODEL_ID_MAX_LENGTH, MODEL_ID_PATTERN } from './launch.ts';
 import { CONFIG_LIMITS, RULE_CONFLICT_LIMITS } from './limits.ts';
 import { parseConfig } from './parse.ts';
+import { KEEP_RULE_PATTERN } from '../permissions/allow-rules.ts';
 import { PREFIX_PATTERN } from '../readonly-shell/rules.ts';
 import { CORE_RULE_KEYS } from '../rules/keys.ts';
 import { AD_HOC_RUNNERS, COMMIT_GATES, CONFLICT_WINNERS, EFFORT_LEVELS, HOOK_ASKS, PACKAGE_INSTALLS, PUSH_TO_PROTECTED, VERIFY_GATES } from './types.ts';
@@ -53,6 +54,7 @@ const EVERY_KEY = {
   },
   refresh: { handoverDir: 'notes' },
   readonlyShell: { enabled: true, allowPrefixes: ['npx tsc --noEmit'] },
+  permissions: { keepAllow: ['Bash(kubectl get *)'] },
   statusLine: { folder: false, branch: false, resume: false },
   decisions: { batchTimesUtc: ['13:03'], batchAt: 3 },
   github: { repos: ['acme/web'], owners: { octocat: 'bravo' }, closedDays: 30, everyMinutes: 30 },
@@ -117,6 +119,7 @@ const LIMIT_PATHS: { readonly [Name in keyof typeof CONFIG_LIMITS]: string } = {
   chainNudgeAt: 'loops.chainNudgeAt',
   leadOwnPaths: 'leadBoundary.ownPaths',
   readonlyShellPrefixes: 'readonlyShell.allowPrefixes',
+  keepAllow: 'permissions.keepAllow',
   secretPaths: 'secretGuard.paths',
   secretEnvNames: 'secretGuard.envNames',
   packageCooldownDays: 'packageGuard.cooldownDays',
@@ -335,6 +338,12 @@ describe('config.schema.json', () => {
     const items = nodeAt(await loadSchema(), 'readonlyShell.allowPrefixes')['items'];
     assert.ok(isRecord(items));
     assert.equal(items['pattern'], PREFIX_PATTERN.source);
+  });
+
+  it('takes the kept allow rules the parser takes', async () => {
+    const items = nodeAt(await loadSchema(), 'permissions.keepAllow')['items'];
+    assert.ok(isRecord(items));
+    assert.equal(items['pattern'], KEEP_RULE_PATTERN.source);
   });
 
   it('takes the verify gate choices the parser takes', async () => {
