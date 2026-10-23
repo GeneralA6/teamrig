@@ -9,6 +9,15 @@ import { noPositionals } from "../args.js";
 import { openKit } from "../kit.js";
 import { EXIT } from "../runtime.js";
 import { parseJson, sessionTeam } from "./hook-input.js";
+/** The team's read-only check, built whether `readonlyShell.enabled` is on or not: each hook decides when it applies. */
+export async function readonlyCheckOf(runtime, config) {
+    const snapshot = await newestSnapshotExports(runtime.files, join(claudeConfigDir(runtime.env, runtime.userHome), 'shell-snapshots'));
+    const secrets = secretRulesOf(config.secretGuard, runtime.userHome, runtime.platform);
+    return {
+        rules: readonlyRulesOf(config.readonlyShell, runtime.env, snapshot),
+        printsSecret: (call) => secretFindingsOf(call, runtime.cwd, secrets).length > 0,
+    };
+}
 /**
  * What the hook prints for this payload: an allow for a line that only reads when the session's team turned the hook
  * on, else ''. It reads the session's team, not the one of the folder the line `cd`s into, so a line never gains
@@ -20,9 +29,8 @@ async function readonlyAllowOutputOf(runtime, payload) {
     if (kit?.load.status !== 'loaded' || !kit.load.config.readonlyShell.enabled) {
         return '';
     }
-    const snapshot = await newestSnapshotExports(runtime.files, join(claudeConfigDir(runtime.env, runtime.userHome), 'shell-snapshots'));
-    const secrets = secretRulesOf(kit.load.config.secretGuard, runtime.userHome, runtime.platform);
-    return readonlyShellOutput(payload, readonlyRulesOf(kit.load.config.readonlyShell, runtime.env, snapshot), (call) => secretFindingsOf(call, runtime.cwd, secrets).length > 0);
+    const check = await readonlyCheckOf(runtime, kit.load.config);
+    return readonlyShellOutput(payload, check.rules, check.printsSecret);
 }
 /**
  * PreToolUse on Bash and PowerShell: with `readonlyShell.enabled`, lets a line whose every command provably only
