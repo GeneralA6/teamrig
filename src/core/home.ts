@@ -160,6 +160,8 @@ export interface TeamPaths {
   readonly wake: string;
   /** Every wake and every wake Claude Code dropped, with its cost, an append-only log. */
   readonly wakeLog: string;
+  /** Each permission prompt the prompt refusal answered and how (hooks/prompt-refuse.ts), an append-only log. */
+  readonly promptAnswers: string;
   /** Each session's prompts and replies for the task pane (src/turn-log/), `<id>/<UTC hour>.jsonl` each. */
   readonly turnLog: string;
   /** Where each session last started: its Claude Code process and session, `<id>.json` each (src/sessions/record.ts). */
@@ -232,6 +234,7 @@ export function teamPaths(kitHome: string, team: string, userHome: string, overr
     githubSyncLock: join(state, 'github-sync.lock'),
     wake: join(state, 'wake'),
     wakeLog: join(state, 'wakes.jsonl'),
+    promptAnswers: join(state, 'prompt-answers.jsonl'),
     turnLog: join(state, 'turn-log'),
     sessions: join(state, 'sessions'),
     sessionLog: join(state, 'session-log.jsonl'),
