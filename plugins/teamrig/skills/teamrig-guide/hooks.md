@@ -16,7 +16,7 @@ they all stay silent, and only `hook restore-track` still records the session ([
 | `PreToolUse` on `Bash` and `PowerShell` | `hook exec-guard` | Refuses a privileged command's review run as another session or the owner, and any `exec` call through a client changed after its build ([the exec guard](#before-a-shell-command-the-exec-guard)) |
 | `PreToolUse` on `Bash` and `PowerShell` | `hook readonly-allow` | With `readonlyShell.enabled`, lets a line whose every command provably only reads run without a permission prompt ([the read-only allow](#before-a-shell-command-the-read-only-allow)) |
 | `PreToolUse` on `AskUserQuestion` | `hook picker-guard` | With `pickerGuard.enabled`, refuses the question picker to every session and helper, and to the lead outside the owner's daily meeting, with the reason to decide it if it is the session's own, else record it on its task and go on ([the picker guard](#before-a-question-the-picker-guard)) |
-| `PermissionRequest` | `hook prompt-refuse` | With `prompts.hookAsks: refuse`, refuses each permission prompt Claude Code is about to raise but the question picker's and plan mode's exit, with the reason to record the step for the owner and go on ([asks off](#asks-off-a-refusal-instead-of-a-prompt)) |
+| `PermissionRequest` | `hook prompt-refuse` | With `prompts.hookAsks: refuse`, answers each permission prompt Claude Code is about to raise but the question picker's and plan mode's exit, per case: a line that provably only reads runs, a line with a rerun form is refused quoting it, anything else is refused with the reason to record the step for the owner and go on ([asks off](#asks-off-a-refusal-instead-of-a-prompt)) |
 | `PreToolUse` on `SendMessage` | `hook cold-send` | Holds once a message that would wake an idle session cold; during the daily meeting, holds every message to the lead but a CRITICAL one |
 | `PostToolUse` on `SendMessage` | `hook failed-send` | After a send that was not delivered, hands the model [the inbox line to write instead](#after-a-failed-send-the-inbox-line) |
 | `PostToolUse` on reads, edits and shell calls | `hook loop-nudge` | Asks the model once to batch when a turn makes [single-step calls in a row](#after-a-tool-call-the-loop-nudge) |
@@ -296,9 +296,24 @@ command>"`) and take your next task."
 A refusal stays as it was, with no note. `ask` (the default) keeps the questions; a missing or broken config keeps
 `ask` too. The same switch reaches the prompts Claude Code raises on its own (a call its permission rules do not
 allow, in a mode that asks, or a check of its own that always asks): `hook prompt-refuse` answers each
-`PermissionRequest` with a refusal whose message is "Claude Code would ask a person to allow this <tool> call."
-and then the note above. The question picker and plan mode's exit still open: the
-[picker guard](#before-a-question-the-picker-guard) and the person decide those.
+`PermissionRequest` for its case (since 0.151.0):
+
+- **A line that provably only reads runs**, by the [read-only allow](#before-a-shell-command-the-read-only-allow)'s
+  check and its trusted prefixes, even with `readonlyShell.enabled` off; one that would print a secret does not. This
+  allow also answers a prompt a settings `ask` rule raised, which a `PreToolUse` allow never overrides: keep a line
+  you want asked about out of the read-only rules, or leave asks on.
+- **A Bash line teamrig's rules give a rerun form is refused quoting it**: "... Do not retry this line; rerun it as:
+  <form>". After a leading `cd D &&`, git runs as `git -C D ...` and anything else as `env -C D ...` (GNU env, or a
+  BSD env with `-C`); a plain `git worktree remove P` runs as `teamrig worktree remove P`. Any doubt gives no form: a
+  glob, `~`, a variable or substitution, a subshell, a heredoc, a relative redirection once the folder moves, a
+  builtin after the `cd`, a trailing `&`.
+- **Anything else is refused** with "Claude Code would ask a person to allow this <tool> call." and then the note
+  above.
+
+Each answer is a line in `state/prompt-answers.jsonl` (the time, both sessions, the tool, the answer and the first
+200 characters of the command), for the triage that turns a refused line into a fixed guard or a new rerun form. The
+question picker and plan mode's exit still open: the [picker guard](#before-a-question-the-picker-guard) and the
+person decide those.
 
 ## Before a shell command or a read: the secret guard
 
@@ -884,4 +899,5 @@ read-only allow lets a call skip the prompt, and only a shell line it proves onl
 - **The picker guard** (`pickerGuard.enabled`) refuses the question picker to every session and helper, and to the
   lead outside the owner's daily meeting, on its own, whatever the mode.
 - **The prompt refusal** (`prompts.hookAsks: refuse`) answers every permission prompt but the picker's and plan
-  mode's exit with a refusal, whatever raised it.
+  mode's exit, whatever raised it: a provably read-only line runs, a line with a rerun form is refused quoting it,
+  anything else is refused.
