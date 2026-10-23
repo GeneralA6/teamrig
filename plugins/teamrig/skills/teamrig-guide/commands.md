@@ -207,8 +207,10 @@ The status is a flag, never a word after the id: `teamrig set T1 done` is a usag
 ### teamrig update
 
 Changes a task's fields. The owner may change any of them; a leader above the owner (the lead on any task, a
-sub-lead on its group's) may change only the owner, priority, due date, week, plan order (`--after`) and size of
-a task it does not own. A sub-lead hands a task only to itself or a session it leads; the lead moves work between
+sub-lead on its group's) may change only the owner, priority, due date, week, plan order (`--after`), size, problem mark and
+pin of a task it does not own. A pin puts a task above every other task of its owner, whatever its priority: a
+leader above the owner sets or clears it (the lead on its own tasks too), never the owner itself; an owner has one
+pin, so a new pin clears the earlier one in the same write, and handing the task to another owner clears it. A sub-lead hands a task only to itself or a session it leads; the lead moves work between
 groups. A `--note` alone adds context to any task's history, from any session; one from the task's owner also becomes the note `show` and the waiting text print, as a note on `set` does, so a restated note shows at once.
 The status never changes here: use `set`.
 
@@ -231,6 +233,9 @@ Flags:
 - `--size <pct>|none`: a new size, in percent of the weekly usage limit, or `none` to clear it.
 - `--problem problem|critical|none`: marks the task a problem, a critical one, or no problem (`none`, which also
   quiets the hint); the lead may mark any task.
+- `--pin`: pins the task to the top of its owner's list; the pin names who set it, which `show` prints
+  (`pinned by lead: above every other task of api`), and its `list` row says `pinned`.
+- `--unpin`: clears the task's pin.
 - `--note "<text>"`: records a note with the change.
 
 Example:
@@ -277,7 +282,7 @@ APPROVED T1 waiting, p1, owner web, from web | Fix the broken login form (waitin
 
 ### teamrig list
 
-Lists tasks, most urgent first, in plan order: priority, then in progress, effective due date (undated last), what
+Lists tasks, most urgent first, in plan order: pinned, priority, then in progress, effective due date (undated last), what
 it unblocks, in the week plan in force, size, then id (tasks.md, Plan order). By default only
 active tasks (open, in progress, verifying, waiting), in a short form within 3,000 characters: a count per owner
 when there are several, then one short row per task (its title cut to 60 characters) and `+N more` for the rows
