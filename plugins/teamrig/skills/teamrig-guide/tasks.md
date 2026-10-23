@@ -118,8 +118,14 @@ A shipped change is proven by the session that shipped it, oldest first, before 
 
 - **Priority** [register.priorities]: `p1` keep the lights on, `p2` correctness, `p3` scale, `p4` this week's
   owner decisions, `p5` if budget allows. `p1` is the most urgent.
-- **Plan order**: priority, then due date (undated last), then id. `list`, `check` and `plan` all use it, and a
-  session works its list in that order.
+- **Plan order**: by the first of these on which two tasks differ, each a field the task has: priority (`p1`
+  first); in progress (a started task stays on top within its priority); effective due (the earliest first, undated
+  last); what it unblocks (the best priority among the active tasks that need it, then the most of them); in the
+  week plan in force; size (the smallest first, unsized last); then id (the oldest first). `list`, `check` and
+  `plan` all use it, and a session works its list in that order. A `list` row ends with the key that put it ahead
+  of the next row: `· ahead: in progress`, `· ahead: due`, `· ahead: unblocks T9 p1 +2` (the best task that needs
+  it, its priority, how many more), `· ahead: in week 10-19` or `· ahead: size 0.5%`; no reason means the priority
+  (the row shows it) or the id decided.
 - **Title**: one line, at most 140 characters [register.maxTitle]. A second active task with the same title
   (ignoring case and extra spaces) is refused.
 - **Description**: what the task is and why, in plain words for a person who has not seen the ask; newlines are
