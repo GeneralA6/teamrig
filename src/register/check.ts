@@ -124,7 +124,7 @@ interface WeekPlan {
 
 /**
  * PEER-WAIT: waiting (or a verifying task's proof waiting) on a decision or an approval of a peer (anyone but the
- * lead and the owner), as a line from an older teamrig reads: a peer's work is a task, waited on by its id, which
+ * task owner's leaders and the owner), as a line from an older teamrig reads: a peer's work is a task, waited on by its id, which
  * clears by itself once that task finishes. Apart from {@link checkTasks}, whose register config does not name the lead.
  */
 export function peerWaitFlags(tasks: Iterable<Task>, tree: LeadTree, ownerSource: string): Flag[] {
