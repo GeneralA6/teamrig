@@ -1,6 +1,6 @@
 import { ruleLabel, ruleNumberOf } from "../rules/keys.js";
 import { budgetMarkOf, burstText, MORE_BURST } from "./burst-lines.js";
-import { formatCount, formatPct, formatW, isBudgetDayEnd, noRoomText } from "./format.js";
+import { formatCount, formatPct, formatUsd, formatW, isBudgetDayEnd, noRoomText } from "./format.js";
 import { liftText } from "./lift.js";
 import { TURN_TRIGGERS } from "./line.js";
 import { hasRoom } from "./pace.js";
@@ -20,7 +20,7 @@ function pctOf(w, week) {
 function useText(w, calls) {
     return `${formatW(w)} W in ${formatCount(calls)} call${calls === 1 ? '' : 's'}`;
 }
-/** The week's use and its pace, on the team's clock: the first line of `budget`, and the last of `start`. */
+/** The week's use and its pace, on the team's clock, and the extra-usage pool: the first line of `budget`, and the last of `start`. */
 export function weekLine(week, zone) {
     if (week.usedPct === undefined || week.reset === undefined) {
         return "Week: its use is unknown: no status line reading (run teamrig statusline install) and no budget.weeklyLimitW.";
@@ -30,7 +30,22 @@ export function weekLine(week, zone) {
     const paceText = pace === undefined
         ? ''
         : `; the pace line is at ${formatPct(pace.linePct)}: ${pace.state === 'on pace' ? 'on pace' : `${Math.abs(pace.gapPts).toFixed(1)} points ${pace.state}`}`;
-    return `Week: ${formatPct(week.usedPct)} used${source}${paceText}. Resets ${zone.weekdayMinute(new Date(week.reset))}.${periodText(week, zone)}`;
+    return `Week: ${formatPct(week.usedPct)} used${source}${paceText}. Resets ${zone.weekdayMinute(new Date(week.reset))}.${periodText(week, zone)}${poolText(week.pool)}`;
+}
+/**
+ * The extra-usage pool (budget/extra.ts) once dollars were added: what is left in dollars and, with its W per dollar,
+ * in W, which past 100% of the week sets the team's allowance; nothing without a pool.
+ */
+function poolText(pool) {
+    if (pool === undefined) {
+        return '';
+    }
+    const left = ` Extra usage: ${formatUsd(pool.leftUsd)} of ${formatUsd(pool.addedUsd)} left`;
+    if (pool.wPerUsd === undefined || pool.leftW === undefined) {
+        return `${left}, in dollars only until two spent readings past 100% (teamrig budget extra --spent <usd>) or budget.extraWPerUsd give its W per dollar.`;
+    }
+    const from = pool.learned ? 'learned from spent readings' : 'budget.extraWPerUsd';
+    return `${left}, about ${formatW(pool.leftW)} W at ${formatW(pool.wPerUsd)} W per dollar (${from}).`;
 }
 /** Where the use counts from after a reset inside the week (budget/period.ts); nothing for a whole week. */
 function periodText(week, zone) {

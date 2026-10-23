@@ -95,7 +95,7 @@ export const DEFAULT_COMMITS = {
 /**
  * Neutral on purpose: off, no allowance cap, every session an equal share, and past the line only
  * the warning lines, so a team that turns it on is measured and shown before anything acts.
- * The optional keys (weekly limit, reset, daily %, cap, quiet hours, snapshot folder) stay unset.
+ * The optional keys (weekly limit, extra usage's W per dollar, reset, quiet hours, snapshot folder) stay unset.
  */
 export const DEFAULT_BUDGET = {
     enabled: false,
