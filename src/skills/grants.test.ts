@@ -2,8 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { grantGaps, grantsMadeBy, grantsOf, isSkillScript } from './grants.ts';
 
-function made(text: string): string[] {
-  return grantsMadeBy({ name: 'run.ts', text });
+function made(text: string, name = 'run.ts'): string[] {
+  return grantsMadeBy({ name, text });
 }
 
 describe('grantsMadeBy', () => {
@@ -20,9 +20,23 @@ describe('grantsMadeBy', () => {
   it('sees a credential read: a cluster secret, or an env variable named like one, in each language', () => {
     assert.deepEqual(made('kubectl get secret api-env -o json'), ['secret-read']);
     assert.deepEqual(made("spawnSync('kubectl', ['get', 'secrets', '-n', 'x'])"), ['secret-read']);
-    for (const read of ['echo "$API_TOKEN"', 'echo "${DB_PASSWORD}"', '$env:CLIENT_SECRET', 'process.env.DATABASE_URI_LOCAL', "process.env['GITHUB_TOKEN']", "os.environ['AWS_SECRET_ACCESS_KEY']", "os.getenv('REDIS_PASS')"]) {
+    for (const read of ['echo "$API_TOKEN"', '$env:CLIENT_SECRET', 'process.env.DATABASE_URI_LOCAL', "process.env['GITHUB_TOKEN']", "os.environ['AWS_SECRET_ACCESS_KEY']", "os.getenv('REDIS_PASS')"]) {
       assert.deepEqual(made(read), ['secret-read'], read);
     }
+    for (const name of ['run.sh', 'run.ps1', 'run.py']) {
+      assert.deepEqual(made('echo "${DB_PASSWORD}"', name), ['secret-read'], name);
+    }
+  });
+
+  it("reads a JS or TS script's ${NAME} in a template literal as a JS value, and in a quoted string or escaped as the shell's", () => {
+    const sample = "`Weights: each type's mean miss. Shares extrapolate the 1-in-${KEY_SAMPLE_EVERY} key sample.`";
+    for (const name of ['aggregate-telemetry.ts', 'run.mjs', 'run.cjs', 'run.js', 'run.mts']) {
+      assert.deepEqual(made(sample, name), [], name);
+      for (const read of ['execSync(`echo \\${DB_PASSWORD} | gh auth login`);', "execSync('echo ${DB_PASSWORD}');", 'execSync("echo ${DB_PASSWORD}");', "execSync('echo $API_TOKEN');"]) {
+        assert.deepEqual(made(read, name), ['secret-read'], `${name}: ${read}`);
+      }
+    }
+    assert.deepEqual(made(sample, 'run.sh'), ['secret-read'], 'a shell reads ${NAME} from the environment');
   });
 
   it('passes env variables that hold no credential and lower-case template values', () => {
