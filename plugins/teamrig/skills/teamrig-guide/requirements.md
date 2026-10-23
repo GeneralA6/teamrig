@@ -34,10 +34,9 @@ claude plugin marketplace add GeneralA6/teamrig
 claude plugin install teamrig@teamrig
 ```
 
-While the plugin is enabled, its `bin/` folder is on the PATH of Claude Code's Bash tool only: the PowerShell tool
-does not get it, so on Windows a session runs `teamrig` in the Bash tool (session start says so). `bin/teamrig.cmd`
-serves cmd and PowerShell once you add that folder to their PATH yourself. In your own terminal, outside Claude Code, `teamrig` is not on the PATH unless you
-add it. Each change to the plugin raises its version; to take the newest one, follow
+While the plugin is enabled, its `bin/` folder is on the PATH of Claude Code's Bash and PowerShell tools:
+`bin/teamrig` serves bash, `bin/teamrig.cmd` PowerShell and cmd. In your own terminal, outside Claude Code, `teamrig`
+is not on the PATH unless you add that folder. Each change to the plugin raises its version; to take the newest one, follow
 [Updating the plugin](https://github.com/GeneralA6/teamrig/blob/main/docs/how-it-works.md#updating-the-plugin).
 
 ## Terminals for `teamrig open`

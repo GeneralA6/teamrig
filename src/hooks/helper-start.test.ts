@@ -11,7 +11,6 @@ const PATH = '/kit/teams/app/config.json';
 const COMMAND = 'teamrig';
 const DUTY =
   'The rules above bind you as they bind it, but your brief is your task: leave `teamrig start`, task statuses, register entries, inbox lines and messages to it unless your brief asks for them, and return what it needs.';
-const SHELL = ' Run `teamrig` in the Bash tool: the PowerShell tool does not have it.';
 
 function loaded(): ConfigLoad {
   return { status: 'loaded', path: PATH, config: testConfig({ names: { lead: 'team-lead' } }), issues: [] };
@@ -58,7 +57,7 @@ describe('helperStartContext', () => {
   it("gives the session's core rules, then whose helper it is and what it leaves to that session", () => {
     const text = context();
     assert.ok(text.startsWith(renderCorePack(testConfig({ names: { lead: 'team-lead' } }), COMMAND, 'win32', RULES_CLOCK)));
-    assert.ok(text.endsWith(`\n\nYou are a helper (\`general-purpose\`) of the \`alpha\` session of team \`app\` (name \`app-alpha\`). ${DUTY}${SHELL}`));
+    assert.ok(text.endsWith(`\n\nYou are a helper (\`general-purpose\`) of the \`alpha\` session of team \`app\` (name \`app-alpha\`). ${DUTY}`));
   });
 
   it('never gives the helper a session identity, the lead lines or a note only a session acts on', () => {
@@ -73,24 +72,24 @@ describe('helperStartContext', () => {
     const text = context({ session: 'scout', renames: [renameOf('alpha', 'app-alpha', 'scout')], sessionInEnv: false });
     assert.ok(
       text.endsWith(
-        `of the \`alpha\` session of team \`app\` (name \`scout\`). ${DUTY} $TEAMRIG_SESSION is not set here, so pass --session alpha to any \`teamrig\` command your brief asks for.${SHELL}`,
+        `of the \`alpha\` session of team \`app\` (name \`scout\`). ${DUTY} $TEAMRIG_SESSION is not set here, so pass --session alpha to any \`teamrig\` command your brief asks for.`,
       ),
     );
   });
 
   it('speaks of a session of the team when the session is unknown or not on the roster', () => {
     for (const session of [undefined, 'ghost']) {
-      assert.ok(context({ session, sessionInEnv: false }).endsWith(`\n\nYou are a helper (\`general-purpose\`) of a session of team \`app\`. ${DUTY}${SHELL}`));
+      assert.ok(context({ session, sessionInEnv: false }).endsWith(`\n\nYou are a helper (\`general-purpose\`) of a session of team \`app\`. ${DUTY}`));
     }
   });
 
-  it('leaves out an unknown agent type and the shell note off Windows', () => {
-    assert.ok(context({ agentType: undefined, platform: 'linux' }).endsWith(`\n\nYou are a helper of the \`alpha\` session of team \`app\` (name \`app-alpha\`). ${DUTY}`));
+  it('leaves out an unknown agent type', () => {
+    assert.ok(context({ agentType: undefined }).endsWith(`\n\nYou are a helper of the \`alpha\` session of team \`app\` (name \`app-alpha\`). ${DUTY}`));
   });
 
   it("adds the team's rules.md after the helper line", () => {
     const text = context({ teamRules: { path: '/kit/teams/app/rules.md', text: 'Ship small.' } });
-    assert.ok(text.endsWith(`${SHELL}\n\n# Your team's rules\nShip small.`));
+    assert.ok(text.endsWith(`${DUTY}\n\n# Your team's rules\nShip small.`));
   });
 
   it('says in one line why no rules are loaded without a usable config', () => {

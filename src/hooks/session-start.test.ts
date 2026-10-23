@@ -49,18 +49,17 @@ describe('sessionStartContext', () => {
   it('gives the core rules, then who the session is and how to reach the lead', () => {
     const text = context();
     assert.ok(text.startsWith(renderCorePack(testConfig(), COMMAND, 'win32', RULES_CLOCK)));
-    assert.ok(text.endsWith(`\n\nYou are the \`alpha\` session of team \`app\` (name \`app-alpha\`). Run \`teamrig\` in the Bash tool: the PowerShell tool does not have it. Message the lead as \`team-lead\`.\n${NAMES}`));
+    assert.ok(text.endsWith(`\n\nYou are the \`alpha\` session of team \`app\` (name \`app-alpha\`). Message the lead as \`team-lead\`.\n${NAMES}`));
   });
 
   it('renders the rules for the platform the hook runs on', () => {
     assert.ok(context({ platform: 'linux' }).startsWith(renderCorePack(testConfig(), COMMAND, 'linux', RULES_CLOCK)));
     assert.doesNotMatch(context({ platform: 'linux' }), /worktree remove/);
-    assert.doesNotMatch(context({ platform: 'linux' }), /PowerShell tool does not have it/);
   });
 
   it('finds the session by name too, and tells the lead its role', () => {
     const text = context({ session: 'team-lead' });
-    assert.ok(text.endsWith(`\n\nYou are the \`lead\` session of team \`app\` (name \`team-lead\`, roles: lead). Run \`teamrig\` in the Bash tool: the PowerShell tool does not have it.\n${NAMES}`));
+    assert.ok(text.endsWith(`\n\nYou are the \`lead\` session of team \`app\` (name \`team-lead\`, roles: lead).\n${NAMES}`));
   });
 
   it('gives the lead its own lines after the core rules, and no other session', () => {
@@ -73,12 +72,12 @@ describe('sessionStartContext', () => {
   it('tells a session known only by --session or by its inbox to pass --session', () => {
     assert.ok(
       context({ sessionInEnv: false }).endsWith(
-        `\n\nYou are the \`alpha\` session of team \`app\` (name \`app-alpha\`). $TEAMRIG_SESSION is not set here, so pass --session alpha to every \`teamrig\` task and inbox command. Run \`teamrig\` in the Bash tool: the PowerShell tool does not have it. Message the lead as \`team-lead\`.\n${NAMES}`,
+        `\n\nYou are the \`alpha\` session of team \`app\` (name \`app-alpha\`). $TEAMRIG_SESSION is not set here, so pass --session alpha to every \`teamrig\` task and inbox command. Message the lead as \`team-lead\`.\n${NAMES}`,
       ),
     );
     assert.ok(
       context({ session: 'lead', sessionInEnv: false }).includes(
-        '(name `team-lead`, roles: lead). $TEAMRIG_SESSION is not set here, so pass --session lead to every `teamrig` task and inbox command. Run `teamrig` in the Bash tool: the PowerShell tool does not have it.\n',
+        '(name `team-lead`, roles: lead). $TEAMRIG_SESSION is not set here, so pass --session lead to every `teamrig` task and inbox command.\n',
       ),
     );
   });
@@ -86,7 +85,7 @@ describe('sessionStartContext', () => {
   it('asks which session it is when the variable is unset, invalid or not on the team', () => {
     for (const session of [undefined, 'Not A Name '.repeat(50), 'zulu']) {
       const text = context({ session });
-      assert.match(text, /: ask the user which session you are \(`teamrig who` lists them\) and pass --session <id> to every `teamrig` task and inbox command\. Run `teamrig` in the Bash tool: the PowerShell tool does not have it\. Message the lead as `team-lead`\.\n/);
+      assert.match(text, /: ask the user which session you are \(`teamrig who` lists them\) and pass --session <id> to every `teamrig` task and inbox command\. Message the lead as `team-lead`\.\n/);
       assert.doesNotMatch(text, /Not A Name|zulu/);
     }
   });
@@ -94,7 +93,7 @@ describe('sessionStartContext', () => {
   it('names the session by its newest name, finds it by an old one, and adds the title note', () => {
     const renames = [renameOf('alpha', 'app-alpha', 'scout'), renameOf('lead', 'team-lead', 'chief')];
     const text = context({ renames, session: 'app-alpha', titleNote: 'Title note.' });
-    assert.ok(text.endsWith(`\n\nYou are the \`alpha\` session of team \`app\` (name \`scout\`). Run \`teamrig\` in the Bash tool: the PowerShell tool does not have it. Message the lead as \`chief\`.\n${NAMES}\nTitle note.`));
+    assert.ok(text.endsWith(`\n\nYou are the \`alpha\` session of team \`app\` (name \`scout\`). Message the lead as \`chief\`.\n${NAMES}\nTitle note.`));
   });
 
   it('points a refreshed session at its handover right after who it is, before the title note', () => {

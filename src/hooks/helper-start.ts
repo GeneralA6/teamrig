@@ -4,7 +4,7 @@ import { isRecord, stringField } from '../core/guards.ts';
 import { ENV } from '../core/home.ts';
 import type { Rename } from '../names/rename.ts';
 import { renderCorePack, renderSessionContext, type RulesClock, type TeamRules } from '../rules/pack.ts';
-import { shellNote, unloadedContext } from './session-start.ts';
+import { unloadedContext } from './session-start.ts';
 
 /** A Claude Code subagent (a helper) a hook runs in: its id, and its type when that is a plain name. */
 export interface Helper {
@@ -65,7 +65,7 @@ function helperLine(roster: Roster, input: HelperStartInput): string {
   const name = known === undefined ? '' : ` (name \`${roster.nameOf(known) ?? known}\`)`;
   const duty = `The rules above bind you as they bind it, but your brief is your task: leave \`${command} start\`, task statuses, register entries, inbox lines and messages to it unless your brief asks for them, and return what it needs.`;
   const pass = known === undefined || input.sessionInEnv ? '' : ` $${ENV.session} is not set here, so pass --session ${known} to any \`${command}\` command your brief asks for.`;
-  return `You are ${kind} of ${parent} of team \`${input.team}\`${name}. ${duty}${pass}${shellNote(input)}`;
+  return `You are ${kind} of ${parent} of team \`${input.team}\`${name}. ${duty}${pass}`;
 }
 
 /**
