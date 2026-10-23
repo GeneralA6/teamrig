@@ -221,6 +221,8 @@ export interface PromptsConfig {
  * package run, an install it cannot vet, a git command without hooks, a call that would print a secret, a helper over
  * the budget, as their own keys set): `ask` raises the permission prompt; `refuse` refuses it instead, its reason telling the session to record the step as waiting for
  * the owner's approval and take its next task, so no prompt holds a session while nobody is there to answer it.
+ * `refuse` also answers the prompts Claude Code raises on its own, per case (hooks/prompt-refuse.ts): a line that
+ * provably only reads runs, a line teamrig's rules give a rerun form is refused quoting it, anything else is refused.
  */
 export type HookAsks = 'ask' | 'refuse';
 
