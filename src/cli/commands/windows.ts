@@ -77,8 +77,8 @@ function askOf(flags: Flags, coordinator: CoordinatorConfig, times: TypedTimes):
 /**
  * `teamrig windows --targets <a,b> --since <time> [--until <time>] [--settle <span>] [--min <span>]`: the clean
  * measurement windows of each target, so a session compares a metric over stretches no change touched. A deploy of a
- * repository that deploys the target disturbs it from the deploy's start until it settled; a heavy step disturbs the
- * whole host. Each window names the declared loads (`teamrig load`) it overlaps. `--until` is cut to now.
+ * repository that deploys the target disturbs it from the deploy's start until it settled, unless its record names
+ * other targets (`roll --targets`); a heavy step disturbs the whole host. Each window names the declared loads (`teamrig load`) it overlaps. `--until` is cut to now.
  */
 export async function windows(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   const nowMs = runtime.clock.now();

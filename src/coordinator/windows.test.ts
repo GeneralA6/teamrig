@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import type { LedgerMdDeploy, LedgerRecord, LoadRecord } from './ledger.ts';
+import type { DeployRecord, LedgerMdDeploy, LedgerRecord, LoadRecord } from './ledger.ts';
 import { cleanWindows, disruptions, loadsDuring, loadsOf, type Disruption, type DisruptionInputs, type Load } from './windows.ts';
 
 const MINUTE = 60_000;
@@ -24,7 +24,7 @@ function line(time: string, session: string, repo: string): LedgerMdDeploy {
   return { rolledAt: at(time), session, repo, kind: 'deploy' };
 }
 
-function deploy(started: string, rolled: string, session: string, repo: string): LedgerRecord {
+function deploy(started: string, rolled: string, session: string, repo: string): DeployRecord {
   return { type: 'deploy', kind: 'deploy', session, repo, range: 'aaaaaaaa..bbbbbbbb', what: 'roll', note: '', startedAt: iso(started), rolledAt: new Date(at(rolled) + 20_000).toISOString() };
 }
 
@@ -45,6 +45,11 @@ describe('disruptions', () => {
       { from: at('11:40'), to: at('12:30'), targets: ['cloud-web'] },
       { from: at('13:40'), to: at('14:30'), targets: [] },
     ]);
+  });
+
+  it('lets a deploy that restarted some of its repository’s targets disturb only those', () => {
+    const some: DeployRecord = { ...deploy('09:55', '10:00', 'sec', 'pipeline'), targets: ['workers'] };
+    assert.deepEqual(disruptions(inputs([line('10:00', 'sec', 'pipeline')], [some])), [{ from: at('09:55'), to: at('10:30'), targets: ['workers'] }]);
   });
 
   it('reads a heavy step as the whole host, its end record winning', () => {

@@ -2490,7 +2490,8 @@ RELEASED api, workers (claimed until 2030-01-08 12:45 IST)
 
 The clean measurement windows of each target between `--since` and `--until` (default now; a later time is cut to
 now), so a session compares a metric over stretches no change touched. A deploy disturbs the targets of its
-repository (its `deploysOnPush` and `roll.targets`) from its start until it settled:
+repository (its `deploysOnPush` and `roll.targets`), or only those its ledger record names (a `roll --targets`
+deploy), from its start until it settled:
 `coordinator.windows.targetSettleMinutes` for that target, else `settleMinutes` (30), or `--settle` for every
 target. The deploys are the ledger.md lines, so one a session wrote by hand counts too; a deploy with no ledger
 record of its start is taken to have rolled for `assumedRollMinutes` (20). A heavy step disturbs the whole host. A
