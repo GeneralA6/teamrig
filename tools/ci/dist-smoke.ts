@@ -40,10 +40,12 @@ export interface HookCommand {
   readonly args: readonly string[];
 }
 
+/** Why the hook's stdout is wrong, or undefined when it is right. */
+type Check = (stdout: string) => string | undefined;
+
 interface Sample {
   readonly payload: JsonRecord;
-  /** Why the hook's stdout is wrong, or undefined when it is right. */
-  readonly check: (stdout: string) => string | undefined;
+  readonly check: Check;
 }
 
 function parseJson(text: string): unknown {
@@ -61,6 +63,22 @@ function outputField(stdout: string, field: string): string | undefined {
   return isRecord(output) ? stringField(output, field) : undefined;
 }
 
+/** The hook printed nothing; `when` names what keeps it quiet, if the message should say. */
+function quiet(when?: string): Check {
+  const expected = when === undefined ? 'expected no output' : `expected no output ${when}`;
+  return (stdout) => (stdout === '' ? undefined : `${expected}, got ${JSON.stringify(stdout)}`);
+}
+
+/** The hook denied the call, which `what` names. */
+function denies(what: string): Check {
+  return (stdout) => (outputField(stdout, 'permissionDecision') === 'deny' ? undefined : `expected a deny for ${what}`);
+}
+
+/** The hook added context for its `event`. */
+function addsContext(event: string): Check {
+  return (stdout) => (outputField(stdout, 'hookEventName') === event ? undefined : `expected ${event} additionalContext`);
+}
+
 const SESSION_ID = '0123abcd-0000-4000-8000-00000000000a';
 
 /**
@@ -73,27 +91,27 @@ const SESSION_ID = '0123abcd-0000-4000-8000-00000000000a';
 const SAMPLES: Readonly<Record<string, Sample>> = {
   'hook session-start': {
     payload: { hook_event_name: 'SessionStart', session_id: SESSION_ID, source: 'startup' },
-    check: (stdout) => (outputField(stdout, 'hookEventName') === 'SessionStart' ? undefined : 'expected SessionStart additionalContext'),
+    check: addsContext('SessionStart'),
   },
   'hook push-guard': {
     payload: { hook_event_name: 'PreToolUse', session_id: SESSION_ID, tool_name: 'Bash', tool_input: { command: 'git push --force origin main' } },
-    check: (stdout) => (outputField(stdout, 'permissionDecision') === 'deny' ? undefined : 'expected a deny for a force-push of main'),
+    check: denies('a force-push of main'),
   },
   'hook package-guard': {
     payload: { hook_event_name: 'PreToolUse', session_id: SESSION_ID, tool_name: 'Bash', tool_input: { command: 'npx teamrig-smoke-not-installed' } },
-    check: (stdout) => (outputField(stdout, 'permissionDecision') === 'deny' ? undefined : 'expected a deny for an npx of a tool not installed'),
+    check: denies('an npx of a tool not installed'),
   },
   'hook secret-guard': {
     payload: { hook_event_name: 'PreToolUse', session_id: SESSION_ID, tool_name: 'Bash', tool_input: { command: 'cat .env' } },
-    check: (stdout) => (outputField(stdout, 'permissionDecision') === 'deny' ? undefined : 'expected a deny for a read of .env'),
+    check: denies('a read of .env'),
   },
   'hook exec-guard': {
     payload: { hook_event_name: 'PreToolUse', session_id: SESSION_ID, tool_name: 'Bash', tool_input: { command: 'teamrig exec approve R1' } },
-    check: (stdout) => (outputField(stdout, 'permissionDecision') === 'deny' ? undefined : 'expected a deny for a review that names no --session'),
+    check: denies('a review that names no --session'),
   },
   'hook cold-send': {
     payload: { hook_event_name: 'PreToolUse', session_id: SESSION_ID, tool_name: 'SendMessage', tool_input: { to: 'lead', message: 'hello' } },
-    check: (stdout) => (stdout === '' ? undefined : `expected no output, got ${JSON.stringify(stdout)}`),
+    check: quiet(),
   },
   'hook failed-send': {
     payload: {
@@ -104,7 +122,7 @@ const SAMPLES: Readonly<Record<string, Sample>> = {
       tool_input: { to: 'lead', message: 'hello' },
       tool_response: { success: false, message: "No agent named 'lead' is reachable." },
     },
-    check: (stdout) => (stdout === '' ? undefined : `expected no output, got ${JSON.stringify(stdout)}`),
+    check: quiet(),
   },
   'hook missing-cli': {
     payload: {
@@ -115,7 +133,7 @@ const SAMPLES: Readonly<Record<string, Sample>> = {
       tool_input: { command: 'teamrig list' },
       error: 'Exit code 127\nbash: teamrig: command not found',
     },
-    check: (stdout) => (outputField(stdout, 'hookEventName') === 'PostToolUseFailure' ? undefined : 'expected PostToolUseFailure additionalContext'),
+    check: addsContext('PostToolUseFailure'),
   },
   'hook route-reminder': {
     payload: {
@@ -126,15 +144,15 @@ const SAMPLES: Readonly<Record<string, Sample>> = {
       tool_input: { to: 'lead', message: 'hello' },
       tool_response: { success: true, message: "Message sent to lead's inbox" },
     },
-    check: (stdout) => (stdout === '' ? undefined : `expected no output, got ${JSON.stringify(stdout)}`),
+    check: quiet(),
   },
   'hook loop-nudge': {
     payload: { hook_event_name: 'PostToolUse', session_id: SESSION_ID, tool_name: 'Read', tool_use_id: 'toolu_1', tool_input: { file_path: 'a.ts' } },
-    check: (stdout) => (stdout === '' ? undefined : `expected no output, got ${JSON.stringify(stdout)}`),
+    check: quiet(),
   },
   'hook helper-gate': {
     payload: { hook_event_name: 'PreToolUse', session_id: SESSION_ID, tool_name: 'Agent', tool_input: { description: 'search', prompt: 'find it' } },
-    check: (stdout) => (stdout === '' ? undefined : `expected no output, got ${JSON.stringify(stdout)}`),
+    check: quiet(),
   },
   'hook inbox-reminder': {
     payload: { hook_event_name: 'UserPromptSubmit', session_id: SESSION_ID, prompt: 'hello' },
@@ -142,43 +160,43 @@ const SAMPLES: Readonly<Record<string, Sample>> = {
   },
   'hook stop': {
     payload: { hook_event_name: 'Stop', session_id: SESSION_ID, stop_hook_active: false },
-    check: (stdout) => (stdout === '' ? undefined : `expected no output, got ${JSON.stringify(stdout)}`),
+    check: quiet(),
   },
   'hook subagent-start': {
     payload: { hook_event_name: 'SubagentStart', session_id: SESSION_ID, agent_id: 'a1', agent_type: 'general-purpose' },
-    check: (stdout) => (outputField(stdout, 'hookEventName') === 'SubagentStart' ? undefined : 'expected SubagentStart additionalContext'),
+    check: addsContext('SubagentStart'),
   },
   'hook subagent-stop': {
     payload: { hook_event_name: 'SubagentStop', session_id: SESSION_ID, stop_hook_active: false, agent_id: 'a1', agent_type: 'general-purpose' },
-    check: (stdout) => (stdout === '' ? undefined : `expected no output, got ${JSON.stringify(stdout)}`),
+    check: quiet(),
   },
   'hook refresh-wake': {
     payload: { hook_event_name: 'SessionStart', session_id: SESSION_ID, source: 'clear' },
-    check: (stdout) => (stdout === '' ? undefined : `expected no output, got ${JSON.stringify(stdout)}`),
+    check: quiet(),
   },
   'hook restore-track': {
     payload: { hook_event_name: 'Stop', session_id: SESSION_ID, cwd: 'smoke-project', stop_hook_active: false },
-    check: (stdout) => (stdout === '' ? undefined : `expected no output, got ${JSON.stringify(stdout)}`),
+    check: quiet(),
   },
   'hook tab-status': {
     payload: { hook_event_name: 'UserPromptSubmit', session_id: SESSION_ID, cwd: 'smoke-project', prompt: 'hello' },
-    check: (stdout) => (stdout === '' ? undefined : `expected no output, got ${JSON.stringify(stdout)}`),
+    check: quiet(),
   },
   'hook tool-end': {
     payload: { hook_event_name: 'PostToolUse', session_id: SESSION_ID, cwd: 'smoke-project', tool_name: 'Bash', tool_input: { command: 'ls' } },
-    check: (stdout) => (stdout === '' ? undefined : `expected no output, got ${JSON.stringify(stdout)}`),
+    check: quiet(),
   },
   'hook readonly-allow': {
     payload: { hook_event_name: 'PreToolUse', session_id: SESSION_ID, tool_name: 'Bash', tool_input: { command: 'cat package.json' } },
-    check: (stdout) => (stdout === '' ? undefined : `expected no output with the hook off, got ${JSON.stringify(stdout)}`),
+    check: quiet('with the hook off'),
   },
   'hook picker-guard': {
     payload: { hook_event_name: 'PreToolUse', session_id: SESSION_ID, tool_name: 'AskUserQuestion', tool_input: { questions: [] } },
-    check: (stdout) => (stdout === '' ? undefined : `expected no output with the guard off, got ${JSON.stringify(stdout)}`),
+    check: quiet('with the guard off'),
   },
   'hook prompt-refuse': {
     payload: { hook_event_name: 'PermissionRequest', session_id: SESSION_ID, tool_name: 'Bash', tool_input: { command: 'git push origin main' } },
-    check: (stdout) => (stdout === '' ? undefined : `expected no output with asks on, got ${JSON.stringify(stdout)}`),
+    check: quiet('with asks on'),
   },
 };
 
