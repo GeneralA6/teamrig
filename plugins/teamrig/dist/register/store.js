@@ -29,7 +29,7 @@ export class JsonlEventLog {
         if (tailText.length < AUTO_ROTATE_CHARS) {
             return null;
         }
-        const plan = await planRotation(this.files, this.layout, { now, zone, retainDays: RETAIN_DAYS, keep: new Set(), checkHistory: false }, tailText);
+        const plan = await planRotation(this.files, this.layout, { now, zone, retainDays: RETAIN_DAYS, keep: new Set(), checkHistory: false, fromHistory: false }, tailText);
         await applyRotation(this.files, this.layout, plan);
         return plan;
     }
