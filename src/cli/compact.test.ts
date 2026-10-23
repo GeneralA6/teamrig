@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { DEDUP_LOG_AGE } from '../core/aged-log.ts';
+import { HOOK_LOG_AGE } from '../core/aged-log.ts';
 import { isRecord, type JsonRecord } from '../core/guards.ts';
 import { toJsonlLine } from '../core/jsonl.ts';
 import { MS_PER_DAY } from '../core/time.ts';
@@ -139,7 +139,7 @@ describe('teamrig compact', () => {
 
   it('names the retain days its help gives', () => {
     assert.ok(USAGE.includes(`finished tasks over ${RETAIN_DAYS} days old leave the working set`));
-    assert.ok(USAGE.includes(`records over ${DEDUP_LOG_AGE.keepDays} days old to the archive`));
+    assert.ok(USAGE.includes(`records over ${HOOK_LOG_AGE.keepDays} days old to the archive`));
   });
 
   it("plans, then archives, the hooks' records over a week old when the register has nothing to rotate (T336)", async () => {

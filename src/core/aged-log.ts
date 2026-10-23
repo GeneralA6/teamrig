@@ -20,7 +20,7 @@ export interface AgePolicy {
  * The prompt hook's dedup logs (inbox-shown, bind-hints): a record older than a week belongs to a Claude Code
  * session that has almost always ended. One still running past it is shown an unread line or a hint once more.
  */
-export const DEDUP_LOG_AGE: AgePolicy = { keepDays: 7, slackDays: 1 };
+export const HOOK_LOG_AGE: AgePolicy = { keepDays: 7, slackDays: 1 };
 
 export interface AgeSplit {
   /** The leading lines to archive, as written: records dated before the cutoff and undated lines among them. */
@@ -90,7 +90,7 @@ export class AgedLogFile implements LogFile {
   private readonly paths: AgedLogPaths;
   private readonly policy: AgePolicy;
 
-  constructor(deps: AgedLogDeps, paths: AgedLogPaths, policy: AgePolicy = DEDUP_LOG_AGE) {
+  constructor(deps: AgedLogDeps, paths: AgedLogPaths, policy: AgePolicy = HOOK_LOG_AGE) {
     this.deps = deps;
     this.paths = paths;
     this.policy = policy;

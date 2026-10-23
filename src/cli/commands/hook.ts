@@ -52,7 +52,7 @@ import { readContextTokens } from '../../refresh/usage.ts';
 import { approvedTaskOf } from '../../register/approval.ts';
 import { JsonlEventLog } from '../../register/store.ts';
 import { noPositionals, type ParsedArgs } from '../args.ts';
-import { dedupLogOf } from '../dedup-logs.ts';
+import { hookLogOf } from '../hook-logs.ts';
 import { openKit, renameDepsOf, rosterOf, rulesClockOf, teamFolders, teamZone, type Kit } from '../kit.ts';
 import { EXIT, type CliRuntime, type ExitCode } from '../runtime.ts';
 import { loadTree } from '../tree.ts';
@@ -884,7 +884,7 @@ export async function sessionStart(args: ParsedArgs, runtime: CliRuntime): Promi
   const context = sessionStartContext({ team: found.team, load: kit.load, ...parts, command: KIT_NAME, platform: runtime.platform, clock: rulesClockOf(runtime) });
   const requirementsNote = await requirementsNoteOnce({
     problems: await runtime.requirements.problems(),
-    log: new JsonlHintLog(dedupLogOf(runtime, kit.paths, 'bind-hints')),
+    log: new JsonlHintLog(hookLogOf(runtime, kit.paths, 'bind-hints')),
     claudeSession: sessionIdOf(payload),
     now: new Date(runtime.clock.now()),
     command: KIT_NAME,
