@@ -4,16 +4,26 @@ import type { TeamPaths } from '../core/home.ts';
 import { FileLock } from '../core/lock.ts';
 import type { CliRuntime } from './runtime.ts';
 
-/** The hooks' dedup logs: what they showed each Claude Code session, so each inbox line or hint is shown once. */
-export const HOOK_LOGS = ['inbox-shown', 'bind-hints'] as const;
+/**
+ * The hooks' aged logs: what they showed each Claude Code session, so each inbox line or hint is shown once
+ * (inbox-shown, bind-hints), and how the prompt refusal answered each prompt (prompt-answers).
+ */
+export const HOOK_LOGS = ['inbox-shown', 'bind-hints', 'prompt-answers'] as const;
 export type HookLog = (typeof HOOK_LOGS)[number];
 
 function filesOf(paths: TeamPaths, log: HookLog): { readonly live: string; readonly lock: string } {
-  return log === 'inbox-shown' ? { live: paths.inboxShown, lock: paths.inboxShownLock } : { live: paths.bindHints, lock: paths.bindHintsLock };
+  switch (log) {
+    case 'inbox-shown':
+      return { live: paths.inboxShown, lock: paths.inboxShownLock };
+    case 'bind-hints':
+      return { live: paths.bindHints, lock: paths.bindHintsLock };
+    case 'prompt-answers':
+      return { live: paths.promptAnswers, lock: paths.promptAnswersLock };
+  }
 }
 
 /**
- * A dedup log, locked on every write and archived by age (core/aged-log.ts, T336). Its lock keeps the default
+ * A hook's log, locked on every write and archived by age (core/aged-log.ts, T336). Its lock keeps the default
  * timings, not the team's `lock`: the session-start hook writes bind-hints when no config loads, and every writer
  * of one lock must agree on when a held lock is stale.
  */

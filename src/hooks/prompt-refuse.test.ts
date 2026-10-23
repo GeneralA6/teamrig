@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { isRecord, recordField, type JsonRecord } from '../core/guards.ts';
+import { SecretScanner } from '../core/secrets.ts';
 import { ASK_REFUSED_NOTE } from './permission.ts';
 import {
   LOGGED_COMMAND_CHARS,
@@ -82,20 +83,37 @@ describe('promptAnswerOutput', () => {
 
 describe('promptAnswerRecord', () => {
   const AT = new Date('2030-01-08T10:00:00Z');
+  const SCANNER = new SecretScanner();
+  /** Secrets are built from parts, so no secret shape sits in the source. */
+  const join = (...parts: string[]): string => parts.join('');
 
   it('keeps who answered, the tool, the answer and the command', () => {
-    const record = promptAnswerRecord({ at: AT, session: 'alpha', claudeSession: 'c1', tool: 'Bash', answer: { kind: 'rerun', form: 'git -C /w status' }, payload: bashRequest('cd /w && git status') });
+    const record = promptAnswerRecord({ at: AT, session: 'alpha', claudeSession: 'c1', tool: 'Bash', answer: { kind: 'rerun', form: 'git -C /w status' }, payload: bashRequest('cd /w && git status') }, SCANNER);
     assert.deepEqual(record, { v: 1, at: '2030-01-08T10:00:00.000Z', session: 'alpha', claudeSession: 'c1', tool: 'Bash', answer: 'rerun', command: 'cd /w && git status' });
   });
 
   it(`keeps only the first ${LOGGED_COMMAND_CHARS} characters of the command and none of the rest of the input`, () => {
     const long = `echo ${'x'.repeat(LOGGED_COMMAND_CHARS * 2)}`;
-    const record = promptAnswerRecord({ at: AT, session: undefined, claudeSession: null, tool: 'Bash', answer: { kind: 'refused' }, payload: bashRequest(long) });
+    const record = promptAnswerRecord({ at: AT, session: undefined, claudeSession: null, tool: 'Bash', answer: { kind: 'refused' }, payload: bashRequest(long) }, SCANNER);
     assert.equal(record['command'], long.slice(0, LOGGED_COMMAND_CHARS));
     assert.equal(record['session'], null);
-    const write = promptAnswerRecord({ at: AT, session: 'alpha', claudeSession: null, tool: 'Write', answer: { kind: 'refused' }, payload: request('Write', { tool_input: { file_path: '/w/a', content: 'secret text' } }) });
+    const write = promptAnswerRecord({ at: AT, session: 'alpha', claudeSession: null, tool: 'Write', answer: { kind: 'refused' }, payload: request('Write', { tool_input: { file_path: '/w/a', content: 'secret text' } }) }, SCANNER);
     assert.equal(write['command'], null);
     assert.doesNotMatch(JSON.stringify(write), /secret text/);
+  });
+
+  it("redacts an Authorization header's credential and a URL's user part", () => {
+    const command = join('curl -H "Authorization: Bearer ', 'abcdefgh', '12345678" https://', 'token5678', '@api.example.com/x');
+    const record = promptAnswerRecord({ at: AT, session: 'alpha', claudeSession: null, tool: 'Bash', answer: { kind: 'refused' }, payload: bashRequest(command) }, SCANNER);
+    assert.equal(record['command'], 'curl -H "[redacted credentials in an Authorization header] https://[redacted]@api.example.com/x');
+  });
+
+  it('redacts before the cut, so a secret the cut would split leaves none of its start', () => {
+    const lead = `echo ${'x'.repeat(LOGGED_COMMAND_CHARS - 15)} `;
+    const record = promptAnswerRecord({ at: AT, session: 'alpha', claudeSession: null, tool: 'Bash', answer: { kind: 'refused' }, payload: bashRequest(join(lead, 'ghp', '_', 'a1'.repeat(18))) }, SCANNER);
+    assert.equal(lead.length, LOGGED_COMMAND_CHARS - 9);
+    assert.equal(record['command'], join(lead, '[redacted GitHub token]').slice(0, LOGGED_COMMAND_CHARS));
+    assert.doesNotMatch(String(record['command']), /ghp_/);
   });
 });
 

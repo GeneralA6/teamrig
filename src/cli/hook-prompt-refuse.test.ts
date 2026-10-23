@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { isRecord, recordField, type JsonRecord } from '../core/guards.ts';
+import { toJsonlLine } from '../core/jsonl.ts';
 import { ASK_REFUSED_NOTE } from '../hooks/permission.ts';
 import { rerunReason } from '../hooks/prompt-refuse.ts';
 import { APP, CLAUDE_SESSION, CliHarness, CONFIG_PATH, TEAM, TEAM_HOME, type CliResult } from '../testing/cli-harness.ts';
@@ -67,6 +68,23 @@ describe('hook prompt-refuse', () => {
       { v: 1, at: '2030-01-08T10:00:00.000Z', session: 'alpha', claudeSession: CLAUDE_SESSION, tool: 'Bash', answer: 'readonly', command: 'cat f' },
       { v: 1, at: '2030-01-08T10:00:00.000Z', session: null, claudeSession: CLAUDE_SESSION, tool: 'Bash', answer: 'refused', command: 'rm -rf x' },
     ]);
+  });
+
+  it("logs a command with a URL's user part redacted", async () => {
+    const kit = new CliHarness(ASKS_OFF);
+    await kit.run(HOOK, { stdin: bashRequest(['curl https://', 'token5678', '@api.example.com/x'].join('')) });
+    assert.deepEqual(await answersOf(kit), [
+      { v: 1, at: '2030-01-08T10:00:00.000Z', session: null, claudeSession: CLAUDE_SESSION, tool: 'Bash', answer: 'refused', command: 'curl https://[redacted]@api.example.com/x' },
+    ]);
+  });
+
+  it('moves the answers over a week old to the archive at the next answer', async () => {
+    const kit = new CliHarness(ASKS_OFF);
+    const old = toJsonlLine({ v: 1, at: '2029-12-30T09:00:00.000Z', session: null, claudeSession: null, tool: 'Bash', answer: 'refused', command: 'rm -rf x' });
+    await kit.files.write(ANSWERS_LOG, old);
+    await kit.run(HOOK, { stdin: bashRequest('cat f') });
+    assert.equal(kit.files.get(join(TEAM_HOME, 'state', 'archive', 'prompt-answers-20300108.jsonl')), old);
+    assert.deepEqual(await answersOf(kit), [{ v: 1, at: '2030-01-08T10:00:00.000Z', session: null, claudeSession: CLAUDE_SESSION, tool: 'Bash', answer: 'readonly', command: 'cat f' }]);
   });
 
   it('still answers when the log cannot be written, and logs nothing when the prompt opens', async () => {

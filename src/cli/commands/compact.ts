@@ -54,8 +54,9 @@ export function agedLine(plan: AgeArchivePlan, keepDays: number): string {
  * archived whole, the snapshot rewritten, and tasks finished over RETAIN_DAYS ago leave the working set for the
  * archive. Every run first reads the new files back and holds the working set against the whole history;
  * any difference refuses it with nothing written, and one the history check found points to `--from-history`,
- * which folds the new snapshot from the whole history instead of the old snapshot. Then the hooks' dedup logs move their records older than
- * a week to the archive, as their writes do when due (cli/hook-logs.ts). `--dry-run` takes no lock and writes nothing.
+ * which folds the new snapshot from the whole history instead of the old snapshot. Then the hooks' aged logs
+ * move their records older than a week to the archive, as their writes do when due (cli/hook-logs.ts).
+ * `--dry-run` takes no lock and writes nothing.
  */
 export async function compact(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
