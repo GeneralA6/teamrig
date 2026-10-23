@@ -162,12 +162,12 @@ export async function weekLineOf(runtime: CliRuntime, kit: Kit, config: KitConfi
 }
 
 /** Each session today: its use, and its part of the team's daily budget by its queued work (`work`), its lift and the burst. */
-function sessionsToday(reading: Reading, roster: Roster, budget: BudgetConfig, work: ReadonlyMap<string, number>): SessionToday[] {
+function sessionsToday(reading: Reading, team: string, roster: Roster, budget: BudgetConfig, work: ReadonlyMap<string, number>): SessionToday[] {
   const today = formatUtcDay(new Date(reading.now));
   const inForce = activeBurst(reading.bursts, reading.now, reading.week.usedPct);
   const burstNow: InBurst | undefined =
     inForce === undefined ? undefined : { burst: inForce, floorPct: burstFloorOf(inForce, reading.week, reading.measured.bySession, budget, reading.now) };
-  const split: BudgetSplit = { ids: roster.ids, sessions: budget.sessions, work, lifted: liftedParts(reading.lifts, roster.ids, reading.now, reading.week.usedPct) };
+  const split: BudgetSplit = { team, ids: roster.ids, sessions: budget.sessions, work, lifted: liftedParts(reading.lifts, roster.ids, reading.now, reading.week.usedPct) };
   return roster.ids.map((id) => {
     const state = reading.measured.bySession.get(id);
     const w = state === undefined ? 0 : wSince([state], reading.week.todayFrom, reading.now);
@@ -255,7 +255,7 @@ export async function budget(args: ParsedArgs, runtime: CliRuntime): Promise<Exi
     return EXIT.ok;
   }
   const work = recountDay === undefined ? await readWork(runtime.files, kit.paths.events, config.register.priorities) : new Map<string, number>();
-  const sessions = sessionsToday(reading, roster, config.budget, work);
+  const sessions = sessionsToday(reading, kit.paths.team, roster, config.budget, work);
   const { measured, week, now } = reading;
   const zone = teamZone(config, runtime);
   let lines: string[];
