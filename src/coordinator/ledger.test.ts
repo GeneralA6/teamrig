@@ -86,6 +86,12 @@ describe('parseLedger', () => {
     const damaged = { ...heavy, kit: 113, queuedAt: 'soon', shared: 'yes', peakTreeMb: -1, lowFreeMb: 1.5 };
     assert.deepEqual(parseLedger([JSON.stringify(measured), JSON.stringify(damaged)].join('\n')), [measured, heavy]);
   });
+
+  it("reads the targets a deploy of some of its repository's targets names, and leaves out only bad ones", () => {
+    const some = deploy({ targets: ['api', 'live'] });
+    const damaged = { ...deploy(), targets: 'api' };
+    assert.deepEqual(parseLedger([JSON.stringify(some), JSON.stringify(damaged)].join('\n')), [some, deploy()]);
+  });
 });
 
 describe('parseLedgerMd', () => {

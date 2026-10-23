@@ -56,6 +56,8 @@ export interface DeployRecord {
   readonly startedAt: string;
   /** An ISO time. */
   readonly rolledAt: string;
+  /** The targets a deploy of only some of its repository's targets restarted (`teamrig roll --targets`); unset, all of them. */
+  readonly targets?: readonly string[];
 }
 
 /**
@@ -169,10 +171,11 @@ function deployOf(record: JsonRecord): DeployRecord | undefined {
   const [session, repo, range] = [stringField(record, 'session'), stringField(record, 'repo'), stringField(record, 'range')];
   const [what, note] = [stringField(record, 'what'), stringField(record, 'note')];
   const [startedAt, rolledAt] = [timeField(record, 'startedAt'), timeField(record, 'rolledAt')];
+  const targets = record['targets'];
   if ((kind !== 'deploy' && kind !== 'rollback') || session === undefined || repo === undefined || range === undefined || what === undefined || note === undefined || startedAt === undefined || rolledAt === undefined) {
     return undefined;
   }
-  return { type: 'deploy', kind, session, repo, range, what, note, startedAt, rolledAt };
+  return { type: 'deploy', kind, session, repo, range, what, note, startedAt, rolledAt, ...(isStringArray(targets) ? { targets } : {}) };
 }
 
 function loadOf(record: JsonRecord): LoadRecord | undefined {

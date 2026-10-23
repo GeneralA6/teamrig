@@ -499,8 +499,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
   release [--session <id|name>]   ends this session's quiet claim before its time
   windows --targets <a,b> --since <time> [--until <time>] [--settle <span>] [--min <span>]   the clean
       measurement windows of each target from --since to --until (default now): the stretches no deploy
-      of a repository that deploys it touched (from its start until coordinator.windows settle minutes
-      after it rolled; --settle for every target) and no heavy step, each at least --min (default
+      of it touched (one of its repository, or a roll --targets deploy naming it; from its start until
+      coordinator.windows settle minutes after it rolled; --settle for every target) and no heavy step,
+      each at least --min (default
       coordinator.windows.minMinutes) long, each with the declared loads it overlaps. A time is HH:MM
       (today), YYYY-MM-DD HH:MM or YYYY-MM-DD on the team's clock unless marked UTC, or an ISO time with
       its zone
