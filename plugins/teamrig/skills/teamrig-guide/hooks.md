@@ -670,10 +670,12 @@ load mods leaves `/reload-plugins` to you.
 An idle session sees new work only at its next prompt. In each interactive tab, every 15 s while no turn runs (a
 subagent's included), the mod runs [`teamrig hook wake-check`](commands.md#teamrig-hook-wake-check) once the task
 log changed, a batch fell due or 10 minutes passed. It wakes the tab's session for a task it owns that another
-session handed to it, raised, reopened or freed, or whose waited-for time came (its own changes are not news), that
-it can go on with: open or in-progress, or waiting (a verifying task's proof waits) with every wait cleared, and,
-when never started, with every task it comes `--after` finished; at `wake.priority` or more urgent (p1 by default).
-The wake names a cleared task as `(p2, waiting: every wait cleared)`, so the session sets its next status. Held by its budget (past
+session handed to it, raised, reopened or freed, whose waited-for time came, or whose approval its giver answered
+(its own changes are not news), that it can go on with: open or in-progress, or waiting (a verifying task's proof
+waits) with every wait cleared or answered, and, when never started, with every task it comes `--after` finished; at
+`wake.priority` or more urgent (p1 by default). The wake names a cleared task as `(p2, waiting: every wait cleared)`,
+and an answered one as `(p2, waiting: lead approved it)` or `declined it` (back to work on the answer's note), so the
+session sets its next status. Held by its budget (past
 its daily budget while the team has no room today), or in the budget's quiet hours unless its lift exempts it, only
 p1 wakes it. While the owner's daily meeting is open
 the lead is not woken; the work waits for the first check after it.
