@@ -37,6 +37,12 @@ function lineReads(tool: string | undefined, command: string, rules: ReadonlyRul
 /** True when the call would print a secret into the conversation (hooks/secret-guard.ts). */
 export type PrintsSecret = (payload: JsonRecord) => boolean;
 
+/** True when the call is a Bash or PowerShell line whose every command provably only reads, and none prints a secret. */
+export function callReads(payload: JsonRecord, rules: ReadonlyRules, printsSecret: PrintsSecret): boolean {
+  const command = stringField(recordField(payload, 'tool_input') ?? {}, 'command');
+  return command !== undefined && lineReads(stringField(payload, 'tool_name'), command, rules) && !printsSecret(payload);
+}
+
 /**
  * The PreToolUse output for a Bash or PowerShell call: an allow, which skips the permission prompt, when every
  * command in the line provably only reads and none prints a secret; else nothing, so Claude Code's own permission
@@ -45,11 +51,7 @@ export type PrintsSecret = (payload: JsonRecord) => boolean;
  * allow it or that guard failed: reading a secret into the conversation always takes a prompt.
  */
 export function readonlyShellOutput(payload: unknown, rules: ReadonlyRules, printsSecret: PrintsSecret): string {
-  if (!isRecord(payload)) {
-    return '';
-  }
-  const command = stringField(recordField(payload, 'tool_input') ?? {}, 'command');
-  if (command === undefined || !lineReads(stringField(payload, 'tool_name'), command, rules) || printsSecret(payload)) {
+  if (!isRecord(payload) || !callReads(payload, rules, printsSecret)) {
     return '';
   }
   return JSON.stringify({

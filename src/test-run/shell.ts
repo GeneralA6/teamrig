@@ -41,7 +41,8 @@ export function commandLine(words: readonly string[], platform: NodeJS.Platform)
   return words.map((word) => (platform === 'win32' ? cmdWord(word) : posixWord(word))).join(' ');
 }
 
-function posixWord(word: string): string {
+/** One word for a POSIX shell: as it is when the shell reads it as plain text, else single-quoted. */
+export function posixWord(word: string): string {
   return POSIX_PLAIN.test(word) ? word : posixQuote(word);
 }
 
