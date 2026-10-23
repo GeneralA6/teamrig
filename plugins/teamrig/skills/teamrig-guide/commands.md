@@ -277,7 +277,8 @@ APPROVED T1 waiting, p1, owner web, from web | Fix the broken login form (waitin
 
 ### teamrig list
 
-Lists tasks, most urgent first: by priority, then effective due date (undated last), then id. By default only
+Lists tasks, most urgent first, in plan order: priority, then in progress, effective due date (undated last), what
+it unblocks, in the week plan in force, size, then id (tasks.md, Plan order). By default only
 active tasks (open, in progress, verifying, waiting), in a short form within 3,000 characters: a count per owner
 when there are several, then one short row per task (its title cut to 60 characters) and `+N more` for the rows
 left out. `--all` prints every field of every task. A task's effective due is its own due date, or the earlier one
@@ -312,7 +313,9 @@ T2 waiting, p2, owner web, due 10-16 | Fix the broken login form (waiting: on T7
 A short row reads: id, status, priority, owner, due (month-day; `due 10-17 (from T9)` when it comes from a task
 that needs it), the tasks it comes after (`after T5`), then the title after `|`, what a waiting task waits for
 and, when active tasks of other sessions need it, the first of them: `· needed by T9 (api, due 10-17)` (`+1` for
-each other; the due left out when the row shows it already). With `--all`:
+each other; the due left out when the row shows it already), then why it sorts ahead of the next row:
+`· ahead: due` (`in progress`, `due`, `unblocks T9 p1 +2`, `in week 10-19` or `size 0.5%`; nothing when the
+priority or the id decided). With `--all`, whose rows end the same way:
 
 ```sh
 teamrig list --session web --all

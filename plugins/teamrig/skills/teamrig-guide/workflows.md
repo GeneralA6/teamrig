@@ -17,8 +17,9 @@ It prints the time, your unread inbox lines, your task list, the other sessions'
 
 1. Read each inbox line. A line that asks for work should name a task id; if it does not, add the task yourself
    (`teamrig add --session api --title "..." --description "<what and why>" --priority p<n> --source <asker>`).
-2. Take the first task of your list: lists are in plan order (priority, then effective due date, then id; a task
-   that a dated task needs takes that earlier due, `due 10-17 (from T9)`).
+2. Take the first task of your list: lists are in plan order (priority, then a started task, effective due date,
+   what it unblocks, the week plan, size, then id; a task that a dated task needs takes that earlier due,
+   `due 10-17 (from T9)`), and each row's `· ahead:` names the key that put it ahead of the next.
 3. Mark it started: `teamrig set T4 --session api --status in-progress`.
 4. Before you start any work that is not on the list, add it: self-made work is a task too. Start it only for a
    goal, a parent task or the week plan, never ahead of your top task that is not waiting; a one-commit fix is
