@@ -2106,9 +2106,10 @@ before auto mode's classifier sees it, so a rule for a whole tool or program (`B
 `Read(//c/**)`) lets every such call run unchecked. The files are your user `settings.json`, then the project
 folder's and each `coordinator.repos` checkout's `.claude/settings.json` and `.claude/settings.local.json`, and the
 same two in each worktree Claude Code made under `.claude/worktrees`. A rule on the config's `permissions.keepAllow`
-stays (`:*` and ` *` read the same, and a kept `Bash(x *)` keeps `Bash(x)` too); by default only the rules off it
-that approve a whole tool or program go, and with `--all` every rule off it goes. A committed `.claude/settings.json`
-is only reported: change it by a commit in its repo.
+stays (`:*` and ` *` read the same, a kept `Bash(x *)` keeps `Bash(x)` too, and a shell rule's leading
+`MSYS_NO_PATHCONV=1 ` reads as absent); by default only the rules off it that approve a whole tool or program go,
+and with `--all` every rule off it goes. A committed `.claude/settings.json` is only reported: change it by a commit
+in its repo.
 
 It never prints a rule, since a rule can hold a value such as a password: each file shows its counts before and
 after, and the rules it removes or keeps off the list as counts by class (the tool, `mcp`, `other` or

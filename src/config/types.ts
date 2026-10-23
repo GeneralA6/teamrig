@@ -272,7 +272,10 @@ export interface ReadonlyShellConfig {
  * flags the ones that approve a whole tool or program.
  */
 export interface PermissionsConfig {
-  /** Rules kept as they are (`Bash(kubectl get *)`, `WebSearch`); `:*` and ` *` read as the same, and `Tool(x *)` keeps `Tool(x)`. */
+  /**
+   * Rules kept as they are (`Bash(kubectl get *)`, `WebSearch`); `:*` and ` *` read as the same, `Tool(x *)` keeps
+   * `Tool(x)`, and a shell rule's leading `MSYS_NO_PATHCONV=1 ` reads as absent. A team's list replaces the default.
+   */
   readonly keepAllow: readonly string[];
 }
 

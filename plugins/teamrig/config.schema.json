@@ -1080,7 +1080,7 @@
       "type": "object",
       "properties": {
         "keepAllow": {
-          "description": "Rules kept as they are, such as \"Bash(kubectl get *)\" or \"WebSearch\": a tool, or a tool and a command with at most a trailing \" *\" or \":*\" (read as the same). A kept \"Tool(x *)\" also keeps \"Tool(x)\". Keep only commands whose arguments can neither run a program nor write; the default is security's list of read-only commands outside Claude Code's own read-only set.",
+          "description": "Rules kept as they are, such as \"Bash(kubectl get *)\" or \"WebSearch\": a tool, or a tool and a command with at most a trailing \" *\" or \":*\" (read as the same). A kept \"Tool(x *)\" also keeps \"Tool(x)\", and a shell rule's leading \"MSYS_NO_PATHCONV=1 \" reads as absent. Keep only commands whose arguments can neither run a program nor write. The default is the general part of security's list of read-only commands outside Claude Code's own read-only set; a team's list replaces it, so one that adds its own tools' read-only commands repeats the default's.",
           "type": "array",
           "maxItems": 64,
           "items": { "type": "string", "maxLength": 120, "pattern": "^[A-Za-z][\\w-]*(?:\\([^*/\\\\()\\r\\n]+(?: \\*|:\\*)?\\))?$" },
