@@ -88,13 +88,20 @@ export function isCheckDue(state: HooklessState | undefined, now: number): boole
 }
 
 /**
- * The entries whose transcript the check reads: a live session of `team` (named, not ended, with a transcript)
- * whose hooks last wrote more than `HOOKLESS_MS` ago. Only these cost a file's stat, and only those whose file
- * `workedPastHook` the end of the file.
+ * The entries whose transcript the check reads: a live session of `team` (one of its `sessions` now, not ended,
+ * with a transcript) whose hooks last wrote more than `HOOKLESS_MS` ago. A session off the team, as a retired
+ * hire whose tab stayed open, is not the team's to tell (T1055). Only these cost a file's stat, and only those
+ * whose file `workedPastHook` the end of the file.
  */
-export function staleEntries(entries: readonly RestoreEntry[], team: string, now: number): RestoreEntry[] {
+export function staleEntries(entries: readonly RestoreEntry[], team: string, sessions: readonly string[], now: number): RestoreEntry[] {
   return entries.filter(
-    (entry) => entry.team === team && entry.session !== undefined && entry.endedAt === undefined && entry.transcriptPath !== undefined && now - entry.updatedAt > HOOKLESS_MS,
+    (entry) =>
+      entry.team === team &&
+      entry.session !== undefined &&
+      sessions.includes(entry.session) &&
+      entry.endedAt === undefined &&
+      entry.transcriptPath !== undefined &&
+      now - entry.updatedAt > HOOKLESS_MS,
   );
 }
 

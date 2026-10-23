@@ -43,12 +43,13 @@ async function activityAtEnd(runtime: CliRuntime, path: string): Promise<TabActi
 }
 
 /**
- * The team's tabs that run without their hooks now: its stale restore entries whose transcript ends in a turn long
- * past the last hook. A file's change time only picks the transcripts worth reading: an idle tab's moves too.
+ * The team's tabs that run without their hooks now: the stale restore entries of its sessions whose transcript
+ * ends in a turn long past the last hook. A file's change time only picks the transcripts worth reading: an idle
+ * tab's moves too.
  */
-async function findHooklessTabs(runtime: CliRuntime, kit: Kit, now: number): Promise<HooklessTab[]> {
+async function findHooklessTabs(runtime: CliRuntime, kit: Kit, config: KitConfig, now: number): Promise<HooklessTab[]> {
   const registry = new RestoreRegistry(runtime.files, restoreSessionsDir(resolveKitHome(runtime.env, runtime.userHome)));
-  const stale = staleEntries(await registry.list(), kit.paths.team, now);
+  const stale = staleEntries(await registry.list(), kit.paths.team, config.sessions, now);
   const activity = new Map<string, TabActivity>();
   for (const entry of stale) {
     const path = entry.transcriptPath;
@@ -82,7 +83,7 @@ export async function checkHooklessTabs(runtime: CliRuntime, kit: Kit, config: K
     if (!isCheckDue(state, now)) {
       return [];
     }
-    const tabs = await findHooklessTabs(runtime, kit, now);
+    const tabs = await findHooklessTabs(runtime, kit, config, now);
     await runtime.files.write(kit.paths.hookless, formatHooklessState(checkedState(now, tabs)));
     return hooklessNews(state, tabs);
   });
