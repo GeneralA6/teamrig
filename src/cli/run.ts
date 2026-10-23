@@ -58,6 +58,7 @@ const budgetSetupCommands = () => import('./commands/budget-setup.ts');
 const burstCommands = () => import('./commands/burst.ts');
 const statuslineCommands = () => import('./commands/statusline.ts');
 const automodeCommands = () => import('./commands/automode.ts');
+const permissionsCommands = () => import('./commands/permissions.ts');
 const testCommand = () => import('./commands/test.ts');
 const heavyCommand = () => import('./commands/heavy.ts');
 const withdrawCommand = () => import('./commands/withdraw.ts');
@@ -177,6 +178,7 @@ const COMMANDS: Readonly<Record<string, CommandSpec>> = {
   'statusline uninstall': { effect: 'write', flags: [], switches: ['yes'], load: async () => (await statuslineCommands()).uninstall },
   'automode install': { effect: 'write', flags: [], switches: ['yes'], load: async () => (await automodeCommands()).install },
   'automode uninstall': { effect: 'write', flags: [], switches: ['yes'], load: async () => (await automodeCommands()).uninstall },
+  'permissions trim': { effect: 'write', flags: [], switches: ['all', 'yes'], load: async () => (await permissionsCommands()).trim },
   'config validate': { effect: 'read', flags: [], load: async () => (await configCommands()).validate },
   'config migrate': { effect: 'write', flags: [], switches: ['yes'], load: async () => (await configCommands()).migrate },
   'commits check': { effect: 'read', flags: ['base', 'tip'], load: async () => (await commitsCommands()).check },
@@ -438,6 +440,9 @@ export const USAGE = `${KIT_NAME} <command> ...   (the caller: --session <id|nam
       test) into Claude Code's autoMode.environment, the facts auto mode trusts; run it again after a
       config change or an upgrade; without --yes it shows the change and writes nothing
   automode uninstall [--yes]   takes the team's lines back out, leaving every other line
+  permissions trim [--all] [--yes]   removes the local allow rules off the config's permissions.keepAllow
+      that approve a whole tool or program (--all: every rule) from the team's Claude Code settings, its
+      worktrees' too; it counts them by class, never printing a rule; without --yes it writes nothing
   config validate | config migrate [--yes]   migrate shows an older config rewritten in this format and
       the first teamrig that reads it, as a tab on an older one refuses every write after; --yes writes it
   commits check --base <ref> [--tip <ref>]   commits in base..tip (default HEAD) over the size rule

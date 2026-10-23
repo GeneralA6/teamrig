@@ -2091,6 +2091,50 @@ PREVIEW nothing written (add --yes to write)
 
 `UNCHANGED <settings>: team <team> has no lines there` when it has none.
 
+### teamrig permissions trim
+
+Removes local allow rules from the Claude Code settings the team's sessions run under. An allow rule approves a call
+before auto mode's classifier sees it, so a rule for a whole tool or program (`Bash`, `Bash(node:*)`,
+`Read(//c/**)`) lets every such call run unchecked. The files are your user `settings.json`, then the project
+folder's and each `coordinator.repos` checkout's `.claude/settings.json` and `.claude/settings.local.json`, and the
+same two in each worktree Claude Code made under `.claude/worktrees`. A rule on the config's `permissions.keepAllow`
+stays (`:*` and ` *` read the same, and a kept `Bash(x *)` keeps `Bash(x)` too); by default only the rules off it
+that approve a whole tool or program go, and with `--all` every rule off it goes. A committed `.claude/settings.json`
+is only reported: change it by a commit in its repo.
+
+It never prints a rule, since a rule can hold a value such as a password: each file shows its counts before and
+after, and the rules it removes or keeps off the list as counts by class (the tool, `mcp`, `other` or
+`unreadable`, each `wide` or `exact`). Without `--yes` it writes nothing. With `--yes` it first copies each file it
+rewrites, with a manifest of their sha256, into a new folder `teamrig/permissions-backups/<UTC second>/` under your
+state folder (`%LOCALAPPDATA%` on Windows, else `$XDG_STATE_HOME` or `~/.local/state`), outside the kit home every
+session reads; then it rewrites only `permissions.allow` of each file, leaves a file that changed since it was read,
+and reads each one back. It exits 1 when a file was left or failed that check. A permissions change is the owner's
+to make, so the owner runs it with `--yes`.
+
+Flags:
+
+- `--all`: remove every allow rule off the keep-list, not only the ones that approve a whole tool or program.
+- `--yes`: write the change; without it, only show it.
+
+Example:
+
+```sh
+teamrig permissions trim --all
+```
+
+Output:
+
+```text
+PREVIEW nothing written (add --yes to write): removes every allow rule off permissions.keepAllow
+  /home/me/.claude/settings.json: 12 allow rules -> 3, remove 9 (Bash wide 5, Bash exact 3, Read wide 1); keeps 3 on the keep-list
+  /work/shop/.claude/settings.json: 4 allow rules, 2 to remove (Bash exact 2); it is committed with its repo, so change it by a commit
+  /work/shop/.claude/settings.local.json: 40 allow rules -> 2, remove 38 (Bash exact 30, Bash wide 6, WebFetch exact 2); keeps 2 on the keep-list
+TOTAL 2 file(s) to rewrite: 52 allow rules -> 5 (remove 47: Bash exact 33, Bash wide 11, WebFetch exact 2, Read wide 1)
+```
+
+With `--yes`: `WROTE 2 of 2 file(s); their old text and a manifest are in <folder>`, then one line per file. With
+nothing to remove: `UNCHANGED no settings file to rewrite holds every allow rule off permissions.keepAllow`.
+
 ### teamrig commits check
 
 Checks the commits in `base..tip` against the small-commits rule: a commit over 400 changed non-test lines or 15

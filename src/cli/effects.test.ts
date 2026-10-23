@@ -83,6 +83,7 @@ const EXPECTED = {
   'statusline uninstall': 'write',
   'automode install': 'write',
   'automode uninstall': 'write',
+  'permissions trim': 'write',
   'config validate': 'read',
   'config migrate': 'write',
   'commits check': 'read',
