@@ -13,12 +13,11 @@ import {
   hooklessReader,
   hooklessTabs,
   isCheckDue,
+  lastReplyAt,
   parseHooklessState,
   staleEntries,
-  tabActivity,
   workedPastHook,
   type HooklessTab,
-  type TabActivity,
 } from './hookless.ts';
 
 const NOW = Date.parse('2030-01-08T12:00:00Z');
@@ -46,16 +45,16 @@ function entry(overrides: Partial<RestoreEntry> = {}): RestoreEntry {
   };
 }
 
-const TAB: HooklessTab = { claudeSession: ALPHA, session: 'alpha', hookAt: NOW - 2 * HOOKLESS_MS, turnAt: NOW - MS_PER_MINUTE };
+const TAB: HooklessTab = { claudeSession: ALPHA, session: 'alpha', projectDir: '/work/app', hookAt: NOW - 2 * HOOKLESS_MS, turnAt: NOW - MS_PER_MINUTE };
 const RELOAD = '<command-name>/reload-plugins</command-name>\n<command-message>reload-plugins</command-message>\n<command-args></command-args>';
 
 function iso(at: number): string {
   return new Date(at).toISOString();
 }
 
-/** What a transcript end says: its last reply at `turnAt`, and a reload at `reloadAt` when given. */
-function activity(turnAt: number | undefined, reloadAt?: number): ReadonlyMap<string, TabActivity> {
-  return new Map([[ALPHA, { turnAt, reloadAt }]]);
+/** The alpha tab's transcript end, its last reply at `turnAt`. */
+function replies(turnAt: number): ReadonlyMap<string, number> {
+  return new Map([[ALPHA, turnAt]]);
 }
 
 describe('the hookless state file', () => {
@@ -107,8 +106,8 @@ describe('workedPastHook', () => {
   });
 });
 
-describe('tabActivity', () => {
-  it("reads the main thread's last reply and the last /reload-plugins, whichever lines come between", () => {
+describe('lastReplyAt', () => {
+  it("reads the main thread's last reply, whichever lines come after it", () => {
     const lines = [
       replyLine({ at: iso(NOW - 40 * MS_PER_MINUTE), usage: { output: 1 } }),
       promptLine(iso(NOW - 30 * MS_PER_MINUTE), RELOAD),
@@ -116,39 +115,32 @@ describe('tabActivity', () => {
       promptLine(iso(NOW - 10 * MS_PER_MINUTE), RELOAD),
       systemLine(iso(NOW - 5 * MS_PER_MINUTE)),
     ];
-    assert.deepEqual(tabActivity(lines), { turnAt: NOW - 20 * MS_PER_MINUTE, reloadAt: NOW - 10 * MS_PER_MINUTE });
+    assert.equal(lastReplyAt(lines), NOW - 20 * MS_PER_MINUTE);
   });
 
-  it("leaves out a helper's reply, other prompts, undated and damaged lines", () => {
+  it("leaves out a helper's reply, prompts, a reload, undated and damaged lines", () => {
     const lines = [
       replyLine({ at: iso(NOW - MS_PER_MINUTE), sidechain: true, usage: { output: 1 } }),
       replyLine({ usage: { output: 1 } }),
+      replyLine({ at: iso(NOW - MS_PER_MINUTE), usage: { output: 1 } }).slice(20),
       promptLine(iso(NOW - MS_PER_MINUTE), 'go on with T1055'),
-      promptLine(iso(NOW - MS_PER_MINUTE), RELOAD).slice(20),
+      promptLine(iso(NOW - MS_PER_MINUTE), RELOAD),
       systemLine(iso(NOW)),
     ];
-    assert.deepEqual(tabActivity(lines), { turnAt: undefined, reloadAt: undefined });
+    assert.equal(lastReplyAt(lines), undefined);
   });
 });
 
 describe('hooklessTabs', () => {
   it('names a stale entry whose last reply came lately, over HOOKLESS_MS past its last hook', () => {
-    assert.deepEqual(hooklessTabs([entry()], activity(NOW - MS_PER_MINUTE), NOW), [TAB]);
+    assert.deepEqual(hooklessTabs([entry()], replies(NOW - MS_PER_MINUTE), NOW), [TAB]);
   });
 
   it('skips a tab with no reply lately (an idle tab whose transcript moves with no turn), one soon after the hook, or none read', () => {
-    assert.deepEqual(hooklessTabs([entry()], activity(NOW - HOOKLESS_MS - 1, NOW - MS_PER_MINUTE), NOW), []);
-    assert.deepEqual(hooklessTabs([entry()], activity(undefined, NOW - MS_PER_MINUTE), NOW), []);
+    assert.deepEqual(hooklessTabs([entry()], replies(NOW - HOOKLESS_MS - 1), NOW), []);
     const soon = entry({ updatedAt: NOW - HOOKLESS_MS - 10 * MS_PER_MINUTE });
-    assert.deepEqual(hooklessTabs([soon], activity(NOW - 10 * MS_PER_MINUTE), NOW), []);
+    assert.deepEqual(hooklessTabs([soon], replies(NOW - 10 * MS_PER_MINUTE), NOW), []);
     assert.deepEqual(hooklessTabs([entry()], new Map(), NOW), []);
-  });
-
-  it('waits for the next reply after a reload since the last one, and keeps a reload between the hook and the reply', () => {
-    assert.deepEqual(hooklessTabs([entry()], activity(NOW - 2 * MS_PER_MINUTE, NOW - MS_PER_MINUTE), NOW), [], 'the reload may have brought the hooks back');
-    const reloadAt = NOW - 20 * MS_PER_MINUTE;
-    assert.deepEqual(hooklessTabs([entry()], activity(NOW - MS_PER_MINUTE, reloadAt), NOW), [{ ...TAB, reloadAt }]);
-    assert.deepEqual(hooklessTabs([entry()], activity(NOW - MS_PER_MINUTE, NOW - 3 * HOOKLESS_MS), NOW), [TAB], 'a reload before the last hook says nothing');
   });
 });
 
@@ -174,21 +166,12 @@ describe('hooklessReader and hooklessLine', () => {
     assert.equal(hooklessReader(lead, 'lead', undefined), 'lead');
   });
 
-  it('names the session, its Claude session, the gap, both times and the fix', () => {
+  it('names the session, its Claude session, the gap, both times and a restart in its folder, never a reload', () => {
     const clock = (at: Date): string => `${at.toISOString().slice(11, 16)} UTC`;
     assert.equal(
       hooklessLine(TAB, clock),
       'HOOKLESS alpha: its tab (Claude session 0123abcd) worked 59 min past its last teamrig hook (hook 11:00 UTC, last reply 11:59 UTC), ' +
-        'so it gets no inbox, guards or tab status: type /reload-plugins in that tab',
-    );
-  });
-
-  it('asks for a restart, never another reload, when a reload already ran', () => {
-    const clock = (at: Date): string => `${at.toISOString().slice(11, 16)} UTC`;
-    assert.equal(
-      hooklessLine({ ...TAB, reloadAt: NOW - 20 * MS_PER_MINUTE }, clock),
-      'HOOKLESS alpha: its tab (Claude session 0123abcd) worked 59 min past its last teamrig hook (hook 11:00 UTC, last reply 11:59 UTC), ' +
-        `so it gets no inbox, guards or tab status: the /reload-plugins at 11:40 UTC did not bring them back: /exit that tab and run claude --resume ${ALPHA} in its folder`,
+        `so it gets no inbox, guards or tab status: /exit that tab and run claude --resume ${ALPHA} in /work/app`,
     );
   });
 });

@@ -766,16 +766,18 @@ holds only the current day.
 
 ## End of a turn: hookless tabs
 
-A tab that runs without teamrig's hooks, as one that never reloaded after a plugin update, gets no inbox, no
+A tab that runs without teamrig's hooks, as one left running across a plugin update, gets no inbox, no
 guards and no tab status, and nothing in it says so. Every 10 minutes for the whole team, the Stop hook of any
 team session reads the team's [restore files](#every-session-the-restore-tracker) whose hooks last wrote over 30
 minutes ago and checks their transcripts: one that changed in the last 30 minutes, and over 30 minutes after that
 last write, is a tab working without its hooks. Each such tab gets one inbox line from teamrig to the lead, or to
 the coordinator's owner (`roles.coordinatorOwner`) when it is the lead's own tab: `HOOKLESS alpha: its tab (Claude
-session 0123abcd) worked 59 min past its last teamrig hook (hook 09:00 IDT, transcript 09:59 IDT), so it gets no
-inbox, guards or tab status: type /reload-plugins in that tab`. A tab is named again only after it had its hooks
-back. A tab on a teamrig older than `hook tool-end` reads the same way during a turn of over 30 minutes, and the
-same reload fixes it. The check cannot see a tab that had no teamrig hook since it started (it has no restore
+session 0123abcd) worked 59 min past its last teamrig hook (hook 09:00 IDT, last reply 09:59 IDT), so it gets no
+inbox, guards or tab status: /exit that tab and run claude --resume <id> in <folder>`, with the tab's full Claude
+session id and the folder it started in. Only a restart brings a tab's hooks back: a /reload-plugins does not. The
+transcript of an idle tab also moves (a /reload-plugins, Claude Code's own notes), so only a reply of the model
+counts as work. A tab is named again only after it had its hooks back. A tab on a teamrig older than `hook
+tool-end` reads the same way during a turn of over 30 minutes, and the same restart fixes it. The check cannot see a tab that had no teamrig hook since it started (it has no restore
 file), nor any tab while no tab of the team runs its hooks. `state/hookless.json` keeps the last check's time and
 the tabs it named; a hook that finds the check running skips it.
 

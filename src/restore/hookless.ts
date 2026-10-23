@@ -1,7 +1,6 @@
 import { parseTranscriptLine } from '../budget/line.ts';
 import { parseObject, toJsonlLine, VERSION_FIELD } from '../core/jsonl.ts';
 import { MS_PER_MINUTE } from '../core/time.ts';
-import { RELOAD_COMMAND } from '../mod/reload-hand.ts';
 import type { RestoreEntry } from './entry.ts';
 
 /**
@@ -10,8 +9,9 @@ import type { RestoreEntry } from './entry.ts';
  * transcript are the turns it runs. A reply long after the entry's last write is a turn run with its hooks off, as
  * after a plugin update a tab never reloaded: it gets no inbox, no guards and no tab status. A transcript also
  * moves with no turn, and so with no hook: each /reload-plugins (the person's, or the reload hand's after every
- * plugin update), away summaries and Claude Code's own notes; only a reply counts (T1055). The check names each
- * such tab once (`hooklessNews`) to whoever can tell its person, and again only after it had its hooks back.
+ * plugin update), away summaries and Claude Code's own notes; only a reply counts (T1055). A reload never brings a
+ * tab's hooks back, only a restart does. The check names each such tab once (`hooklessNews`) to whoever can tell
+ * its person, and again only after it had its hooks back.
  */
 
 /** The format of the check's state file this code reads and writes; a file in another format reads as no check yet. */
@@ -40,24 +40,16 @@ export interface HooklessState {
   readonly told: readonly string[];
 }
 
-/** What the end of a tab's transcript says it did, in epoch ms; undefined where it holds none. */
-export interface TabActivity {
-  /** The main thread's last reply: a turn ran then. */
-  readonly turnAt: number | undefined;
-  /** The last /reload-plugins, typed by its person or run by the reload hand. */
-  readonly reloadAt: number | undefined;
-}
-
 /** A team session's tab that runs turns while its hooks do not. */
 export interface HooklessTab {
   readonly claudeSession: string;
   readonly session: string;
+  /** The folder its tab started in, where a restart resumes it. */
+  readonly projectDir: string;
   /** The entry's last write: the session's last hook. */
   readonly hookAt: number;
   /** The main thread's last reply. */
   readonly turnAt: number;
-  /** A /reload-plugins run after the last hook and before that reply, which so did not bring the hooks back. */
-  readonly reloadAt?: number;
 }
 
 function isTime(value: unknown): value is number {
@@ -115,43 +107,33 @@ export function workedPastHook(hookAt: number, at: number, now: number): boolean
 }
 
 /**
- * The last reply and reload in a transcript's lines (`lines` holds whole lines only: a caller reading from inside
- * a file drops its first). A helper's reply (a sidechain) is left out: a helper's tool ends write the heartbeat,
- * but its replies can outlive its parent's turn.
+ * The main thread's last reply in a transcript's lines, in epoch ms; undefined where they hold none (`lines` holds
+ * whole lines only: a caller reading from inside a file drops its first). A helper's reply (a sidechain) is left
+ * out: a helper's tool ends write the heartbeat, but its replies can outlive its parent's turn.
  */
-export function tabActivity(lines: readonly string[]): TabActivity {
+export function lastReplyAt(lines: readonly string[]): number | undefined {
   let turnAt: number | undefined;
-  let reloadAt: number | undefined;
   for (const raw of lines) {
     const line = parseTranscriptLine(raw);
-    if (line === undefined || line.at === undefined) {
-      continue;
-    }
-    if (line.kind === 'call' && line.mainThread) {
+    if (line !== undefined && line.at !== undefined && line.kind === 'call' && line.mainThread) {
       turnAt = Math.max(turnAt ?? line.at, line.at);
-    } else if (line.kind === 'prompt' && line.commands.includes(RELOAD_COMMAND)) {
-      reloadAt = Math.max(reloadAt ?? line.at, line.at);
     }
   }
-  return { turnAt, reloadAt };
+  return turnAt;
 }
 
 /**
- * The tabs that run without their hooks: a stale entry whose last reply `workedPastHook`. `activity` holds what
- * each stale entry's transcript end says, by Claude Code session; one it lacks (not read, no file) is skipped. A
- * /reload-plugins since that reply may have brought the hooks back, so the tab is not named until its next reply;
- * one between the last hook and that reply is kept, for the line to ask for more than another reload.
+ * The tabs that run without their hooks: a stale entry whose last reply `workedPastHook`. `replies` holds the last
+ * reply at each stale entry's transcript end, by Claude Code session; one it lacks (not read, no file, no reply)
+ * is skipped.
  */
-export function hooklessTabs(stale: readonly RestoreEntry[], activity: ReadonlyMap<string, TabActivity>, now: number): HooklessTab[] {
+export function hooklessTabs(stale: readonly RestoreEntry[], replies: ReadonlyMap<string, number>, now: number): HooklessTab[] {
   return stale.flatMap((entry) => {
-    const found = activity.get(entry.claudeSession);
-    const turnAt = found?.turnAt;
-    const reloadAt = found?.reloadAt;
-    if (entry.session === undefined || turnAt === undefined || !workedPastHook(entry.updatedAt, turnAt, now) || (reloadAt !== undefined && reloadAt >= turnAt)) {
+    const turnAt = replies.get(entry.claudeSession);
+    if (entry.session === undefined || turnAt === undefined || !workedPastHook(entry.updatedAt, turnAt, now)) {
       return [];
     }
-    const reloaded = reloadAt !== undefined && reloadAt > entry.updatedAt;
-    return [{ claudeSession: entry.claudeSession, session: entry.session, hookAt: entry.updatedAt, turnAt, ...(reloaded ? { reloadAt } : {}) }];
+    return [{ claudeSession: entry.claudeSession, session: entry.session, projectDir: entry.projectDir, hookAt: entry.updatedAt, turnAt }];
   });
 }
 
@@ -175,17 +157,14 @@ export function hooklessReader(tab: HooklessTab, lead: string, coordinatorOwner:
 }
 
 /**
- * The inbox line naming a hookless tab, its times as `clock` writes them (`14:20 IDT`). It asks for a reload, or,
- * when a reload already ran and the tab still works without hooks, never for another: it asks for a restart.
+ * The inbox line naming a hookless tab, its times as `clock` writes them (`14:20 IDT`). It asks for a restart in
+ * the tab's folder, never a reload: a /reload-plugins does not bring a tab's hooks back (T1055).
  */
 export function hooklessLine(tab: HooklessTab, clock: (at: Date) => string): string {
   const minutes = Math.round((tab.turnAt - tab.hookAt) / MS_PER_MINUTE);
-  const fix =
-    tab.reloadAt === undefined
-      ? 'type /reload-plugins in that tab'
-      : `the /reload-plugins at ${clock(new Date(tab.reloadAt))} did not bring them back: /exit that tab and run claude --resume ${tab.claudeSession} in its folder`;
   return (
     `HOOKLESS ${tab.session}: its tab (Claude session ${tab.claudeSession.slice(0, 8)}) worked ${minutes} min past its last teamrig hook ` +
-    `(hook ${clock(new Date(tab.hookAt))}, last reply ${clock(new Date(tab.turnAt))}), so it gets no inbox, guards or tab status: ${fix}`
+    `(hook ${clock(new Date(tab.hookAt))}, last reply ${clock(new Date(tab.turnAt))}), so it gets no inbox, guards or tab status: ` +
+    `/exit that tab and run claude --resume ${tab.claudeSession} in ${tab.projectDir}`
   );
 }
