@@ -17,8 +17,9 @@ export interface AgePolicy {
 }
 
 /**
- * The prompt hook's dedup logs (inbox-shown, bind-hints): a record older than a week belongs to a Claude Code
- * session that has almost always ended. One still running past it is shown an unread line or a hint once more.
+ * The hooks' aged logs (cli/hook-logs.ts). A dedup record (inbox-shown, bind-hints) older than a week belongs to a
+ * Claude Code session that has almost always ended; one still running past it is shown an unread line or a hint once
+ * more. The prompt answers feed a daily triage, which a week of them covers.
  */
 export const HOOK_LOG_AGE: AgePolicy = { keepDays: 7, slackDays: 1 };
 

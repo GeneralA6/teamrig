@@ -178,8 +178,10 @@ export interface TeamPaths {
   readonly wakeLog: string;
   /** The settings `teamrig launch` passes each session's Claude Code (src/cli/skill-listing.ts), `<id>.settings.json` each. */
   readonly launchSettings: string;
-  /** Each permission prompt the prompt refusal answered and how (hooks/prompt-refuse.ts), an append-only log. */
+  /** Each permission prompt the prompt refusal answered and how (hooks/prompt-refuse.ts); records over a week old move to the archive. */
   readonly promptAnswers: string;
+  /** Taken by every write of `promptAnswers`, which archives its records older than a week (core/aged-log.ts). */
+  readonly promptAnswersLock: string;
   /** Each session's prompts and replies for the task pane (src/turn-log/), `<id>/<UTC hour>.jsonl` each. */
   readonly turnLog: string;
   /** Where each session last started: its Claude Code process and session, `<id>.json` each (src/sessions/record.ts). */
@@ -262,6 +264,7 @@ export function teamPaths(kitHome: string, team: string, userHome: string, overr
     wakeLog: join(state, 'wakes.jsonl'),
     launchSettings: join(state, 'launch'),
     promptAnswers: join(state, 'prompt-answers.jsonl'),
+    promptAnswersLock: join(state, 'prompt-answers.lock'),
     turnLog: join(state, 'turn-log'),
     sessions: join(state, 'sessions'),
     sessionLog: join(state, 'session-log.jsonl'),

@@ -1,5 +1,7 @@
 import type { HookAsks } from '../config/types.ts';
 import { recordField, stringField, type JsonRecord } from '../core/guards.ts';
+import type { SecretScanner } from '../core/secrets.ts';
+import { redact } from '../exec/redact.ts';
 import { ASK_REFUSED_NOTE } from './permission.ts';
 import { rerunForm } from './rerun-forms.ts';
 
@@ -81,9 +83,11 @@ export interface PromptAnswerFacts {
 
 /**
  * One line of the team's prompt-answers log, for the daily triage that turns each refused line into a fixed guard or a
- * new rerun form. It keeps the first `LOGGED_COMMAND_CHARS` characters of the command, never the rest of the input.
+ * new rerun form. The command is redacted (a URL's user part and the scanner's secret shapes), then cut to its first
+ * `LOGGED_COMMAND_CHARS` characters: redacting first leaves no secret whose start the cut would keep. The rest of the
+ * input is never kept.
  */
-export function promptAnswerRecord(facts: PromptAnswerFacts): JsonRecord {
+export function promptAnswerRecord(facts: PromptAnswerFacts, scanner: SecretScanner): JsonRecord {
   const command = commandOf(facts.payload);
   return {
     v: 1,
@@ -92,7 +96,7 @@ export function promptAnswerRecord(facts: PromptAnswerFacts): JsonRecord {
     claudeSession: facts.claudeSession,
     tool: facts.tool,
     answer: facts.answer.kind,
-    command: command === undefined ? null : command.slice(0, LOGGED_COMMAND_CHARS),
+    command: command === undefined ? null : redact(command, [], scanner).slice(0, LOGGED_COMMAND_CHARS),
   };
 }
 
