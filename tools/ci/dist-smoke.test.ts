@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { FakeGit } from '../lib/fake-git.ts';
-import { POSIX_LAUNCHER, hookCommandsOf, launcherModeFinding, smokeDist, type RunRequest, type RunResult, type SmokeInput } from './dist-smoke.ts';
+import { POSIX_LAUNCHER, hookCommandsOf, launcherModeFinding, smokeDist, type RunRequest, type RunResult, type Runner, type SmokeInput } from './dist-smoke.ts';
 
 const ROOT = resolve('/plugin');
 
@@ -94,6 +94,17 @@ describe('hookCommandsOf', () => {
     assert.ok(commands.length >= 4);
     const runner = new FakeRunner();
     assert.deepEqual(smokeDist(input({ manifest }), runner.run), []);
+  });
+
+  it("reports wrong output from every hook in the plugin's own hooks.json, except the reminder, whose output is free", async () => {
+    const manifest: unknown = JSON.parse(await readFile(new URL('../../plugins/teamrig/hooks/hooks.json', import.meta.url), 'utf8'));
+    const garbled: Runner = (request) => (request.args.at(-1) === '--version' ? { ...OK, stdout: 'teamrig 1.2.3\n' } : { ...OK, stdout: 'garbled' });
+    const judged = hookCommandsOf(manifest, ROOT).commands.filter(({ args }) => args.at(-1) !== 'inbox-reminder');
+    const findings = smokeDist(input({ manifest }), garbled);
+    assert.deepEqual(
+      findings.map((finding) => finding.split(': ')[0]),
+      judged.map(({ event, args }) => `${event} (${args.slice(1).join(' ')})`),
+    );
   });
 });
 
