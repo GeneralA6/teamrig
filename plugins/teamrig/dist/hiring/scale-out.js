@@ -2,7 +2,7 @@ import { formatPct } from "../budget/format.js";
 import { KIT_NAME } from "../core/home.js";
 import { MS_PER_DAY, showStored } from "../core/time.js";
 import { ACTIVE_STATUSES } from "../register/model.js";
-import { hireCapProblem, hiresOnTeam } from "./plan.js";
+import { hireCapProblem, hiresOnTeam, ownerAsk } from "./plan.js";
 /** Statuses of work under way: a task such work needs stays with its area. */
 const STARTED = ['in-progress', 'waiting', 'verifying'];
 /** A count past what the pace finishes by more than this rounding is behind. */
@@ -108,7 +108,13 @@ function moveAction(to) {
 function hireAction(config) {
     const owner = config.hiring.policy === 'owner';
     const hire = `${KIT_NAME} hire <new id> --scope "<the slice>" --reason "SCALE-OUT"${owner ? ' --approved-by "<who>"' : ''}`;
-    return `the lead ${owner ? 'asks the owner, then ' : ''}hires for it (${hire}), then ${KIT_NAME} update <id> --owner <new id>, for each`;
+    return `the lead ${owner ? `asks ${ownerAsk(config)}, then ` : ''}hires for it (${hire}), then ${KIT_NAME} update <id> --owner <new id>, for each`;
+}
+/** What the lead does when `hiring.maxSessions` blocks a hire: a card for the owner, through the parent team's lead in a child team. */
+function capAction(config, capProblem) {
+    const parent = config.team?.parent;
+    const card = parent === undefined ? 'brings the owner a card' : `asks the lead of team ${parent} to bring the owner a card`;
+    return `${capProblem}: the lead ${card} to raise the cap, or moves the slice to another area`;
 }
 /** SCALE-OUT on each area that needs one, within the spare and the cap, and the idle hires given a slice. */
 export function scaleOutFlags(input) {
@@ -147,7 +153,7 @@ export function scaleOutFlags(input) {
         }
         const capProblem = hireCapProblem(config.hiring, hired);
         if (capProblem !== undefined) {
-            flags.push({ kind: 'SCALE-OUT', session: need.area, detail, action: `${capProblem}: the lead brings the owner a card to raise the cap, or moves the slice to another area` });
+            flags.push({ kind: 'SCALE-OUT', session: need.area, detail, action: capAction(config, capProblem) });
             continue;
         }
         hired += 1;

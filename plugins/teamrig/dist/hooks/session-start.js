@@ -1,3 +1,4 @@
+import { LeadTree } from "../config/lead-tree.js";
 import { Roster } from "../config/roster.js";
 import { formatAddress } from "../core/address.js";
 import { ENV, KIT_NAME } from "../core/home.js";
@@ -11,7 +12,7 @@ function isLeadSession(roster, session) {
  * Who this session is and whom to message. Session names are machine-wide in Claude Code, so the
  * session learns the exact names to use; an unknown value is never echoed, so the lines stay short.
  */
-function identityLines(roster, input) {
+function identityLines(roster, leaders, input) {
     const { command, session } = input;
     const lead = roster.holderOf('lead');
     const leadName = lead === undefined ? undefined : roster.nameOf(lead);
@@ -29,7 +30,19 @@ function identityLines(roster, input) {
     const you = `You are the \`${found.id}\` session of team \`${input.team}\` (name \`${roster.nameOf(found.id) ?? found.id}\`${held}).`;
     const pass = input.sessionInEnv ? '' : ` $${ENV.session} is not set here, so pass --session ${found.id} to every \`${command}\` task and inbox command.`;
     const shell = shellNote(input);
-    return [lead === found.id || leadName === undefined ? `${you}${pass}${shell}` : `${you}${pass}${shell} Message the lead as \`${leadName}\`.`, names, ...tree];
+    return [`${you}${pass}${shell}${messageNote(roster, leaders, found.id)}`, names, ...tree];
+}
+/**
+ * Whom the session messages: the lead, or for a sub-lead's member its own leader (T781), who takes up what it cannot
+ * settle; nothing for the lead itself.
+ */
+function messageNote(roster, leaders, id) {
+    const leader = leaders.leaderOf(id);
+    const name = leader === undefined ? undefined : roster.nameOf(leader);
+    if (name === undefined) {
+        return '';
+    }
+    return leader === leaders.lead ? ` Message the lead as \`${name}\`.` : ` Message your leader as \`${name}\`, who takes to the lead what it cannot settle.`;
 }
 /**
  * Claude Code puts a plugin's `bin/` folder on the PATH of its Bash tool only, so on Windows, where a session
@@ -80,7 +93,7 @@ export function sessionStartContext(input) {
         return unloadedContext(input.team, load, command);
     }
     const roster = new Roster(load.config, input.team, input.renames);
-    const notes = identityLines(roster, input);
+    const notes = identityLines(roster, new LeadTree(load.config), input);
     // In the core part, so the size budget that may cut the team's rules.md never cuts it.
     if (input.refreshNote !== undefined) {
         notes.push(input.refreshNote);

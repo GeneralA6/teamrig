@@ -1,4 +1,5 @@
 import { basename, dirname, join } from 'node:path';
+import { LeadTree } from "../../config/lead-tree.js";
 import { SecretScanner } from "../../core/secrets.js";
 import { activeBurst, burstFloorOf, withBurst } from "../../budget/burst.js";
 import { surplusHintOf } from "../../budget/burst-lines.js";
@@ -97,21 +98,31 @@ export async function budgetFactsOf(runtime, scope, transcript) {
         pace: week.pace,
         teamDay,
         isLead,
+        leader: budgetLeaderOf(config, roster, id),
         zone: teamZone(config, runtime),
     };
 }
-/** The lead's inbox line about the session; a refusal (a secret pattern, a bad id) comes back as a line for the person. */
-async function tellLead(runtime, scope, text, now) {
+/**
+ * The session's own leader, who gets its inbox line: the sub-lead that lists it, else the lead; undefined for the lead.
+ * A session the config does not list (the tree knows only listed ones) still tells the lead.
+ */
+function budgetLeaderOf(config, roster, id) {
+    const lead = config.roles.lead;
+    const leader = new LeadTree(config).leaderOf(id) ?? (id === lead ? undefined : lead);
+    return leader === undefined ? undefined : { id: leader, name: roster.nameOf(leader) ?? leader, isLead: leader === lead };
+}
+/** The leader's inbox line about the session; a refusal (a secret pattern, a bad id) comes back as a line for the person. */
+async function tellLeader(runtime, scope, leader, text, now) {
     const { kit, config, id } = scope;
     const problem = await postLine(inboxDepsOf(runtime, kit.paths).inboxes, new SecretScanner(config.register.secretPatterns), {
-        to: config.roles.lead,
+        to: leader.id,
         from: id,
         text,
         now: new Date(now),
     });
-    return problem === undefined ? undefined : `Budget: the lead's inbox line was not posted: ${problem}`;
+    return problem === undefined ? undefined : `Budget: the inbox line to ${leader.name} was not posted: ${problem}`;
 }
-/** The budget lines for the person at this turn's end (`stopWarning`), after metering the tab; posts the lead's inbox line when it is due. */
+/** The budget lines for the person at this turn's end (`stopWarning`), after metering the tab; posts its leader's inbox line when it is due. */
 export async function stopBudgetLines(runtime, scope, transcript) {
     const facts = await budgetFactsOf(runtime, scope, transcript);
     if (facts === undefined) {
@@ -119,9 +130,9 @@ export async function stopBudgetLines(runtime, scope, transcript) {
     }
     const store = new WarnStore(runtime.files, scope.kit.paths.warn);
     const result = stopWarning(facts, scope.config.budget, await store.read(scope.id));
-    // Saved before anything goes out: an unsaved state would repeat the lines, and the lead's line, at every stop.
+    // Saved before anything goes out: an unsaved state would repeat the lines, and the leader's line, at every stop.
     await store.write(scope.id, result.state);
-    const refused = result.leadLine === undefined ? undefined : await tellLead(runtime, scope, result.leadLine, facts.now);
+    const refused = result.leadLine === undefined || facts.leader === undefined ? undefined : await tellLeader(runtime, scope, facts.leader, result.leadLine, facts.now);
     return refused === undefined ? result.lines : [...result.lines, refused];
 }
 /** The model's line with the next prompt (`promptWarning`), from the use as last stored: the turn's end metered it. */

@@ -1,3 +1,4 @@
+import { LeadTree } from "../../config/lead-tree.js";
 import { formatAddress, splitAddress } from "../../core/address.js";
 import { ENV } from "../../core/home.js";
 import { NAME_RULE } from "../../core/ids.js";
@@ -78,7 +79,8 @@ async function recipientInTree(runtime, from, team, session) {
         throw new RefusedError(`no team ${team} with a config in this kit home`);
     }
     const to = { team, id: sessionIdOf(target.roster, session) };
-    const reach = reachOf(tree, from, to);
+    const own = teams.get(from.team);
+    const reach = reachOf(tree, from, to, own === undefined ? undefined : new LeadTree(own.config).leaderOf(from.id));
     if (!reach.ok) {
         throw new RefusedError(reach.problem);
     }

@@ -146,7 +146,12 @@ function escalatedText(facts, budget) {
         return '';
     }
     const helpers = helperClause(budget.overAction);
-    return helpers === undefined ? 'The lead has an inbox line.' : `${capitalized(helpers)}; the lead has an inbox line.`;
+    const told = toldText(facts.leader);
+    return helpers === undefined ? `${capitalized(told)}.` : `${capitalized(helpers)}; ${told}.`;
+}
+/** `the lead has an inbox line`, or for a sub-lead's member `its leader <name> has an inbox line`. */
+function toldText(leader) {
+    return leader === undefined || leader.isLead ? 'the lead has an inbox line' : `its leader ${leader.name} has an inbox line`;
 }
 function joined(parts) {
     return parts.filter((part) => part !== '').join(' ');
@@ -171,10 +176,13 @@ function quietLine(quiet, span, facts) {
     const what = helpers === undefined ? 'the team rests; start no new work.' : `${helpers}.`;
     return `Quiet hours (${facts.zone.clockSpan(new Date(span.from), new Date(span.to))}): ${what} ${MORE}`;
 }
+/** The leader's line: the lead lifts the budget itself; a sub-lead, which cannot, asks the lead when it should. */
 function leadLineOf(facts, standing) {
+    const command = `teamrig budget lift ${facts.id} --part <pct> --stop-pct <pct> --reason "<why>"`;
+    const lift = facts.leader === undefined || facts.leader.isLead ? `lift it only with a stop %: ${command}` : `only the lead lifts it, with a stop %, so ask the lead when it should: ${command}`;
     return (`${facts.name} is past its daily budget: ${formatPct(facts.usedTodayPct)} of the week today against ${formatPct(facts.budgetPct)}, ` +
         `and ${heldClause(facts, standing)}. ` +
-        `It finishes the step in hand; lift it only with a stop %: teamrig budget lift ${facts.id} --part <pct> --stop-pct <pct> --reason "<why>".`);
+        `It finishes the step in hand; ${lift}.`);
 }
 /**
  * The person's lines at a turn's end: a lift or a burst starting or ending, the quiet hours starting, a new
