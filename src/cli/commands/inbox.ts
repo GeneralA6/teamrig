@@ -2,7 +2,7 @@ import { LeadTree } from '../../config/lead-tree.ts';
 import type { Roster } from '../../config/roster.ts';
 import type { KitConfig } from '../../config/types.ts';
 import { formatAddress, type SessionAddress } from '../../core/address.ts';
-import { ENV, type Env, type TeamPaths } from '../../core/home.ts';
+import { ENV, KIT_NAME, type Env, type TeamPaths } from '../../core/home.ts';
 import { NAME_RULE } from '../../core/ids.ts';
 import { PlainLogFile } from '../../core/log-file.ts';
 import { SecretScanner } from '../../core/secrets.ts';
@@ -10,6 +10,7 @@ import { groupIds, parseTo, type ToItem } from '../../inbox/groups.ts';
 import { formatRead, formatStatus, inboxStatus, lineOnClock, postLines, readInbox, type InboxDeps } from '../../inbox/inbox.ts';
 import { CLAUDE_SESSION_ID } from '../../inbox/marks.ts';
 import { reachOf } from '../../inbox/reach.ts';
+import { routeReminderOf } from '../../inbox/route.ts';
 import { InboxDir, JsonlMarkLog } from '../../inbox/store.ts';
 import { noPositionals, requiredFlag, UsageError, type ParsedArgs } from '../args.ts';
 import { hookLogOf } from '../hook-logs.ts';
@@ -159,13 +160,35 @@ function postedLine(recipients: readonly Recipient[]): string {
   return `POSTED to ${recipients.length} sessions (${recipients.map((recipient) => recipient.label).join(', ')}); each is reminded at its next prompt`;
 }
 
+/**
+ * The route reminders (T783) for the sessions of the sender's team that `--to` names one by one, each once. A group
+ * (`all`, `leads`, `group:<leader>`) is a broadcast, not work handed past a sub-lead, so it gets none.
+ */
+function routeRemindersOf(own: SenderTeam, items: readonly ToItem[], text: string): string[] {
+  const tree = new LeadTree(own.config);
+  const reminders = new Set<string>();
+  for (const item of items) {
+    if (item.kind !== 'session' || (item.address.team !== undefined && item.address.team !== own.from.team)) {
+      continue;
+    }
+    const to = sessionIdOf(own.roster, item.address.session);
+    const reminder = routeReminderOf(tree, { from: own.from.id, to, text }, (id) => id, KIT_NAME);
+    if (reminder !== undefined) {
+      reminders.add(reminder);
+    }
+  }
+  return [...reminders];
+}
+
 const TO_FORMS = 'a session id or name, <team>/<id>, all, leads, group:<leader>, or a comma-separated list of them';
 
 /**
  * `inbox add --to <to> --text "<line>"`: appends one dated line to each receiver's inbox, all of them or, when one is
  * refused, none. A bare id or name is on the sender's team; `<team>/<id>` reaches another team of its tree, as far as
  * the sender's place allows, and that line names the sender `<team>/<id>`. `all`, `leads` and `group:<leader>` are
- * groups of the sender's team that leave the sender out; a comma-separated list names each receiver once.
+ * groups of the sender's team that leave the sender out; a comma-separated list names each receiver once. A line to a
+ * session named on the sender's team that skips a sub-lead below the sender is posted, then a further line tells the
+ * sender to route such work via that sub-lead (T783).
  */
 export async function add(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
   noPositionals(args);
@@ -192,5 +215,8 @@ export async function add(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCo
     throw new RefusedError(problem);
   }
   runtime.out.stdout(postedLine(recipients));
+  for (const reminder of routeRemindersOf(own, items, text)) {
+    runtime.out.stdout(reminder);
+  }
   return EXIT.ok;
 }
