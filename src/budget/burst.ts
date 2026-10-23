@@ -176,6 +176,8 @@ export interface BurstContext {
   readonly sessionsTodayPct: number | undefined;
   /** The team and the other teams on its account, which a surplus burst's spare is split among (`surplusOf`). */
   readonly teams: TeamsOnAccount;
+  /** Whom the lead asks to approve a burst under `burst.policy` owner: the owner, or a child team's parent lead. */
+  readonly ownerAsk: string;
 }
 
 export type BurstDecision = { readonly kind: 'burst'; readonly burst: Burst } | { readonly kind: 'refused'; readonly reason: string };
@@ -185,13 +187,13 @@ function refused(reason: string): BurstDecision {
 }
 
 /** The refusal under `burst.policy`, or undefined when it allows a burst. */
-function policyProblem(config: BurstConfig, approvedBy: string | undefined): string | undefined {
+function policyProblem(config: BurstConfig, approvedBy: string | undefined, ownerAsk: string): string | undefined {
   switch (config.policy) {
     case 'off':
       return 'burst.policy is off: the team takes no bursts';
     case 'owner':
       return approvedBy === undefined || approvedBy.trim() === ''
-        ? 'burst.policy is owner: a burst spends more of the week, so the owner approves each one; ask them, then pass --approved-by "<who>"'
+        ? `burst.policy is owner: a burst spends more of the week, so the owner approves each one; ask ${ownerAsk}, then pass --approved-by "<who>"`
         : undefined;
     case 'lead':
       return undefined;
@@ -309,7 +311,7 @@ function round2(value: number): number {
 /** Whether the burst may start, and its record. */
 export function decideBurst(request: BurstRequest, context: BurstContext): BurstDecision {
   const { config, active, targetPct, usedPct, window } = context;
-  const policy = policyProblem(config, request.approvedBy);
+  const policy = policyProblem(config, request.approvedBy, context.ownerAsk);
   if (policy !== undefined) {
     return refused(policy);
   }

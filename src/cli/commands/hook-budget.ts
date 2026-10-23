@@ -1,6 +1,7 @@
 import { basename, dirname, join } from 'node:path';
 import { LeadTree } from '../../config/lead-tree.ts';
 import type { Roster } from '../../config/roster.ts';
+import { ownerAsk } from '../../config/tree.ts';
 import type { BudgetConfig, KitConfig } from '../../config/types.ts';
 import { SecretScanner } from '../../core/secrets.ts';
 import { activeBurst, burstFloorOf, withBurst } from '../../budget/burst.ts';
@@ -115,7 +116,15 @@ export async function budgetFactsOf(runtime: CliRuntime, scope: BudgetScope, tra
   const isLead = id === config.roles.lead;
   const surplus =
     isLead && inForce === undefined
-      ? surplusHintOf({ config: config.burst, window: week.window, now, usedPct: week.usedPct, targetPct: budget.targetPct, teams: { split, others } })
+      ? surplusHintOf({
+          config: config.burst,
+          window: week.window,
+          now,
+          usedPct: week.usedPct,
+          targetPct: budget.targetPct,
+          teams: { split, others },
+          ownerAsk: ownerAsk(config),
+        })
       : undefined;
   return {
     now,

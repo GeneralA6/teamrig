@@ -231,7 +231,7 @@ describe('the budget in the hooks', () => {
     const prompt = (await hook('inbox-reminder', LEAD_TAB, { prompt: 'next', session_title: 'app-lead' })).stdout;
     const surplus = prompt.find((line) => line.startsWith('teamrig burst: about'));
     assert.ok(surplus !== undefined, prompt.join('\n'));
-    assert.match(surplus, /^teamrig burst: about 74\.2% of the week is projected unused at the pace end \(Mon 01-14 00:00 UTC\)\. .* burst\.policy is owner, so ask the owner first and add --approved-by "<who>"\. More: teamrig burst$/);
+    assert.match(surplus, /^teamrig burst: about 74\.2% of the week is projected unused at the pace end \(Mon 01-14 00:00 UTC\)\. .* burst\.policy is owner, so first ask the owner, then add --approved-by "<who>"\. More: teamrig burst$/);
     assert.ok(!(await hook('inbox-reminder', LEAD_TAB, { prompt: 'again', session_title: 'app-lead' })).stdout.some((line) => line.startsWith('teamrig burst:')));
     assert.ok(!(await hook('inbox-reminder', ALPHA_TAB, { prompt: 'next', session_title: 'app-alpha' })).stdout.some((line) => line.startsWith('teamrig burst:')), 'only the lead');
     assert.equal(kit.files.get(join(TEAM_HOME, 'state', 'usage', 'bursts.jsonl')), undefined);
