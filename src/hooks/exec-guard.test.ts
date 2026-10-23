@@ -1,8 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { COMMAND_EFFECTS } from '../cli/run.ts';
 import { isRecord, stringField, type JsonRecord } from '../core/guards.ts';
 import type { ClientCheck } from '../exec/client-integrity.ts';
-import { execGuardOutput, type ExecGuardEnv, type TabIdentity } from './exec-guard.ts';
+import { ClientInstalls } from '../exec/client-launch.ts';
+import { EXEC_COMMANDS, execGuardOutput, type ExecGuardEnv, type TabIdentity } from './exec-guard.ts';
 
 const SESSIONS: Readonly<Record<string, string>> = { alpha: 'alpha', 'app-alpha': 'alpha', bravo: 'bravo', lead: 'lead' };
 
@@ -10,10 +12,27 @@ const ALPHA: TabIdentity = { kind: 'bound', session: 'alpha', owner: 'owner', id
 
 const INTACT: ClientCheck = { kind: 'intact' };
 
-/** An env whose identity and client reads count, so a test can show the guard reads each only for a line that needs it. */
-function env(identity: TabIdentity = ALPHA, client: ClientCheck = INTACT): ExecGuardEnv & { readonly reads: () => number; readonly checks: () => number } {
+/** The plugin cache, the hook's own install in it, and an older version beside it that a tab keeps on PATH. */
+const CACHE = 'C:/u/.claude/plugins/cache/teamrig/teamrig';
+const INSTALL = `${CACHE}/0.156.0`;
+const OLDER = `${CACHE}/0.152.0`;
+
+/** Where the guard looks a client up besides the hook's own install: what the PATH search finds, and other installs' checks. */
+interface Placing {
+  /** The file the shell's PATH search finds for a bare name; none by default, so a bare `teamrig` is the plugin bin. */
+  readonly found?: Readonly<Record<string, string>>;
+  /** The check of each install root but the hook's own; intact by default. */
+  readonly others?: Readonly<Record<string, ClientCheck>>;
+}
+
+/** An env whose identity reads and client checks are recorded, so a test can show the guard makes each only for a line that needs it. */
+function env(
+  identity: TabIdentity = ALPHA,
+  client: ClientCheck = INTACT,
+  placing: Placing = {},
+): ExecGuardEnv & { readonly reads: () => number; readonly checks: () => number; readonly checked: () => readonly string[] } {
   let reads = 0;
-  let checks = 0;
+  const checked: string[] = [];
   return {
     cwd: 'C:/w',
     home: 'C:/u',
@@ -22,12 +41,15 @@ function env(identity: TabIdentity = ALPHA, client: ClientCheck = INTACT): ExecG
       reads += 1;
       return Promise.resolve(identity);
     },
-    client: () => {
-      checks += 1;
-      return Promise.resolve(client);
+    installs: new ClientInstalls(INSTALL, 'win32'),
+    search: { find: (name) => Promise.resolve(placing.found?.[name]) },
+    checkClient: (root) => {
+      checked.push(root);
+      return Promise.resolve(root === INSTALL ? client : (placing.others?.[root] ?? INTACT));
     },
     reads: () => reads,
-    checks: () => checks,
+    checks: () => checked.length,
+    checked: () => checked,
   };
 }
 
@@ -68,9 +90,9 @@ describe('execGuardOutput', () => {
       'git status && teamrig exec approve R1 --session bravo',
       "bash -c 'teamrig exec approve R1 --session bravo'",
       'teamrig heavy -- teamrig exec approve R1 --session bravo',
-      'C:/x/bin/teamrig.cmd exec approve R1 --session bravo',
-      'node --disable-warning=ExperimentalWarning C:/x/dist/cli/main.js exec approve R1 --session bravo',
-      'T=C:/x/bin/teamrig; $T exec approve R1 --session bravo',
+      `${INSTALL}/bin/teamrig.cmd exec approve R1 --session bravo`,
+      `node --disable-warning=ExperimentalWarning ${INSTALL}/dist/cli/main.js exec approve R1 --session bravo`,
+      `T=${INSTALL}/bin/teamrig; $T exec approve R1 --session bravo`,
     ]) {
       const found = await verdict(bash(line));
       assert.equal(found?.decision, 'deny', line);
@@ -96,7 +118,7 @@ describe('execGuardOutput', () => {
   });
 
   it('refuses a teamrig call whose command or session is only known when it runs', async () => {
-    for (const line of ['teamrig exec approve R1 --session "$WHO"', 'teamrig exec "$ACTION" R1 --session alpha', 'node C:/x/dist/cli/main.js $(cat cmd) R1']) {
+    for (const line of ['teamrig exec approve R1 --session "$WHO"', 'teamrig exec "$ACTION" R1 --session alpha', `node ${INSTALL}/dist/cli/main.js $(cat cmd) R1`]) {
       assert.match((await verdict(bash(line)))?.reason ?? '', /cannot tell whether it reviews a request, or as whom/, line);
     }
   });
@@ -148,5 +170,92 @@ describe('execGuardOutput', () => {
     }
     assert.match((await verdict(bash('teamrig exec "$ACTION" R1'), quiet))?.reason ?? '', /cannot tell whether it reviews a request/);
     assert.equal(quiet.checks(), 0);
+  });
+
+  it('checks the hook’s own install for a bare teamrig the shell’s PATH search finds nowhere, as the Bash tool appends its bin last', async () => {
+    const quiet = env();
+    assert.equal(await verdict(bash('teamrig exec status R1'), quiet), undefined);
+    assert.deepEqual(quiet.checked(), [INSTALL]);
+  });
+
+  it('refuses an exec call that starts a file no install of the plugin has, naming the file and the plugin’s own client', async () => {
+    const own = `run the plugin's own \\(${INSTALL.replaceAll('.', '\\.')}/bin/teamrig\\)\\.`;
+    for (const [line, file] of [
+      ['C:/kit/bin/teamrig exec status R1', 'C:[\\\\/]kit[\\\\/]bin[\\\\/]teamrig'],
+      ['/c/kit/bin/teamrig exec status R1', 'C:[\\\\/]kit[\\\\/]bin[\\\\/]teamrig'],
+      ['node C:/kit/dist/cli/main.js exec approve R1 --session alpha', 'C:[\\\\/]kit[\\\\/]dist[\\\\/]cli[\\\\/]main\\.js'],
+      ['cd C:/kit && ./bin/teamrig exec status R1', 'C:[\\\\/]kit[\\\\/]bin[\\\\/]teamrig'],
+      [`${CACHE}/patched/bin/teamrig exec status R1`, 'C:[\\\\/]u[\\\\/].*[\\\\/]patched[\\\\/]bin[\\\\/]teamrig'],
+    ] as const) {
+      const quiet = env();
+      const found = await verdict(bash(line), quiet);
+      assert.equal(found?.decision, 'deny', line);
+      assert.match(found?.reason ?? '', new RegExp(`^teamrig exec guard: \`teamrig exec\` here starts ${file}, no install of the teamrig plugin; ${own}$`), line);
+      assert.equal(quiet.checks(), 0, line);
+    }
+    const ps1 = await verdict(powershell(`& '${INSTALL}/bin/teamrig.ps1' exec status R1`));
+    assert.match(ps1?.reason ?? '', /teamrig\.ps1, no install of the teamrig plugin/, 'a launcher the build does not hash');
+  });
+
+  it('takes the Git Bash spelling of the hook’s own install as that install', async () => {
+    const quiet = env();
+    assert.equal(await verdict(bash('/c/u/.claude/plugins/cache/teamrig/teamrig/0.156.0/bin/teamrig exec status R1'), quiet), undefined);
+    assert.deepEqual(quiet.checked(), [INSTALL]);
+  });
+
+  it('refuses the teamrig the shell finds on PATH when no install of the plugin has it', async () => {
+    const shadowed = env(ALPHA, INTACT, { found: { teamrig: 'C:/u/bin/teamrig' } });
+    const found = await verdict(bash('teamrig exec approve R1 --session alpha'), shadowed);
+    assert.equal(found?.decision, 'deny');
+    assert.match(found?.reason ?? '', /the `teamrig` this line's shell finds on PATH is C:\/u\/bin\/teamrig, no install of the teamrig plugin; remove it from PATH, or run the plugin's own \(.*0\.156\.0\/bin\/teamrig\)\./);
+    assert.equal(await verdict(bash('teamrig list'), shadowed), undefined, 'only exec calls are pinned');
+  });
+
+  it('checks an older version the shell finds on PATH as its own install, naming it when it was changed', async () => {
+    const older = env(ALPHA, INTACT, { found: { teamrig: `${OLDER}/bin/teamrig` } });
+    assert.equal(await verdict(bash('teamrig exec status R1'), older), undefined);
+    assert.deepEqual(older.checked(), [OLDER]);
+    const patched = env(ALPHA, INTACT, { found: { teamrig: `${OLDER}/bin/teamrig` }, others: { [OLDER]: { kind: 'changed', paths: ['bin/teamrig'] } } });
+    const found = await verdict(bash('teamrig exec status R1'), patched);
+    assert.match(
+      found?.reason ?? '',
+      /the teamrig client at C:\/u\/\.claude\/plugins\/cache\/teamrig\/teamrig\/0\.152\.0 was changed after its build \(bin\/teamrig\); run the plugin's own \(.*0\.156\.0\/bin\/teamrig\), or ask security\./,
+    );
+  });
+
+  it('checks each install a line starts once', async () => {
+    const quiet = env();
+    const line = `teamrig exec status R1 && ${INSTALL}/bin/teamrig exec status R2 && ${OLDER}/bin/teamrig.cmd exec status R3 && teamrig exec status R4`;
+    assert.equal(await verdict(bash(line), quiet), undefined);
+    assert.deepEqual(quiet.checked(), [INSTALL, OLDER]);
+  });
+
+  it('refuses a relative client path from a folder only known when the line runs', async () => {
+    const found = await verdict(bash('cd "$KIT" && ./bin/teamrig exec status R1'));
+    assert.match(found?.reason ?? '', /starts its client by a relative path \(\.\/bin\/teamrig\) from a folder only known when the line runs; write its full path\./);
+  });
+
+  it('refuses an exec call through a program only known when it runs, and no other command such a program runs', async () => {
+    const quiet = env();
+    for (const [line, word] of [
+      ['$T exec approve R1 --session alpha', '\\$T'],
+      ['"$KIT/bin/teamrig" exec status R1', '\\$KIT/bin/teamrig'],
+      ['$T exec "$ACTION" R1', '\\$T'],
+      ['node $SCRIPT exec run R1', '\\$SCRIPT'],
+      ['node "$KIT/dist/cli/main.js" exec status R1', '\\$KIT/dist/cli/main\\.js'],
+    ] as const) {
+      const found = await verdict(bash(line), quiet);
+      assert.equal(found?.decision, 'deny', line);
+      assert.match(found?.reason ?? '', new RegExp(`here starts a program only known when it runs \\(${word}\\), so the guard cannot tell which client runs it; write it out`), line);
+    }
+    for (const line of ['$DOCKER exec ctr ls', '$T list', '$T exec', 'node $SCRIPT build', 'node $SCRIPT exec']) {
+      assert.equal(await verdict(bash(line), quiet), undefined, line);
+    }
+    assert.equal(quiet.checks(), 0);
+  });
+
+  it('knows every teamrig exec command the CLI has, so a call through an unknown program reads as one', () => {
+    const commands = Object.keys(COMMAND_EFFECTS).filter((name) => name.startsWith('exec ')).map((name) => name.slice('exec '.length));
+    assert.deepEqual([...EXEC_COMMANDS].sort(), commands.sort());
   });
 });
