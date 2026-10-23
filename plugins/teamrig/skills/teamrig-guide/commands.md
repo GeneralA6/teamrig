@@ -2755,7 +2755,7 @@ force would give more than the whole team budget, a week already at the stop % o
 ### teamrig budget extra
 
 Past 100% of the week, claude.ai can go on with extra usage: dollars the person puts in a pool apart from the
-week. The status line never shows it (its weekly % stops at 100), so the lead enters it (since 0.146.0): `--add`
+week. The status line never shows it (its weekly % stops at 100), so the lead enters it (since 0.152.0): `--add`
 the dollars put in the pool, `--spent` the dollars claude.ai shows spent from it so far. Each entry goes to the
 team's `state/usage/extra-log.jsonl` with the week's use on the status line and the W metered since the period's
 start. Two successive spent readings in one period, the week at 100% or more at both, teach the pool's W per dollar
