@@ -4,6 +4,8 @@ import { TEST_CARD } from '../testing/card.ts';
 import { testTask } from '../testing/task.ts';
 import type { RegisterEvent, TaskKind } from './events.ts';
 import {
+  aheadReason,
+  aheadText,
   approvalNotice,
   assignedNotice,
   byPlanOrder,
@@ -257,6 +259,48 @@ describe('formatWaitingOnYou', () => {
     const [planned] = treeOf(yours, needOnly).waitingOn('alpha');
     assert.ok(planned !== undefined);
     assert.equal(formatWaitingOnYou(planned, 60, treeOf(yours, needOnly)), 'T6 open, p2, owner beta, after T2 | Add a health check · needs your T2');
+  });
+});
+
+describe('aheadReason and aheadText: why a row sorts ahead of the next', () => {
+  const placed = (task: Task, tree: TaskTree = TREE) => ({ task, tree });
+  const later = testTask({ id: 'T9' });
+
+  it('names the deciding key the row does not show', () => {
+    assert.equal(aheadReason(placed(testTask({ id: 'T12', status: 'in-progress' })), placed(later)), 'in progress');
+    assert.equal(aheadReason(placed(testTask({ id: 'T12', due: '2030-01-09' })), placed(later)), 'due');
+    assert.equal(aheadReason(placed(testTask({ id: 'T12', size: 0.5 })), placed(later)), 'size 0.5%');
+    const week = new TaskTree(new Map(), NOW, TimeZone.UTC, '2030-01-07');
+    assert.equal(aheadReason(placed(testTask({ id: 'T12', week: '2030-01-07' }), week), placed(later, week)), 'in week 01-07');
+  });
+
+  it('names the best task that needs it, its priority and how many more', () => {
+    const work = testTask({ id: 'T3' });
+    const needers = [testTask({ id: 'T8', after: ['T3'] }), testTask({ id: 'T7', priority: 1, after: ['T3'] }), testTask({ id: 'T9', priority: 1, after: ['T3'] })];
+    const many = treeOf(work, later, ...needers);
+    assert.equal(aheadReason(placed(work, many), placed(later, many)), 'unblocks T7 p1 +2');
+    const one = treeOf(work, later, testTask({ id: 'T8', after: ['T3'] }));
+    assert.equal(aheadReason(placed(work, one), placed(later, one)), 'unblocks T8 p2');
+  });
+
+  it('names nothing when the row shows it, the number decides, they tie or the next row sorts ahead', () => {
+    assert.equal(aheadReason(placed(testTask({ id: 'T12', priority: 1 })), placed(later)), undefined);
+    assert.equal(aheadReason(placed(testTask({ id: 'T2' })), placed(later)), undefined);
+    assert.equal(aheadReason(placed(later), placed(later)), undefined);
+    assert.equal(aheadReason(placed(later), placed(testTask({ id: 'T12', status: 'in-progress' }))), undefined);
+  });
+
+  it('places each row by its own register', () => {
+    const work = testTask({ id: 'T12' });
+    const dated = treeOf(work, testTask({ id: 'T13', due: '2030-01-09', after: ['T12'] }));
+    assert.equal(aheadReason(placed(work, dated), placed(later)), 'due');
+    assert.equal(aheadReason(placed(work), placed(later)), undefined);
+  });
+
+  it('reads as the tail of a row, empty for the last row or without a reason', () => {
+    assert.equal(aheadText(placed(testTask({ id: 'T12', status: 'in-progress' })), placed(later)), ' · ahead: in progress');
+    assert.equal(aheadText(placed(later), undefined), '');
+    assert.equal(aheadText(placed(testTask({ id: 'T2' })), placed(later)), '');
   });
 });
 

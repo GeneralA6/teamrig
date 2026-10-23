@@ -79,12 +79,17 @@ describe('listLines', () => {
     assert.deepEqual(listLines([], true), []);
   });
 
+  it('ends each full row with why it sorts ahead of the next, in the given order', () => {
+    const rows = [row({ id: 'T5', status: 'in-progress' }), row({ id: 'T1' })];
+    assert.deepEqual(listLines(rows, true), [`${formatTask(testTask({ id: 'T5', status: 'in-progress' }), undefined, TREE)} · ahead: in progress`, formatTask(testTask(), undefined, TREE)]);
+  });
+
   it("prints one owner's tasks as short rows in plan order, without an owner summary", () => {
     const rows = [row({ id: 'T3', priority: 2 }), row({ id: 'T1', priority: 2, due: '2030-01-09' }), row({ id: 'T2', priority: 1, title: LONG_TITLE })];
     assert.deepEqual(listLines(rows, false), [
       'LIST 3 task(s) (short rows; --all for every field)',
       'T2 open, p1, owner alpha | Move the nightly export onto the shared queue and drop the…',
-      'T1 open, p2, owner alpha, due 01-09 | Add a health check',
+      'T1 open, p2, owner alpha, due 01-09 | Add a health check · ahead: due',
       'T3 open, p2, owner alpha | Add a health check',
     ]);
   });
@@ -95,7 +100,7 @@ describe('listLines', () => {
     const web = treeOf(work, needer);
     const rows: TaskRow[] = [row({ id: 'T1', due: '2030-01-10' }, 'api'), { task: work, team: 'web', tree: web }];
     assert.deepEqual(listLines(rows, false).slice(-2), [
-      'web/T3 open, p2, owner alpha, due 01-09 (from T9) | Add a health check · needed by T9 (bravo)',
+      'web/T3 open, p2, owner alpha, due 01-09 (from T9) | Add a health check · needed by T9 (bravo) · ahead: due',
       'api/T1 open, p2, owner alpha, due 01-10 | Add a health check',
     ]);
   });

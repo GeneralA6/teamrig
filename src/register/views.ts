@@ -4,7 +4,7 @@ import { cardLines } from './card.ts';
 import { PROBLEM_KINDS, type RegisterEvent } from './events.ts';
 import type { ApprovalAnswer, Task } from './fold.ts';
 import { ACTIVE_STATUSES, GITHUB_SOURCE, priorityText, type TaskStatus } from './model.ts';
-import { planOrder, type TaskTree, type WaitingOnYou } from './tree.ts';
+import { decidingKey, planOrder, type TaskTree, type Unblocks, type WaitingOnYou } from './tree.ts';
 import { waitsText, weekdayText, type PersonWait } from './waits.ts';
 import { proofOf, proofText } from './verify.ts';
 
@@ -161,6 +161,51 @@ function neededByText(task: Task, tree: TaskTree): string {
   const shown = due !== undefined && tree.effectiveDue(task.id)?.from === (due.from ?? first.id);
   const facts = due === undefined || shown ? [first.owner] : [first.owner, `due ${showStored(due.due, tree.zone)}`];
   return ` · needed by ${first.id} (${facts.join(', ')})${rest.length > 0 ? ` +${rest.length}` : ''}`;
+}
+
+/** A task and the tree of its register, which places it in plan order ({@link TaskTree.placeOf}). */
+export interface PlacedRow {
+  readonly task: Task;
+  readonly tree: TaskTree;
+}
+
+/**
+ * Why `row` sorts ahead of `next`, the row after it, in plan order: the first plan key on which they differ, in words:
+ * `in progress`, `due` (the row shows the date), `unblocks T566 p1 +2` (the best task that needs it, its priority
+ * and how many more), `in week 01-07`, `size 0.5%`. Undefined when the row shows it already (priority), when only the
+ * number decides (age, the older first), when they tie, or when `next` sorts ahead. Each row is placed by its own
+ * register's tree.
+ */
+export function aheadReason(row: PlacedRow, next: PlacedRow): string | undefined {
+  const place = row.tree.placeOf(row.task);
+  const other = next.tree.placeOf(next.task);
+  const key = decidingKey(place, other);
+  if (key === undefined || key === 'priority' || key === 'age' || planOrder(place, other) > 0) {
+    return undefined;
+  }
+  switch (key) {
+    case 'started':
+      return 'in progress';
+    case 'due':
+      return 'due';
+    case 'unblocks':
+      return place.unblocks === undefined ? undefined : unblocksText(place.unblocks);
+    case 'week':
+      return row.task.week === null ? undefined : `in week ${showStored(row.task.week, row.tree.zone)}`;
+    case 'size':
+      return row.task.size === null ? undefined : `size ${sizeText(row.task.size)}`;
+  }
+}
+
+/** `unblocks T566 p1 +2`: the first needer of the best priority, that priority, and how many others need the task. */
+function unblocksText({ first, priority, count }: Unblocks): string {
+  return `unblocks ${first} ${priorityText(priority)}${count > 1 ? ` +${count - 1}` : ''}`;
+}
+
+/** ` · ahead: in progress`: {@link aheadReason} as the tail of a row; empty for the last row or when there is none. */
+export function aheadText(row: PlacedRow, next: PlacedRow | undefined): string {
+  const reason = next === undefined ? undefined : aheadReason(row, next);
+  return reason === undefined ? '' : ` · ahead: ${reason}`;
 }
 
 /** The GitHub issue a task was imported from, as its ref (`gh:acme/web#7`); undefined for any other task. */
