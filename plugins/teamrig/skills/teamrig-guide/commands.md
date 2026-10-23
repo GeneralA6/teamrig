@@ -3353,6 +3353,23 @@ teamrig hook failed-send < post-tool-use.json
 
 Output: nothing after a delivered message or outside a team; otherwise the line as JSON `additionalContext`.
 
+### teamrig hook missing-cli
+
+After a Bash or PowerShell call whose shell did not find the bare `teamrig` command (Claude Code's shell snapshot
+failed to rebuild after a plugin reload), hands the model one line: run the copy its hooks run by its path,
+`node "<plugin>/dist/cli/main.js" <command> ...`, for the rest of the session, never another copy from the plugin
+cache. See [Hooks and permissions](hooks.md#after-a-shell-call-the-cli-by-its-path).
+
+Flags: none.
+
+Example:
+
+```sh
+teamrig hook missing-cli < post-tool-use.json
+```
+
+Output: nothing after any other call; otherwise the line as JSON `additionalContext`, in a team or not.
+
 ### teamrig hook loop-nudge
 
 After a read, edit, shell call or web lookup, once the turn's run of single-step calls reaches `loops.chainNudgeAt` (6 by

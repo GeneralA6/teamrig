@@ -52,6 +52,8 @@ class FakeRunner {
         return { ...OK, stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: 'rules' } }) };
       case 'subagent-start':
         return { ...OK, stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: 'SubagentStart', additionalContext: 'rules' } }) };
+      case 'missing-cli':
+        return { ...OK, stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUseFailure', additionalContext: 'path' } }) };
       case 'push-guard':
       case 'package-guard':
       case 'secret-guard':
