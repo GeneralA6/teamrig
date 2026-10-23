@@ -37,7 +37,7 @@ Team settings for the teamrig plugin. Only the roster (sessions, roles.lead) is 
 | `budget` | [object](#budget) |  | The weekly token budget: the pace line the team is measured against and each session's daily part of it. Usage is in weighted tokens (W) read from the session transcripts, and in % of the week from the status line when there is one. The defaults only measure and show; nothing blocks or acts. |
 | `leadBoundary` | [object](#leadboundary) |  | How teamrig keeps the lead leading: its own edits, tests and code searches are nudged and shown, never blocked. |
 | `loops` | [object](#loops) |  | Loop discipline inside a turn. |
-| `wake` | [object](#wake) |  | Waking a session idle at its prompt when work is handed to it, instead of at its next prompt. Only work the session can go on with wakes (open or started past every task it comes after, or waiting with every wait cleared), tasks handed together wake once, and each wake says what it costs. |
+| `wake` | [object](#wake) |  | Waking a session idle at its prompt when work is handed to it, instead of at its next prompt. Only work the session can go on with wakes (open or started past every task it comes after, or waiting with every wait cleared or answered), tasks handed together wake once, and each wake says what it costs. |
 | `tests` | [object](#tests) |  | What teamrig test prints of a failed run. |
 | `github` | [object](#github) |  | teamrig gh sync: GitHub issues read into the register as tasks of source github. It only reads GitHub and never writes to it; local tasks stay local. Each owner's repositories are read with the read-only token saved as teamrig-gh-\<owner> in the system's credential store, else the gh login (docs/github-sync.md). |
 | `alerts` | [object](#alerts) |  | The alerting rule the core rules state. |
@@ -430,7 +430,7 @@ Loop discipline inside a turn.
 
 ## `wake`
 
-Waking a session idle at its prompt when work is handed to it, instead of at its next prompt. Only work the session can go on with wakes (open or started past every task it comes after, or waiting with every wait cleared), tasks handed together wake once, and each wake says what it costs.
+Waking a session idle at its prompt when work is handed to it, instead of at its next prompt. Only work the session can go on with wakes (open or started past every task it comes after, or waiting with every wait cleared or answered), tasks handed together wake once, and each wake says what it costs.
 
 | Key | Type | Default | What it does |
 | --- | --- | --- | --- |

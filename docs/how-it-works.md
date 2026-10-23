@@ -428,9 +428,10 @@ sequenceDiagram
 ```
 
 - What wakes a session: a task it owns that another session handed to it, raised, reopened or freed by finishing a
-  task it comes after or waits on, or whose waited-for time came (its own changes are not news), that it can go on
-  with: open or in-progress, or waiting (a verifying task's proof waits) with every wait cleared, as `teamrig check`
-  flags READY; a task never started also has every task it comes `--after` finished. At `wake.priority` or more
+  task it comes after or waits on, whose waited-for time came, or whose approval its giver answered (its own changes
+  are not news), that it can go on with: open or in-progress, or waiting (a verifying task's proof waits) with every
+  wait cleared, as `teamrig check` flags READY, an approval it waits on answered either way (a decline sends it back
+  to work); a task never started also has every task it comes `--after` finished. At `wake.priority` or more
   urgent (p1 by default). Held by its budget (past its daily budget
   while the team has no room today), or in the budget's quiet hours unless the lead's lift exempts it, only p1 wakes it, whatever `wake.priority` says. While the owner's
   daily meeting is open the lead is not woken; the work waits for the first check after the meeting.
