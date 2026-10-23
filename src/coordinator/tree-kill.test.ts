@@ -1,10 +1,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { nodeTreeKill, parseStartedProcesses, stragglersOf, sweepTree, SWEEP_ROUNDS, type StartedProcess, type SweepHost } from './tree-kill.ts';
+import { treeOf } from './processes.ts';
+import { nodeTreeKill, parseStartedProcesses, stragglersOf, sweepTree, SWEEP_ROUNDS, windowsSweepHostOf, type HostRun, type StartedProcess, type SweepHost } from './tree-kill.ts';
 
 /** A host whose process lists are set by the test, one a call; it records each kill and keeps one clock. */
 class FakeHost implements SweepHost {
   readonly kills: (readonly number[])[] = [];
+  readonly treeKills: number[] = [];
   listCalls = 0;
   private readonly lists: (readonly StartedProcess[] | undefined)[];
 
@@ -22,12 +24,57 @@ class FakeHost implements SweepHost {
     return Promise.resolve();
   }
 
+  killTree(root: number): Promise<void> {
+    this.treeKills.push(root);
+    return Promise.resolve();
+  }
+
   now(): number {
     return 1_000;
   }
 }
 
 const proc = (pid: number, parent: number, startedMs: number): StartedProcess => ({ pid, parent, startedMs });
+
+/**
+ * A process table behind fake `powershell.exe` and `taskkill` runs. A run reads the table first, then the processes
+ * born during it join: a list misses them, and so does a kill's walk of a tree. taskkill ends the processes it names
+ * and, with /T, the rest of their trees as its walk found them.
+ */
+class ProcessTable {
+  readonly runs: (readonly string[])[] = [];
+  private rows: StartedProcess[];
+  private readonly births: ReadonlyMap<number, readonly StartedProcess[]>;
+
+  /** `births` maps a run's index (0 for the first run) to the processes born while it runs. */
+  constructor(rows: readonly StartedProcess[], births: ReadonlyMap<number, readonly StartedProcess[]>) {
+    this.rows = [...rows];
+    this.births = births;
+  }
+
+  readonly run: HostRun = (file, args) => {
+    const born = this.births.get(this.runs.length) ?? [];
+    this.runs.push([file, ...args]);
+    if (file === 'taskkill') {
+      const ended = this.walk(args);
+      this.rows = [...this.rows, ...born].filter((row) => !ended.has(row.pid));
+      return Promise.resolve('');
+    }
+    const printed = this.rows.map((row) => `${row.pid},${row.parent},${row.startedMs}`).join('\r\n');
+    this.rows = [...this.rows, ...born];
+    return Promise.resolve(printed);
+  };
+
+  pids(): number[] {
+    return this.rows.map((row) => row.pid);
+  }
+
+  /** The ids a taskkill run ends: those it names, and with /T their trees as they stand now. */
+  private walk(args: readonly string[]): Set<number> {
+    const named = args.flatMap((arg, index) => (args[index - 1] === '/PID' ? [Number(arg)] : []));
+    return new Set(args.includes('/T') ? named.flatMap((pid) => treeOf(pid, this.rows).map((row) => row.pid)) : named);
+  }
+}
 
 /** The step's shell 10 started 11; 20 runs beside it. */
 const STEP = [proc(1, 0, 0), proc(10, 1, 100), proc(11, 10, 200), proc(20, 1, 50)];
@@ -53,13 +100,14 @@ describe('sweepTree', () => {
     assert.deepEqual(host.kills, [[10, 11], [11]]);
   });
 
-  it('falls back to one kill of the root when the host cannot be listed', async () => {
+  it('falls back to one tree kill of the root when the host cannot be listed', async () => {
     const host = new FakeHost([undefined]);
     await sweepTree(10, host);
-    assert.deepEqual(host.kills, [[10]]);
+    assert.deepEqual(host.kills, []);
+    assert.deepEqual(host.treeKills, [10]);
   });
 
-  it('stops when the list after a kill fails', async () => {
+  it('stops when the list after a kill fails, killing no old id again', async () => {
     const host = new FakeHost([STEP, undefined]);
     await sweepTree(10, host);
     assert.deepEqual(host.kills, [[10, 11]]);
@@ -77,6 +125,65 @@ describe('sweepTree', () => {
     await sweepTree(10, host);
     assert.equal(host.kills.length, SWEEP_ROUNDS);
     assert.deepEqual(host.kills.at(-1), [30 + SWEEP_ROUNDS - 2]);
+  });
+});
+
+describe('sweepTree on the Windows host', () => {
+  it('ends a command born after the list and the grandchild it starts while the kill runs (T990)', async () => {
+    // The list sees the shell 10 alone; its command 12 starts during that list, and starts 13 during the first kill.
+    const table = new ProcessTable(
+      [proc(1, 0, 0), proc(10, 1, 100)],
+      new Map([
+        [0, [proc(12, 10, 900)]],
+        [1, [proc(13, 12, 950)]],
+      ]),
+    );
+    await sweepTree(10, windowsSweepHostOf(table.run, () => 1_000));
+    assert.deepEqual(table.pids(), [1]);
+    assert.deepEqual(
+      table.runs.filter(([file]) => file === 'taskkill'),
+      [
+        ['taskkill', '/F', '/PID', '10'],
+        ['taskkill', '/F', '/PID', '12', '/PID', '13'],
+      ],
+    );
+  });
+
+  it('leaves a process beside the tree running', async () => {
+    const table = new ProcessTable(STEP, new Map());
+    await sweepTree(10, windowsSweepHostOf(table.run, () => 1_000));
+    assert.deepEqual(table.pids(), [1, 20]);
+  });
+});
+
+describe('windowsSweepHostOf', () => {
+  /** A run that records each call; taskkill prints nothing and PowerShell fails. */
+  function recorder(): { runs: (readonly string[])[]; run: HostRun } {
+    const runs: (readonly string[])[] = [];
+    return {
+      runs,
+      run: (file, args) => {
+        runs.push([file, ...args]);
+        return Promise.resolve(file === 'taskkill' ? '' : undefined);
+      },
+    };
+  }
+
+  it('ends exactly the processes it is given, without /T', async () => {
+    const { runs, run } = recorder();
+    await windowsSweepHostOf(run).kill([10, 11]);
+    assert.deepEqual(runs, [['taskkill', '/F', '/PID', '10', '/PID', '11']]);
+  });
+
+  it('ends a whole tree with /T only for the fallback', async () => {
+    const { runs, run } = recorder();
+    await windowsSweepHostOf(run).killTree(10);
+    assert.deepEqual(runs, [['taskkill', '/F', '/T', '/PID', '10']]);
+  });
+
+  it('lists nothing when PowerShell fails', async () => {
+    const { run } = recorder();
+    assert.equal(await windowsSweepHostOf(run).list(), undefined);
   });
 });
 
