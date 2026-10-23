@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readEvents } from '../register/snapshot.ts';
 import { EVENTS_PATH } from '../testing/cli-harness.ts';
-import { teamEventsOf, treeHarness } from '../testing/team-tree.ts';
+import { teamEventsOf, teamInboxOf, treeHarness } from '../testing/team-tree.ts';
 import type { CliHarness } from '../testing/cli-harness.ts';
 import { EXIT } from './runtime.ts';
 
@@ -13,7 +13,9 @@ describe('teamrig add --team', () => {
   it('hands a child team a task from its parent lead, written in the child register only', async () => {
     const kit = await treeHarness();
     const result = await kit.run(['add', '--team', 'web', '--title', 'Ship login', '--description', 'what and why', '--priority', 'p2', '--session', 'lead']);
-    assert.deepEqual(result, { code: EXIT.ok, stdout: ['ADDED web/T1 open, p2, owner lead, from app/lead | Ship login'], stderr: [] });
+    assert.deepEqual(result, { code: EXIT.ok, stdout: ['ADDED web/T1 open, p2, owner lead, from app/lead | Ship login'], stderr: ['NOTE web/lead has an inbox line: T1 is yours (p2): Ship login'] });
+    assert.equal(kit.files.get(teamInboxOf('web', 'lead')), '- 2030-01-08 10:00 app/lead: T1 is yours (p2): Ship login\n');
+    assert.equal(kit.files.get(teamInboxOf('app', 'lead')), undefined);
     const [event] = readEvents(kit.files.get(teamEventsOf('web')) ?? '').events;
     assert.deepEqual([event?.by, event?.type], ['app/lead', 'create']);
     assert.equal(kit.files.get(EVENTS_PATH), undefined);
@@ -29,6 +31,7 @@ describe('teamrig add --team', () => {
     const kit = await treeHarness();
     const result = await kit.run(['add', '--team', 'ui', '--title', 'New icons', '--description', 'what and why', '--priority', 'p1', '--session', 'web-lead'], { env: WEB });
     assert.deepEqual(result.stdout, ['ADDED ui/T1 open, p1, owner lead, from web/lead | New icons']);
+    assert.equal(kit.files.get(teamInboxOf('ui', 'lead')), '- 2030-01-08 10:00 web/lead: T1 is yours (p1): New icons\n');
   });
 
   it("carries the description into the child team's task, and needs one there too", async () => {

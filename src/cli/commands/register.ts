@@ -148,7 +148,8 @@ function warnDamage(runtime: CliRuntime, snapshot: RegisterSnapshot, path: strin
 /**
  * `add --team <child>`: a parent team's lead hands a child team a task. It lands in the child's
  * register as an event by `<parent team>/<lead id>`, which is also its source, owned by the child's
- * lead, who plans it in. Only the child's parent lead may; the parent's register is not touched.
+ * lead, who plans it in and gets an inbox line from that address. Only the child's parent lead may; the
+ * parent's register is not touched.
  */
 async function addToChild(args: ParsedArgs, runtime: CliRuntime, caller: string, child: string): Promise<ExitCode> {
   if (args.flags.has('owner') || args.flags.has('source')) {
@@ -172,7 +173,12 @@ async function addToChild(args: ParsedArgs, runtime: CliRuntime, caller: string,
   }
   const target = await teamOf(runtime, await openKit(runtime, child), 'write');
   const input = { ...addInputOf(args.flags, caller, typedTimes(runtime, teamZone(config, runtime))), owner: childLead, source: formatAddress(from) };
-  return report(runtime, await target.register.addFromParent(formatAddress(from), input), 'ADDED', target, child);
+  const verdict = await target.register.addFromParent(formatAddress(from), input);
+  const code = report(runtime, verdict, 'ADDED', target, child);
+  if (verdict.ok) {
+    await tellAssigned(runtime, target, formatAddress(from), verdict.value.task, formatAddress({ team: child, id: childLead }));
+  }
+  return code;
 }
 
 export async function add(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
@@ -218,9 +224,9 @@ async function tellNewOwner(runtime: CliRuntime, team: Team, by: string, verdict
   await tellAssigned(runtime, team, by, task);
 }
 
-/** One inbox line telling a task's owner the task is its own. */
-async function tellAssigned(runtime: CliRuntime, team: Team, by: string, task: Task): Promise<void> {
-  await tellLine(runtime, team, by, task.owner, assignedNotice(task, team.zone), `${task.owner} was not told of ${task.id}`);
+/** One inbox line telling a task's owner the task is its own; `shown` names the owner in the NOTE (another team's by address). */
+async function tellAssigned(runtime: CliRuntime, team: Team, by: string, task: Task, shown = task.owner): Promise<void> {
+  await tellLine(runtime, team, by, task.owner, assignedNotice(task, team.zone), `${shown} was not told of ${task.id}`, shown);
 }
 
 /**
@@ -267,11 +273,11 @@ async function ownerWaitTiming(runtime: CliRuntime, team: Team, { task, state }:
 }
 
 /** Posts one inbox line, naming it on stderr, or naming `unsent` and why: a line that cannot be posted is never thrown. */
-async function tellLine(runtime: CliRuntime, team: Team, by: string, to: string, text: string, unsent: string): Promise<void> {
+async function tellLine(runtime: CliRuntime, team: Team, by: string, to: string, text: string, unsent: string, shown = to): Promise<void> {
   const { inboxes } = inboxDepsOf(runtime, team.paths);
   const secrets = new SecretScanner(team.config.register.secretPatterns);
   const problem = await postLine(inboxes, secrets, { to, from: by, text, now: new Date(runtime.clock.now()) });
-  runtime.out.stderr(problem === undefined ? `NOTE ${to} has an inbox line: ${text}` : `WARN ${unsent}: ${problem}`);
+  runtime.out.stderr(problem === undefined ? `NOTE ${shown} has an inbox line: ${text}` : `WARN ${unsent}: ${problem}`);
 }
 
 export async function set(args: ParsedArgs, runtime: CliRuntime): Promise<ExitCode> {
