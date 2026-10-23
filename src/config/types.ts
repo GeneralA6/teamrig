@@ -513,6 +513,11 @@ export interface BudgetLiftConfig {
 export interface BudgetConfig {
   /** Turns on the live warning and the core rules' pacing sentence; `teamrig budget` shows usage either way. */
   readonly enabled: boolean;
+  /**
+   * The Claude account the team's week is on: teams with the same account share one week and split its daily
+   * budget. Unset: the Claude config dir, since one config dir signs in one account.
+   */
+  readonly account?: string;
   /** The weekly limit in weighted tokens (W). Unset: derived from the status line's weekly %. */
   readonly weeklyLimitW?: number;
   /**
