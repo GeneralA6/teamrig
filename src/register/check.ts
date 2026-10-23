@@ -85,7 +85,7 @@ export interface Flag {
 export function checkTasks(tasks: Iterable<Task>, now: Date, zone: TimeZone, week: string | null, config: RegisterConfig): Flag[] {
   const at = now.getTime();
   const all = [...tasks];
-  const tree = new TaskTree(new Map(all.map((task) => [task.id, task])), now, zone);
+  const tree = new TaskTree(new Map(all.map((task) => [task.id, task])), now, zone, week);
   const active = tree.inPlanOrder(all.filter((candidate) => ACTIVE_STATUSES.includes(candidate.status)));
   const plan = weekPlan(week, config.check.weekLengthDays, zone);
   const top = topPriority(config.priorities);

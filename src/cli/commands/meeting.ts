@@ -104,7 +104,7 @@ async function printAgenda(args: ParsedArgs, runtime: CliRuntime, mk: MeetingKit
   const { zone } = mk;
   const lines = agendaLines({
     tasks: [...snapshot.state.tasks.values()],
-    tree: new TaskTree(snapshot.state.tasks, now, zone),
+    tree: new TaskTree(snapshot.state.tasks, now, zone, currentWeekOf(snapshot, now, zone)),
     now: mk.now,
     since: agendaSince(previousEnd(phase), mk.now),
     ownerMarker: mk.config.register.ownerSource,

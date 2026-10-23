@@ -33,12 +33,12 @@ describe('renderPlan', () => {
         '',
         '## p2: Build',
         '',
-        '- [x] **T1** Add a health check (alpha · from lead) done: abc1234',
-        '- [ ] **T3** Add a health check (alpha · from lead) **waiting:** decision owner · on T4 ready; waiting on disk',
-        '- [ ] **T4** ~~Add a health check~~ (alpha · from lead) dropped: merged into T1',
         '- [ ] **T5** Add a health check (alpha · from lead) (in progress)',
-        '- [ ] **T7** Add a health check (alpha · from lead) verifying, proof: the nightly run is green; waiting: on T5',
+        '- [ ] **T3** Add a health check (alpha · from lead) **waiting:** decision owner · on T4 ready; waiting on disk',
         '- [ ] **T8** Add a health check (alpha · after T5,T3 · from lead · size 1.5%)',
+        '- [x] **T1** Add a health check (alpha · from lead) done: abc1234',
+        '- [ ] **T4** ~~Add a health check~~ (alpha · from lead) dropped: merged into T1',
+        '- [ ] **T7** Add a health check (alpha · from lead) verifying, proof: the nightly run is green; waiting: on T5',
       ].join('\n'),
     );
   });

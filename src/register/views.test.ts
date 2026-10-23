@@ -201,9 +201,9 @@ describe('formatTaskTree and formatNextMove', () => {
     const shared = testTask({ id: 'T3' });
     assert.deepEqual(formatTaskTree(root, treeOf(root, first, shared), 60).slice(0, 4), [
       'needs:',
+      '  T3 open, p2, owner alpha | Add a health check',
       '  T2 open, p2, owner alpha, after T3 | Add a health check',
-      '    T3 open, p2, owner alpha | Add a health check',
-      '  T3 (shown above)',
+      '    T3 (shown above)',
     ]);
     const one = testTask({ id: 'T6', after: ['T7'] });
     const other = testTask({ id: 'T7', owner: 'beta', after: ['T6'] });

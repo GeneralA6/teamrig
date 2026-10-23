@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { testTask } from '../testing/task.ts';
 import type { Task } from './fold.ts';
-import { needPath, needsOf, pathText, planOrder, TaskTree, type TreeTask } from './tree.ts';
+import { decidingKey, needPath, needsOf, pathText, planOrder, TaskTree, type PlanPlace, type TreeTask } from './tree.ts';
 import { TimeZone } from '../core/zone.ts';
 
 const NOW = new Date('2030-01-08T10:00:00.000Z');
@@ -58,6 +58,39 @@ describe('planOrder', () => {
       { id: 'T8', priority: 2, at: 100 },
     ];
     assert.deepEqual(ids([...places].sort(planOrder)), ['T7', 'T4', 'T8', 'T3', 'T2', 'T10']);
+  });
+
+  /** Two p2 places due at 100, T9 and the lower-numbered T3, each with the given fields over that. */
+  const pair = (ahead: Partial<PlanPlace>, behind: Partial<PlanPlace> = {}): [PlanPlace, PlanPlace] => [
+    { id: 'T9', priority: 2, at: 100, ...ahead },
+    { id: 'T3', priority: 2, at: 100, ...behind },
+  ];
+
+  it('decides on the first key that differs, each in turn', () => {
+    const cases: [string, [PlanPlace, PlanPlace]][] = [
+      ['priority', pair({ priority: 1, at: 900 }, { started: true })],
+      ['started', pair({ started: true, at: 900 }, { started: false })],
+      ['due', pair({ at: 50 }, { unblocks: { first: 'T1', priority: 1, count: 3 } })],
+      ['due', pair({}, { at: undefined })],
+      ['unblocks', pair({ unblocks: { first: 'T1', priority: 1, count: 1 } }, { unblocks: { first: 'T2', priority: 2, count: 4 }, inWeek: true })],
+      ['unblocks', pair({ unblocks: { first: 'T1', priority: 2, count: 2 } }, { unblocks: { first: 'T2', priority: 2, count: 1 } })],
+      ['unblocks', pair({ unblocks: { first: 'T1', priority: 3, count: 1 } })],
+      ['week', pair({ inWeek: true }, { inWeek: false, size: 1 })],
+      ['size', pair({ size: 1 }, { size: 5 })],
+      ['size', pair({ size: 5 }, { size: null })],
+    ];
+    for (const [key, [ahead, behind]] of cases) {
+      assert.equal(decidingKey(ahead, behind), key, `${key}: ${JSON.stringify(ahead)}`);
+      assert.ok(planOrder(ahead, behind) < 0 && planOrder(behind, ahead) > 0, key);
+    }
+  });
+
+  it('falls back to age, and ties a place with itself', () => {
+    const [late, early] = pair({});
+    assert.equal(decidingKey(late, early), 'age');
+    assert.ok(planOrder(early, late) < 0);
+    assert.equal(decidingKey(late, { ...late }), undefined);
+    assert.equal(planOrder(late, { ...late }), 0);
   });
 });
 
@@ -126,6 +159,12 @@ describe('TaskTree over a reader\'s rows', () => {
     assert.deepEqual(rows.waitingOn('alpha').map((entry) => entry.task.label), ['row T2']);
     assert.deepEqual(rows.inPlanOrder(rows.neededBy('T1')).map((needer) => needer.label), ['row T2']);
   });
+
+  it('places a row without week or size as untagged and unsized', () => {
+    assert.equal(rows.week, null);
+    const { inWeek, size, unblocks } = rows.placeOf(row({ id: 'T1' }));
+    assert.deepEqual({ inWeek, size, unblocks }, { inWeek: false, size: null, unblocks: { first: 'T2', priority: 2, count: 1 } });
+  });
 });
 
 describe('TaskTree effectiveDue', () => {
@@ -174,6 +213,58 @@ describe('TaskTree plan order', () => {
     const tree = treeOf(testTask({ id: 'T2' }), testTask({ id: 'T3', due: '2030-01-15' }), testTask({ id: 'T4', after: ['T2'], due: '2030-01-10' }));
     const tasks = [testTask({ id: 'T3', due: '2030-01-15' }), testTask({ id: 'T2' }), testTask({ id: 'T4', after: ['T2'], due: '2030-01-10' })];
     assert.deepEqual(ids(tree.inPlanOrder(tasks)), ['T2', 'T4', 'T3']);
+  });
+
+  it('keeps a started task on top within its priority, then reads need, week and size', () => {
+    const tasks = [
+      testTask({ id: 'T1', due: '2030-01-09' }),
+      testTask({ id: 'T2', status: 'in-progress' }),
+      testTask({ id: 'T3' }),
+      testTask({ id: 'T4', week: '2030-01-07' }),
+      testTask({ id: 'T5', size: 2 }),
+      testTask({ id: 'T6', size: 1 }),
+      testTask({ id: 'T7', priority: 1, after: ['T3'] }),
+      testTask({ id: 'T8', priority: 1, status: 'in-progress' }),
+    ];
+    assert.deepEqual(ids(treeOf(...tasks).inPlanOrder(tasks)), ['T8', 'T7', 'T2', 'T1', 'T3', 'T4', 'T6', 'T5']);
+  });
+});
+
+describe('TaskTree unblocks and placeOf', () => {
+  const tree = treeOf(
+    testTask({ id: 'T1', status: 'in-progress', week: '2030-01-07', size: 3 }),
+    testTask({ id: 'T5', priority: 3, after: ['T1'] }),
+    testTask({ id: 'T7', priority: 1, waits: [{ kind: 'task', id: 'T1' }], status: 'waiting' }),
+    testTask({ id: 'T6', priority: 1, after: ['T1'] }),
+    testTask({ id: 'T8', status: 'done', priority: 1, after: ['T2'] }),
+    testTask({ id: 'T2', week: '2030-01-14' }),
+    testTask({ id: 'T3', status: 'done', after: ['T2'] }),
+    testTask({ id: 'T4', status: 'done' }),
+    testTask({ id: 'T9', after: ['T4'] }),
+  );
+
+  it('names the first needer of the best priority and counts every active needer', () => {
+    assert.deepEqual(tree.unblocks('T1'), { first: 'T6', priority: 1, count: 3 });
+    assert.equal(tree.unblocks('T2'), undefined, 'only finished tasks need it');
+    assert.equal(tree.unblocks('T4'), undefined, 'a finished task unblocks nothing');
+    assert.equal(tree.unblocks('T99'), undefined);
+  });
+
+  it('places a task on every key, in the week plan in force by default', () => {
+    assert.equal(tree.week, '2030-01-07', 'T2\'s week has not started');
+    assert.deepEqual(tree.placeOf(testTask({ id: 'T1', status: 'in-progress', week: '2030-01-07', size: 3 })), {
+      id: 'T1', priority: 2, at: undefined, started: true, unblocks: { first: 'T6', priority: 1, count: 3 }, inWeek: true, size: 3,
+    });
+    assert.deepEqual(tree.placeOf(testTask({ id: 'T2', week: '2030-01-14' })), {
+      id: 'T2', priority: 2, at: undefined, started: false, unblocks: undefined, inWeek: false, size: null,
+    });
+  });
+
+  it('reads the week it is given, null for none', () => {
+    const tasks = new Map([testTask({ id: 'T2', week: '2030-01-14' })].map((task) => [task.id, task]));
+    assert.equal(new TaskTree(tasks, NOW, TimeZone.UTC, '2030-01-14').placeOf(testTask({ id: 'T2', week: '2030-01-14' })).inWeek, true);
+    assert.equal(new TaskTree(tasks, NOW, TimeZone.UTC, null).week, null);
+    assert.equal(new TaskTree(tasks, NOW, TimeZone.UTC, null).placeOf(testTask({ id: 'T2', week: '2030-01-14' })).inWeek, false);
   });
 });
 
@@ -259,7 +350,7 @@ describe('TaskTree waitingOn', () => {
     const waiting = tree.waitingOn('alpha');
     assert.deepEqual(ids(waiting.map((entry) => entry.task)), ['T5', 'T4']);
     assert.deepEqual(waiting[0]?.asks, [{ kind: 'decision', who: 'alpha' }]);
-    assert.deepEqual(ids(waiting[1]?.needs ?? []), ['T1', 'T2']);
+    assert.deepEqual(ids(waiting[1]?.needs ?? []), ['T2', 'T1'], 'the started need first');
     assert.deepEqual(tree.waitingOn('charlie'), []);
   });
 });
