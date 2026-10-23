@@ -1,6 +1,7 @@
 import { formatUtcDay, formatUtcHour, MS_PER_DAY, MS_PER_HOUR } from "../core/time.js";
 import { DailyProfile } from "./active-time.js";
-import { dailyAllowancePct, dayPacePct, readPace, weekWindow } from "./pace.js";
+import { pastLimitOf, poolOf } from "./extra.js";
+import { dailyAllowancePct, dayPacePct, readPace, spanAllowancePct, weekWindow, } from "./pace.js";
 /**
  * Everyone's W from the hour of `from` to `now`: the whole days after `from`'s UTC day and, on that day,
  * its W less its hours before `from`'s hour, which counts whole. A store whose hours were lost (an older
@@ -64,8 +65,21 @@ function earliestDay(states) {
     const days = states.flatMap((state) => Object.keys(state.byDay)).sort();
     return days[0];
 }
+/**
+ * The team's allowance today: the week's, to its target (`dailyAllowancePct`); at or past 100% of the week, the W the
+ * extra-usage pool still holds, spread over the active time to the pace end like the week's, so the pool lasts to the
+ * reset instead of going in a day. Recomputed at every reading as the pool is spent; none with the pool empty.
+ */
+function teamAllowancePct(input, pool, wPerPct) {
+    const leftW = pastLimitOf(input.usedPct, pool) === 'pool' ? pool?.leftW : undefined;
+    if (leftW === undefined) {
+        return dailyAllowancePct(input);
+    }
+    const { window, now, usedPct, todayPct, profile } = input;
+    return spanAllowancePct({ start: window.start, end: window.paceEnd, stopPct: usedPct + leftW / wPerPct, now, usedPct, todayPct, profile });
+}
 export function readWeek(input) {
-    const { budget, now, statusUse, states, period, calibration } = input;
+    const { budget, now, statusUse, states, period, calibration, extra } = input;
     const reset = period?.end;
     const window = period === undefined ? undefined : weekWindow(period.end, budget.paceEndHoursBeforeReset, period.start);
     const dayStart = now - (now % MS_PER_DAY);
@@ -81,12 +95,20 @@ export function readWeek(input) {
     const usedPct = statusUse?.usedPct ?? (covered && wPerPct !== undefined ? weekW / wPerPct : undefined);
     const profile = DailyProfile.ofQuietHours(budget.quietHours);
     const pace = window === undefined || usedPct === undefined ? undefined : readPace(window, budget, now, usedPct, profile);
+    const pool = extra === undefined || window === undefined || usedPct === undefined
+        ? undefined
+        : poolOf(extra.entries, { start: window.start, w: weekW, usedPct, wAtFull: extra.wAtFull, configuredWPerUsd: budget.extraWPerUsd });
     const allowancePct = window === undefined || usedPct === undefined || wPerPct === undefined
         ? undefined
-        : dailyAllowancePct({ window, budget, now, usedPct, todayPct: todayW / wPerPct, profile });
+        : teamAllowancePct({ window, budget, now, usedPct, todayPct: todayW / wPerPct, profile }, pool, wPerPct);
+    const pastLimit = usedPct === undefined ? undefined : pastLimitOf(usedPct, pool);
     const teamDay = window === undefined || wPerPct === undefined || allowancePct === undefined
         ? undefined
-        : { usedPct: todayW / wPerPct, pacePct: dayPacePct({ window, now, allowancePct, idlePct: idleWSince(states, todayFrom, now, profile) / wPerPct, profile }) };
+        : {
+            usedPct: todayW / wPerPct,
+            pacePct: dayPacePct({ window, now, allowancePct, idlePct: idleWSince(states, todayFrom, now, profile) / wPerPct, profile }),
+            ...(pastLimit === undefined ? {} : { pastLimit }),
+        };
     return {
         reset,
         window,
@@ -102,5 +124,6 @@ export function readWeek(input) {
         todayFrom,
         todayW,
         teamDay,
+        pool,
     };
 }

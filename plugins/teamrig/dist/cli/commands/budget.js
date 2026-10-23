@@ -9,6 +9,8 @@ import { activeBurst, burstFloorOf, withBurst } from "../../budget/burst.js";
 import { BurstLog } from "../../budget/burst-log.js";
 import { calibrationOf } from "../../budget/calibration.js";
 import { claudeProjectsDir } from "../../budget/discover.js";
+import { ExtraLog } from "../../budget/extra.js";
+import { formatUsd } from "../../budget/format.js";
 import { activeLift, decideLift, LiftLog, liftText } from "../../budget/lift.js";
 import { CATCH_UP_CHUNK_BYTES, MAX_RUNS_PER_SESSION, measure, OUTSIDE_ID } from "../../budget/measure.js";
 import { dailyBudgetOf, liftedParts } from "../../budget/parts.js";
@@ -276,6 +278,73 @@ export async function lift(args, runtime) {
     }
     await new LiftLog(runtime.files, kit.paths.lifts).append(decision.lift);
     runtime.out.stdout(`LIFTED ${liftText(decision.lift, roster.nameOf(id) ?? id, zone)}`);
+    return EXIT.ok;
+}
+/** A dollar flag: `--add` above 0, `--spent` 0 or more; undefined when it is not given. */
+function usdFlag(flags, name) {
+    const text = flags.get(name);
+    if (text === undefined) {
+        return undefined;
+    }
+    const value = Number(text);
+    const tooSmall = name === 'add' ? value <= 0 : value < 0;
+    if (text.trim() === '' || !Number.isFinite(value) || tooSmall) {
+        throw new UsageError(`--${name} "${text}" is not a dollar amount ${name === 'add' ? 'above 0' : 'of 0 or more'}`);
+    }
+    return value;
+}
+/**
+ * `budget extra [--add <usd>] [--spent <usd>]`: the extra-usage pool (budget/extra.ts). An add of the dollars put in
+ * the pool, or a reading of the dollars claude.ai shows spent from it so far, is the lead's and goes to the extra log
+ * with the week's use and the W metered since the period's start; then, or with no flag, the week line names the pool.
+ */
+export async function extra(args, runtime) {
+    const [stray] = args.positionals;
+    if (stray !== undefined) {
+        throw new UsageError(`unexpected "${stray}"`);
+    }
+    const added = usdFlag(args.flags, 'add');
+    const spent = usdFlag(args.flags, 'spent');
+    const writes = added !== undefined || spent !== undefined;
+    const caller = writes ? callerOf(args.flags, runtime.env) : undefined;
+    const kit = await openTeamKit(runtime);
+    const config = requireConfig(kit, runtime, writes ? 'write' : 'read');
+    const roster = await rosterOf(runtime, kit, config);
+    if (caller !== undefined) {
+        const lead = roster.holderOf('lead');
+        if (sessionIdOf(roster, caller) !== lead) {
+            throw new RefusedError(`only the lead${lead === undefined ? '' : ` (${roster.nameOf(lead) ?? lead})`} enters the extra-usage pool`);
+        }
+        const { week, measured, now } = await readBudget(runtime, kit, config, roster, { recountDay: undefined });
+        const window = week.window;
+        if (window === undefined) {
+            throw new RefusedError("the week's period is unknown (no status line reading and no budget.weeklyLimitW), so the entry has no period to belong to");
+        }
+        const entry = {
+            at: now,
+            weekPct: week.statusAt === undefined ? undefined : week.usedPct,
+            start: window.start,
+            end: window.reset,
+            w: wSince([...measured.bySession.values(), measured.outside], window.start, now),
+        };
+        const log = new ExtraLog(runtime.files, kit.paths.extraLog);
+        const logged = [];
+        if (added !== undefined) {
+            await log.append({ ...entry, kind: 'add', usd: added });
+            logged.push(`added ${formatUsd(added)} to the pool`);
+        }
+        if (spent !== undefined) {
+            await log.append({ ...entry, kind: 'spent', usd: spent });
+            logged.push(`${formatUsd(spent)} spent from it so far`);
+        }
+        runtime.out.stdout(`EXTRA ${logged.join('; ')}.`);
+    }
+    // Read again after an entry: the pool, and past 100% of the week the team's allowance, now count it.
+    const { week } = await readBudget(runtime, kit, config, roster, { recountDay: undefined });
+    runtime.out.stdout(weekLine(week, teamZone(config, runtime)));
+    if (week.pool === undefined) {
+        runtime.out.stdout('Extra usage: none in the pool (the lead adds the dollars put in it: teamrig budget extra --add <usd>).');
+    }
     return EXIT.ok;
 }
 /** The status line setup of the team the session works in; outside a team, or with its config unreadable, the kit's default folder and display. */

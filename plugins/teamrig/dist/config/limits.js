@@ -48,6 +48,7 @@ export const CONFIG_LIMITS = {
     budgetReservePct: { min: 0, max: 50 },
     weeklyLimitW: { min: 1_000_000, max: 1_000_000_000_000 },
     subagentWeight: { min: 0.1, max: 10 },
+    extraWPerUsd: { min: 1_000, max: 1_000_000_000 },
     paceEndHoursBeforeReset: { min: 0, max: 48 },
     sessionShare: { min: 0, max: 100 },
     warnAtPct: { maxItems: 8, itemMin: 1, itemMax: 1_000 },
