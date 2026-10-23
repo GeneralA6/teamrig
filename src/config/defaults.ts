@@ -138,7 +138,7 @@ export const DEFAULT_READONLY_SHELL: ReadonlyShellConfig = { enabled: false, all
 /**
  * Read-only commands outside Claude Code's own read-only set whose arguments can neither run a program nor write
  * (the general part of security's keep-list, T1037 10-23), kept in both shells; PowerShell's own cmdlets in
- * PowerShell only. A team adds its own tools' read-only commands in its config.
+ * PowerShell only. A team's own list replaces this one, so one that adds its tools' read-only commands repeats these.
  */
 const KEPT_SHELL_COMMANDS = [
   'kubectl get',

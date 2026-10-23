@@ -12,6 +12,15 @@ describe('normalRule', () => {
       assert.equal(normalRule(rule), rule);
     }
   });
+
+  it("drops one leading MSYS_NO_PATHCONV=1 from a shell rule, and no other assignment or tool's", () => {
+    assert.equal(normalRule('Bash(MSYS_NO_PATHCONV=1 kubectl get:*)'), 'Bash(kubectl get *)');
+    assert.equal(normalRule('PowerShell(MSYS_NO_PATHCONV=1 Get-Date)'), 'PowerShell(Get-Date)');
+    for (const rule of ['Bash(MSYS_NO_PATHCONV=0 kubectl get *)', 'Bash(NODE_OPTIONS=1 kubectl get *)', 'Read(MSYS_NO_PATHCONV=1 x)']) {
+      assert.equal(normalRule(rule), rule);
+    }
+    assert.equal(normalRule('Bash(MSYS_NO_PATHCONV=1 MSYS_NO_PATHCONV=1 x)'), 'Bash(MSYS_NO_PATHCONV=1 x)');
+  });
 });
 
 describe('isToolWide', () => {
@@ -47,8 +56,15 @@ describe('KeepList', () => {
     }
   });
 
+  it('keeps a listed shell rule behind MSYS_NO_PATHCONV=1', () => {
+    for (const rule of ['Bash(MSYS_NO_PATHCONV=1 kubectl get:*)', 'Bash(MSYS_NO_PATHCONV=1 kubectl get)']) {
+      assert.equal(keep.keeps(rule), true, rule);
+    }
+    assert.equal(new KeepList(['Bash(MSYS_NO_PATHCONV=1 kubectl get *)']).keeps('Bash(kubectl get:*)'), true);
+  });
+
   it('keeps nothing wider, longer or of another tool', () => {
-    for (const rule of ['Bash(kubectl *)', 'Bash(kubectl get pods)', 'PowerShell(kubectl get *)', 'Bash(kubectl get * --watch)', 'WebSearch(x)', 'WebFetch']) {
+    for (const rule of ['Bash(kubectl *)', 'Bash(kubectl get pods)', 'PowerShell(kubectl get *)', 'Bash(kubectl get * --watch)', 'WebSearch(x)', 'WebFetch', 'Bash(MSYS_NO_PATHCONV=1 kubectl *)', 'Bash(NODE_OPTIONS=1 kubectl get *)']) {
       assert.equal(keep.keeps(rule), false, rule);
     }
   });

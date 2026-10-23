@@ -54,13 +54,26 @@ function parseRule(rule: string): ParsedRule | undefined {
   return tool === undefined ? undefined : { tool, body: match?.[2] };
 }
 
-/** The rule as the keep-list compares it: a trailing `:*` reads as ` *`, the same prefix match. */
+/** The tools whose rule body is a command line. */
+const SHELL_TOOLS: ReadonlySet<string> = new Set(['Bash', 'PowerShell']);
+
+/**
+ * A leading assignment that only stops Git for Windows' shell from rewriting path-like arguments, so a shell rule with
+ * it approves what the same rule without it does (security's keep-list shape, T1037).
+ */
+const PATH_CONVERSION_OFF = 'MSYS_NO_PATHCONV=1 ';
+
+/**
+ * The rule as the keep-list compares it: a trailing `:*` reads as ` *`, the same prefix match, and a shell rule's one
+ * leading `MSYS_NO_PATHCONV=1 ` reads as absent.
+ */
 export function normalRule(rule: string): string {
   const parsed = parseRule(rule);
-  if (parsed?.body === undefined || !parsed.body.endsWith(':*')) {
+  if (parsed?.body === undefined) {
     return rule;
   }
-  return `${parsed.tool}(${parsed.body.slice(0, -2)} *)`;
+  const command = SHELL_TOOLS.has(parsed.tool) && parsed.body.startsWith(PATH_CONVERSION_OFF) ? parsed.body.slice(PATH_CONVERSION_OFF.length) : parsed.body;
+  return `${parsed.tool}(${command.endsWith(':*') ? `${command.slice(0, -2)} *` : command})`;
 }
 
 /** Approves a whole tool or a program with any arguments: a bare tool name or a `*` in the body; a rule of no known shape too. */
